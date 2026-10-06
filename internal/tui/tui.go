@@ -12,12 +12,14 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"golang.org/x/term"
 
+	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/goterrace/internal/status"
 )
 
 // spinnerFrames rotate for working agents (150ms per frame).
@@ -97,6 +99,7 @@ type App struct {
 	sel           *selState
 	fwd           int // pane receiving forwarded mouse events during a drag
 	scroll        map[int]int
+	trackers      map[int]*status.Tracker
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -147,14 +150,15 @@ func Run(in *os.File, out *os.File) (int, error) {
 	st := model.New(cwd, ws.Cols, ws.Rows)
 	sup := runtime.NewSupervisor()
 	a := &App{
-		st:     st,
-		sup:    sup,
-		out:    out,
-		fr:     &input.Framer{},
-		enc:    &render.Encoder{},
-		cwd:    cwd,
-		scroll: map[int]int{},
-		fwd:    -1,
+		st:       st,
+		sup:      sup,
+		out:      out,
+		fr:       &input.Framer{},
+		enc:      &render.Encoder{},
+		cwd:      cwd,
+		scroll:   map[int]int{},
+		trackers: map[int]*status.Tracker{},
+		fwd:      -1,
 	}
 
 	// Spawn the initial pane sized to its inner rect.
@@ -261,8 +265,46 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 	}
 }
 
-// detectAll runs the detection/status pass (implemented in M6/M7).
-func (a *App) detectAll() {}
+// detectAll runs the detection/status pass over every live pane.
+func (a *App) detectAll() {
+	now := time.Now()
+	activeWS := a.st.ActiveWorkspace()
+	for _, ws := range a.st.Workspaces {
+		for _, pid := range ws.Layout.PaneIDs() {
+			p := a.sup.Get(pid)
+			if p == nil {
+				continue
+			}
+			tr := a.trackers[pid]
+			if tr == nil {
+				tr = status.NewTracker()
+				a.trackers[pid] = tr
+			}
+			sn := p.Snapshot()
+			agentID := detect.Identify(sn.ProcName, sn.ProcArgv0)
+			in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
+			if agentID != "" {
+				in.Screen = p.ScreenText()
+			}
+			if tr.Update(detect.Detect(agentID, in), agentID, false, now) {
+				a.dirty = true
+			}
+			// The focused pane in the visible workspace is seen.
+			if ws == activeWS && pid == ws.Layout.Focused() {
+				if !tr.Seen {
+					tr.Focus()
+					a.dirty = true
+				}
+			}
+		}
+	}
+	// Drop trackers for panes that no longer exist.
+	for pid := range a.trackers {
+		if a.sup.Get(pid) == nil {
+			delete(a.trackers, pid)
+		}
+	}
+}
 
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection (stub until M6/M7).
@@ -374,15 +416,22 @@ func (a *App) focusedPane() int {
 	return -1
 }
 
-// glyph returns the pane's display status glyph (stubbed until detect/status
-// land in M6/M7).
+// glyph returns the pane's display status glyph.
 func (a *App) glyph(pid int) render.StatusGlyph {
-	p := a.sup.Get(pid)
-	if p == nil {
+	tr := a.trackers[pid]
+	if tr == nil {
 		return render.StatusGlyph{Key: "unknown", Rune: "·", Color: render.Dim}
 	}
-	s := p.Snapshot()
-	_ = s
+	switch tr.Key() {
+	case "working":
+		return render.StatusGlyph{Key: "working", Rune: "◐", Color: render.Yellow}
+	case "blocked":
+		return render.StatusGlyph{Key: "blocked", Rune: "▲", Color: render.Peach}
+	case "done":
+		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.Green}
+	case "idle":
+		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Dim}
+	}
 	return render.StatusGlyph{Key: "unknown", Rune: "·", Color: render.Dim}
 }
 
@@ -454,9 +503,9 @@ func labelFor(sn runtime.Snapshot, p *runtime.Pane) string {
 	return "shell"
 }
 
-// agentFor reports the detected agent id (stub until M6).
+// agentFor reports the detected agent id for a snapshot.
 func agentFor(sn runtime.Snapshot) string {
-	return ""
+	return detect.Identify(sn.ProcName, sn.ProcArgv0)
 }
 
 // --- helpers ---

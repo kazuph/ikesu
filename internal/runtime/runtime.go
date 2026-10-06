@@ -310,6 +310,29 @@ func (p *Pane) WithEmu(fn func(e *vt.Emulator)) {
 	fn(p.emu)
 }
 
+// ScreenText returns the visible screen rows as plain text (right-trimmed,
+// joined with \n) — the input for agent detection. Scrollback is excluded.
+func (p *Pane) ScreenText() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	w, h := p.emu.Width(), p.emu.Height()
+	var b strings.Builder
+	for y := 0; y < h; y++ {
+		var sb strings.Builder
+		for x := 0; x < w; x++ {
+			if c := p.emu.CellAt(x, y); c != nil && c.Width > 0 {
+				sb.WriteString(c.Content)
+			}
+		}
+		line := strings.TrimRight(sb.String(), " ")
+		if y > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
 // Snapshot reads the pane's observable state under the lock.
 func (p *Pane) Snapshot() Snapshot {
 	p.mu.Lock()
