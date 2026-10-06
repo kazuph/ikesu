@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
@@ -38,9 +39,30 @@ func run() (int, error) {
 	return tui.Run(os.Stdin, os.Stdout)
 }
 
-// runDetect loads agent manifests and reports the state of a captured screen.
-// Implemented together with the detect package milestone.
-func runDetect(_ []string) int {
-	fmt.Fprintln(os.Stderr, "usage: gtx detect <screen-file>")
-	return 2
+// runDetect loads a captured screen file and reports every agent's state.
+func runDetect(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: gtx detect <screen-file>")
+		return 2
+	}
+	data, err := os.ReadFile(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "gtx detect:", err)
+		return 1
+	}
+	in := detect.Input{Screen: string(data)}
+	fmt.Printf("%-16s %-8s %s\n", "agent", "state", "rule")
+	for _, id := range detect.AgentIDs() {
+		d := detect.Detect(id, in)
+		rule := d.RuleID
+		if rule == "" {
+			rule = "-"
+		}
+		extra := ""
+		if d.SkipStateUpdate {
+			extra = " [skip_state_update]"
+		}
+		fmt.Printf("%-16s %-8s %s%s\n", id, d.State, rule, extra)
+	}
+	return 0
 }
