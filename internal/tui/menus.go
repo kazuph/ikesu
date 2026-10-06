@@ -11,7 +11,7 @@ import (
 
 // openPaneMenu shows the per-pane right-click menu at (x, y).
 func (a *App) openPaneMenu(x, y, pid int) {
-	a.menu = &uiMenu{
+	a.menu = &uiMenu{justOpened: true,
 		kind: menuPane,
 		pane: pid,
 		m: render.Menu{
@@ -28,7 +28,7 @@ func (a *App) openPaneMenu(x, y, pid int) {
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
 func (a *App) openWorkspaceMenu(x, y, ws int) {
-	a.menu = &uiMenu{
+	a.menu = &uiMenu{justOpened: true,
 		kind: menuWorkspace,
 		ws:   ws,
 		m: render.Menu{
@@ -48,7 +48,7 @@ func (a *App) openMainMenu(x, y int) {
 	if !a.st.SidebarVisible {
 		sideLabel = "Show sidebar"
 	}
-	a.menu = &uiMenu{
+	a.menu = &uiMenu{justOpened: true,
 		kind: menuMain,
 		m: render.Menu{
 			X: x, Y: y, Hover: -1, Sel: -1,
@@ -139,6 +139,10 @@ func (a *App) menuMouse(ev input.Event) {
 			a.menu = nil
 		}
 	case input.KindMouseRelease:
+		if a.menu.justOpened {
+			a.menu.justOpened = false
+			return
+		}
 		if i >= 0 {
 			a.activateMenu(i)
 		}

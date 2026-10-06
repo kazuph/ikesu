@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/detect"
@@ -56,6 +57,9 @@ type uiMenu struct {
 	kind menuKind
 	pane int // target pane (menuPane)
 	ws   int // target workspace (menuWorkspace)
+	// justOpened suppresses the release event from the same click that
+	// opened the menu (the menu may clamp onto the pointer).
+	justOpened bool
 }
 
 // uiDialog is an open confirmation dialog.
@@ -286,7 +290,7 @@ func (a *App) detectAll() {
 			if agentID != "" {
 				in.Screen = p.ScreenText()
 			}
-			if tr.Update(detect.Detect(agentID, in), agentID, false, now) {
+			if tr.Update(detect.Detect(agentID, in), agentID, sn.Dead, now) {
 				a.dirty = true
 			}
 			// The focused pane in the visible workspace is seen.
@@ -539,9 +543,23 @@ func readInput(f *os.File, ch chan<- []byte) {
 // drainInput reads and discards leftover input (e.g. mouse reports already
 // in flight) for up to d, so the outer shell never sees them.
 func drainInput(f *os.File, d time.Duration) {
-	_ = f.SetReadDeadline(time.Now().Add(d))
+	deadline := time.Now().Add(d)
+	fd := int(f.Fd())
+	pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 	buf := make([]byte, 64*1024)
 	for {
+		remain := time.Until(deadline)
+		if remain <= 0 {
+			return
+		}
+		ms := int(remain / time.Millisecond)
+		if ms < 1 {
+			ms = 1
+		}
+		n, err := unix.Poll(pfd, ms)
+		if err != nil || n == 0 {
+			return
+		}
 		if _, err := f.Read(buf); err != nil {
 			return
 		}

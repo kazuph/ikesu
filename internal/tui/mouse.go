@@ -180,8 +180,11 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	}
 	rows := render.SidebarRows(s, a.paneSnaps())
 	scroll := a.sidebarScroll
-	if max := len(rows) - avail; scroll > max {
+	if max := len(rows) - avail; max > 0 && scroll > max {
 		scroll = max
+	}
+	if scroll < 0 {
+		scroll = 0
 	}
 	i := m.Y - iy + scroll
 	if i < 0 || i >= len(rows) {
@@ -222,11 +225,19 @@ func (a *App) wheel(m uv.Mouse) {
 	if pointIn(m.X, m.Y, a.st.SidebarArea()) {
 		if up {
 			a.sidebarScroll -= 3
-			if a.sidebarScroll < 0 {
-				a.sidebarScroll = 0
-			}
 		} else {
 			a.sidebarScroll += 3
+		}
+		_, _, _, avail := render.SidebarContent(a.st.SidebarArea())
+		max := len(render.SidebarRows(a.st, a.paneSnaps())) - avail
+		if max < 0 {
+			max = 0
+		}
+		if a.sidebarScroll > max {
+			a.sidebarScroll = max
+		}
+		if a.sidebarScroll < 0 {
+			a.sidebarScroll = 0
 		}
 		return
 	}
