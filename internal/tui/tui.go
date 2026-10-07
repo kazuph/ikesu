@@ -379,7 +379,7 @@ func (a *App) syncLayout() {
 	}
 	area := a.st.PanesArea()
 	for _, pr := range ws.Layout.Panes(area) {
-		a.sup.Resize(pr.ID, pr.Rect.W-2, pr.Rect.H-2)
+		a.sup.Resize(pr.ID, max(pr.Rect.W-2, 1), max(pr.Rect.H-2, 1))
 	}
 }
 
@@ -392,7 +392,7 @@ func (a *App) innerRect(pid int) layout.Rect {
 	}
 	for _, pr := range ws.Layout.Panes(a.st.PanesArea()) {
 		if pr.ID == pid {
-			return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: pr.Rect.W - 2, H: pr.Rect.H - 2}
+			return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
 		}
 	}
 	return layout.Rect{W: 80, H: 24}
