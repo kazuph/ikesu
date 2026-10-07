@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,8 +19,6 @@ import (
 // log file under StateDir()/job-logs. Completion writes one nudge into the
 // caller's jobs-room mailbox; delivery follows the regular mailbox
 // pipeline.
-
-var jobLogUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
 // jobProcs tracks live jobs (external job id → process) so run.cancel can
 // signal the process group.
@@ -70,12 +67,7 @@ func (s *Server) seedJobSeq() {
 }
 
 func jobLogPath(jobID, label string) string {
-	safe := jobLogUnsafe.ReplaceAllString(strings.TrimSpace(label), "-")
-	safe = strings.Trim(safe, "-.")
-	if safe == "" {
-		safe = "job"
-	}
-	return filepath.Join(dispatch.JobLogDir(), jobID+"-"+safe+".log")
+	return dispatch.JobLogPath(jobID, label)
 }
 
 // runStart handles run.start: insert the row, spawn the detached process,

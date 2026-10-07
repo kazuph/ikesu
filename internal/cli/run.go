@@ -3,10 +3,15 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/dispatch"
@@ -106,6 +111,38 @@ func (r *runner) runCLI(args []string) int {
 	return r.runBackgroundCLI(argv, label, cwd, caller, completion)
 }
 
+// runSpawnOutput is the one-line JSON both `gtx run` modes print — same
+// shape as herdr's RunSpawnOutput so callers (and AI agents) can read the
+// job id and the "wait for the notice" hint without parsing prose.
+type runSpawnOutput struct {
+	Job   string  `json:"job"`
+	Label string  `json:"label"`
+	Mode  string  `json:"mode"`
+	Next  string  `json:"next"`
+	Pane  *string `json:"pane"`
+}
+
+func runSpawnNextHint(job, label string, pane *string, completion string) string {
+	if pane != nil {
+		return fmt.Sprintf("the caller pane is notified `[gtx run] exit=<code> label=%s pane=%s` on exit; wait for the notice instead of sleeping or polling `gtx run list`/`gtx log`, then read `gtx log %s`",
+			oneLineField(label), *pane, job)
+	}
+	if completion == "none" {
+		return fmt.Sprintf("--completion none sends no exit notice; inspect the job yourself with `gtx run list` or `gtx log %s`", job)
+	}
+	return fmt.Sprintf("the caller pane is notified `[gtx run] exit=<code> label=%s job=%s` on exit; end your turn and wait for the notice instead of sleeping or polling `gtx run list`/`gtx log`, then read `gtx log %s`",
+		oneLineField(label), job, job)
+}
+
+func oneLineField(s string) string {
+	return strings.Map(func(c rune) rune {
+		if c == '\n' || c == '\r' {
+			return ' '
+		}
+		return c
+	}, strings.TrimSpace(s))
+}
+
 // runBackgroundCLI submits a pane-less job via run.start.
 func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion string) int {
 	if caller == "" {
@@ -132,27 +169,38 @@ func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion 
 		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(r.out(), "job %s started (mode=%s)\n", res.Job, res.Mode)
-	if res.Label != "" {
-		fmt.Fprintf(r.out(), "label: %s\n", res.Label)
-	}
+	out, _ := json.Marshal(runSpawnOutput{
+		Job: res.Job, Label: res.Label, Mode: res.Mode,
+		Next: runSpawnNextHint(res.Job, res.Label, nil, completion),
+	})
+	fmt.Fprintln(r.out(), string(out))
 	return 0
 }
 
-// runPaneCLI opens a split pane and types the command inside the
-// `gtx __pane-run` wrapper, which reports the exit and closes the pane on
-// success when --close-on-success was given (otherwise it drops into an
-// interactive shell so the output stays readable).
+// runPaneCLI opens a split pane and types `gtx __pane-run ...` inside it.
+// The wrapper runs the command, logs to job-logs, sends the caller pane a
+// gtx-jobs completion nudge, and closes its own pane on success when
+// --close-on-success was given — mirroring herdr's run --pane contract.
 func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSuccess bool) int {
+	caller, err := r.resolveCurrentPaneID()
+	if err != nil {
+		fmt.Fprintln(r.errOut(), err.Error())
+		return 1
+	}
+	callerAgent := callerAgentName(r, caller)
+	if callerAgent == "" {
+		fmt.Fprintf(r.errOut(), "gtx run --pane: caller pane %s has no agent name; report one with `gtx agent rename`\n", caller)
+		return 1
+	}
+	if label == "" {
+		label = defaultRunLabel(argv)
+	}
+	job := newPaneJobID()
 	if split == "" {
 		split = "right"
 	}
-	var caller *string
-	if env := r.envPaneID(); env != "" {
-		caller = &env
-	}
 	raw, err := r.request("cli:run:split", api.MethodPaneSplit, api.PaneSplitParams{
-		TargetPaneID: caller, Direction: split, Cwd: optPtr(cwd), Focus: true,
+		TargetPaneID: &caller, Direction: split, Cwd: optPtr(cwd), Focus: false,
 		Env: map[string]string{},
 	})
 	if err != nil {
@@ -169,25 +217,88 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 		return 1
 	}
 	paneID := res.Pane.PaneID
-	bin := "gtx"
-	if p, e := exec.LookPath("gtx"); e == nil {
-		bin = p
+	_, _ = r.request("cli:run:rename", api.MethodPaneRename,
+		api.PaneRenameParams{PaneID: paneID, Label: &label})
+
+	bin, err := os.Executable()
+	if err != nil {
+		bin = "gtx"
+		if p, e := exec.LookPath("gtx"); e == nil {
+			bin = p
+		}
 	}
-	line := shellQuote(bin) + " __pane-run"
+	parts := []string{
+		shellQuote(bin), "__pane-run",
+		"--parent-agent", shellQuote(callerAgent),
+		"--target", shellQuote(paneID),
+		"--job-id", shellQuote(job),
+		"--run-label", shellQuote(label),
+	}
 	if closeOnSuccess {
-		line += " --close-on-success"
+		parts = append(parts, "--close-on-success")
+	} else {
+		parts = append(parts, "--close-on-exit")
 	}
-	line += " --"
-	for _, a := range argv {
-		line += " " + shellQuote(a)
-	}
-	if label != "" {
-		_, _ = r.request("cli:run:rename", api.MethodPaneRename,
-			api.PaneRenameParams{PaneID: paneID, Label: &label})
-	}
-	return r.sendOK(api.MethodPaneSendInput, api.PaneSendInputParams{
-		PaneID: paneID, Text: line, Keys: []string{"Enter"},
+	parts = append(parts, "--", shellQuote(shellCommandFromArgs(argv)))
+	code := r.sendOK(api.MethodPaneSendInput, api.PaneSendInputParams{
+		PaneID: paneID, Text: strings.Join(parts, " "), Keys: []string{"Enter"},
 	})
+	if code != 0 {
+		return code
+	}
+	out, _ := json.Marshal(runSpawnOutput{
+		Job: job, Label: label, Mode: "pane",
+		Next: runSpawnNextHint(job, label, &paneID, "summary"), Pane: &paneID,
+	})
+	fmt.Fprintln(r.out(), string(out))
+	return 0
+}
+
+// callerAgentName resolves the mailbox/agent name of a pane (custom name
+// first, then detected agent, like herdr's resolve_agent_name).
+func callerAgentName(r *runner, paneID string) string {
+	info, apiErr := r.agentGetRaw(paneID)
+	if apiErr != nil || info == nil {
+		return ""
+	}
+	if info.Name != nil && *info.Name != "" {
+		return *info.Name
+	}
+	if info.Agent != nil && *info.Agent != "" {
+		return *info.Agent
+	}
+	return ""
+}
+
+// newPaneJobID mirrors herdr's job-<unix_ms>-<pid>-<seq> ids: pane-mode
+// jobs are tracked by their log file only (no dispatch row), like herdr.
+var paneJobSeq uint32
+
+func newPaneJobID() string {
+	n := atomic.AddUint32(&paneJobSeq, 1)
+	return fmt.Sprintf("job-%d-%d-%d", time.Now().UnixMilli(), os.Getpid(), n)
+}
+
+func defaultRunLabel(argv []string) string {
+	if len(argv) == 0 {
+		return "run"
+	}
+	base := filepath.Base(argv[0])
+	if base == "" {
+		return "run"
+	}
+	return base
+}
+
+// shellCommandFromArgs renders argv as one shell command line with each
+// element quoted (herdr's shell_command_from_args), so `sh -c` in the
+// pane receives the original command verbatim.
+func shellCommandFromArgs(argv []string) string {
+	quoted := make([]string, len(argv))
+	for i, a := range argv {
+		quoted[i] = shellQuote(a)
+	}
+	return strings.Join(quoted, " ")
 }
 
 // shellQuote renders one argv element for POSIX shell parsing.
@@ -320,25 +431,33 @@ func (r *runner) logJobCLI(args []string) int {
 			return 2
 		}
 	}
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
-	if err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: cannot open store: %v\n", err)
-		return 1
+	logPath := ""
+	if store, err := dispatch.OpenReadOnly(dispatch.DBPath()); err == nil {
+		if job, jerr := store.CommandRow(jobID); jerr == nil && job != nil {
+			printRunListJob(r.out(), *job)
+			if job.CallerAgent != "" {
+				fmt.Fprintf(r.out(), "caller: %s\n", job.CallerAgent)
+			}
+			logPath = job.LogPath
+		}
+		store.Close()
 	}
-	defer store.Close()
-	job, err := store.CommandRow(jobID)
-	if err != nil || job == nil {
-		fmt.Fprintf(r.errOut(), "job not found: %s\n", jobID)
-		return 1
+	if logPath == "" {
+		// Pane-mode `run --pane` jobs have no dispatch row (same as herdr):
+		// their record is the log file job-logs/<id>-<label>.log.
+		if !validPaneJobID(jobID) {
+			fmt.Fprintf(r.errOut(), "job not found: %s\n", jobID)
+			return 1
+		}
+		matches, _ := filepath.Glob(filepath.Join(dispatch.JobLogDir(), jobID+"-*.log"))
+		if len(matches) == 0 {
+			fmt.Fprintf(r.errOut(), "job not found: %s\n", jobID)
+			return 1
+		}
+		logPath = matches[0]
+		fmt.Fprintf(r.out(), "%s (pane job)\n", jobID)
 	}
-	printRunListJob(r.out(), *job)
-	if job.CallerAgent != "" {
-		fmt.Fprintf(r.out(), "caller: %s\n", job.CallerAgent)
-	}
-	if job.LogPath == "" {
-		return 0
-	}
-	data, err := os.ReadFile(job.LogPath)
+	data, err := os.ReadFile(logPath)
 	if err != nil {
 		fmt.Fprintf(r.errOut(), "gtx: cannot read log: %v\n", err)
 		return 1
@@ -355,48 +474,132 @@ func (r *runner) logJobCLI(args []string) int {
 
 // --- internal: __pane-run ---
 
-// paneRunWrapper executes argv inside a pane and, with --close-on-success,
-// closes its own pane when the command exits 0.
+// paneRunWrapper is the `gtx __pane-run` wrapper typed into the job pane
+// by `gtx run --pane`. It runs the command via `sh -lc`, tees output to
+// the job log, sends the caller a gtx-jobs completion nudge, and closes
+// the pane per --close-on-success / --close-on-exit (herdr's __pane-run).
 func (r *runner) paneRunWrapper(args []string) int {
-	closeOnSuccess := false
+	var parentAgent, target, jobID, label string
+	closeOnSuccess, closeOnExit := false, false
 	i := 0
 	for i < len(args) && args[i] != "--" {
-		if args[i] == "--close-on-success" {
+		switch args[i] {
+		case "--parent-agent":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				fmt.Fprintln(r.errOut(), "missing value for --parent-agent")
+				return 2
+			}
+			parentAgent = v
+		case "--target":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				fmt.Fprintln(r.errOut(), "missing value for --target")
+				return 2
+			}
+			target = v
+		case "--job-id":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				fmt.Fprintln(r.errOut(), "missing value for --job-id")
+				return 2
+			}
+			jobID = v
+		case "--run-label":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				fmt.Fprintln(r.errOut(), "missing value for --run-label")
+				return 2
+			}
+			label = v
+		case "--close-on-success":
 			closeOnSuccess = true
+			i++
+		case "--close-on-exit":
+			closeOnExit = true
+			i++
+		default:
+			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
+			return 2
 		}
-		i++
 	}
-	if i >= len(args) || args[i] != "--" || i+1 >= len(args) {
-		fmt.Fprintln(r.errOut(), "usage: gtx __pane-run [--close-on-success] -- <command...>")
+	if i >= len(args) || args[i] != "--" || i+1 >= len(args) ||
+		jobID == "" || target == "" || !validPaneJobID(jobID) {
+		fmt.Fprintln(r.errOut(), "usage: gtx __pane-run --target PANE --job-id ID [--parent-agent NAME] [--run-label L] [--close-on-success|--close-on-exit] -- <command...>")
 		return 2
 	}
-	argv := args[i+1:]
-	code := runPassthrough(argv)
-	if closeOnSuccess && code == 0 {
+	command := strings.Join(args[i+1:], " ")
+	if label == "" {
+		label = defaultRunLabel(args[i+1:])
+	}
+
+	logPath := dispatch.JobLogPath(jobID, label)
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		fmt.Fprintf(r.errOut(), "gtx __pane-run: cannot create log dir: %v\n", err)
+		return 1
+	}
+	log, err := os.Create(logPath)
+	if err != nil {
+		fmt.Fprintf(r.errOut(), "gtx __pane-run: cannot create log: %v\n", err)
+		return 1
+	}
+	defer log.Close()
+	started := time.Now()
+	fmt.Fprintf(log, "== gtx run %s label=%s started=%s cmd=%s\n\n",
+		jobID, label, started.Format(time.RFC3339), command)
+
+	cmd := exec.Command("/bin/sh", "-lc", command)
+	cmd.Stdin = os.Stdin
+	wout, werr := io.MultiWriter(os.Stdout, log), io.MultiWriter(os.Stderr, log)
+	cmd.Stdout, cmd.Stderr = wout, werr
+	code := runCmdExitCode(cmd)
+
+	fmt.Fprintf(log, "\n== gtx run %s exit=%d finished=%s\n",
+		jobID, code, time.Now().Format(time.RFC3339))
+
+	if parentAgent != "" {
+		line := fmt.Sprintf("[gtx run] exit=%d label=%s pane=%s details: gtx log %s",
+			code, oneLineField(label), target, jobID)
+		_, _ = r.request("cli:pane-run:notify", api.MethodMsgSend, api.MsgSendParams{
+			Room: dispatch.JobsRoom, FromAgent: dispatch.RunShellActor,
+			To: parentAgent, Body: line,
+		})
+	}
+	if closeOnExit || (closeOnSuccess && code == 0) {
 		if paneID, err := r.resolveCurrentPaneID(); err == nil {
 			_, _ = r.request("cli:pane-run:close", api.MethodPaneClose,
 				api.PaneTarget{PaneID: paneID})
+			return code
 		}
+		_, _ = r.request("cli:pane-run:close", api.MethodPaneClose,
+			api.PaneTarget{PaneID: target})
 		return code
 	}
 	// Keep the pane alive for inspection: replace the wrapper with a
 	// login shell (herdr --pane leaves the pane open on failure / without
-	// --close-on-success).
+	// a close flag).
 	if sh := os.Getenv("SHELL"); sh != "" {
 		_ = syscall.Exec(sh, []string{sh, "-l"}, os.Environ())
 	}
 	return code
 }
 
-// runPassthrough runs a command with inherited stdio and returns its exit
-// code (128+signal for signalled processes, like a shell).
-func runPassthrough(argv []string) int {
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+// validPaneJobID accepts the id shapes a pane runner may log under:
+// herdr-style job-<ms>-<pid>-<seq> and the dispatch jNNNN ids.
+var paneJobIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+func validPaneJobID(id string) bool {
+	return len(id) <= 200 && paneJobIDRe.MatchString(id)
+}
+
+// runCmdExitCode runs a command and returns its exit code (128+signal for
+// signalled processes, like a shell; 1 for a spawn failure).
+func runCmdExitCode(cmd *exec.Cmd) int {
 	if err := cmd.Run(); err != nil {
-		if ee, ok := err.(interface{ ExitCode() int }); ok {
+		if ee, ok := err.(*exec.ExitError); ok {
+			if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+				return 128 + int(ws.Signal())
+			}
 			if c := ee.ExitCode(); c >= 0 {
 				return c
 			}

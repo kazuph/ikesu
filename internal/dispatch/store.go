@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,21 @@ func DBPath() string {
 // JobLogDir holds per-job output logs ($GTX_STATE_DIR/job-logs).
 func JobLogDir() string {
 	return filepath.Join(api.StateDir(), "job-logs")
+}
+
+var jobLogUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// JobLogPath is the log path for a job id/label pair
+// ($GTX_STATE_DIR/job-logs/<id>-<safe-label>.log). Both the server-side
+// background runner and the in-pane __pane-run wrapper derive paths with
+// this helper so `gtx log` can find either kind.
+func JobLogPath(jobID, label string) string {
+	safe := jobLogUnsafe.ReplaceAllString(strings.TrimSpace(label), "-")
+	safe = strings.Trim(safe, "-.")
+	if safe == "" {
+		safe = "job"
+	}
+	return filepath.Join(JobLogDir(), jobID+"-"+safe+".log")
 }
 
 // schemaDDL mirrors herdr's DispatchStore schema verbatim (same table and
