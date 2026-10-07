@@ -379,8 +379,13 @@ func (s *Server) abortOrphanedJobs() {
 
 // jobSnapshot lists jobs newest-first and probes runner liveness once —
 // the SPEC G2 workspace-dot snapshot. alive maps job id → runner alive;
-// callers must not re-check processes while rendering.
+// callers must not re-check processes while rendering. When the DB file
+// has never been created there are no jobs; skip opening the store so
+// the once-per-second refresh does not load the engine into the server.
 func (s *Server) jobSnapshot() ([]dispatch.Job, map[string]bool) {
+	if !dispatch.DBExists() {
+		return nil, nil
+	}
 	store, err := s.db()
 	if err != nil {
 		return nil, nil

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"github.com/kazuph/goterrace/internal/layout"
@@ -403,18 +402,27 @@ func contains(ids []int, id int) bool {
 	return false
 }
 
-// safeSessionID matches the spec's session-id policy: 1..128 chars drawn
-// from ASCII alphanumerics plus - _ . only.
-var safeSessionID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+// safeSessionIDByte reports whether c is in the spec's session-id set:
+// ASCII alphanumerics plus - _ . only. Checked byte-wise so no compiled
+// regexp is retained in the heap (SPEC P1 memory budget).
+func safeSessionIDByte(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' ||
+		'0' <= c && c <= '9' || c == '.' || c == '_' || c == '-'
+}
 
 // SafeSessionID reports whether v is a safe session id (SPEC G3): empty,
 // over 128 chars, leading '-', the literals "last"/"--last", or any char
 // outside [A-Za-z0-9._-] are rejected.
 func SafeSessionID(v string) bool {
-	if v == "" || v[0] == '-' || v == "last" || v == "--last" {
+	if v == "" || len(v) > 128 || v[0] == '-' || v == "last" || v == "--last" {
 		return false
 	}
-	return safeSessionID.MatchString(v)
+	for i := 0; i < len(v); i++ {
+		if !safeSessionIDByte(v[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // SafeSessionPath reports whether v is acceptable as a transcript-path
