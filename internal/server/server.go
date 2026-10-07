@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -42,6 +43,7 @@ type Server struct {
 	session string
 	dir     string
 	version string
+	cwd     string // cwd the session was started from
 
 	lock     *os.File
 	apiLn    net.Listener
@@ -52,6 +54,8 @@ type Server struct {
 
 	mu     sync.Mutex
 	client *clientConn // currently attached display client, or nil
+
+	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 }
 
 // clientConn is one attached display client.
@@ -115,13 +119,13 @@ func Run(session, version string) (int, error) {
 		cwd = os.Getenv("HOME")
 	}
 
-	s := &Server{session: session, dir: dir, version: version, lock: lock, apiLn: apiLn, clientLn: clientLn}
+	s := &Server{session: session, dir: dir, version: version, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn}
 
 	sup := runtime.NewSupervisor()
 	apiSockAbs := apiSock
 	sup.Env = func(paneID int) []string {
 		return []string{
-			fmt.Sprintf("GTX_PANE_ID=p_%d", paneID),
+			fmt.Sprintf("GTX_PANE_ID=p%d", paneID),
 			"GTX_SOCKET_PATH=" + apiSockAbs,
 		}
 	}
@@ -156,6 +160,13 @@ func (s *Server) cleanup() {
 	s.detach("server exiting")
 	_ = s.apiLn.Close()
 	_ = s.clientLn.Close()
+	// Let in-flight API responses flush before we exit.
+	drained := make(chan struct{})
+	go func() { s.apiWG.Wait(); close(drained) }()
+	select {
+	case <-drained:
+	case <-time.After(500 * time.Millisecond):
+	}
 	s.sup.KillAll()
 	os.Remove(api.APISocketPath(s.dir))
 	os.Remove(api.ClientSocketPath(s.dir))

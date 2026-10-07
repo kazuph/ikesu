@@ -44,6 +44,11 @@ const (
 	MethodPaneSendKeys    = "pane.send_keys"
 	MethodPaneSendInput   = "pane.send_input"
 	MethodPaneReportAgent = "pane.report_agent"
+	MethodPaneLayout      = "pane.layout"
+	MethodPaneProcessInfo = "pane.process_info"
+	MethodPaneNeighbor    = "pane.neighbor"
+	MethodPaneEdges       = "pane.edges"
+	MethodPaneResize      = "pane.resize"
 )
 
 // Error codes emitted by the server or synthesized by the CLI when the

@@ -3,6 +3,12 @@
 // Everything else in the codebase stays platform-neutral.
 package platform
 
+import (
+	"os/exec"
+	"strconv"
+	"strings"
+)
+
 // ForegroundPID returns the process-group leader pid of the process in the
 // foreground of the terminal behind fd (a PTY master), or 0 on failure.
 func ForegroundPID(fd int) int { return foregroundPID(fd) }
@@ -37,3 +43,15 @@ type ForegroundJob struct {
 // ForegroundJobOf returns the foreground process group of the terminal
 // behind fd (a PTY master), or an empty job on failure.
 func ForegroundJobOf(fd int) ForegroundJob { return foregroundJob(fd) }
+
+// PPID returns the parent pid of pid, or 0 when unknown. Implemented via
+// `ps` so it works on both darwin and linux without extra plumbing; this is
+// called a handful of times per pane.current request, not in hot loops.
+func PPID(pid int) int {
+	out, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return n
+}

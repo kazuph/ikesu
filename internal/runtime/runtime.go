@@ -68,6 +68,7 @@ type Pane struct {
 	fgPID         int
 	procName      string
 	agentID       string
+	agentOverride string // set by pane.report_agent; wins over agentID
 	procCwd       string
 	oscTitle      string
 	oscProgress   string
@@ -84,10 +85,14 @@ type Pane struct {
 	// changedPending is set while an EventChanged for this pane is still
 	// sitting in the event queue or being consumed by the TUI.
 	changedPending atomic.Bool
+
+	// revision counts PTY output batches; bumped per flush.
+	revision atomic.Uint64
 }
 
 // Snapshot is a consistent read of the pane's observable state.
 type Snapshot struct {
+	Revision      uint64
 	ProcName      string
 	AgentID       string
 	FgPID         int
@@ -137,6 +142,11 @@ func (s *Supervisor) Get(id int) *Pane {
 
 // Spawn starts a login shell in cwd inside a new pane of the given size.
 func (s *Supervisor) Spawn(id int, cwd string, cols, rows int) (*Pane, error) {
+	return s.SpawnWith(id, cwd, cols, rows, nil)
+}
+
+// SpawnWith is Spawn plus per-pane extra environment (API-created panes).
+func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra []string) (*Pane, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
@@ -179,6 +189,7 @@ func (s *Supervisor) Spawn(id int, cwd string, cols, rows int) (*Pane, error) {
 	if s.Env != nil {
 		cmd.Env = append(cmd.Env, s.Env(id)...)
 	}
+	cmd.Env = append(cmd.Env, extra...)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		emu.Close()
@@ -390,6 +401,7 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	}
 	_, _ = p.emu.Write(chunk)
 	p.mu.Unlock()
+	p.revision.Add(1)
 	p.notifyChanged()
 }
 
@@ -537,8 +549,9 @@ func (p *Pane) Snapshot() Snapshot {
 
 func (p *Pane) snapshotLocked() Snapshot {
 	return Snapshot{
+		Revision:      p.revision.Load(),
 		ProcName:      p.procName,
-		AgentID:       p.agentID,
+		AgentID:       p.effectiveAgent(),
 		FgPID:         p.fgPID,
 		Cwd:           p.procCwdOrDefault(),
 		OSCTitle:      p.oscTitle,
@@ -604,6 +617,70 @@ func (p *Pane) ScrollbackLines() []string {
 		out = append(out, strings.TrimRight(sb.String(), " "))
 	}
 	return out
+}
+
+// ScreenANSI returns the visible screen as ANSI-escaped lines.
+func (p *Pane) ScreenANSI() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	h, w := p.emu.Height(), p.emu.Width()
+	out := make([]string, h)
+	for y := 0; y < h; y++ {
+		row := make([]*uv.Cell, w)
+		for x := 0; x < w; x++ {
+			row[x] = p.emu.CellAt(x, y)
+		}
+		out[y] = ansiLine(row)
+	}
+	return out
+}
+
+// ScrollbackANSI returns scrollback history as ANSI-escaped lines
+// (index 0 = oldest).
+func (p *Pane) ScrollbackANSI() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n, w := p.emu.ScrollbackLen(), p.emu.Width()
+	out := make([]string, 0, n)
+	for y := 0; y < n; y++ {
+		row := make([]*uv.Cell, w)
+		for x := 0; x < w; x++ {
+			row[x] = p.emu.ScrollbackCellAt(x, y)
+		}
+		out = append(out, ansiLine(row))
+	}
+	return out
+}
+
+// ansiLine renders a row of cells as one ANSI-escaped string, emitting an
+// SGR sequence whenever the style changes.
+func ansiLine(row []*uv.Cell) string {
+	end := len(row)
+	for end > 0 {
+		c := row[end-1]
+		if c != nil && c.Width > 0 && c.Content != "" && c.Content != " " {
+			break
+		}
+		end--
+	}
+	var b strings.Builder
+	var cur uv.Style
+	have := false
+	for _, c := range row[:end] {
+		if c == nil || c.Width == 0 {
+			continue
+		}
+		if !have || !c.Style.Equal(&cur) {
+			b.WriteString(c.Style.String())
+			cur = c.Style
+			have = true
+		}
+		b.WriteString(c.Content)
+	}
+	if have {
+		b.WriteString(ansi.ResetStyle)
+	}
+	return b.String()
 }
 
 // PollProcess refreshes the foreground process info. Called periodically.
@@ -697,3 +774,36 @@ func itoa(i int) string {
 
 // SpawnCwd returns the best-known cwd of a pane (for new workspaces).
 func (p *Pane) SpawnCwd() string { return p.Snapshot().Cwd }
+
+// ShellPID returns the pid of the pane's shell process, or 0.
+func (p *Pane) ShellPID() int {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return 0
+	}
+	return p.cmd.Process.Pid
+}
+
+// ForegroundJob returns the pane's foreground process group, best effort.
+func (p *Pane) ForegroundJob() platform.ForegroundJob {
+	if p.ptyFile == nil {
+		return platform.ForegroundJob{}
+	}
+	return platform.ForegroundJobOf(int(p.ptyFile.Fd()))
+}
+
+// SetAgent overrides the detected agent id (pane.report_agent). An empty
+// id clears the override back to detection-driven state.
+func (p *Pane) SetAgent(id string) {
+	p.mu.Lock()
+	p.agentOverride = id
+	p.mu.Unlock()
+}
+
+// effectiveAgent reports the override when set, else the detected id.
+// Call with p.mu held.
+func (p *Pane) effectiveAgent() string {
+	if p.agentOverride != "" {
+		return p.agentOverride
+	}
+	return p.agentID
+}

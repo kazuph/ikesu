@@ -105,14 +105,27 @@ func (l *Layout) PaneIDs() []int {
 // SplitFocused splits the focused pane in direction dir at ratio 0.5, puts
 // newPane as the second child and moves focus to it.
 func (l *Layout) SplitFocused(dir Direction, newPane int) {
-	l.root = splitAt(l.root, l.focus, dir, newPane, 0.5)
-	at := indexOf(l.order, l.focus)
+	l.SplitAt(l.focus, dir, newPane, 0.5, true)
+}
+
+// SplitAt splits an arbitrary pane in direction dir at ratio, puts newPane
+// as the second child, and optionally moves focus to it. Returns false if
+// pane does not exist.
+func (l *Layout) SplitAt(pane int, dir Direction, newPane int, ratio float64, focus bool) bool {
+	if !containsID(collectIDs(l.root), pane) {
+		return false
+	}
+	l.root = splitAt(l.root, pane, dir, newPane, ratio)
+	at := indexOf(l.order, pane)
 	if at < 0 {
 		l.order = append(l.order, newPane)
 	} else {
 		l.order = append(l.order[:at+1], append([]int{newPane}, l.order[at+1:]...)...)
 	}
-	l.focus = newPane
+	if focus {
+		l.focus = newPane
+	}
+	return true
 }
 
 // Close removes a leaf pane and promotes its sibling into the parent slot.

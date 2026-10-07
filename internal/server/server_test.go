@@ -311,9 +311,9 @@ func TestPingAndUnknownMethod(t *testing.T) {
 	if r.Err != nil {
 		t.Fatalf("ping error: %+v", r.Err)
 	}
-	r = req("pane.list")
+	r = req("nope.method")
 	if r.Err == nil || r.Err.Code != api.ErrUnknownMethod {
-		t.Fatalf("pane.list should be unknown_method in M2, got %+v", r.Err)
+		t.Fatalf("nope.method should be unknown_method, got %+v", r.Err)
 	}
 	r = req("server.stop")
 	if r.Err != nil {

@@ -29,6 +29,8 @@ type AppState struct {
 	Active         int // index into Workspaces
 	SidebarVisible bool
 	Cols, Rows     int // outer terminal size in cells
+	// PaneLabels holds optional API-assigned pane names (pane.rename).
+	PaneLabels map[PaneID]string
 
 	nextPaneID      PaneID
 	nextWorkspaceID WorkspaceID
@@ -73,14 +75,40 @@ func (s *AppState) WorkspaceOf(pane PaneID) int {
 type Command interface{ isCommand() }
 
 type (
-	// CmdNewWorkspace creates a workspace whose single pane starts in Cwd.
-	CmdNewWorkspace struct{ Cwd string }
+	// CmdNewWorkspace creates a workspace whose single pane starts in Cwd;
+	// the new workspace takes focus unless NoFocus is set.
+	CmdNewWorkspace struct {
+		Cwd     string
+		Env     map[string]string
+		NoFocus bool
+	}
 	// CmdCloseWorkspace closes workspace idx.
 	CmdCloseWorkspace struct{ Index int }
 	// CmdSelectWorkspace switches to workspace idx.
 	CmdSelectWorkspace struct{ Index int }
 	// CmdSplitFocused splits the focused pane in direction dir.
 	CmdSplitFocused struct{ Dir layout.Direction }
+	// CmdSplitPane splits Pane of workspace index at Ratio; Focus controls
+	// whether the new pane takes focus.
+	CmdSplitPane struct {
+		Workspace int
+		Pane      PaneID
+		Dir       layout.Direction
+		Ratio     float64
+		Focus     bool
+		Cwd       string
+		Env       map[string]string
+	}
+	// CmdRenameWorkspace renames workspace idx.
+	CmdRenameWorkspace struct {
+		Index int
+		Name  string
+	}
+	// CmdRenamePane sets a pane's label ("" clears).
+	CmdRenamePane struct {
+		Pane  PaneID
+		Label string
+	}
 	// CmdClosePane closes a pane.
 	CmdClosePane struct{ Pane PaneID }
 	// CmdFocusPane focuses a pane of the active workspace.
@@ -105,6 +133,9 @@ type (
 )
 
 func (CmdNewWorkspace) isCommand()    {}
+func (CmdRenameWorkspace) isCommand() {}
+func (CmdRenamePane) isCommand()      {}
+func (CmdSplitPane) isCommand()       {}
 func (CmdCloseWorkspace) isCommand()  {}
 func (CmdSelectWorkspace) isCommand() {}
 func (CmdSplitFocused) isCommand()    {}
@@ -122,10 +153,12 @@ func (CmdPaneExited) isCommand()      {}
 type Effect interface{ isEffect() }
 
 type (
-	// EffSpawnPane starts a shell in Cwd for pane id.
+	// EffSpawnPane starts a shell in Cwd for pane id; Env adds per-pane
+	// environment (API-created panes).
 	EffSpawnPane struct {
 		Pane PaneID
 		Cwd  string
+		Env  map[string]string
 	}
 	// EffKillPane terminates the pane process.
 	EffKillPane struct{ Pane PaneID }
@@ -152,9 +185,11 @@ func (s *AppState) Apply(cmd Command) []Effect {
 	switch c := cmd.(type) {
 	case CmdNewWorkspace:
 		ws := s.newWorkspace(c.Cwd)
-		s.Active = len(s.Workspaces) - 1
+		if !c.NoFocus {
+			s.Active = len(s.Workspaces) - 1
+		}
 		return []Effect{
-			EffSpawnPane{Pane: ws.Layout.Focused(), Cwd: c.Cwd},
+			EffSpawnPane{Pane: ws.Layout.Focused(), Cwd: c.Cwd, Env: c.Env},
 			EffSyncLayout{},
 		}
 	case CmdCloseWorkspace:
@@ -174,6 +209,36 @@ func (s *AppState) Apply(cmd Command) []Effect {
 		return []Effect{
 			EffSpawnPane{Pane: id, Cwd: ws.Cwd},
 			EffSyncLayout{},
+		}
+	case CmdSplitPane:
+		if c.Workspace < 0 || c.Workspace >= len(s.Workspaces) {
+			return nil
+		}
+		ws := s.Workspaces[c.Workspace]
+		id := s.allocPane()
+		if !ws.Layout.SplitAt(c.Pane, c.Dir, id, c.Ratio, c.Focus) {
+			return nil
+		}
+		cwd := c.Cwd
+		if cwd == "" {
+			cwd = ws.Cwd
+		}
+		return []Effect{
+			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env},
+			EffSyncLayout{},
+		}
+	case CmdRenameWorkspace:
+		if c.Index >= 0 && c.Index < len(s.Workspaces) {
+			s.Workspaces[c.Index].Name = c.Name
+		}
+	case CmdRenamePane:
+		if s.PaneLabels == nil {
+			s.PaneLabels = map[PaneID]string{}
+		}
+		if c.Label == "" {
+			delete(s.PaneLabels, c.Pane)
+		} else {
+			s.PaneLabels[c.Pane] = c.Label
 		}
 	case CmdClosePane:
 		return s.closePane(c.Pane)

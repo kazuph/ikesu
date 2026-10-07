@@ -133,6 +133,7 @@ type App struct {
 	fwd           int // pane receiving forwarded mouse events during a drag
 	scroll        map[int]int
 	trackers      map[int]*status.Tracker
+	reported      map[int]reportedPane // pane.report_agent overrides
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -439,6 +440,7 @@ func (a *App) detectAll() {
 	for pid := range a.trackers {
 		if a.sup.Get(pid) == nil {
 			delete(a.trackers, pid)
+			delete(a.reported, pid)
 		}
 	}
 }
@@ -490,11 +492,16 @@ func (a *App) exec(cmd model.Command) {
 func (a *App) effect(e model.Effect) {
 	switch e := e.(type) {
 	case model.EffSpawnPane:
-		r := a.innerRect(e.Pane)
-		_, _ = a.sup.Spawn(e.Pane, e.Cwd, r.W, r.H)
+		r := a.rectForPane(e.Pane)
+		var env []string
+		for k, v := range e.Env {
+			env = append(env, k+"="+v)
+		}
+		_, _ = a.sup.SpawnWith(e.Pane, e.Cwd, r.W, r.H, env)
 	case model.EffKillPane:
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
+		delete(a.reported, e.Pane)
 	case model.EffSyncLayout:
 		a.syncLayout()
 	case model.EffInput:
@@ -514,6 +521,20 @@ func (a *App) syncLayout() {
 	for _, pr := range ws.Layout.Panes(area) {
 		a.sup.Resize(pr.ID, max(pr.Rect.W-2, 1), max(pr.Rect.H-2, 1))
 	}
+}
+
+// rectForPane returns the inner rect of a pane in whichever workspace owns
+// it; panes of a hidden workspace spawn at a default size and are resized
+// when their workspace becomes active.
+func (a *App) rectForPane(pid int) layout.Rect {
+	for _, ws := range a.st.Workspaces {
+		for _, pr := range ws.Layout.Panes(a.st.PanesArea()) {
+			if pr.ID == pid {
+				return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
+			}
+		}
+	}
+	return layout.Rect{W: 80, H: 24}
 }
 
 // innerRect returns the content rect (inside the border) of a pane of the
@@ -559,7 +580,11 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	if tr == nil {
 		return render.StatusGlyph{Key: "unknown", Rune: "·", Color: render.Dim}
 	}
-	switch tr.Key() {
+	key := tr.Key()
+	if r, ok := a.reported[pid]; ok && r.state != "" {
+		key = r.state
+	}
+	switch key {
 	case "working":
 		return render.StatusGlyph{Key: "working", Rune: "◐", Color: render.Yellow}
 	case "blocked":
@@ -608,6 +633,39 @@ func (a *App) draw() {
 // ResetEncoder drops the diff state so the next frame repaints fully. The
 // server calls it when a fresh client attaches.
 func (a *App) ResetEncoder() { a.enc.Reset() }
+
+// ScrollOffset returns the client's scrollback offset for a pane.
+// Call on the app loop.
+func (a *App) ScrollOffset(pid int) int { return a.scroll[pid] }
+
+// PaneStatusKey returns the pane's agent status key
+// (working|blocked|done|idle|unknown). Call on the app loop.
+func (a *App) PaneStatusKey(pid int) string { return a.glyph(pid).Key }
+
+// SetReported applies a pane.report_agent override. Call on the app loop.
+func (a *App) SetReported(pid int, agent, state string) {
+	if a.reported == nil {
+		a.reported = map[int]reportedPane{}
+	}
+	if agent == "" && state == "" {
+		delete(a.reported, pid)
+		return
+	}
+	a.reported[pid] = reportedPane{agent: agent, state: state}
+}
+
+// Reported returns the API-reported agent override, if any. Call on the
+// app loop.
+func (a *App) Reported(pid int) (agent, state string, ok bool) {
+	r, ok := a.reported[pid]
+	return r.agent, r.state, ok
+}
+
+// reportedPane holds pane.report_agent overrides.
+type reportedPane struct {
+	agent string
+	state string
+}
 
 // paneSnaps builds render snapshots for every live pane.
 func (a *App) paneSnaps() map[int]*render.PaneSnap {

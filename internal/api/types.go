@@ -83,6 +83,21 @@ type PaneSplitParams struct {
 	Focus        bool              `json:"focus"`
 }
 
+type PaneQueryParams struct {
+	PaneID string `json:"pane_id"`
+}
+
+type PaneNeighborParams struct {
+	PaneID    string `json:"pane_id"`
+	Direction string `json:"direction"`
+}
+
+type PaneResizeParams struct {
+	PaneID    string   `json:"pane_id"`
+	Direction string   `json:"direction"`
+	Amount    *float64 `json:"amount,omitempty"`
+}
+
 type PaneSendTextParams struct {
 	PaneID string `json:"pane_id"`
 	Text   string `json:"text"`
@@ -259,4 +274,86 @@ type PaneReadResult struct {
 type PaneReadResultEnvelope struct {
 	Type string         `json:"type"` // "pane_read"
 	Read PaneReadResult `json:"read"`
+}
+
+// Layout snapshot types for pane.layout/pane.edges/pane.neighbor/pane.resize.
+
+type PaneLayoutRect struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type PaneLayoutPane struct {
+	PaneID  string         `json:"pane_id"`
+	Focused bool           `json:"focused"`
+	Rect    PaneLayoutRect `json:"rect"`
+}
+
+type PaneLayoutSplit struct {
+	ID        string         `json:"id"`
+	Direction string         `json:"direction"` // "right" | "down"
+	Ratio     float64        `json:"ratio"`
+	Rect      PaneLayoutRect `json:"rect"`
+}
+
+type PaneLayoutSnapshot struct {
+	WorkspaceID   string            `json:"workspace_id"`
+	TabID         string            `json:"tab_id"`
+	Zoomed        bool              `json:"zoomed"`
+	Area          PaneLayoutRect    `json:"area"`
+	FocusedPaneID string            `json:"focused_pane_id"`
+	Panes         []PaneLayoutPane  `json:"panes"`
+	Splits        []PaneLayoutSplit `json:"splits"`
+}
+
+type PaneLayoutResult struct {
+	Type   string             `json:"type"` // "pane_layout"
+	Layout PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneEdgesResult struct {
+	Type   string             `json:"type"` // "pane_edges"
+	PaneID string             `json:"pane_id"`
+	Left   bool               `json:"left"`
+	Right  bool               `json:"right"`
+	Up     bool               `json:"up"`
+	Down   bool               `json:"down"`
+	Layout PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneNeighborResult struct {
+	Type           string             `json:"type"` // "pane_neighbor"
+	PaneID         string             `json:"pane_id"`
+	Direction      string             `json:"direction"`
+	NeighborPaneID *string            `json:"neighbor_pane_id"`
+	Layout         PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneResizeResult struct {
+	Type          string             `json:"type"` // "pane_resize"
+	Changed       bool               `json:"changed"`
+	PaneID        string             `json:"pane_id"`
+	FocusedPaneID string             `json:"focused_pane_id"`
+	Reason        *string            `json:"reason"`
+	Layout        PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneProcessInfoProcess struct {
+	PID     int      `json:"pid"`
+	Name    string   `json:"name"`
+	Argv    []string `json:"argv"`
+	Argv0   *string  `json:"argv0"`
+	Cmdline *string  `json:"cmdline"`
+	Cwd     *string  `json:"cwd"`
+}
+
+type PaneProcessInfoResult struct {
+	Type                     string                   `json:"type"` // "pane_process_info"
+	PaneID                   string                   `json:"pane_id"`
+	ShellPID                 *int                     `json:"shell_pid"`
+	ForegroundProcessGroupID *int                     `json:"foreground_process_group_id"`
+	ForegroundProcesses      []PaneProcessInfoProcess `json:"foreground_processes"`
+	TTY                      *string                  `json:"tty"`
 }

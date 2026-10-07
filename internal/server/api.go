@@ -2,7 +2,6 @@ package server
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -15,6 +14,7 @@ func (s *Server) apiLoop() {
 		if err != nil {
 			return
 		}
+		s.apiWG.Add(1)
 		go s.serveAPI(conn)
 	}
 }
@@ -22,6 +22,7 @@ func (s *Server) apiLoop() {
 // serveAPI reads newline-delimited requests and writes one response per
 // request until the connection closes.
 func (s *Server) serveAPI(conn net.Conn) {
+	defer s.apiWG.Done()
 	defer conn.Close()
 	rd := bufio.NewReader(conn)
 	for {
@@ -62,10 +63,4 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 		})
 		return resp
 	}
-}
-
-// dispatchOnLoop runs on the app goroutine; it may touch st/sup safely.
-func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
-	return api.Failure(req.ID, api.ErrUnknownMethod,
-		fmt.Sprintf("unknown method %q", req.Method))
 }
