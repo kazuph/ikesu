@@ -471,6 +471,27 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
+	if area.Min.X <= 0 && area.Max.X >= b.Width() {
+		// Fast path: when the area spans the buffer's full width, whole lines
+		// can be moved instead of copying cells one by one. The lines pushed
+		// out of the region are recycled as the blank lines being inserted.
+		lines := b.Lines
+		var stash [64]Line
+		pushed := stash[:0]
+		if n > len(stash) {
+			pushed = make([]Line, 0, n)
+		}
+		pushed = append(pushed, lines[area.Max.Y-n:area.Max.Y]...)
+		copy(lines[y+n:area.Max.Y], lines[y:area.Max.Y-n])
+		copy(lines[y:y+n], pushed)
+		for i := y; i < y+n; i++ {
+			for x := range lines[i] {
+				b.SetCell(x, i, c)
+			}
+		}
+		return
+	}
+
 	// Move existing lines down within the bounds
 	for i := area.Max.Y - 1; i >= y+n; i-- {
 		for x := area.Min.X; x < area.Max.X; x++ {
@@ -500,6 +521,27 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 	// Limit deletion count to available space in scroll region
 	if n > area.Max.Y-y {
 		n = area.Max.Y - y
+	}
+
+	if area.Min.X <= 0 && area.Max.X >= b.Width() {
+		// Fast path: when the area spans the buffer's full width, whole lines
+		// can be moved instead of copying cells one by one. The deleted lines
+		// are recycled as the blank lines at the bottom of the region.
+		lines := b.Lines
+		var stash [64]Line
+		deleted := stash[:0]
+		if n > len(stash) {
+			deleted = make([]Line, 0, n)
+		}
+		deleted = append(deleted, lines[y:y+n]...)
+		copy(lines[y:area.Max.Y-n], lines[y+n:area.Max.Y])
+		copy(lines[area.Max.Y-n:area.Max.Y], deleted)
+		for i := area.Max.Y - n; i < area.Max.Y; i++ {
+			for x := range lines[i] {
+				b.SetCell(x, i, c)
+			}
+		}
+		return
 	}
 
 	// Shift cells up within the bounds
