@@ -84,6 +84,18 @@ func (a *App) prefixKey(k uv.Key) {
 		a.selectWorkspace(int(k.Code - '1'))
 	case k.Code == 'b':
 		a.exec(model.CmdToggleSidebar{})
+	case k.Code == 'c':
+		a.exec(model.CmdNewTab{Workspace: s.Active})
+	case k.Code == ']':
+		a.cycleTab(1)
+	case k.Code == '[':
+		a.cycleTab(-1)
+	case k.Code == ',':
+		if ws := s.ActiveWorkspace(); ws != nil {
+			a.openRenameTabDialog(s.Active, ws.ActiveTab)
+		}
+	case k.Code == '&':
+		a.closeActiveTab()
 	case k.Code == 'd' && k.Mod == 0:
 		// Detach: only meaningful when running under a server.
 		if a.detacher != nil {
@@ -91,6 +103,25 @@ func (a *App) prefixKey(k uv.Key) {
 		}
 	case k.Code == 'q':
 		a.openQuitDialog()
+	}
+}
+
+// cycleTab moves the active tab of the active workspace by dir, wrapping.
+func (a *App) cycleTab(dir int) {
+	ws := a.st.ActiveWorkspace()
+	if ws == nil || len(ws.Tabs) < 2 {
+		return
+	}
+	a.exec(model.CmdSelectTab{
+		Workspace: a.st.Active,
+		Tab:       (ws.ActiveTab + dir + len(ws.Tabs)) % len(ws.Tabs),
+	})
+}
+
+// closeActiveTab closes the focused tab of the active workspace.
+func (a *App) closeActiveTab() {
+	if ws := a.st.ActiveWorkspace(); ws != nil {
+		a.closeTabAt(a.st.Active, ws.ActiveTab)
 	}
 }
 
@@ -122,7 +153,11 @@ func (a *App) closeFocusedPane() {
 	if ws == nil {
 		return
 	}
-	if ws.Layout.PaneCount() <= 1 {
+	tab := ws.TabRef()
+	if tab == nil {
+		return
+	}
+	if tab.Layout.PaneCount() <= 1 && len(ws.Tabs) <= 1 {
 		if len(a.st.Workspaces) <= 1 {
 			a.openQuitDialog()
 		} else {
@@ -130,7 +165,7 @@ func (a *App) closeFocusedPane() {
 		}
 		return
 	}
-	a.exec(model.CmdClosePane{Pane: ws.Layout.Focused()})
+	a.exec(model.CmdClosePane{Pane: tab.Layout.Focused()})
 }
 
 // --- dialogs ---
@@ -160,13 +195,47 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 }
 
 func (a *App) dialogKey(k uv.Key) {
+	d := a.dialog
 	switch {
 	case k.Code == uv.KeyEnter:
-		d := a.dialog
 		a.dialog = nil
 		d.run(a)
 	case k.Code == uv.KeyEscape:
 		a.dialog = nil
+	case d.input != nil && (k.Code == uv.KeyBackspace || k.Code == uv.KeyDelete):
+		if r := []rune(*d.input); len(r) > 0 {
+			*d.input = string(r[:len(r)-1])
+			a.dialog.d.Input = *d.input
+		}
+	case d.input != nil && k.Text != "":
+		*d.input += k.Text
+		a.dialog.d.Input = *d.input
+	}
+	a.dirty = true
+}
+
+// openRenameTabDialog prompts for a new name for workspace ws's tab ti.
+func (a *App) openRenameTabDialog(ws, ti int) {
+	if ws < 0 || ws >= len(a.st.Workspaces) {
+		return
+	}
+	w := a.st.Workspaces[ws]
+	if ti < 0 || ti >= len(w.Tabs) {
+		return
+	}
+	name := w.Tabs[ti].Name
+	a.dialog = &uiDialog{
+		input: &name,
+		d: render.Dialog{
+			Title:   "Rename tab",
+			Confirm: "rename", Cancel: "cancel",
+			Input: name, InputEdit: true,
+		},
+		run: func(a *App) {
+			if name != "" && name != w.Tabs[ti].Name {
+				a.exec(model.CmdRenameTab{Workspace: ws, Tab: ti, Label: name})
+			}
+		},
 	}
 	a.dirty = true
 }

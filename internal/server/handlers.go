@@ -54,6 +54,43 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		}
 		return s.wsClose(req.ID, p.WorkspaceID)
 
+	case api.MethodTabList:
+		var p api.TabListParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.tabList(req.ID, p)
+	case api.MethodTabGet:
+		var p api.TabTarget
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.tabGet(req.ID, p.TabID)
+	case api.MethodTabCreate:
+		var p api.TabCreateParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.tabCreate(req.ID, p)
+	case api.MethodTabFocus:
+		var p api.TabTarget
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.tabFocus(req.ID, p.TabID)
+	case api.MethodTabRename:
+		var p api.TabRenameParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.tabRename(req.ID, p)
+	case api.MethodTabClose:
+		var p api.TabTarget
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.tabClose(req.ID, p.TabID)
+
 	case api.MethodPaneList:
 		var p api.PaneListParams
 		if err := req.DecodeParams(&p); err != nil {
@@ -164,14 +201,33 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 
 // --- lookups ---
 
-// findPane locates a pane by public id and returns its workspace index.
-func (s *Server) findPane(paneRef string) (pid int, wsIdx int, ok bool) {
+// findPane locates a pane by public id, returning workspace and tab indices.
+func (s *Server) findPane(paneRef string) (pid, wsIdx, tabIdx int, ok bool) {
 	n, valid := parsePaneID(paneRef)
 	if !valid {
-		return 0, -1, false
+		return 0, -1, -1, false
 	}
-	wsIdx = s.app.State().WorkspaceOf(n)
-	return n, wsIdx, wsIdx >= 0
+	wsIdx, tabIdx = s.app.State().FindPane(n)
+	return n, wsIdx, tabIdx, wsIdx >= 0
+}
+
+// findTab resolves a public "wN:tM" id to indices.
+func (s *Server) findTab(ref string) (wsIdx, tabIdx int) {
+	wsID, tabID, ok := parseTabID(ref)
+	if !ok {
+		return -1, -1
+	}
+	for i, ws := range s.app.State().Workspaces {
+		if ws.ID != wsID {
+			continue
+		}
+		for j, t := range ws.Tabs {
+			if t.ID == tabID {
+				return i, j
+			}
+		}
+	}
+	return -1, -1
 }
 
 // findWorkspace resolves a public workspace id to its index.
@@ -205,44 +261,77 @@ func optString(s string) *string {
 	return &s
 }
 
-func tabIDFor(wsID int) string { return fmt.Sprintf("w%d:t1", wsID) }
-
 // wsAgentStatus aggregates pane statuses: blocked > working > done > idle.
 func (s *Server) wsAgentStatus(ws *model.Workspace) api.AgentStatus {
 	best := api.AgentUnknown
-	prio := map[string]int{"idle": 1, "done": 2, "working": 3, "blocked": 4}
-	for _, pid := range ws.Layout.PaneIDs() {
-		k := s.app.PaneStatusKey(pid)
-		if prio[k] > prio[best] {
-			best = k
-		}
+	for _, t := range ws.Tabs {
+		best = maxAgent(best, s.tabAgentStatus(t))
 	}
 	return best
+}
+
+func (s *Server) tabAgentStatus(t *model.Tab) api.AgentStatus {
+	best := api.AgentUnknown
+	for _, pid := range t.Layout.PaneIDs() {
+		best = maxAgent(best, s.app.PaneStatusKey(pid))
+	}
+	return best
+}
+
+func maxAgent(a, b api.AgentStatus) api.AgentStatus {
+	prio := map[string]int{"idle": 1, "done": 2, "working": 3, "blocked": 4}
+	if prio[string(b)] > prio[string(a)] {
+		return b
+	}
+	return a
 }
 
 func (s *Server) wsInfo(i int) api.WorkspaceInfo {
 	st := s.app.State()
 	ws := st.Workspaces[i]
 	wsID := fmtWorkspaceID(ws.ID)
+	activeTabID := ""
+	if t := ws.TabRef(); t != nil {
+		activeTabID = fmtTabID(ws.ID, t.ID)
+	}
+	nextTab := st.PeekNextTabID()
 	return api.WorkspaceInfo{
-		WorkspaceID: wsID,
-		Number:      i + 1,
-		Label:       ws.Name,
-		Focused:     i == st.Active,
-		PaneCount:   ws.Layout.PaneCount(),
-		TabCount:    1,
-		ActiveTabID: fmt.Sprintf("%s:t1", wsID),
-		AgentStatus: s.wsAgentStatus(ws),
+		NextPublicTabNumber: &nextTab,
+		WorkspaceID:         wsID,
+		Number:              i + 1,
+		Label:               ws.Name,
+		Focused:             i == st.Active,
+		PaneCount:           ws.PaneCount(),
+		TabCount:            len(ws.Tabs),
+		ActiveTabID:         activeTabID,
+		AgentStatus:         s.wsAgentStatus(ws),
+	}
+}
+
+// tabInfo builds the public TabInfo for workspace/tab indices.
+func (s *Server) tabInfo(wsIdx, tabIdx int) api.TabInfo {
+	st := s.app.State()
+	ws := st.Workspaces[wsIdx]
+	t := ws.Tabs[tabIdx]
+	return api.TabInfo{
+		TabID:       fmtTabID(ws.ID, t.ID),
+		WorkspaceID: fmtWorkspaceID(ws.ID),
+		Label:       t.Name,
+		Number:      tabIdx + 1,
+		Focused:     wsIdx == st.Active && ws.ActiveTab == tabIdx,
+		PaneCount:   t.Layout.PaneCount(),
+		AgentStatus: s.tabAgentStatus(t),
 	}
 }
 
 func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 	st := s.app.State()
-	wsIdx := st.WorkspaceOf(pid)
+	wsIdx, tabIdx := st.FindPane(pid)
 	if wsIdx < 0 {
 		return api.PaneInfo{}, false
 	}
 	ws := st.Workspaces[wsIdx]
+	tab := ws.Tabs[tabIdx]
 	wsID := fmtWorkspaceID(ws.ID)
 
 	var sn runtime.Snapshot
@@ -258,17 +347,18 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 		cwd = ws.Cwd
 	}
 	rows := 0
-	for _, pr := range ws.Layout.Panes(st.PanesArea()) {
+	for _, pr := range tab.Layout.Panes(st.PanesArea()) {
 		if pr.ID == pid {
 			rows = max(pr.Rect.H-2, 1)
 		}
 	}
 	return api.PaneInfo{
-		PaneID:        fmtPaneID(pid),
-		WorkspaceID:   wsID,
-		TabID:         fmt.Sprintf("%s:t1", wsID),
-		TerminalID:    fmtPaneID(pid),
-		Focused:       wsIdx == st.Active && ws.Layout.Focused() == pid,
+		PaneID:      fmtPaneID(pid),
+		WorkspaceID: wsID,
+		TabID:       fmtTabID(ws.ID, tab.ID),
+		TerminalID:  fmtPaneID(pid),
+		Focused: wsIdx == st.Active && ws.ActiveTab == tabIdx &&
+			tab.Layout.Focused() == pid,
 		AgentStatus:   s.app.PaneStatusKey(pid),
 		Agent:         optString(agent),
 		Cwd:           optString(cwd),
@@ -284,28 +374,29 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 	}, true
 }
 
-// layoutSnapshot renders the workspace's pane rects and split borders.
-func (s *Server) layoutSnapshot(wsIdx int) api.PaneLayoutSnapshot {
+// layoutSnapshot renders one tab's pane rects and split borders.
+func (s *Server) layoutSnapshot(wsIdx, tabIdx int) api.PaneLayoutSnapshot {
 	st := s.app.State()
 	ws := st.Workspaces[wsIdx]
+	l := ws.Tabs[tabIdx].Layout
 	area := st.PanesArea()
 	wsID := fmtWorkspaceID(ws.ID)
 	snap := api.PaneLayoutSnapshot{
 		WorkspaceID:   wsID,
-		TabID:         fmt.Sprintf("%s:t1", wsID),
+		TabID:         fmtTabID(ws.ID, ws.Tabs[tabIdx].ID),
 		Area:          api.PaneLayoutRect{X: area.X, Y: area.Y, Width: area.W, Height: area.H},
-		FocusedPaneID: fmtPaneID(ws.Layout.Focused()),
+		FocusedPaneID: fmtPaneID(l.Focused()),
 		Panes:         []api.PaneLayoutPane{},
 		Splits:        []api.PaneLayoutSplit{},
 	}
-	for _, pr := range ws.Layout.Panes(area) {
+	for _, pr := range l.Panes(area) {
 		snap.Panes = append(snap.Panes, api.PaneLayoutPane{
 			PaneID:  fmtPaneID(pr.ID),
-			Focused: pr.ID == ws.Layout.Focused(),
+			Focused: pr.ID == l.Focused(),
 			Rect:    api.PaneLayoutRect{X: pr.Rect.X, Y: pr.Rect.Y, Width: pr.Rect.W, Height: pr.Rect.H},
 		})
 	}
-	for i, b := range ws.Layout.Splits(area) {
+	for i, b := range l.Splits(area) {
 		dir := "right"
 		if b.Direction == layout.Horizontal {
 			dir = "down"
@@ -356,10 +447,10 @@ func (s *Server) wsCreate(id string, p api.WorkspaceCreateParams) api.Response {
 	if p.Label != nil && *p.Label != "" {
 		s.app.ExecCmd(model.CmdRenameWorkspace{Index: idx, Name: *p.Label})
 	}
-	root := ws.Layout.Focused()
+	root := ws.Tabs[0].Layout.Focused()
 	info, _ := s.paneInfo(root)
 	tab := api.TabInfo{
-		TabID:       fmt.Sprintf("%s:t1", fmtWorkspaceID(ws.ID)),
+		TabID:       fmtTabID(ws.ID, ws.Tabs[0].ID),
 		WorkspaceID: fmtWorkspaceID(ws.ID),
 		Label:       "",
 		Number:      1,
@@ -402,6 +493,96 @@ func (s *Server) wsClose(id, ref string) api.Response {
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
 
+// --- tab handlers ---
+
+func (s *Server) tabNotFound(id, ref string) api.Response {
+	return api.Failure(id, api.ErrTabNotFound, fmt.Sprintf("tab not found: %s", ref))
+}
+
+func (s *Server) tabList(id string, p api.TabListParams) api.Response {
+	st := s.app.State()
+	out := api.TabListResult{Type: "tab_list", Tabs: []api.TabInfo{}}
+	for wi, ws := range st.Workspaces {
+		if p.WorkspaceID != nil && *p.WorkspaceID != "" {
+			if s.findWorkspace(*p.WorkspaceID) != wi {
+				continue
+			}
+		}
+		for ti := range ws.Tabs {
+			out.Tabs = append(out.Tabs, s.tabInfo(wi, ti))
+		}
+	}
+	return api.Success(id, out)
+}
+
+func (s *Server) tabGet(id, ref string) api.Response {
+	wi, ti := s.findTab(ref)
+	if wi < 0 {
+		return s.tabNotFound(id, ref)
+	}
+	return api.Success(id, api.TabInfoResult{Type: "tab_info", Tab: s.tabInfo(wi, ti)})
+}
+
+func (s *Server) tabCreate(id string, p api.TabCreateParams) api.Response {
+	st := s.app.State()
+	wsIdx := st.Active
+	if p.WorkspaceID != nil && *p.WorkspaceID != "" {
+		wsIdx = s.findWorkspace(*p.WorkspaceID)
+		if wsIdx < 0 {
+			return s.wsNotFound(id, *p.WorkspaceID)
+		}
+	}
+	cwd := ""
+	if p.Cwd != nil {
+		cwd = *p.Cwd
+	}
+	if cwd == "" {
+		cwd = st.Workspaces[wsIdx].Cwd
+	}
+	s.app.ExecCmd(model.CmdNewTab{
+		Workspace: wsIdx, Cwd: cwd, Env: p.Env, NoFocus: !p.Focus,
+	})
+	ws := st.Workspaces[wsIdx]
+	tabIdx := len(ws.Tabs) - 1
+	if p.Label != nil && *p.Label != "" {
+		s.app.ExecCmd(model.CmdRenameTab{Workspace: wsIdx, Tab: tabIdx, Label: *p.Label})
+	}
+	root := ws.Tabs[tabIdx].Layout.Focused()
+	info, _ := s.paneInfo(root)
+	return api.Success(id, api.TabCreatedResult{
+		Type:     "tab_created",
+		Tab:      s.tabInfo(wsIdx, tabIdx),
+		RootPane: info,
+	})
+}
+
+func (s *Server) tabFocus(id, ref string) api.Response {
+	wi, ti := s.findTab(ref)
+	if wi < 0 {
+		return s.tabNotFound(id, ref)
+	}
+	s.app.ExecCmd(model.CmdSelectTab{Workspace: wi, Tab: ti})
+	return api.Success(id, api.TabInfoResult{Type: "tab_info", Tab: s.tabInfo(wi, ti)})
+}
+
+func (s *Server) tabRename(id string, p api.TabRenameParams) api.Response {
+	wi, ti := s.findTab(p.TabID)
+	if wi < 0 {
+		return s.tabNotFound(id, p.TabID)
+	}
+	s.app.ExecCmd(model.CmdRenameTab{Workspace: wi, Tab: ti, Label: p.Label})
+	return api.Success(id, api.TabInfoResult{Type: "tab_info", Tab: s.tabInfo(wi, ti)})
+}
+
+func (s *Server) tabClose(id, ref string) api.Response {
+	wi, ti := s.findTab(ref)
+	if wi < 0 {
+		return s.tabNotFound(id, ref)
+	}
+	s.app.ExecCmd(model.CmdCloseTab{Workspace: wi, Tab: ti})
+	return api.Success(id, api.OkResult{Type: "ok"})
+}
+
 // --- pane handlers ---
 
 func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
@@ -413,9 +594,11 @@ func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
 				continue
 			}
 		}
-		for _, pid := range ws.Layout.PaneIDs() {
-			if info, ok := s.paneInfo(pid); ok {
-				out.Panes = append(out.Panes, info)
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if info, ok := s.paneInfo(pid); ok {
+					out.Panes = append(out.Panes, info)
+				}
 			}
 		}
 	}
@@ -423,7 +606,7 @@ func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
 }
 
 func (s *Server) paneGet(id, ref string) api.Response {
-	pid, _, ok := s.findPane(ref)
+	pid, _, _, ok := s.findPane(ref)
 	if !ok {
 		return s.paneNotFound(id, ref)
 	}
@@ -435,7 +618,7 @@ func (s *Server) paneGet(id, ref string) api.Response {
 // otherwise we walk the caller process's ancestry looking for a pane shell.
 func (s *Server) paneCurrent(id string, p api.PaneCurrentParams) api.Response {
 	if p.CallerPaneID != nil && *p.CallerPaneID != "" {
-		pid, _, ok := s.findPane(*p.CallerPaneID)
+		pid, _, _, ok := s.findPane(*p.CallerPaneID)
 		if !ok {
 			return s.paneNotFound(id, *p.CallerPaneID)
 		}
@@ -456,10 +639,12 @@ func (s *Server) paneForProcess(pid int) int {
 	st := s.app.State()
 	shells := map[int]int{} // shell pid → pane id
 	for _, ws := range st.Workspaces {
-		for _, id := range ws.Layout.PaneIDs() {
-			if p := s.app.Supervisor().Get(id); p != nil {
-				if sp := p.ShellPID(); sp > 0 {
-					shells[sp] = id
+		for _, t := range ws.Tabs {
+			for _, id := range t.Layout.PaneIDs() {
+				if p := s.app.Supervisor().Get(id); p != nil {
+					if sp := p.ShellPID(); sp > 0 {
+						shells[sp] = id
+					}
 				}
 			}
 		}
@@ -478,7 +663,7 @@ func (s *Server) paneForProcess(pid int) int {
 }
 
 func (s *Server) paneFocus(id, ref string) api.Response {
-	pid, wsIdx, ok := s.findPane(ref)
+	pid, wsIdx, _, ok := s.findPane(ref)
 	if !ok {
 		return s.paneNotFound(id, ref)
 	}
@@ -492,7 +677,7 @@ func (s *Server) paneFocus(id, ref string) api.Response {
 }
 
 func (s *Server) paneRename(id string, p api.PaneRenameParams) api.Response {
-	pid, _, ok := s.findPane(p.PaneID)
+	pid, _, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -506,7 +691,7 @@ func (s *Server) paneRename(id string, p api.PaneRenameParams) api.Response {
 }
 
 func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
-	pid, wsIdx, ok := s.findPane(p.PaneID)
+	pid, wsIdx, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -591,20 +776,23 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 			fmt.Sprintf("invalid split direction %q", p.Direction))
 	}
 	target := st.FocusedPane()
+	targetTab := 0
 	wsIdx := st.Active
 	if p.WorkspaceID != nil && *p.WorkspaceID != "" {
 		wsIdx = s.findWorkspace(*p.WorkspaceID)
 		if wsIdx < 0 {
 			return s.wsNotFound(id, *p.WorkspaceID)
 		}
-		target = st.Workspaces[wsIdx].Layout.Focused()
+		ws := st.Workspaces[wsIdx]
+		targetTab = ws.ActiveTab
+		target = ws.ActiveLayout().Focused()
 	}
 	if p.TargetPaneID != nil && *p.TargetPaneID != "" {
-		pid, idx, ok := s.findPane(*p.TargetPaneID)
+		pid, idx, ti, ok := s.findPane(*p.TargetPaneID)
 		if !ok {
 			return s.paneNotFound(id, *p.TargetPaneID)
 		}
-		target, wsIdx = pid, idx
+		target, wsIdx, targetTab = pid, idx, ti
 	}
 	ratio := 0.5
 	if p.Ratio != nil {
@@ -623,13 +811,13 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 		Workspace: wsIdx, Pane: target, Dir: dir,
 		Ratio: ratio, Focus: p.Focus, Cwd: cwd, Env: p.Env,
 	})
-	// New pane is the one just allocated: the last id in the workspace.
-	pids := st.Workspaces[wsIdx].Layout.PaneIDs()
+	// New pane is the one just allocated, inserted right after target in
+	// the target's own tab (PaneIDs keeps creation order).
+	pids := st.Workspaces[wsIdx].Tabs[targetTab].Layout.PaneIDs()
 	if len(pids) == 0 {
 		return api.Failure(id, api.ErrInvalidRequest, "split failed")
 	}
 	newID := pids[len(pids)-1]
-	// PaneIDs keeps creation order; the split inserts right after target.
 	for i, v := range pids {
 		if v == target && i+1 < len(pids) {
 			newID = pids[i+1]
@@ -640,7 +828,7 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 }
 
 func (s *Server) paneClose(id, ref string) api.Response {
-	pid, _, ok := s.findPane(ref)
+	pid, _, _, ok := s.findPane(ref)
 	if !ok {
 		return s.paneNotFound(id, ref)
 	}
@@ -649,7 +837,7 @@ func (s *Server) paneClose(id, ref string) api.Response {
 }
 
 func (s *Server) paneSendText(id string, p api.PaneSendTextParams) api.Response {
-	pid, _, ok := s.findPane(p.PaneID)
+	pid, _, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -663,7 +851,7 @@ func (s *Server) paneSendText(id string, p api.PaneSendTextParams) api.Response 
 }
 
 func (s *Server) paneSendKeys(id string, p api.PaneSendKeysParams) api.Response {
-	pid, _, ok := s.findPane(p.PaneID)
+	pid, _, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -680,7 +868,7 @@ func (s *Server) paneSendKeys(id string, p api.PaneSendKeysParams) api.Response 
 }
 
 func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Response {
-	pid, _, ok := s.findPane(p.PaneID)
+	pid, _, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -702,7 +890,7 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 }
 
 func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Response {
-	pid, _, ok := s.findPane(p.PaneID)
+	pid, _, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -720,27 +908,29 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 // --- pane info methods ---
 
 // resolvePane defaults an empty pane ref to the focused pane.
-func (s *Server) resolvePane(ref string) (pid int, wsIdx int, ok bool) {
+func (s *Server) resolvePane(ref string) (pid, wsIdx, tabIdx int, ok bool) {
 	if ref == "" {
 		st := s.app.State()
-		if ws := st.ActiveWorkspace(); ws != nil {
-			return ws.Layout.Focused(), st.Active, true
+		ws := st.ActiveWorkspace()
+		t := ws.TabRef()
+		if ws == nil || t == nil {
+			return 0, -1, -1, false
 		}
-		return 0, -1, false
+		return t.Layout.Focused(), st.Active, ws.ActiveTab, true
 	}
 	return s.findPane(ref)
 }
 
 func (s *Server) paneLayout(id, ref string) api.Response {
-	_, wsIdx, ok := s.resolvePane(ref)
+	_, wsIdx, tabIdx, ok := s.resolvePane(ref)
 	if !ok {
 		return s.paneNotFound(id, ref)
 	}
-	return api.Success(id, api.PaneLayoutResult{Type: "pane_layout", Layout: s.layoutSnapshot(wsIdx)})
+	return api.Success(id, api.PaneLayoutResult{Type: "pane_layout", Layout: s.layoutSnapshot(wsIdx, tabIdx)})
 }
 
 func (s *Server) paneProcessInfo(id, ref string) api.Response {
-	pid, _, ok := s.resolvePane(ref)
+	pid, _, _, ok := s.resolvePane(ref)
 	if !ok {
 		return s.paneNotFound(id, ref)
 	}
@@ -780,25 +970,25 @@ func (s *Server) paneProcessInfo(id, ref string) api.Response {
 }
 
 func (s *Server) paneEdges(id, ref string) api.Response {
-	pid, wsIdx, ok := s.resolvePane(ref)
+	pid, wsIdx, tabIdx, ok := s.resolvePane(ref)
 	if !ok {
 		return s.paneNotFound(id, ref)
 	}
 	st := s.app.State()
-	ws := st.Workspaces[wsIdx]
+	l := st.Workspaces[wsIdx].Tabs[tabIdx].Layout
 	area := st.PanesArea()
 	var me layout.Rect
 	found := false
-	for _, pr := range ws.Layout.Panes(area) {
+	for _, pr := range l.Panes(area) {
 		if pr.ID == pid {
 			me, found = pr.Rect, true
 		}
 	}
-	res := api.PaneEdgesResult{Type: "pane_edges", PaneID: fmtPaneID(pid), Layout: s.layoutSnapshot(wsIdx)}
+	res := api.PaneEdgesResult{Type: "pane_edges", PaneID: fmtPaneID(pid), Layout: s.layoutSnapshot(wsIdx, tabIdx)}
 	if !found {
 		return api.Success(id, res)
 	}
-	for _, pr := range ws.Layout.Panes(area) {
+	for _, pr := range l.Panes(area) {
 		if pr.ID == pid {
 			continue
 		}
@@ -818,18 +1008,18 @@ func (s *Server) paneEdges(id, ref string) api.Response {
 }
 
 func (s *Server) paneNeighbor(id string, p api.PaneNeighborParams) api.Response {
-	pid, wsIdx, ok := s.resolvePane(p.PaneID)
+	pid, wsIdx, tabIdx, ok := s.resolvePane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
 	st := s.app.State()
-	ws := st.Workspaces[wsIdx]
+	l := st.Workspaces[wsIdx].Tabs[tabIdx].Layout
 	area := st.PanesArea()
 	res := api.PaneNeighborResult{
 		Type: "pane_neighbor", PaneID: fmtPaneID(pid),
-		Direction: p.Direction, Layout: s.layoutSnapshot(wsIdx),
+		Direction: p.Direction, Layout: s.layoutSnapshot(wsIdx, tabIdx),
 	}
-	if n := neighborPane(ws, pid, p.Direction, area); n >= 0 {
+	if n := neighborPane(l, pid, p.Direction, area); n >= 0 {
 		id := fmtPaneID(n)
 		res.NeighborPaneID = &id
 	}
@@ -838,8 +1028,8 @@ func (s *Server) paneNeighbor(id string, p api.PaneNeighborParams) api.Response 
 
 // neighborPane finds the pane adjacent to pid in direction (same picking
 // rule as Layout.FocusDir: shared edge + closest centre).
-func neighborPane(ws *model.Workspace, pid int, dir string, area layout.Rect) int {
-	panes := ws.Layout.Panes(area)
+func neighborPane(l *layout.Layout, pid int, dir string, area layout.Rect) int {
+	panes := l.Panes(area)
 	var me layout.Rect
 	found := false
 	for _, pr := range panes {
@@ -881,7 +1071,7 @@ func neighborPane(ws *model.Workspace, pid int, dir string, area layout.Rect) in
 }
 
 func (s *Server) paneResize(id string, p api.PaneResizeParams) api.Response {
-	pid, wsIdx, ok := s.resolvePane(p.PaneID)
+	pid, wsIdx, tabIdx, ok := s.resolvePane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)
 	}
@@ -892,15 +1082,15 @@ func (s *Server) paneResize(id string, p api.PaneResizeParams) api.Response {
 			fmt.Sprintf("invalid direction %q", p.Direction))
 	}
 	st := s.app.State()
-	ws := st.Workspaces[wsIdx]
+	l := st.Workspaces[wsIdx].Tabs[tabIdx].Layout
 	area := st.PanesArea()
 	res := api.PaneResizeResult{
 		Type: "pane_resize", PaneID: fmtPaneID(pid),
-		FocusedPaneID: fmtPaneID(ws.Layout.Focused()),
+		FocusedPaneID: fmtPaneID(l.Focused()),
 	}
 	// The pane's border in `direction` is a split divider we can nudge.
 	var me layout.Rect
-	for _, pr := range ws.Layout.Panes(area) {
+	for _, pr := range l.Panes(area) {
 		if pr.ID == pid {
 			me = pr.Rect
 		}
@@ -909,7 +1099,7 @@ func (s *Server) paneResize(id string, p api.PaneResizeParams) api.Response {
 	if p.Amount != nil {
 		amount = *p.Amount
 	}
-	for _, b := range ws.Layout.Splits(area) {
+	for _, b := range l.Splits(area) {
 		var match bool
 		var delta float64
 		switch p.Direction {
@@ -928,7 +1118,7 @@ func (s *Server) paneResize(id string, p api.PaneResizeParams) api.Response {
 			delta = -amount / float64(max(b.Area.H, 1))
 		}
 		if match {
-			if ws.Layout.SetRatioAt(b.Path, b.Ratio+delta) {
+			if l.SetRatioAt(b.Path, b.Ratio+delta) {
 				res.Changed = true
 			}
 			break
@@ -941,7 +1131,7 @@ func (s *Server) paneResize(id string, p api.PaneResizeParams) api.Response {
 		reason := "unchanged"
 		res.Reason = &reason
 	}
-	res.Layout = s.layoutSnapshot(wsIdx)
+	res.Layout = s.layoutSnapshot(wsIdx, tabIdx)
 	return api.Success(id, res)
 }
 

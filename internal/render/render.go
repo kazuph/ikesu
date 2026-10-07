@@ -86,6 +86,9 @@ type Dialog struct {
 	Detail  string
 	Confirm string // e.g. "quit"
 	Cancel  string // e.g. "cancel"
+	// Input/InputEdit render the detail row as an editable text field.
+	Input     string
+	InputEdit bool
 }
 
 // Input is everything Compose needs for one frame.
@@ -110,6 +113,10 @@ type Output struct {
 	AnchorX       int
 	AnchorY       int
 	AnchorVisible bool
+	// TabHits maps each tab of the active workspace to its bar rect;
+	// NewTabRect is the "+" button. Both feed the mouse layer.
+	TabHits    []layout.Rect
+	NewTabRect layout.Rect
 	// MenuRect/DialogRects let the mouse layer hit-test overlays.
 	MenuRect      layout.Rect
 	MenuItemRows  []layout.Rect // per-item row rects (absolute coords)
@@ -125,6 +132,7 @@ func Compose(in Input) *Output {
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
+	drawTabBar(f, s, out)
 	drawPanes(f, s, in, out)
 	drawStatusLine(f, s, in)
 	if in.Menu != nil {
@@ -136,6 +144,45 @@ func Compose(in Input) *Output {
 	return out
 }
 
+// --- tab bar ---
+
+// drawTabBar renders the one-row tab strip over the panes area: " name "
+// cells for each tab of the active workspace plus a trailing "+" button.
+func drawTabBar(f *Frame, s *model.AppState, out *Output) {
+	area := s.TabBarArea()
+	if area.W <= 0 {
+		return
+	}
+	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{Bg: Surface})
+	ws := s.ActiveWorkspace()
+	if ws == nil {
+		return
+	}
+	x := area.X
+	for i, t := range ws.Tabs {
+		name := t.TabLabel()
+		w := len([]rune(name)) + 2
+		if x+w > area.X+area.W-3 {
+			w = area.X + area.W - 3 - x
+		}
+		if w <= 0 {
+			out.TabHits = append(out.TabHits, layout.Rect{})
+			continue
+		}
+		sty := uv.Style{Fg: Subtle, Bg: Surface}
+		if i == ws.ActiveTab {
+			sty = uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Accent, Attrs: uv.AttrBold}
+		}
+		f.Text(x, area.Y, " "+truncate(name, max(w-1, 0)), sty, x+w)
+		out.TabHits = append(out.TabHits, layout.Rect{X: x, Y: area.Y, W: w, H: 1})
+		x += w
+	}
+	if x+3 <= area.X+area.W {
+		f.Text(x, area.Y, " + ", uv.Style{Fg: Subtle, Bg: Surface}, x+3)
+		out.NewTabRect = layout.Rect{X: x, Y: area.Y, W: 3, H: 1}
+	}
+}
+
 // --- panes ---
 
 func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
@@ -144,7 +191,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		return
 	}
 	area := s.PanesArea()
-	for _, pr := range ws.Layout.Panes(area) {
+	l := ws.ActiveLayout()
+	if l == nil {
+		return
+	}
+	for _, pr := range l.Panes(area) {
 		snap := in.Panes[pr.ID]
 		borderSty := uv.Style{Fg: Dim}
 		if pr.IsFocused {
@@ -256,13 +307,15 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap) []SidebarRow {
 	}
 	agentRows := false
 	for wi, ws := range s.Workspaces {
-		for _, pid := range ws.Layout.PaneIDs() {
-			if snap := panes[pid]; snap != nil && snap.Agent != "" {
-				if !agentRows {
-					rows = append(rows, SidebarRow{Kind: RowSep, Pane: -1})
-					agentRows = true
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if snap := panes[pid]; snap != nil && snap.Agent != "" {
+					if !agentRows {
+						rows = append(rows, SidebarRow{Kind: RowSep, Pane: -1})
+						agentRows = true
+					}
+					rows = append(rows, SidebarRow{Kind: RowAgent, Ws: wi, Pane: pid})
 				}
-				rows = append(rows, SidebarRow{Kind: RowAgent, Ws: wi, Pane: pid})
 			}
 		}
 	}
@@ -377,7 +430,10 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if snap == nil {
 			return
 		}
-		focused := r.Ws == s.Active && s.Workspaces[r.Ws].Layout.Focused() == r.Pane
+		focused := r.Ws == s.Active
+		if l := s.Workspaces[r.Ws].ActiveLayout(); l != nil {
+			focused = focused && l.Focused() == r.Pane
+		}
 		sty := uv.Style{Fg: Text, Attrs: boldIf(focused)}
 		x := f.Text(ix+2, y, snap.Status.Rune, uv.Style{Fg: snap.Status.Color}, ix+iw)
 		x = f.Text(x, y, fmt.Sprintf(" %d ", r.Pane), sty, ix+iw)
@@ -448,15 +504,17 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 func aggregateGlyph(ws *model.Workspace, in Input) StatusGlyph {
 	best := StatusGlyph{Rune: " ", Color: Dim}
 	rank := 0
-	for _, pid := range ws.Layout.PaneIDs() {
-		snap := in.Panes[pid]
-		if snap == nil {
-			continue
-		}
-		r := glyphRank(snap.Status)
-		if r > rank {
-			rank = r
-			best = snap.Status
+	for _, t := range ws.Tabs {
+		for _, pid := range t.Layout.PaneIDs() {
+			snap := in.Panes[pid]
+			if snap == nil {
+				continue
+			}
+			r := glyphRank(snap.Status)
+			if r > rank {
+				rank = r
+				best = snap.Status
+			}
 		}
 	}
 	return best
@@ -521,9 +579,11 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 	// Agent summary counts by state key, ahead of the buttons.
 	counts := map[string]int{}
 	for _, ws := range s.Workspaces {
-		for _, pid := range ws.Layout.PaneIDs() {
-			if snap := in.Panes[pid]; snap != nil && snap.Status.Key != "" {
-				counts[snap.Status.Key]++
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if snap := in.Panes[pid]; snap != nil && snap.Status.Key != "" {
+					counts[snap.Status.Key]++
+				}
 			}
 		}
 	}
@@ -623,6 +683,11 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	if l := len([]rune(d.Detail)) + 4; l > w {
 		w = l
 	}
+	if d.InputEdit {
+		if l := len([]rune(d.Input)) + 8; l > w {
+			w = l
+		}
+	}
 	// "[ <cancel>  esc ]" + gap + "[ <confirm>  ↵ ]" = cancel+9 + 2 + confirm+7.
 	btnRow := len([]rune(d.Cancel)) + len([]rune(d.Confirm)) + 18
 	if btnRow > w {
@@ -653,7 +718,11 @@ func drawDialog(f *Frame, d *Dialog, out *Output) {
 	ix, iy, iw, ih := f.Box(outer.X, outer.Y, outer.W, outer.H, border)
 	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
 	f.Text(ix+1, iy, d.Title, uv.Style{Fg: Text, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: Subtle}, ix+iw)
+	if d.InputEdit {
+		f.Text(ix+1, iy+1, "> "+d.Input+" ", uv.Style{Fg: Text, Bg: Surface}, ix+iw)
+	} else {
+		f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: Subtle}, ix+iw)
+	}
 	f.Text(cancel.X, cancel.Y, "[ "+d.Cancel+"  esc ]", uv.Style{Fg: Subtle}, cancel.X+cancel.W)
 	f.Fill(confirm.X, confirm.Y, confirm.W, 1, " ", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Red, Attrs: uv.AttrBold})
 	f.Text(confirm.X, confirm.Y, "[ "+d.Confirm+"  ↵ ]", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)

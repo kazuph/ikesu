@@ -13,7 +13,7 @@ func TestInnerRectClampsTinyPanes(t *testing.T) {
 	for _, cols := range []int{30, 10, 4, 1} {
 		st := model.New("", cols, 5)
 		a := &App{st: st}
-		pid := st.Workspaces[0].Layout.Focused()
+		pid := st.Workspaces[0].Tabs[0].Layout.Focused()
 		r := a.innerRect(pid)
 		if r.W < 1 || r.H < 1 {
 			t.Fatalf("cols=%d: innerRect %+v has non-positive size", cols, r)

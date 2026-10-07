@@ -45,6 +45,10 @@ func (a *App) click(m uv.Mouse) {
 		a.statusClick(m)
 		return
 	}
+	if pointIn(m.X, m.Y, a.st.TabBarArea()) {
+		a.tabBarClick(m)
+		return
+	}
 	if pointIn(m.X, m.Y, a.st.SidebarArea()) {
 		a.sidebarClick(m)
 		return
@@ -77,9 +81,11 @@ func (a *App) click(m uv.Mouse) {
 		return
 	}
 	// Split-border drag beats pane focus/selection.
-	if b := ws.Layout.SplitBorderAt(m.X, m.Y, area); b != nil {
-		a.sep = &sepDrag{path: b.Path, dir: b.Direction, area: b.Area, l: ws.Layout}
-		return
+	if l := ws.ActiveLayout(); l != nil {
+		if b := l.SplitBorderAt(m.X, m.Y, area); b != nil {
+			a.sep = &sepDrag{path: b.Path, dir: b.Direction, area: b.Area, l: l}
+			return
+		}
 	}
 	pr, ok := a.paneAt(m.X, m.Y)
 	if !ok {
@@ -108,12 +114,60 @@ func (a *App) click(m uv.Mouse) {
 	}
 }
 
+// tabBarClick handles clicks on the tab strip: left focuses, middle
+// closes, right opens the tab menu, "+" starts a new tab.
+func (a *App) tabBarClick(m uv.Mouse) {
+	ws := a.st.ActiveWorkspace()
+	if ws == nil {
+		return
+	}
+	if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, a.newTabRect) {
+		a.exec(model.CmdNewTab{Workspace: a.st.Active})
+		return
+	}
+	for i, r := range a.tabHits {
+		if i >= len(ws.Tabs) || !pointIn(m.X, m.Y, r) {
+			continue
+		}
+		switch m.Button {
+		case uv.MouseLeft:
+			a.exec(model.CmdSelectTab{Workspace: a.st.Active, Tab: i})
+		case uv.MouseMiddle:
+			a.closeTabAt(a.st.Active, i)
+		case uv.MouseRight:
+			a.openTabMenu(m.X, m.Y, a.st.Active, i)
+		}
+		return
+	}
+}
+
+// closeTabAt closes workspace ws's tab ti, asking for confirmation when it
+// is the workspace's last tab.
+func (a *App) closeTabAt(wsIdx, ti int) {
+	if wsIdx < 0 || wsIdx >= len(a.st.Workspaces) {
+		return
+	}
+	if len(a.st.Workspaces[wsIdx].Tabs) <= 1 {
+		if len(a.st.Workspaces) <= 1 {
+			a.openQuitDialog()
+		} else {
+			a.openCloseWorkspaceDialog(wsIdx)
+		}
+		return
+	}
+	a.exec(model.CmdCloseTab{Workspace: wsIdx, Tab: ti})
+}
+
 func (a *App) paneAt(x, y int) (layout.PaneRect, bool) {
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return layout.PaneRect{}, false
 	}
-	for _, pr := range ws.Layout.Panes(a.st.PanesArea()) {
+	l := ws.ActiveLayout()
+	if l == nil {
+		return layout.PaneRect{}, false
+	}
+	for _, pr := range l.Panes(a.st.PanesArea()) {
 		if pointIn(x, y, pr.Rect) {
 			return pr, true
 		}

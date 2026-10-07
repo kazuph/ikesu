@@ -49,7 +49,7 @@ func blankSnap() *PaneSnap {
 
 func TestRenderExpandedSidebarFooter(t *testing.T) {
 	s := testState(80, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	text := screenText(t, out, 80, 24)
 	for _, want := range []string{"[menu]", "[new]", "«"} {
@@ -62,7 +62,7 @@ func TestRenderExpandedSidebarFooter(t *testing.T) {
 func TestRenderCollapsedSidebar(t *testing.T) {
 	s := testState(80, 24)
 	s.SidebarVisible = false
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	text := screenText(t, out, 80, 24)
 	if !strings.Contains(text, "»") {
@@ -75,7 +75,7 @@ func TestRenderCollapsedSidebar(t *testing.T) {
 
 func TestRenderMenu(t *testing.T) {
 	s := testState(80, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{
 		State: s,
 		Panes: map[int]*PaneSnap{pid: blankSnap()},
@@ -103,7 +103,7 @@ func TestRenderMenu(t *testing.T) {
 
 func TestRenderDialog(t *testing.T) {
 	s := testState(80, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{
 		State:  s,
 		Panes:  map[int]*PaneSnap{pid: blankSnap()},
@@ -119,7 +119,7 @@ func TestRenderDialog(t *testing.T) {
 
 func TestRenderScrollIndicator(t *testing.T) {
 	s := testState(80, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	snap := blankSnap()
 	snap.ScrollOff = 12
 	snap.ScrollN = 50
@@ -132,7 +132,7 @@ func TestRenderScrollIndicator(t *testing.T) {
 
 func TestRenderStatusCountsAndButtons(t *testing.T) {
 	s := testState(100, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	snap := blankSnap()
 	snap.Status = StatusGlyph{Key: "working", Rune: "◐", Color: Yellow}
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: snap}})
@@ -146,7 +146,7 @@ func TestRenderStatusCountsAndButtons(t *testing.T) {
 
 func TestRenderSelectionHighlight(t *testing.T) {
 	s := testState(80, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	snap := blankSnap()
 	r := innerRectFor(t, s, pid)
 	grid := make([][]uv.Cell, r.H)
@@ -179,7 +179,7 @@ func innerRectFor(t *testing.T, s *model.AppState, pid int) layout.Rect {
 	if ws == nil {
 		t.Fatal("no workspace")
 	}
-	for _, r := range ws.Layout.Panes(s.PanesArea()) {
+	for _, r := range ws.Tabs[0].Layout.Panes(s.PanesArea()) {
 		if r.ID == pid {
 			return layout.Rect{X: r.Rect.X + 1, Y: r.Rect.Y + 1, W: r.Rect.W - 2, H: r.Rect.H - 2}
 		}
@@ -190,7 +190,7 @@ func innerRectFor(t *testing.T, s *model.AppState, pid int) layout.Rect {
 
 func TestEncoderSyncWrapsAndAnchor(t *testing.T) {
 	s := testState(80, 24)
-	pid := s.Workspaces[0].Layout.Focused()
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	enc := &Encoder{}
 	data := string(enc.Frame(out.Frame, 3, 4, true))

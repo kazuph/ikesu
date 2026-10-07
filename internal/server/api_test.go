@@ -336,3 +336,216 @@ func TestPaneReadNoClient(t *testing.T) {
 	}, nil)
 	waitRead(t, dir, p1, "NOCLIENT-MARKER")
 }
+
+func TestTabAPI(t *testing.T) {
+	dir, done := startTestServer(t)
+	dialClient(t, dir)
+	defer stopServer(t, dir, done)
+
+	// The initial workspace has one tab.
+	var list api.TabListResult
+	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &list)
+	if len(list.Tabs) != 1 {
+		t.Fatalf("tabs = %d, want 1", len(list.Tabs))
+	}
+	tab1 := list.Tabs[0].TabID
+	if !strings.HasPrefix(tab1, "w") || !strings.Contains(tab1, ":t") {
+		t.Fatalf("tab id %q should look like wN:tM", tab1)
+	}
+	if !list.Tabs[0].Focused {
+		t.Fatal("initial tab should be focused")
+	}
+
+	// Create a second tab without focus.
+	var created api.TabCreatedResult
+	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{
+		Label: strPtr("shells"),
+	}, &created)
+	if created.Tab.TabID == tab1 {
+		t.Fatal("new tab reuses tab1 id")
+	}
+	if created.Tab.Label != "shells" {
+		t.Fatalf("tab label = %q, want shells", created.Tab.Label)
+	}
+	if created.Tab.Focused {
+		t.Fatal("new tab should not be focused by default")
+	}
+	if created.RootPane.PaneID == "" {
+		t.Fatal("tab create must return a root pane")
+	}
+	if created.Tab.PaneCount != 1 {
+		t.Fatalf("new tab pane_count = %d, want 1", created.Tab.PaneCount)
+	}
+
+	// Workspace info reflects the new tab.
+	var ws api.WorkspaceInfoResult
+	apiOK(t, dir, api.MethodWorkspaceGet,
+		api.WorkspaceTarget{WorkspaceID: created.Tab.WorkspaceID}, &ws)
+	if ws.Workspace.TabCount != 2 {
+		t.Fatalf("tab_count = %d, want 2", ws.Workspace.TabCount)
+	}
+	if ws.Workspace.ActiveTabID != tab1 {
+		t.Fatalf("active_tab_id = %q, want %q", ws.Workspace.ActiveTabID, tab1)
+	}
+
+	// Focus the new tab: the workspace's panes change and focus follows.
+	tab2 := created.Tab.TabID
+	var focused api.TabInfoResult
+	apiOK(t, dir, api.MethodTabFocus, api.TabTarget{TabID: tab2}, &focused)
+	if !focused.Tab.Focused {
+		t.Fatal("focused tab not reported focused")
+	}
+	apiOK(t, dir, api.MethodWorkspaceGet,
+		api.WorkspaceTarget{WorkspaceID: created.Tab.WorkspaceID}, &ws)
+	if ws.Workspace.ActiveTabID != tab2 {
+		t.Fatalf("active_tab_id = %q, want %q", ws.Workspace.ActiveTabID, tab2)
+	}
+
+	// The panes of each tab stay separate: split inside tab2, then check
+	// both tabs' pane counts.
+	var split api.PaneInfoResult
+	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{
+		Direction: "right", TargetPaneID: &created.RootPane.PaneID,
+	}, &split)
+	var tabs2 api.TabListResult
+	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tabs2)
+	if len(tabs2.Tabs) != 2 {
+		t.Fatalf("tabs = %d, want 2", len(tabs2.Tabs))
+	}
+	counts := map[string]int{}
+	for _, tb := range tabs2.Tabs {
+		counts[tb.TabID] = tb.PaneCount
+	}
+	if counts[tab1] != 1 || counts[tab2] != 2 {
+		t.Fatalf("pane counts = %v, want tab1=1 tab2=2", counts)
+	}
+	// The split pane's tab_id is tab2.
+	if split.Pane.TabID != tab2 {
+		t.Fatalf("split pane tab_id = %q, want %q", split.Pane.TabID, tab2)
+	}
+
+	// Rename and get.
+	var ren api.TabInfoResult
+	apiOK(t, dir, api.MethodTabRename, api.TabRenameParams{
+		TabID: tab2, Label: "work",
+	}, &ren)
+	if ren.Tab.Label != "work" {
+		t.Fatalf("renamed label = %q", ren.Tab.Label)
+	}
+	var got api.TabInfoResult
+	apiOK(t, dir, api.MethodTabGet, api.TabTarget{TabID: tab2}, &got)
+	if got.Tab.Label != "work" || got.Tab.Number != 2 {
+		t.Fatalf("tab get = %+v", got.Tab)
+	}
+
+	// Close tab2: its panes die and tab1 is back alone.
+	var paneIDs []string
+	var pl api.PaneListResult
+	apiOK(t, dir, api.MethodPaneList, api.PaneListParams{}, &pl)
+	for _, pi := range pl.Panes {
+		if pi.TabID == tab2 {
+			paneIDs = append(paneIDs, pi.PaneID)
+		}
+	}
+	var okr api.OkResult
+	apiOK(t, dir, api.MethodTabClose, api.TabTarget{TabID: tab2}, &okr)
+	var tabs3 api.TabListResult
+	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tabs3)
+	if len(tabs3.Tabs) != 1 || tabs3.Tabs[0].TabID != tab1 {
+		t.Fatalf("after close tabs = %+v", tabs3.Tabs)
+	}
+	for _, pid := range paneIDs {
+		resp := apiReq(t, dir, api.MethodPaneGet, api.PaneTarget{PaneID: pid})
+		if resp.Err == nil || resp.Err.Code != api.ErrPaneNotFound {
+			t.Fatalf("closed tab pane %s should be gone: %+v", pid, resp.Err)
+		}
+	}
+
+	// Unknown tab and malformed ids.
+	resp := apiReq(t, dir, api.MethodTabGet, api.TabTarget{TabID: "w1:t99"})
+	if resp.Err == nil || resp.Err.Code != api.ErrTabNotFound {
+		t.Fatalf("unknown tab: %+v", resp.Err)
+	}
+	resp = apiReq(t, dir, api.MethodTabGet, api.TabTarget{TabID: "bogus"})
+	if resp.Err == nil || resp.Err.Code != api.ErrTabNotFound {
+		t.Fatalf("malformed tab: %+v", resp.Err)
+	}
+}
+
+func TestTabCloseLastRemovesWorkspace(t *testing.T) {
+	dir, done := startTestServer(t)
+	dialClient(t, dir)
+	defer stopServer(t, dir, done)
+
+	// Two workspaces; closing ws2's only tab removes ws2 entirely.
+	var created api.WorkspaceCreatedResult
+	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{}, &created)
+	ws2 := created.Workspace.WorkspaceID
+	tab := created.Tab.TabID
+
+	var okr api.OkResult
+	apiOK(t, dir, api.MethodTabClose, api.TabTarget{TabID: tab}, &okr)
+	var wl api.WorkspaceListResult
+	apiOK(t, dir, api.MethodWorkspaceList, api.EmptyParams{}, &wl)
+	for _, w := range wl.Workspaces {
+		if w.WorkspaceID == ws2 {
+			t.Fatal("closing the last tab should remove its workspace")
+		}
+	}
+	if len(wl.Workspaces) != 1 {
+		t.Fatalf("workspaces = %d, want 1", len(wl.Workspaces))
+	}
+}
+
+func TestTabLayoutSnapshotScoped(t *testing.T) {
+	dir, done := startTestServer(t)
+	dialClient(t, dir)
+	defer stopServer(t, dir, done)
+
+	var created api.TabCreatedResult
+	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{Focus: true}, &created)
+	// Split inside tab2.
+	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{
+		Direction: "right", TargetPaneID: &created.RootPane.PaneID,
+	}, nil)
+
+	// layout of a tab1 pane shows only tab1's single pane.
+	var tl api.TabListResult
+	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tl)
+	tab1 := ""
+	for _, tb := range tl.Tabs {
+		if tb.TabID != created.Tab.TabID {
+			tab1 = tb.TabID
+		}
+	}
+	if tab1 == "" {
+		t.Fatal("tab1 not found")
+	}
+	var pl api.PaneListResult
+	apiOK(t, dir, api.MethodPaneList, api.PaneListParams{}, &pl)
+	var tab1Pane string
+	for _, pi := range pl.Panes {
+		if pi.TabID == tab1 {
+			tab1Pane = pi.PaneID
+		}
+	}
+	if tab1Pane == "" {
+		t.Fatal("no pane found for tab1")
+	}
+	var lay api.PaneLayoutResult
+	apiOK(t, dir, api.MethodPaneLayout, api.PaneQueryParams{PaneID: tab1Pane}, &lay)
+	if len(lay.Layout.Panes) != 1 {
+		t.Fatalf("tab1 layout panes = %d, want 1", len(lay.Layout.Panes))
+	}
+	if lay.Layout.TabID != tab1 {
+		t.Fatalf("layout tab_id = %q, want %q", lay.Layout.TabID, tab1)
+	}
+	// Tab2's snapshot has 2 panes.
+	apiOK(t, dir, api.MethodPaneLayout,
+		api.PaneQueryParams{PaneID: created.RootPane.PaneID}, &lay)
+	if len(lay.Layout.Panes) != 2 || lay.Layout.TabID != created.Tab.TabID {
+		t.Fatalf("tab2 layout = %d panes in %q", len(lay.Layout.Panes), lay.Layout.TabID)
+	}
+}
+
+func strPtr(s string) *string { return &s }

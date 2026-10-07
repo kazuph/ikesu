@@ -42,6 +42,23 @@ func (a *App) openWorkspaceMenu(x, y, ws int) {
 	}
 }
 
+// openTabMenu shows the right-click menu for a tab cell.
+func (a *App) openTabMenu(x, y, ws, ti int) {
+	a.menu = &uiMenu{justOpened: true,
+		kind: menuTab,
+		ws:   ws, tab: ti,
+		m: render.Menu{
+			X: x, Y: y, Hover: -1, Sel: -1,
+			Items: []render.MenuItem{
+				{Label: "Rename tab…"},
+				{Label: "New tab"},
+				{Separator: true},
+				{Label: "Close tab"},
+			},
+		},
+	}
+}
+
 // openMainMenu shows the [menu] global menu.
 func (a *App) openMainMenu(x, y int) {
 	sideLabel := "Hide sidebar"
@@ -92,6 +109,15 @@ func (a *App) activateMenu(i int) {
 			a.newWorkspace()
 		case 2:
 			a.openCloseWorkspaceDialog(m.ws)
+		}
+	case menuTab:
+		switch i {
+		case 0:
+			a.openRenameTabDialog(m.ws, m.tab)
+		case 1:
+			a.exec(model.CmdNewTab{Workspace: m.ws})
+		case 3:
+			a.closeTabAt(m.ws, m.tab)
 		}
 	case menuMain:
 		switch i {

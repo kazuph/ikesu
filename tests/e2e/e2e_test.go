@@ -5,9 +5,11 @@ package e2e
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -63,14 +65,22 @@ func start(t *testing.T) *session {
 	// Deterministic shell inside panes: a bare ZDOTDIR with a fixed PS1 so
 	// prompt waits do not depend on the host's zshrc/direnv.
 	zdot := t.TempDir()
+	// Short root: unix socket paths must stay under ~104 bytes.
+	stateDir, err := os.MkdirTemp("/tmp", "gtx-e2e")
+	if err != nil {
+		t.Fatalf("state dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(stateDir) })
 	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), []byte("PS1='❯ '\n"), 0o644); err != nil {
 		t.Fatalf("zshrc: %v", err)
 	}
-	cmd := exec.Command(binPath)
+	sess := strings.ReplaceAll(t.Name(), "/", "_")
+	cmd := exec.Command(binPath, "--session", sess)
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
 		"SHELL=/bin/zsh",
 		"ZDOTDIR="+zdot,
+		"GTX_STATE_DIR="+stateDir,
 	)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
 	if err != nil {
@@ -96,6 +106,12 @@ func start(t *testing.T) *session {
 		_ = f.Close()
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
+		}
+		// The server outlives its client; ask it to stop so the test
+		// session's panes and socket do not linger.
+		if c, err := net.Dial("unix", filepath.Join(stateDir, sess, "gtx.sock")); err == nil {
+			_, _ = c.Write([]byte(`{"id":"e2e","method":"server.stop","params":{}}` + "\n"))
+			c.Close()
 		}
 	})
 	return s
@@ -189,15 +205,19 @@ func (s *session) rightClick(x, y int) {
 	s.send(fmt.Sprintf("\x1b[<2;%d;%dM\x1b[<2;%d;%dm", x+1, y+1, x+1, y+1))
 }
 
+var paneTitleRe = regexp.MustCompile(` \d+ \S`)
+
 func countPanes(screen string) int {
-	// Pane titles look like " 1 zsh " on the top border of each pane.
+	// Pane titles look like " 1 zsh " on a pane border row — a digit
+	// followed immediately by a word char. Skipping row 0 keeps the tab
+	// strip (" tab N ") out, and the sidebar's " 1   workspace 1" does not
+	// match (spaces after the digit).
 	n := 0
-	for _, line := range strings.Split(screen, "\n") {
-		for m := 1; m <= 9; m++ {
-			if strings.Contains(line, fmt.Sprintf(" %d ", m)) {
-				n++
-			}
+	for i, line := range strings.Split(screen, "\n") {
+		if i == 0 {
+			continue
 		}
+		n += len(paneTitleRe.FindAllString(line, -1))
 	}
 	return n
 }
@@ -371,5 +391,96 @@ func TestDragSelectCopy(t *testing.T) {
 	// Releasing a moved selection must not crash; the copied flash appears.
 	s.waitFor("copied flash", 5*time.Second, func(tx string) bool {
 		return strings.Contains(tx, "copied")
+	})
+}
+
+func TestTabBar(t *testing.T) {
+	s := start(t)
+
+	s.waitFor("boot", 10*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "tab 1") && strings.Contains(scr, "❯")
+	})
+
+	// C-b c creates a focused second tab; the strip shows both.
+	s.send("\x02c")
+	s.waitFor("second tab", 5*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "tab 2")
+	})
+	// New tab has exactly one pane while tab 1 keeps its own layout.
+	if n := countPanes(s.text()); n != 1 {
+		t.Fatalf("pane count in new tab = %d, want 1; screen:\n%s", n, s.text())
+	}
+
+	// Split inside tab 2; its layout is independent of tab 1.
+	s.send("\x02v")
+	s.waitFor("split in tab 2", 5*time.Second, func(scr string) bool {
+		return countPanes(scr) == 2
+	})
+
+	// C-b [ cycles back to tab 1 (single pane visible again).
+	s.send("\x02[")
+	s.waitFor("tab 1 layout", 5*time.Second, func(scr string) bool {
+		return countPanes(scr) == 1
+	})
+	s.send("\x02]")
+	s.waitFor("tab 2 layout", 5*time.Second, func(scr string) bool {
+		return countPanes(scr) == 2
+	})
+
+	// Mouse: clicking the tab 1 cell focuses it.
+	x, y := s.find("tab 1")
+	if x < 0 {
+		t.Fatalf("tab 1 cell not found; screen:\n%s", s.text())
+	}
+	s.click(x, y)
+	s.waitFor("click focuses tab 1", 5*time.Second, func(scr string) bool {
+		return countPanes(scr) == 1
+	})
+
+	// Mouse: middle-click on the tab 2 cell closes it (both its panes go).
+	x, y = s.find("tab 2")
+	if x < 0 {
+		t.Fatalf("tab 2 cell not found; screen:\n%s", s.text())
+	}
+	s.send(fmt.Sprintf("\x1b[<1;%d;%dM\x1b[<1;%d;%dm", x+1, y+1, x+1, y+1))
+	s.waitFor("tab 2 closed", 5*time.Second, func(scr string) bool {
+		return !strings.Contains(scr, "tab 2")
+	})
+
+	// Mouse: the "+" button creates a tab.
+	x, y = s.find("+")
+	if x < 0 {
+		t.Fatalf("+ button not found; screen:\n%s", s.text())
+	}
+	s.click(x, y)
+	s.waitFor("plus creates tab", 5*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "tab 3")
+	})
+}
+
+func TestTabRenameDialog(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "tab 1")
+	})
+
+	// Right-click the tab cell → menu → "Rename tab…" opens the input.
+	x, y := s.find("tab 1")
+	if x < 0 {
+		t.Fatalf("tab 1 cell not found; screen:\n%s", s.text())
+	}
+	s.rightClick(x, y)
+	s.waitFor("tab menu", 5*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "Rename tab")
+	})
+	s.send("\x1b[B") // select first item
+	s.send("\r")     // activate: Rename tab…
+	s.waitFor("rename dialog", 5*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "Rename tab") && strings.Contains(scr, ">")
+	})
+	s.send("prod")
+	s.send("\r")
+	s.waitFor("renamed", 5*time.Second, func(scr string) bool {
+		return strings.Contains(scr, "prod")
 	})
 }

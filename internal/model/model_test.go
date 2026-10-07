@@ -29,8 +29,8 @@ func TestNewWorkspace(t *testing.T) {
 		t.Fatalf("active = %d, want 1", s.Active)
 	}
 	ws := s.Workspaces[1]
-	if ws.Layout.PaneCount() != 1 {
-		t.Fatalf("pane count = %d", ws.Layout.PaneCount())
+	if ws.Tabs[0].Layout.PaneCount() != 1 {
+		t.Fatalf("pane count = %d", ws.Tabs[0].Layout.PaneCount())
 	}
 	spawn, ok := findEffect[EffSpawnPane](effs)
 	if !ok || spawn.Cwd != "/work" {
@@ -46,13 +46,13 @@ func TestClosePaneRemovesEmptyWorkspace(t *testing.T) {
 	s.Apply(CmdSplitFocused{Dir: layout.Vertical})
 
 	ws := s.Workspaces[1]
-	panes := ws.Layout.PaneIDs()
+	panes := ws.Tabs[0].Layout.PaneIDs()
 	effs := s.Apply(CmdClosePane{Pane: panes[1]})
 	if _, ok := findEffect[EffKillPane](effs); !ok {
 		t.Fatalf("effects = %v, want EffKillPane", effs)
 	}
-	if ws.Layout.PaneCount() != 1 {
-		t.Fatalf("pane count = %d", ws.Layout.PaneCount())
+	if ws.Tabs[0].Layout.PaneCount() != 1 {
+		t.Fatalf("pane count = %d", ws.Tabs[0].Layout.PaneCount())
 	}
 
 	effs = s.Apply(CmdClosePane{Pane: panes[0]})
@@ -70,7 +70,7 @@ func TestClosePaneRemovesEmptyWorkspace(t *testing.T) {
 // Closing the last pane of the last workspace quits the app.
 func TestLastPaneQuits(t *testing.T) {
 	s := newState()
-	pane := s.Workspaces[0].Layout.PaneIDs()[0]
+	pane := s.Workspaces[0].Tabs[0].Layout.PaneIDs()[0]
 	effs := s.Apply(CmdClosePane{Pane: pane})
 	if _, ok := findEffect[EffQuit](effs); !ok {
 		t.Fatalf("effects = %v, want EffQuit", effs)
@@ -151,7 +151,7 @@ func TestSidebarAndResize(t *testing.T) {
 		t.Fatalf("collapsed sidebar (3 cols) should widen panes area: %d -> %d", before.W, after.W)
 	}
 	s.Apply(CmdResize{Cols: 100, Rows: 30})
-	if s.PanesArea().W != 100-SidebarCollapsedWidth || s.PanesArea().H != 29 {
+	if s.PanesArea().W != 100-SidebarCollapsedWidth || s.PanesArea().H != 28 {
 		t.Fatalf("panes area after resize = %+v", s.PanesArea())
 	}
 }

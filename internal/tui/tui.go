@@ -59,6 +59,7 @@ const (
 	menuPane menuKind = iota
 	menuWorkspace
 	menuMain
+	menuTab
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
@@ -66,16 +67,19 @@ type uiMenu struct {
 	m    render.Menu
 	kind menuKind
 	pane int // target pane (menuPane)
-	ws   int // target workspace (menuWorkspace)
+	ws   int // target workspace (menuWorkspace, menuTab)
+	tab  int // target tab (menuTab)
 	// justOpened suppresses the release event from the same click that
 	// opened the menu (the menu may clamp onto the pointer).
 	justOpened bool
 }
 
-// uiDialog is an open confirmation dialog.
+// uiDialog is an open confirmation dialog; input != nil turns the detail
+// row into a single-line text field (run sees the entered value).
 type uiDialog struct {
-	d   render.Dialog
-	run func(a *App) // confirm action
+	d     render.Dialog
+	run   func(a *App) // confirm action
+	input *string      // text-entry mode when non-nil
 }
 
 // sepDrag tracks a split-border ratio drag.
@@ -130,7 +134,9 @@ type App struct {
 	dialog        *uiDialog
 	sep           *sepDrag
 	sel           *selState
-	fwd           int // pane receiving forwarded mouse events during a drag
+	tabHits       []layout.Rect // last frame's tab strip hit areas
+	newTabRect    layout.Rect   // last frame's "+" button
+	fwd           int           // pane receiving forwarded mouse events during a drag
 	scroll        map[int]int
 	trackers      map[int]*status.Tracker
 	reported      map[int]reportedPane // pane.report_agent overrides
@@ -228,7 +234,7 @@ func (a *App) StartInitialPane() error {
 	if len(a.st.Workspaces) == 0 {
 		return nil
 	}
-	pid := a.st.Workspaces[0].Layout.Focused()
+	pid := a.st.Workspaces[0].Tabs[0].Layout.Focused()
 	r := a.innerRect(pid)
 	_, err := a.sup.Spawn(pid, a.cwd, r.W, r.H)
 	return err
@@ -408,30 +414,36 @@ func (a *App) detectAll() {
 	now := time.Now()
 	activeWS := a.st.ActiveWorkspace()
 	for _, ws := range a.st.Workspaces {
-		for _, pid := range ws.Layout.PaneIDs() {
-			p := a.sup.Get(pid)
-			if p == nil {
-				continue
-			}
-			tr := a.trackers[pid]
-			if tr == nil {
-				tr = status.NewTracker()
-				a.trackers[pid] = tr
-			}
-			sn := p.Snapshot()
-			agentID := sn.AgentID
-			in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
-			if agentID != "" {
-				in.Screen = p.ScreenText()
-			}
-			if tr.Update(detect.Detect(agentID, in), agentID, sn.Dead, now) {
-				a.dirty = true
-			}
-			// The focused pane in the visible workspace is seen.
-			if ws == activeWS && pid == ws.Layout.Focused() {
-				if !tr.Seen {
-					tr.Focus()
+		focusedID := -1
+		if l := ws.ActiveLayout(); l != nil {
+			focusedID = l.Focused()
+		}
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				p := a.sup.Get(pid)
+				if p == nil {
+					continue
+				}
+				tr := a.trackers[pid]
+				if tr == nil {
+					tr = status.NewTracker()
+					a.trackers[pid] = tr
+				}
+				sn := p.Snapshot()
+				agentID := sn.AgentID
+				in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
+				if agentID != "" {
+					in.Screen = p.ScreenText()
+				}
+				if tr.Update(detect.Detect(agentID, in), agentID, sn.Dead, now) {
 					a.dirty = true
+				}
+				// The focused pane in the visible workspace is seen.
+				if ws == activeWS && pid == focusedID {
+					if !tr.Seen {
+						tr.Focus()
+						a.dirty = true
+					}
 				}
 			}
 		}
@@ -461,9 +473,11 @@ func (a *App) onTick() {
 	}
 	// Foreground process poll: every ~1s per pane.
 	for _, ws := range a.st.Workspaces {
-		for _, pid := range ws.Layout.PaneIDs() {
-			if p := a.sup.Get(pid); p != nil {
-				p.PollProcess()
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if p := a.sup.Get(pid); p != nil {
+					p.PollProcess()
+				}
 			}
 		}
 	}
@@ -472,9 +486,11 @@ func (a *App) onTick() {
 
 func (a *App) anyWorking() bool {
 	for _, ws := range a.st.Workspaces {
-		for _, pid := range ws.Layout.PaneIDs() {
-			if g := a.glyph(pid); g.Key == "working" {
-				return true
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if g := a.glyph(pid); g.Key == "working" {
+					return true
+				}
 			}
 		}
 	}
@@ -518,8 +534,10 @@ func (a *App) syncLayout() {
 		return
 	}
 	area := a.st.PanesArea()
-	for _, pr := range ws.Layout.Panes(area) {
-		a.sup.Resize(pr.ID, max(pr.Rect.W-2, 1), max(pr.Rect.H-2, 1))
+	if l := ws.ActiveLayout(); l != nil {
+		for _, pr := range l.Panes(area) {
+			a.sup.Resize(pr.ID, max(pr.Rect.W-2, 1), max(pr.Rect.H-2, 1))
+		}
 	}
 }
 
@@ -528,9 +546,11 @@ func (a *App) syncLayout() {
 // when their workspace becomes active.
 func (a *App) rectForPane(pid int) layout.Rect {
 	for _, ws := range a.st.Workspaces {
-		for _, pr := range ws.Layout.Panes(a.st.PanesArea()) {
-			if pr.ID == pid {
-				return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
+		for _, t := range ws.Tabs {
+			for _, pr := range t.Layout.Panes(a.st.PanesArea()) {
+				if pr.ID == pid {
+					return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
+				}
 			}
 		}
 	}
@@ -544,7 +564,11 @@ func (a *App) innerRect(pid int) layout.Rect {
 	if ws == nil {
 		return layout.Rect{W: 80, H: 24}
 	}
-	for _, pr := range ws.Layout.Panes(a.st.PanesArea()) {
+	l := ws.ActiveLayout()
+	if l == nil {
+		return layout.Rect{W: 80, H: 24}
+	}
+	for _, pr := range l.Panes(a.st.PanesArea()) {
 		if pr.ID == pid {
 			return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
 		}
@@ -558,7 +582,11 @@ func (a *App) paneRect(pid int) (layout.Rect, bool) {
 	if ws == nil {
 		return layout.Rect{}, false
 	}
-	for _, pr := range ws.Layout.Panes(a.st.PanesArea()) {
+	l := ws.ActiveLayout()
+	if l == nil {
+		return layout.Rect{}, false
+	}
+	for _, pr := range l.Panes(a.st.PanesArea()) {
 		if pr.ID == pid {
 			return pr.Rect, true
 		}
@@ -568,10 +596,7 @@ func (a *App) paneRect(pid int) (layout.Rect, bool) {
 
 // focusedPane returns the focused pane id of the active workspace.
 func (a *App) focusedPane() int {
-	if ws := a.st.ActiveWorkspace(); ws != nil {
-		return ws.Layout.Focused()
-	}
-	return -1
+	return a.st.FocusedPane()
 }
 
 // glyph returns the pane's display status glyph.
@@ -625,6 +650,8 @@ func (a *App) draw() {
 		in.Sel = a.selRender()
 	}
 	out := render.Compose(in)
+	a.tabHits = out.TabHits
+	a.newTabRect = out.NewTabRect
 	a.lastDraw = time.Now()
 	a.dirty = false
 	_, _ = a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
@@ -672,31 +699,35 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 	out := map[int]*render.PaneSnap{}
 	active := map[int]bool{}
 	if ws := a.st.ActiveWorkspace(); ws != nil {
-		for _, id := range ws.Layout.PaneIDs() {
-			active[id] = true
+		if l := ws.ActiveLayout(); l != nil {
+			for _, id := range l.PaneIDs() {
+				active[id] = true
+			}
 		}
 	}
 	for _, ws := range a.st.Workspaces {
-		for _, pid := range ws.Layout.PaneIDs() {
-			p := a.sup.Get(pid)
-			if p == nil {
-				continue
+		for _, t := range ws.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				p := a.sup.Get(pid)
+				if p == nil {
+					continue
+				}
+				sn := p.Snapshot()
+				snap := &render.PaneSnap{
+					Label:  labelFor(sn, p),
+					Agent:  agentFor(sn),
+					Status: a.glyph(pid),
+					Dead:   sn.Dead,
+					Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+				}
+				if active[pid] {
+					r := a.innerRect(pid)
+					snap.Grid = a.paneGrid(p, a.scroll[pid], r.H, r.W)
+					snap.ScrollOff = a.scroll[pid]
+					snap.ScrollN = sn.ScrollbackLen
+				}
+				out[pid] = snap
 			}
-			sn := p.Snapshot()
-			snap := &render.PaneSnap{
-				Label:  labelFor(sn, p),
-				Agent:  agentFor(sn),
-				Status: a.glyph(pid),
-				Dead:   sn.Dead,
-				Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
-			}
-			if active[pid] {
-				r := a.innerRect(pid)
-				snap.Grid = a.paneGrid(p, a.scroll[pid], r.H, r.W)
-				snap.ScrollOff = a.scroll[pid]
-				snap.ScrollN = sn.ScrollbackLen
-			}
-			out[pid] = snap
 		}
 	}
 	return out
