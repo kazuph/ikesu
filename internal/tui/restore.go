@@ -162,7 +162,10 @@ func (a *App) openRestartDialog() {
 			d.Title = "Restart with missing agent sessions?"
 			d.Detail = "These AI panes do not have a recorded session id:"
 			d.Width = 76
-			for _, w := range ws {
+			for i, w := range ws {
+				if i >= 10 { // SPEC: the missing-pane list grows at most 10 rows
+					break
+				}
 				d.Lines = append(d.Lines, restartWarningLine(w))
 			}
 		}
@@ -178,8 +181,9 @@ func (a *App) openRestartDialog() {
 	a.dirty = true
 }
 
-// restartWarningLine renders one missing-session warning row:
-// workspace/pane/agent/title/cwd/reason on a single line.
+// restartWarningLine renders one missing-session warning row in the
+// SPEC G3 form: ` space N label pane P agent title=T cwd=C reason=R`,
+// truncated with a trailing ellipsis when it would exceed the dialog.
 func restartWarningLine(w api.AgentSessionWarningInfo) string {
 	ws := w.WorkspaceLabel
 	if ws == "" {
@@ -189,8 +193,12 @@ func restartWarningLine(w api.AgentSessionWarningInfo) string {
 	if w.Title != nil && *w.Title != "" {
 		title = *w.Title
 	}
-	return fmt.Sprintf("%s %s · %s · %s · %s · %s",
-		ws, w.PaneLabel, w.Agent, title, w.Cwd, w.Reason)
+	line := fmt.Sprintf(" space %d %s pane %s %s title=%s cwd=%s reason=%s",
+		w.WorkspaceNumber, ws, w.PaneLabel, w.Agent, title, w.Cwd, w.Reason)
+	if r := []rune(line); len(r) > 140 {
+		line = string(r[:140]) + "…"
+	}
+	return line
 }
 
 // openRestoreDialog confirms a manual agent restore.

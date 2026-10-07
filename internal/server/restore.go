@@ -529,6 +529,13 @@ func (s *Server) buildResumeCommand(agent, kind, value string) (string, bool) {
 	if tmpl == "" || !strings.Contains(tmpl, "{session_id}") {
 		return "", false
 	}
+	// SPEC G3 fail-closed: a template carrying a standalone --last token
+	// can never produce an exact-session command.
+	for _, tok := range strings.Fields(tmpl) {
+		if tok == "--last" {
+			return "", false
+		}
+	}
 	return strings.ReplaceAll(tmpl, "{session_id}", value), true
 }
 
@@ -545,7 +552,18 @@ func (s *Server) runAgentRestore(dryRun bool) api.AgentRestoreResult {
 				v := s.resolvePaneSession(pid)
 				if rp := s.sup.Get(pid); rp != nil && rp.Snapshot().AgentID != "" {
 					running++
-					continue // agent already running in this pane
+					// Never double-launch a live agent; surface the
+					// per-pane skip with its spec reason.
+					reason := "agent already running"
+					agent := v.agent
+					if agent == "" {
+						agent = rp.Snapshot().AgentID
+					}
+					actions = append(actions, api.AgentRestoreActionInfo{
+						PaneID: fmtPaneID(pid), Agent: agent,
+						Status: "skipped", Reason: &reason,
+					})
+					continue
 				}
 				if !v.terminal && !v.ledger {
 					continue // no session association: not a restore target
@@ -610,15 +628,25 @@ func (s *Server) typeResume(pid int, cmd string) {
 // wording): distinguish "nothing pending" from "already running",
 // dry-run from real execution.
 func (s *Server) showRestoreToast(actions []api.AgentRestoreActionInfo, running int, dryRun bool) {
+	// "agent already running" rows are informational skips, not restore
+	// targets — the toast counts pending/launchable work only (SPEC G3
+	// empty-state wording).
+	pending := actions[:0:0]
+	for _, a := range actions {
+		if a.Reason != nil && *a.Reason == "agent already running" {
+			continue
+		}
+		pending = append(pending, a)
+	}
 	var body string
-	if len(actions) == 0 {
+	if len(pending) == 0 {
 		body = "no pending restore"
 		if running > 0 {
 			body = fmt.Sprintf("no pending restore, %d already running", running)
 		}
 	} else {
 		launched, skipped := 0, 0
-		for _, a := range actions {
+		for _, a := range pending {
 			switch a.Status {
 			case "skipped":
 				skipped++

@@ -13,6 +13,7 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/goterrace/internal/session"
 )
 
 func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
@@ -354,9 +355,9 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 
 	// Session refs from an explicit report are the most trusted source
 	// (SPEC G3). agent_session_id/agent_session_path carry the native
-	// structured ref; session_id is the shorthand for kind=id. The raw
-	// value is stored even when unsafe so restart warnings can say
-	// "invalid … session id" instead of "missing".
+	// structured ref; session_id is the shorthand for kind=id. An unsafe
+	// reported value is never recorded — it stays out of the ledger and
+	// does not mark the session dirty.
 	var kind, value string
 	switch {
 	case p.AgentSessionID != nil && *p.AgentSessionID != "":
@@ -366,19 +367,34 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 	case p.SessionID != nil && *p.SessionID != "":
 		kind, value = "id", *p.SessionID
 	}
-	if kind != "" {
+	title := ""
+	if p.Title != nil {
+		// Blank/whitespace titles are ignored (SPEC G3).
+		title = strings.TrimSpace(*p.Title)
+	}
+	if title != "" {
+		// The task title is a pane/workspace name surface.
+		s.app.ExecCmd(model.CmdRenamePane{Pane: pid, Label: title})
+	}
+	safe := kind != "" && session.SafeSessionValue(kind, value)
+	switch {
+	case safe:
 		rec, _ := s.app.SessionRecord(pid)
 		rec.Agent, rec.Kind, rec.Value = p.Agent, kind, value
 		rec.Source = "report:" + p.Source
-		if p.Title != nil && *p.Title != "" {
-			rec.Title = *p.Title
+		if title != "" {
+			rec.Title = title
 		}
 		s.app.RecordSession(pid, rec)
 		s.ledgerPut(pid, rec)
-	} else if p.Title != nil && *p.Title != "" {
-		if rec, ok := s.app.SessionRecord(pid); ok {
-			rec.Title = *p.Title
-			s.app.RecordSession(pid, rec)
+	case title != "":
+		// Report without a usable session ref still carries the task
+		// title; keep any existing session value untouched.
+		rec, _ := s.app.SessionRecord(pid)
+		rec.Agent = p.Agent
+		rec.Title = title
+		s.app.RecordSession(pid, rec)
+		if rec.Value != "" {
 			s.ledgerPut(pid, rec)
 		}
 	}

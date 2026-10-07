@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -129,6 +130,7 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	// Restart: panes come back as shells carrying their records.
 	apiOK(t, dir, api.MethodServerRestart, api.EmptyParams{}, nil)
 	waitAPISocketGone(t, dir)
+	<-done // the old Run must fully release the session lock first
 	dir2, done2 := startServerAt(t, "rest")
 	done = done2
 	defer func() { apiOK(t, dir2, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
@@ -157,28 +159,38 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	}
 }
 
-// G3 fail-closed: a recorded agent pane with an unsafe session id is
-// skipped, never resumed as another conversation.
-func TestAgentRestoreSkipsUnsafeID(t *testing.T) {
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
-	if err != nil {
-		t.Fatal(err)
+// G3 fail-closed: an unsafe session id reported via pane.report_agent is
+// never recorded — the pane keeps no session value and the report does
+// not dirty the session record.
+func TestReportAgentUnsafeIDNotRecorded(t *testing.T) {
+	s := newTestServer(t, "w")
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	bad := "bad;id"
+	res := s.paneReportAgent("t", api.PaneReportAgentParams{
+		PaneID: fmt.Sprintf("p%d", pid), Source: "test", Agent: "claude",
+		State: "idle", SessionID: &bad,
+	})
+	if res.Err != nil {
+		t.Fatalf("report-agent: %+v", res.Err)
 	}
-	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value != "" {
+		t.Fatalf("unsafe id recorded: %+v", rec)
+	}
+	if led, ok := s.ledgerEntry(pid); ok && led.SessionID != "" {
+		t.Fatalf("unsafe id in ledger: %+v", led)
+	}
+}
 
-	dir, done := startServerAt(t, "unsafe")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
-
-	reportAgent(t, dir, "p1", "claude", "last") // unsafe value, kept raw
-
-	// Reported agent counts as running; clearing the report leaves a
-	// recorded-but-idle pane — the pending restore target.
-	reportAgent(t, dir, "p1", "", "")
-
-	var res api.AgentRestoreResult
-	apiOK(t, dir, api.MethodAgentRestore, api.AgentRestoreParams{DryRun: true}, &res)
+// G3 fail-closed: a pane whose record (e.g. loaded from session.json)
+// carries an unsafe session id is skipped, never resumed as another
+// conversation.
+func TestAgentRestoreSkipsUnsafeID(t *testing.T) {
+	s := newTestServer(t, "w")
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	s.app.RecordSession(pid, tui.AgentRecord{
+		Agent: "claude", Kind: "id", Value: "last", Source: "restore",
+	})
+	res := s.runAgentRestore(true)
 	if len(res.Actions) != 1 {
 		t.Fatalf("actions = %+v, want 1", res.Actions)
 	}
@@ -286,6 +298,27 @@ claude = "claude --resume"
 	s := &Server{cfg: cfg}
 	if cmd, ok := s.buildResumeCommand("claude", "id", "x"); ok {
 		t.Fatalf("template without {session_id} produced %q", cmd)
+	}
+}
+
+// A template carrying a standalone --last token can never resume the
+// exact session — it is rejected even with a valid {session_id}.
+func TestBuildResumeCommandRejectsLastToken(t *testing.T) {
+	cfgFile := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfgFile, []byte(`
+[agent_restore.templates]
+codex = "codex resume {session_id} --last"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GTX_CONFIG", cfgFile)
+	cfg, err := loadTestConfig(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{cfg: cfg}
+	if cmd, ok := s.buildResumeCommand("codex", "id", "sid-1"); ok {
+		t.Fatalf("template with --last produced %q", cmd)
 	}
 }
 
