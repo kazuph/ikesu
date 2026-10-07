@@ -290,12 +290,26 @@ func TestPaneAPISplitReadSend(t *testing.T) {
 func waitRead(t *testing.T, dir, paneID, marker string) {
 	t.Helper()
 	deadline := time.Now().Add(8 * time.Second)
+	// The marker can wrap across screen rows on narrow panes, so compare
+	// with all whitespace removed.
+	need := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, marker)
 	for {
 		var res api.PaneReadResultEnvelope
 		apiOK(t, dir, api.MethodPaneRead, api.PaneReadParams{
 			PaneID: paneID, Source: "recent", Format: "text",
 		}, &res)
-		if strings.Contains(res.Read.Text, marker) {
+		text := strings.Map(func(r rune) rune {
+			if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+				return -1
+			}
+			return r
+		}, res.Read.Text)
+		if strings.Contains(text, need) {
 			return
 		}
 		if time.Now().After(deadline) {
