@@ -490,6 +490,37 @@ func (s *Supervisor) Input(id int, b []byte) {
 	}
 }
 
+// WriteToPTY writes all of b to the pane's PTY, looping over short
+// writes. It returns the number of bytes written; a short count means
+// delivery did not complete (callers keep the message queued).
+func (p *Pane) WriteToPTY(b []byte) (int, error) {
+	p.mu.Lock()
+	f := p.ptyFile
+	p.mu.Unlock()
+	if f == nil {
+		return 0, os.ErrClosed
+	}
+	total := 0
+	for total < len(b) {
+		n, err := f.Write(b[total:])
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// BracketedPasteMode reports whether the pane's app negotiated bracketed
+// paste (input must be wrapped in paste markers).
+func (p *Pane) BracketedPasteMode() bool {
+	on := false
+	p.WithEmu(func(e *vt.Emulator) {
+		on = e.ModeSet(ansi.ModeBracketedPaste)
+	})
+	return on
+}
+
 // SendMouse encodes a mouse event in the mode the app negotiated and feeds it
 // to the PTY through the emulator's response channel.
 func (p *Pane) SendMouse(m uv.MouseEvent) {

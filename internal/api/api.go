@@ -44,6 +44,19 @@ const (
 	MethodPaneSendKeys    = "pane.send_keys"
 	MethodPaneSendInput   = "pane.send_input"
 	MethodPaneReportAgent = "pane.report_agent"
+	MethodMsgSend         = "msg.send"
+	MethodMsgInbox        = "msg.inbox"
+	MethodMsgHistory      = "msg.history"
+	MethodMsgRooms        = "msg.rooms"
+	MethodRunStart        = "run.start"
+	MethodRunCancel       = "run.cancel"
+	MethodAgentList       = "agent.list"
+	MethodAgentGet        = "agent.get"
+	MethodAgentRead       = "agent.read"
+	MethodAgentSend       = "agent.send"
+	MethodAgentRename     = "agent.rename"
+	MethodAgentFocus      = "agent.focus"
+	MethodAgentStart      = "agent.start"
 )
 
 // Error codes emitted by the server or synthesized by the CLI when the
@@ -58,6 +71,17 @@ const (
 	ErrTabCloseFailed    = "tab_close_failed"
 	ErrInvalidKey        = "invalid_key"
 	ErrPaneSendFailed    = "pane_send_failed"
+	ErrMsgWildcard       = "msg_wildcard_recipient"
+	ErrMsgStore          = "msg_store_error"
+	ErrInvalidMsgRoom    = "invalid_msg_room"
+	ErrInvalidMsgAgent   = "invalid_msg_agent"
+	ErrInvalidMsgBody    = "invalid_msg_body"
+	ErrMsgNudgeFailed    = "msg_nudge_failed"
+	ErrAgentNotFound     = "agent_not_found"
+	ErrAmbiguous         = "ambiguous_target"
+	ErrAgentNotReady     = "agent_not_ready"
+	ErrJobNotFound       = "job_not_found"
+	ErrJobStore          = "job_store_error"
 )
 
 // Error is the API error body: {"code": ..., "message": ...}.

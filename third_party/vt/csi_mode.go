@@ -111,3 +111,7 @@ func (e *Emulator) isModeSet(mode ansi.Mode) bool {
 	m, ok := e.modes[mode]
 	return ok && m.IsSet()
 }
+
+// ModeSet reports whether mode is enabled (read-only view for callers
+// that must mirror the negotiated input encoding, e.g. bracketed paste).
+func (e *Emulator) ModeSet(mode ansi.Mode) bool { return e.isModeSet(mode) }
