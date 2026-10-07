@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
 
 	"github.com/kazuph/goterrace/internal/api"
 )
@@ -41,6 +41,14 @@ func DBPath() string {
 		return p
 	}
 	return filepath.Join(api.StateDir(), "gtx.db")
+}
+
+// DBExists reports whether the store file has ever been created. Boot-time
+// sweeps (orphaned jobs, queued mail) are no-ops when it is absent, so they
+// can skip opening the store — and the wasm sqlite engine — entirely.
+func DBExists() bool {
+	_, err := os.Stat(DBPath())
+	return err == nil
 }
 
 // JobLogDir holds per-job output logs ($GTX_STATE_DIR/job-logs).
@@ -179,7 +187,7 @@ func open(path string, readOnly bool) (*Store, error) {
 	if readOnly {
 		dsn += "&_pragma=query_only(true)&mode=ro"
 	}
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}

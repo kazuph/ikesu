@@ -208,9 +208,14 @@ func Run(session, version string) (int, error) {
 	go s.apiLoop()
 	go s.clientLoop()
 	go s.mailWorker()
-	s.seedJobSeq()
-	s.abortOrphanedJobs()
-	s.app.Do(func() { s.flushAllMail() })
+	// These startup sweeps all open the SQLite store; when the DB file has
+	// never been created there is nothing to seed, abort, or flush, so skip
+	// them to keep the engine (and its memory) out of the process.
+	if dispatch.DBExists() {
+		s.seedJobSeq()
+		s.abortOrphanedJobs()
+		s.app.Do(func() { s.flushAllMail() })
+	}
 
 	<-appDone
 	s.cleanup()
