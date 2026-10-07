@@ -77,6 +77,34 @@ func New(rootPane int) *Layout {
 	return &Layout{root: LeafNode(rootPane), focus: rootPane, order: []int{rootPane}}
 }
 
+// Order returns pane ids in creation order.
+func (l *Layout) Order() []int { return append([]int(nil), l.order...) }
+
+// Restore rebuilds a Layout from persisted parts: an already-validated
+// tree (positive, unique leaf ids), a focused pane id, and the creation
+// order. Focus and order are sanitized against the tree's leaves, so a
+// slightly stale snapshot still yields a usable layout.
+func Restore(root *Node, focused int, order []int) *Layout {
+	ids := collectIDs(root)
+	seen := map[int]bool{}
+	var ord []int
+	for _, id := range order {
+		if containsID(ids, id) && !seen[id] {
+			ord = append(ord, id)
+			seen[id] = true
+		}
+	}
+	for _, id := range ids {
+		if !seen[id] {
+			ord = append(ord, id)
+		}
+	}
+	if !containsID(ids, focused) {
+		focused = firstLeaf(root)
+	}
+	return &Layout{root: root, focus: focused, order: ord}
+}
+
 // Focused returns the focused pane id.
 func (l *Layout) Focused() int { return l.focus }
 

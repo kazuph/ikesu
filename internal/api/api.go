@@ -20,6 +20,7 @@ const Protocol = 1
 const (
 	MethodPing            = "ping"
 	MethodServerStop      = "server.stop"
+	MethodServerRestart   = "server.restart"
 	MethodWorkspaceList   = "workspace.list"
 	MethodWorkspaceCreate = "workspace.create"
 	MethodWorkspaceGet    = "workspace.get"
@@ -57,6 +58,7 @@ const (
 	MethodAgentRename     = "agent.rename"
 	MethodAgentFocus      = "agent.focus"
 	MethodAgentStart      = "agent.start"
+	MethodAgentRestore    = "agent.restore"
 )
 
 // Error codes emitted by the server or synthesized by the CLI when the

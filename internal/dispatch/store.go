@@ -154,6 +154,25 @@ FROM dispatches d
 JOIN actors fa ON fa.id = d.from_actor
 JOIN actors ta ON ta.id = d.to_actor
 GROUP BY fa.model, ta.model;
+
+-- pane\u2194agent-session ledger (SPEC G3): the durable record of which exact
+-- agent session ran in which pane. One row per (session, pane); deleted
+-- when the pane is permanently closed.
+CREATE TABLE IF NOT EXISTS pane_sessions (
+  session      TEXT NOT NULL,
+  pane_id      INTEGER NOT NULL,
+  terminal_id  TEXT NOT NULL DEFAULT '',
+  workspace_id INTEGER NOT NULL DEFAULT 0,
+  tab_id       INTEGER NOT NULL DEFAULT 0,
+  cwd          TEXT NOT NULL DEFAULT '',
+  agent        TEXT NOT NULL DEFAULT '',
+  session_kind TEXT NOT NULL DEFAULT 'id',
+  session_id   TEXT NOT NULL DEFAULT '',
+  title        TEXT NOT NULL DEFAULT '',
+  source       TEXT NOT NULL DEFAULT '',
+  observed_at  TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (session, pane_id)
+);
 `
 
 // Schema returns the DDL applied at open, for `gtx log --schema`.
@@ -878,4 +897,82 @@ func int64Args(ids []int64) []any {
 		args[i] = id
 	}
 	return args
+}
+
+// PaneSession is one row of the pane↔agent-session ledger (SPEC G3). It
+// keeps the exact session id a pane last ran so restart/restore can resume
+// that conversation instead of guessing a cwd-latest one.
+type PaneSession struct {
+	Session     string // gtx session name (the db is shared across sessions)
+	PaneID      int
+	TerminalID  string
+	WorkspaceID int
+	TabID       int
+	Cwd         string
+	Agent       string
+	SessionKind string // "id" | "path"
+	SessionID   string
+	Title       string
+	Source      string
+	ObservedAt  string
+}
+
+// PutPaneSession upserts the ledger row for a pane.
+func (s *Store) PutPaneSession(rec PaneSession) error {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	_, err := s.db.Exec(`INSERT INTO pane_sessions
+		(session, pane_id, terminal_id, workspace_id, tab_id, cwd, agent,
+		 session_kind, session_id, title, source, observed_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(session, pane_id) DO UPDATE SET
+			terminal_id=excluded.terminal_id,
+			workspace_id=excluded.workspace_id,
+			tab_id=excluded.tab_id,
+			cwd=excluded.cwd,
+			agent=excluded.agent,
+			session_kind=excluded.session_kind,
+			session_id=excluded.session_id,
+			title=excluded.title,
+			source=excluded.source,
+			observed_at=excluded.observed_at`,
+		rec.Session, rec.PaneID, rec.TerminalID, rec.WorkspaceID, rec.TabID,
+		rec.Cwd, rec.Agent, rec.SessionKind, rec.SessionID, rec.Title,
+		rec.Source, rec.ObservedAt)
+	return err
+}
+
+// PaneSessions returns every ledger row for a gtx session, ordered by pane.
+func (s *Store) PaneSessions(session string) ([]PaneSession, error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	rows, err := s.db.Query(`SELECT pane_id, terminal_id, workspace_id, tab_id,
+		cwd, agent, session_kind, session_id, title, source, observed_at
+		FROM pane_sessions WHERE session=? ORDER BY pane_id`, session)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PaneSession
+	for rows.Next() {
+		var r PaneSession
+		r.Session = session
+		if err := rows.Scan(&r.PaneID, &r.TerminalID, &r.WorkspaceID,
+			&r.TabID, &r.Cwd, &r.Agent, &r.SessionKind, &r.SessionID,
+			&r.Title, &r.Source, &r.ObservedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeletePaneSession removes the ledger row for one pane. Called when the
+// pane is permanently closed (explicit close, PaneDied removal, or the
+// closing of its owning tab/workspace).
+func (s *Store) DeletePaneSession(session string, paneID int) error {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	_, err := s.db.Exec(`DELETE FROM pane_sessions WHERE session=? AND pane_id=?`, session, paneID)
+	return err
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/goterrace/internal/session"
 )
 
 func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
@@ -351,9 +352,51 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 		pane.SetAgent(p.Agent)
 	}
 	s.app.SetReported(pid, p.Agent, p.State)
-	if p.Title != nil && *p.Title != "" {
-		// Terminal title override is tracked via the reported record only;
-		// the OSC title stays the pane's own.
+
+	// Session refs from an explicit report are the most trusted source
+	// (SPEC G3). agent_session_id/agent_session_path carry the native
+	// structured ref; session_id is the shorthand for kind=id. An unsafe
+	// reported value is never recorded — it stays out of the ledger and
+	// does not mark the session dirty.
+	var kind, value string
+	switch {
+	case p.AgentSessionID != nil && *p.AgentSessionID != "":
+		kind, value = "id", *p.AgentSessionID
+	case p.AgentSessionPath != nil && *p.AgentSessionPath != "":
+		kind, value = "path", *p.AgentSessionPath
+	case p.SessionID != nil && *p.SessionID != "":
+		kind, value = "id", *p.SessionID
+	}
+	title := ""
+	if p.Title != nil {
+		// Blank/whitespace titles are ignored (SPEC G3).
+		title = strings.TrimSpace(*p.Title)
+	}
+	if title != "" {
+		// The task title is a pane/workspace name surface.
+		s.app.ExecCmd(model.CmdRenamePane{Pane: pid, Label: title})
+	}
+	safe := kind != "" && session.SafeSessionValue(kind, value)
+	switch {
+	case safe:
+		rec, _ := s.app.SessionRecord(pid)
+		rec.Agent, rec.Kind, rec.Value = p.Agent, kind, value
+		rec.Source = "report:" + p.Source
+		if title != "" {
+			rec.Title = title
+		}
+		s.app.RecordSession(pid, rec)
+		s.ledgerPut(pid, rec)
+	case title != "":
+		// Report without a usable session ref still carries the task
+		// title; keep any existing session value untouched.
+		rec, _ := s.app.SessionRecord(pid)
+		rec.Agent = p.Agent
+		rec.Title = title
+		s.app.RecordSession(pid, rec)
+		if rec.Value != "" {
+			s.ledgerPut(pid, rec)
+		}
 	}
 	return api.Success(id, api.OkResult{Type: "ok"})
 }

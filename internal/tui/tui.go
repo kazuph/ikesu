@@ -16,10 +16,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/kazuph/goterrace/internal/api"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -35,6 +37,7 @@ var spinnerFrames = []string{"◐", "◓", "◑", "◒"}
 const (
 	drawMinInterval = 16 * time.Millisecond
 	spinInterval    = 150 * time.Millisecond
+	fossilExpiry    = 15 * time.Second
 	copiedDuration  = 2 * time.Second
 	tickInterval    = 50 * time.Millisecond
 	drainMs         = 100 * time.Millisecond
@@ -124,11 +127,16 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF  bool                // input close means quit (local mode)
-	detacher  func(reason string) // server mode: detach the client
-	sinkOn    func() bool         // nil = always draw
-	quitHook  func()              // runs on the loop right before Run returns
-	availHook func(pid int)       // pane status changed; server flushes mail
+	inputEOF       bool                                 // input close means quit (local mode)
+	detacher       func(reason string)                  // server mode: detach the client
+	sinkOn         func() bool                          // nil = always draw
+	quitHook       func()                               // runs on the loop right before Run returns
+	availHook      func(pid int)                        // pane status changed; server flushes mail
+	changeHook     func()                               // persistent state changed; server coalesces saves
+	restartHook    func()                               // main menu "Restart server…" (server mode only)
+	restoreHook    func(dryRun bool)                    // main menu "Restore agents…" (server mode only)
+	paneClosedHook func(pid int)                        // pane permanently removed; server cleans ledger
+	warningsHook   func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target
@@ -143,7 +151,13 @@ type App struct {
 	fwd           int           // pane receiving forwarded mouse events during a drag
 	scroll        map[int]int
 	trackers      map[int]*status.Tracker
-	reported      map[int]reportedPane // pane.report_agent overrides
+	reported      map[int]reportedPane                     // pane.report_agent overrides
+	sessions      map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
+	fossils       map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)
+	visibleIdle   map[int]time.Time                        // pane → when explicit visible-idle detection started
+	jobSource     func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
+	jobDots       map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
+	jobsAt        time.Time                                // last job snapshot
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -414,7 +428,14 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		}
 		a.dirty = true
 	case runtime.EventExited:
-		a.exec(model.CmdPaneExited{Pane: ev.Pane})
+		// A pane that still carries an agent identity and a resumable
+		// session is kept as a shell-fallback pane instead of closing
+		// (SPEC G3 restorable pane retention).
+		if a.retainOnExit(ev.Pane) {
+			a.respawnShell(ev.Pane)
+		} else {
+			a.exec(model.CmdPaneExited{Pane: ev.Pane})
+		}
 	}
 }
 
@@ -444,7 +465,10 @@ func (a *App) detectAll() {
 				if agentID != "" {
 					in.Screen = p.ScreenText()
 				}
-				if tr.Update(detect.Detect(agentID, in), agentID, sn.Dead, now) {
+				d := detect.Detect(agentID, in)
+				d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
+				a.clearStaleReport(pid, agentID, d, now)
+				if tr.Update(d, agentID, sn.Dead, now) {
 					a.dirty = true
 					if a.availHook != nil {
 						a.availHook(pid)
@@ -472,6 +496,7 @@ func (a *App) detectAll() {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
+	now := time.Now()
 	a.expireToast()
 	if a.copied != "" && time.Since(a.copiedAt) > copiedDuration {
 		a.copied = ""
@@ -494,6 +519,7 @@ func (a *App) onTick() {
 			}
 		}
 	}
+	a.refreshJobDots(now)
 	a.detectAll()
 }
 
@@ -516,6 +542,13 @@ func (a *App) exec(cmd model.Command) {
 		a.effect(e)
 	}
 	a.dirty = true
+	// Keystrokes and resizes never change persisted state; everything else
+	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
+	switch cmd.(type) {
+	case model.CmdInput, model.CmdResize:
+	default:
+		a.changed()
+	}
 }
 
 func (a *App) effect(e model.Effect) {
@@ -531,6 +564,10 @@ func (a *App) effect(e model.Effect) {
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
+		delete(a.sessions, e.Pane)
+		if a.paneClosedHook != nil {
+			a.paneClosedHook(e.Pane)
+		}
 	case model.EffSyncLayout:
 		a.syncLayout()
 	case model.EffInput:
@@ -652,6 +689,7 @@ func (a *App) draw() {
 		Copied:        a.copied,
 		Prefix:        a.prefix,
 		SidebarScroll: a.sidebarScroll,
+		JobDots:       a.jobDots,
 	}
 	if a.menu != nil {
 		in.Menu = &a.menu.m
@@ -703,6 +741,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 			a.availHook(pid)
 		}
 	}
+	a.changed()
 }
 
 // Reported returns the API-reported agent override, if any. Call on the
@@ -716,6 +755,14 @@ func (a *App) Reported(pid int) (agent, state string, ok bool) {
 type reportedPane struct {
 	agent string
 	state string
+}
+
+// fossilWatch tracks a Claude/Codex pane's live-activity fingerprint: the
+// moment it last changed. 15 unchanged seconds turn a working verdict
+// into idle (SPEC G3 fossil expiry).
+type fossilWatch struct {
+	fp    string
+	since time.Time
 }
 
 // paneSnaps builds render snapshots for every live pane.
@@ -830,4 +877,82 @@ func DrainInput(f *os.File, d time.Duration) {
 // pointIn reports whether (x,y) is inside r.
 func pointIn(x, y int, r layout.Rect) bool {
 	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
+}
+
+// applyFossilExpiry downgrades a Claude/Codex working verdict whose live
+// activity fingerprint has not changed for fossilExpiry to idle (SPEC
+// G3): scrollback spinner/hint lines stop being evidence. Other agents,
+// working verdicts without a fingerprint, and non-working verdicts are
+// untouched; a changed fingerprint restarts the window and keeps the
+// pane working.
+func (a *App) applyFossilExpiry(pid int, agentID, screen string, d detect.Detection, now time.Time) detect.Detection {
+	if agentID != "claude" && agentID != "codex" {
+		return d
+	}
+	if d.State != detect.Working {
+		delete(a.fossils, pid)
+		return d
+	}
+	fp := detect.ActivityFingerprint(agentID, screen)
+	if fp == "" {
+		delete(a.fossils, pid)
+		return d // fingerprint-free working evidence stays working
+	}
+	w := a.fossils[pid]
+	if w == nil || w.fp != fp {
+		if a.fossils == nil {
+			a.fossils = map[int]*fossilWatch{}
+		}
+		a.fossils[pid] = &fossilWatch{fp: fp, since: now}
+		return d
+	}
+	if now.Sub(w.since) < fossilExpiry {
+		return d
+	}
+	// Fossilized: the visible working evidence is stale scrollback.
+	d.State = detect.Idle
+	d.VisibleWorking = false
+	d.Correction = true
+	return d
+}
+
+// clearStaleReport drops a reported working/blocked authority once screen
+// detection for the same Claude/Codex agent has shown explicit visible
+// idle for the fossil window (SPEC G3). Reports are non-full-lifecycle
+// authorities, so all of them are clearable; the pane's recorded agent
+// session is untouched — only the stale state override goes away.
+func (a *App) clearStaleReport(pid int, agentID string, d detect.Detection, now time.Time) {
+	rep, ok := a.reported[pid]
+	if !ok || (rep.state != "working" && rep.state != "blocked") {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if agentID == "" || rep.agent != "" && rep.agent != agentID {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if agentID != "claude" && agentID != "codex" {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if d.State != detect.Idle || !d.VisibleIdle {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if a.visibleIdle == nil {
+		a.visibleIdle = map[int]time.Time{}
+	}
+	if a.visibleIdle[pid].IsZero() {
+		a.visibleIdle[pid] = now
+		return
+	}
+	if now.Sub(a.visibleIdle[pid]) < fossilExpiry {
+		return
+	}
+	delete(a.reported, pid)
+	delete(a.visibleIdle, pid)
+	if a.availHook != nil {
+		a.availHook(pid)
+	}
+	a.dirty = true
 }

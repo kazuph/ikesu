@@ -59,11 +59,11 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 			return 1, fmt.Errorf("could not reach the gtx server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
 		}
 	}
-	defer conn.Close()
 
 	// Terminal setup mirrors tui.Run.
 	old, err := term.MakeRaw(int(in.Fd()))
 	if err != nil {
+		conn.Close()
 		return 1, fmt.Errorf("raw mode: %w", err)
 	}
 	restored := false
@@ -89,16 +89,70 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	defer restore()
 
 	if _, err := out.WriteString(tui.EnterSeq); err != nil {
+		conn.Close()
 		return 1, err
 	}
 
+	reconnecting := false
+	var deadline time.Time
+	for {
+		res := pump(conn, in, out, leave)
+		conn.Close()
+		if res == pumpDone {
+			return 0, nil
+		}
+		if res == pumpRestart {
+			reconnecting = true
+			deadline = time.Now().Add(attachTimeout)
+		} else if !reconnecting {
+			// pumpClosed without a restart notice: the server died.
+			leave()
+			fmt.Fprintln(out, "gtx: connection to the server closed")
+			return 1, nil
+		}
+		// Reconnect to the successor. The terminal stays in alt-screen so
+		// the handover is seamless. A conn handed out by the dying old
+		// listener may close immediately; keep retrying until the
+		// deadline (pumpClosed while reconnecting loops back here).
+		conn = nil
+		for conn == nil {
+			if time.Now().After(deadline) {
+				leave()
+				fmt.Fprintln(out, "gtx: the server restarted but did not come back")
+				return 1, nil
+			}
+			if c, err := dialClient(dir); err == nil {
+				conn = c
+			} else {
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+	}
+}
+
+// pumpResult is how a single attach session ended.
+type pumpResult int
+
+const (
+	pumpDone    pumpResult = iota // detached or server exit — client returns
+	pumpRestart                   // server asked for a reconnect
+	pumpClosed                    // conn dropped without a close message
+)
+
+// pump runs one attach session over conn: hello → input/resize forwarding
+// → output rendering.
+func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 	ws, err := tui.GetWinsize(in)
 	if err != nil {
-		return 1, err
+		leave()
+		fmt.Fprintf(out, "gtx: winsize: %v\n", err)
+		return pumpDone
 	}
 	w := &writer{conn: conn}
 	if err := w.send(msg{Type: "hello", Cols: ws.Cols, Rows: ws.Rows}); err != nil {
-		return 1, fmt.Errorf("attach: %w", err)
+		leave()
+		fmt.Fprintf(out, "gtx: attach: %v\n", err)
+		return pumpDone
 	}
 
 	// stdin → server input messages.
@@ -121,10 +175,17 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	winch := make(chan os.Signal, 4)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
+	winchStop := make(chan struct{})
+	defer close(winchStop)
 	go func() {
-		for range winch {
-			if sz, err := tui.GetWinsize(in); err == nil {
-				_ = w.send(msg{Type: "resize", Cols: sz.Cols, Rows: sz.Rows})
+		for {
+			select {
+			case <-winchStop:
+				return
+			case <-winch:
+				if sz, err := tui.GetWinsize(in); err == nil {
+					_ = w.send(msg{Type: "resize", Cols: sz.Cols, Rows: sz.Rows})
+				}
 			}
 		}
 	}()
@@ -134,10 +195,9 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	for {
 		line, err := rd.ReadBytes('\n')
 		if err != nil {
-			// The server vanished without a close message.
-			leave()
-			fmt.Fprintf(out, "gtx: connection to the server closed\n")
-			return 1, nil
+			// Silent drop: Attach decides whether this is a restart
+			// handoff (retry) or a real close (report).
+			return pumpClosed
 		}
 		var m msg
 		if json.Unmarshal(line, &m) != nil {
@@ -155,9 +215,11 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 			} else {
 				fmt.Fprintln(out, "gtx: detached")
 			}
-			return 0, nil
+			return pumpDone
+		case "restart":
+			return pumpRestart
 		case "exit":
-			return 0, nil
+			return pumpDone
 		}
 	}
 }

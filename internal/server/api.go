@@ -56,6 +56,16 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 		// the response is written while teardown proceeds.
 		go s.app.Stop()
 		return api.Success(req.ID, api.OkResult{Type: "ok"})
+	case api.MethodServerRestart:
+		var p api.EmptyParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		// Same shape as server.stop: respond ok, then save+quit on the
+		// app loop; cleanup respawns a fresh server for the client to
+		// reconnect to.
+		go s.app.Do(s.requestRestart)
+		return api.Success(req.ID, api.OkResult{Type: "ok"})
 	default:
 		var resp api.Response
 		s.app.Do(func() {

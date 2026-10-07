@@ -287,3 +287,34 @@ func TestDialogButtonsFullyDrawn(t *testing.T) {
 		t.Fatalf("cancel.W = %d, want %d", cancel.W, len([]rune("[ cancel  esc ]")))
 	}
 }
+
+// G2: a workspace row shows one ● per meaningful job, drawn at the row's
+// right edge so the name is never hidden behind them.
+func TestRenderWorkspaceJobDots(t *testing.T) {
+	s := testState(80, 24)
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
+	out := Compose(Input{
+		State:   s,
+		Panes:   map[int]*PaneSnap{pid: blankSnap()},
+		JobDots: map[int][]JobDot{0: {{Color: Yellow}, {Color: Green}}},
+	})
+	text := screenText(t, out, 80, 24)
+	line := ""
+	for _, l := range strings.Split(text, "\n") {
+		if strings.Contains(l, "●") {
+			line = l
+			break
+		}
+	}
+	if line == "" {
+		t.Fatalf("no ● on workspace row:\n%s", text)
+	}
+	if !strings.Contains(line, "●●") {
+		t.Fatalf("expected two job dots, row: %q", line)
+	}
+	// No dots without a snapshot entry.
+	out2 := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
+	if strings.Contains(screenText(t, out2, 80, 24), "●") {
+		t.Fatal("dot drawn without a job snapshot")
+	}
+}
