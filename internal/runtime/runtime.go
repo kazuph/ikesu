@@ -4,6 +4,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
 
 	"github.com/kazuph/goterrace/internal/detect"
@@ -217,6 +219,20 @@ var pumpBatchWait = time.Millisecond
 // the writer flushes early and the queue back-pressures the reader.
 const pumpBatchCap = 256 * 1024
 
+// pumpQueueBytes bounds how much output may sit unprocessed between the
+// reader and the writer. It caps how far the emulator can trail the child
+// process — the screen lag after a flood ends and the output replayed
+// after an interrupt — and, with pumpQueueLen, the queued memory.
+const pumpQueueBytes = 256 << 10
+
+// pumpQueueLen bounds outstanding chunks so many small reads cannot hold
+// more buffers than the byte budget implies. pumpPoolLen bounds recycled
+// buffers kept for reuse; both trade a little allocation for bounded RSS.
+const (
+	pumpQueueLen = 32
+	pumpPoolLen  = 16
+)
+
 // ptyReadyNow reports whether fd has data (or an event worth a read attempt)
 // available without waiting.
 func ptyReadyNow(fd int) bool {
@@ -228,8 +244,10 @@ func ptyReadyNow(fd int) bool {
 // readPTY drains the PTY into chunks as fast as the kernel delivers them and
 // forwards each chunk on out, closing it at EOF or read error. While the
 // writer is busy it also merges whatever is already queued into the same
-// buffer, which both batches the read side and keeps read syscalls low.
-func (p *Pane) readPTY(out chan<- []byte, pool chan []byte) {
+// buffer, which both batches the read side and keeps read syscalls low. The
+// semaphore bounds queued bytes; acquiring it is what back-pressures the
+// child when the writer falls behind.
+func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weighted) {
 	defer close(out)
 	statsFile := os.Getenv("GTX_PUMP_STATS")
 	var reads, chunksSent, bytes int64
@@ -266,6 +284,7 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte) {
 		if n > 0 {
 			chunksSent++
 			bytes += int64(n)
+			_ = sem.Acquire(context.Background(), int64(n))
 			out <- buf[:n]
 			if chunksSent%32 == 0 {
 				writeStats()
@@ -283,11 +302,13 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte) {
 // after an idle gap, and while output streams it gathers for up to
 // pumpBatchWait before one emu.Write plus change notification per burst.
 func (p *Pane) pumpPTYToEmu() {
-	chunks := make(chan []byte, 256)
-	pool := make(chan []byte, 64)
-	go p.readPTY(chunks, pool)
+	chunks := make(chan []byte, pumpQueueLen)
+	pool := make(chan []byte, pumpPoolLen)
+	sem := semaphore.NewWeighted(pumpQueueBytes)
+	go p.readPTY(chunks, pool, sem)
 
 	recycle := func(c []byte) {
+		sem.Release(int64(len(c)))
 		select {
 		case pool <- c[:cap(c)]:
 		default:
