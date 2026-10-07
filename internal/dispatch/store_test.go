@@ -234,3 +234,42 @@ func TestReplyToCommandSetsRepliedAtWithoutStatusChange(t *testing.T) {
 		t.Fatalf("reply must not change job status: %+v", job)
 	}
 }
+
+// The gtx-jobs batch writer must mark only the message ids it actually
+// wrote: a completion that lands between payload assembly and the PTY
+// write finishing would otherwise be marked delivered without ever
+// reaching the pane.
+func TestMarkDeliveredByIDsLeavesNewArrivalsQueued(t *testing.T) {
+	s := testStore(t)
+	first, err := s.InsertMessage(JobsRoom, "", "gtx-run", "bob", "done-1", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Payload assembly snapshots the queued ids...
+	pending, err := s.PendingMessagesForAgent(JobsRoom, "bob")
+	if err != nil || len(pending) != 1 || pending[0].ID != first.ID {
+		t.Fatalf("assemble: %+v err=%v", pending, err)
+	}
+	// ...then a second completion lands before the write completes.
+	second, err := s.InsertMessage(JobsRoom, "", "gtx-run", "bob", "done-2", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []int64{pending[0].ID}
+	if n, err := s.MarkDeliveredByIDs(ids); err != nil || n != 1 {
+		t.Fatalf("MarkDeliveredByIDs=%d err=%v", n, err)
+	}
+	rest, err := s.PendingMessagesForAgent(JobsRoom, "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rest) != 1 || rest[0].ID != second.ID {
+		t.Fatalf("late arrival must stay queued: %+v", rest)
+	}
+	if n, _ := s.MarkDeliveredByIDs([]int64{second.ID}); n != 1 {
+		t.Fatalf("second mark=%d", n)
+	}
+	if rest, _ := s.PendingMessagesForAgent(JobsRoom, "bob"); len(rest) != 0 {
+		t.Fatalf("all delivered now: %+v", rest)
+	}
+}

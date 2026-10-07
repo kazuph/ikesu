@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/dispatch"
@@ -175,10 +176,13 @@ func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc
 		exitCode = int64(cmd.ProcessState.ExitCode())
 	}
 	// 'running' → 'exited' with the real code. When run.cancel already
-	// moved the row to 'cancelling', finish is a no-op and the terminal
-	// status is 'cancelled' — so finish must be tried first.
+	// moved the row to 'cancelling', finish is a no-op — and the row must
+	// NOT go 'cancelled' here: SPEC G9 requires the whole process group to
+	// be gone first, which only the cancel monitor (finishCancel) checks.
 	if ok, _ := store.MarkCommandFinished(jobID, &exitCode); !ok {
-		_, _ = store.MarkCommandCancelled(jobID)
+		if j, _ := store.CommandRow(jobID); j == nil || j.Status != "cancelling" {
+			_, _ = store.MarkCommandCancelled(jobID)
+		}
 	}
 
 	if callerAgent == "" || completion == "none" {
@@ -213,8 +217,11 @@ func jobLogPathFrom(store *dispatch.Store, jobID string) string {
 	return j.LogPath
 }
 
-// runCancel handles run.cancel: move the row to 'cancelling' and signal
-// the process group; the watcher records the terminal state.
+// runCancel handles run.cancel, following SPEC G9: the runner pid must be
+// the leader of a process group of the same number; only then is the row
+// moved to 'cancelling' and SIGTERM sent to the group. The response is
+// 'cancelling' — finishCancel escalates to SIGKILL and only marks the job
+// 'cancelled' once the whole group is gone.
 func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 	jobID := strings.TrimSpace(p.JobID)
 	if jobID == "" {
@@ -229,6 +236,43 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobNotFound,
 			fmt.Sprintf("job not found: %s", jobID))
 	}
+	if job.Status != "running" {
+		return api.Failure(id, api.ErrJobNotFound,
+			fmt.Sprintf("job %s is not running (status=%s)", job.ID, job.Status))
+	}
+	// Resolve the runner pid: the live process map first, else the pid
+	// persisted in the row (survives server restarts).
+	pgid := 0
+	if cmd := s.jobProcs.get(job.ID); cmd != nil && cmd.Process != nil {
+		pgid = cmd.Process.Pid
+	} else if job.RunnerPID != nil {
+		pgid = int(*job.RunnerPID)
+	}
+	if pgid <= 0 {
+		// No runner pid recorded — nothing left to signal.
+		_, _ = store.MarkCommandCancelled(job.ID)
+		return api.Success(id, api.RunCancelledResult{
+			Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "none",
+		})
+	}
+	if err := syscall.Kill(pgid, 0); err == syscall.ESRCH {
+		// Runner already gone → the group may still have orphans;
+		// kill(-pgid, 0) decides whether anything remains.
+		if !processGroupAlive(pgid) {
+			_, _ = store.MarkCommandCancelled(job.ID)
+			return api.Success(id, api.RunCancelledResult{
+				Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "none",
+			})
+		}
+		return api.Failure(id, api.ErrJobStore,
+			fmt.Sprintf("job %s runner pid %d is gone but process group %d still lives; refusing to signal", job.ID, pgid, pgid))
+	}
+	// SPEC: verify the runner pid is the leader of a process group of the
+	// same number before acquiring 'cancelling' and signalling.
+	if g, err := syscall.Getpgid(pgid); err != nil || g != pgid {
+		return api.Failure(id, api.ErrJobStore,
+			fmt.Sprintf("job %s runner pid %d is not a process group leader; refusing to signal", job.ID, pgid))
+	}
 	ok, err := store.MarkCommandCancelling(job.ID)
 	if err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
@@ -237,14 +281,59 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobNotFound,
 			fmt.Sprintf("job %s is not running (status=%s)", job.ID, job.Status))
 	}
-	if cmd := s.jobProcs.get(job.ID); cmd != nil && cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-	} else if job.RunnerPID != nil {
-		_ = syscall.Kill(int(-*job.RunnerPID), syscall.SIGTERM)
-	}
+	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	go s.finishCancel(job.ID, pgid)
 	return api.Success(id, api.RunCancelledResult{
-		Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "TERM",
+		Type: "run_cancelled", Job: job.ID, Status: "cancelling", Signal: "TERM",
 	})
+}
+
+// processGroupAlive reports whether any process still runs in group pgid
+// (kill(-pgid, 0): ESRCH means gone; EPERM/nil means someone is alive).
+func processGroupAlive(pgid int) bool {
+	err := syscall.Kill(-pgid, 0)
+	return err == nil || err == syscall.EPERM
+}
+
+// finishCancel is the cancel monitor: after the initial SIGTERM it gives
+// the group 2 s, escalates to SIGKILL, and only then — once the whole
+// group is confirmed gone — marks the job 'cancelled'. If the group
+// outlives SIGKILL the row stays 'cancelling' (fail closed, SPEC G9).
+func (s *Server) finishCancel(jobID string, pgid int) {
+	if waitProcessGroupGone(pgid, 2*time.Second) {
+		s.cancelIfCancelling(jobID)
+		return
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	if waitProcessGroupGone(pgid, 30*time.Second) {
+		s.cancelIfCancelling(jobID)
+	}
+	// else: leave 'cancelling' — better to keep polling state honest than
+	// to claim a process group is dead when it is not.
+}
+
+func waitProcessGroupGone(pgid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !processGroupAlive(pgid) {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return !processGroupAlive(pgid)
+}
+
+// cancelIfCancelling records 'cancelled' only while the row is still in
+// the cancelling branch (it may already be 'exited' or cancelled by a
+// concurrent monitor — either terminal is fine).
+func (s *Server) cancelIfCancelling(jobID string) {
+	store, err := s.db()
+	if err != nil {
+		return
+	}
+	if j, err := store.CommandRow(jobID); err == nil && j != nil && j.Status == "cancelling" {
+		_, _ = store.MarkCommandCancelled(jobID)
+	}
 }
 
 func openJobLog(path string) (*os.File, error) {

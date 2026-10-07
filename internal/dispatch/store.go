@@ -591,6 +591,33 @@ func (s *Store) MarkDelivered(room, toAgent string) (int, error) {
 	return int(n), err
 }
 
+// MarkDeliveredByIDs marks only the listed queued messages delivered —
+// used by the jobs-room batch writer so a message that arrives between
+// payload assembly and write completion is not lost (it stays queued and
+// is delivered by the next flush).
+func (s *Store) MarkDeliveredByIDs(ids []int64) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, nowStamp())
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	res, err := s.db.Exec(fmt.Sprintf(`
+		UPDATE dispatches
+		SET status='delivered', delivered_at=?1, read_at=COALESCE(read_at, ?1)
+		WHERE kind='message' AND status='queued' AND id IN (%s)
+	`, placeholdersAt(len(ids), 2)), args...)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
 // InsertCommand stores a background job dispatch row.
 func (s *Store) InsertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath string) error {
 	s.mux.Lock()

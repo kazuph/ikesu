@@ -25,7 +25,11 @@ type mailWrite struct {
 	payload []byte
 	// regular mail: mark this dispatch delivered on write completion.
 	msgID int64
-	// job mail batch: mark the whole room+recipient delivered.
+	// job mail batch: mark exactly the message ids whose bodies were
+	// written. Marking by room+recipient would race a completion that
+	// arrives between payload assembly and write completion — it would
+	// be flagged delivered without ever reaching the pane.
+	msgIDs  []int64
 	room    string
 	toAgent string
 }
@@ -47,8 +51,8 @@ func (s *Server) mailWorker() {
 		if store, err := s.db(); err == nil {
 			if w.msgID != 0 {
 				_, _ = store.MarkMessageDelivered(w.msgID)
-			} else if w.room != "" {
-				_, _ = store.MarkDelivered(w.room, w.toAgent)
+			} else if len(w.msgIDs) > 0 {
+				_, _ = store.MarkDeliveredByIDs(w.msgIDs)
 			}
 		}
 		s.mailDone(w)
@@ -461,12 +465,14 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 		return false
 	}
 	var bodies []string
+	var ids []int64
 	for _, m := range msgs {
 		bodies = append(bodies, m.Body)
+		ids = append(ids, m.ID)
 	}
 	return s.enqueueMail(mailWrite{
 		pane: t.pid, payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
-		room: n.Room, toAgent: n.ToAgent,
+		msgIDs: ids, room: n.Room, toAgent: n.ToAgent,
 	})
 }
 
