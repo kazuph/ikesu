@@ -1,4 +1,0 @@
-sleep 8s
-waitfile /tmp/gtx-acc/trig6 600s
-screen /tmp/gtx-acc/s6-restart.txt
-kill

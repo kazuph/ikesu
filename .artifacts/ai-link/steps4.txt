@@ -1,3 +1,0 @@
-sleep 4s
-screen /tmp/gtx-acc/final-visible.txt
-kill

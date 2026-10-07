@@ -1,7 +1,0 @@
-=== gtx pane current foo ===
-unknown option: foo
-exit=2
-
-=== GTX_PANE_ID=p1 outside pane ===
-{"error":{"code":"pane_not_found","message":"caller pane p1 could not be proven from process ancestry"},"id":"cli:pane:current"}
-exit=1
