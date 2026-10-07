@@ -4,9 +4,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 
+	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/cli"
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/tui"
 )
@@ -15,6 +18,38 @@ const version = "0.1.0"
 
 func main() {
 	args := os.Args[1:]
+
+	// Global flags may precede any subcommand.
+	session := api.DefaultSession
+	explicitSession := false
+	noSession := false
+	for len(args) > 0 {
+		switch {
+		case args[0] == "--session":
+			if len(args) < 2 {
+				fmt.Fprintln(os.Stderr, "gtx: --session requires a name")
+				os.Exit(2)
+			}
+			session = args[1]
+			explicitSession = true
+			args = args[2:]
+		case strings.HasPrefix(args[0], "--session="):
+			session = strings.TrimPrefix(args[0], "--session=")
+			explicitSession = true
+			args = args[1:]
+		case args[0] == "--no-session":
+			noSession = true
+			args = args[1:]
+		default:
+			goto dispatch
+		}
+	}
+dispatch:
+	if !api.ValidSessionName(session) {
+		fmt.Fprintf(os.Stderr, "gtx: invalid session name %q\n", session)
+		os.Exit(2)
+	}
+
 	if len(args) > 0 {
 		switch args[0] {
 		case "--version", "-version", "version":
@@ -22,20 +57,26 @@ func main() {
 			return
 		case "detect":
 			os.Exit(runDetect(args[1:]))
+		case "pane", "workspace", "tab", "server":
+			os.Exit(cli.Run(args, cli.Options{
+				Session:  session,
+				Explicit: explicitSession,
+			}))
 		}
 	}
 
-	code, err := run()
+	code, err := run(noSession)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gtx:", err)
 	}
 	os.Exit(code)
 }
 
-func run() (int, error) {
+func run(noSession bool) (int, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return 1, fmt.Errorf("stdin is not a terminal")
 	}
+	_ = noSession // session attach lands with the server/client milestone
 	return tui.Run(os.Stdin, os.Stdout)
 }
 
