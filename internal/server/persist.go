@@ -40,6 +40,7 @@ func (s *Server) saveSession() {
 	if s.app == nil {
 		return
 	}
+	s.observeAgentSessions()
 	f := s.app.State().Snapshot()
 	if len(f.Workspaces) == 0 {
 		return
@@ -58,6 +59,21 @@ func (s *Server) saveSession() {
 			p.SessionID = rec.Value
 			p.SessionKind = rec.Kind
 			p.Title = rec.Title
+		}
+		// A safe same-agent ledger id keeps the exact session on the
+		// snapshot even when the terminal-side record was lost.
+		if !safeSessionValue(p.SessionKind, p.SessionID) {
+			if led, ok := s.ledgerEntry(p.ID); ok && led.SessionID != "" &&
+				(p.Agent == "" || led.Agent == p.Agent) {
+				if p.Agent == "" {
+					p.Agent = led.Agent
+				}
+				p.SessionID = led.SessionID
+				p.SessionKind = led.SessionKind
+				if p.Title == "" {
+					p.Title = led.Title
+				}
+			}
 		}
 	})
 	if err := session.Save(session.Path(s.dir), f); err != nil {

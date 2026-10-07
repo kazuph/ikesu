@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ForegroundPID returns the process-group leader pid of the process in the
@@ -54,4 +55,19 @@ func PPID(pid int) int {
 	}
 	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
 	return n
+}
+
+// ProcStart returns the start time of pid, best effort, via `ps etimes`.
+// Used by the session-file observer to correlate a freshly created agent
+// session file with the process that started it.
+func ProcStart(pid int) (time.Time, bool) {
+	out, err := exec.Command("ps", "-o", "etimes=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return time.Time{}, false
+	}
+	secs, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Now().Add(-time.Duration(secs) * time.Second), true
 }

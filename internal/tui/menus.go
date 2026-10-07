@@ -76,6 +76,7 @@ func (a *App) openMainMenu(x, y int) {
 				{Separator: true},
 				{Label: sideLabel},
 				{Separator: true},
+				{Label: "Restore agents…", Disabled: a.restoreHook == nil},
 				{Label: "Restart server…", Disabled: a.restartHook == nil},
 				{Label: "Quit goterrace…"},
 			},
@@ -131,8 +132,10 @@ func (a *App) activateMenu(i int) {
 		case 4:
 			a.exec(model.CmdToggleSidebar{})
 		case 6:
-			a.openRestartDialog()
+			a.openRestoreDialog()
 		case 7:
+			a.openRestartDialog()
+		case 8:
 			a.openQuitDialog()
 		}
 	}

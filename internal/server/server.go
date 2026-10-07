@@ -200,6 +200,8 @@ func Run(session, version string) (int, error) {
 	})
 	s.app.SetChangeHook(s.markSessionDirty)
 	s.app.SetRestartHook(s.requestRestart)
+	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
+	s.app.SetPaneClosedHook(s.ledgerDel)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) { s.onPaneStatus(pid) })
@@ -213,6 +215,7 @@ func Run(session, version string) (int, error) {
 	// the initial shell. A corrupt file fails closed to a fresh state.
 	if f := s.loadSession(); f != nil {
 		s.app.RestoreSession(f)
+		s.scheduleAutoResume()
 	} else if err := s.app.StartInitialPane(); err != nil {
 		s.cleanup()
 		return 1, fmt.Errorf("spawn pane: %w", err)

@@ -351,9 +351,36 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 		pane.SetAgent(p.Agent)
 	}
 	s.app.SetReported(pid, p.Agent, p.State)
-	if p.Title != nil && *p.Title != "" {
-		// Terminal title override is tracked via the reported record only;
-		// the OSC title stays the pane's own.
+
+	// Session refs from an explicit report are the most trusted source
+	// (SPEC G3). agent_session_id/agent_session_path carry the native
+	// structured ref; session_id is the shorthand for kind=id. The raw
+	// value is stored even when unsafe so restart warnings can say
+	// "invalid … session id" instead of "missing".
+	var kind, value string
+	switch {
+	case p.AgentSessionID != nil && *p.AgentSessionID != "":
+		kind, value = "id", *p.AgentSessionID
+	case p.AgentSessionPath != nil && *p.AgentSessionPath != "":
+		kind, value = "path", *p.AgentSessionPath
+	case p.SessionID != nil && *p.SessionID != "":
+		kind, value = "id", *p.SessionID
+	}
+	if kind != "" {
+		rec, _ := s.app.SessionRecord(pid)
+		rec.Agent, rec.Kind, rec.Value = p.Agent, kind, value
+		rec.Source = "report:" + p.Source
+		if p.Title != nil && *p.Title != "" {
+			rec.Title = *p.Title
+		}
+		s.app.RecordSession(pid, rec)
+		s.ledgerPut(pid, rec)
+	} else if p.Title != nil && *p.Title != "" {
+		if rec, ok := s.app.SessionRecord(pid); ok {
+			rec.Title = *p.Title
+			s.app.RecordSession(pid, rec)
+			s.ledgerPut(pid, rec)
+		}
 	}
 	return api.Success(id, api.OkResult{Type: "ok"})
 }

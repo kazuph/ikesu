@@ -152,3 +152,18 @@ func TestSafeSessionID(t *testing.T) {
 		}
 	}
 }
+
+func TestSafeSessionPath(t *testing.T) {
+	ok := []string{"/Users/x/.codex/sessions/a.jsonl", "~/.claude/x.jsonl", "/tmp/roll-out_1.jsonl"}
+	for _, v := range ok {
+		if !SafeSessionPath(v) {
+			t.Fatalf("%q should be a safe path", v)
+		}
+	}
+	bad := []string{"", "a b", "a;b", "a|b", "a`b`", "$(x)", "a\nb", "a'b"}
+	for _, v := range bad {
+		if SafeSessionPath(v) {
+			t.Fatalf("%q should be unsafe", v)
+		}
+	}
+}

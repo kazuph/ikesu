@@ -205,6 +205,40 @@ type AgentSessionInfo struct {
 	Value  string `json:"value"`
 }
 
+// AgentRestoreParams drives `agent.restore`; dry-run plans without typing.
+type AgentRestoreParams struct {
+	DryRun bool `json:"dry_run,omitempty"`
+}
+
+// AgentRestoreActionInfo is the per-pane outcome of an agent.restore call
+// (SPEC G3). Status is launched / would_launch / skipped.
+type AgentRestoreActionInfo struct {
+	PaneID  string  `json:"pane_id"`
+	Agent   string  `json:"agent"`
+	Status  string  `json:"status"`
+	Command *string `json:"command"`
+	Reason  *string `json:"reason"`
+}
+
+// AgentSessionWarningInfo is one entry of the missing-session warning
+// list shown before restart (SPEC G3 fail-closed restart warning).
+type AgentSessionWarningInfo struct {
+	WorkspaceNumber int     `json:"workspace_number"`
+	WorkspaceLabel  string  `json:"workspace_label"`
+	PaneLabel       string  `json:"pane_label"`
+	Agent           string  `json:"agent"`
+	Cwd             string  `json:"cwd"`
+	Reason          string  `json:"reason"`
+	Title           *string `json:"title"`
+}
+
+// AgentRestoreResult is the success payload of `agent.restore`.
+type AgentRestoreResult struct {
+	Type    string                   `json:"type"` // "agent_restore"
+	DryRun  bool                     `json:"dry_run"`
+	Actions []AgentRestoreActionInfo `json:"actions"`
+}
+
 type PaneScrollInfo struct {
 	OffsetFromBottom    int `json:"offset_from_bottom"`
 	MaxOffsetFromBottom int `json:"max_offset_from_bottom"`

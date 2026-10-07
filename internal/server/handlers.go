@@ -225,6 +225,12 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
 		return s.agentRename(req.ID, p)
+	case api.MethodAgentRestore:
+		var p api.AgentRestoreParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentRestore(req.ID, p)
 
 	case api.MethodRunStart:
 		var p api.RunStartParams

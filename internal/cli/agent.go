@@ -21,6 +21,7 @@ func printAgentHelp(w *runner) {
 	fmt.Fprintln(w.errOut(), "  gtx agent focus <target>")
 	fmt.Fprintln(w.errOut(), "  gtx agent wait <target> --status <idle|working|blocked|done|unknown> [--timeout MS]")
 	fmt.Fprintln(w.errOut(), "  gtx agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>")
+	fmt.Fprintln(w.errOut(), "  gtx agent restore [--dry-run]")
 	fmt.Fprintln(w.errOut(), "targets accept pane ids (pN), unique agent names, and detected/reported agent labels")
 }
 
@@ -63,6 +64,17 @@ func (r *runner) agentCLI(args []string) int {
 		return r.agentWaitCLI(rest)
 	case "start":
 		return r.agentStartCLI(rest)
+	case "restore":
+		dryRun := false
+		for _, a := range rest {
+			if a == "--dry-run" {
+				dryRun = true
+			} else {
+				return usageErr(r, "usage: gtx agent restore [--dry-run]")
+			}
+		}
+		return r.printResult("cli:agent:restore", api.MethodAgentRestore,
+			api.AgentRestoreParams{DryRun: dryRun})
 	case "help", "--help", "-h":
 		printAgentHelp(r)
 		return 0

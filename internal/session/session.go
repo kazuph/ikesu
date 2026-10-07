@@ -417,6 +417,25 @@ func SafeSessionID(v string) bool {
 	return safeSessionID.MatchString(v)
 }
 
+// SafeSessionPath reports whether v is acceptable as a transcript-path
+// session ref (kind=path). The value is later typed into a pane, so any
+// character that could smuggle shell syntax (whitespace, quotes,
+// metacharacters) is rejected; paths that fail stay unresumable.
+func SafeSessionPath(v string) bool {
+	if v == "" || len(v) > 4096 {
+		return false
+	}
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '/' || r == '.' || r == '_' || r == '-' || r == '~' || r == '+':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // SessionFileName is the file name inside a session directory.
 const SessionFileName = "session.json"
 

@@ -124,13 +124,15 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF    bool                // input close means quit (local mode)
-	detacher    func(reason string) // server mode: detach the client
-	sinkOn      func() bool         // nil = always draw
-	quitHook    func()              // runs on the loop right before Run returns
-	availHook   func(pid int)       // pane status changed; server flushes mail
-	changeHook  func()              // persistent state changed; server coalesces saves
-	restartHook func()              // main menu "Restart server…" (server mode only)
+	inputEOF       bool                // input close means quit (local mode)
+	detacher       func(reason string) // server mode: detach the client
+	sinkOn         func() bool         // nil = always draw
+	quitHook       func()              // runs on the loop right before Run returns
+	availHook      func(pid int)       // pane status changed; server flushes mail
+	changeHook     func()              // persistent state changed; server coalesces saves
+	restartHook    func()              // main menu "Restart server…" (server mode only)
+	restoreHook    func(dryRun bool)   // main menu "Restore agents…" (server mode only)
+	paneClosedHook func(pid int)       // pane permanently removed; server cleans ledger
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target
@@ -542,6 +544,9 @@ func (a *App) effect(e model.Effect) {
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
 		delete(a.sessions, e.Pane)
+		if a.paneClosedHook != nil {
+			a.paneClosedHook(e.Pane)
+		}
 	case model.EffSyncLayout:
 		a.syncLayout()
 	case model.EffInput:

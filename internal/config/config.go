@@ -54,6 +54,24 @@ type Config struct {
 		Shell string            `toml:"shell"`
 		Env   map[string]string `toml:"env"`
 	} `toml:"agent"`
+	// AgentStart holds structured argv templates used to launch agents;
+	// agent restore reuses the same argv so sandbox/approval/wrapper
+	// flags stay identical between first start and resume.
+	AgentStart struct {
+		Commands map[string][]string `toml:"commands"`
+	} `toml:"agent_start"`
+	Session struct {
+		// ResumeAgentsOnRestore resumes recorded agent sessions after a
+		// session.json restore. Default on.
+		ResumeAgentsOnRestore *bool `toml:"resume_agents_on_restore"`
+	} `toml:"session"`
+	AgentRestore struct {
+		// RestoreDelayMs postpones automatic resume after server start.
+		RestoreDelayMs *int `toml:"restore_delay_ms"`
+		// Templates are per-agent restore command lines; each must contain
+		// {session_id}. Missing entries fall back to builtins.
+		Templates map[string]string `toml:"templates"`
+	} `toml:"agent_restore"`
 }
 
 // Path is the resolved config file location.
@@ -141,4 +159,39 @@ func (c Config) AgentShell() string {
 		return s
 	}
 	return "/bin/zsh"
+}
+
+// AgentStartCommand returns the configured argv for an agent, if any.
+func (c Config) AgentStartCommand(agent string) ([]string, bool) {
+	argv, ok := c.AgentStart.Commands[agent]
+	if !ok || len(argv) == 0 {
+		return nil, false
+	}
+	return append([]string{}, argv...), true
+}
+
+// RestoreTemplate returns the configured restore command template for an
+// agent, if any. The template must contain {session_id} to be usable.
+func (c Config) RestoreTemplate(agent string) string {
+	return c.AgentRestore.Templates[agent]
+}
+
+// ResumeAgentsOnRestore reports whether agent panes resume automatically
+// after a session.json restore; it defaults to on.
+func (c Config) ResumeAgentsOnRestore() bool {
+	if c.Session.ResumeAgentsOnRestore == nil {
+		return true
+	}
+	return *c.Session.ResumeAgentsOnRestore
+}
+
+// RestoreDelay is the configured post-startup auto-resume delay.
+func (c Config) RestoreDelay() int {
+	if c.AgentRestore.RestoreDelayMs == nil {
+		return 0
+	}
+	if *c.AgentRestore.RestoreDelayMs < 0 {
+		return 0
+	}
+	return *c.AgentRestore.RestoreDelayMs
 }

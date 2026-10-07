@@ -27,6 +27,14 @@ func (a *App) SetChangeHook(f func()) { a.changeHook = f }
 // "Restart server…" item; nil keeps the item disabled (local mode).
 func (a *App) SetRestartHook(f func()) { a.restartHook = f }
 
+// SetRestoreHook registers the agent-restore callback used by the main
+// menu's "Restore agents…" item; nil keeps the item disabled.
+func (a *App) SetRestoreHook(f func(dryRun bool)) { a.restoreHook = f }
+
+// SetPaneClosedHook registers the callback invoked when a pane is
+// permanently removed so the server can drop its ledger row (SPEC G3).
+func (a *App) SetPaneClosedHook(f func(pid int)) { a.paneClosedHook = f }
+
 // changed notifies the persistence hook. Call on the app loop.
 func (a *App) changed() {
 	if a.changeHook != nil {
@@ -137,6 +145,19 @@ func (a *App) openRestartDialog() {
 		run: func(a *App) {
 			if a.restartHook != nil {
 				a.restartHook()
+			}
+		},
+	}
+	a.dirty = true
+}
+
+// openRestoreDialog confirms a manual agent restore.
+func (a *App) openRestoreDialog() {
+	a.dialog = &uiDialog{
+		d: render.Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", Confirm: "restore", Cancel: "cancel"},
+		run: func(a *App) {
+			if a.restoreHook != nil {
+				a.restoreHook(false)
 			}
 		},
 	}
