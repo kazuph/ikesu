@@ -48,6 +48,71 @@ func procCwd(pid int) string {
 	return p
 }
 
+// foregroundJob enumerates every process in the terminal's foreground
+// process group by scanning /proc for entries whose pgrp matches.
+func foregroundJob(fd int) ForegroundJob {
+	pgid := foregroundPID(fd)
+	if pgid <= 0 {
+		return ForegroundJob{}
+	}
+	job := ForegroundJob{ProcessGroupID: pgid}
+	ents, err := os.ReadDir("/proc")
+	if err != nil {
+		return job
+	}
+	for _, e := range ents {
+		pid := atoi(e.Name())
+		if pid <= 0 {
+			continue
+		}
+		if procPgrp(pid) != pgid {
+			continue
+		}
+		name := procName(pid)
+		if name == "" {
+			continue
+		}
+		argv := procArgs(pid)
+		job.Processes = append(job.Processes, ForegroundProcess{
+			PID:     pid,
+			Name:    name,
+			Argv:    argv,
+			Cmdline: strings.Join(argv, " "),
+		})
+	}
+	return job
+}
+
+// procPgrp parses the pgrp field (field 5) of /proc/<pid>/stat; comm may
+// contain spaces or parens, so parsing starts after the last ')'.
+func procPgrp(pid int) int {
+	b, err := os.ReadFile("/proc/" + itoa(pid) + "/stat")
+	if err != nil {
+		return -1
+	}
+	s := string(b)
+	i := strings.LastIndex(s, ")")
+	if i < 0 {
+		return -1
+	}
+	f := strings.Fields(s[i+1:])
+	if len(f) < 3 {
+		return -1
+	}
+	return atoi(f[2])
+}
+
+func atoi(s string) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return -1
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
+
 func flushInput(fd int) {
 	_ = unix.IoctlSetPointerInt(fd, unix.TCFLSH, unix.TCIFLUSH)
 }

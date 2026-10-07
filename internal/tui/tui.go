@@ -285,7 +285,7 @@ func (a *App) detectAll() {
 				a.trackers[pid] = tr
 			}
 			sn := p.Snapshot()
-			agentID := detect.Identify(sn.ProcName, sn.ProcArgv0)
+			agentID := sn.AgentID
 			in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
 			if agentID != "" {
 				in.Screen = p.ScreenText()
@@ -509,7 +509,7 @@ func labelFor(sn runtime.Snapshot, p *runtime.Pane) string {
 
 // agentFor reports the detected agent id for a snapshot.
 func agentFor(sn runtime.Snapshot) string {
-	return detect.Identify(sn.ProcName, sn.ProcArgv0)
+	return sn.AgentID
 }
 
 // --- helpers ---

@@ -5,6 +5,7 @@ package platform
 import (
 	"bytes"
 	"encoding/binary"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -87,6 +88,62 @@ func procCwd(pid int) string {
 		return ""
 	}
 	return string(path)
+}
+
+// foregroundJob enumerates every process in the terminal's foreground
+// process group via proc_info(PROC_LISTPIDS, PROC_PGRP_ONLY).
+func foregroundJob(fd int) ForegroundJob {
+	pgid := foregroundPID(fd)
+	if pgid <= 0 {
+		return ForegroundJob{}
+	}
+	job := ForegroundJob{ProcessGroupID: pgid}
+	for _, pid := range groupPids(pgid) {
+		// Re-validate membership; the pid may have been reused or moved
+		// between the listing and this check.
+		if g, err := unix.Getpgid(pid); err != nil || g != pgid {
+			continue
+		}
+		name := procName(pid)
+		if name == "" {
+			continue
+		}
+		argv := procArgs(pid)
+		job.Processes = append(job.Processes, ForegroundProcess{
+			PID:     pid,
+			Name:    name,
+			Argv:    argv,
+			Cmdline: strings.Join(argv, " "),
+		})
+	}
+	return job
+}
+
+// groupPids lists the pids in process group pgid using the proc_info
+// syscall directly (libproc's proc_listpids is a thin wrapper over
+// proc_info(PROC_LISTPIDS), so no cgo is required).
+func groupPids(pgid int) []int {
+	const (
+		callListPids = 1 // PROC_LISTPIDS
+		typePgrpOnly = 2 // PROC_PGRP_ONLY
+	)
+	for capacity := 16; capacity <= 1<<16; capacity *= 4 {
+		buf := make([]int32, capacity)
+		n, _, errno := unix.Syscall6(unix.SYS_PROC_INFO, callListPids,
+			typePgrpOnly, uintptr(pgid), 0,
+			uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)*4))
+		if errno != 0 || n <= 0 {
+			return nil
+		}
+		if int(n) < capacity {
+			out := make([]int, n)
+			for i := range out {
+				out[i] = int(buf[i])
+			}
+			return out
+		}
+	}
+	return nil
 }
 
 func flushInput(fd int) {

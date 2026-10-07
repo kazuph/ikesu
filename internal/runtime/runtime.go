@@ -15,6 +15,7 @@ import (
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 
+	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/platform"
 )
 
@@ -61,7 +62,7 @@ type Pane struct {
 	dead          bool
 	fgPID         int
 	procName      string
-	procArgv0     string
+	agentID       string
 	procCwd       string
 	oscTitle      string
 	oscProgress   string
@@ -79,7 +80,7 @@ type Pane struct {
 // Snapshot is a consistent read of the pane's observable state.
 type Snapshot struct {
 	ProcName      string
-	ProcArgv0     string
+	AgentID       string
 	FgPID         int
 	Cwd           string
 	OSCTitle      string
@@ -343,7 +344,7 @@ func (p *Pane) Snapshot() Snapshot {
 func (p *Pane) snapshotLocked() Snapshot {
 	return Snapshot{
 		ProcName:      p.procName,
-		ProcArgv0:     p.procArgv0,
+		AgentID:       p.agentID,
 		FgPID:         p.fgPID,
 		Cwd:           p.procCwdOrDefault(),
 		OSCTitle:      p.oscTitle,
@@ -416,22 +417,26 @@ func (p *Pane) PollProcess() {
 	if p.ptyFile == nil {
 		return
 	}
-	pid := platform.ForegroundPID(int(p.ptyFile.Fd()))
-	if pid == 0 {
+	job := platform.ForegroundJobOf(int(p.ptyFile.Fd()))
+	if len(job.Processes) == 0 {
 		return
 	}
-	name := platform.ProcName(pid)
-	args := platform.ProcArgs(pid)
-	cwd := platform.ProcCwd(pid)
-	argv0 := ""
-	if len(args) > 0 {
-		argv0 = args[0]
+	dj := detect.Job{ProcessGroupID: job.ProcessGroupID}
+	for _, pr := range job.Processes {
+		dj.Processes = append(dj.Processes, detect.JobProcess{
+			PID:     pr.PID,
+			Name:    pr.Name,
+			Argv:    pr.Argv,
+			Cmdline: pr.Cmdline,
+		})
 	}
+	agentID, name := detect.IdentifyJob(dj)
+	cwd := platform.ProcCwd(job.ProcessGroupID)
 	p.mu.Lock()
-	agentChanged := p.fgPID != pid || p.procName != name
-	p.fgPID = pid
+	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name
+	p.fgPID = job.ProcessGroupID
 	p.procName = name
-	p.procArgv0 = argv0
+	p.agentID = agentID
 	if cwd != "" {
 		p.procCwd = cwd
 	}

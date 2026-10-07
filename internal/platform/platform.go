@@ -18,3 +18,22 @@ func ProcCwd(pid int) string { return procCwd(pid) }
 
 // FlushInput discards pending terminal input on fd.
 func FlushInput(fd int) { flushInput(fd) }
+
+// ForegroundProcess describes one member of a foreground process group.
+type ForegroundProcess struct {
+	PID     int
+	Name    string   // comm / short executable name
+	Argv    []string // argv, best effort; Argv[0] is argv0
+	Cmdline string   // argv joined with spaces, best effort
+}
+
+// ForegroundJob is the set of processes in the terminal's foreground
+// process group.
+type ForegroundJob struct {
+	ProcessGroupID int
+	Processes      []ForegroundProcess
+}
+
+// ForegroundJobOf returns the foreground process group of the terminal
+// behind fd (a PTY master), or an empty job on failure.
+func ForegroundJobOf(fd int) ForegroundJob { return foregroundJob(fd) }
