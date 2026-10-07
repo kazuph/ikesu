@@ -8,7 +8,9 @@ package server
 // "--last", "resume --last", or a cwd/mtime-latest guess.
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,6 +107,7 @@ func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
 
 // ledgerDel drops the ledger row for a permanently closed pane.
 func (s *Server) ledgerDel(pid int) {
+	delete(s.observedStart, pid)
 	if st, err := s.db(); err == nil {
 		_ = st.DeletePaneSession(s.session, pid)
 	}
@@ -218,7 +221,13 @@ func (s *Server) observePaneSession(pid int) {
 	job := rp.ForegroundJob()
 	cwd := snap.Cwd
 
+	if s.observedStart == nil {
+		s.observedStart = map[int]time.Time{}
+	}
 	start, ok := procStartOf(job)
+	if ok && hasRec && rec.Value != "" && s.observedStart[pid].Equal(start) {
+		return // already recorded for this exact process; don't re-walk
+	}
 	if ok {
 		if id, found := observeSessionFile(agent, cwd, start); found {
 			if !hasRec || !strings.HasPrefix(rec.Source, "report:") || rec.Value == "" {
@@ -226,6 +235,7 @@ func (s *Server) observePaneSession(pid int) {
 				s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: title, Source: "observed:file"})
 				s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: title, Source: "observed:file"})
 			}
+			s.observedStart[pid] = start
 			return
 		}
 	}
@@ -234,9 +244,12 @@ func (s *Server) observePaneSession(pid int) {
 	if hasRec && rec.Value != "" {
 		return
 	}
-	if id, ok := observeCmdline(job); ok {
+	if id, ok2 := observeCmdline(job); ok2 {
 		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
 		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
+		if ok {
+			s.observedStart[pid] = start
+		}
 	}
 }
 
@@ -268,61 +281,6 @@ func observeSessionFile(agent, cwd string, start time.Time) (string, bool) {
 	return "", false
 }
 
-// claudeProjectDir is the ~/.claude/projects dir for a cwd. Claude Code
-// slugifies the cwd by replacing every non-alphanumeric byte with '-'.
-func claudeProjectDir(cwd string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range cwd {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('-')
-		}
-	}
-	return filepath.Join(home, ".claude", "projects", b.String())
-}
-
-// firstLineTimestamp reads the RFC3339 "timestamp" of a jsonl's first
-// record — the moment the session file began.
-func firstLineTimestamp(path string) (time.Time, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return time.Time{}, false
-	}
-	defer f.Close()
-	buf := make([]byte, 8192)
-	n, _ := f.Read(buf)
-	line := string(buf[:n])
-	if i := strings.IndexByte(line, '\n'); i >= 0 {
-		line = line[:i]
-	}
-	k := strings.Index(line, `"timestamp"`)
-	if k < 0 {
-		return time.Time{}, false
-	}
-	rest := line[k+len(`"timestamp"`):]
-	if i := strings.IndexByte(rest, '"'); i < 0 {
-		return time.Time{}, false
-	} else {
-		rest = rest[i+1:]
-	}
-	j := strings.IndexByte(rest, '"')
-	if j < 0 {
-		return time.Time{}, false
-	}
-	ts, err := time.Parse(time.RFC3339Nano, rest[:j])
-	if err != nil {
-		if ts, err = time.Parse("2006-01-02T15:04:05.000Z", rest[:j]); err != nil {
-			return time.Time{}, false
-		}
-	}
-	return ts, true
-}
-
 // jsonStringField extracts `"key":"value"` from a JSON line, naive but
 // sufficient for the well-formed headers agent CLIs write.
 func jsonStringField(line, key string) string {
@@ -343,41 +301,126 @@ func jsonStringField(line, key string) string {
 	return rest[:j]
 }
 
-// observeClaudeSessionFile scans ~/.claude/projects/<cwd-slug> for the
-// unique session file whose start timestamp is within the window of the
-// agent process's start.
-func observeClaudeSessionFile(cwd string, start time.Time) (string, bool) {
-	dir := claudeProjectDir(cwd)
-	if dir == "" {
-		return "", false
+// payloadField extracts key from the `"payload"` object of a
+// session_meta line — not from the top level, so an outer field with the
+// same name can never be mistaken for it.
+func payloadField(line, key string) string {
+	i := strings.Index(line, `"payload"`)
+	if i < 0 {
+		return ""
 	}
-	ents, err := os.ReadDir(dir)
+	return jsonStringField(line[i:], key)
+}
+
+// parseSessionTS parses an RFC3339 timestamp from a session record.
+func parseSessionTS(v string) (time.Time, bool) {
+	ts, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		if ts, err = time.Parse("2006-01-02T15:04:05.000Z", v); err != nil {
+			return time.Time{}, false
+		}
+	}
+	return ts, true
+}
+
+// headLines calls fn for each of the first n lines of path, stopping
+// early when fn returns false.
+func headLines(path string, n int, fn func(line string) bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(io.LimitReader(f, 4<<20))
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for n > 0 && sc.Scan() {
+		n--
+		if !fn(sc.Text()) {
+			return
+		}
+	}
+}
+
+// observeClaudeSessionFile scans ~/.claude/projects/**/*.jsonl for the
+// unique file whose first 64 lines record this cwd and a timestamp
+// within the window of the agent process's start (SPEC G3). The project
+// folder name is not trusted — distinct cwds slugify to the same dir —
+// so the recorded cwd field decides, and the id is the recorded
+// sessionId, never the file name.
+func observeClaudeSessionFile(cwd string, start time.Time) (string, bool) {
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", false
 	}
+	root := filepath.Join(home, ".claude", "projects")
+	// A session file's recorded timestamp precedes its last write, so a
+	// file untouched since before the window cannot qualify; checking
+	// mtime first keeps the scan cheap.
+	cutoff := start.Add(-sessionFileWindow)
 	found := ""
 	count := 0
-	for _, e := range ents {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".jsonl") {
-			continue
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
 		}
-		ts, ok := firstLineTimestamp(filepath.Join(dir, name))
-		if !ok || absDur(ts.Sub(start)) > sessionFileWindow {
-			continue
+		if info, err := d.Info(); err != nil || info.ModTime().Before(cutoff) {
+			return nil
+		}
+		var id, fcwd string
+		var ts time.Time
+		headLines(path, 64, func(line string) bool {
+			if id == "" {
+				id = jsonStringField(line, "sessionId")
+			}
+			if fcwd == "" {
+				fcwd = jsonStringField(line, "cwd")
+			}
+			if ts.IsZero() {
+				if v := jsonStringField(line, "timestamp"); v != "" {
+					if t, ok := parseSessionTS(v); ok {
+						ts = t
+					}
+				}
+			}
+			return id == "" || fcwd == "" || ts.IsZero()
+		})
+		if id == "" || fcwd != cwd || ts.IsZero() || absDur(ts.Sub(start)) > sessionFileWindow {
+			return nil
 		}
 		count++
-		found = strings.TrimSuffix(name, ".jsonl")
-	}
+		found = id
+		return nil
+	})
 	if count != 1 {
 		return "", false
 	}
 	return found, true
 }
 
-// observeCodexSessionFile scans ~/.codex/sessions/**/rollout-*.jsonl for
-// the unique rollout whose session start is within the window and whose
-// recorded cwd matches the pane.
+// codexSessionMeta reads a rollout file's session_meta record (the first
+// line carrying one) and returns payload.id (or payload.session_id),
+// payload.cwd, and payload.timestamp.
+func codexSessionMeta(path string) (id, cwd string, ts time.Time, ok bool) {
+	headLines(path, 8, func(line string) bool {
+		if !strings.Contains(line, "session_meta") {
+			return true
+		}
+		id = payloadField(line, "id")
+		if id == "" {
+			id = payloadField(line, "session_id")
+		}
+		cwd = payloadField(line, "cwd")
+		ts, _ = parseSessionTS(payloadField(line, "timestamp"))
+		ok = true
+		return false
+	})
+	return id, cwd, ts, ok && id != "" && !ts.IsZero()
+}
+
+// observeCodexSessionFile scans the day folders sessions/YYYY/MM/DD
+// around the process start for the unique rollout whose session_meta
+// records this cwd and a timestamp within the window (SPEC G3). A meta
+// record without payload.cwd never counts.
 func observeCodexSessionFile(cwd string, start time.Time) (string, bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -386,48 +429,25 @@ func observeCodexSessionFile(cwd string, start time.Time) (string, bool) {
 	root := filepath.Join(home, ".codex", "sessions")
 	found := ""
 	count := 0
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasPrefix(d.Name(), "rollout-") || !strings.HasSuffix(d.Name(), ".jsonl") {
-			return nil
-		}
-		// Cheap pre-filter: the filename carries the launch timestamp.
-		// rollout-2026-10-03T11-28-31-<uuid>.jsonl
-		name := strings.TrimSuffix(strings.TrimPrefix(d.Name(), "rollout-"), ".jsonl")
-		tsStr := strings.Replace(name[:min(len(name), 19)], "T", "T", 1)
-		fileTS, err := time.ParseInLocation("2006-01-02T15-04-05", tsStr[:min(len(tsStr), 19)], time.Local)
-		if err != nil || absDur(fileTS.Sub(start)) > sessionFileWindow {
-			return nil
-		}
-		data, err := os.ReadFile(path)
+	for _, day := range []time.Time{start.AddDate(0, 0, -1), start, start.AddDate(0, 0, 1)} {
+		dir := filepath.Join(root, day.Format("2006"), day.Format("01"), day.Format("02"))
+		ents, err := os.ReadDir(dir)
 		if err != nil {
-			return nil
+			continue
 		}
-		line := string(data)
-		if i := strings.IndexByte(line, '\n'); i >= 0 {
-			line = line[:i]
-		}
-		fileCwd := jsonStringField(line, "cwd")
-		if fileCwd != "" && fileCwd != cwd {
-			return nil
-		}
-		if ts, ok := firstLineTimestamp(path); ok && absDur(ts.Sub(start)) > sessionFileWindow {
-			return nil
-		}
-		id := jsonStringField(line, "id")
-		if id == "" {
-			// Fall back to the uuid suffix of the rollout filename.
-			parts := strings.Split(name, "-")
-			if len(parts) >= 5 {
-				id = strings.Join(parts[len(parts)-5:], "-")
+		for _, e := range ents {
+			name := e.Name()
+			if e.IsDir() || !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, ".jsonl") {
+				continue
 			}
+			id, fcwd, ts, ok := codexSessionMeta(filepath.Join(dir, name))
+			if !ok || fcwd != cwd || absDur(ts.Sub(start)) > sessionFileWindow {
+				continue
+			}
+			count++
+			found = id
 		}
-		if id == "" {
-			return nil
-		}
-		count++
-		found = id
-		return nil
-	})
+	}
 	if count != 1 {
 		return "", false
 	}

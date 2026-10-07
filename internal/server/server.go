@@ -82,6 +82,10 @@ type Server struct {
 	saveMu     sync.Mutex
 	saveTimer  *time.Timer // pending coalesced session.json write
 	restarting bool        // set on the app loop; cleanup respawns a server
+
+	// observedStart remembers the process start an observed session id
+	// was recorded for, so the same process is never re-observed.
+	observedStart map[int]time.Time
 }
 
 // clientWriteTimeout bounds how long a frame write to the attached client
@@ -156,7 +160,7 @@ func Run(session, version string) (int, error) {
 	s := &Server{session: session, dir: dir, version: version, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
 		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		jobProcs:   jobProcsT{m: map[string]*exec.Cmd{}},
-		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}}
+		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
 
 	if cfg, err := config.Load(); err == nil {
 		s.cfg = cfg

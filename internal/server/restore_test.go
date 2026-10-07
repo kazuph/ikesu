@@ -366,8 +366,9 @@ func writeJSONL(t *testing.T, path, firstLine string) {
 	}
 }
 
-// Claude: the unique project-dir file whose first-line timestamp is near
-// the process start is adopted; two candidates resolve to nothing.
+// Claude: the unique file whose first 64 lines record the pane's cwd and
+// a timestamp near the process start is adopted; the id is the recorded
+// sessionId. Two candidates resolve to nothing.
 func TestObserveClaudeSessionFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -376,10 +377,10 @@ func TestObserveClaudeSessionFile(t *testing.T) {
 	start := time.Now().Add(-30 * time.Second)
 	ts := start.Format(time.RFC3339Nano)
 
-	writeJSONL(t, filepath.Join(dir, "sess-new.jsonl"),
-		`{"timestamp":"`+ts+`","type":"user"}`)
+	writeJSONL(t, filepath.Join(dir, "whatever-name.jsonl"),
+		`{"sessionId":"sess-new","cwd":"`+cwd+`","timestamp":"`+ts+`","type":"user"}`)
 	writeJSONL(t, filepath.Join(dir, "sess-old.jsonl"),
-		`{"timestamp":"2020-01-01T00:00:00Z","type":"user"}`)
+		`{"sessionId":"sess-old","cwd":"`+cwd+`","timestamp":"2020-01-01T00:00:00Z","type":"user"}`)
 
 	id, ok := observeClaudeSessionFile(cwd, start)
 	if !ok || id != "sess-new" {
@@ -388,7 +389,7 @@ func TestObserveClaudeSessionFile(t *testing.T) {
 
 	// A second in-window file makes the observation ambiguous.
 	writeJSONL(t, filepath.Join(dir, "sess-other.jsonl"),
-		`{"timestamp":"`+ts+`","type":"user"}`)
+		`{"sessionId":"sess-other","cwd":"`+cwd+`","timestamp":"`+ts+`","type":"user"}`)
 	if _, ok := observeClaudeSessionFile(cwd, start); ok {
 		t.Fatal("two in-window candidates must fail closed")
 	}
@@ -398,18 +399,54 @@ func TestObserveClaudeSessionFile(t *testing.T) {
 	}
 }
 
-// Codex: rollout files carry their launch timestamp in the name; the
-// session_meta cwd must match the pane's cwd.
+// Claude: the project folder name is never the cwd evidence — files
+// without a cwd field or with a different recorded cwd are not
+// candidates, even when they sit in the colliding slug dir ("/a/b.c"
+// and "/a/b-c" both slug to "-a-b-c").
+func TestObserveClaudeSessionFileCwdStrict(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cwd := "/a/b-c" // slug "-a-b-c"
+	dir := filepath.Join(home, ".claude", "projects", "-a-b-c")
+	start := time.Now().Add(-30 * time.Second)
+	ts := start.Format(time.RFC3339Nano)
+
+	// Colliding sibling cwd recorded inside the same slug dir.
+	writeJSONL(t, filepath.Join(dir, "dot-cwd.jsonl"),
+		`{"sessionId":"sess-dot","cwd":"/a/b.c","timestamp":"`+ts+`"}`)
+	// No cwd recorded at all.
+	writeJSONL(t, filepath.Join(dir, "no-cwd.jsonl"),
+		`{"sessionId":"sess-none","timestamp":"`+ts+`"}`)
+	if _, ok := observeClaudeSessionFile(cwd, start); ok {
+		t.Fatal("files without a matching recorded cwd must not be candidates")
+	}
+	if _, ok := observeClaudeSessionFile("/a/b.c", start); !ok {
+		t.Fatal("the /a/b.c record should resolve for cwd /a/b.c")
+	}
+
+	// Once the real cwd's file exists, it alone resolves.
+	writeJSONL(t, filepath.Join(dir, "real.jsonl"),
+		`{"sessionId":"sess-real","cwd":"`+cwd+`","timestamp":"`+ts+`"}`)
+	id, ok := observeClaudeSessionFile(cwd, start)
+	if !ok || id != "sess-real" {
+		t.Fatalf("got %q ok=%v", id, ok)
+	}
+}
+
+// Codex: the session_meta record decides — payload.cwd must exist and
+// match, and the id is payload.id (payload.session_id fallback).
 func TestObserveCodexSessionFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cwd := "/Users/x/proj"
 	start := time.Now().Add(-30 * time.Second)
-	name := "rollout-" + start.Format("2006-01-02T15-04-05") + "-aaaa-bbbb-cccc-dddd-eeee.jsonl"
-	path := filepath.Join(home, ".codex", "sessions",
-		start.Format("2006"), start.Format("01"), start.Format("02"), name)
-	writeJSONL(t, path,
-		`{"timestamp":"`+start.Format(time.RFC3339Nano)+`","type":"session_meta","payload":{"id":"sess-cdx","cwd":"`+cwd+`"}}`)
+	day := filepath.Join(home, ".codex", "sessions",
+		start.Format("2006"), start.Format("01"), start.Format("02"))
+	name := func(suffix string) string {
+		return "rollout-" + start.Format("2006-01-02T15-04-05") + "-aaaa-bbbb-cccc-dddd-" + suffix + ".jsonl"
+	}
+	writeJSONL(t, filepath.Join(day, name("eeee")),
+		`{"timestamp":"`+start.Format(time.RFC3339Nano)+`","type":"session_meta","payload":{"id":"sess-cdx","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
 
 	id, ok := observeCodexSessionFile(cwd, start)
 	if !ok || id != "sess-cdx" {
@@ -418,6 +455,46 @@ func TestObserveCodexSessionFile(t *testing.T) {
 	// A rollout for a different cwd is not a candidate.
 	if _, ok := observeCodexSessionFile("/other/dir", start); ok {
 		t.Fatal("mismatched cwd must not resolve")
+	}
+	// Rollouts outside the day folders around start are not scanned, even
+	// when their meta claims an in-window timestamp.
+	writeJSONL(t, filepath.Join(home, ".codex", "sessions", "2020", "01", "01",
+		"rollout-2020-01-01T00-00-00-aaaa-bbbb-cccc-dddd-ffff.jsonl"),
+		`{"type":"session_meta","payload":{"id":"sess-old","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
+	id2, ok := observeCodexSessionFile(cwd, start)
+	if !ok || id2 != "sess-cdx" {
+		t.Fatalf("out-of-day-folder rollout must not count; got %q ok=%v", id2, ok)
+	}
+}
+
+// Codex fail-closed: a session_meta without payload.cwd, with a foreign
+// cwd, or with a stale timestamp never counts as a candidate; only
+// payload.session_id is used when payload.id is absent.
+func TestObserveCodexSessionFileStrict(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cwd := "/Users/x/proj"
+	start := time.Now().Add(-30 * time.Second)
+	ts := start.Format(time.RFC3339Nano)
+	day := filepath.Join(home, ".codex", "sessions",
+		start.Format("2006"), start.Format("01"), start.Format("02"))
+	rollout := func(suffix, payload string) {
+		writeJSONL(t, filepath.Join(day, "rollout-"+start.Format("2006-01-02T15-04-05")+"-"+suffix+".jsonl"),
+			`{"timestamp":"`+ts+`","type":"session_meta","payload":{`+payload+`}}`)
+	}
+
+	rollout("aaaa-0000-0000-0000-000000000001", `"id":"nocwd","timestamp":"`+ts+`"`)                               // no cwd
+	rollout("aaaa-0000-0000-0000-000000000002", `"id":"other","timestamp":"`+ts+`","cwd":"/else/where"`)           // wrong cwd
+	rollout("aaaa-0000-0000-0000-000000000003", `"id":"stale","timestamp":"2020-01-01T00:00:00Z","cwd":"`+cwd+`"`) // stale ts
+	if _, ok := observeCodexSessionFile(cwd, start); ok {
+		t.Fatal("rollouts without a matching payload.cwd must not be candidates")
+	}
+
+	// payload.session_id is the fallback when payload.id is absent.
+	rollout("aaaa-0000-0000-0000-000000000004", `"session_id":"sess-fb","timestamp":"`+ts+`","cwd":"`+cwd+`"`)
+	id, ok := observeCodexSessionFile(cwd, start)
+	if !ok || id != "sess-fb" {
+		t.Fatalf("session_id fallback: got %q ok=%v", id, ok)
 	}
 }
 
