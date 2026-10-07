@@ -66,7 +66,7 @@ func (o Options) stderr() io.Writer {
 func Run(args []string, o Options) int {
 	r := &runner{o: o}
 	if len(args) == 0 {
-		fmt.Fprintln(r.errOut(), "usage: gtx <pane|workspace|tab|server> <command> ...")
+		fmt.Fprintln(r.errOut(), "usage: gtx <pane|workspace|tab|server|send|inbox|msg|run|log|agent> <command> ...")
 		return 2
 	}
 	switch args[0] {
@@ -78,6 +78,22 @@ func Run(args []string, o Options) int {
 		return r.tab(args[1:])
 	case "server":
 		return r.server(args[1:])
+	case "send":
+		return r.sendCLI(args[1:])
+	case "inbox":
+		return r.inboxCLI(args[1:])
+	case "msg":
+		return r.msgCLI(args[1:])
+	case "run":
+		return r.runCLI(args[1:])
+	case "log":
+		return r.logCLI(args[1:])
+	case "agent":
+		return r.agentCLI(args[1:])
+	case "help", "--help", "-h":
+		return r.helpCLI()
+	case "__pane-run":
+		return r.paneRunWrapper(args[1:])
 	default:
 		fmt.Fprintf(r.errOut(), "unknown command: %s\n", args[0])
 		return 2
