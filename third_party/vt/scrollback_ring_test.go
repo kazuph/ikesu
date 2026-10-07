@@ -137,3 +137,63 @@ func TestScrollbackTrimEquivalence(t *testing.T) {
 		}
 	}
 }
+
+// TestScrollbackPushReusePreservesContent exercises the full-ring path where
+// the evicted line's backing array is recycled for the incoming copy, and
+// checks that the stored content, style, and link still match the original
+// clone-everything behavior.
+func TestScrollbackPushReusePreservesContent(t *testing.T) {
+	styled := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Attrs: uv.AttrBold}}
+	linked := uv.Cell{Content: " ", Width: 1, Link: uv.Link{URL: "u", Params: "p"}}
+	blank := uv.EmptyCell
+
+	srcs := make([]uv.Line, 0, 8)
+	for i := 0; i < 8; i++ {
+		line := make(uv.Line, 6+i) // vary lengths so reuse hits both grow and shrink
+		for x := range line {
+			line[x] = blank
+		}
+		line[0] = uv.Cell{Content: string(rune('a' + i)), Width: 1}
+		if i%2 == 0 {
+			line[2] = styled
+		} else {
+			line[2] = linked
+		}
+		srcs = append(srcs, line)
+	}
+
+	sb := NewScrollback(4)
+	for _, l := range srcs {
+		sb.Push(l)
+	}
+	if sb.Len() != 4 {
+		t.Fatalf("Len=%d want 4", sb.Len())
+	}
+	// Lines 4..7 remain; each must equal the trimmed copy of its source,
+	// including styled and linked cells.
+	for i := 0; i < 4; i++ {
+		src := srcs[i+4]
+		want := refTrim(src) + 1
+		got := sb.Line(i)
+		if len(got) != want {
+			t.Fatalf("Line(%d) len=%d want %d", i, len(got), want)
+		}
+		for x := 0; x < want; x++ {
+			if got[x] != src[x] {
+				t.Fatalf("Line(%d) cell %d: got %+v want %+v", i, x, got[x], src[x])
+			}
+		}
+		if i%2 == 0 && got[2].Style.Attrs != uv.AttrBold {
+			t.Fatalf("Line(%d) lost style", i)
+		}
+		if i%2 == 1 && (got[2].Link.URL != "u" || got[2].Link.Params != "p") {
+			t.Fatalf("Line(%d) lost link", i)
+		}
+	}
+	// Stored lines must be independent copies: mutating a source after Push
+	// must not change what is stored.
+	srcs[7][0].Content = "MUTATED"
+	if sb.Line(3)[0].Content != "h" {
+		t.Fatalf("stored line aliases its source: %q", sb.Line(3)[0].Content)
+	}
+}

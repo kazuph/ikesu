@@ -41,6 +41,29 @@ func (s *Scrollback) wrap(i int) int {
 	return i
 }
 
+// blankCell reports whether c is a plain blank: the zero cell or
+// [uv.EmptyCell] (" ", width 1, no style, no link). It is the field-by-field
+// equivalent of `*c == uv.Cell{} || *c == uv.EmptyCell`, written out because
+// the trailing-space scan in [Scrollback.Push] hits it for almost every cell
+// of every scrolled line and a whole-struct comparison is measurably slower.
+func blankCell(c *uv.Cell) bool {
+	if c.Content != "" && c.Content != " " {
+		return false
+	}
+	st := &c.Style
+	if st.Fg != nil || st.Bg != nil || st.UnderlineColor != nil ||
+		st.Underline != uv.UnderlineNone || st.Attrs != 0 {
+		return false
+	}
+	if c.Link.URL != "" || c.Link.Params != "" {
+		return false
+	}
+	if c.Content == "" {
+		return c.Width == 0
+	}
+	return c.Width == 1
+}
+
 // Push adds a line to the scrollback buffer.
 // If the buffer is full, the oldest line is removed.
 func (s *Scrollback) Push(line uv.Line) {
@@ -52,28 +75,29 @@ func (s *Scrollback) Push(line uv.Line) {
 	// This helps with wrapping and window resizing.
 	lastNonEmpty := -1
 	for i := len(line) - 1; i >= 0; i-- {
-		c := &line[i]
-		if c.Content != "" && c.Content != " " {
-			lastNonEmpty = i
-			break
-		}
-		// A space (or missing content) is still meaningful when it carries a
-		// style or link; both checks are cheaper than [Cell.Equal].
-		if *c != (uv.Cell{}) && *c != uv.EmptyCell {
+		if !blankCell(&line[i]) {
 			lastNonEmpty = i
 			break
 		}
 	}
 
-	// Clone the line content up to and including the last non-empty cell
-	cloned := slices.Clone(line[:lastNonEmpty+1])
+	// Keep the line content up to and including the last non-empty cell.
+	end := lastNonEmpty + 1
 
 	if s.count < s.maxLines {
-		s.lines[s.wrap(s.start+s.count)] = cloned
+		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
 		s.count++
 		return
 	}
-	s.lines[s.start] = cloned
+
+	// The buffer is full: reuse the evicted line's backing array for the new
+	// copy instead of allocating a fresh one for every pushed line.
+	idx := s.start
+	if dst := s.lines[idx]; cap(dst) >= end {
+		s.lines[idx] = append(dst[:0], line[:end]...)
+	} else {
+		s.lines[idx] = slices.Clone(line[:end])
+	}
 	s.start = s.wrap(s.start + 1)
 }
 
