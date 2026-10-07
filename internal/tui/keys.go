@@ -84,6 +84,11 @@ func (a *App) prefixKey(k uv.Key) {
 		a.selectWorkspace(int(k.Code - '1'))
 	case k.Code == 'b':
 		a.exec(model.CmdToggleSidebar{})
+	case k.Code == 'd' && k.Mod == 0:
+		// Detach: only meaningful when running under a server.
+		if a.detacher != nil {
+			a.detacher("detach requested")
+		}
 	case k.Code == 'q':
 		a.openQuitDialog()
 	}

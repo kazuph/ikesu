@@ -10,7 +10,9 @@ import (
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/cli"
+	"github.com/kazuph/goterrace/internal/client"
 	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/goterrace/internal/server"
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
@@ -57,7 +59,17 @@ dispatch:
 			return
 		case "detect":
 			os.Exit(runDetect(args[1:]))
-		case "pane", "workspace", "tab", "server":
+		case "server":
+			// `gtx server` runs the server; `gtx server <sub>` is the CLI.
+			if len(args) == 1 {
+				code, err := server.Run(session, version)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "gtx server:", err)
+				}
+				os.Exit(code)
+			}
+			fallthrough
+		case "pane", "workspace", "tab":
 			os.Exit(cli.Run(args, cli.Options{
 				Session:  session,
 				Explicit: explicitSession,
@@ -65,19 +77,21 @@ dispatch:
 		}
 	}
 
-	code, err := run(noSession)
+	code, err := run(noSession, session)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gtx:", err)
 	}
 	os.Exit(code)
 }
 
-func run(noSession bool) (int, error) {
+func run(noSession bool, session string) (int, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return 1, fmt.Errorf("stdin is not a terminal")
 	}
-	_ = noSession // session attach lands with the server/client milestone
-	return tui.Run(os.Stdin, os.Stdout)
+	if noSession {
+		return tui.Run(os.Stdin, os.Stdout)
+	}
+	return client.Attach(session, os.Stdin, os.Stdout)
 }
 
 // runDetect loads a captured screen file and reports every agent's state.

@@ -1,0 +1,327 @@
+package server
+
+import (
+	"bufio"
+	"encoding/base64"
+	"encoding/json"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/kazuph/goterrace/internal/api"
+)
+
+// testConn is a raw client-socket connection for tests.
+type testConn struct {
+	conn net.Conn
+	rd   *bufio.Reader
+}
+
+func dialClient(t *testing.T, dir string) *testConn {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		conn, err := net.Dial("unix", api.ClientSocketPath(dir))
+		if err == nil {
+			return &testConn{conn: conn, rd: bufio.NewReader(conn)}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("client socket never came up at %s: %v", dir, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func (c *testConn) send(t *testing.T, m clientMsg) {
+	t.Helper()
+	if err := json.NewEncoder(c.conn).Encode(m); err != nil {
+		t.Fatalf("send %q: %v", m.Type, err)
+	}
+}
+
+// readUntil returns all messages until pred matches or the deadline hits.
+func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clientMsg) bool) []clientMsg {
+	t.Helper()
+	var got []clientMsg
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		line, err := c.rd.ReadBytes('\n')
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
+			return got // EOF
+		}
+		var m clientMsg
+		if json.Unmarshal(line, &m) == nil {
+			got = append(got, m)
+			if pred(m) {
+				return got
+			}
+		}
+	}
+	return got
+}
+
+func outputs(msgs []clientMsg) string {
+	var sb strings.Builder
+	for _, m := range msgs {
+		if m.Type == "output" {
+			if b, err := base64.StdEncoding.DecodeString(m.Data); err == nil {
+				sb.Write(b)
+			}
+		}
+	}
+	return sb.String()
+}
+
+func startTestServer(t *testing.T) (dir string, done chan int) {
+	t.Helper()
+	// unix sockets cap sun_path around 104 bytes; t.TempDir() paths on
+	// macOS exceed that, so use a short base under /tmp.
+	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(base) })
+	t.Setenv("GTX_STATE_DIR", base)
+	t.Setenv("SHELL", "/bin/sh")
+	dir = api.SessionDir("test")
+	done = make(chan int, 1)
+	go func() {
+		code, err := Run("test", "test-version")
+		if err != nil {
+			t.Errorf("server.Run: %v", err)
+		}
+		done <- code
+	}()
+	return dir, done
+}
+
+func TestAttachDetachReattach(t *testing.T) {
+	dir, done := startTestServer(t)
+
+	// Attach 1: hello, then drive the pane.
+	c1 := dialClient(t, dir)
+	c1.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	msgs := c1.readUntil(t, 10*time.Second, func(m clientMsg) bool {
+		return m.Type == "output"
+	})
+	if outputs(msgs) == "" {
+		t.Fatal("no output frames received")
+	}
+
+	// Type a command; the echo output should arrive over the socket.
+	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo gtxmarker42\n"))})
+	var sawMarker bool
+	for i := 0; i < 20 && !sawMarker; i++ {
+		msgs = c1.readUntil(t, time.Second, func(m clientMsg) bool {
+			b, _ := base64.StdEncoding.DecodeString(m.Data)
+			return m.Type == "output" && strings.Contains(string(b), "gtxmarker42")
+		})
+		sawMarker = strings.Contains(outputs(msgs), "gtxmarker42")
+	}
+	if !sawMarker {
+		t.Fatal("pane output never echoed gtxmarker42")
+	}
+
+	// Detach via Ctrl-B d.
+	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte{0x02, 'd'})})
+	msgs = c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "detached" })
+	var detached bool
+	for _, m := range msgs {
+		if m.Type == "detached" {
+			detached = true
+		}
+	}
+	if !detached {
+		t.Fatal("expected a detached message")
+	}
+	c1.conn.Close()
+
+	// Reattach: the server must still be running and repaint on demand.
+	c2 := dialClient(t, dir)
+	c2.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	msgs = c2.readUntil(t, 10*time.Second, func(m clientMsg) bool {
+		b, _ := base64.StdEncoding.DecodeString(m.Data)
+		return m.Type == "output" && strings.Contains(string(b), "gtxmarker42")
+	})
+	if !strings.Contains(outputs(msgs), "gtxmarker42") {
+		t.Fatal("reattach did not repaint the pane contents")
+	}
+	c2.conn.Close()
+
+	// Stop the server; it should exit and clean up.
+	conn, err := net.Dial("unix", api.APISocketPath(dir))
+	if err != nil {
+		t.Fatalf("dial api: %v", err)
+	}
+	if err := json.NewEncoder(conn).Encode(map[string]any{
+		"id": "t", "method": "server.stop", "params": map[string]any{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rd := bufio.NewReader(conn)
+	var resp api.Response
+	line, err := rd.ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("stop response: %v", err)
+	}
+	if err := json.Unmarshal(line, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Err != nil {
+		t.Fatalf("server.stop error: %+v", resp.Err)
+	}
+	conn.Close()
+
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Fatalf("server exit code %d", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not exit after server.stop")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gtx.sock")); !os.IsNotExist(err) {
+		t.Error("gtx.sock not removed on shutdown")
+	}
+}
+
+func TestNewClientDisplacesOld(t *testing.T) {
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+
+	c1 := dialClient(t, dir)
+	c1.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+
+	c2 := dialClient(t, dir)
+	c2.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+
+	msgs := c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "detached" })
+	var displaced bool
+	for _, m := range msgs {
+		if m.Type == "detached" {
+			displaced = true
+		}
+	}
+	if !displaced {
+		t.Fatal("old client was not detached when a new client attached")
+	}
+	c1.conn.Close()
+	c2.conn.Close()
+}
+
+func TestServerExitsWhenLastPaneExits(t *testing.T) {
+	dir, done := startTestServer(t)
+
+	c := dialClient(t, dir)
+	c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+
+	// Exit the only pane's shell: the app quits, the client sees "exit".
+	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("exit\n"))})
+	msgs := c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
+	var sawExit bool
+	for _, m := range msgs {
+		if m.Type == "exit" {
+			sawExit = true
+		}
+	}
+	c.conn.Close()
+	if !sawExit {
+		t.Fatal("client did not receive exit message")
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not exit after last pane exited")
+	}
+}
+
+func stopServer(t *testing.T, dir string, done chan int) {
+	t.Helper()
+	conn, err := net.Dial("unix", api.APISocketPath(dir))
+	if err != nil {
+		return
+	}
+	json.NewEncoder(conn).Encode(map[string]any{"id": "t", "method": "server.stop", "params": map[string]any{}})
+	bufio.NewReader(conn).ReadBytes('\n')
+	conn.Close()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not exit")
+	}
+}
+
+func TestSecondServerRefused(t *testing.T) {
+	dir, done := startTestServer(t)
+	dialClient(t, dir) // wait until sockets are live
+
+	_, err := Run("test", "test-version")
+	if err == nil {
+		t.Fatal("second server.Run succeeded; want lock refusal")
+	}
+	done2 := done
+
+	// Clean up via API stop.
+	conn, err := net.Dial("unix", api.APISocketPath(dir))
+	if err != nil {
+		t.Fatalf("dial api: %v", err)
+	}
+	json.NewEncoder(conn).Encode(map[string]any{"id": "t", "method": "server.stop", "params": map[string]any{}})
+	bufio.NewReader(conn).ReadBytes('\n')
+	conn.Close()
+	select {
+	case <-done2:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not exit")
+	}
+}
+
+func TestPingAndUnknownMethod(t *testing.T) {
+	dir, done := startTestServer(t)
+	dialClient(t, dir)
+
+	req := func(method string) api.Response {
+		conn, err := net.Dial("unix", api.APISocketPath(dir))
+		if err != nil {
+			t.Fatalf("dial api: %v", err)
+		}
+		defer conn.Close()
+		json.NewEncoder(conn).Encode(map[string]any{"id": "x", "method": method, "params": map[string]any{}})
+		line, err := bufio.NewReader(conn).ReadBytes('\n')
+		if err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		var resp api.Response
+		if err := json.Unmarshal(line, &resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	r := req("ping")
+	if r.Err != nil {
+		t.Fatalf("ping error: %+v", r.Err)
+	}
+	r = req("pane.list")
+	if r.Err == nil || r.Err.Code != api.ErrUnknownMethod {
+		t.Fatalf("pane.list should be unknown_method in M2, got %+v", r.Err)
+	}
+	r = req("server.stop")
+	if r.Err != nil {
+		t.Fatalf("stop error: %+v", r.Err)
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not exit")
+	}
+}

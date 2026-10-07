@@ -1,9 +1,15 @@
 // Package tui runs the outer terminal: raw mode, input framing, the
 // command/effect loop against model.AppState, and frame rendering.
+//
+// The App itself is transport-agnostic: it consumes raw input bytes and
+// resize events from channels and writes encoded frames to an io.Writer.
+// Run wires it to the local terminal; the server wires it to the attach
+// socket instead, which keeps the session alive while clients come and go.
 package tui
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,12 +41,16 @@ const (
 )
 
 const (
-	enterSeq = "\x1b[?1049h" + // alternate screen
+	// EnterSeq puts the terminal into the app modes.
+	EnterSeq = "\x1b[?1049h" + // alternate screen
 		"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h" + // SGR mouse + motion
 		"\x1b[?1004h" + // focus reporting
 		"\x1b[?2004h" // bracketed paste
-	mouseOffSeq = "\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
-	leaveSeq    = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
+	// MouseOffSeq disables mouse reporting before LeaveSeq so queued mouse
+	// bytes can be flushed before the outer shell sees them (fix #6).
+	MouseOffSeq = "\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
+	// LeaveSeq restores the terminal.
+	LeaveSeq = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
 )
 
 type menuKind int
@@ -87,14 +97,33 @@ type selState struct {
 	scrollAt int         // scroll offset at drag start
 }
 
-// App is the whole TUI.
+// appJob runs fn on the app loop goroutine and signals completion.
+type appJob struct {
+	fn   func()
+	done chan struct{}
+}
+
+// App is the whole TUI: model state, supervisor, input framing, and
+// rendering. External inputs (the API server, a client socket) submit work
+// through Do/PushInput/Resize so all state changes stay on the loop
+// goroutine.
 type App struct {
 	st  *model.AppState
 	sup *runtime.Supervisor
-	out *os.File
+	out io.Writer
 	fr  *input.Framer
 	enc *render.Encoder
 	cwd string
+
+	input    chan []byte
+	resizeCh chan winsize
+	jobs     chan appJob
+	doneCh   chan struct{}
+
+	inputEOF bool                // input close means quit (local mode)
+	detacher func(reason string) // server mode: detach the client
+	sinkOn   func() bool         // nil = always draw
+	quitHook func()              // runs on the loop right before Run returns
 
 	prefix        bool
 	menu          *uiMenu
@@ -114,70 +143,100 @@ type App struct {
 	quit          bool
 }
 
-// Run starts the TUI and blocks until quit. Returns an exit code.
-func Run(in *os.File, out *os.File) (int, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = os.Getenv("HOME")
-	}
-	old, err := term.MakeRaw(int(in.Fd()))
-	if err != nil {
-		return 1, fmt.Errorf("raw mode: %w", err)
-	}
-	restored := false
-	restore := func() {
-		if !restored {
-			_ = term.Restore(int(in.Fd()), old)
-			restored = true
-		}
-	}
-	defer restore()
-
-	ws, err := getWinsize(in)
-	if err != nil {
-		return 1, err
-	}
-	if _, err := out.WriteString(enterSeq); err != nil {
-		return 1, err
-	}
-	leave := func() {
-		// Fix #6: stop mouse reporting first, flush queued input so the
-		// outer shell never sees leftover mouse bytes, then restore modes.
-		_, _ = out.WriteString(mouseOffSeq)
-		platform.FlushInput(int(in.Fd()))
-		drainInput(in, drainMs)
-		_, _ = out.WriteString(leaveSeq)
-		restore()
-	}
-	defer leave()
-
-	st := model.New(cwd, ws.Cols, ws.Rows)
-	sup := runtime.NewSupervisor()
-	a := &App{
+// NewApp creates an App over existing state and supervisor. out is the
+// display sink: the local terminal, or the server's attached client.
+func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd string) *App {
+	return &App{
 		st:       st,
 		sup:      sup,
 		out:      out,
 		fr:       &input.Framer{},
 		enc:      &render.Encoder{},
 		cwd:      cwd,
+		input:    make(chan []byte, 256),
+		resizeCh: make(chan winsize, 8),
+		jobs:     make(chan appJob),
+		doneCh:   make(chan struct{}),
 		scroll:   map[int]int{},
 		trackers: map[int]*status.Tracker{},
 		fwd:      -1,
 	}
+}
 
-	// Spawn the initial pane sized to its inner rect.
-	pid := st.Workspaces[0].Layout.Focused()
-	r := a.innerRect(pid)
-	if _, err := sup.Spawn(pid, cwd, r.W, r.H); err != nil {
-		return 1, fmt.Errorf("spawn pane: %w", err)
+// State returns the application state. Callers must only touch it inside
+// Do; it is exposed for the server package.
+func (a *App) State() *model.AppState { return a.st }
+
+// Supervisor returns the pane supervisor.
+func (a *App) Supervisor() *runtime.Supervisor { return a.sup }
+
+// SetDetacher registers the detach hook for prefix `d`. nil keeps `d`
+// unbound (in-process mode).
+func (a *App) SetDetacher(f func(reason string)) { a.detacher = f }
+
+// SetSinkGate registers a predicate consulted before composing a frame.
+// The server uses it to skip rendering while no client is attached.
+func (a *App) SetSinkGate(f func() bool) { a.sinkOn = f }
+
+// SetQuitHook registers a callback invoked on the loop just before Run
+// returns (e.g. to send the client a final exit message).
+func (a *App) SetQuitHook(f func()) { a.quitHook = f }
+
+// Do runs fn on the app loop goroutine and blocks until it completes. It
+// returns without running fn if the app has already stopped.
+func (a *App) Do(fn func()) {
+	done := make(chan struct{})
+	select {
+	case a.jobs <- appJob{fn: fn, done: done}:
+		<-done
+	case <-a.doneCh:
 	}
+}
 
-	inCh := make(chan []byte, 64)
-	go readInput(in, inCh)
-	winch := make(chan os.Signal, 4)
-	signal.Notify(winch, syscall.SIGWINCH)
-	defer signal.Stop(winch)
+// PushInput feeds raw terminal input bytes to the framer.
+func (a *App) PushInput(b []byte) {
+	select {
+	case a.input <- b:
+	case <-a.doneCh:
+	}
+}
 
+// CloseInput closes the input channel; in local mode that quits the app.
+func (a *App) CloseInput() { close(a.input) }
+
+// Resize records a new outer terminal size.
+func (a *App) Resize(cols, rows int) {
+	select {
+	case a.resizeCh <- winsize{Cols: cols, Rows: rows}:
+	case <-a.doneCh:
+	}
+}
+
+// Stop requests the event loop to exit.
+func (a *App) Stop() {
+	a.Do(func() { a.exec(model.CmdQuit{}) })
+}
+
+// ExecCmd applies a model command and its effects. It must be called on
+// the app loop goroutine (from inside Do) or before Run starts.
+func (a *App) ExecCmd(cmd model.Command) { a.exec(cmd) }
+
+// StartInitialPane spawns the shell for the workspace created by
+// model.New, sized to its inner rect.
+func (a *App) StartInitialPane() error {
+	if len(a.st.Workspaces) == 0 {
+		return nil
+	}
+	pid := a.st.Workspaces[0].Layout.Focused()
+	r := a.innerRect(pid)
+	_, err := a.sup.Spawn(pid, a.cwd, r.W, r.H)
+	return err
+}
+
+// Run executes the event loop until quit. It returns after the model
+// signals EffQuit (last pane closed, quit dialog, or API stop).
+func (a *App) Run() {
+	defer close(a.doneCh)
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 	var flush <-chan time.Time
@@ -191,9 +250,12 @@ func Run(in *os.File, out *os.File) (int, error) {
 	a.dirty = true
 	for !a.quit {
 		select {
-		case b, ok := <-inCh:
+		case b, ok := <-a.input:
 			if !ok {
-				a.exec(model.CmdQuit{})
+				a.input = nil
+				if a.inputEOF {
+					a.exec(model.CmdQuit{})
+				}
 				continue
 			}
 			for _, ev := range a.fr.Push(b) {
@@ -219,10 +281,13 @@ func Run(in *os.File, out *os.File) (int, error) {
 			} else {
 				flush = nil
 			}
-		case ev := <-sup.Events():
+		case j := <-a.jobs:
+			j.fn()
+			close(j.done)
+		case ev := <-a.sup.Events():
 			a.onRuntimeEvent(ev)
-		case <-winch:
-			if sz, err := getWinsize(in); err == nil && (sz.Cols != st.Cols || sz.Rows != st.Rows) {
+		case sz := <-a.resizeCh:
+			if sz.Cols != a.st.Cols || sz.Rows != a.st.Rows {
 				a.exec(model.CmdResize{Cols: sz.Cols, Rows: sz.Rows})
 				a.enc.Reset()
 			}
@@ -236,6 +301,71 @@ func Run(in *os.File, out *os.File) (int, error) {
 			a.draw()
 		}
 	}
+	if a.quitHook != nil {
+		a.quitHook()
+	}
+}
+
+// Run starts the TUI on the local terminal and blocks until quit. Returns
+// an exit code.
+func Run(in *os.File, out *os.File) (int, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = os.Getenv("HOME")
+	}
+	old, err := term.MakeRaw(int(in.Fd()))
+	if err != nil {
+		return 1, fmt.Errorf("raw mode: %w", err)
+	}
+	restored := false
+	restore := func() {
+		if !restored {
+			_ = term.Restore(int(in.Fd()), old)
+			restored = true
+		}
+	}
+	defer restore()
+
+	ws, err := GetWinsize(in)
+	if err != nil {
+		return 1, err
+	}
+	if _, err := out.WriteString(EnterSeq); err != nil {
+		return 1, err
+	}
+	leave := func() {
+		// Fix #6: stop mouse reporting first, flush queued input so the
+		// outer shell never sees leftover mouse bytes, then restore modes.
+		_, _ = out.WriteString(MouseOffSeq)
+		platform.FlushInput(int(in.Fd()))
+		DrainInput(in, drainMs)
+		_, _ = out.WriteString(LeaveSeq)
+		restore()
+	}
+	defer leave()
+
+	st := model.New(cwd, ws.Cols, ws.Rows)
+	sup := runtime.NewSupervisor()
+	a := NewApp(st, sup, out, cwd)
+	a.inputEOF = true
+
+	if err := a.StartInitialPane(); err != nil {
+		return 1, fmt.Errorf("spawn pane: %w", err)
+	}
+
+	go readInput(in, a.input)
+	winch := make(chan os.Signal, 4)
+	signal.Notify(winch, syscall.SIGWINCH)
+	defer signal.Stop(winch)
+	go func() {
+		for range winch {
+			if sz, err := GetWinsize(in); err == nil {
+				a.Resize(sz.Cols, sz.Rows)
+			}
+		}
+	}()
+
+	a.Run()
 	sup.KillAll()
 	return 0, nil
 }
@@ -314,7 +444,7 @@ func (a *App) detectAll() {
 }
 
 // onTick handles periodic work: spinner animation, copied-flash expiry,
-// foreground-process polling, and detection (stub until M6/M7).
+// foreground-process polling, and detection.
 func (a *App) onTick() {
 	if a.copied != "" && time.Since(a.copiedAt) > copiedDuration {
 		a.copied = ""
@@ -444,6 +574,13 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	if a.sinkOn != nil && !a.sinkOn() {
+		// No display attached: drop the frame work but clear the flag so a
+		// later attach gets a full repaint via the resize/reset path.
+		a.dirty = false
+		a.lastDraw = time.Now()
+		return
+	}
 	in := render.Input{
 		State:         a.st,
 		Panes:         a.paneSnaps(),
@@ -467,6 +604,10 @@ func (a *App) draw() {
 	a.dirty = false
 	_, _ = a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
 }
+
+// ResetEncoder drops the diff state so the next frame repaints fully. The
+// server calls it when a fresh client attaches.
+func (a *App) ResetEncoder() { a.enc.Reset() }
 
 // paneSnaps builds render snapshots for every live pane.
 func (a *App) paneSnaps() map[int]*render.PaneSnap {
@@ -519,13 +660,17 @@ func agentFor(sn runtime.Snapshot) string {
 
 type winsize struct{ Cols, Rows int }
 
-func getWinsize(f *os.File) (winsize, error) {
+// GetWinsize reads the terminal size of f.
+func GetWinsize(f *os.File) (winsize, error) {
 	w, h, err := term.GetSize(int(f.Fd()))
 	if err != nil {
 		return winsize{120, 40}, err
 	}
 	return winsize{w, h}, nil
 }
+
+// Winsize is the terminal size exported for the client package.
+type Winsize = winsize
 
 func readInput(f *os.File, ch chan<- []byte) {
 	buf := make([]byte, 64*1024)
@@ -543,9 +688,9 @@ func readInput(f *os.File, ch chan<- []byte) {
 	}
 }
 
-// drainInput reads and discards leftover input (e.g. mouse reports already
+// DrainInput reads and discards leftover input (e.g. mouse reports already
 // in flight) for up to d, so the outer shell never sees them.
-func drainInput(f *os.File, d time.Duration) {
+func DrainInput(f *os.File, d time.Duration) {
 	deadline := time.Now().Add(d)
 	fd := int(f.Fd())
 	pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}

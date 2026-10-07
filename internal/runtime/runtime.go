@@ -110,6 +110,10 @@ type Supervisor struct {
 	panes  map[int]*Pane
 	events chan Event
 	done   chan struct{}
+
+	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
+	// environment (the server uses it for GTX_PANE_ID/GTX_SOCKET_PATH).
+	Env func(paneID int) []string
 }
 
 // NewSupervisor creates an empty supervisor.
@@ -172,6 +176,9 @@ func (s *Supervisor) Spawn(id int, cwd string, cols, rows int) (*Pane, error) {
 		"GOTERRACE=1",
 		"GOTERRACE_PANE_ID="+itoa(id),
 	)
+	if s.Env != nil {
+		cmd.Env = append(cmd.Env, s.Env(id)...)
+	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		emu.Close()
