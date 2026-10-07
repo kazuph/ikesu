@@ -77,6 +77,11 @@ type Server struct {
 	lastStatus    map[int]string               // last seen status key per pane
 	notifyLast    map[int]map[string]time.Time // pane → kind → last shown
 	lastAttention time.Time                    // last needs_attention anywhere
+
+	// session persistence & restart (SPEC G3/G5)
+	saveMu     sync.Mutex
+	saveTimer  *time.Timer // pending coalesced session.json write
+	restarting bool        // set on the app loop; cleanup respawns a server
 }
 
 // clientWriteTimeout bounds how long a frame write to the attached client
@@ -185,7 +190,16 @@ func Run(session, version string) (int, error) {
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
 	s.app.SetDetacher(func(reason string) { s.detach(reason) })
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
-	s.app.SetQuitHook(func() { s.notifyExit() })
+	s.app.SetQuitHook(func() {
+		s.saveSession()
+		if s.restarting {
+			s.notifyRestart()
+		} else {
+			s.notifyExit()
+		}
+	})
+	s.app.SetChangeHook(s.markSessionDirty)
+	s.app.SetRestartHook(s.requestRestart)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) { s.onPaneStatus(pid) })
@@ -195,7 +209,11 @@ func Run(session, version string) (int, error) {
 		s.app.SetNavKey('o')
 	}
 
-	if err := s.app.StartInitialPane(); err != nil {
+	// Restore the saved session when session.json exists; otherwise start
+	// the initial shell. A corrupt file fails closed to a fresh state.
+	if f := s.loadSession(); f != nil {
+		s.app.RestoreSession(f)
+	} else if err := s.app.StartInitialPane(); err != nil {
 		s.cleanup()
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}
@@ -214,10 +232,19 @@ func Run(session, version string) (int, error) {
 
 	<-appDone
 	s.cleanup()
+	if s.restarting {
+		s.spawnSuccessor()
+	}
 	return 0, nil
 }
 
 func (s *Server) cleanup() {
+	s.saveMu.Lock()
+	if s.saveTimer != nil {
+		s.saveTimer.Stop()
+		s.saveTimer = nil
+	}
+	s.saveMu.Unlock()
 	// notifyExit already told the attached client; drop whatever remains.
 	s.detach("server exiting")
 	_ = s.apiLn.Close()

@@ -124,11 +124,13 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF  bool                // input close means quit (local mode)
-	detacher  func(reason string) // server mode: detach the client
-	sinkOn    func() bool         // nil = always draw
-	quitHook  func()              // runs on the loop right before Run returns
-	availHook func(pid int)       // pane status changed; server flushes mail
+	inputEOF    bool                // input close means quit (local mode)
+	detacher    func(reason string) // server mode: detach the client
+	sinkOn      func() bool         // nil = always draw
+	quitHook    func()              // runs on the loop right before Run returns
+	availHook   func(pid int)       // pane status changed; server flushes mail
+	changeHook  func()              // persistent state changed; server coalesces saves
+	restartHook func()              // main menu "Restart server…" (server mode only)
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target
@@ -144,6 +146,7 @@ type App struct {
 	scroll        map[int]int
 	trackers      map[int]*status.Tracker
 	reported      map[int]reportedPane // pane.report_agent overrides
+	sessions      map[int]*AgentRecord // persisted agent-session record per pane (SPEC G3)
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -516,6 +519,13 @@ func (a *App) exec(cmd model.Command) {
 		a.effect(e)
 	}
 	a.dirty = true
+	// Keystrokes and resizes never change persisted state; everything else
+	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
+	switch cmd.(type) {
+	case model.CmdInput, model.CmdResize:
+	default:
+		a.changed()
+	}
 }
 
 func (a *App) effect(e model.Effect) {
@@ -531,6 +541,7 @@ func (a *App) effect(e model.Effect) {
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
+		delete(a.sessions, e.Pane)
 	case model.EffSyncLayout:
 		a.syncLayout()
 	case model.EffInput:
@@ -703,6 +714,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 			a.availHook(pid)
 		}
 	}
+	a.changed()
 }
 
 // Reported returns the API-reported agent override, if any. Call on the

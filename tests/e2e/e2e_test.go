@@ -49,11 +49,13 @@ func repoRoot() string {
 // session is a running gtx under a PTY with its screen decoded to an
 // emulator.
 type session struct {
-	t   *testing.T
-	pt  *os.File
-	cmd *exec.Cmd
-	emu *vt.Emulator
-	buf *lockedBuf
+	t        *testing.T
+	pt       *os.File
+	cmd      *exec.Cmd
+	emu      *vt.Emulator
+	buf      *lockedBuf
+	name     string // session name (gtx --session)
+	stateDir string // GTX_STATE_DIR
 }
 
 type lockedBuf struct {
@@ -86,7 +88,7 @@ func start(t *testing.T) *session {
 	if err != nil {
 		t.Fatalf("pty start: %v", err)
 	}
-	s := &session{t: t, pt: f, cmd: cmd, emu: vt.NewEmulator(termW, termH), buf: &lockedBuf{ch: make(chan []byte, 4096)}}
+	s := &session{t: t, pt: f, cmd: cmd, emu: vt.NewEmulator(termW, termH), buf: &lockedBuf{ch: make(chan []byte, 4096)}, name: sess, stateDir: stateDir}
 	go func() {
 		b := make([]byte, 64*1024)
 		for {
@@ -193,6 +195,15 @@ func (s *session) send(b string) {
 	if _, err := s.pt.WriteString(b); err != nil {
 		s.t.Fatalf("write: %v", err)
 	}
+}
+
+// cli runs the gtx binary against this test session and returns stdout.
+func (s *session) cli(args ...string) (string, error) {
+	s.t.Helper()
+	cmd := exec.Command(binPath, append([]string{"--session", s.name}, args...)...)
+	cmd.Env = append(os.Environ(), "GTX_STATE_DIR="+s.stateDir)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 // click sends an SGR left press+release at 0-based x,y.
@@ -483,4 +494,40 @@ func TestTabRenameDialog(t *testing.T) {
 	s.waitFor("renamed", 5*time.Second, func(scr string) bool {
 		return strings.Contains(scr, "prod")
 	})
+}
+
+// G3/G5: gtx server restart saves the session, respawns the server, and
+// the attached client reconnects to restored panes with stable ids.
+func TestServerRestartKeepsPanes(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "[new]")
+	})
+
+	// Two panes in the initial workspace.
+	s.send("\x02v") // C-b v
+	s.waitFor("two panes", 5*time.Second, func(tx string) bool {
+		return countPanes(tx) >= 2
+	})
+
+	// Restart through the CLI: it returns after the successor answers ping.
+	out, err := s.cli("server", "restart")
+	if err != nil {
+		t.Fatalf("server restart: %v\n%s", err, out)
+	}
+
+	// The attached client must still show both panes after reconnecting
+	// to the restarted server.
+	s.waitFor("restored panes", 15*time.Second, func(tx string) bool {
+		return countPanes(tx) >= 2
+	})
+
+	// Pane numbers survived the restart.
+	listOut, err := s.cli("pane", "list")
+	if err != nil {
+		t.Fatalf("pane list: %v\n%s", err, listOut)
+	}
+	if !strings.Contains(listOut, `"pane_id":"p1"`) || !strings.Contains(listOut, `"pane_id":"p2"`) {
+		t.Fatalf("pane ids not stable across restart:\n%s", listOut)
+	}
 }

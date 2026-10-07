@@ -20,6 +20,7 @@ const Protocol = 1
 const (
 	MethodPing            = "ping"
 	MethodServerStop      = "server.stop"
+	MethodServerRestart   = "server.restart"
 	MethodWorkspaceList   = "workspace.list"
 	MethodWorkspaceCreate = "workspace.create"
 	MethodWorkspaceGet    = "workspace.get"
