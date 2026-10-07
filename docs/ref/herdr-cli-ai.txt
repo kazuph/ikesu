@@ -1,0 +1,105 @@
+=== herdr send --help
+herdr send commands:
+  herdr send <to> <text> [--room R] [--reply-to ID] [--from NAME]
+  targets accept agent names or pane targets
+data: /Users/kazuph/.config/herdr/herdr.db (WAL mode; safe to query while running)
+lowest-level API: sqlite3 "$(herdr log --db)"
+=== herdr inbox --help
+herdr msg commands:
+  herdr msg send <to> <text> [--room R] [--reply-to ID] [--from NAME]
+  herdr msg inbox [--room R] [--to NAME]
+  herdr msg history [--room R] [--project P] [--limit N]
+  herdr msg tail [--room R] [--project P] [--limit N]
+  herdr msg rooms
+  send targets accept agent names or pane targets
+data: /Users/kazuph/.config/herdr/herdr.db (WAL mode; safe to query while running)
+lowest-level API: sqlite3 "$(herdr log --db)"
+=== herdr log --help
+herdr log commands:
+  herdr log [--room R] [--project P] [--limit N]
+  herdr log -f [--room R] [--project P] [--limit N]
+  herdr log <job_id>
+  herdr log rooms
+  herdr log --db
+  herdr log --schema
+data: /Users/kazuph/.config/herdr/herdr.db (WAL mode; safe to query while running)
+lowest-level API: sqlite3 "$(herdr log --db)"
+=== herdr run list --help
+---
+name: herdr
+description: Terminal workspace manager for AI coding agents. Use this help as an operational contract, not just a command list.
+---
+# herdr
+## When To Use
+Use `herdr` to run terminal-based coding agents, address panes by stable targets, send durable messages, and run long commands without blocking the requester.
+## Agent Rules
+- Prefer `herdr pane current` to resolve your own pane.
+- `HERDR_PANE_ID` is authoritative when present; otherwise pane current resolves the calling process session, then its parent process tree.
+- `HERDR_PANE_ID` is exported as `p_N` (the upstream herdr spelling); pane targets also accept `pN` and `%N`, and API responses keep `pN`.
+- Do not infer the requester pane from the focused pane, active window, pane list order, or UI selection.
+- If pane identity cannot be resolved, fail closed and ask for `--caller <pane>`.
+- For communication commands, remember: send=talk, run=execute, log=inspect, inbox=pull fallback.
+## Usage
+herdr [options]
+herdr help
+herdr --help
+herdr send <agent_target> <message>
+herdr inbox [--room <room>]
+herdr log [job_id|--db]
+herdr run --label tests -- cargo test
+## Commands
+- `herdr send <agent_target> <message>` sends a durable message to an agent or pane target.
+- `herdr inbox [--room <room>]` reads queued messages for the current agent.
+=== herdr run cancel --help
+---
+name: herdr
+description: Terminal workspace manager for AI coding agents. Use this help as an operational contract, not just a command list.
+---
+# herdr
+## When To Use
+Use `herdr` to run terminal-based coding agents, address panes by stable targets, send durable messages, and run long commands without blocking the requester.
+## Agent Rules
+- Prefer `herdr pane current` to resolve your own pane.
+- `HERDR_PANE_ID` is authoritative when present; otherwise pane current resolves the calling process session, then its parent process tree.
+- `HERDR_PANE_ID` is exported as `p_N` (the upstream herdr spelling); pane targets also accept `pN` and `%N`, and API responses keep `pN`.
+- Do not infer the requester pane from the focused pane, active window, pane list order, or UI selection.
+- If pane identity cannot be resolved, fail closed and ask for `--caller <pane>`.
+- For communication commands, remember: send=talk, run=execute, log=inspect, inbox=pull fallback.
+## Usage
+herdr [options]
+herdr help
+herdr --help
+herdr send <agent_target> <message>
+herdr inbox [--room <room>]
+herdr log [job_id|--db]
+herdr run --label tests -- cargo test
+## Commands
+- `herdr send <agent_target> <message>` sends a durable message to an agent or pane target.
+- `herdr inbox [--room <room>]` reads queued messages for the current agent.
+=== herdr msg --help
+herdr msg commands:
+  herdr msg send <to> <text> [--room R] [--reply-to ID] [--from NAME]
+  herdr msg inbox [--room R] [--to NAME]
+  herdr msg history [--room R] [--project P] [--limit N]
+  herdr msg tail [--room R] [--project P] [--limit N]
+  herdr msg rooms
+  send targets accept agent names or pane targets
+data: /Users/kazuph/.config/herdr/herdr.db (WAL mode; safe to query while running)
+lowest-level API: sqlite3 "$(herdr log --db)"
+=== herdr agent --help
+herdr agent commands:
+  herdr agent list
+  herdr agent get <target>
+  herdr agent read <target> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]
+  herdr agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]
+  herdr agent send <target> <text>
+  herdr agent rename <target> <name>|--clear
+  herdr agent focus <target>
+  herdr agent wait <target> --status <idle|working|blocked|unknown> [--timeout MS]
+  herdr agent attach <target> [--takeover]
+  herdr agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>
+  herdr agent restore [--dry-run]
+  herdr agent explain <target> [--json]
+  herdr agent explain --file PATH --agent LABEL [--json]
+  targets accept terminal ids, unique agent names, detected/reported agent labels, and legacy pane ids
+  agent prompt validates the agent and confirms Enter was written; agent send submits text directly
