@@ -135,11 +135,19 @@ func wrappedAgentNameFromRuntimeArgv(runtime string, argv []string) string {
 	return ""
 }
 
+// argvTail returns argv without argv[0], tolerating an empty argv.
+func argvTail(argv []string) []string {
+	if len(argv) == 0 {
+		return nil
+	}
+	return argv[1:]
+}
+
 // scriptArgAgentName returns the agent name of the first non-option argv
 // entry (the script the runtime executes), skipping flags that consume a
 // value. Eval/module invocations carry no script path and yield "".
 func scriptArgAgentName(argv []string, evalFlags, moduleFlags []string) string {
-	args := argv[1:]
+	args := argvTail(argv)
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
@@ -163,7 +171,7 @@ func scriptArgAgentName(argv []string, evalFlags, moduleFlags []string) string {
 }
 
 func windowsCmdArgAgentName(argv []string) string {
-	args := argv[1:]
+	args := argvTail(argv)
 	for i := 0; i < len(args); i++ {
 		flag := strings.ToLower(strings.Trim(args[i], `"'`))
 		switch flag {
@@ -181,7 +189,7 @@ func windowsCmdArgAgentName(argv []string) string {
 }
 
 func powershellArgAgentName(argv []string) string {
-	args := argv[1:]
+	args := argvTail(argv)
 	for i := 0; i < len(args); i++ {
 		flag := strings.ToLower(strings.Trim(args[i], `"'`))
 		switch flag {

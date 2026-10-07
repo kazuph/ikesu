@@ -130,6 +130,14 @@ func TestIdentifyJob(t *testing.T) {
 			},
 			wantID: "", wantName: "node",
 		},
+		{
+			name: "empty argv does not panic",
+			pgid: 1,
+			processes: []JobProcess{
+				{PID: 1, Name: "node"},
+			},
+			wantID: "", wantName: "node",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
