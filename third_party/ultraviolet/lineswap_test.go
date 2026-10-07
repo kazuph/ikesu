@@ -110,7 +110,7 @@ type lineAreaCase struct {
 	minX      int
 	minY      int
 	maxY      int // maxX is always the buffer width in this table
-	shrinkMax int  // subtract from maxX to exercise narrow areas
+	shrinkMax int // subtract from maxX to exercise narrow areas
 }
 
 var lineAreaCases = []lineAreaCase{

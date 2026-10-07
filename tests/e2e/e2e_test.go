@@ -60,8 +60,18 @@ type lockedBuf struct {
 
 func start(t *testing.T) *session {
 	t.Helper()
+	// Deterministic shell inside panes: a bare ZDOTDIR with a fixed PS1 so
+	// prompt waits do not depend on the host's zshrc/direnv.
+	zdot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), []byte("PS1='❯ '\n"), 0o644); err != nil {
+		t.Fatalf("zshrc: %v", err)
+	}
 	cmd := exec.Command(binPath)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(),
+		"TERM=xterm-256color",
+		"SHELL=/bin/zsh",
+		"ZDOTDIR="+zdot,
+	)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
 	if err != nil {
 		t.Fatalf("pty start: %v", err)
