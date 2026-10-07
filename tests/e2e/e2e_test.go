@@ -77,12 +77,18 @@ func start(t *testing.T) *session {
 		t.Fatalf("zshrc: %v", err)
 	}
 	sess := strings.ReplaceAll(t.Name(), "/", "_")
+	// Disable startup auto-resume so a restored session can never launch
+	// a real agent binary inside a test.
+	cfgDir := t.TempDir()
+	cfgFile := filepath.Join(cfgDir, "config.toml")
+	os.WriteFile(cfgFile, []byte("[session]\nresume_agents_on_restore = false\n"), 0o600)
 	cmd := exec.Command(binPath, "--session", sess)
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
 		"SHELL=/bin/zsh",
 		"ZDOTDIR="+zdot,
 		"GTX_STATE_DIR="+stateDir,
+		"GTX_CONFIG="+cfgFile,
 	)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
 	if err != nil {

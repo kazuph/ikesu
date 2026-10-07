@@ -48,7 +48,11 @@ type Detection struct {
 	VisibleWorking  bool
 	VisibleBlocker  bool
 	SkipStateUpdate bool
-	RuleID          string // matched rule, "" when none
+	// Correction marks a downgrade to Idle from fossil expiry — the pane
+	// was never really working, so the transition must not flip the
+	// seen flag into "done" (SPEC G3).
+	Correction bool
+	RuleID     string // matched rule, "" when none
 }
 
 // Detect evaluates agent's manifest against in. agent "" or unknown →

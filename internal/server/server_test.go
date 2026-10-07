@@ -83,6 +83,7 @@ func outputs(msgs []clientMsg) string {
 
 func startTestServer(t *testing.T) (dir string, done chan int) {
 	t.Helper()
+	pinTestConfig(t)
 	// unix sockets cap sun_path around 104 bytes; t.TempDir() paths on
 	// macOS exceed that, so use a short base under /tmp.
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")

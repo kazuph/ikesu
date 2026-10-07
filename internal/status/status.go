@@ -125,7 +125,7 @@ func (t *Tracker) shouldHold(d detect.Detection, now time.Time) bool {
 func (t *Tracker) apply(d detect.Detection) {
 	from := t.State
 	t.State = d.State
-	if (from == detect.Working || from == detect.Blocked) && d.State == detect.Idle {
+	if !d.Correction && (from == detect.Working || from == detect.Blocked) && d.State == detect.Idle {
 		t.Seen = false
 	}
 }

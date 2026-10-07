@@ -24,11 +24,28 @@ func paneIDs(t *testing.T, dir string) []string {
 	return ids
 }
 
+// pinTestConfig points GTX_CONFIG at a test config that disables
+// resume_agents_on_restore so the startup auto-restore can never launch
+// a real agent binary from a test's reported session record. Tests that
+// set their own GTX_CONFIG before calling keep it.
+func pinTestConfig(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GTX_CONFIG") != "" {
+		return
+	}
+	cfg := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfg, []byte("[session]\nresume_agents_on_restore = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GTX_CONFIG", cfg)
+}
+
 // startServerAt boots a server for sess under an existing GTX_STATE_DIR
 // base — unlike startTestServer it does not make a fresh base, so a test
 // can run two servers over the same state dir back to back.
 func startServerAt(t *testing.T, sess string) (dir string, done chan int) {
 	t.Helper()
+	pinTestConfig(t)
 	dir = api.SessionDir(sess)
 	done = make(chan int, 1)
 	go func() {

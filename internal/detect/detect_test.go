@@ -158,3 +158,27 @@ func TestCompileCompat(t *testing.T) {
 		t.Fatalf("(?m) failed")
 	}
 }
+
+func TestActivityFingerprint(t *testing.T) {
+	claudeScreen := "output line\n\n──────────────\n✻ Thinking… (12s · esc to interrupt)\n──────────────\n❯ \n──────────────\n"
+	if fp := ActivityFingerprint("claude", claudeScreen); fp == "" {
+		t.Fatal("claude spinner screen must have a fingerprint")
+	}
+	// A finished summary alone is not live activity.
+	summary := "output\n\n✻ Cooked for 13m 55s\n\n──────────────\n❯ \n──────────────\n"
+	if fp := ActivityFingerprint("claude", summary); fp != "" {
+		t.Fatalf("summary line must not fingerprint, got %q", fp)
+	}
+	// Codex: the contiguous status/hint block before the latest prompt.
+	codexScreen := "old output\n• Working (37s • esc to interrupt)\n\n› \n"
+	if fp := ActivityFingerprint("codex", codexScreen); fp == "" {
+		t.Fatal("codex working screen must have a fingerprint")
+	}
+	if fp := ActivityFingerprint("codex", "done\n\n› \n"); fp != "" {
+		t.Fatalf("idle codex screen must not fingerprint, got %q", fp)
+	}
+	// Other agents have no fingerprint.
+	if fp := ActivityFingerprint("gemini", claudeScreen); fp != "" {
+		t.Fatalf("non-claude/codex agent fingerprinted: %q", fp)
+	}
+}

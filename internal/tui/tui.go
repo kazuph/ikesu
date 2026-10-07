@@ -36,6 +36,7 @@ var spinnerFrames = []string{"◐", "◓", "◑", "◒"}
 const (
 	drawMinInterval = 16 * time.Millisecond
 	spinInterval    = 150 * time.Millisecond
+	fossilExpiry    = 15 * time.Second
 	copiedDuration  = 2 * time.Second
 	tickInterval    = 50 * time.Millisecond
 	drainMs         = 100 * time.Millisecond
@@ -151,6 +152,8 @@ type App struct {
 	trackers      map[int]*status.Tracker
 	reported      map[int]reportedPane // pane.report_agent overrides
 	sessions      map[int]*AgentRecord // persisted agent-session record per pane (SPEC G3)
+	fossils       map[int]*fossilWatch // last live-activity fingerprint per pane (15s expiry)
+	visibleIdle   map[int]time.Time    // pane → when explicit visible-idle detection started
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -458,7 +461,10 @@ func (a *App) detectAll() {
 				if agentID != "" {
 					in.Screen = p.ScreenText()
 				}
-				if tr.Update(detect.Detect(agentID, in), agentID, sn.Dead, now) {
+				d := detect.Detect(agentID, in)
+				d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
+				a.clearStaleReport(pid, agentID, d, now)
+				if tr.Update(d, agentID, sn.Dead, now) {
 					a.dirty = true
 					if a.availHook != nil {
 						a.availHook(pid)
@@ -744,6 +750,14 @@ type reportedPane struct {
 	state string
 }
 
+// fossilWatch tracks a Claude/Codex pane's live-activity fingerprint: the
+// moment it last changed. 15 unchanged seconds turn a working verdict
+// into idle (SPEC G3 fossil expiry).
+type fossilWatch struct {
+	fp    string
+	since time.Time
+}
+
 // paneSnaps builds render snapshots for every live pane.
 func (a *App) paneSnaps() map[int]*render.PaneSnap {
 	out := map[int]*render.PaneSnap{}
@@ -856,4 +870,82 @@ func DrainInput(f *os.File, d time.Duration) {
 // pointIn reports whether (x,y) is inside r.
 func pointIn(x, y int, r layout.Rect) bool {
 	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
+}
+
+// applyFossilExpiry downgrades a Claude/Codex working verdict whose live
+// activity fingerprint has not changed for fossilExpiry to idle (SPEC
+// G3): scrollback spinner/hint lines stop being evidence. Other agents,
+// working verdicts without a fingerprint, and non-working verdicts are
+// untouched; a changed fingerprint restarts the window and keeps the
+// pane working.
+func (a *App) applyFossilExpiry(pid int, agentID, screen string, d detect.Detection, now time.Time) detect.Detection {
+	if agentID != "claude" && agentID != "codex" {
+		return d
+	}
+	if d.State != detect.Working {
+		delete(a.fossils, pid)
+		return d
+	}
+	fp := detect.ActivityFingerprint(agentID, screen)
+	if fp == "" {
+		delete(a.fossils, pid)
+		return d // fingerprint-free working evidence stays working
+	}
+	w := a.fossils[pid]
+	if w == nil || w.fp != fp {
+		if a.fossils == nil {
+			a.fossils = map[int]*fossilWatch{}
+		}
+		a.fossils[pid] = &fossilWatch{fp: fp, since: now}
+		return d
+	}
+	if now.Sub(w.since) < fossilExpiry {
+		return d
+	}
+	// Fossilized: the visible working evidence is stale scrollback.
+	d.State = detect.Idle
+	d.VisibleWorking = false
+	d.Correction = true
+	return d
+}
+
+// clearStaleReport drops a reported working/blocked authority once screen
+// detection for the same Claude/Codex agent has shown explicit visible
+// idle for the fossil window (SPEC G3). Reports are non-full-lifecycle
+// authorities, so all of them are clearable; the pane's recorded agent
+// session is untouched — only the stale state override goes away.
+func (a *App) clearStaleReport(pid int, agentID string, d detect.Detection, now time.Time) {
+	rep, ok := a.reported[pid]
+	if !ok || (rep.state != "working" && rep.state != "blocked") {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if agentID == "" || rep.agent != "" && rep.agent != agentID {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if agentID != "claude" && agentID != "codex" {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if d.State != detect.Idle || !d.VisibleIdle {
+		delete(a.visibleIdle, pid)
+		return
+	}
+	if a.visibleIdle == nil {
+		a.visibleIdle = map[int]time.Time{}
+	}
+	if a.visibleIdle[pid].IsZero() {
+		a.visibleIdle[pid] = now
+		return
+	}
+	if now.Sub(a.visibleIdle[pid]) < fossilExpiry {
+		return
+	}
+	delete(a.reported, pid)
+	delete(a.visibleIdle, pid)
+	if a.availHook != nil {
+		a.availHook(pid)
+	}
+	a.dirty = true
 }

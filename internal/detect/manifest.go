@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/BurntSushi/toml"
 )
@@ -312,4 +313,73 @@ func codexLiveRegion(content string) string {
 		start = cursor
 	}
 	return strings.Join(lines[start:], "\n")
+}
+
+// ActivityFingerprint returns the pane's live-activity fingerprint for
+// agents that have one (claude, codex): the spinner/status lines and
+// interrupt hints that animate while the agent works. Other agents — and
+// Claude/Codex screens without live evidence — return "". A fingerprint
+// that stops changing for the fossil window is scrollback, not activity
+// (SPEC G3: 15-second fossil expiry).
+func ActivityFingerprint(agent, content string) string {
+	switch agent {
+	case "codex":
+		return codexActivityFingerprint(content)
+	case "claude":
+		return claudeActivityFingerprint(content)
+	}
+	return ""
+}
+
+// claudeSpinnerGlyph covers the documented Claude spinner heads plus the
+// braille/half-circle set older and newer builds use.
+func claudeSpinnerGlyph(r rune) bool {
+	switch r {
+	case '·', '✱', '✢', '✻', '✽', '✨', '✳', '❋', '❈', '⁂', '⏸', '⏵':
+		return true
+	}
+	return (r >= 0x2800 && r <= 0x28FF) || (r >= 0x25D0 && r <= 0x25D3)
+}
+
+// claudeSpinnerLine: spinner glyph + whitespace + a body containing the
+// ellipsis and at least one letter/digit — e.g.
+// "✻ Cooked for 13m 55s" lacks the ellipsis so a completed summary never
+// counts as live activity.
+func claudeSpinnerLine(line string) bool {
+	t := strings.TrimLeft(line, " \t")
+	runes := []rune(t)
+	if len(runes) < 3 || !claudeSpinnerGlyph(runes[0]) {
+		return false
+	}
+	if runes[1] != ' ' && runes[1] != '\t' {
+		return false
+	}
+	body := string(runes[2:])
+	if !strings.ContainsRune(body, '…') && !strings.Contains(body, "...") {
+		return false
+	}
+	for _, r := range body {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func interruptHint(line string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "esc to interrupt") ||
+		strings.Contains(lower, "ctrl+c to interrupt")
+}
+
+// claudeActivityFingerprint: the spinner lines and interrupt hints above
+// the prompt box — the region Claude animates while a turn is live.
+func claudeActivityFingerprint(content string) string {
+	var out []string
+	for _, line := range strings.Split(abovePromptBox(content), "\n") {
+		if claudeSpinnerLine(line) || interruptHint(line) {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
 }
