@@ -120,6 +120,7 @@ func main() {
 		os.Exit(1)
 	}
 	sc := bufio.NewScanner(f)
+	var sentAt time.Time
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -137,6 +138,19 @@ func main() {
 				os.Exit(1)
 			}
 			_, _ = ptmx.Write([]byte(s))
+			sentAt = time.Now()
+		case "waittext": // waittext TIMEOUT TEXT: report time since the last send until TEXT is on screen
+			ts, text, _ := strings.Cut(rest, " ")
+			d, _ := time.ParseDuration(ts)
+			deadline := time.Now().Add(d)
+			for !strings.Contains(screen(), text) {
+				if time.Now().After(deadline) {
+					fmt.Println("TIMEOUT waiting text", text)
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			fmt.Printf("onscreen %.2f\n", time.Since(sentAt).Seconds())
 		case "click": // click X Y (1-based cells), left button
 			var x, y int
 			fmt.Sscanf(rest, "%d %d", &x, &y)
