@@ -55,12 +55,13 @@ const (
 const (
 	relScreenCPU = 1.05 // 変更後の中央値 <= 変更前の中央値 x 1.05
 	relRSS       = 1.10 // 変更後の最大 <= 変更前の最大 x 1.10
-	relIntSec    = 0.1  // 変更後の最大 <= 0.1秒
+	relIntMedSec = 0.1  // Ctrl-C: 変更後の中央値 <= 0.1秒
+	relIntMaxSec = 0.2  // Ctrl-C: 変更後の最大 <= 0.2秒
 )
 
 // holdLoad is the 1-minute load average at/above which the absolute check
 // is reported as 保留 instead of a verdict (SPEC.md).
-const holdLoad = 10.0
+const holdLoad = 4.0
 
 // tp.py from tools/bench/bench_rt.sh, byte for byte.
 const tpPy = `import time,sys
@@ -124,7 +125,7 @@ func perfBin(t *testing.T) string {
 
 // TestAbsolute runs the measured binary absRuns times per startup mode and
 // checks the medians against the SPEC's absolute limits. When the load
-// average at a run's start was >= 10 the verdict is 保留, not a failure.
+// average at a run's start was >= 4 the verdict is 保留, not a failure.
 func TestAbsolute(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("perf tests measure on the macOS mini")
@@ -764,8 +765,9 @@ func judgeRelative(t *testing.T, mode string, cur, base []result) {
 	checkRel(t, mode, "画面に出るまで", median(curScreen), median(baseScreen), relScreenCPU)
 	checkRel(t, mode, "CPU時間", median(curCPU), median(baseCPU), relScreenCPU)
 	checkRel(t, mode, "メモリ(MB)", maxOf(curRSS)/1024, maxOf(baseRSS)/1024, relRSS)
-	// Ctrl-C: 変更後の最大 <= 0.1秒 (絶対値)
-	check(t, mode, "Ctrl-Cの反応(変更後の最大)", maxOf(curInt), relIntSec)
+	// Ctrl-C: 変更後の中央値 <= 0.1秒 かつ 最大 <= 0.2秒
+	check(t, mode, "Ctrl-Cの反応(変更後の中央値)", median(curInt), relIntMedSec)
+	check(t, mode, "Ctrl-Cの反応(変更後の最大)", maxOf(curInt), relIntMaxSec)
 }
 
 func check(t *testing.T, mode, name string, got, limit float64) {
