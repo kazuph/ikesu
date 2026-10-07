@@ -10,9 +10,15 @@ import (
 const DefaultScrollbackSize = 10000
 
 // Scrollback represents a scrollback buffer that stores lines scrolled off the screen.
+//
+// The lines are kept in a ring buffer: appending a line is O(1) even when the
+// buffer is full, where the previous slice-of-lines design shifted every
+// stored line on each push.
 type Scrollback struct {
-	lines    []uv.Line
+	lines    []uv.Line // ring buffer, capacity maxLines
 	maxLines int
+	start    int // index of the oldest line
+	count    int // number of stored lines
 }
 
 // NewScrollback creates a new scrollback buffer with the given maximum number of lines.
@@ -21,9 +27,18 @@ func NewScrollback(maxLines int) *Scrollback {
 		maxLines = DefaultScrollbackSize
 	}
 	return &Scrollback{
-		lines:    make([]uv.Line, 0, min(maxLines, 1000)), // Pre-allocate reasonable capacity
+		lines:    make([]uv.Line, maxLines),
 		maxLines: maxLines,
 	}
+}
+
+// wrap maps a logical position onto the ring's backing array. Positions never
+// exceed start+count < 2*maxLines, so one subtraction is enough.
+func (s *Scrollback) wrap(i int) int {
+	if i >= len(s.lines) {
+		i -= len(s.lines)
+	}
+	return i
 }
 
 // Push adds a line to the scrollback buffer.
@@ -38,7 +53,13 @@ func (s *Scrollback) Push(line uv.Line) {
 	lastNonEmpty := -1
 	for i := len(line) - 1; i >= 0; i-- {
 		c := &line[i]
-		if !c.IsZero() && !c.Equal(&uv.EmptyCell) {
+		if c.Content != "" && c.Content != " " {
+			lastNonEmpty = i
+			break
+		}
+		// A space (or missing content) is still meaningful when it carries a
+		// style or link; both checks are cheaper than [Cell.Equal].
+		if *c != (uv.Cell{}) && *c != uv.EmptyCell {
 			lastNonEmpty = i
 			break
 		}
@@ -47,11 +68,13 @@ func (s *Scrollback) Push(line uv.Line) {
 	// Clone the line content up to and including the last non-empty cell
 	cloned := slices.Clone(line[:lastNonEmpty+1])
 
-	if len(s.lines) >= s.maxLines {
-		// Remove oldest line and append new one
-		s.lines = slices.Delete(s.lines, 0, 1)
+	if s.count < s.maxLines {
+		s.lines[s.wrap(s.start+s.count)] = cloned
+		s.count++
+		return
 	}
-	s.lines = append(s.lines, cloned)
+	s.lines[s.start] = cloned
+	s.start = s.wrap(s.start + 1)
 }
 
 // PushN adds n lines from the buffer starting at line y to the scrollback.
@@ -72,7 +95,7 @@ func (s *Scrollback) Len() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.lines)
+	return s.count
 }
 
 // MaxLines returns the maximum number of lines the scrollback buffer can hold.
@@ -90,10 +113,19 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 		return
 	}
 
+	if s.count > maxLines {
+		s.start = s.wrap(s.start + s.count - maxLines)
+		s.count = maxLines
+	}
 	s.maxLines = maxLines
-	if len(s.lines) > maxLines {
-		// Remove oldest lines
-		s.lines = s.lines[len(s.lines)-maxLines:]
+	if len(s.lines) != maxLines {
+		// Rebuild the ring at the new capacity, unwrapping into order.
+		lines := make([]uv.Line, maxLines)
+		for i := 0; i < s.count; i++ {
+			lines[i] = s.lines[s.wrap(s.start+i)]
+		}
+		s.lines = lines
+		s.start = 0
 	}
 }
 
@@ -101,10 +133,10 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 // Index 0 is the oldest line, Len()-1 is the most recent.
 // Returns nil if index is out of bounds.
 func (s *Scrollback) Line(index int) uv.Line {
-	if s == nil || index < 0 || index >= len(s.lines) {
+	if s == nil || index < 0 || index >= s.count {
 		return nil
 	}
-	return s.lines[index]
+	return s.lines[s.wrap(s.start+index)]
 }
 
 // Lines returns all lines in the scrollback buffer.
@@ -113,7 +145,17 @@ func (s *Scrollback) Lines() []uv.Line {
 	if s == nil {
 		return nil
 	}
-	return s.lines
+	if s.count == 0 {
+		return nil
+	}
+	if s.start == 0 {
+		return s.lines[:s.count]
+	}
+	// The ring is wrapped; return the lines in order on a fresh slice.
+	out := make([]uv.Line, s.count)
+	n := copy(out, s.lines[s.start:])
+	copy(out[n:], s.lines[:s.count-n])
+	return out
 }
 
 // Clear removes all lines from the scrollback buffer.
@@ -121,7 +163,8 @@ func (s *Scrollback) Clear() {
 	if s == nil {
 		return
 	}
-	s.lines = s.lines[:0]
+	s.start = 0
+	s.count = 0
 }
 
 // CellAt returns the cell at the given position in the scrollback buffer.
