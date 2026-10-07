@@ -212,3 +212,78 @@ func TestEncoderSyncWrapsAndAnchor(t *testing.T) {
 		t.Fatalf("cursor not restored: %q", tail)
 	}
 }
+
+// scribble fills every cell of f with the marker rune, imitating pane
+// content behind a popup.
+func scribble(f *Frame, marker string) {
+	for y := 0; y < f.H; y++ {
+		for x := 0; x < f.W; x++ {
+			f.Set(x, y, marker, uv.Style{})
+		}
+	}
+}
+
+// noMarker asserts that no cell inside (exclusive of) rect r still carries
+// the marker left over from the background.
+func noMarker(t *testing.T, f *Frame, r layout.Rect, marker string) {
+	t.Helper()
+	for y := r.Y + 1; y < r.Y+r.H-1; y++ {
+		for x := r.X + 1; x < r.X+r.W-1; x++ {
+			if c := f.Cell(x, y); c != nil && c.Content == marker {
+				t.Fatalf("background %q leaked through popup at (%d,%d)", marker, x, y)
+			}
+		}
+	}
+}
+
+func TestMenuInteriorIsOpaque(t *testing.T) {
+	f := NewFrame(60, 20)
+	scribble(f, "@")
+	out := &Output{}
+	m := &Menu{X: 10, Y: 4, Hover: -1, Sel: -1, Items: []MenuItem{
+		{Label: "Split vertical"},
+		{Label: "Split horizontal"},
+		{Separator: true},
+		{Label: "Close pane"},
+	}}
+	drawMenu(f, m, out)
+	noMarker(t, f, MenuRect(m, 60, 20), "@")
+}
+
+func TestDialogInteriorIsOpaque(t *testing.T) {
+	f := NewFrame(60, 20)
+	scribble(f, "@")
+	out := &Output{}
+	d := &Dialog{Title: "Quit goterrace?", Detail: "Stops all panes.", Confirm: "quit", Cancel: "cancel"}
+	drawDialog(f, d, out)
+	outer, _, _ := DialogRects(d, 60, 20)
+	noMarker(t, f, outer, "@")
+}
+
+func TestDialogButtonsFullyDrawn(t *testing.T) {
+	d := &Dialog{Title: "Close workspace?", Detail: "Closes workspace 1.", Confirm: "close", Cancel: "cancel"}
+	f := NewFrame(80, 24)
+	out := &Output{}
+	drawDialog(f, d, out)
+	_, cancel, confirm := DialogRects(d, 80, 24)
+
+	rowText := func(r layout.Rect) string {
+		var sb strings.Builder
+		for x := r.X; x < r.X+r.W; x++ {
+			if c := f.Cell(x, r.Y); c != nil {
+				sb.WriteString(c.Content)
+			}
+		}
+		return sb.String()
+	}
+	if got, want := rowText(cancel), "[ cancel  esc ]"; got != want {
+		t.Fatalf("cancel row = %q, want %q", got, want)
+	}
+	if got, want := rowText(confirm), "[ close  ↵ ]"; got != want {
+		t.Fatalf("confirm row = %q, want %q", got, want)
+	}
+	// Hit-test rects must cover the whole drawn string.
+	if cancel.W != len([]rune("[ cancel  esc ]")) {
+		t.Fatalf("cancel.W = %d, want %d", cancel.W, len([]rune("[ cancel  esc ]")))
+	}
+}

@@ -588,6 +588,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 	r := MenuRect(m, f.W, f.H)
 	border := uv.Style{Fg: Dim}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
 	out.MenuRect = r
 	out.MenuItemRows = nil
 	for i, it := range m.Items {
@@ -622,7 +623,8 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	if l := len([]rune(d.Detail)) + 4; l > w {
 		w = l
 	}
-	btnRow := len([]rune(d.Cancel)) + len([]rune(d.Confirm)) + 16
+	// "[ <cancel>  esc ]" + gap + "[ <confirm>  ↵ ]" = cancel+9 + 2 + confirm+7.
+	btnRow := len([]rune(d.Cancel)) + len([]rune(d.Confirm)) + 18
 	if btnRow > w {
 		w = btnRow
 	}
@@ -639,7 +641,7 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	by := y + h - 2
 	// Buttons right-aligned: "[ <confirm>  ↵ ]" then "[ <cancel>  esc ]".
 	confirmW := len([]rune(d.Confirm)) + 7
-	cancelW := len([]rune(d.Cancel)) + 8
+	cancelW := len([]rune(d.Cancel)) + 9
 	confirm = layout.Rect{X: x + w - 1 - confirmW, Y: by, W: confirmW, H: 1}
 	cancel = layout.Rect{X: confirm.X - 2 - cancelW, Y: by, W: cancelW, H: 1}
 	return
@@ -648,7 +650,8 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 func drawDialog(f *Frame, d *Dialog, out *Output) {
 	outer, cancel, confirm := DialogRects(d, f.W, f.H)
 	border := uv.Style{Fg: Red}
-	ix, iy, iw, _ := f.Box(outer.X, outer.Y, outer.W, outer.H, border)
+	ix, iy, iw, ih := f.Box(outer.X, outer.Y, outer.W, outer.H, border)
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
 	f.Text(ix+1, iy, d.Title, uv.Style{Fg: Text, Attrs: uv.AttrBold}, ix+iw)
 	f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: Subtle}, ix+iw)
 	f.Text(cancel.X, cancel.Y, "[ "+d.Cancel+"  esc ]", uv.Style{Fg: Subtle}, cancel.X+cancel.W)
