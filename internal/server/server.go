@@ -10,12 +10,15 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/tui"
@@ -56,6 +59,24 @@ type Server struct {
 	client *clientConn // currently attached display client, or nil
 
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
+
+	// durable mailbox / jobs
+	dbOnce sync.Once
+	store  *dispatch.Store
+	dbErr  error
+	mailCh chan mailWrite
+
+	mailMu       sync.Mutex
+	mailInFlight map[int64]bool  // regular message ids staged for PTY write
+	jobInFlight  map[string]bool // job-mail batch keys staged for PTY write
+
+	jobProcs jobProcsT // live background jobs (external job id → process)
+
+	// notifications (SPEC G4)
+	cfg           config.Config
+	lastStatus    map[int]string               // last seen status key per pane
+	notifyLast    map[int]map[string]time.Time // pane → kind → last shown
+	lastAttention time.Time                    // last needs_attention anywhere
 }
 
 // clientWriteTimeout bounds how long a frame write to the attached client
@@ -127,15 +148,36 @@ func Run(session, version string) (int, error) {
 		cwd = os.Getenv("HOME")
 	}
 
-	s := &Server{session: session, dir: dir, version: version, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn}
+	s := &Server{session: session, dir: dir, version: version, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
+		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
+		jobProcs:   jobProcsT{m: map[string]*exec.Cmd{}},
+		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}}
+
+	if cfg, err := config.Load(); err == nil {
+		s.cfg = cfg
+	} else {
+		fmt.Fprintf(os.Stderr, "gtx: %s: %v\n", config.Path(), err)
+	}
 
 	sup := runtime.NewSupervisor()
 	apiSockAbs := apiSock
 	sup.Env = func(paneID int) []string {
-		return []string{
+		env := []string{
 			fmt.Sprintf("GTX_PANE_ID=p%d", paneID),
 			"GTX_SOCKET_PATH=" + apiSockAbs,
 		}
+		// Spawn runs on the app loop, so State() is safe here and the pane
+		// already exists in the model when its shell starts.
+		if st := s.app.State(); st != nil {
+			if wsIdx, tabIdx := st.FindPane(paneID); wsIdx >= 0 {
+				ws := st.Workspaces[wsIdx]
+				env = append(env,
+					"GTX_WORKSPACE_ID="+fmtWorkspaceID(ws.ID),
+					"GTX_TAB_ID="+fmtTabID(ws.ID, ws.Tabs[tabIdx].ID),
+				)
+			}
+		}
+		return env
 	}
 	s.sup = sup
 
@@ -144,6 +186,14 @@ func Run(session, version string) (int, error) {
 	s.app.SetDetacher(func(reason string) { s.detach(reason) })
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetQuitHook(func() { s.notifyExit() })
+	// Mail delivery and agent notifications fire on status transitions
+	// (and once at startup below) — event-driven, never polled.
+	s.app.SetAvailHook(func(pid int) { s.onPaneStatus(pid) })
+	if r, ok := config.ParseNavKey(s.cfg.NavKey()); ok {
+		s.app.SetNavKey(r)
+	} else {
+		s.app.SetNavKey('o')
+	}
 
 	if err := s.app.StartInitialPane(); err != nil {
 		s.cleanup()
@@ -157,6 +207,10 @@ func Run(session, version string) (int, error) {
 	}()
 	go s.apiLoop()
 	go s.clientLoop()
+	go s.mailWorker()
+	s.seedJobSeq()
+	s.abortOrphanedJobs()
+	s.app.Do(func() { s.flushAllMail() })
 
 	<-appDone
 	s.cleanup()
@@ -175,7 +229,11 @@ func (s *Server) cleanup() {
 	case <-drained:
 	case <-time.After(500 * time.Millisecond):
 	}
+	close(s.mailCh)
 	s.sup.KillAll()
+	if s.store != nil {
+		s.store.Close()
+	}
 	os.Remove(api.APISocketPath(s.dir))
 	os.Remove(api.ClientSocketPath(s.dir))
 	_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
@@ -230,6 +288,20 @@ func (w *clientSink) Write(p []byte) (int, error) {
 		w.s.dropConn(c)
 	}
 	return len(p), nil
+}
+
+// writeClientOutput injects raw bytes into the attached client's output
+// stream (used for terminal-delivery notifications).
+func (s *Server) writeClientOutput(data string) {
+	s.mu.Lock()
+	c := s.client
+	s.mu.Unlock()
+	if c == nil {
+		return
+	}
+	if err := c.send(clientMsg{Type: "output", Data: encode64([]byte(data))}); err != nil {
+		s.dropConn(c)
+	}
 }
 
 // dropConn removes c if it is still the attached client (broken pipe).

@@ -3,13 +3,16 @@ package server
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/goterrace/internal/runtime"
 )
 
 func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
@@ -48,6 +51,15 @@ func (s *Server) paneCurrent(id string, p api.PaneCurrentParams) api.Response {
 		pid, _, _, ok := s.findPane(*p.CallerPaneID)
 		if !ok {
 			return s.paneNotFound(id, *p.CallerPaneID)
+		}
+		// When the caller process is known, the asserted pane must be
+		// provable from its ancestry — a leaked GTX_PANE_ID in a process
+		// outside the pane fails closed (SPEC G5).
+		if p.CallerProcessID != nil {
+			if proven := s.paneForProcess(int(*p.CallerProcessID)); proven != pid {
+				return api.Failure(id, api.ErrPaneNotFound,
+					fmt.Sprintf("caller pane %s could not be proven from process ancestry", *p.CallerPaneID))
+			}
 		}
 		info, _ := s.paneInfo(pid)
 		return api.Success(id, api.PaneCurrentResult{Type: "pane_current", Pane: info})
@@ -307,13 +319,27 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 	if bad != "" {
 		return api.Failure(id, api.ErrInvalidKey, fmt.Sprintf("unsupported key %s", bad))
 	}
-	pane.WithEmu(func(e *vt.Emulator) {
-		if p.Text != "" {
-			e.Paste(p.Text)
-		}
-		e.SendKeys(keys...)
-	})
+	s.sendInputToPane(pane, p.Text, keys)
 	return api.Success(id, api.OkResult{Type: "ok"})
+}
+
+// sendInputToPane writes text then, after the required 500 ms settle
+// window, sends the keys — the agent CLIs rely on the gap so TUI apps
+// have consumed the prompt before Enter arrives. Runs asynchronously so
+// the app loop never blocks.
+func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyEvent) {
+	go func() {
+		if text != "" {
+			pane.WithEmu(func(e *vt.Emulator) { e.Paste(text) })
+		}
+		if len(keys) == 0 {
+			return
+		}
+		if text != "" {
+			time.Sleep(500 * time.Millisecond)
+		}
+		pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) })
+	}()
 }
 
 func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Response {

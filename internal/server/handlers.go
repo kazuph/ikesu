@@ -157,6 +157,69 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
 		return s.paneReportAgent(req.ID, p)
+
+	case api.MethodMsgSend:
+		var p api.MsgSendParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.msgSend(req.ID, p)
+	case api.MethodMsgInbox:
+		var p api.MsgInboxParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.msgInbox(req.ID, p)
+	case api.MethodMsgHistory:
+		var p api.MsgHistoryParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.msgHistory(req.ID, p)
+	case api.MethodMsgRooms:
+		var p api.EmptyParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.msgRooms(req.ID)
+
+	case api.MethodAgentList:
+		var p api.EmptyParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentList(req.ID)
+	case api.MethodAgentGet:
+		var p api.AgentTarget
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentGet(req.ID, p.Target)
+	case api.MethodAgentFocus:
+		var p api.AgentTarget
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentFocus(req.ID, p.Target)
+	case api.MethodAgentRename:
+		var p api.AgentRenameParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentRename(req.ID, p)
+
+	case api.MethodRunStart:
+		var p api.RunStartParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.runStart(req.ID, p)
+	case api.MethodRunCancel:
+		var p api.RunCancelParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.runCancel(req.ID, p)
 	}
 	return api.Failure(req.ID, api.ErrUnknownMethod,
 		fmt.Sprintf("unknown method %q", req.Method))

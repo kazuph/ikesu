@@ -62,6 +62,10 @@ dispatch:
 		case "server":
 			// `gtx server` runs the server; `gtx server <sub>` is the CLI.
 			if len(args) == 1 {
+				if client.NestedBlocked() {
+					fmt.Fprintln(os.Stderr, "gtx: refusing to start a nested gtx server (a gtx server is an ancestor; set [experimental] allow_nested = true to permit)")
+					os.Exit(1)
+				}
 				code, err := server.Run(session, version)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "gtx server:", err)
@@ -69,7 +73,9 @@ dispatch:
 				os.Exit(code)
 			}
 			fallthrough
-		case "pane", "workspace", "tab":
+		case "pane", "workspace", "tab",
+			"send", "inbox", "msg", "run", "log", "agent",
+			"help", "--help", "-h", "__pane-run":
 			os.Exit(cli.Run(args, cli.Options{
 				Session:  session,
 				Explicit: explicitSession,
@@ -87,6 +93,9 @@ dispatch:
 func run(noSession bool, session string) (int, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return 1, fmt.Errorf("stdin is not a terminal")
+	}
+	if client.NestedBlocked() {
+		return 1, fmt.Errorf("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit)")
 	}
 	if noSession {
 		return tui.Run(os.Stdin, os.Stdout)

@@ -44,8 +44,8 @@ type msg struct {
 // Attach connects the local terminal to the session's server, spawning it
 // if needed. It blocks until the client detaches or the server exits.
 func Attach(session string, in *os.File, out *os.File) (int, error) {
-	if insideSession() {
-		return 1, errors.New("refusing to start a nested gtx session (GOTERRACE/GTX_SOCKET_PATH is set; use --no-session to run in-process)")
+	if NestedBlocked() {
+		return 1, errors.New("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)")
 	}
 
 	dir := api.SessionDir(session)
@@ -160,11 +160,6 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 			return 0, nil
 		}
 	}
-}
-
-// insideSession reports whether this process lives inside a gtx pane.
-func insideSession() bool {
-	return os.Getenv("GOTERRACE") != "" || os.Getenv("GTX_SOCKET_PATH") != ""
 }
 
 // writer serializes client→server messages.
