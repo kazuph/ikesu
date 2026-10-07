@@ -249,7 +249,7 @@ func ptyReadyNow(fd int) bool {
 // child when the writer falls behind.
 func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weighted) {
 	defer close(out)
-	statsFile := os.Getenv("GTX_PUMP_STATS")
+	statsFile := pumpStatsPath
 	var reads, chunksSent, bytes int64
 	writeStats := func() {
 		if statsFile != "" && reads > 0 {
