@@ -105,10 +105,19 @@ type Dialog struct {
 }
 
 // Input is everything Compose needs for one frame.
+// JobDot is one colored ● shown on a workspace row for a meaningful
+// background job (SPEC G2). The snapshot (status filtering and runner
+// liveness) is computed upstream — rendering never probes processes.
+type JobDot struct {
+	Color color.Color
+}
+
 type Input struct {
 	State  *model.AppState
 	Panes  map[int]*PaneSnap
 	Scroll map[int]int
+	// JobDots maps workspace index → job dots drawn on its sidebar row.
+	JobDots map[int][]JobDot
 
 	Menu   *Menu
 	Dialog *Dialog
@@ -441,8 +450,13 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		}
 		x := f.Text(ix, y, num, sty, ix+iw)
 		x = f.Text(x, y, g.Rune, uv.Style{Fg: g.Color, Bg: sty.Bg, Attrs: boldIf(active)}, ix+iw)
-		name := " " + truncate(ws.Name, iw-(x-ix)-1)
+		dots := in.JobDots[r.Ws]
+		name := " " + truncate(ws.Name, iw-(x-ix)-1-len(dots))
 		f.Text(x, y, name, sty, ix+iw)
+		// G2: one ● per meaningful background job on this workspace.
+		for i, d := range dots {
+			f.Set(ix+iw-1-i, y, "●", uv.Style{Fg: d.Color, Bg: sty.Bg})
+		}
 	case RowAgent:
 		snap := in.Panes[r.Pane]
 		if snap == nil {

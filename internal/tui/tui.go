@@ -21,6 +21,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -150,10 +151,13 @@ type App struct {
 	fwd           int           // pane receiving forwarded mouse events during a drag
 	scroll        map[int]int
 	trackers      map[int]*status.Tracker
-	reported      map[int]reportedPane // pane.report_agent overrides
-	sessions      map[int]*AgentRecord // persisted agent-session record per pane (SPEC G3)
-	fossils       map[int]*fossilWatch // last live-activity fingerprint per pane (15s expiry)
-	visibleIdle   map[int]time.Time    // pane → when explicit visible-idle detection started
+	reported      map[int]reportedPane                     // pane.report_agent overrides
+	sessions      map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
+	fossils       map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)
+	visibleIdle   map[int]time.Time                        // pane → when explicit visible-idle detection started
+	jobSource     func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
+	jobDots       map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
+	jobsAt        time.Time                                // last job snapshot
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -492,6 +496,7 @@ func (a *App) detectAll() {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
+	now := time.Now()
 	a.expireToast()
 	if a.copied != "" && time.Since(a.copiedAt) > copiedDuration {
 		a.copied = ""
@@ -514,6 +519,7 @@ func (a *App) onTick() {
 			}
 		}
 	}
+	a.refreshJobDots(now)
 	a.detectAll()
 }
 
@@ -683,6 +689,7 @@ func (a *App) draw() {
 		Copied:        a.copied,
 		Prefix:        a.prefix,
 		SidebarScroll: a.sidebarScroll,
+		JobDots:       a.jobDots,
 	}
 	if a.menu != nil {
 		in.Menu = &a.menu.m

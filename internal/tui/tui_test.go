@@ -7,6 +7,7 @@ import (
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/model"
 )
 
@@ -163,5 +164,39 @@ func TestClearStaleReport(t *testing.T) {
 	a.clearStaleReport(3, "claude", notIdle, t0.Add(time.Hour))
 	if _, ok := a.reported[3]; !ok {
 		t.Fatal("non-visible idle must not clear authority")
+	}
+}
+
+// SPEC G2 job dots: queued jobs, running jobs with a live runner, and
+// jobs finished within the last minute show a dot on the caller pane's
+// workspace row; dead runners, old finishes, and panes in unknown
+// workspaces drop none.
+func TestRefreshJobDots(t *testing.T) {
+	st := model.New("/tmp", 120, 30)
+	st.Apply(model.CmdNewWorkspace{Cwd: "/w2"})
+	// pane ids: p1 in ws0, p2 in ws1 (split not needed — p2 is ws1's pane)
+	now := time.Now()
+	fin := now.Add(-30 * time.Second).UnixMilli()
+	old := now.Add(-2 * time.Minute).UnixMilli()
+	exit0 := int64(0)
+	exit1 := int64(1)
+	a := &App{st: st}
+	a.jobSource = func() ([]dispatch.Job, map[string]bool) {
+		return []dispatch.Job{
+			{ID: "j1", Status: "queued", CallerPane: "p1"},
+			{ID: "j2", Status: "running", CallerPane: "p1"},
+			{ID: "j3", Status: "finished", CallerPane: "p1", FinishedMs: &fin, ExitCode: &exit0},
+			{ID: "j4", Status: "finished", CallerPane: "p1", FinishedMs: &fin, ExitCode: &exit1},
+			{ID: "j5", Status: "running", CallerPane: "p2"},                    // dead runner → no dot
+			{ID: "j6", Status: "finished", CallerPane: "p2", FinishedMs: &old}, // too old → no dot
+			{ID: "j7", Status: "running", CallerPane: "p99"},                   // unknown pane → no dot
+		}, map[string]bool{"j2": true}
+	}
+	a.refreshJobDots(now)
+	if got := len(a.jobDots[0]); got != 4 {
+		t.Fatalf("ws0 dots = %d, want 4", got)
+	}
+	if got := len(a.jobDots[1]); got != 0 {
+		t.Fatalf("ws1 dots = %d, want 0 (dead runner + old finish)", got)
 	}
 }

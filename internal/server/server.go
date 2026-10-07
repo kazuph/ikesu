@@ -203,6 +203,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
 	s.app.SetPaneClosedHook(s.ledgerDel)
 	s.app.SetWarningsHook(s.agentSessionWarnings)
+	s.app.SetJobSource(s.jobSnapshot)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) { s.onPaneStatus(pid) })

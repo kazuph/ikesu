@@ -376,3 +376,24 @@ func (s *Server) abortOrphanedJobs() {
 		}
 	}
 }
+
+// jobSnapshot lists jobs newest-first and probes runner liveness once —
+// the SPEC G2 workspace-dot snapshot. alive maps job id → runner alive;
+// callers must not re-check processes while rendering.
+func (s *Server) jobSnapshot() ([]dispatch.Job, map[string]bool) {
+	store, err := s.db()
+	if err != nil {
+		return nil, nil
+	}
+	jobs, err := store.CommandRows(0)
+	if err != nil {
+		return nil, nil
+	}
+	alive := map[string]bool{}
+	for _, j := range jobs {
+		if (j.Status == "running" || j.Status == "cancelling") && j.RunnerPID != nil {
+			alive[j.ID] = processGroupAlive(int(*j.RunnerPID))
+		}
+	}
+	return jobs, alive
+}

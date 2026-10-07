@@ -2,9 +2,15 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"os"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/session"
@@ -252,3 +258,85 @@ func (a *App) respawnShell(pid int) {
 	a.dirty = true
 	a.changed()
 }
+
+// --- G2: workspace job dots ---------------------------------------------
+
+// SetJobSource installs the jobs snapshot provider (server mode only):
+// jobs newest-first plus the set of job ids whose runner process was
+// alive at snapshot time — per SPEC G2 liveness is checked here, not
+// during rendering.
+func (a *App) SetJobSource(f func() ([]dispatch.Job, map[string]bool)) {
+	a.jobSource = f
+}
+
+// refreshJobDots re-snapshots jobs at most once per second and folds
+// them into per-workspace dots. Meaningful rows only: queued jobs,
+// running/cancelling jobs with a live runner, and finished rows younger
+// than one minute. Everything else leaves no dot.
+func (a *App) refreshJobDots(now time.Time) {
+	if a.jobSource == nil || now.Sub(a.jobsAt) < time.Second {
+		return
+	}
+	a.jobsAt = now
+	jobs, alive := a.jobSource()
+	dots := map[int][]render.JobDot{}
+	for _, j := range jobs {
+		var col color.Color
+		switch j.Status {
+		case "queued":
+			col = render.Dim
+		case "running", "cancelling":
+			if !alive[j.ID] {
+				continue // dead runner → no dot
+			}
+			col = render.Yellow
+		default: // finished / cancelled / failed rows
+			if j.FinishedMs == nil ||
+				now.Sub(time.UnixMilli(*j.FinishedMs)) > time.Minute {
+				continue
+			}
+			col = render.Green
+			if j.ExitCode != nil && *j.ExitCode != 0 {
+				col = render.Red
+			}
+		}
+		ws := a.wsIndexOfPane(j.CallerPane)
+		if ws < 0 {
+			continue
+		}
+		dots[ws] = append(dots[ws], render.JobDot{Color: col})
+	}
+	if !reflect.DeepEqual(a.jobDots, dots) {
+		a.jobDots = dots
+		a.dirty = true
+	}
+}
+
+// wsIndexOfPane resolves a "pN" caller-pane id to its workspace index.
+func (a *App) wsIndexOfPane(paneRef string) int {
+	v := strings.TrimPrefix(strings.TrimSpace(paneRef), "p")
+	pid, err := strconv.Atoi(v)
+	if err != nil || pid <= 0 {
+		return -1
+	}
+	for i, ws := range a.st.Workspaces {
+		for _, t := range ws.Tabs {
+			for _, id := range t.Layout.PaneIDs() {
+				if id == pid {
+					return i
+				}
+			}
+		}
+	}
+	return -1
+}
+
+// TestRefreshJobDots is the server-test entry point into the tick's job
+// refresh — it bypasses the once-per-second throttle.
+func (a *App) TestRefreshJobDots() {
+	a.jobsAt = time.Time{}
+	a.refreshJobDots(time.Now())
+}
+
+// JobDots exposes the workspace dot snapshot for tests.
+func (a *App) JobDots() map[int][]render.JobDot { return a.jobDots }
