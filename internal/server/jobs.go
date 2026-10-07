@@ -156,9 +156,13 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	})
 }
 
-// finishJob records the terminal state for a job that never ran.
+// finishJob records the terminal state for a job that never ran; the
+// row is still 'queued', so a plain finish is a no-op and it ends as
+// 'cancelled'.
 func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64) {
-	_, _ = store.MarkCommandFinished(jobID, exitCode)
+	if ok, _ := store.MarkCommandFinished(jobID, exitCode); !ok {
+		_, _ = store.MarkCommandCancelled(jobID)
+	}
 }
 
 // watchJob waits for the process, persists the terminal state, and posts
@@ -178,11 +182,10 @@ func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc
 	if cmd.ProcessState != nil {
 		exitCode = int64(cmd.ProcessState.ExitCode())
 	}
-	// If run.cancel moved the row to 'cancelling', the terminal status is
-	// 'cancelled'; otherwise 'exited' with the real code.
-	if ok, _ := store.MarkCommandCancelled(jobID); !ok {
-		_, _ = store.MarkCommandFinished(jobID, &exitCode)
-	} else {
+	// 'running' → 'exited' with the real code. When run.cancel already
+	// moved the row to 'cancelling', finish is a no-op and the terminal
+	// status is 'cancelled' — so finish must be tried first.
+	if ok, _ := store.MarkCommandFinished(jobID, &exitCode); !ok {
 		_, _ = store.MarkCommandCancelled(jobID)
 	}
 

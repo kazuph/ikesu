@@ -201,6 +201,24 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
 		return s.agentFocus(req.ID, p.Target)
+	case api.MethodAgentRead:
+		var p api.AgentReadParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentRead(req.ID, p)
+	case api.MethodAgentSend:
+		var p api.AgentSendParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentSend(req.ID, p)
+	case api.MethodAgentStart:
+		var p api.AgentStartParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentStart(req.ID, p)
 	case api.MethodAgentRename:
 		var p api.AgentRenameParams
 		if err := req.DecodeParams(&p); err != nil {
