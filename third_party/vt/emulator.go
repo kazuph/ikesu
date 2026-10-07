@@ -69,6 +69,10 @@ type Emulator struct {
 	// Indicates if the terminal is closed.
 	closed bool
 
+	// disableFastPrint forces [Emulator.Write] down the per-byte parser path.
+	// Tests use it to diff the batched path against the regular one.
+	disableFastPrint bool
+
 	// atPhantom indicates if the cursor is out of bounds.
 	// When true, and a character is written, the cursor is moved to the next line.
 	atPhantom bool
@@ -271,17 +275,48 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	for i := range p {
-		e.parser.Advance(p[i])
-		// Flush the last cluster once the whole slice is written. Every
-		// sequence handler flushes on its own way in, so a cluster only has to
-		// survive until either the next printable character extends it or the
-		// write ends.
-		if len(e.grapheme) > 0 && i == len(p)-1 {
-			e.flushGrapheme()
+	for i := 0; i < len(p); i++ {
+		b := p[i]
+		if b >= ansi.SP && b < ansi.DEL && !e.disableFastPrint && e.canFastPrint() {
+			// A run of printable ASCII in ground state all dispatches the
+			// same print action, so it can be written as cells in one batch
+			// instead of advancing the parser byte by byte.
+			j := i + 1
+			for j < len(p) && p[j] >= ansi.SP && p[j] < ansi.DEL {
+				j++
+			}
+			e.printRun(p[i:j])
+			i = j - 1
+			continue
 		}
+		e.parser.Advance(b)
+	}
+	// Flush the last cluster once the whole slice is written. Every
+	// sequence handler flushes on its own way in, so a cluster only has to
+	// survive until either the next printable character extends it or the
+	// write ends.
+	if len(e.grapheme) > 0 {
+		e.flushGrapheme()
 	}
 	return len(p), nil
+}
+
+// canFastPrint reports whether the fast ASCII run path may be used. The run
+// bytes are all printable ASCII reaching the parser in ground state, with no
+// pending single-shift, no mapped GL charset, no cluster being composed, and
+// no left/right margins that change wrapping behavior.
+func (e *Emulator) canFastPrint() bool {
+	if e.parser.State() != parser.GroundState {
+		return false
+	}
+	if e.gsingle != 0 || e.charsets[e.gl] != nil {
+		return false
+	}
+	if len(e.grapheme) > 1 || (len(e.grapheme) == 1 && !printableASCII(rune(e.grapheme[0]))) {
+		return false
+	}
+	scroll := e.scr.scroll
+	return scroll.Min.X == 0 && scroll.Max.X == e.scr.buf.Width()
 }
 
 // WriteString writes a string to the terminal output buffer.
