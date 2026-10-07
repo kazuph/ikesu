@@ -4,11 +4,13 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -200,30 +202,167 @@ func (p *Pane) onMode(m ansi.Mode, on bool) {
 
 func (p *Pane) onOSCTitle(t string) { p.oscTitle = t }
 
-// pumpPTYToEmu copies process output into the emulator and taps OSC state.
-func (p *Pane) pumpPTYToEmu() {
-	buf := make([]byte, 64*1024)
+// pumpStreamGap is how recent the previous flush must be for the pump to
+// treat output as still streaming: only then may a read pause briefly to
+// gather more. The first chunk after an idle gap — a key echo, say — is
+// written to the emulator without waiting.
+var pumpStreamGap = 5 * time.Millisecond
+
+// pumpBatchWait bounds how long the writer side keeps gathering queued
+// output before one emu.Write plus notification, applied only while output
+// is streaming. The cap bounds added latency to about this much.
+var pumpBatchWait = time.Millisecond
+
+// pumpBatchCap bounds how much a single gathered batch may hold; beyond it
+// the writer flushes early and the queue back-pressures the reader.
+const pumpBatchCap = 256 * 1024
+
+// ptyReadyNow reports whether fd has data (or an event worth a read attempt)
+// available without waiting.
+func ptyReadyNow(fd int) bool {
+	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+	n, err := unix.Poll(fds, 0)
+	return err == nil && n > 0
+}
+
+// readPTY drains the PTY into chunks as fast as the kernel delivers them and
+// forwards each chunk on out, closing it at EOF or read error. While the
+// writer is busy it also merges whatever is already queued into the same
+// buffer, which both batches the read side and keeps read syscalls low.
+func (p *Pane) readPTY(out chan<- []byte, pool chan []byte) {
+	defer close(out)
+	statsFile := os.Getenv("GTX_PUMP_STATS")
+	var reads, chunksSent, bytes int64
+	writeStats := func() {
+		if statsFile != "" && reads > 0 {
+			_ = os.WriteFile(statsFile,
+				[]byte(fmt.Sprintf("reads=%d chunks=%d bytes=%d avg=%.0f\n", reads, chunksSent, bytes, float64(bytes)/float64(reads))), 0o644)
+		}
+	}
+	defer writeStats()
+	fd := int(p.ptyFile.Fd())
 	for {
+		var buf []byte
+		select {
+		case buf = <-pool:
+			buf = buf[:cap(buf)]
+		default:
+			buf = make([]byte, 64*1024)
+		}
 		n, err := p.ptyFile.Read(buf)
-		if n > 0 {
-			chunk := buf[:n]
-			p.mu.Lock()
-			for _, e := range p.tap.observe(chunk) {
-				switch e[0] {
-				case "0", "2":
-					p.oscTitle = e[1]
-				case "9":
-					p.oscProgress = e[1]
-				}
+		reads++
+		for err == nil && n < len(buf) && ptyReadyNow(fd) {
+			m, rerr := p.ptyFile.Read(buf[n:])
+			reads++
+			n += m
+			if rerr != nil {
+				err = rerr
+				break
 			}
-			_, _ = p.emu.Write(chunk)
-			p.mu.Unlock()
-			p.notifyChanged()
+			if m == 0 {
+				break
+			}
+		}
+		if n > 0 {
+			chunksSent++
+			bytes += int64(n)
+			out <- buf[:n]
+			if chunksSent%32 == 0 {
+				writeStats()
+			}
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+// pumpPTYToEmu copies process output into the emulator and taps OSC state.
+// The reader goroutine streams PTY output into a chunk channel so reads
+// never wait on emulator work; this loop flushes each chunk immediately
+// after an idle gap, and while output streams it gathers for up to
+// pumpBatchWait before one emu.Write plus change notification per burst.
+func (p *Pane) pumpPTYToEmu() {
+	chunks := make(chan []byte, 256)
+	pool := make(chan []byte, 64)
+	go p.readPTY(chunks, pool)
+
+	recycle := func(c []byte) {
+		select {
+		case pool <- c[:cap(c)]:
+		default:
+		}
+	}
+	var batch []byte
+	var lastFlush time.Time
+	for {
+		c, ok := <-chunks
+		if !ok {
+			return
+		}
+		batch = append(batch[:0], c...)
+		recycle(c)
+
+		if !lastFlush.IsZero() && time.Since(lastFlush) < pumpStreamGap {
+			// Output is still streaming: gather whatever else arrives within
+			// the window, then flush once.
+			timer := time.NewTimer(pumpBatchWait)
+		gather:
+			for len(batch) < pumpBatchCap {
+				select {
+				case c, ok := <-chunks:
+					if !ok {
+						timer.Stop()
+						p.flushPTYBatch(batch)
+						return
+					}
+					batch = append(batch, c...)
+					recycle(c)
+				case <-timer.C:
+					break gather
+				}
+			}
+			timer.Stop()
+			// The window ended while chunks were still queued: take them too
+			// so a close cannot be delayed behind the timer.
+			for len(batch) < pumpBatchCap {
+				select {
+				case c, ok := <-chunks:
+					if !ok {
+						p.flushPTYBatch(batch)
+						return
+					}
+					batch = append(batch, c...)
+					recycle(c)
+				default:
+					goto flush
+				}
+			}
+		}
+	flush:
+		p.flushPTYBatch(batch)
+		lastFlush = time.Now()
+	}
+}
+
+// flushPTYBatch taps OSC state out of the chunk and writes it to the
+// emulator, then notifies the TUI once.
+func (p *Pane) flushPTYBatch(chunk []byte) {
+	if len(chunk) == 0 {
+		return
+	}
+	p.mu.Lock()
+	for _, e := range p.tap.observe(chunk) {
+		switch e[0] {
+		case "0", "2":
+			p.oscTitle = e[1]
+		case "9":
+			p.oscProgress = e[1]
+		}
+	}
+	_, _ = p.emu.Write(chunk)
+	p.mu.Unlock()
+	p.notifyChanged()
 }
 
 // pumpEmuToPTY drains emulator responses (DA reports, mouse/key encodings,
