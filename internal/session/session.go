@@ -421,6 +421,15 @@ func SafeSessionID(v string) bool {
 // session ref (kind=path). The value is later typed into a pane, so any
 // character that could smuggle shell syntax (whitespace, quotes,
 // metacharacters) is rejected; paths that fail stay unresumable.
+// SafeSessionValue dispatches on the ref kind: "path" values are
+// transcript files, everything else is an id.
+func SafeSessionValue(kind, v string) bool {
+	if kind == "path" {
+		return SafeSessionPath(v)
+	}
+	return SafeSessionID(v)
+}
+
 func SafeSessionPath(v string) bool {
 	if v == "" || len(v) > 4096 {
 		return false

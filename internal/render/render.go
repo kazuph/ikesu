@@ -93,6 +93,12 @@ type Dialog struct {
 	Detail  string
 	Confirm string // e.g. "quit"
 	Cancel  string // e.g. "cancel"
+	// Lines are extra detail rows below Detail (e.g. the missing-session
+	// warning list); at most 10 are drawn, per SPEC's dialog height rule
+	// 5 + min(count, 10).
+	Lines []string
+	// Width pins the dialog width (0 → auto-fit contents).
+	Width int
 	// Input/InputEdit render the detail row as an editable text field.
 	Input     string
 	InputEdit bool
@@ -729,6 +735,11 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	if l := len([]rune(d.Detail)) + 4; l > w {
 		w = l
 	}
+	for _, ln := range d.Lines {
+		if l := len([]rune(ln)) + 4; l > w {
+			w = l
+		}
+	}
 	if d.InputEdit {
 		if l := len([]rune(d.Input)) + 8; l > w {
 			w = l
@@ -739,7 +750,14 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	if btnRow > w {
 		w = btnRow
 	}
-	h := 5
+	if d.Width > w {
+		w = d.Width
+	}
+	shown := len(d.Lines)
+	if shown > 10 {
+		shown = 10
+	}
+	h := 5 + shown
 	x := (cols - w) / 2
 	y := (rows - h) / 2
 	if x < 0 {
@@ -768,6 +786,13 @@ func drawDialog(f *Frame, d *Dialog, out *Output) {
 		f.Text(ix+1, iy+1, "> "+d.Input+" ", uv.Style{Fg: Text, Bg: Surface}, ix+iw)
 	} else {
 		f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: Subtle}, ix+iw)
+		shown := len(d.Lines)
+		if shown > 10 {
+			shown = 10
+		}
+		for i := 0; i < shown; i++ {
+			f.Text(ix+1, iy+2+i, d.Lines[i], uv.Style{Fg: Subtle}, ix+iw)
+		}
 	}
 	f.Text(cancel.X, cancel.Y, "[ "+d.Cancel+"  esc ]", uv.Style{Fg: Subtle}, cancel.X+cancel.W)
 	f.Fill(confirm.X, confirm.Y, confirm.W, 1, " ", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Red, Attrs: uv.AttrBold})

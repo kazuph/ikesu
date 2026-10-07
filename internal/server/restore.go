@@ -112,13 +112,6 @@ func (s *Server) ledgerDel(pid int) {
 
 // --- session id resolution -------------------------------------------------
 
-func safeSessionValue(kind, v string) bool {
-	if kind == "path" {
-		return session.SafeSessionPath(v)
-	}
-	return session.SafeSessionID(v)
-}
-
 // paneSessionView merges the terminal-side record and the ledger row for
 // one pane. Values are kept raw; `safe` marks which source produced a
 // usable id and `reason` carries the warning wording when none did.
@@ -160,7 +153,7 @@ func (s *Server) resolvePaneSession(pid int) paneSessionView {
 	// keeps the exact id alive across a restarted terminal.
 	if hasRec {
 		v.kind, v.value, v.title = rec.Kind, rec.Value, rec.Title
-		if safeSessionValue(rec.Kind, rec.Value) {
+		if session.SafeSessionValue(rec.Kind, rec.Value) {
 			v.safe = true
 			return v
 		}
@@ -172,7 +165,7 @@ func (s *Server) resolvePaneSession(pid int) paneSessionView {
 		if v.title == "" {
 			v.title = led.Title
 		}
-		if safeSessionValue(led.SessionKind, led.SessionID) {
+		if session.SafeSessionValue(led.SessionKind, led.SessionID) {
 			v.kind, v.value = led.SessionKind, led.SessionID
 			v.safe = true
 			return v

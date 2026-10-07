@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/session"
@@ -34,6 +36,12 @@ func (a *App) SetRestoreHook(f func(dryRun bool)) { a.restoreHook = f }
 // SetPaneClosedHook registers the callback invoked when a pane is
 // permanently removed so the server can drop its ledger row (SPEC G3).
 func (a *App) SetPaneClosedHook(f func(pid int)) { a.paneClosedHook = f }
+
+// SetWarningsHook registers the missing-session warning provider used by
+// the restart confirmation dialog (SPEC G3 fail-closed restart warning).
+func (a *App) SetWarningsHook(f func() []api.AgentSessionWarningInfo) {
+	a.warningsHook = f
+}
 
 // changed notifies the persistence hook. Call on the app loop.
 func (a *App) changed() {
@@ -138,10 +146,23 @@ func dirExists(p string) bool {
 	return err == nil && st.IsDir()
 }
 
-// openRestartDialog confirms a server restart.
+// openRestartDialog confirms a server restart. When agent panes are
+// missing a safe session id the dialog switches to the fail-closed
+// warning form, listing each unsafe pane (SPEC G3).
 func (a *App) openRestartDialog() {
+	d := render.Dialog{Title: "Restart gtx?", Detail: "Restarts the gtx server and restores this session.", Confirm: "restart", Cancel: "cancel"}
+	if a.warningsHook != nil {
+		if ws := a.warningsHook(); len(ws) > 0 {
+			d.Title = "Restart with missing agent sessions?"
+			d.Detail = "These AI panes do not have a recorded session id:"
+			d.Width = 76
+			for _, w := range ws {
+				d.Lines = append(d.Lines, restartWarningLine(w))
+			}
+		}
+	}
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Restart gtx?", Detail: "Restarts the gtx server and restores this session.", Confirm: "restart", Cancel: "cancel"},
+		d: d,
 		run: func(a *App) {
 			if a.restartHook != nil {
 				a.restartHook()
@@ -149,6 +170,21 @@ func (a *App) openRestartDialog() {
 		},
 	}
 	a.dirty = true
+}
+
+// restartWarningLine renders one missing-session warning row:
+// workspace/pane/agent/title/cwd/reason on a single line.
+func restartWarningLine(w api.AgentSessionWarningInfo) string {
+	ws := w.WorkspaceLabel
+	if ws == "" {
+		ws = fmt.Sprintf("w%d", w.WorkspaceNumber)
+	}
+	title := "-"
+	if w.Title != nil && *w.Title != "" {
+		title = *w.Title
+	}
+	return fmt.Sprintf("%s %s · %s · %s · %s · %s",
+		ws, w.PaneLabel, w.Agent, title, w.Cwd, w.Reason)
 }
 
 // openRestoreDialog confirms a manual agent restore.
@@ -162,4 +198,57 @@ func (a *App) openRestoreDialog() {
 		},
 	}
 	a.dirty = true
+}
+
+// retainOnExit reports whether a dying pane is kept as a shell-fallback
+// pane: it must still carry an effective agent label (detected or
+// reported) and a same-agent record with a safe session value — stale
+// ledger alone never keeps a plain shell alive (SPEC G3 restorable pane
+// retention / inactive shell cleanup boundary).
+func (a *App) retainOnExit(pid int) bool {
+	rp := a.sup.Get(pid)
+	if rp == nil {
+		return false
+	}
+	agent := rp.Snapshot().AgentID
+	if agent == "" {
+		if r, ok := a.reported[pid]; ok {
+			agent = r.agent
+		}
+	}
+	if agent == "" {
+		return false
+	}
+	rec, ok := a.sessions[pid]
+	if !ok || rec.Agent != agent {
+		return false
+	}
+	return session.SafeSessionValue(rec.Kind, rec.Value)
+}
+
+// respawnShell replaces a retained pane's dead process with a fresh login
+// shell in the pane's working directory, keeping the pane id, label, and
+// agent-session record so a later restore can resume the exact session.
+// Call on the app loop.
+func (a *App) respawnShell(pid int) {
+	cwd := ""
+	if rp := a.sup.Get(pid); rp != nil {
+		cwd = rp.SpawnCwd()
+	}
+	if wsIdx, _ := a.st.FindPane(pid); wsIdx >= 0 && cwd == "" {
+		cwd = a.st.Workspaces[wsIdx].Cwd
+	}
+	if cwd == "" {
+		cwd = a.cwd
+	}
+	a.sup.Kill(pid)
+	r := a.rectForPane(pid)
+	_, _ = a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1))
+	// The terminal side is now a bare shell: keep the agent label (the
+	// pane stays a restorable owner) but drop the stale reported state.
+	if r0, ok := a.reported[pid]; ok && r0.agent != "" {
+		a.reported[pid] = reportedPane{agent: r0.agent, state: "unknown"}
+	}
+	a.dirty = true
+	a.changed()
 }

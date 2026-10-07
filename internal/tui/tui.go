@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/kazuph/goterrace/internal/api"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
@@ -124,15 +125,16 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF       bool                // input close means quit (local mode)
-	detacher       func(reason string) // server mode: detach the client
-	sinkOn         func() bool         // nil = always draw
-	quitHook       func()              // runs on the loop right before Run returns
-	availHook      func(pid int)       // pane status changed; server flushes mail
-	changeHook     func()              // persistent state changed; server coalesces saves
-	restartHook    func()              // main menu "Restart server…" (server mode only)
-	restoreHook    func(dryRun bool)   // main menu "Restore agents…" (server mode only)
-	paneClosedHook func(pid int)       // pane permanently removed; server cleans ledger
+	inputEOF       bool                                 // input close means quit (local mode)
+	detacher       func(reason string)                  // server mode: detach the client
+	sinkOn         func() bool                          // nil = always draw
+	quitHook       func()                               // runs on the loop right before Run returns
+	availHook      func(pid int)                        // pane status changed; server flushes mail
+	changeHook     func()                               // persistent state changed; server coalesces saves
+	restartHook    func()                               // main menu "Restart server…" (server mode only)
+	restoreHook    func(dryRun bool)                    // main menu "Restore agents…" (server mode only)
+	paneClosedHook func(pid int)                        // pane permanently removed; server cleans ledger
+	warningsHook   func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target
@@ -419,7 +421,14 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		}
 		a.dirty = true
 	case runtime.EventExited:
-		a.exec(model.CmdPaneExited{Pane: ev.Pane})
+		// A pane that still carries an agent identity and a resumable
+		// session is kept as a shell-fallback pane instead of closing
+		// (SPEC G3 restorable pane retention).
+		if a.retainOnExit(ev.Pane) {
+			a.respawnShell(ev.Pane)
+		} else {
+			a.exec(model.CmdPaneExited{Pane: ev.Pane})
+		}
 	}
 }
 

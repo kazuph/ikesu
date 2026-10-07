@@ -62,7 +62,7 @@ func (s *Server) saveSession() {
 		}
 		// A safe same-agent ledger id keeps the exact session on the
 		// snapshot even when the terminal-side record was lost.
-		if !safeSessionValue(p.SessionKind, p.SessionID) {
+		if !session.SafeSessionValue(p.SessionKind, p.SessionID) {
 			if led, ok := s.ledgerEntry(p.ID); ok && led.SessionID != "" &&
 				(p.Agent == "" || led.Agent == p.Agent) {
 				if p.Agent == "" {

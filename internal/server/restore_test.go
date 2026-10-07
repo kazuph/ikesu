@@ -488,3 +488,138 @@ func TestAgentSessionWarnings(t *testing.T) {
 		t.Fatalf("warnings = %+v", w)
 	}
 }
+
+// --- retention / cleanup ----------------------------------------------------
+
+// paneExit types `exit` into the pane's shell and waits for the exit to
+// be processed (the pane either stays as a respawned shell or is gone).
+func paneExit(t *testing.T, dir, paneID string) {
+	t.Helper()
+	var ok api.OkResult
+	apiOK(t, dir, api.MethodPaneSendInput,
+		api.PaneSendInputParams{PaneID: paneID, Text: "exit", Keys: []string{"enter"}}, &ok)
+}
+
+func waitPanes(t *testing.T, dir string, want []string) []string {
+	t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	var ids []string
+	for time.Now().Before(deadline) {
+		ids = paneIDs(t, dir)
+		if len(ids) == len(want) {
+			same := true
+			for i := range ids {
+				if ids[i] != want[i] {
+					same = false
+				}
+			}
+			if same {
+				return ids
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return ids
+}
+
+// G3 restorable pane retention: a pane carrying an agent label and a safe
+// recorded session id keeps its pane number, record, and ledger row when
+// its process exits — it comes back as a shell instead of closing.
+func TestRestorablePaneRetainedOnExit(t *testing.T) {
+	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(base) })
+	t.Setenv("GTX_STATE_DIR", base)
+	t.Setenv("SHELL", "/bin/sh")
+
+	dir, done := startServerAt(t, "retain")
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+
+	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
+	ids := paneIDs(t, dir)
+	if len(ids) != 2 {
+		t.Fatalf("panes = %v", ids)
+	}
+	reportAgent(t, dir, ids[1], "claude", "sess-keep")
+	paneExit(t, dir, ids[1])
+
+	got := waitPanes(t, dir, ids)
+	if len(got) != 2 {
+		t.Fatalf("restorable pane was closed; panes = %v", got)
+	}
+
+	// The pane's record and ledger row must survive.
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	rows, _ := store.PaneSessions("retain")
+	found := false
+	for _, r := range rows {
+		if r.SessionID == "sess-keep" && r.Agent == "claude" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("ledger lost the retained pane's row: %v", rows)
+	}
+
+	// The snapshot keeps agent/session id after detection cleared.
+	f := waitForSessionFile(t, dir)
+	kept := false
+	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
+		if p.SessionID == "sess-keep" && p.Agent == "claude" {
+			kept = true
+		}
+	})
+	if !kept {
+		t.Fatal("session.json lost the retained pane's agent/session id")
+	}
+}
+
+// G3 inactive-shell cleanup: a pane whose only trace is a past ledger
+// row/record — no effective agent label — closes normally on exit, and
+// its ledger row goes with it.
+func TestInactiveShellPaneClosesOnExit(t *testing.T) {
+	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(base) })
+	t.Setenv("GTX_STATE_DIR", base)
+	t.Setenv("SHELL", "/bin/sh")
+
+	dir, done := startServerAt(t, "cleanup")
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+
+	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
+	ids := paneIDs(t, dir)
+	if len(ids) != 2 {
+		t.Fatalf("panes = %v", ids)
+	}
+	// Record + ledger exist, then the report is cleared — the pane is a
+	// plain shell again and must close normally.
+	reportAgent(t, dir, ids[1], "codex", "sess-old")
+	reportAgent(t, dir, ids[1], "", "")
+	paneExit(t, dir, ids[1])
+
+	got := waitPanes(t, dir, ids[:1])
+	if len(got) != 1 || got[0] != ids[0] {
+		t.Fatalf("shell pane was retained; panes = %v", got)
+	}
+
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	rows, _ := store.PaneSessions("cleanup")
+	for _, r := range rows {
+		if r.PaneID == 2 {
+			t.Fatalf("ledger row for closed pane survives: %+v", r)
+		}
+	}
+}
