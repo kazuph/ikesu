@@ -125,7 +125,7 @@ func (r *runner) paneRename(args []string) int {
 
 func (r *runner) paneRead(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]")
+		return usageErr(r, "usage: gtx pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N]")
 	}
 	params := api.PaneReadParams{
 		PaneID:    args[0],
@@ -157,24 +157,6 @@ func (r *runner) paneRead(args []string) int {
 				return 2
 			}
 			params.Lines = &n
-		case "--format":
-			v, ok := flagValue(args, &i)
-			if !ok {
-				return usageErr(r, "missing value for --format")
-			}
-			f, err := parseReadFormat(v)
-			if err != nil {
-				fmt.Fprintln(r.errOut(), err)
-				return 2
-			}
-			params.Format = f
-		case "--ansi":
-			params.Format = "ansi"
-			i++
-		case "--raw":
-			params.Format = "ansi"
-			params.StripANSI = false
-			i++
 		default:
 			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
 			return 2

@@ -707,9 +707,9 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 	if format == "" {
 		format = "text"
 	}
-	if format != "text" && format != "ansi" {
+	if format != "text" {
 		return api.Failure(id, api.ErrInvalidRequest,
-			fmt.Sprintf("unknown read format %q", format))
+			fmt.Sprintf("read format %q is not supported in this stage", format))
 	}
 	limit := 80
 	if p.Lines != nil {
@@ -720,9 +720,6 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 	}
 	screen := pane.ScreenLines
 	scroll := pane.ScrollbackLines
-	if format == "ansi" {
-		screen, scroll = pane.ScreenANSI, pane.ScrollbackANSI
-	}
 	var lines []string
 	var truncated bool
 	switch source {

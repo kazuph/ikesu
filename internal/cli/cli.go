@@ -285,15 +285,6 @@ func parseReadSource(value string) (string, error) {
 	}
 }
 
-func parseReadFormat(value string) (string, error) {
-	switch value {
-	case "text", "ansi":
-		return value, nil
-	default:
-		return "", fmt.Errorf("invalid read format: %s", value)
-	}
-}
-
 // readRawLine reads one newline-terminated JSON line and returns the bytes
 // without the trailing newline.
 func readRawLine(r *bufio.Reader) ([]byte, error) {
