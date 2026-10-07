@@ -132,7 +132,7 @@ func TestInsertLineAreaLineSwap(t *testing.T) {
 	const w, h = 160, 45
 	for _, tc := range lineAreaCases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, fill := range []*Cell{nil, {Content: " ", Width: 1, Style: Style{Attrs: AttrReverse}}} {
+			for _, fill := range []*Cell{nil, {Content: " ", Width: 1, Style: Style{Attrs: AttrReverse}}, {Content: "世", Width: 2}, {Content: "", Width: 0}} {
 				area := Rect(tc.minX, tc.minY, w-tc.shrinkMax-tc.minX, tc.maxY-tc.minY)
 				got := patternedBuffer(w, h)
 				want := patternedBuffer(w, h)
@@ -150,7 +150,7 @@ func TestDeleteLineAreaLineSwap(t *testing.T) {
 	const w, h = 160, 45
 	for _, tc := range lineAreaCases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, fill := range []*Cell{nil, {Content: " ", Width: 1, Style: Style{Attrs: AttrReverse}}} {
+			for _, fill := range []*Cell{nil, {Content: " ", Width: 1, Style: Style{Attrs: AttrReverse}}, {Content: "世", Width: 2}, {Content: "", Width: 0}} {
 				area := Rect(tc.minX, tc.minY, w-tc.shrinkMax-tc.minX, tc.maxY-tc.minY)
 				got := patternedBuffer(w, h)
 				want := patternedBuffer(w, h)

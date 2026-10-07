@@ -484,11 +484,7 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		pushed = append(pushed, lines[area.Max.Y-n:area.Max.Y]...)
 		copy(lines[y+n:area.Max.Y], lines[y:area.Max.Y-n])
 		copy(lines[y:y+n], pushed)
-		for i := y; i < y+n; i++ {
-			for x := range lines[i] {
-				b.SetCell(x, i, c)
-			}
-		}
+		fillLines(b, y, n, c)
 		return
 	}
 
@@ -504,6 +500,31 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 	for i := y; i < y+n; i++ {
 		for x := area.Min.X; x < area.Max.X; x++ {
 			b.SetCell(x, i, c)
+		}
+	}
+}
+
+// fillLines fills rows [y, y+n) of the buffer with c, which may be nil
+// (blank). For cells one column wide or narrower the result is identical
+// to calling [Buffer.SetCell] on every column: every cell is overwritten,
+// so the per-cell wide-cell fixups in [Line.Set] can be skipped. A wider
+// fill cell still goes through Set so placeholder semantics are preserved.
+func fillLines(b *Buffer, y, n int, c *Cell) {
+	if c != nil && c.Width > 1 {
+		for i := y; i < y+n; i++ {
+			for x := range b.Lines[i] {
+				b.SetCell(x, i, c)
+			}
+		}
+		return
+	}
+	fill := EmptyCell
+	if c != nil {
+		fill = *c
+	}
+	for i := y; i < y+n; i++ {
+		for x := range b.Lines[i] {
+			b.Lines[i][x] = fill
 		}
 	}
 }
@@ -536,11 +557,7 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 		deleted = append(deleted, lines[y:y+n]...)
 		copy(lines[y:area.Max.Y-n], lines[y+n:area.Max.Y])
 		copy(lines[area.Max.Y-n:area.Max.Y], deleted)
-		for i := area.Max.Y - n; i < area.Max.Y; i++ {
-			for x := range lines[i] {
-				b.SetCell(x, i, c)
-			}
-		}
+		fillLines(b, area.Max.Y-n, n, c)
 		return
 	}
 
