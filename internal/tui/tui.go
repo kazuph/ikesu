@@ -263,6 +263,9 @@ func (a *App) onInput(ev input.Event) {
 func (a *App) onRuntimeEvent(ev runtime.Event) {
 	switch ev.Kind {
 	case runtime.EventChanged:
+		if p := a.sup.Get(ev.Pane); p != nil {
+			p.MarkChangedRead()
+		}
 		a.dirty = true
 	case runtime.EventExited:
 		a.exec(model.CmdPaneExited{Pane: ev.Pane})

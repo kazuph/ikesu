@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -75,6 +76,10 @@ type Pane struct {
 
 	tap oscTap
 	ev  chan<- Event
+
+	// changedPending is set while an EventChanged for this pane is still
+	// sitting in the event queue or being consumed by the TUI.
+	changedPending atomic.Bool
 }
 
 // Snapshot is a consistent read of the pane's observable state.
@@ -213,7 +218,7 @@ func (p *Pane) pumpPTYToEmu() {
 			}
 			_, _ = p.emu.Write(chunk)
 			p.mu.Unlock()
-			p.notify(EventChanged)
+			p.notifyChanged()
 		}
 		if err != nil {
 			return
@@ -251,6 +256,28 @@ func (p *Pane) notify(k EventKind) {
 	case p.ev <- Event{Pane: p.ID, Kind: k}:
 	default:
 	}
+}
+
+// notifyChanged coalesces EventChanged notifications: while one is still
+// pending — sent but not yet consumed via MarkChangedRead — later screen
+// changes skip the send, because the queued event already prompts a redraw
+// of the latest screen state.
+func (p *Pane) notifyChanged() {
+	if !p.changedPending.CompareAndSwap(false, true) {
+		return
+	}
+	select {
+	case p.ev <- Event{Pane: p.ID, Kind: EventChanged}:
+	default:
+		p.changedPending.Store(false)
+	}
+}
+
+// MarkChangedRead clears the pending EventChanged flag. The TUI calls it
+// when it consumes the event, allowing the next screen change to notify
+// again.
+func (p *Pane) MarkChangedRead() {
+	p.changedPending.Store(false)
 }
 
 // Kill terminates the pane's process tree and releases the PTY.
