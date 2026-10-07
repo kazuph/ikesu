@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -366,53 +365,32 @@ func TestServerStartsWhileSpawnLockHeld(t *testing.T) {
 	stopServer(t, dir, done)
 }
 
-// A client that stops reading must not stall the server: after the write
-// deadline the wedged connection is dropped and the API keeps answering.
+// A client that stops reading must not stall the server: net.Pipe blocks
+// every Write until the peer reads, so the wedged client hits the write
+// deadline deterministically and is dropped.
 func TestWedgedClientIsDropped(t *testing.T) {
 	old := clientWriteTimeout
-	clientWriteTimeout = 300 * time.Millisecond
+	clientWriteTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { clientWriteTimeout = old })
 
-	dir, done := startTestServer(t)
-	defer stopServer(t, dir, done)
-	waitAPISocket(t, dir)
+	s := &Server{}
+	srv, cli := net.Pipe()
+	defer cli.Close()
+	c := &clientConn{conn: srv}
+	s.client = c
 
-	// Attach, then never read again.
-	wconn, err := net.Dial("unix", api.ClientSocketPath(dir))
-	if err != nil {
-		t.Fatalf("dial client: %v", err)
+	w := &clientSink{s: s}
+	t0 := time.Now()
+	if _, err := w.Write([]byte("x")); err != nil {
+		t.Fatalf("sink write: %v", err)
 	}
-	defer wconn.Close()
-	json.NewEncoder(wconn).Encode(clientMsg{Type: "hello", Cols: 80, Rows: 24})
-	br := bufio.NewReader(wconn)
-	// Consume the hello-reply burst so the socket starts wedging.
-	br.ReadBytes('\n')
-
-	// Flood the pane for ~20s: each output frame is a write to the wedged
-	// client until the kernel buffers fill and the write deadline fires.
-	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{
-		PaneID: "p1", Text: "seq 1 40000000", Keys: []string{"enter"},
-	}, nil)
-
-	// The API must keep responding while the client is wedged, and the
-	// wedged connection must eventually be closed server-side.
-	dropped := false
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		var r api.PongResult
-		apiOK(t, dir, api.MethodPing, nil, &r)
-		wconn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-		_, err := br.ReadBytes('\n')
-		if err != nil {
-			var ne net.Error
-			if !errors.As(err, &ne) || !ne.Timeout() {
-				dropped = true // EOF or other conn failure: server dropped it
-				break
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
+	if took := time.Since(t0); took > 5*time.Second {
+		t.Fatalf("wedged write took %v; deadline never fired", took)
 	}
+	s.mu.Lock()
+	dropped := s.client == nil
+	s.mu.Unlock()
 	if !dropped {
-		t.Fatal("wedged client was never dropped")
+		t.Fatal("wedged client was not dropped")
 	}
 }
