@@ -80,6 +80,13 @@ type MenuItem struct {
 	Disabled  bool
 }
 
+// Toast is a transient notification box shown at the top-right.
+type Toast struct {
+	Title string
+	Body  string
+	Kind  string // "needs_attention" | "finished"
+}
+
 // Dialog is a centered confirmation box.
 type Dialog struct {
 	Title   string
@@ -100,6 +107,7 @@ type Input struct {
 	Menu   *Menu
 	Dialog *Dialog
 	Sel    *Selection
+	Toast  *Toast
 
 	Spin          int    // working-spinner frame
 	Copied        string // flash text, e.g. " copied 12 chars "
@@ -117,7 +125,8 @@ type Output struct {
 	// NewTabRect is the "+" button. Both feed the mouse layer.
 	TabHits    []layout.Rect
 	NewTabRect layout.Rect
-	// MenuRect/DialogRects let the mouse layer hit-test overlays.
+	// MenuRect/DialogRects/ToastRect let the mouse layer hit-test overlays.
+	ToastRect     layout.Rect
 	MenuRect      layout.Rect
 	MenuItemRows  []layout.Rect // per-item row rects (absolute coords)
 	DialogRect    layout.Rect
@@ -140,6 +149,9 @@ func Compose(in Input) *Output {
 	}
 	if in.Dialog != nil {
 		drawDialog(f, in.Dialog, out)
+	}
+	if in.Toast != nil {
+		drawToast(f, in.Toast, out)
 	}
 	return out
 }
@@ -673,6 +685,40 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		}
 		f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
 	}
+}
+
+// --- toast ---
+
+// drawToast renders the notification box at the top-right: a 4-row-high
+// bordered box with the status dot + title and one body line.
+func drawToast(f *Frame, t *Toast, out *Output) {
+	w := len([]rune(t.Title)) + 6
+	if l := len([]rune(t.Body)) + 4; l > w {
+		w = l
+	}
+	maxW := f.W / 2
+	if maxW < 20 {
+		maxW = 20
+	}
+	if w > maxW {
+		w = maxW
+	}
+	x := f.W - w - 1
+	if x < 0 {
+		x = 0
+	}
+	y := 1
+	r := layout.Rect{X: x, Y: y, W: w, H: 4}
+	out.ToastRect = r
+	dot := uv.Style{Fg: Accent}
+	if t.Kind == "needs_attention" {
+		dot = uv.Style{Fg: Yellow}
+	}
+	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: Dim})
+	f.Fill(ix, iy, iw, 2, " ", uv.Style{Fg: Text})
+	f.Set(ix, iy, "●", dot)
+	f.Text(ix+2, iy, t.Title, uv.Style{Fg: Text, Attrs: uv.AttrBold}, ix+iw)
+	f.Text(ix+1, iy+1, t.Body, uv.Style{Fg: Dim}, ix+iw)
 }
 
 // --- dialog ---

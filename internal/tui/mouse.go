@@ -41,6 +41,9 @@ func (a *App) onMouse(ev input.Event) {
 
 // click dispatches a mouse press by region.
 func (a *App) click(m uv.Mouse) {
+	if a.toastClick(m.X, m.Y) {
+		return
+	}
 	if m.Y == a.st.StatusArea().Y {
 		a.statusClick(m)
 		return

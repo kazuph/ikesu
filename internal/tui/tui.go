@@ -124,12 +124,16 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF bool                // input close means quit (local mode)
-	detacher func(reason string) // server mode: detach the client
-	sinkOn   func() bool         // nil = always draw
-	quitHook func()              // runs on the loop right before Run returns
+	inputEOF  bool                // input close means quit (local mode)
+	detacher  func(reason string) // server mode: detach the client
+	sinkOn    func() bool         // nil = always draw
+	quitHook  func()              // runs on the loop right before Run returns
+	availHook func(pid int)       // pane status changed; server flushes mail
 
 	prefix        bool
+	navKey        rune // prefix+<navKey> jumps to the toast target
+	toast         *toastView
+	toastRect     layout.Rect
 	menu          *uiMenu
 	dialog        *uiDialog
 	sep           *sepDrag
@@ -188,6 +192,11 @@ func (a *App) SetSinkGate(f func() bool) { a.sinkOn = f }
 // SetQuitHook registers a callback invoked on the loop just before Run
 // returns (e.g. to send the client a final exit message).
 func (a *App) SetQuitHook(f func()) { a.quitHook = f }
+
+// SetAvailHook registers a callback invoked on the app loop whenever a
+// pane's agent status changes (detection or report). The server uses it
+// for event-driven mail delivery.
+func (a *App) SetAvailHook(f func(pid int)) { a.availHook = f }
 
 // Do runs fn on the app loop goroutine and blocks until it completes. It
 // returns without running fn if the app has already stopped.
@@ -437,6 +446,9 @@ func (a *App) detectAll() {
 				}
 				if tr.Update(detect.Detect(agentID, in), agentID, sn.Dead, now) {
 					a.dirty = true
+					if a.availHook != nil {
+						a.availHook(pid)
+					}
 				}
 				// The focused pane in the visible workspace is seen.
 				if ws == activeWS && pid == focusedID {
@@ -460,6 +472,7 @@ func (a *App) detectAll() {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
+	a.expireToast()
 	if a.copied != "" && time.Since(a.copiedAt) > copiedDuration {
 		a.copied = ""
 		a.dirty = true
@@ -649,9 +662,13 @@ func (a *App) draw() {
 	if a.sel != nil && a.sel.moved {
 		in.Sel = a.selRender()
 	}
+	if a.toast != nil {
+		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind}
+	}
 	out := render.Compose(in)
 	a.tabHits = out.TabHits
 	a.newTabRect = out.NewTabRect
+	a.toastRect = out.ToastRect
 	a.lastDraw = time.Now()
 	a.dirty = false
 	_, _ = a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
@@ -674,11 +691,18 @@ func (a *App) SetReported(pid int, agent, state string) {
 	if a.reported == nil {
 		a.reported = map[int]reportedPane{}
 	}
+	prev := a.reported[pid]
 	if agent == "" && state == "" {
 		delete(a.reported, pid)
-		return
+	} else {
+		a.reported[pid] = reportedPane{agent: agent, state: state}
 	}
-	a.reported[pid] = reportedPane{agent: agent, state: state}
+	if a.availHook != nil {
+		cur := a.reported[pid]
+		if prev != cur {
+			a.availHook(pid)
+		}
+	}
 }
 
 // Reported returns the API-reported agent override, if any. Call on the
