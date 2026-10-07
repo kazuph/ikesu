@@ -349,8 +349,8 @@ func TestTabAPI(t *testing.T) {
 		t.Fatalf("tabs = %d, want 1", len(list.Tabs))
 	}
 	tab1 := list.Tabs[0].TabID
-	if !strings.HasPrefix(tab1, "w") || !strings.Contains(tab1, ":t") {
-		t.Fatalf("tab id %q should look like wN:tM", tab1)
+	if !strings.HasPrefix(tab1, "s") || !strings.Contains(tab1, ":t") {
+		t.Fatalf("tab id %q should look like sN:tM", tab1)
 	}
 	if !list.Tabs[0].Focused {
 		t.Fatal("initial tab should be focused")
@@ -462,7 +462,7 @@ func TestTabAPI(t *testing.T) {
 	}
 
 	// Unknown tab and malformed ids.
-	resp := apiReq(t, dir, api.MethodTabGet, api.TabTarget{TabID: "w1:t99"})
+	resp := apiReq(t, dir, api.MethodTabGet, api.TabTarget{TabID: "s1:t99"})
 	if resp.Err == nil || resp.Err.Code != api.ErrTabNotFound {
 		t.Fatalf("unknown tab: %+v", resp.Err)
 	}
