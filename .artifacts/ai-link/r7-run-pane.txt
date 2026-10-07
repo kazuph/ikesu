@@ -1,0 +1,19 @@
+=== p1 (caller) after run --pane pj3 ===
+╰─ ❯ /tmp/gtxb-m/gtx run --pane --label pj3 -- sh -c "echo PANEJOB-OK; sleep 3"
+{"job":"job-1791369715176-71590-1","label":"pj3","mode":"pane","next":"the caller pane is notified `[gtx run] exit=\u003ccode\u003e label=pj3 pane=p5` on exit; wait for t
+he notice instead of sleeping or polling `gtx run list`/`gtx log`, then read `gtx log job-1791369715176-71590-1`","pane":"p5"}
+╭─ kazuph@kazu-mba-m5 · /tmp/gtx-acc
+╰─ ❯ [gtx run] exit=0 label=pj3 pane=p5 details: gtx log job-1791369715176-71590-1
+zsh: bad pattern: [gtx
+╭─ kazuph@kazu-mba-m5 · /tmp/gtx-acc
+╰─ ❯
+=== gtx log job-1791369715176-71590-1 ===
+job-1791369715176-71590-1 (pane job)
+== gtx run job-1791369715176-71590-1 label=pj3 started=2026-10-07T19:41:55+09:00 cmd=sh -c 'echo PANEJOB-OK; sleep 3'
+
+PANEJOB-OK
+
+== gtx run job-1791369715176-71590-1 exit=0 finished=2026-10-07T19:41:58+09:00
+
+=== gtx pane list ===
+{"id":"cli:pane:list","result":{"type":"pane_list","panes":[{"agent":"shellx","agent_status":"idle","cwd":"/private/tmp/gtx-acc","focused":false,"foreground_cwd":"/private/tmp/gtx-acc","pane_id":"p1","revision":50,"scroll":{"offset_from_bottom":0,"max_offset_from_bottom":0,"viewport_rows":51},"tab_id":"s1:t1","terminal_id":"p1","terminal_title":"kazuph@kazu-mba-m5: /tmp/gtx-acc","workspace_id":"s1"},{"agent_status":"unknown","cwd":"/private/tmp/gtx-acc","focused":false,"foreground_cwd":"/private/tmp/gtx-acc","label":"pj","pane_id":"p3","revision":31,"scroll":{"offset_from_bottom":0,"max_offset_from_bottom":0,"viewport_rows":51},"tab_id":"s1:t1","terminal_id":"p3","workspace_id":"s1"},{"agent":"codex","agent_status":"blocked","cwd":"/private/tmp/gtx-acc","focused":true,"foreground_cwd":"/private/tmp/gtx-acc","pane_id":"p2","revision":4,"scroll":{"offset_from_bottom":0,"max_offset_from_bottom":0,"viewport_rows":51},"tab_id":"s2:t2","terminal_id":"p2","terminal_title":"kazuph@kazu-mba-m5: /tmp/gtx-acc","workspace_id":"s2"}]}}
