@@ -1,3 +1,4 @@
 /gtx
 /dist/
 .artifacts/
+/tools/bench/ptyrun/ptyrun
