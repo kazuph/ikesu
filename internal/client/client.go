@@ -200,14 +200,15 @@ func waitDial(dir string, timeout time.Duration) (net.Conn, error) {
 }
 
 // spawnServer starts `gtx server` detached, with its output going to the
-// session's server.log. A NB flock coordinates concurrent spawners: the
-// lock holder spawns; others just poll for the socket.
+// session's server.log. A NB flock on the spawn lock coordinates
+// concurrent spawners: the lock holder spawns; others just poll for the
+// socket. This lock is separate from the server's lifetime gtx.lock so
+// the child can take its lock before we release ours.
 func spawnServer(session, dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	lockPath := api.LockPath(dir)
-	lf, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	lf, err := os.OpenFile(api.SpawnLockPath(dir), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fmt.Errorf("open lock: %w", err)
 	}

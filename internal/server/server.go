@@ -58,6 +58,12 @@ type Server struct {
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 }
 
+// clientWriteTimeout bounds how long a frame write to the attached client
+// may block. A client that stops reading (suspended over ssh, Ctrl-Z)
+// must not stall the app loop — and with it the API — so after the
+// deadline the connection is dropped.
+var clientWriteTimeout = 5 * time.Second
+
 // clientConn is one attached display client.
 type clientConn struct {
 	conn net.Conn
@@ -67,6 +73,8 @@ type clientConn struct {
 func (c *clientConn) send(m clientMsg) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(clientWriteTimeout))
+	defer c.conn.SetWriteDeadline(time.Time{})
 	enc := json.NewEncoder(c.conn)
 	return enc.Encode(m)
 }

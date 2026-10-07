@@ -96,3 +96,16 @@ func normalizeKeyAlias(s string) string {
 }
 
 func isPrintableASCII(r rune) bool { return r >= 0x20 && r < 0x7f }
+
+// parseKeys converts key specs to events, returning the first bad name.
+func parseKeys(keys []string) ([]uv.KeyEvent, string) {
+	var out []uv.KeyEvent
+	for _, k := range keys {
+		ev, ok := parseKeyName(k)
+		if !ok {
+			return nil, k
+		}
+		out = append(out, ev)
+	}
+	return out, ""
+}

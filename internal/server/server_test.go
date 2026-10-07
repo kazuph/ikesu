@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -323,5 +326,93 @@ func TestPingAndUnknownMethod(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("server did not exit")
+	}
+}
+
+// A client holding the spawn lock while it forks must not block the new
+// server from taking its own liveness lock (the two used to share one
+// file, which made the child exit "already running" under load).
+func TestServerStartsWhileSpawnLockHeld(t *testing.T) {
+	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(base) })
+	t.Setenv("GTX_STATE_DIR", base)
+	t.Setenv("SHELL", "/bin/sh")
+	dir := api.SessionDir("test")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lf, err := os.OpenFile(api.SpawnLockPath(dir), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lf.Close()
+	if err := unix.Flock(int(lf.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Flock(int(lf.Fd()), unix.LOCK_UN)
+
+	done := make(chan int, 1)
+	go func() {
+		code, err := Run("test", "test-version")
+		if err != nil {
+			t.Errorf("server.Run under held spawn lock: %v", err)
+		}
+		done <- code
+	}()
+	waitAPISocket(t, dir)
+	stopServer(t, dir, done)
+}
+
+// A client that stops reading must not stall the server: after the write
+// deadline the wedged connection is dropped and the API keeps answering.
+func TestWedgedClientIsDropped(t *testing.T) {
+	old := clientWriteTimeout
+	clientWriteTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { clientWriteTimeout = old })
+
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	waitAPISocket(t, dir)
+
+	// Attach, then never read again.
+	wconn, err := net.Dial("unix", api.ClientSocketPath(dir))
+	if err != nil {
+		t.Fatalf("dial client: %v", err)
+	}
+	defer wconn.Close()
+	json.NewEncoder(wconn).Encode(clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	br := bufio.NewReader(wconn)
+	// Consume the hello-reply burst so the socket starts wedging.
+	br.ReadBytes('\n')
+
+	// Flood the pane for ~20s: each output frame is a write to the wedged
+	// client until the kernel buffers fill and the write deadline fires.
+	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{
+		PaneID: "p1", Text: "seq 1 40000000", Keys: []string{"enter"},
+	}, nil)
+
+	// The API must keep responding while the client is wedged, and the
+	// wedged connection must eventually be closed server-side.
+	dropped := false
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var r api.PongResult
+		apiOK(t, dir, api.MethodPing, nil, &r)
+		wconn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, err := br.ReadBytes('\n')
+		if err != nil {
+			var ne net.Error
+			if !errors.As(err, &ne) || !ne.Timeout() {
+				dropped = true // EOF or other conn failure: server dropped it
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !dropped {
+		t.Fatal("wedged client was never dropped")
 	}
 }

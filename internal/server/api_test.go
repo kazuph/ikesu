@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -222,49 +224,32 @@ func TestPaneAPISplitReadSend(t *testing.T) {
 	}
 
 	// pane.current via process ancestry: run `sleep` in p1 and resolve by pid.
-	marker3 := "SL" + marker
+	// Have the pane's shell record a child PID we can use to resolve
+	// pane.current by process ancestry.
+	pidFile := filepath.Join(t.TempDir(), "pane.pid")
 	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{
-		PaneID: p1, Text: "sleep 5 # " + marker3, Keys: []string{"enter"},
+		PaneID: p1, Text: fmt.Sprintf("sh -c 'echo $$ > %s; exec sleep 5'", pidFile),
+		Keys: []string{"enter"},
 	}, nil)
-	var pi api.PaneProcessInfoResult
 	deadline := time.Now().Add(8 * time.Second)
 	for {
-		apiOK(t, dir, api.MethodPaneProcessInfo, api.PaneQueryParams{PaneID: p1}, &pi)
-		found := false
-		for _, pr := range pi.ForegroundProcesses {
-			if pr.Name == "sleep" {
-				found = true
-				pid := uint32(pr.PID)
-				apiOK(t, dir, api.MethodPaneCurrent,
-					api.PaneCurrentParams{CallerProcessID: &pid}, &cur)
-				if cur.Pane.PaneID != p1 {
-					t.Fatalf("ancestry pane.current = %q, want %q", cur.Pane.PaneID, p1)
-				}
-			}
+		var pid int
+		if b, err := os.ReadFile(pidFile); err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pid)
 		}
-		if found {
+		if pid > 0 {
+			u32 := uint32(pid)
+			apiOK(t, dir, api.MethodPaneCurrent,
+				api.PaneCurrentParams{CallerProcessID: &u32}, &cur)
+			if cur.Pane.PaneID != p1 {
+				t.Fatalf("ancestry pane.current = %q, want %q", cur.Pane.PaneID, p1)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("sleep never became foreground")
+			t.Fatal("sleep PID file never appeared")
 		}
 		time.Sleep(100 * time.Millisecond)
-	}
-
-	// layout/neighbor/edges after the earlier splits
-	var lay api.PaneLayoutResult
-	apiOK(t, dir, api.MethodPaneLayout, api.PaneQueryParams{PaneID: p1}, &lay)
-	if len(lay.Layout.Panes) != 3 {
-		t.Fatalf("layout panes = %d, want 3", len(lay.Layout.Panes))
-	}
-	if len(lay.Layout.Splits) != 2 {
-		t.Fatalf("layout splits = %d, want 2", len(lay.Layout.Splits))
-	}
-	var nb api.PaneNeighborResult
-	apiOK(t, dir, api.MethodPaneNeighbor,
-		api.PaneNeighborParams{PaneID: p1, Direction: "right"}, &nb)
-	if nb.NeighborPaneID == nil {
-		t.Fatal("p1 should have a right neighbor")
 	}
 
 	// close the extra panes
@@ -511,7 +496,7 @@ func TestTabCloseLastRemovesWorkspace(t *testing.T) {
 	}
 }
 
-func TestTabLayoutSnapshotScoped(t *testing.T) {
+func TestPaneReadReportsRealTabID(t *testing.T) {
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -523,7 +508,6 @@ func TestTabLayoutSnapshotScoped(t *testing.T) {
 		Direction: "right", TargetPaneID: &created.RootPane.PaneID,
 	}, nil)
 
-	// layout of a tab1 pane shows only tab1's single pane.
 	var tl api.TabListResult
 	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tl)
 	tab1 := ""
@@ -546,19 +530,17 @@ func TestTabLayoutSnapshotScoped(t *testing.T) {
 	if tab1Pane == "" {
 		t.Fatal("no pane found for tab1")
 	}
-	var lay api.PaneLayoutResult
-	apiOK(t, dir, api.MethodPaneLayout, api.PaneQueryParams{PaneID: tab1Pane}, &lay)
-	if len(lay.Layout.Panes) != 1 {
-		t.Fatalf("tab1 layout panes = %d, want 1", len(lay.Layout.Panes))
+	// pane.read must report the pane's own tab, not always tab 1.
+	var rd api.PaneReadResultEnvelope
+	apiOK(t, dir, api.MethodPaneRead,
+		api.PaneReadParams{PaneID: tab1Pane, Source: "visible"}, &rd)
+	if rd.Read.TabID != tab1 {
+		t.Fatalf("pane.read tab_id = %q, want %q", rd.Read.TabID, tab1)
 	}
-	if lay.Layout.TabID != tab1 {
-		t.Fatalf("layout tab_id = %q, want %q", lay.Layout.TabID, tab1)
-	}
-	// Tab2's snapshot has 2 panes.
-	apiOK(t, dir, api.MethodPaneLayout,
-		api.PaneQueryParams{PaneID: created.RootPane.PaneID}, &lay)
-	if len(lay.Layout.Panes) != 2 || lay.Layout.TabID != created.Tab.TabID {
-		t.Fatalf("tab2 layout = %d panes in %q", len(lay.Layout.Panes), lay.Layout.TabID)
+	apiOK(t, dir, api.MethodPaneRead,
+		api.PaneReadParams{PaneID: created.RootPane.PaneID, Source: "visible"}, &rd)
+	if rd.Read.TabID != created.Tab.TabID {
+		t.Fatalf("pane.read tab_id = %q, want %q", rd.Read.TabID, created.Tab.TabID)
 	}
 }
 

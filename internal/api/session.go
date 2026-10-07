@@ -52,8 +52,17 @@ func ClientSocketPath(sessionDir string) string {
 }
 
 // LockPath is the duplicate-server lock inside a session directory.
+// The running server holds it for its lifetime.
 func LockPath(sessionDir string) string {
 	return filepath.Join(sessionDir, "gtx.lock")
+}
+
+// SpawnLockPath is the spawn-coordination lock inside a session
+// directory. A client holds it only while it forks the server; keeping it
+// separate from LockPath lets the freshly spawned server acquire the
+// liveness lock immediately, before the spawning client releases.
+func SpawnLockPath(sessionDir string) string {
+	return filepath.Join(sessionDir, "gtx-spawn.lock")
 }
 
 // LogPath is the server log inside a session directory.
