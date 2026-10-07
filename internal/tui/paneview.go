@@ -116,8 +116,7 @@ func (a *App) selRender() *render.Selection {
 
 // selText extracts the selected text (trailing blanks trimmed per line) and
 // the character count.
-func (a *App) selText() (string, int) {
-	s := a.sel
+func (a *App) selText(s *selState) (string, int) {
 	p := a.sup.Get(s.pane)
 	if p == nil {
 		return "", 0

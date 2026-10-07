@@ -343,3 +343,23 @@ func TestWheelScrollback(t *testing.T) {
 		return strings.Contains(tx, "↑")
 	})
 }
+
+func TestDragSelectCopy(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send("echo SELECT_ME\n")
+	s.waitFor("echo output", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "SELECT_ME") })
+	// Drag across the word: press inside the pane, move, release.
+	x, y := s.find("SELECT_ME")
+	if x < 0 {
+		t.Fatalf("SELECT_ME not on screen:\n%s", s.text())
+	}
+	s.send(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1))
+	s.send(fmt.Sprintf("\x1b[<32;%d;%dM", x+8, y+1))
+	s.send(fmt.Sprintf("\x1b[<0;%d;%dm", x+8, y+1))
+	// Releasing a moved selection must not crash; the copied flash appears.
+	s.waitFor("copied flash", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "copied")
+	})
+}

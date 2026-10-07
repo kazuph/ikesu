@@ -341,7 +341,7 @@ func (a *App) finishSelection() {
 	if s == nil || !s.moved {
 		return
 	}
-	text, chars := a.selText()
+	text, chars := a.selText(s)
 	if text == "" {
 		return
 	}
