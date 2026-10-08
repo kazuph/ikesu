@@ -17,6 +17,7 @@ import (
 func TestG2PopupOwnerInputPasteLFReorderAndSelectionCleanupActualPTY(t *testing.T) {
 	t.Setenv("SHELL", "/bin/sh")
 	a := specRuntimeApp(t)
+	t.Cleanup(a.sup.KillAll)
 	owner := a.st.ActiveWorkspace().ID
 	root := a.focusedPane()
 	dir := t.TempDir()
@@ -110,6 +111,7 @@ func TestG2PopupMouseCoordinatesWheelSelectionAutoscrollAndOSC52(t *testing.T) {
 	for _, reporting := range []bool{false, true} {
 		t.Run(fmt.Sprint(reporting), func(t *testing.T) {
 			a := specRuntimeApp(t)
+			t.Cleanup(a.sup.KillAll)
 			width, height := api.PopupSize{Cells: 40}, api.PopupSize{Cells: 12}
 			path := filepath.Join(t.TempDir(), "received")
 			want := "\x1b[<0;3;3M\x1b[<0;3;3m\x1b[<64;3;3M"
