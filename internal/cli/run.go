@@ -122,27 +122,6 @@ type runSpawnOutput struct {
 	Pane  *string `json:"pane"`
 }
 
-func runSpawnNextHint(job, label string, pane *string, completion string) string {
-	if pane != nil {
-		return fmt.Sprintf("the caller pane is notified `[gtx run] exit=<code> label=%s pane=%s` on exit; wait for the notice instead of sleeping or polling `gtx run list`/`gtx log`, then read `gtx log %s`",
-			oneLineField(label), *pane, job)
-	}
-	if completion == "none" {
-		return fmt.Sprintf("--completion none sends no exit notice; inspect the job yourself with `gtx run list` or `gtx log %s`", job)
-	}
-	return fmt.Sprintf("the caller pane is notified `[gtx run] exit=<code> label=%s job=%s` on exit; end your turn and wait for the notice instead of sleeping or polling `gtx run list`/`gtx log`, then read `gtx log %s`",
-		oneLineField(label), job, job)
-}
-
-func oneLineField(s string) string {
-	return strings.Map(func(c rune) rune {
-		if c == '\n' || c == '\r' {
-			return ' '
-		}
-		return c
-	}, strings.TrimSpace(s))
-}
-
 // runBackgroundCLI submits a pane-less job via run.start.
 func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion string) int {
 	if caller == "" {
@@ -277,42 +256,6 @@ var paneJobSeq uint32
 func newPaneJobID() string {
 	n := atomic.AddUint32(&paneJobSeq, 1)
 	return fmt.Sprintf("job-%d-%d-%d", time.Now().UnixMilli(), os.Getpid(), n)
-}
-
-func defaultRunLabel(argv []string) string {
-	if len(argv) == 0 {
-		return "run"
-	}
-	base := filepath.Base(argv[0])
-	if base == "" {
-		return "run"
-	}
-	return base
-}
-
-// shellCommandFromArgs renders argv as one shell command line with each
-// element quoted (herdr's shell_command_from_args), so `sh -c` in the
-// pane receives the original command verbatim.
-func shellCommandFromArgs(argv []string) string {
-	quoted := make([]string, len(argv))
-	for i, a := range argv {
-		quoted[i] = shellQuote(a)
-	}
-	return strings.Join(quoted, " ")
-}
-
-// shellQuote renders one argv element for POSIX shell parsing.
-func shellQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-	if strings.IndexFunc(s, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
-			r == '_' || r == '-' || r == '.' || r == '/' || r == ':' || r == '=' || r == '+' || r == ',' || r == '@' || r == '%')
-	}) < 0 {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func optPtr(s string) *string {

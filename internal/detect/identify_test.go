@@ -152,3 +152,54 @@ func TestIdentifyJob(t *testing.T) {
 		})
 	}
 }
+
+// The spec's worked examples (CLEANROOM-SPEC.md section A 確かめる例).
+func TestIdentifyJobSpecExamples(t *testing.T) {
+	tests := []struct {
+		name     string
+		procName string
+		argv     []string
+		wantID   string
+		wantName string
+	}{
+		{"pi inside node_modules", "node",
+			[]string{"node", "/usr/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"},
+			"pi", "pi"},
+		{"pi near-miss keeps runtime", "node",
+			[]string{"node", "/x/node_modules/@earendil-works/pi-coding-agent/dist/other.js"},
+			"", "node"},
+		{"cmd /c resolves .cmd", "cmd",
+			[]string{"cmd", "/c", `"C:\tools\codex.cmd"`, "--help"},
+			"codex", "codex"},
+		{"pwsh -File resolves .ps1", "pwsh",
+			[]string{"pwsh", "-NoProfile", "-File", `C:\bin\claude.ps1`},
+			"claude", "claude"},
+		{"pwsh -EncodedCommand does not resolve", "pwsh",
+			[]string{"pwsh", "-EncodedCommand", "AAAA"},
+			"", "pwsh"},
+		{"python3 script", "python3",
+			[]string{"python3", "codex.py"},
+			"codex", "codex"},
+		{"python3 -c does not resolve", "python3",
+			[]string{"python3", "-c", "import codex"},
+			"", "python3"},
+		{"bash -c does not resolve", "bash",
+			[]string{"bash", "-c", "codex"},
+			"", "bash"},
+		{"bun script", "bun",
+			[]string{"bun", "x/omp.js"},
+			"omp", "omp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotID, gotName := IdentifyJob(Job{
+				ProcessGroupID: 7,
+				Processes:      []JobProcess{proc(7, tt.procName, tt.argv...)},
+			})
+			if gotID != tt.wantID || gotName != tt.wantName {
+				t.Errorf("IdentifyJob = (%q, %q), want (%q, %q)",
+					gotID, gotName, tt.wantID, tt.wantName)
+			}
+		})
+	}
+}

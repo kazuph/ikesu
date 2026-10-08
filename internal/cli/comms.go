@@ -14,31 +14,6 @@ import (
 // Mail/job CLI: send, inbox, msg history|rooms, log, run. The argument
 // shapes and output formats mirror herdr's comms.rs.
 
-func printSendHelp(w *runner) {
-	fmt.Fprintln(w.errOut(), "usage: gtx send <to> <text> [--room R] [--reply-to ID] [--from NAME]")
-}
-
-func printMsgHelp(w *runner) {
-	fmt.Fprintln(w.errOut(), "gtx msg commands:")
-	fmt.Fprintln(w.errOut(), "  gtx send <to> <text> [--room R] [--reply-to ID] [--from NAME]")
-	fmt.Fprintln(w.errOut(), "  gtx inbox [--room R] [--to NAME]")
-	fmt.Fprintln(w.errOut(), "  gtx msg history [--room R] [--project P] [--limit N]")
-	fmt.Fprintln(w.errOut(), "  gtx msg rooms")
-}
-
-func printLogHelp(w *runner) {
-	fmt.Fprintln(w.errOut(), "gtx log commands:")
-	fmt.Fprintln(w.errOut(), "  gtx log <job_id> [--tail N]")
-	fmt.Fprintln(w.errOut(), "  gtx log [--room R] [--project P] [--limit N]   dispatch timeline")
-	fmt.Fprintln(w.errOut(), "  gtx log --db | --schema")
-}
-
-func printRunHelp(w *runner) {
-	fmt.Fprintln(w.errOut(), "usage: gtx run [--label NAME] [--cwd DIR] [--caller PANE] [--completion summary|full|none] -- <command...>")
-	fmt.Fprintln(w.errOut(), "       gtx run --pane [--split right|down] [--close-on-success] -- <command...>")
-	fmt.Fprintln(w.errOut(), "       gtx run list | gtx run cancel <job_id>")
-}
-
 // sendCLI implements `gtx send`.
 func (r *runner) sendCLI(args []string) int {
 	if len(args) > 0 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
@@ -245,17 +220,6 @@ func (r *runner) parseHistoryArgs(args []string) (room string, project *string, 
 
 // --- identity helpers ---
 
-// resolveCurrentPaneID returns the caller's pane id: the injected
-// GTX_PANE_ID when the server confirms it, else process-ancestry via
-// pane.current. Both fail closed.
-func (r *runner) resolveCurrentPaneID() (string, error) {
-	var caller *string
-	if env := r.envPaneID(); env != "" {
-		caller = &env
-	}
-	return r.currentPaneID(caller)
-}
-
 // msgIdentity resolves the from_agent and project for msg.send.
 func (r *runner) msgIdentity(explicitFrom string) (agent, project string, err error) {
 	paneID, perr := r.resolveCurrentPaneID()
@@ -303,35 +267,6 @@ func (r *runner) paneCwd(paneID string) string {
 		return ""
 	}
 	return *res.Pane.Cwd
-}
-
-// resolveAgentName maps a target to its mailbox name via agent.get:
-// label (name) > reported agent kind > pane id.
-func (r *runner) resolveAgentName(target string) (string, error) {
-	raw, err := r.request("cli:msg:identity", api.MethodAgentGet, api.AgentTarget{Target: target})
-	if err != nil {
-		return "", err
-	}
-	var resp api.Response
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", err
-	}
-	if resp.Err != nil {
-		return "", resp.Err
-	}
-	var res api.AgentInfoResult
-	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		return "", err
-	}
-	for _, v := range []*string{res.Agent.Name, res.Agent.Agent} {
-		if v != nil && *v != "" {
-			return *v, nil
-		}
-	}
-	if res.Agent.GlobalPaneID != "" {
-		return res.Agent.GlobalPaneID, nil
-	}
-	return "", fmt.Errorf("target has no reported agent identity")
 }
 
 // --- response printing ---
@@ -386,9 +321,4 @@ func (r *runner) printMessages(id, method string, params any, label string) int 
 		printMsgMessage(r.out(), m)
 	}
 	return 0
-}
-
-func printMsgMessage(w interface{ Write([]byte) (int, error) }, m api.MsgMessage) {
-	fmt.Fprintf(w, "#%d [%s] %s %s -> %s: %s\n",
-		m.ID, m.Room, m.CreatedAt, m.FromAgent, m.ToAgent, m.Body)
 }
