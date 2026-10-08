@@ -18,6 +18,10 @@ import (
 // onMouse is the mouse entry point; overlays grab events before panes.
 func (a *App) onMouse(ev input.Event) {
 	m := ev.Mouse
+	if a.help == nil && a.dialog == nil && a.menu == nil && a.cm == nil && a.popupMouse(ev) {
+		a.dirty = true
+		return
+	}
 	switch {
 	case a.help != nil:
 		a.helpMouse(ev)
@@ -349,6 +353,10 @@ func (a *App) closeTabAt(wsIdx, ti int) {
 }
 
 func (a *App) paneAt(x, y int) (layout.PaneRect, bool) {
+	if a.st.PopupVisible() {
+		r := a.st.PopupRect()
+		return layout.PaneRect{ID: a.st.Popup.PaneID, Rect: r}, pointIn(x, y, r)
+	}
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return layout.PaneRect{}, false

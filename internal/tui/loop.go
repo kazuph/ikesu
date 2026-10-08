@@ -49,6 +49,10 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		}
 		a.dirty = true
 	case runtime.EventExited:
+		if a.st.Popup != nil && ev.Pane == a.st.Popup.PaneID {
+			a.exec(model.CmdClosePopup{})
+			return
+		}
 		if a.exitedHook != nil {
 			a.exitedHook(ev.Pane)
 		}
@@ -159,6 +163,7 @@ func (a *App) onTick() {
 			}
 		}
 	}
+	a.popupSelectionAutoScroll()
 	a.refreshJobDots(now)
 	a.detectAll()
 }
@@ -183,6 +188,7 @@ func (a *App) exec(cmd model.Command) {
 		a.sidebarScroll = 0
 	}
 	beforeFocus := a.focusedPane()
+	popupWasVisible := a.st.PopupVisible()
 	var prev *model.StateSnap
 	if a.postExecHook != nil {
 		prev = a.st.Capture()
@@ -190,12 +196,13 @@ func (a *App) exec(cmd model.Command) {
 	for _, e := range a.st.Apply(cmd) {
 		a.effect(e)
 	}
+	a.popupVisibilityChanged(popupWasVisible)
 	a.recordFocus(beforeFocus, a.focusedPane())
 	// Copy mode dies when its pane leaves the active tab's layout
 	// (closed, moved, or the tab/workspace changed).
 	if a.cm != nil {
 		ws := a.st.ActiveWorkspace()
-		alive := ws != nil && ws.ActiveLayout() != nil && ws.ActiveLayout().HasPane(a.cm.pane)
+		alive := a.st.PopupVisible() && a.st.Popup.PaneID == a.cm.pane || ws != nil && ws.ActiveLayout() != nil && ws.ActiveLayout().HasPane(a.cm.pane)
 		if !alive {
 			a.exitCopy()
 		}
@@ -225,6 +232,7 @@ func (a *App) effect(e model.Effect) {
 			a.lastSpawnError = err
 		}
 	case model.EffKillPane:
+		a.clearPopupInteraction(e.Pane)
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
@@ -243,6 +251,10 @@ func (a *App) effect(e model.Effect) {
 
 // syncLayout resizes every pane of the active workspace to its inner rect.
 func (a *App) syncLayout() {
+	if a.st.PopupVisible() && !a.st.Popup.ResizeLocked {
+		r := a.innerRect(a.st.Popup.PaneID)
+		a.sup.ResizeWithPixels(a.st.Popup.PaneID, r.W, r.H, a.cellW, a.cellH)
+	}
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return
@@ -264,6 +276,9 @@ func (a *App) syncLayout() {
 // workspace owns it; panes of a hidden workspace spawn at a default size
 // and are resized when their workspace becomes active.
 func (a *App) rectForPane(pid int) layout.Rect {
+	if a.st.Popup != nil && pid == a.st.Popup.PaneID {
+		return popupInner(a.st.PopupRect())
+	}
 	for _, ws := range a.st.Workspaces {
 		for _, t := range ws.Tabs {
 			for _, pr := range t.PaneRects(a.st.PanesArea()) {
@@ -281,6 +296,9 @@ func (a *App) rectForPane(pid int) layout.Rect {
 // innerRect returns the content rect (inside the border) of a pane of the
 // active workspace.
 func (a *App) innerRect(pid int) layout.Rect {
+	if a.st.Popup != nil && pid == a.st.Popup.PaneID {
+		return popupInner(a.st.PopupRect())
+	}
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return layout.Rect{W: 80, H: 24}
@@ -301,6 +319,9 @@ func (a *App) innerRect(pid int) layout.Rect {
 
 // paneRect returns the outer (bordered) rect of a pane of the active ws.
 func (a *App) paneRect(pid int) (layout.Rect, bool) {
+	if a.st.PopupVisible() && pid == a.st.Popup.PaneID {
+		return a.st.PopupRect(), true
+	}
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return layout.Rect{}, false

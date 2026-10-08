@@ -8,6 +8,15 @@ import (
 // perform, in order.
 func (s *AppState) Apply(cmd Command) []Effect {
 	switch c := cmd.(type) {
+	case CmdOpenPopup:
+		return s.openPopup(c)
+	case CmdClosePopup:
+		return s.closePopup()
+	case CmdPopupResizeLock:
+		if s.Popup != nil {
+			s.Popup.ResizeLocked = c.Locked
+		}
+		return nil
 	case CmdSetSection:
 		if c.Index >= 0 && c.Index < len(s.Workspaces) {
 			s.Workspaces[c.Index].Section = c.Section

@@ -43,6 +43,9 @@ func (s *AppState) closeWorkspace(idx int) []Effect {
 	}
 	ws := s.Workspaces[idx]
 	var effs []Effect
+	if s.Popup != nil && s.Popup.WorkspaceID == ws.ID {
+		effs = append(effs, s.closePopup()...)
+	}
 	for _, t := range ws.Tabs {
 		for _, id := range t.Layout.PaneIDs() {
 			effs = append(effs, EffKillPane{Pane: id})

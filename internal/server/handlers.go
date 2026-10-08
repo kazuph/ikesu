@@ -11,6 +11,8 @@ import (
 // dispatchOnLoop runs on the app goroutine; it may touch st/sup safely.
 func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
+	case "pane.command.execute", "popup.close", "popup.get", "popup.scroll", "popup.selection.read":
+		return s.popupRequest(req)
 	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
 		return s.worktreeRequest(req)
 	case "workspace.report_metadata":

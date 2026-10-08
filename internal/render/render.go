@@ -222,6 +222,7 @@ func Compose(in Input) *Output {
 	drawPanes(f, s, in, out)
 	drawActionBar(f, s, in, out)
 	drawStatusLine(f, s, in)
+	drawPopup(f, in, out)
 	if in.Menu != nil {
 		drawMenu(f, in.Menu, out)
 	}

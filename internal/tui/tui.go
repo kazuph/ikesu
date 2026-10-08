@@ -147,6 +147,9 @@ type App struct {
 	changeHook        func()              // persistent state changed; server coalesces saves
 	restartHook       func()              // main menu "Restart server…" (server mode only)
 	standaloneRestart bool
+	popupSel          *selState
+	popupCopy         *copyMode
+	popupAutoScroll   int
 	restoreHook       func(dryRun bool)                              // main menu "Restore agents…" (server mode only)
 	paneClosedHook    func(pid int)                                  // pane permanently removed; server cleans ledger
 	postExecHook      func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
