@@ -195,6 +195,8 @@ type App struct {
 	jobSource            func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
 	jobDots              map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
 	workspaceTokenSource func(int) map[string]string
+	paneMetadataSource   func(int) api.PaneMetadataView
+	metadataViews        map[int]api.PaneMetadataView
 	workspaceGit         map[int]render.GitStatus
 	workspaceNames       map[int]string
 	gitAt                time.Time

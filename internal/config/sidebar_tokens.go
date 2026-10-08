@@ -87,7 +87,7 @@ func (c Config) ValidateSidebar() error {
 						return fmt.Errorf("unsupported agent token: %s", t.Token)
 					}
 				default:
-					if len(t.Token) > 1 && t.Token[0] == '$' && !agent {
+					if len(t.Token) > 1 && t.Token[0] == '$' {
 						continue
 					}
 					return fmt.Errorf("unsupported sidebar token: %s", t.Token)

@@ -180,6 +180,9 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			v.fixed = true
 		case "state_text":
 			v.text = sn.Status.Key
+			if label := sn.StateLabels[sn.Status.Key]; label != "" {
+				v.text = label
+			}
 		case "pane":
 			v.style.Attrs |= uv.AttrBold
 			v.text = fmt.Sprintf("%%%d", r.Pane)
@@ -193,6 +196,9 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			v.text = tab
 		case "agent":
 			v.text = sn.Agent
+			if sn.DisplayAgent != "" {
+				v.text = sn.DisplayAgent
+			}
 		case "terminal_title_stripped":
 			v.text = detect.StripTerminalTitle(sn.Title)
 		case "terminal_title":

@@ -363,6 +363,14 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 		pane.SetAgent(p.Agent)
 	}
 	s.app.SetReported(pid, p.Agent, p.State)
+	if s.reportSources == nil {
+		s.reportSources = map[int]string{}
+	}
+	if p.Agent == "" && p.State == "" {
+		delete(s.reportSources, pid)
+	} else {
+		s.reportSources[pid] = p.Source
+	}
 
 	// Session refs from an explicit report are the most trusted source
 	// (SPEC G3). agent_session_id/agent_session_path carry the native

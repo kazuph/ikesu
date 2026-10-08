@@ -11,6 +11,8 @@ import (
 // dispatchOnLoop runs on the app goroutine; it may touch st/sup safely.
 func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
+	case "pane.report_metadata":
+		return s.paneMetadataRequest(req)
 	case "pane.command.execute", "popup.close", "popup.get", "popup.scroll", "popup.selection.read":
 		return s.popupRequest(req)
 	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
@@ -512,7 +514,9 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 			_, rows = model.PaneTermSize(pr.Rect, st.PaneBorders)
 		}
 	}
+	metadata := s.paneMetadataView(pid)
 	return api.PaneInfo{
+		Title: optString(metadata.Title), DisplayAgent: optString(metadata.DisplayAgent), StateLabels: metadata.StateLabels, Tokens: metadata.Tokens,
 		PaneID:      fmtPaneID(pid),
 		WorkspaceID: wsID,
 		TabID:       fmtTabID(ws.ID, tab.ID),

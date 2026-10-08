@@ -140,6 +140,7 @@ func (a *App) copiedFlashAt(now time.Time) string {
 // foreground-process polling, and detection.
 func (a *App) onTick() {
 	now := time.Now()
+	a.refreshPaneMetadata()
 	a.refreshWorkspaceGit(now)
 	a.expireToast()
 	if a.copied != "" && now.Sub(a.copiedAt) >= copiedDuration {

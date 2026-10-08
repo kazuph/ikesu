@@ -136,7 +136,7 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 // openMainMenu shows the [menu] global menu.
 func (a *App) openMainMenu(x, y int) {
 	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: []render.MenuItem{
-		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Label: "what's new", Disabled: true}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
+		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}}}
 }
 

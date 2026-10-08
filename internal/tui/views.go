@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -223,6 +224,15 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					snap.ScrollOff = a.scroll[pid]
 					snap.ScrollN = sn.ScrollbackLen
 				}
+				if a.paneMetadataSource != nil {
+					m := a.paneMetadataSource(pid)
+					snap.Tokens = m.Tokens
+					snap.StateLabels = m.StateLabels
+					snap.DisplayAgent = m.DisplayAgent
+					if m.Title != "" {
+						snap.Title = m.Title
+					}
+				}
 				snap.Agent, snap.Restore = a.paneRestoreLabel(pid, snap.Agent)
 				out[pid] = snap
 			}
@@ -386,3 +396,5 @@ func (a *App) clearStaleReport(pid int, agentID string, d detect.Detection, now 
 	}
 	a.dirty = true
 }
+
+func (a *App) SetPaneMetadataSource(f func(int) api.PaneMetadataView) { a.paneMetadataSource = f }

@@ -12,6 +12,8 @@ func (r *runner) pane(args []string) int {
 		return usageErr(r, "usage: gtx pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|run> ...")
 	}
 	switch args[0] {
+	case "report-metadata":
+		return r.paneReportMetadata(args[1:])
 	case "list":
 		return r.paneList(args[1:])
 	case "current":

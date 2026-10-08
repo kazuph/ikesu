@@ -46,6 +46,8 @@ type clientMsg struct {
 // Server is one running session.
 type Server struct {
 	workspaceMetadata map[int]map[string]*workspaceMetadata
+	paneMetadata      map[int]*paneMetadata
+	reportSources     map[int]string
 	session           string
 	dir               string
 	version           string
@@ -220,6 +222,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.app.SetJobSource(s.jobSnapshot)
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
+	s.app.SetPaneMetadataSource(s.paneMetadataView)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) {
