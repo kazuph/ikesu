@@ -86,6 +86,14 @@ type Server struct {
 	// observedStart remembers the process start an observed session id
 	// was recorded for, so the same process is never re-observed.
 	observedStart map[int]time.Time
+
+	// domain event bus (SPEC G1 events): journal replay + live push
+	evMu      sync.Mutex
+	journal   []api.EventEnvelope
+	subs      map[*eventSub]bool
+	waiters   []*eventWaiter
+	outEmit   map[int]*outputEmit // pane output emit throttle
+	lastAgent map[int]string      // last detected agent id per pane
 }
 
 // clientWriteTimeout bounds how long a frame write to the attached client
@@ -210,7 +218,16 @@ func Run(session, version string) (int, error) {
 	s.app.SetJobSource(s.jobSnapshot)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
-	s.app.SetAvailHook(func(pid int) { s.onPaneStatus(pid) })
+	s.app.SetAvailHook(func(pid int) {
+		s.onPaneStatus(pid)
+		s.emitAgentEvents(pid)
+	})
+	// Domain events (SPEC G1): command diffs, exits, and output changes.
+	s.outEmit = map[int]*outputEmit{}
+	s.lastAgent = map[int]string{}
+	s.app.SetPostExecHook(s.afterExec)
+	s.app.SetExitedHook(s.onPaneExited)
+	s.app.SetOutputHook(s.onPaneOutput)
 	if r, ok := config.ParseNavKey(s.cfg.NavKey()); ok {
 		s.app.SetNavKey(r)
 	} else {

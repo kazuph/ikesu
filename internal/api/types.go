@@ -1,5 +1,7 @@
 package api
 
+import "encoding/json"
+
 // Parameter types for the implemented method subset. Field names and types
 // mirror docs/ref/herdr-api-schema.json.
 
@@ -297,4 +299,330 @@ type PaneReadResult struct {
 type PaneReadResultEnvelope struct {
 	Type string         `json:"type"` // "pane_read"
 	Read PaneReadResult `json:"read"`
+}
+
+// --- G1 layout / pane-move API surface ---
+
+type PaneLayoutRect struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type PaneLayoutPane struct {
+	PaneID  string         `json:"pane_id"`
+	Focused bool           `json:"focused"`
+	Rect    PaneLayoutRect `json:"rect"`
+}
+
+type PaneLayoutSplit struct {
+	ID        string         `json:"id"`
+	Direction string         `json:"direction"` // "right" | "down"
+	Ratio     float64        `json:"ratio"`
+	Rect      PaneLayoutRect `json:"rect"`
+}
+
+type PaneLayoutSnapshot struct {
+	WorkspaceID   string            `json:"workspace_id"`
+	TabID         string            `json:"tab_id"`
+	Zoomed        bool              `json:"zoomed"`
+	Area          PaneLayoutRect    `json:"area"`
+	FocusedPaneID string            `json:"focused_pane_id"`
+	Panes         []PaneLayoutPane  `json:"panes"`
+	Splits        []PaneLayoutSplit `json:"splits"`
+}
+
+// LayoutNode is the exported/applied tree node (layout.export/apply).
+type LayoutNode struct {
+	Type      string            `json:"type"` // "pane" | "split"
+	Direction string            `json:"direction,omitempty"`
+	Ratio     float64           `json:"ratio,omitempty"`
+	First     *LayoutNode       `json:"first,omitempty"`
+	Second    *LayoutNode       `json:"second,omitempty"`
+	PaneID    *string           `json:"pane_id,omitempty"`
+	Cwd       *string           `json:"cwd,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	Label     *string           `json:"label,omitempty"`
+	Command   []string          `json:"command,omitempty"`
+}
+
+type LayoutDescription struct {
+	WorkspaceID   string      `json:"workspace_id"`
+	TabID         string      `json:"tab_id"`
+	Zoomed        bool        `json:"zoomed"`
+	FocusedPaneID string      `json:"focused_pane_id"`
+	Root          *LayoutNode `json:"root"`
+}
+
+type PaneLayoutParams struct {
+	PaneID *string `json:"pane_id,omitempty"`
+	TabID  *string `json:"tab_id,omitempty"`
+}
+
+type PaneNeighborParams struct {
+	PaneID    *string `json:"pane_id,omitempty"`
+	Direction string  `json:"direction"`
+}
+
+type PaneEdgesParams struct {
+	PaneID *string `json:"pane_id,omitempty"`
+}
+
+type PaneFocusDirectionParams struct {
+	PaneID    *string `json:"pane_id,omitempty"`
+	Direction string  `json:"direction"`
+}
+
+type PaneResizeParams struct {
+	PaneID    *string  `json:"pane_id,omitempty"`
+	Direction string   `json:"direction"`
+	Amount    *float64 `json:"amount,omitempty"`
+}
+
+type PaneSwapParams struct {
+	PaneID       *string `json:"pane_id,omitempty"`
+	Direction    *string `json:"direction,omitempty"`
+	SourcePaneID *string `json:"source_pane_id,omitempty"`
+	TargetPaneID *string `json:"target_pane_id,omitempty"`
+}
+
+type PaneZoomParams struct {
+	PaneID *string `json:"pane_id,omitempty"`
+	Mode   string  `json:"mode,omitempty"`
+}
+
+type PaneArrangeParams struct {
+	PaneID      string `json:"pane_id"`
+	Arrangement string `json:"arrangement"`
+}
+
+// PaneMoveDestination mirrors the oneOf in the herdr schema. Exactly one
+// variant is populated per request.
+type PaneMoveDestination struct {
+	Type         string   `json:"type"` // "tab" | "new_tab" | "new_workspace"
+	TabID        string   `json:"tab_id,omitempty"`
+	Split        *string  `json:"split,omitempty"`
+	TargetPaneID *string  `json:"target_pane_id,omitempty"`
+	Ratio        *float64 `json:"ratio,omitempty"`
+	WorkspaceID  *string  `json:"workspace_id,omitempty"`
+	Label        *string  `json:"label,omitempty"`
+	TabLabel     *string  `json:"tab_label,omitempty"`
+}
+
+type PaneMoveParams struct {
+	PaneID      string              `json:"pane_id"`
+	Destination PaneMoveDestination `json:"destination"`
+	Focus       bool                `json:"focus"`
+}
+
+type LayoutExportParams struct {
+	PaneID *string `json:"pane_id,omitempty"`
+	TabID  *string `json:"tab_id,omitempty"`
+}
+
+type LayoutApplyParams struct {
+	WorkspaceID *string     `json:"workspace_id,omitempty"`
+	TabID       *string     `json:"tab_id,omitempty"`
+	TabLabel    *string     `json:"tab_label,omitempty"`
+	Focus       bool        `json:"focus"`
+	Root        *LayoutNode `json:"root"`
+}
+
+type LayoutSetSplitRatioParams struct {
+	TabID  *string `json:"tab_id,omitempty"`
+	PaneID *string `json:"pane_id,omitempty"`
+	Path   []bool  `json:"path"`
+	Ratio  float64 `json:"ratio"`
+}
+
+type PaneScrollParams struct {
+	PaneID           string `json:"pane_id"`
+	OffsetFromBottom uint64 `json:"offset_from_bottom"`
+}
+
+// --- events ---
+
+type Subscription struct {
+	Type string `json:"type"` // "pane.focused" etc.
+}
+
+type EventsSubscribeParams struct {
+	Subscriptions []Subscription `json:"subscriptions"`
+}
+
+// EventMatch is a generic map so every variant in the schema can be
+// decoded; the server validates the supported subset.
+type EventMatch map[string]any
+
+type EventsWaitParams struct {
+	MatchEvent EventMatch `json:"match_event"`
+	TimeoutMs  *uint64    `json:"timeout_ms,omitempty"`
+}
+
+// EventEnvelope is pushed to event subscribers after subscription_started.
+type EventEnvelope struct {
+	Event string          `json:"event"`
+	Data  json.RawMessage `json:"data"`
+}
+
+type SubscriptionStartedResult struct {
+	Type string `json:"type"` // "subscription_started"
+}
+
+type WaitMatchedResult struct {
+	Type  string         `json:"type"` // "wait_matched"
+	Event *EventEnvelope `json:"event"`
+}
+
+// --- layout op results ---
+// Every op result nests its payload under an op-named key inside a
+// type-tagged envelope (verified against the released binary's wire).
+
+type PaneLayoutResult struct {
+	Type   string             `json:"type"` // "pane_layout"
+	Layout PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneNeighborEnvelope struct {
+	Type     string             `json:"type"` // "pane_neighbor"
+	Neighbor PaneNeighborResult `json:"neighbor"`
+}
+
+type PaneNeighborResult struct {
+	PaneID         string             `json:"pane_id"`
+	Direction      string             `json:"direction"`
+	NeighborPaneID *string            `json:"neighbor_pane_id,omitempty"`
+	Layout         PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneEdgesEnvelope struct {
+	Type  string          `json:"type"` // "pane_edges"
+	Edges PaneEdgesResult `json:"edges"`
+}
+
+type PaneEdgesResult struct {
+	PaneID string             `json:"pane_id"`
+	Left   bool               `json:"left"`
+	Right  bool               `json:"right"`
+	Up     bool               `json:"up"`
+	Down   bool               `json:"down"`
+	Layout PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneFocusDirectionEnvelope struct {
+	Type  string                   `json:"type"` // "pane_focus_direction"
+	Focus PaneFocusDirectionResult `json:"focus"`
+}
+
+type PaneFocusDirectionResult struct {
+	Changed       bool               `json:"changed"`
+	Reason        *string            `json:"reason,omitempty"`
+	SourcePaneID  string             `json:"source_pane_id"`
+	FocusedPaneID string             `json:"focused_pane_id"`
+	Layout        PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneResizeEnvelope struct {
+	Type   string           `json:"type"` // "pane_resize"
+	Resize PaneResizeResult `json:"resize"`
+}
+
+type PaneResizeResult struct {
+	Changed       bool               `json:"changed"`
+	Reason        *string            `json:"reason,omitempty"`
+	PaneID        string             `json:"pane_id"`
+	FocusedPaneID string             `json:"focused_pane_id"`
+	Layout        PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneSwapEnvelope struct {
+	Type string         `json:"type"` // "pane_swap"
+	Swap PaneSwapResult `json:"swap"`
+}
+
+type PaneSwapResult struct {
+	Changed       bool               `json:"changed"`
+	Reason        *string            `json:"reason,omitempty"`
+	SourcePaneID  string             `json:"source_pane_id"`
+	TargetPaneID  *string            `json:"target_pane_id,omitempty"`
+	FocusedPaneID string             `json:"focused_pane_id"`
+	Layout        PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneZoomEnvelope struct {
+	Type string         `json:"type"` // "pane_zoom"
+	Zoom PaneZoomResult `json:"zoom"`
+}
+
+type PaneZoomResult struct {
+	Changed       bool               `json:"changed"`
+	ZoomChanged   bool               `json:"zoom_changed"`
+	FocusChanged  bool               `json:"focus_changed"`
+	Reason        *string            `json:"reason,omitempty"`
+	PaneID        string             `json:"pane_id"`
+	FocusedPaneID string             `json:"focused_pane_id"`
+	Zoomed        bool               `json:"zoomed"`
+	Layout        PaneLayoutSnapshot `json:"layout"`
+}
+
+type PaneMoveEnvelope struct {
+	Type       string         `json:"type"` // "pane_move"
+	MoveResult PaneMoveResult `json:"move_result"`
+}
+
+type PaneMoveResult struct {
+	Changed             bool                `json:"changed"`
+	PreviousPaneID      string              `json:"previous_pane_id"`
+	PreviousWorkspaceID string              `json:"previous_workspace_id"`
+	PreviousTabID       string              `json:"previous_tab_id"`
+	Pane                PaneInfo            `json:"pane"`
+	SourceLayout        *PaneLayoutSnapshot `json:"source_layout"`
+	TargetLayout        *PaneLayoutSnapshot `json:"target_layout"`
+	FocusedPaneID       string              `json:"focused_pane_id"`
+	CreatedTab          *TabInfo            `json:"created_tab,omitempty"`
+	CreatedWorkspace    *WorkspaceInfo      `json:"created_workspace,omitempty"`
+	ClosedTabID         *string             `json:"closed_tab_id,omitempty"`
+	ClosedWorkspaceID   *string             `json:"closed_workspace_id,omitempty"`
+	Reason              *string             `json:"reason,omitempty"`
+}
+
+type LayoutExportResult struct {
+	Type   string            `json:"type"` // "layout_export"
+	Layout LayoutDescription `json:"layout"`
+}
+
+type LayoutApplyResult struct {
+	Type   string            `json:"type"` // "layout_apply"
+	Layout LayoutDescription `json:"layout"`
+}
+
+type LayoutSplitRatioSetResult struct {
+	Type   string            `json:"type"` // "layout_split_ratio_set"
+	Layout LayoutDescription `json:"layout"`
+}
+
+// OutputMatch is the wait_for_output match spec.
+type OutputMatch struct {
+	Type  string `json:"type"` // "substring" | "regex"
+	Value string `json:"value"`
+}
+
+// PaneWaitForOutputParams is pane.wait_for_output's request.
+type PaneWaitForOutputParams struct {
+	PaneID    string      `json:"pane_id"`
+	Source    string      `json:"source"`
+	Match     OutputMatch `json:"match"`
+	Lines     *uint32     `json:"lines,omitempty"`
+	StripAnsi *bool       `json:"strip_ansi,omitempty"`
+	TimeoutMs *uint64     `json:"timeout_ms,omitempty"`
+}
+
+// OutputMatchedResult is pane.wait_for_output's success payload.
+type OutputMatchedResult struct {
+	Type        string          `json:"type"` // "output_matched"
+	PaneID      string          `json:"pane_id"`
+	Revision    uint64          `json:"revision"`
+	MatchedLine string          `json:"matched_line"`
+	Read        json.RawMessage `json:"read"`
 }

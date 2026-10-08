@@ -158,6 +158,85 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		}
 		return s.paneReportAgent(req.ID, p)
 
+	case api.MethodPaneLayout:
+		var p api.PaneLayoutParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneLayout(req.ID, p)
+	case api.MethodPaneNeighbor:
+		var p api.PaneNeighborParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneNeighbor(req.ID, p)
+	case api.MethodPaneEdges:
+		var p api.PaneEdgesParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneEdges(req.ID, p)
+	case api.MethodPaneFocusDir:
+		var p api.PaneFocusDirectionParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneFocusDirection(req.ID, p)
+	case api.MethodPaneResize:
+		var p api.PaneResizeParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneResize(req.ID, p)
+	case api.MethodPaneSwap:
+		var p api.PaneSwapParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneSwap(req.ID, p)
+	case api.MethodPaneZoom:
+		var p api.PaneZoomParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneZoom(req.ID, p)
+	case api.MethodPaneMove:
+		var p api.PaneMoveParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneMove(req.ID, p)
+	case api.MethodPaneArrange:
+		var p api.PaneArrangeParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneArrange(req.ID, p)
+	case api.MethodPaneScroll:
+		var p api.PaneScrollParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneScroll(req.ID, p)
+	case api.MethodLayoutExport:
+		var p api.LayoutExportParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.layoutExport(req.ID, p)
+	case api.MethodLayoutApply:
+		var p api.LayoutApplyParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.layoutApply(req.ID, p)
+	case api.MethodLayoutSetSplitRatio:
+		var p api.LayoutSetSplitRatioParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.layoutSetSplitRatio(req.ID, p)
+
 	case api.MethodMsgSend:
 		var p api.MsgSendParams
 		if err := req.DecodeParams(&p); err != nil {

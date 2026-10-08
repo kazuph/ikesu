@@ -104,6 +104,8 @@ func (a *App) click(m uv.Mouse) {
 	}
 	inner := layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: pr.Rect.W - 2, H: pr.Rect.H - 2}
 	if p.Snapshot().MouseTracking {
+		// Mouse-reporting panes receive all four events; no menu gesture.
+		a.dblMenu = false
 		a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 		a.fwd = pr.ID
 		return
@@ -115,6 +117,20 @@ func (a *App) click(m uv.Mouse) {
 		hx: m.X - inner.X, hy: viewTop(p, off, inner.H) + m.Y - inner.Y,
 		inner: inner, scrollAt: off,
 	}
+	// Two same-cell left clicks within 500ms (down+up completed) open the
+	// pane menu on the second release (SPEC G1 pane menu). A click that
+	// drags into a selection never opens the menu.
+	now := time.Now()
+	a.dblMenu = a.lastClick.pane == pr.ID && a.lastClick.x == m.X && a.lastClick.y == m.Y &&
+		now.Sub(a.lastClick.at) < 500*time.Millisecond
+	a.lastClick = clickMark{pane: pr.ID, x: m.X, y: m.Y, at: now}
+}
+
+// clickMark remembers a left press inside a pane body for the
+// double-click-to-menu gesture.
+type clickMark struct {
+	pane, x, y int
+	at         time.Time
 }
 
 // tabBarClick handles clicks on the tab strip: left focuses, middle
@@ -166,11 +182,11 @@ func (a *App) paneAt(x, y int) (layout.PaneRect, bool) {
 	if ws == nil {
 		return layout.PaneRect{}, false
 	}
-	l := ws.ActiveLayout()
-	if l == nil {
+	t := ws.TabRef()
+	if t == nil {
 		return layout.PaneRect{}, false
 	}
-	for _, pr := range l.Panes(a.st.PanesArea()) {
+	for _, pr := range t.PaneRects(a.st.PanesArea()) {
 		if pointIn(x, y, pr.Rect) {
 			return pr, true
 		}
@@ -387,6 +403,15 @@ func (a *App) selMouse(ev input.Event) {
 		s.moved = true
 	}
 	if ev.Kind == input.KindMouseRelease {
+		pending := a.dblMenu
+		a.dblMenu = false
+		if pending && !s.moved {
+			// Second same-cell down/up completed inside 500ms on a normal
+			// pane: open the menu at the click point.
+			a.sel = nil
+			a.openPaneMenu(m.X, m.Y, s.pane)
+			return
+		}
 		a.finishSelection()
 	}
 }

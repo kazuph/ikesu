@@ -9,21 +9,91 @@ import (
 	"github.com/kazuph/goterrace/internal/render"
 )
 
-// openPaneMenu shows the per-pane right-click menu at (x, y).
+// openPaneMenu shows the per-pane right-click menu at (x, y). Layout ops
+// appear only when the tab holds more than one pane (SPEC G1 pane menu).
 func (a *App) openPaneMenu(x, y, pid int) {
+	multi := false
+	zoomed := false
+	if ws := a.st.ActiveWorkspace(); ws != nil {
+		if t := ws.TabRef(); t != nil {
+			multi = len(t.Layout.PaneIDs()) > 1
+			zoomed = t.Zoomed == model.PaneID(pid)
+		}
+	}
+	items := []render.MenuItem{
+		{Label: "Split vertical"},
+		{Label: "Split horizontal"},
+		{Separator: true},
+		{Label: "Rename pane"},
+	}
+	if a.st.PaneLabels[model.PaneID(pid)] != "" {
+		items = append(items, render.MenuItem{Label: "Clear pane name"})
+	}
+	items = append(items,
+		render.MenuItem{Separator: true},
+		render.MenuItem{Label: "New Claude Code agent"},
+		render.MenuItem{Label: "New Codex agent"},
+		render.MenuItem{Label: "New agy agent"},
+		render.MenuItem{Separator: true},
+	)
+	if multi {
+		items = append(items,
+			render.MenuItem{Label: "Move to left split"},
+			render.MenuItem{Label: "Move to right split"},
+			render.MenuItem{Label: "Move to upper split"},
+			render.MenuItem{Label: "Move to lower split"},
+			render.MenuItem{Label: "Equalize pane sizes"},
+			render.MenuItem{Label: "Cycle pane layout"},
+			render.MenuItem{Label: "Rotate panes"},
+			render.MenuItem{Label: "Rotate panes reverse"},
+			render.MenuItem{Separator: true},
+		)
+		if zoomed {
+			items = append(items, render.MenuItem{Label: "Unzoom"})
+		} else {
+			items = append(items, render.MenuItem{Label: "Zoom"})
+		}
+	}
+	items = append(items, render.MenuItem{Label: "Close pane"})
 	a.menu = &uiMenu{justOpened: true,
 		kind: menuPane,
 		pane: pid,
 		m: render.Menu{
 			X: x, Y: y, Hover: -1, Sel: -1,
-			Items: []render.MenuItem{
-				{Label: "Split vertical"},
-				{Label: "Split horizontal"},
-				{Separator: true},
-				{Label: "Close pane"},
-			},
+			Items: items,
 		},
 	}
+}
+
+// openRenamePaneDialog prompts for a name for the clicked pane.
+func (a *App) openRenamePaneDialog(pid int) {
+	name := a.st.PaneLabels[model.PaneID(pid)]
+	a.dialog = &uiDialog{
+		input: &name,
+		d: render.Dialog{
+			Title:   "Rename pane",
+			Confirm: "rename", Cancel: "cancel",
+			Input: name, InputEdit: true,
+		},
+		run: func(a *App) {
+			a.exec(model.CmdRenamePane{Pane: model.PaneID(pid), Label: name})
+		},
+	}
+	a.dirty = true
+}
+
+// agentPane splits the focused pane's tab to the right and runs argv in the
+// new pane (menu "New * agent" items).
+func (a *App) agentPane(argv ...string) {
+	ws := a.st.ActiveWorkspace()
+	if ws == nil {
+		return
+	}
+	a.exec(model.CmdSplitImplicit{
+		Workspace: a.st.Active, Tab: ws.ActiveTab,
+		Dir: layout.Vertical, Focus: true,
+		Argv: argv,
+	})
 }
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
@@ -94,15 +164,41 @@ func (a *App) activateMenu(i int) {
 	switch m.kind {
 	case menuPane:
 		pid := m.pane
-		switch i {
-		case 0:
-			a.exec(model.CmdFocusPane{Pane: pid})
+		a.exec(model.CmdFocusPane{Pane: pid})
+		switch m.m.Items[i].Label {
+		case "Split vertical":
 			a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
-		case 1:
-			a.exec(model.CmdFocusPane{Pane: pid})
+		case "Split horizontal":
 			a.exec(model.CmdSplitFocused{Dir: layout.Horizontal})
-		case 3:
-			a.exec(model.CmdFocusPane{Pane: pid})
+		case "Rename pane":
+			a.openRenamePaneDialog(pid)
+		case "Clear pane name":
+			a.exec(model.CmdRenamePane{Pane: model.PaneID(pid)})
+		case "New Claude Code agent":
+			a.agentPane("claude")
+		case "New Codex agent":
+			a.agentPane("codex")
+		case "New agy agent":
+			a.agentPane("agy")
+		case "Move to left split":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "move_left"})
+		case "Move to right split":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "move_right"})
+		case "Move to upper split":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "move_up"})
+		case "Move to lower split":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "move_down"})
+		case "Equalize pane sizes":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "equalize"})
+		case "Cycle pane layout":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "cycle"})
+		case "Rotate panes":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "rotate_forward"})
+		case "Rotate panes reverse":
+			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "rotate_backward"})
+		case "Zoom", "Unzoom":
+			a.exec(model.CmdZoomPane{Pane: model.PaneID(pid), Mode: "toggle"})
+		case "Close pane":
 			a.closeFocusedPane()
 		}
 	case menuWorkspace:

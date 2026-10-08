@@ -55,8 +55,9 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
-	ID  int
-	cwd string // spawn cwd; OSC 7 or proc cwd may refine it
+	ID        int
+	cwd       string // spawn cwd; OSC 7 or proc cwd may refine it
+	spawnArgv []string
 
 	cmd     *exec.Cmd
 	ptyFile *os.File
@@ -142,11 +143,13 @@ func (s *Supervisor) Get(id int) *Pane {
 
 // Spawn starts a login shell in cwd inside a new pane of the given size.
 func (s *Supervisor) Spawn(id int, cwd string, cols, rows int) (*Pane, error) {
-	return s.SpawnWith(id, cwd, cols, rows, nil)
+	return s.SpawnWith(id, cwd, cols, rows, nil, nil)
 }
 
 // SpawnWith is Spawn plus per-pane extra environment (API-created panes).
-func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra []string) (*Pane, error) {
+// argv, when non-empty, runs that command instead of the login shell
+// (layout.apply command leaves).
+func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra, argv []string) (*Pane, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
@@ -158,6 +161,7 @@ func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra []strin
 	emu.SetScrollbackSize(ScrollbackSize)
 
 	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
+	p.spawnArgv = argv
 	p.cursor.Visible = true
 
 	emu.SetCallbacks(vt.Callbacks{
@@ -175,17 +179,23 @@ func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra []strin
 		DisableMode: func(m ansi.Mode) { p.onMode(m, false) },
 	})
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
+	var cmd *exec.Cmd
+	if len(argv) > 0 {
+		cmd = exec.Command(argv[0], argv[1:]...)
+	} else {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/zsh"
+		}
+		cmd = exec.Command(shell, "-l")
 	}
-	cmd := exec.Command(shell, "-l")
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(),
+	env := append(cleanEnv(os.Environ()),
 		"TERM=xterm-256color",
 		"GOTERRACE=1",
 		"GOTERRACE_PANE_ID="+itoa(id),
 	)
+	cmd.Env = env
 	if s.Env != nil {
 		cmd.Env = append(cmd.Env, s.Env(id)...)
 	}
@@ -742,6 +752,10 @@ func itoa(i int) string {
 // SpawnCwd returns the best-known cwd of a pane (for new workspaces).
 func (p *Pane) SpawnCwd() string { return p.Snapshot().Cwd }
 
+// SpawnArgv returns the command argv the pane was spawned with, or nil
+// for the default login shell.
+func (p *Pane) SpawnArgv() []string { return p.spawnArgv }
+
 // ShellPID returns the pid of the pane's shell process, or 0.
 func (p *Pane) ShellPID() int {
 	if p.cmd == nil || p.cmd.Process == nil {
@@ -773,4 +787,18 @@ func (p *Pane) effectiveAgent() string {
 		return p.agentOverride
 	}
 	return p.agentID
+}
+
+// cleanEnv drops NO_COLOR from the inherited environment: a parent set
+// NO_COLOR to mute its own output, and pane programs still need color
+// (SPEC G6: NO_COLOR をペインへ引き継がない).
+func cleanEnv(env []string) []string {
+	out := env[:0]
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "NO_COLOR=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }

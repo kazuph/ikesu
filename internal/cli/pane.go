@@ -9,7 +9,7 @@ import (
 
 func (r *runner) pane(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx pane <list|current|get|focus|rename|read|split|close|send-text|send-keys|report-agent|run> ...")
+		return usageErr(r, "usage: gtx pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|run> ...")
 	}
 	switch args[0] {
 	case "list":
@@ -18,14 +18,28 @@ func (r *runner) pane(args []string) int {
 		return r.paneCurrent(args[1:])
 	case "get":
 		return r.paneGet(args[1:])
+	case "layout":
+		return r.paneLayout(args[1:])
+	case "neighbor":
+		return r.paneNeighbor(args[1:])
+	case "edges":
+		return r.paneEdges(args[1:])
 	case "focus":
 		return r.paneFocus(args[1:])
+	case "resize":
+		return r.paneResize(args[1:])
+	case "zoom":
+		return r.paneZoom(args[1:])
 	case "rename":
 		return r.paneRename(args[1:])
 	case "read":
 		return r.paneRead(args[1:])
 	case "split":
 		return r.paneSplit(args[1:])
+	case "swap":
+		return r.paneSwap(args[1:])
+	case "move":
+		return r.paneMove(args[1:])
 	case "close":
 		return r.paneClose(args[1:])
 	case "send-text":
@@ -40,6 +54,314 @@ func (r *runner) pane(args []string) int {
 		fmt.Fprintf(r.errOut(), "unknown pane command: %s\n", args[0])
 		return 2
 	}
+}
+
+// paneSelector parses [--pane ID|--current] from args. It returns a nil
+// pane id (meaning the focused pane) when neither flag is given.
+func paneSelector(r *runner, args []string) (*string, error) {
+	var paneID *string
+	for i := 0; i < len(args); {
+		switch args[i] {
+		case "--pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return nil, fmt.Errorf("missing value for --pane")
+			}
+			paneID = &v
+		case "--current":
+			if env := r.envPaneID(); env != "" {
+				paneID = &env
+			}
+			i++
+		default:
+			return nil, fmt.Errorf("unknown option: %s", args[i])
+		}
+	}
+	return paneID, nil
+}
+
+func (r *runner) paneLayout(args []string) int {
+	paneID, err := paneSelector(r, args)
+	if err != nil {
+		return usageErr(r, "usage: gtx pane layout [--pane ID|--current]")
+	}
+	return r.printResult("cli:pane:layout", api.MethodPaneLayout, api.PaneLayoutParams{PaneID: paneID})
+}
+
+func (r *runner) paneNeighbor(args []string) int {
+	var params api.PaneNeighborParams
+	for i := 0; i < len(args); {
+		switch args[i] {
+		case "--pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --pane")
+			}
+			params.PaneID = &v
+		case "--current":
+			if env := r.envPaneID(); env != "" {
+				params.PaneID = &env
+			}
+			i++
+		case "--direction":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --direction")
+			}
+			d, err := parseNavDirection(v)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 2
+			}
+			params.Direction = d
+		default:
+			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
+			return 2
+		}
+	}
+	if params.Direction == "" {
+		return usageErr(r, "usage: gtx pane neighbor --direction left|right|up|down [--pane ID|--current]")
+	}
+	return r.printResult("cli:pane:neighbor", api.MethodPaneNeighbor, params)
+}
+
+func (r *runner) paneEdges(args []string) int {
+	paneID, err := paneSelector(r, args)
+	if err != nil {
+		return usageErr(r, "usage: gtx pane edges [--pane ID|--current]")
+	}
+	return r.printResult("cli:pane:edges", api.MethodPaneEdges, api.PaneEdgesParams{PaneID: paneID})
+}
+
+func (r *runner) paneResize(args []string) int {
+	var params api.PaneResizeParams
+	for i := 0; i < len(args); {
+		switch args[i] {
+		case "--pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --pane")
+			}
+			params.PaneID = &v
+		case "--current":
+			if env := r.envPaneID(); env != "" {
+				params.PaneID = &env
+			}
+			i++
+		case "--direction":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --direction")
+			}
+			d, err := parseNavDirection(v)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 2
+			}
+			params.Direction = d
+		case "--amount":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --amount")
+			}
+			n, err := parseFloatFlag("--amount", v)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 2
+			}
+			params.Amount = &n
+		default:
+			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
+			return 2
+		}
+	}
+	if params.Direction == "" {
+		return usageErr(r, "usage: gtx pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]")
+	}
+	return r.printResult("cli:pane:resize", api.MethodPaneResize, params)
+}
+
+func (r *runner) paneZoom(args []string) int {
+	var params api.PaneZoomParams
+	for i := 0; i < len(args); {
+		switch args[i] {
+		case "--pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --pane")
+			}
+			params.PaneID = &v
+		case "--current":
+			if env := r.envPaneID(); env != "" {
+				params.PaneID = &env
+			}
+			i++
+		case "--toggle":
+			params.Mode = "toggle"
+			i++
+		case "--on":
+			params.Mode = "on"
+			i++
+		case "--off":
+			params.Mode = "off"
+			i++
+		default:
+			if !isFlag(args[i]) && params.PaneID == nil {
+				v := args[i]
+				params.PaneID = &v
+				i++
+				continue
+			}
+			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
+			return 2
+		}
+	}
+	return r.printResult("cli:pane:zoom", api.MethodPaneZoom, params)
+}
+
+func (r *runner) paneSwap(args []string) int {
+	var params api.PaneSwapParams
+	for i := 0; i < len(args); {
+		switch args[i] {
+		case "--pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --pane")
+			}
+			params.PaneID = &v
+		case "--current":
+			if env := r.envPaneID(); env != "" {
+				params.PaneID = &env
+			}
+			i++
+		case "--direction":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --direction")
+			}
+			d, err := parseNavDirection(v)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 2
+			}
+			params.Direction = &d
+		case "--source-pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --source-pane")
+			}
+			params.SourcePaneID = &v
+		case "--target-pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --target-pane")
+			}
+			params.TargetPaneID = &v
+		default:
+			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
+			return 2
+		}
+	}
+	if params.Direction == nil && (params.SourcePaneID == nil || params.TargetPaneID == nil) {
+		return usageErr(r, "usage: gtx pane swap --direction left|right|up|down [--pane ID|--current] | gtx pane swap --source-pane ID --target-pane ID")
+	}
+	return r.printResult("cli:pane:swap", api.MethodPaneSwap, params)
+}
+
+func (r *runner) paneMove(args []string) int {
+	if len(args) == 0 {
+		return usageErr(r, "usage: gtx pane move <pane_id> --tab <tab_id> --split right|down [--target-pane ID] [--ratio FLOAT] [--focus|--no-focus] | --new-tab [--workspace ID] [--label TEXT] | --new-workspace [--label TEXT] [--tab-label TEXT]")
+	}
+	params := api.PaneMoveParams{PaneID: args[0]}
+	var tabID *string
+	var newTab, newWorkspace bool
+	i := 1
+	for i < len(args) {
+		switch args[i] {
+		case "--tab":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --tab")
+			}
+			tabID = &v
+		case "--new-tab":
+			newTab = true
+			i++
+		case "--new-workspace":
+			newWorkspace = true
+			i++
+		case "--workspace":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --workspace")
+			}
+			params.Destination.WorkspaceID = &v
+		case "--split":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --split")
+			}
+			d, err := parseSplitDirection(v)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 2
+			}
+			params.Destination.Split = &d
+		case "--target-pane":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --target-pane")
+			}
+			params.Destination.TargetPaneID = &v
+		case "--ratio":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --ratio")
+			}
+			n, err := parseFloatFlag("--ratio", v)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 2
+			}
+			params.Destination.Ratio = &n
+		case "--label":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --label")
+			}
+			params.Destination.Label = &v
+		case "--tab-label":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --tab-label")
+			}
+			params.Destination.TabLabel = &v
+		case "--focus":
+			params.Focus = true
+			i++
+		case "--no-focus":
+			params.Focus = false
+			i++
+		default:
+			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
+			return 2
+		}
+	}
+	switch {
+	case tabID != nil && !newTab && !newWorkspace:
+		params.Destination.Type = "tab"
+		params.Destination.TabID = *tabID
+		if params.Destination.Split == nil {
+			return usageErr(r, "pane move --tab requires --split right|down")
+		}
+	case newTab && !newWorkspace && tabID == nil:
+		params.Destination.Type = "new_tab"
+	case newWorkspace && !newTab && tabID == nil:
+		params.Destination.Type = "new_workspace"
+	default:
+		return usageErr(r, "pane move needs exactly one of --tab, --new-tab, --new-workspace")
+	}
+	return r.printResult("cli:pane:move", api.MethodPaneMove, params)
 }
 
 func (r *runner) paneList(args []string) int {

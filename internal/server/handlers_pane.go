@@ -215,9 +215,12 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 		return api.Failure(id, api.ErrInvalidRequest,
 			fmt.Sprintf("invalid split direction %q", p.Direction))
 	}
-	target := st.FocusedPane()
-	targetTab := 0
+	// Implicit splits target the traversal-last leaf of the tab and append
+	// to logical order (SPEC G1); explicit target_pane_id splits that pane.
 	wsIdx := st.Active
+	targetTab := st.Workspaces[st.Active].ActiveTab
+	implicit := true
+	target := st.Workspaces[st.Active].Tabs[targetTab].Layout.LastLeaf()
 	if p.WorkspaceID != nil && *p.WorkspaceID != "" {
 		wsIdx = s.findWorkspace(*p.WorkspaceID)
 		if wsIdx < 0 {
@@ -225,7 +228,7 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 		}
 		ws := st.Workspaces[wsIdx]
 		targetTab = ws.ActiveTab
-		target = ws.ActiveLayout().Focused()
+		target = ws.Tabs[targetTab].Layout.LastLeaf()
 	}
 	if p.TargetPaneID != nil && *p.TargetPaneID != "" {
 		pid, idx, ti, ok := s.findPane(*p.TargetPaneID)
@@ -233,6 +236,7 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 			return s.paneNotFound(id, *p.TargetPaneID)
 		}
 		target, wsIdx, targetTab = pid, idx, ti
+		implicit = false
 	}
 	ratio := 0.5
 	if p.Ratio != nil {
@@ -247,20 +251,27 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 			cwd = pane.SpawnCwd()
 		}
 	}
-	s.app.ExecCmd(model.CmdSplitPane{
-		Workspace: wsIdx, Pane: target, Dir: dir,
-		Ratio: ratio, Focus: p.Focus, Cwd: cwd, Env: p.Env,
-	})
-	// New pane is the one just allocated, inserted right after target in
-	// the target's own tab (PaneIDs keeps creation order).
-	pids := st.Workspaces[wsIdx].Tabs[targetTab].Layout.PaneIDs()
-	if len(pids) == 0 {
-		return api.Failure(id, api.ErrInvalidRequest, "split failed")
-	}
-	newID := pids[len(pids)-1]
-	for i, v := range pids {
-		if v == target && i+1 < len(pids) {
-			newID = pids[i+1]
+	var newID int
+	if implicit {
+		s.app.ExecCmd(model.CmdSplitImplicit{
+			Workspace: wsIdx, Tab: targetTab, Dir: dir,
+			Ratio: ratio, Focus: p.Focus, Cwd: cwd, Env: p.Env,
+		})
+		pids := st.Workspaces[wsIdx].Tabs[targetTab].Layout.PaneIDs()
+		newID = pids[len(pids)-1]
+	} else {
+		s.app.ExecCmd(model.CmdSplitPane{
+			Workspace: wsIdx, Pane: target, Dir: dir,
+			Ratio: ratio, Focus: p.Focus, Cwd: cwd, Env: p.Env,
+		})
+		// New pane is inserted right after target in the tab's logical
+		// order (PaneIDs keeps creation order).
+		pids := st.Workspaces[wsIdx].Tabs[targetTab].Layout.PaneIDs()
+		newID = pids[len(pids)-1]
+		for i, v := range pids {
+			if v == target && i+1 < len(pids) {
+				newID = pids[i+1]
+			}
 		}
 	}
 	info, _ := s.paneInfo(newID)
@@ -408,8 +419,11 @@ func (s *Server) resolvePane(ref string) (pid, wsIdx, tabIdx int, ok bool) {
 	if ref == "" {
 		st := s.app.State()
 		ws := st.ActiveWorkspace()
+		if ws == nil {
+			return 0, -1, -1, false
+		}
 		t := ws.TabRef()
-		if ws == nil || t == nil {
+		if t == nil {
 			return 0, -1, -1, false
 		}
 		return t.Layout.Focused(), st.Active, ws.ActiveTab, true

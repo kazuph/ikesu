@@ -127,16 +127,19 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF       bool                                 // input close means quit (local mode)
-	detacher       func(reason string)                  // server mode: detach the client
-	sinkOn         func() bool                          // nil = always draw
-	quitHook       func()                               // runs on the loop right before Run returns
-	availHook      func(pid int)                        // pane status changed; server flushes mail
-	changeHook     func()                               // persistent state changed; server coalesces saves
-	restartHook    func()                               // main menu "Restart server…" (server mode only)
-	restoreHook    func(dryRun bool)                    // main menu "Restore agents…" (server mode only)
-	paneClosedHook func(pid int)                        // pane permanently removed; server cleans ledger
-	warningsHook   func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
+	inputEOF       bool                                           // input close means quit (local mode)
+	detacher       func(reason string)                            // server mode: detach the client
+	sinkOn         func() bool                                    // nil = always draw
+	quitHook       func()                                         // runs on the loop right before Run returns
+	availHook      func(pid int)                                  // pane status changed; server flushes mail
+	changeHook     func()                                         // persistent state changed; server coalesces saves
+	restartHook    func()                                         // main menu "Restart server…" (server mode only)
+	restoreHook    func(dryRun bool)                              // main menu "Restore agents…" (server mode only)
+	paneClosedHook func(pid int)                                  // pane permanently removed; server cleans ledger
+	postExecHook   func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
+	exitedHook     func(pid int)                                  // pane process exited; server emits pane.exited
+	outHook        func(pid int)                                  // pane output changed; server emits pane.output_changed
+	warningsHook   func() []api.AgentSessionWarningInfo           // restart confirm lists missing ids
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target
@@ -161,6 +164,8 @@ type App struct {
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
+	lastClick     clickMark // last left press inside a normal pane body
+	dblMenu       bool      // second same-cell down/up pending menu open
 	spin          int
 	lastSpin      time.Time
 	lastDraw      time.Time
@@ -211,6 +216,34 @@ func (a *App) SetQuitHook(f func()) { a.quitHook = f }
 // pane's agent status changes (detection or report). The server uses it
 // for event-driven mail delivery.
 func (a *App) SetAvailHook(f func(pid int)) { a.availHook = f }
+
+// SetPostExecHook registers a callback fired after every command with the
+// pre-command state snapshot (domain events are derived from the diff).
+func (a *App) SetPostExecHook(f func(cmd model.Command, prev *model.StateSnap)) {
+	a.postExecHook = f
+}
+
+// SetExitedHook registers a callback fired when a pane process exits.
+func (a *App) SetExitedHook(f func(pid int)) { a.exitedHook = f }
+
+// SetOutputHook registers a callback fired when a pane's output changes.
+func (a *App) SetOutputHook(f func(pid int)) { a.outHook = f }
+
+// SetScrollOffset pins a pane's display to offset_from_bottom lines into
+// its scrollback (pane.scroll; 0 follows the live bottom). App loop only.
+func (a *App) SetScrollOffset(pid, off int) {
+	if p := a.sup.Get(pid); p != nil {
+		if mx := p.Snapshot().ScrollbackLen; off > mx {
+			off = mx
+		}
+	}
+	if off <= 0 {
+		delete(a.scroll, pid)
+	} else {
+		a.scroll[pid] = off
+	}
+	a.dirty = true
+}
 
 // Do runs fn on the app loop goroutine and blocks until it completes. It
 // returns without running fn if the app has already stopped.
@@ -426,8 +459,14 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		if p := a.sup.Get(ev.Pane); p != nil {
 			p.MarkChangedRead()
 		}
+		if a.outHook != nil {
+			a.outHook(ev.Pane)
+		}
 		a.dirty = true
 	case runtime.EventExited:
+		if a.exitedHook != nil {
+			a.exitedHook(ev.Pane)
+		}
 		// A pane that still carries an agent identity and a resumable
 		// session is kept as a shell-fallback pane instead of closing
 		// (SPEC G3 restorable pane retention).
@@ -538,6 +577,10 @@ func (a *App) anyWorking() bool {
 
 // exec applies a command and performs its effects.
 func (a *App) exec(cmd model.Command) {
+	var prev *model.StateSnap
+	if a.postExecHook != nil {
+		prev = a.st.Capture()
+	}
 	for _, e := range a.st.Apply(cmd) {
 		a.effect(e)
 	}
@@ -549,6 +592,9 @@ func (a *App) exec(cmd model.Command) {
 	default:
 		a.changed()
 	}
+	if a.postExecHook != nil && prev != nil {
+		a.postExecHook(cmd, prev)
+	}
 }
 
 func (a *App) effect(e model.Effect) {
@@ -559,7 +605,7 @@ func (a *App) effect(e model.Effect) {
 		for k, v := range e.Env {
 			env = append(env, k+"="+v)
 		}
-		_, _ = a.sup.SpawnWith(e.Pane, e.Cwd, r.W, r.H, env)
+		_, _ = a.sup.SpawnWith(e.Pane, e.Cwd, r.W, r.H, env, e.Argv)
 	case model.EffKillPane:
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
@@ -584,8 +630,8 @@ func (a *App) syncLayout() {
 		return
 	}
 	area := a.st.PanesArea()
-	if l := ws.ActiveLayout(); l != nil {
-		for _, pr := range l.Panes(area) {
+	if t := ws.TabRef(); t != nil {
+		for _, pr := range t.PaneRects(area) {
 			a.sup.Resize(pr.ID, max(pr.Rect.W-2, 1), max(pr.Rect.H-2, 1))
 		}
 	}
@@ -597,7 +643,7 @@ func (a *App) syncLayout() {
 func (a *App) rectForPane(pid int) layout.Rect {
 	for _, ws := range a.st.Workspaces {
 		for _, t := range ws.Tabs {
-			for _, pr := range t.Layout.Panes(a.st.PanesArea()) {
+			for _, pr := range t.PaneRects(a.st.PanesArea()) {
 				if pr.ID == pid {
 					return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
 				}
@@ -614,11 +660,11 @@ func (a *App) innerRect(pid int) layout.Rect {
 	if ws == nil {
 		return layout.Rect{W: 80, H: 24}
 	}
-	l := ws.ActiveLayout()
-	if l == nil {
+	t := ws.TabRef()
+	if t == nil {
 		return layout.Rect{W: 80, H: 24}
 	}
-	for _, pr := range l.Panes(a.st.PanesArea()) {
+	for _, pr := range t.PaneRects(a.st.PanesArea()) {
 		if pr.ID == pid {
 			return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
 		}
@@ -632,11 +678,11 @@ func (a *App) paneRect(pid int) (layout.Rect, bool) {
 	if ws == nil {
 		return layout.Rect{}, false
 	}
-	l := ws.ActiveLayout()
-	if l == nil {
+	t := ws.TabRef()
+	if t == nil {
 		return layout.Rect{}, false
 	}
-	for _, pr := range l.Panes(a.st.PanesArea()) {
+	for _, pr := range t.PaneRects(a.st.PanesArea()) {
 		if pr.ID == pid {
 			return pr.Rect, true
 		}

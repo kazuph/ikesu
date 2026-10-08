@@ -30,6 +30,23 @@ func (s *Server) serveAPI(conn net.Conn) {
 		if err != nil {
 			return
 		}
+		// events.subscribe turns this connection into an event stream;
+		// events.wait may block for the timeout, off the app loop.
+		switch req.Method {
+		case api.MethodEventsSubscribe:
+			s.serveEvents(conn, req)
+			return
+		case api.MethodEventsWait:
+			if err := api.WriteResponse(conn, s.eventsWait(req)); err != nil {
+				return
+			}
+			continue
+		case api.MethodPaneWaitForOutput:
+			if err := api.WriteResponse(conn, s.waitForOutput(req)); err != nil {
+				return
+			}
+			continue
+		}
 		resp := s.dispatch(req)
 		if err := api.WriteResponse(conn, resp); err != nil {
 			return

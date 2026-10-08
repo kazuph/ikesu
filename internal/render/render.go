@@ -218,11 +218,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		return
 	}
 	area := s.PanesArea()
-	l := ws.ActiveLayout()
-	if l == nil {
+	t := ws.TabRef()
+	if t == nil {
 		return
 	}
-	for _, pr := range l.Panes(area) {
+	for _, pr := range t.PaneRects(area) {
 		snap := in.Panes[pr.ID]
 		borderSty := uv.Style{Fg: Dim}
 		if pr.IsFocused {

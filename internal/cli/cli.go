@@ -310,3 +310,12 @@ func readRawLine(r *bufio.Reader) ([]byte, error) {
 	}
 	return line[:len(line)-1], nil
 }
+
+func parseNavDirection(value string) (string, error) {
+	switch value {
+	case "left", "right", "up", "down":
+		return value, nil
+	default:
+		return "", fmt.Errorf("invalid direction %q (want left|right|up|down)", value)
+	}
+}

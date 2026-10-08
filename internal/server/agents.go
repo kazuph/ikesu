@@ -205,9 +205,10 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 			wsIdx, tabIdx = wi, ti
 			ws = st.Workspaces[wsIdx]
 		}
-		target := ws.Tabs[tabIdx].Layout.Focused()
-		s.app.ExecCmd(model.CmdSplitPane{
-			Workspace: wsIdx, Pane: target, Dir: dir,
+		// Implicit pane add: split the traversal-last leaf, appended to
+		// logical order (SPEC G1).
+		s.app.ExecCmd(model.CmdSplitImplicit{
+			Workspace: wsIdx, Tab: tabIdx, Dir: dir,
 			Ratio: 0.5, Focus: p.Focus, Cwd: cwd, Env: env,
 		})
 		pids := ws.Tabs[tabIdx].Layout.PaneIDs()
@@ -215,11 +216,6 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 			return api.Failure(id, api.ErrInvalidRequest, "split failed")
 		}
 		pid = pids[len(pids)-1]
-		for i, v := range pids {
-			if v == target && i+1 < len(pids) {
-				pid = pids[i+1]
-			}
-		}
 	} else {
 		if p.TabID != nil && *p.TabID != "" {
 			return api.Failure(id, api.ErrInvalidRequest,
