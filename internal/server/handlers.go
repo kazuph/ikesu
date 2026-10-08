@@ -13,6 +13,8 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
 	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
 		return s.worktreeRequest(req)
+	case "workspace.duplicate", "workspace.set_section":
+		return s.sidebarRequest(req)
 	case "workspace.move":
 		var p struct {
 			WorkspaceID string `json:"workspace_id"`

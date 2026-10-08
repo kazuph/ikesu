@@ -22,19 +22,24 @@ const CurrentVersion = 1
 
 // File is the whole persisted session.
 type File struct {
-	Version         int         `json:"version"`
-	SavedAt         string      `json:"saved_at"`
-	Active          int         `json:"active"` // active workspace index
-	SidebarVisible  bool        `json:"sidebar_visible"`
-	NextPaneID      int         `json:"next_pane_id"`
-	NextWorkspaceID int         `json:"next_workspace_id"`
-	NextTabID       int         `json:"next_tab_id"`
-	Workspaces      []Workspace `json:"workspaces"`
+	Version           int             `json:"version"`
+	SavedAt           string          `json:"saved_at"`
+	Active            int             `json:"active"` // active workspace index
+	SidebarWidth      int             `json:"sidebar_width,omitempty"`
+	SidebarManual     bool            `json:"sidebar_manual,omitempty"`
+	CollapsedSections map[string]bool `json:"collapsed_sections,omitempty"`
+	SidebarVisible    bool            `json:"sidebar_visible"`
+	NextPaneID        int             `json:"next_pane_id"`
+	NextWorkspaceID   int             `json:"next_workspace_id"`
+	NextTabID         int             `json:"next_tab_id"`
+	Workspaces        []Workspace     `json:"workspaces"`
 }
 
 // Workspace is one saved workspace.
 type Workspace struct {
 	Worktree       *api.WorkspaceWorktreeInfo `json:"worktree,omitempty"`
+	Section        string                     `json:"section,omitempty"`
+	CustomName     bool                       `json:"custom_name,omitempty"`
 	GroupCollapsed bool                       `json:"group_collapsed,omitempty"`
 	ID             int                        `json:"id"`
 	Name           string                     `json:"name"`

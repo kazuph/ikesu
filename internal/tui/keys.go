@@ -124,9 +124,9 @@ func (a *App) prefixKey(k uv.Key) {
 	case k.Code == 'D' || (k.Code == 'd' && k.Mod.Contains(uv.ModShift)):
 		a.openCloseWorkspaceDialog(s.Active)
 	case k.Code == 'n':
-		a.selectWorkspace(s.Active + 1)
+		a.cycleWorkspace(1)
 	case k.Code == 'p':
-		a.selectWorkspace(s.Active - 1)
+		a.cycleWorkspace(-1)
 	case k.Code >= '1' && k.Code <= '9':
 		a.selectWorkspace(int(k.Code - '1'))
 	case k.Code == 'b':
@@ -219,7 +219,7 @@ func (a *App) closeFocusedPane() {
 
 func (a *App) openQuitDialog() {
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Quit goterrace?", Detail: "Stops all panes in every workspace.", Confirm: "quit", Cancel: "cancel"},
+		d: render.Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76},
 		run: func(a *App) {
 			a.exec(model.CmdQuit{})
 		},

@@ -257,7 +257,7 @@ func countPanes(screen string) int {
 func TestBootShowsSidebarAndPane(t *testing.T) {
 	s := start(t)
 	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, "workspaces") && strings.Contains(tx, " gtx ")
+		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, " spaces") && strings.Contains(tx, " gtx ")
 	})
 	if !strings.Contains(s.text(), " gtx ") {
 		t.Fatalf("missing status line brand:\n%s", s.text())
@@ -288,7 +288,7 @@ func TestMouseFullFlow(t *testing.T) {
 	})
 
 	// 2. Click the first workspace row in the sidebar to go back.
-	s.click(3, 1) // sidebar row for workspace 1
+	s.click(3, 5) // first workspace card below the section header
 	s.waitFor("back on workspace 1", 5*time.Second, func(tx string) bool {
 		return strings.Contains(tx, "1/2") // status shows "workspace 1/2"
 	})
@@ -307,18 +307,18 @@ func TestMouseFullFlow(t *testing.T) {
 		return countPanes(tx) >= 2
 	})
 
-	// 4. [menu] → Quit → confirm exits 0.
+	// 4. [menu] → Stop server → confirm exits 0.
 	menX, menY := s.find("[menu]")
 	s.click(menX, menY)
 	s.waitFor("app menu", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "Quit")
+		return strings.Contains(tx, "stop server")
 	})
-	qx, qy := s.find("Quit")
+	qx, qy := s.find("stop server")
 	s.click(qx, qy)
 	s.waitFor("confirm dialog", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "quit") && strings.Contains(tx, "cancel")
+		return strings.Contains(tx, "Stop server?") && strings.Contains(tx, "cancel")
 	})
-	cx, cy := s.find("quit")
+	cx, cy := s.find("stop")
 	s.click(cx, cy)
 
 	done := make(chan error, 1)

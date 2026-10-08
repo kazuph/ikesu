@@ -24,7 +24,7 @@ func TestSPECCopyBindingsHelpMenuAndDocs(t *testing.T) {
 	a.openMainMenu(0, 0)
 	found := false
 	for i, item := range a.menu.m.Items {
-		if item.Label == "Keybinds" {
+		if item.Label == "keybinds" {
 			a.activateMenu(i)
 			found = true
 			break

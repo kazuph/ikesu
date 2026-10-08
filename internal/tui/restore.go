@@ -103,6 +103,7 @@ func (a *App) RestoreSession(f *session.File) []int {
 	a.st = model.Restore(f)
 	a.st.Cols, a.st.Rows = cols, rows
 	a.applyUIFlags()
+	a.SetSidebarConfig(a.sidebarConfig, false)
 	if a.sessions == nil {
 		a.sessions = map[int]*AgentRecord{}
 	}
@@ -157,7 +158,7 @@ func dirExists(p string) bool {
 // missing a safe session id the dialog switches to the fail-closed
 // warning form, listing each unsafe pane (SPEC G3).
 func (a *App) openRestartDialog() {
-	d := render.Dialog{Title: "Restart gtx?", Detail: "Restarts the gtx server and restores this session.", Confirm: "restart", Cancel: "cancel"}
+	d := render.Dialog{Title: "Restart gtx?", Detail: "Restarts the gtx server. The saved session can be restored.", Confirm: "restart", Cancel: "cancel", Width: 76}
 	if a.warningsHook != nil {
 		if ws := a.warningsHook(); len(ws) > 0 {
 			d.Title = "Restart with missing agent sessions?"
@@ -205,7 +206,7 @@ func restartWarningLine(w api.AgentSessionWarningInfo) string {
 // openRestoreDialog confirms a manual agent restore.
 func (a *App) openRestoreDialog() {
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", Confirm: "restore", Cancel: "cancel"},
+		d: render.Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", Confirm: "restore", Cancel: "cancel", Width: 76},
 		run: func(a *App) {
 			if a.restoreHook != nil {
 				a.restoreHook(false)

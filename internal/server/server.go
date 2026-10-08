@@ -237,6 +237,7 @@ func Run(session, version string) (int, error) {
 		s.app.SetNavKey('o')
 	}
 	s.app.SetUIFlags(s.cfg.ShowTabBar(), s.cfg.HideTabBarWhenSingleTab(), s.cfg.PaneBorders())
+	s.app.SetSidebarConfig(s.cfg, true)
 	s.app.SetKeybinds(s.cfg.CopyKeys(), s.cfg.SplitVerticalKeys(), s.cfg.SplitHorizontalKeys())
 	s.app.SetPaneKeybinds(s.cfg)
 

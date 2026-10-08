@@ -37,7 +37,13 @@ func (d ToastDelivery) Valid() bool {
 // Config is the parsed config file.
 type Config struct {
 	UI struct {
-		Toast struct {
+		SidebarWidth          *int   `toml:"sidebar_width"`
+		SidebarMinWidth       *int   `toml:"sidebar_min_width"`
+		SidebarMaxWidth       *int   `toml:"sidebar_max_width"`
+		SidebarStartCollapsed bool   `toml:"sidebar_start_collapsed"`
+		WorkspacePanelDensity string `toml:"workspace_panel_density"`
+		AgentPanelScope       string `toml:"agent_panel_scope"`
+		Toast                 struct {
 			Delivery string `toml:"delivery"`
 			// Enabled is the legacy boolean: true→"gtx", false→"off";
 			// delivery wins when both are present.

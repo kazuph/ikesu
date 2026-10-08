@@ -15,6 +15,12 @@ func TestSPECRightClickWorkspaceTabFrameAndTabWheel(t *testing.T) {
 	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
 	a.draw()
 	_, y, _, _ := render.SidebarContent(a.st.SidebarArea())
+	for i, r := range render.SidebarRows(a.st, a.paneSnaps()) {
+		if r.Kind == render.RowWorkspace {
+			y += i
+			break
+		}
+	}
 	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: 2, Y: y, Button: uv.MouseRight}})
 	if a.menu == nil || a.menu.kind != menuWorkspace || a.menu.ws != 0 {
 		t.Fatal("workspace row ownership", a.menu)

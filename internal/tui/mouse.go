@@ -32,6 +32,8 @@ func (a *App) onMouse(ev input.Event) {
 			break
 		}
 		a.copyMouse(ev)
+	case a.sidebarGesture != nil:
+		a.sidebarGestureMouse(ev)
 	case a.sep != nil:
 		a.sepMouse(ev)
 	case a.sb != nil:
@@ -386,6 +388,9 @@ func (a *App) sidebarClick(m uv.Mouse) {
 		return
 	}
 	if m.Button != uv.MouseLeft {
+		return
+	}
+	if a.sidebarPress(m) {
 		return
 	}
 	s := a.st

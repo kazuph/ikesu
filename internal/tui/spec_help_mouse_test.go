@@ -79,14 +79,14 @@ func TestSPECHelpMouseCaptureWheelTrackAndThumbGrab(t *testing.T) {
 	}
 }
 
-func TestSPECOnlyHelpDismissesOutsideAndOverlaysCapture(t *testing.T) {
+func TestSPECDangerousCancelOutsideAndOverlaysCapture(t *testing.T) {
 	a := specRuntimeApp(t)
 	a.openQuitDialog()
-	dialog := a.dialog
+
 	before := a.st.ActiveWorkspace().TabRef().Layout.Fingerprint()
 	outside := input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: 0, Y: 0, Button: uv.MouseLeft}}
 	a.onMouse(outside)
-	if a.dialog != dialog || a.sel != nil || a.quit || a.st.ActiveWorkspace().TabRef().Layout.Fingerprint() != before {
+	if a.dialog != nil || a.sel != nil || a.quit || a.st.ActiveWorkspace().TabRef().Layout.Fingerprint() != before {
 		t.Fatal("dialog outside capture")
 	}
 	a.dialog = nil

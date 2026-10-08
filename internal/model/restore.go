@@ -10,15 +10,20 @@ import (
 // the server fills it in via session.File.EachPane before saving.
 func (s *AppState) Snapshot() *session.File {
 	f := &session.File{
-		Active:          s.Active,
-		SidebarVisible:  s.SidebarVisible,
-		NextPaneID:      s.nextPaneID,
-		NextWorkspaceID: s.nextWorkspaceID,
-		NextTabID:       s.nextTabID,
+		Active:       s.Active,
+		SidebarWidth: s.ExpandedSidebarWidth(), SidebarManual: s.SidebarManual,
+		CollapsedSections: map[string]bool{},
+		SidebarVisible:    s.SidebarVisible,
+		NextPaneID:        s.nextPaneID,
+		NextWorkspaceID:   s.nextWorkspaceID,
+		NextTabID:         s.nextTabID,
+	}
+	for k, v := range s.CollapsedSections {
+		f.CollapsedSections[string(k)] = v
 	}
 	for _, ws := range s.Workspaces {
 		sw := session.Workspace{
-			Worktree: ws.Worktree, GroupCollapsed: ws.GroupCollapsed,
+			Worktree: ws.Worktree, GroupCollapsed: ws.GroupCollapsed, Section: string(ws.Section), CustomName: ws.CustomName,
 			ID:        ws.ID,
 			Name:      ws.Name,
 			Cwd:       ws.Cwd,
@@ -53,15 +58,19 @@ func (s *AppState) Snapshot() *session.File {
 // spawns a shell per leaf in the persisted cwd.
 func Restore(f *session.File) *AppState {
 	s := &AppState{
-		Active:          f.Active,
+		Active:      f.Active,
+		SidebarSize: f.SidebarWidth, SidebarManual: f.SidebarManual, CollapsedSections: map[Section]bool{},
 		SidebarVisible:  f.SidebarVisible,
 		PaneLabels:      map[PaneID]string{},
 		nextPaneID:      f.NextPaneID,
 		nextWorkspaceID: f.NextWorkspaceID,
 		nextTabID:       f.NextTabID,
 	}
+	for k, v := range f.CollapsedSections {
+		s.CollapsedSections[Section(k)] = v
+	}
 	for _, sw := range f.Workspaces {
-		ws := &Workspace{ID: sw.ID, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed}
+		ws := &Workspace{ID: sw.ID, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed, Section: Section(sw.Section), CustomName: sw.CustomName}
 		for _, st := range sw.Tabs {
 			l := layout.Restore(session.ToLayoutNode(st.Layout), st.Focused, st.Order)
 			ws.Tabs = append(ws.Tabs, &Tab{ID: st.ID, Name: st.Name, Layout: l})

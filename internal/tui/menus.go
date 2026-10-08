@@ -100,9 +100,19 @@ func (a *App) agentPane(argv ...string) {
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
 func (a *App) openWorkspaceMenu(x, y, ws int) {
-	items := []render.MenuItem{{Label: "New workspace"}, {Separator: true}}
-	items = append(items, a.workspaceWorktreeItems(ws)...)
-	items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "Close workspace…"})
+	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Separator: true}}
+	wt := a.workspaceWorktreeItems(ws)
+	var group []render.MenuItem
+	for _, it := range wt {
+		if it.Label == "Collapse" || it.Label == "Expand" {
+			group = append(group, it)
+		} else {
+			items = append(items, it)
+		}
+	}
+	items = append(items, render.MenuItem{Label: "Duplicate"}, render.MenuItem{Separator: true}, render.MenuItem{Label: "Rename"}, render.MenuItem{Label: "Close"})
+	items = append(items, group...)
+	items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "⭐ favorite"}, render.MenuItem{Label: "💼 work"}, render.MenuItem{Label: "🏠 personal"}, render.MenuItem{Label: "No section"})
 	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: items}}
 }
 
@@ -125,28 +135,9 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 
 // openMainMenu shows the [menu] global menu.
 func (a *App) openMainMenu(x, y int) {
-	sideLabel := "Hide sidebar"
-	if !a.st.SidebarVisible {
-		sideLabel = "Show sidebar"
-	}
-	a.menu = &uiMenu{justOpened: true,
-		kind: menuMain,
-		m: render.Menu{
-			X: x, Y: y, Hover: -1, Sel: -1,
-			Items: []render.MenuItem{
-				{Label: "New workspace"},
-				{Label: "Next workspace"},
-				{Label: "Previous workspace"},
-				{Separator: true},
-				{Label: sideLabel},
-				{Label: "Keybinds"},
-				{Separator: true},
-				{Label: "Restore agents…", Disabled: a.restoreHook == nil},
-				{Label: "Restart server…", Disabled: a.restartHook == nil},
-				{Label: "Quit goterrace…"},
-			},
-		},
-	}
+	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: []render.MenuItem{
+		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Label: "what's new", Disabled: true}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
+	}}}
 }
 
 // activateMenu runs the command for menu item i and closes the menu.
@@ -207,9 +198,31 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuWorkspace:
 		switch m.m.Items[i].Label {
+		case "New Claude Code agent", "New Codex agent", "New agy agent":
+			a.exec(model.CmdSelectWorkspace{Index: m.ws})
+			agent := "claude"
+			if m.m.Items[i].Label == "New Codex agent" {
+				agent = "codex"
+			}
+			if m.m.Items[i].Label == "New agy agent" {
+				agent = "agy"
+			}
+			a.agentPane(agent)
+		case "Duplicate":
+			a.duplicateDialog(m.ws)
+		case "Rename":
+			a.renameWorkspaceDialog(m.ws)
+		case "⭐ favorite":
+			a.setSection(m.ws, model.SectionFavorite)
+		case "💼 work":
+			a.setSection(m.ws, model.SectionWork)
+		case "🏠 personal":
+			a.setSection(m.ws, model.SectionPersonal)
+		case "No section":
+			a.setSection(m.ws, model.SectionNone)
 		case "New workspace":
 			a.newWorkspace()
-		case "Close workspace…":
+		case "Close workspace…", "Close":
 			a.openCloseWorkspaceDialog(m.ws)
 		case "New worktree":
 			a.newWorktreeDialog(m.ws)
@@ -232,25 +245,36 @@ func (a *App) activateMenu(i int) {
 			a.closeTabAt(m.ws, m.tab)
 		}
 	case menuMain:
-		switch i {
-		case 0:
+		switch m.m.Items[i].Label {
+		case "new workspace":
 			a.newWorkspace()
-		case 1:
-			a.selectWorkspace(a.st.Active + 1)
-		case 2:
-			a.selectWorkspace(a.st.Active - 1)
-		case 4:
-			a.exec(model.CmdToggleSidebar{})
-		case 5:
+		case "new tab":
+			a.newTabNameDialog()
+		case "settings":
+			a.unsupportedSidebar("settings popup")
+		case "keybinds":
 			a.openHelp()
-		case 7:
+		case "reload config":
+			a.reloadSidebarConfig()
+		case "sidebar narrow":
+			a.sidebarPreset("narrow")
+		case "sidebar normal":
+			a.sidebarPreset("normal")
+		case "sidebar wide":
+			a.sidebarPreset("wide")
+		case "restore agents...":
 			a.openRestoreDialog()
-		case 8:
-			a.openRestartDialog()
-		case 9:
+		case "detach":
+			if a.detacher != nil {
+				a.detacher("detached")
+			}
+		case "stop server":
 			a.openQuitDialog()
+		case "restart":
+			a.openRestartDialog()
 		}
 	}
+
 }
 
 // menuItemAt returns the item index under (x, y) or -1.
@@ -342,6 +366,8 @@ func (a *App) dialogMouse(ev input.Event) {
 			d.run(a)
 		}
 	case pointIn(m.X, m.Y, cancel):
+		a.dialog = nil
+	default:
 		a.dialog = nil
 	}
 }

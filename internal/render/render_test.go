@@ -422,7 +422,7 @@ func TestCopiedFlashOnSidebarBottom(t *testing.T) {
 	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}, Copied: " Copied 2 lines "})
 	text := screenText(t, out, 80, 24)
-	footer := s.Rows - 3 // sidebar footer text row
+	footer := s.Rows - 2 // sidebar bottom row
 	lines := strings.Split(text, "\n")
 	if !strings.Contains(lines[footer], "Copied 2 lines") {
 		t.Fatalf("flash not on the sidebar bottom row %d:\n%s", footer, text)
