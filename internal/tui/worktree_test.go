@@ -141,3 +141,32 @@ func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
 		t.Fatal("active deletion lost focus")
 	}
 }
+
+func TestWorktreeMoveBackToGroupAndFailureWithoutMutation(t *testing.T) {
+	a, r := worktreeApp(t)
+	branch := "move"
+	out, e := a.CreateWorktree(api.WorktreeCreateParams{Cwd: &r, Branch: &branch, Focus: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	id := a.st.Workspaces[out.Index].ID
+	a.exec(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	a.exec(model.CmdMoveWorkspace{Index: out.Index, InsertIndex: 0})
+	a.openWorkspaceMenu(2, 3, 0)
+	activateLabel(t, a, "Move to worktree group")
+	if a.st.Workspaces[1].ID != id || a.st.Active != 1 {
+		t.Fatal("group movement lost child/focus")
+	}
+	before := len(a.st.Workspaces)
+	invalid := "not a branch"
+	if _, e := a.CreateWorktree(api.WorktreeCreateParams{Cwd: &r, Branch: &invalid}); e == nil {
+		t.Fatal("invalid branch accepted")
+	}
+	if len(a.st.Workspaces) != before || a.st.Active != 1 {
+		t.Fatal("create failure mutated app")
+	}
+	unknown := "unregistered"
+	if _, e := a.OpenWorktree(api.WorktreeOpenParams{Cwd: &r, Branch: &unknown}); e == nil {
+		t.Fatal("unknown checkout silently substituted")
+	}
+}

@@ -138,3 +138,66 @@ func subscribe(t *testing.T, dir string, kinds []string) (net.Conn, *bufio.Reade
 	}
 	return conn, rd
 }
+
+func TestWorktreeCLIAllOperationsAndBareSocket(t *testing.T) {
+	r := gitRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	bare := filepath.Join(t.TempDir(), "bare.git")
+	if b, e := exec.Command("git", "clone", "--bare", r, bare).CombinedOutput(); e != nil {
+		t.Fatalf("%v %s", e, b)
+	}
+	dir, done := startTestServer(t)
+	c := dialClient(t, dir)
+	defer c.conn.Close()
+	defer stopServer(t, dir, done)
+	requestCLI := func(args ...string) api.Response {
+		t.Helper()
+		var output strings.Builder
+		if code := cli.Run(append([]string{"worktree"}, args...), cli.Options{Session: "test", Explicit: true, Stdout: &output, Stderr: &output}); code != 0 {
+			t.Fatal(output.String())
+		}
+		var resp api.Response
+		if e := json.Unmarshal([]byte(output.String()), &resp); e != nil {
+			t.Fatal(e)
+		}
+		return resp
+	}
+	path := filepath.Join(t.TempDir(), "cli-new")
+	resp := requestCLI("create", "--cwd", r, "--branch", "cli/new", "--path", path, "--focus", "--json")
+	var created api.WorktreeCreatedResult
+	if e := json.Unmarshal(resp.Result, &created); e != nil {
+		t.Fatal(e)
+	}
+	if created.Workspace.WorkspaceID == "" || created.Worktree.Branch == nil || *created.Worktree.Branch != "cli/new" {
+		t.Fatalf("%+v", created)
+	}
+	requestCLI("list", "--cwd", r, "--json")
+	resp = requestCLI("open", "--cwd", r, "--branch", "cli/new", "--json")
+	var opened api.WorktreeOpenedResult
+	_ = json.Unmarshal(resp.Result, &opened)
+	if !opened.AlreadyOpen {
+		t.Fatal("CLI open duplicated")
+	}
+	requestCLI("remove", "--workspace", created.Workspace.WorkspaceID, "--json")
+	if _, e := os.Stat(path); !os.IsNotExist(e) {
+		t.Fatal("CLI delete left directory")
+	}
+	var bareCreated api.WorktreeCreatedResult
+	branch := "bare/socket"
+	barePath := filepath.Join(t.TempDir(), "bare-linked")
+	apiOK(t, dir, api.MethodWorktreeCreate, api.WorktreeCreateParams{Cwd: &bare, Branch: &branch, Path: &barePath}, &bareCreated)
+	if bareCreated.Workspace.Worktree == nil || bareCreated.Workspace.Worktree.RepoName != "bare" {
+		t.Fatalf("%+v", bareCreated)
+	}
+	var list api.WorktreeListResult
+	apiOK(t, dir, api.MethodWorktreeList, api.WorktreeListParams{Cwd: &bare}, &list)
+	if len(list.Worktrees) != 2 || !list.Worktrees[0].IsBare {
+		t.Fatalf("%+v", list)
+	}
+	apiOK(t, dir, api.MethodWorktreeRemove, api.WorktreeRemoveParams{WorkspaceID: bareCreated.Workspace.WorkspaceID}, nil)
+	// The bare directory itself is never a deletable checkout.
+	resp = apiReq(t, dir, api.MethodWorktreeOpen, api.WorktreeOpenParams{Cwd: &bare, Path: &bare})
+	if resp.Err == nil {
+		t.Fatal("opened bare repository as checkout")
+	}
+}

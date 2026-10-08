@@ -97,6 +97,9 @@ func (a *App) groupWorktree(index int) {
 	for i, w := range a.st.Workspaces {
 		if w.Worktree != nil && w.Worktree.RepoKey == ws.Worktree.RepoKey && !w.Worktree.IsLinkedWorktree {
 			target := i + 1
+			if index < i {
+				target--
+			}
 			if target >= len(a.st.Workspaces) {
 				target = len(a.st.Workspaces) - 1
 			}
