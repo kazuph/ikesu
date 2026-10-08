@@ -145,6 +145,7 @@ const (
 
 // WorkspaceInfo fields are emitted in alphabetical order to match herdr.
 type WorkspaceInfo struct {
+	Tokens              map[string]string      `json:"tokens,omitempty"`
 	Worktree            *WorkspaceWorktreeInfo `json:"worktree,omitempty"`
 	ActiveTabID         string                 `json:"active_tab_id"`
 	AgentStatus         AgentStatus            `json:"agent_status"`

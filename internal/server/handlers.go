@@ -13,6 +13,8 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
 	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
 		return s.worktreeRequest(req)
+	case "workspace.report_metadata":
+		return s.workspaceMetadataRequest(req)
 	case "workspace.duplicate", "workspace.set_section":
 		return s.sidebarRequest(req)
 	case "workspace.move":
@@ -450,6 +452,7 @@ func (s *Server) wsInfo(i int) api.WorkspaceInfo {
 	}
 	nextTab := st.PeekNextTabID()
 	return api.WorkspaceInfo{
+		Tokens:              s.workspaceTokens(ws.ID),
 		NextPublicTabNumber: &nextTab,
 		WorkspaceID:         wsID,
 		Worktree:            ws.Worktree,

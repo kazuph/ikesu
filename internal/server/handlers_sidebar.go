@@ -23,7 +23,7 @@ func (s *Server) sidebarRequest(req *api.Request) api.Response {
 			return s.wsNotFound(req.ID, p.WorkspaceID)
 		}
 		s.app.ExecCmd(model.CmdSetSection{Index: i, Section: p.Section})
-		return api.Success(req.ID, api.WorkspaceInfoResult{Type: "workspace_info", Workspace: s.wsInfo(i)})
+		return api.Success(req.ID, api.OkResult{Type: "ok"})
 	case "workspace.duplicate":
 		var p struct {
 			WorkspaceID string `json:"workspace_id"`
@@ -40,7 +40,9 @@ func (s *Server) sidebarRequest(req *api.Request) api.Response {
 		if err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		return api.Success(req.ID, api.WorkspaceInfoResult{Type: "workspace_info", Workspace: s.wsInfo(idx)})
+		ws := s.app.State().Workspaces[idx]
+		info, _ := s.paneInfo(ws.Tabs[ws.ActiveTab].Layout.Focused())
+		return api.Success(req.ID, api.WorkspaceCreatedResult{Type: "workspace_created", Workspace: s.wsInfo(idx), Tab: s.tabInfo(idx, ws.ActiveTab), RootPane: info})
 	}
 	return api.Failure(req.ID, api.ErrInvalidRequest, "unsupported sidebar operation")
 }

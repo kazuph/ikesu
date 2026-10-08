@@ -24,7 +24,7 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 	if y < iy || y >= iy+avail {
 		return render.SidebarRow{}, false
 	}
-	rows := render.SidebarRows(a.st, a.paneSnaps())
+	rows := render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)
 	scroll := min(a.sidebarScroll, max(0, len(rows)-avail))
 	i := y - iy + max(0, scroll)
 	if i < 0 || i >= len(rows) {

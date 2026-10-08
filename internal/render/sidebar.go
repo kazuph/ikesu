@@ -4,6 +4,7 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"path/filepath"
@@ -30,9 +31,14 @@ type SidebarRow struct {
 	Kind     SidebarRowKind
 	Ws, Pane int
 	Section  model.Section
+	Line     int
 }
 
-func SidebarRows(s *model.AppState, panes map[int]*PaneSnap) []SidebarRow {
+func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.Config) []SidebarRow {
+	var cfg config.Config
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 	rows := []SidebarRow{{Kind: RowTitle}, {Kind: RowRule}}
 	for _, sec := range model.SectionOrder {
 		var cards []SidebarRow
@@ -45,7 +51,16 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap) []SidebarRow {
 			if !s.CollapsedSections[sec] {
 				cards = append(cards, SidebarRow{Kind: RowWorkspace, Ws: wi})
 				if w.Worktree == nil || !w.Worktree.IsLinkedWorktree {
-					cards = append(cards, SidebarRow{Kind: RowGit, Ws: wi})
+					count := 2
+					if cfg.UI.Sidebar.Spaces.Rows != nil {
+						count = len(cfg.UI.Sidebar.Spaces.Rows)
+					}
+					for line := 1; line < count; line++ {
+						cards = append(cards, SidebarRow{Kind: RowGit, Ws: wi, Line: line})
+					}
+					for gap := 0; gap < cfg.UI.Sidebar.Spaces.RowGap; gap++ {
+						cards = append(cards, SidebarRow{Kind: RowBlank})
+					}
 				}
 			}
 		}
@@ -77,7 +92,22 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap) []SidebarRow {
 		})
 	}
 	rows = append(rows, SidebarRow{Kind: RowSep})
-	return append(rows, agents...)
+	for _, r := range agents {
+		panel := cfg.UI.Sidebar.Agents
+		configured := panel.Rows
+		if specific, ok := panel.RowsByAgent[panes[r.Pane].Agent]; ok {
+			configured = specific
+		}
+		count := max(1, len(configured))
+		for line := 0; line < count; line++ {
+			r.Line = line
+			rows = append(rows, r)
+		}
+		for i := 0; i < panel.RowGap; i++ {
+			rows = append(rows, SidebarRow{Kind: RowBlank})
+		}
+	}
+	return rows
 }
 func agentRank(key string) int {
 	switch key {
@@ -149,7 +179,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		return
 	}
 
-	rows := SidebarRows(s, in.Panes)
+	rows := SidebarRows(s, in.Panes, in.SidebarConfig)
 	scroll := in.SidebarScroll
 	if max := len(rows) - avail; scroll > max {
 		scroll = max
@@ -234,6 +264,16 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		label := "[" + scope + "]"
 		f.Text(ix+iw-len(label), y, label, border, ix+iw)
 	case RowWorkspace, RowGit:
+		if rows := in.SidebarConfig.UI.Sidebar.Spaces.Rows; len(rows) > 0 {
+			line := 0
+			if r.Kind == RowGit {
+				line = r.Line
+			}
+			if line < len(rows) {
+				drawConfiguredSpace(f, s, in, r, rows[line], ix, y, iw)
+			}
+			return
+		}
 		ws := s.Workspaces[r.Ws]
 		active := r.Ws == s.Active
 		dragged := in.Dragging && r.Ws == in.DraggedWorkspace
@@ -268,6 +308,17 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			f.Set(ix+iw-len(dots)+i, y, "●", uv.Style{Fg: d.Color, Bg: sty.Bg})
 		}
 	case RowAgent:
+		panel := in.SidebarConfig.UI.Sidebar.Agents
+		rows := panel.Rows
+		if specific, ok := panel.RowsByAgent[in.Panes[r.Pane].Agent]; ok {
+			rows = specific
+		}
+		if len(rows) > 0 {
+			if r.Line < len(rows) {
+				drawConfiguredAgent(f, s, in, r, rows[r.Line], ix, y, iw)
+			}
+			return
+		}
 		sn := in.Panes[r.Pane]
 		if sn == nil {
 			return

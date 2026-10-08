@@ -425,7 +425,7 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	if m.Y < iy || m.Y >= iy+avail {
 		return
 	}
-	rows := render.SidebarRows(s, a.paneSnaps())
+	rows := render.SidebarRows(s, a.paneSnaps(), a.sidebarConfig)
 	scroll := a.sidebarScroll
 	if max := len(rows) - avail; max > 0 && scroll > max {
 		scroll = max
@@ -466,7 +466,7 @@ func (a *App) sidebarRightClick(m uv.Mouse) {
 	if m.Y < iy || m.Y >= iy+avail {
 		return
 	}
-	rows := render.SidebarRows(s, a.paneSnaps())
+	rows := render.SidebarRows(s, a.paneSnaps(), a.sidebarConfig)
 	scroll := a.sidebarScroll
 	if max := len(rows) - avail; max > 0 && scroll > max {
 		scroll = max
@@ -515,7 +515,7 @@ func (a *App) wheel(m uv.Mouse) {
 			a.sidebarScroll += 3
 		}
 		_, _, _, avail := render.SidebarContent(a.st.SidebarArea())
-		max := len(render.SidebarRows(a.st, a.paneSnaps())) - avail
+		max := len(render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)) - avail
 		if max < 0 {
 			max = 0
 		}

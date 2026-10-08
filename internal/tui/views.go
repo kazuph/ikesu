@@ -50,6 +50,12 @@ func (a *App) draw() {
 		return
 	}
 	panes := a.paneSnaps()
+	tokens := map[int]map[string]string{}
+	if a.workspaceTokenSource != nil {
+		for i, w := range a.st.Workspaces {
+			tokens[i] = a.workspaceTokenSource(w.ID)
+		}
+	}
 	if a.cm != nil {
 		if snap := panes[a.cm.pane]; snap != nil {
 			snap.Grid = a.copyGrid()
@@ -57,6 +63,7 @@ func (a *App) draw() {
 	}
 	in := render.Input{
 		State:         a.st,
+		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
 		Panes:         panes,
 		Scroll:        a.scroll,
 		Spin:          a.spin,

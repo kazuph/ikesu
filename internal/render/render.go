@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
@@ -41,10 +42,11 @@ type CursorInfo struct {
 
 // PaneSnap is everything render needs to draw one pane.
 type PaneSnap struct {
-	Grid  [][]uv.Cell // content cells, [row][col], scroll applied
-	Label string      // process/agent name for the border title
-	Title string      // terminal (OSC) title appended to the border title
-	Agent string      // detected agent id ("" = not identified)
+	Grid   [][]uv.Cell // content cells, [row][col], scroll applied
+	Label  string      // process/agent name for the border title
+	Title  string      // terminal (OSC) title appended to the border title
+	Tokens map[string]string
+	Agent  string // detected agent id ("" = not identified)
 	// Restore is "saved session" / "no saved session" for agent panes,
 	// shown right-aligned on the top border (SPEC G1).
 	Restore   string
@@ -114,9 +116,11 @@ type JobDot struct {
 }
 
 type Input struct {
-	State  *model.AppState
-	Panes  map[int]*PaneSnap
-	Scroll map[int]int
+	State           *model.AppState
+	SidebarConfig   config.Config
+	WorkspaceTokens map[int]map[string]string
+	Panes           map[int]*PaneSnap
+	Scroll          map[int]int
 	// JobDots maps workspace index → job dots drawn on its sidebar row.
 	JobDots          map[int][]JobDot
 	Git              map[int]GitStatus

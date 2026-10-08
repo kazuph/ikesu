@@ -2,6 +2,7 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
@@ -12,7 +13,7 @@ import (
 
 func sidebarCardY(a *App, wi int) int {
 	_, y, _, _ := render.SidebarContent(a.st.SidebarArea())
-	for i, r := range render.SidebarRows(a.st, a.paneSnaps()) {
+	for i, r := range render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig) {
 		if r.Kind == render.RowWorkspace && r.Ws == wi {
 			return y + i
 		}
@@ -21,7 +22,7 @@ func sidebarCardY(a *App, wi int) int {
 }
 func sidebarSectionY(a *App, sec model.Section) int {
 	_, y, _, _ := render.SidebarContent(a.st.SidebarArea())
-	for i, r := range render.SidebarRows(a.st, a.paneSnaps()) {
+	for i, r := range render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig) {
 		if r.Kind == render.RowSection && r.Section == sec {
 			return y + i
 		}
@@ -66,7 +67,7 @@ func TestG2ActiveCardReleaseDragAndSection(t *testing.T) {
 }
 func TestG2HorizontalRulesAndBlankNeverActivate(t *testing.T) {
 	a := specRuntimeApp(t)
-	rows := render.SidebarRows(a.st, a.paneSnaps())
+	rows := render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)
 	_, y, _, _ := render.SidebarContent(a.st.SidebarArea())
 	before := len(a.st.Workspaces)
 	for i, r := range rows {
@@ -175,5 +176,42 @@ func TestG2WorkspaceMenuExactAndUnsupported(t *testing.T) {
 	a.duplicateDialog(99)
 	if a.dialog == nil || a.dialog.d.Title != "duplicate workspace failed: workspace not found" {
 		t.Fatal("missing diagnostic")
+	}
+}
+
+func TestG2DuplicateRuntimeSpawnFailureRollsBack(t *testing.T) {
+	a := specRuntimeApp(t)
+	before := len(a.st.Workspaces)
+	active := a.st.Active
+	a.st.Workspaces[0].Cwd = "/path/that/does/not/exist/gtx-test"
+	if _, err := a.DuplicateWorkspace(0, true); err == nil {
+		t.Fatal("spawn failure reported success")
+	}
+	if len(a.st.Workspaces) != before || a.st.Active != active {
+		t.Fatal("failed duplicate changed source")
+	}
+	for _, w := range a.st.Workspaces {
+		for _, tab := range w.Tabs {
+			for _, id := range tab.Layout.PaneIDs() {
+				if id > 1 {
+					t.Fatal("failed clone remained")
+				}
+			}
+		}
+	}
+}
+func TestG2SidebarConfigReloadKeepsCollapseAndManualWidth(t *testing.T) {
+	a := specRuntimeApp(t)
+	c := config.Config{}
+	c.UI.SidebarStartCollapsed = true
+	a.SetSidebarConfig(c, true)
+	if a.st.SidebarVisible {
+		t.Fatal("startup collapse ignored")
+	}
+	a.exec(model.CmdToggleSidebar{})
+	a.sidebarPreset("wide")
+	a.SetSidebarConfig(c, false)
+	if !a.st.SidebarVisible || a.st.ExpandedSidebarWidth() != 72 {
+		t.Fatal("reload overwrote UI choice")
 	}
 }

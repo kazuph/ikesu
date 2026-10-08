@@ -217,7 +217,9 @@ func (a *App) effect(e model.Effect) {
 		for k, v := range e.Env {
 			env = append(env, k+"="+v)
 		}
-		_, _ = a.sup.SpawnWith(e.Pane, e.Cwd, r.W, r.H, env, e.Argv)
+		if _, err := a.sup.SpawnWith(e.Pane, e.Cwd, r.W, r.H, env, e.Argv); err != nil {
+			a.lastSpawnError = err
+		}
 	case model.EffKillPane:
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)

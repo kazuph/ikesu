@@ -50,6 +50,8 @@ func (a *App) DuplicateWorkspace(index int, focus bool) (int, error) {
 	if index < 0 || index >= len(a.st.Workspaces) {
 		return -1, fmt.Errorf("workspace not found")
 	}
+	original := a.st.ActiveWorkspace().ID
+	a.lastSpawnError = nil
 	cwds := map[int]string{}
 	for _, t := range a.st.Workspaces[index].Tabs {
 		for _, id := range t.Layout.PaneIDs() {
@@ -62,6 +64,17 @@ func (a *App) DuplicateWorkspace(index int, focus bool) (int, error) {
 		}
 	}
 	a.exec(model.CmdDuplicateWorkspace{Index: index, Focus: focus, Cwds: cwds})
+	if a.lastSpawnError != nil {
+		err := a.lastSpawnError
+		a.exec(model.CmdCloseWorkspace{Index: len(a.st.Workspaces) - 1})
+		for i, w := range a.st.Workspaces {
+			if w.ID == original {
+				a.exec(model.CmdSelectWorkspace{Index: i})
+				break
+			}
+		}
+		return -1, err
+	}
 	return len(a.st.Workspaces) - 1, nil
 }
 func (a *App) setSection(index int, section model.Section) {
@@ -136,4 +149,7 @@ func (a *App) reloadSidebarConfig() {
 	a.SetPaneKeybinds(c)
 	a.syncLayout()
 	a.changed()
+}
+func (a *App) SetWorkspaceTokenSource(source func(int) map[string]string) {
+	a.workspaceTokenSource = source
 }

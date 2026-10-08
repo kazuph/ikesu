@@ -11,6 +11,8 @@ func (r *runner) workspace(args []string) int {
 		return usageErr(r, "usage: gtx workspace <list|create|get|focus|rename|close> ...")
 	}
 	switch args[0] {
+	case "report-metadata":
+		return r.workspaceReportMetadata(args[1:])
 	case "list":
 		return r.printResult("cli:workspace:list", api.MethodWorkspaceList, api.EmptyParams{})
 	case "create":

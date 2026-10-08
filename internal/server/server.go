@@ -45,10 +45,11 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
-	session string
-	dir     string
-	version string
-	cwd     string // cwd the session was started from
+	workspaceMetadata map[int]map[string]*workspaceMetadata
+	session           string
+	dir               string
+	version           string
+	cwd               string // cwd the session was started from
 
 	lock     *os.File
 	apiLn    net.Listener
@@ -218,6 +219,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetPaneClosedHook(s.ledgerDel)
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.app.SetJobSource(s.jobSnapshot)
+	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) {

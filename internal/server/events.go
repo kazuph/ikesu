@@ -129,6 +129,7 @@ func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 		if _, ok := curWs[pw.ID]; ok {
 			continue
 		}
+		delete(s.workspaceMetadata, int(pw.ID))
 		for _, pt := range pw.Tabs {
 			s.emitEvent("tab_closed", ev("tab_closed",
 				"tab_id", fmtTabID(int(pw.ID), pt.ID),
