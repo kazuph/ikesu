@@ -70,6 +70,7 @@ func (a *App) draw() {
 		Copied:        a.copiedFlash(),
 		Prefix:        a.prefix,
 		SidebarScroll: a.sidebarScroll,
+		AgentScroll:   a.agentScroll,
 		JobDots:       a.jobDots,
 		Git:           a.workspaceGit, WorkspaceNames: a.workspaceNames,
 		CopyLabel: a.copyLabel(),

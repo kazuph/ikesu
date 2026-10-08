@@ -109,6 +109,7 @@ func (a *App) toggleSidebarSetting(density bool) {
 		a.st.WorkspaceDensity = value
 	} else {
 		a.st.AgentScope = value
+		a.agentScroll = 0
 	}
 	a.sidebarScroll = 0
 	a.changed()

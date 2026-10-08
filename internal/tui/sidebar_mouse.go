@@ -20,17 +20,13 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 	if x < area.X || x >= area.X+area.W-1 {
 		return render.SidebarRow{}, false
 	}
-	_, iy, _, avail := render.SidebarContent(area)
-	if y < iy || y >= iy+avail {
-		return render.SidebarRow{}, false
+	view := render.SidebarViewFor(a.st, a.paneSnaps(), a.sidebarConfig, a.sidebarScroll, a.agentScroll)
+	for _, pos := range view.Rows {
+		if y == pos.Y {
+			return pos.Row, true
+		}
 	}
-	rows := render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)
-	scroll := min(a.sidebarScroll, max(0, len(rows)-avail))
-	i := y - iy + max(0, scroll)
-	if i < 0 || i >= len(rows) {
-		return render.SidebarRow{}, false
-	}
-	return rows[i], true
+	return render.SidebarRow{}, false
 }
 func (a *App) sidebarPress(m uv.Mouse) bool {
 	s := a.st
@@ -51,6 +47,9 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	}
 	if m.Button != uv.MouseLeft {
 		return false
+	}
+	if a.sidebarScrollbarPress(m) {
+		return true
 	}
 	if pointIn(m.X, m.Y, render.SidebarWidthRect(s)) {
 		a.sidebarPreset(s.CyclePreset())
@@ -84,7 +83,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	case render.RowWorkspace:
 		a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
 		return true
-	case render.RowGit:
+	case render.RowGit, render.RowCardBlank:
 		if s.WorkspaceDensity != "slim" {
 			a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
 		}
@@ -125,7 +124,7 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			}
 			return
 		}
-		if r.Kind == render.RowWorkspace || r.Kind == render.RowGit {
+		if r.Kind == render.RowWorkspace || r.Kind == render.RowGit || r.Kind == render.RowCardBlank {
 			dest := a.st.Workspaces[r.Ws].SidebarSection()
 			if dest != source {
 				g.section = dest

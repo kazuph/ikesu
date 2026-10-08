@@ -201,6 +201,8 @@ type App struct {
 	tabGesture           *tabGesture
 	dividerAt            time.Time
 	sidebarScroll        int
+	agentScroll          int
+	sidebarBar           *sidebarScrollDrag
 	cellW                int // host cell width in pixels (0 = unknown)
 	cellH                int // host cell height in pixels (0 = unknown)
 	hostPixelSupported   bool

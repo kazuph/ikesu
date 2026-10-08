@@ -32,6 +32,8 @@ func (a *App) onMouse(ev input.Event) {
 			break
 		}
 		a.copyMouse(ev)
+	case a.sidebarBar != nil:
+		a.sidebarScrollbarMouse(ev)
 	case a.tabGesture != nil:
 		a.tabGestureMouse(ev)
 	case a.sidebarGesture != nil:
@@ -422,24 +424,11 @@ func (a *App) sidebarClick(m uv.Mouse) {
 		a.newWorkspace()
 		return
 	}
-	// Rows.
-	_, iy, _, avail := render.SidebarContent(area)
-	if m.Y < iy || m.Y >= iy+avail {
+	r, ok := a.sidebarRowAt(m.X, m.Y)
+	if !ok {
 		return
 	}
-	rows := render.SidebarRows(s, a.paneSnaps(), a.sidebarConfig)
-	scroll := a.sidebarScroll
-	if max := len(rows) - avail; max > 0 && scroll > max {
-		scroll = max
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	i := m.Y - iy + scroll
-	if i < 0 || i >= len(rows) {
-		return
-	}
-	r := rows[i]
+
 	switch r.Kind {
 	case render.RowWorkspace:
 		if r.Ws == s.Active {
@@ -460,27 +449,13 @@ func (a *App) sidebarRightClick(m uv.Mouse) {
 	if !s.SidebarVisible {
 		return
 	}
-	area := s.SidebarArea()
 	if pointIn(m.X, m.Y, render.SidebarMenuRect(s)) || pointIn(m.X, m.Y, render.SidebarNewRect(s)) {
 		return
 	}
-	_, iy, _, avail := render.SidebarContent(area)
-	if m.Y < iy || m.Y >= iy+avail {
-		return
+	r, ok := a.sidebarRowAt(m.X, m.Y)
+	if ok && r.Kind == render.RowWorkspace {
+		a.openWorkspaceMenu(m.X, m.Y, r.Ws)
 	}
-	rows := render.SidebarRows(s, a.paneSnaps(), a.sidebarConfig)
-	scroll := a.sidebarScroll
-	if max := len(rows) - avail; max > 0 && scroll > max {
-		scroll = max
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	i := m.Y - iy + scroll
-	if i < 0 || i >= len(rows) || rows[i].Kind != render.RowWorkspace {
-		return
-	}
-	a.openWorkspaceMenu(m.X, m.Y, rows[i].Ws)
 }
 
 func (a *App) clampCollapsedScroll(n, avail int) int {
@@ -509,26 +484,11 @@ func (a *App) wheel(m uv.Mouse) {
 		}
 		return
 	}
-	// Sidebar scrolls its rows.
 	if pointIn(m.X, m.Y, a.st.SidebarArea()) {
-		if up {
-			a.sidebarScroll -= 3
-		} else {
-			a.sidebarScroll += 3
-		}
-		_, _, _, avail := render.SidebarContent(a.st.SidebarArea())
-		max := len(render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)) - avail
-		if max < 0 {
-			max = 0
-		}
-		if a.sidebarScroll > max {
-			a.sidebarScroll = max
-		}
-		if a.sidebarScroll < 0 {
-			a.sidebarScroll = 0
-		}
+		a.sidebarWheel(m, up)
 		return
 	}
+
 	pr, ok := a.paneAt(m.X, m.Y)
 	if !ok {
 		return

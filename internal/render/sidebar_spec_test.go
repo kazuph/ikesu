@@ -45,7 +45,7 @@ func TestG2SlimRowsHighlightAndFixedTarget(t *testing.T) {
 		case RowGit:
 			git = iy + i
 		case RowAgent:
-			agent = iy + i
+			agent = s.SidebarArea().Y + (s.SidebarArea().H+1)/2 + 2
 		}
 	}
 	if git != name+1 {
@@ -146,7 +146,7 @@ func TestG2DropTargetWholeHeaderAndBottomIndicator(t *testing.T) {
 	out = Compose(Input{State: s, DropIndex: &drop, Dragging: true, DraggedWorkspace: 1})
 	last := -1
 	for i, r := range rows {
-		if r.Ws == 1 && (r.Kind == RowWorkspace || r.Kind == RowGit) {
+		if r.Ws == 1 && (r.Kind == RowWorkspace || r.Kind == RowGit || r.Kind == RowCardBlank) {
 			last = i
 		}
 	}
@@ -167,7 +167,11 @@ func TestG2WorkspaceNumberAndGlobalPane22(t *testing.T) {
 	rows := SidebarRows(s, panes)
 	_, y, _, _ := SidebarContent(s.SidebarArea())
 	for i, r := range rows {
-		line := frameLine(out.Frame, y+i)
+		rowY := y + i
+		if r.Kind == RowAgent {
+			rowY = s.SidebarArea().Y + (s.SidebarArea().H+1)/2 + 2
+		}
+		line := frameLine(out.Frame, rowY)
 		if r.Kind == RowWorkspace && !strings.Contains(line, "· 1 one") {
 			t.Fatal(line)
 		}

@@ -25,6 +25,7 @@ const (
 	RowRule
 	RowBlank
 	RowGit
+	RowCardBlank
 )
 
 type SidebarRow struct {
@@ -58,6 +59,9 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 					for line := 1; line < count; line++ {
 						cards = append(cards, SidebarRow{Kind: RowGit, Ws: wi, Line: line})
 					}
+					if s.WorkspaceDensity != "slim" && cfg.UI.Sidebar.Spaces.Rows == nil {
+						cards = append(cards, SidebarRow{Kind: RowCardBlank, Ws: wi})
+					}
 					for gap := 0; gap < cfg.UI.Sidebar.Spaces.RowGap; gap++ {
 						cards = append(cards, SidebarRow{Kind: RowBlank})
 					}
@@ -70,7 +74,7 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 		if len(rows) > 2 {
 			rows = append(rows, SidebarRow{Kind: RowRule})
 		}
-		rows = append(rows, SidebarRow{Kind: RowSection, Section: sec}, SidebarRow{Kind: RowRule}, SidebarRow{Kind: RowBlank, Section: sec})
+		rows = append(rows, SidebarRow{Kind: RowSection, Section: sec}, SidebarRow{Kind: RowRule, Section: sec})
 		rows = append(rows, cards...)
 	}
 	var agents []SidebarRow
@@ -139,7 +143,7 @@ func SidebarContent(area layout.Rect) (x, y, w, rows int) {
 
 // SidebarFooter returns the rect of the fixed footer row inside the box.
 func SidebarFooter(area layout.Rect) layout.Rect {
-	return layout.Rect{X: area.X, Y: area.Y + area.H - 2, W: max(0, area.W-1), H: 1}
+	return layout.Rect{X: area.X, Y: area.Y + (area.H+1)/2 - 1, W: max(0, area.W-1), H: 1}
 }
 
 // SidebarToggleRect returns the cell of the « / » collapse-expand button.
@@ -174,41 +178,41 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	for y := area.Y; y < area.Y+area.H; y++ {
 		f.Set(area.X+area.W-1, y, "│", border)
 	}
-	ix, iy, iw, avail := SidebarContent(area)
+	ix, iy, iw, _ := SidebarContent(area)
 	if iw < 1 {
 		return
 	}
 
-	rows := SidebarRows(s, in.Panes, in.SidebarConfig)
-	scroll := in.SidebarScroll
-	if max := len(rows) - avail; scroll > max {
-		scroll = max
+	view := SidebarViewFor(s, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll)
+	for _, pos := range view.Rows {
+		width := iw
+		if pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
+			width--
+		}
+		if pos.Y >= view.Agents.Rect.Y && pos.Y < view.Agents.Rect.Y+view.Agents.Rect.H && view.Agents.Total > view.Agents.Rect.H {
+			width--
+		}
+		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
 	}
-	if scroll < 0 {
-		scroll = 0
+	for x := ix; x < ix+iw; x++ {
+		f.Set(x, area.Y+(area.H+1)/2, "─", border)
 	}
-	for i := scroll; i < len(rows) && i < scroll+avail; i++ {
-		drawSidebarRow(f, s, in, rows[i], ix, iy+i-scroll, iw)
-	}
-
+	drawSidebarScrollbar(f, view.Workspace)
+	drawSidebarScrollbar(f, view.Agents)
 	if in.DropIndex != nil && in.Dragging {
 		boundary := -1
-		for i, r := range rows {
-			if r.Kind == RowWorkspace && r.Ws == *in.DropIndex {
-				boundary = i
+		for _, pos := range view.Rows {
+			if pos.Row.Kind == RowWorkspace && pos.Row.Ws == *in.DropIndex {
+				boundary = pos.Y
 				break
 			}
-		}
-		if boundary < 0 {
-			for i, r := range rows {
-				if (r.Kind == RowWorkspace || r.Kind == RowGit) && r.Ws == *in.DropIndex-1 {
-					boundary = i + 1
-				}
+			if (pos.Row.Kind == RowWorkspace || pos.Row.Kind == RowGit || pos.Row.Kind == RowCardBlank) && pos.Row.Ws == *in.DropIndex-1 {
+				boundary = pos.Y + 1
 			}
 		}
-		if boundary >= scroll && boundary < scroll+avail {
+		if boundary >= view.Workspace.Rect.Y && boundary < view.Workspace.Rect.Y+view.Workspace.Rect.H {
 			for x := ix; x < ix+iw; x++ {
-				f.Set(x, iy+boundary-scroll, "─", uv.Style{Fg: Accent})
+				f.Set(x, boundary, "─", uv.Style{Fg: Accent})
 			}
 		}
 	}
@@ -285,7 +289,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		}
 		label := "[" + scope + "]"
 		f.Text(ix+iw-len(label), y, label, border, ix+iw)
-	case RowWorkspace, RowGit:
+	case RowWorkspace, RowGit, RowCardBlank:
 		if rows := in.SidebarConfig.UI.Sidebar.Spaces.Rows; len(rows) > 0 {
 			line := 0
 			if r.Kind == RowGit {
@@ -306,6 +310,9 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			sty.Attrs = uv.AttrBold
 			f.Fill(ix, y, iw, 1, " ", sty)
 			f.Set(ix, y, "▌", uv.Style{Fg: Accent, Bg: Surface})
+		}
+		if r.Kind == RowCardBlank {
+			return
 		}
 		if r.Kind == RowGit {
 			drawGitRow(f, ix+4, y, max(0, iw-4), in.Git[r.Ws], sty)

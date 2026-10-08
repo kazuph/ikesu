@@ -139,7 +139,8 @@ type Input struct {
 	Spin          int    // working-spinner frame
 	Copied        string // flash text, e.g. " copied 12 chars "
 	Prefix        bool   // prefix-key pending
-	SidebarScroll int    // sidebar rows scrolled off the top
+	SidebarScroll int    // workspace rows scrolled off the top
+	AgentScroll   int
 	// CopyLabel is the action bar's left button text: " COPY ",
 	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
 	CopyLabel string
