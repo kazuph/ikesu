@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
@@ -22,16 +24,62 @@ func main() {
 	cols := flag.Int("cols", 160, "")
 	rows := flag.Int("rows", 45, "")
 	steps := flag.String("steps", "", "")
+	xpixel := flag.Int("xpixel", 0, "PTY window width in pixels")
+	ypixel := flag.Int("ypixel", 0, "PTY window height in pixels")
+	cellWidth := flag.Int("cell-width", 0, "terminal character width in pixels for size queries")
+	cellHeight := flag.Int("cell-height", 0, "terminal character height in pixels for size queries")
+	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
+	rawOutput := flag.String("raw-output", "", "save raw terminal output")
 	flag.Parse()
 	args := flag.Args()
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(*cols), Rows: uint16(*rows)})
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(*cols), Rows: uint16(*rows), X: uint16(*xpixel), Y: uint16(*ypixel)})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "start:", err)
 		os.Exit(1)
 	}
 	emu := vt.NewEmulator(*cols, *rows)
+	if *cellWidth == 0 && *xpixel > 0 {
+		*cellWidth = *xpixel / *cols
+	}
+	if *cellHeight == 0 && *ypixel > 0 {
+		*cellHeight = *ypixel / *rows
+	}
+	emu.RegisterCsiHandler('t', func(params ansi.Params) bool {
+		op, _, _ := params.Param(0, 0)
+		if *cellWidth <= 0 || *cellHeight <= 0 {
+			return false
+		}
+		switch op {
+		case 16:
+			fmt.Fprintf(ptmx, "\x1b[6;%d;%dt", *cellHeight, *cellWidth)
+		case 14:
+			fmt.Fprintf(ptmx, "\x1b[4;%d;%dt", *rows**cellHeight, *cols**cellWidth)
+		default:
+			return false
+		}
+		return true
+	})
+	if !*pixelMouse {
+		emu.RegisterCsiHandler(ansi.Command('?', '$', 'p'), func(params ansi.Params) bool {
+			mode, _, _ := params.Param(0, 0)
+			if mode != 1016 {
+				return false
+			}
+			fmt.Fprint(ptmx, "\x1b[?1016;0$y")
+			return true
+		})
+	}
+	var rawFile *os.File
+	if *rawOutput != "" {
+		rawFile, err = os.Create(*rawOutput)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer rawFile.Close()
+	}
 	var mu sync.Mutex
 	go func() { _, _ = io.Copy(ptmx, emu) }() // emulator replies (DA etc.) back to the app
 	// Drain the PTY as fast as possible (like a fast real terminal) and feed the emulator
@@ -44,6 +92,9 @@ func main() {
 		for {
 			n, err := ptmx.Read(buf)
 			if n > 0 {
+				if rawFile != nil {
+					_, _ = rawFile.Write(buf[:n])
+				}
 				c := make([]byte, n)
 				copy(c, buf[:n])
 				qmu.Lock()
@@ -139,6 +190,43 @@ func main() {
 			}
 			_, _ = ptmx.Write([]byte(s))
 			sentAt = time.Now()
+		case "mouse", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
+			var kind string
+			var x, y int
+			if _, err := fmt.Sscanf(rest, "%s %d %d", &kind, &x, &y); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			m := uv.Mouse{X: x - 1, Y: y - 1, Button: uv.MouseLeft}
+			mu.Lock()
+			if op == "mouse" && emu.ModeSet(ansi.ModeMouseExtSgrPixel) {
+				if *cellWidth <= 0 || *cellHeight <= 0 {
+					mu.Unlock()
+					fmt.Fprintln(os.Stderr, "pixel mouse needs cell size")
+					os.Exit(1)
+				}
+				m.X = m.X**cellWidth + *cellWidth/2
+				m.Y = m.Y**cellHeight + *cellHeight/2
+			}
+			switch kind {
+			case "down":
+				emu.SendMouse(uv.MouseClickEvent(m))
+			case "up":
+				emu.SendMouse(uv.MouseReleaseEvent(m))
+			case "motion":
+				emu.SendMouse(uv.MouseMotionEvent(m))
+			case "wheel-up":
+				m.Button = uv.MouseWheelUp
+				emu.SendMouse(uv.MouseWheelEvent(m))
+			case "wheel-down":
+				m.Button = uv.MouseWheelDown
+				emu.SendMouse(uv.MouseWheelEvent(m))
+			default:
+				mu.Unlock()
+				fmt.Fprintln(os.Stderr, "unknown mouse kind", kind)
+				os.Exit(1)
+			}
+			mu.Unlock()
 		case "waittext": // waittext TIMEOUT TEXT: report time since the last send until TEXT is on screen
 			ts, text, _ := strings.Cut(rest, " ")
 			d, _ := time.ParseDuration(ts)

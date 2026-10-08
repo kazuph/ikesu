@@ -414,8 +414,8 @@ func (s *Server) attach(conn net.Conn) {
 	// New client: force a full repaint at its size.
 	s.app.Do(func() {
 		s.app.ResetEncoder()
-		s.app.SetCellPixels(hello.Xpixel, hello.Ypixel)
 		s.app.ExecCmd(model.CmdResize{Cols: hello.Cols, Rows: hello.Rows})
+		s.app.BeginHostMouse(hello.Xpixel, hello.Ypixel)
 	})
 
 	for {

@@ -561,6 +561,11 @@ func (p *Pane) KbdExplicit() bool {
 
 // Resize updates the emulator and PTY window size (SIGWINCH to the child).
 func (s *Supervisor) Resize(id, cols, rows int) {
+	s.ResizeWithPixels(id, cols, rows, 0, 0)
+}
+
+// ResizeWithPixels supplies the pane's character geometry through its PTY.
+func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
 	p := s.Get(id)
 	if p == nil || cols <= 0 || rows <= 0 {
 		return
@@ -568,7 +573,16 @@ func (s *Supervisor) Resize(id, cols, rows int) {
 	p.mu.Lock()
 	p.emu.Resize(cols, rows)
 	p.mu.Unlock()
-	_ = pty.Setsize(p.ptyFile, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
+	_ = unix.IoctlSetWinsize(p.ptyFD, unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(rows), Col: uint16(cols), Xpixel: uint16(cols * cw), Ypixel: uint16(rows * ch)})
+}
+
+// CellPixels reads the pane's own PTY geometry; zero means unavailable.
+func (p *Pane) CellPixels() (int, int) {
+	ws, err := unix.IoctlGetWinsize(p.ptyFD, unix.TIOCGWINSZ)
+	if err != nil || ws.Col == 0 || ws.Row == 0 {
+		return 0, 0
+	}
+	return int(ws.Xpixel) / int(ws.Col), int(ws.Ypixel) / int(ws.Row)
 }
 
 // WithEmu runs fn with exclusive access to the pane's emulator.

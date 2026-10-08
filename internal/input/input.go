@@ -37,15 +37,17 @@ const (
 	// KindUnknown covers every other sequence. It is never forwarded to a
 	// pane; Raw keeps the bytes for diagnostics.
 	KindUnknown
+	KindTerminalReport
 )
 
 // Event is one framed input event.
 type Event struct {
-	Kind  Kind
-	Raw   []byte
-	Key   uv.Key
-	Mouse uv.Mouse
-	Text  string
+	Kind   Kind
+	Raw    []byte
+	Key    uv.Key
+	Mouse  uv.Mouse
+	Text   string
+	Report uv.Event
 }
 
 // Framer buffers terminal input and emits complete events.
@@ -396,6 +398,8 @@ func ss3Len(b []byte, i int) (int, bool) {
 
 func (f *Framer) convert(raw []byte, ev uv.Event) Event {
 	switch e := ev.(type) {
+	case uv.CellSizeEvent, uv.PixelSizeEvent, uv.ModeReportEvent:
+		return Event{Kind: KindTerminalReport, Raw: append([]byte(nil), raw...), Report: ev}
 	case uv.KeyPressEvent:
 		return Event{Kind: KindKey, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}
 	case uv.MouseClickEvent:

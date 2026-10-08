@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/api"
 	"golang.org/x/sys/unix"
@@ -53,7 +54,7 @@ const (
 		"\x1b[?2004h" // bracketed paste
 	// MouseOffSeq disables mouse reporting before LeaveSeq so queued mouse
 	// bytes can be flushed before the outer shell sees them (fix #6).
-	MouseOffSeq = "\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
+	MouseOffSeq = "\x1b[?1016l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
 	// LeaveSeq restores the terminal.
 	LeaveSeq = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
 )
@@ -203,6 +204,9 @@ type App struct {
 	sidebarScroll      int
 	cellW              int // host cell width in pixels (0 = unknown)
 	cellH              int // host cell height in pixels (0 = unknown)
+	hostPixelSupported bool
+	hostPixelMouse     bool
+	mousePixel         *uv.Mouse // original coordinates for the current host event
 	help               *helpView
 	copied             string
 	copiedAt           time.Time
@@ -219,10 +223,14 @@ type App struct {
 // panes can be sent cell-center pixel coordinates (SPEC G6).
 func (a *App) SetCellPixels(xp, yp int) {
 	if a.st.Cols > 0 && xp > 0 {
-		a.cellW = xp / a.st.Cols
+		if width := xp / a.st.Cols; width > 0 {
+			a.cellW = width
+		}
 	}
 	if a.st.Rows > 0 && yp > 0 {
-		a.cellH = yp / a.st.Rows
+		if height := yp / a.st.Rows; height > 0 {
+			a.cellH = height
+		}
 	}
 }
 
@@ -371,6 +379,9 @@ func (a *App) StartInitialPane() error {
 	pid := a.st.Workspaces[0].Tabs[0].Layout.Focused()
 	r := a.innerRect(pid)
 	_, err := a.sup.Spawn(pid, a.cwd, r.W, r.H)
+	if err == nil {
+		a.sup.ResizeWithPixels(pid, r.W, r.H, a.cellW, a.cellH)
+	}
 	return err
 }
 
@@ -428,10 +439,14 @@ func (a *App) Run() {
 		case ev := <-a.sup.Events():
 			a.onRuntimeEvent(ev)
 		case sz := <-a.resizeCh:
-			a.SetCellPixels(sz.Xpixel, sz.Ypixel)
 			if sz.Cols != a.st.Cols || sz.Rows != a.st.Rows {
 				a.exec(model.CmdResize{Cols: sz.Cols, Rows: sz.Rows})
 				a.enc.Reset()
+			}
+			beforeW, beforeH := a.cellW, a.cellH
+			a.SetCellPixels(sz.Xpixel, sz.Ypixel)
+			if a.cellW != beforeW || a.cellH != beforeH {
+				a.syncLayout()
 			}
 		case <-tick.C:
 			a.onTick()
@@ -489,7 +504,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	st := model.New(cwd, ws.Cols, ws.Rows)
 	sup := runtime.NewSupervisor()
 	a := NewApp(st, sup, out, cwd)
-	a.SetCellPixels(ws.Xpixel, ws.Ypixel)
+	a.BeginHostMouse(ws.Xpixel, ws.Ypixel)
 	a.inputEOF = true
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
@@ -522,6 +537,8 @@ func Run(in *os.File, out *os.File) (int, error) {
 // never forwarded to a pane (fix #3).
 func (a *App) onInput(ev input.Event) {
 	switch ev.Kind {
+	case input.KindTerminalReport:
+		a.hostMouseReport(ev.Report)
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
@@ -531,6 +548,13 @@ func (a *App) onInput(ev input.Event) {
 			}
 		}
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseWheel, input.KindMouseMotion:
+		if a.hostPixelMouse {
+			pixel := ev.Mouse
+			a.mousePixel = &pixel
+			defer func() { a.mousePixel = nil }()
+			ev.Mouse.X /= a.cellW
+			ev.Mouse.Y /= a.cellH
+		}
 		a.onMouse(ev)
 	case input.KindFocus, input.KindBlur, input.KindUnknown:
 		// Dropped on purpose.
@@ -748,7 +772,7 @@ func (a *App) syncLayout() {
 				continue
 			}
 			w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
-			a.sup.Resize(pr.ID, w, h)
+			a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
 		}
 	}
 }

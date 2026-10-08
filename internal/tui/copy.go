@@ -72,7 +72,7 @@ func (a *App) enterCopy(fullscreen bool) {
 // restore happens in exitCopy via syncLayout.
 func (a *App) copyEnterFullscreen() {
 	area := a.st.PanesArea()
-	a.sup.Resize(a.cm.pane, max(area.W, 1), max(area.H, 1))
+	a.sup.ResizeWithPixels(a.cm.pane, max(area.W, 1), max(area.H, 1), a.cellW, a.cellH)
 	// The emulator reflows on resize; keep the cursor in range.
 	a.copyClampCursor()
 	a.copyReveal()

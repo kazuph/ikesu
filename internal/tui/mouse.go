@@ -700,12 +700,23 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	}
 	inner, _ := model.PaneContentRect(r, a.st.PaneBorders)
 	pixel := p.MousePixelMode()
-	if pixel && (a.cellW <= 0 || a.cellH <= 0) {
+	cw, ch := a.cellW, a.cellH
+	if pixel {
+		if pw, ph := p.CellPixels(); pw > 0 && ph > 0 {
+			cw, ch = pw, ph
+		}
+	}
+	if pixel && (cw <= 0 || ch <= 0) {
 		a.ShowToast("Unsupported", "pixel mouse requires known pixel geometry", "error", -1)
 		return
 	}
 	tr := func(m uv.Mouse) uv.Mouse {
-		return paneMouseCoord(inner, pixel, a.cellW, a.cellH, m)
+		if pixel && a.mousePixel != nil {
+			m.X = a.mousePixel.X - inner.X*a.cellW
+			m.Y = a.mousePixel.Y - inner.Y*a.cellH
+			return m
+		}
+		return paneMouseCoord(inner, pixel, cw, ch, m)
 	}
 	switch e := ev.(type) {
 	case uv.MouseClickEvent:
