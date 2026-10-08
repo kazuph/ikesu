@@ -164,48 +164,55 @@ type App struct {
 	worktreeHook   func(string, WorktreeOutcome, bool)
 	warningsHook   func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
-	prefix        bool
-	navKey        rune // prefix+<navKey> jumps to the toast target
-	cm            *copyMode
-	copyKeys      map[rune]bool // [keys] copy_mode bindings
-	splitVKeys    map[rune]bool // [keys] split_vertical bindings
-	splitHKeys    map[rune]bool // [keys] split_horizontal bindings
-	toast         *toastView
-	toastRect     layout.Rect
-	menu          *uiMenu
-	dialog        *uiDialog
-	sep           *sepDrag
-	sel           *selState
-	tabHits       []layout.Rect // last frame's tab strip hit areas
-	newTabRect    layout.Rect   // last frame's "+" button
-	sb            *sbDrag       // scrollbar-gutter drag in progress
-	fwd           int           // pane receiving forwarded mouse events during a drag
-	scroll        map[int]int
-	trackers      map[int]*status.Tracker
-	reported      map[int]reportedPane                     // pane.report_agent overrides
-	sessions      map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
-	fossils       map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)
-	visibleIdle   map[int]time.Time                        // pane → when explicit visible-idle detection started
-	jobSource     func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
-	jobDots       map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
-	jobsAt        time.Time                                // last job snapshot
-	actionBar     render.ActionBarRects                    // last frame's action bar hit areas
-	uiShowTab     bool                                     // [ui] show_tab_bar
-	uiHideSingle  bool                                     // [ui] hide_tab_bar_when_single_tab
-	uiBorders     bool                                     // [ui] pane_borders
-	sidebarScroll int
-	cellW         int // host cell width in pixels (0 = unknown)
-	cellH         int // host cell height in pixels (0 = unknown)
-	help          *helpView
-	copied        string
-	copiedAt      time.Time
-	lastClick     clickMark // last left press inside a normal pane body
-	dblMenu       bool      // second same-cell down/up pending menu open
-	spin          int
-	lastSpin      time.Time
-	lastDraw      time.Time
-	dirty         bool
-	quit          bool
+	prefix             bool
+	navKey             rune // prefix+<navKey> jumps to the toast target
+	cm                 *copyMode
+	copyKeys           map[rune]bool // [keys] copy_mode bindings
+	splitVKeys         map[rune]bool // [keys] split_vertical bindings
+	splitHKeys         map[rune]bool // [keys] split_horizontal bindings
+	renameKeys         map[rune]bool
+	editKeys           map[rune]bool
+	historyBackKeys    map[rune]bool
+	historyForwardKeys map[rune]bool
+	focusHistory       []int
+	focusHistoryAt     int
+	traversingHistory  bool
+	toast              *toastView
+	toastRect          layout.Rect
+	menu               *uiMenu
+	dialog             *uiDialog
+	sep                *sepDrag
+	sel                *selState
+	tabHits            []layout.Rect // last frame's tab strip hit areas
+	newTabRect         layout.Rect   // last frame's "+" button
+	sb                 *sbDrag       // scrollbar-gutter drag in progress
+	fwd                int           // pane receiving forwarded mouse events during a drag
+	scroll             map[int]int
+	trackers           map[int]*status.Tracker
+	reported           map[int]reportedPane                     // pane.report_agent overrides
+	sessions           map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
+	fossils            map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)
+	visibleIdle        map[int]time.Time                        // pane → when explicit visible-idle detection started
+	jobSource          func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
+	jobDots            map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
+	jobsAt             time.Time                                // last job snapshot
+	actionBar          render.ActionBarRects                    // last frame's action bar hit areas
+	uiShowTab          bool                                     // [ui] show_tab_bar
+	uiHideSingle       bool                                     // [ui] hide_tab_bar_when_single_tab
+	uiBorders          bool                                     // [ui] pane_borders
+	sidebarScroll      int
+	cellW              int // host cell width in pixels (0 = unknown)
+	cellH              int // host cell height in pixels (0 = unknown)
+	help               *helpView
+	copied             string
+	copiedAt           time.Time
+	lastClick          clickMark // last left press inside a normal pane body
+	dblMenu            bool      // second same-cell down/up pending menu open
+	spin               int
+	lastSpin           time.Time
+	lastDraw           time.Time
+	dirty              bool
+	quit               bool
 }
 
 // SetCellPixels records the host terminal's pixel geometry so SGR 1016
@@ -222,7 +229,7 @@ func (a *App) SetCellPixels(xp, yp int) {
 // NewApp creates an App over existing state and supervisor. out is the
 // display sink: the local terminal, or the server's attached client.
 func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd string) *App {
-	return &App{
+	a := &App{
 		st:       st,
 		sup:      sup,
 		out:      out,
@@ -241,6 +248,8 @@ func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd stri
 		splitVKeys: config.Config{}.SplitVerticalKeys(),
 		splitHKeys: config.Config{}.SplitHorizontalKeys(),
 	}
+	a.SetPaneKeybinds(config.Config{})
+	return a
 }
 
 // SetKeybinds applies the [keys] config bindings (copy_mode, split_*).
@@ -485,6 +494,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
 		a.SetKeybinds(cfg.CopyKeys(), cfg.SplitVerticalKeys(), cfg.SplitHorizontalKeys())
+		a.SetPaneKeybinds(cfg)
 	}
 
 	if err := a.StartInitialPane(); err != nil {
@@ -612,7 +622,11 @@ func (a *App) detectAll() {
 // was attached (tick suspended) never leaks into a restored session
 // (SPEC: deadline 経過後に残らない).
 func (a *App) copiedFlash() string {
-	if a.copied != "" && time.Since(a.copiedAt) <= copiedDuration {
+	return a.copiedFlashAt(time.Now())
+}
+
+func (a *App) copiedFlashAt(now time.Time) string {
+	if a.copied != "" && now.Sub(a.copiedAt) < copiedDuration {
 		return a.copied
 	}
 	return ""
@@ -623,7 +637,7 @@ func (a *App) copiedFlash() string {
 func (a *App) onTick() {
 	now := time.Now()
 	a.expireToast()
-	if a.copied != "" && time.Since(a.copiedAt) > copiedDuration {
+	if a.copied != "" && now.Sub(a.copiedAt) >= copiedDuration {
 		a.copied = ""
 		a.dirty = true
 	}
@@ -663,6 +677,7 @@ func (a *App) anyWorking() bool {
 
 // exec applies a command and performs its effects.
 func (a *App) exec(cmd model.Command) {
+	beforeFocus := a.focusedPane()
 	var prev *model.StateSnap
 	if a.postExecHook != nil {
 		prev = a.st.Capture()
@@ -670,6 +685,7 @@ func (a *App) exec(cmd model.Command) {
 	for _, e := range a.st.Apply(cmd) {
 		a.effect(e)
 	}
+	a.recordFocus(beforeFocus, a.focusedPane())
 	// Copy mode dies when its pane leaves the active tab's layout
 	// (closed, moved, or the tab/workspace changed).
 	if a.cm != nil {
@@ -958,20 +974,22 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					Dead:   sn.Dead,
 					Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
 				}
+				if label := a.st.PaneLabels[model.PaneID(pid)]; label != "" {
+					snap.Label = label
+				}
+				if branch := gitBranch(sn.Cwd, ws.Cwd); branch != "" && !strings.Contains(snap.Title, branch) {
+					if snap.Title != "" {
+						snap.Title += " "
+					}
+					snap.Title += branch
+				}
 				if active[pid] {
 					r := a.innerRect(pid)
 					snap.Grid = a.paneGrid(p, a.scroll[pid], r.H, r.W)
 					snap.ScrollOff = a.scroll[pid]
 					snap.ScrollN = sn.ScrollbackLen
 				}
-				if snap.Agent != "" {
-					// SPEC G1 restore label: "saved session" only when a
-					// usable agent session id was recorded.
-					snap.Restore = "no saved session"
-					if rec := a.sessions[pid]; rec != nil && rec.Agent != "" && rec.Value != "" {
-						snap.Restore = "saved session"
-					}
-				}
+				snap.Agent, snap.Restore = a.paneRestoreLabel(pid, snap.Agent)
 				out[pid] = snap
 			}
 		}

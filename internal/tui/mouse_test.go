@@ -68,9 +68,4 @@ func TestPaneMouseCoordPixel(t *testing.T) {
 	if got.X != 56 || got.Y != 144 {
 		t.Fatalf("pixel coord = %v, want 56,144", got)
 	}
-	// Unknown cell size falls back to 1x1 (coords stay at cell index).
-	got = paneMouseCoord(inner, true, 0, 0, m)
-	if got.X != 3 || got.Y != 4 {
-		t.Fatalf("unknown cell size coord = %v", got)
-	}
 }

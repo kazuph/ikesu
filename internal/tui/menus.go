@@ -278,10 +278,6 @@ func (a *App) menuMouse(ev input.Event) {
 		} else {
 			a.menu.m.Hover = -1
 		}
-	case input.KindMouseClick:
-		if i < 0 {
-			a.menu = nil
-		}
 	case input.KindMouseRelease:
 		if a.menu.justOpened {
 			a.menu.justOpened = false
@@ -290,8 +286,6 @@ func (a *App) menuMouse(ev input.Event) {
 		if i >= 0 {
 			a.activateMenu(i)
 		}
-		// Releasing outside the menu keeps it open; clicks (press) outside
-		// close it, matching click-to-dismiss.
 	}
 }
 
@@ -339,7 +333,7 @@ func (a *App) dialogMouse(ev input.Event) {
 		return
 	}
 	m := ev.Mouse
-	outer, cancel, confirm := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
+	_, cancel, confirm := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
 	switch {
 	case pointIn(m.X, m.Y, confirm):
 		if ev.Kind == input.KindMouseClick {
@@ -349,9 +343,5 @@ func (a *App) dialogMouse(ev input.Event) {
 		}
 	case pointIn(m.X, m.Y, cancel):
 		a.dialog = nil
-	case !pointIn(m.X, m.Y, outer):
-		if ev.Kind == input.KindMouseClick {
-			a.dialog = nil
-		}
 	}
 }

@@ -61,6 +61,7 @@ type Pane struct {
 
 	cmd     *exec.Cmd
 	ptyFile *os.File
+	ptyFD   int // captured before publishing the pane; Close may race with readers
 	done    chan struct{}
 
 	mu            sync.Mutex
@@ -208,6 +209,7 @@ func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra, argv [
 	}
 	p.cmd = cmd
 	p.ptyFile = f
+	p.ptyFD = int(f.Fd())
 
 	go p.pumpPTYToEmu()
 	go p.pumpEmuToPTY()
@@ -287,7 +289,7 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 		}
 	}
 	defer writeStats()
-	fd := int(p.ptyFile.Fd())
+	fd := p.ptyFD
 	for {
 		var buf []byte
 		select {
@@ -712,7 +714,7 @@ func (p *Pane) PollProcess() {
 	if p.ptyFile == nil {
 		return
 	}
-	job := platform.ForegroundJobOf(int(p.ptyFile.Fd()))
+	job := platform.ForegroundJobOf(p.ptyFD)
 	if len(job.Processes) == 0 {
 		return
 	}
@@ -816,7 +818,7 @@ func (p *Pane) ForegroundJob() platform.ForegroundJob {
 	if p.ptyFile == nil {
 		return platform.ForegroundJob{}
 	}
-	return platform.ForegroundJobOf(int(p.ptyFile.Fd()))
+	return platform.ForegroundJobOf(p.ptyFD)
 }
 
 // SetAgent overrides the detected agent id (pane.report_agent). An empty

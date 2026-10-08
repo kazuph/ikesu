@@ -1048,6 +1048,9 @@ func (s *AppState) movePane(c CmdMovePane) []Effect {
 	}
 	src := s.Workspaces[wi].Tabs[ti]
 	out := c.Out
+	if out == nil {
+		out = &PaneMoveOutcome{}
+	}
 	if out != nil {
 		out.Pane = c.Pane
 		out.PrevWsID, out.PrevTabID = s.Workspaces[wi].ID, src.ID

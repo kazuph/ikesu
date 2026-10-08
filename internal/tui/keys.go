@@ -72,7 +72,19 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 // prefixKey executes the prefix command table (5.8).
 func (a *App) prefixKey(k uv.Key) {
 	s := a.st
+	code := k.Code
+	if code >= 'a' && code <= 'z' && k.Mod.Contains(uv.ModShift) {
+		code -= 'a' - 'A'
+	}
 	switch {
+	case a.renameKeys[code]:
+		a.openRenamePaneDialog(a.focusedPane())
+	case a.editKeys[code]:
+		a.editScrollback()
+	case a.historyBackKeys[code]:
+		a.focusHistoryStep(false)
+	case a.historyForwardKeys[code]:
+		a.focusHistoryStep(true)
 	case a.navKey != 0 && k.Code == a.navKey:
 		// [keys] open_notification_target (default prefix+o).
 		a.navToToastTarget()

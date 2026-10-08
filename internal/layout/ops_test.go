@@ -194,11 +194,11 @@ func TestCycleTwoPane(t *testing.T) {
 	if got := tree(l); got != "(r0.50 p1 p2)" {
 		t.Fatalf("cycle2 = %s", got)
 	}
-	// Non-uniform split cycles to the other axis (observed: r0.70 → d0.50).
+	// SPEC: a non-uniform split normalizes to uniform side-by-side.
 	l.SetRatioAt(nil, 0.7)
 	l.CyclePresets()
-	if got := tree(l); got != "(d0.50 p1 p2)" {
-		t.Fatalf("cycle non-uniform = %s, want (d0.50 p1 p2)", got)
+	if got := tree(l); got != "(r0.50 p1 p2)" {
+		t.Fatalf("cycle non-uniform = %s, want (r0.50 p1 p2)", got)
 	}
 }
 

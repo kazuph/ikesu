@@ -58,6 +58,10 @@ type Config struct {
 		CopyMode               []string `toml:"copy_mode"`
 		SplitVertical          []string `toml:"split_vertical"`
 		SplitHorizontal        []string `toml:"split_horizontal"`
+		RenamePane             []string `toml:"rename_pane"`
+		EditScrollback         []string `toml:"edit_scrollback"`
+		FocusHistoryBack       []string `toml:"focus_history_back"`
+		FocusHistoryForward    []string `toml:"focus_history_forward"`
 	} `toml:"keys"`
 	Agent struct {
 		Shell string            `toml:"shell"`
@@ -193,6 +197,13 @@ func ParseKeyBinding(spec string) (rune, bool) {
 	if r, ok := namedKeys[rest]; ok {
 		return r, true
 	}
+	if key, shifted := strings.CutPrefix(rest, "shift+"); shifted {
+		runes := []rune(strings.ToUpper(key))
+		if len(runes) == 1 {
+			return runes[0], true
+		}
+		return 0, false
+	}
 	runes := []rune(rest)
 	if len(runes) != 1 {
 		return 0, false
@@ -203,7 +214,7 @@ func ParseKeyBinding(spec string) (rune, bool) {
 // keyList resolves a binding list; an empty or all-invalid list falls back
 // to the given default specs.
 func (c Config) keyList(specs []string, def []string) map[rune]bool {
-	if len(specs) == 0 {
+	if specs == nil {
 		specs = def
 	}
 	out := map[rune]bool{}

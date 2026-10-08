@@ -340,7 +340,9 @@ func (a *App) copyYank() {
 		return
 	}
 	b64 := base64.StdEncoding.EncodeToString([]byte(text))
-	fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64)
+	if _, err := fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64); err != nil {
+		return
+	}
 	lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
 	plural := "s"
 	if lines == 1 {

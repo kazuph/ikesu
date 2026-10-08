@@ -16,10 +16,10 @@ func (l *Layout) HasPane(pane int) bool {
 	return pane >= 0 && containsID(collectIDs(l.root), pane)
 }
 
-// LastLeaf returns the last pane id in traversal order. It is the implicit
+// LastLeaf returns the last pane id in logical order. It is the implicit
 // split target when no pane is named (SPEC G1: 非明示pane追加は既存順の末尾へ).
 func (l *Layout) LastLeaf() int {
-	ids := collectIDs(l.root)
+	ids := l.PaneIDs()
 	if len(ids) == 0 {
 		return -1
 	}
@@ -356,7 +356,7 @@ func (l *Layout) CyclePresets() {
 	if n == 2 {
 		// Toggle the split axis and normalize to a uniform split.
 		r := l.root
-		if r.Direction == Vertical {
+		if r.Direction == Vertical && r.Ratio == 0.5 {
 			l.root = SplitNode(Horizontal, 0.5, LeafNode(ids[0]), LeafNode(ids[1]))
 		} else {
 			l.root = SplitNode(Vertical, 0.5, LeafNode(ids[0]), LeafNode(ids[1]))

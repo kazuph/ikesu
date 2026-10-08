@@ -175,8 +175,7 @@ func (a *App) click(m uv.Mouse) {
 	// pane menu on the second release (SPEC G1 pane menu). A click that
 	// drags into a selection never opens the menu.
 	now := time.Now()
-	a.dblMenu = a.lastClick.pane == pr.ID && a.lastClick.x == m.X && a.lastClick.y == m.Y &&
-		now.Sub(a.lastClick.at) < 500*time.Millisecond
+	a.dblMenu = a.lastClick.matches(pr.ID, m, now)
 	a.lastClick = clickMark{pane: pr.ID, x: m.X, y: m.Y, at: now}
 }
 
@@ -185,6 +184,12 @@ func (a *App) click(m uv.Mouse) {
 type clickMark struct {
 	pane, x, y int
 	at         time.Time
+	completed  bool
+}
+
+func (c clickMark) matches(pane int, m uv.Mouse, now time.Time) bool {
+	d := now.Sub(c.at)
+	return c.completed && c.pane == pane && c.x == m.X && c.y == m.Y && d >= 0 && d <= 500*time.Millisecond
 }
 
 // sbDrag is an active scrollbar-gutter drag on one pane.
@@ -620,6 +625,7 @@ func (a *App) selMouse(ev input.Event) {
 	if ev.Kind == input.KindMouseRelease {
 		pending := a.dblMenu
 		a.dblMenu = false
+		a.lastClick.completed = !s.moved && m.X == a.lastClick.x && m.Y == a.lastClick.y
 		if pending && !s.moved {
 			// Second same-cell down/up completed inside 500ms on a normal
 			// pane: open the menu at the click point.
@@ -643,7 +649,9 @@ func (a *App) finishSelection() {
 		return
 	}
 	b64 := base64.StdEncoding.EncodeToString([]byte(text))
-	fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64)
+	if _, err := fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64); err != nil {
+		return
+	}
 	// SPEC G1: "Copied N lines" on the sidebar's bottom row, 2 seconds.
 	lines := strings.Count(text, "\n") + 1
 	if strings.HasSuffix(text, "\n") {
@@ -692,6 +700,10 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	}
 	inner, _ := model.PaneContentRect(r, a.st.PaneBorders)
 	pixel := p.MousePixelMode()
+	if pixel && (a.cellW <= 0 || a.cellH <= 0) {
+		a.ShowToast("Unsupported", "pixel mouse requires known pixel geometry", "error", -1)
+		return
+	}
 	tr := func(m uv.Mouse) uv.Mouse {
 		return paneMouseCoord(inner, pixel, a.cellW, a.cellH, m)
 	}
@@ -709,17 +721,10 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 
 // paneMouseCoord converts a host cell coordinate to a pane-inner
 // coordinate. In pixel mode the result is the center pixel of the target
-// cell, sized from the known cell geometry (1x1 fallback when the host
-// reports no pixel size).
+// cell, sized from the known cell geometry. The caller rejects unknown geometry.
 func paneMouseCoord(inner layout.Rect, pixel bool, cw, ch int, m uv.Mouse) uv.Mouse {
 	x, y := m.X-inner.X, m.Y-inner.Y
 	if pixel {
-		if cw < 1 {
-			cw = 1
-		}
-		if ch < 1 {
-			ch = 1
-		}
 		x = x*cw + cw/2
 		y = y*ch + ch/2
 	}

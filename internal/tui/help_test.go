@@ -45,19 +45,23 @@ func TestHelpRowsContract(t *testing.T) {
 		}
 	}
 	// Unimplemented commands stay absent.
-	for _, cmd := range []string{"rename pane", "edit scrollback", "focus history back", "focus history forward", "zoom pane"} {
+	for _, cmd := range []string{"zoom pane"} {
 		if cmds[cmd] {
 			t.Fatalf("unimplemented %q listed in help", cmd)
 		}
 	}
 	// Final entries: cycle next → cycle previous.
-	if n := len(last); n < 2 || last[n-2] != "cycle pane next" || last[n-1] != "cycle pane previous" {
+	if n := len(last); n < 4 || last[n-4] != "cycle pane next" || last[n-3] != "cycle pane previous" || last[n-2] != "focus history back" || last[n-1] != "focus history forward" {
 		t.Fatalf("last entries = %v", last[max(0, n-3):])
+	}
+	for i, r := range last {
+		if r == "rename pane" && (last[i+1] != "copy mode" || last[i+2] != "edit scrollback") {
+			t.Fatal("pane command order", last)
+		}
 	}
 }
 
-// Configured bindings render sorted and joined; an unbound set falls
-// back to the hardcoded defaults.
+// Configured bindings render sorted and joined; nil uses defaults.
 func TestBindKeys(t *testing.T) {
 	got := bindKeys(map[rune]bool{'v': true, '%': true})
 	if got != "prefix+% / prefix+v" {

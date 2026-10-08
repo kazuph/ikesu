@@ -22,7 +22,7 @@ func newPumpPane(t *testing.T) (*Pane, *os.File, chan Event) {
 	emu := vt.NewEmulator(80, 24)
 	go io.Copy(io.Discard, emu)
 	evCh := make(chan Event, 64)
-	p := &Pane{ID: 1, ptyFile: r, emu: emu, ev: evCh}
+	p := &Pane{ID: 1, ptyFile: r, ptyFD: int(r.Fd()), emu: emu, ev: evCh}
 	t.Cleanup(func() {
 		_ = w.Close()
 		_ = r.Close()

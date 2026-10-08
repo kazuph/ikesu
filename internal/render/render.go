@@ -287,7 +287,9 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			if in.Copy.Sel != nil {
 				applySelection(f, area.X, area.Y, area.W, area.H, in.Copy.Sel)
 			}
-			drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y)
+			if in.Copy.X >= 0 && in.Copy.X < area.W && in.Copy.Y >= 0 && in.Copy.Y < area.H {
+				drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y)
+			}
 		}
 		drawCopyHint(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
 		return
@@ -491,9 +493,9 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		{" ROTATE PANES ", &out.ActionBar.Rotate},
 		{" EQUALIZE ", &out.ActionBar.Equalize},
 	}
-	total := 1 // right margin
+	total := 1 + len(labels) - 1 // right margin and inter-button gaps
 	for _, l := range labels {
-		total += len([]rune(l.text)) + 1
+		total += len([]rune(l.text))
 	}
 	x := area.X + area.W - total
 	if x < area.X {
@@ -524,6 +526,15 @@ func drawCopyHint(f *Frame, x, y, w int, hint string) {
 func clipGrid(g [][]uv.Cell, w, h int) [][]uv.Cell {
 	if len(g) > h {
 		g = g[:h]
+	}
+	for _, row := range g {
+		if len(row) > w {
+			clipped := make([][]uv.Cell, len(g))
+			for i, row := range g {
+				clipped[i] = row[:min(len(row), max(w, 0))]
+			}
+			return clipped
+		}
 	}
 	return g
 }
@@ -1133,6 +1144,10 @@ func drawHelp(f *Frame, h *HelpInput, out *Output) {
 		}
 		f.Text(ix+2, ry, row.Bind, uv.Style{Fg: Peach}, ix+iw-1)
 		f.Text(ix+20, ry, row.Cmd, uv.Style{Fg: Text}, ix+iw-1)
+	}
+
+	if maxScroll := len(h.Rows) - body; maxScroll > 0 {
+		drawGutter(f, layout.Rect{X: ix + iw - 1, Y: iy + 1, W: 1, H: body}, &PaneSnap{ScrollN: maxScroll}, maxScroll-scroll)
 	}
 
 	// Footer hint on the last inner row.

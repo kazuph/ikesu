@@ -246,8 +246,8 @@ func countPanes(screen string) int {
 
 func TestBootShowsSidebarAndPane(t *testing.T) {
 	s := start(t)
-	s.waitFor("sidebar footer", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, "workspaces")
+	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, "workspaces") && strings.Contains(tx, " gtx ")
 	})
 	if !strings.Contains(s.text(), " gtx ") {
 		t.Fatalf("missing status line brand:\n%s", s.text())
