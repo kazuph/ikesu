@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -49,13 +50,14 @@ func repoRoot() string {
 // session is a running gtx under a PTY with its screen decoded to an
 // emulator.
 type session struct {
-	t        *testing.T
-	pt       *os.File
-	cmd      *exec.Cmd
-	emu      *vt.Emulator
-	buf      *lockedBuf
-	name     string // session name (gtx --session)
-	stateDir string // GTX_STATE_DIR
+	t             *testing.T
+	pt            *os.File
+	cmd           *exec.Cmd
+	emu           *vt.Emulator
+	buf           *lockedBuf
+	name          string // session name (gtx --session)
+	stateDir      string // GTX_STATE_DIR
+	observeOutput func([]byte)
 }
 
 type lockedBuf struct {
@@ -100,6 +102,11 @@ func startEnv(t *testing.T, extra map[string]string) *session {
 		t.Fatalf("pty start: %v", err)
 	}
 	s := &session{t: t, pt: f, cmd: cmd, emu: vt.NewEmulator(termW, termH), buf: &lockedBuf{ch: make(chan []byte, 4096)}, name: sess, stateDir: stateDir}
+	// Consume emulator replies without sending them to gtx: this outer
+	// terminal deliberately leaves every capability query unanswered.
+	// The emulator's reply pipe must still be read or its screen parser blocks.
+	go func() { _, _ = io.Copy(io.Discard, s.emu) }()
+	t.Cleanup(func() { s.emu.Close() })
 	go func() {
 		b := make([]byte, 64*1024)
 		for {
@@ -137,6 +144,9 @@ func (s *session) pump(deadline time.Time) {
 		case d, ok := <-s.buf.ch:
 			if !ok {
 				return
+			}
+			if s.observeOutput != nil {
+				s.observeOutput(d)
 			}
 			_, _ = s.emu.Write(d)
 		case <-time.After(20 * time.Millisecond):
@@ -756,4 +766,24 @@ func TestKeybindHelp(t *testing.T) {
 	s.waitFor("help closed", 5*time.Second, func(tx string) bool {
 		return !strings.Contains(tx, "keybinds")
 	})
+}
+
+func TestBootWithoutTerminalQueryRepliesAllowsInputAndLateReplies(t *testing.T) {
+	s := start(t)
+	var raw strings.Builder
+	s.observeOutput = func(b []byte) { raw.Write(b) }
+	s.waitFor("boot without query replies", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "[new]") && strings.Contains(tx, " gtx ")
+	})
+	for _, query := range []string{"\x1b[?1016$p", "\x1b[16t", "\x1b[14t"} {
+		if !strings.Contains(raw.String(), query) {
+			t.Fatalf("query missing: %q", query)
+		}
+	}
+	s.send("printf 'NO_REPLY_%s\\n' READY\r")
+	s.waitFor("input before terminal replies", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "NO_REPLY_READY") })
+	s.send("\x1b[?1016;2$y\x1b[6;32;16t\x1b[4;1280;1920t")
+	s.waitFor("late pixel capability applied", 5*time.Second, func(string) bool { return strings.Contains(raw.String(), "\x1b[?1016h") })
+	s.send("printf 'LATE_REPLY_%s\\n' READY\r")
+	s.waitFor("input after terminal replies", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "LATE_REPLY_READY") })
 }
