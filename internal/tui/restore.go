@@ -289,6 +289,25 @@ func (a *App) refreshJobDots(now time.Time) {
 	}
 	a.jobsAt = now
 	jobs, alive := a.jobSource()
+	rows := make([]render.JobRow, 0, len(jobs))
+	for _, j := range jobs {
+		col := render.Green
+		switch j.Status {
+		case "queued":
+			col = render.Dim
+		case "running", "cancelling":
+			col = render.Yellow
+		default:
+			if j.ExitCode != nil && *j.ExitCode != 0 {
+				col = render.Red
+			}
+		}
+		rows = append(rows, render.JobRow{ID: j.ID, Label: j.Label, Status: j.Status, Color: col})
+	}
+	if !reflect.DeepEqual(a.jobRows, rows) {
+		a.jobRows = rows
+		a.dirty = true
+	}
 	dots := map[int][]render.JobDot{}
 	for _, j := range jobs {
 		var col color.Color
@@ -350,3 +369,6 @@ func (a *App) TestRefreshJobDots() {
 
 // JobDots exposes the workspace dot snapshot for tests.
 func (a *App) JobDots() map[int][]render.JobDot { return a.jobDots }
+
+// Jobs uses the same unfiltered snapshot from which card dots are selected.
+func (a *App) Jobs() []render.JobRow { return a.jobRows }

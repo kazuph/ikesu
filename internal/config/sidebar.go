@@ -83,3 +83,11 @@ func SaveSidebarSetting(key, value string) error {
 	}
 	return os.Rename(f.Name(), p)
 }
+
+// The distribution documents mobile layout at or below 64 cells.
+func (c Config) MobileWidthThreshold() int {
+	if c.UI.MobileWidthThreshold != nil {
+		return max(0, *c.UI.MobileWidthThreshold)
+	}
+	return 64
+}

@@ -23,3 +23,12 @@ workspaceのsectionは `favorite` / `work` / `personal` / `none`。表示順はf
 `[ui.sidebar.agents]` / `[ui.sidebar.spaces]` の `rows` は文字列トークン、または `{ token = "workspace", fg = "#89b4fa", bold = true, dim = false }` の配列です。`fg` は `#RGB` または `#RRGGBB`、省略した属性は既定の色・太字・DIMを保持し、同じトークンを複数回出しても指定はその出現だけに適用します。`row_gap` は各項目の後の空行数です。agent別行は `rows_by_agent` へ指定できます。
 
 workspaceの独自トークンは `$名前` で表示します。`gtx workspace report-metadata s1 --source build --token phase=compile --seq 1 --ttl-ms 1000` で更新し、`--clear-token phase` で消します。未対応のトークンを指定した設定は明示的なエラーにします。
+
+`ui.mobile_width_threshold` は mobile layout に切り替わる最大の列数です。
+既定は配布用ビルドの設定例と同じ `64`。指定値以下で desktop sidebar を
+mobile header と switcher に置き換えます。`0` は mobile layout を無効にします。
+mobile switcher の section header を tap すると折りたたみ／展開し、直後の空行は
+操作対象にしません。workspace 選択後は switcher を閉じます。
+
+agents の隣の `[jobs]` は jobs snapshot の全履歴を表示します。カードの dot は
+既存の期限と runner 生存条件で絞り込みますが、jobs の履歴行は間引きません。

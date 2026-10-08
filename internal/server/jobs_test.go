@@ -10,6 +10,7 @@ import (
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/goterrace/internal/render"
 )
 
 func openStore(t *testing.T) *dispatch.Store {
@@ -161,6 +162,10 @@ func TestWorkspaceJobDot(t *testing.T) {
 	syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	cmd.Wait()
 	s.app.TestRefreshJobDots()
+	view := render.SidebarViewForInput(render.Input{State: s.app.State(), Jobs: s.app.Jobs(), JobsPanel: true})
+	if len(s.app.Jobs()) != 1 || view.Agents.Total != 1 {
+		t.Fatal("dead runner was filtered out of jobs history")
+	}
 	if n := len(s.app.JobDots()[0]); n != 0 {
 		t.Fatalf("dead-runner dots = %d, want 0", n)
 	}

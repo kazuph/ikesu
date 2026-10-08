@@ -72,7 +72,8 @@ func (a *App) draw() {
 		}
 	}
 	in := render.Input{
-		State:         a.st,
+		State:          a.st,
+		MobileSwitcher: a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
 		Panes:         panes,
 		Scroll:        a.scroll,
@@ -82,7 +83,8 @@ func (a *App) draw() {
 		SidebarScroll: a.sidebarScroll,
 		AgentScroll:   a.agentScroll,
 		JobDots:       a.jobDots,
-		Git:           a.workspaceGit, WorkspaceNames: a.workspaceNames,
+		Jobs:          a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll,
+		Git: a.workspaceGit, WorkspaceNames: a.workspaceNames,
 		CopyLabel: a.copyLabel(),
 		Copy:      a.copyMark(),
 		CopyHint:  a.copyHint(),

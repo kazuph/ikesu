@@ -20,7 +20,7 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 	if x < area.X || x >= area.X+area.W-1 {
 		return render.SidebarRow{}, false
 	}
-	view := render.SidebarViewFor(a.st, a.paneSnaps(), a.sidebarConfig, a.sidebarScroll, a.agentScroll)
+	view := a.sidebarView()
 	for _, pos := range view.Rows {
 		if y == pos.Y {
 			return pos.Row, true
@@ -67,6 +67,16 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		}
 		return true
 	case render.RowSep:
+		if pointIn(m.X, m.Y, render.SidebarJobsTab(s.SidebarArea().W, m.Y)) {
+			a.jobsPanel = true
+			a.changed()
+			return true
+		}
+		if m.X < 8 {
+			a.jobsPanel = false
+			a.changed()
+			return true
+		}
 		_, _, w, _ := render.SidebarContent(s.SidebarArea())
 		if m.X >= s.SidebarArea().X+w-6 {
 			a.toggleSidebarSetting(false)

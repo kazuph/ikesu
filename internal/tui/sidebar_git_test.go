@@ -1,10 +1,14 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/worktree"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,5 +78,62 @@ func TestG2GitAheadBehindActualRepository(t *testing.T) {
 	g := readWorkspaceGit(repo)
 	if g.Ahead != 2 || g.Behind != 1 {
 		t.Fatal(g)
+	}
+}
+
+func TestG2WorktreeChildCompactParentGitDetailsActualRepository(t *testing.T) {
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	path := filepath.Join(repo, "file")
+	if err := os.WriteFile(path, []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "base")
+	child := filepath.Join(t.TempDir(), "child")
+	sidebarGit(t, repo, "worktree", "add", "-qb", "child", child)
+	if err := os.WriteFile(path, []byte("base\nparent1\nparent2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(child, "file"), []byte("base\nchild1\nchild2\nchild3\nchild4\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	parentGit, childGit := readWorkspaceGit(repo), readWorkspaceGit(child)
+	if parentGit.Added != 2 || childGit.Added != 4 {
+		t.Fatal(parentGit, childGit)
+	}
+	s := model.New(repo, 120, 50)
+	s.Workspaces[0].Worktree = &api.WorkspaceWorktreeInfo{RepoKey: repo}
+	s.Apply(model.CmdNewWorkspace{Cwd: child})
+	s.Workspaces[1].Worktree = &api.WorkspaceWorktreeInfo{RepoKey: repo, IsLinkedWorktree: true}
+	for _, density := range []string{"full", "slim"} {
+		s.WorkspaceDensity = density
+		rows := render.SidebarRows(s, nil)
+		childCount, parentDetails := 0, 0
+		for _, r := range rows {
+			if r.Ws == 1 && (r.Kind == render.RowWorkspace || r.Kind == render.RowGit || r.Kind == render.RowCardBlank) {
+				childCount++
+			}
+			if r.Ws == 0 && r.Kind == render.RowGit {
+				parentDetails++
+			}
+		}
+		if childCount != 1 || parentDetails != 1 {
+			t.Fatal(density, childCount, parentDetails)
+		}
+		frame := render.Compose(render.Input{State: s, Git: map[int]render.GitStatus{0: parentGit, 1: childGit}}).Frame
+		var text strings.Builder
+		for y := 0; y < frame.H; y++ {
+			for x := 0; x < s.SidebarArea().W; x++ {
+				if c := frame.Cell(x, y); c != nil {
+					text.WriteString(c.Content)
+				}
+			}
+		}
+		if !strings.Contains(text.String(), "+2") || strings.Contains(text.String(), "+4") || strings.Contains(text.String(), "+6") {
+			t.Fatal(text.String())
+		}
 	}
 }

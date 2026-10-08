@@ -43,6 +43,13 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		a.dirty = true
 		return
 	}
+	if a.st.Mobile() && a.mobileSwitcher {
+		if k.Code == uv.KeyEscape {
+			a.mobileSwitcher = false
+			a.dirty = true
+		}
+		return
+	}
 	if a.cm != nil {
 		a.copyKey(k, raw)
 		return
@@ -130,7 +137,12 @@ func (a *App) prefixKey(k uv.Key) {
 	case k.Code >= '1' && k.Code <= '9':
 		a.selectWorkspace(int(k.Code - '1'))
 	case k.Code == 'b':
-		a.exec(model.CmdToggleSidebar{})
+		if s.Mobile() {
+			a.mobileSwitcher = !a.mobileSwitcher
+			a.dirty = true
+		} else {
+			a.exec(model.CmdToggleSidebar{})
+		}
 	case k.Code == 'c':
 		a.exec(model.CmdNewTab{Workspace: s.Active})
 	case k.Code == ']':

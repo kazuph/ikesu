@@ -61,6 +61,7 @@ func (ws *Workspace) PaneCount() int {
 // AppState is the complete pure application state.
 type AppState struct {
 	Workspaces                                          []*Workspace
+	MobileWidthThreshold                                int
 	Popup                                               *PopupPaneState
 	Active                                              int // index into Workspaces
 	SidebarVisible                                      bool

@@ -37,6 +37,7 @@ func (d ToastDelivery) Valid() bool {
 // Config is the parsed config file.
 type Config struct {
 	UI struct {
+		MobileWidthThreshold  *int          `toml:"mobile_width_threshold"`
 		Sidebar               SidebarPanels `toml:"sidebar"`
 		SidebarWidth          *int          `toml:"sidebar_width"`
 		SidebarMinWidth       *int          `toml:"sidebar_min_width"`

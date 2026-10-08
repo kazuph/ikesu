@@ -147,6 +147,11 @@ type App struct {
 	changeHook        func()              // persistent state changed; server coalesces saves
 	restartHook       func()              // main menu "Restart server…" (server mode only)
 	standaloneRestart bool
+	jobsPanel         bool
+	jobScroll         int
+	jobRows           []render.JobRow
+	mobileSwitcher    bool
+	mobileScroll      int
 	popupSel          *selState
 	popupCopy         *copyMode
 	popupAutoScroll   int

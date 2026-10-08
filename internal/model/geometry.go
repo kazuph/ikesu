@@ -4,9 +4,16 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 )
 
+func (s *AppState) Mobile() bool {
+	return s.MobileWidthThreshold > 0 && s.Cols <= s.MobileWidthThreshold
+}
+
 // TabBarVisible reports whether the tab strip is drawn: on unless
 // show_tab_bar=false, or a lone tab with hide_tab_bar_when_single_tab.
 func (s *AppState) TabBarVisible() bool {
+	if s.Mobile() {
+		return false
+	}
 	if !s.ShowTabBar {
 		return false
 	}
@@ -35,6 +42,9 @@ func (s *AppState) TabBarArea() Rect {
 // It shows only on desktop with an active workspace and at least two
 // rows left for the panes.
 func (s *AppState) ActionBarArea() Rect {
+	if s.Mobile() {
+		return Rect{}
+	}
 	w := SidebarCollapsedWidth
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
@@ -51,6 +61,9 @@ func (s *AppState) ActionBarArea() Rect {
 // PanesArea returns the rect the pane layout fills: right of the sidebar,
 // below the (possibly hidden) tab bar, above the action bar and status.
 func (s *AppState) PanesArea() Rect {
+	if s.Mobile() {
+		return Rect{X: 0, Y: 2, W: s.Cols, H: max0(s.Rows - 3)}
+	}
 	w := SidebarCollapsedWidth
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
@@ -68,6 +81,9 @@ func (s *AppState) PanesArea() Rect {
 
 // SidebarArea returns the sidebar rect (may be the collapsed strip).
 func (s *AppState) SidebarArea() Rect {
+	if s.Mobile() {
+		return Rect{}
+	}
 	w := SidebarCollapsedWidth
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()

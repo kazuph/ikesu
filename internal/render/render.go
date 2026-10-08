@@ -123,6 +123,9 @@ type Input struct {
 	Scroll          map[int]int
 	// JobDots maps workspace index → job dots drawn on its sidebar row.
 	JobDots           map[int][]JobDot
+	Jobs              []JobRow
+	JobsPanel         bool
+	JobScroll         int
 	Git               map[int]GitStatus
 	WorkspaceNames    map[int]string
 	SelectedWorkspace *int
@@ -136,11 +139,13 @@ type Input struct {
 	Sel    *Selection
 	Toast  *Toast
 
-	Spin          int    // working-spinner frame
-	Copied        string // flash text, e.g. " copied 12 chars "
-	Prefix        bool   // prefix-key pending
-	SidebarScroll int    // workspace rows scrolled off the top
-	AgentScroll   int
+	Spin           int    // working-spinner frame
+	Copied         string // flash text, e.g. " copied 12 chars "
+	Prefix         bool   // prefix-key pending
+	SidebarScroll  int    // workspace rows scrolled off the top
+	AgentScroll    int
+	MobileSwitcher bool
+	MobileScroll   int
 	// CopyLabel is the action bar's left button text: " COPY ",
 	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
 	CopyLabel string
@@ -223,6 +228,9 @@ func Compose(in Input) *Output {
 	drawActionBar(f, s, in, out)
 	drawStatusLine(f, s, in)
 	drawPopup(f, in, out)
+	if s.Mobile() {
+		drawMobile(f, in, out)
+	}
 	if in.Menu != nil {
 		drawMenu(f, in.Menu, out)
 	}

@@ -12,7 +12,7 @@ type sidebarScrollDrag struct {
 }
 
 func (a *App) sidebarView() render.SidebarView {
-	return render.SidebarViewFor(a.st, a.paneSnaps(), a.sidebarConfig, a.sidebarScroll, a.agentScroll)
+	return render.SidebarViewForInput(render.Input{State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll})
 }
 
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
@@ -29,6 +29,9 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 	v, off := view.Workspace, &a.sidebarScroll
 	if pointIn(m.X, m.Y, view.Agents.Rect) {
 		v, off = view.Agents, &a.agentScroll
+		if a.jobsPanel {
+			off = &a.jobScroll
+		}
 	}
 	if !pointIn(m.X, m.Y, v.Rect) {
 		return
@@ -72,6 +75,9 @@ func (a *App) sidebarScrollbarMouse(ev input.Event) {
 	v, off := view.Workspace, &a.sidebarScroll
 	if a.sidebarBar.agents {
 		v, off = view.Agents, &a.agentScroll
+		if a.jobsPanel {
+			off = &a.jobScroll
+		}
 	}
 	h, _ := render.SidebarThumb(v)
 	travel := v.Rect.H - h

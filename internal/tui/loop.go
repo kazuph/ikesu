@@ -186,6 +186,7 @@ func (a *App) exec(cmd model.Command) {
 	switch cmd.(type) {
 	case model.CmdSetSection, model.CmdToggleSection:
 		a.sidebarScroll = 0
+		a.mobileScroll = 0
 	}
 	beforeFocus := a.focusedPane()
 	popupWasVisible := a.st.PopupVisible()

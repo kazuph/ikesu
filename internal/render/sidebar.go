@@ -26,6 +26,7 @@ const (
 	RowBlank
 	RowGit
 	RowCardBlank
+	RowJob
 )
 
 type SidebarRow struct {
@@ -183,7 +184,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		return
 	}
 
-	view := SidebarViewFor(s, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll)
+	view := SidebarViewForInput(in)
 	for _, pos := range view.Rows {
 		width := iw
 		if pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
@@ -282,13 +283,29 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			f.Text(nr.X, y, "[new]", uv.Style{Fg: Dim, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
 		}
 	case RowSep:
-		f.Text(ix, y, " agents", border, ix+iw)
+		agentStyle := border
+		if !in.JobsPanel {
+			agentStyle.Fg = Accent
+			agentStyle.Attrs = uv.AttrBold
+		}
+		f.Text(ix, y, "[agents]", agentStyle, ix+iw)
+		jr := SidebarJobsTab(s.SidebarArea().W, y)
+		if jr.W > 0 {
+			jobStyle := border
+			if in.JobsPanel {
+				jobStyle.Fg = Accent
+				jobStyle.Attrs = uv.AttrBold
+			}
+			f.Text(jr.X, y, "[jobs]", jobStyle, jr.X+jr.W)
+		}
 		scope := s.AgentScope
 		if scope != "sort" {
 			scope = "all"
 		}
 		label := "[" + scope + "]"
 		f.Text(ix+iw-len(label), y, label, border, ix+iw)
+	case RowJob:
+		drawJobRow(f, in, r.Line, ix, y, iw)
 	case RowWorkspace, RowGit, RowCardBlank:
 		if rows := in.SidebarConfig.UI.Sidebar.Spaces.Rows; len(rows) > 0 {
 			line := 0
