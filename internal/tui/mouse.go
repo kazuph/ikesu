@@ -19,6 +19,8 @@ import (
 func (a *App) onMouse(ev input.Event) {
 	m := ev.Mouse
 	switch {
+	case a.help != nil:
+		a.helpMouse(ev)
 	case a.dialog != nil:
 		a.dialogMouse(ev)
 	case a.menu != nil:
@@ -114,11 +116,26 @@ func (a *App) click(m uv.Mouse) {
 	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
 	framed := a.st.PaneBorders && pr.Rect.W > 2 && pr.Rect.H > 2
 
-	// Pane scrollbar: the gutter column's drag scrolls the pane.
+	// Pane scrollbar: a press on the thumb starts a drag that keeps the
+	// grab offset; a press on the track jumps the thumb to the press
+	// point and keeps dragging from there (SPEC G6).
 	if gutter > 0 && m.X == inner.X+inner.W-1 &&
 		m.Y >= inner.Y && m.Y < inner.Y+inner.H {
 		a.exec(model.CmdFocusPane{Pane: pr.ID})
-		a.sb = &sbDrag{pane: pr.ID, inner: inner}
+		grab := 0
+		if p := a.sup.Get(pr.ID); p != nil {
+			sn := p.Snapshot()
+			rel := m.Y - inner.Y
+			th, top := thumbGeom(inner.H, sn.ScrollbackLen, a.scroll[pr.ID])
+			if rel >= top && rel < top+th {
+				grab = rel - top
+			} else {
+				newTop := rel - th/2
+				a.setScrollOff(pr.ID, offFromThumb(inner.H, sn.ScrollbackLen, newTop))
+				grab = th / 2
+			}
+		}
+		a.sb = &sbDrag{pane: pr.ID, inner: inner, grab: grab}
 		return
 	}
 
@@ -174,9 +191,58 @@ type clickMark struct {
 type sbDrag struct {
 	pane  int
 	inner layout.Rect
+	grab  int // rows below the thumb's top edge where the drag began
 }
 
-// sbMouse maps the drag's y onto the pane's scrollback range.
+// thumbGeom mirrors render.drawGutter: given the inner height, scrollback
+// length and scroll offset it returns the thumb's height and its top row
+// (relative to the inner rect).
+func thumbGeom(h, scrollN, off int) (th, top int) {
+	total := scrollN + h
+	th = h * h / total
+	if th < 1 {
+		th = 1
+	}
+	if th > h {
+		th = h
+	}
+	track := h - th
+	top = track
+	if scrollN > 0 && track > 0 {
+		top = track - int(float64(off)/float64(scrollN)*float64(track))
+	}
+	return th, top
+}
+
+// offFromThumb maps a thumb-top row (relative to inner) back to a
+// scrollback offset, clamped to [0, scrollN].
+func offFromThumb(h, scrollN, top int) int {
+	th, _ := thumbGeom(h, scrollN, 0)
+	track := h - th
+	if track <= 0 || scrollN <= 0 {
+		return 0
+	}
+	off := int(float64(scrollN)*float64(track-top)/float64(track) + 0.5)
+	if off < 0 {
+		off = 0
+	}
+	if off > scrollN {
+		off = scrollN
+	}
+	return off
+}
+
+// setScrollOff records a host scrollback offset (0 means live view).
+func (a *App) setScrollOff(pid, off int) {
+	if off <= 0 {
+		delete(a.scroll, pid)
+	} else {
+		a.scroll[pid] = off
+	}
+}
+
+// sbMouse maps the drag's y onto the pane's scrollback range while
+// keeping the initial grab offset inside the thumb (SPEC G6).
 func (a *App) sbMouse(ev input.Event) {
 	m := ev.Mouse
 	if ev.Kind == input.KindMouseRelease {
@@ -195,19 +261,8 @@ func (a *App) sbMouse(ev input.Event) {
 	if sn.ScrollbackLen <= 0 || a.sb.inner.H <= 1 {
 		return
 	}
-	frac := float64(m.Y-a.sb.inner.Y) / float64(a.sb.inner.H-1)
-	if frac < 0 {
-		frac = 0
-	}
-	if frac > 1 {
-		frac = 1
-	}
-	off := sn.ScrollbackLen - int(frac*float64(sn.ScrollbackLen))
-	if off <= 0 {
-		delete(a.scroll, a.sb.pane)
-	} else {
-		a.scroll[a.sb.pane] = off
-	}
+	a.setScrollOff(a.sb.pane,
+		offFromThumb(a.sb.inner.H, sn.ScrollbackLen, m.Y-a.sb.inner.Y-a.sb.grab))
 }
 
 // actionBarHit fires the first matching action-bar button per SPEC G1:
@@ -257,6 +312,8 @@ func (a *App) tabBarClick(m uv.Mouse) {
 		case uv.MouseMiddle:
 			a.closeTabAt(a.st.Active, i)
 		case uv.MouseRight:
+			// Right-click selects the target tab, then opens its menu.
+			a.exec(model.CmdSelectTab{Workspace: a.st.Active, Tab: i})
 			a.openTabMenu(m.X, m.Y, a.st.Active, i)
 		}
 		return
@@ -319,6 +376,10 @@ func (a *App) statusClick(m uv.Mouse) {
 
 // sidebarClick handles clicks inside the sidebar region.
 func (a *App) sidebarClick(m uv.Mouse) {
+	if m.Button == uv.MouseRight {
+		a.sidebarRightClick(m)
+		return
+	}
 	if m.Button != uv.MouseLeft {
 		return
 	}
@@ -380,6 +441,36 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	}
 }
 
+// sidebarRightClick opens the workspace menu when the press lands on an
+// expanded sidebar workspace row (SPEC G6 right-click priority).
+func (a *App) sidebarRightClick(m uv.Mouse) {
+	s := a.st
+	if !s.SidebarVisible {
+		return
+	}
+	area := s.SidebarArea()
+	if pointIn(m.X, m.Y, render.SidebarMenuRect(s)) || pointIn(m.X, m.Y, render.SidebarNewRect(s)) {
+		return
+	}
+	_, iy, _, avail := render.SidebarContent(area)
+	if m.Y < iy || m.Y >= iy+avail {
+		return
+	}
+	rows := render.SidebarRows(s, a.paneSnaps())
+	scroll := a.sidebarScroll
+	if max := len(rows) - avail; max > 0 && scroll > max {
+		scroll = max
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	i := m.Y - iy + scroll
+	if i < 0 || i >= len(rows) || rows[i].Kind != render.RowWorkspace {
+		return
+	}
+	a.openWorkspaceMenu(m.X, m.Y, rows[i].Ws)
+}
+
 func (a *App) clampCollapsedScroll(n, avail int) int {
 	scroll := a.sidebarScroll
 	if max := n - avail; scroll > max {
@@ -395,6 +486,15 @@ func (a *App) clampCollapsedScroll(n, avail int) int {
 func (a *App) wheel(m uv.Mouse) {
 	up := m.Button == uv.MouseWheelUp
 	if !up && m.Button != uv.MouseWheelDown {
+		return
+	}
+	// The tab strip turns the wheel into tab cycling (SPEC G6).
+	if pointIn(m.X, m.Y, a.st.TabBarArea()) {
+		if up {
+			a.cycleTab(-1)
+		} else {
+			a.cycleTab(1)
+		}
 		return
 	}
 	// Sidebar scrolls its rows.
@@ -426,6 +526,13 @@ func (a *App) wheel(m uv.Mouse) {
 		return
 	}
 	sn := p.Snapshot()
+	// The scrollbar gutter is chrome: wheel there always scrolls the
+	// host scrollback, never the pane (SPEC G6).
+	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+	if gutter > 0 && m.X == inner.X+inner.W-1 && m.Y >= inner.Y && m.Y < inner.Y+inner.H {
+		a.hostScroll(pr.ID, sn.ScrollbackLen, up)
+		return
+	}
 	switch {
 	case sn.MouseTracking:
 		a.forwardTo(pr.ID, uv.MouseWheelEvent(m))
@@ -441,20 +548,25 @@ func (a *App) wheel(m uv.Mouse) {
 			}
 		})
 	default:
-		off := a.scroll[pr.ID]
-		if up {
-			off += 3
-			if off > sn.ScrollbackLen {
-				off = sn.ScrollbackLen
-			}
-			a.scroll[pr.ID] = off
+		a.hostScroll(pr.ID, sn.ScrollbackLen, up)
+	}
+}
+
+// hostScroll moves a pane's host scrollback by three lines per notch.
+func (a *App) hostScroll(pid, scrollN int, up bool) {
+	off := a.scroll[pid]
+	if up {
+		off += 3
+		if off > scrollN {
+			off = scrollN
+		}
+		a.scroll[pid] = off
+	} else {
+		off -= 3
+		if off <= 0 {
+			delete(a.scroll, pid)
 		} else {
-			off -= 3
-			if off <= 0 {
-				delete(a.scroll, pr.ID)
-			} else {
-				a.scroll[pr.ID] = off
-			}
+			a.scroll[pid] = off
 		}
 	}
 }
@@ -566,6 +678,9 @@ func (a *App) forwardMouse(ev input.Event) {
 }
 
 // forwardTo sends a mouse event to a pane in pane-inner coordinates.
+// When the app negotiated SGR 1016 the coordinates are delivered as
+// pixels: the center pixel of the target cell, computed from the pane's
+// pixel size when known, else the host cell size (SPEC G6).
 func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	p := a.sup.Get(pid)
 	if p == nil {
@@ -576,8 +691,9 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 		return
 	}
 	inner, _ := model.PaneContentRect(r, a.st.PaneBorders)
+	pixel := p.MousePixelMode()
 	tr := func(m uv.Mouse) uv.Mouse {
-		return uv.Mouse{X: m.X - inner.X, Y: m.Y - inner.Y, Button: m.Button, Mod: m.Mod}
+		return paneMouseCoord(inner, pixel, a.cellW, a.cellH, m)
 	}
 	switch e := ev.(type) {
 	case uv.MouseClickEvent:
@@ -589,4 +705,23 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	case uv.MouseWheelEvent:
 		p.SendMouse(uv.MouseWheelEvent(tr(uv.Mouse(e))))
 	}
+}
+
+// paneMouseCoord converts a host cell coordinate to a pane-inner
+// coordinate. In pixel mode the result is the center pixel of the target
+// cell, sized from the known cell geometry (1x1 fallback when the host
+// reports no pixel size).
+func paneMouseCoord(inner layout.Rect, pixel bool, cw, ch int, m uv.Mouse) uv.Mouse {
+	x, y := m.X-inner.X, m.Y-inner.Y
+	if pixel {
+		if cw < 1 {
+			cw = 1
+		}
+		if ch < 1 {
+			ch = 1
+		}
+		x = x*cw + cw/2
+		y = y*ch + ch/2
+	}
+	return uv.Mouse{X: x, Y: y, Button: m.Button, Mod: m.Mod}
 }

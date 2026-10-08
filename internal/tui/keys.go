@@ -15,6 +15,10 @@ func isCtrlB(k uv.Key) bool {
 
 // handleKey routes one key event.
 func (a *App) handleKey(k uv.Key, raw []byte) {
+	if a.help != nil {
+		a.helpKey(k)
+		return
+	}
 	if a.dialog != nil {
 		a.dialogKey(k)
 		return
@@ -50,6 +54,17 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 	if a.scroll[pid] > 0 {
 		delete(a.scroll, pid) // key input snaps back to the live screen
 	}
+	if k.Code == uv.KeyEnter && k.Mod == uv.ModShift {
+		// FixTerm Shift+Enter arrives as the legacy sequence
+		// CSI 27;2;13~ (or kitty CSI 13;2u). Per SPEC G6 the pane
+		// receives a bare LF — unless the app explicitly pushed the
+		// kitty keyboard protocol, which takes over the key itself.
+		if p := a.sup.Get(pid); p != nil && !p.KbdExplicit() {
+			a.sup.Input(pid, []byte{'\n'})
+			a.dirty = true
+			return
+		}
+	}
 	a.sup.Input(pid, raw)
 	a.dirty = true
 }
@@ -70,6 +85,8 @@ func (a *App) prefixKey(k uv.Key) {
 	case a.copyKeys[k.Code]:
 		// [keys] copy_mode (default prefix+[ and prefix+]).
 		a.enterCopy(false)
+	case k.Code == '?':
+		a.openHelp()
 	case a.splitVKeys[k.Code]:
 		// [keys] split_vertical (default prefix+% and prefix+v).
 		a.exec(model.CmdSplitFocused{Dir: layout.Vertical})

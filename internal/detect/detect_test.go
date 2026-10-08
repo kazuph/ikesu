@@ -182,3 +182,23 @@ func TestActivityFingerprint(t *testing.T) {
 		t.Fatalf("non-claude/codex agent fingerprinted: %q", fp)
 	}
 }
+
+// SPEC G6: the Copilot working footer covers "esc to cancel" and
+// "esc cancel" hints, bullet-prefixed thinking lines, and loading lines.
+func TestDetectCopilotWorking(t *testing.T) {
+	cases := []struct {
+		name   string
+		screen string
+	}{
+		{"esc to cancel", "Working on it\nesc to cancel\n"},
+		{"esc cancel", "● Thinking… esc cancel\n"},
+		{"bullet loading", "◉ Loading: 1 instruction, 5 hooks, 62 skills\n"},
+		{"plain loading", "loading: context\n"},
+	}
+	for _, c := range cases {
+		d := Detect("copilot", Input{Screen: c.screen})
+		if d.State != Working || !d.VisibleWorking {
+			t.Fatalf("%s → %+v", c.name, d)
+		}
+	}
+}

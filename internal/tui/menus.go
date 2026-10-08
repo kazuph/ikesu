@@ -145,6 +145,7 @@ func (a *App) openMainMenu(x, y int) {
 				{Label: "Previous workspace"},
 				{Separator: true},
 				{Label: sideLabel},
+				{Label: "Keybinds"},
 				{Separator: true},
 				{Label: "Restore agents…", Disabled: a.restoreHook == nil},
 				{Label: "Restart server…", Disabled: a.restartHook == nil},
@@ -227,11 +228,13 @@ func (a *App) activateMenu(i int) {
 			a.selectWorkspace(a.st.Active - 1)
 		case 4:
 			a.exec(model.CmdToggleSidebar{})
-		case 6:
-			a.openRestoreDialog()
+		case 5:
+			a.openHelp()
 		case 7:
-			a.openRestartDialog()
+			a.openRestoreDialog()
 		case 8:
+			a.openRestartDialog()
+		case 9:
 			a.openQuitDialog()
 		}
 	}

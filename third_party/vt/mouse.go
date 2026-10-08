@@ -87,7 +87,7 @@ func (e *Emulator) SendMouse(m Mouse) {
 		// ansi.Utf8ExtMouseMode,
 		ansi.ModeMouseExtSgr,
 		// ansi.UrxvtExtMouseMode,
-		// ansi.SgrPixelExtMouseMode,
+		ansi.ModeMouseExtSgrPixel,
 	} {
 		if e.isModeSet(mm) {
 			enc = mm
@@ -105,11 +105,12 @@ func (e *Emulator) SendMouse(m Mouse) {
 
 	switch enc {
 	// XXX: Support [ansi.HighlightMouseMode].
-	// XXX: Support [ansi.Utf8ExtMouseMode], [ansi.UrxvtExtMouseMode], and
-	// [ansi.SgrPixelExtMouseMode].
+	// XXX: Support [ansi.Utf8ExtMouseMode] and [ansi.UrxvtExtMouseMode].
 	case nil: // X10 mouse encoding
 		_, _ = io.WriteString(e.pw, ansi.MouseX10(b, mouse.X, mouse.Y))
-	case ansi.ModeMouseExtSgr: // SGR mouse encoding
+	case ansi.ModeMouseExtSgr, ansi.ModeMouseExtSgrPixel: // SGR (pixel) encoding
+		// Mode 1016 shares the SGR wire format; callers supply pixel
+		// coordinates when the pixel extension is negotiated.
 		_, _ = io.WriteString(e.pw, ansi.MouseSgr(b, mouse.X, mouse.Y, isRelease))
 	}
 }

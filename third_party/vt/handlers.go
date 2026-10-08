@@ -920,4 +920,34 @@ func (e *Emulator) registerDefaultCsiHandlers() {
 
 		return true
 	})
+
+	e.RegisterCsiHandler(ansi.Command('?', 0, 'u'), func(params ansi.Params) bool {
+		// FixTerm keyboard enhancement query. We report support for no
+		// kitty flags: CSI ? 0 u (SPEC G6 Ghostty compatibility). A flags
+		// field of 0 is the response we ourselves emit — answering it
+		// would loop forever when a canonical-mode tty echoes our own
+		// response back as input.
+		if len(params) > 0 {
+			if v, _, _ := params.Param(0, 0); v == 0 {
+				return true // our own response echoed back
+			}
+		}
+		_, _ = io.WriteString(e.pw, "\x1b[?0u")
+		return true
+	})
+
+	e.RegisterCsiHandler(ansi.Command('>', 0, 'u'), func(params ansi.Params) bool {
+		// Kitty keyboard protocol: push flags. An explicit request clears
+		// the FixTerm Shift+Enter compatibility exception (SPEC G6).
+		e.kbdStack++
+		return true
+	})
+
+	e.RegisterCsiHandler(ansi.Command('<', 0, 'u'), func(params ansi.Params) bool {
+		// Kitty keyboard protocol: pop flags entry.
+		if e.kbdStack > 0 {
+			e.kbdStack--
+		}
+		return true
+	})
 }

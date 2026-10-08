@@ -34,5 +34,7 @@ any = [
   { contains = ["esc cancel"] },
   { contains = ["esc again to cancel"] },
   { contains = ["esc interrupt"] },
+  { contains = ["loading:"] },
   { line_regex = ['^\s*[●◉◎○]\s+Loading:'] },
+  { line_regex = ['^\s*[●◉◎○].*[Tt]hinking.*esc cancel'] },
 ]

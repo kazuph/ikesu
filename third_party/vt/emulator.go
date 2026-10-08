@@ -77,7 +77,16 @@ type Emulator struct {
 	// atPhantom indicates if the cursor is out of bounds.
 	// When true, and a character is written, the cursor is moved to the next line.
 	atPhantom bool
+
+	// kbdStack counts kitty keyboard-protocol push requests (CSI > flags u).
+	// A pane that explicitly requested the protocol clears the FixTerm
+	// compatibility exception for Shift+Enter (SPEC G6).
+	kbdStack int
 }
+
+// KbdExplicit reports whether the application pushed an explicit kitty
+// keyboard-protocol request with CSI > u (CSI < u pops it).
+func (e *Emulator) KbdExplicit() bool { return e.kbdStack > 0 }
 
 var _ Terminal = (*Emulator)(nil)
 

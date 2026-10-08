@@ -38,6 +38,8 @@ type msg struct {
 	Data   string `json:"data,omitempty"`
 	Cols   int    `json:"cols,omitempty"`
 	Rows   int    `json:"rows,omitempty"`
+	Xpixel int    `json:"xpixel,omitempty"`
+	Ypixel int    `json:"ypixel,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -82,13 +84,13 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 		_, _ = out.WriteString(tui.MouseOffSeq)
 		platform.FlushInput(int(in.Fd()))
 		tui.DrainInput(in, drainMs)
-		_, _ = out.WriteString(tui.LeaveSeq)
+		_, _ = out.WriteString(tui.KbdLeaveSeq() + tui.LeaveSeq)
 		restore()
 	}
 	defer leave()
 	defer restore()
 
-	if _, err := out.WriteString(tui.EnterSeq); err != nil {
+	if _, err := out.WriteString(tui.EnterSeq + tui.KbdEnterSeq()); err != nil {
 		conn.Close()
 		return 1, err
 	}
@@ -149,7 +151,7 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 		return pumpDone
 	}
 	w := &writer{conn: conn}
-	if err := w.send(msg{Type: "hello", Cols: ws.Cols, Rows: ws.Rows}); err != nil {
+	if err := w.send(msg{Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel}); err != nil {
 		leave()
 		fmt.Fprintf(out, "gtx: attach: %v\n", err)
 		return pumpDone
@@ -184,7 +186,7 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 				return
 			case <-winch:
 				if sz, err := tui.GetWinsize(in); err == nil {
-					_ = w.send(msg{Type: "resize", Cols: sz.Cols, Rows: sz.Rows})
+					_ = w.send(msg{Type: "resize", Cols: sz.Cols, Rows: sz.Rows, Xpixel: sz.Xpixel, Ypixel: sz.Ypixel})
 				}
 			}
 		}

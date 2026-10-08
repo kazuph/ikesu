@@ -192,6 +192,7 @@ func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra, argv [
 	cmd.Dir = cwd
 	env := append(cleanEnv(os.Environ()),
 		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
 		"GOTERRACE=1",
 		"GOTERRACE_PANE_ID="+itoa(id),
 	)
@@ -537,6 +538,23 @@ func (p *Pane) SendMouse(m uv.MouseEvent) {
 	p.mu.Lock()
 	p.emu.SendMouse(m)
 	p.mu.Unlock()
+}
+
+// MousePixelMode reports whether the app enabled SGR pixel mouse mode
+// (DEC 1016): callers must then deliver pixel coordinates (SPEC G6).
+func (p *Pane) MousePixelMode() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.emu.ModeSet(ansi.ModeMouseExtSgrPixel)
+}
+
+// KbdExplicit reports whether the app pushed an explicit kitty keyboard
+// protocol request; the FixTerm Shift+Enter exception then does not apply
+// (SPEC G6).
+func (p *Pane) KbdExplicit() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.emu.KbdExplicit()
 }
 
 // Resize updates the emulator and PTY window size (SIGWINCH to the child).

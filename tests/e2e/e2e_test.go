@@ -62,7 +62,9 @@ type lockedBuf struct {
 	ch chan []byte
 }
 
-func start(t *testing.T) *session {
+func start(t *testing.T) *session { return startEnv(t, nil) }
+
+func startEnv(t *testing.T, extra map[string]string) *session {
 	t.Helper()
 	// Deterministic shell inside panes: a bare ZDOTDIR with a fixed PS1 so
 	// prompt waits do not depend on the host's zshrc/direnv.
@@ -90,6 +92,9 @@ func start(t *testing.T) *session {
 		"GTX_STATE_DIR="+stateDir,
 		"GTX_CONFIG="+cfgFile,
 	)
+	for k, v := range extra {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
 	if err != nil {
 		t.Fatalf("pty start: %v", err)
@@ -623,4 +628,132 @@ func TestServerRestartKeepsPanes(t *testing.T) {
 	if !strings.Contains(listOut, `"pane_id":"p1"`) || !strings.Contains(listOut, `"pane_id":"p2"`) {
 		t.Fatalf("pane ids not stable across restart:\n%s", listOut)
 	}
+}
+
+// SPEC G6: a raw LF byte reaches the pane as LF, not normalized to CR.
+// od -tx1 gives byte-level proof: typing "A" then a bare LF yields
+// "41 0a" with no 0d anywhere on the wire.
+func TestRawLFToPane(t *testing.T) {
+	s := start(t)
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send("od -An -tx1 -N2\r") // read exactly 2 bytes then exit
+	s.send("A\n")
+	s.waitFor("od bytes", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "41  0a")
+	})
+	if strings.Contains(s.text(), "0d") {
+		t.Fatalf("LF was translated to CR:\n%s", s.text())
+	}
+}
+
+// SPEC G6: a legacy modifyOtherKeys Shift+Enter press delivers a bare LF
+// to the pane; the kitty release form delivers nothing.
+func TestShiftEnterToPane(t *testing.T) {
+	s := start(t)
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send("stty -icanon; od -An -tx1 -N1\r") // read 1 byte then exit
+	s.send("\x1b[13;2:3u")                    // kitty release event first: must emit nothing
+	s.send("\x1b[27;2;13~")                   // legacy Shift+Enter press → bare LF
+	s.waitFor("LF only", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, " 0a")
+	})
+	if strings.Contains(s.text(), "1b") {
+		t.Fatalf("release or raw sequence leaked to pane:\n%s", s.text())
+	}
+}
+
+// SPEC G6: after the pane explicitly pushes the kitty keyboard protocol
+// (CSI > u), Shift+Enter falls through to the raw legacy bytes.
+func TestKittyExplicitShiftEnter(t *testing.T) {
+	s := start(t)
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send("printf '\\033[>1u'\r")
+	s.waitFor("push done", 5*time.Second, func(tx string) bool {
+		return strings.Count(tx, "❯") >= 2
+	})
+	s.send("stty -icanon; od -An -tx1 -N10\r")
+	s.send("\x1b[27;2;13~") // 10 bytes: ESC [ 2 7 ; 2 ; 1 3 ~
+	s.waitFor("raw legacy seq", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "1b  5b  32  37")
+	})
+}
+
+// SPEC G6: a FixTerm keyboard query (CSI ? u) from the pane is answered
+// with CSI ? 0 u — the response bytes land in the pane's input stream.
+func TestFixTermQueryResponse(t *testing.T) {
+	s := start(t)
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	// The response is queued on the tty input buffer and read by od.
+	s.send("stty -icanon; printf '\\033[?u'; od -An -tx1 -N5\r")
+	s.waitFor("query response", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "1b  5b  3f  30  75")
+	})
+}
+
+// SPEC G6: NO_COLOR is stripped from pane environments while COLORTERM
+// and TERM survive.
+func TestPaneEnvNoColor(t *testing.T) {
+	s := startEnv(t, map[string]string{"NO_COLOR": "1"})
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send("env | grep -E 'NO_COLOR|COLORTERM|^TERM='\r")
+	s.waitFor("env output", 10*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "COLORTERM=truecolor")
+	})
+	tx := s.text()
+	if strings.Contains(tx, "NO_COLOR=") {
+		t.Fatalf("NO_COLOR leaked into pane env:\n%s", tx)
+	}
+	if !strings.Contains(tx, "TERM=xterm-256color") {
+		t.Fatalf("TERM missing:\n%s", tx)
+	}
+}
+
+// SPEC G6: right-click on an inactive tab selects it and opens its menu.
+func TestTabRightClickSelects(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 15*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "tab 1") && strings.Contains(tx, "❯")
+	})
+	// Tab 2 with a split so the active tab is identifiable by pane count.
+	s.send("\x02c")
+	s.waitFor("tab 2", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "tab 2") })
+	s.send("\x02v")
+	s.waitFor("tab 2 split", 5*time.Second, func(tx string) bool { return countPanes(tx) == 2 })
+	x, y := s.find("tab 1")
+	if x < 0 {
+		t.Fatalf("tab 1 not found:\n%s", s.text())
+	}
+	s.rightClick(x, y)
+	s.waitFor("tab menu", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "Rename tab")
+	})
+	// The menu covers the pane titles while open; closing it reveals
+	// that tab 1 (one pane) became the active tab.
+	s.send("\x1b")
+	s.waitFor("tab 1 selected", 5*time.Second, func(tx string) bool {
+		return countPanes(tx) == 1
+	})
+}
+
+// SPEC G6: prefix+? opens the keybind help overlay; wheel scrolls it; a
+// click outside closes it.
+func TestKeybindHelp(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	s.send("\x02?")
+	s.waitFor("help open", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "keybinds") && strings.Contains(tx, "copy mode") &&
+			strings.Contains(tx, "cycle pane previous")
+	})
+	// Wheel inside the overlay scrolls without closing.
+	s.send(fmt.Sprintf("\x1b[<65;%d;%dM", termW/2+1, termH/2+1))
+	s.pump(time.Now().Add(300 * time.Millisecond))
+	if !strings.Contains(s.text(), "keybinds") {
+		t.Fatalf("wheel closed the help overlay:\n%s", s.text())
+	}
+	// Click outside the box closes it.
+	s.click(2, termH-1)
+	s.waitFor("help closed", 5*time.Second, func(tx string) bool {
+		return !strings.Contains(tx, "keybinds")
+	})
 }

@@ -38,6 +38,8 @@ type clientMsg struct {
 	Data   string `json:"data,omitempty"`
 	Cols   int    `json:"cols,omitempty"`
 	Rows   int    `json:"rows,omitempty"`
+	Xpixel int    `json:"xpixel,omitempty"`
+	Ypixel int    `json:"ypixel,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -410,6 +412,7 @@ func (s *Server) attach(conn net.Conn) {
 	// New client: force a full repaint at its size.
 	s.app.Do(func() {
 		s.app.ResetEncoder()
+		s.app.SetCellPixels(hello.Xpixel, hello.Ypixel)
 		s.app.ExecCmd(model.CmdResize{Cols: hello.Cols, Rows: hello.Rows})
 	})
 
@@ -425,7 +428,7 @@ func (s *Server) attach(conn net.Conn) {
 				s.app.PushInput(data)
 			}
 		case "resize":
-			s.app.Resize(m.Cols, m.Rows)
+			s.app.Resize(m.Cols, m.Rows, m.Xpixel, m.Ypixel)
 		}
 	}
 }

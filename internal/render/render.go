@@ -142,6 +142,8 @@ type Input struct {
 	// frame row (in-layout) or the panes area's last row (fullscreen):
 	// " COPY  h/j/k/l … " or the search prompt (SPEC G6).
 	CopyHint string
+	// Help is the keybind-help overlay (SPEC G6 prefix+? / [menu]→keybinds).
+	Help *HelpInput
 }
 
 // CopyMark locates the copy-mode cursor in pane-inner cell coords and,
@@ -173,7 +175,9 @@ type Output struct {
 	MenuItemRows  []layout.Rect // per-item row rects (absolute coords)
 	DialogRect    layout.Rect
 	DialogConfirm layout.Rect
-	DialogCancel  layout.Rect
+	// HelpRect lets the mouse layer hit-test the help overlay.
+	HelpRect     layout.Rect
+	DialogCancel layout.Rect
 }
 
 // ActionBarRects are the bottom action bar's clickable regions (SPEC G1).
@@ -183,6 +187,20 @@ type ActionBarRects struct {
 	Cycle    layout.Rect
 	Rotate   layout.Rect
 	Equalize layout.Rect
+}
+
+// HelpRow is one row in the keybind help overlay: either a group header
+// or a binding→command pair (SPEC G6).
+type HelpRow struct {
+	Group bool
+	Bind  string
+	Cmd   string
+}
+
+// HelpInput feeds the keybind help overlay.
+type HelpInput struct {
+	Rows   []HelpRow
+	Scroll int // first visible content row
 }
 
 // Compose renders the entire screen into a frame.
@@ -204,6 +222,9 @@ func Compose(in Input) *Output {
 	}
 	if in.Toast != nil {
 		drawToast(f, in.Toast, out)
+	}
+	if in.Help != nil {
+		drawHelp(f, in.Help, out)
 	}
 	return out
 }
@@ -792,6 +813,16 @@ func aggregateGlyph(ws *model.Workspace, in Input) StatusGlyph {
 	return best
 }
 
+// workingRune returns the spinner frame for the working aggregate glyph
+// (SPEC G6: working indicators spin instead of a fixed dot).
+func workingRune(spin int) string {
+	frames := []string{"◐", "◓", "◑", "◒"}
+	if spin < 0 {
+		spin = 0
+	}
+	return frames[spin%len(frames)]
+}
+
 // glyphRank orders state keys by attention: blocked > done > working > idle
 // > unknown.
 func glyphRank(g StatusGlyph) int {
@@ -863,7 +894,7 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 		key, g string
 		c      color.Color
 	}{
-		{"working", "◐", Yellow}, {"blocked", "▲", Peach}, {"done", "●", Green}, {"idle", "○", Dim},
+		{"working", workingRune(in.Spin), Yellow}, {"blocked", "▲", Peach}, {"done", "●", Green}, {"idle", "○", Dim},
 	}
 	for _, o := range order {
 		if n := counts[o.key]; n > 0 {
@@ -1023,6 +1054,75 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	confirm = layout.Rect{X: x + w - 1 - confirmW, Y: by, W: confirmW, H: 1}
 	cancel = layout.Rect{X: confirm.X - 2 - cancelW, Y: by, W: cancelW, H: 1}
 	return
+}
+
+// drawHelp renders the keybind-help overlay: a centered bordered box
+// with a title, subtitle, scrollable binding rows, and a footer hint
+// (SPEC G6).
+func drawHelp(f *Frame, h *HelpInput, out *Output) {
+	w := f.W * 3 / 4
+	if w > 68 {
+		w = 68
+	}
+	if w < 34 {
+		w = f.W
+	}
+	if w > f.W {
+		w = f.W
+	}
+	content := len(h.Rows) + 4 // subtitle + rows + footer inside a border
+	hgt := content
+	if max := f.H - 2; hgt > max {
+		hgt = max
+	}
+	if hgt < 6 {
+		hgt = 6
+	}
+	x := (f.W - w) / 2
+	y := (f.H - hgt) / 2
+	border := uv.Style{Fg: Dim}
+	ix, iy, iw, ih := f.Box(x, y, w, hgt, border)
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
+	out.HelpRect = layout.Rect{X: x, Y: y, W: w, H: hgt}
+
+	// Title on the top border row, subtitle on the first inner row.
+	title := " keybinds · scroll to explore · esc close "
+	for i, r := range []rune(title) {
+		if x+2+i >= x+w-1 {
+			break
+		}
+		f.Set(x+2+i, y, string(r), uv.Style{Fg: Accent})
+	}
+	f.Text(ix+1, iy, "available commands and configured shortcuts", uv.Style{Fg: Dim}, ix+iw-1)
+
+	// Scrollable content rows.
+	body := ih - 2 // subtitle + footer
+	if body < 1 {
+		body = 1
+	}
+	scroll := h.Scroll
+	if scroll < 0 {
+		scroll = 0
+	}
+	if max := len(h.Rows) - body; scroll > max {
+		scroll = max
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	for i := 0; i < body && scroll+i < len(h.Rows); i++ {
+		row := h.Rows[scroll+i]
+		ry := iy + 1 + i
+		if row.Group {
+			f.Text(ix+1, ry, row.Cmd, uv.Style{Fg: Accent, Attrs: uv.AttrBold}, ix+iw-1)
+			continue
+		}
+		f.Text(ix+2, ry, row.Bind, uv.Style{Fg: Peach}, ix+iw-1)
+		f.Text(ix+20, ry, row.Cmd, uv.Style{Fg: Text}, ix+iw-1)
+	}
+
+	// Footer hint on the last inner row.
+	f.Text(ix+1, iy+ih-1, "scroll wheel ↑↓ · jump pgup/pgdn · close esc/enter", uv.Style{Fg: Dim}, ix+iw-1)
 }
 
 func drawDialog(f *Frame, d *Dialog, out *Output) {

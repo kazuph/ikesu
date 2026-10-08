@@ -143,3 +143,84 @@ func TestBracketedPaste(t *testing.T) {
 		t.Fatalf("tail = %+v", evs)
 	}
 }
+
+// SPEC G6: a raw LF byte stays a KindKey event whose Raw is "\n" so the
+// terminal path forwards the byte verbatim (decoders see ctrl+j).
+func TestRawLF(t *testing.T) {
+	f := &Framer{}
+	evs := f.Push([]byte{'\n'})
+	if len(evs) != 1 || evs[0].Kind != KindKey {
+		t.Fatalf("events = %v", drainKinds(evs))
+	}
+	if string(evs[0].Raw) != "\n" {
+		t.Fatalf("raw = %q", evs[0].Raw)
+	}
+}
+
+// SPEC G6: the legacy modifyOtherKeys Shift+Enter sequence decodes as
+// Enter+Shift (the TUI maps it to LF for non-kitty panes).
+func TestLegacyShiftEnter(t *testing.T) {
+	f := &Framer{}
+	evs := f.Push([]byte("\x1b[27;2;13~"))
+	if len(evs) != 1 || evs[0].Kind != KindKey {
+		t.Fatalf("events = %v", drainKinds(evs))
+	}
+	if evs[0].Key.Code != uv.KeyEnter || evs[0].Key.Mod != uv.ModShift {
+		t.Fatalf("key = %+v", evs[0].Key)
+	}
+}
+
+// SPEC G6: kitty CSI-u with an empty modifier field and associated text
+// equal to the key decodes as plain "a".
+func TestKittyEmptyModifier(t *testing.T) {
+	f := &Framer{}
+	evs := f.Push([]byte("\x1b[97;;97u"))
+	if len(evs) != 1 || evs[0].Kind != KindKey {
+		t.Fatalf("events = %v", drainKinds(evs))
+	}
+	if evs[0].Key.Text != "a" || evs[0].Key.Mod != 0 {
+		t.Fatalf("key = %+v", evs[0].Key)
+	}
+}
+
+// SPEC G6: kitty CSI-u with a shifted key and associated shifted text
+// decodes as "A" with Shift.
+func TestKittyShiftedText(t *testing.T) {
+	f := &Framer{}
+	evs := f.Push([]byte("\x1b[97:65;2;65u"))
+	if len(evs) != 1 || evs[0].Kind != KindKey {
+		t.Fatalf("events = %v", drainKinds(evs))
+	}
+	if evs[0].Key.Text != "A" || !evs[0].Key.Mod.Contains(uv.ModShift) {
+		t.Fatalf("key = %+v", evs[0].Key)
+	}
+}
+
+// SPEC G6: kitty release events are never forwarded as key input.
+func TestKittyReleaseDropped(t *testing.T) {
+	f := &Framer{}
+	evs := f.Push([]byte("\x1b[13;2:3u"))
+	if len(evs) != 1 || evs[0].Kind != KindUnknown {
+		t.Fatalf("events = %v", drainKinds(evs))
+	}
+}
+
+// SPEC G6: undecodable keyboard-protocol sequences are dropped, never
+// forwarded as keystrokes.
+func TestInvalidSequenceDropped(t *testing.T) {
+	for _, seq := range []string{
+		"\x1b[>1;5u",   // push-flags form is not host input
+		"\x1b[=1;1u",   // set-flags form is not host input
+		"\x1b[?u",      // fixterm query echo is not a key
+		"\x1b[97;2x",   // bad final byte: no key decode
+		"\x1b[13;2:3u", // kitty release event
+	} {
+		f := &Framer{}
+		evs := append(f.Push([]byte(seq)), f.FlushTimeout()...)
+		for _, e := range evs {
+			if e.Kind == KindKey {
+				t.Fatalf("%q produced key event %+v", seq, e.Key)
+			}
+		}
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -56,6 +57,24 @@ const (
 	// LeaveSeq restores the terminal.
 	LeaveSeq = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
 )
+
+// KbdEnterSeq enables modifyOtherKeys mode 1 when the host terminal is
+// Ghostty so modified keys arrive in the legacy CSI 27;mod;key~ form
+// (SPEC G6). Unknown hosts get no protocol enable.
+func KbdEnterSeq() string {
+	if strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") {
+		return "\x1b[>4;1m"
+	}
+	return ""
+}
+
+// KbdLeaveSeq undoes KbdEnterSeq for Ghostty hosts.
+func KbdLeaveSeq() string {
+	if strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") {
+		return "\x1b[>4;0m"
+	}
+	return ""
+}
 
 type menuKind int
 
@@ -172,6 +191,9 @@ type App struct {
 	uiHideSingle  bool                                     // [ui] hide_tab_bar_when_single_tab
 	uiBorders     bool                                     // [ui] pane_borders
 	sidebarScroll int
+	cellW         int // host cell width in pixels (0 = unknown)
+	cellH         int // host cell height in pixels (0 = unknown)
+	help          *helpView
 	copied        string
 	copiedAt      time.Time
 	lastClick     clickMark // last left press inside a normal pane body
@@ -181,6 +203,17 @@ type App struct {
 	lastDraw      time.Time
 	dirty         bool
 	quit          bool
+}
+
+// SetCellPixels records the host terminal's pixel geometry so SGR 1016
+// panes can be sent cell-center pixel coordinates (SPEC G6).
+func (a *App) SetCellPixels(xp, yp int) {
+	if a.st.Cols > 0 && xp > 0 {
+		a.cellW = xp / a.st.Cols
+	}
+	if a.st.Rows > 0 && yp > 0 {
+		a.cellH = yp / a.st.Rows
+	}
 }
 
 // NewApp creates an App over existing state and supervisor. out is the
@@ -299,10 +332,11 @@ func (a *App) PushInput(b []byte) {
 // CloseInput closes the input channel; in local mode that quits the app.
 func (a *App) CloseInput() { close(a.input) }
 
-// Resize records a new outer terminal size.
-func (a *App) Resize(cols, rows int) {
+// Resize records a new outer terminal size; xp/yp carry the host's
+// pixel geometry for SGR 1016 cell-center conversion (0 when unknown).
+func (a *App) Resize(cols, rows, xp, yp int) {
 	select {
-	case a.resizeCh <- winsize{Cols: cols, Rows: rows}:
+	case a.resizeCh <- winsize{Cols: cols, Rows: rows, Xpixel: xp, Ypixel: yp}:
 	case <-a.doneCh:
 	}
 }
@@ -382,6 +416,7 @@ func (a *App) Run() {
 		case ev := <-a.sup.Events():
 			a.onRuntimeEvent(ev)
 		case sz := <-a.resizeCh:
+			a.SetCellPixels(sz.Xpixel, sz.Ypixel)
 			if sz.Cols != a.st.Cols || sz.Rows != a.st.Rows {
 				a.exec(model.CmdResize{Cols: sz.Cols, Rows: sz.Rows})
 				a.enc.Reset()
@@ -425,7 +460,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	if _, err := out.WriteString(EnterSeq); err != nil {
+	if _, err := out.WriteString(EnterSeq + KbdEnterSeq()); err != nil {
 		return 1, err
 	}
 	leave := func() {
@@ -434,7 +469,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 		_, _ = out.WriteString(MouseOffSeq)
 		platform.FlushInput(int(in.Fd()))
 		DrainInput(in, drainMs)
-		_, _ = out.WriteString(LeaveSeq)
+		_, _ = out.WriteString(KbdLeaveSeq() + LeaveSeq)
 		restore()
 	}
 	defer leave()
@@ -442,6 +477,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	st := model.New(cwd, ws.Cols, ws.Rows)
 	sup := runtime.NewSupervisor()
 	a := NewApp(st, sup, out, cwd)
+	a.SetCellPixels(ws.Xpixel, ws.Ypixel)
 	a.inputEOF = true
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
@@ -459,7 +495,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	go func() {
 		for range winch {
 			if sz, err := GetWinsize(in); err == nil {
-				a.Resize(sz.Cols, sz.Rows)
+				a.Resize(sz.Cols, sz.Rows, sz.Xpixel, sz.Ypixel)
 			}
 		}
 	}()
@@ -772,7 +808,7 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	}
 	switch key {
 	case "working":
-		return render.StatusGlyph{Key: "working", Rune: "◐", Color: render.Yellow}
+		return render.StatusGlyph{Key: "working", Rune: spinnerFrames[a.spin%len(spinnerFrames)], Color: render.Yellow}
 	case "blocked":
 		return render.StatusGlyph{Key: "blocked", Rune: "▲", Color: render.Peach}
 	case "done":
@@ -823,11 +859,17 @@ func (a *App) draw() {
 	if a.toast != nil {
 		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind}
 	}
+	if a.help != nil {
+		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}
+	}
 	out := render.Compose(in)
 	a.tabHits = out.TabHits
 	a.newTabRect = out.NewTabRect
 	a.toastRect = out.ToastRect
 	a.actionBar = out.ActionBar
+	if a.help != nil {
+		a.help.rect = out.HelpRect
+	}
 	a.lastDraw = time.Now()
 	a.dirty = false
 	_, _ = a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
@@ -950,15 +992,16 @@ func agentFor(sn runtime.Snapshot) string {
 
 // --- helpers ---
 
-type winsize struct{ Cols, Rows int }
+type winsize struct{ Cols, Rows, Xpixel, Ypixel int }
 
-// GetWinsize reads the terminal size of f.
+// GetWinsize reads the terminal size of f in cells and pixels. Pixel
+// dimensions may be zero on platforms that do not report them.
 func GetWinsize(f *os.File) (winsize, error) {
-	w, h, err := term.GetSize(int(f.Fd()))
+	ws, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
 	if err != nil {
-		return winsize{120, 40}, err
+		return winsize{120, 40, 0, 0}, err
 	}
-	return winsize{w, h}, nil
+	return winsize{int(ws.Col), int(ws.Row), int(ws.Xpixel), int(ws.Ypixel)}, nil
 }
 
 // Winsize is the terminal size exported for the client package.
