@@ -17,7 +17,7 @@ herdr のソースコード（`~/src/github.com/kazuph/herdr/src` など）と�
 |---|---|
 | G1 レイアウト操作 | 「tab・workspace間pane移動」「pane menuのレイアウト操作」「レイアウト cycle」「非明示pane追加は既存順の末尾へ追記」「pane 回転と target 安定化」「bottom pane action bar と pane title zoom」「pane描画・resize・mouse routingの微細契約」 |
 | G6 入力・コピー | 「pane copy mode本体」「右角括弧でもcopy modeに入る」「tmux風split default keybind」「Copilot CLI向けraw LFとGhostty入力互換」「pane内NO_COLORを引き継がない」「mouse routing・overlay・helpの微細契約」「SGR 1016 paneへのcell中心pixel配送」 |
-| G7 worktree操作 | 受け入れ条件のうち Windows 以外の全部（サイドバー・CLI・API からの作成／既存 branch の checkout／安全な削除／削除後の focus／workspace group／event／bare repository）。本家の CLI・API の形は herdr fork のソースと `herdr worktree --help` に合わせる |
+| G7 worktree操作 | 受け入れ条件のうち Windows 以外の全部（サイドバー・CLI・API からの作成／既存 branch の checkout／安全な削除／削除後の focus／workspace group／event／bare repository）。CLI・API の形は `docs/ref/herdr-api-schema.json` の `worktree.*` と `docs/ref/herdr-cli-worktree.txt`（`herdr worktree --help` の写し）に合わせる |
 
 作らない: G6「Vim風ターミナル操作モード」（SPEC で破棄）。
 

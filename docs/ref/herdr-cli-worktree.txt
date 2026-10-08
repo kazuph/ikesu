@@ -1,0 +1,5 @@
+herdr worktree commands:
+  herdr worktree list [--workspace ID | --cwd PATH] [--json]
+  herdr worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--json]
+  herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--json]
+  herdr worktree remove --workspace ID [--force] [--json]
