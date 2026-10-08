@@ -576,6 +576,9 @@ type SidebarRow struct {
 func SidebarRows(s *model.AppState, panes map[int]*PaneSnap) []SidebarRow {
 	var rows []SidebarRow
 	for i := range s.Workspaces {
+		if WorkspaceHidden(s, i) {
+			continue
+		}
 		rows = append(rows, SidebarRow{Kind: RowWorkspace, Ws: i, Pane: -1})
 	}
 	agentRows := false
@@ -705,6 +708,17 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			f.Fill(ix, y, iw, 1, " ", uv.Style{Bg: Surface})
 		}
 		num := fmt.Sprintf(" %d ", r.Ws+1)
+		if ws.Worktree != nil {
+			if ws.Worktree.IsLinkedWorktree {
+				num = fmt.Sprintf("   %d ", r.Ws+1)
+			} else {
+				arrow := "▾"
+				if ws.GroupCollapsed {
+					arrow = "▸"
+				}
+				num = fmt.Sprintf("%s %d ", arrow, r.Ws+1)
+			}
+		}
 		sty := uv.Style{Fg: Text, Attrs: boldIf(active)}
 		if active {
 			sty.Bg = Surface

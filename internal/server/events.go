@@ -162,6 +162,9 @@ func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 		if !ok {
 			continue
 		}
+		if pw.Worktree != ws.Worktree || pw.GroupCollapsed != ws.GroupCollapsed {
+			s.emitEvent("workspace_metadata_updated", ev("workspace_metadata_updated", "workspace", s.wsInfo(i)))
+		}
 		if pw.Name != ws.Name {
 			s.emitEvent("workspace_renamed", ev("workspace_renamed",
 				"workspace_id", fmtWorkspaceID(int(ws.ID)), "label", ws.Name))

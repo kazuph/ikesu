@@ -9,6 +9,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/api"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,11 +34,13 @@ type File struct {
 
 // Workspace is one saved workspace.
 type Workspace struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Cwd       string `json:"cwd"`
-	ActiveTab int    `json:"active_tab"`
-	Tabs      []Tab  `json:"tabs"`
+	Worktree       *api.WorkspaceWorktreeInfo `json:"worktree,omitempty"`
+	GroupCollapsed bool                       `json:"group_collapsed,omitempty"`
+	ID             int                        `json:"id"`
+	Name           string                     `json:"name"`
+	Cwd            string                     `json:"cwd"`
+	ActiveTab      int                        `json:"active_tab"`
+	Tabs           []Tab                      `json:"tabs"`
 }
 
 // Tab is one saved tab with its split tree and pane records.

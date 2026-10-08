@@ -228,6 +228,7 @@ func Run(session, version string) (int, error) {
 	s.outEmit = map[int]*outputEmit{}
 	s.lastAgent = map[int]string{}
 	s.app.SetPostExecHook(s.afterExec)
+	s.app.SetWorktreeHook(s.worktreeEvent)
 	s.app.SetExitedHook(s.onPaneExited)
 	s.app.SetOutputHook(s.onPaneOutput)
 	if r, ok := config.ParseNavKey(s.cfg.NavKey()); ok {

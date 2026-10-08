@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/api"
 
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
@@ -98,18 +100,10 @@ func (a *App) agentPane(argv ...string) {
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
 func (a *App) openWorkspaceMenu(x, y, ws int) {
-	a.menu = &uiMenu{justOpened: true,
-		kind: menuWorkspace,
-		ws:   ws,
-		m: render.Menu{
-			X: x, Y: y, Hover: -1, Sel: -1,
-			Items: []render.MenuItem{
-				{Label: "New workspace"},
-				{Separator: true},
-				{Label: "Close workspace…"},
-			},
-		},
-	}
+	items := []render.MenuItem{{Label: "New workspace"}, {Separator: true}}
+	items = append(items, a.workspaceWorktreeItems(ws)...)
+	items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "Close workspace…"})
+	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: items}}
 }
 
 // openTabMenu shows the right-click menu for a tab cell.
@@ -202,12 +196,31 @@ func (a *App) activateMenu(i int) {
 		case "Close pane":
 			a.closeFocusedPane()
 		}
+	case menuWorktree:
+		if i < len(m.worktreePaths) {
+			id := fmt.Sprintf("s%d", a.st.Workspaces[m.ws].ID)
+			path := m.worktreePaths[i]
+			_, err := a.OpenWorktree(api.WorktreeOpenParams{WorkspaceID: &id, Path: &path, Focus: true})
+			if err != nil {
+				a.worktreeError(err)
+			}
+		}
 	case menuWorkspace:
-		switch i {
-		case 0:
+		switch m.m.Items[i].Label {
+		case "New workspace":
 			a.newWorkspace()
-		case 2:
+		case "Close workspace…":
 			a.openCloseWorkspaceDialog(m.ws)
+		case "New worktree":
+			a.newWorktreeDialog(m.ws)
+		case "Open worktree...":
+			a.openWorktreeMenu(m.ws)
+		case "Delete worktree checkout...":
+			a.deleteWorktreeDialog(m.ws, false)
+		case "Move to worktree group":
+			a.groupWorktree(m.ws)
+		case "Collapse", "Expand":
+			a.exec(model.CmdToggleWorktreeGroup{Index: m.ws})
 		}
 	case menuTab:
 		switch i {

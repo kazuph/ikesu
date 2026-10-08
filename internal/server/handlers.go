@@ -11,6 +11,17 @@ import (
 // dispatchOnLoop runs on the app goroutine; it may touch st/sup safely.
 func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
+	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
+		return s.worktreeRequest(req)
+	case "workspace.move":
+		var p struct {
+			WorkspaceID string `json:"workspace_id"`
+			InsertIndex int    `json:"insert_index"`
+		}
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.wsMove(req.ID, p.WorkspaceID, p.InsertIndex)
 	case api.MethodWorkspaceList:
 		var p api.EmptyParams
 		if err := req.DecodeParams(&p); err != nil {
@@ -439,6 +450,7 @@ func (s *Server) wsInfo(i int) api.WorkspaceInfo {
 	return api.WorkspaceInfo{
 		NextPublicTabNumber: &nextTab,
 		WorkspaceID:         wsID,
+		Worktree:            ws.Worktree,
 		Number:              i + 1,
 		Label:               ws.Name,
 		Focused:             i == st.Active,

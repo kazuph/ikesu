@@ -72,6 +72,8 @@ func Run(args []string, o Options) int {
 	switch args[0] {
 	case "pane":
 		return r.pane(args[1:])
+	case "worktree":
+		return r.worktree(args[1:])
 	case "workspace":
 		return r.workspace(args[1:])
 	case "tab":

@@ -83,15 +83,17 @@ const (
 	menuWorkspace
 	menuMain
 	menuTab
+	menuWorktree
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
 type uiMenu struct {
-	m    render.Menu
-	kind menuKind
-	pane int // target pane (menuPane)
-	ws   int // target workspace (menuWorkspace, menuTab)
-	tab  int // target tab (menuTab)
+	worktreePaths []string
+	m             render.Menu
+	kind          menuKind
+	pane          int // target pane (menuPane)
+	ws            int // target workspace (menuWorkspace, menuTab)
+	tab           int // target tab (menuTab)
 	// justOpened suppresses the release event from the same click that
 	// opened the menu (the menu may clamp onto the pointer).
 	justOpened bool
@@ -159,7 +161,8 @@ type App struct {
 	postExecHook   func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
 	exitedHook     func(pid int)                                  // pane process exited; server emits pane.exited
 	outHook        func(pid int)                                  // pane output changed; server emits pane.output_changed
-	warningsHook   func() []api.AgentSessionWarningInfo           // restart confirm lists missing ids
+	worktreeHook   func(string, WorktreeOutcome, bool)
+	warningsHook   func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target

@@ -73,7 +73,7 @@ dispatch:
 				os.Exit(code)
 			}
 			fallthrough
-		case "pane", "workspace", "tab",
+		case "pane", "workspace", "worktree", "tab",
 			"send", "inbox", "msg", "run", "log", "agent",
 			"help", "--help", "-h", "__pane-run":
 			os.Exit(cli.Run(args, cli.Options{

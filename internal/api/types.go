@@ -145,15 +145,16 @@ const (
 
 // WorkspaceInfo fields are emitted in alphabetical order to match herdr.
 type WorkspaceInfo struct {
-	ActiveTabID         string      `json:"active_tab_id"`
-	AgentStatus         AgentStatus `json:"agent_status"`
-	Focused             bool        `json:"focused"`
-	Label               string      `json:"label"`
-	NextPublicTabNumber *int        `json:"next_public_tab_number,omitempty"`
-	Number              int         `json:"number"`
-	PaneCount           int         `json:"pane_count"`
-	TabCount            int         `json:"tab_count"`
-	WorkspaceID         string      `json:"workspace_id"`
+	Worktree            *WorkspaceWorktreeInfo `json:"worktree,omitempty"`
+	ActiveTabID         string                 `json:"active_tab_id"`
+	AgentStatus         AgentStatus            `json:"agent_status"`
+	Focused             bool                   `json:"focused"`
+	Label               string                 `json:"label"`
+	NextPublicTabNumber *int                   `json:"next_public_tab_number,omitempty"`
+	Number              int                    `json:"number"`
+	PaneCount           int                    `json:"pane_count"`
+	TabCount            int                    `json:"tab_count"`
+	WorkspaceID         string                 `json:"workspace_id"`
 }
 
 type WorkspaceListResult struct {

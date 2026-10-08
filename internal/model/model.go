@@ -5,6 +5,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/api"
 
 	"github.com/kazuph/goterrace/internal/layout"
 )
@@ -26,11 +27,13 @@ type Tab struct {
 
 // Workspace is a named set of tabs, each holding its own pane layout.
 type Workspace struct {
-	ID        WorkspaceID
-	Name      string
-	Cwd       string
-	Tabs      []*Tab
-	ActiveTab int
+	Worktree       *api.WorkspaceWorktreeInfo
+	GroupCollapsed bool
+	ID             WorkspaceID
+	Name           string
+	Cwd            string
+	Tabs           []*Tab
+	ActiveTab      int
 }
 
 // TabRef returns the workspace's active tab, or nil.
@@ -457,6 +460,18 @@ func (EffQuit) isEffect()       {}
 // perform, in order.
 func (s *AppState) Apply(cmd Command) []Effect {
 	switch c := cmd.(type) {
+	case CmdToggleWorktreeGroup:
+		if c.Index >= 0 && c.Index < len(s.Workspaces) {
+			s.Workspaces[c.Index].GroupCollapsed = !s.Workspaces[c.Index].GroupCollapsed
+		}
+		return nil
+	case CmdSetWorktree:
+		if c.Index >= 0 && c.Index < len(s.Workspaces) {
+			s.Workspaces[c.Index].Worktree = c.Info
+		}
+		return nil
+	case CmdMoveWorkspace:
+		return s.moveWorkspace(c.Index, c.InsertIndex)
 	case CmdNewWorkspace:
 		ws := s.newWorkspace(c.Cwd)
 		if !c.NoFocus {
@@ -1333,12 +1348,14 @@ type TabSnap struct {
 
 // WsSnap captures the diffable parts of a workspace.
 type WsSnap struct {
-	ID        WorkspaceID
-	Name      string
-	Cwd       string
-	ActiveTab int
-	Tabs      []TabSnap
-	Panes     int
+	Worktree       *api.WorkspaceWorktreeInfo
+	GroupCollapsed bool
+	ID             WorkspaceID
+	Name           string
+	Cwd            string
+	ActiveTab      int
+	Tabs           []TabSnap
+	Panes          int
 }
 
 // StateSnap is a lightweight pre/post command snapshot used by the server
@@ -1358,7 +1375,7 @@ func (s *AppState) Capture() *StateSnap {
 		FocusedPane: s.FocusedPane(),
 	}
 	for i, ws := range s.Workspaces {
-		wss := WsSnap{ID: ws.ID, Name: ws.Name, Cwd: ws.Cwd, ActiveTab: ws.ActiveTab}
+		wss := WsSnap{Worktree: ws.Worktree, GroupCollapsed: ws.GroupCollapsed, ID: ws.ID, Name: ws.Name, Cwd: ws.Cwd, ActiveTab: ws.ActiveTab}
 		for j, t := range ws.Tabs {
 			wss.Tabs = append(wss.Tabs, TabSnap{
 				ID: t.ID, Name: t.Name, Focused: t.Layout.Focused(),
