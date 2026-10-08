@@ -146,6 +146,9 @@ func (a *App) reloadSidebarConfig() {
 		return
 	}
 	a.SetSidebarConfig(c, false)
+	if a.configChanged != nil {
+		a.configChanged(c)
+	}
 	a.SetUIFlags(c.ShowTabBar(), c.HideTabBarWhenSingleTab(), c.PaneBorders())
 	a.SetKeybinds(c.CopyKeys(), c.SplitVerticalKeys(), c.SplitHorizontalKeys())
 	a.SetPaneKeybinds(c)

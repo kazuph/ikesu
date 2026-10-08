@@ -74,6 +74,7 @@ func (a *App) draw() {
 	}
 	in := render.Input{
 		State:          a.st,
+		Settings:       a.settings,
 		MobileSwitcher: a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
 		Panes:         panes,
@@ -212,12 +213,6 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 				if label := a.st.PaneLabels[model.PaneID(pid)]; label != "" {
 					snap.Label = label
 				}
-				if branch := gitBranch(sn.Cwd, ws.Cwd); branch != "" && !strings.Contains(snap.Title, branch) {
-					if snap.Title != "" {
-						snap.Title += " "
-					}
-					snap.Title += branch
-				}
 				if active[pid] {
 					r := a.innerRect(pid)
 					snap.Grid = a.paneGrid(p, a.scroll[pid], r.H, r.W)
@@ -232,6 +227,12 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					if m.Title != "" {
 						snap.Title = m.Title
 					}
+				}
+				if branch := gitBranch(sn.Cwd, ws.Cwd); branch != "" && !strings.Contains(snap.Title, branch) {
+					if snap.Title != "" {
+						snap.Title += " "
+					}
+					snap.Title += branch
 				}
 				snap.Agent, snap.Restore = a.paneRestoreLabel(pid, snap.Agent)
 				out[pid] = snap

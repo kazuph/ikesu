@@ -34,6 +34,7 @@ func (a *App) helpRows() []render.HelpRow {
 		{Group: true, Cmd: "global"},
 		{Bind: "ctrl+b", Cmd: "prefix mode"},
 		{Bind: "prefix+?", Cmd: "keybinds"},
+		{Bind: "prefix+s", Cmd: "settings"},
 		{Bind: "prefix+o", Cmd: "open notification target"},
 		{Bind: "prefix+d", Cmd: "detach"},
 

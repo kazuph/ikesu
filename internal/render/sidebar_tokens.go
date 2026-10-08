@@ -133,7 +133,7 @@ func drawTokens(f *Frame, x, y, w int, tokens []styledToken) {
 			continue
 		}
 		if last >= 0 {
-			x = f.Text(x, y, sep(ts[last], t), uv.Style{Fg: Dim, Bg: t.style.Bg}, limit)
+			x = f.Text(x, y, sep(ts[last], t), uv.Style{Fg: f.Palette.Dim, Bg: t.style.Bg}, limit)
 		}
 		x = f.Text(x, y, truncate(t.text, budget[i]), t.style, limit)
 		last = i
@@ -152,7 +152,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			break
 		}
 	}
-	base := uv.Style{Fg: Text}
+	base := uv.Style{Fg: f.Palette.Text}
 	var tokens []styledToken
 	hasPane, hasState := false, false
 	for _, t := range configured {
@@ -165,10 +165,10 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 	}
 	if r.Line == 0 {
 		if !hasState {
-			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: sn.Status.Color}, fixed: true})
+			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: f.ThemeColor(sn.Status.Color)}, fixed: true})
 		}
 		if !hasPane {
-			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: uv.Style{Fg: Text, Attrs: uv.AttrBold}, fixed: true})
+			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, fixed: true})
 		}
 	}
 	for _, t := range configured {
@@ -176,7 +176,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		switch t.Token {
 		case "state_icon":
 			v.text = sn.Status.Rune
-			v.style.Fg = sn.Status.Color
+			v.style.Fg = f.ThemeColor(sn.Status.Color)
 			v.fixed = true
 		case "state_text":
 			v.text = sn.Status.Key
@@ -215,12 +215,12 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 }
 func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, configured []config.SidebarToken, x, y, w int) {
 	ws := s.Workspaces[r.Ws]
-	base := uv.Style{Fg: Text}
+	base := uv.Style{Fg: f.Palette.Text}
 	if r.Ws == s.Active || (in.Dragging && r.Ws == in.DraggedWorkspace) || (in.SelectedWorkspace != nil && *in.SelectedWorkspace == r.Ws) {
-		base.Bg = Surface
+		base.Bg = f.Palette.Surface
 		base.Attrs = uv.AttrBold
 		f.Fill(x, y, w, 1, " ", base)
-		f.Set(x, y, "▌", uv.Style{Fg: Accent, Bg: Surface})
+		f.Set(x, y, "▌", uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.Surface})
 	}
 	var tokens []styledToken
 	for _, t := range configured {
@@ -232,7 +232,7 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			if v.text == " " {
 				v.text = "·"
 			}
-			v.style.Fg = g.Color
+			v.style.Fg = f.ThemeColor(g.Color)
 			v.fixed = true
 		case "state_text":
 			v.text = wsGlyph(s, r.Ws, in).Key
@@ -241,13 +241,13 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			if v.text == "" {
 				v.text = WorkspaceDisplayName(ws, in.Panes)
 			}
-			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(r.Ws + 1), style: tokenStyle(t, uv.Style{Fg: Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
+			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(r.Ws + 1), style: tokenStyle(t, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
 		case "branch":
 			v.text = in.Git[r.Ws].Branch
 			if v.text == "" {
 				v.text = "nogit"
 			}
-			v.style.Fg = Dim
+			v.style.Fg = f.Palette.Dim
 
 		case "git_status":
 			g := in.Git[r.Ws]
@@ -255,7 +255,7 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 				mark string
 				n    int
 				fg   color.Color
-			}{{"↑", g.Ahead, Green}, {"↓", g.Behind, Red}, {"+", g.Added, Green}, {"-", g.Deleted, Red}} {
+			}{{"↑", g.Ahead, f.Palette.Green}, {"↓", g.Behind, f.Palette.Red}, {"+", g.Added, f.Palette.Green}, {"-", g.Deleted, f.Palette.Red}} {
 				if stat.n > 0 {
 					tokens = append(tokens, styledToken{name: "git_status", text: fmt.Sprintf("%s%d", stat.mark, stat.n), style: tokenStyle(t, uv.Style{Fg: stat.fg, Bg: base.Bg}), fixed: true})
 				}
@@ -273,7 +273,7 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 
 	if r.Kind == RowWorkspace {
 		for _, dot := range in.JobDots[r.Ws] {
-			tokens = append(tokens, styledToken{name: "job", text: "●", style: uv.Style{Fg: dot.Color, Bg: base.Bg}, fixed: true})
+			tokens = append(tokens, styledToken{name: "job", text: "●", style: uv.Style{Fg: f.ThemeColor(dot.Color), Bg: base.Bg}, fixed: true})
 		}
 	}
 	drawTokens(f, x+1, y, max(0, w-1), tokens)

@@ -175,7 +175,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarCollapsed(f, s, in, area)
 		return
 	}
-	border := uv.Style{Fg: Dim}
+	border := uv.Style{Fg: f.Palette.Dim}
 	for y := area.Y; y < area.Y+area.H; y++ {
 		f.Set(area.X+area.W-1, y, "│", border)
 	}
@@ -213,25 +213,25 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		}
 		if boundary >= view.Workspace.Rect.Y && boundary < view.Workspace.Rect.Y+view.Workspace.Rect.H {
 			for x := ix; x < ix+iw; x++ {
-				f.Set(x, boundary, "─", uv.Style{Fg: Accent})
+				f.Set(x, boundary, "─", uv.Style{Fg: f.Palette.Accent})
 			}
 		}
 	}
 
 	fr := SidebarFooter(area)
 	if fr.W > 0 && fr.Y >= iy {
-		f.Text(fr.X+1, fr.Y, "[menu]", uv.Style{Fg: Subtle}, fr.X+fr.W)
-		f.Text(fr.X+fr.W-6, fr.Y, "[new]", uv.Style{Fg: Subtle}, fr.X+fr.W)
+		f.Text(fr.X+1, fr.Y, "[menu]", uv.Style{Fg: f.Palette.Subtle}, fr.X+fr.W)
+		f.Text(fr.X+fr.W-6, fr.Y, "[new]", uv.Style{Fg: f.Palette.Subtle}, fr.X+fr.W)
 	}
 	wr := SidebarWidthRect(s)
 	if wr.W > 0 {
-		f.Text(wr.X, wr.Y, s.PresetLabel(), uv.Style{Fg: Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, wr.X+wr.W)
+		f.Text(wr.X, wr.Y, s.PresetLabel(), uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, wr.X+wr.W)
 	}
-	f.Set(area.X+area.W-2, area.Y+area.H-1, "«", uv.Style{Fg: Dim})
+	f.Set(area.X+area.W-2, area.Y+area.H-1, "«", uv.Style{Fg: f.Palette.Dim})
 	if in.Copied != "" && area.W > 1 && area.H > 0 {
 		x, y, w := area.X, area.Y+area.H-1, area.W-1
-		f.Fill(x, y, w, 1, " ", uv.Style{Bg: SurfDim})
-		f.Text(x, y, truncate(in.Copied, w), uv.Style{Fg: Green, Bg: SurfDim, Attrs: uv.AttrBold}, x+w)
+		f.Fill(x, y, w, 1, " ", uv.Style{Bg: f.Palette.SurfDim})
+		f.Text(x, y, truncate(in.Copied, w), uv.Style{Fg: f.Palette.Green, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, x+w)
 	}
 }
 
@@ -249,7 +249,7 @@ func SectionNewRect(x, y, w int) layout.Rect {
 	return layout.Rect{X: x + w - 5, Y: y, W: 5, H: 1}
 }
 func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, iw int) {
-	border := uv.Style{Fg: Dim}
+	border := uv.Style{Fg: f.Palette.Dim}
 	switch r.Kind {
 	case RowTitle:
 		f.Text(ix, y, " spaces", border, ix+iw)
@@ -264,13 +264,13 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			f.Set(x, y, "─", border)
 		}
 	case RowSection:
-		style := uv.Style{Fg: Dim, Attrs: uv.AttrBold}
+		style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
 		arrow := "▾"
 		if s.CollapsedSections[r.Section] {
 			arrow = "▸"
 		}
 		if in.DragSection == r.Section {
-			style = uv.Style{Fg: SurfDim, Bg: Accent, Attrs: uv.AttrBold}
+			style = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 			f.Fill(ix, y, iw, 1, " ", style)
 		}
 		limit := iw
@@ -280,12 +280,12 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		f.Text(ix, y, truncate(arrow+" "+r.Section.Label(), limit), style, ix+limit)
 		nr := SectionNewRect(ix, y, iw)
 		if nr.W > 0 {
-			f.Text(nr.X, y, "[new]", uv.Style{Fg: Dim, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
+			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Dim, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
 		}
 	case RowSep:
 		agentStyle := border
 		if !in.JobsPanel {
-			agentStyle.Fg = Accent
+			agentStyle.Fg = f.Palette.Accent
 			agentStyle.Attrs = uv.AttrBold
 		}
 		f.Text(ix, y, "[agents]", agentStyle, ix+iw)
@@ -293,7 +293,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if jr.W > 0 {
 			jobStyle := border
 			if in.JobsPanel {
-				jobStyle.Fg = Accent
+				jobStyle.Fg = f.Palette.Accent
 				jobStyle.Attrs = uv.AttrBold
 			}
 			f.Text(jr.X, y, "[jobs]", jobStyle, jr.X+jr.W)
@@ -320,13 +320,13 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		ws := s.Workspaces[r.Ws]
 		active := r.Ws == s.Active
 		dragged := in.Dragging && r.Ws == in.DraggedWorkspace
-		sty := uv.Style{Fg: Text}
+		sty := uv.Style{Fg: f.Palette.Text}
 		selected := in.SelectedWorkspace != nil && *in.SelectedWorkspace == r.Ws
 		if active || dragged || selected {
-			sty.Bg = Surface
+			sty.Bg = f.Palette.Surface
 			sty.Attrs = uv.AttrBold
 			f.Fill(ix, y, iw, 1, " ", sty)
-			f.Set(ix, y, "▌", uv.Style{Fg: Accent, Bg: Surface})
+			f.Set(ix, y, "▌", uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.Surface})
 		}
 		if r.Kind == RowCardBlank {
 			return
@@ -343,8 +343,8 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if g.Rune == " " {
 			g.Rune = "·"
 		}
-		x = f.Text(x, y, g.Rune, uv.Style{Fg: g.Color, Bg: sty.Bg}, ix+iw)
-		x = f.Text(x, y, fmt.Sprintf(" %d ", r.Ws+1), uv.Style{Fg: Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
+		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg}, ix+iw)
+		x = f.Text(x, y, fmt.Sprintf(" %d ", r.Ws+1), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
 		name := in.WorkspaceNames[r.Ws]
 		if name == "" {
 			name = WorkspaceDisplayName(ws, in.Panes)
@@ -352,7 +352,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		dots := in.JobDots[r.Ws]
 		f.Text(x, y, truncate(name, iw-(x-ix)-len(dots)), sty, ix+iw-len(dots))
 		for i, d := range dots {
-			f.Set(ix+iw-len(dots)+i, y, "●", uv.Style{Fg: d.Color, Bg: sty.Bg})
+			f.Set(ix+iw-len(dots)+i, y, "●", uv.Style{Fg: f.ThemeColor(d.Color), Bg: sty.Bg})
 		}
 	case RowAgent:
 		panel := in.SidebarConfig.UI.Sidebar.Agents
@@ -467,7 +467,7 @@ func wsGlyph(s *model.AppState, wi int, in Input) StatusGlyph {
 }
 
 func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rect) {
-	border := uv.Style{Fg: Dim}
+	border := uv.Style{Fg: f.Palette.Dim}
 	ix, iy, iw, ih := f.Box(area.X, area.Y, area.W, area.H, border)
 	if iw < 1 || ih < 1 {
 		return
@@ -482,17 +482,17 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 	}
 	for i := scroll; i < len(s.Workspaces) && i < scroll+avail; i++ {
 		y := iy + i - scroll
-		sty := uv.Style{Fg: Text}
+		sty := uv.Style{Fg: f.Palette.Text}
 		if i == s.Active {
-			sty = uv.Style{Fg: Accent, Attrs: uv.AttrBold}
+			sty = uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}
 		}
 		x := f.Text(ix, y, fmt.Sprintf("%d", i+1), sty, ix+iw)
 		// Aggregate agent glyph for the workspace (highest priority state).
 		g := aggregateGlyph(s.Workspaces[i], in)
-		f.Text(x, y, g.Rune, uv.Style{Fg: g.Color, Attrs: boldIf(g.Bold)}, ix+iw)
+		f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Attrs: boldIf(g.Bold)}, ix+iw)
 	}
 	// Expand button centred on the bottom border row.
-	f.Set(area.X+(area.W-1)/2, area.Y+area.H-1, "»", uv.Style{Fg: Dim})
+	f.Set(area.X+(area.W-1)/2, area.Y+area.H-1, "»", uv.Style{Fg: f.Palette.Dim})
 }
 
 // aggregateGlyph picks the most attention-worthy pane glyph of a workspace.

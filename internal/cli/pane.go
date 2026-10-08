@@ -9,7 +9,7 @@ import (
 
 func (r *runner) pane(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|run> ...")
+		return usageErr(r, "usage: gtx pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|report-metadata|run> ...")
 	}
 	switch args[0] {
 	case "report-metadata":

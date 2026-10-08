@@ -11,10 +11,10 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	if r.W < 1 || r.H < 1 {
 		return
 	}
-	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Fg: Text, Bg: SurfDim})
-	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: Accent, Bg: SurfDim})
+	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim})
+	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.SurfDim})
 	if r.W > 4 {
-		f.Text(r.X+1, r.Y, " popup ", uv.Style{Fg: Accent, Bg: SurfDim}, r.X+r.W-1)
+		f.Text(r.X+1, r.Y, " popup ", uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.SurfDim}, r.X+r.W-1)
 	}
 	pid := s.Popup.PaneID
 	snap := in.Panes[pid]

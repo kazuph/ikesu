@@ -136,10 +136,11 @@ type Input struct {
 	DraggedWorkspace  int
 	Dragging          bool
 
-	Menu   *Menu
-	Dialog *Dialog
-	Sel    *Selection
-	Toast  *Toast
+	Settings *Settings
+	Menu     *Menu
+	Dialog   *Dialog
+	Sel      *Selection
+	Toast    *Toast
 
 	Spin           int    // working-spinner frame
 	Copied         string // flash text, e.g. " copied 12 chars "
@@ -222,6 +223,7 @@ type HelpInput struct {
 func Compose(in Input) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
+	f.Palette = ThemePalette(in.SidebarConfig.ThemeName())
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
@@ -245,6 +247,9 @@ func Compose(in Input) *Output {
 	if in.Help != nil {
 		drawHelp(f, in.Help, out)
 	}
+	if in.Settings != nil {
+		drawSettings(f, in.Settings)
+	}
 	return out
 }
 
@@ -257,7 +262,7 @@ func drawTabBar(f *Frame, s *model.AppState, out *Output) {
 	if area.W <= 0 {
 		return
 	}
-	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{Bg: Surface})
+	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{Bg: f.Palette.Surface})
 	ws := s.ActiveWorkspace()
 	if ws == nil {
 		return
@@ -276,16 +281,16 @@ func drawTabBar(f *Frame, s *model.AppState, out *Output) {
 			out.TabHits = append(out.TabHits, layout.Rect{})
 			continue
 		}
-		sty := uv.Style{Fg: Subtle, Bg: Surface}
+		sty := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
 		if i == ws.ActiveTab {
-			sty = uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Accent, Attrs: uv.AttrBold}
+			sty = uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 		}
 		f.Text(x, area.Y, " "+truncate(name, max(w-1, 0)), sty, x+w)
 		out.TabHits = append(out.TabHits, layout.Rect{X: x, Y: area.Y, W: w, H: 1})
 		x += w
 	}
 	if x+3 <= area.X+area.W {
-		f.Text(x, area.Y, " + ", uv.Style{Fg: Subtle, Bg: Surface}, x+3)
+		f.Text(x, area.Y, " + ", uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}, x+3)
 		out.NewTabRect = layout.Rect{X: x, Y: area.Y, W: 3, H: 1}
 	}
 }
@@ -322,12 +327,12 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
 		ix, iy, iw, ih := inner.X, inner.Y, inner.W, inner.H
 		if s.PaneBorders && pr.Rect.W > 2 && pr.Rect.H > 2 {
-			borderSty := uv.Style{Fg: Dim}
+			borderSty := uv.Style{Fg: f.Palette.Dim}
 			if pr.IsFocused {
-				borderSty = uv.Style{Fg: Accent}
+				borderSty = uv.Style{Fg: f.Palette.Accent}
 			}
 			if snap != nil && snap.Dead {
-				borderSty = uv.Style{Fg: Dim, Attrs: uv.AttrFaint}
+				borderSty = uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrFaint}
 			}
 			f.Box(pr.Rect.X, pr.Rect.Y, pr.Rect.W, pr.Rect.H, borderSty)
 
@@ -352,7 +357,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			if off := in.Scroll[pr.ID]; off > 0 && pr.Rect.W > 10 {
 				ind := fmt.Sprintf(" ↑%d ", off)
 				w := len([]rune(ind))
-				f.Text(titleStop-w, pr.Rect.Y, ind, uv.Style{Fg: Yellow}, titleStop)
+				f.Text(titleStop-w, pr.Rect.Y, ind, uv.Style{Fg: f.Palette.Yellow}, titleStop)
 			}
 
 			// Gutter: the rightmost inner column hosts the scrollbar;
@@ -437,7 +442,7 @@ func truncateEllipsis(s string, n int) string {
 func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 	gx := inner.X + inner.W - 1
 	for y := inner.Y; y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▕", uv.Style{Fg: Dim})
+		f.Set(gx, y, "▕", uv.Style{Fg: f.Palette.Dim})
 	}
 	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 {
 		return
@@ -458,7 +463,7 @@ func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 		top = inner.Y + track - int(frac*float64(track))
 	}
 	for y := top; y < top+th && y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▐", uv.Style{Fg: Dim})
+		f.Set(gx, y, "▐", uv.Style{Fg: f.Palette.Dim})
 	}
 }
 
@@ -473,8 +478,8 @@ func drawCopyCursor(f *Frame, x, y int) {
 		c.Content = " "
 		c.Width = 1
 	}
-	c.Style.Fg = Surface
-	c.Style.Bg = Accent
+	c.Style.Fg = f.Palette.Surface
+	c.Style.Bg = f.Palette.Accent
 	c.Style.Attrs = uv.AttrBold
 }
 
@@ -490,8 +495,8 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		return
 	}
 	out.ActionBar.Area = area
-	base := uv.Style{Fg: Dim} // reset bg, overlay0 fg
-	btn := uv.Style{Fg: Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}
+	base := uv.Style{Fg: f.Palette.Dim} // reset bg, overlay0 fg
+	btn := uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}
 	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{})
 
 	copyLabel := in.CopyLabel
@@ -539,7 +544,7 @@ func drawCopyHint(f *Frame, x, y, w int, hint string) {
 		return
 	}
 	f.Fill(x, y, w, 1, " ", uv.Style{})
-	f.Text(x, y, hint, uv.Style{Fg: Dim}, x+w)
+	f.Text(x, y, hint, uv.Style{Fg: f.Palette.Dim}, x+w)
 }
 
 func clipGrid(g [][]uv.Cell, w, h int) [][]uv.Cell {
@@ -601,12 +606,12 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 	if y < 0 {
 		return
 	}
-	base := uv.Style{Fg: Subtle, Bg: Surface}
+	base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
 	f.Fill(0, y, s.Cols, 1, " ", base)
 
 	x := f.Text(0, y, " gtx  prefix: C-b", base, s.Cols)
 	if in.Prefix {
-		f.Text(x, y, "  PREFIX ", uv.Style{Attrs: uv.AttrReverse, Bg: Surface}, s.Cols)
+		f.Text(x, y, "  PREFIX ", uv.Style{Attrs: uv.AttrReverse, Bg: f.Palette.Surface}, s.Cols)
 	}
 	x = f.Text(x+9, y, fmt.Sprintf("  workspace %d/%d", s.Active+1, len(s.Workspaces)), base, s.Cols)
 
@@ -614,7 +619,7 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 	right := s.Cols - 1
 	if s.Cols >= 60 {
 		sv, sh, cl := StatusButtons(s.Cols, s.Rows)
-		btn := uv.Style{Fg: Subtle, Bg: Surface}
+		btn := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
 		f.Text(sv.X, y, "[split │]", btn, sv.X+sv.W)
 		f.Text(sh.X, y, "[split ─]", btn, sh.X+sh.W)
 		f.Text(cl.X, y, "[close]", btn, cl.X+cl.W)
@@ -636,13 +641,13 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 		key, g string
 		c      color.Color
 	}{
-		{"working", workingRune(in.Spin), Yellow}, {"blocked", "▲", Peach}, {"done", "●", Green}, {"idle", "○", Dim},
+		{"working", workingRune(in.Spin), f.Palette.Yellow}, {"blocked", "▲", Peach}, {"done", "●", f.Palette.Green}, {"idle", "○", f.Palette.Dim},
 	}
 	for _, o := range order {
 		if n := counts[o.key]; n > 0 {
 			txt := fmt.Sprintf("%s %d ", o.g, n)
 			right -= len([]rune(txt))
-			f.Text(right, y, txt, uv.Style{Fg: o.c, Bg: Surface}, s.Cols-1)
+			f.Text(right, y, txt, uv.Style{Fg: o.c, Bg: f.Palette.Surface}, s.Cols-1)
 		}
 	}
 }

@@ -2,8 +2,15 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/cli"
+	"io"
+	"os/exec"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -93,4 +100,80 @@ func TestG2PaneMetadataSocketCLISequenceFilteringClearAndExpiry(t *testing.T) {
 		t.Fatal("33 tokens accepted")
 	}
 
+}
+
+func TestG2PaneMetadataTitlePreservesRealGitBranch(t *testing.T) {
+	repo := gitRepo(t)
+	if out, err := exec.Command("git", "-C", repo, "branch", "-m", "metadata-branch").CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	dir, done := startTestServer(t)
+	c := dialClient(t, dir)
+	defer c.conn.Close()
+	defer stopServer(t, dir, done)
+	emu := vt.NewEmulator(120, 50)
+	go io.Copy(io.Discard, emu)
+	var screenMu sync.Mutex
+	changed := make(chan struct{}, 1)
+	readerDone := make(chan error, 1)
+	go func() {
+		decoder := json.NewDecoder(c.rd)
+		for {
+			var m clientMsg
+			if err := decoder.Decode(&m); err != nil {
+				readerDone <- err
+				return
+			}
+			if m.Type != "output" {
+				continue
+			}
+			raw, err := base64.StdEncoding.DecodeString(m.Data)
+			if err != nil {
+				readerDone <- err
+				return
+			}
+			screenMu.Lock()
+			emu.Write(raw)
+			screenMu.Unlock()
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		}
+	}()
+	defer func() {
+		c.conn.Close()
+		<-readerDone
+		emu.Close()
+	}()
+	c.send(t, clientMsg{Type: "hello", Cols: 120, Rows: 50})
+	var created api.WorkspaceCreatedResult
+	apiOK(t, dir, "workspace.create", map[string]any{"cwd": repo, "focus": true}, &created)
+	var panes api.PaneListResult
+	apiOK(t, dir, "pane.list", api.PaneListParams{WorkspaceID: &created.Workspace.WorkspaceID}, &panes)
+	if len(panes.Panes) != 1 {
+		t.Fatal(panes)
+	}
+	apiOK(t, dir, "pane.report_metadata", map[string]any{"pane_id": panes.Panes[0].PaneID, "source": "metadata", "title": "Task"}, nil)
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	title := ""
+	for {
+		select {
+		case <-changed:
+			screenMu.Lock()
+			title = ""
+			for x := 26; x < 120; x++ {
+				if cell := emu.CellAt(x, 1); cell != nil {
+					title += cell.Content
+				}
+			}
+			screenMu.Unlock()
+			if strings.Contains(title, "Task metadata-branch") {
+				return
+			}
+		case <-deadline.C:
+			t.Fatal("metadata removed branch from rendered title", title)
+		}
+	}
 }

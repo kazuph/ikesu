@@ -45,9 +45,9 @@ func MenuRect(m *Menu, cols, rows int) layout.Rect {
 
 func drawMenu(f *Frame, m *Menu, out *Output) {
 	r := MenuRect(m, f.W, f.H)
-	border := uv.Style{Fg: Dim}
+	border := uv.Style{Fg: f.Palette.Dim}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)
-	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text})
 	out.MenuRect = r
 	out.MenuItemRows = nil
 	for i, it := range m.Items {
@@ -62,13 +62,13 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 			}
 			continue
 		}
-		sty := uv.Style{Fg: Text}
+		sty := uv.Style{Fg: f.Palette.Text}
 		if i == m.Hover || i == m.Sel {
-			sty = uv.Style{Fg: Text, Bg: Surface}
+			sty = uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}
 			f.Fill(ix, iy+i, iw, 1, " ", sty)
 		}
 		if it.Disabled {
-			sty = uv.Style{Fg: Dim}
+			sty = uv.Style{Fg: f.Palette.Dim}
 		}
 		f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
 	}
@@ -97,15 +97,15 @@ func drawToast(f *Frame, t *Toast, out *Output) {
 	y := 1
 	r := layout.Rect{X: x, Y: y, W: w, H: 4}
 	out.ToastRect = r
-	dot := uv.Style{Fg: Accent}
+	dot := uv.Style{Fg: f.Palette.Accent}
 	if t.Kind == "needs_attention" {
-		dot = uv.Style{Fg: Yellow}
+		dot = uv.Style{Fg: f.Palette.Yellow}
 	}
-	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: Dim})
-	f.Fill(ix, iy, iw, 2, " ", uv.Style{Fg: Text})
+	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim})
+	f.Fill(ix, iy, iw, 2, " ", uv.Style{Fg: f.Palette.Text})
 	f.Set(ix, iy, "●", dot)
-	f.Text(ix+2, iy, t.Title, uv.Style{Fg: Text, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(ix+1, iy+1, t.Body, uv.Style{Fg: Dim}, ix+iw)
+	f.Text(ix+2, iy, t.Title, uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, ix+iw)
+	f.Text(ix+1, iy+1, t.Body, uv.Style{Fg: f.Palette.Dim}, ix+iw)
 }
 
 // --- dialog ---
@@ -181,9 +181,9 @@ func drawHelp(f *Frame, h *HelpInput, out *Output) {
 	}
 	x := (f.W - w) / 2
 	y := (f.H - hgt) / 2
-	border := uv.Style{Fg: Dim}
+	border := uv.Style{Fg: f.Palette.Dim}
 	ix, iy, iw, ih := f.Box(x, y, w, hgt, border)
-	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text})
 	out.HelpRect = layout.Rect{X: x, Y: y, W: w, H: hgt}
 
 	// Title on the top border row, subtitle on the first inner row.
@@ -192,9 +192,9 @@ func drawHelp(f *Frame, h *HelpInput, out *Output) {
 		if x+2+i >= x+w-1 {
 			break
 		}
-		f.Set(x+2+i, y, string(r), uv.Style{Fg: Accent})
+		f.Set(x+2+i, y, string(r), uv.Style{Fg: f.Palette.Accent})
 	}
-	f.Text(ix+1, iy, "available commands and configured shortcuts", uv.Style{Fg: Dim}, ix+iw-1)
+	f.Text(ix+1, iy, "available commands and configured shortcuts", uv.Style{Fg: f.Palette.Dim}, ix+iw-1)
 
 	// Scrollable content rows.
 	body := ih - 2 // subtitle + footer
@@ -215,11 +215,11 @@ func drawHelp(f *Frame, h *HelpInput, out *Output) {
 		row := h.Rows[scroll+i]
 		ry := iy + 1 + i
 		if row.Group {
-			f.Text(ix+1, ry, row.Cmd, uv.Style{Fg: Accent, Attrs: uv.AttrBold}, ix+iw-1)
+			f.Text(ix+1, ry, row.Cmd, uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, ix+iw-1)
 			continue
 		}
 		f.Text(ix+2, ry, row.Bind, uv.Style{Fg: Peach}, ix+iw-1)
-		f.Text(ix+20, ry, row.Cmd, uv.Style{Fg: Text}, ix+iw-1)
+		f.Text(ix+20, ry, row.Cmd, uv.Style{Fg: f.Palette.Text}, ix+iw-1)
 	}
 
 	if maxScroll := len(h.Rows) - body; maxScroll > 0 {
@@ -227,30 +227,30 @@ func drawHelp(f *Frame, h *HelpInput, out *Output) {
 	}
 
 	// Footer hint on the last inner row.
-	f.Text(ix+1, iy+ih-1, "scroll wheel ↑↓ · jump pgup/pgdn · close esc/enter", uv.Style{Fg: Dim}, ix+iw-1)
+	f.Text(ix+1, iy+ih-1, "scroll wheel ↑↓ · jump pgup/pgdn · close esc/enter", uv.Style{Fg: f.Palette.Dim}, ix+iw-1)
 }
 
 func drawDialog(f *Frame, d *Dialog, out *Output) {
 	outer, cancel, confirm := DialogRects(d, f.W, f.H)
-	border := uv.Style{Fg: Red}
+	border := uv.Style{Fg: f.Palette.Red}
 	ix, iy, iw, ih := f.Box(outer.X, outer.Y, outer.W, outer.H, border)
-	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: Text})
-	f.Text(ix+1, iy, d.Title, uv.Style{Fg: Text, Attrs: uv.AttrBold}, ix+iw)
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text})
+	f.Text(ix+1, iy, d.Title, uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, ix+iw)
 	if d.InputEdit {
-		f.Text(ix+1, iy+1, "> "+d.Input+" ", uv.Style{Fg: Text, Bg: Surface}, ix+iw)
+		f.Text(ix+1, iy+1, "> "+d.Input+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}, ix+iw)
 	} else {
-		f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: Subtle}, ix+iw)
+		f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: f.Palette.Subtle}, ix+iw)
 		shown := len(d.Lines)
 		if shown > 10 {
 			shown = 10
 		}
 		for i := 0; i < shown; i++ {
-			f.Text(ix+1, iy+2+i, d.Lines[i], uv.Style{Fg: Subtle}, ix+iw)
+			f.Text(ix+1, iy+2+i, d.Lines[i], uv.Style{Fg: f.Palette.Subtle}, ix+iw)
 		}
 	}
-	f.Text(cancel.X, cancel.Y, "[ "+d.Cancel+"  esc ]", uv.Style{Fg: Subtle}, cancel.X+cancel.W)
-	f.Fill(confirm.X, confirm.Y, confirm.W, 1, " ", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Red, Attrs: uv.AttrBold})
-	f.Text(confirm.X, confirm.Y, "[ "+d.Confirm+"  ↵ ]", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
+	f.Text(cancel.X, cancel.Y, "[ "+d.Cancel+"  esc ]", uv.Style{Fg: f.Palette.Subtle}, cancel.X+cancel.W)
+	f.Fill(confirm.X, confirm.Y, confirm.W, 1, " ", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Red, Attrs: uv.AttrBold})
+	f.Text(confirm.X, confirm.Y, "[ "+d.Confirm+"  ↵ ]", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
 	out.DialogRect = outer
 	out.DialogCancel = cancel
 	out.DialogConfirm = confirm

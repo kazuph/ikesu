@@ -18,6 +18,9 @@ func (a *App) onInput(ev input.Event) {
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
+		if a.settings != nil {
+			return
+		}
 		if pid := a.focusedPane(); pid >= 0 {
 			if p := a.sup.Get(pid); p != nil {
 				p.WithEmu(func(e *vt.Emulator) { e.Paste(ev.Text) })

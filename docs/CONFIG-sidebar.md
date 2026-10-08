@@ -32,3 +32,19 @@ mobile switcher の section header を tap すると折りたたみ／展開し�
 
 agents の隣の `[jobs]` は jobs snapshot の全履歴を表示します。カードの dot は
 既存の期限と runner 生存条件で絞り込みますが、jobs の履歴行は間引きません。
+
+global menu の `settings` または `prefix+s` で、Theme → Sound → Toasts の順の
+設定を開きます。↑↓で候補、Tabで節を選び、Enterで保存・適用して閉じます。
+Escapeは保存せず閉じます。旧pane label toggleとIntegrationsは表示しません。
+テーマは配布用ビルドと同じ13候補で、`[theme] name` へ保存します。
+手動選択は `auto_switch = false` も保存します。音の選択は `[ui.sound] enabled`、
+通知先は `[ui.toast] delivery = "off" | "gtx" | "terminal" | "system"` へ保存します。
+
+agent側の独自トークンも `$名前` で表示できます。
+`gtx pane report-metadata p1 --source build --token phase=compile --seq 1 --ttl-ms 1000`
+は `pane.report_metadata` を呼びます。`--clear-token phase` で消去します。
+`--title`、`--display-agent`、`--state-label STATUS=TEXT` と各clearフラグも対応します。
+`--agent` / `--applies-to-source` は表示用metadataに適用し、token値はsourceによらず
+最後の有効な更新を表示します。seqはsource単位、TTLは指定された値に適用します。
+未対応の機能は明示的なエラーを返します。G8に従い更新確認・updater・update badge
+とwhat's newは表示しません。

@@ -75,9 +75,9 @@ func drawSidebarScrollbar(f *Frame, v SidebarViewport) {
 	}
 	h, top := SidebarThumb(v)
 	for y := 0; y < v.Rect.H; y++ {
-		glyph, fg := "│", Dim
+		glyph, fg := "│", f.Palette.Dim
 		if y >= top && y < top+h {
-			glyph, fg = "█", Accent
+			glyph, fg = "█", f.Palette.Accent
 		}
 		f.Set(v.Rect.X+v.Rect.W-1, v.Rect.Y+y, glyph, uv.Style{Fg: fg})
 	}

@@ -10,8 +10,9 @@ import (
 
 // Frame is a grid of styled cells covering the whole screen.
 type Frame struct {
-	W, H  int
-	Cells []uv.Cell
+	Palette Palette
+	W, H    int
+	Cells   []uv.Cell
 }
 
 // NewFrame allocates an empty frame.
@@ -26,7 +27,7 @@ func NewFrame(w, h int) *Frame {
 	for i := range cells {
 		cells[i] = uv.Cell{Content: " ", Width: 1}
 	}
-	return &Frame{W: w, H: h, Cells: cells}
+	return &Frame{W: w, H: h, Cells: cells, Palette: ThemePalette("catppuccin")}
 }
 
 // Cell returns the cell at (x, y) or nil when out of bounds.

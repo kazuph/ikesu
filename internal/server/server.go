@@ -222,6 +222,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.app.SetJobSource(s.jobSnapshot)
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
+	s.app.SetConfigChanged(func(c config.Config) { s.cfg = c })
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.

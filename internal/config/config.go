@@ -36,6 +36,9 @@ func (d ToastDelivery) Valid() bool {
 
 // Config is the parsed config file.
 type Config struct {
+	Theme struct {
+		Name string `toml:"name"`
+	} `toml:"theme"`
 	UI struct {
 		MobileWidthThreshold  *int          `toml:"mobile_width_threshold"`
 		Sidebar               SidebarPanels `toml:"sidebar"`
@@ -45,7 +48,10 @@ type Config struct {
 		SidebarStartCollapsed bool          `toml:"sidebar_start_collapsed"`
 		WorkspacePanelDensity string        `toml:"workspace_panel_density"`
 		AgentPanelScope       string        `toml:"agent_panel_scope"`
-		Toast                 struct {
+		Sound                 struct {
+			Enabled *bool `toml:"enabled"`
+		} `toml:"sound"`
+		Toast struct {
 			Delivery string `toml:"delivery"`
 			// Enabled is the legacy boolean: true→"gtx", false→"off";
 			// delivery wins when both are present.
@@ -121,6 +127,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if _, err := toml.Decode(string(data), &c); err != nil {
+		return c, err
+	}
+	if err := ValidateTheme(c.ThemeName()); err != nil {
 		return c, err
 	}
 	return c, c.ValidateSidebar()

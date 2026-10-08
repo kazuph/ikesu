@@ -1,7 +1,16 @@
 package config
 
 // DefaultExample contains supported settings and is shared with --default-config.
-const DefaultExample = `[ui]
+const DefaultExample = `[theme]
+name = "catppuccin"
+
+[ui.sound]
+enabled = true
+
+[ui.toast]
+delivery = "off"
+
+[ui]
 mobile_width_threshold = 64
 sidebar_min_width = 18
 sidebar_max_width = 72

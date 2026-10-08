@@ -19,7 +19,7 @@ func drawGitRow(f *Frame, x, y, w int, g GitStatus, base uv.Style) {
 		mark  string
 		n     int
 		style uv.Style
-	}{{"↑", g.Ahead, uv.Style{Fg: Green, Bg: base.Bg}}, {"↓", g.Behind, uv.Style{Fg: Red, Bg: base.Bg}}, {"+", g.Added, uv.Style{Fg: Green, Bg: base.Bg}}, {"-", g.Deleted, uv.Style{Fg: Red, Bg: base.Bg}}} {
+	}{{"↑", g.Ahead, uv.Style{Fg: f.Palette.Green, Bg: base.Bg}}, {"↓", g.Behind, uv.Style{Fg: f.Palette.Red, Bg: base.Bg}}, {"+", g.Added, uv.Style{Fg: f.Palette.Green, Bg: base.Bg}}, {"-", g.Deleted, uv.Style{Fg: f.Palette.Red, Bg: base.Bg}}} {
 		if v.n > 0 {
 			x = f.Text(x, y, fmt.Sprintf("%s%d ", v.mark, v.n), v.style, limit)
 		}
@@ -28,7 +28,7 @@ func drawGitRow(f *Frame, x, y, w int, g GitStatus, base uv.Style) {
 	if branch == "" {
 		branch = "nogit"
 	}
-	f.Text(x, y, truncate(branch, max(0, limit-x)), uv.Style{Fg: Dim, Bg: base.Bg}, limit)
+	f.Text(x, y, truncate(branch, max(0, limit-x)), uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}, limit)
 }
 func GitLabel(g GitStatus, w int) string {
 	f := NewFrame(w, 1)

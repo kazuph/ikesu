@@ -44,6 +44,6 @@ func drawJobRow(f *Frame, in Input, index, x, y, width int) {
 		return
 	}
 	j := in.Jobs[index]
-	x = f.Text(x, y, "● ", uv.Style{Fg: j.Color}, x+width)
-	f.Text(x, y, truncate(j.Label+" · "+j.Status, max(0, width-2)), uv.Style{Fg: Text}, x+max(0, width-2))
+	x = f.Text(x, y, "● ", uv.Style{Fg: f.ThemeColor(j.Color)}, x+width)
+	f.Text(x, y, truncate(j.Label+" · "+j.Status, max(0, width-2)), uv.Style{Fg: f.Palette.Text}, x+max(0, width-2))
 }

@@ -41,6 +41,10 @@ func (c Config) AgentScope() string {
 
 // SaveSidebarSetting preserves every other TOML value and atomically replaces the file.
 func SaveSidebarSetting(key, value string) error {
+	return saveValues([]string{"ui"}, map[string]any{key: value})
+}
+
+func saveValues(section []string, values map[string]any) error {
 	p := Path()
 	m := map[string]any{}
 	if b, err := os.ReadFile(p); err == nil {
@@ -50,12 +54,18 @@ func SaveSidebarSetting(key, value string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	ui, ok := m["ui"].(map[string]any)
-	if !ok {
-		ui = map[string]any{}
-		m["ui"] = ui
+	target := m
+	for _, name := range section {
+		table, ok := target[name].(map[string]any)
+		if !ok {
+			table = map[string]any{}
+			target[name] = table
+		}
+		target = table
 	}
-	ui[key] = value
+	for key, value := range values {
+		target[key] = value
+	}
 	var b bytes.Buffer
 	if err := toml.NewEncoder(&b).Encode(m); err != nil {
 		return err
@@ -90,4 +100,28 @@ func (c Config) MobileWidthThreshold() int {
 		return max(0, *c.UI.MobileWidthThreshold)
 	}
 	return 64
+}
+
+func (c Config) ThemeName() string {
+	if c.Theme.Name == "" {
+		return "catppuccin"
+	}
+	return c.Theme.Name
+}
+func (c Config) SoundEnabled() bool { return c.UI.Sound.Enabled == nil || *c.UI.Sound.Enabled }
+
+func SaveTheme(name string) error {
+	if err := ValidateTheme(name); err != nil {
+		return err
+	}
+	return saveValues([]string{"theme"}, map[string]any{"name": name, "auto_switch": false})
+}
+func SaveSound(enabled bool) error {
+	return saveValues([]string{"ui", "sound"}, map[string]any{"enabled": enabled})
+}
+func SaveToast(delivery ToastDelivery) error {
+	if !delivery.Valid() {
+		return fmt.Errorf("unsupported toast delivery: %s", delivery)
+	}
+	return saveValues([]string{"ui", "toast"}, map[string]any{"delivery": string(delivery)})
 }

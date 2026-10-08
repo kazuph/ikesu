@@ -251,7 +251,7 @@ func (a *App) activateMenu(i int) {
 		case "new tab":
 			a.newTabNameDialog()
 		case "settings":
-			a.unsupportedSidebar("settings popup")
+			a.openSettings()
 		case "keybinds":
 			a.openHelp()
 		case "reload config":

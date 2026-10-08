@@ -15,6 +15,10 @@ func isCtrlB(k uv.Key) bool {
 
 // handleKey routes one key event.
 func (a *App) handleKey(k uv.Key, raw []byte) {
+	if a.settings != nil {
+		a.settingsKey(k)
+		return
+	}
 	if a.help != nil {
 		a.helpKey(k)
 		return
@@ -84,6 +88,8 @@ func (a *App) prefixKey(k uv.Key) {
 		code -= 'a' - 'A'
 	}
 	switch {
+	case code == 's':
+		a.openSettings()
 	case a.renameKeys[code]:
 		a.openRenamePaneDialog(a.focusedPane())
 	case a.editKeys[code]:
