@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/model"
 	"testing"
 )
 
@@ -33,5 +34,25 @@ func TestG2DuplicateSectionAndMissingWorkspaceSocket(t *testing.T) {
 	r := apiReq(t, dir, "workspace.set_section", map[string]any{"workspace_id": source, "section": "invalid"})
 	if r.Err == nil {
 		t.Fatal("invalid section accepted")
+	}
+}
+
+func TestG2CreateSectionSchemaAndInvalidValue(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	s := newTestServer(t, "create-section")
+	defer s.sup.KillAll()
+	s.app.State().CollapsedSections = map[model.Section]bool{model.SectionWork: true}
+	r := s.wsCreate("section", api.WorkspaceCreateParams{Section: strptr("work"), Focus: true})
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	st := s.app.State()
+	if st.ActiveWorkspace().SidebarSection() != model.SectionWork || st.CollapsedSections[model.SectionWork] {
+		t.Fatal("create section did not expand")
+	}
+	before := len(st.Workspaces)
+	r = s.wsCreate("invalid", api.WorkspaceCreateParams{Section: strptr("made-up")})
+	if r.Err == nil || len(st.Workspaces) != before {
+		t.Fatal("invalid section created workspace")
 	}
 }

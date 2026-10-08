@@ -5,6 +5,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
 	"strconv"
@@ -86,19 +87,30 @@ func drawTokens(f *Frame, x, y, w int, tokens []styledToken) {
 				last = i
 			}
 		}
+
+		cost := func() int {
+			total, last := 0, -1
+			for i, t := range ts {
+				if budget[i] > 0 {
+					if last >= 0 {
+						total += ansi.StringWidth(sep(ts[last], t))
+					}
+					total += budget[i]
+					last = i
+				}
+			}
+			return total
+		}
 		for i := len(ts) - 1; i >= 0; i-- {
 			if ts[i].fixed {
 				continue
 			}
-			extra := ansi.StringWidth(ts[i].text)
-			if used > 0 {
-				extra++
-			}
-			if used+extra <= w {
-				budget[i] = ansi.StringWidth(ts[i].text)
-				used += extra
+			budget[i] = ansi.StringWidth(ts[i].text)
+			if cost() > w {
+				budget[i] = 0
 			}
 		}
+
 	} else {
 		for used < w {
 			grew := false
@@ -156,7 +168,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: sn.Status.Color}, fixed: true})
 		}
 		if !hasPane {
-			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: base, fixed: true})
+			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: uv.Style{Fg: Text, Attrs: uv.AttrBold}, fixed: true})
 		}
 	}
 	for _, t := range configured {
@@ -169,6 +181,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		case "state_text":
 			v.text = sn.Status.Key
 		case "pane":
+			v.style.Attrs |= uv.AttrBold
 			v.text = fmt.Sprintf("%%%d", r.Pane)
 			v.fixed = true
 		case "workspace":
@@ -180,6 +193,8 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			v.text = tab
 		case "agent":
 			v.text = sn.Agent
+		case "terminal_title_stripped":
+			v.text = detect.StripTerminalTitle(sn.Title)
 		case "terminal_title":
 			v.text = sn.Title
 		default:
@@ -195,7 +210,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, configured []config.SidebarToken, x, y, w int) {
 	ws := s.Workspaces[r.Ws]
 	base := uv.Style{Fg: Text}
-	if r.Ws == s.Active {
+	if r.Ws == s.Active || (in.Dragging && r.Ws == in.DraggedWorkspace) || (in.SelectedWorkspace != nil && *in.SelectedWorkspace == r.Ws) {
 		base.Bg = Surface
 		base.Attrs = uv.AttrBold
 		f.Fill(x, y, w, 1, " ", base)
@@ -220,26 +235,27 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			if v.text == "" {
 				v.text = WorkspaceDisplayName(ws, in.Panes)
 			}
-			v.text = fmt.Sprintf("%d %s", r.Ws+1, v.text)
+			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(r.Ws + 1), style: tokenStyle(t, uv.Style{Fg: Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
 		case "branch":
 			v.text = in.Git[r.Ws].Branch
 			if v.text == "" {
 				v.text = "nogit"
 			}
 			v.style.Fg = Dim
+
 		case "git_status":
 			g := in.Git[r.Ws]
-			parts := []string{}
-			for _, v := range []struct {
+			for _, stat := range []struct {
 				mark string
 				n    int
-			}{{"↑", g.Ahead}, {"↓", g.Behind}, {"+", g.Added}, {"-", g.Deleted}} {
-				if v.n > 0 {
-					parts = append(parts, fmt.Sprintf("%s%d", v.mark, v.n))
+				fg   color.Color
+			}{{"↑", g.Ahead, Green}, {"↓", g.Behind, Red}, {"+", g.Added, Green}, {"-", g.Deleted, Red}} {
+				if stat.n > 0 {
+					tokens = append(tokens, styledToken{name: "git_status", text: fmt.Sprintf("%s%d", stat.mark, stat.n), style: tokenStyle(t, uv.Style{Fg: stat.fg, Bg: base.Bg}), fixed: true})
 				}
 			}
-			v.text = strings.Join(parts, " ")
-			v.fixed = true
+			continue
+
 		default:
 			if strings.HasPrefix(t.Token, "$") {
 				v.text = in.WorkspaceTokens[r.Ws][strings.TrimPrefix(t.Token, "$")]
@@ -247,6 +263,12 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		}
 		v.style = tokenStyle(t, v.style)
 		tokens = append(tokens, v)
+	}
+
+	if r.Kind == RowWorkspace {
+		for _, dot := range in.JobDots[r.Ws] {
+			tokens = append(tokens, styledToken{name: "job", text: "●", style: uv.Style{Fg: dot.Color, Bg: base.Bg}, fixed: true})
+		}
 	}
 	drawTokens(f, x+1, y, max(0, w-1), tokens)
 }

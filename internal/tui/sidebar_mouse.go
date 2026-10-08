@@ -146,7 +146,11 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			if g.section != "" {
 				a.setSection(g.ws, g.section)
 			} else if g.drop >= 0 {
-				a.exec(model.CmdMoveWorkspace{Index: g.ws, InsertIndex: g.drop})
+				to := g.drop
+				if to > g.ws {
+					to--
+				}
+				a.exec(model.CmdMoveWorkspace{Index: g.ws, InsertIndex: to})
 			}
 			return
 		}

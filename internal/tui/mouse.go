@@ -32,6 +32,8 @@ func (a *App) onMouse(ev input.Event) {
 			break
 		}
 		a.copyMouse(ev)
+	case a.tabGesture != nil:
+		a.tabGestureMouse(ev)
 	case a.sidebarGesture != nil:
 		a.sidebarGestureMouse(ev)
 	case a.sep != nil:
@@ -315,7 +317,7 @@ func (a *App) tabBarClick(m uv.Mouse) {
 		}
 		switch m.Button {
 		case uv.MouseLeft:
-			a.exec(model.CmdSelectTab{Workspace: a.st.Active, Tab: i})
+			a.tabGesture = &tabGesture{ws: a.st.Active, tab: i, x: m.X, y: m.Y, drop: -1}
 		case uv.MouseMiddle:
 			a.closeTabAt(a.st.Active, i)
 		case uv.MouseRight:

@@ -31,7 +31,7 @@ rows = [[{token="workspace",fg="`+fg+`"}]]`, &bad); e == nil {
 	}
 }
 func TestG2UnsupportedTokenExplicitError(t *testing.T) {
-	for _, name := range []string{"terminal_title_stripped", "$pane_custom", "made-up"} {
+	for _, name := range []string{"$pane_custom", "made-up"} {
 		var c Config
 		c.UI.Sidebar.Agents.Rows = [][]SidebarToken{{{Token: name}}}
 		if c.ValidateSidebar() == nil {

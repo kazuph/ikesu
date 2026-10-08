@@ -2,15 +2,18 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/cli"
 	"github.com/kazuph/goterrace/internal/client"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/server"
 	"github.com/kazuph/goterrace/internal/tui"
@@ -54,6 +57,9 @@ dispatch:
 
 	if len(args) > 0 {
 		switch args[0] {
+		case "--default-config":
+			fmt.Print(config.DefaultExample)
+			return
 		case "--version", "-version", "version":
 			fmt.Printf("goterrace %s\n", version)
 			return
@@ -84,6 +90,14 @@ dispatch:
 	}
 
 	code, err := run(noSession, session)
+	if errors.Is(err, tui.ErrStandaloneRestart) {
+		exe, e := os.Executable()
+		if e == nil {
+			e = syscall.Exec(exe, []string{exe, "--no-session"}, os.Environ())
+		}
+		fmt.Fprintln(os.Stderr, "gtx restart:", e)
+		os.Exit(1)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gtx:", err)
 	}

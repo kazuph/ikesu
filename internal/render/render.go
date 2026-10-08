@@ -122,12 +122,14 @@ type Input struct {
 	Panes           map[int]*PaneSnap
 	Scroll          map[int]int
 	// JobDots maps workspace index → job dots drawn on its sidebar row.
-	JobDots          map[int][]JobDot
-	Git              map[int]GitStatus
-	WorkspaceNames   map[int]string
-	DragSection      model.Section
-	DraggedWorkspace int
-	Dragging         bool
+	JobDots           map[int][]JobDot
+	Git               map[int]GitStatus
+	WorkspaceNames    map[int]string
+	SelectedWorkspace *int
+	DropIndex         *int
+	DragSection       model.Section
+	DraggedWorkspace  int
+	Dragging          bool
 
 	Menu   *Menu
 	Dialog *Dialog

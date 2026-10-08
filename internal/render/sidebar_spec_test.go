@@ -123,3 +123,56 @@ func TestG2SectionNewNarrowAndWidthFooter(t *testing.T) {
 		t.Fatal("invisible hit")
 	}
 }
+
+func TestG2DropTargetWholeHeaderAndBottomIndicator(t *testing.T) {
+	s := model.New("/tmp", 100, 30)
+	s.Apply(model.CmdNewWorkspace{Cwd: "/tmp/two", Section: model.SectionWork})
+	out := Compose(Input{State: s, DragSection: model.SectionWork, Dragging: true, DraggedWorkspace: 0})
+	rows := SidebarRows(s, nil)
+	ix, y, w, _ := SidebarContent(s.SidebarArea())
+	for i, r := range rows {
+		if r.Kind == RowSection && r.Section == model.SectionWork {
+			for x := ix; x < ix+w; x++ {
+				if out.Frame.Cell(x, y+i).Width > 0 && !reflect.DeepEqual(out.Frame.Cell(x, y+i).Style.Bg, Accent) {
+					t.Fatal("header background", x)
+				}
+			}
+			if out.Frame.Cell(ix, y+i).Style.Attrs&uv.AttrBold == 0 {
+				t.Fatal("header not bold")
+			}
+		}
+	}
+	drop := 2
+	out = Compose(Input{State: s, DropIndex: &drop, Dragging: true, DraggedWorkspace: 1})
+	last := -1
+	for i, r := range rows {
+		if r.Ws == 1 && (r.Kind == RowWorkspace || r.Kind == RowGit) {
+			last = i
+		}
+	}
+	for x := ix; x < ix+w; x++ {
+		if out.Frame.Cell(x, y+last+1).Content != "─" {
+			t.Fatal("missing bottom insertion indicator", x)
+		}
+	}
+}
+
+func TestG2WorkspaceNumberAndGlobalPane22(t *testing.T) {
+	s := model.New("/tmp/one", 100, 40)
+	for i := 1; i < 22; i++ {
+		s.Apply(model.CmdSplitFocused{Dir: 0})
+	}
+	panes := map[int]*PaneSnap{22: {Agent: "long-agent-label", Status: StatusGlyph{Rune: "·", Color: Dim}}}
+	out := Compose(Input{State: s, Panes: panes})
+	rows := SidebarRows(s, panes)
+	_, y, _, _ := SidebarContent(s.SidebarArea())
+	for i, r := range rows {
+		line := frameLine(out.Frame, y+i)
+		if r.Kind == RowWorkspace && !strings.Contains(line, "· 1 one") {
+			t.Fatal(line)
+		}
+		if r.Kind == RowAgent && (!strings.Contains(line, "%22") || strings.Contains(line, "1-1") || strings.Contains(line, "2-1")) {
+			t.Fatal(line)
+		}
+	}
+}

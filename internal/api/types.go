@@ -8,10 +8,11 @@ import "encoding/json"
 type EmptyParams struct{}
 
 type WorkspaceCreateParams struct {
-	Cwd   *string           `json:"cwd,omitempty"`
-	Env   map[string]string `json:"env,omitempty"`
-	Focus bool              `json:"focus"`
-	Label *string           `json:"label,omitempty"`
+	Section *string           `json:"section,omitempty"`
+	Cwd     *string           `json:"cwd,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Focus   bool              `json:"focus"`
+	Label   *string           `json:"label,omitempty"`
 }
 
 type WorkspaceTarget struct {

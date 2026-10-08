@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/api"
@@ -138,20 +139,21 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	inputEOF       bool                                           // input close means quit (local mode)
-	detacher       func(reason string)                            // server mode: detach the client
-	sinkOn         func() bool                                    // nil = always draw
-	quitHook       func()                                         // runs on the loop right before Run returns
-	availHook      func(pid int)                                  // pane status changed; server flushes mail
-	changeHook     func()                                         // persistent state changed; server coalesces saves
-	restartHook    func()                                         // main menu "Restart server…" (server mode only)
-	restoreHook    func(dryRun bool)                              // main menu "Restore agents…" (server mode only)
-	paneClosedHook func(pid int)                                  // pane permanently removed; server cleans ledger
-	postExecHook   func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
-	exitedHook     func(pid int)                                  // pane process exited; server emits pane.exited
-	outHook        func(pid int)                                  // pane output changed; server emits pane.output_changed
-	worktreeHook   func(string, WorktreeOutcome, bool)
-	warningsHook   func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
+	inputEOF          bool                // input close means quit (local mode)
+	detacher          func(reason string) // server mode: detach the client
+	sinkOn            func() bool         // nil = always draw
+	quitHook          func()              // runs on the loop right before Run returns
+	availHook         func(pid int)       // pane status changed; server flushes mail
+	changeHook        func()              // persistent state changed; server coalesces saves
+	restartHook       func()              // main menu "Restart server…" (server mode only)
+	standaloneRestart bool
+	restoreHook       func(dryRun bool)                              // main menu "Restore agents…" (server mode only)
+	paneClosedHook    func(pid int)                                  // pane permanently removed; server cleans ledger
+	postExecHook      func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
+	exitedHook        func(pid int)                                  // pane process exited; server emits pane.exited
+	outHook           func(pid int)                                  // pane output changed; server emits pane.output_changed
+	worktreeHook      func(string, WorktreeOutcome, bool)
+	warningsHook      func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix               bool
 	navKey               rune // prefix+<navKey> jumps to the toast target
@@ -196,6 +198,7 @@ type App struct {
 	uiBorders            bool                  // [ui] pane_borders
 	sidebarConfig        config.Config
 	sidebarGesture       *sidebarGesture
+	tabGesture           *tabGesture
 	dividerAt            time.Time
 	sidebarScroll        int
 	cellW                int // host cell width in pixels (0 = unknown)
@@ -390,6 +393,13 @@ func (a *App) Run() {
 	defer tick.Stop()
 	var flush <-chan time.Time
 	var flushTimer *time.Timer
+	var drawTimer *time.Timer
+	var drawReady <-chan time.Time
+	defer func() {
+		if drawTimer != nil {
+			drawTimer.Stop()
+		}
+	}()
 	defer func() {
 		if flushTimer != nil {
 			flushTimer.Stop()
@@ -445,14 +455,30 @@ func (a *App) Run() {
 			if a.cellW != beforeW || a.cellH != beforeH {
 				a.syncLayout()
 			}
+		case <-drawReady:
+			drawReady = nil
 		case <-tick.C:
 			a.onTick()
 		}
 		if a.quit {
 			break
 		}
-		if a.dirty && time.Since(a.lastDraw) >= drawMinInterval {
-			a.draw()
+		if a.dirty {
+			remaining := time.Until(a.lastDraw.Add(drawMinInterval))
+			if remaining <= 0 {
+				if drawTimer != nil {
+					drawTimer.Stop()
+				}
+				drawReady = nil
+				a.draw()
+			} else {
+				if drawTimer == nil {
+					drawTimer = time.NewTimer(remaining)
+				} else {
+					drawTimer.Reset(remaining)
+				}
+				drawReady = drawTimer.C
+			}
 		}
 	}
 	if a.quitHook != nil {
@@ -462,6 +488,8 @@ func (a *App) Run() {
 
 // Run starts the TUI on the local terminal and blocks until quit. Returns
 // an exit code.
+var ErrStandaloneRestart = errors.New("standalone restart requested")
+
 func Run(in *os.File, out *os.File) (int, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -503,6 +531,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	a := NewApp(st, sup, out, cwd)
 	a.BeginHostMouse(ws.Xpixel, ws.Ypixel)
 	a.inputEOF = true
+	a.SetRestartHook(func() { a.standaloneRestart = true; a.exec(model.CmdQuit{}) })
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
 		a.SetSidebarConfig(cfg, true)
@@ -528,6 +557,9 @@ func Run(in *os.File, out *os.File) (int, error) {
 
 	a.Run()
 	sup.KillAll()
+	if a.standaloneRestart {
+		return 0, ErrStandaloneRestart
+	}
 	return 0, nil
 }
 

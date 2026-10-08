@@ -215,3 +215,90 @@ func TestG2SidebarConfigReloadKeepsCollapseAndManualWidth(t *testing.T) {
 		t.Fatal("reload overwrote UI choice")
 	}
 }
+
+func TestG2HeaderTogglesPersistAndResetScroll(t *testing.T) {
+	t.Setenv("GTX_CONFIG", t.TempDir()+"/config.toml")
+	a := specRuntimeApp(t)
+	a.sidebarScroll = 12
+	a.toggleSidebarSetting(true)
+	c, err := config.Load()
+	if err != nil || c.WorkspaceDensity() != "slim" || a.st.WorkspaceDensity != "slim" || a.sidebarScroll != 0 {
+		t.Fatal(c, err)
+	}
+	a.sidebarScroll = 8
+	a.toggleSidebarSetting(false)
+	c, err = config.Load()
+	if err != nil || c.AgentScope() != "sort" || a.st.AgentScope != "sort" || a.sidebarScroll != 0 {
+		t.Fatal(c, err)
+	}
+}
+
+func TestG2FooterBlankAndSectionBody(t *testing.T) {
+	a := specRuntimeApp(t)
+	r := render.SidebarMenuRect(a.st)
+	n := render.SidebarNewRect(a.st)
+	if r.X+r.W > n.X {
+		t.Fatal("footer order")
+	}
+	sidebarEvent(a, input.KindMouseClick, r.X, r.Y)
+	if a.menu == nil || a.menu.kind != menuMain {
+		t.Fatal("footer menu missing")
+	}
+	var labels []string
+	for _, it := range a.menu.m.Items {
+		if it.Separator {
+			labels = append(labels, "--")
+		} else {
+			labels = append(labels, it.Label)
+		}
+	}
+	want := []string{"new workspace", "new tab", "--", "settings", "keybinds", "reload config", "sidebar narrow", "sidebar normal", "sidebar wide", "what's new", "--", "restore agents...", "--", "detach", "--", "stop server", "restart"}
+	if !reflect.DeepEqual(labels, want) {
+		t.Fatal(labels)
+	}
+	a.menu = nil
+	before := len(a.st.Workspaces)
+	sidebarEvent(a, input.KindMouseClick, n.X, n.Y)
+	if len(a.st.Workspaces) != before+1 || a.st.ActiveWorkspace().SidebarSection() != model.SectionNone {
+		t.Fatal("footer new section")
+	}
+	a.setSection(0, model.SectionWork)
+	source := a.st.Active
+	y, body := sidebarCardY(a, source), sidebarCardY(a, 0)
+	sidebarEvent(a, input.KindMouseClick, 3, y)
+	sidebarEvent(a, input.KindMouseMotion, 3, body)
+	sidebarEvent(a, input.KindMouseRelease, 3, body)
+	if a.st.Workspaces[source].SidebarSection() != model.SectionWork {
+		t.Fatal("section body drop")
+	}
+	a.menu = nil
+	a.draw()
+	for i := 0; i < 2; i++ {
+		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: 3, Y: a.st.SidebarArea().H - 4, Button: uv.MouseRight}})
+		if a.menu != nil {
+			t.Fatal("blank menu")
+		}
+	}
+	a.openQuitDialog()
+	if a.quit {
+		t.Fatal("quit before confirm")
+	}
+	a.dialog.run(a)
+	if !a.quit {
+		t.Fatal("quit did not confirm")
+	}
+}
+
+func TestG2SectionCommandResetsScrollForAPIAndUI(t *testing.T) {
+	a := specRuntimeApp(t)
+	a.sidebarScroll = 12
+	a.ExecCmd(model.CmdSetSection{Index: 0, Section: model.SectionWork})
+	if a.sidebarScroll != 0 {
+		t.Fatal("API command retained old section scroll")
+	}
+	a.sidebarScroll = 12
+	a.ExecCmd(model.CmdToggleSection{Section: model.SectionWork})
+	if a.sidebarScroll != 0 {
+		t.Fatal("collapse command retained old section scroll")
+	}
+}

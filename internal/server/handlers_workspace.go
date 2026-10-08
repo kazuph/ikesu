@@ -24,6 +24,13 @@ func (s *Server) wsGet(id, ref string) api.Response {
 
 func (s *Server) wsCreate(id string, p api.WorkspaceCreateParams) api.Response {
 	st := s.app.State()
+	section := model.SectionNone
+	if p.Section != nil {
+		section = model.Section(*p.Section)
+		if !section.Valid() {
+			return api.Failure(id, api.ErrInvalidRequest, "invalid workspace section")
+		}
+	}
 	cwd := ""
 	if p.Cwd != nil {
 		cwd = *p.Cwd
@@ -31,7 +38,7 @@ func (s *Server) wsCreate(id string, p api.WorkspaceCreateParams) api.Response {
 	if cwd == "" {
 		cwd = s.cwd
 	}
-	s.app.ExecCmd(model.CmdNewWorkspace{Cwd: cwd, Env: p.Env, NoFocus: !p.Focus})
+	s.app.ExecCmd(model.CmdNewWorkspace{Cwd: cwd, Env: p.Env, NoFocus: !p.Focus, Section: section})
 	idx := len(st.Workspaces) - 1
 	ws := st.Workspaces[idx]
 	if p.Label != nil && *p.Label != "" {

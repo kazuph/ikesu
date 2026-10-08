@@ -59,12 +59,12 @@ func specWaitText(t *testing.T, p *runtime.Pane, text string) {
 func TestSPECCopyWriteSuccessFailureAndTwoSecondDeadline(t *testing.T) {
 	a := specRuntimeApp(t)
 	pid := a.focusedPane()
-	p, err := a.sup.SpawnWith(pid, a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", "printf 'alpha\\r\\nbeta\\r\\n'; exec sleep 60"})
+	p, err := a.sup.SpawnWith(pid, a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", "printf 'alpha\\r\\nbeta\\r\\ngamma\\r\\n'; exec sleep 60"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	specWaitText(t, p, "beta")
-	for _, lines := range []int{1, 2} {
+	for _, lines := range []int{1, 2, 3} {
 		f, err := os.CreateTemp(t.TempDir(), "osc52")
 		if err != nil {
 			t.Fatal(err)
@@ -77,6 +77,10 @@ func TestSPECCopyWriteSuccessFailureAndTwoSecondDeadline(t *testing.T) {
 		if lines == 2 {
 			text = "alpha\nbeta"
 			want = " Copied 2 lines "
+		}
+		if lines == 3 {
+			text = "alpha\nbeta\ngamma"
+			want = " Copied 3 lines "
 		}
 		b, err := os.ReadFile(f.Name())
 		if err != nil {

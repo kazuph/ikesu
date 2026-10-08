@@ -471,7 +471,7 @@ func TestCopyModeRightBracket(t *testing.T) {
 // fullscreen copy → normal.
 func TestActionBarCopyCycle(t *testing.T) {
 	s := start(t)
-	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	s.waitFor("COPY button", 10*time.Second, func(tx string) bool { return strings.Contains(tx, " COPY ") })
 	x, y := s.find(" COPY ")
 	if x < 0 {
 		t.Fatalf("COPY button not found:\n%s", s.text())

@@ -191,6 +191,28 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarRow(f, s, in, rows[i], ix, iy+i-scroll, iw)
 	}
 
+	if in.DropIndex != nil && in.Dragging {
+		boundary := -1
+		for i, r := range rows {
+			if r.Kind == RowWorkspace && r.Ws == *in.DropIndex {
+				boundary = i
+				break
+			}
+		}
+		if boundary < 0 {
+			for i, r := range rows {
+				if (r.Kind == RowWorkspace || r.Kind == RowGit) && r.Ws == *in.DropIndex-1 {
+					boundary = i + 1
+				}
+			}
+		}
+		if boundary >= scroll && boundary < scroll+avail {
+			for x := ix; x < ix+iw; x++ {
+				f.Set(x, iy+boundary-scroll, "─", uv.Style{Fg: Accent})
+			}
+		}
+	}
+
 	fr := SidebarFooter(area)
 	if fr.W > 0 && fr.Y >= iy {
 		f.Text(fr.X+1, fr.Y, "[menu]", uv.Style{Fg: Subtle}, fr.X+fr.W)
@@ -278,7 +300,8 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		active := r.Ws == s.Active
 		dragged := in.Dragging && r.Ws == in.DraggedWorkspace
 		sty := uv.Style{Fg: Text}
-		if active || dragged {
+		selected := in.SelectedWorkspace != nil && *in.SelectedWorkspace == r.Ws
+		if active || dragged || selected {
 			sty.Bg = Surface
 			sty.Attrs = uv.AttrBold
 			f.Fill(ix, y, iw, 1, " ", sty)
@@ -323,18 +346,9 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if sn == nil {
 			return
 		}
-		x := f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: sn.Status.Color}, ix+iw)
-		x = f.Text(x, y, fmt.Sprintf(" %%%d ", r.Pane), uv.Style{Fg: Text, Attrs: uv.AttrBold}, ix+iw)
-		ws := s.Workspaces[r.Ws]
-		tab := ""
-		for _, t := range ws.Tabs {
-			if t.Layout.HasPane(r.Pane) {
-				tab = t.TabLabel()
-				break
-			}
-		}
-		parts := BudgetLabels([]string{WorkspaceDisplayName(ws, in.Panes), tab, sn.Agent}, max(0, ix+iw-x))
-		f.Text(x, y, parts, uv.Style{Fg: Text}, ix+iw)
+
+		drawConfiguredAgent(f, s, in, r, []config.SidebarToken{{Token: "workspace"}, {Token: "tab"}, {Token: "agent"}}, ix, y, iw)
+
 	}
 }
 func WorkspaceDisplayName(ws *model.Workspace, panes map[int]*PaneSnap) string {

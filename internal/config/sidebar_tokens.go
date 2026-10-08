@@ -78,7 +78,7 @@ func (c Config) ValidateSidebar() error {
 			for _, t := range row {
 				switch t.Token {
 				case "state_icon", "state_text", "workspace":
-				case "pane", "tab", "agent", "terminal_title":
+				case "pane", "tab", "agent", "terminal_title", "terminal_title_stripped":
 					if !agent {
 						return fmt.Errorf("unsupported space token: %s", t.Token)
 					}
@@ -86,8 +86,6 @@ func (c Config) ValidateSidebar() error {
 					if agent {
 						return fmt.Errorf("unsupported agent token: %s", t.Token)
 					}
-				case "terminal_title_stripped":
-					return fmt.Errorf("unsupported token terminal_title_stripped: stripping contract not available")
 				default:
 					if len(t.Token) > 1 && t.Token[0] == '$' && !agent {
 						continue

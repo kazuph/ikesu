@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/BurntSushi/toml"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,5 +43,16 @@ func TestSidebarSavePreservesConfigAndFailure(t *testing.T) {
 	}
 	if SaveSidebarSetting("agent_panel_scope", "sort") == nil {
 		t.Fatal("corrupt config overwritten")
+	}
+}
+
+func TestG2GeneratedDefaultConfig(t *testing.T) {
+	var c Config
+	if _, err := toml.Decode(DefaultExample, &c); err != nil {
+		t.Fatal(err)
+	}
+	lo, hi, n, err := c.SidebarBounds()
+	if err != nil || lo != 18 || hi != 72 || n != 26 || c.WorkspaceDensity() != "full" || c.AgentScope() != "all" {
+		t.Fatal(c)
 	}
 }

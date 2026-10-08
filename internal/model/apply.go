@@ -35,11 +35,14 @@ func (s *AppState) Apply(cmd Command) []Effect {
 			s.Workspaces[c.Index].Worktree = c.Info
 		}
 		return nil
+	case CmdMoveTab:
+		return s.moveTab(c)
 	case CmdMoveWorkspace:
 		return s.moveWorkspace(c.Index, c.InsertIndex)
 	case CmdNewWorkspace:
 		ws := s.newWorkspace(c.Cwd)
 		ws.Section = c.Section
+		delete(s.CollapsedSections, c.Section)
 		if !c.NoFocus {
 			s.Active = len(s.Workspaces) - 1
 		}

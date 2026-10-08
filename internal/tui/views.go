@@ -80,9 +80,15 @@ func (a *App) draw() {
 		in.Dragging = a.sidebarGesture.moved
 		in.DraggedWorkspace = a.sidebarGesture.ws
 		in.DragSection = a.sidebarGesture.section
+		if a.sidebarGesture.moved && a.sidebarGesture.drop >= 0 {
+			in.DropIndex = &a.sidebarGesture.drop
+		}
 	}
 	if a.menu != nil {
 		in.Menu = &a.menu.m
+		if a.menu.kind == menuWorkspace {
+			in.SelectedWorkspace = &a.menu.ws
+		}
 	}
 	if a.dialog != nil {
 		in.Dialog = &a.dialog.d
