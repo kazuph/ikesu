@@ -640,6 +640,35 @@ func screenLines(emu *vt.Emulator) []string {
 }
 
 // ScrollbackLines returns scrollback history (index 0 = oldest).
+// BufferLines returns the retained buffer (scrollback rows first, then
+// the screen) as cell rows for the copy-motion/search contract.
+func (p *Pane) BufferLines() [][]uv.Cell {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	sb := p.emu.ScrollbackLen()
+	h := p.emu.Height()
+	w := p.emu.Width()
+	out := make([][]uv.Cell, sb+h)
+	for y := 0; y < sb+h; y++ {
+		row := make([]uv.Cell, w)
+		for x := 0; x < w; x++ {
+			var c *uv.Cell
+			if y < sb {
+				c = p.emu.ScrollbackCellAt(x, y)
+			} else {
+				c = p.emu.CellAt(x, y-sb)
+			}
+			if c != nil {
+				row[x] = *c
+			} else {
+				row[x] = uv.Cell{Content: " ", Width: 1}
+			}
+		}
+		out[y] = row
+	}
+	return out
+}
+
 func (p *Pane) ScrollbackLines() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -27,11 +27,20 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		a.prefix = false
 		a.dirty = true
 		a.prefixKey(k)
+		// A prefix command run inside copy mode that moved the focus
+		// elsewhere closes the copy view.
+		if a.cm != nil && a.cm.pane != a.focusedPane() {
+			a.exitCopy()
+		}
 		return
 	}
 	if isCtrlB(k) {
 		a.prefix = true
 		a.dirty = true
+		return
+	}
+	if a.cm != nil {
+		a.copyKey(k, raw)
 		return
 	}
 	pid := a.focusedPane()
@@ -58,9 +67,14 @@ func (a *App) prefixKey(k uv.Key) {
 		if pid := a.focusedPane(); pid >= 0 {
 			a.sup.Input(pid, []byte{0x02})
 		}
-	case k.Code == 'v':
+	case a.copyKeys[k.Code]:
+		// [keys] copy_mode (default prefix+[ and prefix+]).
+		a.enterCopy(false)
+	case a.splitVKeys[k.Code]:
+		// [keys] split_vertical (default prefix+% and prefix+v).
 		a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
-	case k.Code == '-':
+	case a.splitHKeys[k.Code]:
+		// [keys] split_horizontal (default prefix+" and prefix+minus).
 		a.exec(model.CmdSplitFocused{Dir: layout.Horizontal})
 	case k.Code == 'x':
 		a.closeFocusedPane()

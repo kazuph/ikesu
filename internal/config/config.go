@@ -54,7 +54,10 @@ type Config struct {
 		AllowNested bool `toml:"allow_nested"`
 	} `toml:"experimental"`
 	Keys struct {
-		OpenNotificationTarget string `toml:"open_notification_target"`
+		OpenNotificationTarget string   `toml:"open_notification_target"`
+		CopyMode               []string `toml:"copy_mode"`
+		SplitVertical          []string `toml:"split_vertical"`
+		SplitHorizontal        []string `toml:"split_horizontal"`
 	} `toml:"keys"`
 	Agent struct {
 		Shell string            `toml:"shell"`
@@ -169,6 +172,62 @@ func ParseNavKey(spec string) (rune, bool) {
 		return 0, false
 	}
 	return runes[0], true
+}
+
+// namedKeys maps the spec's punctuation binding names to their runes
+// (SPEC G6: percent → '%', double_quote → '"').
+var namedKeys = map[string]rune{
+	"percent":      '%',
+	"double_quote": '"',
+	"minus":        '-',
+	"space":        ' ',
+}
+
+// ParseKeyBinding resolves a "prefix+<key>" spec to its rune; punctuation
+// names (percent, double_quote, minus) resolve to their characters.
+func ParseKeyBinding(spec string) (rune, bool) {
+	rest, ok := strings.CutPrefix(spec, "prefix+")
+	if !ok {
+		return 0, false
+	}
+	if r, ok := namedKeys[rest]; ok {
+		return r, true
+	}
+	runes := []rune(rest)
+	if len(runes) != 1 {
+		return 0, false
+	}
+	return runes[0], true
+}
+
+// keyList resolves a binding list; an empty or all-invalid list falls back
+// to the given default specs.
+func (c Config) keyList(specs []string, def []string) map[rune]bool {
+	if len(specs) == 0 {
+		specs = def
+	}
+	out := map[rune]bool{}
+	for _, s := range specs {
+		if r, ok := ParseKeyBinding(s); ok {
+			out[r] = true
+		}
+	}
+	return out
+}
+
+// CopyKeys is the copy-mode entry set (default prefix+[ and prefix+]).
+func (c Config) CopyKeys() map[rune]bool {
+	return c.keyList(c.Keys.CopyMode, []string{"prefix+[", "prefix+]"})
+}
+
+// SplitVerticalKeys is the side-by-side split set (default prefix+% / v).
+func (c Config) SplitVerticalKeys() map[rune]bool {
+	return c.keyList(c.Keys.SplitVertical, []string{"prefix+percent", "prefix+v"})
+}
+
+// SplitHorizontalKeys is the stacked split set (default prefix+" / -).
+func (c Config) SplitHorizontalKeys() map[rune]bool {
+	return c.keyList(c.Keys.SplitHorizontal, []string{"prefix+double_quote", "prefix+minus"})
 }
 
 // AgentEnv returns the env map merged into agent.start panes.

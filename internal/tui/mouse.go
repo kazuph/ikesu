@@ -23,6 +23,13 @@ func (a *App) onMouse(ev input.Event) {
 		a.dialogMouse(ev)
 	case a.menu != nil:
 		a.menuMouse(ev)
+	case a.cm != nil:
+		// The action bar keeps its routing precedence inside copy mode
+		// (SPEC G1: action bar → border → scrollbar → title → body).
+		if ev.Kind == input.KindMouseClick && a.actionBarHit(m) {
+			break
+		}
+		a.copyMouse(ev)
 	case a.sep != nil:
 		a.sepMouse(ev)
 	case a.sb != nil:

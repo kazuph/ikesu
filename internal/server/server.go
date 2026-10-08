@@ -234,6 +234,7 @@ func Run(session, version string) (int, error) {
 		s.app.SetNavKey('o')
 	}
 	s.app.SetUIFlags(s.cfg.ShowTabBar(), s.cfg.HideTabBarWhenSingleTab(), s.cfg.PaneBorders())
+	s.app.SetKeybinds(s.cfg.CopyKeys(), s.cfg.SplitVerticalKeys(), s.cfg.SplitHorizontalKeys())
 
 	// Restore the saved session when session.json exists; otherwise start
 	// the initial shell. A corrupt file fails closed to a fresh state.

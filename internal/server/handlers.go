@@ -218,6 +218,18 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
 		return s.paneScroll(req.ID, p)
+	case api.MethodPaneCopyMotion:
+		var p api.PaneCopyMotionParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneCopyMotion(req.ID, p)
+	case api.MethodPaneCopySearch:
+		var p api.PaneCopySearchParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.paneCopySearch(req.ID, p)
 	case api.MethodLayoutExport:
 		var p api.LayoutExportParams
 		if err := req.DecodeParams(&p); err != nil {

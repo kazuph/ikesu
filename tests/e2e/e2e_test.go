@@ -412,6 +412,86 @@ func TestDragSelectCopy(t *testing.T) {
 	})
 }
 
+// SPEC G6: prefix+[ enters copy mode; / searches, Space anchors,
+// Enter yanks and exits with a "Copied N lines" sidebar flash.
+func TestCopyModeSelectYank(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send("echo COPYMARK\n")
+	s.waitFor("echo output", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "COPYMARK") })
+
+	s.send("\x02[") // prefix+[
+	s.waitFor("copy mode", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "PHONE COPY")
+	})
+
+	// Search for the marker, anchor, extend right, yank with Enter.
+	s.send("/COPYMARK\r")
+	s.send(" llll")
+	s.send("\r")
+	s.waitFor("yank flash", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "Copied 1 line")
+	})
+	s.waitFor("back to copy label", 5*time.Second, func(tx string) bool {
+		return !strings.Contains(tx, "PHONE COPY") && strings.Contains(tx, " COPY ")
+	})
+}
+
+// SPEC G6: prefix+] enters the same copy mode; q exits.
+func TestCopyModeRightBracket(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	s.send("\x02]") // prefix+]
+	s.waitFor("copy mode", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "PHONE COPY")
+	})
+	s.send("q")
+	s.waitFor("exit copy", 5*time.Second, func(tx string) bool {
+		return !strings.Contains(tx, "PHONE COPY")
+	})
+}
+
+// SPEC G1/G6: the action bar COPY button cycles normal → copy →
+// fullscreen copy → normal.
+func TestActionBarCopyCycle(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	x, y := s.find(" COPY ")
+	if x < 0 {
+		t.Fatalf("COPY button not found:\n%s", s.text())
+	}
+	s.click(x, y)
+	s.waitFor("phone copy", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "PHONE COPY")
+	})
+	x, y = s.find("PHONE COPY")
+	s.click(x, y)
+	s.waitFor("exit copy label", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "EXIT COPY")
+	})
+	x, y = s.find("EXIT COPY")
+	s.click(x, y)
+	s.waitFor("back to normal", 5*time.Second, func(tx string) bool {
+		return !strings.Contains(tx, "PHONE COPY") && !strings.Contains(tx, "EXIT COPY") && strings.Contains(tx, " COPY ")
+	})
+}
+
+// SPEC G6: tmux-style split aliases — prefix+% splits vertically,
+// prefix+" horizontally, alongside prefix+v / prefix+-.
+func TestTmuxSplitKeys(t *testing.T) {
+	s := start(t)
+	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
+	s.send("\x02%") // prefix+%
+	s.waitFor("vertical split", 5*time.Second, func(tx string) bool {
+		return countPanes(tx) >= 2
+	})
+	s.send("\x02\"") // prefix+"
+	s.waitFor("horizontal split", 5*time.Second, func(tx string) bool {
+		return countPanes(tx) >= 3
+	})
+}
+
 func TestTabBar(t *testing.T) {
 	s := start(t)
 
@@ -435,18 +515,24 @@ func TestTabBar(t *testing.T) {
 		return countPanes(scr) == 2
 	})
 
-	// C-b [ cycles back to tab 1 (single pane visible again).
-	s.send("\x02[")
+	// Clicking tab 1's cell switches back (prefix+[ / ] now enter copy
+	// mode per SPEC G6; tab cells are the switch surface).
+	x, y := s.find("tab 1")
+	if x < 0 {
+		t.Fatalf("tab 1 cell not found; screen:\n%s", s.text())
+	}
+	s.click(x, y)
 	s.waitFor("tab 1 layout", 5*time.Second, func(scr string) bool {
 		return countPanes(scr) == 1
 	})
-	s.send("\x02]")
+	x, y = s.find("tab 2")
+	s.click(x, y)
 	s.waitFor("tab 2 layout", 5*time.Second, func(scr string) bool {
 		return countPanes(scr) == 2
 	})
 
 	// Mouse: clicking the tab 1 cell focuses it.
-	x, y := s.find("tab 1")
+	x, y = s.find("tab 1")
 	if x < 0 {
 		t.Fatalf("tab 1 cell not found; screen:\n%s", s.text())
 	}

@@ -19,6 +19,7 @@ var (
 	Text    = color.RGBA{0xcd, 0xd6, 0xf4, 0xff} // text
 	Subtle  = color.RGBA{0xa6, 0xad, 0xc8, 0xff} // subtext0
 	Surface = color.RGBA{0x31, 0x32, 0x44, 0xff} // surface0
+	SurfDim = color.RGBA{0x18, 0x18, 0x25, 0xff} // surface_dim (mantle)
 	Red     = color.RGBA{0xf3, 0x8b, 0xa8, 0xff}
 	Green   = color.RGBA{0xa6, 0xe3, 0xa1, 0xff}
 	Yellow  = color.RGBA{0xf9, 0xe2, 0xaf, 0xff}
@@ -135,6 +136,22 @@ type Input struct {
 	// CopyLabel is the action bar's left button text: " COPY ",
 	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
 	CopyLabel string
+	// Copy is the copy-mode view mark (nil = not in copy mode).
+	Copy *CopyMark
+	// CopyHint is the copy-mode help row drawn on the pane's bottom
+	// frame row (in-layout) or the panes area's last row (fullscreen):
+	// " COPY  h/j/k/l … " or the search prompt (SPEC G6).
+	CopyHint string
+}
+
+// CopyMark locates the copy-mode cursor in pane-inner cell coords and,
+// when Fullscreen, makes the pane cover the whole panes area without a
+// frame (SPEC G6).
+type CopyMark struct {
+	Pane       int
+	X, Y       int // cursor in inner cell coords
+	Fullscreen bool
+	Sel        *Selection
 }
 
 // Output is a composed frame plus the cursor anchor for IME positioning.
@@ -241,6 +258,19 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		return
 	}
 	area := s.PanesArea()
+	// Fullscreen copy: the pane covers the terminal area with no frame,
+	// title, gutter or split border (SPEC G6).
+	if in.Copy != nil && in.Copy.Fullscreen {
+		if snap := in.Panes[in.Copy.Pane]; snap != nil {
+			f.CopyGrid(area.X, area.Y, clipGrid(snap.Grid, area.W, area.H))
+			if in.Copy.Sel != nil {
+				applySelection(f, area.X, area.Y, area.W, area.H, in.Copy.Sel)
+			}
+			drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y)
+		}
+		drawCopyHint(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
+		return
+	}
 	t := ws.TabRef()
 	if t == nil {
 		return
@@ -296,9 +326,20 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			f.CopyGrid(ix, iy, clipGrid(snap.Grid, iw, ih))
 		}
 
-		// Selection highlight.
+		// Selection highlight (mouse drag or copy-mode anchor range).
 		if in.Sel != nil && in.Sel.Pane == pr.ID {
 			applySelection(f, ix, iy, iw, ih, in.Sel)
+		}
+		if in.Copy != nil && in.Copy.Pane == pr.ID {
+			if in.Copy.Sel != nil {
+				applySelection(f, ix, iy, iw, ih, in.Copy.Sel)
+			}
+			// Copy cursor lives strictly inside the pane's inner rect.
+			if cx, cy := ix+in.Copy.X, iy+in.Copy.Y; cx >= ix && cx < ix+iw && cy >= iy && cy < iy+ih {
+				drawCopyCursor(f, cx, cy)
+			}
+			// The help row replaces the pane's bottom frame row.
+			drawCopyHint(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint)
 		}
 
 		// IME cursor anchor for the focused pane.
@@ -379,6 +420,22 @@ func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 	}
 }
 
+// drawCopyCursor paints the copy-mode cursor: fg panel_bg, bg accent,
+// BOLD (SPEC G1/G6).
+func drawCopyCursor(f *Frame, x, y int) {
+	c := f.Cell(x, y)
+	if c == nil {
+		return
+	}
+	if c.Content == "" {
+		c.Content = " "
+		c.Width = 1
+	}
+	c.Style.Fg = Surface
+	c.Style.Bg = Accent
+	c.Style.Attrs = uv.AttrBold
+}
+
 // --- bottom pane action bar (SPEC G1) ---
 
 // drawActionBar draws the one-row bar under the panes: the copy label on
@@ -430,6 +487,17 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		*l.slot = layout.Rect{X: x, Y: area.Y, W: w, H: 1}
 		x += w + 1
 	}
+}
+
+// drawCopyHint renders the copy-mode help/search row at (x, y); the
+// row (the pane's bottom frame row) is cleared first so no border
+// remnants show past the text.
+func drawCopyHint(f *Frame, x, y, w int, hint string) {
+	if hint == "" || w <= 0 {
+		return
+	}
+	f.Fill(x, y, w, 1, " ", uv.Style{})
+	f.Text(x, y, hint, uv.Style{Fg: Dim}, x+w)
 }
 
 func clipGrid(g [][]uv.Cell, w, h int) [][]uv.Cell {
@@ -578,8 +646,17 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	// (SPEC G1).
 	fr := SidebarFooter(area)
 	if fr.Y >= iy && fr.Y < iy+area.H-2 {
-		if in.Copied != "" {
-			f.Text(fr.X, fr.Y, in.Copied, uv.Style{Fg: Yellow}, fr.X+fr.W)
+		if in.Copied != "" && fr.W > 1 {
+			// SPEC: green bold text on surface_dim, drawn over the
+			// sidebar width minus 1 column; the rightmost column is
+			// never overwritten, and overflow ends with '…'.
+			w := fr.W - 1
+			f.Fill(fr.X, fr.Y, w, 1, " ", uv.Style{Bg: SurfDim})
+			text := in.Copied
+			if len([]rune(text)) > w {
+				text = truncateEllipsis(text, w)
+			}
+			f.Text(fr.X, fr.Y, text, uv.Style{Fg: Green, Bg: SurfDim, Attrs: uv.AttrBold}, fr.X+w)
 		} else {
 			f.Text(fr.X+1, fr.Y, "[menu]", uv.Style{Fg: Subtle}, fr.X+fr.W)
 			f.Text(fr.X+fr.W-6, fr.Y, "[new]", uv.Style{Fg: Subtle}, fr.X+fr.W)

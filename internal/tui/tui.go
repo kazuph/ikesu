@@ -144,6 +144,10 @@ type App struct {
 
 	prefix        bool
 	navKey        rune // prefix+<navKey> jumps to the toast target
+	cm            *copyMode
+	copyKeys      map[rune]bool // [keys] copy_mode bindings
+	splitVKeys    map[rune]bool // [keys] split_vertical bindings
+	splitHKeys    map[rune]bool // [keys] split_horizontal bindings
 	toast         *toastView
 	toastRect     layout.Rect
 	menu          *uiMenu
@@ -196,7 +200,16 @@ func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd stri
 		scroll:   map[int]int{},
 		trackers: map[int]*status.Tracker{},
 		fwd:      -1,
+		// Default bindings; SetKeybinds overlays the user's [keys] config.
+		copyKeys:   config.Config{}.CopyKeys(),
+		splitVKeys: config.Config{}.SplitVerticalKeys(),
+		splitHKeys: config.Config{}.SplitHorizontalKeys(),
 	}
+}
+
+// SetKeybinds applies the [keys] config bindings (copy_mode, split_*).
+func (a *App) SetKeybinds(copyKeys, splitV, splitH map[rune]bool) {
+	a.copyKeys, a.splitVKeys, a.splitHKeys = copyKeys, splitV, splitH
 }
 
 // SetUIFlags applies the [ui] config flags and keeps them so a later
@@ -432,6 +445,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	a.inputEOF = true
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
+		a.SetKeybinds(cfg.CopyKeys(), cfg.SplitVerticalKeys(), cfg.SplitHorizontalKeys())
 	}
 
 	if err := a.StartInitialPane(); err != nil {
@@ -554,6 +568,17 @@ func (a *App) detectAll() {
 	}
 }
 
+// copiedFlash returns the " Copied N lines " text while inside its 2s
+// window. Checked at draw time too so a flash left over while no client
+// was attached (tick suspended) never leaks into a restored session
+// (SPEC: deadline 経過後に残らない).
+func (a *App) copiedFlash() string {
+	if a.copied != "" && time.Since(a.copiedAt) <= copiedDuration {
+		return a.copied
+	}
+	return ""
+}
+
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
@@ -606,6 +631,15 @@ func (a *App) exec(cmd model.Command) {
 	for _, e := range a.st.Apply(cmd) {
 		a.effect(e)
 	}
+	// Copy mode dies when its pane leaves the active tab's layout
+	// (closed, moved, or the tab/workspace changed).
+	if a.cm != nil {
+		ws := a.st.ActiveWorkspace()
+		alive := ws != nil && ws.ActiveLayout() != nil && ws.ActiveLayout().HasPane(a.cm.pane)
+		if !alive {
+			a.exitCopy()
+		}
+	}
 	a.dirty = true
 	// Keystrokes and resizes never change persisted state; everything else
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
@@ -654,6 +688,10 @@ func (a *App) syncLayout() {
 	area := a.st.PanesArea()
 	if t := ws.TabRef(); t != nil {
 		for _, pr := range t.PaneRects(area) {
+			// Fullscreen copy keeps its pane at the whole terminal area.
+			if a.cm != nil && a.cm.fullscreen && pr.ID == a.cm.pane {
+				continue
+			}
 			w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
 			a.sup.Resize(pr.ID, w, h)
 		}
@@ -754,15 +792,24 @@ func (a *App) draw() {
 		a.lastDraw = time.Now()
 		return
 	}
+	panes := a.paneSnaps()
+	if a.cm != nil {
+		if snap := panes[a.cm.pane]; snap != nil {
+			snap.Grid = a.copyGrid()
+		}
+	}
 	in := render.Input{
 		State:         a.st,
-		Panes:         a.paneSnaps(),
+		Panes:         panes,
 		Scroll:        a.scroll,
 		Spin:          a.spin,
-		Copied:        a.copied,
+		Copied:        a.copiedFlash(),
 		Prefix:        a.prefix,
 		SidebarScroll: a.sidebarScroll,
 		JobDots:       a.jobDots,
+		CopyLabel:     a.copyLabel(),
+		Copy:          a.copyMark(),
+		CopyHint:      a.copyHint(),
 	}
 	if a.menu != nil {
 		in.Menu = &a.menu.m

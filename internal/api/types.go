@@ -441,6 +441,52 @@ type PaneScrollParams struct {
 	OffsetFromBottom uint64 `json:"offset_from_bottom"`
 }
 
+// --- copy buffer contract (pane.copy_motion / pane.copy_search) ---
+
+// PaneTextPoint is an absolute retained-buffer coordinate.
+type PaneTextPoint struct {
+	Row uint32 `json:"row"`
+	Col uint16 `json:"col"`
+}
+
+type PaneTextRange struct {
+	Start PaneTextPoint `json:"start"`
+	End   PaneTextPoint `json:"end"`
+}
+
+type PaneCopyMotionParams struct {
+	PaneID          string        `json:"pane_id"`
+	Cursor          PaneTextPoint `json:"cursor"`
+	Motion          string        `json:"motion"`
+	ContentRevision *uint64       `json:"content_revision,omitempty"`
+}
+
+type PaneCopyMotionResult struct {
+	Type            string        `json:"type"` // "pane_copy_motion"
+	PaneID          string        `json:"pane_id"`
+	Cursor          PaneTextPoint `json:"cursor"`
+	ContentRevision uint64        `json:"content_revision"`
+}
+
+type PaneCopySearchParams struct {
+	PaneID          string         `json:"pane_id"`
+	Query           string         `json:"query"`
+	Direction       string         `json:"direction"` // "forward" | "backward"
+	Cursor          PaneTextPoint  `json:"cursor"`
+	ContentRevision uint64         `json:"content_revision"`
+	Previous        *PaneTextRange `json:"previous,omitempty"`
+}
+
+type PaneCopySearchResult struct {
+	Type            string          `json:"type"` // "pane_copy_search"
+	PaneID          string          `json:"pane_id"`
+	ContentRevision uint64          `json:"content_revision"`
+	Matches         []PaneTextRange `json:"matches"`
+	Total           uint64          `json:"total"`
+	Current         *uint32         `json:"current,omitempty"`
+	CurrentGlobal   *uint64         `json:"current_global,omitempty"`
+}
+
 // --- events ---
 
 type Subscription struct {

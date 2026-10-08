@@ -55,6 +55,8 @@ const (
 	MethodPaneMove            = "pane.move"
 	MethodPaneArrange         = "pane.arrange"
 	MethodPaneScroll          = "pane.scroll"
+	MethodPaneCopyMotion      = "pane.copy_motion"
+	MethodPaneCopySearch      = "pane.copy_search"
 	MethodLayoutExport        = "layout.export"
 	MethodLayoutApply         = "layout.apply"
 	MethodLayoutSetSplitRatio = "layout.set_split_ratio"
@@ -103,6 +105,8 @@ const (
 	ErrUnsupportedWait   = "unsupported_event_wait_match"
 	ErrTimeout           = "timeout"
 	ErrSplitNotFound     = "split_not_found"
+	ErrStaleContent      = "stale_content"
+	ErrCopyMotion        = "copy_motion_unavailable"
 )
 
 // Error is the API error body: {"code": ..., "message": ...}.
