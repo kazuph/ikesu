@@ -235,22 +235,6 @@ func flagValue(args []string, i *int) (string, bool) {
 	return v, true
 }
 
-func parseU32Flag(flag, value string) (uint32, error) {
-	n, err := strconv.ParseUint(value, 10, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid value for %s: %s", flag, value)
-	}
-	return uint32(n), nil
-}
-
-func parseU64Flag(flag, value string) (uint64, error) {
-	n, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid value for %s: %s", flag, value)
-	}
-	return n, nil
-}
-
 func parseFloatFlag(flag, value string) (float64, error) {
 	n, err := strconv.ParseFloat(value, 64)
 	if err != nil || !isFinite(n) {
@@ -261,44 +245,6 @@ func parseFloatFlag(flag, value string) (float64, error) {
 
 func isFinite(f float64) bool {
 	return f == f && f <= 1e308 && f >= -1e308
-}
-
-func parseEnvAssignment(raw string) (string, string, error) {
-	key, value, ok := strings.Cut(raw, "=")
-	if !ok {
-		return "", "", fmt.Errorf("env must use KEY=VALUE")
-	}
-	if key == "" {
-		return "", "", fmt.Errorf("env key must not be empty")
-	}
-	if strings.ContainsRune(key, 0) || strings.ContainsRune(value, 0) {
-		return "", "", fmt.Errorf("env must not contain NUL bytes")
-	}
-	return key, value, nil
-}
-
-func parseSplitDirection(value string) (string, error) {
-	switch value {
-	case "right", "down":
-		return value, nil
-	default:
-		return "", fmt.Errorf("invalid split direction: %s", value)
-	}
-}
-
-func parseReadSource(value string) (string, error) {
-	switch value {
-	case "visible":
-		return "visible", nil
-	case "recent":
-		return "recent", nil
-	case "recent-unwrapped", "recent_unwrapped":
-		return "recent_unwrapped", nil
-	case "detection":
-		return "detection", nil
-	default:
-		return "", fmt.Errorf("invalid read source: %s", value)
-	}
 }
 
 // readRawLine reads one newline-terminated JSON line and returns the bytes

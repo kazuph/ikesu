@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// JobProcess is one member of a pane's foreground process group.
+// JobProcess is one process of a pane's foreground job.
 type JobProcess struct {
 	PID     int
 	Name    string
@@ -13,345 +13,411 @@ type JobProcess struct {
 	Cmdline string
 }
 
-// Job is a pane's foreground process group.
+// Job is the foreground process group running in a pane.
 type Job struct {
 	ProcessGroupID int
 	Processes      []JobProcess
 }
 
-// IdentifyJob returns the canonical agent id and the candidate name for a
-// foreground job. Wrapped agents (e.g. codex launched as `node codex.js`)
-// are resolved from the runtime's script argument. When no member is a
-// known agent the returned id is empty and name is the group leader's
-// comm for display purposes.
+// agentNames is the name→canonical-id table: lowercased accepted names
+// (suffix-stripped by normalizedLookupName at lookup) map to the official
+// agent id. It is intentionally separate from the detection manifests —
+// names like omp or mastracode identify an agent that has no rules yet.
+var agentNames = map[string]string{
+	"pi":              "pi",
+	"claude":          "claude",
+	"claude-code":     "claude",
+	"codex":           "codex",
+	"gemini":          "gemini",
+	"cursor":          "cursor",
+	"cursor-agent":    "cursor",
+	"devin":           "devin",
+	"devin-cli":       "devin",
+	"devin cli":       "devin",
+	"agy":             "agy",
+	"antigravity":     "agy",
+	"antigravity-cli": "agy",
+	"cline":           "cline",
+	"omp":             "omp",
+	"mastracode":      "mastracode",
+	"mastra-code":     "mastracode",
+	"mastra code":     "mastracode",
+	"opencode":        "opencode",
+	"open-code":       "opencode",
+	"copilot":         "copilot",
+	"github-copilot":  "copilot",
+	"ghcs":            "copilot",
+	"kimi":            "kimi",
+	"kimi-code":       "kimi",
+	"kimi code":       "kimi",
+	"kiro":            "kiro",
+	"kiro-cli":        "kiro",
+	"droid":           "droid",
+	"amp":             "amp",
+	"amp-local":       "amp",
+	"grok":            "grok",
+	"grok-build":      "grok",
+	"hermes":          "hermes",
+	"hermes-agent":    "hermes",
+	"kilo":            "kilo",
+	"kilo-code":       "kilo",
+	"kilo code":       "kilo",
+	"qodercli":        "qodercli",
+	"qoderclicn":      "qodercli",
+	"qoder":           "qodercli",
+	"qodercn":         "qodercli",
+	"maki":            "maki",
+	"muse":            "muse",
+	"muse-bin":        "muse",
+	"muse-code":       "muse",
+	"muse-cli":        "muse",
+	"qwen":            "qwen",
+	"qwen-code":       "qwen",
+	"qwen code":       "qwen",
+	"letta":           "letta",
+	"letta-code":      "letta",
+	"letta code":      "letta",
+}
+
+// agentIDFor looks a name up in the agent table (case-insensitive,
+// whitespace-trimmed, one executable suffix removed).
+func agentIDFor(name string) string {
+	return agentNames[normalizedLookupName(name)]
+}
+
+// genericRuntimes are process names that only host another program; the
+// real agent hides in their arguments.
+var genericRuntimes = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "fish": true, "tmux": true,
+	"node": true, "bun": true, "python": true, "python3": true,
+	"cmd": true, "powershell": true, "pwsh": true,
+}
+
+// IdentifyJob returns the canonical agent id ("" when none matches) and a
+// display name for the job running in a pane.
 func IdentifyJob(job Job) (agentID, name string) {
 	if len(job.Processes) == 0 {
 		return "", ""
 	}
-
-	var leader *JobProcess
+	cands := make([]string, len(job.Processes))
+	for i := range job.Processes {
+		cands[i] = processCandidate(job.Processes[i])
+	}
+	// The process-group leader decides the agent when it is one.
+	leader := -1
 	for i := range job.Processes {
 		if job.Processes[i].PID == job.ProcessGroupID {
-			leader = &job.Processes[i]
+			leader = i
 			break
 		}
 	}
-	if leader == nil {
-		leader = &job.Processes[0]
+	if leader >= 0 {
+		if id := agentIDFor(cands[leader]); id != "" {
+			return id, cands[leader]
+		}
 	}
-
-	leaderName := normalizedProcessName(*leader)
-	if id := lookupAgent(normalizedLookupName(leaderName)); id != "" {
-		return id, leaderName
-	}
-
-	bestID, bestName := "", ""
-	bestScore := 0
-	for _, pr := range job.Processes {
-		cand := normalizedProcessName(pr)
-		id := lookupAgent(normalizedLookupName(cand))
-		if id == "" {
+	// Otherwise the highest-scoring agent candidate wins; ties keep order.
+	best, bestScore := -1, 0
+	for i := range job.Processes {
+		if agentIDFor(cands[i]) == "" {
 			continue
 		}
-		if s := processPriority(pr, cand); s > bestScore {
-			bestScore, bestID, bestName = s, id, cand
+		score := 1
+		switch {
+		case !strings.EqualFold(cands[i], job.Processes[i].Name):
+			score = 3 // found inside a wrapper's arguments
+		case !genericRuntimes[cands[i]]:
+			score = 2
+		}
+		if best < 0 || score > bestScore {
+			best, bestScore = i, score
 		}
 	}
-	if bestID != "" {
-		return bestID, bestName
+	if best >= 0 {
+		return agentIDFor(cands[best]), cands[best]
 	}
-	return "", leader.Name
+	fallback := leader
+	if fallback < 0 {
+		fallback = 0
+	}
+	return "", job.Processes[fallback].Name
 }
 
-// normalizedProcessName resolves a process to its effective agent-candidate
-// name: generic runtimes/shells resolve to their wrapped command, and bare
-// paths resolve to an agent name when the basename (or the canonicalized
-// basename, for symlinked shims) matches a manifest.
-func normalizedProcessName(pr JobProcess) string {
-	effective := ""
-	if len(pr.Argv) > 0 {
-		effective = pr.Argv[0]
+// processCandidate reduces one process to the name that may identify an
+// agent: the exec name itself, or the wrapped agent's canonical id.
+func processCandidate(p JobProcess) string {
+	exec := execName(p)
+	if genericRuntimes[exec] {
+		if id, ok := wrappedAgent(exec, p); ok {
+			return id
+		}
+		return exec
 	}
-	if effective == "" {
-		effective = pr.Name
+	if agentIDFor(exec) != "" {
+		return exec
 	}
-
-	if isGenericRuntimeOrShell(effective) {
-		if wrapped := wrappedAgentNameFromRuntimeArgv(effective, pr.Argv); wrapped != "" {
-			return wrapped
+	word := ""
+	if len(p.Argv) > 0 {
+		word = p.Argv[0]
+	}
+	if word == "" {
+		if f := strings.Fields(p.Cmdline); len(f) > 0 {
+			word = f[0]
 		}
 	}
-
-	if id := lookupAgent(normalizedLookupName(effective)); id != "" {
-		return effective
+	if id, ok := agentFromPathWord(word); ok {
+		return id
 	}
+	return exec
+}
 
-	if len(pr.Argv) > 0 {
-		if w := agentNameFromPathToken(pr.Argv[0]); w != "" {
-			return w
+// execName is the process's program name: Argv[0]'s basename when argv is
+// available, else the reported process name.
+func execName(p JobProcess) string {
+	s := p.Name
+	if len(p.Argv) > 0 && p.Argv[0] != "" {
+		s = p.Argv[0]
+		if i := strings.LastIndexAny(s, `/\`); i >= 0 {
+			s = s[i+1:]
 		}
 	}
-	if w := cmdlineArgv0AgentName(pr.Cmdline); w != "" {
-		return w
-	}
-	return effective
+	return normalizedLookupName(s)
 }
 
-// processPriority ranks agent candidates across a job's processes: a name
-// resolved through argv beats comm, and a direct binary beats a generic
-// runtime wrapper.
-func processPriority(pr JobProcess, normalizedName string) int {
-	if !strings.EqualFold(normalizedName, pr.Name) {
-		return 3
+// wrappedAgent inspects a runtime's arguments for the program it runs.
+func wrappedAgent(runtime string, p JobProcess) (string, bool) {
+	var args []string
+	if len(p.Argv) > 1 {
+		args = p.Argv[1:]
 	}
-	if !isGenericRuntimeOrShell(normalizedName) {
-		return 2
-	}
-	return 1
-}
-
-func isGenericRuntimeOrShell(name string) bool {
-	switch normalizedLookupName(pathBase(name)) {
-	case "sh", "bash", "zsh", "fish", "tmux", "node", "bun",
-		"python", "python3", "cmd", "powershell", "pwsh":
-		return true
-	}
-	return false
-}
-
-func wrappedAgentNameFromRuntimeArgv(runtime string, argv []string) string {
-	switch normalizedLookupName(pathBase(runtime)) {
+	switch runtime {
 	case "node", "bun":
-		return scriptArgAgentName(argv, []string{"-e", "--eval", "-p", "--print"}, nil)
+		return scanScriptArgs(args, nodeEvalFlag)
 	case "python", "python3":
-		return scriptArgAgentName(argv, []string{"-c"}, []string{"-m"})
+		return scanScriptArgs(args, pythonEvalFlag)
 	case "sh", "bash", "zsh", "fish":
-		return scriptArgAgentName(argv, []string{"-c"}, nil)
+		return scanScriptArgs(args, shellEvalFlag)
 	case "cmd":
-		return windowsCmdArgAgentName(argv)
+		return cmdWrappedAgent(args)
 	case "powershell", "pwsh":
-		return powershellArgAgentName(argv)
+		return pwshWrappedAgent(args)
 	}
-	return ""
+	return "", false // tmux and anything else
 }
 
-// argvTail returns argv without argv[0], tolerating an empty argv.
-func argvTail(argv []string) []string {
-	if len(argv) == 0 {
-		return nil
-	}
-	return argv[1:]
+// valueFlags consume the following argument as their value.
+var valueFlags = map[string]bool{
+	"-r": true, "--require": true, "--loader": true, "--import": true,
+	"--experimental-loader": true, "--inspect-port": true,
+	"-W": true, "-X": true, "-S": true, "-L": true, "-o": true,
 }
 
-// scriptArgAgentName returns the agent name of the first non-option argv
-// entry (the script the runtime executes), skipping flags that consume a
-// value. Eval/module invocations carry no script path and yield "".
-func scriptArgAgentName(argv []string, evalFlags, moduleFlags []string) string {
-	args := argvTail(argv)
+// scanScriptArgs walks interpreter arguments shared by node/bun, python,
+// and POSIX shells: eval/module flags mean "not an agent", "--" defers to
+// the next word, flags are skipped (value flags eat one more word), and
+// the first plain word is resolved as a program path.
+func scanScriptArgs(args []string, evalFlag func(string) bool) (string, bool) {
 	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			if i+1 < len(args) {
-				return agentNameFromPathToken(args[i+1])
+		a := args[i]
+		if a == "--" {
+			if i+1 >= len(args) {
+				return "", false
 			}
-			return ""
+			return agentFromPathWord(args[i+1])
 		}
-		if flagMatches(arg, evalFlags) || flagMatches(arg, moduleFlags) {
-			return ""
+		if evalFlag(a) {
+			return "", false
 		}
-		if strings.HasPrefix(arg, "-") {
-			if optionTakesValue(arg) {
+		if strings.HasPrefix(a, "-") {
+			if valueFlags[a] {
 				i++
 			}
 			continue
 		}
-		return agentNameFromPathToken(arg)
+		return agentFromPathWord(a)
 	}
-	return ""
+	return "", false
 }
 
-func windowsCmdArgAgentName(argv []string) string {
-	args := argvTail(argv)
-	for i := 0; i < len(args); i++ {
-		flag := strings.ToLower(strings.Trim(args[i], `"'`))
-		switch flag {
-		case "/c", "/k":
-			if i+1 < len(args) {
-				return commandTextAgentName(args[i+1])
-			}
-			return ""
-		case "/d", "/s", "/q", "/a", "/u", "/e:on", "/e:off",
-			"/f:on", "/f:off", "/v:on", "/v:off":
-			continue
-		}
+// nodeEvalFlag reports inline-eval/print flags (also the attached forms
+// -eX, -pX, --eval=X, --print=X).
+func nodeEvalFlag(a string) bool {
+	if strings.HasPrefix(a, "--") {
+		return a == "--eval" || a == "--print" ||
+			strings.HasPrefix(a, "--eval=") || strings.HasPrefix(a, "--print=")
 	}
-	return ""
+	return a == "-e" || a == "-p" ||
+		strings.HasPrefix(a, "-e") || strings.HasPrefix(a, "-p")
 }
 
-func powershellArgAgentName(argv []string) string {
-	args := argvTail(argv)
-	for i := 0; i < len(args); i++ {
-		flag := strings.ToLower(strings.Trim(args[i], `"'`))
-		switch flag {
-		case "-file", "-f", "/file":
-			if i+1 < len(args) {
-				return agentNameFromPathToken(args[i+1])
-			}
-			return ""
-		case "-command", "-c", "/command", "/c":
-			if i+1 < len(args) {
-				return commandTextAgentName(args[i+1])
-			}
-			return ""
-		case "-encodedcommand", "-enc", "/encodedcommand", "/enc":
-			return ""
-		case "-configurationname", "-executionpolicy", "-outputformat",
-			"-psconsolefile", "-version", "-windowstyle", "-workingdirectory":
-			i++
-		default:
-			if !strings.HasPrefix(flag, "-") && !strings.HasPrefix(flag, "/") {
-				return agentNameFromPathToken(args[i])
-			}
-		}
-	}
-	return ""
-}
-
-// commandTextAgentName picks the command token out of a shell command
-// string, skipping leading &, . and call tokens.
-func commandTextAgentName(command string) string {
-	rest := command
-	for {
-		tok, next, ok := commandTextToken(rest)
-		if !ok {
-			return ""
-		}
-		rest = next
-		t := strings.TrimSpace(tok)
-		if strings.EqualFold(t, "&") || strings.EqualFold(t, ".") ||
-			strings.EqualFold(t, "call") {
-			continue
-		}
-		return agentNameFromPathToken(t)
-	}
-}
-
-// commandTextToken returns the first whitespace- or quote-delimited token
-// and the remainder of the input.
-func commandTextToken(input string) (tok, rest string, ok bool) {
-	input = strings.TrimLeft(input, " \t\r\n")
-	if input == "" {
-		return "", "", false
-	}
-	if q := input[0]; q == '"' || q == '\'' {
-		if end := strings.IndexByte(input[1:], q); end >= 0 {
-			return input[1 : 1+end], input[1+end+1:], true
-		}
-		return input[1:], "", true
-	}
-	end := strings.IndexAny(input, " \t\r\n")
-	if end < 0 {
-		end = len(input)
-	}
-	return input[:end], input[end:], true
-}
-
-func flagMatches(arg string, flags []string) bool {
-	for _, f := range flags {
-		if arg == f || shortFlagPayload(arg, f) || longFlagValue(arg, f) {
-			return true
-		}
-	}
-	return false
-}
-
-// shortFlagPayload matches a value glued to a short flag, e.g. "-efoo".
-func shortFlagPayload(arg, flag string) bool {
-	return strings.HasPrefix(flag, "-") && !strings.HasPrefix(flag, "--") &&
-		strings.HasPrefix(arg, flag) && len(arg) > len(flag)
-}
-
-// longFlagValue matches "--flag=value".
-func longFlagValue(arg, flag string) bool {
-	if !strings.HasPrefix(flag, "--") {
+// pythonEvalFlag reports -c command / -m module (attached forms too).
+func pythonEvalFlag(a string) bool {
+	if strings.HasPrefix(a, "--") {
 		return false
 	}
-	rest, ok := strings.CutPrefix(arg, flag)
-	return ok && strings.HasPrefix(rest, "=")
+	return strings.HasPrefix(a, "-c") || strings.HasPrefix(a, "-m")
 }
 
-func optionTakesValue(arg string) bool {
-	switch arg {
-	case "-r", "--require", "--loader", "--import", "--experimental-loader",
-		"--inspect-port", "-W", "-X", "-S", "-L", "-o":
-		return true
-	}
-	return false
+// shellEvalFlag reports -c command (attached form too).
+func shellEvalFlag(a string) bool {
+	return !strings.HasPrefix(a, "--") && strings.HasPrefix(a, "-c")
 }
 
-func cmdlineArgv0AgentName(cmdline string) string {
-	f := strings.Fields(cmdline)
-	if len(f) == 0 {
-		return ""
-	}
-	return agentNameFromPathToken(f[0])
+// cmdMetaFlags are cmd.exe switches that carry no program argument.
+var cmdMetaFlags = map[string]bool{
+	"/d": true, "/s": true, "/q": true, "/a": true, "/u": true,
+	"/e:on": true, "/e:off": true, "/f:on": true, "/f:off": true,
+	"/v:on": true, "/v:off": true,
 }
 
-// agentNameFromPathToken resolves a path or bare name to a canonical agent
-// id, checking the basename, known package layouts, and finally the
-// canonicalized path for symlinked shims (e.g. npm bin wrappers).
-func agentNameFromPathToken(token string) string {
-	trimmed := strings.Trim(token, `"'`)
-	if trimmed == "" || strings.HasPrefix(trimmed, "-") {
-		return ""
-	}
-	if id := lookupAgent(normalizedLookupName(pathBase(trimmed))); id != "" {
-		return id
-	}
-	if id := agentNameFromKnownPackagePath(trimmed); id != "" {
-		return id
-	}
-	if !strings.ContainsAny(trimmed, `/\`) {
-		return ""
-	}
-	if resolved, err := filepath.EvalSymlinks(trimmed); err == nil {
-		return lookupAgent(normalizedLookupName(pathBase(resolved)))
-	}
-	return ""
-}
-
-func agentNameFromKnownPackagePath(path string) string {
-	var comps []string
-	for _, c := range strings.FieldsFunc(path, func(r rune) bool {
-		return r == '/' || r == '\\'
-	}) {
-		if c != "" {
-			comps = append(comps, normalizedLookupName(c))
+// cmdWrappedAgent resolves `cmd /c <command line>` / `/k`.
+func cmdWrappedAgent(args []string) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		w := strings.ToLower(strings.Trim(args[i], `"`))
+		switch {
+		case w == "/c" || w == "/k":
+			if i+1 >= len(args) {
+				return "", false
+			}
+			return agentFromCommandLine(args[i+1])
+		case cmdMetaFlags[w]:
+			continue
 		}
 	}
-	want := []string{"node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli"}
-	for i := 0; i+len(want) <= len(comps); i++ {
-		ok := true
-		for j := range want {
-			if comps[i+j] != want[j] {
-				ok = false
-				break
+	return "", false
+}
+
+// pwshValueFlags consume the following argument as their value.
+var pwshValueFlags = map[string]bool{
+	"-configurationname": true, "-executionpolicy": true,
+	"-outputformat": true, "-psconsolefile": true, "-version": true,
+	"-windowstyle": true, "-workingdirectory": true,
+}
+
+// pwshWrappedAgent resolves -File/-Command and rejects encoded commands.
+func pwshWrappedAgent(args []string) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		w := strings.ToLower(strings.Trim(args[i], `"`))
+		switch w {
+		case "-file", "-f", "/file":
+			if i+1 >= len(args) {
+				return "", false
+			}
+			return agentFromPathWord(args[i+1])
+		case "-command", "-c", "/command", "/c":
+			if i+1 >= len(args) {
+				return "", false
+			}
+			return agentFromCommandLine(args[i+1])
+		case "-encodedcommand", "-enc", "/encodedcommand", "/enc":
+			return "", false
+		}
+		if pwshValueFlags[w] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(w, "-") || strings.HasPrefix(w, "/") {
+			continue
+		}
+		return agentFromPathWord(args[i])
+	}
+	return "", false
+}
+
+// commandLineWords splits a Windows command line into words: a word
+// starting with a quote runs to the matching quote, others to whitespace.
+func commandLineWords(s string) []string {
+	var words []string
+	i := 0
+	for i < len(s) {
+		for i < len(s) && strings.IndexByte(" \t\r\n", s[i]) >= 0 {
+			i++
+		}
+		if i >= len(s) {
+			break
+		}
+		start := i
+		if s[i] == '"' || s[i] == '\'' {
+			q := s[i]
+			i++
+			for i < len(s) && s[i] != q {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+		} else {
+			for i < len(s) && strings.IndexByte(" \t\r\n", s[i]) < 0 {
+				i++
 			}
 		}
-		if ok {
-			return "pi"
-		}
+		words = append(words, s[start:i])
 	}
-	return ""
+	return words
 }
 
-func pathBase(path string) string {
-	base := path
-	if i := strings.LastIndexAny(base, "/\\"); i >= 0 {
+// agentFromCommandLine resolves the command named by a command line: `&`,
+// `.` and `call` are skipped, the first remaining word wins.
+func agentFromCommandLine(s string) (string, bool) {
+	for _, w := range commandLineWords(s) {
+		if w == "&" || w == "." || strings.EqualFold(w, "call") {
+			continue
+		}
+		return agentFromPathWord(w)
+	}
+	return "", false
+}
+
+// piAgentPath is the node_modules suffix identifying the pi agent.
+var piAgentPath = []string{
+	"node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli",
+}
+
+// agentFromPathWord resolves a program word to a canonical agent id:
+// basename lookup first, then the pi node_modules path signature, then a
+// symlink-resolved basename for real paths.
+func agentFromPathWord(w string) (string, bool) {
+	w = strings.Trim(w, `"'`)
+	if w == "" || strings.HasPrefix(w, "-") {
+		return "", false
+	}
+	if id := agentIDFor(pathBaseName(w)); id != "" {
+		return id, true
+	}
+	// The pi agent ships as node_modules/@earendil-works/pi-coding-agent/dist/cli.js
+	parts := strings.FieldsFunc(w, func(r rune) bool { return r == '/' || r == '\\' })
+outer:
+	for i := 0; i+len(piAgentPath) <= len(parts); i++ {
+		for j, want := range piAgentPath {
+			if normalizedLookupName(parts[i+j]) != want {
+				continue outer
+			}
+		}
+		return "pi", true
+	}
+	if strings.ContainsAny(w, `/\`) {
+		if resolved, err := filepath.EvalSymlinks(w); err == nil && resolved != w {
+			if id := agentIDFor(pathBaseName(resolved)); id != "" {
+				return id, true
+			}
+		}
+	}
+	return "", false
+}
+
+// pathBaseName normalizes a path's last component for the agent table:
+// the listed executable suffixes first, then any leftover extension
+// (e.g. codex.py → codex).
+func pathBaseName(p string) string {
+	base := p
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
 		base = base[i+1:]
 	}
-	if base == "" {
-		return path
+	if n := normalizedLookupName(base); agentIDFor(n) != "" {
+		return n
 	}
-	return base
+	if i := strings.LastIndexByte(base, '.'); i > 0 {
+		return normalizedLookupName(base[:i])
+	}
+	return normalizedLookupName(base)
 }

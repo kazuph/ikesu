@@ -1,41 +1,45 @@
-// Package dispatch is the durable mailbox and job store shared by every
-// gtx session. It keeps the same actors/dispatches schema as herdr's
-// DispatchStore (docs/ref/herdr-db-schema.sql) so pane mail and background
-// jobs survive server restarts and stay queryable with sqlite3 while the
-// server runs (WAL mode).
+// Package dispatch is gtx's durable mailbox and job ledger: one SQLite
+// database (WAL) records agent-to-agent messages, `gtx run` command
+// dispatches, and the pane↔agent-session ledger used by restart restore.
+// Table and column names follow docs/ref/herdr-db-schema.sql so the same
+// DB can be inspected with `sqlite3 "$(gtx log --db)"`.
 package dispatch
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	_ "github.com/ncruces/go-sqlite3/driver"
-
 	"github.com/kazuph/goterrace/internal/api"
+	sqlite3 "github.com/ncruces/go-sqlite3"
 )
 
-// DefaultRoom is the room plain `gtx send`/`gtx inbox` use.
 const DefaultRoom = "default"
-
-// JobsRoom carries job completion notices; it bypasses the regular mail
-// status gate (delivered to working agents too, but not blocked ones).
 const JobsRoom = "gtx-jobs"
-
-// RunShellActor is the sender name on job completion nudges.
 const RunShellActor = "gtx-run"
-
-// DBPathEnvVar overrides the database location (tests and tooling).
 const DBPathEnvVar = "GTX_DB_PATH"
 
-// DBPath is the shared mailbox/job database: one file across all gtx
-// sessions ($GTX_DB_PATH, else $GTX_STATE_DIR/gtx.db).
+// tsLayout is the millisecond UTC timestamp format stored in *_at columns.
+const tsLayout = "2006-01-02T15:04:05.000Z"
+
+func nowTS() string { return time.Now().UTC().Format(tsLayout) }
+
+func tsToMs(s string) *int64 {
+	t, err := time.Parse(tsLayout, s)
+	if err != nil {
+		return nil
+	}
+	ms := t.UnixMilli()
+	return &ms
+}
+
+// DBPath is the dispatch database location: $GTX_DB_PATH when set, else
+// gtx.db under the state dir.
 func DBPath() string {
 	if p := os.Getenv(DBPathEnvVar); p != "" {
 		return p
@@ -43,40 +47,46 @@ func DBPath() string {
 	return filepath.Join(api.StateDir(), "gtx.db")
 }
 
-// DBExists reports whether the store file has ever been created. Boot-time
-// sweeps (orphaned jobs, queued mail) are no-ops when it is absent, so they
-// can skip opening the store — and the wasm sqlite engine — entirely.
+// DBExists reports whether the database file exists.
 func DBExists() bool {
 	_, err := os.Stat(DBPath())
 	return err == nil
 }
 
-// JobLogDir holds per-job output logs ($GTX_STATE_DIR/job-logs).
+// JobLogDir is where `gtx run` job logs live.
 func JobLogDir() string {
 	return filepath.Join(api.StateDir(), "job-logs")
 }
 
-var jobLogUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
-
-// JobLogPath is the log path for a job id/label pair
-// ($GTX_STATE_DIR/job-logs/<id>-<safe-label>.log). Both the server-side
-// background runner and the in-pane __pane-run wrapper derive paths with
-// this helper so `gtx log` can find either kind.
+// JobLogPath is the log file name for a job: <id>-<label>.log, or
+// <id>.log when the label is empty. `gtx log <job>` looks logs up under
+// this scheme.
 func JobLogPath(jobID, label string) string {
-	safe := jobLogUnsafe.ReplaceAllString(strings.TrimSpace(label), "-")
-	safe = strings.Trim(safe, "-.")
-	if safe == "" {
-		safe = "job"
+	if safe := sanitizeLabel(label); safe != "" {
+		return filepath.Join(JobLogDir(), jobID+"-"+safe+".log")
 	}
-	return filepath.Join(JobLogDir(), jobID+"-"+safe+".log")
+	return filepath.Join(JobLogDir(), jobID+".log")
 }
 
-// schemaDDL mirrors herdr's DispatchStore schema verbatim (same table and
-// view names so `gtx log --schema` output and ad-hoc sqlite3 queries carry
-// over), minus only the literal 'herdr-run' actor names handled in code.
-const schemaDDL = `PRAGMA journal_mode=WAL;
+// sanitizeLabel keeps a label usable inside a file name.
+func sanitizeLabel(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
+}
 
-CREATE TABLE IF NOT EXISTS actors (
+// schemaSQL is the DDL executed on open. Column names and status values
+// match the reference schema; pane_sessions (the restore ledger) and
+// dispatches.caller_pane are gtx additions.
+const schemaSQL = `CREATE TABLE IF NOT EXISTS actors (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   kind          TEXT NOT NULL CHECK (kind IN ('agent','shell','human')),
   name          TEXT NOT NULL,
@@ -88,7 +98,6 @@ CREATE TABLE IF NOT EXISTS actors (
   last_seen_at  TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_actors_identity ON actors(kind, name);
-
 CREATE TABLE IF NOT EXISTS dispatches (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   external_id   TEXT,
@@ -103,7 +112,6 @@ CREATE TABLE IF NOT EXISTS dispatches (
   label         TEXT,
   created_at    TEXT NOT NULL,
   delivered_at  TEXT,
-  read_at       TEXT,
   started_at    TEXT,
   finished_at   TEXT,
   exit_code     INTEGER,
@@ -111,13 +119,14 @@ CREATE TABLE IF NOT EXISTS dispatches (
   status        TEXT NOT NULL,
   completion    TEXT,
   runner_pid    INTEGER,
-  log_path      TEXT
+  log_path      TEXT,
+  read_at       TEXT,
+  caller_pane   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON dispatches(to_actor, status);
 CREATE INDEX IF NOT EXISTS idx_dispatch_room_time ON dispatches(room, created_at);
 CREATE INDEX IF NOT EXISTS idx_dispatch_reply ON dispatches(reply_to);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_external ON dispatches(kind, external_id);
-
 CREATE VIEW IF NOT EXISTS v_reply_latency AS
 SELECT d.id, d.room, d.project,
        fa.name AS asked_by,  fa.model AS asked_model,
@@ -128,7 +137,6 @@ FROM dispatches d
 JOIN actors fa ON fa.id = d.from_actor
 JOIN actors ta ON ta.id = d.to_actor
 WHERE d.kind = 'message' AND d.replied_at IS NOT NULL;
-
 CREATE VIEW IF NOT EXISTS v_unanswered AS
 SELECT d.id, d.room,
        fa.name AS asked_by, ta.name AS asked_to,
@@ -138,7 +146,6 @@ FROM dispatches d
 JOIN actors fa ON fa.id = d.from_actor
 JOIN actors ta ON ta.id = d.to_actor
 WHERE d.expects_reply = 1 AND d.replied_at IS NULL;
-
 CREATE VIEW IF NOT EXISTS v_command_stats AS
 SELECT COALESCE(label, body) AS label, COUNT(*) AS runs,
        AVG(CASE WHEN exit_code = 0 THEN 1.0 ELSE 0.0 END) AS success_rate,
@@ -147,172 +154,32 @@ SELECT COALESCE(label, body) AS label, COUNT(*) AS runs,
 FROM dispatches
 WHERE kind = 'command' AND finished_at IS NOT NULL
 GROUP BY COALESCE(label, body);
-
 CREATE VIEW IF NOT EXISTS v_model_matrix AS
 SELECT fa.model AS asked_model, ta.model AS answered_model, COUNT(*) AS dispatches
 FROM dispatches d
 JOIN actors fa ON fa.id = d.from_actor
 JOIN actors ta ON ta.id = d.to_actor
 GROUP BY fa.model, ta.model;
-
--- pane\u2194agent-session ledger (SPEC G3): the durable record of which exact
--- agent session ran in which pane. One row per (session, pane); deleted
--- when the pane is permanently closed.
 CREATE TABLE IF NOT EXISTS pane_sessions (
   session      TEXT NOT NULL,
   pane_id      INTEGER NOT NULL,
-  terminal_id  TEXT NOT NULL DEFAULT '',
-  workspace_id INTEGER NOT NULL DEFAULT 0,
-  tab_id       INTEGER NOT NULL DEFAULT 0,
-  cwd          TEXT NOT NULL DEFAULT '',
-  agent        TEXT NOT NULL DEFAULT '',
-  session_kind TEXT NOT NULL DEFAULT 'id',
-  session_id   TEXT NOT NULL DEFAULT '',
-  title        TEXT NOT NULL DEFAULT '',
-  source       TEXT NOT NULL DEFAULT '',
-  observed_at  TEXT NOT NULL DEFAULT '',
+  terminal_id  TEXT,
+  workspace_id INTEGER,
+  tab_id       INTEGER,
+  cwd          TEXT,
+  agent        TEXT,
+  session_kind TEXT,
+  session_id   TEXT,
+  title        TEXT,
+  source       TEXT,
+  observed_at  TEXT,
   PRIMARY KEY (session, pane_id)
-);
-`
+);`
 
-// Schema returns the DDL applied at open, for `gtx log --schema`.
-func Schema() string { return schemaDDL }
+// Schema returns the DDL applied on open — `gtx log --schema` prints it.
+func Schema() string { return schemaSQL + "\n" }
 
-// Store wraps the shared SQLite database. All methods are safe for
-// concurrent use; access is serialized through a single connection.
-type Store struct {
-	db  *sql.DB
-	mux sync.Mutex
-}
-
-// Open opens (creating if needed) the store at path in read-write mode.
-func Open(path string) (*Store, error) {
-	return open(path, false)
-}
-
-// OpenReadOnly opens the store without creating it; it fails when the
-// file does not exist. Used by read-only CLI commands like `gtx run list`.
-func OpenReadOnly(path string) (*Store, error) {
-	return open(path, true)
-}
-
-func open(path string, readOnly bool) (*Store, error) {
-	if !readOnly {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return nil, err
-		}
-	}
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
-	if readOnly {
-		dsn += "&_pragma=query_only(true)&mode=ro"
-	}
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
-	if !readOnly {
-		if err := s.migrate(); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	return s, nil
-}
-
-func (s *Store) migrate() error {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	if _, err := s.db.Exec(schemaDDL); err != nil {
-		return fmt.Errorf("dispatch schema: %w", err)
-	}
-	// Column migrations mirror herdr: add columns when missing; the
-	// read_at backfill only runs when the column had to be added, matching
-	// herdr's migrate_read_at one-shot semantics.
-	for _, col := range [][2]string{
-		{"external_id", "TEXT"},
-		{"completion", "TEXT"},
-		{"runner_pid", "INTEGER"},
-		{"read_at", "TEXT"},
-	} {
-		exists, err := s.hasColumnLocked("dispatches", col[0])
-		if err != nil {
-			return err
-		}
-		if !exists {
-			if _, err := s.db.Exec(fmt.Sprintf("ALTER TABLE dispatches ADD COLUMN %s %s", col[0], col[1])); err != nil {
-				return err
-			}
-			if col[0] == "read_at" {
-				if _, err := s.db.Exec("UPDATE dispatches SET read_at=delivered_at WHERE delivered_at IS NOT NULL AND status IN ('delivered','replied')"); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if _, err := s.db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_external ON dispatches(kind, external_id)"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Store) hasColumnLocked(table, col string) (bool, error) {
-	rows, err := s.db.Query("SELECT name FROM pragma_table_info(?)", table)
-	if err != nil {
-		return false, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return false, err
-		}
-		if name == col {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
-}
-
-// Close releases the database handle.
-func (s *Store) Close() error { return s.db.Close() }
-
-// nowStamp formats UTC timestamps like herdr's strftime('%Y-%m-%dT%H:%M:%fZ').
-func nowStamp() string {
-	return time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-}
-
-// upsertActorLocked inserts or refreshes an actor and returns its id.
-// Actor identity is (kind, name); session/pane are refreshed attributes.
-func (s *Store) upsertActorLocked(kind, name string, source, model, sessionID, paneID *string) (int64, error) {
-	now := nowStamp()
-	_, err := s.db.Exec(`
-		INSERT INTO actors (kind, name, source, model, session_id, pane_id, first_seen_at, last_seen_at)
-		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
-		ON CONFLICT(kind, name) DO UPDATE SET
-			source = COALESCE(?3, actors.source),
-			model = COALESCE(?4, actors.model),
-			session_id = COALESCE(?5, actors.session_id),
-			pane_id = COALESCE(?6, actors.pane_id),
-			last_seen_at = ?7
-	`, kind, name, source, model, sessionID, paneID, now)
-	if err != nil {
-		return 0, err
-	}
-	var id int64
-	err = s.db.QueryRow("SELECT id FROM actors WHERE kind=?1 AND name=?2", kind, name).Scan(&id)
-	return id, err
-}
-
-// UpsertActor records an agent or user actor (name/pane identity).
-func (s *Store) UpsertActor(kind, name string, source, model, sessionID, paneID *string) (int64, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	return s.upsertActorLocked(kind, name, source, model, sessionID, paneID)
-}
-
-// Message is one dispatch row of kind='message' with actor names joined.
+// Message is one dispatch row of kind 'message' as callers see it.
 type Message struct {
 	ID          int64   `json:"id"`
 	Room        string  `json:"room"`
@@ -325,7 +192,7 @@ type Message struct {
 	ReadAt      *string `json:"read_at"`
 }
 
-// Job is one dispatch row of kind='command'.
+// Job is one dispatch row of kind 'command'.
 type Job struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
@@ -342,179 +209,7 @@ type Job struct {
 	LogPath     string `json:"log_path"`
 }
 
-const messageSelect = `
-SELECT d.id, d.room, d.project, fa.name, ta.name, d.body, d.created_at, d.delivered_at, d.read_at
-FROM dispatches d
-JOIN actors fa ON fa.id=d.from_actor
-JOIN actors ta ON ta.id=d.to_actor
-`
-
-func scanMessage(rows *sql.Rows) (Message, error) {
-	var m Message
-	err := rows.Scan(&m.ID, &m.Room, &m.Project, &m.FromAgent, &m.ToAgent, &m.Body,
-		&m.CreatedAt, &m.DeliveredAt, &m.ReadAt)
-	return m, err
-}
-
-// InsertMessage stores a message addressed to toAgent and returns its row.
-// replyTo links the new row to an earlier dispatch and marks that dispatch
-// replied (without overwriting terminal job status).
-func (s *Store) InsertMessage(room, project, fromAgent, toAgent, body string, replyTo *int64, expectsReply bool) (Message, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	from, err := s.upsertActorLocked("agent", fromAgent, nil, nil, nil, nil)
-	if err != nil {
-		return Message{}, err
-	}
-	to, err := s.upsertActorLocked("agent", toAgent, nil, nil, nil, nil)
-	if err != nil {
-		return Message{}, err
-	}
-	res, err := s.db.Exec(`
-		INSERT INTO dispatches (kind, room, project, from_actor, to_actor, reply_to, expects_reply, body, created_at, status)
-		VALUES ('message', ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'queued')
-	`, room, project, from, to, replyTo, b2i(expectsReply), body, nowStamp())
-	if err != nil {
-		return Message{}, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return Message{}, err
-	}
-	if replyTo != nil {
-		if _, err := s.db.Exec(`
-			UPDATE dispatches
-			SET replied_at = COALESCE(replied_at, ?2),
-			    status = CASE WHEN kind='message' THEN 'replied' ELSE status END
-			WHERE id = ?1 AND replied_at IS NULL
-		`, *replyTo, nowStamp()); err != nil {
-			return Message{}, err
-		}
-	}
-	var m Message
-	err = s.db.QueryRow(messageSelect+"WHERE d.id=?", id).Scan(
-		&m.ID, &m.Room, &m.Project, &m.FromAgent, &m.ToAgent, &m.Body,
-		&m.CreatedAt, &m.DeliveredAt, &m.ReadAt)
-	return m, err
-}
-
-// MessagesForInboxRecipients returns queued messages for any of the
-// recipient aliases, marking them delivered+read in the same transaction.
-// inFlight ids are excluded (a write is still on its way to the pane).
-func (s *Store) MessagesForInboxRecipients(room string, recipients []string, inFlight map[int64]bool) ([]Message, error) {
-	if len(recipients) == 0 {
-		return nil, nil
-	}
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	args := make([]any, 0, len(recipients)+1)
-	args = append(args, room)
-	for _, r := range recipients {
-		args = append(args, r)
-	}
-	var out []Message
-	err := s.tx(func(tx *sql.Tx) error {
-		rows, err := tx.Query(fmt.Sprintf(`
-			SELECT d.id FROM dispatches d
-			JOIN actors t ON t.id=d.to_actor
-			WHERE d.kind='message' AND d.status='queued' AND d.room=?1 AND t.kind='agent' AND t.name IN (%s)
-			ORDER BY d.id
-		`, placeholdersAt(len(recipients), 2)), args...)
-		if err != nil {
-			return err
-		}
-		var ids []int64
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			if !inFlight[id] {
-				ids = append(ids, id)
-			}
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		if len(ids) == 0 {
-			return nil
-		}
-		if _, err := tx.Exec(fmt.Sprintf(`
-			UPDATE dispatches
-			SET status='delivered', delivered_at=?1, read_at=COALESCE(read_at, ?1)
-			WHERE id IN (%s)
-		`, placeholdersAt(len(ids), 2)), append([]any{nowStamp()}, int64Args(ids)...)...); err != nil {
-			return err
-		}
-		qrows, err := tx.Query(fmt.Sprintf(messageSelect+"WHERE d.id IN (%s) ORDER BY d.id", placeholdersAt(len(ids), 1)), int64Args(ids)...)
-		if err != nil {
-			return err
-		}
-		defer qrows.Close()
-		for qrows.Next() {
-			m, err := scanMessage(qrows)
-			if err != nil {
-				return err
-			}
-			out = append(out, m)
-		}
-		return qrows.Err()
-	})
-	return out, err
-}
-
-// PendingMessagesForAgent lists queued messages for toAgent in a room,
-// oldest first.
-func (s *Store) PendingMessagesForAgent(room, toAgent string) ([]Message, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	return s.selectMessages(messageSelect+`
-		WHERE d.kind='message' AND d.status='queued' AND d.room=?1 AND ta.name=?2
-		ORDER BY d.created_at, d.id
-	`, room, toAgent)
-}
-
-// PendingForAgentCreationOrder lists queued messages for toAgent across
-// all rooms except the jobs room (regular mail delivery order).
-func (s *Store) PendingForAgentCreationOrder(toAgent string) ([]Message, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	return s.selectMessages(messageSelect+`
-		WHERE d.kind='message' AND d.status='queued' AND ta.name=?1 AND d.room != ?2
-		ORDER BY d.created_at, d.id
-	`, toAgent, JobsRoom)
-}
-
-// PendingNudgesForAgent groups the agent's queued messages by room,
-// ordered by first pending id per room.
-func (s *Store) PendingNudgesForAgent(toAgent string) ([]PendingNudge, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	messages, err := s.selectMessages(messageSelect+`
-		WHERE d.kind='message' AND d.status='queued' AND ta.name=?1
-		ORDER BY d.id
-	`, toAgent)
-	if err != nil {
-		return nil, err
-	}
-	var nudges []PendingNudge
-	seen := map[string]int{}
-	for _, m := range messages {
-		i, ok := seen[m.Room]
-		if !ok {
-			nudges = append(nudges, PendingNudge{Room: m.Room, ToAgent: m.ToAgent, Count: 1, LatestFrom: m.FromAgent})
-			seen[m.Room] = len(nudges) - 1
-			continue
-		}
-		nudges[i].Count++
-		nudges[i].LatestFrom = m.FromAgent
-	}
-	return nudges, nil
-}
-
-// PendingNudge summarizes queued messages for one room/agent pair.
+// PendingNudge summarizes one room's queued mail to a recipient.
 type PendingNudge struct {
 	Room       string
 	ToAgent    string
@@ -522,457 +217,816 @@ type PendingNudge struct {
 	LatestFrom string
 }
 
-// PendingNudgeFor returns the nudge for one room/agent pair, if any.
-func (s *Store) PendingNudgeFor(room, toAgent string) (*PendingNudge, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	messages, err := s.selectMessages(messageSelect+`
-		WHERE d.kind='message' AND d.status='queued' AND d.room=?1 AND ta.name=?2
-		ORDER BY d.id
-	`, room, toAgent)
-	if err != nil || len(messages) == 0 {
-		return nil, err
-	}
-	return &PendingNudge{
-		Room:       room,
-		ToAgent:    toAgent,
-		Count:      len(messages),
-		LatestFrom: messages[len(messages)-1].FromAgent,
-	}, nil
-}
-
-// History lists messages in a room (optionally one project), oldest first,
-// limited to the newest `limit` rows.
-func (s *Store) History(room string, project *string, limit int) ([]Message, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	messages, err := s.selectMessages(messageSelect+`
-		WHERE d.kind='message' AND d.room=?1 AND (?2 IS NULL OR d.project=?2)
-		ORDER BY d.created_at DESC, d.id DESC
-		LIMIT ?3
-	`, room, project, limit)
-	if err != nil {
-		return nil, err
-	}
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-	return messages, nil
-}
-
-// Rooms lists distinct rooms with messages, in activity order.
-func (s *Store) Rooms() ([]string, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	rows, err := s.db.Query(`
-		SELECT DISTINCT room FROM dispatches
-		WHERE kind='message'
-		ORDER BY room
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var rooms []string
-	for rows.Next() {
-		var r string
-		if err := rows.Scan(&r); err != nil {
-			return nil, err
-		}
-		rooms = append(rooms, r)
-	}
-	return rooms, rows.Err()
-}
-
-// MarkMessageDelivered marks one queued message delivered+read. It returns
-// false when the row was no longer pending (idempotent delivery).
-func (s *Store) MarkMessageDelivered(id int64) (bool, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	res, err := s.db.Exec(`
-		UPDATE dispatches
-		SET status='delivered', delivered_at=?2, read_at=COALESCE(read_at, ?2)
-		WHERE id=?1 AND status='queued'
-	`, id, nowStamp())
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n == 1, err
-}
-
-// MarkDelivered marks every queued message for room/agent delivered+read.
-func (s *Store) MarkDelivered(room, toAgent string) (int, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	res, err := s.db.Exec(`
-		UPDATE dispatches
-		SET status='delivered', delivered_at=?3, read_at=COALESCE(read_at, ?3)
-		WHERE kind='message' AND status='queued' AND room=?1
-		  AND to_actor IN (SELECT id FROM actors WHERE name=?2)
-	`, room, toAgent, nowStamp())
-	if err != nil {
-		return 0, err
-	}
-	n, err := res.RowsAffected()
-	return int(n), err
-}
-
-// MarkDeliveredByIDs marks only the listed queued messages delivered —
-// used by the jobs-room batch writer so a message that arrives between
-// payload assembly and write completion is not lost (it stays queued and
-// is delivered by the next flush).
-func (s *Store) MarkDeliveredByIDs(ids []int64) (int, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	args := make([]any, 0, len(ids)+1)
-	args = append(args, nowStamp())
-	for _, id := range ids {
-		args = append(args, id)
-	}
-	res, err := s.db.Exec(fmt.Sprintf(`
-		UPDATE dispatches
-		SET status='delivered', delivered_at=?1, read_at=COALESCE(read_at, ?1)
-		WHERE kind='message' AND status='queued' AND id IN (%s)
-	`, placeholdersAt(len(ids), 2)), args...)
-	if err != nil {
-		return 0, err
-	}
-	n, err := res.RowsAffected()
-	return int(n), err
-}
-
-// InsertCommand stores a background job dispatch row.
-func (s *Store) InsertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath string) error {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	from, err := s.upsertActorLocked("agent", callerAgent, nil, nil, nil, &callerPane)
-	if err != nil {
-		return err
-	}
-	to, err := s.upsertActorLocked("shell", "gtx-run", nil, nil, nil, nil)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`
-		INSERT INTO dispatches (external_id, kind, room, project, from_actor, to_actor, body, label, created_at, status, completion, log_path)
-		VALUES (?1, 'command', 'default', ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?9)
-	`, id, cwd, from, to, command, label, nowStamp(), completion, logPath)
-	return err
-}
-
-const jobSelect = `
-SELECT d.external_id, d.label, d.body, d.project, d.status, d.exit_code,
-       CAST((julianday(d.started_at) - 2440587.5) * 86400000 AS INTEGER),
-       CAST((julianday(d.finished_at) - 2440587.5) * 86400000 AS INTEGER),
-       d.log_path, fa.name, fa.pane_id, d.completion, d.runner_pid
-FROM dispatches d
-JOIN actors fa ON fa.id=d.from_actor
-WHERE d.kind='command'
-`
-
-func scanJob(rows *sql.Rows) (Job, error) {
-	var j Job
-	var extID, label, callerPane, completion, logPath *string
-	err := rows.Scan(&extID, &label, &j.Command, &j.Cwd, &j.Status, &j.ExitCode,
-		&j.StartedMs, &j.FinishedMs, &logPath, &j.CallerAgent, &callerPane,
-		&completion, &j.RunnerPID)
-	if err != nil {
-		return j, err
-	}
-	j.Label = deref(label)
-	j.CallerPane = deref(callerPane)
-	j.Completion = deref(completion)
-	if j.Completion == "" {
-		j.Completion = "summary"
-	}
-	j.LogPath = deref(logPath)
-	if extID != nil {
-		j.ID = *extID
-	} else {
-		base := filepath.Base(j.LogPath)
-		j.ID = strings.TrimSuffix(base, filepath.Ext(base))
-	}
-	return j, nil
-}
-
-// MaxJobSeq returns the highest numeric suffix among jNNNN external ids
-// (0 when none), used to seed the server's job-id counter.
-func (s *Store) MaxJobSeq() (int64, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	var n int64
-	err := s.db.QueryRow(`
-		SELECT COALESCE(MAX(CAST(substr(external_id, 2) AS INTEGER)), 0)
-		FROM dispatches WHERE kind='command' AND external_id GLOB 'j[0-9]*'
-	`).Scan(&n)
-	return n, err
-}
-
-// CommandRows lists jobs newest first (bounded by limit when > 0).
-func (s *Store) CommandRows(limit int) ([]Job, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	q := jobSelect + " ORDER BY d.id DESC"
-	args := []any{}
-	if limit > 0 {
-		q += " LIMIT ?"
-		args = append(args, limit)
-	}
-	rows, err := s.db.Query(q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var jobs []Job
-	for rows.Next() {
-		j, err := scanJob(rows)
-		if err != nil {
-			return nil, err
-		}
-		jobs = append(jobs, j)
-	}
-	return jobs, rows.Err()
-}
-
-// CommandRow finds one job by external id or log-file stem.
-func (s *Store) CommandRow(id string) (*Job, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	rows, err := s.db.Query(jobSelect+`
-		AND (d.external_id=?1 OR d.log_path LIKE '%' || ?1 || '.log')
-	`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		return nil, rows.Err()
-	}
-	j, err := scanJob(rows)
-	if err != nil {
-		return nil, err
-	}
-	return &j, rows.Err()
-}
-
-// CommandDispatchID returns the dispatch row id for a job, for reply_to.
-func (s *Store) CommandDispatchID(id string) (*int64, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	var did int64
-	err := s.db.QueryRow(`
-		SELECT d.id FROM dispatches d
-		WHERE d.kind='command' AND (d.external_id=?1 OR d.log_path LIKE '%' || ?1 || '.log')
-	`, id).Scan(&did)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &did, nil
-}
-
-// MarkCommandRunning transitions a job queued→running.
-func (s *Store) MarkCommandRunning(id string, runnerPID int64) error {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	_, err := s.db.Exec(`
-		UPDATE dispatches
-		SET status='running', started_at=?2, runner_pid=?3
-		WHERE kind='command' AND (external_id=?1 OR log_path LIKE '%' || ?1 || '.log')
-	`, id, nowStamp(), runnerPID)
-	return err
-}
-
-// MarkCommandFinished transitions running→exited; false when not running.
-func (s *Store) MarkCommandFinished(id string, exitCode *int64) (bool, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	res, err := s.db.Exec(`
-		UPDATE dispatches
-		SET status='exited', finished_at=?2, exit_code=?3
-		WHERE kind='command' AND (external_id=?1 OR log_path LIKE '%' || ?1 || '.log') AND status='running'
-	`, id, nowStamp(), exitCode)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n == 1, err
-}
-
-// MarkCommandCancelling transitions running→cancelling; false otherwise.
-func (s *Store) MarkCommandCancelling(id string) (bool, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	res, err := s.db.Exec(`
-		UPDATE dispatches
-		SET status='cancelling'
-		WHERE kind='command' AND (external_id=?1 OR log_path LIKE '%' || ?1 || '.log') AND status='running'
-	`, id)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n == 1, err
-}
-
-// MarkCommandCancelled transitions queued/running/cancelling→cancelled.
-func (s *Store) MarkCommandCancelled(id string) (bool, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	res, err := s.db.Exec(`
-		UPDATE dispatches
-		SET status='cancelled', finished_at=?2
-		WHERE kind='command' AND (external_id=?1 OR log_path LIKE '%' || ?1 || '.log') AND status IN ('queued','running','cancelling')
-	`, id, nowStamp())
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n == 1, err
-}
-
-func (s *Store) selectMessages(query string, args ...any) ([]Message, error) {
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Message
-	for rows.Next() {
-		m, err := scanMessage(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) tx(fn func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	if err := fn(tx); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
-}
-
-func placeholdersAt(n, start int) string {
-	var b strings.Builder
-	for i := 0; i < n; i++ {
-		fmt.Fprintf(&b, "?%d", start+i)
-		if i+1 < n {
-			b.WriteByte(',')
-		}
-	}
-	return b.String()
-}
-
-func b2i(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
-
-func deref(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
-}
-
-func int64Args(ids []int64) []any {
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	return args
-}
-
-// PaneSession is one row of the pane↔agent-session ledger (SPEC G3). It
-// keeps the exact session id a pane last ran so restart/restore can resume
-// that conversation instead of guessing a cwd-latest one.
+// PaneSession is the pane ↔ agent-session ledger row (SPEC G3).
 type PaneSession struct {
-	Session     string // gtx session name (the db is shared across sessions)
+	Session     string
 	PaneID      int
 	TerminalID  string
 	WorkspaceID int
 	TabID       int
 	Cwd         string
 	Agent       string
-	SessionKind string // "id" | "path"
+	SessionKind string
 	SessionID   string
 	Title       string
 	Source      string
 	ObservedAt  string
 }
 
-// PutPaneSession upserts the ledger row for a pane.
-func (s *Store) PutPaneSession(rec PaneSession) error {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	_, err := s.db.Exec(`INSERT INTO pane_sessions
-		(session, pane_id, terminal_id, workspace_id, tab_id, cwd, agent,
-		 session_kind, session_id, title, source, observed_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(session, pane_id) DO UPDATE SET
-			terminal_id=excluded.terminal_id,
-			workspace_id=excluded.workspace_id,
-			tab_id=excluded.tab_id,
-			cwd=excluded.cwd,
-			agent=excluded.agent,
-			session_kind=excluded.session_kind,
-			session_id=excluded.session_id,
-			title=excluded.title,
-			source=excluded.source,
-			observed_at=excluded.observed_at`,
-		rec.Session, rec.PaneID, rec.TerminalID, rec.WorkspaceID, rec.TabID,
-		rec.Cwd, rec.Agent, rec.SessionKind, rec.SessionID, rec.Title,
-		rec.Source, rec.ObservedAt)
-	return err
+// Store is a handle on the dispatch database. One connection serves all
+// callers; the mutex serializes access.
+type Store struct {
+	db *sqlite3.Conn
+	mu sync.Mutex
 }
 
-// PaneSessions returns every ledger row for a gtx session, ordered by pane.
-func (s *Store) PaneSessions(session string) ([]PaneSession, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	rows, err := s.db.Query(`SELECT pane_id, terminal_id, workspace_id, tab_id,
-		cwd, agent, session_kind, session_id, title, source, observed_at
-		FROM pane_sessions WHERE session=? ORDER BY pane_id`, session)
+// Open opens the database read-write, creating it (and its directory)
+// when absent. WAL mode, a 5 s busy timeout, and synchronous=NORMAL keep
+// concurrent readers fast and safe.
+func Open(path string) (*Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	conn, err := sqlite3.OpenFlags(path,
+		sqlite3.OPEN_READWRITE|sqlite3.OPEN_CREATE|sqlite3.OPEN_URI)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []PaneSession
-	for rows.Next() {
-		var r PaneSession
-		r.Session = session
-		if err := rows.Scan(&r.PaneID, &r.TerminalID, &r.WorkspaceID,
-			&r.TabID, &r.Cwd, &r.Agent, &r.SessionKind, &r.SessionID,
-			&r.Title, &r.Source, &r.ObservedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
+	s := &Store{db: conn}
+	fail := func(err error) (*Store, error) {
+		conn.Close()
+		return nil, err
 	}
-	return out, rows.Err()
+	if err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return fail(err)
+	}
+	if err := conn.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		return fail(err)
+	}
+	if err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return fail(err)
+	}
+	if err := conn.Exec(schemaSQL); err != nil {
+		return fail(err)
+	}
+	if err := s.ensureColumn("dispatches", "read_at", "read_at TEXT"); err != nil {
+		return fail(err)
+	}
+	if err := s.ensureColumn("dispatches", "caller_pane", "caller_pane TEXT"); err != nil {
+		return fail(err)
+	}
+	return s, nil
 }
 
-// DeletePaneSession removes the ledger row for one pane. Called when the
-// pane is permanently closed (explicit close, PaneDied removal, or the
-// closing of its owning tab/workspace).
-func (s *Store) DeletePaneSession(session string, paneID int) error {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	_, err := s.db.Exec(`DELETE FROM pane_sessions WHERE session=? AND pane_id=?`, session, paneID)
+// OpenReadOnly opens an existing database without creating or migrating
+// it; a missing file is an error.
+func OpenReadOnly(path string) (*Store, error) {
+	conn, err := sqlite3.OpenFlags(path, sqlite3.OPEN_READONLY|sqlite3.OPEN_URI)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return &Store{db: conn}, nil
+}
+
+// Close releases the database handle.
+func (s *Store) Close() error {
+	if s.db == nil {
+		return nil
+	}
+	err := s.db.Close()
+	s.db = nil
 	return err
+}
+
+// ensureColumn adds a column introduced after the first schema version.
+func (s *Store) ensureColumn(table, column, decl string) error {
+	st, _, err := s.db.Prepare("SELECT name FROM pragma_table_info(?)")
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := st.BindText(1, table); err != nil {
+		return err
+	}
+	for st.Step() {
+		if st.ColumnText(0) == column {
+			return nil
+		}
+	}
+	if err := st.Err(); err != nil {
+		return err
+	}
+	return s.db.Exec("ALTER TABLE " + table + " ADD COLUMN " + decl)
+}
+
+// --- low-level helpers (callers must hold s.mu) ---
+
+func bindArgs(st *sqlite3.Stmt, args []any) error {
+	for i, a := range args {
+		var err error
+		switch v := a.(type) {
+		case nil:
+			err = st.BindNull(i + 1)
+		case string:
+			err = st.BindText(i+1, v)
+		case int:
+			err = st.BindInt(i+1, v)
+		case int64:
+			err = st.BindInt64(i+1, v)
+		case bool:
+			if v {
+				err = st.BindInt(i+1, 1)
+			} else {
+				err = st.BindInt(i+1, 0)
+			}
+		case *string:
+			if v == nil {
+				err = st.BindNull(i + 1)
+			} else {
+				err = st.BindText(i+1, *v)
+			}
+		case *int64:
+			if v == nil {
+				err = st.BindNull(i + 1)
+			} else {
+				err = st.BindInt64(i+1, *v)
+			}
+		default:
+			err = fmt.Errorf("unsupported bind type %T", a)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) execLocked(sql string, args ...any) error {
+	st, _, err := s.db.Prepare(sql)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := bindArgs(st, args); err != nil {
+		return err
+	}
+	return st.Exec()
+}
+
+func (s *Store) queryLocked(sql string, args ...any) (*sqlite3.Stmt, error) {
+	st, _, err := s.db.Prepare(sql)
+	if err != nil {
+		return nil, err
+	}
+	if err := bindArgs(st, args); err != nil {
+		st.Close()
+		return nil, err
+	}
+	return st, nil
+}
+
+// exec is execLocked with the store mutex held.
+func (s *Store) exec(sql string, args ...any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.execLocked(sql, args...)
+}
+
+const msgCols = `d.id, d.room, d.project, fa.name, ta.name, d.body,
+	d.created_at, d.delivered_at, d.read_at`
+const msgJoin = `dispatches d
+	JOIN actors fa ON fa.id = d.from_actor
+	JOIN actors ta ON ta.id = d.to_actor`
+
+func scanMessage(st *sqlite3.Stmt) Message {
+	m := Message{
+		ID:        st.ColumnInt64(0),
+		Room:      st.ColumnText(1),
+		Project:   st.ColumnText(2),
+		FromAgent: st.ColumnText(3),
+		ToAgent:   st.ColumnText(4),
+		Body:      st.ColumnText(5),
+		CreatedAt: st.ColumnText(6),
+	}
+	if st.ColumnType(7) != sqlite3.NULL {
+		if t := st.ColumnText(7); t != "" {
+			m.DeliveredAt = &t
+		}
+	}
+	if st.ColumnType(8) != sqlite3.NULL {
+		if t := st.ColumnText(8); t != "" {
+			m.ReadAt = &t
+		}
+	}
+	return m
+}
+
+// --- actors ---
+
+// UpsertActor returns the id of the (kind, name) actor row, creating it
+// when missing and refreshing the mutable fields when present.
+func (s *Store) UpsertActor(kind, name, source, model, sessionID, paneID *string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.upsertActorLocked(kind, name, source, model, sessionID, paneID)
+}
+
+func (s *Store) upsertActorLocked(kind, name, source, model, sessionID, paneID *string) (int64, error) {
+	now := nowTS()
+	st, err := s.queryLocked(`SELECT id FROM actors WHERE kind=? AND name=?`, kind, name)
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	found := false
+	if st.Step() {
+		id, found = st.ColumnInt64(0), true
+	}
+	err = st.Err()
+	st.Close()
+	if err != nil {
+		return 0, err
+	}
+	if found {
+		return id, s.execLocked(
+			`UPDATE actors SET source=?, model=?, session_id=?, pane_id=?, last_seen_at=? WHERE id=?`,
+			source, model, sessionID, paneID, now, id)
+	}
+	if err := s.execLocked(
+		`INSERT INTO actors(kind,name,source,model,session_id,pane_id,first_seen_at,last_seen_at)
+		 VALUES(?,?,?,?,?,?,?,?)`,
+		kind, name, source, model, sessionID, paneID, now, now); err != nil {
+		return 0, err
+	}
+	return s.db.LastInsertRowID(), nil
+}
+
+func (s *Store) agentActorLocked(name string) (int64, error) {
+	kind := "agent"
+	return s.upsertActorLocked(&kind, &name, nil, nil, nil, nil)
+}
+
+// --- messages ---
+
+// InsertMessage stores a queued message, creating sender/recipient agent
+// rows as needed. A reply stamps replied_at on the referenced dispatch
+// without touching its status (a job row stays a job).
+func (s *Store) InsertMessage(room, project, from, to, body string, replyTo *int64, expectsReply bool) (Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fa, err := s.agentActorLocked(from)
+	if err != nil {
+		return Message{}, err
+	}
+	ta, err := s.agentActorLocked(to)
+	if err != nil {
+		return Message{}, err
+	}
+	now := nowTS()
+	if err := s.execLocked(
+		`INSERT INTO dispatches(kind,room,project,from_actor,to_actor,reply_to,expects_reply,body,created_at,status)
+		 VALUES('message',?,?,?,?,?,?,?,?,'queued')`,
+		room, project, fa, ta, replyTo, expectsReply, body, now); err != nil {
+		return Message{}, err
+	}
+	if replyTo != nil {
+		if err := s.execLocked(`UPDATE dispatches SET replied_at=? WHERE id=?`, now, *replyTo); err != nil {
+			return Message{}, err
+		}
+	}
+	return Message{
+		ID: s.db.LastInsertRowID(), Room: room, Project: project,
+		FromAgent: from, ToAgent: to, Body: body, CreatedAt: now,
+	}, nil
+}
+
+// MessagesForInboxRecipients fetches queued messages to any of the
+// recipients (oldest first) and marks them delivered in the same
+// transaction. In-flight ids are neither returned nor marked.
+func (s *Store) MessagesForInboxRecipients(room string, recipients []string, inFlight map[int64]bool) ([]Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(recipients) == 0 {
+		return nil, nil
+	}
+	var q strings.Builder
+	q.WriteString(`SELECT ` + msgCols + ` FROM ` + msgJoin +
+		` WHERE d.kind='message' AND d.status='queued' AND ta.name IN (`)
+	args := make([]any, 0, len(recipients)+1)
+	for i, r := range recipients {
+		if i > 0 {
+			q.WriteByte(',')
+		}
+		q.WriteByte('?')
+		args = append(args, r)
+	}
+	q.WriteByte(')')
+	if room != "" {
+		q.WriteString(` AND d.room=?`)
+		args = append(args, room)
+	}
+	q.WriteString(` ORDER BY d.id`)
+	if err := s.execLocked("BEGIN IMMEDIATE"); err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = s.execLocked("ROLLBACK")
+		}
+	}()
+	st, err := s.queryLocked(q.String(), args...)
+	if err != nil {
+		return nil, err
+	}
+	var msgs []Message
+	for st.Step() {
+		m := scanMessage(st)
+		if inFlight[m.ID] {
+			continue
+		}
+		msgs = append(msgs, m)
+	}
+	err = st.Err()
+	st.Close()
+	if err != nil {
+		return nil, err
+	}
+	now := nowTS()
+	for i := range msgs {
+		if err := s.execLocked(
+			`UPDATE dispatches SET status='delivered', delivered_at=?, read_at=COALESCE(read_at,?)
+			 WHERE id=? AND status='queued'`, now, now, msgs[i].ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.execLocked("COMMIT"); err != nil {
+		return nil, err
+	}
+	committed = true
+	for i := range msgs {
+		d := now
+		msgs[i].DeliveredAt = &d
+		if msgs[i].ReadAt == nil {
+			r := now
+			msgs[i].ReadAt = &r
+		}
+	}
+	return msgs, nil
+}
+
+// PendingMessagesForAgent returns queued messages to the recipient in one
+// room, oldest first.
+func (s *Store) PendingMessagesForAgent(room, to string) ([]Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingLocked(`d.room=? AND ta.name=?`, room, to)
+}
+
+// PendingForAgentCreationOrder returns queued messages to the recipient
+// from every room but the jobs room, in creation order.
+func (s *Store) PendingForAgentCreationOrder(to string) ([]Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingLocked(`ta.name=? AND d.room<>? ORDER BY d.created_at, d.id`, to, JobsRoom)
+}
+
+// pendingLocked is the shared queued-message scan; cond is the WHERE
+// fragment and may append an ORDER BY clause.
+func (s *Store) pendingLocked(cond string, args ...any) ([]Message, error) {
+	q := `SELECT ` + msgCols + ` FROM ` + msgJoin +
+		` WHERE d.kind='message' AND d.status='queued' AND ` + cond
+	if !strings.Contains(strings.ToUpper(cond), "ORDER BY") {
+		q += ` ORDER BY d.id`
+	}
+	st, err := s.queryLocked(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var msgs []Message
+	for st.Step() {
+		msgs = append(msgs, scanMessage(st))
+	}
+	return msgs, st.Err()
+}
+
+// PendingNudgesForAgent groups queued messages to the recipient by room;
+// rooms order by their oldest undelivered message.
+func (s *Store) PendingNudgesForAgent(to string) ([]PendingNudge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(
+		`SELECT d.room, COUNT(*), MIN(d.id) FROM `+msgJoin+
+			` WHERE d.kind='message' AND d.status='queued' AND ta.name=?
+		 GROUP BY d.room ORDER BY MIN(d.id)`, to)
+	if err != nil {
+		return nil, err
+	}
+	type rk struct {
+		room  string
+		count int
+	}
+	var rows []rk
+	for st.Step() {
+		rows = append(rows, rk{st.ColumnText(0), int(st.ColumnInt64(1))})
+	}
+	err = st.Err()
+	st.Close()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingNudge, 0, len(rows))
+	for _, r := range rows {
+		n, err := s.pendingNudgeLocked(r.room, to)
+		if err != nil {
+			return nil, err
+		}
+		n.Count = r.count
+		out = append(out, *n)
+	}
+	return out, nil
+}
+
+// PendingNudgeFor summarizes one room's queued mail to the recipient; nil
+// when there is none.
+func (s *Store) PendingNudgeFor(room, to string) (*PendingNudge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingNudgeLocked(room, to)
+}
+
+func (s *Store) pendingNudgeLocked(room, to string) (*PendingNudge, error) {
+	st, err := s.queryLocked(
+		`SELECT COUNT(*), fa.name FROM `+msgJoin+
+			` WHERE d.kind='message' AND d.status='queued' AND d.room=? AND ta.name=?
+		 GROUP BY d.id ORDER BY d.id DESC`, room, to)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	n := &PendingNudge{Room: room, ToAgent: to}
+	for st.Step() {
+		n.Count++
+		if n.Count == 1 {
+			n.LatestFrom = st.ColumnText(1)
+		}
+	}
+	if err := st.Err(); err != nil {
+		return nil, err
+	}
+	if n.Count == 0 {
+		return nil, nil
+	}
+	return n, nil
+}
+
+// History returns the newest limit dispatches of a room (filtered by
+// project when given), oldest first.
+func (s *Store) History(room string, project *string, limit int) ([]Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	q := `SELECT ` + msgCols + ` FROM ` + msgJoin + ` WHERE d.room=?`
+	args := []any{room}
+	if project != nil {
+		q += ` AND d.project=?`
+		args = append(args, *project)
+	}
+	q += ` ORDER BY d.id DESC`
+	if limit > 0 {
+		q += fmt.Sprintf(` LIMIT %d`, limit)
+	}
+	st, err := s.queryLocked(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var msgs []Message
+	for st.Step() {
+		msgs = append(msgs, scanMessage(st))
+	}
+	if err := st.Err(); err != nil {
+		return nil, err
+	}
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, nil
+}
+
+// Rooms lists rooms that hold dispatches, most recent activity first.
+func (s *Store) Rooms() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(
+		`SELECT room FROM dispatches GROUP BY room ORDER BY MIN(id)`)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var rooms []string
+	for st.Step() {
+		rooms = append(rooms, st.ColumnText(0))
+	}
+	return rooms, st.Err()
+}
+
+// --- delivery marks ---
+
+// markDelivered runs the queued→delivered transition and reports how many
+// rows changed.
+func (s *Store) markDelivered(cond string, args ...any) (int, error) {
+	now := nowTS()
+	sql := `UPDATE dispatches SET status='delivered', delivered_at=?,
+		read_at=COALESCE(read_at,?) WHERE status='queued' AND ` + cond
+	all := append([]any{now, now}, args...)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.execLocked(sql, all...); err != nil {
+		return 0, err
+	}
+	return int(s.db.Changes()), nil
+}
+
+// MarkMessageDelivered marks one queued dispatch delivered; it is a no-op
+// once the row left 'queued'.
+func (s *Store) MarkMessageDelivered(id int64) (bool, error) {
+	n, err := s.markDelivered(`id=?`, id)
+	return n > 0, err
+}
+
+// MarkDelivered marks every queued message to a recipient in one room.
+func (s *Store) MarkDelivered(room, to string) (int, error) {
+	return s.markDelivered(
+		`kind='message' AND room=? AND to_actor=(SELECT id FROM actors WHERE kind='agent' AND name=?)`,
+		room, to)
+}
+
+// MarkDeliveredByIDs marks exactly the listed ids still queued — a late
+// arrival keeps waiting for its own write.
+func (s *Store) MarkDeliveredByIDs(ids []int64) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var q strings.Builder
+	q.WriteString(`kind='message' AND id IN (`)
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		if i > 0 {
+			q.WriteByte(',')
+		}
+		q.WriteByte('?')
+		args[i] = id
+	}
+	q.WriteByte(')')
+	return s.markDelivered(q.String(), args...)
+}
+
+// --- jobs (command dispatches) ---
+
+// InsertCommand records a `gtx run` job: a 'command' dispatch in the jobs
+// room from gtx-run to the caller's mailbox, queued until the runner starts.
+func (s *Store) InsertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fa, err := s.agentActorLocked(RunShellActor)
+	if err != nil {
+		return err
+	}
+	ta, err := s.agentActorLocked(callerAgent)
+	if err != nil {
+		return err
+	}
+	return s.execLocked(
+		`INSERT INTO dispatches(external_id,kind,room,project,from_actor,to_actor,body,label,created_at,status,completion,runner_pid,log_path,caller_pane)
+		 VALUES(?,'command',?,?,?,?,?,?,?,'queued',?,NULL,?,?)`,
+		id, JobsRoom, cwd, fa, ta, command, label, nowTS(), completion, logPath, callerPane)
+}
+
+var jobIDRe = regexp.MustCompile(`^j(\d+)$`)
+
+// MaxJobSeq returns the largest jNNNN external id's number (0 when none).
+func (s *Store) MaxJobSeq() (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(
+		`SELECT external_id FROM dispatches WHERE kind='command' AND external_id IS NOT NULL`)
+	if err != nil {
+		return 0, err
+	}
+	defer st.Close()
+	var max int64
+	for st.Step() {
+		if m := jobIDRe.FindStringSubmatch(st.ColumnText(0)); m != nil {
+			if n, err := strconv.ParseInt(m[1], 10, 64); err == nil && n > max {
+				max = n
+			}
+		}
+	}
+	return max, st.Err()
+}
+
+// jobCond is the external_id-or-log-name lookup shared by CommandRow and
+// CommandDispatchID: a job whose log file name ends in "<id>.log" is found
+// too, which covers pane-mode jobs named only by their log file.
+func jobCond(id string) (string, []any) {
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(id)
+	return `d.kind='command' AND (d.external_id=? OR d.log_path LIKE ? ESCAPE '\')`,
+		[]any{id, "%" + esc + ".log"}
+}
+
+const jobCols = `d.id, COALESCE(d.external_id,''), COALESCE(d.label,''), d.body,
+	d.project, COALESCE(d.caller_pane,''), COALESCE(ta.name,''), COALESCE(d.completion,''),
+	d.status, d.runner_pid, d.exit_code, d.started_at, d.finished_at, COALESCE(d.log_path,'')`
+
+func scanJob(st *sqlite3.Stmt) Job {
+	j := Job{
+		ID:          st.ColumnText(1),
+		Label:       st.ColumnText(2),
+		Command:     st.ColumnText(3),
+		Cwd:         st.ColumnText(4),
+		CallerPane:  st.ColumnText(5),
+		CallerAgent: st.ColumnText(6),
+		Completion:  st.ColumnText(7),
+		Status:      st.ColumnText(8),
+		LogPath:     st.ColumnText(13),
+	}
+	if st.ColumnType(9) != sqlite3.NULL {
+		v := st.ColumnInt64(9)
+		j.RunnerPID = &v
+	}
+	if st.ColumnType(10) != sqlite3.NULL {
+		v := st.ColumnInt64(10)
+		j.ExitCode = &v
+	}
+	if st.ColumnType(11) != sqlite3.NULL {
+		j.StartedMs = tsToMs(st.ColumnText(11))
+	}
+	if st.ColumnType(12) != sqlite3.NULL {
+		j.FinishedMs = tsToMs(st.ColumnText(12))
+	}
+	return j
+}
+
+// CommandRows lists jobs newest first (limit > 0 caps the count).
+func (s *Store) CommandRows(limit int) ([]Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	q := `SELECT ` + jobCols + ` FROM dispatches d
+		LEFT JOIN actors ta ON ta.id = d.to_actor
+		WHERE d.kind='command' ORDER BY d.id DESC`
+	if limit > 0 {
+		q += fmt.Sprintf(` LIMIT %d`, limit)
+	}
+	st, err := s.queryLocked(q)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var jobs []Job
+	for st.Step() {
+		jobs = append(jobs, scanJob(st))
+	}
+	return jobs, st.Err()
+}
+
+// CommandRow finds a job by external id or by its "<id>.log" log name.
+func (s *Store) CommandRow(id string) (*Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cond, args := jobCond(id)
+	st, err := s.queryLocked(`SELECT `+jobCols+` FROM dispatches d
+		LEFT JOIN actors ta ON ta.id = d.to_actor
+		WHERE `+cond+` ORDER BY d.id DESC LIMIT 1`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	if st.Step() {
+		j := scanJob(st)
+		return &j, st.Err()
+	}
+	return nil, st.Err()
+}
+
+// CommandDispatchID returns the dispatch row id of a job (for reply_to).
+func (s *Store) CommandDispatchID(id string) (*int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cond, args := jobCond(id)
+	st, err := s.queryLocked(`SELECT d.id FROM dispatches d WHERE `+cond+
+		` ORDER BY d.id DESC LIMIT 1`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	if st.Step() {
+		v := st.ColumnInt64(0)
+		return &v, st.Err()
+	}
+	return nil, st.Err()
+}
+
+// MarkCommandRunning moves a queued job to running with its runner pid
+// and start time.
+func (s *Store) MarkCommandRunning(id string, pid int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.execLocked(
+		`UPDATE dispatches SET status='running', runner_pid=?, started_at=?
+		 WHERE kind='command' AND external_id=? AND status='queued'`,
+		pid, nowTS(), id)
+}
+
+// MarkCommandFinished moves a running job to exited. Any other state
+// (cancelling, cancelled, exited) wins and the mark is a no-op.
+func (s *Store) MarkCommandFinished(id string, exitCode *int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.execLocked(
+		`UPDATE dispatches SET status='exited', finished_at=?, exit_code=?
+		 WHERE kind='command' AND external_id=? AND status='running'`,
+		nowTS(), exitCode, id); err != nil {
+		return false, err
+	}
+	return s.db.Changes() > 0, nil
+}
+
+// MarkCommandCancelling moves a running job to cancelling (cancel granted).
+func (s *Store) MarkCommandCancelling(id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.execLocked(
+		`UPDATE dispatches SET status='cancelling'
+		 WHERE kind='command' AND external_id=? AND status='running'`, id); err != nil {
+		return false, err
+	}
+	return s.db.Changes() > 0, nil
+}
+
+// MarkCommandCancelled moves a non-terminal job to cancelled.
+func (s *Store) MarkCommandCancelled(id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.execLocked(
+		`UPDATE dispatches SET status='cancelled', finished_at=?
+		 WHERE kind='command' AND external_id=? AND status IN ('queued','running','cancelling')`,
+		nowTS(), id); err != nil {
+		return false, err
+	}
+	return s.db.Changes() > 0, nil
+}
+
+// --- pane session ledger ---
+
+// PutPaneSession upserts the (session, pane) ledger row.
+func (s *Store) PutPaneSession(r PaneSession) error {
+	return s.exec(
+		`INSERT OR REPLACE INTO pane_sessions
+		 (session,pane_id,terminal_id,workspace_id,tab_id,cwd,agent,session_kind,session_id,title,source,observed_at)
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		r.Session, r.PaneID, r.TerminalID, r.WorkspaceID, r.TabID, r.Cwd,
+		r.Agent, r.SessionKind, r.SessionID, r.Title, r.Source, r.ObservedAt)
+}
+
+// PaneSessions lists every ledger row of a session.
+func (s *Store) PaneSessions(session string) ([]PaneSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(
+		`SELECT session,pane_id,terminal_id,workspace_id,tab_id,cwd,agent,
+		 session_kind,session_id,title,source,observed_at
+		 FROM pane_sessions WHERE session=? ORDER BY pane_id`, session)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var rows []PaneSession
+	for st.Step() {
+		rows = append(rows, PaneSession{
+			Session:     st.ColumnText(0),
+			PaneID:      int(st.ColumnInt64(1)),
+			TerminalID:  st.ColumnText(2),
+			WorkspaceID: int(st.ColumnInt64(3)),
+			TabID:       int(st.ColumnInt64(4)),
+			Cwd:         st.ColumnText(5),
+			Agent:       st.ColumnText(6),
+			SessionKind: st.ColumnText(7),
+			SessionID:   st.ColumnText(8),
+			Title:       st.ColumnText(9),
+			Source:      st.ColumnText(10),
+			ObservedAt:  st.ColumnText(11),
+		})
+	}
+	return rows, st.Err()
+}
+
+// DeletePaneSession drops one (session, pane) ledger row.
+func (s *Store) DeletePaneSession(session string, paneID int) error {
+	return s.exec(`DELETE FROM pane_sessions WHERE session=? AND pane_id=?`,
+		session, paneID)
 }
