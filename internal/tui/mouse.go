@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -24,6 +25,8 @@ func (a *App) onMouse(ev input.Event) {
 		a.menuMouse(ev)
 	case a.sep != nil:
 		a.sepMouse(ev)
+	case a.sb != nil:
+		a.sbMouse(ev)
 	case a.sel != nil:
 		a.selMouse(ev)
 	case a.fwd >= 0:
@@ -66,9 +69,11 @@ func (a *App) click(m uv.Mouse) {
 		if pr, ok := a.paneAt(m.X, m.Y); ok {
 			p := a.sup.Get(pr.ID)
 			tracking := p != nil && p.Snapshot().MouseTracking
+			framed := a.st.PaneBorders && pr.Rect.W > 2 && pr.Rect.H > 2
 			// The pane border is always ours: right-click there opens the
-			// menu even while the app tracks the mouse.
-			if tracking && !isBorderCell(pr.Rect, m.X, m.Y) {
+			// menu even while the app tracks the mouse. Without borders
+			// every cell belongs to the terminal.
+			if tracking && !(framed && isBorderCell(pr.Rect, m.X, m.Y)) {
 				a.exec(model.CmdFocusPane{Pane: pr.ID})
 				a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 				a.fwd = pr.ID
@@ -83,7 +88,12 @@ func (a *App) click(m uv.Mouse) {
 	if m.Button != uv.MouseLeft {
 		return
 	}
-	// Split-border drag beats pane focus/selection.
+	// SPEC G1 left-down routing inside the terminal area, first match
+	// fires alone: action bar → split border → pane scrollbar →
+	// pane title → pane body.
+	if a.actionBarHit(m) {
+		return
+	}
 	if l := ws.ActiveLayout(); l != nil {
 		if b := l.SplitBorderAt(m.X, m.Y, area); b != nil {
 			a.sep = &sepDrag{path: b.Path, dir: b.Direction, area: b.Area, l: l}
@@ -94,15 +104,35 @@ func (a *App) click(m uv.Mouse) {
 	if !ok {
 		return
 	}
+	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+	framed := a.st.PaneBorders && pr.Rect.W > 2 && pr.Rect.H > 2
+
+	// Pane scrollbar: the gutter column's drag scrolls the pane.
+	if gutter > 0 && m.X == inner.X+inner.W-1 &&
+		m.Y >= inner.Y && m.Y < inner.Y+inner.H {
+		a.exec(model.CmdFocusPane{Pane: pr.ID})
+		a.sb = &sbDrag{pane: pr.ID, inner: inner}
+		return
+	}
+
+	// Pane title: left-click focuses the pane and toggles zoom. It
+	// never forwards the press to the terminal app.
+	if framed && m.Y == pr.Rect.Y {
+		a.exec(model.CmdFocusPane{Pane: pr.ID})
+		a.exec(model.CmdZoomPane{Pane: pr.ID, Mode: "toggle"})
+		a.syncLayout()
+		return
+	}
+
 	a.exec(model.CmdFocusPane{Pane: pr.ID})
-	if isBorderCell(pr.Rect, m.X, m.Y) {
+	if framed && isBorderCell(pr.Rect, m.X, m.Y) {
 		return
 	}
 	p := a.sup.Get(pr.ID)
 	if p == nil {
 		return
 	}
-	inner := layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: pr.Rect.W - 2, H: pr.Rect.H - 2}
+	inner.W = max(inner.W-gutter, 1)
 	if p.Snapshot().MouseTracking {
 		// Mouse-reporting panes receive all four events; no menu gesture.
 		a.dblMenu = false
@@ -131,6 +161,72 @@ func (a *App) click(m uv.Mouse) {
 type clickMark struct {
 	pane, x, y int
 	at         time.Time
+}
+
+// sbDrag is an active scrollbar-gutter drag on one pane.
+type sbDrag struct {
+	pane  int
+	inner layout.Rect
+}
+
+// sbMouse maps the drag's y onto the pane's scrollback range.
+func (a *App) sbMouse(ev input.Event) {
+	m := ev.Mouse
+	if ev.Kind == input.KindMouseRelease {
+		a.sb = nil
+		return
+	}
+	if ev.Kind != input.KindMouseMotion && ev.Kind != input.KindMouseClick {
+		return
+	}
+	p := a.sup.Get(a.sb.pane)
+	if p == nil {
+		a.sb = nil
+		return
+	}
+	sn := p.Snapshot()
+	if sn.ScrollbackLen <= 0 || a.sb.inner.H <= 1 {
+		return
+	}
+	frac := float64(m.Y-a.sb.inner.Y) / float64(a.sb.inner.H-1)
+	if frac < 0 {
+		frac = 0
+	}
+	if frac > 1 {
+		frac = 1
+	}
+	off := sn.ScrollbackLen - int(frac*float64(sn.ScrollbackLen))
+	if off <= 0 {
+		delete(a.scroll, a.sb.pane)
+	} else {
+		a.scroll[a.sb.pane] = off
+	}
+}
+
+// actionBarHit fires the first matching action-bar button per SPEC G1:
+// copy → cycle → rotate → equalize on overlapping cells.
+func (a *App) actionBarHit(m uv.Mouse) bool {
+	if a.actionBar.Area.W == 0 || m.Y != a.actionBar.Area.Y {
+		return false
+	}
+	if pointIn(m.X, m.Y, a.actionBar.Copy) {
+		a.copyCycle()
+		return true
+	}
+	focused := a.st.FocusedPane()
+	if pointIn(m.X, m.Y, a.actionBar.Cycle) {
+		a.exec(model.CmdArrange{Pane: focused, Op: "cycle"})
+		return true
+	}
+	if pointIn(m.X, m.Y, a.actionBar.Rotate) {
+		a.exec(model.CmdArrange{Pane: focused, Op: "rotate_forward"})
+		return true
+	}
+	if pointIn(m.X, m.Y, a.actionBar.Equalize) {
+		a.exec(model.CmdArrange{Pane: focused, Op: "equalize"})
+		return true
+	}
+	return pointIn(m.X, m.Y, a.actionBar.Area)
 }
 
 // tabBarClick handles clicks on the tab strip: left focuses, middle
@@ -423,13 +519,25 @@ func (a *App) finishSelection() {
 	if s == nil || !s.moved {
 		return
 	}
-	text, chars := a.selText(s)
+	text, _ := a.selText(s)
 	if text == "" {
 		return
 	}
 	b64 := base64.StdEncoding.EncodeToString([]byte(text))
 	fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64)
-	a.copied = fmt.Sprintf(" copied %d chars ", chars)
+	// SPEC G1: "Copied N lines" on the sidebar's bottom row, 2 seconds.
+	lines := strings.Count(text, "\n") + 1
+	if strings.HasSuffix(text, "\n") {
+		lines--
+	}
+	if lines < 1 {
+		lines = 1
+	}
+	plural := "s"
+	if lines == 1 {
+		plural = ""
+	}
+	a.copied = fmt.Sprintf(" Copied %d line%s ", lines, plural)
 	a.copiedAt = time.Now()
 }
 
@@ -460,8 +568,9 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	if !ok {
 		return
 	}
+	inner, _ := model.PaneContentRect(r, a.st.PaneBorders)
 	tr := func(m uv.Mouse) uv.Mouse {
-		return uv.Mouse{X: m.X - r.X - 1, Y: m.Y - r.Y - 1, Button: m.Button, Mod: m.Mod}
+		return uv.Mouse{X: m.X - inner.X, Y: m.Y - inner.Y, Button: m.Button, Mod: m.Mod}
 	}
 	switch e := ev.(type) {
 	case uv.MouseClickEvent:

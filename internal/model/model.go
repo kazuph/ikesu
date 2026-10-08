@@ -64,6 +64,11 @@ type AppState struct {
 	Active         int // index into Workspaces
 	SidebarVisible bool
 	Cols, Rows     int // outer terminal size in cells
+	// UI flags from [ui] config (SPEC G1): the tab bar defaults on,
+	// pane frames default on, single-tab hiding defaults off.
+	ShowTabBar              bool
+	HideTabBarWhenSingleTab bool
+	PaneBorders             bool
 	// PaneLabels holds optional API-assigned pane names (pane.rename).
 	PaneLabels map[PaneID]string
 
@@ -74,7 +79,10 @@ type AppState struct {
 
 // New returns an AppState with one workspace containing one pane.
 func New(cwd string, cols, rows int) *AppState {
-	s := &AppState{SidebarVisible: true, Cols: cols, Rows: rows}
+	s := &AppState{
+		SidebarVisible: true, Cols: cols, Rows: rows,
+		ShowTabBar: true, PaneBorders: true,
+	}
 	s.newWorkspace(cwd)
 	return s
 }
@@ -748,24 +756,66 @@ func (s *AppState) Apply(cmd Command) []Effect {
 	return nil
 }
 
-// TabBarArea returns the one-row tab strip above the panes.
+// TabBarVisible reports whether the tab strip is drawn: on unless
+// show_tab_bar=false, or a lone tab with hide_tab_bar_when_single_tab.
+func (s *AppState) TabBarVisible() bool {
+	if !s.ShowTabBar {
+		return false
+	}
+	ws := s.ActiveWorkspace()
+	if s.HideTabBarWhenSingleTab && ws != nil && len(ws.Tabs) <= 1 {
+		return false
+	}
+	return true
+}
+
+// TabBarArea returns the one-row tab strip above the panes, or an empty
+// rect when the bar is hidden.
 func (s *AppState) TabBarArea() Rect {
 	w := SidebarCollapsedWidth
 	if s.SidebarVisible {
 		w = SidebarWidth
 	}
+	if !s.TabBarVisible() {
+		return Rect{}
+	}
 	return Rect{X: w, Y: 0, W: max0(s.Cols - w), H: 1}
 }
 
+// ActionBarArea is the one-row bottom pane action bar (SPEC G1): the
+// main area's last row, right of the sidebar and above the status line.
+// It shows only on desktop with an active workspace and at least two
+// rows left for the panes.
+func (s *AppState) ActionBarArea() Rect {
+	w := SidebarCollapsedWidth
+	if s.SidebarVisible {
+		w = SidebarWidth
+	}
+	if s.ActiveWorkspace() == nil {
+		return Rect{}
+	}
+	if s.Rows-3 < 2 { // need ≥2 pane rows: bar + status take the rest
+		return Rect{}
+	}
+	return Rect{X: w, Y: max0(s.Rows - 2), W: max0(s.Cols - w), H: 1}
+}
+
 // PanesArea returns the rect the pane layout fills: right of the sidebar,
-// below the tab bar, above the status line.
+// below the (possibly hidden) tab bar, above the action bar and status.
 func (s *AppState) PanesArea() Rect {
 	w := SidebarCollapsedWidth
 	if s.SidebarVisible {
 		w = SidebarWidth
 	}
-	h := s.Rows - 2 // tab bar + status line
-	return Rect{X: w, Y: 1, W: max0(s.Cols - w), H: max0(h)}
+	y := 0
+	if s.TabBarVisible() {
+		y = 1
+	}
+	bottom := s.Rows - 1 // status line
+	if ab := s.ActionBarArea(); ab.H > 0 {
+		bottom = ab.Y
+	}
+	return Rect{X: w, Y: y, W: max0(s.Cols - w), H: max0(bottom - y)}
 }
 
 // SidebarArea returns the sidebar rect (may be the collapsed strip).
@@ -791,6 +841,29 @@ const (
 
 // Rect re-exports the layout rect for convenience.
 type Rect = layout.Rect
+
+// PaneContentRect resolves a pane rect to its terminal-content rect and
+// gutter column count per SPEC G1: a frame eats one cell on each side but
+// only when borders are on and the pane is wider and taller than 2; the
+// rightmost inner column is a scrollbar gutter whenever the framed inner
+// width is at least 5.
+func PaneContentRect(r Rect, borders bool) (inner Rect, gutter int) {
+	if !borders || r.W <= 2 || r.H <= 2 {
+		return r, 0
+	}
+	inner = Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}
+	if inner.W >= 5 {
+		gutter = 1
+	}
+	return inner, gutter
+}
+
+// PaneTermSize is the PTY cell size inside a pane rect: the content rect
+// minus its gutter column.
+func PaneTermSize(r Rect, borders bool) (w, h int) {
+	inner, gutter := PaneContentRect(r, borders)
+	return max(1, inner.W-gutter), max(1, inner.H)
+}
 
 // --- internals ---
 

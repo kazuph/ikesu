@@ -478,7 +478,7 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 	rows := 0
 	for _, pr := range tab.Layout.Panes(st.PanesArea()) {
 		if pr.ID == pid {
-			rows = max(pr.Rect.H-2, 1)
+			_, rows = model.PaneTermSize(pr.Rect, st.PaneBorders)
 		}
 	}
 	return api.PaneInfo{

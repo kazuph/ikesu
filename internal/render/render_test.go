@@ -318,3 +318,113 @@ func TestRenderWorkspaceJobDots(t *testing.T) {
 		t.Fatal("dot drawn without a job snapshot")
 	}
 }
+
+// --- G1 action bar / zoom / frame contract ---
+
+func TestActionBarDrawn(t *testing.T) {
+	s := testState(80, 24)
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
+	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
+	text := screenText(t, out, 80, 24)
+	for _, want := range []string{" COPY ", "CYCLE LAYOUT", "ROTATE PANES", "EQUALIZE"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("action bar missing %q:\n%s", want, text)
+		}
+	}
+	if out.ActionBar.Copy.W == 0 || out.ActionBar.Cycle.W == 0 ||
+		out.ActionBar.Rotate.W == 0 || out.ActionBar.Equalize.W == 0 {
+		t.Fatalf("button hit areas not populated: %+v", out.ActionBar)
+	}
+	// The bar sits directly above the status line.
+	if y := s.PanesArea().Y + s.PanesArea().H; y != s.ActionBarArea().Y {
+		t.Fatalf("action bar not directly under panes: %+v", s.ActionBarArea())
+	}
+}
+
+func TestActionBarHiddenWithoutWorkspace(t *testing.T) {
+	s := testState(80, 24)
+	s.Workspaces = nil
+	out := Compose(Input{State: s})
+	if out.ActionBar.Area.W != 0 {
+		t.Fatalf("action bar drawn without a workspace")
+	}
+	if strings.Contains(screenText(t, out, 80, 24), "EQUALIZE") {
+		t.Fatal("action bar text drawn without a workspace")
+	}
+}
+
+func TestTabBarVisibilityConfig(t *testing.T) {
+	s := testState(80, 24)
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
+	in := func() Input { return Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}} }
+	if !s.TabBarVisible() {
+		t.Fatal("tab bar should default to visible")
+	}
+	s.ShowTabBar = false
+	if s.TabBarVisible() {
+		t.Fatal("show_tab_bar=false should hide the tab bar")
+	}
+	if strings.Contains(screenText(t, Compose(in()), 80, 24), "tab 1") {
+		t.Fatal("tab label drawn while hidden")
+	}
+	if s.PanesArea().Y != 0 {
+		t.Fatalf("panes should start at y=0 without a tab bar, got %+v", s.PanesArea())
+	}
+	s.ShowTabBar = true
+	s.HideTabBarWhenSingleTab = true
+	if s.TabBarVisible() {
+		t.Fatal("single tab should hide the bar when configured")
+	}
+	s.Apply(model.CmdNewTab{Workspace: 0})
+	if !s.TabBarVisible() {
+		t.Fatal("two tabs must show the bar again")
+	}
+}
+
+func TestPaneBordersOff(t *testing.T) {
+	s := testState(80, 24)
+	s.PaneBorders = false
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
+	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
+	text := screenText(t, out, 80, 24)
+	// No pane title and no frame inside the panes area (the sidebar's own
+	// box still draws its border).
+	if strings.Contains(text, "%1") {
+		t.Fatalf("pane title drawn with pane_borders=false:\n%s", text)
+	}
+	pa := s.PanesArea()
+	if c := out.Frame.Cell(pa.X, pa.Y); c != nil && c.Content == "┌" {
+		t.Fatal("pane frame drawn with pane_borders=false")
+	}
+	// Content rect = whole pane rect, no gutter.
+	inner, gutter := model.PaneContentRect(s.PanesArea(), false)
+	if inner != s.PanesArea() || gutter != 0 {
+		t.Fatalf("borders-off content = %+v/%d, want full rect", inner, gutter)
+	}
+}
+
+func TestZoomTitlePrefix(t *testing.T) {
+	s := testState(80, 24)
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
+	s.Workspaces[0].Tabs[0].Zoomed = model.PaneID(pid)
+	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
+	text := screenText(t, out, 80, 24)
+	if !strings.Contains(text, "ZOOM %1") {
+		t.Fatalf("zoomed pane title lacks ZOOM prefix:\n%s", text)
+	}
+	if !strings.Contains(text, " Z") && !strings.Contains(text, "tab 1 Z") {
+		t.Fatalf("zoomed tab lacks the Z marker:\n%s", text)
+	}
+}
+
+func TestCopiedFlashOnSidebarBottom(t *testing.T) {
+	s := testState(80, 24)
+	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
+	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}, Copied: " Copied 2 lines "})
+	text := screenText(t, out, 80, 24)
+	footer := s.Rows - 3 // sidebar footer text row
+	lines := strings.Split(text, "\n")
+	if !strings.Contains(lines[footer], "Copied 2 lines") {
+		t.Fatalf("flash not on the sidebar bottom row %d:\n%s", footer, text)
+	}
+}

@@ -222,7 +222,7 @@ func (s *session) rightClick(x, y int) {
 	s.send(fmt.Sprintf("\x1b[<2;%d;%dM\x1b[<2;%d;%dm", x+1, y+1, x+1, y+1))
 }
 
-var paneTitleRe = regexp.MustCompile(` \d+ \S`)
+var paneTitleRe = regexp.MustCompile(` %\d+ \S`)
 
 func countPanes(screen string) int {
 	// Pane titles look like " 1 zsh " on a pane border row — a digit
@@ -405,9 +405,10 @@ func TestDragSelectCopy(t *testing.T) {
 	s.send(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1))
 	s.send(fmt.Sprintf("\x1b[<32;%d;%dM", x+8, y+1))
 	s.send(fmt.Sprintf("\x1b[<0;%d;%dm", x+8, y+1))
-	// Releasing a moved selection must not crash; the copied flash appears.
+	// Releasing a moved selection must not crash; the copied flash appears
+	// on the sidebar's bottom row (SPEC G1 "Copied N lines").
 	s.waitFor("copied flash", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "copied")
+		return strings.Contains(tx, "Copied")
 	})
 }
 

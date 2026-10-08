@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/input"
@@ -151,6 +152,7 @@ type App struct {
 	sel           *selState
 	tabHits       []layout.Rect // last frame's tab strip hit areas
 	newTabRect    layout.Rect   // last frame's "+" button
+	sb            *sbDrag       // scrollbar-gutter drag in progress
 	fwd           int           // pane receiving forwarded mouse events during a drag
 	scroll        map[int]int
 	trackers      map[int]*status.Tracker
@@ -161,6 +163,10 @@ type App struct {
 	jobSource     func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
 	jobDots       map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
 	jobsAt        time.Time                                // last job snapshot
+	actionBar     render.ActionBarRects                    // last frame's action bar hit areas
+	uiShowTab     bool                                     // [ui] show_tab_bar
+	uiHideSingle  bool                                     // [ui] hide_tab_bar_when_single_tab
+	uiBorders     bool                                     // [ui] pane_borders
 	sidebarScroll int
 	copied        string
 	copiedAt      time.Time
@@ -191,6 +197,19 @@ func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd stri
 		trackers: map[int]*status.Tracker{},
 		fwd:      -1,
 	}
+}
+
+// SetUIFlags applies the [ui] config flags and keeps them so a later
+// session restore (which replaces the whole state) re-applies them too.
+func (a *App) SetUIFlags(showTabBar, hideSingle, borders bool) {
+	a.uiShowTab, a.uiHideSingle, a.uiBorders = showTabBar, hideSingle, borders
+	a.applyUIFlags()
+}
+
+func (a *App) applyUIFlags() {
+	a.st.ShowTabBar = a.uiShowTab
+	a.st.HideTabBarWhenSingleTab = a.uiHideSingle
+	a.st.PaneBorders = a.uiBorders
 }
 
 // State returns the application state. Callers must only touch it inside
@@ -411,6 +430,9 @@ func Run(in *os.File, out *os.File) (int, error) {
 	sup := runtime.NewSupervisor()
 	a := NewApp(st, sup, out, cwd)
 	a.inputEOF = true
+	if cfg, err := config.Load(); err == nil {
+		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
+	}
 
 	if err := a.StartInitialPane(); err != nil {
 		return 1, fmt.Errorf("spawn pane: %w", err)
@@ -632,20 +654,23 @@ func (a *App) syncLayout() {
 	area := a.st.PanesArea()
 	if t := ws.TabRef(); t != nil {
 		for _, pr := range t.PaneRects(area) {
-			a.sup.Resize(pr.ID, max(pr.Rect.W-2, 1), max(pr.Rect.H-2, 1))
+			w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
+			a.sup.Resize(pr.ID, w, h)
 		}
 	}
 }
 
-// rectForPane returns the inner rect of a pane in whichever workspace owns
-// it; panes of a hidden workspace spawn at a default size and are resized
-// when their workspace becomes active.
+// rectForPane returns the terminal-content rect of a pane in whichever
+// workspace owns it; panes of a hidden workspace spawn at a default size
+// and are resized when their workspace becomes active.
 func (a *App) rectForPane(pid int) layout.Rect {
 	for _, ws := range a.st.Workspaces {
 		for _, t := range ws.Tabs {
 			for _, pr := range t.PaneRects(a.st.PanesArea()) {
 				if pr.ID == pid {
-					return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
+					inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+					inner.W = max(inner.W-gutter, 1)
+					return inner
 				}
 			}
 		}
@@ -666,7 +691,9 @@ func (a *App) innerRect(pid int) layout.Rect {
 	}
 	for _, pr := range t.PaneRects(a.st.PanesArea()) {
 		if pr.ID == pid {
-			return layout.Rect{X: pr.Rect.X + 1, Y: pr.Rect.Y + 1, W: max(pr.Rect.W-2, 1), H: max(pr.Rect.H-2, 1)}
+			inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+			inner.W = max(inner.W-gutter, 1)
+			return inner
 		}
 	}
 	return layout.Rect{W: 80, H: 24}
@@ -753,6 +780,7 @@ func (a *App) draw() {
 	a.tabHits = out.TabHits
 	a.newTabRect = out.NewTabRect
 	a.toastRect = out.ToastRect
+	a.actionBar = out.ActionBar
 	a.lastDraw = time.Now()
 	a.dirty = false
 	_, _ = a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
@@ -832,6 +860,7 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 				sn := p.Snapshot()
 				snap := &render.PaneSnap{
 					Label:  labelFor(sn, p),
+					Title:  sn.OSCTitle,
 					Agent:  agentFor(sn),
 					Status: a.glyph(pid),
 					Dead:   sn.Dead,
@@ -843,6 +872,14 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					snap.ScrollOff = a.scroll[pid]
 					snap.ScrollN = sn.ScrollbackLen
 				}
+				if snap.Agent != "" {
+					// SPEC G1 restore label: "saved session" only when a
+					// usable agent session id was recorded.
+					snap.Restore = "no saved session"
+					if rec := a.sessions[pid]; rec != nil && rec.Agent != "" && rec.Value != "" {
+						snap.Restore = "saved session"
+					}
+				}
 				out[pid] = snap
 			}
 		}
@@ -851,10 +888,12 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 }
 
 func labelFor(sn runtime.Snapshot, p *runtime.Pane) string {
-	if sn.ProcName != "" {
-		return sn.ProcName
+	// SPEC G1: the border label is the agent name when one is
+	// identified, else the literal "terminal" ("%1 terminal").
+	if sn.AgentID != "" {
+		return sn.AgentID
 	}
-	return "shell"
+	return "terminal"
 }
 
 // agentFor reports the detected agent id for a snapshot.

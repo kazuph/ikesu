@@ -102,6 +102,7 @@ func (a *App) RestoreSession(f *session.File) []int {
 	cols, rows := a.st.Cols, a.st.Rows // terminal size is runtime, not saved
 	a.st = model.Restore(f)
 	a.st.Cols, a.st.Rows = cols, rows
+	a.applyUIFlags()
 	if a.sessions == nil {
 		a.sessions = map[int]*AgentRecord{}
 	}

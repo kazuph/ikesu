@@ -43,6 +43,12 @@ type Config struct {
 			// delivery wins when both are present.
 			Enabled *bool `toml:"enabled"`
 		} `toml:"toast"`
+		// ShowTabBar (default true) hides the desktop tab bar entirely
+		// when false; HideTabBarWhenSingleTab only additionally hides a
+		// lone tab. PaneBorders (default true) draws pane frames.
+		ShowTabBar              *bool `toml:"show_tab_bar"`
+		HideTabBarWhenSingleTab *bool `toml:"hide_tab_bar_when_single_tab"`
+		PaneBorders             *bool `toml:"pane_borders"`
 	} `toml:"ui"`
 	Experimental struct {
 		AllowNested bool `toml:"allow_nested"`
@@ -125,6 +131,22 @@ func (c Config) ToastDelivery() ToastDelivery {
 
 // AllowNested reports whether nested gtx sessions are permitted.
 func (c Config) AllowNested() bool { return c.Experimental.AllowNested }
+
+// ShowTabBar reports whether the desktop tab bar is drawn (default true).
+func (c Config) ShowTabBar() bool {
+	return c.UI.ShowTabBar == nil || *c.UI.ShowTabBar
+}
+
+// HideTabBarWhenSingleTab additionally hides the bar for a lone tab,
+// only when ShowTabBar is on (default false).
+func (c Config) HideTabBarWhenSingleTab() bool {
+	return c.UI.HideTabBarWhenSingleTab != nil && *c.UI.HideTabBarWhenSingleTab
+}
+
+// PaneBorders reports whether pane frames are drawn (default true).
+func (c Config) PaneBorders() bool {
+	return c.UI.PaneBorders == nil || *c.UI.PaneBorders
+}
 
 // NavKey returns the open-notification-target key spec, default
 // "prefix+o". Only "prefix+<key>" forms are supported in this stage.

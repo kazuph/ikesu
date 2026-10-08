@@ -6,6 +6,8 @@
 // Horizontal stacks panes top and bottom.
 package layout
 
+import "math"
+
 // Direction is the axis a split divides.
 type Direction int
 
@@ -163,14 +165,22 @@ func (l *Layout) Close(pane int) bool {
 	if l.PaneCount() <= 1 {
 		return false
 	}
-	newRoot, ok, sibling := removePane(l.root, pane)
+	newRoot, ok, _ := removePane(l.root, pane)
 	if !ok || newRoot == nil {
 		return false
 	}
 	l.root = newRoot
+	// SPEC G1: focus moves to the next pane in logical order, or the
+	// previous one when the closed pane was the tail.
+	idx := indexOf(l.order, pane)
 	l.order = removeID(l.order, pane)
 	if l.focus == pane || !containsID(collectIDs(l.root), l.focus) {
-		l.focus = firstLeaf(sibling)
+		switch {
+		case idx >= 0 && idx < len(l.order):
+			l.focus = l.order[idx]
+		case len(l.order) > 0:
+			l.focus = l.order[len(l.order)-1]
+		}
 	}
 	return true
 }
@@ -440,13 +450,18 @@ func collectSplits(n *Node, area Rect, path []bool, out *[]SplitBorder) {
 }
 
 func splitRect(area Rect, dir Direction, ratio float64) (Rect, Rect) {
+	// SPEC G1: cells = axis_len × ratio computed in f32; an exact .5 rounds
+	// up to the first side and the second side owns the remainder.
+	round := func(n int, r float64) int {
+		return int(math.Round(float64(float32(n) * float32(r))))
+	}
 	switch dir {
 	case Vertical:
-		w1 := int(float64(area.W) * ratio)
+		w1 := round(area.W, ratio)
 		return Rect{area.X, area.Y, w1, area.H},
 			Rect{area.X + w1, area.Y, area.W - w1, area.H}
 	default:
-		h1 := int(float64(area.H) * ratio)
+		h1 := round(area.H, ratio)
 		return Rect{area.X, area.Y, area.W, h1},
 			Rect{area.X, area.Y + h1, area.W, area.H - h1}
 	}

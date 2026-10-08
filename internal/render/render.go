@@ -44,9 +44,13 @@ type CursorInfo struct {
 
 // PaneSnap is everything render needs to draw one pane.
 type PaneSnap struct {
-	Grid      [][]uv.Cell // content cells, [row][col], scroll applied
-	Label     string      // process/agent name for the border title
-	Agent     string      // detected agent id ("" = not identified)
+	Grid  [][]uv.Cell // content cells, [row][col], scroll applied
+	Label string      // process/agent name for the border title
+	Title string      // terminal (OSC) title appended to the border title
+	Agent string      // detected agent id ("" = not identified)
+	// Restore is "saved session" / "no saved session" for agent panes,
+	// shown right-aligned on the top border (SPEC G1).
+	Restore   string
 	Status    StatusGlyph
 	Focused   bool
 	Dead      bool
@@ -128,6 +132,9 @@ type Input struct {
 	Copied        string // flash text, e.g. " copied 12 chars "
 	Prefix        bool   // prefix-key pending
 	SidebarScroll int    // sidebar rows scrolled off the top
+	// CopyLabel is the action bar's left button text: " COPY ",
+	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
+	CopyLabel string
 }
 
 // Output is a composed frame plus the cursor anchor for IME positioning.
@@ -140,6 +147,9 @@ type Output struct {
 	// NewTabRect is the "+" button. Both feed the mouse layer.
 	TabHits    []layout.Rect
 	NewTabRect layout.Rect
+	// ActionBar is the bottom pane action bar's button hit areas; zero
+	// rects mean the button did not fit and must not fire.
+	ActionBar ActionBarRects
 	// MenuRect/DialogRects/ToastRect let the mouse layer hit-test overlays.
 	ToastRect     layout.Rect
 	MenuRect      layout.Rect
@@ -147,6 +157,15 @@ type Output struct {
 	DialogRect    layout.Rect
 	DialogConfirm layout.Rect
 	DialogCancel  layout.Rect
+}
+
+// ActionBarRects are the bottom action bar's clickable regions (SPEC G1).
+type ActionBarRects struct {
+	Area     layout.Rect
+	Copy     layout.Rect
+	Cycle    layout.Rect
+	Rotate   layout.Rect
+	Equalize layout.Rect
 }
 
 // Compose renders the entire screen into a frame.
@@ -158,6 +177,7 @@ func Compose(in Input) *Output {
 	drawSidebar(f, s, in)
 	drawTabBar(f, s, out)
 	drawPanes(f, s, in, out)
+	drawActionBar(f, s, in, out)
 	drawStatusLine(f, s, in)
 	if in.Menu != nil {
 		drawMenu(f, in.Menu, out)
@@ -188,6 +208,9 @@ func drawTabBar(f *Frame, s *model.AppState, out *Output) {
 	x := area.X
 	for i, t := range ws.Tabs {
 		name := t.TabLabel()
+		if t.Zoomed != 0 {
+			name += " Z" // zoomed-tab marker (SPEC G1)
+		}
 		w := len([]rune(name)) + 2
 		if x+w > area.X+area.W-3 {
 			w = area.X + area.W - 3 - x
@@ -224,24 +247,48 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	}
 	for _, pr := range t.PaneRects(area) {
 		snap := in.Panes[pr.ID]
-		borderSty := uv.Style{Fg: Dim}
-		if pr.IsFocused {
-			borderSty = uv.Style{Fg: Accent}
-		}
-		if snap != nil && snap.Dead {
-			borderSty = uv.Style{Fg: Dim, Attrs: uv.AttrFaint}
-		}
-		ix, iy, iw, ih := f.Box(pr.Rect.X, pr.Rect.Y, pr.Rect.W, pr.Rect.H, borderSty)
+		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
+		ix, iy, iw, ih := inner.X, inner.Y, inner.W, inner.H
+		if s.PaneBorders && pr.Rect.W > 2 && pr.Rect.H > 2 {
+			borderSty := uv.Style{Fg: Dim}
+			if pr.IsFocused {
+				borderSty = uv.Style{Fg: Accent}
+			}
+			if snap != nil && snap.Dead {
+				borderSty = uv.Style{Fg: Dim, Attrs: uv.AttrFaint}
+			}
+			f.Box(pr.Rect.X, pr.Rect.Y, pr.Rect.W, pr.Rect.H, borderSty)
 
-		// Title: " <id> <label> "
-		title := fmt.Sprintf(" %d %s ", pr.ID, label(snap))
-		f.Text(pr.Rect.X+1, pr.Rect.Y, title, borderSty, pr.Rect.X+pr.Rect.W-1)
+			// Title: " ZOOM? %<id> <label> <terminal title> " — hidden
+			// below width 4, truncated to pane width-4 with '…'
+			// (SPEC G1 pane contract). The agent restore label wins the
+			// right edge; the left title yields to it.
+			titleStop := pr.Rect.X + pr.Rect.W - 1
+			if snap != nil && snap.Restore != "" && snap.Agent != "" && pr.Rect.W >= 34 {
+				rl := " " + snap.Restore + " "
+				rw := len([]rune(rl))
+				titleStop = pr.Rect.X + pr.Rect.W - 1 - rw
+				f.Text(titleStop, pr.Rect.Y, rl, borderSty, pr.Rect.X+pr.Rect.W-1)
+			}
+			if pr.Rect.W > 4 {
+				title := paneTitle(pr, snap, t)
+				f.Text(pr.Rect.X+1, pr.Rect.Y, " "+title+" ", borderSty, titleStop)
+			}
 
-		// Scroll indicator on the top-right border.
-		if off := in.Scroll[pr.ID]; off > 0 {
-			ind := fmt.Sprintf(" ↑%d ", off)
-			w := len([]rune(ind))
-			f.Text(pr.Rect.X+pr.Rect.W-1-w, pr.Rect.Y, ind, uv.Style{Fg: Yellow})
+			// Scroll indicator on the top border, left of the restore
+			// label's slot.
+			if off := in.Scroll[pr.ID]; off > 0 && pr.Rect.W > 10 {
+				ind := fmt.Sprintf(" ↑%d ", off)
+				w := len([]rune(ind))
+				f.Text(titleStop-w, pr.Rect.Y, ind, uv.Style{Fg: Yellow}, titleStop)
+			}
+
+			// Gutter: the rightmost inner column hosts the scrollbar;
+			// terminal content never reaches it (SPEC G1).
+			if gutter > 0 {
+				drawGutter(f, inner, snap, in.Scroll[pr.ID])
+				iw -= gutter
+			}
 		}
 
 		// Content.
@@ -272,6 +319,116 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				out.AnchorY = iy + ih - 1
 			}
 		}
+	}
+}
+
+// paneTitle builds the border title: "ZOOM %<id> <label> <title>" for the
+// zoomed focused pane, otherwise "%<id> <label> <title>".
+func paneTitle(pr layout.PaneRect, snap *PaneSnap, t *model.Tab) string {
+	lbl := label(snap)
+	title := fmt.Sprintf("%%%d %s", pr.ID, lbl)
+	if snap != nil && snap.Title != "" {
+		title += " " + snap.Title
+	}
+	if t.Zoomed == model.PaneID(pr.ID) {
+		title = "ZOOM " + title
+	}
+	return truncateEllipsis(title, pr.Rect.W-4)
+}
+
+// truncateEllipsis cuts s to at most n Unicode characters, replacing the
+// tail with a single '…' when it had to shorten.
+func truncateEllipsis(s string, n int) string {
+	rs := []rune(s)
+	if n <= 0 {
+		return ""
+	}
+	if len(rs) <= n {
+		return s
+	}
+	return string(rs[:n-1]) + "…"
+}
+
+// drawGutter fills the rightmost inner column: '▕' track with '▐' for the
+// thumb portion whenever the pane has scrollback (SPEC G1).
+func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
+	gx := inner.X + inner.W - 1
+	for y := inner.Y; y < inner.Y+inner.H; y++ {
+		f.Set(gx, y, "▕", uv.Style{Fg: Dim})
+	}
+	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 {
+		return
+	}
+	total := snap.ScrollN + inner.H
+	th := inner.H * inner.H / total
+	if th < 1 {
+		th = 1
+	}
+	if th > inner.H {
+		th = inner.H
+	}
+	// Thumb top: bottom-aligned at offset 0, top-aligned at max offset.
+	track := inner.H - th
+	top := inner.Y + track
+	if snap.ScrollN > 0 {
+		frac := float64(off) / float64(snap.ScrollN)
+		top = inner.Y + track - int(frac*float64(track))
+	}
+	for y := top; y < top+th && y < inner.Y+inner.H; y++ {
+		f.Set(gx, y, "▐", uv.Style{Fg: Dim})
+	}
+}
+
+// --- bottom pane action bar (SPEC G1) ---
+
+// drawActionBar draws the one-row bar under the panes: the copy label on
+// the left, CYCLE LAYOUT / ROTATE PANES / EQUALIZE right-aligned with
+// 1-cell gaps and a 1-cell right margin. Buttons that do not fit are
+// neither drawn nor clickable.
+func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
+	area := s.ActionBarArea()
+	if area.W <= 0 {
+		return
+	}
+	out.ActionBar.Area = area
+	base := uv.Style{Fg: Dim} // reset bg, overlay0 fg
+	btn := uv.Style{Fg: Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}
+	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{})
+
+	copyLabel := in.CopyLabel
+	if copyLabel == "" {
+		copyLabel = " COPY "
+	}
+	cw := len([]rune(copyLabel))
+	if area.X+cw <= area.X+area.W {
+		f.Text(area.X, area.Y, copyLabel, base, area.X+area.W)
+		out.ActionBar.Copy = layout.Rect{X: area.X, Y: area.Y, W: cw, H: 1}
+	}
+
+	labels := []struct {
+		text string
+		slot *layout.Rect
+	}{
+		{" CYCLE LAYOUT ", &out.ActionBar.Cycle},
+		{" ROTATE PANES ", &out.ActionBar.Rotate},
+		{" EQUALIZE ", &out.ActionBar.Equalize},
+	}
+	total := 1 // right margin
+	for _, l := range labels {
+		total += len([]rune(l.text)) + 1
+	}
+	x := area.X + area.W - total
+	if x < area.X {
+		x = area.X // too narrow: left-align and drop what does not fit
+	}
+	for _, l := range labels {
+		w := len([]rune(l.text))
+		if x+w > area.X+area.W {
+			continue
+		}
+		f.Text(x, area.Y, l.text, btn, area.X+area.W)
+		*l.slot = layout.Rect{X: x, Y: area.Y, W: w, H: 1}
+		x += w + 1
 	}
 }
 
@@ -416,11 +573,17 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarRow(f, s, in, rows[i], ix, iy+i-scroll, iw)
 	}
 
-	// Footer: [menu] left, [new] right.
+	// Footer: [menu] left, [new] right. The copy flash ("Copied N
+	// lines") claims the sidebar's bottom text row while shown
+	// (SPEC G1).
 	fr := SidebarFooter(area)
 	if fr.Y >= iy && fr.Y < iy+area.H-2 {
-		f.Text(fr.X+1, fr.Y, "[menu]", uv.Style{Fg: Subtle}, fr.X+fr.W)
-		f.Text(fr.X+fr.W-6, fr.Y, "[new]", uv.Style{Fg: Subtle}, fr.X+fr.W)
+		if in.Copied != "" {
+			f.Text(fr.X, fr.Y, in.Copied, uv.Style{Fg: Yellow}, fr.X+fr.W)
+		} else {
+			f.Text(fr.X+1, fr.Y, "[menu]", uv.Style{Fg: Subtle}, fr.X+fr.W)
+			f.Text(fr.X+fr.W-6, fr.Y, "[new]", uv.Style{Fg: Subtle}, fr.X+fr.W)
+		}
 	}
 	// Collapse button on the bottom border, second from right.
 	f.Set(area.X+area.W-2, area.Y+area.H-1, "«", uv.Style{Fg: Dim})
@@ -631,11 +794,6 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 			right -= len([]rune(txt))
 			f.Text(right, y, txt, uv.Style{Fg: o.c, Bg: Surface}, s.Cols-1)
 		}
-	}
-
-	// Copied flash between the left label and the right cluster.
-	if in.Copied != "" {
-		f.Text(x+2, y, in.Copied, uv.Style{Fg: Green, Bg: Surface}, right)
 	}
 }
 

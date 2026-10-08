@@ -122,12 +122,14 @@ func TestCycle(t *testing.T) {
 }
 
 // Odd widths give the remainder to the second child.
-func TestOddWidthRemainderToSecond(t *testing.T) {
+func TestOddWidthRoundsUpFirst(t *testing.T) {
+	// SPEC G1: cells = axis_len × ratio in f32; an exact .5 rounds up to
+	// the first side and the second owns the remainder.
 	l := New(1)
 	l.SplitFocused(Vertical, 2)
 	got := paneMap(l, Rect{0, 0, 81, 24})
-	if got[1].W != 40 || got[2].W != 41 {
-		t.Fatalf("widths = %d/%d, want 40/41", got[1].W, got[2].W)
+	if got[1].W != 41 || got[2].W != 40 {
+		t.Fatalf("widths = %d/%d, want 41/40", got[1].W, got[2].W)
 	}
 }
 
