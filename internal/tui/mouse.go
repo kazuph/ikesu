@@ -437,7 +437,9 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	}
 	// Footer buttons.
 	if pointIn(m.X, m.Y, render.SidebarMenuRect(s)) {
-		a.openMainMenu(m.X, m.Y)
+		a.openMainMenu(0, render.SidebarMenuRect(s).Y)
+		_, h := render.MenuSize(&a.menu.m)
+		a.menu.m.Y -= h
 		return
 	}
 	if pointIn(m.X, m.Y, render.SidebarNewRect(s)) {

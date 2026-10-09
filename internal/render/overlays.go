@@ -47,9 +47,9 @@ func MenuRect(m *Menu, cols, rows int) layout.Rect {
 
 func drawMenu(f *Frame, m *Menu, out *Output) {
 	r := MenuRect(m, f.W, f.H)
-	border := uv.Style{Fg: f.Palette.Dim}
+	border := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)
-	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text})
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
 	out.MenuRect = r
 	out.MenuItemRows = nil
 	for i, it := range m.Items {
@@ -59,16 +59,16 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		row := layout.Rect{X: ix, Y: iy + i, W: iw, H: 1}
 		out.MenuItemRows = append(out.MenuItemRows, row)
 		if it.Separator {
-			f.Text(ix, iy+i, " --", uv.Style{Fg: f.Palette.Dim}, ix+iw)
+			f.Text(ix, iy+i, "  --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 			continue
 		}
-		sty := uv.Style{Fg: f.Palette.Text}
+		sty := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}
 		if i == m.Hover || i == m.Sel {
-			sty = uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}
+			sty = uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 			f.Fill(ix, iy+i, iw, 1, " ", sty)
 		}
 		if it.Disabled {
-			sty = uv.Style{Fg: f.Palette.Dim}
+			sty = uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
 		}
 		f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
 	}

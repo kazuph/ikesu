@@ -61,7 +61,7 @@ func (a *App) openPaneMenu(x, y, pid int) {
 		kind: menuPane,
 		pane: pid,
 		m: render.Menu{
-			X: x, Y: y, Hover: -1, Sel: -1,
+			X: x, Y: y, Hover: -1, Sel: 0,
 			Items: items,
 		},
 	}
@@ -163,7 +163,7 @@ func (a *App) openWorkspaceMenu(x, y, ws int) {
 	items = append(items, render.MenuItem{Label: "Duplicate"}, render.MenuItem{Separator: true}, render.MenuItem{Label: "Rename"}, render.MenuItem{Label: "Close"})
 	items = append(items, group...)
 	items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "⭐ favorite"}, render.MenuItem{Label: "💼 work"}, render.MenuItem{Label: "🏠 personal"}, render.MenuItem{Label: "No section"})
-	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: items}}
+	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: items}}
 }
 
 // openTabMenu shows the right-click menu for a tab cell.
@@ -172,7 +172,7 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 		kind: menuTab,
 		ws:   ws, tab: ti,
 		m: render.Menu{
-			X: x, Y: y, Hover: -1, Sel: -1,
+			X: x, Y: y, Hover: -1, Sel: 0,
 			Items: []render.MenuItem{
 				{Label: "Rename tab…"},
 				{Label: "New tab"},
@@ -185,7 +185,7 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 
 // openMainMenu shows the [menu] global menu.
 func (a *App) openMainMenu(x, y int) {
-	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: []render.MenuItem{
+	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: []render.MenuItem{
 		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}}}
 }

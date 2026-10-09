@@ -1,0 +1,30 @@
+rclick 70 12
+sleep 200ms
+screen @OUT@/pane-open.txt
+cells @OUT@/pane-open.json
+send "\r"
+sleep 200ms
+screen @OUT@/pane-enter.txt
+rclick 3 5
+sleep 200ms
+screen @OUT@/workspace-open.txt
+cells @OUT@/workspace-open.json
+send "\x1b"
+sleep 200ms
+rclick 28 1
+sleep 200ms
+screen @OUT@/tab-open.txt
+cells @OUT@/tab-open.json
+send "\x1b"
+sleep 200ms
+rclick 3 12
+sleep 200ms
+screen @OUT@/blank-open.txt
+cells @OUT@/blank-open.json
+send "\x1b"
+sleep 200ms
+clicktext "[menu]"
+sleep 200ms
+screen @OUT@/main-open.txt
+cells @OUT@/main-open.json
+kill

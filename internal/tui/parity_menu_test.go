@@ -37,3 +37,21 @@ func TestParityOutsideMenuConsumesLeftAndRetargetsRight(t *testing.T) {
 		t.Fatal("outside right press must open the target pane menu and survive its release")
 	}
 }
+
+func TestParityMenuFirstSelectionAndArrow(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.openPaneMenu(4, 4, a.focusedPane())
+	if a.menu.m.Sel != 0 {
+		t.Fatal("first item must start selected")
+	}
+	a.menuKey(uv.Key{Code: uv.KeyDown})
+	if a.menu.m.Sel != 1 {
+		t.Fatal("down must select horizontal split")
+	}
+	a.menuKey(uv.Key{Code: uv.KeyEnter})
+	panes := a.st.ActiveWorkspace().TabRef().PaneRects(a.st.PanesArea())
+	if len(panes) != 2 || panes[0].Rect.X != panes[1].Rect.X || panes[0].Rect.Y == panes[1].Rect.Y {
+		t.Fatal("enter must activate horizontal split", panes)
+	}
+}

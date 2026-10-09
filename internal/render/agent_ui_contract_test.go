@@ -60,7 +60,7 @@ func TestG5SeparatorExactTextAndColor(t *testing.T) {
 	for x := row.X; x < row.X+row.W; x++ {
 		text.WriteString(f.Cell(x, row.Y).Content)
 	}
-	if strings.TrimRight(text.String(), " ") != " --" {
+	if strings.TrimRight(text.String(), " ") != "  --" {
 		t.Fatal(text.String())
 	}
 	for x := row.X; x < row.X+3; x++ {
