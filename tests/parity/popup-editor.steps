@@ -1,0 +1,25 @@
+send "echo BASE_EDITOR_TEXT\r"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py open\r"
+sleep 500ms
+send "echo POPUP_EDITOR_TEXT\r"
+sleep 250ms
+screen @OUT@/popup.txt
+cells @OUT@/popup.json
+send "\x02e"
+sleep 1s
+screen @OUT@/editor.txt
+cells @OUT@/editor.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/uncovered.txt
+cells @OUT@/uncovered.json
+send ":q!\r"
+sleep 500ms
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+send "echo POPUP_EDITOR_RETURNED\r"
+sleep 250ms
+screen @OUT@/shell.txt
+cells @OUT@/shell.json
+kill

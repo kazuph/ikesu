@@ -1,0 +1,19 @@
+send "echo SCROLLBACK_EDITOR_TEXT\r"
+sleep 500ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+send "\x02e"
+sleep 1s
+screen @OUT@/opened.txt
+cells @OUT@/opened.json
+send "\x1b"
+sleep 500ms
+send ":q!\r"
+sleep 1s
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+send "echo EDITOR_RETURNED_TO_SHELL\r"
+sleep 500ms
+screen @OUT@/shell.txt
+cells @OUT@/shell.json
+kill

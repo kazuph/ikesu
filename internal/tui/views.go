@@ -236,6 +236,9 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					Dead:   sn.Dead,
 					Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
 				}
+				if a.editorFiles[pid] != "" {
+					snap.Label = "terminal"
+				}
 				if rep := a.reported[pid]; rep.agent != "" {
 					snap.Label, snap.Agent = rep.agent, rep.agent
 				}

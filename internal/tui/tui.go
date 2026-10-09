@@ -193,6 +193,7 @@ type App struct {
 	sep                                      *sepDrag
 	sel                                      *selState
 	tabHits                                  []layout.Rect // last frame's tab strip hit areas
+	editorFiles                              map[int]string
 	tabScroll, tabScrollLeft, tabScrollRight int
 	tabViewWidth                             int
 	tabViewWorkspace, tabViewActive          int
@@ -417,6 +418,7 @@ func (a *App) StartInitialPane() error {
 // Run executes the event loop until quit. It returns after the model
 // signals EffQuit (last pane closed, quit dialog, or API stop).
 func (a *App) Run() {
+	defer a.removeEditorFiles()
 	defer close(a.doneCh)
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()

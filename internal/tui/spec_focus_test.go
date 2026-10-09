@@ -118,6 +118,10 @@ func TestSPECEditScrollbackInvokesEditorWithRetainedText(t *testing.T) {
 	teststate.Setenv(t, "EDITOR", editor)
 	teststate.Setenv(t, "GTX_TEST_EDITOR_OUTPUT", output)
 	a.prefixKey(uv.Key{Code: 'e'})
+	editorPane := a.st.FocusedPane()
+	if editorPane == pid || a.sup.Get(editorPane) == nil {
+		t.Fatal("editor must run in a dedicated PTY")
+	}
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
@@ -132,7 +136,15 @@ func TestSPECEditScrollbackInvokesEditorWithRetainedText(t *testing.T) {
 		case <-tick.C:
 		}
 	}
-	if a.toast == nil || a.toast.title != "opened scrollback" || a.focusedPane() != pid {
+	for a.st.ActiveWorkspace().TabRef().Layout.HasPane(editorPane) {
+		select {
+		case event := <-a.sup.Events():
+			a.onRuntimeEvent(event)
+		case <-deadline.C:
+			t.Fatal("editor pane did not exit after writing the retained text")
+		}
+	}
+	if a.focusedPane() != pid || a.sup.Get(pid) != p {
 		t.Fatal("editor result/focus")
 	}
 }
