@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+cd "$HOME/bench-terrace.noindex/src/parity"
+work="$HOME/bench-terrace.noindex/work"
+for action in save clear cancel; do
+ python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "${GTX_PARITY_BIN:-$work/gtx-parity-name-provisional}" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/name-button-$action.steps" --out "$work/parity-name-button-$action"
+done

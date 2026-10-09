@@ -1,0 +1,11 @@
+send "\x02c"
+sleep 250ms
+send "TAB_MOUSE_NAME"
+sleep 250ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+click 66 24
+sleep 250ms
+screen @OUT@/after.txt
+cells @OUT@/after.json
+kill

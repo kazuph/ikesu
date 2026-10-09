@@ -418,6 +418,20 @@ func (a *App) dialogMouse(ev input.Event) {
 		return
 	}
 	m := ev.Mouse
+	if a.dialog.d.InputEdit {
+		r, _, _ := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
+		buttons := render.NameInputButtons(r)
+		if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, buttons[0]) {
+			d := a.dialog
+			a.dialog = nil
+			d.run(a)
+		} else if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, buttons[1]) {
+			a.dialogKey(uv.Key{Code: 'c', Mod: uv.ModCtrl})
+		} else {
+			a.dialog = nil
+		}
+		return
+	}
 	_, cancel, confirm := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
 	switch {
 	case pointIn(m.X, m.Y, confirm):

@@ -257,15 +257,37 @@ func drawDialog(f *Frame, d *Dialog, out *Output) {
 	out.DialogConfirm = confirm
 }
 
-// Distribution observations use a 56x7 name box; clicks cancel, Enter saves.
+// Button geometry is shared with mouse handling for the recorded name-input box.
+var nameInputButtonLabels = [...]string{" ↵ save ", " ^c clear ", " esc cancel "}
+
+func NameInputButtons(r layout.Rect) [3]layout.Rect {
+	var buttons [3]layout.Rect
+	width := 2 * (len(buttons) - 1)
+	for _, label := range nameInputButtonLabels {
+		width += ansi.StringWidth(label)
+	}
+	x := r.X + (r.W-width)/2
+	for i, label := range nameInputButtonLabels {
+		buttons[i] = layout.Rect{X: x, Y: r.Y + 4, W: ansi.StringWidth(label), H: 1}
+		x += buttons[i].W + 2
+	}
+	return buttons
+}
+
 func drawNameInput(f *Frame, d *Dialog, out *Output) {
 	r, _, _ := DialogRects(d, f.W, f.H)
-	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
+	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
 	f.Text(r.X+1, r.Y+1, strings.ToLower(d.Title), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, r.X+r.W-1)
+	f.Fill(r.X+1, r.Y+3, r.W-2, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface})
 	f.Text(r.X+2, r.Y+3, d.Input, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}, r.X+r.W-2)
-	hint := "↵ save    ^c clear    esc cancel"
-	f.Text(r.X+(r.W-ansi.StringWidth(hint))/2, r.Y+4, hint, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, r.X+r.W-1)
+	for i, button := range NameInputButtons(r) {
+		style := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}
+		if i == 0 {
+			style.Fg, style.Bg = f.Palette.SurfDim, f.Palette.Accent
+		}
+		f.Text(button.X, button.Y, nameInputButtonLabels[i], style, min(button.X+button.W, r.X+r.W-1))
+	}
 	runes := []rune(d.Input)
 	prefix := string(runes[:min(max(0, d.InputCursor), len(runes))])
 	out.AnchorX = min(r.X+2+ansi.StringWidth(prefix), r.X+r.W-2)
