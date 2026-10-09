@@ -116,7 +116,7 @@ func (a *App) settingsMouse(ev input.Event) {
 		a.settings = nil
 		return
 	}
-	if m.Y == r.Y+2 {
+	if m.Y == render.SettingsTabsY(r) {
 		for i, offset := range []int{2, 10, 18} {
 			if m.X >= r.X+offset && m.X < r.X+offset+6 {
 				a.settings.Section = i
@@ -127,6 +127,9 @@ func (a *App) settingsMouse(ev input.Event) {
 		}
 	}
 	for i := 0; i < a.settingsCount(); i++ {
+		if !render.SettingsChoiceVisible(r, a.settings.Section, i) {
+			continue
+		}
 		if m.Y == render.SettingsChoiceY(r, a.settings.Section, i) && m.X > r.X && m.X < r.X+r.W-1 {
 			a.settings.Selected = i
 			if a.settings.Section == 0 {

@@ -1,0 +1,223 @@
+send "\x02s"
+sleep 250ms
+resize 60 6
+sleep 250ms
+screen @OUT@/s0-h6.txt
+cells @OUT@/s0-h6.json
+resize 60 7
+sleep 250ms
+screen @OUT@/s0-h7.txt
+cells @OUT@/s0-h7.json
+resize 60 8
+sleep 250ms
+screen @OUT@/s0-h8.txt
+cells @OUT@/s0-h8.json
+resize 60 9
+sleep 250ms
+screen @OUT@/s0-h9.txt
+cells @OUT@/s0-h9.json
+resize 60 10
+sleep 250ms
+screen @OUT@/s0-h10.txt
+cells @OUT@/s0-h10.json
+resize 60 11
+sleep 250ms
+screen @OUT@/s0-h11.txt
+cells @OUT@/s0-h11.json
+resize 60 12
+sleep 250ms
+screen @OUT@/s0-h12.txt
+cells @OUT@/s0-h12.json
+resize 60 13
+sleep 250ms
+screen @OUT@/s0-h13.txt
+cells @OUT@/s0-h13.json
+resize 60 14
+sleep 250ms
+screen @OUT@/s0-h14.txt
+cells @OUT@/s0-h14.json
+resize 60 15
+sleep 250ms
+screen @OUT@/s0-h15.txt
+cells @OUT@/s0-h15.json
+resize 60 16
+sleep 250ms
+screen @OUT@/s0-h16.txt
+cells @OUT@/s0-h16.json
+resize 60 17
+sleep 250ms
+screen @OUT@/s0-h17.txt
+cells @OUT@/s0-h17.json
+resize 60 18
+sleep 250ms
+screen @OUT@/s0-h18.txt
+cells @OUT@/s0-h18.json
+resize 60 19
+sleep 250ms
+screen @OUT@/s0-h19.txt
+cells @OUT@/s0-h19.json
+resize 60 20
+sleep 250ms
+screen @OUT@/s0-h20.txt
+cells @OUT@/s0-h20.json
+resize 60 21
+sleep 250ms
+screen @OUT@/s0-h21.txt
+cells @OUT@/s0-h21.json
+resize 60 22
+sleep 250ms
+screen @OUT@/s0-h22.txt
+cells @OUT@/s0-h22.json
+resize 60 23
+sleep 250ms
+screen @OUT@/s0-h23.txt
+cells @OUT@/s0-h23.json
+send "\t"
+sleep 250ms
+resize 60 6
+sleep 250ms
+screen @OUT@/s1-h6.txt
+cells @OUT@/s1-h6.json
+resize 60 7
+sleep 250ms
+screen @OUT@/s1-h7.txt
+cells @OUT@/s1-h7.json
+resize 60 8
+sleep 250ms
+screen @OUT@/s1-h8.txt
+cells @OUT@/s1-h8.json
+resize 60 9
+sleep 250ms
+screen @OUT@/s1-h9.txt
+cells @OUT@/s1-h9.json
+resize 60 10
+sleep 250ms
+screen @OUT@/s1-h10.txt
+cells @OUT@/s1-h10.json
+resize 60 11
+sleep 250ms
+screen @OUT@/s1-h11.txt
+cells @OUT@/s1-h11.json
+resize 60 12
+sleep 250ms
+screen @OUT@/s1-h12.txt
+cells @OUT@/s1-h12.json
+resize 60 13
+sleep 250ms
+screen @OUT@/s1-h13.txt
+cells @OUT@/s1-h13.json
+resize 60 14
+sleep 250ms
+screen @OUT@/s1-h14.txt
+cells @OUT@/s1-h14.json
+resize 60 15
+sleep 250ms
+screen @OUT@/s1-h15.txt
+cells @OUT@/s1-h15.json
+resize 60 16
+sleep 250ms
+screen @OUT@/s1-h16.txt
+cells @OUT@/s1-h16.json
+resize 60 17
+sleep 250ms
+screen @OUT@/s1-h17.txt
+cells @OUT@/s1-h17.json
+resize 60 18
+sleep 250ms
+screen @OUT@/s1-h18.txt
+cells @OUT@/s1-h18.json
+resize 60 19
+sleep 250ms
+screen @OUT@/s1-h19.txt
+cells @OUT@/s1-h19.json
+resize 60 20
+sleep 250ms
+screen @OUT@/s1-h20.txt
+cells @OUT@/s1-h20.json
+resize 60 21
+sleep 250ms
+screen @OUT@/s1-h21.txt
+cells @OUT@/s1-h21.json
+resize 60 22
+sleep 250ms
+screen @OUT@/s1-h22.txt
+cells @OUT@/s1-h22.json
+resize 60 23
+sleep 250ms
+screen @OUT@/s1-h23.txt
+cells @OUT@/s1-h23.json
+send "\t"
+sleep 250ms
+resize 60 6
+sleep 250ms
+screen @OUT@/s2-h6.txt
+cells @OUT@/s2-h6.json
+resize 60 7
+sleep 250ms
+screen @OUT@/s2-h7.txt
+cells @OUT@/s2-h7.json
+resize 60 8
+sleep 250ms
+screen @OUT@/s2-h8.txt
+cells @OUT@/s2-h8.json
+resize 60 9
+sleep 250ms
+screen @OUT@/s2-h9.txt
+cells @OUT@/s2-h9.json
+resize 60 10
+sleep 250ms
+screen @OUT@/s2-h10.txt
+cells @OUT@/s2-h10.json
+resize 60 11
+sleep 250ms
+screen @OUT@/s2-h11.txt
+cells @OUT@/s2-h11.json
+resize 60 12
+sleep 250ms
+screen @OUT@/s2-h12.txt
+cells @OUT@/s2-h12.json
+resize 60 13
+sleep 250ms
+screen @OUT@/s2-h13.txt
+cells @OUT@/s2-h13.json
+resize 60 14
+sleep 250ms
+screen @OUT@/s2-h14.txt
+cells @OUT@/s2-h14.json
+resize 60 15
+sleep 250ms
+screen @OUT@/s2-h15.txt
+cells @OUT@/s2-h15.json
+resize 60 16
+sleep 250ms
+screen @OUT@/s2-h16.txt
+cells @OUT@/s2-h16.json
+resize 60 17
+sleep 250ms
+screen @OUT@/s2-h17.txt
+cells @OUT@/s2-h17.json
+resize 60 18
+sleep 250ms
+screen @OUT@/s2-h18.txt
+cells @OUT@/s2-h18.json
+resize 60 19
+sleep 250ms
+screen @OUT@/s2-h19.txt
+cells @OUT@/s2-h19.json
+resize 60 20
+sleep 250ms
+screen @OUT@/s2-h20.txt
+cells @OUT@/s2-h20.json
+resize 60 21
+sleep 250ms
+screen @OUT@/s2-h21.txt
+cells @OUT@/s2-h21.json
+resize 60 22
+sleep 250ms
+screen @OUT@/s2-h22.txt
+cells @OUT@/s2-h22.json
+resize 60 23
+sleep 250ms
+screen @OUT@/s2-h23.txt
+cells @OUT@/s2-h23.json
+kill

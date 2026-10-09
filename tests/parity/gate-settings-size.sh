@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
+cd "$HOME/bench-terrace.noindex/src/parity"
+work="$HOME/bench-terrace.noindex/work"
+gofmt -w internal/render/settings.go internal/tui/settings.go
+go build -o "$work/gtx-parity-settings-size" ./cmd/gtx
+go vet ./...
+go test ./...
+for scenario in settings-size settings-height-sections settings-detail settings-preview settings-pending; do
+ python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-settings-size" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-size-fixed"
+done
+for scenario in settings-size settings-height-sections; do
+ python3 tests/parity/settings_size_compare.py "$work/parity-$scenario-size-fixed"
+done
+python3 tests/parity/settings_gate.py "$work"
+GTX_PERF_BIN="$work/gtx-parity-settings-size" GTX_PERF_BASELINE_BIN="$work/gtx-parity-baseline-9347b07" GTX_PERF_OUT="$work/parity-settings-size-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m
