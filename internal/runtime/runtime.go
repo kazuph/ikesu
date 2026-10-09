@@ -54,9 +54,10 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
-	ID        int
-	cwd       string // spawn cwd; OSC 7 or proc cwd may refine it
-	spawnArgv []string
+	ID           int
+	cwd          string // spawn cwd; OSC 7 or proc cwd may refine it
+	spawnArgv    []string
+	processCache foregroundCache
 
 	cmd     *exec.Cmd
 	ptyFile *os.File
@@ -651,7 +652,7 @@ func (p *Pane) PollProcess() {
 	if p.ptyFile == nil {
 		return
 	}
-	job := platform.ForegroundJobOf(p.ptyFD)
+	job := p.cachedForegroundJob()
 	if len(job.Processes) == 0 {
 		return
 	}
@@ -755,7 +756,7 @@ func (p *Pane) ForegroundJob() platform.ForegroundJob {
 	if p.ptyFile == nil {
 		return platform.ForegroundJob{}
 	}
-	return platform.ForegroundJobOf(p.ptyFD)
+	return p.cachedForegroundJob()
 }
 
 // SetAgent overrides the detected agent id (pane.report_agent). An empty

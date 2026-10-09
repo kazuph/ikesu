@@ -351,7 +351,10 @@ func (a *App) Do(fn func()) {
 	done := make(chan struct{})
 	select {
 	case a.jobs <- appJob{fn: fn, done: done}:
-		<-done
+		select {
+		case <-done:
+		case <-a.doneCh:
+		}
 	case <-a.doneCh:
 	}
 }

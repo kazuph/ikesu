@@ -364,6 +364,11 @@ func (a *App) wsIndexOfPane(paneRef string) int {
 // TestRefreshJobDots is the server-test entry point into the tick's job
 // refresh — it bypasses the once-per-second throttle.
 func (a *App) TestRefreshJobDots() {
+	a.RefreshJobs()
+}
+
+// RefreshJobs applies a freshly published background snapshot immediately.
+func (a *App) RefreshJobs() {
 	a.jobsAt = time.Time{}
 	a.refreshJobDots(time.Now())
 }

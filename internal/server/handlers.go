@@ -498,6 +498,7 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 
 	var sn runtime.Snapshot
 	if p := s.app.Supervisor().Get(pid); p != nil {
+		p.PollProcess()
 		sn = p.Snapshot()
 	}
 	agent := sn.AgentID

@@ -76,6 +76,7 @@ type Server struct {
 	jobInFlight  map[string]bool // job-mail batch keys staged for PTY write
 
 	jobProcs jobProcsT // live background jobs (external job id → process)
+	jobCache jobCache
 
 	// notifications (SPEC G4)
 	cfgError      string
@@ -279,7 +280,8 @@ func Run(session, version string) (int, error) {
 	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
 	s.app.SetPaneClosedHook(s.ledgerDel)
 	s.app.SetWarningsHook(s.agentSessionWarnings)
-	s.app.SetJobSource(s.jobSnapshot)
+	s.jobCache.wake = make(chan struct{}, 1)
+	s.app.SetJobSource(s.cachedJobSnapshot)
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
 	s.app.SetConfigChanged(func(c config.Config) { s.cfg = c })
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
@@ -333,7 +335,10 @@ func Run(session, version string) (int, error) {
 		s.app.Do(func() { s.flushAllMail() })
 	}
 
+	jobsDone := make(chan struct{})
+	go s.jobCacheLoop(appDone, jobsDone)
 	<-appDone
+	<-jobsDone
 	s.cleanup()
 	if s.restarting {
 		s.spawnSuccessor()

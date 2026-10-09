@@ -249,6 +249,7 @@ func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
 	if derr != nil {
 		return api.Failure(id, api.ErrMsgStore, derr.Error())
 	}
+	s.invalidateJobCache()
 	var nudged []string
 	delivered := false
 	if room == dispatch.JobsRoom {

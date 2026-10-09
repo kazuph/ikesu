@@ -143,6 +143,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	go s.watchJob(jobID, cmd, cancel, logFile, callerAgent, label, completion)
+	s.invalidateJobCache()
 
 	return api.Success(id, api.RunStartedResult{
 		Type: "run_started", Job: jobID, Label: label, Mode: "background",
@@ -153,6 +154,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 // row is still 'queued', so a plain finish is a no-op and it ends as
 // 'cancelled'.
 func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64) {
+	defer s.invalidateJobCache()
 	if ok, _ := store.MarkCommandFinished(jobID, exitCode); !ok {
 		_, _ = store.MarkCommandCancelled(jobID)
 	}
@@ -162,6 +164,7 @@ func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64)
 // the completion nudge.
 func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc,
 	logFile *os.File, callerAgent, label, completion string) {
+	defer s.invalidateJobCache()
 	_ = cmd.Wait()
 	logFile.Close()
 	cancel()
