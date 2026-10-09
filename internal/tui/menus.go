@@ -345,6 +345,14 @@ func (a *App) menuMouse(ev input.Event) {
 	m := ev.Mouse
 	i := a.menuItemAt(m.X, m.Y)
 	switch ev.Kind {
+	case input.KindMouseClick:
+		if !pointIn(m.X, m.Y, render.MenuRect(&a.menu.m, a.st.Cols, a.st.Rows)) {
+			a.menu = nil
+			// Outside left presses only dismiss; right presses retarget the menu.
+			if m.Button == uv.MouseRight {
+				a.click(m)
+			}
+		}
 	case input.KindMouseMotion:
 		if i >= 0 && !a.menu.m.Items[i].Separator {
 			a.menu.m.Hover = i

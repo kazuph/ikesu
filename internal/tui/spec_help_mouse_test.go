@@ -93,9 +93,8 @@ func TestSPECDangerousCancelOutsideAndOverlaysCapture(t *testing.T) {
 	}
 	a.dialog = nil
 	a.openMainMenu(10, 10)
-	menu := a.menu
 	a.onMouse(outside)
-	if a.menu != menu || a.sel != nil || a.st.ActiveWorkspace().TabRef().Layout.Fingerprint() != before {
+	if a.menu != nil || a.sel != nil || a.st.ActiveWorkspace().TabRef().Layout.Fingerprint() != before {
 		t.Fatal("menu outside capture")
 	}
 	a.menu = nil
