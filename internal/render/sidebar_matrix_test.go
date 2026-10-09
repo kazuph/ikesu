@@ -44,12 +44,12 @@ func TestG2DraggedWorkspaceBothRowsHighlight(t *testing.T) {
 	_, y, w, _ := SidebarContent(s.SidebarArea())
 	for i, r := range rows {
 		if r.Ws == 0 && (r.Kind == RowWorkspace || r.Kind == RowGit) {
-			if out.Frame.Cell(0, y+i).Content != "▌" {
-				t.Fatal("dragged accent")
+			if out.Frame.Cell(0, y+i).Content != " " {
+				t.Fatal("dragging an inactive card must not add the active accent bar")
 			}
 			for x := 1; x < w; x++ {
 				c := out.Frame.Cell(x, y+i)
-				if c.Width > 0 && !reflect.DeepEqual(c.Style.Bg, Surface) {
+				if c.Width > 0 && !reflect.DeepEqual(c.Style.Bg, out.Frame.Palette.NavigatorDivider) {
 					t.Fatal("dragged background", x)
 				}
 			}

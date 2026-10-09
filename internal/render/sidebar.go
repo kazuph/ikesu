@@ -150,8 +150,9 @@ func SidebarContent(area layout.Rect) (x, y, w, rows int) {
 }
 
 // SidebarFooter returns the rect of the fixed footer row inside the box.
-func SidebarFooter(area layout.Rect) layout.Rect {
-	return layout.Rect{X: area.X, Y: area.Y + (area.H+1)/2 - 1, W: max(0, area.W-1), H: 1}
+func SidebarFooter(s *model.AppState) layout.Rect {
+	area := s.SidebarArea()
+	return layout.Rect{X: area.X, Y: SidebarSplitY(s) - 1, W: max(0, area.W-1), H: 1}
 }
 
 // SidebarToggleRect returns the cell of the « / » collapse-expand button.
@@ -165,11 +166,11 @@ func SidebarToggleRect(s *model.AppState) layout.Rect {
 
 // SidebarMenuRect / SidebarNewRect locate the footer's [menu] and [new].
 func SidebarMenuRect(s *model.AppState) layout.Rect {
-	fr := SidebarFooter(s.SidebarArea())
+	fr := SidebarFooter(s)
 	return layout.Rect{X: fr.X, Y: fr.Y, W: len("[menu]"), H: 1}
 }
 func SidebarNewRect(s *model.AppState) layout.Rect {
-	fr := SidebarFooter(s.SidebarArea())
+	fr := SidebarFooter(s)
 	return layout.Rect{X: fr.X + fr.W - len("[new]"), Y: fr.Y, W: len("[new]"), H: 1}
 }
 
@@ -203,7 +204,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
 	}
 	for x := ix; x < ix+iw; x++ {
-		f.Set(x, area.Y+(area.H+1)/2, "─", border)
+		f.Set(x, SidebarSplitY(s), "─", border)
 	}
 	drawSidebarScrollbar(f, view.Workspace)
 	drawSidebarScrollbar(f, view.Agents)
@@ -220,15 +221,19 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		}
 		if boundary >= view.Workspace.Rect.Y && boundary < view.Workspace.Rect.Y+view.Workspace.Rect.H {
 			for x := ix; x < ix+iw; x++ {
-				f.Set(x, boundary, "─", uv.Style{Fg: f.Palette.Accent})
+				if cell := f.Cell(x, boundary); cell != nil {
+					style := cell.Style
+					style.Fg = f.Palette.Accent
+					f.Set(x, boundary, "─", style)
+				}
 			}
 		}
 	}
 
-	fr := SidebarFooter(area)
+	fr := SidebarFooter(s)
 	if fr.W > 0 && fr.Y >= iy {
-		f.Text(fr.X, fr.Y, "[menu]", uv.Style{Fg: f.Palette.Subtle}, fr.X+fr.W)
-		f.Text(fr.X+fr.W-len("[new]"), fr.Y, "[new]", uv.Style{Fg: f.Palette.Subtle}, fr.X+fr.W)
+		f.Text(fr.X, fr.Y, "[menu]", uv.Style{Fg: f.Palette.Dim}, fr.X+fr.W)
+		f.Text(fr.X+fr.W-len("[new]"), fr.Y, "[new]", uv.Style{Fg: f.Palette.Dim}, fr.X+fr.W)
 	}
 	wr := SidebarWidthRect(s)
 	if wr.W > 0 {
@@ -259,6 +264,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 	border := uv.Style{Fg: f.Palette.Dim}
 	switch r.Kind {
 	case RowTitle:
+		border.Attrs = uv.AttrBold
 		f.Text(ix, y, " spaces", border, ix+iw)
 		v := s.WorkspaceDensity
 		if v != "slim" {
@@ -284,10 +290,15 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if iw >= 6 {
 			limit -= 6
 		}
-		f.Text(ix, y, truncate(arrow+" "+r.Section.Label(), limit), style, ix+limit)
+		if in.DragSection == r.Section {
+			f.Text(ix, y, truncate(arrow+" "+r.Section.Label(), limit), style, ix+limit)
+		} else {
+			f.Text(ix, y, arrow, uv.Style{Fg: f.Palette.Accent}, ix+limit)
+			f.Text(ix+2, y, truncate(r.Section.Label(), max(0, limit-2)), style, ix+limit)
+		}
 		nr := SectionNewRect(ix, y, iw)
 		if nr.W > 0 {
-			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Dim, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
+			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Text, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
 		}
 	case RowSep:
 		agentStyle := border
@@ -327,19 +338,32 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		ws := s.Workspaces[r.Ws]
 		active := r.Ws == s.Active
 		dragged := in.Dragging && r.Ws == in.DraggedWorkspace
-		sty := uv.Style{Fg: f.Palette.Text}
+		sty := uv.Style{Fg: f.Palette.Subtle}
 		selected := in.SelectedWorkspace != nil && *in.SelectedWorkspace == r.Ws
 		if active || dragged || selected {
-			sty.Bg = f.Palette.Surface
+			sty.Fg = f.Palette.Text
+			sty.Bg = f.Palette.PanelBG
+			if selected {
+				sty.Bg = f.Palette.Surface
+			}
+			if dragged {
+				sty.Bg = f.Palette.NavigatorDivider
+			}
 			sty.Attrs = uv.AttrBold
-			f.Fill(ix, y, iw, 1, " ", sty)
-			f.Set(ix, y, "▌", uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.Surface})
+			f.Fill(ix, y, iw, 1, " ", uv.Style{Bg: sty.Bg})
+			if active || selected {
+				f.Set(ix, y, "▌", uv.Style{Fg: f.Palette.Accent, Bg: sty.Bg})
+			}
 		}
 		if r.Kind == RowCardBlank {
 			return
 		}
 		if r.Kind == RowGit {
-			drawGitRow(f, ix+3, y, max(0, iw-3), in.Git[r.Ws], sty)
+			gitStyle := sty
+			if !active {
+				gitStyle.Attrs &^= uv.AttrBold
+			}
+			drawGitRow(f, ix+3, y, max(0, iw-3), in.Git[r.Ws], gitStyle)
 			return
 		}
 		x := ix + 1
@@ -351,7 +375,10 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			g.Rune = "·"
 		}
 		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg}, ix+iw)
-		x = f.Text(x, y, fmt.Sprintf(" %d ", ws.ID), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
+		idSpace := uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrFaint}
+		x = f.Text(x, y, " ", idSpace, ix+iw)
+		x = f.Text(x, y, fmt.Sprint(ws.ID), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
+		x = f.Text(x, y, " ", idSpace, ix+iw)
 		name := in.WorkspaceNames[r.Ws]
 		if name == "" {
 			name = WorkspaceDisplayName(ws, in.Panes)

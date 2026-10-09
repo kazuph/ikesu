@@ -25,10 +25,14 @@ func drawGitRow(f *Frame, x, y, w int, g GitStatus, base uv.Style) {
 		}
 	}
 	branch := g.Branch
+	fg := f.Palette.Dim
 	if branch == "" {
 		branch = "nogit"
+		if base.Attrs&uv.AttrBold != 0 {
+			fg = f.Palette.Mauve
+		}
 	}
-	f.Text(x, y, truncate(branch, max(0, limit-x)), uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}, limit)
+	f.Text(x, y, truncate(branch, max(0, limit-x)), uv.Style{Fg: fg, Bg: base.Bg}, limit)
 }
 func GitLabel(g GitStatus, w int) string {
 	f := NewFrame(w, 1)

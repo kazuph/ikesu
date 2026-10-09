@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
+	"math"
 )
 
 type SidebarViewport struct {
@@ -22,12 +23,28 @@ type SidebarView struct {
 	Workspace, Agents SidebarViewport
 }
 
-// The distribution splits the sidebar at half its height. Headers and both
-// footers remain fixed; only each panel's body consumes its own scroll offset.
+// The isolated upper-edge captures keep the divider at row 7 at 25, 35 and 45 rows.
+const sidebarMinimumDraggedSplit = 7
+
+// Headers and both footers remain fixed; each panel has its own scroll offset.
+func SidebarSplitY(s *model.AppState) int {
+	area := s.SidebarArea()
+	split := .5
+	if s.SidebarSectionSplit != nil {
+		split = *s.SidebarSectionSplit
+	}
+	y := int(math.Round(float64(area.H) * split))
+	if s.SidebarSectionSplit != nil {
+		upper := max(0, area.H-3)
+		y = min(upper, max(sidebarMinimumDraggedSplit, y))
+	}
+	return area.Y + y
+}
+
 func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int) SidebarView {
 	a := s.SidebarArea()
 	iw := max(0, a.W-1)
-	mid := a.Y + (a.H+1)/2
+	mid := SidebarSplitY(s)
 	view := SidebarView{
 		Workspace: SidebarViewport{Rect: layout.Rect{X: a.X, Y: a.Y + 2, W: iw, H: max(0, mid-a.Y-3)}},
 		Agents:    SidebarViewport{Rect: layout.Rect{X: a.X, Y: mid + 2, W: iw, H: max(0, a.Y+a.H-mid-3)}},

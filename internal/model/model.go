@@ -67,6 +67,7 @@ type AppState struct {
 	SidebarVisible                                      bool
 	SidebarSize, SidebarMin, SidebarMax, SidebarDefault int
 	SidebarManual                                       bool
+	SidebarSectionSplit                                 *float64
 	CollapsedSections                                   map[Section]bool
 	WorkspaceDensity, AgentScope                        string
 	Cols, Rows                                          int // outer terminal size in cells

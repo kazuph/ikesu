@@ -124,9 +124,6 @@ func (a *App) draw() {
 			a.menu.m.Y = render.SidebarMenuRect(a.st).Y - h
 		}
 		in.Menu = &a.menu.m
-		if a.menu.kind == menuWorkspace {
-			in.SelectedWorkspace = &a.menu.ws
-		}
 	}
 	if a.dialog != nil {
 		in.Dialog = &a.dialog.d

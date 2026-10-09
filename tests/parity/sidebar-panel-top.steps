@@ -1,0 +1,25 @@
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 10 24
+mouse motion 10 0
+mouse up 10 0
+sleep 250ms
+screen @OUT@/edge.txt
+cells @OUT@/edge.json
+resize 160 25
+sleep 250ms
+screen @OUT@/height-25.txt
+cells @OUT@/height-25.json
+resize 160 35
+sleep 250ms
+screen @OUT@/height-35.txt
+cells @OUT@/height-35.json
+resize 160 90
+sleep 250ms
+screen @OUT@/height-90.txt
+cells @OUT@/height-90.json
+resize 160 120
+sleep 250ms
+screen @OUT@/height-120.txt
+cells @OUT@/height-120.json
+kill

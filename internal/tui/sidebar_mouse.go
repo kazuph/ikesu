@@ -11,6 +11,7 @@ import (
 type sidebarGesture struct {
 	ws, x, y               int
 	active, moved, divider bool
+	panelDivider           bool
 	section                model.Section
 	drop                   int
 }
@@ -47,6 +48,11 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	}
 	if m.Button != uv.MouseLeft {
 		return false
+	}
+	// The isolated local distribution handles this drag; its endpoint client does not.
+	if a.inputEOF && m.Y == render.SidebarSplitY(s) {
+		a.sidebarGesture = &sidebarGesture{panelDivider: true, x: m.X, y: m.Y}
+		return true
 	}
 	if a.sidebarScrollbarPress(m) {
 		return true
@@ -121,6 +127,16 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			a.changed()
 			return
 		}
+		if g.panelDivider {
+			area := a.st.SidebarArea()
+			if area.H > 0 {
+				// SPEC G9 bounds the panel divider to 10–90% of sidebar height.
+				split := max(.1, min(.9, float64(m.Y-area.Y)/float64(area.H)))
+				a.st.SidebarSectionSplit = &split
+				a.dirty = true
+			}
+			return
+		}
 		g.section = ""
 		g.drop = -1
 		r, ok := a.sidebarRowAt(m.X, m.Y)
@@ -148,6 +164,10 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 	}
 	if ev.Kind == input.KindMouseRelease {
 		a.sidebarGesture = nil
+		if g.panelDivider {
+			a.changed()
+			return
+		}
 		if g.divider {
 			return
 		}
