@@ -1,0 +1,33 @@
+send "\x02v"
+sleep 250ms
+screen @OUT@/split.txt
+cells @OUT@/split.json
+mouse down 93 20
+mouse motion 111 20
+mouse up 111 20
+sleep 250ms
+screen @OUT@/left-border-drag.txt
+cells @OUT@/left-border-drag.json
+clicktext "EQUALIZE"
+sleep 250ms
+screen @OUT@/equalize.txt
+cells @OUT@/equalize.json
+mouse down 94 20
+mouse motion 77 20
+mouse up 77 20
+sleep 250ms
+screen @OUT@/right-border-drag.txt
+cells @OUT@/right-border-drag.json
+click 40 2
+sleep 250ms
+screen @OUT@/title-zoom.txt
+cells @OUT@/title-zoom.json
+click 40 2
+sleep 250ms
+screen @OUT@/title-unzoom.txt
+cells @OUT@/title-unzoom.json
+send "\x02-"
+sleep 250ms
+screen @OUT@/horizontal-split.txt
+cells @OUT@/horizontal-split.json
+kill

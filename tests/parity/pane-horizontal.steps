@@ -1,0 +1,21 @@
+send "\x02-"
+sleep 250ms
+screen @OUT@/split.txt
+cells @OUT@/split.json
+mouse down 80 23
+mouse motion 80 31
+mouse up 80 31
+sleep 250ms
+screen @OUT@/upper-border-drag.txt
+cells @OUT@/upper-border-drag.json
+clicktext "EQUALIZE"
+sleep 250ms
+screen @OUT@/equalize.txt
+cells @OUT@/equalize.json
+mouse down 80 24
+mouse motion 80 16
+mouse up 80 16
+sleep 250ms
+screen @OUT@/lower-border-drag.txt
+cells @OUT@/lower-border-drag.json
+kill

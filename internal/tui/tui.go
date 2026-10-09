@@ -99,6 +99,7 @@ type uiDialog struct {
 
 // sepDrag tracks a split-border ratio drag.
 type sepDrag struct {
+	grab int
 	path []bool
 	dir  layout.Direction
 	area layout.Rect

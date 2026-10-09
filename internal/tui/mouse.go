@@ -125,7 +125,11 @@ func (a *App) click(m uv.Mouse) {
 	}
 	if l := ws.ActiveLayout(); l != nil {
 		if b := l.SplitBorderAt(m.X, m.Y, area); b != nil {
-			a.sep = &sepDrag{path: b.Path, dir: b.Direction, area: b.Area, l: l}
+			grab := b.Pos - m.X
+			if b.Direction == layout.Horizontal {
+				grab = b.Pos - m.Y
+			}
+			a.sep = &sepDrag{grab: grab, path: b.Path, dir: b.Direction, area: b.Area, l: l}
 			return
 		}
 	}
@@ -582,9 +586,9 @@ func (a *App) sepMouse(ev input.Event) {
 	s := a.sep
 	var ratio float64
 	if s.dir == layout.Vertical {
-		ratio = float64(m.X-s.area.X) / float64(max(1, s.area.W))
+		ratio = float64(m.X+s.grab-s.area.X) / float64(max(1, s.area.W))
 	} else {
-		ratio = float64(m.Y-s.area.Y) / float64(max(1, s.area.H))
+		ratio = float64(m.Y+s.grab-s.area.Y) / float64(max(1, s.area.H))
 	}
 	if s.l.SetRatioAt(s.path, ratio) {
 		a.syncLayout()
