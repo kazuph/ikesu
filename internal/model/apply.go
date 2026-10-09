@@ -97,7 +97,7 @@ func (s *AppState) Apply(cmd Command) []Effect {
 			cwd = ws.Cwd
 		}
 		return []Effect{
-			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env, Argv: c.Argv},
+			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env, Argv: c.Argv, AgentCommand: c.AgentCommand},
 			EffSyncLayout{},
 		}
 	case CmdRenameWorkspace:
@@ -121,7 +121,7 @@ func (s *AppState) Apply(cmd Command) []Effect {
 			cwd = ws.Cwd
 		}
 		return []Effect{
-			EffSpawnPane{Pane: tab.Layout.Focused(), Cwd: cwd, Env: c.Env, Argv: c.Argv},
+			EffSpawnPane{Pane: tab.Layout.Focused(), Cwd: cwd, Env: c.Env, Argv: c.Argv, AgentCommand: c.AgentCommand},
 			EffSyncLayout{},
 		}
 	case CmdSelectTab:
@@ -206,7 +206,7 @@ func (s *AppState) Apply(cmd Command) []Effect {
 			cwd = ws.Cwd
 		}
 		return []Effect{
-			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env, Argv: c.Argv},
+			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env, Argv: c.Argv, AgentCommand: c.AgentCommand},
 			EffSyncLayout{},
 		}
 	case CmdArrange:

@@ -18,6 +18,20 @@ func (s *Supervisor) Spawn(id int, cwd string, cols, rows int) (*Pane, error) {
 // argv, when non-empty, runs that command instead of the login shell
 // (layout.apply command leaves).
 func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra, argv []string) (*Pane, error) {
+	return s.spawnWith(id, cwd, cols, rows, extra, argv, argv)
+}
+
+// SpawnAgent applies the completed login PATH only to an agent command.
+func (s *Supervisor) SpawnAgent(id int, cwd string, cols, rows int, extra, argv []string) (*Pane, error) {
+	resolved, path, err := s.ResolveCommand(argv, cwd)
+	if err != nil {
+		return nil, err
+	}
+	env := append([]string{"PATH=" + path}, extra...)
+	return s.spawnWith(id, cwd, cols, rows, env, argv, resolved)
+}
+
+func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, executionArgv []string) (*Pane, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
@@ -48,15 +62,8 @@ func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra, argv [
 	})
 
 	var cmd *exec.Cmd
-	var loginPath string
 	if len(argv) > 0 {
-		resolved, path, err := s.ResolveCommand(argv, cwd)
-		if err != nil {
-			emu.Close()
-			return nil, err
-		}
-		loginPath = path
-		cmd = exec.Command(resolved[0], resolved[1:]...)
+		cmd = exec.Command(executionArgv[0], executionArgv[1:]...)
 	} else {
 		shell := os.Getenv("SHELL")
 		if shell == "" {
@@ -76,9 +83,6 @@ func (s *Supervisor) SpawnWith(id int, cwd string, cols, rows int, extra, argv [
 		cmd.Env = append(cmd.Env, s.Env(id)...)
 	}
 	cmd.Env = append(cmd.Env, extra...)
-	if len(argv) > 0 {
-		cmd.Env = append(cmd.Env, "PATH="+loginPath)
-	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		emu.Close()

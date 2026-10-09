@@ -118,6 +118,7 @@ type Supervisor struct {
 	events        chan Event
 	done          chan struct{}
 	loginPathOnce sync.Once
+	loginPathDone chan struct{}
 	loginPath     string
 	loginPathErr  error
 
@@ -129,9 +130,10 @@ type Supervisor struct {
 // NewSupervisor creates an empty supervisor.
 func NewSupervisor() *Supervisor {
 	return &Supervisor{
-		panes:  map[int]*Pane{},
-		events: make(chan Event, 256),
-		done:   make(chan struct{}),
+		panes:         map[int]*Pane{},
+		loginPathDone: make(chan struct{}),
+		events:        make(chan Event, 256),
+		done:          make(chan struct{}),
 	}
 }
 

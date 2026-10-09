@@ -155,14 +155,15 @@ type (
 	// CmdSplitPane splits Pane of workspace index at Ratio; Focus controls
 	// whether the new pane takes focus.
 	CmdSplitPane struct {
-		Workspace int
-		Pane      PaneID
-		Dir       layout.Direction
-		Ratio     float64
-		Focus     bool
-		Cwd       string
-		Env       map[string]string
-		Argv      []string
+		Workspace    int
+		Pane         PaneID
+		Dir          layout.Direction
+		Ratio        float64
+		Focus        bool
+		Cwd          string
+		Env          map[string]string
+		Argv         []string
+		AgentCommand bool
 	}
 	// CmdRenameWorkspace renames workspace idx.
 	CmdRenameWorkspace struct {
@@ -172,11 +173,12 @@ type (
 	// CmdNewTab adds a tab to workspace index with one pane starting in
 	// Cwd; the tab takes focus unless NoFocus is set.
 	CmdNewTab struct {
-		Workspace int
-		Cwd       string
-		Env       map[string]string
-		Argv      []string
-		NoFocus   bool
+		Workspace    int
+		Cwd          string
+		Env          map[string]string
+		Argv         []string
+		AgentCommand bool
+		NoFocus      bool
 	}
 	// CmdSelectTab focuses tab index of workspace index (also focuses the
 	// workspace).
@@ -225,14 +227,15 @@ type (
 	// CmdSplitImplicit splits the last leaf of a tab in traversal order —
 	// the non-explicit pane.split / agent.start contract (SPEC G1).
 	CmdSplitImplicit struct {
-		Workspace int
-		Tab       int
-		Dir       layout.Direction
-		Ratio     float64
-		Focus     bool
-		Cwd       string
-		Env       map[string]string
-		Argv      []string
+		Workspace    int
+		Tab          int
+		Dir          layout.Direction
+		Ratio        float64
+		Focus        bool
+		Cwd          string
+		Env          map[string]string
+		Argv         []string
+		AgentCommand bool
 	}
 	// CmdArrange performs a same-tab arrangement op on Pane's own tab.
 	// Op is one of: cycle, equalize, rotate_forward, rotate_backward,
@@ -438,10 +441,11 @@ type (
 	// environment (API-created panes). Argv, when non-empty, runs that
 	// command instead of the login shell (layout.apply leaf command).
 	EffSpawnPane struct {
-		Pane PaneID
-		Cwd  string
-		Env  map[string]string
-		Argv []string
+		Pane         PaneID
+		Cwd          string
+		Env          map[string]string
+		Argv         []string
+		AgentCommand bool
 	}
 	// EffKillPane terminates the pane process.
 	EffKillPane struct{ Pane PaneID }

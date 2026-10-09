@@ -624,7 +624,11 @@ func (s *Server) runAgentRestore(dryRun bool) api.AgentRestoreResult {
 					act.Status = "would_launch"
 				} else {
 					act.Status = "launched"
-					s.typeResume(pid, cmd)
+					if err := s.typeResume(pid, cmd); err != nil {
+						act.Status = "skipped"
+						reason := err.Error()
+						act.Reason = &reason
+					}
 				}
 				actions = append(actions, act)
 			}
@@ -645,11 +649,16 @@ func (s *Server) agentRestore(id string, p api.AgentRestoreParams) api.Response 
 
 // typeResume types the resume command into the pane, then submits it
 // after a short delay so the shell is ready (SPEC: submit delay).
-func (s *Server) typeResume(pid int, cmd string) {
-	s.sup.Input(pid, []byte(cmd))
+func (s *Server) typeResume(pid int, cmd string) error {
+	path, err := s.sup.LoginPath()
+	if err != nil {
+		return err
+	}
+	s.sup.Input(pid, []byte("PATH="+shellEnvQuote(path)+" "+cmd))
 	time.AfterFunc(resumeSubmitDelay, func() {
 		s.app.Do(func() { s.sup.Input(pid, []byte("\r")) })
 	})
+	return nil
 }
 
 // showRestoreToast reports the restore outcome (SPEC G3 empty-state
@@ -758,6 +767,6 @@ func (s *Server) scheduleAutoResume() {
 	}
 	delay := time.Duration(s.cfg.RestoreDelay()) * time.Millisecond
 	time.AfterFunc(delay, func() {
-		s.app.Do(func() { s.runAgentRestore(false) })
+		s.restoreAgentsUI(false)
 	})
 }

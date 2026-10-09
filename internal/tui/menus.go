@@ -103,22 +103,49 @@ func (a *App) agentPane(agent string) {
 	if p := a.sup.Get(a.focusedPane()); p != nil {
 		cwd = p.SpawnCwd()
 	}
-	a.lastSpawnError = nil
-	a.exec(model.CmdSplitPane{
-		Workspace: a.st.Active, Pane: a.focusedPane(), Dir: layout.Vertical,
-		Ratio: 0.5, Focus: true, Cwd: cwd, Env: a.sidebarConfig.Agent.Env, Argv: append([]string{}, argv...),
-	})
-	pid := a.focusedPane()
-	if a.lastSpawnError != nil {
-		err := a.lastSpawnError
-		a.exec(model.CmdClosePane{Pane: pid})
-		a.worktreeError(err)
+	target := a.focusedPane()
+	env := make(map[string]string, len(a.sidebarConfig.Agent.Env))
+	for k, v := range a.sidebarConfig.Agent.Env {
+		env[k] = v
+	}
+	argv = append([]string(nil), argv...)
+	launch := func() {
+		wi, _ := a.st.FindPane(target)
+		if wi < 0 {
+			a.worktreeError(fmt.Errorf("agent target pane no longer exists"))
+			return
+		}
+		a.lastSpawnError = nil
+		a.exec(model.CmdSplitPane{
+			Workspace: wi, Pane: target, Dir: layout.Vertical,
+			Ratio: 0.5, Focus: true, Cwd: cwd, Env: env, Argv: append([]string{}, argv...), AgentCommand: true,
+		})
+		pid := a.focusedPane()
+		if a.lastSpawnError != nil {
+			err := a.lastSpawnError
+			a.exec(model.CmdClosePane{Pane: pid})
+			a.worktreeError(err)
+			return
+		}
+		if p := a.sup.Get(pid); p != nil {
+			p.SetAgent(agent)
+		}
+		a.SetReported(pid, agent, "unknown")
+	}
+	if _, err := a.sup.LoginPath(); err == nil {
+		launch()
 		return
 	}
-	if p := a.sup.Get(pid); p != nil {
-		p.SetAgent(agent)
-	}
-	a.SetReported(pid, agent, "unknown")
+	go func() {
+		err := a.sup.WaitLoginPath()
+		a.Do(func() {
+			if err != nil {
+				a.worktreeError(err)
+				return
+			}
+			launch()
+		})
+	}()
 }
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).

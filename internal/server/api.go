@@ -63,6 +63,32 @@ func (s *Server) serveAPI(conn net.Conn) {
 // touching application state is serialized through the app loop via Do.
 func (s *Server) dispatch(req *api.Request) api.Response {
 	switch req.Method {
+	case api.MethodAgentStart:
+		var p api.AgentStartParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		if len(p.Argv) > 0 {
+			if err := s.sup.WaitLoginPath(); err != nil {
+				return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+			}
+		}
+		var resp api.Response
+		s.app.Do(func() { resp = s.agentStart(req.ID, p) })
+		return resp
+	case api.MethodAgentRestore:
+		var p api.AgentRestoreParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		if !p.DryRun {
+			if err := s.sup.WaitLoginPath(); err != nil {
+				return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+			}
+		}
+		var resp api.Response
+		s.app.Do(func() { resp = s.agentRestore(req.ID, p) })
+		return resp
 	case api.MethodPing:
 		return api.Success(req.ID, api.PongResult{
 			Type:     "pong",

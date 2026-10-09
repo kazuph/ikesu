@@ -13,6 +13,9 @@ func TestG9AgentStartupWrapperSettlesBlockedAndDeadline(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "startup")
+	if err := s.sup.WaitLoginPath(); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	go func() { s.app.Run(); close(done) }()
 	defer func() { s.app.Stop(); <-done; s.sup.KillAll() }()

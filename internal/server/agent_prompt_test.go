@@ -21,6 +21,9 @@ func promptFixtureAgent(t *testing.T, kind string) (*Server, *runtime.Pane, stri
 	t.Helper()
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "prompt")
+	if err := s.sup.WaitLoginPath(); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	go func() { s.app.Run(); close(done) }()
 	t.Cleanup(func() { s.app.Stop(); <-done; s.sup.KillAll() })

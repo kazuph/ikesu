@@ -216,7 +216,7 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 		// logical order (SPEC G1).
 		s.app.ExecCmd(model.CmdSplitImplicit{
 			Workspace: wsIdx, Tab: tabIdx, Dir: dir,
-			Ratio: 0.5, Focus: p.Focus, Cwd: cwd, Env: env, Argv: p.Argv,
+			Ratio: 0.5, Focus: p.Focus, Cwd: cwd, Env: env, Argv: p.Argv, AgentCommand: true,
 		})
 		pids := ws.Tabs[tabIdx].Layout.PaneIDs()
 		if len(pids) == 0 {
@@ -229,7 +229,7 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 				"--tab requires --split (a tab holds panes; a new pane without --split opens a new tab)")
 		}
 		s.app.ExecCmd(model.CmdNewTab{
-			Workspace: wsIdx, Cwd: cwd, Env: env, NoFocus: !p.Focus, Argv: p.Argv,
+			Workspace: wsIdx, Cwd: cwd, Env: env, NoFocus: !p.Focus, Argv: p.Argv, AgentCommand: true,
 		})
 		ws := st.Workspaces[wsIdx]
 		tabIdx = len(ws.Tabs) - 1

@@ -240,6 +240,7 @@ func Run(session, version string) (int, error) {
 	}
 
 	sup := runtime.NewSupervisor()
+	sup.StartLoginPath()
 	apiSockAbs := apiSock
 	sup.Env = func(paneID int) []string {
 		env := []string{
@@ -284,7 +285,7 @@ func Run(session, version string) (int, error) {
 	})
 	s.app.SetChangeHook(s.markSessionDirty)
 	s.app.SetRestartHook(s.requestRestart)
-	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
+	s.app.SetRestoreHook(s.restoreAgentsUI)
 	s.app.SetPaneClosedHook(s.ledgerDel)
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.jobCache.wake = make(chan struct{}, 1)

@@ -233,7 +233,11 @@ func (a *App) effect(e model.Effect) {
 		for k, v := range e.Env {
 			env = append(env, k+"="+v)
 		}
-		if _, err := a.sup.SpawnWith(e.Pane, e.Cwd, r.W, r.H, env, e.Argv); err != nil {
+		spawn := a.sup.SpawnWith
+		if e.AgentCommand {
+			spawn = a.sup.SpawnAgent
+		}
+		if _, err := spawn(e.Pane, e.Cwd, r.W, r.H, env, e.Argv); err != nil {
 			a.lastSpawnError = err
 		}
 	case model.EffKillPane:

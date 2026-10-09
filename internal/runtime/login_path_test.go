@@ -32,9 +32,12 @@ func TestG9LoginShellPATHCacheArgumentsAndCwd(t *testing.T) {
 	teststate.Setenv(t, "PATH", "/usr/bin:/bin")
 	s := NewSupervisor()
 	defer s.KillAll()
+	if err := s.WaitLoginPath(); err != nil {
+		t.Fatal(err)
+	}
 	argv := []string{"temporary-agent", "argument with spaces"}
 	for id := 1; id <= 2; id++ {
-		p, err := s.SpawnWith(id, dir, 240, 10, nil, argv)
+		p, err := s.SpawnAgent(id, dir, 240, 10, nil, argv)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +73,10 @@ func TestG9LoginShellFailureDoesNotGuessPATH(t *testing.T) {
 	teststate.Setenv(t, "SHELL", shell)
 	s := NewSupervisor()
 	defer s.KillAll()
-	if p, err := s.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/echo", "should not start"}); err == nil || p != nil || s.Get(1) != nil {
+	if err := s.WaitLoginPath(); err == nil {
+		t.Fatal("expected shell failure")
+	}
+	if p, err := s.SpawnAgent(1, t.TempDir(), 80, 24, nil, []string{"/bin/echo", "should not start"}); err == nil || p != nil || s.Get(1) != nil {
 		t.Fatal("shell failure bypassed", p, err)
 	}
 }

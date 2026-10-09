@@ -5,8 +5,11 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func menuIndex(a *App, label string) int {
@@ -21,6 +24,9 @@ func menuIndex(a *App, label string) int {
 func TestG5MenuAgentPresetTargetsClickedPaneAndRegisters(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	if err := a.sup.WaitLoginPath(); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
@@ -95,4 +101,55 @@ func TestG5PaneMenuRootSideMovesAndSinglePaneExcluded(t *testing.T) {
 			t.Fatal("single pane item", label)
 		}
 	}
+}
+
+func TestReview1SlowLoginShellDoesNotBlockRightClick(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	shell := filepath.Join(t.TempDir(), "slowsh")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\ncase \"$*\" in *-lic*) /bin/sleep 4;; esac\nexec /bin/sh \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "SHELL", shell)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	var cfg config.Config
+	cfg.AgentStart.Commands = map[string][]string{"codex": {"/bin/sh", "-c", "printf 'REVIEW1_MENU PATH=%s' \"$PATH\"; exec /bin/sleep 60"}}
+	cfg.Agent.Env = map[string]string{"PATH": "/menu"}
+	a.SetSidebarConfig(cfg, false)
+	done := make(chan struct{})
+	go func() { a.Run(); close(done) }()
+	defer func() { a.Stop(); <-done; a.sup.KillAll() }()
+	before := time.Now()
+	a.Do(func() { a.openPaneMenu(1, 1, 1); a.activateMenu(menuIndex(a, "New Codex agent")) })
+	if elapsed := time.Since(before); elapsed >= 200*time.Millisecond {
+		t.Fatal("right click blocked", elapsed)
+	}
+	time.Sleep(300 * time.Millisecond)
+	tick := time.Now()
+	a.Do(func() {})
+	if elapsed := time.Since(tick); elapsed >= 200*time.Millisecond {
+		t.Fatal("app loop blocked", elapsed)
+	}
+	if err := a.sup.WaitLoginPath(); err != nil {
+		t.Fatal(err)
+	}
+	var pid int
+	deadline := time.Now().Add(time.Second)
+	for {
+		a.Do(func() { pid = a.focusedPane() })
+		if pid != 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("menu launch did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	p := a.sup.Get(pid)
+	if p == nil || pid == 1 {
+		t.Fatal("agent not launched", pid)
+	}
+	specWaitText(t, p, "REVIEW1_MENU PATH=/menu")
 }
