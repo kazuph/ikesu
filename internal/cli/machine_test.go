@@ -61,10 +61,10 @@ func TestMachineForwardRejectsBeforeLocalDispatch(t *testing.T) {
 		}
 	}
 	c.Change(p.ID, "disable", "", nil)
-	if code := ForwardMachine("mini", []string{"pane", "list"}, o); code != 2 {
+	if code := ForwardMachine("mini", []string{"pane", "list"}, o); code != 1 {
 		t.Fatal(code)
 	}
-	if code := ForwardMachine("unknown", []string{"pane", "list"}, o); code != 2 {
+	if code := ForwardMachine("unknown", []string{"pane", "list"}, o); code != 1 {
 		t.Fatal(code)
 	}
 	out.Reset()

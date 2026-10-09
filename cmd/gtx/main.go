@@ -24,6 +24,10 @@ const version = "0.1.0"
 func main() {
 	api.ConfigureExecutable(os.Args[0])
 	args := os.Args[1:]
+	if message := cli.GlobalMachineError(args); message != "" {
+		cli.MachineUsageError(os.Stderr, message)
+		os.Exit(2)
+	}
 	if cli.MachineRemoteConflict(args) {
 		fmt.Fprintln(os.Stderr, "gtx: --machine cannot be combined with --remote")
 		os.Exit(2)
@@ -79,11 +83,7 @@ dispatch:
 			fmt.Fprintln(os.Stderr, "gtx: --machine requires a name")
 			os.Exit(2)
 		}
-		if len(args) > 0 && args[0] == "run" {
-			args = append([]string{"run", "--machine", machineRef}, args[1:]...)
-		} else {
-			os.Exit(cli.ForwardMachine(machineRef, args, cli.Options{Session: session, Explicit: explicitSession}))
-		}
+		os.Exit(cli.ForwardMachine(machineRef, args, cli.Options{Session: session, Explicit: explicitSession}))
 	}
 
 	if len(args) > 0 {

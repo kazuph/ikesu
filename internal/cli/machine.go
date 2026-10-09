@@ -129,25 +129,25 @@ func ForwardMachine(ref string, args []string, o Options) int {
 		}
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(r.errOut(), "--machine requires agent, pane, workspace or worktree")
+		MachineUsageError(r.errOut(), "--machine requires a subcommand")
 		return 2
 	}
 	for _, arg := range args {
 		if arg == "--remote" || strings.HasPrefix(arg, "--remote=") {
-			fmt.Fprintln(r.errOut(), "--machine cannot be combined with --remote")
+			MachineUsageError(r.errOut(), "--remote can only be used with the default launch command")
 			return 2
 		}
 	}
 	switch args[0] {
 	case "agent", "pane", "workspace", "worktree":
 	default:
-		fmt.Fprintln(r.errOut(), "unsupported --machine command:", args[0])
+		MachineUsageError(r.errOut(), "--machine can only route agent, pane, workspace, or worktree")
 		return 2
 	}
-	p, err := machine.Resolve(r.catalog().Load(), ref, true)
+	p, err := resolveForwardMachine(r.catalog().Load(), ref)
 	if err != nil {
 		fmt.Fprintln(r.errOut(), "error:", err)
-		return 2
+		return 1
 	}
 	bin := o.getenv("GTX_MACHINE_REMOTE_BINARY")
 	if bin == "" {
