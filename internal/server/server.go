@@ -285,7 +285,7 @@ func Run(session, version string) (int, error) {
 	})
 	s.app.SetChangeHook(s.markSessionDirty)
 	s.app.SetRestartHook(s.requestRestart)
-	s.app.SetRestoreHook(s.restoreAgentsUI)
+	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
 	s.app.SetPaneClosedHook(s.ledgerDel)
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.jobCache.wake = make(chan struct{}, 1)
