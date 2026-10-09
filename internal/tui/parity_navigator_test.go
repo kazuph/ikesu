@@ -33,10 +33,9 @@ func TestParityNavigatorSearchEscapeAndFocus(t *testing.T) {
 	if a.navigator == nil || a.navigator.searching || a.navigator.query != "pane 1" {
 		t.Fatal("escape leaves the query and navigator")
 	}
-	if a.navigator.selected != 0 {
-		t.Fatal("search selects the matching workspace first")
+	if a.navigator.selected != 1 {
+		t.Fatal("search clamps the existing selection to the matching pane")
 	}
-	a.navigatorKey(uv.Key{Code: uv.KeyDown})
 	a.navigatorKey(uv.Key{Code: uv.KeyEnter})
 	if a.navigator != nil || a.focusedPane() != 1 {
 		t.Fatal("enter must focus matching pane")

@@ -161,8 +161,6 @@ func (a *App) navigatorKey(k uv.Key) {
 		case k.Text != "" && !k.Mod.Contains(uv.ModCtrl):
 			n.query += k.Text
 		}
-		n.selected = 0
-		n.scroll = 0
 	} else {
 		switch k.Code {
 		case '/':
@@ -173,21 +171,17 @@ func (a *App) navigatorKey(k uv.Key) {
 			a.navigatorMove(-1)
 		case 'b':
 			n.filter = "blocked"
-			n.selected = 0
 		case 'w':
 			n.filter = "working"
-			n.selected = 0
 		case 'i':
 			n.filter = "idle"
-			n.selected = 0
 		case 'd':
 			n.filter = "done"
-			n.selected = 0
 		case 'a':
 			n.filter = ""
-			n.selected = 0
 		}
 	}
+	a.navigatorMove(0)
 	a.dirty = true
 }
 
