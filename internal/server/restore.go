@@ -44,6 +44,7 @@ var builtinRestoreTemplates = map[string]string{
 	"codex":  "codex resume {session_id}",
 	"devin":  "devin --resume {session_id}",
 	"grok":   "grok --resume {session_id}",
+	"qwen":   "qwen --resume {session_id}",
 }
 
 // --- ledger --------------------------------------------------------------

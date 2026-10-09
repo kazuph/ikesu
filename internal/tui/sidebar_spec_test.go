@@ -175,7 +175,7 @@ func TestG2WorkspaceMenuExactAndUnsupported(t *testing.T) {
 			got = append(got, it.Label)
 		}
 	}
-	want := []string{"New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "--", "Duplicate", "--", "Rename", "Close", "--", "⭐ favorite", "💼 work", "🏠 personal", "No section"}
+	want := []string{"New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New qwen agent", "--", "Duplicate", "--", "Rename", "Close", "--", "⭐ favorite", "💼 work", "🏠 personal", "No section"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatal(got)
 	}

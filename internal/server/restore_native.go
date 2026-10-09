@@ -11,6 +11,7 @@ type nativeResumeSpec struct{ Flag, Source string }
 
 var nativeResumeAgents = map[string]nativeResumeSpec{
 	"grok": {Flag: "--resume", Source: "gtx:grok"},
+	"qwen": {Flag: "--resume", Source: "gtx:qwen"},
 }
 
 // Only the documented native launch flag is session evidence for these agents.

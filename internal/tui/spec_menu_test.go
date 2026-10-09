@@ -38,7 +38,7 @@ func TestSPECExactPaneMenuOrder(t *testing.T) {
 				if named {
 					want = append(want, "Clear pane name")
 				}
-				want = append(want, "--", "New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "--")
+				want = append(want, "--", "New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New qwen agent", "--")
 				if multi {
 					want = append(want, "Move to left split", "Move to right split", "Move to upper split", "Move to lower split", "Equalize pane sizes", "Cycle pane layout", "Rotate panes", "Rotate panes reverse", "--")
 					if zoom {
