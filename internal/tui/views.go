@@ -115,6 +115,11 @@ func (a *App) draw() {
 		}
 	}
 	if a.menu != nil {
+		if a.menu.kind == menuMain {
+			_, h := render.MenuSize(&a.menu.m)
+			a.menu.m.X = 0
+			a.menu.m.Y = render.SidebarMenuRect(a.st).Y - h
+		}
 		in.Menu = &a.menu.m
 		if a.menu.kind == menuWorkspace {
 			in.SelectedWorkspace = &a.menu.ws

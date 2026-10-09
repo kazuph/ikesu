@@ -381,7 +381,14 @@ func (a *App) menuKey(k uv.Key) {
 		n := len(m.m.Items)
 		sel := m.m.Sel
 		for j := 0; j < n; j++ {
-			sel = (sel + dir + n) % n
+			if m.kind == menuMain {
+				sel = (sel + dir + n) % n
+			} else {
+				sel += dir
+				if sel < 0 || sel >= n {
+					return
+				}
+			}
 			if !m.m.Items[sel].Separator && !m.m.Items[sel].Disabled {
 				m.m.Sel = sel
 				return

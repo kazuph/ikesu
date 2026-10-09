@@ -55,3 +55,29 @@ func TestParityMenuFirstSelectionAndArrow(t *testing.T) {
 		t.Fatal("enter must activate horizontal split", panes)
 	}
 }
+
+func TestParityContextMenuArrowsClampAtEnds(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.openPaneMenu(4, 4, a.focusedPane())
+	a.menuKey(uv.Key{Code: uv.KeyUp})
+	if a.menu.m.Sel != 0 {
+		t.Fatal("context up at first row must stay")
+	}
+	for range len(a.menu.m.Items) {
+		a.menuKey(uv.Key{Code: uv.KeyDown})
+	}
+	last := len(a.menu.m.Items) - 1
+	if a.menu.m.Sel != last {
+		t.Fatal("down must reach final item")
+	}
+	a.menuKey(uv.Key{Code: uv.KeyDown})
+	if a.menu.m.Sel != last {
+		t.Fatal("context down at end must stay")
+	}
+	a.openMainMenu(0, 0)
+	a.menuKey(uv.Key{Code: uv.KeyUp})
+	if a.menu.m.Sel == 0 {
+		t.Fatal("global menu wraps")
+	}
+}
