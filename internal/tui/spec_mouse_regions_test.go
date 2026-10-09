@@ -30,12 +30,12 @@ func TestSPECRightClickWorkspaceTabFrameAndTabWheel(t *testing.T) {
 	a.menu = nil
 	r := a.tabHits[0]
 	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: r.X, Y: r.Y, Button: uv.MouseRight}})
-	if a.st.ActiveWorkspace().ActiveTab != 0 || a.menu == nil || a.menu.kind != menuTab || a.menu.tab != 0 {
+	if a.st.ActiveWorkspace().ActiveTab != 1 || a.menu == nil || a.menu.kind != menuTab || a.menu.tab != 0 {
 		t.Fatal("tab ownership", a.menu)
 	}
 	a.menu = nil
 	a.onMouse(input.Event{Kind: input.KindMouseWheel, Mouse: uv.Mouse{X: r.X, Y: r.Y, Button: uv.MouseWheelDown}})
-	if a.st.ActiveWorkspace().ActiveTab != 1 {
+	if a.st.ActiveWorkspace().ActiveTab != 0 {
 		t.Fatal("tab wheel did not switch")
 	}
 	a.draw()

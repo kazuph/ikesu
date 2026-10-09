@@ -83,6 +83,11 @@ func (s *Scrollback) Push(line uv.Line) {
 
 	// Keep the line content up to and including the last non-empty cell.
 	end := lastNonEmpty + 1
+	if lastNonEmpty >= 0 {
+		// Keep a wide glyph's continuation cells so a later blank cannot
+		// overwrite its head when the saved row is rendered again.
+		end = min(lastNonEmpty+max(line[lastNonEmpty].Width, 1), len(line))
+	}
 
 	if s.count < s.maxLines {
 		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
@@ -112,6 +117,18 @@ func (s *Scrollback) PushN(buf *uv.RenderBuffer, y, n int) {
 			s.Push(line)
 		}
 	}
+}
+
+// popLast transfers the newest saved row back to a growing screen.
+func (s *Scrollback) popLast() uv.Line {
+	if s == nil || s.count == 0 {
+		return nil
+	}
+	idx := s.wrap(s.start + s.count - 1)
+	line := s.lines[idx]
+	s.lines[idx] = nil
+	s.count--
+	return line
 }
 
 // Len returns the number of lines in the scrollback buffer.

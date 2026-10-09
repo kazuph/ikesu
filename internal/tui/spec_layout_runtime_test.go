@@ -94,17 +94,16 @@ func TestSPECThreeCopyEntriesAndFullscreenRuntimeResize(t *testing.T) {
 			if !a.cm.fullscreen || a.copyLabel() != " EXIT COPY " {
 				t.Fatal("fullscreen state")
 			}
-			area := a.st.PanesArea()
+			inner := a.innerRect(pid)
 			a.sup.Get(pid).WithEmu(func(e *vt.Emulator) {
-				if e.Width() != area.W || e.Height() != area.H {
-					t.Fatalf("fullscreen size=%dx%d want=%v", e.Width(), e.Height(), area)
+				if e.Width() != inner.W || e.Height() != inner.H {
+					t.Fatalf("fullscreen must retain PTY size=%dx%d want=%v", e.Width(), e.Height(), inner)
 				}
 			})
 			a.copyCycle()
 			if a.cm != nil || a.copyLabel() != " COPY " || a.st.ActiveWorkspace().TabRef().Layout.Fingerprint() != before {
 				t.Fatal("copy exit layout changed")
 			}
-			inner := a.innerRect(pid)
 			a.sup.Get(pid).WithEmu(func(e *vt.Emulator) {
 				if e.Width() != inner.W || e.Height() != inner.H {
 					t.Fatal("exit size")

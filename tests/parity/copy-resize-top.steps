@@ -1,0 +1,19 @@
+send "printf '\\033[3J\\033[H\\033[2J'; for i in {1..70}; do printf 'ROW-%s\\n' $i; done; printf '\\033[1;1H'; sleep 60\r"
+sleep 400ms
+send "\x02["
+sleep 200ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+resize 100 25
+sleep 200ms
+screen @OUT@/after.txt
+cells @OUT@/after.json
+send "g"
+sleep 200ms
+screen @OUT@/first.txt
+cells @OUT@/first.json
+send "G"
+sleep 200ms
+screen @OUT@/last.txt
+cells @OUT@/last.json
+kill

@@ -22,6 +22,9 @@ import (
 
 type copyPoint struct{ x, y int }
 
+// Page captures at 45, 25 and 35 rows move 39, 19 and 29 lines respectively.
+const copyPageOverlapRows = 2
+
 type copyMode struct {
 	pane       int
 	fullscreen bool
@@ -58,7 +61,9 @@ func (a *App) enterCopy(fullscreen bool) {
 	}
 	n := a.bufferLen(p)
 	a.sel = nil
-	a.cm = &copyMode{pane: pid, cy: max(n-1, 0), searchDir: 1}
+	snapshot := p.Snapshot()
+	a.cm = &copyMode{pane: pid, cx: snapshot.Cursor.X, cy: min(snapshot.ScrollbackLen+snapshot.Cursor.Y, max(n-1, 0)), searchDir: 1}
+	a.cm.top = max(n-a.copyInnerH(), 0)
 	if fullscreen {
 		a.cm.fullscreen = true
 		a.copyEnterFullscreen()
@@ -68,12 +73,11 @@ func (a *App) enterCopy(fullscreen bool) {
 	a.dirty = true
 }
 
-// copyEnterFullscreen resizes the pane to the whole terminal area; the
-// restore happens in exitCopy via syncLayout.
+// Fullscreen enlarges the copy view while keeping the shell's PTY size.
 func (a *App) copyEnterFullscreen() {
-	area := a.st.PanesArea()
-	a.sup.ResizeWithPixels(a.cm.pane, max(area.W, 1), max(area.H, 1), a.cellW, a.cellH)
-	// The emulator reflows on resize; keep the cursor in range.
+	previousTop := a.cm.top
+	a.cm.top = min(a.cm.top, max(a.bufferLen(a.sup.Get(a.cm.pane))-a.copyInnerH(), 0))
+	a.cm.cy += a.cm.top - previousTop
 	a.copyClampCursor()
 	a.copyReveal()
 }
@@ -101,16 +105,6 @@ func (a *App) copyInnerW() int {
 	return a.innerRect(a.cm.pane).W
 }
 
-// copyLineLen is the real text length of buffer line y of the copy pane
-// (trailing blanks trimmed; the cursor stops at its last char — 行末停止).
-func (a *App) copyLineLen(y int) int {
-	p := a.sup.Get(a.cm.pane)
-	if p == nil {
-		return 0
-	}
-	return copybuf.LineLen(a.bufferLine(p, y))
-}
-
 func (a *App) copyClampCursor() {
 	p := a.sup.Get(a.cm.pane)
 	if p == nil {
@@ -121,8 +115,7 @@ func (a *App) copyClampCursor() {
 		n = 1
 	}
 	a.cm.cy = min(max(a.cm.cy, 0), n-1)
-	ln := max(a.copyLineLen(a.cm.cy)-1, 0)
-	a.cm.cx = min(max(a.cm.cx, 0), ln)
+	a.cm.cx = min(max(a.cm.cx, 0), max(a.copyInnerW()-1, 0))
 }
 
 // copyReveal scrolls the view so the cursor row is inside the viewport.
@@ -132,6 +125,7 @@ func (a *App) copyReveal() {
 		return
 	}
 	h := a.copyInnerH()
+	a.cm.top = max(a.cm.top, 0)
 	if a.cm.cy < a.cm.top {
 		a.cm.top = a.cm.cy
 	}
@@ -162,11 +156,15 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		a.prefix = true
 		return
 	}
+	if k.Code >= 'a' && k.Code <= 'z' && k.Mod.Contains(uv.ModShift) {
+		k.Code -= 'a' - 'A'
+	}
 	n := a.bufferLen(p)
 	h := a.copyInnerH()
 	switch {
-	case k.Code == uv.KeyEscape && cm.query != "":
+	case k.Code == uv.KeyEscape && (cm.query != "" || cm.anchor != nil):
 		cm.query, cm.matches, cm.matchIdx = "", nil, -1
+		cm.anchor = nil
 		a.dirty = true
 		return
 	case k.Code == 'q' || k.Code == uv.KeyEscape:
@@ -182,38 +180,38 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.cy++
 	case k.Code == 'w':
 		a.copyMotion(copybuf.MotionNextWordStart)
-	case k.Code == 'W':
-		a.copyMotion(copybuf.MotionNextBigWordStart)
 	case k.Code == 'b':
 		a.copyMotion(copybuf.MotionPreviousWordStart)
-	case k.Code == 'B':
-		a.copyMotion(copybuf.MotionPreviousBigWordStart)
 	case k.Code == 'e':
 		a.copyMotion(copybuf.MotionNextWordEnd)
-	case k.Code == 'E':
-		a.copyMotion(copybuf.MotionNextBigWordEnd)
 	case k.Code == '{':
 		a.copyMotion(copybuf.MotionPreviousParagraph)
 	case k.Code == '}':
 		a.copyMotion(copybuf.MotionNextParagraph)
-	case k.Code == '0':
+	case k.Code == '0' || k.Code == uv.KeyHome:
 		cm.cx = 0
 	case k.Code == '^':
 		a.copyMotion(copybuf.MotionFirstNonBlank)
-	case k.Code == '$':
-		cm.cx = max(a.copyLineLen(cm.cy)-1, 0)
+	case k.Code == '$' || k.Code == uv.KeyEnd:
+		a.copyMotion(copybuf.MotionLineEnd)
 	case k.Code == 'g':
 		cm.cy = 0
 	case k.Code == 'G':
 		cm.cy = n - 1
 	case k.Code == uv.KeyPgUp:
-		cm.cy -= h
+		step := max(h-copyPageOverlapRows, 1)
+		cm.cy -= step
+		cm.top -= step
 	case k.Code == uv.KeyPgDown:
-		cm.cy += h
+		step := max(h-copyPageOverlapRows, 1)
+		cm.cy += step
+		cm.top += step
 	case k.Code == 'u' && k.Mod.Contains(uv.ModCtrl):
 		cm.cy -= max(h/2, 1)
+		cm.top -= max(h/2, 1)
 	case k.Code == 'd' && k.Mod.Contains(uv.ModCtrl):
 		cm.cy += max(h/2, 1)
+		cm.top += max(h/2, 1)
 	case k.Code == '/':
 		cm.searching = true
 		cm.searchDir = 1
@@ -227,11 +225,7 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 	case k.Code == 'N':
 		a.copyNextMatch(-cm.searchDir)
 	case k.Code == ' ' || k.Code == 'v':
-		if cm.anchor == nil {
-			cm.anchor = &copyPoint{x: cm.cx, y: cm.cy}
-		} else {
-			cm.anchor = nil
-		}
+		cm.anchor = &copyPoint{x: cm.cx, y: cm.cy}
 	case k.Code == uv.KeyEnter || k.Code == 'y':
 		if cm.anchor != nil {
 			a.copyYank()
@@ -408,10 +402,18 @@ func (a *App) copyHint() string {
 		return " COPY  " + p + cm.query + "█  enter search  esc cancel"
 	}
 	hint := " COPY  h/j/k/l w/b/e { } move  / ? search  n/N repeat"
-	if cm.query != "" {
-		return fmt.Sprintf("%s %d/%d  v/space select  y/enter copy  esc clear  q exit", hint, cm.matchIdx+1, len(cm.matches))
+	selection := "select"
+	if cm.anchor != nil {
+		selection = "selecting"
 	}
-	return hint + "  v/space select  y/enter copy  q/esc exit"
+	if cm.query != "" {
+		hint += fmt.Sprintf(" %d/%d", cm.matchIdx+1, len(cm.matches))
+	}
+	hint += "  v/space " + selection + "  y/enter copy"
+	if cm.query != "" || cm.anchor != nil {
+		return hint + "  esc clear  q exit"
+	}
+	return hint + "  q/esc exit"
 }
 
 // copyMark yields render's cursor + fullscreen data for the copy view.
@@ -439,6 +441,10 @@ func (a *App) copyGrid() [][]uv.Cell {
 		return nil
 	}
 	h, w := a.copyInnerH(), a.copyInnerW()
+	palette := render.ThemePalette(a.sidebarConfig.ThemeName())
+	if a.settings != nil {
+		palette = render.ThemePalette(a.settings.Theme)
+	}
 	g := make([][]uv.Cell, 0, h)
 	for r := 0; r < h; r++ {
 		row := a.bufferLine(p, cm.top+r)
@@ -446,6 +452,19 @@ func (a *App) copyGrid() [][]uv.Cell {
 			row = row[:w]
 		}
 		g = append(g, row)
+	}
+	for i, match := range cm.matches {
+		row := match.Start.Row - cm.top
+		if row < 0 || row >= len(g) {
+			continue
+		}
+		style := uv.Style{Fg: palette.Text, Bg: palette.NavigatorDivider}
+		if i == cm.matchIdx {
+			style = uv.Style{Fg: palette.PopupBG, Bg: palette.Accent, Attrs: uv.AttrBold}
+		}
+		for col := match.Start.Col; col <= match.End.Col && col < len(g[row]); col++ {
+			g[row][col].Style = style
+		}
 	}
 	return g
 }
@@ -461,6 +480,7 @@ func (a *App) copyMouse(ev input.Event) {
 	inner := a.copyViewRect()
 	switch ev.Kind {
 	case input.KindMouseWheel:
+		previousTop := cm.top
 		if m.Button == uv.MouseWheelUp {
 			cm.top -= 3
 		} else if m.Button == uv.MouseWheelDown {
@@ -468,6 +488,7 @@ func (a *App) copyMouse(ev input.Event) {
 		}
 		n := a.bufferLen(a.sup.Get(cm.pane))
 		cm.top = min(max(cm.top, 0), max(n-a.copyInnerH(), 0))
+		cm.cy += cm.top - previousTop
 	case input.KindMouseClick:
 		if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, inner) {
 			a.cm.anchor = &copyPoint{x: m.X - inner.X, y: cm.top + m.Y - inner.Y}

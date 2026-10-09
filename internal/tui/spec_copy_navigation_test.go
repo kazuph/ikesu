@@ -18,9 +18,15 @@ func TestSPECCopySearchWordPageAndLineEndActualBuffer(t *testing.T) {
 	a.enterCopy(false)
 	key := func(code rune) { a.copyKey(uv.Key{Code: code}, nil) }
 	key('g')
+	key('0')
 	if a.cm.cy != 0 || a.cm.cx != 0 {
 		t.Fatal("start", a.cm)
 	}
+	specFeed(a, "G")
+	if a.cm.cy != a.bufferLen(p)-1 {
+		t.Fatal("uppercase G decoded from the real input path must move to the last line", a.cm)
+	}
+	specFeed(a, "g")
 	key('w')
 	if a.cm.cx != 6 || a.cm.cy != 0 {
 		t.Fatal("word start", a.cm)
@@ -38,12 +44,16 @@ func TestSPECCopySearchWordPageAndLineEndActualBuffer(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		key('l')
 	}
+	if a.cm.cx != a.copyInnerW()-1 {
+		t.Fatal("right motion must stop at viewport edge", a.cm.cx)
+	}
+	key(uv.KeyEnd)
 	if a.cm.cx != end {
-		t.Fatal("passed text line end")
+		t.Fatal("End must stop at text line end")
 	}
 	h := a.copyInnerH()
 	key(uv.KeyPgDown)
-	if a.cm.cy != h {
+	if a.cm.cy != h-2 {
 		t.Fatal("page down", a.cm.cy, h)
 	}
 	key(uv.KeyPgUp)
@@ -62,7 +72,7 @@ func TestSPECCopySearchWordPageAndLineEndActualBuffer(t *testing.T) {
 	if a.cm.cy != 2 || a.cm.cx != 6 {
 		t.Fatal("repeat forward", a.cm)
 	}
-	key('N')
+	specFeed(a, "N")
 	if a.cm.cy != 1 || a.cm.cx != 6 {
 		t.Fatal("repeat reverse", a.cm)
 	}

@@ -1,0 +1,53 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do echo LINE-$i alpha beta gamma; done\r"
+sleep 500ms
+send "\x02["
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send " "
+sleep 200ms
+screen @OUT@/key-0.txt
+cells @OUT@/key-0.json
+send " "
+sleep 200ms
+screen @OUT@/key-1.txt
+cells @OUT@/key-1.json
+send "v"
+sleep 200ms
+screen @OUT@/key-2.txt
+cells @OUT@/key-2.json
+send "v"
+sleep 200ms
+screen @OUT@/key-3.txt
+cells @OUT@/key-3.json
+send "l"
+sleep 200ms
+screen @OUT@/key-4.txt
+cells @OUT@/key-4.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/key-5.txt
+cells @OUT@/key-5.json
+send "\x02["
+sleep 200ms
+screen @OUT@/key-6.txt
+cells @OUT@/key-6.json
+send "/alpha\r"
+sleep 200ms
+screen @OUT@/key-7.txt
+cells @OUT@/key-7.json
+send "v"
+sleep 200ms
+screen @OUT@/key-8.txt
+cells @OUT@/key-8.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/key-9.txt
+cells @OUT@/key-9.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/key-10.txt
+cells @OUT@/key-10.json
+kill

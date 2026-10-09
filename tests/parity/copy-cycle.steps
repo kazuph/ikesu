@@ -1,0 +1,41 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do echo LINE-$i alpha beta gamma; done\r"
+sleep 500ms
+click 30 45
+sleep 250ms
+screen @OUT@/in-layout.txt
+cells @OUT@/in-layout.json
+click 30 45
+sleep 250ms
+screen @OUT@/fullscreen.txt
+cells @OUT@/fullscreen.json
+send "\x1b[5~"
+sleep 250ms
+screen @OUT@/fullscreen-page-up.txt
+cells @OUT@/fullscreen-page-up.json
+send "g"
+sleep 250ms
+screen @OUT@/fullscreen-first.txt
+cells @OUT@/fullscreen-first.json
+send "G"
+sleep 250ms
+screen @OUT@/fullscreen-last.txt
+cells @OUT@/fullscreen-last.json
+click 30 45
+sleep 250ms
+screen @OUT@/normal.txt
+cells @OUT@/normal.json
+send "\x02]"
+sleep 250ms
+screen @OUT@/right-prefix.txt
+cells @OUT@/right-prefix.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/right-prefix-escape.txt
+cells @OUT@/right-prefix-escape.json
+send "echo COPY_CYCLE_DONE\r"
+sleep 250ms
+screen @OUT@/shell-input.txt
+cells @OUT@/shell-input.json
+kill

@@ -1,0 +1,17 @@
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02v"
+sleep 250ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+rclick 28 1
+sleep 250ms
+screen @OUT@/menu.txt
+cells @OUT@/menu.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/after.txt
+cells @OUT@/after.json
+kill

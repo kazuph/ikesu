@@ -1,0 +1,77 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do echo LINE-$i alpha beta gamma; done\r"
+sleep 500ms
+resize 160 45
+sleep 250ms
+send "\x02["
+sleep 200ms
+screen @OUT@/height-45-open.txt
+cells @OUT@/height-45-open.json
+send "\x1b[5~"
+sleep 200ms
+screen @OUT@/height-45-page-up.txt
+cells @OUT@/height-45-page-up.json
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/height-45-page-down.txt
+cells @OUT@/height-45-page-down.json
+send "\x15"
+sleep 200ms
+screen @OUT@/height-45-half-up.txt
+cells @OUT@/height-45-half-up.json
+send "\x04"
+sleep 200ms
+screen @OUT@/height-45-half-down.txt
+cells @OUT@/height-45-half-down.json
+send "q"
+sleep 200ms
+resize 160 25
+sleep 250ms
+send "\x02["
+sleep 200ms
+screen @OUT@/height-25-open.txt
+cells @OUT@/height-25-open.json
+send "\x1b[5~"
+sleep 200ms
+screen @OUT@/height-25-page-up.txt
+cells @OUT@/height-25-page-up.json
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/height-25-page-down.txt
+cells @OUT@/height-25-page-down.json
+send "\x15"
+sleep 200ms
+screen @OUT@/height-25-half-up.txt
+cells @OUT@/height-25-half-up.json
+send "\x04"
+sleep 200ms
+screen @OUT@/height-25-half-down.txt
+cells @OUT@/height-25-half-down.json
+send "q"
+sleep 200ms
+resize 160 35
+sleep 250ms
+send "\x02["
+sleep 200ms
+screen @OUT@/height-35-open.txt
+cells @OUT@/height-35-open.json
+send "\x1b[5~"
+sleep 200ms
+screen @OUT@/height-35-page-up.txt
+cells @OUT@/height-35-page-up.json
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/height-35-page-down.txt
+cells @OUT@/height-35-page-down.json
+send "\x15"
+sleep 200ms
+screen @OUT@/height-35-half-up.txt
+cells @OUT@/height-35-half-up.json
+send "\x04"
+sleep 200ms
+screen @OUT@/height-35-half-down.txt
+cells @OUT@/height-35-half-down.json
+send "q"
+sleep 200ms
+kill

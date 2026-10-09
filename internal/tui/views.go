@@ -70,6 +70,7 @@ func (a *App) draw() {
 	if a.cm != nil {
 		if snap := panes[a.cm.pane]; snap != nil {
 			snap.Grid = a.copyGrid()
+			snap.ScrollOff = max(a.bufferLen(a.sup.Get(a.cm.pane))-a.copyInnerH()-a.cm.top, 0)
 		}
 	}
 	wsID, tabID := 0, 0

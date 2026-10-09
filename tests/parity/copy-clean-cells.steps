@@ -1,0 +1,81 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do echo LINE-$i alpha beta gamma; done\r"
+sleep 500ms
+send "\x02["
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b[5~"
+sleep 200ms
+screen @OUT@/page-up.txt
+cells @OUT@/page-up.json
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/page-down.txt
+cells @OUT@/page-down.json
+send "\x15"
+sleep 200ms
+screen @OUT@/half-up.txt
+cells @OUT@/half-up.json
+send "\x04"
+sleep 200ms
+screen @OUT@/half-down.txt
+cells @OUT@/half-down.json
+send "g"
+sleep 200ms
+screen @OUT@/first.txt
+cells @OUT@/first.json
+send "G"
+sleep 200ms
+screen @OUT@/last.txt
+cells @OUT@/last.json
+send "/alpha\r"
+sleep 200ms
+screen @OUT@/search.txt
+cells @OUT@/search.json
+send "n"
+sleep 200ms
+screen @OUT@/next-match.txt
+cells @OUT@/next-match.json
+send "N"
+sleep 200ms
+screen @OUT@/previous-match.txt
+cells @OUT@/previous-match.json
+send " v"
+sleep 200ms
+screen @OUT@/select-toggle.txt
+cells @OUT@/select-toggle.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+cells @OUT@/escape.json
+send "\x02["
+sleep 200ms
+send "\x03"
+sleep 200ms
+screen @OUT@/control-c.txt
+cells @OUT@/control-c.json
+send "\x02["
+sleep 200ms
+mouse wheel-up 80 20
+sleep 200ms
+screen @OUT@/wheel-up.txt
+cells @OUT@/wheel-up.json
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/wheel-down.txt
+cells @OUT@/wheel-down.json
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+cells @OUT@/resize.json
+send "q"
+sleep 200ms
+screen @OUT@/quit.txt
+cells @OUT@/quit.json
+send "echo COPY_ENDED\r"
+sleep 200ms
+screen @OUT@/shell-input.txt
+cells @OUT@/shell-input.json
+kill

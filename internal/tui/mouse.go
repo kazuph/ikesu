@@ -350,8 +350,6 @@ func (a *App) tabBarClick(m uv.Mouse) {
 		case uv.MouseLeft:
 			a.tabGesture = &tabGesture{ws: a.st.Active, tab: i, x: m.X, y: m.Y, drop: -1}
 		case uv.MouseRight:
-			// Right-click selects the target tab, then opens its menu.
-			a.exec(model.CmdSelectTab{Workspace: a.st.Active, Tab: i})
 			a.openTabMenu(m.X, m.Y, a.st.Active, i)
 		}
 		return

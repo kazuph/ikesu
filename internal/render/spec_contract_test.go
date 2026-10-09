@@ -117,7 +117,7 @@ func TestSPECCopyCursorStyleAndOutOfRange(t *testing.T) {
 		for i, c := range out.Frame.Cells {
 			if !reflect.DeepEqual(c.Style, base.Frame.Cells[i].Style) {
 				count++
-				if !reflect.DeepEqual(c.Style.Fg, Surface) || !reflect.DeepEqual(c.Style.Bg, Accent) || c.Style.Attrs != uv.AttrBold {
+				if !reflect.DeepEqual(c.Style.Fg, base.Frame.Palette.PopupBG) || !reflect.DeepEqual(c.Style.Bg, Accent) || c.Style.Attrs != uv.AttrBold {
 					t.Fatal("cursor style", c.Style)
 				}
 			}

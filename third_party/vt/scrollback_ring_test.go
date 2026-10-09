@@ -97,7 +97,7 @@ func TestScrollbackRingSetMaxLines(t *testing.T) {
 	}
 }
 
-func TestScrollbackTrimEquivalence(t *testing.T) {
+func TestScrollbackTrimKeepsContentAndWideContinuation(t *testing.T) {
 	blank := uv.EmptyCell
 	styled := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Attrs: uv.AttrReverse}}
 	linked := uv.Cell{Content: " ", Width: 1, Link: uv.Link{URL: "x"}}
@@ -116,8 +116,10 @@ func TestScrollbackTrimEquivalence(t *testing.T) {
 		makeLine(),
 		makeLine(text, text, zero, zero),
 	}
+	// The wide row keeps both 世 and its width-zero continuation.
+	ends := []int{0, 2, -1, -1, 2, 1, 0, -1, 1}
 	for i, line := range lines {
-		want := refTrim(line)
+		want := ends[i]
 		sb := NewScrollback(10)
 		sb.Push(line)
 		got := sb.Line(0)

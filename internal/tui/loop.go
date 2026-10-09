@@ -204,6 +204,10 @@ func (a *App) exec(cmd model.Command) {
 		a.mobileScroll = 0
 	}
 	beforeFocus := a.focusedPane()
+	copyHeight := 0
+	if _, resizing := cmd.(model.CmdResize); resizing && a.cm != nil {
+		copyHeight = a.copyInnerH()
+	}
 	popupWasVisible := a.st.PopupVisible()
 	var prev *model.StateSnap
 	if a.postExecHook != nil {
@@ -228,6 +232,12 @@ func (a *App) exec(cmd model.Command) {
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
 	switch cmd.(type) {
 	case model.CmdInput, model.CmdResize:
+		if _, resized := cmd.(model.CmdResize); resized && a.cm != nil {
+			h := a.copyInnerH()
+			previousTop := a.cm.top
+			a.cm.top = max(min(a.cm.top+copyHeight-h, a.bufferLen(a.sup.Get(a.cm.pane))-h), 0)
+			a.cm.cy += a.cm.top - previousTop
+		}
 	default:
 		a.changed()
 	}
@@ -283,10 +293,6 @@ func (a *App) syncLayout() {
 	area := a.st.PanesArea()
 	if t := ws.TabRef(); t != nil {
 		for _, pr := range t.PaneRects(area) {
-			// Fullscreen copy keeps its pane at the whole terminal area.
-			if a.cm != nil && a.cm.fullscreen && pr.ID == a.cm.pane {
-				continue
-			}
 			w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
 			a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
 		}

@@ -13,6 +13,20 @@ func TestParityCopySearchEscapeClearsBeforeExiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.enterCopy(false)
+	a.copyKey(uv.Key{Code: ' '}, nil)
+	if a.cm.anchor == nil {
+		t.Fatal("Space must start selection")
+	}
+	for _, key := range []rune{' ', 'v', 'v'} {
+		a.copyKey(uv.Key{Code: key}, nil)
+		if a.cm.anchor == nil {
+			t.Fatal("repeated selection keys must keep selection active")
+		}
+	}
+	a.copyKey(uv.Key{Code: uv.KeyEscape}, nil)
+	if a.cm == nil || a.cm.anchor != nil {
+		t.Fatal("first Escape must clear selection and remain in copy mode")
+	}
 	a.cm.query = "PARITY"
 	a.copyFindAll()
 	a.copyKey(uv.Key{Code: uv.KeyEscape}, nil)

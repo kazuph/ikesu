@@ -72,13 +72,42 @@ func (s *Screen) Height() int {
 
 // Resize resizes the screen.
 func (s *Screen) Resize(width int, height int) {
+	oldCursor := s.cur.Position
 	if s.buf == nil {
 		s.buf = uv.NewRenderBuffer(width, height)
 	} else {
+		pull := min(max(height-s.buf.Height(), 0), s.scrollback.Len())
+		if height < s.buf.Height() {
+			last := s.cur.Y
+			for y := s.buf.Height() - 1; y > last; y-- {
+				if !s.isLineEmpty(s.buf.Line(y)) {
+					last = y
+					break
+				}
+			}
+			shift := min(s.buf.Height()-height, max(last-height+1, 0))
+			if shift > 0 {
+				if s.scrollback != nil {
+					s.scrollback.PushN(s.buf, 0, shift)
+				}
+				s.buf.DeleteLineArea(0, shift, s.blankCell(), s.buf.Bounds())
+				s.cur.Y = max(s.cur.Y-shift, 0)
+			}
+		}
 		s.buf.Resize(width, height)
+		if pull > 0 {
+			s.buf.InsertLineArea(0, pull, s.blankCell(), s.buf.Bounds())
+			for y := pull - 1; y >= 0; y-- {
+				copy(s.buf.Line(y), s.scrollback.popLast())
+			}
+			s.cur.Y += pull
+		}
 		s.buf.Touched = nil
 	}
 	s.scroll = s.buf.Bounds()
+	if s.cb != nil && s.cb.CursorPosition != nil && oldCursor != s.cur.Position {
+		s.cb.CursorPosition(oldCursor, s.cur.Position)
+	}
 }
 
 // Width returns the width of the screen.

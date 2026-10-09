@@ -1,0 +1,37 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do printf '日本語 alpha.beta \\033[31mRED\\033[0m あいう\\n'; done\r"
+sleep 500ms
+send "\x02["
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "k0"
+sleep 200ms
+screen @OUT@/up.txt
+cells @OUT@/up.json
+send "e"
+sleep 200ms
+screen @OUT@/word-end.txt
+cells @OUT@/word-end.json
+send "w"
+sleep 200ms
+screen @OUT@/word-next.txt
+cells @OUT@/word-next.json
+send "b"
+sleep 200ms
+screen @OUT@/word-back.txt
+cells @OUT@/word-back.json
+send "$"
+sleep 200ms
+screen @OUT@/line-end.txt
+cells @OUT@/line-end.json
+send "w"
+sleep 200ms
+screen @OUT@/word-past-last.txt
+cells @OUT@/word-past-last.json
+send "b"
+sleep 200ms
+screen @OUT@/word-back-row.txt
+cells @OUT@/word-back-row.json
+kill

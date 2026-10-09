@@ -3,10 +3,13 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
+	"math"
+	"strings"
 )
 
 // Palette colors (Catppuccin Mocha-ish).
@@ -300,13 +303,13 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		if snap := in.Panes[in.Copy.Pane]; snap != nil {
 			f.CopyGrid(area.X, area.Y, clipGrid(snap.Grid, area.W, area.H))
 			if in.Copy.Sel != nil {
-				applySelection(f, area.X, area.Y, area.W, area.H, in.Copy.Sel)
+				applyCopySelection(f, area.X, area.Y, area.W, area.H, in.Copy.Sel)
 			}
 			if in.Copy.X >= 0 && in.Copy.X < area.W && in.Copy.Y >= 0 && in.Copy.Y < area.H {
 				drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y)
 			}
 		}
-		drawCopyHint(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
+		drawCopyStatus(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
 		return
 	}
 	t := ws.TabRef()
@@ -358,7 +361,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			// Gutter: the rightmost inner column hosts the scrollbar;
 			// terminal content never reaches it (SPEC G1).
 			if gutter > 0 {
-				drawGutter(f, inner, snap, in.Scroll[pr.ID])
+				off := in.Scroll[pr.ID]
+				if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
+					off = snap.ScrollOff
+				}
+				drawGutter(f, inner, snap, off)
 				iw -= gutter
 			}
 		}
@@ -374,14 +381,14 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 		if in.Copy != nil && in.Copy.Pane == pr.ID {
 			if in.Copy.Sel != nil {
-				applySelection(f, ix, iy, iw, ih, in.Copy.Sel)
+				applyCopySelection(f, ix, iy, iw, ih, in.Copy.Sel)
 			}
 			// Copy cursor lives strictly inside the pane's inner rect.
 			if cx, cy := ix+in.Copy.X, iy+in.Copy.Y; cx >= ix && cx < ix+iw && cy >= iy && cy < iy+ih {
 				drawCopyCursor(f, cx, cy)
 			}
 			// The help row replaces the pane's bottom frame row.
-			drawCopyHint(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint)
+			drawCopyStatus(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint)
 		}
 
 		// IME cursor anchor for the focused pane.
@@ -451,7 +458,7 @@ func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 		return
 	}
 	total := snap.ScrollN + inner.H
-	th := inner.H * inner.H / total
+	th := int(math.Round(float64(inner.H*inner.H) / float64(total)))
 	if th < 1 {
 		th = 1
 	}
@@ -463,14 +470,14 @@ func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 	top := inner.Y + track
 	if snap.ScrollN > 0 {
 		frac := float64(off) / float64(snap.ScrollN)
-		top = inner.Y + track - int(frac*float64(track))
+		top = inner.Y + int(math.Round((1-frac)*float64(track)))
 	}
 	for y := top; y < top+th && y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▐", uv.Style{Fg: f.Palette.Dim})
+		f.Set(gx, y, "▐", uv.Style{Fg: f.Palette.Overlay1})
 	}
 }
 
-// drawCopyCursor paints the copy-mode cursor: fg panel_bg, bg accent,
+// drawCopyCursor paints the copy-mode cursor: fg popup background, bg accent,
 // BOLD (SPEC G1/G6).
 func drawCopyCursor(f *Frame, x, y int) {
 	c := f.Cell(x, y)
@@ -481,7 +488,7 @@ func drawCopyCursor(f *Frame, x, y int) {
 		c.Content = " "
 		c.Width = 1
 	}
-	c.Style.Fg = f.Palette.Surface
+	c.Style.Fg = f.Palette.PopupBG
 	c.Style.Bg = f.Palette.Accent
 	c.Style.Attrs = uv.AttrBold
 }
@@ -550,6 +557,37 @@ func drawCopyHint(f *Frame, x, y, w int, hint string) {
 	f.Text(x, y, hint, uv.Style{Fg: f.Palette.Dim}, x+w)
 }
 
+func drawCopyStatus(f *Frame, x, y, w int, hint string) {
+	if hint == "" || w <= 0 {
+		return
+	}
+	base := uv.Style{Bg: f.Palette.PopupBG}
+	f.Fill(x, y, w, 1, " ", base)
+	dim := base
+	dim.Fg = f.Palette.Dim
+	f.Text(x, y, hint, dim, x+w)
+	key := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}
+	if !strings.HasPrefix(hint, " COPY  h/j/k/l") {
+		query := strings.TrimPrefix(hint, " COPY  ")
+		if i := strings.Index(query, "█"); i >= 0 {
+			start := x + len(" COPY  ")
+			f.Text(start, y, query[:1], key, x+w)
+			f.Text(start+1, y, query[1:i], uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}, x+w)
+			f.Text(start+ansi.StringWidth(query[:i]), y, "█", key, x+w)
+		}
+	} else {
+		for _, token := range []string{"h/j/k/l w/b/e { }", "/ ?", "n/N", "v/space", "y/enter", "q/esc", "esc"} {
+			if i := strings.Index(hint, token); i >= 0 {
+				f.Text(x+ansi.StringWidth(hint[:i]), y, token, key, x+w)
+			}
+		}
+	}
+	f.Text(x, y, " COPY ", uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+w)
+	if c := f.Cell(x+len(" COPY "), y); c != nil && len(hint) > len(" COPY ") && len(" COPY ") < w {
+		c.Style = base
+	}
+}
+
 func clipGrid(g [][]uv.Cell, w, h int) [][]uv.Cell {
 	if len(g) > h {
 		g = g[:h]
@@ -567,6 +605,14 @@ func clipGrid(g [][]uv.Cell, w, h int) [][]uv.Cell {
 }
 
 func applySelection(f *Frame, ix, iy, iw, ih int, sel *Selection) {
+	applySelectionStyle(f, ix, iy, iw, ih, sel, false)
+}
+
+func applyCopySelection(f *Frame, ix, iy, iw, ih int, sel *Selection) {
+	applySelectionStyle(f, ix, iy, iw, ih, sel, true)
+}
+
+func applySelectionStyle(f *Frame, ix, iy, iw, ih int, sel *Selection, copyMode bool) {
 	for y := 0; y < ih; y++ {
 		var x0, x1 int
 		switch {
@@ -583,7 +629,12 @@ func applySelection(f *Frame, ix, iy, iw, ih int, sel *Selection) {
 		}
 		for x := x0; x <= x1 && x < iw; x++ {
 			if c := f.Cell(ix+x, iy+y); c != nil {
-				c.Style.Attrs |= uv.AttrReverse
+				if copyMode {
+					// Saved selection frames use ANSI white on RGB(71,71,71).
+					c.Style = uv.Style{Fg: ansi.IndexedColor(15), Bg: color.RGBA{71, 71, 71, 255}}
+				} else {
+					c.Style.Attrs |= uv.AttrReverse
+				}
 			}
 		}
 	}

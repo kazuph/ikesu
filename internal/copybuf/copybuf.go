@@ -66,6 +66,9 @@ const (
 // classOf classifies the cell at x for word (big=false) or WORD
 // (big=true) motions.
 func classOf(row []uv.Cell, x int, big bool) int {
+	if x > 0 && x < len(row) && row[x].Width == 0 && row[x-1].Width == 2 {
+		x--
+	}
 	r := cellRune(row, x)
 	if r == 0 || unicode.IsSpace(r) {
 		return clsBlank
@@ -96,14 +99,14 @@ func LineLen(row []uv.Cell) int {
 func isWordStart(lines [][]uv.Cell, y, x int, big bool) bool {
 	row := lines[y]
 	c := classOf(row, x, big)
-	return c != clsBlank && classOf(row, x-1, big) != c
+	return row[x].Width > 0 && c != clsBlank && classOf(row, x-1, big) != c
 }
 
 // isWordEnd reports whether (y,x) ends a word run.
 func isWordEnd(lines [][]uv.Cell, y, x int, big bool) bool {
 	row := lines[y]
 	c := classOf(row, x, big)
-	return c != clsBlank && classOf(row, x+1, big) != c
+	return row[x].Width > 0 && c != clsBlank && classOf(row, x+max(row[x].Width, 1), big) != c
 }
 
 // isBlankRow reports whether a row has no non-blank cells.
@@ -161,7 +164,12 @@ func Motion(lines [][]uv.Cell, motion string, row, col int) (Point, bool) {
 	cur := lines[row]
 	switch motion {
 	case MotionLineEnd:
-		return Point{row, max(LineLen(cur)-1, 0)}, true
+		for x := len(cur) - 1; x >= 0; x-- {
+			if cur[x].Width > 0 && cellRune(cur, x) != 0 {
+				return Point{row, x}, true
+			}
+		}
+		return Point{row, 0}, true
 	case MotionFirstNonBlank:
 		for x := 0; x < len(cur); x++ {
 			if cellRune(cur, x) != 0 {
