@@ -292,6 +292,7 @@ func (a *App) activateMenu(i int) {
 	case menuTab:
 		switch i {
 		case 0:
+			a.exec(model.CmdSelectTab{Workspace: m.ws, Tab: m.tab})
 			a.openRenameTabDialog(m.ws, m.tab)
 		case 1:
 			a.exec(model.CmdNewTab{Workspace: m.ws})

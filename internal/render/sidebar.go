@@ -184,8 +184,12 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		return
 	}
 	border := uv.Style{Fg: f.Palette.Dim}
+	boundary := border
+	if in.SelectedWorkspace != nil {
+		boundary.Fg = f.Palette.Accent
+	}
 	for y := area.Y; y < area.Y+area.H; y++ {
-		f.Set(area.X+area.W-1, y, "│", border)
+		f.Set(area.X+area.W-1, y, "│", boundary)
 	}
 	ix, iy, iw, _ := SidebarContent(area)
 	if iw < 1 {

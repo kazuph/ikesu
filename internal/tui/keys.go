@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/kazuph/goterrace/internal/layout"
@@ -345,6 +347,10 @@ func (a *App) openRenameTabDialog(ws, ti int) {
 		return
 	}
 	name := w.Tabs[ti].Name
+	defaultName := fmt.Sprint(ti + 1)
+	if name == "" {
+		name = defaultName
+	}
 	a.dialog = &uiDialog{
 		input: &name,
 		d: render.Dialog{
@@ -353,7 +359,7 @@ func (a *App) openRenameTabDialog(ws, ti int) {
 			Input: name, InputCursor: len([]rune(name)), InputEdit: true,
 		},
 		run: func(a *App) {
-			if name != "" && name != w.Tabs[ti].Name {
+			if name != "" && name != w.Tabs[ti].Name && !(w.Tabs[ti].Name == "" && name == defaultName) {
 				a.exec(model.CmdRenameTab{Workspace: ws, Tab: ti, Label: name})
 			}
 		},

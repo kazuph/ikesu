@@ -8,16 +8,27 @@ import (
 )
 
 func drawModeHint(f *Frame, x, y, w int, hint string) {
-	if !strings.HasPrefix(hint, " NAVIGATE ") {
+	label := " NAVIGATE "
+	labelBG := f.Palette.Accent
+	tokens := []string{"esc", "up / down", "⇥", "g", "c", "v", "-", "x", "z", "r", "?", "s"}
+	switch {
+	case strings.HasPrefix(hint, " PREFIX "):
+		label, tokens = " PREFIX ", []string{"esc", "ctrl+b", "w", "?"}
+	case strings.HasPrefix(hint, " RESIZE "):
+		label, tokens, labelBG = " RESIZE ", []string{"h/l", "j/k", "esc"}, f.Palette.Mauve
+	case strings.HasPrefix(hint, label):
+	default:
 		drawCopyHint(f, x, y, w, hint)
 		return
 	}
 	base := uv.Style{Bg: f.Palette.PopupBG}
 	f.Fill(x, y, w, 1, " ", base)
 	f.Text(x, y, hint, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, x+w)
-	f.Text(x, y, " NAVIGATE ", uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+w)
-	f.Set(x+ansi.StringWidth(" NAVIGATE "), y, " ", base)
-	for _, token := range []string{"esc", "up / down", "⇥", "g", "c", "v", "-", "x", "z", "r", "?", "s"} {
+	f.Text(x, y, label, uv.Style{Fg: f.Palette.PopupBG, Bg: labelBG, Attrs: uv.AttrBold}, x+w)
+	rest := strings.TrimPrefix(hint, label)
+	gap := len(rest) - len(strings.TrimLeft(rest, " "))
+	f.Fill(x+ansi.StringWidth(label), y, min(gap, max(0, w-ansi.StringWidth(label))), 1, " ", base)
+	for _, token := range tokens {
 		// Match the key field, rather than letters in its description.
 		at := strings.Index(hint, "  "+token+" ")
 		if at >= 0 {

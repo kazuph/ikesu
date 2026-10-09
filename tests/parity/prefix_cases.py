@@ -19,7 +19,8 @@ for digit in '123456789':
     keys['number-'+digit] = digit
 for name, key in keys.items():
     # Two tabs/workspaces/panes would obscure creation behavior; each starts from a lone shell.
-    body = ['send "\\x02"', 'sleep 200ms', 'screen @OUT@/pending.txt',
-            'send '+json.dumps(key), 'sleep 300ms', 'screen @OUT@/result.txt', 'kill']
+    body = ['send "printf \'\\\\033[3J\\\\033[H\\\\033[2J\'\\r"', 'sleep 250ms',
+            'send "\\x02"', 'sleep 200ms', 'screen @OUT@/pending.txt', 'cells @OUT@/pending.json',
+            'send '+json.dumps(key), 'sleep 300ms', 'screen @OUT@/result.txt', 'cells @OUT@/result.json', 'kill']
     # strconv.Unquote supports Go escapes; JSON's \u0002 is accepted by Go as well.
     (out / (name+'.steps')).write_text('\n'.join(body)+'\n')
