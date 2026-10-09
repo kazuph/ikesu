@@ -3,6 +3,7 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
@@ -86,6 +87,12 @@ func (a *App) prefixKey(k uv.Key) {
 	code := k.Code
 	if code >= 'a' && code <= 'z' && k.Mod.Contains(uv.ModShift) {
 		code -= 'a' - 'A'
+	}
+	for _, binding := range a.sidebarConfig.Keys.Command {
+		if rune, ok := config.ParseKeyBinding(binding.Key); ok && rune == code && binding.Type == "plugin_action" {
+			a.invokePluginAction(binding.Command)
+			return
+		}
 	}
 	switch {
 	case code == 's':

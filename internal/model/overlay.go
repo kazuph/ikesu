@@ -86,3 +86,27 @@ func (s *AppState) closeOverlay() []Effect {
 	s.Overlay = nil
 	return []Effect{EffKillPane{Pane: id}, EffSyncLayout{}}
 }
+
+func (s *AppState) overlayLayoutMutation(cmd Command) bool {
+	if s.Overlay == nil {
+		return false
+	}
+	id := s.Overlay.PaneID
+	switch c := cmd.(type) {
+	case CmdRenamePane:
+		return c.Pane == id
+	case CmdSplitPane:
+		return c.Pane == id
+	case CmdZoomPane:
+		return c.Pane == id
+	case CmdResizePane:
+		return c.Pane == id
+	case CmdSwapPanes:
+		return c.A == id || c.B == id
+	case CmdSwapDir:
+		return c.Pane == id
+	case CmdMovePane:
+		return c.Pane == id
+	}
+	return false
+}

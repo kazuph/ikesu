@@ -70,14 +70,15 @@ type Config struct {
 		AllowNested bool `toml:"allow_nested"`
 	} `toml:"experimental"`
 	Keys struct {
-		OpenNotificationTarget string   `toml:"open_notification_target"`
-		CopyMode               []string `toml:"copy_mode"`
-		SplitVertical          []string `toml:"split_vertical"`
-		SplitHorizontal        []string `toml:"split_horizontal"`
-		RenamePane             []string `toml:"rename_pane"`
-		EditScrollback         []string `toml:"edit_scrollback"`
-		FocusHistoryBack       []string `toml:"focus_history_back"`
-		FocusHistoryForward    []string `toml:"focus_history_forward"`
+		Command                []PluginKeyBinding `toml:"command"`
+		OpenNotificationTarget string             `toml:"open_notification_target"`
+		CopyMode               []string           `toml:"copy_mode"`
+		SplitVertical          []string           `toml:"split_vertical"`
+		SplitHorizontal        []string           `toml:"split_horizontal"`
+		RenamePane             []string           `toml:"rename_pane"`
+		EditScrollback         []string           `toml:"edit_scrollback"`
+		FocusHistoryBack       []string           `toml:"focus_history_back"`
+		FocusHistoryForward    []string           `toml:"focus_history_forward"`
 	} `toml:"keys"`
 	Agent struct {
 		Shell string            `toml:"shell"`
@@ -132,6 +133,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if err := ValidateTheme(c.ThemeName()); err != nil {
+		return c, err
+	}
+	if err := c.ValidatePluginKeys(); err != nil {
 		return c, err
 	}
 	return c, c.ValidateSidebar()

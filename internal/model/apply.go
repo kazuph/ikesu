@@ -7,6 +7,9 @@ import (
 // Apply mutates the state for cmd and returns the effects the runtime must
 // perform, in order.
 func (s *AppState) Apply(cmd Command) (effects []Effect) {
+	if s.overlayLayoutMutation(cmd) {
+		return nil
+	}
 	defer func() {
 		effects = append(effects, s.syncPopupOwner()...)
 		if s.Overlay != nil {

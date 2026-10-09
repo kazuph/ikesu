@@ -41,6 +41,13 @@ func TestOverlayProjectionAndSnapshotInvariant(t *testing.T) {
 		t.Fatalf("snapshot/layout changed: %s -> %s", before, during)
 	}
 	overlayID := s.Overlay.PaneID
+	for _, cmd := range []Command{CmdRenamePane{Pane: overlayID, Label: "transient"}, CmdSplitPane{Pane: overlayID, Dir: layout.Vertical, Ratio: 0.5}, CmdZoomPane{Pane: overlayID, Mode: "on"}, CmdMovePane{Pane: overlayID}} {
+		s.Apply(cmd)
+	}
+	refused, _ := json.Marshal(s.Snapshot())
+	if string(before) != string(refused) {
+		t.Fatal("overlay layout operation changed snapshot")
+	}
 	s.Apply(CmdCloseOverlay{})
 	after, _ := json.Marshal(s.Snapshot())
 	if string(before) != string(after) || s.OverlayVisible() {

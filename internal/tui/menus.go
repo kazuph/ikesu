@@ -69,6 +69,10 @@ func (a *App) openPaneMenu(x, y, pid int) {
 
 // openRenamePaneDialog prompts for a name for the clicked pane.
 func (a *App) openRenamePaneDialog(pid int) {
+	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
+		a.ShowToast("rename pane", "unsupported: overlay pane names are transient", "error", -1)
+		return
+	}
 	name := a.st.PaneLabels[model.PaneID(pid)]
 	a.dialog = &uiDialog{
 		input: &name,

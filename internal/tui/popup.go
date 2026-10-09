@@ -51,8 +51,8 @@ func (a *App) OpenPluginPopup(cwd string, argv []string, env map[string]string, 
 }
 
 func (a *App) PopupTerminal(target string) *api.PopupTerminalResult {
-	pop := a.st.Popup
-	if pop == nil || target != pop.TerminalID {
+	pop := a.popupForTerminal(target)
+	if pop == nil {
 		return nil
 	}
 	p := a.sup.Get(pop.PaneID)
@@ -70,16 +70,33 @@ func (a *App) ScrollPopup(target string, offset uint64) *api.PopupTerminalResult
 	if info == nil {
 		return nil
 	}
-	a.setScrollOff(a.st.Popup.PaneID, int(min(offset, uint64(info.Scroll.MaxOffsetFromBottom))))
+	a.setScrollOff(a.popupForTerminal(target).PaneID, int(min(offset, uint64(info.Scroll.MaxOffsetFromBottom))))
 	return a.PopupTerminal(target)
 }
 
-func (a *App) PopupSelectionText(anchor, cursor api.PaneTextPoint) string {
-	if a.st.Popup == nil {
+func (a *App) popupForTerminal(target string) *model.PopupPaneState {
+	if a.st.Popup != nil && a.st.Popup.TerminalID == target {
+		return a.st.Popup
+	}
+	for _, pop := range a.st.Popups {
+		if pop.TerminalID == target {
+			return pop
+		}
+	}
+	return nil
+}
+func (a *App) PopupPaneID(target string) int {
+	if pop := a.popupForTerminal(target); pop != nil {
+		return pop.PaneID
+	}
+	return 0
+}
+func (a *App) PopupSelectionText(target string, anchor, cursor api.PaneTextPoint) string {
+	pid := a.PopupPaneID(target)
+	if pid == 0 {
 		return ""
 	}
-	s := &selState{pane: a.st.Popup.PaneID, ax: int(anchor.Col), ay: int(anchor.Row), hx: int(cursor.Col), hy: int(cursor.Row)}
-	text, _ := a.selText(s)
+	text, _ := a.selText(&selState{pane: pid, ax: int(anchor.Col), ay: int(anchor.Row), hx: int(cursor.Col), hy: int(cursor.Row)})
 	return text
 }
 
@@ -186,6 +203,9 @@ func (a *App) popupMouse(ev input.Event) bool {
 	}
 	p := a.sup.Get(pid)
 	if p == nil {
+		return true
+	}
+	if ev.Kind == input.KindMouseClick && a.pluginLinkClick(pid, m) {
 		return true
 	}
 	switch ev.Kind {

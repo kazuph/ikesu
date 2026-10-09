@@ -323,6 +323,7 @@ func Run(session, version string) (int, error) {
 	}
 	s.app.SetUIFlags(s.cfg.ShowTabBar(), s.cfg.HideTabBarWhenSingleTab(), s.cfg.PaneBorders())
 	s.app.SetSidebarConfig(s.cfg, true)
+	s.app.SetPluginHost(s.ensurePlugins, func() plugin.Context { return s.pluginContext("", nil) })
 	s.app.SetKeybinds(s.cfg.CopyKeys(), s.cfg.SplitVerticalKeys(), s.cfg.SplitHorizontalKeys())
 	s.app.SetPaneKeybinds(s.cfg)
 

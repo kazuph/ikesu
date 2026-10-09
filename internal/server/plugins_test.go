@@ -118,6 +118,10 @@ func TestOverlaySocketCommandAndPaneAddressing(t *testing.T) {
 	if opened.Pane == nil || opened.Pane.PaneID == "p1" || opened.Pane.WorkspaceID != "s1" || opened.Pane.TabID != "s1:t1" || !opened.Pane.Focused {
 		t.Fatal(opened)
 	}
+	refused := apiReq(t, dir, "pane.zoom", map[string]any{"pane_id": opened.Pane.PaneID, "mode": "on"})
+	if refused.Err == nil || refused.Err.Code != "unsupported" {
+		t.Fatal(refused)
+	}
 	var during api.PaneListResult
 	apiOK(t, dir, "pane.list", map[string]any{}, &during)
 	if len(during.Panes) != len(before.Panes)+1 {

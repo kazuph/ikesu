@@ -173,6 +173,9 @@ func (a *App) click(m uv.Mouse) {
 		return
 	}
 	inner.W = max(inner.W-gutter, 1)
+	if a.pluginLinkClick(pr.ID, m) {
+		return
+	}
 	if p.Snapshot().MouseTracking {
 		// Mouse-reporting panes receive all four events; no menu gesture.
 		a.dblMenu = false
