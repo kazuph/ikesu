@@ -9,8 +9,10 @@ import (
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/goterrace/internal/plugin"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/status"
@@ -74,10 +76,12 @@ const (
 	menuMain
 	menuTab
 	menuWorktree
+	menuMachineRemove
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
 type uiMenu struct {
+	machines      []machine.Profile
 	worktreePaths []string
 	m             render.Menu
 	kind          menuKind
@@ -130,12 +134,18 @@ type appJob struct {
 // through Do/PushInput/Resize so all state changes stay on the loop
 // goroutine.
 type App struct {
-	st  *model.AppState
-	sup *runtime.Supervisor
-	out io.Writer
-	fr  *input.Framer
-	enc *render.Encoder
-	cwd string
+	agentStateCounter uint64
+	agentStates       map[int]string
+	agentStateSeq     map[int]uint64
+	pluginHost        func() *plugin.Engine
+	pluginContext     func() plugin.Context
+	st                *model.AppState
+	sup               *runtime.Supervisor
+	out               io.Writer
+	fr                *input.Framer
+	enc               *render.Encoder
+	cwd               string
+	machineCatalog    string
 
 	input    chan []byte
 	resizeCh chan winsize
@@ -162,6 +172,8 @@ type App struct {
 	mobileSwitcher      bool
 	mobileScroll        int
 	popupSel            *selState
+	popupSelections     map[int]*selState
+	popupCopies         map[int]*copyMode
 	popupCopy           *copyMode
 	popupAutoScroll     int
 	restoreHook         func(dryRun bool) // main menu "Restore agents…"
@@ -537,7 +549,7 @@ func (a *App) Run() {
 // an exit code.
 var ErrStandaloneRestart = errors.New("standalone restart requested")
 
-func Run(in *os.File, out *os.File) (int, error) {
+func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = os.Getenv("HOME")
@@ -576,6 +588,16 @@ func Run(in *os.File, out *os.File) (int, error) {
 	st := model.New(cwd, ws.Cols, ws.Rows)
 	sup := runtime.NewSupervisor()
 	a := NewApp(st, sup, out, cwd)
+	if len(versions) > 0 {
+		var engine *plugin.Engine
+		a.SetPluginHost(func() *plugin.Engine {
+			if engine == nil {
+				bin, _ := os.Executable()
+				engine = &plugin.Engine{Store: plugin.DefaultStore(versions[0]), BinPath: bin}
+			}
+			return engine
+		}, nil)
+	}
 	a.BeginHostMouse(ws.Xpixel, ws.Ypixel)
 	a.inputEOF = true
 	a.SetDetacher(func(string) { a.exec(model.CmdQuit{}) })

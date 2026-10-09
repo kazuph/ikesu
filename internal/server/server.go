@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/plugin"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/tui"
 )
@@ -45,6 +47,9 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	plugins           *plugin.Engine
+	pluginEvents      bool
+	pluginPanes       map[int]pluginPaneOwner
 	agentLaunches     map[int]*agentLaunch
 	closing           atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
 	workspaceMetadata map[int]map[string]*workspaceMetadata
@@ -266,6 +271,7 @@ func Run(session, version string) (int, error) {
 	st := model.New(cwd, 120, 40)
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
 	s.app.SetServerUI()
+	s.app.SetMachineCatalog(filepath.Join(api.SessionDir(s.session), "machines.json"))
 	if s.cfgError != "" {
 		s.app.SetConfigWarning(s.cfgError)
 	}
@@ -287,7 +293,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetChangeHook(s.markSessionDirty)
 	s.app.SetRestartHook(s.requestRestart)
 	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
-	s.app.SetPaneClosedHook(s.ledgerDel)
+	s.app.SetPaneClosedHook(func(pid int) { s.ledgerDel(pid); delete(s.pluginPanes, pid) })
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.jobCache.wake = make(chan struct{}, 1)
 	s.app.SetJobSource(s.cachedJobSnapshot)
@@ -308,6 +314,7 @@ func Run(session, version string) (int, error) {
 	// Domain events (SPEC G1): command diffs, exits, and output changes.
 	s.outEmit = map[int]*outputEmit{}
 	s.lastAgent = map[int]string{}
+	s.initPlugins()
 	s.app.SetPostExecHook(s.afterExec)
 	s.app.SetWorktreeHook(s.worktreeEvent)
 	s.app.SetExitedHook(s.onPaneExited)
@@ -319,6 +326,7 @@ func Run(session, version string) (int, error) {
 	}
 	s.app.SetUIFlags(s.cfg.ShowTabBar(), s.cfg.HideTabBarWhenSingleTab(), s.cfg.PaneBorders())
 	s.app.SetSidebarConfig(s.cfg, true)
+	s.app.SetPluginHost(s.ensurePlugins, func() plugin.Context { return s.pluginContext("", nil) })
 	s.app.SetKeybinds(s.cfg.CopyKeys(), s.cfg.SplitVerticalKeys(), s.cfg.SplitHorizontalKeys())
 	s.app.SetPaneKeybinds(s.cfg)
 
@@ -343,7 +351,7 @@ func Run(session, version string) (int, error) {
 	// These startup sweeps all open the SQLite store; when the DB file has
 	// never been created there is nothing to seed, abort, or flush, so skip
 	// them to keep the engine (and its memory) out of the process.
-	if dispatch.DBExists() {
+	if dispatch.DBExists(s.session) {
 		s.seedJobSeq()
 		s.abortOrphanedJobs()
 		s.app.Do(func() { s.flushAllMail() })

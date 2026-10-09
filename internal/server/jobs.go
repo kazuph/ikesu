@@ -67,8 +67,8 @@ func (s *Server) seedJobSeq() {
 	}
 }
 
-func jobLogPath(jobID, label string) string {
-	return dispatch.JobLogPath(jobID, label)
+func (s *Server) jobLogPath(jobID, label string) string {
+	return dispatch.JobLogPath(jobID, label, s.session)
 }
 
 // runStart handles run.start: insert the row, spawn the detached process,
@@ -111,7 +111,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	}
 	cmdText := strings.Join(p.Argv, " ")
 	jobID := s.jobProcs.nextID()
-	logPath := jobLogPath(jobID, label)
+	logPath := s.jobLogPath(jobID, label)
 	if err := store.InsertCommand(jobID, label, cmdText, cwd,
 		callerPane, callerAgent, completion, logPath); err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
@@ -430,7 +430,7 @@ func (s *Server) abortOrphanedJobs() {
 // has never been created there are no jobs; skip opening the store so
 // the once-per-second refresh does not load the engine into the server.
 func (s *Server) jobSnapshot() ([]dispatch.Job, map[string]bool) {
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return nil, nil
 	}
 	store, err := s.db()

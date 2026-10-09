@@ -33,6 +33,11 @@ func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
 			}
 		}
 	}
+	if st.Overlay != nil {
+		if info, ok := s.paneInfo(st.Overlay.PaneID); ok && (p.WorkspaceID == nil || *p.WorkspaceID == "" || s.findWorkspace(*p.WorkspaceID) == st.WorkspaceOf(st.Overlay.PaneID)) {
+			out.Panes = append(out.Panes, info)
+		}
+	}
 	return api.Success(id, out)
 }
 
@@ -87,6 +92,11 @@ func (s *Server) paneForProcess(pid int) int {
 					}
 				}
 			}
+		}
+	}
+	if st.Overlay != nil {
+		if p := s.app.Supervisor().Get(st.Overlay.PaneID); p != nil {
+			shells[p.ShellPID()] = st.Overlay.PaneID
 		}
 	}
 	for cur, depth := pid, 0; cur > 1 && depth < 64; depth++ {
@@ -158,25 +168,11 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 			limit = 1000
 		}
 	}
-	screen := pane.ScreenLines
-	scroll := pane.ScrollbackLines
-	var lines []string
-	var truncated bool
-	switch source {
-	case "visible":
-		lines = screen()
-	case "recent":
-		lines = append(scroll(), screen()...)
-	case "recent_unwrapped", "recent-unwrapped", "detection":
-		// The vt emulator does not record wrap flags on scrollback rows,
-		// and gtx detection is process/OSC based, not buffer based; both
-		// sources exist in the herdr schema but are unimplemented here.
-		return api.Failure(id, api.ErrInvalidRequest,
-			fmt.Sprintf("read source %q is not supported in this stage", source))
-	default:
-		return api.Failure(id, api.ErrInvalidRequest,
-			fmt.Sprintf("unknown read source %q", source))
+	lines, err := pane.ReadLines(source, p.StripANSI)
+	if err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
 	}
+	var truncated bool
 	// Trailing blank rows carry no information (herdr trims them the same
 	// way), so a mostly-empty screen reads as its content, not blank space.
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {

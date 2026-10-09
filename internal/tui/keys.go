@@ -8,6 +8,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
@@ -111,6 +112,12 @@ func (a *App) prefixKey(k uv.Key) {
 	code := k.Code
 	if code >= 'a' && code <= 'z' && k.Mod.Contains(uv.ModShift) {
 		code -= 'a' - 'A'
+	}
+	for _, binding := range a.sidebarConfig.Keys.Command {
+		if rune, ok := config.ParseKeyBinding(binding.Key); ok && rune == code && binding.Type == "plugin_action" {
+			a.invokePluginAction(binding.Command)
+			return
+		}
 	}
 	switch {
 	case code == 's':
@@ -258,6 +265,10 @@ func (a *App) newWorkspace() {
 // closeFocusedPane replaces the final workspace's shell, or confirms closing
 // another workspace when its final pane is selected.
 func (a *App) closeFocusedPane() {
+	if a.st.OverlayVisible() {
+		a.exec(model.CmdCloseOverlay{})
+		return
+	}
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return

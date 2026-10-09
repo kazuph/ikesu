@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"net"
 	"os"
@@ -39,7 +40,7 @@ func TestMain(m *testing.M) {
 	if err := cmd.Run(); err != nil {
 		panic("build gtx: " + err.Error())
 	}
-	os.Exit(m.Run())
+	os.Exit(teststate.Run(m.Run))
 }
 
 func repoRoot() string {

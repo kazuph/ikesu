@@ -181,6 +181,9 @@ func (a *App) click(m uv.Mouse) {
 		return
 	}
 	inner.W = max(inner.W-gutter, 1)
+	if a.pluginLinkClick(pr.ID, m) {
+		return
+	}
 	if p.Snapshot().MouseTracking {
 		// Mouse-reporting panes receive all four events; no menu gesture.
 		a.dblMenu = false
@@ -386,7 +389,7 @@ func (a *App) paneAt(x, y int) (layout.PaneRect, bool) {
 	if t == nil {
 		return layout.PaneRect{}, false
 	}
-	for _, pr := range t.PaneRects(a.st.PanesArea()) {
+	for _, pr := range a.st.DisplayPaneRects() {
 		if pointIn(x, y, pr.Rect) {
 			return pr, true
 		}

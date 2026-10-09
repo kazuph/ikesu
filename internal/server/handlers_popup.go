@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
+	"os"
 )
 
 func (s *Server) popupRequest(req *api.Request) api.Response {
@@ -13,7 +14,7 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		if p.Action != "popup" {
+		if p.Action != "popup" && p.Action != "overlay" {
 			return api.Failure(req.ID, api.ErrInvalidRequest, "unsupported command action: "+p.Action)
 		}
 		pid, _, _, ok := s.findPane(p.PaneID)
@@ -23,6 +24,22 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		pane := s.app.Supervisor().Get(pid)
 		if pane == nil {
 			return s.paneNotFound(req.ID, p.PaneID)
+		}
+		if p.Action == "overlay" {
+			shell := os.Getenv("SHELL")
+			if shell == "" {
+				shell = "/bin/zsh"
+			}
+			overlay, err := s.app.OpenOverlay(pid, pane.Snapshot().Cwd, []string{shell, "-c", p.Command}, nil)
+			if err != nil {
+				code := api.ErrInvalidRequest
+				if err.Error() == "ui_busy" {
+					code = "ui_busy"
+				}
+				return api.Failure(req.ID, code, err.Error())
+			}
+			info, _ := s.paneInfo(overlay)
+			return api.Success(req.ID, api.CommandExecutedResult{Type: "command_executed", Pane: &info})
 		}
 		tid, err := s.app.OpenPopup(pane.Snapshot().Cwd, p.Command, p.Width, p.Height)
 		if err != nil {
@@ -71,11 +88,37 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		if info.ContentRevision != p.ContentRevision {
 			return api.Failure(req.ID, api.ErrStaleContent, "popup content changed")
 		}
-		lines := s.app.Supervisor().Get(s.app.State().Popup.PaneID).BufferLines()
+		lines := s.app.Supervisor().Get(s.app.PopupPaneID(p.TerminalID)).BufferLines()
 		if uint64(p.Anchor.Row) >= uint64(len(lines)) || uint64(p.Cursor.Row) >= uint64(len(lines)) {
 			return api.Failure(req.ID, api.ErrInvalidRequest, "terminal row is unavailable")
 		}
-		return api.Success(req.ID, api.PopupSelectionResult{Type: "popup_selection", TerminalID: p.TerminalID, ContentRevision: info.ContentRevision, Text: s.app.PopupSelectionText(p.Anchor, p.Cursor)})
+		return api.Success(req.ID, api.PopupSelectionResult{Type: "popup_selection", TerminalID: p.TerminalID, ContentRevision: info.ContentRevision, Text: s.app.PopupSelectionText(p.TerminalID, p.Anchor, p.Cursor)})
 	}
 	return api.Failure(req.ID, api.ErrUnknownMethod, "unknown popup operation")
+}
+
+func (s *Server) rejectOverlayLayoutRequest(req *api.Request) (api.Response, bool) {
+	switch req.Method {
+	case "pane.rename", "pane.zoom", "pane.resize", "pane.move", "pane.swap", "pane.split", "pane.adjust_layout":
+	default:
+		return api.Response{}, false
+	}
+	var params map[string]any
+	if err := req.DecodeParams(&params); err != nil {
+		return api.Response{}, false
+	}
+	blocked := false
+	s.app.Do(func() {
+		if overlay := s.app.State().Overlay; overlay != nil {
+			for _, key := range []string{"pane_id", "source_pane_id", "target_pane_id"} {
+				if params[key] == fmtPaneID(overlay.PaneID) {
+					blocked = true
+				}
+			}
+		}
+	})
+	if blocked {
+		return api.Failure(req.ID, "unsupported", "overlay panes do not participate in tiled layout operations"), true
+	}
+	return api.Response{}, false
 }

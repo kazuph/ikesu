@@ -213,6 +213,18 @@ func ObserveCodexSessionFile(cwd string, start time.Time) (string, bool) {
 func ObserveCmdline(job platform.ForegroundJob) (string, bool) {
 	found := ""
 	for _, pr := range job.Processes {
+		if id, native, ok := ObserveNativeResume(pr); native {
+			if !ok {
+				return "", false
+			}
+			if id != "" {
+				if found != "" && found != id {
+					return "", false
+				}
+				found = id
+			}
+			continue
+		}
 		for i, arg := range pr.Argv {
 			var v string
 			switch {

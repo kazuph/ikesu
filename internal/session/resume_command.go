@@ -15,11 +15,18 @@ var builtinRestoreTemplates = map[string]string{
 	"claude": "claude --resume {session_id}",
 	"codex":  "codex resume {session_id}",
 	"devin":  "devin --resume {session_id}",
+	"grok":   "grok --resume {session_id}",
+	"qwen":   "qwen --resume {session_id}",
+	"agy":    "agy --conversation {session_id}",
+	"letta":  "letta --conversation {session_id}",
 }
 
 // resumeArgsFor is the per-agent argv suffix appended to a configured
 // [agent_start.commands] argv to resume a session.
-func resumeArgsFor(agent string) []string {
+func ResumeArgsFor(agent string) []string {
+	if spec, native := NativeResumeAgents[agent]; native {
+		return []string{spec.Flag}
+	}
 	if agent == "codex" {
 		return []string{"resume"}
 	}
@@ -59,6 +66,9 @@ func shellQuote(s string) string {
 // Returns ok=false when no safe command can be formed — the pane stays a
 // shell rather than resuming the wrong conversation.
 func ResumeCommand(cfg config.Config, agent, kind, value string) (string, bool) {
+	if _, native := NativeResumeAgents[agent]; native && (kind != "id" || !SafeSessionID(value)) {
+		return "", false
+	}
 	if !SafeSessionValue(kind, value) {
 		return "", false
 	}
@@ -68,7 +78,7 @@ func ResumeCommand(cfg config.Config, agent, kind, value string) (string, bool) 
 				return "", false
 			}
 		}
-		args := append(argv, resumeArgsFor(agent)...)
+		args := append(argv, ResumeArgsFor(agent)...)
 		args = append(args, value)
 		return shellJoin(args), true
 	}

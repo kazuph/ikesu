@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"net"
+	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
 )
@@ -62,6 +63,19 @@ func (s *Server) serveAPI(conn net.Conn) {
 // dispatch routes a request. Stateless methods answer directly; everything
 // touching application state is serialized through the app loop via Do.
 func (s *Server) dispatch(req *api.Request) api.Response {
+	if response, blocked := s.rejectOverlayLayoutRequest(req); blocked {
+		return response
+	}
+	if req.Method == "agent.view.set" || req.Method == "agent.view.clear" {
+		var response api.Response
+		s.app.Do(func() { response = s.agentViewRequest(req) })
+		return response
+	}
+	if strings.HasPrefix(req.Method, "plugin.") {
+		var resp api.Response
+		s.app.Do(func() { resp = s.pluginRequest(req) })
+		return resp
+	}
 	switch req.Method {
 	case api.MethodAgentStart:
 		var p api.AgentStartParams

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ import (
 type Options struct {
 	// Session selects the session directory; "" means the default session.
 	Session string
+	Version string
 	// Explicit reports whether --session was given on the command line.
 	// Explicit sessions ignore the GTX_SOCKET_PATH pane override.
 	Explicit bool
@@ -64,12 +66,28 @@ func (o Options) stderr() io.Writer {
 
 // Run executes one CLI command and returns its exit code.
 func Run(args []string, o Options) int {
+	if o.Session == "" {
+		o.Session = api.DefaultSession
+	}
+	if !o.Explicit {
+		socket := api.APISocket(o.Session, false, o.getenv)
+		name := filepath.Base(filepath.Dir(socket))
+		if api.ValidSessionName(name) && socket == api.APISocket(name, true, o.getenv) {
+			o.Session = name
+		}
+	}
 	r := &runner{o: o}
 	if len(args) == 0 {
 		fmt.Fprintln(r.errOut(), "usage: gtx <pane|workspace|tab|server|send|inbox|msg|run|log|agent> <command> ...")
 		return 2
 	}
 	switch args[0] {
+	case "wait":
+		return r.waitCLI(args[1:])
+	case "plugin":
+		return r.pluginCLI(args[1:])
+	case "machine":
+		return r.machineCLI(args[1:])
 	case "pane":
 		return r.pane(args[1:])
 	case "worktree":
@@ -123,6 +141,9 @@ func (r *runner) request(id, method string, params any) ([]byte, error) {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	if method == api.MethodPaneWaitForOutput {
+		_ = conn.SetDeadline(time.Time{})
+	}
 	if method == api.MethodAgentPrompt {
 		if p, ok := params.(api.AgentPromptParams); ok && p.Wait != nil {
 			_ = conn.SetDeadline(time.Time{})

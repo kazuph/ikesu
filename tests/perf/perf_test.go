@@ -9,6 +9,7 @@ package perf
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"net"
 	"os"
@@ -95,7 +96,7 @@ func TestMain(m *testing.M) {
 	rprintf("# date=%s host=%s go=%s", time.Now().Format(time.RFC3339), host, runtime.Version())
 	rprintf("# GTX_PERF_BIN=%s", os.Getenv("GTX_PERF_BIN"))
 	rprintf("# GTX_PERF_BASELINE_BIN=%s", os.Getenv("GTX_PERF_BASELINE_BIN"))
-	code := m.Run()
+	code := teststate.Run(m.Run)
 	out := rep.String()
 	fmt.Print(out)
 	if p := os.Getenv("GTX_PERF_OUT"); p != "" {

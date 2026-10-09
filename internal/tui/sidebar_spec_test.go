@@ -175,7 +175,7 @@ func TestG2WorkspaceMenuExactAndUnsupported(t *testing.T) {
 			got = append(got, it.Label)
 		}
 	}
-	want := []string{"New Claude Code agent", "New Codex agent", "New agy agent", "--", "Duplicate", "--", "Rename", "Close", "--", "⭐ favorite", "💼 work", "🏠 personal", "No section"}
+	want := []string{"New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New letta agent", "New qwen agent", "--", "Duplicate", "--", "Rename", "Close", "--", "⭐ favorite", "💼 work", "🏠 personal", "No section"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatal(got)
 	}
@@ -270,7 +270,7 @@ func TestG2FooterBlankAndSectionBody(t *testing.T) {
 			labels = append(labels, it.Label)
 		}
 	}
-	want := []string{"new workspace", "new tab", "--", "settings", "keybinds", "reload config", "sidebar narrow", "sidebar normal", "sidebar wide", "--", "restore agents...", "--", "detach", "--", "stop server", "restart"}
+	want := []string{"new workspace", "new tab", "--", "settings", "keybinds", "reload config", "sidebar narrow", "sidebar normal", "sidebar wide", "--", "restore agents...", "--", "detach", "--", "add machine...", "remove machine...", "--", "stop server", "restart"}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatal(labels)
 	}

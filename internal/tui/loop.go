@@ -63,8 +63,12 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		}
 		a.dirty = true
 	case runtime.EventExited:
-		if a.st.Popup != nil && ev.Pane == a.st.Popup.PaneID {
-			a.exec(model.CmdClosePopup{})
+		if a.st.Overlay != nil && ev.Pane == a.st.Overlay.PaneID {
+			a.exec(model.CmdCloseOverlay{})
+			return
+		}
+		if a.st.PopupByPane(ev.Pane) != nil {
+			a.exec(model.CmdClosePopup{Pane: ev.Pane})
 			return
 		}
 		if a.exitedHook != nil {
@@ -116,6 +120,7 @@ func (a *App) detectAll() {
 						a.availHook(pid)
 					}
 				}
+				a.noteAgentState(pid)
 				// The focused pane in the visible workspace is seen.
 				if ws == activeWS && pid == focusedID {
 					if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
@@ -210,6 +215,7 @@ func (a *App) exec(cmd model.Command) {
 		copyHeight = a.copyInnerH()
 	}
 	popupWasVisible := a.st.PopupVisible()
+	previousPopup := a.st.Popup
 	var prev *model.StateSnap
 	if a.postExecHook != nil {
 		prev = a.st.Capture()
@@ -217,13 +223,13 @@ func (a *App) exec(cmd model.Command) {
 	for _, e := range a.st.Apply(cmd) {
 		a.effect(e)
 	}
-	a.popupVisibilityChanged(popupWasVisible)
+	a.popupVisibilityChanged(popupWasVisible, previousPopup)
 	a.recordFocus(beforeFocus, a.focusedPane())
 	// Copy mode dies when its pane leaves the active tab's layout
 	// (closed, moved, or the tab/workspace changed).
 	if a.cm != nil {
 		ws := a.st.ActiveWorkspace()
-		alive := a.st.PopupVisible() && a.st.Popup.PaneID == a.cm.pane || ws != nil && ws.ActiveLayout() != nil && ws.ActiveLayout().HasPane(a.cm.pane)
+		alive := a.st.OverlayVisible() && a.st.Overlay.PaneID == a.cm.pane || a.st.PopupVisible() && a.st.Popup.PaneID == a.cm.pane || ws != nil && ws.ActiveLayout() != nil && ws.ActiveLayout().HasPane(a.cm.pane)
 		if !alive {
 			a.exitCopy()
 		}
@@ -232,7 +238,7 @@ func (a *App) exec(cmd model.Command) {
 	// Keystrokes and resizes never change persisted state; everything else
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
 	switch cmd.(type) {
-	case model.CmdInput, model.CmdResize:
+	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
 		if _, resized := cmd.(model.CmdResize); resized && a.cm != nil {
 			h := a.copyInnerH()
 			previousTop := a.cm.top
@@ -256,6 +262,9 @@ func (a *App) effect(e model.Effect) {
 			env = append(env, k+"="+v)
 		}
 		spawn := a.sup.SpawnWith
+		if a.st.PopupByPane(e.Pane) != nil {
+			spawn = a.sup.SpawnPopup
+		}
 		if e.AgentCommand {
 			spawn = a.sup.SpawnAgent
 		}
@@ -268,6 +277,8 @@ func (a *App) effect(e model.Effect) {
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
+		delete(a.agentStates, e.Pane)
+		delete(a.agentStateSeq, e.Pane)
 		delete(a.sessions, e.Pane)
 		delete(a.localObservedStart, e.Pane)
 		if a.paneClosedHook != nil {
@@ -284,6 +295,10 @@ func (a *App) effect(e model.Effect) {
 
 // syncLayout resizes every pane of the active workspace to its inner rect.
 func (a *App) syncLayout() {
+	if a.st.OverlayVisible() {
+		r := a.innerRect(a.st.Overlay.PaneID)
+		a.sup.ResizeWithPixels(a.st.Overlay.PaneID, r.W, r.H, a.cellW, a.cellH)
+	}
 	if a.st.PopupVisible() && !a.st.Popup.ResizeLocked {
 		r := a.innerRect(a.st.Popup.PaneID)
 		a.sup.ResizeWithPixels(a.st.Popup.PaneID, r.W, r.H, a.cellW, a.cellH)
@@ -305,6 +320,13 @@ func (a *App) syncLayout() {
 // workspace owns it; panes of a hidden workspace spawn at a default size
 // and are resized when their workspace becomes active.
 func (a *App) rectForPane(pid int) layout.Rect {
+	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
+		if r, ok := a.st.OverlayRect(); ok {
+			inner, gutter := model.PaneContentRect(r, a.st.PaneBorders)
+			inner.W = max(inner.W-gutter, 1)
+			return inner
+		}
+	}
 	if a.st.Popup != nil && pid == a.st.Popup.PaneID {
 		return popupInner(a.st.PopupRect())
 	}
@@ -325,6 +347,13 @@ func (a *App) rectForPane(pid int) layout.Rect {
 // innerRect returns the content rect (inside the border) of a pane of the
 // active workspace.
 func (a *App) innerRect(pid int) layout.Rect {
+	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
+		if r, ok := a.st.OverlayRect(); ok {
+			inner, gutter := model.PaneContentRect(r, a.st.PaneBorders)
+			inner.W = max(inner.W-gutter, 1)
+			return inner
+		}
+	}
 	if a.st.Popup != nil && pid == a.st.Popup.PaneID {
 		return popupInner(a.st.PopupRect())
 	}
@@ -348,6 +377,9 @@ func (a *App) innerRect(pid int) layout.Rect {
 
 // paneRect returns the outer (bordered) rect of a pane of the active ws.
 func (a *App) paneRect(pid int) (layout.Rect, bool) {
+	if a.st.OverlayVisible() && pid == a.st.Overlay.PaneID {
+		return a.st.OverlayRect()
+	}
 	if a.st.PopupVisible() && pid == a.st.Popup.PaneID {
 		return a.st.PopupRect(), true
 	}

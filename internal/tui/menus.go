@@ -36,6 +36,9 @@ func (a *App) openPaneMenu(x, y, pid int) {
 		render.MenuItem{Label: "New Claude Code agent"},
 		render.MenuItem{Label: "New Codex agent"},
 		render.MenuItem{Label: "New agy agent"},
+		render.MenuItem{Label: "New grok agent"},
+		render.MenuItem{Label: "New letta agent"},
+		render.MenuItem{Label: "New qwen agent"},
 		render.MenuItem{Separator: true},
 	)
 	if multi {
@@ -69,6 +72,10 @@ func (a *App) openPaneMenu(x, y, pid int) {
 
 // openRenamePaneDialog prompts for a name for the clicked pane.
 func (a *App) openRenamePaneDialog(pid int) {
+	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
+		a.ShowToast("rename pane", "unsupported: overlay pane names are transient", "error", -1)
+		return
+	}
 	name := a.st.PaneLabels[model.PaneID(pid)]
 	a.dialog = &uiDialog{
 		input: &name,
@@ -150,7 +157,7 @@ func (a *App) agentPane(agent string) {
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
 func (a *App) openWorkspaceMenu(x, y, ws int) {
-	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Separator: true}}
+	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Label: "New grok agent"}, {Label: "New letta agent"}, {Label: "New qwen agent"}, {Separator: true}}
 	wt := a.workspaceWorktreeItems(ws)
 	var group []render.MenuItem
 	for _, it := range wt {
@@ -185,7 +192,7 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 
 func (a *App) mainMenuItems() []render.MenuItem {
 	return []render.MenuItem{
-		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
+		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}
 }
 
@@ -202,6 +209,10 @@ func (a *App) activateMenu(i int) {
 		return
 	}
 	switch m.kind {
+	case menuMachineRemove:
+		if i < len(m.machines) {
+			a.removeMachineDialog(m.machines[i])
+		}
 	case menuPane:
 		pid := m.pane
 		a.exec(model.CmdFocusPane{Pane: pid})
@@ -220,6 +231,12 @@ func (a *App) activateMenu(i int) {
 			a.agentPane("codex")
 		case "New agy agent":
 			a.agentPane("agy")
+		case "New grok agent":
+			a.agentPane("grok")
+		case "New letta agent":
+			a.agentPane("letta")
+		case "New qwen agent":
+			a.agentPane("qwen")
 		case "Move to left split":
 			a.exec(model.CmdArrange{Pane: model.PaneID(pid), Op: "move_left"})
 		case "Move to right split":
@@ -252,7 +269,7 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuWorkspace:
 		switch m.m.Items[i].Label {
-		case "New Claude Code agent", "New Codex agent", "New agy agent":
+		case "New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New letta agent", "New qwen agent":
 			a.exec(model.CmdSelectWorkspace{Index: m.ws})
 			agent := "claude"
 			if m.m.Items[i].Label == "New Codex agent" {
@@ -260,6 +277,15 @@ func (a *App) activateMenu(i int) {
 			}
 			if m.m.Items[i].Label == "New agy agent" {
 				agent = "agy"
+			}
+			if m.m.Items[i].Label == "New grok agent" {
+				agent = "grok"
+			}
+			if m.m.Items[i].Label == "New qwen agent" {
+				agent = "qwen"
+			}
+			if m.m.Items[i].Label == "New letta agent" {
+				agent = "letta"
 			}
 			a.agentPane(agent)
 		case "Duplicate":
@@ -301,6 +327,10 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuMain:
 		switch m.m.Items[i].Label {
+		case "add machine...":
+			a.addMachineDialog()
+		case "remove machine...":
+			a.removeMachineMenu()
 		case "new workspace":
 			a.newWorkspace()
 		case "new tab":

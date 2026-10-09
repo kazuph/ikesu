@@ -66,6 +66,7 @@ func (s *Server) emitEvent(kind string, data any) {
 	if err != nil {
 		return
 	}
+	s.pluginEvent(kind, raw)
 	env := api.EventEnvelope{Event: kind, Data: raw}
 	s.evMu.Lock()
 	s.journal = append(s.journal, env)
@@ -646,7 +647,7 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 	if source == "" {
 		source = "recent"
 	}
-	if source != "visible" && source != "recent" {
+	if source != "visible" && source != "recent" && source != "recent_unwrapped" && source != "recent-unwrapped" {
 		return api.Failure(req.ID, api.ErrInvalidRequest,
 			fmt.Sprintf("read source %q is not supported in this stage", source))
 	}
@@ -682,9 +683,11 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 				resp = s.paneNotFound(req.ID, p.PaneID)
 				return
 			}
-			lines := pane.ScreenLines()
-			if source == "recent" {
-				lines = append(pane.ScrollbackLines(), lines...)
+			strip := p.StripAnsi == nil || *p.StripAnsi
+			lines, err := pane.ReadLines(source, strip)
+			if err != nil {
+				resp = api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+				return
 			}
 			for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 				lines = lines[:len(lines)-1]

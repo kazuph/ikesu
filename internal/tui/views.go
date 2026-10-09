@@ -15,6 +15,9 @@ import (
 
 // focusedPane returns the focused pane id of the active workspace.
 func (a *App) focusedPane() int {
+	if a.st.OverlayVisible() {
+		return a.st.Overlay.PaneID
+	}
 	if a.st.PopupVisible() {
 		return a.st.Popup.PaneID
 	}
@@ -57,6 +60,13 @@ func (a *App) draw() {
 		return
 	}
 	panes := a.paneSnaps()
+	if a.st.OverlayVisible() {
+		if p := a.sup.Get(a.st.Overlay.PaneID); p != nil {
+			r := a.innerRect(p.ID)
+			sn := p.Snapshot()
+			panes[p.ID] = &render.PaneSnap{Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: labelFor(sn, p), Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen}
+		}
+	}
 	if a.st.PopupVisible() {
 		if p := a.sup.Get(a.st.Popup.PaneID); p != nil {
 			r := a.innerRect(p.ID)
@@ -173,7 +183,7 @@ func (a *App) ScrollOffset(pid int) int { return a.scroll[pid] }
 
 // PaneStatusKey returns the pane's agent status key
 // (working|blocked|done|idle|unknown). Call on the app loop.
-func (a *App) PaneStatusKey(pid int) string { return a.glyph(pid).Key }
+func (a *App) PaneStatusKey(pid int) string { a.noteAgentState(pid); return a.glyph(pid).Key }
 
 // SetReported applies a pane.report_agent override. Call on the app loop.
 func (a *App) SetReported(pid int, agent, state string) {
@@ -196,6 +206,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 			a.availHook(pid)
 		}
 	}
+	a.noteAgentState(pid)
 	a.changed()
 }
 
@@ -245,12 +256,17 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					a.sessionCwds[ws.ID] = sn.Cwd
 				}
 				snap := &render.PaneSnap{
-					Label:  labelFor(sn, p),
-					Title:  sn.OSCTitle,
-					Agent:  agentFor(sn),
-					Status: a.glyph(pid),
-					Dead:   sn.Dead,
-					Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+					Label:          labelFor(sn, p),
+					Title:          sn.OSCTitle,
+					Agent:          agentFor(sn),
+					Status:         a.glyph(pid),
+					StateChangeSeq: a.AgentStateChangeSeq(pid),
+					Seen:           true,
+					Dead:           sn.Dead,
+					Cursor:         render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+				}
+				if tr := a.trackers[pid]; tr != nil {
+					snap.Seen = tr.Seen
 				}
 				if a.editorFiles[pid] != "" {
 					snap.Label = "terminal"

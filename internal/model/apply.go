@@ -6,11 +6,36 @@ import (
 
 // Apply mutates the state for cmd and returns the effects the runtime must
 // perform, in order.
-func (s *AppState) Apply(cmd Command) []Effect {
+func (s *AppState) Apply(cmd Command) (effects []Effect) {
+	if s.overlayLayoutMutation(cmd) {
+		return nil
+	}
+	defer func() {
+		effects = append(effects, s.syncPopupOwner()...)
+		if s.Overlay != nil {
+			wi, ti := s.FindPane(s.Overlay.TargetPaneID)
+			if wi < 0 || s.Workspaces[wi].ID != s.Overlay.WorkspaceID || s.Workspaces[wi].Tabs[ti].ID != s.Overlay.TabID {
+				effects = append(effects, s.closeOverlay()...)
+			}
+		}
+	}()
+	if s.OverlayVisible() {
+		switch cmd.(type) {
+		case CmdFocusDir, CmdCyclePane, CmdFocusPane:
+			return nil
+		}
+	}
 	switch c := cmd.(type) {
+	case CmdOpenOverlay:
+		return s.openOverlay(c)
+	case CmdCloseOverlay:
+		return s.closeOverlay()
 	case CmdOpenPopup:
 		return s.openPopup(c)
 	case CmdClosePopup:
+		if c.Pane != 0 {
+			return s.closePopupPane(s.PopupByPane(c.Pane))
+		}
 		return s.closePopup()
 	case CmdPopupResizeLock:
 		if s.Popup != nil {

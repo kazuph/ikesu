@@ -98,7 +98,7 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	reportAgent(t, dir, ids[1], "codex", "sess-beta")
 
 	// The ledger must hold one row per pane with its own id.
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath("rest"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +595,7 @@ func TestLedgerDeleteOnPaneClose(t *testing.T) {
 	var ok api.OkResult
 	apiOK(t, dir, api.MethodPaneClose, api.PaneTarget{PaneID: ids[1]}, &ok)
 
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath("leddel"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -699,7 +699,7 @@ func TestRestorablePaneRetainedOnExit(t *testing.T) {
 	}
 
 	// The pane's record and ledger row must survive.
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath("retain"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,7 +760,7 @@ func TestInactiveShellPaneClosesOnExit(t *testing.T) {
 		t.Fatalf("shell pane was retained; panes = %v", got)
 	}
 
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath("cleanup"))
 	if err != nil {
 		t.Fatal(err)
 	}

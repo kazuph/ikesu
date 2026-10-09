@@ -21,6 +21,16 @@ func popupInner(r layout.Rect) layout.Rect {
 }
 
 func (a *App) OpenPopup(cwd, command string, width, height *api.PopupSize) (string, error) {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	return a.OpenPluginPopup(cwd, []string{shell, "-c", command}, nil, width, height)
+}
+func (a *App) OpenPluginPopup(cwd string, argv []string, env map[string]string, width, height *api.PopupSize) (string, error) {
+	if a.ModalBusy() {
+		return "", fmt.Errorf("ui_busy")
+	}
 	w := a.st.ActiveWorkspace()
 	if w == nil {
 		return "", fmt.Errorf("no active workspace")
@@ -31,12 +41,8 @@ func (a *App) OpenPopup(cwd, command string, width, height *api.PopupSize) (stri
 		}
 		return api.PopupSize{Percent: popupDefaultPercent}
 	}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
-	}
 	a.lastSpawnError = nil
-	a.exec(model.CmdOpenPopup{WorkspaceID: w.ID, Cwd: cwd, Argv: []string{shell, "-c", command}, Width: dimension(width), Height: dimension(height)})
+	a.exec(model.CmdOpenPopup{WorkspaceID: w.ID, Cwd: cwd, Argv: argv, Env: env, Width: dimension(width), Height: dimension(height)})
 	if a.lastSpawnError != nil {
 		err := a.lastSpawnError
 		a.exec(model.CmdClosePopup{})
@@ -46,8 +52,8 @@ func (a *App) OpenPopup(cwd, command string, width, height *api.PopupSize) (stri
 }
 
 func (a *App) PopupTerminal(target string) *api.PopupTerminalResult {
-	pop := a.st.Popup
-	if pop == nil || target != pop.TerminalID {
+	pop := a.popupForTerminal(target)
+	if pop == nil {
 		return nil
 	}
 	p := a.sup.Get(pop.PaneID)
@@ -65,28 +71,52 @@ func (a *App) ScrollPopup(target string, offset uint64) *api.PopupTerminalResult
 	if info == nil {
 		return nil
 	}
-	a.setScrollOff(a.st.Popup.PaneID, int(min(offset, uint64(info.Scroll.MaxOffsetFromBottom))))
+	a.setScrollOff(a.popupForTerminal(target).PaneID, int(min(offset, uint64(info.Scroll.MaxOffsetFromBottom))))
 	return a.PopupTerminal(target)
 }
 
-func (a *App) PopupSelectionText(anchor, cursor api.PaneTextPoint) string {
-	if a.st.Popup == nil {
+func (a *App) popupForTerminal(target string) *model.PopupPaneState {
+	if a.st.Popup != nil && a.st.Popup.TerminalID == target {
+		return a.st.Popup
+	}
+	for _, pop := range a.st.Popups {
+		if pop.TerminalID == target {
+			return pop
+		}
+	}
+	return nil
+}
+func (a *App) PopupPaneID(target string) int {
+	if pop := a.popupForTerminal(target); pop != nil {
+		return pop.PaneID
+	}
+	return 0
+}
+func (a *App) PopupSelectionText(target string, anchor, cursor api.PaneTextPoint) string {
+	pid := a.PopupPaneID(target)
+	if pid == 0 {
 		return ""
 	}
-	s := &selState{pane: a.st.Popup.PaneID, ax: int(anchor.Col), ay: int(anchor.Row), hx: int(cursor.Col), hy: int(cursor.Row)}
-	text, _ := a.selText(s)
+	text, _ := a.selText(&selState{pane: pid, ax: int(anchor.Col), ay: int(anchor.Row), hx: int(cursor.Col), hy: int(cursor.Row)})
 	return text
 }
 
-func (a *App) popupVisibilityChanged(wasVisible bool) {
+func (a *App) popupVisibilityChanged(wasVisible bool, previous *model.PopupPaneState) {
 	visible := a.st.PopupVisible()
-	if wasVisible && !visible && a.st.Popup != nil {
-		pid := a.st.Popup.PaneID
+	changed := previous != a.st.Popup
+	if a.popupSelections == nil {
+		a.popupSelections = map[int]*selState{}
+		a.popupCopies = map[int]*copyMode{}
+	}
+	if wasVisible && (!visible || changed) && previous != nil {
+		pid := previous.PaneID
 		if a.sel != nil && a.sel.pane == pid {
 			a.popupSel, a.sel = a.sel, nil
+			a.popupSelections[pid] = a.popupSel
 		}
 		if a.cm != nil && a.cm.pane == pid {
 			a.popupCopy, a.cm = a.cm, nil
+			a.popupCopies[pid] = a.popupCopy
 		}
 		if a.fwd == pid {
 			a.fwd = -1
@@ -96,9 +126,12 @@ func (a *App) popupVisibilityChanged(wasVisible bool) {
 		}
 		a.popupAutoScroll = 0
 	}
-	if !wasVisible && visible {
-		a.sel, a.popupSel = a.popupSel, nil
-		a.cm, a.popupCopy = a.popupCopy, nil
+	if (!wasVisible || changed) && visible {
+		pid := a.st.Popup.PaneID
+		a.sel, a.cm = a.popupSelections[pid], a.popupCopies[pid]
+		delete(a.popupSelections, pid)
+		delete(a.popupCopies, pid)
+		a.popupSel, a.popupCopy = nil, nil
 		if a.sel != nil {
 			a.sel.inner = a.innerRect(a.st.Popup.PaneID)
 		}
@@ -106,6 +139,8 @@ func (a *App) popupVisibilityChanged(wasVisible bool) {
 }
 
 func (a *App) clearPopupInteraction(pid int) {
+	delete(a.popupSelections, pid)
+	delete(a.popupCopies, pid)
 	if a.sel != nil && a.sel.pane == pid {
 		a.sel = nil
 		a.popupAutoScroll = 0
@@ -125,20 +160,28 @@ func (a *App) clearPopupInteraction(pid int) {
 }
 
 func (a *App) popupMouse(ev input.Event) bool {
-	if !a.st.PopupVisible() {
+	if !a.st.PopupVisible() && !a.st.OverlayVisible() {
 		return false
 	}
-	pop := a.st.Popup
+	pid := 0
+	rect := layout.Rect{}
+	if a.st.OverlayVisible() {
+		pid = a.st.Overlay.PaneID
+		rect, _ = a.st.OverlayRect()
+	} else {
+		pid = a.st.Popup.PaneID
+		rect = a.st.PopupRect()
+	}
 	m := ev.Mouse
-	if ev.Kind == input.KindMouseClick && m.Button == uv.MouseLeft && !pointIn(m.X, m.Y, a.st.PopupRect()) {
-		a.exec(model.CmdClosePopup{})
+	if !a.st.OverlayVisible() && ev.Kind == input.KindMouseClick && m.Button == uv.MouseLeft && !pointIn(m.X, m.Y, rect) {
+		a.exec(model.CmdClosePopup{Pane: pid})
 		return true
 	}
-	if a.fwd == pop.PaneID {
+	if a.fwd == pid {
 		a.forwardMouse(ev)
 		return true
 	}
-	if a.sel != nil && a.sel.pane == pop.PaneID {
+	if a.sel != nil && a.sel.pane == pid {
 		if ev.Kind == input.KindMouseWheel {
 			a.wheel(m)
 			return true
@@ -156,38 +199,47 @@ func (a *App) popupMouse(ev input.Event) bool {
 		}
 		return true
 	}
-	if !pointIn(m.X, m.Y, a.st.PanesArea()) && !pointIn(m.X, m.Y, a.st.PopupRect()) {
+	if !pointIn(m.X, m.Y, a.st.PanesArea()) && !pointIn(m.X, m.Y, rect) {
 		return false
 	}
-	inner := a.innerRect(pop.PaneID)
+	inner := a.innerRect(pid)
 	if !pointIn(m.X, m.Y, inner) {
 		return true
 	}
-	p := a.sup.Get(pop.PaneID)
+	p := a.sup.Get(pid)
 	if p == nil {
+		return true
+	}
+	if ev.Kind == input.KindMouseClick && a.pluginLinkClick(pid, m) {
 		return true
 	}
 	switch ev.Kind {
 	case input.KindMouseWheel:
 		if p.Snapshot().MouseTracking {
-			a.forwardTo(pop.PaneID, uv.MouseWheelEvent(m))
+			a.forwardTo(pid, uv.MouseWheelEvent(m))
 		} else {
 			a.wheel(m)
 		}
 	case input.KindMouseClick:
 		if p.Snapshot().MouseTracking {
-			a.forwardTo(pop.PaneID, uv.MouseClickEvent(m))
-			a.fwd = pop.PaneID
+			a.forwardTo(pid, uv.MouseClickEvent(m))
+			a.fwd = pid
 		} else if m.Button == uv.MouseLeft {
-			x, y := m.X-inner.X, viewTop(p, a.scroll[pop.PaneID], inner.H)+m.Y-inner.Y
-			a.sel = &selState{pane: pop.PaneID, ax: x, ay: y, hx: x, hy: y, inner: inner, scrollAt: a.scroll[pop.PaneID]}
+			x, y := m.X-inner.X, viewTop(p, a.scroll[pid], inner.H)+m.Y-inner.Y
+			a.sel = &selState{pane: pid, ax: x, ay: y, hx: x, hy: y, inner: inner, scrollAt: a.scroll[pid]}
 		}
 	}
 	return true
 }
 
 func (a *App) popupSelectionAutoScroll() {
-	if !a.st.PopupVisible() || a.sel == nil || a.sel.pane != a.st.Popup.PaneID || a.popupAutoScroll == 0 {
+	pid := 0
+	if a.st.OverlayVisible() {
+		pid = a.st.Overlay.PaneID
+	} else if a.st.PopupVisible() {
+		pid = a.st.Popup.PaneID
+	}
+	if pid == 0 || a.sel == nil || a.sel.pane != pid || a.popupAutoScroll == 0 {
 		return
 	}
 	// Use the existing terminal wheel step on the existing UI tick cadence.

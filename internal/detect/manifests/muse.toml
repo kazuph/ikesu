@@ -2,7 +2,7 @@ id = "muse"
 version = "2026.09.17.1"
 min_engine_version = 2
 updated_at = "2026-09-17T00:00:00Z"
-aliases = ["muse-code", "muse-cli"]
+aliases = ["muse-bin", "muse-code", "muse-cli"]
 
 # Evidence: Muse Code terminal UI states.
 #

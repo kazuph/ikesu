@@ -16,7 +16,7 @@ import (
 
 func openStore(t *testing.T) *dispatch.Store {
 	t.Helper()
-	st, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	st, err := dispatch.OpenReadOnly(dispatch.DBPath("test"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestRunCancelEscalatesAndConfirmsGroupGone(t *testing.T) {
 	start := time.Now()
 	sawCancelling := false
 	for time.Now().Before(deadline) {
-		st2, err := dispatch.OpenReadOnly(dispatch.DBPath())
+		st2, err := dispatch.OpenReadOnly(dispatch.DBPath("test"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +134,7 @@ func TestWorkspaceJobDot(t *testing.T) {
 	s := newTestServer(t, "jobdot")
 	s.app.SetJobSource(s.jobSnapshot)
 
-	st, err := dispatch.Open(dispatch.DBPath())
+	st, err := dispatch.Open(dispatch.DBPath(s.session))
 	if err != nil {
 		t.Fatal(err)
 	}

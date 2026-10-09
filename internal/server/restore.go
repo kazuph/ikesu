@@ -29,7 +29,7 @@ const resumeSubmitDelay = 150 * time.Millisecond
 // the DB file does not exist no ledger rows can exist either; avoid
 // opening the store so reads stay free of the engine's memory cost.
 func (s *Server) ledgerEntry(pid int) (dispatch.PaneSession, bool) {
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return dispatch.PaneSession{}, false
 	}
 	st, err := s.db()
@@ -91,7 +91,7 @@ func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
 // ledgerDel drops the ledger row for a permanently closed pane.
 func (s *Server) ledgerDel(pid int) {
 	delete(s.observedStart, pid)
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return
 	}
 	if st, err := s.db(); err == nil {
@@ -231,8 +231,12 @@ func (s *Server) observePaneSession(pid int) {
 		return
 	}
 	if id, ok2 := session.ObserveCmdline(job); ok2 {
-		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
-		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
+		source := "observed:cmdline"
+		if spec, native := nativeResumeAgents[agent]; native {
+			source = spec.Source
+		}
+		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: source})
+		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: source})
 		if ok {
 			s.observedStart[pid] = start
 		}

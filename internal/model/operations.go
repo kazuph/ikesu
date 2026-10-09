@@ -8,7 +8,8 @@ import (
 // --- internals ---
 
 func (s *AppState) allocPane() PaneID {
-	s.nextPaneID++
+	s.nextPaneID = max(s.nextPaneID, s.nextRuntimePaneID) + 1
+	s.nextRuntimePaneID = s.nextPaneID
 	return s.nextPaneID
 }
 
@@ -101,6 +102,9 @@ func (s *AppState) closeTab(wi, ti int) []Effect {
 }
 
 func (s *AppState) closePane(pane PaneID) []Effect {
+	if s.Overlay != nil && pane == s.Overlay.PaneID {
+		return s.closeOverlay()
+	}
 	wi, ti := s.FindPane(pane)
 	if wi < 0 {
 		return nil

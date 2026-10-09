@@ -28,9 +28,9 @@ type databaseStamp struct {
 	modified time.Time
 }
 
-func jobDatabaseStamp() [2]databaseStamp {
+func jobDatabaseStamp(session string) [2]databaseStamp {
 	var result [2]databaseStamp
-	for i, path := range []string{dispatch.DBPath(), dispatch.DBPath() + "-wal"} {
+	for i, path := range []string{dispatch.DBPath(session), dispatch.DBPath(session) + "-wal"} {
 		if info, err := os.Stat(path); err == nil {
 			result[i] = databaseStamp{true, info.Size(), info.ModTime()}
 		}
@@ -78,7 +78,7 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 	interval := jobIdleRefresh
 	refresh := func(force bool) {
 		now := time.Now()
-		stamp := jobDatabaseStamp()
+		stamp := jobDatabaseStamp(s.session)
 		if !force && stamp == previous && now.Sub(lastRead) < interval {
 			return
 		}
@@ -88,10 +88,10 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 		}
 		var err error
 		if store == nil {
-			store, err = dispatch.Open(dispatch.DBPath())
+			store, err = dispatch.Open(dispatch.DBPath(s.session))
 		}
 		if err == nil && now.Sub(lastCleanup) >= jobCleanupInterval {
-			err = store.CleanupJobs(now, dispatch.JobLogDir(), processGroupAlive)
+			err = store.CleanupJobs(now, dispatch.JobLogDir(s.session), processGroupAlive)
 			if err == nil {
 				lastCleanup = now
 			}
@@ -113,7 +113,7 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 				alive[job.ID] = processGroupAlive(int(*job.RunnerPID))
 			}
 		}
-		previous, lastRead = jobDatabaseStamp(), now
+		previous, lastRead = jobDatabaseStamp(s.session), now
 		interval = jobsRefreshInterval(jobs, now)
 		s.jobCache.mu.Lock()
 		s.jobCache.jobs, s.jobCache.alive, s.jobCache.readAt, s.jobCache.err = jobs, alive, now, nil

@@ -29,7 +29,7 @@ func TestG9JobSnapshotAdaptiveIntervalAndExternalWrite(t *testing.T) {
 		}
 	}
 	s := newTestServer(t, "job-cache")
-	store, err := dispatch.Open(dispatch.DBPath())
+	store, err := dispatch.Open(dispatch.DBPath(s.session))
 	if err != nil {
 		t.Fatal(err)
 	}

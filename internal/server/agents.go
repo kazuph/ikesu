@@ -54,6 +54,7 @@ func (s *Server) agentInfoAt(pid, wsIdx, tabIdx int) api.AgentInfo {
 		PaneID:         paneID,
 		Focused:        wsIdx == st.Active && ws.ActiveTab == tabIdx && tab.Layout.Focused() == pid,
 		Revision:       sn.Revision,
+		StateChangeSeq: s.app.AgentStateChangeSeq(pid),
 		Name:           optString(name),
 		Agent:          optString(agent),
 		DisplayAgent:   optString(display),
