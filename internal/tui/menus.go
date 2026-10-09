@@ -37,6 +37,7 @@ func (a *App) openPaneMenu(x, y, pid int) {
 		render.MenuItem{Label: "New Codex agent"},
 		render.MenuItem{Label: "New agy agent"},
 		render.MenuItem{Label: "New grok agent"},
+		render.MenuItem{Label: "New letta agent"},
 		render.MenuItem{Label: "New qwen agent"},
 		render.MenuItem{Separator: true},
 	)
@@ -156,7 +157,7 @@ func (a *App) agentPane(agent string) {
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
 func (a *App) openWorkspaceMenu(x, y, ws int) {
-	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Label: "New grok agent"}, {Label: "New qwen agent"}, {Separator: true}}
+	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Label: "New grok agent"}, {Label: "New letta agent"}, {Label: "New qwen agent"}, {Separator: true}}
 	wt := a.workspaceWorktreeItems(ws)
 	var group []render.MenuItem
 	for _, it := range wt {
@@ -224,6 +225,8 @@ func (a *App) activateMenu(i int) {
 			a.agentPane("agy")
 		case "New grok agent":
 			a.agentPane("grok")
+		case "New letta agent":
+			a.agentPane("letta")
 		case "New qwen agent":
 			a.agentPane("qwen")
 		case "Move to left split":
@@ -258,7 +261,7 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuWorkspace:
 		switch m.m.Items[i].Label {
-		case "New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New qwen agent":
+		case "New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New letta agent", "New qwen agent":
 			a.exec(model.CmdSelectWorkspace{Index: m.ws})
 			agent := "claude"
 			if m.m.Items[i].Label == "New Codex agent" {
@@ -272,6 +275,9 @@ func (a *App) activateMenu(i int) {
 			}
 			if m.m.Items[i].Label == "New qwen agent" {
 				agent = "qwen"
+			}
+			if m.m.Items[i].Label == "New letta agent" {
+				agent = "letta"
 			}
 			a.agentPane(agent)
 		case "Duplicate":
