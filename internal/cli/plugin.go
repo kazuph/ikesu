@@ -67,21 +67,9 @@ func (r *runner) pluginCLI(args []string) int {
 			return 1
 		}
 		item, err := store.Install(source, ref, func(preview plugin.InstallPreview) bool {
+			writePluginInstallPreview(r.errOut(), preview, source)
 			if yes {
 				return true
-			}
-			fmt.Fprintf(r.errOut(), "Install %s from %s?\n", preview.Manifest.ID, source)
-			for _, b := range preview.Manifest.Build {
-				fmt.Fprintf(r.errOut(), "  build: %q\n", b.Command)
-			}
-			for _, a := range preview.Manifest.Actions {
-				fmt.Fprintf(r.errOut(), "  action %s: %q\n", a.ID, a.Command)
-			}
-			for _, e := range preview.Manifest.Events {
-				fmt.Fprintf(r.errOut(), "  event %s: %q\n", e.On, e.Command)
-			}
-			for _, p := range preview.Manifest.Panes {
-				fmt.Fprintf(r.errOut(), "  pane %s: %q\n", p.ID, p.Command)
 			}
 			fmt.Fprint(r.errOut(), "Continue? [y/N] ")
 			answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')

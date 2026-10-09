@@ -114,9 +114,8 @@ func (s *Store) Install(source, ref string, confirm func(InstallPreview) bool) (
 			}
 			cmd.Env = append(cmd.Env, kv)
 		}
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return Installed{}, fmt.Errorf("plugin %s build %d cwd=%s command=%q: %w\n%s", m.ID, i, root, build.Command, err, output)
+		if err := runBuild(cmd, m.ID, i, len(m.Build)); err != nil {
+			return Installed{}, err
 		}
 		after, err := os.ReadFile(path)
 		if err != nil {
