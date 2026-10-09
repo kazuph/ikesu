@@ -78,6 +78,7 @@ type Server struct {
 	jobProcs jobProcsT // live background jobs (external job id → process)
 
 	// notifications (SPEC G4)
+	cfgError      string
 	cfg           config.Config
 	lastStatus    map[int]string               // last seen status key per pane
 	notifyLast    map[int]map[string]time.Time // pane → kind → last shown
@@ -178,6 +179,7 @@ func Run(session, version string) (int, error) {
 	if cfg, err := config.Load(); err == nil {
 		s.cfg = cfg
 	} else {
+		s.cfgError = err.Error()
 		fmt.Fprintf(os.Stderr, "gtx: %s: %v\n", config.Path(), err)
 	}
 
@@ -205,6 +207,9 @@ func Run(session, version string) (int, error) {
 
 	st := model.New(cwd, 120, 40)
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
+	if s.cfgError != "" {
+		s.app.SetConfigWarning(s.cfgError)
+	}
 	s.app.SetDetacher(func(reason string) { s.detach(reason) })
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetQuitHook(func() {

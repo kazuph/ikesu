@@ -74,6 +74,7 @@ func (a *App) draw() {
 	}
 	in := render.Input{
 		State:          a.st,
+		ConfigWarning:  a.configWarning,
 		Settings:       a.settings,
 		MobileSwitcher: a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
@@ -399,3 +400,8 @@ func (a *App) clearStaleReport(pid int, agentID string, d detect.Detection, now 
 }
 
 func (a *App) SetPaneMetadataSource(f func(int) api.PaneMetadataView) { a.paneMetadataSource = f }
+
+func (a *App) SetConfigWarning(message string) {
+	a.configWarning = message
+	a.dirty = true
+}

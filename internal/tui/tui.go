@@ -161,6 +161,7 @@ type App struct {
 	exitedHook        func(pid int)                                  // pane process exited; server emits pane.exited
 	outHook           func(pid int)                                  // pane output changed; server emits pane.output_changed
 	worktreeHook      func(string, WorktreeOutcome, bool)
+	configWarning     string
 	warningsHook      func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix               bool
@@ -551,6 +552,8 @@ func Run(in *os.File, out *os.File) (int, error) {
 		a.SetSidebarConfig(cfg, true)
 		a.SetKeybinds(cfg.CopyKeys(), cfg.SplitVerticalKeys(), cfg.SplitHorizontalKeys())
 		a.SetPaneKeybinds(cfg)
+	} else {
+		a.SetConfigWarning(err.Error())
 	}
 
 	if err := a.StartInitialPane(); err != nil {

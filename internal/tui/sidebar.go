@@ -142,9 +142,11 @@ func (a *App) unsupportedSidebar(feature string) {
 func (a *App) reloadSidebarConfig() {
 	c, err := config.Load()
 	if err != nil {
+		a.SetConfigWarning(err.Error())
 		a.worktreeError(err)
 		return
 	}
+	a.SetConfigWarning("")
 	a.SetSidebarConfig(c, false)
 	if a.configChanged != nil {
 		a.configChanged(c)

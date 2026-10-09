@@ -136,11 +136,12 @@ type Input struct {
 	DraggedWorkspace  int
 	Dragging          bool
 
-	Settings *Settings
-	Menu     *Menu
-	Dialog   *Dialog
-	Sel      *Selection
-	Toast    *Toast
+	Settings      *Settings
+	Menu          *Menu
+	Dialog        *Dialog
+	Sel           *Selection
+	ConfigWarning string
+	Toast         *Toast
 
 	Spin           int    // working-spinner frame
 	Copied         string // flash text, e.g. " copied 12 chars "
@@ -186,11 +187,12 @@ type Output struct {
 	// rects mean the button did not fit and must not fire.
 	ActionBar ActionBarRects
 	// MenuRect/DialogRects/ToastRect let the mouse layer hit-test overlays.
-	ToastRect     layout.Rect
-	MenuRect      layout.Rect
-	MenuItemRows  []layout.Rect // per-item row rects (absolute coords)
-	DialogRect    layout.Rect
-	DialogConfirm layout.Rect
+	ConfigWarningRect layout.Rect
+	ToastRect         layout.Rect
+	MenuRect          layout.Rect
+	MenuItemRows      []layout.Rect // per-item row rects (absolute coords)
+	DialogRect        layout.Rect
+	DialogConfirm     layout.Rect
 	// HelpRect lets the mouse layer hit-test the help overlay.
 	HelpRect     layout.Rect
 	DialogCancel layout.Rect
@@ -240,6 +242,13 @@ func Compose(in Input) *Output {
 	}
 	if in.Dialog != nil {
 		drawDialog(f, in.Dialog, out)
+	}
+	if in.ConfigWarning != "" {
+		w := min(f.W, len(in.ConfigWarning)+2)
+		r := layout.Rect{X: f.W - w, Y: 1, W: w, H: 1}
+		out.ConfigWarningRect = r
+		f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.Surface})
+		f.Text(r.X+1, r.Y, in.ConfigWarning, uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.Surface}, r.X+r.W)
 	}
 	if in.Toast != nil {
 		drawToast(f, in.Toast, out)

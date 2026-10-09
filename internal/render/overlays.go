@@ -57,9 +57,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		row := layout.Rect{X: ix, Y: iy + i, W: iw, H: 1}
 		out.MenuItemRows = append(out.MenuItemRows, row)
 		if it.Separator {
-			for xx := ix; xx < ix+iw; xx++ {
-				f.Set(xx, iy+i, "─", border)
-			}
+			f.Text(ix, iy+i, " --", uv.Style{Fg: f.Palette.Dim}, ix+iw)
 			continue
 		}
 		sty := uv.Style{Fg: f.Palette.Text}
@@ -79,23 +77,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 // drawToast renders the notification box at the top-right: a 4-row-high
 // bordered box with the status dot + title and one body line.
 func drawToast(f *Frame, t *Toast, out *Output) {
-	w := len([]rune(t.Title)) + 6
-	if l := len([]rune(t.Body)) + 4; l > w {
-		w = l
-	}
-	maxW := f.W / 2
-	if maxW < 20 {
-		maxW = 20
-	}
-	if w > maxW {
-		w = maxW
-	}
-	x := f.W - w - 1
-	if x < 0 {
-		x = 0
-	}
-	y := 1
-	r := layout.Rect{X: x, Y: y, W: w, H: 4}
+	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
 	out.ToastRect = r
 	dot := uv.Style{Fg: f.Palette.Accent}
 	if t.Kind == "needs_attention" {
@@ -106,6 +88,18 @@ func drawToast(f *Frame, t *Toast, out *Output) {
 	f.Set(ix, iy, "●", dot)
 	f.Text(ix+2, iy, t.Title, uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, ix+iw)
 	f.Text(ix+1, iy+1, t.Body, uv.Style{Fg: f.Palette.Dim}, ix+iw)
+}
+
+// ToastRect anchors to the view rather than the terminal origin. Width is
+// intentionally UTF-8 bytes, as required by SPEC G9.
+func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
+	w := min(max(len(t.Title), len(t.Body))+6, max(0, view.W))
+	margin := min(1, max(0, view.W-w))
+	y := view.Y + 1
+	if warning.H > 0 {
+		y = max(y, warning.Y+warning.H)
+	}
+	return layout.Rect{X: view.X + view.W - w - margin, Y: y, W: w, H: min(4, max(0, view.Y+view.H-y))}
 }
 
 // --- dialog ---

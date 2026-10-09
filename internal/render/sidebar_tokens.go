@@ -152,7 +152,11 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			break
 		}
 	}
-	base := uv.Style{Fg: f.Palette.Text}
+	base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
+	if r.Ws == s.Active {
+		base.Fg, base.Bg = f.Palette.Text, f.Palette.SurfDim
+	}
+	f.Fill(x, y, w, 1, " ", base)
 	var tokens []styledToken
 	hasPane, hasState := false, false
 	for _, t := range configured {
@@ -165,10 +169,10 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 	}
 	if r.Line == 0 {
 		if !hasState {
-			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: f.ThemeColor(sn.Status.Color)}, fixed: true})
+			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg, Attrs: uv.AttrBold}, fixed: true})
 		}
 		if !hasPane {
-			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, fixed: true})
+			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold}, fixed: true})
 		}
 	}
 	for _, t := range configured {
@@ -177,8 +181,11 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		case "state_icon":
 			v.text = sn.Status.Rune
 			v.style.Fg = f.ThemeColor(sn.Status.Color)
+			v.style.Attrs |= uv.AttrBold
 			v.fixed = true
 		case "state_text":
+			v.style.Fg = f.ThemeColor(sn.Status.Color)
+			v.style.Attrs |= uv.AttrBold
 			v.text = sn.Status.Key
 			if label := sn.StateLabels[sn.Status.Key]; label != "" {
 				v.text = label
@@ -209,6 +216,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 		}
 		v.style = tokenStyle(t, v.style)
+		v.style.Attrs &^= uv.AttrFaint
 		tokens = append(tokens, v)
 	}
 	drawTokens(f, x+1, y, max(0, w-1), tokens)
