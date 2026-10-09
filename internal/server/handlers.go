@@ -135,7 +135,7 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		}
 		return s.paneRename(req.ID, p)
 	case api.MethodPaneRead:
-		var p api.PaneReadParams
+		p := api.PaneReadParams{StripANSI: true}
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
@@ -312,7 +312,7 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		}
 		return s.agentFocus(req.ID, p.Target)
 	case api.MethodAgentRead:
-		var p api.AgentReadParams
+		p := api.AgentReadParams{StripANSI: true}
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}

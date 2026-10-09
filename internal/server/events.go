@@ -630,9 +630,6 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 	}
 	var matchRE *regexp.Regexp
-	if p.StripAnsi != nil && !*p.StripAnsi {
-		return api.Failure(req.ID, api.ErrInvalidRequest, "raw output matching is not supported: the terminal buffer stores rendered cells")
-	}
 	switch p.Match.Type {
 	case "substring":
 	case "regex":
@@ -650,7 +647,7 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 	if source == "" {
 		source = "recent"
 	}
-	if source != "visible" && source != "recent" {
+	if source != "visible" && source != "recent" && source != "recent_unwrapped" && source != "recent-unwrapped" {
 		return api.Failure(req.ID, api.ErrInvalidRequest,
 			fmt.Sprintf("read source %q is not supported in this stage", source))
 	}
@@ -686,9 +683,11 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 				resp = s.paneNotFound(req.ID, p.PaneID)
 				return
 			}
-			lines := pane.ScreenLines()
-			if source == "recent" {
-				lines = append(pane.ScrollbackLines(), lines...)
+			strip := p.StripAnsi == nil || *p.StripAnsi
+			lines, err := pane.ReadLines(source, strip)
+			if err != nil {
+				resp = api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+				return
 			}
 			for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 				lines = lines[:len(lines)-1]

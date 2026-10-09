@@ -23,8 +23,8 @@ func TestAdditiveWaitCLIRealServer(t *testing.T) {
 		{[]string{"wait", "agent-status", "p1", "--status", "idle", "--timeout", "0"}, 1, "timeout waiting"},
 		{[]string{"wait", "output", "p1", "--match", ".", "--regex", "--source", "visible", "--timeout", "1000"}, 0, "output_matched"},
 		{[]string{"wait", "output", "p1", "--match", "NEVER_PRINTED_WAIT_PROOF", "--source", "recent", "--timeout", "0"}, 1, "timeout"},
-		{[]string{"wait", "output", "p1", "--match", "x", "--timeout", "0"}, 1, "not supported"},
-		{[]string{"wait", "output", "p1", "--match", "x", "--source", "visible", "--raw", "--timeout", "0"}, 1, "not supported"},
+		{[]string{"wait", "output", "p1", "--match", ".", "--regex", "--timeout", "1000"}, 0, "output_matched"},
+		{[]string{"wait", "output", "p1", "--match", ".", "--regex", "--source", "visible", "--raw", "--timeout", "1000"}, 0, "output_matched"},
 	}
 	for _, tc := range cases {
 		var out, err bytes.Buffer

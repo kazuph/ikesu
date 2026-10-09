@@ -66,6 +66,7 @@ type Pane struct {
 
 	mu            sync.Mutex
 	emu           *vt.Emulator
+	read          *readBuffer
 	dead          bool
 	fgPID         int
 	procName      string
@@ -338,7 +339,7 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 			p.oscProgress = e[1]
 		}
 	}
-	_, _ = p.emu.Write(chunk)
+	p.writeRecorded(chunk)
 	p.mu.Unlock()
 	p.revision.Add(1)
 	p.notifyChanged()
@@ -499,6 +500,9 @@ func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
 	}
 	p.mu.Lock()
 	p.emu.Resize(cols, rows)
+	if p.read != nil {
+		p.read.resize(cols, rows)
+	}
 	p.mu.Unlock()
 	_ = unix.IoctlSetWinsize(p.ptyFD, unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(rows), Col: uint16(cols), Xpixel: uint16(cols * cw), Ypixel: uint16(rows * ch)})
 }
