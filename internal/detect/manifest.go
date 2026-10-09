@@ -11,10 +11,11 @@ import (
 
 // manifestFile mirrors one src/detect/manifests/*.toml file.
 type manifestFile struct {
-	ID      string   `toml:"id"`
-	Version string   `toml:"version"`
-	Aliases []string `toml:"aliases"`
-	Rules   []rule   `toml:"rules"`
+	ID        string   `toml:"id"`
+	Version   string   `toml:"version"`
+	ForkOwned bool     `toml:"fork_owned"`
+	Aliases   []string `toml:"aliases"`
+	Rules     []rule   `toml:"rules"`
 }
 
 type rule struct {
@@ -55,9 +56,10 @@ type compiledGate struct {
 }
 
 type manifest struct {
-	id      string
-	aliases []string
-	rules   []rule // compiled gates attached
+	id        string
+	forkOwned bool
+	aliases   []string
+	rules     []rule // compiled gates attached
 }
 
 // manifests is the parsed + compiled manifest set, keyed by id.
@@ -87,7 +89,7 @@ func init() {
 			LoadWarnings = append(LoadWarnings, fmt.Sprintf("%s: %v", e.Name(), err))
 			continue
 		}
-		m := &manifest{id: mf.ID, aliases: mf.Aliases}
+		m := &manifest{id: mf.ID, aliases: mf.Aliases, forkOwned: mf.ForkOwned}
 		for _, r := range mf.Rules {
 			if !knownRegion(r.Region) {
 				LoadWarnings = append(LoadWarnings, fmt.Sprintf("%s: rule %s: unknown region %q", e.Name(), r.ID, r.Region))

@@ -86,16 +86,39 @@ func (a *App) openRenamePaneDialog(pid int) {
 
 // agentPane splits the focused pane's tab to the right and runs argv in the
 // new pane (menu "New * agent" items).
-func (a *App) agentPane(argv ...string) {
+func (a *App) agentPane(agent string) {
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return
 	}
-	a.exec(model.CmdSplitImplicit{
-		Workspace: a.st.Active, Tab: ws.ActiveTab,
-		Dir: layout.Vertical, Focus: true,
-		Argv: argv,
+	argv, configured := a.sidebarConfig.AgentStart.Commands[agent]
+	if !configured {
+		argv = []string{agent}
+	}
+	if len(argv) == 0 || argv[0] == "" {
+		a.worktreeError(fmt.Errorf("agent preset %s has no command", agent))
+		return
+	}
+	cwd := ws.Cwd
+	if p := a.sup.Get(a.focusedPane()); p != nil {
+		cwd = p.SpawnCwd()
+	}
+	a.lastSpawnError = nil
+	a.exec(model.CmdSplitPane{
+		Workspace: a.st.Active, Pane: a.focusedPane(), Dir: layout.Vertical,
+		Ratio: 0.5, Focus: true, Cwd: cwd, Env: a.sidebarConfig.Agent.Env, Argv: append([]string{}, argv...),
 	})
+	pid := a.focusedPane()
+	if a.lastSpawnError != nil {
+		err := a.lastSpawnError
+		a.exec(model.CmdClosePane{Pane: pid})
+		a.worktreeError(err)
+		return
+	}
+	if p := a.sup.Get(pid); p != nil {
+		p.SetAgent(agent)
+	}
+	a.SetReported(pid, agent, "unknown")
 }
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).

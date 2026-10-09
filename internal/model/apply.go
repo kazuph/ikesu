@@ -97,7 +97,7 @@ func (s *AppState) Apply(cmd Command) []Effect {
 			cwd = ws.Cwd
 		}
 		return []Effect{
-			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env},
+			EffSpawnPane{Pane: id, Cwd: cwd, Env: c.Env, Argv: c.Argv},
 			EffSyncLayout{},
 		}
 	case CmdRenameWorkspace:

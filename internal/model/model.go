@@ -162,6 +162,7 @@ type (
 		Focus     bool
 		Cwd       string
 		Env       map[string]string
+		Argv      []string
 	}
 	// CmdRenameWorkspace renames workspace idx.
 	CmdRenameWorkspace struct {
