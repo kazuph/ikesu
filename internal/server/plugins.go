@@ -74,6 +74,9 @@ func (s *Server) pluginContext(requestID string, supplied plugin.Context) plugin
 	return context
 }
 func (s *Server) pluginRequest(req *api.Request) api.Response {
+	if strings.HasPrefix(req.Method, "plugin.pane.") {
+		return s.pluginPaneRequest(req)
+	}
 	engine := s.ensurePlugins()
 	if resp, ok := engine.Store.RegistryRequest(req); ok {
 		if resp.Err == nil && req.Method != "plugin.list" {

@@ -15,6 +15,9 @@ import (
 
 // focusedPane returns the focused pane id of the active workspace.
 func (a *App) focusedPane() int {
+	if a.st.OverlayVisible() {
+		return a.st.Overlay.PaneID
+	}
 	if a.st.PopupVisible() {
 		return a.st.Popup.PaneID
 	}
@@ -54,6 +57,13 @@ func (a *App) draw() {
 		return
 	}
 	panes := a.paneSnaps()
+	if a.st.OverlayVisible() {
+		if p := a.sup.Get(a.st.Overlay.PaneID); p != nil {
+			r := a.innerRect(p.ID)
+			sn := p.Snapshot()
+			panes[p.ID] = &render.PaneSnap{Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: labelFor(sn, p), Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen}
+		}
+	}
 	if a.st.PopupVisible() {
 		if p := a.sup.Get(a.st.Popup.PaneID); p != nil {
 			r := a.innerRect(p.ID)

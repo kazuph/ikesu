@@ -215,6 +215,10 @@ func (a *App) newWorkspace() {
 // closeFocusedPane closes the focused pane; on the last pane of a workspace
 // it asks the close-workspace dialog (or quit dialog on the last workspace).
 func (a *App) closeFocusedPane() {
+	if a.st.OverlayVisible() {
+		a.exec(model.CmdCloseOverlay{})
+		return
+	}
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return

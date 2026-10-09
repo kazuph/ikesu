@@ -106,3 +106,28 @@ command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_EVENT\""]
 		t.Fatal(rejected)
 	}
 }
+
+func TestOverlaySocketCommandAndPaneAddressing(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startPluginServer(t)
+	defer stopServer(t, dir, done)
+	var before api.PaneListResult
+	apiOK(t, dir, "pane.list", map[string]any{}, &before)
+	var opened api.CommandExecutedResult
+	apiOK(t, dir, "pane.command.execute", map[string]any{"pane_id": "p1", "action": "overlay", "command": "/bin/cat"}, &opened)
+	if opened.Pane == nil || opened.Pane.PaneID == "p1" || opened.Pane.WorkspaceID != "s1" || opened.Pane.TabID != "s1:t1" || !opened.Pane.Focused {
+		t.Fatal(opened)
+	}
+	var during api.PaneListResult
+	apiOK(t, dir, "pane.list", map[string]any{}, &during)
+	if len(during.Panes) != len(before.Panes)+1 {
+		t.Fatal(before, during)
+	}
+	apiOK(t, dir, "pane.send_text", map[string]any{"pane_id": opened.Pane.PaneID, "text": "socket-overlay-proof\n"}, nil)
+	apiOK(t, dir, "pane.close", map[string]any{"pane_id": opened.Pane.PaneID}, nil)
+	var after api.PaneListResult
+	apiOK(t, dir, "pane.list", map[string]any{}, &after)
+	if len(after.Panes) != len(before.Panes) || after.Panes[0].PaneID != "p1" || !after.Panes[0].Focused {
+		t.Fatal(after)
+	}
+}

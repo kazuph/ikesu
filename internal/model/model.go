@@ -63,6 +63,8 @@ type AppState struct {
 	Workspaces                                          []*Workspace
 	MobileWidthThreshold                                int
 	Popup                                               *PopupPaneState
+	Popups                                              map[WorkspaceID]*PopupPaneState
+	Overlay                                             *OverlayPaneState
 	Active                                              int // index into Workspaces
 	SidebarVisible                                      bool
 	SidebarSize, SidebarMin, SidebarMax, SidebarDefault int
@@ -78,9 +80,10 @@ type AppState struct {
 	// PaneLabels holds optional API-assigned pane names (pane.rename).
 	PaneLabels map[PaneID]string
 
-	nextPaneID      PaneID
-	nextWorkspaceID WorkspaceID
-	nextTabID       int
+	nextPaneID        PaneID
+	nextRuntimePaneID PaneID
+	nextWorkspaceID   WorkspaceID
+	nextTabID         int
 }
 
 // New returns an AppState with one workspace containing one pane.
@@ -122,6 +125,17 @@ func (s *AppState) PeekNextTabID() int { return s.nextTabID + 1 }
 
 // FindPane locates a pane, returning workspace and tab indices.
 func (s *AppState) FindPane(pane PaneID) (wsIdx, tabIdx int) {
+	if s.Overlay != nil && pane == s.Overlay.PaneID {
+		for i, w := range s.Workspaces {
+			if w.ID == s.Overlay.WorkspaceID {
+				for j, t := range w.Tabs {
+					if t.ID == s.Overlay.TabID {
+						return i, j
+					}
+				}
+			}
+		}
+	}
 	for i, ws := range s.Workspaces {
 		for j, t := range ws.Tabs {
 			for _, id := range t.Layout.PaneIDs() {

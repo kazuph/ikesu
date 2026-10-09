@@ -33,6 +33,11 @@ func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
 			}
 		}
 	}
+	if st.Overlay != nil {
+		if info, ok := s.paneInfo(st.Overlay.PaneID); ok && (p.WorkspaceID == nil || *p.WorkspaceID == "" || s.findWorkspace(*p.WorkspaceID) == st.WorkspaceOf(st.Overlay.PaneID)) {
+			out.Panes = append(out.Panes, info)
+		}
+	}
 	return api.Success(id, out)
 }
 
@@ -87,6 +92,11 @@ func (s *Server) paneForProcess(pid int) int {
 					}
 				}
 			}
+		}
+	}
+	if st.Overlay != nil {
+		if p := s.app.Supervisor().Get(st.Overlay.PaneID); p != nil {
+			shells[p.ShellPID()] = st.Overlay.PaneID
 		}
 	}
 	for cur, depth := pid, 0; cur > 1 && depth < 64; depth++ {

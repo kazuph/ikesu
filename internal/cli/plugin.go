@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/plugin"
+	"golang.org/x/term"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -37,6 +40,82 @@ func (r *runner) pluginCLI(args []string) int {
 	p := map[string]any{}
 	rawJSON := false
 	switch args[0] {
+	case "pane":
+		return r.pluginPaneCLI(args[1:])
+	case "install":
+		if len(args) < 2 {
+			return usageErr(r, "usage: gtx plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]")
+		}
+		source, ref, yes := args[1], "", false
+		for i := 2; i < len(args); {
+			switch args[i] {
+			case "--yes":
+				yes = true
+				i++
+			case "--ref":
+				v, ok := flagValue(args, &i)
+				if !ok {
+					return usageErr(r, "--ref requires REF")
+				}
+				ref = v
+			default:
+				return usageErr(r, "unsupported install flag: "+args[i])
+			}
+		}
+		if !yes && !term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Fprintln(r.errOut(), "noninteractive plugin install requires --yes")
+			return 1
+		}
+		item, err := store.Install(source, ref, func(preview plugin.InstallPreview) bool {
+			if yes {
+				return true
+			}
+			fmt.Fprintf(r.errOut(), "Install %s from %s?\n", preview.Manifest.ID, source)
+			for _, b := range preview.Manifest.Build {
+				fmt.Fprintf(r.errOut(), "  build: %q\n", b.Command)
+			}
+			for _, a := range preview.Manifest.Actions {
+				fmt.Fprintf(r.errOut(), "  action %s: %q\n", a.ID, a.Command)
+			}
+			for _, e := range preview.Manifest.Events {
+				fmt.Fprintf(r.errOut(), "  event %s: %q\n", e.On, e.Command)
+			}
+			for _, p := range preview.Manifest.Panes {
+				fmt.Fprintf(r.errOut(), "  pane %s: %q\n", p.ID, p.Command)
+			}
+			fmt.Fprint(r.errOut(), "Continue? [y/N] ")
+			answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+			return strings.EqualFold(strings.TrimSpace(answer), "y") || strings.EqualFold(strings.TrimSpace(answer), "yes")
+		})
+		if err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+		if raw, err := r.request("cli:plugin", "plugin.link", map[string]any{"path": item.ManifestPath, "enabled": true, "source": item.Source}); err == nil {
+			var resp api.Response
+			if json.Unmarshal(raw, &resp) != nil || resp.Err != nil {
+				fmt.Fprintln(r.errOut(), string(raw))
+				return 1
+			}
+		}
+		b, _ := json.Marshal(api.Success("cli:plugin", map[string]any{"type": "plugin_linked", "plugin": item}))
+		fmt.Fprintln(r.out(), string(b))
+		return 0
+	case "uninstall":
+		if len(args) != 2 {
+			return usageErr(r, "usage: gtx plugin uninstall <plugin_id|owner/repo[/subdir...]>")
+		}
+		id, removed, err := store.Uninstall(args[1])
+		if err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+		if removed {
+			_, _ = r.request("cli:plugin", "plugin.unlink", map[string]any{"plugin_id": id})
+		}
+		b, _ := json.Marshal(api.Success("cli:plugin", map[string]any{"type": "plugin_unlinked", "plugin_id": id, "removed": removed}))
+		fmt.Fprintln(r.out(), string(b))
+		return 0
 	case "action":
 		if len(args) < 2 {
 			return usageErr(r, "usage: gtx plugin action <list|invoke>")

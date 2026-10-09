@@ -7,6 +7,7 @@ import (
 	"github.com/creack/pty"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Spawn starts a login shell in cwd inside a new pane of the given size.
@@ -31,7 +32,11 @@ func (s *Supervisor) SpawnAgent(id int, cwd string, cols, rows int, extra, argv 
 	return s.spawnWith(id, cwd, cols, rows, env, argv, resolved)
 }
 
-func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, executionArgv []string) (*Pane, error) {
+func (s *Supervisor) SpawnPopup(id int, cwd string, cols, rows int, extra, argv []string) (*Pane, error) {
+	return s.spawnWith(id, cwd, cols, rows, extra, argv, argv, true)
+}
+
+func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, executionArgv []string, withoutPane ...bool) (*Pane, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
@@ -83,6 +88,16 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		cmd.Env = append(cmd.Env, s.Env(id)...)
 	}
 	cmd.Env = append(cmd.Env, extra...)
+	if len(withoutPane) > 0 && withoutPane[0] {
+		filtered := make([]string, 0, len(cmd.Env))
+		for _, kv := range cmd.Env {
+			key, _, _ := strings.Cut(kv, "=")
+			if key != "GTX_PANE_ID" && key != "GOTERRACE_PANE_ID" {
+				filtered = append(filtered, kv)
+			}
+		}
+		cmd.Env = filtered
+	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		emu.Close()

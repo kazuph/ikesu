@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
+	"os"
 )
 
 func (s *Server) popupRequest(req *api.Request) api.Response {
@@ -13,7 +14,7 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		if p.Action != "popup" {
+		if p.Action != "popup" && p.Action != "overlay" {
 			return api.Failure(req.ID, api.ErrInvalidRequest, "unsupported command action: "+p.Action)
 		}
 		pid, _, _, ok := s.findPane(p.PaneID)
@@ -23,6 +24,22 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		pane := s.app.Supervisor().Get(pid)
 		if pane == nil {
 			return s.paneNotFound(req.ID, p.PaneID)
+		}
+		if p.Action == "overlay" {
+			shell := os.Getenv("SHELL")
+			if shell == "" {
+				shell = "/bin/zsh"
+			}
+			overlay, err := s.app.OpenOverlay(pid, pane.Snapshot().Cwd, []string{shell, "-c", p.Command}, nil)
+			if err != nil {
+				code := api.ErrInvalidRequest
+				if err.Error() == "ui_busy" {
+					code = "ui_busy"
+				}
+				return api.Failure(req.ID, code, err.Error())
+			}
+			info, _ := s.paneInfo(overlay)
+			return api.Success(req.ID, api.CommandExecutedResult{Type: "command_executed", Pane: &info})
 		}
 		tid, err := s.app.OpenPopup(pane.Snapshot().Cwd, p.Command, p.Width, p.Height)
 		if err != nil {

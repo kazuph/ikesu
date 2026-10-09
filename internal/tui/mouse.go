@@ -371,7 +371,7 @@ func (a *App) paneAt(x, y int) (layout.PaneRect, bool) {
 	if t == nil {
 		return layout.PaneRect{}, false
 	}
-	for _, pr := range t.PaneRects(a.st.PanesArea()) {
+	for _, pr := range a.st.DisplayPaneRects() {
 		if pointIn(x, y, pr.Rect) {
 			return pr, true
 		}

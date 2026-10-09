@@ -488,7 +488,7 @@ func (s *Server) tabInfo(wsIdx, tabIdx int) api.TabInfo {
 
 func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 	st := s.app.State()
-	wsIdx, tabIdx := st.FindPane(pid)
+	_, wsIdx, tabIdx, _ := s.findPane(fmtPaneID(pid))
 	if wsIdx < 0 {
 		return api.PaneInfo{}, false
 	}
@@ -515,6 +515,11 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 			_, rows = model.PaneTermSize(pr.Rect, st.PaneBorders)
 		}
 	}
+	if st.Overlay != nil && pid == st.Overlay.PaneID {
+		if r, ok := st.OverlayRect(); ok {
+			_, rows = model.PaneTermSize(r, st.PaneBorders)
+		}
+	}
 	metadata := s.paneMetadataView(pid)
 	if metadata.Title == "" {
 		if rec, ok := s.app.SessionRecord(pid); ok {
@@ -528,7 +533,7 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 		TabID:       fmtTabID(ws.ID, tab.ID),
 		TerminalID:  fmtPaneID(pid),
 		Focused: wsIdx == st.Active && ws.ActiveTab == tabIdx &&
-			tab.Layout.Focused() == pid,
+			(tab.Layout.Focused() == pid && !st.OverlayVisible() || st.OverlayVisible() && st.Overlay.PaneID == pid),
 		AgentStatus:   s.app.PaneStatusKey(pid),
 		Agent:         optString(agent),
 		Cwd:           optString(cwd),

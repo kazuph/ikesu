@@ -48,6 +48,7 @@ type clientMsg struct {
 type Server struct {
 	plugins           *plugin.Engine
 	pluginEvents      bool
+	pluginPanes       map[int]pluginPaneOwner
 	agentLaunches     map[int]*agentLaunch
 	closing           atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
 	workspaceMetadata map[int]map[string]*workspaceMetadata
@@ -289,7 +290,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetChangeHook(s.markSessionDirty)
 	s.app.SetRestartHook(s.requestRestart)
 	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
-	s.app.SetPaneClosedHook(s.ledgerDel)
+	s.app.SetPaneClosedHook(func(pid int) { s.ledgerDel(pid); delete(s.pluginPanes, pid) })
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.jobCache.wake = make(chan struct{}, 1)
 	s.app.SetJobSource(s.cachedJobSnapshot)

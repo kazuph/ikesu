@@ -337,7 +337,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	if t == nil {
 		return
 	}
-	for _, pr := range t.PaneRects(area) {
+	for _, pr := range s.DisplayPaneRects() {
 		snap := in.Panes[pr.ID]
 		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
 		ix, iy, iw, ih := inner.X, inner.Y, inner.W, inner.H

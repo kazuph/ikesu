@@ -154,6 +154,8 @@ type App struct {
 	mobileSwitcher    bool
 	mobileScroll      int
 	popupSel          *selState
+	popupSelections   map[int]*selState
+	popupCopies       map[int]*copyMode
 	popupCopy         *copyMode
 	popupAutoScroll   int
 	restoreHook       func(dryRun bool)                              // main menu "Restore agents…" (server mode only)

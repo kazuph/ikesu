@@ -18,12 +18,13 @@ type CmdOpenPopup struct {
 	WorkspaceID   WorkspaceID
 	Cwd           string
 	Argv          []string
+	Env           map[string]string
 	Width, Height api.PopupSize
 }
 
 func (CmdOpenPopup) isCommand() {}
 
-type CmdClosePopup struct{}
+type CmdClosePopup struct{ Pane PaneID }
 
 func (CmdClosePopup) isCommand() {}
 
@@ -63,17 +64,60 @@ func (s *AppState) openPopup(c CmdOpenPopup) []Effect {
 	if !owner {
 		return nil
 	}
-	effects := s.closePopup()
-	id := s.allocPane()
+	if s.Popups == nil {
+		s.Popups = map[WorkspaceID]*PopupPaneState{}
+		if s.Popup != nil {
+			s.Popups[s.Popup.WorkspaceID] = s.Popup
+		}
+	}
+	effects := s.closePopupPane(s.Popups[c.WorkspaceID])
+	s.nextRuntimePaneID = max(s.nextRuntimePaneID, s.nextPaneID) + 1
+	id := s.nextRuntimePaneID
 	s.Popup = &PopupPaneState{WorkspaceID: c.WorkspaceID, PaneID: id, TerminalID: fmt.Sprintf("p%d", id), Width: c.Width, Height: c.Height}
-	return append(effects, EffSpawnPane{Pane: id, Cwd: c.Cwd, Argv: c.Argv}, EffSyncLayout{})
+	s.Popups[c.WorkspaceID] = s.Popup
+	return append(effects, EffSpawnPane{Pane: id, Cwd: c.Cwd, Argv: c.Argv, Env: c.Env}, EffSyncLayout{})
 }
 
-func (s *AppState) closePopup() []Effect {
-	if s.Popup == nil {
+func (s *AppState) PopupByPane(id PaneID) *PopupPaneState {
+	if s.Popup != nil && s.Popup.PaneID == id {
+		return s.Popup
+	}
+	for _, pop := range s.Popups {
+		if pop.PaneID == id {
+			return pop
+		}
+	}
+	return nil
+}
+func (s *AppState) closePopup() []Effect { return s.closePopupPane(s.Popup) }
+func (s *AppState) closePopupPane(pop *PopupPaneState) []Effect {
+	if pop == nil {
 		return nil
 	}
-	id := s.Popup.PaneID
-	s.Popup = nil
-	return []Effect{EffKillPane{Pane: id}}
+	delete(s.Popups, pop.WorkspaceID)
+	if s.Popup == pop {
+		s.Popup = nil
+	}
+	return []Effect{EffKillPane{Pane: pop.PaneID}}
+}
+func (s *AppState) syncPopupOwner() []Effect {
+	if s.Popups == nil {
+		return nil
+	}
+	owners := map[WorkspaceID]bool{}
+	for _, ws := range s.Workspaces {
+		owners[ws.ID] = true
+	}
+	var effects []Effect
+	for id, pop := range s.Popups {
+		if !owners[id] {
+			effects = append(effects, s.closePopupPane(pop)...)
+		}
+	}
+	if ws := s.ActiveWorkspace(); ws != nil {
+		if pop := s.Popups[ws.ID]; pop != nil {
+			s.Popup = pop
+		}
+	}
+	return effects
 }
