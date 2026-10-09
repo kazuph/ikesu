@@ -43,6 +43,7 @@ var builtinRestoreTemplates = map[string]string{
 	"claude": "claude --resume {session_id}",
 	"codex":  "codex resume {session_id}",
 	"devin":  "devin --resume {session_id}",
+	"grok":   "grok --resume {session_id}",
 }
 
 // --- ledger --------------------------------------------------------------
@@ -253,8 +254,12 @@ func (s *Server) observePaneSession(pid int) {
 		return
 	}
 	if id, ok2 := observeCmdline(job); ok2 {
-		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
-		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
+		source := "observed:cmdline"
+		if spec, native := nativeResumeAgents[agent]; native {
+			source = spec.Source
+		}
+		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: source})
+		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: source})
 		if ok {
 			s.observedStart[pid] = start
 		}
@@ -470,6 +475,18 @@ func observeCodexSessionFile(cwd string, start time.Time) (string, bool) {
 func observeCmdline(job platform.ForegroundJob) (string, bool) {
 	found := ""
 	for _, pr := range job.Processes {
+		if id, native, ok := observeNativeResume(pr); native {
+			if !ok {
+				return "", false
+			}
+			if id != "" {
+				if found != "" && found != id {
+					return "", false
+				}
+				found = id
+			}
+			continue
+		}
 		for i, arg := range pr.Argv {
 			var v string
 			switch {
@@ -545,6 +562,9 @@ func shellQuote(s string) string {
 // Returns ok=false when no safe command can be formed — the pane stays a
 // shell rather than resuming the wrong conversation.
 func (s *Server) buildResumeCommand(agent, kind, value string) (string, bool) {
+	if _, native := nativeResumeAgents[agent]; native && (kind != "id" || !session.SafeSessionID(value)) {
+		return "", false
+	}
 	if argv, ok := s.cfg.AgentStartCommand(agent); ok {
 		args := append(argv, resumeArgsFor(agent)...)
 		args = append(args, value)
