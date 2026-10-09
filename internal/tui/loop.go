@@ -18,6 +18,9 @@ func (a *App) onInput(ev input.Event) {
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
+		if a.navigator != nil {
+			return
+		}
 		if a.settings != nil || a.menu != nil || a.help != nil {
 			return
 		}

@@ -17,6 +17,10 @@ import (
 
 // onMouse is the mouse entry point; overlays grab events before panes.
 func (a *App) onMouse(ev input.Event) {
+	if a.navigator != nil {
+		a.navigatorMouse(ev)
+		return
+	}
 	m := ev.Mouse
 	if a.settings == nil && a.help == nil && a.dialog == nil && a.menu == nil && a.mobileMouse(ev) {
 		a.dirty = true

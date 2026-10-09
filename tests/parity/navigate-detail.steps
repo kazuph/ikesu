@@ -5,12 +5,15 @@ sleep 200ms
 send "\x02w"
 sleep 200ms
 screen @OUT@/workspace-open.txt
+cells @OUT@/workspace-open.json
 send "\x1b[A"
 sleep 200ms
 screen @OUT@/workspace-up.txt
+cells @OUT@/workspace-up.json
 send "\x1b[B"
 sleep 200ms
 screen @OUT@/workspace-down.txt
+cells @OUT@/workspace-down.json
 send "1"
 sleep 200ms
 screen @OUT@/workspace-number.txt
@@ -22,14 +25,23 @@ sleep 200ms
 send "\x02g"
 sleep 200ms
 screen @OUT@/navigator-open.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/navigator-resize.txt
+cells @OUT@/navigator-resize.json
+resize 160 45
+sleep 200ms
+cells @OUT@/navigator-open.json
 send "\x1b[B"
 sleep 200ms
 screen @OUT@/navigator-down.txt
+cells @OUT@/navigator-down.json
 send "/"
 sleep 200ms
 send "parity"
 sleep 200ms
 screen @OUT@/navigator-search.txt
+cells @OUT@/navigator-search.json
 send "\x1b"
 sleep 200ms
 screen @OUT@/navigator-search-escape.txt

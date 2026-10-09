@@ -71,7 +71,7 @@ func (a *App) modeKey(k uv.Key) {
 			a.workspaceNavigate = false
 		}
 	case k.Code == 'g':
-		a.unsupportedSidebar("session navigator")
+		a.openNavigator()
 	default:
 		a.prefixKey(k)
 	}

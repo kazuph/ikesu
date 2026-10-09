@@ -1,0 +1,51 @@
+send "\x02g"
+sleep 200ms
+resize 165 47
+sleep 200ms
+screen @OUT@/size-165-47.txt
+cells @OUT@/size-165-47.json
+resize 120 31
+sleep 200ms
+screen @OUT@/size-120-31.txt
+cells @OUT@/size-120-31.json
+resize 80 30
+sleep 200ms
+screen @OUT@/size-80-30.txt
+cells @OUT@/size-80-30.json
+resize 40 45
+sleep 200ms
+screen @OUT@/size-40-45.txt
+cells @OUT@/size-40-45.json
+resize 160 45
+sleep 200ms
+screen @OUT@/size-160-45.txt
+cells @OUT@/size-160-45.json
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/wheel-down.txt
+cells @OUT@/wheel-down.json
+send "w"
+sleep 200ms
+screen @OUT@/state-working.txt
+cells @OUT@/state-working.json
+send "a"
+sleep 200ms
+screen @OUT@/state-all.txt
+cells @OUT@/state-all.json
+send "/"
+sleep 200ms
+screen @OUT@/search.txt
+cells @OUT@/search.json
+send "home"
+sleep 200ms
+screen @OUT@/search-text.txt
+cells @OUT@/search-text.json
+send "\r"
+sleep 200ms
+screen @OUT@/search-enter.txt
+cells @OUT@/search-enter.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/search-escape.txt
+cells @OUT@/search-escape.json
+kill

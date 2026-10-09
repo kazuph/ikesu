@@ -15,6 +15,10 @@ func isCtrlB(k uv.Key) bool {
 
 // handleKey routes one key event.
 func (a *App) handleKey(k uv.Key, raw []byte) {
+	if a.navigator != nil {
+		a.navigatorKey(k)
+		return
+	}
 	if a.settings != nil {
 		a.settingsKey(k)
 		return
@@ -128,6 +132,8 @@ func (a *App) prefixKey(k uv.Key) {
 	case a.splitHKeys[k.Code]:
 		// [keys] split_horizontal (default prefix+" and prefix+minus).
 		a.exec(model.CmdSplitFocused{Dir: layout.Horizontal})
+	case code == 'g':
+		a.openNavigator()
 	case code == 'r':
 		a.resizeMode = true
 	case code == 'w':

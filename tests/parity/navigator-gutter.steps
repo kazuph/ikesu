@@ -1,0 +1,170 @@
+send "\x02c"
+sleep 100ms
+send "tab-0"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-1"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-2"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-3"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-4"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-5"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-6"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-7"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-8"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-9"
+send "\r"
+sleep 150ms
+send "\x02c"
+sleep 100ms
+send "tab-10"
+send "\r"
+sleep 150ms
+send "\x02W"
+sleep 150ms
+send "\x03"
+send "workspace-name"
+send "\r"
+sleep 150ms
+resize 100 10
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-10.txt
+cells @OUT@/height-10.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-10.txt
+cells @OUT@/wheel-10.json
+send "\x1b"
+sleep 150ms
+resize 100 12
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-12.txt
+cells @OUT@/height-12.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-12.txt
+cells @OUT@/wheel-12.json
+send "\x1b"
+sleep 150ms
+resize 100 15
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-15.txt
+cells @OUT@/height-15.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-15.txt
+cells @OUT@/wheel-15.json
+send "\x1b"
+sleep 150ms
+resize 100 18
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-18.txt
+cells @OUT@/height-18.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-18.txt
+cells @OUT@/wheel-18.json
+send "\x1b"
+sleep 150ms
+resize 100 20
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-20.txt
+cells @OUT@/height-20.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-20.txt
+cells @OUT@/wheel-20.json
+send "\x1b"
+sleep 150ms
+resize 100 25
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-25.txt
+cells @OUT@/height-25.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-25.txt
+cells @OUT@/wheel-25.json
+send "\x1b"
+sleep 150ms
+resize 100 30
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-30.txt
+cells @OUT@/height-30.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-30.txt
+cells @OUT@/wheel-30.json
+send "\x1b"
+sleep 150ms
+resize 100 35
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-35.txt
+cells @OUT@/height-35.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-35.txt
+cells @OUT@/wheel-35.json
+send "\x1b"
+sleep 150ms
+resize 100 40
+sleep 150ms
+send "\x02g"
+sleep 150ms
+screen @OUT@/height-40.txt
+cells @OUT@/height-40.json
+mouse wheel-down 50 5
+sleep 150ms
+screen @OUT@/wheel-40.txt
+cells @OUT@/wheel-40.json
+send "\x1b"
+sleep 150ms
+kill

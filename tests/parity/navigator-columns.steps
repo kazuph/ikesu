@@ -1,0 +1,192 @@
+send "\x02g"
+sleep 250ms
+resize 48 45
+sleep 150ms
+screen @OUT@/width-48.txt
+resize 49 45
+sleep 150ms
+screen @OUT@/width-49.txt
+resize 50 45
+sleep 150ms
+screen @OUT@/width-50.txt
+resize 51 45
+sleep 150ms
+screen @OUT@/width-51.txt
+resize 52 45
+sleep 150ms
+screen @OUT@/width-52.txt
+resize 53 45
+sleep 150ms
+screen @OUT@/width-53.txt
+resize 54 45
+sleep 150ms
+screen @OUT@/width-54.txt
+resize 55 45
+sleep 150ms
+screen @OUT@/width-55.txt
+resize 56 45
+sleep 150ms
+screen @OUT@/width-56.txt
+resize 57 45
+sleep 150ms
+screen @OUT@/width-57.txt
+resize 58 45
+sleep 150ms
+screen @OUT@/width-58.txt
+resize 59 45
+sleep 150ms
+screen @OUT@/width-59.txt
+resize 60 45
+sleep 150ms
+screen @OUT@/width-60.txt
+resize 61 45
+sleep 150ms
+screen @OUT@/width-61.txt
+resize 62 45
+sleep 150ms
+screen @OUT@/width-62.txt
+resize 63 45
+sleep 150ms
+screen @OUT@/width-63.txt
+resize 64 45
+sleep 150ms
+screen @OUT@/width-64.txt
+resize 65 45
+sleep 150ms
+screen @OUT@/width-65.txt
+resize 66 45
+sleep 150ms
+screen @OUT@/width-66.txt
+resize 67 45
+sleep 150ms
+screen @OUT@/width-67.txt
+resize 68 45
+sleep 150ms
+screen @OUT@/width-68.txt
+resize 69 45
+sleep 150ms
+screen @OUT@/width-69.txt
+resize 70 45
+sleep 150ms
+screen @OUT@/width-70.txt
+resize 71 45
+sleep 150ms
+screen @OUT@/width-71.txt
+resize 72 45
+sleep 150ms
+screen @OUT@/width-72.txt
+resize 73 45
+sleep 150ms
+screen @OUT@/width-73.txt
+resize 74 45
+sleep 150ms
+screen @OUT@/width-74.txt
+resize 75 45
+sleep 150ms
+screen @OUT@/width-75.txt
+resize 76 45
+sleep 150ms
+screen @OUT@/width-76.txt
+resize 77 45
+sleep 150ms
+screen @OUT@/width-77.txt
+resize 78 45
+sleep 150ms
+screen @OUT@/width-78.txt
+resize 79 45
+sleep 150ms
+screen @OUT@/width-79.txt
+resize 80 45
+sleep 150ms
+screen @OUT@/width-80.txt
+resize 81 45
+sleep 150ms
+screen @OUT@/width-81.txt
+resize 82 45
+sleep 150ms
+screen @OUT@/width-82.txt
+resize 83 45
+sleep 150ms
+screen @OUT@/width-83.txt
+resize 84 45
+sleep 150ms
+screen @OUT@/width-84.txt
+resize 85 45
+sleep 150ms
+screen @OUT@/width-85.txt
+resize 86 45
+sleep 150ms
+screen @OUT@/width-86.txt
+resize 87 45
+sleep 150ms
+screen @OUT@/width-87.txt
+resize 88 45
+sleep 150ms
+screen @OUT@/width-88.txt
+resize 89 45
+sleep 150ms
+screen @OUT@/width-89.txt
+resize 90 45
+sleep 150ms
+screen @OUT@/width-90.txt
+resize 91 45
+sleep 150ms
+screen @OUT@/width-91.txt
+resize 92 45
+sleep 150ms
+screen @OUT@/width-92.txt
+resize 93 45
+sleep 150ms
+screen @OUT@/width-93.txt
+resize 94 45
+sleep 150ms
+screen @OUT@/width-94.txt
+resize 95 45
+sleep 150ms
+screen @OUT@/width-95.txt
+resize 96 45
+sleep 150ms
+screen @OUT@/width-96.txt
+resize 97 45
+sleep 150ms
+screen @OUT@/width-97.txt
+resize 98 45
+sleep 150ms
+screen @OUT@/width-98.txt
+resize 99 45
+sleep 150ms
+screen @OUT@/width-99.txt
+resize 100 45
+sleep 150ms
+screen @OUT@/width-100.txt
+resize 101 45
+sleep 150ms
+screen @OUT@/width-101.txt
+resize 102 45
+sleep 150ms
+screen @OUT@/width-102.txt
+resize 103 45
+sleep 150ms
+screen @OUT@/width-103.txt
+resize 104 45
+sleep 150ms
+screen @OUT@/width-104.txt
+resize 105 45
+sleep 150ms
+screen @OUT@/width-105.txt
+resize 106 45
+sleep 150ms
+screen @OUT@/width-106.txt
+resize 107 45
+sleep 150ms
+screen @OUT@/width-107.txt
+resize 108 45
+sleep 150ms
+screen @OUT@/width-108.txt
+resize 109 45
+sleep 150ms
+screen @OUT@/width-109.txt
+resize 110 45
+sleep 150ms
+screen @OUT@/width-110.txt
+kill

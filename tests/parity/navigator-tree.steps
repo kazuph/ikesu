@@ -1,0 +1,48 @@
+send "\x02v"
+sleep 200ms
+send "\x02g"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b[A"
+sleep 200ms
+screen @OUT@/up.txt
+send "\x1b[D"
+sleep 200ms
+screen @OUT@/left.txt
+send "\x1b[C"
+sleep 200ms
+screen @OUT@/right.txt
+send "\t"
+sleep 200ms
+screen @OUT@/tab.txt
+send "j"
+sleep 200ms
+screen @OUT@/j.txt
+send "/"
+sleep 200ms
+send "pane 2"
+sleep 200ms
+screen @OUT@/query.txt
+send "\x7f"
+sleep 200ms
+screen @OUT@/backspace.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+send "\x02g"
+sleep 200ms
+click 155 42
+sleep 200ms
+screen @OUT@/outside.txt
+send "\x1b"
+sleep 200ms
+send "\x02g"
+sleep 200ms
+click 17 8
+sleep 200ms
+screen @OUT@/click-group.txt
+click 20 9
+sleep 200ms
+screen @OUT@/click-pane.txt
+kill

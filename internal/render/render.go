@@ -140,6 +140,7 @@ type Input struct {
 	DraggedWorkspace  int
 	Dragging          bool
 
+	Navigator     *Navigator
 	Settings      *Settings
 	Menu          *Menu
 	Dialog        *Dialog
@@ -270,6 +271,9 @@ func Compose(in Input) *Output {
 	}
 	if in.Settings != nil {
 		drawSettings(f, in.Settings)
+	}
+	if in.Navigator != nil {
+		drawNavigator(f, in.Navigator)
 	}
 	return out
 }

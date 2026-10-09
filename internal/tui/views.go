@@ -74,6 +74,7 @@ func (a *App) draw() {
 	}
 	in := render.Input{
 		State:          a.st,
+		Navigator:      a.navigatorRender(),
 		ConfigWarning:  a.configWarning,
 		Settings:       a.settings,
 		MobileSwitcher: a.mobileSwitcher, MobileScroll: a.mobileScroll,

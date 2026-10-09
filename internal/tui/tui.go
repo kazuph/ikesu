@@ -139,6 +139,7 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
+	navigator         *navigatorView
 	resizeMode        bool
 	workspaceNavigate bool
 	navigateSelected  int

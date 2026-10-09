@@ -32,7 +32,7 @@ HOME、XDG、状態ディレクトリ、ZDOTDIR、作業ディレクトリは実
 
 `cells 保存先.json` は端末エミュレーターのセル内容・幅・色・属性を保存し、文字だけで確認できない選択の位置を測定する。`terminal.raw` は端末出力を保存し、OSC 52などを通常の端末へ転送しない。no-sessionでの起動cwdは両方とも隔離HOMEへ揃える（herdrが初期shellをHOMEで開くため）。永続サーバーの比較workspaceは明示cwdで作る。
 
-`cell_styles.py 出力先 screen label` は一意な共通ラベルの先頭セルの色・属性を比較し、不一致または未観測でexit 1を返す。座標も出力するが、項目数が違うメニューの座標は一致扱いにしない。
+`cell_styles.py 出力先 screen label` は一意な共通ラベルの先頭セルの色・属性を比較し、不一致または未観測でexit 1を返す。座標も出力するが、項目数が違うメニューの座標は一致扱いにしない。`navigator_cases.py` / `probe-navigator.sh` は操作ごとに二つの実shell paneを新しく起動し、前の検索やモードが次の操作へ混入するのを防ぐ。
 
 click/rclick/mouseの座標は1始まり、screen/cells/measure.pyの保存座標は0始まり。上端タブバーはクリック手順ではy1であり、y0を指定しない。
 
