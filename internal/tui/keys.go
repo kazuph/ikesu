@@ -183,6 +183,9 @@ func (a *App) prefixKey(k uv.Key) {
 	case k.Code == 'b':
 		if s.Mobile() {
 			a.mobileSwitcher = !a.mobileSwitcher
+			if a.mobileSwitcher {
+				a.mobileScroll = 0
+			}
 			a.dirty = true
 		} else {
 			a.exec(model.CmdToggleSidebar{})

@@ -154,6 +154,7 @@ type Input struct {
 	SidebarScroll   int  // workspace rows scrolled off the top
 	AgentScroll     int
 	MobileSwitcher  bool
+	MobileMenu      []MenuItem
 	TabScroll       int
 	TabScrollManual bool
 	MobileScroll    int
@@ -339,7 +340,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			}
 			if pr.Rect.W > 4 {
 				title := paneTitle(pr, snap, t)
-				f.Text(pr.Rect.X+1, pr.Rect.Y, " "+title+" ", borderSty, titleStop)
+				titleSty := borderSty
+				if pr.IsFocused && (snap == nil || !snap.Dead) {
+					titleSty.Attrs |= uv.AttrBold
+				}
+				f.Text(pr.Rect.X+1, pr.Rect.Y, " "+title+" ", titleSty, titleStop)
 			}
 
 			// Scroll indicator on the top border, left of the restore

@@ -137,11 +137,16 @@ func (a *App) renameWorkspaceDialog(index int) {
 	a.dialog = &uiDialog{input: &name, d: render.Dialog{Title: "Rename workspace", Input: name, InputCursor: len([]rune(name)), InputEdit: true, Confirm: "rename", Cancel: "cancel"}, run: func(a *App) { a.exec(model.CmdRenameWorkspace{Index: index, Name: name}) }}
 }
 func (a *App) newTabNameDialog() {
-	name := ""
-	a.dialog = &uiDialog{input: &name, d: render.Dialog{Title: "New tab", InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
+	w := a.st.ActiveWorkspace()
+	if w == nil {
+		return
+	}
+	defaultName := fmt.Sprint(len(w.Tabs) + 1)
+	name := defaultName
+	a.dialog = &uiDialog{input: &name, d: render.Dialog{Title: "New tab", Input: name, InputCursor: len([]rune(name)), InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
 		a.exec(model.CmdNewTab{Workspace: a.st.Active})
 		w := a.st.ActiveWorkspace()
-		if w != nil {
+		if w != nil && name != defaultName {
 			a.exec(model.CmdRenameTab{Workspace: a.st.Active, Tab: w.ActiveTab, Label: name})
 		}
 	}}

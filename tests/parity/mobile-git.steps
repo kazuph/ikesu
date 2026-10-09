@@ -1,0 +1,21 @@
+send "\x02N"
+sleep 250ms
+send "\x02N"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "git init -q; git checkout -qb parity-git; printf 'PARITY\\n' > parity.txt; git add parity.txt; git -c core.hooksPath=/dev/null -c user.name=PARITY -c user.email=parity@example.invalid commit -qm init; printf 'MORE\\n' >> parity.txt\r"
+sleep 3s
+resize 60 45
+sleep 250ms
+click 55 2
+sleep 250ms
+screen @OUT@/git-switcher.txt
+cells @OUT@/git-switcher.json
+kill

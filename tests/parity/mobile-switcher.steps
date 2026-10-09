@@ -1,0 +1,41 @@
+send "\x02N"
+sleep 250ms
+send "\x02N"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+resize 60 25
+sleep 250ms
+click 55 2
+sleep 250ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+mouse wheel-down 40 16
+sleep 250ms
+screen @OUT@/wheel-down.txt
+cells @OUT@/wheel-down.json
+mouse wheel-down 40 16
+sleep 250ms
+screen @OUT@/bottom.txt
+cells @OUT@/bottom.json
+mouse wheel-up 40 16
+sleep 250ms
+screen @OUT@/wheel-up.txt
+cells @OUT@/wheel-up.json
+send "\x1b"
+sleep 500ms
+click 55 2
+sleep 250ms
+screen @OUT@/reopen.txt
+cells @OUT@/reopen.json
+resize 60 45
+sleep 250ms
+screen @OUT@/tall.txt
+cells @OUT@/tall.json
+kill

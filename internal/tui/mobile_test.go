@@ -1,6 +1,7 @@
 package tui
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
@@ -9,6 +10,28 @@ import (
 	"reflect"
 	"testing"
 )
+
+func TestParityMobileNewTabDefaultNumberWithRealPTY(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.exec(model.CmdNewTab{Workspace: 0})
+	a.exec(model.CmdNewTab{Workspace: 0})
+	a.exec(model.CmdResize{Cols: 60, Rows: 25})
+	a.newTabNameDialog()
+	if a.dialog == nil || a.dialog.d.Input != "4" || a.dialog.d.InputCursor != 1 || len(a.st.ActiveWorkspace().Tabs) != 3 {
+		t.Fatal("the observed fourth-tab prompt must prefill 4 without creating a tab")
+	}
+	a.dialogKey(uv.Key{Code: uv.KeyEscape})
+	if a.dialog != nil || len(a.st.ActiveWorkspace().Tabs) != 3 {
+		t.Fatal("cancel must preserve the three existing real PTYs")
+	}
+	a.newTabNameDialog()
+	a.dialogKey(uv.Key{Code: uv.KeyEnter})
+	w := a.st.ActiveWorkspace()
+	if a.dialog != nil || len(w.Tabs) != 4 || w.TabRef().Name != "" || a.sup.Get(a.focusedPane()) == nil {
+		t.Fatal("accepting the initial number must retain the default tab label and create a real PTY")
+	}
+}
 
 func TestG2MobileTapCollapseBlankCycleAndWorkspaceSelectionActualPTY(t *testing.T) {
 	teststate.Lock(t)
@@ -30,21 +53,21 @@ func TestG2MobileTapCollapseBlankCycleAndWorkspaceSelectionActualPTY(t *testing.
 		t.Fatal("switch button did not open")
 	}
 	workY := -1
-	for i, r := range render.MobileRows(a.st) {
+	for i, r := range render.MobileRows(a.st, a.mainMenuItems()) {
 		if r.Kind == render.RowSection && r.Section == model.SectionWork {
 			workY = render.MobileViewport(a.st).Y + i
 		}
 	}
-	sidebarEvent(a, input.KindMouseClick, 1, workY+1)
+	sidebarEvent(a, input.KindMouseClick, 1, render.MobileViewport(a.st).Y)
 	if a.st.CollapsedSections[model.SectionWork] || !a.mobileSwitcher {
-		t.Fatal("blank header row activated")
+		t.Fatal("list heading activated")
 	}
 	sidebarEvent(a, input.KindMouseClick, 1, workY)
 	if !a.st.CollapsedSections[model.SectionWork] {
 		t.Fatal("tap did not collapse")
 	}
 	var cards []int
-	for _, r := range render.MobileRows(a.st) {
+	for _, r := range render.MobileRows(a.st, a.mainMenuItems()) {
 		if r.Kind == render.RowWorkspace {
 			cards = append(cards, r.Ws)
 		}
@@ -67,7 +90,7 @@ func TestG2MobileTapCollapseBlankCycleAndWorkspaceSelectionActualPTY(t *testing.
 	if a.st.CollapsedSections[model.SectionWork] {
 		t.Fatal("tap did not expand")
 	}
-	rows := render.MobileRows(a.st)
+	rows := render.MobileRows(a.st, a.mainMenuItems())
 	for i, r := range rows {
 		if r.Kind == render.RowWorkspace && r.Ws == 0 {
 			sidebarEvent(a, input.KindMouseClick, 4, render.MobileViewport(a.st).Y+i)

@@ -33,7 +33,7 @@ func TestParityNameButtonsSaveClearAndCancelWithRealPTY(t *testing.T) {
 	if a.dialog != nil || len(ws.Tabs) != 1 || a.sup.Get(old) == nil {
 		t.Fatal("cancel must retain the original shell")
 	}
-	specFeed(a, "\x02cTAB_MOUSE_NAME")
+	specFeed(a, "\x02c\x03TAB_MOUSE_NAME")
 	click(0)
 	if a.dialog != nil || len(ws.Tabs) != 2 || ws.TabRef().Name != "TAB_MOUSE_NAME" || a.sup.Get(a.focusedPane()) == nil {
 		t.Fatal("save must name and select a new real shell")

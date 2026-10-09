@@ -27,6 +27,13 @@ const (
 	RowGit
 	RowCardBlank
 	RowJob
+	RowMobileSpaces
+	RowMobileNewWorkspace
+	RowMobileTabs
+	RowMobileNewTab
+	RowMobileTab
+	RowMobileMenu
+	RowMobileMenuItem
 )
 
 type SidebarRow struct {

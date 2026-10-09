@@ -103,6 +103,9 @@ func (a *App) draw() {
 		Copy:      a.copyMark(),
 		CopyHint:  a.copyHint(),
 	}
+	if a.mobileSwitcher {
+		in.MobileMenu = a.mainMenuItems()
+	}
 	if a.workspaceNavigate {
 		in.SelectedWorkspace = &a.navigateSelected
 	}
