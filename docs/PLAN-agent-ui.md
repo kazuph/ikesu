@@ -28,12 +28,12 @@
 | G9「macOS Ghostty buildとparallel testの安定化」 | Ghostty のビルド指定は gtx に Ghostty が無いので対象外と RESULT.md に書く。もう半分（プロセス全体の状態を変えるテストは共有の鍵と明示的な戻しを使い、並列で繰り返しても落ちない）は作る。`go test -race -count=5 ./...` が通ることで確かめる |
 | G9「herdr runの完了通知案内」 | 受け入れ条件の4つを確かめ直す（JSON の `next` が既存の項目の後ろにある、を含む） |
 | G9「agent prompt（本家0.9.1準拠）」 | 全部。`gtx agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]` と API `agent.prompt`。入力前の拒否、ブラケットペースト、Enter を書いた後にだけ成功、`--wait`、起動直後の段階（3秒の落ち着き待ち、30秒の起動期限）。`agent send`・`send --room`・ペイン ID の表記は今のまま |
+| G9「agent検出manifestの共有cache反映とfork所有manifest」 | 店長の決定（2026-10-09）: 検出ルールのダウンロードは無効のまま（G8 を優先）。同梱ルールだけを使い、`fork_owned = true` の Devin のルールが同梱のまま使われること、同梱の Claude のルールが SPEC の挙動（ターン後の裏のシェルだけでは working にしない、MCP の質問は blocked）、Devin の作業中・待ち行列だけの idle の判定を確かめる。ダウンロードに関わる条件は RESULT.md に「方針により対象外（店長決定 2026-10-09）」と書く |
 | G9「問い合わせとjob記録によるserver負荷の抑制」 | 全部（前面ジョブ調査の1.5秒の使い回しと条件、24時間でのジョブ記録・ログの掃除と返信先の外し方、ジョブ一覧の更新間隔1秒／10秒と即時更新、索引、複数画面への配信で session 全体の読み取りを1回にする、掃除がほかのプロセスの書き込みを最長5秒待つ） |
 
 ### この段階で作らない節（後の段階へ回す。理由は親が店長へ報告済み）
 
 - G9「local overlay pane command」と、G1 から移した overlay の条件: overlay は SPEC 上プラグインのペイン（API `plugin.pane.open` の配置 `overlay`）として定義されており、プラグインの土台は G10「UP-AUTOMATION」で作るため、その段階で作る。
-- G9「agent検出manifestの共有cache反映とfork所有manifest」: 外部から検出ルールをダウンロードする仕組みが前提。G8／G10 の表ではダウンロードは無効の方針なので、扱いを親が店長に確認してから決める。
 - G9「live handoffでのmouse報告状態の引継ぎ」「kitty画像対応paneのXTVERSION」: gtx にサーバーの引き継ぎ（live handoff）と kitty 画像の土台が無い。土台ごと作る段階を別に設ける。
 - G9「herdr run --machine」: G11 の保存マシン一覧が前提なので G11 の段階で作る。
 - G4「paneコマンド終了通知」: SPEC で破棄済み。作らない。
