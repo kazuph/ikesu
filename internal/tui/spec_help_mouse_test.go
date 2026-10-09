@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 	"time"
 )
@@ -80,6 +81,7 @@ func TestSPECHelpMouseCaptureWheelTrackAndThumbGrab(t *testing.T) {
 }
 
 func TestSPECDangerousCancelOutsideAndOverlaysCapture(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.openQuitDialog()
 

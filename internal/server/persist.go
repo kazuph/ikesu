@@ -120,7 +120,7 @@ func (s *Server) notifyRestart() {
 	s.mu.Unlock()
 	if c != nil {
 		_ = c.send(clientMsg{Type: "restart"})
-		_ = c.conn.Close()
+		c.close()
 	}
 }
 
@@ -147,6 +147,7 @@ func (s *Server) spawnSuccessor() {
 	defer logf.Close()
 
 	cmd := exec.Command(exe, "--session", s.session, "server")
+	cmd.Args[0] = os.Args[0]
 	cmd.Dir = s.cwd
 	cmd.Stdin = devNull
 	cmd.Stdout = logf

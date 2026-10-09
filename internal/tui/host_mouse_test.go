@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 )
 
 func TestHostMouseNegotiatesOnlyWithSupportAndGeometry(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	out, err := os.CreateTemp(t.TempDir(), "host-output")
 	if err != nil {
@@ -45,6 +47,7 @@ func TestHostMouseNegotiatesOnlyWithSupportAndGeometry(t *testing.T) {
 }
 
 func TestSPECHostPixelPrecisionAndCellPaneActualBytes(t *testing.T) {
+	teststate.Lock(t)
 	for _, pixel := range []bool{false, true} {
 		t.Run(fmt.Sprint(pixel), func(t *testing.T) {
 			a := specRuntimeApp(t)

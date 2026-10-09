@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ func splitRight(t *testing.T, dir string) api.PaneInfoResult {
 }
 
 func TestPaneLayoutSnapshotShape(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -48,6 +50,7 @@ func TestPaneLayoutSnapshotShape(t *testing.T) {
 // Implicit splits target the traversal-last leaf and append to logical
 // order (SPEC G1).
 func TestPaneSplitImplicitAppends(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -79,6 +82,7 @@ func TestPaneSplitImplicitAppends(t *testing.T) {
 }
 
 func TestPaneNeighborEdgesFocus(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -119,6 +123,7 @@ func TestPaneNeighborEdgesFocus(t *testing.T) {
 }
 
 func TestPaneResizeSwapZoom(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -165,6 +170,7 @@ func TestPaneResizeSwapZoom(t *testing.T) {
 }
 
 func TestPaneArrangeOps(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -211,6 +217,7 @@ func TestPaneArrangeOps(t *testing.T) {
 }
 
 func TestPaneMoveNewTabKeepsPane(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -246,6 +253,7 @@ func TestPaneMoveNewTabKeepsPane(t *testing.T) {
 }
 
 func TestPaneMoveIntoTabSplits(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -278,6 +286,7 @@ func TestPaneMoveIntoTabSplits(t *testing.T) {
 }
 
 func TestLayoutApplyCommandLeaf(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -325,6 +334,7 @@ func contains(s, sub string) bool {
 }
 
 func TestLayoutSetSplitRatio(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -347,6 +357,7 @@ func TestLayoutSetSplitRatio(t *testing.T) {
 }
 
 func TestEventsSubscribeReplayAndWait(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)

@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/BurntSushi/toml"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,8 +27,9 @@ func TestSidebarDefaultsBoundsAndDensity(t *testing.T) {
 	}
 }
 func TestSidebarSavePreservesConfigAndFailure(t *testing.T) {
+	teststate.Lock(t)
 	p := filepath.Join(t.TempDir(), "config.toml")
-	t.Setenv(EnvVar, p)
+	teststate.Setenv(t, EnvVar, p)
 	if err := os.WriteFile(p, []byte("[agent]\nshell = '/bin/sh'\n[ui]\nsidebar_max_width = 72\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

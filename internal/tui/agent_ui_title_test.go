@@ -2,11 +2,13 @@ package tui
 
 import (
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"path/filepath"
 	"testing"
 )
 
 func TestG5TaskOSCAndBranchRemainSeparateAtRuntime(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	cwd := a.st.Workspaces[0].Cwd
 	sidebarGit(t, cwd, "init", "-qb", "feature")

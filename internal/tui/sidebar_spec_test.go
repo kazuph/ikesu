@@ -6,6 +6,7 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"reflect"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ func sidebarEvent(a *App, kind input.Kind, x, y int) {
 	a.onMouse(input.Event{Kind: kind, Mouse: uv.Mouse{X: x, Y: y, Button: uv.MouseLeft}})
 }
 func TestG2ActiveCardReleaseDragAndSection(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.exec(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true, Section: model.SectionWork})
 	y := sidebarCardY(a, 0)
@@ -66,6 +68,7 @@ func TestG2ActiveCardReleaseDragAndSection(t *testing.T) {
 	}
 }
 func TestG2HorizontalRulesAndBlankNeverActivate(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	rows := render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)
 	_, y, _, _ := render.SidebarContent(a.st.SidebarArea())
@@ -83,6 +86,7 @@ func TestG2HorizontalRulesAndBlankNeverActivate(t *testing.T) {
 	}
 }
 func TestG2SectionNewAndCycleVisibleWrap(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	for i := 0; i < 3; i++ {
 		a.exec(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
@@ -120,6 +124,7 @@ func TestG2SectionNewAndCycleVisibleWrap(t *testing.T) {
 	}
 }
 func TestG2DividerResetAndDangerousCancel(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.st.SidebarDefault = 26
 	a.sidebarPreset("wide")
@@ -158,6 +163,7 @@ func TestG2DividerResetAndDangerousCancel(t *testing.T) {
 	}
 }
 func TestG2WorkspaceMenuExactAndUnsupported(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.st.Workspaces[0].Cwd = t.TempDir()
 	a.openWorkspaceMenu(3, 4, 0)
@@ -180,6 +186,7 @@ func TestG2WorkspaceMenuExactAndUnsupported(t *testing.T) {
 }
 
 func TestG2DuplicateRuntimeSpawnFailureRollsBack(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	before := len(a.st.Workspaces)
 	active := a.st.Active
@@ -201,6 +208,7 @@ func TestG2DuplicateRuntimeSpawnFailureRollsBack(t *testing.T) {
 	}
 }
 func TestG2SidebarConfigReloadKeepsCollapseAndManualWidth(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	c := config.Config{}
 	c.UI.SidebarStartCollapsed = true
@@ -217,7 +225,8 @@ func TestG2SidebarConfigReloadKeepsCollapseAndManualWidth(t *testing.T) {
 }
 
 func TestG2HeaderTogglesPersistAndResetScroll(t *testing.T) {
-	t.Setenv("GTX_CONFIG", t.TempDir()+"/config.toml")
+	teststate.Lock(t)
+	teststate.Setenv(t, "GTX_CONFIG", t.TempDir()+"/config.toml")
 	a := specRuntimeApp(t)
 	a.sidebarScroll = 12
 	a.toggleSidebarSetting(true)
@@ -234,6 +243,7 @@ func TestG2HeaderTogglesPersistAndResetScroll(t *testing.T) {
 }
 
 func TestG2FooterBlankAndSectionBody(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	r := render.SidebarMenuRect(a.st)
 	n := render.SidebarNewRect(a.st)
@@ -290,6 +300,7 @@ func TestG2FooterBlankAndSectionBody(t *testing.T) {
 }
 
 func TestG2SectionCommandResetsScrollForAPIAndUI(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.sidebarScroll = 12
 	a.ExecCmd(model.CmdSetSection{Index: 0, Section: model.SectionWork})

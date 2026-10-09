@@ -1,12 +1,14 @@
 package runtime
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 	"time"
 )
 
 func TestScrollbackGrows(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := NewSupervisor()
 	p, err := s.Spawn(1, t.TempDir(), 60, 20)
 	if err != nil {

@@ -4,11 +4,13 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestG2IndependentPanelWheelThumbDragAndCollapse(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	a := specRuntimeApp(t)
 	a.exec(model.CmdResize{Cols: 100, Rows: 30})
 	for i := 0; i < 16; i++ {

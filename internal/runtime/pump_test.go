@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"os"
 	"sync/atomic"
@@ -40,6 +41,7 @@ func screenText(p *Pane) string {
 // gap and checks it lands in the emulator long before pumpBatchWait could
 // have delayed it — the batching wait must not apply to the first read.
 func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
+	teststate.Lock(t)
 	oldWait, oldGap := pumpBatchWait, pumpStreamGap
 	pumpBatchWait = 200 * time.Millisecond // large: a wrongly-always-batched impl is obvious
 	pumpStreamGap = 5 * time.Millisecond
@@ -68,6 +70,7 @@ func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 // through a small number of batches (few change notifications), and every
 // byte — including the last — still reaches the screen.
 func TestPumpStreamingCoalesces(t *testing.T) {
+	teststate.Lock(t)
 	oldWait, oldGap := pumpBatchWait, pumpStreamGap
 	pumpBatchWait = 40 * time.Millisecond
 	pumpStreamGap = 200 * time.Millisecond
@@ -126,6 +129,7 @@ func TestPumpStreamingCoalesces(t *testing.T) {
 // very last bytes of a burst must still be flushed even though nothing
 // follows them.
 func TestPumpDeliversTrailingOutputAfterQuiet(t *testing.T) {
+	teststate.Lock(t)
 	oldWait, oldGap := pumpBatchWait, pumpStreamGap
 	pumpBatchWait = 40 * time.Millisecond
 	pumpStreamGap = 200 * time.Millisecond

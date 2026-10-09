@@ -2,10 +2,12 @@ package server
 
 import (
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestG2PopupCloseTwiceHiddenOwnerAndTerminalLookupSocket(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	c := dialClient(t, dir)
 	defer c.conn.Close()

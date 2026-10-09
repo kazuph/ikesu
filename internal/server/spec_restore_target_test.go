@@ -2,19 +2,21 @@ package server
 
 import (
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"reflect"
 	"testing"
 )
 
 func TestSPECStableAgentTargetAfterRestart(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtx-spec-restore-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir, done := startServerAt(t, "stable")
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
 	ids := paneIDs(t, dir)

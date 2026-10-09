@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 )
 
 func TestG9LoginShellPATHCacheArgumentsAndCwd(t *testing.T) {
+	teststate.Lock(t)
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -26,8 +28,8 @@ func TestG9LoginShellPATHCacheArgumentsAndCwd(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "temporary-agent"), []byte("#!/bin/sh\nprintf 'CWD=%s ARG=%s PATH=%s\\n' \"$PWD\" \"$1\" \"$PATH\" > '"+result+"'\nexec /bin/sleep 60\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SHELL", shell)
-	t.Setenv("PATH", "/usr/bin:/bin")
+	teststate.Setenv(t, "SHELL", shell)
+	teststate.Setenv(t, "PATH", "/usr/bin:/bin")
 	s := NewSupervisor()
 	defer s.KillAll()
 	argv := []string{"temporary-agent", "argument with spaces"}
@@ -60,11 +62,12 @@ func TestG9LoginShellPATHCacheArgumentsAndCwd(t *testing.T) {
 }
 
 func TestG9LoginShellFailureDoesNotGuessPATH(t *testing.T) {
+	teststate.Lock(t)
 	shell := filepath.Join(t.TempDir(), "failed-shell")
 	if err := os.WriteFile(shell, []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SHELL", shell)
+	teststate.Setenv(t, "SHELL", shell)
 	s := NewSupervisor()
 	defer s.KillAll()
 	if p, err := s.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/echo", "should not start"}); err == nil || p != nil || s.Get(1) != nil {

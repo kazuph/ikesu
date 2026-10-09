@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"os"
 	"os/exec"
@@ -26,8 +27,9 @@ func gitRepo(t *testing.T) string {
 	return r
 }
 func TestWorktreeSocketCLIAndEvents(t *testing.T) {
+	teststate.Lock(t)
 	r := gitRepo(t)
-	t.Setenv("HOME", t.TempDir())
+	teststate.Setenv(t, "HOME", t.TempDir())
 	dir, done := startTestServer(t)
 	c := dialClient(t, dir)
 	defer c.conn.Close()
@@ -140,8 +142,9 @@ func subscribe(t *testing.T, dir string, kinds []string) (net.Conn, *bufio.Reade
 }
 
 func TestWorktreeCLIAllOperationsAndBareSocket(t *testing.T) {
+	teststate.Lock(t)
 	r := gitRepo(t)
-	t.Setenv("HOME", t.TempDir())
+	teststate.Setenv(t, "HOME", t.TempDir())
 	bare := filepath.Join(t.TempDir(), "bare.git")
 	if b, e := exec.Command("git", "clone", "--bare", r, bare).CombinedOutput(); e != nil {
 		t.Fatalf("%v %s", e, b)

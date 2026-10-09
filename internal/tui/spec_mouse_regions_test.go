@@ -6,10 +6,12 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestSPECRightClickWorkspaceTabFrameAndTabWheel(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.exec(model.CmdNewTab{Workspace: 0})
 	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
@@ -45,6 +47,7 @@ func TestSPECRightClickWorkspaceTabFrameAndTabWheel(t *testing.T) {
 }
 
 func TestSPECLeftDownPriorityAndActionOverlapOrder(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)

@@ -4,11 +4,13 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"reflect"
 	"testing"
 )
 
 func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
+	teststate.Lock(t)
 	a, _ := worktreeApp(t)
 	a.draw()
 	y := sidebarCardY(a, 0)
@@ -83,6 +85,7 @@ func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
 }
 
 func TestG2WorkspaceReorderPreservesNumericSelection(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	for i := 0; i < 2; i++ {
 		a.exec(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
@@ -102,6 +105,7 @@ func TestG2WorkspaceReorderPreservesNumericSelection(t *testing.T) {
 }
 
 func TestG2DangerousDialogTextAndStandaloneRestartState(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	tests := []struct {
 		open                 func()

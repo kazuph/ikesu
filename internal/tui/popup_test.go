@@ -8,6 +8,7 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,8 @@ import (
 )
 
 func TestG2PopupOwnerInputPasteLFReorderAndSelectionCleanupActualPTY(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	a := specRuntimeApp(t)
 	t.Cleanup(a.sup.KillAll)
 	owner := a.st.ActiveWorkspace().ID
@@ -107,7 +109,8 @@ func frameTextForPopup(f *render.Frame) string {
 }
 
 func TestG2PopupMouseCoordinatesWheelSelectionAutoscrollAndOSC52(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	for _, reporting := range []bool{false, true} {
 		t.Run(fmt.Sprint(reporting), func(t *testing.T) {
 			a := specRuntimeApp(t)

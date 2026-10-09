@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -38,6 +39,7 @@ func copySearch(t *testing.T, dir, paneID, query, dirn string, row uint32, col u
 // shape, case sensitivity, wrapping, and error contract — verified
 // against the observed herdr behavior.
 func TestPaneCopyAPI(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)

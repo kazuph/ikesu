@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,6 +18,7 @@ import (
 )
 
 func TestSPECSplitDefaultsAndOverridesSingleAction(t *testing.T) {
+	teststate.Lock(t)
 	for _, tc := range []struct {
 		key string
 		dir layout.Direction
@@ -35,7 +37,7 @@ func TestSPECSplitDefaultsAndOverridesSingleAction(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[keys]\nsplit_vertical=['prefix+o']\nsplit_horizontal=['prefix+d']\ncopy_mode=['prefix+y']\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", path)
+	teststate.Setenv(t, "GTX_CONFIG", path)
 	c, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +70,7 @@ func TestSPECSplitDefaultsAndOverridesSingleAction(t *testing.T) {
 }
 
 func TestSPECThreeCopyEntriesAndFullscreenRuntimeResize(t *testing.T) {
+	teststate.Lock(t)
 	for _, entry := range []string{"[", "]", "button"} {
 		t.Run(entry, func(t *testing.T) {
 			a := specRuntimeApp(t)
@@ -109,6 +112,7 @@ func TestSPECThreeCopyEntriesAndFullscreenRuntimeResize(t *testing.T) {
 }
 
 func TestSPECActionBarActionsPriorityDirtyAndTitleZoom(t *testing.T) {
+	teststate.Lock(t)
 	for _, op := range []string{"cycle", "rotate", "equalize"} {
 		a := specRuntimeApp(t)
 		a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
@@ -169,6 +173,7 @@ func TestSPECActionBarActionsPriorityDirtyAndTitleZoom(t *testing.T) {
 }
 
 func TestSPECMoveAndRotateKeepRealProcessIdentity(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)

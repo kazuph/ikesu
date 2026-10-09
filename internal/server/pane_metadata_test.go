@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/cli"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"os/exec"
 	"strings"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestG2PaneMetadataSocketCLISequenceFilteringClearAndExpiry(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	c := dialClient(t, dir)
 	defer c.conn.Close()
@@ -103,6 +105,7 @@ func TestG2PaneMetadataSocketCLISequenceFilteringClearAndExpiry(t *testing.T) {
 }
 
 func TestG2PaneMetadataTitlePreservesRealGitBranch(t *testing.T) {
+	teststate.Lock(t)
 	repo := gitRepo(t)
 	if out, err := exec.Command("git", "-C", repo, "branch", "-m", "metadata-branch").CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))

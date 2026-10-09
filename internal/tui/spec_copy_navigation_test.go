@@ -2,10 +2,12 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestSPECCopySearchWordPageAndLineEndActualBuffer(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	pid := a.focusedPane()
 	p, err := a.sup.SpawnWith(pid, a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", "i=0; while [ $i -lt 100 ]; do printf 'alpha beta gamma %s\\r\\n' $i; i=$((i+1)); done; printf DONE; exec sleep 60"})

@@ -4,6 +4,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"reflect"
 	"testing"
 )
@@ -18,6 +19,7 @@ func menuIndex(a *App, label string) int {
 }
 
 func TestG5MenuAgentPresetTargetsClickedPaneAndRegisters(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
@@ -59,6 +61,7 @@ func TestG5MenuAgentPresetTargetsClickedPaneAndRegisters(t *testing.T) {
 }
 
 func TestG5PaneMenuRootSideMovesAndSinglePaneExcluded(t *testing.T) {
+	teststate.Lock(t)
 	for _, tc := range []struct {
 		label string
 		dir   layout.Direction

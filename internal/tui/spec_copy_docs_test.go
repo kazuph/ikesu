@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"strings"
 	"testing"
 )
 
 func TestSPECCopyBindingsHelpMenuAndDocs(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	check := func() {
 		t.Helper()

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"os/exec"
 	"strings"
@@ -37,6 +38,7 @@ func jobStatus(t *testing.T, st *dispatch.Store, id string) string {
 // only report 'cancelled' once the whole group is gone. A runner whose
 // leader ignores TERM must still be fully reaped.
 func TestRunCancelEscalatesAndConfirmsGroupGone(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir) // keep the server alive while jobs run
 
@@ -128,6 +130,7 @@ func TestRunCancelEscalatesAndConfirmsGroupGone(t *testing.T) {
 // snapshot time, not during render), and a finished job keeps its dot
 // for one minute.
 func TestWorkspaceJobDot(t *testing.T) {
+	teststate.Lock(t)
 	s := newTestServer(t, "jobdot")
 	s.app.SetJobSource(s.jobSnapshot)
 

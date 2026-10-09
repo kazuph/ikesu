@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 )
 
 func TestSPECMoveAllDestinationsViaSocketCLIAndEvents(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	c := dialClient(t, dir)
 	defer c.conn.Close()

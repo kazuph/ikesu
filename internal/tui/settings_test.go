@@ -6,6 +6,7 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,8 +14,9 @@ import (
 )
 
 func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
+	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	t.Setenv("GTX_CONFIG", path)
+	teststate.Setenv(t, "GTX_CONFIG", path)
 	if err := os.WriteFile(path, []byte("[ui]\nworkspace_panel_density='slim'\n[ui.toast]\ndelivery='off'\n[extra]\nkeep='value'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +77,9 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 	}
 }
 func TestG2SettingsFailedWriteDoesNotApply(t *testing.T) {
+	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	t.Setenv("GTX_CONFIG", path)
+	teststate.Setenv(t, "GTX_CONFIG", path)
 	if err := os.WriteFile(path, []byte("invalid ["), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +96,7 @@ func TestG2SettingsFailedWriteDoesNotApply(t *testing.T) {
 	}
 }
 func TestG8SidebarHasNoUpdateAttentionOrWhatsNew(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.openMainMenu(0, 0)
 	for _, item := range a.menu.m.Items {

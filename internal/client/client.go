@@ -299,6 +299,7 @@ func spawnServer(session, dir string) error {
 
 	// Global flags precede the subcommand so `server` arrives bare.
 	cmd := exec.Command(exe, "--session", session, "server")
+	cmd.Args[0] = os.Args[0]
 	cmd.Stdin = devNull
 	cmd.Stdout = logf
 	cmd.Stderr = logf

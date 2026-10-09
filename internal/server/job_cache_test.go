@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 )
 
 func TestG9JobSnapshotAdaptiveIntervalAndExternalWrite(t *testing.T) {
+	teststate.Lock(t)
 	now := time.Now()
 	old := now.Add(-2 * time.Minute).UnixMilli()
 	recent := now.UnixMilli()

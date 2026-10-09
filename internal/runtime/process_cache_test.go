@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,7 +9,8 @@ import (
 )
 
 func TestG9ForegroundCacheReusesScanAndInvalidatesCwdAndProgram(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

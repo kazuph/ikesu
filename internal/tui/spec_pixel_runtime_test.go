@@ -3,12 +3,14 @@ package tui
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestSPECCellCenterPixelButtonMotionWheelActualBytes(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.cellW = 16
 	a.cellH = 32
@@ -39,6 +41,7 @@ func TestSPECCellCenterPixelButtonMotionWheelActualBytes(t *testing.T) {
 }
 
 func TestSPECPanePixelGeometryPrecedesHostCellSize(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.cellW, a.cellH = 16, 32
 	pid := a.focusedPane()

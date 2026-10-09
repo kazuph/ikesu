@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"os"
 	"os/exec"
@@ -16,8 +17,8 @@ import (
 func worktreeApp(t *testing.T) (*App, string) {
 	t.Helper()
 	r := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "HOME", t.TempDir())
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "init"}, {"branch", "existing"}} {
 		if b, e := exec.Command("git", append([]string{"-C", r}, args...)...).CombinedOutput(); e != nil {
 			t.Fatalf("%v %s", e, b)
@@ -47,6 +48,7 @@ func activateLabel(t *testing.T, a *App, label string) {
 	t.Fatalf("menu missing %q", label)
 }
 func TestSidebarWorktreeNewExistingOpenDelete(t *testing.T) {
+	teststate.Lock(t)
 	a, r := worktreeApp(t)
 	a.openWorkspaceMenu(2, 3, 0)
 	activateLabel(t, a, "New worktree")
@@ -118,6 +120,7 @@ func TestSidebarWorktreeNewExistingOpenDelete(t *testing.T) {
 	}
 }
 func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
+	teststate.Lock(t)
 	a, _ := worktreeApp(t)
 	branch := "dirty"
 	id := "s1"
@@ -149,6 +152,7 @@ func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
 }
 
 func TestWorktreeMoveBackToGroupAndFailureWithoutMutation(t *testing.T) {
+	teststate.Lock(t)
 	a, r := worktreeApp(t)
 	branch := "move"
 	out, e := a.CreateWorktree(api.WorktreeCreateParams{Cwd: &r, Branch: &branch, Focus: true})

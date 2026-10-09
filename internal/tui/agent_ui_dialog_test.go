@@ -2,10 +2,12 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestG5DialogEditingCursorInMiddleOfUnicodeName(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.st.Workspaces[0].Name = "a界b"
 	a.renameWorkspaceDialog(0)

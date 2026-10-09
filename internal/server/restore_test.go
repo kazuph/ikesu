@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func loadTestConfig(t *testing.T) (config.Config, error) {
 func newTestServer(t *testing.T, session string) *Server {
 	t.Helper()
 	base := t.TempDir()
-	t.Setenv("GTX_STATE_DIR", base)
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
 	cwd := filepath.Join(base, "cwd")
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		t.Fatal(err)
@@ -77,13 +78,14 @@ func reportAgent(t *testing.T, dir, paneID, agent, sessionID string) {
 // shells and agent.restore --dry-run plans each pane's own id — never a
 // shared cwd-latest guess.
 func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "rest")
 
@@ -163,6 +165,7 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 // never recorded — the pane keeps no session value and the report does
 // not dirty the session record.
 func TestReportAgentUnsafeIDNotRecorded(t *testing.T) {
+	teststate.Lock(t)
 	s := newTestServer(t, "w")
 	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
 	bad := "bad;id"
@@ -185,6 +188,7 @@ func TestReportAgentUnsafeIDNotRecorded(t *testing.T) {
 // carries an unsafe session id is skipped, never resumed as another
 // conversation.
 func TestAgentRestoreSkipsUnsafeID(t *testing.T) {
+	teststate.Lock(t)
 	s := newTestServer(t, "w")
 	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
 	s.app.RecordSession(pid, tui.AgentRecord{
@@ -208,13 +212,14 @@ func TestAgentRestoreSkipsUnsafeID(t *testing.T) {
 
 // A real (non-dry-run) restore types the resume command into the pane.
 func TestAgentRestoreLaunchesCommand(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "launch")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
@@ -261,6 +266,7 @@ func TestBuildResumeCommand(t *testing.T) {
 // [agent_start.commands].codex argv is preserved verbatim, with resume
 // and the pane's own id appended.
 func TestBuildResumeCommandAgentStartArgv(t *testing.T) {
+	teststate.Lock(t)
 	cfgFile := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfgFile, []byte(`
 [agent_start.commands]
@@ -268,7 +274,7 @@ codex = ["codex", "--sandbox", "workspace-write", "--model", "gpt-6-astra"]
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", cfgFile)
+	teststate.Setenv(t, "GTX_CONFIG", cfgFile)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -283,6 +289,7 @@ codex = ["codex", "--sandbox", "workspace-write", "--model", "gpt-6-astra"]
 
 // A template missing {session_id} must not produce a command.
 func TestBuildResumeCommandBadTemplate(t *testing.T) {
+	teststate.Lock(t)
 	cfgFile := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfgFile, []byte(`
 [agent_restore.templates]
@@ -290,7 +297,7 @@ claude = "claude --resume"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", cfgFile)
+	teststate.Setenv(t, "GTX_CONFIG", cfgFile)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -304,6 +311,7 @@ claude = "claude --resume"
 // A template carrying a standalone --last token can never resume the
 // exact session — it is rejected even with a valid {session_id}.
 func TestBuildResumeCommandRejectsLastToken(t *testing.T) {
+	teststate.Lock(t)
 	cfgFile := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfgFile, []byte(`
 [agent_restore.templates]
@@ -311,7 +319,7 @@ codex = "codex resume {session_id} --last"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", cfgFile)
+	teststate.Setenv(t, "GTX_CONFIG", cfgFile)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -370,8 +378,9 @@ func writeJSONL(t *testing.T, path, firstLine string) {
 // a timestamp near the process start is adopted; the id is the recorded
 // sessionId. Two candidates resolve to nothing.
 func TestObserveClaudeSessionFile(t *testing.T) {
+	teststate.Lock(t)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	teststate.Setenv(t, "HOME", home)
 	cwd := "/Users/x/proj"
 	dir := filepath.Join(home, ".claude", "projects", "-Users-x-proj")
 	start := time.Now().Add(-30 * time.Second)
@@ -404,8 +413,9 @@ func TestObserveClaudeSessionFile(t *testing.T) {
 // candidates, even when they sit in the colliding slug dir ("/a/b.c"
 // and "/a/b-c" both slug to "-a-b-c").
 func TestObserveClaudeSessionFileCwdStrict(t *testing.T) {
+	teststate.Lock(t)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	teststate.Setenv(t, "HOME", home)
 	cwd := "/a/b-c" // slug "-a-b-c"
 	dir := filepath.Join(home, ".claude", "projects", "-a-b-c")
 	start := time.Now().Add(-30 * time.Second)
@@ -436,8 +446,9 @@ func TestObserveClaudeSessionFileCwdStrict(t *testing.T) {
 // Codex: the session_meta record decides — payload.cwd must exist and
 // match, and the id is payload.id (payload.session_id fallback).
 func TestObserveCodexSessionFile(t *testing.T) {
+	teststate.Lock(t)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	teststate.Setenv(t, "HOME", home)
 	cwd := "/Users/x/proj"
 	start := time.Now().Add(-30 * time.Second)
 	day := filepath.Join(home, ".codex", "sessions",
@@ -471,8 +482,9 @@ func TestObserveCodexSessionFile(t *testing.T) {
 // cwd, or with a stale timestamp never counts as a candidate; only
 // payload.session_id is used when payload.id is absent.
 func TestObserveCodexSessionFileStrict(t *testing.T) {
+	teststate.Lock(t)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	teststate.Setenv(t, "HOME", home)
 	cwd := "/Users/x/proj"
 	start := time.Now().Add(-30 * time.Second)
 	ts := start.Format(time.RFC3339Nano)
@@ -501,8 +513,9 @@ func TestObserveCodexSessionFileStrict(t *testing.T) {
 // --- unit: ledger ----------------------------------------------------------
 
 func TestPaneSessionLedger(t *testing.T) {
+	teststate.Lock(t)
 	base := t.TempDir()
-	t.Setenv("GTX_STATE_DIR", base)
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
 	store, err := dispatch.Open(dispatch.DBPath())
 	if err != nil {
 		t.Fatal(err)
@@ -541,13 +554,14 @@ func TestPaneSessionLedger(t *testing.T) {
 
 // Closing a pane removes its ledger row (ownership cleanup boundary).
 func TestLedgerDeleteOnPaneClose(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "leddel")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
@@ -577,6 +591,7 @@ func TestLedgerDeleteOnPaneClose(t *testing.T) {
 // sessionWarnings reports agent panes lacking a safe session id, with the
 // spec's reason wording.
 func TestAgentSessionWarnings(t *testing.T) {
+	teststate.Lock(t)
 	s := newTestServer(t, "w")
 
 	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
@@ -636,13 +651,14 @@ func waitPanes(t *testing.T, dir string, want []string) []string {
 // recorded session id keeps its pane number, record, and ledger row when
 // its process exits — it comes back as a shell instead of closing.
 func TestRestorablePaneRetainedOnExit(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "retain")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
@@ -694,13 +710,14 @@ func TestRestorablePaneRetainedOnExit(t *testing.T) {
 // row/record — no effective agent label — closes normally on exit, and
 // its ledger row goes with it.
 func TestInactiveShellPaneClosesOnExit(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "cleanup")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
@@ -739,7 +756,8 @@ func TestInactiveShellPaneClosesOnExit(t *testing.T) {
 // after ~15s, and a reported "working" authority over an explicitly
 // idle Claude screen is cleared after ~15s.
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "fossil")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()

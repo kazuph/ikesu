@@ -3,11 +3,13 @@ package server
 import (
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 	"testing"
 )
 
 func TestG2JobsHistoryRowsRemainWhenExpiredAndDeadRunnerDotsDisappear(t *testing.T) {
+	teststate.Lock(t)
 	s := newTestServer(t, "history")
 	s.app.SetJobSource(s.jobSnapshot)
 	store, err := dispatch.Open(dispatch.DBPath())

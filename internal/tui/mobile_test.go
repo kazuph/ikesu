@@ -5,11 +5,13 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"reflect"
 	"testing"
 )
 
 func TestG2MobileTapCollapseBlankCycleAndWorkspaceSelectionActualPTY(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.effect(model.EffSpawnPane{Pane: a.focusedPane(), Cwd: a.cwd})
 	a.SetSidebarConfig(config.Config{}, true)

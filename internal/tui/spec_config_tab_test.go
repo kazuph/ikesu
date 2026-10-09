@@ -4,17 +4,19 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestSPECExistingConfigHidesEveryTabHitAndKeepsBottomBar(t *testing.T) {
+	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(path, []byte("[ui]\nshow_tab_bar=false\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", path)
+	teststate.Setenv(t, "GTX_CONFIG", path)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)

@@ -4,11 +4,13 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"path/filepath"
 	"testing"
 )
 
 func TestSPECDoubleClickReleaseMenuOrFourApplicationEvents(t *testing.T) {
+	teststate.Lock(t)
 	for _, tracking := range []bool{false, true} {
 		t.Run(fmt.Sprint(tracking), func(t *testing.T) {
 			a := specRuntimeApp(t)
@@ -51,6 +53,7 @@ func TestSPECDoubleClickReleaseMenuOrFourApplicationEvents(t *testing.T) {
 }
 
 func TestSPECWheelThreeRoutesActualPTYAndHostScroll(t *testing.T) {
+	teststate.Lock(t)
 	for _, mode := range []string{"reporting", "alternate", "host"} {
 		t.Run(mode, func(t *testing.T) {
 			a := specRuntimeApp(t)

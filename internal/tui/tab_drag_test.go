@@ -3,10 +3,12 @@ package tui
 import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestG2TabOneCellDragSuppressesClickAndKeepsActiveIdentity(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.exec(model.CmdNewTab{Workspace: 0})
 	a.draw()

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"os"
 	"path/filepath"
@@ -91,8 +92,8 @@ func startTestServer(t *testing.T) (dir string, done chan int) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir = api.SessionDir("test")
 	done = make(chan int, 1)
 	go func() {
@@ -106,6 +107,7 @@ func startTestServer(t *testing.T) (dir string, done chan int) {
 }
 
 func TestAttachDetachReattach(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 
 	// Attach 1: hello, then drive the pane.
@@ -196,6 +198,7 @@ func TestAttachDetachReattach(t *testing.T) {
 }
 
 func TestNewClientDisplacesOld(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
 
@@ -221,6 +224,7 @@ func TestNewClientDisplacesOld(t *testing.T) {
 }
 
 func TestServerExitsWhenLastPaneExits(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 
 	c := dialClient(t, dir)
@@ -264,6 +268,7 @@ func stopServer(t *testing.T, dir string, done chan int) {
 }
 
 func TestSecondServerRefused(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir) // wait until sockets are live
 
@@ -289,6 +294,7 @@ func TestSecondServerRefused(t *testing.T) {
 }
 
 func TestPingAndUnknownMethod(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 
@@ -333,13 +339,14 @@ func TestPingAndUnknownMethod(t *testing.T) {
 // server from taking its own liveness lock (the two used to share one
 // file, which made the child exit "already running" under load).
 func TestServerStartsWhileSpawnLockHeld(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir := api.SessionDir("test")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -370,6 +377,7 @@ func TestServerStartsWhileSpawnLockHeld(t *testing.T) {
 // every Write until the peer reads, so the wedged client hits the write
 // deadline deterministically and is dropped.
 func TestWedgedClientIsDropped(t *testing.T) {
+	teststate.Lock(t)
 	old := clientWriteTimeout
 	clientWriteTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { clientWriteTimeout = old })

@@ -2,13 +2,15 @@ package runtime
 
 import (
 	"github.com/charmbracelet/x/vt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestPaneInputEcho(t *testing.T) {
-	t.Setenv("SHELL", "/bin/cat")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/cat")
 	s := NewSupervisor()
 	p, err := s.Spawn(1, "/tmp", 80, 24)
 	if err != nil {

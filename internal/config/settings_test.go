@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,8 +9,9 @@ import (
 )
 
 func TestG2SettingsAtomicSavePreservesUnknownConfig(t *testing.T) {
+	teststate.Lock(t)
 	p := filepath.Join(t.TempDir(), "config.toml")
-	t.Setenv(EnvVar, p)
+	teststate.Setenv(t, EnvVar, p)
 	os.WriteFile(p, []byte("[ui.toast]\ndelivery='off'\n[ui.sound]\ncustom_path='keep.mp3'\n[theme]\nauto_switch=true\n[other]\nkeep='unchanged'\n"), 0600)
 	for _, err := range []error{SaveTheme("dracula"), SaveSound(false), SaveToast(ToastTerminal)} {
 		if err != nil {

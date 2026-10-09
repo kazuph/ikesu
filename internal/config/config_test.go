@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,7 @@ func TestDefaultKeyLists(t *testing.T) {
 // User [keys] overrides replace the default list entirely (no double
 // firing): setting copy_mode to prefix+o removes the bracket bindings.
 func TestUserKeyOverride(t *testing.T) {
+	teststate.Lock(t)
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.toml")
 	os.WriteFile(f, []byte(`
@@ -54,7 +56,7 @@ func TestUserKeyOverride(t *testing.T) {
 copy_mode = ["prefix+o"]
 split_vertical = ["prefix+|"]
 `), 0o644)
-	t.Setenv(EnvVar, f)
+	teststate.Setenv(t, EnvVar, f)
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)

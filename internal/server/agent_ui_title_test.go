@@ -3,10 +3,12 @@ package server
 import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestG5ReportedTitleTrimPreserveLabelClearAndSession(t *testing.T) {
+	teststate.Lock(t)
 	s := newTestServer(t, "titles")
 	s.app.ExecCmd(model.CmdRenamePane{Pane: 1, Label: "reviewer"})
 	title := " restore pane sessions "

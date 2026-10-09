@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/base64"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"os"
 	"strings"
@@ -14,7 +15,7 @@ import (
 
 func specRuntimeApp(t *testing.T) *App {
 	t.Helper()
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	sup := runtime.NewSupervisor()
 	a := NewApp(model.New(t.TempDir(), 120, 35), sup, io.Discard, t.TempDir())
 	t.Cleanup(func() {
@@ -57,6 +58,7 @@ func specWaitText(t *testing.T, p *runtime.Pane, text string) {
 }
 
 func TestSPECCopyWriteSuccessFailureAndTwoSecondDeadline(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	pid := a.focusedPane()
 	p, err := a.sup.SpawnWith(pid, a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", "printf 'alpha\\r\\nbeta\\r\\ngamma\\r\\n'; exec sleep 60"})

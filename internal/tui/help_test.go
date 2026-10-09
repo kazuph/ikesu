@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"strings"
 
 	"github.com/kazuph/goterrace/internal/model"
@@ -95,15 +96,16 @@ func TestHelpScrollClamp(t *testing.T) {
 
 // Ghostty hosts get modifyOtherKeys on/off sequences; others get none.
 func TestKbdHostSeqs(t *testing.T) {
-	t.Setenv("TERM_PROGRAM", "ghostty")
+	teststate.Lock(t)
+	teststate.Setenv(t, "TERM_PROGRAM", "ghostty")
 	if KbdEnterSeq() != "\x1b[>4;1m" || KbdLeaveSeq() != "\x1b[>4;0m" {
 		t.Fatalf("ghostty seqs = %q / %q", KbdEnterSeq(), KbdLeaveSeq())
 	}
-	t.Setenv("TERM_PROGRAM", "Ghostty")
+	teststate.Setenv(t, "TERM_PROGRAM", "Ghostty")
 	if KbdEnterSeq() == "" {
 		t.Fatal("Ghostty (capital) must also match")
 	}
-	t.Setenv("TERM_PROGRAM", "iTerm.app")
+	teststate.Setenv(t, "TERM_PROGRAM", "iTerm.app")
 	if KbdEnterSeq() != "" || KbdLeaveSeq() != "" {
 		t.Fatal("non-ghostty host must get no modifyOtherKeys")
 	}

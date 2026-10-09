@@ -3,10 +3,12 @@ package server
 import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
 
 func TestG2DuplicateSectionAndMissingWorkspaceSocket(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	c := dialClient(t, dir)
 	defer c.conn.Close()
@@ -38,7 +40,8 @@ func TestG2DuplicateSectionAndMissingWorkspaceSocket(t *testing.T) {
 }
 
 func TestG2CreateSectionSchemaAndInvalidValue(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "create-section")
 	defer s.sup.KillAll()
 	s.app.State().CollapsedSections = map[model.Section]bool{model.SectionWork: true}

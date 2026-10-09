@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,12 +15,13 @@ import (
 )
 
 func TestSPECConfiguredFocusHistoryAcrossTabsWorkspacesAndDeletedPane(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfgPath, []byte("[keys]\nfocus_history_back=['prefix+u']\nfocus_history_forward=['prefix+i']\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", cfgPath)
+	teststate.Setenv(t, "GTX_CONFIG", cfgPath)
 	c, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +46,21 @@ func TestSPECConfiguredFocusHistoryAcrossTabsWorkspacesAndDeletedPane(t *testing
 			t.Fatalf("forward=%d want=%d", a.focusedPane(), want)
 		}
 	}
+	// Prefix history works while the terminal is in its Vim-style copy view.
+	for _, fullscreen := range []bool{false, true} {
+		a.enterCopy(fullscreen)
+		a.handleKey(uv.Key{Code: 'b', Mod: uv.ModCtrl}, nil)
+		a.handleKey(uv.Key{Code: 'u'}, nil)
+		if a.focusedPane() != p3 || a.cm != nil {
+			t.Fatal("history back inside copy mode")
+		}
+		a.enterCopy(fullscreen)
+		a.handleKey(uv.Key{Code: 'b', Mod: uv.ModCtrl}, nil)
+		a.handleKey(uv.Key{Code: 'i'}, nil)
+		if a.focusedPane() != p4 || a.cm != nil {
+			t.Fatal("history forward inside copy mode")
+		}
+	}
 	// Remove an inactive historical pane: traversal must continue past it.
 	a.exec(model.CmdClosePane{Pane: p2})
 	a.focusHistoryStep(false)
@@ -57,6 +74,7 @@ func TestSPECConfiguredFocusHistoryAcrossTabsWorkspacesAndDeletedPane(t *testing
 }
 
 func TestSPECDefaultRenameAndHelpOrder(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.prefixKey(uv.Key{Code: 'p', Mod: uv.ModShift})
 	if a.dialog == nil || a.dialog.d.Title != "Rename pane" {
@@ -83,6 +101,7 @@ func TestSPECDefaultRenameAndHelpOrder(t *testing.T) {
 }
 
 func TestSPECEditScrollbackInvokesEditorWithRetainedText(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	pid := a.focusedPane()
 	p, err := a.sup.SpawnWith(pid, a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", "printf 'SCROLLBACK_MARKER\\r\\n'; exec sleep 60"})
@@ -96,8 +115,8 @@ func TestSPECEditScrollbackInvokesEditorWithRetainedText(t *testing.T) {
 	if err = os.WriteFile(editor, []byte("#!/bin/sh\ncp \"$1\" \"$GTX_TEST_EDITOR_OUTPUT\"\nrm \"$1\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("EDITOR", editor)
-	t.Setenv("GTX_TEST_EDITOR_OUTPUT", output)
+	teststate.Setenv(t, "EDITOR", editor)
+	teststate.Setenv(t, "GTX_TEST_EDITOR_OUTPUT", output)
 	a.prefixKey(uv.Key{Code: 'e'})
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()

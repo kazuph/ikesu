@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 )
 
 func TestSPECBranchUsesRuntimeCwdBeforeSavedCwd(t *testing.T) {
+	teststate.Lock(t)
 	a, r := worktreeApp(t)
 	other := t.TempDir()
 	for _, tc := range []struct{ dir, branch string }{{r, "saved-branch"}, {other, "runtime-branch"}} {
@@ -49,6 +51,7 @@ func TestSPECBranchUsesRuntimeCwdBeforeSavedCwd(t *testing.T) {
 }
 
 func TestSPECSafeRecordedPendingRestoreLabels(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	for _, tc := range []struct{ agent, record, value, want string }{
 		{"codex", "codex", "safe-session", "saved session"},
@@ -67,6 +70,7 @@ func TestSPECSafeRecordedPendingRestoreLabels(t *testing.T) {
 }
 
 func TestSPECExactCopilotFootersAndAnimatedSummary(t *testing.T) {
+	teststate.Lock(t)
 	for _, footer := range []string{"● Thinking esc cancel", "◉ Loading: 1 instruction, 5 hooks, 62 skills"} {
 		d := detect.Detect("copilot", detect.Input{Screen: footer})
 		if d.State != detect.Working || !d.VisibleWorking {

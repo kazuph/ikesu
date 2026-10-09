@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,7 +38,7 @@ func pinTestConfig(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("[session]\nresume_agents_on_restore = false\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_CONFIG", cfg)
+	teststate.Setenv(t, "GTX_CONFIG", cfg)
 }
 
 // startServerAt boots a server for sess under an existing GTX_STATE_DIR
@@ -77,13 +78,14 @@ func waitForSessionFile(t *testing.T, dir string) *session.File {
 // G3/G5: a split and a rename are saved to session.json, and a fresh
 // server process restores the same pane numbers, layout, and labels.
 func TestSessionSaveAndReload(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "persist")
 
@@ -140,6 +142,7 @@ func TestSessionSaveAndReload(t *testing.T) {
 // the exit, and that session.json is intact. The real successor and
 // client reconnect paths are covered by the e2e binary test.
 func TestServerRestartRespondsAndSaves(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	waitAPISocket(t, dir)
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right"}, nil)
@@ -166,13 +169,14 @@ func TestServerRestartRespondsAndSaves(t *testing.T) {
 // A corrupt session.json must not crash startup; the server fails closed
 // to a fresh single-pane state.
 func TestCorruptSessionStartsFresh(t *testing.T) {
+	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "gtxtest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	t.Setenv("GTX_STATE_DIR", base)
-	t.Setenv("SHELL", "/bin/sh")
+	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir := api.SessionDir("corrupt")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -193,6 +197,7 @@ func TestCorruptSessionStartsFresh(t *testing.T) {
 // A client attached to the client socket receives {"type":"restart"}
 // before the connection closes on server.restart (G3 restart).
 func TestRestartNotifiesClient(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	waitAPISocket(t, dir)
 	c := dialClient(t, dir)

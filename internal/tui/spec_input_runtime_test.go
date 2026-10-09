@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,7 @@ func specFeed(a *App, raw string) {
 }
 
 func TestSPECRawLFShiftEnterAndFixTermActualPTYBytes(t *testing.T) {
+	teststate.Lock(t)
 	for _, tc := range []struct{ name, output, host, want string }{
 		{"rawLF", "", "\n", "\n"},
 		{"legacyShiftEnter", "", "\x1b[27;2;13~", "\n"},
@@ -67,6 +69,7 @@ func TestSPECRawLFShiftEnterAndFixTermActualPTYBytes(t *testing.T) {
 }
 
 func TestSPECNonterminalLFUsesCtrlJ(t *testing.T) {
+	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.openHelp()
 	specFeed(a, "\n")
@@ -81,7 +84,8 @@ func TestSPECNonterminalLFUsesCtrlJ(t *testing.T) {
 }
 
 func TestSPECRealChildEnvironmentAndNestedColor(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
+	teststate.Lock(t)
+	teststate.Setenv(t, "NO_COLOR", "1")
 	a := specRuntimeApp(t)
 	p, err := a.sup.SpawnWith(a.focusedPane(), a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", `printf 'ENV:%s:%s:%s\r\n' "${NO_COLOR-unset}" "$TERM" "$COLORTERM"; if [ -z "${NO_COLOR+x}" ]; then printf '\033[31mCOLOR_RED\033[0m\r\n'; else printf MONOCHROME; fi; exec sleep 60`})
 	if err != nil {

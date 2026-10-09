@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"os"
 	"path/filepath"
@@ -64,6 +65,7 @@ func firstPaneID(t *testing.T, dir string) string {
 }
 
 func TestWorkspaceAPI(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -122,6 +124,7 @@ func TestWorkspaceAPI(t *testing.T) {
 }
 
 func TestPaneAPISplitReadSend(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -325,6 +328,7 @@ func waitAPISocket(t *testing.T, dir string) {
 
 // Reading a pane works without an attached display client.
 func TestPaneReadNoClient(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	waitAPISocket(t, dir)
 	defer stopServer(t, dir, done)
@@ -337,6 +341,7 @@ func TestPaneReadNoClient(t *testing.T) {
 }
 
 func TestTabAPI(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -472,6 +477,7 @@ func TestTabAPI(t *testing.T) {
 }
 
 func TestTabCloseLastRemovesWorkspace(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
@@ -497,6 +503,7 @@ func TestTabCloseLastRemovesWorkspace(t *testing.T) {
 }
 
 func TestPaneReadReportsRealTabID(t *testing.T) {
+	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)

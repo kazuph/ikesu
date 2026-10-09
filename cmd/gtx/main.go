@@ -94,7 +94,7 @@ dispatch:
 	if errors.Is(err, tui.ErrStandaloneRestart) {
 		exe, e := os.Executable()
 		if e == nil {
-			e = syscall.Exec(exe, []string{exe, "--no-session"}, os.Environ())
+			e = syscall.Exec(exe, []string{os.Args[0], "--no-session"}, os.Environ())
 		}
 		fmt.Fprintln(os.Stderr, "gtx restart:", e)
 		os.Exit(1)
