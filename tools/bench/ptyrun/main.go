@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -275,6 +276,31 @@ func main() {
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<2;%d;%dm", x, y)
 		case "screen":
 			_ = os.WriteFile(rest, []byte(screen()), 0o644)
+		case "cells":
+			settle()
+			mu.Lock()
+			grid := make([][]uv.Cell, *rows)
+			for y := range grid {
+				grid[y] = make([]uv.Cell, *cols)
+				for x := range grid[y] {
+					if cell := emu.CellAt(x, y); cell != nil {
+						grid[y][x] = *cell
+					}
+				}
+			}
+			data, err := json.Marshal(struct {
+				Cols, Rows int
+				Cells      [][]uv.Cell
+			}{*cols, *rows, grid})
+			mu.Unlock()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			if err = os.WriteFile(rest, data, 0o644); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
 		case "resize":
 			var c, r int
 			if _, err := fmt.Sscanf(rest, "%d %d", &c, &r); err != nil || c < 1 || r < 1 {

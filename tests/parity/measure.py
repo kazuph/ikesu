@@ -49,6 +49,8 @@ a = p.parse_args()
 root = Path(a.directory)
 rows = []
 for hp in sorted((root/'herdr').glob('*.txt')):
+    if hp.name == 'server-pid.txt':
+        continue
     gp = root/'gtx'/hp.name
     if not gp.exists():
         rows.append({'screen':hp.name, 'status':'NOT_RUN'})

@@ -1,41 +1,53 @@
 send "\x02s"
 sleep 200ms
 screen @OUT@/open.txt
+cells @OUT@/open.json
 send "\x1b[B"
 sleep 200ms
 screen @OUT@/down.txt
+cells @OUT@/down.json
 send "\x1b[A"
 sleep 200ms
 screen @OUT@/up.txt
+cells @OUT@/up.json
 send "\x1b[C"
 sleep 200ms
 screen @OUT@/right.txt
+cells @OUT@/right.json
 send "\x1b[D"
 sleep 200ms
 screen @OUT@/left.txt
+cells @OUT@/left.json
 send "\t"
 sleep 200ms
 screen @OUT@/tab.txt
+cells @OUT@/tab.json
 send "\x1b[Z"
 sleep 200ms
 screen @OUT@/shift-tab.txt
+cells @OUT@/shift-tab.json
 send " "
 sleep 200ms
 screen @OUT@/space.txt
+cells @OUT@/space.json
 send "\r"
 sleep 200ms
 screen @OUT@/enter.txt
+cells @OUT@/enter.json
 send "\x02s"
 sleep 200ms
 mouse wheel-down 80 20
 sleep 200ms
 screen @OUT@/wheel.txt
+cells @OUT@/wheel.json
 resize 100 25
 sleep 200ms
 screen @OUT@/resize.txt
+cells @OUT@/resize.json
 click 95 23
 sleep 200ms
 screen @OUT@/outside.txt
+cells @OUT@/outside.json
 send "\x1b"
 sleep 200ms
 resize 160 45
@@ -43,4 +55,5 @@ sleep 200ms
 send "echo SETTINGS_ENDED\r"
 sleep 200ms
 screen @OUT@/shell-input.txt
+cells @OUT@/shell-input.json
 kill

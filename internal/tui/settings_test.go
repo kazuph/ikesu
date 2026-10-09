@@ -40,7 +40,10 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 		t.Fatal("sound save")
 	}
 	a.openSettings()
-	specFeed(a, "\t\t\x1b[B\r")
+	if a.settings.Section != 1 {
+		t.Fatal("reopen must retain sound section")
+	}
+	specFeed(a, "\t\x1b[B\r")
 	if a.settings != nil || a.sidebarConfig.ToastDelivery() != config.ToastGTX || applied.ToastDelivery() != config.ToastGTX {
 		t.Fatal("toast apply")
 	}

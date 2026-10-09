@@ -10,6 +10,8 @@ a = p.parse_args()
 root = Path(a.directory)
 rows = []
 for h in sorted((root / 'herdr').glob('*.txt')):
+    if h.name == 'server-pid.txt':
+        continue
     g = root / 'gtx' / h.name
     if not g.exists():
         rows.append({'screen': h.name, 'status': 'NOT_RUN', 'reason': 'gtx capture absent'})

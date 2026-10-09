@@ -30,7 +30,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         root = Path(root)
         for directory in ['home', 'config', 'state', 'data', 'zdot', 'cwd']:
             (root / directory).mkdir()
-        (root / 'zdot/.zshrc').write_text("PS1='PARITY> '\n")
+        (root / 'zdot/.zshrc').write_text("PS1='PARITY> '\nunset HISTFILE\nSAVEHIST=0\n")
         env = {k: v for k, v in os.environ.items()
                if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CLAUDE', 'CODEX'))}
         env.update(HOME=str(root / 'home'), ZDOTDIR=str(root / 'zdot'),
@@ -79,9 +79,11 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     created = request('workspace.create', {'cwd':str(root / 'cwd'), 'label':'parity', 'focus':True})
                     (target / 'fixture.json').write_text(json.dumps(created, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
-                            '-steps', str(steps), '--', binary] + (['--session', 'parity'] if a.server else ['--no-session']),
-                               cwd=root / 'cwd', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw'), '--', binary] + (['--session', 'parity'] if a.server else ['--no-session']),
+                               cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
+                configs = {str(path.relative_to(root)): path.read_text() for path in root.rglob('config.toml') if path.is_file()}
+                (target/'config-files.json').write_text(json.dumps(configs, ensure_ascii=False, indent=2)+'\n')
                 if server is not None:
                     replies = []
                     for owned in root.rglob('*.sock'):

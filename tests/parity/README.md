@@ -6,7 +6,7 @@ Mac mini の隔離領域で実行する。herdr の実装・テストは読ま�
 cd ~/bench-terrace.noindex/src/parity
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 go build -o ../../work/gtx-parity ./cmd/gtx
-(cd tools/bench/ptyrun && go build -o ../../work/ptyrun-parity .)
+(cd tools/bench/ptyrun && go build -o "$HOME/bench-terrace.noindex/work/ptyrun-parity" .)
 python3 tests/parity/observe.py \
   --herdr ../../work/herdr-target/release/herdr \
   --gtx ../../work/gtx-parity --ptyrun ../../work/ptyrun-parity \
@@ -29,3 +29,11 @@ HOME、XDG、状態ディレクトリ、ZDOTDIR、作業ディレクトリは実
 `copy-detail.steps` は移動・検索・選択解除・終了だけを調べる。選択範囲のyankとマウス選択のreleaseはクリップボードを書き換えるため含めない。コピーの実行自体は未達として別途記録する。
 
 `measure.py 出力先` は画面の行数・セル幅・枠の座標と寸法・ペインタイトル・下部行・helpの行・確認用入力文字列を数値と文字列で記録する。各フィールドの一致だけを判定し、画面全体や操作全体の合格へ拡張しない。動的なペイン名等は全文差とあわせて結果表で確認する。
+
+`cells 保存先.json` は端末エミュレーターのセル内容・幅・色・属性を保存し、文字だけで確認できない選択の位置を測定する。`terminal.raw` は端末出力を保存し、OSC 52などを通常の端末へ転送しない。no-sessionでの起動cwdは両方とも隔離HOMEへ揃える（herdrが初期shellをHOMEで開くため）。永続サーバーの比較workspaceは明示cwdで作る。
+
+`cell_styles.py 出力先 screen label` は一意な共通ラベルの先頭セルの色・属性を比較し、不一致または未観測でexit 1を返す。座標も出力するが、項目数が違うメニューの座標は一致扱いにしない。
+
+click/rclick/mouseの座標は1始まり、screen/cells/measure.pyの保存座標は0始まり。上端タブバーはクリック手順ではy1であり、y0を指定しない。
+
+`navigator_compare.py 出力先` は navigator の枠を実物画面から検出し、枠全体の文字・セル幅・色・属性を比較する。Settings は `--title ' settings' --result settings-comparison.json` を付ける。`PASS` は観測した枠の全セル一致、`DIFFERENT_CELLS` は差あり、`NOT_OBSERVED` はその枠を観測できなかった画面を示す。枠が閉じた画面や設定保存の正しさを、この判定で合格扱いにしない。

@@ -54,6 +54,7 @@ func drawSettings(f *Frame, s *Settings) {
 	current := s.Theme
 	switch s.Section {
 	case 1:
+		f.Fill(r.X+1, r.Y+5, r.W-2, 2, " ", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG})
 		f.Text(r.X+2, r.Y+5, "play sounds when agents change state in background", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, r.X+r.W-1)
 		names = []string{"sound alerts: on", "sound alerts: off"}
 		current = names[1]
@@ -61,6 +62,7 @@ func drawSettings(f *Frame, s *Settings) {
 			current = names[0]
 		}
 	case 2:
+		f.Fill(r.X+1, r.Y+5, r.W-2, 2, " ", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG})
 		f.Text(r.X+2, r.Y+5, "choose where background popup notifications should appear", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, r.X+r.W-1)
 		names = []string{"notification popups: off", "notification popups: inside gtx", "notification popups: via terminal", "notification popups: via system"}
 		for i, n := range ToastNames {
@@ -98,6 +100,7 @@ func drawSettings(f *Frame, s *Settings) {
 		f.Text(r.X+2, y, label, style, r.X+r.W-1)
 	}
 	x = r.X + 2
+	f.Set(r.X+1, r.Y+r.H-3, " ", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
 	for _, part := range []struct {
 		text string
 		fg   color.Color

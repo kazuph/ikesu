@@ -231,6 +231,9 @@ func Compose(in Input) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
 	f.Palette = ThemePalette(in.SidebarConfig.ThemeName())
+	if in.Settings != nil {
+		f.Palette = ThemePalette(in.Settings.Theme)
+	}
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)

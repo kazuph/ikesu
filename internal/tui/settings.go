@@ -9,7 +9,7 @@ import (
 
 func (a *App) openSettings() {
 	c := a.sidebarConfig
-	a.settings = &render.Settings{Theme: c.ThemeName(), Sound: c.SoundEnabled(), Toast: string(c.ToastDelivery())}
+	a.settings = &render.Settings{Section: a.settingsSection, Theme: c.ThemeName(), Sound: c.SoundEnabled(), Toast: string(c.ToastDelivery())}
 	a.settingsSelectCurrent()
 	a.dirty = true
 }
@@ -100,6 +100,10 @@ func (a *App) settingsKey(k uv.Key) {
 	case uv.KeyDown:
 		s.Selected = min(a.settingsCount()-1, s.Selected+1)
 	}
+	a.settingsSection = s.Section
+	if a.settings != nil && s.Section == 0 {
+		s.Theme = render.ThemeNames[s.Selected]
+	}
 	a.dirty = true
 }
 func (a *App) settingsMouse(ev input.Event) {
@@ -116,6 +120,7 @@ func (a *App) settingsMouse(ev input.Event) {
 		for i, offset := range []int{2, 10, 18} {
 			if m.X >= r.X+offset && m.X < r.X+offset+6 {
 				a.settings.Section = i
+				a.settingsSection = i
 				a.settingsSelectCurrent()
 				return
 			}
@@ -124,6 +129,9 @@ func (a *App) settingsMouse(ev input.Event) {
 	for i := 0; i < a.settingsCount(); i++ {
 		if m.Y == render.SettingsChoiceY(r, a.settings.Section, i) && m.X > r.X && m.X < r.X+r.W-1 {
 			a.settings.Selected = i
+			if a.settings.Section == 0 {
+				a.settings.Theme = render.ThemeNames[i]
+			}
 			return
 		}
 	}

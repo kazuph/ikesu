@@ -185,6 +185,7 @@ type App struct {
 	toastRect            layout.Rect
 	menu                 *uiMenu
 	settings             *render.Settings
+	settingsSection      int
 	configChanged        func(config.Config)
 	dialog               *uiDialog
 	sep                  *sepDrag
