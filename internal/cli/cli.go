@@ -71,6 +71,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "wait":
+		return r.waitCLI(args[1:])
 	case "plugin":
 		return r.pluginCLI(args[1:])
 	case "pane":
@@ -126,6 +128,9 @@ func (r *runner) request(id, method string, params any) ([]byte, error) {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	if method == api.MethodPaneWaitForOutput {
+		_ = conn.SetDeadline(time.Time{})
+	}
 	if method == api.MethodAgentPrompt {
 		if p, ok := params.(api.AgentPromptParams); ok && p.Wait != nil {
 			_ = conn.SetDeadline(time.Time{})

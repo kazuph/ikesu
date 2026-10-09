@@ -43,15 +43,17 @@ type CursorInfo struct {
 
 // PaneSnap is everything render needs to draw one pane.
 type PaneSnap struct {
-	Grid         [][]uv.Cell // content cells, [row][col], scroll applied
-	Label        string      // process/agent name for the border title
-	Title        string      // terminal OSC title
-	TaskTitle    string      // reported display task, preferred over OSC
-	Branch       string      // pane cwd branch, used only on the pane border
-	Tokens       map[string]string
-	StateLabels  map[string]string
-	DisplayAgent string
-	Agent        string // detected agent id ("" = not identified)
+	Seen           bool
+	StateChangeSeq uint64
+	Grid           [][]uv.Cell // content cells, [row][col], scroll applied
+	Label          string      // process/agent name for the border title
+	Title          string      // terminal OSC title
+	TaskTitle      string      // reported display task, preferred over OSC
+	Branch         string      // pane cwd branch, used only on the pane border
+	Tokens         map[string]string
+	StateLabels    map[string]string
+	DisplayAgent   string
+	Agent          string // detected agent id ("" = not identified)
 	// Restore is "saved session" / "no saved session" for agent panes,
 	// shown right-aligned on the top border (SPEC G1).
 	Restore   string

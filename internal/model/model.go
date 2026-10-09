@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/kazuph/goterrace/internal/agentview"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/layout"
 )
@@ -60,6 +61,7 @@ func (ws *Workspace) PaneCount() int {
 
 // AppState is the complete pure application state.
 type AppState struct {
+	AgentView                                           *agentview.View
 	Workspaces                                          []*Workspace
 	MobileWidthThreshold                                int
 	Popup                                               *PopupPaneState

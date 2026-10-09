@@ -154,7 +154,7 @@ func (a *App) ScrollOffset(pid int) int { return a.scroll[pid] }
 
 // PaneStatusKey returns the pane's agent status key
 // (working|blocked|done|idle|unknown). Call on the app loop.
-func (a *App) PaneStatusKey(pid int) string { return a.glyph(pid).Key }
+func (a *App) PaneStatusKey(pid int) string { a.noteAgentState(pid); return a.glyph(pid).Key }
 
 // SetReported applies a pane.report_agent override. Call on the app loop.
 func (a *App) SetReported(pid int, agent, state string) {
@@ -173,6 +173,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 			a.availHook(pid)
 		}
 	}
+	a.noteAgentState(pid)
 	a.changed()
 }
 
@@ -221,12 +222,17 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					a.sessionCwds[ws.ID] = sn.Cwd
 				}
 				snap := &render.PaneSnap{
-					Label:  labelFor(sn, p),
-					Title:  sn.OSCTitle,
-					Agent:  agentFor(sn),
-					Status: a.glyph(pid),
-					Dead:   sn.Dead,
-					Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+					Label:          labelFor(sn, p),
+					Title:          sn.OSCTitle,
+					Agent:          agentFor(sn),
+					Status:         a.glyph(pid),
+					StateChangeSeq: a.AgentStateChangeSeq(pid),
+					Seen:           true,
+					Dead:           sn.Dead,
+					Cursor:         render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+				}
+				if tr := a.trackers[pid]; tr != nil {
+					snap.Seen = tr.Seen
 				}
 				if rep := a.reported[pid]; rep.agent != "" {
 					snap.Label, snap.Agent = rep.agent, rep.agent

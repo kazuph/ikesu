@@ -109,6 +109,7 @@ func (a *App) detectAll() {
 						a.availHook(pid)
 					}
 				}
+				a.noteAgentState(pid)
 				// The focused pane in the visible workspace is seen.
 				if ws == activeWS && pid == focusedID {
 					if !tr.Seen {
@@ -253,6 +254,8 @@ func (a *App) effect(e model.Effect) {
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
+		delete(a.agentStates, e.Pane)
+		delete(a.agentStateSeq, e.Pane)
 		delete(a.sessions, e.Pane)
 		if a.paneClosedHook != nil {
 			a.paneClosedHook(e.Pane)

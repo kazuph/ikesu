@@ -96,6 +96,7 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 			return agentRank(panes[agents[i].Pane].Status.Key) < agentRank(panes[agents[j].Pane].Status.Key)
 		})
 	}
+	agents = projectAgentRows(s, panes, agents)
 	rows = append(rows, SidebarRow{Kind: RowSep})
 	for _, r := range agents {
 		panel := cfg.UI.Sidebar.Agents

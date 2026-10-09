@@ -66,6 +66,11 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 	if response, blocked := s.rejectOverlayLayoutRequest(req); blocked {
 		return response
 	}
+	if req.Method == "agent.view.set" || req.Method == "agent.view.clear" {
+		var response api.Response
+		s.app.Do(func() { response = s.agentViewRequest(req) })
+		return response
+	}
 	if strings.HasPrefix(req.Method, "plugin.") {
 		var resp api.Response
 		s.app.Do(func() { resp = s.pluginRequest(req) })

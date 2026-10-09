@@ -128,14 +128,17 @@ type appJob struct {
 // through Do/PushInput/Resize so all state changes stay on the loop
 // goroutine.
 type App struct {
-	pluginHost    func() *plugin.Engine
-	pluginContext func() plugin.Context
-	st            *model.AppState
-	sup           *runtime.Supervisor
-	out           io.Writer
-	fr            *input.Framer
-	enc           *render.Encoder
-	cwd           string
+	agentStateCounter uint64
+	agentStates       map[int]string
+	agentStateSeq     map[int]uint64
+	pluginHost        func() *plugin.Engine
+	pluginContext     func() plugin.Context
+	st                *model.AppState
+	sup               *runtime.Supervisor
+	out               io.Writer
+	fr                *input.Framer
+	enc               *render.Encoder
+	cwd               string
 
 	input    chan []byte
 	resizeCh chan winsize

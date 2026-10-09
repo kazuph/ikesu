@@ -630,6 +630,9 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 	}
 	var matchRE *regexp.Regexp
+	if p.StripAnsi != nil && !*p.StripAnsi {
+		return api.Failure(req.ID, api.ErrInvalidRequest, "raw output matching is not supported: the terminal buffer stores rendered cells")
+	}
 	switch p.Match.Type {
 	case "substring":
 	case "regex":
