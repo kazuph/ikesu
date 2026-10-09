@@ -189,6 +189,7 @@ func Run(session, version string) (int, error) {
 		env := []string{
 			fmt.Sprintf("GTX_PANE_ID=p%d", paneID),
 			"GTX_SOCKET_PATH=" + apiSockAbs,
+			"GTX_SOCKET_PATH_EXPLICIT=1",
 		}
 		// Spawn runs on the app loop, so State() is safe here and the pane
 		// already exists in the model when its shell starts.

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/kazuph/goterrace/internal/api"
 )
 
 // EnvVar overrides the config file location.
@@ -108,13 +109,13 @@ func Path() string {
 		return p
 	}
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "gtx", "config.toml")
+		return filepath.Join(dir, api.BinaryNamespace(), "config.toml")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join("gtx", "config.toml")
+		return filepath.Join(api.BinaryNamespace(), "config.toml")
 	}
-	return filepath.Join(home, ".config", "gtx", "config.toml")
+	return filepath.Join(home, ".config", api.BinaryNamespace(), "config.toml")
 }
 
 // Load reads the config file; a missing file is not an error.

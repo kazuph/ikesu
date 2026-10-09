@@ -6,6 +6,7 @@ import (
 )
 
 func TestScrollbackGrows(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
 	s := NewSupervisor()
 	p, err := s.Spawn(1, t.TempDir(), 60, 20)
 	if err != nil {

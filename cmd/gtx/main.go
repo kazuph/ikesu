@@ -22,6 +22,7 @@ import (
 const version = "0.1.0"
 
 func main() {
+	api.ConfigureExecutable(os.Args[0])
 	args := os.Args[1:]
 
 	// Global flags may precede any subcommand.

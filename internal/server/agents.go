@@ -182,6 +182,9 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 	if cwd == "" {
 		cwd = st.Workspaces[wsIdx].Cwd
 	}
+	if _, _, err := s.sup.ResolveCommand(p.Argv, cwd); err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
+	}
 	env := p.Env
 	var pid, tabIdx int
 	if p.Split != nil && *p.Split != "" {
@@ -209,7 +212,7 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 		// logical order (SPEC G1).
 		s.app.ExecCmd(model.CmdSplitImplicit{
 			Workspace: wsIdx, Tab: tabIdx, Dir: dir,
-			Ratio: 0.5, Focus: p.Focus, Cwd: cwd, Env: env,
+			Ratio: 0.5, Focus: p.Focus, Cwd: cwd, Env: env, Argv: p.Argv,
 		})
 		pids := ws.Tabs[tabIdx].Layout.PaneIDs()
 		if len(pids) == 0 {
@@ -222,21 +225,15 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 				"--tab requires --split (a tab holds panes; a new pane without --split opens a new tab)")
 		}
 		s.app.ExecCmd(model.CmdNewTab{
-			Workspace: wsIdx, Cwd: cwd, Env: env, NoFocus: !p.Focus,
+			Workspace: wsIdx, Cwd: cwd, Env: env, NoFocus: !p.Focus, Argv: p.Argv,
 		})
 		ws := st.Workspaces[wsIdx]
 		tabIdx = len(ws.Tabs) - 1
 		pid = ws.Tabs[tabIdx].Layout.Focused()
 	}
-	// Exec replaces the login shell with the agent process so detection
-	// sees the agent itself, not a subshell. Extra env vars were already
-	// injected into the shell's environment at spawn.
-	line := "exec"
-	for _, a := range p.Argv {
-		line += " " + shellEnvQuote(a)
-	}
-	if pane := s.sup.Get(pid); pane != nil {
-		s.sendInputToPane(pane, line, []uv.KeyEvent{uv.KeyPressEvent{Code: uv.KeyEnter}})
+	if s.sup.Get(pid) == nil {
+		s.app.ExecCmd(model.CmdClosePane{Pane: model.PaneID(pid)})
+		return api.Failure(id, api.ErrInvalidRequest, "agent process could not start")
 	}
 	if p.Name != "" {
 		s.app.ExecCmd(model.CmdRenamePane{Pane: model.PaneID(pid), Label: p.Name})

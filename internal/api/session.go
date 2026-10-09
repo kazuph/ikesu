@@ -18,14 +18,11 @@ const DefaultSession = "default"
 
 // StateDir is the gtx state root ($GTX_STATE_DIR or ~/.local/state/gtx).
 func StateDir() string {
-	if dir := os.Getenv("GTX_STATE_DIR"); dir != "" {
-		return dir
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(os.TempDir(), "gtx-state")
+		return filepath.Join(os.TempDir(), BinaryNamespace()+"-state")
 	}
-	return filepath.Join(home, ".local", "state", "gtx")
+	return stateRoot(BinaryNamespace(), os.Getenv, home)
 }
 
 // ValidSessionName reports whether name is safe to use as a directory.
@@ -78,21 +75,17 @@ func APISocket(session string, explicit bool, getenv func(string) string) string
 		getenv = os.Getenv
 	}
 	if !explicit {
-		if path := getenv("GTX_SOCKET_PATH"); path != "" {
+		if path := getenv("GTX_SOCKET_PATH"); path != "" && inheritedSocket(BinaryNamespace(), path, getenv("GTX_SOCKET_PATH_EXPLICIT") == "1") {
 			return path
 		}
 	}
 	if session == "" {
 		session = DefaultSession
 	}
-	root := getenv("GTX_STATE_DIR")
-	if root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			root = filepath.Join(os.TempDir(), "gtx-state")
-		} else {
-			root = filepath.Join(home, ".local", "state", "gtx")
-		}
+	home, err := os.UserHomeDir()
+	root := stateRoot(BinaryNamespace(), getenv, home)
+	if err != nil {
+		root = filepath.Join(os.TempDir(), BinaryNamespace()+"-state")
 	}
 	return APISocketPath(filepath.Join(root, session))
 }

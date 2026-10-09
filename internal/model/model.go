@@ -175,6 +175,7 @@ type (
 		Workspace int
 		Cwd       string
 		Env       map[string]string
+		Argv      []string
 		NoFocus   bool
 	}
 	// CmdSelectTab focuses tab index of workspace index (also focuses the

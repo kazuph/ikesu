@@ -121,7 +121,7 @@ func (s *AppState) Apply(cmd Command) []Effect {
 			cwd = ws.Cwd
 		}
 		return []Effect{
-			EffSpawnPane{Pane: tab.Layout.Focused(), Cwd: cwd, Env: c.Env},
+			EffSpawnPane{Pane: tab.Layout.Focused(), Cwd: cwd, Env: c.Env, Argv: c.Argv},
 			EffSyncLayout{},
 		}
 	case CmdSelectTab:
