@@ -35,6 +35,7 @@
 
 - G9「local overlay pane command」と、G1 から移した overlay の条件: overlay は SPEC 上プラグインのペイン（API `plugin.pane.open` の配置 `overlay`）として定義されており、プラグインの土台は G10「UP-AUTOMATION」で作るため、その段階で作る。
 - G9「live handoffでのmouse報告状態の引継ぎ」「kitty画像対応paneのXTVERSION」: gtx にサーバーの引き継ぎ（live handoff）と kitty 画像の土台が無い。土台ごと作る段階を別に設ける。
+- G9「問い合わせとjob記録によるserver負荷の抑制」のうち「複数clientが接続していても session 全体の読み取りは1回」の条件: 土台の段階（docs/PLAN-foundation.md「同時に繋ぐ画面」）で、同時に繋ぐ画面は1つ・新しい画面が古い画面を切り離すと決め、複数画面の同時表示は G10「UP-MULTICLIENT」の段階で作ることにしている。この条件はその段階で確かめる（親判断 2026-10-09）。今の「新しい画面が古い画面を切り離す」動きと TestNewClientDisplacesOld は変えない。同じ節のほかの条件はこの段階で作る。
 - G9「herdr run --machine」: G11 の保存マシン一覧が前提なので G11 の段階で作る。
 - G4「paneコマンド終了通知」: SPEC で破棄済み。作らない。
 - G9「SPEC・運用規則・review evidenceの来歴」「SPEC未記載コミットの統合注記」: herdr の履歴の記録で、gtx の機能ではない。
