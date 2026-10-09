@@ -1,0 +1,30 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; python3 @FIXTURES@/socket_action.py create-other; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-popup-owners.json 5s
+sleep 1s
+screen @OUT@/one-agent.txt
+cells @OUT@/one-agent.json
+clicktext "other"
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py report-state blocked; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/two-agents.txt
+cells @OUT@/two-agents.json
+click 5 5
+sleep 500ms
+screen @OUT@/first-active.txt
+cells @OUT@/first-active.json
+resize 60 25
+sleep 500ms
+screen @OUT@/mobile.txt
+cells @OUT@/mobile.json
+resize 160 45
+sleep 500ms
+click 5 27
+sleep 500ms
+screen @OUT@/agent-click.txt
+cells @OUT@/agent-click.json
+mouse wheel-down 10 30
+sleep 500ms
+screen @OUT@/agent-wheel.txt
+cells @OUT@/agent-wheel.json
+kill

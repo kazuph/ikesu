@@ -164,13 +164,6 @@ func (a *App) onTick() {
 		a.copied = ""
 		a.dirty = true
 	}
-	if time.Since(a.lastSpin) >= spinInterval {
-		a.spin++
-		a.lastSpin = time.Now()
-		if a.anyWorking() {
-			a.dirty = true
-		}
-	}
 	// Foreground process poll: every ~1s per pane.
 	for _, ws := range a.st.Workspaces {
 		for _, t := range ws.Tabs {

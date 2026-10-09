@@ -1,0 +1,28 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; python3 @FIXTURES@/socket_action.py create-job-overflow; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-job-overflow.json 10s
+sleep 1s
+clicktext "[jobs]"
+sleep 500ms
+screen @OUT@/jobs-overflow.txt
+cells @OUT@/jobs-overflow.json
+mouse wheel-down 10 30
+sleep 500ms
+screen @OUT@/jobs-down.txt
+cells @OUT@/jobs-down.json
+mouse wheel-up 10 30
+sleep 500ms
+screen @OUT@/jobs-up.txt
+cells @OUT@/jobs-up.json
+resize 100 25
+sleep 500ms
+screen @OUT@/jobs-small.txt
+cells @OUT@/jobs-small.json
+mouse wheel-down 10 20
+sleep 500ms
+screen @OUT@/jobs-small-down.txt
+cells @OUT@/jobs-small-down.json
+resize 160 45
+sleep 500ms
+screen @OUT@/jobs-returned.txt
+cells @OUT@/jobs-returned.json
+kill

@@ -1,0 +1,26 @@
+send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "printf '\\033[3J\\033[H\\033[2JPOPUP_ALPHA\\nPOPUP_BETA\\n'\r"
+sleep 500ms
+screen @OUT@/ready.txt
+cells @OUT@/ready.json
+mouse down 65 14
+mouse motion 71 14
+sleep 250ms
+screen @OUT@/selected.txt
+cells @OUT@/selected.json
+mouse up 71 14
+sleep 250ms
+screen @OUT@/released.txt
+cells @OUT@/released.json
+send "echo POPUP_AFTER_COPY\r"
+sleep 250ms
+screen @OUT@/typed.txt
+cells @OUT@/typed.json
+send "\x1b"
+sleep 500ms
+send "echo OWNER_AFTER_COPY\r"
+sleep 250ms
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+kill

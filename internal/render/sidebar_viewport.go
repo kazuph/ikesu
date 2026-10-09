@@ -41,13 +41,20 @@ func SidebarSplitY(s *model.AppState) int {
 	return area.Y + y
 }
 
-func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int) SidebarView {
+func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int, serverUI bool) SidebarView {
 	a := s.SidebarArea()
 	iw := max(0, a.W-1)
 	mid := SidebarSplitY(s)
 	view := SidebarView{
 		Workspace: SidebarViewport{Rect: layout.Rect{X: a.X, Y: a.Y + 2, W: iw, H: max(0, mid-a.Y-3)}},
 		Agents:    SidebarViewport{Rect: layout.Rect{X: a.X, Y: mid + 2, W: iw, H: max(0, a.Y+a.H-mid-3)}},
+	}
+	if serverUI {
+		view.Agents.Rect.Y++
+		view.Agents.Rect.H = max(0, view.Agents.Rect.H-1)
+		if len(cfg.UI.Sidebar.Agents.Rows) == 0 {
+			cfg.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "workspace"}}, {{Token: "agent"}}}
+		}
 	}
 	rows := SidebarRows(s, panes, cfg)
 	sep := len(rows)
@@ -57,15 +64,23 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 			break
 		}
 	}
-	view.Workspace.Total = max(0, sep-2)
+	workspaceStart := 2
+	// Server captures keep the first section heading and its rule above the cards.
+	if serverUI && sep >= 4 {
+		workspaceStart = 4
+		view.Workspace.Rect.Y += 2
+		// The row above [menu]/[new] stays blank even when cards overflow.
+		view.Workspace.Rect.H = max(0, view.Workspace.Rect.H-3)
+	}
+	view.Workspace.Total = max(0, sep-workspaceStart)
 	view.Agents.Total = max(0, len(rows)-sep-1)
 	view.Workspace.Offset = max(0, min(workspaceScroll, max(0, view.Workspace.Total-view.Workspace.Rect.H)))
 	view.Agents.Offset = max(0, min(agentScroll, max(0, view.Agents.Total-view.Agents.Rect.H)))
-	for i := 0; i < min(2, len(rows)); i++ {
+	for i := 0; i < min(workspaceStart, len(rows)); i++ {
 		view.Rows = append(view.Rows, SidebarPosition{Row: rows[i], Y: a.Y + i})
 	}
 	for n := 0; n < view.Workspace.Rect.H && n+view.Workspace.Offset < view.Workspace.Total; n++ {
-		view.Rows = append(view.Rows, SidebarPosition{Row: rows[2+n+view.Workspace.Offset], Y: view.Workspace.Rect.Y + n})
+		view.Rows = append(view.Rows, SidebarPosition{Row: rows[workspaceStart+n+view.Workspace.Offset], Y: view.Workspace.Rect.Y + n})
 	}
 	if sep < len(rows) {
 		view.Rows = append(view.Rows, SidebarPosition{Row: rows[sep], Y: mid + 1})

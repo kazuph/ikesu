@@ -16,7 +16,7 @@ func TestParitySidebarPanelDragObservedResizePositions(t *testing.T) {
 	} {
 		state := model.New("/tmp", 160, tc.height)
 		state.SidebarSectionSplit = &split
-		view := SidebarViewFor(state, nil, config.Config{}, 0, 0)
+		view := SidebarViewFor(state, nil, config.Config{}, 0, 0, false)
 		if view.Agents.Rect.Y-1 != tc.agentsY {
 			t.Fatalf("height %d: agents header %d want %d", tc.height, view.Agents.Rect.Y-1, tc.agentsY)
 		}
@@ -38,7 +38,7 @@ func TestParitySidebarPanelDraggedEdgeCaptures(t *testing.T) {
 		}{{.1, tc.top}, {.9, tc.bottom}} {
 			state := model.New("/tmp", 160, tc.height)
 			state.SidebarSectionSplit = &edge.split
-			view := SidebarViewFor(state, nil, config.Config{}, 0, 0)
+			view := SidebarViewFor(state, nil, config.Config{}, 0, 0, false)
 			if got := view.Agents.Rect.Y - 1; got != edge.y {
 				t.Fatalf("height %d split %g: header %d want %d", tc.height, edge.split, got, edge.y)
 			}

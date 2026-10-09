@@ -50,7 +50,7 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 		}
 		panes[i+1] = &PaneSnap{Agent: "codex"}
 	}
-	v := SidebarViewFor(s, panes, config.Config{}, 100, 100)
+	v := SidebarViewFor(s, panes, config.Config{}, 100, 100, false)
 	if v.Workspace.Offset == 0 || v.Agents.Offset == 0 {
 		t.Fatal("independent overflow missing", v)
 	}
@@ -70,7 +70,7 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 		t.Fatal("scrollbar invaded footer")
 	}
 	s.Apply(model.CmdToggleSection{Section: model.SectionWork})
-	next := SidebarViewFor(s, panes, config.Config{}, 100, 100)
+	next := SidebarViewFor(s, panes, config.Config{}, 100, 100, false)
 	if next.Agents.Total != 1 || v.Workspace.Total-next.Workspace.Total != 19*3 {
 		t.Fatal("collapsed cards still counted", v, next)
 	}

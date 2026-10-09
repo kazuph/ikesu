@@ -31,6 +31,9 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 			name += " Z"
 		}
 		marker := tabMarker(t, in.Panes)
+		if in.ServerUI {
+			marker = " "
+		}
 		width := max(8, ansi.StringWidth(name)+4)
 		if marker != " " {
 			width = max(8, ansi.StringWidth(name)+6)

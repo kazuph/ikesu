@@ -117,7 +117,7 @@ func TestSPECExactCopilotFootersAndAnimatedSummary(t *testing.T) {
 		}
 		seen[frame] = true
 	}
-	if len(seen) != 4 {
+	if len(seen) != 10 {
 		t.Fatal("fixed dot summary")
 	}
 }

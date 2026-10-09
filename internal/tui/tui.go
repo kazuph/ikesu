@@ -23,16 +23,16 @@ import (
 	"time"
 )
 
-// spinnerFrames rotate for working agents (150ms per frame).
-var spinnerFrames = []string{"◐", "◓", "◑", "◒"}
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const (
 	drawMinInterval = 16 * time.Millisecond
-	spinInterval    = 150 * time.Millisecond
-	fossilExpiry    = 15 * time.Second
-	copiedDuration  = 2 * time.Second
-	tickInterval    = 50 * time.Millisecond
-	drainMs         = 100 * time.Millisecond
+	// The isolated working-cell clock records a 128ms median over repeated cycles.
+	spinInterval   = 128 * time.Millisecond
+	fossilExpiry   = 15 * time.Second
+	copiedDuration = 2 * time.Second
+	tickInterval   = 50 * time.Millisecond
+	drainMs        = 100 * time.Millisecond
 )
 
 const (
@@ -245,7 +245,6 @@ type App struct {
 	lastClick                                clickMark // last left press inside a normal pane body
 	dblMenu                                  bool      // second same-cell down/up pending menu open
 	spin                                     int
-	lastSpin                                 time.Time
 	lastDraw                                 time.Time
 	lastSpawnError                           error
 	dirty                                    bool
@@ -430,6 +429,8 @@ func (a *App) Run() {
 	defer close(a.doneCh)
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
+	spin := time.NewTicker(spinInterval)
+	defer spin.Stop()
 	var flush <-chan time.Time
 	var flushTimer *time.Timer
 	var drawTimer *time.Timer
@@ -499,6 +500,11 @@ func (a *App) Run() {
 			drawReady = nil
 		case <-tick.C:
 			a.onTick()
+		case <-spin.C:
+			a.spin++
+			if a.anyWorking() {
+				a.dirty = true
+			}
 		}
 		if a.quit {
 			break

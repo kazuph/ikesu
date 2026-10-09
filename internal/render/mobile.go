@@ -61,9 +61,16 @@ func MobileOffset(s *model.AppState, menu []MenuItem, offset int) int {
 func drawMobile(f *Frame, in Input, out *Output) {
 	s := in.State
 	header := uv.Style{Bg: f.Palette.SurfDim}
+	if in.ServerUI {
+		header.Fg = f.Palette.Text
+	}
 	f.Fill(0, 0, s.Cols, min(2, s.Rows), " ", header)
 	switcher := MobileSwitchRect(s)
-	f.Fill(switcher.X, 0, switcher.W, min(2, s.Rows), " ", uv.Style{Bg: f.Palette.Surface})
+	switchFill := uv.Style{Bg: f.Palette.Surface}
+	if in.ServerUI {
+		switchFill.Fg = f.Palette.Text
+	}
+	f.Fill(switcher.X, 0, switcher.W, min(2, s.Rows), " ", switchFill)
 	for y := 0; y < min(2, s.Rows); y++ {
 		f.Set(switcher.X, y, "│", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.Surface})
 	}
@@ -104,21 +111,42 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			}
 		}
 		summary := "no agents"
+		primary := ""
 		style := uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}
 		switch {
 		case counts["blocked"] > 0:
+			primary = "blocked"
 			summary = fmt.Sprintf("◉ %d blocked", counts["blocked"])
 			style.Fg, style.Attrs = f.Palette.Red, uv.AttrBold
 		case counts["working"] > 0:
+			primary = "working"
 			summary = fmt.Sprintf("%d working", counts["working"])
 			style.Fg, style.Attrs = f.Palette.Yellow, uv.AttrBold
 		case counts["done"] > 0:
+			primary = "done"
 			summary = fmt.Sprintf("● %d", counts["done"])
 			style.Fg, style.Attrs = f.Palette.Green, uv.AttrBold
+			if in.ServerUI {
+				summary += " done"
+				style.Fg = f.Palette.Accent
+			}
 		case counts["idle"] > 0:
+			primary = "idle"
 			summary = "all idle"
 		}
-		f.Text(1, 1, summary, style, switcher.X)
+		x := f.Text(1, 1, summary, style, switcher.X)
+		if in.ServerUI {
+			for _, key := range []string{"blocked", "working", "done", "idle"} {
+				if key == primary || counts[key] == 0 {
+					continue
+				}
+				x = f.Text(x, 1, " · ", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim}, switcher.X)
+				x = f.Text(x, 1, fmt.Sprintf("%d %s", counts[key], key), uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}, switcher.X)
+			}
+			if counts["blocked"] > 0 {
+				f.Set(s.Cols-1, 0, "●", uv.Style{Fg: f.Palette.Red, Bg: f.Palette.Surface})
+			}
+		}
 	}
 	if !in.MobileSwitcher {
 		return

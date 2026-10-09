@@ -205,10 +205,10 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	view := SidebarViewForInput(in)
 	for _, pos := range view.Rows {
 		width := iw
-		if pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
+		if !in.ServerUI && pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
 			width--
 		}
-		if pos.Y >= view.Agents.Rect.Y && pos.Y < view.Agents.Rect.Y+view.Agents.Rect.H && view.Agents.Total > view.Agents.Rect.H {
+		if !in.ServerUI && pos.Y >= view.Agents.Rect.Y && pos.Y < view.Agents.Rect.Y+view.Agents.Rect.H && view.Agents.Total > view.Agents.Rect.H {
 			width--
 		}
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
@@ -216,8 +216,10 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	for x := ix; x < ix+iw; x++ {
 		f.Set(x, SidebarSplitY(s), "─", border)
 	}
-	drawSidebarScrollbar(f, view.Workspace)
-	drawSidebarScrollbar(f, view.Agents)
+	if !in.ServerUI {
+		drawSidebarScrollbar(f, view.Workspace)
+		drawSidebarScrollbar(f, view.Agents)
+	}
 	if in.DropIndex != nil && in.Dragging {
 		boundary := -1
 		for _, pos := range view.Rows {
@@ -373,6 +375,15 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		dragged := in.Dragging && r.Ws == in.DraggedWorkspace
 		sty := uv.Style{Fg: f.Palette.Subtle}
 		selected := in.SelectedWorkspace != nil && *in.SelectedWorkspace == r.Ws
+		if in.ServerUI && !active && !dragged && !selected {
+			sty.Bg = f.Palette.Surface
+			f.Fill(ix, y, iw, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: sty.Bg})
+			if r.Kind == RowWorkspace {
+				f.Set(ix, y, " ", sty)
+			} else if r.Kind == RowGit {
+				f.Fill(ix, y, min(3, iw), 1, " ", sty)
+			}
+		}
 		if active || dragged || selected {
 			sty.Fg = f.Palette.Text
 			sty.Bg = f.Palette.PanelBG
@@ -452,6 +463,30 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		}
 		sn := in.Panes[r.Pane]
 		if sn == nil {
+			return
+		}
+		if in.ServerUI {
+			base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
+			if r.Ws == s.Active {
+				base.Fg, base.Bg = f.Palette.Text, f.Palette.PanelBG
+			}
+			f.Fill(ix, y, iw, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: base.Bg})
+			f.Set(ix, y, " ", base)
+			if r.Line == 0 {
+				name := in.WorkspaceNames[r.Ws]
+				if name == "" || s.Workspaces[r.Ws].CustomName {
+					name = WorkspaceDisplayName(s.Workspaces[r.Ws], in.Panes)
+				}
+				f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg}, ix+iw)
+				f.Text(ix+2, y, " ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
+				f.Text(ix+3, y, truncate(name, max(0, iw-3)), base, ix+iw)
+			} else {
+				name := sn.DisplayAgent
+				if name == "" {
+					name = sn.Agent
+				}
+				f.Text(ix+1, y, truncate(name, max(0, iw-1)), uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}, ix+iw)
+			}
 			return
 		}
 
@@ -623,7 +658,7 @@ func aggregateGlyph(ws *model.Workspace, in Input) StatusGlyph {
 // workingRune returns the spinner frame for the working aggregate glyph
 // (SPEC G6: working indicators spin instead of a fixed dot).
 func workingRune(spin int) string {
-	frames := []string{"◐", "◓", "◑", "◒"}
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	if spin < 0 {
 		spin = 0
 	}

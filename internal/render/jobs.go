@@ -19,7 +19,7 @@ type JobRow struct {
 }
 
 func SidebarViewForInput(in Input) SidebarView {
-	view := SidebarViewFor(in.State, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll)
+	view := SidebarViewFor(in.State, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll, in.ServerUI)
 	if !in.JobsPanel {
 		return view
 	}
@@ -30,8 +30,10 @@ func SidebarViewForInput(in Input) SidebarView {
 		}
 	}
 	view.Rows = rows
-	view.Agents.Rect.Y++
-	view.Agents.Rect.H = max(0, view.Agents.Rect.H-1)
+	if !in.ServerUI {
+		view.Agents.Rect.Y++
+		view.Agents.Rect.H = max(0, view.Agents.Rect.H-1)
+	}
 	view.Agents.Total = len(in.Jobs)
 	view.Agents.Offset = max(0, min(in.JobScroll, max(0, view.Agents.Total-view.Agents.Rect.H)))
 	for n := 0; n < view.Agents.Rect.H && n+view.Agents.Offset < view.Agents.Total; n++ {

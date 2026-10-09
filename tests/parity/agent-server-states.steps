@@ -1,0 +1,41 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/desktop-idle.txt
+cells @OUT@/desktop-idle.json
+resize 60 25
+sleep 500ms
+screen @OUT@/mobile-idle.txt
+cells @OUT@/mobile-idle.json
+resize 160 45
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py report-state blocked; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/desktop-blocked.txt
+cells @OUT@/desktop-blocked.json
+resize 60 25
+sleep 500ms
+screen @OUT@/mobile-blocked.txt
+cells @OUT@/mobile-blocked.json
+resize 160 45
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py report-state unknown; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/desktop-unknown.txt
+cells @OUT@/desktop-unknown.json
+resize 60 25
+sleep 500ms
+screen @OUT@/mobile-unknown.txt
+cells @OUT@/mobile-unknown.json
+resize 160 45
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py report-state working; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/desktop-working.txt
+cells @OUT@/desktop-working.json
+resize 60 25
+sleep 500ms
+screen @OUT@/mobile-working.txt
+cells @OUT@/mobile-working.json
+resize 160 45
+sleep 500ms
+kill

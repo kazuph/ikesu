@@ -65,10 +65,50 @@ elif operation == 'create-other':
     other = created['result']['workspace']['workspace_id']
     (Path.home()/'parity-popup-owners.json').write_text(json.dumps({'owner':owner,'other':other})+'\n')
     raise SystemExit(0)
+elif operation == 'create-agent-overflow':
+    session = os.environ.get('PARITY_CONTROLLER_SESSION_ID')
+    if not session:
+        raise SystemExit('NOT_RUN: actual controller session absent')
+    created_panes = []
+    # The measured 45-row sidebar fits nine two-line agent cards.
+    for index in range(10):
+        created = request('workspace.create', {'cwd':os.getcwd(),
+                          'label':f'overflow-{index+1}', 'focus':False})
+        pane = created['result']['root_pane']['pane_id']
+        request('pane.report_agent', {'pane_id':pane, 'source':'codex', 'agent':'codex',
+                'state':'idle', 'title':'PARITY', 'session_id':session})
+        created_panes.append(pane)
+    (Path.home()/'parity-agent-overflow.json').write_text(json.dumps(created_panes)+'\n')
+    raise SystemExit(0)
 elif operation in ('focus-other', 'focus-owner', 'close-owner'):
     owners = json.loads((Path.home()/'parity-popup-owners.json').read_text())
     method = 'workspace.close' if operation == 'close-owner' else 'workspace.focus'
     params = {'workspace_id':owners['other' if operation == 'focus-other' else 'owner']}
+elif operation == 'create-section-overflow':
+    workspaces = []
+    for section in ('favorite', 'work', 'personal'):
+        for index in range(2):
+            created = request('workspace.create', {'cwd':os.getcwd(),
+                              'label':f'{section}_{index+1}', 'focus':False})
+            workspace = created['result']['workspace']['workspace_id']
+            request('workspace.set_section', {'workspace_id':workspace, 'section':section})
+            workspaces.append(workspace)
+    (Path.home()/'parity-section-overflow.json').write_text(json.dumps(workspaces)+'\n')
+    raise SystemExit(0)
+elif operation == 'create-job-overflow':
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    if not pane:
+        raise SystemExit('NOT_RUN: exact caller pane absent')
+    pane = request('pane.get', {'pane_id':pane})['result']['pane']['pane_id']
+    jobs = []
+    # Twenty real completed jobs exceed the measured eighteen visible rows.
+    for index in range(20):
+        started = request('run.start', {'caller_pane':pane,
+                          'label':f'ROW_{index+1:02d}', 'cwd':os.getcwd(),
+                          'argv':['/usr/bin/true'], 'completion':'none'})
+        jobs.append(started['result']['job'])
+    (Path.home()/'parity-job-overflow.json').write_text(json.dumps(jobs)+'\n')
+    raise SystemExit(0)
 elif operation == 'start-job':
     pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
     if not pane:

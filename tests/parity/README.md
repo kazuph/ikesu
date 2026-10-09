@@ -75,3 +75,15 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `jobs_log_frame_gate.py` は各製品の実ジョブログにあるID・PID・コマンド・cwd・開始時刻・stdoutを、その製品のpopup内の文字と照合する。この手順のASCIIログは折返し無しであり、別の長文・日本語ログを検証済みとは扱わない。自分のログに一致した文字だけを内容比較から外し、幅・色・属性と残りの全セルを比較する。作業中の記号は動くため、idle状態の厳格な全セル比較と、working状態のキー配送検査を分けて残す。workingの表示一致は別の実測を必要とする。
 
 `jobs_cancel_gate.py` は共通CLI `run cancel` の実応答と実ログに記録された正確なrunner PIDを使い、カーネルへのprocess group照会で消滅を確認する。取消中は実物のdone赤・経過時間-・dotなしを比較し、消滅後は経過時間も含めて全セルをそのまま比較する。SPECの所有・SIGTERM/SIGKILL・消滅前に取消完了としない安全規則を保持する。`waitfile` は実ファイルの準備が期限内に完了しなければ、ptyrunが起動したプロセスを終了させてexit 1にする。
+
+`agent-working-clock.steps` は実 API で working・blocked・idle を報告し、working のセル変更時刻を保存する。`agent_clock_gate.py` は実 API の成功、点字の全周期と順番、両製品の実測区間に収まる相手の中央値を検査する。アニメーションの位相だけを独立に証明した後、位置・幅・スタイル・その他の全セルを比較する。`agent_states_gate.py 状態の出力先 周期の出力先` はこの周期証拠を必須として、desktop/mobile の idle・blocked・unknown・working を比較する。
+
+`gate-agent-cells.sh` は隔離 server の agents 一覧のあふれ・ホイール・クリック・リサイズ、複数 agent、popup 外の workspace カードを二回クリックして切り替える操作を全セルで比較する。`agent-server-overflow.steps` の最後列のドラッグは、scrollbar が無い実物での行クリックも検証する。通常検査・性能の合格はこのスクリプトだけでは証明されない。
+
+`agent-done-focus.steps` は初期の CSI O、working→idle 後の CSI I、入力・クリック・workspace 往復を送る。raw の CSI ?1004h と採取画面を保存し、focus 通知が有効な状態でも done が残るかを確認する。親の判断により、実物の done 残留は模倣せず SPEC の「表示中かつ focus 中の viewer が見ている tab を既読にする」を保持する。この手順の差を全画面一致と扱わない。
+
+`jobs-overflow.steps` は隔離 server に二十件の実ジョブを起動し、jobs 一覧のホイールとリサイズを観察する。実 API 応答・実ジョブ ID は保存し、観察結果の検査前は未検証とする。
+
+`popup-copy.steps` と `copy-workspaces.steps` は `--clipboard-sandbox` を必須として比較する。popup 内、複数 workspace の選択表示・mouse release・コピー後の入力・元の workspace への復帰を保存し、`osc52_gate.py` でコピーの全バイトと実 clipboard ハッシュ不変を検査する。`full_frame_gate.py` で各画面の全セルも比較する。sandbox の失敗または実ハッシュ変化があればコピー比較を止め、元に戻そうとせず親へ報告する。
+
+`jobs_overflow_gate.py` は各製品の実 API 応答から label の順序と正確な job ID を確認し、一覧内の座標・一行ホイール・リサイズ後の位置保持を検査する。この検査は age の全セル比較を証明しない。age・ログ・取消の共有描画回帰は `gate-agents.sh` の実ジョブ時刻・ログ照合・process group 消滅検査で別に確認する。

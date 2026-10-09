@@ -1,0 +1,36 @@
+send "python3 @FIXTURES@/socket_action.py create-other; printf '\\033[3J\\033[H\\033[2JOWNER_COPY_LINE\\n'\r"
+waitfile @HOME@/parity-popup-owners.json 5s
+sleep 500ms
+screen @OUT@/owner-ready.txt
+cells @OUT@/owner-ready.json
+mouse down 28 3
+mouse motion 34 3
+sleep 250ms
+screen @OUT@/owner-selected.txt
+cells @OUT@/owner-selected.json
+mouse up 34 3
+sleep 250ms
+screen @OUT@/owner-copied.txt
+cells @OUT@/owner-copied.json
+clicktext "other"
+sleep 500ms
+send "printf '\\033[3J\\033[H\\033[2JOTHER_COPY_LINE\\n'\r"
+sleep 500ms
+screen @OUT@/other-ready.txt
+cells @OUT@/other-ready.json
+mouse down 28 3
+mouse motion 34 3
+sleep 250ms
+screen @OUT@/other-selected.txt
+cells @OUT@/other-selected.json
+mouse up 34 3
+sleep 250ms
+screen @OUT@/other-copied.txt
+cells @OUT@/other-copied.json
+clicktext "parity"
+sleep 500ms
+send "echo OWNER_COPY_RETURNED\r"
+sleep 250ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+kill

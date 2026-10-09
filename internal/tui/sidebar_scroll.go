@@ -12,7 +12,7 @@ type sidebarScrollDrag struct {
 }
 
 func (a *App) sidebarView() render.SidebarView {
-	return render.SidebarViewForInput(render.Input{State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll})
+	return render.SidebarViewForInput(render.Input{ServerUI: a.serverUI, State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll})
 }
 
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
@@ -27,8 +27,12 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 	}
 	view := a.sidebarView()
 	v, off := view.Workspace, &a.sidebarScroll
+	step := 3
 	if pointIn(m.X, m.Y, view.Agents.Rect) {
 		v, off = view.Agents, &a.agentScroll
+		if a.serverUI {
+			step = 1
+		}
 		if a.jobsPanel {
 			off = &a.jobScroll
 		}
@@ -37,14 +41,17 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 		return
 	}
 	if up {
-		*off -= 3
+		*off -= step
 	} else {
-		*off += 3
+		*off += step
 	}
 	*off = max(0, min(*off, max(0, v.Total-v.Rect.H)))
 }
 
 func (a *App) sidebarScrollbarPress(m uv.Mouse) bool {
+	if a.serverUI {
+		return false
+	}
 	view := a.sidebarView()
 	for i, v := range []render.SidebarViewport{view.Workspace, view.Agents} {
 		if v.Total <= v.Rect.H || v.Rect.H <= 0 || m.X != v.Rect.X+v.Rect.W-1 || !pointIn(m.X, m.Y, v.Rect) {
