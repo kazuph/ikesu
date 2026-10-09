@@ -26,11 +26,13 @@ type Workspace struct {
 	GroupCollapsed bool
 	Section        Section
 	CustomName     bool
-	ID             WorkspaceID
-	Name           string
-	Cwd            string
-	Tabs           []*Tab
-	ActiveTab      int
+	// DefaultName retains the creation name without suppressing agent-derived display.
+	DefaultName bool
+	ID          WorkspaceID
+	Name        string
+	Cwd         string
+	Tabs        []*Tab
+	ActiveTab   int
 }
 
 // TabRef returns the workspace's active tab, or nil.
@@ -143,6 +145,7 @@ type (
 	// the new workspace takes focus unless NoFocus is set.
 	CmdNewWorkspace struct {
 		Cwd     string
+		Name    string
 		Env     map[string]string
 		NoFocus bool
 		Section Section

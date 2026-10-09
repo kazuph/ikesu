@@ -3,6 +3,10 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
 test -z "$(gofmt -l internal cmd tests tools)"
 export GTX_PARITY_BIN="$work/gtx-parity-modifiers-final"
 go build -o "$GTX_PARITY_BIN" ./cmd/gtx

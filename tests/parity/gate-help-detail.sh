@@ -3,10 +3,14 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/render/render.go internal/render/overlays.go internal/render/help_lines.go internal/render/settings.go internal/tui/help.go internal/tui/help_test.go internal/tui/spec_focus_test.go internal/tui/spec_help_mouse_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/render/render.go internal/render/overlays.go internal/render/help_lines.go internal/render/settings.go internal/tui/help.go internal/tui/help_test.go internal/tui/spec_focus_test.go internal/tui/spec_help_mouse_test.go)"
 go build -o "$work/gtx-parity-help-detail" ./cmd/gtx
 go vet ./...
-go test ./...
+go test -count=1 ./...
 for scenario in help-complete help-mouse help-close help-size help-compact; do
  python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-help-detail" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-help-detail"
  python3 tests/parity/navigator_compare.py "$work/parity-$scenario-help-detail" --title 'keybinds' --result help-comparison.json

@@ -118,6 +118,11 @@ func (a *App) detectAll() {
 				}
 				// The focused pane in the visible workspace is seen.
 				if ws == activeWS && pid == focusedID {
+					if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
+						rep.unseen = false
+						a.reported[pid] = rep
+						a.dirty = true
+					}
 					if !tr.Seen {
 						tr.Focus()
 						a.dirty = true

@@ -3,10 +3,14 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/render/mobile.go internal/render/mobile_test.go internal/render/render.go internal/render/sidebar.go internal/tui/mobile.go internal/tui/mobile_test.go internal/tui/menus.go internal/tui/keys.go internal/tui/views.go internal/tui/sidebar.go internal/tui/parity_name_buttons_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/render/mobile.go internal/render/mobile_test.go internal/render/render.go internal/render/sidebar.go internal/tui/mobile.go internal/tui/mobile_test.go internal/tui/menus.go internal/tui/keys.go internal/tui/views.go internal/tui/sidebar.go internal/tui/parity_name_buttons_test.go)"
 go build -o "$work/gtx-parity-mobile" ./cmd/gtx
 go vet ./...
-go test ./...
+go test -count=1 ./...
 for scenario in mobile-switcher mobile-git; do
  python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-mobile" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-fixed"
 done

@@ -5,8 +5,38 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
+	"path/filepath"
 	"testing"
 )
+
+func TestParityNewWorkspaceNamesOnlyTheCreatedWorkspace(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	initial := a.st.ActiveWorkspace()
+	initial.Name, initial.CustomName = "original", true
+	a.newWorkspace()
+	created := a.st.ActiveWorkspace()
+	if created.ID == initial.ID || created.CustomName || !created.DefaultName || created.Name != filepath.Base(initial.Cwd) {
+		t.Fatal("new workspace must retain its initial directory name", created)
+	}
+	if initial.Name != "original" || !initial.CustomName {
+		t.Fatal("creation renamed the existing workspace")
+	}
+	a.openCloseWorkspaceDialog(a.st.Active)
+	if a.dialog.d.Detail != created.Name+" — 1 pane" {
+		t.Fatal("confirmation must use the created workspace's retained name", a.dialog.d)
+	}
+	a.dialogKey(uv.Key{Code: uv.KeyEnter})
+	if a.st.ActiveWorkspace().ID != initial.ID || a.sup.Get(created.Tabs[0].Layout.Focused()) != nil {
+		t.Fatal("confirmation did not close only the created terminal")
+	}
+	rp := a.sup.Get(a.focusedPane())
+	a.handleKey(uv.Key{Code: 'p', Text: "printf"}, []byte("printf 'ORIGINAL%s\\n' '_SHELL_ALIVE'\r"))
+	specWaitText(t, rp, "ORIGINAL_SHELL_ALIVE")
+}
 
 func TestParityWorkspaceCloseConfirmKeepsTerminalsUntilAccepted(t *testing.T) {
 	teststate.Lock(t)
@@ -42,6 +72,28 @@ func TestParityWorkspaceCloseConfirmKeepsTerminalsUntilAccepted(t *testing.T) {
 		if a.sup.Get(id) != nil {
 			t.Fatal("confirmation did not close its terminal")
 		}
+	}
+}
+
+func TestParityServerWorkspaceCloseCancelDoesNotOpenMobileSwitcher(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	a.SetServerUI()
+	a.prefixKey(uv.Key{Code: 'w'})
+	if a.modeHint() == "" {
+		t.Fatal("explicit workspace navigation must show its key hint")
+	}
+	a.st.Cols, a.st.Rows = 50, 15
+	a.openCloseWorkspaceDialog(a.st.Active)
+	a.dialogKey(uv.Key{Code: uv.KeyEscape})
+	if a.dialog != nil || a.mobileSwitcher || !a.workspaceNavigate {
+		t.Fatal("server cancellation must restore the pane and navigation without opening the switcher")
+	}
+	if a.modeHint() != "" {
+		t.Fatal("dialog cancellation restores selection without the explicit navigation hint")
 	}
 }
 

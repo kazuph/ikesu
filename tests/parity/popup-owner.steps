@@ -1,0 +1,34 @@
+send "python3 @FIXTURES@/socket_action.py create-other; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-popup-owners.json 5s
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "echo OWNER_POPUP\r"
+sleep 250ms
+screen @OUT@/owner.txt
+cells @OUT@/owner.json
+stats owner
+send "python3 @FIXTURES@/socket_action.py focus-other\r"
+sleep 500ms
+send "echo OTHER_SHELL\r"
+sleep 250ms
+screen @OUT@/hidden.txt
+cells @OUT@/hidden.json
+stats hidden
+send "python3 @FIXTURES@/socket_action.py focus-owner\r"
+sleep 500ms
+send "echo OWNER_RETURNED\r"
+sleep 250ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+stats returned
+send "python3 @FIXTURES@/socket_action.py focus-other\r"
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py close-owner; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "echo OWNER_CLOSED\r"
+sleep 250ms
+screen @OUT@/owner-closed.txt
+cells @OUT@/owner-closed.json
+stats owner-closed
+kill

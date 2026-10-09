@@ -62,6 +62,16 @@ for steps in sorted(steps_root.glob('*.steps')):
                             outside.append(d)
         result.update(status='OUTSIDE_DIFF' if outside else 'ITEM_REGION_DIFF_RECORDED' if diffs else 'PASS',
                       herdr_menu=hs, gtx_menu=gs, differences=diffs, outside_differences=outside)
+        if steps.stem == 'main-outside-right' and name == 'after':
+            # Retention is checked against each product's own pre-click menu,
+            # so differing menu items cannot conceal a change of menu kind.
+            retained = {}
+            for who, data in (('herdr', h), ('gtx', g)):
+                before = json.loads((root / steps.stem / who / 'open.json').read_text())
+                retained[who] = before['Cells'] == data['Cells']
+            result['main_menu_retained'] = retained
+            if not all(retained.values()):
+                result['status'] = 'MENU_RETENTION_DIFF'
         target = root / steps.stem / (name+'-matrix-comparison.json')
         target.write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
         results.append({k:v for k,v in result.items() if k not in ('differences','outside_differences')}

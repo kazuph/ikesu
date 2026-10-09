@@ -23,7 +23,7 @@ func (s *AppState) Snapshot() *session.File {
 	}
 	for _, ws := range s.Workspaces {
 		sw := session.Workspace{
-			Worktree: ws.Worktree, GroupCollapsed: ws.GroupCollapsed, Section: string(ws.Section), CustomName: ws.CustomName,
+			Worktree: ws.Worktree, GroupCollapsed: ws.GroupCollapsed, Section: string(ws.Section), CustomName: ws.CustomName, DefaultName: ws.DefaultName,
 			ID:        ws.ID,
 			Name:      ws.Name,
 			Cwd:       ws.Cwd,
@@ -70,7 +70,7 @@ func Restore(f *session.File) *AppState {
 		s.CollapsedSections[Section(k)] = v
 	}
 	for _, sw := range f.Workspaces {
-		ws := &Workspace{ID: sw.ID, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed, Section: Section(sw.Section), CustomName: sw.CustomName}
+		ws := &Workspace{ID: sw.ID, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed, Section: Section(sw.Section), CustomName: sw.CustomName, DefaultName: sw.DefaultName}
 		for _, st := range sw.Tabs {
 			l := layout.Restore(session.ToLayoutNode(st.Layout), st.Focused, st.Order)
 			ws.Tabs = append(ws.Tabs, &Tab{ID: st.ID, Name: st.Name, Layout: l})

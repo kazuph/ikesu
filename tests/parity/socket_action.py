@@ -39,15 +39,28 @@ def request(method, params):
         return result
 
 
-if operation == 'open':
+if operation == 'workspace-list':
+    method, params = 'workspace.list', {}
+elif operation == 'pane-self':
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    if not pane:
+        raise SystemExit('NOT_RUN: exact pane identity absent')
+    method, params = 'pane.get', {'pane_id':pane}
+elif operation == 'open':
     pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact pane identity absent')
     method = 'pane.command.execute'
     params = {'pane_id': pane, 'action': 'popup',
               'command': "env PS1='POPUP> ' /bin/zsh -f", 'width': 60, 'height': 20}
-elif operation == 'report-state':
+elif operation in ('report-state', 'report-other-state'):
     pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    if operation == 'report-other-state':
+        owners = json.loads((Path.home()/'parity-popup-owners.json').read_text())
+        panes = request('pane.list', {'workspace_id':owners['other']})['result']['panes']
+        if len(panes) != 1:
+            raise SystemExit('NOT_RUN: expected one real background pane')
+        pane = panes[0]['pane_id']
     session = os.environ.get('PARITY_CONTROLLER_SESSION_ID')
     if not pane or not session:
         raise SystemExit('NOT_RUN: pane identity or actual controller session absent')

@@ -40,6 +40,7 @@ type Workspace struct {
 	Worktree       *api.WorkspaceWorktreeInfo `json:"worktree,omitempty"`
 	Section        string                     `json:"section,omitempty"`
 	CustomName     bool                       `json:"custom_name,omitempty"`
+	DefaultName    bool                       `json:"default_name,omitempty"`
 	GroupCollapsed bool                       `json:"group_collapsed,omitempty"`
 	ID             int                        `json:"id"`
 	Name           string                     `json:"name"`

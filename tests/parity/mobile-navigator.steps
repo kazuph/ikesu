@@ -1,0 +1,39 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02v"
+sleep 250ms
+resize 70 25
+sleep 250ms
+send "\x02g"
+sleep 250ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b[A"
+sleep 250ms
+screen @OUT@/up.txt
+cells @OUT@/up.json
+mouse wheel-down 35 12
+sleep 250ms
+screen @OUT@/wheel.txt
+cells @OUT@/wheel.json
+send "/pane"
+sleep 250ms
+screen @OUT@/search.txt
+cells @OUT@/search.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/query-cancel.txt
+cells @OUT@/query-cancel.json
+resize 100 35
+sleep 250ms
+screen @OUT@/resize.txt
+cells @OUT@/resize.json
+send "\r"
+sleep 250ms
+screen @OUT@/selected.txt
+cells @OUT@/selected.json
+send "echo MOBILE_NAVIGATOR_INPUT\r"
+sleep 250ms
+screen @OUT@/input.txt
+cells @OUT@/input.json
+kill

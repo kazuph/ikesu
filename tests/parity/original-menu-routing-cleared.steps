@@ -1,0 +1,20 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02v"
+sleep 400ms
+rclick 50 10
+sleep 200ms
+screen @OUT@/left-menu.txt
+click 130 30
+sleep 200ms
+send "echo ROUTE_TARGET\r"
+sleep 200ms
+screen @OUT@/outside-other-pane.txt
+rclick 50 10
+sleep 200ms
+click 37 1
+sleep 200ms
+screen @OUT@/outside-new-tab.txt
+send "\x1b"
+sleep 200ms
+kill

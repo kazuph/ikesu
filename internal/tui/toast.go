@@ -9,19 +9,32 @@ import (
 // toastTTL is how long a notification box stays on screen.
 const toastTTL = 10 * time.Second
 
+// Isolated PTY cell clocks measured a 1s start delay and 8s visible lifetime.
+// Reproduction: tests/parity/prefix-notification-{target-settled,expiry}.steps.
+const serverAgentToastDelay = time.Second
+const serverAgentToastTTL = 8 * time.Second
+
 // toastView is one visible notification (SPEC G4): status dot + title,
 // body line, and an optional target pane for click/prefix+o navigation.
 type toastView struct {
 	title, body, kind string
 	target            int // pane id; <0 = no target
 	until             time.Time
+	showAt            time.Time
+	shown             bool
 }
 
 // ShowToast displays a notification box. Call on the app loop.
 func (a *App) ShowToast(title, body, kind string, target int) {
+	now := time.Now()
 	a.toast = &toastView{
 		title: title, body: body, kind: kind,
-		target: target, until: time.Now().Add(toastTTL),
+		target: target, until: now.Add(toastTTL), shown: true,
+	}
+	if a.serverUI && (kind == "finished" || kind == "needs_attention") {
+		a.toast.showAt = now.Add(serverAgentToastDelay)
+		a.toast.until = a.toast.showAt.Add(serverAgentToastTTL)
+		a.toast.shown = false
 	}
 	a.dirty = true
 }
@@ -40,8 +53,15 @@ func (a *App) SetNavKey(r rune) { a.navKey = r }
 
 // expireToast drops a stale toast; called from onTick.
 func (a *App) expireToast() {
-	if a.toast != nil && time.Now().After(a.toast.until) {
+	if a.toast == nil {
+		return
+	}
+	now := time.Now()
+	if now.After(a.toast.until) {
 		a.toast = nil
+		a.dirty = true
+	} else if !a.toast.shown && !now.Before(a.toast.showAt) {
+		a.toast.shown = true
 		a.dirty = true
 	}
 }

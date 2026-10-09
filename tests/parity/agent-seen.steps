@@ -1,0 +1,19 @@
+send "python3 @FIXTURES@/socket_action.py report-state working\r"
+sleep 250ms
+send "(sleep 2; python3 @FIXTURES@/socket_action.py report-state idle) &\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 2500ms
+screen @OUT@/unseen.txt
+cells @OUT@/unseen.json
+send "\x021"
+sleep 250ms
+screen @OUT@/seen.txt
+cells @OUT@/seen.json
+resize 60 25
+sleep 250ms
+screen @OUT@/mobile-seen.txt
+cells @OUT@/mobile-seen.json
+kill

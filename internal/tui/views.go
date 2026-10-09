@@ -30,6 +30,9 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	}
 	if r, ok := a.reported[pid]; ok && r.state != "" {
 		key = r.state
+		if key == "idle" && r.unseen {
+			key = "done"
+		}
 	}
 	switch key {
 	case "working":
@@ -37,7 +40,7 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	case "blocked":
 		return render.StatusGlyph{Key: "blocked", Rune: "●", Color: render.Red}
 	case "done":
-		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.Green}
+		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.ThemePalette(a.sidebarConfig.ThemeName()).NavigatorDone}
 	case "idle":
 		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Green}
 	}
@@ -134,7 +137,7 @@ func (a *App) draw() {
 	if a.sel != nil && a.sel.moved {
 		in.Sel = a.selRender()
 	}
-	if a.toast != nil {
+	if a.toast != nil && a.toast.shown {
 		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind}
 	}
 	if a.help != nil {
@@ -181,7 +184,11 @@ func (a *App) SetReported(pid int, agent, state string) {
 	if agent == "" && state == "" {
 		delete(a.reported, pid)
 	} else {
-		a.reported[pid] = reportedPane{agent: agent, state: state}
+		unseen := state == "idle" && prev.agent == agent && (prev.state == "working" || prev.state == "blocked" || prev.unseen)
+		if pid == a.focusedPane() && (a.sinkOn == nil || a.sinkOn()) {
+			unseen = false
+		}
+		a.reported[pid] = reportedPane{agent: agent, state: state, unseen: unseen}
 	}
 	if a.availHook != nil {
 		cur := a.reported[pid]
@@ -201,8 +208,9 @@ func (a *App) Reported(pid int) (agent, state string, ok bool) {
 
 // reportedPane holds pane.report_agent overrides.
 type reportedPane struct {
-	agent string
-	state string
+	agent  string
+	state  string
+	unseen bool
 }
 
 // fossilWatch tracks a Claude/Codex pane's live-activity fingerprint: the

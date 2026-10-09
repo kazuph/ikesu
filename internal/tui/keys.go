@@ -151,6 +151,7 @@ func (a *App) prefixKey(k uv.Key) {
 		a.resizeMode = true
 	case code == 'w':
 		a.workspaceNavigate = true
+		a.navigateHint = true
 		a.navigateSelected = s.Active
 	case code == 'W':
 		a.renameWorkspaceDialog(s.Active)
@@ -251,7 +252,7 @@ func (a *App) newWorkspace() {
 			cwd = cached
 		}
 	}
-	a.exec(model.CmdNewWorkspace{Cwd: cwd})
+	a.exec(model.CmdNewWorkspace{Cwd: cwd, Name: filepath.Base(cwd)})
 }
 
 // closeFocusedPane replaces the final workspace's shell, or confirms closing
@@ -291,6 +292,7 @@ func (a *App) replaceLastWorkspace() {
 
 func (a *App) openQuitDialog() {
 	a.workspaceNavigate = false
+	a.navigateHint = false
 	a.dialog = &uiDialog{
 		d: render.Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76},
 		run: func(a *App) {
@@ -310,7 +312,10 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 	}
 	ws := a.st.Workspaces[idx]
 	name := ws.Name
-	if !ws.CustomName {
+	if ws.DefaultName {
+		name = render.WorkspaceDisplayName(ws, a.paneSnaps())
+	}
+	if !ws.CustomName && !ws.DefaultName {
 		name = ws.Cwd
 		if cwd := a.sessionCwds[ws.ID]; cwd != "" {
 			name = cwd
@@ -335,6 +340,7 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 		noun = "pane"
 	}
 	a.workspaceNavigate = false
+	a.navigateHint = false
 	a.dialog = &uiDialog{
 		d: render.Dialog{Title: "Close workspace?", Detail: fmt.Sprintf("%s — %d %s", name, panes, noun), Lines: []string{""}, Width: 64, DimPanesOnly: true, Confirm: "confirm", Cancel: "cancel"},
 		run: func(a *App) {
@@ -343,7 +349,7 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 		cancel: func(a *App) {
 			a.workspaceNavigate = true
 			a.navigateSelected = idx
-			if a.st.Mobile() {
+			if a.st.Mobile() && !a.serverUI {
 				a.mobileSwitcher = true
 				a.mobileScroll = 0
 			}

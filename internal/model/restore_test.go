@@ -1,11 +1,42 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/session"
 )
+
+func TestDefaultWorkspaceNameSurvivesSaveDuplicateAndRename(t *testing.T) {
+	s := newState()
+	s.Apply(CmdNewWorkspace{Cwd: "/tmp/cwd", Name: "cwd"})
+	data, err := json.Marshal(s.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved session.File
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	r := Restore(&saved)
+	w := r.ActiveWorkspace()
+	if w.Name != "cwd" || !w.DefaultName || w.CustomName {
+		t.Fatal("automatic name became a custom name after restore", w)
+	}
+	r.Apply(CmdDuplicateWorkspace{Index: r.Active, Focus: true})
+	duplicate := r.Workspaces[len(r.Workspaces)-1]
+	if duplicate.Name != "cwd" || !duplicate.DefaultName || duplicate.CustomName {
+		t.Fatal("duplicate lost automatic name semantics", duplicate)
+	}
+	r.Apply(CmdRenameWorkspace{Index: r.Active, Name: "chosen"})
+	if r.ActiveWorkspace().Name != "chosen" || r.ActiveWorkspace().DefaultName || !r.ActiveWorkspace().CustomName {
+		t.Fatal("explicit rename retained automatic name semantics")
+	}
+	if !w.DefaultName {
+		t.Fatal("renaming the duplicate changed its source")
+	}
+}
 
 // Snapshot → Validate → Restore must reproduce workspaces, tabs, split
 // trees, focus, and pane ids exactly (SPEC G3/G5).

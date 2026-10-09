@@ -3,10 +3,14 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/render/tabs.go internal/render/render.go internal/render/agent_ui_titles_test.go internal/tui/tui.go internal/tui/views.go internal/tui/mouse.go internal/tui/parity_tabbar_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/render/tabs.go internal/render/render.go internal/render/agent_ui_titles_test.go internal/tui/tui.go internal/tui/views.go internal/tui/mouse.go internal/tui/parity_tabbar_test.go)"
 go build -o "$work/gtx-parity-tabbar" ./cmd/gtx
 go vet ./...
-go test ./...
+go test -count=1 ./...
 for scenario in tabbar-detail tabbar-arrows; do
  python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-tabbar" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-fixed"
  python3 tests/parity/region_compare.py "$work/parity-$scenario-fixed" --rect 26,0,134,1 --screens boot named eight-tabs --result wide-comparison.json

@@ -1,0 +1,15 @@
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 10 24
+mouse motion 10 14
+screen @OUT@/dragging.txt
+cells @OUT@/dragging.json
+mouse up 10 14
+sleep 250ms
+screen @OUT@/after.txt
+cells @OUT@/after.json
+resize 160 55
+sleep 250ms
+screen @OUT@/taller.txt
+cells @OUT@/taller.json
+kill

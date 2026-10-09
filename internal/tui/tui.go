@@ -145,6 +145,7 @@ type App struct {
 	navigator           *navigatorView
 	resizeMode          bool
 	workspaceNavigate   bool
+	navigateHint        bool
 	navigateSelected    int
 	inputEOF            bool                // input close means quit (local mode)
 	detacher            func(reason string) // server mode: detach the client

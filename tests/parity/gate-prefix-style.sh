@@ -3,7 +3,11 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/render/parity_modes.go internal/tui/keys.go internal/tui/menus.go internal/tui/parity_tab_rename_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/render/parity_modes.go internal/tui/keys.go internal/tui/menus.go internal/tui/parity_tab_rename_test.go)"
 go build -o "$work/gtx-parity-prefix-style" ./cmd/gtx
 go vet ./...
 go test -count=1 ./...

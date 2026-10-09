@@ -3,10 +3,14 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/tui/navigator.go internal/tui/parity_navigator_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/tui/navigator.go internal/tui/parity_navigator_test.go)"
 go build -o "$work/gtx-parity-navigator-selection" ./cmd/gtx
 go vet ./...
-go test ./...
+go test -count=1 ./...
 GTX_PARITY_BIN="$work/gtx-parity-navigator-selection" sh tests/parity/probe-navigator.sh
 for scenario in navigator-matrix navigator-header navigator-gutter; do
  python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-navigator-selection" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-selection"

@@ -1,0 +1,25 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; python3 @FIXTURES@/socket_action.py create-other; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-popup-owners.json 10s
+sleep 1s
+send "python3 @FIXTURES@/socket_action.py report-other-state working; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+send "python3 @FIXTURES@/socket_action.py report-other-state blocked; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/notification.txt
+cells @OUT@/notification.json
+sleep 2s
+screen @OUT@/notification-visible.txt
+cells @OUT@/notification-visible.json
+sleep 6s
+screen @OUT@/expiry-before.txt
+cells @OUT@/expiry-before.json
+sleep 1s
+screen @OUT@/expiry-ten.txt
+cells @OUT@/expiry-ten.json
+sleep 1s
+screen @OUT@/expiry-eleven.txt
+cells @OUT@/expiry-eleven.json
+sleep 1s
+screen @OUT@/expiry-twelve.txt
+cells @OUT@/expiry-twelve.json
+kill

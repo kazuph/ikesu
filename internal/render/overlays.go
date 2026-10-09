@@ -97,7 +97,7 @@ func drawToast(f *Frame, t *Toast, out *Output) {
 	out.ToastRect = r
 	dot := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	if t.Kind == "needs_attention" {
-		dot.Fg = f.Palette.Yellow
+		dot.Fg = f.Palette.Red
 	}
 	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
 	f.Fill(ix, iy, iw, 2, " ", uv.Style{Bg: f.Palette.PopupBG})

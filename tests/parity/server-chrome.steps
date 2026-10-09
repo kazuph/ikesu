@@ -1,0 +1,31 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+screen @OUT@/normal.txt
+cells @OUT@/normal.json
+send "\x02w"
+sleep 200ms
+screen @OUT@/navigate.txt
+cells @OUT@/navigate.json
+send "\x1b"
+sleep 200ms
+send "\x02?"
+sleep 200ms
+screen @OUT@/help.txt
+cells @OUT@/help.json
+send "\x1b"
+sleep 200ms
+send "\x02s"
+sleep 200ms
+screen @OUT@/settings.txt
+cells @OUT@/settings.json
+send "\x1b"
+sleep 200ms
+clicktext "[menu]"
+sleep 200ms
+screen @OUT@/menu.txt
+cells @OUT@/menu.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+kill

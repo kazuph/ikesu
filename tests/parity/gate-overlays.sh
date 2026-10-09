@@ -3,7 +3,11 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/render/overlays.go internal/render/render.go internal/render/parity_modes.go internal/render/parity_confirm_test.go internal/render/parity_menu_style_test.go internal/render/render_test.go internal/render/agent_ui_contract_test.go internal/render/agent_ui_titles_test.go internal/tui/tui.go internal/tui/keys.go internal/tui/parity_modes.go internal/tui/menus.go internal/tui/sidebar.go internal/tui/agent_ui_dialog_test.go internal/tui/parity_name_buttons_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/render/overlays.go internal/render/render.go internal/render/parity_modes.go internal/render/parity_confirm_test.go internal/render/parity_menu_style_test.go internal/render/render_test.go internal/render/agent_ui_contract_test.go internal/render/agent_ui_titles_test.go internal/tui/tui.go internal/tui/keys.go internal/tui/parity_modes.go internal/tui/menus.go internal/tui/sidebar.go internal/tui/agent_ui_dialog_test.go internal/tui/parity_name_buttons_test.go)"
 go build -o "$work/gtx-parity-overlays" ./cmd/gtx
 go vet ./...
 go test -count=1 ./...

@@ -1,0 +1,16 @@
+send "\x02N"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py report-state idle; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-api-actions.json 10s
+sleep 1s
+screen @OUT@/reported.txt
+cells @OUT@/reported.json
+send "\x02D"
+sleep 250ms
+screen @OUT@/confirm.txt
+cells @OUT@/confirm.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+kill

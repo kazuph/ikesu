@@ -1,0 +1,19 @@
+send "python3 @FIXTURES@/socket_action.py workspace-list; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+send "\x02N"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py workspace-list; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+screen @OUT@/created.txt
+cells @OUT@/created.json
+send "\x02D"
+sleep 250ms
+screen @OUT@/confirm.txt
+cells @OUT@/confirm.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+kill

@@ -1,0 +1,26 @@
+send "\x02"
+sleep 250ms
+screen @OUT@/notification-pending.txt
+send "o"
+sleep 250ms
+screen @OUT@/notification-target.txt
+send "\x1b"
+sleep 250ms
+send "echo SCROLLBACK_EDITOR_TEXT\r"
+sleep 250ms
+send "\x02"
+sleep 250ms
+screen @OUT@/editor-pending.txt
+send "e"
+sleep 500ms
+screen @OUT@/editor-open.txt
+cells @OUT@/editor-open.json
+send "\x1b"
+sleep 250ms
+send ":q!\r"
+sleep 500ms
+screen @OUT@/editor-close.txt
+send "echo EXTRA_PREFIX_DONE\r"
+sleep 250ms
+screen @OUT@/shell-input.txt
+kill

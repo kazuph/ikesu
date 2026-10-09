@@ -22,6 +22,9 @@ const notifyCooldown = 10 * time.Second
 // notification evaluation. Runs on the app loop.
 func (s *Server) onPaneStatus(pid int) {
 	cur := s.app.PaneStatusKey(pid)
+	if cur == "done" {
+		cur = "idle"
+	}
 	prev := s.lastStatus[pid]
 	s.lastStatus[pid] = cur
 	s.flushMailForPane(pid)

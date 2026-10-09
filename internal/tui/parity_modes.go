@@ -13,7 +13,7 @@ func (a *App) modeHint() string {
 	if a.resizeMode {
 		return " RESIZE   h/l width  j/k height  esc done"
 	}
-	if a.workspaceNavigate {
+	if a.workspaceNavigate && (!a.serverUI || a.navigateHint) {
 		return " NAVIGATE  esc back  up / down ws  ⇥ pane  g navigator  c new tab  v split│  - split─  x close  z zoom  r resize  ? keybinds  s settings"
 	}
 	return ""

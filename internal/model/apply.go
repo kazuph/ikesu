@@ -50,6 +50,9 @@ func (s *AppState) Apply(cmd Command) []Effect {
 		return s.moveWorkspace(c.Index, c.InsertIndex)
 	case CmdNewWorkspace:
 		ws := s.newWorkspace(c.Cwd)
+		if c.Name != "" {
+			ws.Name, ws.DefaultName = c.Name, true
+		}
 		ws.Section = c.Section
 		delete(s.CollapsedSections, c.Section)
 		if !c.NoFocus {
@@ -104,6 +107,7 @@ func (s *AppState) Apply(cmd Command) []Effect {
 		if c.Index >= 0 && c.Index < len(s.Workspaces) {
 			s.Workspaces[c.Index].Name = c.Name
 			s.Workspaces[c.Index].CustomName = c.Name != ""
+			s.Workspaces[c.Index].DefaultName = false
 		}
 	case CmdNewTab:
 		if c.Workspace < 0 || c.Workspace >= len(s.Workspaces) {

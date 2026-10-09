@@ -3,10 +3,14 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/model/model.go internal/render/sidebar.go internal/render/sidebar_git.go internal/render/sidebar_viewport.go internal/render/sidebar_matrix_test.go internal/render/parity_sidebar_panel_test.go internal/tui/sidebar_mouse.go internal/tui/views.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/model/model.go internal/render/sidebar.go internal/render/sidebar_git.go internal/render/sidebar_viewport.go internal/render/sidebar_matrix_test.go internal/render/parity_sidebar_panel_test.go internal/tui/sidebar_mouse.go internal/tui/views.go)"
 go build -o "$work/gtx-parity-sidebar-detail" ./cmd/gtx
 go vet ./...
-go test ./...
+go test -count=1 ./...
 python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-sidebar-detail" --ptyrun "$work/ptyrun-parity-cells" --steps tests/parity/sidebar-card-menu.steps --out "$work/parity-sidebar-cards-final"
 python3 tests/parity/region_compare.py "$work/parity-sidebar-cards-final" --rect 0,0,25,23 --screens boot new-workspace first-active menu-closed slim full-again
 python3 tests/parity/region_compare.py "$work/parity-sidebar-cards-final" --rect 0,0,4,23 --screens workspace-menu inactive-menu --result menu-card-comparison.json

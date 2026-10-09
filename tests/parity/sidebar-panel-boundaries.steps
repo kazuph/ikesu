@@ -1,0 +1,19 @@
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 10 24
+mouse motion 10 0
+mouse up 10 0
+sleep 250ms
+screen @OUT@/top.txt
+cells @OUT@/top.json
+mouse down 10 6
+mouse motion 10 44
+mouse up 10 44
+sleep 250ms
+screen @OUT@/bottom.txt
+cells @OUT@/bottom.json
+resize 160 90
+sleep 250ms
+screen @OUT@/taller.txt
+cells @OUT@/taller.json
+kill

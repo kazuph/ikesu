@@ -3,6 +3,10 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
 test -z "$(gofmt -l internal cmd tests tools)"
 go build -o "$work/gtx-parity-server-chrome" ./cmd/gtx
 go build -o "$work/ptyrun-server-chrome" tools/bench/ptyrun/main.go

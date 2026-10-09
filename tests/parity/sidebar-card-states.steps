@@ -1,0 +1,27 @@
+screen @OUT@/boot.txt
+cells @OUT@/boot.json
+send "\x02N"
+sleep 250ms
+screen @OUT@/new-workspace.txt
+cells @OUT@/new-workspace.json
+click 5 5
+sleep 250ms
+screen @OUT@/first-active.txt
+cells @OUT@/first-active.json
+rclick 5 5
+sleep 250ms
+screen @OUT@/workspace-menu.txt
+cells @OUT@/workspace-menu.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/menu-closed.txt
+cells @OUT@/menu-closed.json
+clicktext "[full]"
+sleep 250ms
+screen @OUT@/slim.txt
+cells @OUT@/slim.json
+clicktext "[slim]"
+sleep 250ms
+screen @OUT@/full-again.txt
+cells @OUT@/full-again.json
+kill

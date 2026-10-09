@@ -93,3 +93,11 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `prefix-notification.steps` は通知 target が無い状態の prefix+o と後続シェル入力を比較する。実通知がある状態で target へ移動する操作の証拠にはしない。focus history は既定の prefix 割当が無いため、47種類の既定操作 matrix へ架空の割当を足さない。
 
 `menu_cases.py 出力先` は5種類のメニューの開閉・キー・wheel・resize・共通選択を独立した隔離PTYで採取する手順を生成する。`menu_matrix_compare.py 比較出力先 手順の出力先` は全差と枠内の項目一覧を保存する collector であり、exit 0 は合格を意味しない。項目領域内だけの差も、禁止されている項目内容・順序の差なのか、対象となる選択・位置・描画の差なのかを別に判定する。閉じた後と選択後の画面は項目領域を除外しない。
+
+`prefix_full_gate.py 比較出力先 手順の出力先` は collector の各画面の判定を必須にし、新worktree拒否だけはSPECの製品名読み替えを正確な全文と全banner属性で検査する。`gate-modifiers.sh` は修飾入力/section/メニュー修正の通常検査と相対性能を実行する。`gate-final.sh` は最終ソースでgofmt/build/vet/race-count1、狭い/広いNavigatorの背景と閉じた後の入力、新規workspace閉じる確定、共有入力・スクロールの回帰、変更されたprefix作成/終了経路と相対性能を検査する。途中で失敗したら後続は未実行として扱う。
+
+`prefix-notification-{target,blocked}-settled.steps` は隔離起動前に `--in-app-toast` を指定し、背景paneを実APIで working→idle/blocked にしてprefix+oと後続入力を比較する。`notification_target_gate.py` はAPIから得た正確なworkspace/pane ID、入力文字列、所有serverの終了を検証する。環境変数のID表記を推測で正規化しない。製品名の異なる設定値は `herdr` / `gtx` とそれぞれ正しく指定し、gtxは別名binaryでも同じ隔離configを `GTX_CONFIG` で読む。
+
+`--cell-clock` と `prefix-notification-expiry.steps` は通知点・状態点の実PTY描画時刻を記録する。実物では開始遅延1秒（1001/1002ms）、表示期間8秒（開始999ms、終了9005ms）を観測した。時間は元のcell-clock JSONを証拠とし、検査していない時間や状態を代用しない。表示中のペインを既読にするSPEC規則は維持し、実物のdone残留は差として記録する。
+
+`original-menu-cleared.steps` と `original-menu-routing-cleared.steps` は最初の再現操作の前に双方へ同じ端末クリアを送る。初回案内を閉じるEnterのシェル表示を揃え、外クリック/Escape後のメニュー消失、実echo出力、別pane/タブ追加へのクリックが消費されることを比較する。元の準備無しの結果も保存し、準備を入れた文字比較を全スタイル一致とは扱わない。

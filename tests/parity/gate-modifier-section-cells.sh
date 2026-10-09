@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 work="$HOME/bench-terrace.noindex/work"
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
 cd "$HOME/bench-terrace.noindex/src/parity"
 : "${GTX_PARITY_BIN:=$work/gtx-parity-modifier-section}"
 for mode in local server; do

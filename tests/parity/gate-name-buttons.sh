@@ -3,10 +3,14 @@ set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$HOME/bench-terrace.noindex/src/parity"
 work="$HOME/bench-terrace.noindex/work"
-gofmt -w internal/render/overlays.go internal/tui/menus.go internal/tui/parity_name_buttons_test.go
+if ! test -x "$work/herdr-target/release/herdr"; then
+ echo "NOT_RUN: herdr distribution binary is absent"
+ exit 0
+fi
+test -z "$(gofmt -l internal/render/overlays.go internal/tui/menus.go internal/tui/parity_name_buttons_test.go)"
 go build -o "$work/gtx-parity-name-buttons" ./cmd/gtx
 go vet ./...
-go test ./...
+go test -count=1 ./...
 for action in save clear cancel; do
  out="$work/parity-name-button-$action-final"
  python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-name-buttons" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/name-button-$action.steps" --out "$out"

@@ -207,6 +207,7 @@ func restartWarningLine(w api.AgentSessionWarningInfo) string {
 // openRestoreDialog confirms a manual agent restore.
 func (a *App) openRestoreDialog() {
 	a.workspaceNavigate = false
+	a.navigateHint = false
 	a.dialog = &uiDialog{
 		d: render.Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", DimPanesOnly: true, Confirm: "restore", Cancel: "cancel", Width: 76},
 		run: func(a *App) {

@@ -1,0 +1,21 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02N"
+sleep 250ms
+send "echo NEW_WORKSPACE_INPUT\r"
+sleep 250ms
+screen @OUT@/created.txt
+cells @OUT@/created.json
+send "\x02D"
+sleep 250ms
+screen @OUT@/confirm.txt
+cells @OUT@/confirm.json
+send "\r"
+sleep 250ms
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+send "echo ORIGINAL_WORKSPACE_INPUT\r"
+sleep 250ms
+screen @OUT@/input.txt
+cells @OUT@/input.json
+kill
