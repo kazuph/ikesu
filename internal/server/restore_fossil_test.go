@@ -9,6 +9,7 @@ import (
 
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
 	teststate.Lock(t)
+	teststate.Setenv(t, "GTX_STATE_DIR", teststate.TempDir(t))
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "fossil")
