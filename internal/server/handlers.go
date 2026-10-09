@@ -515,6 +515,11 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 		}
 	}
 	metadata := s.paneMetadataView(pid)
+	if metadata.Title == "" {
+		if rec, ok := s.app.SessionRecord(pid); ok {
+			metadata.Title = rec.Title
+		}
+	}
 	return api.PaneInfo{
 		Title: optString(metadata.Title), DisplayAgent: optString(metadata.DisplayAgent), StateLabels: metadata.StateLabels, Tokens: metadata.Tokens,
 		PaneID:      fmtPaneID(pid),

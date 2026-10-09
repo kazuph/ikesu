@@ -60,9 +60,10 @@ type Config struct {
 		// ShowTabBar (default true) hides the desktop tab bar entirely
 		// when false; HideTabBarWhenSingleTab only additionally hides a
 		// lone tab. PaneBorders (default true) draws pane frames.
-		ShowTabBar              *bool `toml:"show_tab_bar"`
-		HideTabBarWhenSingleTab *bool `toml:"hide_tab_bar_when_single_tab"`
-		PaneBorders             *bool `toml:"pane_borders"`
+		ShowAgentLabelsOnPaneBorders bool  `toml:"show_agent_labels_on_pane_borders"`
+		ShowTabBar                   *bool `toml:"show_tab_bar"`
+		HideTabBarWhenSingleTab      *bool `toml:"hide_tab_bar_when_single_tab"`
+		PaneBorders                  *bool `toml:"pane_borders"`
 	} `toml:"ui"`
 	Experimental struct {
 		AllowNested bool `toml:"allow_nested"`

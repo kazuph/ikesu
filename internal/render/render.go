@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -44,7 +45,9 @@ type CursorInfo struct {
 type PaneSnap struct {
 	Grid         [][]uv.Cell // content cells, [row][col], scroll applied
 	Label        string      // process/agent name for the border title
-	Title        string      // terminal (OSC) title appended to the border title
+	Title        string      // terminal OSC title
+	TaskTitle    string      // reported display task, preferred over OSC
+	Branch       string      // pane cwd branch, used only on the pane border
 	Tokens       map[string]string
 	StateLabels  map[string]string
 	DisplayAgent string
@@ -105,8 +108,9 @@ type Dialog struct {
 	// Width pins the dialog width (0 → auto-fit contents).
 	Width int
 	// Input/InputEdit render the detail row as an editable text field.
-	Input     string
-	InputEdit bool
+	Input       string
+	InputCursor int // rune index in Input
+	InputEdit   bool
 }
 
 // Input is everything Compose needs for one frame.
@@ -229,7 +233,7 @@ func Compose(in Input) *Output {
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
-	drawTabBar(f, s, out)
+	drawTabBar(f, s, in, out)
 	drawPanes(f, s, in, out)
 	drawActionBar(f, s, in, out)
 	drawStatusLine(f, s, in)
@@ -266,7 +270,7 @@ func Compose(in Input) *Output {
 
 // drawTabBar renders the one-row tab strip over the panes area: " name "
 // cells for each tab of the active workspace plus a trailing "+" button.
-func drawTabBar(f *Frame, s *model.AppState, out *Output) {
+func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	area := s.TabBarArea()
 	if area.W <= 0 {
 		return
@@ -282,7 +286,7 @@ func drawTabBar(f *Frame, s *model.AppState, out *Output) {
 		if t.Zoomed != 0 {
 			name += " Z" // zoomed-tab marker (SPEC G1)
 		}
-		w := len([]rune(name)) + 2
+		w := max(8, ansi.StringWidth(name)+6)
 		if x+w > area.X+area.W-3 {
 			w = area.X + area.W - 3 - x
 		}
@@ -294,7 +298,9 @@ func drawTabBar(f *Frame, s *model.AppState, out *Output) {
 		if i == ws.ActiveTab {
 			sty = uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 		}
-		f.Text(x, area.Y, " "+truncate(name, max(w-1, 0)), sty, x+w)
+		marker := tabMarker(t, in.Panes)
+		f.Fill(x, area.Y, w, 1, " ", sty)
+		f.Text(x, area.Y, " "+marker+truncate(name, max(w-2, 0)), sty, x+w)
 		out.TabHits = append(out.TabHits, layout.Rect{X: x, Y: area.Y, W: w, H: 1})
 		x += w
 	}
@@ -424,8 +430,13 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 func paneTitle(pr layout.PaneRect, snap *PaneSnap, t *model.Tab) string {
 	lbl := label(snap)
 	title := fmt.Sprintf("%%%d %s", pr.ID, lbl)
-	if snap != nil && snap.Title != "" {
-		title += " " + snap.Title
+	if snap != nil {
+		if text := paneTaskOrOSC(snap); text != "" {
+			title += " " + text
+		}
+		if snap.Branch != "" {
+			title += " " + snap.Branch
+		}
 	}
 	if t.Zoomed == model.PaneID(pr.ID) {
 		title = "ZOOM " + title

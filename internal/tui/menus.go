@@ -75,7 +75,7 @@ func (a *App) openRenamePaneDialog(pid int) {
 		d: render.Dialog{
 			Title:   "Rename pane",
 			Confirm: "rename", Cancel: "cancel",
-			Input: name, InputEdit: true,
+			Input: name, InputCursor: len([]rune(name)), InputEdit: true,
 		},
 		run: func(a *App) {
 			a.exec(model.CmdRenamePane{Pane: model.PaneID(pid), Label: name})

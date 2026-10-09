@@ -63,6 +63,7 @@ func (a *App) RecordSession(pid int, rec AgentRecord) {
 		a.sessions = map[int]*AgentRecord{}
 	}
 	a.sessions[pid] = &rec
+	a.dirty = true
 	a.changed()
 }
 

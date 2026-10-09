@@ -388,12 +388,8 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 	}
 	title := ""
 	if p.Title != nil {
-		// Blank/whitespace titles are ignored (SPEC G3).
+		// Blank/whitespace clears the presentation task title.
 		title = strings.TrimSpace(*p.Title)
-	}
-	if title != "" {
-		// The task title is a pane/workspace name surface.
-		s.app.ExecCmd(model.CmdRenamePane{Pane: pid, Label: title})
 	}
 	safe := kind != "" && session.SafeSessionValue(kind, value)
 	switch {
@@ -401,12 +397,12 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 		rec, _ := s.app.SessionRecord(pid)
 		rec.Agent, rec.Kind, rec.Value = p.Agent, kind, value
 		rec.Source = "report:" + p.Source
-		if title != "" {
+		if p.Title != nil {
 			rec.Title = title
 		}
 		s.app.RecordSession(pid, rec)
 		s.ledgerPut(pid, rec)
-	case title != "":
+	case p.Title != nil:
 		// Report without a usable session ref still carries the task
 		// title; keep any existing session value untouched.
 		rec, _ := s.app.SessionRecord(pid)

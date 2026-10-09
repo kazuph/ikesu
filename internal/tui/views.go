@@ -9,7 +9,7 @@ import (
 	"github.com/kazuph/goterrace/internal/runtime"
 	"golang.org/x/sys/unix"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 )
 
@@ -211,6 +211,12 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					Dead:   sn.Dead,
 					Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
 				}
+				if rep := a.reported[pid]; rep.agent != "" {
+					snap.Label, snap.Agent = rep.agent, rep.agent
+				}
+				if rec := a.sessions[pid]; rec != nil {
+					snap.TaskTitle = rec.Title
+				}
 				if label := a.st.PaneLabels[model.PaneID(pid)]; label != "" {
 					snap.Label = label
 				}
@@ -226,15 +232,10 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					snap.StateLabels = m.StateLabels
 					snap.DisplayAgent = m.DisplayAgent
 					if m.Title != "" {
-						snap.Title = m.Title
+						snap.TaskTitle = m.Title
 					}
 				}
-				if branch := gitBranch(sn.Cwd, ws.Cwd); branch != "" && !strings.Contains(snap.Title, branch) {
-					if snap.Title != "" {
-						snap.Title += " "
-					}
-					snap.Title += branch
-				}
+				snap.Branch = gitBranch(sn.Cwd, ws.Cwd)
 				snap.Agent, snap.Restore = a.paneRestoreLabel(pid, snap.Agent)
 				out[pid] = snap
 			}
@@ -248,6 +249,9 @@ func labelFor(sn runtime.Snapshot, p *runtime.Pane) string {
 	// identified, else the literal "terminal" ("%1 terminal").
 	if sn.AgentID != "" {
 		return sn.AgentID
+	}
+	if argv := p.SpawnArgv(); len(argv) > 0 {
+		return filepath.Base(argv[0])
 	}
 	return "terminal"
 }

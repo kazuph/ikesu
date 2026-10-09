@@ -389,8 +389,8 @@ func WorkspaceDisplayName(ws *model.Workspace, panes map[int]*PaneSnap) string {
 	if len(ws.Tabs) > 0 {
 		ids := ws.Tabs[0].Layout.PaneIDs()
 		if len(ids) > 0 {
-			if p := panes[ids[0]]; p != nil && p.Agent != "" && p.Title != "" && p.Title != name {
-				name += "-" + p.Title
+			if p := panes[ids[0]]; p != nil && p.Agent != "" && paneTaskOrOSC(p) != "" && paneTaskOrOSC(p) != name {
+				name += "-" + paneTaskOrOSC(p)
 			}
 		}
 	}

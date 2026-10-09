@@ -36,7 +36,7 @@ func TestSPECBranchUsesRuntimeCwdBeforeSavedCwd(t *testing.T) {
 	}
 	specWaitText(t, p, "READY")
 	p.PollProcess()
-	if snap := a.paneSnaps()[pid]; !strings.Contains(snap.Title, "runtime-branch") || strings.Contains(snap.Title, "saved-branch") {
+	if snap := a.paneSnaps()[pid]; snap.Branch != "runtime-branch" || strings.Contains(snap.Title, "saved-branch") {
 		t.Fatal("render snapshot branch", snap)
 	}
 	linked := filepath.Join(t.TempDir(), "linked")

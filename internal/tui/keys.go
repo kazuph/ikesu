@@ -267,14 +267,36 @@ func (a *App) dialogKey(k uv.Key) {
 		d.run(a)
 	case k.Code == uv.KeyEscape:
 		a.dialog = nil
-	case d.input != nil && (k.Code == uv.KeyBackspace || k.Code == uv.KeyDelete):
-		if r := []rune(*d.input); len(r) > 0 {
-			*d.input = string(r[:len(r)-1])
-			a.dialog.d.Input = *d.input
+	case d.input != nil:
+		runes := []rune(*d.input)
+		cursor := min(max(0, d.d.InputCursor), len(runes))
+		switch k.Code {
+		case uv.KeyLeft:
+			cursor = max(0, cursor-1)
+		case uv.KeyRight:
+			cursor = min(len(runes), cursor+1)
+		case uv.KeyHome:
+			cursor = 0
+		case uv.KeyEnd:
+			cursor = len(runes)
+		case uv.KeyBackspace:
+			if cursor > 0 {
+				runes = append(runes[:cursor-1], runes[cursor:]...)
+				cursor--
+			}
+		case uv.KeyDelete:
+			if cursor < len(runes) {
+				runes = append(runes[:cursor], runes[cursor+1:]...)
+			}
+		default:
+			if k.Text != "" {
+				insert := []rune(k.Text)
+				runes = append(append(append([]rune{}, runes[:cursor]...), insert...), runes[cursor:]...)
+				cursor += len(insert)
+			}
 		}
-	case d.input != nil && k.Text != "":
-		*d.input += k.Text
-		a.dialog.d.Input = *d.input
+		*d.input = string(runes)
+		d.d.Input, d.d.InputCursor = *d.input, cursor
 	}
 	a.dirty = true
 }
@@ -294,7 +316,7 @@ func (a *App) openRenameTabDialog(ws, ti int) {
 		d: render.Dialog{
 			Title:   "Rename tab",
 			Confirm: "rename", Cancel: "cancel",
-			Input: name, InputEdit: true,
+			Input: name, InputCursor: len([]rune(name)), InputEdit: true,
 		},
 		run: func(a *App) {
 			if name != "" && name != w.Tabs[ti].Name {

@@ -55,8 +55,17 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 							if r := a.reported[ids[0]]; r.agent != "" {
 								agent = r.agent
 							}
-							if agent != "" && sn.OSCTitle != "" && sn.OSCTitle != name {
-								name += "-" + sn.OSCTitle
+							title := sn.OSCTitle
+							if rec := a.sessions[ids[0]]; rec != nil && rec.Title != "" {
+								title = rec.Title
+							}
+							if a.paneMetadataSource != nil {
+								if m := a.paneMetadataSource(ids[0]); m.Title != "" {
+									title = m.Title
+								}
+							}
+							if agent != "" && title != "" && title != name {
+								name += "-" + title
 							}
 						}
 					}

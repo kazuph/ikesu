@@ -2,6 +2,7 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/layout"
 	"image/color"
 )
@@ -128,6 +129,7 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	if d.Width > w {
 		w = d.Width
 	}
+	w = min(w, cols)
 	shown := len(d.Lines)
 	if shown > 10 {
 		shown = 10
@@ -232,6 +234,10 @@ func drawDialog(f *Frame, d *Dialog, out *Output) {
 	f.Text(ix+1, iy, d.Title, uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, ix+iw)
 	if d.InputEdit {
 		f.Text(ix+1, iy+1, "> "+d.Input+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}, ix+iw)
+		runes := []rune(d.Input)
+		prefix := string(runes[:min(max(0, d.InputCursor), len(runes))])
+		out.AnchorX = min(ix+3+ansi.StringWidth(prefix), ix+iw-1)
+		out.AnchorY, out.AnchorVisible = iy+1, true
 	} else {
 		f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: f.Palette.Subtle}, ix+iw)
 		shown := len(d.Lines)
