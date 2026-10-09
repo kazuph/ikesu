@@ -72,7 +72,7 @@ func (a *App) click(m uv.Mouse) {
 	if a.toastClick(m.X, m.Y) {
 		return
 	}
-	if m.Y == a.st.StatusArea().Y {
+	if r := a.st.StatusArea(); r.H > 0 && m.Y == r.Y {
 		a.statusClick(m)
 		return
 	}

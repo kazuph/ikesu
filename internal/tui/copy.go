@@ -165,8 +165,11 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 	n := a.bufferLen(p)
 	h := a.copyInnerH()
 	switch {
-	case k.Code == 'q' || k.Code == uv.KeyEscape ||
-		(k.Code == 'c' && k.Mod.Contains(uv.ModCtrl)):
+	case k.Code == uv.KeyEscape && cm.query != "":
+		cm.query, cm.matches, cm.matchIdx = "", nil, -1
+		a.dirty = true
+		return
+	case k.Code == 'q' || k.Code == uv.KeyEscape:
 		a.exitCopy()
 		return
 	case k.Code == uv.KeyLeft || k.Code == 'h':
@@ -404,7 +407,11 @@ func (a *App) copyHint() string {
 		}
 		return " COPY  " + p + cm.query + "█  enter search  esc cancel"
 	}
-	return " COPY  h/j/k/l w/b/e { } move  / ? search  n/N repeat  v/space select  y/enter copy  q/esc exit"
+	hint := " COPY  h/j/k/l w/b/e { } move  / ? search  n/N repeat"
+	if cm.query != "" {
+		return fmt.Sprintf("%s %d/%d  v/space select  y/enter copy  esc clear  q exit", hint, cm.matchIdx+1, len(cm.matches))
+	}
+	return hint + "  v/space select  y/enter copy  q/esc exit"
 }
 
 // copyMark yields render's cursor + fullscreen data for the copy view.

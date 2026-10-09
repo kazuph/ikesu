@@ -1,0 +1,79 @@
+send "\x02?"
+sleep 200ms
+screen @OUT@/help-open.txt
+send "j\x1b[6~"
+sleep 200ms
+screen @OUT@/help-keys.txt
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/help-wheel.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/help-resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/help-outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+send "\x02s"
+sleep 200ms
+screen @OUT@/settings-open.txt
+send "\t\x1b[C\x1b[B"
+sleep 200ms
+screen @OUT@/settings-keys.txt
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/settings-wheel.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/settings-resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/settings-outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+send "\x02P"
+sleep 200ms
+screen @OUT@/rename-open.txt
+send "abc\x1b[D\x7fZ"
+sleep 200ms
+screen @OUT@/rename-edit.txt
+click 80 22
+sleep 200ms
+screen @OUT@/rename-inside.txt
+send "\x1b"
+sleep 200ms
+send "\x02P"
+sleep 200ms
+click 150 35
+sleep 200ms
+screen @OUT@/rename-outside.txt
+send "\x1b"
+sleep 200ms
+click 3 23
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+screen @OUT@/confirm-open.txt
+send "z"
+sleep 200ms
+screen @OUT@/confirm-letter.txt
+click 80 22
+sleep 200ms
+screen @OUT@/confirm-inside.txt
+send "\x1b"
+sleep 200ms
+click 3 23
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+click 150 35
+sleep 200ms
+screen @OUT@/confirm-outside.txt
+send "\x1b"
+sleep 200ms
+kill

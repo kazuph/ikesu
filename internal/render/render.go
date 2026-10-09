@@ -622,6 +622,9 @@ func StatusButtons(cols, rows int) (splitV, splitH, close layout.Rect) {
 }
 
 func drawStatusLine(f *Frame, s *model.AppState, in Input) {
+	if !s.Mobile() {
+		return
+	}
 	y := s.Rows - 1
 	if y < 0 {
 		return

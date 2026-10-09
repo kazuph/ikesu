@@ -177,7 +177,7 @@ func TestSPECTabVisibilityAndEmptyHitAreas(t *testing.T) {
 				if (len(out.TabHits) > 0) != visible || (out.NewTabRect.W > 0) != visible {
 					t.Fatal("tab hits", show, hideSingle, tabs, out.TabHits)
 				}
-				if out.ActionBar.Area.Y != 28 || out.ActionBar.Area.H != 1 {
+				if out.ActionBar.Area.Y != 29 || out.ActionBar.Area.H != 1 {
 					t.Fatal("bottom bar", out.ActionBar)
 				}
 			}

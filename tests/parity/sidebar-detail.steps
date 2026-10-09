@@ -1,0 +1,38 @@
+screen @OUT@/boot.txt
+send "\x02N"
+sleep 300ms
+send "\x02N"
+sleep 300ms
+screen @OUT@/three-workspaces.txt
+click 10 5
+sleep 200ms
+screen @OUT@/select-first.txt
+mouse down 10 5
+sleep 150ms
+mouse motion 10 12
+sleep 150ms
+mouse up 10 12
+sleep 200ms
+screen @OUT@/drag-workspace.txt
+mouse wheel-down 10 10
+sleep 200ms
+screen @OUT@/wheel-down.txt
+mouse wheel-up 10 10
+sleep 200ms
+screen @OUT@/wheel-up.txt
+click 24 45
+sleep 200ms
+screen @OUT@/width-next.txt
+click 70 45
+sleep 200ms
+screen @OUT@/width-next-again.txt
+click 4 25
+sleep 200ms
+screen @OUT@/agents-jobs.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+send "echo SIDEBAR_DONE\r"
+sleep 200ms
+screen @OUT@/shell-input.txt
+kill

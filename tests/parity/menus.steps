@@ -1,0 +1,73 @@
+rclick 10 5
+sleep 200ms
+screen @OUT@/workspace-open.txt
+send "\x1b[B"
+sleep 200ms
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/workspace-navigate.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/workspace-resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/workspace-outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+rclick 28 1
+sleep 200ms
+screen @OUT@/tab-open.txt
+send "\x1b[B"
+sleep 200ms
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/tab-navigate.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/tab-resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/tab-outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+rclick 10 12
+sleep 200ms
+screen @OUT@/sidebar-blank-open.txt
+send "\x1b[B"
+sleep 200ms
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/sidebar-blank-navigate.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/sidebar-blank-resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/sidebar-blank-outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+click 3 23
+sleep 200ms
+screen @OUT@/main-open.txt
+send "\x1b[B"
+sleep 200ms
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/main-navigate.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/main-resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/main-outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+kill

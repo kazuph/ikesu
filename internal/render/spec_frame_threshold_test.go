@@ -10,11 +10,11 @@ func TestSPECFrameAllFourEdgesAndTinyContent(t *testing.T) {
 	for _, borders := range []bool{false, true} {
 		for w := 1; w <= 8; w++ {
 			for h := 1; h <= 5; h++ {
-				s := testState(model.SidebarWidth+w, h+2)
+				s := testState(model.SidebarWidth+w, h)
 				s.ShowTabBar = false
 				s.PaneBorders = borders
-				if h <= 2 {
-					s.Rows = h + 1 // action bar is hidden below five screen rows
+				if h >= 3 {
+					s.Rows = h + 1 // reserve the desktop action bar
 				}
 				area := s.PanesArea()
 				pid := s.FocusedPane()
@@ -52,7 +52,7 @@ func TestSPECHelpScrollbarThumbMatchesScroll(t *testing.T) {
 		out := &Output{}
 		drawHelp(f, &HelpInput{Rows: rows, Scroll: scroll}, out)
 		r := out.HelpRect
-		body := r.H - 4
+		body := r.H - 7
 		limit := len(rows) - body
 		actual := min(scroll, limit)
 		th := body * body / len(rows)
@@ -66,7 +66,7 @@ func TestSPECHelpScrollbarThumbMatchesScroll(t *testing.T) {
 			if y >= top && y < top+th {
 				want = "▐"
 			}
-			if got := f.Cell(r.X+r.W-2, r.Y+2+y).Content; got != want {
+			if got := f.Cell(r.X+r.W-2, r.Y+4+y).Content; got != want {
 				t.Fatalf("scroll=%d row=%d got=%q want=%q", scroll, y, got, want)
 			}
 		}

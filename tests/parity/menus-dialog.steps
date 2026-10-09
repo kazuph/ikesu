@@ -1,0 +1,36 @@
+rclick 28 1
+sleep 200ms
+clicktext "Rename"
+sleep 200ms
+screen @OUT@/tab-rename-open.txt
+send "\x1b"
+sleep 200ms
+rclick 10 5
+sleep 200ms
+clicktext "Rename"
+sleep 200ms
+screen @OUT@/workspace-rename-open.txt
+send "\x1b"
+sleep 200ms
+click 3 23
+sleep 200ms
+clicktext "new tab"
+sleep 200ms
+screen @OUT@/new-tab-open.txt
+send "\x1b"
+sleep 200ms
+click 3 23
+sleep 200ms
+clicktext "keybinds"
+sleep 200ms
+screen @OUT@/main-help.txt
+send "\x1b"
+sleep 200ms
+click 3 23
+sleep 200ms
+clicktext "settings"
+sleep 200ms
+screen @OUT@/main-settings.txt
+send "\x1b"
+sleep 200ms
+kill

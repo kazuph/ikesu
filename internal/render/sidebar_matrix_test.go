@@ -10,7 +10,7 @@ import (
 func TestG2CopyStatusNarrowBoundsAndPresetPrecedence(t *testing.T) {
 	for _, w := range []int{0, 1, 6, 8, 18, 26} {
 		for _, h := range []int{0, 1, 3} {
-			s := model.New("/tmp", w, h+1)
+			s := model.New("/tmp", w, h)
 			f := NewFrame(w, h)
 			drawSidebar(f, s, Input{State: s, Copied: " Copied 3 lines "})
 			if h == 0 || w == 0 {

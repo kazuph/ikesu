@@ -1,0 +1,19 @@
+send "\x02v"
+sleep 200ms
+screen @OUT@/split.txt
+send "\x02r"
+sleep 200ms
+screen @OUT@/open.txt
+send "h"
+sleep 200ms
+screen @OUT@/left-once.txt
+send "h"
+sleep 200ms
+screen @OUT@/left-twice.txt
+send "l"
+sleep 200ms
+screen @OUT@/right-once.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+kill

@@ -1,0 +1,45 @@
+rclick 70 12
+sleep 200ms
+screen @OUT@/menu-open.txt
+send "\x1b[200~echo PASTE_MENU\x1b[201~"
+sleep 200ms
+screen @OUT@/menu-paste.txt
+send "\x1b"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/menu-after.txt
+send "\x02?"
+sleep 200ms
+screen @OUT@/help-open.txt
+send "\x1b[200~echo PASTE_HELP\x1b[201~"
+sleep 200ms
+screen @OUT@/help-paste.txt
+send "\x1b"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/help-after.txt
+send "\x02P"
+sleep 200ms
+screen @OUT@/rename-open.txt
+send "\x1b[200~echo PASTE_RENAME\x1b[201~"
+sleep 200ms
+screen @OUT@/rename-paste.txt
+send "\x1b"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/rename-after.txt
+send "\x02s"
+sleep 200ms
+screen @OUT@/settings-open.txt
+send "\x1b[200~echo PASTE_SETTINGS\x1b[201~"
+sleep 200ms
+screen @OUT@/settings-paste.txt
+send "\x1b"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/settings-after.txt
+kill

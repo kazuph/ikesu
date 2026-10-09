@@ -1,0 +1,21 @@
+send "\x02P"
+sleep 200ms
+send "first"
+sleep 200ms
+send "\x1b"
+sleep 200ms
+screen @OUT@/first-cancel.txt
+send "\x02P"
+sleep 200ms
+send "second"
+sleep 200ms
+send "\x1b"
+sleep 200ms
+screen @OUT@/second-cancel.txt
+send "\r"
+sleep 200ms
+screen @OUT@/no-saved-name.txt
+send "echo ESCAPE_DONE\r"
+sleep 200ms
+screen @OUT@/shell-input.txt
+kill

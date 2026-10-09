@@ -92,9 +92,13 @@ func TestSPECExactCopilotFootersAndAnimatedSummary(t *testing.T) {
 			t.Fatal("pane spinner")
 		}
 		out := render.Compose(in)
+		mobile := *a.st
+		mobile.MobileWidthThreshold = mobile.Cols
+		in.State = &mobile
+		mobileOut := render.Compose(in)
 		var summary strings.Builder
 		for x := 0; x < a.st.Cols; x++ {
-			summary.WriteString(out.Frame.Cell(x, a.st.Rows-1).Content)
+			summary.WriteString(mobileOut.Frame.Cell(x, a.st.Rows-1).Content)
 		}
 		if !strings.Contains(summary.String(), frame+" 1") {
 			t.Fatal("summary spinner", summary.String())

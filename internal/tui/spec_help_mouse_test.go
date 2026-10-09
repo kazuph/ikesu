@@ -53,11 +53,11 @@ func TestSPECHelpMouseCaptureWheelTrackAndThumbGrab(t *testing.T) {
 	}
 	th, top := thumbGeom(body, limit, limit)
 	grab := th - 1
-	send(input.KindMouseClick, 71, 3+top+grab, uv.MouseLeft)
+	send(input.KindMouseClick, 71, 5+top+grab, uv.MouseLeft)
 	if !h.dragging || h.grab != grab {
 		t.Fatal("grab offset", h)
 	}
-	send(input.KindMouseMotion, 71, 3+body-th+grab, uv.MouseLeft)
+	send(input.KindMouseMotion, 71, 5+body-th+grab, uv.MouseLeft)
 	if h.scroll != limit {
 		t.Fatal("thumb bottom", h.scroll, limit)
 	}
@@ -65,11 +65,11 @@ func TestSPECHelpMouseCaptureWheelTrackAndThumbGrab(t *testing.T) {
 	if h.dragging {
 		t.Fatal("release did not stop drag")
 	}
-	send(input.KindMouseClick, 71, 3, uv.MouseLeft)
+	send(input.KindMouseClick, 71, 5, uv.MouseLeft)
 	if !h.dragging || h.scroll != 0 {
 		t.Fatal("track did not move directly", h)
 	}
-	send(input.KindMouseRelease, 71, 3, uv.MouseLeft)
+	send(input.KindMouseRelease, 71, 5, uv.MouseLeft)
 	send(input.KindMouseClick, 8, 5, uv.MouseLeft)
 	if a.help != h || a.sel != nil || a.sep != nil || a.sb != nil || a.menu != nil || a.fwd != -1 {
 		t.Fatal("help leaked mouse")

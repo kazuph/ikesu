@@ -35,9 +35,11 @@ func (a *App) helpRows() []render.HelpRow {
 		{Bind: "ctrl+b", Cmd: "prefix mode"},
 		{Bind: "prefix+?", Cmd: "keybinds"},
 		{Bind: "prefix+s", Cmd: "settings"},
+		{Bind: "prefix+q", Cmd: "detach"},
+		{Bind: "prefix+shift+r", Cmd: "reload config"},
 		{Bind: "prefix+o", Cmd: "open notification target"},
-		{Bind: "prefix+d", Cmd: "detach"},
 
+		{},
 		{Group: true, Cmd: "workspaces / tabs"},
 		{Bind: "prefix+shift+n", Cmd: "new workspace"},
 		{Bind: "prefix+shift+d", Cmd: "close workspace"},
@@ -48,6 +50,7 @@ func (a *App) helpRows() []render.HelpRow {
 		{Bind: "prefix+p", Cmd: "previous workspace"},
 		{Bind: "prefix+1..9", Cmd: "switch workspace"},
 
+		{},
 		{Group: true, Cmd: "panes"},
 		{Bind: bindKeys(a.splitVKeys, '%', 'v'), Cmd: "split vertical"},
 		{Bind: bindKeys(a.splitHKeys, '"', '-'), Cmd: "split horizontal"},
@@ -102,18 +105,7 @@ func bindKeys(set map[rune]bool, fallback ...rune) string {
 // helpBody is the visible content-row count in the composed help box;
 // must match render.drawHelp's geometry.
 func (a *App) helpBody() int {
-	hgt := len(a.helpRows()) + 4
-	if max := a.st.Rows - 2; hgt > max {
-		hgt = max
-	}
-	if hgt < 6 {
-		hgt = 6
-	}
-	body := hgt - 4 // border×2 + subtitle + footer
-	if body < 1 {
-		body = 1
-	}
-	return body
+	return max(1, render.HelpRect(a.st.Cols, a.st.Rows).H-7)
 }
 
 func (a *App) helpMaxScroll() int {
@@ -145,9 +137,9 @@ func (a *App) helpKey(k uv.Key) {
 	case k.Code == uv.KeyDown || k.Code == 'j':
 		a.helpScrollBy(1)
 	case k.Code == uv.KeyPgUp:
-		a.helpScrollBy(-a.helpBody())
+		a.helpScrollBy(-(a.helpBody() + 1) / 2)
 	case k.Code == uv.KeyPgDown:
-		a.helpScrollBy(a.helpBody())
+		a.helpScrollBy((a.helpBody() + 1) / 2)
 	}
 	a.dirty = true
 }
@@ -166,7 +158,7 @@ func (a *App) helpMouse(ev input.Event) {
 		return
 	}
 	if ev.Kind == input.KindMouseMotion && h.dragging {
-		top := m.Y - h.rect.Y - 2 - h.grab
+		top := m.Y - h.rect.Y - 4 - h.grab
 		a.helpScrollBy(maxScroll - offFromThumb(body, maxScroll, top) - h.scroll)
 		return
 	}
@@ -179,9 +171,9 @@ func (a *App) helpMouse(ev input.Event) {
 		}
 	case input.KindMouseClick:
 		r := a.help.rect
-		if m.Button == uv.MouseLeft && maxScroll > 0 && m.X == r.X+r.W-2 && m.Y >= r.Y+2 && m.Y < r.Y+2+body {
+		if m.Button == uv.MouseLeft && maxScroll > 0 && m.X == r.X+r.W-2 && m.Y >= r.Y+4 && m.Y < r.Y+4+body {
 			th, top := thumbGeom(body, maxScroll, maxScroll-h.scroll)
-			rel := m.Y - r.Y - 2
+			rel := m.Y - r.Y - 4
 			h.grab = rel - top
 			if rel < top || rel >= top+th {
 				h.grab = th / 2

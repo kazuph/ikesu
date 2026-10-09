@@ -92,7 +92,7 @@ func TestG5DialogRealCursorUnicodeClampedAndSettingsFooter(t *testing.T) {
 			out := Compose(Input{State: s, Dialog: d})
 			r := out.DialogRect
 			width := []int{0, 1, 3, 4}[cursor]
-			if out.AnchorX != r.X+4+width || out.AnchorY != r.Y+2 || !out.AnchorVisible {
+			if out.AnchorX != r.X+2+width || out.AnchorY != r.Y+3 || !out.AnchorVisible {
 				t.Fatal(name, cursor, out.AnchorX, out.AnchorY)
 			}
 			enc := &Encoder{}

@@ -1,0 +1,46 @@
+send "\x02s"
+sleep 200ms
+screen @OUT@/open.txt
+send "\x1b[B"
+sleep 200ms
+screen @OUT@/down.txt
+send "\x1b[A"
+sleep 200ms
+screen @OUT@/up.txt
+send "\x1b[C"
+sleep 200ms
+screen @OUT@/right.txt
+send "\x1b[D"
+sleep 200ms
+screen @OUT@/left.txt
+send "\t"
+sleep 200ms
+screen @OUT@/tab.txt
+send "\x1b[Z"
+sleep 200ms
+screen @OUT@/shift-tab.txt
+send " "
+sleep 200ms
+screen @OUT@/space.txt
+send "\r"
+sleep 200ms
+screen @OUT@/enter.txt
+send "\x02s"
+sleep 200ms
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/wheel.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/outside.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+send "echo SETTINGS_ENDED\r"
+sleep 200ms
+screen @OUT@/shell-input.txt
+kill

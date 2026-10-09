@@ -245,6 +245,28 @@ func main() {
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
 			time.Sleep(30 * time.Millisecond)
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
+		case "clicktext":
+			label, err := strconv.Unquote(rest)
+			if err != nil || label == "" {
+				fmt.Fprintln(os.Stderr, "bad clicktext:", rest)
+				os.Exit(1)
+			}
+			x, y, found := 0, 0, 0
+			for row, line := range strings.Split(screen(), "\n") {
+				if col := strings.Index(line, label); col >= 0 {
+					x, y = ansi.StringWidth(line[:col])+1, row+1
+					found++
+				}
+			}
+			if found != 1 {
+				fmt.Fprintf(os.Stderr, "clicktext %q requires one visible match, got %d\n", label, found)
+				_ = cmd.Process.Kill()
+				_, _ = cmd.Process.Wait()
+				os.Exit(1)
+			}
+			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
+			time.Sleep(30 * time.Millisecond)
+			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
 		case "rclick":
 			var x, y int
 			fmt.Sscanf(rest, "%d %d", &x, &y)
@@ -253,6 +275,20 @@ func main() {
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<2;%d;%dm", x, y)
 		case "screen":
 			_ = os.WriteFile(rest, []byte(screen()), 0o644)
+		case "resize":
+			var c, r int
+			if _, err := fmt.Sscanf(rest, "%d %d", &c, &r); err != nil || c < 1 || r < 1 {
+				fmt.Fprintln(os.Stderr, "bad resize:", rest)
+				os.Exit(1)
+			}
+			mu.Lock()
+			*cols, *rows = c, r
+			emu.Resize(c, r)
+			mu.Unlock()
+			if err := pty.Setsize(ptmx, &pty.Winsize{Cols: uint16(c), Rows: uint16(r)}); err != nil {
+				fmt.Fprintln(os.Stderr, "resize:", err)
+				os.Exit(1)
+			}
 		case "waitfile": // waitfile PATH TIMEOUT
 			p, ts, _ := strings.Cut(rest, " ")
 			d, _ := time.ParseDuration(ts)

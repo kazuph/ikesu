@@ -151,8 +151,8 @@ func TestSidebarAndResize(t *testing.T) {
 		t.Fatalf("collapsed sidebar (3 cols) should widen panes area: %d -> %d", before.W, after.W)
 	}
 	s.Apply(CmdResize{Cols: 100, Rows: 30})
-	// SPEC G1: tab bar + action bar + status leave Rows-3 to the panes.
-	if s.PanesArea().W != 100-SidebarCollapsedWidth || s.PanesArea().H != 27 {
+	// Distribution capture: tab and action bar leave Rows-2 to desktop panes.
+	if s.PanesArea().W != 100-SidebarCollapsedWidth || s.PanesArea().H != 28 {
 		t.Fatalf("panes area after resize = %+v", s.PanesArea())
 	}
 }

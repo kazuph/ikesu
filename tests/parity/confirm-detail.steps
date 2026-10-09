@@ -1,0 +1,28 @@
+click 3 23
+sleep 200ms
+screen @OUT@/main-menu.txt
+clicktext "stop server"
+sleep 200ms
+screen @OUT@/open.txt
+send "z"
+sleep 200ms
+screen @OUT@/letter.txt
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/wheel.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+click 3 23
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+click 95 23
+sleep 200ms
+screen @OUT@/outside.txt
+send "\x1b"
+sleep 200ms
+kill

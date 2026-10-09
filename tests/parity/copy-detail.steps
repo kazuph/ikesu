@@ -1,0 +1,61 @@
+send "for i in {1..70}; do echo LINE-$i alpha beta gamma; done\r"
+sleep 500ms
+send "\x02["
+sleep 200ms
+screen @OUT@/open.txt
+send "\x1b[5~"
+sleep 200ms
+screen @OUT@/page-up.txt
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/page-down.txt
+send "\x15"
+sleep 200ms
+screen @OUT@/half-up.txt
+send "\x04"
+sleep 200ms
+screen @OUT@/half-down.txt
+send "g"
+sleep 200ms
+screen @OUT@/first.txt
+send "G"
+sleep 200ms
+screen @OUT@/last.txt
+send "/alpha\r"
+sleep 200ms
+screen @OUT@/search.txt
+send "n"
+sleep 200ms
+screen @OUT@/next-match.txt
+send "N"
+sleep 200ms
+screen @OUT@/previous-match.txt
+send " v"
+sleep 200ms
+screen @OUT@/select-toggle.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+send "\x02["
+sleep 200ms
+send "\x03"
+sleep 200ms
+screen @OUT@/control-c.txt
+send "\x02["
+sleep 200ms
+mouse wheel-up 80 20
+sleep 200ms
+screen @OUT@/wheel-up.txt
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/wheel-down.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+send "q"
+sleep 200ms
+screen @OUT@/quit.txt
+send "echo COPY_ENDED\r"
+sleep 200ms
+screen @OUT@/shell-input.txt
+kill

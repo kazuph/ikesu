@@ -38,7 +38,7 @@ func (s *AppState) TabBarArea() Rect {
 }
 
 // ActionBarArea is the one-row bottom pane action bar (SPEC G1): the
-// main area's last row, right of the sidebar and above the status line.
+// main area's last row, right of the sidebar.
 // It shows only on desktop with an active workspace and at least two
 // rows left for the panes.
 func (s *AppState) ActionBarArea() Rect {
@@ -52,14 +52,14 @@ func (s *AppState) ActionBarArea() Rect {
 	if s.ActiveWorkspace() == nil {
 		return Rect{}
 	}
-	if s.Rows-3 < 2 { // need ≥2 pane rows: bar + status take the rest
+	if s.Rows-2 < 2 { // tab and action bar must leave at least two pane rows
 		return Rect{}
 	}
-	return Rect{X: w, Y: max0(s.Rows - 2), W: max0(s.Cols - w), H: 1}
+	return Rect{X: w, Y: max0(s.Rows - 1), W: max0(s.Cols - w), H: 1}
 }
 
 // PanesArea returns the rect the pane layout fills: right of the sidebar,
-// below the (possibly hidden) tab bar, above the action bar and status.
+// below the (possibly hidden) tab bar, above the action bar.
 func (s *AppState) PanesArea() Rect {
 	if s.Mobile() {
 		return Rect{X: 0, Y: 2, W: s.Cols, H: max0(s.Rows - 3)}
@@ -72,7 +72,7 @@ func (s *AppState) PanesArea() Rect {
 	if s.TabBarVisible() {
 		y = 1
 	}
-	bottom := s.Rows - 1 // status line
+	bottom := s.Rows
 	if ab := s.ActionBarArea(); ab.H > 0 {
 		bottom = ab.Y
 	}
@@ -88,11 +88,14 @@ func (s *AppState) SidebarArea() Rect {
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
 	}
-	return Rect{X: 0, Y: 0, W: min(s.Cols, w), H: max0(s.Rows - 1)}
+	return Rect{X: 0, Y: 0, W: min(s.Cols, w), H: max0(s.Rows)}
 }
 
 // StatusArea returns the one-line status bar rect.
 func (s *AppState) StatusArea() Rect {
+	if !s.Mobile() {
+		return Rect{}
+	}
 	return Rect{X: 0, Y: max0(s.Rows - 1), W: s.Cols, H: 1}
 }
 

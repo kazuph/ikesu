@@ -130,8 +130,9 @@ func TestRenderScrollIndicator(t *testing.T) {
 	}
 }
 
-func TestRenderStatusCountsAndButtons(t *testing.T) {
+func TestRenderMobileStatusCountsAndButtons(t *testing.T) {
 	s := testState(100, 24)
+	s.MobileWidthThreshold = 100
 	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	snap := blankSnap()
 	snap.Status = StatusGlyph{Key: "working", Rune: "◐", Color: Yellow}
@@ -422,7 +423,7 @@ func TestCopiedFlashOnSidebarBottom(t *testing.T) {
 	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}, Copied: " Copied 2 lines "})
 	text := screenText(t, out, 80, 24)
-	footer := s.Rows - 2 // sidebar bottom row
+	footer := s.Rows - 1 // sidebar bottom row
 	lines := strings.Split(text, "\n")
 	if !strings.Contains(lines[footer], "Copied 2 lines") {
 		t.Fatalf("flash not on the sidebar bottom row %d:\n%s", footer, text)

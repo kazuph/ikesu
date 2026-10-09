@@ -1,0 +1,140 @@
+send "\x02?"
+sleep 200ms
+screen @OUT@/help-page-0.txt
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/help-page-1.txt
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/help-page-2.txt
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/help-page-3.txt
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/help-page-4.txt
+send "\x1b[6~"
+sleep 200ms
+screen @OUT@/help-page-5.txt
+send "\x1b[6~"
+sleep 200ms
+send "\x1b"
+sleep 200ms
+send "\x02P"
+sleep 200ms
+send "abc"
+sleep 200ms
+send "\x1b[D"
+sleep 200ms
+send "Z"
+sleep 200ms
+screen @OUT@/rename-left-insert.txt
+send "\x03"
+sleep 200ms
+screen @OUT@/rename-control-c.txt
+send "xyz"
+sleep 200ms
+send "\x1b[H"
+sleep 200ms
+send "Z"
+sleep 200ms
+screen @OUT@/rename-home-insert.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/boot.txt
+send "\x02"
+sleep 200ms
+screen @OUT@/prefix.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/prefix-escape.txt
+send "\x02v"
+sleep 200ms
+screen @OUT@/split.txt
+click 40 2
+sleep 200ms
+screen @OUT@/title-zoom.txt
+click 40 2
+sleep 200ms
+screen @OUT@/title-unzoom.txt
+mouse down 92 20
+mouse motion 110 20
+mouse up 110 20
+sleep 200ms
+screen @OUT@/border-drag.txt
+send "\x02c"
+sleep 200ms
+screen @OUT@/new-tab.txt
+mouse wheel-up 30 1
+sleep 200ms
+screen @OUT@/tab-wheel-up.txt
+mouse wheel-down 30 1
+sleep 200ms
+screen @OUT@/tab-wheel-down.txt
+click 28 1
+sleep 200ms
+screen @OUT@/tab-click.txt
+click 37 1
+sleep 200ms
+screen @OUT@/tab-plus.txt
+send "\x02N"
+sleep 400ms
+screen @OUT@/new-workspace.txt
+send "\x02p"
+sleep 200ms
+screen @OUT@/previous-workspace.txt
+send "\x02n"
+sleep 200ms
+screen @OUT@/next-workspace.txt
+click 10 5
+sleep 200ms
+screen @OUT@/workspace-click.txt
+send "\x1b"
+sleep 200ms
+mouse wheel-down 10 10
+sleep 200ms
+screen @OUT@/sidebar-wheel.txt
+click 24 45
+sleep 200ms
+screen @OUT@/sidebar-collapse.txt
+click 3 45
+sleep 200ms
+screen @OUT@/sidebar-expand.txt
+click 4 25
+sleep 200ms
+screen @OUT@/sidebar-jobs.txt
+click 4 25
+sleep 200ms
+screen @OUT@/sidebar-agents.txt
+clicktext "COPY"
+sleep 200ms
+screen @OUT@/copy-button.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/copy-escape.txt
+send "\x02["
+sleep 200ms
+screen @OUT@/copy-prefix-left.txt
+send "hjklwbe0$gG"
+sleep 200ms
+screen @OUT@/copy-motion.txt
+send "q"
+sleep 200ms
+screen @OUT@/copy-q.txt
+send "\x02]"
+sleep 200ms
+screen @OUT@/copy-prefix-right.txt
+mouse wheel-up 80 20
+sleep 200ms
+screen @OUT@/copy-wheel.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/copy-resize.txt
+send "\x1b"
+sleep 200ms
+resize 160 45
+sleep 200ms
+send "echo CHROME_DONE\r"
+sleep 200ms
+screen @OUT@/done.txt
+kill

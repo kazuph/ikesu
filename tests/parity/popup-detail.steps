@@ -1,0 +1,16 @@
+send "python3 @FIXTURES@/socket_action.py open\r"
+sleep 500ms
+screen @OUT@/open.txt
+mouse wheel-up 80 20
+sleep 200ms
+screen @OUT@/wheel.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+send "echo POPUP_AFTER_ESCAPE\r"
+sleep 200ms
+screen @OUT@/input-after-escape.txt
+kill

@@ -28,7 +28,7 @@ func TestSPECExistingConfigHidesEveryTabHitAndKeepsBottomBar(t *testing.T) {
 	if len(a.st.ActiveWorkspace().Tabs) != 2 || a.st.TabBarArea().H != 0 || len(out.TabHits) != 0 || out.NewTabRect.W != 0 {
 		t.Fatal("hidden tab hit areas", out)
 	}
-	if out.ActionBar.Area.Y != a.st.Rows-2 || out.ActionBar.Area.H != 1 {
+	if out.ActionBar.Area.Y != a.st.Rows-1 || out.ActionBar.Area.H != 1 {
 		t.Fatal("bottom bar", out.ActionBar.Area)
 	}
 }

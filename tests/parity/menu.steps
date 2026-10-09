@@ -1,0 +1,28 @@
+screen @OUT@/boot.txt
+rclick 70 12
+sleep 200ms
+screen @OUT@/open.txt
+click 120 30
+sleep 200ms
+screen @OUT@/outside.txt
+send "echo PARITY_OUTSIDE\r"
+sleep 200ms
+screen @OUT@/typed.txt
+rclick 70 12
+sleep 200ms
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+rclick 70 12
+sleep 200ms
+send "z"
+sleep 200ms
+screen @OUT@/letter.txt
+send "\x1b"
+sleep 200ms
+rclick 70 12
+sleep 200ms
+rclick 120 30
+sleep 200ms
+screen @OUT@/right-outside.txt
+kill

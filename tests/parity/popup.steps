@@ -1,0 +1,30 @@
+send "python3 @FIXTURES@/socket_action.py open\r"
+sleep 500ms
+screen @OUT@/popup-open.txt
+send "echo POPUP_INPUT\r"
+sleep 200ms
+screen @OUT@/popup-typed.txt
+click 150 35
+sleep 200ms
+screen @OUT@/popup-outside.txt
+send "echo POPUP_AFTER_OUTSIDE\r"
+sleep 200ms
+screen @OUT@/popup-after-outside.txt
+mouse wheel-up 80 20
+sleep 200ms
+screen @OUT@/popup-wheel.txt
+resize 100 25
+sleep 200ms
+screen @OUT@/popup-resize.txt
+send "\x1b"
+sleep 200ms
+screen @OUT@/popup-escape.txt
+send "\x02["
+sleep 200ms
+screen @OUT@/popup-copy.txt
+send "q"
+sleep 200ms
+send "python3 @FIXTURES@/socket_action.py close\r"
+sleep 200ms
+screen @OUT@/popup-close.txt
+kill

@@ -18,7 +18,15 @@ func (a *App) onInput(ev input.Event) {
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
-		if a.settings != nil {
+		if a.settings != nil || a.menu != nil || a.help != nil {
+			return
+		}
+		if a.dialog != nil {
+			if d := a.dialog; d.input != nil {
+				*d.input += ev.Text
+				d.d.Input, d.d.InputCursor = *d.input, len([]rune(*d.input))
+				a.dirty = true
+			}
 			return
 		}
 		if pid := a.focusedPane(); pid >= 0 {

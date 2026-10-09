@@ -445,6 +445,7 @@ func (a *App) Run() {
 					flush = flushTimer.C
 				} else {
 					flushTimer.Reset(time.Duration(input.IdleFlushMs) * time.Millisecond)
+					flush = flushTimer.C
 				}
 			} else if flushTimer != nil {
 				flushTimer.Stop()

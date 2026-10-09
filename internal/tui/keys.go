@@ -90,6 +90,8 @@ func (a *App) prefixKey(k uv.Key) {
 	switch {
 	case code == 's':
 		a.openSettings()
+	case code == 'R':
+		a.reloadSidebarConfig()
 	case a.renameKeys[code]:
 		a.openRenamePaneDialog(a.focusedPane())
 	case a.editKeys[code]:
@@ -161,13 +163,11 @@ func (a *App) prefixKey(k uv.Key) {
 		}
 	case k.Code == '&':
 		a.closeActiveTab()
-	case k.Code == 'd' && k.Mod == 0:
+	case (k.Code == 'd' || k.Code == 'q') && k.Mod == 0:
 		// Detach: only meaningful when running under a server.
 		if a.detacher != nil {
 			a.detacher("detach requested")
 		}
-	case k.Code == 'q':
-		a.openQuitDialog()
 	}
 }
 
@@ -270,34 +270,18 @@ func (a *App) dialogKey(k uv.Key) {
 		a.dialog = nil
 	case d.input != nil:
 		runes := []rune(*d.input)
-		cursor := min(max(0, d.d.InputCursor), len(runes))
-		switch k.Code {
-		case uv.KeyLeft:
-			cursor = max(0, cursor-1)
-		case uv.KeyRight:
-			cursor = min(len(runes), cursor+1)
-		case uv.KeyHome:
-			cursor = 0
-		case uv.KeyEnd:
-			cursor = len(runes)
-		case uv.KeyBackspace:
-			if cursor > 0 {
-				runes = append(runes[:cursor-1], runes[cursor:]...)
-				cursor--
+		switch {
+		case k.Code == 'c' && k.Mod.Contains(uv.ModCtrl):
+			runes = nil
+		case k.Code == uv.KeyBackspace:
+			if len(runes) > 0 {
+				runes = runes[:len(runes)-1]
 			}
-		case uv.KeyDelete:
-			if cursor < len(runes) {
-				runes = append(runes[:cursor], runes[cursor+1:]...)
-			}
-		default:
-			if k.Text != "" {
-				insert := []rune(k.Text)
-				runes = append(append(append([]rune{}, runes[:cursor]...), insert...), runes[cursor:]...)
-				cursor += len(insert)
-			}
+		case k.Text != "":
+			runes = append(runes, []rune(k.Text)...)
 		}
 		*d.input = string(runes)
-		d.d.Input, d.d.InputCursor = *d.input, cursor
+		d.d.Input, d.d.InputCursor = *d.input, len(runes)
 	}
 	a.dirty = true
 }

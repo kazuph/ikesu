@@ -1,0 +1,24 @@
+rclick 70 12
+sleep 200ms
+send "\x1b[B"
+sleep 200ms
+screen @OUT@/menu-down.txt
+send "\r"
+sleep 300ms
+screen @OUT@/menu-enter.txt
+rclick 50 10
+sleep 200ms
+clicktext "Rename pane"
+sleep 200ms
+screen @OUT@/menu-rename.txt
+send "test-name"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/rename-save.txt
+rclick 50 10
+sleep 200ms
+clicktext "Split horizontal"
+sleep 200ms
+screen @OUT@/menu-split-horizontal.txt
+kill
