@@ -70,6 +70,9 @@ func (r *readBuffer) shift(alt bool, top, bottom, n int, up, history bool, w int
 }
 func (r *readBuffer) linefeed(p *Pane, continued bool) {
 	pos := p.emu.CursorPosition()
+	r.linefeedAt(p, pos, continued)
+}
+func (r *readBuffer) linefeedAt(p *Pane, pos uv.Position, continued bool) {
 	rows := r.rows(p.altScreen)
 	if pos.Y == r.bottom-1 && pos.X >= r.left && pos.X < r.right {
 		r.shift(p.altScreen, r.top, r.bottom, 1, true, r.left == 0 && r.right == p.emu.Width(), p.emu.Width())
@@ -182,6 +185,42 @@ func emptyRow(e *vt.Emulator, y int) bool {
 	}
 	return true
 }
+
+// Complete short CRLF rows cannot wrap or change terminal modes. Record only
+// their line boundaries and let the emulator parse the whole span once, rather
+// than entering both parsers and Write separately for each CR and LF.
+func (p *Pane) writeShortLines(chunk []byte) int {
+	r := p.read
+	pos := p.emu.CursorPosition()
+	w := p.emu.Width()
+	if r.state != ansi.NormalState || r.pending || pos.X != 0 || r.left != 0 || r.right != w {
+		return 0
+	}
+	end, lines := 0, 0
+	for i := 0; i < len(chunk); {
+		start := i
+		for i < len(chunk) && chunk[i] >= 32 && chunk[i] < 127 && i-start < w {
+			i++
+		}
+		if i-start >= w || i+1 >= len(chunk) || chunk[i] != '\r' || chunk[i+1] != '\n' {
+			break
+		}
+		i += 2
+		end, lines = i, lines+1
+	}
+	if end == 0 {
+		return 0
+	}
+	for i := 0; i < lines; i++ {
+		r.linefeedAt(p, pos, false)
+		if pos.Y != r.bottom-1 {
+			pos.Y = min(pos.Y+1, p.emu.Height()-1)
+		}
+	}
+	_, _ = p.emu.Write(chunk[:end])
+	return end
+}
+
 func (p *Pane) writeRecorded(chunk []byte) {
 	r := p.read
 	if r == nil {
@@ -193,6 +232,10 @@ func (p *Pane) writeRecorded(chunk []byte) {
 		r.utf8Pending = nil
 	}
 	for len(chunk) > 0 {
+		if n := p.writeShortLines(chunk); n > 0 {
+			chunk = chunk[n:]
+			continue
+		}
 		if r.state == ansi.NormalState && chunk[0] >= 0xc0 && !utf8.FullRune(chunk) {
 			r.utf8Pending = append(r.utf8Pending[:0], chunk...)
 			break
