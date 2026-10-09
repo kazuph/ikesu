@@ -1,0 +1,29 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle\r"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py start-job success\r"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py start-job\r"
+sleep 1500ms
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[jobs]"
+sleep 250ms
+screen @OUT@/two-running.txt
+cells @OUT@/two-running.json
+send "python3 @FIXTURES@/socket_action.py cancel-job\r"
+sleep 1s
+screen @OUT@/cancel-reply.txt
+cells @OUT@/cancel-reply.json
+stats cancelled
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+sleep 4s
+screen @OUT@/both-finished.txt
+cells @OUT@/both-finished.json
+resize 90 25
+sleep 250ms
+screen @OUT@/narrow.txt
+cells @OUT@/narrow.json
+kill

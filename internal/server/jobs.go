@@ -125,10 +125,13 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, p.Argv[0], p.Argv[1:]...)
 	cmd.Dir = cwd
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	var logMu sync.Mutex
+	logMu.Lock()
+	cmd.Stdout = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stdout] ", lineStart: true}
+	cmd.Stderr = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stderr] ", lineStart: true}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
+		logMu.Unlock()
 		cancel()
 		logFile.Close()
 		s.finishJob(store, jobID, nil)
@@ -136,11 +139,37 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	}
 	s.jobProcs.put(jobID, cmd)
 	if err := store.MarkCommandRunning(jobID, int64(cmd.Process.Pid)); err != nil {
+		logMu.Unlock()
 		s.jobProcs.drop(jobID)
 		cancel()
 		logFile.Close()
 		_ = cmd.Process.Kill()
 		return api.Failure(id, api.ErrJobStore, err.Error())
+	}
+	row, rowErr := store.CommandRow(jobID)
+	if rowErr != nil || row == nil || row.StartedMs == nil {
+		logMu.Unlock()
+		cancel()
+		_ = cmd.Wait()
+		_ = logFile.Close()
+		s.jobProcs.drop(jobID)
+		s.finishJob(store, jobID, nil)
+		return api.Failure(id, api.ErrJobStore, "started job timestamp unavailable")
+	}
+	quoted := make([]string, len(p.Argv))
+	for i, arg := range p.Argv {
+		quoted[i] = "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
+	}
+	_, headerErr := fmt.Fprintf(logFile, "job_id: %s\nrunner_pid: %d\ncommand: %s\ncwd: %s\nstarted_unix_ms: %d\n\n",
+		jobID, cmd.Process.Pid, strings.Join(quoted, " "), cwd, *row.StartedMs)
+	logMu.Unlock()
+	if headerErr != nil {
+		cancel()
+		_ = cmd.Wait()
+		_ = logFile.Close()
+		s.jobProcs.drop(jobID)
+		s.finishJob(store, jobID, nil)
+		return api.Failure(id, api.ErrJobStore, headerErr.Error())
 	}
 	go s.watchJob(jobID, cmd, cancel, logFile, callerAgent, label, completion)
 	s.invalidateJobCache()
@@ -166,11 +195,24 @@ func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc
 	logFile *os.File, callerAgent, label, completion string) {
 	defer s.invalidateJobCache()
 	_ = cmd.Wait()
+	exit := -1
+	if cmd.ProcessState != nil {
+		exit = cmd.ProcessState.ExitCode()
+	}
+	store, derr := s.db()
+	writeFinish := true
+	if derr == nil {
+		if j, err := store.CommandRow(jobID); err == nil && j != nil {
+			writeFinish = j.Status != "cancelling" && j.Status != "cancelled"
+		}
+	}
+	if writeFinish {
+		_, _ = fmt.Fprintf(logFile, "\nfinished_unix_ms: %d\nexit_code: %d\n", time.Now().UnixMilli(), exit)
+	}
 	logFile.Close()
 	cancel()
 	s.jobProcs.drop(jobID)
 
-	store, derr := s.db()
 	if derr != nil {
 		return
 	}
@@ -263,6 +305,7 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		// kill(-pgid, 0) decides whether anything remains.
 		if !processGroupAlive(pgid) {
 			_, _ = store.MarkCommandCancelled(job.ID)
+			s.invalidateJobCache()
 			return api.Success(id, api.RunCancelledResult{
 				Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "none",
 			})
@@ -285,6 +328,7 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 			fmt.Sprintf("job %s is not running (status=%s)", job.ID, job.Status))
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	s.invalidateJobCache()
 	go s.finishCancel(job.ID, pgid)
 	return api.Success(id, api.RunCancelledResult{
 		Type: "run_cancelled", Job: job.ID, Status: "cancelling", Signal: "TERM",

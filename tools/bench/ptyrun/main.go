@@ -31,6 +31,7 @@ func main() {
 	cellHeight := flag.Int("cell-height", 0, "terminal character height in pixels for size queries")
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
+	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
 	flag.Parse()
 	args := flag.Args()
 	cmd := exec.Command(args[0], args[1:]...)
@@ -86,7 +87,13 @@ func main() {
 	// Drain the PTY as fast as possible (like a fast real terminal) and feed the emulator
 	// from an unbounded queue, so the emulator's speed never throttles the app under test.
 	var qmu sync.Mutex
-	var queue [][]byte
+	type outputChunk struct {
+		data []byte
+		at   int64
+	}
+	var queue []outputChunk
+	var cellChanged [][]int64
+	var cellContent [][]string
 	var drained int64
 	go func() {
 		buf := make([]byte, 1<<16)
@@ -99,7 +106,7 @@ func main() {
 				c := make([]byte, n)
 				copy(c, buf[:n])
 				qmu.Lock()
-				queue = append(queue, c)
+				queue = append(queue, outputChunk{data: c, at: time.Now().UnixMilli()})
 				qmu.Unlock()
 			}
 			if err != nil {
@@ -119,8 +126,27 @@ func main() {
 			}
 			mu.Lock()
 			for _, c := range q {
-				_, _ = emu.Write(c)
-				drained += int64(len(c))
+				_, _ = emu.Write(c.data)
+				drained += int64(len(c.data))
+				if *cellClock {
+					if len(cellChanged) != *rows || len(cellChanged[0]) != *cols {
+						cellChanged, cellContent = make([][]int64, *rows), make([][]string, *rows)
+						for y := range cellChanged {
+							cellChanged[y], cellContent[y] = make([]int64, *cols), make([]string, *cols)
+						}
+					}
+					for y := range cellChanged {
+						for x := range cellChanged[y] {
+							content := ""
+							if cell := emu.CellAt(x, y); cell != nil {
+								content = cell.Content
+							}
+							if content != cellContent[y][x] {
+								cellContent[y][x], cellChanged[y][x] = content, c.at
+							}
+						}
+					}
+				}
 			}
 			mu.Unlock()
 		}
@@ -289,11 +315,12 @@ func main() {
 				}
 			}
 			data, err := json.Marshal(struct {
-				Cols, Rows     int
-				Cells          [][]uv.Cell
-				CapturedUnixMs int64
-				LastSendUnixMs int64
-			}{*cols, *rows, grid, time.Now().UnixMilli(), sentAt.UnixMilli()})
+				Cols, Rows        int
+				Cells             [][]uv.Cell
+				CapturedUnixMs    int64
+				LastSendUnixMs    int64
+				CellChangedUnixMs [][]int64 `json:",omitempty"`
+			}{*cols, *rows, grid, time.Now().UnixMilli(), sentAt.UnixMilli(), cellChanged})
 			mu.Unlock()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -327,7 +354,9 @@ func main() {
 				}
 				if time.Now().After(deadline) {
 					fmt.Println("TIMEOUT waiting", p)
-					break
+					_ = cmd.Process.Kill()
+					_, _ = cmd.Process.Wait()
+					os.Exit(1)
 				}
 				time.Sleep(100 * time.Millisecond)
 			}

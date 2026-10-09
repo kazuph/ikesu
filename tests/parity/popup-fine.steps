@@ -1,0 +1,51 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "echo POPUP_INPUT\r"
+sleep 250ms
+screen @OUT@/typed.txt
+cells @OUT@/typed.json
+send "for i in {1..30}; do printf 'POPUP_LINE_%02d\\n' $i; done\r"
+sleep 250ms
+mouse wheel-up 80 20
+sleep 250ms
+screen @OUT@/wheel-up.txt
+cells @OUT@/wheel-up.json
+mouse wheel-down 80 20
+sleep 250ms
+screen @OUT@/wheel-down.txt
+cells @OUT@/wheel-down.json
+send "\x03"
+sleep 250ms
+screen @OUT@/interrupt.txt
+cells @OUT@/interrupt.json
+click 150 35
+sleep 250ms
+send "echo POPUP_OUTSIDE_RETURNED\r"
+sleep 250ms
+screen @OUT@/outside.txt
+cells @OUT@/outside.json
+send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+resize 100 25
+sleep 250ms
+screen @OUT@/resized.txt
+cells @OUT@/resized.json
+send "\x1b"
+sleep 250ms
+send "echo POPUP_ESCAPE_RETURNED\r"
+sleep 250ms
+screen @OUT@/escaped.txt
+cells @OUT@/escaped.json
+send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "\x04"
+sleep 500ms
+send "echo POPUP_EOF_RETURNED\r"
+sleep 250ms
+screen @OUT@/eof.txt
+cells @OUT@/eof.json
+kill

@@ -1,0 +1,42 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle\r"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py start-job success\r"
+sleep 1500ms
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[jobs]"
+sleep 250ms
+screen @OUT@/running.txt
+cells @OUT@/running.json
+mouse wheel-down 10 30
+sleep 250ms
+screen @OUT@/wheel.txt
+cells @OUT@/wheel.json
+send "\x1b[<0;10;27M\x1b[<0;10;27m"
+sleep 250ms
+screen @OUT@/job-click.txt
+cells @OUT@/job-click.json
+stats job-log
+send "\x1b"
+sleep 500ms
+send "\x15"
+send "echo JOB_LOG_CLOSED\r"
+sleep 1200ms
+screen @OUT@/log-closed.txt
+cells @OUT@/log-closed.json
+sleep 5s
+screen @OUT@/finished.txt
+cells @OUT@/finished.json
+sleep 2s
+screen @OUT@/finished-later.txt
+cells @OUT@/finished-later.json
+send "python3 @FIXTURES@/socket_action.py read-job\r"
+sleep 250ms
+screen @OUT@/job-status.txt
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+resize 100 25
+sleep 250ms
+screen @OUT@/resize.txt
+cells @OUT@/resize.json
+kill

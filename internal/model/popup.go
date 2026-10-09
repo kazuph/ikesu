@@ -12,6 +12,7 @@ type PopupPaneState struct {
 	TerminalID    string
 	Width, Height api.PopupSize
 	ResizeLocked  bool
+	Title         string
 }
 
 type CmdOpenPopup struct {
@@ -19,6 +20,7 @@ type CmdOpenPopup struct {
 	Cwd           string
 	Argv          []string
 	Width, Height api.PopupSize
+	Title         string
 }
 
 func (CmdOpenPopup) isCommand() {}
@@ -41,7 +43,6 @@ func (s *AppState) PopupRect() layout.Rect {
 		return layout.Rect{}
 	}
 	a := s.PanesArea()
-	a.H += s.ActionBarArea().H
 	size := func(value api.PopupSize, total int) int {
 		if value.Percent > 0 {
 			return max(0, min(total, max(3, total*value.Percent/100)))
@@ -65,7 +66,7 @@ func (s *AppState) openPopup(c CmdOpenPopup) []Effect {
 	}
 	effects := s.closePopup()
 	id := s.allocPane()
-	s.Popup = &PopupPaneState{WorkspaceID: c.WorkspaceID, PaneID: id, TerminalID: fmt.Sprintf("p%d", id), Width: c.Width, Height: c.Height}
+	s.Popup = &PopupPaneState{WorkspaceID: c.WorkspaceID, PaneID: id, TerminalID: fmt.Sprintf("p%d", id), Width: c.Width, Height: c.Height, Title: c.Title}
 	return append(effects, EffSpawnPane{Pane: id, Cwd: c.Cwd, Argv: c.Argv}, EffSyncLayout{})
 }
 

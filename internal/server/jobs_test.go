@@ -62,7 +62,7 @@ func TestRunCancelEscalatesAndConfirmsGroupGone(t *testing.T) {
 	ready := time.Now().Add(10 * time.Second)
 	for {
 		data, _ := os.ReadFile(job.LogPath)
-		if strings.Contains(string(data), "ready") {
+		if strings.Contains(string(data), "\n[stdout] ready\n") {
 			break
 		}
 		if time.Now().After(ready) {

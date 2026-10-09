@@ -287,9 +287,20 @@ func (a *App) SetJobSource(f func() ([]dispatch.Job, map[string]bool)) {
 
 // refreshJobDots re-snapshots jobs at most once per second and folds
 // them into per-workspace dots. Meaningful rows only: queued jobs,
-// running/cancelling jobs with a live runner, and finished rows younger
+// running jobs with a live runner, and finished rows younger
 // than one minute. Everything else leaves no dot.
 func (a *App) refreshJobDots(now time.Time) {
+	for i := range a.jobRows {
+		row := &a.jobRows[i]
+		if row.AgeSinceMs == nil {
+			continue
+		}
+		elapsed := fmt.Sprintf("%ds", max(int64(0), now.UnixMilli()-*row.AgeSinceMs)/1000)
+		if row.Elapsed != elapsed {
+			row.Elapsed = elapsed
+			a.dirty = true
+		}
+	}
 	if a.jobSource == nil || now.Sub(a.jobsAt) < time.Second {
 		return
 	}
@@ -301,14 +312,28 @@ func (a *App) refreshJobDots(now time.Time) {
 		switch j.Status {
 		case "queued":
 			col = render.Dim
-		case "running", "cancelling":
+		case "running":
 			col = render.Yellow
+		case "cancelled", "cancelling":
+			col = render.Red
 		default:
 			if j.ExitCode != nil && *j.ExitCode != 0 {
 				col = render.Red
 			}
 		}
-		rows = append(rows, render.JobRow{ID: j.ID, Label: j.Label, Status: j.Status, Color: col})
+		elapsed := ""
+		since := j.StartedMs
+		if j.StartedMs != nil {
+			if j.FinishedMs != nil {
+				since = j.FinishedMs
+			}
+			elapsed = fmt.Sprintf("%ds", max(int64(0), now.UnixMilli()-*since)/1000)
+		}
+		if j.Status == "cancelling" {
+			elapsed, since = "-", nil
+		}
+		rows = append(rows, render.JobRow{ID: j.ID, Label: j.Label, Status: j.Status, Color: col,
+			CallerPane: j.CallerPane, Elapsed: elapsed, AgeSinceMs: since, ExitCode: j.ExitCode, LogPath: j.LogPath, Cwd: j.Cwd})
 	}
 	if !reflect.DeepEqual(a.jobRows, rows) {
 		a.jobRows = rows
@@ -320,7 +345,9 @@ func (a *App) refreshJobDots(now time.Time) {
 		switch j.Status {
 		case "queued":
 			col = render.Dim
-		case "running", "cancelling":
+		case "cancelling":
+			continue
+		case "running":
 			if !alive[j.ID] {
 				continue // dead runner → no dot
 			}
@@ -331,7 +358,7 @@ func (a *App) refreshJobDots(now time.Time) {
 				continue
 			}
 			col = render.Green
-			if j.ExitCode != nil && *j.ExitCode != 0 {
+			if j.Status == "cancelled" || (j.ExitCode != nil && *j.ExitCode != 0) {
 				col = render.Red
 			}
 		}

@@ -38,3 +38,14 @@ func TestG2PopupStableOwnerReorderAndShutdownExactlyOnce(t *testing.T) {
 		t.Fatal("owner cleanup was not once", count)
 	}
 }
+
+func TestParityPopupCenteredAboveActionBar(t *testing.T) {
+	for _, dimensions := range []struct{ cols, rows, x, y int }{{160, 45, 63, 12}, {100, 25, 33, 2}} {
+		s := New("/tmp", dimensions.cols, dimensions.rows)
+		s.Apply(CmdOpenPopup{WorkspaceID: s.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 60}, Height: api.PopupSize{Cells: 20}})
+		r := s.PopupRect()
+		if r.X != dimensions.x || r.Y != dimensions.y || r.W != 60 || r.H != 20 {
+			t.Fatal("distribution geometry", dimensions, r)
+		}
+	}
+}

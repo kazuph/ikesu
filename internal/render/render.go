@@ -373,7 +373,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				rl := " " + snap.Restore + " "
 				rw := len([]rune(rl))
 				titleStop = pr.Rect.X + pr.Rect.W - 1 - rw
-				f.Text(titleStop, pr.Rect.Y, rl, borderSty, pr.Rect.X+pr.Rect.W-1)
+				restoreStyle := borderSty
+				if in.ServerUI && pr.IsFocused && !snap.Dead {
+					restoreStyle.Attrs |= uv.AttrBold
+				}
+				f.Text(titleStop, pr.Rect.Y, rl, restoreStyle, pr.Rect.X+pr.Rect.W-1)
 			}
 			if pr.Rect.W > 4 {
 				title := paneTitle(pr, snap, t)

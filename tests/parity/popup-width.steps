@@ -1,0 +1,15 @@
+send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "stty size\r"
+sleep 250ms
+screen @OUT@/size.txt
+cells @OUT@/size.json
+send "printf '123456789012345678901234567890123456789012345678901234567890\\n'\r"
+sleep 250ms
+screen @OUT@/wrap.txt
+cells @OUT@/wrap.json
+send "stty size\r"
+sleep 250ms
+screen @OUT@/popup-size.txt
+cells @OUT@/popup-size.json
+kill

@@ -66,6 +66,9 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		return false
 	}
 	switch r.Kind {
+	case render.RowJob:
+		a.openJobLog(r.Line)
+		return true
 	case render.RowTitle:
 		if a.serverUI {
 			return true

@@ -1,0 +1,32 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle\r"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py start-job ignore-term\r"
+waitfile @HOME@/parity-job-ready 5s
+sleep 250ms
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[jobs]"
+sleep 250ms
+screen @OUT@/running.txt
+cells @OUT@/running.json
+send "python3 @FIXTURES@/socket_action.py cancel-job\r"
+sleep 250ms
+screen @OUT@/cancelling.txt
+cells @OUT@/cancelling.json
+stats cancelling
+sleep 1s
+screen @OUT@/cancelling-later.txt
+cells @OUT@/cancelling-later.json
+stats cancelling-later
+sleep 1500ms
+screen @OUT@/cancel-reply.txt
+cells @OUT@/cancel-reply.json
+stats cancelled
+send "python3 @FIXTURES@/socket_action.py check-job-processes\r"
+waitfile @HOME@/parity-job-processes.json 5s
+sleep 250ms
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+kill

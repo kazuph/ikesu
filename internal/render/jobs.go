@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -10,6 +11,11 @@ import (
 type JobRow struct {
 	ID, Label, Status string
 	Color             color.Color
+	CallerPane        string
+	Elapsed           string
+	AgeSinceMs        *int64
+	ExitCode          *int64
+	LogPath, Cwd      string
 }
 
 func SidebarViewForInput(in Input) SidebarView {
@@ -24,6 +30,8 @@ func SidebarViewForInput(in Input) SidebarView {
 		}
 	}
 	view.Rows = rows
+	view.Agents.Rect.Y++
+	view.Agents.Rect.H = max(0, view.Agents.Rect.H-1)
 	view.Agents.Total = len(in.Jobs)
 	view.Agents.Offset = max(0, min(in.JobScroll, max(0, view.Agents.Total-view.Agents.Rect.H)))
 	for n := 0; n < view.Agents.Rect.H && n+view.Agents.Offset < view.Agents.Total; n++ {
@@ -57,6 +65,22 @@ func drawJobRow(f *Frame, in Input, index, x, y, width int) {
 		return
 	}
 	j := in.Jobs[index]
-	x = f.Text(x, y, "● ", uv.Style{Fg: f.ThemeColor(j.Color)}, x+width)
-	f.Text(x, y, truncate(j.Label+" · "+j.Status, max(0, width-2)), uv.Style{Fg: f.Palette.Text}, x+max(0, width-2))
+	status := j.Status
+	if status == "running" {
+		status = "run"
+	} else if status == "cancelled" || status == "cancelling" {
+		status = "done"
+	} else if j.ExitCode != nil {
+		if *j.ExitCode == 0 {
+			status = "ok"
+		} else {
+			status = fmt.Sprintf("x%d", *j.ExitCode)
+		}
+	}
+	limit := x + width
+	// jobs-panel captures place state/caller/elapsed/label at cells 1/6/13/18.
+	x = f.Text(x, y, fmt.Sprintf(" %-4s ", status), uv.Style{Fg: f.ThemeColor(j.Color), Bg: f.Palette.SurfDim}, limit)
+	x = f.Text(x, y, fmt.Sprintf("%-7s", j.CallerPane), uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.SurfDim}, limit)
+	x = f.Text(x, y, fmt.Sprintf("%4s ", j.Elapsed), uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim}, limit)
+	f.Text(x, y, j.Label, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim}, limit)
 }

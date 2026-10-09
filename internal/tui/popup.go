@@ -16,7 +16,8 @@ import (
 const popupDefaultPercent = 80
 
 func popupInner(r layout.Rect) layout.Rect {
-	return layout.Rect{X: r.X + 1, Y: r.Y + 1, W: max(1, r.W-2), H: max(1, r.H-2)}
+	// The observed popup leaves one inner column outside the terminal grid.
+	return layout.Rect{X: r.X + 1, Y: r.Y + 1, W: max(1, r.W-3), H: max(1, r.H-2)}
 }
 
 func (a *App) OpenPopup(cwd, command string, width, height *api.PopupSize) (string, error) {

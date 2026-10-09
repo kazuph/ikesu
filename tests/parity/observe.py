@@ -13,6 +13,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
+p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
 p.add_argument('--steps', required=True)
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
@@ -59,7 +60,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         steps = target / 'steps'
         # Only the first-run onboarding differs. The interaction body is identical.
         preamble = 'sleep 3s\nsend "\\r"\nsleep 500ms\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
-        steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)))
+        steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
             binary = str(Path(binary).resolve())
@@ -130,7 +131,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
-                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw'), '--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
                 runtime_json = {str(path.relative_to(root)): path.read_text(errors='replace')

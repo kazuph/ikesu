@@ -35,11 +35,11 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	case "working":
 		return render.StatusGlyph{Key: "working", Rune: spinnerFrames[a.spin%len(spinnerFrames)], Color: render.Yellow}
 	case "blocked":
-		return render.StatusGlyph{Key: "blocked", Rune: "▲", Color: render.Peach}
+		return render.StatusGlyph{Key: "blocked", Rune: "●", Color: render.Red}
 	case "done":
 		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.Green}
 	case "idle":
-		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Dim}
+		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Green}
 	}
 	return render.StatusGlyph{Key: "unknown", Rune: "·", Color: render.Dim}
 }

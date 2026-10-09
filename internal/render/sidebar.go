@@ -401,7 +401,16 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			if !active {
 				gitStyle.Attrs &^= uv.AttrBold
 			}
-			drawGitRow(f, ix+3, y, max(0, iw-3), in.Git[r.Ws], gitStyle)
+			gitX := ix + 3
+			if in.ServerUI {
+				for _, d := range in.JobDots[r.Ws] {
+					gitX = f.Text(gitX, y, "●", uv.Style{Fg: f.ThemeColor(d.Color), Bg: sty.Bg}, ix+iw)
+				}
+				if len(in.JobDots[r.Ws]) > 0 {
+					gitX = f.Text(gitX, y, " ", sty, ix+iw)
+				}
+			}
+			drawGitRow(f, gitX, y, max(0, ix+iw-gitX), in.Git[r.Ws], gitStyle)
 			return
 		}
 		x := ix + 1
@@ -422,6 +431,9 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			name = WorkspaceDisplayName(ws, in.Panes)
 		}
 		dots := in.JobDots[r.Ws]
+		if in.ServerUI {
+			dots = nil
+		}
 		f.Text(x, y, truncate(name, iw-(x-ix)-len(dots)), sty, ix+iw-len(dots))
 		for i, d := range dots {
 			f.Set(ix+iw-len(dots)+i, y, "●", uv.Style{Fg: f.ThemeColor(d.Color), Bg: sty.Bg})
