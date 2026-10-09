@@ -43,7 +43,8 @@ func (r *runner) runCLI(args []string) int {
 
 	// `gtx run [flags] -- <command...>` — herdr also accepts the command
 	// without a bare `--` separator.
-	var label, cwd, caller, completion, split string
+	var label, cwd, caller, completion, split, machineRef string
+	syncRemote := false
 	paneMode := false
 	closeOnSuccess := false
 	var argv []string
@@ -52,6 +53,16 @@ func (r *runner) runCLI(args []string) int {
 		switch args[i] {
 		case "--":
 			argv = append([]string{}, args[i+1:]...)
+		case "--machine":
+			v, ok := flagValue(args, &i)
+			if !ok || v == "" {
+				fmt.Fprintln(r.errOut(), "missing value for --machine")
+				return 2
+			}
+			machineRef = v
+		case "--sync":
+			syncRemote = true
+			i++
 		case "--label":
 			v, ok := flagValue(args, &i)
 			if !ok {
@@ -104,6 +115,22 @@ func (r *runner) runCLI(args []string) int {
 	if len(argv) == 0 {
 		printRunHelp(r)
 		return 2
+	}
+	if syncRemote && machineRef == "" {
+		fmt.Fprintln(r.errOut(), "--sync requires --machine")
+		return 2
+	}
+	if machineRef != "" {
+		if label == "" {
+			label = defaultRunLabel(argv)
+		}
+		remote, err := r.remoteRun(machineRef, syncRemote, argv, cwd, paneMode)
+		if err != nil {
+			fmt.Fprintln(r.errOut(), remoteRunError(err))
+			return 2
+		}
+		argv = remote
+		cwd = ""
 	}
 	if paneMode {
 		return r.runPaneCLI(argv, label, cwd, split, closeOnSuccess)

@@ -70,6 +70,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "machine":
+		return r.machineCLI(args[1:])
 	case "pane":
 		return r.pane(args[1:])
 	case "worktree":

@@ -121,6 +121,7 @@ func printRunHelp(r *runner) {
 	fmt.Fprintln(r.errOut(), "gtx run commands:")
 	fmt.Fprintln(r.errOut(), "  gtx run [--label L] [--cwd D] [--completion summary|full|none] -- <command...>")
 	fmt.Fprintln(r.errOut(), "  gtx run --pane [--split right|down] [--close-on-success] -- <command...>")
+	fmt.Fprintln(r.errOut(), "  gtx run --machine <label-or-id> [--sync] [run options] -- <command...>")
 	fmt.Fprintln(r.errOut(), "  gtx run list                # active jobs")
 	fmt.Fprintln(r.errOut(), "  gtx run cancel <job_id>     # request cancellation of a queued/running job")
 	fmt.Fprintln(r.errOut(), "waiting: do not sleep or poll for the job. When it exits, the caller receives a")

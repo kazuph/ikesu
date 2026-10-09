@@ -186,7 +186,7 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 // openMainMenu shows the [menu] global menu.
 func (a *App) openMainMenu(x, y int) {
 	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: -1, Items: []render.MenuItem{
-		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
+		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}}}
 }
 
@@ -198,6 +198,10 @@ func (a *App) activateMenu(i int) {
 		return
 	}
 	switch m.kind {
+	case menuMachineRemove:
+		if i < len(m.machines) {
+			a.removeMachineDialog(m.machines[i])
+		}
 	case menuPane:
 		pid := m.pane
 		a.exec(model.CmdFocusPane{Pane: pid})
@@ -296,6 +300,10 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuMain:
 		switch m.m.Items[i].Label {
+		case "add machine...":
+			a.addMachineDialog()
+		case "remove machine...":
+			a.removeMachineMenu()
 		case "new workspace":
 			a.newWorkspace()
 		case "new tab":
@@ -416,8 +424,8 @@ func (a *App) dialogMouse(ev input.Event) {
 			d.run(a)
 		}
 	case pointIn(m.X, m.Y, cancel):
-		a.dialog = nil
+		a.cancelDialog()
 	default:
-		a.dialog = nil
+		a.cancelDialog()
 	}
 }

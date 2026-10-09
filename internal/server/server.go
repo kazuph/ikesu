@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -265,6 +266,7 @@ func Run(session, version string) (int, error) {
 
 	st := model.New(cwd, 120, 40)
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
+	s.app.SetMachineCatalog(filepath.Join(api.SessionDir(s.session), "machines.json"))
 	if s.cfgError != "" {
 		s.app.SetConfigWarning(s.cfgError)
 	}
