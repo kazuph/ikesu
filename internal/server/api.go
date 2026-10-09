@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"github.com/kazuph/goterrace/internal/plugin"
 	"net"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -62,6 +63,9 @@ func (s *Server) serveAPI(conn net.Conn) {
 // dispatch routes a request. Stateless methods answer directly; everything
 // touching application state is serialized through the app loop via Do.
 func (s *Server) dispatch(req *api.Request) api.Response {
+	if resp, ok := plugin.DefaultStore(s.version).RegistryRequest(req); ok {
+		return resp
+	}
 	switch req.Method {
 	case api.MethodAgentStart:
 		var p api.AgentStartParams

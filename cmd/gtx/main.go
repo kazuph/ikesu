@@ -80,11 +80,12 @@ dispatch:
 				os.Exit(code)
 			}
 			fallthrough
-		case "pane", "workspace", "worktree", "tab",
+		case "plugin", "pane", "workspace", "worktree", "tab",
 			"send", "inbox", "msg", "run", "log", "agent",
 			"help", "--help", "-h", "__pane-run":
 			os.Exit(cli.Run(args, cli.Options{
 				Session:  session,
+				Version:  version,
 				Explicit: explicitSession,
 			}))
 		}

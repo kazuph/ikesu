@@ -23,6 +23,7 @@ import (
 type Options struct {
 	// Session selects the session directory; "" means the default session.
 	Session string
+	Version string
 	// Explicit reports whether --session was given on the command line.
 	// Explicit sessions ignore the GTX_SOCKET_PATH pane override.
 	Explicit bool
@@ -70,6 +71,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "plugin":
+		return r.pluginCLI(args[1:])
 	case "pane":
 		return r.pane(args[1:])
 	case "worktree":
