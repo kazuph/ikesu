@@ -149,8 +149,9 @@ type Input struct {
 
 	Spin           int    // working-spinner frame
 	Copied         string // flash text, e.g. " copied 12 chars "
-	Prefix         bool   // prefix-key pending
-	SidebarScroll  int    // workspace rows scrolled off the top
+	ModeHint       string
+	Prefix         bool // prefix-key pending
+	SidebarScroll  int  // workspace rows scrolled off the top
 	AgentScroll    int
 	MobileSwitcher bool
 	MobileScroll   int
@@ -235,6 +236,10 @@ func Compose(in Input) *Output {
 	drawSidebar(f, s, in)
 	drawTabBar(f, s, in, out)
 	drawPanes(f, s, in, out)
+	if in.ModeHint != "" {
+		area := s.PanesArea()
+		drawCopyHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
+	}
 	drawActionBar(f, s, in, out)
 	drawStatusLine(f, s, in)
 	drawPopup(f, in, out)
@@ -282,7 +287,10 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	}
 	x := area.X
 	for i, t := range ws.Tabs {
-		name := t.TabLabel()
+		name := t.Name
+		if name == "" {
+			name = fmt.Sprint(i + 1)
+		}
 		if t.Zoomed != 0 {
 			name += " Z" // zoomed-tab marker (SPEC G1)
 		}
@@ -460,6 +468,9 @@ func truncateEllipsis(s string, n int) string {
 // drawGutter fills the rightmost inner column: '▕' track with '▐' for the
 // thumb portion whenever the pane has scrollback (SPEC G1).
 func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
+	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 {
+		return
+	}
 	gx := inner.X + inner.W - 1
 	for y := inner.Y; y < inner.Y+inner.H; y++ {
 		f.Set(gx, y, "▕", uv.Style{Fg: f.Palette.Dim})

@@ -38,26 +38,46 @@ func (a *App) helpRows() []render.HelpRow {
 		{Bind: "prefix+q", Cmd: "detach"},
 		{Bind: "prefix+shift+r", Cmd: "reload config"},
 		{Bind: "prefix+o", Cmd: "open notification target"},
-
+		{},
+		{Group: true, Cmd: "navigation"},
+		{Bind: "esc", Cmd: "back"},
+		{Bind: "up / down", Cmd: "workspace list"},
+		{Bind: "h / j / k / l / left / right", Cmd: "move focus"},
+		{Bind: "tab / shift+tab", Cmd: "cycle pane"},
+		{Bind: "enter", Cmd: "open workspace"},
+		{Bind: "1..9", Cmd: "switch workspace"},
 		{},
 		{Group: true, Cmd: "workspaces / tabs"},
+		{Bind: "prefix+w", Cmd: "workspace navigation"},
+		{Bind: "prefix+g", Cmd: "session navigator"},
 		{Bind: "prefix+shift+n", Cmd: "new workspace"},
+		{Bind: "prefix+shift+g", Cmd: "new worktree"},
+		{Bind: "unset", Cmd: "open worktree"},
+		{Bind: "unset", Cmd: "delete worktree checkout"},
+		{Bind: "prefix+shift+w", Cmd: "rename workspace"},
 		{Bind: "prefix+shift+d", Cmd: "close workspace"},
+		{Bind: "unset", Cmd: "previous workspace"},
+		{Bind: "unset", Cmd: "next workspace"},
+		{Bind: "unset", Cmd: "switch workspace 1-9"},
+		{Bind: "unset", Cmd: "previous agent"},
+		{Bind: "unset", Cmd: "next agent"},
+		{Bind: "unset", Cmd: "focus agent 1-9"},
 		{Bind: "prefix+c", Cmd: "new tab"},
-		{Bind: "prefix+,", Cmd: "rename tab"},
-		{Bind: "prefix+&", Cmd: "close tab"},
-		{Bind: "prefix+n", Cmd: "next workspace"},
-		{Bind: "prefix+p", Cmd: "previous workspace"},
-		{Bind: "prefix+1..9", Cmd: "switch workspace"},
-
+		{Bind: "prefix+shift+t", Cmd: "rename tab"},
+		{Bind: "prefix+p", Cmd: "previous tab"},
+		{Bind: "prefix+n", Cmd: "next tab"},
+		{Bind: "prefix+1..9", Cmd: "switch tab 1-9"},
+		{Bind: "prefix+shift+x", Cmd: "close tab"},
 		{},
 		{Group: true, Cmd: "panes"},
-		{Bind: bindKeys(a.splitVKeys, '%', 'v'), Cmd: "split vertical"},
-		{Bind: bindKeys(a.splitHKeys, '"', '-'), Cmd: "split horizontal"},
+		{Bind: bindKeys(a.splitVKeys, 'v'), Cmd: "split vertical"},
+		{Bind: bindKeys(a.splitHKeys, '-'), Cmd: "split horizontal"},
 		{Bind: "prefix+x", Cmd: "close pane"},
 		{Bind: bindKeys(a.renameKeys, 'P'), Cmd: "rename pane"},
-		{Bind: bindKeys(a.copyKeys, '[', ']'), Cmd: "copy mode"},
 		{Bind: bindKeys(a.editKeys, 'e'), Cmd: "edit scrollback"},
+		{Bind: bindKeys(a.copyKeys, '['), Cmd: "copy mode"},
+		{Bind: "prefix+z", Cmd: "zoom pane"},
+		{Bind: "prefix+r", Cmd: "resize mode"},
 		{Bind: "prefix+b", Cmd: "toggle sidebar"},
 		{Bind: "prefix+h", Cmd: "focus pane left"},
 		{Bind: "prefix+j", Cmd: "focus pane down"},
@@ -91,9 +111,6 @@ func bindKeys(set map[rune]bool, fallback ...rune) string {
 			out += " / "
 		}
 		name := string(r)
-		if r == '-' {
-			name = "minus"
-		}
 		if r >= 'A' && r <= 'Z' {
 			name = "shift+" + string(r+'a'-'A')
 		}

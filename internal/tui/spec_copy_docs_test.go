@@ -14,7 +14,7 @@ func TestSPECCopyBindingsHelpMenuAndDocs(t *testing.T) {
 		t.Helper()
 		for _, row := range a.helpRows() {
 			if row.Cmd == "copy mode" {
-				if row.Bind != "prefix+[ / prefix+]" {
+				if row.Bind != "prefix+[" {
 					t.Fatal("copy bindings", row.Bind)
 				}
 				return
@@ -40,7 +40,7 @@ func TestSPECCopyBindingsHelpMenuAndDocs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(doc), "`prefix+[` / `prefix+]`") {
+	if !strings.Contains(string(doc), "`prefix+[`") {
 		t.Fatal("documentation lost binding")
 	}
 }

@@ -9,8 +9,8 @@ import (
 )
 
 // SPEC G6: the keybind help lists every command gtx implements, ordered
-// global → workspaces/tabs → panes, ending with cycle pane next →
-// previous. Commands gtx does not implement are absent.
+// global → navigation → workspaces/tabs → panes, ending with cycle pane next →
+// previous. Unconfigured command bindings are shown as unset.
 func TestHelpRowsContract(t *testing.T) {
 	a := &App{}
 	rows := a.helpRows()
@@ -24,7 +24,7 @@ func TestHelpRowsContract(t *testing.T) {
 			groups = append(groups, r.Cmd)
 		}
 	}
-	want := []string{"global", "workspaces / tabs", "panes"}
+	want := []string{"global", "navigation", "workspaces / tabs", "panes"}
 	if strings.Join(groups, "|") != strings.Join(want, "|") {
 		t.Fatalf("groups = %v", groups)
 	}
@@ -45,18 +45,12 @@ func TestHelpRowsContract(t *testing.T) {
 			t.Fatalf("missing %q in help", cmd)
 		}
 	}
-	// Unimplemented commands stay absent.
-	for _, cmd := range []string{"zoom pane"} {
-		if cmds[cmd] {
-			t.Fatalf("unimplemented %q listed in help", cmd)
-		}
-	}
 	// Final entries: cycle next → cycle previous.
 	if n := len(last); n < 4 || last[n-4] != "cycle pane next" || last[n-3] != "cycle pane previous" || last[n-2] != "focus history back" || last[n-1] != "focus history forward" {
 		t.Fatalf("last entries = %v", last[max(0, n-3):])
 	}
 	for i, r := range last {
-		if r == "rename pane" && (last[i+1] != "copy mode" || last[i+2] != "edit scrollback") {
+		if r == "rename pane" && (last[i+1] != "edit scrollback" || last[i+2] != "copy mode") {
 			t.Fatal("pane command order", last)
 		}
 	}
@@ -71,7 +65,7 @@ func TestBindKeys(t *testing.T) {
 	if got := bindKeys(nil, '[', ']'); got != "prefix+[ / prefix+]" {
 		t.Fatalf("fallback = %q", got)
 	}
-	if got := bindKeys(map[rune]bool{'-': true}); got != "prefix+minus" {
+	if got := bindKeys(map[rune]bool{'-': true}); got != "prefix+-" {
 		t.Fatalf("minus name = %q", got)
 	}
 }

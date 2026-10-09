@@ -129,6 +129,10 @@ func (a *App) popupMouse(ev input.Event) bool {
 	}
 	pop := a.st.Popup
 	m := ev.Mouse
+	if ev.Kind == input.KindMouseClick && m.Button == uv.MouseLeft && !pointIn(m.X, m.Y, a.st.PopupRect()) {
+		a.exec(model.CmdClosePopup{})
+		return true
+	}
 	if a.fwd == pop.PaneID {
 		a.forwardMouse(ev)
 		return true

@@ -83,6 +83,7 @@ func (a *App) draw() {
 		Spin:          a.spin,
 		Copied:        a.copiedFlash(),
 		Prefix:        a.prefix,
+		ModeHint:      a.modeHint(),
 		SidebarScroll: a.sidebarScroll,
 		AgentScroll:   a.agentScroll,
 		JobDots:       a.jobDots,
@@ -91,6 +92,9 @@ func (a *App) draw() {
 		CopyLabel: a.copyLabel(),
 		Copy:      a.copyMark(),
 		CopyHint:  a.copyHint(),
+	}
+	if a.workspaceNavigate {
+		in.SelectedWorkspace = &a.navigateSelected
 	}
 	if a.sidebarGesture != nil {
 		in.Dragging = a.sidebarGesture.moved

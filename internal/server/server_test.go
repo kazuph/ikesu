@@ -134,8 +134,8 @@ func TestAttachDetachReattach(t *testing.T) {
 		t.Fatal("pane output never echoed gtxmarker42")
 	}
 
-	// Detach via Ctrl-B d.
-	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte{0x02, 'd'})})
+	// Detach via the observed Ctrl-B q binding.
+	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte{0x02, 'q'})})
 	msgs = c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "detached" })
 	var detached bool
 	for _, m := range msgs {

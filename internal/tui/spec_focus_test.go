@@ -87,8 +87,8 @@ func TestSPECDefaultRenameAndHelpOrder(t *testing.T) {
 	}
 	rows := a.helpRows()
 	for i, r := range rows {
-		if r.Cmd == "rename pane" && (r.Bind != "prefix+shift+p" || rows[i+1].Cmd != "copy mode" || rows[i+2].Cmd != "edit scrollback") {
-			t.Fatal("rename/copy/edit order")
+		if r.Cmd == "rename pane" && (r.Bind != "prefix+shift+p" || rows[i+1].Cmd != "edit scrollback" || rows[i+2].Cmd != "copy mode") {
+			t.Fatal("observed rename/edit/copy order")
 		}
 		if strings.HasPrefix(r.Cmd, "focus history") && r.Bind != "unset" {
 			t.Fatal("history default", r)

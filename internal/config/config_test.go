@@ -31,17 +31,17 @@ func TestParseKeyBindingPunctuation(t *testing.T) {
 	}
 }
 
-// SPEC G6 defaults: copy_mode=[,]; split_vertical=%,v; split_horizontal=",-.
+// Defaults come from the isolated distribution prefix probes.
 func TestDefaultKeyLists(t *testing.T) {
 	c := Config{}
-	if !c.CopyKeys()['['] || !c.CopyKeys()[']'] {
-		t.Error("default copy_mode must include prefix+[ and prefix+]")
+	if !c.CopyKeys()['['] || c.CopyKeys()[']'] {
+		t.Error("default copy_mode must contain only prefix+[")
 	}
-	if !c.SplitVerticalKeys()['%'] || !c.SplitVerticalKeys()['v'] {
-		t.Error("default split_vertical must include prefix+% and prefix+v")
+	if c.SplitVerticalKeys()['%'] || !c.SplitVerticalKeys()['v'] {
+		t.Error("default split_vertical must contain only prefix+v")
 	}
-	if !c.SplitHorizontalKeys()['"'] || !c.SplitHorizontalKeys()['-'] {
-		t.Error(`default split_horizontal must include prefix+" and prefix+minus`)
+	if c.SplitHorizontalKeys()['"'] || !c.SplitHorizontalKeys()['-'] {
+		t.Error(`default split_horizontal must contain only prefix+minus`)
 	}
 }
 
@@ -68,7 +68,7 @@ split_vertical = ["prefix+|"]
 		t.Errorf("override split_vertical = %v; want only '|'", c.SplitVerticalKeys())
 	}
 	// Unset key keeps its default.
-	if !c.SplitHorizontalKeys()['"'] || !c.SplitHorizontalKeys()['-'] {
+	if c.SplitHorizontalKeys()['"'] || !c.SplitHorizontalKeys()['-'] {
 		t.Error("unset split_horizontal must keep defaults")
 	}
 }

@@ -245,19 +245,19 @@ func (c Config) keyList(specs []string, def []string) map[rune]bool {
 	return out
 }
 
-// CopyKeys is the copy-mode entry set (default prefix+[ and prefix+]).
+// CopyKeys is the copy-mode entry set (default prefix+[).
 func (c Config) CopyKeys() map[rune]bool {
-	return c.keyList(c.Keys.CopyMode, []string{"prefix+[", "prefix+]"})
+	return c.keyList(c.Keys.CopyMode, []string{"prefix+["})
 }
 
-// SplitVerticalKeys is the side-by-side split set (default prefix+% / v).
+// SplitVerticalKeys is the side-by-side split set (default prefix+v).
 func (c Config) SplitVerticalKeys() map[rune]bool {
-	return c.keyList(c.Keys.SplitVertical, []string{"prefix+percent", "prefix+v"})
+	return c.keyList(c.Keys.SplitVertical, []string{"prefix+v"})
 }
 
-// SplitHorizontalKeys is the stacked split set (default prefix+" / -).
+// SplitHorizontalKeys is the stacked split set (default prefix+-).
 func (c Config) SplitHorizontalKeys() map[rune]bool {
-	return c.keyList(c.Keys.SplitHorizontal, []string{"prefix+double_quote", "prefix+minus"})
+	return c.keyList(c.Keys.SplitHorizontal, []string{"prefix+minus"})
 }
 
 // AgentEnv returns the env map merged into agent.start panes.

@@ -139,6 +139,9 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
+	resizeMode        bool
+	workspaceNavigate bool
+	navigateSelected  int
 	inputEOF          bool                // input close means quit (local mode)
 	detacher          func(reason string) // server mode: detach the client
 	sinkOn            func() bool         // nil = always draw
@@ -301,7 +304,7 @@ func (a *App) State() *model.AppState { return a.st }
 // Supervisor returns the pane supervisor.
 func (a *App) Supervisor() *runtime.Supervisor { return a.sup }
 
-// SetDetacher registers the detach hook for prefix `d`. nil keeps `d`
+// SetDetacher registers the detach hook for prefix `q`. nil keeps `q`
 // unbound (in-process mode).
 func (a *App) SetDetacher(f func(reason string)) { a.detacher = f }
 
@@ -551,6 +554,7 @@ func Run(in *os.File, out *os.File) (int, error) {
 	a := NewApp(st, sup, out, cwd)
 	a.BeginHostMouse(ws.Xpixel, ws.Ypixel)
 	a.inputEOF = true
+	a.SetDetacher(func(string) { a.exec(model.CmdQuit{}) })
 	a.SetRestartHook(func() { a.standaloneRestart = true; a.exec(model.CmdQuit{}) })
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())

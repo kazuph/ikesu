@@ -22,7 +22,7 @@ func TestSPECSplitDefaultsAndOverridesSingleAction(t *testing.T) {
 	for _, tc := range []struct {
 		key string
 		dir layout.Direction
-	}{{"%", layout.Vertical}, {"v", layout.Vertical}, {"\"", layout.Horizontal}, {"-", layout.Horizontal}} {
+	}{{"v", layout.Vertical}, {"-", layout.Horizontal}} {
 		t.Run(tc.key, func(t *testing.T) {
 			a := specRuntimeApp(t)
 			specFeed(a, "\x02"+tc.key)
@@ -74,6 +74,9 @@ func TestSPECThreeCopyEntriesAndFullscreenRuntimeResize(t *testing.T) {
 	for _, entry := range []string{"[", "]", "button"} {
 		t.Run(entry, func(t *testing.T) {
 			a := specRuntimeApp(t)
+			if entry == "]" {
+				a.SetKeybinds(map[rune]bool{']': true}, nil, nil)
+			}
 			if err := a.StartInitialPane(); err != nil {
 				t.Fatal(err)
 			}

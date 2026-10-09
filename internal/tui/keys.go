@@ -54,8 +54,16 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		}
 		return
 	}
+	if a.resizeMode || a.workspaceNavigate {
+		a.modeKey(k)
+		return
+	}
 	if a.cm != nil {
 		a.copyKey(k, raw)
+		return
+	}
+	if a.st.PopupVisible() && k.Code == uv.KeyEscape {
+		a.exec(model.CmdClosePopup{})
 		return
 	}
 	pid := a.focusedPane()
@@ -120,7 +128,24 @@ func (a *App) prefixKey(k uv.Key) {
 	case a.splitHKeys[k.Code]:
 		// [keys] split_horizontal (default prefix+" and prefix+minus).
 		a.exec(model.CmdSplitFocused{Dir: layout.Horizontal})
-	case k.Code == 'x':
+	case code == 'r':
+		a.resizeMode = true
+	case code == 'w':
+		a.workspaceNavigate = true
+		a.navigateSelected = s.Active
+	case code == 'W':
+		a.renameWorkspaceDialog(s.Active)
+	case code == 'T':
+		if ws := s.ActiveWorkspace(); ws != nil {
+			a.openRenameTabDialog(s.Active, ws.ActiveTab)
+		}
+	case code == 'X':
+		a.closeActiveTab()
+	case code == 'G':
+		a.newWorktreeDialog(s.Active)
+	case code == 'z':
+		a.exec(model.CmdZoomPane{Pane: a.focusedPane(), Mode: "toggle"})
+	case code == 'x':
 		a.closeFocusedPane()
 	case k.Code == 'h' || k.Code == uv.KeyLeft:
 		a.exec(model.CmdFocusDir{Dir: layout.NavLeft})
@@ -138,12 +163,17 @@ func (a *App) prefixKey(k uv.Key) {
 		a.newWorkspace()
 	case k.Code == 'D' || (k.Code == 'd' && k.Mod.Contains(uv.ModShift)):
 		a.openCloseWorkspaceDialog(s.Active)
-	case k.Code == 'n':
-		a.cycleWorkspace(1)
-	case k.Code == 'p':
-		a.cycleWorkspace(-1)
+	case code == 'n':
+		a.cycleTab(1)
+	case code == 'p':
+		a.cycleTab(-1)
 	case k.Code >= '1' && k.Code <= '9':
-		a.selectWorkspace(int(k.Code - '1'))
+		if ws := s.ActiveWorkspace(); ws != nil {
+			index := int(k.Code - '1')
+			if index < len(ws.Tabs) {
+				a.exec(model.CmdSelectTab{Workspace: s.Active, Tab: index})
+			}
+		}
 	case k.Code == 'b':
 		if s.Mobile() {
 			a.mobileSwitcher = !a.mobileSwitcher
@@ -151,23 +181,13 @@ func (a *App) prefixKey(k uv.Key) {
 		} else {
 			a.exec(model.CmdToggleSidebar{})
 		}
-	case k.Code == 'c':
-		a.exec(model.CmdNewTab{Workspace: s.Active})
-	case k.Code == ']':
-		a.cycleTab(1)
-	case k.Code == '[':
-		a.cycleTab(-1)
-	case k.Code == ',':
-		if ws := s.ActiveWorkspace(); ws != nil {
-			a.openRenameTabDialog(s.Active, ws.ActiveTab)
-		}
-	case k.Code == '&':
-		a.closeActiveTab()
-	case (k.Code == 'd' || k.Code == 'q') && k.Mod == 0:
-		// Detach: only meaningful when running under a server.
+	case code == 'c':
+		a.newTabNameDialog()
+	case code == 'q' && k.Mod == 0:
 		if a.detacher != nil {
 			a.detacher("detach requested")
 		}
+
 	}
 }
 
@@ -225,7 +245,14 @@ func (a *App) closeFocusedPane() {
 	}
 	if tab.Layout.PaneCount() <= 1 && len(ws.Tabs) <= 1 {
 		if len(a.st.Workspaces) <= 1 {
-			a.openQuitDialog()
+			old := tab.Layout.Focused()
+			a.lastSpawnError = nil
+			a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
+			if a.lastSpawnError != nil {
+				a.exec(model.CmdClosePane{Pane: tab.Layout.Focused()})
+				return
+			}
+			a.exec(model.CmdClosePane{Pane: old})
 		} else {
 			a.openCloseWorkspaceDialog(a.st.Active)
 		}
