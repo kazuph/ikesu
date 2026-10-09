@@ -118,8 +118,8 @@ type runSpawnOutput struct {
 	Job   string  `json:"job"`
 	Label string  `json:"label"`
 	Mode  string  `json:"mode"`
-	Next  string  `json:"next"`
 	Pane  *string `json:"pane"`
+	Next  string  `json:"next"`
 }
 
 // runBackgroundCLI submits a pane-less job via run.start.

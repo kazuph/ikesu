@@ -382,8 +382,8 @@ func TestWedgedClientIsDropped(t *testing.T) {
 
 	w := &clientSink{s: s}
 	t0 := time.Now()
-	if _, err := w.Write([]byte("x")); err != nil {
-		t.Fatalf("sink write: %v", err)
+	if n, err := w.Write([]byte("x")); err == nil || n != 0 {
+		t.Fatalf("failed frame must report its write failure: n=%d err=%v", n, err)
 	}
 	if took := time.Since(t0); took > 5*time.Second {
 		t.Fatalf("wedged write took %v; deadline never fired", took)

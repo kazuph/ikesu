@@ -128,7 +128,10 @@ func (a *App) draw() {
 	}
 	a.lastDraw = time.Now()
 	a.dirty = false
-	_, _ = a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
+	if _, err := a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible)); err != nil {
+		a.enc.Reset()
+		a.dirty = true
+	}
 }
 
 // ResetEncoder drops the diff state so the next frame repaints fully. The

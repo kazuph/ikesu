@@ -6,12 +6,12 @@ package server
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -110,17 +110,70 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
-	conn net.Conn
-	wmu  sync.Mutex
+	conn    net.Conn
+	wmu     sync.Mutex
+	id      int
+	once    sync.Once
+	render  chan clientWrite
+	control chan clientWrite
+	done    chan struct{}
+	closed  bool
+}
+
+var clientSequence atomic.Int64
+
+func (c *clientConn) startWriter() {
+	c.once.Do(func() {
+		if c.id == 0 {
+			c.id = int(clientSequence.Add(1))
+		}
+		c.render = make(chan clientWrite)
+		c.control = make(chan clientWrite)
+		c.done = make(chan struct{})
+		go runClientWriter(c.conn, c.id, c.render, c.control, c.done)
+	})
 }
 
 func (c *clientConn) send(m clientMsg) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
-	_ = c.conn.SetWriteDeadline(time.Now().Add(clientWriteTimeout))
-	defer c.conn.SetWriteDeadline(time.Time{})
-	enc := json.NewEncoder(c.conn)
-	return enc.Encode(m)
+	if c.closed {
+		return net.ErrClosed
+	}
+	c.startWriter()
+	request := clientWrite{message: m, reply: make(chan clientWriteResult, 1)}
+	queue := c.control
+	if m.Type == "output" {
+		queue = c.render
+	}
+	select {
+	case queue <- request:
+	case <-c.done:
+		return net.ErrClosed
+	}
+	select {
+	case result := <-request.reply:
+		return result.err
+	case <-c.done:
+		select {
+		case result := <-request.reply:
+			return result.err
+		default:
+			return net.ErrClosed
+		}
+	}
+}
+
+func (c *clientConn) close() {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	if c.closed {
+		return
+	}
+	c.closed = true
+	c.startWriter()
+	close(c.control)
+	<-c.done
 }
 
 // Run starts the server for session and blocks until the app quits.
@@ -332,7 +385,7 @@ func (s *Server) detach(reason string) {
 	s.mu.Unlock()
 	if c != nil {
 		_ = c.send(clientMsg{Type: "detached", Reason: reason})
-		_ = c.conn.Close()
+		c.close()
 	}
 }
 
@@ -344,7 +397,7 @@ func (s *Server) notifyExit() {
 	s.mu.Unlock()
 	if c != nil {
 		_ = c.send(clientMsg{Type: "exit"})
-		_ = c.conn.Close()
+		c.close()
 	}
 }
 
@@ -363,6 +416,7 @@ func (w *clientSink) Write(p []byte) (int, error) {
 	}
 	if err := c.send(clientMsg{Type: "output", Data: encode64(p)}); err != nil {
 		w.s.dropConn(c)
+		return 0, err
 	}
 	return len(p), nil
 }
@@ -388,7 +442,7 @@ func (s *Server) dropConn(c *clientConn) {
 		s.client = nil
 	}
 	s.mu.Unlock()
-	_ = c.conn.Close()
+	c.close()
 }
 
 // clientLoop accepts display clients until the listener closes.
@@ -421,7 +475,7 @@ func (s *Server) attach(conn net.Conn) {
 	s.mu.Unlock()
 	if old != nil {
 		_ = old.send(clientMsg{Type: "detached", Reason: "another client attached"})
-		_ = old.conn.Close()
+		old.close()
 	}
 
 	// New client: force a full repaint at its size.
