@@ -45,6 +45,7 @@ var builtinRestoreTemplates = map[string]string{
 	"devin":  "devin --resume {session_id}",
 	"grok":   "grok --resume {session_id}",
 	"qwen":   "qwen --resume {session_id}",
+	"agy":    "agy --conversation {session_id}",
 }
 
 // --- ledger --------------------------------------------------------------
@@ -524,6 +525,9 @@ func absDur(d time.Duration) time.Duration {
 // resumeArgsFor is the per-agent argv suffix appended to a configured
 // [agent_start.commands] argv to resume a session.
 func resumeArgsFor(agent string) []string {
+	if spec, native := nativeResumeAgents[agent]; native {
+		return []string{spec.Flag}
+	}
 	if agent == "codex" {
 		return []string{"resume"}
 	}
