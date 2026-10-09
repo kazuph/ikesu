@@ -1,0 +1,21 @@
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x1b[<1;28;1M\x1b[<1;28;1m"
+sleep 250ms
+screen @OUT@/inactive.txt
+cells @OUT@/inactive.json
+send "\x1b[<1;37;1M\x1b[<1;37;1m"
+sleep 250ms
+screen @OUT@/active.txt
+cells @OUT@/active.json
+send "\x1b[<1;37;1M\x1b[<1;37;1m"
+sleep 250ms
+screen @OUT@/active-again.txt
+cells @OUT@/active-again.json
+send "\x1b[<1;28;1M\x1b[<1;28;1m"
+sleep 250ms
+screen @OUT@/inactive-again.txt
+cells @OUT@/inactive-again.json
+kill

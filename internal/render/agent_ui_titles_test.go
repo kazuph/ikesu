@@ -74,7 +74,11 @@ func TestG5TabMarkerPriorityWidthAndNameColumn(t *testing.T) {
 		pane[1].Status.Key, pane[2].Status.Key = tc.a, tc.b
 		out := Compose(Input{State: s, Panes: pane})
 		r := out.TabHits[0]
-		if r.W != 12 || out.Frame.Cell(r.X+1, r.Y).Content != tc.want || out.Frame.Cell(r.X+2, r.Y).Content != "日" {
+		wantWidth, nameX := 12, r.X+2
+		if tc.want == " " {
+			wantWidth, nameX = 10, r.X+1
+		}
+		if r.W != wantWidth || (tc.want != " " && out.Frame.Cell(r.X+1, r.Y).Content != tc.want) || out.Frame.Cell(nameX, r.Y).Content != "日" {
 			t.Fatal(tc, r)
 		}
 	}

@@ -170,75 +170,79 @@ type App struct {
 	configWarning     string
 	warningsHook      func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
-	prefix               bool
-	navKey               rune // prefix+<navKey> jumps to the toast target
-	cm                   *copyMode
-	copyKeys             map[rune]bool // [keys] copy_mode bindings
-	splitVKeys           map[rune]bool // [keys] split_vertical bindings
-	splitHKeys           map[rune]bool // [keys] split_horizontal bindings
-	renameKeys           map[rune]bool
-	editKeys             map[rune]bool
-	historyBackKeys      map[rune]bool
-	historyForwardKeys   map[rune]bool
-	focusHistory         []int
-	focusHistoryAt       int
-	traversingHistory    bool
-	toast                *toastView
-	toastRect            layout.Rect
-	menu                 *uiMenu
-	settings             *render.Settings
-	settingsSection      int
-	configChanged        func(config.Config)
-	dialog               *uiDialog
-	sep                  *sepDrag
-	sel                  *selState
-	tabHits              []layout.Rect // last frame's tab strip hit areas
-	newTabRect           layout.Rect   // last frame's "+" button
-	sb                   *sbDrag       // scrollbar-gutter drag in progress
-	fwd                  int           // pane receiving forwarded mouse events during a drag
-	scroll               map[int]int
-	trackers             map[int]*status.Tracker
-	reported             map[int]reportedPane                     // pane.report_agent overrides
-	sessions             map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
-	fossils              map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)
-	visibleIdle          map[int]time.Time                        // pane → when explicit visible-idle detection started
-	jobSource            func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
-	jobDots              map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
-	workspaceTokenSource func(int) map[string]string
-	paneMetadataSource   func(int) api.PaneMetadataView
-	metadataViews        map[int]api.PaneMetadataView
-	workspaceGit         map[int]render.GitStatus
-	workspaceNames       map[int]string
-	gitAt                time.Time
-	gitPending           bool
-	jobsAt               time.Time             // last job snapshot
-	actionBar            render.ActionBarRects // last frame's action bar hit areas
-	uiShowTab            bool                  // [ui] show_tab_bar
-	uiHideSingle         bool                  // [ui] hide_tab_bar_when_single_tab
-	uiBorders            bool                  // [ui] pane_borders
-	sidebarConfig        config.Config
-	sidebarGesture       *sidebarGesture
-	tabGesture           *tabGesture
-	dividerAt            time.Time
-	sidebarScroll        int
-	agentScroll          int
-	sidebarBar           *sidebarScrollDrag
-	cellW                int // host cell width in pixels (0 = unknown)
-	cellH                int // host cell height in pixels (0 = unknown)
-	hostPixelSupported   bool
-	hostPixelMouse       bool
-	mousePixel           *uv.Mouse // original coordinates for the current host event
-	help                 *helpView
-	copied               string
-	copiedAt             time.Time
-	lastClick            clickMark // last left press inside a normal pane body
-	dblMenu              bool      // second same-cell down/up pending menu open
-	spin                 int
-	lastSpin             time.Time
-	lastDraw             time.Time
-	lastSpawnError       error
-	dirty                bool
-	quit                 bool
+	prefix                                   bool
+	navKey                                   rune // prefix+<navKey> jumps to the toast target
+	cm                                       *copyMode
+	copyKeys                                 map[rune]bool // [keys] copy_mode bindings
+	splitVKeys                               map[rune]bool // [keys] split_vertical bindings
+	splitHKeys                               map[rune]bool // [keys] split_horizontal bindings
+	renameKeys                               map[rune]bool
+	editKeys                                 map[rune]bool
+	historyBackKeys                          map[rune]bool
+	historyForwardKeys                       map[rune]bool
+	focusHistory                             []int
+	focusHistoryAt                           int
+	traversingHistory                        bool
+	toast                                    *toastView
+	toastRect                                layout.Rect
+	menu                                     *uiMenu
+	settings                                 *render.Settings
+	settingsSection                          int
+	configChanged                            func(config.Config)
+	dialog                                   *uiDialog
+	sep                                      *sepDrag
+	sel                                      *selState
+	tabHits                                  []layout.Rect // last frame's tab strip hit areas
+	tabScroll, tabScrollLeft, tabScrollRight int
+	tabViewWidth                             int
+	tabViewWorkspace, tabViewActive          int
+	tabLeftRect, tabRightRect                layout.Rect
+	newTabRect                               layout.Rect // last frame's "+" button
+	sb                                       *sbDrag     // scrollbar-gutter drag in progress
+	fwd                                      int         // pane receiving forwarded mouse events during a drag
+	scroll                                   map[int]int
+	trackers                                 map[int]*status.Tracker
+	reported                                 map[int]reportedPane                     // pane.report_agent overrides
+	sessions                                 map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
+	fossils                                  map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)
+	visibleIdle                              map[int]time.Time                        // pane → when explicit visible-idle detection started
+	jobSource                                func() ([]dispatch.Job, map[string]bool) // jobs + live-runner ids; server only
+	jobDots                                  map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
+	workspaceTokenSource                     func(int) map[string]string
+	paneMetadataSource                       func(int) api.PaneMetadataView
+	metadataViews                            map[int]api.PaneMetadataView
+	workspaceGit                             map[int]render.GitStatus
+	workspaceNames                           map[int]string
+	gitAt                                    time.Time
+	gitPending                               bool
+	jobsAt                                   time.Time             // last job snapshot
+	actionBar                                render.ActionBarRects // last frame's action bar hit areas
+	uiShowTab                                bool                  // [ui] show_tab_bar
+	uiHideSingle                             bool                  // [ui] hide_tab_bar_when_single_tab
+	uiBorders                                bool                  // [ui] pane_borders
+	sidebarConfig                            config.Config
+	sidebarGesture                           *sidebarGesture
+	tabGesture                               *tabGesture
+	dividerAt                                time.Time
+	sidebarScroll                            int
+	agentScroll                              int
+	sidebarBar                               *sidebarScrollDrag
+	cellW                                    int // host cell width in pixels (0 = unknown)
+	cellH                                    int // host cell height in pixels (0 = unknown)
+	hostPixelSupported                       bool
+	hostPixelMouse                           bool
+	mousePixel                               *uv.Mouse // original coordinates for the current host event
+	help                                     *helpView
+	copied                                   string
+	copiedAt                                 time.Time
+	lastClick                                clickMark // last left press inside a normal pane body
+	dblMenu                                  bool      // second same-cell down/up pending menu open
+	spin                                     int
+	lastSpin                                 time.Time
+	lastDraw                                 time.Time
+	lastSpawnError                           error
+	dirty                                    bool
+	quit                                     bool
 }
 
 // SetCellPixels records the host terminal's pixel geometry so SGR 1016

@@ -72,12 +72,21 @@ func (a *App) draw() {
 			snap.Grid = a.copyGrid()
 		}
 	}
+	wsID, tabID := 0, 0
+	if ws := a.st.ActiveWorkspace(); ws != nil {
+		wsID = ws.ID
+		if tab := ws.TabRef(); tab != nil {
+			tabID = tab.ID
+		}
+	}
 	in := render.Input{
-		State:          a.st,
-		Navigator:      a.navigatorRender(),
-		ConfigWarning:  a.configWarning,
-		Settings:       a.settings,
-		MobileSwitcher: a.mobileSwitcher, MobileScroll: a.mobileScroll,
+		TabScroll:       a.tabScroll,
+		TabScrollManual: wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
+		State:           a.st,
+		Navigator:       a.navigatorRender(),
+		ConfigWarning:   a.configWarning,
+		Settings:        a.settings,
+		MobileSwitcher:  a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
 		Panes:         panes,
 		Scroll:        a.scroll,
@@ -124,6 +133,10 @@ func (a *App) draw() {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}
 	}
 	out := render.Compose(in)
+	a.tabViewWorkspace, a.tabViewActive = wsID, tabID
+	a.tabViewWidth = a.st.TabBarArea().W
+	a.tabScroll, a.tabScrollLeft, a.tabScrollRight = out.TabScroll, out.TabScrollLeft, out.TabScrollRight
+	a.tabLeftRect, a.tabRightRect = out.TabLeftRect, out.TabRightRect
 	a.tabHits = out.TabHits
 	a.newTabRect = out.NewTabRect
 	a.toastRect = out.ToastRect

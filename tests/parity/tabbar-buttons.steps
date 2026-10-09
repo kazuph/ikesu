@@ -1,0 +1,15 @@
+screen @OUT@/boot.txt
+cells @OUT@/boot.json
+click 35 1
+sleep 250ms
+screen @OUT@/plus.txt
+cells @OUT@/plus.json
+send "\r"
+sleep 250ms
+screen @OUT@/after-enter.txt
+cells @OUT@/after-enter.json
+send "\x1b[<1;28;1M\x1b[<1;28;1m"
+sleep 250ms
+screen @OUT@/middle-close.txt
+cells @OUT@/middle-close.json
+kill

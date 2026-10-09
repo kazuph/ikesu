@@ -411,6 +411,9 @@ func (a *App) menuKey(k uv.Key) {
 
 // dialogMouse resolves clicks on the confirmation dialog.
 func (a *App) dialogMouse(ev input.Event) {
+	if a.dialog.d.InputEdit && ev.Kind == input.KindMouseRelease {
+		return
+	}
 	if ev.Kind != input.KindMouseClick && ev.Kind != input.KindMouseRelease {
 		return
 	}

@@ -3,7 +3,6 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -148,14 +147,16 @@ type Input struct {
 	ConfigWarning string
 	Toast         *Toast
 
-	Spin           int    // working-spinner frame
-	Copied         string // flash text, e.g. " copied 12 chars "
-	ModeHint       string
-	Prefix         bool // prefix-key pending
-	SidebarScroll  int  // workspace rows scrolled off the top
-	AgentScroll    int
-	MobileSwitcher bool
-	MobileScroll   int
+	Spin            int    // working-spinner frame
+	Copied          string // flash text, e.g. " copied 12 chars "
+	ModeHint        string
+	Prefix          bool // prefix-key pending
+	SidebarScroll   int  // workspace rows scrolled off the top
+	AgentScroll     int
+	MobileSwitcher  bool
+	TabScroll       int
+	TabScrollManual bool
+	MobileScroll    int
 	// CopyLabel is the action bar's left button text: " COPY ",
 	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
 	CopyLabel string
@@ -187,8 +188,10 @@ type Output struct {
 	AnchorVisible bool
 	// TabHits maps each tab of the active workspace to its bar rect;
 	// NewTabRect is the "+" button. Both feed the mouse layer.
-	TabHits    []layout.Rect
-	NewTabRect layout.Rect
+	TabScroll, TabScrollLeft, TabScrollRight int
+	TabLeftRect, TabRightRect                layout.Rect
+	TabHits                                  []layout.Rect
+	NewTabRect                               layout.Rect
 	// ActionBar is the bottom pane action bar's button hit areas; zero
 	// rects mean the button did not fit and must not fire.
 	ActionBar ActionBarRects
@@ -275,53 +278,6 @@ func Compose(in Input) *Output {
 		drawNavigator(f, in.Navigator)
 	}
 	return out
-}
-
-// --- tab bar ---
-
-// drawTabBar renders the one-row tab strip over the panes area: " name "
-// cells for each tab of the active workspace plus a trailing "+" button.
-func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
-	area := s.TabBarArea()
-	if area.W <= 0 {
-		return
-	}
-	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{Bg: f.Palette.Surface})
-	ws := s.ActiveWorkspace()
-	if ws == nil {
-		return
-	}
-	x := area.X
-	for i, t := range ws.Tabs {
-		name := t.Name
-		if name == "" {
-			name = fmt.Sprint(i + 1)
-		}
-		if t.Zoomed != 0 {
-			name += " Z" // zoomed-tab marker (SPEC G1)
-		}
-		w := max(8, ansi.StringWidth(name)+6)
-		if x+w > area.X+area.W-3 {
-			w = area.X + area.W - 3 - x
-		}
-		if w <= 0 {
-			out.TabHits = append(out.TabHits, layout.Rect{})
-			continue
-		}
-		sty := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
-		if i == ws.ActiveTab {
-			sty = uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
-		}
-		marker := tabMarker(t, in.Panes)
-		f.Fill(x, area.Y, w, 1, " ", sty)
-		f.Text(x, area.Y, " "+marker+truncate(name, max(w-2, 0)), sty, x+w)
-		out.TabHits = append(out.TabHits, layout.Rect{X: x, Y: area.Y, W: w, H: 1})
-		x += w
-	}
-	if x+3 <= area.X+area.W {
-		f.Text(x, area.Y, " + ", uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}, x+3)
-		out.NewTabRect = layout.Rect{X: x, Y: area.Y, W: 3, H: 1}
-	}
 }
 
 // --- panes ---

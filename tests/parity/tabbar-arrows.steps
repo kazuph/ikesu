@@ -1,0 +1,71 @@
+screen @OUT@/boot.txt
+cells @OUT@/boot.json
+send "\x02T"
+sleep 250ms
+send "\x03LONG TAB NAME\r"
+sleep 250ms
+screen @OUT@/named.txt
+cells @OUT@/named.json
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+send "\r"
+sleep 250ms
+screen @OUT@/eight-tabs.txt
+cells @OUT@/eight-tabs.json
+resize 80 25
+sleep 250ms
+screen @OUT@/overflow.txt
+cells @OUT@/overflow.json
+click 27 1
+sleep 250ms
+screen @OUT@/arrow-left.txt
+cells @OUT@/arrow-left.json
+click 27 1
+sleep 250ms
+screen @OUT@/arrow-left-again.txt
+cells @OUT@/arrow-left-again.json
+click 74 1
+sleep 250ms
+screen @OUT@/arrow-right.txt
+cells @OUT@/arrow-right.json
+send "\x021"
+sleep 250ms
+screen @OUT@/select-first.txt
+cells @OUT@/select-first.json
+click 27 1
+sleep 250ms
+screen @OUT@/disabled-left.txt
+cells @OUT@/disabled-left.json
+click 74 1
+sleep 250ms
+screen @OUT@/first-arrow-right.txt
+cells @OUT@/first-arrow-right.json
+click 74 1
+sleep 250ms
+screen @OUT@/first-arrow-right-again.txt
+cells @OUT@/first-arrow-right-again.json
+kill

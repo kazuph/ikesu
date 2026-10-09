@@ -320,15 +320,26 @@ func (a *App) actionBarHit(m uv.Mouse) bool {
 	return pointIn(m.X, m.Y, a.actionBar.Area)
 }
 
-// tabBarClick handles clicks on the tab strip: left focuses, middle
-// closes, right opens the tab menu, "+" starts a new tab.
+// tabBarClick handles selection, scrolling, tab menus and the new-tab prompt.
 func (a *App) tabBarClick(m uv.Mouse) {
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
 		return
 	}
+	if m.Button == uv.MouseLeft {
+		if pointIn(m.X, m.Y, a.tabLeftRect) {
+			a.tabScroll = a.tabScrollLeft
+			a.dirty = true
+			return
+		}
+		if pointIn(m.X, m.Y, a.tabRightRect) {
+			a.tabScroll = a.tabScrollRight
+			a.dirty = true
+			return
+		}
+	}
 	if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, a.newTabRect) {
-		a.exec(model.CmdNewTab{Workspace: a.st.Active})
+		a.newTabNameDialog()
 		return
 	}
 	for i, r := range a.tabHits {
@@ -338,8 +349,6 @@ func (a *App) tabBarClick(m uv.Mouse) {
 		switch m.Button {
 		case uv.MouseLeft:
 			a.tabGesture = &tabGesture{ws: a.st.Active, tab: i, x: m.X, y: m.Y, drop: -1}
-		case uv.MouseMiddle:
-			a.closeTabAt(a.st.Active, i)
 		case uv.MouseRight:
 			// Right-click selects the target tab, then opens its menu.
 			a.exec(model.CmdSelectTab{Workspace: a.st.Active, Tab: i})
