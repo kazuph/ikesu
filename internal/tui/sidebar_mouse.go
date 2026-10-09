@@ -57,7 +57,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	if a.sidebarScrollbarPress(m) {
 		return true
 	}
-	if pointIn(m.X, m.Y, render.SidebarWidthRect(s)) {
+	if !a.serverUI && pointIn(m.X, m.Y, render.SidebarWidthRect(s)) {
 		a.sidebarPreset(s.CyclePreset())
 		return true
 	}
@@ -67,13 +67,16 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	}
 	switch r.Kind {
 	case render.RowTitle:
+		if a.serverUI {
+			return true
+		}
 		_, _, w, _ := render.SidebarContent(s.SidebarArea())
 		if m.X >= s.SidebarArea().X+w-6 {
 			a.toggleSidebarSetting(true)
 		}
 		return true
 	case render.RowSep:
-		if !a.jobsPanel && pointIn(m.X, m.Y, render.SidebarAgentSortRect(s, m.Y)) {
+		if !a.serverUI && !a.jobsPanel && pointIn(m.X, m.Y, render.SidebarAgentSortRect(s, m.Y)) {
 			a.toggleSidebarSetting(false)
 			return true
 		}

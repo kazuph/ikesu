@@ -8,12 +8,12 @@ import (
 )
 
 func hasTabLabel(screen, label string) bool {
-	row := strings.Split(screen, "\n")[0]
+	row := strings.Split(screen, "\n")[0] + " "
 	return strings.Contains(row, " "+label+" ")
 }
 
 func (s *session) findTab(label string) (int, int) {
-	row := strings.Split(s.text(), "\n")[0]
+	row := strings.Split(s.text(), "\n")[0] + " "
 	i := strings.Index(row[26:], " "+label+" ")
 	if i < 0 {
 		return -1, -1
@@ -22,7 +22,7 @@ func (s *session) findTab(label string) (int, int) {
 }
 
 func TestTabBar(t *testing.T) {
-	s := start(t)
+	s := startLocal(t)
 
 	s.waitFor("boot", 10*time.Second, func(scr string) bool {
 		return hasTabLabel(scr, "1") && strings.Contains(scr, "❯")

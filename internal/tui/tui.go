@@ -92,10 +92,11 @@ type uiMenu struct {
 // uiDialog is an open confirmation dialog; input != nil turns the detail
 // row into a single-line text field (run sees the entered value).
 type uiDialog struct {
-	d      render.Dialog
-	run    func(a *App) // confirm action
-	cancel func(a *App)
-	input  *string // text-entry mode when non-nil
+	replaceDefault bool
+	d              render.Dialog
+	run            func(a *App) // confirm action
+	cancel         func(a *App)
+	input          *string // text-entry mode when non-nil
 }
 
 // sepDrag tracks a split-border ratio drag.
@@ -225,6 +226,7 @@ type App struct {
 	uiShowTab                                bool                  // [ui] show_tab_bar
 	uiHideSingle                             bool                  // [ui] hide_tab_bar_when_single_tab
 	uiBorders                                bool                  // [ui] pane_borders
+	serverUI                                 bool
 	sidebarConfig                            config.Config
 	sidebarGesture                           *sidebarGesture
 	tabGesture                               *tabGesture
@@ -302,6 +304,8 @@ func (a *App) SetUIFlags(showTabBar, hideSingle, borders bool) {
 	a.uiShowTab, a.uiHideSingle, a.uiBorders = showTabBar, hideSingle, borders
 	a.applyUIFlags()
 }
+
+func (a *App) SetServerUI() { a.serverUI = true }
 
 func (a *App) applyUIFlags() {
 	a.st.ShowTabBar = a.uiShowTab

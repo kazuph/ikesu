@@ -81,6 +81,7 @@ func (a *App) draw() {
 		}
 	}
 	in := render.Input{
+		ServerUI:            a.serverUI,
 		TabScroll:           a.tabScroll,
 		TabScrollManual:     wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
 		State:               a.st,

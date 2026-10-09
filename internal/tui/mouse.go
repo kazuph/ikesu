@@ -428,7 +428,7 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	}
 	s := a.st
 	area := s.SidebarArea()
-	if pointIn(m.X, m.Y, render.SidebarToggleRect(s)) {
+	if !a.serverUI && pointIn(m.X, m.Y, render.SidebarToggleRect(s)) {
 		a.exec(model.CmdToggleSidebar{})
 		return
 	}
@@ -506,6 +506,9 @@ func (a *App) wheel(m uv.Mouse) {
 	}
 	// The tab strip turns the wheel into tab cycling (SPEC G6).
 	if pointIn(m.X, m.Y, a.st.TabBarArea()) {
+		if a.serverUI {
+			return
+		}
 		if up {
 			a.cycleTab(-1)
 		} else {

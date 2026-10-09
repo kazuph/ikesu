@@ -265,6 +265,7 @@ func Run(session, version string) (int, error) {
 
 	st := model.New(cwd, 120, 40)
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
+	s.app.SetServerUI()
 	if s.cfgError != "" {
 		s.app.SetConfigWarning(s.cfgError)
 	}

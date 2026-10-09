@@ -370,11 +370,17 @@ func (a *App) dialogKey(k uv.Key) {
 		switch {
 		case k.Code == 'c' && k.Mod.Contains(uv.ModCtrl):
 			runes = nil
+			d.replaceDefault = false
 		case k.Code == uv.KeyBackspace:
+			d.replaceDefault = false
 			if len(runes) > 0 {
 				runes = runes[:len(runes)-1]
 			}
 		case k.Text != "":
+			if d.replaceDefault {
+				runes = nil
+				d.replaceDefault = false
+			}
 			runes = append(runes, []rune(k.Text)...)
 		}
 		*d.input = string(runes)

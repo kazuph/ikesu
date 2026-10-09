@@ -1,0 +1,21 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[menu]"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+click 90 20
+sleep 200ms
+screen @OUT@/outside.txt
+cells @OUT@/outside.json
+send "echo SERVER_MENU_INPUT\r"
+sleep 250ms
+screen @OUT@/input.txt
+cells @OUT@/input.json
+clicktext "[menu]"
+sleep 200ms
+send "\x1b"
+sleep 200ms
+screen @OUT@/escaped.txt
+cells @OUT@/escaped.json
+kill

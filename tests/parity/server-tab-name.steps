@@ -1,0 +1,15 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02c"
+sleep 250ms
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+send "TAB-2"
+sleep 250ms
+screen @OUT@/typed.txt
+cells @OUT@/typed.json
+send "\r"
+sleep 250ms
+screen @OUT@/created.txt
+cells @OUT@/created.json
+kill

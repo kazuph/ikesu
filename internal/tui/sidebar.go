@@ -143,7 +143,7 @@ func (a *App) newTabNameDialog() {
 	}
 	defaultName := fmt.Sprint(len(w.Tabs) + 1)
 	name := defaultName
-	a.dialog = &uiDialog{input: &name, d: render.Dialog{Title: "New tab", Input: name, InputCursor: len([]rune(name)), InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
+	a.dialog = &uiDialog{input: &name, replaceDefault: true, d: render.Dialog{Title: "New tab", Input: name, InputCursor: len([]rune(name)), InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
 		a.exec(model.CmdNewTab{Workspace: a.st.Active})
 		w := a.st.ActiveWorkspace()
 		if w != nil && name != defaultName {

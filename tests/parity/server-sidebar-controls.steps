@@ -1,0 +1,41 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+screen @OUT@/normal.txt
+cells @OUT@/normal.json
+click 21 1
+sleep 200ms
+screen @OUT@/header-click.txt
+cells @OUT@/header-click.json
+click 4 45
+sleep 200ms
+screen @OUT@/width-click.txt
+cells @OUT@/width-click.json
+click 25 45
+sleep 200ms
+screen @OUT@/footer-click.txt
+cells @OUT@/footer-click.json
+mouse down 26 15
+mouse motion 40 15
+mouse up 40 15
+sleep 200ms
+screen @OUT@/width-drag.txt
+cells @OUT@/width-drag.json
+mouse down 10 24
+mouse motion 10 30
+mouse up 10 30
+sleep 200ms
+screen @OUT@/panel-drag.txt
+cells @OUT@/panel-drag.json
+send "\x02b"
+sleep 200ms
+screen @OUT@/collapsed.txt
+cells @OUT@/collapsed.json
+click 2 45
+sleep 200ms
+screen @OUT@/collapsed-footer.txt
+cells @OUT@/collapsed-footer.json
+send "\x02b"
+sleep 200ms
+screen @OUT@/expanded.txt
+cells @OUT@/expanded.json
+kill

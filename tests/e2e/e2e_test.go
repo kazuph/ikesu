@@ -66,7 +66,13 @@ type lockedBuf struct {
 
 func start(t *testing.T) *session { return startEnv(t, nil) }
 
+func startLocal(t *testing.T) *session { return startMode(t, nil, true) }
+
 func startEnv(t *testing.T, extra map[string]string) *session {
+	return startMode(t, extra, false)
+}
+
+func startMode(t *testing.T, extra map[string]string, local bool) *session {
 	t.Helper()
 	// Deterministic shell inside panes: a bare ZDOTDIR with a fixed PS1 so
 	// prompt waits do not depend on the host's zshrc/direnv.
@@ -87,6 +93,9 @@ func startEnv(t *testing.T, extra map[string]string) *session {
 	cfgFile := filepath.Join(cfgDir, "config.toml")
 	os.WriteFile(cfgFile, []byte("[session]\nresume_agents_on_restore = false\n"), 0o600)
 	cmd := exec.Command(binPath, "--session", sess)
+	if local {
+		cmd = exec.Command(binPath, "--no-session")
+	}
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
 		"SHELL=/bin/zsh",
@@ -257,10 +266,10 @@ func countPanes(screen string) int {
 func TestBootShowsSidebarAndPane(t *testing.T) {
 	s := start(t)
 	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, " spaces") && strings.Contains(tx, " NORMAL ")
+		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, " spaces") && countPanes(tx) == 1
 	})
-	if !strings.Contains(s.text(), " NORMAL ") {
-		t.Fatalf("missing normal-mode footer:\n%s", s.text())
+	if strings.Contains(s.text(), " NORMAL ") || strings.Contains(s.text(), "[full]") {
+		t.Fatalf("server must preserve the observed plain header and footer:\n%s", s.text())
 	}
 }
 
@@ -407,7 +416,7 @@ func TestWheelScrollback(t *testing.T) {
 }
 
 func TestDragSelectCopy(t *testing.T) {
-	s := start(t)
+	s := startLocal(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.send("echo SELECT_ME\n")
@@ -430,7 +439,7 @@ func TestDragSelectCopy(t *testing.T) {
 // SPEC G6: prefix+[ enters copy mode; / searches, Space anchors,
 // Enter yanks and exits with a "Copied N lines" sidebar flash.
 func TestCopyModeSelectYank(t *testing.T) {
-	s := start(t)
+	s := startLocal(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.send("echo COPYMARK\n")
@@ -467,7 +476,7 @@ func TestCopyModeRightBracket(t *testing.T) {
 // SPEC G1/G6: the action bar COPY button cycles normal → copy →
 // fullscreen copy → normal.
 func TestActionBarCopyCycle(t *testing.T) {
-	s := start(t)
+	s := startLocal(t)
 	s.waitFor("COPY button", 10*time.Second, func(tx string) bool { return strings.Contains(tx, " COPY ") })
 	x, y := s.find(" COPY ")
 	if x < 0 {
@@ -647,7 +656,7 @@ func TestBootWithoutTerminalQueryRepliesAllowsInputAndLateReplies(t *testing.T) 
 	var raw strings.Builder
 	s.observeOutput = func(b []byte) { raw.Write(b) }
 	s.waitFor("boot without query replies", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "[new]") && strings.Contains(tx, " NORMAL ")
+		return strings.Contains(tx, "[new]") && countPanes(tx) == 1
 	})
 	for _, query := range []string{"\x1b[?1016$p", "\x1b[16t", "\x1b[14t"} {
 		if !strings.Contains(raw.String(), query) {

@@ -127,6 +127,7 @@ type JobDot struct {
 }
 
 type Input struct {
+	ServerUI        bool
 	State           *model.AppState
 	SidebarConfig   config.Config
 	WorkspaceTokens map[int]map[string]string
@@ -256,6 +257,10 @@ func Compose(in Input) *Output {
 		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
 	}
 	drawActionBar(f, s, in, out)
+	if in.ServerUI && in.Copy != nil {
+		drawCopyStatus(f, 0, s.Rows-1, s.Cols, in.CopyHint)
+		out.ActionBar = ActionBarRects{}
+	}
 	drawPopup(f, in, out)
 	if s.Mobile() {
 		drawMobile(f, in, out)
@@ -301,7 +306,7 @@ func Compose(in Input) *Output {
 	if in.Toast != nil {
 		drawToast(f, in.Toast, out)
 	}
-	if in.Copied != "" {
+	if in.Copied != "" && !in.ServerUI {
 		drawCopyFeedback(f, s.PanesArea(), in.Copied)
 	}
 	if in.Help != nil {
@@ -336,7 +341,9 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y)
 			}
 		}
-		drawCopyStatus(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
+		if !in.ServerUI {
+			drawCopyStatus(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
+		}
 		return
 	}
 	t := ws.TabRef()
@@ -422,7 +429,9 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				drawCopyCursor(f, cx, cy)
 			}
 			// The help row replaces the pane's bottom frame row.
-			drawCopyStatus(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint)
+			if !in.ServerUI {
+				drawCopyStatus(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint)
+			}
 		}
 
 		// IME cursor anchor for the focused pane.

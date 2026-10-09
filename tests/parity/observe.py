@@ -16,9 +16,15 @@ p.add_argument('--ptyrun', required=True)
 p.add_argument('--steps', required=True)
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
+p.add_argument('--server-default-workspace', action='store_true', help='observe server/client startup without creating a workspace through the API')
+p.add_argument('--server-reuse-initial', action='store_true', help='use the real initial workspace when present, otherwise create it; save all preparation replies')
 p.add_argument('--clipboard-guard', action='store_true', help='capture clipboard commands and require the real clipboard hash to remain unchanged')
 p.add_argument('--clipboard-sandbox', action='store_true', help='deny pasteboard Mach lookup in the UI/server and all their children')
 a = p.parse_args()
+if (a.server_default_workspace or a.server_reuse_initial) and not a.server:
+    p.error('server fixture options require --server')
+if a.server_default_workspace and a.server_reuse_initial:
+    p.error('choose one server fixture preparation')
 a.ptyrun = str(Path(a.ptyrun).resolve())
 if not Path(a.herdr).is_file():
     print('NOT_RUN: herdr binary absent')
@@ -52,7 +58,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
             guard.environment(env)
         steps = target / 'steps'
         # Only the first-run onboarding differs. The interaction body is identical.
-        preamble = 'sleep 3s\nsend "\\r"\nsleep 500ms\nsend "\\r"\nsleep 1s\n' if name == 'herdr' else 'sleep 3s\n'
+        preamble = 'sleep 3s\nsend "\\r"\nsleep 500ms\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
         steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
@@ -94,18 +100,35 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             if 'error' in result:
                                 raise RuntimeError(result)
                             return result
-                    created = request('workspace.create', {'cwd':str(root / 'cwd'), 'label':'parity', 'focus':True})
-                    (target / 'fixture.json').write_text(json.dumps(created, indent=2)+'\n')
-                    fixture_id = created['result']['workspace']['workspace_id']
-                    initial = request('workspace.list', {})
-                    cleanup = []
-                    for workspace in initial['result']['workspaces']:
-                        if workspace['workspace_id'] != fixture_id:
-                            cleanup.append(request('workspace.close', {'workspace_id':workspace['workspace_id']}))
-                    final = request('workspace.list', {})
-                    if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
-                        raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
-                    (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
+                    if not a.server_default_workspace:
+                        initial_reply = request('workspace.list', {})
+                        existing = initial_reply['result']['workspaces']
+                        if a.server_reuse_initial and existing:
+                            if len(existing) != 1:
+                                raise RuntimeError('isolated startup must have exactly one initial workspace')
+                            workspace_id = existing[0]['workspace_id']
+                            renamed = request('workspace.rename', {'workspace_id': workspace_id, 'label':'parity'})
+                            panes = request('pane.list', {'workspace_id': workspace_id})
+                            if len(panes['result']['panes']) != 1:
+                                raise RuntimeError('initial fixture must have exactly one real pane')
+                            created = {'result': {'type':'fixture_snapshot', 'workspace': renamed['result']['workspace'],
+                                                  'root_pane':panes['result']['panes'][0]}}
+                            preparation = {'initial':initial_reply, 'rename':renamed, 'panes':panes}
+                        else:
+                            created = request('workspace.create', {'cwd':str(root / 'cwd'), 'label':'parity', 'focus':True})
+                            preparation = {'initial':initial_reply, 'create':created}
+                        (target / 'fixture-preparation.json').write_text(json.dumps(preparation, indent=2)+'\n')
+                        (target / 'fixture.json').write_text(json.dumps(created, indent=2)+'\n')
+                        fixture_id = created['result']['workspace']['workspace_id']
+                        initial = request('workspace.list', {})
+                        cleanup = []
+                        for workspace in initial['result']['workspaces']:
+                            if workspace['workspace_id'] != fixture_id:
+                                cleanup.append(request('workspace.close', {'workspace_id':workspace['workspace_id']}))
+                        final = request('workspace.list', {})
+                        if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
+                            raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
+                        (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw'), '--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)

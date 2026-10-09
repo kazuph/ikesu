@@ -14,7 +14,11 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	if area.W <= 0 || ws == nil {
 		return
 	}
-	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{Bg: f.Palette.PopupBG})
+	base := uv.Style{Bg: f.Palette.PopupBG}
+	if in.ServerUI {
+		base.Fg = f.Palette.Text
+	}
+	f.Fill(area.X, area.Y, area.W, 1, " ", base)
 	var starts, widths []int
 	var labels []string
 	total := 0
@@ -41,9 +45,15 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 	}
 	buttonWidth := ansi.StringWidth(" + ")
+	if in.ServerUI {
+		buttonWidth = 0
+	}
 	viewport := max(0, area.W-buttonWidth-1)
+	if in.ServerUI {
+		viewport = area.W
+	}
 	x := area.X
-	if total > viewport {
+	if !in.ServerUI && total > viewport {
 		arrowWidth := ansi.StringWidth(" < ")
 		viewport = max(0, viewport-2*arrowWidth)
 		x += arrowWidth
@@ -74,7 +84,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	}
 	strip := NewFrame(max(1, total), 1)
 	strip.Palette = f.Palette
-	strip.Fill(0, 0, total, 1, " ", uv.Style{Bg: f.Palette.PopupBG})
+	strip.Fill(0, 0, total, 1, " ", base)
 	for i, t := range ws.Tabs {
 		style := uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.Surface, Attrs: uv.AttrFaint}
 		if t.Name != "" {
@@ -86,8 +96,17 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 				style.Attrs = uv.AttrBold
 			}
 		}
-		strip.Fill(starts[i], 0, widths[i], 1, " ", style)
-		strip.Text(starts[i], 0, " "+labels[i], style, starts[i]+widths[i])
+		label := " " + labels[i]
+		if in.ServerUI {
+			style = uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
+			if i == ws.ActiveTab {
+				style.Fg, style.Attrs = f.Palette.Text, uv.AttrBold
+			}
+			label += " "
+		} else {
+			strip.Fill(starts[i], 0, widths[i], 1, " ", style)
+		}
+		strip.Text(starts[i], 0, label, style, starts[i]+widths[i])
 		left, right := max(starts[i], offset), min(starts[i]+widths[i], offset+viewport)
 		r := layout.Rect{}
 		if left < right {
@@ -98,7 +117,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	visible := min(viewport, max(0, total-offset))
 	for n := 0; n < visible; n++ {
 		cell := *strip.Cell(offset+n, 0)
-		if (n == 0 && offset > 0) || (n == visible-1 && offset+visible < total) {
+		if !in.ServerUI && ((n == 0 && offset > 0) || (n == visible-1 && offset+visible < total)) {
 			cell.Content, cell.Width = "…", 1
 		}
 		if dst := f.Cell(x+n, area.Y); dst != nil {
@@ -123,7 +142,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	} else {
 		x += visible
 	}
-	if x+buttonWidth <= area.X+area.W {
+	if !in.ServerUI && x+buttonWidth <= area.X+area.W {
 		f.Text(x, area.Y, " + ", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, x+buttonWidth)
 		out.NewTabRect = layout.Rect{X: x, Y: area.Y, W: buttonWidth, H: 1}
 	}

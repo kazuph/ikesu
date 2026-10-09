@@ -1,0 +1,31 @@
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+send "\x02c"
+sleep 200ms
+screen @OUT@/new-tab-dialog.txt
+cells @OUT@/new-tab-dialog.json
+send "\r"
+sleep 300ms
+screen @OUT@/two-tabs.txt
+cells @OUT@/two-tabs.json
+send "\x02p"
+sleep 200ms
+screen @OUT@/previous-tab.txt
+cells @OUT@/previous-tab.json
+click 25 45
+sleep 200ms
+screen @OUT@/footer-click.txt
+cells @OUT@/footer-click.json
+send "\x02b"
+sleep 200ms
+screen @OUT@/sidebar-prefix.txt
+cells @OUT@/sidebar-prefix.json
+resize 90 25
+sleep 300ms
+screen @OUT@/resized.txt
+cells @OUT@/resized.json
+send "\x02b"
+sleep 200ms
+screen @OUT@/sidebar-returned.txt
+cells @OUT@/sidebar-returned.json
+kill
