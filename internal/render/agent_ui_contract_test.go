@@ -21,7 +21,7 @@ func TestG9ToastByteWidthOriginAndWarning(t *testing.T) {
 		toast := &Toast{Title: tc.title, Body: tc.body}
 		view := layout.Rect{X: 7, Y: 9, W: 80, H: 25}
 		r := ToastRect(toast, view, layout.Rect{})
-		if r.W != tc.width || r.X+r.W != view.X+view.W-1 || r.Y != view.Y+1 {
+		if r.W != tc.width || r.X+r.W != view.X+view.W || r.Y != view.Y {
 			t.Fatalf("%+v: %+v", tc, r)
 		}
 		warning := layout.Rect{X: 40, Y: 10, W: 46, H: 2}

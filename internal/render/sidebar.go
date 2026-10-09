@@ -384,7 +384,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		x = f.Text(x, y, fmt.Sprint(ws.ID), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
 		x = f.Text(x, y, " ", idSpace, ix+iw)
 		name := in.WorkspaceNames[r.Ws]
-		if name == "" {
+		if name == "" || ws.CustomName {
 			name = WorkspaceDisplayName(ws, in.Panes)
 		}
 		dots := in.JobDots[r.Ws]

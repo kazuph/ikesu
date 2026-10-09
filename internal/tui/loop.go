@@ -154,6 +154,9 @@ func (a *App) copiedFlashAt(now time.Time) string {
 // foreground-process polling, and detection.
 func (a *App) onTick() {
 	now := time.Now()
+	if a.localRestore {
+		a.observeLocalSessions()
+	}
 	a.refreshPaneMetadata()
 	a.refreshWorkspaceGit(now)
 	a.expireToast()
@@ -268,6 +271,7 @@ func (a *App) effect(e model.Effect) {
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
 		delete(a.sessions, e.Pane)
+		delete(a.localObservedStart, e.Pane)
 		if a.paneClosedHook != nil {
 			a.paneClosedHook(e.Pane)
 		}

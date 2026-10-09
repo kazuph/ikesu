@@ -72,6 +72,9 @@ func (a *App) modeKey(k uv.Key) {
 		}
 	case k.Code == 'g':
 		a.openNavigator()
+	case k.Code == 'c' || k.Code == 'v':
+		a.workspaceNavigate = false
+		a.prefixKey(k)
 	default:
 		a.prefixKey(k)
 	}

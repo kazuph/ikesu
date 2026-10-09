@@ -2,6 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -49,6 +52,11 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		return
 	}
 	if isCtrlB(k) {
+		if a.workspaceNavigate {
+			a.workspaceNavigate = false
+			a.dirty = true
+			return
+		}
 		a.prefix = true
 		a.dirty = true
 		return
@@ -243,8 +251,8 @@ func (a *App) newWorkspace() {
 	a.exec(model.CmdNewWorkspace{Cwd: cwd})
 }
 
-// closeFocusedPane closes the focused pane; on the last pane of a workspace
-// it asks the close-workspace dialog (or quit dialog on the last workspace).
+// closeFocusedPane replaces the final workspace's shell, or confirms closing
+// another workspace when its final pane is selected.
 func (a *App) closeFocusedPane() {
 	ws := a.st.ActiveWorkspace()
 	if ws == nil {
@@ -256,20 +264,24 @@ func (a *App) closeFocusedPane() {
 	}
 	if tab.Layout.PaneCount() <= 1 && len(ws.Tabs) <= 1 {
 		if len(a.st.Workspaces) <= 1 {
-			old := tab.Layout.Focused()
-			a.lastSpawnError = nil
-			a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
-			if a.lastSpawnError != nil {
-				a.exec(model.CmdClosePane{Pane: tab.Layout.Focused()})
-				return
-			}
-			a.exec(model.CmdClosePane{Pane: old})
+			a.replaceLastWorkspace()
 		} else {
 			a.openCloseWorkspaceDialog(a.st.Active)
 		}
 		return
 	}
 	a.exec(model.CmdClosePane{Pane: tab.Layout.Focused()})
+}
+
+func (a *App) replaceLastWorkspace() {
+	old := a.st.Active
+	a.lastSpawnError = nil
+	a.newWorkspace()
+	if a.lastSpawnError != nil {
+		a.exec(model.CmdCloseWorkspace{Index: a.st.Active})
+		return
+	}
+	a.exec(model.CmdCloseWorkspace{Index: old})
 }
 
 // --- dialogs ---
@@ -293,11 +305,45 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 	if idx < 0 || idx >= len(a.st.Workspaces) {
 		return
 	}
-	name := a.st.Workspaces[idx].Name
+	ws := a.st.Workspaces[idx]
+	name := ws.Name
+	if !ws.CustomName {
+		name = ws.Cwd
+		if cwd := a.sessionCwds[ws.ID]; cwd != "" {
+			name = cwd
+		}
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			if resolved, err := filepath.EvalSymlinks(home); err == nil {
+				home = resolved
+			}
+			if resolved, err := filepath.EvalSymlinks(name); err == nil {
+				name = resolved
+			}
+			if name == home {
+				name = "~"
+			} else if strings.HasPrefix(name, home+"/") {
+				name = "~" + strings.TrimPrefix(name, home)
+			}
+		}
+	}
+	panes := ws.TabRef().Layout.PaneCount()
+	noun := "panes"
+	if panes == 1 {
+		noun = "pane"
+	}
+	a.workspaceNavigate = false
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Close workspace?", Detail: "Closes " + name + " and all of its panes.", Confirm: "close", Cancel: "cancel"},
+		d: render.Dialog{Title: "Close workspace?", Detail: fmt.Sprintf("%s — %d %s", name, panes, noun), Lines: []string{""}, Width: 64, DimPanesOnly: true, Confirm: "confirm", Cancel: "cancel"},
 		run: func(a *App) {
 			a.exec(model.CmdCloseWorkspace{Index: idx})
+		},
+		cancel: func(a *App) {
+			a.workspaceNavigate = true
+			a.navigateSelected = idx
+			if a.st.Mobile() {
+				a.mobileSwitcher = true
+				a.mobileScroll = 0
+			}
 		},
 	}
 	a.dirty = true

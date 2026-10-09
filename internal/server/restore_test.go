@@ -330,34 +330,51 @@ codex = "codex resume {session_id} --last"
 	}
 }
 
+func TestBuildResumeCommandRejectsLastInConfiguredArgv(t *testing.T) {
+	teststate.Lock(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[agent_start.commands]\ncodex = [\"codex\", \"--last\"]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "GTX_CONFIG", path)
+	cfg, err := loadTestConfig(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{cfg: cfg}
+	if command, ok := s.buildResumeCommand("codex", "id", "sid-exact"); ok {
+		t.Fatalf("configured --last must not compete with exact id: %q", command)
+	}
+}
+
 // --- unit: cmdline observation --------------------------------------------
 
 func TestObserveCmdline(t *testing.T) {
 	job := platform.ForegroundJob{ProcessGroupID: 1, Processes: []platform.ForegroundProcess{
 		{PID: 1, Name: "claude", Argv: []string{"claude", "--resume", "sess-old"}},
 	}}
-	if id, ok := observeCmdline(job); !ok || id != "sess-old" {
+	if id, ok := session.ObserveCmdline(job); !ok || id != "sess-old" {
 		t.Fatalf("got %q ok=%v", id, ok)
 	}
 	job.Processes[0].Argv = []string{"claude", "--resume=sess-eq"}
-	if id, ok := observeCmdline(job); !ok || id != "sess-eq" {
+	if id, ok := session.ObserveCmdline(job); !ok || id != "sess-eq" {
 		t.Fatalf("got %q ok=%v", id, ok)
 	}
 	job.Processes[0].Argv = []string{"codex", "resume", "sess-sub"}
-	if id, ok := observeCmdline(job); !ok || id != "sess-sub" {
+	if id, ok := session.ObserveCmdline(job); !ok || id != "sess-sub" {
 		t.Fatalf("got %q ok=%v", id, ok)
 	}
 	// Conflicting ids across processes are ambiguous → fail closed.
 	job.Processes = append(job.Processes, platform.ForegroundProcess{
 		PID: 2, Name: "codex", Argv: []string{"codex", "resume", "sess-other"},
 	})
-	if _, ok := observeCmdline(job); ok {
+	if _, ok := session.ObserveCmdline(job); ok {
 		t.Fatal("conflicting ids must not resolve")
 	}
 	// Plain launches carry no resume shape.
 	job.Processes = job.Processes[:1]
 	job.Processes[0].Argv = []string{"claude"}
-	if _, ok := observeCmdline(job); ok {
+	if _, ok := session.ObserveCmdline(job); ok {
 		t.Fatal("bare argv must not resolve")
 	}
 }
@@ -391,7 +408,7 @@ func TestObserveClaudeSessionFile(t *testing.T) {
 	writeJSONL(t, filepath.Join(dir, "sess-old.jsonl"),
 		`{"sessionId":"sess-old","cwd":"`+cwd+`","timestamp":"2020-01-01T00:00:00Z","type":"user"}`)
 
-	id, ok := observeClaudeSessionFile(cwd, start)
+	id, ok := session.ObserveClaudeSessionFile(cwd, start)
 	if !ok || id != "sess-new" {
 		t.Fatalf("got %q ok=%v", id, ok)
 	}
@@ -399,11 +416,11 @@ func TestObserveClaudeSessionFile(t *testing.T) {
 	// A second in-window file makes the observation ambiguous.
 	writeJSONL(t, filepath.Join(dir, "sess-other.jsonl"),
 		`{"sessionId":"sess-other","cwd":"`+cwd+`","timestamp":"`+ts+`","type":"user"}`)
-	if _, ok := observeClaudeSessionFile(cwd, start); ok {
+	if _, ok := session.ObserveClaudeSessionFile(cwd, start); ok {
 		t.Fatal("two in-window candidates must fail closed")
 	}
 	// No candidate at all.
-	if _, ok := observeClaudeSessionFile(cwd, start.Add(-time.Hour)); ok {
+	if _, ok := session.ObserveClaudeSessionFile(cwd, start.Add(-time.Hour)); ok {
 		t.Fatal("out-of-window files must not resolve")
 	}
 }
@@ -427,17 +444,17 @@ func TestObserveClaudeSessionFileCwdStrict(t *testing.T) {
 	// No cwd recorded at all.
 	writeJSONL(t, filepath.Join(dir, "no-cwd.jsonl"),
 		`{"sessionId":"sess-none","timestamp":"`+ts+`"}`)
-	if _, ok := observeClaudeSessionFile(cwd, start); ok {
+	if _, ok := session.ObserveClaudeSessionFile(cwd, start); ok {
 		t.Fatal("files without a matching recorded cwd must not be candidates")
 	}
-	if _, ok := observeClaudeSessionFile("/a/b.c", start); !ok {
+	if _, ok := session.ObserveClaudeSessionFile("/a/b.c", start); !ok {
 		t.Fatal("the /a/b.c record should resolve for cwd /a/b.c")
 	}
 
 	// Once the real cwd's file exists, it alone resolves.
 	writeJSONL(t, filepath.Join(dir, "real.jsonl"),
 		`{"sessionId":"sess-real","cwd":"`+cwd+`","timestamp":"`+ts+`"}`)
-	id, ok := observeClaudeSessionFile(cwd, start)
+	id, ok := session.ObserveClaudeSessionFile(cwd, start)
 	if !ok || id != "sess-real" {
 		t.Fatalf("got %q ok=%v", id, ok)
 	}
@@ -459,12 +476,12 @@ func TestObserveCodexSessionFile(t *testing.T) {
 	writeJSONL(t, filepath.Join(day, name("eeee")),
 		`{"timestamp":"`+start.Format(time.RFC3339Nano)+`","type":"session_meta","payload":{"id":"sess-cdx","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
 
-	id, ok := observeCodexSessionFile(cwd, start)
+	id, ok := session.ObserveCodexSessionFile(cwd, start)
 	if !ok || id != "sess-cdx" {
 		t.Fatalf("got %q ok=%v", id, ok)
 	}
 	// A rollout for a different cwd is not a candidate.
-	if _, ok := observeCodexSessionFile("/other/dir", start); ok {
+	if _, ok := session.ObserveCodexSessionFile("/other/dir", start); ok {
 		t.Fatal("mismatched cwd must not resolve")
 	}
 	// Rollouts outside the day folders around start are not scanned, even
@@ -472,7 +489,7 @@ func TestObserveCodexSessionFile(t *testing.T) {
 	writeJSONL(t, filepath.Join(home, ".codex", "sessions", "2020", "01", "01",
 		"rollout-2020-01-01T00-00-00-aaaa-bbbb-cccc-dddd-ffff.jsonl"),
 		`{"type":"session_meta","payload":{"id":"sess-old","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
-	id2, ok := observeCodexSessionFile(cwd, start)
+	id2, ok := session.ObserveCodexSessionFile(cwd, start)
 	if !ok || id2 != "sess-cdx" {
 		t.Fatalf("out-of-day-folder rollout must not count; got %q ok=%v", id2, ok)
 	}
@@ -498,13 +515,18 @@ func TestObserveCodexSessionFileStrict(t *testing.T) {
 	rollout("aaaa-0000-0000-0000-000000000001", `"id":"nocwd","timestamp":"`+ts+`"`)                               // no cwd
 	rollout("aaaa-0000-0000-0000-000000000002", `"id":"other","timestamp":"`+ts+`","cwd":"/else/where"`)           // wrong cwd
 	rollout("aaaa-0000-0000-0000-000000000003", `"id":"stale","timestamp":"2020-01-01T00:00:00Z","cwd":"`+cwd+`"`) // stale ts
-	if _, ok := observeCodexSessionFile(cwd, start); ok {
+	if _, ok := session.ObserveCodexSessionFile(cwd, start); ok {
 		t.Fatal("rollouts without a matching payload.cwd must not be candidates")
+	}
+	writeJSONL(t, filepath.Join(day, "rollout-wrong-type.jsonl"),
+		`{"type":"event_msg","label":"session_meta","payload":{"id":"wrong-type","timestamp":"`+ts+`","cwd":"`+cwd+`"}}`)
+	if _, ok := session.ObserveCodexSessionFile(cwd, start); ok {
+		t.Fatal("a session_meta mention outside the record type must not identify a session")
 	}
 
 	// payload.session_id is the fallback when payload.id is absent.
 	rollout("aaaa-0000-0000-0000-000000000004", `"session_id":"sess-fb","timestamp":"`+ts+`","cwd":"`+cwd+`"`)
-	id, ok := observeCodexSessionFile(cwd, start)
+	id, ok := session.ObserveCodexSessionFile(cwd, start)
 	if !ok || id != "sess-fb" {
 		t.Fatalf("session_id fallback: got %q ok=%v", id, ok)
 	}

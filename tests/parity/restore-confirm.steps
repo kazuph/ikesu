@@ -1,0 +1,25 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[menu]"
+sleep 200ms
+clicktext "restore agents"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+clicktext "[menu]"
+sleep 200ms
+clicktext "restore agents"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/confirmed.txt
+cells @OUT@/confirmed.json
+send "echo RESTORE_SHELL_ALIVE\r"
+sleep 200ms
+screen @OUT@/input.txt
+cells @OUT@/input.json
+kill

@@ -41,7 +41,7 @@ func TestParityPrefixTabCommandsAndRename(t *testing.T) {
 	}
 }
 
-func TestParityFinalShellCloseReplacesOnlyTheShell(t *testing.T) {
+func TestParityFinalShellCloseReplacesWorkspaceAndShell(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
@@ -50,12 +50,13 @@ func TestParityFinalShellCloseReplacesOnlyTheShell(t *testing.T) {
 	ws := a.st.ActiveWorkspace().ID
 	old := a.focusedPane()
 	a.closeFocusedPane()
-	if a.quit || a.dialog != nil || len(a.st.Workspaces) != 1 || a.st.ActiveWorkspace().ID != ws || a.focusedPane() == old || a.sup.Get(old) != nil || a.st.ActiveWorkspace().TabRef().Layout.PaneCount() != 1 {
+	if a.quit || a.dialog != nil || len(a.st.Workspaces) != 1 || a.st.ActiveWorkspace().ID <= ws || a.focusedPane() == old || a.sup.Get(old) != nil || a.st.ActiveWorkspace().TabRef().Layout.PaneCount() != 1 {
 		t.Fatal("final shell must be replaced without quitting or prompting to stop the server")
 	}
 	old = a.focusedPane()
+	ws = a.st.ActiveWorkspace().ID
 	a.closeActiveTab()
-	if a.quit || a.dialog != nil || len(a.st.ActiveWorkspace().Tabs) != 1 || a.focusedPane() == old || a.sup.Get(old) != nil {
+	if a.quit || a.dialog != nil || len(a.st.ActiveWorkspace().Tabs) != 1 || a.st.ActiveWorkspace().ID <= ws || a.focusedPane() == old || a.sup.Get(old) != nil {
 		t.Fatal("final tab must be replaced")
 	}
 }

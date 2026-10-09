@@ -8,42 +8,20 @@ package server
 // "--last", "resume --last", or a cwd/mtime-latest guess.
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/session"
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
-// sessionFileWindow is how far apart a session file's timestamp and the
-// agent process's start may be before the match stops counting (SPEC G3:
-// 120 seconds, exactly one candidate).
-const sessionFileWindow = 120 * time.Second
-
 // resumeSubmitDelay separates typing the resume command from the Enter
 // keypress so the receiving shell has finished its prompt draw.
 const resumeSubmitDelay = 150 * time.Millisecond
-
-// builtinRestoreTemplates are the default per-agent restore command
-// templates; each must contain {session_id}. Only agents with a known
-// resume verb get a builtin — anything else needs
-// [agent_restore.templates] or [agent_start.commands] and otherwise
-// fails closed.
-var builtinRestoreTemplates = map[string]string{
-	"claude": "claude --resume {session_id}",
-	"codex":  "codex resume {session_id}",
-	"devin":  "devin --resume {session_id}",
-}
 
 // --- ledger --------------------------------------------------------------
 
@@ -232,12 +210,12 @@ func (s *Server) observePaneSession(pid int) {
 	if s.observedStart == nil {
 		s.observedStart = map[int]time.Time{}
 	}
-	start, ok := procStartOf(job)
+	start, ok := session.ProcessStart(job)
 	if ok && hasRec && rec.Value != "" && s.observedStart[pid].Equal(start) {
 		return // already recorded for this exact process; don't re-walk
 	}
 	if ok {
-		if id, found := observeSessionFile(agent, cwd, start); found {
+		if id, found := session.ObserveSessionFile(agent, cwd, start); found {
 			if !hasRec || !strings.HasPrefix(rec.Source, "report:") || rec.Value == "" {
 				title := rec.Title
 				s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: title, Source: "observed:file"})
@@ -252,7 +230,7 @@ func (s *Server) observePaneSession(pid int) {
 	if hasRec && rec.Value != "" {
 		return
 	}
-	if id, ok2 := observeCmdline(job); ok2 {
+	if id, ok2 := session.ObserveCmdline(job); ok2 {
 		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
 		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
 		if ok {
@@ -261,310 +239,10 @@ func (s *Server) observePaneSession(pid int) {
 	}
 }
 
-// procStartOf returns the start time of the foreground job's leader.
-func procStartOf(job platform.ForegroundJob) (time.Time, bool) {
-	pid := job.ProcessGroupID
-	if pid <= 0 && len(job.Processes) > 0 {
-		pid = job.Processes[0].PID
-	}
-	if pid <= 0 {
-		return time.Time{}, false
-	}
-	return platform.ProcStart(pid)
-}
-
-// observeSessionFile finds the agent's session file written near the
-// process start, restricted to the pane's cwd. Exactly one candidate
-// within the window is required; zero or many means "not determined".
-func observeSessionFile(agent, cwd string, start time.Time) (string, bool) {
-	if cwd == "" {
-		return "", false
-	}
-	switch agent {
-	case "claude":
-		return observeClaudeSessionFile(cwd, start)
-	case "codex":
-		return observeCodexSessionFile(cwd, start)
-	}
-	return "", false
-}
-
-// jsonStringField extracts `"key":"value"` from a JSON line, naive but
-// sufficient for the well-formed headers agent CLIs write.
-func jsonStringField(line, key string) string {
-	k := strings.Index(line, `"`+key+`"`)
-	if k < 0 {
-		return ""
-	}
-	rest := line[k+len(key)+2:]
-	i := strings.IndexByte(rest, '"')
-	if i < 0 {
-		return ""
-	}
-	rest = rest[i+1:]
-	j := strings.IndexByte(rest, '"')
-	if j < 0 {
-		return ""
-	}
-	return rest[:j]
-}
-
-// payloadField extracts key from the `"payload"` object of a
-// session_meta line — not from the top level, so an outer field with the
-// same name can never be mistaken for it.
-func payloadField(line, key string) string {
-	i := strings.Index(line, `"payload"`)
-	if i < 0 {
-		return ""
-	}
-	return jsonStringField(line[i:], key)
-}
-
-// parseSessionTS parses an RFC3339 timestamp from a session record.
-func parseSessionTS(v string) (time.Time, bool) {
-	ts, err := time.Parse(time.RFC3339Nano, v)
-	if err != nil {
-		if ts, err = time.Parse("2006-01-02T15:04:05.000Z", v); err != nil {
-			return time.Time{}, false
-		}
-	}
-	return ts, true
-}
-
-// headLines calls fn for each of the first n lines of path, stopping
-// early when fn returns false.
-func headLines(path string, n int, fn func(line string) bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(io.LimitReader(f, 4<<20))
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
-	for n > 0 && sc.Scan() {
-		n--
-		if !fn(sc.Text()) {
-			return
-		}
-	}
-}
-
-// observeClaudeSessionFile scans ~/.claude/projects/**/*.jsonl for the
-// unique file whose first 64 lines record this cwd and a timestamp
-// within the window of the agent process's start (SPEC G3). The project
-// folder name is not trusted — distinct cwds slugify to the same dir —
-// so the recorded cwd field decides, and the id is the recorded
-// sessionId, never the file name.
-func observeClaudeSessionFile(cwd string, start time.Time) (string, bool) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false
-	}
-	root := filepath.Join(home, ".claude", "projects")
-	// A session file's recorded timestamp precedes its last write, so a
-	// file untouched since before the window cannot qualify; checking
-	// mtime first keeps the scan cheap.
-	cutoff := start.Add(-sessionFileWindow)
-	found := ""
-	count := 0
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
-			return nil
-		}
-		if info, err := d.Info(); err != nil || info.ModTime().Before(cutoff) {
-			return nil
-		}
-		var id, fcwd string
-		var ts time.Time
-		headLines(path, 64, func(line string) bool {
-			if id == "" {
-				id = jsonStringField(line, "sessionId")
-			}
-			if fcwd == "" {
-				fcwd = jsonStringField(line, "cwd")
-			}
-			if ts.IsZero() {
-				if v := jsonStringField(line, "timestamp"); v != "" {
-					if t, ok := parseSessionTS(v); ok {
-						ts = t
-					}
-				}
-			}
-			return id == "" || fcwd == "" || ts.IsZero()
-		})
-		if id == "" || fcwd != cwd || ts.IsZero() || absDur(ts.Sub(start)) > sessionFileWindow {
-			return nil
-		}
-		count++
-		found = id
-		return nil
-	})
-	if count != 1 {
-		return "", false
-	}
-	return found, true
-}
-
-// codexSessionMeta reads a rollout file's session_meta record (the first
-// line carrying one) and returns payload.id (or payload.session_id),
-// payload.cwd, and payload.timestamp.
-func codexSessionMeta(path string) (id, cwd string, ts time.Time, ok bool) {
-	headLines(path, 8, func(line string) bool {
-		if !strings.Contains(line, "session_meta") {
-			return true
-		}
-		id = payloadField(line, "id")
-		if id == "" {
-			id = payloadField(line, "session_id")
-		}
-		cwd = payloadField(line, "cwd")
-		ts, _ = parseSessionTS(payloadField(line, "timestamp"))
-		ok = true
-		return false
-	})
-	return id, cwd, ts, ok && id != "" && !ts.IsZero()
-}
-
-// observeCodexSessionFile scans the day folders sessions/YYYY/MM/DD
-// around the process start for the unique rollout whose session_meta
-// records this cwd and a timestamp within the window (SPEC G3). A meta
-// record without payload.cwd never counts.
-func observeCodexSessionFile(cwd string, start time.Time) (string, bool) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false
-	}
-	root := filepath.Join(home, ".codex", "sessions")
-	found := ""
-	count := 0
-	for _, day := range []time.Time{start.AddDate(0, 0, -1), start, start.AddDate(0, 0, 1)} {
-		dir := filepath.Join(root, day.Format("2006"), day.Format("01"), day.Format("02"))
-		ents, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range ents {
-			name := e.Name()
-			if e.IsDir() || !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, ".jsonl") {
-				continue
-			}
-			id, fcwd, ts, ok := codexSessionMeta(filepath.Join(dir, name))
-			if !ok || fcwd != cwd || absDur(ts.Sub(start)) > sessionFileWindow {
-				continue
-			}
-			count++
-			found = id
-		}
-	}
-	if count != 1 {
-		return "", false
-	}
-	return found, true
-}
-
-// observeCmdline reads the resume-shape argv of the pane's running
-// processes: `X --resume <id>`, `X --resume=<id>`, `X resume <id>`. It is
-// a launch-shape fallback only — the caller never lets it overwrite a
-// file-observed or reported id. All candidate processes must agree on one
-// id or the observation is ambiguous.
-func observeCmdline(job platform.ForegroundJob) (string, bool) {
-	found := ""
-	for _, pr := range job.Processes {
-		for i, arg := range pr.Argv {
-			var v string
-			switch {
-			case arg == "--resume" && i+1 < len(pr.Argv):
-				v = pr.Argv[i+1]
-			case strings.HasPrefix(arg, "--resume="):
-				v = strings.TrimPrefix(arg, "--resume=")
-			case arg == "resume" && i > 0 && i+1 < len(pr.Argv):
-				// codex-style `… resume <id>`; argv[i-1] is the binary.
-				v = pr.Argv[i+1]
-			}
-			if v == "" {
-				continue
-			}
-			if found == "" {
-				found = v
-			} else if found != v {
-				return "", false
-			}
-		}
-	}
-	return found, found != ""
-}
-
-func absDur(d time.Duration) time.Duration {
-	if d < 0 {
-		return -d
-	}
-	return d
-}
-
 // --- restore plan ----------------------------------------------------------
 
-// resumeArgsFor is the per-agent argv suffix appended to a configured
-// [agent_start.commands] argv to resume a session.
-func resumeArgsFor(agent string) []string {
-	if agent == "codex" {
-		return []string{"resume"}
-	}
-	return []string{"--resume"}
-}
-
-// shellJoin quotes argv for typing into a shell prompt.
-func shellJoin(argv []string) string {
-	var b strings.Builder
-	for i, a := range argv {
-		if i > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(shellQuote(a))
-	}
-	return b.String()
-}
-
-func shellQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-	safe := true
-	for _, r := range s {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("@%_+=:,./-~", r)) {
-			safe = false
-			break
-		}
-	}
-	if safe {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// buildResumeCommand renders the exact resume command line for a pane.
-// Returns ok=false when no safe command can be formed — the pane stays a
-// shell rather than resuming the wrong conversation.
 func (s *Server) buildResumeCommand(agent, kind, value string) (string, bool) {
-	if argv, ok := s.cfg.AgentStartCommand(agent); ok {
-		args := append(argv, resumeArgsFor(agent)...)
-		args = append(args, value)
-		return shellJoin(args), true
-	}
-	tmpl := s.cfg.RestoreTemplate(agent)
-	if tmpl == "" {
-		tmpl = builtinRestoreTemplates[agent]
-	}
-	if tmpl == "" || !strings.Contains(tmpl, "{session_id}") {
-		return "", false
-	}
-	// SPEC G3 fail-closed: a template carrying a standalone --last token
-	// can never produce an exact-session command.
-	for _, tok := range strings.Fields(tmpl) {
-		if tok == "--last" {
-			return "", false
-		}
-	}
-	return strings.ReplaceAll(tmpl, "{session_id}", value), true
+	return session.ResumeCommand(s.cfg, agent, kind, value)
 }
 
 // runAgentRestore builds and optionally executes the restore plan. Call

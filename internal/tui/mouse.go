@@ -364,13 +364,7 @@ func (a *App) closeTabAt(wsIdx, ti int) {
 	}
 	if len(a.st.Workspaces[wsIdx].Tabs) <= 1 {
 		if len(a.st.Workspaces) <= 1 {
-			a.lastSpawnError = nil
-			a.exec(model.CmdNewTab{Workspace: wsIdx})
-			if a.lastSpawnError != nil {
-				a.exec(model.CmdCloseTab{Workspace: wsIdx, Tab: a.st.Workspaces[wsIdx].ActiveTab})
-				return
-			}
-			a.exec(model.CmdCloseTab{Workspace: wsIdx, Tab: ti})
+			a.replaceLastWorkspace()
 		} else {
 			a.openCloseWorkspaceDialog(wsIdx)
 		}

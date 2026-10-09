@@ -70,7 +70,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 	name := "spaces"
 	if w := s.ActiveWorkspace(); w != nil {
 		name = in.WorkspaceNames[s.Active]
-		if name == "" {
+		if name == "" || w.CustomName {
 			name = WorkspaceDisplayName(w, in.Panes)
 		}
 	}
@@ -172,7 +172,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			}
 			f.Text(3, y, glyph.Rune, uv.Style{Fg: f.ThemeColor(glyph.Color), Bg: bg}, s.Cols)
 			name := in.WorkspaceNames[row.Ws]
-			if name == "" {
+			if name == "" || s.Workspaces[row.Ws].CustomName {
 				name = WorkspaceDisplayName(s.Workspaces[row.Ws], in.Panes)
 			}
 			f.Text(5, y, truncate(name, max(0, s.Cols-5)), uv.Style{Fg: f.Palette.Text, Bg: bg, Attrs: uv.AttrBold}, s.Cols)

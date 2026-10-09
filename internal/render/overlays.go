@@ -95,27 +95,26 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 func drawToast(f *Frame, t *Toast, out *Output) {
 	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
 	out.ToastRect = r
-	dot := uv.Style{Fg: f.Palette.Accent}
+	dot := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	if t.Kind == "needs_attention" {
-		dot = uv.Style{Fg: f.Palette.Yellow}
+		dot.Fg = f.Palette.Yellow
 	}
-	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim})
-	f.Fill(ix, iy, iw, 2, " ", uv.Style{Fg: f.Palette.Text})
+	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
+	f.Fill(ix, iy, iw, 2, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Set(ix, iy, "●", dot)
-	f.Text(ix+2, iy, t.Title, uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(ix+1, iy+1, t.Body, uv.Style{Fg: f.Palette.Dim}, ix+iw)
+	f.Text(ix+2, iy, t.Title, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
+	f.Text(ix, iy+1, "  "+t.Body, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 }
 
 // ToastRect anchors to the view rather than the terminal origin. Width is
 // intentionally UTF-8 bytes, as required by SPEC G9.
 func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
 	w := min(max(len(t.Title), len(t.Body))+6, max(0, view.W))
-	margin := min(1, max(0, view.W-w))
-	y := view.Y + 1
+	y := view.Y
 	if warning.H > 0 {
 		y = max(y, warning.Y+warning.H)
 	}
-	return layout.Rect{X: view.X + view.W - w - margin, Y: y, W: w, H: min(4, max(0, view.Y+view.H-y))}
+	return layout.Rect{X: view.X + view.W - w, Y: y, W: w, H: min(4, max(0, view.Y+view.H-y))}
 }
 
 // --- dialog ---
@@ -161,11 +160,18 @@ func DialogRects(d *Dialog, area layout.Rect) (outer, cancel, confirm layout.Rec
 	outer = layout.Rect{X: area.X + x, Y: area.Y + y, W: w, H: h}
 	x, y = outer.X, outer.Y
 	by := y + h - 2
-	confirmW := ansi.StringWidth("  ↵ " + d.Confirm + "   ")
+	confirmW := ansi.StringWidth(dialogConfirmLabel(d))
 	cancelW := ansi.StringWidth(" esc " + d.Cancel + " ")
 	confirm = layout.Rect{X: x + (w-confirmW-cancelW-2)/2, Y: by, W: confirmW, H: 1}
 	cancel = layout.Rect{X: confirm.X + confirmW + 2, Y: by, W: cancelW, H: 1}
 	return
+}
+
+func dialogConfirmLabel(d *Dialog) string {
+	if d.DimPanesOnly {
+		return " ↵ " + d.Confirm + " "
+	}
+	return "  ↵ " + d.Confirm + "   "
 }
 
 // HelpRect follows the same 76 by 22 cell overlay observed for settings and help.
@@ -258,13 +264,21 @@ func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
 	f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Text(ix, iy, " "+d.Title, uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
 	f.Text(ix, iy+1, " "+d.Detail, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+	if d.DimPanesOnly {
+		if at := strings.LastIndex(d.Detail, " — "); at >= 0 {
+			f.Text(ix, iy+1, " "+d.Detail[:at], uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
+		}
+	}
 	shown := min(len(d.Lines), 10)
 	for i := 0; i < shown; i++ {
+		if d.Lines[i] == "" {
+			continue
+		}
 		f.Text(ix, iy+2+i, " "+d.Lines[i], uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 	}
 
 	f.Text(cancel.X, cancel.Y, " esc "+d.Cancel+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, cancel.X+cancel.W)
-	f.Text(confirm.X, confirm.Y, "  ↵ "+d.Confirm+"   ", uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
+	f.Text(confirm.X, confirm.Y, dialogConfirmLabel(d), uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
 	out.DialogRect = outer
 	out.DialogCancel = cancel
 	out.DialogConfirm = confirm

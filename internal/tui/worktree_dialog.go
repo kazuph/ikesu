@@ -19,6 +19,11 @@ func (a *App) newWorktreeDialog(index int) {
 		return
 	}
 	id := fmt.Sprintf("s%d", a.st.Workspaces[index].ID)
+	if _, err := a.WorktreeSource("", &id); err != nil {
+		a.SetConfigWarning("gtx worktree actions require a workspace inside a Git work tree.")
+		a.configWarningBanner = true
+		return
+	}
 	branch := ""
 	a.dialog = &uiDialog{input: &branch, d: render.Dialog{Title: "New worktree", Detail: "New or existing branch name", InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
 		if branch == "" {

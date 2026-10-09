@@ -81,13 +81,14 @@ func (a *App) draw() {
 		}
 	}
 	in := render.Input{
-		TabScroll:       a.tabScroll,
-		TabScrollManual: wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
-		State:           a.st,
-		Navigator:       a.navigatorRender(),
-		ConfigWarning:   a.configWarning,
-		Settings:        a.settings,
-		MobileSwitcher:  a.mobileSwitcher, MobileScroll: a.mobileScroll,
+		TabScroll:           a.tabScroll,
+		TabScrollManual:     wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
+		State:               a.st,
+		Navigator:           a.navigatorRender(),
+		ConfigWarning:       a.configWarning,
+		ConfigWarningBanner: a.configWarningBanner,
+		Settings:            a.settings,
+		MobileSwitcher:      a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
 		Panes:         panes,
 		Scroll:        a.scroll,
@@ -441,5 +442,6 @@ func (a *App) SetPaneMetadataSource(f func(int) api.PaneMetadataView) { a.paneMe
 
 func (a *App) SetConfigWarning(message string) {
 	a.configWarning = message
+	a.configWarningBanner = false
 	a.dirty = true
 }

@@ -141,35 +141,38 @@ type App struct {
 	jobs     chan appJob
 	doneCh   chan struct{}
 
-	navigator         *navigatorView
-	resizeMode        bool
-	workspaceNavigate bool
-	navigateSelected  int
-	inputEOF          bool                // input close means quit (local mode)
-	detacher          func(reason string) // server mode: detach the client
-	sinkOn            func() bool         // nil = always draw
-	quitHook          func()              // runs on the loop right before Run returns
-	availHook         func(pid int)       // pane status changed; server flushes mail
-	changeHook        func()              // persistent state changed; server coalesces saves
-	restartHook       func()              // main menu "Restart server…" (server mode only)
-	standaloneRestart bool
-	sessionCwds       map[int]string // derived once from the pane snapshots of a session read
-	jobsPanel         bool
-	jobScroll         int
-	jobRows           []render.JobRow
-	mobileSwitcher    bool
-	mobileScroll      int
-	popupSel          *selState
-	popupCopy         *copyMode
-	popupAutoScroll   int
-	restoreHook       func(dryRun bool)                              // main menu "Restore agents…" (server mode only)
-	paneClosedHook    func(pid int)                                  // pane permanently removed; server cleans ledger
-	postExecHook      func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
-	exitedHook        func(pid int)                                  // pane process exited; server emits pane.exited
-	outHook           func(pid int)                                  // pane output changed; server emits pane.output_changed
-	worktreeHook      func(string, WorktreeOutcome, bool)
-	configWarning     string
-	warningsHook      func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
+	navigator           *navigatorView
+	resizeMode          bool
+	workspaceNavigate   bool
+	navigateSelected    int
+	inputEOF            bool                // input close means quit (local mode)
+	detacher            func(reason string) // server mode: detach the client
+	sinkOn              func() bool         // nil = always draw
+	quitHook            func()              // runs on the loop right before Run returns
+	availHook           func(pid int)       // pane status changed; server flushes mail
+	changeHook          func()              // persistent state changed; server coalesces saves
+	restartHook         func()              // main menu "Restart server…" (server mode only)
+	standaloneRestart   bool
+	sessionCwds         map[int]string // derived once from the pane snapshots of a session read
+	jobsPanel           bool
+	jobScroll           int
+	jobRows             []render.JobRow
+	mobileSwitcher      bool
+	mobileScroll        int
+	popupSel            *selState
+	popupCopy           *copyMode
+	popupAutoScroll     int
+	restoreHook         func(dryRun bool) // main menu "Restore agents…"
+	localRestore        bool
+	localObservedStart  map[int]time.Time
+	paneClosedHook      func(pid int)                                  // pane permanently removed; server cleans ledger
+	postExecHook        func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
+	exitedHook          func(pid int)                                  // pane process exited; server emits pane.exited
+	outHook             func(pid int)                                  // pane output changed; server emits pane.output_changed
+	worktreeHook        func(string, WorktreeOutcome, bool)
+	configWarning       string
+	configWarningBanner bool
+	warningsHook        func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix                                   bool
 	navKey                                   rune // prefix+<navKey> jumps to the toast target
@@ -566,6 +569,8 @@ func Run(in *os.File, out *os.File) (int, error) {
 	a.inputEOF = true
 	a.SetDetacher(func(string) { a.exec(model.CmdQuit{}) })
 	a.SetRestartHook(func() { a.standaloneRestart = true; a.exec(model.CmdQuit{}) })
+	a.SetRestoreHook(a.restoreLocalAgents)
+	a.localRestore = true
 	if cfg, err := config.Load(); err == nil {
 		a.SetUIFlags(cfg.ShowTabBar(), cfg.HideTabBarWhenSingleTab(), cfg.PaneBorders())
 		a.SetSidebarConfig(cfg, true)

@@ -196,7 +196,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			v.fixed = true
 		case "workspace":
 			v.text = in.WorkspaceNames[r.Ws]
-			if v.text == "" {
+			if v.text == "" || ws.CustomName {
 				v.text = WorkspaceDisplayName(ws, in.Panes)
 			}
 		case "tab":
@@ -246,7 +246,7 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			v.text = wsGlyph(s, r.Ws, in).Key
 		case "workspace":
 			v.text = in.WorkspaceNames[r.Ws]
-			if v.text == "" {
+			if v.text == "" || ws.CustomName {
 				v.text = WorkspaceDisplayName(ws, in.Panes)
 			}
 			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(ws.ID), style: tokenStyle(t, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})

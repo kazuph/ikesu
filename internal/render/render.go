@@ -110,6 +110,8 @@ type Dialog struct {
 	Lines []string
 	// Width pins the dialog width (0 → auto-fit contents).
 	Width int
+	// Workspace-close confirmation dims the panes while retaining the surrounding controls.
+	DimPanesOnly bool
 	// Input/InputEdit render the detail row as an editable text field.
 	Input       string
 	InputCursor int // rune index in Input
@@ -143,13 +145,14 @@ type Input struct {
 	DraggedWorkspace  int
 	Dragging          bool
 
-	Navigator     *Navigator
-	Settings      *Settings
-	Menu          *Menu
-	Dialog        *Dialog
-	Sel           *Selection
-	ConfigWarning string
-	Toast         *Toast
+	Navigator           *Navigator
+	Settings            *Settings
+	Menu                *Menu
+	Dialog              *Dialog
+	Sel                 *Selection
+	ConfigWarning       string
+	ConfigWarningBanner bool
+	Toast               *Toast
 
 	Spin            int    // working-spinner frame
 	Copied          string // flash text, e.g. " copied 12 chars "
@@ -259,6 +262,13 @@ func Compose(in Input) *Output {
 	}
 	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 		for i := range f.Cells {
+			if in.Dialog != nil && in.Dialog.DimPanesOnly {
+				x, y := i%f.W, i/f.W
+				area := s.PanesArea()
+				if x < area.X || x >= area.X+area.W || y < area.Y || y >= area.Y+area.H {
+					continue
+				}
+			}
 			f.Cells[i].Style.Attrs |= uv.AttrFaint
 		}
 	}
@@ -276,8 +286,17 @@ func Compose(in Input) *Output {
 		w := min(f.W, len(in.ConfigWarning)+2)
 		r := layout.Rect{X: f.W - w, Y: 1, W: w, H: 1}
 		out.ConfigWarningRect = r
-		f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.Surface})
-		f.Text(r.X+1, r.Y, in.ConfigWarning, uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.Surface}, r.X+r.W)
+		style := uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.Surface}
+		if in.ConfigWarningBanner {
+			r.Y = 0
+			out.ConfigWarningRect = r
+			style = uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Yellow, Attrs: uv.AttrBold}
+			if in.Dialog != nil || in.Help != nil || in.Settings != nil {
+				style.Attrs |= uv.AttrFaint
+			}
+		}
+		f.Fill(r.X, r.Y, r.W, r.H, " ", style)
+		f.Text(r.X+1, r.Y, in.ConfigWarning, style, r.X+r.W)
 	}
 	if in.Toast != nil {
 		drawToast(f, in.Toast, out)
@@ -378,6 +397,13 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		// Content.
 		if snap != nil {
 			f.CopyGrid(ix, iy, clipGrid(snap.Grid, iw, ih))
+		}
+		if in.SelectedWorkspace != nil && !pr.IsFocused {
+			for y := iy; y < iy+ih; y++ {
+				for x := ix; x < ix+iw; x++ {
+					f.Cells[y*f.W+x].Style.Attrs |= uv.AttrFaint
+				}
+			}
 		}
 
 		// Selection highlight (mouse drag or copy-mode anchor range).

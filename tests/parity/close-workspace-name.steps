@@ -1,0 +1,19 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02W"
+sleep 200ms
+send "\x03日本語\r"
+sleep 200ms
+send "\x02D"
+sleep 200ms
+screen @OUT@/named.txt
+cells @OUT@/named.json
+resize 50 15
+sleep 200ms
+screen @OUT@/narrow.txt
+cells @OUT@/narrow.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+kill

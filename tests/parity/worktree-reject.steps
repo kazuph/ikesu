@@ -1,0 +1,27 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02G"
+sleep 200ms
+screen @OUT@/rejected.txt
+cells @OUT@/rejected.json
+send "echo WORKTREE_REJECT_INPUT\r"
+sleep 200ms
+screen @OUT@/input.txt
+cells @OUT@/input.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+cells @OUT@/escape.json
+resize 100 25
+sleep 200ms
+screen @OUT@/resize.txt
+cells @OUT@/resize.json
+send "\x02s"
+sleep 200ms
+screen @OUT@/settings.txt
+cells @OUT@/settings.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+kill

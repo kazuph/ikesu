@@ -1,0 +1,15 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02w"
+sleep 200ms
+screen @OUT@/navigate.txt
+cells @OUT@/navigate.json
+send "c"
+sleep 200ms
+screen @OUT@/dialog.txt
+cells @OUT@/dialog.json
+send "\r"
+sleep 200ms
+screen @OUT@/result.txt
+cells @OUT@/result.json
+kill

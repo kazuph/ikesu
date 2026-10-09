@@ -171,6 +171,7 @@ func (a *App) reloadSidebarConfig() {
 	a.SetPaneKeybinds(c)
 	a.syncLayout()
 	a.changed()
+	a.ShowToast("reloaded config", "using config.toml", "info", -1)
 }
 func (a *App) SetWorkspaceTokenSource(source func(int) map[string]string) {
 	a.workspaceTokenSource = source
