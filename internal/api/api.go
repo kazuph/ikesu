@@ -76,6 +76,7 @@ const (
 	MethodAgentGet                = "agent.get"
 	MethodAgentRead               = "agent.read"
 	MethodAgentSend               = "agent.send"
+	MethodAgentPrompt             = "agent.prompt"
 	MethodAgentRename             = "agent.rename"
 	MethodAgentFocus              = "agent.focus"
 	MethodAgentStart              = "agent.start"

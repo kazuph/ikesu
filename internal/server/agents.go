@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -23,6 +24,7 @@ func (s *Server) agentInfoAt(pid, wsIdx, tabIdx int) api.AgentInfo {
 
 	var sn runtime.Snapshot
 	if p := s.sup.Get(pid); p != nil {
+		p.PollProcess()
 		sn = p.Snapshot()
 	}
 	agent := sn.AgentID
@@ -39,6 +41,7 @@ func (s *Server) agentInfoAt(pid, wsIdx, tabIdx int) api.AgentInfo {
 		cwd = ws.Cwd
 	}
 	status := s.app.PaneStatusKey(pid)
+	pending, ready := s.agentReadiness(pid, agent, api.AgentStatus(status), sn.Dead)
 	paneID := fmtPaneID(pid)
 	return api.AgentInfo{
 		TerminalID:     paneID,
@@ -57,7 +60,8 @@ func (s *Server) agentInfoAt(pid, wsIdx, tabIdx int) api.AgentInfo {
 		Cwd:            optString(cwd),
 		ForegroundCwd:  optString(sn.Cwd),
 		TerminalTitle:  optString(sn.OSCTitle),
-		InteractiveRdy: status != "blocked",
+		InteractiveRdy: ready,
+		LaunchPending:  pending,
 	}
 }
 
@@ -238,8 +242,12 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 	if p.Name != "" {
 		s.app.ExecCmd(model.CmdRenamePane{Pane: model.PaneID(pid), Label: p.Name})
 	}
-	return api.Success(id, api.AgentInfoResult{
-		Type:  "agent_info",
+	if s.agentLaunches == nil {
+		s.agentLaunches = map[int]*agentLaunch{}
+	}
+	s.agentLaunches[pid] = &agentLaunch{started: time.Now()}
+	return api.Success(id, api.AgentStartedResult{
+		Type: "agent_started", Argv: append([]string(nil), p.Argv...),
 		Agent: s.agentInfoAt(pid, wsIdx, tabIdx),
 	})
 }

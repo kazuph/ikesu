@@ -363,6 +363,12 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 		pane.SetAgent(p.Agent)
 	}
 	s.app.SetReported(pid, p.Agent, p.State)
+	if launch := s.agentLaunches[pid]; launch != nil {
+		pane := s.sup.Get(pid)
+		if pane != nil {
+			s.agentReadiness(pid, p.Agent, api.AgentStatus(p.State), pane.Snapshot().Dead)
+		}
+	}
 	if s.reportSources == nil {
 		s.reportSources = map[int]string{}
 	}

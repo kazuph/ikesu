@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"github.com/kazuph/goterrace/internal/teststate"
+	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,8 +38,16 @@ func TestG9ForegroundCacheReusesScanAndInvalidatesCwdAndProgram(t *testing.T) {
 	}
 	wait(func() bool { p.PollProcess(); return p.Snapshot().Cwd == dir && len(p.processCache.job.Processes) > 0 })
 	readAt := p.processCache.readAt
-	p.PollProcess()
+	keyBefore := p.processCache.key
+	for i := 0; i < 10; i++ {
+		_ = p.Snapshot()
+		_ = p.SpawnCwd()
+	}
 	if !p.processCache.readAt.Equal(readAt) {
+		t.Fatal("cached session pane reads repeated a foreground job scan")
+	}
+	p.PollProcess()
+	if p.processCache.key == keyBefore && !p.processCache.readAt.Equal(readAt) {
 		t.Fatal("unchanged process group scan not reused")
 	}
 	if p.processCache.key.shellPID != p.ShellPID() || p.processCache.key.shellCwd != dir || p.processCache.key.leaderCwd != dir {
@@ -51,6 +60,21 @@ func TestG9ForegroundCacheReusesScanAndInvalidatesCwdAndProgram(t *testing.T) {
 	if p.processCache.readAt.Equal(readAt) {
 		t.Fatal("cwd change reused old scan")
 	}
+	readAt = p.processCache.readAt
+	if _, err := p.WriteToPTY([]byte("/bin/sleep 60\n")); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool {
+		p.PollProcess()
+		return p.processCache.key.groupID != p.ShellPID() && p.processCache.key.leaderName == "sleep"
+	})
+	if p.processCache.readAt.Equal(readAt) {
+		t.Fatal("new foreground process group reused old scan")
+	}
+	if err := unix.Kill(-p.processCache.key.groupID, unix.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool { p.PollProcess(); return p.processCache.key.groupID == p.ShellPID() })
 	readAt = p.processCache.readAt
 	if _, err := p.WriteToPTY([]byte("exec /bin/sleep 60\n")); err != nil {
 		t.Fatal(err)

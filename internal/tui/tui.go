@@ -147,6 +147,7 @@ type App struct {
 	changeHook        func()              // persistent state changed; server coalesces saves
 	restartHook       func()              // main menu "Restart server…" (server mode only)
 	standaloneRestart bool
+	sessionCwds       map[int]string // derived once from the pane snapshots of a session read
 	jobsPanel         bool
 	jobScroll         int
 	jobRows           []render.JobRow

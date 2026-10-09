@@ -32,7 +32,7 @@ func procName(pid int) string {
 }
 
 // procArgs parses KERN_PROCARGS2: int32 argc, NUL-terminated exec path
-// (padded to int alignment), then argv[0..argc-1] as NUL-terminated strings.
+// (followed by NUL padding), then argv[0..argc-1] as NUL-terminated strings.
 func procArgs(pid int) []string {
 	buf, err := unix.SysctlRaw("kern.procargs2", pid)
 	if err != nil || len(buf) < 8 {
@@ -48,8 +48,10 @@ func procArgs(pid int) []string {
 		pos++
 	}
 	pos++
-	// Align to int boundary.
-	pos = (pos + 3) &^ 3
+	// The executable path is followed by NUL padding, not a fixed alignment.
+	for pos < len(buf) && buf[pos] == 0 {
+		pos++
+	}
 	args := make([]string, 0, argc)
 	for len(args) < argc && pos < len(buf) {
 		start := pos

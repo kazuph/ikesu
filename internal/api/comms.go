@@ -158,6 +158,7 @@ type AgentInfoResult struct {
 }
 
 type AgentStartedResult struct {
+	Argv  []string  `json:"argv"`
 	Type  string    `json:"type"` // "agent_started"
 	Agent AgentInfo `json:"agent"`
 }

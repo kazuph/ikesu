@@ -203,9 +203,10 @@ func (a *App) selectWorkspace(i int) {
 // newWorkspace creates a workspace in the focused pane's cwd.
 func (a *App) newWorkspace() {
 	cwd := a.cwd
-	if p := a.sup.Get(a.focusedPane()); p != nil {
-		if c := p.SpawnCwd(); c != "" {
-			cwd = c
+	if ws := a.st.ActiveWorkspace(); ws != nil {
+		cwd = ws.Cwd
+		if cached := a.sessionCwds[ws.ID]; cached != "" {
+			cwd = cached
 		}
 	}
 	a.exec(model.CmdNewWorkspace{Cwd: cwd})

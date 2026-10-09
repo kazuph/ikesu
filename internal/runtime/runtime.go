@@ -360,6 +360,7 @@ func (p *Pane) pumpEmuToPTY() {
 }
 
 func (p *Pane) waitExit() {
+	defer close(p.done)
 	_ = p.cmd.Wait()
 	p.mu.Lock()
 	p.dead = true

@@ -24,10 +24,10 @@ func (a *App) focusedPane() int {
 // glyph returns the pane's display status glyph.
 func (a *App) glyph(pid int) render.StatusGlyph {
 	tr := a.trackers[pid]
-	if tr == nil {
-		return render.StatusGlyph{Key: "unknown", Rune: "·", Color: render.Dim}
+	key := "unknown"
+	if tr != nil {
+		key = tr.Key()
 	}
-	key := tr.Key()
 	if r, ok := a.reported[pid]; ok && r.state != "" {
 		key = r.state
 	}
@@ -190,6 +190,7 @@ type fossilWatch struct {
 // paneSnaps builds render snapshots for every live pane.
 func (a *App) paneSnaps() map[int]*render.PaneSnap {
 	out := map[int]*render.PaneSnap{}
+	a.sessionCwds = make(map[int]string, len(a.st.Workspaces))
 	active := map[int]bool{}
 	if ws := a.st.ActiveWorkspace(); ws != nil {
 		if l := ws.ActiveLayout(); l != nil {
@@ -206,6 +207,9 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					continue
 				}
 				sn := p.Snapshot()
+				if t == ws.TabRef() && pid == t.Layout.Focused() && sn.Cwd != "" {
+					a.sessionCwds[ws.ID] = sn.Cwd
+				}
 				snap := &render.PaneSnap{
 					Label:  labelFor(sn, p),
 					Title:  sn.OSCTitle,

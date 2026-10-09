@@ -123,6 +123,11 @@ func (r *runner) request(id, method string, params any) ([]byte, error) {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	if method == api.MethodAgentPrompt {
+		if p, ok := params.(api.AgentPromptParams); ok && p.Wait != nil {
+			_ = conn.SetDeadline(time.Time{})
+		}
+	}
 	if err := api.WriteRequest(conn, api.Request{
 		ID:     id,
 		Method: method,

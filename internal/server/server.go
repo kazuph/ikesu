@@ -45,6 +45,8 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	agentLaunches     map[int]*agentLaunch
+	closing           atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
 	workspaceMetadata map[int]map[string]*workspaceMetadata
 	paneMetadata      map[int]*paneMetadata
 	reportSources     map[int]string
@@ -268,6 +270,11 @@ func Run(session, version string) (int, error) {
 	s.app.SetDetacher(func(reason string) { s.detach(reason) })
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetQuitHook(func() {
+		if s.restarting {
+			s.closing.Store(2)
+		} else {
+			s.closing.Store(1)
+		}
 		s.saveSession()
 		if s.restarting {
 			s.notifyRestart()
@@ -288,6 +295,11 @@ func Run(session, version string) (int, error) {
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) {
+		if s.agentLaunches[pid] != nil {
+			if wi, ti := s.app.State().FindPane(pid); wi >= 0 {
+				s.agentInfoAt(pid, wi, ti)
+			}
+		}
 		s.onPaneStatus(pid)
 		s.emitAgentEvents(pid)
 	})
@@ -475,6 +487,16 @@ func (s *Server) attach(conn net.Conn) {
 	}
 
 	s.mu.Lock()
+	if closing := s.closing.Load(); closing != 0 {
+		s.mu.Unlock()
+		kind := "exit"
+		if closing == 2 {
+			kind = "restart"
+		}
+		_ = c.send(clientMsg{Type: kind})
+		c.close()
+		return
+	}
 	old := s.client
 	s.client = c
 	s.mu.Unlock()

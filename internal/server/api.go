@@ -41,6 +41,11 @@ func (s *Server) serveAPI(conn net.Conn) {
 				return
 			}
 			continue
+		case api.MethodAgentPrompt:
+			if err := api.WriteResponse(conn, s.agentPrompt(req)); err != nil {
+				return
+			}
+			continue
 		case api.MethodPaneWaitForOutput:
 			if err := api.WriteResponse(conn, s.waitForOutput(req)); err != nil {
 				return

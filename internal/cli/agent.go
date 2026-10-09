@@ -17,6 +17,7 @@ func printAgentHelp(w *runner) {
 	fmt.Fprintln(w.errOut(), "  gtx agent get <target>")
 	fmt.Fprintln(w.errOut(), "  gtx agent read <target> [--source visible|recent|recent-unwrapped] [--lines N]")
 	fmt.Fprintln(w.errOut(), "  gtx agent send <target> <text>")
+	fmt.Fprintln(w.errOut(), "  gtx agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]")
 	fmt.Fprintln(w.errOut(), "  gtx agent rename <target> <name>")
 	fmt.Fprintln(w.errOut(), "  gtx agent focus <target>")
 	fmt.Fprintln(w.errOut(), "  gtx agent wait <target> --status <idle|working|blocked|done|unknown> [--timeout MS]")
@@ -48,6 +49,8 @@ func (r *runner) agentCLI(args []string) int {
 		}
 		return r.printResult("cli:agent:send", api.MethodAgentSend,
 			api.AgentSendParams{Target: rest[0], Text: joinArgs(rest[1:])})
+	case "prompt":
+		return r.agentPromptCLI(rest)
 	case "rename":
 		if len(rest) != 2 {
 			return usageErr(r, "usage: gtx agent rename <target> <name>")
@@ -218,7 +221,7 @@ func (r *runner) agentWaitCLI(args []string) int {
 	}
 	target := args[0]
 	status := ""
-	timeout := 30000
+	timeout := api.DefaultAgentWaitTimeoutMS
 	for i := 1; i < len(args); {
 		switch args[i] {
 		case "--status":
