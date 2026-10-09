@@ -38,32 +38,39 @@ func tsToMs(s string) *int64 {
 
 // DBPath is the dispatch database location: $GTX_DB_PATH when set, else
 // gtx.db under the state dir.
-func DBPath() string {
+func DBPath(sessionName ...string) string {
 	if p := os.Getenv(DBPathEnvVar); p != "" {
 		return p
 	}
-	return filepath.Join(api.StateDir(), "gtx.db")
+	return filepath.Join(sessionDataDir(sessionName), "gtx.db")
+}
+
+func sessionDataDir(names []string) string {
+	if len(names) == 0 || names[0] == "" || names[0] == api.DefaultSession {
+		return api.StateDir()
+	}
+	return filepath.Join(api.StateDir(), "sessions", names[0])
 }
 
 // DBExists reports whether the database file exists.
-func DBExists() bool {
-	_, err := os.Stat(DBPath())
+func DBExists(sessionName ...string) bool {
+	_, err := os.Stat(DBPath(sessionName...))
 	return err == nil
 }
 
 // JobLogDir is where `gtx run` job logs live.
-func JobLogDir() string {
-	return filepath.Join(api.StateDir(), "job-logs")
+func JobLogDir(sessionName ...string) string {
+	return filepath.Join(sessionDataDir(sessionName), "job-logs")
 }
 
 // JobLogPath is the log file name for a job: <id>-<label>.log, or
 // <id>.log when the label is empty. `gtx log <job>` looks logs up under
 // this scheme.
-func JobLogPath(jobID, label string) string {
+func JobLogPath(jobID, label string, sessionName ...string) string {
 	if safe := sanitizeLabel(label); safe != "" {
-		return filepath.Join(JobLogDir(), jobID+"-"+safe+".log")
+		return filepath.Join(JobLogDir(sessionName...), jobID+"-"+safe+".log")
 	}
-	return filepath.Join(JobLogDir(), jobID+".log")
+	return filepath.Join(JobLogDir(sessionName...), jobID+".log")
 }
 
 // sanitizeLabel keeps a label usable inside a file name.

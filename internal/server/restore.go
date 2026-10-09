@@ -55,7 +55,7 @@ var builtinRestoreTemplates = map[string]string{
 // the DB file does not exist no ledger rows can exist either; avoid
 // opening the store so reads stay free of the engine's memory cost.
 func (s *Server) ledgerEntry(pid int) (dispatch.PaneSession, bool) {
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return dispatch.PaneSession{}, false
 	}
 	st, err := s.db()
@@ -117,7 +117,7 @@ func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
 // ledgerDel drops the ledger row for a permanently closed pane.
 func (s *Server) ledgerDel(pid int) {
 	delete(s.observedStart, pid)
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return
 	}
 	if st, err := s.db(); err == nil {

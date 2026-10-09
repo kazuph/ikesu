@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +66,16 @@ func (o Options) stderr() io.Writer {
 
 // Run executes one CLI command and returns its exit code.
 func Run(args []string, o Options) int {
+	if o.Session == "" {
+		o.Session = api.DefaultSession
+	}
+	if !o.Explicit {
+		socket := api.APISocket(o.Session, false, o.getenv)
+		name := filepath.Base(filepath.Dir(socket))
+		if api.ValidSessionName(name) && socket == api.APISocket(name, true, o.getenv) {
+			o.Session = name
+		}
+	}
 	r := &runner{o: o}
 	if len(args) == 0 {
 		fmt.Fprintln(r.errOut(), "usage: gtx <pane|workspace|tab|server|send|inbox|msg|run|log|agent> <command> ...")

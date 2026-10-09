@@ -116,7 +116,7 @@ func (s *Server) mailInFlightSet() map[int64]bool {
 // db lazily opens the shared dispatch store; the error is cached.
 func (s *Server) db() (*dispatch.Store, error) {
 	s.dbOnce.Do(func() {
-		s.store, s.dbErr = dispatch.Open(dispatch.DBPath())
+		s.store, s.dbErr = dispatch.Open(dispatch.DBPath(s.session))
 	})
 	return s.store, s.dbErr
 }
@@ -395,7 +395,7 @@ func (s *Server) flushRegularForRecipient(recipient string) bool {
 // to the pane id, oldest first. No DB file means nothing is queued; skip
 // opening the store so status-transition flushes do not load the engine.
 func (s *Server) flushRegularForPane(pid int) bool {
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return false
 	}
 	store, err := s.db()
@@ -421,7 +421,7 @@ func (s *Server) flushRegularForPane(pid int) bool {
 // recipient; job mail reaches working agents too, only blocked panes wait.
 // No DB file means no queued nudges; skip opening the store.
 func (s *Server) flushJobNudgesFor(toAgent string) bool {
-	if !dispatch.DBExists() {
+	if !dispatch.DBExists(s.session) {
 		return false
 	}
 	store, err := s.db()

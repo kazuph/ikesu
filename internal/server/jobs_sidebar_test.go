@@ -12,7 +12,7 @@ func TestG2JobsHistoryRowsRemainWhenExpiredAndDeadRunnerDotsDisappear(t *testing
 	teststate.Lock(t)
 	s := newTestServer(t, "history")
 	s.app.SetJobSource(s.jobSnapshot)
-	store, err := dispatch.Open(dispatch.DBPath())
+	store, err := dispatch.Open(dispatch.DBPath(s.session))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestG2JobsHistoryRowsRemainWhenExpiredAndDeadRunnerDotsDisappear(t *testing
 		}
 	}
 	// Write actual historical data to the isolated SQLite DB, without replacing a dependency.
-	db, err := sqlite3.Open(dispatch.DBPath())
+	db, err := sqlite3.Open(dispatch.DBPath(s.session))
 	if err != nil {
 		t.Fatal(err)
 	}

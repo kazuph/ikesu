@@ -207,7 +207,7 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 		}
 	}
 	parts := []string{
-		shellQuote(bin), "__pane-run",
+		shellQuote(bin), "--session", shellQuote(r.o.Session), "__pane-run",
 		"--parent-agent", shellQuote(callerAgent),
 		"--target", shellQuote(paneID),
 		"--job-id", shellQuote(job),
@@ -290,7 +290,7 @@ func (r *runner) runListCLI(args []string) int {
 		fmt.Fprintln(r.errOut(), "usage: gtx run list")
 		return 0
 	}
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath())
+	store, err := dispatch.OpenReadOnly(dispatch.DBPath(r.o.Session))
 	if err != nil {
 		fmt.Fprintf(r.errOut(), "gtx: cannot open store: %v\n", err)
 		return 1
@@ -329,7 +329,7 @@ func (r *runner) logCLI(args []string) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "--db":
-			fmt.Fprintln(r.out(), dispatch.DBPath())
+			fmt.Fprintln(r.out(), dispatch.DBPath(r.o.Session))
 			return 0
 		case "--schema":
 			fmt.Fprint(r.out(), dispatch.Schema())
@@ -375,7 +375,7 @@ func (r *runner) logJobCLI(args []string) int {
 		}
 	}
 	logPath := ""
-	if store, err := dispatch.OpenReadOnly(dispatch.DBPath()); err == nil {
+	if store, err := dispatch.OpenReadOnly(dispatch.DBPath(r.o.Session)); err == nil {
 		if job, jerr := store.CommandRow(jobID); jerr == nil && job != nil {
 			printRunListJob(r.out(), *job)
 			if job.CallerAgent != "" {
@@ -392,7 +392,7 @@ func (r *runner) logJobCLI(args []string) int {
 			fmt.Fprintf(r.errOut(), "job not found: %s\n", jobID)
 			return 1
 		}
-		matches, _ := filepath.Glob(filepath.Join(dispatch.JobLogDir(), jobID+"-*.log"))
+		matches, _ := filepath.Glob(filepath.Join(dispatch.JobLogDir(r.o.Session), jobID+"-*.log"))
 		if len(matches) == 0 {
 			fmt.Fprintf(r.errOut(), "job not found: %s\n", jobID)
 			return 1
@@ -476,7 +476,7 @@ func (r *runner) paneRunWrapper(args []string) int {
 		label = defaultRunLabel(args[i+1:])
 	}
 
-	logPath := dispatch.JobLogPath(jobID, label)
+	logPath := dispatch.JobLogPath(jobID, label, r.o.Session)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		fmt.Fprintf(r.errOut(), "gtx __pane-run: cannot create log dir: %v\n", err)
 		return 1
