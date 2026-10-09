@@ -1,0 +1,17 @@
+clicktext "[menu]"
+sleep 200ms
+screen @OUT@/main-menu.txt
+cells @OUT@/main-menu.json
+clicktext "stop server"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b[Z"
+sleep 200ms
+screen @OUT@/key.txt
+cells @OUT@/key.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+kill

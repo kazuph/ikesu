@@ -2,6 +2,8 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
@@ -10,6 +12,7 @@ func TestParityNameInputAppendsUnicodeAndClearsWithControlC(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.st.Workspaces[0].Name = "a界b"
+	a.st.Workspaces[0].CustomName = true
 	a.renameWorkspaceDialog(0)
 	if a.dialog.d.InputCursor != 3 {
 		t.Fatal("initial cursor")
@@ -34,5 +37,43 @@ func TestParityNameInputAppendsUnicodeAndClearsWithControlC(t *testing.T) {
 	a.dialogKey(uv.Key{Code: uv.KeyEnter})
 	if a.st.Workspaces[0].Name != "a界by" {
 		t.Fatal(a.st.Workspaces[0].Name)
+	}
+}
+
+func TestParityConfirmationRightClickKeepsDialog(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.openQuitDialog()
+	dialog := a.dialog
+	r, _, _ := render.DialogRects(&dialog.d, a.st.PanesArea())
+	m := uv.Mouse{X: r.X + r.W/2, Y: r.Y + 1, Button: uv.MouseRight}
+	for _, kind := range []input.Kind{input.KindMouseClick, input.KindMouseRelease} {
+		a.onMouse(input.Event{Kind: kind, Mouse: m})
+		if a.dialog != dialog {
+			t.Fatal("right press/release must keep the confirmation")
+		}
+	}
+}
+
+func TestParityStopConfirmationCancelReturnsToNavigate(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.openQuitDialog()
+	a.dialogKey(uv.Key{Code: uv.KeyEscape})
+	if a.dialog != nil || !a.workspaceNavigate || a.navigateSelected != a.st.Active {
+		t.Fatal("cancel must return to workspace navigation")
+	}
+	a.openQuitDialog()
+	if a.workspaceNavigate {
+		t.Fatal("reopened confirmation must hide navigation mode")
+	}
+	r, cancel, _ := render.DialogRects(&a.dialog.d, a.st.PanesArea())
+	for _, point := range []uv.Mouse{{X: cancel.X, Y: cancel.Y, Button: uv.MouseLeft},
+		{X: r.X + 1, Y: r.Y + 1, Button: uv.MouseLeft}} {
+		a.openQuitDialog()
+		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: point})
+		if a.dialog != nil || !a.workspaceNavigate {
+			t.Fatal("cancel button and body press must return to navigation")
+		}
 	}
 }

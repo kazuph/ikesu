@@ -1,0 +1,23 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+rclick 10 5
+sleep 200ms
+clicktext "Rename"
+sleep 200ms
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+send "\x03日本語"
+sleep 200ms
+screen @OUT@/typed.txt
+cells @OUT@/typed.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+rclick 10 5
+sleep 200ms
+clicktext "Rename"
+sleep 200ms
+screen @OUT@/reopened.txt
+cells @OUT@/reopened.json
+kill

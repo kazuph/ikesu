@@ -273,10 +273,15 @@ func (a *App) closeFocusedPane() {
 // --- dialogs ---
 
 func (a *App) openQuitDialog() {
+	a.workspaceNavigate = false
 	a.dialog = &uiDialog{
 		d: render.Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76},
 		run: func(a *App) {
 			a.exec(model.CmdQuit{})
+		},
+		cancel: func(a *App) {
+			a.workspaceNavigate = true
+			a.navigateSelected = a.st.Active
 		},
 	}
 	a.dirty = true
@@ -296,6 +301,14 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 	a.dirty = true
 }
 
+func (a *App) cancelDialog() {
+	d := a.dialog
+	a.dialog = nil
+	if d.cancel != nil {
+		d.cancel(a)
+	}
+}
+
 func (a *App) dialogKey(k uv.Key) {
 	d := a.dialog
 	switch {
@@ -303,7 +316,7 @@ func (a *App) dialogKey(k uv.Key) {
 		a.dialog = nil
 		d.run(a)
 	case k.Code == uv.KeyEscape:
-		a.dialog = nil
+		a.cancelDialog()
 	case d.input != nil:
 		runes := []rune(*d.input)
 		switch {

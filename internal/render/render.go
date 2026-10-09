@@ -76,11 +76,12 @@ type Selection struct {
 
 // Menu is a right-click popup.
 type Menu struct {
-	X, Y  int // requested position (top-left), clamped at draw
-	Title string
-	Items []MenuItem
-	Hover int // index under the pointer; -1 = none
-	Sel   int // keyboard-selected item; -1 = none
+	X, Y   int // requested position (top-left), clamped at draw
+	Title  string
+	Items  []MenuItem
+	Global bool
+	Hover  int // index under the pointer; -1 = none
+	Sel    int // keyboard-selected item; -1 = none
 }
 
 // MenuItem is one menu row; Separator rows draw a rule.
@@ -249,7 +250,7 @@ func Compose(in Input) *Output {
 	drawPanes(f, s, in, out)
 	if in.ModeHint != "" {
 		area := s.PanesArea()
-		drawCopyHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
+		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
 	}
 	drawActionBar(f, s, in, out)
 	drawPopup(f, in, out)
@@ -265,7 +266,11 @@ func Compose(in Input) *Output {
 		drawMenu(f, in.Menu, out)
 	}
 	if in.Dialog != nil {
-		drawDialog(f, in.Dialog, out)
+		area := s.PanesArea()
+		if in.Dialog.InputEdit {
+			area = layout.Rect{W: f.W, H: f.H}
+		}
+		drawDialog(f, in.Dialog, out, area)
 	}
 	if in.ConfigWarning != "" {
 		w := min(f.W, len(in.ConfigWarning)+2)
@@ -507,7 +512,7 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	out.ActionBar.Area = area
 	base := uv.Style{Fg: f.Palette.Dim} // reset bg, overlay0 fg
 	btn := uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}
-	f.Fill(area.X, area.Y, area.W, 1, " ", uv.Style{})
+	f.Fill(area.X, area.Y, area.W, 1, " ", base)
 
 	copyLabel := in.CopyLabel
 	if copyLabel == "" {
@@ -515,7 +520,7 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	}
 	cw := len([]rune(copyLabel))
 	if area.X+cw <= area.X+area.W {
-		f.Text(area.X, area.Y, copyLabel, base, area.X+area.W)
+		f.Text(area.X, area.Y, copyLabel, btn, area.X+area.W)
 		out.ActionBar.Copy = layout.Rect{X: area.X, Y: area.Y, W: cw, H: 1}
 	}
 

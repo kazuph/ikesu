@@ -1,0 +1,23 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[menu]"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b[B"
+sleep 200ms
+screen @OUT@/second.txt
+cells @OUT@/second.json
+send "\x1b[B"
+sleep 200ms
+screen @OUT@/after-separator.txt
+cells @OUT@/after-separator.json
+mouse wheel-down 80 20
+sleep 200ms
+screen @OUT@/wheel.txt
+cells @OUT@/wheel.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/closed.txt
+cells @OUT@/closed.json
+kill

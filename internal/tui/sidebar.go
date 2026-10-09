@@ -133,7 +133,7 @@ func (a *App) duplicateDialog(index int) {
 }
 
 func (a *App) renameWorkspaceDialog(index int) {
-	name := a.st.Workspaces[index].Name
+	name := render.WorkspaceDisplayName(a.st.Workspaces[index], a.paneSnaps())
 	a.dialog = &uiDialog{input: &name, d: render.Dialog{Title: "Rename workspace", Input: name, InputCursor: len([]rune(name)), InputEdit: true, Confirm: "rename", Cancel: "cancel"}, run: func(a *App) { a.exec(model.CmdRenameWorkspace{Index: index, Name: name}) }}
 }
 func (a *App) newTabNameDialog() {

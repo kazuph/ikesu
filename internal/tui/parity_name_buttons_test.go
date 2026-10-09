@@ -3,6 +3,7 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
@@ -18,7 +19,7 @@ func TestParityNameButtonsSaveClearAndCancelWithRealPTY(t *testing.T) {
 	old := a.focusedPane()
 	ws := a.st.ActiveWorkspace()
 	click := func(button int) {
-		r, _, _ := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
+		r, _, _ := render.DialogRects(&a.dialog.d, layout.Rect{W: a.st.Cols, H: a.st.Rows})
 		hit := render.NameInputButtons(r)[button]
 		m := uv.Mouse{X: hit.X + 1, Y: hit.Y, Button: uv.MouseLeft}
 		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: m})

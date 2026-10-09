@@ -92,9 +92,10 @@ type uiMenu struct {
 // uiDialog is an open confirmation dialog; input != nil turns the detail
 // row into a single-line text field (run sees the entered value).
 type uiDialog struct {
-	d     render.Dialog
-	run   func(a *App) // confirm action
-	input *string      // text-entry mode when non-nil
+	d      render.Dialog
+	run    func(a *App) // confirm action
+	cancel func(a *App)
+	input  *string // text-entry mode when non-nil
 }
 
 // sepDrag tracks a split-border ratio drag.

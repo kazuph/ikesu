@@ -191,7 +191,7 @@ func (a *App) mainMenuItems() []render.MenuItem {
 
 // openMainMenu shows the [menu] global menu.
 func (a *App) openMainMenu(x, y int) {
-	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: a.mainMenuItems()}}
+	a.menu = &uiMenu{justOpened: true, kind: menuMain, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: a.mainMenuItems(), Global: true}}
 }
 
 // activateMenu runs the command for menu item i and closes the menu.
@@ -430,7 +430,7 @@ func (a *App) dialogMouse(ev input.Event) {
 	}
 	m := ev.Mouse
 	if a.dialog.d.InputEdit {
-		r, _, _ := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
+		r, _, _ := render.DialogRects(&a.dialog.d, layout.Rect{W: a.st.Cols, H: a.st.Rows})
 		buttons := render.NameInputButtons(r)
 		if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, buttons[0]) {
 			d := a.dialog
@@ -443,7 +443,10 @@ func (a *App) dialogMouse(ev input.Event) {
 		}
 		return
 	}
-	_, cancel, confirm := render.DialogRects(&a.dialog.d, a.st.Cols, a.st.Rows)
+	if m.Button == uv.MouseRight {
+		return
+	}
+	_, cancel, confirm := render.DialogRects(&a.dialog.d, a.st.PanesArea())
 	switch {
 	case pointIn(m.X, m.Y, confirm):
 		if ev.Kind == input.KindMouseClick {
@@ -452,8 +455,8 @@ func (a *App) dialogMouse(ev input.Event) {
 			d.run(a)
 		}
 	case pointIn(m.X, m.Y, cancel):
-		a.dialog = nil
+		a.cancelDialog()
 	default:
-		a.dialog = nil
+		a.cancelDialog()
 	}
 }

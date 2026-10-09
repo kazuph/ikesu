@@ -51,6 +51,9 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 	border := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)
 	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
+	if m.Global {
+		f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
+	}
 	out.MenuRect = r
 	out.MenuItemRows = nil
 	for i, it := range m.Items {
@@ -60,18 +63,28 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		row := layout.Rect{X: ix, Y: iy + i, W: iw, H: 1}
 		out.MenuItemRows = append(out.MenuItemRows, row)
 		if it.Separator {
-			f.Text(ix, iy+i, "  --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+			if m.Global {
+				f.Fill(ix, iy+i, iw, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
+			} else {
+				f.Text(ix+1, iy+i, " --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+			}
 			continue
 		}
 		sty := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}
 		if i == m.Hover || i == m.Sel {
 			sty = uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
-			f.Fill(ix, iy+i, iw, 1, " ", sty)
+			if !m.Global {
+				f.Fill(ix, iy+i, iw, 1, " ", sty)
+			}
 		}
 		if it.Disabled {
 			sty = uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
 		}
-		f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
+		if m.Global {
+			f.Text(ix, iy+i, " "+it.Label+" ", sty, ix+iw)
+		} else {
+			f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
+		}
 	}
 }
 
@@ -108,7 +121,8 @@ func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
 // --- dialog ---
 
 // DialogRects returns the outer rect and the cancel/confirm button rects.
-func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect) {
+func DialogRects(d *Dialog, area layout.Rect) (outer, cancel, confirm layout.Rect) {
+	cols, rows := area.W, area.H
 	if d.InputEdit {
 		w, h := min(56, cols), min(7, rows)
 		return layout.Rect{X: (cols - w) / 2, Y: (rows - h) / 2, W: w, H: h}, layout.Rect{}, layout.Rect{}
@@ -122,15 +136,15 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 			w = l
 		}
 	}
-	// "[ <cancel>  esc ]" + gap + "[ <confirm>  ↵ ]" = cancel+9 + 2 + confirm+7.
-	btnRow := len([]rune(d.Cancel)) + len([]rune(d.Confirm)) + 18
+	btnRow := ansi.StringWidth("  ↵ "+d.Confirm+"     esc "+d.Cancel+" ") + 4
 	if btnRow > w {
 		w = btnRow
 	}
 	if d.Width > w {
 		w = d.Width
 	}
-	w = min(w, cols)
+	// The observed confirmation leaves two columns on each side of the pane area.
+	w = min(w, max(cols-4, 0))
 	shown := len(d.Lines)
 	if shown > 10 {
 		shown = 10
@@ -144,13 +158,13 @@ func DialogRects(d *Dialog, cols, rows int) (outer, cancel, confirm layout.Rect)
 	if y < 0 {
 		y = 0
 	}
-	outer = layout.Rect{X: x, Y: y, W: w, H: h}
+	outer = layout.Rect{X: area.X + x, Y: area.Y + y, W: w, H: h}
+	x, y = outer.X, outer.Y
 	by := y + h - 2
-	// Buttons right-aligned: "[ <confirm>  ↵ ]" then "[ <cancel>  esc ]".
-	confirmW := len([]rune(d.Confirm)) + 7
-	cancelW := len([]rune(d.Cancel)) + 9
-	confirm = layout.Rect{X: x + w - 1 - confirmW, Y: by, W: confirmW, H: 1}
-	cancel = layout.Rect{X: confirm.X - 2 - cancelW, Y: by, W: cancelW, H: 1}
+	confirmW := ansi.StringWidth("  ↵ " + d.Confirm + "   ")
+	cancelW := ansi.StringWidth(" esc " + d.Cancel + " ")
+	confirm = layout.Rect{X: x + (w-confirmW-cancelW-2)/2, Y: by, W: confirmW, H: 1}
+	cancel = layout.Rect{X: confirm.X + confirmW + 2, Y: by, W: cancelW, H: 1}
 	return
 }
 
@@ -233,25 +247,24 @@ func HelpThumb(body, total, scroll int) (thumb, top int) {
 	return thumb, top
 }
 
-func drawDialog(f *Frame, d *Dialog, out *Output) {
+func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
 	if d.InputEdit {
 		drawNameInput(f, d, out)
 		return
 	}
-	outer, cancel, confirm := DialogRects(d, f.W, f.H)
-	border := uv.Style{Fg: f.Palette.Red}
+	outer, cancel, confirm := DialogRects(d, area)
+	border := uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(outer.X, outer.Y, outer.W, outer.H, border)
-	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text})
-	f.Text(ix+1, iy, d.Title, uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(ix+1, iy+1, d.Detail, uv.Style{Fg: f.Palette.Subtle}, ix+iw)
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
+	f.Text(ix, iy, " "+d.Title, uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
+	f.Text(ix, iy+1, " "+d.Detail, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 	shown := min(len(d.Lines), 10)
 	for i := 0; i < shown; i++ {
-		f.Text(ix+1, iy+2+i, d.Lines[i], uv.Style{Fg: f.Palette.Subtle}, ix+iw)
+		f.Text(ix, iy+2+i, " "+d.Lines[i], uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 	}
 
-	f.Text(cancel.X, cancel.Y, "[ "+d.Cancel+"  esc ]", uv.Style{Fg: f.Palette.Subtle}, cancel.X+cancel.W)
-	f.Fill(confirm.X, confirm.Y, confirm.W, 1, " ", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Red, Attrs: uv.AttrBold})
-	f.Text(confirm.X, confirm.Y, "[ "+d.Confirm+"  ↵ ]", uv.Style{Fg: color.RGBA{0xff, 0xff, 0xff, 0xff}, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
+	f.Text(cancel.X, cancel.Y, " esc "+d.Cancel+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, cancel.X+cancel.W)
+	f.Text(confirm.X, confirm.Y, "  ↵ "+d.Confirm+"   ", uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
 	out.DialogRect = outer
 	out.DialogCancel = cancel
 	out.DialogConfirm = confirm
@@ -275,7 +288,7 @@ func NameInputButtons(r layout.Rect) [3]layout.Rect {
 }
 
 func drawNameInput(f *Frame, d *Dialog, out *Output) {
-	r, _, _ := DialogRects(d, f.W, f.H)
+	r, _, _ := DialogRects(d, layout.Rect{W: f.W, H: f.H})
 	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
 	f.Text(r.X+1, r.Y+1, strings.ToLower(d.Title), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, r.X+r.W-1)

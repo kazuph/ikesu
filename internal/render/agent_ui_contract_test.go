@@ -63,7 +63,10 @@ func TestG5SeparatorExactTextAndColor(t *testing.T) {
 	if strings.TrimRight(text.String(), " ") != "  --" {
 		t.Fatal(text.String())
 	}
-	for x := row.X; x < row.X+3; x++ {
+	if !reflect.DeepEqual(f.Cell(row.X, row.Y).Style.Fg, f.Palette.Text) {
+		t.Fatal("separator leading padding color")
+	}
+	for x := row.X + 1; x < row.X+4; x++ {
 		if !reflect.DeepEqual(f.Cell(x, row.Y).Style.Fg, f.Palette.Dim) {
 			t.Fatal("separator color")
 		}

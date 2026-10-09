@@ -259,8 +259,8 @@ func TestDialogInteriorIsOpaque(t *testing.T) {
 	scribble(f, "@")
 	out := &Output{}
 	d := &Dialog{Title: "Quit goterrace?", Detail: "Stops all panes.", Confirm: "quit", Cancel: "cancel"}
-	drawDialog(f, d, out)
-	outer, _, _ := DialogRects(d, 60, 20)
+	drawDialog(f, d, out, layout.Rect{W: f.W, H: f.H})
+	outer, _, _ := DialogRects(d, layout.Rect{W: 60, H: 20})
 	noMarker(t, f, outer, "@")
 }
 
@@ -268,8 +268,8 @@ func TestDialogButtonsFullyDrawn(t *testing.T) {
 	d := &Dialog{Title: "Close workspace?", Detail: "Closes workspace 1.", Confirm: "close", Cancel: "cancel"}
 	f := NewFrame(80, 24)
 	out := &Output{}
-	drawDialog(f, d, out)
-	_, cancel, confirm := DialogRects(d, 80, 24)
+	drawDialog(f, d, out, layout.Rect{W: f.W, H: f.H})
+	_, cancel, confirm := DialogRects(d, layout.Rect{W: 80, H: 24})
 
 	rowText := func(r layout.Rect) string {
 		var sb strings.Builder
@@ -280,15 +280,15 @@ func TestDialogButtonsFullyDrawn(t *testing.T) {
 		}
 		return sb.String()
 	}
-	if got, want := rowText(cancel), "[ cancel  esc ]"; got != want {
+	if got, want := rowText(cancel), " esc cancel "; got != want {
 		t.Fatalf("cancel row = %q, want %q", got, want)
 	}
-	if got, want := rowText(confirm), "[ close  ↵ ]"; got != want {
+	if got, want := rowText(confirm), "  ↵ close   "; got != want {
 		t.Fatalf("confirm row = %q, want %q", got, want)
 	}
 	// Hit-test rects must cover the whole drawn string.
-	if cancel.W != len([]rune("[ cancel  esc ]")) {
-		t.Fatalf("cancel.W = %d, want %d", cancel.W, len([]rune("[ cancel  esc ]")))
+	if cancel.W != len([]rune(" esc cancel ")) {
+		t.Fatalf("cancel.W = %d, want %d", cancel.W, len([]rune(" esc cancel ")))
 	}
 }
 

@@ -1,0 +1,55 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[menu]"
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x1b[A\x1b[B\x1b[C\x1b[D"
+sleep 200ms
+screen @OUT@/arrows.txt
+cells @OUT@/arrows.json
+send "\t"
+sleep 200ms
+screen @OUT@/tab.txt
+cells @OUT@/tab.json
+click 80 22
+sleep 200ms
+screen @OUT@/inside.txt
+cells @OUT@/inside.json
+clicktext "[menu]"
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+rclick 80 22
+sleep 200ms
+screen @OUT@/right-inside.txt
+cells @OUT@/right-inside.json
+send "\x1b"
+sleep 200ms
+clicktext "[menu]"
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+clicktext "esc cancel"
+sleep 200ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+clicktext "[menu]"
+sleep 200ms
+clicktext "stop server"
+sleep 200ms
+screen @OUT@/reopened.txt
+cells @OUT@/reopened.json
+resize 100 25
+sleep 200ms
+send "\x1b[A\t"
+sleep 200ms
+screen @OUT@/resize.txt
+cells @OUT@/resize.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+cells @OUT@/escape.json
+kill

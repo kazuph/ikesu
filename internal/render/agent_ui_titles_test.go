@@ -115,7 +115,7 @@ func TestG5DialogRealCursorUnicodeClampedAndSettingsFooter(t *testing.T) {
 	f := NewFrame(40, 15)
 	d := &Dialog{Title: "Rename pane", Input: strings.Repeat("界", 80), InputEdit: true, InputCursor: 80, Confirm: "rename", Cancel: "cancel"}
 	out := &Output{}
-	drawDialog(f, d, out)
+	drawDialog(f, d, out, layout.Rect{W: f.W, H: f.H})
 	r := out.DialogRect
 	if out.AnchorX != r.X+r.W-2 {
 		t.Fatal("input right edge clamp", out.AnchorX, r)
