@@ -1,10 +1,10 @@
 package server
 
 import (
- "testing"
- "time"
- "github.com/kazuph/goterrace/internal/api"
- "github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/teststate"
+	"testing"
+	"time"
 )
 
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
