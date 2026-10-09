@@ -1,0 +1,39 @@
+screen @OUT@/boot.txt
+cells @OUT@/boot.json
+click 20 25
+sleep 250ms
+screen @OUT@/scope-toggle.txt
+cells @OUT@/scope-toggle.json
+click 20 25
+sleep 250ms
+screen @OUT@/scope-again.txt
+cells @OUT@/scope-again.json
+click 12 25
+sleep 250ms
+screen @OUT@/jobs.txt
+cells @OUT@/jobs.json
+click 4 25
+sleep 250ms
+screen @OUT@/agents.txt
+cells @OUT@/agents.json
+click 22 1
+sleep 250ms
+screen @OUT@/density-toggle.txt
+cells @OUT@/density-toggle.json
+click 22 1
+sleep 250ms
+screen @OUT@/density-again.txt
+cells @OUT@/density-again.json
+click 25 45
+sleep 250ms
+screen @OUT@/width-toggle.txt
+cells @OUT@/width-toggle.json
+send "\x02b"
+sleep 250ms
+screen @OUT@/sidebar-prefix-toggle.txt
+cells @OUT@/sidebar-prefix-toggle.json
+send "\x02b"
+sleep 250ms
+screen @OUT@/sidebar-prefix-again.txt
+cells @OUT@/sidebar-prefix-again.json
+kill

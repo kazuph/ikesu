@@ -3,6 +3,7 @@ package render
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
 )
 
@@ -32,11 +33,23 @@ func SidebarViewForInput(in Input) SidebarView {
 }
 
 func SidebarJobsTab(sWidth, y int) layout.Rect {
-	// Scope control keeps its reserved right-hand area. A tab exists only if it fits.
-	if sWidth-1 < 8+6+6 {
+	if sWidth-1 < len(" [agents] [jobs]") {
 		return layout.Rect{}
 	}
-	return layout.Rect{X: 8, Y: y, W: 6, H: 1}
+	return layout.Rect{X: len(" [agents] "), Y: y, W: len("[jobs]"), H: 1}
+}
+
+func SidebarAgentSortLabel(s *model.AppState) string {
+	if s.AgentScope == "sort" {
+		return "[priority]"
+	}
+	return "[grouped]"
+}
+
+func SidebarAgentSortRect(s *model.AppState, y int) layout.Rect {
+	a := s.SidebarArea()
+	w := len(SidebarAgentSortLabel(s))
+	return layout.Rect{X: a.X + a.W - 1 - w, Y: y, W: w, H: 1}
 }
 
 func drawJobRow(f *Frame, in Input, index, x, y, width int) {

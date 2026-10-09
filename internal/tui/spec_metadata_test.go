@@ -98,10 +98,13 @@ func TestSPECExactCopilotFootersAndAnimatedSummary(t *testing.T) {
 		mobileOut := render.Compose(in)
 		var summary strings.Builder
 		for x := 0; x < a.st.Cols; x++ {
-			summary.WriteString(mobileOut.Frame.Cell(x, a.st.Rows-1).Content)
+			summary.WriteString(mobileOut.Frame.Cell(x, 0).Content)
 		}
-		if !strings.Contains(summary.String(), frame+" 1") {
+		if !strings.Contains(summary.String(), frame) {
 			t.Fatal("summary spinner", summary.String())
+		}
+		if mobileOut.Frame.Cell(1, 1).Content != "1" || mobileOut.Frame.Cell(3, 1).Content != "w" {
+			t.Fatal("mobile header must retain working count")
 		}
 		var sidebar strings.Builder
 		for y := 0; y < a.st.Rows-1; y++ {

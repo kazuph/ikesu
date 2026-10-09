@@ -78,6 +78,16 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             return result
                     created = request('workspace.create', {'cwd':str(root / 'cwd'), 'label':'parity', 'focus':True})
                     (target / 'fixture.json').write_text(json.dumps(created, indent=2)+'\n')
+                    fixture_id = created['result']['workspace']['workspace_id']
+                    initial = request('workspace.list', {})
+                    cleanup = []
+                    for workspace in initial['result']['workspaces']:
+                        if workspace['workspace_id'] != fixture_id:
+                            cleanup.append(request('workspace.close', {'workspace_id':workspace['workspace_id']}))
+                    final = request('workspace.list', {})
+                    if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
+                        raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
+                    (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw'), '--', binary] + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)

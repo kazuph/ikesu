@@ -130,7 +130,7 @@ func TestRenderScrollIndicator(t *testing.T) {
 	}
 }
 
-func TestRenderMobileStatusCountsAndButtons(t *testing.T) {
+func TestRenderMobileStatusCountsAndHeader(t *testing.T) {
 	s := testState(100, 24)
 	s.MobileWidthThreshold = 100
 	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
@@ -138,10 +138,13 @@ func TestRenderMobileStatusCountsAndButtons(t *testing.T) {
 	snap.Status = StatusGlyph{Key: "working", Rune: "◐", Color: Yellow}
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: snap}})
 	text := screenText(t, out, 100, 24)
-	for _, want := range []string{"◐ 1", "[split │]", "[split ─]", "[close]"} {
+	for _, want := range []string{"◐", "1 working", "switch"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in:\n%s", want, text)
 		}
+	}
+	if s.StatusArea().H != 0 || out.Frame.Cell(0, 23).Content != "└" {
+		t.Fatal("mobile panes must occupy the bottom row")
 	}
 }
 

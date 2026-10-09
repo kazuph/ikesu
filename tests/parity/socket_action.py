@@ -17,6 +17,14 @@ if operation == 'open':
     method = 'pane.command.execute'
     params = {'pane_id': pane, 'action': 'popup',
               'command': "env PS1='POPUP> ' /bin/zsh -f", 'width': 60, 'height': 20}
+elif operation == 'report-state':
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    session = os.environ.get('PARITY_CONTROLLER_SESSION_ID')
+    if not pane or not session:
+        raise SystemExit('NOT_RUN: pane identity or actual controller session absent')
+    method = 'pane.report_agent'
+    params = {'pane_id':pane, 'source':'codex', 'agent':'codex',
+              'state':sys.argv[2], 'title':'PARITY', 'session_id':session}
 elif operation == 'close':
     method, params = 'popup.close', {}
 else:

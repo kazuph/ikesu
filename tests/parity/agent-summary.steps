@@ -1,0 +1,41 @@
+send "python3 @FIXTURES@/socket_action.py report-state working\r"
+sleep 250ms
+screen @OUT@/desktop-working.txt
+cells @OUT@/desktop-working.json
+resize 60 25
+sleep 250ms
+screen @OUT@/mobile-working.txt
+cells @OUT@/mobile-working.json
+resize 160 45
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py report-state blocked\r"
+sleep 250ms
+screen @OUT@/desktop-blocked.txt
+cells @OUT@/desktop-blocked.json
+resize 60 25
+sleep 250ms
+screen @OUT@/mobile-blocked.txt
+cells @OUT@/mobile-blocked.json
+resize 160 45
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py report-state idle\r"
+sleep 250ms
+screen @OUT@/desktop-idle.txt
+cells @OUT@/desktop-idle.json
+resize 60 25
+sleep 250ms
+screen @OUT@/mobile-idle.txt
+cells @OUT@/mobile-idle.json
+resize 160 45
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py report-state done\r"
+sleep 250ms
+screen @OUT@/desktop-done.txt
+cells @OUT@/desktop-done.json
+resize 60 25
+sleep 250ms
+screen @OUT@/mobile-done.txt
+cells @OUT@/mobile-done.json
+resize 160 45
+sleep 250ms
+kill

@@ -102,7 +102,17 @@ func (a *App) toggleSidebarSetting(density bool) {
 			value = "full"
 		}
 	}
-	if err := config.SaveSidebarSetting(key, value); err != nil {
+	var err error
+	if density {
+		err = config.SaveSidebarSetting(key, value)
+	} else {
+		sort := "spaces"
+		if value == "sort" {
+			sort = "priority"
+		}
+		err = config.SaveAgentSort(sort)
+	}
+	if err != nil {
 		a.worktreeError(err)
 		return
 	}

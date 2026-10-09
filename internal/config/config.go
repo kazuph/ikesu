@@ -49,6 +49,7 @@ type Config struct {
 		SidebarStartCollapsed bool          `toml:"sidebar_start_collapsed"`
 		WorkspacePanelDensity string        `toml:"workspace_panel_density"`
 		AgentPanelScope       string        `toml:"agent_panel_scope"`
+		AgentPanelSort        string        `toml:"agent_panel_sort"`
 		Sound                 struct {
 			Enabled *bool `toml:"enabled"`
 		} `toml:"sound"`

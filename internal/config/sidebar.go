@@ -33,10 +33,17 @@ func (c Config) WorkspaceDensity() string {
 	return "full"
 }
 func (c Config) AgentScope() string {
-	if c.UI.AgentPanelScope == "sort" {
+	if c.UI.AgentPanelScope == "sort" || c.UI.AgentPanelSort == "priority" {
 		return "sort"
 	}
 	return "all"
+}
+
+func SaveAgentSort(value string) error {
+	if value != "spaces" && value != "priority" {
+		return fmt.Errorf("unsupported agent panel sort: %s", value)
+	}
+	return saveValues([]string{"ui"}, map[string]any{"agent_panel_scope": "all", "agent_panel_sort": value})
 }
 
 // SaveSidebarSetting preserves every other TOML value and atomically replaces the file.

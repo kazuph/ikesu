@@ -249,7 +249,7 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			if v.text == "" {
 				v.text = WorkspaceDisplayName(ws, in.Panes)
 			}
-			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(r.Ws + 1), style: tokenStyle(t, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
+			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(ws.ID), style: tokenStyle(t, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
 		case "branch":
 			v.text = in.Git[r.Ws].Branch
 			if v.text == "" {

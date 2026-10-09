@@ -49,14 +49,13 @@ func MobileOffset(s *model.AppState, offset int) int {
 
 func drawMobile(f *Frame, in Input, out *Output) {
 	s := in.State
-	header := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim}
+	header := uv.Style{Bg: f.Palette.SurfDim}
 	f.Fill(0, 0, s.Cols, min(2, s.Rows), " ", header)
 	switcher := MobileSwitchRect(s)
-	label := " switch"
-	if in.MobileSwitcher {
-		label = " close"
+	f.Fill(switcher.X, 0, switcher.W, min(2, s.Rows), " ", uv.Style{Bg: f.Palette.Surface})
+	for y := 0; y < min(2, s.Rows); y++ {
+		f.Set(switcher.X, y, "│", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.Surface})
 	}
-	f.Text(switcher.X, 1, label, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, s.Cols)
 	name := "spaces"
 	if w := s.ActiveWorkspace(); w != nil {
 		name = in.WorkspaceNames[s.Active]
@@ -64,8 +63,47 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			name = WorkspaceDisplayName(w, in.Panes)
 		}
 	}
-	f.Text(1, 0, truncate(name, max(0, switcher.X-2)), header, switcher.X)
-	f.Text(1, 1, " agents", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim}, switcher.X)
+	if in.MobileSwitcher {
+		f.Fill(0, 0, switcher.X, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold})
+		f.Text(0, 0, " switch", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, switcher.X)
+		f.Text(switcher.X+1, 0, "  close", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, s.Cols)
+		f.Text(switcher.X+1, 1, "    ×", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, s.Cols)
+	} else {
+		f.Fill(switcher.X+1, 1, max(0, switcher.W-1), 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold})
+		f.Text(switcher.X+1, 1, " switch", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, s.Cols)
+		glyph := wsGlyph(s, s.Active, in)
+		if glyph.Rune == " " {
+			glyph.Rune = "·"
+		}
+		f.Text(1, 0, glyph.Rune, uv.Style{Fg: f.ThemeColor(glyph.Color), Bg: f.Palette.SurfDim}, switcher.X)
+		f.Text(3, 0, truncate(name, max(0, switcher.X-3)), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, switcher.X)
+		if w := s.ActiveWorkspace(); w != nil {
+			label := fmt.Sprintf(" tab %d", w.ActiveTab+1)
+			f.Text(switcher.X-len(label)-1, 0, label, uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}, switcher.X)
+		}
+		counts := map[string]int{}
+		for _, pane := range in.Panes {
+			if pane != nil && pane.Status.Key != "" && pane.Status.Key != "unknown" {
+				counts[pane.Status.Key]++
+			}
+		}
+		summary := "no agents"
+		style := uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}
+		switch {
+		case counts["blocked"] > 0:
+			summary = fmt.Sprintf("◉ %d blocked", counts["blocked"])
+			style.Fg, style.Attrs = f.Palette.Red, uv.AttrBold
+		case counts["working"] > 0:
+			summary = fmt.Sprintf("%d working", counts["working"])
+			style.Fg, style.Attrs = f.Palette.Yellow, uv.AttrBold
+		case counts["done"] > 0:
+			summary = fmt.Sprintf("● %d", counts["done"])
+			style.Fg, style.Attrs = f.Palette.Green, uv.AttrBold
+		case counts["idle"] > 0:
+			summary = "all idle"
+		}
+		f.Text(1, 1, summary, style, switcher.X)
+	}
 	if !in.MobileSwitcher {
 		return
 	}
@@ -90,7 +128,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 				glyph.Rune = "·"
 			}
 			x := f.Text(2, y, glyph.Rune, uv.Style{Fg: f.ThemeColor(glyph.Color), Bg: f.Palette.SurfDim}, s.Cols)
-			x = f.Text(x, y, fmt.Sprintf(" %d ", row.Ws+1), uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, s.Cols)
+			x = f.Text(x, y, fmt.Sprintf(" %d ", s.Workspaces[row.Ws].ID), uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, s.Cols)
 			name := in.WorkspaceNames[row.Ws]
 			if name == "" {
 				name = WorkspaceDisplayName(s.Workspaces[row.Ws], in.Panes)

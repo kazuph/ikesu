@@ -240,6 +240,14 @@ func TestG2HeaderTogglesPersistAndResetScroll(t *testing.T) {
 	if err != nil || c.AgentScope() != "sort" || a.st.AgentScope != "sort" || a.sidebarScroll != 0 {
 		t.Fatal(c, err)
 	}
+	if c.UI.AgentPanelSort != "priority" || c.UI.AgentPanelScope != "all" {
+		t.Fatal("priority toggle must save the observed sort setting", c.UI)
+	}
+	a.toggleSidebarSetting(false)
+	c, err = config.Load()
+	if err != nil || c.AgentScope() != "all" || c.UI.AgentPanelSort != "spaces" {
+		t.Fatal("grouped toggle must restore workspace ordering", c, err)
+	}
 }
 
 func TestG2FooterBlankAndSectionBody(t *testing.T) {

@@ -62,7 +62,7 @@ func (s *AppState) ActionBarArea() Rect {
 // below the (possibly hidden) tab bar, above the action bar.
 func (s *AppState) PanesArea() Rect {
 	if s.Mobile() {
-		return Rect{X: 0, Y: 2, W: s.Cols, H: max0(s.Rows - 3)}
+		return Rect{X: 0, Y: 2, W: s.Cols, H: max0(s.Rows - 2)}
 	}
 	w := SidebarCollapsedWidth
 	if s.SidebarVisible {
@@ -92,18 +92,13 @@ func (s *AppState) SidebarArea() Rect {
 }
 
 // StatusArea returns the one-line status bar rect.
-func (s *AppState) StatusArea() Rect {
-	if !s.Mobile() {
-		return Rect{}
-	}
-	return Rect{X: 0, Y: max0(s.Rows - 1), W: s.Cols, H: 1}
-}
+func (s *AppState) StatusArea() Rect { return Rect{} }
 
 const (
 	// SidebarWidth is the expanded sidebar width in cells.
 	SidebarWidth = SidebarNormalDefault
 	// SidebarCollapsedWidth is the collapsed strip width in cells.
-	SidebarCollapsedWidth = 3
+	SidebarCollapsedWidth = 4
 )
 
 // Rect re-exports the layout rect for convenience.

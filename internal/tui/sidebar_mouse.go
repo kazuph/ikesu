@@ -67,19 +67,19 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		}
 		return true
 	case render.RowSep:
+		if !a.jobsPanel && pointIn(m.X, m.Y, render.SidebarAgentSortRect(s, m.Y)) {
+			a.toggleSidebarSetting(false)
+			return true
+		}
 		if pointIn(m.X, m.Y, render.SidebarJobsTab(s.SidebarArea().W, m.Y)) {
 			a.jobsPanel = true
 			a.changed()
 			return true
 		}
-		if m.X < 8 {
+		if m.X >= 1 && m.X < 1+len("[agents]") {
 			a.jobsPanel = false
 			a.changed()
 			return true
-		}
-		_, _, w, _ := render.SidebarContent(s.SidebarArea())
-		if m.X >= s.SidebarArea().X+w-6 {
-			a.toggleSidebarSetting(false)
 		}
 		return true
 	case render.RowSection:

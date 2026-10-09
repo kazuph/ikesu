@@ -1,0 +1,33 @@
+send "\x02N"
+sleep 250ms
+send "\x02N"
+sleep 250ms
+send "\x02b"
+sleep 250ms
+screen @OUT@/three-collapsed.txt
+cells @OUT@/three-collapsed.json
+click 1 1
+sleep 250ms
+screen @OUT@/first-workspace.txt
+cells @OUT@/first-workspace.json
+click 1 1
+sleep 250ms
+screen @OUT@/active-workspace.txt
+cells @OUT@/active-workspace.json
+click 1 2
+sleep 250ms
+screen @OUT@/second-workspace.txt
+cells @OUT@/second-workspace.json
+resize 60 25
+sleep 250ms
+screen @OUT@/mobile.txt
+cells @OUT@/mobile.json
+click 55 2
+sleep 250ms
+screen @OUT@/mobile-switcher.txt
+cells @OUT@/mobile-switcher.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/mobile-escape.txt
+cells @OUT@/mobile-escape.json
+kill

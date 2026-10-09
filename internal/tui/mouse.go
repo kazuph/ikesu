@@ -429,9 +429,7 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	}
 	if !s.SidebarVisible {
 		// Collapsed strip: one row per workspace.
-		ix, iy, iw, ih := area.X+1, area.Y+1, area.W-2, area.H-2
-		_ = ix
-		_ = iw
+		iy, ih := area.Y, max(0, area.H-1)
 		scroll := a.clampCollapsedScroll(len(s.Workspaces), ih)
 		i := m.Y - iy + scroll
 		if i >= 0 && i < len(s.Workspaces) {

@@ -22,7 +22,7 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 		} else {
 			a.sidebarScroll += 3
 		}
-		a.sidebarScroll = a.clampCollapsedScroll(len(a.st.Workspaces), max(0, a.st.SidebarArea().H-2))
+		a.sidebarScroll = a.clampCollapsedScroll(len(a.st.Workspaces), max(0, a.st.SidebarArea().H-1))
 		return
 	}
 	view := a.sidebarView()

@@ -245,7 +245,6 @@ func Compose(in Input) *Output {
 		drawCopyHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
 	}
 	drawActionBar(f, s, in, out)
-	drawStatusLine(f, s, in)
 	drawPopup(f, in, out)
 	if s.Mobile() {
 		drawMobile(f, in, out)
