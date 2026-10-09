@@ -66,6 +66,7 @@ func (s *Server) emitEvent(kind string, data any) {
 	if err != nil {
 		return
 	}
+	s.pluginEvent(kind, raw)
 	env := api.EventEnvelope{Event: kind, Data: raw}
 	s.evMu.Lock()
 	s.journal = append(s.journal, env)

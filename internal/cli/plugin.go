@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/plugin"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,59 @@ func (r *runner) pluginCLI(args []string) int {
 	p := map[string]any{}
 	rawJSON := false
 	switch args[0] {
+	case "action":
+		if len(args) < 2 {
+			return usageErr(r, "usage: gtx plugin action <list|invoke>")
+		}
+		method = "plugin.action." + args[1]
+		if args[1] != "list" && args[1] != "invoke" {
+			return usageErr(r, "usage: gtx plugin action <list|invoke>")
+		}
+		start := 2
+		if args[1] == "invoke" {
+			if len(args) < 3 {
+				return usageErr(r, "usage: gtx plugin action invoke <action_id> [--plugin ID]")
+			}
+			p["action_id"] = args[2]
+			p["context"] = map[string]any{"invocation_source": "cli"}
+			start = 3
+		}
+		for i := start; i < len(args); {
+			if args[i] != "--plugin" {
+				return usageErr(r, "unsupported action flag: "+args[i])
+			}
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "--plugin requires ID")
+			}
+			p["plugin_id"] = v
+		}
+		return r.printResult("cli:plugin", method, p)
+	case "log":
+		if len(args) < 2 || args[1] != "list" {
+			return usageErr(r, "usage: gtx plugin log list [--plugin ID] [--limit N]")
+		}
+		method = "plugin.log.list"
+		for i := 2; i < len(args); {
+			flag := args[i]
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, flag+" requires a value")
+			}
+			switch flag {
+			case "--plugin":
+				p["plugin_id"] = v
+			case "--limit":
+				n, err := strconv.ParseUint(v, 10, 64)
+				if err != nil {
+					return usageErr(r, "invalid limit")
+				}
+				p["limit"] = n
+			default:
+				return usageErr(r, "unsupported log flag: "+flag)
+			}
+		}
+		return r.printResult("cli:plugin", method, p)
 	case "link":
 		if len(args) < 2 || len(args) > 3 || (len(args) == 3 && args[2] != "--disabled") {
 			return usageErr(r, "usage: gtx plugin link <path> [--disabled]")
@@ -78,7 +132,16 @@ func (r *runner) pluginCLI(args []string) int {
 		fmt.Fprintln(r.errOut(), "unsupported: "+strings.Join(args, " "))
 		return 1
 	}
-	resp, _ := store.RegistryRequest(&api.Request{ID: "cli:plugin", Method: method, Params: api.MarshalParams(p)})
+	var resp api.Response
+	raw, err := r.request("cli:plugin", method, p)
+	if err == nil {
+		if err = json.Unmarshal(raw, &resp); err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+	} else {
+		resp, _ = store.RegistryRequest(&api.Request{ID: "cli:plugin", Method: method, Params: api.MarshalParams(p)})
+	}
 	if resp.Err != nil {
 		b, _ := json.Marshal(resp)
 		fmt.Fprintln(r.errOut(), string(b))

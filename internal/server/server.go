@@ -20,6 +20,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/plugin"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/tui"
 )
@@ -45,6 +46,8 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	plugins           *plugin.Engine
+	pluginEvents      bool
 	agentLaunches     map[int]*agentLaunch
 	closing           atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
 	workspaceMetadata map[int]map[string]*workspaceMetadata
@@ -307,6 +310,7 @@ func Run(session, version string) (int, error) {
 	// Domain events (SPEC G1): command diffs, exits, and output changes.
 	s.outEmit = map[int]*outputEmit{}
 	s.lastAgent = map[int]string{}
+	s.initPlugins()
 	s.app.SetPostExecHook(s.afterExec)
 	s.app.SetWorktreeHook(s.worktreeEvent)
 	s.app.SetExitedHook(s.onPaneExited)
