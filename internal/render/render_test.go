@@ -1,10 +1,12 @@
 package render
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
 	"github.com/kazuph/goterrace/internal/layout"
@@ -163,10 +165,10 @@ func TestRenderSelectionHighlight(t *testing.T) {
 	snap.Grid = grid
 	sel := &Selection{Pane: pid, FromX: 0, FromY: 0, ToX: 3, ToY: 0}
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: snap}, Sel: sel})
-	// The selected cells must carry reverse video.
+	// Both selection paths use the exact captured highlight colors.
 	c := out.Frame.Cell(r.X, r.Y)
-	if c == nil || c.Style.Attrs&uv.AttrReverse == 0 {
-		t.Fatalf("selected cell not reversed: %+v", c)
+	if c == nil || c.Style != (uv.Style{Fg: ansi.IndexedColor(15), Bg: color.RGBA{71, 71, 71, 255}}) {
+		t.Fatalf("selected cell has different highlight colors: %+v", c)
 	}
 	out2 := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: snap}})
 	c2 := out2.Frame.Cell(r.X, r.Y)
@@ -424,7 +426,7 @@ func TestZoomTitlePrefix(t *testing.T) {
 func TestCopiedFlashOnSidebarBottom(t *testing.T) {
 	s := testState(80, 24)
 	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
-	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}, Copied: " Copied 2 lines "})
+	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}, Copied: "Copied 2 lines"})
 	text := screenText(t, out, 80, 24)
 	footer := s.Rows - 1 // sidebar bottom row
 	lines := strings.Split(text, "\n")

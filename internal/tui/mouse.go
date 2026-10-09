@@ -656,11 +656,7 @@ func (a *App) finishSelection() {
 	if lines < 1 {
 		lines = 1
 	}
-	plural := "s"
-	if lines == 1 {
-		plural = ""
-	}
-	a.copied = fmt.Sprintf(" Copied %d line%s ", lines, plural)
+	a.copied = fmt.Sprintf("Copied %d lines", lines)
 	a.copiedAt = time.Now()
 }
 

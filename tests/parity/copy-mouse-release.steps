@@ -1,0 +1,19 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "printf 'MOUSE_ALPHA_BETA\\n'\r"
+sleep 250ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 28 4
+mouse motion 33 4
+sleep 200ms
+screen @OUT@/selected.txt
+cells @OUT@/selected.json
+mouse up 33 4
+sleep 200ms
+screen @OUT@/copied.txt
+cells @OUT@/copied.json
+sleep 2s
+screen @OUT@/expired.txt
+cells @OUT@/expired.json
+kill

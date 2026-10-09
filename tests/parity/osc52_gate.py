@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Compare captured copy bytes and require the approved pasteboard sandbox proof."""
+import base64
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+
+from clipboard_guard import SANDBOX_PROFILE
+
+p = argparse.ArgumentParser()
+p.add_argument('directory', type=Path)
+p.add_argument('--expect-empty', action='store_true', help='require an unselected exit to emit no copy')
+a = p.parse_args()
+root = a.directory
+guard = root / 'clipboard-guard'
+probe = json.loads((guard / 'sandbox-probe.json').read_text())
+assert probe['exit_code'] == 1 and probe['unchanged'], 'child pbcopy was not denied'
+proof = json.loads((guard / 'proof.json').read_text())
+assert [row['process'] for row in proof] == ['herdr', 'gtx'], 'both products must finish'
+assert all(row['unchanged'] and row['before_sha256'] == probe['before_sha256'] == row['after_sha256']
+           for row in proof), 'STOP: real clipboard hash changed; report without restoring'
+decoded = {}
+for who in ('herdr', 'gtx'):
+    case = root / who
+    launch = json.loads((case / 'sandbox-launch.json').read_text())
+    assert launch['launcher'][:3] == ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE], who
+    if launch['server']:
+        cleanup = json.loads((case / 'cleanup.json').read_text())
+        assert cleanup['exit'] == 0 and any('"type":"ok"' in reply for reply in cleanup['replies']), cleanup
+    parts = re.findall(rb'\x1b\]52;[^;]*;([^\x07\x1b]*)(?:\x07|\x1b\\)', (case / 'terminal.raw').read_bytes())
+    decoded[who] = [base64.b64decode(part, validate=True) for part in parts]
+if a.expect_empty:
+    assert not decoded['herdr'], 'unselected exit copied data'
+else:
+    assert decoded['herdr'], 'NOT_MET: no captured OSC52 copy'
+assert decoded['herdr'] == decoded['gtx'], 'copied bytes or copy count differ'
+result = {'status': 'PASS', 'equal': True, 'count': len(decoded['herdr']),
+          'copies': [{'bytes': len(value), 'sha256': hashlib.sha256(value).hexdigest()}
+                     for value in decoded['herdr']]}
+(root / 'osc52-gate.json').write_text(json.dumps(result, indent=2) + '\n')
+print('PASS: sandbox, unchanged clipboard hashes and exact OSC52 bytes', result['count'])

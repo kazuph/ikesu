@@ -246,8 +246,16 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	f.Set(area.X+area.W-2, area.Y+area.H-1, "«", uv.Style{Fg: f.Palette.Dim})
 	if in.Copied != "" && area.W > 1 && area.H > 0 {
 		x, y, w := area.X, area.Y+area.H-1, area.W-1
-		f.Fill(x, y, w, 1, " ", uv.Style{Bg: f.Palette.SurfDim})
-		f.Text(x, y, truncate(in.Copied, w), uv.Style{Fg: f.Palette.Green, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, x+w)
+		f.Fill(x, y, w-1, 1, " ", uv.Style{})
+		copyStyle := uv.Style{Fg: f.Palette.Green, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}
+		label := truncate(in.Copied, w-1)
+		f.Text(x, y, label, copyStyle, x+w-1)
+		prefix := strings.TrimSuffix(in.Copied, " lines")
+		for xx := x; xx < x+min(len([]rune(prefix)), len([]rune(label))); xx++ {
+			if cell := f.Cell(xx, y); cell != nil {
+				cell.Style.Underline = uv.UnderlineSingle
+			}
+		}
 	}
 }
 

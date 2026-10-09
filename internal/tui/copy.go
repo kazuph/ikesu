@@ -341,11 +341,7 @@ func (a *App) copyYank() {
 		return
 	}
 	lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
-	plural := "s"
-	if lines == 1 {
-		plural = ""
-	}
-	a.copied = fmt.Sprintf(" Copied %d line%s ", lines, plural)
+	a.copied = fmt.Sprintf("Copied %d lines", lines)
 	a.copiedAt = time.Now()
 }
 

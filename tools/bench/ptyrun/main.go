@@ -289,9 +289,11 @@ func main() {
 				}
 			}
 			data, err := json.Marshal(struct {
-				Cols, Rows int
-				Cells      [][]uv.Cell
-			}{*cols, *rows, grid})
+				Cols, Rows     int
+				Cells          [][]uv.Cell
+				CapturedUnixMs int64
+				LastSendUnixMs int64
+			}{*cols, *rows, grid, time.Now().UnixMilli(), sentAt.UnixMilli()})
 			mu.Unlock()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -335,6 +337,38 @@ func main() {
 			d := drained
 			mu.Unlock()
 			fmt.Printf("stats %s pid=%d rss_kb,cpu=%s outer_bytes_so_far=%d\n", rest, cmd.Process.Pid, strings.TrimSpace(string(out)), d)
+			if owner, err := strconv.Atoi(os.Getenv("PARITY_OBSERVE_PID")); err == nil && owner > 0 {
+				processes, err := exec.Command("ps", "-axo", "pid=,ppid=,command=").Output()
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+				lines := strings.Split(string(processes), "\n")
+				owned := map[int]bool{owner: true}
+				for changed := true; changed; {
+					changed = false
+					for _, line := range lines {
+						fields := strings.Fields(line)
+						if len(fields) < 3 {
+							continue
+						}
+						pid, _ := strconv.Atoi(fields[0])
+						parent, _ := strconv.Atoi(fields[1])
+						if owned[parent] && !owned[pid] {
+							owned[pid], changed = true, true
+						}
+					}
+				}
+				for _, line := range lines {
+					fields := strings.Fields(line)
+					if len(fields) > 0 {
+						pid, _ := strconv.Atoi(fields[0])
+						if owned[pid] {
+							fmt.Printf("owned-process %s %s\n", rest, strings.TrimSpace(line))
+						}
+					}
+				}
+			}
 		case "kill":
 			_ = cmd.Process.Kill()
 		default:

@@ -1,0 +1,21 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do printf 'ROW-%02d 日本語 alpha βeta\\n' $i; done\r"
+sleep 400ms
+clicktext "COPY"
+sleep 200ms
+clicktext "PHONE COPY"
+sleep 200ms
+send "gj0llllllll"
+sleep 200ms
+screen @OUT@/wide-tail.txt
+cells @OUT@/wide-tail.json
+send "l"
+sleep 200ms
+screen @OUT@/wide-head.txt
+cells @OUT@/wide-head.json
+send "q"
+sleep 200ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+kill

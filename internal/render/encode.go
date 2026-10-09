@@ -77,10 +77,18 @@ func (e *Encoder) full(f *Frame, b *bytes.Buffer) {
 
 func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {
 	prev := e.prev
+	unchanged := func(x, y int) bool {
+		cell := f.Cell(x, y)
+		if !prev.Cell(x, y).Equal(cell) {
+			return false
+		}
+		// A changed trailing half also requires rewriting the wide head.
+		return cell.Width != 2 || x+1 >= f.W || prev.Cell(x+1, y).Equal(f.Cell(x+1, y))
+	}
 	for y := 0; y < f.H; y++ {
 		x := 0
 		for x < f.W {
-			if prev.Cell(x, y).Equal(f.Cell(x, y)) {
+			if unchanged(x, y) || f.Cell(x, y).Width == 0 {
 				x++
 				continue
 			}
@@ -88,8 +96,7 @@ func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {
 			b.WriteString(cup(y, x))
 			for x < f.W {
 				nc := f.Cell(x, y)
-				oc := prev.Cell(x, y)
-				if oc.Equal(nc) {
+				if unchanged(x, y) {
 					break
 				}
 				if nc.Width == 0 {
@@ -99,7 +106,7 @@ func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {
 					continue
 				}
 				e.emitCell(b, nc)
-				x++
+				x += max(nc.Width, 1)
 			}
 		}
 	}

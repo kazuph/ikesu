@@ -1,0 +1,13 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "for i in {1..70}; do echo LINE-$i alpha beta gamma; done\r"
+sleep 500ms
+send "\x02["
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "g0vly"
+sleep 200ms
+screen @OUT@/copied.txt
+cells @OUT@/copied.json
+kill

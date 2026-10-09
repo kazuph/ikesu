@@ -301,6 +301,9 @@ func Compose(in Input) *Output {
 	if in.Toast != nil {
 		drawToast(f, in.Toast, out)
 	}
+	if in.Copied != "" {
+		drawCopyFeedback(f, s.PanesArea(), in.Copied)
+	}
 	if in.Help != nil {
 		drawHelp(f, in.Help, out)
 	}
@@ -512,12 +515,13 @@ func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 // BOLD (SPEC G1/G6).
 func drawCopyCursor(f *Frame, x, y int) {
 	c := f.Cell(x, y)
-	if c == nil {
+	// The observed cursor is invisible on the trailing cell of a wide glyph.
+	if c == nil || c.Width == 0 {
 		return
 	}
 	if c.Content == "" {
-		c.Content = " "
-		c.Width = 1
+		f.Set(x, y, " ", c.Style)
+		c = f.Cell(x, y)
 	}
 	c.Style.Fg = f.Palette.PopupBG
 	c.Style.Bg = f.Palette.Accent
@@ -636,14 +640,14 @@ func clipGrid(g [][]uv.Cell, w, h int) [][]uv.Cell {
 }
 
 func applySelection(f *Frame, ix, iy, iw, ih int, sel *Selection) {
-	applySelectionStyle(f, ix, iy, iw, ih, sel, false)
+	applySelectionStyle(f, ix, iy, iw, ih, sel)
 }
 
 func applyCopySelection(f *Frame, ix, iy, iw, ih int, sel *Selection) {
-	applySelectionStyle(f, ix, iy, iw, ih, sel, true)
+	applySelectionStyle(f, ix, iy, iw, ih, sel)
 }
 
-func applySelectionStyle(f *Frame, ix, iy, iw, ih int, sel *Selection, copyMode bool) {
+func applySelectionStyle(f *Frame, ix, iy, iw, ih int, sel *Selection) {
 	for y := 0; y < ih; y++ {
 		var x0, x1 int
 		switch {
@@ -660,12 +664,8 @@ func applySelectionStyle(f *Frame, ix, iy, iw, ih int, sel *Selection, copyMode 
 		}
 		for x := x0; x <= x1 && x < iw; x++ {
 			if c := f.Cell(ix+x, iy+y); c != nil {
-				if copyMode {
-					// Saved selection frames use ANSI white on RGB(71,71,71).
-					c.Style = uv.Style{Fg: ansi.IndexedColor(15), Bg: color.RGBA{71, 71, 71, 255}}
-				} else {
-					c.Style.Attrs |= uv.AttrReverse
-				}
+				// Both mouse and copy-mode selections use the captured terminal colors.
+				c.Style = uv.Style{Fg: ansi.IndexedColor(15), Bg: color.RGBA{71, 71, 71, 255}}
 			}
 		}
 	}

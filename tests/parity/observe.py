@@ -16,6 +16,8 @@ p.add_argument('--ptyrun', required=True)
 p.add_argument('--steps', required=True)
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
+p.add_argument('--clipboard-guard', action='store_true', help='capture clipboard commands and require the real clipboard hash to remain unchanged')
+p.add_argument('--clipboard-sandbox', action='store_true', help='deny pasteboard Mach lookup in the UI/server and all their children')
 a = p.parse_args()
 a.ptyrun = str(Path(a.ptyrun).resolve())
 if not Path(a.herdr).is_file():
@@ -23,6 +25,15 @@ if not Path(a.herdr).is_file():
     raise SystemExit(0)
 out = Path(a.out).resolve()
 out.mkdir(parents=True, exist_ok=True)
+guard = None
+if a.clipboard_guard and a.clipboard_sandbox:
+    p.error('choose one clipboard isolation method')
+if a.clipboard_guard or a.clipboard_sandbox:
+    from clipboard_guard import ClipboardGuard, SANDBOX_PROFILE
+    guard = ClipboardGuard(out / 'clipboard-guard', capture_commands=a.clipboard_guard)
+    if a.clipboard_sandbox:
+        guard.sandbox_probe()
+interaction = Path(a.steps).read_text()
 for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
     target = out / name
     target.mkdir(exist_ok=True)
@@ -37,19 +48,26 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
+        if guard is not None:
+            guard.environment(env)
         steps = target / 'steps'
         # Only the first-run onboarding differs. The interaction body is identical.
         preamble = 'sleep 3s\nsend "\\r"\nsleep 500ms\nsend "\\r"\nsleep 1s\n' if name == 'herdr' else 'sleep 3s\n'
-        steps.write_text(preamble + Path(a.steps).read_text().replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)))
+        steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
             binary = str(Path(binary).resolve())
+            launcher = ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE, binary] if a.clipboard_sandbox else [binary]
+            if a.clipboard_sandbox:
+                (target / 'sandbox-launch.json').write_text(json.dumps({'launcher': launcher, 'server': a.server}, indent=2)+'\n')
+            env['PARITY_BINARY_PATH'] = binary
             endpoint = None
             try:
                 if a.server:
-                    server = subprocess.Popen([binary, '--session', 'parity', 'server'],
+                    server = subprocess.Popen(launcher + ['--session', 'parity', 'server'],
                                               cwd=root / 'cwd', env=env, stdout=server_log, stderr=subprocess.STDOUT)
                     (target / 'server-pid.txt').write_text(str(server.pid)+'\n')
+                    env['PARITY_OBSERVE_PID'] = str(server.pid)
                     # Readiness belongs to the isolated test, not job orchestration.
                     deadline = time.monotonic() + 10
                     while endpoint is None:
@@ -89,9 +107,18 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                         raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                     (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
-                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw'), '--', binary] + (['--session', 'parity'] if a.server else ['--no-session']),
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw'), '--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
+                runtime_json = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                for path in root.rglob('*.json') if path.is_file()}
+                (target/'runtime-json.json').write_text(json.dumps(runtime_json, ensure_ascii=False, indent=2)+'\n')
+                job_status = root/'home/parity-job-status.json'
+                if job_status.is_file():
+                    (target/'job-status.json').write_text(job_status.read_text())
+                job_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
+                            for path in root.rglob('job-logs/*.log') if path.is_file()}
+                (target/'job-logs.json').write_text(json.dumps(job_logs, ensure_ascii=False, indent=2)+'\n')
                 configs = {str(path.relative_to(root)): path.read_text() for path in root.rglob('config.toml') if path.is_file()}
                 (target/'config-files.json').write_text(json.dumps(configs, ensure_ascii=False, indent=2)+'\n')
                 if server is not None:
@@ -116,3 +143,5 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     (target / 'cleanup.json').write_text(json.dumps({'pid':server.pid, 'exit':server.returncode, 'replies':replies}, indent=2)+'\n')
                     if 'FAIL: owned server required kill' in replies:
                         raise RuntimeError('owned server did not stop gracefully')
+                if guard is not None:
+                    guard.check(name)

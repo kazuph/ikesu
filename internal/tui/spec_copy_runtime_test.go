@@ -57,7 +57,7 @@ func specWaitText(t *testing.T, p *runtime.Pane, text string) {
 	}
 }
 
-func TestSPECCopyWriteSuccessFailureAndTwoSecondDeadline(t *testing.T) {
+func TestCopyObservedFeedbackWriteSuccessFailureAndTwoSecondDeadline(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	pid := a.focusedPane()
@@ -75,14 +75,14 @@ func TestSPECCopyWriteSuccessFailureAndTwoSecondDeadline(t *testing.T) {
 		a.cm = &copyMode{pane: pid, anchor: &copyPoint{0, 0}, cx: 4, cy: lines - 1}
 		a.copyYank()
 		text := "alpha"
-		want := " Copied 1 line "
+		want := "Copied 1 lines"
 		if lines == 2 {
 			text = "alpha\nbeta"
-			want = " Copied 2 lines "
+			want = "Copied 2 lines"
 		}
 		if lines == 3 {
 			text = "alpha\nbeta\ngamma"
-			want = " Copied 3 lines "
+			want = "Copied 3 lines"
 		}
 		b, err := os.ReadFile(f.Name())
 		if err != nil {
