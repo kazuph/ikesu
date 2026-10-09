@@ -252,7 +252,7 @@ func Compose(in Input) *Output {
 	drawSidebar(f, s, in)
 	drawTabBar(f, s, in, out)
 	drawPanes(f, s, in, out)
-	if in.ModeHint != "" {
+	if in.ModeHint != "" && !(in.ServerUI && in.Prefix) {
 		area := s.PanesArea()
 		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
 	}

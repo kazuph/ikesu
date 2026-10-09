@@ -1,0 +1,38 @@
+send "python3 @FIXTURES@/socket_action.py create-section-overflow; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-section-overflow.json 10s
+sleep 500ms
+screen @OUT@/sections.txt
+cells @OUT@/sections.json
+mouse wheel-down 10 15
+sleep 250ms
+screen @OUT@/work-down.txt
+cells @OUT@/work-down.json
+mouse wheel-up 10 15
+sleep 250ms
+screen @OUT@/work-up.txt
+cells @OUT@/work-up.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down.txt
+cells @OUT@/down.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up.txt
+cells @OUT@/up.json
+clicktext "favorites"
+sleep 250ms
+screen @OUT@/collapsed.txt
+cells @OUT@/collapsed.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/collapsed-down.txt
+cells @OUT@/collapsed-down.json
+resize 100 25
+sleep 250ms
+screen @OUT@/small.txt
+cells @OUT@/small.json
+resize 160 45
+sleep 250ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+kill

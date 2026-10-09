@@ -1,0 +1,23 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02g"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\x02"
+sleep 200ms
+screen @OUT@/ctrl-b.txt
+cells @OUT@/ctrl-b.json
+send "\x1be"
+sleep 200ms
+screen @OUT@/alt-e.txt
+cells @OUT@/alt-e.json
+send "echo NAV_ROUTING_INPUT\r"
+sleep 500ms
+screen @OUT@/input.txt
+cells @OUT@/input.json
+send "\x1b"
+sleep 200ms
+screen @OUT@/escape.txt
+cells @OUT@/escape.json
+kill

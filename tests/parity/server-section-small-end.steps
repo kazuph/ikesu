@@ -1,0 +1,76 @@
+send "python3 @FIXTURES@/socket_action.py create-section-overflow; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-section-overflow.json 10s
+sleep 500ms
+resize 100 25
+sleep 250ms
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-0.txt
+cells @OUT@/down-0.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-1.txt
+cells @OUT@/down-1.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-2.txt
+cells @OUT@/down-2.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-3.txt
+cells @OUT@/down-3.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-4.txt
+cells @OUT@/down-4.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-5.txt
+cells @OUT@/down-5.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-6.txt
+cells @OUT@/down-6.json
+mouse wheel-down 10 10
+sleep 250ms
+screen @OUT@/down-7.txt
+cells @OUT@/down-7.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-0.txt
+cells @OUT@/up-0.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-1.txt
+cells @OUT@/up-1.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-2.txt
+cells @OUT@/up-2.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-3.txt
+cells @OUT@/up-3.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-4.txt
+cells @OUT@/up-4.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-5.txt
+cells @OUT@/up-5.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-6.txt
+cells @OUT@/up-6.json
+mouse wheel-up 10 10
+sleep 250ms
+screen @OUT@/up-7.txt
+cells @OUT@/up-7.json
+resize 160 45
+sleep 250ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+kill

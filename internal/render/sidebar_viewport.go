@@ -64,23 +64,54 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 			break
 		}
 	}
-	workspaceStart := 2
-	// Server captures keep the first section heading and its rule above the cards.
-	if serverUI && sep >= 4 {
-		workspaceStart = 4
-		view.Workspace.Rect.Y += 2
-		// The row above [menu]/[new] stays blank even when cards overflow.
-		view.Workspace.Rect.H = max(0, view.Workspace.Rect.H-3)
+	view.Workspace.Total = max(0, sep-2)
+	if serverUI {
+		// Small endpoint captures stop before skipping the final workspace card.
+		cards, lastCard := 0, 0
+		for _, row := range rows[2:sep] {
+			if row.Kind == RowSection || row.Kind == RowRule {
+				continue
+			}
+			if row.Kind == RowWorkspace {
+				lastCard = 0
+			}
+			cards++
+			lastCard++
+		}
+		view.Workspace.Total = min(view.Workspace.Total, view.Workspace.Rect.H+max(0, cards-lastCard))
 	}
-	view.Workspace.Total = max(0, sep-workspaceStart)
 	view.Agents.Total = max(0, len(rows)-sep-1)
 	view.Workspace.Offset = max(0, min(workspaceScroll, max(0, view.Workspace.Total-view.Workspace.Rect.H)))
 	view.Agents.Offset = max(0, min(agentScroll, max(0, view.Agents.Total-view.Agents.Rect.H)))
-	for i := 0; i < min(workspaceStart, len(rows)); i++ {
+	for i := 0; i < min(2, len(rows)); i++ {
 		view.Rows = append(view.Rows, SidebarPosition{Row: rows[i], Y: a.Y + i})
 	}
-	for n := 0; n < view.Workspace.Rect.H && n+view.Workspace.Offset < view.Workspace.Total; n++ {
-		view.Rows = append(view.Rows, SidebarPosition{Row: rows[workspaceStart+n+view.Workspace.Offset], Y: view.Workspace.Rect.Y + n})
+	if serverUI {
+		// Endpoint captures scroll card rows while retaining every section heading.
+		skip, y := view.Workspace.Offset, view.Workspace.Rect.Y
+		for i, row := range rows[2:sep] {
+			heading := row.Kind == RowSection || row.Kind == RowRule
+			if !heading && skip > 0 {
+				skip--
+				continue
+			}
+			if y >= view.Workspace.Rect.Y+view.Workspace.Rect.H {
+				break
+			}
+			// A following section's rule/title/rule group is never clipped halfway.
+			if row.Kind == RowRule && i+3 < sep && rows[i+3].Kind == RowSection && y+3 > view.Workspace.Rect.Y+view.Workspace.Rect.H {
+				break
+			}
+			// Rules reach the footer; cards leave its preceding row blank.
+			if heading || y < view.Workspace.Rect.Y+view.Workspace.Rect.H-1 {
+				view.Rows = append(view.Rows, SidebarPosition{Row: row, Y: y})
+			}
+			y++
+		}
+	} else {
+		for n := 0; n < view.Workspace.Rect.H && n+view.Workspace.Offset < view.Workspace.Total; n++ {
+			view.Rows = append(view.Rows, SidebarPosition{Row: rows[2+n+view.Workspace.Offset], Y: view.Workspace.Rect.Y + n})
+		}
 	}
 	if sep < len(rows) {
 		view.Rows = append(view.Rows, SidebarPosition{Row: rows[sep], Y: mid + 1})

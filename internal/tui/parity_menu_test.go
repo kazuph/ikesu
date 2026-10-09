@@ -56,6 +56,22 @@ func TestParityMenuFirstSelectionAndArrow(t *testing.T) {
 	}
 }
 
+func TestParityMainMenuOutsideRightKeepsMenuAndFocus(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.openMainMenu(0, 0)
+	menu, pane := a.menu, a.focusedPane()
+	m := uv.Mouse{X: a.st.Cols - 3, Y: a.st.Rows - 3, Button: uv.MouseRight}
+	if pointIn(m.X, m.Y, render.MenuRect(&menu.m, a.st.Cols, a.st.Rows)) {
+		t.Fatal("outside test point falls inside menu")
+	}
+	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: m})
+	a.onMouse(input.Event{Kind: input.KindMouseRelease, Mouse: m})
+	if a.menu != menu || a.focusedPane() != pane || a.sel != nil {
+		t.Fatal("main menu must consume outside right click and retain focus")
+	}
+}
+
 func TestParityContextMenuArrowsClampAtEnds(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)

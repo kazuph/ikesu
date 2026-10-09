@@ -1,0 +1,41 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+send "\x02"
+sleep 200ms
+screen @OUT@/prefix.txt
+cells @OUT@/prefix.json
+send "\x1becho FAST_ESCAPE_INPUT\r"
+sleep 500ms
+screen @OUT@/fast-input.txt
+cells @OUT@/fast-input.json
+send "\x02"
+sleep 200ms
+resize 100 25
+sleep 200ms
+screen @OUT@/pending-small.txt
+cells @OUT@/pending-small.json
+send "\x1b"
+sleep 200ms
+send "echo RESIZE_ESCAPE_INPUT\r"
+sleep 500ms
+screen @OUT@/small-input.txt
+cells @OUT@/small-input.json
+resize 160 45
+sleep 200ms
+send "\x02g"
+sleep 200ms
+screen @OUT@/navigator.txt
+cells @OUT@/navigator.json
+send "\x02\x1becho NAV_ESCAPE_INPUT\r"
+sleep 500ms
+screen @OUT@/navigator-fast-input.txt
+cells @OUT@/navigator-fast-input.json
+send "\x1b"
+sleep 200ms
+send "\x1b"
+sleep 200ms
+send "echo NAV_RETURNED_INPUT\r"
+sleep 500ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+kill

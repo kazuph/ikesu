@@ -104,6 +104,9 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 
 // prefixKey executes the prefix command table (5.8).
 func (a *App) prefixKey(k uv.Key) {
+	if k.Mod.Contains(uv.ModAlt) {
+		return
+	}
 	s := a.st
 	code := k.Code
 	if code >= 'a' && code <= 'z' && k.Mod.Contains(uv.ModShift) {

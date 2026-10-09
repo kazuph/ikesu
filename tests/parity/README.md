@@ -87,3 +87,9 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `popup-copy.steps` と `copy-workspaces.steps` は `--clipboard-sandbox` を必須として比較する。popup 内、複数 workspace の選択表示・mouse release・コピー後の入力・元の workspace への復帰を保存し、`osc52_gate.py` でコピーの全バイトと実 clipboard ハッシュ不変を検査する。`full_frame_gate.py` で各画面の全セルも比較する。sandbox の失敗または実ハッシュ変化があればコピー比較を止め、元に戻そうとせず親へ報告する。
 
 `jobs_overflow_gate.py` は各製品の実 API 応答から label の順序と正確な job ID を確認し、一覧内の座標・一行ホイール・リサイズ後の位置保持を検査する。この検査は age の全セル比較を証明しない。age・ログ・取消の共有描画回帰は `gate-agents.sh` の実ジョブ時刻・ログ照合・process group 消滅検査で別に確認する。
+
+`gate-modifier-section-cells.sh` は prefix に続く ESC と文字の連続入力、Navigator の修飾文字を単独起動・server 接続の両方で比較する。複数 section の card スクロール・見出し保持・折畳み・下端・resize と、既存の単一 section の操作も全セル検査する。`server-section-small-end.steps` は小画面のスクロール上限と上向きの戻りを追加検査する。画面一致だけで通常テストや性能を合格扱いにしない。
+
+`prefix-notification.steps` は通知 target が無い状態の prefix+o と後続シェル入力を比較する。実通知がある状態で target へ移動する操作の証拠にはしない。focus history は既定の prefix 割当が無いため、47種類の既定操作 matrix へ架空の割当を足さない。
+
+`menu_cases.py 出力先` は5種類のメニューの開閉・キー・wheel・resize・共通選択を独立した隔離PTYで採取する手順を生成する。`menu_matrix_compare.py 比較出力先 手順の出力先` は全差と枠内の項目一覧を保存する collector であり、exit 0 は合格を意味しない。項目領域内だけの差も、禁止されている項目内容・順序の差なのか、対象となる選択・位置・描画の差なのかを別に判定する。閉じた後と選択後の画面は項目領域を除外しない。

@@ -162,6 +162,9 @@ func (a *App) navigatorKey(k uv.Key) {
 			n.query += k.Text
 		}
 	} else {
+		if k.Mod != 0 {
+			return
+		}
 		switch k.Code {
 		case '/':
 			n.searching = true

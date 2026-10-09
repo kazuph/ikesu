@@ -352,6 +352,9 @@ func (a *App) menuMouse(ev input.Event) {
 	switch ev.Kind {
 	case input.KindMouseClick:
 		if !pointIn(m.X, m.Y, render.MenuRect(&a.menu.m, a.st.Cols, a.st.Rows)) {
+			if a.menu.kind == menuMain && m.Button == uv.MouseRight {
+				return
+			}
 			a.menu = nil
 			// Outside left presses only dismiss; right presses retarget the menu.
 			if m.Button == uv.MouseRight {
