@@ -1,0 +1,47 @@
+send "\x02?"
+sleep 250ms
+resize 160 45
+sleep 250ms
+screen @OUT@/w160-h45.txt
+cells @OUT@/w160-h45.json
+resize 100 25
+sleep 250ms
+screen @OUT@/w100-h25.txt
+cells @OUT@/w100-h25.json
+resize 80 25
+sleep 250ms
+screen @OUT@/w80-h25.txt
+cells @OUT@/w80-h25.json
+resize 79 25
+sleep 250ms
+screen @OUT@/w79-h25.txt
+cells @OUT@/w79-h25.json
+resize 76 25
+sleep 250ms
+screen @OUT@/w76-h25.txt
+cells @OUT@/w76-h25.json
+resize 64 25
+sleep 250ms
+screen @OUT@/w64-h25.txt
+cells @OUT@/w64-h25.json
+resize 60 25
+sleep 250ms
+screen @OUT@/w60-h25.txt
+cells @OUT@/w60-h25.json
+resize 40 25
+sleep 250ms
+screen @OUT@/w40-h25.txt
+cells @OUT@/w40-h25.json
+resize 20 25
+sleep 250ms
+screen @OUT@/w20-h25.txt
+cells @OUT@/w20-h25.json
+resize 60 15
+sleep 250ms
+screen @OUT@/w60-h15.txt
+cells @OUT@/w60-h15.json
+resize 60 9
+sleep 250ms
+screen @OUT@/w60-h9.txt
+cells @OUT@/w60-h9.json
+kill

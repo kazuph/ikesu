@@ -46,28 +46,21 @@ func TestSPECFrameAllFourEdgesAndTinyContent(t *testing.T) {
 }
 
 func TestSPECHelpScrollbarThumbMatchesScroll(t *testing.T) {
-	rows := make([]HelpRow, 50)
-	for _, scroll := range []int{0, 3, 30} {
+	// help-complete.steps records a four-row thumb at these positions in a 15-row body.
+	rows := make([]HelpRow, 60)
+	for _, tc := range []struct{ scroll, top int }{{0, 0}, {8, 2}, {16, 4}, {24, 6}, {32, 8}, {40, 10}, {45, 11}, {80, 11}} {
 		f := NewFrame(80, 24)
 		out := &Output{}
-		drawHelp(f, &HelpInput{Rows: rows, Scroll: scroll}, out)
+		drawHelp(f, &HelpInput{Rows: rows, Scroll: tc.scroll}, out)
 		r := out.HelpRect
 		body := r.H - 7
-		limit := len(rows) - body
-		actual := min(scroll, limit)
-		th := body * body / len(rows)
-		if th < 1 {
-			th = 1
-		}
-		track := body - th
-		top := (actual*track + limit - 1) / limit
 		for y := 0; y < body; y++ {
 			want := "▕"
-			if y >= top && y < top+th {
+			if y >= tc.top && y < tc.top+4 {
 				want = "▐"
 			}
 			if got := f.Cell(r.X+r.W-2, r.Y+4+y).Content; got != want {
-				t.Fatalf("scroll=%d row=%d got=%q want=%q", scroll, y, got, want)
+				t.Fatalf("scroll=%d row=%d got=%q want=%q", tc.scroll, y, got, want)
 			}
 		}
 	}

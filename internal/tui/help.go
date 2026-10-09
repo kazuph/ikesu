@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"math"
 	"sort"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -87,6 +88,8 @@ func (a *App) helpRows() []render.HelpRow {
 		{Bind: "prefix+shift+tab", Cmd: "cycle pane previous"},
 		{Bind: bindKeys(a.historyBackKeys), Cmd: "focus history back"},
 		{Bind: bindKeys(a.historyForwardKeys), Cmd: "focus history forward"},
+		{Bind: "unset", Cmd: "last pane"},
+		{},
 	}
 }
 
@@ -126,7 +129,8 @@ func (a *App) helpBody() int {
 }
 
 func (a *App) helpMaxScroll() int {
-	if m := len(a.helpRows()) - a.helpBody(); m > 0 {
+	r := render.HelpRect(a.st.Cols, a.st.Rows)
+	if m := len(render.HelpLines(a.helpRows(), r.W-3, render.Palette{})) - a.helpBody(); m > 0 {
 		return m
 	}
 	return 0
@@ -176,7 +180,7 @@ func (a *App) helpMouse(ev input.Event) {
 	}
 	if ev.Kind == input.KindMouseMotion && h.dragging {
 		top := m.Y - h.rect.Y - 4 - h.grab
-		a.helpScrollBy(maxScroll - offFromThumb(body, maxScroll, top) - h.scroll)
+		a.helpScrollBy(helpScrollFromThumb(body, maxScroll, top) - h.scroll)
 		return
 	}
 	switch ev.Kind {
@@ -188,13 +192,17 @@ func (a *App) helpMouse(ev input.Event) {
 		}
 	case input.KindMouseClick:
 		r := a.help.rect
-		if m.Button == uv.MouseLeft && maxScroll > 0 && m.X == r.X+r.W-2 && m.Y >= r.Y+4 && m.Y < r.Y+4+body {
-			th, top := thumbGeom(body, maxScroll, maxScroll-h.scroll)
+		if render.HelpContentVisible(r) && m.Button == uv.MouseLeft && m.Y == r.Y+1 && m.X >= r.X+r.W-12 && m.X < r.X+r.W-1 {
+			a.help = nil
+			break
+		}
+		if render.HelpContentVisible(r) && m.Button == uv.MouseLeft && maxScroll > 0 && m.X == r.X+r.W-2 && m.Y >= r.Y+4 && m.Y < r.Y+4+body {
+			th, top := render.HelpThumb(body, body+maxScroll, h.scroll)
 			rel := m.Y - r.Y - 4
 			h.grab = rel - top
 			if rel < top || rel >= top+th {
 				h.grab = th / 2
-				a.helpScrollBy(maxScroll - offFromThumb(body, maxScroll, rel-h.grab) - h.scroll)
+				a.helpScrollBy(helpScrollFromThumb(body, maxScroll, rel-h.grab) - h.scroll)
 			}
 			h.dragging = true
 			break
@@ -205,4 +213,13 @@ func (a *App) helpMouse(ev input.Event) {
 		}
 	}
 	a.dirty = true
+}
+
+func helpScrollFromThumb(body, limit, top int) int {
+	thumb, _ := render.HelpThumb(body, body+limit, 0)
+	track := body - thumb
+	if track <= 0 {
+		return 0
+	}
+	return min(limit, max(0, int(math.Round(float64(top*limit)/float64(track)))))
 }

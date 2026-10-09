@@ -1,0 +1,27 @@
+send "\x02?"
+sleep 250ms
+clicktext "close esc / enter"
+sleep 250ms
+screen @OUT@/footer-click.txt
+cells @OUT@/footer-click.json
+click 60 20
+sleep 250ms
+screen @OUT@/body-click.txt
+cells @OUT@/body-click.json
+mouse down 117 18
+sleep 250ms
+screen @OUT@/gutter-press.txt
+cells @OUT@/gutter-press.json
+mouse motion 117 25
+sleep 250ms
+mouse up 117 25
+sleep 250ms
+screen @OUT@/gutter-drag.txt
+cells @OUT@/gutter-drag.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/escape.txt
+send "echo HELP_MOUSE_ENDED\r"
+sleep 250ms
+screen @OUT@/shell-input.txt
+kill

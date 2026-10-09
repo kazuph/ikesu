@@ -252,6 +252,11 @@ func Compose(in Input) *Output {
 	if s.Mobile() {
 		drawMobile(f, in, out)
 	}
+	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
+		for i := range f.Cells {
+			f.Cells[i].Style.Attrs |= uv.AttrFaint
+		}
+	}
 	if in.Menu != nil {
 		drawMenu(f, in.Menu, out)
 	}

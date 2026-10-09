@@ -95,7 +95,7 @@ func TestSPECDefaultRenameAndHelpOrder(t *testing.T) {
 		}
 	}
 	n := len(rows)
-	if rows[n-3].Cmd != "cycle pane previous" || rows[n-2].Cmd != "focus history back" || rows[n-1].Cmd != "focus history forward" {
+	if rows[n-5].Cmd != "cycle pane previous" || rows[n-4].Cmd != "focus history back" || rows[n-3].Cmd != "focus history forward" || rows[n-2].Cmd != "last pane" || rows[n-1].Cmd != "" {
 		t.Fatal("history order")
 	}
 }

@@ -46,7 +46,7 @@ func TestHelpRowsContract(t *testing.T) {
 		}
 	}
 	// Final entries: cycle next → cycle previous.
-	if n := len(last); n < 4 || last[n-4] != "cycle pane next" || last[n-3] != "cycle pane previous" || last[n-2] != "focus history back" || last[n-1] != "focus history forward" {
+	if n := len(last); n < 6 || last[n-6] != "cycle pane next" || last[n-5] != "cycle pane previous" || last[n-4] != "focus history back" || last[n-3] != "focus history forward" || last[n-2] != "last pane" || last[n-1] != "" {
 		t.Fatalf("last entries = %v", last[max(0, n-3):])
 	}
 	for i, r := range last {

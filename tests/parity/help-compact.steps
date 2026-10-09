@@ -1,0 +1,83 @@
+send "\x02?"
+sleep 250ms
+resize 20 25
+sleep 250ms
+screen @OUT@/w20-h25.txt
+cells @OUT@/w20-h25.json
+resize 24 25
+sleep 250ms
+screen @OUT@/w24-h25.txt
+cells @OUT@/w24-h25.json
+resize 25 25
+sleep 250ms
+screen @OUT@/w25-h25.txt
+cells @OUT@/w25-h25.json
+resize 26 25
+sleep 250ms
+screen @OUT@/w26-h25.txt
+cells @OUT@/w26-h25.json
+resize 27 25
+sleep 250ms
+screen @OUT@/w27-h25.txt
+cells @OUT@/w27-h25.json
+resize 28 25
+sleep 250ms
+screen @OUT@/w28-h25.txt
+cells @OUT@/w28-h25.json
+resize 29 25
+sleep 250ms
+screen @OUT@/w29-h25.txt
+cells @OUT@/w29-h25.json
+resize 30 25
+sleep 250ms
+screen @OUT@/w30-h25.txt
+cells @OUT@/w30-h25.json
+resize 31 25
+sleep 250ms
+screen @OUT@/w31-h25.txt
+cells @OUT@/w31-h25.json
+resize 32 25
+sleep 250ms
+screen @OUT@/w32-h25.txt
+cells @OUT@/w32-h25.json
+resize 34 25
+sleep 250ms
+screen @OUT@/w34-h25.txt
+cells @OUT@/w34-h25.json
+resize 36 25
+sleep 250ms
+screen @OUT@/w36-h25.txt
+cells @OUT@/w36-h25.json
+resize 40 25
+sleep 250ms
+screen @OUT@/w40-h25.txt
+cells @OUT@/w40-h25.json
+resize 60 8
+sleep 250ms
+screen @OUT@/w60-h8.txt
+cells @OUT@/w60-h8.json
+resize 60 9
+sleep 250ms
+screen @OUT@/w60-h9.txt
+cells @OUT@/w60-h9.json
+resize 60 10
+sleep 250ms
+screen @OUT@/w60-h10.txt
+cells @OUT@/w60-h10.json
+resize 60 11
+sleep 250ms
+screen @OUT@/w60-h11.txt
+cells @OUT@/w60-h11.json
+resize 60 12
+sleep 250ms
+screen @OUT@/w60-h12.txt
+cells @OUT@/w60-h12.json
+resize 60 13
+sleep 250ms
+screen @OUT@/w60-h13.txt
+cells @OUT@/w60-h13.json
+resize 60 14
+sleep 250ms
+screen @OUT@/w60-h14.txt
+cells @OUT@/w60-h14.json
+kill

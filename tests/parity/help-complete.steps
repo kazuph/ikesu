@@ -1,0 +1,50 @@
+send "\x02?"
+sleep 250ms
+screen @OUT@/page-0.txt
+cells @OUT@/page-0.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-1.txt
+cells @OUT@/page-1.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-2.txt
+cells @OUT@/page-2.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-3.txt
+cells @OUT@/page-3.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-4.txt
+cells @OUT@/page-4.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-5.txt
+cells @OUT@/page-5.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-6.txt
+cells @OUT@/page-6.json
+send "\x1b[6~"
+sleep 250ms
+screen @OUT@/page-7.txt
+cells @OUT@/page-7.json
+send "\x1b[6~"
+sleep 250ms
+send "\x1b[5~"
+sleep 250ms
+screen @OUT@/page-up.txt
+mouse wheel-up 80 20
+sleep 250ms
+screen @OUT@/wheel-up.txt
+resize 100 25
+sleep 250ms
+screen @OUT@/resize.txt
+click 95 23
+sleep 250ms
+screen @OUT@/outside.txt
+send "echo HELP_ENDED\r"
+sleep 250ms
+screen @OUT@/shell-input.txt
+kill

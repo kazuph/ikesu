@@ -19,7 +19,8 @@ type Settings struct {
 }
 
 func SettingsRect(cols, rows int) layout.Rect {
-	w, h := min(76, cols), min(22, rows)
+	// Recorded narrow and short viewports retain two columns and one row per side.
+	w, h := min(76, max(0, cols-4)), min(22, max(0, rows-2))
 	return layout.Rect{X: (cols - w) / 2, Y: (rows - h) / 2, W: w, H: h}
 }
 func SettingsChoiceY(r layout.Rect, section, index int) int {

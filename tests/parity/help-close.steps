@@ -1,0 +1,18 @@
+send "\x02?"
+sleep 250ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+clicktext "esc close"
+sleep 250ms
+screen @OUT@/header-close.txt
+cells @OUT@/header-close.json
+send "echo HELP_CLOSE_MARK\r"
+sleep 250ms
+screen @OUT@/shell-input.txt
+send "\x02?"
+sleep 250ms
+send "\x1b[<0;1;1M\x1b[<0;1;1m"
+sleep 250ms
+screen @OUT@/outside.txt
+cells @OUT@/outside.json
+kill

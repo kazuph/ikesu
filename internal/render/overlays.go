@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/layout"
 	"image/color"
+	"math"
 	"strings"
 )
 
@@ -162,42 +163,74 @@ func HelpRect(cols, rows int) layout.Rect {
 func drawHelp(f *Frame, h *HelpInput, out *Output) {
 	r := HelpRect(f.W, f.H)
 	x, y, w, hgt := r.X, r.Y, r.W, r.H
-	f.Fill(x, y, w, hgt, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
+	f.Fill(x, y, w, hgt, " ", uv.Style{Bg: f.Palette.PopupBG})
 	ix, iy, iw, _ := f.Box(x, y, w, hgt, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
 	out.HelpRect = r
+	if !HelpContentVisible(r) {
+		return
+	}
 	f.Text(ix, iy, "keybinds", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(x+w-11, iy, "esc close", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
-	f.Text(ix+1, iy+1, "available commands and configured shortcuts", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw-1)
+	f.Text(x+w-12, iy, " esc close ", uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, ix+iw)
+	subtitleStyle := uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}
+	f.Fill(ix, iy+1, iw, 1, " ", subtitleStyle)
+	f.Text(ix+1, iy+1, "available commands and configured shortcuts", subtitleStyle, ix+iw)
 
 	// Distribution observation: title, subtitle, two blank rows, footer and borders.
 	body := max(1, hgt-7)
+	lines := HelpLines(h.Rows, iw-1, f.Palette)
 	scroll := h.Scroll
 	if scroll < 0 {
 		scroll = 0
 	}
-	if max := len(h.Rows) - body; scroll > max {
+	if max := len(lines) - body; scroll > max {
 		scroll = max
 	}
 	if scroll < 0 {
 		scroll = 0
 	}
-	for i := 0; i < body && scroll+i < len(h.Rows); i++ {
-		row := h.Rows[scroll+i]
+	for i := 0; i < body && scroll+i < len(lines); i++ {
+		row := lines[scroll+i]
 		ry := iy + 3 + i
-		if row.Group {
-			f.Text(ix+1, ry, row.Cmd, uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, ix+iw-1)
-			continue
+		for x, cell := range row {
+			if cell.Width > 0 {
+				f.Set(ix+x, ry, cell.Content, cell.Style)
+			}
 		}
-		f.Text(ix+1, ry, row.Bind, uv.Style{Fg: Peach}, ix+iw-1)
-		f.Text(ix+30, ry, row.Cmd, uv.Style{Fg: f.Palette.Text}, ix+iw-1)
 	}
 
-	if maxScroll := len(h.Rows) - body; maxScroll > 0 {
-		drawGutter(f, layout.Rect{X: ix + iw - 1, Y: iy + 3, W: 1, H: body}, &PaneSnap{ScrollN: maxScroll}, maxScroll-scroll)
+	if maxScroll := len(lines) - body; maxScroll > 0 {
+		thumb, top := HelpThumb(body, len(lines), scroll)
+		for i := 0; i < body; i++ {
+			glyph, fg := "▕", f.Palette.Dim
+			if i >= top && i < top+thumb {
+				glyph, fg = "▐", f.Palette.Overlay1
+			}
+			f.Set(ix+iw-1, iy+3+i, glyph, uv.Style{Fg: fg, Bg: f.Palette.PopupBG})
+		}
 	}
 
 	// Footer hint on the last inner row.
-	f.Text(ix+1, y+hgt-2, "scroll wheel ↑↓  ·  jump pgup / pgdn   ·  close esc / enter", uv.Style{Fg: f.Palette.Dim}, ix+iw-1)
+	footerX := ix
+	for _, part := range []struct {
+		text string
+		fg   color.Color
+	}{{" scroll ", f.Palette.Dim}, {"wheel ↑↓", f.Palette.Text},
+		{"  ·  jump", f.Palette.Dim}, {" pgup / pgdn ", f.Palette.Text},
+		{"  ·  close", f.Palette.Dim}, {" esc / enter ", f.Palette.Text}} {
+		footerX = f.Text(footerX, y+hgt-2, part.text, uv.Style{Fg: part.fg, Bg: f.Palette.PopupBG}, ix+iw)
+	}
+}
+
+// The distribution shows only the frame below 22 columns or 8 rows (help-compact.steps).
+func HelpContentVisible(r layout.Rect) bool { return r.W >= 22 && r.H >= 8 }
+
+// HelpThumb follows the observed help pages and narrow wrapped listings.
+func HelpThumb(body, total, scroll int) (thumb, top int) {
+	thumb = min(body, max(1, int(math.Round(float64(body*body)/float64(max(1, total))))))
+	if total > body {
+		top = int(math.Round(float64(scroll*(body-thumb)) / float64(total-body)))
+	}
+	return thumb, top
 }
 
 func drawDialog(f *Frame, d *Dialog, out *Output) {

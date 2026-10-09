@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func TestSPECHelpMouseCaptureWheelTrackAndThumbGrab(t *testing.T) {
 	if h.scroll != 0 {
 		t.Fatal("wheel up", h.scroll)
 	}
-	th, top := thumbGeom(body, limit, limit)
+	th, top := render.HelpThumb(body, body+limit, 0)
 	grab := th - 1
 	send(input.KindMouseClick, 71, 5+top+grab, uv.MouseLeft)
 	if !h.dragging || h.grab != grab {
@@ -77,6 +78,14 @@ func TestSPECHelpMouseCaptureWheelTrackAndThumbGrab(t *testing.T) {
 	send(input.KindMouseClick, 0, 0, uv.MouseLeft)
 	if a.help != nil || a.sel != nil || a.menu != nil {
 		t.Fatal("outside close leaked event")
+	}
+	a.openHelp()
+	r := render.HelpRect(a.st.Cols, a.st.Rows)
+	a.help.rect = r
+	send(input.KindMouseClick, r.X+r.W-11, r.Y+1, uv.MouseLeft)
+	send(input.KindMouseRelease, r.X+r.W-11, r.Y+1, uv.MouseLeft)
+	if a.help != nil || a.sel != nil || a.menu != nil || a.fwd != -1 {
+		t.Fatal("header close leaked event")
 	}
 }
 
