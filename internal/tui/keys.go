@@ -278,7 +278,7 @@ func (a *App) dialogKey(k uv.Key) {
 		a.dialog = nil
 		d.run(a)
 	case k.Code == uv.KeyEscape:
-		a.dialog = nil
+		a.cancelDialog()
 	case d.input != nil:
 		runes := []rune(*d.input)
 		cursor := min(max(0, d.d.InputCursor), len(runes))

@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/plugin"
@@ -75,10 +76,12 @@ const (
 	menuMain
 	menuTab
 	menuWorktree
+	menuMachineRemove
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
 type uiMenu struct {
+	machines      []machine.Profile
 	worktreePaths []string
 	m             render.Menu
 	kind          menuKind
@@ -93,9 +96,10 @@ type uiMenu struct {
 // uiDialog is an open confirmation dialog; input != nil turns the detail
 // row into a single-line text field (run sees the entered value).
 type uiDialog struct {
-	d     render.Dialog
-	run   func(a *App) // confirm action
-	input *string      // text-entry mode when non-nil
+	d      render.Dialog
+	cancel func()
+	run    func(a *App) // confirm action
+	input  *string      // text-entry mode when non-nil
 }
 
 // sepDrag tracks a split-border ratio drag.
@@ -139,6 +143,7 @@ type App struct {
 	fr                *input.Framer
 	enc               *render.Encoder
 	cwd               string
+	machineCatalog    string
 
 	input    chan []byte
 	resizeCh chan winsize

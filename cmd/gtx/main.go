@@ -24,11 +24,21 @@ const version = "0.1.0"
 func main() {
 	api.ConfigureExecutable(os.Args[0])
 	args := os.Args[1:]
+	if message := cli.GlobalMachineError(args); message != "" {
+		cli.MachineUsageError(os.Stderr, message)
+		os.Exit(2)
+	}
+	if cli.MachineRemoteConflict(args) {
+		fmt.Fprintln(os.Stderr, "gtx: --machine cannot be combined with --remote")
+		os.Exit(2)
+	}
 
 	// Global flags may precede any subcommand.
 	session := api.DefaultSession
 	explicitSession := false
 	noSession := false
+	machineRef := ""
+	machineRequested := false
 	for len(args) > 0 {
 		switch {
 		case args[0] == "--session":
@@ -43,6 +53,18 @@ func main() {
 			session = strings.TrimPrefix(args[0], "--session=")
 			explicitSession = true
 			args = args[1:]
+		case args[0] == "--machine":
+			if len(args) < 2 {
+				fmt.Fprintln(os.Stderr, "gtx: --machine requires a name")
+				os.Exit(2)
+			}
+			machineRequested = true
+			machineRef = args[1]
+			args = args[2:]
+		case strings.HasPrefix(args[0], "--machine="):
+			machineRequested = true
+			machineRef = strings.TrimPrefix(args[0], "--machine=")
+			args = args[1:]
 		case args[0] == "--no-session":
 			noSession = true
 			args = args[1:]
@@ -54,6 +76,14 @@ dispatch:
 	if !api.ValidSessionName(session) {
 		fmt.Fprintf(os.Stderr, "gtx: invalid session name %q\n", session)
 		os.Exit(2)
+	}
+
+	if machineRequested {
+		if machineRef == "" {
+			fmt.Fprintln(os.Stderr, "gtx: --machine requires a name")
+			os.Exit(2)
+		}
+		os.Exit(cli.ForwardMachine(machineRef, args, cli.Options{Session: session, Explicit: explicitSession}))
 	}
 
 	if len(args) > 0 {
@@ -81,7 +111,7 @@ dispatch:
 			}
 			fallthrough
 		case "wait", "plugin", "pane", "workspace", "worktree", "tab",
-			"send", "inbox", "msg", "run", "log", "agent",
+			"send", "inbox", "msg", "run", "log", "agent", "machine",
 			"help", "--help", "-h", "__pane-run":
 			os.Exit(cli.Run(args, cli.Options{
 				Session:  session,

@@ -86,6 +86,8 @@ func Run(args []string, o Options) int {
 		return r.waitCLI(args[1:])
 	case "plugin":
 		return r.pluginCLI(args[1:])
+	case "machine":
+		return r.machineCLI(args[1:])
 	case "pane":
 		return r.pane(args[1:])
 	case "worktree":
