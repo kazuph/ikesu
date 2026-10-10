@@ -422,7 +422,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		if snap != nil {
 			f.CopyGrid(ix, iy, clipGrid(snap.Grid, iw, ih))
 		}
-		if !in.ServerUI && (in.SelectedWorkspace != nil || in.Navigator != nil) && !pr.IsFocused {
+		if !in.ServerUI && (in.SelectedWorkspace != nil || in.Navigator != nil || in.Menu != nil) && !pr.IsFocused {
 			for y := iy; y < iy+ih; y++ {
 				for x := ix; x < ix+iw; x++ {
 					f.Cells[y*f.W+x].Style.Attrs |= uv.AttrFaint
