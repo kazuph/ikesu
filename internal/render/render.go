@@ -248,6 +248,7 @@ func Compose(in Input) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
 	f.Palette = CustomPalette(in.SidebarConfig.ThemeName(), in.SidebarConfig.Theme.Custom)
+	appliedPalette := f.Palette
 	if in.Settings != nil {
 		f.Palette = CustomPalette(in.Settings.Theme, in.SidebarConfig.Theme.Custom)
 	}
@@ -255,7 +256,12 @@ func Compose(in Input) *Output {
 
 	drawSidebar(f, s, in)
 	drawTabBar(f, s, in, out)
+	previewPalette := f.Palette
+	if in.ServerUI {
+		f.Palette = appliedPalette
+	}
 	drawPanes(f, s, in, out)
+	f.Palette = previewPalette
 	if in.ModeHint != "" && !(in.ServerUI && in.Prefix) {
 		area := s.PanesArea()
 		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)

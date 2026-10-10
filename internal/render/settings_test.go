@@ -1,10 +1,36 @@
 package render
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/model"
 	"strings"
 	"testing"
 )
+
+func TestSettingsThemePreviewLeavesBackdropAtAppliedTheme(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 45)
+	in := Input{State: s, ServerUI: true}
+	in.SidebarConfig.Theme.Name = "tokyo-night"
+	in.SidebarConfig.Theme.Custom = map[string]string{"panel_bg": "transparent", "surface_dim": "#16161e"}
+	base := Compose(in).Frame
+	in.Settings = &Settings{Theme: "tokyo-night-day", Selected: 4}
+	f := Compose(in).Frame
+	area := s.PanesArea()
+	want := base.Cell(area.X, area.Y).Style
+	want.Attrs |= uv.AttrFaint
+	if f.Cell(area.X, area.Y).Style != want {
+		t.Fatal("unapplied theme changed the pane backdrop")
+	}
+	r := SettingsRect(s.Cols, s.Rows)
+	if f.Cell(r.X, r.Y).Style.Fg != CustomPalette("tokyo-night-day", in.SidebarConfig.Theme.Custom).Accent {
+		t.Fatal("settings panel did not preview the pending theme")
+	}
+	in.ServerUI = false
+	f = Compose(in).Frame
+	if f.Cell(area.X, area.Y).Style.Fg != CustomPalette("tokyo-night-day", in.SidebarConfig.Theme.Custom).Accent {
+		t.Fatal("standalone pane did not preview the pending theme")
+	}
+}
 
 func TestG2SettingsReferenceGeometryOrderAndExcludedSections(t *testing.T) {
 	s := model.New(t.TempDir(), 120, 50)
