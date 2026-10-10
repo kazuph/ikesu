@@ -44,6 +44,26 @@ func TestParityJobsObservedRunningAndExitRow(t *testing.T) {
 	}
 }
 
+func TestEndpointJobRowUsesPanelBackgroundIndependentlyOfCardFlag(t *testing.T) {
+	for _, value := range []string{"transparent", "#123456"} {
+		for _, endpoint := range []bool{false, true} {
+			f := NewFrame(25, 1)
+			f.Palette = CustomPalette("tokyo-night", map[string]string{"panel_bg": value, "surface_dim": "#16161e"})
+			drawJobRow(f, Input{ServerUI: endpoint, Jobs: []JobRow{{Status: "cancelled", Color: Red,
+				CallerPane: "p1", Elapsed: "0s", Label: "PARITY_"}}}, 0, 0, 0, 25)
+			want := f.Palette.SurfDim
+			if endpoint {
+				want = f.Palette.PopupBG
+			}
+			for x := 0; x < 25; x++ {
+				if f.Cells[x].Style.Bg != want {
+					t.Fatalf("panel_bg=%s endpoint=%v cell=%d background=%v want=%v", value, endpoint, x, f.Cells[x].Style.Bg, want)
+				}
+			}
+		}
+	}
+}
+
 func TestServerJobDotAndRestoreStyleRecordedCells(t *testing.T) {
 	s := testState(160, 45)
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()

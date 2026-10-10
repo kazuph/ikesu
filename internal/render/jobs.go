@@ -80,9 +80,13 @@ func drawJobRow(f *Frame, in Input, index, x, y, width int) {
 		}
 	}
 	limit := x + width
+	bg := f.Palette.SurfDim
+	if in.ServerUI {
+		bg = f.Palette.PopupBG
+	}
 	// jobs-panel captures place state/caller/elapsed/label at cells 1/6/13/18.
-	x = f.Text(x, y, fmt.Sprintf(" %-4s ", status), uv.Style{Fg: f.ThemeColor(j.Color), Bg: f.Palette.SurfDim}, limit)
-	x = f.Text(x, y, fmt.Sprintf("%-7s", j.CallerPane), uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.SurfDim}, limit)
-	x = f.Text(x, y, fmt.Sprintf("%4s ", j.Elapsed), uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim}, limit)
-	f.Text(x, y, j.Label, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim}, limit)
+	x = f.Text(x, y, fmt.Sprintf(" %-4s ", status), uv.Style{Fg: f.ThemeColor(j.Color), Bg: bg}, limit)
+	x = f.Text(x, y, fmt.Sprintf("%-7s", j.CallerPane), uv.Style{Fg: f.Palette.Subtle, Bg: bg}, limit)
+	x = f.Text(x, y, fmt.Sprintf("%4s ", j.Elapsed), uv.Style{Fg: f.Palette.Dim, Bg: bg}, limit)
+	f.Text(x, y, j.Label, uv.Style{Fg: f.Palette.Text, Bg: bg}, limit)
 }
