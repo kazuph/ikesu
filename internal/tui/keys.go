@@ -305,7 +305,7 @@ func (a *App) openQuitDialog() {
 	a.workspaceNavigate = false
 	a.navigateHint = false
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76},
+		d: render.Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76, CenterTerminal: a.serverUI},
 		run: func(a *App) {
 			a.exec(model.CmdQuit{})
 		},

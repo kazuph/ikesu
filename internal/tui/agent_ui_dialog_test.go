@@ -3,6 +3,7 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
@@ -37,6 +38,25 @@ func TestParityNameInputAppendsUnicodeAndClearsWithControlC(t *testing.T) {
 	a.dialogKey(uv.Key{Code: uv.KeyEnter})
 	if a.st.Workspaces[0].Name != "a界by" {
 		t.Fatal(a.st.Workspaces[0].Name)
+	}
+}
+
+func TestEndpointStopConfirmationBodyKeepsDialogAndCancelUsesTerminalPosition(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.SetServerUI()
+	a.openQuitDialog()
+	dialog := a.dialog
+	r, cancel, _ := render.DialogRects(&dialog.d, layout.Rect{W: a.st.Cols, H: a.st.Rows})
+	for _, kind := range []input.Kind{input.KindMouseClick, input.KindMouseRelease} {
+		a.onMouse(input.Event{Kind: kind, Mouse: uv.Mouse{X: r.X + r.W/2, Y: r.Y + 2, Button: uv.MouseLeft}})
+		if a.dialog != dialog {
+			t.Fatal("endpoint confirmation body must keep the dialog")
+		}
+	}
+	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: cancel.X, Y: cancel.Y, Button: uv.MouseLeft}})
+	if a.dialog != nil || a.quit {
+		t.Fatal("endpoint cancel did not close safely")
 	}
 }
 

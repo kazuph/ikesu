@@ -10,6 +10,7 @@ from navigator_compare import panel
 p = argparse.ArgumentParser()
 p.add_argument('directory', type=Path)
 p.add_argument('--navigation', action='store_true')
+p.add_argument('--server', action='store_true', help='endpoint whole-terminal modal and closed-frame contract')
 args = p.parse_args()
 root = args.directory
 # The title and meaning must remain exact; only the specified product name differs.
@@ -22,12 +23,18 @@ closed = {'escape', 'outside'}
 if args.navigation:
     names = ('open', 'arrows', 'tab', 'inside', 'right-inside', 'cancelled', 'reopened', 'resize', 'escape')
     closed = {'inside', 'cancelled', 'escape'}
+    if args.server:
+        closed.remove('inside')
 for name in names:
     pair = {runtime: json.loads((root/runtime/(name+'.json')).read_text())
             for runtime in ('herdr', 'gtx')}
     rects = {runtime: panel(data, title) for runtime, data in pair.items()}
     if name in closed:
         assert rects == {'herdr': None, 'gtx': None}, (name, rects)
+        if args.server:
+            assert pair['herdr']['Cells'] == pair['gtx']['Cells'], (name, 'endpoint closed frame differs')
+            results.append({'screen': name, 'status': 'PASS_CLOSED_ENDPOINT'})
+            continue
         # The observed cancellation returns to workspace navigation.
         rows = {}
         for runtime, data in pair.items():
@@ -49,8 +56,12 @@ for name in names:
             reference = pair['herdr']['Cells'][y+2][x+1 if i < len(details[runtime]) else x+w-2]
             assert cell['Style'] == reference['Style'] and cell['Width'] == 1, (name, runtime, i)
     differences = []
-    for yy in range(y, y+h):
-        for xx in range(x, x+w):
+    for yy in range(pair['herdr']['Rows'] if args.server else y+h):
+        if not args.server and yy < y:
+            continue
+        for xx in range(pair['herdr']['Cols'] if args.server else x+w):
+            if not args.server and xx < x:
+                continue
             if yy == y+2 and x < xx < x+w-1:
                 continue  # Checked against exact text/style above, never approximated.
             if pair['herdr']['Cells'][yy][xx] != pair['gtx']['Cells'][yy][xx]:

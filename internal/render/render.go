@@ -113,7 +113,8 @@ type Dialog struct {
 	// Width pins the dialog width (0 → auto-fit contents).
 	Width int
 	// Workspace-close confirmation dims the panes while retaining the surrounding controls.
-	DimPanesOnly bool
+	DimPanesOnly   bool
+	CenterTerminal bool
 	// Input/InputEdit render the detail row as an editable text field.
 	Input       string
 	InputCursor int // rune index in Input
@@ -269,7 +270,7 @@ func Compose(in Input) *Output {
 	}
 	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 		for i := range f.Cells {
-			if in.Dialog != nil && (in.Dialog.DimPanesOnly || !in.Dialog.InputEdit) {
+			if in.Dialog != nil && (in.Dialog.DimPanesOnly || !in.Dialog.InputEdit && !in.Dialog.CenterTerminal) {
 				x, y := i%f.W, i/f.W
 				area := s.PanesArea()
 				if x < area.X || x >= area.X+area.W || y < area.Y || y >= area.Y+area.H {
@@ -284,7 +285,7 @@ func Compose(in Input) *Output {
 	}
 	if in.Dialog != nil {
 		area := s.PanesArea()
-		if in.Dialog.InputEdit {
+		if in.Dialog.InputEdit || in.Dialog.CenterTerminal {
 			area = layout.Rect{W: f.W, H: f.H}
 		}
 		drawDialog(f, in.Dialog, out, area)

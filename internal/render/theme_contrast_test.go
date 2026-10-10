@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 )
 
@@ -13,10 +14,13 @@ func TestTransparentPanelKeepsBrightControlTextAndConfirmationBackdrop(t *testin
 	in := Input{State: s, ServerUI: true}
 	in.SidebarConfig.Theme.Custom = map[string]string{"panel_bg": "transparent", "surface_dim": "#16161e"}
 	base := Compose(in)
-	in.Dialog = &Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76}
+	in.Dialog = &Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76, CenterTerminal: true}
 	confirmed := Compose(in)
-	if confirmed.Frame.Cell(0, 0).Style != base.Frame.Cell(0, 0).Style {
-		t.Fatal("confirmation dimmed the sidebar header")
+	if confirmed.DialogRect != (layout.Rect{X: 42, Y: 20, W: 76, H: 5}) {
+		t.Fatal("endpoint stop confirmation is not centered in the terminal", confirmed.DialogRect)
+	}
+	if confirmed.Frame.Cell(0, 0).Style.Attrs != base.Frame.Cell(0, 0).Style.Attrs|uv.AttrFaint {
+		t.Fatal("endpoint stop confirmation must dim the sidebar header")
 	}
 	area := s.PanesArea()
 	if confirmed.Frame.Cell(area.X, area.Y).Style.Attrs&uv.AttrFaint == 0 {

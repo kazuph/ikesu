@@ -480,7 +480,11 @@ func (a *App) dialogMouse(ev input.Event) {
 	if m.Button == uv.MouseRight {
 		return
 	}
-	_, cancel, confirm := render.DialogRects(&a.dialog.d, a.st.PanesArea())
+	area := a.st.PanesArea()
+	if a.dialog.d.CenterTerminal {
+		area = layout.Rect{W: a.st.Cols, H: a.st.Rows}
+	}
+	outer, cancel, confirm := render.DialogRects(&a.dialog.d, area)
 	switch {
 	case pointIn(m.X, m.Y, confirm):
 		if ev.Kind == input.KindMouseClick {
@@ -491,6 +495,9 @@ func (a *App) dialogMouse(ev input.Event) {
 	case pointIn(m.X, m.Y, cancel):
 		a.cancelDialog()
 	default:
+		if a.dialog.d.CenterTerminal && pointIn(m.X, m.Y, outer) {
+			return
+		}
 		a.cancelDialog()
 	}
 }
