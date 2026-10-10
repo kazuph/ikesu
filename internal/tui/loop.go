@@ -248,6 +248,11 @@ func (a *App) exec(cmd model.Command) {
 			previousTop := a.cm.top
 			a.cm.top = max(min(a.cm.top+copyHeight-h, a.bufferLen(a.sup.Get(a.cm.pane))-h), 0)
 			a.cm.cy += a.cm.top - previousTop
+			a.copyClampCursor()
+			if a.cm.anchor != nil {
+				a.cm.anchor.x = min(max(a.cm.anchor.x, 0), max(a.copyInnerW()-1, 0))
+			}
+			a.copyReveal()
 		}
 	default:
 		a.changed()

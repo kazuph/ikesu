@@ -456,7 +456,7 @@ func (a *App) copyGrid() [][]uv.Cell {
 		}
 		style := uv.Style{Fg: palette.Text, Bg: palette.NavigatorDivider}
 		if i == cm.matchIdx {
-			style = uv.Style{Fg: palette.PopupBG, Bg: palette.Accent, Attrs: uv.AttrBold}
+			style = uv.Style{Fg: palette.SurfDim, Bg: palette.Accent, Attrs: uv.AttrBold}
 		}
 		for col := match.Start.Col; col <= match.End.Col && col < len(g[row]); col++ {
 			g[row][col].Style = style
