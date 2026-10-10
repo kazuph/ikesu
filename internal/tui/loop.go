@@ -229,6 +229,9 @@ func (a *App) exec(cmd model.Command) {
 	}
 	a.popupVisibilityChanged(popupWasVisible, previousPopup)
 	a.recordFocus(beforeFocus, a.focusedPane())
+	if _, selecting := cmd.(model.CmdSelectWorkspace); selecting && a.serverUI {
+		a.revealServerWorkspace()
+	}
 	// Copy mode dies when its pane leaves the active tab's layout
 	// (closed, moved, or the tab/workspace changed).
 	if a.cm != nil {

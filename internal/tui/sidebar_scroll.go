@@ -15,6 +15,35 @@ func (a *App) sidebarView() render.SidebarView {
 	return render.SidebarViewForInput(render.Input{ServerUI: a.serverUI, State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll})
 }
 
+func (a *App) revealServerWorkspace() {
+	view := a.sidebarView()
+	for _, pos := range view.Rows {
+		if pos.Row.Kind == render.RowWorkspace && pos.Row.Ws == a.st.Active {
+			return
+		}
+	}
+	headings, cards := 0, 0
+	for _, row := range render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig)[2:] {
+		if row.Kind == render.RowSep {
+			return
+		}
+		if row.Kind == render.RowSection || row.Kind == render.RowRule {
+			headings++
+			continue
+		}
+		if row.Kind == render.RowWorkspace && row.Ws == a.st.Active {
+			available := max(1, view.Workspace.Rect.H-headings-1)
+			if cards < view.Workspace.Offset {
+				a.sidebarScroll = cards
+			} else {
+				a.sidebarScroll = max(0, cards+1-available)
+			}
+			return
+		}
+		cards++
+	}
+}
+
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 	if !a.st.SidebarVisible {
 		if up {
@@ -28,6 +57,9 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 	view := a.sidebarView()
 	v, off := view.Workspace, &a.sidebarScroll
 	step := 3
+	if a.serverUI && a.st.WorkspaceDensity == "slim" && a.sidebarConfig.UI.Sidebar.Spaces.Rows == nil {
+		step = 2 // The observed slim workspace card has a name row and a git row.
+	}
 	if pointIn(m.X, m.Y, view.Agents.Rect) {
 		v, off = view.Agents, &a.agentScroll
 		if a.serverUI {
