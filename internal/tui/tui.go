@@ -243,6 +243,7 @@ type App struct {
 	uiBorders                                bool                  // [ui] pane_borders
 	serverUI                                 bool
 	sidebarConfig                            config.Config
+	panePalette                              *render.Palette
 	sidebarGesture                           *sidebarGesture
 	tabGesture                               *tabGesture
 	dividerAt                                time.Time

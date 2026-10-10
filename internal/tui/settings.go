@@ -65,7 +65,12 @@ func (a *App) settingsApply() {
 		a.worktreeError(err)
 		return
 	}
+	panePalette := a.panePalette
 	a.SetSidebarConfig(c, false)
+	if a.serverUI {
+		// Endpoint pane chrome changes on config reload, not settings apply.
+		a.panePalette = panePalette
+	}
 	if a.configChanged != nil {
 		a.configChanged(c)
 	}

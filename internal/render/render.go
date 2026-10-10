@@ -133,6 +133,7 @@ type JobDot struct {
 }
 
 type Input struct {
+	PanePalette     *Palette
 	ServerUI        bool
 	State           *model.AppState
 	SidebarConfig   config.Config
@@ -261,6 +262,9 @@ func Compose(in Input) *Output {
 	previewPalette := f.Palette
 	if in.ServerUI {
 		f.Palette = appliedPalette
+		if in.PanePalette != nil {
+			f.Palette = *in.PanePalette
+		}
 	}
 	drawPanes(f, s, in, out)
 	f.Palette = previewPalette
