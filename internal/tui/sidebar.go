@@ -12,6 +12,7 @@ func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 	a.sup.SetShell(c.Terminal.DefaultShell, c.Terminal.ShellMode)
 	a.st.SidebarCollapsedHidden = c.UI.SidebarCollapsedMode == "hidden"
 	a.SetConfigWarning(c.Warning())
+	a.configWarningBanner = len(c.Warnings) > 0
 	a.BeginHostTheme()
 	p := render.ConfigPalette(c)
 	a.panePalette = &p

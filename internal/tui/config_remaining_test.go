@@ -64,3 +64,16 @@ navigate_workspace_down="d"
 	}
 	a.exec(model.CmdSelectWorkspace{Index: 0})
 }
+
+func TestConfigUnsupportedWarningUsesTopBanner(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	c, err := config.Decode([]byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"))
+	if err != nil || len(c.Warnings) != 1 {
+		t.Fatal(err, c.Warnings)
+	}
+	a.SetSidebarConfig(c, false)
+	if !a.configWarningBanner || a.configWarning != c.Warning() {
+		t.Fatal(a.configWarning, a.configWarningBanner)
+	}
+}
