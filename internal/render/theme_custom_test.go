@@ -59,6 +59,37 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 	}
 }
 
+func TestCollapsedEndpointCardsKeepNumbersReadableAndRespectTransparency(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 45)
+	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir()})
+	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir()})
+	s.SidebarVisible = false
+	in := Input{State: s, ServerUI: true}
+	for _, transparent := range []bool{false, true} {
+		in.SidebarConfig.UI.TransparentSidebarCards = transparent
+		f := Compose(in).Frame
+		for y := 0; y < len(s.Workspaces); y++ {
+			bg := f.Palette.Surface
+			if y == s.Active {
+				bg = f.Palette.PanelBG
+			}
+			if transparent {
+				bg = nil
+			}
+			for x := 0; x < 3; x++ {
+				cell := f.Cell(x, y)
+				fg := f.Palette.Text
+				if x == 2 {
+					fg = f.Palette.Dim
+				}
+				if cell.Style.Fg != fg || cell.Style.Bg != bg {
+					t.Fatalf("collapsed card style at %d,%d (transparent=%v): %+v", x, y, transparent, cell.Style)
+				}
+			}
+		}
+	}
+}
+
 func TestCustomPanelBackgroundControlsMobileHeaderAndSwitcherGround(t *testing.T) {
 	for _, transparentCards := range []bool{false, true} {
 		s := model.New(t.TempDir(), 60, 25)

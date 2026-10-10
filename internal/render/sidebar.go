@@ -639,8 +639,14 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 	for i := scroll; i < len(s.Workspaces) && i < scroll+avail; i++ {
 		y := iy + i - scroll
 		sty := uv.Style{Fg: f.Palette.Dim}
+		if in.ServerUI {
+			sty = uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}
+		}
 		if i == s.Active {
 			sty = uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PanelBG}
+		}
+		if in.ServerUI && in.SidebarConfig.UI.TransparentSidebarCards {
+			sty.Bg = nil
 		}
 		fill := uv.Style{Bg: sty.Bg}
 		label := fmt.Sprint(s.Workspaces[i].ID)
