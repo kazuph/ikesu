@@ -97,17 +97,19 @@ type MenuItem struct {
 
 // Toast is a transient notification box shown at the top-right.
 type Toast struct {
-	Title string
-	Body  string
-	Kind  string // "needs_attention" | "finished"
+	Title    string
+	Body     string
+	Kind     string // "needs_attention" | "finished"
+	Position string
 }
 
 // Dialog is a centered confirmation box.
 type Dialog struct {
-	Title   string
-	Detail  string
-	Confirm string // e.g. "quit"
-	Cancel  string // e.g. "cancel"
+	ContinueOnly bool
+	Title        string
+	Detail       string
+	Confirm      string // e.g. "quit"
+	Cancel       string // e.g. "cancel"
 	// Lines are extra detail rows below Detail (e.g. the missing-session
 	// warning list); at most 10 are drawn, per SPEC's dialog height rule
 	// 5 + min(count, 10).
@@ -251,7 +253,7 @@ type HelpInput struct {
 func Compose(in Input) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
-	f.Palette = CustomPalette(in.SidebarConfig.ThemeName(), in.SidebarConfig.Theme.Custom)
+	f.Palette = ConfigPalette(in.SidebarConfig)
 	appliedPalette := f.Palette
 	if in.Settings != nil {
 		f.Palette = CustomPalette(in.Settings.Theme, in.SidebarConfig.Theme.Custom)
@@ -326,7 +328,11 @@ func Compose(in Input) *Output {
 		drawToast(f, in.Toast, out)
 	}
 	if in.Copied != "" && !in.ServerUI {
-		drawCopyFeedback(f, s.PanesArea(), in.Copied)
+		if position := in.SidebarConfig.UI.Toast.Clipboard.Position; position != "" {
+			drawToast(f, &Toast{Title: in.Copied, Position: position}, out)
+		} else {
+			drawCopyFeedback(f, s.PanesArea(), in.Copied)
+		}
 	}
 	if in.Help != nil {
 		drawHelp(f, in.Help, out)

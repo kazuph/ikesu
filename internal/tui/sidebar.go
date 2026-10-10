@@ -9,9 +9,11 @@ import (
 
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 	a.sidebarConfig = c
+	a.sup.SetShell(c.Terminal.DefaultShell, c.Terminal.ShellMode)
+	a.st.SidebarCollapsedHidden = c.UI.SidebarCollapsedMode == "hidden"
 	a.SetConfigWarning(c.Warning())
 	a.BeginHostTheme()
-	p := render.CustomPalette(c.ThemeName(), c.Theme.Custom)
+	p := render.ConfigPalette(c)
 	a.panePalette = &p
 	a.st.MobileWidthThreshold = c.MobileWidthThreshold()
 	lo, hi, n, err := c.SidebarBounds()

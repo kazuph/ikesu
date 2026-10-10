@@ -3,9 +3,11 @@ package tui
 import (
 	"math"
 	"sort"
+	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/render"
@@ -31,7 +33,7 @@ func (a *App) openHelp() {
 // overlay: global → workspaces/tabs → panes. Configured [keys] bindings
 // are expanded so remapped users see their actual keys.
 func (a *App) helpRows() []render.HelpRow {
-	return []render.HelpRow{
+	rows := []render.HelpRow{
 		{Group: true, Cmd: "global"},
 		{Bind: "ctrl+b", Cmd: "prefix mode"},
 		{Bind: "prefix+?", Cmd: "keybinds"},
@@ -91,6 +93,39 @@ func (a *App) helpRows() []render.HelpRow {
 		{Bind: "unset", Cmd: "last pane"},
 		{},
 	}
+	for i := range rows {
+		if rows[i].Cmd == "prefix mode" {
+			rows[i].Bind = a.prefixSpec()
+			continue
+		}
+		if a.sidebarConfig.Keys.Actions == nil {
+			continue
+		}
+		name := strings.ReplaceAll(rows[i].Cmd, " ", "_")
+		aliases := map[string]string{"keybinds": "help", "workspace navigation": "workspace_picker", "session navigator": "goto", "switch workspace 1-9": "switch_workspace", "switch tab 1-9": "switch_tab", "focus agent 1-9": "focus_agent", "zoom pane": "zoom", "delete worktree checkout": "remove_worktree"}
+		if alias, ok := aliases[rows[i].Cmd]; ok {
+			name = alias
+		}
+		if _, ok := config.ActionDefaults[name]; ok {
+			bind := strings.Join(a.sidebarConfig.ActionBindings(name), " / ")
+			if bind == "" {
+				bind = "unset"
+			}
+			rows[i].Bind = bind
+		}
+	}
+	if len(a.sidebarConfig.Keys.Command) > 0 {
+		rows = append(rows, render.HelpRow{Group: true, Cmd: "custom commands"})
+		for _, b := range a.sidebarConfig.Keys.Command {
+			description := b.Description
+			if description == "" {
+				description = "custom command"
+			}
+			rows = append(rows, render.HelpRow{Bind: b.Key, Cmd: description})
+		}
+	}
+	return rows
+
 }
 
 // bindKeys renders a binding set sorted, e.g. "prefix+% / prefix+v".

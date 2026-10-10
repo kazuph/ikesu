@@ -13,6 +13,9 @@ func (a *App) SetPaneKeybinds(c config.Config) {
 }
 
 func (a *App) recordFocus(before, after int) {
+	if before != after && before >= 0 && after >= 0 {
+		a.lastPane = before
+	}
 	if a.traversingHistory || before == after || after < 0 {
 		return
 	}

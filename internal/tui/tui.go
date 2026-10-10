@@ -201,6 +201,7 @@ type App struct {
 	editKeys                                 map[rune]bool
 	historyBackKeys                          map[rune]bool
 	historyForwardKeys                       map[rune]bool
+	lastPane                                 int
 	focusHistory                             []int
 	focusHistoryAt                           int
 	traversingHistory                        bool

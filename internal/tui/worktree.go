@@ -3,7 +3,9 @@ package tui
 import (
 	"crypto/rand"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
@@ -47,6 +49,17 @@ func (a *App) WorktreeSource(cwd string, ws *string) (api.WorktreeSourceInfo, er
 	src, err := worktree.Source(cwd)
 	if err != nil {
 		return src, err
+	}
+	if directory := a.sidebarConfig.Worktrees.Directory; directory != "" {
+		if directory == "~" || strings.HasPrefix(directory, "~/") {
+			home, _ := os.UserHomeDir()
+			directory = filepath.Join(home, strings.TrimPrefix(directory, "~/"))
+		}
+		if !filepath.IsAbs(directory) {
+			directory = filepath.Join(a.cwd, directory)
+		}
+		prefix := filepath.Join(directory, src.RepoName)
+		src.CheckoutPathPrefix = &prefix
 	}
 	for _, w := range a.st.Workspaces {
 		if worktree.SamePath(w.Cwd, src.SourceCheckoutPath) {

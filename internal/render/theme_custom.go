@@ -46,3 +46,13 @@ func CustomPalette(name string, custom map[string]string) Palette {
 	}
 	return p
 }
+
+func ConfigPalette(c config.Config) Palette {
+	p := CustomPalette(c.ThemeName(), c.Theme.Custom)
+	if _, override := c.Theme.Custom["accent"]; !override && c.UI.Accent != "" {
+		if value, err := config.ParseThemeColor(c.UI.Accent); err == nil {
+			p.Accent = value
+		}
+	}
+	return p
+}

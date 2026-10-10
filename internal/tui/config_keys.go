@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
 )
 
 func (a *App) prefixMatches(k uv.Key) bool {
@@ -37,7 +39,7 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if strings.HasPrefix(name, "navigate_") || name == "remote_image_paste" {
+		if strings.HasPrefix(name, "navigate_") || (name == "remote_image_paste" || name == "fullscreen") {
 			continue
 		}
 		for _, spec := range a.sidebarConfig.ActionBindings(name) {
@@ -54,6 +56,9 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 }
 func (a *App) configAction(name string, k uv.Key) bool {
 	switch name {
+	case "swap_pane_left", "swap_pane_down", "swap_pane_up", "swap_pane_right":
+		dirs := map[string]layout.NavDir{"swap_pane_left": layout.NavLeft, "swap_pane_down": layout.NavDown, "swap_pane_up": layout.NavUp, "swap_pane_right": layout.NavRight}
+		a.exec(model.CmdSwapDir{Pane: a.focusedPane(), Dir: dirs[name]})
 	case "previous_workspace":
 		a.cycleWorkspace(-1)
 	case "next_workspace":
@@ -71,7 +76,9 @@ func (a *App) configAction(name string, k uv.Key) bool {
 				a.exec(model.CmdSelectTab{Workspace: a.st.Active, Tab: i})
 			}
 		}
-	case "focus_history_back", "last_pane":
+	case "last_pane":
+		a.configFocusPane(a.lastPane)
+	case "focus_history_back":
 		a.focusHistoryStep(false)
 	case "focus_history_forward":
 		a.focusHistoryStep(true)
@@ -94,10 +101,14 @@ func (a *App) configAction(name string, k uv.Key) bool {
 		} else {
 			a.newTabNameDialog()
 		}
-	case "previous_agent", "next_agent", "focus_agent", "open_worktree", "remove_worktree":
-		a.unsupportedSidebar("keys." + name)
+	case "open_worktree":
+		a.openWorktreeMenu(a.st.Active)
+	case "remove_worktree":
+		a.deleteWorktreeDialog(a.st.Active, false)
+	case "previous_agent", "next_agent", "focus_agent":
+		a.configAgentFocus(name, k)
 	default:
-		codes := map[string]rune{"help": '?', "settings": 's', "detach": 'q', "reload_config": 'R', "workspace_picker": 'w', "goto": 'g', "new_workspace": 'N', "new_worktree": 'G', "rename_workspace": 'W', "close_workspace": 'D', "rename_tab": 'T', "previous_tab": 'p', "next_tab": 'n', "close_tab": 'X', "focus_pane_left": 'h', "focus_pane_down": 'j', "focus_pane_up": 'k', "focus_pane_right": 'l', "cycle_pane_next": uv.KeyTab, "cycle_pane_previous": uv.KeyTab, "close_pane": 'x', "zoom": 'z', "fullscreen": 'z', "resize_mode": 'r', "toggle_sidebar": 'b'}
+		codes := map[string]rune{"help": '?', "settings": 's', "detach": 'q', "reload_config": 'R', "workspace_picker": 'w', "goto": 'g', "new_workspace": 'N', "new_worktree": 'G', "rename_workspace": 'W', "close_workspace": 'D', "rename_tab": 'T', "previous_tab": 'p', "next_tab": 'n', "close_tab": 'X', "focus_pane_left": 'h', "focus_pane_down": 'j', "focus_pane_up": 'k', "focus_pane_right": 'l', "cycle_pane_next": uv.KeyTab, "cycle_pane_previous": uv.KeyTab, "close_pane": 'x', "zoom": 'z', "resize_mode": 'r', "toggle_sidebar": 'b'}
 		code, ok := codes[name]
 		if !ok {
 			return false
@@ -133,7 +144,7 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 	case "pane":
 		_, err = a.OpenPluginPane(a.st.Active, a.focusedPane(), "zoomed", "", cwd, argv, a.keyCommandEnv(cwd), true)
 	case "shell":
-		cmd := exec.Command(argv[0], argv[1:]...)
+		cmd := exec.Command(shell, "-lc", binding.Command)
 		cmd.Dir = cwd
 		cmd.Env = os.Environ()
 		for key, value := range a.keyCommandEnv(cwd) {
@@ -160,4 +171,71 @@ func (a *App) keyCommandEnv(cwd string) map[string]string {
 		}
 	}
 	return env
+}
+
+func (a *App) configFocusPane(pid int) {
+	for wi, w := range a.st.Workspaces {
+		for ti, t := range w.Tabs {
+			if t.Layout.HasPane(pid) {
+				a.exec(model.CmdSelectWorkspace{Index: wi})
+				a.exec(model.CmdSelectTab{Workspace: wi, Tab: ti})
+				a.exec(model.CmdFocusPane{Pane: pid})
+				return
+			}
+		}
+	}
+}
+func (a *App) configAgentFocus(name string, k uv.Key) {
+	ids := []int{}
+	for _, row := range render.SidebarRows(a.st, a.paneSnaps(), a.sidebarConfig) {
+		if row.Kind == render.RowAgent && row.Line == 0 {
+			ids = append(ids, row.Pane)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	at := -1
+	for i, pid := range ids {
+		if pid == a.focusedPane() {
+			at = i
+			break
+		}
+	}
+	switch name {
+	case "focus_agent":
+		at = int(k.Code - '1')
+		if at < 0 || at >= len(ids) {
+			return
+		}
+	case "next_agent":
+		at = (at + 1) % len(ids)
+	case "previous_agent":
+		if at < 0 {
+			at = 0
+		}
+		at = (at + len(ids) - 1) % len(ids)
+	}
+	a.configFocusPane(ids[at])
+}
+
+func (a *App) newPaneCwd(source string) string {
+	switch policy := a.sidebarConfig.Terminal.NewCwd; policy {
+	case "", "follow":
+		return source
+	case "current":
+		return a.cwd
+	case "home":
+		home, _ := os.UserHomeDir()
+		return home
+	default:
+		if policy == "~" || strings.HasPrefix(policy, "~/") {
+			home, _ := os.UserHomeDir()
+			return filepath.Join(home, strings.TrimPrefix(policy, "~/"))
+		}
+		if !filepath.IsAbs(policy) {
+			return filepath.Join(a.cwd, policy)
+		}
+		return policy
+	}
 }

@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/config"
 	"strings"
 	"time"
 
@@ -17,6 +18,24 @@ import (
 
 // onMouse is the mouse entry point; overlays grab events before panes.
 func (a *App) onMouse(ev input.Event) {
+	if a.sidebarConfig.UI.MouseCapture != nil && !*a.sidebarConfig.UI.MouseCapture {
+		if pr, ok := a.paneAt(ev.Mouse.X, ev.Mouse.Y); ok {
+			if p := a.sup.Get(pr.ID); p != nil && p.Snapshot().MouseTracking {
+				switch ev.Kind {
+				case input.KindMouseClick:
+					a.forwardTo(pr.ID, uv.MouseClickEvent(ev.Mouse))
+				case input.KindMouseRelease:
+					a.forwardTo(pr.ID, uv.MouseReleaseEvent(ev.Mouse))
+				case input.KindMouseMotion:
+					a.forwardTo(pr.ID, uv.MouseMotionEvent(ev.Mouse))
+				case input.KindMouseWheel:
+					a.forwardTo(pr.ID, uv.MouseWheelEvent(ev.Mouse))
+				}
+			}
+		}
+		return
+	}
+
 	if a.navigator != nil {
 		a.navigatorMouse(ev)
 		return
@@ -102,7 +121,7 @@ func (a *App) click(m uv.Mouse) {
 			// The pane border is always ours: right-click there opens the
 			// menu even while the app tracks the mouse. Without borders
 			// every cell belongs to the terminal.
-			if tracking && !(framed && isBorderCell(pr.Rect, m.X, m.Y)) {
+			if tracking && a.rightClickPass(m) && !(framed && isBorderCell(pr.Rect, m.X, m.Y)) {
 				a.exec(model.CmdFocusPane{Pane: pr.ID})
 				a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 				a.fwd = pr.ID
@@ -189,6 +208,9 @@ func (a *App) click(m uv.Mouse) {
 		a.dblMenu = false
 		a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 		a.fwd = pr.ID
+		return
+	}
+	if a.sidebarConfig.UI.CopyOnSelect != nil && !*a.sidebarConfig.UI.CopyOnSelect {
 		return
 	}
 	off := a.scroll[pr.ID]
@@ -552,7 +574,7 @@ func (a *App) wheel(m uv.Mouse) {
 			code = uv.KeyDown
 		}
 		p.WithEmu(func(e *vt.Emulator) {
-			for i := 0; i < 3; i++ {
+			for i := 0; i < a.sidebarConfig.MouseScrollLines(); i++ {
 				e.SendKey(uv.KeyPressEvent{Code: code})
 			}
 		})
@@ -565,13 +587,13 @@ func (a *App) wheel(m uv.Mouse) {
 func (a *App) hostScroll(pid, scrollN int, up bool) {
 	off := a.scroll[pid]
 	if up {
-		off += 3
+		off += a.sidebarConfig.MouseScrollLines()
 		if off > scrollN {
 			off = scrollN
 		}
 		a.scroll[pid] = off
 	} else {
-		off -= 3
+		off -= a.sidebarConfig.MouseScrollLines()
 		if off <= 0 {
 			delete(a.scroll, pid)
 		} else {
@@ -645,6 +667,9 @@ func (a *App) selMouse(ev input.Event) {
 func (a *App) finishSelection() {
 	s := a.sel
 	a.sel = nil
+	if a.sidebarConfig.UI.CopyOnSelect != nil && !*a.sidebarConfig.UI.CopyOnSelect {
+		return
+	}
 	if s == nil || !s.moved {
 		return
 	}
@@ -740,4 +765,13 @@ func paneMouseCoord(inner layout.Rect, pixel bool, cw, ch int, m uv.Mouse) uv.Mo
 		y = y*ch + ch/2
 	}
 	return uv.Mouse{X: x, Y: y, Button: m.Button, Mod: m.Mod}
+}
+
+func (a *App) rightClickPass(m uv.Mouse) bool {
+	spec := a.sidebarConfig.UI.RightClickPassthroughModifier
+	if spec == "" || spec == "off" {
+		return false
+	}
+	chord, err := config.ParseChord(spec + "+x")
+	return err == nil && m.Mod == chord.Key.Mod
 }

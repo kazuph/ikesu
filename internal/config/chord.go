@@ -57,6 +57,10 @@ func ParseChord(spec string) (Chord, error) {
 		return c, fmt.Errorf("invalid key %q", spec)
 	}
 	c.Key.Code = runes[0]
+	raw := []rune(strings.TrimSpace(spec[strings.LastIndex(spec, "+")+1:]))
+	if len(raw) == 1 && raw[0] >= 'A' && raw[0] <= 'Z' {
+		c.Key.Mod |= uv.ModShift
+	}
 	return c, nil
 }
 func (c Chord) Match(k uv.Key, prefix bool) bool {
@@ -81,6 +85,7 @@ func (c Chord) Match(k uv.Key, prefix bool) bool {
 // Defaults come from the 0.2.24 commented configuration, with the existing
 // gtx copy/history extensions retained.
 var ActionDefaults = map[string]string{
+	"swap_pane_left": "prefix+shift+h", "swap_pane_down": "prefix+shift+j", "swap_pane_up": "prefix+shift+k", "swap_pane_right": "prefix+shift+l",
 	"help": "prefix+?", "settings": "prefix+s", "detach": "prefix+q", "reload_config": "prefix+shift+r", "open_notification_target": "prefix+o", "workspace_picker": "prefix+w", "goto": "prefix+g", "new_workspace": "prefix+shift+n", "new_worktree": "prefix+shift+g", "open_worktree": "", "remove_worktree": "", "rename_workspace": "prefix+shift+w", "close_workspace": "prefix+shift+d", "previous_workspace": "", "next_workspace": "", "previous_agent": "", "next_agent": "", "focus_agent": "", "remote_image_paste": "ctrl+v", "new_tab": "prefix+c", "rename_tab": "prefix+shift+t", "previous_tab": "prefix+p", "next_tab": "prefix+n", "switch_tab": "prefix+1..9", "switch_workspace": "", "close_tab": "prefix+shift+x", "rename_pane": "prefix+shift+p", "edit_scrollback": "prefix+e", "focus_pane_left": "prefix+h", "focus_pane_down": "prefix+j", "focus_pane_up": "prefix+k", "focus_pane_right": "prefix+l", "cycle_pane_next": "prefix+tab", "cycle_pane_previous": "prefix+shift+tab", "last_pane": "", "split_vertical": "prefix+v", "split_horizontal": "prefix+minus", "close_pane": "prefix+x", "zoom": "prefix+z", "fullscreen": "", "resize_mode": "prefix+r", "toggle_sidebar": "prefix+b", "navigate_workspace_up": "up", "navigate_workspace_down": "down", "navigate_pane_left": "h", "navigate_pane_down": "j", "navigate_pane_up": "k", "navigate_pane_right": "l", "copy_mode": "prefix+[", "focus_history_back": "", "focus_history_forward": "",
 }
 

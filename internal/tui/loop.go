@@ -49,6 +49,10 @@ func (a *App) onInput(ev input.Event) {
 		a.onMouse(ev)
 	case input.KindFocus:
 		a.windowBlurred = false
+		if a.sidebarConfig.UI.RedrawOnFocusGained == nil || *a.sidebarConfig.UI.RedrawOnFocusGained {
+			a.enc.Reset()
+			a.dirty = true
+		}
 		a.detectAll()
 	case input.KindBlur:
 		a.windowBlurred = true
@@ -159,6 +163,9 @@ func (a *App) copiedFlash() string {
 }
 
 func (a *App) copiedFlashAt(now time.Time) string {
+	if enabled := a.sidebarConfig.UI.Toast.Clipboard.Enabled; enabled != nil && !*enabled {
+		return ""
+	}
 	if a.copied != "" && now.Sub(a.copiedAt) < copiedDuration {
 		return a.copied
 	}
@@ -209,6 +216,14 @@ func (a *App) anyWorking() bool {
 
 // exec applies a command and performs its effects.
 func (a *App) exec(cmd model.Command) {
+	policyCwd := false
+	switch c := cmd.(type) {
+	case model.CmdSplitFocused:
+		policyCwd = true
+	case model.CmdNewTab:
+		policyCwd = c.Cwd == "" && len(c.Argv) == 0
+	}
+
 	switch cmd.(type) {
 	case model.CmdSetSection, model.CmdToggleSection:
 		a.sidebarScroll = 0
@@ -232,6 +247,10 @@ func (a *App) exec(cmd model.Command) {
 		prev = a.st.Capture()
 	}
 	for _, e := range a.st.Apply(cmd) {
+		if spawn, ok := e.(model.EffSpawnPane); ok && policyCwd {
+			spawn.Cwd = a.newPaneCwd(spawn.Cwd)
+			e = spawn
+		}
 		a.effect(e)
 	}
 	if metadataOrder != nil {

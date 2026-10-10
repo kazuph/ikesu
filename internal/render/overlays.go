@@ -115,7 +115,23 @@ func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
 	if warning.H > 0 {
 		y = max(y, warning.Y+warning.H)
 	}
-	return layout.Rect{X: view.X + view.W - w, Y: y, W: w, H: min(4, max(0, view.Y+view.H-y))}
+	h := min(4, max(0, view.Y+view.H-y))
+	x := view.X + view.W - w
+	switch t.Position {
+	case "top-center":
+		x = view.X + (view.W-w)/2
+	case "bottom-center":
+		x = view.X + (view.W-w)/2
+		y = max(y, view.Y+view.H-h)
+	case "top-left":
+		x = view.X
+	case "bottom-left":
+		x = view.X
+		y = max(y, view.Y+view.H-h)
+	case "bottom-right":
+		y = max(y, view.Y+view.H-h)
+	}
+	return layout.Rect{X: x, Y: y, W: w, H: h}
 }
 
 // --- dialog ---
@@ -165,6 +181,10 @@ func DialogRects(d *Dialog, area layout.Rect) (outer, cancel, confirm layout.Rec
 	cancelW := ansi.StringWidth(" esc " + d.Cancel + " ")
 	confirm = layout.Rect{X: x + (w-confirmW-cancelW-2)/2, Y: by, W: confirmW, H: 1}
 	cancel = layout.Rect{X: confirm.X + confirmW + 2, Y: by, W: cancelW, H: 1}
+	if d.ContinueOnly {
+		confirm.X = x + 2
+		cancel = layout.Rect{}
+	}
 	return
 }
 
@@ -278,7 +298,9 @@ func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
 		f.Text(ix, iy+2+i, " "+d.Lines[i], uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 	}
 
-	f.Text(cancel.X, cancel.Y, " esc "+d.Cancel+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, cancel.X+cancel.W)
+	if !d.ContinueOnly {
+		f.Text(cancel.X, cancel.Y, " esc "+d.Cancel+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, cancel.X+cancel.W)
+	}
 	f.Text(confirm.X, confirm.Y, dialogConfirmLabel(d), uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
 	out.DialogRect = outer
 	out.DialogCancel = cancel

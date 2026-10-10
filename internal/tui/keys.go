@@ -50,6 +50,12 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 	if a.prefix {
 		a.prefix = false
 		a.dirty = true
+		if a.prefixMatches(k) {
+			if pid := a.focusedPane(); pid >= 0 {
+				a.sup.Input(pid, raw)
+			}
+			return
+		}
 		if a.sidebarConfig.Keys.Actions != nil {
 			a.configuredKey(k, true)
 		} else {
@@ -272,6 +278,7 @@ func (a *App) newWorkspace() {
 			cwd = cached
 		}
 	}
+	cwd = a.newPaneCwd(cwd)
 	a.exec(model.CmdNewWorkspace{Cwd: cwd, Name: filepath.Base(cwd)})
 }
 
@@ -332,6 +339,10 @@ func (a *App) openQuitDialog() {
 
 func (a *App) openCloseWorkspaceDialog(idx int) {
 	if idx < 0 || idx >= len(a.st.Workspaces) {
+		return
+	}
+	if a.sidebarConfig.UI.ConfirmClose != nil && !*a.sidebarConfig.UI.ConfirmClose {
+		a.exec(model.CmdCloseWorkspace{Index: idx})
 		return
 	}
 	ws := a.st.Workspaces[idx]

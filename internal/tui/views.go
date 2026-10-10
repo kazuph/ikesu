@@ -1,6 +1,7 @@
 package tui
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/layout"
@@ -43,7 +44,7 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	case "blocked":
 		return render.StatusGlyph{Key: "blocked", Rune: "●", Color: render.Red}
 	case "done":
-		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.CustomPalette(a.sidebarConfig.ThemeName(), a.sidebarConfig.Theme.Custom).NavigatorDone}
+		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.ConfigPalette(a.sidebarConfig).NavigatorDone}
 	case "idle":
 		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Green}
 	}
@@ -150,7 +151,7 @@ func (a *App) draw() {
 		in.Sel = a.selRender()
 	}
 	if a.toast != nil && a.toast.shown {
-		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind}
+		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind, Position: a.sidebarConfig.UI.Toast.Herdr.Position}
 	}
 	if a.help != nil {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}
@@ -166,6 +167,13 @@ func (a *App) draw() {
 	a.actionBar = out.ActionBar
 	if a.help != nil {
 		a.help.rect = out.HelpRect
+	}
+	if a.sidebarConfig.UI.HostCursor == "drawn" && out.AnchorVisible {
+		cell := out.Frame.Cell(out.AnchorX, out.AnchorY)
+		if cell != nil {
+			cell.Style.Attrs |= uv.AttrReverse
+			out.AnchorVisible = false
+		}
 	}
 	a.lastDraw = time.Now()
 	a.dirty = false

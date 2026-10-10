@@ -7,6 +7,7 @@ import (
 	"github.com/creack/pty"
 	"os"
 	"os/exec"
+	goruntime "runtime"
 	"strings"
 )
 
@@ -75,11 +76,21 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	if len(argv) > 0 {
 		cmd = exec.Command(executionArgv[0], executionArgv[1:]...)
 	} else {
-		shell := os.Getenv("SHELL")
+		s.mu.Lock()
+		shell, mode := s.defaultShell, s.shellMode
+		s.mu.Unlock()
 		if shell == "" {
-			shell = "/bin/zsh"
+			shell = os.Getenv("SHELL")
 		}
-		cmd = exec.Command(shell, "-l")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		args := []string{}
+		if mode == "login" || mode != "non_login" && goruntime.GOOS == "darwin" {
+			args = append(args, "-l")
+		}
+		cmd = exec.Command(shell, args...)
+
 	}
 	cmd.Dir = cwd
 	env := append(cleanEnv(os.Environ()),

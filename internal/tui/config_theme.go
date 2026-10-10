@@ -50,7 +50,7 @@ func (a *App) hostThemeReport(report uv.Event) {
 	}
 	c.Theme.ResolvedName = name
 	a.sidebarConfig = c
-	p := render.CustomPalette(name, c.Theme.Custom)
+	p := render.ConfigPalette(c)
 	a.panePalette = &p
 	a.dirty = true
 }
@@ -58,7 +58,7 @@ func (a *App) StartOnboarding() {
 	if a.sidebarConfig.Onboarding != nil && !*a.sidebarConfig.Onboarding {
 		return
 	}
-	a.dialog = &uiDialog{onboarding: true, d: render.Dialog{Title: "gtx", Detail: "terminal workspace manager for coding agents", Width: 64, CenterTerminal: true, Confirm: "continue", Lines: []string{"this is a mouse-first terminal.", "click the sidebar to switch workspaces, drag pane", "borders to resize, right-click for context menus.", "", a.prefixSpec() + " enters prefix mode · ? shows keybinds and settings", "next: start managing persistent terminal workspaces"}}, run: func(a *App) {
+	a.dialog = &uiDialog{onboarding: true, d: render.Dialog{ContinueOnly: true, Title: "gtx", Detail: "terminal workspace manager for coding agents", Width: 64, CenterTerminal: true, Confirm: "continue", Lines: []string{"this is a mouse-first terminal.", "click the sidebar to switch workspaces, drag pane", "borders to resize, right-click for context menus.", "", a.prefixSpec() + " enters prefix mode · ? shows keybinds and settings", "next: start managing persistent terminal workspaces"}}, run: func(a *App) {
 		if err := config.SaveOnboarding(false); err != nil {
 			a.SetConfigWarning(err.Error())
 			return

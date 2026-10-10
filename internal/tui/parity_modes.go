@@ -2,13 +2,14 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 )
 
 func (a *App) modeHint() string {
 	if a.prefix {
-		return " PREFIX  esc cancel  ctrl+b send prefix  w workspace nav  ? keybinds"
+		return " PREFIX  esc cancel  " + a.prefixSpec() + " send prefix  w workspace nav  ? keybinds"
 	}
 	if a.resizeMode {
 		return " RESIZE   h/l width  j/k height  esc done"
@@ -43,6 +44,23 @@ func (a *App) modeKey(k uv.Key) {
 		a.exec(model.CmdResizePane{Pane: a.focusedPane(), Dir: dir})
 		return
 	}
+	if a.sidebarConfig.Keys.Actions != nil {
+		for name, replacement := range map[string]rune{"navigate_workspace_up": uv.KeyUp, "navigate_workspace_down": uv.KeyDown, "navigate_pane_left": 'h', "navigate_pane_down": 'j', "navigate_pane_up": 'k', "navigate_pane_right": 'l'} {
+			for _, spec := range a.sidebarConfig.ActionBindings(name) {
+				if spec != "" {
+					chord, err := config.ParseChord(spec)
+					if err == nil && chord.Match(k, false) {
+						k = uv.Key{Code: replacement}
+						goto mapped
+					}
+				}
+			}
+		}
+		if k.Code == uv.KeyUp || k.Code == uv.KeyDown || k.Code == 'h' || k.Code == 'j' || k.Code == 'k' || k.Code == 'l' {
+			return
+		}
+	}
+mapped:
 	switch {
 	case k.Code == uv.KeyUp || k.Code == uv.KeyDown:
 		order := a.st.VisibleWorkspaceOrder()

@@ -48,6 +48,10 @@ func (f *Frame) ThemeColor(c color.Color) color.Color {
 		return f.Palette.Yellow
 	case Mauve:
 		return f.Palette.Mauve
+	case Peach:
+		if f.Palette.Peach != nil {
+			return f.Palette.Peach
+		}
 	}
 	return c
 }

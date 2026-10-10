@@ -16,6 +16,10 @@ func (a *App) BeginHostMouse(xp, yp int) {
 	a.cellH = 0
 	a.SetCellPixels(xp, yp)
 	a.syncLayout()
+	if a.sidebarConfig.UI.MouseCapture != nil && !*a.sidebarConfig.UI.MouseCapture {
+		_, _ = io.WriteString(a.out, MouseOffSeq)
+		return
+	}
 	_, _ = io.WriteString(a.out, "\x1b[?1016l\x1b[?1016$p\x1b[16t\x1b[14t")
 }
 
@@ -41,7 +45,7 @@ func (a *App) hostMouseReport(report uv.Event) {
 		_, _ = io.WriteString(a.out, "\x1b[?1016l")
 		a.hostPixelMouse = false
 	}
-	if !a.hostPixelMouse && a.hostPixelSupported && a.cellW > 0 && a.cellH > 0 {
+	if (a.sidebarConfig.UI.MouseCapture == nil || *a.sidebarConfig.UI.MouseCapture) && !a.hostPixelMouse && a.hostPixelSupported && a.cellW > 0 && a.cellH > 0 {
 		if _, err := io.WriteString(a.out, "\x1b[?1016h"); err == nil {
 			a.hostPixelMouse = true
 		}

@@ -357,6 +357,9 @@ func (c Config) ResumeAgentsOnRestore() bool {
 // RestoreDelay is the configured post-startup auto-resume delay.
 func (c Config) RestoreDelay() int {
 	if c.AgentRestore.RestoreDelayMs == nil {
+		if c.LegacyRestoreEnabled() {
+			return 3000
+		}
 		return 0
 	}
 	if *c.AgentRestore.RestoreDelayMs < 0 {

@@ -94,7 +94,10 @@ func Decode(data []byte) (Config, error) {
 		}
 	}
 	decodeTable(raw, reflect.ValueOf(&c).Elem(), "", &c.Warnings)
+	c.applyIndexedBindings()
+	c.validateValues()
 	c.validateCompat()
+	c.unsupportedValues()
 	sort.Strings(c.Warnings)
 	return c, nil
 }
@@ -171,21 +174,7 @@ func (c *Config) validateCompat() {
 		c.UI.SidebarMinWidth = nil
 		c.UI.SidebarMaxWidth = nil
 	}
-	for _, panel := range []struct {
-		name string
-		p    *SidebarPanel
-	}{{"agents", &c.UI.Sidebar.Agents}, {"spaces", &c.UI.Sidebar.Spaces}} {
-		one := Config{}
-		if panel.name == "agents" {
-			one.UI.Sidebar.Agents = *panel.p
-		} else {
-			one.UI.Sidebar.Spaces = *panel.p
-		}
-		if err := one.ValidateSidebar(); err != nil {
-			c.warn("ui.sidebar."+panel.name, err.Error())
-			*panel.p = SidebarPanel{}
-		}
-	}
+	c.validateSidebarItems()
 	if c.Experimental.KittyGraphics {
 		c.warn("experimental.kitty_graphics", "unsupported: image rendering is not implemented")
 	}

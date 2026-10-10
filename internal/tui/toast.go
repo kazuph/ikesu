@@ -32,7 +32,11 @@ func (a *App) ShowToast(title, body, kind string, target int) {
 		target: target, until: now.Add(toastTTL), shown: true,
 	}
 	if a.serverUI && (kind == "finished" || kind == "needs_attention") {
-		a.toast.showAt = now.Add(serverAgentToastDelay)
+		delay := serverAgentToastDelay
+		if value := a.sidebarConfig.UI.Toast.DelaySeconds; value != nil {
+			delay = time.Duration(*value) * time.Second
+		}
+		a.toast.showAt = now.Add(delay)
 		a.toast.until = a.toast.showAt.Add(serverAgentToastTTL)
 		a.toast.shown = false
 	}

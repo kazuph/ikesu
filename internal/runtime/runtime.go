@@ -125,7 +125,8 @@ type Supervisor struct {
 
 	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
 	// environment (the server uses it for GTX_PANE_ID/GTX_SOCKET_PATH).
-	Env func(paneID int) []string
+	Env                     func(paneID int) []string
+	defaultShell, shellMode string
 }
 
 // NewSupervisor creates an empty supervisor.
@@ -797,4 +798,11 @@ func cleanEnv(env []string) []string {
 		out = append(out, kv)
 	}
 	return out
+}
+
+// SetShell applies to subsequent interactive shells only.
+func (s *Supervisor) SetShell(shell, mode string) {
+	s.mu.Lock()
+	s.defaultShell, s.shellMode = shell, mode
+	s.mu.Unlock()
 }

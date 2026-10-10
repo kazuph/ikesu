@@ -28,6 +28,9 @@ func (s *AppState) TabBarVisible() bool {
 // rect when the bar is hidden.
 func (s *AppState) TabBarArea() Rect {
 	w := SidebarCollapsedWidth
+	if s.SidebarCollapsedHidden {
+		w = 0
+	}
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
 	}
@@ -46,6 +49,9 @@ func (s *AppState) ActionBarArea() Rect {
 		return Rect{}
 	}
 	w := SidebarCollapsedWidth
+	if s.SidebarCollapsedHidden {
+		w = 0
+	}
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
 	}
@@ -65,6 +71,9 @@ func (s *AppState) PanesArea() Rect {
 		return Rect{X: 0, Y: 2, W: s.Cols, H: max0(s.Rows - 2)}
 	}
 	w := SidebarCollapsedWidth
+	if s.SidebarCollapsedHidden {
+		w = 0
+	}
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
 	}
@@ -85,6 +94,9 @@ func (s *AppState) SidebarArea() Rect {
 		return Rect{}
 	}
 	w := SidebarCollapsedWidth
+	if s.SidebarCollapsedHidden {
+		w = 0
+	}
 	if s.SidebarVisible {
 		w = s.ExpandedSidebarWidth()
 	}

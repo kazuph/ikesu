@@ -1,0 +1,10 @@
+package render
+
+import "image/color"
+
+// Values observed from isolated herdr 0.2.24 PTY cells; no implementation source was used.
+func init() {
+	palettes["kanagawa"] = Palette{PanelBG: color.RGBA{31, 31, 40, 255}, PopupBG: color.RGBA{31, 31, 40, 255}, Overlay1: color.RGBA{135, 134, 125, 255}, NavigatorDivider: color.RGBA{54, 54, 70, 255}, NavigatorDone: color.RGBA{127, 180, 202, 255}, Accent: color.RGBA{126, 156, 216, 255}, Dim: color.RGBA{114, 113, 105, 255}, Text: color.RGBA{220, 215, 186, 255}, Subtle: color.RGBA{200, 195, 170, 255}, Surface: color.RGBA{42, 42, 55, 255}, SurfDim: color.RGBA{31, 31, 40, 255}, Red: color.RGBA{195, 64, 67, 255}, Green: color.RGBA{118, 148, 106, 255}, Yellow: color.RGBA{192, 163, 110, 255}, Mauve: color.RGBA{149, 127, 184, 255}}
+	palettes["rose-pine"] = Palette{PanelBG: color.RGBA{25, 23, 36, 255}, PopupBG: color.RGBA{25, 23, 36, 255}, Overlay1: color.RGBA{144, 140, 170, 255}, NavigatorDivider: color.RGBA{38, 35, 58, 255}, NavigatorDone: color.RGBA{156, 207, 216, 255}, Accent: color.RGBA{196, 167, 231, 255}, Dim: color.RGBA{110, 106, 134, 255}, Text: color.RGBA{224, 222, 244, 255}, Subtle: color.RGBA{200, 197, 220, 255}, Surface: color.RGBA{31, 29, 46, 255}, SurfDim: color.RGBA{25, 23, 36, 255}, Red: color.RGBA{235, 111, 146, 255}, Green: color.RGBA{49, 116, 143, 255}, Yellow: color.RGBA{246, 193, 119, 255}, Mauve: color.RGBA{196, 167, 231, 255}}
+	palettes["vesper"] = Palette{PanelBG: color.RGBA{16, 16, 16, 255}, PopupBG: color.RGBA{26, 26, 26, 255}, Overlay1: color.RGBA{126, 126, 126, 255}, NavigatorDivider: color.RGBA{40, 40, 40, 255}, NavigatorDone: color.RGBA{102, 221, 204, 255}, Accent: color.RGBA{255, 199, 153, 255}, Dim: color.RGBA{92, 92, 92, 255}, Text: color.RGBA{255, 255, 255, 255}, Subtle: color.RGBA{160, 160, 160, 255}, Surface: color.RGBA{35, 35, 35, 255}, SurfDim: color.RGBA{16, 16, 16, 255}, Red: color.RGBA{255, 128, 128, 255}, Green: color.RGBA{153, 255, 228, 255}, Yellow: color.RGBA{255, 199, 153, 255}, Mauve: color.RGBA{255, 209, 168, 255}}
+}

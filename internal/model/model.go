@@ -70,6 +70,7 @@ type AppState struct {
 	Popups                                              map[WorkspaceID]*PopupPaneState
 	Overlay                                             *OverlayPaneState
 	Active                                              int // index into Workspaces
+	SidebarCollapsedHidden                              bool
 	SidebarVisible                                      bool
 	SidebarSize, SidebarMin, SidebarMax, SidebarDefault int
 	SidebarManual                                       bool
