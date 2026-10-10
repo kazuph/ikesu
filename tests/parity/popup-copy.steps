@@ -1,4 +1,6 @@
-send "python3 @FIXTURES@/socket_action.py open; printf '\\033[3J\\033[H\\033[2J'\r"
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py open > /dev/null\r"
 sleep 500ms
 send "printf '\\033[3J\\033[H\\033[2JPOPUP_ALPHA\\nPOPUP_BETA\\n'\r"
 sleep 500ms
