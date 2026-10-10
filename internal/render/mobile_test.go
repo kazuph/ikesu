@@ -20,6 +20,9 @@ func TestMobileEmptySummaryUsesObservedNarrowHeaderPadding(t *testing.T) {
 			if tc.width == 20 && f.Cell(1, 1).Style.Fg != f.Palette.Dim {
 				t.Fatal("collapsed agent summary changed the preceding blank's color")
 			}
+			if tc.width == 20 && f.Cell(2, 1).Style.Fg != f.Palette.Dim {
+				t.Fatal("collapsed agent summary changed the ellipsis color")
+			}
 			for x, ch := range []rune(tc.label) {
 				if f.Cell(x, 1).Content != string(ch) {
 					t.Fatalf("width %d server=%t: summary at %d", tc.width, server, x)

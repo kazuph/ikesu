@@ -144,6 +144,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 		if primary == "" && ansi.StringWidth(summary) > max(0, switcher.X-2) {
 			f.Set(1, 1, " ", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
 			summary, summaryX = "…", 2
+			style.Fg = f.Palette.Dim
 		}
 		x := f.Text(summaryX, 1, summary, style, switcher.X)
 		if in.ServerUI {
