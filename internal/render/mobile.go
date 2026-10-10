@@ -60,7 +60,7 @@ func MobileOffset(s *model.AppState, menu []MenuItem, offset int) int {
 
 func drawMobile(f *Frame, in Input, out *Output) {
 	s := in.State
-	header := uv.Style{Bg: f.Palette.SurfDim}
+	header := uv.Style{Bg: f.Palette.PopupBG}
 	if in.ServerUI {
 		header.Fg = f.Palette.Text
 	}
@@ -82,10 +82,13 @@ func drawMobile(f *Frame, in Input, out *Output) {
 		}
 	}
 	if in.MobileSwitcher {
+		if in.ServerUI {
+			f.Fill(0, 1, switcher.X, 1, " ", uv.Style{Bg: f.Palette.PopupBG})
+		}
 		f.Fill(switcher.X+1, 0, max(0, switcher.W-1), 1, " ", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.Surface, Attrs: uv.AttrBold})
 		f.Fill(switcher.X+1, 1, max(0, switcher.W-1), 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold})
-		f.Fill(0, 0, switcher.X, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold})
-		f.Text(0, 0, " switch", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, switcher.X)
+		f.Fill(0, 0, switcher.X, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold})
+		f.Text(0, 0, " switch", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, switcher.X)
 		f.Text(switcher.X+1, 0, "  close", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, s.Cols)
 		f.Text(switcher.X+1, 1, "    ×", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, s.Cols)
 	} else {
@@ -95,14 +98,14 @@ func drawMobile(f *Frame, in Input, out *Output) {
 		if glyph.Rune == " " {
 			glyph.Rune = "·"
 		}
-		f.Text(1, 0, glyph.Rune, uv.Style{Fg: f.ThemeColor(glyph.Color), Bg: f.Palette.SurfDim}, switcher.X)
-		f.Text(3, 0, truncate(name, max(0, switcher.X-3)), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.SurfDim, Attrs: uv.AttrBold}, switcher.X)
+		f.Text(1, 0, glyph.Rune, uv.Style{Fg: f.ThemeColor(glyph.Color), Bg: f.Palette.PopupBG}, switcher.X)
+		f.Text(3, 0, truncate(name, max(0, switcher.X-3)), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, switcher.X)
 		if w := s.ActiveWorkspace(); w != nil {
 			label := fmt.Sprintf(" tab %d", w.ActiveTab+1)
 			if len(w.Tabs) > 1 {
 				label += fmt.Sprintf(" · %d/%d", w.ActiveTab+1, len(w.Tabs))
 			}
-			f.Text(switcher.X-ansi.StringWidth(label)-1, 0, label, uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}, switcher.X)
+			f.Text(switcher.X-ansi.StringWidth(label)-1, 0, label, uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, switcher.X)
 		}
 		counts := map[string]int{}
 		for _, pane := range in.Panes {
@@ -112,7 +115,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 		}
 		summary := "no agents"
 		primary := ""
-		style := uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}
+		style := uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}
 		switch {
 		case counts["blocked"] > 0:
 			primary = "blocked"
@@ -140,8 +143,8 @@ func drawMobile(f *Frame, in Input, out *Output) {
 				if key == primary || counts[key] == 0 {
 					continue
 				}
-				x = f.Text(x, 1, " · ", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.SurfDim}, switcher.X)
-				x = f.Text(x, 1, fmt.Sprintf("%d %s", counts[key], key), uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.SurfDim}, switcher.X)
+				x = f.Text(x, 1, " · ", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, switcher.X)
+				x = f.Text(x, 1, fmt.Sprintf("%d %s", counts[key], key), uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, switcher.X)
 			}
 			if counts["blocked"] > 0 {
 				f.Set(s.Cols-1, 0, "●", uv.Style{Fg: f.Palette.Red, Bg: f.Palette.Surface})
@@ -153,13 +156,13 @@ func drawMobile(f *Frame, in Input, out *Output) {
 	}
 	out.AnchorVisible = false
 	viewport := MobileViewport(s)
-	f.Fill(0, 2, s.Cols, max(0, s.Rows-2), " ", uv.Style{Bg: f.Palette.SurfDim})
-	f.Text(0, 2, stringRule(s.Cols), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.SurfDim}, s.Cols)
+	f.Fill(0, 2, s.Cols, max(0, s.Rows-2), " ", uv.Style{Bg: f.Palette.PopupBG})
+	f.Text(0, 2, stringRule(s.Cols), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG}, s.Cols)
 	rows := MobileRows(s, in.MobileMenu)
 	off := MobileOffset(s, in.MobileMenu, in.MobileScroll)
 	for n := 0; n < viewport.H && n+off < len(rows); n++ {
 		row, y := rows[n+off], viewport.Y+n
-		bg := f.Palette.SurfDim
+		bg := f.Palette.PopupBG
 		if (row.Kind == RowWorkspace || row.Kind == RowGit) && row.Ws == s.Active {
 			bg = f.Palette.Surface
 		}
@@ -194,6 +197,9 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			f.Fill(1, y, max(0, s.Cols-1), 1, " ", style)
 			f.Text(1, y, label, style, s.Cols)
 		case RowWorkspace:
+			if in.ServerUI {
+				f.Text(1, y, "  ", uv.Style{Fg: f.Palette.Dim, Bg: bg}, s.Cols)
+			}
 			glyph := wsGlyph(s, row.Ws, in)
 			if glyph.Rune == " " {
 				glyph.Rune = "·"
@@ -202,6 +208,9 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			name := in.WorkspaceNames[row.Ws]
 			if name == "" || s.Workspaces[row.Ws].CustomName {
 				name = WorkspaceDisplayName(s.Workspaces[row.Ws], in.Panes)
+			}
+			if in.ServerUI {
+				name = "Local · " + name
 			}
 			f.Text(5, y, truncate(name, max(0, s.Cols-5)), uv.Style{Fg: f.Palette.Text, Bg: bg, Attrs: uv.AttrBold}, s.Cols)
 		case RowGit:
@@ -218,6 +227,9 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			f.Fill(1, y, max(0, s.Cols-1), 1, " ", style)
 			f.Text(1, y, truncate(label, max(0, s.Cols-1)), style, s.Cols)
 		case RowMobileTab:
+			if in.ServerUI {
+				f.Text(1, y, "  ", uv.Style{Fg: f.Palette.Text, Bg: bg, Attrs: uv.AttrBold}, s.Cols)
+			}
 			ws := s.ActiveWorkspace()
 			name := ws.Tabs[row.Line].Name
 			if name == "" {
@@ -231,7 +243,9 @@ func drawMobile(f *Frame, in Input, out *Output) {
 				label = "--"
 			}
 			style := uv.Style{Fg: f.Palette.Overlay1, Bg: bg}
-			f.Fill(1, y, max(0, s.Cols-1), 1, " ", style)
+			if !in.ServerUI {
+				f.Fill(1, y, max(0, s.Cols-1), 1, " ", style)
+			}
 			f.Text(1, y, "  "+truncate(label, max(0, s.Cols-3)), style, s.Cols)
 		}
 	}
@@ -244,7 +258,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			if n >= top && n < top+height {
 				glyph, fg = "▌", f.Palette.Accent
 			}
-			f.Set(0, viewport.Y+n, glyph, uv.Style{Fg: fg, Bg: f.Palette.SurfDim})
+			f.Set(0, viewport.Y+n, glyph, uv.Style{Fg: fg, Bg: f.Palette.PopupBG})
 		}
 	}
 

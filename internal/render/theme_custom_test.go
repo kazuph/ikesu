@@ -48,3 +48,30 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 		t.Fatal("no cards exercised")
 	}
 }
+
+func TestCustomPanelBackgroundControlsMobileHeaderAndSwitcherGround(t *testing.T) {
+	for _, transparentCards := range []bool{false, true} {
+		s := model.New(t.TempDir(), 60, 25)
+		s.MobileWidthThreshold = (config.Config{}).MobileWidthThreshold()
+		in := Input{State: s, ServerUI: true}
+		in.SidebarConfig.Theme.Custom = map[string]string{"panel_bg": "transparent", "surface_dim": "#16161e", "surface0": "#24283c"}
+		in.SidebarConfig.UI.TransparentSidebarCards = transparentCards
+		for _, switcher := range []bool{false, true} {
+			in.MobileSwitcher = switcher
+			f := Compose(in).Frame
+			for y := 0; y < 2; y++ {
+				for x := 0; x < MobileSwitchRect(s).X; x++ {
+					if f.Cell(x, y).Style.Bg != nil {
+						t.Fatalf("mobile header painted at %d,%d (cards=%v switcher=%v)", x, y, transparentCards, switcher)
+					}
+				}
+			}
+			if f.Cell(s.Cols-1, 1).Style.Bg != (color.RGBA{36, 40, 60, 255}) {
+				t.Fatal("switch button must keep surface0 background")
+			}
+			if switcher && f.Cell(s.Cols-1, s.Rows-1).Style.Bg != nil {
+				t.Fatal("unused switcher ground must keep the terminal background")
+			}
+		}
+	}
+}
