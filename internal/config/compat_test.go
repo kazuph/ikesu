@@ -143,3 +143,10 @@ split_vertical=["prefix+V"]
 		}
 	}
 }
+
+func TestAgentSortWorkspacesAlias(t *testing.T) {
+	c, err := Decode([]byte("[ui]\nagent_panel_sort='workspaces'\n"))
+	if err != nil || len(c.Warnings) != 0 || c.AgentScope() != "all" {
+		t.Fatal(c, err)
+	}
+}

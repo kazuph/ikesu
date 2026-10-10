@@ -95,6 +95,11 @@ func Decode(data []byte) (Config, error) {
 	}
 	decodeTable(raw, reflect.ValueOf(&c).Elem(), "", &c.Warnings)
 	c.applyIndexedBindings()
+	if binding, legacy := c.Keys.Actions["fullscreen"]; legacy {
+		if _, explicit := c.Keys.Actions["zoom"]; !explicit {
+			c.Keys.Actions["zoom"] = binding
+		}
+	}
 	c.validateValues()
 	c.validateCompat()
 	c.unsupportedValues()

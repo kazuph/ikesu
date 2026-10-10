@@ -15,7 +15,7 @@ func (c *Config) validateValues() {
 		{"update.channel", &c.Update.Channel, []string{"stable", "preview"}},
 		{"ui.sidebar_collapsed_mode", &c.UI.SidebarCollapsedMode, []string{"compact", "hidden"}},
 		{"ui.host_cursor", &c.UI.HostCursor, []string{"auto", "native", "drawn"}},
-		{"ui.agent_panel_sort", &c.UI.AgentPanelSort, []string{"spaces", "priority"}},
+		{"ui.agent_panel_sort", &c.UI.AgentPanelSort, []string{"spaces", "workspaces", "priority"}},
 		{"ui.agent_panel_scope", &c.UI.AgentPanelScope, []string{"all", "sort", "current"}},
 		{"ui.workspace_panel_density", &c.UI.WorkspacePanelDensity, []string{"full", "slim"}},
 		{"ui.toast.delivery", &c.UI.Toast.Delivery, []string{"off", "herdr", "gtx", "terminal", "system"}},
@@ -111,7 +111,7 @@ func (c *Config) unsupportedValues() {
 	for agent := range c.UI.Sound.Agents {
 		warn("ui.sound.agents."+agent, true)
 	}
-	for _, action := range []string{"remote_image_paste", "fullscreen"} {
+	for _, action := range []string{"remote_image_paste"} {
 		if bindings, explicit := c.Keys.Actions[action]; explicit {
 			for _, binding := range bindings {
 				if binding != "" {

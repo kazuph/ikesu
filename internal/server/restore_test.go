@@ -281,7 +281,7 @@ codex = ["codex", "--sandbox", "workspace-write", "--model", "gpt-6-astra"]
 	}
 	s := &Server{cfg: cfg}
 	cmd, ok := s.buildResumeCommand("codex", "id", "sid-9")
-	want := "codex --sandbox workspace-write --model gpt-6-astra resume sid-9"
+	want := "command codex --sandbox workspace-write --model gpt-6-astra resume sid-9"
 	if !ok || cmd != want {
 		t.Fatalf("cmd = %q ok=%v want %q", cmd, ok, want)
 	}

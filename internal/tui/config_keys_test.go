@@ -49,6 +49,20 @@ focus_history_forward="cmd+]"
 		t.Fatal("ctrl+t prefix not used")
 	}
 }
+
+func TestConfigLegacyFullscreenBindingZoomsPane(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	c, err := config.Decode([]byte("[keys]\nfullscreen='prefix+f'\n"))
+	if err != nil || len(c.Warnings) != 0 {
+		t.Fatal(c.Warnings, err)
+	}
+	a.SetSidebarConfig(c, false)
+	specFeed(a, "\x02v\x02f")
+	if a.st.ActiveWorkspace().TabRef().Zoomed == 0 {
+		t.Fatal("legacy fullscreen did not zoom")
+	}
+}
 func TestConfigCommandsActualPTYAndPopupOwner(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)

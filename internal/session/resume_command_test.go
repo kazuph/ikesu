@@ -19,14 +19,19 @@ codex=["codex","--config","sandbox_workspace_write.network_access=true"]
 		t.Fatal(err)
 	}
 	got, ok := ResumeCommand(cfg, "claude", "id", "sid-exact")
-	if !ok || got != "printf 'CLAUDE:%s' 'sid-exact'" {
+	if !ok || got != "command claude --permission-mode auto --resume sid-exact" {
 		t.Fatal(got, ok)
 	}
 	got, ok = ResumeCommand(cfg, "codex", "id", "sid-exact")
-	if !ok || got != "codex --config sandbox_workspace_write.network_access=true resume sid-exact" {
+	if !ok || got != "command codex --config sandbox_workspace_write.network_access=true resume sid-exact" {
 		t.Fatal(got, ok)
 	}
 	if _, ok := ResumeCommand(cfg, "claude", "id", "bad;id"); ok {
 		t.Fatal("unsafe session accepted")
+	}
+	delete(cfg.AgentStart.Commands, "claude")
+	got, ok = ResumeCommand(cfg, "claude", "id", "sid-exact")
+	if !ok || got != "command "+shellJoin([]string{"sh", "-lc", "printf 'CLAUDE:%s' 'sid-exact'"}) {
+		t.Fatal("canonical template must use login shell", got, ok)
 	}
 }

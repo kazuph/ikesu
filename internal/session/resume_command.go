@@ -72,8 +72,7 @@ func ResumeCommand(cfg config.Config, agent, kind, value string) (string, bool) 
 	if !SafeSessionValue(kind, value) {
 		return "", false
 	}
-	_, explicitRestore := cfg.AgentRestore.Commands[agent]
-	if argv, ok := cfg.AgentStartCommand(agent); ok && (agent == "codex" || !explicitRestore) {
+	if argv, ok := cfg.AgentStartCommand(agent); ok {
 		for _, arg := range argv {
 			if arg == "--last" {
 				return "", false
@@ -81,7 +80,7 @@ func ResumeCommand(cfg config.Config, agent, kind, value string) (string, bool) 
 		}
 		args := append(argv, ResumeArgsFor(agent)...)
 		args = append(args, value)
-		return shellJoin(args), true
+		return "command " + shellJoin(args), true
 	}
 	tmpl := cfg.RestoreTemplate(agent)
 	if tmpl == "" {
@@ -97,5 +96,9 @@ func ResumeCommand(cfg config.Config, agent, kind, value string) (string, bool) 
 			return "", false
 		}
 	}
-	return strings.ReplaceAll(tmpl, "{session_id}", value), true
+	command := strings.ReplaceAll(tmpl, "{session_id}", value)
+	if _, canonical := cfg.AgentRestore.Commands[agent]; canonical {
+		return "command " + shellJoin([]string{"sh", "-lc", command}), true
+	}
+	return command, true
 }
