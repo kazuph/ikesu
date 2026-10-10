@@ -75,3 +75,31 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 		t.Fatal("collapsed cards still counted", v, next)
 	}
 }
+
+func TestEndpointCollapsedSectionScrollStopsAfterWholeSlimCard(t *testing.T) {
+	for _, slim := range []bool{false, true} {
+		s := model.New(t.TempDir(), 160, 45)
+		for _, sec := range []model.Section{model.SectionFavorite, model.SectionWork, model.SectionPersonal} {
+			for i := 0; i < 2; i++ {
+				s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), Section: sec, NoFocus: true})
+			}
+		}
+		s.Apply(model.CmdToggleSection{Section: model.SectionFavorite})
+		want := 6
+		if slim {
+			s.WorkspaceDensity = "slim"
+			want = 2
+		}
+		v := SidebarViewFor(s, nil, config.Config{}, 100, 0, true)
+		if v.Workspace.Offset != want {
+			t.Fatalf("slim=%t: end offset %d want %d", slim, v.Workspace.Offset, want)
+		}
+		if slim {
+			for _, pos := range v.Rows {
+				if pos.Y == 7 && (pos.Row.Kind != RowWorkspace || pos.Row.Ws != 4) {
+					t.Fatal("slim end begins inside a workspace card")
+				}
+			}
+		}
+	}
+}

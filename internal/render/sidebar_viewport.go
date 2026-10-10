@@ -79,6 +79,12 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 			lastCard++
 		}
 		view.Workspace.Total = min(view.Workspace.Total, view.Workspace.Rect.H+max(0, cards-lastCard))
+		if s.WorkspaceDensity == "slim" && cfg.UI.Sidebar.Spaces.Rows == nil && cfg.UI.Sidebar.Spaces.RowGap == 0 && lastCard == 2 {
+			// The observed slim endpoint stops after a complete name/git card.
+			overflow := max(0, view.Workspace.Total-view.Workspace.Rect.H)
+			overflow = (overflow + lastCard - 1) / lastCard * lastCard
+			view.Workspace.Total = view.Workspace.Rect.H + min(overflow, max(0, cards-lastCard))
+		}
 	}
 	view.Agents.Total = max(0, len(rows)-sep-1)
 	view.Workspace.Offset = max(0, min(workspaceScroll, max(0, view.Workspace.Total-view.Workspace.Rect.H)))
