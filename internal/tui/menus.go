@@ -472,7 +472,7 @@ func (a *App) dialogMouse(ev input.Event) {
 			d.run(a)
 		} else if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, buttons[1]) {
 			a.dialogKey(uv.Key{Code: 'c', Mod: uv.ModCtrl})
-		} else {
+		} else if !a.dialog.machineForm {
 			a.dialog = nil
 		}
 		return

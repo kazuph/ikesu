@@ -386,6 +386,10 @@ func (a *App) dialogKey(k uv.Key) {
 	case k.Code == uv.KeyEscape:
 		a.cancelDialog()
 	case d.input != nil:
+		if d.machineForm {
+			a.machineInputKey(k)
+			break
+		}
 		runes := []rune(*d.input)
 		switch {
 		case k.Code == 'c' && k.Mod.Contains(uv.ModCtrl):

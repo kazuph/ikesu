@@ -6,8 +6,45 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/machine"
 )
+
+func TestMachineFormRetainsCursorEditingAndOutsideClick(t *testing.T) {
+	a := specRuntimeApp(t)
+	a.SetMachineCatalog(filepath.Join(t.TempDir(), "machines.json"))
+	a.addMachineDialog()
+	a.dialogKey(uv.Key{Text: "a界b"})
+	a.dialogKey(uv.Key{Code: uv.KeyLeft})
+	a.dialogKey(uv.Key{Code: uv.KeyBackspace})
+	a.dialogKey(uv.Key{Text: "Z"})
+	if a.dialog.d.Input != "aZb" || a.dialog.d.InputCursor != 2 {
+		t.Fatal(a.dialog.d)
+	}
+	a.dialogKey(uv.Key{Code: uv.KeyDelete})
+	a.dialogKey(uv.Key{Code: uv.KeyHome})
+	a.dialogKey(uv.Key{Text: "X"})
+	a.dialogKey(uv.Key{Code: uv.KeyEnd})
+	a.dialogKey(uv.Key{Text: "Y"})
+	if a.dialog.d.Input != "XaZY" {
+		t.Fatal(a.dialog.d)
+	}
+	d := a.dialog
+	for _, kind := range []input.Kind{input.KindMouseClick, input.KindMouseRelease} {
+		a.onMouse(input.Event{Kind: kind, Mouse: uv.Mouse{X: 0, Y: 0, Button: uv.MouseLeft}})
+		if a.dialog != d || a.dialog.d.Input != "XaZY" {
+			t.Fatal("outside press/release dismissed or changed the form")
+		}
+	}
+	a.dialogKey(uv.Key{Code: 'c', Mod: uv.ModCtrl})
+	if a.dialog != d || a.dialog.d.Input != "" {
+		t.Fatal("clear must keep the form")
+	}
+	a.dialogKey(uv.Key{Code: uv.KeyEscape})
+	if a.dialog != nil || len(a.machines().Load()) != 0 {
+		t.Fatal("escape must cancel without saving")
+	}
+}
 
 func TestMachineMenuFormsCancelAndStaleRemoval(t *testing.T) {
 	a := specRuntimeApp(t)

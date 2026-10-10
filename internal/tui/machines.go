@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	uv "github.com/charmbracelet/ultraviolet"
+
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/render"
@@ -25,8 +27,42 @@ func (a *App) machineError(err error) {
 }
 
 func (a *App) machineInput(title, value string, next func(string)) {
-	a.dialog = &uiDialog{input: &value, d: render.Dialog{Title: title, Input: value, InputCursor: len([]rune(value)), InputEdit: true, Confirm: "next", Cancel: "cancel"}, run: func(*App) { next(value) }}
+	a.dialog = &uiDialog{machineForm: true, input: &value, d: render.Dialog{Title: title, Input: value, InputCursor: len([]rune(value)), InputEdit: true, Confirm: "next", Cancel: "cancel"}, run: func(*App) { next(value) }}
 	a.dirty = true
+}
+
+// Machine forms retain main's cursor editing independently of rename inputs.
+func (a *App) machineInputKey(k uv.Key) {
+	d := a.dialog
+	runes := []rune(*d.input)
+	cursor := min(max(0, d.d.InputCursor), len(runes))
+	switch {
+	case k.Code == 'c' && k.Mod.Contains(uv.ModCtrl):
+		runes, cursor = nil, 0
+	case k.Code == uv.KeyLeft:
+		cursor = max(0, cursor-1)
+	case k.Code == uv.KeyRight:
+		cursor = min(len(runes), cursor+1)
+	case k.Code == uv.KeyHome:
+		cursor = 0
+	case k.Code == uv.KeyEnd:
+		cursor = len(runes)
+	case k.Code == uv.KeyBackspace:
+		if cursor > 0 {
+			runes = append(runes[:cursor-1], runes[cursor:]...)
+			cursor--
+		}
+	case k.Code == uv.KeyDelete:
+		if cursor < len(runes) {
+			runes = append(runes[:cursor], runes[cursor+1:]...)
+		}
+	case k.Text != "":
+		insert := []rune(k.Text)
+		runes = append(append(append([]rune{}, runes[:cursor]...), insert...), runes[cursor:]...)
+		cursor += len(insert)
+	}
+	*d.input = string(runes)
+	d.d.Input, d.d.InputCursor = *d.input, cursor
 }
 
 func (a *App) addMachineDialog() {

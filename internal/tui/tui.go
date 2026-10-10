@@ -96,6 +96,7 @@ type uiMenu struct {
 // uiDialog is an open confirmation dialog; input != nil turns the detail
 // row into a single-line text field (run sees the entered value).
 type uiDialog struct {
+	machineForm    bool
 	replaceDefault bool
 	d              render.Dialog
 	run            func(a *App) // confirm action

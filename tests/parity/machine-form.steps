@@ -1,0 +1,54 @@
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 250ms
+clicktext "[menu]"
+sleep 200ms
+clicktext "add machine..."
+sleep 250ms
+sleep 250ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "offline.invalid"
+sleep 250ms
+screen @OUT@/typed.txt
+cells @OUT@/typed.json
+send "\x1b[D"
+sleep 200ms
+send "\x7fZ"
+sleep 250ms
+screen @OUT@/edit.txt
+cells @OUT@/edit.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/escaped.txt
+cells @OUT@/escaped.json
+send "echo MACHINE_ESCAPE_INPUT\r"
+sleep 250ms
+screen @OUT@/escape-input.txt
+cells @OUT@/escape-input.json
+clicktext "[menu]"
+sleep 200ms
+clicktext "add machine..."
+sleep 250ms
+click 150 35
+sleep 250ms
+screen @OUT@/outside.txt
+cells @OUT@/outside.json
+send "\x1b"
+sleep 250ms
+send "echo MACHINE_OUTSIDE_INPUT\r"
+sleep 250ms
+screen @OUT@/outside-input.txt
+cells @OUT@/outside-input.json
+clicktext "[menu]"
+sleep 200ms
+clicktext "add machine..."
+sleep 250ms
+resize 100 25
+sleep 250ms
+screen @OUT@/resized.txt
+cells @OUT@/resized.json
+send "\x1b"
+sleep 250ms
+screen @OUT@/resize-escaped.txt
+cells @OUT@/resize-escaped.json
+kill

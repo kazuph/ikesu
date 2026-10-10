@@ -46,6 +46,18 @@ elif operation == 'pane-self':
     if not pane:
         raise SystemExit('NOT_RUN: exact pane identity absent')
     method, params = 'pane.get', {'pane_id':pane}
+elif operation == 'plugin-open':
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    if not pane:
+        raise SystemExit('NOT_RUN: exact pane identity absent')
+    if os.environ.get('GTX_SOCKET_PATH'):
+        root = Path.home()/'review-plugin'
+        root.mkdir(exist_ok=True)
+        (root/'gtx-plugin.toml').write_text('id="parity.review"\nname="Parity review"\nversion="0.1.0"\nmin_gtx_version="0.1.0"\nplatforms=["macos"]\n[[panes]]\nid="shell"\ntitle="Shell"\ncommand=["/usr/bin/env", "PS1=POPUP> ", "/bin/zsh", "-f"]\n')
+        request('plugin.link', {'path':str(root)})
+        method, params = 'plugin.pane.open', {'plugin_id':'parity.review', 'entrypoint':'shell', 'placement':'popup', 'target_pane_id':pane, 'cwd':os.getcwd(), 'width':60, 'height':20}
+    else:
+        method, params = 'pane.command.execute', {'pane_id':pane, 'action':'popup', 'command':"env PS1='POPUP> ' /bin/zsh -f", 'width':60, 'height':20}
 elif operation == 'open':
     pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
     if not pane:
