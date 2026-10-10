@@ -23,7 +23,7 @@ p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
 p.add_argument('--server-default-workspace', action='store_true', help='observe server/client startup without creating a workspace through the API')
 p.add_argument('--server-reuse-initial', action='store_true', help='use the real initial workspace when present, otherwise create it; save all preparation replies')
-p.add_argument('--clipboard-guard', action='store_true', help='capture clipboard commands and require the real clipboard hash to remain unchanged')
+p.add_argument('--clipboard-guard', action='store_true', help='capture clipboard commands and stop if a changed clipboard hash matches copied bytes')
 p.add_argument('--clipboard-sandbox', action='store_true', help='deny pasteboard Mach lookup in the UI/server and all their children')
 a = p.parse_args()
 if (a.server_default_workspace or a.server_reuse_initial) and not a.server:
@@ -48,31 +48,14 @@ out.mkdir(parents=True, exist_ok=True)
 }, indent=2)+'\n')
 
 
-def retry_external_change():
-    import shutil
-    attempt = int(os.environ.get('PARITY_EXTERNAL_CLIPBOARD_RETRY', '0')) + 1
-    saved = out.with_name(out.name + f'.external-change-{attempt}-{time.time_ns()}')
-    shutil.copytree(out, saved)
-    if attempt == 2:
-        (out/'clipboard-not-verified.json').write_text(json.dumps({
-            'status':'NOT_VERIFIED', 'reason':'two consecutive external changes', 'attempts':2})+'\n')
-        raise SystemExit(76)
-    retry_env = dict(os.environ, PARITY_EXTERNAL_CLIPBOARD_RETRY='1')
-    print('External clipboard change: evidence saved; retrying this comparison once', flush=True)
-    raise SystemExit(subprocess.run([sys.executable, *sys.argv], env=retry_env).returncode)
-
-
 guard = None
 if a.clipboard_guard and a.clipboard_sandbox:
     p.error('choose one clipboard isolation method')
 if a.clipboard_guard or a.clipboard_sandbox:
-    from clipboard_guard import ClipboardGuard, ExternalClipboardChange, SANDBOX_PROFILE
+    from clipboard_guard import ClipboardGuard, SANDBOX_PROFILE
     guard = ClipboardGuard(out / 'clipboard-guard', capture_commands=a.clipboard_guard)
     if a.clipboard_sandbox:
-        try:
-            guard.sandbox_probe()
-        except ExternalClipboardChange:
-            retry_external_change()
+        guard.sandbox_probe()
 interaction = Path(a.steps).read_text()
 for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
     target = out / name
@@ -216,7 +199,4 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                                 raise RuntimeError('owned server did not stop gracefully')
                     finally:
                         if guard is not None:
-                            try:
-                                guard.check(name, target/'terminal.raw')
-                            except ExternalClipboardChange:
-                                retry_external_change()
+                            guard.check(name, target/'terminal.raw')

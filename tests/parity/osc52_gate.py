@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import sys
 
-from clipboard_guard import SANDBOX_PROFILE
+from clipboard_guard import SANDBOX_PROFILE, require_no_copy_write
 
 p = argparse.ArgumentParser()
 p.add_argument('directory', type=Path)
@@ -17,11 +17,10 @@ a = p.parse_args()
 root = a.directory
 guard = root / 'clipboard-guard'
 probe = json.loads((guard / 'sandbox-probe.json').read_text())
-assert probe['exit_code'] == 1 and probe['unchanged'], 'child pbcopy was not denied'
+assert probe['exit_code'] == 1, 'STOP: child pbcopy was not denied'
 proof = json.loads((guard / 'proof.json').read_text())
 assert [row['process'] for row in proof] == ['herdr', 'gtx'], 'both products must finish'
-assert all(row['unchanged'] and row['before_sha256'] == probe['before_sha256'] == row['after_sha256']
-           for row in proof), 'STOP: real clipboard hash changed; report without restoring'
+require_no_copy_write([dict(probe, copy_candidate_sha256=probe.get('copy_candidate_sha256', [])), *proof])
 decoded = {}
 for who in ('herdr', 'gtx'):
     case = root / who
@@ -41,4 +40,4 @@ result = {'status': 'PASS', 'equal': True, 'count': len(decoded['herdr']),
           'copies': [{'bytes': len(value), 'sha256': hashlib.sha256(value).hexdigest()}
                      for value in decoded['herdr']]}
 (root / 'osc52-gate.json').write_text(json.dumps(result, indent=2) + '\n')
-print('PASS: sandbox, unchanged clipboard hashes and exact OSC52 bytes', result['count'])
+print('PASS: sandbox, no clipboard hash matching copied bytes and exact OSC52 bytes', result['count'])

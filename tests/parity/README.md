@@ -96,7 +96,7 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 
 `jobs-overflow.steps` は隔離 server に二十件の実ジョブを起動し、jobs 一覧のホイールとリサイズを観察する。実 API 応答・実ジョブ ID は保存し、観察結果の検査前は未検証とする。
 
-`popup-copy.steps` と `copy-workspaces.steps` は `--clipboard-sandbox` を必須として比較する。popup 内、複数 workspace の選択表示・mouse release・コピー後の入力・元の workspace への復帰を保存し、`osc52_gate.py` でコピーの全バイトと実 clipboard ハッシュ不変を検査する。`full_frame_gate.py` で各画面の全セルも比較する。sandbox の拒否失敗、または変化後の実ハッシュが捕捉したコピー bytes／その末尾改行付き bytes の SHA と一致したら、コピー比較を止め、元に戻そうとせず親へ報告する。一致しない変化は外部同期として証拠を別名保存し、同じ比較を1回だけやり直す。2回続けば exit 76 と clipboard-not-verified.json で未検証として残し、次の比較へ進む。popup を開く命令と画面消去は別々に送り、画面に出すと実行順と固有IDが比較へ混ざる API 応答は runtime-json.json に保存する。
+`popup-copy.steps` と `copy-workspaces.steps` は `--clipboard-sandbox` を必須として比較する。popup 内、複数 workspace の選択表示・mouse release・コピー後の入力・元の workspace への復帰を保存し、`osc52_gate.py` でコピーの全バイト、sandbox の拒否、コピー内容と一致する clipboard ハッシュ変化が無いことを検査する。`full_frame_gate.py` で各画面の全セルも比較する。sandbox の拒否失敗、または変化後の実ハッシュが捕捉したコピー bytes／その末尾改行付き bytes の SHA と一致したら、コピー比較を止め、元に戻そうとせず親へ報告する。一致しない外部の変化は各比較の proof.json／sandbox-probe.json に記録し、やり直しも全体の停止もせず続行する。sandbox-probe は毎回実行する。拒否に失敗したとき、または変化後のハッシュがその比較のコピー候補のいずれかと一致したときは全体を止める。popup を開く命令と画面消去は別々に送り、画面に出すと実行順と固有IDが比較へ混ざる API 応答は runtime-json.json に保存する。
 
 `jobs_overflow_gate.py` は各製品の実 API 応答から label の順序と正確な job ID を確認し、一覧内の座標・一行ホイール・リサイズ後の位置保持を検査する。この検査は age の全セル比較を証明しない。age・ログ・取消の共有描画回帰は `gate-agents.sh` の実ジョブ時刻・ログ照合・process group 消滅検査で別に確認する。
 

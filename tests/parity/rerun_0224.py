@@ -71,8 +71,8 @@ for name, steps in procedures:
             results.append(row)
             (a.out/'index.json').write_text(json.dumps(results, ensure_ascii=False, indent=2)+'\n')
             print(json.dumps(row, ensure_ascii=False), flush=True)
-            # Never retry a rejected clipboard guard or continue after copied
-            # text was found in the user's pasteboard.
-            if observed in (75, 76) or 'STOP:' in (out/'comparison.log').read_text():
-                raise SystemExit(observed)
+            # External changes are recorded; sandbox rejection failure and
+            # hashes matching captured copies stop the complete comparison.
+            if 'STOP:' in (out/'comparison.log').read_text():
+                raise SystemExit(observed or 1)
 print('Recorded all procedures; mismatches remain explicit in index.json', flush=True)

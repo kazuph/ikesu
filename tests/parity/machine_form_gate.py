@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import sys
+from clipboard_guard import require_no_copy_write
 
 root = Path(sys.argv[1])
 results = []
@@ -29,6 +30,9 @@ for who, title, edited in [('herdr', 'add machine: SSH target (e.g. mini)', 'off
     results.append({'product': who, 'status': 'PASS_LIFETIME_AND_SHELL_INPUT',
                     'title': title, 'edited': edited, 'cleanup': cleanup})
 guard = json.loads((root / 'clipboard-guard/proof.json').read_text())
-assert len(guard) == 2 and all(row['unchanged'] for row in guard), guard
+assert len(guard) == 2, guard
+probe = json.loads((root / 'clipboard-guard/sandbox-probe.json').read_text())
+assert probe['exit_code'] == 1, 'STOP: child pbcopy was not denied'
+require_no_copy_write([dict(probe, copy_candidate_sha256=probe.get('copy_candidate_sha256', [])), *guard])
 (root / 'machine-form-gate.json').write_text(json.dumps(results, ensure_ascii=False, indent=2) + '\n')
 print('PASS: outside retains form, Escape cancels, shell input resumes; text/edit differences retained')

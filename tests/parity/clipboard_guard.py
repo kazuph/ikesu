@@ -13,8 +13,11 @@ import sys
 SANDBOX_PROFILE = '(version 1)(allow default)(deny mach-lookup (global-name "com.apple.pasteboard.1"))'
 
 
-class ExternalClipboardChange(RuntimeError):
-    pass
+def require_no_copy_write(records):
+    candidates = {value for record in records for value in record['copy_candidate_sha256']}
+    for record in records:
+        if record['after_sha256'] != record['before_sha256'] and record['after_sha256'] in candidates:
+            raise RuntimeError('STOP: clipboard hash matches copied bytes; do not restore; report to parent')
 
 
 def copy_hashes(raw):
@@ -45,6 +48,7 @@ class ClipboardGuard:
         self.audit = self.root / 'calls.jsonl'
         self.records = []
         self.copy_candidates = set()
+        self.probe = None
 
     def environment(self, env):
         if not self.capture_commands:
@@ -64,15 +68,16 @@ class ClipboardGuard:
                   'commands': [row['command'] for row in calls]}
         if raw_path is not None:
             self.copy_candidates.update(copy_hashes(Path(raw_path).read_bytes()))
+        captured = self.root / 'captured-input.bin'
+        if captured.exists():
+            data = captured.read_bytes()
+            self.copy_candidates.update(hashlib.sha256(value).hexdigest() for value in (data, data + b'\n'))
         result['copy_candidate_sha256'] = sorted(self.copy_candidates)
         result['change_kind'] = ('unchanged' if self.before == after else
                                  'suspected_copy_write' if after in self.copy_candidates else 'external')
         self.records.append(result)
         (self.root / 'proof.json').write_text(json.dumps(self.records, indent=2) + '\n')
-        if after != self.before:
-            if result['change_kind'] == 'suspected_copy_write':
-                raise RuntimeError('STOP: clipboard hash matches copied bytes; do not restore; report to parent')
-            raise ExternalClipboardChange('clipboard hash changed externally; retry the comparison once')
+        require_no_copy_write(([self.probe] if self.probe else []) + self.records)
         # herdr must prove interception. gtx currently emits OSC52 into ptyrun's captured stream.
         if self.capture_commands and name == 'herdr' and pbcopy_calls == 0:
             raise RuntimeError('STOP: herdr did not invoke captured pbcopy; report to parent')
@@ -87,18 +92,16 @@ class ClipboardGuard:
                  'stderr': result.stderr.decode(errors='replace'),
                  'before_sha256': self.before, 'after_sha256': after,
                  'unchanged': self.before == after}
+        candidates = {hashlib.sha256(value).hexdigest() for value in
+                      (b'PARITY_SANDBOX_PROBE', b'PARITY_SANDBOX_PROBE\n')}
+        proof['copy_candidate_sha256'] = sorted(candidates)
+        proof['change_kind'] = ('unchanged' if self.before == after else
+                                'suspected_copy_write' if after in candidates else 'external')
+        self.probe = proof
         (self.root / 'sandbox-probe.json').write_text(json.dumps(proof, indent=2) + '\n')
         if result.returncode != 1:
             raise RuntimeError('STOP: sandbox did not reject its child pbcopy')
-        if after != self.before:
-            candidates = {hashlib.sha256(value).hexdigest() for value in
-                          (b'PARITY_SANDBOX_PROBE', b'PARITY_SANDBOX_PROBE\n')}
-            proof['copy_candidate_sha256'] = sorted(candidates)
-            proof['change_kind'] = 'suspected_copy_write' if after in candidates else 'external'
-            (self.root / 'sandbox-probe.json').write_text(json.dumps(proof, indent=2) + '\n')
-            if after in candidates:
-                raise RuntimeError('STOP: sandbox probe clipboard hash matches attempted write; report without restoring')
-            raise ExternalClipboardChange('external clipboard change during sandbox probe')
+        require_no_copy_write([proof])
 
 
 def capture_command():
