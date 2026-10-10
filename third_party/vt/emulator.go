@@ -251,7 +251,12 @@ func (e *Emulator) Resize(width int, height int) {
 
 	for i := range e.scrs {
 		oldWidth := e.scrs[i].Width()
-		pushed, pulled := e.scrs[i].resize(width, height)
+		var pushed, pulled int
+		if i == 0 {
+			pushed, pulled = e.scrs[i].resize(width, height)
+		} else {
+			pushed, pulled = e.scrs[i].resizeWithoutRestore(width, height)
+		}
 		if e.cb.Resize != nil {
 			e.cb.Resize(i == 1, oldWidth, height, pushed, pulled)
 		}

@@ -182,6 +182,11 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 		lines = lines[len(lines)-limit:]
 		truncated = true
 	}
+	text := strings.Join(lines, "\n")
+	// The 0.2.24 physical-row reads end with a newline; logical reads do not.
+	if text != "" && (source == "visible" || source == "recent") {
+		text += "\n"
+	}
 	st := s.app.State()
 	ws := st.Workspaces[wsIdx]
 	return api.Success(id, api.PaneReadResultEnvelope{
@@ -192,7 +197,7 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 			TabID:       fmtTabID(ws.ID, ws.Tabs[tabIdx].ID),
 			Source:      source,
 			Format:      format,
-			Text:        strings.Join(lines, "\n"),
+			Text:        text,
 			Revision:    pane.Snapshot().Revision,
 			Truncated:   truncated,
 		},

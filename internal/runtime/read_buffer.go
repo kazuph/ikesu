@@ -65,7 +65,9 @@ func (r *readBuffer) shift(alt bool, top, bottom, n int, up, history bool, w int
 	if up {
 		if history {
 			for _, row := range rows[top : top+n] {
-				row.width = w
+				if row.width == 0 {
+					row.width = w
+				}
 				r.pushHistory(alt, row)
 			}
 		}
@@ -79,7 +81,9 @@ func (r *readBuffer) shift(alt bool, top, bottom, n int, up, history bool, w int
 func (r *readBuffer) resizeRows(alt bool, oldWidth, height, pushed, pulled int) {
 	rows := r.rows(alt)
 	for _, row := range rows[:pushed] {
-		row.width = oldWidth
+		if row.width == 0 {
+			row.width = oldWidth
+		}
 		r.pushHistory(alt, row)
 	}
 	next := make([]rowRef, height)
@@ -125,6 +129,11 @@ func (r *readBuffer) resize(w, h int) {
 		next := make([]rowRef, h)
 		copy(next, *target)
 		*target = next
+	}
+	if r.right != w {
+		for y := range r.alternate {
+			r.alternate[y].width = 0
+		}
 	}
 	r.top, r.bottom, r.left, r.right = 0, h, 0, w
 	r.pending = false
@@ -294,6 +303,7 @@ func (p *Pane) writeRecorded(chunk []byte) {
 				n++
 			}
 			_, _ = p.emu.Write(chunk[:n])
+			r.rows(p.altScreen)[p.emu.CursorPosition().Y].width = 0
 			r.pending = p.emu.ModeSet(ansi.ModeAutoWrap) && x+n >= p.emu.Width()
 			chunk = chunk[n:]
 			continue
@@ -317,14 +327,17 @@ func (p *Pane) writeRecorded(chunk []byte) {
 		r.state = state
 		printable := width > 0 || oldState == ansi.NormalState && chunk[0] >= 0xc0
 		if printable {
-			if r.pending && p.emu.ModeSet(ansi.ModeAutoWrap) {
+			pos := p.emu.CursorPosition()
+			x := pos.X
+			if p.emu.ModeSet(ansi.ModeAutoWrap) && (r.pending || x+width > p.emu.Width()) {
+				if !r.pending {
+					r.rows(p.altScreen)[pos.Y].width = x
+				}
 				r.linefeed(p, true)
-			}
-			x := p.emu.CursorPosition().X
-			if r.pending && p.emu.ModeSet(ansi.ModeAutoWrap) {
 				x = 0
 			}
 			_, _ = p.emu.Write(seq)
+			r.rows(p.altScreen)[p.emu.CursorPosition().Y].width = 0
 			r.pending = p.emu.ModeSet(ansi.ModeAutoWrap) && x+width >= p.emu.Width()
 		} else {
 			if state == ansi.NormalState {
@@ -367,7 +380,11 @@ func (p *Pane) ReadLines(source string, strip bool) ([]string, error) {
 		rows = append(rows, line)
 		ref := rowRef{width: p.emu.Width()}
 		if p.read != nil {
-			ref.continued = p.read.rows(p.altScreen)[y].continued
+			recorded := p.read.rows(p.altScreen)[y]
+			ref.continued = recorded.continued
+			if recorded.width > 0 {
+				ref.width = recorded.width
+			}
 		}
 		refs = append(refs, ref)
 	}
@@ -385,6 +402,9 @@ func (p *Pane) ReadLines(source string, strip bool) ([]string, error) {
 }
 func renderReadRow(row uv.Line, strip, full bool, width int) string {
 	end := len(row)
+	if full && width > 0 {
+		end = min(end, width)
+	}
 	if !full {
 		for end > 0 && (row[end-1].Content == "" || row[end-1].Content == " ") {
 			end--

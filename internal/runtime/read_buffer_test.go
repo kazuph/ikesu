@@ -98,7 +98,7 @@ func waitReadMarker(t *testing.T, p *Pane, marker string) []string {
 	}
 }
 
-func TestRecordedWideMarginMatchesRenderedCellsFromRealPTY(t *testing.T) {
+func TestRecordedWideMarginRetainsGlyphAcrossAutomaticWrapRealPTY(t *testing.T) {
 	s := NewSupervisor()
 	p, err := s.SpawnWith(1, t.TempDir(), 8, 4, nil, []string{"/bin/sh", "-c", "printf '1234567界Z\\nWIDE_READY\\n'; exec /bin/cat"})
 	if err != nil {
@@ -112,7 +112,7 @@ func TestRecordedWideMarginMatchesRenderedCellsFromRealPTY(t *testing.T) {
 	}
 	physical := strings.Join(physicalRows, "\n")
 	logical := strings.Join(lines, "\n")
-	if !strings.Contains(physical, "1234567\nZ\nWIDE_REA\nDY") || !strings.Contains(logical, "1234567 Z\nWIDE_READY") {
+	if !strings.Contains(physical, "1234567\n界Z\nWIDE_REA\nDY") || !strings.Contains(logical, "1234567界Z\nWIDE_READY") {
 		t.Fatalf("logical read differs from rendered wide-margin cells: screen=%q logical=%q", physical, logical)
 	}
 }

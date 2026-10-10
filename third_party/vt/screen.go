@@ -77,11 +77,22 @@ func (s *Screen) Resize(width int, height int) {
 
 // resize also reports the rows moved across the history boundary.
 func (s *Screen) resize(width int, height int) (pushed, pulled int) {
+	return s.resizeRows(width, height, true)
+}
+
+func (s *Screen) resizeWithoutRestore(width int, height int) (pushed, pulled int) {
+	return s.resizeRows(width, height, false)
+}
+
+func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled int) {
 	oldCursor := s.cur.Position
 	if s.buf == nil {
 		s.buf = uv.NewRenderBuffer(width, height)
 	} else {
-		pull := min(max(height-s.buf.Height(), 0), s.scrollback.Len())
+		pull := 0
+		if restore {
+			pull = min(max(height-s.buf.Height(), 0), s.scrollback.Len())
+		}
 		pulled = pull
 		if height < s.buf.Height() {
 			last := s.cur.Y
@@ -94,7 +105,7 @@ func (s *Screen) resize(width int, height int) (pushed, pulled int) {
 			shift := min(s.buf.Height()-height, max(last-height+1, 0))
 			pushed = shift
 			if shift > 0 {
-				if s.scrollback != nil {
+				if restore && s.scrollback != nil {
 					s.scrollback.PushN(s.buf, 0, shift)
 				}
 				s.buf.DeleteLineArea(0, shift, s.blankCell(), s.buf.Bounds())

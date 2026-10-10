@@ -499,7 +499,7 @@ func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
 		return
 	}
 	p.mu.Lock()
-	p.emu.Resize(cols, rows)
+	p.resizeTerminal(cols, rows)
 	if p.read != nil {
 		p.read.resize(cols, rows)
 	}
