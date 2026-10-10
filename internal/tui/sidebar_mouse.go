@@ -49,8 +49,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	if m.Button != uv.MouseLeft {
 		return false
 	}
-	// The isolated local distribution handles this drag; its endpoint client does not.
-	if a.inputEOF && m.Y == render.SidebarSplitY(s) {
+	if m.Y == render.SidebarSplitY(s) {
 		a.sidebarGesture = &sidebarGesture{panelDivider: true, x: m.X, y: m.Y}
 		return true
 	}

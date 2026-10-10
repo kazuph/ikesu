@@ -33,6 +33,23 @@ func sidebarSectionY(a *App, sec model.Section) int {
 func sidebarEvent(a *App, kind input.Kind, x, y int) {
 	a.onMouse(input.Event{Kind: kind, Mouse: uv.Mouse{X: x, Y: y, Button: uv.MouseLeft}})
 }
+
+func TestEndpointSidebarPanelDividerDragKeepsMenuClosed(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.serverUI = true
+	a.inputEOF = false
+	a.st.Rows = 45
+	sidebarEvent(a, input.KindMouseClick, 10, render.SidebarSplitY(a.st))
+	sidebarEvent(a, input.KindMouseMotion, 10, 0)
+	sidebarEvent(a, input.KindMouseRelease, 10, 0)
+	if a.st.SidebarSectionSplit == nil || *a.st.SidebarSectionSplit != .1 || render.SidebarSplitY(a.st) != 7 {
+		t.Fatal("endpoint drag did not retain the observed upper edge")
+	}
+	if a.menu != nil || a.sidebarGesture != nil {
+		t.Fatal("divider release left a menu or gesture")
+	}
+}
 func TestG2ActiveCardReleaseDragAndSection(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)

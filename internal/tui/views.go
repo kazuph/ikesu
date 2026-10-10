@@ -125,7 +125,7 @@ func (a *App) draw() {
 	if a.workspaceNavigate {
 		in.SelectedWorkspace = &a.navigateSelected
 	}
-	if a.sidebarGesture != nil {
+	if a.sidebarGesture != nil && !a.sidebarGesture.divider && !a.sidebarGesture.panelDivider {
 		in.Dragging = a.sidebarGesture.moved
 		in.DraggedWorkspace = a.sidebarGesture.ws
 		in.DragSection = a.sidebarGesture.section
