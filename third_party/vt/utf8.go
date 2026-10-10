@@ -196,6 +196,13 @@ func (e *Emulator) handleGrapheme(content string, width int) {
 
 	x, y := e.scr.CursorPosition()
 	if awm && (e.atPhantom || x+width > e.scr.Width()) {
+		if !e.atPhantom && x+width > e.scr.Width() {
+			// A wide glyph wrapping at the margin paints the unused cell
+			// with its current pen before moving to the next line.
+			for pad := x; pad < e.scr.Width(); pad++ {
+				e.scr.SetCell(pad, y, &uv.Cell{Content: " ", Width: 1, Style: cell.Style, Link: cell.Link})
+			}
+		}
 		// moves cursor down similar to [Terminal.linefeed] except it doesn't
 		// respects [ansi.LNM] mode.
 		// This will reset the phantom state i.e. pending wrap state.
