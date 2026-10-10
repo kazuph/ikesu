@@ -8,6 +8,8 @@ names = ['catppuccin', 'catppuccin-latte', 'terminal', 'tokyo-night', 'tokyo-nig
          'dracula', 'nord', 'gruvbox', 'gruvbox-light', 'one-dark', 'one-light', 'solarized', 'solarized-light']
 for index, name in enumerate(names):
     lines=['send "\\x02s"','sleep 250ms']
+    for _ in range(len(names)-1):
+        lines += ['send "\\x1b[A"', 'sleep 50ms']
     for _ in range(index):
         lines += ['send "\\x1b[B"','sleep 50ms']
     lines += ['screen @OUT@/settings-selection.txt', 'cells @OUT@/settings-selection.json',

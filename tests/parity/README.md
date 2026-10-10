@@ -26,11 +26,15 @@ PARITY_CONTROLLER_SESSION_ID=<現在の検証済みsession-id> python3 tests/par
 
 このrunnerは性能を実行しない。look-0224 の親の範囲指示により、性能は親が測る。既存gateのTestRelative部分は本作業で実行しない。observe.pyは各結果へ配布版・binary hash・設定をreference.jsonに記録する。
 
+`sidebar-card-states`・`sidebar-card-menu`・`sidebar_theme_cases/` の単独起動は、比較用設定の密度が slim なら `[slim]` → `[full]` の順で切り替えて開始時の密度へ戻す。実行した手順を `configured-density.steps` と index.json に保存し、同じ手順を両製品へ送る。endpoint に密度ボタンが無いことによる失敗は未達のまま残す。
+
+`sidebar-width` の折畳み往復は両製品にある prefix+b を使う。旧固定座標に endpoint の折畳みボタンは無いため、この比較をマウスでの折畳みの証明にはしない。`jobs-panel`・`jobs-success`・`popup-editor` は実 API 応答を各製品の証拠 JSON へ保存し、応答の固有 ID・項目順を描画の差へ混ぜない。ジョブのリサイズ前には実 clear を送る。ログ popup 内の固有値や実測時刻は既存のログ・時刻検査で判定し、全セルの差を自動で合格へ変えない。
+
 `--steps` を他の手順に替えて繰り返す。herdr バイナリが無ければ `NOT_RUN` として飛ばす。出力先には両方の実行手順・画面テキスト・実行ログが残る。compare.py は画面の全文差と観測文字列の個数を出し、異なる項目の意味を自動で同一扱いにしない。ワークスペース名・ペインID等の動的差とメニュー項目の差は、結果表で区別する。
 
 HOME、XDG、状態ディレクトリ、ZDOTDIR、作業ディレクトリは実行ごとに一時領域へ隔離する。0.2.24の初回案内を閉じるEnter1回だけherdrの前処理とし、操作本体は同一。`--no-session` で起動し、ptyrunが起動したアプリを終了させる。実行者の設定・通常のherdrソケットを利用しない。端末出力の捕捉だけではnative clipboard書込みを隔離しない。yankやマウス選択releaseを含む比較には、下記の親承認済みsandboxを必ず付ける。
 
-コピーの比較は `observe.py --clipboard-sandbox` で行う。UIと隔離serverをともに `sandbox-exec -p '(version 1)(allow default)(deny mach-lookup (global-name "com.apple.pasteboard.1"))'` で起動する。実行前には同じsandboxの子shから実pbcopyがrc=1で拒否されることを確かめる。実pbpasteの出力は内容を表示・保存せずSHA256だけを取り、開始前と各製品の終了後に一致を必須にする。変わったらそこで止め、親へ報告し、自分で復元しない。`clipboard-guard/` に起動プロファイル・拒否結果・ハッシュ、各製品に終了とserver.stop応答を保存する。OSC52はptyrunのrawへ捕捉し、利用者の端末へ転送しない。pbcopy拒否が画面に及ぼす影響も差として記録する。旧 `--clipboard-guard` のPATH捕捉は実herdrのpbcopy呼出を捕捉できず停止した経緯があり、sandbox比較の代わりには使わない。
+コピーの比較は `observe.py --clipboard-sandbox` で行う。UIと隔離serverをともに `sandbox-exec -p '(version 1)(allow default)(deny mach-lookup (global-name "com.apple.pasteboard.1"))'` で起動する。実行前には同じsandboxの子shから実pbcopyがrc=1で拒否されることを確かめる。実pbpasteの出力は内容を表示・保存せずSHA256だけを取り、開始前と各製品の終了後に比較する。変化後のハッシュがその比較で捕捉したコピー内容と一致したら全体を止めて親へ報告する。一致しない外部の変化は記録だけにして続行し、自分で復元しない。sandbox-probe で pbcopy の拒否を確かめられなければ全体を止めて親へ報告する。`clipboard-guard/` に起動プロファイル・拒否結果・ハッシュ、各製品に終了とserver.stop応答を保存する。OSC52はptyrunのrawへ捕捉し、利用者の端末へ転送しない。pbcopy拒否が画面に及ぼす影響も差として記録する。旧 `--clipboard-guard` のPATH捕捉は実herdrのpbcopy呼出を捕捉できず停止した経緯があり、sandbox比較の代わりには使わない。
 
 `resize COLS ROWS` はPTYと画面エミュレーターを同時にリサイズする。画面キャプチャの寸法も変更後の値になる。`mouse` は端末が交渉したモードで送り、固定セルの `click`/`rclick` は `-pixel-mouse=false` で使う。
 

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tomllib
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
@@ -29,6 +30,7 @@ if a.only:
     if {name for name, _ in procedures} != set(a.only):
         p.error('unknown requested procedure')
 results = []
+user_config = tomllib.loads(Path(a.config_file).read_text())
 # Socket-driven procedures require the persistent endpoint. The remaining
 # procedures also exercise the standalone distribution, as in the old gates.
 for name, steps in procedures:
@@ -40,8 +42,20 @@ for name, steps in procedures:
         for mode in modes:
             out = a.out/config/mode/name
             out.mkdir(parents=True, exist_ok=True)
+            selected_steps = steps
+            if ((name in ('sidebar-card-states', 'sidebar-card-menu') or name.startswith('sidebar_theme_cases/')) and
+                    config == 'user' and mode == 'local' and
+                    user_config.get('ui', {}).get('workspace_panel_density') == 'slim'):
+                # Start from the density actually configured, then return to it.
+                assert body.count('clicktext "[full]"') == body.count('clicktext "[slim]"') == 1
+                selected_steps = out/'configured-density.steps'
+                selected_steps.write_text(body.replace('clicktext "[full]"', 'clicktext "[INITIAL]"')
+                                          .replace('clicktext "[slim]"', 'clicktext "[full]"')
+                                          .replace('clicktext "[INITIAL]"', 'clicktext "[slim]"')
+                                          .replace('@OUT@/slim.', '@OUT@/full.')
+                                          .replace('@OUT@/full-again.', '@OUT@/slim-again.'))
             command = [sys.executable, str(fixtures/'observe.py'), '--herdr', a.herdr,
-                       '--gtx', a.gtx, '--ptyrun', a.ptyrun, '--steps', str(steps),
+                       '--gtx', a.gtx, '--ptyrun', a.ptyrun, '--steps', str(selected_steps),
                        '--out', str(out), '--clipboard-sandbox']
             if mode == 'server':
                 command += ['--server', '--server-reuse-initial']
@@ -61,12 +75,13 @@ for name, steps in procedures:
                                                   stderr=subprocess.STDOUT).returncode
                 if observed == 0 and 'cells @OUT@/' in body:
                     compared = subprocess.run([sys.executable, str(fixtures/'full_frame_gate.py'),
-                                               str(out), str(steps)], stdout=log,
+                                               str(out), str(selected_steps)], stdout=log,
                                               stderr=subprocess.STDOUT).returncode
             row = {'procedure': name, 'mode': mode, 'config': config,
                    'observe_exit': observed, 'cell_comparison_exit': compared,
                    'text_collection_exit': text_compared,
                    'status': 'PASS' if observed == 0 and compared == 0 else 'NOT_MET',
+                   'steps': str(selected_steps),
                    'evidence': str(out)}
             results.append(row)
             (a.out/'index.json').write_text(json.dumps(results, ensure_ascii=False, indent=2)+'\n')
