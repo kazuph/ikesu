@@ -84,3 +84,39 @@ func TestParityTabbarAddWaitsForNameAndCancelKeepsRealPTY(t *testing.T) {
 		t.Fatal("confirmation must create and select a real shell")
 	}
 }
+
+func TestServerTabArrowLeadingBlankAndGlyphUseRecordedHitRegionsRealPTY(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.SetServerUI()
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	a.exec(model.CmdRenameTab{Workspace: 0, Tab: 0, Label: "LONG TAB NAME"})
+	for i := 1; i < 8; i++ {
+		a.exec(model.CmdNewTab{Workspace: 0})
+	}
+	a.exec(model.CmdResize{Cols: 80, Rows: 25})
+	a.draw()
+	start := a.tabScroll
+	click := func(x int) {
+		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: x, Y: 0, Button: uv.MouseLeft}})
+		a.draw()
+	}
+	click(a.tabLeftRect.X)
+	if a.tabScroll != start {
+		t.Fatal("server left-arrow leading blank must leave the strip unchanged")
+	}
+	want := a.tabScrollLeft
+	click(a.tabLeftRect.X + 1)
+	if a.tabScroll != want || a.st.ActiveWorkspace().ActiveTab != 7 {
+		t.Fatal("server arrow glyph must scroll without selecting another tab")
+	}
+	a.exec(model.CmdSelectTab{Workspace: 0, Tab: 0})
+	a.draw()
+	want = a.tabScrollRight
+	click(a.tabRightRect.X)
+	if a.tabScroll != want || a.st.ActiveWorkspace().ActiveTab != 0 {
+		t.Fatal("server right-arrow leading blank must scroll without changing selection")
+	}
+}

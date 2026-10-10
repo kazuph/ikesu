@@ -249,7 +249,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		f.Text(fr.X+fr.W-len("[new]"), fr.Y, "[new]", uv.Style{Fg: f.Palette.Dim}, fr.X+fr.W)
 	}
 	wr := SidebarWidthRect(s)
-	if wr.W > 0 && !in.ServerUI {
+	if wr.W > 0 {
 		f.Text(wr.X, wr.Y, s.PresetLabel(), uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, wr.X+wr.W)
 	}
 	if !in.ServerUI {

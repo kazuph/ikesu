@@ -14,10 +14,22 @@ func TestServerHiddenSidebarControlsIgnoreClicks(t *testing.T) {
 	a := NewApp(s, runtime.NewSupervisor(), nil, "/tmp")
 	a.SetServerUI()
 	width, density, scope := s.SidebarArea().W, s.WorkspaceDensity, s.AgentScope
-	for _, pos := range [][2]int{{20, 0}, {20, render.SidebarSplitY(s) + 1}, {0, 44}, {24, 44}} {
+	for _, pos := range [][2]int{{20, 0}, {20, render.SidebarSplitY(s) + 1}, {24, 44}} {
 		a.sidebarClick(uv.Mouse{X: pos[0], Y: pos[1], Button: uv.MouseLeft})
 		if !s.SidebarVisible || s.SidebarArea().W != width || s.WorkspaceDensity != density || s.AgentScope != scope {
 			t.Fatalf("hidden control acted at %v", pos)
+		}
+	}
+}
+
+func TestServerSidebarWidthButtonCyclesRecordedPresets(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 45)
+	a := NewApp(s, runtime.NewSupervisor(), nil, t.TempDir())
+	a.SetServerUI()
+	for _, want := range []string{" WIDE ", " NARROW ", " NORMAL "} {
+		a.sidebarClick(uv.Mouse{X: 0, Y: 44, Button: uv.MouseLeft})
+		if s.PresetLabel() != want {
+			t.Fatalf("width click: got %q, want %q", s.PresetLabel(), want)
 		}
 	}
 }

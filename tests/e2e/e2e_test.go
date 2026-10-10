@@ -269,8 +269,8 @@ func TestBootShowsSidebarAndPane(t *testing.T) {
 	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
 		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, " spaces") && countPanes(tx) == 1
 	})
-	if strings.Contains(s.text(), " NORMAL ") || strings.Contains(s.text(), "[full]") {
-		t.Fatalf("server must preserve the observed plain header and footer:\n%s", s.text())
+	if !strings.Contains(s.text(), " NORMAL ") || strings.Contains(s.text(), "[full]") {
+		t.Fatalf("server must show the 0.2.24 width button and plain header:\n%s", s.text())
 	}
 }
 

@@ -331,6 +331,9 @@ func (a *App) tabBarClick(m uv.Mouse) {
 	}
 	if m.Button == uv.MouseLeft {
 		if pointIn(m.X, m.Y, a.tabLeftRect) {
+			if a.serverUI && m.X == a.tabLeftRect.X {
+				return
+			}
 			a.tabScroll = a.tabScrollLeft
 			a.dirty = true
 			return

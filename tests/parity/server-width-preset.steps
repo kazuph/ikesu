@@ -1,0 +1,15 @@
+screen @OUT@/normal.txt
+cells @OUT@/normal.json
+clicktext "NORMAL"
+sleep 250ms
+screen @OUT@/wide.txt
+cells @OUT@/wide.json
+clicktext "WIDE"
+sleep 250ms
+screen @OUT@/narrow.txt
+cells @OUT@/narrow.json
+clicktext "NARROW"
+sleep 250ms
+screen @OUT@/normal-again.txt
+cells @OUT@/normal-again.json
+kill

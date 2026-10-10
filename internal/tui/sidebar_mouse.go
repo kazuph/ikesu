@@ -57,7 +57,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	if a.sidebarScrollbarPress(m) {
 		return true
 	}
-	if !a.serverUI && pointIn(m.X, m.Y, render.SidebarWidthRect(s)) {
+	if pointIn(m.X, m.Y, render.SidebarWidthRect(s)) {
 		a.sidebarPreset(s.CyclePreset())
 		return true
 	}

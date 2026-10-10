@@ -13,12 +13,12 @@ func TestServerChromeRecordedControlsAndCopyStatus(t *testing.T) {
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	out := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	text := screenText(t, out, s.Cols, s.Rows)
-	for _, hidden := range []string{"[full]", "NORMAL", "[grouped]", "«"} {
+	for _, hidden := range []string{"[full]", "[grouped]", "«"} {
 		if strings.Contains(text, hidden) {
 			t.Fatalf("server shows an unobserved control %q", hidden)
 		}
 	}
-	if out.NewTabRect.W != 0 || out.Frame.Cell(s.SidebarArea().W-1, 10).Content != " " {
+	if out.NewTabRect.W != 3 || !strings.Contains(text, " NORMAL ") || out.Frame.Cell(s.SidebarArea().W-1, 10).Content != " " {
 		t.Fatal("server retains a hidden tab-add target or sidebar boundary")
 	}
 	copyOut := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: blankSnap()},
@@ -29,7 +29,7 @@ func TestServerChromeRecordedControlsAndCopyStatus(t *testing.T) {
 	}
 }
 
-func TestServerTabOverflowRetainsFirstLabelsWithoutArrows(t *testing.T) {
+func TestServerTabOverflowUsesScrollableChipsAndArrows(t *testing.T) {
 	s := testState(90, 25)
 	for i := 2; i <= 18; i++ {
 		s.Apply(model.CmdNewTab{Workspace: 0})
@@ -38,10 +38,10 @@ func TestServerTabOverflowRetainsFirstLabelsWithoutArrows(t *testing.T) {
 	}
 	out := Compose(Input{ServerUI: true, State: s, TabScroll: 100, TabScrollManual: true})
 	row := strings.Split(screenText(t, out, s.Cols, s.Rows), "\n")[0]
-	if !strings.Contains(row, " 1        TAB-2     TAB-3") || strings.ContainsAny(row, "<>…") || strings.Contains(row, "TAB-18") {
-		t.Fatalf("server overflow must clip the first strip without exposing arrows: %q", row)
+	if !strings.ContainsAny(row, "<>…") || !strings.Contains(row, " +") {
+		t.Fatalf("server overflow must expose measured arrows and add button: %q", row)
 	}
-	if out.TabScroll != 0 || out.TabLeftRect.W != 0 || out.TabRightRect.W != 0 || out.TabHits[17].W != 0 {
-		t.Fatal("hidden server tabs must not retain scrolling or click targets")
+	if out.TabScroll == 0 || out.TabLeftRect.W != 3 || out.TabRightRect.W != 3 || out.NewTabRect.W != 3 {
+		t.Fatal("server overflow controls must have real click targets")
 	}
 }
