@@ -6,6 +6,7 @@ import json
 import socket
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -33,14 +34,33 @@ if not Path(a.herdr).is_file():
     raise SystemExit(0)
 out = Path(a.out).resolve()
 out.mkdir(parents=True, exist_ok=True)
+
+
+def retry_external_change():
+    import shutil
+    attempt = int(os.environ.get('PARITY_EXTERNAL_CLIPBOARD_RETRY', '0')) + 1
+    saved = out.with_name(out.name + f'.external-change-{attempt}-{time.time_ns()}')
+    shutil.copytree(out, saved)
+    if attempt == 2:
+        (out/'clipboard-not-verified.json').write_text(json.dumps({
+            'status':'NOT_VERIFIED', 'reason':'two consecutive external changes', 'attempts':2})+'\n')
+        raise SystemExit(76)
+    retry_env = dict(os.environ, PARITY_EXTERNAL_CLIPBOARD_RETRY='1')
+    print('External clipboard change: evidence saved; retrying this comparison once', flush=True)
+    raise SystemExit(subprocess.run([sys.executable, *sys.argv], env=retry_env).returncode)
+
+
 guard = None
 if a.clipboard_guard and a.clipboard_sandbox:
     p.error('choose one clipboard isolation method')
 if a.clipboard_guard or a.clipboard_sandbox:
-    from clipboard_guard import ClipboardGuard, SANDBOX_PROFILE
+    from clipboard_guard import ClipboardGuard, ExternalClipboardChange, SANDBOX_PROFILE
     guard = ClipboardGuard(out / 'clipboard-guard', capture_commands=a.clipboard_guard)
     if a.clipboard_sandbox:
-        guard.sandbox_probe()
+        try:
+            guard.sandbox_probe()
+        except ExternalClipboardChange:
+            retry_external_change()
 interaction = Path(a.steps).read_text()
 for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
     target = out / name
@@ -175,4 +195,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     if 'FAIL: owned server required kill' in replies:
                         raise RuntimeError('owned server did not stop gracefully')
                 if guard is not None:
-                    guard.check(name)
+                    try:
+                        guard.check(name, target/'terminal.raw')
+                    except ExternalClipboardChange:
+                        retry_external_change()
