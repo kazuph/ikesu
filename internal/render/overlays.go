@@ -72,7 +72,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		}
 		sty := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}
 		if i == m.Hover || i == m.Sel {
-			sty = uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
+			sty = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 			if !m.Global {
 				f.Fill(ix, iy+i, iw, 1, " ", sty)
 			}
@@ -278,7 +278,7 @@ func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
 	}
 
 	f.Text(cancel.X, cancel.Y, " esc "+d.Cancel+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, cancel.X+cancel.W)
-	f.Text(confirm.X, confirm.Y, dialogConfirmLabel(d), uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
+	f.Text(confirm.X, confirm.Y, dialogConfirmLabel(d), uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Red, Attrs: uv.AttrBold}, confirm.X+confirm.W)
 	out.DialogRect = outer
 	out.DialogCancel = cancel
 	out.DialogConfirm = confirm

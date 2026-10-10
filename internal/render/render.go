@@ -269,7 +269,7 @@ func Compose(in Input) *Output {
 	}
 	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 		for i := range f.Cells {
-			if in.Dialog != nil && in.Dialog.DimPanesOnly {
+			if in.Dialog != nil && (in.Dialog.DimPanesOnly || !in.Dialog.InputEdit) {
 				x, y := i%f.W, i/f.W
 				area := s.PanesArea()
 				if x < area.X || x >= area.X+area.W || y < area.Y || y >= area.Y+area.H {
@@ -538,7 +538,7 @@ func drawCopyCursor(f *Frame, x, y int) {
 		f.Set(x, y, " ", c.Style)
 		c = f.Cell(x, y)
 	}
-	c.Style.Fg = f.Palette.PopupBG
+	c.Style.Fg = f.Palette.SurfDim
 	c.Style.Bg = f.Palette.Accent
 	c.Style.Attrs = uv.AttrBold
 }
@@ -632,7 +632,7 @@ func drawCopyStatus(f *Frame, x, y, w int, hint string) {
 			}
 		}
 	}
-	f.Text(x, y, " COPY ", uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+w)
+	f.Text(x, y, " COPY ", uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+w)
 	if c := f.Cell(x+len(" COPY "), y); c != nil && len(hint) > len(" COPY ") && len(" COPY ") < w {
 		c.Style = base
 	}

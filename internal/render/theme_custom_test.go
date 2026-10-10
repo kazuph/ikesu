@@ -47,6 +47,16 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 	if cards == 0 {
 		t.Fatal("no cards exercised")
 	}
+	in.ServerUI = false
+	in.SidebarConfig.UI.TransparentSidebarCards = false
+	standalone := Compose(in).Frame
+	in.SidebarConfig.UI.TransparentSidebarCards = true
+	standaloneWithFlag := Compose(in).Frame
+	for i, cell := range standalone.Cells {
+		if cell.Style != standaloneWithFlag.Cells[i].Style {
+			t.Fatal("standalone distribution keeps painted cards when the endpoint flag is enabled")
+		}
+	}
 }
 
 func TestCustomPanelBackgroundControlsMobileHeaderAndSwitcherGround(t *testing.T) {

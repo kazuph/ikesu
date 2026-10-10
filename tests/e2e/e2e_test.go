@@ -133,8 +133,24 @@ func startMode(t *testing.T, extra map[string]string, local bool) *session {
 		}
 	}()
 	t.Cleanup(func() {
+		if local {
+			// Let standalone mode stop its pane processes before deleting ZDOTDIR.
+			_, _ = f.WriteString("\x02q")
+			exited := make(chan error, 1)
+			go func() { exited <- cmd.Wait() }()
+			select {
+			case err := <-exited:
+				if err != nil {
+					t.Errorf("standalone cleanup: %v", err)
+				}
+			case <-time.After(10 * time.Second):
+				_ = cmd.Process.Kill()
+				<-exited
+				t.Error("standalone did not exit during cleanup")
+			}
+		}
 		_ = f.Close()
-		if cmd.Process != nil {
+		if !local && cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
 		// The server outlives its client; ask it to stop so the test

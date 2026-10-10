@@ -16,7 +16,7 @@ func TestParityReadLogicalLineSurvivesSplitAndCloseRealServer(t *testing.T) {
 	defer stopServer(t, dir, done)
 	pid := firstPaneID(t, dir)
 	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{
-		PaneID: pid, Text: "clear; for i in 1 2 3 4 5 6 7 8; do echo line$i; done; printf 'A%0298dZ\\n' 0; for i in $(seq 25); do echo tail$i; done",
+		PaneID: pid, Text: "clear; for i in 1 2 3 4 5 6 7 8; do echo line$i; done; printf 'A%0298dZ\\n' 0; for i in $(seq 25); do echo tail$i; done; exec /bin/cat",
 		Keys: []string{"enter"},
 	}, nil)
 	waitRead(t, dir, pid, "tail25")

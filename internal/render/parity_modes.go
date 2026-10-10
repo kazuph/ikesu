@@ -24,7 +24,7 @@ func drawModeHint(f *Frame, x, y, w int, hint string) {
 	base := uv.Style{Bg: f.Palette.PopupBG}
 	f.Fill(x, y, w, 1, " ", base)
 	f.Text(x, y, hint, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, x+w)
-	f.Text(x, y, label, uv.Style{Fg: f.Palette.PopupBG, Bg: labelBG, Attrs: uv.AttrBold}, x+w)
+	f.Text(x, y, label, uv.Style{Fg: f.Palette.SurfDim, Bg: labelBG, Attrs: uv.AttrBold}, x+w)
 	rest := strings.TrimPrefix(hint, label)
 	gap := len(rest) - len(strings.TrimLeft(rest, " "))
 	f.Fill(x+ansi.StringWidth(label), y, min(gap, max(0, w-ansi.StringWidth(label))), 1, " ", base)
