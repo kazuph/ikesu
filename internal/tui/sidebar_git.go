@@ -10,6 +10,21 @@ import (
 	"time"
 )
 
+func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
+	names := map[int]string{}
+	git := map[int]render.GitStatus{}
+	for i, id := range previousIDs {
+		names[id] = a.workspaceNames[i]
+		git[id] = a.workspaceGit[i]
+	}
+	a.workspaceNames = map[int]string{}
+	a.workspaceGit = map[int]render.GitStatus{}
+	for i, ws := range a.st.Workspaces {
+		a.workspaceNames[i] = names[ws.ID]
+		a.workspaceGit[i] = git[ws.ID]
+	}
+}
+
 // Git collection shares the existing one-second metadata snapshot cadence;
 // never launch git from frame composition or block pane input on it.
 func (a *App) refreshWorkspaceGit(now time.Time) {

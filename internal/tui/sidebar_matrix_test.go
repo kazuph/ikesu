@@ -102,8 +102,8 @@ func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
 	y = sidebarCardY(a, 0)
 	sidebarEvent(a, input.KindMouseClick, 3, y+1)
 	sidebarEvent(a, input.KindMouseRelease, 3, y+1)
-	if a.menu != nil || a.sidebarGesture != nil {
-		t.Fatal("slim git row has hit rect")
+	if a.menu == nil || a.menu.kind != menuWorkspace || !reflect.DeepEqual(labels(), right) || a.sidebarGesture != nil {
+		t.Fatal("slim Git row must open the observed workspace menu", a.menu)
 	}
 	a.openWorkspaceMenu(3, y, 0)
 	activateLabel(t, a, "New worktree")

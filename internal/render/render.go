@@ -152,6 +152,7 @@ type Input struct {
 	DragSection       model.Section
 	DraggedWorkspace  int
 	Dragging          bool
+	DragFromGit       bool
 
 	Navigator           *Navigator
 	Settings            *Settings
@@ -334,7 +335,11 @@ func Compose(in Input) *Output {
 		drawSettings(f, in.Settings)
 	}
 	if in.Navigator != nil {
-		drawNavigator(f, in.Navigator)
+		spin := 0
+		if in.ServerUI {
+			spin = in.Spin
+		}
+		drawNavigator(f, in.Navigator, spin)
 	}
 	return out
 }

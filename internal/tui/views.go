@@ -128,6 +128,7 @@ func (a *App) draw() {
 	}
 	if a.sidebarGesture != nil && !a.sidebarGesture.divider && !a.sidebarGesture.panelDivider {
 		in.Dragging = a.sidebarGesture.moved
+		in.DragFromGit = a.sidebarGesture.gitRow
 		in.DraggedWorkspace = a.sidebarGesture.ws
 		in.DragSection = a.sidebarGesture.section
 		if a.sidebarGesture.moved && a.sidebarGesture.drop >= 0 {

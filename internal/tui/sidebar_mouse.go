@@ -12,6 +12,7 @@ type sidebarGesture struct {
 	ws, x, y               int
 	active, moved, divider bool
 	panelDivider           bool
+	gitRow                 bool
 	section                model.Section
 	drop                   int
 }
@@ -105,8 +106,9 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
 		return true
 	case render.RowGit, render.RowCardBlank:
-		if s.WorkspaceDensity != "slim" || a.serverUI {
-			a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
+		a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1, gitRow: r.Kind == render.RowGit}
+		if a.serverUI && s.WorkspaceDensity == "slim" && r.Kind == render.RowGit {
+			a.exec(model.CmdSelectWorkspace{Index: r.Ws})
 		}
 		return true
 	case render.RowRule, render.RowBlank:
@@ -189,10 +191,13 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			return
 		}
 		r, ok := a.sidebarRowAt(m.X, m.Y)
-		if !ok || m.Y != g.y || r.Ws != g.ws || (r.Kind != render.RowWorkspace && (r.Kind != render.RowGit || (a.st.WorkspaceDensity == "slim" && !a.serverUI))) {
+		if !ok || m.Y != g.y || r.Ws != g.ws || (r.Kind != render.RowWorkspace && r.Kind != render.RowGit) {
 			return
 		}
 		if g.active {
+			if a.serverUI && a.st.WorkspaceDensity == "slim" && r.Kind == render.RowGit {
+				return
+			}
 			a.openWorkspaceMenu(m.X, m.Y, g.ws)
 			a.menu.justOpened = false
 		} else {

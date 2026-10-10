@@ -55,6 +55,7 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 		}
 	}
 	rows := SidebarRows(s, panes, cfg)
+	stickyCards := serverUI || (s.WorkspaceDensity == "slim" && cfg.UI.Sidebar.Spaces.Rows == nil)
 	sep := len(rows)
 	for i, r := range rows {
 		if r.Kind == RowSep {
@@ -80,7 +81,7 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 			break
 		}
 	}
-	if serverUI {
+	if stickyCards {
 		// Small endpoint captures stop before skipping the final workspace card.
 		cards, lastCard := 0, 0
 		for _, row := range rows[2:sep] {
@@ -113,7 +114,7 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 		}
 		view.Rows = append(view.Rows, SidebarPosition{Row: rows[i], Y: a.Y + i})
 	}
-	if serverUI && view.Workspace.Rect.H >= 2 {
+	if stickyCards && view.Workspace.Rect.H >= 2 {
 		// Endpoint captures scroll card rows while retaining every section heading.
 		skip, y := view.Workspace.Offset, view.Workspace.Rect.Y
 		for i, row := range rows[2:sep] {
@@ -130,7 +131,7 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 				break
 			}
 			// Rules reach the footer; cards leave its preceding row blank.
-			if heading || y < view.Workspace.Rect.Y+view.Workspace.Rect.H-1 {
+			if !serverUI && !clippedFirstCard || heading || y < view.Workspace.Rect.Y+view.Workspace.Rect.H-1 {
 				view.Rows = append(view.Rows, SidebarPosition{Row: row, Y: y})
 			}
 			y++
@@ -163,7 +164,7 @@ func SidebarThumb(v SidebarViewport) (height, top int) {
 	return
 }
 
-func drawSidebarScrollbar(f *Frame, v SidebarViewport) {
+func drawSidebarScrollbar(f *Frame, v SidebarViewport, slim bool) {
 	if v.Rect.W <= 0 || v.Rect.H <= 0 || v.Total <= v.Rect.H {
 		return
 	}
@@ -172,6 +173,12 @@ func drawSidebarScrollbar(f *Frame, v SidebarViewport) {
 		glyph, fg := "│", f.Palette.Dim
 		if y >= top && y < top+h {
 			glyph, fg = "█", f.Palette.Accent
+		}
+		if slim {
+			glyph, fg = "▕", f.Palette.PanelBG
+			if y >= top && y < top+h {
+				fg = f.Palette.Dim
+			}
 		}
 		f.Set(v.Rect.X+v.Rect.W-1, v.Rect.Y+y, glyph, uv.Style{Fg: fg})
 	}

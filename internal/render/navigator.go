@@ -28,7 +28,7 @@ func NavigatorRect(cols, rows int) layout.Rect {
 	return layout.Rect{X: x, Y: y, W: cols - 2*x, H: rows - 2*y}
 }
 
-func drawNavigator(f *Frame, n *Navigator) {
+func drawNavigator(f *Frame, n *Navigator, spin int) {
 	r := NavigatorRect(f.W, f.H)
 	normal := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}
 	dim := uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
@@ -39,7 +39,7 @@ func drawNavigator(f *Frame, n *Navigator) {
 	if n.Query != "" {
 		header = n.Query
 	}
-	filters := map[string]string{"blocked": "◉ blocked", "working": "⠋ working", "idle": "✓ idle", "done": "● done"}
+	filters := map[string]string{"blocked": "◉ blocked", "working": workingRune(spin) + " working", "idle": "✓ idle", "done": "● done"}
 	if n.Filter != "" {
 		header = filters[n.Filter]
 	}

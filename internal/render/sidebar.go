@@ -225,8 +225,8 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		f.Set(x, SidebarSplitY(s), "─", border)
 	}
 	if !in.ServerUI {
-		drawSidebarScrollbar(f, view.Workspace)
-		drawSidebarScrollbar(f, view.Agents)
+		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
+		drawSidebarScrollbar(f, view.Agents, false)
 	}
 	if in.DropIndex != nil && in.Dragging {
 		boundary := -1
@@ -403,7 +403,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			if selected && !in.ServerUI {
 				sty.Bg = f.Palette.Surface
 			}
-			if dragged {
+			if dragged && !(in.ServerUI && s.WorkspaceDensity == "slim" && in.DragFromGit) {
 				sty.Bg = f.Palette.NavigatorDivider
 			}
 			sty.Attrs = uv.AttrBold

@@ -214,6 +214,12 @@ func (a *App) exec(cmd model.Command) {
 		a.mobileScroll = 0
 	}
 	beforeFocus := a.focusedPane()
+	var metadataOrder []int
+	if _, moving := cmd.(model.CmdMoveWorkspace); moving {
+		for _, ws := range a.st.Workspaces {
+			metadataOrder = append(metadataOrder, ws.ID)
+		}
+	}
 	copyHeight := 0
 	if _, resizing := cmd.(model.CmdResize); resizing && a.cm != nil {
 		copyHeight = a.copyInnerH()
@@ -227,9 +233,15 @@ func (a *App) exec(cmd model.Command) {
 	for _, e := range a.st.Apply(cmd) {
 		a.effect(e)
 	}
+	if metadataOrder != nil {
+		a.reindexWorkspaceMetadata(metadataOrder)
+	}
 	a.popupVisibilityChanged(popupWasVisible, previousPopup)
 	a.recordFocus(beforeFocus, a.focusedPane())
 	if _, selecting := cmd.(model.CmdSelectWorkspace); selecting && a.serverUI {
+		a.revealServerWorkspace()
+	}
+	if creating, ok := cmd.(model.CmdNewWorkspace); ok && !creating.NoFocus && a.st.WorkspaceDensity == "slim" {
 		a.revealServerWorkspace()
 	}
 	// Copy mode dies when its pane leaves the active tab's layout
