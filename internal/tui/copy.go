@@ -437,9 +437,9 @@ func (a *App) copyGrid() [][]uv.Cell {
 		return nil
 	}
 	h, w := a.copyInnerH(), a.copyInnerW()
-	palette := render.ThemePalette(a.sidebarConfig.ThemeName())
+	palette := render.CustomPalette(a.sidebarConfig.ThemeName(), a.sidebarConfig.Theme.Custom)
 	if a.settings != nil {
-		palette = render.ThemePalette(a.settings.Theme)
+		palette = render.CustomPalette(a.settings.Theme, a.sidebarConfig.Theme.Custom)
 	}
 	g := make([][]uv.Cell, 0, h)
 	for r := 0; r < h; r++ {

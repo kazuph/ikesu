@@ -38,19 +38,21 @@ func (d ToastDelivery) Valid() bool {
 // Config is the parsed config file.
 type Config struct {
 	Theme struct {
-		Name string `toml:"name"`
+		Name   string            `toml:"name"`
+		Custom map[string]string `toml:"custom"`
 	} `toml:"theme"`
 	UI struct {
-		MobileWidthThreshold  *int          `toml:"mobile_width_threshold"`
-		Sidebar               SidebarPanels `toml:"sidebar"`
-		SidebarWidth          *int          `toml:"sidebar_width"`
-		SidebarMinWidth       *int          `toml:"sidebar_min_width"`
-		SidebarMaxWidth       *int          `toml:"sidebar_max_width"`
-		SidebarStartCollapsed bool          `toml:"sidebar_start_collapsed"`
-		WorkspacePanelDensity string        `toml:"workspace_panel_density"`
-		AgentPanelScope       string        `toml:"agent_panel_scope"`
-		AgentPanelSort        string        `toml:"agent_panel_sort"`
-		Sound                 struct {
+		MobileWidthThreshold    *int          `toml:"mobile_width_threshold"`
+		Sidebar                 SidebarPanels `toml:"sidebar"`
+		SidebarWidth            *int          `toml:"sidebar_width"`
+		SidebarMinWidth         *int          `toml:"sidebar_min_width"`
+		SidebarMaxWidth         *int          `toml:"sidebar_max_width"`
+		SidebarStartCollapsed   bool          `toml:"sidebar_start_collapsed"`
+		TransparentSidebarCards bool          `toml:"transparent_sidebar_cards"`
+		WorkspacePanelDensity   string        `toml:"workspace_panel_density"`
+		AgentPanelScope         string        `toml:"agent_panel_scope"`
+		AgentPanelSort          string        `toml:"agent_panel_sort"`
+		Sound                   struct {
 			Enabled *bool `toml:"enabled"`
 		} `toml:"sound"`
 		Toast struct {
@@ -134,6 +136,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if err := ValidateTheme(c.ThemeName()); err != nil {
+		return c, err
+	}
+	if err := c.ValidateCustomColors(); err != nil {
 		return c, err
 	}
 	if err := c.ValidatePluginKeys(); err != nil {

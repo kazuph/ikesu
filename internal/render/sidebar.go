@@ -264,6 +264,11 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 			}
 		}
 	}
+	if in.SidebarConfig.UI.TransparentSidebarCards {
+		for _, pos := range view.Rows {
+			clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
+		}
+	}
 	if in.Copied != "" && !in.ServerUI && area.W > 1 && area.H > 0 {
 		x, y, w := area.X, area.Y+area.H-1, area.W-1
 		f.Fill(x, y, w-1, 1, " ", uv.Style{})

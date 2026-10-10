@@ -245,9 +245,9 @@ type HelpInput struct {
 func Compose(in Input) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
-	f.Palette = ThemePalette(in.SidebarConfig.ThemeName())
+	f.Palette = CustomPalette(in.SidebarConfig.ThemeName(), in.SidebarConfig.Theme.Custom)
 	if in.Settings != nil {
-		f.Palette = ThemePalette(in.Settings.Theme)
+		f.Palette = CustomPalette(in.Settings.Theme, in.SidebarConfig.Theme.Custom)
 	}
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 

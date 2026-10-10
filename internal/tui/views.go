@@ -43,7 +43,7 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	case "blocked":
 		return render.StatusGlyph{Key: "blocked", Rune: "●", Color: render.Red}
 	case "done":
-		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.ThemePalette(a.sidebarConfig.ThemeName()).NavigatorDone}
+		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.CustomPalette(a.sidebarConfig.ThemeName(), a.sidebarConfig.Theme.Custom).NavigatorDone}
 	case "idle":
 		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Green}
 	}

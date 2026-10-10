@@ -7,7 +7,7 @@ import (
 
 // Palettes are measured terminal cell colors from isolated distribution builds.
 // Palette belongs to a frame; switching one app never changes another app.
-type Palette struct{ PanelBG, PopupBG, Overlay1, NavigatorDivider, NavigatorDone, Accent, Dim, Text, Subtle, Surface, SurfDim, Red, Green, Yellow, Mauve color.Color }
+type Palette struct{ PanelBG, PopupBG, Overlay1, NavigatorDivider, NavigatorDone, Accent, Dim, Text, Subtle, Surface, SurfDim, Red, Green, Yellow, Mauve, Blue, Peach color.Color }
 
 var palettes = map[string]Palette{
 	"catppuccin":       {PanelBG: color.RGBA{30, 30, 46, 255}, NavigatorDone: color.RGBA{148, 226, 213, 255}, NavigatorDivider: color.RGBA{69, 71, 90, 255}, PopupBG: color.RGBA{0x18, 0x18, 0x25, 0xff}, Overlay1: color.RGBA{0x7f, 0x84, 0x9c, 0xff}, Accent: color.RGBA{0x89, 0xb4, 0xfa, 0xff}, Dim: color.RGBA{0x6c, 0x70, 0x86, 0xff}, Text: color.RGBA{0xcd, 0xd6, 0xf4, 0xff}, Subtle: color.RGBA{0xa6, 0xad, 0xc8, 0xff}, Surface: color.RGBA{0x31, 0x32, 0x44, 0xff}, SurfDim: color.RGBA{0x18, 0x18, 0x25, 0xff}, Red: color.RGBA{0xf3, 0x8b, 0xa8, 0xff}, Green: color.RGBA{0xa6, 0xe3, 0xa1, 0xff}, Yellow: color.RGBA{0xf9, 0xe2, 0xaf, 0xff}, Mauve: color.RGBA{0xcb, 0xa6, 0xf7, 0xff}},
