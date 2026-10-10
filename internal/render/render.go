@@ -58,13 +58,14 @@ type PaneSnap struct {
 	Agent          string // detected agent id ("" = not identified)
 	// Restore is "saved session" / "no saved session" for agent panes,
 	// shown right-aligned on the top border (SPEC G1).
-	Restore   string
-	Status    StatusGlyph
-	Focused   bool
-	Dead      bool
-	Cursor    CursorInfo
-	ScrollOff int // scrollback lines above the live screen
-	ScrollN   int // total scrollback length
+	Restore           string
+	Status            StatusGlyph
+	Focused           bool
+	Dead              bool
+	Cursor            CursorInfo
+	ScrollOff         int // scrollback lines above the live screen
+	ScrollN           int // total scrollback length
+	SuppressScrollbar bool
 }
 
 // Selection is a linear (anchor→head) range inside one pane's inner rect,
@@ -507,7 +508,7 @@ func truncateEllipsis(s string, n int) string {
 // drawGutter fills the rightmost inner column: '▕' track with '▐' for the
 // thumb portion whenever the pane has scrollback (SPEC G1).
 func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
-	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 {
+	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 || snap.SuppressScrollbar {
 		return
 	}
 	gx := inner.X + inner.W - 1

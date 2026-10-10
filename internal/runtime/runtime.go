@@ -64,52 +64,52 @@ type Pane struct {
 	ptyFD   int // captured before publishing the pane; Close may race with readers
 	done    chan struct{}
 
-	mu            sync.Mutex
-	emu           *vt.Emulator
-	read          *readBuffer
-	dead          bool
-	fgPID         int
-	procName      string
-	agentID       string
-	agentOverride string // set by pane.report_agent; wins over agentID
-	procCwd       string
-	oscTitle      string
-	oscProgress   string
-	altScreen     bool
-	mouseTracking bool
-	mouseMotion   bool
-	appCursorKeys bool
-	modes         map[ansi.Mode]bool
-	cursor        CursorState
+	mu               sync.Mutex
+	emu              *vt.Emulator
+	read             *readBuffer
+	dead             bool
+	fgPID            int
+	procName         string
+	agentID          string
+	agentOverride    string // set by pane.report_agent; wins over agentID
+	procCwd          string
+	oscTitle         string
+	oscProgress      string
+	altScreen        bool
+	mouseTracking    bool
+	mouseMotion      bool
+	appCursorKeys    bool
+	modes            map[ansi.Mode]bool
+	cursor           CursorState
+	scrollbarVisible bool // measured on PTY output; resize alone preserves visibility
 
 	tap oscTap
 	ev  chan<- Event
-
 	// changedPending is set while an EventChanged for this pane is still
 	// sitting in the event queue or being consumed by the TUI.
 	changedPending atomic.Bool
-
 	// revision counts PTY output batches; bumped per flush.
 	revision atomic.Uint64
 }
 
 // Snapshot is a consistent read of the pane's observable state.
 type Snapshot struct {
-	Revision      uint64
-	ProcName      string
-	AgentID       string
-	FgPID         int
-	Cwd           string
-	OSCTitle      string
-	OSCProgress   string
-	AltScreen     bool
-	MouseTracking bool
-	MouseMotion   bool
-	AppCursorKeys bool
-	BracketedKeys bool
-	Cursor        CursorState
-	ScrollbackLen int
-	Dead          bool
+	Revision         uint64
+	ProcName         string
+	AgentID          string
+	FgPID            int
+	Cwd              string
+	OSCTitle         string
+	OSCProgress      string
+	AltScreen        bool
+	MouseTracking    bool
+	MouseMotion      bool
+	AppCursorKeys    bool
+	BracketedKeys    bool
+	Cursor           CursorState
+	ScrollbackLen    int
+	ScrollbarVisible bool
+	Dead             bool
 }
 
 // Supervisor runs all panes of the app.
@@ -340,6 +340,7 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 		}
 	}
 	p.writeRecorded(chunk)
+	p.scrollbarVisible = p.emu.ScrollbackLen() > 0
 	p.mu.Unlock()
 	p.revision.Add(1)
 	p.notifyChanged()
@@ -555,20 +556,21 @@ func (p *Pane) Snapshot() Snapshot {
 
 func (p *Pane) snapshotLocked() Snapshot {
 	return Snapshot{
-		Revision:      p.revision.Load(),
-		ProcName:      p.procName,
-		AgentID:       p.effectiveAgent(),
-		FgPID:         p.fgPID,
-		Cwd:           p.procCwdOrDefault(),
-		OSCTitle:      p.oscTitle,
-		OSCProgress:   p.oscProgress,
-		AltScreen:     p.altScreen,
-		MouseTracking: p.mouseTracking,
-		MouseMotion:   p.mouseMotion,
-		AppCursorKeys: p.appCursorKeys,
-		Cursor:        p.cursor,
-		ScrollbackLen: p.emu.ScrollbackLen(),
-		Dead:          p.dead,
+		Revision:         p.revision.Load(),
+		ProcName:         p.procName,
+		AgentID:          p.effectiveAgent(),
+		FgPID:            p.fgPID,
+		Cwd:              p.procCwdOrDefault(),
+		OSCTitle:         p.oscTitle,
+		OSCProgress:      p.oscProgress,
+		AltScreen:        p.altScreen,
+		MouseTracking:    p.mouseTracking,
+		MouseMotion:      p.mouseMotion,
+		AppCursorKeys:    p.appCursorKeys,
+		Cursor:           p.cursor,
+		ScrollbackLen:    p.emu.ScrollbackLen(),
+		ScrollbarVisible: p.scrollbarVisible,
+		Dead:             p.dead,
 	}
 }
 
