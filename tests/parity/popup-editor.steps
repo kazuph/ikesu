@@ -1,6 +1,6 @@
 send "echo BASE_EDITOR_TEXT\r"
 sleep 250ms
-send "python3 @FIXTURES@/socket_action.py open\r"
+send "python3 @FIXTURES@/socket_action.py open >parity-popup-open.json\r"
 sleep 500ms
 send "echo POPUP_EDITOR_TEXT\r"
 sleep 250ms

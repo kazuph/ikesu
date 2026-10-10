@@ -1,10 +1,10 @@
 screen @OUT@/boot.txt
 cells @OUT@/boot.json
-click 25 45
+send "\x02b"
 sleep 250ms
 screen @OUT@/collapsed.txt
 cells @OUT@/collapsed.json
-click 2 45
+send "\x02b"
 sleep 250ms
 screen @OUT@/expanded.txt
 cells @OUT@/expanded.json

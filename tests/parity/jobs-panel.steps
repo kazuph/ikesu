@@ -1,7 +1,9 @@
-send "python3 @FIXTURES@/socket_action.py report-state working\r"
+send "python3 @FIXTURES@/socket_action.py report-state working >@OUT@/report-state.json\r"
 sleep 250ms
-send "python3 @FIXTURES@/socket_action.py start-job short\r"
+send "python3 @FIXTURES@/socket_action.py start-job short >@OUT@/start-job.json\r"
 sleep 1500ms
+send "clear\r"
+sleep 250ms
 clicktext "[jobs]"
 sleep 250ms
 screen @OUT@/running.txt
@@ -28,9 +30,11 @@ cells @OUT@/finished.json
 sleep 2s
 screen @OUT@/finished-later.txt
 cells @OUT@/finished-later.json
-send "python3 @FIXTURES@/socket_action.py read-job\r"
+send "python3 @FIXTURES@/socket_action.py read-job >@OUT@/read-job.json\r"
 sleep 250ms
 screen @OUT@/job-status.txt
+send "clear\r"
+sleep 250ms
 resize 100 25
 sleep 250ms
 screen @OUT@/resize.txt
