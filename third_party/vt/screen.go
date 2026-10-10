@@ -72,11 +72,17 @@ func (s *Screen) Height() int {
 
 // Resize resizes the screen.
 func (s *Screen) Resize(width int, height int) {
+	s.resize(width, height)
+}
+
+// resize also reports the rows moved across the history boundary.
+func (s *Screen) resize(width int, height int) (pushed, pulled int) {
 	oldCursor := s.cur.Position
 	if s.buf == nil {
 		s.buf = uv.NewRenderBuffer(width, height)
 	} else {
 		pull := min(max(height-s.buf.Height(), 0), s.scrollback.Len())
+		pulled = pull
 		if height < s.buf.Height() {
 			last := s.cur.Y
 			for y := s.buf.Height() - 1; y > last; y-- {
@@ -86,6 +92,7 @@ func (s *Screen) Resize(width int, height int) {
 				}
 			}
 			shift := min(s.buf.Height()-height, max(last-height+1, 0))
+			pushed = shift
 			if shift > 0 {
 				if s.scrollback != nil {
 					s.scrollback.PushN(s.buf, 0, shift)
@@ -108,6 +115,7 @@ func (s *Screen) Resize(width int, height int) {
 	if s.cb != nil && s.cb.CursorPosition != nil && oldCursor != s.cur.Position {
 		s.cb.CursorPosition(oldCursor, s.cur.Position)
 	}
+	return pushed, pulled
 }
 
 // Width returns the width of the screen.

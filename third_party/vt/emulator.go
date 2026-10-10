@@ -249,8 +249,13 @@ func (e *Emulator) Resize(width int, height int) {
 		x = width - 1
 	}
 
-	e.scrs[0].Resize(width, height)
-	e.scrs[1].Resize(width, height)
+	for i := range e.scrs {
+		oldWidth := e.scrs[i].Width()
+		pushed, pulled := e.scrs[i].resize(width, height)
+		if e.cb.Resize != nil {
+			e.cb.Resize(i == 1, oldWidth, height, pushed, pulled)
+		}
+	}
 	_, y = e.scr.CursorPosition()
 	y = min(max(y, 0), height-1)
 	e.tabstops = uv.DefaultTabStops(width)

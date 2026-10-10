@@ -52,8 +52,13 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	p.cursor.Visible = true
 
 	emu.SetCallbacks(vt.Callbacks{
-		Title:            p.onOSCTitle,
-		AltScreen:        func(on bool) { p.altScreen = on },
+		Title:     p.onOSCTitle,
+		AltScreen: func(on bool) { p.altScreen = on },
+		Resize: func(alt bool, oldWidth, height, pushed, pulled int) {
+			if p.read != nil {
+				p.read.resizeRows(alt, oldWidth, height, pushed, pulled)
+			}
+		},
 		CursorPosition:   func(_, n uv.Position) { p.cursor.X, p.cursor.Y = n.X, n.Y },
 		CursorVisibility: func(v bool) { p.cursor.Visible = v },
 		CursorStyle:      func(st vt.CursorStyle, blink bool) { p.cursor.Style, p.cursor.Blink = st, blink },

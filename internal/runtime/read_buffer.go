@@ -20,6 +20,8 @@ type readBuffer struct {
 	main, alternate []rowRef
 	history         []rowRef
 	start           int
+	altHistory      []rowRef
+	altStart        int
 	pending         bool
 	state           byte
 	kind            byte
@@ -38,13 +40,19 @@ func (r *readBuffer) rows(alt bool) []rowRef {
 	}
 	return r.main
 }
-func (r *readBuffer) push(row rowRef) {
-	if len(r.history) < ScrollbackSize {
-		r.history = append(r.history, row)
+func (r *readBuffer) pushHistory(alt bool, row rowRef) {
+	history, start := &r.history, &r.start
+	limit := ScrollbackSize
+	if alt {
+		history, start = &r.altHistory, &r.altStart
+		limit = vt.DefaultScrollbackSize
+	}
+	if len(*history) < limit {
+		*history = append(*history, row)
 		return
 	}
-	r.history[r.start] = row
-	r.start = (r.start + 1) % ScrollbackSize
+	(*history)[*start] = row
+	*start = (*start + 1) % limit
 }
 func (r *readBuffer) shift(alt bool, top, bottom, n int, up, history bool, w int) {
 	rows := r.rows(alt)
@@ -55,10 +63,10 @@ func (r *readBuffer) shift(alt bool, top, bottom, n int, up, history bool, w int
 		return
 	}
 	if up {
-		if history && !alt {
+		if history {
 			for _, row := range rows[top : top+n] {
 				row.width = w
-				r.push(row)
+				r.pushHistory(alt, row)
 			}
 		}
 		copy(rows[top:bottom-n], rows[top+n:bottom])
@@ -66,6 +74,37 @@ func (r *readBuffer) shift(alt bool, top, bottom, n int, up, history bool, w int
 	} else {
 		copy(rows[top+n:bottom], rows[top:bottom-n])
 		clear(rows[top : top+n])
+	}
+}
+func (r *readBuffer) resizeRows(alt bool, oldWidth, height, pushed, pulled int) {
+	rows := r.rows(alt)
+	for _, row := range rows[:pushed] {
+		row.width = oldWidth
+		r.pushHistory(alt, row)
+	}
+	next := make([]rowRef, height)
+	copy(next[pulled:], rows[pushed:])
+	history, start := &r.history, &r.start
+	if alt {
+		history, start = &r.altHistory, &r.altStart
+	}
+	for y := pulled - 1; y >= 0; y-- {
+		if len(*history) == 0 {
+			break
+		}
+		last := (*start + len(*history) - 1) % len(*history)
+		next[y] = (*history)[last]
+		// Linearize only when resize pulls rows from a wrapped ring.
+		if *start != 0 {
+			ordered := append(append([]rowRef{}, (*history)[*start:]...), (*history)[:*start]...)
+			*history, *start = ordered, 0
+		}
+		*history = (*history)[:len(*history)-1]
+	}
+	if alt {
+		r.alternate = next
+	} else {
+		r.main = next
 	}
 }
 func (r *readBuffer) linefeed(p *Pane, continued bool) {
@@ -116,6 +155,8 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 			clear(r.alternate)
 			r.history = nil
 			r.start = 0
+			r.altHistory = nil
+			r.altStart = 0
 			r.resize(p.emu.Width(), p.emu.Height())
 		}
 		return
@@ -143,12 +184,10 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 		}
 	case 'J':
 		if a == 2 {
-			if !p.altScreen {
-				for y, row := range rows {
-					if !emptyRow(p.emu, y) {
-						row.width = p.emu.Width()
-						r.push(row)
-					}
+			for y, row := range rows {
+				if !emptyRow(p.emu, y) {
+					row.width = p.emu.Width()
+					r.pushHistory(p.altScreen, row)
 				}
 			}
 			clear(rows)

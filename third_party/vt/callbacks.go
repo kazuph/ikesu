@@ -25,6 +25,10 @@ type Callbacks struct {
 	// screen is activated or deactivated.
 	AltScreen func(bool)
 
+	// Resize reports each screen's actual history movement, including the
+	// inactive screen, so consumers can keep row metadata aligned with cells.
+	Resize func(alternate bool, oldWidth, height, pushed, pulled int)
+
 	// CursorPosition callback. When set, this function is called when the cursor
 	// position changes.
 	CursorPosition func(old, new uv.Position) //nolint:predeclared,revive
