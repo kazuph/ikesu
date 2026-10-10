@@ -76,7 +76,9 @@ func (a *App) editScrollback() {
 		a.editorFiles[editorPane] = f.Name()
 		a.exec(model.CmdZoomPane{Pane: editorPane, Mode: "on"})
 	}
-	a.ShowToast("opened scrollback", fmt.Sprintf("focused pane p%d", pid), "finished", pid)
+	if !a.serverUI {
+		a.ShowToast("opened scrollback", fmt.Sprintf("focused pane p%d", pid), "finished", pid)
+	}
 }
 
 func (a *App) removeEditorFile(pid int) {

@@ -9,16 +9,21 @@ import (
 )
 
 func TestParityScrollbackEditorUsesRealViPTYAndReturnsToShell(t *testing.T) {
-	testParityScrollbackEditor(t, false)
+	for _, mode := range []string{"local", "server"} {
+		t.Run(mode, func(t *testing.T) { testParityScrollbackEditor(t, false, mode == "server") })
+	}
 }
 
 func TestParityPopupScrollbackEditorKeepsPopupUntilEscape(t *testing.T) {
-	testParityScrollbackEditor(t, true)
+	for _, mode := range []string{"local", "server"} {
+		t.Run(mode, func(t *testing.T) { testParityScrollbackEditor(t, true, mode == "server") })
+	}
 }
 
-func testParityScrollbackEditor(t *testing.T, popup bool) {
+func testParityScrollbackEditor(t *testing.T, popup, server bool) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.serverUI = server
 	teststate.Setenv(t, "EDITOR", "/usr/bin/vi")
 	teststate.Setenv(t, "VISUAL", "")
 	teststate.Setenv(t, "TMPDIR", t.TempDir())
@@ -42,6 +47,9 @@ func testParityScrollbackEditor(t *testing.T, popup bool) {
 		specWaitText(t, a.sup.Get(source), "POPUP_ONLY_SENTINEL")
 	}
 	a.editScrollback()
+	if (a.toast == nil) != server {
+		t.Fatal("editor launch notification disagrees with local/endpoint observation", server)
+	}
 	editor := a.st.FocusedPane()
 	if popup {
 		if !a.st.PopupVisible() || a.focusedPane() != source {
