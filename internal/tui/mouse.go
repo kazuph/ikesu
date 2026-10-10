@@ -477,8 +477,7 @@ func (a *App) sidebarClick(m uv.Mouse) {
 	}
 }
 
-// sidebarRightClick opens the workspace menu when the press lands on an
-// expanded sidebar workspace row (SPEC G6 right-click priority).
+// Card padding retains its workspace owner; empty panel rows stay inert.
 func (a *App) sidebarRightClick(m uv.Mouse) {
 	s := a.st
 	if !s.SidebarVisible {
@@ -488,7 +487,7 @@ func (a *App) sidebarRightClick(m uv.Mouse) {
 		return
 	}
 	r, ok := a.sidebarRowAt(m.X, m.Y)
-	if ok && r.Kind == render.RowWorkspace {
+	if ok && (r.Kind == render.RowWorkspace || r.Kind == render.RowGit || r.Kind == render.RowCardBlank) {
 		a.openWorkspaceMenu(m.X, m.Y, r.Ws)
 	}
 }

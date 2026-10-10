@@ -169,7 +169,7 @@ func DialogRects(d *Dialog, area layout.Rect) (outer, cancel, confirm layout.Rec
 }
 
 func dialogConfirmLabel(d *Dialog) string {
-	if d.DimPanesOnly {
+	if d.DimPanesOnly || d.CompactButtons {
 		return " ↵ " + d.Confirm + " "
 	}
 	return "  ↵ " + d.Confirm + "   "

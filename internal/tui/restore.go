@@ -209,7 +209,7 @@ func (a *App) openRestoreDialog() {
 	a.workspaceNavigate = false
 	a.navigateHint = false
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", DimPanesOnly: true, Confirm: "restore", Cancel: "cancel", Width: 76},
+		d: render.Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", DimPanesOnly: !a.serverUI, CenterTerminal: a.serverUI, CompactButtons: true, Confirm: "restore", Cancel: "cancel", Width: 76},
 		run: func(a *App) {
 			if a.restoreHook != nil {
 				a.restoreHook(false)

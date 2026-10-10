@@ -1,6 +1,7 @@
 package tui
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
@@ -8,6 +9,48 @@ import (
 	"reflect"
 	"testing"
 )
+
+func TestEndpointRestoreDialogUsesWholeTerminalAndCancelKeepsShell(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.serverUI = true
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	pid := a.focusedPane()
+	a.openRestoreDialog()
+	if a.dialog.d.DimPanesOnly || !a.dialog.d.CenterTerminal {
+		t.Fatal("endpoint restore dialog did not use the observed full-screen backdrop")
+	}
+	a.dialogKey(uv.Key{Code: uv.KeyEscape})
+	if a.dialog != nil || a.focusedPane() != pid || a.sup.Get(pid) == nil {
+		t.Fatal("cancel changed the existing terminal")
+	}
+	a.sup.Input(pid, []byte("echo RESTORE_CANCEL_SHELL_ALIVE\r"))
+	specWaitText(t, a.sup.Get(pid), "RESTORE_CANCEL_SHELL_ALIVE")
+}
+
+func TestWorkspaceCardRightClickIncludesGitAndCardPadding(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	for _, endpoint := range []bool{false, true} {
+		a.serverUI = endpoint
+		view := a.sidebarView()
+		for _, pos := range view.Rows {
+			if pos.Row.Kind != render.RowWorkspace && pos.Row.Kind != render.RowGit && pos.Row.Kind != render.RowCardBlank {
+				continue
+			}
+			a.sidebarRightClick(uv.Mouse{X: 3, Y: pos.Y, Button: uv.MouseRight})
+			if a.menu == nil || a.menu.kind != menuWorkspace || a.menu.ws != pos.Row.Ws {
+				t.Fatal("right click lost the actual card owner", endpoint, pos)
+			}
+			a.menu = nil
+		}
+	}
+}
 
 func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
 	teststate.Lock(t)

@@ -30,3 +30,11 @@ func TestParityConfirmationPaneAreaAndButtons(t *testing.T) {
 		}
 	}
 }
+
+func TestEndpointRestoreCompactButtonsKeepWholeTerminalCenter(t *testing.T) {
+	d := &Dialog{Title: "Restore agents?", Detail: "Types resume commands into panes with recorded agent sessions.", Confirm: "restore", Cancel: "cancel", Width: 76, CenterTerminal: true, CompactButtons: true}
+	outer, cancel, confirm := DialogRects(d, layout.Rect{W: 160, H: 45})
+	if outer != (layout.Rect{X: 42, Y: 20, W: 76, H: 5}) || confirm != (layout.Rect{X: 67, Y: 23, W: 11, H: 1}) || cancel != (layout.Rect{X: 80, Y: 23, W: 12, H: 1}) {
+		t.Fatal("restore controls differ from recorded endpoint coordinates", outer, confirm, cancel)
+	}
+}

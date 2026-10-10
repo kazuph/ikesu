@@ -116,6 +116,7 @@ type Dialog struct {
 	// Workspace-close confirmation dims the panes while retaining the surrounding controls.
 	DimPanesOnly   bool
 	CenterTerminal bool
+	CompactButtons bool
 	// Input/InputEdit render the detail row as an editable text field.
 	Input       string
 	InputCursor int // rune index in Input
@@ -297,7 +298,9 @@ func Compose(in Input) *Output {
 		}
 		drawDialog(f, in.Dialog, out, area)
 	}
-	if in.ConfigWarning != "" {
+	if in.ConfigWarning != "" && in.ConfigWarningBanner && in.ServerUI {
+		drawEndpointWorktreeWarning(f, in, out)
+	} else if in.ConfigWarning != "" {
 		w := min(f.W, len(in.ConfigWarning)+2)
 		r := layout.Rect{X: f.W - w, Y: 1, W: w, H: 1}
 		out.ConfigWarningRect = r
@@ -305,7 +308,7 @@ func Compose(in Input) *Output {
 		if in.ConfigWarningBanner {
 			r.Y = 0
 			out.ConfigWarningRect = r
-			style = uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Yellow, Attrs: uv.AttrBold}
+			style = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Yellow, Attrs: uv.AttrBold}
 			if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 				style.Attrs |= uv.AttrFaint
 			}
