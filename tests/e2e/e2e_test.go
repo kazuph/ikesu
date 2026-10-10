@@ -283,7 +283,12 @@ func countPanes(screen string) int {
 func TestBootShowsSidebarAndPane(t *testing.T) {
 	s := start(t)
 	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "[menu]") && strings.Contains(tx, "[new]") && strings.Contains(tx, " spaces") && countPanes(tx) == 1
+		return strings.Contains(tx, "[menu]") &&
+			strings.Contains(tx, "[new]") &&
+			strings.Contains(tx, " spaces") &&
+			countPanes(tx) == 1 &&
+			strings.Contains(tx, " NORMAL ") &&
+			!strings.Contains(tx, "[full]")
 	})
 	if !strings.Contains(s.text(), " NORMAL ") || strings.Contains(s.text(), "[full]") {
 		t.Fatalf("server must show the 0.2.24 width button and plain header:\n%s", s.text())
