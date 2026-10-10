@@ -382,7 +382,7 @@ func (a *App) menuMouse(ev input.Event) {
 	switch ev.Kind {
 	case input.KindMouseClick:
 		if !pointIn(m.X, m.Y, render.MenuRect(&a.menu.m, a.st.Cols, a.st.Rows)) {
-			if a.menu.kind == menuMain && m.Button == uv.MouseRight {
+			if m.Button == uv.MouseRight && (a.menu.kind == menuMain || a.serverUI && (a.menu.kind == menuTab || a.menu.kind == menuPane || a.menu.kind == menuWorkspace)) {
 				return
 			}
 			a.menu = nil

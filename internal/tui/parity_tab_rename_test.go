@@ -4,10 +4,39 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 )
+
+func TestEndpointMenusOutsideRightKeepTargetAndOutsideLeftClose(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.serverUI = true
+	a.st.Cols, a.st.Rows = 160, 45
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	for _, open := range []func(){
+		func() { a.openTabMenu(27, 0, 0, 0) },
+		func() { a.openPaneMenu(27, 5, a.focusedPane()) },
+		func() { a.openWorkspaceMenu(2, 5, 0) },
+	} {
+		open()
+		menu := a.menu
+		for _, kind := range []input.Kind{input.KindMouseClick, input.KindMouseRelease} {
+			a.onMouse(input.Event{Kind: kind, Mouse: uv.Mouse{X: 155, Y: 42, Button: uv.MouseRight}})
+			if a.menu != menu {
+				t.Fatal("outside right click replaced the endpoint menu target", menu.kind)
+			}
+		}
+		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: 155, Y: 42, Button: uv.MouseLeft}})
+		if a.menu != nil {
+			t.Fatal("outside left click did not dismiss the endpoint menu", menu.kind)
+		}
+	}
+}
 
 func TestParityTabRenameSelectsTargetAndKeepsDefaultName(t *testing.T) {
 	teststate.Lock(t)
