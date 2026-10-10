@@ -178,41 +178,45 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
-                runtime_json = {str(path.relative_to(root)): path.read_text(errors='replace')
-                                for path in root.rglob('*.json') if path.is_file()}
-                (target/'runtime-json.json').write_text(json.dumps(runtime_json, ensure_ascii=False, indent=2)+'\n')
-                job_status = root/'home/parity-job-status.json'
-                if job_status.is_file():
-                    (target/'job-status.json').write_text(job_status.read_text())
-                job_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
-                            for path in root.rglob('job-logs/*.log') if path.is_file()}
-                (target/'job-logs.json').write_text(json.dumps(job_logs, ensure_ascii=False, indent=2)+'\n')
-                configs = {str(path.relative_to(root)): path.read_text() for path in root.rglob('config.toml') if path.is_file()}
-                (target/'config-files.json').write_text(json.dumps(configs, ensure_ascii=False, indent=2)+'\n')
-                if server is not None:
-                    replies = []
-                    for owned in root.rglob('*.sock'):
-                        if owned.name not in ('herdr.sock', 'gtx.sock'):
-                            continue
-                        try:
-                            with socket.socket(socket.AF_UNIX) as sock:
-                                sock.settimeout(5)
-                                sock.connect(str(owned))
-                                sock.sendall(json.dumps({'id':'parity-cleanup','method':'server.stop','params':{}}).encode()+b'\n')
-                                replies.append(sock.recv(65536).decode())
-                        except OSError as error:
-                            replies.append(str(error))
+                try:
+                    runtime_json = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                    for path in root.rglob('*.json') if path.is_file()}
+                    (target/'runtime-json.json').write_text(json.dumps(runtime_json, ensure_ascii=False, indent=2)+'\n')
+                    job_status = root/'home/parity-job-status.json'
+                    if job_status.is_file():
+                        (target/'job-status.json').write_text(job_status.read_text())
+                    job_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                for path in root.rglob('job-logs/*.log') if path.is_file()}
+                    (target/'job-logs.json').write_text(json.dumps(job_logs, ensure_ascii=False, indent=2)+'\n')
+                    configs = {str(path.relative_to(root)): path.read_text() for path in root.rglob('config.toml') if path.is_file()}
+                    (target/'config-files.json').write_text(json.dumps(configs, ensure_ascii=False, indent=2)+'\n')
+                finally:
                     try:
-                        server.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        server.kill()
-                        server.wait()
-                        replies.append('FAIL: owned server required kill')
-                    (target / 'cleanup.json').write_text(json.dumps({'pid':server.pid, 'exit':server.returncode, 'replies':replies}, indent=2)+'\n')
-                    if 'FAIL: owned server required kill' in replies:
-                        raise RuntimeError('owned server did not stop gracefully')
-                if guard is not None:
-                    try:
-                        guard.check(name, target/'terminal.raw')
-                    except ExternalClipboardChange:
-                        retry_external_change()
+                        if server is not None:
+                            replies = []
+                            for owned in root.rglob('*.sock'):
+                                if owned.name not in ('herdr.sock', 'gtx.sock'):
+                                    continue
+                                try:
+                                    with socket.socket(socket.AF_UNIX) as sock:
+                                        sock.settimeout(5)
+                                        sock.connect(str(owned))
+                                        sock.sendall(json.dumps({'id':'parity-cleanup','method':'server.stop','params':{}}).encode()+b'\n')
+                                        replies.append(sock.recv(65536).decode())
+                                except OSError as error:
+                                    replies.append(str(error))
+                            try:
+                                server.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                server.kill()
+                                server.wait()
+                                replies.append('FAIL: owned server required kill')
+                            (target / 'cleanup.json').write_text(json.dumps({'pid':server.pid, 'exit':server.returncode, 'replies':replies}, indent=2)+'\n')
+                            if 'FAIL: owned server required kill' in replies:
+                                raise RuntimeError('owned server did not stop gracefully')
+                    finally:
+                        if guard is not None:
+                            try:
+                                guard.check(name, target/'terminal.raw')
+                            except ExternalClipboardChange:
+                                retry_external_change()
