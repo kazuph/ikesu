@@ -11,6 +11,9 @@ func TestAgentViewAPIIsDisplayOnlyAndSourceOwned(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startPluginServer(t)
 	defer stopServer(t, dir, done)
+	// Finish shell startup before comparing the complete agent snapshots.
+	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "printf 'VIEW_%s\\n' READY; exec /bin/cat", Keys: []string{"enter"}}, nil)
+	waitRead(t, dir, "p1", "VIEW_READY")
 	apiOK(t, dir, "pane.report_agent", map[string]any{"pane_id": "p1", "source": "custom:view-test", "agent": "codex", "state": "blocked"}, nil)
 	var before api.AgentListResult
 	apiOK(t, dir, "agent.list", map[string]any{}, &before)
