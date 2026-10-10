@@ -10,7 +10,7 @@ import (
 	"github.com/kazuph/goterrace/internal/teststate"
 )
 
-func TestReloadCustomThemeAndCardFlagPreservesLastGoodConfig(t *testing.T) {
+func TestReloadCustomThemeResetsOnlyInvalidValue(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
 	teststate.Setenv(t, config.EnvVar, path)
@@ -27,9 +27,12 @@ func TestReloadCustomThemeAndCardFlagPreservesLastGoodConfig(t *testing.T) {
 	if frame.Palette.PopupBG != nil || !a.sidebarConfig.UI.TransparentSidebarCards {
 		t.Fatal("reload did not apply transparency")
 	}
-	write("[theme.custom]\npanel_bg='invalid-color'\n")
+	write("[theme]\nname='tokyo-night'\n[theme.custom]\npanel_bg='invalid-color'\n[ui]\ntransparent_sidebar_cards=true\n")
 	if a.sidebarConfig.ThemeName() != "tokyo-night" || !a.sidebarConfig.UI.TransparentSidebarCards {
-		t.Fatal("invalid reload replaced last valid config")
+		t.Fatal("invalid value discarded valid siblings")
+	}
+	if a.sidebarConfig.Theme.Custom["panel_bg"] != "" || a.sidebarConfig.Warning() == "" {
+		t.Fatal("invalid color did not reset with warning")
 	}
 	write("[theme]\nname='dracula'\n")
 	if a.sidebarConfig.UI.TransparentSidebarCards || render.CustomPalette(a.sidebarConfig.ThemeName(), a.sidebarConfig.Theme.Custom).PopupBG == nil || frame.Palette.PopupBG != nil {

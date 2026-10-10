@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/kazuph/goterrace/internal/api"
 )
 
@@ -37,26 +36,65 @@ func (d ToastDelivery) Valid() bool {
 
 // Config is the parsed config file.
 type Config struct {
+	Warnings   []string       `toml:"-"`
+	Onboarding *bool          `toml:"onboarding"`
+	Terminal   TerminalConfig `toml:"terminal"`
+	Update     UpdateConfig   `toml:"update"`
+	Remote     struct {
+		ManageSSHConfig *bool `toml:"manage_ssh_config"`
+	} `toml:"remote"`
+	Advanced struct {
+		ScrollbackLimitBytes *int `toml:"scrollback_limit_bytes"`
+	} `toml:"advanced"`
+	Worktrees struct {
+		Directory string `toml:"directory"`
+	} `toml:"worktrees"`
 	Theme struct {
-		Name   string            `toml:"name"`
-		Custom map[string]string `toml:"custom"`
+		AutoSwitch bool              `toml:"auto_switch"`
+		DarkName   string            `toml:"dark_name"`
+		LightName  string            `toml:"light_name"`
+		Name       string            `toml:"name"`
+		Custom     map[string]string `toml:"custom"`
 	} `toml:"theme"`
 	UI struct {
-		MobileWidthThreshold    *int          `toml:"mobile_width_threshold"`
-		Sidebar                 SidebarPanels `toml:"sidebar"`
-		SidebarWidth            *int          `toml:"sidebar_width"`
-		SidebarMinWidth         *int          `toml:"sidebar_min_width"`
-		SidebarMaxWidth         *int          `toml:"sidebar_max_width"`
-		SidebarStartCollapsed   bool          `toml:"sidebar_start_collapsed"`
-		TransparentSidebarCards bool          `toml:"transparent_sidebar_cards"`
-		WorkspacePanelDensity   string        `toml:"workspace_panel_density"`
-		AgentPanelScope         string        `toml:"agent_panel_scope"`
-		AgentPanelSort          string        `toml:"agent_panel_sort"`
-		Sound                   struct {
-			Enabled *bool `toml:"enabled"`
+		MouseCapture                  *bool         `toml:"mouse_capture"`
+		CopyOnSelect                  *bool         `toml:"copy_on_select"`
+		HostCursor                    string        `toml:"host_cursor"`
+		RightClickPassthroughModifier string        `toml:"right_click_passthrough_modifier"`
+		RedrawOnFocusGained           *bool         `toml:"redraw_on_focus_gained"`
+		MouseScrollLines              *int          `toml:"mouse_scroll_lines"`
+		ConfirmClose                  *bool         `toml:"confirm_close"`
+		PromptNewTabName              *bool         `toml:"prompt_new_tab_name"`
+		PaneGaps                      *bool         `toml:"pane_gaps"`
+		SidebarCollapsedMode          string        `toml:"sidebar_collapsed_mode"`
+		Accent                        string        `toml:"accent"`
+		MobileWidthThreshold          *int          `toml:"mobile_width_threshold"`
+		Sidebar                       SidebarPanels `toml:"sidebar"`
+		SidebarWidth                  *int          `toml:"sidebar_width"`
+		SidebarMinWidth               *int          `toml:"sidebar_min_width"`
+		SidebarMaxWidth               *int          `toml:"sidebar_max_width"`
+		SidebarStartCollapsed         bool          `toml:"sidebar_start_collapsed"`
+		TransparentSidebarCards       bool          `toml:"transparent_sidebar_cards"`
+		WorkspacePanelDensity         string        `toml:"workspace_panel_density"`
+		AgentPanelScope               string        `toml:"agent_panel_scope"`
+		AgentPanelSort                string        `toml:"agent_panel_sort"`
+		Sound                         struct {
+			Enabled     *bool             `toml:"enabled"`
+			Path        string            `toml:"path"`
+			DonePath    string            `toml:"done_path"`
+			RequestPath string            `toml:"request_path"`
+			Agents      map[string]string `toml:"agents"`
 		} `toml:"sound"`
 		Toast struct {
-			Delivery string `toml:"delivery"`
+			Delivery     string `toml:"delivery"`
+			DelaySeconds *int   `toml:"delay_seconds"`
+			Herdr        struct {
+				Position string `toml:"position"`
+			} `toml:"herdr"`
+			Clipboard struct {
+				Enabled  *bool  `toml:"enabled"`
+				Position string `toml:"position"`
+			} `toml:"clipboard"`
 			// Enabled is the legacy boolean: true→"gtx", false→"off";
 			// delivery wins when both are present.
 			Enabled *bool `toml:"enabled"`
@@ -70,18 +108,31 @@ type Config struct {
 		PaneBorders                  *bool `toml:"pane_borders"`
 	} `toml:"ui"`
 	Experimental struct {
-		AllowNested bool `toml:"allow_nested"`
+		AllowNested                    bool     `toml:"allow_nested"`
+		KittyGraphics                  bool     `toml:"kitty_graphics"`
+		PaneHistory                    bool     `toml:"pane_history"`
+		SwitchASCIIInputSourceInPrefix bool     `toml:"switch_ascii_input_source_in_prefix"`
+		RevealHiddenCursorForCJKIME    bool     `toml:"reveal_hidden_cursor_for_cjk_ime"`
+		CJKIMEAgents                   []string `toml:"cjk_ime_agents"`
+		CJKIMECursorShape              string   `toml:"cjk_ime_cursor_shape"`
 	} `toml:"experimental"`
 	Keys struct {
+		Prefix  string              `toml:"prefix"`
+		Actions map[string]Bindings `toml:"-"`
+		Indexed struct {
+			Tabs       string `toml:"tabs"`
+			Workspaces string `toml:"workspaces"`
+			Agents     string `toml:"agents"`
+		} `toml:"indexed"`
 		Command                []PluginKeyBinding `toml:"command"`
 		OpenNotificationTarget string             `toml:"open_notification_target"`
-		CopyMode               []string           `toml:"copy_mode"`
-		SplitVertical          []string           `toml:"split_vertical"`
-		SplitHorizontal        []string           `toml:"split_horizontal"`
-		RenamePane             []string           `toml:"rename_pane"`
-		EditScrollback         []string           `toml:"edit_scrollback"`
-		FocusHistoryBack       []string           `toml:"focus_history_back"`
-		FocusHistoryForward    []string           `toml:"focus_history_forward"`
+		CopyMode               Bindings           `toml:"copy_mode"`
+		SplitVertical          Bindings           `toml:"split_vertical"`
+		SplitHorizontal        Bindings           `toml:"split_horizontal"`
+		RenamePane             Bindings           `toml:"rename_pane"`
+		EditScrollback         Bindings           `toml:"edit_scrollback"`
+		FocusHistoryBack       Bindings           `toml:"focus_history_back"`
+		FocusHistoryForward    Bindings           `toml:"focus_history_forward"`
 	} `toml:"keys"`
 	Agent struct {
 		Shell string            `toml:"shell"`
@@ -99,6 +150,8 @@ type Config struct {
 		ResumeAgentsOnRestore *bool `toml:"resume_agents_on_restore"`
 	} `toml:"session"`
 	AgentRestore struct {
+		Enabled  *bool             `toml:"enabled"`
+		Commands map[string]string `toml:"commands"`
 		// RestoreDelayMs postpones automatic resume after server start.
 		RestoreDelayMs *int `toml:"restore_delay_ms"`
 		// Templates are per-agent restore command lines; each must contain
@@ -132,19 +185,7 @@ func Load() (Config, error) {
 		}
 		return c, err
 	}
-	if _, err := toml.Decode(string(data), &c); err != nil {
-		return c, err
-	}
-	if err := ValidateTheme(c.ThemeName()); err != nil {
-		return c, err
-	}
-	if err := c.ValidateCustomColors(); err != nil {
-		return c, err
-	}
-	if err := c.ValidatePluginKeys(); err != nil {
-		return c, err
-	}
-	return c, c.ValidateSidebar()
+	return Decode(data)
 }
 
 // ToastDelivery resolves the effective delivery mode. Invalid values fall
@@ -152,6 +193,9 @@ func Load() (Config, error) {
 func (c Config) ToastDelivery() ToastDelivery {
 	switch {
 	case c.UI.Toast.Delivery != "":
+		if c.UI.Toast.Delivery == "herdr" {
+			return ToastGTX
+		}
 		if d := ToastDelivery(c.UI.Toast.Delivery); d.Valid() {
 			return d
 		}
@@ -294,12 +338,18 @@ func (c Config) AgentStartCommand(agent string) ([]string, bool) {
 // RestoreTemplate returns the configured restore command template for an
 // agent, if any. The template must contain {session_id} to be usable.
 func (c Config) RestoreTemplate(agent string) string {
+	if value, ok := c.AgentRestore.Commands[agent]; ok {
+		return value
+	}
 	return c.AgentRestore.Templates[agent]
 }
 
 // ResumeAgentsOnRestore reports whether agent panes resume automatically
 // after a session.json restore; it defaults to on.
 func (c Config) ResumeAgentsOnRestore() bool {
+	if c.AgentRestore.Enabled != nil && !*c.AgentRestore.Enabled {
+		return false
+	}
 	if c.Session.ResumeAgentsOnRestore == nil {
 		return true
 	}

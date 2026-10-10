@@ -9,6 +9,7 @@ import (
 
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 	a.sidebarConfig = c
+	a.SetConfigWarning(c.Warning())
 	p := render.CustomPalette(c.ThemeName(), c.Theme.Custom)
 	a.panePalette = &p
 	a.st.MobileWidthThreshold = c.MobileWidthThreshold()
@@ -173,7 +174,7 @@ func (a *App) reloadSidebarConfig() {
 	a.SetPaneKeybinds(c)
 	a.syncLayout()
 	a.changed()
-	if a.serverUI {
+	if a.serverUI && c.Warning() == "" {
 		a.SetConfigWarning("reloaded config")
 		a.configWarningBanner = true
 	} else {
