@@ -5,14 +5,14 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"strings"
 )
 
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 	a.sidebarConfig = c
 	a.sup.SetShell(c.Terminal.DefaultShell, c.Terminal.ShellMode)
 	a.st.SidebarCollapsedHidden = c.UI.SidebarCollapsedMode == "hidden"
-	a.SetConfigWarning(c.Warning())
-	a.configWarningBanner = len(c.Warnings) > 0
+	a.setStartupConfigWarning(c.Warnings)
 	a.BeginHostTheme()
 	p := render.ConfigPalette(c)
 	a.panePalette = &p
@@ -31,6 +31,28 @@ func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 		a.worktreeError(err)
 	}
 	a.dirty = true
+}
+
+func (a *App) setStartupConfigWarning(warnings []string) {
+	message := ""
+	for _, warning := range warnings {
+		if strings.Contains(warning, "unsupported:") {
+			key := strings.SplitN(warning, ":", 2)[0]
+			message = "config.toml: " + key + " unsupported; gtx config check"
+			break
+		}
+		if !a.serverUI {
+			if strings.HasPrefix(warning, "invalid keybinding:") {
+				if message == "" {
+					message = "config.toml; gtx config check"
+				}
+			} else {
+				message = "config.toml invalid; using defaults; gtx config check"
+			}
+		}
+	}
+	a.SetConfigWarning(message)
+	a.configWarningBanner = message != ""
 }
 func (a *App) sidebarPreset(p string) { a.exec(model.CmdSidebarPreset{Preset: p}) }
 func (a *App) cycleWorkspace(dir int) {

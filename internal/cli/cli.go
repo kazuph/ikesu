@@ -82,6 +82,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "config":
+		return r.configCLI(args[1:])
 	case "wait":
 		return r.waitCLI(args[1:])
 	case "plugin":

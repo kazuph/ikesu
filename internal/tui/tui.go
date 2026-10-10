@@ -615,7 +615,7 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		a.SetKeybinds(cfg.CopyKeys(), cfg.SplitVerticalKeys(), cfg.SplitHorizontalKeys())
 		a.SetPaneKeybinds(cfg)
 	} else {
-		a.SetConfigWarning(err.Error())
+		a.setStartupConfigWarning([]string{err.Error()})
 	}
 
 	if err := a.StartInitialPane(); err != nil {

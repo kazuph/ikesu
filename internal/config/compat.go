@@ -58,13 +58,13 @@ func Decode(data []byte) (Config, error) {
 			if value, exists := keys[name]; exists {
 				var bindings Bindings
 				if err := bindings.UnmarshalTOML(value); err != nil {
-					c.warn("keys."+name, err.Error())
+					c.Warnings = append(c.Warnings, invalidType("keys."+name, value, "string or array of strings"))
 				} else {
 					valid := true
 					for _, spec := range bindings {
 						if spec != "" {
 							if _, err := ParseChord(spec); err != nil {
-								c.warn("keys."+name, err.Error())
+								c.Warnings = append(c.Warnings, fmt.Sprintf("invalid keybinding: keys.%s = %q; using default binding", name, spec))
 								valid = false
 								break
 							}
@@ -136,7 +136,6 @@ func decodeTable(raw map[string]any, dst reflect.Value, path string, warnings *[
 		}
 		i, ok := fields[name]
 		if !ok {
-			*warnings = append(*warnings, key+": unknown setting")
 			continue
 		}
 		decodeItem(raw[name], dst.Field(i), key, warnings)
@@ -192,7 +191,7 @@ func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool
 		case reflect.Struct:
 			table, ok := raw.(map[string]any)
 			if !ok {
-				*warnings = append(*warnings, key+": expected table")
+				*warnings = append(*warnings, invalidType(key, raw, "a table"))
 				return false
 			}
 			decodeTable(table, dst, key, warnings)
@@ -200,7 +199,7 @@ func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool
 		case reflect.Map:
 			table, ok := raw.(map[string]any)
 			if !ok {
-				*warnings = append(*warnings, key+": expected table")
+				*warnings = append(*warnings, invalidType(key, raw, "a table"))
 				return false
 			}
 			dst.Set(reflect.MakeMap(dst.Type()))
@@ -219,7 +218,7 @@ func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool
 		case reflect.Slice:
 			list := reflect.ValueOf(raw)
 			if !list.IsValid() || list.Kind() != reflect.Slice {
-				*warnings = append(*warnings, key+": expected array")
+				*warnings = append(*warnings, invalidType(key, raw, "an array"))
 				return false
 			}
 			dst.Set(reflect.MakeSlice(dst.Type(), 0, list.Len()))
@@ -239,11 +238,34 @@ func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool
 	}
 	box := reflect.New(reflect.StructOf([]reflect.StructField{{Name: "Value", Type: dst.Type(), Tag: reflect.StructTag(`toml:"value"`)}}))
 	if _, err := toml.Decode(encoded.String(), box.Interface()); err != nil {
-		*warnings = append(*warnings, key+": "+err.Error())
+		*warnings = append(*warnings, invalidType(key, raw, expectedType(dst.Type())))
 		return false
 	}
 	dst.Set(box.Elem().Field(0))
 	return true
+}
+
+func expectedType(t reflect.Type) string {
+	if t.Kind() == reflect.Pointer {
+		return expectedType(t.Elem())
+	}
+	switch t.Kind() {
+	case reflect.Bool:
+		return "a boolean"
+	case reflect.String:
+		return "a string"
+	case reflect.Int, reflect.Int64:
+		return "an integer"
+	case reflect.Slice:
+		return "an array"
+	case reflect.Struct, reflect.Map:
+		return "a table"
+	}
+	return "a valid value"
+}
+
+func invalidType(key string, raw any, expected string) string {
+	return fmt.Sprintf("config parse error: %s = %#v; invalid type, expected %s; using default", key, raw, expected)
 }
 func (c Config) LegacyRestoreEnabled() bool {
 	return c.AgentRestore.Enabled != nil && *c.AgentRestore.Enabled

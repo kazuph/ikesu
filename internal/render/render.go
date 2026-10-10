@@ -306,7 +306,7 @@ func Compose(in Input) *Output {
 		}
 		drawDialog(f, in.Dialog, out, area)
 	}
-	if in.ConfigWarning != "" && in.ConfigWarningBanner && in.ServerUI {
+	if in.ConfigWarning != "" && in.ConfigWarningBanner && in.ServerUI && !strings.HasPrefix(in.ConfigWarning, "config.toml") {
 		drawEndpointWorktreeWarning(f, in, out)
 	} else if in.ConfigWarning != "" {
 		w := min(f.W, len(in.ConfigWarning)+2)
@@ -315,6 +315,9 @@ func Compose(in Input) *Output {
 		style := uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.Surface}
 		if in.ConfigWarningBanner {
 			r.Y = 0
+			if strings.HasPrefix(in.ConfigWarning, "config.toml") {
+				r = configWarningBounds(r, s.SidebarArea().W, f.W, out)
+			}
 			out.ConfigWarningRect = r
 			style = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Yellow, Attrs: uv.AttrBold}
 			if in.Dialog != nil || in.Help != nil || in.Settings != nil {

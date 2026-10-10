@@ -150,3 +150,10 @@ func TestAgentSortWorkspacesAlias(t *testing.T) {
 		t.Fatal(c, err)
 	}
 }
+
+func TestUnknownKeysAreIgnoredWithoutDiscardingKnownValues(t *testing.T) {
+	c, err := Decode([]byte("unknown={nested=true}\n[ui]\nbogus=1\nshow_tab_bar=false\n[keys]\nnew_unknown_action='prefix+zz'\nnew_tab='cmd+t'\n"))
+	if err != nil || len(c.Warnings) != 0 || c.ShowTabBar() || c.ActionBindings("new_tab")[0] != "cmd+t" {
+		t.Fatal(c, err)
+	}
+}

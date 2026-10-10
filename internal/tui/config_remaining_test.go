@@ -73,7 +73,7 @@ func TestConfigUnsupportedWarningUsesTopBanner(t *testing.T) {
 		t.Fatal(err, c.Warnings)
 	}
 	a.SetSidebarConfig(c, false)
-	if !a.configWarningBanner || a.configWarning != c.Warning() {
+	if !a.configWarningBanner || a.configWarning != "config.toml: experimental.kitty_graphics unsupported; gtx config check" {
 		t.Fatal(a.configWarning, a.configWarningBanner)
 	}
 }

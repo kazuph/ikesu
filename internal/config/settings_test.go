@@ -32,3 +32,17 @@ func TestG2SettingsAtomicSavePreservesUnknownConfig(t *testing.T) {
 		t.Fatal("unsupported toast accepted")
 	}
 }
+
+func TestSettingsSoundSaveReloadHasNoWarnings(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, EnvVar, filepath.Join(t.TempDir(), "config.toml"))
+	for _, enabled := range []bool{true, false, true} {
+		if err := SaveSound(enabled); err != nil {
+			t.Fatal(err)
+		}
+		c, err := Load()
+		if err != nil || len(c.Warnings) != 0 || c.SoundEnabled() != enabled {
+			t.Fatal(enabled, c.Warnings, err)
+		}
+	}
+}
