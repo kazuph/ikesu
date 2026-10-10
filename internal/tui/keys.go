@@ -44,7 +44,11 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 	if a.prefix {
 		a.prefix = false
 		a.dirty = true
-		a.prefixKey(k)
+		if a.sidebarConfig.Keys.Actions != nil {
+			a.configuredKey(k, true)
+		} else {
+			a.prefixKey(k)
+		}
 		// A prefix command run inside copy mode that moved the focus
 		// elsewhere closes the copy view.
 		if a.cm != nil && a.cm.pane != a.focusedPane() {
@@ -52,7 +56,7 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		}
 		return
 	}
-	if isCtrlB(k) {
+	if a.prefixMatches(k) {
 		if a.workspaceNavigate {
 			a.workspaceNavigate = false
 			a.dirty = true
@@ -60,6 +64,9 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		}
 		a.prefix = true
 		a.dirty = true
+		return
+	}
+	if a.configuredKey(k, false) {
 		return
 	}
 	if a.st.Mobile() && a.mobileSwitcher {
