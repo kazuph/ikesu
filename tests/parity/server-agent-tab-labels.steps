@@ -1,0 +1,15 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+send "\x02c"
+sleep 250ms
+send "CUSTOM_TAB\r"
+sleep 500ms
+send "python3 @FIXTURES@/socket_action.py report-state idle; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 500ms
+screen @OUT@/two-agents.txt
+cells @OUT@/two-agents.json
+send "\x021"
+sleep 250ms
+screen @OUT@/first-tab.txt
+cells @OUT@/first-tab.json
+kill

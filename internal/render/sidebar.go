@@ -480,7 +480,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		}
 		if in.ServerUI {
 			base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
-			if r.Ws == s.Active {
+			if r.Ws == s.Active && s.Workspaces[r.Ws].TabRef().Layout.HasPane(r.Pane) {
 				base.Fg, base.Bg = f.Palette.Text, f.Palette.PanelBG
 			}
 			f.Fill(ix, y, iw, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: base.Bg})
@@ -490,9 +490,27 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 				if name == "" || s.Workspaces[r.Ws].CustomName {
 					name = WorkspaceDisplayName(s.Workspaces[r.Ws], in.Panes)
 				}
+				ws := s.Workspaces[r.Ws]
+				tabLabel := ""
+				if len(ws.Tabs) > 1 {
+					for _, tab := range ws.Tabs {
+						if tab.Layout.HasPane(r.Pane) {
+							label := tab.Name
+							if label == "" {
+								label = fmt.Sprint(tab.ID)
+							}
+							tabLabel = label
+							break
+						}
+					}
+				}
 				f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg}, ix+iw)
 				f.Text(ix+2, y, " ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
-				f.Text(ix+3, y, truncate(name, max(0, iw-3)), base, ix+iw)
+				x := f.Text(ix+3, y, truncate(name, max(0, iw-3)), base, ix+iw)
+				if tabLabel != "" {
+					x = f.Text(x, y, " · ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
+					f.Text(x, y, tabLabel, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}, ix+iw)
+				}
 			} else {
 				name := sn.DisplayAgent
 				if name == "" {
