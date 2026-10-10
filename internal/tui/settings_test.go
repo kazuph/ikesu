@@ -98,6 +98,32 @@ func TestG2SettingsFailedWriteDoesNotApply(t *testing.T) {
 		t.Fatal("failed write overwrote config")
 	}
 }
+func TestSettingsShrinkingKeepsSelectedThemeVisibleAndMouseAligned(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.openSettings()
+	a.settings.Selected, a.settings.Theme = 3, "tokyo-night"
+	for _, height := range []int{12, 13, 14, 15} {
+		a.exec(model.CmdResize{Cols: 60, Rows: height})
+		r := render.SettingsRect(60, height)
+		offset := render.SettingsChoiceOffset(r, a.settings)
+		y := render.SettingsChoiceY(r, 0, 3-offset)
+		f := render.Compose(render.Input{State: a.st, Settings: a.settings}).Frame
+		if f.Cell(r.X+2, y).Content != "▸" {
+			t.Fatalf("selected theme missing at height %d", height)
+		}
+		sidebarEvent(a, input.KindMouseClick, r.X+4, y)
+		if a.settings.Selected != 3 || a.settings.Theme != "tokyo-night" {
+			t.Fatalf("selected theme click changed target at height %d", height)
+		}
+	}
+	a.exec(model.CmdResize{Cols: 60, Rows: 13})
+	r := render.SettingsRect(60, 13)
+	sidebarEvent(a, input.KindMouseClick, r.X+4, render.SettingsChoiceY(r, 0, 0))
+	if a.settings.Selected != 2 || a.settings.Theme != "terminal" {
+		t.Fatal("first visible theme click used the unscrolled index")
+	}
+}
 func TestG8SidebarHasNoUpdateAttentionOrWhatsNew(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)

@@ -52,6 +52,19 @@ func SettingsChoiceVisible(r layout.Rect, section, index int) bool {
 	}
 	return y < r.Y+r.H-4
 }
+func SettingsChoiceOffset(r layout.Rect, s *Settings) int {
+	if s.Section != 0 {
+		return 0
+	}
+	visible := 0
+	for visible < len(ThemeNames) && SettingsChoiceVisible(r, s.Section, visible) {
+		visible++
+	}
+	if visible == 0 {
+		return 0
+	}
+	return max(0, min(s.Selected-visible+1, len(ThemeNames)-visible))
+}
 func drawSettings(f *Frame, s *Settings) {
 	r := SettingsRect(f.W, f.H)
 	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Bg: f.Palette.PopupBG})
@@ -130,9 +143,11 @@ func drawSettings(f *Frame, s *Settings) {
 			f.Text(r.X+1+indent, r.Y+5+i, lines[i], style, r.X+r.W-2)
 		}
 	}
-	for i, name := range names {
-		y := SettingsChoiceY(r, s.Section, i)
-		if !SettingsChoiceVisible(r, s.Section, i) {
+	offset := SettingsChoiceOffset(r, s)
+	for i := offset; i < len(names); i++ {
+		name := names[i]
+		y := SettingsChoiceY(r, s.Section, i-offset)
+		if !SettingsChoiceVisible(r, s.Section, i-offset) {
 			break
 		}
 		label := name

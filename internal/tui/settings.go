@@ -126,11 +126,12 @@ func (a *App) settingsMouse(ev input.Event) {
 			}
 		}
 	}
-	for i := 0; i < a.settingsCount(); i++ {
-		if !render.SettingsChoiceVisible(r, a.settings.Section, i) {
+	offset := render.SettingsChoiceOffset(r, a.settings)
+	for i := offset; i < a.settingsCount(); i++ {
+		if !render.SettingsChoiceVisible(r, a.settings.Section, i-offset) {
 			continue
 		}
-		if m.Y == render.SettingsChoiceY(r, a.settings.Section, i) && m.X > r.X && m.X < r.X+r.W-1 {
+		if m.Y == render.SettingsChoiceY(r, a.settings.Section, i-offset) && m.X > r.X && m.X < r.X+r.W-1 {
 			a.settings.Selected = i
 			if a.settings.Section == 0 {
 				a.settings.Theme = render.ThemeNames[i]
