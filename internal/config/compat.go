@@ -131,29 +131,8 @@ func decodeTable(raw map[string]any, dst reflect.Value, path string, warnings *[
 			*warnings = append(*warnings, key+": unknown setting")
 			continue
 		}
-		field := dst.Field(i)
-		if field.Kind() == reflect.Struct && !field.Addr().Type().Implements(reflect.TypeOf((*interface{ UnmarshalTOML(any) error })(nil)).Elem()) {
-			table, ok := raw[name].(map[string]any)
-			if !ok {
-				*warnings = append(*warnings, key+": expected table")
-				continue
-			}
-			decodeTable(table, field, key, warnings)
-			continue
-		}
-		// Decode each field into a fresh value; a failed decoder cannot leave
-		// a partially populated field in the effective configuration.
-		var encoded bytes.Buffer
-		if err := toml.NewEncoder(&encoded).Encode(map[string]any{name: raw[name]}); err != nil {
-			*warnings = append(*warnings, key+": "+err.Error())
-			continue
-		}
-		box := reflect.New(reflect.StructOf([]reflect.StructField{{Name: "Value", Type: field.Type(), Tag: reflect.StructTag(`toml:"` + name + `"`)}}))
-		if _, err := toml.Decode(encoded.String(), box.Interface()); err != nil {
-			*warnings = append(*warnings, key+": "+err.Error())
-			continue
-		}
-		field.Set(box.Elem().Field(0))
+		decodeItem(raw[name], dst.Field(i), key, warnings)
+
 	}
 }
 
@@ -210,4 +189,68 @@ func (c *Config) validateCompat() {
 	if c.Experimental.KittyGraphics {
 		c.warn("experimental.kitty_graphics", "unsupported: image rendering is not implemented")
 	}
+}
+
+func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool {
+	custom := dst.CanAddr() && dst.Addr().Type().Implements(reflect.TypeOf((*interface{ UnmarshalTOML(any) error })(nil)).Elem())
+	if !custom {
+		switch dst.Kind() {
+		case reflect.Struct:
+			table, ok := raw.(map[string]any)
+			if !ok {
+				*warnings = append(*warnings, key+": expected table")
+				return false
+			}
+			decodeTable(table, dst, key, warnings)
+			return true
+		case reflect.Map:
+			table, ok := raw.(map[string]any)
+			if !ok {
+				*warnings = append(*warnings, key+": expected table")
+				return false
+			}
+			dst.Set(reflect.MakeMap(dst.Type()))
+			names := make([]string, 0, len(table))
+			for name := range table {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				value := reflect.New(dst.Type().Elem()).Elem()
+				if decodeItem(table[name], value, key+"."+name, warnings) {
+					dst.SetMapIndex(reflect.ValueOf(name), value)
+				}
+			}
+			return true
+		case reflect.Slice:
+			list := reflect.ValueOf(raw)
+			if !list.IsValid() || list.Kind() != reflect.Slice {
+				*warnings = append(*warnings, key+": expected array")
+				return false
+			}
+			dst.Set(reflect.MakeSlice(dst.Type(), 0, list.Len()))
+			for i := 0; i < list.Len(); i++ {
+				value := reflect.New(dst.Type().Elem()).Elem()
+				if decodeItem(list.Index(i).Interface(), value, fmt.Sprintf("%s[%d]", key, i), warnings) {
+					dst.Set(reflect.Append(dst, value))
+				}
+			}
+			return true
+		}
+	}
+	var encoded bytes.Buffer
+	if err := toml.NewEncoder(&encoded).Encode(map[string]any{"value": raw}); err != nil {
+		*warnings = append(*warnings, key+": "+err.Error())
+		return false
+	}
+	box := reflect.New(reflect.StructOf([]reflect.StructField{{Name: "Value", Type: dst.Type(), Tag: reflect.StructTag(`toml:"value"`)}}))
+	if _, err := toml.Decode(encoded.String(), box.Interface()); err != nil {
+		*warnings = append(*warnings, key+": "+err.Error())
+		return false
+	}
+	dst.Set(box.Elem().Field(0))
+	return true
+}
+func (c Config) LegacyRestoreEnabled() bool {
+	return c.AgentRestore.Enabled != nil && *c.AgentRestore.Enabled
 }

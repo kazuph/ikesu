@@ -21,6 +21,12 @@ func isCtrlB(k uv.Key) bool {
 
 // handleKey routes one key event.
 func (a *App) handleKey(k uv.Key, raw []byte) {
+	if a.dialog != nil && a.dialog.onboarding {
+		if k.Code == uv.KeyEnter || k.Code == uv.KeyRight || k.Code == 'l' {
+			a.dialog.run(a)
+		}
+		return
+	}
 	if a.navigator != nil {
 		a.navigatorKey(k)
 		return

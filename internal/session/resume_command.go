@@ -72,7 +72,8 @@ func ResumeCommand(cfg config.Config, agent, kind, value string) (string, bool) 
 	if !SafeSessionValue(kind, value) {
 		return "", false
 	}
-	if argv, ok := cfg.AgentStartCommand(agent); ok {
+	_, explicitRestore := cfg.AgentRestore.Commands[agent]
+	if argv, ok := cfg.AgentStartCommand(agent); ok && (agent == "codex" || !explicitRestore) {
 		for _, arg := range argv {
 			if arg == "--last" {
 				return "", false

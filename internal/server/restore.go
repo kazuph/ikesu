@@ -435,7 +435,7 @@ func (s *Server) paneCwdOf(ws *model.Workspace, pid int) string {
 // scheduleAutoResume runs the agent restore plan once, restore_delay_ms
 // after startup, when [session] resume_agents_on_restore is on.
 func (s *Server) scheduleAutoResume() {
-	if !s.cfg.ResumeAgentsOnRestore() {
+	if !s.cfg.ResumeAgentsOnRestore() && !s.cfg.LegacyRestoreEnabled() {
 		return
 	}
 	delay := time.Duration(s.cfg.RestoreDelay()) * time.Millisecond

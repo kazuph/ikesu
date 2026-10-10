@@ -50,11 +50,12 @@ type Config struct {
 		Directory string `toml:"directory"`
 	} `toml:"worktrees"`
 	Theme struct {
-		AutoSwitch bool              `toml:"auto_switch"`
-		DarkName   string            `toml:"dark_name"`
-		LightName  string            `toml:"light_name"`
-		Name       string            `toml:"name"`
-		Custom     map[string]string `toml:"custom"`
+		ResolvedName string            `toml:"-"`
+		AutoSwitch   bool              `toml:"auto_switch"`
+		DarkName     string            `toml:"dark_name"`
+		LightName    string            `toml:"light_name"`
+		Name         string            `toml:"name"`
+		Custom       map[string]string `toml:"custom"`
 	} `toml:"theme"`
 	UI struct {
 		MouseCapture                  *bool         `toml:"mouse_capture"`
@@ -347,9 +348,6 @@ func (c Config) RestoreTemplate(agent string) string {
 // ResumeAgentsOnRestore reports whether agent panes resume automatically
 // after a session.json restore; it defaults to on.
 func (c Config) ResumeAgentsOnRestore() bool {
-	if c.AgentRestore.Enabled != nil && !*c.AgentRestore.Enabled {
-		return false
-	}
 	if c.Session.ResumeAgentsOnRestore == nil {
 		return true
 	}

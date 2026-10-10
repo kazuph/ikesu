@@ -35,7 +35,7 @@ func pinTestConfig(t *testing.T) {
 		return
 	}
 	cfg := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(cfg, []byte("[session]\nresume_agents_on_restore = false\n"), 0o600); err != nil {
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore = false\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "GTX_CONFIG", cfg)

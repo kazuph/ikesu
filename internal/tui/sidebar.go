@@ -10,6 +10,7 @@ import (
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 	a.sidebarConfig = c
 	a.SetConfigWarning(c.Warning())
+	a.BeginHostTheme()
 	p := render.CustomPalette(c.ThemeName(), c.Theme.Custom)
 	a.panePalette = &p
 	a.st.MobileWidthThreshold = c.MobileWidthThreshold()

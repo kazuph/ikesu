@@ -122,10 +122,7 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 			cwd = p.SpawnCwd()
 		}
 	}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
+	shell := "/bin/sh"
 	argv := []string{shell, "-c", binding.Command}
 	var err error
 	switch binding.Type {
@@ -134,7 +131,7 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 	case "popup":
 		_, err = a.OpenPluginPopup(cwd, argv, a.keyCommandEnv(cwd), binding.Width.Size, binding.Height.Size)
 	case "pane":
-		_, err = a.OpenOverlay(a.focusedPane(), cwd, argv, a.keyCommandEnv(cwd))
+		_, err = a.OpenPluginPane(a.st.Active, a.focusedPane(), "zoomed", "", cwd, argv, a.keyCommandEnv(cwd), true)
 	case "shell":
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = cwd

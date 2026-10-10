@@ -398,7 +398,7 @@ func ss3Len(b []byte, i int) (int, bool) {
 
 func (f *Framer) convert(raw []byte, ev uv.Event) Event {
 	switch e := ev.(type) {
-	case uv.CellSizeEvent, uv.PixelSizeEvent, uv.ModeReportEvent:
+	case uv.CellSizeEvent, uv.PixelSizeEvent, uv.ModeReportEvent, uv.BackgroundColorEvent, uv.DarkColorSchemeEvent, uv.LightColorSchemeEvent:
 		return Event{Kind: KindTerminalReport, Raw: append([]byte(nil), raw...), Report: ev}
 	case uv.KeyPressEvent:
 		return Event{Kind: KindKey, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}

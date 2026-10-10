@@ -96,6 +96,7 @@ type uiMenu struct {
 // uiDialog is an open confirmation dialog; input != nil turns the detail
 // row into a single-line text field (run sees the entered value).
 type uiDialog struct {
+	onboarding     bool
 	machineForm    bool
 	replaceDefault bool
 	d              render.Dialog
@@ -619,6 +620,8 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 	if err := a.StartInitialPane(); err != nil {
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}
+
+	a.StartOnboarding()
 
 	go readInput(in, a.input)
 	winch := make(chan os.Signal, 4)

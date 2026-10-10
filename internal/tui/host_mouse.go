@@ -9,6 +9,7 @@ import (
 // BeginHostMouse starts an attachment in cell mode until pixel support and
 // cell geometry are known. Queries/replies use the normal input stream.
 func (a *App) BeginHostMouse(xp, yp int) {
+	a.BeginHostTheme()
 	a.hostPixelMouse = false
 	a.hostPixelSupported = false
 	a.cellW = 0

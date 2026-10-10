@@ -34,7 +34,7 @@ codex="codex resume {session_id}"
 	if len(c.Warnings) != 1 || !strings.Contains(c.Warning(), "ui.sidebar_width") {
 		t.Fatal(c.Warnings)
 	}
-	if c.ThemeName() != "tokyo-night" || c.ShowTabBar() || c.ResumeAgentsOnRestore() || c.Onboarding == nil || *c.Onboarding {
+	if c.ThemeName() != "tokyo-night" || c.ShowTabBar() || c.LegacyRestoreEnabled() || c.Onboarding == nil || *c.Onboarding {
 		t.Fatal("valid values lost", c)
 	}
 	if c.Keys.Command[0].Width.Size.Percent != 80 || c.Keys.Command[0].Height.Size.Cells != 12 {

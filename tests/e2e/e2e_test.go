@@ -92,7 +92,7 @@ func startMode(t *testing.T, extra map[string]string, local bool) *session {
 	// a real agent binary inside a test.
 	cfgDir := t.TempDir()
 	cfgFile := filepath.Join(cfgDir, "config.toml")
-	os.WriteFile(cfgFile, []byte("[session]\nresume_agents_on_restore = false\n"), 0o600)
+	os.WriteFile(cfgFile, []byte("onboarding=false\n[session]\nresume_agents_on_restore = false\n"), 0o600)
 	cmd := exec.Command(binPath, "--session", sess)
 	if local {
 		cmd = exec.Command(binPath, "--no-session")

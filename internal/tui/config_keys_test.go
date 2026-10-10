@@ -74,12 +74,12 @@ height="80%"
 	a.SetSidebarConfig(cfg, false)
 	root := a.focusedPane()
 	specFeed(a, "\x14g")
-	if !a.st.OverlayVisible() || a.navigator != nil {
+	if a.st.ActiveWorkspace().TabRef().Zoomed == 0 || a.navigator != nil {
 		t.Fatal("pane command did not replace goto")
 	}
 	specWaitText(t, a.sup.Get(a.focusedPane()), "PANE_COMMAND")
 	a.closeFocusedPane()
-	if a.focusedPane() != root || a.st.Overlay != nil {
+	if a.focusedPane() != root || a.st.ActiveWorkspace().ActiveLayout().PaneCount() != 1 {
 		t.Fatal("temporary pane did not restore focus")
 	}
 	specFeed(a, "\x14t")

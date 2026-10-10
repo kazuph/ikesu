@@ -340,6 +340,7 @@ func Run(session, version string) (int, error) {
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}
 
+	s.app.StartOnboarding()
 	appDone := make(chan struct{})
 	go func() {
 		s.app.Run()

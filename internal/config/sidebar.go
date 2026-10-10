@@ -110,6 +110,9 @@ func (c Config) MobileWidthThreshold() int {
 }
 
 func (c Config) ThemeName() string {
+	if c.Theme.ResolvedName != "" {
+		return c.Theme.ResolvedName
+	}
 	if c.Theme.Name == "" {
 		return "catppuccin"
 	}
@@ -131,4 +134,8 @@ func SaveToast(delivery ToastDelivery) error {
 		return fmt.Errorf("unsupported toast delivery: %s", delivery)
 	}
 	return saveValues([]string{"ui", "toast"}, map[string]any{"delivery": string(delivery)})
+}
+
+func SaveOnboarding(enabled bool) error {
+	return saveValues(nil, map[string]any{"onboarding": enabled})
 }
