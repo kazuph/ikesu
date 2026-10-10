@@ -90,7 +90,7 @@ func drawNavigator(f *Frame, n *Navigator) {
 		y := r.Y + 3 + i - n.Scroll
 		sty := normal
 		if i == n.Selected {
-			sty = uv.Style{Fg: f.Palette.PopupBG, Bg: f.Palette.Accent}
+			sty = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent}
 		}
 		f.Fill(r.X+1, y, r.W-2, 1, " ", sty)
 		selected, current := " ", " "

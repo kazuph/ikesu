@@ -44,4 +44,14 @@ func TestTransparentPanelKeepsBrightControlTextAndConfirmationBackdrop(t *testin
 	if menu.Frame.Cell(row.X, row.Y).Style.Fg != contrast {
 		t.Fatal("selected menu text used the terminal default")
 	}
+	in.Menu = nil
+	in.Navigator = &Navigator{Rows: []NavigatorRow{{Name: "selected pane", Pane: 0}}, Total: 1}
+	navigator := Compose(in).Frame
+	r := NavigatorRect(s.Cols, s.Rows)
+	for x := r.X + 1; x < r.X+r.W-1; x++ {
+		cell := navigator.Cell(x, r.Y+3)
+		if cell.Style.Fg != contrast || cell.Style.Bg != navigator.Palette.Accent {
+			t.Fatalf("selected navigator row lost contrast at %d: %+v", x, cell.Style)
+		}
+	}
 }
