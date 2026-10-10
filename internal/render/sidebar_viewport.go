@@ -23,8 +23,8 @@ type SidebarView struct {
 	Workspace, Agents SidebarViewport
 }
 
-// The isolated upper-edge captures keep the divider at row 7 at 25, 35 and 45 rows.
-const sidebarMinimumDraggedSplit = 7
+// Settled small-height and dragged-edge captures keep a minimum divider at row 7.
+const sidebarMinimumSplit = 7
 
 // Headers and both footers remain fixed; each panel has its own scroll offset.
 func SidebarSplitY(s *model.AppState) int {
@@ -34,10 +34,8 @@ func SidebarSplitY(s *model.AppState) int {
 		split = *s.SidebarSectionSplit
 	}
 	y := int(math.Round(float64(area.H) * split))
-	if s.SidebarSectionSplit != nil {
-		upper := max(0, area.H-3)
-		y = min(upper, max(sidebarMinimumDraggedSplit, y))
-	}
+	upper := max(0, area.H-3)
+	y = min(upper, max(sidebarMinimumSplit, y))
 	return area.Y + y
 }
 
@@ -65,6 +63,23 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 		}
 	}
 	view.Workspace.Total = max(0, sep-2)
+	clippedFirstCard := false
+	if !serverUI {
+		for i := 2; i < sep; i++ {
+			if rows[i].Kind != RowWorkspace {
+				continue
+			}
+			end := i + 1
+			for end < sep && rows[end].Ws == rows[i].Ws && (rows[end].Kind == RowGit || rows[end].Kind == RowCardBlank) {
+				end++
+			}
+			clippedFirstCard = end-2 > view.Workspace.Rect.H
+			if clippedFirstCard {
+				view.Workspace.Total = min(view.Workspace.Total, view.Workspace.Rect.H)
+			}
+			break
+		}
+	}
 	if serverUI {
 		// Small endpoint captures stop before skipping the final workspace card.
 		cards, lastCard := 0, 0
@@ -87,12 +102,18 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 		}
 	}
 	view.Agents.Total = max(0, len(rows)-sep-1)
+	if view.Workspace.Rect.H < 2 {
+		view.Workspace.Total = 0
+	}
 	view.Workspace.Offset = max(0, min(workspaceScroll, max(0, view.Workspace.Total-view.Workspace.Rect.H)))
 	view.Agents.Offset = max(0, min(agentScroll, max(0, view.Agents.Total-view.Agents.Rect.H)))
 	for i := 0; i < min(2, len(rows)); i++ {
+		if serverUI && i == 1 && view.Workspace.Rect.H < 2 {
+			continue
+		}
 		view.Rows = append(view.Rows, SidebarPosition{Row: rows[i], Y: a.Y + i})
 	}
-	if serverUI {
+	if serverUI && view.Workspace.Rect.H >= 2 {
 		// Endpoint captures scroll card rows while retaining every section heading.
 		skip, y := view.Workspace.Offset, view.Workspace.Rect.Y
 		for i, row := range rows[2:sep] {
@@ -114,9 +135,13 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 			}
 			y++
 		}
-	} else {
+	} else if !serverUI {
 		for n := 0; n < view.Workspace.Rect.H && n+view.Workspace.Offset < view.Workspace.Total; n++ {
-			view.Rows = append(view.Rows, SidebarPosition{Row: rows[2+n+view.Workspace.Offset], Y: view.Workspace.Rect.Y + n})
+			row := rows[2+n+view.Workspace.Offset]
+			if clippedFirstCard && n == view.Workspace.Rect.H-1 && (row.Kind == RowWorkspace || row.Kind == RowGit || row.Kind == RowCardBlank) {
+				continue
+			}
+			view.Rows = append(view.Rows, SidebarPosition{Row: row, Y: view.Workspace.Rect.Y + n})
 		}
 	}
 	if sep < len(rows) {
