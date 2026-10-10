@@ -99,14 +99,17 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			glyph.Rune = "·"
 		}
 		f.Text(1, 0, glyph.Rune, uv.Style{Fg: f.ThemeColor(glyph.Color), Bg: f.Palette.PopupBG}, switcher.X)
-		f.Text(3, 0, truncate(name, max(0, switcher.X-3)), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, switcher.X)
+		nameEnd := switcher.X
 		if w := s.ActiveWorkspace(); w != nil {
 			label := fmt.Sprintf(" tab %d", w.ActiveTab+1)
 			if len(w.Tabs) > 1 {
 				label += fmt.Sprintf(" · %d/%d", w.ActiveTab+1, len(w.Tabs))
 			}
-			f.Text(switcher.X-ansi.StringWidth(label)-1, 0, label, uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, switcher.X)
+			labelX := switcher.X - ansi.StringWidth(label) - 1
+			nameEnd = labelX - 1
+			f.Text(labelX, 0, label, uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, switcher.X)
 		}
+		f.Text(3, 0, truncate(name, max(0, nameEnd-3)), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, nameEnd)
 		counts := map[string]int{}
 		for _, pane := range in.Panes {
 			if pane != nil && pane.Status.Key != "" && pane.Status.Key != "unknown" {
@@ -137,7 +140,12 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			primary = "idle"
 			summary = "all idle"
 		}
-		x := f.Text(1, 1, summary, style, switcher.X)
+		summaryX := 1
+		if primary == "" && ansi.StringWidth(summary) > max(0, switcher.X-2) {
+			f.Set(1, 1, " ", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
+			summary, summaryX = "…", 2
+		}
+		x := f.Text(summaryX, 1, summary, style, switcher.X)
 		if in.ServerUI {
 			for _, key := range []string{"blocked", "working", "done", "idle"} {
 				if key == primary || counts[key] == 0 {

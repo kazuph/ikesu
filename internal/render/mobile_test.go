@@ -8,6 +8,47 @@ import (
 	"testing"
 )
 
+func TestMobileEmptySummaryUsesObservedNarrowHeaderPadding(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		for _, tc := range []struct {
+			width int
+			label string
+		}{{20, "  …       "}, {21, " no agents "}} {
+			s := model.New(t.TempDir(), tc.width, 25)
+			s.MobileWidthThreshold = 64
+			f := Compose(Input{State: s, ServerUI: server}).Frame
+			if tc.width == 20 && f.Cell(1, 1).Style.Fg != f.Palette.Dim {
+				t.Fatal("collapsed agent summary changed the preceding blank's color")
+			}
+			for x, ch := range []rune(tc.label) {
+				if f.Cell(x, 1).Content != string(ch) {
+					t.Fatalf("width %d server=%t: summary at %d", tc.width, server, x)
+				}
+			}
+		}
+	}
+}
+
+func TestMobileNarrowHeaderReservesGapBeforeTabCount(t *testing.T) {
+	for _, tc := range []struct {
+		width int
+		name  string
+	}{{24, "pa…"}, {25, "par…"}, {26, "pari…"}, {27, "parity"}} {
+		s := model.New(t.TempDir(), tc.width, 25)
+		s.MobileWidthThreshold = 64
+		f := Compose(Input{State: s, ServerUI: true, WorkspaceNames: map[int]string{0: "parity"}}).Frame
+		end := 3 + len([]rune(tc.name))
+		for i, ch := range []rune(tc.name) {
+			if f.Cell(3+i, 0).Content != string(ch) {
+				t.Fatalf("width %d: workspace name differs at %d", tc.width, i)
+			}
+		}
+		if c := f.Cell(end, 0); c.Content != " " || c.Style.Attrs&uv.AttrBold != 0 {
+			t.Fatalf("width %d: name touches tab count", tc.width)
+		}
+	}
+}
+
 func TestG2MobileSectionRowsNumberNameGitPriorityAndStyles(t *testing.T) {
 	s := model.New("/tmp/name", 24, 30)
 	s.MobileWidthThreshold = 64
