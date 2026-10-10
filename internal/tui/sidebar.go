@@ -173,7 +173,10 @@ func (a *App) reloadSidebarConfig() {
 	a.SetPaneKeybinds(c)
 	a.syncLayout()
 	a.changed()
-	if !a.serverUI {
+	if a.serverUI {
+		a.SetConfigWarning("reloaded config")
+		a.configWarningBanner = true
+	} else {
 		a.ShowToast("reloaded config", "using config.toml", "info", -1)
 	}
 }

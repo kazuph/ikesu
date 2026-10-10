@@ -49,6 +49,9 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	}
 	buttonWidth := ansi.StringWidth(" + ")
 	viewport := max(0, area.W-buttonWidth-1)
+	if in.ServerUI {
+		viewport = max(0, area.W-buttonWidth)
+	}
 	x := area.X
 	if total > viewport {
 		arrowWidth := ansi.StringWidth(" < ")
@@ -57,9 +60,22 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		out.TabLeftRect = layout.Rect{X: area.X, Y: area.Y, W: arrowWidth, H: 1}
 		out.TabRightRect = layout.Rect{X: x + viewport, Y: area.Y, W: arrowWidth, H: 1}
 	}
-	offset := max(0, min(in.TabScroll, max(0, total-viewport)))
+	maxOffset := max(0, total-viewport)
+	if in.ServerUI && len(starts) > 0 {
+		maxOffset = max(0, starts[len(starts)-1]-viewport+1)
+		for _, start := range starts {
+			if start >= maxOffset {
+				maxOffset = start
+				break
+			}
+		}
+	}
+	offset := max(0, min(in.TabScroll, maxOffset))
 	if !in.TabScrollManual && ws.ActiveTab >= 0 && ws.ActiveTab < len(starts) {
 		start, end := starts[ws.ActiveTab], starts[ws.ActiveTab]+widths[ws.ActiveTab]
+		if in.ServerUI {
+			end = start + 1
+		}
 		if start < offset {
 			offset = start
 		} else if end > offset+viewport {
@@ -69,6 +85,16 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	if out.TabLeftRect.W == 0 {
 		offset = 0
 	}
+	if in.ServerUI && !in.TabScrollManual {
+		// Endpoint overflow captures keep the left edge on a tab boundary,
+		// even when the active tab's trailing padding no longer fits.
+		for _, start := range starts {
+			if start >= offset {
+				offset = start
+				break
+			}
+		}
+	}
 	out.TabScroll = offset
 	out.TabScrollLeft, out.TabScrollRight = offset, offset
 	for _, start := range starts {
@@ -76,7 +102,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 			out.TabScrollLeft = start
 		}
 		if start > offset && out.TabScrollRight == offset {
-			out.TabScrollRight = min(start, max(0, total-viewport))
+			out.TabScrollRight = min(start, maxOffset)
 		}
 	}
 	strip := NewFrame(max(1, total), 1)
@@ -104,10 +130,30 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		out.TabHits = append(out.TabHits, r)
 	}
 	visible := min(viewport, max(0, total-offset))
+	if in.ServerUI && out.TabRightRect.W > 0 {
+		// A gap at the viewport edge belongs to the next tab; the
+		// observed endpoint places the arrow immediately after the chip.
+		for _, start := range starts {
+			if start == offset+visible && visible > 0 {
+				visible--
+				break
+			}
+		}
+		out.TabRightRect.X = x + visible
+	}
 	for n := 0; n < visible; n++ {
 		cell := *strip.Cell(offset+n, 0)
-		if (n == 0 && offset > 0) || (n == visible-1 && offset+visible < total) {
+		leftClipped := n == 0 && offset > 0
+		rightClipped := n == visible-1 && offset+visible < total
+		if in.ServerUI && rightClipped && offset == maxOffset {
+			last := len(starts) - 1
+			rightClipped = starts[last]+ansi.StringWidth(" "+labels[last]) > offset+visible
+		}
+		if leftClipped || rightClipped {
 			cell.Content, cell.Width = "…", 1
+			if in.ServerUI && leftClipped {
+				cell.Style.Fg = f.Palette.Dim
+			}
 		}
 		if dst := f.Cell(x+n, area.Y); dst != nil {
 			*dst = cell
@@ -119,7 +165,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 			text    string
 			enabled bool
 		}{
-			{out.TabLeftRect, " < ", offset > 0}, {out.TabRightRect, " > ", offset+viewport < total},
+			{out.TabLeftRect, " < ", offset > 0}, {out.TabRightRect, " > ", offset < maxOffset},
 		} {
 			style := uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.Surface, Attrs: uv.AttrFaint}
 			if arrow.enabled {
