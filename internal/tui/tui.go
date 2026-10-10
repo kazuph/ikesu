@@ -159,6 +159,7 @@ type App struct {
 	navigateHint        bool
 	navigateSelected    int
 	inputEOF            bool                // input close means quit (local mode)
+	windowBlurred       bool
 	detacher            func(reason string) // server mode: detach the client
 	sinkOn              func() bool         // nil = always draw
 	quitHook            func()              // runs on the loop right before Run returns

@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
 )
@@ -38,5 +39,25 @@ func TestParityReportedCompletionIsUnseenUntilItsPaneIsViewed(t *testing.T) {
 	a.detectAll()
 	if a.glyph(pid).Key != "idle" {
 		t.Fatal("leaving the viewed pane must not recreate unseen completion")
+	}
+}
+
+func TestParityReportedCompletionWaitsForWindowFocus(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	pid := a.focusedPane()
+	a.onInput(input.Event{Kind: input.KindBlur})
+	a.SetReported(pid, "codex", "working")
+	a.SetReported(pid, "codex", "idle")
+	a.detectAll()
+	if a.glyph(pid).Key != "done" {
+		t.Fatal("completion in an unfocused window must remain unseen")
+	}
+	a.onInput(input.Event{Kind: input.KindFocus})
+	if a.glyph(pid).Key != "idle" {
+		t.Fatal("returning window focus must mark the visible pane seen")
 	}
 }

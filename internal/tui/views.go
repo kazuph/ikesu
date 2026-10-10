@@ -195,7 +195,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 		delete(a.reported, pid)
 	} else {
 		unseen := state == "idle" && prev.agent == agent && (prev.state == "working" || prev.state == "blocked" || prev.unseen)
-		if pid == a.focusedPane() && (a.sinkOn == nil || a.sinkOn()) {
+		if pid == a.focusedPane() && !a.windowBlurred && (a.sinkOn == nil || a.sinkOn()) {
 			unseen = false
 		}
 		a.reported[pid] = reportedPane{agent: agent, state: state, unseen: unseen}
