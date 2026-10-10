@@ -4,10 +4,31 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
 )
+
+func TestServerSlimCardGitLineSelectsItsWorkspace(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 45)
+	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	s.WorkspaceDensity = "slim"
+	a := NewApp(s, runtime.NewSupervisor(), nil, t.TempDir())
+	a.SetServerUI()
+	for _, pos := range a.sidebarView().Rows {
+		if pos.Row.Kind != render.RowGit || pos.Row.Ws != 1 {
+			continue
+		}
+		sidebarEvent(a, input.KindMouseClick, 3, pos.Y)
+		sidebarEvent(a, input.KindMouseRelease, 3, pos.Y)
+		if s.Active != 1 {
+			t.Fatal("slim git-line click did not select its workspace")
+		}
+		return
+	}
+	t.Fatal("second workspace git line not found")
+}
 
 func TestServerHiddenSidebarControlsIgnoreClicks(t *testing.T) {
 	s := model.New("/tmp", 160, 45)

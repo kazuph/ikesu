@@ -100,7 +100,14 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 	}
 	if s.AgentScope == "sort" {
 		sort.SliceStable(agents, func(i, j int) bool {
-			return agentRank(panes[agents[i].Pane].Status.Key) < agentRank(panes[agents[j].Pane].Status.Key)
+			left, right := panes[agents[i].Pane], panes[agents[j].Pane]
+			if rank := agentRank(left.Status.Key); rank != agentRank(right.Status.Key) {
+				return rank < agentRank(right.Status.Key)
+			}
+			if cfg.UI.AgentPanelSort == "priority" {
+				return left.StateChangeSeq > right.StateChangeSeq
+			}
+			return false
 		})
 	}
 	agents = projectAgentRows(s, panes, agents)

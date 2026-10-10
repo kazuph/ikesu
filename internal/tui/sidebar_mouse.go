@@ -106,7 +106,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
 		return true
 	case render.RowGit, render.RowCardBlank:
-		if s.WorkspaceDensity != "slim" {
+		if s.WorkspaceDensity != "slim" || a.serverUI {
 			a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
 		}
 		return true
@@ -190,7 +190,7 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			return
 		}
 		r, ok := a.sidebarRowAt(m.X, m.Y)
-		if !ok || m.Y != g.y || r.Ws != g.ws || (r.Kind != render.RowWorkspace && (r.Kind != render.RowGit || a.st.WorkspaceDensity == "slim")) {
+		if !ok || m.Y != g.y || r.Ws != g.ws || (r.Kind != render.RowWorkspace && (r.Kind != render.RowGit || (a.st.WorkspaceDensity == "slim" && !a.serverUI))) {
 			return
 		}
 		if g.active {
