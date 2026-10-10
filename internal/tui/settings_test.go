@@ -39,6 +39,16 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 	if a.settings != nil || a.sidebarConfig.SoundEnabled() {
 		t.Fatal("sound save")
 	}
+	if len(a.sidebarConfig.Warnings) != 0 {
+		t.Fatal("saved sound-off introduced a warning", a.sidebarConfig.Warnings)
+	}
+	a.openSettings()
+	specFeed(a, "\x1b[A\r")
+	if a.settings != nil || !a.sidebarConfig.SoundEnabled() || len(a.sidebarConfig.Warnings) != 0 {
+		t.Fatal("saved sound-on introduced a warning", a.sidebarConfig.Warnings)
+	}
+	a.openSettings()
+	specFeed(a, "\x1b[B\r")
 	a.openSettings()
 	if a.settings.Section != 1 {
 		t.Fatal("reopen must retain sound section")
