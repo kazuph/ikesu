@@ -476,6 +476,9 @@ func (a *App) copyMouse(ev input.Event) {
 	inner := a.copyViewRect()
 	switch ev.Kind {
 	case input.KindMouseWheel:
+		if a.serverUI {
+			return
+		}
 		previousTop := cm.top
 		if m.Button == uv.MouseWheelUp {
 			cm.top -= 3
