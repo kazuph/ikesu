@@ -179,12 +179,12 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 		kind: menuTab,
 		ws:   ws, tab: ti,
 		m: render.Menu{
-			X: x, Y: y, Hover: -1, Sel: 0,
+			// The recorded 0.2.24 tab menu is fourteen columns with New tab selected.
+			X: x, Y: y, Hover: -1, Sel: 0, MinWidth: 14,
 			Items: []render.MenuItem{
-				{Label: "Rename tab…"},
 				{Label: "New tab"},
-				{Separator: true},
-				{Label: "Close tab"},
+				{Label: "Rename"},
+				{Label: "Close"},
 			},
 		},
 	}
@@ -317,12 +317,12 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuTab:
 		switch i {
-		case 0:
+		case 1:
 			a.exec(model.CmdSelectTab{Workspace: m.ws, Tab: m.tab})
 			a.openRenameTabDialog(m.ws, m.tab)
-		case 1:
+		case 0:
 			a.exec(model.CmdNewTab{Workspace: m.ws})
-		case 3:
+		case 2:
 			a.closeTabAt(m.ws, m.tab)
 		}
 	case menuMain:

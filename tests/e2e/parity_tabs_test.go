@@ -102,16 +102,16 @@ func TestTabRenameDialog(t *testing.T) {
 		return hasTabLabel(scr, "1")
 	})
 
-	// Right-click the tab cell → menu → "Rename tab…" opens the input.
+	// Right-click the tab cell, then move from New tab to Rename.
 	x, y := s.findTab("1")
 	if x < 0 {
 		t.Fatalf("tab 1 cell not found; screen:\n%s", s.text())
 	}
 	s.rightClick(x, y)
 	s.waitFor("tab menu", 5*time.Second, func(scr string) bool {
-		return strings.Contains(scr, "Rename tab")
+		return strings.Contains(scr, "New tab") && strings.Contains(scr, "Rename") && strings.Contains(scr, "Close")
 	})
-	s.send("\r") // activate: Rename tab…
+	s.send("\x1b[B\r")
 	s.waitFor("rename dialog", 5*time.Second, func(scr string) bool {
 		return strings.Contains(scr, "rename tab") && strings.Contains(scr, "^c clear")
 	})
@@ -140,7 +140,7 @@ func TestTabRightClickPreservesSelection(t *testing.T) {
 	}
 	s.rightClick(x, y)
 	s.waitFor("tab menu", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "Rename tab")
+		return strings.Contains(tx, "New tab") && strings.Contains(tx, "Rename") && strings.Contains(tx, "Close")
 	})
 	// Closing the menu reveals that tab 2 retains its split layout.
 	s.send("\x1b")

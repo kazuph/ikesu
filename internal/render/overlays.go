@@ -24,6 +24,7 @@ func MenuSize(m *Menu) (w, h int) {
 		}
 	}
 	w += 4 // padding + border
+	w = max(w, m.MinWidth)
 	return w, len(m.Items) + 2
 }
 

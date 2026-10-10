@@ -5,6 +5,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 )
 
@@ -22,7 +23,11 @@ func TestParityTabRenameSelectsTargetAndKeepsDefaultName(t *testing.T) {
 	if w.ActiveTab != 1 {
 		t.Fatal("opening the menu must keep the selected tab")
 	}
-	a.activateMenu(0)
+	wid, height := render.MenuSize(&a.menu.m)
+	if wid != 14 || height != 5 || a.menu.m.Sel != 0 || a.menu.m.Items[0].Label != "New tab" || a.menu.m.Items[1].Label != "Rename" || a.menu.m.Items[2].Label != "Close" {
+		t.Fatal("tab menu does not match the observed actions and initial selection")
+	}
+	a.activateMenu(1)
 	if w.ActiveTab != 0 || a.focusedPane() != first || a.dialog == nil || a.dialog.d.Input != "1" {
 		t.Fatal("rename must select the target and show its default number")
 	}
