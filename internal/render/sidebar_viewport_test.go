@@ -103,3 +103,18 @@ func TestEndpointCollapsedSectionScrollStopsAfterWholeSlimCard(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalFullCardGitRowLeavesObservedFooterGap(t *testing.T) {
+	for _, size := range []struct{ height, workspaces int }{{15, 1}, {25, 3}} {
+		s := model.New(t.TempDir(), 100, size.height)
+		for i := 1; i < size.workspaces; i++ {
+			s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+		}
+		v := SidebarViewFor(s, nil, config.Config{}, 0, 0, false)
+		for _, row := range v.Rows {
+			if row.Y == v.Workspace.Rect.Y+v.Workspace.Rect.H-1 && (row.Row.Kind == RowGit || row.Row.Kind == RowCardBlank) {
+				t.Fatalf("height %d: full card painted the row immediately before the menu footer", size.height)
+			}
+		}
+	}
+}

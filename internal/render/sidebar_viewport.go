@@ -138,7 +138,11 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 		}
 	} else if !serverUI {
 		for n := 0; n < view.Workspace.Rect.H && n+view.Workspace.Offset < view.Workspace.Total; n++ {
-			row := rows[2+n+view.Workspace.Offset]
+			index := 2 + n + view.Workspace.Offset
+			row := rows[index]
+			if n == view.Workspace.Rect.H-1 && (row.Kind == RowCardBlank || row.Kind == RowGit && index+1 < sep && rows[index+1].Kind == RowCardBlank) {
+				continue
+			}
 			if clippedFirstCard && n == view.Workspace.Rect.H-1 && (row.Kind == RowWorkspace || row.Kind == RowGit || row.Kind == RowCardBlank) {
 				continue
 			}

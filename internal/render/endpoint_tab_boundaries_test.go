@@ -58,3 +58,25 @@ func TestEndpointTabControlsOmitTrailingGapAtClippedBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalTabOverflowKeepsObservedNameAtLeftBoundary(t *testing.T) {
+	s := testState(100, 25)
+	for i := 0; i <= 10; i++ {
+		s.Apply(model.CmdNewTab{Workspace: 0})
+		s.ActiveWorkspace().TabRef().Name = fmt.Sprintf("tab-%d", i)
+	}
+	out := Compose(Input{State: s})
+	got := ""
+	for x := 29; x < 35; x++ {
+		got += out.Frame.Cell(x, 0).Content
+	}
+	if got != "…tab-4" || out.TabScroll != 49 {
+		t.Fatalf("local overflow starts mid-chip: %q offset=%d", got, out.TabScroll)
+	}
+	if out.TabRightRect.X != 94 || out.NewTabRect.X != 97 || out.Frame.Cell(29, 0).Style.Fg != out.Frame.Palette.Dim {
+		t.Fatalf("local overflow controls or marker color differ: right=%d add=%d", out.TabRightRect.X, out.NewTabRect.X)
+	}
+	if out.Frame.Cell(92, 0).Content != "b" || out.Frame.Cell(93, 0).Content != "-" {
+		t.Fatal("local overflow must retain the clipped active tab label")
+	}
+}
