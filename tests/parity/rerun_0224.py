@@ -47,7 +47,7 @@ for name, steps in procedures:
                 command += ['--server', '--server-reuse-initial']
             if config == 'user':
                 command += ['--config-file', a.config_file]
-            if 'notification' in name or name == 'agent-working-clock' or 'job_fixture.py' in body:
+            if 'notification' in name or name.startswith('jobs-') or name == 'agent-working-clock' or 'job_fixture.py' in body:
                 command += ['--cell-clock']
             if 'notification' in name:
                 command += ['--in-app-toast']

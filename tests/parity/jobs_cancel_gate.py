@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Prove observed cancellation UI and disappearance of the exact real process group."""
+import argparse
 import json
 from pathlib import Path
 import re
 import sys
 
-root = Path(sys.argv[1])
+p = argparse.ArgumentParser()
+p.add_argument('root', type=Path)
+p.add_argument('--theme', choices=('default', 'tokyo-night'), default='default')
+a = p.parse_args()
+root = a.root
+red = {'default': {'R':243,'G':139,'B':168,'A':255},
+       'tokyo-night': {'R':247,'G':118,'B':142,'A':255}}[a.theme]
 proof = {}
 frames = {}
 for who in ('herdr','gtx'):
@@ -31,7 +38,7 @@ for who in ('herdr','gtx'):
         assert len(matched) == 1
         y = matched[0]
         assert rows[y].split()[0] == 'done'
-        assert frame['Cells'][y][1]['Style']['Fg'] == {'R':243,'G':139,'B':168,'A':255}
+        assert frame['Cells'][y][1]['Style']['Fg'] == red
         if name == 'cancelling-later':
             assert rows[y].split()[2] == '-'
         else:

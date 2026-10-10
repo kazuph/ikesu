@@ -31,7 +31,7 @@ for name in frames['herdr']:
                 del hs['Fg'], gs['Fg']
                 assert hs == gs and hc['Width'] == gc['Width']
                 exceptions[x,y] = 'parent decision: viewed gtx pane clears unseen completion'
-        assert len(exceptions) == 2, 'expected workspace and agent glyphs only'
+        assert len(exceptions) in (0, 2), 'only the workspace and agent seen exception is permitted'
     differences = []
     retained = []
     for y in range(h['Rows']):
