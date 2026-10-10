@@ -297,9 +297,13 @@ func (h *harness) measure(bin string, mode startMode) result {
 // start launches bin in a 160x45 PTY with a drained emulator on top,
 // exactly like tools/bench/ptyrun.
 func (h *harness) start(bin string, args []string) *mux {
+	configPath := filepath.Join(h.t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte("onboarding = false\n"), 0o600); err != nil {
+		h.t.Fatalf("write perf config: %v", err)
+	}
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = h.work
-	cmd.Env = childEnv(h.zdot, h.stateDir)
+	cmd.Env = childEnv(h.zdot, h.stateDir, configPath)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: termCols, Rows: termRows})
 	if err != nil {
 		h.t.Fatalf("pty start %s %v: %v", bin, args, err)
@@ -479,10 +483,10 @@ func (m *mux) waitText(timeout time.Duration, text string) (time.Time, bool) {
 
 // childEnv is the launch environment: pane-sentinels stripped so the client
 // does not think it is nested, plus the deterministic shell setup.
-func childEnv(zdot, stateDir string) []string {
+func childEnv(zdot, stateDir, configPath string) []string {
 	drop := map[string]bool{
 		"GOTERRACE": true, "GOTERRACE_PANE_ID": true,
-		"GTX_SOCKET_PATH": true, "GTX_PANE_ID": true, "GTX_STATE_DIR": true,
+		"GTX_SOCKET_PATH": true, "GTX_PANE_ID": true, "GTX_STATE_DIR": true, "GTX_CONFIG": true,
 		"TERM": true, "SHELL": true, "ZDOTDIR": true,
 	}
 	var env []string
@@ -498,6 +502,7 @@ func childEnv(zdot, stateDir string) []string {
 		"SHELL=/bin/zsh",
 		"ZDOTDIR="+zdot,
 		"GTX_STATE_DIR="+stateDir,
+		"GTX_CONFIG="+configPath,
 	)
 }
 
