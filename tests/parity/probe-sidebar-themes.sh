@@ -7,5 +7,5 @@ out="${PARITY_SIDEBAR_THEME_OUT:-$work/parity-sidebar-theme-cards}"
 python3 "$PARITY_FIXTURE_DIR/sidebar_theme_cases.py" "$work/parity-sidebar-theme-steps"
 for steps in "$work"/parity-sidebar-theme-steps/*.steps; do
  name=$(basename "$steps" .steps)
- python3 "$PARITY_FIXTURE_DIR/observe.py" --herdr "$work/herdr-target/release/herdr" --gtx "$GTX_PARITY_BIN" --ptyrun "$work/ptyrun-parity-cells" --steps "$steps" --out "$out/$name"
+ python3 "$PARITY_FIXTURE_DIR/observe.py" --clipboard-sandbox --herdr "$work/herdr-0.2.24" --gtx "$GTX_PARITY_BIN" --ptyrun "$work/ptyrun-parity-cells" --steps "$steps" --out "$out/$name"
 done

@@ -158,7 +158,7 @@ type App struct {
 	workspaceNavigate   bool
 	navigateHint        bool
 	navigateSelected    int
-	inputEOF            bool                // input close means quit (local mode)
+	inputEOF            bool // input close means quit (local mode)
 	windowBlurred       bool
 	detacher            func(reason string) // server mode: detach the client
 	sinkOn              func() bool         // nil = always draw

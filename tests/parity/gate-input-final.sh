@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
-cd "$HOME/bench-terrace.noindex/src/parity"
+cd "$HOME/bench-terrace.noindex/src/look"
 work="$HOME/bench-terrace.noindex/work"
-if ! test -x "$work/herdr-target/release/herdr"; then
+if ! test -x "$work/herdr-0.2.24"; then
  echo "NOT_RUN: herdr distribution binary is absent"
  exit 0
 fi
@@ -13,5 +13,5 @@ go build -o "$work/gtx-parity-input-final" ./cmd/gtx
 go vet ./...
 go test -count=1 ./...
 for scenario in escape-repeat help-input paste copy-detail settings-detail; do
- python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-input-final" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-input-final"
+ python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --gtx "$work/gtx-parity-input-final" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-input-final"
 done

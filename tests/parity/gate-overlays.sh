@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
-cd "$HOME/bench-terrace.noindex/src/parity"
+cd "$HOME/bench-terrace.noindex/src/look"
 work="$HOME/bench-terrace.noindex/work"
-if ! test -x "$work/herdr-target/release/herdr"; then
+if ! test -x "$work/herdr-0.2.24"; then
  echo "NOT_RUN: herdr distribution binary is absent"
  exit 0
 fi
@@ -12,7 +12,7 @@ go build -o "$work/gtx-parity-overlays" ./cmd/gtx
 go vet ./...
 go test -count=1 ./...
 for scenario in confirm-cells confirm-navigation workspace-rename-initial main-menu-style copy-cycle copy-page-sizes; do
- python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-overlays" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-final"
+ python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --gtx "$work/gtx-parity-overlays" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-final"
 done
 python3 tests/parity/confirm_cells_gate.py "$work/parity-confirm-cells-final"
 python3 tests/parity/confirm_cells_gate.py "$work/parity-confirm-navigation-final" --navigation
@@ -32,4 +32,4 @@ for filename, count in [('region-comparison.json', 3), ('cancelled-comparison.js
 PY
 # Menu-item differences are observations, not passes for this confirmation/name gate.
 python3 tests/parity/navigator_compare.py "$work/parity-main-menu-style-final" --title ' new workspace' --result main-menu-comparison.json
-GTX_PERF_BIN="$work/gtx-parity-overlays" GTX_PERF_BASELINE_BIN="$work/gtx-parity-baseline-9347b07" GTX_PERF_OUT="$work/parity-overlays-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m
+GTX_PERF_BIN="$work/gtx-parity-overlays" GTX_PERF_BASELINE_BIN="$work/gtx-look-baseline-b0a18b0" GTX_PERF_OUT="$work/parity-overlays-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m

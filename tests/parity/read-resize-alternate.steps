@@ -1,0 +1,22 @@
+resize 108 16
+send "python3 @FIXTURES@/read_resize_program.py alternate\r"
+sleep 1s
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+resize 108 7
+sleep 1s
+screen @OUT@/short.txt
+cells @OUT@/short.json
+resize 108 16
+sleep 1s
+screen @OUT@/tall.txt
+cells @OUT@/tall.json
+resize 68 16
+sleep 1s
+screen @OUT@/narrow.txt
+cells @OUT@/narrow.json
+resize 108 16
+sleep 1s
+screen @OUT@/wide-again.txt
+cells @OUT@/wide-again.json
+kill

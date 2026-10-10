@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
-cd "$HOME/bench-terrace.noindex/src/parity"
+cd "$HOME/bench-terrace.noindex/src/look"
 work="$HOME/bench-terrace.noindex/work"
-if ! test -x "$work/herdr-target/release/herdr"; then
+if ! test -x "$work/herdr-0.2.24"; then
  echo "NOT_RUN: herdr distribution binary is absent"
  exit 0
 fi
@@ -12,8 +12,8 @@ go build -o "$work/gtx-parity-prefix-popup" ./cmd/gtx
 go vet ./...
 go test -count=1 ./...
 for scenario in prefix-routing resize-detail help-input sidebar-detail menus menu-select; do
- python3 tests/parity/observe.py --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-prefix-popup" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-prefix-popup"
+ python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --gtx "$work/gtx-parity-prefix-popup" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-prefix-popup"
 done
 for scenario in popup popup-detail; do
- python3 tests/parity/observe.py --server --herdr "$work/herdr-target/release/herdr" --gtx "$work/gtx-parity-prefix-popup" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-prefix-popup"
+ python3 tests/parity/observe.py --server --clipboard-sandbox --herdr "$work/herdr-0.2.24" --gtx "$work/gtx-parity-prefix-popup" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-prefix-popup"
 done

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import hashlib
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
@@ -17,6 +18,7 @@ p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
+p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
 p.add_argument('--server-default-workspace', action='store_true', help='observe server/client startup without creating a workspace through the API')
@@ -34,6 +36,16 @@ if not Path(a.herdr).is_file():
     raise SystemExit(0)
 out = Path(a.out).resolve()
 out.mkdir(parents=True, exist_ok=True)
+(out/'reference.json').write_text(json.dumps({
+    'herdr_binary': str(Path(a.herdr).resolve()),
+    'herdr_version': subprocess.check_output([a.herdr, '--version'], text=True).strip(),
+    'herdr_sha256': hashlib.sha256(Path(a.herdr).read_bytes()).hexdigest(),
+    'gtx_binary': str(Path(a.gtx).resolve()),
+    'gtx_sha256': hashlib.sha256(Path(a.gtx).read_bytes()).hexdigest(),
+    'config': Path(a.config_file).read_text() if a.config_file else None,
+    'observer_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    'procedure_sha256': hashlib.sha256(Path(a.steps).read_bytes()).hexdigest(),
+}, indent=2)+'\n')
 
 
 def retry_external_change():
@@ -70,23 +82,28 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         for directory in ['home', 'config', 'state', 'data', 'zdot', 'cwd']:
             (root / directory).mkdir()
         (root / 'zdot/.zshrc').write_text("PS1='PARITY> '\nunset HISTFILE\nSAVEHIST=0\n")
-        if a.in_app_toast:
+        if a.config_file or a.in_app_toast:
             config = root / 'config' / name / 'config.toml'
             config.parent.mkdir(parents=True)
-            config.write_text(f'[ui.toast]\ndelivery = \"{name}\"\n')
+            config.write_text(Path(a.config_file).read_text() if a.config_file else '')
+            if a.in_app_toast:
+                with config.open('a') as stream:
+                    stream.write(f'\n[ui.toast]\ndelivery = \"{name}\"\n')
         env = {k: v for k, v in os.environ.items()
                if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CLAUDE', 'CODEX'))}
         env.update(HOME=str(root / 'home'), ZDOTDIR=str(root / 'zdot'),
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
-        if a.in_app_toast and name == 'gtx':
+        if (a.config_file or a.in_app_toast) and name == 'gtx':
             env['GTX_CONFIG'] = str(config)
+        if (a.config_file or a.in_app_toast) and name == 'herdr':
+            env['HERDR_CONFIG_PATH'] = str(config)
         if guard is not None:
             guard.environment(env)
         steps = target / 'steps'
         # Only the first-run onboarding differs. The interaction body is identical.
-        preamble = 'sleep 3s\nsend "\\r"\nsleep 500ms\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
+        preamble = 'sleep 3s\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
         steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
