@@ -82,6 +82,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "guard":
+		return r.guardCLI(args[1:])
 	case "decision":
 		return r.decisionCLI(args[1:])
 	case "config":

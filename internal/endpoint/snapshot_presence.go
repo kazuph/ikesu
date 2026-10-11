@@ -28,18 +28,18 @@ type tokenPresence struct {
 	Bold, Dim   bool
 }
 
-func configPointers(c *config.Config) ([18]**bool, [8]**int) {
-	return [18]**bool{
-		&c.Onboarding, &c.Remote.ManageSSHConfig, &c.Update.VersionCheck, &c.Update.ManifestCheck,
-		&c.UI.MouseCapture, &c.UI.CopyOnSelect, &c.UI.RedrawOnFocusGained, &c.UI.ConfirmClose,
-		&c.UI.PromptNewTabName, &c.UI.PaneGaps, &c.UI.Sound.Enabled, &c.UI.Toast.Clipboard.Enabled,
-		&c.UI.Toast.Enabled, &c.UI.ShowTabBar, &c.UI.HideTabBarWhenSingleTab, &c.UI.PaneBorders,
-		&c.Session.ResumeAgentsOnRestore, &c.AgentRestore.Enabled,
-	}, [8]**int{
-		&c.Advanced.ScrollbackLimitBytes, &c.UI.MouseScrollLines, &c.UI.MobileWidthThreshold,
-		&c.UI.SidebarWidth, &c.UI.SidebarMinWidth, &c.UI.SidebarMaxWidth,
-		&c.UI.Toast.DelaySeconds, &c.AgentRestore.RestoreDelayMs,
-	}
+func configPointers(c *config.Config) ([19]**bool, [9]**int) {
+	return [19]**bool{
+			&c.Onboarding, &c.Remote.ManageSSHConfig, &c.Update.VersionCheck, &c.Update.ManifestCheck,
+			&c.UI.MouseCapture, &c.UI.CopyOnSelect, &c.UI.RedrawOnFocusGained, &c.UI.ConfirmClose,
+			&c.UI.PromptNewTabName, &c.UI.PaneGaps, &c.UI.Sound.Enabled, &c.UI.Toast.Clipboard.Enabled,
+			&c.UI.Toast.Enabled, &c.UI.ShowTabBar, &c.UI.HideTabBarWhenSingleTab, &c.UI.PaneBorders,
+			&c.Session.ResumeAgentsOnRestore, &c.AgentRestore.Enabled, &c.Guard.Enabled,
+		}, [9]**int{
+			&c.Advanced.ScrollbackLimitBytes, &c.UI.MouseScrollLines, &c.UI.MobileWidthThreshold,
+			&c.UI.SidebarWidth, &c.UI.SidebarMinWidth, &c.UI.SidebarMaxWidth,
+			&c.UI.Toast.DelaySeconds, &c.AgentRestore.RestoreDelayMs, &c.Guard.AskTimeoutSeconds,
+		}
 }
 
 func optionalPresence(in render.Input) snapshotPresence {

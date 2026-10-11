@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/guard"
 )
 
 // EnvVar overrides the config file location.
@@ -39,6 +40,7 @@ func (d ToastDelivery) Valid() bool {
 
 // Config is the parsed config file.
 type Config struct {
+	Guard      guard.Config   `toml:"guard"`
 	Warnings   []string       `toml:"-"`
 	Onboarding *bool          `toml:"onboarding"`
 	Terminal   TerminalConfig `toml:"terminal"`
