@@ -136,6 +136,13 @@ type appJob struct {
 // through Do/PushInput/Resize so all state changes stay on the loop
 // goroutine.
 type App struct {
+	viewerOwner       *App
+	viewerContext     *Viewer
+	viewerActive      bool
+	drawViewers       func()
+	tickViewers       func()
+	visiblePane       func(int) bool
+	sharedPaneSnaps   map[int]*render.PaneSnap
 	agentStateCounter uint64
 	agentStates       map[int]string
 	agentStateSeq     map[int]uint64
@@ -288,19 +295,26 @@ func (a *App) SetCellPixels(xp, yp int) {
 // display sink: the local terminal, or the server's attached client.
 func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd string) *App {
 	a := &App{
-		st:       st,
-		sup:      sup,
-		out:      out,
-		fr:       &input.Framer{},
-		enc:      &render.Encoder{},
-		cwd:      cwd,
-		input:    make(chan []byte, 256),
-		resizeCh: make(chan winsize, 8),
-		jobs:     make(chan appJob),
-		doneCh:   make(chan struct{}),
-		scroll:   map[int]int{},
-		trackers: map[int]*status.Tracker{},
-		fwd:      -1,
+		st:            st,
+		sup:           sup,
+		out:           out,
+		fr:            &input.Framer{},
+		enc:           &render.Encoder{},
+		cwd:           cwd,
+		input:         make(chan []byte, 256),
+		resizeCh:      make(chan winsize, 8),
+		jobs:          make(chan appJob),
+		doneCh:        make(chan struct{}),
+		scroll:        map[int]int{},
+		trackers:      map[int]*status.Tracker{},
+		reported:      map[int]reportedPane{},
+		sessions:      map[int]*AgentRecord{},
+		fossils:       map[int]*fossilWatch{},
+		visibleIdle:   map[int]time.Time{},
+		editorFiles:   map[int]string{},
+		agentStates:   map[int]string{},
+		agentStateSeq: map[int]uint64{},
+		fwd:           -1,
 		// Default bindings; SetKeybinds overlays the user's [keys] config.
 		copyKeys:   config.Config{}.CopyKeys(),
 		splitVKeys: config.Config{}.SplitVerticalKeys(),
@@ -385,6 +399,10 @@ func (a *App) SetScrollOffset(pid, off int) {
 // Do runs fn on the app loop goroutine and blocks until it completes. It
 // returns without running fn if the app has already stopped.
 func (a *App) Do(fn func()) {
+	if a.viewerOwner != nil {
+		a.viewerOwner.Do(func() { a.viewerContext.with(a.viewerOwner, func(*App) { fn() }) })
+		return
+	}
 	done := make(chan struct{})
 	select {
 	case a.jobs <- appJob{fn: fn, done: done}:

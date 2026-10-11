@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/tui"
 )
@@ -34,13 +36,15 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
-	Type   string `json:"type"`
-	Data   string `json:"data,omitempty"`
-	Cols   int    `json:"cols,omitempty"`
-	Rows   int    `json:"rows,omitempty"`
-	Xpixel int    `json:"xpixel,omitempty"`
-	Ypixel int    `json:"ypixel,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	endpoint.Peer
+	Available int    `json:"available_generation,omitempty"`
+	Type      string `json:"type"`
+	Data      string `json:"data,omitempty"`
+	Cols      int    `json:"cols,omitempty"`
+	Rows      int    `json:"rows,omitempty"`
+	Xpixel    int    `json:"xpixel,omitempty"`
+	Ypixel    int    `json:"ypixel,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it
@@ -100,6 +104,9 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	for {
 		res := pump(conn, in, out, leave)
 		conn.Close()
+		if res == pumpRejected {
+			return 1, nil
+		}
 		if res == pumpDone {
 			return 0, nil
 		}
@@ -136,9 +143,10 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 type pumpResult int
 
 const (
-	pumpDone    pumpResult = iota // detached or server exit — client returns
-	pumpRestart                   // server asked for a reconnect
-	pumpClosed                    // conn dropped without a close message
+	pumpDone     pumpResult = iota // detached or server exit — client returns
+	pumpRestart                    // server asked for a reconnect
+	pumpClosed                     // conn dropped without a close message
+	pumpRejected                   // explicit handshake or protocol refusal
 )
 
 // pump runs one attach session over conn: hello → input/resize forwarding
@@ -151,11 +159,46 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 		return pumpDone
 	}
 	w := &writer{conn: conn}
-	if err := w.send(msg{Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel}); err != nil {
+	if err := w.send(msg{Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel}); err != nil {
 		leave()
 		fmt.Fprintf(out, "gtx: attach: %v\n", err)
 		return pumpDone
 	}
+
+	rd := bufio.NewReader(conn)
+	line, err := rd.ReadBytes('\n')
+	if err != nil {
+		return pumpClosed
+	}
+	var welcome msg
+	if err := json.Unmarshal(line, &welcome); err != nil {
+		leave()
+		fmt.Fprintln(out, "gtx: invalid endpoint welcome:", err)
+		return pumpRejected
+	}
+	if welcome.Type == "restart" {
+		return pumpRestart
+	}
+	if welcome.Type == "exit" {
+		return pumpDone
+	}
+	if welcome.Type == "error" {
+		leave()
+		fmt.Fprintln(out, "gtx:", welcome.Reason)
+		return pumpRejected
+	}
+	if welcome.Type != "welcome" {
+		leave()
+		fmt.Fprintln(out, "gtx: endpoint_generation_unsupported: upgrade the server to endpoint generation 1 or later")
+		return pumpRejected
+	}
+	available, err := endpoint.Negotiate(endpoint.Current(), welcome.Peer)
+	if err != nil {
+		leave()
+		fmt.Fprintln(out, "gtx:", err)
+		return pumpRejected
+	}
+	w.available, w.methods = available, welcome.Methods
 
 	// stdin → server input messages.
 	go func() {
@@ -193,7 +236,6 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 	}()
 
 	// Server → terminal.
-	rd := bufio.NewReader(conn)
 	for {
 		line, err := rd.ReadBytes('\n')
 		if err != nil {
@@ -206,6 +248,20 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 			continue
 		}
 		switch m.Type {
+		case "welcome":
+			if _, err := endpoint.Negotiate(endpoint.Current(), m.Peer); err != nil {
+				leave()
+				fmt.Fprintln(out, "gtx:", err)
+				return pumpDone
+			}
+		case "error":
+			if strings.HasPrefix(m.Reason, "endpoint_action_unsupported:") {
+				fmt.Fprintln(os.Stderr, "gtx:", m.Reason)
+				continue
+			}
+			leave()
+			fmt.Fprintln(out, "gtx:", m.Reason)
+			return pumpDone
 		case "output":
 			if data, err := base64.StdEncoding.DecodeString(m.Data); err == nil {
 				_, _ = out.Write(data)
@@ -228,13 +284,18 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 
 // writer serializes client→server messages.
 type writer struct {
-	conn net.Conn
-	mu   sync.Mutex
+	conn      net.Conn
+	mu        sync.Mutex
+	available int
+	methods   []string
 }
 
 func (w *writer) send(m msg) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if m.Type != "hello" && !endpoint.Allows(w.available, 1, w.methods, m.Type) {
+		return fmt.Errorf("endpoint_action_unsupported: %s", m.Type)
+	}
 	return json.NewEncoder(w.conn).Encode(m)
 }
 

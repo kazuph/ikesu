@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"os"
@@ -40,6 +41,9 @@ func dialClient(t *testing.T, dir string) *testConn {
 
 func (c *testConn) send(t *testing.T, m clientMsg) {
 	t.Helper()
+	if m.Type == "hello" && m.Protocol == 0 {
+		m.Peer = endpoint.Current()
+	}
 	if err := json.NewEncoder(c.conn).Encode(m); err != nil {
 		t.Fatalf("send %q: %v", m.Type, err)
 	}
@@ -197,30 +201,39 @@ func TestAttachDetachReattach(t *testing.T) {
 	}
 }
 
-func TestNewClientDisplacesOld(t *testing.T) {
+func TestSecondClientPreservesFirst(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
-
 	c1 := dialClient(t, dir)
+	defer c1.conn.Close()
 	c1.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-
 	c2 := dialClient(t, dir)
-	c2.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
-
-	msgs := c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "detached" })
-	var displaced bool
-	for _, m := range msgs {
-		if m.Type == "detached" {
-			displaced = true
-		}
+	defer c2.conn.Close()
+	c2.send(t, clientMsg{Type: "hello", Cols: 100, Rows: 30})
+	c2.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo firststillattached\n"))})
+	messages := c1.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+		b, _ := decode64(m.Data)
+		return strings.Contains(string(b), "firststillattached") || m.Type == "detached"
+	})
+	if !strings.Contains(outputs(messages), "firststillattached") {
+		t.Fatal("first client disconnected", messages)
 	}
-	if !displaced {
-		t.Fatal("old client was not detached when a new client attached")
+	c2.send(t, clientMsg{Type: "input", Data: encode64([]byte{2, 'q'})})
+	messages = c2.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "detached" })
+	if len(messages) == 0 || messages[len(messages)-1].Type != "detached" {
+		t.Fatal("second client did not detach")
 	}
-	c1.conn.Close()
-	c2.conn.Close()
+	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo firstsurvivesdetach\n"))})
+	messages = c1.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+		b, _ := decode64(m.Data)
+		return strings.Contains(string(b), "firstsurvivesdetach")
+	})
+	if !strings.Contains(outputs(messages), "firstsurvivesdetach") {
+		t.Fatal("peer detach affected first")
+	}
 }
 
 func TestServerExitsWhenLastPaneExits(t *testing.T) {

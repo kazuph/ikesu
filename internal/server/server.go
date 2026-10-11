@@ -20,6 +20,7 @@ import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/plugin"
 	"github.com/kazuph/goterrace/internal/runtime"
@@ -36,13 +37,15 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
-	Type   string `json:"type"`
-	Data   string `json:"data,omitempty"`
-	Cols   int    `json:"cols,omitempty"`
-	Rows   int    `json:"rows,omitempty"`
-	Xpixel int    `json:"xpixel,omitempty"`
-	Ypixel int    `json:"ypixel,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	endpoint.Peer
+	Available int    `json:"available_generation,omitempty"`
+	Type      string `json:"type"`
+	Data      string `json:"data,omitempty"`
+	Cols      int    `json:"cols,omitempty"`
+	Rows      int    `json:"rows,omitempty"`
+	Xpixel    int    `json:"xpixel,omitempty"`
+	Ypixel    int    `json:"ypixel,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // Server is one running session.
@@ -67,8 +70,9 @@ type Server struct {
 	app *tui.App
 	sup *runtime.Supervisor
 
-	mu     sync.Mutex
-	client *clientConn // currently attached display client, or nil
+	mu      sync.Mutex
+	client  *clientConn // last-interacted client, used for targeted terminal notifications
+	clients map[*clientConn]bool
 
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
@@ -118,14 +122,16 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
-	conn    net.Conn
-	wmu     sync.Mutex
-	id      int
-	once    sync.Once
-	render  chan clientWrite
-	control chan clientWrite
-	done    chan struct{}
-	closed  bool
+	viewer    *tui.Viewer
+	available int
+	conn      net.Conn
+	wmu       sync.Mutex
+	id        int
+	once      sync.Once
+	render    chan clientWrite
+	control   chan clientWrite
+	done      chan struct{}
+	closed    bool
 }
 
 var clientSequence atomic.Int64
@@ -277,6 +283,7 @@ func Run(session, version string) (int, error) {
 	}
 	s.app.SetDetacher(func(reason string) { s.detach(reason) })
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
+	s.app.SetViewerHooks(s.drawViewers, s.tickViewers, s.visiblePane)
 	s.app.SetQuitHook(func() {
 		if s.restarting {
 			s.closing.Store(2)
@@ -402,32 +409,32 @@ func (s *Server) cleanup() {
 func (s *Server) hasClient() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.client != nil
+	return len(s.clients) > 0 || s.client != nil
 }
 
-// detach drops the attached client after telling it why.
+// detach drops the currently interacting display, leaving other viewers attached.
 func (s *Server) detach(reason string) {
 	s.mu.Lock()
 	c := s.client
-	s.client = nil
 	s.mu.Unlock()
 	if c != nil {
-		_ = c.send(clientMsg{Type: "detached", Reason: reason})
-		c.close()
+		s.detachClient(c, reason)
 	}
 }
 
-// notifyExit tells the attached client the session ended, then drops it.
-func (s *Server) notifyExit() {
-	s.mu.Lock()
-	c := s.client
-	s.client = nil
-	s.mu.Unlock()
-	if c != nil {
-		_ = c.send(clientMsg{Type: "exit"})
-		c.close()
+func (s *Server) detachClient(c *clientConn, reason string) {
+	_ = c.send(clientMsg{Type: "detached", Reason: reason})
+	s.dropConn(c)
+}
+
+func (s *Server) closeClients(kind string) {
+	for _, c := range s.displayClients() {
+		_ = c.send(clientMsg{Type: kind})
+		s.dropConn(c)
 	}
 }
+
+func (s *Server) notifyExit() { s.closeClients("exit") }
 
 // clientSink is the App's io.Writer: encoded frames go to the attached
 // client as output messages; with no client they are dropped.
@@ -466,8 +473,13 @@ func (s *Server) writeClientOutput(data string) {
 // dropConn removes c if it is still the attached client (broken pipe).
 func (s *Server) dropConn(c *clientConn) {
 	s.mu.Lock()
+	delete(s.clients, c)
 	if s.client == c {
 		s.client = nil
+		for other := range s.clients {
+			s.client = other
+			break
+		}
 	}
 	s.mu.Unlock()
 	c.close()
@@ -484,19 +496,22 @@ func (s *Server) clientLoop() {
 	}
 }
 
-// attach registers conn as the display client, displacing any previous
-// one, then pumps its input/resize messages into the app.
+// attach negotiates display capabilities before adding an independent viewer.
 func (s *Server) attach(conn net.Conn) {
 	c := &clientConn{conn: conn}
-
-	// First message must be hello carrying the client's size.
 	rd := bufio.NewReader(conn)
 	hello, err := readClientMsg(rd)
 	if err != nil || hello.Type != "hello" {
 		conn.Close()
 		return
 	}
-
+	available, err := endpoint.Negotiate(hello.Peer, endpoint.Current())
+	if err != nil {
+		_ = c.send(clientMsg{Type: "error", Reason: err.Error(), Peer: endpoint.Current()})
+		c.close()
+		return
+	}
+	c.available = available
 	s.mu.Lock()
 	if closing := s.closing.Load(); closing != 0 {
 		s.mu.Unlock()
@@ -508,34 +523,37 @@ func (s *Server) attach(conn net.Conn) {
 		c.close()
 		return
 	}
-	old := s.client
+	if s.clients == nil {
+		s.clients = map[*clientConn]bool{}
+	}
+	s.clients[c] = true
 	s.client = c
 	s.mu.Unlock()
-	if old != nil {
-		_ = old.send(clientMsg{Type: "detached", Reason: "another client attached"})
-		old.close()
+	if err := c.send(clientMsg{Type: "welcome", Peer: endpoint.Current(), Available: available}); err != nil {
+		s.dropConn(c)
+		return
 	}
-
-	// New client: force a full repaint at its size.
 	s.app.Do(func() {
-		s.app.ResetEncoder()
-		s.app.ExecCmd(model.CmdResize{Cols: hello.Cols, Rows: hello.Rows})
-		s.app.BeginHostMouse(hello.Xpixel, hello.Ypixel)
+		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
+		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
 	})
-
+	defer s.dropConn(c)
 	for {
 		m, err := readClientMsg(rd)
 		if err != nil {
-			s.dropConn(c)
 			return
+		}
+		if !endpoint.Allows(available, 1, endpoint.Current().Methods, m.Type) {
+			_ = c.send(clientMsg{Type: "error", Reason: "endpoint_action_unsupported: " + m.Type})
+			continue
 		}
 		switch m.Type {
 		case "input":
 			if data, err := decode64(m.Data); err == nil && len(data) > 0 {
-				s.app.PushInput(data)
+				s.app.Do(func() { s.mu.Lock(); s.client = c; s.mu.Unlock(); c.viewer.Input(s.app, data) })
 			}
 		case "resize":
-			s.app.Resize(m.Cols, m.Rows, m.Xpixel, m.Ypixel)
+			s.app.Do(func() { c.viewer.Resize(s.app, m.Cols, m.Rows, m.Xpixel, m.Ypixel) })
 		}
 	}
 }

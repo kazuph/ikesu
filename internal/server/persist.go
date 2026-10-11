@@ -113,16 +113,7 @@ func (s *Server) requestRestart() {
 
 // notifyRestart tells the attached client the server is restarting so it
 // can reconnect, then drops the connection.
-func (s *Server) notifyRestart() {
-	s.mu.Lock()
-	c := s.client
-	s.client = nil
-	s.mu.Unlock()
-	if c != nil {
-		_ = c.send(clientMsg{Type: "restart"})
-		c.close()
-	}
-}
+func (s *Server) notifyRestart() { s.closeClients("restart") }
 
 // spawnSuccessor launches a detached `gtx server` for this session. It is
 // called only after cleanup released the session lock, so the child

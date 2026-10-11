@@ -131,7 +131,7 @@ func (a *App) detectAll() {
 				}
 				a.noteAgentState(pid)
 				// The focused pane in the visible workspace is seen.
-				if ws == activeWS && pid == focusedID && !a.windowBlurred {
+				if a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && ws == activeWS && pid == focusedID && !a.windowBlurred {
 					if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
 						rep.unseen = false
 						a.reported[pid] = rep
@@ -175,6 +175,9 @@ func (a *App) copiedFlashAt(now time.Time) string {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
+	if a.tickViewers != nil {
+		a.tickViewers()
+	}
 	now := time.Now()
 	if a.localRestore {
 		a.observeLocalSessions()

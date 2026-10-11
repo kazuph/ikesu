@@ -53,6 +53,12 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	if a.drawViewers != nil {
+		a.drawViewers()
+		a.dirty = false
+		a.lastDraw = time.Now()
+		return
+	}
 	if a.sinkOn != nil && !a.sinkOn() {
 		// No display attached: drop the frame work but clear the flag so a
 		// later attach gets a full repaint via the resize/reset path.
@@ -60,7 +66,29 @@ func (a *App) draw() {
 		a.lastDraw = time.Now()
 		return
 	}
-	panes := a.paneSnaps()
+	panes := a.sharedPaneSnaps
+	if panes == nil {
+		panes = a.paneSnaps()
+	} else {
+		copySnaps := make(map[int]*render.PaneSnap, len(panes))
+		for id, snap := range panes {
+			value := *snap
+			value.Grid = nil
+			copySnaps[id] = &value
+		}
+		panes = copySnaps
+		if ws := a.st.ActiveWorkspace(); ws != nil {
+			if tab := ws.TabRef(); tab != nil {
+				for _, id := range tab.Layout.PaneIDs() {
+					if p := a.sup.Get(id); p != nil && panes[id] != nil {
+						r := a.innerRect(id)
+						panes[id].Grid = a.paneGrid(p, a.scroll[id], r.H, r.W)
+						panes[id].ScrollOff = a.scroll[id]
+					}
+				}
+			}
+		}
+	}
 	if a.st.OverlayVisible() {
 		if p := a.sup.Get(a.st.Overlay.PaneID); p != nil {
 			r := a.innerRect(p.ID)
@@ -205,7 +233,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 		delete(a.reported, pid)
 	} else {
 		unseen := state == "idle" && prev.agent == agent && (prev.state == "working" || prev.state == "blocked" || prev.unseen)
-		if pid == a.focusedPane() && !a.windowBlurred && (a.sinkOn == nil || a.sinkOn()) {
+		if a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && pid == a.focusedPane() && !a.windowBlurred && (a.sinkOn == nil || a.sinkOn()) {
 			unseen = false
 		}
 		a.reported[pid] = reportedPane{agent: agent, state: state, unseen: unseen}
@@ -266,14 +294,16 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					a.sessionCwds[ws.ID] = sn.Cwd
 				}
 				snap := &render.PaneSnap{
-					Label:          labelFor(sn, p),
-					Title:          sn.OSCTitle,
-					Agent:          agentFor(sn),
-					Status:         a.glyph(pid),
-					StateChangeSeq: a.AgentStateChangeSeq(pid),
-					Seen:           true,
-					Dead:           sn.Dead,
-					Cursor:         render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+					Label:             labelFor(sn, p),
+					Title:             sn.OSCTitle,
+					Agent:             agentFor(sn),
+					Status:            a.glyph(pid),
+					StateChangeSeq:    a.AgentStateChangeSeq(pid),
+					Seen:              true,
+					ScrollN:           sn.ScrollbackLen,
+					SuppressScrollbar: !sn.ScrollbarVisible,
+					Dead:              sn.Dead,
+					Cursor:            render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
 				}
 				if tr := a.trackers[pid]; tr != nil {
 					snap.Seen = tr.Seen
@@ -290,7 +320,7 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 				if label := a.st.PaneLabels[model.PaneID(pid)]; label != "" {
 					snap.Label = label
 				}
-				if active[pid] {
+				if active[pid] && a.drawViewers == nil {
 					r := a.innerRect(pid)
 					snap.Grid = a.paneGrid(p, a.scroll[pid], r.H, r.W)
 					snap.ScrollOff = a.scroll[pid]

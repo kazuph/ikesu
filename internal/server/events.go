@@ -114,6 +114,19 @@ func ev(kind string, kv ...any) map[string]any {
 // afterExec derives domain events from the pre/post command diff. It runs
 // on the app loop after effects are applied.
 func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
+	if !s.app.InViewer() && (prev.Active != s.app.State().Active || prev.FocusedPane != s.app.State().FocusedPane()) {
+		for _, c := range s.displayClients() {
+			if c.viewer != nil {
+				c.viewer.FollowSessionFocus(s.app)
+			}
+		}
+		s.mu.Lock()
+		foreground := s.client
+		s.mu.Unlock()
+		if foreground != nil && foreground.viewer != nil {
+			foreground.viewer.AcquireSize(s.app)
+		}
+	}
 	st := s.app.State()
 
 	prevWs := map[model.WorkspaceID]model.WsSnap{}
