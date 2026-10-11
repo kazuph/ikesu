@@ -213,6 +213,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			regions.Frame = nil
 			_ = e.connection.enqueue(msg{Type: "rendered", Rendered: regions, FocusEpoch: e.epoch})
 		}
+	case "notify":
+		if message.Notification != nil && m.settings.config != nil {
+			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id)
+		}
 	case "output":
 		if event.id == m.active {
 			if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {

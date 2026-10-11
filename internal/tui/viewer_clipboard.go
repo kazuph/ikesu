@@ -1,5 +1,20 @@
 package tui
 
+// Notification suppression follows each attached viewer's selected tab,
+// including unfocused splits and panes hidden by zoom.
+func (v *Viewer) PaneOnSelectedTab(a *App, pid int) bool {
+	for _, ws := range a.st.Workspaces {
+		if ws.ID == v.workspace {
+			for _, tab := range ws.Tabs {
+				if tab.ID == v.tabs[ws.ID] {
+					return tab.Layout.HasPane(pid)
+				}
+			}
+		}
+	}
+	return false
+}
+
 // DisplaysPane includes unfocused splits, but excludes panes hidden by
 // zoom or another selected tab. Clipboard routing does not alter focus.
 func (v *Viewer) DisplaysPane(a *App, pid int) bool {

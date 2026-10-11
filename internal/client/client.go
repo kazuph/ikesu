@@ -43,6 +43,7 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
+	Notification *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
 	Type           string                       `json:"type"`
@@ -330,6 +331,10 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			leave()
 			fmt.Fprintln(out, "gtx:", m.Reason)
 			return pumpDone
+		case "notify":
+			if m.Notification != nil && settings.config != nil {
+				deliverDesktop(*m.Notification, *settings.config, settings.session, "")
+			}
 		case "output":
 			if data, err := base64.StdEncoding.DecodeString(m.Data); err == nil {
 				_, _ = out.Write(data)

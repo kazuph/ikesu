@@ -12,6 +12,7 @@ import (
 )
 
 type localSettings struct {
+	session     string
 	config      *config.Config
 	warning     string
 	preferences *endpoint.ViewPreferences
@@ -22,7 +23,7 @@ func loadLocalSettings(session string) (*localSettings, error) {
 	if !api.ValidSessionName(session) {
 		return nil, fmt.Errorf("invalid client session name")
 	}
-	s := &localSettings{path: filepath.Join(api.StateDir(), "client-shell", "local-"+session+".json")}
+	s := &localSettings{session: session, path: filepath.Join(api.StateDir(), "client-shell", "local-"+session+".json")}
 	c, err := config.Load()
 	if err != nil {
 		s.warning = "client configuration: " + err.Error()

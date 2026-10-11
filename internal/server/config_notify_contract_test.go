@@ -13,13 +13,14 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
 func TestConfigNotificationDeliveryChangesRealOutput(t *testing.T) {
 	teststate.Lock(t)
-	for _, delivery := range []string{"off", "herdr", "terminal"} {
+	for _, delivery := range []string{"off", "herdr", "terminal", "system"} {
 		t.Run(delivery, func(t *testing.T) {
 			s := newTestServer(t, "notify-config")
 			c, err := config.Decode([]byte("[ui.toast]\ndelivery='" + delivery + "'\ndelay_seconds=0\n[ui.toast.herdr]\nposition='bottom-right'\n"))
@@ -58,7 +59,7 @@ func TestConfigNotificationDeliveryChangesRealOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer local.Close()
-			s.client = &clientConn{conn: local}
+			s.client = &clientConn{conn: local, available: endpoint.Generation}
 			defer s.client.close()
 			messages := make(chan clientMsg, 1)
 			go func() {
@@ -70,9 +71,15 @@ func TestConfigNotificationDeliveryChangesRealOutput(t *testing.T) {
 			done := make(chan struct{})
 			go func() { s.app.Run(); close(done) }()
 			s.app.Do(func() { s.deliverNotification(1, "info") })
-			if delivery == "terminal" {
+			if delivery == "terminal" || delivery == "system" {
 				select {
 				case m := <-messages:
+					if delivery == "system" {
+						if m.Type != "notify" || m.Notification == nil || !m.Notification.SystemToast || m.Notification.TargetPaneID != "p1" {
+							t.Fatal(m)
+						}
+						break
+					}
 					b, err := base64.StdEncoding.DecodeString(m.Data)
 					if err != nil || !strings.HasPrefix(string(b), "\x1b]9;") {
 						t.Fatal(m, err)

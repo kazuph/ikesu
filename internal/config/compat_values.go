@@ -96,6 +96,7 @@ func (c *Config) unsupportedValues() {
 	warn("update.channel", c.Update.Channel != "")
 	warn("update.version_check", c.Update.VersionCheck != nil && *c.Update.VersionCheck)
 	warn("update.manifest_check", c.Update.ManifestCheck != nil && *c.Update.ManifestCheck)
+
 	warn("remote.manage_ssh_config", c.Remote.ManageSSHConfig != nil && *c.Remote.ManageSSHConfig)
 	warn("ui.sound.path", c.UI.Sound.Path != "")
 	warn("ui.sound.done_path", c.UI.Sound.DonePath != "")

@@ -45,3 +45,20 @@ func TestViewerClipboardVisibilityObeysSplitZoomTabAndBlur(t *testing.T) {
 		t.Fatal("blurred viewer was included")
 	}
 }
+
+func TestNotificationSuppressionIncludesUnfocusedAndZoomHiddenTabPanes(t *testing.T) {
+	st := model.New(t.TempDir(), 120, 40)
+	tab := st.ActiveWorkspace().TabRef()
+	first := tab.Layout.Focused()
+	second := first + 1
+	tab.Layout.SplitFocused(layout.Vertical, second)
+	app := NewApp(st, runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	viewer := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	tab.Zoomed = second
+	if !viewer.PaneOnSelectedTab(app, first) || !viewer.PaneOnSelectedTab(app, second) {
+		t.Fatal("active tab must suppress all its panes")
+	}
+	if viewer.PaneOnSelectedTab(app, second+1) {
+		t.Fatal("unrelated pane suppressed")
+	}
+}

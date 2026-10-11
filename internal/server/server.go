@@ -38,6 +38,7 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	Notification *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
 	Type           string                       `json:"type"`

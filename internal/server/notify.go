@@ -3,10 +3,10 @@ package server
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/notify"
 )
 
@@ -46,6 +46,15 @@ func (s *Server) onPaneStatus(pid int) {
 
 // paneOnActiveTab suppresses notifications for the visible tab.
 func (s *Server) paneOnActiveTab(pid int) bool {
+	clients := s.displayClients()
+	if len(clients) > 0 {
+		for _, c := range clients {
+			if c.viewer != nil && c.viewer.PaneOnSelectedTab(s.app, pid) {
+				return true
+			}
+		}
+		return false
+	}
 	st := s.app.State()
 	ws := st.ActiveWorkspace()
 	if ws == nil {
@@ -113,7 +122,7 @@ func (s *Server) deliverNotification(pid int, kind string) {
 	title := s.notifyTitle(pid)
 	body := ""
 	if p := s.sup.Get(pid); p != nil {
-		lines := append(p.ScrollbackLines(), p.ScreenLines()...)
+		lines, _ := p.ReadLines("recent_unwrapped", true)
 		body = notify.Body(lines, title)
 	}
 	switch s.cfg.ToastDelivery() {
@@ -122,7 +131,26 @@ func (s *Server) deliverNotification(pid int, kind string) {
 	case config.ToastTerminal:
 		s.sendOSC9(title, body)
 	case config.ToastSystem:
-		s.sendSystemNotification(title, body, pid)
+		// OS delivery belongs to the attached host.
+	}
+	if kind == "finished" || kind == "needs_attention" || s.cfg.ToastDelivery() == config.ToastSystem {
+		agent := ""
+		if p := s.sup.Get(pid); p != nil {
+			agent = p.Snapshot().AgentID
+		}
+		n := endpoint.Notification{Title: title, Body: body, Kind: kind, Agent: agent, TargetPaneID: fmtPaneID(pid), SystemToast: s.cfg.ToastDelivery() == config.ToastSystem}
+		s.mu.Lock()
+		c := s.client
+		s.mu.Unlock()
+		if c != nil {
+			if c.available < endpoint.NotificationGeneration {
+				fmt.Fprintln(os.Stderr, "gtx: endpoint_action_unsupported: desktop notification requires endpoint generation 4")
+				return
+			}
+			if err := c.send(clientMsg{Type: "notify", Notification: &n}); err != nil {
+				s.dropConn(c)
+			}
+		}
 	}
 }
 
@@ -134,18 +162,4 @@ func (s *Server) sendOSC9(title, body string) {
 		text += " — " + body
 	}
 	s.writeClientOutput("\x1b]9;" + text + "\x07")
-}
-
-// sendSystemNotification uses terminal-notifier when present (with a
-// -execute focus command), else osascript. macOS-only route.
-func (s *Server) sendSystemNotification(title, body string, pid int) {
-	if tn, err := exec.LookPath("terminal-notifier"); err == nil {
-		exe, _ := os.Executable()
-		focus := fmt.Sprintf("%s pane focus %s >/dev/null 2>&1", exe, fmtPaneID(pid))
-		_ = exec.Command(tn, "-title", title, "-message", body,
-			"-execute", focus).Start()
-		return
-	}
-	script := fmt.Sprintf(`display notification %q with title %q`, body, title)
-	_ = exec.Command("/usr/bin/osascript", "-e", script).Start()
 }

@@ -4,7 +4,8 @@ package endpoint
 import "fmt"
 
 const ProtocolVersion = 1
-const Generation = 3
+const Generation = 4
+const NotificationGeneration = 4
 const MinGeneration = 1
 const MachineGeneration = 2
 
