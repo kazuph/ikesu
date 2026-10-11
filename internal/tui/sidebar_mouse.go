@@ -104,9 +104,15 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		return true
 	case render.RowWorkspace:
 		a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1}
+		if a.snapshotSink != nil && r.Ws != s.Active {
+			a.exec(model.CmdSelectWorkspace{Index: r.Ws})
+		}
 		return true
 	case render.RowGit, render.RowCardBlank:
 		a.sidebarGesture = &sidebarGesture{ws: r.Ws, x: m.X, y: m.Y, active: r.Ws == s.Active, drop: -1, gitRow: r.Kind == render.RowGit}
+		if a.snapshotSink != nil && r.Ws != s.Active {
+			a.exec(model.CmdSelectWorkspace{Index: r.Ws})
+		}
 		if a.serverUI && s.WorkspaceDensity == "slim" && r.Kind == render.RowGit {
 			a.exec(model.CmdSelectWorkspace{Index: r.Ws})
 		}

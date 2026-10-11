@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	uv "github.com/charmbracelet/ultraviolet"
+
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
@@ -35,5 +37,32 @@ func TestViewerSessionFocusRevealsWorkspaceInEachSidebar(t *testing.T) {
 				t.Fatalf("workspace %d not visible in viewer %dx%d, scroll=%d", target, viewer.cols, viewer.rows, ui.sidebarScroll)
 			})
 		}
+	}
+}
+
+func TestClientViewerCardPressSelectsBeforeDragWithoutChangingOtherViewer(t *testing.T) {
+	st := model.New(t.TempDir(), 160, 45)
+	st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	app := NewApp(st, runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	app.SetServerUI()
+	first := app.NewViewer(&bytes.Buffer{}, 160, 45, nil)
+	second := app.NewViewer(&bytes.Buffer{}, 160, 45, nil)
+	first.SetSnapshotSink(func(render.Input) error { return nil })
+	first.with(app, func(ui *App) {
+		for _, pos := range ui.sidebarView().Rows {
+			if pos.Row.Kind == render.RowWorkspace && pos.Row.Ws == 1 {
+				if !ui.sidebarPress(uv.Mouse{X: 4, Y: pos.Y, Button: uv.MouseLeft}) || ui.st.Active != 1 {
+					t.Fatal("card press did not select before drag")
+				}
+				if ui.sidebarGesture == nil || ui.sidebarGesture.active {
+					t.Fatal("gesture lost original inactive click state")
+				}
+				return
+			}
+		}
+		t.Fatal("second card missing")
+	})
+	if first.workspace != st.Workspaces[1].ID || second.workspace != st.Workspaces[0].ID || st.Active != 0 {
+		t.Fatal("card press changed another viewer or session selection")
 	}
 }

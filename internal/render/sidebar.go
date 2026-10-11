@@ -403,7 +403,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			if selected && !in.ServerUI {
 				sty.Bg = f.Palette.Surface
 			}
-			if dragged && !(in.ServerUI && s.WorkspaceDensity == "slim" && in.DragFromGit) {
+			if dragged && !in.ServerUI {
 				sty.Bg = f.Palette.NavigatorDivider
 			}
 			sty.Attrs = uv.AttrBold

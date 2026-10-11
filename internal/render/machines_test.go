@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/kazuph/goterrace/internal/model"
 )
 
 func TestMachineSidebarKeepsOriginalIDsAndOnlySelectedEndpointAccent(t *testing.T) {
@@ -55,5 +57,36 @@ func TestMachineSidebarKeepsOriginalIDsAndOnlySelectedEndpointAccent(t *testing.
 	without := ComposeMachines(local, nil)
 	if !reflect.DeepEqual(plain, without) {
 		t.Fatal("no-machine composition changed")
+	}
+}
+
+func TestMachineSidebarDropIndicatorUsesRemoteGroupCoordinates(t *testing.T) {
+	localState, remoteState := testState(160, 45), testState(160, 45)
+	remoteState.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	local, remote := Input{ServerUI: true, State: localState}, Input{ServerUI: true, State: remoteState}
+	drop := 2
+	remote.Dragging, remote.DraggedWorkspace, remote.DropIndex = true, 0, &drop
+	machines := MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &local}, {ID: "remote", Input: &remote}}, Active: "remote"}
+	out := ComposeMachines(remote, &machines)
+	last := -1
+	for _, hit := range machines.Hits {
+		if hit.Machine == "remote" && hit.Row.Ws == 1 && (hit.Row.Kind == RowWorkspace || hit.Row.Kind == RowGit || hit.Row.Kind == RowCardBlank) {
+			last = max(last, hit.Rect.Y)
+		}
+	}
+	if last < 0 {
+		t.Fatal("remote card hit area missing")
+	}
+	area := SidebarViewForInput(remote).Workspace.Rect
+	for x := area.X; x < area.X+area.W; x++ {
+		cell := out.Frame.Cell(x, last+1)
+		if cell.Content != "─" || !reflect.DeepEqual(cell.Style.Fg, out.Frame.Palette.Accent) {
+			t.Fatal("remote insertion line missing", x, last+1, cell)
+		}
+	}
+	machines.Active = "local"
+	out = ComposeMachines(local, &machines)
+	if out.Frame.Cell(area.X, last+1).Content == "─" {
+		t.Fatal("hidden remote drag leaked into Local")
 	}
 }

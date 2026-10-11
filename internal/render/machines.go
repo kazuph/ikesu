@@ -80,6 +80,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 	if len(rows) > area.H {
 		width--
 	}
+	dropBoundary := -1
 	for i := m.Scroll; i < len(rows) && i-m.Scroll < area.H; i++ {
 		entry := rows[i]
 		group := m.Groups[entry.group]
@@ -123,6 +124,23 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			}
 		}
 		m.Hits = append(m.Hits, hit)
+		if group.ID == m.Active && group.Input != nil && group.Input.Dragging && group.Input.DropIndex != nil {
+			drop := *group.Input.DropIndex
+			if entry.row.Kind == RowWorkspace && entry.row.Ws == drop {
+				dropBoundary = y
+			} else if (entry.row.Kind == RowWorkspace || entry.row.Kind == RowGit || entry.row.Kind == RowCardBlank) && entry.row.Ws == drop-1 {
+				dropBoundary = y + 1
+			}
+		}
+	}
+	if dropBoundary >= area.Y && dropBoundary < area.Y+area.H {
+		for x := area.X; x < area.X+width; x++ {
+			if cell := f.Cell(x, dropBoundary); cell != nil {
+				style := cell.Style
+				style.Fg = f.Palette.Accent
+				f.Set(x, dropBoundary, "─", style)
+			}
+		}
 	}
 	drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && active.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
 	if active.JobsPanel {
