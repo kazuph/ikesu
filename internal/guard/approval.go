@@ -102,7 +102,7 @@ func Resolve(cmd string, env []string) (string, error) {
 		return "", fmt.Errorf("command is not executable: %s", cmd)
 	}
 	for _, d := range strings.Split(m["PATH"], string(os.PathListSeparator)) {
-		if physical(d) == physical(m["GTX_GUARD_BIN"]) {
+		if m["GTX_GUARD_BIN"] != "" && physical(d) == physical(m["GTX_GUARD_BIN"]) {
 			continue
 		}
 		if d == "" {

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/guard"
 	"os"
@@ -58,6 +59,29 @@ func (r *runner) guardCLI(a []string) int {
 		return 0
 	}
 	_ = via
+	if sub == "exec" {
+		m, active, e := guard.ReadMarker(i)
+		if e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		if active && c.Guard.Active() {
+			if c.Guard.EffectiveMode() != "record" {
+				fmt.Fprintln(r.errOut(), "unsupported: enforce is implemented in the next milestone")
+				return 1
+			}
+			i.LaunchCwd = m.Cwd
+			if e = guard.Log(api.StateDir(), i, m, guard.Evaluate(c.Guard, i), via); e != nil {
+				fmt.Fprintln(r.errOut(), e)
+			}
+		}
+		if e = guard.Execute(i); e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		return 0
+	}
+
 	fmt.Fprintln(r.errOut(), "unsupported guard operation:", sub)
 	return 2
 }

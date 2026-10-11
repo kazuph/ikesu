@@ -2,6 +2,7 @@
 package guard
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,7 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
+	RawLine   string            `json:"-"`
 	Command   string            `json:"command"`
 	Args      []string          `json:"args"`
 	Cwd       string            `json:"cwd"`
@@ -50,15 +52,39 @@ type Input struct {
 	Env       map[string]string `json:"-"`
 }
 type Verdict struct {
-	Decision   string `json:"decision"`
+	Decision   string `json:"verdict"`
 	Rule       string `json:"rule"`
 	Reason     string `json:"reason"`
-	TempKey    string `json:"temp_key"`
-	DayKey     string `json:"day_key"`
-	Suppressed string `json:"suppressed,omitempty"`
+	TempKey    string `json:"approval_key"`
+	DayKey     string `json:"-"`
+	Suppressed string `json:"suppressed_by"`
 }
 
-func (i Input) Line() string { return strings.Join(append([]string{i.Command}, i.Args...), " ") }
+func (v Verdict) MarshalJSON() ([]byte, error) {
+	var key, suppressed *string
+	if v.Decision == "ask" || v.Suppressed != "" {
+		if v.TempKey != "" {
+			key = &v.TempKey
+		}
+	}
+	if v.Suppressed != "" {
+		suppressed = &v.Suppressed
+	}
+	return json.Marshal(struct {
+		ApprovalKey *string `json:"approval_key"`
+		Reason      string  `json:"reason"`
+		Rule        string  `json:"rule"`
+		Suppressed  *string `json:"suppressed_by"`
+		Verdict     string  `json:"verdict"`
+	}{key, v.Reason, v.Rule, suppressed, v.Decision})
+}
+
+func (i Input) Line() string {
+	if i.RawLine != "" {
+		return i.RawLine
+	}
+	return strings.Join(append([]string{i.Command}, i.Args...), " ")
+}
 func has(a []string, s string) bool {
 	for _, v := range a {
 		if v == s {
@@ -75,7 +101,6 @@ func arg(a []string, n int) string {
 }
 func result(d, r, s string) Verdict { return Verdict{Decision: d, Rule: r, Reason: s} }
 func Evaluate(c Config, i Input) Verdict {
-	i.Command = filepath.Base(i.Command)
 	v := classify(c, i)
 	v.DayKey = "day:" + physical(i.Cwd)
 	v.TempKey = temporaryKey(c, i)
@@ -93,7 +118,7 @@ func Evaluate(c Config, i Input) Verdict {
 	return v
 }
 func classify(c Config, i Input) Verdict {
-	cmd, a := i.Command, i.Args
+	cmd, a := filepath.Base(i.Command), i.Args
 	for _, p := range defaults(c.ProtectedPatterns, []string{".allow-main", ".allow_main", "allow-main", "allow_main"}) {
 		if p != "" && strings.Contains(i.Line(), p) {
 			return result("block", "protected", "AIプロセスによる .allow-main 関連操作は完全に禁止されています")
@@ -106,7 +131,7 @@ func classify(c Config, i Input) Verdict {
 		switch arg(a, 0) {
 		case "commit":
 			if has(a[1:], "--amend") {
-				return result("block", "git-amend", "git commit --amend による履歴上書きは禁止です。修正は追いコミットで積んでください。")
+				return result("block", "git-commit-amend", "git commit --amend による履歴上書きは禁止です。修正は追いコミットで積んでください。")
 			}
 		case "reset":
 			return result("block", "git-reset", "git reset による巻き戻しは禁止です。履歴は書き換えず、修正コミットで前に進めてください。")
@@ -121,7 +146,7 @@ func classify(c Config, i Input) Verdict {
 	if cmd == "gh" {
 		return github(i)
 	}
-	allow := result("allow", "safe", "確認不要")
+	allow := result("allow", "default", "")
 	ask := result("ask", "dangerous", "実行前に承認が必要です。")
 	if i.Env["AI_GUARD_DANGER_WORD_ACK"] == "1" {
 		return allow
@@ -133,16 +158,16 @@ func classify(c Config, i Input) Verdict {
 		if exactD1Help(i) || readonlySQL(sqlArgument(a)) && !fileSQL(a) {
 			return allow
 		}
-		return result("ask", "sql-write", "SQLの書き込みには承認が必要です。")
+		return result("ask", "d1-sql-write", "D1 への書き込み SQL は確認が必要です")
 	}
 	if danger(c, i) {
-		return result("ask", "danger-word", "危険語を含むコマンドには承認が必要です。")
+		return result("ask", "danger-word", "deploy/publish 系の操作は確認が必要です")
 	}
 	switch cmd {
 	case "rm", "rmdir", "rimraf", "trash":
 		for _, t := range a {
 			if !strings.HasPrefix(t, "-") && !safeRemoval(i, t) {
-				return result("ask", "delete", "管理外の削除には承認が必要です。")
+				return result("ask", "rm-paths", "削除操作は確認が必要です")
 			}
 		}
 		return allow
@@ -187,6 +212,9 @@ func safeRemoval(i Input, t string) bool {
 	p := t
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(i.Cwd, p)
+	}
+	if i.LaunchCwd != "" && physical(p) == physical(i.LaunchCwd) {
+		return false
 	}
 	for _, r := range []string{"/tmp", "/private/tmp", "/var/folders", "/private/var/folders", i.Env["TMPDIR"]} {
 		r = strings.TrimRight(r, "/")
@@ -242,7 +270,7 @@ func wildcard(a []string) bool {
 	return false
 }
 func danger(c Config, i Input) bool {
-	if has([]string{"git", "gh", "gtx", "herdr"}, i.Command) {
+	if has([]string{"git", "gh", "gtx", "herdr"}, filepath.Base(i.Command)) {
 		return false
 	}
 	for _, w := range strings.FieldsFunc(strings.ToLower(i.Line()), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
@@ -253,7 +281,7 @@ func danger(c Config, i Input) bool {
 	return false
 }
 func temporaryKey(c Config, i Input) string {
-	cmd, a := i.Command, i.Args
+	cmd, a := filepath.Base(i.Command), i.Args
 	if wildcard(a) && has([]string{"gtx", "herdr"}, cmd) || has(strings.Fields("dd mkfs fdisk diskutil format parted gparted"), cmd) {
 		return ""
 	}

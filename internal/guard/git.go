@@ -40,7 +40,7 @@ func mainBranch(s string) bool {
 func gitPush(i Input) Verdict {
 	a := i.Args[1:]
 	if force(a) {
-		return result("block", "git-force", "git push --force 系は禁止です。履歴を書き換えず通常の push を使ってください。")
+		return result("block", "git-push-force", "git push --force 系は禁止です。履歴を書き換えず通常の push を使ってください。")
 	}
 	branch := probe(i, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
 	destMain := mainBranch(branch)

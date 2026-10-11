@@ -2,6 +2,7 @@ package guard
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func TestRules(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			i.Command, i.Args = tc.cmd, tc.args
 			v := Evaluate(Config{}, i)
-			if v.Decision != tc.want || v.Rule == "" || v.Reason == "" {
+			if v.Decision != tc.want || v.Rule == "" || (v.Decision != "allow" && v.Reason == "") {
 				t.Fatalf("%+v want %s", v, tc.want)
 			}
 		})
@@ -95,6 +96,57 @@ func TestConfigOverridesAndACK(t *testing.T) {
 		t.Fatal(v)
 	}
 	if v := Evaluate(Config{ProtectedPatterns: []string{"release"}}, i); v.Decision != "block" {
+		t.Fatal(v)
+	}
+}
+
+func TestRepositoryAndLaunchDirectoryRules(t *testing.T) {
+	d, e := os.MkdirTemp(".", "guard-repository-")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer os.RemoveAll(d)
+	d, _ = filepath.Abs(d)
+	i := Input{Cwd: d, LaunchCwd: d, Env: map[string]string{"HOME": t.TempDir(), "PATH": "/usr/bin:/bin"}}
+	git, e := Resolve("git", environment(i.Env))
+	if e != nil {
+		t.Fatal(e)
+	}
+	init := exec.Command(git, "init", "--quiet", "--initial-branch=main", d)
+	init.Env = environment(i.Env)
+	if b, e := init.CombinedOutput(); e != nil {
+		t.Fatal(string(b), e)
+	}
+	tests := []struct {
+		cmd  string
+		args []string
+		want string
+	}{{"rm", []string{d}, "ask"}, {"rm", []string{filepath.Join(d, "nested")}, "allow"}, {"rm", []string{filepath.Join(d, "..", "unmanaged")}, "ask"}, {"git", []string{"push"}, "block"}, {"git", []string{"push", "origin", "feature:master"}, "block"}}
+	for _, tc := range tests {
+		i.Command, i.Args = tc.cmd, tc.args
+		if v := Evaluate(Config{}, i); v.Decision != tc.want {
+			t.Fatal(tc, v)
+		}
+	}
+	os.WriteFile(filepath.Join(d, ".allow-main"), nil, 0600)
+	i.Command = "git"
+	i.Args = []string{"push"}
+	if v := Evaluate(Config{}, i); v.Decision != "allow" {
+		t.Fatal(v)
+	}
+	os.Remove(filepath.Join(d, ".allow-main"))
+	branch := exec.Command(git, "symbolic-ref", "HEAD", "refs/heads/feature")
+	branch.Dir = d
+	branch.Env = environment(i.Env)
+	if b, e := branch.CombinedOutput(); e != nil {
+		t.Fatal(string(b), e)
+	}
+	if v := Evaluate(Config{}, i); v.Decision != "ask" {
+		t.Fatal(v)
+	}
+	i.Command = "gh"
+	i.Args = []string{"repo", "edit", "--repo", "someone/else"}
+	if v := Evaluate(Config{}, i); v.Decision != "ask" {
 		t.Fatal(v)
 	}
 }
