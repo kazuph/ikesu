@@ -40,6 +40,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		e.grids = map[int][][]uv.Cell{}
 	}
 	wire := snapshotWire{Input: in, Grids: map[int]gridDelta{}}
+	wire.Optional = optionalPresence(in)
 	wire.Input.Panes = make(map[int]*render.PaneSnap, len(in.Panes))
 	for id, pane := range in.Panes {
 		if pane == nil {
@@ -92,6 +93,9 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 	if err := d.dec.Decode(&wire); err != nil {
 		return render.Input{}, err
 	}
+	if err := wire.Optional.restore(&wire.Input); err != nil {
+		return render.Input{}, err
+	}
 	if d.grids == nil {
 		d.grids = map[int][][]uv.Cell{}
 	}
@@ -116,8 +120,9 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 }
 
 type snapshotWire struct {
-	Input render.Input
-	Grids map[int]gridDelta
+	Input    render.Input
+	Grids    map[int]gridDelta
+	Optional snapshotPresence
 }
 
 type gridDelta struct {

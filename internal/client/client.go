@@ -313,7 +313,16 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 					composed.AnchorVisible = false
 				}
 			}
-			_, _ = out.Write(frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible))
+			data = frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible)
+			if lastRegions == nil {
+				composed.Frame = nil
+				if err := w.firstSnapshot(out, data, &windowTitle, in, composed, m.FocusEpoch); err != nil {
+					return pumpClosed
+				}
+				lastRegions = composed
+				continue
+			}
+			_, _ = out.Write(data)
 			if err := windowTitle.painted(out, in); err != nil {
 				return pumpClosed
 			}
@@ -369,10 +378,28 @@ type writer struct {
 func (w *writer) send(m msg) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	return w.sendLocked(m)
+}
+
+func (w *writer) sendLocked(m msg) error {
 	if m.Type != "hello" && !endpoint.Allows(w.available, 1, w.methods, m.Type) {
 		return fmt.Errorf("endpoint_action_unsupported: %s", m.Type)
 	}
 	return json.NewEncoder(w.conn).Encode(m)
+}
+
+// The first visible frame must register its hit regions before stdin can
+// overtake the acknowledgment. Later redraws keep accepting input normally.
+func (w *writer) firstSnapshot(out *os.File, data []byte, title *windowTitleState, in render.Input, regions *render.Output, epoch uint64) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, err := out.Write(data); err != nil {
+		return err
+	}
+	if err := title.painted(out, in); err != nil {
+		return err
+	}
+	return w.sendLocked(msg{Type: "rendered", Rendered: regions, FocusEpoch: epoch})
 }
 
 // dialClient tries the client socket once.

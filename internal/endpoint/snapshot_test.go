@@ -61,6 +61,59 @@ func TestSnapshotRoundTripPreservesCellsLayoutAndChrome(t *testing.T) {
 	}
 }
 
+func TestSnapshotPreservesOptionalZeroValues(t *testing.T) {
+	zero, disabled := 0, false
+	in := render.Input{State: model.New("/tmp", 80, 24), SelectedWorkspace: &zero, DropIndex: &zero, Dragging: true}
+	in.SidebarConfig.Onboarding = &disabled
+	in.SidebarConfig.UI.PromptNewTabName = &disabled
+	in.SidebarConfig.UI.PaneBorders = &disabled
+	var setZeros func(reflect.Value)
+	setZeros = func(value reflect.Value) {
+		for i := 0; i < value.NumField(); i++ {
+			field := value.Field(i)
+			if field.Kind() == reflect.Struct {
+				setZeros(field)
+			} else if field.Kind() == reflect.Pointer && (field.Type().Elem().Kind() == reflect.Bool || field.Type().Elem().Kind() == reflect.Int) {
+				field.Set(reflect.New(field.Type().Elem()))
+			}
+		}
+	}
+	setZeros(reflect.ValueOf(&in.SidebarConfig).Elem())
+	in.SidebarConfig.UI.Sidebar.Spaces.Rows = [][]config.SidebarToken{{{Token: "workspace", Bold: &disabled, Dim: &disabled}}}
+	in.SidebarConfig.UI.Sidebar.Agents.RowsByAgent = map[string][][]config.SidebarToken{"codex": {{{Token: "agent", Bold: &disabled, Dim: &disabled}}}}
+	var enc SnapshotEncoder
+	var dec SnapshotDecoder
+	data, err := enc.Encode(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := dec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SelectedWorkspace == nil || *got.SelectedWorkspace != 0 || got.DropIndex == nil || *got.DropIndex != 0 {
+		t.Fatal("first workspace selection/drop position disappeared", got.SelectedWorkspace, got.DropIndex)
+	}
+	if !reflect.DeepEqual(in.SidebarConfig, got.SidebarConfig) {
+		t.Fatal("explicit disabled configuration changed during transport", in.SidebarConfig, got.SidebarConfig)
+	}
+	// A later snapshot must also clear presence, rather than retaining the
+	// previous pointer values through the persistent gob stream.
+	in.SelectedWorkspace, in.DropIndex = nil, nil
+	in.SidebarConfig = config.Config{}
+	data, err = enc.Encode(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = dec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SelectedWorkspace != nil || got.DropIndex != nil || !reflect.DeepEqual(in.SidebarConfig, got.SidebarConfig) {
+		t.Fatal("cleared optional values remained in the next snapshot", got)
+	}
+}
+
 func TestSnapshotRejectsTruncatedTransport(t *testing.T) {
 	var enc SnapshotEncoder
 	data, err := enc.Encode(render.Input{State: model.New("/tmp", 80, 24)})
