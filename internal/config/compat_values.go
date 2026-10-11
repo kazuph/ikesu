@@ -120,7 +120,6 @@ func (c *Config) unsupportedValues() {
 			}
 		}
 	}
-	warn("ui.pane_gaps", c.UI.PaneGaps != nil && !*c.UI.PaneGaps)
 }
 func (c Config) MouseScrollLines() int {
 	if c.UI.MouseScrollLines != nil {

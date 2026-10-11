@@ -78,3 +78,22 @@ func (t *Tab) PaneRects(area Rect) []layout.PaneRect {
 	}
 	return t.Layout.Panes(area)
 }
+
+// PaneRectsForDisplay shares divider borders when pane gaps are disabled.
+// The logical split tree remains unchanged for API layout and navigation.
+func (s *AppState) PaneRectsForDisplay(t *Tab, area Rect) []layout.PaneRect {
+	out := t.PaneRects(area)
+	if s.PaneGaps || !s.PaneBorders || t.Zoomed != 0 {
+		return out
+	}
+	for i := range out {
+		r := &out[i].Rect
+		if r.X+r.W < area.X+area.W {
+			r.W++
+		}
+		if r.Y+r.H < area.Y+area.H {
+			r.H++
+		}
+	}
+	return out
+}

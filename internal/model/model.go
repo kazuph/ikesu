@@ -83,6 +83,7 @@ type AppState struct {
 	ShowTabBar              bool
 	HideTabBarWhenSingleTab bool
 	PaneBorders             bool
+	PaneGaps                bool
 	// PaneLabels holds optional API-assigned pane names (pane.rename).
 	PaneLabels map[PaneID]string
 
@@ -96,7 +97,7 @@ type AppState struct {
 func New(cwd string, cols, rows int) *AppState {
 	s := &AppState{
 		SidebarVisible: true, Cols: cols, Rows: rows,
-		ShowTabBar: true, PaneBorders: true,
+		ShowTabBar: true, PaneBorders: true, PaneGaps: true,
 	}
 	s.newWorkspace(cwd)
 	return s

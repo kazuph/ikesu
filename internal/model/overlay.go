@@ -39,7 +39,7 @@ func (s *AppState) OverlayRect() (layout.Rect, bool) {
 			if tab.ID != o.TabID {
 				continue
 			}
-			for _, pr := range tab.PaneRects(s.PanesArea()) {
+			for _, pr := range s.PaneRectsForDisplay(tab, s.PanesArea()) {
 				if pr.ID == o.TargetPaneID {
 					return pr.Rect, true
 				}
@@ -55,7 +55,7 @@ func (s *AppState) DisplayPaneRects() []layout.PaneRect {
 	if ws == nil || ws.TabRef() == nil {
 		return nil
 	}
-	out := ws.TabRef().PaneRects(s.PanesArea())
+	out := s.PaneRectsForDisplay(ws.TabRef(), s.PanesArea())
 	if s.OverlayVisible() {
 		for i := range out {
 			out[i].IsFocused = out[i].ID == s.Overlay.TargetPaneID

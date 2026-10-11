@@ -480,6 +480,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			}
 		}
 	}
+	joinPaneDividers(f, s)
 }
 
 // paneTitle builds the border title: "ZOOM %<id> <label> <title>" for the

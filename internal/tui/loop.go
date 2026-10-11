@@ -364,7 +364,7 @@ func (a *App) syncLayout() {
 	}
 	area := a.st.PanesArea()
 	if t := ws.TabRef(); t != nil {
-		for _, pr := range t.PaneRects(area) {
+		for _, pr := range a.st.PaneRectsForDisplay(t, area) {
 			w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
 			a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
 		}
@@ -387,7 +387,7 @@ func (a *App) rectForPane(pid int) layout.Rect {
 	}
 	for _, ws := range a.st.Workspaces {
 		for _, t := range ws.Tabs {
-			for _, pr := range t.PaneRects(a.st.PanesArea()) {
+			for _, pr := range a.st.PaneRectsForDisplay(t, a.st.PanesArea()) {
 				if pr.ID == pid {
 					inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
 					inner.W = max(inner.W-gutter, 1)
@@ -420,7 +420,7 @@ func (a *App) innerRect(pid int) layout.Rect {
 	if t == nil {
 		return layout.Rect{W: 80, H: 24}
 	}
-	for _, pr := range t.PaneRects(a.st.PanesArea()) {
+	for _, pr := range a.st.PaneRectsForDisplay(t, a.st.PanesArea()) {
 		if pr.ID == pid {
 			inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
 			inner.W = max(inner.W-gutter, 1)
@@ -446,7 +446,7 @@ func (a *App) paneRect(pid int) (layout.Rect, bool) {
 	if t == nil {
 		return layout.Rect{}, false
 	}
-	for _, pr := range t.PaneRects(a.st.PanesArea()) {
+	for _, pr := range a.st.PaneRectsForDisplay(t, a.st.PanesArea()) {
 		if pr.ID == pid {
 			return pr.Rect, true
 		}

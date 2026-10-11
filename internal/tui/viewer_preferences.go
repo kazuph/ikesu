@@ -7,22 +7,22 @@ import (
 )
 
 type displayState struct {
-	visible, hidden, manual, tabs, hideSingle, borders bool
-	size, min, max, normal, mobile                     int
-	split                                              *float64
-	density, scope                                     string
+	visible, hidden, manual, tabs, hideSingle, borders, gaps bool
+	size, min, max, normal, mobile                           int
+	split                                                    *float64
+	density, scope                                           string
 }
 
 func captureDisplay(s *model.AppState) displayState {
 	return displayState{s.SidebarVisible, s.SidebarCollapsedHidden, s.SidebarManual,
-		s.ShowTabBar, s.HideTabBarWhenSingleTab, s.PaneBorders,
+		s.ShowTabBar, s.HideTabBarWhenSingleTab, s.PaneBorders, s.PaneGaps,
 		s.SidebarSize, s.SidebarMin, s.SidebarMax, s.SidebarDefault, s.MobileWidthThreshold,
 		s.SidebarSectionSplit, s.WorkspaceDensity, s.AgentScope}
 }
 
 func (d displayState) apply(s *model.AppState) {
 	s.SidebarVisible, s.SidebarCollapsedHidden, s.SidebarManual = d.visible, d.hidden, d.manual
-	s.ShowTabBar, s.HideTabBarWhenSingleTab, s.PaneBorders = d.tabs, d.hideSingle, d.borders
+	s.ShowTabBar, s.HideTabBarWhenSingleTab, s.PaneBorders, s.PaneGaps = d.tabs, d.hideSingle, d.borders, d.gaps
 	s.SidebarSize, s.SidebarMin, s.SidebarMax, s.SidebarDefault = d.size, d.min, d.max, d.normal
 	s.MobileWidthThreshold, s.SidebarSectionSplit = d.mobile, d.split
 	s.WorkspaceDensity, s.AgentScope = d.density, d.scope
