@@ -29,7 +29,7 @@ func decisionLines(d *DecisionDialog, width int, now time.Time) []string {
 	record := d.Decision
 	lines := []string{record.Title, fmt.Sprintf("%s · %d/%d", d.Machine, d.Index+1, d.Total)}
 	if record.ExpiresUnixMS != nil {
-		lines = append(lines, fmt.Sprintf("残り %ds", max(int64(0), (*record.ExpiresUnixMS-now.UnixMilli()+999)/1000)))
+		lines = append(lines, fmt.Sprintf("expires in %ds", max(int64(0), (*record.ExpiresUnixMS-now.UnixMilli()+999)/1000)))
 	}
 	if record.Body != nil {
 		lines = append(lines, *record.Body)

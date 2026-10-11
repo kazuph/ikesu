@@ -3,6 +3,7 @@ package render
 import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestDecisionDialogFieldsWrapAndBounds(t *testing.T) {
 		}
 		lines := decisionLines(&d, r.Outer.W-2, time.UnixMilli(0))
 		joined := strings.Join(lines, "\n")
-		for _, want := range []string{"Proceed?", "Mini · 1/2", "残り 120s", "pane: p1", "agent: codex", "cwd: /tmp", "branch: main", "reason: reason", "machine: origin"} {
+		for _, want := range []string{"Proceed?", "Mini · 1/2", "expires in 120s", "pane: p1", "agent: codex", "cwd: /tmp", "branch: main", "reason: reason", "machine: origin"} {
 			if !strings.Contains(joined, want) {
 				t.Fatal(want, joined)
 			}
@@ -34,6 +35,29 @@ func TestDecisionDialogFieldsWrapAndBounds(t *testing.T) {
 		after := ComposeDecision(out, &d, 2, time.UnixMilli(0))
 		if after.VisibleRows == 0 {
 			t.Fatal(after)
+		}
+	}
+}
+
+func TestDecisionFocusedSelectionMatchesExistingMenu(t *testing.T) {
+	menu := Compose(Input{State: model.New("/tmp", 80, 24), Menu: &Menu{X: 4, Y: 4, Sel: 0, Hover: -1, Items: []MenuItem{{Label: "Approve"}, {Label: "Reject"}}}})
+	mr := menu.MenuItemRows[0]
+	want := menu.Frame.Cell(mr.X+1, mr.Y).Style
+	d := DecisionDialog{Decision: api.Decision{Title: "Choose", Options: []api.DecisionOption{{ID: "yes", Label: "Approve"}, {ID: "no", Label: "Reject"}}}, Machine: "Local", Total: 1}
+	for _, focused := range []bool{false, true} {
+		for selected := 0; selected < 2; selected++ {
+			d.Focused, d.Selected = focused, selected
+			out := Compose(Input{State: model.New("/tmp", 80, 24)})
+			regions := ComposeDecision(out, &d, 1, time.UnixMilli(0))
+			for i, r := range regions.Options {
+				for x := r.X; x < r.X+r.W; x++ {
+					style := out.Frame.Cell(x, r.Y).Style
+					equal := reflect.DeepEqual(style, want)
+					if equal != (focused && i == selected) {
+						t.Fatalf("focused=%v selected=%d row=%d x=%d: %+v", focused, selected, i, x, style)
+					}
+				}
+			}
 		}
 	}
 }
