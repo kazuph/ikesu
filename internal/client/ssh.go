@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +22,7 @@ type sshEndpoint struct {
 	done                     chan struct{}
 	onApproval               func(string)
 	mu                       sync.Mutex
-	stderr                   strings.Builder
+	stderr                   sshStderrTail
 	err                      error
 	deadline                 *time.Timer
 	deadlineAt               time.Time
@@ -66,16 +65,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 	s.deadlineAt = time.Now().Add(sshConnectWait)
 	s.deadline = time.AfterFunc(sshConnectWait, s.timeout)
 	go func() {
-		rd := bufio.NewReader(stderr)
-		for {
-			line, err := rd.ReadString('\n')
-			if line != "" {
-				s.noteStderr(line)
-			}
-			if err != nil {
-				break
-			}
-		}
+		s.readStderr(stderr)
 		err := cmd.Wait()
 		s.mu.Lock()
 		s.deadline.Stop()
@@ -87,8 +77,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 }
 
 func approvalURL(line string) string {
-	const prefix = "To authenticate, visit:"
-	_, url, found := strings.Cut(line, prefix)
+	_, url, found := strings.Cut(line, sshApprovalPrefix)
 	if !found {
 		return ""
 	}
@@ -98,7 +87,12 @@ func approvalURL(line string) string {
 func (s *sshEndpoint) noteStderr(line string) {
 	s.mu.Lock()
 	s.stderr.WriteString(line)
-	url := approvalURL(line)
+	s.mu.Unlock()
+	s.noteApprovalURL(approvalURL(line))
+}
+
+func (s *sshEndpoint) noteApprovalURL(url string) {
+	s.mu.Lock()
 	first := url != "" && !s.approval && !s.ready && !s.expired
 	if first {
 		s.approval = true

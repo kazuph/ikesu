@@ -28,8 +28,8 @@ func TestSSHApprovalPreservesFullURLAndNotifiesOncePerConnection(t *testing.T) {
 	if len(opened) != 1 || opened[0] != url || !s.approval {
 		t.Fatal("approval URL was truncated or delivered more than once", len(opened))
 	}
-	if !strings.Contains(s.stderr.String(), url) {
-		t.Fatal("stderr lost the full URL")
+	if got := s.stderr.String(); got != ("To authenticate, visit: " + url + "\n")[len("To authenticate, visit: "+url+"\n")-sshStderrLimit:] {
+		t.Fatal("stderr did not retain its exact bounded tail")
 	}
 	s.connected()
 	s.noteStderr("To authenticate, visit: https://example.invalid/after-ready\n")
