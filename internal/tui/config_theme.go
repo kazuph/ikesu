@@ -66,8 +66,7 @@ func (a *App) StartOnboarding() {
 		value := false
 		a.sidebarConfig.Onboarding = &value
 		a.dialog = nil
-		a.workspaceNavigate = true
-		a.navigateSelected = a.st.Active
+		a.workspaceNavigate = false
 		a.dirty = true
 		if a.configChanged != nil {
 			a.configChanged(a.sidebarConfig)
