@@ -110,6 +110,12 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 		if i == ws.ActiveTab {
 			style = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent}
+			if in.ServerUI {
+				style.Fg = f.Palette.PopupBG
+				if style.Fg == nil {
+					style.Fg = f.Palette.PanelBG
+				}
+			}
 			if t.Name != "" {
 				style.Attrs = uv.AttrBold
 			}

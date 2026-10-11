@@ -18,6 +18,34 @@ func TestCustomThemeAllBaseThemesAndReset(t *testing.T) {
 	}
 }
 
+func TestEndpointActiveTabUsesPanelColorWithTransparentFallback(t *testing.T) {
+	for _, custom := range []map[string]string{
+		{"panel_bg": "transparent"},
+		{"panel_bg": "#123456", "surface_dim": "#654321"},
+		{"panel_bg": "transparent", "surface_dim": "#654321"},
+	} {
+		for _, serverUI := range []bool{false, true} {
+			s := model.New(t.TempDir(), 160, 45)
+			in := Input{State: s, ServerUI: serverUI}
+			in.SidebarConfig.Theme.Custom = custom
+			out := Compose(in)
+			want := out.Frame.Palette.SurfDim
+			if serverUI {
+				want = out.Frame.Palette.PopupBG
+				if want == nil {
+					want = out.Frame.Palette.PanelBG
+				}
+			}
+			for x := out.TabHits[0].X; x < out.TabHits[0].X+out.TabHits[0].W; x++ {
+				cell := out.Frame.Cell(x, s.TabBarArea().Y)
+				if cell.Style.Fg != want || cell.Style.Bg != out.Frame.Palette.Accent {
+					t.Fatalf("server=%v custom=%v cell=%d: %#v", serverUI, custom, x, cell.Style)
+				}
+			}
+		}
+	}
+}
+
 func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 	s := model.New(t.TempDir(), 160, 45)
 	in := Input{State: s, ServerUI: true}
