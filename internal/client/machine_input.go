@@ -137,10 +137,14 @@ func (m *machineClient) input(event input.Event) error {
 					continue
 				}
 				if event.Kind == input.KindMouseWheel {
+					step := 3
+					if active.snapshot.State.WorkspaceDensity == "slim" && active.snapshot.SidebarConfig.UI.Sidebar.Spaces.Rows == nil {
+						step = 2
+					}
 					if event.Mouse.Button == uv.MouseWheelUp {
-						m.sidebar.Scroll--
+						m.sidebar.Scroll -= step
 					} else {
-						m.sidebar.Scroll++
+						m.sidebar.Scroll += step
 					}
 					return m.paint()
 				}

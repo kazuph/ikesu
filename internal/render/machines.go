@@ -76,19 +76,39 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 		}
 	}
 	view.Workspace.Total = len(rows)
-	m.Scroll = max(0, min(m.Scroll, max(0, len(rows)-area.H)))
+	cards, lastCard := 0, 0
+	for _, entry := range rows {
+		if entry.header || entry.row.Kind == RowSection || entry.row.Kind == RowRule {
+			continue
+		}
+		if entry.row.Kind == RowWorkspace {
+			lastCard = 0
+		}
+		cards++
+		lastCard++
+	}
+	m.Scroll = max(0, min(m.Scroll, min(max(0, len(rows)-area.H), max(0, cards-lastCard))))
 	view.Workspace.Offset = m.Scroll
 	f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
 	width := area.W
-	if len(rows) > area.H {
-		width--
-	}
 	dropBoundary := -1
 	dropAtWorkspace := false
-	for i := m.Scroll; i < len(rows) && i-m.Scroll < area.H; i++ {
+	skip, y := m.Scroll, area.Y
+	for i := 0; i < len(rows) && y < area.Y+area.H; i++ {
 		entry := rows[i]
+		heading := entry.header || entry.row.Kind == RowSection || entry.row.Kind == RowRule
+		if !heading && skip > 0 {
+			skip--
+			continue
+		}
+		if entry.row.Kind == RowRule && i+1 < len(rows) && rows[i+1].header && y+3 > area.Y+area.H {
+			break
+		}
+		if !heading && y == area.Y+area.H-1 {
+			y++
+			continue
+		}
 		group := m.Groups[entry.group]
-		y := area.Y + i - m.Scroll
 		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header}
 		if entry.header {
 			style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
@@ -152,6 +172,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 				dropBoundary = y + 1
 			}
 		}
+		y++
 	}
 	if dropBoundary >= area.Y && dropBoundary < area.Y+area.H {
 		for x := area.X; x < area.X+width; x++ {
@@ -162,13 +183,12 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			}
 		}
 	}
-	drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && active.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
 	if active.JobsPanel {
 		return
 	}
 	area = view.Agents.Rect
 	f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
-	y := area.Y
+	y = area.Y
 	for _, group := range m.Groups {
 		if y >= area.Y+area.H {
 			break

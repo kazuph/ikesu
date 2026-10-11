@@ -60,6 +60,51 @@ func TestMachineSidebarKeepsOriginalIDsAndOnlySelectedEndpointAccent(t *testing.
 	}
 }
 
+func TestMachineSidebarScrollRetainsHeadingsAndFullCardWidth(t *testing.T) {
+	local, remote, second := Input{ServerUI: true, State: testState(160, 45)}, Input{ServerUI: true, State: testState(160, 45)}, Input{ServerUI: true, State: testState(160, 45)}
+	for i := 0; i < 5; i++ {
+		remote.State.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	}
+	m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Input: &local}, {ID: "remote", Label: "Mini test", Input: &remote}, {ID: "second", Label: "Second mini", Input: &second}}}
+	for _, scenario := range []struct{ offset, remoteHeader, firstCard, secondHeader int }{{0, 8, 0, -1}, {3, 5, 0, -1}, {12, 5, 3, 17}} {
+		m.Scroll = scenario.offset
+		out := ComposeMachines(local, &m)
+		if out.Frame.Cell(0, 2).Content != "▾" {
+			t.Fatal("Local section heading scrolled out")
+		}
+		found := false
+		for _, hit := range m.Hits {
+			area := SidebarViewForInput(local).Workspace.Rect
+			if hit.Rect.Y >= area.Y+area.H {
+				continue
+			}
+			if !hit.New && hit.Rect.W != 25 {
+				t.Fatal("scrollbar narrowed machine hit area", hit)
+			}
+			if hit.Header && hit.Machine == "remote" && hit.Rect.Y != scenario.remoteHeader {
+				t.Fatal("machine heading moved with cards", hit, scenario)
+			}
+			if hit.Workspace != 0 && hit.Row.Kind == RowWorkspace && hit.Machine == "remote" && !found {
+				if hit.Row.Ws != scenario.firstCard {
+					t.Fatal("wrong first visible card", hit, scenario)
+				}
+				found = true
+			}
+			if hit.Header && hit.Machine == "second" && hit.Rect.Y != scenario.secondHeader {
+				t.Fatal("next group clipped or misplaced", hit, scenario)
+			}
+		}
+		if !found {
+			t.Fatal("remote cards disappeared")
+		}
+		if scenario.secondHeader >= 0 {
+			if out.Frame.Cell(0, scenario.secondHeader).Content != "▾" {
+				t.Fatal("second machine heading missing")
+			}
+		}
+	}
+}
+
 func TestMachineSidebarDropIndicatorUsesRemoteGroupCoordinates(t *testing.T) {
 	localState, remoteState := testState(160, 45), testState(160, 45)
 	remoteState.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
