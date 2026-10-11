@@ -195,6 +195,7 @@ type App struct {
 	postExecHook        func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
 	exitedHook          func(pid int)                                  // pane process exited; server emits pane.exited
 	outHook             func(pid int)                                  // pane output changed; server emits pane.output_changed
+	clipboardHook       func(pid int, data string)
 	worktreeHook        func(string, WorktreeOutcome, bool)
 	configWarning       string
 	configWarningBanner bool
@@ -383,6 +384,8 @@ func (a *App) SetExitedHook(f func(pid int)) { a.exitedHook = f }
 
 // SetOutputHook registers a callback fired when a pane's output changes.
 func (a *App) SetOutputHook(f func(pid int)) { a.outHook = f }
+
+func (a *App) SetClipboardHook(f func(pid int, data string)) { a.clipboardHook = f }
 
 // SetScrollOffset pins a pane's display to offset_from_bottom lines into
 // its scrollback (pane.scroll; 0 follows the live bottom). App loop only.

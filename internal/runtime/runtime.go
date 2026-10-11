@@ -26,24 +26,6 @@ import (
 // ScrollbackSize is the number of lines kept per pane.
 const ScrollbackSize = 1000
 
-// EventKind classifies pane lifecycle notifications.
-type EventKind int
-
-const (
-	// EventExited means the pane's process exited.
-	EventExited EventKind = iota
-	// EventChanged means the pane's screen content changed.
-	EventChanged
-	// EventStatus means the pane's agent status changed.
-	EventStatus
-)
-
-// Event is a runtime→TUI notification.
-type Event struct {
-	Pane int
-	Kind EventKind
-}
-
 // CursorState mirrors the pane's terminal cursor for IME anchoring.
 type CursorState struct {
 	X, Y    int
@@ -75,6 +57,7 @@ type Pane struct {
 	procCwd          string
 	oscTitle         string
 	oscProgress      string
+	clipboard        []string
 	altScreen        bool
 	mouseTracking    bool
 	mouseMotion      bool
@@ -341,10 +324,19 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 		}
 	}
 	p.writeRecorded(chunk)
+	clipboard := p.clipboard
+	p.clipboard = nil
 	p.scrollbarVisible = p.emu.ScrollbackLen() > 0
 	p.mu.Unlock()
 	p.revision.Add(1)
 	p.notifyChanged()
+	for _, data := range clipboard {
+		select {
+		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data}:
+		case <-p.done:
+			return
+		}
+	}
 }
 
 // pumpEmuToPTY drains emulator responses (DA reports, mouse/key encodings,

@@ -63,6 +63,10 @@ func (a *App) onInput(ev input.Event) {
 // onRuntimeEvent handles supervisor notifications.
 func (a *App) onRuntimeEvent(ev runtime.Event) {
 	switch ev.Kind {
+	case runtime.EventClipboard:
+		if a.clipboardHook != nil {
+			a.clipboardHook(ev.Pane, ev.Data)
+		}
 	case runtime.EventChanged:
 		if p := a.sup.Get(ev.Pane); p != nil {
 			p.MarkChangedRead()

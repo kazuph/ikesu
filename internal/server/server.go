@@ -82,6 +82,7 @@ type Server struct {
 	mu      sync.Mutex
 	client  *clientConn // last-interacted client, used for targeted terminal notifications
 	clients map[*clientConn]bool
+	lastUse uint64
 
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
@@ -136,6 +137,7 @@ type clientConn struct {
 	conn      net.Conn
 	wmu       sync.Mutex
 	id        int
+	lastUse   uint64
 	once      sync.Once
 	render    chan clientWrite
 	control   chan clientWrite
@@ -335,6 +337,7 @@ func Run(session, version string) (int, error) {
 	s.app.SetWorktreeHook(s.worktreeEvent)
 	s.app.SetExitedHook(s.onPaneExited)
 	s.app.SetOutputHook(s.onPaneOutput)
+	s.app.SetClipboardHook(s.deliverPaneClipboard)
 	if r, ok := config.ParseNavKey(s.cfg.NavKey()); ok {
 		s.app.SetNavKey(r)
 	} else {
@@ -537,6 +540,8 @@ func (s *Server) attach(conn net.Conn) {
 	}
 	s.clients[c] = true
 	s.client = c
+	s.lastUse++
+	c.lastUse = s.lastUse
 	s.mu.Unlock()
 	if err := c.send(clientMsg{Type: "welcome", Peer: endpoint.Current(), Available: available}); err != nil {
 		s.dropConn(c)
@@ -615,7 +620,14 @@ func (s *Server) attach(conn net.Conn) {
 			}
 		case "input":
 			if data, err := decode64(m.Data); err == nil && len(data) > 0 {
-				s.app.Do(func() { s.mu.Lock(); s.client = c; s.mu.Unlock(); c.viewer.Input(s.app, data) })
+				s.app.Do(func() {
+					s.mu.Lock()
+					s.client = c
+					s.lastUse++
+					c.lastUse = s.lastUse
+					s.mu.Unlock()
+					c.viewer.Input(s.app, data)
+				})
 			}
 		case "resize":
 			s.app.Do(func() { c.viewer.Resize(s.app, m.Cols, m.Rows, m.Xpixel, m.Ypixel) })

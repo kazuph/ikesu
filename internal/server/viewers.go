@@ -2,6 +2,20 @@ package server
 
 import "github.com/kazuph/goterrace/internal/render"
 
+func (s *Server) deliverPaneClipboard(pid int, data string) {
+	var target *clientConn
+	for _, c := range s.displayClients() {
+		if c.viewer != nil && c.viewer.DisplaysPane(s.app, pid) && (target == nil || c.lastUse > target.lastUse) {
+			target = c
+		}
+	}
+	if target != nil {
+		if err := target.send(clientMsg{Type: "output", Data: encode64([]byte(data))}); err != nil {
+			s.dropConn(target)
+		}
+	}
+}
+
 func (s *Server) displayClients() []*clientConn {
 	s.mu.Lock()
 	defer s.mu.Unlock()

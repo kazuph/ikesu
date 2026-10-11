@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"bytes"
+	"encoding/base64"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -51,6 +53,23 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
 	p.spawnArgv = argv
 	p.cursor.Visible = true
+	emu.RegisterOscHandler(52, func(data []byte) bool {
+		// The emulator owns the complete OSC parser; the title observer
+		// intentionally truncates text and cannot carry clipboard payloads.
+		_, encoded, ok := bytes.Cut(data, []byte(";"))
+		if !ok {
+			return false
+		}
+		_, encoded, ok = bytes.Cut(encoded, []byte(";"))
+		if !ok || bytes.Equal(encoded, []byte("?")) {
+			return false
+		}
+		if _, err := base64.StdEncoding.DecodeString(string(encoded)); err != nil {
+			return false
+		}
+		p.clipboard = append(p.clipboard, "\x1b]"+string(data)+"\a")
+		return true
+	})
 
 	emu.SetCallbacks(vt.Callbacks{
 		Title:     p.onOSCTitle,
