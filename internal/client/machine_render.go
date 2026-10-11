@@ -24,7 +24,7 @@ func (m *machineClient) paint() error {
 	m.sidebar.Active = m.active
 	m.sidebar.DropMachine, m.sidebar.DropIndex = "", nil
 	m.sidebar.DropSection = ""
-	if m.drag != nil && m.pending != nil && m.drag.started {
+	if m.drag != nil && m.drag.started {
 		m.sidebar.DropMachine, m.sidebar.DropSection = m.drag.id, m.drag.targetSection
 		if m.drag.drop >= 0 {
 			m.sidebar.DropIndex = &m.drag.drop

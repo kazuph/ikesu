@@ -181,3 +181,27 @@ func TestPendingMachineSectionHighlightsOnlyItsTargetWithoutSelectingRemote(t *t
 		t.Fatal("missing target or composition mutated endpoint navigation")
 	}
 }
+
+func TestMachineInsertionBeforeCardUsesPrecedingBlankRow(t *testing.T) {
+	local, remote := Input{ServerUI: true, State: testState(160, 45)}, Input{ServerUI: true, State: testState(160, 45)}
+	remote.State.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	remote.State.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	drop := 1
+	m := MachineSidebar{Active: "remote", Groups: []MachineGroup{{ID: "local", Input: &local}, {ID: "remote", Input: &remote}}, DropMachine: "remote", DropIndex: &drop}
+	out := ComposeMachines(remote, &m)
+	for _, hit := range m.Hits {
+		if hit.Machine == "remote" && hit.Workspace != 0 && hit.Row.Kind == RowWorkspace && hit.Row.Ws == drop {
+			for x := 0; x < hit.Rect.W; x++ {
+				c := out.Frame.Cell(x, hit.Rect.Y-1)
+				if c.Content != "─" || !reflect.DeepEqual(c.Style.Fg, out.Frame.Palette.Accent) {
+					t.Fatal("insertion line is not on preceding card gap", x, hit, c)
+				}
+			}
+			if out.Frame.Cell(0, hit.Rect.Y).Content == "─" {
+				t.Fatal("insertion line erased target workspace name")
+			}
+			return
+		}
+	}
+	t.Fatal("target workspace missing")
+}

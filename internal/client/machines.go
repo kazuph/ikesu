@@ -22,6 +22,7 @@ type managedEndpoint struct {
 	profile                  machine.Profile
 	connection               *endpointConnection
 	cancel                   context.CancelFunc
+	ctx                      context.Context
 	attempt                  uint64
 	retry                    retryPolicy
 	status, reason, approval string

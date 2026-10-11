@@ -1,6 +1,8 @@
 package client
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +15,8 @@ import (
 )
 
 // Relay is the private SSH transport entry point. It only dials an already
-// running server and forwards the endpoint protocol without interpreting it.
+// running server. Sidebar mutations use the existing public API envelope;
+// display connections retain their negotiated endpoint stream.
 func Relay(session string, in, out *os.File) error {
 	if !api.ValidSessionName(session) {
 		return fmt.Errorf("invalid endpoint session name")
@@ -36,9 +39,40 @@ func Relay(session string, in, out *os.File) error {
 	}
 	input := os.NewFile(uintptr(fd), "endpoint-stdin")
 	defer input.Close()
+	reader := bufio.NewReader(input)
+	first, err := reader.ReadBytes('\n')
+	if err != nil {
+		return err
+	}
+	var request api.Request
+	if err := json.Unmarshal(first, &request); err != nil {
+		return err
+	}
+	if request.Method != "" {
+		if request.Method != "workspace.move" && request.Method != api.MethodWorkspaceSetSection {
+			return fmt.Errorf("unsupported sidebar API method: %s", request.Method)
+		}
+		conn.Close()
+		apiConn, err := net.Dial("unix", api.APISocketPath(api.SessionDir(session)))
+		if err != nil {
+			return err
+		}
+		defer apiConn.Close()
+		if _, err := apiConn.Write(first); err != nil {
+			return err
+		}
+		response, err := api.ReadResponse(bufio.NewReader(apiConn))
+		if err != nil {
+			return err
+		}
+		return api.WriteResponse(out, *response)
+	}
+	if _, err := conn.Write(first); err != nil {
+		return err
+	}
 	inputDone := make(chan error, 1)
 	go func() {
-		_, err := io.Copy(conn, input)
+		_, err := io.Copy(conn, reader)
 		if half, ok := conn.(interface{ CloseWrite() error }); ok {
 			_ = half.CloseWrite()
 		}

@@ -38,6 +38,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	e.cancel = cancel
+	e.ctx = ctx
 	settings := *m.settings
 	size := m.size
 	profile := e.profile

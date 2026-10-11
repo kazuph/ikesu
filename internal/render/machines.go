@@ -167,6 +167,12 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			drop := *dropIndex
 			if entry.row.Kind == RowWorkspace && entry.row.Ws == drop {
 				dropBoundary = y
+				if group.ID == m.DropMachine && m.DropSection == "" && len(m.Hits) > 1 {
+					previous := m.Hits[len(m.Hits)-2]
+					if previous.Machine == group.ID && previous.Row.Kind == RowCardBlank && previous.Rect.Y == y-1 {
+						dropBoundary = previous.Rect.Y
+					}
+				}
 				dropAtWorkspace = true
 			} else if !dropAtWorkspace && (entry.row.Kind == RowWorkspace || entry.row.Kind == RowGit || entry.row.Kind == RowCardBlank) && entry.row.Ws == drop-1 {
 				dropBoundary = y + 1

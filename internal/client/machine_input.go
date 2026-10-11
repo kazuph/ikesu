@@ -168,21 +168,18 @@ func (m *machineClient) input(event input.Event) error {
 					m.suppressRelease = true
 					return m.paint()
 				}
-				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick {
+				if hit.Workspace != 0 && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 					m.suppressRelease = true
-					if event.Mouse.Button == uv.MouseLeft {
-						data, err := m.sidebarBytes(hit, event)
-						if err != nil {
-							return err
+					e := m.endpoints[hit.Machine]
+					selected := hit.Machine == m.active && e.snapshot.State.ActiveWorkspace().ID == hit.Workspace
+					m.drag = &machineDrag{id: hit.Machine, workspace: hit.Workspace, source: hit.Row.Ws, pressHit: hit, pressEvent: event, selected: selected, x: event.Mouse.X, y: event.Mouse.Y, drop: -1, section: e.snapshot.State.Workspaces[hit.Row.Ws].SidebarSection()}
+					if !selected {
+						m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
+						if e.connection == nil && hit.Machine == "local" {
+							m.start(hit.Machine, nil)
 						}
-						section := m.endpoints[hit.Machine].snapshot.State.Workspaces[hit.Row.Ws].SidebarSection()
-						m.drag = &machineDrag{id: hit.Machine, press: data, x: event.Mouse.X, y: event.Mouse.Y, drop: -1, section: section}
+						m.requestPending()
 					}
-					m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
-					if e := m.endpoints[hit.Machine]; e.connection == nil && hit.Machine == "local" {
-						m.start(hit.Machine, nil)
-					}
-					m.requestPending()
 					return nil
 				}
 				return m.sidebarInput(hit, event)
