@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/kazuph/goterrace/internal/api"
 )
 
@@ -21,9 +23,22 @@ func Relay(session string, in, out *os.File) error {
 		return fmt.Errorf("remote endpoint server unavailable: %w", err)
 	}
 	defer conn.Close()
+	// Inherited stdin may lack Go's poller. An owned pollable duplicate
+	// lets server EOF interrupt the input read without waiting for SSH EOF.
+	fd, err := unix.Dup(int(in.Fd()))
+	if err != nil {
+		return err
+	}
+	unix.CloseOnExec(fd)
+	if err := unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return err
+	}
+	input := os.NewFile(uintptr(fd), "endpoint-stdin")
+	defer input.Close()
 	inputDone := make(chan error, 1)
 	go func() {
-		_, err := io.Copy(conn, in)
+		_, err := io.Copy(conn, input)
 		if half, ok := conn.(interface{ CloseWrite() error }); ok {
 			_ = half.CloseWrite()
 		}
@@ -32,6 +47,7 @@ func Relay(session string, in, out *os.File) error {
 	_, outputErr := io.Copy(out, conn)
 	// This process owns stdin exclusively. Closing it releases a blocked read
 	// when the server closes before the SSH client supplies EOF.
+	_ = input.Close()
 	_ = in.Close()
 	_ = conn.Close()
 	inputErr := <-inputDone

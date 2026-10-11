@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -371,7 +372,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 
 // writer serializes client→server messages.
 type writer struct {
-	conn      net.Conn
+	conn      io.Writer
 	mu        sync.Mutex
 	available int
 	methods   []string
