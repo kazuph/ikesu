@@ -10,6 +10,7 @@ import (
 )
 
 func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
+	t.Setenv("GTX_DISABLE_SOUND", "")
 	c, err := config.Decode([]byte("[ui.sound]\npath='all.mp3'\ndone_path='done.mp3'\nrequest_path='request.mp3'\n[ui.sound.agents]\ndroid='on'\nclaude='off'\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +45,7 @@ func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
 		t.Fatal(calls, err)
 	}
 }
-func TestSoundPathsAgentOverridesAndUnsupportedDefault(t *testing.T) {
+func TestSoundPathsAgentOverridesAndDefaults(t *testing.T) {
 	c, err := config.Decode([]byte("[ui.sound]\npath='all.mp3'\ndone_path='done.mp3'\n[ui.sound.agents]\nclaude='off'\ndroid='on'\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -60,9 +61,5 @@ func TestSoundPathsAgentOverridesAndUnsupportedDefault(t *testing.T) {
 	}
 	if _, on := SoundPath(config.Config{}, "droid", "finished"); on {
 		t.Fatal("droid default must be muted")
-	}
-	err = (Desktop{}).Deliver(endpoint.Notification{Kind: "finished"}, config.Config{}, "local", "")
-	if err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatal(err)
 	}
 }

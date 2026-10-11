@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Desktop dependencies are replaceable so verification never touches the
@@ -20,6 +21,9 @@ type Desktop struct {
 	Executable       string
 	TerminalBundleID string
 	ConfigPath       string
+	CacheDir         func() (string, error)
+	Warn             func(error)
+	soundWarning     *sync.Once
 }
 
 func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, machineID string) error {
@@ -75,7 +79,12 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 		return nil
 	}
 	if path == "" {
-		return fmt.Errorf("unsupported: default %s sound asset is not available", n.Kind)
+		var err error
+		path, err = d.defaultSound(n.Kind)
+		if err != nil {
+			d.warnSound(fmt.Errorf("sound cache: %w", err))
+			return nil
+		}
 	}
 	if !filepath.IsAbs(path) {
 		base := d.ConfigPath
