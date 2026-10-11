@@ -17,17 +17,20 @@ type Viewer struct {
 	cols, rows int
 	pendingAt  time.Time
 	focusUntil time.Time
+	focusEpoch uint64
 	heldKeys   []input.Event
+	display    displayState
 }
 
 type viewSelection struct {
 	workspace  int
 	tabs       map[int]int
 	cols, rows int
+	display    displayState
 }
 
 func (a *App) selection() viewSelection {
-	s := viewSelection{tabs: map[int]int{}, cols: a.st.Cols, rows: a.st.Rows}
+	s := viewSelection{tabs: map[int]int{}, cols: a.st.Cols, rows: a.st.Rows, display: captureDisplay(a.st)}
 	if ws := a.st.ActiveWorkspace(); ws != nil {
 		s.workspace = ws.ID
 	}
@@ -41,6 +44,7 @@ func (a *App) selection() viewSelection {
 
 func (a *App) selectView(s viewSelection) {
 	a.st.Cols, a.st.Rows = s.cols, s.rows
+	s.display.apply(a.st)
 	a.st.Active = 0
 	for i, ws := range a.st.Workspaces {
 		if ws.ID == s.workspace {
@@ -70,7 +74,7 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.menu, ui.settings, ui.help = nil, nil, nil
 	ui.hostPixelMouse, ui.hostPixelSupported = false, false
 	s := a.selection()
-	v := &Viewer{app: &ui, workspace: s.workspace, tabs: s.tabs, cols: cols, rows: rows}
+	v := &Viewer{app: &ui, workspace: s.workspace, tabs: s.tabs, cols: cols, rows: rows, display: s.display}
 	ui.viewerOwner, ui.viewerContext = a, v
 	return v
 }
@@ -90,10 +94,11 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 	v.app.sessionCwds = a.sessionCwds
 	v.app.editorFiles = a.editorFiles
 	v.app.spin = a.spin
-	a.selectView(viewSelection{v.workspace, v.tabs, v.cols, v.rows})
+	a.selectView(viewSelection{v.workspace, v.tabs, v.cols, v.rows, v.display})
 	defer func() {
 		s := a.selection()
 		v.workspace, v.tabs, v.cols, v.rows = s.workspace, s.tabs, s.cols, s.rows
+		v.display = s.display
 		a.selectView(previous)
 		a.viewerActive = wasViewer
 		a.reported, a.sessions = v.app.reported, v.app.sessions

@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/machine"
@@ -219,6 +220,8 @@ type App struct {
 	settings                                 *render.Settings
 	settingsSection                          int
 	configChanged                            func(config.Config)
+	preferenceSave                           func(endpoint.ViewPreferences) error
+	configEdit                               func(config.Edit, func(config.Config, error))
 	dialog                                   *uiDialog
 	sep                                      *sepDrag
 	sel                                      *selState

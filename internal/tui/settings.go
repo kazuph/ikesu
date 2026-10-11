@@ -47,38 +47,41 @@ func (a *App) settingsCount() int {
 }
 func (a *App) settingsApply() {
 	s := a.settings
-	var err error
+	var edit config.Edit
 	switch s.Section {
 	case 0:
-		err = config.SaveTheme(render.ThemeNames[s.Selected])
+		edit = config.Edit{Kind: "theme", Value: render.ThemeNames[s.Selected]}
 	case 1:
-		err = config.SaveSound(s.Selected == 0)
+		edit = config.Edit{Kind: "sound", Enabled: s.Selected == 0}
 	case 2:
-		err = config.SaveToast(config.ToastDelivery(render.ToastNames[s.Selected]))
+		edit = config.Edit{Kind: "toast", Value: render.ToastNames[s.Selected]}
 	}
-	if err != nil {
-		a.worktreeError(err)
-		return
-	}
-	c, err := config.Load()
-	if err != nil {
-		a.worktreeError(err)
-		return
-	}
-	panePalette := a.panePalette
-	a.SetSidebarConfig(c, false)
-	if a.serverUI {
-		// Endpoint pane chrome changes on config reload, not settings apply.
-		a.panePalette = panePalette
-	}
-	if a.configChanged != nil {
-		a.configChanged(c)
-	}
-	s.Theme = c.ThemeName()
-	s.Sound = c.SoundEnabled()
-	s.Toast = string(c.ToastDelivery())
-	a.settings = nil
-	a.dirty = true
+	a.editConfiguration(edit, func(c config.Config, err error) {
+		if err != nil {
+			a.worktreeError(err)
+			return
+		}
+		panePalette := a.panePalette
+		if a.configEdit != nil {
+			a.setSidebarConfig(c, false)
+		} else {
+			a.SetSidebarConfig(c, false)
+		}
+		if a.serverUI {
+			// Endpoint pane chrome changes on config reload, not settings apply.
+			a.panePalette = panePalette
+		}
+		if a.configChanged != nil {
+			a.configChanged(c)
+		}
+		s.Theme = c.ThemeName()
+		s.Sound = c.SoundEnabled()
+		s.Toast = string(c.ToastDelivery())
+		if a.settings == s {
+			a.settings = nil
+		}
+		a.dirty = true
+	})
 }
 func (a *App) settingsKey(k uv.Key) {
 	s := a.settings

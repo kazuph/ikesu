@@ -259,6 +259,9 @@ func (a *App) exec(cmd model.Command) {
 	if metadataOrder != nil {
 		a.reindexWorkspaceMetadata(metadataOrder)
 	}
+	if _, toggled := cmd.(model.CmdToggleSidebar); toggled {
+		a.saveViewPreferences()
+	}
 	a.popupVisibilityChanged(popupWasVisible, previousPopup)
 	a.recordFocus(beforeFocus, a.focusedPane())
 	if _, selecting := cmd.(model.CmdSelectWorkspace); selecting && a.serverUI {

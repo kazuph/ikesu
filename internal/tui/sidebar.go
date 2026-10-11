@@ -9,8 +9,12 @@ import (
 )
 
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
-	a.sidebarConfig = c
 	a.sup.SetShell(c.Terminal.DefaultShell, c.Terminal.ShellMode)
+	a.setSidebarConfig(c, startup)
+}
+
+func (a *App) setSidebarConfig(c config.Config, startup bool) {
+	a.sidebarConfig = c
 	a.st.SidebarCollapsedHidden = c.UI.SidebarCollapsedMode == "hidden"
 	a.setStartupConfigWarning(c.Warnings)
 	a.BeginHostTheme()
@@ -54,7 +58,10 @@ func (a *App) setStartupConfigWarning(warnings []string) {
 	a.SetConfigWarning(message)
 	a.configWarningBanner = message != ""
 }
-func (a *App) sidebarPreset(p string) { a.exec(model.CmdSidebarPreset{Preset: p}) }
+func (a *App) sidebarPreset(p string) {
+	a.exec(model.CmdSidebarPreset{Preset: p})
+	a.saveViewPreferences()
+}
 func (a *App) cycleWorkspace(dir int) {
 	order := a.st.VisibleWorkspaceOrder()
 	if len(order) == 0 {
@@ -131,29 +138,31 @@ func (a *App) toggleSidebarSetting(density bool) {
 			value = "full"
 		}
 	}
-	var err error
+	var edit config.Edit
 	if density {
-		err = config.SaveSidebarSetting(key, value)
+		edit = config.Edit{Kind: "sidebar", Key: key, Value: value}
 	} else {
 		sort := "spaces"
 		if value == "sort" {
 			sort = "priority"
 		}
-		err = config.SaveAgentSort(sort)
+		edit = config.Edit{Kind: "agent_sort", Value: sort}
 	}
-	if err != nil {
-		a.worktreeError(err)
-		return
-	}
-	if density {
-		a.st.WorkspaceDensity = value
-	} else {
-		a.st.AgentScope = value
-		a.agentScroll = 0
-	}
-	a.sidebarScroll = 0
-	a.changed()
-	a.dirty = true
+	a.editConfiguration(edit, func(_ config.Config, err error) {
+		if err != nil {
+			a.worktreeError(err)
+			return
+		}
+		if density {
+			a.st.WorkspaceDensity = value
+		} else {
+			a.st.AgentScope = value
+			a.agentScroll = 0
+		}
+		a.sidebarScroll = 0
+		a.changed()
+		a.dirty = true
+	})
 }
 func (a *App) duplicateDialog(index int) {
 	if _, err := a.DuplicateWorkspace(index, true); err != nil {
@@ -184,28 +193,33 @@ func (a *App) unsupportedSidebar(feature string) {
 	a.worktreeError(fmt.Errorf("unsupported: %s", feature))
 }
 func (a *App) reloadSidebarConfig() {
-	c, err := config.Load()
-	if err != nil {
-		a.SetConfigWarning(err.Error())
-		a.worktreeError(err)
-		return
-	}
-	a.SetConfigWarning("")
-	a.SetSidebarConfig(c, false)
-	if a.configChanged != nil {
-		a.configChanged(c)
-	}
-	a.SetUIFlags(c.ShowTabBar(), c.HideTabBarWhenSingleTab(), c.PaneBorders())
-	a.SetKeybinds(c.CopyKeys(), c.SplitVerticalKeys(), c.SplitHorizontalKeys())
-	a.SetPaneKeybinds(c)
-	a.syncLayout()
-	a.changed()
-	if a.serverUI && c.Warning() == "" {
-		a.SetConfigWarning("reloaded config")
-		a.configWarningBanner = true
-	} else {
-		a.ShowToast("reloaded config", "using config.toml", "info", -1)
-	}
+	a.editConfiguration(config.Edit{Kind: "reload"}, func(c config.Config, err error) {
+		if err != nil {
+			a.SetConfigWarning(err.Error())
+			a.worktreeError(err)
+			return
+		}
+		a.SetConfigWarning("")
+		if a.configEdit != nil {
+			a.setSidebarConfig(c, false)
+		} else {
+			a.SetSidebarConfig(c, false)
+		}
+		if a.configChanged != nil {
+			a.configChanged(c)
+		}
+		a.SetUIFlags(c.ShowTabBar(), c.HideTabBarWhenSingleTab(), c.PaneBorders())
+		a.SetKeybinds(c.CopyKeys(), c.SplitVerticalKeys(), c.SplitHorizontalKeys())
+		a.SetPaneKeybinds(c)
+		a.syncLayout()
+		a.changed()
+		if a.serverUI && c.Warning() == "" {
+			a.SetConfigWarning("reloaded config")
+			a.configWarningBanner = true
+		} else {
+			a.ShowToast("reloaded config", "using config.toml", "info", -1)
+		}
+	})
 }
 func (a *App) SetWorkspaceTokenSource(source func(int) map[string]string) {
 	a.workspaceTokenSource = source

@@ -16,7 +16,7 @@ type Peer struct {
 
 func Current() Peer {
 	return Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"input", "resize", "rendered"}}
+		Methods: []string{"input", "resize", "rendered", "preferences_error", "config_result"}}
 }
 
 func Negotiate(client, server Peer) (int, error) {

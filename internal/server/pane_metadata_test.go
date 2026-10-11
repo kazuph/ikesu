@@ -142,7 +142,7 @@ func TestG2PaneMetadataTitlePreservesRealGitBranch(t *testing.T) {
 				out := render.Compose(in)
 				m.Type, m.Data = "output", encode64(c.frames.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
 				out.Frame = nil
-				if err := json.NewEncoder(c.conn).Encode(clientMsg{Type: "rendered", Rendered: out}); err != nil {
+				if err := json.NewEncoder(c.conn).Encode(clientMsg{Type: "rendered", Rendered: out, FocusEpoch: m.FocusEpoch}); err != nil {
 					readerDone <- err
 					return
 				}

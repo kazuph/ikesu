@@ -60,7 +60,11 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 			}
 		}
 		wire.Grids[id] = delta
-		e.grids[id] = cloneGrid(grid)
+		cached, err := applyGridDelta(old, delta, false)
+		if err != nil {
+			return nil, err
+		}
+		e.grids[id] = cached
 	}
 	for id := range e.grids {
 		if _, ok := in.Panes[id]; !ok {
@@ -92,38 +96,16 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 		d.grids = map[int][][]uv.Cell{}
 	}
 	for id, delta := range wire.Grids {
-		grid := d.grids[id]
-		if !delta.Present {
-			grid = nil
-		} else {
-			if grid == nil || len(grid) != len(delta.Widths) {
-				next := make([][]uv.Cell, len(delta.Widths))
-				copy(next, grid)
-				grid = next
-			}
-			for y, width := range delta.Widths {
-				if width < 0 {
-					return render.Input{}, fmt.Errorf("invalid pane row width")
-				}
-				if len(grid[y]) != width {
-					next := make([]uv.Cell, width)
-					copy(next, grid[y])
-					grid[y] = next
-				}
-			}
-		}
-		for _, change := range delta.Cells {
-			if change.Y < 0 || change.Y >= len(grid) || change.X < 0 || change.X >= len(grid[change.Y]) {
-				return render.Input{}, fmt.Errorf("invalid pane cell position")
-			}
-			grid[change.Y][change.X] = change.Cell
+		grid, err := applyGridDelta(d.grids[id], delta, true)
+		if err != nil {
+			return render.Input{}, err
 		}
 		pane := wire.Input.Panes[id]
 		if pane == nil {
 			return render.Input{}, fmt.Errorf("pane cells without pane state")
 		}
 		d.grids[id] = grid
-		pane.Grid = cloneGrid(grid)
+		pane.Grid = grid
 	}
 	for id := range d.grids {
 		if _, ok := wire.Input.Panes[id]; !ok {
@@ -149,13 +131,41 @@ type cellDelta struct {
 	Cell uv.Cell
 }
 
-func cloneGrid(grid [][]uv.Cell) [][]uv.Cell {
-	if grid == nil {
-		return nil
+// Received snapshots stay immutable: only changed rows are copied. The
+// encoder's private comparison cache can update those cells in place.
+func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.Cell, error) {
+	if !delta.Present {
+		if len(delta.Cells) != 0 {
+			return nil, fmt.Errorf("cells in absent pane grid")
+		}
+		return nil, nil
 	}
-	out := make([][]uv.Cell, len(grid))
-	for y, row := range grid {
-		out[y] = append([]uv.Cell(nil), row...)
+	if immutable || grid == nil || len(grid) != len(delta.Widths) {
+		next := make([][]uv.Cell, len(delta.Widths))
+		copy(next, grid)
+		grid = next
 	}
-	return out
+	owned := make([]bool, len(grid))
+	for y, width := range delta.Widths {
+		if width < 0 {
+			return nil, fmt.Errorf("invalid pane row width")
+		}
+		if len(grid[y]) != width {
+			next := make([]uv.Cell, width)
+			copy(next, grid[y])
+			grid[y] = next
+			owned[y] = true
+		}
+	}
+	for _, change := range delta.Cells {
+		if change.Y < 0 || change.Y >= len(grid) || change.X < 0 || change.X >= len(grid[change.Y]) {
+			return nil, fmt.Errorf("invalid pane cell position")
+		}
+		if immutable && !owned[change.Y] {
+			grid[change.Y] = append([]uv.Cell(nil), grid[change.Y]...)
+			owned[change.Y] = true
+		}
+		grid[change.Y][change.X] = change.Cell
+	}
+	return grid, nil
 }

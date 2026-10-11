@@ -35,7 +35,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	if !s.SidebarVisible {
 		return false
 	}
-	if m.X == s.SidebarArea().W-1 && m.Button == uv.MouseLeft {
+	if (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
 		now := time.Now()
 		if !a.dividerAt.IsZero() && now.Sub(a.dividerAt) <= 350*time.Millisecond {
 			a.sidebarPreset("normal")
@@ -173,9 +173,11 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 		a.sidebarGesture = nil
 		if g.panelDivider {
 			a.changed()
+			a.saveViewPreferences()
 			return
 		}
 		if g.divider {
+			a.saveViewPreferences()
 			return
 		}
 		if g.moved {

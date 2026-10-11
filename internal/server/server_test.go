@@ -80,7 +80,7 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 				out := render.Compose(in)
 				m.Type, m.Data = "output", encode64(c.frames.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
 				out.Frame = nil
-				c.send(t, clientMsg{Type: "rendered", Rendered: out})
+				c.send(t, clientMsg{Type: "rendered", Rendered: out, FocusEpoch: m.FocusEpoch})
 			}
 			got = append(got, m)
 			if pred(m) {

@@ -40,7 +40,14 @@ func TestMain(m *testing.M) {
 	if err := cmd.Run(); err != nil {
 		panic("build gtx: " + err.Error())
 	}
-	os.Exit(teststate.Run(m.Run))
+	code := teststate.Run(m.Run)
+	if err := os.RemoveAll(dir); err != nil {
+		fmt.Fprintln(os.Stderr, "remove e2e build directory:", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+	os.Exit(code)
 }
 
 func repoRoot() string {

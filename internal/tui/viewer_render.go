@@ -8,6 +8,7 @@ import (
 
 func (v *Viewer) onInput(ui *App, event input.Event) {
 	if event.Kind == input.KindFocus {
+		v.focusEpoch++
 		v.focusUntil = time.Now().Add(time.Second) // SPEC G11: at most one second
 		ui.syncLayout()
 	}
@@ -33,9 +34,19 @@ func (v *Viewer) SetSnapshotSink(sink func(render.Input) error) {
 
 func (v *Viewer) AwaitingFocusRender() bool { return !v.focusUntil.IsZero() }
 
+func (v *Viewer) FocusEpoch() uint64 {
+	if v.AwaitingFocusRender() {
+		return v.focusEpoch
+	}
+	return 0
+}
+
 // Rendered uses the client-composed hit regions for the next input event.
-// The client sends this before input on the same ordered connection.
-func (v *Viewer) Rendered(a *App, out render.Output) {
+// A frame drawn before the latest focus return cannot release held keys.
+func (v *Viewer) Rendered(a *App, out render.Output, focusEpoch uint64) {
+	if v.AwaitingFocusRender() && focusEpoch != v.focusEpoch {
+		return
+	}
 	v.with(a, func(ui *App) {
 		wsID, tabID := 0, 0
 		if ws := ui.st.ActiveWorkspace(); ws != nil {

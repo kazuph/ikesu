@@ -103,6 +103,10 @@ func (a *App) click(m uv.Mouse) {
 		a.tabBarClick(m)
 		return
 	}
+	if area := a.st.PanesArea(); a.st.SidebarVisible && m.X == area.X && m.Y >= area.Y && m.Y < area.Y+area.H && m.Button == uv.MouseLeft {
+		a.sidebarPress(m)
+		return
+	}
 	if pointIn(m.X, m.Y, a.st.SidebarArea()) {
 		a.sidebarClick(m)
 		return

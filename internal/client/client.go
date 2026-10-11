@@ -24,6 +24,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
@@ -40,16 +41,22 @@ const drainMs = 100 * time.Millisecond
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
 	endpoint.Peer
-	Available  int            `json:"available_generation,omitempty"`
-	Type       string         `json:"type"`
-	Data       string         `json:"data,omitempty"`
-	Cols       int            `json:"cols,omitempty"`
-	Rows       int            `json:"rows,omitempty"`
-	Xpixel     int            `json:"xpixel,omitempty"`
-	Ypixel     int            `json:"ypixel,omitempty"`
-	Reason     string         `json:"reason,omitempty"`
-	Rendered   *render.Output `json:"rendered,omitempty"`
-	RequestAck bool           `json:"request_ack,omitempty"`
+	Available     int                       `json:"available_generation,omitempty"`
+	Type          string                    `json:"type"`
+	Data          string                    `json:"data,omitempty"`
+	Cols          int                       `json:"cols,omitempty"`
+	Rows          int                       `json:"rows,omitempty"`
+	Xpixel        int                       `json:"xpixel,omitempty"`
+	Ypixel        int                       `json:"ypixel,omitempty"`
+	Reason        string                    `json:"reason,omitempty"`
+	Rendered      *render.Output            `json:"rendered,omitempty"`
+	RequestAck    bool                      `json:"request_ack,omitempty"`
+	FocusEpoch    uint64                    `json:"focus_epoch,omitempty"`
+	Config        *config.Config            `json:"config,omitempty"`
+	ConfigWarning string                    `json:"config_warning,omitempty"`
+	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
+	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
+	ConfigID      uint64                    `json:"config_id,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it
@@ -57,6 +64,10 @@ type msg struct {
 func Attach(session string, in *os.File, out *os.File) (int, error) {
 	if NestedBlocked() {
 		return 1, errors.New("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)")
+	}
+	settings, err := loadLocalSettings(session)
+	if err != nil {
+		return 1, err
 	}
 
 	dir := api.SessionDir(session)
@@ -107,7 +118,7 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	reconnecting := false
 	var deadline time.Time
 	for {
-		res := pump(conn, in, out, leave)
+		res := pump(conn, in, out, leave, settings)
 		conn.Close()
 		if res == pumpRejected {
 			return 1, nil
@@ -156,7 +167,7 @@ const (
 
 // pump runs one attach session over conn: hello → input/resize forwarding
 // → output rendering.
-func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
+func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings) pumpResult {
 	ws, err := tui.GetWinsize(in)
 	if err != nil {
 		leave()
@@ -164,7 +175,7 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 		return pumpDone
 	}
 	w := &writer{conn: conn}
-	if err := w.send(msg{Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel}); err != nil {
+	if err := w.send(msg{Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
 		leave()
 		fmt.Fprintf(out, "gtx: attach: %v\n", err)
 		return pumpDone
@@ -257,6 +268,30 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 			continue
 		}
 		switch m.Type {
+		case "config_edit":
+			if m.ConfigEdit == nil {
+				return pumpRejected
+			}
+			cfg, err := m.ConfigEdit.Apply()
+			result := msg{Type: "config_result", ConfigID: m.ConfigID}
+			if err != nil {
+				result.Reason = err.Error()
+			} else {
+				settings.config = &cfg
+				result.Config = &cfg
+			}
+			if err := w.send(result); err != nil {
+				return pumpClosed
+			}
+		case "preferences":
+			if m.Preferences == nil {
+				continue
+			}
+			if err := settings.save(*m.Preferences); err != nil {
+				if err := w.send(msg{Type: "preferences_error", Reason: "client preferences: " + err.Error()}); err != nil {
+					return pumpClosed
+				}
+			}
 		case "snapshot":
 			data, err := base64.StdEncoding.DecodeString(m.Data)
 			if err != nil {
@@ -280,7 +315,7 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 			_, _ = out.Write(frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible))
 			composed.Frame = nil
 			if m.RequestAck || !reflect.DeepEqual(lastRegions, composed) {
-				if err := w.send(msg{Type: "rendered", Rendered: composed}); err != nil {
+				if err := w.send(msg{Type: "rendered", Rendered: composed, FocusEpoch: m.FocusEpoch}); err != nil {
 					return pumpClosed
 				}
 				lastRegions = composed

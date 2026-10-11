@@ -39,16 +39,22 @@ import (
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
 	endpoint.Peer
-	Available  int            `json:"available_generation,omitempty"`
-	Type       string         `json:"type"`
-	Data       string         `json:"data,omitempty"`
-	Cols       int            `json:"cols,omitempty"`
-	Rows       int            `json:"rows,omitempty"`
-	Xpixel     int            `json:"xpixel,omitempty"`
-	Ypixel     int            `json:"ypixel,omitempty"`
-	Reason     string         `json:"reason,omitempty"`
-	Rendered   *render.Output `json:"rendered,omitempty"`
-	RequestAck bool           `json:"request_ack,omitempty"`
+	Available     int                       `json:"available_generation,omitempty"`
+	Type          string                    `json:"type"`
+	Data          string                    `json:"data,omitempty"`
+	Cols          int                       `json:"cols,omitempty"`
+	Rows          int                       `json:"rows,omitempty"`
+	Xpixel        int                       `json:"xpixel,omitempty"`
+	Ypixel        int                       `json:"ypixel,omitempty"`
+	Reason        string                    `json:"reason,omitempty"`
+	Rendered      *render.Output            `json:"rendered,omitempty"`
+	RequestAck    bool                      `json:"request_ack,omitempty"`
+	FocusEpoch    uint64                    `json:"focus_epoch,omitempty"`
+	Config        *config.Config            `json:"config,omitempty"`
+	ConfigWarning string                    `json:"config_warning,omitempty"`
+	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
+	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
+	ConfigID      uint64                    `json:"config_id,omitempty"`
 }
 
 // Server is one running session.
@@ -536,8 +542,28 @@ func (s *Server) attach(conn net.Conn) {
 		s.dropConn(c)
 		return
 	}
+	var configID uint64
+	pendingConfig := map[uint64]func(config.Config, error){}
 	s.app.Do(func() {
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
+		c.viewer.Configure(s.app, hello.Config, hello.Preferences, func(preferences endpoint.ViewPreferences) error {
+			return c.send(clientMsg{Type: "preferences", Preferences: &preferences})
+		})
+		if hello.ConfigWarning != "" {
+			c.viewer.ConfigError(s.app, hello.ConfigWarning)
+		}
+		c.viewer.SetConfigEditor(func(edit config.Edit, done func(config.Config, error)) {
+			if !endpoint.Allows(available, 1, hello.Methods, "config_result") {
+				done(config.Config{}, fmt.Errorf("endpoint_action_unsupported: config_result"))
+				return
+			}
+			configID++
+			pendingConfig[configID] = done
+			if err := c.send(clientMsg{Type: "config_edit", ConfigID: configID, ConfigEdit: &edit}); err != nil {
+				delete(pendingConfig, configID)
+				done(config.Config{}, err)
+			}
+		})
 		var snapshots endpoint.SnapshotEncoder
 		c.viewer.SetSnapshotSink(func(in render.Input) error {
 			data, err := snapshots.Encode(in)
@@ -546,7 +572,7 @@ func (s *Server) attach(conn net.Conn) {
 				s.dropConn(c)
 				return err
 			}
-			return c.send(clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender()})
+			return c.send(clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender(), FocusEpoch: c.viewer.FocusEpoch()})
 		})
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
 	})
@@ -561,9 +587,31 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case "config_result":
+			s.app.Do(func() {
+				done := pendingConfig[m.ConfigID]
+				if done == nil {
+					return
+				}
+				delete(pendingConfig, m.ConfigID)
+				var err error
+				if m.Reason != "" {
+					err = fmt.Errorf("client configuration: %s", m.Reason)
+				}
+				if m.Config == nil && err == nil {
+					err = fmt.Errorf("client configuration: missing result")
+				}
+				var cfg config.Config
+				if m.Config != nil {
+					cfg = *m.Config
+				}
+				c.viewer.ConfigurationResult(s.app, done, cfg, err)
+			})
+		case "preferences_error":
+			s.app.Do(func() { c.viewer.ConfigError(s.app, m.Reason) })
 		case "rendered":
 			if m.Rendered != nil {
-				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered) })
+				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered, m.FocusEpoch) })
 			}
 		case "input":
 			if data, err := decode64(m.Data); err == nil && len(data) > 0 {

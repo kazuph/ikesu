@@ -59,18 +59,27 @@ func (a *App) StartOnboarding() {
 		return
 	}
 	a.dialog = &uiDialog{onboarding: true, d: render.Dialog{ContinueOnly: true, Title: "gtx", Detail: "terminal workspace manager for coding agents", Width: 64, CenterTerminal: true, Confirm: "continue", Lines: []string{"this is a mouse-first terminal.", "click the sidebar to switch workspaces, drag pane", "borders to resize, right-click for context menus.", "", a.prefixSpec() + " enters prefix mode · ? shows keybinds and settings", "next: start managing persistent terminal workspaces"}}, run: func(a *App) {
-		if err := config.SaveOnboarding(false); err != nil {
-			a.SetConfigWarning(err.Error())
-			return
+		if a.configEdit != nil {
+			// Continuing releases subsequent keys immediately; disk writes
+			// happen on the client without holding the session input loop.
+			a.dialog = nil
+			a.workspaceNavigate = false
+			a.dirty = true
 		}
-		value := false
-		a.sidebarConfig.Onboarding = &value
-		a.dialog = nil
-		a.workspaceNavigate = false
-		a.dirty = true
-		if a.configChanged != nil {
-			a.configChanged(a.sidebarConfig)
-		}
+		a.editConfiguration(config.Edit{Kind: "onboarding", Enabled: false}, func(_ config.Config, err error) {
+			if err != nil {
+				a.SetConfigWarning(err.Error())
+				return
+			}
+			value := false
+			a.sidebarConfig.Onboarding = &value
+			a.dialog = nil
+			a.workspaceNavigate = false
+			a.dirty = true
+			if a.configChanged != nil {
+				a.configChanged(a.sidebarConfig)
+			}
+		})
 	}}
 	a.dirty = true
 }
