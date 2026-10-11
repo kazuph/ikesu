@@ -22,6 +22,7 @@ type Scrollback struct {
 	byteLimited     bool
 	maxBytes, bytes int
 	rowBytes        []int
+	packed          [][]byte
 	OnDrop          func()
 }
 
@@ -134,6 +135,10 @@ func (s *Scrollback) popLast() uv.Line {
 	}
 	idx := s.wrap(s.start + s.count - 1)
 	line := s.lines[idx]
+	if len(s.packed) > idx && s.packed[idx] != nil {
+		line = unpackRow(s.packed[idx])
+		s.packed[idx] = nil
+	}
 	s.lines[idx] = nil
 	s.count--
 	if s.byteLimited {
@@ -166,6 +171,11 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 		return
 	}
 
+	if s.byteLimited {
+		for s.count > maxLines {
+			s.dropOldest()
+		}
+	}
 	if s.count > maxLines {
 		s.start = s.wrap(s.start + s.count - maxLines)
 		s.count = maxLines
@@ -174,10 +184,23 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 	if len(s.lines) != maxLines {
 		// Rebuild the ring at the new capacity, unwrapping into order.
 		lines := make([]uv.Line, maxLines)
+		var packed [][]byte
+		var sizes []int
+		if s.byteLimited {
+			packed = make([][]byte, maxLines)
+			sizes = make([]int, maxLines)
+		}
 		for i := 0; i < s.count; i++ {
-			lines[i] = s.lines[s.wrap(s.start+i)]
+			idx := s.wrap(s.start + i)
+			lines[i] = s.lines[idx]
+			if s.byteLimited {
+				packed[i], sizes[i] = s.packed[idx], s.rowBytes[idx]
+			}
 		}
 		s.lines = lines
+		if s.byteLimited {
+			s.packed, s.rowBytes = packed, sizes
+		}
 		s.start = 0
 	}
 }
@@ -189,7 +212,11 @@ func (s *Scrollback) Line(index int) uv.Line {
 	if s == nil || index < 0 || index >= s.count {
 		return nil
 	}
-	return s.lines[s.wrap(s.start+index)]
+	idx := s.wrap(s.start + index)
+	if len(s.packed) > idx && s.packed[idx] != nil {
+		return unpackRow(s.packed[idx])
+	}
+	return s.lines[idx]
 }
 
 // Lines returns all lines in the scrollback buffer.
@@ -201,13 +228,14 @@ func (s *Scrollback) Lines() []uv.Line {
 	if s.count == 0 {
 		return nil
 	}
-	if s.start == 0 {
+	if !s.byteLimited && s.start == 0 {
 		return s.lines[:s.count]
 	}
 	// The ring is wrapped; return the lines in order on a fresh slice.
 	out := make([]uv.Line, s.count)
-	n := copy(out, s.lines[s.start:])
-	copy(out[n:], s.lines[:s.count-n])
+	for i := range out {
+		out[i] = s.Line(i)
+	}
 	return out
 }
 
@@ -218,6 +246,7 @@ func (s *Scrollback) Clear() {
 	}
 	clear(s.lines)
 	clear(s.rowBytes)
+	clear(s.packed)
 	s.start = 0
 	s.count = 0
 	s.bytes = 0
@@ -227,6 +256,16 @@ func (s *Scrollback) Clear() {
 // x is the column, y is the line index (0 = oldest).
 // Returns nil if position is out of bounds.
 func (s *Scrollback) CellAt(x, y int) *uv.Cell {
+	if s == nil || y < 0 || y >= s.count {
+		return nil
+	}
+	idx := s.wrap(s.start + y)
+	if len(s.packed) > idx && s.packed[idx] != nil {
+		if x < 0 || x >= len(s.packed[idx]) {
+			return nil
+		}
+		return &uv.Cell{Content: string(s.packed[idx][x]), Width: 1}
+	}
 	line := s.Line(y)
 	if line == nil || x < 0 || x >= len(line) {
 		return nil

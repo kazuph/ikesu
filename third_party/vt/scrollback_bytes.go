@@ -5,7 +5,9 @@ import (
 	"unsafe"
 )
 
-// Byte limits account for the row slice and its owned cell backing storage.
+// The approved byte budget counts the row as expanded cells, even when its
+// plain text is stored packed. Compression preserves the retained row count.
+// Byte limits account for the row slice and its expanded cell backing storage.
 // A cell includes character/link headers and color/style values; immutable
 // referenced strings and colors are shared with the emulator, not cloned.
 const scrollbackRowBytes = int(unsafe.Sizeof(uv.Line{}))
@@ -21,11 +23,16 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 	// This runs only on configuration changes; output uses saved row sizes.
 	if len(s.rowBytes) != len(s.lines) {
 		s.rowBytes = make([]int, len(s.lines))
+		s.packed = make([][]byte, len(s.lines))
 	}
 	s.bytes = 0
 	for i := 0; i < s.count; i++ {
 		idx := s.wrap(s.start + i)
-		s.rowBytes[idx] = scrollbackRowBytes + cap(s.lines[idx])*scrollbackCellBytes
+		width := cap(s.lines[idx])
+		if s.packed[idx] != nil {
+			width = len(s.packed[idx])
+		}
+		s.rowBytes[idx] = scrollbackRowBytes + width*scrollbackCellBytes
 		s.bytes += s.rowBytes[idx]
 	}
 	for s.count > 0 && (s.bytes > limit || s.count > s.maxLines) {
@@ -39,12 +46,14 @@ func (s *Scrollback) Bytes() int {
 	}
 	return s.bytes
 }
-func (s *Scrollback) dropOldest() uv.Line {
+func (s *Scrollback) dropOldest() (uv.Line, []byte) {
 	if s.count == 0 {
-		return nil
+		return nil, nil
 	}
 	idx := s.start
 	row := s.lines[idx]
+	text := s.packed[idx]
+	s.packed[idx] = nil
 	s.lines[idx] = nil
 	if s.byteLimited {
 		s.bytes -= s.rowBytes[idx]
@@ -55,13 +64,14 @@ func (s *Scrollback) dropOldest() uv.Line {
 	if s.OnDrop != nil {
 		s.OnDrop()
 	}
-	return row
+	return row, text
 }
 func (s *Scrollback) pushBytes(line uv.Line) {
 	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
 	var reuse uv.Line
+	var text []byte
 	for s.count > 0 && (s.bytes+cost > s.maxBytes || s.count >= s.maxLines) {
-		reuse = s.dropOldest()
+		reuse, text = s.dropOldest()
 	}
 	if cost > s.maxBytes {
 		if s.OnDrop != nil {
@@ -73,23 +83,36 @@ func (s *Scrollback) pushBytes(line uv.Line) {
 		n := min(s.maxLines, max(1, 2*len(s.lines)))
 		rows := make([]uv.Line, n)
 		sizes := make([]int, n)
+		packed := make([][]byte, n)
 		for i := 0; i < s.count; i++ {
 			idx := s.wrap(s.start + i)
 			rows[i] = s.lines[idx]
 			sizes[i] = s.rowBytes[idx]
+			packed[i] = s.packed[idx]
 		}
-		s.lines, s.rowBytes, s.start = rows, sizes, 0
-	}
-	// Reuse only an exactly sized allocation: hidden capacity also consumes
-	// the configured byte budget and must not survive a shorter replacement.
-	if cap(reuse) == len(line) {
-		reuse = append(reuse[:0], line...)
-	} else {
-		reuse = make(uv.Line, len(line))
-		copy(reuse, line)
+		s.lines, s.rowBytes, s.packed, s.start = rows, sizes, packed, 0
 	}
 	idx := s.wrap(s.start + s.count)
-	s.lines[idx] = reuse
+	if plainRow(line) {
+		if cap(text) != len(line) {
+			text = make([]byte, len(line))
+		} else {
+			text = text[:len(line)]
+		}
+		for x := range line {
+			text[x] = line[x].Content[0]
+		}
+		s.packed[idx], s.lines[idx] = text, nil
+	} else {
+		// Exact capacity prevents an evicted wider row retaining hidden storage.
+		if cap(reuse) == len(line) {
+			reuse = append(reuse[:0], line...)
+		} else {
+			reuse = make(uv.Line, len(line))
+			copy(reuse, line)
+		}
+		s.lines[idx], s.packed[idx] = reuse, nil
+	}
 	s.rowBytes[idx] = cost
 	s.bytes += cost
 	s.count++
