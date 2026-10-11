@@ -301,3 +301,142 @@ func TestDecisionAskReconnectKeepsID(t *testing.T) {
 		t.Fatal("ask reconnect failed")
 	}
 }
+func TestDecisionWatchRealServerStreamAndPipeClose(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	ready := dialClient(t, dir)
+	ready.conn.Close()
+	defer stopServer(t, dir, done)
+	initial := createDecision(t, dir, nil)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	exit := make(chan int, 1)
+	go func() {
+		exit <- cli.Run([]string{"decision", "watch"}, cli.Options{Session: "test", Explicit: true, Stdout: writer, Stderr: &bytes.Buffer{}})
+	}()
+	rd := bufio.NewReader(reader)
+	row := func() map[string]json.RawMessage {
+		reader.SetReadDeadline(time.Now().Add(5 * time.Second))
+		line, err := rd.ReadBytes('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		var value map[string]json.RawMessage
+		if json.Unmarshal(line, &value) != nil {
+			t.Fatal(string(line))
+		}
+		var owner map[string]string
+		json.Unmarshal(value["machine"], &owner)
+		if owner["id"] != "local" || owner["label"] != "Local" {
+			t.Fatal(string(line))
+		}
+		return value
+	}
+	if string(row()["event"]) != `"machine_up"` {
+		t.Fatal("up missing")
+	}
+	first := row()
+	var d api.Decision
+	json.Unmarshal(first["decision"], &d)
+	if string(first["event"]) != `"created"` || d.DecisionID != initial.DecisionID {
+		t.Fatal(first)
+	}
+	next := createDecision(t, dir, nil)
+	created := row()
+	json.Unmarshal(created["decision"], &d)
+	if string(created["event"]) != `"created"` || d.DecisionID != next.DecisionID || len(d.Options) != 1 {
+		t.Fatal(created)
+	}
+	yes := "yes"
+	apiOK(t, dir, api.MethodDecisionAnswer, api.DecisionAnswerParams{DecisionID: next.DecisionID, OptionID: &yes}, nil)
+	resolved := row()
+	json.Unmarshal(resolved["decision"], &d)
+	if string(resolved["event"]) != `"resolved"` || d.Status != "answered" || d.Answer == nil {
+		t.Fatal(resolved)
+	}
+	reader.Close()
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatal(code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pipe close did not end watch")
+	}
+}
+func TestDecisionWatchReconnectSnapshot(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	ready := dialClient(t, dir)
+	ready.conn.Close()
+	pending := createDecision(t, dir, nil)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	exit := make(chan int, 1)
+	go func() {
+		exit <- cli.Run([]string{"decision", "watch"}, cli.Options{Session: "test", Explicit: true, Stdout: writer, Stderr: &bytes.Buffer{}})
+	}()
+	rd := bufio.NewReader(reader)
+	row := func() map[string]json.RawMessage {
+		reader.SetReadDeadline(time.Now().Add(5 * time.Second))
+		line, err := rd.ReadBytes('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v map[string]json.RawMessage
+		if json.Unmarshal(line, &v) != nil {
+			t.Fatal(string(line))
+		}
+		return v
+	}
+	if string(row()["event"]) != `"machine_up"` || string(row()["event"]) != `"created"` {
+		t.Fatal("initial sync")
+	}
+	stopServer(t, dir, done)
+	if value := row(); string(value["event"]) != `"machine_down"` || len(value["reason"]) == 0 {
+		t.Fatal(value)
+	}
+	done = make(chan int, 1)
+	go func() {
+		code, err := Run("test", "test")
+		if err != nil {
+			t.Error(err)
+		}
+		done <- code
+	}()
+	ready = dialClient(t, dir)
+	ready.conn.Close()
+	defer stopServer(t, dir, done)
+	for {
+		value := row()
+		if string(value["event"]) == `"machine_up"` {
+			break
+		}
+		if string(value["event"]) != `"machine_down"` {
+			t.Fatal(value)
+		}
+	}
+	value := row()
+	var d api.Decision
+	json.Unmarshal(value["decision"], &d)
+	if string(value["event"]) != `"created"` || d.DecisionID != pending.DecisionID {
+		t.Fatal(value)
+	}
+	reader.Close()
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatal(code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch survived pipe close")
+	}
+}

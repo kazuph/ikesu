@@ -523,6 +523,8 @@ func (s *Server) serveEvents(conn net.Conn, req *api.Request) {
 		select {
 		case <-done:
 			return
+		case <-s.sup.Done():
+			return
 		case env := <-sub.ch:
 			if !writeEvent(conn, env) {
 				return

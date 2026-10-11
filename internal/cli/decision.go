@@ -12,7 +12,8 @@ import (
 
 const decisionHelp = `gtx decision commands:
   gtx decision ask --title <title> --option <id:label:role> [--option ...] [--kind ask|command_guard|tool_permission|agent_prompt] [--body <text>] [--allow-text] [--timeout <ms>]
-  gtx decision answer <id> [<option_id>] [--text <text>] [--responder <name>]
+  gtx decision watch [--all-machines]
+  gtx decision answer <id> [<option_id>] [--text <text>] [--responder <name>] [--machine <label-or-id>]
   gtx decision list [--status pending|answered|expired|cancelled]
   gtx decision get <id>
   gtx decision cancel <id>
@@ -24,6 +25,8 @@ func (r *runner) decisionCLI(args []string) int {
 		return 0
 	}
 	switch args[0] {
+	case "watch":
+		return r.decisionWatch(args[1:])
 	case "ask":
 		return r.decisionAsk(args[1:])
 	case "get", "cancel":
@@ -40,6 +43,9 @@ func (r *runner) decisionCLI(args []string) int {
 		}
 		return r.printResult("cli:decision:list", api.MethodDecisionList, p)
 	case "answer":
+		if handled, code := r.decisionMachineAnswer(args[1:]); handled {
+			return code
+		}
 		if len(args) < 2 {
 			return usageErr(r, decisionHelp)
 		}
@@ -153,7 +159,7 @@ func (r *runner) decisionAsk(args []string) int {
 	for {
 		raw, err = r.request("cli:decision:ask", api.MethodDecisionWait, api.DecisionWaitParams{DecisionID: id})
 		if err != nil {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(decisionRetryInitial)
 			continue
 		}
 		if err = json.Unmarshal(raw, &resp); err != nil {
