@@ -26,6 +26,15 @@ const (
 	clearAll   = "\x1b[2J"
 )
 
+// RestoreCursor returns the host cursor to its default after an IME override.
+func (e *Encoder) RestoreCursor() []byte {
+	if e.cursorShape == 0 {
+		return nil
+	}
+	e.cursorShape = 0
+	return []byte("\x1b[0 q")
+}
+
 // Frame encodes the transition from the previous frame to f inside a
 // synchronized-output block, then parks the outer cursor at the focused
 // pane's cursor (the IME anchor) with the right visibility — both inside

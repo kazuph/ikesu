@@ -108,6 +108,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
+	defer func() { _, _ = out.Write(m.frames.RestoreCursor()) }()
 	defer m.inputSource.Prefix(false, false)
 	for _, p := range profiles {
 		if p.Enabled {

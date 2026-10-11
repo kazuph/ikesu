@@ -346,6 +346,7 @@ func drawNameInput(f *Frame, d *Dialog, out *Output) {
 	prefix := string(runes[:min(max(0, d.InputCursor), len(runes))])
 	out.AnchorX = min(r.X+2+ansi.StringWidth(prefix), r.X+r.W-2)
 	out.AnchorY, out.AnchorVisible = r.Y+3, true
+	out.AnchorShape = 0
 	out.DialogRect = r
 }
 

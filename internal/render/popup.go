@@ -40,4 +40,9 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	out.AnchorX = x + max(0, min(snap.Cursor.X, w-1))
 	out.AnchorY = y + max(0, min(snap.Cursor.Y, h-1))
 	out.AnchorVisible = snap.Cursor.Visible && snap.ScrollOff == 0
+	out.AnchorShape = 0
+	if snap.ScrollOff == 0 && !snap.Cursor.Visible && revealIMECursor(in.SidebarConfig, snap.Agent) {
+		out.AnchorVisible = true
+		out.AnchorShape = imeCursorShape(in.SidebarConfig.Experimental.CJKIMECursorShape)
+	}
 }

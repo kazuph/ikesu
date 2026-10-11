@@ -32,6 +32,12 @@ func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
 	if err := d.Deliver(n, c, "local", ""); err != nil || len(calls) != 1 {
 		t.Fatal(calls, err)
 	}
+	calls = nil
+	n.Agent = "codex"
+	if err := d.Deliver(n, c, "local", ""); err != nil || len(calls) != 2 || calls[1][0] != "/usr/bin/afplay" || calls[1][1] != filepath.Join(filepath.Dir(d.ConfigPath), "request.mp3") {
+		t.Fatal("question sound override was not invoked once", calls, err)
+	}
+	n.Agent = "claude"
 	d.LookPath = func(string) (string, error) { return "", errors.New("missing") }
 	calls = nil
 	if err := d.Deliver(n, c, "local", ""); err != nil || len(calls) != 1 || calls[0][0] != "/usr/bin/osascript" || strings.Contains(strings.Join(calls[0], " "), "pane focus") {

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
 	"strings"
 	"testing"
@@ -37,5 +38,33 @@ func TestHiddenIMECursorAllowListShapeAndReturn(t *testing.T) {
 	bytes = enc.Frame(out.Frame, out.AnchorX, out.AnchorY, false, 0)
 	if !strings.Contains(string(bytes), "\x1b[0 q") || !strings.Contains(string(bytes), hideCursor) {
 		t.Fatal("cursor not restored")
+	}
+	enc.Frame(out.Frame, out.AnchorX, out.AnchorY, true, 5)
+	if string(enc.RestoreCursor()) != "\x1b[0 q" || len(enc.RestoreCursor()) != 0 {
+		t.Fatal("exit did not restore only the overridden cursor")
+	}
+}
+
+func TestIMEOverrideFollowsPopupCursorAndClearsForNameInput(t *testing.T) {
+	s := model.New("/tmp", 80, 24)
+	s.Popup = &model.PopupPaneState{WorkspaceID: s.ActiveWorkspace().ID, PaneID: 2, Width: api.PopupSize{Cells: 20}, Height: api.PopupSize{Cells: 10}}
+	in := Input{State: s, Panes: map[int]*PaneSnap{2: {Agent: "claude", Cursor: CursorInfo{Visible: false}}}}
+	in.SidebarConfig.Experimental.RevealHiddenCursorForCJKIME = true
+	in.SidebarConfig.Experimental.CJKIMECursorShape = "bar"
+	f := NewFrame(80, 24)
+	out := Output{AnchorShape: 2}
+	drawPopup(f, in, &out)
+	if !out.AnchorVisible || out.AnchorShape != 5 {
+		t.Fatal(out)
+	}
+	in.Panes[2].Cursor.Visible = true
+	drawPopup(f, in, &out)
+	if !out.AnchorVisible || out.AnchorShape != 0 {
+		t.Fatal(out)
+	}
+	out.AnchorShape = 5
+	drawNameInput(f, &Dialog{InputEdit: true}, &out)
+	if out.AnchorShape != 0 {
+		t.Fatal("pane override leaked into name entry")
 	}
 }
