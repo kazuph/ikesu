@@ -66,6 +66,16 @@ func (a *App) machineInputKey(k uv.Key) {
 }
 
 func (a *App) addMachineDialog() {
+	if a.machineRequest != nil {
+		if err := a.machineRequest("add"); err != nil {
+			a.machineError(err)
+		}
+		return
+	}
+	if a.clientMachines {
+		a.clientMachineStep(0, "", "", "default")
+		return
+	}
 	a.machineInput("SSH target", "", func(target string) {
 		a.machineInput("Display name", "", func(label string) {
 			a.machineInput("Remote session", "default", func(session string) { a.probeMachine(target, label, session) })
@@ -79,17 +89,31 @@ func (a *App) probeMachine(target, label, session string) {
 		a.machineError(err)
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	parent := a.machineContext
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	pending := &uiDialog{d: render.Dialog{Title: "Checking SSH reachability", Detail: target, Confirm: "cancel", Cancel: "cancel"}, cancel: func(*App) { cancel() }, run: func(*App) { cancel() }}
 	a.dialog = pending
 	a.dirty = true
+	if a.machineWorkers != nil {
+		a.machineWorkers.Add(1)
+	}
 	go func() {
+		if a.machineWorkers != nil {
+			defer a.machineWorkers.Done()
+		}
 		err := machine.Probe(ctx, target)
 		if ctx.Err() != nil {
 			cancel()
 			return
 		}
-		a.Do(func() {
+		post := a.machinePost
+		if post == nil {
+			post = a.Do
+		}
+		post(func() {
 			defer cancel()
 			if ctx.Err() != nil || a.dialog != pending {
 				return
@@ -110,6 +134,12 @@ func (a *App) probeMachine(target, label, session string) {
 }
 
 func (a *App) removeMachineMenu() {
+	if a.machineRequest != nil {
+		if err := a.machineRequest("remove"); err != nil {
+			a.machineError(err)
+		}
+		return
+	}
 	profiles := a.machines().Load()
 	if len(profiles) == 0 {
 		a.machineError(fmt.Errorf("No saved SSH machines."))
@@ -118,8 +148,14 @@ func (a *App) removeMachineMenu() {
 	items := make([]render.MenuItem, len(profiles))
 	for i, p := range profiles {
 		items[i] = render.MenuItem{Label: p.Label + " (" + p.Target + ")"}
+		if a.clientMachines {
+			items[i].Label = p.Label
+		}
 	}
 	a.menu = &uiMenu{kind: menuMachineRemove, machines: profiles, m: render.Menu{X: 2, Y: 2, Hover: -1, Sel: -1, Items: items}}
+	if a.clientMachines {
+		a.menu.m.X, a.menu.m.Y, a.menu.m.Sel = 0, a.st.Rows, 0
+	}
 	a.dirty = true
 }
 
@@ -131,5 +167,13 @@ func (a *App) removeMachineDialog(p machine.Profile) {
 		}
 		a.dirty = true
 	}}
+	if a.clientMachines {
+		a.dialog.d.Detail = p.Label + " — remote sessions keep running"
+		a.dialog.d.Confirm = "confirm"
+		a.dialog.d.Width = 64 // herdr 0.2.24: observed 64-column machine removal dialog.
+		a.dialog.d.Lines = []string{""}
+		a.dialog.d.CenterTerminal, a.dialog.d.CompactButtons = true, true
+		a.dialog.d.BoldDetailPrefix = true
+	}
 	a.dirty = true
 }

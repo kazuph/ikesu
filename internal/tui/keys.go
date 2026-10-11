@@ -409,6 +409,8 @@ func (a *App) dialogKey(k uv.Key) {
 		d.run(a)
 	case k.Code == uv.KeyEscape:
 		a.cancelDialog()
+	case k.Code == uv.KeyTab && k.Mod.Contains(uv.ModShift) && d.back != nil:
+		d.back()
 	case d.input != nil:
 		if d.machineForm {
 			a.machineInputKey(k)

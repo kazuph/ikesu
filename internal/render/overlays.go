@@ -285,7 +285,7 @@ func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
 	f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Text(ix, iy, " "+d.Title, uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
 	f.Text(ix, iy+1, " "+d.Detail, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
-	if d.DimPanesOnly {
+	if d.DimPanesOnly || d.BoldDetailPrefix {
 		if at := strings.LastIndex(d.Detail, " — "); at >= 0 {
 			f.Text(ix, iy+1, " "+d.Detail[:at], uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
 		}
@@ -328,7 +328,11 @@ func drawNameInput(f *Frame, d *Dialog, out *Output) {
 	r, _, _ := DialogRects(d, layout.Rect{W: f.W, H: f.H})
 	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
-	f.Text(r.X+1, r.Y+1, strings.ToLower(d.Title), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, r.X+r.W-1)
+	title := strings.ToLower(d.Title)
+	if d.PreserveTitleCase {
+		title = d.Title
+	}
+	f.Text(r.X+1, r.Y+1, title, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, r.X+r.W-1)
 	f.Fill(r.X+1, r.Y+3, r.W-2, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface})
 	f.Text(r.X+2, r.Y+3, d.Input, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}, r.X+r.W-2)
 	for i, button := range NameInputButtons(r) {

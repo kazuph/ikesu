@@ -62,6 +62,7 @@ type msg struct {
 	ConfigID      uint64                    `json:"config_id,omitempty"`
 	Visible       *bool                     `json:"visible,omitempty"`
 	Workspace     int                       `json:"workspace,omitempty"`
+	MachineAction string                    `json:"machine_action,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it

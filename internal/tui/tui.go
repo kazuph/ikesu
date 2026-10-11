@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -22,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -78,6 +80,7 @@ const (
 	menuTab
 	menuWorktree
 	menuMachineRemove
+	menuMachineManage
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
@@ -99,6 +102,7 @@ type uiMenu struct {
 type uiDialog struct {
 	onboarding     bool
 	machineForm    bool
+	back           func()
 	replaceDefault bool
 	d              render.Dialog
 	run            func(a *App) // confirm action
@@ -157,6 +161,11 @@ type App struct {
 	enc               *render.Encoder
 	cwd               string
 	machineCatalog    string
+	machineRequest    func(string) error
+	machinePost       func(func())
+	machineContext    context.Context
+	machineWorkers    *sync.WaitGroup
+	clientMachines    bool
 
 	input    chan []byte
 	resizeCh chan winsize

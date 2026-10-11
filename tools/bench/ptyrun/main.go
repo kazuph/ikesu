@@ -225,6 +225,9 @@ func main() {
 				os.Exit(1)
 			}
 			m := uv.Mouse{X: x - 1, Y: y - 1, Button: uv.MouseLeft}
+			if kind == "right-down" || kind == "right-up" {
+				m.Button = uv.MouseRight
+			}
 			mu.Lock()
 			if op == "mouse" && emu.ModeSet(ansi.ModeMouseExtSgrPixel) {
 				if *cellWidth <= 0 || *cellHeight <= 0 {
@@ -236,9 +239,9 @@ func main() {
 				m.Y = m.Y**cellHeight + *cellHeight/2
 			}
 			switch kind {
-			case "down":
+			case "down", "right-down":
 				emu.SendMouse(uv.MouseClickEvent(m))
-			case "up":
+			case "up", "right-up":
 				emu.SendMouse(uv.MouseReleaseEvent(m))
 			case "motion":
 				emu.SendMouse(uv.MouseMotionEvent(m))

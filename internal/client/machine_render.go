@@ -4,7 +4,6 @@ import (
 	"reflect"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
@@ -14,6 +13,13 @@ func (m *machineClient) paint() error {
 		return nil
 	}
 	in := *e.snapshot
+	if m.forms != nil {
+		m.forms.Overlay(&in)
+	}
+	m.sidebar.PaneStatus = nil
+	if e.connection == nil {
+		m.sidebar.PaneStatus = []string{e.profile.Label + ": " + e.status, e.reason, "手元のspaceは使える"}
+	}
 	m.sidebar.Groups = m.sidebar.Groups[:0]
 	m.sidebar.Active = m.active
 	for _, id := range m.order {
@@ -25,23 +31,13 @@ func (m *machineClient) paint() error {
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
 	var composed *render.Output
-	if len(m.sidebar.Groups) == 1 {
+	if len(m.sidebar.Groups) == 1 && e.connection != nil {
 		composed = render.Compose(in)
 		m.sidebar.Hits = m.sidebar.Hits[:0]
 	} else {
 		composed = render.ComposeMachines(in, &m.sidebar)
 	}
 	f := composed.Frame
-	if e.connection == nil {
-		area := in.State.PanesArea()
-		f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text})
-		lines := []string{e.profile.Label + ": " + e.status, e.reason, "手元のspaceは使える"}
-		y := area.Y
-		for _, line := range lines {
-			y = frameLines(f, area.X, y, area.W, line)
-		}
-		composed.AnchorVisible = false
-	}
 	if m.notice != "" {
 		x, y, end := composed.ActionBar.Copy.X+composed.ActionBar.Copy.W, composed.ActionBar.Area.Y, composed.ActionBar.Cycle.X
 		if end-x < len([]rune(m.notice)) {
@@ -99,21 +95,4 @@ func (m *machineClient) paint() error {
 		}
 	}
 	return nil
-}
-
-func frameLines(f *render.Frame, x, y, width int, text string) int {
-	start := x
-	for _, r := range text {
-		w := ansi.StringWidth(string(r))
-		if r == '\n' || x+w > start+width {
-			y++
-			x = start
-			if r == '\n' {
-				continue
-			}
-		}
-		f.Set(x, y, string(r), uv.Style{Fg: f.Palette.Text})
-		x += w
-	}
-	return y + 1
 }

@@ -57,6 +57,7 @@ type clientMsg struct {
 	ConfigID      uint64                    `json:"config_id,omitempty"`
 	Visible       *bool                     `json:"visible,omitempty"`
 	Workspace     int                       `json:"workspace,omitempty"`
+	MachineAction string                    `json:"machine_action,omitempty"`
 }
 
 // Server is one running session.
@@ -585,6 +586,12 @@ func (s *Server) attach(conn net.Conn) {
 			}
 		})
 		var snapshots endpoint.SnapshotEncoder
+		c.viewer.SetMachineRequester(func(action string) error {
+			if !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, "machine_menu") {
+				return fmt.Errorf("endpoint_action_unsupported: machine_menu")
+			}
+			return c.send(clientMsg{Type: "machine_menu", MachineAction: action})
+		})
 		c.viewer.SetSnapshotSink(func(in render.Input) error {
 			data, err := snapshots.Encode(in)
 			if err != nil {

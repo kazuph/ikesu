@@ -107,6 +107,11 @@ func needsAttention(reason string) bool {
 }
 
 func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
+	if event.formUpdate != nil {
+		event.formUpdate()
+		_ = m.paint()
+		return 0, false
+	}
 	if event.catalogChanged {
 		if event.err != nil {
 			m.notify("machine catalog watch: " + event.err.Error())
@@ -210,6 +215,14 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				m.configureOtherEndpoints(event.id)
 			}
 		}
+	case "machine_menu":
+		if event.id != m.active {
+			break
+		}
+		if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
+			m.notify(err.Error())
+		}
+		_ = m.paint()
 	case "config_edit":
 		if message.ConfigEdit == nil {
 			m.fail(event.id, errors.New("invalid config_edit"))

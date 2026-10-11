@@ -2,6 +2,7 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 )
@@ -22,10 +23,11 @@ type MachineHit struct {
 }
 
 type MachineSidebar struct {
-	Groups []MachineGroup
-	Active string
-	Scroll int
-	Hits   []MachineHit
+	Groups     []MachineGroup
+	Active     string
+	Scroll     int
+	Hits       []MachineHit
+	PaneStatus []string
 }
 
 type machineRow struct {
@@ -36,6 +38,9 @@ type machineRow struct {
 
 func (m *MachineSidebar) draw(f *Frame, active Input) {
 	m.Hits = m.Hits[:0]
+	if len(m.Groups) == 1 {
+		return
+	}
 	s := active.State
 	if !s.SidebarVisible {
 		return
@@ -155,6 +160,32 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			y++
 		}
 	}
+}
+
+func (m *MachineSidebar) drawPaneStatus(f *Frame, in Input, out *Output) {
+	if len(m.PaneStatus) == 0 {
+		return
+	}
+	area := in.State.PanesArea()
+	f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text})
+	y := area.Y
+	for _, line := range m.PaneStatus {
+		x := area.X
+		for _, r := range line {
+			w := ansi.StringWidth(string(r))
+			if r == '\n' || x+w > area.X+area.W {
+				y++
+				x = area.X
+				if r == '\n' {
+					continue
+				}
+			}
+			f.Set(x, y, string(r), uv.Style{Fg: f.Palette.Text})
+			x += w
+		}
+		y++
+	}
+	out.AnchorVisible = false
 }
 
 func machineRowBackground(f *Frame, x, y, width int) {

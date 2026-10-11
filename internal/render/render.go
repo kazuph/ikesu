@@ -103,29 +103,6 @@ type Toast struct {
 	Position string
 }
 
-// Dialog is a centered confirmation box.
-type Dialog struct {
-	ContinueOnly bool
-	Title        string
-	Detail       string
-	Confirm      string // e.g. "quit"
-	Cancel       string // e.g. "cancel"
-	// Lines are extra detail rows below Detail (e.g. the missing-session
-	// warning list); at most 10 are drawn, per SPEC's dialog height rule
-	// 5 + min(count, 10).
-	Lines []string
-	// Width pins the dialog width (0 → auto-fit contents).
-	Width int
-	// Workspace-close confirmation dims the panes while retaining the surrounding controls.
-	DimPanesOnly   bool
-	CenterTerminal bool
-	CompactButtons bool
-	// Input/InputEdit render the detail row as an editable text field.
-	Input       string
-	InputCursor int // rune index in Input
-	InputEdit   bool
-}
-
 // Input is everything Compose needs for one frame.
 // JobDot is one colored ● shown on a workspace row for a meaningful
 // background job (SPEC G2). The snapshot (status filtering and runner
@@ -282,6 +259,9 @@ func compose(in Input, machines *MachineSidebar) *Output {
 	}
 	drawPanes(f, s, in, out)
 	f.Palette = previewPalette
+	if machines != nil {
+		machines.drawPaneStatus(f, in, out)
+	}
 	if in.ModeHint != "" && !(in.ServerUI && in.Prefix) {
 		area := s.PanesArea()
 		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)

@@ -191,9 +191,21 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 }
 
 func (a *App) mainMenuItems() []render.MenuItem {
-	return []render.MenuItem{
+	items := []render.MenuItem{
 		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}
+	if a.clientMachines || a.machineRequest != nil {
+		var base, machines []render.MenuItem
+		for _, item := range items {
+			if item.Label == "add machine..." || item.Label == "remove machine..." {
+				machines = append(machines, item)
+			} else if !item.Separator || len(base) == 0 || !base[len(base)-1].Separator {
+				base = append(base, item)
+			}
+		}
+		items = append(append(base, render.MenuItem{Separator: true}), machines...)
+	}
+	return items
 }
 
 // openMainMenu shows the [menu] global menu.
@@ -209,6 +221,12 @@ func (a *App) activateMenu(i int) {
 		return
 	}
 	switch m.kind {
+	case menuMachineManage:
+		if m.m.Items[i].Label == "add machine..." {
+			a.addMachineDialog()
+		} else {
+			a.removeMachineDialog(m.machines[0])
+		}
 	case menuMachineRemove:
 		if i < len(m.machines) {
 			a.removeMachineDialog(m.machines[i])
@@ -326,6 +344,10 @@ func (a *App) activateMenu(i int) {
 			a.closeTabAt(m.ws, m.tab)
 		}
 	case menuMain:
+		if a.clientMachines && m.m.Items[i].Label != "add machine..." && m.m.Items[i].Label != "remove machine..." {
+			a.machineError(fmt.Errorf("machine is disconnected; select a connected space to use %s", m.m.Items[i].Label))
+			return
+		}
 		switch m.m.Items[i].Label {
 		case "add machine...":
 			a.addMachineDialog()

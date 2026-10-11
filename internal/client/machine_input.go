@@ -102,6 +102,19 @@ func (m *machineClient) input(event input.Event) error {
 		m.held = append(m.held, event)
 		return nil
 	}
+	activeView := m.endpoints[m.active]
+	if m.forms != nil && m.forms.Input(event, activeView.snapshot.State) {
+		return m.paint()
+	}
+	if activeView.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
+		r := render.SidebarMenuRect(activeView.snapshot.State)
+		if contains(r.X, r.Y, r.W, r.H, event.Mouse.X, event.Mouse.Y) {
+			if err := m.forms.Open("menu", activeView.snapshot.State); err != nil {
+				return err
+			}
+			return m.paint()
+		}
+	}
 	if event.Kind == input.KindMouseRelease && m.suppressRelease {
 		m.suppressRelease = false
 		return nil
@@ -122,7 +135,11 @@ func (m *machineClient) input(event input.Event) error {
 					}
 					return m.paint()
 				}
-				if hit.New && event.Kind == input.KindMouseClick {
+				if (hit.Header || hit.New) && hit.Machine != "local" && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
+					m.forms.OpenMachine(m.endpoints[hit.Machine].profile, active.snapshot.State, event.Mouse.X, event.Mouse.Y)
+					return m.paint()
+				}
+				if hit.New && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 					m.suppressRelease = true
 					return m.createWorkspace(hit.Machine)
 				}
