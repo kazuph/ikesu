@@ -7,6 +7,8 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/guard"
 	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -31,6 +33,77 @@ func (r *runner) guardCLI(a []string) int {
 		enc := json.NewEncoder(r.out())
 		enc.SetIndent("", "  ")
 		if e := enc.Encode(v); e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		return 0
+	}
+	if sub == "status" {
+		v, e := guard.Status(c.Guard, root, i)
+		if e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		return writeJSON(v)
+	}
+	if sub == "compare" {
+		o := guard.CompareOptions{GuardLog: filepath.Join(root, "guard", "decisions.jsonl"), AILog: filepath.Join(i.Env["HOME"], ".ai_extreme_confirm.log")}
+		for len(a) > 0 {
+			if len(a) < 2 {
+				return usageErr(r, "guard compare option requires a value")
+			}
+			flag, value := a[0], a[1]
+			a = a[2:]
+			switch flag {
+			case "--guard-log":
+				o.GuardLog = value
+			case "--ai-guard-log":
+				o.AILog = value
+			case "--window", "--since":
+				n, e := strconv.ParseInt(value, 10, 64)
+				if e != nil || n < 0 {
+					return usageErr(r, "guard compare requires a nonnegative integer")
+				}
+				if flag == "--window" {
+					o.Window = &n
+				} else {
+					o.Since = n
+				}
+			default:
+				return usageErr(r, "unknown guard compare option")
+			}
+		}
+		code, e := guard.Compare(o, r.out())
+		if e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		return code
+	}
+	if sub == "log" {
+		defaultLines := 20
+		lines := &defaultLines
+		jsonMode := false
+		for len(a) > 0 {
+			switch a[0] {
+			case "--json":
+				jsonMode = true
+				a = a[1:]
+			case "--lines":
+				if len(a) < 2 {
+					return usageErr(r, "--lines requires a value")
+				}
+				n, e := strconv.Atoi(a[1])
+				if e != nil || n < 0 {
+					return usageErr(r, "--lines requires a nonnegative integer")
+				}
+				lines = &n
+				a = a[2:]
+			default:
+				return usageErr(r, "unknown guard log option")
+			}
+		}
+		if e = guard.ReadLog(filepath.Join(root, "guard", "decisions.jsonl"), lines, r.out(), jsonMode); e != nil {
 			fmt.Fprintln(r.errOut(), e)
 			return 1
 		}
