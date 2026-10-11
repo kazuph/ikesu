@@ -62,6 +62,7 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	decisions         decisionHub
 	plugins           *plugin.Engine
 	pluginEvents      bool
 	pluginPanes       map[int]pluginPaneOwner
@@ -304,6 +305,7 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetViewerHooks(s.drawViewers, s.tickViewers, s.visiblePane)
 	s.app.SetQuitHook(func() {
+		s.stopDecisions()
 		if s.restarting {
 			s.closing.Store(2)
 		} else {
@@ -382,7 +384,15 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 	if dispatch.DBExists(s.session) {
 		s.seedJobSeq()
 		s.abortOrphanedJobs()
-		s.app.Do(func() { s.flushAllMail() })
+		s.app.Do(func() {
+			s.flushAllMail()
+			s.initDecisionHub()
+			if store, err := s.db(); err == nil {
+				if err := s.expireDecisions(store); err != nil {
+					s.app.SetConfigWarning(err.Error())
+				}
+			}
+		})
 	}
 
 	jobsDone := make(chan struct{})

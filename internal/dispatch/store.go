@@ -91,7 +91,8 @@ func sanitizeLabel(s string) string {
 // schemaSQL is the DDL executed on open. Column names and status values
 // match the reference schema; pane_sessions (the restore ledger) and
 // dispatches.caller_pane are gtx additions.
-const schemaSQL = `CREATE TABLE IF NOT EXISTS actors (
+const schemaSQL = decisionSchema + `
+CREATE TABLE IF NOT EXISTS actors (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   kind          TEXT NOT NULL CHECK (kind IN ('agent','shell','human')),
   name          TEXT NOT NULL,

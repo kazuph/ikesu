@@ -82,6 +82,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "decision":
+		return r.decisionCLI(args[1:])
 	case "config":
 		return r.configCLI(args[1:])
 	case "wait":
@@ -143,7 +145,7 @@ func (r *runner) request(id, method string, params any) ([]byte, error) {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
-	if method == api.MethodPaneWaitForOutput {
+	if method == api.MethodPaneWaitForOutput || method == api.MethodDecisionWait {
 		_ = conn.SetDeadline(time.Time{})
 	}
 	if method == api.MethodAgentPrompt {

@@ -34,6 +34,9 @@ func (s *Server) serveAPI(conn net.Conn) {
 		// events.subscribe turns this connection into an event stream;
 		// events.wait may block for the timeout, off the app loop.
 		switch req.Method {
+		case api.MethodDecisionWait:
+			s.serveDecisionWait(conn, req)
+			return
 		case api.MethodEventsSubscribe:
 			s.serveEvents(conn, req)
 			return
@@ -70,6 +73,11 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 		var response api.Response
 		s.app.Do(func() { response = s.agentViewRequest(req) })
 		return response
+	}
+	if strings.HasPrefix(req.Method, "decision.") {
+		var resp api.Response
+		s.app.Do(func() { resp = s.decisionRequest(req) })
+		return resp
 	}
 	if strings.HasPrefix(req.Method, "plugin.") {
 		var resp api.Response

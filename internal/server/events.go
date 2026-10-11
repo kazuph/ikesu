@@ -29,6 +29,7 @@ const (
 // (schema Subscription oneOf). Unknown names are rejected.
 var subscriptionKinds = func() map[string]bool {
 	names := []string{
+		"decision.created", "decision.resolved",
 		"workspace.created", "workspace.updated", "workspace.metadata_updated",
 		"workspace.renamed", "workspace.moved", "workspace.closed",
 		"workspace.focused",
