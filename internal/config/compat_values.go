@@ -103,7 +103,6 @@ func (c *Config) unsupportedValues() {
 	warn("experimental.cjk_ime_cursor_shape", c.Experimental.CJKIMECursorShape != "")
 	warn("remote.manage_ssh_config", c.Remote.ManageSSHConfig != nil && *c.Remote.ManageSSHConfig)
 	warn("advanced.scrollback_limit_bytes", c.Advanced.ScrollbackLimitBytes != nil)
-	warn("theme.custom.blue", c.Theme.Custom["blue"] != "")
 	warn("ui.sound.path", c.UI.Sound.Path != "")
 	warn("ui.sound.done_path", c.UI.Sound.DonePath != "")
 	warn("ui.sound.request_path", c.UI.Sound.RequestPath != "")

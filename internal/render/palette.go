@@ -25,7 +25,13 @@ var palettes = map[string]Palette{
 	"solarized-light":  {PanelBG: color.RGBA{238, 232, 213, 255}, NavigatorDone: color.RGBA{42, 161, 152, 255}, NavigatorDivider: color.RGBA{147, 161, 161, 255}, PopupBG: color.RGBA{0xfd, 0xf6, 0xe3, 0xff}, Overlay1: color.RGBA{0x58, 0x6e, 0x75, 0xff}, Accent: color.RGBA{0x26, 0x8b, 0xd2, 0xff}, Dim: color.RGBA{0x93, 0xa1, 0xa1, 0xff}, Text: color.RGBA{0x65, 0x7b, 0x83, 0xff}, Subtle: color.RGBA{0x83, 0x94, 0x96, 0xff}, Surface: color.RGBA{0xee, 0xe8, 0xd5, 0xff}, SurfDim: color.RGBA{0xfd, 0xf6, 0xe3, 0xff}, Red: color.RGBA{0xdc, 0x32, 0x2f, 0xff}, Green: color.RGBA{0x85, 0x99, 0x00, 0xff}, Yellow: color.RGBA{0xb5, 0x89, 0x00, 0xff}, Mauve: color.RGBA{0xd3, 0x36, 0x82, 0xff}},
 }
 
-func ThemePalette(name string) Palette { return palettes[name] }
+func ThemePalette(name string) Palette {
+	p := palettes[name]
+	if p.Blue == nil {
+		p.Blue = p.Accent
+	}
+	return p
+}
 func (f *Frame) ThemeColor(c color.Color) color.Color {
 	switch c {
 	case Accent:

@@ -96,7 +96,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 func drawToast(f *Frame, t *Toast, out *Output) {
 	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
 	out.ToastRect = r
-	dot := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
+	dot := uv.Style{Fg: f.Palette.Blue, Bg: f.Palette.PopupBG}
 	if t.Kind == "needs_attention" {
 		dot.Fg = f.Palette.Red
 	}
