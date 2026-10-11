@@ -90,3 +90,46 @@ func TestDisabledAndIdentityless(t *testing.T) {
 		}
 	}
 }
+
+func TestModeEnvironmentAndEmptyTargets(t *testing.T) {
+	for _, mode := range []string{"record", "enforce"} {
+		d := t.TempDir()
+		a := NewAssets(d, "p_1", "/usr/bin/true", Config{Mode: mode, Targets: []string{}})
+		env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1"}, d)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer a.Close()
+		if (EnvMap(env)["GTX_GUARD_ENFORCING"] == "1") != (mode == "enforce") {
+			t.Fatal(env)
+		}
+		c := exec.Command("/bin/zsh", "-c", "printf SAFE_EMPTY_TARGETS")
+		c.Env = env
+		b, e := c.CombinedOutput()
+		if e != nil || string(b) != "SAFE_EMPTY_TARGETS" {
+			t.Fatal(string(b), e)
+		}
+	}
+}
+
+func TestRestoreInheritedGuardPreservesUserEnvironment(t *testing.T) {
+	d := t.TempDir()
+	a := NewAssets(d, "p_1", "/usr/bin/true", Config{})
+	original := []string{"HOME=" + d, "PATH=/usr/bin:/bin", "ZDOTDIR=" + d + "/user", "BASH_ENV=" + d + "/user/bash-env", "GTX_PANE_ID=p1", "KEEP=unchanged"}
+	prepared, e := a.Prepare(original, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer a.Close()
+	restored := EnvMap(RestoreInherited(prepared))
+	for k, v := range EnvMap(original) {
+		if restored[k] != v {
+			t.Fatal(k, restored[k], v)
+		}
+	}
+	for k := range restored {
+		if strings.HasPrefix(k, "GTX_GUARD_") {
+			t.Fatal("inherited guard env", k)
+		}
+	}
+}

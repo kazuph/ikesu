@@ -783,45 +783,6 @@ func (p *Pane) ForegroundJob() platform.ForegroundJob {
 	return p.cachedForegroundJob()
 }
 
-// SetAgent overrides the detected agent id (pane.report_agent). An empty
-// id clears the override back to detection-driven state.
-func (p *Pane) SetAgent(id string) {
-	p.mu.Lock()
-	p.agentOverride = id
-	if id == "" {
-		p.guardStarted = ""
-	}
-	effective := p.effectiveAgent()
-	dead := p.dead
-	p.mu.Unlock()
-	if p.guard != nil && !dead {
-		_ = p.guard.Sync(effective)
-	}
-}
-
-// effectiveAgent reports the override when set, else the detected id.
-// Call with p.mu held.
-func (p *Pane) effectiveAgent() string {
-	if p.agentOverride != "" {
-		return p.agentOverride
-	}
-	return p.agentID
-}
-
-// cleanEnv drops NO_COLOR from the inherited environment: a parent set
-// NO_COLOR to mute its own output, and pane programs still need color
-// (SPEC G6: NO_COLOR をペインへ引き継がない).
-func cleanEnv(env []string) []string {
-	out := env[:0]
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "NO_COLOR=") {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
-}
-
 // SetShell applies to subsequent interactive shells only.
 func (s *Supervisor) SetShell(shell, mode string) {
 	s.mu.Lock()

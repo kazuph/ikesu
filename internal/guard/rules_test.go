@@ -76,6 +76,11 @@ func TestApprovalKeysAndSuppression(t *testing.T) {
 	if e := WriteApproval(f, "day:"+d, time.Now().Add(time.Hour)); e != nil {
 		t.Fatal(e)
 	}
+	i.Command = "dd"
+	i.Args = nil
+	if v = Evaluate(Config{}, i); v.Decision != "ask" || v.TempKey != "" {
+		t.Fatal("day approval suppressed keyless command", v)
+	}
 	i.Command = "git"
 	i.Args = []string{"reset"}
 	if v = Evaluate(Config{}, i); v.Decision != "block" {

@@ -26,3 +26,19 @@ func TestGuardCheckJSON(t *testing.T) {
 		t.Fatal("check created state", e)
 	}
 }
+
+func TestGuardCheckObservedOutputContract(t *testing.T) {
+	teststate.Lock(t)
+	d := t.TempDir()
+	teststate.Setenv(t, "HOME", d)
+	teststate.Setenv(t, "GTX_CONFIG", filepath.Join(d, "config.toml"))
+	var out, errs bytes.Buffer
+	code := Run([]string{"guard", "check", "--", "echo", "hello", "--cwd", d, "--launch-dir", d}, Options{Stdout: &out, Stderr: &errs})
+	var v map[string]any
+	if e := json.Unmarshal(out.Bytes(), &v); e != nil || code != 0 {
+		t.Fatal(out.String(), errs.String(), e)
+	}
+	if len(v) != 5 || v["verdict"] != "allow" || v["reason"] != "" || v["rule"] != "default" || v["approval_key"] != nil || v["suppressed_by"] != nil {
+		t.Fatal(v)
+	}
+}
