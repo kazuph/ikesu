@@ -202,6 +202,24 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 		f.Text(area.X, y, "▾ "+group.Label+": "+group.Status, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}, area.X+area.W)
 		m.Hits = append(m.Hits, MachineHit{Machine: group.ID, Rect: layout.Rect{X: area.X, Y: y, W: area.W, H: 1}, Header: true})
 		y++
+		if group.Reason != "" && (group.Status == "awaiting approval" || group.Status == "承認待ち。クリックで再試行") {
+			for _, text := range []string{group.Status, group.Reason} {
+				x := area.X
+				for _, r := range text {
+					width := ansi.StringWidth(string(r))
+					if x+width > area.X+area.W {
+						y++
+						x = area.X
+					}
+					if y >= area.Y+area.H {
+						break
+					}
+					f.Set(x, y, string(r), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
+					x += width
+				}
+				y++
+			}
+		}
 		if group.Input == nil {
 			continue
 		}

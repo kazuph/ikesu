@@ -142,7 +142,7 @@ func (s *sshEndpoint) Read(p []byte) (int, error) {
 	<-s.done
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.expired && s.approval {
+	if s.approval && (s.expired || !s.ready) {
 		return n, fmt.Errorf("SSH approval expired: %s", strings.TrimSpace(s.stderr.String()))
 	}
 	if s.expired {

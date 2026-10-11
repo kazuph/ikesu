@@ -8,6 +8,45 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 )
 
+func TestMachineApprovalStateAndWholeURLWrapWithoutOverwritingPane(t *testing.T) {
+	for _, status := range []string{"awaiting approval", "承認待ち。クリックで再試行"} {
+		in := Input{State: testState(160, 45)}
+		url := "https://example.invalid/check/token-with-a-full-query?confirm=one&machine=remote"
+		machines := MachineSidebar{Groups: []MachineGroup{{ID: "local", Label: "Local", Status: "online", Input: &in}, {ID: "remote", Label: "Mini test", Status: status, Reason: url}}, Active: "local"}
+		out := ComposeMachines(in, &machines)
+		area := SidebarViewForInput(in).Agents.Rect
+		var text strings.Builder
+		for y := area.Y; y < area.Y+area.H; y++ {
+			var row strings.Builder
+			for x := area.X; x < area.X+area.W; x++ {
+				row.WriteString(out.Frame.Cell(x, y).Content)
+			}
+			text.WriteString(strings.TrimRight(row.String(), " "))
+		}
+		if !strings.Contains(text.String(), status) || !strings.Contains(text.String(), url) {
+			t.Fatalf("approval state/URL lost: %q", text.String())
+		}
+		found := false
+		for _, hit := range machines.Hits {
+			if hit.Machine == "remote" && hit.Header {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("approval retry header has no input target")
+		}
+		plain := Compose(in)
+		pane := in.State.PanesArea()
+		for y := pane.Y; y < pane.Y+pane.H; y++ {
+			for x := pane.X; x < pane.X+pane.W; x++ {
+				if !reflect.DeepEqual(out.Frame.Cell(x, y), plain.Frame.Cell(x, y)) {
+					t.Fatal("approval state overwrote active Local pane", x, y)
+				}
+			}
+		}
+	}
+}
+
 func TestMachineSidebarKeepsOriginalIDsAndOnlySelectedEndpointAccent(t *testing.T) {
 	localState, remoteState := testState(160, 45), testState(160, 45)
 	for i, state := range []*Input{{State: localState}, {State: remoteState}} {
