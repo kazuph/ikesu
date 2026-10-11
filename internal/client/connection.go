@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/tui"
@@ -17,6 +18,9 @@ type endpointConnection struct {
 	reader    *bufio.Reader
 	writer    *writer
 	snapshots endpoint.SnapshotDecoder
+	queueMu   sync.Mutex
+	queue     []msg
+	wake      chan struct{}
 }
 
 func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings) (*endpointConnection, error) {
@@ -27,7 +31,7 @@ func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, s
 		hidden := false
 		visible = &hidden
 	}
-	c := &endpointConnection{stream: stream, reader: bufio.NewReader(stream), writer: &writer{conn: stream}}
+	c := &endpointConnection{stream: stream, reader: bufio.NewReader(stream), writer: &writer{conn: stream}, wake: make(chan struct{}, 1)}
 	hello := msg{Peer: peer, Type: "hello", Cols: size.Cols, Rows: size.Rows, Xpixel: size.Xpixel, Ypixel: size.Ypixel, Visible: visible,
 		Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}
 	if err := c.writer.send(hello); err != nil {

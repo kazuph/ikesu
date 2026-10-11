@@ -1,0 +1,173 @@
+package client
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/render"
+	"golang.org/x/sys/unix"
+)
+
+func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, func(), error) {
+	fd, err := unix.Dup(int(in.Fd()))
+	if err != nil {
+		return nil, nil, err
+	}
+	unix.CloseOnExec(fd)
+	reader := os.NewFile(uintptr(fd), "machine-terminal-input")
+	wake, finish, err := os.Pipe()
+	if err != nil {
+		reader.Close()
+		return nil, nil, err
+	}
+	wakeFD := int32(wake.Fd())
+	events := make(chan input.Event)
+	stopped := make(chan struct{})
+	done := make(chan struct{})
+	var once sync.Once
+	stop := func() {
+		once.Do(func() { close(stopped); finish.Close(); <-done; reader.Close(); wake.Close() })
+	}
+	go func() {
+		defer close(done)
+		defer close(events)
+		var framer input.Framer
+		buf := make([]byte, 64*1024)
+		for {
+			timeout := -1
+			if framer.Pending() {
+				timeout = input.IdleFlushMs
+			}
+			fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}, {Fd: wakeFD, Events: unix.POLLIN}}
+			ready, err := unix.Poll(fds, timeout)
+			if err == unix.EINTR {
+				continue
+			}
+			if err != nil || fds[1].Revents != 0 {
+				return
+			}
+			var decoded []input.Event
+			if ready == 0 {
+				decoded = framer.FlushTimeout()
+			} else {
+				n, err := unix.Read(fd, buf)
+				if err == unix.EINTR {
+					continue
+				}
+				if err != nil || n == 0 {
+					return
+				}
+				decoded = framer.Push(buf[:n])
+			}
+			for _, event := range decoded {
+				if event.Kind == input.KindUnknown && string(event.Raw) == "\x1b[200~" {
+					continue
+				}
+				select {
+				case events <- event:
+				case <-ctx.Done():
+					return
+				case <-stopped:
+					return
+				}
+			}
+		}
+	}()
+	return events, stop, nil
+}
+
+func eventBytes(event input.Event) []byte {
+	if event.Kind == input.KindPaste {
+		return []byte("\x1b[200~" + event.Text + "\x1b[201~")
+	}
+	return event.Raw
+}
+
+func (m *machineClient) input(event input.Event) error {
+	if event.Kind == input.KindBlur {
+		m.blurred = true
+	} else if event.Kind == input.KindFocus {
+		m.blurred = false
+	}
+	if m.regions == nil {
+		m.held = append(m.held, event)
+		return nil
+	}
+	if event.Kind == input.KindMouseRelease && m.suppressRelease {
+		m.suppressRelease = false
+		return nil
+	}
+	if event.Kind == input.KindMouseClick || event.Kind == input.KindMouseWheel || event.Kind == input.KindMouseMotion || event.Kind == input.KindMouseRelease {
+		active := m.endpoints[m.active]
+		// Overlay hit areas belong to the selected server and take precedence.
+		if active.snapshot != nil && active.snapshot.Menu == nil && active.snapshot.Dialog == nil && active.snapshot.Help == nil {
+			for _, hit := range m.sidebar.Hits {
+				if !contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
+					continue
+				}
+				if event.Kind == input.KindMouseWheel {
+					if event.Mouse.Button == 4 {
+						m.sidebar.Scroll--
+					} else {
+						m.sidebar.Scroll++
+					}
+					return m.paint()
+				}
+				if hit.Header && event.Kind == input.KindMouseClick {
+					if e := m.endpoints[hit.Machine]; e.connection == nil {
+						e.retry.retryNow(time.Now())
+						m.advance(time.Now())
+					}
+					m.suppressRelease = true
+					return m.paint()
+				}
+				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick {
+					m.suppressRelease = true
+					m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
+					if e := m.endpoints[hit.Machine]; e.connection == nil && hit.Machine == "local" {
+						m.start(hit.Machine, nil)
+					}
+					m.requestPending()
+					return nil
+				}
+				return m.sidebarInput(hit, event)
+			}
+		}
+	}
+	return m.sendInput(m.active, eventBytes(event))
+}
+
+func contains(x, y, w, h, px, py int) bool { return px >= x && py >= y && px < x+w && py < y+h }
+
+func (m *machineClient) sendInput(id string, data []byte) error {
+	e := m.endpoints[id]
+	if e.connection == nil {
+		return nil
+	}
+	return e.connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)})
+}
+
+func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) error {
+	e := m.endpoints[hit.Machine]
+	if e.connection == nil || e.snapshot == nil {
+		return nil
+	}
+	view := render.SidebarViewForInput(*e.snapshot)
+	for _, position := range view.Rows {
+		if position.Row != hit.Row {
+			continue
+		}
+		var button, x, y int
+		var final byte
+		if _, err := fmt.Sscanf(string(event.Raw), "\x1b[<%d;%d;%d%c", &button, &x, &y, &final); err != nil {
+			return fmt.Errorf("unsupported sidebar mouse encoding")
+		}
+		return m.sendInput(hit.Machine, []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, position.Y+1, final)))
+	}
+	return fmt.Errorf("unsupported sidebar row outside endpoint viewport")
+}

@@ -9,8 +9,8 @@ import (
 // Group inputs retain their own workspace and pane IDs. They are composed
 // in the client and never merged into a server's session state.
 type MachineGroup struct {
-	ID, Label, Status string
-	Input             *Input
+	ID, Label, Status, Reason string
+	Input                     *Input
 }
 
 type MachineHit struct {
@@ -93,6 +93,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 				f.Text(newRect.X, y, "[new]", uv.Style{Fg: f.Palette.Text, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, area.X+width)
 				m.Hits = append(m.Hits, MachineHit{Machine: group.ID, Rect: newRect, New: true})
 			}
+			machineRowBackground(f, area.X, y, width)
 		} else if group.Input != nil {
 			in := *group.Input
 			state := *in.State
@@ -104,6 +105,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 				in.DragSection = ""
 			}
 			drawSidebarRow(f, &state, in, entry.row, area.X, y, width)
+			machineRowBackground(f, area.X, y, width)
 			if in.SidebarConfig.UI.TransparentSidebarCards {
 				clearSidebarCardBackground(f, &state, entry.row, area.X, y, width)
 			}
@@ -125,7 +127,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 		if y >= area.Y+area.H {
 			break
 		}
-		f.Text(area.X, y, "▾ "+group.Label+": "+group.Status, uv.Style{Fg: f.Palette.Dim}, area.X+area.W)
+		f.Text(area.X, y, "▾ "+group.Label+": "+group.Status, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}, area.X+area.W)
 		m.Hits = append(m.Hits, MachineHit{Machine: group.ID, Rect: layout.Rect{X: area.X, Y: y, W: area.W, H: 1}, Header: true})
 		y++
 		if group.Input == nil {
@@ -143,10 +145,19 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 				continue
 			}
 			drawSidebarRow(f, in.State, in, row, area.X, y, area.W)
+			machineRowBackground(f, area.X, y, area.W)
 			if in.SidebarConfig.UI.TransparentSidebarCards {
 				clearSidebarCardBackground(f, in.State, row, area.X, y, area.W)
 			}
 			y++
+		}
+	}
+}
+
+func machineRowBackground(f *Frame, x, y, width int) {
+	for col := x; col < x+width; col++ {
+		if cell := f.Cell(col, y); cell != nil && cell.Style.Bg == nil {
+			cell.Style.Bg = f.Palette.PopupBG
 		}
 	}
 }

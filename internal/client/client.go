@@ -117,6 +117,14 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 		conn.Close()
 		return 1, err
 	}
+	if profiles := savedMachines(session); hasEnabledMachine(profiles) {
+		result := pumpMachines(session, conn, in, out, settings, profiles)
+		conn.Close()
+		if result == pumpRejected {
+			return 1, nil
+		}
+		return 0, nil
+	}
 
 	reconnecting := false
 	var deadline time.Time
