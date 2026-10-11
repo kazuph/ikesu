@@ -14,6 +14,10 @@ func Command(argv []string) string {
 func ForwardArgs(p Profile, binary string, argv []string) []string {
 	// OpenSSH joins command arguments with spaces; quote each remote word.
 	words := append([]string{binary, "--session", p.Session}, argv...)
+	return SSHArgs(p, words)
+}
+
+func SSHArgs(p Profile, words []string) []string {
 	quoted := make([]string, len(words))
 	for i, s := range words {
 		quoted[i] = Quote(s)

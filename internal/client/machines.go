@@ -29,6 +29,7 @@ type managedEndpoint struct {
 	epoch                    uint64
 	requestAck               bool
 	removed                  bool
+	paste                    *clipboardPaste
 }
 
 type endpointEvent struct {
@@ -74,6 +75,7 @@ type machineClient struct {
 	notice          string
 	noticeUntil     time.Time
 	forms           *tui.MachineForms
+	readClipboard   func(context.Context) (clipboardContent, error)
 }
 
 func savedMachines(session string) []machine.Profile {

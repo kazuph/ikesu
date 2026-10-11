@@ -402,6 +402,8 @@ func (f *Framer) convert(raw []byte, ev uv.Event) Event {
 		return Event{Kind: KindTerminalReport, Raw: append([]byte(nil), raw...), Report: ev}
 	case uv.KeyPressEvent:
 		return Event{Kind: KindKey, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}
+	case uv.KeyReleaseEvent:
+		return Event{Kind: KindUnknown, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}
 	case uv.MouseClickEvent:
 		return Event{Kind: KindMouseClick, Raw: append([]byte(nil), raw...), Mouse: uv.Mouse(e)}
 	case uv.MouseReleaseEvent:

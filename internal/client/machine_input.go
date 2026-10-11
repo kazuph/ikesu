@@ -103,6 +103,12 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
+	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
+		if event.Kind == input.KindUnknown {
+			return nil
+		}
+		return m.pasteClipboard()
+	}
 	if m.forms != nil && m.forms.Input(event, activeView.snapshot.State) {
 		return m.paint()
 	}
@@ -206,6 +212,10 @@ func contains(x, y, w, h, px, py int) bool { return px >= x && py >= y && px < x
 
 func (m *machineClient) sendInput(id string, data []byte) error {
 	e := m.endpoints[id]
+	if e.paste != nil {
+		e.paste.held = append(e.paste.held, clipboardItem{data: append([]byte(nil), data...)})
+		return nil
+	}
 	if e.connection == nil {
 		return nil
 	}
