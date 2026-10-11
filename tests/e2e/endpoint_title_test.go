@@ -24,7 +24,7 @@ func TestEndpointWindowTitleBelongsToEachAttachedTerminal(t *testing.T) {
 	})
 	second.send("printf '\\033]2;PANE_TITLE_B\\007'; printf 'SECOND_%s\\n' TITLE_OK\r")
 	second.waitFor("second pane title", 5*time.Second, func(text string) bool { return strings.Contains(text, "SECOND_TITLE_OK") })
-	first.pump(time.Now().Add(100*time.Millisecond))
+	first.pump(time.Now().Add(100 * time.Millisecond))
 	if !strings.Contains(first.text(), "FIRST_TITLE_OK") || strings.Contains(first.text(), "SECOND_TITLE_OK") {
 		t.Fatal("second terminal changed the first view", first.text())
 	}
