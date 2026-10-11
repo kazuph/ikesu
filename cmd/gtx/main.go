@@ -88,6 +88,16 @@ dispatch:
 
 	if len(args) > 0 {
 		switch args[0] {
+		case "__endpoint":
+			if len(args) != 1 || noSession {
+				fmt.Fprintln(os.Stderr, "gtx: invalid private endpoint invocation")
+				os.Exit(2)
+			}
+			if err := client.Relay(session, os.Stdin, os.Stdout); err != nil {
+				fmt.Fprintln(os.Stderr, "gtx:", err)
+				os.Exit(1)
+			}
+			return
 		case "--default-config":
 			fmt.Print(config.DefaultExample)
 			return

@@ -15,8 +15,8 @@ type windowTitleState struct {
 }
 
 // The isolated 0.2.24 byte captures show two title writes after paints
-// on attach and returning to an existing tab; creating a tab or changing
-// the pane's OSC title does not resend it (window-title-*-boundaries).
+// on attach and returning to an existing tab in the same workspace.
+// Workspace changes, new tabs and pane OSC titles do not resend it.
 const windowTitleActivationPaints = 2
 
 func (title *windowTitleState) painted(out io.Writer, frame render.Input) error {
@@ -29,7 +29,7 @@ func (title *windowTitleState) painted(out io.Writer, frame render.Input) error 
 		title.seen = map[titleView]bool{view: true}
 		title.remaining = windowTitleActivationPaints
 	} else if view != title.view {
-		if title.seen[view] {
+		if title.seen[view] && view.workspace == title.view.workspace {
 			title.remaining = windowTitleActivationPaints
 		} else {
 			title.remaining = 0
