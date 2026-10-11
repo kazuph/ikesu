@@ -251,6 +251,14 @@ type HelpInput struct {
 
 // Compose renders the entire screen into a frame.
 func Compose(in Input) *Output {
+	return compose(in, nil)
+}
+
+func ComposeMachines(in Input, machines *MachineSidebar) *Output {
+	return compose(in, machines)
+}
+
+func compose(in Input, machines *MachineSidebar) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
 	f.Palette = ConfigPalette(in.SidebarConfig)
@@ -261,6 +269,9 @@ func Compose(in Input) *Output {
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
+	if machines != nil {
+		machines.draw(f, in)
+	}
 	drawTabBar(f, s, in, out)
 	previewPalette := f.Palette
 	if in.ServerUI {
