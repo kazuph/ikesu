@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/goterrace/internal/guard"
 	"github.com/kazuph/goterrace/internal/platform"
 )
 
@@ -36,6 +37,8 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
+	guard        *guard.Assets
+	guardStarted string
 	ID           int
 	cwd          string // spawn cwd; OSC 7 or proc cwd may refine it
 	spawnArgv    []string
@@ -97,6 +100,8 @@ type Snapshot struct {
 
 // Supervisor runs all panes of the app.
 type Supervisor struct {
+	guardConfig   *guard.Config
+	guardRoot     string
 	mu            sync.Mutex
 	panes         map[int]*Pane
 	events        chan Event
@@ -362,6 +367,9 @@ func (p *Pane) waitExit() {
 	p.mu.Lock()
 	p.dead = true
 	p.mu.Unlock()
+	if p.guard != nil {
+		_ = p.guard.Close()
+	}
 	p.notify(EventExited)
 }
 
@@ -407,6 +415,9 @@ func (s *Supervisor) Kill(id int) {
 	p.mu.Lock()
 	p.dead = true
 	p.mu.Unlock()
+	if p.guard != nil {
+		_ = p.guard.Close()
+	}
 
 	if p.ptyFile != nil {
 		_ = p.ptyFile.Close() // SIGHUP to foreground group
@@ -670,7 +681,7 @@ func (p *Pane) PollProcess() {
 	agentID, name := detect.IdentifyJob(dj)
 	cwd := platform.ProcCwd(job.ProcessGroupID)
 	p.mu.Lock()
-	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name
+	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name || p.agentID != agentID
 	p.fgPID = job.ProcessGroupID
 	p.procName = name
 	p.agentID = agentID
@@ -682,7 +693,15 @@ func (p *Pane) PollProcess() {
 		p.oscTitle = ""
 		p.oscProgress = ""
 	}
+	effective := p.effectiveAgent()
+	if effective == "" && p.guardStarted != "" {
+		effective = p.guardStarted
+	}
+	dead := p.dead
 	p.mu.Unlock()
+	if p.guard != nil && !dead {
+		_ = p.guard.Sync(effective)
+	}
 	if agentChanged {
 		p.notify(EventChanged)
 	}
@@ -709,6 +728,9 @@ func (s *Supervisor) KillAll() {
 		p.mu.Lock()
 		p.dead = true
 		p.mu.Unlock()
+		if p.guard != nil {
+			_ = p.guard.Close()
+		}
 		if p.ptyFile != nil {
 			_ = p.ptyFile.Close()
 		}
@@ -766,7 +788,15 @@ func (p *Pane) ForegroundJob() platform.ForegroundJob {
 func (p *Pane) SetAgent(id string) {
 	p.mu.Lock()
 	p.agentOverride = id
+	if id == "" {
+		p.guardStarted = ""
+	}
+	effective := p.effectiveAgent()
+	dead := p.dead
 	p.mu.Unlock()
+	if p.guard != nil && !dead {
+		_ = p.guard.Sync(effective)
+	}
 }
 
 // effectiveAgent reports the override when set, else the detected id.

@@ -65,7 +65,7 @@ func TestReview1AgentStartExplicitPATH(t *testing.T) {
 	for {
 		b, err := os.ReadFile(record)
 		if err == nil {
-			if string(b) != "/x" {
+			if string(b) != filepath.Join(root, "state", "guard", "bin", "p_2")+":/x" {
 				t.Fatal("explicit PATH overwritten", string(b))
 			}
 			break

@@ -7,8 +7,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/kazuph/goterrace/internal/guard"
 	"os"
 	"os/exec"
+	"path/filepath"
 	goruntime "runtime"
 	"strings"
 )
@@ -32,7 +34,7 @@ func (s *Supervisor) SpawnAgent(id int, cwd string, cols, rows int, extra, argv 
 		return nil, err
 	}
 	env := append([]string{"PATH=" + path}, extra...)
-	return s.spawnWith(id, cwd, cols, rows, env, argv, resolved)
+	return s.spawnWith(id, cwd, cols, rows, env, argv, resolved, false, true)
 }
 
 func (s *Supervisor) SpawnPopup(id int, cwd string, cols, rows int, extra, argv []string) (*Pane, error) {
@@ -142,8 +144,39 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		}
 		cmd.Env = filtered
 	}
+	if len(withoutPane) == 0 || !withoutPane[0] {
+		s.mu.Lock()
+		cfg, root := s.guardConfig, s.guardRoot
+		s.mu.Unlock()
+		if cfg != nil && cfg.Active() {
+			exe, err := os.Executable()
+			if err != nil {
+				emu.Close()
+				return nil, err
+			}
+			p.guard = guard.NewAssets(root, "p_"+itoa(id), exe, *cfg)
+			if guard.EnvMap(cmd.Env)["GTX_PANE_ID"] == "" {
+				cmd.Env = append(cmd.Env, "GTX_PANE_ID=p"+itoa(id))
+			}
+			cmd.Env, err = p.guard.Prepare(cmd.Env, cwd)
+			if err != nil {
+				emu.Close()
+				return nil, err
+			}
+			if len(withoutPane) > 1 && withoutPane[1] {
+				p.guardStarted = filepath.Base(argv[0])
+				if err = p.guard.Sync(p.guardStarted); err != nil {
+					emu.Close()
+					return nil, err
+				}
+			}
+		}
+	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
+		if p.guard != nil {
+			_ = p.guard.Close()
+		}
 		emu.Close()
 		return nil, err
 	}

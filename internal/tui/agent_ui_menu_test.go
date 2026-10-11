@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
@@ -115,7 +116,7 @@ func TestReview1SlowLoginShellDoesNotBlockRightClick(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cfg config.Config
-	cfg.AgentStart.Commands = map[string][]string{"codex": {"/bin/sh", "-c", "printf 'REVIEW1_MENU PATH=%s' \"$PATH\"; exec /bin/sleep 60"}}
+	cfg.AgentStart.Commands = map[string][]string{"codex": {"/bin/sh", "-c", "printf 'REVIEW1_MENU PATH=%s\n' \"$PATH\"; exec /bin/sleep 60"}}
 	cfg.Agent.Env = map[string]string{"PATH": "/menu"}
 	a.SetSidebarConfig(cfg, false)
 	done := make(chan struct{})
@@ -151,5 +152,6 @@ func TestReview1SlowLoginShellDoesNotBlockRightClick(t *testing.T) {
 	if p == nil || pid == 1 {
 		t.Fatal("agent not launched", pid)
 	}
-	specWaitText(t, p, "REVIEW1_MENU PATH=/menu")
+	specWaitText(t, p, "REVIEW1_MENU PATH=")
+	specWaitText(t, p, fmt.Sprintf("/guard/bin/p_%d:/menu", pid))
 }
