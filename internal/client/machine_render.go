@@ -80,6 +80,9 @@ func (m *machineClient) paint() error {
 		composed.Frame = clipped
 		composed.AnchorVisible = composed.AnchorVisible && composed.AnchorX < clipped.W && composed.AnchorY < clipped.H
 	}
+	if len(m.decisions.queue) > 0 {
+		m.paintDecisions(composed)
+	}
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible)
 	if _, err := m.out.Write(data); err != nil {
 		return err

@@ -16,10 +16,12 @@ import (
 // The app loop owns records, expiry scheduling and notification order.
 // Waiters observe a replace-on-change channel, without polling SQLite.
 type decisionHub struct {
-	changed chan struct{}
-	timer   *time.Timer
-	close   sync.Once
-	stopped chan struct{}
+	boot     string
+	revision uint64
+	changed  chan struct{}
+	timer    *time.Timer
+	close    sync.Once
+	stopped  chan struct{}
 }
 
 func (s *Server) initDecisionHub() {
@@ -52,6 +54,7 @@ func (s *Server) decisionChanged(kind string, d api.Decision) {
 	close(s.decisions.changed)
 	s.decisions.changed = make(chan struct{})
 	s.emitEvent(kind, d)
+	s.pushDecisionProjection()
 }
 func (s *Server) expireDecisions(store *dispatch.Store) error {
 	pending, err := store.Decisions("pending")

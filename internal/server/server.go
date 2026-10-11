@@ -39,25 +39,27 @@ import (
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
 	endpoint.Peer
-	Available     int                       `json:"available_generation,omitempty"`
-	Type          string                    `json:"type"`
-	Data          string                    `json:"data,omitempty"`
-	Cols          int                       `json:"cols,omitempty"`
-	Rows          int                       `json:"rows,omitempty"`
-	Xpixel        int                       `json:"xpixel,omitempty"`
-	Ypixel        int                       `json:"ypixel,omitempty"`
-	Reason        string                    `json:"reason,omitempty"`
-	Rendered      *render.Output            `json:"rendered,omitempty"`
-	RequestAck    bool                      `json:"request_ack,omitempty"`
-	FocusEpoch    uint64                    `json:"focus_epoch,omitempty"`
-	Config        *config.Config            `json:"config,omitempty"`
-	ConfigWarning string                    `json:"config_warning,omitempty"`
-	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
-	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
-	ConfigID      uint64                    `json:"config_id,omitempty"`
-	Visible       *bool                     `json:"visible,omitempty"`
-	Workspace     int                       `json:"workspace,omitempty"`
-	MachineAction string                    `json:"machine_action,omitempty"`
+	Available      int                          `json:"available_generation,omitempty"`
+	Type           string                       `json:"type"`
+	Data           string                       `json:"data,omitempty"`
+	Cols           int                          `json:"cols,omitempty"`
+	Rows           int                          `json:"rows,omitempty"`
+	Xpixel         int                          `json:"xpixel,omitempty"`
+	Ypixel         int                          `json:"ypixel,omitempty"`
+	Reason         string                       `json:"reason,omitempty"`
+	Rendered       *render.Output               `json:"rendered,omitempty"`
+	RequestAck     bool                         `json:"request_ack,omitempty"`
+	FocusEpoch     uint64                       `json:"focus_epoch,omitempty"`
+	Config         *config.Config               `json:"config,omitempty"`
+	ConfigWarning  string                       `json:"config_warning,omitempty"`
+	Preferences    *endpoint.ViewPreferences    `json:"preferences,omitempty"`
+	ConfigEdit     *config.Edit                 `json:"config_edit,omitempty"`
+	ConfigID       uint64                       `json:"config_id,omitempty"`
+	Visible        *bool                        `json:"visible,omitempty"`
+	Workspace      int                          `json:"workspace,omitempty"`
+	Decisions      *endpoint.DecisionProjection `json:"decisions,omitempty"`
+	DecisionAnswer *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
+	MachineAction  string                       `json:"machine_action,omitempty"`
 }
 
 // Server is one running session.
@@ -573,6 +575,7 @@ func (s *Server) attach(conn net.Conn) {
 	var configID uint64
 	pendingConfig := map[uint64]func(config.Config, error){}
 	s.app.Do(func() {
+		s.sendDecisionProjection(c)
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
 		if hello.Visible != nil && !*hello.Visible {
 			c.viewer.SetVisible(s.app, false)
@@ -661,6 +664,21 @@ func (s *Server) attach(conn net.Conn) {
 					cfg = *m.Config
 				}
 				c.viewer.ConfigurationResult(s.app, done, cfg, err)
+			})
+		case "decision_answer":
+			s.app.Do(func() {
+				if m.DecisionAnswer == nil {
+					_ = c.send(clientMsg{Type: "error", Reason: "decision_answer missing"})
+					return
+				}
+				p := *m.DecisionAnswer
+				p.Responder = "client"
+				resp := s.decisionRequest(&api.Request{ID: "client:decision:answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(p)})
+				if resp.Err != nil {
+					_ = c.send(clientMsg{Type: "decision_answer_result", Reason: resp.Err.Code + ": " + resp.Err.Message})
+				} else {
+					_ = c.send(clientMsg{Type: "decision_answer_result"})
+				}
 			})
 		case "preferences_error":
 			s.app.Do(func() { c.viewer.ConfigError(s.app, m.Reason) })

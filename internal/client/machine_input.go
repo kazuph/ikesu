@@ -103,6 +103,15 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
+	if handled, err := m.decisionInput(event); handled {
+		if event.Kind == input.KindMouseClick {
+			m.suppressRelease = true
+		}
+		if err != nil {
+			return err
+		}
+		return m.paint()
+	}
 	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
 		if event.Kind == input.KindUnknown {
 			return nil

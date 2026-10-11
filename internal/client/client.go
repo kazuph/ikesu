@@ -44,25 +44,27 @@ const drainMs = 100 * time.Millisecond
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
 	endpoint.Peer
-	Available     int                       `json:"available_generation,omitempty"`
-	Type          string                    `json:"type"`
-	Data          string                    `json:"data,omitempty"`
-	Cols          int                       `json:"cols,omitempty"`
-	Rows          int                       `json:"rows,omitempty"`
-	Xpixel        int                       `json:"xpixel,omitempty"`
-	Ypixel        int                       `json:"ypixel,omitempty"`
-	Reason        string                    `json:"reason,omitempty"`
-	Rendered      *render.Output            `json:"rendered,omitempty"`
-	RequestAck    bool                      `json:"request_ack,omitempty"`
-	FocusEpoch    uint64                    `json:"focus_epoch,omitempty"`
-	Config        *config.Config            `json:"config,omitempty"`
-	ConfigWarning string                    `json:"config_warning,omitempty"`
-	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
-	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
-	ConfigID      uint64                    `json:"config_id,omitempty"`
-	Visible       *bool                     `json:"visible,omitempty"`
-	Workspace     int                       `json:"workspace,omitempty"`
-	MachineAction string                    `json:"machine_action,omitempty"`
+	Available      int                          `json:"available_generation,omitempty"`
+	Type           string                       `json:"type"`
+	Data           string                       `json:"data,omitempty"`
+	Cols           int                          `json:"cols,omitempty"`
+	Rows           int                          `json:"rows,omitempty"`
+	Xpixel         int                          `json:"xpixel,omitempty"`
+	Ypixel         int                          `json:"ypixel,omitempty"`
+	Reason         string                       `json:"reason,omitempty"`
+	Rendered       *render.Output               `json:"rendered,omitempty"`
+	RequestAck     bool                         `json:"request_ack,omitempty"`
+	FocusEpoch     uint64                       `json:"focus_epoch,omitempty"`
+	Config         *config.Config               `json:"config,omitempty"`
+	ConfigWarning  string                       `json:"config_warning,omitempty"`
+	Preferences    *endpoint.ViewPreferences    `json:"preferences,omitempty"`
+	ConfigEdit     *config.Edit                 `json:"config_edit,omitempty"`
+	ConfigID       uint64                       `json:"config_id,omitempty"`
+	Visible        *bool                        `json:"visible,omitempty"`
+	Workspace      int                          `json:"workspace,omitempty"`
+	Decisions      *endpoint.DecisionProjection `json:"decisions,omitempty"`
+	DecisionAnswer *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
+	MachineAction  string                       `json:"machine_action,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it
