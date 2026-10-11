@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/machine"
 )
 
@@ -31,11 +32,25 @@ type sshEndpoint struct {
 }
 
 func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoint, error) {
+	c, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	managed, err := machine.PrepareSSH(c, profile.Target)
+	if err != nil {
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			managed.Close()
+		}
+	}()
 	binary := os.Getenv("GTX_MACHINE_REMOTE_BINARY")
 	if binary == "" {
 		binary = "gtx"
 	}
-	cmd := exec.Command("ssh", machine.ForwardArgs(profile, binary, []string{"__endpoint"})...)
+	cmd := exec.Command("ssh", managed.Args(machine.ForwardArgs(profile, binary, []string{"__endpoint"}))...)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -61,6 +76,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 		return nil, err
 	}
 	output.Close()
+	started = true
 	s := &sshEndpoint{cmd: cmd, in: in, out: out, done: make(chan struct{}), onApproval: approval}
 	s.deadlineAt = time.Now().Add(sshConnectWait)
 	s.deadline = time.AfterFunc(sshConnectWait, s.timeout)
@@ -71,6 +87,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 		s.deadline.Stop()
 		s.err = err
 		s.mu.Unlock()
+		managed.Close()
 		close(s.done)
 	}()
 	return s, nil

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/render"
 	"golang.org/x/sys/unix"
@@ -111,6 +113,17 @@ func (m *machineClient) input(event input.Event) error {
 			return err
 		}
 		return m.paint()
+	}
+	if m.active != "local" && event.Kind == input.KindKey && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
+		if activeView.snapshot.Prefix {
+			if activeView.connection == nil || activeView.connection.writer.available < endpoint.NotificationGeneration {
+				return fmt.Errorf("endpoint_action_unsupported: prefix remote image paste requires endpoint generation %d", endpoint.NotificationGeneration)
+			}
+			if err := activeView.connection.enqueue(msg{Type: "input", EndPrefix: true}); err != nil {
+				return err
+			}
+		}
+		return m.pasteClipboard()
 	}
 	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
 		if event.Kind == input.KindUnknown {
@@ -258,4 +271,14 @@ func (m *machineClient) sidebarBytes(hit render.MachineHit, event input.Event) (
 		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, position.Y+1, final)), nil
 	}
 	return nil, fmt.Errorf("unsupported sidebar row outside endpoint viewport")
+}
+
+func remoteImagePasteKey(c config.Config, key uv.Key, prefix bool) bool {
+	for _, binding := range c.ActionBindings("remote_image_paste") {
+		chord, err := config.ParseChord(binding)
+		if err == nil && chord.Match(key, prefix) {
+			return true
+		}
+	}
+	return false
 }

@@ -62,3 +62,16 @@ func TestNotificationSuppressionIncludesUnfocusedAndZoomHiddenTabPanes(t *testin
 		t.Fatal("unrelated pane suppressed")
 	}
 }
+
+func TestRemotePasteEndsOnlyItsOwnViewerPrefix(t *testing.T) {
+	st := model.New(t.TempDir(), 120, 40)
+	app := NewApp(st, runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	one := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	two := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	one.app.prefix = true
+	two.app.prefix = true
+	one.EndPrefix(app)
+	if one.app.prefix || !two.app.prefix {
+		t.Fatal("prefix cancellation crossed viewer boundary")
+	}
+}

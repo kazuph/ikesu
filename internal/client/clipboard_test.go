@@ -9,6 +9,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
@@ -16,6 +17,18 @@ import (
 )
 
 func TestRemoteClipboardConsumesCommandVAndKeepsOtherEndpointResponsive(t *testing.T) {
+	for _, tc := range []struct {
+		name, binding, raw string
+		prefix             bool
+	}{
+		{"command-v", "", "\x1b[118;9u\x1b[118;9:3u", false},
+		{"configured-control-p", "ctrl+p", "\x10", false},
+		{"configured-prefix-i", "prefix+i", "i", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) { remoteClipboardKeepsOtherEndpointResponsive(t, tc.binding, tc.raw, tc.prefix) })
+	}
+}
+func remoteClipboardKeepsOtherEndpointResponsive(t *testing.T, binding, raw string, prefix bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	makeConnection := func() *endpointConnection {
@@ -27,7 +40,13 @@ func TestRemoteClipboardConsumesCommandVAndKeepsOtherEndpointResponsive(t *testi
 	m := &machineClient{ctx: ctx, active: "remote", events: make(chan endpointEvent), regions: &render.Output{}, endpoints: map[string]*managedEndpoint{
 		"remote": {connection: remote, snapshot: &render.Input{State: st}}, "local": {connection: local},
 	}}
-	// PLAN explicitly requires a fake clipboard rather than the owner's pasteboard.
+	c, err := config.Decode([]byte("[keys]\nremote_image_paste='" + binding + "'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.endpoints["remote"].snapshot.SidebarConfig = c
+	m.endpoints["remote"].snapshot.Prefix = prefix
+	// Read a private file instead of the owner's pasteboard.
 	path := filepath.Join(t.TempDir(), "clipboard.txt")
 	want := "日本語\n'quoted'\tend"
 	if err := os.WriteFile(path, []byte(want), 0600); err != nil {
@@ -45,7 +64,7 @@ func TestRemoteClipboardConsumesCommandVAndKeepsOtherEndpointResponsive(t *testi
 	}
 	defer func() { cancel(); m.workers.Wait() }()
 	var framer input.Framer
-	for _, event := range framer.Push([]byte("\x1b[118;9u\x1b[118;9:3u")) {
+	for _, event := range framer.Push([]byte(raw)) {
 		if err := m.input(event); err != nil {
 			t.Fatal(err)
 		}
@@ -58,6 +77,12 @@ func TestRemoteClipboardConsumesCommandVAndKeepsOtherEndpointResponsive(t *testi
 	}
 	if err := m.sendInput("local", []byte("local-still-works")); err != nil {
 		t.Fatal(err)
+	}
+	if prefix {
+		if len(remote.queue) != 1 || !remote.queue[0].EndPrefix {
+			t.Fatal("prefix was not consumed", remote.queue)
+		}
+		remote.queue = nil
 	}
 	if len(local.queue) != 1 || len(remote.queue) != 0 {
 		t.Fatal("clipboard read blocked Local or leaked Command-V")

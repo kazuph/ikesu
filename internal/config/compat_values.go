@@ -97,23 +97,6 @@ func (c *Config) unsupportedValues() {
 	warn("update.version_check", c.Update.VersionCheck != nil && *c.Update.VersionCheck)
 	warn("update.manifest_check", c.Update.ManifestCheck != nil && *c.Update.ManifestCheck)
 
-	warn("remote.manage_ssh_config", c.Remote.ManageSSHConfig != nil && *c.Remote.ManageSSHConfig)
-	warn("ui.sound.path", c.UI.Sound.Path != "")
-	warn("ui.sound.done_path", c.UI.Sound.DonePath != "")
-	warn("ui.sound.request_path", c.UI.Sound.RequestPath != "")
-	for agent := range c.UI.Sound.Agents {
-		warn("ui.sound.agents."+agent, true)
-	}
-	for _, action := range []string{"remote_image_paste"} {
-		if bindings, explicit := c.Keys.Actions[action]; explicit {
-			for _, binding := range bindings {
-				if binding != "" {
-					warn("keys."+action, true)
-					break
-				}
-			}
-		}
-	}
 }
 func (c Config) MouseScrollLines() int {
 	if c.UI.MouseScrollLines != nil {

@@ -38,6 +38,7 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	EndPrefix    bool                   `json:"end_prefix,omitempty"`
 	Notification *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
@@ -689,6 +690,13 @@ func (s *Server) attach(conn net.Conn) {
 				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered, m.FocusEpoch) })
 			}
 		case "input":
+			if m.EndPrefix {
+				s.app.Do(func() {
+					if c.viewer != nil {
+						c.viewer.EndPrefix(s.app)
+					}
+				})
+			}
 			if data, err := decode64(m.Data); err == nil && len(data) > 0 {
 				s.app.Do(func() {
 					s.mu.Lock()

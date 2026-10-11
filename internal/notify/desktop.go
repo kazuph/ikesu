@@ -25,7 +25,18 @@ type Desktop struct {
 func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, machineID string) error {
 	run := d.Run
 	if run == nil {
-		run = func(name string, args ...string) error { return exec.Command(name, args...).Start() }
+		run = func(name string, args ...string) error {
+			cmd := exec.Command(name, args...)
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+			go func() {
+				if err := cmd.Wait(); err != nil {
+					fmt.Fprintln(os.Stderr, "gtx: notification command:", err)
+				}
+			}()
+			return nil
+		}
 	}
 	lookup := d.LookPath
 	if lookup == nil {

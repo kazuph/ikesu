@@ -43,6 +43,7 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
+	EndPrefix    bool                   `json:"end_prefix,omitempty"`
 	Notification *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
