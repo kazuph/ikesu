@@ -123,6 +123,14 @@ func TestPendingMachineSectionHighlightsOnlyItsTargetWithoutSelectingRemote(t *t
 		if hit.Machine == "remote" && hit.Workspace != 0 && out.Frame.Cell(hit.Rect.X, hit.Rect.Y).Content == "▌" {
 			t.Fatal("pending section move selected a hidden Remote card")
 		}
+		if hit.Machine == "remote" && hit.Row.Kind == RowWorkspace && remoteState.Workspaces[hit.Row.Ws].SidebarSection() == model.SectionWork {
+			for x := hit.Rect.X; x < hit.Rect.X+hit.Rect.W; x++ {
+				cell := out.Frame.Cell(x, hit.Rect.Y)
+				if cell.Content != "─" || !reflect.DeepEqual(cell.Style.Fg, out.Frame.Palette.Accent) {
+					t.Fatal("pending section move has no insertion line at its target", x)
+				}
+			}
+		}
 	}
 	if !found || remote.DragSection != "" || localState.Active != 0 || remoteState.Active != 0 {
 		t.Fatal("missing target or composition mutated endpoint navigation")

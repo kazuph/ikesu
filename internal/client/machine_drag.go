@@ -59,6 +59,7 @@ func (m *machineClient) dragInput(event input.Event) error {
 					}
 				} else {
 					d.targetSection = state.Workspaces[hit.Row.Ws].SidebarSection()
+					d.drop = hit.Row.Ws
 				}
 			}
 			if err := m.flushDrag(); err != nil {

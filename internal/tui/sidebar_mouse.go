@@ -167,6 +167,9 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			dest := a.st.Workspaces[r.Ws].SidebarSection()
 			if dest != source {
 				g.section = dest
+				if a.snapshotSink != nil {
+					g.drop = r.Ws
+				}
 			} else {
 				g.drop = r.Ws
 				if m.Y > g.y {
@@ -189,7 +192,8 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 		if g.moved {
 			if g.section != "" {
 				a.setSection(g.ws, g.section)
-			} else if g.drop >= 0 {
+			}
+			if g.drop >= 0 && (g.section == "" || a.snapshotSink != nil) {
 				to := g.drop
 				if to > g.ws {
 					to--

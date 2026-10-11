@@ -228,14 +228,18 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
 		drawSidebarScrollbar(f, view.Agents, false)
 	}
-	if in.DropIndex != nil && in.Dragging {
+	drop := in.DropIndex
+	if drop == nil && in.Dragging {
+		drop = sectionDropIndex(in)
+	}
+	if drop != nil && in.Dragging {
 		boundary := -1
 		for _, pos := range view.Rows {
-			if pos.Row.Kind == RowWorkspace && pos.Row.Ws == *in.DropIndex {
+			if pos.Row.Kind == RowWorkspace && pos.Row.Ws == *drop {
 				boundary = pos.Y
 				break
 			}
-			if (pos.Row.Kind == RowWorkspace || pos.Row.Kind == RowGit || pos.Row.Kind == RowCardBlank) && pos.Row.Ws == *in.DropIndex-1 {
+			if (pos.Row.Kind == RowWorkspace || pos.Row.Kind == RowGit || pos.Row.Kind == RowCardBlank) && pos.Row.Ws == *drop-1 {
 				boundary = pos.Y + 1
 			}
 		}
@@ -289,6 +293,19 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 			}
 		}
 	}
+}
+
+func sectionDropIndex(in Input) *int {
+	if in.DropIndex != nil || !in.ServerUI || !in.Dragging || in.DragSection == "" {
+		return in.DropIndex
+	}
+	for _, row := range SidebarRows(in.State, in.Panes, in.SidebarConfig) {
+		if row.Kind == RowWorkspace && in.State.Workspaces[row.Ws].SidebarSection() == in.DragSection {
+			index := row.Ws
+			return &index
+		}
+	}
+	return nil
 }
 
 func SidebarWidthRect(s *model.AppState) layout.Rect {

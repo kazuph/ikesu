@@ -84,6 +84,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 		width--
 	}
 	dropBoundary := -1
+	dropAtWorkspace := false
 	for i := m.Scroll; i < len(rows) && i-m.Scroll < area.H; i++ {
 		entry := rows[i]
 		group := m.Groups[entry.group]
@@ -132,16 +133,22 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 		m.Hits = append(m.Hits, hit)
 		var dropIndex *int
 		if group.ID == m.Active && group.Input != nil && group.Input.Dragging {
-			dropIndex = group.Input.DropIndex
+			dropIndex = sectionDropIndex(*group.Input)
 		}
 		if group.ID == m.DropMachine {
 			dropIndex = m.DropIndex
+			if dropIndex == nil && m.DropSection != "" && group.Input != nil {
+				in := *group.Input
+				in.Dragging, in.DragSection = true, m.DropSection
+				dropIndex = sectionDropIndex(in)
+			}
 		}
 		if dropIndex != nil {
 			drop := *dropIndex
 			if entry.row.Kind == RowWorkspace && entry.row.Ws == drop {
 				dropBoundary = y
-			} else if (entry.row.Kind == RowWorkspace || entry.row.Kind == RowGit || entry.row.Kind == RowCardBlank) && entry.row.Ws == drop-1 {
+				dropAtWorkspace = true
+			} else if !dropAtWorkspace && (entry.row.Kind == RowWorkspace || entry.row.Kind == RowGit || entry.row.Kind == RowCardBlank) && entry.row.Ws == drop-1 {
 				dropBoundary = y + 1
 			}
 		}
