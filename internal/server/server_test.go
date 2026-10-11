@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"os"
@@ -20,8 +21,10 @@ import (
 
 // testConn is a raw client-socket connection for tests.
 type testConn struct {
-	conn net.Conn
-	rd   *bufio.Reader
+	conn      net.Conn
+	rd        *bufio.Reader
+	snapshots endpoint.SnapshotDecoder
+	frames    render.Encoder
 }
 
 func dialClient(t *testing.T, dir string) *testConn {
@@ -65,6 +68,20 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 		}
 		var m clientMsg
 		if json.Unmarshal(line, &m) == nil {
+			if m.Type == "snapshot" {
+				data, err := decode64(m.Data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				in, err := c.snapshots.Decode(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				out := render.Compose(in)
+				m.Type, m.Data = "output", encode64(c.frames.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
+				out.Frame = nil
+				c.send(t, clientMsg{Type: "rendered", Rendered: out})
+			}
 			got = append(got, m)
 			if pred(m) {
 				return got
@@ -205,34 +222,58 @@ func TestSecondClientPreservesFirst(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
+	waitAPISocket(t, dir)
+	pid := firstPaneID(t, dir)
+	consume := func(c *testConn) <-chan string {
+		ended := make(chan string, 1)
+		c.conn.SetReadDeadline(time.Time{})
+		go func() {
+			for {
+				m, err := readClientMsg(c.rd)
+				if err != nil {
+					ended <- "closed"
+					return
+				}
+				if m.Type == "detached" {
+					ended <- "detached"
+					return
+				}
+			}
+		}()
+		return ended
+	}
 	c1 := dialClient(t, dir)
 	defer c1.conn.Close()
 	c1.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	firstEnded := consume(c1)
 	c2 := dialClient(t, dir)
 	defer c2.conn.Close()
 	c2.send(t, clientMsg{Type: "hello", Cols: 100, Rows: 30})
 	c2.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	secondEnded := consume(c2)
 	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo firststillattached\n"))})
-	messages := c1.readUntil(t, 5*time.Second, func(m clientMsg) bool {
-		b, _ := decode64(m.Data)
-		return strings.Contains(string(b), "firststillattached") || m.Type == "detached"
-	})
-	if !strings.Contains(outputs(messages), "firststillattached") {
-		t.Fatal("first client disconnected", messages)
+	waitRead(t, dir, pid, "firststillattached")
+	select {
+	case reason := <-firstEnded:
+		t.Fatal("first client disconnected", reason)
+	default:
 	}
 	c2.send(t, clientMsg{Type: "input", Data: encode64([]byte{2, 'q'})})
-	messages = c2.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "detached" })
-	if len(messages) == 0 || messages[len(messages)-1].Type != "detached" {
+	select {
+	case reason := <-secondEnded:
+		if reason != "detached" {
+			t.Fatal("second client did not detach", reason)
+		}
+	case <-time.After(5 * time.Second):
 		t.Fatal("second client did not detach")
 	}
 	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo firstsurvivesdetach\n"))})
-	messages = c1.readUntil(t, 5*time.Second, func(m clientMsg) bool {
-		b, _ := decode64(m.Data)
-		return strings.Contains(string(b), "firstsurvivesdetach")
-	})
-	if !strings.Contains(outputs(messages), "firstsurvivesdetach") {
-		t.Fatal("peer detach affected first")
+	waitRead(t, dir, pid, "firstsurvivesdetach")
+	select {
+	case reason := <-firstEnded:
+		t.Fatal("peer detach affected first", reason)
+	default:
 	}
 }
 

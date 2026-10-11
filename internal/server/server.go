@@ -23,6 +23,7 @@ import (
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/plugin"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/tui"
 )
@@ -38,14 +39,16 @@ import (
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
 	endpoint.Peer
-	Available int    `json:"available_generation,omitempty"`
-	Type      string `json:"type"`
-	Data      string `json:"data,omitempty"`
-	Cols      int    `json:"cols,omitempty"`
-	Rows      int    `json:"rows,omitempty"`
-	Xpixel    int    `json:"xpixel,omitempty"`
-	Ypixel    int    `json:"ypixel,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	Available  int            `json:"available_generation,omitempty"`
+	Type       string         `json:"type"`
+	Data       string         `json:"data,omitempty"`
+	Cols       int            `json:"cols,omitempty"`
+	Rows       int            `json:"rows,omitempty"`
+	Xpixel     int            `json:"xpixel,omitempty"`
+	Ypixel     int            `json:"ypixel,omitempty"`
+	Reason     string         `json:"reason,omitempty"`
+	Rendered   *render.Output `json:"rendered,omitempty"`
+	RequestAck bool           `json:"request_ack,omitempty"`
 }
 
 // Server is one running session.
@@ -535,6 +538,16 @@ func (s *Server) attach(conn net.Conn) {
 	}
 	s.app.Do(func() {
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
+		var snapshots endpoint.SnapshotEncoder
+		c.viewer.SetSnapshotSink(func(in render.Input) error {
+			data, err := snapshots.Encode(in)
+			if err != nil {
+				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_snapshot_invalid: " + err.Error()})
+				s.dropConn(c)
+				return err
+			}
+			return c.send(clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender()})
+		})
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
 	})
 	defer s.dropConn(c)
@@ -548,6 +561,10 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case "rendered":
+			if m.Rendered != nil {
+				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered) })
+			}
 		case "input":
 			if data, err := decode64(m.Data); err == nil && len(data) > 0 {
 				s.app.Do(func() { s.mu.Lock(); s.client = c; s.mu.Unlock(); c.viewer.Input(s.app, data) })

@@ -143,6 +143,7 @@ type App struct {
 	tickViewers       func()
 	visiblePane       func(int) bool
 	sharedPaneSnaps   map[int]*render.PaneSnap
+	snapshotSink      func(render.Input) error
 	agentStateCounter uint64
 	agentStates       map[int]string
 	agentStateSeq     map[int]uint64

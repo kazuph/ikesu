@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/cli"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
 	"os/exec"
@@ -126,6 +127,25 @@ func TestG2PaneMetadataTitlePreservesRealGitBranch(t *testing.T) {
 			if err := decoder.Decode(&m); err != nil {
 				readerDone <- err
 				return
+			}
+			if m.Type == "snapshot" {
+				data, err := decode64(m.Data)
+				if err != nil {
+					readerDone <- err
+					return
+				}
+				in, err := c.snapshots.Decode(data)
+				if err != nil {
+					readerDone <- err
+					return
+				}
+				out := render.Compose(in)
+				m.Type, m.Data = "output", encode64(c.frames.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
+				out.Frame = nil
+				if err := json.NewEncoder(c.conn).Encode(clientMsg{Type: "rendered", Rendered: out}); err != nil {
+					readerDone <- err
+					return
+				}
 			}
 			if m.Type != "output" {
 				continue

@@ -184,6 +184,11 @@ func (a *App) draw() {
 	if a.help != nil {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}
 	}
+	if a.snapshotSink != nil {
+		a.lastDraw = time.Now()
+		a.dirty = a.snapshotSink(in) != nil
+		return
+	}
 	out := render.Compose(in)
 	a.tabViewWorkspace, a.tabViewActive = wsID, tabID
 	a.tabViewWidth = a.st.TabBarArea().W

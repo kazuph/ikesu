@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
@@ -13,6 +14,60 @@ import (
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/teststate"
 )
+
+func TestEndpointSnapshotCarriesStateAndPaneCells(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	client := dialClient(t, dir)
+	defer client.conn.Close()
+	client.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45})
+	client.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	rd := bufio.NewReader(client.conn)
+	var decoder endpoint.SnapshotDecoder
+	for {
+		message, err := readClientMsg(rd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message.Type != "snapshot" {
+			continue
+		}
+		data, err := decode64(message.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := decoder.Decode(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if in.State.Cols != 160 || in.State.Rows != 45 || in.State.ActiveWorkspace() == nil {
+			t.Fatal("missing viewer state", in.State)
+		}
+		pane := in.Panes[in.State.FocusedPane()]
+		if pane == nil || len(pane.Grid) == 0 || len(pane.Grid[0]) == 0 {
+			t.Fatal("missing pane content cells")
+		}
+		return
+	}
+}
+
+func TestEndpointFocusReturnRetainsImmediateKeys(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	client := dialClient(t, dir)
+	defer client.conn.Close()
+	client.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	client.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	pid := firstPaneID(t, dir)
+	client.send(t, clientMsg{Type: "input", Data: encode64([]byte("\x1b[O\x1b[Iprintf 'FOCUS_%s\\n' KEPT\n"))})
+	client.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+		data, _ := decode64(m.Data)
+		return strings.Contains(string(data), "FOCUS_KEPT")
+	})
+	waitRead(t, dir, pid, "FOCUS_KEPT")
+}
 
 func TestEndpointGenerationRangeAndUnsupportedAction(t *testing.T) {
 	teststate.Lock(t)
@@ -68,14 +123,16 @@ func TestEndpointIndependentTabsAndLastInputSize(t *testing.T) {
 	defer first.conn.Close()
 	first.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	first.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	first.conn.SetReadDeadline(time.Time{})
+	firstDrained := make(chan struct{})
+	go func() { io.Copy(io.Discard, first.rd); close(firstDrained) }()
 	second := dialClient(t, dir)
 	defer second.conn.Close()
 	second.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45})
 	second.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
 	first.conn.SetReadDeadline(time.Time{})
 	second.conn.SetReadDeadline(time.Time{})
-	firstDrained, secondDrained := make(chan struct{}), make(chan struct{})
-	go func() { io.Copy(io.Discard, first.rd); close(firstDrained) }()
+	secondDrained := make(chan struct{})
 	go func() { io.Copy(io.Discard, second.rd); close(secondDrained) }()
 	defer func() { first.conn.Close(); second.conn.Close(); <-firstDrained; <-secondDrained }()
 	second.send(t, clientMsg{Type: "input", Data: encode64([]byte{2, 'n'})})

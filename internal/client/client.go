@@ -13,17 +13,20 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"reflect"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
@@ -37,14 +40,16 @@ const drainMs = 100 * time.Millisecond
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
 	endpoint.Peer
-	Available int    `json:"available_generation,omitempty"`
-	Type      string `json:"type"`
-	Data      string `json:"data,omitempty"`
-	Cols      int    `json:"cols,omitempty"`
-	Rows      int    `json:"rows,omitempty"`
-	Xpixel    int    `json:"xpixel,omitempty"`
-	Ypixel    int    `json:"ypixel,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	Available  int            `json:"available_generation,omitempty"`
+	Type       string         `json:"type"`
+	Data       string         `json:"data,omitempty"`
+	Cols       int            `json:"cols,omitempty"`
+	Rows       int            `json:"rows,omitempty"`
+	Xpixel     int            `json:"xpixel,omitempty"`
+	Ypixel     int            `json:"ypixel,omitempty"`
+	Reason     string         `json:"reason,omitempty"`
+	Rendered   *render.Output `json:"rendered,omitempty"`
+	RequestAck bool           `json:"request_ack,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it
@@ -235,7 +240,11 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 		}
 	}()
 
-	// Server → terminal.
+	var snapshots endpoint.SnapshotDecoder
+	var frames render.Encoder
+	var lastRegions *render.Output
+	// Server → terminal. The server supplies state and pane cells; only
+	// this process composes sidebar, tabs, borders and overlays.
 	for {
 		line, err := rd.ReadBytes('\n')
 		if err != nil {
@@ -248,6 +257,34 @@ func pump(conn net.Conn, in, out *os.File, leave func()) pumpResult {
 			continue
 		}
 		switch m.Type {
+		case "snapshot":
+			data, err := base64.StdEncoding.DecodeString(m.Data)
+			if err != nil {
+				leave()
+				fmt.Fprintln(out, "gtx: invalid snapshot:", err)
+				return pumpRejected
+			}
+			in, err := snapshots.Decode(data)
+			if err != nil {
+				leave()
+				fmt.Fprintln(out, "gtx: invalid snapshot:", err)
+				return pumpRejected
+			}
+			composed := render.Compose(in)
+			if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible {
+				if cell := composed.Frame.Cell(composed.AnchorX, composed.AnchorY); cell != nil {
+					cell.Style.Attrs |= uv.AttrReverse
+					composed.AnchorVisible = false
+				}
+			}
+			_, _ = out.Write(frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible))
+			composed.Frame = nil
+			if m.RequestAck || !reflect.DeepEqual(lastRegions, composed) {
+				if err := w.send(msg{Type: "rendered", Rendered: composed}); err != nil {
+					return pumpClosed
+				}
+				lastRegions = composed
+			}
 		case "welcome":
 			if _, err := endpoint.Negotiate(endpoint.Current(), m.Peer); err != nil {
 				leave()

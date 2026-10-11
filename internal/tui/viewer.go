@@ -16,6 +16,8 @@ type Viewer struct {
 	tabs       map[int]int
 	cols, rows int
 	pendingAt  time.Time
+	focusUntil time.Time
+	heldKeys   []input.Event
 }
 
 type viewSelection struct {
@@ -111,7 +113,7 @@ func (v *Viewer) Input(a *App, bytes []byte) {
 	v.with(a, func(ui *App) {
 		ui.syncLayout()
 		for _, event := range ui.fr.Push(bytes) {
-			ui.onInput(event)
+			v.onInput(ui, event)
 		}
 		v.pendingAt = time.Now()
 	})
@@ -135,12 +137,15 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
+	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
+		v.with(a, func(ui *App) { v.releaseKeys(ui) })
+	}
 	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(input.IdleFlushMs)*time.Millisecond {
 		return
 	}
 	v.with(a, func(ui *App) {
 		for _, event := range ui.fr.FlushTimeout() {
-			ui.onInput(event)
+			v.onInput(ui, event)
 		}
 	})
 }
