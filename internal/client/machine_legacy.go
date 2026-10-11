@@ -15,7 +15,7 @@ func (m *machineClient) legacyLocal() bool {
 func (m *machineClient) configureMachineDisplay() {
 	if !m.legacyLocal() {
 		for _, id := range m.order[1:] {
-			if m.endpoints[id].status == "unsupported" {
+			if m.endpoints[id].status == "unsupported" && m.endpoints[id].profile.Enabled {
 				m.start(id, nil)
 			}
 		}
@@ -25,6 +25,9 @@ func (m *machineClient) configureMachineDisplay() {
 	fmt.Fprintln(os.Stderr, "gtx:", reason)
 	for _, id := range m.order[1:] {
 		e := m.endpoints[id]
+		if !e.profile.Enabled {
+			continue
+		}
 		if e.cancel != nil {
 			e.cancel()
 		}

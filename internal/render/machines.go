@@ -94,6 +94,9 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 				m.Hits = append(m.Hits, MachineHit{Machine: group.ID, Rect: newRect, New: true})
 			}
 			machineRowBackground(f, area.X, y, width)
+		} else if entry.row.Kind == RowRule {
+			drawSidebarRow(f, active.State, active, entry.row, area.X, y, width)
+			machineRowBackground(f, area.X, y, width)
 		} else if group.Input != nil {
 			in := *group.Input
 			state := *in.State

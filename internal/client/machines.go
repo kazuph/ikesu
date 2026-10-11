@@ -28,15 +28,17 @@ type managedEndpoint struct {
 	snapshot                 *render.Input
 	epoch                    uint64
 	requestAck               bool
+	removed                  bool
 }
 
 type endpointEvent struct {
-	id         string
-	attempt    uint64
-	connection *endpointConnection
-	message    msg
-	err        error
-	approval   string
+	id             string
+	attempt        uint64
+	connection     *endpointConnection
+	message        msg
+	err            error
+	approval       string
+	catalogChanged bool
 }
 
 type pendingMachine struct {
@@ -111,6 +113,17 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	m.start("local", local)
 	for _, id := range m.order[1:] {
 		m.start(id, nil)
+	}
+	stopCatalog, err := watchMachineCatalog(ctx, m.catalogPath(), func(ctx context.Context, err error) {
+		m.post(ctx, endpointEvent{catalogChanged: true, err: err})
+	})
+	if err != nil {
+		fmt.Fprintln(out, "gtx: machine catalog watch:", err)
+		return pumpRejected
+	}
+	defer stopCatalog()
+	if err := m.refreshMachineCatalog(); err != nil {
+		m.notify(err.Error())
 	}
 	input, stopInput, err := readMachineInput(in, ctx)
 	if err != nil {

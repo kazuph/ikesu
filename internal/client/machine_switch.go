@@ -62,6 +62,7 @@ func (m *machineClient) finishSwitch() {
 		return
 	}
 	old := m.endpoints[m.active]
+	oldID := m.active
 	visible := false
 	if old.connection != nil {
 		if endpoint.Allows(old.connection.writer.available, endpoint.MachineGeneration, old.connection.writer.methods, "visibility") {
@@ -72,6 +73,9 @@ func (m *machineClient) finishSwitch() {
 		}
 	}
 	m.active = p.id
+	if old.removed {
+		delete(m.endpoints, oldID)
+	}
 	m.pending = nil
 	m.regions = nil
 	visible = !m.blurred

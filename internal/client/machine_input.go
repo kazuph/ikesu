@@ -127,6 +127,10 @@ func (m *machineClient) input(event input.Event) error {
 					return m.createWorkspace(hit.Machine)
 				}
 				if hit.Header && event.Kind == input.KindMouseClick {
+					if !m.endpoints[hit.Machine].profile.Enabled {
+						m.suppressRelease = true
+						return nil
+					}
 					if e := m.endpoints[hit.Machine]; e.connection == nil {
 						e.retry.retryNow(time.Now())
 						m.advance(time.Now())

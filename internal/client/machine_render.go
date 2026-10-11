@@ -18,7 +18,11 @@ func (m *machineClient) paint() error {
 	m.sidebar.Active = m.active
 	for _, id := range m.order {
 		group := m.endpoints[id]
-		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: group.snapshot})
+		input := group.snapshot
+		if !group.profile.Enabled {
+			input = nil
+		}
+		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
 	composed := render.ComposeMachines(in, &m.sidebar)
 	f := composed.Frame

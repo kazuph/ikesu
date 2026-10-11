@@ -106,6 +106,14 @@ func needsAttention(reason string) bool {
 }
 
 func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
+	if event.catalogChanged {
+		if event.err != nil {
+			m.notify("machine catalog watch: " + event.err.Error())
+		} else if err := m.refreshMachineCatalog(); err != nil {
+			m.notify(err.Error())
+		}
+		return 0, false
+	}
 	e := m.endpoints[event.id]
 	if e == nil || e.attempt != event.attempt {
 		return 0, false
