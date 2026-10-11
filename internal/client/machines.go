@@ -58,6 +58,7 @@ type machineClient struct {
 	order           []string
 	active          string
 	pending         *pendingMachine
+	drag            *machineDrag
 	size            tui.Winsize
 	in, out         *os.File
 	events          chan endpointEvent
@@ -221,6 +222,10 @@ func (m *machineClient) advance(now time.Time) {
 	}
 	if m.pending != nil && !now.Before(m.pending.deadline) {
 		m.endpoints[m.pending.id].reason = "machine switch timed out"
+		if m.drag != nil && m.drag.started {
+			m.notify("the space could not be moved: its machine is not ready")
+		}
+		m.drag = nil
 		m.pending = nil
 	}
 	for id, e := range m.endpoints {

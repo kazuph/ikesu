@@ -46,6 +46,9 @@ func (m *machineClient) refreshMachineCatalog() error {
 			if m.pending != nil && m.pending.id == id {
 				m.pending = nil
 			}
+			if m.drag != nil && m.drag.id == id {
+				m.drag = nil
+			}
 			if e.cancel != nil {
 				e.cancel()
 			}

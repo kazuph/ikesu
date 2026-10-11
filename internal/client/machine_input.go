@@ -106,6 +106,9 @@ func (m *machineClient) input(event input.Event) error {
 	if m.forms != nil && m.forms.Input(event, activeView.snapshot.State) {
 		return m.paint()
 	}
+	if m.drag != nil && (event.Kind == input.KindMouseMotion || event.Kind == input.KindMouseRelease) {
+		return m.dragInput(event)
+	}
 	if activeView.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 		r := render.SidebarMenuRect(activeView.snapshot.State)
 		if contains(r.X, r.Y, r.W, r.H, event.Mouse.X, event.Mouse.Y) {
@@ -157,6 +160,14 @@ func (m *machineClient) input(event input.Event) error {
 				}
 				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick {
 					m.suppressRelease = true
+					if event.Mouse.Button == uv.MouseLeft {
+						data, err := m.sidebarBytes(hit, event)
+						if err != nil {
+							return err
+						}
+						section := m.endpoints[hit.Machine].snapshot.State.Workspaces[hit.Row.Ws].SidebarSection()
+						m.drag = &machineDrag{id: hit.Machine, press: data, x: event.Mouse.X, y: event.Mouse.Y, drop: -1, section: section}
+					}
 					m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
 					if e := m.endpoints[hit.Machine]; e.connection == nil && hit.Machine == "local" {
 						m.start(hit.Machine, nil)
@@ -202,9 +213,17 @@ func (m *machineClient) sendInput(id string, data []byte) error {
 }
 
 func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) error {
+	data, err := m.sidebarBytes(hit, event)
+	if err != nil {
+		return err
+	}
+	return m.sendInput(hit.Machine, data)
+}
+
+func (m *machineClient) sidebarBytes(hit render.MachineHit, event input.Event) ([]byte, error) {
 	e := m.endpoints[hit.Machine]
 	if e.connection == nil || e.snapshot == nil {
-		return nil
+		return nil, nil
 	}
 	view := render.SidebarViewForInput(*e.snapshot)
 	for _, position := range view.Rows {
@@ -214,9 +233,9 @@ func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) e
 		var button, x, y int
 		var final byte
 		if _, err := fmt.Sscanf(string(event.Raw), "\x1b[<%d;%d;%d%c", &button, &x, &y, &final); err != nil {
-			return fmt.Errorf("unsupported sidebar mouse encoding")
+			return nil, fmt.Errorf("unsupported sidebar mouse encoding")
 		}
-		return m.sendInput(hit.Machine, []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, position.Y+1, final)))
+		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, position.Y+1, final)), nil
 	}
-	return fmt.Errorf("unsupported sidebar row outside endpoint viewport")
+	return nil, fmt.Errorf("unsupported sidebar row outside endpoint viewport")
 }

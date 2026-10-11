@@ -89,4 +89,9 @@ func TestMachineSidebarDropIndicatorUsesRemoteGroupCoordinates(t *testing.T) {
 	if out.Frame.Cell(area.X, last+1).Content == "─" {
 		t.Fatal("hidden remote drag leaked into Local")
 	}
+	machines.DropMachine, machines.DropIndex = "remote", &drop
+	out = ComposeMachines(local, &machines)
+	if out.Frame.Cell(area.X, last+1).Content != "─" {
+		t.Fatal("pending remote drop indicator was not drawn while Local remains selected")
+	}
 }

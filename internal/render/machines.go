@@ -23,11 +23,13 @@ type MachineHit struct {
 }
 
 type MachineSidebar struct {
-	Groups     []MachineGroup
-	Active     string
-	Scroll     int
-	Hits       []MachineHit
-	PaneStatus []string
+	Groups      []MachineGroup
+	Active      string
+	Scroll      int
+	Hits        []MachineHit
+	PaneStatus  []string
+	DropMachine string
+	DropIndex   *int
 }
 
 type machineRow struct {
@@ -124,8 +126,15 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			}
 		}
 		m.Hits = append(m.Hits, hit)
-		if group.ID == m.Active && group.Input != nil && group.Input.Dragging && group.Input.DropIndex != nil {
-			drop := *group.Input.DropIndex
+		var dropIndex *int
+		if group.ID == m.Active && group.Input != nil && group.Input.Dragging {
+			dropIndex = group.Input.DropIndex
+		}
+		if group.ID == m.DropMachine {
+			dropIndex = m.DropIndex
+		}
+		if dropIndex != nil {
+			drop := *dropIndex
 			if entry.row.Kind == RowWorkspace && entry.row.Ws == drop {
 				dropBoundary = y
 			} else if (entry.row.Kind == RowWorkspace || entry.row.Kind == RowGit || entry.row.Kind == RowCardBlank) && entry.row.Ws == drop-1 {

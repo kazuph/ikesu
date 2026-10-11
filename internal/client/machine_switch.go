@@ -84,4 +84,7 @@ func (m *machineClient) finishSwitch() {
 	} else if visible {
 		_ = m.sendInput(m.active, []byte("\x1b[I"))
 	}
+	if err := m.flushDrag(); err != nil {
+		m.fail(m.active, err)
+	}
 }
