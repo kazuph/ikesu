@@ -55,6 +55,8 @@ type clientMsg struct {
 	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
 	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
 	ConfigID      uint64                    `json:"config_id,omitempty"`
+	Visible       *bool                     `json:"visible,omitempty"`
+	Workspace     int                       `json:"workspace,omitempty"`
 }
 
 // Server is one running session.
@@ -70,6 +72,7 @@ type Server struct {
 	session           string
 	dir               string
 	version           string
+	endpointPeer      endpoint.Peer
 	cwd               string // cwd the session was started from
 
 	lock     *os.File
@@ -204,6 +207,10 @@ func (c *clientConn) close() {
 // Run starts the server for session and blocks until the app quits.
 // version is the build version reported by ping.
 func Run(session, version string) (int, error) {
+	return runEndpoint(session, version, endpoint.Current())
+}
+
+func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 	if !api.ValidSessionName(session) {
 		return 2, fmt.Errorf("invalid session name %q", session)
 	}
@@ -249,7 +256,7 @@ func Run(session, version string) (int, error) {
 		cwd = os.Getenv("HOME")
 	}
 
-	s := &Server{session: session, dir: dir, version: version, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
+	s := &Server{session: session, dir: dir, version: version, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
 		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		jobProcs:   jobProcsT{m: map[string]*exec.Cmd{}},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
@@ -517,9 +524,14 @@ func (s *Server) attach(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	available, err := endpoint.Negotiate(hello.Peer, endpoint.Current())
+	available, err := endpoint.Negotiate(hello.Peer, s.endpointPeer)
 	if err != nil {
-		_ = c.send(clientMsg{Type: "error", Reason: err.Error(), Peer: endpoint.Current()})
+		_ = c.send(clientMsg{Type: "error", Reason: err.Error(), Peer: s.endpointPeer})
+		c.close()
+		return
+	}
+	if hello.Visible != nil && !*hello.Visible && !endpoint.Allows(available, endpoint.MachineGeneration, s.endpointPeer.Methods, "visibility") {
+		_ = c.send(clientMsg{Type: "error", Reason: "endpoint_action_unsupported: visibility", Peer: s.endpointPeer})
 		c.close()
 		return
 	}
@@ -543,7 +555,7 @@ func (s *Server) attach(conn net.Conn) {
 	s.lastUse++
 	c.lastUse = s.lastUse
 	s.mu.Unlock()
-	if err := c.send(clientMsg{Type: "welcome", Peer: endpoint.Current(), Available: available}); err != nil {
+	if err := c.send(clientMsg{Type: "welcome", Peer: s.endpointPeer, Available: available}); err != nil {
 		s.dropConn(c)
 		return
 	}
@@ -551,6 +563,9 @@ func (s *Server) attach(conn net.Conn) {
 	pendingConfig := map[uint64]func(config.Config, error){}
 	s.app.Do(func() {
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
+		if hello.Visible != nil && !*hello.Visible {
+			c.viewer.SetVisible(s.app, false)
+		}
 		c.viewer.Configure(s.app, hello.Config, hello.Preferences, func(preferences endpoint.ViewPreferences) error {
 			return c.send(clientMsg{Type: "preferences", Preferences: &preferences})
 		})
@@ -587,11 +602,23 @@ func (s *Server) attach(conn net.Conn) {
 		if err != nil {
 			return
 		}
-		if !endpoint.Allows(available, 1, endpoint.Current().Methods, m.Type) {
+		if !endpoint.Allows(available, endpoint.RequiredGeneration(m.Type), s.endpointPeer.Methods, m.Type) {
 			_ = c.send(clientMsg{Type: "error", Reason: "endpoint_action_unsupported: " + m.Type})
 			continue
 		}
 		switch m.Type {
+		case "visibility":
+			if m.Visible == nil {
+				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_visibility_invalid: missing visible state"})
+				continue
+			}
+			s.app.Do(func() { c.viewer.SetVisible(s.app, *m.Visible) })
+		case "workspace_select":
+			s.app.Do(func() {
+				if !c.viewer.SelectWorkspace(s.app, m.Workspace) {
+					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+				}
+			})
 		case "config_result":
 			s.app.Do(func() {
 				done := pendingConfig[m.ConfigID]

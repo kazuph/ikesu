@@ -4,8 +4,9 @@ package endpoint
 import "fmt"
 
 const ProtocolVersion = 1
-const Generation = 1
+const Generation = 2
 const MinGeneration = 1
+const MachineGeneration = 2
 
 type Peer struct {
 	Protocol      int      `json:"protocol"`
@@ -16,7 +17,23 @@ type Peer struct {
 
 func Current() Peer {
 	return Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"input", "resize", "rendered", "preferences_error", "config_result"}}
+		Methods: []string{"input", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select"}}
+}
+
+// MachinePeer refuses an older server before it can create a visible viewer.
+func MachinePeer() Peer {
+	peer := Current()
+	peer.MinGeneration = MachineGeneration
+	return peer
+}
+
+func RequiredGeneration(method string) int {
+	switch method {
+	case "visibility", "workspace_select":
+		return MachineGeneration
+	default:
+		return 1
+	}
 }
 
 func Negotiate(client, server Peer) (int, error) {

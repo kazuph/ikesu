@@ -76,7 +76,7 @@ func TestEndpointGenerationRangeAndUnsupportedAction(t *testing.T) {
 	client := dialClient(t, dir)
 	defer client.conn.Close()
 	peer := endpoint.Current()
-	peer.Generation = 2
+	peer.Generation = 1
 	client.send(t, clientMsg{Type: "hello", Peer: peer, Cols: 80, Rows: 24})
 	messages := client.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "welcome" })
 	if len(messages) != 1 || messages[0].Type != "welcome" || messages[0].Available != 1 {

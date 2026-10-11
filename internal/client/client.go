@@ -57,6 +57,8 @@ type msg struct {
 	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
 	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
 	ConfigID      uint64                    `json:"config_id,omitempty"`
+	Visible       *bool                     `json:"visible,omitempty"`
+	Workspace     int                       `json:"workspace,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it
@@ -382,7 +384,7 @@ func (w *writer) send(m msg) error {
 }
 
 func (w *writer) sendLocked(m msg) error {
-	if m.Type != "hello" && !endpoint.Allows(w.available, 1, w.methods, m.Type) {
+	if m.Type != "hello" && !endpoint.Allows(w.available, endpoint.RequiredGeneration(m.Type), w.methods, m.Type) {
 		return fmt.Errorf("endpoint_action_unsupported: %s", m.Type)
 	}
 	return json.NewEncoder(w.conn).Encode(m)

@@ -8,7 +8,7 @@ import (
 func TestGenerationRange(t *testing.T) {
 	old := Current()
 	new := Current()
-	new.Generation = 2
+	new.Generation = old.Generation + 1
 	for _, peers := range [][2]Peer{{new, old}, {old, new}, {new, new}} {
 		g, err := Negotiate(peers[0], peers[1])
 		if err != nil || g != min(peers[0].Generation, peers[1].Generation) {
@@ -27,8 +27,8 @@ func TestGenerationExplicitRejection(t *testing.T) {
 	}{
 		{Current(), Peer{Protocol: ProtocolVersion}, "endpoint_generation_unsupported"},
 		{Peer{Protocol: ProtocolVersion}, Current(), "endpoint_generation_unsupported"},
-		{Current(), Peer{Protocol: ProtocolVersion, Generation: 2, MinGeneration: 2}, "endpoint_generation_unsupported"},
-		{Peer{Protocol: ProtocolVersion, Generation: 2, MinGeneration: 2}, Current(), "endpoint_generation_newer"},
+		{Current(), Peer{Protocol: ProtocolVersion, Generation: Generation + 1, MinGeneration: Generation + 1}, "endpoint_generation_unsupported"},
+		{Peer{Protocol: ProtocolVersion, Generation: Generation + 1, MinGeneration: Generation + 1}, Current(), "endpoint_generation_newer"},
 		{Peer{Protocol: 99, Generation: 1, MinGeneration: 1}, Current(), "protocol_unsupported"},
 	} {
 		_, err := Negotiate(test.client, test.server)

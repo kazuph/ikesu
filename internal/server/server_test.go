@@ -104,6 +104,10 @@ func outputs(msgs []clientMsg) string {
 }
 
 func startTestServer(t *testing.T) (dir string, done chan int) {
+	return startTestEndpoint(t, endpoint.Current())
+}
+
+func startTestEndpoint(t *testing.T, peer endpoint.Peer) (dir string, done chan int) {
 	t.Helper()
 	pinTestConfig(t)
 	// unix sockets cap sun_path around 104 bytes; t.TempDir() paths on
@@ -118,7 +122,7 @@ func startTestServer(t *testing.T) (dir string, done chan int) {
 	dir = api.SessionDir("test")
 	done = make(chan int, 1)
 	go func() {
-		code, err := Run("test", "test-version")
+		code, err := runEndpoint("test", "test-version", peer)
 		if err != nil {
 			t.Errorf("server.Run: %v", err)
 		}
