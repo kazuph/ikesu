@@ -17,6 +17,7 @@ type machineDrag struct {
 	last              []byte
 	drop              int
 	section           model.Section
+	targetSection     model.Section
 	started, released bool
 }
 
@@ -45,6 +46,10 @@ func (m *machineClient) dragInput(event input.Event) error {
 			d.queued = append(d.queued, data)
 			d.last = data
 			d.drop = -1
+			d.targetSection = ""
+			if (hit.Row.Kind == render.RowSection || hit.Row.Kind == render.RowBlank) && hit.Row.Section != d.section {
+				d.targetSection = hit.Row.Section
+			}
 			if hit.Row.Kind == render.RowWorkspace || hit.Row.Kind == render.RowGit || hit.Row.Kind == render.RowCardBlank {
 				state := m.endpoints[d.id].snapshot.State
 				if state.Workspaces[hit.Row.Ws].SidebarSection() == d.section {
@@ -52,6 +57,8 @@ func (m *machineClient) dragInput(event input.Event) error {
 					if event.Mouse.Y > d.y {
 						d.drop++
 					}
+				} else {
+					d.targetSection = state.Workspaces[hit.Row.Ws].SidebarSection()
 				}
 			}
 			if err := m.flushDrag(); err != nil {

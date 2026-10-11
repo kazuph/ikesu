@@ -30,6 +30,7 @@ type MachineSidebar struct {
 	PaneStatus  []string
 	DropMachine string
 	DropIndex   *int
+	DropSection model.Section
 }
 
 type machineRow struct {
@@ -114,6 +115,9 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 				in.SelectedWorkspace = nil
 				in.Dragging = false
 				in.DragSection = ""
+			}
+			if group.ID == m.DropMachine && m.DropSection != "" {
+				in.DragSection = m.DropSection
 			}
 			drawSidebarRow(f, &state, in, entry.row, area.X, y, width)
 			machineRowBackground(f, area.X, y, width)

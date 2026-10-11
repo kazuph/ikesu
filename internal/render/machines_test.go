@@ -95,3 +95,36 @@ func TestMachineSidebarDropIndicatorUsesRemoteGroupCoordinates(t *testing.T) {
 		t.Fatal("pending remote drop indicator was not drawn while Local remains selected")
 	}
 }
+
+func TestPendingMachineSectionHighlightsOnlyItsTargetWithoutSelectingRemote(t *testing.T) {
+	localState, remoteState := testState(160, 45), testState(160, 45)
+	remoteState.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true, Section: model.SectionWork})
+	local, remote := Input{ServerUI: true, State: localState}, Input{ServerUI: true, State: remoteState}
+	machines := MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &local}, {ID: "remote", Input: &remote}}, Active: "local", DropMachine: "remote", DropSection: model.SectionWork}
+	out := ComposeMachines(local, &machines)
+	found := false
+	for _, hit := range machines.Hits {
+		if hit.Machine == "remote" && hit.Row.Kind == RowSection && hit.Row.Section == model.SectionWork {
+			found = true
+			for x := hit.Rect.X; x < hit.Rect.X+hit.Rect.W; x++ {
+				cell := out.Frame.Cell(x, hit.Rect.Y)
+				if cell.Width == 0 {
+					previous := out.Frame.Cell(x-1, hit.Rect.Y)
+					if previous == nil || previous.Width != 2 {
+						t.Fatal("section header has an orphaned wide-character continuation", x)
+					}
+					cell = previous
+				}
+				if !reflect.DeepEqual(cell.Style.Bg, out.Frame.Palette.Accent) {
+					t.Fatal("pending section target is not highlighted across its header", x)
+				}
+			}
+		}
+		if hit.Machine == "remote" && hit.Workspace != 0 && out.Frame.Cell(hit.Rect.X, hit.Rect.Y).Content == "▌" {
+			t.Fatal("pending section move selected a hidden Remote card")
+		}
+	}
+	if !found || remote.DragSection != "" || localState.Active != 0 || remoteState.Active != 0 {
+		t.Fatal("missing target or composition mutated endpoint navigation")
+	}
+}

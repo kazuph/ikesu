@@ -23,8 +23,12 @@ func (m *machineClient) paint() error {
 	m.sidebar.Groups = m.sidebar.Groups[:0]
 	m.sidebar.Active = m.active
 	m.sidebar.DropMachine, m.sidebar.DropIndex = "", nil
-	if m.drag != nil && m.pending != nil && m.drag.started && m.drag.drop >= 0 {
-		m.sidebar.DropMachine, m.sidebar.DropIndex = m.drag.id, &m.drag.drop
+	m.sidebar.DropSection = ""
+	if m.drag != nil && m.pending != nil && m.drag.started {
+		m.sidebar.DropMachine, m.sidebar.DropSection = m.drag.id, m.drag.targetSection
+		if m.drag.drop >= 0 {
+			m.sidebar.DropIndex = &m.drag.drop
+		}
 	}
 	for _, id := range m.order {
 		group := m.endpoints[id]
