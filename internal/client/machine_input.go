@@ -96,6 +96,9 @@ func (m *machineClient) input(event input.Event) error {
 		m.blurred = false
 	}
 	if m.regions == nil {
+		if m.legacyLocal() {
+			return m.sendInput("local", eventBytes(event))
+		}
 		m.held = append(m.held, event)
 		return nil
 	}

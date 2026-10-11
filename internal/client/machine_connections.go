@@ -145,6 +145,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.reason = ""
 		e.approval = ""
 		e.retry.connected(time.Now())
+		if event.id == "local" {
+			m.configureMachineDisplay()
+		}
 		if m.pending != nil && m.pending.id == event.id {
 			m.requestPending()
 		}
