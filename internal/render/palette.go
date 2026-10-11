@@ -55,3 +55,13 @@ func (f *Frame) ThemeColor(c color.Color) color.Color {
 	}
 	return c
 }
+
+func copyControlText(p Palette, endpoint bool) color.Color {
+	if !endpoint {
+		return p.SurfDim
+	}
+	if p.PopupBG != nil {
+		return p.PopupBG
+	}
+	return p.PanelBG
+}

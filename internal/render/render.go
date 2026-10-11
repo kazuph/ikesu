@@ -268,7 +268,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 	}
 	drawActionBar(f, s, in, out)
 	if in.ServerUI && in.Copy != nil {
-		drawCopyStatus(f, 0, s.Rows-1, s.Cols, in.CopyHint)
+		drawCopyStatus(f, 0, s.Rows-1, s.Cols, in.CopyHint, in.ServerUI)
 		out.ActionBar = ActionBarRects{}
 	}
 	drawPopup(f, in, out)
@@ -361,11 +361,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				applyCopySelection(f, area.X, area.Y, area.W, area.H, in.Copy.Sel)
 			}
 			if in.Copy.X >= 0 && in.Copy.X < area.W && in.Copy.Y >= 0 && in.Copy.Y < area.H {
-				drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y)
+				drawCopyCursor(f, area.X+in.Copy.X, area.Y+in.Copy.Y, in.ServerUI)
 			}
 		}
 		if !in.ServerUI {
-			drawCopyStatus(f, area.X, area.Y+area.H-1, area.W, in.CopyHint)
+			drawCopyStatus(f, area.X, area.Y+area.H-1, area.W, in.CopyHint, in.ServerUI)
 		}
 		return
 	}
@@ -453,11 +453,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			}
 			// Copy cursor lives strictly inside the pane's inner rect.
 			if cx, cy := ix+in.Copy.X, iy+in.Copy.Y; cx >= ix && cx < ix+iw && cy >= iy && cy < iy+ih {
-				drawCopyCursor(f, cx, cy)
+				drawCopyCursor(f, cx, cy, in.ServerUI)
 			}
 			// The help row replaces the pane's bottom frame row.
 			if !in.ServerUI {
-				drawCopyStatus(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint)
+				drawCopyStatus(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint, in.ServerUI)
 			}
 		}
 
@@ -549,7 +549,7 @@ func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
 
 // drawCopyCursor paints the copy-mode cursor: fg popup background, bg accent,
 // BOLD (SPEC G1/G6).
-func drawCopyCursor(f *Frame, x, y int) {
+func drawCopyCursor(f *Frame, x, y int, endpoint bool) {
 	c := f.Cell(x, y)
 	// The observed cursor is invisible on the trailing cell of a wide glyph.
 	if c == nil || c.Width == 0 {
@@ -559,7 +559,7 @@ func drawCopyCursor(f *Frame, x, y int) {
 		f.Set(x, y, " ", c.Style)
 		c = f.Cell(x, y)
 	}
-	c.Style.Fg = f.Palette.SurfDim
+	c.Style.Fg = copyControlText(f.Palette, endpoint)
 	c.Style.Bg = f.Palette.Accent
 	c.Style.Attrs = uv.AttrBold
 }
@@ -628,7 +628,7 @@ func drawCopyHint(f *Frame, x, y, w int, hint string) {
 	f.Text(x, y, hint, uv.Style{Fg: f.Palette.Dim}, x+w)
 }
 
-func drawCopyStatus(f *Frame, x, y, w int, hint string) {
+func drawCopyStatus(f *Frame, x, y, w int, hint string, endpoint bool) {
 	if hint == "" || w <= 0 {
 		return
 	}
@@ -653,7 +653,7 @@ func drawCopyStatus(f *Frame, x, y, w int, hint string) {
 			}
 		}
 	}
-	f.Text(x, y, " COPY ", uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+w)
+	f.Text(x, y, " COPY ", uv.Style{Fg: copyControlText(f.Palette, endpoint), Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+w)
 	if c := f.Cell(x+len(" COPY "), y); c != nil && len(hint) > len(" COPY ") && len(" COPY ") < w {
 		c.Style = base
 	}

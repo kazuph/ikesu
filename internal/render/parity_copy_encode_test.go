@@ -11,8 +11,8 @@ func TestCopyWideTrailingCursorClearsWithoutShiftingText(t *testing.T) {
 	before, after := NewFrame(30, 2), NewFrame(30, 2)
 	before.Text(0, 0, "日本語 alpha", uv.Style{})
 	after.Text(0, 0, "日本語 alpha", uv.Style{})
-	drawCopyCursor(before, 3, 0)
-	drawCopyCursor(after, 0, 1)
+	drawCopyCursor(before, 3, 0, false)
+	drawCopyCursor(after, 0, 1, false)
 	enc := &Encoder{}
 	emu := vt.NewEmulator(30, 2)
 	defer emu.Close()

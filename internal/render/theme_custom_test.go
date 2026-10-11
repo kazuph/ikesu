@@ -4,6 +4,8 @@ import (
 	"image/color"
 	"testing"
 
+	uv "github.com/charmbracelet/ultraviolet"
+
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/model"
 )
@@ -140,6 +142,34 @@ func TestCustomPanelBackgroundControlsMobileHeaderAndSwitcherGround(t *testing.T
 			}
 			if switcher && f.Cell(s.Cols-1, s.Rows-1).Style.Bg != nil {
 				t.Fatal("unused switcher ground must keep the terminal background")
+			}
+		}
+	}
+}
+
+func TestCopyCursorAndStatusUseObservedEndpointContrastWithoutChangingLocal(t *testing.T) {
+	for _, tc := range []struct {
+		custom        map[string]string
+		endpointColor color.RGBA
+	}{
+		{map[string]string{"panel_bg": "transparent"}, color.RGBA{30, 30, 46, 255}},
+		{map[string]string{"panel_bg": "#123456", "surface_dim": "#654321"}, color.RGBA{18, 52, 86, 255}},
+	} {
+		for _, endpoint := range []bool{false, true} {
+			f := NewFrame(40, 2)
+			f.Palette = CustomPalette("catppuccin", tc.custom)
+			f.Text(0, 0, "source", uv.Style{})
+			drawCopyCursor(f, 0, 0, endpoint)
+			drawCopyStatus(f, 0, 1, 40, " COPY  h/j/k/l w/b/e { } move", endpoint)
+			want := f.Palette.SurfDim
+			if endpoint {
+				want = tc.endpointColor
+			}
+			for _, point := range [][2]int{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {5, 1}} {
+				cell := f.Cell(point[0], point[1])
+				if cell.Style.Fg != want || cell.Style.Bg != f.Palette.Accent || cell.Style.Attrs != uv.AttrBold {
+					t.Fatalf("endpoint=%v config=%v point=%v style=%+v want=%v", endpoint, tc.custom, point, cell.Style, want)
+				}
 			}
 		}
 	}
