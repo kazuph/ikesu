@@ -87,7 +87,8 @@ if [[ -f "${ZDOTDIR:-$HOME}/.zshenv" ]]; then source "${ZDOTDIR:-$HOME}/.zshenv"
 	}
 	m["ZDOTDIR"] = shellDir
 	m["GTX_GUARD_BASH_ENV_ORIG"] = m["BASH_ENV"]
-	bash := `if [[ -n "$GTX_GUARD_BASH_ENV_ORIG" && -f "$GTX_GUARD_BASH_ENV_ORIG" ]]; then source "$GTX_GUARD_BASH_ENV_ORIG"; fi
+	bash := `if [[ "$GTX_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$GTX_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
+if [[ -n "$GTX_GUARD_BASH_ENV_ORIG" && -f "$GTX_GUARD_BASH_ENV_ORIG" ]]; then source "$GTX_GUARD_BASH_ENV_ORIG"; fi
 ` + wrappers
 	if e := os.WriteFile(filepath.Join(shellDir, "bash-env"), []byte(bash), 0600); e != nil {
 		return nil, e

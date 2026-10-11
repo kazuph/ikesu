@@ -43,7 +43,7 @@ func TestAssetsLifecycleAndShellChain(t *testing.T) {
 			if !strings.Contains(string(b), "user-function") || !strings.Contains(string(b), "user-alias") || !strings.Contains(string(b), "|1|") {
 				t.Fatal(string(b))
 			}
-			if shell == "/bin/zsh" && !strings.Contains(string(b), orig+"|"+orig+"/history") {
+			if !strings.Contains(string(b), orig+"|"+orig+"/history") {
 				t.Fatal(string(b))
 			}
 			if e = a.Sync("codex"); e != nil {
