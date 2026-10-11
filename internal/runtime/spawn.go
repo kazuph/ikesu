@@ -49,6 +49,11 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 
 	emu := vt.NewEmulator(cols, rows)
 	emu.SetScrollbackSize(ScrollbackSize)
+	s.mu.Lock()
+	if s.scrollbackBytes != nil {
+		emu.Scrollback().SetMaxBytes(*s.scrollbackBytes)
+	}
+	s.mu.Unlock()
 
 	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
 	p.spawnArgv = argv
@@ -76,7 +81,11 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		AltScreen: func(on bool) { p.altScreen = on },
 		Resize: func(alt bool, oldWidth, height, pushed, pulled int) {
 			if p.read != nil {
-				p.read.resizeRows(alt, oldWidth, height, pushed, pulled)
+				if p.read.byteHistory && !alt {
+					p.read.resizeByteRows(oldWidth, height, pushed, pulled, p.emu.ScrollbackLen())
+				} else {
+					p.read.resizeRows(alt, oldWidth, height, pushed, pulled)
+				}
 			}
 		},
 		CursorPosition:   func(_, n uv.Position) { p.cursor.X, p.cursor.Y = n.X, n.Y },

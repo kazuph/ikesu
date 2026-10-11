@@ -10,6 +10,7 @@ import (
 
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 	a.sup.SetShell(c.Terminal.DefaultShell, c.Terminal.ShellMode)
+	a.sup.SetScrollbackBytes(c)
 	a.setSidebarConfig(c, startup)
 }
 

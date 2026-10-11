@@ -365,6 +365,7 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 	// the initial shell. A corrupt file fails closed to a fresh state.
 	if f := s.loadSession(); f != nil {
 		s.app.RestoreSession(f)
+		s.restorePaneHistory(f)
 		s.scheduleAutoResume()
 	} else if err := s.app.StartInitialPane(); err != nil {
 		s.cleanup()

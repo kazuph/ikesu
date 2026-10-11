@@ -16,18 +16,19 @@ func (p *Pane) resizeTerminal(width, height int) {
 // styles and hyperlinks remain attached to cells during width changes.
 func (p *Pane) resizeReflow(width, height int) {
 	r := p.read
-	continued := make([]vt.ReflowRow, len(r.history)+len(r.main))
-	for y := range r.history {
-		ref := r.history[(r.start+y)%len(r.history)]
+	continued := make([]vt.ReflowRow, r.historyLen()+len(r.main))
+	for y := 0; y < r.historyLen(); y++ {
+		ref := r.historyRef(y)
 		continued[y] = vt.ReflowRow{Continued: ref.continued, Width: ref.width}
 	}
 	for y, ref := range r.main {
-		continued[len(r.history)+y] = vt.ReflowRow{Continued: ref.continued, Width: ref.width}
+		continued[r.historyLen()+y] = vt.ReflowRow{Continued: ref.continued, Width: ref.width}
 	}
 	continued = p.emu.ResizeWithReflow(width, height, continued)
 	n := p.emu.ScrollbackLen()
 	r.history = make([]rowRef, n)
 	r.start = 0
+	r.historyCount = n
 	for y := range r.history {
 		r.history[y] = rowRef{continued: continued[y].Continued, width: continued[y].Width}
 	}

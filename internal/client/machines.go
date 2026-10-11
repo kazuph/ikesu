@@ -15,6 +15,7 @@ import (
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/tui"
 )
@@ -56,6 +57,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	inputSource     platform.InputSource
 	decisions       decisionUI
 	session         string
 	settings        *localSettings
@@ -106,6 +108,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
+	defer m.inputSource.Prefix(false, false)
 	for _, p := range profiles {
 		if p.Enabled {
 			m.endpoints[p.ID] = &managedEndpoint{profile: p}

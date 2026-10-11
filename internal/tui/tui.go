@@ -263,7 +263,8 @@ type App struct {
 	actionBar                                render.ActionBarRects // last frame's action bar hit areas
 	uiShowTab                                bool                  // [ui] show_tab_bar
 	uiHideSingle                             bool                  // [ui] hide_tab_bar_when_single_tab
-	uiBorders                                bool                  // [ui] pane_borders
+	inputSource                              platform.InputSource
+	uiBorders                                bool // [ui] pane_borders
 	serverUI                                 bool
 	sidebarConfig                            config.Config
 	panePalette                              *render.Palette
@@ -477,6 +478,7 @@ func (a *App) StartInitialPane() error {
 // Run executes the event loop until quit. It returns after the model
 // signals EffQuit (last pane closed, quit dialog, or API stop).
 func (a *App) Run() {
+	defer a.inputSource.Prefix(false, false)
 	defer a.removeEditorFiles()
 	defer close(a.doneCh)
 	tick := time.NewTicker(tickInterval)

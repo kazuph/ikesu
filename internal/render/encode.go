@@ -12,9 +12,10 @@ import (
 // It keeps the last written frame and the currently emitted style so diffs
 // are minimal: unchanged cells are never rewritten.
 type Encoder struct {
-	prev    *Frame
-	curSty  uv.Style
-	haveSty bool
+	prev        *Frame
+	curSty      uv.Style
+	haveSty     bool
+	cursorShape int
 }
 
 const (
@@ -29,10 +30,18 @@ const (
 // synchronized-output block, then parks the outer cursor at the focused
 // pane's cursor (the IME anchor) with the right visibility — both inside
 // and outside the sync region.
-func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool) []byte {
+func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shape ...int) []byte {
 	var b bytes.Buffer
 	b.WriteString(syncStart)
 	b.WriteString(hideCursor)
+	cursorShape := 0
+	if len(shape) > 0 {
+		cursorShape = shape[0]
+	}
+	if cursorShape != e.cursorShape {
+		fmt.Fprintf(&b, "\x1b[%d q", cursorShape)
+		e.cursorShape = cursorShape
+	}
 
 	if e.prev == nil || e.prev.W != f.W || e.prev.H != f.H {
 		e.full(f, &b)

@@ -19,6 +19,8 @@ type rowRef struct {
 type readBuffer struct {
 	main, alternate []rowRef
 	history         []rowRef
+	byteHistory     bool
+	historyCount    int
 	start           int
 	altHistory      []rowRef
 	altStart        int
@@ -41,6 +43,10 @@ func (r *readBuffer) rows(alt bool) []rowRef {
 	return r.main
 }
 func (r *readBuffer) pushHistory(alt bool, row rowRef) {
+	if !alt && r.byteHistory {
+		r.pushByteHistory(row)
+		return
+	}
 	history, start := &r.history, &r.start
 	limit := ScrollbackSize
 	if alt {
@@ -163,6 +169,7 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 			clear(r.main)
 			clear(r.alternate)
 			r.history = nil
+			r.historyCount = 0
 			r.start = 0
 			r.altHistory = nil
 			r.altStart = 0
@@ -202,6 +209,7 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 			clear(rows)
 		} else if a == 3 {
 			r.history = nil
+			r.historyCount = 0
 			r.start = 0
 			clear(rows)
 		} else if a == 0 {
@@ -274,6 +282,10 @@ func (p *Pane) writeRecorded(chunk []byte) {
 	if r == nil {
 		r = newReadBuffer(p.emu.Width(), p.emu.Height())
 		p.read = r
+		if p.emu.Scrollback().ByteLimited() {
+			r.byteHistory = true
+			p.emu.Scrollback().OnDrop = r.dropHistory
+		}
 	}
 	if len(r.utf8Pending) > 0 {
 		chunk = append(r.utf8Pending, chunk...)
@@ -364,8 +376,8 @@ func (p *Pane) ReadLines(source string, strip bool) ([]string, error) {
 		for y := 0; y < p.emu.ScrollbackLen(); y++ {
 			rows = append(rows, p.emu.Scrollback().Line(y))
 			ref := rowRef{}
-			if p.read != nil && y < len(p.read.history) {
-				ref = p.read.history[(p.read.start+y)%len(p.read.history)]
+			if p.read != nil {
+				ref = p.read.historyRef(y)
 			}
 			refs = append(refs, ref)
 		}

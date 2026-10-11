@@ -110,9 +110,9 @@ type Supervisor struct {
 	// environment (the server uses it for GTX_PANE_ID/GTX_SOCKET_PATH).
 	Env                     func(paneID int) []string
 	defaultShell, shellMode string
+	scrollbackBytes         *int
 }
 
-// NewSupervisor creates an empty supervisor.
 func NewSupervisor() *Supervisor {
 	return &Supervisor{
 		panes:         map[int]*Pane{},

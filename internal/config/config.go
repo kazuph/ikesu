@@ -15,6 +15,9 @@ import (
 // EnvVar overrides the config file location.
 const EnvVar = "GTX_CONFIG"
 
+// Distribution default-config: per-pane scrollback byte budget.
+const DefaultScrollbackLimitBytes = 10000000
+
 // ToastDelivery selects where agent notifications go.
 type ToastDelivery string
 

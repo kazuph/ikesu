@@ -201,7 +201,7 @@ func (a *App) draw() {
 	if a.help != nil {
 		a.help.rect = out.HelpRect
 	}
-	if a.sidebarConfig.UI.HostCursor == "drawn" && out.AnchorVisible {
+	if a.sidebarConfig.UI.HostCursor == "drawn" && out.AnchorVisible && out.AnchorShape == 0 {
 		cell := out.Frame.Cell(out.AnchorX, out.AnchorY)
 		if cell != nil {
 			cell.Style.Attrs |= uv.AttrReverse
@@ -210,7 +210,12 @@ func (a *App) draw() {
 	}
 	a.lastDraw = time.Now()
 	a.dirty = false
-	if _, err := a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible)); err != nil {
+	if !a.serverUI {
+		if err := a.inputSource.Prefix(a.prefix, a.sidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
+			a.SetConfigWarning("input source: " + err.Error())
+		}
+	}
+	if _, err := a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible, out.AnchorShape)); err != nil {
 		a.enc.Reset()
 		a.dirty = true
 	}

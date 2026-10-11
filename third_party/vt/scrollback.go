@@ -15,10 +15,14 @@ const DefaultScrollbackSize = 10000
 // buffer is full, where the previous slice-of-lines design shifted every
 // stored line on each push.
 type Scrollback struct {
-	lines    []uv.Line // ring buffer, capacity maxLines
-	maxLines int
-	start    int // index of the oldest line
-	count    int // number of stored lines
+	lines           []uv.Line // ring buffer, capacity maxLines
+	maxLines        int
+	start           int // index of the oldest line
+	count           int // number of stored lines
+	byteLimited     bool
+	maxBytes, bytes int
+	rowBytes        []int
+	OnDrop          func()
 }
 
 // NewScrollback creates a new scrollback buffer with the given maximum number of lines.
@@ -89,6 +93,10 @@ func (s *Scrollback) Push(line uv.Line) {
 		end = min(lastNonEmpty+max(line[lastNonEmpty].Width, 1), len(line))
 	}
 
+	if s.byteLimited {
+		s.pushBytes(line[:end])
+		return
+	}
 	if s.count < s.maxLines {
 		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
 		s.count++
@@ -128,6 +136,10 @@ func (s *Scrollback) popLast() uv.Line {
 	line := s.lines[idx]
 	s.lines[idx] = nil
 	s.count--
+	if s.byteLimited {
+		s.bytes -= s.rowBytes[idx]
+		s.rowBytes[idx] = 0
+	}
 	return line
 }
 
@@ -204,8 +216,11 @@ func (s *Scrollback) Clear() {
 	if s == nil {
 		return
 	}
+	clear(s.lines)
+	clear(s.rowBytes)
 	s.start = 0
 	s.count = 0
+	s.bytes = 0
 }
 
 // CellAt returns the cell at the given position in the scrollback buffer.

@@ -13,6 +13,9 @@ func (m *machineClient) paint() error {
 		return nil
 	}
 	in := *e.snapshot
+	if err := m.inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
+		m.notify("input source: " + err.Error())
+	}
 	if m.forms != nil {
 		m.forms.Overlay(&in)
 	}
@@ -65,7 +68,7 @@ func (m *machineClient) paint() error {
 			x++
 		}
 	}
-	if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible {
+	if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible && composed.AnchorShape == 0 {
 		if cell := f.Cell(composed.AnchorX, composed.AnchorY); cell != nil {
 			cell.Style.Attrs |= uv.AttrReverse
 			composed.AnchorVisible = false
@@ -83,7 +86,7 @@ func (m *machineClient) paint() error {
 	if len(m.decisions.queue) > 0 {
 		m.paintDecisions(composed)
 	}
-	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible)
+	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
 	if _, err := m.out.Write(data); err != nil {
 		return err
 	}

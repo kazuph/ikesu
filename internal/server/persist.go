@@ -78,7 +78,9 @@ func (s *Server) saveSession() {
 	})
 	if err := session.Save(session.Path(s.dir), f); err != nil {
 		fmt.Fprintf(os.Stderr, "gtx: save session: %v\n", err)
+		return
 	}
+	s.savePaneHistory(f)
 }
 
 // loadSession reads and validates session.json. It returns nil when there

@@ -107,7 +107,7 @@ show_tab_bar=false
 [advanced]
 scrollback_limit_bytes=65536
 `))
-	if err != nil || len(c.Warnings) != 2 || c.ShowTabBar() || *c.Onboarding {
+	if err != nil || len(c.Warnings) != 1 || c.ShowTabBar() || *c.Onboarding || *c.Advanced.ScrollbackLimitBytes != 65536 {
 		t.Fatal(c, err)
 	}
 	for _, warning := range c.Warnings {

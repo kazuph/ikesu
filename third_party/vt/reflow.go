@@ -139,6 +139,7 @@ func (s *Screen) reflow(width, height int, continued []ReflowRow, phantom bool) 
 	}
 	s.cur.X, s.cur.Y = newCursor.X, max(0, newCursor.Y-cut)
 	s.scroll = s.buf.Bounds()
+	dropped = cut - s.scrollback.Len()
 	flags = flags[dropped:]
 	for len(flags) < s.scrollback.Len()+height {
 		flags = append(flags, ReflowRow{})

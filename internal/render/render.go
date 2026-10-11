@@ -182,6 +182,7 @@ type Output struct {
 	AnchorX       int
 	AnchorY       int
 	AnchorVisible bool
+	AnchorShape   int
 	// TabHits maps each tab of the active workspace to its bar rect;
 	// NewTabRect is the "+" button. Both feed the mouse layer.
 	TabScroll, TabScrollLeft, TabScrollRight int
@@ -466,6 +467,10 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			out.AnchorX = ix + snap.Cursor.X
 			out.AnchorY = iy + snap.Cursor.Y
 			out.AnchorVisible = snap.Cursor.Visible
+			if !snap.Cursor.Visible && revealIMECursor(in.SidebarConfig, snap.Agent) {
+				out.AnchorVisible = true
+				out.AnchorShape = imeCursorShape(in.SidebarConfig.Experimental.CJKIMECursorShape)
+			}
 			if out.AnchorX < ix {
 				out.AnchorX = ix
 			}

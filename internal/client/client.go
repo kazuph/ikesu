@@ -232,6 +232,8 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	var snapshots endpoint.SnapshotDecoder
 	var frames render.Encoder
 	var windowTitle windowTitleState
+	var inputSource platform.InputSource
+	defer inputSource.Prefix(false, false)
 	var lastRegions *render.Output
 	// Server → terminal. The server supplies state and pane cells; only
 	// this process composes sidebar, tabs, borders and overlays.
@@ -284,14 +286,17 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 				fmt.Fprintln(out, "gtx: invalid snapshot:", err)
 				return pumpRejected
 			}
+			if err := inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
+				fmt.Fprintln(os.Stderr, "gtx: input source:", err)
+			}
 			composed := render.Compose(in)
-			if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible {
+			if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible && composed.AnchorShape == 0 {
 				if cell := composed.Frame.Cell(composed.AnchorX, composed.AnchorY); cell != nil {
 					cell.Style.Attrs |= uv.AttrReverse
 					composed.AnchorVisible = false
 				}
 			}
-			data = frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible)
+			data = frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
 			if lastRegions == nil {
 				composed.Frame = nil
 				if err := w.firstSnapshot(out, data, &windowTitle, in, composed, m.FocusEpoch); err != nil {
