@@ -24,6 +24,7 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 	if len(s.rowBytes) != len(s.lines) {
 		s.rowBytes = make([]int, len(s.lines))
 		s.packed = make([][]byte, len(s.lines))
+		s.styled = make([]*styledRow, len(s.lines))
 	}
 	s.bytes = 0
 	for i := 0; i < s.count; i++ {
@@ -31,6 +32,9 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 		width := cap(s.lines[idx])
 		if s.packed[idx] != nil {
 			width = len(s.packed[idx])
+		}
+		if s.styled[idx] != nil {
+			width = len(s.styled[idx].glyphs)
 		}
 		s.rowBytes[idx] = scrollbackRowBytes + width*scrollbackCellBytes
 		s.bytes += s.rowBytes[idx]
@@ -46,13 +50,15 @@ func (s *Scrollback) Bytes() int {
 	}
 	return s.bytes
 }
-func (s *Scrollback) dropOldest() (uv.Line, []byte) {
+func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
 	if s.count == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	idx := s.start
 	row := s.lines[idx]
 	text := s.packed[idx]
+	styled := s.styled[idx]
+	s.styled[idx] = nil
 	s.packed[idx] = nil
 	s.lines[idx] = nil
 	if s.byteLimited {
@@ -64,14 +70,15 @@ func (s *Scrollback) dropOldest() (uv.Line, []byte) {
 	if s.OnDrop != nil {
 		s.OnDrop()
 	}
-	return row, text
+	return row, text, styled
 }
 func (s *Scrollback) pushBytes(line uv.Line) {
 	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
+	var styled *styledRow
 	for s.count > 0 && (s.bytes+cost > s.maxBytes || s.count >= s.maxLines) {
-		reuse, text = s.dropOldest()
+		reuse, text, styled = s.dropOldest()
 	}
 	if cost > s.maxBytes {
 		if s.OnDrop != nil {
@@ -84,13 +91,15 @@ func (s *Scrollback) pushBytes(line uv.Line) {
 		rows := make([]uv.Line, n)
 		sizes := make([]int, n)
 		packed := make([][]byte, n)
+		styles := make([]*styledRow, n)
 		for i := 0; i < s.count; i++ {
 			idx := s.wrap(s.start + i)
 			rows[i] = s.lines[idx]
 			sizes[i] = s.rowBytes[idx]
 			packed[i] = s.packed[idx]
+			styles[i] = s.styled[idx]
 		}
-		s.lines, s.rowBytes, s.packed, s.start = rows, sizes, packed, 0
+		s.lines, s.rowBytes, s.packed, s.styled, s.start = rows, sizes, packed, styles, 0
 	}
 	idx := s.wrap(s.start + s.count)
 	if plainRow(line) {
@@ -103,6 +112,8 @@ func (s *Scrollback) pushBytes(line uv.Line) {
 			text[x] = line[x].Content[0]
 		}
 		s.packed[idx], s.lines[idx] = text, nil
+	} else if styled = packStyled(line, styled); styled != nil {
+		s.styled[idx], s.lines[idx], s.packed[idx] = styled, nil, nil
 	} else {
 		// Exact capacity prevents an evicted wider row retaining hidden storage.
 		if cap(reuse) == len(line) {

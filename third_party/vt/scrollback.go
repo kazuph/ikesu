@@ -23,6 +23,7 @@ type Scrollback struct {
 	maxBytes, bytes int
 	rowBytes        []int
 	packed          [][]byte
+	styled          []*styledRow
 	OnDrop          func()
 }
 
@@ -135,6 +136,10 @@ func (s *Scrollback) popLast() uv.Line {
 	}
 	idx := s.wrap(s.start + s.count - 1)
 	line := s.lines[idx]
+	if len(s.styled) > idx && s.styled[idx] != nil {
+		line = s.styled[idx].line()
+		s.styled[idx] = nil
+	}
 	if len(s.packed) > idx && s.packed[idx] != nil {
 		line = unpackRow(s.packed[idx])
 		s.packed[idx] = nil
@@ -185,21 +190,23 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 		// Rebuild the ring at the new capacity, unwrapping into order.
 		lines := make([]uv.Line, maxLines)
 		var packed [][]byte
+		var styled []*styledRow
 		var sizes []int
 		if s.byteLimited {
 			packed = make([][]byte, maxLines)
+			styled = make([]*styledRow, maxLines)
 			sizes = make([]int, maxLines)
 		}
 		for i := 0; i < s.count; i++ {
 			idx := s.wrap(s.start + i)
 			lines[i] = s.lines[idx]
 			if s.byteLimited {
-				packed[i], sizes[i] = s.packed[idx], s.rowBytes[idx]
+				packed[i], sizes[i], styled[i] = s.packed[idx], s.rowBytes[idx], s.styled[idx]
 			}
 		}
 		s.lines = lines
 		if s.byteLimited {
-			s.packed, s.rowBytes = packed, sizes
+			s.packed, s.rowBytes, s.styled = packed, sizes, styled
 		}
 		s.start = 0
 	}
@@ -213,6 +220,9 @@ func (s *Scrollback) Line(index int) uv.Line {
 		return nil
 	}
 	idx := s.wrap(s.start + index)
+	if len(s.styled) > idx && s.styled[idx] != nil {
+		return s.styled[idx].line()
+	}
 	if len(s.packed) > idx && s.packed[idx] != nil {
 		return unpackRow(s.packed[idx])
 	}
@@ -247,6 +257,7 @@ func (s *Scrollback) Clear() {
 	clear(s.lines)
 	clear(s.rowBytes)
 	clear(s.packed)
+	clear(s.styled)
 	s.start = 0
 	s.count = 0
 	s.bytes = 0
@@ -260,6 +271,9 @@ func (s *Scrollback) CellAt(x, y int) *uv.Cell {
 		return nil
 	}
 	idx := s.wrap(s.start + y)
+	if len(s.styled) > idx && s.styled[idx] != nil {
+		return s.styled[idx].cellAt(x)
+	}
 	if len(s.packed) > idx && s.packed[idx] != nil {
 		if x < 0 || x >= len(s.packed[idx]) {
 			return nil
