@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
@@ -138,5 +139,9 @@ func TestEndpointOtherViewerOperationsRetainQuietPaneContent(t *testing.T) {
 	})
 	assertB("new workspace", time.Second)
 	a.conn.Close()
+	// A quiet disconnect need not resend an unchanged B snapshot. Metadata
+	// forces a fresh B frame without shell input or a PTY resize hiding loss.
+	label := "after peer disconnect"
+	apiOK(t, dir, api.MethodPaneRename, api.PaneRenameParams{PaneID: firstPaneID(t, dir), Label: &label}, nil)
 	assertB("other viewer disconnect", time.Second)
 }
