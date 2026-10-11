@@ -17,7 +17,7 @@ type Peer struct {
 
 func Current() Peer {
 	return Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"input", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select"}}
+		Methods: []string{"input", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config"}}
 }
 
 // MachinePeer refuses an older server before it can create a visible viewer.
@@ -29,7 +29,7 @@ func MachinePeer() Peer {
 
 func RequiredGeneration(method string) int {
 	switch method {
-	case "visibility", "workspace_select":
+	case "visibility", "workspace_select", "view_config":
 		return MachineGeneration
 	default:
 		return 1

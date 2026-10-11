@@ -59,6 +59,16 @@ func (a *App) saveViewPreferences() {
 	}
 }
 
+func (v *Viewer) UpdatePresentation(a *App, c *config.Config, preferences *endpoint.ViewPreferences) {
+	v.Configure(a, c, preferences, v.app.preferenceSave)
+	v.with(a, func(ui *App) {
+		if !ui.windowBlurred {
+			ui.syncLayout()
+		}
+		ui.dirty = true
+	})
+}
+
 func (v *Viewer) ConfigError(a *App, reason string) {
 	v.with(a, func(ui *App) { ui.SetConfigWarning(reason); ui.dirty = true })
 }

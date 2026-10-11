@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/render"
 	"golang.org/x/sys/unix"
@@ -111,12 +112,16 @@ func (m *machineClient) input(event input.Event) error {
 					continue
 				}
 				if event.Kind == input.KindMouseWheel {
-					if event.Mouse.Button == 4 {
+					if event.Mouse.Button == uv.MouseWheelUp {
 						m.sidebar.Scroll--
 					} else {
 						m.sidebar.Scroll++
 					}
 					return m.paint()
+				}
+				if hit.New && event.Kind == input.KindMouseClick {
+					m.suppressRelease = true
+					return m.createWorkspace(hit.Machine)
 				}
 				if hit.Header && event.Kind == input.KindMouseClick {
 					if e := m.endpoints[hit.Machine]; e.connection == nil {
@@ -140,6 +145,26 @@ func (m *machineClient) input(event input.Event) error {
 		}
 	}
 	return m.sendInput(m.active, eventBytes(event))
+}
+
+func (m *machineClient) createWorkspace(id string) error {
+	e := m.endpoints[id]
+	if e.connection == nil || e.snapshot == nil {
+		return fmt.Errorf("machine %s is not connected", e.profile.Label)
+	}
+	rect := render.SidebarNewRect(e.snapshot.State)
+	data := []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", rect.X+1, rect.Y+1, rect.X+1, rect.Y+1))
+	if id != m.active {
+		previous := map[int]bool{}
+		for _, ws := range e.snapshot.State.Workspaces {
+			previous[ws.ID] = true
+		}
+		m.pending = &pendingMachine{id: id, deadline: time.Now().Add(machineSwitchWait), create: true, previousWorkspaces: previous, requested: true}
+		if err := e.connection.enqueue(resizeMessage(m.size)); err != nil {
+			return err
+		}
+	}
+	return m.sendInput(id, data)
 }
 
 func contains(x, y, w, h, px, py int) bool { return px >= x && py >= y && px < x+w && py < y+h }

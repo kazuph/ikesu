@@ -190,6 +190,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if message.Preferences != nil {
 			if err := m.settings.save(*message.Preferences); err != nil {
 				_ = e.connection.enqueue(msg{Type: "preferences_error", Reason: err.Error()})
+			} else {
+				m.configureOtherEndpoints(event.id)
 			}
 		}
 	case "config_edit":
@@ -204,6 +206,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		} else {
 			m.settings.config = &cfg
 			result.Config = &cfg
+			m.configureOtherEndpoints(event.id)
 		}
 		_ = e.connection.enqueue(result)
 	case "detached":
@@ -221,6 +224,17 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		m.notify(message.Reason)
 	}
 	return 0, false
+}
+
+func (m *machineClient) configureOtherEndpoints(source string) {
+	for id, e := range m.endpoints {
+		if id == source || e.connection == nil {
+			continue
+		}
+		if err := e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: m.settings.preferences}); err != nil {
+			m.notify(e.profile.Label + ": " + err.Error())
+		}
+	}
 }
 
 func (m *machineClient) fail(id string, err error) {

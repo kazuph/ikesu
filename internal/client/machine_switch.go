@@ -58,7 +58,7 @@ func (m *machineClient) finishSwitch() {
 	}
 	s := e.snapshot.State
 	ws := s.ActiveWorkspace()
-	if ws == nil || ws.ID != p.workspace || s.Cols != m.size.Cols || s.Rows != m.size.Rows {
+	if ws == nil || (!p.create && ws.ID != p.workspace) || (p.create && p.previousWorkspaces[ws.ID]) || s.Cols != m.size.Cols || s.Rows != m.size.Rows {
 		return
 	}
 	old := m.endpoints[m.active]

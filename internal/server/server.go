@@ -607,6 +607,12 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case "view_config":
+			if m.Preferences != nil && (m.Preferences.SidebarWidth < 1 || m.Preferences.SidebarSectionSplit != nil && (*m.Preferences.SidebarSectionSplit < .1 || *m.Preferences.SidebarSectionSplit > .9)) {
+				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_preferences_invalid"})
+				continue
+			}
+			s.app.Do(func() { c.viewer.UpdatePresentation(s.app, m.Config, m.Preferences) })
 		case "visibility":
 			if m.Visible == nil {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_visibility_invalid: missing visible state"})

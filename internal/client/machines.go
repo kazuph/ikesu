@@ -40,10 +40,12 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
-	id        string
-	workspace int
-	deadline  time.Time
-	requested bool
+	id                 string
+	workspace          int
+	deadline           time.Time
+	requested          bool
+	create             bool
+	previousWorkspaces map[int]bool
 }
 
 type machineClient struct {
