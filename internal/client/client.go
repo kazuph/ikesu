@@ -253,6 +253,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 
 	var snapshots endpoint.SnapshotDecoder
 	var frames render.Encoder
+	var windowTitle windowTitleState
 	var lastRegions *render.Output
 	// Server → terminal. The server supplies state and pane cells; only
 	// this process composes sidebar, tabs, borders and overlays.
@@ -313,6 +314,9 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 				}
 			}
 			_, _ = out.Write(frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible))
+			if err := windowTitle.painted(out, in); err != nil {
+				return pumpClosed
+			}
 			composed.Frame = nil
 			if m.RequestAck || !reflect.DeepEqual(lastRegions, composed) {
 				if err := w.send(msg{Type: "rendered", Rendered: composed, FocusEpoch: m.FocusEpoch}); err != nil {
