@@ -12,6 +12,12 @@ type snapshotPresence struct {
 	Selected, Drop          bool
 	ConfigBools, ConfigInts uint64
 	Tokens                  []tokenPresence
+	Jobs                    []jobPresence
+}
+
+type jobPresence struct {
+	Index     int
+	Age, Exit bool
 }
 
 type tokenPresence struct {
@@ -38,6 +44,12 @@ func configPointers(c *config.Config) ([18]**bool, [8]**int) {
 
 func optionalPresence(in render.Input) snapshotPresence {
 	p := snapshotPresence{Selected: in.SelectedWorkspace != nil, Drop: in.DropIndex != nil}
+	for index, row := range in.Jobs {
+		age, exit := row.AgeSinceMs != nil && *row.AgeSinceMs == 0, row.ExitCode != nil && *row.ExitCode == 0
+		if age || exit {
+			p.Jobs = append(p.Jobs, jobPresence{index, age, exit})
+		}
+	}
 	bools, ints := configPointers(&in.SidebarConfig)
 	for i, field := range bools {
 		if *field != nil && !**field {
@@ -69,6 +81,17 @@ func optionalPresence(in render.Input) snapshotPresence {
 }
 
 func (p snapshotPresence) restore(in *render.Input) error {
+	for _, job := range p.Jobs {
+		if job.Index < 0 || job.Index >= len(in.Jobs) {
+			return fmt.Errorf("invalid job presence position")
+		}
+		if job.Age {
+			in.Jobs[job.Index].AgeSinceMs = new(int64)
+		}
+		if job.Exit {
+			in.Jobs[job.Index].ExitCode = new(int64)
+		}
+	}
 	if p.Selected && in.SelectedWorkspace == nil {
 		in.SelectedWorkspace = new(int)
 	}
