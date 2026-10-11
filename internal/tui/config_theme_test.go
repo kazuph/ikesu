@@ -89,7 +89,10 @@ func TestConfigOnboardingImmediateInputReachesPane(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				a.SetSidebarConfig(c, server)
+				if server {
+					a.SetServerUI()
+				}
+				a.SetSidebarConfig(c, true)
 				p, err := a.sup.SpawnWith(a.focusedPane(), a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", "printf READY; exec /bin/cat"})
 				if err != nil {
 					t.Fatal(err)
