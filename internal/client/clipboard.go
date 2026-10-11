@@ -16,15 +16,15 @@ import (
 
 type clipboardContent struct {
 	Text string `json:"text"`
-	PNG []byte `json:"png"`
+	PNG  []byte `json:"png"`
 }
 
 type clipboardItem struct {
-	data []byte
+	data  []byte
 	paste bool
 }
 
-type clipboardPaste struct { held []clipboardItem }
+type clipboardPaste struct{ held []clipboardItem }
 
 func readDesktopClipboard(ctx context.Context) (clipboardContent, error) {
 	if runtime.GOOS != "darwin" {
@@ -83,7 +83,9 @@ func (m *machineClient) startClipboardPaste(id string) error {
 		return nil
 	}
 	read := m.readClipboard
-	if read == nil { read = readDesktopClipboard }
+	if read == nil {
+		read = readDesktopClipboard
+	}
 	connection, pane, profile := e.connection, e.snapshot.State.FocusedPane(), e.profile
 	op := &clipboardPaste{}
 	e.paste = op
@@ -98,20 +100,32 @@ func (m *machineClient) startClipboardPaste(id string) error {
 			text = machine.Quote(path)
 		}
 		m.post(m.ctx, endpointEvent{formUpdate: func() {
-			if e.paste != op { return }
+			if e.paste != op {
+				return
+			}
 			e.paste = nil
 			if e.connection != connection || e.snapshot == nil || e.snapshot.State.FocusedPane() != pane {
 				m.notify("clipboard paste cancelled: target pane changed")
 				return
 			}
-			if err != nil { m.notify(err.Error()) } else {
+			if err != nil {
+				m.notify(err.Error())
+			} else {
 				data := eventBytes(input.Event{Kind: input.KindPaste, Text: text})
-				if sendErr := connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)}); sendErr != nil { m.notify(sendErr.Error()) }
+				if sendErr := connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)}); sendErr != nil {
+					m.notify(sendErr.Error())
+				}
 			}
 			for _, held := range op.held {
 				var sendErr error
-				if held.paste { sendErr = m.startClipboardPaste(id) } else { sendErr = m.sendInput(id, held.data) }
-				if sendErr != nil { m.notify(sendErr.Error()) }
+				if held.paste {
+					sendErr = m.startClipboardPaste(id)
+				} else {
+					sendErr = m.sendInput(id, held.data)
+				}
+				if sendErr != nil {
+					m.notify(sendErr.Error())
+				}
 			}
 		}})
 	}()
