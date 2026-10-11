@@ -24,7 +24,13 @@ func (m *machineClient) paint() error {
 		}
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
-	composed := render.ComposeMachines(in, &m.sidebar)
+	var composed *render.Output
+	if len(m.sidebar.Groups) == 1 {
+		composed = render.Compose(in)
+		m.sidebar.Hits = m.sidebar.Hits[:0]
+	} else {
+		composed = render.ComposeMachines(in, &m.sidebar)
+	}
 	f := composed.Frame
 	if e.connection == nil {
 		area := in.State.PanesArea()

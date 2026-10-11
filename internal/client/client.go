@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/tui"
@@ -71,6 +73,9 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	settings, err := loadLocalSettings(session)
 	if err != nil {
 		return 1, err
+	}
+	if err := (machine.Catalog{Path: filepath.Join(api.SessionDir(session), "machines.json")}).Ensure(); err != nil {
+		return 1, fmt.Errorf("machine catalog: %w", err)
 	}
 
 	dir := api.SessionDir(session)
@@ -117,53 +122,12 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 		conn.Close()
 		return 1, err
 	}
-	if profiles := savedMachines(session); hasEnabledMachine(profiles) {
-		result := pumpMachines(session, conn, in, out, settings, profiles)
-		conn.Close()
-		if result == pumpRejected {
-			return 1, nil
-		}
-		return 0, nil
+	result := pumpMachines(session, conn, in, out, settings, savedMachines(session))
+	conn.Close()
+	if result == pumpRejected {
+		return 1, nil
 	}
-
-	reconnecting := false
-	var deadline time.Time
-	for {
-		res := pump(conn, in, out, leave, settings)
-		conn.Close()
-		if res == pumpRejected {
-			return 1, nil
-		}
-		if res == pumpDone {
-			return 0, nil
-		}
-		if res == pumpRestart {
-			reconnecting = true
-			deadline = time.Now().Add(attachTimeout)
-		} else if !reconnecting {
-			// pumpClosed without a restart notice: the server died.
-			leave()
-			fmt.Fprintln(out, "gtx: connection to the server closed")
-			return 1, nil
-		}
-		// Reconnect to the successor. The terminal stays in alt-screen so
-		// the handover is seamless. A conn handed out by the dying old
-		// listener may close immediately; keep retrying until the
-		// deadline (pumpClosed while reconnecting loops back here).
-		conn = nil
-		for conn == nil {
-			if time.Now().After(deadline) {
-				leave()
-				fmt.Fprintln(out, "gtx: the server restarted but did not come back")
-				return 1, nil
-			}
-			if c, err := dialClient(dir); err == nil {
-				conn = c
-			} else {
-				time.Sleep(50 * time.Millisecond)
-			}
-		}
-	}
+	return 0, nil
 }
 
 // pumpResult is how a single attach session ended.

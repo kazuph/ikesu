@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"strings"
@@ -132,6 +133,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.err != nil {
+		if event.id == "local" && e.snapshot == nil && needsAttention(event.err.Error()) {
+			fmt.Fprintln(m.out, "gtx:", event.err)
+			return pumpRejected, true
+		}
 		e.connection = nil
 		e.status = "reconnecting"
 		e.reason = event.err.Error()

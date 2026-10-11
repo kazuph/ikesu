@@ -24,6 +24,30 @@ type Profile struct {
 
 type Catalog struct{ Path string }
 
+// Keep an empty catalog watchable without monitoring unrelated session writes.
+// The existing catalog lock also protects a concurrent first machine add.
+func (c Catalog) Ensure() error {
+	if _, err := os.Stat(c.Path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return c.update(func(_ []Profile) ([]Profile, error) {
+		data, err := os.ReadFile(c.Path)
+		if os.IsNotExist(err) {
+			return []Profile{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		var profiles []Profile
+		if err := json.Unmarshal(data, &profiles); err != nil {
+			return nil, err
+		}
+		return profiles, nil
+	})
+}
+
 func (c Catalog) Load() []Profile {
 	b, err := os.ReadFile(c.Path)
 	p := []Profile{}

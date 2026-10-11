@@ -21,6 +21,9 @@ func (m *machineClient) configureMachineDisplay() {
 		}
 		return
 	}
+	if !hasEnabledMachine(savedMachines(m.session)) {
+		return
+	}
 	const reason = "endpoint_action_unsupported: machine sidebar requires a Local server with client rendering; Local input remains available"
 	fmt.Fprintln(os.Stderr, "gtx:", reason)
 	for _, id := range m.order[1:] {
