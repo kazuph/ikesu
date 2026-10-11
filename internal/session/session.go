@@ -71,13 +71,14 @@ type Node struct {
 
 // Pane is the persisted record of one pane.
 type Pane struct {
-	ID          int    `json:"id"`
-	Cwd         string `json:"cwd"`
-	Label       string `json:"label,omitempty"`
-	Agent       string `json:"agent,omitempty"`        // canonical agent id (claude, codex, ...)
-	SessionID   string `json:"session_id,omitempty"`   // exact session ref
-	SessionKind string `json:"session_kind,omitempty"` // "id" | "path"
-	Title       string `json:"title,omitempty"`
+	SessionStartSource string `json:"session_start_source,omitempty"`
+	ID                 int    `json:"id"`
+	Cwd                string `json:"cwd"`
+	Label              string `json:"label,omitempty"`
+	Agent              string `json:"agent,omitempty"`        // canonical agent id (claude, codex, ...)
+	SessionID          string `json:"session_id,omitempty"`   // exact session ref
+	SessionKind        string `json:"session_kind,omitempty"` // "id" | "path"
+	Title              string `json:"title,omitempty"`
 }
 
 // Load reads path. A missing file returns (nil, nil). A corrupt file

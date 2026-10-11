@@ -481,6 +481,17 @@ func (r *runner) paneRead(args []string) int {
 				return 2
 			}
 			params.Lines = &n
+		case "--format":
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for --format")
+			}
+			params.Format = v
+			params.StripANSI = v != "ansi"
+		case "--ansi":
+			params.Format = "ansi"
+			params.StripANSI = false
+			i++
 		default:
 			fmt.Fprintf(r.errOut(), "unknown option: %s\n", args[i])
 			return 2

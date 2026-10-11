@@ -204,10 +204,11 @@ type TabCreatedResult struct {
 }
 
 type AgentSessionInfo struct {
-	Source string `json:"source"`
-	Agent  string `json:"agent"`
-	Kind   string `json:"kind"` // "id" | "path"
-	Value  string `json:"value"`
+	SessionStartSource string `json:"session_start_source,omitempty"`
+	Source             string `json:"source"`
+	Agent              string `json:"agent"`
+	Kind               string `json:"kind"` // "id" | "path"
+	Value              string `json:"value"`
 }
 
 // AgentRestoreParams drives `agent.restore`; dry-run plans without typing.

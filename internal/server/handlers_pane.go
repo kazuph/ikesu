@@ -157,7 +157,7 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 	if format == "" {
 		format = "text"
 	}
-	if format != "text" {
+	if format != "text" && format != "ansi" {
 		return api.Failure(id, api.ErrInvalidRequest,
 			fmt.Sprintf("read format %q is not supported in this stage", format))
 	}
@@ -168,7 +168,7 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 			limit = 1000
 		}
 	}
-	lines, err := pane.ReadLines(source, p.StripANSI)
+	lines, err := pane.ReadLines(source, p.StripANSI && format != "ansi")
 	if err != nil {
 		return api.Failure(id, api.ErrInvalidRequest, err.Error())
 	}
@@ -182,10 +182,14 @@ func (s *Server) paneRead(id string, p api.PaneReadParams) api.Response {
 		lines = lines[len(lines)-limit:]
 		truncated = true
 	}
-	text := strings.Join(lines, "\n")
+	separator := "\n"
+	if format == "ansi" {
+		separator = "\r\n"
+	}
+	text := strings.Join(lines, separator)
 	// The 0.2.24 physical-row reads end with a newline; logical reads do not.
 	if text != "" && (source == "visible" || source == "recent") {
-		text += "\n"
+		text += separator
 	}
 	st := s.app.State()
 	ws := st.Workspaces[wsIdx]
@@ -403,6 +407,7 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 	case safe:
 		rec, _ := s.app.SessionRecord(pid)
 		rec.Agent, rec.Kind, rec.Value = p.Agent, kind, value
+		rec.SessionStartSource = ""
 		rec.Source = "report:" + p.Source
 		if p.Title != nil {
 			rec.Title = title

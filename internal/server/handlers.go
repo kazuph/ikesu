@@ -526,8 +526,13 @@ func (s *Server) paneInfo(pid int) (api.PaneInfo, bool) {
 			metadata.Title = rec.Title
 		}
 	}
+	var agentSession *api.AgentSessionInfo
+	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value != "" {
+		agentSession = &api.AgentSessionInfo{Source: rec.Source, Agent: rec.Agent, Kind: rec.Kind, Value: rec.Value, SessionStartSource: rec.SessionStartSource}
+	}
 	return api.PaneInfo{
-		Title: optString(metadata.Title), DisplayAgent: optString(metadata.DisplayAgent), StateLabels: metadata.StateLabels, Tokens: metadata.Tokens,
+		AgentSession: agentSession,
+		Title:        optString(metadata.Title), DisplayAgent: optString(metadata.DisplayAgent), StateLabels: metadata.StateLabels, Tokens: metadata.Tokens,
 		PaneID:      fmtPaneID(pid),
 		WorkspaceID: wsID,
 		TabID:       fmtTabID(ws.ID, tab.ID),

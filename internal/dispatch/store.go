@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS pane_sessions (
   title        TEXT,
   source       TEXT,
   observed_at  TEXT,
+  session_start_source TEXT,
   PRIMARY KEY (session, pane_id)
 );`
 
@@ -226,18 +227,19 @@ type PendingNudge struct {
 
 // PaneSession is the pane ↔ agent-session ledger row (SPEC G3).
 type PaneSession struct {
-	Session     string
-	PaneID      int
-	TerminalID  string
-	WorkspaceID int
-	TabID       int
-	Cwd         string
-	Agent       string
-	SessionKind string
-	SessionID   string
-	Title       string
-	Source      string
-	ObservedAt  string
+	SessionStartSource string
+	Session            string
+	PaneID             int
+	TerminalID         string
+	WorkspaceID        int
+	TabID              int
+	Cwd                string
+	Agent              string
+	SessionKind        string
+	SessionID          string
+	Title              string
+	Source             string
+	ObservedAt         string
 }
 
 // Store is a handle on the dispatch database. One connection serves all
@@ -280,6 +282,9 @@ func Open(path string) (*Store, error) {
 		return fail(err)
 	}
 	if err := s.ensureColumn("dispatches", "caller_pane", "caller_pane TEXT"); err != nil {
+		return fail(err)
+	}
+	if err := s.ensureColumn("pane_sessions", "session_start_source", "session_start_source TEXT"); err != nil {
 		return fail(err)
 	}
 	return s, nil

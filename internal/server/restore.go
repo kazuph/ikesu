@@ -73,18 +73,19 @@ func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
 		}
 	}
 	_ = st.PutPaneSession(dispatch.PaneSession{
-		Session:     s.session,
-		PaneID:      pid,
-		TerminalID:  fmtPaneID(pid),
-		WorkspaceID: wsID,
-		TabID:       tabID,
-		Cwd:         cwd,
-		Agent:       rec.Agent,
-		SessionKind: rec.Kind,
-		SessionID:   rec.Value,
-		Title:       rec.Title,
-		Source:      rec.Source,
-		ObservedAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Session:            s.session,
+		PaneID:             pid,
+		TerminalID:         fmtPaneID(pid),
+		WorkspaceID:        wsID,
+		TabID:              tabID,
+		Cwd:                cwd,
+		Agent:              rec.Agent,
+		SessionKind:        rec.Kind,
+		SessionID:          rec.Value,
+		Title:              rec.Title,
+		Source:             rec.Source,
+		SessionStartSource: rec.SessionStartSource,
+		ObservedAt:         time.Now().UTC().Format(time.RFC3339Nano),
 	})
 }
 
@@ -218,8 +219,9 @@ func (s *Server) observePaneSession(pid int) {
 		if id, found := session.ObserveSessionFile(agent, cwd, start); found {
 			if !hasRec || !strings.HasPrefix(rec.Source, "report:") || rec.Value == "" {
 				title := rec.Title
-				s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: title, Source: "observed:file"})
-				s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: title, Source: "observed:file"})
+				observed := observedSessionRecord(agent, id, title, job)
+				s.app.RecordSession(pid, observed)
+				s.ledgerPut(pid, observed)
 			}
 			s.observedStart[pid] = start
 			return

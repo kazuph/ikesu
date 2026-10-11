@@ -59,6 +59,7 @@ func (s *Server) saveSession() {
 			p.SessionID = rec.Value
 			p.SessionKind = rec.Kind
 			p.Title = rec.Title
+			p.SessionStartSource = rec.SessionStartSource
 		}
 		// A safe same-agent ledger id keeps the exact session on the
 		// snapshot even when the terminal-side record was lost.
@@ -70,6 +71,7 @@ func (s *Server) saveSession() {
 				}
 				p.SessionID = led.SessionID
 				p.SessionKind = led.SessionKind
+				p.SessionStartSource = led.SessionStartSource
 				if p.Title == "" {
 					p.Title = led.Title
 				}

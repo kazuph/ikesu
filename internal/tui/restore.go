@@ -20,11 +20,12 @@ import (
 // agent ran here and the exact session it belongs to. The record is what
 // makes per-pane resume exact instead of cwd-guessed (SPEC G3).
 type AgentRecord struct {
-	Agent  string // canonical agent id (claude, codex, ...)
-	Kind   string // "id" | "path"
-	Value  string // session id or transcript path
-	Title  string
-	Source string // "report:<source>" | "gtx:<agent>" | "observed" | "restore"
+	SessionStartSource string
+	Agent              string // canonical agent id (claude, codex, ...)
+	Kind               string // "id" | "path"
+	Value              string // session id or transcript path
+	Title              string
+	Source             string // "report:<source>" | "gtx:<agent>" | "observed" | "restore"
 }
 
 // SetChangeHook registers the callback invoked on the app loop after any
@@ -114,11 +115,12 @@ func (a *App) RestoreSession(f *session.File) []int {
 		cwds[p.ID] = p.Cwd
 		if p.Agent != "" || p.SessionID != "" || p.Title != "" {
 			a.sessions[p.ID] = &AgentRecord{
-				Agent:  p.Agent,
-				Kind:   p.SessionKind,
-				Value:  p.SessionID,
-				Title:  p.Title,
-				Source: "restore",
+				Agent:              p.Agent,
+				Kind:               p.SessionKind,
+				Value:              p.SessionID,
+				Title:              p.Title,
+				Source:             "restore",
+				SessionStartSource: p.SessionStartSource,
 			}
 			agents = append(agents, p.ID)
 			if p.Agent != "" {
