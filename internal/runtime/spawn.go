@@ -99,13 +99,16 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		s.mu.Lock()
 		cfg, root := s.guardConfig, s.guardRoot
 		s.mu.Unlock()
-		if cfg != nil && cfg.Active() {
+		if cfg != nil {
 			exe, err := os.Executable()
 			if err != nil {
 				emu.Close()
 				return nil, err
 			}
 			p.guard = guard.NewAssets(root, "p_"+itoa(id), exe, *cfg)
+			if len(argv) == 0 {
+				p.guard.ConfigureShell(cmd.Path)
+			}
 			if guard.EnvMap(cmd.Env)["GTX_PANE_ID"] == "" {
 				cmd.Env = append(cmd.Env, "GTX_PANE_ID=p"+itoa(id))
 			}

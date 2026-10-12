@@ -122,6 +122,14 @@ func (a *App) draw() {
 			tabID = tab.ID
 		}
 	}
+	warning, banner := a.configWarning, a.configWarningBanner
+	if guardWarning := a.sup.GuardWarnings(); guardWarning != "" {
+		if warning != "" {
+			warning += "; "
+		}
+		warning += guardWarning
+		banner = true
+	}
 	in := render.Input{
 		ServerUI:            a.serverUI,
 		PanePalette:         a.panePalette,
@@ -129,8 +137,8 @@ func (a *App) draw() {
 		TabScrollManual:     wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
 		State:               a.st,
 		Navigator:           a.navigatorRender(),
-		ConfigWarning:       a.configWarning,
-		ConfigWarningBanner: a.configWarningBanner,
+		ConfigWarning:       warning,
+		ConfigWarningBanner: banner,
 		Settings:            a.settings,
 		MobileSwitcher:      a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,

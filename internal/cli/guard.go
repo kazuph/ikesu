@@ -44,6 +44,14 @@ func (r *runner) guardCLI(a []string) int {
 			fmt.Fprintln(r.errOut(), e)
 			return 1
 		}
+		issues, e := guard.CoverageIssues(root)
+		if e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		for _, issue := range issues {
+			fmt.Fprintln(r.errOut(), issue.String())
+		}
 		return writeJSON(v)
 	}
 	if sub == "compare" {

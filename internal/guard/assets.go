@@ -25,6 +25,8 @@ type Assets struct {
 	meta                                    Marker
 	active                                  string
 	closed                                  bool
+	injected, prompt                        bool
+	mode, unsupported, issue                string
 }
 
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
@@ -32,10 +34,11 @@ func NewAssets(root, pane, exe string, c Config) *Assets {
 	return &Assets{Root: root, Pane: pane, Bin: filepath.Join(root, "guard", "bin", pane), MarkerPath: filepath.Join(root, "guard", "agent-panes", pane+".json"), Executable: exe, Config: c}
 }
 func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
+	m := EnvMap(env)
+	a.meta = Marker{Pane: m["GTX_PANE_ID"], Cwd: cwd, Workspace: m["GTX_WORKSPACE_ID"], Tab: m["GTX_TAB_ID"], Socket: m["GTX_SOCKET_PATH"], Mode: a.Config.EffectiveMode()}
 	if !a.Config.Active() {
 		return env, nil
 	}
-	m := EnvMap(env)
 	if m["GTX_PANE_ID"] == "" && m["GOTERRACE_PANE_ID"] == "" {
 		return env, nil
 	}
@@ -72,28 +75,11 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	if e := os.MkdirAll(shellDir, 0700); e != nil {
 		return nil, e
 	}
-	wrappers := a.shellFunctions()
-	// Only .zshenv is intercepted. Reset ZDOTDIR before sourcing the real
-	// file so later startup files and history keep their original locations.
-	m["GTX_GUARD_ZDOTDIR_ORIG"], m["GTX_GUARD_ZDOTDIR_SET"] = m["ZDOTDIR"], "0"
-	if _, ok := m["ZDOTDIR"]; ok {
-		m["GTX_GUARD_ZDOTDIR_SET"] = "1"
-	}
-	zsh := `if [[ "$GTX_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$GTX_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
-if [[ -f "${ZDOTDIR:-$HOME}/.zshenv" ]]; then source "${ZDOTDIR:-$HOME}/.zshenv"; fi
-` + wrappers + zshLineHook
-	if e := os.WriteFile(filepath.Join(shellDir, ".zshenv"), []byte(zsh), 0600); e != nil {
+	if e := a.prepareStartup(m, shellDir); e != nil {
 		return nil, e
 	}
-	m["ZDOTDIR"] = shellDir
-	m["GTX_GUARD_BASH_ENV_ORIG"] = m["BASH_ENV"]
-	bash := `if [[ "$GTX_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$GTX_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
-if [[ -n "$GTX_GUARD_BASH_ENV_ORIG" && -f "$GTX_GUARD_BASH_ENV_ORIG" ]]; then source "$GTX_GUARD_BASH_ENV_ORIG"; fi
-` + wrappers
-	if e := os.WriteFile(filepath.Join(shellDir, "bash-env"), []byte(bash), 0600); e != nil {
-		return nil, e
-	}
-	m["BASH_ENV"] = filepath.Join(shellDir, "bash-env")
+	a.injected, a.mode = true, a.Config.EffectiveMode()
+
 	return environment(m), nil
 }
 func (a *Assets) shellFunctions() string {
@@ -134,48 +120,64 @@ fi
 func (a *Assets) Sync(agent string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || !a.Config.Active() || a.active == agent {
+	return a.sync(agent)
+}
+func (a *Assets) sync(agent string) error {
+	if a.closed {
 		return nil
 	}
-	if agent == "" {
-		if e := a.remove(); e != nil {
-			return e
-		}
+	if agent == "" || !a.Config.Active() {
 		a.active = ""
-		return nil
+		return a.clearCoverage()
 	}
-	// Populate forwarding entries first, then publish the marker atomically.
+	reason := a.coverageReason()
+	if reason != "" {
+		_ = a.remove()
+		return a.setIssue(reason)
+	}
+	if a.active == agent && a.intact() {
+		return a.setIssue("")
+	}
+	if e := os.MkdirAll(a.Bin, 0700); e != nil {
+		return a.setIssue(e.Error())
+	}
+	if e := os.MkdirAll(filepath.Dir(a.MarkerPath), 0700); e != nil {
+		return a.setIssue(e.Error())
+	}
+	// Publish only after all forwarding entries exist. Repair deleted assets
+	// even when the detected agent has not changed.
 	for _, cmd := range a.Config.Commands() {
 		s := "#!/bin/sh\nexec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
 		if e := os.WriteFile(filepath.Join(a.Bin, cmd), []byte(s), 0700); e != nil {
-			a.remove()
-			return e
+			_ = a.remove()
+			return a.setIssue(e.Error())
 		}
 	}
-	a.meta.Agent = agent
+	a.meta.Agent, a.meta.Mode = agent, a.Config.EffectiveMode()
 	b, e := json.Marshal(a.meta)
 	if e != nil {
-		return e
+		return a.setIssue(e.Error())
 	}
 	tmp, e := os.CreateTemp(filepath.Dir(a.MarkerPath), ".marker-")
 	if e != nil {
-		return e
+		return a.setIssue(e.Error())
 	}
 	defer os.Remove(tmp.Name())
 	_, e = tmp.Write(b)
 	ce := tmp.Close()
 	if e != nil {
-		return e
+		return a.setIssue(e.Error())
 	}
 	if ce != nil {
-		return ce
+		return a.setIssue(ce.Error())
 	}
 	if e = os.Rename(tmp.Name(), a.MarkerPath); e != nil {
-		return e
+		return a.setIssue(e.Error())
 	}
 	a.active = agent
-	return nil
+	return a.setIssue("")
 }
+
 func (a *Assets) remove() error {
 	if e := os.Remove(a.MarkerPath); e != nil && !os.IsNotExist(e) {
 		return e
@@ -199,7 +201,7 @@ func (a *Assets) Close() error {
 	defer a.mu.Unlock()
 	a.active = ""
 	a.closed = true
-	return a.remove()
+	return a.clearCoverage()
 }
 
 // RestoreInherited removes a previous pane's generated shell chain before
@@ -226,6 +228,13 @@ func RestoreInherited(env []string) []string {
 		m["BASH_ENV"] = value
 	} else {
 		delete(m, "BASH_ENV")
+	}
+	if _, injected := m["GTX_GUARD_PROMPT_COMMAND_SET"]; injected {
+		if m["GTX_GUARD_PROMPT_COMMAND_SET"] == "1" {
+			m["PROMPT_COMMAND"] = m["GTX_GUARD_PROMPT_COMMAND_ORIG"]
+		} else {
+			delete(m, "PROMPT_COMMAND")
+		}
 	}
 	for key := range m {
 		if strings.HasPrefix(key, "GTX_GUARD_") {
