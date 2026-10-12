@@ -143,17 +143,18 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
-	viewer    *tui.Viewer
-	available int
-	conn      net.Conn
-	wmu       sync.Mutex
-	id        int
-	lastUse   uint64
-	once      sync.Once
-	render    chan clientWrite
-	control   chan clientWrite
-	done      chan struct{}
-	closed    bool
+	configEditor func(config.Edit, func(config.Config, error))
+	viewer       *tui.Viewer
+	available    int
+	conn         net.Conn
+	wmu          sync.Mutex
+	id           int
+	lastUse      uint64
+	once         sync.Once
+	render       chan clientWrite
+	control      chan clientWrite
+	done         chan struct{}
+	closed       bool
 }
 
 var clientSequence atomic.Int64
@@ -605,7 +606,7 @@ func (s *Server) attach(conn net.Conn) {
 		if hello.ConfigWarning != "" {
 			c.viewer.ConfigError(s.app, hello.ConfigWarning)
 		}
-		c.viewer.SetConfigEditor(func(edit config.Edit, done func(config.Config, error)) {
+		c.configEditor = func(edit config.Edit, done func(config.Config, error)) {
 			if !endpoint.Allows(available, 1, hello.Methods, "config_result") {
 				done(config.Config{}, fmt.Errorf("endpoint_action_unsupported: config_result"))
 				return
@@ -616,6 +617,14 @@ func (s *Server) attach(conn net.Conn) {
 				delete(pendingConfig, configID)
 				done(config.Config{}, err)
 			}
+		}
+		c.viewer.SetConfigEditor(func(edit config.Edit, done func(config.Config, error)) {
+			if edit.Kind == "reload" {
+				// Leave the current viewer context before applying session settings.
+				go s.app.Do(func() { s.reloadConfig() })
+				return
+			}
+			c.configEditor(edit, done)
 		})
 		var snapshots endpoint.SnapshotEncoder
 		c.viewer.SetMachineRequester(func(action string) error {

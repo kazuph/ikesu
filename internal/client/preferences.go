@@ -19,6 +19,14 @@ type localSettings struct {
 	path        string
 }
 
+func (s *localSettings) apply(edit config.Edit) (config.Config, error) {
+	var current config.Config
+	if s.config != nil {
+		current = *s.config
+	}
+	return edit.ApplyTo(current)
+}
+
 func loadLocalSettings(session string) (*localSettings, error) {
 	if !api.ValidSessionName(session) {
 		return nil, fmt.Errorf("invalid client session name")

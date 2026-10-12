@@ -2,6 +2,11 @@ package tui
 
 import "github.com/kazuph/goterrace/internal/config"
 
+// The configuration editor completes inside this viewer's existing context.
+func (v *Viewer) ApplyReloadedConfig(c config.Config) {
+	v.app.ApplyReloadedConfig(c)
+}
+
 // ApplyReloadedConfig runs on the app loop and preserves the current view choices.
 func (a *App) ApplyReloadedConfig(c config.Config) {
 	a.SetConfigWarning("")

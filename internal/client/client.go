@@ -256,7 +256,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			if m.ConfigEdit == nil {
 				return pumpRejected
 			}
-			cfg, err := m.ConfigEdit.Apply()
+			cfg, err := settings.apply(*m.ConfigEdit)
 			result := msg{Type: "config_result", ConfigID: m.ConfigID}
 			if err != nil {
 				result.Reason = err.Error()

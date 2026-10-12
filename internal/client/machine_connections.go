@@ -255,7 +255,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			m.fail(event.id, errors.New("invalid config_edit"))
 			break
 		}
-		cfg, err := message.ConfigEdit.Apply()
+		cfg, err := m.settings.apply(*message.ConfigEdit)
 		result := msg{Type: "config_result", ConfigID: message.ConfigID}
 		if err != nil {
 			result.Reason = err.Error()
