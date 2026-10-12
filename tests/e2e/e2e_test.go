@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,12 +158,12 @@ func startMode(t *testing.T, extra map[string]string, local bool) *session {
 		_ = f.Close()
 		if !local && cmd.Process != nil {
 			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		}
 		// The server outlives its client; ask it to stop so the test
 		// session's panes and socket do not linger.
-		if c, err := net.Dial("unix", filepath.Join(stateDir, sess, "gtx.sock")); err == nil {
-			_, _ = c.Write([]byte(`{"id":"e2e","method":"server.stop","params":{}}` + "\n"))
-			c.Close()
+		if !local {
+			s.stopServer()
 		}
 	})
 	return s
