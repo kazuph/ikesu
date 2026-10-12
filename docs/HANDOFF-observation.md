@@ -1,0 +1,24 @@
+# live handoff の観察と実装契約
+
+対象: mini の配布用 herdr 0.2.30。実装・テストソースは参照しない。
+隔離した `/tmp/gtx-handoff-observe-*` の HOME、XDG_CONFIG_HOME、XDG_STATE_HOME、XDG_CACHE_HOME と名前付き `handoff-observation` session を使い、独立した ptyrun で起動した。各回の最後にその socket の server.stop を呼ぶ。
+
+## 観察した外部契約
+
+- ping の `capabilities.live_handoff` は true。protocol は 19。
+- `server.live_handoff` の成功応答は `{"type":"ok"}`。`import_exe` 省略時も成功し、同じ版を使う。名前付き session の API socket パスは変わらない。
+- expected_protocol 不一致、expected_version 不一致は `handoff_failed` / `handoff stream closed while reading line`。不存在の import_exe は `handoff_failed` / `failed to spawn handoff import server at <path>: No such file or directory (os error 2)`。いずれも旧サーバーは ping に応答し、pane の構成は残る。
+- kitty 有効時の XTVERSION は `ESC P >|ghostty (herdr 0.2.30) ESC \\`。画像問い合わせ `a=q,i=31,s=1,v=1,f=24;AAAA` は `ESC _ G i=31;OK ESC \\`。
+- mouse を normal tracking / SGR にした実プロセスは handoff 前後とも `ESC [ <0;23;8M` と `ESC [ <0;23;8m` を受信した。
+- handoff は display client の接続を切るが client が自動で再接続する。利用者の再接続操作は不要。
+
+## gtx の実装上の不変条件
+
+1. 新実行ファイルの起動と版・protocol の検証が成功するまで旧サーバーと PTY の所有権を維持する。
+2. 端末の画面、scrollback、cursor、両画面の mode、mouse の形式を直接引き継ぐ。保存履歴の再生や新しい shell の起動で代用しない。
+3. 新サーバーが同じ socket で受付可能になるまで旧サーバーを終えない。失敗時は旧サーバーの処理を再開する。
+4. import では startup restore / skip / agent resume を行わない。判断待ちの永続 record と plugin registry は同じ隔離保存先を使う。
+5. pane の終了は PTY の EOF でも検知する。旧サーバーの waitpid に依存しない。
+6. 画像を描けない設定では ghostty を名乗らない。未対応の画像操作は明示して成功扱いしない。
+
+観察の生出力と検証結果は `.artifacts/handoff/RESULT.md` に対応付ける（Git へ追加しない）。
