@@ -29,6 +29,7 @@ type readBuffer struct {
 	kind            byte
 	parser          *ansi.Parser
 	utf8Pending     []byte
+	partial         []byte
 	top, bottom     int
 	left, right     int
 }
@@ -337,6 +338,14 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			seq = chunk[:1]
 		}
 		r.state = state
+		if oldState == ansi.NormalState {
+			r.partial = r.partial[:0]
+		}
+		if state != ansi.NormalState {
+			r.partial = append(r.partial, chunk[:n]...)
+		} else {
+			r.partial = r.partial[:0]
+		}
 		printable := width > 0 || oldState == ansi.NormalState && chunk[0] >= 0xc0
 		if printable {
 			pos := p.emu.CursorPosition()

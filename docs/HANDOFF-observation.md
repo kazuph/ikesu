@@ -14,7 +14,7 @@
 - 追加観察では probe の PID 28191 が2回の handoff 後にも `ps` に現れ、同じ probe.jsonl へ入力を記録した。ptyrun の画面プロセス PID 28151 も終了していない。
 - kitty 無効時の XTVERSION は `ESC P >|libghostty ESC \\`。実物は無効時にも画像の query / transmit へ OK を返したが、画像対応を名乗らないという SPEC の条件を優先して gtx の無効時に画像成功は返さない。
 - kitty の直接 RGB 転送は、pane 原点 (27,2) に対して pane 内 (6,4) の画像を外側 (33,6) に c=3,r=2 で置いた（いずれも0始まり）。6回の placement の座標を生出力から数値で確認した。
-- 終了用 pane を追加して handoff 後にコマンドを終了させた観察では、直後の pane 一覧に終了用 pane が残った。終了表示とその後の閉鎖はこの観察では未確認。
+- 終了用 pane のコマンドが戻った後は shell が残り、その shell に `exit` を送ると pane p2 は一覧から消え、p1 は同じ PID 38267 のまま残った。独立したコマンドの終了と pane の shell の終了を分けて確認した。
 
 ## gtx の実装上の不変条件
 

@@ -20,6 +20,9 @@ type PaneTransfer struct {
 	Modes                       map[ansi.Mode]bool
 	Guard                       *guard.Transfer
 	Read                        *readTransfer
+	TapState                    int
+	TapBody                     []byte
+	Clipboard                   []string
 }
 
 // Rewrap a nonblocking descriptor so Go's poller can interrupt only our read.
@@ -83,6 +86,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			return fail(err)
 		}
 		v := PaneTransfer{ID: id, PID: p.ShellPID(), Cwd: p.cwd, Argv: p.spawnArgv, Terminal: terminal, AgentOverride: p.agentOverride, GuardStarted: p.guardStarted, Modes: p.modes, Read: p.read.transfer()}
+		v.TapState, v.TapBody, v.Clipboard = int(p.tap.state), p.tap.body, p.clipboard
 		if p.guard != nil {
 			g := p.guard.Transfer()
 			v.Guard = &g
@@ -130,12 +134,15 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		p.spawnArgv = v.Argv
 		p.agentOverride, p.guardStarted, p.modes = v.AgentOverride, v.GuardStarted, v.Modes
 		p.read = v.Read.restore()
+		p.tap = oscTap{state: oscState(v.TapState), body: v.TapBody}
+		p.clipboard = v.Clipboard
 		p.emu.Scrollback().OnDrop = p.read.dropHistory
 		q := v.Snapshot
 		p.fgPID, p.procName, p.agentID, p.procCwd = q.FgPID, q.ProcName, q.AgentID, q.Cwd
 		p.oscTitle, p.oscProgress, p.altScreen = q.OSCTitle, q.OSCProgress, q.AltScreen
 		p.mouseTracking, p.mouseMotion, p.appCursorKeys = q.MouseTracking, q.MouseMotion, q.AppCursorKeys
 		p.cursor, p.scrollbarVisible, p.dead = q.Cursor, q.ScrollbarVisible, q.Dead
+		p.importedExited.Store(q.Dead)
 		p.revision.Store(q.Revision)
 		if v.Guard != nil {
 			p.guard = guard.Import(*v.Guard)

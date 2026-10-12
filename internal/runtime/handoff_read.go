@@ -11,7 +11,7 @@ type readTransfer struct {
 	ByteHistory, Pending                                    bool
 	HistoryCount, Start, AltStart, Top, Bottom, Left, Right int
 	State, Kind                                             byte
-	UTF8                                                    []byte
+	UTF8, Partial                                           []byte
 }
 
 func transferRows(rows []rowRef) []rowTransfer {
@@ -32,11 +32,15 @@ func (r *readBuffer) transfer() *readTransfer {
 	if r == nil {
 		return nil
 	}
-	return &readTransfer{Main: transferRows(r.main), Alternate: transferRows(r.alternate), History: transferRows(r.history), AltHistory: transferRows(r.altHistory), ByteHistory: r.byteHistory, Pending: r.pending, HistoryCount: r.historyCount, Start: r.start, AltStart: r.altStart, Top: r.top, Bottom: r.bottom, Left: r.left, Right: r.right, State: r.state, Kind: r.kind, UTF8: r.utf8Pending}
+	return &readTransfer{Main: transferRows(r.main), Alternate: transferRows(r.alternate), History: transferRows(r.history), AltHistory: transferRows(r.altHistory), ByteHistory: r.byteHistory, Pending: r.pending, HistoryCount: r.historyCount, Start: r.start, AltStart: r.altStart, Top: r.top, Bottom: r.bottom, Left: r.left, Right: r.right, State: r.state, Kind: r.kind, UTF8: r.utf8Pending, Partial: r.partial}
 }
 func (r *readTransfer) restore() *readBuffer {
 	if r == nil {
 		return nil
 	}
-	return &readBuffer{main: restoreRows(r.Main), alternate: restoreRows(r.Alternate), history: restoreRows(r.History), altHistory: restoreRows(r.AltHistory), byteHistory: r.ByteHistory, pending: r.Pending, historyCount: r.HistoryCount, start: r.Start, altStart: r.AltStart, top: r.Top, bottom: r.Bottom, left: r.Left, right: r.Right, state: r.State, kind: r.Kind, utf8Pending: r.UTF8, parser: ansi.NewParser()}
+	parser := ansi.NewParser()
+	if len(r.Partial) > 0 {
+		_, _, _, _ = ansi.DecodeSequence(r.Partial, ansi.NormalState, parser)
+	}
+	return &readBuffer{main: restoreRows(r.Main), alternate: restoreRows(r.Alternate), history: restoreRows(r.History), altHistory: restoreRows(r.AltHistory), byteHistory: r.ByteHistory, pending: r.Pending, historyCount: r.HistoryCount, start: r.Start, altStart: r.AltStart, top: r.Top, bottom: r.Bottom, left: r.Left, right: r.Right, state: r.State, kind: r.Kind, utf8Pending: r.UTF8, partial: r.Partial, parser: parser}
 }

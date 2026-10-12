@@ -6,7 +6,6 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/ansi/parser"
 	"image/color"
 )
 
@@ -47,18 +46,16 @@ type terminalTransfer struct {
 	Phantom                                       bool
 	Icon, Title, Cwd                              string
 	Tabs                                          []int
+	Partial                                       []byte
 }
 
 // MarshalHandoff captures terminal state rather than replaying terminal output.
-// A partial parser sequence must not silently become a different sequence.
+// Incomplete sequences are restored into the parser without replaying effects.
 func (e *Emulator) MarshalHandoff() ([]byte, error) {
-	if e.parser.State() != parser.GroundState {
-		return nil, fmt.Errorf("handoff_unsupported: incomplete terminal sequence")
-	}
 	t := terminalTransfer{Alternate: e.scr == &e.scrs[1], Modes: e.modes, Colors: e.colors,
 		DefaultFg: e.defaultFg, DefaultBg: e.defaultBg, DefaultCur: e.defaultCur, Fg: e.fgColor, Bg: e.bgColor, Cur: e.curColor,
 		Charsets: e.charsets, GL: e.gl, GR: e.gr, GSingle: e.gsingle, Keyboard: e.kbdStack, Last: e.lastChar, Grapheme: e.grapheme,
-		Phantom: e.atPhantom, Icon: e.iconName, Title: e.title, Cwd: e.cwd}
+		Phantom: e.atPhantom, Icon: e.iconName, Title: e.title, Cwd: e.cwd, Partial: e.partial}
 	for x := 0; x < e.tabstops.Width(); x++ {
 		if e.tabstops.IsStop(x) {
 			t.Tabs = append(t.Tabs, x)
@@ -125,5 +122,15 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 		e.tabstops.Set(x)
 	}
 	e.parser.Reset()
+	e.parser.SetHandler(ansi.Handler{})
+	e.parser.Parse(t.Partial)
+	e.partial = t.Partial
+	e.setParserHandler()
 	return nil
+}
+
+func (e *Emulator) setParserHandler() {
+	e.parser.SetHandler(ansi.Handler{Print: e.handlePrint, Execute: e.handleControl,
+		HandleCsi: e.handleCsi, HandleEsc: e.handleEsc, HandleDcs: e.handleDcs,
+		HandleOsc: e.handleOsc, HandleApc: e.handleApc, HandlePm: e.handlePm, HandleSos: e.handleSos})
 }

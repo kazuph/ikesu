@@ -48,8 +48,9 @@ type Emulator struct {
 	grapheme []byte
 
 	// The ANSI parser to use.
-	parser *ansi.Parser
-	cb     Callbacks
+	parser  *ansi.Parser
+	partial []byte
+	cb      Callbacks
 
 	// The terminal's icon name and title.
 	iconName, title string
@@ -101,17 +102,7 @@ func NewEmulator(w, h int) *Emulator {
 	t.parser = ansi.NewParser()
 	t.parser.SetParamsSize(parser.MaxParamsSize)
 	t.parser.SetDataSize(1024 * 1024 * 4) // 4MB data buffer
-	t.parser.SetHandler(ansi.Handler{
-		Print:     t.handlePrint,
-		Execute:   t.handleControl,
-		HandleCsi: t.handleCsi,
-		HandleEsc: t.handleEsc,
-		HandleDcs: t.handleDcs,
-		HandleOsc: t.handleOsc,
-		HandleApc: t.handleApc,
-		HandlePm:  t.handlePm,
-		HandleSos: t.handleSos,
-	})
+	t.setParserHandler()
 	t.pr, t.pw = io.Pipe()
 	t.resetModes()
 	t.tabstops = uv.DefaultTabStops(w)
@@ -295,6 +286,11 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
+	start := -1
+	continuing := e.parser.State() != parser.GroundState
+	if continuing {
+		start = 0
+	}
 	for i := 0; i < len(p); i++ {
 		b := p[i]
 		if b >= ansi.SP && b < ansi.DEL && !e.disableFastPrint && e.canFastPrint() {
@@ -309,7 +305,22 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 			i = j - 1
 			continue
 		}
+		if e.parser.State() == parser.GroundState {
+			start = i
+			continuing = false
+		}
 		e.parser.Advance(b)
+		if e.parser.State() == parser.GroundState {
+			start = -1
+		}
+	}
+	if start >= 0 {
+		if !continuing {
+			e.partial = e.partial[:0]
+		}
+		e.partial = append(e.partial, p[start:]...)
+	} else {
+		e.partial = e.partial[:0]
 	}
 	// Flush the last cluster once the whole slice is written. Every
 	// sequence handler flushes on its own way in, so a cluster only has to
