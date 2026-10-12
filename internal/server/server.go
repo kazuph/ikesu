@@ -235,6 +235,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	var apiLn, clientLn net.Listener
 	var err error
 	if imported != nil {
+		unix.CloseOnExec(6)
 		lock = os.NewFile(6, "handoff-lock")
 		apiLn, err = inheritedListener(4)
 		if err == nil {

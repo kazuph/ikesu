@@ -363,6 +363,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	if in.Copy != nil && in.Copy.Fullscreen {
 		if snap := in.Panes[in.Copy.Pane]; snap != nil {
 			f.CopyGrid(area.X, area.Y, clipGrid(snap.Grid, area.W, area.H))
+			paneGraphics(f, in.Copy.Pane, snap, area.X, area.Y, area.W, area.H)
 			if in.Copy.Sel != nil {
 				applyCopySelection(f, area.X, area.Y, area.W, area.H, in.Copy.Sel)
 			}

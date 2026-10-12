@@ -11,6 +11,7 @@ import (
 // Frame is a grid of styled cells covering the whole screen.
 type Frame struct {
 	Graphics          []Graphic
+	Placeholders      []Placeholder
 	GraphicsNamespace string
 	Palette           Palette
 	W, H              int

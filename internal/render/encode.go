@@ -15,6 +15,7 @@ type Encoder struct {
 	graphics          []Graphic
 	graphicsNamespace string
 	graphicsIDs       []uint32
+	graphicsMap       map[string]uint32
 	nextGraphicID     uint32
 	prev              *Frame
 	curSty            uv.Style
@@ -61,13 +62,20 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 	}
 
 	full := e.prev == nil || e.prev.W != f.W || e.prev.H != f.H
+	graphicsChanged := e.prepareGraphics(f, full)
 	if full {
-		e.full(f, &b)
+		b.WriteString(cup(0, 0))
+		b.WriteString(clearAll)
+	}
+	// Virtual prototypes must exist before the corresponding Unicode cells.
+	e.emitGraphics(f, &b, graphicsChanged)
+	if full {
+		e.diffAll(f, &b)
 	} else {
 		e.diff(f, &b)
 	}
 
-	e.emitGraphics(f, &b, full)
+	e.emitRealPlacements(f, &b, graphicsChanged)
 	// Park the cursor at the anchor before ending the sync block.
 	b.WriteString(cup(anchorY, anchorX))
 	if anchorVisible {
@@ -94,13 +102,6 @@ func (e *Encoder) Reset() {
 
 func cup(row, col int) string {
 	return fmt.Sprintf("\x1b[%d;%dH", row+1, col+1)
-}
-
-func (e *Encoder) full(f *Frame, b *bytes.Buffer) {
-	b.WriteString(cup(0, 0))
-	b.WriteString(clearAll)
-	e.diffAll(f, b)
-	e.prev = nil // will be set by caller
 }
 
 func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {

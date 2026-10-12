@@ -8,6 +8,7 @@ func drawPopup(f *Frame, in Input, out *Output) {
 		return
 	}
 	f.Graphics = nil
+	f.Placeholders = nil
 	r := s.PopupRect()
 	if r.W < 1 || r.H < 1 {
 		return

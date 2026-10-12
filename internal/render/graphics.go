@@ -15,7 +15,19 @@ type Graphic struct {
 }
 
 func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
+	if len(snap.Graphics) == 0 {
+		return
+	}
 	for _, p := range snap.Graphics {
+		if p.Virtual {
+			panePlaceholders(f, pane, snap, x, y, width, height)
+			break
+		}
+	}
+	for _, p := range snap.Graphics {
+		if p.Virtual {
+			continue
+		}
 		p.Y += snap.ScrollOff
 		// A placement that crosses the pane edge is hidden rather than
 		// drawing source pixels over the sidebar or another pane.
@@ -35,22 +47,24 @@ func (e *Encoder) clearGraphics(b *bytes.Buffer) {
 	e.graphicsIDs = nil
 }
 
-func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, full bool) {
-	if !full && (len(e.graphics) == 0 && len(f.Graphics) == 0 || e.graphicsNamespace == f.GraphicsNamespace && reflect.DeepEqual(e.graphics, f.Graphics)) {
+func graphicKey(pane int, image uint32) string {
+	return strconv.Itoa(pane) + ":" + strconv.FormatUint(uint64(image), 10)
+}
+
+func graphicsEqual(a, b []Graphic) bool { return reflect.DeepEqual(a, b) }
+
+func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
+	if !changed {
 		return
 	}
 	e.clearGraphics(b)
 	ids := map[string]uint32{}
 	for _, graphic := range f.Graphics {
 		p := graphic.Placement
-		key := strconv.Itoa(graphic.Pane) + ":" + strconv.FormatUint(uint64(p.Image.ID), 10)
+		key := graphicKey(graphic.Pane, p.Image.ID)
 		id, exists := ids[key]
 		if !exists {
-			e.nextGraphicID++
-			if e.nextGraphicID == 0 {
-				e.nextGraphicID++
-			}
-			id = e.nextGraphicID
+			id = e.graphicsMap[key]
 			ids[key] = id
 			e.graphicsIDs = append(e.graphicsIDs, id)
 			data := base64.StdEncoding.EncodeToString(p.Image.Data)
@@ -71,8 +85,24 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, full bool) {
 				first = false
 			}
 		}
+		if p.Virtual {
+			fmt.Fprintf(b, "\x1b_Ga=p,U=1,i=%d,p=%d,c=%d,r=%d,z=%d,q=2;\x1b\\", id, p.ID, p.Cols, p.Rows, p.Z)
+		}
+	}
+	e.graphics, e.graphicsNamespace = f.Graphics, f.GraphicsNamespace
+}
+
+func (e *Encoder) emitRealPlacements(f *Frame, b *bytes.Buffer, changed bool) {
+	if !changed {
+		return
+	}
+	for _, graphic := range f.Graphics {
+		p := graphic.Placement
+		if p.Virtual {
+			continue
+		}
+		id := e.graphicsMap[graphicKey(graphic.Pane, p.Image.ID)]
 		b.WriteString(cup(p.Y, p.X))
 		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,c=%d,r=%d,z=%d,C=1,q=2;\x1b\\", id, p.Cols, p.Rows, p.Z)
 	}
-	e.graphics, e.graphicsNamespace = f.Graphics, f.GraphicsNamespace
 }

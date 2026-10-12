@@ -23,6 +23,7 @@ type Placement struct {
 	ID                  uint32
 	X, Y, Cols, Rows, Z int
 	Alternate           bool
+	Virtual             bool
 }
 type Store struct {
 	Images     map[uint32]Image
@@ -86,10 +87,10 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 	}
 	s.ChunkKeys, s.ChunkData = nil, nil
 	for k := range keys {
-		if !strings.Contains("atifvsmqpcrzCdo", k) {
+		if !strings.Contains("atifvsmqpcrzCdoU", k) {
 			return reply(keys, "ENOTSUP:unsupported graphics key "+k), 0, 0, true
 		}
-		if strings.Contains("ifvsmqpcrC", k) {
+		if strings.Contains("ifvsmqpcrCU", k) {
 			if _, err := strconv.ParseUint(keys[k], 10, 32); err != nil {
 				return reply(keys, "EINVAL:invalid numeric graphics key "+k), 0, 0, true
 			}
@@ -126,7 +127,7 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 		pid := uint32(number(keys, "p", 0))
 		kept := s.Placements[:0]
 		for _, p := range s.Placements {
-			remove := (mode == "a" || mode == "A") && p.Alternate == alt || (mode == "i" || mode == "I") && p.Image.ID == id && (pid == 0 || p.ID == pid)
+			remove := (mode == "a" || mode == "A") && !p.Virtual && p.Alternate == alt || (mode == "i" || mode == "I") && p.Image.ID == id && (pid == 0 || p.ID == pid)
 			if !remove {
 				kept = append(kept, p)
 			}
@@ -194,6 +195,10 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 		return reply(keys, "ENOENT:image not found"), 0, 0, true
 	}
 	cols, rows := number(keys, "c", 0), number(keys, "r", 0)
+	virtual := number(keys, "U", 0)
+	if virtual < 0 || virtual > 1 {
+		return reply(keys, "EINVAL:invalid virtual placement"), 0, 0, true
+	}
 	if action == "T" || action == "p" {
 		if cols < 0 || rows < 0 || number(keys, "C", 0) < 0 || number(keys, "C", 0) > 1 {
 			return reply(keys, "EINVAL:invalid placement"), 0, 0, true
@@ -241,8 +246,8 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 			}
 			s.Placements = kept
 		}
-		s.Placements = append(s.Placements, Placement{Image: image, ID: pid, X: x, Y: y, Cols: cols, Rows: rows, Z: number(keys, "z", 0), Alternate: alt})
-		if number(keys, "C", 0) == 0 {
+		s.Placements = append(s.Placements, Placement{Image: image, ID: pid, X: x, Y: y, Cols: cols, Rows: rows, Z: number(keys, "z", 0), Alternate: alt, Virtual: virtual == 1})
+		if virtual == 0 && number(keys, "C", 0) == 0 {
 			return reply(keys, "OK"), cols, rows, true
 		}
 	}
@@ -282,7 +287,7 @@ func Reject(data []byte, message string) string {
 func (s *Store) Scroll(alt bool, left, top, right, bottom, lines int) {
 	for i := range s.Placements {
 		p := &s.Placements[i]
-		if p.Alternate == alt && p.X >= left && p.X < right && (p.Y >= top || top == 0 && left == 0 && !alt) && p.Y < bottom {
+		if !p.Virtual && p.Alternate == alt && p.X >= left && p.X < right && (p.Y >= top || top == 0 && left == 0 && !alt) && p.Y < bottom {
 			p.Y += lines
 		}
 	}
@@ -291,7 +296,7 @@ func (s *Store) Scroll(alt bool, left, top, right, bottom, lines int) {
 func (s *Store) Visible(alt bool) []Placement {
 	var out []Placement
 	for _, p := range s.Placements {
-		if p.Alternate == alt {
+		if p.Virtual || p.Alternate == alt {
 			out = append(out, p)
 		}
 	}

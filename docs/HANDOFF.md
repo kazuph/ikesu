@@ -12,8 +12,10 @@ workspace・tab・pane の構成と番号、両方の端末画面と scrollback�
 
 対応する画像手順は、direct data（`t=d`）の RGB（`f=24`）、RGBA（`f=32`）、PNG（`f=100`）、zlib 圧縮、分割転送、問い合わせ（`a=q`）、転送（`a=t`）、転送と配置（`a=T`）、保存済み画像の配置（`a=p`）、全表示配置または画像 ID を対象とする削除（`a=d,d=a/A/i/I`）。配置の `c/r`、`p`、`z`、cursor 移動の `C`、応答抑制の `q` に対応する。`c/r` の省略・片方だけの指定には、外側の端末から得たセルの pixel 寸法が必要で、寸法が不明なら `ENOTSUP` を返す。
 
-画像は pane 内のセルに配置され、scroll・分割・移動・サイズ変更に従って外側の端末に再配置される。tab・workspace 切替、pane close、画面の終了では、この画面が出力した画像を削除する。pane の境界を越える配置は全体を隠し、完全に収まると再表示する。部分描画には対応していない。
+Unicode placeholder の仮想配置（`U=1`）にも対応する。program が `a=T,U=1,q=2` で送った画像と、`U+10EEEE` の文字・前景色・行列の結合文字・下線色を対応付ける。外側には画像 ID を振り直した仮想配置と、元の画像内の行列を明示した文字を送る。セルの scroll・reflow・pane の移動やサイズ変更に従い、端に見えているセルだけが同じ画像の同じ部分を描く。省略された結合文字も隣のセルから解決し、引き継ぎ後に同じ画像を使う。仕様は [kitty の Unicode placeholder](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders) に従う。
 
-file・temporary file・shared memory の転送、画像番号（`I`）、pixel の切り出しとセル内の pixel offset、Unicode placeholder、相対配置、animation、位置を指定する削除は未対応で、`ENOTSUP` を返す。未対応の操作を成功として受け付けない。popup 以外の dialog・menu などが重なる間は画像を隠す。
+通常の画像は pane 内のセルに配置され、scroll・分割・移動・サイズ変更に従って外側の端末に再配置される。tab・workspace 切替、pane close、画面の終了では、この画面が出力した画像を削除する。通常配置が pane の境界を越えると全体を隠し、完全に収まると再表示する。通常配置の部分描画には対応していない。
+
+file・temporary file・shared memory の転送、画像番号（`I`）、pixel の切り出しとセル内の pixel offset、相対配置、animation、位置を指定する削除は未対応で、`ENOTSUP` を返す。未対応の操作を成功として受け付けない。popup 以外の dialog・menu などが重なる間は画像を隠す。
 
 動作証拠と未検証の条件は、この worktree の `.artifacts/handoff/RESULT.md` に記録する。保存マシン接続の endpoint generation と既存の入力・描画確認の契約は変更しない。

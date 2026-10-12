@@ -51,7 +51,6 @@ func TestDirectChunkedPNGPlacementAndDeletion(t *testing.T) {
 func TestUnsupportedGraphicsNeverAcknowledged(t *testing.T) {
 	for _, command := range []string{
 		"Ga=q,t=f,f=24,s=1,v=1,i=31;AP8A",
-		"Ga=T,U=1,f=24,s=1,v=1,i=31,c=3,r=2;AP8A",
 		"Ga=T,P=9,f=24,s=1,v=1,i=31,c=3,r=2;AP8A",
 		"Ga=T,f=24,s=1,v=1,i=31,x=1,c=3,r=2;AP8A",
 		"Ga=T,f=24,s=1,v=1,i=31;AP8A",
