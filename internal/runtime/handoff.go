@@ -8,7 +8,6 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"sort"
-	"time"
 )
 
 type PaneTransfer struct {
@@ -29,19 +28,6 @@ type PaneTransfer struct {
 	Clipboard                   []string
 }
 
-// Rewrap a nonblocking descriptor so Go's poller can interrupt only our read.
-func pollablePTY(original *os.File) (*os.File, int, error) {
-	fd, err := unix.FcntlInt(original.Fd(), unix.F_DUPFD_CLOEXEC, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	if err = unix.SetNonblock(fd, true); err != nil {
-		unix.Close(fd)
-		return nil, 0, err
-	}
-	original.Close()
-	return os.NewFile(uintptr(fd), "gtx-pty"), fd, nil
-}
 func (p *Pane) startPump() {
 	p.pumpDone = make(chan struct{})
 	go func() {
@@ -79,7 +65,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 	for _, id := range ids {
 		p := s.Get(id)
 		p.pausing.Store(true)
-		if err := p.ptyFile.SetReadDeadline(time.Now()); err != nil {
+		if _, err := p.wakeWrite.Write([]byte{1}); err != nil {
 			return fail(fmt.Errorf("pause PTY: %w", err))
 		}
 		<-p.pumpDone
@@ -113,8 +99,9 @@ func (s *Supervisor) ResumeHandoff() {
 	for _, p := range s.panes {
 		select {
 		case <-p.pumpDone:
-			_ = unix.SetNonblock(p.ptyFD, true)
-			_ = p.ptyFile.SetReadDeadline(time.Time{})
+			if ptyReadyNow(p.wakeFD) {
+				_, _ = p.wakeRead.Read(make([]byte, 1))
+			}
 			p.pausing.Store(false)
 			p.startPump()
 		default:
@@ -126,19 +113,20 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		return fmt.Errorf("handoff PTY count mismatch")
 	}
 	for i, v := range states {
-		file, fd, err := pollablePTY(files[i])
-		if err != nil {
+		p := s.newPane(v.ID, v.Cwd, 1, 1)
+		if err := p.installPTY(files[i]); err != nil {
 			return err
 		}
-		p := s.newPane(v.ID, v.Cwd, 1, 1)
 		if err := p.emu.UnmarshalHandoff(v.Terminal); err != nil {
 			return err
 		}
-		p.ptyFile, p.ptyFD = file, fd
 		p.importedPID = v.PID
 		p.spawnArgv = v.Argv
 		p.agentOverride, p.guardStarted, p.modes = v.AgentOverride, v.GuardStarted, v.Modes
 		p.graphics, p.graphicsEnabled, p.cellWidth, p.cellHeight = v.Graphics, v.GraphicsEnabled, v.CellWidth, v.CellHeight
+		if p.graphics != nil {
+			p.emu.SetScrollCallback(p.scrollGraphics)
+		}
 		p.read = v.Read.restore()
 		p.tap = oscTap{state: oscState(v.TapState), body: v.TapBody}
 		p.clipboard = v.Clipboard
@@ -172,7 +160,7 @@ func (s *Supervisor) ReleaseHandoff() {
 	defer s.mu.Unlock()
 	for _, p := range s.panes {
 		p.retired.Store(true)
-		p.ptyFile.Close()
+		p.closePTY()
 		p.emu.Close()
 	}
 	s.panes = map[int]*Pane{}

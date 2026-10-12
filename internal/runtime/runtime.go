@@ -49,15 +49,17 @@ type Pane struct {
 	spawnArgv             []string
 	processCache          foregroundCache
 
-	cmd            *exec.Cmd
-	ptyFile        *os.File
-	ptyFD          int // captured before publishing the pane; Close may race with readers
-	done           chan struct{}
-	pumpDone       chan struct{}
-	importedPID    int
-	pausing        atomic.Bool
-	retired        atomic.Bool
-	importedExited atomic.Bool
+	cmd                 *exec.Cmd
+	ptyFile             *os.File
+	wakeRead, wakeWrite *os.File
+	wakeFD              int
+	ptyFD               int // captured before publishing the pane; Close may race with readers
+	done                chan struct{}
+	pumpDone            chan struct{}
+	importedPID         int
+	pausing             atomic.Bool
+	retired             atomic.Bool
+	importedExited      atomic.Bool
 
 	mu               sync.Mutex
 	emu              *vt.Emulator
@@ -226,7 +228,7 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 		default:
 			buf = make([]byte, 64*1024)
 		}
-		n, err := p.ptyFile.Read(buf)
+		n, err := p.readPTYReady(buf)
 		reads++
 		for err == nil && n < len(buf) && ptyReadyNow(fd) {
 			m, rerr := p.ptyFile.Read(buf[n:])
@@ -435,7 +437,7 @@ func (s *Supervisor) Kill(id int) {
 	}
 
 	if p.ptyFile != nil {
-		_ = p.ptyFile.Close() // SIGHUP to foreground group
+		p.closePTY() // SIGHUP to foreground group
 	}
 	p.killProcess()
 	_ = p.emu.Close()
@@ -745,7 +747,7 @@ func (s *Supervisor) KillAll() {
 			_ = p.guard.Close()
 		}
 		if p.ptyFile != nil {
-			_ = p.ptyFile.Close()
+			p.closePTY()
 		}
 		p.killProcess()
 		_ = p.emu.Close()

@@ -132,7 +132,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		return nil, err
 	}
 	p.cmd = cmd
-	p.ptyFile, p.ptyFD, err = pollablePTY(f)
+	err = p.installPTY(f)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
@@ -181,11 +181,6 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 	})
 
 	emu.SetCallbacks(vt.Callbacks{
-		Scroll: func(left, top, right, bottom, lines int) {
-			if p.graphics != nil {
-				p.graphics.Scroll(p.altScreen, left, top, right, bottom, lines)
-			}
-		},
 		Title:     p.onOSCTitle,
 		AltScreen: func(on bool) { p.altScreen = on },
 		Resize: func(alt bool, oldWidth, height, pushed, pulled int) {

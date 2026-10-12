@@ -53,6 +53,7 @@ func (s *Supervisor) setupGraphics(p *Pane) {
 		}
 		if p.graphics == nil {
 			p.graphics = &kitty.Store{}
+			p.emu.SetScrollCallback(p.scrollGraphics)
 		}
 		position := p.emu.CursorPosition()
 		response, cols, rows, handled := p.graphics.Handle(data, position.X, position.Y, p.cellWidth, p.cellHeight, p.altScreen)
@@ -73,4 +74,8 @@ func (p *Pane) Graphics() []kitty.Placement {
 		return nil
 	}
 	return p.graphics.Visible(p.altScreen)
+}
+
+func (p *Pane) scrollGraphics(left, top, right, bottom, lines int) {
+	p.graphics.Scroll(p.altScreen, left, top, right, bottom, lines)
 }

@@ -44,6 +44,9 @@ func panePlaceholders(f *Frame, pane int, snap *PaneSnap, x, y, width, height in
 // Rewrite only the frame's copy of the cell. The pane keeps its original ID
 // and source row/column for handoff, scrollback, and another connected viewer.
 func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
+	if len(f.Graphics) == 0 && len(e.graphicsIDs) == 0 && len(f.Placeholders) == 0 {
+		return false
+	}
 	changed := full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics)
 	if changed {
 		e.graphicsMap = map[string]uint32{}

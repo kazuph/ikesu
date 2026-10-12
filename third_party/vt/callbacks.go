@@ -67,3 +67,8 @@ type Callbacks struct {
 	// disabled.
 	DisableMode func(mode ansi.Mode)
 }
+
+// SetScrollCallback replaces only the observer for image cell movement.
+func (e *Emulator) SetScrollCallback(callback func(left, top, right, bottom, lines int)) {
+	e.cb.Scroll = callback
+}
