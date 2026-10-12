@@ -235,6 +235,10 @@ func contains(x, y, w, h, px, py int) bool { return px >= x && py >= y && px < x
 
 func (m *machineClient) sendInput(id string, data []byte) error {
 	e := m.endpoints[id]
+	if id == "local" && e.restarting {
+		e.restartInput = append(e.restartInput, data...)
+		return nil
+	}
 	if e.paste != nil {
 		e.paste.held = append(e.paste.held, clipboardItem{data: append([]byte(nil), data...)})
 		return nil

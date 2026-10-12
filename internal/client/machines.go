@@ -34,6 +34,8 @@ type managedEndpoint struct {
 	requestAck               bool
 	removed                  bool
 	paste                    *clipboardPaste
+	restarting               bool
+	restartInput             []byte
 }
 
 type endpointEvent struct {

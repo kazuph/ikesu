@@ -208,10 +208,21 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if err := m.paint(); err != nil {
 			return pumpDone, true
 		}
+
 		if event.id != m.active && message.RequestAck {
 			regions := render.Compose(input)
 			regions.Frame = nil
 			_ = e.connection.enqueue(msg{Type: "rendered", Rendered: regions, FocusEpoch: e.epoch})
+		}
+		if event.id == "local" && e.restarting {
+			e.restarting = false
+			pending := e.restartInput
+			e.restartInput = nil
+			if len(pending) > 0 {
+				if err := m.sendInput(event.id, pending); err != nil {
+					m.fail(event.id, err)
+				}
+			}
 		}
 	case "notify":
 		if message.Notification != nil && m.settings.config != nil {
@@ -264,6 +275,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		m.fail(event.id, errors.New("server exited"))
 	case "restart":
+		if event.id == "local" {
+			e.restarting = true
+		}
 		m.fail(event.id, errors.New("server restarting"))
 	case "error":
 		m.notify(message.Reason)

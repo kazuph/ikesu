@@ -136,7 +136,9 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		p.read = v.Read.restore()
 		p.tap = oscTap{state: oscState(v.TapState), body: v.TapBody}
 		p.clipboard = v.Clipboard
-		p.emu.Scrollback().OnDrop = p.read.dropHistory
+		if p.read != nil {
+			p.emu.Scrollback().OnDrop = p.read.dropHistory
+		}
 		q := v.Snapshot
 		p.fgPID, p.procName, p.agentID, p.procCwd = q.FgPID, q.ProcName, q.AgentID, q.Cwd
 		p.oscTitle, p.oscProgress, p.altScreen = q.OSCTitle, q.OSCProgress, q.AltScreen

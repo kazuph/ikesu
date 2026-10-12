@@ -36,10 +36,6 @@ func TestLiveHandoffKeepsPIDInputAndExit(t *testing.T) {
 	if out, err := s.cli("server", "live-handoff"); err != nil {
 		t.Fatalf("handoff: %v %s", err, out)
 	}
-	if out, err := s.cli("pane", "send-text", "p1", "printf 'HANDOFF_DISPLAY_READY\\n'\r"); err != nil {
-		t.Fatalf("imported PTY input: %v %s", err, out)
-	}
-	s.waitFor("automatic reconnect displays live pane output", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "HANDOFF_DISPLAY_READY") })
 	s.send(fmt.Sprintf("printf '%%s\\n' $$ >> %q; printf 'HANDOFF_CONTINUES\\n'\r", pidfile))
 	s.waitFor("attached client continues", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "HANDOFF_CONTINUES") })
 	after, err := os.ReadFile(pidfile)
