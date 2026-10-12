@@ -179,9 +179,6 @@ func (c *Config) validateCompat() {
 		c.UI.SidebarMaxWidth = nil
 	}
 	c.validateSidebarItems()
-	if c.Experimental.KittyGraphics {
-		c.warn("experimental.kitty_graphics", "unsupported: image rendering is not implemented")
-	}
 }
 
 func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool {

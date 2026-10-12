@@ -98,7 +98,7 @@ workspaces="cmd+shift"
 		t.Fatal(c)
 	}
 }
-func TestUnsupportedValuesPreserveSupportedNeighbours(t *testing.T) {
+func TestKittyGraphicsPreservesSupportedNeighbours(t *testing.T) {
 	c, err := Decode([]byte(`onboarding=false
 [experimental]
 kitty_graphics=true
@@ -107,7 +107,7 @@ show_tab_bar=false
 [advanced]
 scrollback_limit_bytes=65536
 `))
-	if err != nil || len(c.Warnings) != 1 || c.ShowTabBar() || *c.Onboarding || *c.Advanced.ScrollbackLimitBytes != 65536 {
+	if err != nil || len(c.Warnings) != 0 || !c.Experimental.KittyGraphics || c.ShowTabBar() || *c.Onboarding || *c.Advanced.ScrollbackLimitBytes != 65536 {
 		t.Fatal(c, err)
 	}
 	for _, warning := range c.Warnings {

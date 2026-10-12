@@ -10,7 +10,7 @@ import (
 
 func TestStartupConfigWarningsMatchSessionAndMonolith(t *testing.T) {
 	teststate.Lock(t)
-	for _, source := range []string{"[ui]\nsidebar_width='bad'\n", "[keys]\nnew_tab='prefix+zz'\n", "[keys]\nprefix=5\n", "[experimental]\nkitty_graphics=true\n"} {
+	for _, source := range []string{"[ui]\nsidebar_width='bad'\n", "[keys]\nnew_tab='prefix+zz'\n", "[keys]\nprefix=5\n", "[update]\nversion_check=true\n"} {
 		c, err := config.Decode([]byte(source))
 		if err != nil || len(c.Warnings) != 1 {
 			t.Fatal(c.Warnings, err)
@@ -19,7 +19,7 @@ func TestStartupConfigWarningsMatchSessionAndMonolith(t *testing.T) {
 			a := specRuntimeApp(t)
 			a.serverUI = server
 			a.SetSidebarConfig(c, true)
-			unsupported := strings.Contains(source, "kitty_graphics")
+			unsupported := strings.Contains(source, "version_check")
 			if server && !unsupported {
 				if a.configWarning != "" {
 					t.Fatal("session warned", source, a.configWarning)

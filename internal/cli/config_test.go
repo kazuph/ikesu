@@ -24,7 +24,8 @@ func TestConfigCheckWithoutTerminalOrServer(t *testing.T) {
 		{"unknown", "[ui]\nbogus=1\n", "config: ok\n", 0},
 		{"type", "[ui]\nsidebar_width='bad'\n", "ui.sidebar_width", 1},
 		{"binding", "[keys]\nnew_tab='prefix+zz'\n", "keys.new_tab", 1},
-		{"unsupported", "[experimental]\nkitty_graphics=true\n", "experimental.kitty_graphics: unsupported", 1},
+		{"kitty", "[experimental]\nkitty_graphics=true\n", "config: ok\n", 0},
+		{"unsupported", "[update]\nversion_check=true\n", "update.version_check: unsupported", 1},
 		{"syntax", "[ui\n", "config parse error:", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

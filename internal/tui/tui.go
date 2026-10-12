@@ -628,6 +628,9 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 
 	st := model.New(cwd, ws.Cols, ws.Rows)
 	sup := runtime.NewSupervisor()
+	if len(versions) > 0 {
+		sup.SetGraphicsVersion(versions[0])
+	}
 	a := NewApp(st, sup, out, cwd)
 	defer func() { _, _ = out.Write(a.enc.RestoreCursor()) }()
 	if len(versions) > 0 {

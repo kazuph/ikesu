@@ -7,6 +7,7 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	if !s.PopupVisible() {
 		return
 	}
+	f.Graphics = nil
 	r := s.PopupRect()
 	if r.W < 1 || r.H < 1 {
 		return
@@ -31,6 +32,7 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	}
 	x, y, w, h := r.X+1, r.Y+1, max(1, r.W-3), r.H-2
 	f.CopyGrid(x, y, clipGrid(snap.Grid, w, h))
+	paneGraphics(f, pid, snap, x, y, w, h)
 	if r.W > 3 {
 		f.Fill(r.X+r.W-2, y, 1, h, " ", uv.Style{Bg: bg})
 	}

@@ -12,10 +12,14 @@ import (
 // It keeps the last written frame and the currently emitted style so diffs
 // are minimal: unchanged cells are never rewritten.
 type Encoder struct {
-	prev        *Frame
-	curSty      uv.Style
-	haveSty     bool
-	cursorShape int
+	graphics          []Graphic
+	graphicsNamespace string
+	graphicsIDs       []uint32
+	nextGraphicID     uint32
+	prev              *Frame
+	curSty            uv.Style
+	haveSty           bool
+	cursorShape       int
 }
 
 const (
@@ -28,11 +32,15 @@ const (
 
 // RestoreCursor returns the host cursor to its default after an IME override.
 func (e *Encoder) RestoreCursor() []byte {
+	var b bytes.Buffer
+	e.clearGraphics(&b)
+	e.graphics = nil
 	if e.cursorShape == 0 {
-		return nil
+		return b.Bytes()
 	}
 	e.cursorShape = 0
-	return []byte("\x1b[0 q")
+	b.WriteString("\x1b[0 q")
+	return b.Bytes()
 }
 
 // Frame encodes the transition from the previous frame to f inside a
@@ -52,12 +60,14 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 		e.cursorShape = cursorShape
 	}
 
-	if e.prev == nil || e.prev.W != f.W || e.prev.H != f.H {
+	full := e.prev == nil || e.prev.W != f.W || e.prev.H != f.H
+	if full {
 		e.full(f, &b)
 	} else {
 		e.diff(f, &b)
 	}
 
+	e.emitGraphics(f, &b, full)
 	// Park the cursor at the anchor before ending the sync block.
 	b.WriteString(cup(anchorY, anchorX))
 	if anchorVisible {

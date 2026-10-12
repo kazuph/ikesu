@@ -380,6 +380,9 @@ func (s *Screen) InsertLine(n int) bool {
 	}
 
 	s.buf.InsertLineArea(y, n, s.blankCell(), s.scroll)
+	if s.cb.Scroll != nil {
+		s.cb.Scroll(s.scroll.Min.X, y, s.scroll.Max.X, s.scroll.Max.Y, min(n, s.scroll.Max.Y-y))
+	}
 
 	return true
 }
@@ -415,6 +418,9 @@ func (s *Screen) DeleteLine(n int) bool {
 	}
 
 	s.buf.DeleteLineArea(y, n, s.blankCell(), scroll)
+	if s.cb.Scroll != nil {
+		s.cb.Scroll(scroll.Min.X, y, scroll.Max.X, scroll.Max.Y, -min(n, scroll.Max.Y-y))
+	}
 
 	return true
 }

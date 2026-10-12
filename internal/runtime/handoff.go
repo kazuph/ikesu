@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/goterrace/internal/kitty"
 	"golang.org/x/sys/unix"
 	"os"
 	"sort"
@@ -11,6 +12,9 @@ import (
 )
 
 type PaneTransfer struct {
+	Graphics                    *kitty.Store
+	GraphicsEnabled             bool
+	CellWidth, CellHeight       int
 	ID, PID                     int
 	Cwd                         string
 	Argv                        []string
@@ -27,7 +31,7 @@ type PaneTransfer struct {
 
 // Rewrap a nonblocking descriptor so Go's poller can interrupt only our read.
 func pollablePTY(original *os.File) (*os.File, int, error) {
-	fd, err := unix.Dup(int(original.Fd()))
+	fd, err := unix.FcntlInt(original.Fd(), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -86,6 +90,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			return fail(err)
 		}
 		v := PaneTransfer{ID: id, PID: p.ShellPID(), Cwd: p.cwd, Argv: p.spawnArgv, Terminal: terminal, AgentOverride: p.agentOverride, GuardStarted: p.guardStarted, Modes: p.modes, Read: p.read.transfer()}
+		v.Graphics, v.GraphicsEnabled, v.CellWidth, v.CellHeight = p.graphics, p.graphicsEnabled, p.cellWidth, p.cellHeight
 		v.TapState, v.TapBody, v.Clipboard = int(p.tap.state), p.tap.body, p.clipboard
 		if p.guard != nil {
 			g := p.guard.Transfer()
@@ -93,7 +98,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 		}
 		p.mu.Unlock()
 		v.Snapshot = p.Snapshot()
-		fd, err := unix.Dup(p.ptyFD)
+		fd, err := unix.FcntlInt(uintptr(p.ptyFD), unix.F_DUPFD_CLOEXEC, 0)
 		if err != nil {
 			return fail(err)
 		}
@@ -133,6 +138,7 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		p.importedPID = v.PID
 		p.spawnArgv = v.Argv
 		p.agentOverride, p.guardStarted, p.modes = v.AgentOverride, v.GuardStarted, v.Modes
+		p.graphics, p.graphicsEnabled, p.cellWidth, p.cellHeight = v.Graphics, v.GraphicsEnabled, v.CellWidth, v.CellHeight
 		p.read = v.Read.restore()
 		p.tap = oscTap{state: oscState(v.TapState), body: v.TapBody}
 		p.clipboard = v.Clipboard

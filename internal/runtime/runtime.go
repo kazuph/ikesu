@@ -21,6 +21,7 @@ import (
 
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/platform"
 )
 
@@ -37,12 +38,16 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
-	guard        *guard.Assets
-	guardStarted string
-	ID           int
-	cwd          string // spawn cwd; OSC 7 or proc cwd may refine it
-	spawnArgv    []string
-	processCache foregroundCache
+	graphics              *kitty.Store
+	graphicsEnabled       bool
+	graphicsVersion       string
+	cellWidth, cellHeight int
+	guard                 *guard.Assets
+	guardStarted          string
+	ID                    int
+	cwd                   string // spawn cwd; OSC 7 or proc cwd may refine it
+	spawnArgv             []string
+	processCache          foregroundCache
 
 	cmd            *exec.Cmd
 	ptyFile        *os.File
@@ -105,16 +110,18 @@ type Snapshot struct {
 
 // Supervisor runs all panes of the app.
 type Supervisor struct {
-	guardConfig   *guard.Config
-	guardRoot     string
-	mu            sync.Mutex
-	panes         map[int]*Pane
-	events        chan Event
-	done          chan struct{}
-	loginPathOnce sync.Once
-	loginPathDone chan struct{}
-	loginPath     string
-	loginPathErr  error
+	graphicsEnabled bool
+	graphicsVersion string
+	guardConfig     *guard.Config
+	guardRoot       string
+	mu              sync.Mutex
+	panes           map[int]*Pane
+	events          chan Event
+	done            chan struct{}
+	loginPathOnce   sync.Once
+	loginPathDone   chan struct{}
+	loginPath       string
+	loginPathErr    error
 
 	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
 	// environment (the server uses it for GTX_PANE_ID/GTX_SOCKET_PATH).
@@ -509,6 +516,7 @@ func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
 		return
 	}
 	p.mu.Lock()
+	p.cellWidth, p.cellHeight = cw, ch
 	p.resizeTerminal(cols, rows)
 	if p.read != nil {
 		p.read.resize(cols, rows)

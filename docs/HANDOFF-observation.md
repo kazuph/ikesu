@@ -8,6 +8,7 @@
 - ping の `capabilities.live_handoff` は true。protocol は 19。
 - `server.live_handoff` の成功応答は `{"type":"ok"}`。`import_exe` 省略時も成功し、同じ版を使う。名前付き session の API socket パスは変わらない。
 - expected_protocol 不一致、expected_version 不一致は `handoff_failed` / `handoff stream closed while reading line`。不存在の import_exe は `handoff_failed` / `failed to spawn handoff import server at <path>: No such file or directory (os error 2)`。いずれも旧サーバーは ping に応答し、pane の構成は残る。
+- 応答しない実行ファイルを移行先にすると、30.026秒後に `handoff_failed` / `timed out waiting for handoff import connection` を返し、旧サーバーの ping と pane p1 は残った。短い隔離 HOME `/tmp/gho-u5wk6fk_` と名前付き session `hto` で確認し、そのサーバーと起動した移行先だけを停止した。
 - kitty 有効時の XTVERSION は `ESC P >|ghostty (herdr 0.2.30) ESC \\`。画像問い合わせ `a=q,i=31,s=1,v=1,f=24;AAAA` は `ESC _ G i=31;OK ESC \\`。
 - mouse を normal tracking / SGR にした実プロセスは handoff 前後とも `ESC [ <0;23;8M` と `ESC [ <0;23;8m` を受信した。
 - handoff は display client の接続を切るが client が自動で再接続する。利用者の再接続操作は不要。

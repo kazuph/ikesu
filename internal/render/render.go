@@ -5,6 +5,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
@@ -45,6 +46,7 @@ type CursorInfo struct {
 
 // PaneSnap is everything render needs to draw one pane.
 type PaneSnap struct {
+	Graphics       []kitty.Placement
 	Seen           bool
 	StateChangeSeq uint64
 	Grid           [][]uv.Cell // content cells, [row][col], scroll applied
@@ -342,6 +344,9 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		}
 		drawNavigator(f, in.Navigator, spin)
 	}
+	if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil || in.Toast != nil {
+		f.Graphics = nil
+	}
 	return out
 }
 
@@ -435,6 +440,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		// Content.
 		if snap != nil {
 			f.CopyGrid(ix, iy, clipGrid(snap.Grid, iw, ih))
+			paneGraphics(f, pr.ID, snap, ix, iy, iw, ih)
 		}
 		if !in.ServerUI && (in.SelectedWorkspace != nil || in.Navigator != nil || in.Menu != nil) && !pr.IsFocused {
 			for y := iy; y < iy+ih; y++ {

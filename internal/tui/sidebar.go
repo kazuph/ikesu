@@ -10,6 +10,7 @@ import (
 )
 
 func (a *App) SetSidebarConfig(c config.Config, startup bool) {
+	a.sup.SetGraphics(c.Experimental.KittyGraphics)
 	a.sup.SetShell(c.Terminal.DefaultShell, c.Terminal.ShellMode)
 	a.sup.SetGuard(c.Guard, api.StateDir())
 	a.sup.SetScrollbackBytes(c)

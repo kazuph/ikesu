@@ -86,6 +86,10 @@ func (m *machineClient) paint() error {
 	if len(m.decisions.queue) > 0 {
 		m.paintDecisions(composed)
 	}
+	composed.Frame.GraphicsNamespace = m.active
+	if len(m.decisions.queue) > 0 {
+		composed.Frame.Graphics = nil
+	}
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
 	if _, err := m.out.Write(data); err != nil {
 		return err

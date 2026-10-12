@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/endpoint"
@@ -11,12 +12,14 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
+	"syscall"
 	"time"
 )
 
-// Match the existing CLI restart recovery window; do not wait indefinitely
-// for an importer that starts but never answers.
-const handoffWait = 15 * time.Second
+// The isolated herdr 0.2.30 observation times out an unresponsive importer
+// after 30 seconds; preserve that externally visible failure window.
+const handoffWait = 30 * time.Second
 
 type handoffIdentity struct {
 	Protocol int
@@ -56,7 +59,7 @@ func exportListener(ln net.Listener) (*os.File, error) {
 	}
 	fd := -1
 	var dupErr error
-	if err = raw.Control(func(original uintptr) { fd, dupErr = unix.Dup(int(original)) }); err != nil {
+	if err = raw.Control(func(original uintptr) { fd, dupErr = unix.FcntlInt(original, unix.F_DUPFD_CLOEXEC, 0) }); err != nil {
 		return nil, err
 	}
 	if dupErr != nil {
@@ -137,10 +140,15 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 			s.sup.ResumeHandoff()
 		}
 	}()
+	syscall.ForkLock.RLock()
 	pairs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
+		syscall.ForkLock.RUnlock()
 		return err
 	}
+	unix.CloseOnExec(pairs[0])
+	unix.CloseOnExec(pairs[1])
+	syscall.ForkLock.RUnlock()
 	parent := os.NewFile(uintptr(pairs[0]), "handoff-control")
 	child := os.NewFile(uintptr(pairs[1]), "handoff-control")
 	defer child.Close()
@@ -169,6 +177,11 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 	cmd.Stderr = os.Stderr
 	cmd.ExtraFiles = append([]*os.File{child, apiFile, clientFile, s.lock}, files...)
 	if err = cmd.Start(); err != nil {
+		var errno syscall.Errno
+		if errors.As(err, &errno) {
+			message := errno.Error()
+			return fmt.Errorf("failed to spawn handoff import server at %s: %s (os error %d)", exe, strings.ToUpper(message[:1])+message[1:], errno)
+		}
 		return fmt.Errorf("failed to spawn handoff import server at %s: %w", exe, err)
 	}
 	child.Close()
@@ -240,7 +253,7 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 }
 func handoffStreamError(err error) error {
 	if os.IsTimeout(err) {
-		return fmt.Errorf("handoff import server did not respond")
+		return fmt.Errorf("timed out waiting for handoff import connection")
 	}
 	return fmt.Errorf("handoff stream closed while reading line")
 }

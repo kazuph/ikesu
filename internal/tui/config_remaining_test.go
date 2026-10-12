@@ -68,12 +68,12 @@ navigate_workspace_down="d"
 func TestConfigUnsupportedWarningUsesTopBanner(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
-	c, err := config.Decode([]byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"))
+	c, err := config.Decode([]byte("onboarding=false\n[update]\nversion_check=true\n"))
 	if err != nil || len(c.Warnings) != 1 {
 		t.Fatal(err, c.Warnings)
 	}
 	a.SetSidebarConfig(c, false)
-	if !a.configWarningBanner || a.configWarning != "config.toml: experimental.kitty_graphics unsupported; gtx config check" {
+	if !a.configWarningBanner || a.configWarning != "config.toml: update.version_check unsupported; gtx config check" {
 		t.Fatal(a.configWarning, a.configWarningBanner)
 	}
 }

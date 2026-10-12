@@ -161,6 +161,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 
 	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
 	p.cursor.Visible = true
+	s.setupGraphics(p)
 	emu.RegisterOscHandler(52, func(data []byte) bool {
 		// The emulator owns the complete OSC parser; the title observer
 		// intentionally truncates text and cannot carry clipboard payloads.
@@ -180,9 +181,17 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 	})
 
 	emu.SetCallbacks(vt.Callbacks{
+		Scroll: func(left, top, right, bottom, lines int) {
+			if p.graphics != nil {
+				p.graphics.Scroll(p.altScreen, left, top, right, bottom, lines)
+			}
+		},
 		Title:     p.onOSCTitle,
 		AltScreen: func(on bool) { p.altScreen = on },
 		Resize: func(alt bool, oldWidth, height, pushed, pulled int) {
+			if p.graphics != nil {
+				p.graphics.Scroll(alt, 0, 0, oldWidth, height+pushed, pulled-pushed)
+			}
 			if p.read != nil {
 				if p.read.byteHistory && !alt {
 					p.read.resizeByteRows(oldWidth, height, pushed, pulled, p.emu.ScrollbackLen())

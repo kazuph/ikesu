@@ -46,9 +46,25 @@ func (s *session) rpc(method string, params, result any) {
 }
 
 func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
-	s := start(t)
+	cfg := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := startEnv(t, map[string]string{"GTX_CONFIG": cfg})
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	sessionID := "handoff-saved-conversation"
+	lockDir := filepath.Join(os.Getenv("HOME"), ".codex", "thread-writer-locks")
+	if err := os.MkdirAll(lockDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := os.OpenFile(filepath.Join(lockDir, sessionID+".lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
 	seq := uint64(8)
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "handoff", Agent: "codex", State: "working", Seq: &seq, SessionID: &sessionID}, nil)
 	marker := filepath.Join(s.stateDir, "guard", "agent-panes", "p_1.json")
@@ -131,11 +147,11 @@ func TestLiveHandoffUnresponsiveImporterRetainsPane(t *testing.T) {
 	root := t.TempDir()
 	importer := filepath.Join(root, "importer")
 	pidfile := filepath.Join(root, "pid")
-	if err := os.WriteFile(importer, []byte(fmt.Sprintf("#!/bin/sh\nprintf '%%s' $$ > %q\nexec /bin/sleep 30\n", pidfile)), 0700); err != nil {
+	if err := os.WriteFile(importer, []byte(fmt.Sprintf("#!/bin/sh\nprintf '%%s' $$ > %q\nexec /bin/sleep 60\n", pidfile)), 0700); err != nil {
 		t.Fatal(err)
 	}
 	out, err := s.cli("server", "live-handoff", "--import-exe", importer)
-	if err == nil || !strings.Contains(out, "handoff_failed") || !strings.Contains(out, "did not respond") {
+	if err == nil || !strings.Contains(out, "handoff_failed") || !strings.Contains(out, "timed out waiting for handoff import connection") {
 		t.Fatalf("unresponsive importer: %s %v", out, err)
 	}
 	b, err := os.ReadFile(pidfile)

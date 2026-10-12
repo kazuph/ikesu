@@ -10,9 +10,11 @@ import (
 
 // Frame is a grid of styled cells covering the whole screen.
 type Frame struct {
-	Palette Palette
-	W, H    int
-	Cells   []uv.Cell
+	Graphics          []Graphic
+	GraphicsNamespace string
+	Palette           Palette
+	W, H              int
+	Cells             []uv.Cell
 }
 
 // NewFrame allocates an empty frame.

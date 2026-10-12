@@ -266,6 +266,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	}
 
 	sup := runtime.NewSupervisor()
+	sup.SetGraphicsVersion(version)
 	sup.StartLoginPath()
 	apiSockAbs := apiSock
 	sup.Env = func(paneID int) []string {

@@ -93,14 +93,14 @@ func (a *App) draw() {
 		if p := a.sup.Get(a.st.Overlay.PaneID); p != nil {
 			r := a.innerRect(p.ID)
 			sn := p.Snapshot()
-			panes[p.ID] = &render.PaneSnap{Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: labelFor(sn, p), Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen, SuppressScrollbar: !sn.ScrollbarVisible}
+			panes[p.ID] = &render.PaneSnap{Graphics: p.Graphics(), Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: labelFor(sn, p), Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen, SuppressScrollbar: !sn.ScrollbarVisible}
 		}
 	}
 	if a.st.PopupVisible() {
 		if p := a.sup.Get(a.st.Popup.PaneID); p != nil {
 			r := a.innerRect(p.ID)
 			sn := p.Snapshot()
-			panes[p.ID] = &render.PaneSnap{Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: "terminal", Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen, SuppressScrollbar: !sn.ScrollbarVisible}
+			panes[p.ID] = &render.PaneSnap{Graphics: p.Graphics(), Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: "terminal", Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen, SuppressScrollbar: !sn.ScrollbarVisible}
 		}
 	}
 	tokens := map[int]map[string]string{}
@@ -314,6 +314,9 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 					SuppressScrollbar: !sn.ScrollbarVisible,
 					Dead:              sn.Dead,
 					Cursor:            render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible},
+				}
+				if a.sidebarConfig.Experimental.KittyGraphics {
+					snap.Graphics = p.Graphics()
 				}
 				if tr := a.trackers[pid]; tr != nil {
 					snap.Seen = tr.Seen

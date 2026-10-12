@@ -9,6 +9,8 @@ import (
 
 // Callbacks represents a set of callbacks for a terminal.
 type Callbacks struct {
+	// Scroll reports cell movement within the active screen region.
+	Scroll func(left, top, right, bottom, lines int)
 	// Bell callback. When set, this function is called when a bell character is
 	// received.
 	Bell func()
