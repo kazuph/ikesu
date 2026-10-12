@@ -11,11 +11,11 @@ import (
 
 func (r *runner) server(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx server <stop|restart|ping>")
+		return usageErr(r, "usage: gtx server <stop|restart|reload-config|ping>")
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		fmt.Fprintln(r.out(), "gtx server commands:\n  gtx server                run as headless server\n  gtx server stop           stop the running server via the API socket\n  gtx server restart        restart the running server and restore its saved session\n  gtx server ping           query the running server\n  gtx server live-handoff   hand off live panes to a new local server")
+		fmt.Fprintln(r.out(), "gtx server commands:\n  gtx server                run as headless server\n  gtx server stop           stop the running server via the API socket\n  gtx server restart        restart the running server and restore its saved session\n  gtx server reload-config  reload config.toml in the running server\n  gtx server ping           query the running server\n  gtx server live-handoff   hand off live panes to a new local server")
 		return 0
 	case "live-handoff":
 		var p api.ServerLiveHandoffParams
@@ -42,6 +42,11 @@ func (r *runner) server(args []string) int {
 			}
 		}
 		return r.sendOK(api.MethodServerLiveHandoff, p)
+	case "reload-config":
+		if len(args) != 1 {
+			return usageErr(r, "usage: gtx server reload-config")
+		}
+		return r.printResult("cli:server:reload-config", api.MethodServerReloadConfig, api.EmptyParams{})
 	case "stop":
 		if len(args) != 1 {
 			return usageErr(r, "usage: gtx server stop")

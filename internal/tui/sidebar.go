@@ -204,26 +204,7 @@ func (a *App) reloadSidebarConfig() {
 			a.worktreeError(err)
 			return
 		}
-		a.SetConfigWarning("")
-		if a.configEdit != nil {
-			a.setSidebarConfig(c, false)
-		} else {
-			a.SetSidebarConfig(c, false)
-		}
-		if a.configChanged != nil {
-			a.configChanged(c)
-		}
-		a.SetUIFlags(c.ShowTabBar(), c.HideTabBarWhenSingleTab(), c.PaneBorders())
-		a.SetKeybinds(c.CopyKeys(), c.SplitVerticalKeys(), c.SplitHorizontalKeys())
-		a.SetPaneKeybinds(c)
-		a.syncLayout()
-		a.changed()
-		if a.serverUI && c.Warning() == "" {
-			a.SetConfigWarning("reloaded config")
-			a.configWarningBanner = true
-		} else {
-			a.ShowToast("reloaded config", "using config.toml", "info", -1)
-		}
+		a.ApplyReloadedConfig(c)
 	})
 }
 func (a *App) SetWorkspaceTokenSource(source func(int) map[string]string) {

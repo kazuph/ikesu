@@ -7,7 +7,7 @@ func (a *App) editConfiguration(edit config.Edit, done func(config.Config, error
 		a.configEdit(edit, done)
 		return
 	}
-	c, err := edit.Apply()
+	c, err := edit.ApplyTo(a.sidebarConfig)
 	done(c, err)
 }
 

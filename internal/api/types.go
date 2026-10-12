@@ -141,6 +141,12 @@ type OkResult struct {
 	Type string `json:"type"` // "ok"
 }
 
+type ConfigReloadResult struct {
+	Type        string   `json:"type"`
+	Status      string   `json:"status"`
+	Diagnostics []string `json:"diagnostics"`
+}
+
 type AgentStatus = string
 
 const (
