@@ -21,6 +21,7 @@ const (
 	MethodPing                    = "ping"
 	MethodServerStop              = "server.stop"
 	MethodServerRestart           = "server.restart"
+	MethodServerLiveHandoff       = "server.live_handoff"
 	MethodWorkspaceList           = "workspace.list"
 	MethodWorkspaceCreate         = "workspace.create"
 	MethodWorkspaceGet            = "workspace.get"

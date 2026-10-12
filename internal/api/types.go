@@ -124,10 +124,17 @@ type PaneReportAgentParams struct {
 // Result types. Each envelope carries a "type" discriminator first, matching
 // the herdr ResponseResult wire shape.
 
+type ServerLiveHandoffParams struct {
+	ExpectedProtocol *uint32 `json:"expected_protocol,omitempty"`
+	ExpectedVersion  *string `json:"expected_version,omitempty"`
+	ImportExe        *string `json:"import_exe,omitempty"`
+}
+
 type PongResult struct {
-	Type     string `json:"type"` // "pong"
-	Version  string `json:"version"`
-	Protocol int    `json:"protocol"`
+	Capabilities map[string]any `json:"capabilities,omitempty"`
+	Type         string         `json:"type"` // "pong"
+	Version      string         `json:"version"`
+	Protocol     int            `json:"protocol"`
 }
 
 type OkResult struct {

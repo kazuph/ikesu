@@ -147,7 +147,7 @@ func (r *runner) request(id, method string, params any) ([]byte, error) {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
-	if method == api.MethodPaneWaitForOutput || method == api.MethodDecisionWait {
+	if method == api.MethodPaneWaitForOutput || method == api.MethodDecisionWait || method == api.MethodServerLiveHandoff {
 		_ = conn.SetDeadline(time.Time{})
 	}
 	if method == api.MethodAgentPrompt {

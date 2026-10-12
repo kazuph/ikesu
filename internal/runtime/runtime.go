@@ -44,10 +44,15 @@ type Pane struct {
 	spawnArgv    []string
 	processCache foregroundCache
 
-	cmd     *exec.Cmd
-	ptyFile *os.File
-	ptyFD   int // captured before publishing the pane; Close may race with readers
-	done    chan struct{}
+	cmd            *exec.Cmd
+	ptyFile        *os.File
+	ptyFD          int // captured before publishing the pane; Close may race with readers
+	done           chan struct{}
+	pumpDone       chan struct{}
+	importedPID    int
+	pausing        atomic.Bool
+	retired        atomic.Bool
+	importedExited atomic.Bool
 
 	mu               sync.Mutex
 	emu              *vt.Emulator
@@ -364,6 +369,9 @@ func (p *Pane) pumpEmuToPTY() {
 func (p *Pane) waitExit() {
 	defer close(p.done)
 	_ = p.cmd.Wait()
+	if p.retired.Load() {
+		return
+	}
 	p.mu.Lock()
 	p.dead = true
 	p.mu.Unlock()
@@ -422,10 +430,7 @@ func (s *Supervisor) Kill(id int) {
 	if p.ptyFile != nil {
 		_ = p.ptyFile.Close() // SIGHUP to foreground group
 	}
-	if p.cmd != nil && p.cmd.Process != nil {
-		_ = unix.Kill(-p.cmd.Process.Pid, unix.SIGHUP)
-		_ = p.cmd.Process.Kill()
-	}
+	p.killProcess()
 	_ = p.emu.Close()
 }
 
@@ -734,10 +739,7 @@ func (s *Supervisor) KillAll() {
 		if p.ptyFile != nil {
 			_ = p.ptyFile.Close()
 		}
-		if p.cmd != nil && p.cmd.Process != nil {
-			_ = unix.Kill(-p.cmd.Process.Pid, unix.SIGHUP)
-			_ = p.cmd.Process.Kill()
-		}
+		p.killProcess()
 		_ = p.emu.Close()
 	}
 	close(s.done)
@@ -766,14 +768,6 @@ func (p *Pane) SpawnCwd() string { return p.Snapshot().Cwd }
 // SpawnArgv returns the command argv the pane was spawned with, or nil
 // for the default login shell.
 func (p *Pane) SpawnArgv() []string { return p.spawnArgv }
-
-// ShellPID returns the pid of the pane's shell process, or 0.
-func (p *Pane) ShellPID() int {
-	if p.cmd == nil || p.cmd.Process == nil {
-		return 0
-	}
-	return p.cmd.Process.Pid
-}
 
 // ForegroundJob returns the pane's foreground process group, best effort.
 func (p *Pane) ForegroundJob() platform.ForegroundJob {

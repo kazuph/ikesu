@@ -49,58 +49,9 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		cwd = os.Getenv("HOME")
 	}
 
-	emu := vt.NewEmulator(cols, rows)
-	emu.SetScrollbackSize(ScrollbackSize)
-	s.mu.Lock()
-	if s.scrollbackBytes != nil {
-		emu.Scrollback().SetMaxBytes(*s.scrollbackBytes)
-	}
-	s.mu.Unlock()
-
-	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
+	p := s.newPane(id, cwd, cols, rows)
 	p.spawnArgv = argv
-	p.cursor.Visible = true
-	emu.RegisterOscHandler(52, func(data []byte) bool {
-		// The emulator owns the complete OSC parser; the title observer
-		// intentionally truncates text and cannot carry clipboard payloads.
-		_, encoded, ok := bytes.Cut(data, []byte(";"))
-		if !ok {
-			return false
-		}
-		_, encoded, ok = bytes.Cut(encoded, []byte(";"))
-		if !ok || bytes.Equal(encoded, []byte("?")) {
-			return false
-		}
-		if _, err := base64.StdEncoding.DecodeString(string(encoded)); err != nil {
-			return false
-		}
-		p.clipboard = append(p.clipboard, "\x1b]"+string(data)+"\a")
-		return true
-	})
-
-	emu.SetCallbacks(vt.Callbacks{
-		Title:     p.onOSCTitle,
-		AltScreen: func(on bool) { p.altScreen = on },
-		Resize: func(alt bool, oldWidth, height, pushed, pulled int) {
-			if p.read != nil {
-				if p.read.byteHistory && !alt {
-					p.read.resizeByteRows(oldWidth, height, pushed, pulled, p.emu.ScrollbackLen())
-				} else {
-					p.read.resizeRows(alt, oldWidth, height, pushed, pulled)
-				}
-			}
-		},
-		CursorPosition:   func(_, n uv.Position) { p.cursor.X, p.cursor.Y = n.X, n.Y },
-		CursorVisibility: func(v bool) { p.cursor.Visible = v },
-		CursorStyle:      func(st vt.CursorStyle, blink bool) { p.cursor.Style, p.cursor.Blink = st, blink },
-		WorkingDirectory: func(d string) {
-			if d != "" {
-				p.procCwd = d
-			}
-		},
-		EnableMode:  func(m ansi.Mode) { p.onMode(m, true) },
-		DisableMode: func(m ansi.Mode) { p.onMode(m, false) },
-	})
+	emu := p.emu
 
 	var cmd *exec.Cmd
 	if len(argv) > 0 {
@@ -181,10 +132,15 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		return nil, err
 	}
 	p.cmd = cmd
-	p.ptyFile = f
-	p.ptyFD = int(f.Fd())
+	p.ptyFile, p.ptyFD, err = pollablePTY(f)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		emu.Close()
+		return nil, err
+	}
 
-	go p.pumpPTYToEmu()
+	p.startPump()
 	go p.pumpEmuToPTY()
 	go p.waitExit()
 
@@ -192,4 +148,60 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	s.panes[id] = p
 	s.mu.Unlock()
 	return p, nil
+}
+
+func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
+	emu := vt.NewEmulator(cols, rows)
+	emu.SetScrollbackSize(ScrollbackSize)
+	s.mu.Lock()
+	if s.scrollbackBytes != nil {
+		emu.Scrollback().SetMaxBytes(*s.scrollbackBytes)
+	}
+	s.mu.Unlock()
+
+	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
+	p.cursor.Visible = true
+	emu.RegisterOscHandler(52, func(data []byte) bool {
+		// The emulator owns the complete OSC parser; the title observer
+		// intentionally truncates text and cannot carry clipboard payloads.
+		_, encoded, ok := bytes.Cut(data, []byte(";"))
+		if !ok {
+			return false
+		}
+		_, encoded, ok = bytes.Cut(encoded, []byte(";"))
+		if !ok || bytes.Equal(encoded, []byte("?")) {
+			return false
+		}
+		if _, err := base64.StdEncoding.DecodeString(string(encoded)); err != nil {
+			return false
+		}
+		p.clipboard = append(p.clipboard, "\x1b]"+string(data)+"\a")
+		return true
+	})
+
+	emu.SetCallbacks(vt.Callbacks{
+		Title:     p.onOSCTitle,
+		AltScreen: func(on bool) { p.altScreen = on },
+		Resize: func(alt bool, oldWidth, height, pushed, pulled int) {
+			if p.read != nil {
+				if p.read.byteHistory && !alt {
+					p.read.resizeByteRows(oldWidth, height, pushed, pulled, p.emu.ScrollbackLen())
+				} else {
+					p.read.resizeRows(alt, oldWidth, height, pushed, pulled)
+				}
+			}
+		},
+		CursorPosition:   func(_, n uv.Position) { p.cursor.X, p.cursor.Y = n.X, n.Y },
+		CursorVisibility: func(v bool) { p.cursor.Visible = v },
+		CursorStyle:      func(st vt.CursorStyle, blink bool) { p.cursor.Style, p.cursor.Blink = st, blink },
+		WorkingDirectory: func(d string) {
+			if d != "" {
+				p.procCwd = d
+			}
+		},
+		EnableMode:  func(m ansi.Mode) { p.onMode(m, true) },
+		DisableMode: func(m ansi.Mode) { p.onMode(m, false) },
+	})
+
+	return p
 }

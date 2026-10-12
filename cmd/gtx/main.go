@@ -107,6 +107,13 @@ dispatch:
 		case "detect":
 			os.Exit(runDetect(args[1:]))
 		case "server":
+			if len(args) == 2 && args[1] == "--handoff-import" {
+				code, err := server.RunHandoffImport(session, version)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "gtx handoff import:", err)
+				}
+				os.Exit(code)
+			}
 			// `gtx server` runs the server; `gtx server <sub>` is the CLI.
 			if len(args) == 1 {
 				if client.NestedBlocked() {

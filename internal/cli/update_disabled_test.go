@@ -72,6 +72,8 @@ func TestG8StartupHasNoUpdateNetworkTransport(t *testing.T) {
 					if !ok || lit.Value != "\"unix\"" {
 						t.Errorf("non-Unix transport in %s", path)
 					}
+				} else if (sel.Sel.Name == "FileConn" || sel.Sel.Name == "FileListener") && filepath.ToSlash(path) == "../../internal/server/handoff.go" {
+					// Only wraps inherited Unix descriptors; it never opens an Internet connection.
 				} else {
 					t.Errorf("unreviewed network operation %s in %s", sel.Sel.Name, path)
 				}

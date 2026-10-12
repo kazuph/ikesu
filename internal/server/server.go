@@ -66,6 +66,8 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	handoffMu         sync.Mutex
+	handedOff         bool
 	decisions         decisionHub
 	plugins           *plugin.Engine
 	pluginEvents      bool
@@ -216,7 +218,11 @@ func Run(session, version string) (int, error) {
 	return runEndpoint(session, version, endpoint.Current())
 }
 
-func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
+func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handoffImport) (int, error) {
+	var imported *handoffImport
+	if len(imports) > 0 {
+		imported = imports[0]
+	}
 	if !api.ValidSessionName(session) {
 		return 2, fmt.Errorf("invalid session name %q", session)
 	}
@@ -225,37 +231,22 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 		return 1, err
 	}
 
-	// One server per session: flock the lock file for the server's lifetime.
-	lockPath := api.LockPath(dir)
-	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	var lock *os.File
+	var apiLn, clientLn net.Listener
+	var err error
+	if imported != nil {
+		lock = os.NewFile(6, "handoff-lock")
+		apiLn, err = inheritedListener(4)
+		if err == nil {
+			clientLn, err = inheritedListener(5)
+		}
+	} else {
+		lock, apiLn, clientLn, err = openSessionSockets(session, dir)
+	}
 	if err != nil {
-		return 1, fmt.Errorf("open lock: %w", err)
+		return 1, err
 	}
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		lock.Close()
-		return 1, fmt.Errorf("a gtx server is already running for session %q", session)
-	}
-
 	apiSock := api.APISocketPath(dir)
-	clientSock := api.ClientSocketPath(dir)
-	// Stale sockets from a crashed server are safe to replace while we hold
-	// the lock.
-	os.Remove(apiSock)
-	os.Remove(clientSock)
-	apiLn, err := net.Listen("unix", apiSock)
-	if err != nil {
-		lock.Close()
-		return 1, fmt.Errorf("listen %s: %w", apiSock, err)
-	}
-	clientLn, err := net.Listen("unix", clientSock)
-	if err != nil {
-		apiLn.Close()
-		os.Remove(apiSock)
-		lock.Close()
-		return 1, fmt.Errorf("listen %s: %w", clientSock, err)
-	}
-	os.Chmod(apiSock, 0o600)
-	os.Chmod(clientSock, 0o600)
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -365,7 +356,14 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 
 	// Restore the saved session when session.json exists; otherwise start
 	// the initial shell. A corrupt file fails closed to a fresh state.
-	if f := s.loadSession(); f != nil {
+	if imported != nil {
+		if err := s.restoreLive(imported); err != nil {
+			s.handedOff = true
+			s.sup.ReleaseHandoff()
+			s.cleanup()
+			return 1, err
+		}
+	} else if f := s.loadSession(); f != nil {
 		s.app.RestoreSession(f)
 		s.restorePaneHistory(f)
 		s.scheduleAutoResume()
@@ -374,7 +372,9 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}
 
-	s.app.StartOnboarding()
+	if imported == nil {
+		s.app.StartOnboarding()
+	}
 	appDone := make(chan struct{})
 	go func() {
 		s.app.Run()
@@ -382,13 +382,23 @@ func runEndpoint(session, version string, peer endpoint.Peer) (int, error) {
 	}()
 	go s.apiLoop()
 	go s.clientLoop()
+	if imported != nil {
+		if err := imported.Encoder.Encode(handoffResult{State: "running"}); err != nil {
+			s.handedOff = true
+			s.sup.ReleaseHandoff()
+			s.app.Do(s.app.RetireHandoff)
+		}
+		_ = imported.Control.SetDeadline(time.Time{})
+	}
 	go s.mailWorker()
 	// These startup sweeps all open the SQLite store; when the DB file has
 	// never been created there is nothing to seed, abort, or flush, so skip
 	// them to keep the engine (and its memory) out of the process.
 	if dispatch.DBExists(s.session) {
 		s.seedJobSeq()
-		s.abortOrphanedJobs()
+		if imported == nil {
+			s.abortOrphanedJobs()
+		}
 		s.app.Do(func() {
 			s.flushAllMail()
 			s.initDecisionHub()
@@ -430,13 +440,17 @@ func (s *Server) cleanup() {
 	case <-time.After(500 * time.Millisecond):
 	}
 	close(s.mailCh)
-	s.sup.KillAll()
+	if !s.handedOff {
+		s.sup.KillAll()
+	}
 	if s.store != nil {
 		s.store.Close()
 	}
-	os.Remove(api.APISocketPath(s.dir))
-	os.Remove(api.ClientSocketPath(s.dir))
-	_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
+	if !s.handedOff {
+		os.Remove(api.APISocketPath(s.dir))
+		os.Remove(api.ClientSocketPath(s.dir))
+		_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
+	}
 	s.lock.Close()
 }
 

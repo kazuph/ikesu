@@ -98,11 +98,14 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 		var resp api.Response
 		s.app.Do(func() { resp = s.agentStart(req.ID, p) })
 		return resp
+	case api.MethodServerLiveHandoff:
+		return s.liveHandoff(req)
 	case api.MethodPing:
 		return api.Success(req.ID, api.PongResult{
-			Type:     "pong",
-			Version:  s.version,
-			Protocol: api.Protocol,
+			Type:         "pong",
+			Version:      s.version,
+			Protocol:     api.Protocol,
+			Capabilities: map[string]any{"live_handoff": true},
 		})
 	case api.MethodServerStop:
 		var p api.EmptyParams
