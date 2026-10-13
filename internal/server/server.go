@@ -339,7 +339,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		}
 		s.onPaneStatus(pid)
 		s.emitAgentEvents(pid)
-		s.scheduleScreenPrompts()
+		s.scheduleScreenPromptPane(pid)
 	})
 	// Domain events (SPEC G1): command diffs, exits, and output changes.
 	s.outEmit = map[int]*outputEmit{}

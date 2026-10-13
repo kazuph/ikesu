@@ -13,6 +13,10 @@ type screenPromptHub struct {
 	timer   *time.Timer
 }
 
+// Waiting screens use the review's one-second bound; preview navigation keeps
+// the established short poll while arrow keys are advancing the screen.
+const screenPromptWaitPoll = time.Second
+
 type screenPromptWatch struct {
 	signature   string
 	decisionID  string
@@ -46,28 +50,54 @@ func (s *Server) screenPromptsActive() bool {
 	}
 	active := false
 	s.eachPane(func(pid, _, _ int) {
-		if s.app.PaneStatusKey(pid) != "blocked" {
-			return
-		}
-		p := s.sup.Get(pid)
-		if p == nil || p.Snapshot().Dead {
-			return
-		}
-		agent := p.Snapshot().AgentID
-		if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
-			agent = reported
-		}
-		active = active || agent == "claude" || agent == "codex" || agent == "devin"
+		active = active || s.screenPromptPaneActive(pid)
 	})
 	return active
+}
+
+func (s *Server) screenPromptPaneActive(pid int) bool {
+	if s.screenPrompts.watches[pid] != nil {
+		return true
+	}
+	p := s.sup.Get(pid)
+	if p == nil || p.Snapshot().Dead {
+		return false
+	}
+	agent := p.Snapshot().AgentID
+	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
+		agent = reported
+	}
+	return (agent == "claude" || agent == "codex" || agent == "devin") && s.app.PaneStatusKey(pid) == "blocked"
+}
+
+// Output and status hooks inspect only their pane. Reservations return before
+// reading even that pane's state.
+func (s *Server) scheduleScreenPromptPane(pid int) {
+	if s.screenPrompts.timer != nil || !s.cfg.ScreenPrompts() || !s.screenPromptPaneActive(pid) {
+		return
+	}
+	s.armScreenPromptTimer()
+}
+
+func (s *Server) screenPromptPollInterval() time.Duration {
+	for _, w := range s.screenPrompts.watches {
+		if w.preview != nil {
+			return eventWaitPoll
+		}
+	}
+	return screenPromptWaitPoll
 }
 
 func (s *Server) scheduleScreenPrompts() {
 	if s.screenPrompts.timer != nil || !s.screenPromptsActive() {
 		return
 	}
+	s.armScreenPromptTimer()
+}
+
+func (s *Server) armScreenPromptTimer() {
 	s.initDecisionHub()
-	s.screenPrompts.timer = time.AfterFunc(eventWaitPoll, func() {
+	s.screenPrompts.timer = time.AfterFunc(s.screenPromptPollInterval(), func() {
 		select {
 		case <-s.decisions.stopped:
 			return
