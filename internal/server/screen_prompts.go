@@ -27,6 +27,7 @@ type screenPromptWatch struct {
 	preview     *screenPreviewScan
 	previews    map[string]*string
 	delivery    <-chan error
+	editingText bool
 }
 
 func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
@@ -38,7 +39,11 @@ func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
 	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
 		agent = reported
 	}
-	return screenprompt.Parse(agent, p.DetectionLines())
+	textID := ""
+	if w := s.screenPrompts.watches[pid]; w != nil && w.editingText {
+		textID = w.prompt.TextID
+	}
+	return screenprompt.ParseWithTextID(agent, p.DetectionLines(), textID)
 }
 
 func (s *Server) screenPromptsActive() bool {

@@ -69,6 +69,12 @@ func unglue(lines []string) []string {
 }
 
 func Parse(agent string, screen []string) *Prompt {
+	return ParseWithTextID(agent, screen, "")
+}
+
+// During input delivery a previously observed free row can display entered
+// text instead of its placeholder; that row retains its original identity.
+func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if agent != "claude" && agent != "codex" && agent != "devin" {
 		return nil
 	}
@@ -141,7 +147,7 @@ func Parse(agent string, screen []string) *Prompt {
 				p.Checked[id] = checked[1] != " "
 				label = checked[2]
 			}
-			free := strings.HasPrefix(strings.ToLower(label), "type something") || strings.HasPrefix(strings.ToLower(label), "chat about this")
+			free := id == textID || strings.HasPrefix(strings.ToLower(label), "type something") || strings.HasPrefix(strings.ToLower(label), "chat about this")
 			lastOption = -1
 			if free {
 				p.Params.AllowText = true
@@ -291,7 +297,7 @@ func questionLabel(line string) *string {
 		}
 		names = append(names, name)
 	}
-	if len(names) < 2 {
+	if len(names) == 0 {
 		return nil
 	}
 	label := "最終確認"

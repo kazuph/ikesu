@@ -1,0 +1,15 @@
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☐ Extra  ✔ Submit  →
+
+Which extra sections should the report include?
+
+❯ 1. [ ] Summary
+         A concise overview.
+  2. [ ] Evidence
+         Commands and outputs.
+  3. [ ] Type something
+     Submit
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

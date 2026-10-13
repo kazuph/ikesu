@@ -53,8 +53,10 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 	w.delivery = result
 	w.resolved = true
 	prompt := w.prompt
+	w.editingText = prompt.Params.MultiSelect && answer.Text != nil
 	go func() {
 		err := s.deliverScreenAnswer(pid, w.signature, prompt, answer)
+		s.app.Do(func() { w.editingText = false })
 		if err != nil {
 			s.app.Do(func() { s.app.SetConfigWarning("screen prompt input failed: " + err.Error()) })
 		}
@@ -132,7 +134,10 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 		}
 	}
 	if answer.Text != nil {
-		for _, data := range []string{prompt.TextID, *answer.Text, "\r"} {
+		if err := s.navigateScreenRow(pid, signature, prompt.TextID); err != nil {
+			return err
+		}
+		for _, data := range []string{*answer.Text, "\r"} {
 			if err := s.screenInput(pid, signature, data, false); err != nil {
 				return err
 			}
@@ -141,24 +146,63 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			}
 		}
 	}
-	// Re-read after toggles: number keys may have moved the cursor.
+	var current *screenprompt.Prompt
+	s.app.Do(func() { current = s.readScreenPrompt(pid) })
+	if current == nil || current.Signature() != signature {
+		return fmt.Errorf("question changed after multi-select input")
+	}
+	for _, o := range current.Params.Options {
+		if current.Checked[o.ID] != desired[o.ID] {
+			return fmt.Errorf("multi-select check state did not match the answer")
+		}
+	}
+	if answer.Text != nil && !current.Checked[prompt.TextID] {
+		// Committing edited text leaves the row unchecked. Enter on its
+		// focused row selects it; number keys are ignored while editing.
+		if err := s.navigateScreenRow(pid, signature, prompt.TextID); err != nil {
+			return err
+		}
+		if err := s.screenInput(pid, signature, "\r", true); err != nil {
+			return err
+		}
+		if err := s.screenInputDelay(); err != nil {
+			return err
+		}
+		s.app.Do(func() { current = s.readScreenPrompt(pid) })
+		if current == nil || current.Signature() != signature || !current.Checked[prompt.TextID] {
+			return fmt.Errorf("free input was not selected")
+		}
+	}
+	if err := s.navigateScreenRow(pid, signature, "progress"); err != nil {
+		return err
+	}
+	return s.screenInput(pid, signature, "\r", true)
+}
+
+// Number keys toggle multi-select checks without moving its cursor. Free
+// input accepts text only on its focused row, like navigation to Next/Submit.
+func (s *Server) navigateScreenRow(pid int, signature, row string) error {
 	for {
 		var current *screenprompt.Prompt
 		s.app.Do(func() { current = s.readScreenPrompt(pid) })
 		if current == nil || current.Signature() != signature || current.Progress < 0 || current.Cursor < 0 {
-			return fmt.Errorf("cannot locate multi-select progress row")
+			return fmt.Errorf("cannot locate multi-select row")
 		}
-		for _, o := range current.Params.Options {
-			if current.Checked[o.ID] != desired[o.ID] {
-				return fmt.Errorf("multi-select check state did not match the answer")
+		target := -1
+		for i, id := range current.Items {
+			if id == row {
+				target = i
 			}
 		}
-		if current.Cursor == current.Progress {
-			return s.screenInput(pid, signature, "\r", true)
+		if target < 0 {
+			return fmt.Errorf("multi-select row is unavailable")
+		}
+		if current.Cursor == target {
+			return nil
 		}
 		arrow := "\x1b[B"
 		next := current.Cursor + 1
-		if current.Progress < current.Cursor {
+		if target < current.Cursor {
 			arrow = "\x1b[A"
 			next = current.Cursor - 1
 		}
