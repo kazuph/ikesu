@@ -80,6 +80,10 @@ func startEnv(t *testing.T, extra map[string]string) *session {
 }
 
 func startMode(t *testing.T, extra map[string]string, local bool) *session {
+	return startVersionMode(t, extra, local, binPath, "")
+}
+
+func startVersionMode(t *testing.T, extra map[string]string, local bool, clientBinary, serverBinary string) *session {
 	t.Helper()
 	// Deterministic shell inside panes: a bare ZDOTDIR with a fixed PS1 so
 	// prompt waits do not depend on the host's zshrc/direnv.
@@ -99,9 +103,9 @@ func startMode(t *testing.T, extra map[string]string, local bool) *session {
 	cfgDir := t.TempDir()
 	cfgFile := filepath.Join(cfgDir, "config.toml")
 	os.WriteFile(cfgFile, []byte("onboarding=false\n[session]\nresume_agents_on_restore = false\n"), 0o600)
-	cmd := exec.Command(binPath, "--session", sess)
+	cmd := exec.Command(clientBinary, "--session", sess)
 	if local {
-		cmd = exec.Command(binPath, "--no-session")
+		cmd = exec.Command(clientBinary, "--no-session")
 	}
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
@@ -112,6 +116,31 @@ func startMode(t *testing.T, extra map[string]string, local bool) *session {
 	)
 	for k, v := range extra {
 		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	if serverBinary != "" {
+		server := exec.Command(serverBinary, "--session", sess, "server")
+		server.Env = cmd.Env
+		server.Stderr = os.Stderr
+		if err := server.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			(&session{t: t, stateDir: stateDir, name: sess}).stopServer()
+			if err := server.Wait(); err != nil {
+				t.Errorf("mixed server cleanup: %v", err)
+			}
+		})
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			if _, err := os.Stat(filepath.Join(stateDir, sess, "gtx-client.sock")); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				_ = server.Process.Kill()
+				t.Fatal("mixed server did not bind client socket")
+			}
+			time.Sleep(time.Millisecond)
+		}
 	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
 	if err != nil {
