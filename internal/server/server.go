@@ -70,6 +70,7 @@ type Server struct {
 	handoffMu         sync.Mutex
 	handedOff         bool
 	decisions         decisionHub
+	screenPrompts     screenPromptHub
 	plugins           *plugin.Engine
 	pluginEvents      bool
 	pluginPanes       map[int]pluginPaneOwner
@@ -328,7 +329,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	s.jobCache.wake = make(chan struct{}, 1)
 	s.app.SetJobSource(s.cachedJobSnapshot)
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
-	s.app.SetConfigChanged(func(c config.Config) { s.cfg = c })
+	s.app.SetConfigChanged(s.screenPromptConfig)
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
@@ -340,6 +341,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		}
 		s.onPaneStatus(pid)
 		s.emitAgentEvents(pid)
+		s.scheduleScreenPromptPane(pid)
 	})
 	// Domain events (SPEC G1): command diffs, exits, and output changes.
 	s.outEmit = map[int]*outputEmit{}
@@ -418,6 +420,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	}
 
 	jobsDone := make(chan struct{})
+	s.app.Do(func() { s.screenPromptConfig(s.cfg) })
 	go s.jobCacheLoop(appDone, jobsDone)
 	<-appDone
 	<-jobsDone

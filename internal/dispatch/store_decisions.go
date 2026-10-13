@@ -59,7 +59,7 @@ func (s *Store) CreateDecision(p api.DecisionCreateParams, now time.Time) (api.D
 	if _, err := rand.Read(id[:]); err != nil {
 		return d, err
 	}
-	d = api.Decision{DecisionID: "dec-" + hex.EncodeToString(id[:]), Kind: p.Kind, Title: p.Title, Body: p.Body, Options: p.Options, AllowText: p.AllowText, Origin: p.Origin, CreatedUnixMS: ms, Status: "pending"}
+	d = api.Decision{DecisionID: "dec-" + hex.EncodeToString(id[:]), Kind: p.Kind, Title: p.Title, Body: p.Body, Options: p.Options, AllowText: p.AllowText, MultiSelect: p.MultiSelect, QuestionLabel: p.QuestionLabel, Origin: p.Origin, CreatedUnixMS: ms, Status: "pending"}
 	if p.TimeoutMS != nil {
 		expiry := ms + int64(*p.TimeoutMS)
 		d.ExpiresUnixMS = &expiry
@@ -134,22 +134,12 @@ func (s *Store) resolveDecision(id, status string, p *api.DecisionAnswerParams, 
 		return d, fmt.Errorf("decision deadline has not passed")
 	}
 	if p != nil {
-		if p.OptionID == nil && p.Text == nil {
-			return d, decisionError(api.ErrInvalidRequest, "option_id or text is required")
+		answer, err := ValidateDecisionAnswer(d, *p)
+		if err != nil {
+			return d, err
 		}
-		if p.Text != nil && !d.AllowText {
-			return d, decisionError(api.ErrInvalidRequest, "text is not allowed")
-		}
-		if p.OptionID != nil {
-			found := false
-			for _, o := range d.Options {
-				found = found || o.ID == *p.OptionID
-			}
-			if !found {
-				return d, decisionError(api.ErrInvalidRequest, "unknown decision option")
-			}
-		}
-		d.Answer = &api.DecisionAnswer{OptionID: p.OptionID, Text: p.Text, Responder: p.Responder, AnsweredUnixMS: now.UnixMilli()}
+		answer.AnsweredUnixMS = now.UnixMilli()
+		d.Answer = &answer
 	}
 	d.Status = status
 	raw, err := json.Marshal(d)
@@ -163,6 +153,44 @@ func (s *Store) resolveDecision(id, status string, p *api.DecisionAnswerParams, 
 		return api.Decision{}, decisionError(api.ErrDecisionResolved, "decision already resolved: "+id)
 	}
 	return d, nil
+}
+
+// ValidateDecisionAnswer also lets screen answers reject invalid choices before PTY input.
+func ValidateDecisionAnswer(d api.Decision, p api.DecisionAnswerParams) (api.DecisionAnswer, error) {
+	answer := api.DecisionAnswer{Text: p.Text, Responder: p.Responder}
+	ids := []string{}
+	seen := map[string]bool{}
+	choices := append([]string{}, p.OptionIDs...)
+	if p.OptionID != nil {
+		choices = append(choices, *p.OptionID)
+	}
+	for _, id := range choices {
+		if seen[id] {
+			continue
+		}
+		found := false
+		for _, o := range d.Options {
+			found = found || o.ID == id
+		}
+		if !found {
+			return answer, decisionError(api.ErrInvalidRequest, "unknown decision option")
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 && p.Text == nil {
+		return answer, decisionError(api.ErrInvalidRequest, "option_id or text is required")
+	}
+	if p.Text != nil && !d.AllowText {
+		return answer, decisionError(api.ErrInvalidRequest, "text is not allowed")
+	}
+	if len(ids) > 0 {
+		answer.OptionID = &ids[0]
+	}
+	if len(ids) > 1 {
+		answer.OptionIDs = ids
+	}
+	return answer, nil
 }
 func (s *Store) AnswerDecision(p api.DecisionAnswerParams, now time.Time) (api.Decision, error) {
 	return s.resolveDecision(p.DecisionID, "answered", &p, now)

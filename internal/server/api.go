@@ -76,7 +76,30 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 	}
 	if strings.HasPrefix(req.Method, "decision.") {
 		var resp api.Response
-		s.app.Do(func() { resp = s.decisionRequest(req) })
+		var delivery <-chan error
+		s.app.Do(func() {
+			resp = s.decisionRequest(req)
+			if req.Method == api.MethodDecisionAnswer && resp.Err == nil {
+				var p api.DecisionAnswerParams
+				if req.DecodeParams(&p) == nil {
+					for _, w := range s.screenPrompts.watches {
+						if w.decisionID == p.DecisionID {
+							delivery = w.delivery
+						}
+					}
+				}
+			}
+		})
+		if delivery != nil {
+			select {
+			case err := <-delivery:
+				if err != nil {
+					return api.Failure(req.ID, "screen_prompt_input_failed", err.Error())
+				}
+			case <-s.decisions.stopped:
+				return api.Failure(req.ID, "screen_prompt_input_failed", "server stopped during input delivery")
+			}
+		}
 		return resp
 	}
 	if strings.HasPrefix(req.Method, "plugin.") {
@@ -105,7 +128,7 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 			Type:         "pong",
 			Version:      s.version,
 			Protocol:     api.Protocol,
-			Capabilities: map[string]any{"live_handoff": true},
+			Capabilities: map[string]any{"live_handoff": true, "screen_prompt_decisions": true},
 		})
 	case api.MethodServerStop:
 		var p api.EmptyParams

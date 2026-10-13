@@ -1,0 +1,20 @@
+{
+  "allow_text": true,
+  "kind": "agent_prompt",
+  "multi_select": false,
+  "options": [
+    {
+      "description": "A compact plain text report, easy to paste into terminals.",
+      "id": "1",
+      "label": "Plain",
+      "role": "other"
+    },
+    {
+      "description": "A structured Markdown report with headings and links.",
+      "id": "2",
+      "label": "Markdown",
+      "role": "other"
+    }
+  ],
+  "title": "Which output format should the temporary report use?"
+}

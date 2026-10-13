@@ -31,6 +31,7 @@ func (s *Server) initDecisionHub() {
 	}
 }
 func (s *Server) stopDecisions() {
+	s.stopScreenPromptTimer()
 	s.decisions.close.Do(func() {
 		if s.decisions.stopped != nil {
 			close(s.decisions.stopped)
@@ -142,11 +143,22 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
+		before, err := store.Decision(p.DecisionID)
+		if err != nil {
+			return decisionFailure(req.ID, err)
+		}
+		watch, pid, err := s.validateScreenAnswer(before, p)
+		if err != nil {
+			return decisionFailure(req.ID, err)
+		}
 		d, err := store.AnswerDecision(p, time.Now())
 		if err != nil {
 			return decisionFailure(req.ID, err)
 		}
 		s.decisionChanged("decision_resolved", d)
+		if watch != nil {
+			s.startScreenAnswer(pid, watch, *d.Answer)
+		}
 		_ = s.expireDecisions(store)
 		return decisionResult(req.ID, d)
 	case api.MethodDecisionGet, api.MethodDecisionCancel:

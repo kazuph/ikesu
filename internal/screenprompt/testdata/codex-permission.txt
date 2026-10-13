@@ -1,0 +1,22 @@
+    + Show details
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason:
+  権限ダイアログの観察のため、指定の一時ファイルへ
+  observation を書き込むコマンドを承認しますか？
+
+  $ printf observation >
+  /tmp/gs-j0m1z8np/outside.txt
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start
+     with `printf observation > /tmp/gs-j0m1z8np/
+     outside.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

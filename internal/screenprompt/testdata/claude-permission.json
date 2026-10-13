@@ -1,0 +1,30 @@
+{
+  "allow_text": false,
+  "kind": "tool_permission",
+  "multi_select": false,
+  "options": [
+    {
+      "id": "1",
+      "label": "Yes",
+      "role": "approve"
+    },
+    {
+      "description": "/tmp/gs-j0m1z8np/work from this project",
+      "id": "2",
+      "label": "Yes, and always allow access to",
+      "role": "approve"
+    },
+    {
+      "description": "these prompts for you",
+      "id": "3",
+      "label": "Yes, and switch to auto mode · auto mode handles",
+      "role": "approve"
+    },
+    {
+      "id": "4",
+      "label": "No",
+      "role": "reject"
+    }
+  ],
+  "title": "Bash command Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below Write observation text to file ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ printf observation > /tmp/gs-j0m1z8np/work/permission-observation.txt ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Do you want to proceed?"
+}
