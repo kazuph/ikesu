@@ -88,6 +88,5 @@ func (m *machineClient) refreshMachineCatalog() error {
 			e.status = "disabled"
 		}
 	}
-	m.updateDecisionQueue()
 	return m.paint()
 }

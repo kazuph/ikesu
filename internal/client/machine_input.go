@@ -105,15 +105,6 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
-	if handled, err := m.decisionInput(event); handled {
-		if event.Kind == input.KindMouseClick {
-			m.suppressRelease = true
-		}
-		if err != nil {
-			return err
-		}
-		return m.paint()
-	}
 	if m.active != "local" && event.Kind == input.KindKey && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
 		if activeView.snapshot.Prefix {
 			if activeView.connection == nil || activeView.connection.writer.available < endpoint.NotificationGeneration {

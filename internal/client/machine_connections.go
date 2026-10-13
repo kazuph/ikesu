@@ -144,8 +144,6 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			return pumpRejected, true
 		}
 		e.connection = nil
-		e.decisions = nil
-		m.updateDecisionQueue()
 		e.status = "reconnecting"
 		e.reason = event.err.Error()
 		if strings.HasPrefix(e.reason, "SSH approval expired:") {
@@ -176,15 +174,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	message := event.message
 	switch message.Type {
-	case "decisions":
-		m.acceptDecisions(event.id, message.Decisions)
-		_ = m.paint()
-	case "decision_answer_result":
-		m.decisions.submitted = false
-		if message.Reason != "" {
-			m.notify(message.Reason)
-			_ = m.paint()
-		}
+	case "decisions", "decision_answer_result":
+		// Older servers still send these controls; decisions are answered outside the display.
 	case "snapshot":
 		data, err := base64.StdEncoding.DecodeString(message.Data)
 		if err != nil {
@@ -302,8 +293,6 @@ func (m *machineClient) fail(id string, err error) {
 		e.cancel()
 	}
 	e.connection = nil
-	e.decisions = nil
-	m.updateDecisionQueue()
 	e.status = "reconnecting"
 	e.reason = err.Error()
 	e.retry.failed(time.Now(), id == "local", needsAttention(e.reason))

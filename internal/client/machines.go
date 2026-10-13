@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/platform"
@@ -21,7 +20,6 @@ import (
 )
 
 type managedEndpoint struct {
-	decisions                *endpoint.DecisionProjection
 	profile                  machine.Profile
 	connection               *endpointConnection
 	cancel                   context.CancelFunc
@@ -60,7 +58,6 @@ type pendingMachine struct {
 
 type machineClient struct {
 	inputSource     platform.InputSource
-	decisions       decisionUI
 	session         string
 	settings        *localSettings
 	endpoints       map[string]*managedEndpoint
@@ -218,7 +215,6 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	include(m.noticeUntil)
-	include(m.decisions.countdown)
 	if m.pending != nil {
 		include(m.pending.deadline)
 	}
@@ -229,9 +225,6 @@ func (m *machineClient) nextDeadline() time.Time {
 }
 
 func (m *machineClient) advance(now time.Time) {
-	if !m.decisions.countdown.IsZero() && !now.Before(m.decisions.countdown) {
-		m.decisions.countdown = now.Add(time.Second)
-	}
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
 		m.noticeUntil = time.Time{}
