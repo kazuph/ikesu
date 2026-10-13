@@ -48,13 +48,13 @@ func TestSessionMarkersAndGuardStateAreRemoved(t *testing.T) {
 	}
 }
 func TestGuardShellValuesRequireProof(t *testing.T) {
-	for _, path := range []string{"/user/zsh", "/tmp/guard/shell-other/user"} {
+	for _, path := range []string{"/user/zsh", "/tmp/guard/shell-other/user", "/tmp/guard/shell/user"} {
 		m := envMap(Scrub([]string{"ZDOTDIR=" + path, "GTX_GUARD_BIN=/tmp/guard/bin/p1", "GTX_GUARD_ZDOTDIR_ORIG=/old", "GTX_GUARD_ZDOTDIR_SET=1"}))
 		if m["ZDOTDIR"] != path {
 			t.Fatal(m)
 		}
 	}
-	m := envMap(Scrub([]string{"BASH_ENV=/tmp/guard/shell/p1/bash-env", "GTX_GUARD_BASH_ENV_ORIG=/user/bash", "ZDOTDIR=/tmp/guard/shell/p1", "GTX_GUARD_ZDOTDIR_ORIG=/user/zsh", "GTX_GUARD_ZDOTDIR_SET=1"}))
+	m := envMap(Scrub([]string{"BASH_ENV=/tmp/guard/shell/p_1/bash-env", "GTX_GUARD_BASH_ENV_ORIG=/user/bash", "ZDOTDIR=/tmp/guard/shell/p_1", "GTX_GUARD_ZDOTDIR_ORIG=/user/zsh", "GTX_GUARD_ZDOTDIR_SET=1"}))
 	if m["BASH_ENV"] != "/user/bash" || m["ZDOTDIR"] != "/user/zsh" {
 		t.Fatal(m)
 	}
@@ -66,5 +66,21 @@ func TestProcessScrubBeforeChildren(t *testing.T) {
 	ScrubProcess()
 	if os.Getenv("CLAUDE_CODE_CHILD_SESSION") != "" || os.Getenv("GTX_GUARD_ENFORCING") != "" || os.Getenv("CLAUDE_EFFORT") != "high" {
 		t.Fatal("process environment")
+	}
+}
+
+func TestGeneratedPromptSuffixKeepsUserLines(t *testing.T) {
+	user := "echo user\nprintf user"
+	pin := `case "$PATH" in "$GTX_GUARD_BIN"|"$GTX_GUARD_BIN":*) ;; *) export PATH="$GTX_GUARD_BIN:$PATH";; esac` + "\n"
+	ready := `if [[ ! -f "$GTX_GUARD_READY" ]]; then builtin printf '' > "$GTX_GUARD_READY"; fi` + "\n"
+	for _, enforce := range []string{"", "export GTX_GUARD_ENFORCING=1\n"} {
+		m := envMap(Scrub([]string{"PROMPT_COMMAND=" + user + "\n" + pin + enforce + ready, "GTX_GUARD_PROMPT_COMMAND_SET=1"}))
+		if m["PROMPT_COMMAND"] != user {
+			t.Fatal(m)
+		}
+	}
+	m := envMap(Scrub([]string{"PROMPT_COMMAND=" + user + "\n" + pin + ready + "echo user-added\n", "GTX_GUARD_PROMPT_COMMAND_SET=1"}))
+	if m["PROMPT_COMMAND"] != user+"\n"+pin+ready+"echo user-added\n" {
+		t.Fatal("unproven user suffix removed")
 	}
 }

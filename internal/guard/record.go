@@ -2,10 +2,10 @@ package guard
 
 import (
 	"encoding/json"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -77,18 +77,10 @@ func Execute(i Input) error {
 	if e := os.Chdir(i.Cwd); e != nil {
 		return e
 	}
-	env := environment(i.Env)
+	env := childenv.Scrub(environment(i.Env))
 	path, e := Resolve(i.Command, env)
 	if e != nil {
 		return e
 	}
-	m := EnvMap(env)
-	parts := []string{}
-	for _, p := range strings.Split(m["PATH"], string(os.PathListSeparator)) {
-		if m["GTX_GUARD_BIN"] == "" || physical(p) != physical(m["GTX_GUARD_BIN"]) {
-			parts = append(parts, p)
-		}
-	}
-	m["PATH"] = strings.Join(parts, string(os.PathListSeparator))
-	return syscall.Exec(path, append([]string{i.Command}, i.Args...), environment(m))
+	return syscall.Exec(path, append([]string{i.Command}, i.Args...), env)
 }

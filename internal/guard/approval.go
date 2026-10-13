@@ -3,6 +3,7 @@ package guard
 import (
 	"bufio"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
@@ -94,8 +95,11 @@ func environment(m map[string]string) []string {
 	return out
 }
 func Resolve(cmd string, env []string) (string, error) {
-	m := EnvMap(env)
+	m := EnvMap(childenv.Scrub(env))
 	if strings.Contains(cmd, "/") {
+		if childenv.IsGuardShimDirectory(filepath.Dir(cmd), env) {
+			return "", fmt.Errorf("refusing to execute guard shim: %s", cmd)
+		}
 		if executable(cmd) {
 			return cmd, nil
 		}
@@ -107,6 +111,9 @@ func Resolve(cmd string, env []string) (string, error) {
 		}
 		if d == "" {
 			d = "."
+		}
+		if childenv.IsGuardShimDirectory(d, env) {
+			continue
 		}
 		p := filepath.Join(d, cmd)
 		if executable(p) {

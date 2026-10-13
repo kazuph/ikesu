@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -13,7 +14,7 @@ var markers = map[string]bool{
 	"CLAUDE_CODE_CHILD_SESSION": true, "CLAUDE_CODE_SESSION_ID": true,
 	"CLAUDE_CODE_SESSION_ATTENDED": true, "CLAUDE_CODE_MESSAGING_SOCKET": true,
 	"CLAUDE_CODE_MESSAGING_TOKEN": true, "CLAUDE_CODE_ENTRYPOINT": true,
-	"CLAUDE_CODE_EXECPATH": true, "CODEX_THREAD_ID": true, "HERDR_AGENT": true, "GTX_AGENT": true, "GOTERRACE_AGENT": true,
+	"CLAUDE_CODE_EXECPATH": true, "CODEX_THREAD_ID": true, "HERDR_AGENT": true,
 }
 
 // Scrub restores proven generated shell settings before dropping pane state.
@@ -24,6 +25,19 @@ func Scrub(env []string) []string {
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			m[k] = v
 		}
+	}
+	original := make([]string, 0, len(m))
+	for k, v := range m {
+		original = append(original, k+"="+v)
+	}
+	if value, exists := m["PATH"]; exists {
+		var paths []string
+		for _, path := range filepath.SplitList(value) {
+			if !IsGuardShimDirectory(path, original) {
+				paths = append(paths, path)
+			}
+		}
+		m["PATH"] = strings.Join(paths, string(os.PathListSeparator))
 	}
 	for _, ns := range []string{"GTX", "HERDR"} {
 		prefix := ns + "_GUARD_"
@@ -83,9 +97,20 @@ func Scrub(env []string) []string {
 func guardPath(path, key string) bool {
 	p := filepath.ToSlash(filepath.Clean(path))
 	if key == "ZDOTDIR" {
-		return strings.HasSuffix(p, "/guard/zdotdir") || strings.Contains(p, "/guard/shell/")
+		return strings.HasSuffix(p, "/guard/zdotdir") || paneShellDirectory(p)
 	}
-	return strings.HasSuffix(p, "/guard/guard.bash") || strings.Contains(p, "/guard/shell/") && strings.HasSuffix(p, "/bash-env")
+	return strings.HasSuffix(p, "/guard/guard.bash") || filepath.Base(p) == "bash-env" && paneShellDirectory(filepath.Dir(p))
+}
+func paneShellDirectory(path string) bool {
+	if !strings.HasSuffix(filepath.ToSlash(filepath.Dir(path)), "/guard/shell") {
+		return false
+	}
+	name := filepath.Base(path)
+	if !strings.HasPrefix(name, "p_") {
+		return false
+	}
+	number, err := strconv.Atoi(strings.TrimPrefix(name, "p_"))
+	return err == nil && number > 0
 }
 
 // ScrubProcess is called before server workers or standalone pane spawns.

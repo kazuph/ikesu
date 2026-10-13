@@ -2,16 +2,16 @@ package guard
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"io"
-	"os/exec"
 	"strings"
 )
 
 // Shell lexical splitting uses zsh's parser without evaluating the input.
 // This is the shell whose accept-line widget supplies the raw line.
 func LineInput(i Input, line string) (Input, error) {
-	cmd := exec.Command("/bin/zsh", "-f", "-c", `for token in ${(z)1}; do print -rn -- "${(Q)token}"; print -rn -- $'\0'; done`, "guard-line", line)
-	cmd.Env = environment(i.Env)
+	cmd := childenv.Command("/bin/zsh", "-f", "-c", `for token in ${(z)1}; do print -rn -- "${(Q)token}"; print -rn -- $'\0'; done`, "guard-line", line)
+	cmd.Env = childenv.Scrub(environment(i.Env))
 	b, e := cmd.Output()
 	if e != nil {
 		return i, fmt.Errorf("unsupported shell input: %w", e)

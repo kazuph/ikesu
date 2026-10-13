@@ -2,7 +2,7 @@ package guard
 
 import (
 	"context"
-	"os/exec"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,9 +17,9 @@ func probe(i Input, cmd string, a ...string) string {
 	if e != nil {
 		return ""
 	}
-	c := exec.CommandContext(ctx, p, a...)
+	c := childenv.CommandContext(ctx, p, a...)
 	c.Dir = i.Cwd
-	c.Env = env
+	c.Env = childenv.Scrub(env)
 	b, e := c.Output()
 	if e != nil {
 		return ""
