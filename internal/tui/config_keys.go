@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,8 +146,9 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 		_, err = a.OpenPluginPane(a.st.Active, a.focusedPane(), "zoomed", "", cwd, argv, a.keyCommandEnv(cwd), true)
 	case "shell":
 		cmd := exec.Command(shell, "-lc", binding.Command)
+		cmd.Env = childenv.Scrub(os.Environ())
 		cmd.Dir = cwd
-		cmd.Env = os.Environ()
+		cmd.Env = childenv.Scrub(os.Environ())
 		for key, value := range a.keyCommandEnv(cwd) {
 			cmd.Env = append(cmd.Env, key+"="+value)
 		}

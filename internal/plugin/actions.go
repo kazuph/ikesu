@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -144,7 +145,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	}
 	values := map[string]string{}
 	// A pane's inherited plugin context must not leak into nested invocations.
-	for _, kv := range os.Environ() {
+	for _, kv := range childenv.Scrub(os.Environ()) {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
 			continue

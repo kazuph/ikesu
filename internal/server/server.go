@@ -7,6 +7,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"net"
 	"os"
 	"os/exec"
@@ -222,6 +223,7 @@ func Run(session, version string) (int, error) {
 }
 
 func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handoffImport) (int, error) {
+	childenv.ScrubProcess()
 	var imported *handoffImport
 	if len(imports) > 0 {
 		imported = imports[0]

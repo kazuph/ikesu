@@ -3,6 +3,7 @@ package plugin
 import (
 	"bytes"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,7 @@ func (s *Store) Install(source, ref string, confirm func(InstallPreview) bool) (
 	checkout := filepath.Join(temporary, "checkout")
 	runGit := func(args ...string) (string, error) {
 		cmd := exec.Command("git", args...)
+		cmd.Env = childenv.Scrub(os.Environ())
 		data, err := cmd.CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, data)
@@ -106,8 +108,9 @@ func (s *Store) Install(source, ref string, confirm func(InstallPreview) bool) (
 			continue
 		}
 		cmd := exec.Command(build.Command[0], build.Command[1:]...)
+		cmd.Env = []string{}
 		cmd.Dir = root
-		for _, kv := range os.Environ() {
+		for _, kv := range childenv.Scrub(os.Environ()) {
 			key, _, _ := strings.Cut(kv, "=")
 			if strings.HasPrefix(key, "GTX_") || strings.HasPrefix(key, "HERDR_") {
 				continue

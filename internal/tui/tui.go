@@ -6,6 +6,7 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/endpoint"
@@ -591,6 +592,7 @@ func (a *App) Run() {
 var ErrStandaloneRestart = errors.New("standalone restart requested")
 
 func Run(in *os.File, out *os.File, versions ...string) (int, error) {
+	childenv.ScrubProcess()
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = os.Getenv("HOME")

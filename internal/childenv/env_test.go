@@ -1,0 +1,70 @@
+package childenv
+
+import (
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+func envMap(env []string) map[string]string {
+	m := map[string]string{}
+	for _, v := range env {
+		k, x, _ := strings.Cut(v, "=")
+		m[k] = x
+	}
+	return m
+}
+func TestSessionMarkersAndGuardStateAreRemoved(t *testing.T) {
+	env := []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/config", "CODEX_HOME=/codex", "CLAUDE_EFFORT=high", "CLAUDE_CODE_ENABLE_TASKS=1", "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1", "BASH_ENV=/user/bash", "ZDOTDIR=/user/zsh", "PROMPT_COMMAND=user hook", "GTX_GUARD_MARKER=/old", "HERDR_GUARD_READY=1"}
+	for k := range markers {
+		env = append(env, k+"=inherited")
+	}
+	clean := envMap(Scrub(env))
+	for k := range markers {
+		if _, ok := clean[k]; ok {
+			t.Fatal(k)
+		}
+	}
+	for _, k := range []string{"GTX_GUARD_MARKER", "HERDR_GUARD_READY"} {
+		if _, ok := clean[k]; ok {
+			t.Fatal(k)
+		}
+	}
+	for k, v := range envMap(env[:9]) {
+		if clean[k] != v {
+			t.Fatal(k, clean[k], v)
+		}
+	}
+	// Exercise the actual OS child environment, then deliberate extras.
+	cmd := exec.Command("/usr/bin/env")
+	cmd.Env = append(Scrub(env), "CODEX_THREAD_ID=explicit")
+	data, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "CODEX_THREAD_ID=explicit\n") || strings.Contains(string(data), "CLAUDE_CODE_CHILD_SESSION=") {
+		t.Fatal(string(data))
+	}
+}
+func TestGuardShellValuesRequireProof(t *testing.T) {
+	for _, path := range []string{"/user/zsh", "/tmp/guard/shell-other/user"} {
+		m := envMap(Scrub([]string{"ZDOTDIR=" + path, "GTX_GUARD_BIN=/tmp/guard/bin/p1", "GTX_GUARD_ZDOTDIR_ORIG=/old", "GTX_GUARD_ZDOTDIR_SET=1"}))
+		if m["ZDOTDIR"] != path {
+			t.Fatal(m)
+		}
+	}
+	m := envMap(Scrub([]string{"BASH_ENV=/tmp/guard/shell/p1/bash-env", "GTX_GUARD_BASH_ENV_ORIG=/user/bash", "ZDOTDIR=/tmp/guard/shell/p1", "GTX_GUARD_ZDOTDIR_ORIG=/user/zsh", "GTX_GUARD_ZDOTDIR_SET=1"}))
+	if m["BASH_ENV"] != "/user/bash" || m["ZDOTDIR"] != "/user/zsh" {
+		t.Fatal(m)
+	}
+}
+func TestProcessScrubBeforeChildren(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_CHILD_SESSION", "1")
+	t.Setenv("GTX_GUARD_ENFORCING", "1")
+	t.Setenv("CLAUDE_EFFORT", "high")
+	ScrubProcess()
+	if os.Getenv("CLAUDE_CODE_CHILD_SESSION") != "" || os.Getenv("GTX_GUARD_ENFORCING") != "" || os.Getenv("CLAUDE_EFFORT") != "high" {
+		t.Fatal("process environment")
+	}
+}

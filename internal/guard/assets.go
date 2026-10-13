@@ -3,6 +3,7 @@ package guard
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,39 +208,5 @@ func (a *Assets) Close() error {
 // RestoreInherited removes a previous pane's generated shell chain before
 // another pane gets its own identity. Its original user environment survives.
 func RestoreInherited(env []string) []string {
-	m := EnvMap(env)
-	bin := m["GTX_GUARD_BIN"]
-	if bin == "" {
-		return env
-	}
-	var path []string
-	for _, p := range strings.Split(m["PATH"], string(os.PathListSeparator)) {
-		if physical(p) != physical(bin) {
-			path = append(path, p)
-		}
-	}
-	m["PATH"] = strings.Join(path, string(os.PathListSeparator))
-	if m["GTX_GUARD_ZDOTDIR_SET"] == "1" {
-		m["ZDOTDIR"] = m["GTX_GUARD_ZDOTDIR_ORIG"]
-	} else {
-		delete(m, "ZDOTDIR")
-	}
-	if value := m["GTX_GUARD_BASH_ENV_ORIG"]; value != "" {
-		m["BASH_ENV"] = value
-	} else {
-		delete(m, "BASH_ENV")
-	}
-	if _, injected := m["GTX_GUARD_PROMPT_COMMAND_SET"]; injected {
-		if m["GTX_GUARD_PROMPT_COMMAND_SET"] == "1" {
-			m["PROMPT_COMMAND"] = m["GTX_GUARD_PROMPT_COMMAND_ORIG"]
-		} else {
-			delete(m, "PROMPT_COMMAND")
-		}
-	}
-	for key := range m {
-		if strings.HasPrefix(key, "GTX_GUARD_") {
-			delete(m, key)
-		}
-	}
-	return environment(m)
+	return childenv.Scrub(env)
 }
