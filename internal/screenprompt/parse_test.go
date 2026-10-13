@@ -112,3 +112,18 @@ func TestObservedPreviewFocusedOptionAndMonospaceSpacing(t *testing.T) {
 		t.Fatal("preview UI invented invisible details")
 	}
 }
+
+func TestAskUserQuestionKindDoesNotDependOnQuestionVocabulary(t *testing.T) {
+	for _, name := range []string{"claude-single", "claude-multi-wide", "claude-preview"} {
+		lines := fixture(t, name)
+		for _, word := range []string{"permission", "allow", "trust", "許可"} {
+			p := Parse("claude", lines)
+			title := p.Params.Title
+			changed := strings.Split(strings.Replace(strings.Join(lines, "\n"), title, "Which "+word+" setting should the report describe?", 1), "\n")
+			got := Parse("claude", changed)
+			if got == nil || got.Params.Kind != "agent_prompt" {
+				t.Fatalf("%s %s: %+v", name, word, got)
+			}
+		}
+	}
+}

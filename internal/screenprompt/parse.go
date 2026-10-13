@@ -91,6 +91,7 @@ func Parse(agent string, screen []string) *Prompt {
 	}
 	p := &Prompt{Keys: map[string]string{}, Checked: map[string]bool{}, Cursor: -1, Progress: -1, HasPreview: hasPreview, Preview: preview}
 	p.Params.Kind = "agent_prompt"
+	askUserQuestion := false
 	var title []string
 	for _, line := range lines[start:first] {
 		line = strings.TrimSpace(line)
@@ -98,11 +99,13 @@ func Parse(agent string, screen []string) *Prompt {
 			continue
 		}
 		if strings.Contains(line, "←") && strings.Contains(line, "Submit") {
+			askUserQuestion = true
 			p.Params.QuestionLabel = questionLabel(line)
 			p.Params.Body = p.Params.QuestionLabel
 			continue
 		}
 		if strings.HasPrefix(line, "☐ ") || strings.HasPrefix(line, "☒ ") {
+			askUserQuestion = true
 			continue
 		}
 		title = append(title, line)
@@ -113,7 +116,7 @@ func Parse(agent string, screen []string) *Prompt {
 	}
 	lowerTitle := strings.ToLower(p.Params.Title)
 	for _, word := range []string{"proceed", "permission", "trust", "run the following", "run this command", "allow", "確認", "承認", "許可"} {
-		if strings.Contains(lowerTitle, word) {
+		if !askUserQuestion && strings.Contains(lowerTitle, word) {
 			p.Params.Kind = "tool_permission"
 		}
 	}
