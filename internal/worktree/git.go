@@ -14,7 +14,14 @@ import (
 )
 
 func git(cwd string, args ...string) (string, error) {
+	return gitWithEnv(cwd, nil, args...)
+}
+
+func gitWithEnv(cwd string, environment []string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", cwd}, args...)...)
+	if len(environment) > 0 {
+		cmd.Env = append(os.Environ(), environment...)
+	}
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(b)))
@@ -25,7 +32,9 @@ func git(cwd string, args ...string) (string, error) {
 // List retains NUL-delimited porcelain on supported Git versions. Only an
 // explicit unsupported -z usage error selects the older porcelain format.
 func List(cwd string) ([]api.WorktreeInfo, error) {
-	raw, err := git(cwd, "worktree", "list", "--porcelain", "-z")
+	// This error is parsed for feature detection; keep only this probe in
+	// the C locale, including gettext's LANGUAGE override.
+	raw, err := gitWithEnv(cwd, []string{"LC_ALL=C", "LANGUAGE=C"}, "worktree", "list", "--porcelain", "-z")
 	if err == nil {
 		return parseWorktreeList(raw, "\x00", nil)
 	}

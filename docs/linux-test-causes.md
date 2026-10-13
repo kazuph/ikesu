@@ -46,3 +46,5 @@
 上記は実Unix socketのCloseReadでkernelのEPIPEを発生させる再現であり、偽エラーやmockは使用していない。入力・端末出力のEPIPEをACK半閉鎖として扱わないことも `TestACKHalfCloseDoesNotSuppressInputOrTerminalOutputErrors` で固定する。
 
 親のレビュー1回目への対応: worktreeは新Gitの従来NUL経路を保持。既存の実Git2.34.1と2.49.0の両方で `TestWorktreeListUsesNULUnlessGitRejectsOption` を実行し、Git traceで前者だけ登録パスparserを使用することを確認した。追加の画面側修正は親の指示（2026-10-13）に基づく。
+
+親のレビュー2回目（最後）への対応: `-z` を試す呼び出しだけ `LC_ALL=C`・`LANGUAGE=C` を付け、対応判定のエラー文を英語へ固定する。通常のGit呼び出し・親プロセスのロケールは変更しない。`TestWorktreeListJapaneseLocaleKeepsOnlyProbeInC` はLANG/LC_ALL=ja_JP.UTF-8・LANGUAGE=jaで実Git2.34.1/2.49.0を実行し、Git trace2でprobeだけC・他の呼び出しは日本語設定と確認する。依存・API・設定形式の変更なし。

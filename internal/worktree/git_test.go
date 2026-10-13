@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,7 +132,7 @@ func TestWorktreeListUsesNULUnlessGitRejectsOption(t *testing.T) {
 	if err := Create(r, path, "feat/format", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, probeErr := git(r, "worktree", "list", "--porcelain", "-z")
+	_, probeErr := gitWithEnv(r, []string{"LC_ALL=C", "LANGUAGE=C"}, "worktree", "list", "--porcelain", "-z")
 	trace := filepath.Join(t.TempDir(), "git-trace")
 	t.Setenv("GIT_TRACE", trace)
 	items, err := List(r)
@@ -160,4 +161,69 @@ func TestWorktreeListUsesNULUnlessGitRejectsOption(t *testing.T) {
 	if _, err := List(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("invalid repository must remain an error")
 	}
+}
+
+func TestWorktreeListJapaneseLocaleKeepsOnlyProbeInC(t *testing.T) {
+	r := repository(t)
+	path := filepath.Join(t.TempDir(), "日本語\ncheckout")
+	if err := Create(r, path, "feat/locale", ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LANG", "ja_JP.UTF-8")
+	t.Setenv("LC_ALL", "ja_JP.UTF-8")
+	t.Setenv("LANGUAGE", "ja")
+	trace := filepath.Join(t.TempDir(), "git-trace2.json")
+	t.Setenv("GIT_TRACE2_EVENT", trace)
+	t.Setenv("GIT_TRACE2_ENV_VARS", "LANG,LC_ALL,LANGUAGE")
+	items, err := List(r)
+	if err != nil || len(items) != 2 || !SamePath(items[1].Path, path) {
+		t.Fatal(items, err)
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type record struct {
+		Event string   `json:"event"`
+		SID   string   `json:"sid"`
+		Argv  []string `json:"argv"`
+		Param string   `json:"param"`
+		Value string   `json:"value"`
+	}
+	commands := map[string][]string{}
+	environments := map[string]map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var event record
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Event == "start" {
+			commands[event.SID] = event.Argv
+		}
+		if event.Event == "def_param" {
+			if environments[event.SID] == nil {
+				environments[event.SID] = map[string]string{}
+			}
+			environments[event.SID][event.Param] = event.Value
+		}
+	}
+	probes := 0
+	for sid, argv := range commands {
+		env := environments[sid]
+		if strings.HasSuffix(strings.Join(argv, " "), "worktree list --porcelain -z") {
+			probes++
+			if env["LC_ALL"] != "C" || env["LANGUAGE"] != "C" || env["LANG"] != "ja_JP.UTF-8" {
+				t.Fatal("real Git probe did not receive C overrides", argv, env)
+			}
+		} else if env["LC_ALL"] != "ja_JP.UTF-8" || env["LANGUAGE"] != "ja" {
+			t.Fatal("non-probe Git locale changed", argv, env)
+		}
+	}
+	if probes != 1 {
+		t.Fatal("expected exactly one real Git NUL probe", probes, string(data))
+	}
+	if os.Getenv("LC_ALL") != "ja_JP.UTF-8" || os.Getenv("LANGUAGE") != "ja" {
+		t.Fatal("caller locale changed")
+	}
+	t.Log("real Git trace2 confirms C overrides only for the -z probe under Japanese locale")
 }
