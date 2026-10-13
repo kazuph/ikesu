@@ -36,8 +36,8 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if err != nil {
 		return nil, 0, err
 	}
-	if d.MultiSelect && w.prompt.Progress < 0 {
-		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "multi-select prompt has no supported Next/Submit row"}
+	if d.MultiSelect && (w.prompt.Progress < 0 || w.prompt.Cursor < 0) {
+		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "multi-select prompt has no supported cursor or Next/Submit row"}
 	}
 	if !d.MultiSelect && len(answer.OptionIDs) > 1 {
 		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "single-choice screen cannot submit multiple options"}
