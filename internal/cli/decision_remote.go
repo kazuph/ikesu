@@ -92,20 +92,28 @@ func (r *runner) decisionMachineAnswer(args []string) (bool, int) {
 func (r *runner) watchRemote(ctx context.Context, p machine.Profile, lines chan<- decisionWatchLine) {
 	owner := decisionMachine{ID: p.ID, Label: p.Label}
 	delay := time.Duration(0)
+	unsupported := false
 	for ctx.Err() == nil {
 		start := time.Now()
-		reason, auth := r.watchRemoteConnection(ctx, p, owner, lines)
+		result := r.watchRemoteConnection(ctx, p, owner, lines)
+		reason, auth := result.reason, result.auth
+		if result.observed {
+			unsupported = false
+		}
 		if ctx.Err() != nil {
 			return
 		}
-		if !sendWatch(ctx, lines, decisionWatchLine{Event: "machine_down", Machine: owner, Reason: reason}) {
+		notify, next := remoteWatchRetry(&unsupported, delay, result)
+		if notify && !sendWatch(ctx, lines, decisionWatchLine{Event: "machine_down", Machine: owner, Reason: reason}) {
 			return
 		}
 		if time.Since(start) >= decisionRetryStable {
 			delay = 0
 		}
-		next := watchRetry(delay, auth)
-		if !auth {
+		if !unsupported {
+			next = watchRetry(delay, auth)
+		}
+		if !auth && !unsupported {
 			delay = next
 		}
 		if !waitDecisionRetry(ctx, next) {
@@ -113,24 +121,25 @@ func (r *runner) watchRemote(ctx context.Context, p machine.Profile, lines chan<
 		}
 	}
 }
-func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, owner decisionMachine, lines chan<- decisionWatchLine) (string, bool) {
+func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, owner decisionMachine, lines chan<- decisionWatchLine) remoteWatchResult {
 	child, stop := context.WithCancel(ctx)
 	defer stop()
 	cmd := exec.CommandContext(child, "ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), []string{"decision", "watch"})...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err.Error(), false
+		return remoteWatchResult{reason: err.Error()}
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return err.Error(), false
+		return remoteWatchResult{reason: err.Error()}
 	}
 	if err := cmd.Start(); err != nil {
-		return err.Error(), false
+		return remoteWatchResult{reason: err.Error()}
 	}
 	var mu sync.Mutex
 	reason := ""
 	auth := false
+	unsupported, observed := false, false
 	var readers sync.WaitGroup
 	note := func(line string) {
 		mu.Lock()
@@ -138,7 +147,9 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 		if value, ok := decisionAuthReason(line); ok {
 			reason, auth = value, true
 			stop()
-		} else if !auth {
+		} else if decisionUnsupported(line) {
+			reason, unsupported = "decision unsupported: "+strings.TrimSpace(line), true
+		} else if !auth && !unsupported {
 			reason = strings.TrimSpace(line)
 		}
 	}
@@ -171,7 +182,11 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 		}
 		var line decisionWatchLine
 		if err := json.Unmarshal(raw, &line); err != nil {
-			note("invalid remote decision stream: " + err.Error())
+			if decisionUnsupported(string(raw)) {
+				note(string(raw))
+			} else {
+				note("invalid remote decision stream: " + err.Error())
+			}
 			break
 		}
 		switch line.Event {
@@ -187,6 +202,13 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 			stop()
 			continue
 		}
+		mu.Lock()
+		observed = true
+		if unsupported {
+			unsupported = false
+			reason = ""
+		}
+		mu.Unlock()
 		line.Machine = owner
 		if !sendWatch(ctx, lines, line) {
 			break
@@ -204,5 +226,30 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 			reason = "SSH stream closed"
 		}
 	}
-	return reason, auth
+	return remoteWatchResult{reason: reason, auth: auth, unsupported: unsupported, observed: observed}
+}
+
+const decisionUnsupportedRetry = 30 * time.Minute // SPEC decision watch, 工程3A.
+type remoteWatchResult struct {
+	reason                      string
+	auth, unsupported, observed bool
+}
+
+func decisionUnsupported(line string) bool {
+	text := strings.ToLower(line)
+	return strings.Contains(text, "decision") && (strings.Contains(text, "unknown command") || strings.Contains(text, "unrecognized subcommand") || strings.Contains(text, "unrecognised subcommand"))
+}
+func remoteWatchRetry(unsupported *bool, delay time.Duration, result remoteWatchResult) (bool, time.Duration) {
+	if result.observed {
+		*unsupported = false
+	}
+	if result.unsupported {
+		notify := !*unsupported
+		*unsupported = true
+		return notify, decisionUnsupportedRetry
+	}
+	if *unsupported {
+		return false, decisionUnsupportedRetry
+	}
+	return true, watchRetry(delay, result.auth)
 }
