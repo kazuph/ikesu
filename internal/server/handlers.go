@@ -305,6 +305,12 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
 		return s.agentList(req.ID)
+	case api.MethodAgentExplain:
+		var p api.AgentTarget
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return s.agentExplain(req.ID, p.Target)
 	case api.MethodAgentGet:
 		var p api.AgentTarget
 		if err := req.DecodeParams(&p); err != nil {

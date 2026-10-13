@@ -56,6 +56,7 @@ type compiledGate struct {
 }
 
 type manifest struct {
+	version   string
 	id        string
 	forkOwned bool
 	aliases   []string
@@ -89,7 +90,7 @@ func init() {
 			LoadWarnings = append(LoadWarnings, fmt.Sprintf("%s: %v", e.Name(), err))
 			continue
 		}
-		m := &manifest{id: mf.ID, aliases: mf.Aliases, forkOwned: mf.ForkOwned}
+		m := &manifest{version: mf.Version, id: mf.ID, aliases: mf.Aliases, forkOwned: mf.ForkOwned}
 		for _, r := range mf.Rules {
 			if !knownRegion(r.Region) {
 				LoadWarnings = append(LoadWarnings, fmt.Sprintf("%s: rule %s: unknown region %q", e.Name(), r.ID, r.Region))

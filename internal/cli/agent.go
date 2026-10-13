@@ -15,6 +15,8 @@ func printAgentHelp(w *runner) {
 	fmt.Fprintln(w.errOut(), "gtx agent commands:")
 	fmt.Fprintln(w.errOut(), "  gtx agent list")
 	fmt.Fprintln(w.errOut(), "  gtx agent get <target>")
+	fmt.Fprintln(w.errOut(), "  gtx agent explain <target> [--json]")
+	fmt.Fprintln(w.errOut(), "  gtx agent explain --file PATH --agent LABEL [--json]")
 	fmt.Fprintln(w.errOut(), "  gtx agent read <target> [--source visible|recent|recent-unwrapped] [--lines N]")
 	fmt.Fprintln(w.errOut(), "  gtx agent send <target> <text>")
 	fmt.Fprintln(w.errOut(), "  gtx agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]")
@@ -36,6 +38,8 @@ func (r *runner) agentCLI(args []string) int {
 	switch sub {
 	case "list":
 		return r.agentListCLI()
+	case "explain":
+		return r.agentExplainCLI(rest)
 	case "get":
 		if len(rest) != 1 {
 			return usageErr(r, "usage: gtx agent get <target>")
