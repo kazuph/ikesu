@@ -74,6 +74,13 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 			}
 		}
 	}
+	if n.SystemToast && runtime.GOOS == "linux" {
+		if command, err := lookup("notify-send"); err == nil {
+			if err := run(command, "--", n.Title, n.Body); err != nil {
+				return err
+			}
+		}
+	}
 	path, enabled := SoundPath(c, n.Agent, n.Kind)
 	if !enabled || os.Getenv("GTX_DISABLE_SOUND") != "" {
 		return nil
@@ -93,10 +100,31 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 		}
 		path = filepath.Join(filepath.Dir(base), path)
 	}
-	if runtime.GOOS != "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
+		return run("/usr/bin/afplay", path)
+	case "linux":
+		for _, candidate := range []string{"paplay", "pw-play", "ffplay", "mpg123", "mpv"} {
+			command, err := lookup(candidate)
+			if err != nil {
+				continue
+			}
+			args := []string{path}
+			switch candidate {
+			case "ffplay":
+				args = []string{"-nodisp", "-autoexit", "-loglevel", "quiet", path}
+			case "mpg123":
+				args = []string{"-q", path}
+			case "mpv":
+				args = []string{"--no-video", "--really-quiet", path}
+			}
+			return run(command, args...)
+		}
+		d.warnSound(fmt.Errorf("sound playback: no command found (paplay, pw-play, ffplay, mpg123, mpv)"))
+		return nil
+	default:
 		return fmt.Errorf("unsupported: sound playback on %s", runtime.GOOS)
 	}
-	return run("/usr/bin/afplay", path)
 }
 func SoundPath(c config.Config, agent, kind string) (string, bool) {
 	if kind != "finished" && kind != "needs_attention" {

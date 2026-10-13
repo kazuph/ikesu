@@ -3,8 +3,11 @@ package worktree
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -19,19 +22,64 @@ func git(cwd string, args ...string) (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
-// List uses NUL-delimited porcelain so paths with whitespace and newlines
-// remain data rather than being interpreted as additional fields.
+// List reads porcelain supported by Git 2.34 and newer. Registered paths
+// preserve literal newlines on old Git; newer Git uses C-style quoting.
 func List(cwd string) ([]api.WorktreeInfo, error) {
-	raw, err := git(cwd, "worktree", "list", "--porcelain", "-z")
+	raw, err := git(cwd, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
+	// Git before 2.36 emits literal newlines in paths even with quotePath.
+	// Match registered full paths before interpreting porcelain field lines.
+	common, err := git(cwd, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return nil, err
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(cwd, common)
+	}
+	if canonical, err := filepath.EvalSymlinks(common); err == nil {
+		common = canonical
+	}
+	paths := []string{common, filepath.Dir(common)}
+	entries, err := os.ReadDir(filepath.Join(common, "worktrees"))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(common, "worktrees", entry.Name(), "gitdir"))
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, filepath.Dir(strings.TrimSuffix(string(data), "\n")))
+	}
+	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
 	out := []api.WorktreeInfo{}
 	var item *api.WorktreeInfo
-	for _, field := range strings.Split(raw, "\x00") {
+	fields := strings.Split(raw, "\n")
+	for i := 0; i < len(fields); i++ {
+		field := fields[i]
 		key, value, _ := strings.Cut(field, " ")
 		switch key {
 		case "worktree":
+			tail := strings.Join(fields[i:], "\n") + "\n"
+			for _, path := range paths {
+				if strings.HasPrefix(tail, "worktree "+path+"\n") {
+					value = path
+					i += strings.Count(path, "\n")
+					break
+				}
+			}
+			if strings.HasPrefix(value, `"`) {
+				decoded, err := strconv.Unquote(value)
+				if err != nil {
+					return nil, fmt.Errorf("decode worktree path: %w", err)
+				}
+				value = decoded
+			}
 			out = append(out, api.WorktreeInfo{Path: value, Label: filepath.Base(value), IsLinkedWorktree: len(out) > 0})
 			item = &out[len(out)-1]
 		case "branch":

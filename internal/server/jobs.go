@@ -339,7 +339,10 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 // (kill(-pgid, 0): ESRCH means gone; EPERM/nil means someone is alive).
 func processGroupAlive(pgid int) bool {
 	err := syscall.Kill(-pgid, 0)
-	return err == nil || err == syscall.EPERM
+	if err != nil && err != syscall.EPERM {
+		return false
+	}
+	return processGroupHasLiveMembers(pgid)
 }
 
 // finishCancel is the cancel monitor: after the initial SIGTERM it gives
