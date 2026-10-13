@@ -1,7 +1,7 @@
 package platform
 
 import (
-	"os/exec"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"runtime"
 	"strings"
 )
@@ -25,7 +25,7 @@ func (s *InputSource) Prefix(active, enabled bool) error {
 	}
 	run := s.Run
 	if run == nil {
-		run = func(name string, args ...string) ([]byte, error) { return exec.Command(name, args...).Output() }
+		run = func(name string, args ...string) ([]byte, error) { return childenv.Command(name, args...).Output() }
 	}
 	if active {
 		out, err := run("/usr/bin/osascript", "-l", "JavaScript", "-e", asciiInputSource)

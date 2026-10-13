@@ -3,8 +3,8 @@ package worktree
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -18,9 +18,9 @@ func git(cwd string, args ...string) (string, error) {
 }
 
 func gitWithEnv(cwd string, environment []string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", cwd}, args...)...)
+	cmd := childenv.Command("git", append([]string{"-C", cwd}, args...)...)
 	if len(environment) > 0 {
-		cmd.Env = append(os.Environ(), environment...)
+		cmd.Env = append(childenv.Scrub(os.Environ()), environment...)
 	}
 	b, err := cmd.CombinedOutput()
 	if err != nil {

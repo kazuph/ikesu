@@ -1,9 +1,9 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/worktree"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -95,7 +95,7 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 func readWorkspaceGit(cwd string) render.GitStatus {
 	var g render.GitStatus
 	run := func(args ...string) string {
-		cmd := exec.Command("git", append([]string{"-C", cwd}, args...)...)
+		cmd := childenv.Command("git", append([]string{"-C", cwd}, args...)...)
 		b, err := cmd.Output()
 		if err != nil {
 			return ""

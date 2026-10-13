@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os/exec"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"runtime"
 	"strings"
 
@@ -41,7 +41,7 @@ if (!image) {
 }
 const text = p.stringForType($.NSPasteboardTypeString);
 JSON.stringify({text: text ? ObjC.unwrap(text) : '', png: image ? ObjC.unwrap(image.base64EncodedStringWithOptions(0)) : null});`
-	data, err := exec.CommandContext(ctx, "/usr/bin/osascript", "-l", "JavaScript", "-e", script).Output()
+	data, err := childenv.CommandContext(ctx, "/usr/bin/osascript", "-l", "JavaScript", "-e", script).Output()
 	if err != nil {
 		return clipboardContent{}, fmt.Errorf("read desktop clipboard: %w", err)
 	}
@@ -64,7 +64,7 @@ func uploadClipboardImage(ctx context.Context, profile machine.Profile, png []by
 	defer managed.Close()
 	// mktemp creates a private file; no remote server or persistent state is touched.
 	const script = `set -eu; f=$(mktemp "${TMPDIR:-/tmp}/gtx-clipboard.XXXXXX"); trap 'rm -f "$f" "$f.png"' EXIT HUP INT TERM; cat > "$f"; mv "$f" "$f.png"; printf '%s' "$f.png"; trap - EXIT HUP INT TERM`
-	cmd := exec.CommandContext(ctx, "ssh", managed.Args(machine.SSHArgs(profile, []string{"sh", "-c", script}))...)
+	cmd := childenv.CommandContext(ctx, "ssh", managed.Args(machine.SSHArgs(profile, []string{"sh", "-c", script}))...)
 	cmd.Stdin = bytes.NewReader(png)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,7 +154,7 @@ func ForwardMachine(ref string, args []string, o Options) int {
 	if bin == "" {
 		bin = "gtx"
 	}
-	cmd := exec.Command("ssh", machine.ForwardArgs(p, bin, args)...)
+	cmd := childenv.Command("ssh", machine.ForwardArgs(p, bin, args)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, r.out(), r.errOut()
 	if err := cmd.Run(); err != nil {
 		if e, ok := err.(*exec.ExitError); ok {

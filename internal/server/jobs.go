@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,6 +91,9 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	// pane id works for unlabeled panes.
 	callerAgent := ""
 	callerPane := ""
+	if p.CallerPane == "" {
+		return api.Failure(id, api.ErrInvalidRequest, "caller pane is required; specify --caller <pane>")
+	}
 	if p.CallerPane != "" {
 		t, err := s.resolveTarget(p.CallerPane, false)
 		if err != nil {
@@ -123,7 +127,8 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, p.Argv[0], p.Argv[1:]...)
+	cmd := childenv.CommandContext(ctx, p.Argv[0], p.Argv[1:]...)
+	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Dir = cwd
 	var logMu sync.Mutex
 	logMu.Lock()
@@ -171,7 +176,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, headerErr.Error())
 	}
-	go s.watchJob(jobID, cmd, cancel, logFile, callerAgent, label, completion)
+	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion)
 	s.invalidateJobCache()
 
 	return api.Success(id, api.RunStartedResult{
@@ -228,9 +233,10 @@ func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc
 		if j, _ := store.CommandRow(jobID); j == nil || j.Status != "cancelling" {
 			_, _ = store.MarkCommandCancelled(jobID)
 		}
+		return // cancellation owns its notice; never also report an exit
 	}
 
-	if callerAgent == "" || completion == "none" {
+	if !writeFinish || completion == "none" {
 		return
 	}
 	body := fmt.Sprintf("[gtx run] exit=%d label=%s job=%s details: gtx log %s",
@@ -240,11 +246,7 @@ func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc
 			body += "\n" + tail
 		}
 	}
-	if _, ierr := store.InsertMessage(dispatch.JobsRoom, "",
-		dispatch.RunShellActor, callerAgent, body, nil, false); ierr != nil {
-		return
-	}
-	s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, callerAgent) })
+	s.queueJobNotice(store, callerAgent, body, false)
 }
 
 func labelOrDash(s string) string {
@@ -295,7 +297,7 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 	}
 	if pgid <= 0 {
 		// No runner pid recorded — nothing left to signal.
-		_, _ = store.MarkCommandCancelled(job.ID)
+		s.recordCancellation(store, *job, true)
 		return api.Success(id, api.RunCancelledResult{
 			Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "none",
 		})
@@ -304,7 +306,7 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		// Runner already gone → the group may still have orphans;
 		// kill(-pgid, 0) decides whether anything remains.
 		if !processGroupAlive(pgid) {
-			_, _ = store.MarkCommandCancelled(job.ID)
+			s.recordCancellation(store, *job, true)
 			s.invalidateJobCache()
 			return api.Success(id, api.RunCancelledResult{
 				Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "none",
@@ -382,7 +384,13 @@ func (s *Server) cancelIfCancelling(jobID string) {
 		return
 	}
 	if j, err := store.CommandRow(jobID); err == nil && j != nil && j.Status == "cancelling" {
-		_, _ = store.MarkCommandCancelled(jobID)
+		s.recordCancellation(store, *j, false)
+	}
+}
+func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) {
+	if changed, _ := store.MarkCommandCancelled(j.ID); changed && j.Completion != "none" {
+		body := fmt.Sprintf("[gtx run] cancelled label=%s job=%s details: gtx log %s", labelOrDash(j.Label), j.ID, j.ID)
+		s.queueJobNotice(store, j.CallerPane, body, onLoop)
 	}
 }
 
@@ -451,4 +459,19 @@ func (s *Server) jobSnapshot() ([]dispatch.Job, map[string]bool) {
 		}
 	}
 	return jobs, alive
+}
+
+func (s *Server) queueJobNotice(store *dispatch.Store, caller, body string, onLoop bool) {
+	if !dispatch.IsGlobalPaneID(caller) {
+		_ = store.InsertFailedMessage(dispatch.JobsRoom, "", dispatch.RunShellActor, caller, body, "job notification has no immutable caller pane", nil)
+		return
+	}
+	if _, err := store.InsertMessage(dispatch.JobsRoom, "", dispatch.RunShellActor, caller, body, nil, false); err != nil {
+		return
+	}
+	if onLoop {
+		s.flushJobNudgeFor(dispatch.JobsRoom, caller)
+	} else {
+		s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, caller) })
+	}
 }

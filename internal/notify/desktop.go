@@ -2,6 +2,7 @@ package notify
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/machine"
@@ -30,7 +31,7 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 	run := d.Run
 	if run == nil {
 		run = func(name string, args ...string) error {
-			cmd := exec.Command(name, args...)
+			cmd := childenv.Command(name, args...)
 			if err := cmd.Start(); err != nil {
 				return err
 			}

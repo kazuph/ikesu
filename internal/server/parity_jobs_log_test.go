@@ -15,7 +15,7 @@ func TestParityJobLogRealStreamsAndMetadata(t *testing.T) {
 	dir, _ := startTestServer(t)
 	dialClient(t, dir)
 	var started api.RunStartedResult
-	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{Label: "log-streams",
+	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: firstPaneID(t, dir), Label: "log-streams",
 		Argv:       []string{"/bin/sh", "-c", "printf 'PARITY_STDOUT\\n'; printf 'PARITY_STDERR\\n' >&2; exit 7"},
 		Completion: "none"}, &started)
 	store := openStore(t)

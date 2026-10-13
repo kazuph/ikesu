@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -107,7 +107,7 @@ func Probe(ctx context.Context, target string) error {
 	if target == "" || strings.HasPrefix(target, "-") {
 		return fmt.Errorf("invalid SSH target")
 	}
-	b, err := exec.CommandContext(ctx, "ssh", ProbeArgs(target)...).CombinedOutput()
+	b, err := childenv.CommandContext(ctx, "ssh", ProbeArgs(target)...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ssh probe to %q failed: %v: %s; machine was not saved", target, err, strings.TrimSpace(string(b)))
 	}

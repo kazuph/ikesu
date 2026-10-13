@@ -6,7 +6,6 @@ import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -228,7 +227,7 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 		os.Remove(path)
 		return log, err
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := childenv.Command(argv[0], argv[1:]...)
 	cmd.Dir = p.Root
 	cmd.Env = env
 	var stdout, stderr strings.Builder

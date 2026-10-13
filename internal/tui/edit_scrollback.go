@@ -2,10 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -43,7 +43,7 @@ func (a *App) editScrollback() {
 		editor = os.Getenv("VISUAL")
 	}
 	if editor == "" {
-		cmd := exec.Command("open", f.Name())
+		cmd := childenv.Command("open", f.Name())
 		cmd.Dir = p.SpawnCwd()
 		if err = cmd.Start(); err != nil {
 			os.Remove(f.Name())

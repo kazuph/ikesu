@@ -2,8 +2,8 @@ package machine
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -46,7 +46,7 @@ func RunArgs(p Profile, directory string, argv []string, pane bool) []string {
 // Every transfer omits --delete: remote ignored build products survive.
 func SyncPlan(p Profile, localCwd, directory string) ([][]string, error) {
 	root := localCwd
-	gitRoot, err := exec.Command("git", "-C", localCwd, "rev-parse", "--show-toplevel").Output()
+	gitRoot, err := childenv.Command("git", "-C", localCwd, "rev-parse", "--show-toplevel").Output()
 	gitManaged := err == nil
 	if gitManaged {
 		root = strings.TrimSpace(string(gitRoot))
@@ -64,7 +64,7 @@ func SyncPlan(p Profile, localCwd, directory string) ([][]string, error) {
 	mkdir := []string{"ssh", "-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", p.Target, "mkdir -p -- " + remoteRoot}
 	rsync := []string{"rsync", "-a", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=15", "--exclude=/.git"}
 	if gitManaged {
-		ignored, err := exec.Command("git", "-C", root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").Output()
+		ignored, err := childenv.Command("git", "-C", root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").Output()
 		if err != nil {
 			return nil, fmt.Errorf("read git ignored paths: %w", err)
 		}
@@ -74,7 +74,7 @@ func SyncPlan(p Profile, localCwd, directory string) ([][]string, error) {
 			}
 		}
 		// Preserve tracked files and gitignore negations before applying root patterns.
-		visible, err := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").Output()
+		visible, err := childenv.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").Output()
 		if err != nil {
 			return nil, err
 		}

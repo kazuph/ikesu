@@ -8,7 +8,6 @@ import (
 	"golang.org/x/sys/unix"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -57,7 +56,7 @@ func (s *Supervisor) StartLoginPath() {
 			}
 			readDone := make(chan output, 1)
 			go func() { data, err := io.ReadAll(reader); readDone <- output{data, err} }()
-			cmd := exec.CommandContext(ctx, shell, "-lic", `printf '\000%s\000' "$PATH"`)
+			cmd := childenv.CommandContext(ctx, shell, "-lic", `printf '\000%s\000' "$PATH"`)
 			cmd.Env = childenv.Scrub(os.Environ())
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			cmd.Cancel = func() error { return unix.Kill(-cmd.Process.Pid, unix.SIGKILL) }

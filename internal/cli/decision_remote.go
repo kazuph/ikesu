@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"io"
 	"os/exec"
 	"strings"
@@ -78,7 +79,7 @@ func (r *runner) decisionMachineAnswer(args []string) (bool, int) {
 		fmt.Fprintln(r.errOut(), err)
 		return true, 1
 	}
-	cmd := exec.Command("ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), append([]string{"decision", "answer"}, clean...))...)
+	cmd := childenv.Command("ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), append([]string{"decision", "answer"}, clean...))...)
 	cmd.Stdout, cmd.Stderr = r.out(), r.errOut()
 	if err := cmd.Run(); err != nil {
 		if e, ok := err.(*exec.ExitError); ok {
@@ -124,7 +125,7 @@ func (r *runner) watchRemote(ctx context.Context, p machine.Profile, lines chan<
 func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, owner decisionMachine, lines chan<- decisionWatchLine) remoteWatchResult {
 	child, stop := context.WithCancel(ctx)
 	defer stop()
-	cmd := exec.CommandContext(child, "ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), []string{"decision", "watch"})...)
+	cmd := childenv.CommandContext(child, "ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), []string{"decision", "watch"})...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return remoteWatchResult{reason: err.Error()}
@@ -148,7 +149,7 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 			reason, auth = value, true
 			stop()
 		} else if decisionUnsupported(line) {
-			reason, unsupported = "decision unsupported: "+strings.TrimSpace(line), true
+			reason, unsupported = "decision unsupported (未対応): "+strings.TrimSpace(line), true
 		} else if !auth && !unsupported {
 			reason = strings.TrimSpace(line)
 		}
@@ -237,7 +238,7 @@ type remoteWatchResult struct {
 
 func decisionUnsupported(line string) bool {
 	text := strings.ToLower(line)
-	return strings.Contains(text, "decision") && (strings.Contains(text, "unknown command") || strings.Contains(text, "unrecognized subcommand") || strings.Contains(text, "unrecognised subcommand"))
+	return strings.Contains(text, "decision") && (strings.Contains(text, "unknown command") || strings.Contains(text, "unknown subcommand") || strings.Contains(text, "unrecognized subcommand") || strings.Contains(text, "unrecognised subcommand"))
 }
 func remoteWatchRetry(unsupported *bool, delay time.Duration, result remoteWatchResult) (bool, time.Duration) {
 	if result.observed {

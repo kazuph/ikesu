@@ -3,13 +3,13 @@
 package platform
 
 import (
-	"os/exec"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"strconv"
 	"strings"
 )
 
 func OpenJSONLFiles(pid int) []string {
-	output, err := exec.Command("/usr/sbin/lsof", "-a", "-p", strconv.Itoa(pid), "-Fn").Output()
+	output, err := childenv.Command("/usr/sbin/lsof", "-a", "-p", strconv.Itoa(pid), "-Fn").Output()
 	if err != nil {
 		return nil
 	}

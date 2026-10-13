@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/tui"
 	"golang.org/x/sys/unix"
 	"net"
 	"os"
-	"os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -170,8 +170,8 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return err
 	}
 	defer clientFile.Close()
-	cmd := exec.Command(exe, "--session", s.session, "server", "--handoff-import")
-	cmd.Env = os.Environ()
+	cmd := childenv.Command(exe, "--session", s.session, "server", "--handoff-import")
+	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Dir = s.cwd
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr

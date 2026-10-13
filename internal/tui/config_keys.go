@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -145,8 +144,7 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 	case "pane":
 		_, err = a.OpenPluginPane(a.st.Active, a.focusedPane(), "zoomed", "", cwd, argv, a.keyCommandEnv(cwd), true)
 	case "shell":
-		cmd := exec.Command(shell, "-lc", binding.Command)
-		cmd.Env = childenv.Scrub(os.Environ())
+		cmd := childenv.Command(shell, "-lc", binding.Command)
 		cmd.Dir = cwd
 		cmd.Env = childenv.Scrub(os.Environ())
 		for key, value := range a.keyCommandEnv(cwd) {

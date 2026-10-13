@@ -103,7 +103,11 @@ func ObserveClaudeSessionFile(cwd string, start time.Time) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	root := filepath.Join(home, ".claude", "projects")
+	return observeClaudeRoot(filepath.Join(home, ".claude"), cwd, start)
+}
+
+func observeClaudeRoot(configRoot, cwd string, start time.Time) (string, bool) {
+	root := filepath.Join(configRoot, "projects")
 	// A session file's recorded timestamp precedes its last write, so a
 	// file untouched since before the window cannot qualify; checking
 	// mtime first keeps the scan cheap.
@@ -170,26 +174,57 @@ func codexSessionMeta(path string) (id, cwd string, ts time.Time, ok bool) {
 
 // ObserveCodexSessionFile correlates only recent, fully readable rollouts.
 func ObserveCodexSessionFile(cwd string, start time.Time) (string, bool) {
-	return observeCodexFiles(cwd, start, nil)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	return observeCodexFiles(filepath.Join(home, ".codex", "sessions"), cwd, start, nil)
 }
 
 // ObserveProcessSession additionally uses rollouts opened by the live process.
-func ObserveProcessSession(agent, cwd string, start time.Time, job platform.ForegroundJob) (string, bool) {
-	if agent != "codex" {
-		return ObserveSessionFile(agent, cwd, start)
+func ObserveProcessSession(agent, cwd string, start time.Time, job platform.ForegroundJob, environments ...[]string) (string, bool) {
+	env := os.Environ()
+	if len(environments) > 0 {
+		env = environments[0]
 	}
-	var paths []string
-	for _, process := range job.Processes {
-		paths = append(paths, platform.OpenJSONLFiles(process.PID)...)
+	values := map[string]string{}
+	for _, kv := range env {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok {
+			values[k] = v
+		}
 	}
-	return observeCodexFiles(cwd, start, paths)
+	home := values["HOME"]
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	switch agent {
+	case "claude":
+		root := values["CLAUDE_CONFIG_DIR"]
+		if root == "" {
+			root = filepath.Join(home, ".claude")
+		}
+		if id, ok := observeClaudeRuntime(root, cwd, start, job); ok {
+			return id, true
+		}
+		return observeClaudeRoot(root, cwd, start)
+	case "codex":
+		root := values["CODEX_HOME"]
+		if root == "" {
+			root = filepath.Join(home, ".codex")
+		}
+		var paths []string
+		for _, process := range job.Processes {
+			paths = append(paths, platform.OpenJSONLFiles(process.PID)...)
+		}
+		return observeCodexFiles(filepath.Join(root, "sessions"), cwd, start, paths)
+	}
+	return "", false
 }
-func observeCodexFiles(cwd string, start time.Time, opened []string) (string, bool) {
-	home, err := os.UserHomeDir()
-	if err != nil || cwd == "" {
+func observeCodexFiles(root, cwd string, start time.Time, opened []string) (string, bool) {
+	if cwd == "" {
 		return "", false
 	}
-	root := filepath.Join(home, ".codex", "sessions")
 	paths := map[string]bool{}
 	for _, path := range opened {
 		paths[path] = true
@@ -221,6 +256,9 @@ func observeCodexFiles(cwd string, start time.Time, opened []string) (string, bo
 			continue
 		}
 		id, fcwd, ts, ok := codexSessionMeta(path)
+		if !ts.IsZero() && ts.Before(cutoff) {
+			continue
+		}
 		if !ok || fcwd == "" {
 			uncertain = true
 			continue

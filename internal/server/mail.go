@@ -11,13 +11,8 @@ import (
 	"github.com/kazuph/goterrace/internal/dispatch"
 )
 
-// Durable mailbox: msg.* API handlers, recipient resolution, and the
-// queued→in_flight→delivered delivery pipeline. Semantics mirror herdr's
-// src/app/msg.rs: regular mail is addressed to a pane id and submitted only
-// when the pane's status is idle/working/done; job mail (room gtx-jobs) is
-// addressed to the agent's mailbox name and delivered to anything that is
-// not blocked. A message is marked delivered only after every byte reached
-// the pane's PTY.
+// Durable mail is persisted by global pane ID and acknowledged after PTY writes.
+// The jobs room batches notifications; ordinary mail submits each body in order.
 
 // mailWrite is one unit of work for the serialized delivery worker.
 type mailWrite struct {
@@ -41,10 +36,12 @@ func (s *Server) mailWorker() {
 	for w := range s.mailCh {
 		p := s.sup.Get(w.pane)
 		if p == nil {
+			s.failMissingJobWrite(w)
 			s.mailDone(w)
 			continue
 		}
 		if _, err := p.WriteToPTY(w.payload); err != nil {
+			s.failMissingJobWrite(w)
 			s.mailDone(w)
 			continue
 		}
@@ -196,6 +193,7 @@ func (s *Server) resolveTarget(target string, agentOnly bool) (paneTarget, *api.
 			}
 			return paneTarget{pid: n, wsIdx: wsIdx, tabIdx: tabIdx}, nil
 		}
+		return paneTarget{}, &api.Error{Code: api.ErrAgentNotFound, Message: fmt.Sprintf("pane target not found: %s", target)}
 	}
 	var matches []paneTarget
 	s.eachPane(func(pid, wsIdx, tabIdx int) {
@@ -237,13 +235,19 @@ func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
 		return api.Failure(id, api.ErrMsgWildcard,
 			"wildcard recipient '*' is not supported; specify one agent or pane target")
 	}
-	recipient, err := s.resolveMsgRecipient(room, p.To)
-	if err != nil {
-		return api.Failure(id, err.Code, err.Message)
-	}
 	store, derr := s.db()
 	if derr != nil {
 		return api.Failure(id, api.ErrMsgStore, derr.Error())
+	}
+	recipient, err := s.resolveMsgRecipient(room, p.To)
+	if room == dispatch.JobsRoom && p.FromAgent == dispatch.RunShellActor && !dispatch.IsGlobalPaneID(p.To) {
+		err = &api.Error{Code: api.ErrInvalidMsgAgent, Message: "job notification requires immutable global caller pane ID"}
+	}
+	if err != nil {
+		if e := store.InsertFailedMessage(room, p.Project, from, p.To, p.Body, err.Message, p.ReplyTo); e != nil {
+			return api.Failure(id, api.ErrMsgStore, e.Error())
+		}
+		return api.Failure(id, err.Code, err.Message)
 	}
 	m, derr := store.InsertMessage(room, p.Project, from, recipient, p.Body, p.ReplyTo, false)
 	if derr != nil {
@@ -274,14 +278,7 @@ func (s *Server) resolveMsgRecipient(room, target string) (string, *api.Error) {
 	if err != nil {
 		return "", err
 	}
-	if room == dispatch.JobsRoom {
-		name, ok := s.mailboxName(t.pid)
-		if !ok {
-			return "", &api.Error{Code: api.ErrAgentNotFound,
-				Message: fmt.Sprintf("agent target %s has no reported agent identity", target)}
-		}
-		return name, nil
-	}
+
 	return fmtPaneID(t.pid), nil
 }
 
@@ -293,13 +290,7 @@ func (s *Server) recipientAliases(room, toAgent string) []string {
 		return []string{toAgent}
 	}
 	aliases := []string{fmtPaneID(t.pid)}
-	if room == dispatch.JobsRoom {
-		if name, ok := s.mailboxName(t.pid); ok && name != aliases[0] {
-			if other, oerr := s.resolveTarget(name, false); oerr == nil && other.pid == t.pid {
-				aliases = append(aliases, name)
-			}
-		}
-	}
+
 	return aliases
 }
 
@@ -458,8 +449,16 @@ func (s *Server) flushJobNudgeFor(room, toAgent string) bool {
 }
 
 func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
+	if !dispatch.IsGlobalPaneID(n.ToAgent) {
+		s.failJobQueue(n, "job notification requires immutable global caller pane ID")
+		return false
+	}
 	t, err := s.resolveTarget(n.ToAgent, false)
 	if err != nil {
+		s.failJobQueue(n, err.Message)
+		return false
+	}
+	if s.sup.Get(t.pid) == nil {
 		return false
 	}
 	if s.app.PaneStatusKey(t.pid) == "blocked" {
@@ -491,13 +490,23 @@ func (s *Server) flushMailForPane(pid int) {
 	if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
 		s.flushRegularForPane(pid)
 	}
-	if name, ok := s.mailboxName(pid); ok {
-		s.flushJobNudgesFor(name)
-	}
+	s.flushJobNudgesFor(fmtPaneID(pid))
 }
 
 // flushAllMail runs once at server start.
 func (s *Server) flushAllMail() {
+	if dispatch.DBExists(s.session) {
+		if store, err := s.db(); err == nil {
+			if msgs, err := store.PendingJobMessages(); err == nil {
+				for _, m := range msgs {
+					if _, e := s.resolveTarget(m.ToAgent, false); e != nil {
+						_ = store.FailMessage(m.ID, e.Message)
+					}
+				}
+			}
+		}
+	}
+
 	s.eachPane(func(pid, _, _ int) {
 		if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
 			s.flushMailForPane(pid)
@@ -526,4 +535,32 @@ func (s *Server) encodeMailFor(pid int, body string) []byte {
 		return encodeMailBody(body, p.BracketedPasteMode())
 	}
 	return encodeMailBody(body, false)
+}
+
+func (s *Server) failJobQueue(n dispatch.PendingNudge, reason string) {
+	if store, err := s.db(); err == nil {
+		if msgs, err := store.PendingMessagesForAgent(n.Room, n.ToAgent); err == nil {
+			for _, m := range msgs {
+				_ = store.FailMessage(m.ID, reason)
+			}
+		}
+	}
+}
+
+// A pane closed after enqueue is a failed destination, while a surviving
+// owner with no ready runtime must retain its durable queue.
+func (s *Server) failMissingJobWrite(w mailWrite) {
+	if w.room != dispatch.JobsRoom {
+		return
+	}
+	s.app.Do(func() { s.failMissingJobWriteOnLoop(w) })
+}
+func (s *Server) failMissingJobWriteOnLoop(w mailWrite) {
+	if _, err := s.resolveTarget(fmtPaneID(w.pane), false); err != nil {
+		if store, e := s.db(); e == nil {
+			for _, id := range w.msgIDs {
+				_ = store.FailMessage(id, err.Message)
+			}
+		}
+	}
 }

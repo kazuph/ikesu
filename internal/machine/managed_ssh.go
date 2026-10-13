@@ -3,9 +3,9 @@ package machine
 import (
 	"context"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/config"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 )
@@ -51,7 +51,7 @@ func (m *ManagedSSH) Close() {
 		// Match the existing SSH connection deadline; closing affects only the
 		// per-attachment control master created with this private socket.
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		_ = exec.CommandContext(ctx, "ssh", m.Args([]string{"-O", "exit", "-o", "BatchMode=yes", "--", m.Target})...).Run()
+		_ = childenv.CommandContext(ctx, "ssh", m.Args([]string{"-O", "exit", "-o", "BatchMode=yes", "--", m.Target})...).Run()
 		cancel()
 	}
 	_ = os.RemoveAll(m.Dir)

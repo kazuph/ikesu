@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"io"
 	"os"
 	"os/exec"
@@ -133,7 +134,7 @@ func (r *runner) runCLI(args []string) int {
 		cwd = ""
 	}
 	if paneMode {
-		return r.runPaneCLI(argv, label, cwd, split, closeOnSuccess)
+		return r.runPaneCLI(argv, label, cwd, split, closeOnSuccess, caller)
 	}
 	return r.runBackgroundCLI(argv, label, cwd, caller, completion)
 }
@@ -187,17 +188,28 @@ func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion 
 // The wrapper runs the command, logs to job-logs, sends the caller pane a
 // gtx-jobs completion nudge, and closes its own pane on success when
 // --close-on-success was given — mirroring herdr's run --pane contract.
-func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSuccess bool) int {
-	caller, err := r.resolveCurrentPaneID()
+func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSuccess bool, explicitCaller string) int {
+	caller := explicitCaller
+	var err error
+	if caller == "" {
+		caller, err = r.resolveCurrentPaneID()
+	}
 	if err != nil {
 		fmt.Fprintln(r.errOut(), err.Error())
 		return 1
 	}
-	callerAgent := callerAgentName(r, caller)
-	if callerAgent == "" {
-		fmt.Fprintf(r.errOut(), "gtx run --pane: caller pane %s has no agent name; report one with `gtx agent rename`\n", caller)
+	rawCaller, e := r.request("cli:run:caller", api.MethodPaneGet, api.PaneTarget{PaneID: caller})
+	var callerResponse api.Response
+	if e != nil || json.Unmarshal(rawCaller, &callerResponse) != nil || callerResponse.Err != nil {
+		fmt.Fprintln(r.errOut(), "gtx run --pane: caller pane could not be resolved")
 		return 1
 	}
+	var callerInfo api.PaneInfoResult
+	if json.Unmarshal(callerResponse.Result, &callerInfo) != nil || !dispatch.IsGlobalPaneID(callerInfo.Pane.PaneID) {
+		return usageErr(r, "invalid caller pane response")
+	}
+	caller = callerInfo.Pane.PaneID
+	callerAgent := caller
 	if label == "" {
 		label = defaultRunLabel(argv)
 	}
@@ -223,6 +235,22 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 		return 1
 	}
 	paneID := res.Pane.PaneID
+	store, e := dispatch.Open(dispatch.DBPath(r.o.Session))
+	if e != nil {
+		fmt.Fprintln(r.errOut(), e)
+		return 1
+	}
+	jobCwd := cwd
+	if jobCwd == "" && res.Pane.Cwd != nil {
+		jobCwd = *res.Pane.Cwd
+	}
+	e = store.InsertCommand(job, label, shellCommandFromArgs(argv), jobCwd, caller, caller, "summary", dispatch.JobLogPath(job, label, r.o.Session))
+	store.Close()
+	if e != nil {
+		fmt.Fprintln(r.errOut(), e)
+		return 1
+	}
+
 	_, _ = r.request("cli:run:rename", api.MethodPaneRename,
 		api.PaneRenameParams{PaneID: paneID, Label: &label})
 
@@ -449,7 +477,7 @@ func (r *runner) logJobCLI(args []string) int {
 // the job log, sends the caller a gtx-jobs completion nudge, and closes
 // the pane per --close-on-success / --close-on-exit (herdr's __pane-run).
 func (r *runner) paneRunWrapper(args []string) int {
-	var parentAgent, target, jobID, label string
+	var target, jobID, label string
 	closeOnSuccess, closeOnExit := false, false
 	i := 0
 	for i < len(args) && args[i] != "--" {
@@ -460,7 +488,7 @@ func (r *runner) paneRunWrapper(args []string) int {
 				fmt.Fprintln(r.errOut(), "missing value for --parent-agent")
 				return 2
 			}
-			parentAgent = v
+			_ = v
 		case "--target":
 			v, ok := flagValue(args, &i)
 			if !ok {
@@ -514,11 +542,18 @@ func (r *runner) paneRunWrapper(args []string) int {
 		return 1
 	}
 	defer log.Close()
+	if store, err := dispatch.Open(dispatch.DBPath(r.o.Session)); err == nil {
+		if job, e := store.CommandRow(jobID); e == nil && job != nil {
+			_ = store.MarkCommandRunning(jobID, int64(os.Getpid()))
+		}
+		store.Close()
+	}
 	started := time.Now()
 	fmt.Fprintf(log, "== gtx run %s label=%s started=%s cmd=%s\n\n",
 		jobID, label, started.Format(time.RFC3339), command)
 
-	cmd := exec.Command("/bin/sh", "-lc", command)
+	cmd := childenv.Command("/bin/sh", "-lc", command)
+	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Stdin = os.Stdin
 	wout, werr := io.MultiWriter(os.Stdout, log), io.MultiWriter(os.Stderr, log)
 	cmd.Stdout, cmd.Stderr = wout, werr
@@ -527,13 +562,19 @@ func (r *runner) paneRunWrapper(args []string) int {
 	fmt.Fprintf(log, "\n== gtx run %s exit=%d finished=%s\n",
 		jobID, code, time.Now().Format(time.RFC3339))
 
-	if parentAgent != "" {
+	{
 		line := fmt.Sprintf("[gtx run] exit=%d label=%s pane=%s details: gtx log %s",
 			code, oneLineField(label), target, jobID)
-		_, _ = r.request("cli:pane-run:notify", api.MethodMsgSend, api.MsgSendParams{
-			Room: dispatch.JobsRoom, FromAgent: dispatch.RunShellActor,
-			To: parentAgent, Body: line,
-		})
+		caller := ""
+		if store, err := dispatch.Open(dispatch.DBPath(r.o.Session)); err == nil {
+			if job, e := store.CommandRow(jobID); e == nil && job != nil {
+				caller = job.CallerPane
+				exit := int64(code)
+				_, _ = store.MarkCommandFinished(jobID, &exit)
+			}
+			store.Close()
+		}
+		r.notifyPaneJob(caller, line)
 	}
 	if closeOnExit || (closeOnSuccess && code == 0) {
 		if paneID, err := r.resolveCurrentPaneID(); err == nil {
@@ -549,7 +590,7 @@ func (r *runner) paneRunWrapper(args []string) int {
 	// login shell (herdr --pane leaves the pane open on failure / without
 	// a close flag).
 	if sh := os.Getenv("SHELL"); sh != "" {
-		_ = syscall.Exec(sh, []string{sh, "-l"}, os.Environ())
+		_ = syscall.Exec(sh, []string{sh, "-l"}, childenv.Scrub(os.Environ()))
 	}
 	return code
 }
@@ -577,4 +618,26 @@ func runCmdExitCode(cmd *exec.Cmd) int {
 		return 1
 	}
 	return 0
+}
+
+// A stopped server cannot confirm disappearance, so only a proven ID queues.
+func (r *runner) notifyPaneJob(caller, body string) {
+	params := api.MsgSendParams{Room: dispatch.JobsRoom, FromAgent: dispatch.RunShellActor, To: caller, Body: body}
+	if _, err := r.request("cli:pane-run:notify", api.MethodMsgSend, params); err == nil {
+		return
+	}
+	store, err := dispatch.Open(dispatch.DBPath(r.o.Session))
+	if err != nil {
+		fmt.Fprintln(r.errOut(), err)
+		return
+	}
+	defer store.Close()
+	if !dispatch.IsGlobalPaneID(caller) {
+		_ = store.InsertFailedMessage(dispatch.JobsRoom, "", dispatch.RunShellActor, caller, body, "job notification has no immutable caller pane", nil)
+		return
+	}
+	_, err = store.InsertMessage(dispatch.JobsRoom, "", dispatch.RunShellActor, caller, body, nil, false)
+	if err != nil {
+		fmt.Fprintln(r.errOut(), err)
+	}
 }

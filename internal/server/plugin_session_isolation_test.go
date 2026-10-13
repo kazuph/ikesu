@@ -58,7 +58,7 @@ func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
 		t.Errorf("other session rooms leaked: %+v", rooms)
 	}
 	var job api.RunStartedResult
-	apiOK(t, first, "run.start", api.RunStartParams{Label: "isolation-proof", Argv: []string{"/usr/bin/true"}, Completion: "none"}, &job)
+	apiOK(t, first, "run.start", api.RunStartParams{CallerPane: firstPaneID(t, first), Label: "isolation-proof", Argv: []string{"/usr/bin/true"}, Completion: "none"}, &job)
 	var out, err bytes.Buffer
 	code := cli.Run([]string{"run", "list"}, cli.Options{Session: "other", Explicit: true, Stdout: &out, Stderr: &err})
 	if code != 0 {

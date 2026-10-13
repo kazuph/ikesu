@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -53,7 +52,7 @@ func (s *Store) Install(source, ref string, confirm func(InstallPreview) bool) (
 	defer os.RemoveAll(temporary)
 	checkout := filepath.Join(temporary, "checkout")
 	runGit := func(args ...string) (string, error) {
-		cmd := exec.Command("git", args...)
+		cmd := childenv.Command("git", args...)
 		cmd.Env = childenv.Scrub(os.Environ())
 		data, err := cmd.CombinedOutput()
 		if err != nil {
@@ -107,7 +106,7 @@ func (s *Store) Install(source, ref string, confirm func(InstallPreview) bool) (
 		if !supported(effectivePlatforms(build.Platforms, m.Platforms)) {
 			continue
 		}
-		cmd := exec.Command(build.Command[0], build.Command[1:]...)
+		cmd := childenv.Command(build.Command[0], build.Command[1:]...)
 		cmd.Env = []string{}
 		cmd.Dir = root
 		for _, kv := range childenv.Scrub(os.Environ()) {

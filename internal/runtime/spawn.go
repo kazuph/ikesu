@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/guard"
 	"os"
 	"os/exec"
@@ -55,7 +56,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 
 	var cmd *exec.Cmd
 	if len(argv) > 0 {
-		cmd = exec.Command(executionArgv[0], executionArgv[1:]...)
+		cmd = childenv.Command(executionArgv[0], executionArgv[1:]...)
 	} else {
 		s.mu.Lock()
 		shell, mode := s.defaultShell, s.shellMode
@@ -70,7 +71,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		if mode == "login" || mode != "non_login" && goruntime.GOOS == "darwin" {
 			args = append(args, "-l")
 		}
-		cmd = exec.Command(shell, args...)
+		cmd = childenv.Command(shell, args...)
 
 	}
 	cmd.Dir = cwd

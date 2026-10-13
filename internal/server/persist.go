@@ -8,8 +8,8 @@ package server
 
 import (
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"syscall"
 	"time"
 
@@ -141,7 +141,7 @@ func (s *Server) spawnSuccessor() {
 	}
 	defer logf.Close()
 
-	cmd := exec.Command(exe, "--session", s.session, "server")
+	cmd := childenv.Command(exe, "--session", s.session, "server")
 	cmd.Args[0] = os.Args[0]
 	cmd.Dir = s.cwd
 	cmd.Stdin = devNull

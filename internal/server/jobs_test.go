@@ -43,7 +43,7 @@ func TestRunCancelEscalatesAndConfirmsGroupGone(t *testing.T) {
 	dialClient(t, dir) // keep the server alive while jobs run
 
 	var started api.RunStartedResult
-	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{
+	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: firstPaneID(t, dir),
 		Label:      "cancel-me",
 		Argv:       []string{"/bin/sh", "-c", `trap "" TERM; echo ready; while :; do sleep 60; done`},
 		Completion: "none",

@@ -3,6 +3,7 @@ package client
 import (
 	"errors"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"io"
 	"os"
 	"os/exec"
@@ -50,7 +51,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 	if binary == "" {
 		binary = "gtx"
 	}
-	cmd := exec.Command("ssh", managed.Args(machine.ForwardArgs(profile, binary, []string{"__endpoint"}))...)
+	cmd := childenv.Command("ssh", managed.Args(machine.ForwardArgs(profile, binary, []string{"__endpoint"}))...)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

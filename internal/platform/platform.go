@@ -4,8 +4,8 @@
 package platform
 
 import (
+	"github.com/kazuph/goterrace/internal/childenv"
 	"os"
-	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
@@ -51,7 +51,7 @@ func ForegroundJobOf(fd int) ForegroundJob { return foregroundJob(fd) }
 // `ps` so it works on both darwin and linux without extra plumbing; this is
 // called a handful of times per pane.current request, not in hot loops.
 func PPID(pid int) int {
-	out, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
+	out, err := childenv.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return 0
 	}
@@ -64,8 +64,8 @@ func PPID(pid int) int {
 // session file with the process that started it.
 func ProcStart(pid int) (time.Time, bool) {
 	if runtime.GOOS == "darwin" {
-		cmd := exec.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid))
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		cmd := childenv.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid))
+		cmd.Env = append(childenv.Scrub(os.Environ()), "LC_ALL=C")
 		out, err := cmd.Output()
 		if err != nil {
 			return time.Time{}, false
@@ -74,7 +74,7 @@ func ProcStart(pid int) (time.Time, bool) {
 		return ts, err == nil
 	}
 
-	out, err := exec.Command("ps", "-o", "etimes=", "-p", strconv.Itoa(pid)).Output()
+	out, err := childenv.Command("ps", "-o", "etimes=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return time.Time{}, false
 	}

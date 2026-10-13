@@ -71,7 +71,7 @@ func scanJob(st *sqlite3.Stmt) Job {
 		Label:       st.ColumnText(2),
 		Command:     st.ColumnText(3),
 		Cwd:         st.ColumnText(4),
-		CallerPane:  st.ColumnText(5),
+		CallerPane:  immutableCaller(st.ColumnText(5)),
 		CallerAgent: st.ColumnText(6),
 		Completion:  st.ColumnText(7),
 		Status:      st.ColumnText(8),
@@ -201,4 +201,11 @@ func (s *Store) MarkCommandCancelled(id string) (bool, error) {
 		return false, err
 	}
 	return s.db.Changes() > 0, nil
+}
+
+func immutableCaller(value string) string {
+	if IsGlobalPaneID(value) {
+		return value
+	}
+	return ""
 }

@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/childenv"
 	"io"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -134,7 +134,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.status = "awaiting approval"
 		e.approval = event.approval
 		e.reason = event.approval
-		cmd := exec.Command("open", "--", event.approval)
+		cmd := childenv.Command("open", "--", event.approval)
 		if err := cmd.Start(); err != nil {
 			e.reason = event.approval + "; browser: " + err.Error()
 		} else {
