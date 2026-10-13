@@ -611,10 +611,10 @@ func TestServerRestartKeepsPanes(t *testing.T) {
 func TestRawLFToPane(t *testing.T) {
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	s.send("od -An -tx1 -N2\r") // read exactly 2 bytes then exit
+	prepareByteReader(s, 2)
 	s.send("A\n")
 	s.waitFor("od bytes", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "41  0a")
+		return strings.Contains(strings.Join(strings.Fields(tx), " "), "41 0a")
 	})
 	if strings.Contains(s.text(), "0d") {
 		t.Fatalf("LF was translated to CR:\n%s", s.text())
@@ -626,9 +626,9 @@ func TestRawLFToPane(t *testing.T) {
 func TestShiftEnterToPane(t *testing.T) {
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	s.send("stty -icanon; od -An -tx1 -N1\r") // read 1 byte then exit
-	s.send("\x1b[13;2:3u")                    // kitty release event first: must emit nothing
-	s.send("\x1b[27;2;13~")                   // legacy Shift+Enter press → bare LF
+	prepareByteReader(s, 1)
+	s.send("\x1b[13;2:3u")  // kitty release event first: must emit nothing
+	s.send("\x1b[27;2;13~") // legacy Shift+Enter press → bare LF
 	s.waitFor("LF only", 10*time.Second, func(tx string) bool {
 		return strings.Contains(tx, " 0a")
 	})
@@ -646,10 +646,10 @@ func TestKittyExplicitShiftEnter(t *testing.T) {
 	s.waitFor("push done", 5*time.Second, func(tx string) bool {
 		return strings.Count(tx, "❯") >= 2
 	})
-	s.send("stty -icanon; od -An -tx1 -N10\r")
+	prepareByteReader(s, 10)
 	s.send("\x1b[27;2;13~") // 10 bytes: ESC [ 2 7 ; 2 ; 1 3 ~
 	s.waitFor("raw legacy seq", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "1b  5b  32  37")
+		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 32 37")
 	})
 }
 
@@ -661,7 +661,7 @@ func TestFixTermQueryResponse(t *testing.T) {
 	// The response is queued on the tty input buffer and read by od.
 	s.send("stty -icanon; printf '\\033[?u'; od -An -tx1 -N5\r")
 	s.waitFor("query response", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "1b  5b  3f  30  75")
+		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 3f 30 75")
 	})
 }
 
@@ -726,4 +726,12 @@ func TestBootWithoutTerminalQueryRepliesAllowsInputAndLateReplies(t *testing.T) 
 	s.waitFor("late pixel capability applied", 5*time.Second, func(string) bool { return strings.Contains(raw.String(), "\x1b[?1016h") })
 	s.send("printf 'LATE_REPLY_%s\\n' READY\r")
 	s.waitFor("input after terminal replies", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "LATE_REPLY_READY") })
+}
+
+// Synchronize with the command rather than letting zsh consume typeahead
+// while it is still preparing od. Escape the marker so command echo cannot
+// satisfy the readiness check; inspect bytes with tty translations disabled.
+func prepareByteReader(s *session, n int) {
+	s.send(fmt.Sprintf("saved=$(stty -g); stty -icanon -echo -icrnl -inlcr; printf '\\122\\105\\101\\104\\131\\137\\102\\131\\124\\105\\123\\n'; od -An -tx1 -N%d; stty \"$saved\"\r", n))
+	s.waitFor("byte reader ready", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "READY_BYTES") })
 }

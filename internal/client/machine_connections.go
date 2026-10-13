@@ -80,6 +80,11 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 		go func() {
 			defer close(writing)
 			if err := connection.writeQueued(ctx); err != nil && ctx.Err() == nil {
+				// The server can close its read half before the queued restart/exit.
+				// Stop ACK writes, but let the reader consume that message or EOF.
+				if isClosedRenderAck(err) {
+					return
+				}
 				m.post(ctx, endpointEvent{id: id, attempt: attempt, err: err})
 				cancel()
 			}

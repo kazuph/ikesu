@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -16,7 +17,7 @@ func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls [][]string
-	d := Desktop{Executable: "/tmp/my gtx", TerminalBundleID: "com.mitchellh.ghostty", ConfigPath: filepath.Join(t.TempDir(), "config.toml"), LookPath: func(string) (string, error) { return "/test/terminal-notifier", nil }, Run: func(name string, args ...string) error {
+	d := Desktop{Executable: "/tmp/my gtx", TerminalBundleID: "com.mitchellh.ghostty", ConfigPath: filepath.Join(t.TempDir(), "config.toml"), LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
 		calls = append(calls, append([]string{name}, args...))
 		return nil
 	}}
@@ -24,7 +25,13 @@ func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
 	if err := d.Deliver(n, c, "other-session", "mini"); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || !strings.Contains(strings.Join(calls[0], " "), "'--machine' 'mini' 'pane' 'focus' 'p12'") || !strings.Contains(strings.Join(calls[0], " "), "-activate com.mitchellh.ghostty") || calls[1][1] != filepath.Join(filepath.Dir(d.ConfigPath), "done.mp3") {
+	if len(calls) != 2 {
+		t.Fatal(calls)
+	}
+	if runtime.GOOS == "darwin" && (!strings.Contains(strings.Join(calls[0], " "), "'--machine' 'mini' 'pane' 'focus' 'p12'") || !strings.Contains(strings.Join(calls[0], " "), "-activate com.mitchellh.ghostty") || calls[1][1] != filepath.Join(filepath.Dir(d.ConfigPath), "done.mp3")) {
+		t.Fatal(calls)
+	}
+	if runtime.GOOS == "linux" && (strings.Join(calls[0], " ") != "/test/notify-send -- 2 workspace answer" || calls[1][0] != "/test/paplay" || calls[1][1] != filepath.Join(filepath.Dir(d.ConfigPath), "done.mp3")) {
 		t.Fatal(calls)
 	}
 	calls = nil
@@ -35,14 +42,21 @@ func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
 	}
 	calls = nil
 	n.Agent = "codex"
-	if err := d.Deliver(n, c, "local", ""); err != nil || len(calls) != 2 || calls[1][0] != "/usr/bin/afplay" || calls[1][1] != filepath.Join(filepath.Dir(d.ConfigPath), "request.mp3") {
+	if err := d.Deliver(n, c, "local", ""); err != nil || len(calls) != 2 || calls[1][0] != testPlaybackCommand() || calls[1][1] != filepath.Join(filepath.Dir(d.ConfigPath), "request.mp3") {
 		t.Fatal("question sound override was not invoked once", calls, err)
 	}
 	n.Agent = "claude"
 	d.LookPath = func(string) (string, error) { return "", errors.New("missing") }
 	calls = nil
-	if err := d.Deliver(n, c, "local", ""); err != nil || len(calls) != 1 || calls[0][0] != "/usr/bin/osascript" || strings.Contains(strings.Join(calls[0], " "), "pane focus") {
-		t.Fatal(calls, err)
+	if err := d.Deliver(n, c, "local", ""); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "darwin" {
+		if len(calls) != 1 || calls[0][0] != "/usr/bin/osascript" || strings.Contains(strings.Join(calls[0], " "), "pane focus") {
+			t.Fatal(calls)
+		}
+	} else if len(calls) != 0 {
+		t.Fatal(calls)
 	}
 }
 func TestSoundPathsAgentOverridesAndDefaults(t *testing.T) {
@@ -62,4 +76,11 @@ func TestSoundPathsAgentOverridesAndDefaults(t *testing.T) {
 	if _, on := SoundPath(config.Config{}, "droid", "finished"); on {
 		t.Fatal("droid default must be muted")
 	}
+}
+
+func testPlaybackCommand() string {
+	if runtime.GOOS == "darwin" {
+		return "/usr/bin/afplay"
+	}
+	return "/test/paplay"
 }

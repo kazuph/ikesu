@@ -128,8 +128,8 @@ func perfBin(t *testing.T) string {
 // checks the medians against the SPEC's absolute limits. When the load
 // average at a run's start was >= 4 the verdict is 保留, not a failure.
 func TestAbsolute(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("perf tests measure on the macOS mini")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("perf tests support macOS and Linux")
 	}
 	bin := perfBin(t)
 	h := newHarness(t)
@@ -146,8 +146,8 @@ func TestAbsolute(t *testing.T) {
 // TestRelative alternates GTX_PERF_BIN and GTX_PERF_BASELINE_BIN relRuns
 // times each per startup mode and checks the SPEC's regression limits.
 func TestRelative(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("perf tests measure on the macOS mini")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("perf tests support macOS and Linux")
 	}
 	cur := perfBin(t)
 	base := os.Getenv("GTX_PERF_BASELINE_BIN")
@@ -521,46 +521,12 @@ func waitFileMtime(path string, timeout time.Duration) (time.Time, bool) {
 	}
 }
 
-// procInfo is one row of ps output.
+// procInfo is one OS process snapshot.
 type procInfo struct {
 	ppid   int
 	rssKB  int64
 	cpuSec float64
 	comm   string
-}
-
-func psTable() map[int]procInfo {
-	out, err := exec.Command("ps", "-axo", "pid=,ppid=,rss=,time=,comm=").Output()
-	if err != nil {
-		return nil
-	}
-	tbl := map[int]procInfo{}
-	for _, ln := range strings.Split(string(out), "\n") {
-		f := strings.Fields(ln)
-		if len(f) < 5 {
-			continue
-		}
-		pid, err1 := strconv.Atoi(f[0])
-		ppid, err2 := strconv.Atoi(f[1])
-		rss, err3 := strconv.ParseInt(f[2], 10, 64)
-		if err1 != nil || err2 != nil || err3 != nil {
-			continue
-		}
-		tbl[pid] = procInfo{ppid: ppid, rssKB: rss, cpuSec: parseCPUTime(f[3]), comm: strings.Join(f[4:], " ")}
-	}
-	return tbl
-}
-
-// parseCPUTime reads ps's [[hh:]mm:]ss.frac cumulative CPU time.
-func parseCPUTime(s string) float64 {
-	parts := strings.Split(s, ":")
-	sec, mult := 0.0, 1.0
-	for i := len(parts) - 1; i >= 0; i-- {
-		v, _ := strconv.ParseFloat(parts[i], 64)
-		sec += v * mult
-		mult *= 60
-	}
-	return sec
 }
 
 // gtxPids returns root plus every descendant whose executable is the gtx
@@ -586,7 +552,7 @@ func gtxPids(tbl map[int]procInfo, root int, bins map[string]bool) map[int]bool 
 	return res
 }
 
-// sampler polls ps during a run and accumulates the per-pid max RSS and
+// sampler polls process snapshots and accumulates the per-pid max RSS and
 // latest cumulative CPU for the gtx processes under root.
 type sampler struct {
 	root   int
@@ -656,23 +622,6 @@ func (s *sampler) finish() (rssKB int64, cpuSec float64, procs string) {
 		ss[i] = strconv.Itoa(p)
 	}
 	return rssKB, cpuSec, strings.Join(ss, "+")
-}
-
-// load1 is the 1-minute load average via sysctl (macOS).
-func load1() float64 {
-	out, err := exec.Command("sysctl", "-n", "vm.loadavg").Output()
-	if err != nil {
-		return -1
-	}
-	f := strings.Fields(strings.Trim(string(out), "{} \t\n"))
-	if len(f) == 0 {
-		return -1
-	}
-	v, err := strconv.ParseFloat(f[0], 64)
-	if err != nil {
-		return -1
-	}
-	return v
 }
 
 func median(v []float64) float64 {

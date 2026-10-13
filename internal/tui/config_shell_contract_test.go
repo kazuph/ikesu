@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -34,12 +35,12 @@ func TestConfigDefaultShellAndModeReachRealPTY(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := "CONFIG_SHELL_ARGS="
-			if mode != "non_login" {
+			if mode == "login" || mode == "auto" && runtime.GOOS == "darwin" {
 				want += "-l"
 			}
 			specWaitText(t, a.sup.Get(a.focusedPane()), want)
 			// non_login must not accidentally match the prefix of the login output.
-			if mode == "non_login" {
+			if mode == "non_login" || mode == "auto" && runtime.GOOS != "darwin" {
 				text := a.sup.Get(a.focusedPane()).ScreenText()
 				if strings.Contains(text, "CONFIG_SHELL_ARGS=-l") {
 					t.Fatal(text)

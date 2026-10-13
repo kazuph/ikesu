@@ -236,6 +236,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	var inputSource platform.InputSource
 	defer inputSource.Prefix(false, false)
 	var lastRegions *render.Output
+	renderAckClosed := false
 	// Server → terminal. The server supplies state and pane cells; only
 	// this process composes sidebar, tabs, borders and overlays.
 	for {
@@ -301,7 +302,10 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			if lastRegions == nil {
 				composed.Frame = nil
 				if err := w.firstSnapshot(out, data, &windowTitle, in, composed, m.FocusEpoch); err != nil {
-					return pumpClosed
+					if !isClosedRenderAck(err) {
+						return pumpClosed
+					}
+					renderAckClosed = true
 				}
 				lastRegions = composed
 				continue
@@ -311,9 +315,12 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 				return pumpClosed
 			}
 			composed.Frame = nil
-			if m.RequestAck || !reflect.DeepEqual(lastRegions, composed) {
+			if !renderAckClosed && (m.RequestAck || !reflect.DeepEqual(lastRegions, composed)) {
 				if err := w.send(msg{Type: "rendered", Rendered: composed, FocusEpoch: m.FocusEpoch}); err != nil {
-					return pumpClosed
+					if !isClosedRenderAck(err) {
+						return pumpClosed
+					}
+					renderAckClosed = true
 				}
 				lastRegions = composed
 			}
@@ -373,7 +380,11 @@ func (w *writer) sendLocked(m msg) error {
 	if m.Type != "hello" && !endpoint.Allows(w.available, endpoint.RequiredGeneration(m.Type), w.methods, m.Type) {
 		return fmt.Errorf("endpoint_action_unsupported: %s", m.Type)
 	}
-	return json.NewEncoder(w.conn).Encode(m)
+	err := json.NewEncoder(w.conn).Encode(m)
+	if m.Type == "rendered" && errors.Is(err, syscall.EPIPE) {
+		return &closedRenderAck{err}
+	}
+	return err
 }
 
 // The first visible frame must register its hit regions before stdin can
