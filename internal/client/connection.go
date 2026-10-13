@@ -20,6 +20,7 @@ type endpointConnection struct {
 	snapshots endpoint.SnapshotDecoder
 	queueMu   sync.Mutex
 	queue     []msg
+	writeErr  error
 	wake      chan struct{}
 }
 

@@ -14,6 +14,14 @@ func (c *endpointConnection) enqueue(message msg) error {
 		return fmt.Errorf("endpoint_action_unsupported: %s", message.Type)
 	}
 	c.queueMu.Lock()
+	if c.writeErr != nil {
+		err := c.writeErr
+		c.queueMu.Unlock()
+		if message.Type == "rendered" && isClosedRenderAck(err) {
+			return nil
+		}
+		return err
+	}
 	c.queue = append(c.queue, message)
 	c.queueMu.Unlock()
 	select {
@@ -46,6 +54,10 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 			default:
 			}
 			if err := c.writer.send(message); err != nil {
+				c.queueMu.Lock()
+				c.writeErr = err
+				c.queue = nil
+				c.queueMu.Unlock()
 				return err
 			}
 		}

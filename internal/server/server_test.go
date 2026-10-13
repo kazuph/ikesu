@@ -4,13 +4,16 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -21,10 +24,11 @@ import (
 
 // testConn is a raw client-socket connection for tests.
 type testConn struct {
-	conn      net.Conn
-	rd        *bufio.Reader
-	snapshots endpoint.SnapshotDecoder
-	frames    render.Encoder
+	conn        net.Conn
+	rd          *bufio.Reader
+	snapshots   endpoint.SnapshotDecoder
+	frames      render.Encoder
+	lastRegions *render.Output
 }
 
 func dialClient(t *testing.T, dir string) *testConn {
@@ -56,6 +60,7 @@ func (c *testConn) send(t *testing.T, m clientMsg) {
 func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clientMsg) bool) []clientMsg {
 	t.Helper()
 	var got []clientMsg
+	var ackErr error
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
@@ -63,6 +68,9 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
+			}
+			if ackErr != nil {
+				t.Fatalf("render acknowledgement failed before terminal message: %v", ackErr)
 			}
 			return got // EOF
 		}
@@ -80,13 +88,29 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 				out := render.Compose(in)
 				m.Type, m.Data = "output", encode64(c.frames.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))
 				out.Frame = nil
-				c.send(t, clientMsg{Type: "rendered", Rendered: out, FocusEpoch: m.FocusEpoch})
+				// Match the real client: acknowledge the first frame, an explicit
+				// request, or changed regions rather than every snapshot.
+				if ackErr == nil && (m.RequestAck || c.lastRegions == nil || !reflect.DeepEqual(c.lastRegions, out)) {
+					ackErr = json.NewEncoder(c.conn).Encode(clientMsg{Type: "rendered", Rendered: out, FocusEpoch: m.FocusEpoch})
+					if ackErr != nil && !errors.Is(ackErr, syscall.EPIPE) {
+						t.Fatalf("render acknowledgement: %v", ackErr)
+					}
+					c.lastRegions = out
+				}
 			}
 			got = append(got, m)
 			if pred(m) {
+				// A closed write half can coexist with a queued restart/exit message.
+				// Require that real terminal message; never hide ACK errors on live reads.
+				if ackErr != nil && m.Type != "restart" && m.Type != "exit" && m.Type != "detached" {
+					t.Fatalf("render acknowledgement failed on live read: %v", ackErr)
+				}
 				return got
 			}
 		}
+	}
+	if ackErr != nil {
+		t.Fatalf("render acknowledgement failed without terminal message: %v", ackErr)
 	}
 	return got
 }
