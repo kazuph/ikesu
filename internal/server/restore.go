@@ -216,7 +216,7 @@ func (s *Server) observePaneSession(pid int) {
 		return // already recorded for this exact process; don't re-walk
 	}
 	if ok {
-		if id, found := session.ObserveSessionFile(agent, cwd, start); found {
+		if id, found := session.ObserveProcessSession(agent, cwd, start, job); found {
 			if !hasRec || !strings.HasPrefix(rec.Source, "report:") || rec.Value == "" {
 				title := rec.Title
 				observed := observedSessionRecord(agent, id, title, job)

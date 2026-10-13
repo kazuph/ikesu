@@ -31,7 +31,7 @@ func (a *App) observeLocalSessions() {
 					continue
 				}
 				if hasStart {
-					if id, found := session.ObserveSessionFile(snap.AgentID, snap.Cwd, start); found {
+					if id, found := session.ObserveProcessSession(snap.AgentID, snap.Cwd, start, job); found {
 						a.RecordSession(pid, AgentRecord{Agent: snap.AgentID, Kind: "id", Value: id, Title: rec.Title, Source: "observed:file"})
 						a.localObservedStart[pid] = start
 						continue

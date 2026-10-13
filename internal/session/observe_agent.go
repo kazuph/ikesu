@@ -168,41 +168,75 @@ func codexSessionMeta(path string) (id, cwd string, ts time.Time, ok bool) {
 	return id, cwd, ts, ok && id != "" && !ts.IsZero()
 }
 
-// observeCodexSessionFile scans the day folders sessions/YYYY/MM/DD
-// around the process start for the unique rollout whose session_meta
-// records this cwd and a timestamp within the window (SPEC G3). A meta
-// record without payload.cwd never counts.
+// ObserveCodexSessionFile correlates only recent, fully readable rollouts.
 func ObserveCodexSessionFile(cwd string, start time.Time) (string, bool) {
+	return observeCodexFiles(cwd, start, nil)
+}
+
+// ObserveProcessSession additionally uses rollouts opened by the live process.
+func ObserveProcessSession(agent, cwd string, start time.Time, job platform.ForegroundJob) (string, bool) {
+	if agent != "codex" {
+		return ObserveSessionFile(agent, cwd, start)
+	}
+	var paths []string
+	for _, process := range job.Processes {
+		paths = append(paths, platform.OpenJSONLFiles(process.PID)...)
+	}
+	return observeCodexFiles(cwd, start, paths)
+}
+func observeCodexFiles(cwd string, start time.Time, opened []string) (string, bool) {
 	home, err := os.UserHomeDir()
-	if err != nil {
+	if err != nil || cwd == "" {
 		return "", false
 	}
 	root := filepath.Join(home, ".codex", "sessions")
-	found := ""
-	count := 0
-	for _, day := range []time.Time{start.AddDate(0, 0, -1), start, start.AddDate(0, 0, 1)} {
-		dir := filepath.Join(root, day.Format("2006"), day.Format("01"), day.Format("02"))
-		ents, err := os.ReadDir(dir)
+	paths := map[string]bool{}
+	for _, path := range opened {
+		paths[path] = true
+	}
+	uncertain := false
+	cutoff := start.Add(-sessionFileWindow)
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			if !os.IsNotExist(err) {
+				uncertain = true
+			}
+			return nil
+		}
+		if !d.IsDir() && strings.HasPrefix(d.Name(), "rollout-") && strings.HasSuffix(d.Name(), ".jsonl") {
+			paths[path] = true
+		}
+		return nil
+	}); err != nil {
+		uncertain = true
+	}
+	ids := map[string]bool{}
+	for path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			uncertain = true
 			continue
 		}
-		for _, e := range ents {
-			name := e.Name()
-			if e.IsDir() || !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, ".jsonl") {
-				continue
-			}
-			id, fcwd, ts, ok := codexSessionMeta(filepath.Join(dir, name))
-			if !ok || fcwd != cwd || absDur(ts.Sub(start)) > sessionFileWindow {
-				continue
-			}
-			count++
-			found = id
+		if info.ModTime().Before(cutoff) {
+			continue
 		}
+		id, fcwd, ts, ok := codexSessionMeta(path)
+		if !ok || fcwd == "" {
+			uncertain = true
+			continue
+		}
+		if ts.Before(cutoff) || fcwd != cwd {
+			continue
+		}
+		ids[id] = true
 	}
-	if count != 1 {
+	if uncertain || len(ids) != 1 {
 		return "", false
 	}
-	return found, true
+	for id := range ids {
+		return id, true
+	}
+	return "", false
 }
 
 // observeCmdline reads the resume-shape argv of the pane's running
@@ -236,7 +270,7 @@ func ObserveCmdline(job platform.ForegroundJob) (string, bool) {
 				// codex-style `… resume <id>`; argv[i-1] is the binary.
 				v = pr.Argv[i+1]
 			}
-			if v == "" {
+			if v == "" || strings.HasPrefix(v, "-") {
 				continue
 			}
 			if found == "" {

@@ -4,7 +4,9 @@
 package platform
 
 import (
+	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +63,17 @@ func PPID(pid int) int {
 // Used by the session-file observer to correlate a freshly created agent
 // session file with the process that started it.
 func ProcStart(pid int) (time.Time, bool) {
+	if runtime.GOOS == "darwin" {
+		cmd := exec.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid))
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		out, err := cmd.Output()
+		if err != nil {
+			return time.Time{}, false
+		}
+		ts, err := time.ParseInLocation("Mon Jan _2 15:04:05 2006", strings.TrimSpace(string(out)), time.Local)
+		return ts, err == nil
+	}
+
 	out, err := exec.Command("ps", "-o", "etimes=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return time.Time{}, false

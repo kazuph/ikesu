@@ -484,11 +484,15 @@ func TestObserveCodexSessionFile(t *testing.T) {
 	if _, ok := session.ObserveCodexSessionFile("/other/dir", start); ok {
 		t.Fatal("mismatched cwd must not resolve")
 	}
-	// Rollouts outside the day folders around start are not scanned, even
-	// when their meta claims an in-window timestamp.
+	// A rollout with old mtime is excluded, even with a recent meta timestamp.
 	writeJSONL(t, filepath.Join(home, ".codex", "sessions", "2020", "01", "01",
 		"rollout-2020-01-01T00-00-00-aaaa-bbbb-cccc-dddd-ffff.jsonl"),
 		`{"type":"session_meta","payload":{"id":"sess-old","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
+	oldPath := filepath.Join(home, ".codex", "sessions", "2020", "01", "01", "rollout-2020-01-01T00-00-00-aaaa-bbbb-cccc-dddd-ffff.jsonl")
+	oldTime := start.Add(-121 * time.Second)
+	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
 	id2, ok := session.ObserveCodexSessionFile(cwd, start)
 	if !ok || id2 != "sess-cdx" {
 		t.Fatalf("out-of-day-folder rollout must not count; got %q ok=%v", id2, ok)
@@ -524,6 +528,14 @@ func TestObserveCodexSessionFileStrict(t *testing.T) {
 		t.Fatal("a session_meta mention outside the record type must not identify a session")
 	}
 
+	// Indeterminate in-window files prevent adopting the otherwise valid id.
+	// Exclude these files by mtime before checking the session_id fallback.
+	for _, name := range []string{"rollout-" + start.Format("2006-01-02T15-04-05") + "-aaaa-0000-0000-0000-000000000001.jsonl", "rollout-wrong-type.jsonl"} {
+		old := start.Add(-121 * time.Second)
+		if err := os.Chtimes(filepath.Join(day, name), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// payload.session_id is the fallback when payload.id is absent.
 	rollout("aaaa-0000-0000-0000-000000000004", `"session_id":"sess-fb","timestamp":"`+ts+`","cwd":"`+cwd+`"`)
 	id, ok := session.ObserveCodexSessionFile(cwd, start)
