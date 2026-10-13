@@ -1,0 +1,22 @@
+{
+  "allow_text": true,
+  "body": "質問 1/2 Sections",
+  "kind": "agent_prompt",
+  "multi_select": true,
+  "options": [
+    {
+      "description": "A concise overview.",
+      "id": "1",
+      "label": "Summary",
+      "role": "other"
+    },
+    {
+      "description": "Commands and outputs.",
+      "id": "2",
+      "label": "Evidence",
+      "role": "other"
+    }
+  ],
+  "question_label": "質問 1/2 Sections",
+  "title": "Which sections should the report include?"
+}

@@ -378,10 +378,21 @@ func (p *Pane) ReadLines(source string, strip bool) ([]string, error) {
 	if source != "visible" && source != "recent" && source != "recent_unwrapped" && source != "recent-unwrapped" {
 		return nil, fmt.Errorf("read source %q is not supported in this stage", source)
 	}
-	logical := source == "recent_unwrapped" || source == "recent-unwrapped"
+	return p.readLinesLocked(source, strip), nil
+}
+
+// DetectionLines uses only the current detection screen, never the user's scroll position or history.
+func (p *Pane) DetectionLines() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.readLinesLocked("detection", true)
+}
+
+func (p *Pane) readLinesLocked(source string, strip bool) []string {
+	logical := source == "recent_unwrapped" || source == "recent-unwrapped" || source == "detection"
 	refs := []rowRef{}
 	rows := []uv.Line{}
-	if source != "visible" && !p.altScreen {
+	if source != "visible" && source != "detection" && !p.altScreen {
 		for y := 0; y < p.emu.ScrollbackLen(); y++ {
 			rows = append(rows, p.emu.Scrollback().Line(y))
 			ref := rowRef{}
@@ -419,7 +430,7 @@ func (p *Pane) ReadLines(source string, strip bool) ([]string, error) {
 			out = append(out, text)
 		}
 	}
-	return out, nil
+	return out
 }
 func renderReadRow(row uv.Line, strip, full bool, width int) string {
 	end := len(row)

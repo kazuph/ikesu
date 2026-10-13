@@ -1,0 +1,20 @@
+{
+  "allow_text": false,
+  "kind": "agent_prompt",
+  "multi_select": false,
+  "options": [
+    {
+      "id": "1",
+      "label": "Short",
+      "preview": " Hello team.\n A short report.",
+      "role": "other"
+    },
+    {
+      "id": "2",
+      "label": "Detailed",
+      "preview": " Hello team.\n   Evidence:\n   command output.",
+      "role": "other"
+    }
+  ],
+  "title": "Which draft should we keep?"
+}

@@ -1,0 +1,20 @@
+{
+  "allow_text": false,
+  "body": "最終確認",
+  "kind": "agent_prompt",
+  "multi_select": false,
+  "options": [
+    {
+      "id": "1",
+      "label": "Submit answers",
+      "role": "other"
+    },
+    {
+      "id": "2",
+      "label": "Cancel",
+      "role": "reject"
+    }
+  ],
+  "question_label": "最終確認",
+  "title": "Review your answers ● Which sections should the report include? → Summary, Evidence ● Which language should the report use? → Japanese Ready to submit your answers?"
+}

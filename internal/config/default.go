@@ -1,7 +1,10 @@
 package config
 
 // DefaultExample contains supported settings and is shared with --default-config.
-const DefaultExample = `[theme]
+const DefaultExample = `[decisions]
+screen_prompts = true
+
+[theme]
 name = "catppuccin"
 
 # [theme.custom]

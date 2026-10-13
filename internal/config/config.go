@@ -40,6 +40,9 @@ func (d ToastDelivery) Valid() bool {
 
 // Config is the parsed config file.
 type Config struct {
+	Decisions struct {
+		ScreenPrompts *bool `toml:"screen_prompts"`
+	} `toml:"decisions"`
 	Guard      guard.Config   `toml:"guard"`
 	Warnings   []string       `toml:"-"`
 	Onboarding *bool          `toml:"onboarding"`

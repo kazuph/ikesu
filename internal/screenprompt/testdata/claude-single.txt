@@ -1,0 +1,16 @@
+──────────────────────────────────────────────────────
+ ☐ Format
+
+Which output format should the temporary report use?
+
+❯ 1. Plain
+     A compact plain text report, easy to paste into
+     terminals.
+  2. Markdown
+     A structured Markdown report with headings and
+     links.
+  3. Type something.
+──────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

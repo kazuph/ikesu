@@ -1,0 +1,24 @@
+{
+  "allow_text": false,
+  "kind": "tool_permission",
+  "multi_select": false,
+  "options": [
+    {
+      "id": "1",
+      "label": "Yes, proceed (y)",
+      "role": "approve"
+    },
+    {
+      "description": "with `printf observation > /tmp/gs-j0m1z8np/ outside.txt` (p)",
+      "id": "2",
+      "label": "Yes, and don't ask again for commands that start",
+      "role": "approve"
+    },
+    {
+      "id": "3",
+      "label": "No, and tell Codex what to do differently (esc)",
+      "role": "reject"
+    }
+  ],
+  "title": "+ Show details Would you like to run the following command? Environment: local Reason: 権限ダイアログの観察のため、指定の一時ファイルへ observation を書き込むコマンドを承認しますか？ $ printf observation > /tmp/gs-j0m1z8np/outside.txt"
+}

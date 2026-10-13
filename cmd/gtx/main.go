@@ -127,7 +127,7 @@ dispatch:
 				os.Exit(code)
 			}
 			fallthrough
-		case "guard", "decision", "config", "wait", "plugin", "pane", "workspace", "worktree", "tab",
+		case "status", "guard", "decision", "config", "wait", "plugin", "pane", "workspace", "worktree", "tab",
 			"send", "inbox", "msg", "run", "log", "agent", "machine",
 			"help", "--help", "-h", "__pane-run":
 			os.Exit(cli.Run(args, cli.Options{

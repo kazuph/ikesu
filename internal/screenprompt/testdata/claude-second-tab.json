@@ -1,0 +1,22 @@
+{
+  "allow_text": true,
+  "body": "質問 2/2 Language",
+  "kind": "agent_prompt",
+  "multi_select": false,
+  "options": [
+    {
+      "description": "For the local team.",
+      "id": "1",
+      "label": "Japanese",
+      "role": "other"
+    },
+    {
+      "description": "For wider sharing.",
+      "id": "2",
+      "label": "English",
+      "role": "other"
+    }
+  ],
+  "question_label": "質問 2/2 Language",
+  "title": "Which language should the report use?"
+}
