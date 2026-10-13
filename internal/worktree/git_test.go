@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -121,5 +122,42 @@ func TestWorktreePorcelainPreservesFieldLikePathLines(t *testing.T) {
 	}
 	if err := Remove(r, path, false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWorktreeListUsesNULUnlessGitRejectsOption(t *testing.T) {
+	r := repository(t)
+	path := filepath.Join(t.TempDir(), "checkout\nwith whitespace")
+	if err := Create(r, path, "feat/format", ""); err != nil {
+		t.Fatal(err)
+	}
+	_, probeErr := git(r, "worktree", "list", "--porcelain", "-z")
+	trace := filepath.Join(t.TempDir(), "git-trace")
+	t.Setenv("GIT_TRACE", trace)
+	items, err := List(r)
+	if err != nil || len(items) != 2 || !SamePath(items[1].Path, path) {
+		t.Fatal(items, err)
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(data)
+	if !strings.Contains(log, "worktree list --porcelain -z") {
+		t.Fatal("NUL format not attempted", log)
+	}
+	if probeErr == nil {
+		if strings.Contains(log, "--git-common-dir") {
+			t.Fatal("supported Git used legacy registry parser", log)
+		}
+		t.Log("real Git accepted -z; List used only the original NUL path")
+	} else {
+		if !strings.Contains(log, "--git-common-dir") {
+			t.Fatal("old Git did not use registry parser", log)
+		}
+		t.Log("real Git rejected -z; List used the legacy path after the usage error")
+	}
+	if _, err := List(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("invalid repository must remain an error")
 	}
 }

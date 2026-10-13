@@ -22,10 +22,17 @@ func git(cwd string, args ...string) (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
-// List reads porcelain supported by Git 2.34 and newer. Registered paths
-// preserve literal newlines on old Git; newer Git uses C-style quoting.
+// List retains NUL-delimited porcelain on supported Git versions. Only an
+// explicit unsupported -z usage error selects the older porcelain format.
 func List(cwd string) ([]api.WorktreeInfo, error) {
-	raw, err := git(cwd, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
+	raw, err := git(cwd, "worktree", "list", "--porcelain", "-z")
+	if err == nil {
+		return parseWorktreeList(raw, "\x00", nil)
+	}
+	if !strings.Contains(err.Error(), "unknown switch `z'") || !strings.Contains(err.Error(), "usage: git worktree") {
+		return nil, err
+	}
+	raw, err = git(cwd, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
@@ -57,15 +64,19 @@ func List(cwd string) ([]api.WorktreeInfo, error) {
 		paths = append(paths, filepath.Dir(strings.TrimSuffix(string(data), "\n")))
 	}
 	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	return parseWorktreeList(raw, "\n", paths)
+}
+
+func parseWorktreeList(raw, separator string, paths []string) ([]api.WorktreeInfo, error) {
 	out := []api.WorktreeInfo{}
 	var item *api.WorktreeInfo
-	fields := strings.Split(raw, "\n")
+	fields := strings.Split(raw, separator)
 	for i := 0; i < len(fields); i++ {
 		field := fields[i]
 		key, value, _ := strings.Cut(field, " ")
 		switch key {
 		case "worktree":
-			tail := strings.Join(fields[i:], "\n") + "\n"
+			tail := strings.Join(fields[i:], separator) + separator
 			for _, path := range paths {
 				if strings.HasPrefix(tail, "worktree "+path+"\n") {
 					value = path
@@ -73,7 +84,7 @@ func List(cwd string) ([]api.WorktreeInfo, error) {
 					break
 				}
 			}
-			if strings.HasPrefix(value, `"`) {
+			if separator == "\n" && strings.HasPrefix(value, `"`) {
 				decoded, err := strconv.Unquote(value)
 				if err != nil {
 					return nil, fmt.Errorf("decode worktree path: %w", err)
