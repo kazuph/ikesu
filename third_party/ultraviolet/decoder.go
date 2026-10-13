@@ -778,7 +778,7 @@ func (p *EventDecoder) parseOsc(b []byte) (int, Event) {
 	}
 
 	// Parse OSC command
-	// An OSC sequence is terminated by a BEL, ESC, or ST character
+	// An OSC sequence is terminated by BEL or ESC; C1 ST can be UTF-8 data.
 	var start, end int
 	cmd := -1
 	for ; i < len(b) && b[i] >= '0' && b[i] <= '9'; i++ {
@@ -798,7 +798,7 @@ func (p *EventDecoder) parseOsc(b []byte) (int, Event) {
 
 	for ; i < len(b); i++ {
 		// advance to the end of the sequence
-		if slices.Contains([]byte{ansi.BEL, ansi.ESC, ansi.ST, ansi.CAN, ansi.SUB}, b[i]) {
+		if slices.Contains([]byte{ansi.BEL, ansi.ESC, ansi.CAN, ansi.SUB}, b[i]) {
 			break
 		}
 	}
@@ -888,7 +888,7 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 		// ST is a 7-bit string terminator character is (ESC \)
 		start := i
 		for ; i < len(b); i++ {
-			if slices.Contains([]byte{ansi.ESC, ansi.ST, ansi.CAN, ansi.SUB}, b[i]) {
+			if slices.Contains([]byte{ansi.ESC, ansi.CAN, ansi.SUB}, b[i]) {
 				break
 			}
 		}
@@ -1009,7 +1009,7 @@ func (p *EventDecoder) parseDcs(b []byte) (int, Event) {
 
 	start := i // start of the sequence data
 	for ; i < len(b); i++ {
-		if b[i] == ansi.ST || b[i] == ansi.ESC {
+		if b[i] == ansi.ESC {
 			break
 		}
 	}

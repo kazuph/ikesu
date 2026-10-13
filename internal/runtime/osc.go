@@ -56,11 +56,6 @@ func (t *oscTap) observe(b []byte) [][2]string {
 				t.state = oscGround
 			case 0x1b:
 				t.state = oscEscBody
-			case 0x9c: // C1 ST
-				if e := t.finish(); e[0] != "" {
-					out = append(out, e)
-				}
-				t.state = oscGround
 			default:
 				if len(t.body) < oscMaxBody {
 					t.body = append(t.body, c)
@@ -86,8 +81,6 @@ func (t *oscTap) observe(b []byte) [][2]string {
 				t.state = oscGround
 			case 0x1b:
 				t.state = oscEscIgnore
-			case 0x9c:
-				t.state = oscGround
 			}
 		case oscEscIgnore:
 			if c == '\\' {
