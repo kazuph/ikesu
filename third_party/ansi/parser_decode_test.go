@@ -71,12 +71,10 @@ func TestDecodeSequence(t *testing.T) {
 			},
 		},
 		{
-			name:  "ST in the middle of DCS",
+			name:  "C1 ST data in the middle of DCS",
 			input: []byte("\x1bP1;2+xa\x9cb\x1b\\"),
 			expected: []expectedSequence{
-				{seq: []byte("\x1bP1;2+xa\x9c"), n: 9, params: []int{1, 2}, data: []byte{'a'}, cmd: 'x' | '+'<<16},
-				{seq: []byte{'b'}, n: 1, width: 1},
-				{seq: []byte("\x1b\\"), n: 2, cmd: '\\'},
+				{seq: []byte("\x1bP1;2+xa\x9cb\x1b\\"), n: 12, params: []int{1, 2}, data: []byte{'a', ST, 'b'}, cmd: 'x' | '+'<<16},
 			},
 		},
 		{
@@ -102,10 +100,10 @@ func TestDecodeSequence(t *testing.T) {
 			expected: []expectedSequence{{seq: []byte("\x1b]11;ff/00/ff\x1b\\"), n: 15, cmd: 11, data: []byte("11;ff/00/ff")}},
 		},
 		{
-			name:  "set background OSC sequence with ST 8-bit terminator",
+			name:  "set background OSC sequence with C1 ST data",
 			input: []byte("\x1b]11;ff/00/ff\x9c\x1baa\x8fa"),
 			expected: []expectedSequence{
-				{seq: []byte("\x1b]11;ff/00/ff\x9c"), n: 14, cmd: 11, data: []byte("11;ff/00/ff")},
+				{seq: []byte("\x1b]11;ff/00/ff\x9c"), n: 14, cmd: 11, data: []byte("11;ff/00/ff\x9c")},
 				{seq: []byte{ESC, 'a'}, n: 2, cmd: 'a'},
 				{seq: []byte{'a'}, n: 1, width: 1},
 				{seq: []byte{SS3}, n: 1},

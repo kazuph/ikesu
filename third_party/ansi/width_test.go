@@ -23,7 +23,7 @@ var cases = []struct {
 	{"oscwideemoji", "\x1b]2;title👨‍👩‍👦\x07", "", 0, 0},
 	{"oscwideemoji", "\x1b[31m👨‍👩‍👦\x1b[m", "👨\u200d👩\u200d👦", 2, 6},
 	{"multiemojicsi", "👨‍👩‍👦\x9b38;5;1mhello\x9bm", "👨‍👩‍👦hello", 7, 11},
-	{"osc8eastasianlink", "\x9d8;id=1;https://example.com/\x9c打豆豆\x9d8;id=1;\x07", "打豆豆", 6, 6},
+	{"osc8eastasianlink_C1_ST_is_data", "\x9d8;id=1;https://example.com/\x9c打豆豆\x9d8;id=1;\x07", "", 0, 0},
 	{"dcsarabic", "\x1bP?123$pسلام\x1b\\اهلا", "اهلا", 4, 4},
 	{"newline", "hello\nworld", "hello\nworld", 10, 10},
 	{"tab", "hello\tworld", "hello\tworld", 10, 10},

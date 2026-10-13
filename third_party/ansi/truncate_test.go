@@ -126,12 +126,12 @@ var tcases = []struct {
 		"\x1b]8;;https://charm.sh\x1b\\bracelet 🫧\x1b]8;;\x1b\\",
 	},
 	{
-		"osc8_8bit",
+		"osc8_8bit_ST_is_data",
 		"\x9d8;;https://charm.sh\x9cCharmbracelet 🫧\x9d8;;\x9c",
 		"",
 		5,
-		"\x9d8;;https://charm.sh\x9cCharm\x9d8;;\x9c",
-		"\x9d8;;https://charm.sh\x9cbracelet 🫧\x9d8;;\x9c",
+		"\x9d8;;https://charm.sh\x9cCharmbracelet 🫧\x9d8;;\x9c",
+		"\x9d8;;https://charm.sh\x9cCharmbracelet 🫧\x9d8;;\x9c",
 	},
 	{
 		"style_tail",

@@ -24,24 +24,26 @@ func TestDcsSequence(t *testing.T) {
 		},
 		{
 			name:  "reset",
-			input: "\x1b[3;1\x1bP1$tx\x9c",
+			input: "\x1b[3;1\x1bP1$tx\x9c\x1b\\",
 			expected: []any{
 				dcsSequence{
 					Cmd:    't' | '$'<<parser.IntermedShift,
 					Params: Params{1},
-					Data:   []byte{'x'},
+					Data:   []byte{'x', ST},
 				},
+				Cmd('\\'),
 			},
 		},
 		{
 			name:  "parse",
-			input: "\x1bP0;1|17/ab\x9c",
+			input: "\x1bP0;1|17/ab\x9c\x1b\\",
 			expected: []any{
 				dcsSequence{
 					Cmd:    '|',
 					Params: Params{0, 1},
-					Data:   []byte("17/ab"),
+					Data:   []byte("17/ab\x9c"),
 				},
+				Cmd('\\'),
 			},
 		},
 		{

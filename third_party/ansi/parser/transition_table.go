@@ -162,9 +162,9 @@ func GenerateTransitionTable() TransitionTable {
 		table.AddOne(0x19, state, PutAction, state)
 		table.AddRange(0x1C, 0x1F, state, PutAction, state)
 		table.AddRange(0x20, 0x7F, state, PutAction, state)
-		// ESC, ST, CAN, and SUB terminate the sequence
+		// ESC, CAN, and SUB terminate the sequence
 		table.AddOne(0x1B, state, DispatchAction, EscapeState)
-		table.AddOne(0x9C, state, DispatchAction, GroundState)
+		table.AddOne(0x9C, state, PutAction, state) // UTF-8 continuation byte, not a string terminator
 		table.AddMany([]byte{0x18, 0x1A}, state, IgnoreAction, GroundState)
 	}
 
@@ -215,9 +215,9 @@ func GenerateTransitionTable() TransitionTable {
 	table.AddRange(0x20, 0x7E, DcsStringState, PutAction, DcsStringState)
 	table.AddOne(0x7F, DcsStringState, PutAction, DcsStringState)
 	table.AddRange(0x80, 0xFF, DcsStringState, PutAction, DcsStringState) // Allow Utf8 characters by extending the printable range from 0x7F to 0xFF
-	// ST, CAN, SUB, and ESC terminate the sequence
+	// CAN, SUB, and ESC terminate the sequence
 	table.AddOne(0x1B, DcsStringState, DispatchAction, EscapeState)
-	table.AddOne(0x9C, DcsStringState, DispatchAction, GroundState)
+	table.AddOne(0x9C, DcsStringState, PutAction, DcsStringState) // UTF-8 continuation byte, not a string terminator
 	table.AddMany([]byte{0x18, 0x1A}, DcsStringState, IgnoreAction, GroundState)
 
 	// Csi_param
@@ -263,10 +263,10 @@ func GenerateTransitionTable() TransitionTable {
 	table.AddRange(0x1C, 0x1F, OscStringState, IgnoreAction, OscStringState)
 	table.AddRange(0x20, 0xFF, OscStringState, PutAction, OscStringState) // Allow Utf8 characters by extending the printable range from 0x7F to 0xFF
 
-	// ST, CAN, SUB, ESC, and BEL terminate the sequence
+	// CAN, SUB, ESC, and BEL terminate the sequence
 	table.AddOne(0x1B, OscStringState, DispatchAction, EscapeState)
 	table.AddOne(0x07, OscStringState, DispatchAction, GroundState)
-	table.AddOne(0x9C, OscStringState, DispatchAction, GroundState)
+	table.AddOne(0x9C, OscStringState, PutAction, OscStringState) // UTF-8 continuation byte, not a string terminator
 	table.AddMany([]byte{0x18, 0x1A}, OscStringState, IgnoreAction, GroundState)
 
 	return table
