@@ -95,7 +95,7 @@ func environment(m map[string]string) []string {
 	return out
 }
 func Resolve(cmd string, env []string) (string, error) {
-	m := EnvMap(childenv.Scrub(env))
+	m := EnvMap(env)
 	if strings.Contains(cmd, "/") {
 		if childenv.IsGuardShimDirectory(filepath.Dir(cmd), env) {
 			return "", fmt.Errorf("refusing to execute guard shim: %s", cmd)

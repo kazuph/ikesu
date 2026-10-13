@@ -77,10 +77,10 @@ func Execute(i Input) error {
 	if e := os.Chdir(i.Cwd); e != nil {
 		return e
 	}
-	env := childenv.Scrub(environment(i.Env))
-	path, e := Resolve(i.Command, env)
+	inherited := environment(i.Env)
+	path, e := Resolve(i.Command, inherited)
 	if e != nil {
 		return e
 	}
-	return syscall.Exec(path, append([]string{i.Command}, i.Args...), env)
+	return syscall.Exec(path, append([]string{i.Command}, i.Args...), childenv.Scrub(inherited))
 }
