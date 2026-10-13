@@ -11,9 +11,9 @@ import (
 )
 
 const decisionHelp = `gtx decision commands:
-  gtx decision ask --title <title> --option <id:label:role> [--option ...] [--kind ask|command_guard|tool_permission|agent_prompt] [--body <text>] [--allow-text] [--timeout <ms>]
+  gtx decision ask --title <title> --option <id:label:role> [--option ...] [--option-desc <id:text>] [--kind ask|command_guard|tool_permission|agent_prompt] [--body <text>] [--allow-text] [--multi-select] [--timeout <ms>]
   gtx decision watch [--all-machines]
-  gtx decision answer <id> [<option_id>] [--text <text>] [--responder <name>] [--machine <label-or-id>]
+  gtx decision answer <id> [<option_id> ...] [--text <text>] [--responder <name>] [--machine <label-or-id>]
   gtx decision list [--status pending|answered|expired|cancelled]
   gtx decision get <id>
   gtx decision cancel <id>
@@ -64,11 +64,18 @@ func (r *runner) decisionCLI(args []string) int {
 					p.Responder = v
 				}
 			default:
-				if strings.HasPrefix(flag, "-") || p.OptionID != nil {
+				if strings.HasPrefix(flag, "-") {
 					return usageErr(r, decisionHelp)
 				}
 				v := flag
-				p.OptionID = &v
+				if p.OptionID == nil {
+					p.OptionID = &v
+				} else {
+					if len(p.OptionIDs) == 0 {
+						p.OptionIDs = append(p.OptionIDs, *p.OptionID)
+					}
+					p.OptionIDs = append(p.OptionIDs, v)
+				}
 				i++
 			}
 		}
@@ -79,6 +86,7 @@ func (r *runner) decisionCLI(args []string) int {
 }
 func (r *runner) decisionAsk(args []string) int {
 	p := api.DecisionCreateParams{Kind: "ask"}
+	descriptions := map[string]string{}
 	for i := 0; i < len(args); {
 		flag := args[i]
 		if flag == "--allow-text" {
@@ -86,8 +94,13 @@ func (r *runner) decisionAsk(args []string) int {
 			i++
 			continue
 		}
+		if flag == "--multi-select" {
+			p.MultiSelect = true
+			i++
+			continue
+		}
 		switch flag {
-		case "--title", "--body", "--kind", "--option", "--timeout":
+		case "--title", "--body", "--kind", "--option", "--option-desc", "--timeout":
 		default:
 			return usageErr(r, decisionHelp)
 		}
@@ -102,6 +115,12 @@ func (r *runner) decisionAsk(args []string) int {
 			p.Body = &v
 		case "--kind":
 			p.Kind = v
+		case "--option-desc":
+			id, text, found := strings.Cut(v, ":")
+			if !found || id == "" {
+				return usageErr(r, "option-desc must be id:text")
+			}
+			descriptions[id] = text
 		case "--option":
 			var o api.DecisionOption
 			if strings.HasPrefix(v, "{") {
@@ -127,6 +146,18 @@ func (r *runner) decisionAsk(args []string) int {
 	}
 	if p.Title == "" || len(p.Options) == 0 {
 		return usageErr(r, decisionHelp)
+	}
+	for id, text := range descriptions {
+		found := false
+		for i := range p.Options {
+			if p.Options[i].ID == id {
+				p.Options[i].Description = &text
+				found = true
+			}
+		}
+		if !found {
+			return usageErr(r, "unknown option id for option-desc: "+id)
+		}
 	}
 	var caller *string
 	if env := r.envPaneID(); env != "" {
