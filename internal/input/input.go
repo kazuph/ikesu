@@ -362,11 +362,11 @@ func csiLen(b []byte, i int) (int, bool) {
 	return 0, false
 }
 
-// strLen scans a string sequence (OSC/DCS/APC/PM/SOS) ending at BEL or ST.
+// strLen scans a string sequence (OSC/DCS/APC/PM/SOS) ending at BEL or ESC ST.
 func strLen(b []byte, i int) (int, bool) {
 	for ; i < len(b); i++ {
 		c := b[i]
-		if c == 0x07 || c == 0x9c {
+		if c == 0x07 {
 			return i + 1, true
 		}
 		if c == 0x1b {

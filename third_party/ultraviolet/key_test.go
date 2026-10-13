@@ -295,19 +295,19 @@ func TestParseSequence(t *testing.T) {
 				"\x9bA" + // CSI A
 					"\x8fA" + // SS3 A
 					"\x90>|Ultraviolet\x1b\\" + // DCS >|Ultraviolet ST
-					"\x9d11;#123456\x9c" + // OSC 11 ; #123456 ST
-					"\x98hi\x9c" + // SOS hi ST
-					"\x9fhello\x9c" + // APC hello ST
-					"\x9ebye\x9c", // PM bye ST
+					"\x9d11;#123456\x1b\\" + // OSC 11 ; #123456 ST
+					"\x98hi\x1b\\" + // SOS hi ST
+					"\x9fhello\x1b\\" + // APC hello ST
+					"\x9ebye\x1b\\", // PM bye ST
 			),
 			[]Event{
 				KeyPressEvent{Code: KeyUp},
 				KeyPressEvent{Code: KeyUp},
 				TerminalVersionEvent{"Ultraviolet"},
 				BackgroundColorEvent{ansi.XParseColor("#123456")},
-				UnknownSosEvent("\x98hi\x9c"),
-				UnknownApcEvent("\x9fhello\x9c"),
-				UnknownPmEvent("\x9ebye\x9c"),
+				UnknownSosEvent("\x98hi\x1b\\"),
+				UnknownApcEvent("\x9fhello\x1b\\"),
+				UnknownPmEvent("\x9ebye\x1b\\"),
 			},
 		},
 
@@ -958,9 +958,9 @@ func TestReadInput(t *testing.T) {
 		},
 		{
 			"ignored apc",
-			[]byte("\x9f\x9c\x1b_hello\x1b\x1b_hello\x18\x1b_abc\x1b\\\x1ba"),
+			[]byte("\x9f\x9c\x1b\\\x1b_hello\x1b\x1b_hello\x18\x1b_abc\x1b\\\x1ba"),
 			[]Event{
-				UnknownApcEvent("\x9f\x9c"),
+				UnknownApcEvent("\x9f\x9c\x1b\\"),
 				UnknownApcEvent("\x1b_abc\x1b\\"),
 				KeyPressEvent{Code: 'a', Mod: ModAlt},
 			},
