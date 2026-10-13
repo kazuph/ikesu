@@ -86,6 +86,9 @@ func Explain(agent string, in Input) Explanation {
 	if d.SkipStateUpdate {
 		out.SkippedUpdateReason = explainString("matched_rule:" + d.RuleID)
 	}
+	if agent == "codex" && d.State == Working && m.detect(in).State == Idle {
+		out.FallbackReason = explainString("codex_live_activity_fingerprint")
+	}
 	if d.RuleID == "" && d.State == Idle {
 		out.FallbackReason = explainString("default_known_agent_idle_fallback")
 	}

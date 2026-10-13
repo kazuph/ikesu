@@ -49,3 +49,10 @@ func TestExplainObservedContract(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestExplainCodexActivityOverride(t *testing.T) {
+	e := Explain("codex", Input{Screen: "• Working (3s • esc to interrupt)\n› \n"})
+	if e.State != "working" || e.FallbackReason == nil || *e.FallbackReason != "codex_live_activity_fingerprint" {
+		t.Fatal(e)
+	}
+}

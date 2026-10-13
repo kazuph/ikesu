@@ -30,7 +30,10 @@ func (r *runner) agentExplainCLI(args []string) int {
 				agent = v
 			}
 		default:
-			if len(args[i]) > 0 && args[i][0] == '-' || target != "" {
+			if len(args[i]) > 0 && args[i][0] == '-' {
+				return usageErr(r, "unknown option: "+args[i])
+			}
+			if target != "" {
 				return usageErr(r, usage)
 			}
 			target = args[i]
@@ -39,8 +42,11 @@ func (r *runner) agentExplainCLI(args []string) int {
 	}
 	var e detect.Explanation
 	if file != "" {
-		if agent == "" || target != "" {
-			return usageErr(r, usage)
+		if agent == "" {
+			return usageErr(r, "gtx agent explain --file requires --agent LABEL")
+		}
+		if target != "" {
+			return usageErr(r, "usage: gtx agent explain --file PATH --agent LABEL [--json]")
 		}
 		data, err := os.ReadFile(file)
 		if err != nil {

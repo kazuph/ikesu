@@ -14,6 +14,7 @@ import (
 func printAgentHelp(w *runner) {
 	fmt.Fprintln(w.errOut(), "gtx agent commands:")
 	fmt.Fprintln(w.errOut(), "  gtx agent list")
+	fmt.Fprintln(w.errOut(), "  gtx agent attach <target> [--takeover]")
 	fmt.Fprintln(w.errOut(), "  gtx agent get <target>")
 	fmt.Fprintln(w.errOut(), "  gtx agent explain <target> [--json]")
 	fmt.Fprintln(w.errOut(), "  gtx agent explain --file PATH --agent LABEL [--json]")
@@ -38,6 +39,8 @@ func (r *runner) agentCLI(args []string) int {
 	switch sub {
 	case "list":
 		return r.agentListCLI()
+	case "attach":
+		return r.agentAttachCLI(rest)
 	case "explain":
 		return r.agentExplainCLI(rest)
 	case "get":

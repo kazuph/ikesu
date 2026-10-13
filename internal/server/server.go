@@ -90,10 +90,12 @@ type Server struct {
 	app *tui.App
 	sup *runtime.Supervisor
 
-	mu      sync.Mutex
-	client  *clientConn // last-interacted client, used for targeted terminal notifications
-	clients map[*clientConn]bool
-	lastUse uint64
+	mu               sync.Mutex
+	client           *clientConn // last-interacted client, used for targeted terminal notifications
+	agentAttachWG    sync.WaitGroup
+	agentControllers map[int]*clientConn
+	clients          map[*clientConn]bool
+	lastUse          uint64
 
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
@@ -433,6 +435,7 @@ func (s *Server) cleanup() {
 	s.saveMu.Unlock()
 	// notifyExit already told the attached client; drop whatever remains.
 	s.detach("server exiting")
+	s.closeAgentAttachments()
 	_ = s.apiLn.Close()
 	_ = s.clientLn.Close()
 	// Let in-flight API responses flush before we exit.
@@ -553,6 +556,10 @@ func (s *Server) attach(conn net.Conn) {
 	c := &clientConn{conn: conn}
 	rd := bufio.NewReader(conn)
 	hello, err := readClientMsg(rd)
+	if err == nil && hello.Type == "agent_attach" {
+		s.attachAgent(c, rd, hello)
+		return
+	}
 	if err != nil || hello.Type != "hello" {
 		conn.Close()
 		return
