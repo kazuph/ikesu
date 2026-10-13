@@ -110,13 +110,38 @@ func TestG9JobRetentionRepliesOrphanLogsAndKindIndex(t *testing.T) {
 }
 
 func TestG9CleanupWaitsForOtherProcessWriter(t *testing.T) {
+	if path := os.Getenv("GO_TEST_SQLITE_WRITER_PATH"); path != "" {
+		writer, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer writer.Close()
+		if err := writer.db.Exec("BEGIN IMMEDIATE"); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println("LOCKED")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil || line != "COMMIT\n" {
+			t.Fatal(line, err)
+		}
+		if err := writer.db.Exec("COMMIT"); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	path := filepath.Join(t.TempDir(), "gtx.db")
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	writer := exec.Command("/usr/bin/sqlite3", path)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := exec.Command(executable, "-test.run=^TestG9CleanupWaitsForOtherProcessWriter$")
+	writer.Env = append(os.Environ(), "GO_TEST_SQLITE_WRITER_PATH="+path)
+	writer.Stderr = os.Stderr
 	in, err := writer.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +154,6 @@ func TestG9CleanupWaitsForOtherProcessWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { in.Close(); writer.Process.Kill(); writer.Wait() }()
-	fmt.Fprintln(in, "BEGIN IMMEDIATE;\n.print LOCKED")
 	line, err := bufio.NewReader(out).ReadString('\n')
 	if err != nil || line != "LOCKED\n" {
 		t.Fatal(line, err)
@@ -143,7 +167,7 @@ func TestG9CleanupWaitsForOtherProcessWriter(t *testing.T) {
 		t.Fatal("cleanup did not wait for transaction", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	fmt.Fprintln(in, "COMMIT;")
+	fmt.Fprintln(in, "COMMIT")
 	select {
 	case err := <-result:
 		if err != nil {

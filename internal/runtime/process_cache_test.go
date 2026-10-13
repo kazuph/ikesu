@@ -56,7 +56,10 @@ func TestG9ForegroundCacheReusesScanAndInvalidatesCwdAndProgram(t *testing.T) {
 	if _, err := p.WriteToPTY([]byte("cd '" + next + "'\n")); err != nil {
 		t.Fatal(err)
 	}
-	wait(func() bool { p.PollProcess(); return p.Snapshot().Cwd == next })
+	wait(func() bool {
+		p.PollProcess()
+		return p.Snapshot().Cwd == next && p.processCache.key.shellCwd == next && p.processCache.key.leaderCwd == next
+	})
 	if p.processCache.readAt.Equal(readAt) {
 		t.Fatal("cwd change reused old scan")
 	}

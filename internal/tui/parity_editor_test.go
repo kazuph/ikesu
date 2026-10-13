@@ -78,6 +78,19 @@ func testParityScrollbackEditor(t *testing.T, popup, server bool) {
 	if ep == nil {
 		t.Fatal("editor has no real PTY")
 	}
+	// vi may wait for Enter when the temporary path makes its startup
+	// message wider than the PTY. Continue the real editor, then inspect it.
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(ep.ScreenText(), "EDITOR_CAPTURE_SENTINEL") {
+		if strings.Contains(ep.ScreenText(), "Press ENTER or type command to continue") {
+			a.sup.Input(editor, []byte("\r"))
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("vi startup did not converge", ep.ScreenText())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	specWaitText(t, ep, "EDITOR_CAPTURE_SENTINEL")
 	a.sup.Input(editor, []byte("\x1b:q!\r"))
 	timeout := time.NewTimer(5 * time.Second)

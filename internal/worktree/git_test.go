@@ -108,3 +108,18 @@ func TestWorktreeCreateFailurePreservesCheckout(t *testing.T) {
 		t.Fatal("invalid branch accepted")
 	}
 }
+
+func TestWorktreePorcelainPreservesFieldLikePathLines(t *testing.T) {
+	r := repository(t)
+	path := filepath.Join(t.TempDir(), "quoted\"\\日本語\n\nworktree decoy\nbranch refs/heads/decoy\nHEAD deadbeef")
+	if err := Create(r, path, "feat/path-data", ""); err != nil {
+		t.Fatal(err)
+	}
+	items, err := List(r)
+	if err != nil || len(items) != 2 || !SamePath(items[1].Path, path) || items[1].Branch == nil || *items[1].Branch != "feat/path-data" {
+		t.Fatal(items, err)
+	}
+	if err := Remove(r, path, false); err != nil {
+		t.Fatal(err)
+	}
+}

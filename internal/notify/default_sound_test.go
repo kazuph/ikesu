@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		}
 		t.Logf("%s: %d Hz, %.9f seconds, RMS %.3f dBFS, peak %.3f dBFS", tc.kind, rate, float64(frames)/float64(rate), 20*math.Log10(math.Sqrt(squares/float64(frames))), 20*math.Log10(peak))
 		var calls [][]string
-		d := Desktop{Executable: "/tmp/gtx-next", CacheDir: func() (string, error) { return cache, nil }, Run: func(name string, args ...string) error {
+		d := Desktop{Executable: "/tmp/gtx-next", CacheDir: func() (string, error) { return cache, nil }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
 			calls = append(calls, append([]string{name}, args...))
 			return nil
 		}}
@@ -54,7 +55,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := filepath.Join(cache, api.ExecutableNamespace(d.Executable), "sounds", fmt.Sprintf("%x.wav", sha256.Sum256(b)))
-		if len(calls) != 1 || len(calls[0]) != 2 || calls[0][0] != "/usr/bin/afplay" || calls[0][1] != want {
+		if len(calls) != 1 || len(calls[0]) != 2 || calls[0][0] != testPlaybackCommand() || calls[0][1] != want {
 			t.Fatal(calls, want)
 		}
 		got, err := os.ReadFile(want)
@@ -101,8 +102,12 @@ func TestDefaultSoundCacheFailureKeepsNotificationAndWarnsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings, calls int
-	d := Desktop{CacheDir: func() (string, error) { return base, nil }, soundWarning: &sync.Once{}, Warn: func(error) { warnings++ }, LookPath: func(string) (string, error) { return "/test/terminal-notifier", nil }, Run: func(name string, args ...string) error {
-		if name != "/test/terminal-notifier" {
+	d := Desktop{CacheDir: func() (string, error) { return base, nil }, soundWarning: &sync.Once{}, Warn: func(error) { warnings++ }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
+		expected := "/test/terminal-notifier"
+		if runtime.GOOS == "linux" {
+			expected = "/test/notify-send"
+		}
+		if name != expected {
 			t.Fatal("unexpected playback", name, args)
 		}
 		calls++
