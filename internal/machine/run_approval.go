@@ -23,12 +23,14 @@ func ObserveRun(profiles []Profile, argv []string, marker string) (string, []str
 				observed[len(prefix)] = "printf '%s\\n' " + Quote(marker) + " >&2; " + argv[len(prefix)]
 				return p.ID, observed
 			}
-			if len(argv) == 3 && argv[0] == "/bin/sh" && argv[1] == "-c" {
-				lead := " && exec " + Command(prefix) + " "
-				if at := strings.LastIndex(argv[2], lead); at >= 0 {
+			if stages, ok := syncStages(argv); ok {
+				final := stages[len(stages)-1]
+				if len(final) == len(prefix)+1 && slices.Equal(final[:len(prefix)], prefix) {
 					observed := slices.Clone(argv)
-					at += len(lead)
-					observed[2] = argv[2][:at] + Quote("printf '%s\\n' "+Quote(marker)+" >&2; ") + argv[2][at:]
+					final = slices.Clone(final)
+					final[len(prefix)] = "printf '%s\\n' " + Quote(marker) + " >&2; " + final[len(prefix)]
+					stages[len(stages)-1] = final
+					observed[2] = syncRecipe(stages)
 					return p.ID, observed
 				}
 			}
@@ -37,36 +39,28 @@ func ObserveRun(profiles []Profile, argv []string, marker string) (string, []str
 	return "", argv
 }
 
-// ObservePaneRun recognizes the same generated SSH prefix after the pane wrapper
-// has received a shell command. quote is that wrapper's existing word encoder.
+// ObservePaneRun receives the wrapper's canonical literal argv, preserving its
+// existing encoder for the final command reconstruction.
 func ObservePaneRun(profiles []Profile, command, marker string, quote func([]string) string) (string, string) {
-	profiles = slices.Clone(profiles)
-	slices.SortFunc(profiles, func(a, b Profile) int { return strings.Compare(a.ID, b.ID) })
-	for _, p := range profiles {
-		if !p.Enabled {
-			continue
-		}
-		for _, pane := range []bool{true, false} {
-			prefix := quote(RunPrefix(p, pane)) + " "
-			if strings.HasPrefix(command, prefix) {
-				return p.ID, prefix + Quote("printf '%s\\n' "+Quote(marker)+" >&2; ") + command[len(prefix):]
-			}
-		}
-		// --sync is passed through as one quoted shell recipe by the pane wrapper.
-		for _, pane := range []bool{true, false} {
-			prefix := " && exec " + Command(RunPrefix(p, pane)) + " "
-			// The wrapper quotes the full sh -c argument; search its encoded recipe.
-			encoded := quote([]string{prefix})
-			// Strip only the outer quotes. All remaining escapes are part of the
-			// wrapper's canonical encoding, not parsed shell input.
-			encoded = strings.TrimSuffix(strings.TrimPrefix(encoded, "'"), "'")
-			if at := strings.LastIndex(command, encoded); at >= 0 {
-				at += len(encoded)
-				insert := quote([]string{Quote("printf '%s\\n' " + Quote(marker) + " >&2; ")})
-				insert = strings.TrimSuffix(strings.TrimPrefix(insert, "'"), "'")
-				return p.ID, command[:at] + insert + command[at:]
-			}
-		}
+	argv, ok := DecodeCommand(command)
+	if !ok || quote(argv) != command {
+		return "", command
 	}
-	return "", command
+	id, observed := ObserveRun(profiles, argv, marker)
+	if id == "" {
+		return "", command
+	}
+	return id, quote(observed)
+}
+
+func syncRecipe(stages [][]string) string {
+	var commands []string
+	for i, stage := range stages {
+		command := Command(stage)
+		if i == len(stages)-1 {
+			command = "exec " + command
+		}
+		commands = append(commands, command)
+	}
+	return strings.Join(commands, " && ")
 }

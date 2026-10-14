@@ -17,6 +17,7 @@ type RunApproval struct {
 	ID, Marker                  string
 	Expire                      func()
 	timer                       *time.Timer
+	deadlineAt                  time.Time
 	connected, awaiting, closed bool
 }
 
@@ -90,13 +91,8 @@ func (s *ApprovalStream) line(line []byte) error {
 		url = bytes.TrimSpace(url)
 		if ok && len(url) > 0 {
 			state.awaiting = true
-			state.timer = time.AfterFunc(ApprovalWait, func() {
-				state.mu.Lock()
-				defer state.mu.Unlock()
-				if !state.connected && !state.closed {
-					state.Expire()
-				}
-			})
+			state.deadlineAt = time.Now().Add(ApprovalWait)
+			state.timer = time.AfterFunc(ApprovalWait, func() { state.expire(time.Now()) })
 			if err := OpenApproval(state.ID, string(url)); err != nil {
 				return err
 			}
@@ -114,4 +110,12 @@ func (s *ApprovalStream) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (s *RunApproval) expire(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.connected && !s.closed && s.awaiting && !now.Before(s.deadlineAt) {
+		s.Expire()
+	}
 }

@@ -135,6 +135,16 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		}
 		cancel()
 	})
+	var progress *machine.SyncProgress
+	if approval != nil {
+		argv, progress, err = approval.SyncProgress(argv)
+		if err != nil {
+			cancel()
+			logFile.Close()
+			s.finishJob(store, jobID, nil)
+			return api.Failure(id, api.ErrJobStore, err.Error())
+		}
+	}
 	cmd = childenv.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Dir = cwd
@@ -149,12 +159,21 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		cmd.Stdout, cmd.Stderr = approvalOut, approvalErr
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if progress != nil {
+		cmd.ExtraFiles = progress.Child
+	}
 	if err := cmd.Start(); err != nil {
+		if progress != nil {
+			_ = progress.Close()
+		}
 		logMu.Unlock()
 		cancel()
 		logFile.Close()
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, err.Error())
+	}
+	if progress != nil {
+		progress.Started(approvalErr)
 	}
 	s.jobProcs.put(jobID, cmd)
 	if err := store.MarkCommandRunning(jobID, int64(cmd.Process.Pid)); err != nil {
@@ -190,7 +209,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, headerErr.Error())
 	}
-	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion, approval, approvalOut, approvalErr)
+	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion, approval, approvalOut, approvalErr, progress)
 	s.invalidateJobCache()
 
 	return api.Success(id, api.RunStartedResult{
@@ -211,9 +230,12 @@ func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64)
 // watchJob waits for the process, persists the terminal state, and posts
 // the completion nudge.
 func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc,
-	logFile *os.File, callerAgent, label, completion string, approval *machine.RunApproval, approvalOut, approvalErr *machine.ApprovalStream) {
+	logFile *os.File, callerAgent, label, completion string, approval *machine.RunApproval, approvalOut, approvalErr *machine.ApprovalStream, progress *machine.SyncProgress) {
 	defer s.invalidateJobCache()
 	_ = cmd.Wait()
+	if progress != nil {
+		_ = progress.Close()
+	}
 	if approval != nil {
 		_ = approvalOut.Close()
 		_ = approvalErr.Close()
