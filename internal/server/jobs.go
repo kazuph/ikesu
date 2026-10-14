@@ -87,22 +87,21 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 			`completion must be "summary", "full", or "none"`)
 	}
 	label := p.Label
-	// The completion nudge is addressed to the caller pane's mailbox; the
-	// pane id works for unlabeled panes.
+	// Notifications require an agent mailbox; silent jobs only need a live pane.
 	callerAgent := ""
 	callerPane := ""
 	if p.CallerPane == "" {
 		return api.Failure(id, api.ErrInvalidRequest, "caller pane is required; specify --caller <pane>")
 	}
 	if p.CallerPane != "" {
-		t, err := s.resolveTarget(p.CallerPane, false)
+		t, err := s.resolveTarget(p.CallerPane, completion != "none")
 		if err != nil {
 			return api.Failure(id, err.Code, err.Message)
 		}
 		callerPane = fmtPaneID(t.pid)
 		callerAgent, _ = s.mailboxName(t.pid)
-		if callerAgent == "" {
-			callerAgent = callerPane
+		if completion != "none" && callerAgent == "" {
+			return api.Failure(id, api.ErrAgentNotFound, "caller pane has no agent mailbox")
 		}
 	}
 	cwd := s.cwd

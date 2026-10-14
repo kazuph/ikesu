@@ -157,7 +157,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	for k, v := range extra {
 		values[k] = v
 	}
-	for k, v := range map[string]string{"GTX_SOCKET_PATH": e.SocketPath, "GTX_BIN_PATH": e.BinPath, "GTX_ENV": "1", "GTX_PLUGIN_ID": p.ID, "GTX_PLUGIN_ROOT": p.Root, "GTX_PLUGIN_CONFIG_DIR": config, "GTX_PLUGIN_STATE_DIR": state, "GTX_PLUGIN_CONTEXT_JSON": string(raw)} {
+	for k, v := range map[string]string{"GTX_SOCKET_PATH": e.SocketPath, "GTX_BIN_PATH": stableBinPath(e.BinPath), "GTX_ENV": "1", "GTX_PLUGIN_ID": p.ID, "GTX_PLUGIN_ROOT": p.Root, "GTX_PLUGIN_CONFIG_DIR": config, "GTX_PLUGIN_STATE_DIR": state, "GTX_PLUGIN_CONTEXT_JSON": string(raw)} {
 		values[k] = v
 	}
 	for field, key := range map[string]string{"workspace_id": "GTX_WORKSPACE_ID", "tab_id": "GTX_TAB_ID", "focused_pane_id": "GTX_PANE_ID", "clicked_url": "GTX_PLUGIN_CLICKED_URL", "link_handler_id": "GTX_PLUGIN_LINK_HANDLER_ID"} {
