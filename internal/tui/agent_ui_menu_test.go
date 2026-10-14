@@ -7,7 +7,6 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -107,10 +106,7 @@ func TestG5PaneMenuRootSideMovesAndSinglePaneExcluded(t *testing.T) {
 func TestReview1SlowLoginShellDoesNotBlockRightClick(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
-	shell := filepath.Join(t.TempDir(), "slowsh")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\ncase \"$*\" in *-lic*) /bin/sleep 4;; esac\nexec /bin/sh \"$@\"\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	shell, loginStarted, loginRelease := teststate.GatedLoginShell(t)
 	teststate.Setenv(t, "SHELL", shell)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
@@ -122,22 +118,21 @@ func TestReview1SlowLoginShellDoesNotBlockRightClick(t *testing.T) {
 	done := make(chan struct{})
 	go func() { a.Run(); close(done) }()
 	defer func() { a.Stop(); <-done; a.sup.KillAll() }()
-	before := time.Now()
 	a.Do(func() { a.openPaneMenu(1, 1, 1); a.activateMenu(menuIndex(a, "New Codex agent")) })
-	if elapsed := time.Since(before); elapsed >= 200*time.Millisecond {
-		t.Fatal("right click blocked", elapsed)
-	}
-	time.Sleep(300 * time.Millisecond)
-	tick := time.Now()
+	specWaitFile(t, loginStarted, []byte("waiting"))
 	a.Do(func() {})
-	if elapsed := time.Since(tick); elapsed >= 200*time.Millisecond {
-		t.Fatal("app loop blocked", elapsed)
+	// The UI must serve another event before the login query is released.
+	if _, err := a.sup.LoginPath(); err == nil || err.Error() != "login shell PATH is still being obtained" {
+		t.Fatal("UI did not respond while login PATH was pending", err)
+	}
+	if err := os.WriteFile(loginRelease, []byte("release"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	if err := a.sup.WaitLoginPath(); err != nil {
 		t.Fatal(err)
 	}
 	var pid int
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		a.Do(func() { pid = a.focusedPane() })
 		if pid != 1 {

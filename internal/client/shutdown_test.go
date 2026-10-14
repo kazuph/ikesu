@@ -56,8 +56,9 @@ func shutdownSnapshot(t *testing.T) msg {
 	return msg{Type: "snapshot", Data: base64.StdEncoding.EncodeToString(data), RequestAck: true}
 }
 
-// The peer closes its real Unix socket's read half, so ACK writes get the
-// kernel's EPIPE while its write half can still deliver a terminal message.
+// Shut down the client's write half after the handshake. Unlike peer
+// CloseRead, this produces EPIPE on both macOS and Linux while retaining
+// the client's read half for the peer's final snapshot and terminal message.
 func TestMachineACKBrokenPipeDrainsRestartAndExit(t *testing.T) {
 	for _, terminal := range []string{"restart", "exit", "closed_without_terminal"} {
 		t.Run(terminal, func(t *testing.T) {
@@ -95,7 +96,7 @@ func TestMachineACKBrokenPipeDrainsRestartAndExit(t *testing.T) {
 				t.Fatal(event.err)
 			}
 			m.event(event)
-			if err := server.CloseRead(); err != nil {
+			if err := client.CloseWrite(); err != nil {
 				t.Fatal(err)
 			}
 			connection := m.endpoints["local"].connection
@@ -193,7 +194,7 @@ func TestLegacyPumpACKBrokenPipeDrainsRestartAndExit(t *testing.T) {
 			if err := encoder.Encode(msg{Type: "welcome", Peer: endpoint.Current()}); err != nil {
 				t.Fatal(err)
 			}
-			if err := server.CloseRead(); err != nil {
+			if err := client.CloseWrite(); err != nil {
 				t.Fatal(err)
 			}
 			if err := encoder.Encode(shutdownSnapshot(t)); err != nil {
@@ -226,8 +227,8 @@ func TestLegacyPumpACKBrokenPipeDrainsRestartAndExit(t *testing.T) {
 }
 
 func TestACKHalfCloseDoesNotSuppressInputOrTerminalOutputErrors(t *testing.T) {
-	server, client := shutdownSocketPair(t)
-	if err := server.CloseRead(); err != nil {
+	_, client := shutdownSocketPair(t)
+	if err := client.CloseWrite(); err != nil {
 		t.Fatal(err)
 	}
 	peer := endpoint.Current()

@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/teststate"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -11,6 +12,13 @@ func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, "GTX_STATE_DIR", teststate.TempDir(t))
 	teststate.Setenv(t, "SHELL", "/bin/sh")
+	// The fixture types UTF-8 into a real interactive shell. macOS /bin/sh
+	// treats high bytes as readline commands in the default C locale.
+	locale := "C.UTF-8"
+	if runtime.GOOS == "darwin" {
+		locale = "en_US.UTF-8"
+	}
+	teststate.Setenv(t, "LC_ALL", locale)
 
 	dir, done := startServerAt(t, "fossil")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()

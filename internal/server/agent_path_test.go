@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestReview1SlowLoginShellDoesNotBlockPaneList(t *testing.T) {
@@ -16,30 +15,28 @@ func TestReview1SlowLoginShellDoesNotBlockPaneList(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
-	shell := filepath.Join(root, "slowsh")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\ncase \"$*\" in *-lic*) /bin/sleep 4;; esac\nexec /bin/sh \"$@\"\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	shell, loginStarted, loginRelease := teststate.GatedLoginShell(t)
 	teststate.Setenv(t, "SHELL", shell)
 	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "review1-slow")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
 	started := make(chan api.Response, 1)
-	before := time.Now()
 	go func() {
 		started <- apiReq(t, dir, api.MethodAgentStart, api.AgentStartParams{Argv: []string{"/bin/sleep", "60"}})
 	}()
-	time.Sleep(300 * time.Millisecond)
-	tick := time.Now()
+	waitPromptCondition(t, func() bool { b, _ := os.ReadFile(loginStarted); return string(b) == "waiting" })
 	apiOK(t, dir, api.MethodPaneList, api.PaneListParams{}, nil)
-	elapsed := time.Since(tick)
-	t.Logf("pane list %.6f seconds during 4-second login shell", elapsed.Seconds())
-	if elapsed >= 200*time.Millisecond {
-		t.Fatal("app loop stalled", elapsed)
+	select {
+	case resp := <-started:
+		t.Fatal("agent launch finished before login PATH was released", resp)
+	default:
+	}
+	if err := os.WriteFile(loginRelease, []byte("release"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	resp := <-started
-	if resp.Err != nil || time.Since(before) < 3*time.Second {
-		t.Fatal(resp.Err, time.Since(before))
+	if resp.Err != nil {
+		t.Fatal(resp.Err)
 	}
 }
 
@@ -61,18 +58,9 @@ func TestReview1AgentStartExplicitPATH(t *testing.T) {
 	record := filepath.Join(root, "env")
 	var res api.AgentStartedResult
 	apiOK(t, dir, api.MethodAgentStart, api.AgentStartParams{Env: map[string]string{"PATH": "/x"}, Argv: []string{"/bin/sh", "-c", "printf '%s' \"$PATH\" > '" + record + "'; exec /bin/sleep 60"}}, &res)
-	deadline := time.Now().Add(time.Second)
-	for {
-		b, err := os.ReadFile(record)
-		if err == nil {
-			if string(b) != filepath.Join(root, "state", "guard", "bin", "p_2")+":/x" {
-				t.Fatal("explicit PATH overwritten", string(b))
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Millisecond)
+	var observed []byte
+	waitPromptCondition(t, func() bool { observed, _ = os.ReadFile(record); return len(observed) > 0 })
+	if string(observed) != filepath.Join(root, "state", "guard", "bin", "p_2")+":/x" {
+		t.Fatal("explicit PATH overwritten", string(observed))
 	}
 }

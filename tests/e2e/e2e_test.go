@@ -349,8 +349,10 @@ func TestMouseFullFlow(t *testing.T) {
 		t.Fatal("[new] not found")
 	}
 	s.click(nx, ny)
+	// Git discovery can replace the initial cwd label before we see the frame.
+	secondWorkspace := regexp.MustCompile(`(?m)^[▌· ]*2 \S`)
 	s.waitFor("workspace 2", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, " %2 terminal ") && strings.Contains(tx, "2 e2e")
+		return strings.Contains(tx, " %2 terminal ") && secondWorkspace.MatchString(tx)
 	})
 
 	// 2. Click the first workspace row in the sidebar to go back.
