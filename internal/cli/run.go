@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/machine"
 	"io"
 	"os"
 	"os/exec"
@@ -552,12 +554,67 @@ func (r *runner) paneRunWrapper(args []string) int {
 	fmt.Fprintf(log, "== gtx run %s label=%s started=%s cmd=%s\n\n",
 		jobID, label, started.Format(time.RFC3339), command)
 
-	cmd := childenv.Command("/bin/sh", "-lc", command)
+	profiles := r.catalog().Load()
+	marker := "gtx-ssh-connected-" + rand.Text()
+	machineID, observed := machine.ObservePaneRun(profiles, command, marker, shellCommandFromArgs)
+	var progress *machine.SyncProgress
+	var approval *machine.RunApproval
+	if machineID != "" {
+		approval = &machine.RunApproval{ID: machineID, Marker: marker}
+		if argv, ok := machine.DecodeCommand(observed); ok && len(argv) == 3 {
+			var err error
+			argv, progress, err = approval.SyncProgress(argv)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 1
+			}
+			observed = shellCommandFromArgs(argv)
+		}
+	}
+	cmd := childenv.Command("/bin/sh", "-lc", observed)
+	if progress != nil {
+		cmd.ExtraFiles = progress.Child
+	}
 	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Stdin = os.Stdin
 	wout, werr := io.MultiWriter(os.Stdout, log), io.MultiWriter(os.Stderr, log)
 	cmd.Stdout, cmd.Stderr = wout, werr
-	code := runCmdExitCode(cmd)
+	var approvalOut, approvalErr *machine.ApprovalStream
+	if machineID != "" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		approval.Expire = func() {
+			if cmd.Process != nil {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+		}
+		approvalOut = &machine.ApprovalStream{State: approval, Out: wout}
+		approvalErr = &machine.ApprovalStream{State: approval, Out: werr}
+		cmd.Stdout, cmd.Stderr = approvalOut, approvalErr
+	}
+	code := 0
+	if progress == nil {
+		code = runCmdExitCode(cmd)
+	} else {
+		err := cmd.Start()
+		progress.Started(approvalErr)
+		if err == nil {
+			err = cmd.Wait()
+		}
+		_ = progress.Close()
+		if err != nil {
+			if exit, ok := err.(*exec.ExitError); ok {
+				code = exit.ExitCode()
+			} else {
+				fmt.Fprintln(r.errOut(), err)
+				code = 1
+			}
+		}
+	}
+	if approval != nil {
+		_ = approvalOut.Close()
+		_ = approvalErr.Close()
+		approval.Close()
+	}
 
 	fmt.Fprintf(log, "\n== gtx run %s exit=%d finished=%s\n",
 		jobID, code, time.Now().Format(time.RFC3339))

@@ -8,6 +8,7 @@ import (
 	"net"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/machine"
 )
 
 func (m *machineClient) sidebarRequests(id string, requests []api.Request) {
@@ -27,6 +28,13 @@ func (m *machineClient) sidebarRequests(id string, requests []api.Request) {
 			if err == nil {
 				stop := context.AfterFunc(ctx, func() { stream.Close() })
 				err = sidebarRequest(stream, request)
+				if err == nil && id != "local" {
+					m.post(ctx, endpointEvent{formUpdate: func() {
+						if err := machine.ClearApproval(profile.ID); err != nil {
+							m.notify(err.Error())
+						}
+					}})
+				}
 				stop()
 				stream.Close()
 			}

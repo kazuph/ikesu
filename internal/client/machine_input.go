@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/kazuph/goterrace/internal/machine"
 	"os"
 	"sync"
 	"time"
@@ -175,6 +176,12 @@ func (m *machineClient) input(event input.Event) error {
 						return nil
 					}
 					if e := m.endpoints[hit.Machine]; e.connection == nil {
+						if e.approval != "" || e.status == "awaiting approval" || e.status == machine.ApprovalStopped {
+							if err := machine.ClearApproval(e.profile.ID); err != nil {
+								return err
+							}
+							e.approval = ""
+						}
 						e.retry.retryNow(time.Now())
 						m.advance(time.Now())
 					}

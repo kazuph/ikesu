@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/machine"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,22 +88,21 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 			`completion must be "summary", "full", or "none"`)
 	}
 	label := p.Label
-	// The completion nudge is addressed to the caller pane's mailbox; the
-	// pane id works for unlabeled panes.
+	// Notifications require an agent mailbox; silent jobs only need a live pane.
 	callerAgent := ""
 	callerPane := ""
 	if p.CallerPane == "" {
 		return api.Failure(id, api.ErrInvalidRequest, "caller pane is required; specify --caller <pane>")
 	}
 	if p.CallerPane != "" {
-		t, err := s.resolveTarget(p.CallerPane, false)
+		t, err := s.resolveTarget(p.CallerPane, completion != "none")
 		if err != nil {
 			return api.Failure(id, err.Code, err.Message)
 		}
 		callerPane = fmtPaneID(t.pid)
 		callerAgent, _ = s.mailboxName(t.pid)
-		if callerAgent == "" {
-			callerAgent = callerPane
+		if completion != "none" && (!s.isAgentPane(t.pid) || callerAgent == "") {
+			return api.Failure(id, api.ErrAgentNotFound, "caller pane has no agent mailbox")
 		}
 	}
 	cwd := s.cwd
@@ -127,35 +127,77 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := childenv.CommandContext(ctx, p.Argv[0], p.Argv[1:]...)
+	profiles := (machine.Catalog{Path: filepath.Join(s.dir, "machines.json")}).Load()
+	var cmd *exec.Cmd
+	approval, argv := machine.PrepareRunApproval(profiles, p.Argv, func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		cancel()
+	})
+	var progress *machine.SyncProgress
+	if approval != nil {
+		argv, progress, err = approval.SyncProgress(argv)
+		if err != nil {
+			cancel()
+			logFile.Close()
+			s.finishJob(store, jobID, nil)
+			return api.Failure(id, api.ErrJobStore, err.Error())
+		}
+	}
+	cmd = childenv.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Dir = cwd
 	var logMu sync.Mutex
 	logMu.Lock()
 	cmd.Stdout = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stdout] ", lineStart: true}
 	cmd.Stderr = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stderr] ", lineStart: true}
+	var approvalOut, approvalErr *machine.ApprovalStream
+	if approval != nil {
+		approvalOut = &machine.ApprovalStream{State: approval, Out: cmd.Stdout}
+		approvalErr = &machine.ApprovalStream{State: approval, Out: cmd.Stderr}
+		cmd.Stdout, cmd.Stderr = approvalOut, approvalErr
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if progress != nil {
+		cmd.ExtraFiles = progress.Child
+	}
 	if err := cmd.Start(); err != nil {
+		if progress != nil {
+			_ = progress.Close()
+		}
 		logMu.Unlock()
 		cancel()
 		logFile.Close()
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
+	if progress != nil {
+		progress.Started(approvalErr)
+	}
+	abortRun := func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		cancel()
+		_ = cmd.Wait()
+		if progress != nil {
+			_ = progress.Close()
+		}
+		if approval != nil {
+			approval.Close()
+		}
+	}
 	s.jobProcs.put(jobID, cmd)
 	if err := store.MarkCommandRunning(jobID, int64(cmd.Process.Pid)); err != nil {
 		logMu.Unlock()
 		s.jobProcs.drop(jobID)
-		cancel()
+		abortRun()
 		logFile.Close()
-		_ = cmd.Process.Kill()
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	row, rowErr := store.CommandRow(jobID)
 	if rowErr != nil || row == nil || row.StartedMs == nil {
 		logMu.Unlock()
-		cancel()
-		_ = cmd.Wait()
+		abortRun()
 		_ = logFile.Close()
 		s.jobProcs.drop(jobID)
 		s.finishJob(store, jobID, nil)
@@ -169,14 +211,13 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		jobID, cmd.Process.Pid, strings.Join(quoted, " "), cwd, *row.StartedMs)
 	logMu.Unlock()
 	if headerErr != nil {
-		cancel()
-		_ = cmd.Wait()
+		abortRun()
 		_ = logFile.Close()
 		s.jobProcs.drop(jobID)
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, headerErr.Error())
 	}
-	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion)
+	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion, approval, approvalOut, approvalErr, progress)
 	s.invalidateJobCache()
 
 	return api.Success(id, api.RunStartedResult{
@@ -197,9 +238,17 @@ func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64)
 // watchJob waits for the process, persists the terminal state, and posts
 // the completion nudge.
 func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc,
-	logFile *os.File, callerAgent, label, completion string) {
+	logFile *os.File, callerAgent, label, completion string, approval *machine.RunApproval, approvalOut, approvalErr *machine.ApprovalStream, progress *machine.SyncProgress) {
 	defer s.invalidateJobCache()
 	_ = cmd.Wait()
+	if progress != nil {
+		_ = progress.Close()
+	}
+	if approval != nil {
+		_ = approvalOut.Close()
+		_ = approvalErr.Close()
+		approval.Close()
+	}
 	exit := -1
 	if cmd.ProcessState != nil {
 		exit = cmd.ProcessState.ExitCode()

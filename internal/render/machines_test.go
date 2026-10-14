@@ -9,7 +9,7 @@ import (
 )
 
 func TestMachineApprovalStateAndWholeURLWrapWithoutOverwritingPane(t *testing.T) {
-	for _, status := range []string{"awaiting approval", "承認待ち。クリックで再試行"} {
+	for _, status := range []string{"awaiting approval", "承認待ち。クリックで承認ページを開く"} {
 		in := Input{State: testState(160, 45)}
 		url := "https://example.invalid/check/token-with-a-full-query?confirm=one&machine=remote"
 		machines := MachineSidebar{Groups: []MachineGroup{{ID: "local", Label: "Local", Status: "online", Input: &in}, {ID: "remote", Label: "Mini test", Status: status, Reason: url}}, Active: "local"}
