@@ -32,14 +32,18 @@ func RemoteDirectory(cwd, home, override string) string {
 	return Quote(cwd)
 }
 
-func RunArgs(p Profile, directory string, argv []string, pane bool) []string {
+func RunPrefix(p Profile, pane bool) []string {
 	mode := "-n"
 	if pane {
 		mode = "-t"
 	}
+	return []string{"ssh", mode, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", p.Target}
+}
+
+func RunArgs(p Profile, directory string, argv []string, pane bool) []string {
 	command := "cd -- " + directory + " && exec " + Command(argv)
 	remote := `exec "${SHELL:-/bin/sh}" -lic ` + Quote(command)
-	return []string{mode, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", p.Target, remote}
+	return append(RunPrefix(p, pane)[1:], remote)
 }
 
 // SyncPlan computes argv, without modifying the local checkout or any remote files.

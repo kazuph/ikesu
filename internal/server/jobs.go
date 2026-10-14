@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/machine"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,7 +101,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		}
 		callerPane = fmtPaneID(t.pid)
 		callerAgent, _ = s.mailboxName(t.pid)
-		if completion != "none" && callerAgent == "" {
+		if completion != "none" && (!s.isAgentPane(t.pid) || callerAgent == "") {
 			return api.Failure(id, api.ErrAgentNotFound, "caller pane has no agent mailbox")
 		}
 	}
@@ -126,13 +127,27 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := childenv.CommandContext(ctx, p.Argv[0], p.Argv[1:]...)
+	profiles := (machine.Catalog{Path: filepath.Join(s.dir, "machines.json")}).Load()
+	var cmd *exec.Cmd
+	approval, argv := machine.PrepareRunApproval(profiles, p.Argv, func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		cancel()
+	})
+	cmd = childenv.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Dir = cwd
 	var logMu sync.Mutex
 	logMu.Lock()
 	cmd.Stdout = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stdout] ", lineStart: true}
 	cmd.Stderr = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stderr] ", lineStart: true}
+	var approvalOut, approvalErr *machine.ApprovalStream
+	if approval != nil {
+		approvalOut = &machine.ApprovalStream{State: approval, Out: cmd.Stdout}
+		approvalErr = &machine.ApprovalStream{State: approval, Out: cmd.Stderr}
+		cmd.Stdout, cmd.Stderr = approvalOut, approvalErr
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		logMu.Unlock()
@@ -175,7 +190,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, headerErr.Error())
 	}
-	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion)
+	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion, approval, approvalOut, approvalErr)
 	s.invalidateJobCache()
 
 	return api.Success(id, api.RunStartedResult{
@@ -196,9 +211,14 @@ func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64)
 // watchJob waits for the process, persists the terminal state, and posts
 // the completion nudge.
 func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc,
-	logFile *os.File, callerAgent, label, completion string) {
+	logFile *os.File, callerAgent, label, completion string, approval *machine.RunApproval, approvalOut, approvalErr *machine.ApprovalStream) {
 	defer s.invalidateJobCache()
 	_ = cmd.Wait()
+	if approval != nil {
+		_ = approvalOut.Close()
+		_ = approvalErr.Close()
+		approval.Close()
+	}
 	exit := -1
 	if cmd.ProcessState != nil {
 		exit = cmd.ProcessState.ExitCode()

@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/machine"
 	"io"
 	"os"
 	"os/exec"
@@ -552,12 +554,33 @@ func (r *runner) paneRunWrapper(args []string) int {
 	fmt.Fprintf(log, "== gtx run %s label=%s started=%s cmd=%s\n\n",
 		jobID, label, started.Format(time.RFC3339), command)
 
-	cmd := childenv.Command("/bin/sh", "-lc", command)
+	profiles := r.catalog().Load()
+	marker := "gtx-ssh-connected-" + rand.Text()
+	machineID, observed := machine.ObservePaneRun(profiles, command, marker, shellCommandFromArgs)
+	cmd := childenv.Command("/bin/sh", "-lc", observed)
 	cmd.Env = childenv.Scrub(os.Environ())
 	cmd.Stdin = os.Stdin
 	wout, werr := io.MultiWriter(os.Stdout, log), io.MultiWriter(os.Stderr, log)
 	cmd.Stdout, cmd.Stderr = wout, werr
+	var approval *machine.RunApproval
+	var approvalOut, approvalErr *machine.ApprovalStream
+	if machineID != "" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		approval = &machine.RunApproval{ID: machineID, Marker: marker, Expire: func() {
+			if cmd.Process != nil {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+		}}
+		approvalOut = &machine.ApprovalStream{State: approval, Out: wout}
+		approvalErr = &machine.ApprovalStream{State: approval, Out: werr}
+		cmd.Stdout, cmd.Stderr = approvalOut, approvalErr
+	}
 	code := runCmdExitCode(cmd)
+	if approval != nil {
+		_ = approvalOut.Close()
+		_ = approvalErr.Close()
+		approval.Close()
+	}
 
 	fmt.Fprintf(log, "\n== gtx run %s exit=%d finished=%s\n",
 		jobID, code, time.Now().Format(time.RFC3339))

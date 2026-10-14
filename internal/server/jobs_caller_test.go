@@ -40,9 +40,11 @@ func TestRunCallerCompletionAdmission(t *testing.T) {
 	// A shell label alone does not create an agent identity.
 	label := "ordinary-shell"
 	apiOK(t, dir, api.MethodPaneRename, api.PaneRenameParams{PaneID: caller, Label: &label}, nil)
-	res := apiReq(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: caller, Completion: "summary", Argv: []string{"/usr/bin/true"}})
-	if res.Err == nil || res.Err.Code != api.ErrAgentNotFound {
-		t.Fatal(res)
+	for _, target := range []string{caller, label} {
+		res := apiReq(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: target, Completion: "summary", Argv: []string{"/usr/bin/true"}})
+		if res.Err == nil || res.Err.Code != api.ErrAgentNotFound {
+			t.Fatal(res)
+		}
 	}
 	var silent api.RunStartedResult
 	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: caller, Completion: "none", Argv: []string{"/usr/bin/true"}}, &silent)

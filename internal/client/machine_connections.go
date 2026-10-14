@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/machine"
 	"io"
 	"strings"
 	"time"
@@ -134,11 +134,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.status = "awaiting approval"
 		e.approval = event.approval
 		e.reason = event.approval
-		cmd := childenv.Command("open", "--", event.approval)
-		if err := cmd.Start(); err != nil {
+		if err := machine.OpenApproval(e.profile.ID, event.approval); err != nil {
 			e.reason = event.approval + "; browser: " + err.Error()
-		} else {
-			go cmd.Wait()
 		}
 		_ = m.paint()
 		return 0, false
@@ -152,7 +149,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.status = "reconnecting"
 		e.reason = event.err.Error()
 		if strings.HasPrefix(e.reason, "SSH approval expired:") {
-			e.status = "承認待ち。クリックで再試行"
+			e.status = machine.ApprovalStopped
 			e.retry.approvalExpired()
 		} else {
 			e.retry.failed(time.Now(), event.id == "local", needsAttention(e.reason))
@@ -164,6 +161,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.connection != nil {
+		if event.id != "local" {
+			if err := machine.ClearApproval(e.profile.ID); err != nil {
+				m.notify(err.Error())
+			}
+		}
 		e.connection = event.connection
 		e.status = "online"
 		e.reason = ""
