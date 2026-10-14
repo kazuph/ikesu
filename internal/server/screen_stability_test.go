@@ -185,3 +185,15 @@ func TestScreenPaneAPIInputRecordsAtAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestScreenPermissionTallerThanPaneRetainsHeaderAndCommand(t *testing.T) {
+	teststate.Lock(t)
+	s, p, _ := screenTerminal(t, "claude-permission", "claude")
+	s.sup.Resize(1, 160, 12)
+	s.app.Do(func() {
+		prompt := s.readScreenPrompt(1)
+		if prompt == nil || !strings.Contains(prompt.Params.Title, "Bash command") || !strings.Contains(prompt.Params.Title, "/tmp/gs-j0m1z8np/work/permission-observation.txt") {
+			t.Error("tall permission lost context", prompt, p.DetectionLines())
+		}
+	})
+}

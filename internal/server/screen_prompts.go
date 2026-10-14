@@ -1,6 +1,7 @@
 package server
 
 import (
+	"strings"
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -53,7 +54,8 @@ func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
 		return nil
 	}
 	expanded := screenprompt.ParseWithTextID(agent, p.DetectionLines(), textID)
-	if current != nil && current.Params.Kind == "tool_permission" && expanded != nil {
+	footer := strings.ToLower(strings.Join(visible, " "))
+	if expanded != nil && expanded.Params.Kind == "tool_permission" && (current != nil && current.Params.Kind == "tool_permission" || current == nil && strings.Contains(footer, "esc") && strings.Contains(footer, "cancel")) {
 		return expanded
 	}
 	return current
