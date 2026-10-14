@@ -8,7 +8,7 @@ import (
 
 var countdown = regexp.MustCompile(`\bin \d+:\d{2}\b`)
 var elapsed = regexp.MustCompile(`\(\d+s\)`)
-var spinner = regexp.MustCompile(`[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]`)
+var spinner = regexp.MustCompile(`[\x{2800}-\x{28FF}\x{25D0}-\x{25D3}✢✳✶✻✽]`)
 var denial = regexp.MustCompile(`(?i)⚠?\s*Claude\s+Code\s+will\s+automatically\s+deny\s+this\s+request(?:\s+in\s+\d+:\d{2})?,?\s+to\s+avoid\s+blocking\s+progress\s+on\s+an\s+unattended\s+session`)
 
 func stableText(text string) string {

@@ -76,3 +76,13 @@ func TestPermissionDoesNotUseToolFromEarlierConversation(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestPublicClaudeSpinnerFormsDoNotChangeSignature(t *testing.T) {
+	p := Parse("claude", []string{"Run this command?", "❯ 1. Yes", " 2. No"})
+	for _, glyph := range []string{"⠿", "◐", "◑", "◒", "◓", "✢", "✳", "✶", "✻", "✽"} {
+		q := Parse("claude", []string{glyph + " Run this command?", "❯ 1. Yes", " 2. No"})
+		if q == nil || q.Signature() != p.Signature() {
+			t.Fatal(glyph, q)
+		}
+	}
+}
