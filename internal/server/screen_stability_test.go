@@ -197,3 +197,35 @@ func TestScreenPermissionTallerThanPaneRetainsHeaderAndCommand(t *testing.T) {
 		}
 	})
 }
+
+func TestScreenFinalWriteFailureIsNotSubmitted(t *testing.T) {
+	teststate.Lock(t)
+	s, p, _ := screenTerminal(t, "claude-final-confirm", "claude")
+	final := screenprompt.Parse("claude", screenpromptLines(t, "claude-final-confirm"))
+	s.app.Do(func() {
+		p.PollProcess()
+		pid := p.Snapshot().FgPID
+		if pid <= 0 {
+			t.Error("missing real child PID")
+			return
+		}
+		process, err := os.FindProcess(pid)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if err = process.Kill(); err != nil {
+			t.Error(err)
+			return
+		}
+		waitPromptCondition(t, func() bool { return p.Snapshot().Dead })
+		// The app loop is held here, so the closed real slave remains addressable
+		// until this callback returns. Its PTY write must fail without marking Submit.
+		f := &screenAnswerFlow{name: final.Flow, total: 2, answered: map[int]bool{0: true, 1: true}}
+		s.screenPrompts.flows = map[int]*screenAnswerFlow{1: f}
+		s.submitScreenFlow(1, final)
+		if f.submitted {
+			t.Error("failed real PTY write marked submitted")
+		}
+	})
+}
