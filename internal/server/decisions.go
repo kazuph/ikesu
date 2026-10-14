@@ -209,6 +209,11 @@ func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
 			changed = s.decisions.changed
 			stopped = s.decisions.stopped
 		})
+		// Do may skip the callback once the app stops. Close the transport
+		// so the caller retries the same decision on the successor server.
+		if s.closing.Load() != 0 {
+			return
+		}
 		if resp.Err != nil {
 			_ = api.WriteResponse(conn, resp)
 			return
