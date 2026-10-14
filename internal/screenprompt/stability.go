@@ -110,3 +110,26 @@ func (p *Prompt) ChoiceSignature() string {
 	}
 	return q.Signature()
 }
+
+// Claude's permission command wraps inside left-bordered rows, separate from preview boxes.
+func mergeCommandRows(lines []string) []string {
+	var out []string
+	command := ""
+	flush := func() {
+		if command != "" {
+			out = append(out, command)
+			command = ""
+		}
+	}
+	for _, line := range lines {
+		trim := strings.TrimLeft(line, " ")
+		if strings.HasPrefix(trim, "│ ") {
+			command += strings.TrimPrefix(trim, "│ ")
+		} else {
+			flush()
+			out = append(out, line)
+		}
+	}
+	flush()
+	return out
+}

@@ -56,3 +56,23 @@ func TestFreeInputAttachedSeparatorKeepsIdentity(t *testing.T) {
 		t.Fatal(after)
 	}
 }
+
+func TestPermissionTitleIgnoresResponseRowsAndPreservesWrappedCommand(t *testing.T) {
+	lines := []string{"⏺ User declined to answer questions", "⏺ Writing proof file", "────────────────", "Bash command", "╌╌╌╌", ` │ python3 -c "Path('/private/tmp/gtx-accept/delta-c-`, ` │ proof.txt').write_text('value')"`, "╌╌╌╌", "Do you want to proceed?", "❯ 1. Yes", " 2. No"}
+	p := Parse("claude", lines)
+	if p == nil || strings.Contains(p.Params.Title, "⏺") || !strings.Contains(p.Params.Title, `Path('/private/tmp/gtx-accept/delta-c-proof.txt')`) {
+		t.Fatal(p)
+	}
+	changed := append([]string{}, lines[1:]...)
+	if q := Parse("claude", changed); q == nil || q.Signature() != p.Signature() {
+		t.Fatal("response line changed permission identity", q)
+	}
+}
+
+func TestPermissionDoesNotUseToolFromEarlierConversation(t *testing.T) {
+	lines := []string{"⏺ Bash(old command)", "⏺ Ordinary response", "────────────────", "Run this command?", "❯ 1. Yes", " 2. No"}
+	p := Parse("claude", lines)
+	if p == nil || strings.Contains(p.Params.Title, "old command") {
+		t.Fatal(p)
+	}
+}

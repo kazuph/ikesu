@@ -34,6 +34,7 @@ var numbered = regexp.MustCompile(`^\s*([❯›>]?)\s*(\d+)[.)]\s+(.*)$`)
 var checkbox = regexp.MustCompile(`^\[([ ✔✓xX])\]\s*(.*)$`)
 var shortcut = regexp.MustCompile(`\((esc|[[:alnum:]])\)`)
 var tabs = regexp.MustCompile(`([☐☒☑✔])\s*([^☐☒☑✔←→]+)`)
+var toolCall = regexp.MustCompile(`^⏺\s*[[:alnum:]_]+\(`)
 var glued = regexp.MustCompile(`\S( {2,})\S`)
 
 // A damaged partial read still has option rows; an idle/empty screen is not a prompt.
@@ -88,7 +89,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	}
 	screen, notice := cleanNotice(screen)
 	plain, preview, hasPreview := extractPreview(screen)
-	lines := unglue(plain)
+	lines := unglue(mergeCommandRows(plain))
 	positional, chatID := positionalTextIDs(lines)
 	if textID == "" {
 		textID = positional
@@ -237,7 +238,9 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	} else if p.Params.Kind == "tool_permission" {
 		for i := first - 1; i >= 0; i-- {
 			if strings.HasPrefix(strings.TrimSpace(lines[i]), "⏺") {
-				p.Params.Title = strings.TrimSpace(lines[i]) + " " + p.Params.Title
+				if toolCall.MatchString(strings.TrimSpace(lines[i])) {
+					p.Params.Title = strings.TrimSpace(lines[i]) + " " + p.Params.Title
+				}
 				break
 			}
 		}
