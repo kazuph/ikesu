@@ -82,6 +82,8 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "session":
+		return r.sessionCLI(args[1:])
 	case "status":
 		return r.statusCLI(args[1:])
 	case "guard":

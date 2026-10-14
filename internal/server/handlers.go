@@ -11,6 +11,8 @@ import (
 // dispatchOnLoop runs on the app goroutine; it may touch st/sup safely.
 func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
+	case api.MethodSessionImportHerdr:
+		return s.importHerdr(req)
 	case api.MethodServerReloadConfig:
 		var p api.EmptyParams
 		if err := req.DecodeParams(&p); err != nil {
