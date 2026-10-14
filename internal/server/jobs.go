@@ -175,20 +175,29 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	if progress != nil {
 		progress.Started(approvalErr)
 	}
+	abortRun := func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		cancel()
+		_ = cmd.Wait()
+		if progress != nil {
+			_ = progress.Close()
+		}
+		if approval != nil {
+			approval.Close()
+		}
+	}
 	s.jobProcs.put(jobID, cmd)
 	if err := store.MarkCommandRunning(jobID, int64(cmd.Process.Pid)); err != nil {
 		logMu.Unlock()
 		s.jobProcs.drop(jobID)
-		cancel()
+		abortRun()
 		logFile.Close()
-		_ = cmd.Process.Kill()
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	row, rowErr := store.CommandRow(jobID)
 	if rowErr != nil || row == nil || row.StartedMs == nil {
 		logMu.Unlock()
-		cancel()
-		_ = cmd.Wait()
+		abortRun()
 		_ = logFile.Close()
 		s.jobProcs.drop(jobID)
 		s.finishJob(store, jobID, nil)
@@ -202,8 +211,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		jobID, cmd.Process.Pid, strings.Join(quoted, " "), cwd, *row.StartedMs)
 	logMu.Unlock()
 	if headerErr != nil {
-		cancel()
-		_ = cmd.Wait()
+		abortRun()
 		_ = logFile.Close()
 		s.jobProcs.drop(jobID)
 		s.finishJob(store, jobID, nil)

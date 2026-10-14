@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -17,10 +18,14 @@ func TestSyncPriorStagesClearApprovalBeforeNextStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := approvalFile("m1")
+	gate := filepath.Join(t.TempDir(), "approval")
+	if err := syscall.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
 	// Real shell subprocesses exercise command exit boundaries. Each stage checks
 	// the durable record itself before proceeding; no SSH service is replaced.
 	stages := [][]string{
-		{"/bin/sh", "-c", "printf 'To authenticate, visit: https://example.invalid/first\\n' >&2; exit 0"},
+		{"/bin/sh", "-c", "printf 'To authenticate, visit: https://example.invalid/first\\n' >&2; IFS= read -r approval < " + Quote(gate) + "; test \"$approval\" = approved"},
 		{"/bin/sh", "-c", "test ! -e " + Quote(record) + " || exit 81; printf '{\"client\":\"sync\"}' > " + Quote(record) + "; printf 'To authenticate, visit: https://example.invalid/rsync\\n' >&2; exit 0"},
 		{"/bin/sh", "-c", "test ! -e " + Quote(record) + " || exit 82; printf BODY; printf BODY_ERR >&2; exit 7"},
 	}
@@ -40,6 +45,33 @@ func TestSyncPriorStagesClearApprovalBeforeNextStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	progress.Started(errOut)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		state.mu.Lock()
+		waiting := state.awaiting
+		state.mu.Unlock()
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("prior stage never entered approval wait")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	state.expire(time.Now().Add(15 * time.Second))
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Fatal("approval wait ended at connect deadline", err)
+	}
+	grant, err := os.OpenFile(gate, os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fmt.Fprintln(grant, "approved")
+	grant.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = cmd.Wait()
 	_ = progress.Close()
 	_ = out.Close()
