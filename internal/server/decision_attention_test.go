@@ -78,3 +78,60 @@ func TestDecisionOriginAndAttentionOverlay(t *testing.T) {
 		_ = d
 	})
 }
+
+func TestDecisionRemoteOriginDoesNotNameOrBlockLocalPane(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	s.app.Do(func() {
+		st := s.app.State()
+		st.Workspaces[0].Name = "Local space"
+		st.Workspaces[0].Tabs[0].Name = "Local tab"
+		st.PaneLabels = map[int]string{1: "Local worker"}
+		s.app.SetReported(1, "claude", "working")
+		for _, machine := range []string{"mini", "", "local"} {
+			resp := s.decisionRequest(&api.Request{ID: "machine-origin", Method: api.MethodDecisionCreate, Params: api.MarshalParams(api.DecisionCreateParams{Kind: "ask", Title: "Review?", Origin: &api.DecisionOrigin{PaneID: "p1", Machine: machine}, Options: []api.DecisionOption{{ID: "yes", Label: "Yes", Role: "approve"}}})})
+			if resp.Err != nil {
+				t.Error(resp.Err)
+				return
+			}
+			var result api.DecisionResult
+			if err := json.Unmarshal(resp.Result, &result); err != nil {
+				t.Error(err)
+				return
+			}
+			origin := result.Decision.Origin
+			if origin.Machine != machine {
+				t.Errorf("machine was changed: %+v", origin)
+			}
+			if machine == "mini" {
+				if origin.WorkspaceLabel != "" || origin.TabLabel != "" || origin.PaneLabel != "" {
+					t.Errorf("remote origin received local names: %+v", origin)
+				}
+				if got := s.app.PaneStatusKey(1); got != "working" {
+					t.Errorf("remote p1 changed local p1 state: %s", got)
+				}
+				// Repeat startup/handoff synchronization with the remote record still pending.
+				s.app.SetDecisionAttention(nil)
+				s.syncDecisionAttention()
+				if got := s.app.PaneStatusKey(1); got != "working" {
+					t.Errorf("restored remote record blocked local p1: %s", got)
+				}
+			} else {
+				if origin.WorkspaceLabel != "Local space" || origin.TabLabel != "Local tab" || origin.PaneLabel != "Local worker" {
+					t.Errorf("local origin names missing for machine %q: %+v", machine, origin)
+				}
+				if got := s.app.PaneStatusKey(1); got != "blocked" {
+					t.Errorf("local origin did not block p1 for machine %q: %s", machine, got)
+				}
+			}
+			cancelled := s.decisionRequest(&api.Request{ID: "cancel-machine-origin", Method: api.MethodDecisionCancel, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: result.Decision.DecisionID})})
+			if cancelled.Err != nil {
+				t.Error(cancelled.Err)
+				return
+			}
+			if got := s.app.PaneStatusKey(1); got != "working" {
+				t.Errorf("cancellation did not restore local state: %s", got)
+			}
+		}
+	})
+}

@@ -3,7 +3,7 @@ package server
 import "github.com/kazuph/goterrace/internal/api"
 
 func (s *Server) completeDecisionOrigin(origin *api.DecisionOrigin) {
-	if origin == nil {
+	if origin == nil || origin.Machine != "" && origin.Machine != "local" {
 		return
 	}
 	pid, wi, ti, ok := s.findPane(origin.PaneID)
@@ -37,7 +37,7 @@ func (s *Server) syncDecisionAttention() {
 	}
 	panes := map[int]bool{}
 	for _, d := range pending {
-		if d.Origin == nil {
+		if d.Origin == nil || d.Origin.Machine != "" && d.Origin.Machine != "local" {
 			continue
 		}
 		if pid, _, _, ok := s.findPane(d.Origin.PaneID); ok {
