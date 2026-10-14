@@ -61,25 +61,28 @@ type Pane struct {
 	retired             atomic.Bool
 	importedExited      atomic.Bool
 
-	mu               sync.Mutex
-	emu              *vt.Emulator
-	read             *readBuffer
-	dead             bool
-	fgPID            int
-	procName         string
-	agentID          string
-	agentOverride    string // set by pane.report_agent; wins over agentID
-	procCwd          string
-	oscTitle         string
-	oscProgress      string
-	clipboard        []string
-	altScreen        bool
-	mouseTracking    bool
-	mouseMotion      bool
-	appCursorKeys    bool
-	modes            map[ansi.Mode]bool
-	cursor           CursorState
-	scrollbarVisible bool // measured on PTY output; resize alone preserves visibility
+	inputMu           sync.Mutex
+	lastExternalInput atomic.Int64
+	externalInputSeq  atomic.Uint64
+	mu                sync.Mutex
+	emu               *vt.Emulator
+	read              *readBuffer
+	dead              bool
+	fgPID             int
+	procName          string
+	agentID           string
+	agentOverride     string // set by pane.report_agent; wins over agentID
+	procCwd           string
+	oscTitle          string
+	oscProgress       string
+	clipboard         []string
+	altScreen         bool
+	mouseTracking     bool
+	mouseMotion       bool
+	appCursorKeys     bool
+	modes             map[ansi.Mode]bool
+	cursor            CursorState
+	scrollbarVisible  bool // measured on PTY output; resize alone preserves visibility
 
 	tap oscTap
 	ev  chan<- Event
@@ -446,7 +449,8 @@ func (s *Supervisor) Kill(id int) {
 // Input writes raw key/paste bytes to the pane's PTY.
 func (s *Supervisor) Input(id int, b []byte) {
 	if p := s.Get(id); p != nil {
-		_, _ = p.ptyFile.Write(b)
+		p.RecordExternalInput()
+		_, _ = p.WriteToPTY(b)
 	}
 }
 
@@ -484,6 +488,7 @@ func (p *Pane) BracketedPasteMode() bool {
 // SendMouse encodes a mouse event in the mode the app negotiated and feeds it
 // to the PTY through the emulator's response channel.
 func (p *Pane) SendMouse(m uv.MouseEvent) {
+	p.RecordExternalInput()
 	p.mu.Lock()
 	p.emu.SendMouse(m)
 	p.mu.Unlock()

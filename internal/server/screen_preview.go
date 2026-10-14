@@ -26,6 +26,9 @@ func (s *Server) startPreviewScan(pid int, w *screenPromptWatch) {
 }
 
 func (s *Server) previewArrow(pid int, w *screenPromptWatch, current, target int) bool {
+	if s.screenUserActive(pid) {
+		return false
+	}
 	if current == target {
 		return true
 	}
@@ -39,7 +42,7 @@ func (s *Server) previewArrow(pid int, w *screenPromptWatch, current, target int
 	if pane == nil {
 		return false
 	}
-	if _, err := pane.WriteToPTY([]byte(arrow)); err != nil {
+	if _, err := pane.WriteScreenPrompt([]byte(arrow), nil); err != nil {
 		return false
 	}
 	w.preview.expected = next
@@ -49,6 +52,10 @@ func (s *Server) previewArrow(pid int, w *screenPromptWatch, current, target int
 }
 
 func (s *Server) stepPreviewScan(pid int, w *screenPromptWatch, p *screenprompt.Prompt) {
+	if s.screenUserActive(pid) {
+		s.cachePreviewScan(w)
+		return
+	}
 	scan := w.preview
 	if !scan.lastStep.IsZero() && time.Since(scan.lastStep) < agentPromptSubmitDelay {
 		return
@@ -97,6 +104,9 @@ func (s *Server) stepPreviewScan(pid int, w *screenPromptWatch, p *screenprompt.
 
 // Best-effort restoration uses only arrow keys, even on disappearance or reload.
 func (s *Server) restorePreviewCursor(pid int, w *screenPromptWatch) {
+	if s.screenUserActive(pid) {
+		return
+	}
 	scan := w.preview
 	if scan == nil {
 		return
@@ -114,14 +124,14 @@ func (s *Server) restorePreviewCursor(pid int, w *screenPromptWatch) {
 			delta = -delta
 		}
 		if delta > 0 {
-			_, _ = pane.WriteToPTY([]byte(strings.Repeat(arrow, delta)))
+			_, _ = pane.WriteScreenPrompt([]byte(strings.Repeat(arrow, delta)), nil)
 		}
 	} else if scan.lastDirection != "" {
 		arrow := "\x1b[A"
 		if scan.lastDirection == arrow {
 			arrow = "\x1b[B"
 		}
-		_, _ = pane.WriteToPTY([]byte(arrow))
+		_, _ = pane.WriteScreenPrompt([]byte(arrow), nil)
 	}
 }
 

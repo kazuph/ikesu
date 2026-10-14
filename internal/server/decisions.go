@@ -52,6 +52,7 @@ func decisionResult(id string, d api.Decision) api.Response {
 	return api.Success(id, api.DecisionResult{Type: "decision", Decision: d})
 }
 func (s *Server) decisionChanged(kind string, d api.Decision) {
+	s.syncDecisionAttention()
 	close(s.decisions.changed)
 	s.decisions.changed = make(chan struct{})
 	s.emitEvent(kind, d)
@@ -119,6 +120,7 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return decisionFailure(req.ID, &api.Error{Code: api.ErrInvalidRequest, Message: err.Error()})
 		}
+		s.completeDecisionOrigin(p.Origin)
 		d, err := store.CreateDecision(p, time.Now())
 		if err != nil {
 			return decisionFailure(req.ID, err)

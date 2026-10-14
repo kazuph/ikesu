@@ -201,3 +201,30 @@ func (s *Store) CancelDecision(id string, now time.Time) (api.Decision, error) {
 func (s *Store) ExpireDecision(id string, now time.Time) (api.Decision, error) {
 	return s.resolveDecision(id, "expired", nil, now)
 }
+
+// UpdatePendingScreenDecision refreshes content without changing identity, deadlines or resolution.
+func (s *Store) UpdatePendingScreenDecision(id string, p api.DecisionCreateParams) (api.Decision, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.decisionLocked(id)
+	if err != nil || d.Status != "pending" {
+		return d, false, err
+	}
+	updated := d
+	updated.Kind = p.Kind
+	updated.Title, updated.Body, updated.Options = p.Title, p.Body, p.Options
+	updated.AllowText, updated.MultiSelect, updated.QuestionLabel = p.AllowText, p.MultiSelect, p.QuestionLabel
+	old, err := json.Marshal(d)
+	if err != nil {
+		return d, false, err
+	}
+	raw, err := json.Marshal(updated)
+	if err != nil {
+		return d, false, err
+	}
+	if string(raw) == string(old) {
+		return d, false, nil
+	}
+	err = s.execLocked(`UPDATE decisions SET record=? WHERE decision_id=? AND status='pending'`, string(raw), id)
+	return updated, err == nil && s.db.Changes() > 0, err
+}

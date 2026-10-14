@@ -389,8 +389,6 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		s.app.Run()
 		close(appDone)
 	}()
-	go s.apiLoop()
-	go s.clientLoop()
 	if imported != nil {
 		if err := imported.Encoder.Encode(handoffResult{State: "running"}); err != nil {
 			s.handedOff = true
@@ -412,6 +410,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 			s.flushAllMail()
 			s.initDecisionHub()
 			if store, err := s.db(); err == nil {
+				s.syncDecisionAttention()
 				if err := s.expireDecisions(store); err != nil {
 					s.app.SetConfigWarning(err.Error())
 				}
@@ -419,6 +418,8 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		})
 	}
 
+	go s.apiLoop()
+	go s.clientLoop()
 	jobsDone := make(chan struct{})
 	s.app.Do(func() { s.screenPromptConfig(s.cfg) })
 	go s.jobCacheLoop(appDone, jobsDone)

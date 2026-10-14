@@ -40,6 +40,7 @@ func (s *Server) mailWorker() {
 			s.mailDone(w)
 			continue
 		}
+		p.RecordExternalInput()
 		if _, err := p.WriteToPTY(w.payload); err != nil {
 			s.failMissingJobWrite(w)
 			s.mailDone(w)

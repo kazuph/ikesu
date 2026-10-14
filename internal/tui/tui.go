@@ -152,6 +152,7 @@ type App struct {
 	snapshotSink      func(render.Input) error
 	agentStateCounter uint64
 	agentStates       map[int]string
+	decisionAttention map[int]bool
 	agentStateSeq     map[int]uint64
 	pluginHost        func() *plugin.Engine
 	pluginContext     func() plugin.Context

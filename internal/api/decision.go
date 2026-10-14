@@ -21,13 +21,16 @@ type DecisionOption struct {
 	PreviewUnavailable bool    `json:"preview_unavailable,omitempty"`
 }
 type DecisionOrigin struct {
-	PaneID  string `json:"pane_id,omitempty"`
-	Agent   string `json:"agent,omitempty"`
-	Cwd     string `json:"cwd,omitempty"`
-	Branch  string `json:"branch,omitempty"`
-	Command string `json:"command,omitempty"`
-	Reason  string `json:"reason,omitempty"`
-	Machine string `json:"machine,omitempty"`
+	WorkspaceLabel string `json:"workspace_label,omitempty"`
+	TabLabel       string `json:"tab_label,omitempty"`
+	PaneLabel      string `json:"pane_label,omitempty"`
+	PaneID         string `json:"pane_id,omitempty"`
+	Agent          string `json:"agent,omitempty"`
+	Cwd            string `json:"cwd,omitempty"`
+	Branch         string `json:"branch,omitempty"`
+	Command        string `json:"command,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	Machine        string `json:"machine,omitempty"`
 }
 type DecisionAnswer struct {
 	OptionID       *string  `json:"option_id"`

@@ -15,6 +15,10 @@ import (
 )
 
 type Prompt struct {
+	Final      bool
+	Flow       string
+	Question   int
+	Total      int
 	Params     api.DecisionCreateParams
 	Keys       map[string]string
 	Checked    map[string]bool
@@ -30,6 +34,7 @@ var numbered = regexp.MustCompile(`^\s*([❯›>]?)\s*(\d+)[.)]\s+(.*)$`)
 var checkbox = regexp.MustCompile(`^\[([ ✔✓xX])\]\s*(.*)$`)
 var shortcut = regexp.MustCompile(`\((esc|[[:alnum:]])\)`)
 var tabs = regexp.MustCompile(`([☐☒☑✔])\s*([^☐☒☑✔←→]+)`)
+var toolCall = regexp.MustCompile(`^⏺\s*[[:alnum:]_]+\(`)
 var glued = regexp.MustCompile(`\S( {2,})\S`)
 
 // A damaged partial read still has option rows; an idle/empty screen is not a prompt.
@@ -46,6 +51,10 @@ func HasOptionRows(lines []string) bool {
 func unglue(lines []string) []string {
 	var out []string
 	for _, line := range lines {
+		if at := strings.Index(line, "──"); at >= 0 && solidRule(line[at:]) && numbered.MatchString(line[:at]) {
+			out = append(out, line[:at], line[at:])
+			continue
+		}
 		if !numbered.MatchString(line) {
 			out = append(out, line)
 			continue
@@ -78,8 +87,13 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if agent != "claude" && agent != "codex" && agent != "devin" {
 		return nil
 	}
+	screen, notice := cleanNotice(screen)
 	plain, preview, hasPreview := extractPreview(screen)
-	lines := unglue(plain)
+	lines := unglue(mergeCommandRows(plain))
+	positional, chatID := positionalTextIDs(lines)
+	if textID == "" {
+		textID = positional
+	}
 	first := -1
 	for i, line := range lines {
 		if m := numbered.FindStringSubmatch(line); m != nil && (first < 0 || m[2] == "1") {
@@ -108,10 +122,14 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			askUserQuestion = true
 			p.Params.QuestionLabel = questionLabel(line)
 			p.Params.Body = p.Params.QuestionLabel
+			p.Flow, p.Question, p.Total = flowTabs(line)
 			continue
 		}
 		if strings.HasPrefix(line, "☐ ") || strings.HasPrefix(line, "☒ ") {
 			askUserQuestion = true
+			continue
+		}
+		if strings.HasPrefix(line, "⏺") {
 			continue
 		}
 		title = append(title, line)
@@ -125,6 +143,13 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		if !askUserQuestion && strings.Contains(lowerTitle, word) {
 			p.Params.Kind = "tool_permission"
 		}
+	}
+	if notice != "" {
+		body := notice
+		if p.Params.Body != nil {
+			body = *p.Params.Body + "\n" + body
+		}
+		p.Params.Body = &body
 	}
 	lastOption := -1
 	seen := map[string]bool{}
@@ -147,10 +172,11 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 				p.Checked[id] = checked[1] != " "
 				label = checked[2]
 			}
-			free := id == textID || strings.HasPrefix(strings.ToLower(label), "type something") || strings.HasPrefix(strings.ToLower(label), "chat about this")
+			free := id == textID || id == chatID || strings.HasPrefix(strings.ToLower(label), "type something") || strings.HasPrefix(strings.ToLower(label), "chat about this")
 			lastOption = -1
 			if free {
 				p.Params.AllowText = true
+				askUserQuestion = true
 				if p.TextID == "" {
 					p.TextID = id
 					p.Items = append(p.Items, id)
@@ -207,6 +233,19 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if len(p.Params.Options) == 0 {
 		return nil
 	}
+	if askUserQuestion {
+		p.Params.Kind = "agent_prompt"
+	} else if p.Params.Kind == "tool_permission" {
+		for i := first - 1; i >= 0; i-- {
+			if strings.HasPrefix(strings.TrimSpace(lines[i]), "⏺") {
+				if toolCall.MatchString(strings.TrimSpace(lines[i])) {
+					p.Params.Title = strings.TrimSpace(lines[i]) + " " + p.Params.Title
+				}
+				break
+			}
+		}
+	}
+	p.Final = finalPrompt(p)
 	for _, o := range p.Params.Options {
 		text := o.Label
 		if o.Description != nil {
@@ -314,13 +353,18 @@ func (p *Prompt) Signature() string {
 	}
 	options := []option{}
 	for _, o := range p.Params.Options {
-		options = append(options, option{o.ID, o.Label, o.Description})
+		var description *string
+		if o.Description != nil {
+			value := stableText(*o.Description)
+			description = &value
+		}
+		options = append(options, option{o.ID, stableText(o.Label), description})
 	}
 	data, _ := json.Marshal(struct {
 		Title                  string
 		Options                []option
 		AllowText, MultiSelect bool
-	}{p.Params.Title, options, p.Params.AllowText, p.Params.MultiSelect})
+	}{stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }

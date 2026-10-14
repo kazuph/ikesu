@@ -25,7 +25,7 @@ func TestDecisionDescriptionMultiCLIWatchAndStatusRealServer(t *testing.T) {
 	opts.Stderr = &errs
 	asked := make(chan int, 1)
 	go func() {
-		asked <- cli.Run([]string{"decision", "ask", "--title", "Choose", "--multi-select", "--option-desc", "one:First detail", "--option", "one:One:other", "--option", "two:Two:other"}, opts)
+		asked <- cli.Run([]string{"decision", "ask", "--title", "Choose", "--multi-select", "--allow-text", "--option-desc", "one:First detail", "--option", "one:One:other", "--option", "two:Two:other"}, opts)
 	}()
 	var pending api.DecisionListResult
 	waitPromptCondition(t, func() bool {
@@ -73,7 +73,7 @@ func TestDecisionDescriptionMultiCLIWatchAndStatusRealServer(t *testing.T) {
 	answerOpts := opts
 	answerOpts.Stdout = &answerOut
 	answerOpts.Stderr = &answerErr
-	if code := cli.Run([]string{"decision", "answer", d.DecisionID, "one", "two"}, answerOpts); code != 0 {
+	if code := cli.Run([]string{"decision", "answer", d.DecisionID, "one", "two", "--text", "Additional detail"}, answerOpts); code != 0 {
 		t.Fatal(code, answerErr.String())
 	}
 	if code := <-asked; code != 0 {
@@ -83,7 +83,7 @@ func TestDecisionDescriptionMultiCLIWatchAndStatusRealServer(t *testing.T) {
 	json.Unmarshal(answerOut.Bytes(), &resp)
 	var result api.DecisionResult
 	json.Unmarshal(resp.Result, &result)
-	if result.Decision.Answer == nil || len(result.Decision.Answer.OptionIDs) != 2 || *result.Decision.Answer.OptionID != "one" {
+	if result.Decision.Answer == nil || len(result.Decision.Answer.OptionIDs) != 2 || result.Decision.Answer.Text == nil || *result.Decision.Answer.Text != "Additional detail" || *result.Decision.Answer.OptionID != "one" {
 		t.Fatal(result)
 	}
 	resolved := readLine()

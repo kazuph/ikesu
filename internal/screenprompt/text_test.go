@@ -16,8 +16,8 @@ func TestObservedSingleMultiSelectAndEditedFreeRow(t *testing.T) {
 		t.Fatalf("known free row changed identity: %+v", q)
 	}
 	unknown := Parse("claude", edited)
-	if unknown == nil || unknown.Signature() == p.Signature() {
-		t.Fatal("unobserved row was silently treated as free input")
+	if unknown == nil || unknown.Signature() != p.Signature() {
+		t.Fatal("position did not identify edited free input")
 	}
 	changed := strings.Split(strings.ReplaceAll(strings.Join(edited, "\n"), "A concise overview.", "A changed overview."), "\n")
 	if q := ParseWithTextID("claude", changed, p.TextID); q == nil || q.Signature() == p.Signature() {
