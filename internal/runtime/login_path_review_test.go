@@ -55,7 +55,11 @@ func TestReview1LoginPATHTimeoutFailsClosed(t *testing.T) {
 func TestReview1ExplicitAgentPATHAndOrdinaryArgv(t *testing.T) {
 	teststate.Lock(t)
 	dir := t.TempDir()
-	dir, _ = filepath.EvalSymlinks(dir)
+	physicalDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = physicalDir
 	login := filepath.Join(dir, "login")
 	server := filepath.Join(dir, "server")
 	for _, d := range []string{login, server} {
