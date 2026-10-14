@@ -38,6 +38,9 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 			key = "done"
 		}
 	}
+	if a.decisionAttention[pid] {
+		key = "blocked"
+	}
 	switch key {
 	case "working":
 		return render.StatusGlyph{Key: "working", Rune: spinnerFrames[a.spin%len(spinnerFrames)], Color: render.Yellow}
@@ -531,4 +534,33 @@ func (a *App) SetConfigWarning(message string) {
 	a.configWarning = message
 	a.configWarningBanner = false
 	a.dirty = true
+}
+
+// SetDecisionAttention overlays pending decisions without replacing detected or reported state.
+func (a *App) SetDecisionAttention(panes map[int]bool) {
+	changed := map[int]bool{}
+	for pid := range a.decisionAttention {
+		if !panes[pid] {
+			changed[pid] = true
+		}
+	}
+	for pid := range panes {
+		if !a.decisionAttention[pid] {
+			changed[pid] = true
+		}
+	}
+	for pid := range changed {
+		a.noteAgentState(pid)
+	}
+	a.decisionAttention = panes
+	for pid := range changed {
+		before := a.agentStates[pid]
+		a.noteAgentState(pid)
+		if before != a.glyph(pid).Key && a.availHook != nil {
+			a.availHook(pid)
+		}
+	}
+	if len(changed) > 0 {
+		a.changed()
+	}
 }

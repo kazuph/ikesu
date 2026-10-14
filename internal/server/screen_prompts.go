@@ -295,6 +295,7 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 		agent = reported
 	}
 	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: agent, Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
+	s.completeDecisionOrigin(p.Origin)
 	d, err := store.CreateDecision(p, time.Now())
 	if err != nil {
 		s.app.SetConfigWarning("screen prompt creation: " + err.Error())

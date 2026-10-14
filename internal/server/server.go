@@ -412,6 +412,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 			s.flushAllMail()
 			s.initDecisionHub()
 			if store, err := s.db(); err == nil {
+				s.syncDecisionAttention()
 				if err := s.expireDecisions(store); err != nil {
 					s.app.SetConfigWarning(err.Error())
 				}
