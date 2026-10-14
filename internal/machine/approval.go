@@ -15,19 +15,19 @@ import (
 
 const ApprovalStopped = "承認待ち。クリックで承認ページを開く"
 
-// ApprovalRecord is shared across sessions and client processes for one SSH target.
+// ApprovalRecord is shared across sessions and client processes for one saved machine ID.
 type ApprovalRecord struct {
 	Client   string    `json:"client"`
 	URL      string    `json:"url"`
 	OpenedAt time.Time `json:"opened_at"`
 }
 
-func approvalFile(target string) string {
-	return filepath.Join(api.StateDir(), "machine-approvals", fmt.Sprintf("%x.json", sha256.Sum256([]byte(target))))
+func approvalFile(machineID string) string {
+	return filepath.Join(api.StateDir(), "machine-approvals", fmt.Sprintf("%x.json", sha256.Sum256([]byte(machineID))))
 }
 
-func withApproval(target string, action func(string) error) error {
-	path := approvalFile(target)
+func withApproval(machineID string, action func(string) error) error {
+	path := approvalFile(machineID)
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
@@ -45,8 +45,8 @@ func withApproval(target string, action func(string) error) error {
 
 // OpenApproval holds the cross-process lock through browser launch, so a second
 // client cannot open a duplicate even while the first launch is in progress.
-func OpenApproval(target, url string) error {
-	return claimApproval(target, url, func() error {
+func OpenApproval(machineID, url string) error {
+	return claimApproval(machineID, url, func() error {
 		cmd := childenv.Command("open", "--", url)
 		if err := cmd.Start(); err != nil {
 			return err
@@ -56,8 +56,8 @@ func OpenApproval(target, url string) error {
 	})
 }
 
-func claimApproval(target, url string, open func() error) error {
-	return withApproval(target, func(path string) error {
+func claimApproval(machineID, url string, open func() error) error {
+	return withApproval(machineID, func(path string) error {
 		if _, err := os.Stat(path); err == nil {
 			return nil
 		} else if !os.IsNotExist(err) {
@@ -92,8 +92,8 @@ func claimApproval(target, url string, open func() error) error {
 }
 
 // ClearApproval is used after connection success and an explicit header retry.
-func ClearApproval(target string) error {
-	return withApproval(target, func(path string) error {
+func ClearApproval(machineID string) error {
+	return withApproval(machineID, func(path string) error {
 		err := os.Remove(path)
 		if os.IsNotExist(err) {
 			return nil

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -78,7 +79,9 @@ func TestRunPrivateMarkerCannotClearOtherMachineOrLeakOutput(t *testing.T) {
 		}
 	}
 	profiles := []Profile{{ID: "m1", Target: "target", Enabled: true}}
-	original := append([]string{"ssh"}, RunArgs(profiles[0], "/tmp", []string{"/bin/sh", "-c", "printf OUT; printf ERR >&2; exit 7"}, false)...)
+	_, env := isolatedRunShell(t)
+	remote := "exec /bin/sh -c " + Quote("printf OUT; printf ERR >&2; exit 7")
+	original := append(RunPrefix(profiles[0], false), remote)
 	before := append([]string{}, original...)
 	state, observed := PrepareRunApproval(profiles, original, func() { t.Error("unexpected expiry") })
 	defer state.Close()
@@ -93,6 +96,7 @@ func TestRunPrivateMarkerCannotClearOtherMachineOrLeakOutput(t *testing.T) {
 		t.Fatal("forged marker connected")
 	}
 	command := exec.Command("/bin/sh", "-c", observed[len(observed)-1])
+	command.Env = env
 	command.Stdout, command.Stderr = out, errOut
 	err := command.Run()
 	if e, ok := err.(*exec.ExitError); !ok || e.ExitCode() != 7 {
@@ -129,5 +133,64 @@ func TestRunPrivateMarkerCannotClearOtherMachineOrLeakOutput(t *testing.T) {
 	state.Close()
 	if stdout.String() != "PTY_OUTPUT" {
 		t.Fatal(stdout.String())
+	}
+}
+
+// Every executable shell in these tests uses temporary startup files and a
+// literal environment, independent of the developer's login and direnv state.
+func isolatedRunShell(t *testing.T) (string, []string) {
+	t.Helper()
+	home := t.TempDir()
+	startup := filepath.Join(home, "startup")
+	if err := os.WriteFile(startup, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return home, []string{"HOME=" + home, "ZDOTDIR=" + home, "ENV=" + startup, "BASH_ENV=" + startup, "SHELL=/bin/sh", "PATH=/usr/bin:/bin"}
+}
+
+func TestRunMarkerHandlesShellStartupStderrLines(t *testing.T) {
+	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	home, env := isolatedRunShell(t)
+	if err := os.WriteFile(filepath.Join(home, "startup"), []byte("printf 'shell startup notice\\n' >&2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := claimApproval("m1", "old-url", func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	profiles := []Profile{{ID: "m1", Target: "target", Enabled: true}}
+	remote := "exec /bin/bash --noprofile --norc -c " + Quote("printf OUT; printf ERR >&2; exit 7")
+	original := append(RunPrefix(profiles[0], false), remote)
+	state, observed := PrepareRunApproval(profiles, original, func() { t.Error("unexpected expiry") })
+	defer state.Close()
+	var stdout, stderr bytes.Buffer
+	out := &ApprovalStream{State: state, Out: &stdout}
+	errOut := &ApprovalStream{State: state, Out: &stderr}
+	quoted := "quoted " + state.Marker + " suffix\n"
+	if _, err := errOut.Write([]byte(quoted)); err != nil {
+		t.Fatal(err)
+	}
+	if state.connected {
+		t.Fatal("marker substring was accepted")
+	}
+	// BASH_ENV is read by both real non-login shells: before the generated
+	// marker in the outer shell, and after it in the nested remote shell.
+	command := exec.Command("/bin/bash", "--noprofile", "--norc", "-c", observed[len(observed)-1])
+	command.Env = env
+	command.Stdout, command.Stderr = out, errOut
+	err := command.Run()
+	if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 7 {
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := errOut.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !state.connected || stdout.String() != "OUT" || stderr.String() != quoted+"shell startup notice\nshell startup notice\nERR" {
+		t.Fatal(state.connected, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(approvalFile("m1")); !os.IsNotExist(err) {
+		t.Fatal("startup output prevented marker detection", err)
 	}
 }

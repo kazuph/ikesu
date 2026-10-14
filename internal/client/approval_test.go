@@ -57,64 +57,73 @@ func TestMachineApprovalExpiryStopsRetryAndConnectionClearsSharedRecord(t *testi
 }
 
 func TestMachineApprovalHeaderClickCancelsWaitAndStartsNewAttempt(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("HOME", root)
-	t.Setenv("GTX_STATE_DIR", filepath.Join(root, "state"))
-	t.Setenv("GTX_CONFIG", filepath.Join(root, "config.toml"))
-	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(""), 0600); err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct{ name, status, approval string }{
+		{"own stopped approval", machine.ApprovalStopped, "old-url"},
+		{"shared awaiting record", "awaiting approval", ""},
+		{"shared stopped record", machine.ApprovalStopped, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("HOME", root)
+			t.Setenv("GTX_STATE_DIR", filepath.Join(root, "state"))
+			t.Setenv("GTX_CONFIG", filepath.Join(root, "config.toml"))
+			if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(""), 0600); err != nil {
+				t.Fatal(err)
+			}
+			id := "saved-id"
+			record := filepath.Join(root, "state", "machine-approvals", fmt.Sprintf("%x.json", sha256.Sum256([]byte(id))))
+			if err := os.MkdirAll(filepath.Dir(record), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(record, []byte(`{"client":"prior","url":"old"}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			file, err := os.CreateTemp(root, "terminal")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			snapshot := render.Input{State: model.New(root, 160, 45)}
+			waiting, cancelWait := context.WithCancel(context.Background())
+			defer cancelWait()
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			remote := &managedEndpoint{profile: machine.Profile{ID: id, Label: "Approval", Target: "127.0.0.1", Enabled: true}, status: tc.status, approval: tc.approval, cancel: cancelWait, attempt: 1}
+			remote.retry.approvalExpired()
+			m := &machineClient{ctx: ctx, settings: &localSettings{}, events: make(chan endpointEvent), out: file, active: "local", size: tui.Winsize{Cols: 160, Rows: 45}, order: []string{"local", id}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot}, id: remote}}
+			if err := m.paint(); err != nil {
+				t.Fatal(err)
+			}
+			var header *render.MachineHit
+			for _, hit := range m.sidebar.Hits {
+				if hit.Machine == id && hit.Header {
+					copy := hit
+					header = &copy
+					break
+				}
+			}
+			if header == nil {
+				t.Fatal("header absent")
+			}
+			event := input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: header.Rect.X, Y: header.Rect.Y, Button: uv.MouseLeft}}
+			if err := m.input(event); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-waiting.Done():
+			default:
+				t.Fatal("previous wait was not canceled")
+			}
+			if remote.attempt != 2 || remote.approval != "" || remote.retry.manual {
+				t.Fatal(remote.attempt, remote.approval, remote.retry)
+			}
+			if _, err := os.Stat(record); !os.IsNotExist(err) {
+				t.Fatal("explicit retry did not clear record", err)
+			}
+			// The new worker uses real OpenSSH with isolated generated config. Its parent
+			// is already canceled, so it closes that owned child without external state.
+			m.workers.Wait()
+
+		})
 	}
-	id := "saved-id"
-	record := filepath.Join(root, "state", "machine-approvals", fmt.Sprintf("%x.json", sha256.Sum256([]byte(id))))
-	if err := os.MkdirAll(filepath.Dir(record), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(record, []byte(`{"client":"prior","url":"old"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	file, err := os.CreateTemp(root, "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	snapshot := render.Input{State: model.New(root, 160, 45)}
-	waiting, cancelWait := context.WithCancel(context.Background())
-	defer cancelWait()
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	remote := &managedEndpoint{profile: machine.Profile{ID: id, Label: "Approval", Target: "127.0.0.1", Enabled: true}, status: machine.ApprovalStopped, approval: "old-url", cancel: cancelWait, attempt: 1}
-	remote.retry.approvalExpired()
-	m := &machineClient{ctx: ctx, settings: &localSettings{}, events: make(chan endpointEvent), out: file, active: "local", size: tui.Winsize{Cols: 160, Rows: 45}, order: []string{"local", id}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot}, id: remote}}
-	if err := m.paint(); err != nil {
-		t.Fatal(err)
-	}
-	var header *render.MachineHit
-	for _, hit := range m.sidebar.Hits {
-		if hit.Machine == id && hit.Header {
-			copy := hit
-			header = &copy
-			break
-		}
-	}
-	if header == nil {
-		t.Fatal("header absent")
-	}
-	event := input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: header.Rect.X, Y: header.Rect.Y, Button: uv.MouseLeft}}
-	if err := m.input(event); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-waiting.Done():
-	default:
-		t.Fatal("previous wait was not canceled")
-	}
-	if remote.attempt != 2 || remote.approval != "" || remote.retry.manual {
-		t.Fatal(remote.attempt, remote.approval, remote.retry)
-	}
-	if _, err := os.Stat(record); !os.IsNotExist(err) {
-		t.Fatal("explicit retry did not clear record", err)
-	}
-	// The new worker uses real OpenSSH with isolated generated config. Its parent
-	// is already canceled, so it closes that owned child without external state.
-	m.workers.Wait()
 }
