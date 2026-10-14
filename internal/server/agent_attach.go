@@ -140,6 +140,7 @@ func (s *Server) attachAgent(c *clientConn, rd *bufio.Reader, hello clientMsg) {
 				}
 				offset = 0
 				dirty = true
+				pane.RecordExternalInput()
 				if _, err = pane.WriteToPTY(data); err != nil {
 					s.mu.Unlock()
 					return

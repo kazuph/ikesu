@@ -26,3 +26,30 @@ func TestAgentStateChangeSequenceTracksTransitions(t *testing.T) {
 		t.Fatal("sequence is not monotonic")
 	}
 }
+
+func TestDecisionAttentionViewerAndShellTransitions(t *testing.T) {
+	a := specRuntimeApp(t)
+	a.SetReported(1, "", "")
+	v := a.NewViewer(nil, 80, 24, nil)
+	var states []string
+	a.SetAvailHook(func(pid int) { states = append(states, a.PaneStatusKey(pid)) })
+	a.SetDecisionAttention(map[int]bool{1: true})
+	v.with(a, func(ui *App) {
+		if ui.PaneStatusKey(1) != "blocked" || ui.glyph(1).Rune != "●" {
+			t.Error("endpoint viewer lost attention")
+		}
+	})
+	if len(states) != 2 || states[0] != "unknown" || states[1] != "blocked" {
+		t.Fatal(states)
+	}
+	sequence := a.AgentStateChangeSeq(1)
+	a.SetReported(1, "claude", "blocked")
+	a.SetDecisionAttention(nil)
+	if a.AgentStateChangeSeq(1) != sequence {
+		t.Fatal("underlying blocked duplicated transition")
+	}
+	a.SetDecisionAttention(map[int]bool{1: true})
+	if a.AgentStateChangeSeq(1) != sequence {
+		t.Fatal("already blocked duplicated transition")
+	}
+}

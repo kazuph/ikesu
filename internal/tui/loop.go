@@ -35,6 +35,7 @@ func (a *App) onInput(ev input.Event) {
 		}
 		if pid := a.focusedPane(); pid >= 0 {
 			if p := a.sup.Get(pid); p != nil {
+				p.RecordExternalInput()
 				p.WithEmu(func(e *vt.Emulator) { e.Paste(ev.Text) })
 			}
 		}

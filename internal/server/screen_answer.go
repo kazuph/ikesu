@@ -16,11 +16,15 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		return nil, 0, nil
 	}
 	pid, _, _, ok := s.findPane(d.Origin.PaneID)
+	if ok && s.screenUserActive(pid) {
+		return nil, 0, &api.Error{Code: "pane_user_active", Message: "pane received external input within the last three seconds"}
+	}
 	w := s.screenPrompts.watches[pid]
 	current := s.readScreenPrompt(pid)
 	damaged := false
 	if pane := s.sup.Get(pid); pane != nil {
-		damaged = screenprompt.HasOptionRows(pane.DetectionLines())
+		visible, _ := pane.ReadLines("visible", true)
+		damaged = screenprompt.HasOptionRows(visible)
 	}
 	if !ok || w == nil || w.decisionID != d.DecisionID || !s.cfg.ScreenPrompts() || current != nil && current.Signature() != w.signature || current == nil && (!w.lastMatched || !damaged) || s.sup.Get(pid) == nil || s.sup.Get(pid).Snapshot().Dead {
 		if w == nil {
@@ -52,11 +56,12 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 	result := make(chan error, 1)
 	w.delivery = result
 	w.resolved = true
+	s.beginScreenFlowAnswer(pid, w.prompt)
 	prompt := w.prompt
 	w.editingText = prompt.Params.MultiSelect && answer.Text != nil
 	go func() {
 		err := s.deliverScreenAnswer(pid, w.signature, prompt, answer)
-		s.app.Do(func() { w.editingText = false })
+		s.app.Do(func() { w.editingText = false; s.finishScreenFlowAnswer(pid, prompt, err) })
 		if err != nil {
 			s.app.Do(func() { s.app.SetConfigWarning("screen prompt input failed: " + err.Error()) })
 		}
@@ -73,6 +78,10 @@ func (s *Server) screenInput(pid int, signature, data string, verify bool) error
 			err = fmt.Errorf("pane closed or screen prompts disabled")
 			return
 		}
+		if s.screenUserActive(pid) || s.screenAnswerInterrupted(pid) {
+			err = fmt.Errorf("pane_user_active: external input interrupted delivery")
+			return
+		}
 		if verify {
 			p := s.readScreenPrompt(pid)
 			if p == nil || p.Signature() != signature {
@@ -80,7 +89,8 @@ func (s *Server) screenInput(pid int, signature, data string, verify bool) error
 				return
 			}
 		}
-		_, err = pane.WriteToPTY([]byte(data))
+		sequence := s.screenPrompts.watches[pid].answerInputSequence
+		_, err = pane.WriteScreenPrompt([]byte(data), &sequence)
 	})
 	return err
 }

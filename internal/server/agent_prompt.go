@@ -89,6 +89,7 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
 	}
 	if info.Agent != nil && *info.Agent == "copilot" {
+		pane.RecordExternalInput()
 		if _, err := pane.WriteToPTY([]byte("\x1b[I")); err != nil {
 			return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 		}
@@ -97,6 +98,7 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 	if pane.BracketedPasteMode() {
 		text = "\x1b[200~" + text + "\x1b[201~"
 	}
+	pane.RecordExternalInput()
 	if _, err := pane.WriteToPTY([]byte(text)); err != nil {
 		return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 	}
@@ -113,6 +115,7 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 	if pane.Snapshot().Dead || s.sup.Get(pane.ID) != pane {
 		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
 	}
+	pane.RecordExternalInput()
 	if _, err := pane.WriteToPTY([]byte{'\r'}); err != nil {
 		return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 	}

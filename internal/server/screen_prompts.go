@@ -9,8 +9,11 @@ import (
 )
 
 type screenPromptHub struct {
-	watches map[int]*screenPromptWatch
-	timer   *time.Timer
+	seen     map[int]map[string]bool
+	rebuilds map[int][]time.Time
+	flows    map[int]*screenAnswerFlow
+	watches  map[int]*screenPromptWatch
+	timer    *time.Timer
 }
 
 // Waiting screens use the review's one-second bound; preview navigation keeps
@@ -18,16 +21,17 @@ type screenPromptHub struct {
 const screenPromptWaitPoll = time.Second
 
 type screenPromptWatch struct {
-	signature   string
-	decisionID  string
-	prompt      *screenprompt.Prompt
-	mismatches  int
-	lastMatched bool
-	resolved    bool
-	preview     *screenPreviewScan
-	previews    map[string]*string
-	delivery    <-chan error
-	editingText bool
+	signature           string
+	decisionID          string
+	prompt              *screenprompt.Prompt
+	mismatches          int
+	lastMatched         bool
+	resolved            bool
+	preview             *screenPreviewScan
+	previews            map[string]*string
+	delivery            <-chan error
+	answerInputSequence uint64
+	editingText         bool
 }
 
 func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
@@ -43,7 +47,16 @@ func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
 	if w := s.screenPrompts.watches[pid]; w != nil && w.editingText {
 		textID = w.prompt.TextID
 	}
-	return screenprompt.ParseWithTextID(agent, p.DetectionLines(), textID)
+	visible, _ := p.ReadLines("visible", true)
+	current := screenprompt.ParseWithTextID(agent, p.DetectionScreenLines(), textID)
+	if !screenprompt.HasOptionRows(visible) {
+		return nil
+	}
+	expanded := screenprompt.ParseWithTextID(agent, p.DetectionLines(), textID)
+	if current != nil && current.Params.Kind == "tool_permission" && expanded != nil {
+		return expanded
+	}
+	return current
 }
 
 func (s *Server) screenPromptsActive() bool {
@@ -197,7 +210,26 @@ func (s *Server) scanScreenPrompts() {
 			continue
 		}
 		p := s.readScreenPrompt(pid)
+		if s.screenUserActive(pid) {
+			if p != nil {
+				s.markPreviewSeen(pid, p)
+			}
+			if w != nil && w.preview != nil {
+				s.cachePreviewScan(w)
+			}
+			continue
+		}
+		if p != nil && p.Final {
+			s.submitScreenFlow(pid, p)
+			p = nil
+		}
 		if w != nil {
+			if p != nil && !w.resolved && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
+				w.signature = p.Signature()
+				w.prompt = p
+				s.updateScreenPrompt(w)
+			}
+
 			if p == nil || p.Signature() != w.signature {
 				w.lastMatched = false
 				w.mismatches++
@@ -208,6 +240,9 @@ func (s *Server) scanScreenPrompts() {
 				if w.mismatches < 2 {
 					continue
 				} // SPEC 工程6: one damaged read cannot cancel.
+				if p != nil && !w.resolved {
+					s.noteScreenRebuild(pid)
+				}
 				s.cancelScreenPrompt(w)
 				delete(s.screenPrompts.watches, pid)
 				w = nil
@@ -225,6 +260,7 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if !w.resolved {
+					s.updateScreenPrompt(w)
 					store, err := s.db()
 					if err == nil {
 						if d, err := store.Decision(w.decisionID); err == nil {
@@ -238,7 +274,8 @@ func (s *Server) scanScreenPrompts() {
 		if w == nil && p != nil && s.app.PaneStatusKey(pid) == "blocked" {
 			w = &screenPromptWatch{signature: p.Signature(), prompt: p, lastMatched: true}
 			s.screenPrompts.watches[pid] = w
-			if p.HasPreview && !s.reuseScreenPrompt(pid, w) {
+			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
+				s.markPreviewSeen(pid, p)
 				s.startPreviewScan(pid, w)
 			} else {
 				s.createScreenPrompt(pid, w)

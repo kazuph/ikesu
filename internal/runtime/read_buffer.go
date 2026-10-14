@@ -381,19 +381,30 @@ func (p *Pane) ReadLines(source string, strip bool) ([]string, error) {
 	return p.readLinesLocked(source, strip), nil
 }
 
-// DetectionLines uses only the current detection screen, never the user's scroll position or history.
+// DetectionLines includes the SPEC 工程6 24 rows above the current screen, independent of user scrolling.
 func (p *Pane) DetectionLines() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.readLinesLocked("detection", true)
 }
 
+// DetectionScreenLines unwraps the live screen without including older prompts.
+func (p *Pane) DetectionScreenLines() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.readLinesLocked("screen_detection", true)
+}
+
 func (p *Pane) readLinesLocked(source string, strip bool) []string {
-	logical := source == "recent_unwrapped" || source == "recent-unwrapped" || source == "detection"
+	logical := source == "recent_unwrapped" || source == "recent-unwrapped" || source == "detection" || source == "screen_detection"
 	refs := []rowRef{}
 	rows := []uv.Line{}
-	if source != "visible" && source != "detection" && !p.altScreen {
-		for y := 0; y < p.emu.ScrollbackLen(); y++ {
+	if source != "visible" && source != "screen_detection" && !p.altScreen {
+		start := 0
+		if source == "detection" {
+			start = max(0, p.emu.ScrollbackLen()-24)
+		}
+		for y := start; y < p.emu.ScrollbackLen(); y++ {
 			rows = append(rows, p.emu.Scrollback().Line(y))
 			ref := rowRef{}
 			if p.read != nil {

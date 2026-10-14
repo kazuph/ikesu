@@ -551,6 +551,9 @@ func (a *App) SetDecisionAttention(panes map[int]bool) {
 	}
 	for pid := range changed {
 		a.noteAgentState(pid)
+		if a.availHook != nil && a.glyph(pid).Key != "blocked" {
+			a.availHook(pid)
+		}
 	}
 	a.decisionAttention = panes
 	for pid := range changed {
