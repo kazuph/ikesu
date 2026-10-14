@@ -51,6 +51,7 @@ type Workspace struct {
 
 // Tab is one saved tab with its split tree and pane records.
 type Tab struct {
+	Zoomed  int    `json:"zoomed,omitempty"` // pane id; absent/zero means no zoom
 	ID      int    `json:"id"`
 	Name    string `json:"name,omitempty"`
 	Focused int    `json:"focused"` // pane id
@@ -237,6 +238,10 @@ func (f *File) Validate() (warnings []string) {
 				}
 			}
 			t.Panes = kept
+			if t.Zoomed != 0 && !contains(leaves, t.Zoomed) {
+				warnings = append(warnings, fmt.Sprintf("tab %d has an invalid zoom pane; zoom cleared", t.ID))
+				t.Zoomed = 0
+			}
 			if !contains(leaves, t.Focused) {
 				t.Focused = leaves[0]
 			}
@@ -294,6 +299,26 @@ func (f *File) Validate() (warnings []string) {
 // Panes in leaf order, so the i-th leaf positionally receives the i-th
 // record's id — duplicated or zero old ids cannot collide that way.
 func (f *File) renumber() {
+	zoomPositions := map[*Tab]int{}
+	for wi := range f.Workspaces {
+		for ti := range f.Workspaces[wi].Tabs {
+			t := &f.Workspaces[wi].Tabs[ti]
+			if t.Zoomed == 0 {
+				continue
+			}
+			pos, count := 0, 0
+			for i, p := range t.Panes {
+				if p.ID == t.Zoomed {
+					pos = i
+					count++
+				}
+			}
+			if count == 1 {
+				zoomPositions[t] = pos
+			}
+			t.Zoomed = 0
+		}
+	}
 	next := 0
 	f.EachPane(func(_ *Workspace, _ *Tab, p *Pane) {
 		next++
@@ -319,6 +344,9 @@ func (f *File) renumber() {
 				walk(n.Second)
 			}
 			walk(t.Layout)
+			if pos, ok := zoomPositions[t]; ok {
+				t.Zoomed = t.Panes[pos].ID
+			}
 			t.Focused = t.Panes[0].ID
 			t.Order = t.Order[:0]
 			for _, p := range t.Panes {

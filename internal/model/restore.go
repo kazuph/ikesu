@@ -32,6 +32,7 @@ func (s *AppState) Snapshot() *session.File {
 		for _, t := range ws.Tabs {
 			st := session.Tab{
 				ID:      t.ID,
+				Zoomed:  t.Zoomed,
 				Name:    t.Name,
 				Focused: t.Layout.Focused(),
 				Order:   t.Layout.PaneIDs(),
@@ -73,7 +74,7 @@ func Restore(f *session.File) *AppState {
 		ws := &Workspace{ID: sw.ID, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed, Section: Section(sw.Section), CustomName: sw.CustomName, DefaultName: sw.DefaultName}
 		for _, st := range sw.Tabs {
 			l := layout.Restore(session.ToLayoutNode(st.Layout), st.Focused, st.Order)
-			ws.Tabs = append(ws.Tabs, &Tab{ID: st.ID, Name: st.Name, Layout: l})
+			ws.Tabs = append(ws.Tabs, &Tab{ID: st.ID, Name: st.Name, Layout: l, Zoomed: st.Zoomed})
 			for _, p := range st.Panes {
 				if p.Label != "" {
 					s.PaneLabels[p.ID] = p.Label
