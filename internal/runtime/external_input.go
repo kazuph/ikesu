@@ -27,5 +27,13 @@ func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64) (int, error) {
 	if p.UserActive() || sequence != nil && p.ExternalInputSequence() != *sequence {
 		return 0, fmt.Errorf("pane_user_active: external input interrupted screen prompt")
 	}
+	// Linux accepts writes to a PTY master after its child exits, so an exited
+	// pane must count as a failed send instead of a delivered key.
+	p.mu.Lock()
+	dead := p.dead
+	p.mu.Unlock()
+	if dead {
+		return 0, fmt.Errorf("pane exited: screen prompt key not delivered")
+	}
 	return p.WriteToPTY(data)
 }
