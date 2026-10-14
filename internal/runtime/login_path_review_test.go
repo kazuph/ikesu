@@ -100,18 +100,14 @@ func TestReview1ExplicitAgentPATHAndOrdinaryArgv(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		deadline := time.Now().Add(time.Second)
 		want := tc.label + " PATH=" + tc.path + " ARG=argument with spaces CWD=" + dir
-		for {
-			var text string
-			p.WithEmu(func(e *vt.Emulator) { text = e.String() })
-			if strings.Contains(text, want) {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatal(text, want)
-			}
-			time.Sleep(time.Millisecond)
+		// This checks child environment, not one-second startup performance.
+		// Await real PTY output with the shared runtime readiness helper.
+		waitReadMarker(t, p, tc.label+" PATH=")
+		var text string
+		p.WithEmu(func(e *vt.Emulator) { text = e.String() })
+		if !strings.Contains(text, want) {
+			t.Fatal(text, want)
 		}
 	}
 }
