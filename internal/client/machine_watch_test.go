@@ -63,7 +63,14 @@ func TestMachineCatalogWatchFollowsAtomicReplacementDeletionAndRecreation(t *tes
 		t.Fatal(err)
 	}
 	await("missing")
-	if err := os.WriteFile(path, []byte("recreated"), 0600); err != nil {
+	// The catalog is always written as a temporary file renamed into place.
+	// A plain WriteFile creates an empty file first, which a directory
+	// watch may observe before the bytes arrive.
+	recreated := filepath.Join(dir, ".machines-recreated")
+	if err := os.WriteFile(recreated, []byte("recreated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(recreated, path); err != nil {
 		t.Fatal(err)
 	}
 	await("recreated")
