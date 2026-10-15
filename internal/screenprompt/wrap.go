@@ -9,9 +9,15 @@ import (
 )
 
 func screenColumns(lines []string) int {
-	width := 0
+	width, ruleWidth := 0, 0
 	for _, line := range lines {
 		width = max(width, ansi.StringWidth(line))
+		if solidRule(line) {
+			ruleWidth = max(ruleWidth, ansi.StringWidth(line))
+		}
+	}
+	if ruleWidth > 0 {
+		return ruleWidth
 	}
 	return width
 }
@@ -38,15 +44,24 @@ func wrappedSeparator(previous, next string, columns int) string {
 	if !fragment(a) || !fragment(b) {
 		return " "
 	}
-	last := left[strings.LastIndexFunc(left, unicode.IsSpace)+1:]
+	tokenBreak := func(r rune) bool { return unicode.IsSpace(r) || cjk(r) || r > unicode.MaxASCII && unicode.IsPunct(r) }
+	last := left
+	if i := strings.LastIndexFunc(left, tokenBreak); i >= 0 {
+		_, size := utf8.DecodeRuneInString(left[i:])
+		last = left[i+size:]
+	}
 	first := right
-	if i := strings.IndexFunc(first, unicode.IsSpace); i >= 0 {
+	if i := strings.IndexFunc(first, tokenBreak); i >= 0 {
 		first = first[:i]
 	}
-	if strings.ContainsAny(last+first, "/\\_-") || strings.Contains(strings.TrimRight(last, "."), ".") || strings.Contains(strings.TrimRight(first, ".,;:!?"), ".") || strings.HasSuffix(last, ".") && unicode.IsLower(b) {
+	base := last[strings.LastIndexAny(last, "/\\")+1:]
+	pathPrefix := strings.ContainsAny(last, "/\\_-") && !strings.Contains(base, ".")
+	pathSuffix := strings.ContainsAny(first, "/\\_-") || strings.Contains(strings.TrimRight(first, ".,;:!?"), ".")
+	if pathPrefix && pathSuffix || strings.ContainsRune("/\\_-", a) || strings.ContainsRune("/\\_.-", b) {
 		return ""
 	}
-	if columns > 0 && ansi.StringWidth(last+first) > columns {
+	indent := ansi.StringWidth(previous) - ansi.StringWidth(strings.TrimLeftFunc(previous, unicode.IsSpace))
+	if columns > indent && ansi.StringWidth(last+first) > columns-indent {
 		return ""
 	}
 	if columns > 0 && ansi.StringWidth(previous) >= columns-1 && strings.ContainsFunc(previous, cjk) {

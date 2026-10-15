@@ -42,7 +42,6 @@ func TestObservedScreenContractsMatchHerdr0240(t *testing.T) {
 			}
 			// E1 corrects inserted wrap spaces in this historical observation.
 			if name == "codex-permission" {
-				want.Title = strings.ReplaceAll(want.Title, "ファイルへ observation", "ファイルへobservation")
 				value := strings.ReplaceAll(*want.Options[1].Description, "/ outside.txt", "/outside.txt")
 				want.Options[1].Description = &value
 			}

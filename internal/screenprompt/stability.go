@@ -1,6 +1,7 @@
 package screenprompt
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/api"
 	"regexp"
 	"strings"
@@ -115,16 +116,19 @@ func (p *Prompt) ChoiceSignature() string {
 func mergeCommandRows(lines []string, columns int) []string {
 	var out []string
 	var command []string
+	commandColumns := columns
 	flush := func() {
 		if len(command) > 0 {
-			out = append(out, joinWrapped(command, columns))
+			out = append(out, joinWrapped(command, commandColumns))
 			command = nil
 		}
 	}
 	for _, line := range lines {
 		trim := strings.TrimLeft(line, " ")
 		if strings.HasPrefix(trim, "│ ") {
-			command = append(command, strings.TrimPrefix(trim, "│ "))
+			content := strings.TrimPrefix(trim, "│ ")
+			commandColumns = columns - ansi.StringWidth(line[:len(line)-len(content)])
+			command = append(command, content)
 		} else {
 			flush()
 			out = append(out, line)
