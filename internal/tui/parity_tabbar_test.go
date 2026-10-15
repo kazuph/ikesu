@@ -21,7 +21,7 @@ func TestParityTabbarOverflowKeepsRealPTYSelectionAndManualScroll(t *testing.T) 
 	}
 	a.exec(model.CmdResize{Cols: 80, Rows: 25})
 	a.draw()
-	if a.tabScroll != 36 || a.tabHits[7].W != 8 {
+	if a.tabScroll != 38 || a.tabHits[7].W != 8 {
 		t.Fatal("selected last tab is hidden", a.tabScroll, a.tabHits)
 	}
 	click := func(x int) {
@@ -29,20 +29,20 @@ func TestParityTabbarOverflowKeepsRealPTYSelectionAndManualScroll(t *testing.T) 
 		a.draw()
 	}
 	click(27)
-	if a.tabScroll != 27 || a.st.ActiveWorkspace().ActiveTab != 7 {
+	if a.tabScroll != 29 || a.st.ActiveWorkspace().ActiveTab != 7 {
 		t.Fatal("left scroll changed selection", a.tabScroll)
 	}
 	click(27)
-	if a.tabScroll != 18 {
+	if a.tabScroll != 20 {
 		t.Fatal("second left scroll", a.tabScroll)
 	}
 	click(74)
-	if a.tabScroll != 27 {
+	if a.tabScroll != 29 {
 		t.Fatal("right scroll", a.tabScroll)
 	}
 	a.exec(model.CmdSelectTab{Workspace: 0, Tab: 0})
 	a.draw()
-	if a.tabScroll != 0 || a.tabHits[0].W != 17 {
+	if a.tabScroll != 0 || a.tabHits[0].W != 19 {
 		t.Fatal("prefix selection did not reveal first tab", a.tabScroll, a.tabHits[0])
 	}
 	if a.sup.Get(a.focusedPane()) == nil {

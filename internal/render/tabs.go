@@ -30,15 +30,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		if t.Zoomed != 0 {
 			name += " Z"
 		}
-		marker := tabMarker(t, in.Panes)
-		if in.ServerUI {
-			marker = " "
-		}
-		width := max(8, ansi.StringWidth(name)+4)
-		if marker != " " {
-			width = max(8, ansi.StringWidth(name)+6)
-			name = marker + name
-		}
+		width := max(8, ansi.StringWidth(name)+6)
 		labels = append(labels, name)
 		starts = append(starts, total)
 		widths = append(widths, width)
@@ -120,9 +112,14 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 				style.Attrs = uv.AttrBold
 			}
 		}
-		label := " " + labels[i]
+		label := "   " + labels[i]
 		strip.Fill(starts[i], 0, widths[i], 1, " ", style)
 		strip.Text(starts[i], 0, label, style, starts[i]+widths[i])
+		g := tabGlyph(t, in)
+		if g.Rune == " " {
+			g.Rune = "·"
+		}
+		strip.Text(starts[i]+1, 0, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: style.Bg, Attrs: boldIf(g.Bold)}, starts[i]+widths[i])
 		left, right := max(starts[i], offset), min(starts[i]+widths[i], offset+viewport)
 		r := layout.Rect{}
 		if left < right {
@@ -148,7 +145,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		rightClipped := n == visible-1 && offset+visible < total
 		if rightClipped && offset == maxOffset {
 			last := len(starts) - 1
-			rightClipped = in.ServerUI && starts[last]+ansi.StringWidth(" "+labels[last]) > offset+visible
+			rightClipped = in.ServerUI && starts[last]+ansi.StringWidth("   "+labels[last]) > offset+visible
 		}
 		if leftClipped || rightClipped {
 			cell.Content, cell.Width = "…", 1

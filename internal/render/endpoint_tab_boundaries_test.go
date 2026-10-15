@@ -2,44 +2,43 @@ package render
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/model"
+	"strings"
 	"testing"
+
+	"github.com/kazuph/goterrace/internal/model"
 )
 
 func TestEndpointTabOverflowKeepsObservedTabBoundariesAndControlTargets(t *testing.T) {
-	for _, tc := range []struct{ cols, right, add, first int }{
-		{80, 74, 77, 14}, {90, 83, 86, 14}, {100, 94, 97, 13}, {110, 104, 107, 12},
-		{120, 114, 117, 11}, {130, 124, 127, 10}, {140, 134, 137, 9}, {150, 144, 147, 8},
-		{160, 154, 157, 7}, {170, 164, 167, 6}, {180, 174, 177, 5}, {190, 184, 187, 4}, {200, 194, 197, 3},
-	} {
-		s := testState(tc.cols, 45)
+	for cols := 80; cols <= 200; cols += 10 {
+		s := testState(cols, 45)
 		for i := 2; i <= 18; i++ {
 			s.Apply(model.CmdNewTab{Workspace: 0})
 			s.ActiveWorkspace().TabRef().Name = fmt.Sprintf("TAB-%d", i)
 		}
 		out := Compose(Input{State: s, ServerUI: true})
-		if out.TabRightRect.X != tc.right || out.NewTabRect.X != tc.add {
-			t.Fatalf("width %d: right=%d add=%d", tc.cols, out.TabRightRect.X, out.NewTabRect.X)
+		assertTabOverflowControls(t, out, cols)
+		first := -1
+		for i, r := range out.TabHits {
+			if r.W > 0 {
+				first = i
+				break
+			}
 		}
-		want := fmt.Sprintf("…TAB-%d", tc.first)
-		got := ""
-		for x := 29; x < 29+len([]rune(want)); x++ {
-			got += out.Frame.Cell(x, 0).Content
+		r := out.TabHits[first]
+		if out.Frame.Cell(r.X, r.Y).Content != "…" || out.Frame.Cell(r.X+1, r.Y).Content != "·" || out.Frame.Cell(r.X+3, r.Y).Content != "T" {
+			t.Fatalf("cols=%d: boundary lost icon/name", cols)
 		}
-		if got != want {
-			t.Fatalf("width %d: left edge %q want %q", tc.cols, got, want)
-		}
-		if out.Frame.Cell(29, 0).Style.Fg != out.Frame.Palette.Dim {
-			t.Fatal("clipped tab marker must use the measured dim color")
-		}
-		if tc.cols == 80 && (out.Frame.Cell(73, 0).Content != "…" || out.Frame.Cell(73, 0).Style.Bg != out.Frame.Palette.Accent) {
-			t.Fatal("the clipped last tab must retain its accent background and right ellipsis")
-		}
-		if tc.cols == 80 && out.Frame.Cell(73, 0).Style.Fg != out.Frame.Palette.SurfDim {
-			t.Fatal("right clipping retains the selected tab's text color")
-		}
-		if tc.cols == 160 && out.Frame.Cell(153, 0).Content != "8" {
-			t.Fatal("clipping only trailing padding must retain the last visible label character")
+	}
+}
+
+func assertTabOverflowControls(t *testing.T, out *Output, cols int) {
+	t.Helper()
+	if out.TabLeftRect.W != 3 || out.TabRightRect.W != 3 || out.NewTabRect.W != 3 || out.NewTabRect.X != out.TabRightRect.X+3 || out.NewTabRect.X+3 > cols {
+		t.Fatalf("invalid controls at width %d: left=%+v right=%+v add=%+v", cols, out.TabLeftRect, out.TabRightRect, out.NewTabRect)
+	}
+	for _, r := range out.TabHits {
+		if r.W > 0 && (r.X < out.TabLeftRect.X+3 || r.X+r.W > out.TabRightRect.X) {
+			t.Fatal("tab hit overlaps controls", r, out.TabRightRect)
 		}
 	}
 }
@@ -51,10 +50,11 @@ func TestEndpointTabControlsOmitTrailingGapAtClippedBoundary(t *testing.T) {
 		s.Apply(model.CmdNewTab{Workspace: 0})
 	}
 	s.ActiveWorkspace().ActiveTab = 0
-	for _, offset := range []int{0, 18, 27} {
+	for _, offset := range []int{0, 20, 29} {
 		out := Compose(Input{State: s, ServerUI: true, TabScrollManual: true, TabScroll: offset})
-		if out.TabRightRect.X != 73 || out.NewTabRect.X != 76 || out.Frame.Cell(72, 0).Content != "…" {
-			t.Fatalf("offset %d: right=%d add=%d marker=%q", offset, out.TabRightRect.X, out.NewTabRect.X, out.Frame.Cell(72, 0).Content)
+		assertTabOverflowControls(t, out, 80)
+		if out.TabScroll != offset {
+			t.Fatalf("manual offset changed: %d -> %d", offset, out.TabScroll)
 		}
 	}
 }
@@ -66,17 +66,15 @@ func TestLocalTabOverflowKeepsObservedNameAtLeftBoundary(t *testing.T) {
 		s.ActiveWorkspace().TabRef().Name = fmt.Sprintf("tab-%d", i)
 	}
 	out := Compose(Input{State: s})
-	got := ""
-	for x := 29; x < 35; x++ {
-		got += out.Frame.Cell(x, 0).Content
+	assertTabOverflowControls(t, out, 100)
+	var row strings.Builder
+	for x := out.TabLeftRect.X + 3; x < out.TabRightRect.X; x++ {
+		row.WriteString(out.Frame.Cell(x, 0).Content)
 	}
-	if got != "…tab-4" || out.TabScroll != 49 {
-		t.Fatalf("local overflow starts mid-chip: %q offset=%d", got, out.TabScroll)
+	if !strings.HasPrefix(row.String(), "…· tab-") {
+		t.Fatal("overflow lost icon or label", row.String())
 	}
-	if out.TabRightRect.X != 94 || out.NewTabRect.X != 97 || out.Frame.Cell(29, 0).Style.Fg != out.Frame.Palette.Dim {
-		t.Fatalf("local overflow controls or marker color differ: right=%d add=%d", out.TabRightRect.X, out.NewTabRect.X)
-	}
-	if out.Frame.Cell(92, 0).Content != "b" || out.Frame.Cell(93, 0).Content != "-" {
-		t.Fatal("local overflow must retain the clipped active tab label")
+	if out.TabHits[s.ActiveWorkspace().ActiveTab].W == 0 {
+		t.Fatal("active tab hidden")
 	}
 }

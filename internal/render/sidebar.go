@@ -692,18 +692,9 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 // aggregateGlyph picks the most attention-worthy pane glyph of a workspace.
 func aggregateGlyph(ws *model.Workspace, in Input) StatusGlyph {
 	best := StatusGlyph{Rune: " ", Color: Dim}
-	rank := 0
 	for _, t := range ws.Tabs {
-		for _, pid := range t.Layout.PaneIDs() {
-			snap := in.Panes[pid]
-			if snap == nil {
-				continue
-			}
-			r := glyphRank(snap.Status)
-			if r > rank {
-				rank = r
-				best = snap.Status
-			}
+		if g := tabGlyph(t, in); glyphRank(g) > glyphRank(best) {
+			best = g
 		}
 	}
 	return best
