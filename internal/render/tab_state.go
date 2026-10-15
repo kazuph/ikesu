@@ -9,31 +9,13 @@ func paneTaskOrOSC(p *PaneSnap) string {
 	return p.Title
 }
 
-// Tab attention is intentionally distinct from the sidebar's completion order.
-func tabMarker(tab *model.Tab, panes map[int]*PaneSnap) string {
-	rank := 0
-	marker := " "
+// tabGlyph uses the same attention order and pane glyphs as the workspace sidebar.
+func tabGlyph(tab *model.Tab, in Input) StatusGlyph {
+	best := StatusGlyph{Rune: " ", Color: Dim}
 	for _, pid := range tab.Layout.PaneIDs() {
-		p := panes[pid]
-		if p == nil {
-			continue
-		}
-		r, m := 0, " "
-		switch p.Status.Key {
-		case "blocked":
-			r, m = 5, "!"
-		case "working":
-			r, m = 4, ">"
-		case "done":
-			r, m = 3, "+"
-		case "unknown":
-			r = 2
-		case "idle":
-			r = 1
-		}
-		if r > rank {
-			rank, marker = r, m
+		if p := in.Panes[pid]; p != nil && glyphRank(p.Status) > glyphRank(best) {
+			best = p.Status
 		}
 	}
-	return marker
+	return best
 }

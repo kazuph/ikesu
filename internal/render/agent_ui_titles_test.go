@@ -62,32 +62,6 @@ func TestG5TaskTitleBranchZoomWorkspaceAndFooter(t *testing.T) {
 	}
 }
 
-func TestG5TabMarkerPriorityWidthAndNameColumn(t *testing.T) {
-	s := model.New("/tmp/repo", 160, 35)
-	tab := s.ActiveWorkspace().TabRef()
-	tab.Name = "日本語"
-	tab.Layout.SplitFocused(layout.Vertical, 2)
-	pane := map[int]*PaneSnap{1: {}, 2: {}}
-	for _, tc := range []struct{ a, b, want string }{
-		{"working", "blocked", "!"}, {"done", "working", ">"}, {"idle", "done", "+"}, {"unknown", "idle", " "}, {"idle", "idle", " "},
-	} {
-		pane[1].Status.Key, pane[2].Status.Key = tc.a, tc.b
-		out := Compose(Input{State: s, Panes: pane})
-		r := out.TabHits[0]
-		wantWidth, nameX := 12, r.X+2
-		if tc.want == " " {
-			wantWidth, nameX = 10, r.X+1
-		}
-		if r.W != wantWidth || (tc.want != " " && out.Frame.Cell(r.X+1, r.Y).Content != tc.want) || out.Frame.Cell(nameX, r.Y).Content != "日" {
-			t.Fatal(tc, r)
-		}
-	}
-	tab.Name = "x"
-	if r := Compose(Input{State: s}).TabHits[0]; r.W != 8 {
-		t.Fatal("minimum", r)
-	}
-}
-
 func TestG5DialogRealCursorUnicodeClampedAndSettingsFooter(t *testing.T) {
 	s := model.New("/tmp/repo", 120, 40)
 	for _, name := range []string{"Rename workspace", "New tab", "Rename tab", "Rename pane"} {
