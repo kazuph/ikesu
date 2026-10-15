@@ -40,6 +40,11 @@ func TestObservedScreenContractsMatchHerdr0240(t *testing.T) {
 			if err := json.Unmarshal(b, &want); err != nil {
 				t.Fatal(err)
 			}
+			// E1 corrects inserted wrap spaces in this historical observation.
+			if name == "codex-permission" {
+				value := strings.ReplaceAll(*want.Options[1].Description, "/ outside.txt", "/outside.txt")
+				want.Options[1].Description = &value
+			}
 			got := p.Params
 			if got.Title != want.Title || got.Kind != want.Kind || got.AllowText != want.AllowText || got.MultiSelect != want.MultiSelect || !reflect.DeepEqual(got.Options, want.Options) || !reflect.DeepEqual(got.QuestionLabel, want.QuestionLabel) || !reflect.DeepEqual(got.Body, want.Body) {
 				t.Fatalf("got %+v\nwant %+v", got, want)

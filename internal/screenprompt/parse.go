@@ -88,8 +88,9 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		return nil
 	}
 	screen, notice := cleanNotice(screen)
+	columns := screenColumns(screen)
 	plain, preview, hasPreview := extractPreview(screen)
-	lines := unglue(mergeCommandRows(plain))
+	lines := unglue(mergeCommandRows(plain, columns))
 	positional, chatID := positionalTextIDs(lines)
 	if textID == "" {
 		textID = positional
@@ -114,6 +115,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	askUserQuestion := false
 	var title []string
 	for _, line := range lines[start:first] {
+		physical := line
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -132,9 +134,9 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		if strings.HasPrefix(line, "⏺") {
 			continue
 		}
-		title = append(title, line)
+		title = append(title, physical)
 	}
-	p.Params.Title = strings.Join(title, " ")
+	p.Params.Title = joinWrapped(title, columns)
 	if p.Params.Title == "" {
 		return nil
 	}
@@ -152,6 +154,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		p.Params.Body = &body
 	}
 	lastOption := -1
+	previousDescription := ""
 	seen := map[string]bool{}
 	for _, line := range lines[first:] {
 		trim := strings.TrimSpace(line)
@@ -225,9 +228,10 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			o := &p.Params.Options[lastOption]
 			value := trim
 			if o.Description != nil {
-				value = *o.Description + " " + trim
+				value = *o.Description + wrappedSeparator(previousDescription, line, columns) + trim
 			}
 			o.Description = &value
+			previousDescription = line
 		}
 	}
 	if len(p.Params.Options) == 0 {

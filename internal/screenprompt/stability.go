@@ -1,6 +1,7 @@
 package screenprompt
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/api"
 	"regexp"
 	"strings"
@@ -112,19 +113,22 @@ func (p *Prompt) ChoiceSignature() string {
 }
 
 // Claude's permission command wraps inside left-bordered rows, separate from preview boxes.
-func mergeCommandRows(lines []string) []string {
+func mergeCommandRows(lines []string, columns int) []string {
 	var out []string
-	command := ""
+	var command []string
+	commandColumns := columns
 	flush := func() {
-		if command != "" {
-			out = append(out, command)
-			command = ""
+		if len(command) > 0 {
+			out = append(out, joinWrapped(command, commandColumns))
+			command = nil
 		}
 	}
 	for _, line := range lines {
 		trim := strings.TrimLeft(line, " ")
 		if strings.HasPrefix(trim, "│ ") {
-			command += strings.TrimPrefix(trim, "│ ")
+			content := strings.TrimPrefix(trim, "│ ")
+			commandColumns = columns - ansi.StringWidth(line[:len(line)-len(content)])
+			command = append(command, content)
 		} else {
 			flush()
 			out = append(out, line)
