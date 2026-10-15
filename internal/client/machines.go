@@ -74,6 +74,7 @@ type machineClient struct {
 	frames          render.Encoder
 	title           windowTitleState
 	regions         *render.Output
+	tabFeedback     *tabFeedback
 	held            []input.Event
 	suppressRelease bool
 	blurred         bool

@@ -48,6 +48,7 @@ func (m *machineClient) paint() error {
 	} else {
 		composed = render.ComposeMachines(in, &m.sidebar)
 	}
+	m.drawTabFeedback(composed)
 	f := composed.Frame
 	if m.notice != "" {
 		x, y, end := composed.ActionBar.Copy.X+composed.ActionBar.Copy.W, composed.ActionBar.Area.Y, composed.ActionBar.Cycle.X

@@ -201,6 +201,9 @@ func (a *App) draw() {
 		return
 	}
 	out := render.Compose(in)
+	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
+		render.DrawTabDrop(out, g.drop)
+	}
 	a.tabViewWorkspace, a.tabViewActive = wsID, tabID
 	a.tabViewWidth = a.st.TabBarArea().W
 	a.tabScroll, a.tabScrollLeft, a.tabScrollRight = out.TabScroll, out.TabScrollLeft, out.TabScrollRight

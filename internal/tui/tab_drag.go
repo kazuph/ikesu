@@ -3,6 +3,7 @@ package tui
 import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
 )
 
 type tabGesture struct {
@@ -22,15 +23,7 @@ func (a *App) tabGestureMouse(ev input.Event) {
 		}
 		g.drop = -1
 		if g.ws == a.st.Active {
-			for i, r := range a.tabHits {
-				if pointIn(m.X, m.Y, r) {
-					g.drop = i
-					if m.X > g.x {
-						g.drop++
-					}
-					break
-				}
-			}
+			g.drop = render.TabDropIndex(a.tabHits, m.X, m.Y)
 		}
 	}
 	if ev.Kind == input.KindMouseRelease {
@@ -39,6 +32,7 @@ func (a *App) tabGestureMouse(ev input.Event) {
 			return
 		}
 		if g.moved {
+			g.drop = render.TabDropIndex(a.tabHits, m.X, m.Y)
 			if g.drop >= 0 {
 				a.exec(model.CmdMoveTab{Workspace: g.ws, Index: g.tab, InsertIndex: g.drop})
 			}

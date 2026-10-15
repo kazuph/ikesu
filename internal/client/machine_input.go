@@ -126,6 +126,9 @@ func (m *machineClient) input(event input.Event) error {
 	if m.forms != nil && m.forms.Input(event, activeView.snapshot.State) {
 		return m.paint()
 	}
+	if handled, err := m.tabDragInput(event); handled || err != nil {
+		return err
+	}
 	if m.drag != nil && (event.Kind == input.KindMouseMotion || event.Kind == input.KindMouseRelease) {
 		return m.dragInput(event)
 	}
