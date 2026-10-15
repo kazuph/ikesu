@@ -1,0 +1,124 @@
+send "\r"
+sleep 200ms
+send "\x02T"
+sleep 200ms
+send "A\r"
+sleep 200ms
+send "\x02c"
+sleep 200ms
+send "B\r"
+sleep 200ms
+send "\x02c"
+sleep 200ms
+send "C\r"
+sleep 200ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 28 1
+mouse motion 29 1
+sleep 30ms
+screen @OUT@/move-29.txt
+cells @OUT@/move-29.json
+mouse motion 30 1
+sleep 30ms
+screen @OUT@/move-30.txt
+cells @OUT@/move-30.json
+mouse motion 31 1
+sleep 30ms
+screen @OUT@/move-31.txt
+cells @OUT@/move-31.json
+mouse motion 32 1
+sleep 30ms
+screen @OUT@/move-32.txt
+cells @OUT@/move-32.json
+mouse motion 33 1
+sleep 30ms
+screen @OUT@/move-33.txt
+cells @OUT@/move-33.json
+mouse motion 34 1
+sleep 30ms
+screen @OUT@/move-34.txt
+cells @OUT@/move-34.json
+mouse motion 35 1
+sleep 30ms
+screen @OUT@/move-35.txt
+cells @OUT@/move-35.json
+mouse motion 36 1
+sleep 30ms
+screen @OUT@/move-36.txt
+cells @OUT@/move-36.json
+mouse motion 37 1
+sleep 30ms
+screen @OUT@/move-37.txt
+cells @OUT@/move-37.json
+mouse motion 38 1
+sleep 30ms
+screen @OUT@/move-38.txt
+cells @OUT@/move-38.json
+mouse motion 39 1
+sleep 30ms
+screen @OUT@/move-39.txt
+cells @OUT@/move-39.json
+mouse motion 40 1
+sleep 30ms
+screen @OUT@/move-40.txt
+cells @OUT@/move-40.json
+mouse motion 41 1
+sleep 30ms
+screen @OUT@/move-41.txt
+cells @OUT@/move-41.json
+mouse motion 42 1
+sleep 30ms
+screen @OUT@/move-42.txt
+cells @OUT@/move-42.json
+mouse motion 43 1
+sleep 30ms
+screen @OUT@/move-43.txt
+cells @OUT@/move-43.json
+mouse motion 44 1
+sleep 30ms
+screen @OUT@/move-44.txt
+cells @OUT@/move-44.json
+mouse motion 45 1
+sleep 30ms
+screen @OUT@/move-45.txt
+cells @OUT@/move-45.json
+mouse motion 46 1
+sleep 30ms
+screen @OUT@/move-46.txt
+cells @OUT@/move-46.json
+mouse motion 47 1
+sleep 30ms
+screen @OUT@/move-47.txt
+cells @OUT@/move-47.json
+mouse motion 48 1
+sleep 30ms
+screen @OUT@/move-48.txt
+cells @OUT@/move-48.json
+mouse motion 49 1
+sleep 100ms
+screen @OUT@/move-49.txt
+cells @OUT@/move-49.json
+mouse motion 46 3
+sleep 100ms
+screen @OUT@/outside.txt
+cells @OUT@/outside.json
+mouse motion 46 1
+sleep 100ms
+screen @OUT@/returned.txt
+cells @OUT@/returned.json
+mouse up 46 1
+sleep 200ms
+screen @OUT@/dropped.txt
+cells @OUT@/dropped.json
+mouse down 37 1
+mouse motion 28 1
+sleep 100ms
+screen @OUT@/reverse.txt
+cells @OUT@/reverse.json
+mouse motion 28 3
+mouse up 28 3
+sleep 200ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+kill
