@@ -40,7 +40,11 @@ func TestEndpointActiveTabUsesPanelColorWithTransparentFallback(t *testing.T) {
 			}
 			for x := out.TabHits[0].X; x < out.TabHits[0].X+out.TabHits[0].W; x++ {
 				cell := out.Frame.Cell(x, s.TabBarArea().Y)
-				if cell.Style.Fg != want || cell.Style.Bg != out.Frame.Palette.Accent {
+				fg := want
+				if x == out.TabHits[0].X+1 {
+					fg = out.Frame.ThemeColor(Dim)
+				}
+				if cell.Style.Fg != fg || cell.Style.Bg != out.Frame.Palette.Accent {
 					t.Fatalf("server=%v custom=%v cell=%d: %#v", serverUI, custom, x, cell.Style)
 				}
 			}

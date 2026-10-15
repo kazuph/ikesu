@@ -92,6 +92,10 @@ func TestSPECExactCopilotFootersAndAnimatedSummary(t *testing.T) {
 			t.Fatal("pane spinner")
 		}
 		out := render.Compose(in)
+		r := out.TabHits[0]
+		if out.Frame.Cell(r.X+1, r.Y).Content != frame {
+			t.Fatal("tab spinner differs from sidebar", spin)
+		}
 		mobile := *a.st
 		mobile.MobileWidthThreshold = mobile.Cols
 		in.State = &mobile
