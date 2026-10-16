@@ -142,7 +142,9 @@ elif operation == 'start-job':
     pane = resolved['result']['pane']['pane_id']
     method = 'run.start'
     argv = ['/bin/sleep', '60']
-    if len(sys.argv) > 2 and sys.argv[2] == 'short':
+    if len(sys.argv) > 2 and sys.argv[2] == 'minute':
+        argv = ['/bin/sleep', '120']
+    elif len(sys.argv) > 2 and sys.argv[2] == 'short':
         argv = ['/bin/sh', '-c', 'printf "PARITY_JOB_OUTPUT\\n"; sleep 5; exit 7']
     elif len(sys.argv) > 2 and sys.argv[2] == 'success':
         argv = ['/bin/sh', '-c', 'printf "PARITY_JOB_OUTPUT\\n"; sleep 5; exit 0']

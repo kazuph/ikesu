@@ -298,7 +298,7 @@ func (a *App) refreshJobDots(now time.Time) {
 		if row.AgeSinceMs == nil {
 			continue
 		}
-		elapsed := fmt.Sprintf("%ds", max(int64(0), now.UnixMilli()-*row.AgeSinceMs)/1000)
+		elapsed := formatJobAge(now.UnixMilli() - *row.AgeSinceMs)
 		if row.Elapsed != elapsed {
 			row.Elapsed = elapsed
 			a.dirty = true
@@ -330,7 +330,7 @@ func (a *App) refreshJobDots(now time.Time) {
 			if j.FinishedMs != nil {
 				since = j.FinishedMs
 			}
-			elapsed = fmt.Sprintf("%ds", max(int64(0), now.UnixMilli()-*since)/1000)
+			elapsed = formatJobAge(now.UnixMilli() - *since)
 		}
 		if j.Status == "cancelling" {
 			elapsed, since = "-", nil
