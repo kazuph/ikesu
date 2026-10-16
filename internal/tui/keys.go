@@ -61,11 +61,6 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		} else {
 			a.prefixKey(k)
 		}
-		// A prefix command run inside copy mode that moved the focus
-		// elsewhere closes the copy view.
-		if a.cm != nil && a.cm.pane != a.focusedPane() {
-			a.exitCopy()
-		}
 		return
 	}
 	if a.prefixMatches(k) {

@@ -71,6 +71,7 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.focusHistory = nil
 	ui.focusHistoryAt = 0
 	ui.cm, ui.sel, ui.sep, ui.sb = nil, nil, nil, nil
+	ui.paneCopies = nil
 	ui.sidebarGesture, ui.tabGesture = nil, nil
 	ui.menu, ui.settings, ui.help = nil, nil, nil
 	ui.hostPixelMouse, ui.hostPixelSupported = false, false

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -26,17 +27,18 @@ type copyPoint struct{ x, y int }
 const copyPageOverlapRows = 2
 
 type copyMode struct {
-	pane       int
-	fullscreen bool
-	cx, cy     int // cursor in buffer coords (scrollback lines first)
-	top        int // buffer index of the first visible row
-	anchor     *copyPoint
-	linewise   bool
-	searching  bool
-	searchDir  int // +1 after '/', -1 after '?'; drives n/N
-	query      string
-	matches    []copybuf.Range
-	matchIdx   int
+	pane          int
+	fullscreen    bool
+	cx, cy        int // cursor in buffer coords (scrollback lines first)
+	top           int // buffer index of the first visible row
+	anchor        *copyPoint
+	linewise      bool
+	searching     bool
+	searchDir     int // +1 after '/', -1 after '?'; drives n/N
+	query         string
+	previousQuery string
+	matches       []copybuf.Range
+	matchIdx      int
 }
 
 // copyCycle advances the button's 3-state cycle: normal → in-layout
@@ -218,10 +220,12 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.top += max(h/2, 1)
 	case k.Code == '/':
 		cm.searching = true
+		cm.previousQuery = cm.query
 		cm.searchDir = 1
 		cm.query = ""
 	case k.Code == '?':
 		cm.searching = true
+		cm.previousQuery = cm.query
 		cm.searchDir = -1
 		cm.query = ""
 	case k.Code == 'n':
@@ -268,10 +272,14 @@ func (a *App) copySearchKey(k uv.Key) {
 	switch {
 	case k.Code == uv.KeyEnter:
 		cm.searching = false
-		a.copyFindAll()
-		a.copyNextMatch(cm.searchDir)
+		if cm.query != "" {
+			a.copyFindAll()
+			a.copyNextMatch(cm.searchDir)
+		}
 	case k.Code == uv.KeyEscape:
 		cm.searching = false
+		cm.query = cm.previousQuery
+	case k.Code == 'u' && k.Mod.Contains(uv.ModCtrl):
 		cm.query = ""
 	case k.Code == uv.KeyBackspace || k.Code == uv.KeyDelete:
 		if r := []rune(cm.query); len(r) > 0 {
@@ -283,15 +291,25 @@ func (a *App) copySearchKey(k uv.Key) {
 	a.dirty = true
 }
 
-// copyFindAll lists every query occurrence in the buffer (case-
-// sensitive, non-overlapping — the pane.copy_search contract).
+// copyFindAll applies smart case to the UI search only. The API keeps
+// its case-sensitive copybuf.Search contract.
 func (a *App) copyFindAll() {
 	cm := a.cm
 	p := a.sup.Get(cm.pane)
 	if p == nil {
 		return
 	}
-	cm.matches = copybuf.Search(p.BufferLines(), cm.query)
+	lines, query := p.BufferLines(), cm.query
+	if strings.IndexFunc(query, unicode.IsUpper) < 0 {
+		query = strings.ToLower(query)
+		for y, row := range lines {
+			lines[y] = append([]uv.Cell(nil), row...)
+			for x := range lines[y] {
+				lines[y][x].Content = strings.ToLower(lines[y][x].Content)
+			}
+		}
+	}
+	cm.matches = copybuf.Search(lines, query)
 	cm.matchIdx = -1
 }
 
@@ -299,7 +317,7 @@ func (a *App) copyFindAll() {
 // (wrapping) — the same rule as pane.copy_search's current index.
 func (a *App) copyNextMatch(dir int) {
 	cm := a.cm
-	if len(cm.matches) == 0 {
+	if cm.query == "" || len(cm.matches) == 0 {
 		return
 	}
 	anchor := copybuf.Point{Row: cm.cy, Col: cm.cx}
@@ -413,7 +431,7 @@ func (a *App) copyHint() string {
 	if cm.anchor != nil {
 		selection = "selecting"
 	}
-	if cm.query != "" {
+	if cm.query != "" || len(cm.matches) > 0 {
 		hint += fmt.Sprintf(" %d/%d", cm.matchIdx+1, len(cm.matches))
 	}
 	hint += "  v/space " + selection + "  y/enter copy"
@@ -526,4 +544,28 @@ func (a *App) copyViewRect() layout.Rect {
 		return a.st.PanesArea()
 	}
 	return a.innerRect(a.cm.pane)
+}
+
+// copyFocusChanged keeps a pane's read position while another pane is active.
+func (a *App) copyFocusChanged() {
+	ws := a.st.ActiveWorkspace()
+	for pid := range a.paneCopies {
+		if ws == nil || ws.ActiveLayout() == nil || !ws.ActiveLayout().HasPane(pid) {
+			delete(a.paneCopies, pid)
+		}
+	}
+	if a.cm != nil && a.cm.pane != a.focusedPane() {
+		if a.paneCopies == nil {
+			a.paneCopies = map[int]*copyMode{}
+		}
+		// Observed 0.2.57 preserves search and cursor, but clears the selection.
+		a.cm.anchor = nil
+		a.paneCopies[a.cm.pane] = a.cm
+		a.cm = nil
+	}
+	if a.cm == nil {
+		pid := a.focusedPane()
+		a.cm = a.paneCopies[pid]
+		delete(a.paneCopies, pid)
+	}
 }

@@ -219,6 +219,7 @@ type App struct {
 	prefix                                   bool
 	navKey                                   rune // prefix+<navKey> jumps to the toast target
 	cm                                       *copyMode
+	paneCopies                               map[int]*copyMode
 	copyKeys                                 map[rune]bool // [keys] copy_mode bindings
 	splitVKeys                               map[rune]bool // [keys] split_vertical bindings
 	splitHKeys                               map[rune]bool // [keys] split_horizontal bindings

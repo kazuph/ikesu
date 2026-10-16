@@ -2,6 +2,8 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 )
@@ -71,5 +73,67 @@ func TestStage7EnterCopyPreservesScroll(t *testing.T) {
 	a.exitCopy()
 	if a.scroll[pid] != 24 {
 		t.Fatal("copy changed normal scroll")
+	}
+}
+
+func TestStage7SmartSearchAndCancellation(t *testing.T) {
+	teststate.Lock(t)
+	a := stage7CopyApp(t)
+	a.cm.query = "alpha"
+	a.copyFindAll()
+	if len(a.cm.matches) != 240 {
+		t.Fatalf("smart lowercase count=%d", len(a.cm.matches))
+	}
+	a.cm.query = "Alpha"
+	a.copyFindAll()
+	if len(a.cm.matches) != 0 {
+		t.Fatal("uppercase query must be case sensitive")
+	}
+	a.cm.query = "alpha"
+	a.copyFindAll()
+	a.copyNextMatch(1)
+	before := *a.cm
+	specFeed(a, "/Beta")
+	a.copySearchKey(uv.Key{Code: uv.KeyEscape})
+	if a.cm.query != "alpha" || len(a.cm.matches) != 240 || a.cm.matchIdx != before.matchIdx {
+		t.Fatalf("cancel lost confirmed search: %+v", a.cm)
+	}
+	specFeed(a, "/")
+	a.copySearchKey(uv.Key{Code: uv.KeyEnter})
+	if a.cm.query != "" || len(a.cm.matches) != 240 || a.cm.matchIdx != before.matchIdx {
+		t.Fatalf("empty confirmation replaced matches: %+v", a.cm)
+	}
+	specFeed(a, "/Beta")
+	a.copySearchKey(uv.Key{Code: 'u', Mod: uv.ModCtrl})
+	if a.cm.query != "" || !a.cm.searching {
+		t.Fatal("Ctrl+u did not clear input")
+	}
+}
+
+func TestStage7PaneReturnRestoresSearchAndViewport(t *testing.T) {
+	teststate.Lock(t)
+	a := stage7CopyApp(t)
+	first := a.focusedPane()
+	a.exitCopy()
+	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
+	other := a.focusedPane()
+	a.exec(model.CmdFocusPane{Pane: first})
+	a.enterCopy(false)
+	specFeed(a, "/alpha\r")
+	specFeed(a, "vkk")
+	before := *a.cm
+	a.exec(model.CmdFocusPane{Pane: other})
+	if a.cm != nil {
+		t.Fatal("copy view remained on other pane")
+	}
+	a.exec(model.CmdFocusPane{Pane: first})
+	if a.cm == nil {
+		t.Fatal("return lost copy state")
+	}
+	if a.cm.query != before.query || a.cm.top != before.top || a.cm.cx != before.cx || a.cm.cy != before.cy || a.cm.matchIdx != before.matchIdx {
+		t.Fatalf("return changed search/cursor: before=%+v after=%+v", before, a.cm)
+	}
+	if a.cm.anchor != nil {
+		t.Fatal("real reference clears selection on departure")
 	}
 }

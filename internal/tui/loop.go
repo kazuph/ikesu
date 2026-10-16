@@ -306,6 +306,7 @@ func (a *App) exec(cmd model.Command) {
 			a.exitCopy()
 		}
 	}
+	a.copyFocusChanged()
 	a.dirty = true
 	// Keystrokes and resizes never change persisted state; everything else
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
