@@ -189,6 +189,11 @@ func (e *Emulator) flushGrapheme() {
 	if len(e.grapheme) == 0 {
 		return
 	}
+	if len(e.grapheme) == 1 && printableASCII(rune(e.grapheme[0])) {
+		e.handleGrapheme(asciiContent[e.grapheme[0]], 1)
+		e.grapheme = e.grapheme[:0]
+		return
+	}
 
 	// XXX: We always use [ansi.GraphemeWidth] here to report accurate widths
 	// and it's up to the caller to decide how to handle Unicode vs non-Unicode
