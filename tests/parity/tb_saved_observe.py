@@ -88,6 +88,8 @@ try:
         for name in ('home', 'config', 'state/t', 'data', 'bin'):
             (root/name).mkdir(parents=True, exist_ok=True)
         (root/'config.toml').write_text(config)
+        # Keep the existing SSH identity/config available without changing it.
+        (root/'home/.ssh').symlink_to(Path.home()/'.ssh', target_is_directory=True)
         (root/'home/.zshrc').write_text("PS1='TB_LOCAL> '\nunset HISTFILE\n")
         remote_env = {'HOME': remote+'/home', 'ZDOTDIR': remote+'/home',
                       'XDG_CONFIG_HOME': remote+'/c', 'XDG_STATE_HOME': remote+'/s',
@@ -173,7 +175,7 @@ for name in ['herdr','gtx']:
             ready, raw = root/'image-ready', out/'terminal.raw'
             raw.touch()
             steps = root/'steps'
-            steps.write_text('waittext 20s TB_REMOTE\nclicktext "TB_REMOTE"\nwaitfile '+str(ready)+' 30s\n'
+            steps.write_text('waittext 20s TB_REMOTE\ncells '+str(out/'pre-click.json')+'\nclicktext "TB_REMOTE"\nwaitfile '+str(ready)+' 30s\n'
                              'cells '+str(out/'tb-visible.json')+'\nstats tb-visible\nkill\n')
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
@@ -203,6 +205,7 @@ for name in ['herdr','gtx']:
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
                                                        'remote_tb': a.remote_tb}, indent=2)+'\n')
         finally:
+            (out/'local-runtime-logs.json').write_text(json.dumps({str(p.relative_to(root)):p.read_text(errors='replace') for p in root.glob('**/*.log')}, indent=2)+'\n')
             try:
                 snapshot = remote_rpc('pane.read', {'pane_id': remote_pane})
                 (out/'remote-pane-final.json').write_text(json.dumps(snapshot, indent=2)+'\n')
