@@ -8,6 +8,8 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/status"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -236,6 +238,20 @@ func (a *App) anyWorking() bool {
 
 // exec applies a command and performs its effects.
 func (a *App) exec(cmd model.Command) {
+	if c, ok := cmd.(model.CmdCloseWorkspace); ok && c.Index == 0 && len(a.st.Workspaces) == 1 {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			a.lastSpawnError = err
+			return
+		}
+		a.lastSpawnError = nil
+		a.exec(model.CmdNewWorkspace{Cwd: home, Name: filepath.Base(home)})
+		if a.lastSpawnError != nil {
+			a.exec(model.CmdCloseWorkspace{Index: 1})
+			return
+		}
+	}
+
 	policyCwd := false
 	switch c := cmd.(type) {
 	case model.CmdSplitFocused:
