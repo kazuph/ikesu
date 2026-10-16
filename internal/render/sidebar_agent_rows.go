@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/model"
 )
 
@@ -35,8 +36,10 @@ func visibleAgentRows(s *model.AppState, panes map[int]*PaneSnap, r SidebarRow, 
 				}
 			case "agent":
 				text = sn.Agent + sn.DisplayAgent
-			case "terminal_title", "terminal_title_stripped":
+			case "terminal_title":
 				text = sn.Title
+			case "terminal_title_stripped":
+				text = detect.StripTerminalTitle(sn.Title)
 			default:
 				if strings.HasPrefix(token.Token, "$") {
 					text = sn.Tokens[strings.TrimPrefix(token.Token, "$")]
