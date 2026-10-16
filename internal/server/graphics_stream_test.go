@@ -66,6 +66,10 @@ func TestGraphicsStreamRealSocketOwnershipAndDisconnect(t *testing.T) {
 	first, _ := open()
 	frame(first)
 	wait("/wAAAP8A")
+	clear := apiReq(t, dir, api.MethodPaneGraphicsClear, map[string]any{"pane_id": pane, "layer_id": "test"})
+	if clear.Err == nil || clear.Err.Code != "stream_conflict" {
+		t.Fatalf("non-owner clear removed a stream-owned image: %+v", clear)
+	}
 	second, reader := open()
 	frame(second)
 	response, err := api.ReadResponse(reader)

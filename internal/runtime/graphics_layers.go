@@ -98,15 +98,19 @@ func decodeLayerImage(frame api.PaneGraphicsSetParams, data []byte) (kitty.Image
 	return image, nil
 }
 
-func (p *Pane) ClearGraphicsLayer(id *string, owner uint64) {
+func (p *Pane) ClearGraphicsLayer(id *string, owner uint64) *api.Error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	key := graphicsLayerID(id)
-	if layer := p.graphicsLayers[key]; layer != nil && (owner == 0 || layer.owner == owner) {
+	if layer := p.graphicsLayers[key]; layer != nil {
+		if layer.owner != 0 && layer.owner != owner {
+			return &api.Error{Code: "stream_conflict", Message: "graphics layer is owned by another stream"}
+		}
 		delete(p.graphicsLayers, key)
 		p.revision.Add(1)
 		p.notifyChanged()
 	}
+	return nil
 }
 
 // Keep producer layers separate from PTY graphics, whose image IDs belong to

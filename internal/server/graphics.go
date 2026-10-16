@@ -41,7 +41,9 @@ func (s *Server) graphicsRequest(req *api.Request) api.Response {
 			return api.Failure(req.ID, failure.Code, failure.Message)
 		}
 	case api.MethodPaneGraphicsClear:
-		pane.ClearGraphicsLayer(params.LayerID, 0)
+		if failure := pane.ClearGraphicsLayer(params.LayerID, 0); failure != nil {
+			return api.Failure(req.ID, failure.Code, failure.Message)
+		}
 	}
 	return api.Success(req.ID, api.OkResult{Type: "ok"})
 }
