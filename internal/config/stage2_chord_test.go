@@ -25,3 +25,22 @@ func TestStage2ChordAliases(t *testing.T) {
 		})
 	}
 }
+
+func TestStage2ShiftedSymbols(t *testing.T) {
+	for _, key := range []uv.Key{{Code: '/', ShiftedCode: '?', Mod: uv.ModShift}, {Code: '?', Mod: uv.ModShift}, {Code: '?'}} {
+		c, err := ParseChord("prefix+?")
+		if err != nil || !c.Match(key, true) {
+			t.Fatal(key, err)
+		}
+	}
+	c, _ := ParseChord("cmd+shift+1..9")
+	for i, code := range "!@#$%^&*(" {
+		key := uv.Key{Code: code, Mod: uv.ModSuper}
+		if !c.Match(key, false) || c.IndexCode(key) != rune('1'+i) {
+			t.Fatal(key)
+		}
+	}
+	if c.Match(uv.Key{Code: '1', Mod: uv.ModSuper}, false) {
+		t.Fatal("unshifted key matched")
+	}
+}
