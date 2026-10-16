@@ -28,7 +28,7 @@ type CcHandler func() bool
 
 // handlers contains the terminal's escape sequence handlers.
 type handlers struct {
-	ccHandlers  map[byte][]CcHandler
+	ccHandlers  [1 << 8][]CcHandler
 	dcsHandlers map[int][]DcsHandler
 	csiHandlers map[int][]CsiHandler
 	oscHandlers map[int][]OscHandler
@@ -87,9 +87,6 @@ func (h *handlers) RegisterEscHandler(cmd int, handler EscHandler) {
 
 // registerCcHandler registers a control character handler.
 func (h *handlers) registerCcHandler(r byte, handler CcHandler) {
-	if h.ccHandlers == nil {
-		h.ccHandlers = make(map[byte][]CcHandler)
-	}
 	h.ccHandlers[r] = append(h.ccHandlers[r], handler)
 }
 
