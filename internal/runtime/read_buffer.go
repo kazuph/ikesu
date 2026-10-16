@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -255,14 +256,22 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 	}
 	end, lines := 0, 0
 	for i := 0; i < len(chunk); {
-		start := i
-		for i < len(chunk) && chunk[i] >= 32 && chunk[i] < 127 && i-start < w {
-			i++
-		}
-		if i-start >= w || i+1 >= len(chunk) || chunk[i] != '\r' || chunk[i+1] != '\n' {
+		span := chunk[i : i+min(w, len(chunk)-i)]
+		n := bytes.IndexByte(span, '\r')
+		if n < 0 || i+n+1 >= len(chunk) || chunk[i+n+1] != '\n' {
 			break
 		}
-		i += 2
+		valid := true
+		for _, b := range span[:n] {
+			if b < 32 || b >= 127 {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			break
+		}
+		i += n + 2
 		end, lines = i, lines+1
 	}
 	if end == 0 {

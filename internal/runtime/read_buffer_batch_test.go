@@ -13,11 +13,13 @@ import (
 // catches metadata drift when batching meets wraps, styles, scrolling or chunks.
 func TestRecordedShortLinesMatchFragmentedWrites(t *testing.T) {
 	cases := map[string]string{
-		"history_after_wrap":    "abcdefghXYZ\r\n" + strings.Repeat("short\r\n\r\n", ScrollbackSize+2) + "TAIL",
-		"styled_wrap_and_links": "\x1b[31mabc\r\ndef\r\nabcdefghXYZ\r\n\x1b[0m\x1b]8;;https://example.com\x1b\\link\r\nmore\r\n\x1b]8;;\x1b\\END",
-		"scroll_region":         "\x1b[2;4r\x1b[2;1H" + strings.Repeat("short\r\n", 12) + "\x1b[5;1Houtside\r\nend\r\n",
-		"alternate_and_modes":   "main\r\nrow\r\n\x1b[?1049h" + strings.Repeat("alt\r\n", 12) + "\x1b[?1049l\x1b[?7lshort\r\nrow\r\n\x1b[?7hTAIL",
-		"unicode_and_partial":   "界界\r\nabc\r\n1234567界Z\r\nshort\r\npartial",
+		"width_boundaries":       "1234567\r\n12345678\r\n123456789\r\n\r\nEND\r",
+		"rejected_control_bytes": "short\r\nabc\tdef\r\nabc\x7fdef\r\nabc\rX\r\nEND",
+		"history_after_wrap":     "abcdefghXYZ\r\n" + strings.Repeat("short\r\n\r\n", ScrollbackSize+2) + "TAIL",
+		"styled_wrap_and_links":  "\x1b[31mabc\r\ndef\r\nabcdefghXYZ\r\n\x1b[0m\x1b]8;;https://example.com\x1b\\link\r\nmore\r\n\x1b]8;;\x1b\\END",
+		"scroll_region":          "\x1b[2;4r\x1b[2;1H" + strings.Repeat("short\r\n", 12) + "\x1b[5;1Houtside\r\nend\r\n",
+		"alternate_and_modes":    "main\r\nrow\r\n\x1b[?1049h" + strings.Repeat("alt\r\n", 12) + "\x1b[?1049l\x1b[?7lshort\r\nrow\r\n\x1b[?7hTAIL",
+		"unicode_and_partial":    "界界\r\nabc\r\n1234567界Z\r\nshort\r\npartial",
 	}
 	for name, text := range cases {
 		t.Run(name, func(t *testing.T) {
