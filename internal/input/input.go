@@ -204,7 +204,7 @@ func incompleteRune(b []byte) bool {
 }
 
 // orphanMouseLen matches an SGR mouse tail whose ESC was lost entirely:
-// "[<" + digits/';' + 'M'/'m'. It returns the byte count to drop and whether
+// "[<" + digits/';'/'-' + 'M'/'m'. It returns the byte count to drop and whether
 // the terminator was seen. Returns (0,false) for anything else, and once the
 // run exceeds sgrTailCap bytes it stops being a mouse tail.
 func orphanMouseLen(b []byte) (int, bool) {
@@ -227,7 +227,7 @@ func orphanMouseLen(b []byte) (int, bool) {
 }
 
 // isIncompleteSGRMouse reports whether buf looks like a truncated SGR mouse
-// report: ESC [ < followed only by digits and ';'.
+// report: ESC [ < followed only by digits, ';', or a coordinate's '-'.
 func isIncompleteSGRMouse(buf []byte) bool {
 	i := 0
 	if len(buf) > 0 && buf[0] == 0x9b { // C1 CSI
