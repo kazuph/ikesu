@@ -125,10 +125,13 @@ func (a *App) detectAll() {
 				if agentID != "" {
 					in.Screen = p.ScreenText()
 				}
+				before := a.glyph(pid).Key
 				d := detect.Detect(agentID, in)
 				d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
+				a.observeBlocker(pid, agentID, d, now)
 				a.clearStaleReport(pid, agentID, d, now)
-				if tr.Update(d, agentID, sn.Dead, now) {
+				trackerChanged := tr.Update(d, agentID, sn.Dead, now)
+				if trackerChanged || before != a.glyph(pid).Key {
 					a.dirty = true
 					if a.availHook != nil {
 						a.availHook(pid)
@@ -153,6 +156,7 @@ func (a *App) detectAll() {
 	// Drop trackers for panes that no longer exist.
 	for pid := range a.trackers {
 		if a.sup.Get(pid) == nil {
+			delete(a.blockerObservations, pid)
 			delete(a.trackers, pid)
 			delete(a.reported, pid)
 		}
