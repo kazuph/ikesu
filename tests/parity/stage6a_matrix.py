@@ -11,7 +11,13 @@ failed=[]
 for path in sorted(cases.glob('*.steps')):
     if a.only and path.stem not in a.only: continue
     print(path.stem,flush=True)
-    result=subprocess.run(['python3',str(here/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--gtx',str(work/'gtx-stage6a'),'--ptyrun',str(work/'ptyrun'),'--config-file',str(work/'user-config.toml'),'--steps',str(path),'--out',str(out/path.stem),'--clipboard-sandbox','--server'])
+    config=work/'user-config.toml'
+    extra=[]
+    if path.stem.startswith('toast-'):
+        config=cases/'toast.toml'
+        config.write_text((work/'user-config.toml').read_text().replace('[ui.toast]\ndelivery = "system"',''))
+        extra=['--in-app-toast']
+    result=subprocess.run(['python3',str(here/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--gtx',str(work/'gtx-stage6a'),'--ptyrun',str(work/'ptyrun'),'--config-file',str(config),'--steps',str(path),'--out',str(out/path.stem),'--clipboard-sandbox','--server']+extra)
     if result.returncode: failed.append(path.stem)
 print('FAILED COLLECTION:',failed,flush=True)
 raise SystemExit(bool(failed))

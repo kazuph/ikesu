@@ -181,3 +181,25 @@ ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾
 `tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
 `tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。
 `mouse-negative.steps` と `mouse_negative_gate.py 出力先` はraw SGRの負座標と正の画面外座標を送る。`mouse_report_capture.py` は実端末で1002/1006を有効化する状態と無効な状態を実行し、受信した生バイトを記録する。通常キーの保持、マウス報告の文字漏れがないこと、有効な位置へ戻るまでタブのドラッグが続くことを実物と比較する。server/localをそれぞれcell/pixelで実行する。
+
+段階6a（A34〜A43、0.2.57）は `stage6a_matrix.py --out <証拠先>` をminiの
+`src/stage6a`で実行する。事前に同じソースを `work/detail/gtx-stage6a` へビルドする。
+`stage6a_cases.py` が全手順を保存し、matrixは店長のctrl+t・80% popup・tab bar・
+tokyo-night/custom設定を読む。全比較でclipboard sandboxと隔離serverを使用する。
+`stage6a_action.py` はobserve.pyが作った一時socketだけに接続し、worktreeの作成・
+削除確認・group閉鎖にはそのHOME内で新設したGitリポジトリだけを使用する。
+固定待機時間だけでGit準備完了とみなさず、操作完了ファイルを待ってから画面を開く。
+通知の状態報告には実行中Codexの証明済みIDを `PARITY_CONTROLLER_SESSION_ID` で渡す。
+`stage6a_size_child.py` はpopupの実PTY寸法をファイルに記録する。
+
+`stage6a_gate.py <証拠先>` はAPIエラー、popup内のEscと後続文字の全受信bytes、
+最小寸法、狭幅入力とクリック、menu末尾、worktree検索・エラー保持・削除説明・
+group閉鎖範囲を検査する。menuは全セル・色・属性も比較する。その他の画面は
+指定した文言と座標の検査であり、画面全体の全セル一致とは扱わない。
+A40の `notification.show` は実物が12列×3行（本文なし）/4行（本文あり）を返す。
+gtxの未実装応答を成功や似た値へ置き換えない。未知メソッドは証拠に残す。
+
+`sh tests/parity/stage6a_checks.sh <証拠先>` はminiでgofmt・build・vet・通常test・raceを保存する。
+相対P1は基準dd2168cを `src/stage6a-baseline-dd2168c` に置き、
+`python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage6a_perf.sh`
+で同じGo・同じ引数の2ビルドを交互に各5回検査する。絶対P1はこの段階の判定対象外。
