@@ -17,7 +17,19 @@ def check(case,name,extract,expected=None):
  except Exception as e:results.append(dict(case=case,claim=name,result='FAIL',error=str(e)))
 def has(case,frame,word):return lambda prod:word in screen(case,prod,frame)
 def selected(case,frame):
- return lambda prod:[re.sub(r'^▌[· ]*\d+\s*','',l[:26]).strip() for l in screen(case,prod,frame).splitlines() if l.startswith('▌') and re.search(r'\d+',l[:26])]
+ def extract(prod):
+  data=json.loads((root/case/prod/(frame+'.json')).read_text())
+  lines=[''.join(c['Content'] for c in row[:26]) for row in data['Cells']]
+  return [re.sub(r'^▌[· ]*\d+\s*','',line).strip() for line in lines if line.startswith('▌') and re.search(r'\d+',line)]
+ return extract
+
+def focused(case,prod,frame):
+ data=json.loads((root/case/prod/(frame+'.json')).read_text())
+ row=data['Cells'][1]
+ ids=[int(re.match(r'%([0-9]+)', ''.join(c['Content'] for c in row[i:])).group(1)) for i,cell in enumerate(row) if cell['Content']=='%' and cell['Style']['Attrs'] & 1]
+ if len(ids)!=1:raise AssertionError('expected exactly one bold focused pane title: '+str(ids))
+ return ids[0]
+
 for c in ['workspace-rename','workspace-close','workspace-worktree']:
  check(c,'selected beta before action',lambda p:'beta' in selected(c,'selected')(p),True)
  if c=='workspace-rename': check(c,'rename uses displayed workspace',lambda p:bool(re.search(r'│ parity +│',screen(c,p,'after'))),True)
@@ -67,7 +79,7 @@ for case in ['config-invalid','config-printable','config-conflict','config-rever
 for frame in ['one','three','next','previous','history-back','history-forward']:
  check('user-direct',frame+' selection matches',selected('user-direct',frame))
 check('navigate-direction-remapped','navigate remains active',has('navigate-direction-remapped','action','NAVIGATE'),True)
-check('navigate-direction-remapped','independent direction moves focus',lambda p:int(re.search(r'%([0-9]+)',screen('navigate-direction-remapped',p,'action')).group(1))-int(re.search(r'%([0-9]+)',screen('navigate-direction-remapped',p,'split')).group(1)),-1)
+check('navigate-direction-remapped','independent direction moves focus',lambda p:focused('navigate-direction-remapped',p,'action')-focused('navigate-direction-remapped',p,'split'),-1)
 # Every run must show real completion, a versioned reference and isolated cleanup.
 for case in sorted({r['case'] for r in results}):
  check(case,'exact reference version',lambda p:json.loads((root/case/'reference.json').read_text())['herdr_version'],'herdr 0.2.57')
