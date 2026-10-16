@@ -54,7 +54,11 @@ for name in ('herdr', 'gtx'):
         ox, oy = inside[0]['position'][0]-6, inside[0]['position'][1]-4
         for stage, position, cells, source in [
                 ('clip-right', (ox+fixture['cols']-4, oy+4), (4, 4), (0, 0, 4, 4)),
-                ('clip-bottom', (ox+6, oy+fixture['rows']-2), (8, 2), (0, 0, 8, 2))]:
+                ('clip-bottom', (ox+6, oy+fixture['rows']-2), (8, 2), (0, 0, 8, 2)),
+                *([('clip-scaled', (ox+fixture['cols']-4, oy+4), (4, 4), (0, 0, 4, 4))] if 'clip-scaled' in stages else []),
+                *([('clip-tiny', (ox+fixture['cols']-4, oy+4), (4, 4), (0, 0, 1, 4)),
+                   ('clip-left', (ox, oy+4), (4, 4), (3, 0, 4, 4)),
+                   ('clip-top', (ox+6, oy), (8, 5), (0, 1, 8, 2))] if 'clip-tiny' in stages else [])]:
             records = stages[stage]
             passed &= len(records) == 1 and records[0]['position'] == position and records[0]['cells'] == cells and records[0]['source'] == source
             if len(records) == 1:

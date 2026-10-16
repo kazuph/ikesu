@@ -54,3 +54,26 @@ func TestGraphicsClipAtPaneEdges(t *testing.T) {
 		t.Fatal("entirely offscreen image leaked into a neighbor")
 	}
 }
+
+func TestGraphicsClipScaledSourceUsesReferencePixelExtent(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		x, y, c, r int
+		crop       string
+	}{
+		{"right", 6, 2, 7, 4, ",x=0,y=0,w=4,h=4"},
+		{"subpixel", 6, 2, 80, 4, ",x=0,y=0,w=1,h=4"},
+		{"left", -3, 2, 7, 4, ",x=3,y=0,w=4,h=4"},
+		{"top", 2, -2, 8, 7, ",x=0,y=1,w=8,h=2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := NewFrame(20, 15)
+			paneGraphics(f, 1, &PaneSnap{Graphics: []kitty.Placement{{Image: kitty.Image{ID: 91, Format: 24, Width: 8, Height: 4, Data: make([]byte, 96)}, X: tc.x, Y: tc.y, Cols: tc.c, Rows: tc.r}}}, 0, 0, 10, 8)
+			var e Encoder
+			output := e.Frame(f, 0, 0, false)
+			if !bytes.Contains(output, []byte(tc.crop)) {
+				t.Fatalf("reference source region %s missing: %q", tc.crop, output)
+			}
+		})
+	}
+}

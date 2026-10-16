@@ -40,11 +40,11 @@ func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
 		if visible != bounds {
 			// Keep the original upload and select only the source pixels
 			// belonging to the visible destination cells.
-			source = image.Rect(
-				(visible.Min.X-p.X)*p.Image.Width/p.Cols,
-				(visible.Min.Y-p.Y)*p.Image.Height/p.Rows,
-				((visible.Max.X-p.X)*p.Image.Width+p.Cols-1)/p.Cols,
-				((visible.Max.Y-p.Y)*p.Image.Height+p.Rows-1)/p.Rows)
+			sx := (visible.Min.X - p.X) * p.Image.Width / p.Cols
+			sy := (visible.Min.Y - p.Y) * p.Image.Height / p.Rows
+			sw := max(1, visible.Dx()*p.Image.Width/p.Cols)
+			sh := max(1, visible.Dy()*p.Image.Height/p.Rows)
+			source = image.Rect(sx, sy, sx+sw, sy+sh)
 		}
 		p.X, p.Y = x+visible.Min.X, y+visible.Min.Y
 		p.Cols, p.Rows = visible.Dx(), visible.Dy()
