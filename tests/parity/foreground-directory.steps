@@ -8,7 +8,7 @@ send "\x14c"
 sleep 200ms
 send "new\r"
 sleep 1s
-send "pwd\r"
+send "python3 @FIXTURES@/directory_evidence.py foreground-alpha-tab\r"
 sleep 300ms
 screen @OUT@/newtab.txt
 cells @OUT@/newtab.json
@@ -19,4 +19,10 @@ send "\r"
 sleep 2s
 screen @OUT@/foreground-beta.txt
 cells @OUT@/foreground-beta.json
+send "\x14v"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py foreground-beta-split\r"
+sleep 300ms
+screen @OUT@/split-beta.txt
+cells @OUT@/split-beta.json
 kill
