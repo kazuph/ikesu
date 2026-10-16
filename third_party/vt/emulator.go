@@ -39,6 +39,8 @@ type Emulator struct {
 
 	// Terminal modes.
 	modes ansi.Modes
+	// Character paths avoid map lookups; mode changes update these before callbacks.
+	autoWrap, originMode, newLineMode bool
 
 	// The last written character.
 	lastChar rune // either ansi.Rune or ansi.Grapheme

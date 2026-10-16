@@ -49,7 +49,7 @@ func (e *Emulator) printRun(run []byte) {
 	pending := run[len(run)-1]
 	run = run[:len(run)-1]
 
-	awm := e.isModeSet(ansi.ModeAutoWrap)
+	awm := e.autoWrap
 	pen := e.scr.cursorPen()
 	link := e.scr.cursorLink()
 	width := e.scr.buf.Width()
@@ -208,7 +208,7 @@ func (e *Emulator) flushGrapheme() {
 
 // handleGrapheme handles UTF-8 graphemes.
 func (e *Emulator) handleGrapheme(content string, width int) {
-	awm := e.isModeSet(ansi.ModeAutoWrap)
+	awm := e.autoWrap
 	cell := uv.Cell{
 		Content: content,
 		Width:   width,
