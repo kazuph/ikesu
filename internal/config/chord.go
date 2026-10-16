@@ -71,31 +71,31 @@ func (c Chord) Match(k uv.Key, prefix bool) bool {
 	if c.Prefix != prefix {
 		return false
 	}
-	code, mod := k.Code, k.Mod
-	if mod.Contains(uv.ModShift) && k.ShiftedCode != 0 {
-		code = k.ShiftedCode
+	if !c.Indexed {
+		// Kitty reports both the physical key and its shifted character. Either
+		// can be explicitly configured; the alternate must not replace the base.
+		if c.matchCode(k.Code, k.Mod) {
+			return true
+		}
+		return k.Mod.Contains(uv.ModShift) && k.ShiftedCode != 0 && c.matchCode(k.ShiftedCode, k.Mod)
 	}
+	code, mod := c.IndexCode(k), k.Mod
+	if code != k.Code {
+		mod |= uv.ModShift
+	}
+	return mod == c.Key.Mod && code >= '1' && code <= '9'
+}
+
+func (c Chord) matchCode(code rune, mod uv.KeyMod) bool {
 	if code >= 'A' && code <= 'Z' {
 		code += 'a' - 'A'
 		mod |= uv.ModShift
 	}
-	if c.Indexed {
-		indexed := c.IndexCode(k)
-		if indexed != k.Code {
-			mod |= uv.ModShift
-		}
-		code = indexed
-	} else if code == c.Key.Code && code > ' ' && code <= '~' && !(code >= 'a' && code <= 'z') && !(code >= '0' && code <= '9') {
+	if code == c.Key.Code && code > ' ' && code <= '~' && !(code >= 'a' && code <= 'z') && !(code >= '0' && code <= '9') {
 		// Terminals may retain Shift when reporting the resulting punctuation.
 		mod = (mod &^ uv.ModShift) | (c.Key.Mod & uv.ModShift)
 	}
-	if mod != c.Key.Mod {
-		return false
-	}
-	if c.Indexed {
-		return code >= '1' && code <= '9'
-	}
-	return code == c.Key.Code
+	return mod == c.Key.Mod && code == c.Key.Code
 }
 
 // IndexCode identifies the physical digit when Shift is reported as a symbol.

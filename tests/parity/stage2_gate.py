@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Compare only stage-two claims; save raw facts and fail on missing evidence."""
+import argparse
 import json
 from pathlib import Path
 import re
 import sys
-root=Path(sys.argv[1]);results=[]
+parser=argparse.ArgumentParser();parser.add_argument('root');parser.add_argument('--only',nargs='*');args=parser.parse_args()
+root=Path(args.root);results=[]
 def screen(case,prod,name):
  p=root/case/prod/(name+'.txt')
  if not p.is_file(): raise AssertionError('missing '+str(p))
  return p.read_text()
 def check(case,name,extract,expected=None):
+ if args.only and case not in args.only:return
  try:
   values={prod:extract(prod) for prod in ['herdr','gtx']}
   passed=values['herdr']==values['gtx'] and (expected is None or values['herdr']==expected)
@@ -82,6 +85,22 @@ for frame in ['one','three','next','previous','history-back','history-forward']:
  check('user-direct',frame+' selection matches',selected('user-direct',frame))
 check('navigate-direction-remapped','navigate remains active',has('navigate-direction-remapped','action','NAVIGATE'),True)
 check('navigate-direction-remapped','independent direction moves focus',lambda p:focused('navigate-direction-remapped',p,'action')-focused('navigate-direction-remapped',p,'split'),-1)
+for scope in ('prefix','direct'):
+ for suffix in ('','-reverse'):
+  case='review-conflict-'+scope+suffix
+  for frame in ('plain','kitty'):
+   check(case,frame+' help wins',has(case,frame,'keybinds'),True)
+   check(case,frame+' both configured punctuation bindings remain visible',lambda p: any('?' in line and 'keybinds' in line for line in screen(case,p,frame).splitlines()) and any('shift+' in line and '?' in line and 'settings' in line for line in screen(case,p,frame).splitlines()),True)
+  def no_conflict(prod):
+   folder=root/case/prod
+   content='\n'.join(p.read_text(errors='replace') for name in ['runtime-logs.json','server.log','startup.txt'] if (p:=folder/name).is_file())
+   return not any(word in content.lower() for word in ['conflicts with','disabled keys.settings','disabling binding'])
+  check(case,'no conflict diagnostic, matching real 0.2.57',no_conflict,True)
+for key in ('slash','digit'):
+ for binding in ('base','symbol'):
+  case='review-'+key+'-'+binding
+  for frame in ('base','alternate','symbol'):
+   check(case,frame+' help activation',has(case,frame,'keybinds'),frame=='alternate' or frame==binding)
 # Every run must show real completion, a versioned reference and isolated cleanup.
 for case in sorted({r['case'] for r in results}):
  check(case,'exact reference version',lambda p:json.loads((root/case/'reference.json').read_text())['herdr_version'],'herdr 0.2.57')
