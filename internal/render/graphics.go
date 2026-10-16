@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/kitty"
+	"image"
 	"reflect"
 	"strconv"
 )
@@ -12,6 +13,7 @@ import (
 type Graphic struct {
 	Pane      int
 	Placement kitty.Placement
+	Source    image.Rectangle
 }
 
 func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
@@ -29,14 +31,24 @@ func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
 			continue
 		}
 		p.Y += snap.ScrollOff
-		// A placement that crosses the pane edge is hidden rather than
-		// drawing source pixels over the sidebar or another pane.
-		if p.X < 0 || p.Y < 0 || p.X+p.Cols > width || p.Y+p.Rows > height {
+		bounds := image.Rect(p.X, p.Y, p.X+p.Cols, p.Y+p.Rows)
+		visible := bounds.Intersect(image.Rect(0, 0, width, height))
+		if visible.Empty() {
 			continue
 		}
-		p.X += x
-		p.Y += y
-		f.Graphics = append(f.Graphics, Graphic{Pane: pane, Placement: p})
+		var source image.Rectangle
+		if visible != bounds {
+			// Keep the original upload and select only the source pixels
+			// belonging to the visible destination cells.
+			source = image.Rect(
+				(visible.Min.X-p.X)*p.Image.Width/p.Cols,
+				(visible.Min.Y-p.Y)*p.Image.Height/p.Rows,
+				((visible.Max.X-p.X)*p.Image.Width+p.Cols-1)/p.Cols,
+				((visible.Max.Y-p.Y)*p.Image.Height+p.Rows-1)/p.Rows)
+		}
+		p.X, p.Y = x+visible.Min.X, y+visible.Min.Y
+		p.Cols, p.Rows = visible.Dx(), visible.Dy()
+		f.Graphics = append(f.Graphics, Graphic{Pane: pane, Placement: p, Source: source})
 	}
 }
 
@@ -119,7 +131,11 @@ func (e *Encoder) emitRealPlacements(f *Frame, b *bytes.Buffer, changed bool) {
 		}
 		id := e.graphicsMap[graphicKey(graphic.Pane, p.Image.ID)]
 		b.WriteString(cup(p.Y, p.X))
-		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2;\x1b\\", id, placementIDs[i], p.Cols, p.Rows, p.Z)
+		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2", id, placementIDs[i], p.Cols, p.Rows, p.Z)
+		if !graphic.Source.Empty() {
+			fmt.Fprintf(b, ",x=%d,y=%d,w=%d,h=%d", graphic.Source.Min.X, graphic.Source.Min.Y, graphic.Source.Dx(), graphic.Source.Dy())
+		}
+		b.WriteString(";\x1b\\")
 	}
 }
 
