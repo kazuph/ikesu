@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"bytes"
+	"encoding/gob"
 	"github.com/kazuph/goterrace/internal/detect"
 	"testing"
 	"time"
@@ -29,6 +31,7 @@ func TestReportedWorkingVisibleQuestionAndRecovery(t *testing.T) {
 		t.Fatalf("reported working hid visible question: %s", got)
 	}
 	assertReportedBlockerRender(t, a, "blocked")
+	a.SetServerUI()
 	v := a.NewViewer(nil, 120, 35, nil)
 	v.with(a, func(ui *App) { assertReportedBlockerRender(t, ui, "blocked") })
 	a.detectAll()
@@ -55,7 +58,7 @@ func assertReportedBlockerRender(t *testing.T, a *App, key string) {
 	if snaps[1].Status.Key != key {
 		t.Fatalf("pane snapshot: %s", snaps[1].Status.Key)
 	}
-	out := render.Compose(render.Input{State: a.st, Panes: snaps})
+	out := render.Compose(render.Input{State: a.st, Panes: snaps, ServerUI: a.serverUI})
 	statusCells := 0
 	for y := 0; y < a.st.Rows; y++ {
 		for x := 0; x < a.st.ExpandedSidebarWidth(); x++ {
@@ -89,6 +92,7 @@ func TestReportedBlockerPriorityAndObservationOrder(t *testing.T) {
 		{"idle", "claude", "claude", "claude", "idle", true, time.Second, "blocked"},
 		{"old", "claude", "claude", "claude", "working", true, -time.Second, "working"},
 		{"same time", "claude", "claude", "claude", "working", true, 0, "working"},
+		{"source label mismatch", "gtx:pi", "claude", "claude", "working", true, time.Second, "blocked"},
 		{"other agent", "claude", "claude", "codex", "working", true, time.Second, "working"},
 		{"not visible", "claude", "claude", "claude", "working", false, time.Second, "working"},
 		{"reported blocked", "claude", "claude", "claude", "blocked", false, time.Second, "blocked"},
@@ -146,7 +150,15 @@ func TestReportedBlockerHandoffPreservesAuthorityAndObservation(t *testing.T) {
 	a.SetReportedSource(1, "claude", "working", "claude")
 	a.observeBlocker(1, "claude", detect.Detection{State: detect.Blocked, VisibleBlocker: true}, time.Now().Add(time.Second))
 	b := specRuntimeApp(t)
-	b.RestoreHandoff(a.HandoffState())
+	var wire bytes.Buffer
+	if err := gob.NewEncoder(&wire).Encode(a.HandoffState()); err != nil {
+		t.Fatal(err)
+	}
+	var handoff HandoffState
+	if err := gob.NewDecoder(&wire).Decode(&handoff); err != nil {
+		t.Fatal(err)
+	}
+	b.RestoreHandoff(handoff)
 	if b.PaneStatusKey(1) != "blocked" {
 		t.Fatal("handoff lost question")
 	}

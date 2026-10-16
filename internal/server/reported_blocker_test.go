@@ -63,7 +63,9 @@ func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
 		// The target is genuinely in a background workspace, as required by G4.
 		s.app.State().Apply(model.CmdNewWorkspace{Cwd: dir, Name: "foreground"})
 		p.WithEmu(func(e *vt.Emulator) { e.Write([]byte("\x1b[2J\x1b[HReady")) })
-		s.app.SetReported(1, "claude", "working")
+		if resp := s.paneReportAgent("report", api.PaneReportAgentParams{PaneID: "p1", Source: "claude", Agent: "claude", State: "working"}); resp.Err != nil {
+			t.Errorf("report: %v", resp.Err)
+		}
 		s.lastStatus[1] = "working"
 		s.app.SetAvailHook(s.onPaneStatus)
 	})
