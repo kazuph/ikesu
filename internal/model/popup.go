@@ -44,13 +44,13 @@ func (s *AppState) PopupRect() layout.Rect {
 		return layout.Rect{}
 	}
 	a := s.PanesArea()
-	size := func(value api.PopupSize, total int) int {
+	size := func(value api.PopupSize, total, minimum int) int {
 		if value.Percent > 0 {
-			return max(0, min(total, max(3, total*value.Percent/100)))
+			return max(minimum, min(total, total*value.Percent/100))
 		}
-		return max(0, min(total, max(3, value.Cells)))
+		return max(minimum, min(total, value.Cells))
 	}
-	w, h := size(s.Popup.Width, a.W), size(s.Popup.Height, a.H)
+	w, h := size(s.Popup.Width, a.W, 6), size(s.Popup.Height, a.H, 4)
 	return layout.Rect{X: a.X + (a.W-w)/2, Y: a.Y + (a.H-h)/2, W: w, H: h}
 }
 
