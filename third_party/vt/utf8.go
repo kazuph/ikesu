@@ -93,18 +93,29 @@ func (e *Emulator) printRun(run []byte) {
 
 		first, last := n, 0
 		c := uv.Cell{Width: 1, Style: pen, Link: link}
-		for k := 0; k < n; k++ {
-			c.Content = asciiContent[run[i+k]]
-			if line[x+k] != c {
-				if k < first {
-					first = k
-				}
-				last = k + 1
-			}
-			line[x+k] = c
+		var touched *uv.LineData
+		if len(e.scr.buf.Touched) >= len(e.scr.buf.Lines) {
+			touched = e.scr.buf.Touched[y]
 		}
-		if first < last {
-			e.scr.buf.TouchLine(x+first, y, last-first)
+		if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n {
+			for k := 0; k < n; k++ {
+				c.Content = asciiContent[run[i+k]]
+				line[x+k] = c
+			}
+		} else {
+			for k := 0; k < n; k++ {
+				c.Content = asciiContent[run[i+k]]
+				if line[x+k] != c {
+					if k < first {
+						first = k
+					}
+					last = k + 1
+				}
+				line[x+k] = c
+			}
+			if first < last {
+				e.scr.buf.TouchLine(x+first, y, last-first)
+			}
 		}
 		i += n
 		x += n
