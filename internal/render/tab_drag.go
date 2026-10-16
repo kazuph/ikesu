@@ -2,6 +2,22 @@ package render
 
 import "github.com/kazuph/goterrace/internal/layout"
 
+// TabDragIndex follows horizontal chip midpoints even below the tab bar.
+// Hidden chips do not turn the visible arrows into global-end targets.
+func TabDragIndex(hits []layout.Rect, x int) int {
+	target := -1
+	for i, r := range hits {
+		if r.W <= 0 {
+			continue
+		}
+		if x < r.X+r.W/2 {
+			return i
+		}
+		target = i + 1
+	}
+	return target
+}
+
 // TabDropIndex follows the observed chip midpoint, independent of drag direction.
 // Hit regions remain in model order until release.
 func TabDropIndex(hits []layout.Rect, x, y int) int {

@@ -51,6 +51,11 @@ mouse motion 60 1
 mouse motion 60 3
 mouse up 60 3
 sleep 200ms
+screen @OUT@/outside-motion.txt
+cells @OUT@/outside-motion.json
+mouse down 28 1
+mouse up 60 3
+sleep 200ms
 screen @OUT@/cancelled.txt
 cells @OUT@/cancelled.json
 kill

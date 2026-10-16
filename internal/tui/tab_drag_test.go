@@ -99,13 +99,23 @@ func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 		t.Fatal("outside target retained marker")
 	}
 	sidebarEvent(a, input.KindMouseRelease, last.X+1, 2)
-	for i, id := range before {
+	want := []int{before[1], before[0], before[2]}
+	for i, id := range want {
 		if ws.Tabs[i].ID != id {
-			t.Fatal("outside release reordered")
+			t.Fatal("outside release discarded the last valid target")
 		}
 	}
+	before = want
 	if ws.TabRef().ID != active || a.tabGesture != nil {
 		t.Fatal("cancel retained gesture or changed focus")
+	}
+	a.draw()
+	sidebarEvent(a, input.KindMouseClick, a.tabHits[0].X+1, 0)
+	sidebarEvent(a, input.KindMouseRelease, last.X+1, 2)
+	for i, id := range before {
+		if ws.Tabs[i].ID != id {
+			t.Fatal("release without motion reordered tabs")
+		}
 	}
 	path := filepath.Join(t.TempDir(), "session.json")
 	if err := session.Save(path, a.st.Snapshot()); err != nil {

@@ -5,7 +5,7 @@ import sys
 root = Path(sys.argv[1])
 expected = {'two-before': 'AB', 'two-after': 'BA',
             'four-before': 'ABCD', 'four-after': 'BCDA',
-            'release-last-target': 'CDAB', 'cancelled': 'CDAB'}
+            'release-last-target': 'CDAB', 'outside-motion': 'DABC', 'cancelled': 'DABC'}
 for role in ['herdr', 'gtx']:
     for name, order in expected.items():
         row = (root/role/(name+'.txt')).read_text().splitlines()[0]

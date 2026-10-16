@@ -43,5 +43,7 @@ for root in (reference, candidate):
     before, after = cells(root, 'before'), cells(root, 'dropped')
     # C was active before and stays active; its chip remains accent-filled.
     assert before[46]['Style'] == after[46]['Style'], (root, 'focus changed')
-    assert cells(root, 'cancelled') == after, (root, 'outside release changed tabs')
+    released = (root / 'cancelled.txt').read_text().splitlines()[0][26:]
+    assert re.findall('[ABC]', released) == ['A', 'B', 'C'], (root, 'last valid target not retained', released)
+    assert cells(root, 'cancelled')[46]['Style'] == before[46]['Style'], (root, 'outside release changed focus')
 print(json.dumps(report, ensure_ascii=False, indent=2))

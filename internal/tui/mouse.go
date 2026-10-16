@@ -380,7 +380,7 @@ func (a *App) tabBarClick(m uv.Mouse) {
 		}
 		switch m.Button {
 		case uv.MouseLeft:
-			a.tabGesture = &tabGesture{ws: a.st.Active, tab: i, x: m.X, y: m.Y, drop: -1}
+			a.tabGesture = &tabGesture{ws: a.st.Active, tab: i, x: m.X, y: m.Y, drop: -1, target: -1}
 		case uv.MouseRight:
 			a.openTabMenu(m.X, m.Y, a.st.Active, i)
 		}
