@@ -30,15 +30,18 @@ p.add_argument('--pixel-mouse', action='store_true', help='let the outer termina
 p.add_argument('--tap-tb-input', action='store_true', help='record input delivered to the actual remote tb PTY')
 p.add_argument('--visibility', action='store_true', help='record real saved-machine graphics visibility across split, focus and zoom')
 p.add_argument('--pointer-probe', action='store_true', help='verify real link hover and horizontal scroll through page DOM event reports')
+p.add_argument('--adjacent-input', action='store_true', help='click a real adjacent saved-machine pane and record its immediate key input')
 a = p.parse_args()
 if a.image_probe and a.measure:
     p.error('the controlled image producer cannot be used for tb performance measurement')
-if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe)):
+if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe or a.adjacent_input)):
     p.error('the input tap requires an actual tb measurement or pointer probe')
 if a.visibility and (a.measure or a.image_probe):
     p.error('visibility operations must be separate from timing and controlled-image measurements')
 if a.pointer_probe and (a.measure or a.image_probe or a.visibility):
     p.error('pointer probe must be separate from other observation modes')
+if a.adjacent_input and (a.measure or a.image_probe or a.visibility or a.pointer_probe):
+    p.error('adjacent-pane input must be separate from other observation modes')
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
 observer_source = Path(__file__).read_bytes()
@@ -58,9 +61,10 @@ expected_keys = 'abcdefghijklmnop'
                                                        'tap_tb_input': a.tap_tb_input,
                                                        'visibility': a.visibility,
                                                        'pointer_probe': a.pointer_probe,
+                                                       'adjacent_input': a.adjacent_input,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
-                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
+                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure or a.adjacent_input else None}, indent=2)+'\n')
 
 RPC = '''import json,pathlib,socket,sys
 path,method,params=sys.argv[1:4]
@@ -215,6 +219,14 @@ for name in ['herdr','gtx']:
                 receiver.write_bytes(Path(__file__).with_name('tb_key_program.py').read_bytes())
                 receiver_command = shlex.join(['python3', str(receiver), '--out', str(root/'keys.json')])
                 result(local_rpc(local_socket, 'pane.send_input', {'pane_id': local_pane, 'text': receiver_command, 'keys': ['Enter']}))
+            if a.adjacent_input:
+                receiver = remote+'/home/key-receiver.py'
+                ssh(shlex.join(['python3', '-c', 'import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])',
+                                receiver, Path(__file__).with_name('tb_key_program.py').read_text()]))
+                adjacent = result(remote_rpc('pane.split', {'target_pane_id': remote_pane, 'direction': 'right', 'focus': False}))['pane']['pane_id']
+                (out/'adjacent-pane.json').write_text(json.dumps({'tb': remote_pane, 'receiver': adjacent})+'\n')
+                receiver_command = shlex.join(['python3', receiver, '--out', remote+'/home/adjacent-keys.json'])
+                result(remote_rpc('pane.send_input', {'pane_id': adjacent, 'text': receiver_command, 'keys': ['Enter']}))
             added = subprocess.run([binary, '--session', 't', 'machine', 'add', 'mini', '--label', 'tb-host', '--remote-session', 't'],
                                    env=env, capture_output=True, text=True, timeout=30, check=True)
             (out/'machine-add.json').write_text(added.stdout)
@@ -248,6 +260,10 @@ for name in ['herdr','gtx']:
                 steps.write_text(procedure+'kill\n')
             if a.pointer_probe:
                 steps.write_text(steps.read_text().replace('kill\n', '')+tb_pointer_probe.procedure(root, a.pixel_mouse)+'kill\n')
+            if a.adjacent_input:
+                steps.write_text(steps.read_text().replace('kill\n', '')+
+                                 'waittext 10s LOCAL_SWITCH_READY\nclick 120 22\nsend '+json.dumps(expected_keys+'\r')+'\n'
+                                 'waittext 10s LOCAL_KEYS_RECORDED\ncells '+str(out/'adjacent-input.json')+'\nkill\n')
             (out/'steps').write_text(steps.read_text())
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
@@ -305,6 +321,12 @@ for name in ['herdr','gtx']:
                 (out/'remote-image-probe.json').write_text(probe.stdout)
 
         finally:
+            if a.adjacent_input:
+                try:
+                    keys = ssh(shlex.join(['cat', remote+'/home/adjacent-keys.json']), capture_output=True)
+                    (out/'adjacent-keys.json').write_bytes(keys.stdout)
+                except Exception as error:
+                    cleanup.append({'adjacent_keys_error': str(error)})
             if (root/'keys.json').exists():
                 (out/'keys.json').write_bytes((root/'keys.json').read_bytes())
             if a.tap_tb_input:

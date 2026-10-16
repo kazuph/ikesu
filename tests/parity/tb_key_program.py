@@ -9,7 +9,11 @@ import tty
 p = argparse.ArgumentParser()
 p.add_argument('--out', type=Path, required=True)
 a = p.parse_args()
-if not str(a.out.resolve()).startswith('/private/tmp/tb-saved-'):
+local = str(a.out.resolve()).startswith('/private/tmp/tb-saved-')
+remote_home = Path.home().resolve()
+remote = (str(remote_home).startswith('/Users/kazuph/bench-terrace.noindex/work/tb-optimize/r-')
+          and remote_home.name == 'home' and a.out.resolve().parent == remote_home)
+if not (local or remote):
     raise SystemExit('REFUSED: receiver output is outside the owned measurement')
 tty.setraw(0)
 os.write(1, b'\x1b[2J\x1b[1;1HLOCAL_SWITCH_READY')
