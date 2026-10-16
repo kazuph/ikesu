@@ -519,25 +519,22 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 				}
 				ws := s.Workspaces[r.Ws]
 				tabLabel := ""
-				if len(ws.Tabs) > 1 {
-					for _, tab := range ws.Tabs {
-						if tab.Layout.HasPane(r.Pane) {
-							label := tab.Name
-							if label == "" {
-								label = fmt.Sprint(tab.ID)
-							}
-							tabLabel = label
-							break
+				for _, tab := range ws.Tabs {
+					if tab.Layout.HasPane(r.Pane) && (len(ws.Tabs) > 1 || tab.Name != "") {
+						label := tab.Name
+						if label == "" {
+							label = fmt.Sprint(tab.ID)
 						}
+						tabLabel = label
+						break
 					}
 				}
 				f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg}, ix+iw)
 				f.Text(ix+2, y, " ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
-				x := f.Text(ix+3, y, truncate(name, max(0, iw-3)), base, ix+iw)
-				if tabLabel != "" {
-					x = f.Text(x, y, " · ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
-					f.Text(x, y, tabLabel, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}, ix+iw)
-				}
+				drawTokens(f, ix+3, y, max(0, iw-3), []styledToken{
+					{name: "workspace", text: name, style: base},
+					{name: "tab", text: tabLabel, style: uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}},
+				})
 			} else {
 				name := sn.DisplayAgent
 				if name == "" {
