@@ -32,6 +32,7 @@ func main() {
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
+	statusDelay := flag.String("status-delay", "", "override terminal status replies with a duration or drop")
 	flag.Parse()
 	args := flag.Args()
 	cmd := exec.Command(args[0], args[1:]...)
@@ -42,6 +43,28 @@ func main() {
 		os.Exit(1)
 	}
 	emu := vt.NewEmulator(*cols, *rows)
+	if *statusDelay != "" {
+		delay, err := time.ParseDuration(*statusDelay)
+		if *statusDelay != "drop" && (err != nil || delay < 0) {
+			fmt.Fprintln(os.Stderr, "invalid status reply delay:", *statusDelay)
+			os.Exit(1)
+		}
+		emu.RegisterCsiHandler('n', func(params ansi.Params) bool {
+			op, _, _ := params.Param(0, 0)
+			if op != 5 {
+				return false
+			}
+			fmt.Printf("status-query at_unix_us=%d\n", time.Now().UnixMicro())
+			if *statusDelay != "drop" {
+				go func() {
+					time.Sleep(delay)
+					_, err := io.WriteString(ptmx, "\x1b[0n")
+					fmt.Printf("status-reply at_unix_us=%d error=%v\n", time.Now().UnixMicro(), err)
+				}()
+			}
+			return true
+		})
+	}
 	if *cellWidth == 0 && *xpixel > 0 {
 		*cellWidth = *xpixel / *cols
 	}

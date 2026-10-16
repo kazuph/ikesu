@@ -18,6 +18,7 @@ p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-width', type=int, default=0, help='outer terminal cell width in pixels')
 p.add_argument('--cell-height', type=int, default=0, help='outer terminal cell height in pixels')
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
+p.add_argument('--status-delay', help='protocol fixture: delay or drop terminal status replies')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
@@ -45,6 +46,7 @@ out.mkdir(parents=True, exist_ok=True)
     'gtx_binary': str(Path(a.gtx).resolve()),
     'gtx_sha256': hashlib.sha256(Path(a.gtx).read_bytes()).hexdigest(),
     'config': Path(a.config_file).read_text() if a.config_file else None,
+    'status_reply_delay': a.status_delay,
     'observer_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     'procedure_sha256': hashlib.sha256(Path(a.steps).read_bytes()).hexdigest(),
 }, indent=2)+'\n')
@@ -162,7 +164,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
                             '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
                             '-xpixel', str(160*a.cell_width), '-ypixel', str(45*a.cell_height),
-                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-status-delay', a.status_delay] if a.status_delay else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
                 try:

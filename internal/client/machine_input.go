@@ -93,6 +93,12 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	if m.outputFence.Accept(event.Raw) {
+		if m.paintQueued {
+			return m.paint()
+		}
+		return nil
+	}
 	if event.Kind == input.KindBlur {
 		m.blurred = true
 	} else if event.Kind == input.KindFocus {

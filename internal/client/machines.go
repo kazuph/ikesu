@@ -73,6 +73,8 @@ type machineClient struct {
 	workers         sync.WaitGroup
 	sidebar         render.MachineSidebar
 	frames          render.Encoder
+	outputFence     render.OutputFence
+	paintQueued     bool
 	title           windowTitleState
 	regions         *render.Output
 	tabFeedback     *tabFeedback
@@ -217,6 +219,9 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	include(m.noticeUntil)
+	if m.paintQueued {
+		include(m.outputFence.Deadline())
+	}
 	if m.pending != nil {
 		include(m.pending.deadline)
 		if len(m.pending.keys) > 0 {

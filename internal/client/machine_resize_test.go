@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
@@ -22,6 +23,9 @@ func TestPendingResizeKeepsSnapshotGraphics(t *testing.T) {
 	snapshot := &render.Input{State: state, Panes: map[int]*render.PaneSnap{pane: {Graphics: []kitty.Placement{{Image: kitty.Image{ID: 42, Format: 24, Width: 2, Height: 1, Data: []byte{255, 0, 0, 0, 255, 0}}, X: 6, Y: 4, Cols: 4, Rows: 2}}}}}
 	m := &machineClient{active: "local", order: []string{"local"}, out: out, settings: &localSettings{}, size: tui.Winsize{Cols: 160, Rows: 45}, endpoints: map[string]*managedEndpoint{"local": {snapshot: snapshot}}}
 	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.input(input.Event{Kind: input.KindUnknown, Raw: []byte("\x1b[0n")}); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := out.Seek(0, 1)

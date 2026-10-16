@@ -2,12 +2,18 @@ package client
 
 import (
 	"reflect"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
 func (m *machineClient) paint() error {
+	if m.outputFence.Waiting(time.Now()) {
+		m.paintQueued = true
+		return nil
+	}
+	m.paintQueued = false
 	e := m.endpoints[m.active]
 	if e.snapshot == nil {
 		return nil
@@ -84,6 +90,11 @@ func (m *machineClient) paint() error {
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
 	if _, err := m.out.Write(data); err != nil {
 		return err
+	}
+	if m.outputFence.Written(data, time.Now()) {
+		if _, err := m.out.WriteString(render.TerminalStatusQuery); err != nil {
+			return err
+		}
 	}
 	if err := m.title.painted(m.out, in); err != nil {
 		return err
