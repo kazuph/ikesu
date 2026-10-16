@@ -42,12 +42,18 @@ func (a *App) onInput(ev input.Event) {
 			}
 		}
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseWheel, input.KindMouseMotion:
+		if ev.Mouse.X < 0 || ev.Mouse.Y < 0 {
+			return
+		}
 		if a.hostPixelMouse {
 			pixel := ev.Mouse
 			a.mousePixel = &pixel
 			defer func() { a.mousePixel = nil }()
 			ev.Mouse.X /= a.cellW
 			ev.Mouse.Y /= a.cellH
+		}
+		if ev.Mouse.X >= a.st.Cols || ev.Mouse.Y >= a.st.Rows {
+			return
 		}
 		a.onMouse(ev)
 	case input.KindFocus:

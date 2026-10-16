@@ -98,6 +98,13 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	switch event.Kind {
+	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseMotion, input.KindMouseWheel:
+		cell := m.tabMouse.cells(event).Mouse
+		if event.Mouse.X < 0 || event.Mouse.Y < 0 || cell.X >= m.size.Cols || cell.Y >= m.size.Rows {
+			return nil
+		}
+	}
 	if event.Kind == input.KindTerminalReport {
 		m.tabMouse.report(event.Report, m.size)
 	}

@@ -1,10 +1,15 @@
 send "python3 @FIXTURES@/mouse_report_capture.py off\r"
 sleep 1s
+send "\x1b[<0;-8;24M\x1b[<0;333;-8m"
 mouse down 45 10
 send "\x1b[<32;333;-8M\x1b[<32;-8;24M\x1b[<0;333;-8m"
 sleep 200ms
 mouse up 45 10
 send "OFF_END"
+mouse down 45 10
+send "\x1b[<0;5000;5000M\x1b[<32;5000;5000M\x1b[<0;5000;5000m"
+mouse up 45 10
+send "OFF_OUT"
 sleep 200ms
 screen @OUT@/off-negative.txt
 cells @OUT@/off-negative.json
@@ -14,6 +19,7 @@ send "q"
 sleep 500ms
 send "python3 @FIXTURES@/mouse_report_capture.py on\r"
 sleep 1s
+send "\x1b[<0;-8;24M\x1b[<0;333;-8m"
 mouse down 45 10
 send "\x1b[<32;333;-8M\x1b[<32;-8;24M\x1b[<0;333;-8m"
 sleep 200ms
@@ -23,6 +29,7 @@ sleep 200ms
 mouse down 45 10
 send "\x1b[<32;5000;5000M\x1b[<0;5000;5000m"
 send "OUT_END"
+mouse up 45 10
 sleep 200ms
 screen @OUT@/on-outside.txt
 cells @OUT@/on-outside.json

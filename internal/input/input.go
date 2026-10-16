@@ -166,6 +166,12 @@ func (f *Framer) drain(forced bool) []Event {
 			n = len(f.buf)
 		}
 		raw := f.buf[:n]
+		// A minus is not an SGR parameter byte. The terminal decoder can
+		// stop at it; consume the complete report so its tail is never text.
+		if (bytes.HasPrefix(raw, []byte("\x1b[<")) || bytes.HasPrefix(raw, []byte("\x9b<"))) && bytes.IndexByte(raw, '-') >= 0 {
+			f.buf = f.buf[n:]
+			continue
+		}
 		n2, ev := f.dec.Decode(f.buf)
 		if n2 <= 0 || n2 > n {
 			n2 = n
@@ -210,7 +216,7 @@ func orphanMouseLen(b []byte) (int, bool) {
 		if c == 'M' || c == 'm' {
 			return i + 1, true
 		}
-		if (c < '0' || c > '9') && c != ';' {
+		if (c < '0' || c > '9') && c != ';' && c != '-' {
 			return 0, false
 		}
 	}
@@ -239,7 +245,7 @@ func isIncompleteSGRMouse(buf []byte) bool {
 		if c == 'M' || c == 'm' {
 			return false // complete
 		}
-		if (c < '0' || c > '9') && c != ';' {
+		if (c < '0' || c > '9') && c != ';' && c != '-' {
 			return false
 		}
 	}
