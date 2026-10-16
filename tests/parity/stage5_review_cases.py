@@ -11,3 +11,7 @@ for kind,label in [('ascii','ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNO
   for width in [34,40,50]:steps+=f'resize {26+width} 30\nsleep 300ms\n'+shot(f'width-{width}')
   (root/f'title-{kind}-{mode}.steps').write_text(steps+'kill\n')
 (root/'failure.steps').write_text(send('touch @OUT@/close-ready\r')+'waitfile @OUT@/close-finished 10s\nsleep 300ms\n'+shot('failed')+'kill\n')
+
+# Move only the disposable runner HOME, then invoke the normal close dialog.
+command = "python3 -c 'import os;from pathlib import Path;p=Path(os.environ[\"HOME\"]);assert str(p.resolve()).startswith(\"/private/tmp/parity-\");p.rename(p.with_name(\"home-suspended\"))'"
+(root/'ui-failure.steps').write_text(send(command+'\r')+send('\x14D')+send('\r')+shot('failed')+'kill\n')
