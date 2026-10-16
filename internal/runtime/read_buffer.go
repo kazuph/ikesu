@@ -274,7 +274,23 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 			pos.Y = min(pos.Y+1, p.emu.Height()-1)
 		}
 	}
-	_, _ = p.emu.Write(chunk[:end])
+	if r.byteHistory && !p.altScreen {
+		// This pane owns the drop callback, which only prunes row metadata.
+		// Short CRLF rows cannot invoke a mode/resize callback that reads it,
+		// so prune once after Write while the caller still holds p.mu.
+		sb := p.emu.Scrollback()
+		callback := sb.OnDrop
+		sb.OnDrop = nil
+		n, err := p.emu.Write(chunk[:end])
+		sb.OnDrop = callback
+		if n == end && err == nil {
+			for r.historyCount > sb.Len() {
+				r.dropHistory()
+			}
+		}
+	} else {
+		_, _ = p.emu.Write(chunk[:end])
+	}
 	return end
 }
 
