@@ -128,3 +128,12 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `--cell-clock` と `prefix-notification-expiry.steps` は通知点・状態点の実PTY描画時刻を記録する。実物では開始遅延1秒（1001/1002ms）、表示期間8秒（開始999ms、終了9005ms）を観測した。時間は元のcell-clock JSONを証拠とし、検査していない時間や状態を代用しない。表示中のペインを既読にするSPEC規則は維持し、実物のdone残留は差として記録する。
 
 `original-menu-cleared.steps` と `original-menu-routing-cleared.steps` は最初の再現操作の前に双方へ同じ端末クリアを送る。初回案内を閉じるEnterのシェル表示を揃え、外クリック/Escape後のメニュー消失、実echo出力、別pane/タブ追加へのクリックが消費されることを比較する。元の準備無しの結果も保存し、準備を入れた文字比較を全スタイル一致とは扱わない。
+
+`spawn-follow-actions.steps` は店長の ctrl+t 設定で、キー・+ボタン・OSC7後の縦分割・横分割・prefix+g・メニュー分割を実行する。
+`directory_evidence.py` が各操作後の実シェルで継承された絶対cwdを記録し、`spawn_follow_gate.py 出力先` が全6件のcwdと保存画面を検査する。サーバー接続と単独起動を別々に流す。
+`workspace-follow-name.steps` / `workspace-repository-name.steps` / `workspace-custom-name.steps` は、自動名の先頭shellへの追従、checkout名、手動名の保持を実API応答と画面に保存する。`workspace_name_gate.py 出力先 focus|repository|custom` で検査する。
+`directory-handoff.steps` はrunnerが隔離した両製品のサーバーだけをlive-handoffし、名前と作成先を記録する。`directory_handoff.py` はrunner所有のsocket以外を拒否する。
+`observe.py --pixel-mouse --cell-width 8 --cell-height 16` は実際のpixelモード交渉を可能にする。宣言だけでpixel検査済みとしない。raw出力の1016hと送信形式を確認する。
+`tab-drag-release.steps` はmotionなしreleaseと連続down/motion/up、`tab-drag-overflow.steps` は5個の長いタブの比較手順。実物の表示範囲が違えば同じ座標が同じタブを指すとは扱わない。
+`observe.py` の `saved-json.json` は所有サーバーの終了後に保存した実sessionも含む。
+`import_directory_proof.py --snapshot <herdr/saved-json.json> --binary <gtx> --ptyrun <ptyrun> --config-file <店長設定> --out <出力先>` は、実物から保存したshellだけの2スペース（自動名alpha・手動名chosen）のsessionを変更せず取り込み、cd後の自動名・手動名・新規タブのcwdを実サーバーと接続画面で検査する。保存元の一時ディレクトリが既存なら上書きせず停止する。

@@ -17,6 +17,8 @@ p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
 p.add_argument('--pixel-mouse', action='store_true', help='advertise SGR pixel mouse support to the attached display')
+p.add_argument('--cell-width', type=int, default=0, help='PTY terminal cell width in pixels')
+p.add_argument('--cell-height', type=int, default=0, help='PTY terminal cell height in pixels')
 p.add_argument('--startup-input', action='store_true', help='observe startup input with onboarding=false; wait for readiness in the steps')
 p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
@@ -84,6 +86,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
+        env['PARITY_OBSERVE_BINARY'] = str(Path(binary).resolve())
         if (a.config_file or a.in_app_toast) and name == 'gtx':
             env['GTX_CONFIG'] = str(config)
         if (a.config_file or a.in_app_toast) and name == 'herdr':
@@ -174,6 +177,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     wrapper.write_text('import os,sys\nfrom pathlib import Path\np=Path(sys.argv[1]); q=p.with_suffix(".next"); q.write_text(str(os.getpid())); q.replace(p)\nos.execv(sys.argv[2],sys.argv[2:])\n')
                     launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse='+str(a.pixel_mouse).lower(),
+                            '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
@@ -216,5 +220,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             if 'FAIL: owned server required kill' in replies:
                                 raise RuntimeError('owned server did not stop gracefully')
                     finally:
+                        saved_json = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                      for path in root.rglob('*.json') if path.is_file()}
+                        (target/'saved-json.json').write_text(json.dumps(saved_json, ensure_ascii=False, indent=2)+'\n')
                         if guard is not None:
                             guard.check(name, target/'terminal.raw')

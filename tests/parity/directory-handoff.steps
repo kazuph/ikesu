@@ -1,0 +1,27 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\"; cd \"$HOME/alpha\"\r"
+sleep 2s
+send "python3 @FIXTURES@/directory_handoff.py\r"
+sleep 3s
+screen @OUT@/handoff.txt
+cells @OUT@/handoff.json
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/name.txt
+cells @OUT@/name.json
+send "\x14c"
+sleep 200ms
+send "new\r"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py handoff-tab\r"
+sleep 300ms
+screen @OUT@/newtab.txt
+cells @OUT@/newtab.json
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+send "\x14v"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py handoff-split\r"
+sleep 300ms
+screen @OUT@/split.txt
+cells @OUT@/split.json
+kill

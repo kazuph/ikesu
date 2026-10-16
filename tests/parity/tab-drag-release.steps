@@ -1,0 +1,36 @@
+send "\x14T"
+sleep 200ms
+send "A\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "B\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "C\r"
+sleep 200ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 28 1
+mouse up 46 1
+sleep 300ms
+screen @OUT@/release-only.txt
+cells @OUT@/release-only.json
+mouse down 28 1
+mouse motion 46 1
+mouse up 46 1
+sleep 300ms
+screen @OUT@/fast.txt
+cells @OUT@/fast.json
+resize 48 45
+sleep 300ms
+screen @OUT@/overflow.txt
+cells @OUT@/overflow.json
+mouse down 28 1
+mouse motion 39 1
+mouse up 39 1
+sleep 300ms
+screen @OUT@/overflow-drop.txt
+cells @OUT@/overflow-drop.json
+kill
