@@ -32,7 +32,6 @@ func (a *App) tabGestureMouse(ev input.Event) {
 			return
 		}
 		if g.moved {
-			g.drop = render.TabDropIndex(a.tabHits, m.X, m.Y)
 			if g.drop >= 0 {
 				a.exec(model.CmdMoveTab{Workspace: g.ws, Index: g.tab, InsertIndex: g.drop})
 			}
