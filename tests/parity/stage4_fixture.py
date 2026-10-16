@@ -46,7 +46,13 @@ def report(target, state='idle'):
 operation = sys.argv[1]
 owner = request('pane.get', {'pane_id': pane})['pane']
 pane = owner['pane_id']
-if operation == 'create-finished-job':
+if operation == 'custom-height':
+    created = request('workspace.create', {'cwd': str(Path.cwd()), 'label': 'SECOND_WORKSPACE', 'focus': False})
+    other = created['root_pane']['pane_id']
+    request('pane.rename', {'pane_id': other, 'label': 'SECOND_LABEL'})
+    report(other)
+    (Path.home() / 'stage4-custom-height.json').write_text(json.dumps(created) + '\n')
+elif operation == 'create-finished-job':
     started = request('run.start', {'caller_pane': pane, 'label': 'UNKNOWN_EXIT', 'cwd': str(Path.cwd()),
                                    'argv': ['/usr/bin/true'], 'completion': 'none'})
     (Path.home() / 'stage4-finished-job.json').write_text(json.dumps(started) + '\n')

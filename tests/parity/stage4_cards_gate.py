@@ -17,12 +17,13 @@ for name in ('overflow', 'agents-down', 'agents-up', 'short', 'short-down'):
 assert proof['overflow'][0].strip() == '○ overflow-10'
 assert proof['agents-down'][0].strip() == 'codex'
 assert proof['agents-up'] == proof['overflow']
-for name, expected in (('custom-pane', 'CUSTOM_LABEL'), ('custom-workspace', 'parity')):
+for name, expected in (('custom-pane', ['SECOND_LABEL', 'CUSTOM_LABEL']), ('custom-workspace', ['SECOND_WORKSPACE', 'parity'])):
     for product in ('herdr', 'gtx'):
         lines = (custom / name / product / 'custom.txt').read_text().splitlines()
-        assert lines[26][:25].strip() == expected, (name, product, lines[26])
-        assert not lines[27][:25].strip(), (name, product, 'empty token row still visible')
+        got = [lines[y][:25].strip() for y in (26, 27)]
+        assert got == expected, (name, product, got)
+        assert not lines[28][:25].strip(), (name, product, 'unexpected third row')
     proof[name] = expected
 proof['A17'] = 'PASS: one physical row per wheel, including a partial card'
-proof['A18'] = 'PASS: only requested content; empty row has no visible content'
+proof['A18'] = 'PASS: only requested content; consecutive one-line cards prove empty token rows consume no height'
 print(json.dumps(proof, ensure_ascii=False, indent=2))
