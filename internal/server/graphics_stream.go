@@ -35,8 +35,9 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 	fail := func(message string) {
 		_ = api.WriteResponse(conn, api.Failure(req.ID, "invalid_frame", message))
 	}
+	frames := newGraphicsFrameReader(conn, reader)
 	for {
-		frame, err := api.ReadGraphicsFrame(reader)
+		frame, err := frames.header()
 		if err != nil {
 			if err != io.EOF {
 				fail(err.Error())
@@ -55,7 +56,7 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 			fail("frame data length exceeds addressable memory")
 			return
 		}
-		data, err := io.ReadAll(io.LimitReader(reader, int64(*frame.DataLength)))
+		data, err := frames.body(*frame.DataLength)
 		if err != nil || uint64(len(data)) != *frame.DataLength {
 			fail("incomplete frame data")
 			return
@@ -70,7 +71,7 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 				failure = &api.Error{Code: api.ErrPaneNotFound, Message: "stream pane no longer exists"}
 				return
 			}
-			failure = pane.SetGraphicsLayer(frame.PaneGraphicsSetParams, data, owner)
+			failure = s.sup.SetGraphicsLayer(pid, frame.PaneGraphicsSetParams, data, owner)
 		})
 		if failure != nil {
 			_ = api.WriteResponse(conn, api.Failure(req.ID, failure.Code, failure.Message))

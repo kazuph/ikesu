@@ -10,16 +10,17 @@ import (
 
 func TestGraphicsLayersPreservePixelsAndPTYNamespace(t *testing.T) {
 	p := &Pane{graphicsEnabled: true}
+	sup := &Supervisor{panes: map[int]*Pane{1: p}}
 	frame := func(layer string) api.PaneGraphicsSetParams {
 		return api.PaneGraphicsSetParams{Format: "rgb", ImageWidth: 2, ImageHeight: 1, LayerID: &layer,
 			Placement: api.PaneGraphicsPlacement{GridCols: 4, GridRows: 2}}
 	}
 	data := []byte{255, 0, 0, 0, 255, 0}
-	if failure := p.SetGraphicsLayer(frame("z"), data, 0); failure != nil {
+	if failure := sup.SetGraphicsLayer(1, frame("z"), data, 0); failure != nil {
 		t.Fatal(failure)
 	}
 	first := p.Graphics()[0].Image.ID
-	if failure := p.SetGraphicsLayer(frame("a"), data, 0); failure != nil {
+	if failure := sup.SetGraphicsLayer(1, frame("a"), data, 0); failure != nil {
 		t.Fatal(failure)
 	}
 	images := p.Graphics()
@@ -41,12 +42,12 @@ func TestGraphicsLayersPreservePixelsAndPTYNamespace(t *testing.T) {
 	}
 	bad := frame("z")
 	bad.Format, bad.ImageWidth, bad.ImageHeight = "rgba", 1<<31, 1<<31
-	if failure := p.SetGraphicsLayer(bad, nil, 0); failure == nil {
+	if failure := sup.SetGraphicsLayer(1, bad, nil, 0); failure == nil {
 		t.Fatal("overflowed pixel dimensions accepted")
 	}
 	bgra := frame("a")
 	bgra.Format = "bgra"
-	if failure := p.SetGraphicsLayer(bgra, []byte{0, 0, 255, 255, 0, 255, 0, 255}, 0); failure != nil {
+	if failure := sup.SetGraphicsLayer(1, bgra, []byte{0, 0, 255, 255, 0, 255, 0, 255}, 0); failure != nil {
 		t.Fatal(failure)
 	}
 	if got := p.Graphics()[1].Image.Data; !bytes.Equal(got, []byte{255, 0, 0, 255, 0, 255, 0, 255}) {
@@ -56,16 +57,17 @@ func TestGraphicsLayersPreservePixelsAndPTYNamespace(t *testing.T) {
 
 func TestGraphicsLayerOwnershipPreventsStaleDisconnect(t *testing.T) {
 	p := &Pane{graphicsEnabled: true}
+	sup := &Supervisor{panes: map[int]*Pane{1: p}}
 	layer := "stream"
 	frame := api.PaneGraphicsSetParams{Format: "rgb", ImageWidth: 1, ImageHeight: 1, LayerID: &layer}
-	if failure := p.SetGraphicsLayer(frame, []byte{0, 255, 0}, 1); failure != nil {
+	if failure := sup.SetGraphicsLayer(1, frame, []byte{0, 255, 0}, 1); failure != nil {
 		t.Fatal(failure)
 	}
-	if failure := p.SetGraphicsLayer(frame, []byte{255, 0, 0}, 2); failure == nil || failure.Code != "stream_conflict" {
+	if failure := sup.SetGraphicsLayer(1, frame, []byte{255, 0, 0}, 2); failure == nil || failure.Code != "stream_conflict" {
 		t.Fatalf("concurrent stream replaced its peer: %+v", failure)
 	}
 	p.ClearGraphicsLayer(&layer, 1)
-	if failure := p.SetGraphicsLayer(frame, []byte{255, 0, 0}, 2); failure != nil {
+	if failure := sup.SetGraphicsLayer(1, frame, []byte{255, 0, 0}, 2); failure != nil {
 		t.Fatal(failure)
 	}
 	p.ClearGraphicsLayer(&layer, 1)

@@ -37,7 +37,7 @@ func (s *Server) graphicsRequest(req *api.Request) api.Response {
 		if err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		if failure := pane.SetGraphicsLayer(params, data, 0); failure != nil {
+		if failure := s.sup.SetGraphicsLayer(pid, params, data, 0); failure != nil {
 			return api.Failure(req.ID, failure.Code, failure.Message)
 		}
 	case api.MethodPaneGraphicsClear:

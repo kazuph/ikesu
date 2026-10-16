@@ -15,6 +15,7 @@ const (
 	MethodPaneGraphicsStream = "pane.graphics.stream"
 	// The producer contract and the reference binary both allow 16 layers.
 	MaxGraphicsLayers           = 16
+	MaxGraphicsTotalLayers      = 64
 	MaxGraphicsFrameHeaderBytes = 64 * 1024
 	// Approved file-frame transport and aggregate inline bounds (T9).
 	MaxGraphicsFileInlineBytes = 16777216

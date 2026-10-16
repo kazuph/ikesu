@@ -27,11 +27,7 @@ func (p *Pane) GraphicsEnabled() bool {
 	return p.graphicsEnabled
 }
 
-func (p *Pane) SetGraphicsLayer(frame api.PaneGraphicsSetParams, data []byte, owner uint64) *api.Error {
-	image, failure := decodeLayerImage(frame, data)
-	if failure != nil {
-		return failure
-	}
+func (p *Pane) setGraphicsLayer(frame api.PaneGraphicsSetParams, image kitty.Image, owner uint64) *api.Error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.graphicsEnabled {
