@@ -108,7 +108,9 @@ func (b *RenderBuffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 	b.Buffer.DeleteLineArea(y, n, c, area)
 	for i := area.Min.Y; i < area.Max.Y; i++ {
 		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
-		b.TouchLine(area.Min.X, i+n, area.Max.X-area.Min.X)
+		if shifted := i + n; shifted < area.Min.Y || shifted >= area.Max.Y {
+			b.TouchLine(area.Min.X, shifted, area.Max.X-area.Min.X)
+		}
 	}
 }
 
