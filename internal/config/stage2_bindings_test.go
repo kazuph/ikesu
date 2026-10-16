@@ -34,3 +34,16 @@ func TestStage2BindingConflict(t *testing.T) {
 		t.Fatal(c.Warning())
 	}
 }
+
+func TestStage2InvalidArrayKeepsOtherBindings(t *testing.T) {
+	c, err := Decode([]byte("[keys]\nhelp=['not-a-key','cmd+y']\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := c.ActionBindings("help"); len(b) != 1 || b[0] != "cmd+y" {
+		t.Fatal(b)
+	}
+	if len(c.Warnings) != 1 {
+		t.Fatal(c.Warnings)
+	}
+}
