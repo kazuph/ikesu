@@ -26,9 +26,15 @@ p.add_argument('--capture-ssh', action='store_true', help='capture actual plaint
 p.add_argument('--image-probe', action='store_true', help='controlled Kitty producer for transfer contracts; does not measure tb performance')
 p.add_argument('--status-delay', help='explicit ptyrun terminal-status response delay, or drop')
 p.add_argument('--pixel-mouse', action='store_true', help='let the outer terminal negotiate SGR pixel mouse instead of explicitly declining it')
+p.add_argument('--tap-tb-input', action='store_true', help='record input delivered to the actual remote tb PTY')
+p.add_argument('--visibility', action='store_true', help='record real saved-machine graphics visibility across split, focus and zoom')
 a = p.parse_args()
 if a.image_probe and a.measure:
     p.error('the controlled image producer cannot be used for tb performance measurement')
+if a.tap_tb_input and (a.image_probe or not a.measure):
+    p.error('the input tap requires an actual tb measurement')
+if a.visibility and (a.measure or a.image_probe):
+    p.error('visibility operations must be separate from timing and controlled-image measurements')
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
 observer_source = Path(__file__).read_bytes()
@@ -45,6 +51,8 @@ expected_keys = 'abcdefghijklmnop'
                                                        'ptyrun_sha256': hashlib.sha256(a.ptyrun.read_bytes()).hexdigest(),
                                                        'status_delay': a.status_delay,
                                                        'pixel_mouse': a.pixel_mouse,
+                                                       'tap_tb_input': a.tap_tb_input,
+                                                       'visibility': a.visibility,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
                                                        'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
@@ -129,6 +137,9 @@ for name in ['herdr','gtx']:
         if a.image_probe:
             ssh(shlex.join(['python3', '-c', 'import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])',
                             remote+'/image-probe.py', Path(__file__).with_name('tb_transfer_program.py').read_text()]))
+        if a.tap_tb_input:
+            ssh(shlex.join(['python3', '-c', 'import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])',
+                            remote+'/tb-input-tap.py', Path(__file__).with_name('tb_input_tap.py').read_text()]))
         ssh_wrapper = root/'bin/ssh'
         ssh_wrapper.write_text('#!/usr/bin/python3\nimport os,sys\na=sys.argv[1:]\n'
                                "i=a.index('mini')\n"+
@@ -203,6 +214,8 @@ for name in ['herdr','gtx']:
                                   '--no-toolbar', '--no-shortcuts', '--no-context-menu', '--no-overlays', '--no-frame'])
             if a.image_probe:
                 command = shlex.join(['python3', remote+'/image-probe.py'])
+            if a.tap_tb_input:
+                command = shlex.join(['python3', remote+'/tb-input-tap.py', '--out', remote+'/home/tb-input.bin', '--'])+' '+command
             result(remote_rpc('pane.send_input', {'pane_id': remote_pane, 'text': command, 'keys': ['Enter']}))
             ready, raw = root/'image-ready', out/'terminal.raw'
             raw.touch()
@@ -244,6 +257,25 @@ for name in ['herdr','gtx']:
                         events.control(None, 1, max(0, deadline-time.monotonic()))
                     (out/'remote-graphics-info.json').write_text(json.dumps(
                         remote_rpc('pane.graphics.info', {'pane_id': remote_pane}), indent=2)+'\n')
+                    if a.visibility:
+                        visibility = []
+
+                        def sample(phase, panes):
+                            for pane in panes:
+                                visibility.append({'phase': phase, 'role': 'original' if pane == remote_pane else 'split',
+                                                   'response': remote_rpc('pane.graphics.info', {'pane_id': pane})})
+                            (out/'remote-visibility.json').write_text(json.dumps(visibility, indent=2)+'\n')
+
+                        sample('single', [remote_pane])
+                        split = result(remote_rpc('pane.split', {'target_pane_id': remote_pane, 'direction': 'right', 'focus': False}))['pane']['pane_id']
+                        sample('split-original-focused', [remote_pane, split])
+                        result(remote_rpc('pane.focus', {'pane_id': split}))
+                        sample('split-new-focused', [remote_pane, split])
+                        result(remote_rpc('pane.zoom', {'pane_id': split, 'mode': 'on'}))
+                        sample('zoom-new', [remote_pane, split])
+                        result(remote_rpc('pane.zoom', {'pane_id': split, 'mode': 'off'}))
+                        result(remote_rpc('pane.focus', {'pane_id': remote_pane}))
+                        sample('restored', [remote_pane, split])
                     ready.write_text('actual image upload received')
                 finally:
                     os.close(fd)
@@ -259,6 +291,12 @@ for name in ['herdr','gtx']:
         finally:
             if (root/'keys.json').exists():
                 (out/'keys.json').write_bytes((root/'keys.json').read_bytes())
+            if a.tap_tb_input:
+                try:
+                    tapped = ssh(shlex.join(['cat', remote+'/home/tb-input.bin']), capture_output=True)
+                    (out/'remote-tb-input.bin').write_bytes(tapped.stdout)
+                except Exception as error:
+                    cleanup.append({'tb_input_capture_error': str(error)})
             (out/'local-runtime-logs.json').write_text(json.dumps({str(p.relative_to(root)):p.read_text(errors='replace') for p in root.glob('**/*.log')}, indent=2)+'\n')
             try:
                 snapshot = remote_rpc('pane.read', {'pane_id': remote_pane})
