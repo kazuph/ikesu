@@ -8,9 +8,8 @@ func plainRow(line uv.Line) bool {
 	for i := range line {
 		c := &line[i]
 		if c.Width != 1 || len(c.Content) != 1 || c.Content[0] >= 128 ||
-			c.Style.Fg != nil || c.Style.Bg != nil || c.Style.UnderlineColor != nil ||
-			c.Style.Underline != uv.UnderlineNone || c.Style.Attrs != 0 ||
-			c.Link.URL != "" || c.Link.Params != "" {
+			int(c.Style.Attrs)|int(c.Style.Underline)|len(c.Link.URL)|len(c.Link.Params) != 0 ||
+			c.Style.Fg != nil || c.Style.Bg != nil || c.Style.UnderlineColor != nil {
 			return false
 		}
 	}
