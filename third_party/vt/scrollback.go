@@ -53,21 +53,11 @@ func (s *Scrollback) wrap(i int) int {
 // the trailing-space scan in [Scrollback.Push] hits it for almost every cell
 // of every scrolled line and a whole-struct comparison is measurably slower.
 func blankCell(c *uv.Cell) bool {
-	if c.Content != "" && c.Content != " " {
+	if !((c.Width == 1 && c.Content == " ") || (c.Width == 0 && c.Content == "")) {
 		return false
 	}
 	st := &c.Style
-	if st.Fg != nil || st.Bg != nil || st.UnderlineColor != nil ||
-		st.Underline != uv.UnderlineNone || st.Attrs != 0 {
-		return false
-	}
-	if c.Link.URL != "" || c.Link.Params != "" {
-		return false
-	}
-	if c.Content == "" {
-		return c.Width == 0
-	}
-	return c.Width == 1
+	return int(st.Attrs)|int(st.Underline)|len(c.Link.URL)|len(c.Link.Params) == 0 && st.Fg == nil && st.Bg == nil && st.UnderlineColor == nil
 }
 
 // Push adds a line to the scrollback buffer.
