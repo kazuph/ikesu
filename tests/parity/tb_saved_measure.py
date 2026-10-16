@@ -46,8 +46,13 @@ expected = inputs['expected_keys'].encode()
 actual = received.rstrip(b'\r\n')
 missing = sum((Counter(expected)-Counter(actual)).values())
 duplicated = sum((Counter(actual)-Counter(expected)).values())
-steps = (root/'steps').read_text()
-scroll_count = steps.count('mouse wheel-down 80 22\n')
+burst = re.search(r'wheelburst count=(\d+) rate=(\d+) times_unix_us=(\[[^\n]*\])', (root/'viewer.log').read_text())
+if burst is None:
+    raise SystemExit('missing timed scroll input record')
+scroll_count, nominal_rate = int(burst[1]), int(burst[2])
+scroll_times = json.loads(burst[3])
+if len(scroll_times) != scroll_count or scroll_count < 2:
+    raise SystemExit('incomplete timed scroll record')
 scroll_duration = click['time_ms']-start['time_ms']
 result = {
     'scope': 'one diagnostic run; no native-terminal missing-frame proof or median comparison',
@@ -59,9 +64,10 @@ result = {
     'screen_clear_count': period.count(b'\x1b[2J'),
     'outer_terminal_bytes': len(period), 'kitty_apc_bytes': sum(len(m[0]) for m in apcs),
     'kitty_payload_base64_bytes': sum(len(m[1].partition(b';')[2]) for m in apcs),
-    'image_upload_commands': uploads, 'scroll_events': scroll_count, 'nominal_scroll_hz': 125,
+    'image_upload_commands': uploads, 'scroll_events': scroll_count, 'nominal_scroll_hz': nominal_rate,
     'scroll_to_click_ms': scroll_duration,
-    'observed_average_scroll_hz': scroll_count*1000/scroll_duration if scroll_duration else None,
+    'observed_average_scroll_hz': (scroll_count-1)*1000000/(scroll_times[-1]-scroll_times[0]),
+    'scroll_times_unix_us': scroll_times,
     'mini_load': (root/'mini-load.log').read_text().strip(),
     'events': events,
 }

@@ -226,6 +226,40 @@ func main() {
 			}
 			_, _ = ptmx.Write([]byte(s))
 			sentAt = time.Now()
+		case "wheelburst": // COUNT HZ X Y: timed scroll input, independent of render completion
+			var count, rate, x, y int
+			if n, _ := fmt.Sscanf(rest, "%d %d %d %d", &count, &rate, &x, &y); n != 4 || count <= 0 || rate <= 0 || time.Second/time.Duration(rate) <= 0 {
+				fmt.Fprintln(os.Stderr, "bad wheelburst:", rest)
+				os.Exit(1)
+			}
+			mu.Lock()
+			pixel := emu.ModeSet(ansi.ModeMouseExtSgrPixel)
+			if pixel {
+				if *cellWidth <= 0 || *cellHeight <= 0 {
+					mu.Unlock()
+					fmt.Fprintln(os.Stderr, "pixel wheel needs cell size")
+					os.Exit(1)
+				}
+				x, y = (x-1)**cellWidth+*cellWidth/2+1, (y-1)**cellHeight+*cellHeight/2+1
+			}
+			mu.Unlock()
+			start := time.Now()
+			times := make([]int64, 0, count)
+			for i := 0; i < count; i++ {
+				time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / time.Duration(rate))))
+				times = append(times, time.Now().UnixMicro())
+				_, _ = fmt.Fprintf(ptmx, "\x1b[<65;%d;%dM", x, y)
+			}
+			time.Sleep(time.Until(start.Add(time.Duration(count) * time.Second / time.Duration(rate))))
+			mu.Lock()
+			sameMode := pixel == emu.ModeSet(ansi.ModeMouseExtSgrPixel)
+			mu.Unlock()
+			data, _ := json.Marshal(times)
+			fmt.Printf("wheelburst count=%d rate=%d times_unix_us=%s\n", count, rate, data)
+			if !sameMode {
+				fmt.Fprintln(os.Stderr, "mouse coordinate mode changed during timed scroll")
+				os.Exit(1)
+			}
 		case "mouse", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
 			var kind string
 			var x, y int

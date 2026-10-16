@@ -195,8 +195,8 @@ for name in ['herdr','gtx']:
             if a.measure:
                 procedure = steps.read_text().replace('kill\n', '')
                 procedure += 'locate "TB_LOCAL"\nmark scroll-start\n'
-                # P4b's 125 scroll events/second: 8 ms is input pacing, not a job wait.
-                procedure += ''.join('mouse wheel-down 80 22\nsleep 8ms\n' for _ in range(125))
+                # P4b's scroll rate is scheduled against one clock, not relative sleeps.
+                procedure += 'wheelburst 125 125 80 22\n'
                 procedure += ('clicklocated "TB_LOCAL"\nsend '+json.dumps(expected_keys+'\r')+'\n'
                               'waittext 10s LOCAL_KEYS_RECORDED\ncells '+str(out/'switch-local.json')+'\n'
                               'stats switch-local\nmark measurement-end\nkill\n')
