@@ -6,10 +6,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"image/color"
+	"image/png"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/model"
@@ -41,6 +44,15 @@ func TestEndpointReaderAcknowledgesReconstructedGraphicsRevision(t *testing.T) {
 	in := render.Input{State: model.New(t.TempDir(), 80, 24), Panes: map[int]*render.PaneSnap{1: pane}}
 	var encoder endpoint.SnapshotEncoder
 	encoder.GraphicsPatches = true
+	var display render.Encoder
+	var received kitty.Store
+	outer := vt.NewEmulator(80, 24)
+	defer outer.Close()
+	outer.RegisterApcHandler(func(data []byte) bool {
+		position := outer.CursorPosition()
+		_, _, _, handled := received.Handle(data, position.X, position.Y, 8, 16, false)
+		return handled
+	})
 	for revision := uint64(1); revision <= 2; revision++ {
 		in.SurfaceRevision = revision
 		data, err := encoder.Encode(in)
@@ -58,8 +70,37 @@ func TestEndpointReaderAcknowledgesReconstructedGraphicsRevision(t *testing.T) {
 		if err := <-written; err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(message.snapshot.Panes[1].Graphics[0].Image.Data, pixels) {
-			t.Fatal("receipt preceded exact reconstruction")
+		placement := message.snapshot.Panes[1].Graphics[0]
+		if placement.Image.Format != 100 || len(placement.Image.Data)*2 >= len(pixels) {
+			t.Fatal("reconstructed display image expanded back to raw pixels")
+		}
+		placement.Cols, placement.Rows = 60, 20
+		frame := render.NewFrame(80, 24)
+		frame.Graphics = []render.Graphic{{Pane: 1, Placement: placement}}
+		output := display.Frame(frame, 0, 0, false)
+		if !bytes.Contains(output, []byte("f=100,")) || len(output) >= len(pixels) {
+			t.Fatal("outer terminal upload did not retain PNG compression")
+		}
+		if _, err := outer.Write(output); err != nil {
+			t.Fatal(err)
+		}
+		if len(received.Images) != 1 {
+			t.Fatalf("outer terminal images=%d", len(received.Images))
+		}
+		for _, image := range received.Images {
+			decoded, err := png.Decode(bytes.NewReader(image.Data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for y := 0; y < image.Height; y++ {
+				for x := 0; x < image.Width; x++ {
+					got := color.NRGBAModel.Convert(decoded.At(x, y)).(color.NRGBA)
+					index := (y*image.Width + x) * 4
+					if !bytes.Equal([]byte{got.R, got.G, got.B, got.A}, pixels[index:index+4]) {
+						t.Fatal("outer terminal received changed pixels")
+					}
+				}
+			}
 		}
 		pixels[0] ^= 255
 	}

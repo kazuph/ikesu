@@ -57,7 +57,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		value := *pane
 		value.Grid = nil
 		var err error
-		value.Graphics, err = e.wireGraphics(id, pane.Graphics, aliveGraphics)
+		value.Graphics, err = wireGraphics(&e.graphics, id, pane.Graphics, aliveGraphics)
 		if err != nil {
 			return nil, err
 		}
@@ -115,6 +115,7 @@ type SnapshotDecoder struct {
 	MissingGraphicsKey *render.GraphicsImageKey
 	GraphicsPatches    bool
 	graphicsPayloads   map[[2]int]int
+	displayGraphics    map[graphicCacheKey]compressedGraphic
 }
 
 func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {

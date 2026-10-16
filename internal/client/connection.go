@@ -89,6 +89,9 @@ func (c *endpointConnection) read() (msg, error) {
 		if err != nil {
 			return msg{}, fmt.Errorf("invalid snapshot: %w", err)
 		}
+		if err := c.snapshots.PrepareGraphicsForDisplay(&in); err != nil {
+			return msg{}, fmt.Errorf("invalid display graphics: %w", err)
+		}
 		m.snapshot = &in
 		m.Data = ""
 		if key := c.snapshots.MissingGraphicsKey; key != nil {
