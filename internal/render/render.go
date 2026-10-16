@@ -778,7 +778,7 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 		key, g string
 		c      color.Color
 	}{
-		{"working", workingRune(in.Spin), f.Palette.Yellow}, {"blocked", "▲", Peach}, {"done", "●", f.Palette.Green}, {"idle", "○", f.Palette.Dim},
+		{"idle", "○", f.Palette.Dim}, {"done", "●", f.Palette.Green}, {"working", workingRune(in.Spin), f.Palette.Yellow}, {"blocked", "▲", Peach},
 	}
 	for _, o := range order {
 		if n := counts[o.key]; n > 0 {
