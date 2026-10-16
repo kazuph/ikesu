@@ -4,8 +4,12 @@
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
 店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。
 カスタム行だけは同じ設定へ観察用の `ui.sidebar` 行を追加する。
+段階4のrunnerは `observe.py --silent` で隔離設定だけに音の無効化を追加し、
+gtxには既存の `GTX_DISABLE_SOUND=1` も渡す。元の店長設定は変更しない。
+既存の音設定が有効なら起動前に拒否する。`stage4_silence_gate.py` は両製品が
+実際に使用した設定ファイルの `ui.sound.enabled=false` とagent別の有効化が無いことを検査する。
 ケースは `controls`、`collapsed-agents`、`agent-scroll`、`custom-pane`、`custom-workspace`、
-`custom-dim`、`focus-agents`、`custom-focus`、`named-tab`、`worktree-active`、`panel-switch`、
+`custom-dim`、`focus-agents`、`custom-focus`、`named-tab`、`worktree-active`、`worktree-selected`、`panel-switch`、
 `job-owner`、`custom-git`、`git-default`、`job-schema`、`job-unknown`、`job-cancelling`。
 各 `stage4_*_gate.py` は対象条件だけを検査し、未観察の条件へPASSを広げない。
 `gate-stage4.sh 出力先` はminiのgofmt・vet・全test・raceを保存する。性能検査は別にperf-lock.py経由で行う。

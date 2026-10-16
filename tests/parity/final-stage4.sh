@@ -17,4 +17,5 @@ python3 tests/parity/stage4_worktree_gate.py "$out/observations/worktree-selecte
 python3 tests/parity/stage4_panel_gate.py "$out/observations/panel-switch" > "$out/panel-gate.json"
 python3 tests/parity/stage4_job_gate.py "$out/observations/job-owner" > "$out/job-gate.json"
 python3 tests/parity/stage4_unknown_gate.py "$out/observations/job-unknown" > "$out/unknown-gate.json"
+python3 tests/parity/stage4_silence_gate.py "$out/observations" > "$out/silence-gate.json"
 python3 "$HOME/bench-terrace.noindex/work/perf-lock.py" sh tests/parity/perf-stage4.sh "$out/perf"

@@ -40,6 +40,6 @@ for name in "$@"; do
     esac
     python3 tests/parity/observe.py --herdr "$root/herdr-0.2.57" \
         --gtx "$root/gtx-stage4" --ptyrun "$root/ptyrun" \
-        --config-file "$config" --server --clipboard-sandbox \
+        --config-file "$config" --silent --server --clipboard-sandbox \
         --steps "$steps" --out "$out/$name"
 done
