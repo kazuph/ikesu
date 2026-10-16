@@ -161,3 +161,7 @@ GTX_PERF_BIN="$root/gtx-stage2" GTX_PERF_BASELINE_BIN="$root/gtx-baseline-a68c87
 
 ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾値を変えたり、
 最大RSSの判定を中央値へ置き換えたりしない。
+
+段階2のレビュー再現は `stage2_matrix.py --out <出力先> --only review-conflict-prefix review-conflict-prefix-reverse review-conflict-direct review-conflict-direct-reverse review-slash-base review-slash-symbol review-digit-base review-digit-symbol user-all-numbers` で実行する。比較器も `stage2_gate.py <出力先> --only <同じ9手順名>` で部分実行できる。全件実行時には `--only` を付けない。
+
+記号の競合に見える2割当は、実物0.2.57が無診断で両方をhelpに表示し、通常の記号入力とKitty入力ではhelpが勝つ。記述順も反転して検査する。これは実物を正とする親の判断により維持する。基底slash/数字とShift後の記号の指定は別々に観察し、Kittyの代替文字の有無・記号そのものの3入力を検査する。基底指定は基底/代替付き入力で成功、記号指定は代替付き/記号入力で成功することを必須にする。`user-all-numbers` は設定を変更せず9workspaceを作り、cmd+1〜9それぞれの選択先名を期待値と照合する（両製品の無操作が一致しただけでは成功しない）。
