@@ -11,7 +11,7 @@ import (
 
 // EncodeKey translates the host event into the protocol requested by the pane.
 // The local path in the reference does not enable all-key or release delivery.
-func EncodeKey(k uv.Key, raw []byte, flags, mok int, explicit, cursor, endpoint, release bool) []byte {
+func EncodeKey(k uv.Key, raw []byte, flags int, explicit, cursor, endpoint, release bool) []byte {
 	all := endpoint && flags&ansi.KittyReportAllKeysAsEscapeCodes != 0
 	events := flags&ansi.KittyReportEventTypes != 0
 	modifier := k.Code >= uv.KeyLeftShift && k.Code <= uv.KeyIsoLevel5Shift
@@ -112,9 +112,7 @@ func EncodeKey(k uv.Key, raw []byte, flags, mok int, explicit, cursor, endpoint,
 		return []byte{0x1b}
 	}
 	if code < uv.KeyExtended && k.Mod&uv.ModCtrl != 0 {
-		if mok == 2 {
-			return []byte(fmt.Sprintf("\x1b[27;%d;%d~", mod, code))
-		}
+
 		if code >= 'a' && code <= 'z' {
 			return []byte{byte(code - 'a' + 1)}
 		}

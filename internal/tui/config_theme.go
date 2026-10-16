@@ -90,8 +90,7 @@ func (a *App) prefixSpec() string {
 	return "ctrl+b"
 }
 func (a *App) BeginHostTheme() {
-	a.fr.ColorReportPending = a.sidebarConfig.Theme.AutoSwitch
-	if a.sidebarConfig.Theme.AutoSwitch {
-		_, _ = io.WriteString(a.out, "\x1b[?2031h\x1b[?996n\x1b]11;?\x1b\\")
-	}
+	// Host replies are framed even with a manually selected application theme.
+	a.fr.ColorReportPending = true
+	_, _ = io.WriteString(a.out, "\x1b[?2031h\x1b[?996n\x1b]11;?\x1b\\")
 }

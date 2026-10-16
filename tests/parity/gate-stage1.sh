@@ -23,6 +23,9 @@ check() {
     fi
 }
 check vet go vet ./...
+check vt-vet go vet github.com/charmbracelet/x/vt
+check vt-test go test -count=1 github.com/charmbracelet/x/vt
+check vt-race go test -race -count=1 github.com/charmbracelet/x/vt
 check test go test -count=1 ./...
 check race go test -race -count=1 ./...
 exit "$result"

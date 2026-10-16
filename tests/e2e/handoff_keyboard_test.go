@@ -47,10 +47,28 @@ func liveKeyboardHandoff(t *testing.T, old string) {
 		raw, first = "\x1b[97;5u", "\x1b[97;5u"
 	}
 	check(raw, first)
+	hostFlags := func(want int) {
+		t.Helper()
+		s.text()
+		flags, _ := s.emu.KeyboardModes()
+		if flags != want {
+			t.Fatalf("outer host flags=%d want=%d", flags, want)
+		}
+	}
+	if old == "" {
+		hostFlags(31)
+	} else {
+		hostFlags(7)
+	}
 	if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
 		t.Fatalf("handoff: %s %v", out, err)
 	}
 	check(raw, first)
+	if old == "" {
+		hostFlags(31)
+	} else {
+		hostFlags(7)
+	}
 	change := func(state string) {
 		t.Helper()
 		if err := os.WriteFile(control, []byte(state), 0600); err != nil {
@@ -64,12 +82,16 @@ func liveKeyboardHandoff(t *testing.T, old string) {
 	} else {
 		check(raw, first)
 	}
+	if old == "" {
+		hostFlags(31)
+	}
 	change("pop2")
 	if old == "" {
-		check("\x1b[97;5u", "\x1b[27;5;97~")
+		check("\x1b[97;5u", "\x01")
 	} else {
 		check("\x1b[97;5u", "\x01")
 	}
+	hostFlags(7)
 	change("off")
 	check("\x1b[97;5u", "\x01")
 	identifiers, err := os.ReadFile(pids)

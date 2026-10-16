@@ -24,6 +24,16 @@ send "\u001b[57441;1:3u"
 sleep 40ms
 send "\u001b[5;2~"
 sleep 40ms
+send "\u001b[13;2:3u"
+sleep 40ms
+send "\u001b[1;2:3A"
+sleep 40ms
+send "\u001b[5;2:3~"
+sleep 40ms
+send "\u001b[1;1:2A"
+sleep 40ms
+send "\u001b[27;1:3u"
+sleep 40ms
 send "日"
 sleep 40ms
 send "END"

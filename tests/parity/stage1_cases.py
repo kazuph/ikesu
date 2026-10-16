@@ -21,7 +21,8 @@ protocols = {
 keys = ['\x1b[97u', '\x1b[97;5u', '\x1b[97:65;2;65u', '\x1b[13;2u',
         '\x1b[A', '\x1bOA', '\x1b[1;2A', '\x1b[97;1:2u',
         '\x1b[97;1:3u', '\x1b[57441u', '\x1b[57441;1:3u',
-        '\x1b[5;2~', '日', 'END']
+        '\x1b[5;2~', '\x1b[13;2:3u', '\x1b[1;2:3A', '\x1b[5;2:3~',
+        '\x1b[1;1:2A', '\x1b[27;1:3u', '日', 'END']
 for name, modes in protocols.items():
     body = send(f'python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl {modes.encode().hex() or "00"}\r')
     body += 'waittext 5s PROBE_READY\n'

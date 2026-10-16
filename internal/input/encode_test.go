@@ -21,7 +21,7 @@ func TestPaneProtocolBytesObservedInHerdr056(t *testing.T) {
 			var got []byte
 			for _, e := range f.Push([]byte(raw)) {
 				if e.Kind == KindKey || e.Kind == KindKeyRelease {
-					got = append(got, EncodeKey(e.Key, e.Raw, tc.flags, 0, tc.flags != 0, false, tc.endpoint, e.Kind == KindKeyRelease)...)
+					got = append(got, EncodeKey(e.Key, e.Raw, tc.flags, tc.flags != 0, false, tc.endpoint, e.Kind == KindKeyRelease)...)
 				}
 			}
 			if string(got) != tc.want {

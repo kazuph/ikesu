@@ -16,14 +16,14 @@ func (a *App) sendPaneKey(k uv.Key, raw []byte, release bool) {
 	if p == nil {
 		return
 	}
-	flags, mok, explicit, legacy, cursor := p.KeyboardModes()
+	flags, _, explicit, legacy, cursor := p.KeyboardModes()
 	if legacy {
 		if !release {
 			a.sup.Input(pid, raw)
 		}
 		return
 	}
-	data := input.EncodeKey(k, raw, flags, mok, explicit, cursor, a.serverUI, release)
+	data := input.EncodeKey(k, raw, flags, explicit, cursor, a.serverUI, release)
 	if len(data) > 0 {
 		a.sup.Input(pid, data)
 	}
