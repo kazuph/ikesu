@@ -6,8 +6,11 @@ MIT license. No herdr waveform, melody, decoded samples, or source code is used.
 
 Regenerate from the repository root with `python3 tools/generate_sounds.py`.
 The generator uses only Python's standard library and takes no audio input.
-Done uses C5/E5/G5; request uses D5/A4/D5. Each note is a sine with a Hann
-envelope. Pitches use twelve-tone equal temperament with A4 = 440 Hz.
+Done is a soft two-note chime (E5 then B5); request is two light taps on G5
+followed by D6. Each note is a mallet-like sum of decaying partials with a
+short attack, a light 37 ms echo and an end fade (replaced 2026-10-17 because
+the earlier flat sine motif was unpleasant).
+Pitches use twelve-tone equal temperament with A4 = 440 Hz.
 
 Only the reference files' numeric duration, sample rate, and mean dBFS were
 used as volume/length guidelines: done 1.080000 s, 48000 Hz, -23.9 dBFS;
