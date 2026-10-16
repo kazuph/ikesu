@@ -94,18 +94,21 @@ func (r *graphicsFileReceiver) reply(raw []byte, now time.Time) (bool, *endpoint
 	return false, nil
 }
 
-func (r *graphicsFileReceiver) retired(identity endpoint.GraphicsTransmission, now time.Time) {
+func (r *graphicsFileReceiver) retired(identity endpoint.GraphicsTransmission, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.pending != nil && r.pending.identity == identity {
 		r.finish(false, now)
+		return true
 	}
+	return false
 }
 
-func (r *graphicsFileReceiver) disconnected(now time.Time) {
+func (r *graphicsFileReceiver) disconnected(now time.Time) *endpoint.GraphicsTransmission {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.pending != nil {
-		r.finish(false, now)
+		return &r.finish(false, now).GraphicsTransmission
 	}
+	return nil
 }

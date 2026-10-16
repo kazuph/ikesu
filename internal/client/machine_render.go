@@ -87,7 +87,16 @@ func (m *machineClient) paint() error {
 		composed.AnchorVisible = composed.AnchorVisible && composed.AnchorX < clipped.W && composed.AnchorY < clipped.H
 	}
 	composed.Frame.GraphicsNamespace = m.active
+	var nativePanes map[int]*render.PaneSnap
+	if local := m.endpoints["local"]; local != nil && local.snapshot != nil {
+		nativePanes = local.snapshot.Panes
+	}
+	retired, err := m.frames.ObserveNativeImages(nativePanes)
+	if err != nil {
+		return err
+	}
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
+	data = append(data, retired...)
 	if _, err := m.out.Write(data); err != nil {
 		return err
 	}

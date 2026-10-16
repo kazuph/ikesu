@@ -12,6 +12,7 @@ import (
 // It keeps the last written frame and the currently emitted style so diffs
 // are minimal: unchanged cells are never rewritten.
 type Encoder struct {
+	nativeImages      map[uint32]bool
 	graphics          []Graphic
 	graphicsNamespace string
 	graphicsIDs       []uint32

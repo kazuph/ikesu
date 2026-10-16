@@ -15,6 +15,7 @@ import (
 // Outer terminal IDs are assigned by the renderer, never copied from a pane.
 type Image struct {
 	ID                    uint32
+	NativeID              uint32 `json:"NativeID,omitempty"`
 	Format, Width, Height int
 	Data                  []byte
 }

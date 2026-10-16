@@ -26,7 +26,7 @@ func (m *machineClient) post(ctx context.Context, event endpointEvent) bool {
 
 func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	if id == "local" {
-		m.fileGraphics.disconnected(time.Now())
+		m.retirePendingGraphicsFile()
 	}
 	e := m.endpoints[id]
 	if e.cancel != nil {
@@ -147,7 +147,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	if event.err != nil {
 		if event.id == "local" {
-			m.fileGraphics.disconnected(time.Now())
+			m.retirePendingGraphicsFile()
 		}
 		if event.id == "local" && e.snapshot == nil && needsAttention(event.err.Error()) {
 			fmt.Fprintln(m.out, "gtx:", event.err)
@@ -197,6 +197,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		input := *message.snapshot
+		if event.id != "local" && hasNativeGraphics(input) {
+			m.fail(event.id, errors.New("native graphics require a local file transfer"))
+			break
+		}
 		e.snapshot = message.snapshot
 		e.epoch = message.FocusEpoch
 		e.requestAck = message.RequestAck
@@ -305,7 +309,7 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 
 func (m *machineClient) fail(id string, err error) {
 	if id == "local" {
-		m.fileGraphics.disconnected(time.Now())
+		m.retirePendingGraphicsFile()
 	}
 	e := m.endpoints[id]
 	if e.cancel != nil {

@@ -42,9 +42,17 @@ func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
 }
 
 func (e *Encoder) clearGraphics(b *bytes.Buffer) {
+	cleared := map[uint32]bool{}
 	for _, id := range e.graphicsIDs {
 		fmt.Fprintf(b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", id)
+		cleared[id] = true
 	}
+	for id := range e.nativeImages {
+		if !cleared[id] {
+			fmt.Fprintf(b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", id)
+		}
+	}
+	e.nativeImages = nil
 	e.graphicsIDs = nil
 }
 
@@ -71,7 +79,7 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 			for _, oldID := range e.graphicsIDs {
 				uploaded = uploaded || oldID == id
 			}
-			if !uploaded {
+			if !uploaded && p.Image.NativeID == 0 {
 				data := base64.StdEncoding.EncodeToString(p.Image.Data)
 				first := true
 				for len(data) > 0 {
@@ -150,12 +158,14 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 			oldIDs[key] = id
 		}
 		pid := oldPlacementIDs[i]
-		if current[id] && !placements[[2]uint32{id, pid}] {
+		_, native := e.nativeImages[id]
+		if (current[id] || native) && !placements[[2]uint32{id, pid}] {
 			fmt.Fprintf(b, "\x1b_Ga=d,d=i,i=%d,p=%d,q=2;\x1b\\", id, pid)
 		}
 	}
 	for _, id := range e.graphicsIDs {
-		if !current[id] {
+		_, native := e.nativeImages[id]
+		if !current[id] && !native {
 			fmt.Fprintf(b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", id)
 		}
 	}

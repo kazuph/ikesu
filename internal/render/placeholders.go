@@ -55,6 +55,10 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 		for _, g := range f.Graphics {
 			key := graphicKey(g.Pane, g.Placement.Image.ID)
 			if _, exists := e.graphicsMap[key]; !exists {
+				if id := g.Placement.Image.NativeID; id != 0 {
+					e.graphicsMap[key] = id
+					continue
+				}
 				if e.graphicsNamespace == f.GraphicsNamespace && !removedDefaultPrototype(e.graphics, f.Graphics, g) {
 					for _, old := range e.graphics {
 						if old.Pane == g.Pane && reflect.DeepEqual(old.Placement.Image, g.Placement.Image) {
@@ -66,9 +70,11 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 				if e.graphicsMap[key] != 0 {
 					continue
 				}
-				e.nextGraphicID++
-				if e.nextGraphicID == 0 {
+				for {
 					e.nextGraphicID++
+					if _, reserved := e.nativeImages[e.nextGraphicID]; e.nextGraphicID != 0 && !reserved {
+						break
+					}
 				}
 				e.graphicsMap[key] = e.nextGraphicID
 			}
