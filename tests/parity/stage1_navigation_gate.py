@@ -24,8 +24,10 @@ for mode in ['local', 'server']:
             screen = folder/(('alt-escape' if case == 'alt-escape' else 'escape')+'.txt')
             text = screen.read_text()
             capture = folder/'received.jsonl'
+            clock = json.loads(screen.with_suffix('.json').read_text())['CapturedUnixMs']
+            records = [json.loads(row) for row in capture.read_text().splitlines()] if capture.exists() else []
             measured[name] = {'top_left_borders': text.count('┌'), 'top_right_borders': text.count('┐'),
-                              'bytes': ''.join(json.loads(row)['hex'] for row in capture.read_text().splitlines()) if capture.exists() else ''}
+                              'bytes': ''.join(row['hex'] for row in records if row['unix_ns'] // 1000000 <= clock)}
         expected_borders = 1 if case == 'plain' else 2
         results.append({'mode': mode, 'case': 'popup-'+case, 'measurements': measured,
                         'pass': measured['herdr'] == measured['gtx'] and

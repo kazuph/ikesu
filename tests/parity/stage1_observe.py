@@ -35,3 +35,7 @@ for mode in ['local', 'server']:
             command.append('--server')
         print(mode, procedure.stem, flush=True)
         subprocess.run(command, env=env, check=True)
+        for name in ['herdr', 'gtx']:
+            log = Path(a.out)/mode/procedure.stem/name/'run.log'
+            if 'TIMEOUT' in log.read_text():
+                raise RuntimeError('procedure did not reach its required state: ' + str(log))

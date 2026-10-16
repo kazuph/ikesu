@@ -29,11 +29,8 @@ for name, modes in protocols.items():
     (out/f'protocol-{name}.steps').write_text(body)
 
 body = 'screen @OUT@/startup.txt\n'
-for name, modes in [('all', '\x1b[>8u'), ('pop', '\x1b[<u'),
-                    ('events', '\x1b[>3u'), ('events-mok', '\x1b[>4;1m'),
-                    ('mok-off', '\x1b[>4;0m'), ('restore', '\x1b[<u')]:
-    body += send("printf '" + modes.replace('\x1b', '\\033') + "'\r")
-    body += f'sleep 200ms\nscreen @OUT@/{name}.txt\n'
+body += send('python3 @FIXTURES@/keyboard_lifecycle.py\r')
+body += 'waittext 5s LIFECYCLE_DONE\nscreen @OUT@/restored.txt\n'
 body += send('\x14q') + 'sleep 300ms\nscreen @OUT@/detached.txt\nkill\n'
 (out/'lifecycle.steps').write_text(body)
 
@@ -42,7 +39,7 @@ for name, modes in {'plain': '', 'cursor': '\x1b[?1h', 'alternate': '\x1b[?1049h
     body = send('\x14t') + 'sleep 400ms\n'
     body += send(f'python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl {modes.encode().hex() or "00"}\r')
     body += 'waittext 5s PROBE_READY\n' + send('\x1b')
-    body += 'sleep 100ms\nscreen @OUT@/escape.txt\ncells @OUT@/escape.json\nkill\n'
+    body += 'sleep 300ms\nscreen @OUT@/escape.txt\ncells @OUT@/escape.json\nkill\n'
     (out/f'popup-{name}.steps').write_text(body)
 
 body = send('\x14t') + 'sleep 400ms\n' + send('\x1b\x1b')
@@ -64,8 +61,14 @@ body += send('\x1b') + 'sleep 100ms\ncells @OUT@/escape.json\n'
 body += send('\x1b[<0;70;20M') + 'sleep 100ms\n'
 body += send('\x1b[<0;70;') + 'sleep 40ms\n' + send('20M') + 'sleep 100ms\n'
 body += send('\x1b[<0;70;') + 'sleep 200ms\n' + send('20M') + 'sleep 100ms\n'
-body += send('END') + 'sleep 100ms\nscreen @OUT@/complete.txt\nkill\n'
+body += send('END') + 'sleep 100ms\nscreen @OUT@/complete.txt\ncells @OUT@/complete.json\nkill\n'
 (out/'timing.steps').write_text(body)
+
+for name, modes in [('plain', '00'), ('mouse', '1b5b3f31303030681b5b3f3130303668')]:
+    body = send(f'python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl {modes}\r')
+    body += 'waittext 5s PROBE_READY\n' + send('\x1b')
+    body += 'sleep 400ms\ncells @OUT@/escape.json\nkill\n'
+    (out/f'escape-{name}.steps').write_text(body)
 
 body = send('\x14t') + 'sleep 400ms\n'
 body += send('/usr/bin/vim -Nu NONE -n -i NONE\r') + 'sleep 500ms\n'

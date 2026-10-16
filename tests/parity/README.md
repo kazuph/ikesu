@@ -1,5 +1,16 @@
 # 実物の操作比較
 
+段階1の0.2.55比較は `stage1_observe.py` と `stage1_hosts.py` をminiで使う。
+`stage1_cases.py 出力先` がキー形式・popup・Page操作・分割マウス等の手順を生成し、同じstepsを両製品へ流す。
+`stage1-host.steps` のtmux比較は `stage1_hosts.py` が専用socketの実tmuxを起動する。
+WezTermはホスト識別情報による条件比較であり、WezTerm GUIでの確認を意味しない。
+`stage1_host_gate.py 出力先` は起動と終了の全キーボード要求列を検査する。
+`stage1_navigation_gate.py 出力先` は履歴の全行ラベル・受信バイトとpopupの枠数・Escの配送を比較する。
+`stage1_timing_measure.py 出力先` は送信と実paneへの配送時刻を保存し、単なる待ち時間の足し算を遅延としない。
+popup・kittyの終了時には実物がキー解放を合成するため、操作中の配送は保存画面の取得時刻まで、終了時の配送はそれ以降として別々に読む。
+`keyboard_lifecycle.py` はpane自身が要求を変更する。kitty全キー要求を出したshellへ通常文字で解除コマンドを打つ手順は使わない。
+`sh tests/parity/gate-stage1.sh 証拠ディレクトリ` はminiでgofmt・vet・通常test・raceを全実行し、失敗した検査も保存する。
+
 Mac mini の隔離領域で実行する。herdr の実装・テストは読まず、配布バイナリと gtx に同じ `*.steps` を流す。依存ライブラリを追加しない。
 
 ```sh
