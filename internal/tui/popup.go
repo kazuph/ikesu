@@ -35,6 +35,9 @@ func (a *App) OpenPluginPopup(cwd string, argv []string, env map[string]string, 
 	if w == nil {
 		return "", fmt.Errorf("no active workspace")
 	}
+	if a.st.PopupVisible() {
+		return "", fmt.Errorf("popup already open")
+	}
 	dimension := func(size *api.PopupSize) api.PopupSize {
 		if size != nil {
 			return *size

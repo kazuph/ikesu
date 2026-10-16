@@ -71,7 +71,10 @@ func (s *AppState) openPopup(c CmdOpenPopup) []Effect {
 			s.Popups[s.Popup.WorkspaceID] = s.Popup
 		}
 	}
-	effects := s.closePopupPane(s.Popups[c.WorkspaceID])
+	if s.Popups[c.WorkspaceID] != nil {
+		return nil
+	}
+	var effects []Effect
 	s.nextRuntimePaneID = max(s.nextRuntimePaneID, s.nextPaneID) + 1
 	id := s.nextRuntimePaneID
 	s.Popup = &PopupPaneState{WorkspaceID: c.WorkspaceID, PaneID: id, TerminalID: fmt.Sprintf("p%d", id), Width: c.Width, Height: c.Height, Title: c.Title}
@@ -90,7 +93,12 @@ func (s *AppState) PopupByPane(id PaneID) *PopupPaneState {
 	}
 	return nil
 }
-func (s *AppState) closePopup() []Effect { return s.closePopupPane(s.Popup) }
+func (s *AppState) closePopup() []Effect {
+	if !s.PopupVisible() {
+		return nil
+	}
+	return s.closePopupPane(s.Popup)
+}
 func (s *AppState) closePopupPane(pop *PopupPaneState) []Effect {
 	if pop == nil {
 		return nil

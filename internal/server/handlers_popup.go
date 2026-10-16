@@ -43,7 +43,11 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		}
 		tid, err := s.app.OpenPopup(pane.Snapshot().Cwd, p.Command, p.Width, p.Height)
 		if err != nil {
-			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+			code := api.ErrInvalidRequest
+			if err.Error() == "popup already open" {
+				code = "command_failed"
+			}
+			return api.Failure(req.ID, code, err.Error())
 		}
 		return api.Success(req.ID, api.CommandExecutedResult{Type: "command_executed", PopupTerminalID: &tid})
 	case "popup.close":
@@ -51,7 +55,7 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		if s.app.State().Popup == nil {
+		if !s.app.State().PopupVisible() {
 			return notOpen()
 		}
 		s.app.ExecCmd(model.CmdClosePopup{})
