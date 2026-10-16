@@ -10,6 +10,7 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 p.add_argument('--dialog', action='store_true')
 p.add_argument('--toast', action='store_true')
+p.add_argument('--standalone-toast', action='store_true', help='no-session reload toast keeps placements and ignores targetless prefix+o')
 a = p.parse_args()
 results = {}
 for name in ('herdr', 'gtx'):
@@ -50,7 +51,14 @@ for name in ('herdr', 'gtx'):
         start = int(end)
     results[name] = {'stages': stages, 'uploads': uploads}
 reference = results['herdr']['stages']
-if a.dialog or a.toast:
+if a.standalone_toast:
+    changed = ('overlay-toast', 'overlay-restored')
+    reference_valid = (len(reference['overlay-base']) == 2
+                       and all(reference[stage] == reference['overlay-base'] for stage in changed))
+    for name in ('herdr', 'gtx'):
+        for filename in ('overlay-toast.txt', 'overlay-after-targetless-key.txt'):
+            reference_valid = reference_valid and 'reloaded config' in (a.out/name/filename).read_text()
+elif a.dialog or a.toast:
     stage = 'overlay-toast' if a.toast else 'overlay-dialog'
     changed = (stage, 'overlay-restored')
     reference_valid = (len(reference['overlay-base']) == 2

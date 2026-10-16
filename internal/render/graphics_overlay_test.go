@@ -2,6 +2,7 @@ package render
 
 import (
 	"image"
+	"reflect"
 	"testing"
 
 	"github.com/kazuph/goterrace/internal/kitty"
@@ -28,6 +29,7 @@ func TestOverlaysHideOnlyCoveredImageCells(t *testing.T) {
 			case "menu-overlap":
 				in.Menu = &Menu{X: 50, Y: 15, Items: []MenuItem{{Label: "Close pane"}}}
 			case "toast":
+				in.ServerUI = true
 				in.Toast = &Toast{Title: "notice"}
 			case "dialog":
 				in.Dialog = &Dialog{Title: "Confirm"}
@@ -83,6 +85,43 @@ func TestOverlaysHideOnlyCoveredImageCells(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOverlayAdditionalPlacementBoundaryPreservesUntouchedImages(t *testing.T) {
+	for _, count := range []int{32, 33} {
+		frame := NewFrame(40, 20)
+		for i := 0; i < count; i++ {
+			frame.Graphics = append(frame.Graphics, Graphic{Pane: 1, Placement: kitty.Placement{
+				Image: kitty.Image{ID: uint32(i + 1), Width: 100, Height: 40}, Cols: 10, Rows: 4}})
+		}
+		away := Graphic{Pane: 1, Placement: kitty.Placement{Image: kitty.Image{ID: 99}, X: 20, Y: 10, Cols: 2, Rows: 2}}
+		frame.Graphics = append(frame.Graphics, away)
+		frame.coverGraphicsRects([]image.Rectangle{image.Rect(4, 0, 6, 4)})
+		want := count*2 + 1
+		if count == 33 {
+			want = 1
+		}
+		if len(frame.Graphics) != want || !reflect.DeepEqual(frame.Graphics[len(frame.Graphics)-1], away) {
+			t.Fatalf("%d added placements: got %v", count, frame.Graphics)
+		}
+	}
+}
+
+func TestStandaloneToastKeepsImagePlacementsWhileEndpointCrops(t *testing.T) {
+	s := testState(160, 45)
+	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
+	snap := blankSnap()
+	snap.Graphics = []kitty.Placement{{Image: kitty.Image{ID: 8, Width: 100, Height: 40}, X: 0, Y: 0, Cols: 127, Rows: 40}}
+	in := Input{State: s, Panes: map[int]*PaneSnap{pid: snap}}
+	before := Compose(in).Frame.Graphics
+	in.Toast = &Toast{Title: "reloaded config", Body: "using config.toml", Position: "top-right"}
+	if got := Compose(in).Frame.Graphics; !reflect.DeepEqual(got, before) {
+		t.Fatalf("standalone reload toast changed placements: %v -> %v", before, got)
+	}
+	in.ServerUI = true
+	if got := Compose(in).Frame.Graphics; reflect.DeepEqual(got, before) {
+		t.Fatal("endpoint toast did not crop overlapping image cells")
 	}
 }
 

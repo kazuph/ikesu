@@ -77,10 +77,17 @@ func (a *App) toastClick(x, y int) bool {
 	if a.toast == nil || !pointIn(x, y, a.toastRect) {
 		return false
 	}
+	a.openToastTarget()
+	return true
+}
+
+func (a *App) openToastTarget() {
+	if a.toast == nil || a.toast.target < 0 || !a.toast.shown {
+		return
+	}
 	a.navToToastTarget()
 	a.toast = nil
 	a.dirty = true
-	return true
 }
 
 // navToToastTarget switches workspace/tab/focus to the toast's pane.

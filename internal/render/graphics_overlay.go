@@ -1,6 +1,62 @@
 package render
 
-import "image"
+import (
+	"github.com/kazuph/goterrace/internal/layout"
+	"image"
+)
+
+// The approved endpoint contract permits at most 32 extra crop placements.
+const maxOverlayGraphicsPieces = 32
+
+func graphicsCovers(in Input, out *Output) []image.Rectangle {
+	f := out.Frame
+	rects := []layout.Rect{out.MenuRect, out.DialogRect, out.HelpRect}
+	if in.ServerUI {
+		rects = append(rects, out.ToastRect)
+	}
+	if in.Settings != nil {
+		rects = append(rects, SettingsRect(f.W, f.H))
+	}
+	if in.Navigator != nil {
+		rects = append(rects, NavigatorRect(f.W, f.H))
+	}
+	var covers []image.Rectangle
+	for _, r := range rects {
+		covers = append(covers, image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H))
+	}
+	return covers
+}
+
+func (f *Frame) coverGraphicsRects(covers []image.Rectangle) {
+	var visible, untouched []Graphic
+	extra := 0
+	for _, graphic := range f.Graphics {
+		p := graphic.Placement
+		bounds := image.Rect(p.X, p.Y, p.X+p.Cols, p.Y+p.Rows)
+		touched := false
+		if !p.Virtual {
+			for _, cover := range covers {
+				touched = touched || !bounds.Intersect(cover).Empty()
+			}
+		}
+		if !touched {
+			untouched = append(untouched, graphic)
+			visible = append(visible, graphic)
+			continue
+		}
+		pieces := &Frame{Graphics: []Graphic{graphic}}
+		for _, cover := range covers {
+			pieces.coverGraphics(cover)
+		}
+		extra += max(0, len(pieces.Graphics)-1)
+		visible = append(visible, pieces.Graphics...)
+	}
+	if extra > maxOverlayGraphicsPieces {
+		f.Graphics = untouched
+	} else {
+		f.Graphics = visible
+	}
+}
 
 func cropGraphic(g Graphic, visible image.Rectangle) Graphic {
 	p := g.Placement

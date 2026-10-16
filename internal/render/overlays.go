@@ -91,8 +91,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 
 // --- toast ---
 
-// drawToast renders the notification box at the top-right: a 4-row-high
-// bordered box with the status dot + title and one body line.
+// A context-free notification needs only its title row inside the border.
 func drawToast(f *Frame, t *Toast, out *Output) {
 	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
 	out.ToastRect = r
@@ -101,21 +100,26 @@ func drawToast(f *Frame, t *Toast, out *Output) {
 		dot.Fg = f.Palette.Red
 	}
 	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
-	f.Fill(ix, iy, iw, 2, " ", uv.Style{Bg: f.Palette.PopupBG})
+	f.Fill(ix, iy, iw, max(0, r.H-2), " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Set(ix, iy, "●", dot)
 	f.Text(ix+2, iy, t.Title, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(ix, iy+1, "  "+t.Body, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+	if t.Body != "" && r.H >= 4 {
+		f.Text(ix, iy+1, "  "+t.Body, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+	}
 }
 
-// ToastRect anchors to the view rather than the terminal origin. Width is
-// intentionally UTF-8 bytes, as required by SPEC G9.
+// ToastRect uses display cells, as specified by the approved T11 contract.
 func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
-	w := min(max(len(t.Title), len(t.Body))+6, max(0, view.W))
+	w := min(max(ansi.StringWidth(t.Title), ansi.StringWidth(t.Body))+6, max(0, view.W))
 	y := view.Y
 	if warning.H > 0 {
 		y = max(y, warning.Y+warning.H)
 	}
-	h := min(4, max(0, view.Y+view.H-y))
+	h := 3
+	if t.Body != "" {
+		h = 4
+	}
+	h = min(h, max(0, view.Y+view.H-y))
 	x := view.X + view.W - w
 	switch t.Position {
 	case "top-center":
