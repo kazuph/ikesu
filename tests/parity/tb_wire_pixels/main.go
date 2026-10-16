@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -19,10 +20,12 @@ import (
 )
 
 type record struct {
-	Bytes  int    `json:"bytes"`
-	SHA256 string `json:"sha256"`
-	Format int    `json:"format"`
-	Patch  bool   `json:"patch"`
+	Bytes      int    `json:"bytes"`
+	SHA256     string `json:"sha256"`
+	Format     int    `json:"format"`
+	Patch      bool   `json:"patch"`
+	WireEnd    int64  `json:"wire_end"`
+	TimeUnixMs int64  `json:"time_unix_ms,omitempty"`
 }
 
 func rgba(data []byte, format, width, height int) ([]byte, error) {
@@ -93,7 +96,11 @@ func snapshots(data []byte) ([]record, error) {
 						patched = true
 					}
 				}
-				records = append(records, record{count, fmt.Sprintf("%x", sha256.Sum256(pixels)), img.Format, patched})
+				end := stream.InputOffset()
+				if end < int64(len(data)) && data[end] == '\n' {
+					end++
+				}
+				records = append(records, record{Bytes: count, SHA256: fmt.Sprintf("%x", sha256.Sum256(pixels)), Format: img.Format, Patch: patched, WireEnd: end})
 			}
 		}
 	}
@@ -165,6 +172,9 @@ func patches(data []byte) ([]record, error) {
 			return nil, fmt.Errorf("trailing blob bytes")
 		}
 		if string(name) != "endpoint.graphics.patch.v1" {
+			if bytes.HasPrefix(name, []byte("endpoint.graphics.")) {
+				return nil, fmt.Errorf("unsupported graphics blob %q; image accounting is incomplete", name)
+			}
 			continue
 		}
 		var patch struct {
@@ -204,19 +214,38 @@ func patches(data []byte) ([]record, error) {
 			count += len(rect.PNG)
 		}
 		previousKey = patch.Key
-		records = append(records, record{count, fmt.Sprintf("%x", sha256.Sum256(canvas.Pix)), 100, true})
+		records = append(records, record{Bytes: count, SHA256: fmt.Sprintf("%x", sha256.Sum256(canvas.Pix)), Format: 100, Patch: true, WireEnd: int64(len(data) - reader.Len())})
 	}
 	return records, nil
 }
 
-func run(root string) error {
+func run(root string, actualTB, windowed bool) error {
 	var expected []struct{ Stage, SHA256 string }
-	data, err := os.ReadFile(filepath.Join(root, "remote-image-probe.json"))
-	if err != nil {
-		return err
-	}
-	if err = json.Unmarshal(data, &expected); err != nil {
-		return err
+	var data []byte
+	if actualTB {
+		input, err := os.ReadFile(filepath.Join(root, "inputs.json"))
+		if err != nil {
+			return err
+		}
+		var parameters struct {
+			Measure    bool
+			ImageProbe bool `json:"image_probe"`
+		}
+		if err := json.Unmarshal(input, &parameters); err != nil {
+			return err
+		}
+		if !parameters.Measure || parameters.ImageProbe {
+			return fmt.Errorf("actual-tb accounting requires an actual tb measurement")
+		}
+	} else {
+		var err error
+		data, err = os.ReadFile(filepath.Join(root, "remote-image-probe.json"))
+		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal(data, &expected); err != nil {
+			return err
+		}
 	}
 	files, err := filepath.Glob(filepath.Join(root, "ssh", "*-from-mini.bin"))
 	if err != nil {
@@ -224,6 +253,15 @@ func run(root string) error {
 	}
 	var records []record
 	wireBytes := 0
+	capturedImages := 0
+	tailBytes := 0
+	var window measureWindow
+	if windowed {
+		window, err = readWindow(root)
+		if err != nil {
+			return err
+		}
+	}
 	for _, file := range files {
 		data, err = os.ReadFile(file)
 		if err != nil {
@@ -242,6 +280,22 @@ func run(root string) error {
 			}
 		}
 		wireBytes += len(data)
+		var chunks []captureChunk
+		if windowed {
+			chunks, err = readCaptureClock(file)
+			if err != nil {
+				return err
+			}
+			var tail int
+			data, tail, err = windowPrefix(data, chunks, window.End)
+			if err != nil {
+				return err
+			}
+			tailBytes += tail
+			if len(data) == 0 {
+				return fmt.Errorf("no complete display message by measurement end")
+			}
+		}
 		var rows []record
 		if data[0] == '{' {
 			rows, err = snapshots(data)
@@ -251,7 +305,18 @@ func run(root string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", file, err)
 		}
-		records = append(records, rows...)
+		capturedImages += len(rows)
+		for _, row := range rows {
+			if windowed {
+				if err := recordTime(&row, chunks); err != nil {
+					return err
+				}
+				if row.TimeUnixMs < window.Start || row.TimeUnixMs > window.End {
+					continue
+				}
+			}
+			records = append(records, row)
+		}
 	}
 	seen := map[string]bool{}
 	imageBytes := 0
@@ -264,27 +329,51 @@ func run(root string) error {
 			return fmt.Errorf("producer stage %s pixels missing: %s", want.Stage, want.SHA256)
 		}
 	}
-	if len(expected) == 0 {
+	if !actualTB && len(expected) == 0 {
 		return fmt.Errorf("no producer stages")
+	}
+	if capturedImages == 0 {
+		return fmt.Errorf("no decoded image records")
+	}
+	var verified *bool
+	if !actualTB {
+		value := true
+		verified = &value
 	}
 	writer := bufio.NewWriter(os.Stdout)
 	defer writer.Flush()
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
+	scope := "full connection; image bytes are PNG/raw payloads, excluding encoding and metadata; actual tb has no producer hash assertion"
+	if !actualTB {
+		scope = "full connection; image bytes are PNG/raw payloads, excluding encoding and metadata; every expected producer stage is verified by its RGBA SHA256"
+	}
+	if windowed {
+		scope = "completed image payloads received during scroll/switch measurement; incomplete messages excluded; WireBytes counts the full capture; no producer hash assertion"
+	}
 	return encoder.Encode(struct {
-		Scope                  string `json:"scope"`
-		WireBytes, ImageBytes  int
-		AllProducerStagesMatch bool
-		Records                []record
-	}{"full connection; image bytes are PNG/raw payloads, excluding encoding and metadata", wireBytes, imageBytes, true, records})
+		Scope                       string `json:"scope"`
+		WireBytes, ImageBytes       int
+		AllProducerStagesMatch      *bool
+		Records                     []record
+		ExcludedIncompleteTailBytes int
+		Window                      measureWindow
+	}{scope, wireBytes, imageBytes, verified, records, tailBytes, window})
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: tb_wire_pixels CAPTURE_DIRECTORY")
+	actualTB := flag.Bool("actual-tb", false, "count actual tb capture without claiming known producer pixels")
+	windowed := flag.Bool("measurement-window", false, "count only completed image payloads in the measured scroll/switch window")
+	flag.Parse()
+	if *windowed && !*actualTB {
+		fmt.Fprintln(os.Stderr, "measurement-window requires actual-tb")
 		os.Exit(2)
 	}
-	if err := run(os.Args[1]); err != nil {
+	if flag.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: tb_wire_pixels [-actual-tb [-measurement-window]] CAPTURE_DIRECTORY")
+		os.Exit(2)
+	}
+	if err := run(flag.Arg(0), *actualTB, *windowed); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

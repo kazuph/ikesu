@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 """Transparent byte capture for the observer's own mini SSH connection."""
 import os
+import json
 from pathlib import Path
 import signal
 import subprocess
 import sys
 import threading
+import time
 
 prefix = os.environ['TB_SSH_OBSERVER_PREFIX']
 root = Path(os.environ['TB_SSH_CAPTURE_ROOT'])
@@ -30,13 +32,18 @@ for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
 
 
 def forward(source, target, name):
-    with (root/(str(os.getpid())+'-'+name+'.bin')).open('wb', buffering=0) as log:
+    stem = root/(str(os.getpid())+'-'+name)
+    with stem.with_suffix('.bin').open('wb', buffering=0) as log, stem.with_suffix('.jsonl').open('w', buffering=1) as clock:
+        offset = 0
         try:
             while True:
                 data = os.read(source, 65536)
                 if not data:
                     break
+                received_at = time.time_ns()
                 log.write(data)
+                offset += len(data)
+                clock.write(json.dumps({'end': offset, 'time_unix_ns': received_at})+'\n')
                 remaining = memoryview(data)
                 while remaining:
                     remaining = remaining[os.write(target, remaining):]

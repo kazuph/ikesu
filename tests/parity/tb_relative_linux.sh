@@ -2,7 +2,7 @@
 # Both source trees live below the worker's isolated ubuntu work directory.
 set -euo pipefail
 source "$HOME/bench-terrace/env.sh"
-work="$HOME/bench-terrace/work/tb-optimize/p1-t17"
+work="$HOME/bench-terrace/work/tb-optimize/${1:-p1-t17}"
 cd "$work"
 mkdir -p p1-relative
 go version > p1-relative/environment.log
