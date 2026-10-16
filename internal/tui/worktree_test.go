@@ -83,14 +83,14 @@ func TestSidebarWorktreeNewExistingOpenDelete(t *testing.T) {
 	}
 	a.openWorkspaceMenu(2, 3, 0)
 	activateLabel(t, a, "Collapse")
-	cards := 0
+	var cards []int
 	for _, r := range render.SidebarRows(a.st, nil) {
 		if r.Kind == render.RowWorkspace {
-			cards++
+			cards = append(cards, r.Ws)
 		}
 	}
-	if cards != 1 {
-		t.Fatal("collapsed group shows children")
+	if len(cards) != 2 || cards[0] != 0 || cards[1] != 1 {
+		t.Fatal("collapsed group must retain its parent and active child only", cards)
 	}
 	a.openWorkspaceMenu(2, 3, 0)
 	activateLabel(t, a, "Expand")

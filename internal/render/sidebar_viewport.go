@@ -39,7 +39,7 @@ func SidebarSplitY(s *model.AppState) int {
 	return area.Y + y
 }
 
-func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int, serverUI bool) SidebarView {
+func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int, serverUI bool, selected *int) SidebarView {
 	a := s.SidebarArea()
 	iw := max(0, a.W-1)
 	mid := SidebarSplitY(s)
@@ -54,7 +54,7 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 			cfg.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "workspace"}}, {{Token: "agent"}}}
 		}
 	}
-	rows := SidebarRows(s, panes, cfg)
+	rows := sidebarRows(s, panes, cfg, selected)
 	stickyCards := serverUI || (s.WorkspaceDensity == "slim" && cfg.UI.Sidebar.Spaces.Rows == nil)
 	sep := len(rows)
 	for i, r := range rows {

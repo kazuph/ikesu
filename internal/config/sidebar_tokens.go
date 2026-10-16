@@ -82,7 +82,7 @@ func (c Config) ValidateSidebar() error {
 					if !agent {
 						return fmt.Errorf("unsupported space token: %s", t.Token)
 					}
-				case "branch", "git_status":
+				case "branch", "git_status", "git_diff":
 					if agent {
 						return fmt.Errorf("unsupported agent token: %s", t.Token)
 					}

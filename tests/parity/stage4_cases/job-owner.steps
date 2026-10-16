@@ -1,0 +1,35 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; python3 @FIXTURES@/socket_action.py start-job; python3 @FIXTURES@/socket_action.py create-other; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-popup-owners.json 5s
+sleep 500ms
+clicktext "other"
+sleep 500ms
+clicktext "[jobs]"
+sleep 250ms
+screen @OUT@/before-click.txt
+cells @OUT@/before-click.json
+click 10 27
+sleep 500ms
+screen @OUT@/first-click.txt
+cells @OUT@/first-click.json
+click 10 27
+sleep 500ms
+screen @OUT@/second-click.txt
+cells @OUT@/second-click.json
+send "\x03"
+sleep 250ms
+send "python3 @FIXTURES@/stage4_fixture.py remove-job-log\r"
+waitfile @HOME@/stage4-log-removed.json 5s
+sleep 250ms
+click 10 27
+sleep 500ms
+screen @OUT@/missing-log.txt
+cells @OUT@/missing-log.json
+send "\x03"
+sleep 250ms
+send "python3 @FIXTURES@/socket_action.py close-owner\r"
+sleep 500ms
+click 10 27
+sleep 500ms
+screen @OUT@/missing-owner.txt
+cells @OUT@/missing-owner.json
+kill

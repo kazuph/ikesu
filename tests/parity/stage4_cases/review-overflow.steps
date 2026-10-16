@@ -1,0 +1,40 @@
+send "python3 @FIXTURES@/stage4_fixture.py review-overflow; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-review-overflow.json 15s
+sleep 1s
+mouse wheel-down 10 10
+mouse wheel-down 10 10
+sleep 250ms
+send "\x14b"
+sleep 250ms
+screen @OUT@/inherited.txt
+cells @OUT@/inherited.json
+click 2 1
+sleep 250ms
+screen @OUT@/inherited-click.txt
+cells @OUT@/inherited-click.json
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+mouse wheel-down 1 10
+sleep 250ms
+screen @OUT@/upper-end.txt
+cells @OUT@/upper-end.json
+click 2 1
+sleep 250ms
+screen @OUT@/tail-click.txt
+cells @OUT@/tail-click.json
+mouse wheel-down 1 25
+sleep 250ms
+screen @OUT@/agent-down.txt
+cells @OUT@/agent-down.json
+click 2 25
+sleep 250ms
+screen @OUT@/lower-click.txt
+cells @OUT@/lower-click.json
+kill

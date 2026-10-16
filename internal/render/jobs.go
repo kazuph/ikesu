@@ -19,7 +19,7 @@ type JobRow struct {
 }
 
 func SidebarViewForInput(in Input) SidebarView {
-	view := SidebarViewFor(in.State, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll, in.ServerUI)
+	view := SidebarViewFor(in.State, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll, in.ServerUI, in.SelectedWorkspace)
 	if !in.JobsPanel {
 		return view
 	}
@@ -78,6 +78,8 @@ func drawJobRow(f *Frame, in Input, index, x, y, width int) {
 		} else {
 			status = fmt.Sprintf("x%d", *j.ExitCode)
 		}
+	} else if status == "exited" || status == "finished" {
+		status = "done"
 	}
 	limit := x + width
 	bg := f.Palette.SurfDim

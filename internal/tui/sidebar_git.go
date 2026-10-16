@@ -31,10 +31,10 @@ func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 	}
 }
 
-// Git collection shares the existing one-second metadata snapshot cadence;
+// Git metadata follows the observed 1.5-second sidebar refresh cadence;
 // never launch git from frame composition or block pane input on it.
 func (a *App) refreshWorkspaceGit(now time.Time) {
-	if a.gitPending || now.Sub(a.gitAt) < time.Second {
+	if a.gitPending || now.Sub(a.gitAt) < 1500*time.Millisecond {
 		return
 	}
 	a.gitPending = true

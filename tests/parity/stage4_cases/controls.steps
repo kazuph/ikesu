@@ -1,0 +1,19 @@
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+click 21 1
+sleep 250ms
+screen @OUT@/density-click.txt
+cells @OUT@/density-click.json
+click 20 26
+sleep 250ms
+screen @OUT@/sort-click.txt
+cells @OUT@/sort-click.json
+click 25 45
+sleep 250ms
+screen @OUT@/collapse-click.txt
+cells @OUT@/collapse-click.json
+send "\x14b"
+sleep 250ms
+screen @OUT@/collapse-key.txt
+cells @OUT@/collapse-key.json
+kill

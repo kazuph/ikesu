@@ -1,5 +1,29 @@
 # 実物の操作比較
 
+段階4（サイドバー）はminiの `src/stage4` で `stage4_observe.sh 出力先 ケース名...` を使う。
+`PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
+店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。
+カスタム行だけは同じ設定へ観察用の `ui.sidebar` 行を追加する。
+段階4のrunnerは `observe.py --silent` で隔離設定だけに音の無効化を追加し、
+gtxには既存の `GTX_DISABLE_SOUND=1` も渡す。元の店長設定は変更しない。
+既存の音設定が有効なら起動前に拒否する。`stage4_silence_gate.py` は両製品が
+実際に使用した設定ファイルの `ui.sound.enabled=false` とagent別の有効化が無いことを検査する。
+ケースは `controls`、`collapsed-agents`、`agent-scroll`、`custom-pane`、`custom-workspace`、
+`custom-dim`、`focus-agents`、`custom-focus`、`named-tab`、`worktree-active`、`worktree-selected`、`panel-switch`、
+`job-owner`、`custom-git`、`git-default`、`job-schema`、`job-unknown`、`job-minute`、`job-cancelling`。
+各 `stage4_*_gate.py` は対象条件だけを検査し、未観察の条件へPASSを広げない。
+`gate-stage4.sh 出力先` はminiのgofmt・vet・全test・raceを保存する。性能検査は別にperf-lock.py経由で行う。
+
+0.2.57のサーバー画面では見出しの密度・sort・折り畳みボタンは非表示だった。
+agentの既定カードは2行だが、ホイール移動は1物理行で、途中行も先頭になる。
+agent/jobs切替ではagentのスクロールだけが先頭へ戻り、jobsの位置は保持された。
+これらは台帳の旧説明へ合わせて変更しない。
+`job-unknown` は実際に完了したジョブの隔離SQLiteから終了コードだけを除いた保存状態を観察する。
+ジョブの保存時刻を改変して実在する長時間ジョブの証明に使う手順は含めていない。
+`job-minute` は実120秒ジョブを61秒後に撮影し、開始記録と採取時刻、実行中の`1m`、
+採取後の取消とrunner group消滅を検査する。完了後の古さを実行時間と取り違えない。
+時・日単位の実物比較はこの手順だけでは検証されない。
+
 段階1の0.2.55比較は `stage1_observe.py` と `stage1_hosts.py` をminiで使う。
 `stage1_cases.py 出力先` がキー形式・popup・Page操作・分割マウス等の手順を生成し、同じstepsを両製品へ流す。
 `stage1-host.steps` のtmux比較は `stage1_hosts.py` が専用socketの実tmuxを起動する。

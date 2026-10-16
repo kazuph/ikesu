@@ -298,7 +298,7 @@ func (a *App) refreshJobDots(now time.Time) {
 		if row.AgeSinceMs == nil {
 			continue
 		}
-		elapsed := fmt.Sprintf("%ds", max(int64(0), now.UnixMilli()-*row.AgeSinceMs)/1000)
+		elapsed := formatJobAge(now.UnixMilli() - *row.AgeSinceMs)
 		if row.Elapsed != elapsed {
 			row.Elapsed = elapsed
 			a.dirty = true
@@ -320,20 +320,20 @@ func (a *App) refreshJobDots(now time.Time) {
 		case "cancelled", "cancelling":
 			col = render.Red
 		default:
-			if j.ExitCode != nil && *j.ExitCode != 0 {
+			if j.ExitCode == nil || *j.ExitCode != 0 {
 				col = render.Red
 			}
 		}
-		elapsed := ""
-		since := j.StartedMs
-		if j.StartedMs != nil {
-			if j.FinishedMs != nil {
-				since = j.FinishedMs
-			}
-			elapsed = fmt.Sprintf("%ds", max(int64(0), now.UnixMilli()-*since)/1000)
+		elapsed := "   -"
+		since := j.FinishedMs
+		if j.Status == "running" || j.Status == "queued" {
+			since = j.StartedMs
+		}
+		if since != nil {
+			elapsed = formatJobAge(now.UnixMilli() - *since)
 		}
 		if j.Status == "cancelling" {
-			elapsed, since = "-", nil
+			elapsed, since = "   -", nil
 		}
 		rows = append(rows, render.JobRow{ID: j.ID, Label: j.Label, Status: j.Status, Color: col,
 			CallerPane: j.CallerPane, Elapsed: elapsed, AgeSinceMs: since, ExitCode: j.ExitCode, LogPath: j.LogPath, Cwd: j.Cwd})
@@ -361,7 +361,7 @@ func (a *App) refreshJobDots(now time.Time) {
 				continue
 			}
 			col = render.Green
-			if j.Status == "cancelled" || (j.ExitCode != nil && *j.ExitCode != 0) {
+			if j.Status == "cancelled" || j.ExitCode == nil || *j.ExitCode != 0 {
 				col = render.Red
 			}
 		}

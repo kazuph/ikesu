@@ -50,7 +50,7 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 		}
 		panes[i+1] = &PaneSnap{Agent: "codex"}
 	}
-	v := SidebarViewFor(s, panes, config.Config{}, 100, 100, false)
+	v := SidebarViewFor(s, panes, config.Config{}, 100, 100, false, nil)
 	if v.Workspace.Offset == 0 || v.Agents.Offset == 0 {
 		t.Fatal("independent overflow missing", v)
 	}
@@ -70,7 +70,7 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 		t.Fatal("scrollbar invaded footer")
 	}
 	s.Apply(model.CmdToggleSection{Section: model.SectionWork})
-	next := SidebarViewFor(s, panes, config.Config{}, 100, 100, false)
+	next := SidebarViewFor(s, panes, config.Config{}, 100, 100, false, nil)
 	if next.Agents.Total != 1 || v.Workspace.Total-next.Workspace.Total != 19*3 {
 		t.Fatal("collapsed cards still counted", v, next)
 	}
@@ -90,7 +90,7 @@ func TestEndpointCollapsedSectionScrollStopsAfterWholeSlimCard(t *testing.T) {
 			s.WorkspaceDensity = "slim"
 			want = 2
 		}
-		v := SidebarViewFor(s, nil, config.Config{}, 100, 0, true)
+		v := SidebarViewFor(s, nil, config.Config{}, 100, 0, true, nil)
 		if v.Workspace.Offset != want {
 			t.Fatalf("slim=%t: end offset %d want %d", slim, v.Workspace.Offset, want)
 		}
@@ -110,7 +110,7 @@ func TestLocalFullCardGitRowLeavesObservedFooterGap(t *testing.T) {
 		for i := 1; i < size.workspaces; i++ {
 			s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
 		}
-		v := SidebarViewFor(s, nil, config.Config{}, 0, 0, false)
+		v := SidebarViewFor(s, nil, config.Config{}, 0, 0, false, nil)
 		for _, row := range v.Rows {
 			if row.Y == v.Workspace.Rect.Y+v.Workspace.Rect.H-1 && (row.Row.Kind == RowGit || row.Row.Kind == RowCardBlank) {
 				t.Fatalf("height %d: full card painted the row immediately before the menu footer", size.height)

@@ -1,0 +1,20 @@
+send "python3 @FIXTURES@/stage4_fixture.py worktree-fixture; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-worktree-ready.json 10s
+sleep 1s
+screen @OUT@/expanded.txt
+cells @OUT@/expanded.json
+send "\x14w"
+sleep 250ms
+send "\x1b[B"
+sleep 250ms
+screen @OUT@/child-active.txt
+cells @OUT@/child-active.json
+rclick 8 5
+sleep 250ms
+screen @OUT@/parent-menu.txt
+cells @OUT@/parent-menu.json
+clicktext "Collapse"
+sleep 500ms
+screen @OUT@/collapsed.txt
+cells @OUT@/collapsed.json
+kill

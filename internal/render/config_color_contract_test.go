@@ -21,6 +21,7 @@ func TestConfigCustomColorsChangeRenderedCells(t *testing.T) {
 			selected := 0
 			scenes := []Input{
 				{State: s, ServerUI: true, SelectedWorkspace: &selected, Git: map[int]GitStatus{0: {Branch: "branch", Ahead: 2, Behind: 1, Added: 3, Deleted: 4}}},
+				{State: s, Git: map[int]GitStatus{0: {Branch: "branch", Ahead: 2, Behind: 1, Added: 3, Deleted: 4}}},
 				{State: s, Help: &HelpInput{Rows: []HelpRow{{Bind: "prefix+?", Cmd: "show help"}}}},
 				{State: s, Navigator: &Navigator{Filter: "done", Total: 2, Rows: []NavigatorRow{{Name: "pane", WorkspaceName: "ws", Agent: "codex", Status: "done"}, {Name: "other", Status: "working"}}}},
 				{State: s, Navigator: &Navigator{Filter: "working", Total: 1, Rows: []NavigatorRow{{Name: "working", Status: "working"}}}},

@@ -48,12 +48,16 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 	if len(configs) > 0 {
 		cfg = configs[0]
 	}
+	return sidebarRows(s, panes, cfg, nil)
+}
+
+func sidebarRows(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, selected *int) []SidebarRow {
 	rows := []SidebarRow{{Kind: RowTitle}, {Kind: RowRule}}
 	for _, sec := range model.SectionOrder {
 		var cards []SidebarRow
 		count := 0
 		for wi, w := range s.Workspaces {
-			if w.SidebarSection() != sec || s.WorktreeHidden(wi) {
+			if w.SidebarSection() != sec || (s.WorktreeHidden(wi) && (selected == nil || *selected != wi)) {
 				continue
 			}
 			count++
@@ -118,7 +122,14 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 		if specific, ok := panel.RowsByAgent[panes[r.Pane].Agent]; ok {
 			configured = specific
 		}
+		custom := hasConfiguredAgentRows(cfg, panes[r.Pane].Agent)
+		if custom {
+			configured = visibleAgentRows(s, panes, r, configured)
+		}
 		count := max(1, len(configured))
+		if custom {
+			count = len(configured)
+		}
 		for line := 0; line < count; line++ {
 			r.Line = line
 			rows = append(rows, r)
@@ -451,7 +462,11 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 					gitX = f.Text(gitX, y, " ", sty, ix+iw)
 				}
 			}
-			drawGitRow(f, gitX, y, max(0, ix+iw-gitX), in.Git[r.Ws], gitStyle)
+			g := in.Git[r.Ws]
+			if in.ServerUI {
+				g.Ahead, g.Behind, g.Added, g.Deleted = 0, 0, 0, 0
+			}
+			drawGitRow(f, gitX, y, max(0, ix+iw-gitX), g, gitStyle)
 			return
 		}
 		x := ix + 1
@@ -485,6 +500,9 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if specific, ok := panel.RowsByAgent[in.Panes[r.Pane].Agent]; ok {
 			rows = specific
 		}
+		if hasConfiguredAgentRows(in.SidebarConfig, in.Panes[r.Pane].Agent) {
+			rows = visibleAgentRows(s, in.Panes, r, rows)
+		}
 		if len(rows) > 0 {
 			if r.Line < len(rows) {
 				drawConfiguredAgent(f, s, in, r, rows[r.Line], ix, y, iw)
@@ -497,7 +515,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		}
 		if in.ServerUI {
 			base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
-			if r.Ws == s.Active && s.Workspaces[r.Ws].TabRef().Layout.HasPane(r.Pane) {
+			if r.Ws == s.Active && s.Workspaces[r.Ws].TabRef().Layout.Focused() == r.Pane {
 				base.Fg, base.Bg = f.Palette.Text, f.Palette.PanelBG
 			}
 			f.Fill(ix, y, iw, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: base.Bg})
@@ -509,25 +527,22 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 				}
 				ws := s.Workspaces[r.Ws]
 				tabLabel := ""
-				if len(ws.Tabs) > 1 {
-					for _, tab := range ws.Tabs {
-						if tab.Layout.HasPane(r.Pane) {
-							label := tab.Name
-							if label == "" {
-								label = fmt.Sprint(tab.ID)
-							}
-							tabLabel = label
-							break
+				for _, tab := range ws.Tabs {
+					if tab.Layout.HasPane(r.Pane) && (len(ws.Tabs) > 1 || tab.Name != "") {
+						label := tab.Name
+						if label == "" {
+							label = fmt.Sprint(tab.ID)
 						}
+						tabLabel = label
+						break
 					}
 				}
 				f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg}, ix+iw)
 				f.Text(ix+2, y, " ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
-				x := f.Text(ix+3, y, truncate(name, max(0, iw-3)), base, ix+iw)
-				if tabLabel != "" {
-					x = f.Text(x, y, " · ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
-					f.Text(x, y, tabLabel, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}, ix+iw)
-				}
+				drawTokens(f, ix+3, y, max(0, iw-3), []styledToken{
+					{name: "workspace", text: name, style: base},
+					{name: "tab", text: tabLabel, style: uv.Style{Fg: f.Palette.Dim, Bg: base.Bg}},
+				})
 			} else {
 				name := sn.DisplayAgent
 				if name == "" {
@@ -642,17 +657,12 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 	for x := ix; !in.ServerUI && x < ix+iw; x++ {
 		f.Set(x, area.Y+(area.H+1)/2, "─", border)
 	}
-	avail := max(0, area.H-1)
+	viewport := CollapsedWorkspaceViewport(in)
+	avail := viewport.Rect.H
 	if iw < 1 || avail < 1 {
 		return
 	}
-	scroll := in.SidebarScroll
-	if max := len(s.Workspaces) - avail; scroll > max {
-		scroll = max
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
+	scroll := viewport.Offset
 	for i := scroll; i < len(s.Workspaces) && i < scroll+avail; i++ {
 		y := iy + i - scroll
 		sty := uv.Style{Fg: f.Palette.Dim}
@@ -682,6 +692,17 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 			g.Rune = "·"
 		}
 		f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg, Attrs: boldIf(g.Bold)}, ix+iw)
+	}
+	if in.ServerUI {
+		for _, pos := range CollapsedAgentRows(in) {
+			drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, iw)
+			if pos.Row.Kind == RowAgent && pos.Row.Line == 0 && iw == model.SidebarCollapsedWidth-1 {
+				f.Set(ix+iw-1, pos.Y, " ", uv.Style{Fg: f.Palette.Text})
+			}
+			if in.SidebarConfig.UI.TransparentSidebarCards {
+				clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
+			}
+		}
 	}
 	// Expand button centred on the bottom border row.
 	if !in.ServerUI {

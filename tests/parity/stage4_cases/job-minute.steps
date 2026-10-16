@@ -1,0 +1,18 @@
+send "python3 @FIXTURES@/socket_action.py start-job minute; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-job.json 5s
+clicktext "[jobs]"
+sleep 500ms
+screen @OUT@/seconds.txt
+cells @OUT@/seconds.json
+sleep 61s
+send "python3 @FIXTURES@/socket_action.py read-job; python3 -c 'import time,json; from pathlib import Path; (Path.home()/'\"'\"'stage4-minute-clock.json'\"'\"').write_text(json.dumps({'\"'\"'unix_ms'\"'\"':time.time_ns()//1000000}))'; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-minute-clock.json 5s
+sleep 500ms
+screen @OUT@/minute.txt
+cells @OUT@/minute.json
+send "python3 @FIXTURES@/socket_action.py cancel-job\r"
+waitfile @HOME@/parity-job-cancel.json 5s
+sleep 3s
+send "python3 @FIXTURES@/socket_action.py check-job-processes\r"
+waitfile @HOME@/parity-job-processes.json 5s
+kill

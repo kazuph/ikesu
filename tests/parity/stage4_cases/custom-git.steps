@@ -1,0 +1,11 @@
+send "python3 @FIXTURES@/stage4_fixture.py git-fixture; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-git-ready.json 5s
+sleep 2s
+click 4 7
+sleep 500ms
+screen @OUT@/git.txt
+cells @OUT@/git.json
+sleep 10s
+screen @OUT@/git-late.txt
+cells @OUT@/git-late.json
+kill

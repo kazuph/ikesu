@@ -153,7 +153,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		}
 	}
 	base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
-	if r.Ws == s.Active {
+	if r.Ws == s.Active && ws.TabRef().Layout.Focused() == r.Pane {
 		base.Fg, base.Bg = f.Palette.Text, f.Palette.SurfDim
 	}
 	f.Fill(x, y, w, 1, " ", base)
@@ -167,7 +167,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			hasState = true
 		}
 	}
-	if r.Line == 0 {
+	if r.Line == 0 && !hasConfiguredAgentRows(in.SidebarConfig, sn.Agent) {
 		if !hasState {
 			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg, Attrs: uv.AttrBold}, fixed: true})
 		}
@@ -193,6 +193,19 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		case "pane":
 			v.style.Attrs |= uv.AttrBold
 			v.text = fmt.Sprintf("%%%d", r.Pane)
+			if hasConfiguredAgentRows(in.SidebarConfig, sn.Agent) {
+				v.text = sn.Title
+				if label := s.PaneLabels[r.Pane]; label != "" {
+					v.text = label
+				}
+				if v.text == "" {
+					v.text = sn.Label
+				}
+				v.style.Attrs &^= uv.AttrBold
+				if in.ServerUI {
+					v.style.Fg = f.Palette.Dim
+				}
+			}
 			v.fixed = true
 		case "workspace":
 			v.text = in.WorkspaceNames[r.Ws]
@@ -201,10 +214,16 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 		case "tab":
 			v.text = tab
+			if in.ServerUI {
+				v.style.Fg = f.Palette.Dim
+			}
 		case "agent":
 			v.text = sn.Agent
 			if sn.DisplayAgent != "" {
 				v.text = sn.DisplayAgent
+			}
+			if in.ServerUI {
+				v.style.Fg = f.Palette.Dim
 			}
 		case "terminal_title_stripped":
 			v.text = detect.StripTerminalTitle(sn.Title)
@@ -216,7 +235,6 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 		}
 		v.style = tokenStyle(t, v.style)
-		v.style.Attrs &^= uv.AttrFaint
 		tokens = append(tokens, v)
 	}
 	drawTokens(f, x+1, y, max(0, w-1), tokens)
@@ -257,15 +275,23 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 			v.style.Fg = f.Palette.Dim
 
-		case "git_status":
+		case "git_status", "git_diff":
+			if in.ServerUI || (ws.Worktree != nil && ws.Worktree.IsLinkedWorktree) {
+				continue
+			}
 			g := in.Git[r.Ws]
-			for _, stat := range []struct {
+			counts := []struct {
 				mark string
 				n    int
 				fg   color.Color
-			}{{"↑", g.Ahead, f.Palette.Green}, {"↓", g.Behind, f.Palette.Red}, {"+", g.Added, f.Palette.Green}, {"-", g.Deleted, f.Palette.Red}} {
+			}{{"↑", g.Ahead, f.Palette.Green}, {"↓", g.Behind, f.Palette.Red}}
+			if t.Token == "git_diff" {
+				counts[0].mark, counts[0].n = "+", g.Added
+				counts[1].mark, counts[1].n = "-", g.Deleted
+			}
+			for _, stat := range counts {
 				if stat.n > 0 {
-					tokens = append(tokens, styledToken{name: "git_status", text: fmt.Sprintf("%s%d", stat.mark, stat.n), style: tokenStyle(t, uv.Style{Fg: stat.fg, Bg: base.Bg}), fixed: true})
+					tokens = append(tokens, styledToken{name: t.Token, text: fmt.Sprintf("%s%d", stat.mark, stat.n), style: tokenStyle(t, uv.Style{Fg: stat.fg, Bg: base.Bg}), fixed: true})
 				}
 			}
 			continue
@@ -284,5 +310,9 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			tokens = append(tokens, styledToken{name: "job", text: "●", style: uv.Style{Fg: f.ThemeColor(dot.Color), Bg: base.Bg}, fixed: true})
 		}
 	}
-	drawTokens(f, x+1, y, max(0, w-1), tokens)
+	indent := 1
+	if r.Kind == RowGit {
+		indent = 3
+	}
+	drawTokens(f, x+indent, y, max(0, w-indent), tokens)
 }

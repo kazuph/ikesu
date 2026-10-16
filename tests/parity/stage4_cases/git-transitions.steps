@@ -1,0 +1,16 @@
+send "python3 @FIXTURES@/stage4_git_fixture.py initial; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-git-initial.json 5s
+sleep 2s
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+send "python3 @FIXTURES@/stage4_git_fixture.py updated; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-git-updated.json 5s
+sleep 2s
+screen @OUT@/updated.txt
+cells @OUT@/updated.json
+send "python3 @FIXTURES@/stage4_git_fixture.py clean; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-git-clean.json 5s
+sleep 2s
+screen @OUT@/clean.txt
+cells @OUT@/clean.json
+kill

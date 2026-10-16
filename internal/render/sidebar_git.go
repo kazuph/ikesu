@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type GitStatus struct {
@@ -15,15 +16,11 @@ func drawGitRow(f *Frame, x, y, w int, g GitStatus, base uv.Style) {
 		return
 	}
 	limit := x + w
-	for _, v := range []struct {
+	values := []struct {
 		mark  string
 		n     int
 		style uv.Style
-	}{{"↑", g.Ahead, uv.Style{Fg: f.Palette.Green, Bg: base.Bg}}, {"↓", g.Behind, uv.Style{Fg: f.Palette.Red, Bg: base.Bg}}, {"+", g.Added, uv.Style{Fg: f.Palette.Green, Bg: base.Bg}}, {"-", g.Deleted, uv.Style{Fg: f.Palette.Red, Bg: base.Bg}}} {
-		if v.n > 0 {
-			x = f.Text(x, y, fmt.Sprintf("%s%d ", v.mark, v.n), v.style, limit)
-		}
-	}
+	}{{"↑", g.Ahead, uv.Style{Fg: f.Palette.Green, Bg: base.Bg}}, {"↓", g.Behind, uv.Style{Fg: f.Palette.Red, Bg: base.Bg}}, {"+", g.Added, uv.Style{Fg: f.Palette.Green, Bg: base.Bg}}, {"-", g.Deleted, uv.Style{Fg: f.Palette.Red, Bg: base.Bg}}}
 	branch := g.Branch
 	fg := f.Palette.Dim
 	if branch == "" {
@@ -32,7 +29,19 @@ func drawGitRow(f *Frame, x, y, w int, g GitStatus, base uv.Style) {
 			fg = f.Palette.Mauve
 		}
 	}
-	f.Text(x, y, truncate(branch, max(0, limit-x)), uv.Style{Fg: fg, Bg: base.Bg}, limit)
+	countsWidth := 0
+	for _, v := range values {
+		if v.n > 0 {
+			countsWidth += ansi.StringWidth(fmt.Sprintf(" %s%d", v.mark, v.n))
+		}
+	}
+	x = f.Text(x, y, truncate(branch, max(0, w-countsWidth)), uv.Style{Fg: fg, Bg: base.Bg}, limit)
+	for _, v := range values {
+		if v.n > 0 {
+			x = f.Text(x, y, " ", uv.Style{Fg: fg, Bg: base.Bg}, limit)
+			x = f.Text(x, y, fmt.Sprintf("%s%d", v.mark, v.n), v.style, limit)
+		}
+	}
 }
 func GitLabel(g GitStatus, w int) string {
 	f := NewFrame(w, 1)

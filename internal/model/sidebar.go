@@ -127,6 +127,9 @@ func (s *AppState) VisibleWorkspaceOrder() []int {
 	return out
 }
 func (s *AppState) WorktreeHidden(i int) bool {
+	if i == s.Active {
+		return false
+	}
 	child := s.Workspaces[i].Worktree
 	if child == nil || !child.IsLinkedWorktree {
 		return false

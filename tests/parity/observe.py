@@ -24,6 +24,7 @@ p.add_argument('--hold-color-replies', action='store_true', help='answer backgro
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
+p.add_argument('--silent', action='store_true', help='disable sound in both isolated comparison configs before startup')
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
 p.add_argument('--reconnect-keyboard', choices=['off', 'retain'], help='cut only the isolated display connection while pane modes change')
@@ -42,6 +43,14 @@ a.ptyrun = str(Path(a.ptyrun).resolve())
 if not Path(a.herdr).is_file():
     print('NOT_RUN: herdr binary absent')
     raise SystemExit(0)
+config_text = Path(a.config_file).read_text() if a.config_file else ''
+if a.silent:
+    import tomllib
+    sound = tomllib.loads(config_text).get('ui', {}).get('sound')
+    if sound is None:
+        config_text += '\n[ui.sound]\nenabled = false\n'
+    elif sound.get('enabled') is not False or any(value == 'on' for value in sound.get('agents', {}).values()):
+        p.error('--silent requires no existing sound table or an explicitly disabled table without agent overrides')
 out = Path(a.out).resolve()
 out.mkdir(parents=True, exist_ok=True)
 (out/'reference.json').write_text(json.dumps({
@@ -50,7 +59,8 @@ out.mkdir(parents=True, exist_ok=True)
     'herdr_sha256': hashlib.sha256(Path(a.herdr).read_bytes()).hexdigest(),
     'gtx_binary': str(Path(a.gtx).resolve()),
     'gtx_sha256': hashlib.sha256(Path(a.gtx).read_bytes()).hexdigest(),
-    'config': Path(a.config_file).read_text() if a.config_file else None,
+    'config': config_text if a.config_file or a.silent else None,
+    'sound_disabled': a.silent,
     'observer_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     'procedure_sha256': hashlib.sha256(Path(a.steps).read_bytes()).hexdigest(),
 }, indent=2)+'\n')
@@ -73,10 +83,10 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         for directory in ['home', 'config', 'state', 'data', 'zdot', 'cwd']:
             (root / directory).mkdir()
         (root / 'zdot/.zshrc').write_text("PS1='PARITY> '\nunset HISTFILE\nSAVEHIST=0\n")
-        if a.config_file or a.in_app_toast:
+        if a.config_file or a.in_app_toast or a.silent:
             config = root / 'config' / name / 'config.toml'
             config.parent.mkdir(parents=True)
-            config.write_text(Path(a.config_file).read_text() if a.config_file else '')
+            config.write_text(config_text)
             if a.in_app_toast:
                 with config.open('a') as stream:
                     stream.write(f'\n[ui.toast]\ndelivery = \"{name}\"\n')
@@ -87,9 +97,11 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
         env['PARITY_OBSERVE_BINARY'] = str(Path(binary).resolve())
-        if (a.config_file or a.in_app_toast) and name == 'gtx':
+        if a.silent:
+            env['GTX_DISABLE_SOUND'] = '1'
+        if (a.config_file or a.in_app_toast or a.silent) and name == 'gtx':
             env['GTX_CONFIG'] = str(config)
-        if (a.config_file or a.in_app_toast) and name == 'herdr':
+        if (a.config_file or a.in_app_toast or a.silent) and name == 'herdr':
             env['HERDR_CONFIG_PATH'] = str(config)
         if guard is not None:
             guard.environment(env)
@@ -180,6 +192,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                (target / 'ui-exit.json').write_text(json.dumps({'exit': 0, 'server': a.server}) + '\n')
             finally:
                 if reconnect:
                     reconnect.close()

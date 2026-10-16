@@ -1,0 +1,7 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; \"$PARITY_BINARY_PATH\" pane rename \"${GTX_PANE_ID:-$HERDR_PANE_ID}\" CUSTOM_LABEL; printf '\\033[3J\\033[H\\033[2J'\r"
+send "python3 @FIXTURES@/stage4_fixture.py custom-height; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-custom-height.json 5s
+sleep 1s
+screen @OUT@/custom.txt
+cells @OUT@/custom.json
+kill

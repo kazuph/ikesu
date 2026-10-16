@@ -79,10 +79,10 @@ func TestG2GitPriorityZeroAndColors(t *testing.T) {
 	f := NewFrame(24, 1)
 	drawGitRow(f, 0, 0, 24, g, uv.Style{})
 	line := frameLine(f, 0)
-	if !strings.HasPrefix(line, "↑2 ↓1 +203 -31 ") || !strings.Contains(line, "…") {
+	if !strings.HasPrefix(line, "a-very-l… ↑2 ↓1 +203 -31") {
 		t.Fatal(line)
 	}
-	if !reflect.DeepEqual(f.Cell(0, 0).Style.Fg, Green) || !reflect.DeepEqual(f.Cell(3, 0).Style.Fg, Red) {
+	if !reflect.DeepEqual(f.Cell(10, 0).Style.Fg, Green) || !reflect.DeepEqual(f.Cell(13, 0).Style.Fg, Red) {
 		t.Fatal("colors")
 	}
 	if strings.Contains(GitLabel(GitStatus{Branch: "main"}, 20), "+0") {

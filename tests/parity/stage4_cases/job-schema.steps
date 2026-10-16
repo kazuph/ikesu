@@ -1,0 +1,8 @@
+send "python3 @FIXTURES@/stage4_fixture.py job-schema; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-job-schema.json 5s
+sleep 500ms
+clicktext "[jobs]"
+sleep 250ms
+screen @OUT@/jobs.txt
+cells @OUT@/jobs.json
+kill

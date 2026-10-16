@@ -1,0 +1,10 @@
+send "python3 @FIXTURES@/stage4_fixture.py split-agents\r"
+waitfile @HOME@/stage4-ready.json 5s
+sleep 500ms
+screen @OUT@/first.txt
+cells @OUT@/first.json
+click 130 10
+sleep 500ms
+screen @OUT@/second.txt
+cells @OUT@/second.json
+kill

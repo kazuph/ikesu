@@ -1,0 +1,17 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle\r"
+sleep 500ms
+screen @OUT@/unnamed.txt
+cells @OUT@/unnamed.json
+send "python3 @FIXTURES@/stage4_fixture.py name-tab\r"
+sleep 500ms
+screen @OUT@/named.txt
+cells @OUT@/named.json
+send "python3 @FIXTURES@/stage4_fixture.py long-labels\r"
+sleep 500ms
+screen @OUT@/long.txt
+cells @OUT@/long.json
+click 1 45
+sleep 500ms
+screen @OUT@/wide.txt
+cells @OUT@/wide.json
+kill

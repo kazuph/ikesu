@@ -84,11 +84,17 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 			return true
 		}
 		if pointIn(m.X, m.Y, render.SidebarJobsTab(s.SidebarArea().W, m.Y)) {
+			if !a.jobsPanel {
+				a.agentScroll = 0
+			}
 			a.jobsPanel = true
 			a.changed()
 			return true
 		}
 		if m.X >= 1 && m.X < 1+len("[agents]") {
+			if a.jobsPanel {
+				a.agentScroll = 0
+			}
 			a.jobsPanel = false
 			a.changed()
 			return true
