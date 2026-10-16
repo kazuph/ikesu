@@ -2,7 +2,7 @@
 set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 root="$HOME/bench-terrace.noindex"
-evidence="$root/work/detail/stage6a-final-checks"
+evidence="$root/work/detail/stage6a-perf"
 mkdir -p "$evidence"
 cd "$root/src/stage6a-baseline-dd2168c"
 go build -o "$evidence/gtx-baseline-dd2168c" ./cmd/gtx
