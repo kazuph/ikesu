@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -267,6 +268,11 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 
 	if cfg, err := config.Load(); err == nil {
 		s.cfg = cfg
+		for _, warning := range cfg.Warnings {
+			if strings.HasPrefix(warning, "invalid keybinding:") || strings.HasPrefix(warning, "keys.") {
+				fmt.Fprintf(os.Stderr, "gtx: config diagnostic %s\n", warning)
+			}
+		}
 	} else {
 		s.cfgError = err.Error()
 		fmt.Fprintf(os.Stderr, "gtx: %s: %v\n", config.Path(), err)
