@@ -94,6 +94,7 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	m.mouse.Report(event.Report, m.size)
 	if m.outputFence.Accept(event.Raw) {
 		if m.paintQueued {
 			return m.paint()
@@ -116,6 +117,7 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
+	event = m.mouse.CellEvent(event, m.size)
 	if m.active != "local" && event.Kind == input.KindKey && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
 		if activeView.snapshot.Prefix {
 			if activeView.connection == nil || activeView.connection.writer.available < endpoint.NotificationGeneration {
@@ -283,7 +285,11 @@ func (m *machineClient) sidebarBytes(hit render.MachineHit, event input.Event) (
 		if _, err := fmt.Sscanf(string(event.Raw), "\x1b[<%d;%d;%d%c", &button, &x, &y, &final); err != nil {
 			return nil, fmt.Errorf("unsupported sidebar mouse encoding")
 		}
-		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, position.Y+1, final)), nil
+		x, y, err := m.sidebarMousePosition(e, event, position.Y)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, y, final)), nil
 	}
 	return nil, fmt.Errorf("unsupported sidebar row outside endpoint viewport")
 }

@@ -74,6 +74,9 @@ func (m *machineClient) finishSwitch() {
 		}
 	}
 	m.active = p.id
+	if err := m.setMouseMode(e.mouse.pixel); err != nil {
+		m.notify(err.Error())
+	}
 	if old.removed {
 		delete(m.endpoints, oldID)
 	}

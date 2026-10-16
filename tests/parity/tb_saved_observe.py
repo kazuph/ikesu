@@ -25,6 +25,7 @@ p.add_argument('--measure', action='store_true', help='measure scrolling, switch
 p.add_argument('--capture-ssh', action='store_true', help='capture actual plaintext display-transport bytes; diagnostic only')
 p.add_argument('--image-probe', action='store_true', help='controlled Kitty producer for transfer contracts; does not measure tb performance')
 p.add_argument('--status-delay', help='explicit ptyrun terminal-status response delay, or drop')
+p.add_argument('--pixel-mouse', action='store_true', help='let the outer terminal negotiate SGR pixel mouse instead of explicitly declining it')
 a = p.parse_args()
 if a.image_probe and a.measure:
     p.error('the controlled image producer cannot be used for tb performance measurement')
@@ -43,6 +44,7 @@ expected_keys = 'abcdefghijklmnop'
                                                        'observer_sha256': hashlib.sha256(observer_source).hexdigest(),
                                                        'ptyrun_sha256': hashlib.sha256(a.ptyrun.read_bytes()).hexdigest(),
                                                        'status_delay': a.status_delay,
+                                                       'pixel_mouse': a.pixel_mouse,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
                                                        'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
@@ -225,7 +227,7 @@ for name in ['herdr','gtx']:
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
                                        '-cell-height', '16', '-xpixel', '1280', '-ypixel', '720', '-steps', str(steps),
-                                       '-raw-output', str(raw), '-cell-clock', '-pixel-mouse=false',
+                                       '-raw-output', str(raw), '-cell-clock', '-pixel-mouse='+str(a.pixel_mouse).lower(),
                                        *(['-status-delay', a.status_delay] if a.status_delay is not None else []),
                                        '--', binary, '--session', 't'],
                                       env=env, stdout=log, stderr=subprocess.STDOUT)

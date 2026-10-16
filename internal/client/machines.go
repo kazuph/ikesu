@@ -20,6 +20,7 @@ import (
 )
 
 type managedEndpoint struct {
+	mouse                    hostMouseState
 	profile                  machine.Profile
 	connection               *endpointConnection
 	cancel                   context.CancelFunc
@@ -58,6 +59,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	mouse           hostMouseState
 	inputSource     platform.InputSource
 	session         string
 	settings        *localSettings
@@ -177,6 +179,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		case <-winch:
 			if size, err := tui.GetWinsize(in); err == nil {
 				m.size = size
+				m.mouse.Geometry(size)
 				if e := m.endpoints[m.active]; e.connection != nil {
 					_ = e.connection.enqueue(resizeMessage(size))
 				}

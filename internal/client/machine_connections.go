@@ -222,9 +222,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id)
 		}
 	case "output":
-		if event.id == m.active {
-			if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {
-				_, _ = m.out.Write(data)
+		if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {
+			e.mouse.Written(data)
+			if event.id == m.active {
+				n, _ := m.out.Write(data)
+				m.mouse.Written(data[:n])
 			}
 		}
 	case "preferences":
