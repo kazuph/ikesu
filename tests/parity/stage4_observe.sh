@@ -11,16 +11,28 @@ for name in "$@"; do
     config="$root/user-config.toml"
     steps="tests/parity/stage4_cases/$name.steps"
     case "$name" in
-        custom-pane|custom-workspace|custom-dim)
+        git-default)
+            steps=tests/parity/stage4_cases/custom-git.steps
+            ;;
+        custom-git)
+            config="$out/$name.toml"
+            cp "$root/user-config.toml" "$config"
+            printf '\n[ui.sidebar.spaces]\nrows = [["git_status"], ["git_diff"]]\n' >> "$config"
+            ;;
+        custom-pane|custom-workspace|custom-dim|custom-focus)
             config="$out/$name.toml"
             cp "$root/user-config.toml" "$config"
             case "$name" in
                 custom-pane) rows='[["pane"], ["$absent"]]' ;;
                 custom-workspace) rows='[["workspace"], ["$absent"]]' ;;
                 custom-dim) rows='[[{token="agent", dim=true}], [{token="agent", dim=false}]]' ;;
+                custom-focus) rows='[["workspace"], ["agent"]]' ;;
             esac
             printf '\n[ui.sidebar.agents]\nrows = %s\n' "$rows" >> "$config"
             steps=tests/parity/stage4_cases/custom-agent.steps
+            if [ "$name" = custom-focus ]; then
+                steps=tests/parity/stage4_cases/focus-agents.steps
+            fi
             ;;
     esac
     python3 tests/parity/observe.py --herdr "$root/herdr-0.2.57" \

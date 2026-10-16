@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
+import subprocess
 import sys
 
 endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
@@ -43,7 +45,60 @@ def report(target, state='idle'):
 
 operation = sys.argv[1]
 owner = request('pane.get', {'pane_id': pane})['pane']
-if operation in ('name-tab', 'long-labels'):
+if operation == 'job-schema':
+    request('run.start', {'caller_pane': pane, 'label': 'AGE_JOB', 'cwd': str(Path.cwd()),
+                         'argv': ['/bin/sleep', '60'], 'completion': 'none'})
+    root = next(path for path in Path(endpoint).resolve().parents if path.name.startswith('parity-'))
+    proof = {}
+    for path in root.rglob('*'):
+        if not path.is_file():
+            continue
+        with path.open('rb') as stream:
+            if stream.read(16) != b'SQLite format 3\x00':
+                continue
+        with sqlite3.connect(f'file:{path}?mode=ro', uri=True) as db:
+            tables = db.execute("select name, sql from sqlite_master where type='table'").fetchall()
+            proof[str(path)] = tables
+    (Path.home() / 'stage4-job-schema.json').write_text(json.dumps(proof, indent=2) + '\n')
+elif operation == 'remove-job-log':
+    root = next(path for path in Path(endpoint).resolve().parents if path.name.startswith('parity-'))
+    logs = list(root.rglob('job-logs/*.log'))
+    if len(logs) != 1:
+        raise RuntimeError('expected exactly one observer-owned job log')
+    logs[0].unlink()
+    (Path.home() / 'stage4-log-removed.json').write_text(json.dumps({'path': str(logs[0])}) + '\n')
+elif operation in ('git-fixture', 'worktree-fixture'):
+    cwd = Path.cwd().resolve()
+    root = next(path for path in Path(endpoint).resolve().parents if path.name.startswith('parity-'))
+    if not cwd.is_relative_to(root):
+        raise SystemExit('REFUSED: git fixture cwd is not observer-owned')
+    def git(*args):
+        subprocess.run(['git', '-c', 'commit.gpgsign=false', *args], check=True)
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Parity fixture')
+    git('config', 'user.email', 'parity@example.invalid')
+    Path('tracked.txt').write_text('initial\n')
+    git('add', 'tracked.txt')
+    git('commit', '-m', 'fixture baseline')
+    origin = root / 'home' / 'git-origin.git'
+    git('init', '--bare', str(origin))
+    git('remote', 'add', 'origin', str(origin))
+    git('push', '-u', 'origin', 'main')
+    Path('committed.txt').write_text('ahead\n')
+    git('add', 'committed.txt')
+    git('commit', '-m', 'fixture ahead')
+    Path('tracked.txt').write_text('replacement\nadded\n')
+    if operation == 'worktree-fixture':
+        children = []
+        for name in ('CHILD_ONE', 'CHILD_TWO'):
+            children.append(request('worktree.create', {'workspace_id': owner['workspace_id'],
+                            'branch': name.lower(), 'path': str(root / 'home' / name.lower()),
+                            'label': name, 'focus': False}))
+        (Path.home() / 'stage4-worktree-ready.json').write_text(json.dumps(children) + '\n')
+    else:
+        request('workspace.create', {'cwd': str(cwd), 'label': 'GIT_FIXTURE', 'focus': False})
+    (Path.home() / 'stage4-git-ready.json').write_text(json.dumps({'cwd': str(cwd)}) + '\n')
+elif operation in ('name-tab', 'long-labels'):
     request('tab.rename', {'tab_id': owner['tab_id'], 'label':
                           'TAB_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ' if operation == 'long-labels' else 'NAMED_TAB'})
     if operation == 'long-labels':
