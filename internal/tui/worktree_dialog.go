@@ -35,6 +35,11 @@ func (a *App) newWorktreeDialog(index int) {
 	d.run = func(a *App) {
 		d.d.Input = branch
 		d.changed()
+		if branch == "" {
+			d.d.Detail = "enter a branch name"
+			a.dialog = d
+			return
+		}
 		_, err := a.CreateWorktree(api.WorktreeCreateParams{WorkspaceID: &id, Branch: &branch, Focus: true})
 		if err != nil {
 			var gitErr *worktree.GitError

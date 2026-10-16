@@ -191,6 +191,11 @@ func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
 	}
 	a.newWorktreeDialog(0)
 	d := a.dialog
+	a.dialog = nil
+	d.run(a)
+	if a.dialog != d || a.dialog.d.Detail != "enter a branch name" || len(a.st.Workspaces) != 1 {
+		t.Fatal("empty form created worktree", a.dialog)
+	}
 	*d.input = strings.TrimSpace(string(branch))
 	a.dialog = nil
 	d.run(a)
