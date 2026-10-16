@@ -63,7 +63,10 @@ func (a *App) enterCopy(fullscreen bool) {
 	a.sel = nil
 	snapshot := p.Snapshot()
 	a.cm = &copyMode{pane: pid, cx: snapshot.Cursor.X, cy: min(snapshot.ScrollbackLen+snapshot.Cursor.Y, max(n-1, 0)), searchDir: 1}
-	a.cm.top = max(n-a.copyInnerH(), 0)
+	a.cm.top = max(n-a.copyInnerH()-a.scroll[pid], 0)
+	if a.cm.cy < a.cm.top || a.cm.cy >= a.cm.top+a.copyInnerH() {
+		a.cm.cx, a.cm.cy = 0, a.cm.top+a.copyInnerH()-1
+	}
 	if fullscreen {
 		a.cm.fullscreen = true
 		a.copyEnterFullscreen()
@@ -152,7 +155,7 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		a.copySearchKey(k)
 		return
 	}
-	if isCtrlB(k) {
+	if a.prefixMatches(k) {
 		a.prefix = true
 		return
 	}
@@ -180,7 +183,7 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.cy++
 	case k.Code == 'w':
 		a.copyMotion(copybuf.MotionNextWordStart)
-	case k.Code == 'b':
+	case k.Code == 'b' && !k.Mod.Contains(uv.ModCtrl):
 		a.copyMotion(copybuf.MotionPreviousWordStart)
 	case k.Code == 'e':
 		a.copyMotion(copybuf.MotionNextWordEnd)
@@ -198,11 +201,11 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.cy = 0
 	case k.Code == 'G':
 		cm.cy = n - 1
-	case k.Code == uv.KeyPgUp:
+	case k.Code == uv.KeyPgUp || k.Code == 'b' && k.Mod.Contains(uv.ModCtrl):
 		step := max(h-copyPageOverlapRows, 1)
 		cm.cy -= step
 		cm.top -= step
-	case k.Code == uv.KeyPgDown:
+	case k.Code == uv.KeyPgDown || k.Code == 'f' && k.Mod.Contains(uv.ModCtrl):
 		step := max(h-copyPageOverlapRows, 1)
 		cm.cy += step
 		cm.top += step
