@@ -46,6 +46,24 @@ func TestG2TabOneCellDragSuppressesClickAndKeepsActiveIdentity(t *testing.T) {
 	}
 }
 
+func TestTabDragReleaseUsesLastMotionTarget(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.exec(model.CmdNewTab{Workspace: 0})
+	a.exec(model.CmdNewTab{Workspace: 0})
+	a.draw()
+	ws := a.st.ActiveWorkspace()
+	first, active := ws.Tabs[0].ID, ws.TabRef().ID
+	start, last := a.tabHits[0], a.tabHits[2]
+	sidebarEvent(a, input.KindMouseClick, start.X+1, start.Y)
+	sidebarEvent(a, input.KindMouseMotion, last.X+last.W-1, last.Y)
+	// A release-only position change does not replace the visible drag target.
+	sidebarEvent(a, input.KindMouseRelease, last.X+last.W-1, last.Y+2)
+	if ws.Tabs[2].ID != first || ws.TabRef().ID != active {
+		t.Fatal("release discarded the last motion target or changed the selected tab")
+	}
+}
+
 func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
