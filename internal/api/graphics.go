@@ -49,8 +49,14 @@ type PaneGraphicsInfoResult struct {
 
 type PaneGraphicsStreamFrame struct {
 	PaneGraphicsSetParams
-	DataLength *uint64 `json:"data_length"`
-	File       *string `json:"file"`
+	DataLength *uint64           `json:"data_length"`
+	File       *PaneGraphicsFile `json:"file"`
+	Sequence   uint64            `json:"sequence"`
+	Revision   uint64            `json:"revision"`
+}
+
+type PaneGraphicsFile struct {
+	Path string `json:"path"`
 }
 
 func ReadGraphicsFrame(reader *bufio.Reader) (PaneGraphicsStreamFrame, error) {
