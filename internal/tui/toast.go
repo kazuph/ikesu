@@ -14,6 +14,9 @@ const toastTTL = 10 * time.Second
 const serverAgentToastDelay = time.Second
 const serverAgentToastTTL = 8 * time.Second
 
+// notification.show lasts 3s in the real stage6a toast-lifecycle cell clock.
+const explicitNotificationToastTTL = 3 * time.Second
+
 // toastView is one visible notification (SPEC G4): status dot + title,
 // body line, and an optional target pane for click/prefix+o navigation.
 type toastView struct {
@@ -114,6 +117,6 @@ func (a *App) ShowNotification(title, body, position string) bool {
 	}
 	a.ShowToast(title, body, "info", -1)
 	a.toast.position = position
-	a.toast.until = time.Now().Add(serverAgentToastTTL)
+	a.toast.until = time.Now().Add(explicitNotificationToastTTL)
 	return true
 }

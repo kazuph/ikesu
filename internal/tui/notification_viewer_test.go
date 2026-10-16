@@ -53,3 +53,13 @@ func TestStage6aExplicitToastWithoutTargetIgnoresClick(t *testing.T) {
 		t.Fatal("busy notification replaced")
 	}
 }
+
+func TestStage6aExplicitNotificationUsesObservedThreeSecondLifetime(t *testing.T) {
+	app := NewApp(model.New(t.TempDir(), 80, 24), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	before := time.Now()
+	app.ShowNotification("日本語", "", "")
+	after := time.Now()
+	if app.toast.until.Before(before.Add(3*time.Second)) || app.toast.until.After(after.Add(3*time.Second)) {
+		t.Fatalf("explicit API notification lifetime differs from observed 3s: %s", app.toast.until.Sub(before))
+	}
+}
