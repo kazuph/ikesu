@@ -21,6 +21,7 @@ p.add_argument('--remote-binary', required=True)
 p.add_argument('--remote-tb', required=True)
 p.add_argument('--ptyrun', type=Path, required=True)
 p.add_argument('--out', type=Path, required=True)
+p.add_argument('--measure', action='store_true', help='measure scrolling, switch display, and real PTY key delivery')
 a = p.parse_args()
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -32,6 +33,12 @@ if a.product == 'herdr' and version != 'herdr 0.2.57':
     raise SystemExit(f'reference version changed: {version}')
 remote = '/Users/kazuph/bench-terrace.noindex/work/tb-optimize/r-'+uuid.uuid4().hex[:6]
 config = 'onboarding=false\n[experimental]\nkitty_graphics=true\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n'
+expected_keys = 'abcdefghijklmnop'
+(out/'inputs.json').write_text(json.dumps({'product': a.product, 'binary': binary, 'version': version,
+                                                       'observer_sha256': hashlib.sha256(observer_source).hexdigest(),
+                                                       'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
+                                                       'remote_root': remote, 'remote_binary': a.remote_binary,
+                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
 
 RPC = '''import json,pathlib,socket,sys
 path,method,params=sys.argv[1:4]
@@ -125,6 +132,7 @@ for name in ['herdr','gtx']:
                    HERDR_MACHINE_REMOTE_BINARY=remote+'/bin/herdr', GTX_MACHINE_REMOTE_BINARY=remote+'/bin/gtx')
         owned, logs, cleanup = [], [], []
         remote_pane = ''
+        local_pane = ''
         local_socket = root/'config'/'unbound.sock'
         try:
             for name, command, child_env in [
@@ -166,6 +174,13 @@ for name in ['herdr','gtx']:
                         result(request('workspace.close', {'workspace_id': ws['workspace_id']}))
                 if label == 'TB_REMOTE':
                     remote_pane = created['root_pane']['pane_id']
+                else:
+                    local_pane = created['root_pane']['pane_id']
+            if a.measure:
+                receiver = root/'key-receiver.py'
+                receiver.write_bytes(Path(__file__).with_name('tb_key_program.py').read_bytes())
+                receiver_command = shlex.join(['python3', str(receiver), '--out', str(root/'keys.json')])
+                result(local_rpc(local_socket, 'pane.send_input', {'pane_id': local_pane, 'text': receiver_command, 'keys': ['Enter']}))
             added = subprocess.run([binary, '--session', 't', 'machine', 'add', 'mini', '--label', 'tb-host', '--remote-session', 't'],
                                    env=env, capture_output=True, text=True, timeout=30, check=True)
             (out/'machine-add.json').write_text(added.stdout)
@@ -175,12 +190,22 @@ for name in ['herdr','gtx']:
             ready, raw = root/'image-ready', out/'terminal.raw'
             raw.touch()
             steps = root/'steps'
-            steps.write_text('waittext 20s TB_REMOTE\ncells '+str(out/'pre-click.json')+'\nclicktext "TB_REMOTE"\nwaitfile '+str(ready)+' 30s\n'
+            steps.write_text(('waittext 20s LOCAL_SWITCH_READY\n' if a.measure else '')+'waittext 20s TB_REMOTE\ncells '+str(out/'pre-click.json')+'\nclicktext "TB_REMOTE"\nwaitfile '+str(ready)+' 30s\n'
                              'cells '+str(out/'tb-visible.json')+'\nstats tb-visible\nkill\n')
+            if a.measure:
+                procedure = steps.read_text().replace('kill\n', '')
+                procedure += 'locate "TB_LOCAL"\nmark scroll-start\n'
+                # P4b's 125 scroll events/second: 8 ms is input pacing, not a job wait.
+                procedure += ''.join('mouse wheel-down 80 22\nsleep 8ms\n' for _ in range(125))
+                procedure += ('clicklocated "TB_LOCAL"\nsend '+json.dumps(expected_keys+'\r')+'\n'
+                              'waittext 10s LOCAL_KEYS_RECORDED\ncells '+str(out/'switch-local.json')+'\n'
+                              'stats switch-local\nmark measurement-end\nkill\n')
+                steps.write_text(procedure)
+            (out/'steps').write_text(steps.read_text())
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
                                        '-cell-height', '16', '-xpixel', '1280', '-ypixel', '720', '-steps', str(steps),
-                                       '-raw-output', str(raw), '--', binary, '--session', 't'],
+                                       '-raw-output', str(raw), '-cell-clock', '-pixel-mouse=false', '--', binary, '--session', 't'],
                                       env=env, stdout=log, stderr=subprocess.STDOUT)
             owned.append(viewer)
             with closing(select.kqueue()) as events:
@@ -196,15 +221,15 @@ for name in ['herdr','gtx']:
                     ready.write_text('actual image upload received')
                 finally:
                     os.close(fd)
-            viewer.wait(timeout=15)
+            viewer.wait()
             if viewer.returncode != 0 or 'TIMEOUT' in (out/'viewer.log').read_text():
                 raise RuntimeError('saved-machine viewer procedure failed')
-            (out/'inputs.json').write_text(json.dumps({'product': a.product, 'binary': binary, 'version': version,
-                                                       'observer_sha256': hashlib.sha256(observer_source).hexdigest(),
-                                                       'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
-                                                       'remote_root': remote, 'remote_binary': a.remote_binary,
-                                                       'remote_tb': a.remote_tb}, indent=2)+'\n')
+            if a.measure:
+                (out/'keys.json').write_bytes((root/'keys.json').read_bytes())
+
         finally:
+            if (root/'keys.json').exists():
+                (out/'keys.json').write_bytes((root/'keys.json').read_bytes())
             (out/'local-runtime-logs.json').write_text(json.dumps({str(p.relative_to(root)):p.read_text(errors='replace') for p in root.glob('**/*.log')}, indent=2)+'\n')
             try:
                 snapshot = remote_rpc('pane.read', {'pane_id': remote_pane})

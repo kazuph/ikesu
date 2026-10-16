@@ -199,6 +199,13 @@ func main() {
 	}
 	sc := bufio.NewScanner(f)
 	var sentAt time.Time
+	locations := map[string][2]int{}
+	mark := func(kind, label string) {
+		mu.Lock()
+		count := drained
+		mu.Unlock()
+		fmt.Printf("event %s label=%q at_unix_ms=%d outer_bytes=%d\n", kind, label, time.Now().UnixMilli(), count)
+	}
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -206,6 +213,8 @@ func main() {
 		}
 		op, rest, _ := strings.Cut(line, " ")
 		switch op {
+		case "mark":
+			mark("mark", rest)
 		case "sleep":
 			d, _ := time.ParseDuration(rest)
 			time.Sleep(d)
@@ -243,13 +252,16 @@ func main() {
 				emu.SendMouse(uv.MouseClickEvent(m))
 			case "up", "right-up":
 				emu.SendMouse(uv.MouseReleaseEvent(m))
+			case "hover":
+				m.Button = uv.MouseNone
+				emu.SendMouse(uv.MouseMotionEvent(m))
 			case "motion":
 				emu.SendMouse(uv.MouseMotionEvent(m))
 			case "wheel-up":
 				m.Button = uv.MouseWheelUp
 				emu.SendMouse(uv.MouseWheelEvent(m))
-			case "wheel-down":
-				m.Button = uv.MouseWheelDown
+			case "wheel-down", "wheel-left", "wheel-right":
+				m.Button = map[string]uv.MouseButton{"wheel-down": uv.MouseWheelDown, "wheel-left": uv.MouseWheelLeft, "wheel-right": uv.MouseWheelRight}[kind]
 				emu.SendMouse(uv.MouseWheelEvent(m))
 			default:
 				mu.Unlock()
@@ -275,27 +287,51 @@ func main() {
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
 			time.Sleep(30 * time.Millisecond)
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
-		case "clicktext":
+		case "clicktext", "locate", "clicklocated":
 			label, err := strconv.Unquote(rest)
 			if err != nil || label == "" {
 				fmt.Fprintln(os.Stderr, "bad clicktext:", rest)
 				os.Exit(1)
 			}
 			x, y, found := 0, 0, 0
-			for row, line := range strings.Split(screen(), "\n") {
-				if col := strings.Index(line, label); col >= 0 {
-					x, y = ansi.StringWidth(line[:col])+1, row+1
-					found++
+			if op == "clicklocated" {
+				if point, ok := locations[label]; ok {
+					x, y, found = point[0], point[1], 1
+				}
+			} else {
+				for row, line := range strings.Split(screen(), "\n") {
+					if col := strings.Index(line, label); col >= 0 {
+						x, y = ansi.StringWidth(line[:col])+1, row+1
+						found++
+					}
 				}
 			}
 			if found != 1 {
-				fmt.Fprintf(os.Stderr, "clicktext %q requires one visible match, got %d\n", label, found)
+				fmt.Fprintf(os.Stderr, "%s %q requires one located match, got %d\n", op, label, found)
 				_ = cmd.Process.Kill()
 				_, _ = cmd.Process.Wait()
 				os.Exit(1)
 			}
+			if op == "locate" {
+				locations[label] = [2]int{x, y}
+				continue
+			}
+			mu.Lock()
+			if emu.ModeSet(ansi.ModeMouseExtSgrPixel) {
+				if *cellWidth <= 0 || *cellHeight <= 0 {
+					mu.Unlock()
+					fmt.Fprintln(os.Stderr, "pixel click needs cell size")
+					os.Exit(1)
+				}
+				x, y = (x-1)**cellWidth+*cellWidth/2+1, (y-1)**cellHeight+*cellHeight/2+1
+			}
+			mu.Unlock()
+			sentAt = time.Now()
+			mark(op, label)
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
-			time.Sleep(30 * time.Millisecond)
+			if op == "clicktext" {
+				time.Sleep(30 * time.Millisecond)
+			}
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
 		case "rclick":
 			var x, y int
