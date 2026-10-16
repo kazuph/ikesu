@@ -15,6 +15,8 @@ p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
+p.add_argument('--cell-width', type=int, default=0, help='outer terminal cell width in pixels')
+p.add_argument('--cell-height', type=int, default=0, help='outer terminal cell height in pixels')
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
@@ -158,6 +160,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
+                            '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
+                            '-xpixel', str(160*a.cell_width), '-ypixel', str(45*a.cell_height),
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
