@@ -1,0 +1,7 @@
+send "python3 @FIXTURES@/tb_api_program.py\r"
+waitfile @HOME@/tb-api-probe.json 30s
+waittext 5s TB_API_RECORDED
+cells @OUT@/api-recorded.json
+stats api-recorded
+send "q"
+kill
