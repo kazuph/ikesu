@@ -22,6 +22,7 @@ const explicitNotificationToastTTL = 3 * time.Second
 type toastView struct {
 	title, body, kind string
 	position          string
+	explicit          bool
 	dismissed         bool
 	target            int // pane id; <0 = no target
 	until             time.Time
@@ -81,7 +82,7 @@ func (a *App) expireToast() {
 // we navigate to the toast target and dismiss. Returns true when the
 // click was consumed.
 func (a *App) toastClick(x, y int) bool {
-	if a.toast == nil || a.toast.target < 0 || !pointIn(x, y, a.toastRect) {
+	if a.toast == nil || a.toast.explicit || !pointIn(x, y, a.toastRect) {
 		return false
 	}
 	a.navToToastTarget()
@@ -117,6 +118,7 @@ func (a *App) ShowNotification(title, body, position string) bool {
 	}
 	a.ShowToast(title, body, "info", -1)
 	a.toast.position = position
+	a.toast.explicit = true
 	a.toast.until = time.Now().Add(explicitNotificationToastTTL)
 	return true
 }

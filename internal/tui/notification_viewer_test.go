@@ -52,6 +52,11 @@ func TestStage6aExplicitToastWithoutTargetIgnoresClick(t *testing.T) {
 	if app.ShowNotification("次の通知", "", "") {
 		t.Fatal("busy notification replaced")
 	}
+	app.DismissToast()
+	app.ShowToast("agent restore", "summary", "info", -1)
+	if !app.toastClick(73, 2) || app.toast != nil {
+		t.Fatal("existing local toast can no longer be dismissed")
+	}
 }
 
 func TestStage6aExplicitNotificationUsesObservedThreeSecondLifetime(t *testing.T) {
