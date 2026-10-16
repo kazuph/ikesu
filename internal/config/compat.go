@@ -64,7 +64,7 @@ func Decode(data []byte) (Config, error) {
 					for _, spec := range bindings {
 						if spec != "" {
 							if _, err := ParseChord(spec); err != nil {
-								c.Warnings = append(c.Warnings, fmt.Sprintf("invalid keybinding: keys.%s = %q; using default binding", name, spec))
+								c.Warnings = append(c.Warnings, fmt.Sprintf("invalid keybinding: keys.%s = %q; disabling binding", name, spec))
 								valid = false
 								break
 							}
@@ -72,6 +72,8 @@ func Decode(data []byte) (Config, error) {
 					}
 					if valid {
 						c.Keys.Actions[name] = bindings
+					} else {
+						c.Keys.Actions[name] = Bindings{""}
 					}
 				}
 				// Typed legacy fields remain available to existing callers.
@@ -102,6 +104,7 @@ func Decode(data []byte) (Config, error) {
 	}
 	c.validateValues()
 	c.validateCompat()
+	c.resolveKeyBindings()
 	c.unsupportedValues()
 	sort.Strings(c.Warnings)
 	return c, nil
