@@ -55,7 +55,7 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 		for _, g := range f.Graphics {
 			key := graphicKey(g.Pane, g.Placement.Image.ID)
 			if _, exists := e.graphicsMap[key]; !exists {
-				if e.graphicsNamespace == f.GraphicsNamespace {
+				if e.graphicsNamespace == f.GraphicsNamespace && !removedDefaultPrototype(e.graphics, f.Graphics, g) {
 					for _, old := range e.graphics {
 						if old.Pane == g.Pane && reflect.DeepEqual(old.Placement.Image, g.Placement.Image) {
 							e.graphicsMap[key] = previous[key]
@@ -88,12 +88,7 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 			cell.Content = normalized
 		}
 		cell.Style.Fg = kitty.PlaceholderColor(id)
-		for i, g := range f.Graphics {
-			if g.Pane == p.Pane && g.Placement.Virtual && g.Placement.Image.ID == p.ImageID && g.Placement.ID == p.PlacementID {
-				cell.Style.UnderlineColor = kitty.PlaceholderColor(uint32(i + 1))
-				break
-			}
-		}
+		cell.Style.UnderlineColor = kitty.PlaceholderColor(p.PlacementID)
 	}
 	return changed
 }

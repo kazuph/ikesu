@@ -58,6 +58,7 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 		return
 	}
 	ids := map[string]uint32{}
+	placementIDs := graphicsPlacementIDs(f.Graphics)
 	for i, graphic := range f.Graphics {
 		p := graphic.Placement
 		key := graphicKey(graphic.Pane, p.Image.ID)
@@ -90,7 +91,18 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 			}
 		}
 		if p.Virtual {
-			fmt.Fprintf(b, "\x1b_Ga=p,U=1,i=%d,p=%d,c=%d,r=%d,z=%d,q=2;\x1b\\", id, i+1, p.Cols, p.Rows, p.Z)
+			unchanged := false
+			for _, old := range e.graphics {
+				unchanged = unchanged || old.Pane == graphic.Pane && reflect.DeepEqual(old.Placement, p)
+			}
+			cached := false
+			for _, oldID := range e.graphicsIDs {
+				cached = cached || oldID == id
+			}
+			if unchanged && cached {
+				continue
+			}
+			fmt.Fprintf(b, "\x1b_Ga=p,U=1,i=%d,p=%d,c=%d,r=%d,z=%d,q=2;\x1b\\", id, placementIDs[i], p.Cols, p.Rows, p.Z)
 		}
 	}
 }
@@ -99,6 +111,7 @@ func (e *Encoder) emitRealPlacements(f *Frame, b *bytes.Buffer, changed bool) {
 	if !changed {
 		return
 	}
+	placementIDs := graphicsPlacementIDs(f.Graphics)
 	for i, graphic := range f.Graphics {
 		p := graphic.Placement
 		if p.Virtual {
@@ -106,7 +119,7 @@ func (e *Encoder) emitRealPlacements(f *Frame, b *bytes.Buffer, changed bool) {
 		}
 		id := e.graphicsMap[graphicKey(graphic.Pane, p.Image.ID)]
 		b.WriteString(cup(p.Y, p.X))
-		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2;\x1b\\", id, i+1, p.Cols, p.Rows, p.Z)
+		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2;\x1b\\", id, placementIDs[i], p.Cols, p.Rows, p.Z)
 	}
 }
 
@@ -116,12 +129,14 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 	}
 	current := map[uint32]bool{}
 	placements := map[[2]uint32]bool{}
+	placementIDs := graphicsPlacementIDs(f.Graphics)
 	for i, g := range f.Graphics {
 		id := e.graphicsMap[graphicKey(g.Pane, g.Placement.Image.ID)]
 		current[id] = true
-		placements[[2]uint32{id, uint32(i + 1)}] = true
+		placements[[2]uint32{id, placementIDs[i]}] = true
 	}
 	oldIDs := map[string]uint32{}
+	oldPlacementIDs := graphicsPlacementIDs(e.graphics)
 	for i, g := range e.graphics {
 		key := graphicKey(g.Pane, g.Placement.Image.ID)
 		id, exists := oldIDs[key]
@@ -129,7 +144,7 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 			id = e.graphicsIDs[len(oldIDs)]
 			oldIDs[key] = id
 		}
-		pid := uint32(i + 1)
+		pid := oldPlacementIDs[i]
 		if current[id] && !placements[[2]uint32{id, pid}] {
 			fmt.Fprintf(b, "\x1b_Ga=d,d=i,i=%d,p=%d,q=2;\x1b\\", id, pid)
 		}
@@ -149,4 +164,42 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 		}
 	}
 	e.graphics, e.graphicsNamespace = f.Graphics, f.GraphicsNamespace
+}
+
+func graphicsPlacementIDs(graphics []Graphic) []uint32 {
+	ids := make([]uint32, len(graphics))
+	reserved := map[uint32]bool{}
+	for i, g := range graphics {
+		if g.Placement.Virtual {
+			ids[i] = g.Placement.ID
+			reserved[ids[i]] = true
+		}
+	}
+	next := uint32(0)
+	for i, g := range graphics {
+		if !g.Placement.Virtual {
+			for next++; reserved[next]; next++ {
+			}
+			ids[i] = next
+		}
+	}
+	return ids
+}
+
+// Kitty's placement ID zero cannot be deleted alone: it selects every
+// placement of the image. Retire that prototype with its old image instead.
+func removedDefaultPrototype(before, after []Graphic, image Graphic) bool {
+	hadDefault := false
+	for _, g := range before {
+		hadDefault = hadDefault || g.Pane == image.Pane && g.Placement.Image.ID == image.Placement.Image.ID && g.Placement.Virtual && g.Placement.ID == 0
+	}
+	if !hadDefault {
+		return false
+	}
+	for _, g := range after {
+		if g.Pane == image.Pane && g.Placement.Image.ID == image.Placement.Image.ID && g.Placement.Virtual && g.Placement.ID == 0 {
+			return false
+		}
+	}
+	return true
 }
