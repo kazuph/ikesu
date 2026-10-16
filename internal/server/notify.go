@@ -125,6 +125,16 @@ func (s *Server) deliverNotification(pid int, kind string) {
 		lines, _ := p.ReadLines("recent_unwrapped", true)
 		body = notify.Body(lines, title)
 	}
+	if body == "" {
+		wsIdx, _ := s.app.State().FindPane(pid)
+		if wsIdx >= 0 {
+			name := s.app.State().Workspaces[wsIdx].Name
+			if name == "" {
+				name = fmtWorkspaceID(s.app.State().Workspaces[wsIdx].ID)
+			}
+			body = fmt.Sprintf("%s · %d", name, pid)
+		}
+	}
 	switch s.cfg.ToastDelivery() {
 	case config.ToastGTX:
 		s.app.ShowToast(title, body, kind, pid)

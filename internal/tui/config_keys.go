@@ -104,7 +104,7 @@ func (a *App) configAction(name string, k uv.Key) bool {
 		a.exec(model.CmdSplitFocused{Dir: layout.Horizontal})
 	case "open_notification_target":
 		a.navToToastTarget()
-		a.toast = nil
+		a.DismissToast()
 	case "new_tab":
 		if a.sidebarConfig.UI.PromptNewTabName != nil && !*a.sidebarConfig.UI.PromptNewTabName {
 			a.exec(model.CmdNewTab{Workspace: a.st.Active})

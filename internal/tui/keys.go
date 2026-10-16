@@ -161,7 +161,7 @@ func (a *App) prefixKey(k uv.Key) {
 	case a.navKey != 0 && k.Code == a.navKey:
 		// [keys] open_notification_target (default prefix+o).
 		a.navToToastTarget()
-		a.toast = nil
+		a.DismissToast()
 	case isCtrlB(k):
 		// C-b C-b sends C-b to the focused pane.
 		if pid := a.focusedPane(); pid >= 0 {

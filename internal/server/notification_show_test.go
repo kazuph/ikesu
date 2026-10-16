@@ -1,6 +1,10 @@
 package server
 
 import (
+	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/render"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,5 +43,51 @@ func TestStage6aNotificationShowRealSocketAndViewer(t *testing.T) {
 	response := apiReq(t, dir, "notification.show", map[string]any{"title": " \n "})
 	if response.Err == nil || response.Err.Code != "invalid_params" || response.Err.Message != "notification title is empty" {
 		t.Fatal("empty title accepted", response)
+	}
+}
+
+func TestStage6aNotificationShowHeadlessDisabledAndValidation(t *testing.T) {
+	teststate.Lock(t)
+	for _, delivery := range []string{"off", "herdr", "terminal", "system"} {
+		t.Run(delivery, func(t *testing.T) {
+			s := newTestServer(t, "explicit-notification")
+			s.cfg, _ = config.Decode([]byte("[ui.toast]\ndelivery='" + delivery + "'\n"))
+			call := func(params any) api.Response {
+				return s.dispatchOnLoop(&api.Request{ID: "test", Method: api.MethodNotificationShow, Params: api.MarshalParams(params)})
+			}
+			for _, params := range []map[string]any{{}, {"title": nil}, {"title": "日本語", "position": "bad"}, {"title": "日本語", "sound": "bad"}, {"title": "日本語", "sound": nil}, {"title": "日本語", "sound": ""}} {
+				if response := call(params); response.Err == nil || response.Err.Code != api.ErrInvalidRequest {
+					t.Fatal("invalid params accepted", params, response)
+				}
+			}
+			response := call(map[string]any{"title": "  日本語  ", "body": nil, "sound": "none"})
+			want := `{"type":"notification_show","shown":true,"reason":"shown"}`
+			if delivery == "off" {
+				want = `{"type":"notification_show","shown":false,"reason":"disabled"}`
+			}
+			if delivery == "system" || delivery == "terminal" {
+				want = `{"type":"notification_show","shown":false,"reason":"no_foreground_client"}`
+			}
+			if response.Err != nil || string(response.Result) != want {
+				t.Fatal(response.Err, string(response.Result), want)
+			}
+		})
+	}
+}
+
+func TestStage6aBackgroundToastReachesConnectedViewer(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "background-toast")
+	s.cfg, _ = config.Decode([]byte("[ui.toast]\ndelivery='herdr'\ndelay_seconds=0\n"))
+	s.app.SetServerUI()
+	s.app.SetSidebarConfig(s.cfg, false)
+	v := s.app.NewViewer(io.Discard, 80, 24, nil)
+	var toast *render.Toast
+	v.SetSnapshotSink(func(in render.Input) error { toast = in.Toast; return nil })
+	s.deliverNotification(1, "finished")
+	v.Tick(s.app)
+	v.Draw(s.app, nil)
+	if toast == nil || toast.Title != "1 workspace 1" || toast.Body != "workspace 1 · 1" || toast.Kind != "finished" {
+		t.Fatalf("background notification missing from viewer: %+v", toast)
 	}
 }

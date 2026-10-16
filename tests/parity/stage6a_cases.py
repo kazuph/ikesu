@@ -46,3 +46,9 @@ for kind in ['trim','blank']:
     (out/f'toast-{kind}.steps').write_text(action(f'notification-{kind}')+snap('toast')+'kill\n')
 
 (out/'toast-lifecycle.steps').write_text(action('notification-empty')+snap('initial')+'click 153 2\n'+snap('dismissed')+action('notification-second')+snap('retry')+'sleep 8s\n'+snap('after-eight')+'sleep 2s\n'+snap('after-ten')+action('notification-third')+snap('third')+'kill\n')
+
+for kind in ['target','expiry']:
+    body=action('toast-prepare')+'sleep 1s\n'+action('toast-working')+'sleep 1s\n'+action('toast-finish')+'sleep 2s\n'+snap('visible')
+    if kind=='target': body+=send('\x14o')+snap('target')
+    else: body+='sleep 8s\n'+snap('expired')
+    (out/f'toast-background-{kind}.steps').write_text(body+'kill\n')

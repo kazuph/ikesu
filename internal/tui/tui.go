@@ -232,6 +232,7 @@ type App struct {
 	focusHistory                             []int
 	focusHistoryAt                           int
 	traversingHistory                        bool
+	toastSequence                            uint64
 	toast                                    *toastView
 	toastRect                                layout.Rect
 	menu                                     *uiMenu

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
 )
@@ -37,4 +38,18 @@ func TestStage6aSessionToastReachesViewerAndStaysDismissed(t *testing.T) {
 			t.Fatal("expired toast remains in connected viewer")
 		}
 	})
+}
+
+func TestStage6aExplicitToastWithoutTargetIgnoresClick(t *testing.T) {
+	app := NewApp(model.New(t.TempDir(), 80, 24), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	if !app.ShowNotification("日本語", "", "") {
+		t.Fatal("initial notification rejected")
+	}
+	app.toastRect = layout.Rect{X: 68, Y: 0, W: 12, H: 3}
+	if app.toastClick(73, 2) || app.toast == nil {
+		t.Fatal("targetless notification was dismissed by a click")
+	}
+	if app.ShowNotification("次の通知", "", "") {
+		t.Fatal("busy notification replaced")
+	}
 }
