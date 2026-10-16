@@ -1,6 +1,10 @@
 package tui
 
 import (
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
 )
@@ -10,12 +14,23 @@ func (a *App) openJobLog(index int) {
 		return
 	}
 	j := a.jobRows[index]
-	w := a.st.ActiveWorkspace()
-	if w == nil {
+	caller, err := strconv.Atoi(strings.TrimPrefix(j.CallerPane, "p"))
+	if err != nil {
 		return
 	}
-	if j.LogPath == "" {
-		a.ShowToast("job log unavailable", "the job has no saved log path", "error", -1)
+	wi, _ := a.st.FindPane(caller)
+	if wi < 0 || j.LogPath == "" {
+		return
+	}
+	if info, err := os.Stat(j.LogPath); err != nil || !info.Mode().IsRegular() {
+		return
+	}
+	if a.st.Active != wi || a.focusedPane() != caller {
+		a.exec(model.CmdFocusPane{Pane: caller})
+		return
+	}
+	w := a.st.ActiveWorkspace()
+	if w == nil {
 		return
 	}
 	// The observed viewer echoes ordinary keys, follows output, and exits on Ctrl-C.
