@@ -36,6 +36,7 @@ type copyMode struct {
 	searchDir     int // +1 after '/', -1 after '?'; drives n/N
 	query         string
 	previousQuery string
+	scrollBefore  int
 	matches       []copybuf.Range
 	matchIdx      int
 }
@@ -64,7 +65,7 @@ func (a *App) enterCopy(fullscreen bool) {
 	n := a.bufferLen(p)
 	a.sel = nil
 	snapshot := p.Snapshot()
-	a.cm = &copyMode{pane: pid, cx: snapshot.Cursor.X, cy: min(snapshot.ScrollbackLen+snapshot.Cursor.Y, max(n-1, 0)), searchDir: 1}
+	a.cm = &copyMode{pane: pid, cx: snapshot.Cursor.X, cy: min(snapshot.ScrollbackLen+snapshot.Cursor.Y, max(n-1, 0)), searchDir: 1, scrollBefore: a.scroll[pid]}
 	a.cm.top = max(n-a.copyInnerH()-a.scroll[pid], 0)
 	if a.cm.cy < a.cm.top || a.cm.cy >= a.cm.top+a.copyInnerH() {
 		a.cm.cx, a.cm.cy = 0, a.cm.top+a.copyInnerH()-1
@@ -555,6 +556,7 @@ func (a *App) copyFocusChanged() {
 	ws := a.st.ActiveWorkspace()
 	for pid := range a.paneCopies {
 		if ws == nil || ws.ActiveLayout() == nil || !ws.ActiveLayout().HasPane(pid) {
+			a.setScrollOff(pid, a.paneCopies[pid].scrollBefore)
 			delete(a.paneCopies, pid)
 		}
 	}
@@ -564,12 +566,16 @@ func (a *App) copyFocusChanged() {
 		}
 		// Observed 0.2.57 preserves search and cursor, but clears the selection.
 		a.cm.anchor = nil
+		a.setScrollOff(a.cm.pane, max(a.bufferLen(a.sup.Get(a.cm.pane))-a.copyInnerH()-a.cm.top, 0))
 		a.paneCopies[a.cm.pane] = a.cm
 		a.cm = nil
 	}
 	if a.cm == nil {
 		pid := a.focusedPane()
 		a.cm = a.paneCopies[pid]
+		if a.cm != nil {
+			a.setScrollOff(pid, a.cm.scrollBefore)
+		}
 		delete(a.paneCopies, pid)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/teststate"
+	"io"
 	"testing"
 	"time"
 )
@@ -39,5 +40,22 @@ func TestStage7DragEdgeAutoScrollAndClickControl(t *testing.T) {
 	a.selectionAutoScroll(at.Add(time.Second))
 	if a.scroll[pid] != 5 {
 		t.Fatal("selection release did not stop scroll")
+	}
+}
+
+func TestStage7ViewerDragReceivesTicks(t *testing.T) {
+	teststate.Lock(t)
+	a := stage7CopyApp(t)
+	pid := a.cm.pane
+	a.exitCopy()
+	v := a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+	inner := v.app.innerRect(pid)
+	v.app.sel = &selState{pane: pid, inner: inner, moved: true, autoDir: 1, autoAt: time.Now().Add(-3 * selectionScrollInterval)}
+	v.Tick(a)
+	if v.app.scroll[pid] < 3 {
+		t.Fatal("endpoint did not tick its selection")
+	}
+	if a.scroll[pid] != 0 {
+		t.Fatal("viewer changed session scroll")
 	}
 }
