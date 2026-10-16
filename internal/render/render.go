@@ -8,6 +8,7 @@ import (
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
+	"image"
 	"image/color"
 	"math"
 	"strings"
@@ -344,8 +345,15 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		}
 		drawNavigator(f, in.Navigator, spin)
 	}
-	if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil || in.Toast != nil {
-		f.Graphics = nil
+	covers := []layout.Rect{out.MenuRect, out.DialogRect, out.HelpRect, out.ToastRect}
+	if in.Settings != nil {
+		covers = append(covers, SettingsRect(f.W, f.H))
+	}
+	if in.Navigator != nil {
+		covers = append(covers, NavigatorRect(f.W, f.H))
+	}
+	for _, r := range covers {
+		f.coverGraphics(image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H))
 	}
 	return out
 }

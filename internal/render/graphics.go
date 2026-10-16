@@ -30,25 +30,14 @@ func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
 		if p.Virtual {
 			continue
 		}
-		p.Y += snap.ScrollOff
+		p.X += x
+		p.Y += y + snap.ScrollOff
 		bounds := image.Rect(p.X, p.Y, p.X+p.Cols, p.Y+p.Rows)
-		visible := bounds.Intersect(image.Rect(0, 0, width, height))
+		visible := bounds.Intersect(image.Rect(x, y, x+width, y+height))
 		if visible.Empty() {
 			continue
 		}
-		var source image.Rectangle
-		if visible != bounds {
-			// Keep the original upload and select only the source pixels
-			// belonging to the visible destination cells.
-			sx := (visible.Min.X - p.X) * p.Image.Width / p.Cols
-			sy := (visible.Min.Y - p.Y) * p.Image.Height / p.Rows
-			sw := max(1, visible.Dx()*p.Image.Width/p.Cols)
-			sh := max(1, visible.Dy()*p.Image.Height/p.Rows)
-			source = image.Rect(sx, sy, sx+sw, sy+sh)
-		}
-		p.X, p.Y = x+visible.Min.X, y+visible.Min.Y
-		p.Cols, p.Rows = visible.Dx(), visible.Dy()
-		f.Graphics = append(f.Graphics, Graphic{Pane: pane, Placement: p, Source: source})
+		f.Graphics = append(f.Graphics, cropGraphic(Graphic{Pane: pane, Placement: p}, visible))
 	}
 }
 
