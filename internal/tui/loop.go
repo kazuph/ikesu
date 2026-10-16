@@ -250,6 +250,8 @@ func (a *App) exec(cmd model.Command) {
 			a.exec(model.CmdCloseWorkspace{Index: 1})
 			return
 		}
+		delete(a.workspaceNames, 0)
+		delete(a.workspaceGit, 0)
 	}
 
 	policyCwd := false
@@ -261,6 +263,8 @@ func (a *App) exec(cmd model.Command) {
 	}
 
 	switch cmd.(type) {
+	case model.CmdSelectTab, model.CmdNewTab, model.CmdRenameTab, model.CmdSelectWorkspace, model.CmdNewWorkspace, model.CmdResize:
+		a.tabScrollManual = false
 	case model.CmdSetSection, model.CmdToggleSection:
 		a.sidebarScroll = 0
 		a.mobileScroll = 0

@@ -29,7 +29,7 @@ try:
         for who in ['herdr','gtx']:
             row=load(case,who,'title')['Cells'][1][58:]
             check(case,who+' visible ellipsis',any(c['Content']=='…' for c in row))
-    for case,xs,y,h,sizes in [('scroll-bordered',[61,98],2,26,[34,33]),('scroll-borderless',[61,99],1,28,[35,37])]:
+    for case,xs,y,h,sizes in [('scroll-bordered',[61,98],2,26,[34,34]),('scroll-borderless',[61,99],1,28,[35,36])]:
         for name in ['left-focus','right-focus']:
             for x in xs:region(case,name,x,y,1,h)
         for who in ['herdr','gtx']:

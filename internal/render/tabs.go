@@ -148,7 +148,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 		if leftClipped || rightClipped {
 			cell.Content, cell.Width = "…", 1
-			if ws.ActiveTab < 0 || ws.ActiveTab >= len(starts) || offset+n < starts[ws.ActiveTab] || offset+n >= starts[ws.ActiveTab]+widths[ws.ActiveTab] {
+			if leftClipped || offset != maxOffset {
 				cell.Style.Fg = f.Palette.Dim
 			}
 		}

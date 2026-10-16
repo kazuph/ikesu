@@ -35,3 +35,23 @@ func TestStage5BorderlessGutterAndFocus(t *testing.T) {
 		}
 	}
 }
+
+func TestStage5BorderlessSplitReservesGapAndPTYWidths(t *testing.T) {
+	s := testState(100, 30)
+	s.PaneBorders = false
+	tab := s.ActiveWorkspace().TabRef()
+	tab.Layout.SplitFocused(layout.Vertical, 2)
+	panes := s.DisplayPaneRects()
+	if len(panes) != 2 {
+		t.Fatal(panes)
+	}
+	for i, want := range []int{35, 36} {
+		w, h := model.PaneTermSize(panes[i].Rect, false)
+		if w != want || h != 28 {
+			t.Fatalf("pane=%d PTY=%dx%d want=%dx28", i, w, h, want)
+		}
+	}
+	if panes[0].Rect.X+panes[0].Rect.W+1 != panes[1].Rect.X {
+		t.Fatal("missing one-cell pane gap", panes)
+	}
+}

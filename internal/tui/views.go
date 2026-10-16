@@ -137,7 +137,7 @@ func (a *App) draw() {
 		ServerUI:            a.serverUI,
 		PanePalette:         a.panePalette,
 		TabScroll:           a.tabScroll,
-		TabScrollManual:     wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
+		TabScrollManual:     a.tabScrollManual && wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
 		State:               a.st,
 		Navigator:           a.navigatorRender(),
 		ConfigWarning:       warning,

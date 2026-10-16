@@ -360,11 +360,13 @@ func (a *App) tabBarClick(m uv.Mouse) {
 			if a.serverUI && m.X == a.tabLeftRect.X {
 				return
 			}
+			a.tabScrollManual = true
 			a.tabScroll = a.tabScrollLeft
 			a.dirty = true
 			return
 		}
 		if pointIn(m.X, m.Y, a.tabRightRect) {
+			a.tabScrollManual = true
 			a.tabScroll = a.tabScrollRight
 			a.dirty = true
 			return

@@ -15,6 +15,7 @@ func TestStage5LastWorkspaceCloseRecreatesHome(t *testing.T) {
 		if err := a.StartInitialPane(); err != nil {
 			t.Fatal(err)
 		}
+		a.workspaceNames = map[int]string{0: "stale-cwd"}
 		old := a.focusedPane()
 		ws := a.st.ActiveWorkspace().ID
 		if ui {
@@ -24,7 +25,7 @@ func TestStage5LastWorkspaceCloseRecreatesHome(t *testing.T) {
 			a.ExecCmd(model.CmdCloseWorkspace{Index: 0})
 		}
 		home, _ := os.UserHomeDir()
-		if a.quit || len(a.st.Workspaces) != 1 || a.st.ActiveWorkspace().ID <= ws || a.st.ActiveWorkspace().Cwd != home || a.sup.Get(old) != nil || a.sup.Get(a.focusedPane()) == nil {
+		if a.quit || len(a.st.Workspaces) != 1 || a.st.ActiveWorkspace().ID <= ws || a.st.ActiveWorkspace().Cwd != home || a.sup.Get(old) != nil || a.sup.Get(a.focusedPane()) == nil || a.workspaceNames[0] != "" {
 			t.Fatalf("ui=%v quit=%v workspaces=%+v", ui, a.quit, a.st.Workspaces)
 		}
 	}
