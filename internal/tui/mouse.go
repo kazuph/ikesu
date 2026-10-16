@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/config"
 	"strings"
@@ -684,8 +683,7 @@ func (a *App) finishSelection() {
 	if text == "" {
 		return
 	}
-	b64 := base64.StdEncoding.EncodeToString([]byte(text))
-	if _, err := fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64); err != nil {
+	if err := a.writeClipboard(text); err != nil {
 		return
 	}
 	// SPEC G1: "Copied N lines" on the sidebar's bottom row, 2 seconds.
