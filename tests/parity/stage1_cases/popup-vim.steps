@@ -1,6 +1,6 @@
 send "\u0014t"
 sleep 400ms
-send "vim -Nu NONE -n -i NONE\r"
+send "/usr/bin/vim -Nu NONE -n -i NONE\r"
 sleep 500ms
 send "iSTAGE1_VIM_TEXT"
 sleep 100ms

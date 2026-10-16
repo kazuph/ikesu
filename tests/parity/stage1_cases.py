@@ -68,7 +68,7 @@ body += send('END') + 'sleep 100ms\nscreen @OUT@/complete.txt\nkill\n'
 (out/'timing.steps').write_text(body)
 
 body = send('\x14t') + 'sleep 400ms\n'
-body += send('vim -Nu NONE -n -i NONE\r') + 'sleep 500ms\n'
+body += send('/usr/bin/vim -Nu NONE -n -i NONE\r') + 'sleep 500ms\n'
 body += send('iSTAGE1_VIM_TEXT') + 'sleep 100ms\n' + send('\x1b')
 body += 'sleep 100ms\nscreen @OUT@/vim-normal.txt\ncells @OUT@/vim-normal.json\n'
 body += send(':w! @OUT@/vim-buffer.txt\r') + 'sleep 200ms\n'
