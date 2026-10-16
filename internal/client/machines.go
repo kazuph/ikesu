@@ -48,6 +48,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	keys               []input.Event
 	id                 string
 	workspace          int
 	deadline           time.Time
@@ -218,6 +219,9 @@ func (m *machineClient) nextDeadline() time.Time {
 	include(m.noticeUntil)
 	if m.pending != nil {
 		include(m.pending.deadline)
+		if len(m.pending.keys) > 0 {
+			include(m.pending.inputDeadline())
+		}
 	}
 	for _, e := range m.endpoints {
 		include(e.retry.next)
@@ -229,6 +233,9 @@ func (m *machineClient) advance(now time.Time) {
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
 		m.noticeUntil = time.Time{}
+	}
+	if m.pending != nil && !now.Before(m.pending.inputDeadline()) {
+		m.pending.keys = nil
 	}
 	if m.pending != nil && !now.Before(m.pending.deadline) {
 		m.endpoints[m.pending.id].reason = "machine switch timed out"

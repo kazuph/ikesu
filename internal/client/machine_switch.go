@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/render"
+	"time"
 )
 
 func (m *machineClient) requestPending() {
@@ -76,6 +77,10 @@ func (m *machineClient) finishSwitch() {
 	if old.removed {
 		delete(m.endpoints, oldID)
 	}
+	if time.Now().Before(p.inputDeadline()) {
+		m.held = append(m.held, p.keys...)
+	}
+	p.keys = nil
 	m.pending = nil
 	m.regions = nil
 	visible = !m.blurred

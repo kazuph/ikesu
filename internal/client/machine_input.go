@@ -98,6 +98,9 @@ func (m *machineClient) input(event input.Event) error {
 	} else if event.Kind == input.KindFocus {
 		m.blurred = false
 	}
+	if m.holdPendingInput(event, time.Now()) {
+		return nil
+	}
 	if m.regions == nil {
 		if m.legacyLocal() {
 			return m.sendInput("local", eventBytes(event))
