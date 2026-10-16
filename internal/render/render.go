@@ -84,6 +84,7 @@ type Menu struct {
 	Worktree  bool
 	Filter    string
 	Filtering bool
+	Total     int
 	X, Y      int // requested position (top-left), clamped at draw
 	Title     string
 	Items     []MenuItem

@@ -55,6 +55,9 @@ func drawWorktreeMenu(f *Frame, m *Menu, out *Output) {
 	}
 	f.Text(r.X+1, r.Y+2, filter, dim, r.X+r.W-1)
 	count := fmt.Sprintf("%d checkouts", len(m.Items))
+	if m.Filter != "" {
+		count = fmt.Sprintf("%d/%d checkouts", len(m.Items), m.Total)
+	}
 	f.Text(r.X+r.W-1-ansi.StringWidth(count), r.Y+2, count, dim, r.X+r.W-1)
 	f.Fill(r.X+1, r.Y+3, r.W-2, 1, "─", dim)
 	m.Scroll = WorktreeMenuScroll(m, f.H)

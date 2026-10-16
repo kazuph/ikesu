@@ -29,12 +29,12 @@ func drawWorktreeCreate(f *Frame, d *Dialog, out *Output) {
 	f.Text(r.X+2, r.Y+4, "checkout", dim, r.X+r.W-2)
 	f.Text(r.X+2, r.Y+5, d.Checkout, dim, r.X+r.W-2)
 	if d.Detail != "" {
-		lines := strings.Split(ansi.Hardwrap(d.Detail, max(1, r.W-4), false), "\n")
+		lines := strings.Split(ansi.Wrap(" "+d.Detail, max(1, r.W-4), ""), "\n")
 		for i, line := range lines {
 			if i >= 3 {
 				break
 			}
-			f.Text(r.X+2, r.Y+6+i, line, uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG}, r.X+r.W-2)
+			f.Text(r.X+1, r.Y+6+i, line, uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG}, r.X+r.W-2)
 		}
 	}
 	confirm := " ↵ create and open "
@@ -45,7 +45,8 @@ func drawWorktreeCreate(f *Frame, d *Dialog, out *Output) {
 	f.Text(out.DialogCancel.X, r.Y+10, cancel, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, r.X+r.W-1)
 	out.AnchorX = min(r.X+2+ansi.StringWidth(d.Input), r.X+r.W-3)
 	out.AnchorY = r.Y + 3
-	out.AnchorVisible = true
+	f.Set(out.AnchorX, out.AnchorY, "█", text)
+	out.AnchorVisible = false
 }
 
 func WorktreeCreateButtons(r layout.Rect) (confirm, cancel layout.Rect) {
