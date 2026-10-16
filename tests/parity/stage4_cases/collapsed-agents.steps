@@ -1,0 +1,14 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; python3 @FIXTURES@/socket_action.py create-other; python3 @FIXTURES@/socket_action.py report-other-state blocked; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-popup-owners.json 5s
+sleep 1s
+screen @OUT@/expanded.txt
+cells @OUT@/expanded.json
+send "\x14b"
+sleep 250ms
+screen @OUT@/collapsed.txt
+cells @OUT@/collapsed.json
+click 2 26
+sleep 250ms
+screen @OUT@/agent-click.txt
+cells @OUT@/agent-click.json
+kill

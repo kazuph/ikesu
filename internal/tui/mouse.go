@@ -465,6 +465,19 @@ func (a *App) sidebarClick(m uv.Mouse) {
 		return
 	}
 	if !s.SidebarVisible {
+		if a.serverUI {
+			in := render.Input{State: s, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, AgentScroll: a.agentScroll}
+			for _, pos := range render.CollapsedAgentRows(in) {
+				if pos.Y == m.Y && pos.Row.Kind == render.RowAgent {
+					a.exec(model.CmdSelectWorkspace{Index: pos.Row.Ws})
+					a.exec(model.CmdFocusPane{Pane: pos.Row.Pane})
+					return
+				}
+			}
+			if m.Y > render.SidebarSplitY(s) {
+				return
+			}
+		}
 		// Collapsed strip: one row per workspace.
 		iy, ih := area.Y, max(0, area.H-1)
 		scroll := a.clampCollapsedScroll(len(s.Workspaces), ih)

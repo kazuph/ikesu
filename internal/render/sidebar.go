@@ -643,6 +643,9 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 		f.Set(x, area.Y+(area.H+1)/2, "─", border)
 	}
 	avail := max(0, area.H-1)
+	if in.ServerUI {
+		avail = max(0, SidebarSplitY(s)-area.Y+1)
+	}
 	if iw < 1 || avail < 1 {
 		return
 	}
@@ -682,6 +685,17 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 			g.Rune = "·"
 		}
 		f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg, Attrs: boldIf(g.Bold)}, ix+iw)
+	}
+	if in.ServerUI {
+		for _, pos := range CollapsedAgentRows(in) {
+			drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, iw)
+			if pos.Row.Kind == RowAgent && pos.Row.Line == 0 && iw == model.SidebarCollapsedWidth-1 {
+				f.Set(ix+iw-1, pos.Y, " ", uv.Style{Fg: f.Palette.Text})
+			}
+			if in.SidebarConfig.UI.TransparentSidebarCards {
+				clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
+			}
+		}
 	}
 	// Expand button centred on the bottom border row.
 	if !in.ServerUI {
