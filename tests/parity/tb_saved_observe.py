@@ -22,7 +22,11 @@ p.add_argument('--remote-tb', required=True)
 p.add_argument('--ptyrun', type=Path, required=True)
 p.add_argument('--out', type=Path, required=True)
 p.add_argument('--measure', action='store_true', help='measure scrolling, switch display, and real PTY key delivery')
+p.add_argument('--capture-ssh', action='store_true', help='capture actual plaintext display-transport bytes; diagnostic only')
+p.add_argument('--image-probe', action='store_true', help='controlled Kitty producer for transfer contracts; does not measure tb performance')
 a = p.parse_args()
+if a.image_probe and a.measure:
+    p.error('the controlled image producer cannot be used for tb performance measurement')
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
 observer_source = Path(__file__).read_bytes()
@@ -38,7 +42,7 @@ expected_keys = 'abcdefghijklmnop'
                                                        'observer_sha256': hashlib.sha256(observer_source).hexdigest(),
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
-                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
+                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
 
 RPC = '''import json,pathlib,socket,sys
 path,method,params=sys.argv[1:4]
@@ -117,6 +121,9 @@ for name in ['herdr','gtx']:
 '''
         wrapper = '#!/bin/sh\n'+prefix+'exec '+shlex.quote(a.remote_binary)+' "$@"\n'
         ssh(shlex.join(['python3', '-c', setup, remote, config, wrapper]))
+        if a.image_probe:
+            ssh(shlex.join(['python3', '-c', 'import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])',
+                            remote+'/image-probe.py', Path(__file__).with_name('tb_transfer_program.py').read_text()]))
         ssh_wrapper = root/'bin/ssh'
         ssh_wrapper.write_text('#!/usr/bin/python3\nimport os,sys\na=sys.argv[1:]\n'
                                "i=a.index('mini')\n"+
@@ -130,6 +137,9 @@ for name in ['herdr','gtx']:
                    HERDR_CONFIG_PATH=str(root/'config.toml'), GTX_CONFIG=str(root/'config.toml'),
                    SHELL='/bin/zsh', TERM='xterm-256color', PATH=str(root/'bin')+':'+os.environ['PATH'],
                    HERDR_MACHINE_REMOTE_BINARY=remote+'/bin/herdr', GTX_MACHINE_REMOTE_BINARY=remote+'/bin/gtx')
+        if a.capture_ssh:
+            ssh_wrapper.write_bytes(Path(__file__).with_name('tb_ssh_capture.py').read_bytes())
+            env.update(TB_SSH_OBSERVER_PREFIX=prefix, TB_SSH_CAPTURE_ROOT=str(out/'ssh'))
         owned, logs, cleanup = [], [], []
         remote_pane = ''
         local_pane = ''
@@ -186,6 +196,8 @@ for name in ['herdr','gtx']:
             (out/'machine-add.json').write_text(added.stdout)
             command = shlex.join([a.remote_tb+'/bin/terminal-browser', 'file://'+remote+'/page.html', '--no-merge',
                                   '--no-toolbar', '--no-shortcuts', '--no-context-menu', '--no-overlays', '--no-frame'])
+            if a.image_probe:
+                command = shlex.join(['python3', remote+'/image-probe.py'])
             result(remote_rpc('pane.send_input', {'pane_id': remote_pane, 'text': command, 'keys': ['Enter']}))
             ready, raw = root/'image-ready', out/'terminal.raw'
             raw.touch()
@@ -201,6 +213,11 @@ for name in ['herdr','gtx']:
                               'waittext 10s LOCAL_KEYS_RECORDED\ncells '+str(out/'switch-local.json')+'\n'
                               'stats switch-local\nmark measurement-end\nkill\n')
                 steps.write_text(procedure)
+            if a.image_probe:
+                procedure = steps.read_text().replace('kill\n', '')+'waittext 10s TB_TRANSFER_INITIAL\nstats transfer-initial\n'
+                for key, label in [('s', 'SMALL'), ('l', 'LARGE'), ('n', 'NOISE')]:
+                    procedure += 'send '+json.dumps(key)+'\nwaittext 10s TB_TRANSFER_'+label+'\nstats transfer-'+label.lower()+'\n'
+                steps.write_text(procedure+'kill\n')
             (out/'steps').write_text(steps.read_text())
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
@@ -226,6 +243,9 @@ for name in ['herdr','gtx']:
                 raise RuntimeError('saved-machine viewer procedure failed')
             if a.measure:
                 (out/'keys.json').write_bytes((root/'keys.json').read_bytes())
+            if a.image_probe:
+                probe = ssh(shlex.join(['cat', remote+'/home/image-probe.json']), capture_output=True, text=True)
+                (out/'remote-image-probe.json').write_text(probe.stdout)
 
         finally:
             if (root/'keys.json').exists():
@@ -241,12 +261,13 @@ for name in ['herdr','gtx']:
                 (out/'remote-tb-logs.json').write_text(collected.stdout)
             except Exception as error:
                 cleanup.append({'tb_log_error': str(error)})
-            try:
-                shutdown = ssh(prefix+shlex.join([a.remote_tb+'/bin/terminal-browser', 'shutdown']),
-                               capture_output=True, text=True, timeout=20)
-                (out/'tb-shutdown.log').write_text(shutdown.stdout+shutdown.stderr)
-            except Exception as error:
-                cleanup.append({'tb_shutdown_error': str(error)})
+            if not a.image_probe:
+                try:
+                    shutdown = ssh(prefix+shlex.join([a.remote_tb+'/bin/terminal-browser', 'shutdown']),
+                                   capture_output=True, text=True, timeout=20)
+                    (out/'tb-shutdown.log').write_text(shutdown.stdout+shutdown.stderr)
+                except Exception as error:
+                    cleanup.append({'tb_shutdown_error': str(error)})
             for route in ('local', 'remote'):
                 try:
                     reply = local_rpc(local_socket, 'server.stop', {}) if route == 'local' else remote_rpc('server.stop', {})
@@ -274,4 +295,4 @@ finally:
         lock.wait(timeout=10)
     lock.stdout.close()
     lock_log.close()
-print('Actual saved-machine tb upload captured; real-terminal visual acceptance remains unverified.')
+print('Saved-machine image procedure captured; real-terminal visual acceptance remains unverified.')
