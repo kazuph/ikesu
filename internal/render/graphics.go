@@ -57,52 +57,96 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 	if !changed {
 		return
 	}
-	e.clearGraphics(b)
 	ids := map[string]uint32{}
-	for _, graphic := range f.Graphics {
+	for i, graphic := range f.Graphics {
 		p := graphic.Placement
 		key := graphicKey(graphic.Pane, p.Image.ID)
 		id, exists := ids[key]
 		if !exists {
 			id = e.graphicsMap[key]
 			ids[key] = id
-			e.graphicsIDs = append(e.graphicsIDs, id)
-			data := base64.StdEncoding.EncodeToString(p.Image.Data)
-			first := true
-			for len(data) > 0 {
-				// kitty specifies at most 4096 base64 bytes per APC chunk.
-				n := min(len(data), 4096)
-				more := 0
-				if n < len(data) {
-					more = 1
+			uploaded := false
+			for _, oldID := range e.graphicsIDs {
+				uploaded = uploaded || oldID == id
+			}
+			if !uploaded {
+				data := base64.StdEncoding.EncodeToString(p.Image.Data)
+				first := true
+				for len(data) > 0 {
+					// kitty specifies at most 4096 base64 bytes per APC chunk.
+					n := min(len(data), 4096)
+					more := 0
+					if n < len(data) {
+						more = 1
+					}
+					if first {
+						fmt.Fprintf(b, "\x1b_Ga=t,t=d,f=%d,s=%d,v=%d,i=%d,q=2,m=%d;%s\x1b\\", p.Image.Format, p.Image.Width, p.Image.Height, id, more, data[:n])
+					} else {
+						fmt.Fprintf(b, "\x1b_Gm=%d;%s\x1b\\", more, data[:n])
+					}
+					data = data[n:]
+					first = false
 				}
-				if first {
-					fmt.Fprintf(b, "\x1b_Ga=t,t=d,f=%d,s=%d,v=%d,i=%d,q=2,m=%d;%s\x1b\\", p.Image.Format, p.Image.Width, p.Image.Height, id, more, data[:n])
-				} else {
-					fmt.Fprintf(b, "\x1b_Gm=%d;%s\x1b\\", more, data[:n])
-				}
-				data = data[n:]
-				first = false
 			}
 		}
 		if p.Virtual {
-			fmt.Fprintf(b, "\x1b_Ga=p,U=1,i=%d,p=%d,c=%d,r=%d,z=%d,q=2;\x1b\\", id, p.ID, p.Cols, p.Rows, p.Z)
+			fmt.Fprintf(b, "\x1b_Ga=p,U=1,i=%d,p=%d,c=%d,r=%d,z=%d,q=2;\x1b\\", id, i+1, p.Cols, p.Rows, p.Z)
 		}
 	}
-	e.graphics, e.graphicsNamespace = f.Graphics, f.GraphicsNamespace
 }
 
 func (e *Encoder) emitRealPlacements(f *Frame, b *bytes.Buffer, changed bool) {
 	if !changed {
 		return
 	}
-	for _, graphic := range f.Graphics {
+	for i, graphic := range f.Graphics {
 		p := graphic.Placement
 		if p.Virtual {
 			continue
 		}
 		id := e.graphicsMap[graphicKey(graphic.Pane, p.Image.ID)]
 		b.WriteString(cup(p.Y, p.X))
-		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,c=%d,r=%d,z=%d,C=1,q=2;\x1b\\", id, p.Cols, p.Rows, p.Z)
+		fmt.Fprintf(b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2;\x1b\\", id, i+1, p.Cols, p.Rows, p.Z)
 	}
+}
+
+func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
+	if !changed {
+		return
+	}
+	current := map[uint32]bool{}
+	placements := map[[2]uint32]bool{}
+	for i, g := range f.Graphics {
+		id := e.graphicsMap[graphicKey(g.Pane, g.Placement.Image.ID)]
+		current[id] = true
+		placements[[2]uint32{id, uint32(i + 1)}] = true
+	}
+	oldIDs := map[string]uint32{}
+	for i, g := range e.graphics {
+		key := graphicKey(g.Pane, g.Placement.Image.ID)
+		id, exists := oldIDs[key]
+		if !exists {
+			id = e.graphicsIDs[len(oldIDs)]
+			oldIDs[key] = id
+		}
+		pid := uint32(i + 1)
+		if current[id] && !placements[[2]uint32{id, pid}] {
+			fmt.Fprintf(b, "\x1b_Ga=d,d=i,i=%d,p=%d,q=2;\x1b\\", id, pid)
+		}
+	}
+	for _, id := range e.graphicsIDs {
+		if !current[id] {
+			fmt.Fprintf(b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", id)
+		}
+	}
+	e.graphicsIDs = nil
+	seen := map[uint32]bool{}
+	for _, g := range f.Graphics {
+		id := e.graphicsMap[graphicKey(g.Pane, g.Placement.Image.ID)]
+		if !seen[id] {
+			seen[id] = true
+			e.graphicsIDs = append(e.graphicsIDs, id)
+		}
+	}
+	e.graphics, e.graphicsNamespace = f.Graphics, f.GraphicsNamespace
 }

@@ -2,6 +2,7 @@ package render
 
 import (
 	"github.com/kazuph/goterrace/internal/kitty"
+	"reflect"
 )
 
 type Placeholder struct {
@@ -49,10 +50,22 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 	}
 	changed := full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics)
 	if changed {
+		previous := e.graphicsMap
 		e.graphicsMap = map[string]uint32{}
 		for _, g := range f.Graphics {
 			key := graphicKey(g.Pane, g.Placement.Image.ID)
 			if _, exists := e.graphicsMap[key]; !exists {
+				if e.graphicsNamespace == f.GraphicsNamespace {
+					for _, old := range e.graphics {
+						if old.Pane == g.Pane && reflect.DeepEqual(old.Placement.Image, g.Placement.Image) {
+							e.graphicsMap[key] = previous[key]
+							break
+						}
+					}
+				}
+				if e.graphicsMap[key] != 0 {
+					continue
+				}
 				e.nextGraphicID++
 				if e.nextGraphicID == 0 {
 					e.nextGraphicID++
@@ -75,7 +88,12 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 			cell.Content = normalized
 		}
 		cell.Style.Fg = kitty.PlaceholderColor(id)
-		cell.Style.UnderlineColor = kitty.PlaceholderColor(p.PlacementID)
+		for i, g := range f.Graphics {
+			if g.Pane == p.Pane && g.Placement.Virtual && g.Placement.Image.ID == p.ImageID && g.Placement.ID == p.PlacementID {
+				cell.Style.UnderlineColor = kitty.PlaceholderColor(uint32(i + 1))
+				break
+			}
+		}
 	}
 	return changed
 }

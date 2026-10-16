@@ -76,6 +76,7 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 	}
 
 	e.emitRealPlacements(f, &b, graphicsChanged)
+	e.retireGraphics(f, &b, graphicsChanged)
 	// Park the cursor at the anchor before ending the sync block.
 	b.WriteString(cup(anchorY, anchorX))
 	if anchorVisible {

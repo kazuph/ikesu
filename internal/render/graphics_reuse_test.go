@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/kitty"
 )
 
@@ -38,5 +39,44 @@ func TestGraphicsReuseAndReplacementOrder(t *testing.T) {
 	blank := encoder.Frame(NewFrame(40, 20), 0, 0, false)
 	if bytes.Count(blank, []byte("d=I,")) != 2 {
 		t.Fatalf("hidden sources must be released: %q", blank)
+	}
+}
+
+func TestGraphicsReuseRemovesOnlyObsoletePlacements(t *testing.T) {
+	var encoder Encoder
+	var images kitty.Store
+	outer := vt.NewEmulator(40, 20)
+	defer outer.Close()
+	outer.RegisterApcHandler(func(data []byte) bool {
+		position := outer.CursorPosition()
+		_, _, _, handled := images.Handle(data, position.X, position.Y, 8, 16, false)
+		return handled
+	})
+	frame := func() *Frame {
+		f := NewFrame(40, 20)
+		for i := 0; i < 3; i++ {
+			f.Graphics = append(f.Graphics, Graphic{Pane: 1, Placement: kitty.Placement{
+				Image: kitty.Image{ID: 42, Format: 24, Width: 1, Height: 1, Data: []byte{0, 255, 0}},
+				X:     i * 5, Y: 2, Cols: 4, Rows: 2, Virtual: i == 2,
+			}})
+		}
+		return f
+	}
+	_, _ = outer.Write(encoder.Frame(frame(), 0, 0, false))
+	if len(images.Images) != 1 || len(images.Placements) != 3 {
+		t.Fatalf("initial image and placements: %+v", images)
+	}
+	f := frame()
+	f.Graphics = f.Graphics[1:]
+	encoded := encoder.Frame(f, 0, 0, false)
+	_, _ = outer.Write(encoded)
+	if bytes.Contains(encoded, []byte("a=t,")) || len(images.Images) != 1 || len(images.Placements) != 2 {
+		t.Fatalf("removing one placement must retain the shared source and two siblings: %q %+v", encoded, images)
+	}
+	f = frame()
+	f.Graphics = f.Graphics[:1]
+	_, _ = outer.Write(encoder.Frame(f, 0, 0, false))
+	if len(images.Images) != 1 || len(images.Placements) != 1 || images.Placements[0].Virtual {
+		t.Fatalf("obsolete virtual prototype survived: %+v", images)
 	}
 }
