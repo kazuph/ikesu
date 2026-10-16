@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+type workspaceDirectoryLabel struct {
+	cwd, name string
+}
+
 func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 	names := map[int]string{}
 	git := map[int]render.GitStatus{}
@@ -46,17 +50,18 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	}
 	go func() {
 		gs := map[int]render.GitStatus{}
-		names := map[int]string{}
+		names := map[int]workspaceDirectoryLabel{}
 		for _, w := range targets {
 			gs[w.id] = readWorkspaceGit(w.cwd)
-			names[w.id] = workspaceDirectoryName(w.nameCwd)
+			names[w.id] = workspaceDirectoryLabel{w.nameCwd, workspaceDirectoryName(w.nameCwd)}
 		}
 		a.Do(func() {
+			a.workspaceLabels = names
 			a.workspaceGit = map[int]render.GitStatus{}
 			a.workspaceNames = map[int]string{}
 			for i, w := range a.st.Workspaces {
 				a.workspaceGit[i] = gs[w.ID]
-				name := names[w.ID]
+				name := names[w.ID].name
 				if w.CustomName {
 					name = w.Name
 				}
@@ -113,14 +118,18 @@ func workspaceDirectoryName(cwd string) string {
 	return filepath.Base(cwd)
 }
 
-// WorkspaceLabel resolves automatic names at the API read boundary, so a
-// metadata refresh or live handoff cannot expose a stale stored default.
+// WorkspaceLabel never runs Git on the input loop. Checkout names arrive from
+// the metadata worker; a changed directory immediately gets its basename.
 func (a *App) WorkspaceLabel(index int) string {
 	w := a.st.Workspaces[index]
 	if w.CustomName {
 		return w.Name
 	}
-	return workspaceDirectoryName(a.workspaceNameCwd(w))
+	cwd := a.workspaceNameCwd(w)
+	if label, ok := a.workspaceLabels[w.ID]; ok && label.cwd == cwd {
+		return label.name
+	}
+	return filepath.Base(cwd)
 }
 func readWorkspaceGit(cwd string) render.GitStatus {
 	var g render.GitStatus
