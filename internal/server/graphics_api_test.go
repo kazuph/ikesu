@@ -45,4 +45,14 @@ func TestPaneGraphicsSetClearAndLayerBoundary(t *testing.T) {
 	if resp := apiReq(t, dir, "pane.graphics.info", map[string]any{"pane_id": "p999999"}); resp.Err == nil || resp.Err.Code != api.ErrPaneNotFound {
 		t.Fatalf("absent pane=%+v", resp)
 	}
+	if err := os.WriteFile(config, []byte("onboarding=false\n[experimental]\nkitty_graphics=false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	apiOK(t, dir, api.MethodServerReloadConfig, api.EmptyParams{}, nil)
+	for _, method := range []string{"pane.graphics.info", "pane.graphics.set", "pane.graphics.clear", "pane.graphics.stream"} {
+		response := apiReq(t, dir, method, map[string]any{"pane_id": pane})
+		if response.Err == nil || response.Err.Code != "feature_disabled" {
+			t.Fatalf("disabled %s: %+v", method, response)
+		}
+	}
 }

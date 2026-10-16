@@ -34,6 +34,9 @@ func (s *Server) serveAPI(conn net.Conn) {
 		// events.subscribe turns this connection into an event stream;
 		// events.wait may block for the timeout, off the app loop.
 		switch req.Method {
+		case api.MethodPaneGraphicsStream:
+			s.serveGraphicsStream(conn, rd, req)
+			return
 		case api.MethodDecisionWait:
 			s.serveDecisionWait(conn, req)
 			return

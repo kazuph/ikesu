@@ -1,5 +1,10 @@
 package api
 
+import (
+	"bufio"
+	"encoding/json"
+)
+
 const (
 	MethodPaneGraphicsInfo   = "pane.graphics.info"
 	MethodPaneGraphicsSet    = "pane.graphics.set"
@@ -40,4 +45,19 @@ type PaneGraphicsInfoResult struct {
 	FileFrameDamage  bool   `json:"file_frame_damage"`
 	MaxLayersPerPane int    `json:"max_layers_per_pane"`
 	PixelMouse       bool   `json:"pixel_mouse"`
+}
+
+type PaneGraphicsStreamFrame struct {
+	PaneGraphicsSetParams
+	DataLength *uint64 `json:"data_length"`
+	File       *string `json:"file"`
+}
+
+func ReadGraphicsFrame(reader *bufio.Reader) (PaneGraphicsStreamFrame, error) {
+	var frame PaneGraphicsStreamFrame
+	line, err := readLine(reader)
+	if err == nil {
+		err = json.Unmarshal(line, &frame)
+	}
+	return frame, err
 }

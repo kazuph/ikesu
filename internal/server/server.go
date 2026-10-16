@@ -67,23 +67,24 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
-	handoffMu         sync.Mutex
-	handedOff         bool
-	decisions         decisionHub
-	screenPrompts     screenPromptHub
-	plugins           *plugin.Engine
-	pluginEvents      bool
-	pluginPanes       map[int]pluginPaneOwner
-	agentLaunches     map[int]*agentLaunch
-	closing           atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
-	workspaceMetadata map[int]map[string]*workspaceMetadata
-	paneMetadata      map[int]*paneMetadata
-	reportSources     map[int]string
-	session           string
-	dir               string
-	version           string
-	endpointPeer      endpoint.Peer
-	cwd               string // cwd the session was started from
+	graphicsStreamOwner atomic.Uint64
+	handoffMu           sync.Mutex
+	handedOff           bool
+	decisions           decisionHub
+	screenPrompts       screenPromptHub
+	plugins             *plugin.Engine
+	pluginEvents        bool
+	pluginPanes         map[int]pluginPaneOwner
+	agentLaunches       map[int]*agentLaunch
+	closing             atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
+	workspaceMetadata   map[int]map[string]*workspaceMetadata
+	paneMetadata        map[int]*paneMetadata
+	reportSources       map[int]string
+	session             string
+	dir                 string
+	version             string
+	endpointPeer        endpoint.Peer
+	cwd                 string // cwd the session was started from
 
 	lock     *os.File
 	apiLn    net.Listener
