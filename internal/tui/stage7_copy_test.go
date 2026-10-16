@@ -127,8 +127,8 @@ func TestStage7PaneReturnRestoresSearchAndViewport(t *testing.T) {
 	if a.cm != nil {
 		t.Fatal("copy view remained on other pane")
 	}
-	if viewTop(a.sup.Get(first), a.scroll[first], a.innerRect(first).H) != before.top {
-		t.Fatal("inactive pane lost copy viewport")
+	if a.paneCopies[first] == nil || a.paneCopies[first].top != before.top || a.scroll[first] != 0 {
+		t.Fatal("inactive pane lost copy viewport or changed normal scroll")
 	}
 	a.exec(model.CmdFocusPane{Pane: first})
 	if a.cm == nil {
