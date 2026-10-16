@@ -137,3 +137,19 @@ func TestStage7PaneReturnRestoresSearchAndViewport(t *testing.T) {
 		t.Fatal("real reference clears selection on departure")
 	}
 }
+
+func TestStage7ResizeInvalidatesSearchCoordinates(t *testing.T) {
+	teststate.Lock(t)
+	a := stage7CopyApp(t)
+	a.cm.query = "alpha"
+	a.copyFindAll()
+	a.copyNextMatch(1)
+	a.exec(model.CmdResize{Cols: 100, Rows: 35})
+	if a.cm.query != "alpha" || len(a.cm.matches) != 0 || a.cm.matchIdx != -1 {
+		t.Fatalf("resize retained stale search: %+v", a.cm)
+	}
+	a.copyNextMatch(1)
+	if len(a.cm.matches) == 0 || a.cm.matchIdx < 0 {
+		t.Fatal("repeat did not search the resized buffer")
+	}
+}

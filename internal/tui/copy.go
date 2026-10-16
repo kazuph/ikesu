@@ -317,7 +317,13 @@ func (a *App) copyFindAll() {
 // (wrapping) — the same rule as pane.copy_search's current index.
 func (a *App) copyNextMatch(dir int) {
 	cm := a.cm
-	if cm.query == "" || len(cm.matches) == 0 {
+	if cm.query == "" {
+		return
+	}
+	if len(cm.matches) == 0 {
+		a.copyFindAll()
+	}
+	if len(cm.matches) == 0 {
 		return
 	}
 	anchor := copybuf.Point{Row: cm.cy, Col: cm.cx}

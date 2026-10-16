@@ -217,6 +217,7 @@ func (a *App) onTick() {
 		}
 	}
 	a.popupSelectionAutoScroll()
+	a.selectionAutoScroll(now)
 	a.refreshJobDots(now)
 	a.detectAll()
 }
@@ -313,6 +314,7 @@ func (a *App) exec(cmd model.Command) {
 	switch cmd.(type) {
 	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
 		if _, resized := cmd.(model.CmdResize); resized && a.cm != nil {
+			a.cm.matches, a.cm.matchIdx = nil, -1
 			h := a.copyInnerH()
 			previousTop := a.cm.top
 			a.cm.top = max(min(a.cm.top+copyHeight-h, a.bufferLen(a.sup.Get(a.cm.pane))-h), 0)

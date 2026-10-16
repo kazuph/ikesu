@@ -652,6 +652,9 @@ func (a *App) selMouse(ev input.Event) {
 	if hx != s.ax || hy != s.ay {
 		s.moved = true
 	}
+	if ev.Kind == input.KindMouseMotion && !a.st.PopupVisible() && !a.st.OverlayVisible() {
+		a.selectionDragScroll(m)
+	}
 	if ev.Kind == input.KindMouseRelease {
 		pending := a.dblMenu
 		a.dblMenu = false

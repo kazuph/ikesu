@@ -132,6 +132,8 @@ type selState struct {
 	moved    bool
 	inner    layout.Rect // pane inner rect at drag start
 	scrollAt int         // scroll offset at drag start
+	autoDir  int
+	autoAt   time.Time
 }
 
 // appJob runs fn on the app loop goroutine and signals completion.
