@@ -131,21 +131,16 @@ func (v *Viewer) Input(a *App, bytes []byte) {
 }
 
 func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
-	previousCopyHeight, previousCopyLength := 0, 0
+	var copySizes map[*copyMode]copySize
 	v.with(a, func(ui *App) {
-		if ui.cm != nil {
-			previousCopyHeight = ui.copyInnerH()
-			previousCopyLength = ui.bufferLen(ui.sup.Get(ui.cm.pane))
-		}
+		copySizes = ui.copySizes()
 	})
 	v.cols, v.rows = cols, rows
 	v.with(a, func(ui *App) {
 		ui.enc.Reset()
 		ui.SetCellPixels(xp, yp)
 		ui.syncLayout()
-		if ui.cm != nil {
-			ui.copyResize(previousCopyHeight, previousCopyLength)
-		}
+		ui.copyResizeAll(copySizes)
 		ui.dirty = true
 	})
 	a.st.Cols, a.st.Rows = v.cols, v.rows

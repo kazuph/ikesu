@@ -595,3 +595,33 @@ func (a *App) copyResize(previousHeight, previousLength int) {
 		a.cm.anchor.y = min(max(a.cm.anchor.y, a.cm.top), a.cm.top+h-1)
 	}
 }
+
+// Each retained copy view needs its own pre-reflow dimensions, even while the
+// focused pane has no copy view. All access runs on the app loop.
+type copySize struct{ height, length int }
+
+func (a *App) copySizes() map[*copyMode]copySize {
+	sizes := make(map[*copyMode]copySize, len(a.paneCopies)+1)
+	active := a.cm
+	defer func() { a.cm = active }()
+	capture := func(cm *copyMode) {
+		a.cm = cm
+		sizes[cm] = copySize{a.copyInnerH(), a.bufferLen(a.sup.Get(cm.pane))}
+	}
+	if active != nil {
+		capture(active)
+	}
+	for _, cm := range a.paneCopies {
+		capture(cm)
+	}
+	return sizes
+}
+
+func (a *App) copyResizeAll(sizes map[*copyMode]copySize) {
+	active := a.cm
+	defer func() { a.cm = active }()
+	for cm, size := range sizes {
+		a.cm = cm
+		a.copyResize(size.height, size.length)
+	}
+}

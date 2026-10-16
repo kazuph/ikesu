@@ -264,10 +264,9 @@ func (a *App) exec(cmd model.Command) {
 			metadataOrder = append(metadataOrder, ws.ID)
 		}
 	}
-	copyHeight, copyLength := 0, 0
-	if _, resizing := cmd.(model.CmdResize); resizing && a.cm != nil {
-		copyHeight = a.copyInnerH()
-		copyLength = a.bufferLen(a.sup.Get(a.cm.pane))
+	var copySizes map[*copyMode]copySize
+	if _, resizing := cmd.(model.CmdResize); resizing {
+		copySizes = a.copySizes()
 	}
 	popupWasVisible := a.st.PopupVisible()
 	previousPopup := a.st.Popup
@@ -314,8 +313,8 @@ func (a *App) exec(cmd model.Command) {
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
 	switch cmd.(type) {
 	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
-		if _, resized := cmd.(model.CmdResize); resized && a.cm != nil {
-			a.copyResize(copyHeight, copyLength)
+		if _, resized := cmd.(model.CmdResize); resized {
+			a.copyResizeAll(copySizes)
 		}
 	default:
 		a.changed()
