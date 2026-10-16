@@ -6,9 +6,7 @@ send "\x1b[<32;333;-8M\x1b[<32;-8;24M\x1b[<0;333;-8m"
 sleep 200ms
 mouse up 45 10
 send "OFF_END"
-mouse down 45 10
 send "\x1b[<0;5000;5000M\x1b[<32;5000;5000M\x1b[<0;5000;5000m"
-mouse up 45 10
 send "OFF_OUT"
 sleep 200ms
 screen @OUT@/off-negative.txt
@@ -38,6 +36,7 @@ sleep 500ms
 send "\x14T"
 sleep 200ms
 send "\x03A\r"
+sleep 200ms
 send "\x14c"
 sleep 200ms
 send "B\r"

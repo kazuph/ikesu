@@ -141,3 +141,4 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `foreground-directory.steps` と `foreground_directory_gate.py 出力先` はshellのbetaから前面の実Pythonプロセスだけをalphaへ移して新規タブを作り、そのプロセスをbetaへ移した後に分割する。継承した絶対cwdとAPI応答を検査し、スペース名は前面プロセスでなく先頭shellのbetaをsidebar・APIとも保つことを確認する。
 `tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
 `tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。
+`mouse-negative.steps` と `mouse_negative_gate.py 出力先` はraw SGRの負座標と正の画面外座標を送る。`mouse_report_capture.py` は実端末で1002/1006を有効化する状態と無効な状態を実行し、受信した生バイトを記録する。通常キーの保持、マウス報告の文字漏れがないこと、有効な位置へ戻るまでタブのドラッグが続くことを実物と比較する。server/localをそれぞれcell/pixelで実行する。
