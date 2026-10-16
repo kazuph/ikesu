@@ -30,6 +30,9 @@ func TestPTYHandoffWakePreservesUnreadOutput(t *testing.T) {
 	if _, err := slave.Write([]byte("preserved")); err != nil {
 		t.Fatal(err)
 	}
+	if !ptyReadyNow(p.ptyFD) || !ptyReadyNow(p.ptyFD) {
+		t.Fatal("readiness probe consumed or cleared pending PTY output")
+	}
 	p.pausing.Store(true)
 	if _, err := p.wakeWrite.Write([]byte{1}); err != nil {
 		t.Fatal(err)
@@ -45,5 +48,8 @@ func TestPTYHandoffWakePreservesUnreadOutput(t *testing.T) {
 	n, err := p.readPTYReady(buf)
 	if err != nil || string(buf[:n]) != "preserved" {
 		t.Fatalf("resume lost output: %q %v", buf[:n], err)
+	}
+	if ptyReadyNow(p.ptyFD) {
+		t.Fatal("drained PTY remains readable")
 	}
 }
