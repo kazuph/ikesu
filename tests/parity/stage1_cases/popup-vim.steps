@@ -1,0 +1,16 @@
+send "\u0014t"
+sleep 400ms
+send "vim -Nu NONE -n -i NONE\r"
+sleep 500ms
+send "iSTAGE1_VIM_TEXT"
+sleep 100ms
+send "\u001b"
+sleep 100ms
+screen @OUT@/vim-normal.txt
+cells @OUT@/vim-normal.json
+send ":w! @OUT@/vim-buffer.txt\r"
+sleep 200ms
+send ":q!\r"
+sleep 200ms
+screen @OUT@/vim-exit.txt
+kill

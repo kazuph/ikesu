@@ -1,0 +1,23 @@
+screen @OUT@/startup.txt
+send "printf '\\033[>8u'\r"
+sleep 200ms
+screen @OUT@/all.txt
+send "printf '\\033[<u'\r"
+sleep 200ms
+screen @OUT@/pop.txt
+send "printf '\\033[>3u'\r"
+sleep 200ms
+screen @OUT@/events.txt
+send "printf '\\033[>4;1m'\r"
+sleep 200ms
+screen @OUT@/events-mok.txt
+send "printf '\\033[>4;0m'\r"
+sleep 200ms
+screen @OUT@/mok-off.txt
+send "printf '\\033[<u'\r"
+sleep 200ms
+screen @OUT@/restore.txt
+send "\u0014q"
+sleep 300ms
+screen @OUT@/detached.txt
+kill

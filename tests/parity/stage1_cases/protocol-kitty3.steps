@@ -1,0 +1,33 @@
+send "python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl 1b5b3e3375\r"
+waittext 5s PROBE_READY
+send "\u001b[97u"
+sleep 40ms
+send "\u001b[97;5u"
+sleep 40ms
+send "\u001b[97:65;2;65u"
+sleep 40ms
+send "\u001b[13;2u"
+sleep 40ms
+send "\u001b[A"
+sleep 40ms
+send "\u001bOA"
+sleep 40ms
+send "\u001b[1;2A"
+sleep 40ms
+send "\u001b[97;1:2u"
+sleep 40ms
+send "\u001b[97;1:3u"
+sleep 40ms
+send "\u001b[57441u"
+sleep 40ms
+send "\u001b[57441;1:3u"
+sleep 40ms
+send "\u001b[5;2~"
+sleep 40ms
+send "日"
+sleep 40ms
+send "END"
+sleep 40ms
+screen @OUT@/complete.txt
+cells @OUT@/complete.json
+kill
