@@ -6,6 +6,7 @@ from pathlib import Path
 
 out = Path(sys.argv[1])
 out.mkdir(parents=True, exist_ok=True)
+(out/'stream.steps').write_text(Path(__file__).with_name('stage1-stream.steps').read_text())
 
 def send(value):
     return 'send ' + json.dumps(value, ensure_ascii=False) + '\n'
