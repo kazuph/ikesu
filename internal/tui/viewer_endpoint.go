@@ -9,6 +9,10 @@ func (v *Viewer) SetVisible(a *App, visible bool) {
 		v.app.windowBlurred = true
 		return
 	}
+	if v.app.windowBlurred {
+		// Queries emitted while this machine was hidden did not reach the host.
+		v.with(a, func(ui *App) { ui.queryHostMouse() })
+	}
 	v.Input(a, []byte("\x1b[I"))
 }
 

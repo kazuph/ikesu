@@ -1,12 +1,46 @@
 package runtime
 
 import (
+	"fmt"
 	"io"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 )
+
+func TestPaneInBandResizeCarriesPixelGeometryForBrowserInput(t *testing.T) {
+	s := NewSupervisor()
+	p := &Pane{emu: vt.NewEmulator(131, 41), cellWidth: 8, cellHeight: 16}
+	s.setupGraphics(p)
+	defer p.emu.Close()
+	p.resizeTerminal(131, 41)
+	check := func(want string, action func()) {
+		t.Helper()
+		response := make(chan string, 1)
+		go func() {
+			data := make([]byte, 128)
+			n, _ := p.emu.Read(data)
+			response <- string(data[:n])
+		}()
+		action()
+		select {
+		case got := <-response:
+			if got != want {
+				t.Fatalf("browser resize report=%q, want %q", got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("browser resize report missing")
+		}
+	}
+	check("\x1b[48;41;131;656;1048t", func() {
+		_, _ = fmt.Fprintf(p.emu, "\x1b[?%dh", ansi.ModeInBandResize)
+	})
+	check("\x1b[48;36;111;576;888t", func() { p.resizeTerminal(111, 36) })
+	p.cellWidth, p.cellHeight = 16, 32
+	check("\x1b[48;36;111;1152;1776t", func() { p.resizeTerminal(111, 36) })
+}
 
 func TestPaneSizeQueriesUsePaneGeometry(t *testing.T) {
 	s := NewSupervisor()

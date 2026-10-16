@@ -47,7 +47,8 @@ def stages(pixel):
              ('right', 'mouse wheel-right 80 22'), ('left', 'mouse wheel-left 80 22')]
     if pixel:
         # Both points lie in the same 8x16 outer cell; their 4px difference
-        # must survive the saved-machine UI translation and browser input.
+        # must survive the saved-machine UI translation into the tb PTY.
+        # DOM CSS coordinates have the browser's separate viewport transform.
         steps += [('fine-a', 'pixel hover 322 165'), ('fine-b', 'pixel hover 326 169')]
     return steps
 
@@ -81,14 +82,30 @@ def collect(ssh, remote, root, out, viewer, pixel):
                         matched = state['moves'] > records[-1]['state']['moves']
                     elif stage == 'fine-b':
                         previous = records[-1]['state']
-                        matched = state['x']-previous['x'] == 4 and state['y']-previous['y'] == 4
+                        matched = (state['moves'] > previous['moves'] and
+                                   state['x'] != previous['x'] and state['y'] != previous['y'])
                     else:
                         matched = {'hover': state['hover'] and state['moves'] > 0,
                                    'leave': not state['hover'] and state['moves'] > 0,
-                                   'right': state['wheelX'] > 0 and state['scrollX'] > 0,
+                                   'right': state['wheelX'] > 0 and state['scrollX'] == state['wheelX'],
                                    'left': state['wheelX'] < 0 and state['scrollX'] == 0}[stage]
                     if matched:
-                        records.append({'stage': stage, 'state': state})
+                        record = {'stage': stage, 'state': state}
+                        if stage in ('fine-a', 'fine-b'):
+                            tapped = ssh(shlex.join(['cat', remote+'/home/tb-input.bin']),
+                                         capture_output=True).stdout
+                            (out/('pointer-'+stage+'-input.bin')).write_bytes(tapped)
+                            motions = re.findall(rb'\x1b\[<35;(\d+);(\d+)M', tapped)
+                            if not motions:
+                                raise RuntimeError('fine-point input did not reach the actual tb PTY')
+                            record['tb_pty_pixel'] = [int(value) for value in motions[-1]]
+                            if stage == 'fine-b':
+                                before = records[-1]['tb_pty_pixel']
+                                delta = [after-start for after, start in zip(record['tb_pty_pixel'], before)]
+                                if delta != [4, 4]:
+                                    raise RuntimeError('fine-point PTY precision was lost: '+str(delta))
+                                record['tb_pty_delta'] = delta
+                        records.append(record)
                         break
                     if time.monotonic() >= deadline:
                         raise RuntimeError('real browser DOM did not satisfy pointer stage: '+stage)

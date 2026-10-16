@@ -20,7 +20,14 @@ func (a *App) BeginHostMouse(xp, yp int) {
 		_, _ = io.WriteString(a.out, MouseOffSeq)
 		return
 	}
-	_, _ = io.WriteString(a.out, "\x1b[?1016l\x1b[?1016$p\x1b[16t\x1b[14t")
+	_, _ = io.WriteString(a.out, "\x1b[?1016l")
+	a.queryHostMouse()
+}
+
+func (a *App) queryHostMouse() {
+	if a.sidebarConfig.UI.MouseCapture == nil || *a.sidebarConfig.UI.MouseCapture {
+		_, _ = io.WriteString(a.out, "\x1b[?1016$p\x1b[16t\x1b[14t")
+	}
 }
 
 func (a *App) hostMouseReport(report uv.Event) {
