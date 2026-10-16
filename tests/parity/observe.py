@@ -154,6 +154,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             if 'error' in result:
                                 raise RuntimeError(result)
                             return result
+                    (target/'server-before-attach.json').write_text(json.dumps(request('workspace.list', {}), indent=2)+'\n')
                     if not a.server_default_workspace:
                         initial_reply = request('workspace.list', {})
                         existing = initial_reply['result']['workspaces']
