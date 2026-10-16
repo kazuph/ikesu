@@ -14,8 +14,10 @@ type Screen struct {
 	// Immutable default cells, copied into rows without sharing their storage.
 	blankLine uv.Line
 	// Duplicated private row headers allow scrolling without moving each header.
-	scrollRows    uv.Lines
-	scrollRowHead int
+	scrollRows         uv.Lines
+	scrollRowHead      int
+	runtimeASCII       bool
+	runtimeBlankBounds map[*uv.Cell]int
 	// The cur of the screen.
 	cur, saved Cursor
 	// scroll is the scroll region.

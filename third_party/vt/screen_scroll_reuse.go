@@ -17,7 +17,11 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	line := s.buf.Lines[y]
 	last := -1
 	clearEnd := 0
-	for i := len(line) - 1; i >= 0; i-- {
+	scanEnd := len(line)
+	if s.runtimeASCII && len(line) > 0 {
+		scanEnd = s.runtimeBlankBounds[&line[0]]
+	}
+	for i := scanEnd - 1; i >= 0; i-- {
 		if !blankCell(&line[i]) {
 			last = i
 			break
@@ -61,6 +65,9 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 			}
 			copy(line[:clearEnd], s.blankLine[:clearEnd])
 		}
+	}
+	if s.runtimeASCII && len(line) > 0 {
+		s.runtimeBlankBounds[&line[0]] = 0
 	}
 	// The first touch grows the bookkeeping for every row once.
 	s.buf.TouchLine(r.Min.X, r.Min.Y, r.Max.X-r.Min.X)

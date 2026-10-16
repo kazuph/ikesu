@@ -290,7 +290,7 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 		sb := p.emu.Scrollback()
 		callback := sb.OnDrop
 		sb.OnDrop = nil
-		n, err := p.emu.Write(chunk[:end])
+		n, err := p.emu.WriteRuntimeASCII(chunk[:end])
 		sb.OnDrop = callback
 		if n == end && err == nil {
 			for r.historyCount > sb.Len() {
@@ -298,7 +298,7 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 			}
 		}
 	} else {
-		_, _ = p.emu.Write(chunk[:end])
+		_, _ = p.emu.WriteRuntimeASCII(chunk[:end])
 	}
 	return end
 }
