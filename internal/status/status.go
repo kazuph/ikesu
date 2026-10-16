@@ -167,9 +167,9 @@ func Attention(state detect.State, seen bool) int {
 	switch {
 	case state == detect.Blocked:
 		return 4
-	case state == detect.Idle && !seen:
-		return 3
 	case state == detect.Working:
+		return 3
+	case state == detect.Idle && !seen:
 		return 2
 	case state == detect.Idle:
 		return 1

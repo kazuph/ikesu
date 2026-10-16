@@ -13,8 +13,8 @@ func TestTabStatusSharesSidebarPriorityGlyphColorAndSpinner(t *testing.T) {
 	states := []StatusGlyph{
 		{Key: "unknown", Rune: "·", Color: Dim},
 		{Key: "idle", Rune: "○", Color: Green},
-		{Key: "working", Rune: "⠹", Color: Yellow},
 		{Key: "done", Rune: "●", Color: Peach},
+		{Key: "working", Rune: "⠹", Color: Yellow},
 		{Key: "blocked", Rune: "●", Color: Red},
 	}
 	for _, server := range []bool{false, true} {

@@ -132,9 +132,9 @@ func TestKeysAndAttention(t *testing.T) {
 		Key(detect.Unknown, false) != "unknown" {
 		t.Fatal("key mapping wrong")
 	}
-	if !(Attention(detect.Blocked, false) > Attention(detect.Idle, false) &&
-		Attention(detect.Idle, false) > Attention(detect.Working, false) &&
-		Attention(detect.Working, false) > Attention(detect.Idle, true) &&
+	if !(Attention(detect.Blocked, false) > Attention(detect.Working, false) &&
+		Attention(detect.Working, false) > Attention(detect.Idle, false) &&
+		Attention(detect.Idle, false) > Attention(detect.Idle, true) &&
 		Attention(detect.Idle, true) > Attention(detect.Unknown, true)) {
 		t.Fatal("attention order wrong")
 	}
@@ -148,6 +148,6 @@ func TestKeysAndAttention(t *testing.T) {
 		}
 	}
 	if max != 3 {
-		t.Fatalf("aggregate = %d, want done(3)", max)
+		t.Fatalf("aggregate = %d, want working(3)", max)
 	}
 }

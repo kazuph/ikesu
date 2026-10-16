@@ -133,9 +133,9 @@ func agentRank(key string) int {
 	switch key {
 	case "blocked":
 		return 0
-	case "done":
-		return 1
 	case "working":
+		return 1
+	case "done":
 		return 2
 	case "idle":
 		return 3
@@ -710,15 +710,15 @@ func workingRune(spin int) string {
 	return frames[spin%len(frames)]
 }
 
-// glyphRank orders state keys by attention: blocked > done > working > idle
+// glyphRank orders state keys by attention: blocked > working > done > idle
 // > unknown.
 func glyphRank(g StatusGlyph) int {
 	switch g.Key {
 	case "blocked":
 		return 4
-	case "done":
-		return 3
 	case "working":
+		return 3
+	case "done":
 		return 2
 	case "idle":
 		return 1
