@@ -44,6 +44,7 @@ type clientMsg struct {
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
 	Type           string                       `json:"type"`
+	Kind           string                       `json:"kind,omitempty"`
 	Data           string                       `json:"data,omitempty"`
 	Cols           int                          `json:"cols,omitempty"`
 	Rows           int                          `json:"rows,omitempty"`
@@ -148,6 +149,7 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	graphics     *graphicsFlow
 	configEditor func(config.Edit, func(config.Config, error))
 	viewer       *tui.Viewer
 	available    int
@@ -169,7 +171,7 @@ func (c *clientConn) startWriter() {
 		if c.id == 0 {
 			c.id = int(clientSequence.Add(1))
 		}
-		c.render = make(chan clientWrite)
+		c.render = make(chan clientWrite, 1)
 		c.control = make(chan clientWrite)
 		c.done = make(chan struct{})
 		go runClientWriter(c.conn, c.id, c.render, c.control, c.done)
@@ -221,7 +223,7 @@ func (c *clientConn) close() {
 // Run starts the server for session and blocks until the app quits.
 // version is the build version reported by ping.
 func Run(session, version string) (int, error) {
-	return runEndpoint(session, version, endpoint.Current())
+	return runEndpoint(session, version, endpoint.GraphicsPeer())
 }
 
 func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handoffImport) (int, error) {
@@ -640,22 +642,13 @@ func (s *Server) attach(conn net.Conn) {
 			}
 			c.configEditor(edit, done)
 		})
-		var snapshots endpoint.SnapshotEncoder
 		c.viewer.SetMachineRequester(func(action string) error {
 			if !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, "machine_menu") {
 				return fmt.Errorf("endpoint_action_unsupported: machine_menu")
 			}
 			return c.send(clientMsg{Type: "machine_menu", MachineAction: action})
 		})
-		c.viewer.SetSnapshotSink(func(in render.Input) error {
-			data, err := snapshots.Encode(in)
-			if err != nil {
-				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_snapshot_invalid: " + err.Error()})
-				s.dropConn(c)
-				return err
-			}
-			return c.send(clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender(), FocusEpoch: c.viewer.FocusEpoch()})
-		})
+		s.installGraphicsSnapshotSink(c, hello.Peer)
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
 	})
 	defer s.dropConn(c)
@@ -669,6 +662,8 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case "control":
+			s.app.Do(func() { s.graphicsControl(c, m) })
 		case "view_config":
 			if m.Preferences != nil && (m.Preferences.SidebarWidth < 1 || m.Preferences.SidebarSectionSplit != nil && (*m.Preferences.SidebarSectionSplit < .1 || *m.Preferences.SidebarSectionSplit > .9)) {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_preferences_invalid"})

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 
 	"github.com/kazuph/goterrace/internal/endpoint"
@@ -33,6 +34,8 @@ func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, s
 		hidden := false
 		visible = &hidden
 	}
+	peer.SurfaceCodecs = []string{endpoint.GraphicsPatchCodec}
+	peer.Methods = append(peer.Methods, "control")
 	c := &endpointConnection{stream: stream, reader: bufio.NewReader(stream), writer: &writer{conn: stream}, wake: make(chan struct{}, 1)}
 	hello := msg{Peer: peer, Type: "hello", Cols: size.Cols, Rows: size.Rows, Xpixel: size.Xpixel, Ypixel: size.Ypixel, Visible: visible,
 		Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}
@@ -61,6 +64,7 @@ func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, s
 		}
 	}
 	c.writer.available, c.writer.methods = available, welcome.Methods
+	c.snapshots.GraphicsPatches = endpoint.HasGraphicsPatches(welcome.Peer)
 	if ssh, ok := stream.(*sshEndpoint); ok {
 		ssh.connected()
 	}
@@ -87,6 +91,21 @@ func (c *endpointConnection) read() (msg, error) {
 		}
 		m.snapshot = &in
 		m.Data = ""
+		if key := c.snapshots.MissingGraphicsKey; key != nil {
+			data, err := json.Marshal(struct {
+				Key any `json:"key"`
+			}{key})
+			if err != nil {
+				return msg{}, err
+			}
+			if err := c.enqueue(msg{Type: "control", Kind: endpoint.GraphicsPatchMiss, Data: string(data)}); err != nil {
+				return msg{}, err
+			}
+		} else if len(in.GraphicsPatches) > 0 {
+			if err := c.enqueue(msg{Type: "control", Kind: endpoint.GraphicsPatchAck, Data: strconv.FormatUint(in.SurfaceRevision, 10)}); err != nil {
+				return msg{}, err
+			}
+		}
 	}
 	return m, nil
 }

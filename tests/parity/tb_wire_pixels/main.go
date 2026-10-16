@@ -22,6 +22,7 @@ type record struct {
 	Bytes  int    `json:"bytes"`
 	SHA256 string `json:"sha256"`
 	Format int    `json:"format"`
+	Patch  bool   `json:"patch"`
 }
 
 func rgba(data []byte, format, width, height int) ([]byte, error) {
@@ -54,8 +55,9 @@ func snapshots(data []byte) ([]record, error) {
 	stream := json.NewDecoder(bytes.NewReader(data))
 	for {
 		var message struct {
-			Type string
-			Data []byte
+			Type          string
+			Data          []byte
+			SurfaceCodecs []string `json:"surface_codecs"`
 		}
 		err := stream.Decode(&message)
 		if err == io.EOF {
@@ -64,6 +66,9 @@ func snapshots(data []byte) ([]record, error) {
 		if err != nil {
 			return nil, err
 		}
+		if message.Type == "welcome" {
+			decoder.GraphicsPatches = endpoint.HasGraphicsPatches(endpoint.Peer{SurfaceCodecs: message.SurfaceCodecs})
+		}
 		if message.Type != "snapshot" {
 			continue
 		}
@@ -71,14 +76,24 @@ func snapshots(data []byte) ([]record, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, pane := range in.Panes {
-			for _, placement := range pane.Graphics {
+		for paneID, pane := range in.Panes {
+			for index, placement := range pane.Graphics {
 				img := placement.Image
 				pixels, err := rgba(img.Data, img.Format, img.Width, img.Height)
 				if err != nil {
 					return nil, err
 				}
-				records = append(records, record{len(img.Data), fmt.Sprintf("%x", sha256.Sum256(pixels)), img.Format})
+				count, exists := decoder.GraphicsPayloadSize(paneID, index)
+				if !exists {
+					return nil, fmt.Errorf("no wire image accounting for pane %d placement %d", paneID, index)
+				}
+				patched := false
+				for _, item := range in.GraphicsPatches {
+					if item.Pane == paneID && item.Placement == index {
+						patched = true
+					}
+				}
+				records = append(records, record{count, fmt.Sprintf("%x", sha256.Sum256(pixels)), img.Format, patched})
 			}
 		}
 	}
@@ -189,7 +204,7 @@ func patches(data []byte) ([]record, error) {
 			count += len(rect.PNG)
 		}
 		previousKey = patch.Key
-		records = append(records, record{count, fmt.Sprintf("%x", sha256.Sum256(canvas.Pix)), 100})
+		records = append(records, record{count, fmt.Sprintf("%x", sha256.Sum256(canvas.Pix)), 100, true})
 	}
 	return records, nil
 }

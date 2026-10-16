@@ -49,6 +49,7 @@ type msg struct {
 	endpoint.Peer
 	Available     int                       `json:"available_generation,omitempty"`
 	Type          string                    `json:"type"`
+	Kind          string                    `json:"kind,omitempty"`
 	Data          string                    `json:"data,omitempty"`
 	Cols          int                       `json:"cols,omitempty"`
 	Rows          int                       `json:"rows,omitempty"`

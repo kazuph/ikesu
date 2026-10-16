@@ -115,6 +115,8 @@ type JobDot struct {
 }
 
 type Input struct {
+	GraphicsPatches []PaneGraphicsPatch
+	SurfaceRevision uint64
 	PanePalette     *Palette
 	ServerUI        bool
 	State           *model.AppState

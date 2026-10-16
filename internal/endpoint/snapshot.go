@@ -8,6 +8,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
@@ -26,13 +27,17 @@ func init() {
 // SnapshotEncoder retains wire type definitions for the lifetime of one
 // connection. The returned bytes must be consumed before the next call.
 type SnapshotEncoder struct {
-	data     bytes.Buffer
-	enc      *gob.Encoder
-	grids    map[int][][]uv.Cell
-	graphics map[graphicCacheKey]compressedGraphic
+	data              bytes.Buffer
+	enc               *gob.Encoder
+	grids             map[int][][]uv.Cell
+	graphics          map[graphicCacheKey]compressedGraphic
+	GraphicsPatches   bool
+	bases             map[graphicCacheKey]kitty.Image
+	sentGraphicsPatch bool
 }
 
 func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
+	e.sentGraphicsPatch = false
 	if e.enc == nil {
 		e.enc = gob.NewEncoder(&e.data)
 	}
@@ -41,6 +46,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		e.grids = map[int][][]uv.Cell{}
 	}
 	wire := snapshotWire{Input: in, Grids: map[int]gridDelta{}}
+	wire.Input.GraphicsPatches = nil
 	wire.Optional = optionalPresence(in)
 	wire.Input.Panes = make(map[int]*render.PaneSnap, len(in.Panes))
 	aliveGraphics := map[graphicCacheKey]bool{}
@@ -53,6 +59,9 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		var err error
 		value.Graphics, err = e.wireGraphics(id, pane.Graphics, aliveGraphics)
 		if err != nil {
+			return nil, err
+		}
+		if err := e.patchGraphics(id, pane.Graphics, &value, &wire.Input); err != nil {
 			return nil, err
 		}
 		wire.Input.Panes[id] = &value
@@ -84,16 +93,28 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 			delete(e.graphics, key)
 		}
 	}
+	for key := range e.bases {
+		if !aliveGraphics[key] {
+			delete(e.bases, key)
+		}
+	}
 	if err := e.enc.Encode(wire); err != nil {
 		return nil, err
 	}
+	e.sentGraphicsPatch = len(wire.Input.GraphicsPatches) > 0
 	return e.data.Bytes(), nil
 }
 
+func (e *SnapshotEncoder) SentGraphicsPatch() bool { return e.sentGraphicsPatch }
+
 type SnapshotDecoder struct {
-	data  bytes.Buffer
-	dec   *gob.Decoder
-	grids map[int][][]uv.Cell
+	data               bytes.Buffer
+	dec                *gob.Decoder
+	grids              map[int][][]uv.Cell
+	bases              map[graphicCacheKey]kitty.Image
+	MissingGraphicsKey *render.GraphicsImageKey
+	GraphicsPatches    bool
+	graphicsPayloads   map[[2]int]int
 }
 
 func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
@@ -127,6 +148,9 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 		if _, ok := wire.Input.Panes[id]; !ok {
 			delete(d.grids, id)
 		}
+	}
+	if err := d.restoreGraphics(&wire.Input); err != nil {
+		return render.Input{}, err
 	}
 	return wire.Input, nil
 }
