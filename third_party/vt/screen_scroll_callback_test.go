@@ -10,7 +10,7 @@ import (
 func TestScrollDropCallbackMatchesOriginal(t *testing.T) {
 	originalEmpty := uv.EmptyCell
 	defer func() { uv.EmptyCell = originalEmpty }()
-	for _, mutation := range []string{"none", "prefix-style", "prefix-wide", "empty-style", "empty-content", "suffix-style", "suffix-wide", "suffix-zero", "background", "empty-width"} {
+	for _, mutation := range []string{"none", "prefix-style", "prefix-wide", "empty-style", "empty-content", "suffix-style", "suffix-wide", "suffix-zero", "background", "empty-width", "buffer-width", "empty-color"} {
 		for _, budgetRows := range []int{0, 1, 2} {
 			run := func(reference bool) (*Screen, int) {
 				uv.EmptyCell = originalEmpty
@@ -27,6 +27,10 @@ func TestScrollDropCallbackMatchesOriginal(t *testing.T) {
 				s.scrollback.OnDrop = func() {
 					drops++
 					switch mutation {
+					case "buffer-width":
+						s.buf.Resize(s.Width()+2, s.Height())
+					case "empty-color":
+						uv.EmptyCell.Style.Fg = blankPredicateSliceColor{1}
 					case "background":
 						s.cur.Pen.Bg = color.RGBA{R: 255, A: 255}
 					case "empty-width":

@@ -11,6 +11,8 @@ type Screen struct {
 	cb *Callbacks
 	// The buffer of the screen.
 	buf *uv.RenderBuffer
+	// Immutable default cells, copied into rows without sharing their storage.
+	blankLine uv.Line
 	// The cur of the screen.
 	cur, saved Cursor
 	// scroll is the scroll region.
@@ -85,6 +87,9 @@ func (s *Screen) resizeWithoutRestore(width int, height int) (pushed, pulled int
 }
 
 func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled int) {
+	if len(s.blankLine) != width {
+		s.blankLine = nil
+	}
 	oldCursor := s.cur.Position
 	if s.buf == nil {
 		s.buf = uv.NewRenderBuffer(width, height)

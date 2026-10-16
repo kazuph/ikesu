@@ -36,8 +36,20 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		dropped = s.scrollback.pushTrimmed(line[:end])
 	}
 	if dropped {
-		// OnDrop may change cells, the buffer, or the current background.
-		s.buf.Buffer.DeleteLineArea(y, 1, s.blankCell(), r)
+		if s.cur.Pen.Bg == nil && uv.EmptyCell == (uv.Cell{Content: " ", Width: 1}) && r.Max.Y <= len(s.buf.Lines) && y < len(s.buf.Lines) && r.Max.X >= s.buf.Width() {
+			line = s.buf.Lines[y]
+			if len(s.blankLine) != len(line) {
+				s.blankLine = make(uv.Line, len(line))
+				for x := range s.blankLine {
+					s.blankLine[x] = uv.Cell{Content: " ", Width: 1}
+				}
+			}
+			copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
+			copy(line, s.blankLine)
+			s.buf.Lines[r.Max.Y-1] = line
+		} else {
+			s.buf.Buffer.DeleteLineArea(y, 1, s.blankCell(), r)
+		}
 	} else {
 		copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
 		for i := 0; i < clearEnd; i++ {
