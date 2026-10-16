@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
@@ -36,6 +37,22 @@ func TestStage4CollapsedAgentClickSelectsItsPane(t *testing.T) {
 	a.sidebarClick(uv.Mouse{X: 1, Y: 30, Button: uv.MouseLeft})
 	if s.Active != 0 {
 		t.Fatal("blank lower-panel row changed workspace")
+	}
+}
+
+func TestStage4SelectedWorktreeRowRemainsClickable(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 45)
+	s.Workspaces[0].Worktree = &api.WorkspaceWorktreeInfo{RepoKey: "repo"}
+	s.Workspaces[0].GroupCollapsed = true
+	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	s.Workspaces[1].Worktree = &api.WorkspaceWorktreeInfo{RepoKey: "repo", IsLinkedWorktree: true}
+	a := NewApp(s, runtime.NewSupervisor(), nil, t.TempDir())
+	a.SetServerUI()
+	a.workspaceNavigate, a.navigateSelected = true, 1
+	s.WorkspaceDensity = "slim"
+	row, found := a.sidebarRowAt(2, 6)
+	if !found || row.Kind != render.RowWorkspace || row.Ws != 1 {
+		t.Fatalf("selected child hit target: %+v found=%t", row, found)
 	}
 }
 

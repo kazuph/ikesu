@@ -48,12 +48,16 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 	if len(configs) > 0 {
 		cfg = configs[0]
 	}
+	return sidebarRows(s, panes, cfg, nil)
+}
+
+func sidebarRows(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, selected *int) []SidebarRow {
 	rows := []SidebarRow{{Kind: RowTitle}, {Kind: RowRule}}
 	for _, sec := range model.SectionOrder {
 		var cards []SidebarRow
 		count := 0
 		for wi, w := range s.Workspaces {
-			if w.SidebarSection() != sec || s.WorktreeHidden(wi) {
+			if w.SidebarSection() != sec || (s.WorktreeHidden(wi) && (selected == nil || *selected != wi)) {
 				continue
 			}
 			count++

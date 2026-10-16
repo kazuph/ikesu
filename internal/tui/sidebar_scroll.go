@@ -12,7 +12,11 @@ type sidebarScrollDrag struct {
 }
 
 func (a *App) sidebarView() render.SidebarView {
-	return render.SidebarViewForInput(render.Input{ServerUI: a.serverUI, State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll})
+	in := render.Input{ServerUI: a.serverUI, State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll}
+	if a.workspaceNavigate {
+		in.SelectedWorkspace = &a.navigateSelected
+	}
+	return render.SidebarViewForInput(in)
 }
 
 func (a *App) revealServerWorkspace() {

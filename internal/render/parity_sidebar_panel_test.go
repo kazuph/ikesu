@@ -16,7 +16,7 @@ func TestParitySidebarSmallSettledGeometry(t *testing.T) {
 			if SidebarSplitY(s) != tc.split || SidebarFooter(s).Y != tc.split-1 {
 				t.Fatalf("height %d: divider/footer disagree with settled capture", tc.height)
 			}
-			v := SidebarViewFor(s, nil, config.Config{}, 0, 0, server)
+			v := SidebarViewFor(s, nil, config.Config{}, 0, 0, server, nil)
 			for _, p := range v.Rows {
 				if tc.height == 7 && (p.Row.Kind == RowSection || server && p.Y == 1) {
 					t.Fatalf("height 7 server=%t: clipped header remains at %d", server, p.Y)
@@ -31,7 +31,7 @@ func TestParityLocalShortSidebarKeepsPartialCardAwayFromFooter(t *testing.T) {
 		for _, height := range []int{8, 9, 10} {
 			s := model.New(t.TempDir(), 160, height)
 			s.WorkspaceDensity = density
-			v := SidebarViewFor(s, nil, config.Config{}, 0, 0, false)
+			v := SidebarViewFor(s, nil, config.Config{}, 0, 0, false, nil)
 			clipped := height < 10 || density == "full"
 			if clipped && v.Workspace.Total > v.Workspace.Rect.H {
 				t.Fatalf("%s height %d: clipped first card leaves a scrollbar", density, height)
@@ -54,7 +54,7 @@ func TestParitySidebarPanelDragObservedResizePositions(t *testing.T) {
 	} {
 		state := model.New("/tmp", 160, tc.height)
 		state.SidebarSectionSplit = &split
-		view := SidebarViewFor(state, nil, config.Config{}, 0, 0, false)
+		view := SidebarViewFor(state, nil, config.Config{}, 0, 0, false, nil)
 		if view.Agents.Rect.Y-1 != tc.agentsY {
 			t.Fatalf("height %d: agents header %d want %d", tc.height, view.Agents.Rect.Y-1, tc.agentsY)
 		}
@@ -76,7 +76,7 @@ func TestParitySidebarPanelDraggedEdgeCaptures(t *testing.T) {
 		}{{.1, tc.top}, {.9, tc.bottom}} {
 			state := model.New("/tmp", 160, tc.height)
 			state.SidebarSectionSplit = &edge.split
-			view := SidebarViewFor(state, nil, config.Config{}, 0, 0, false)
+			view := SidebarViewFor(state, nil, config.Config{}, 0, 0, false, nil)
 			if got := view.Agents.Rect.Y - 1; got != edge.y {
 				t.Fatalf("height %d split %g: header %d want %d", tc.height, edge.split, got, edge.y)
 			}
