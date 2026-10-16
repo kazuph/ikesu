@@ -30,7 +30,7 @@ func TestOverlaysHideOnlyCoveredImageCells(t *testing.T) {
 				in.Menu = &Menu{X: 50, Y: 15, Items: []MenuItem{{Label: "Close pane"}}}
 			case "toast":
 				in.ServerUI = true
-				in.Toast = &Toast{Title: "notice"}
+				in.Toast = &Toast{Title: "notice", Position: "top-right"}
 			case "dialog":
 				in.Dialog = &Dialog{Title: "Confirm"}
 			case "help":

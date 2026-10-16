@@ -323,7 +323,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		f.Fill(r.X, r.Y, r.W, r.H, " ", style)
 		f.Text(r.X+1, r.Y, in.ConfigWarning, style, r.X+r.W)
 	}
-	if in.Toast != nil {
+	if in.Toast != nil && (!in.ServerUI || s.Mobile() || in.Toast.Position != "") {
 		drawToast(f, in.Toast, out)
 	}
 	if in.Copied != "" && !in.ServerUI {
@@ -346,7 +346,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		}
 		drawNavigator(f, in.Navigator, spin)
 	}
-	f.coverGraphicsRects(graphicsCovers(in, out))
+	coverInputGraphics(in, out)
 	return out
 }
 

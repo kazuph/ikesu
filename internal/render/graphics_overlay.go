@@ -12,7 +12,14 @@ func graphicsCovers(in Input, out *Output) []image.Rectangle {
 	f := out.Frame
 	rects := []layout.Rect{out.MenuRect, out.DialogRect, out.HelpRect}
 	if in.ServerUI {
-		rects = append(rects, out.ToastRect)
+		rects = append(rects, out.ToastRect, out.ConfigWarningRect, out.ActionBar.Area)
+		if in.ModeHint != "" && !in.Prefix {
+			area := in.State.PanesArea()
+			rects = append(rects, layout.Rect{X: area.X, Y: area.Y + area.H - 1, W: area.W, H: 1})
+		}
+		if in.Copy != nil {
+			rects = append(rects, layout.Rect{Y: f.H - 1, W: f.W, H: 1})
+		}
 	}
 	if in.Settings != nil {
 		rects = append(rects, SettingsRect(f.W, f.H))
@@ -28,13 +35,28 @@ func graphicsCovers(in Input, out *Output) []image.Rectangle {
 }
 
 func (f *Frame) coverGraphicsRects(covers []image.Rectangle) {
+	f.coverGraphicsLayers(covers, image.Rectangle{}, 0)
+}
+
+func coverInputGraphics(in Input, out *Output) {
+	popup, pane := image.Rectangle{}, 0
+	if in.ServerUI && in.State.PopupVisible() {
+		r := in.State.PopupRect()
+		popup, pane = image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H), in.State.Popup.PaneID
+	}
+	out.Frame.coverGraphicsLayers(graphicsCovers(in, out), popup, pane)
+}
+
+func (f *Frame) coverGraphicsLayers(covers []image.Rectangle, popup image.Rectangle, popupPane int) {
 	var visible, untouched []Graphic
 	extra := 0
 	for _, graphic := range f.Graphics {
 		p := graphic.Placement
 		bounds := image.Rect(p.X, p.Y, p.X+p.Cols, p.Y+p.Rows)
+		behindPopup := graphic.Pane != popupPane && !popup.Empty() && !p.Virtual
 		touched := false
 		if !p.Virtual {
+			touched = behindPopup && !bounds.Intersect(popup).Empty()
 			for _, cover := range covers {
 				touched = touched || !bounds.Intersect(cover).Empty()
 			}
@@ -45,6 +67,9 @@ func (f *Frame) coverGraphicsRects(covers []image.Rectangle) {
 			continue
 		}
 		pieces := &Frame{Graphics: []Graphic{graphic}}
+		if behindPopup {
+			pieces.coverGraphics(popup)
+		}
 		for _, cover := range covers {
 			pieces.coverGraphics(cover)
 		}

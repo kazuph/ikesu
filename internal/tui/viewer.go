@@ -144,6 +144,9 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
+	if v.app.toast != nil {
+		v.with(a, func(ui *App) { ui.expireToast() })
+	}
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })
 	}

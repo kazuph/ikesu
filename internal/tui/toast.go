@@ -82,7 +82,7 @@ func (a *App) toastClick(x, y int) bool {
 }
 
 func (a *App) openToastTarget() {
-	if a.toast == nil || a.toast.target < 0 || !a.toast.shown {
+	if !a.toastVisible() || a.toast.target < 0 {
 		return
 	}
 	a.navToToastTarget()

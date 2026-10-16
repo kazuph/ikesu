@@ -1,0 +1,17 @@
+send "python3 @FIXTURES@/tb_overlay_program.py --toast --notification\r"
+waittext 5s TB_OVERLAY_READY
+cells @OUT@/overlay-base.json
+stats overlay-base
+send "n"
+waittext 5s ● 2 other
+cells @OUT@/overlay-toast.json
+screen @OUT@/overlay-toast.txt
+stats overlay-toast
+sleep 9s
+send "c"
+waittext 5s TB_OVERLAY_CLOSED
+cells @OUT@/overlay-restored.json
+screen @OUT@/overlay-restored.txt
+stats overlay-restored
+send "q"
+kill
