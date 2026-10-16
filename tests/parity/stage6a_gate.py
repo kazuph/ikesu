@@ -71,7 +71,15 @@ def sizes():
    size=json.loads(runtime(case,product)[f'home/size-{width}.json'])
    assert size=={'cols':4,'rows':2},(case,product,size)
    assert any(b[2:]==(6,4) for b in boxes(cells(case,product,'open')))
- return 'All 3 requested widths use 6x4 outer box and real 4x2 PTY.'
+ for product in ['herdr','gtx']:
+  data=runtime('popup-small-screen',product)
+  entry=json.loads(data['home/stage6a-actions.json'])[0]
+  assert 'error' not in entry['reply']
+  assert json.loads(data['home/size-6.json'])=={'cols':4,'rows':2}
+  frame=cells('popup-small-screen',product,'open')
+  assert (frame['Cols'],frame['Rows'])==(5,3)
+  assert 'EFGH' not in text('popup-small-screen',product,'open')
+ return 'All minimum widths use 6x4/4x2; 5x3 screen keeps real PTY alive without painting popup overflow.'
 
 def worktrees():
  for product in ['herdr','gtx']:
