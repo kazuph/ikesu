@@ -52,8 +52,11 @@ for who in ['herdr','gtx']:
  e=entries('toast-lifecycle',who)
  assert [x['reply']['result']['reason'] for x in e]==['shown','busy','shown'],(who,e)
  f=load('toast-background-target',who,'target')
- row=''.join(c['Content'] for c in f['Cells'][0])
- assert '2 日本語' in row,(who,row)
+ target=next(x['reply']['result']['root_pane']['pane_id'] for x in entries('toast-background-target',who) if x['method']=='workspace.create')
+ header=''.join(c['Content'] for c in f['Cells'][1])
+ assert f' %{target[1:]} codex ' in header,(who,target,header)
+ selected=[''.join(c['Content'] for c in row) for row in f['Cells'] if row[0]['Content']=='▌']
+ assert any('日本語' in row for row in selected),(who,selected)
  assert f['Cells'][1][145]['Content']!='●','toast target navigation did not dismiss'
  f=load('toast-background-expiry',who,'expired')
  assert f['Cells'][1][145]['Content']!='●','background toast did not expire'
