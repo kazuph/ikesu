@@ -23,23 +23,23 @@ func TestStage7DragEdgeAutoScrollAndClickControl(t *testing.T) {
 		t.Fatal("edge click scrolled")
 	}
 	a.selMouse(input.Event{Kind: input.KindMouseMotion, Mouse: uv.Mouse{X: inner.X + 5, Y: inner.Y - 2, Button: uv.MouseLeft}})
-	if a.scroll[pid] != 4 {
-		t.Fatalf("outside distance: offset=%d want 4", a.scroll[pid])
+	if a.scroll[pid] != 6 {
+		t.Fatalf("outside distance: offset=%d want 6", a.scroll[pid])
 	}
 	at := a.sel.autoAt
 	a.selectionAutoScroll(at.Add(3 * selectionScrollInterval))
-	if a.scroll[pid] != 7 {
-		t.Fatalf("stationary drag offset=%d want 7", a.scroll[pid])
+	if a.scroll[pid] != 9 {
+		t.Fatalf("stationary drag offset=%d want 9", a.scroll[pid])
 	}
 	a.selMouse(input.Event{Kind: input.KindMouseMotion, Mouse: uv.Mouse{X: inner.X + 5, Y: inner.Y + inner.H - 1, Button: uv.MouseLeft}})
 	at = a.sel.autoAt
 	a.selectionAutoScroll(at.Add(2 * selectionScrollInterval))
-	if a.scroll[pid] != 5 {
-		t.Fatalf("bottom edge offset=%d want 5", a.scroll[pid])
+	if a.scroll[pid] != 7 {
+		t.Fatalf("bottom edge offset=%d want 7", a.scroll[pid])
 	}
 	a.sel = nil
 	a.selectionAutoScroll(at.Add(time.Second))
-	if a.scroll[pid] != 5 {
+	if a.scroll[pid] != 7 {
 		t.Fatal("selection release did not stop scroll")
 	}
 }

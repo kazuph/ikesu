@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Observed edge movement is one row per 33 ms; outside movement adds two
+// Observed edge movement is one row per 33 ms; outside movement adds three
 // rows per cell beyond the viewport (stage7 k28-timing captures).
 const selectionScrollInterval = 33 * time.Millisecond
 
@@ -26,7 +26,7 @@ func (a *App) selectionDragScroll(m uv.Mouse) {
 	}
 	s.autoDir = dir
 	if distance > 0 {
-		a.selectionScrollBy(2 * distance * dir)
+		a.selectionScrollBy(3 * distance * dir)
 	}
 }
 

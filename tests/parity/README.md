@@ -200,3 +200,10 @@ ubuntu-3090の `~/bench-terrace/work/stage7-baseline-dd2168c`、対象を
 `python3 ~/bench-terrace/work/perf-lock.py sh tests/parity/stage7_perf.sh` として実行する。
 基準と対象は同じGoとビルド引数でビルドし、P1の相対値だけを判定する。
 ローカルpasteboardへの実書込み成功はsandbox観察では未検証のまま残す。
+
+`k28-immediate-{up,down}-{one,two}.steps` は枠外へのmotion直後にreleaseし、
+定期スクロールが進む前の距離依存の即時移動を上下1セル/2セルで比較する。
+`k28-boundaries.steps` は120行の履歴を端まで選択してから上下の到達位置とコピー全文を比較する。
+`k28-timing.steps` の速度は保存時刻と移動行数を使って比較する。許容する行差は、
+観測した33ms/行の参照側の位相1行とgtxの既存50ms更新周期から算出し、
+動作中のセル差そのものは消さずに証拠に残す。

@@ -29,6 +29,10 @@ cases = {
     'k29-width': send('\x14[')+send('/alpha\r')+save('searched')+'resize 100 45\nsleep 400ms\n'+save('resized')+send('n')+save('repeated'),
     'k30-fallback': send('\x14[')+send('g0vll')+save('selected')+send('y')+save('copied'),
 }
+for direction, y in [('up-one', 2), ('up-two', 1), ('down-one', 44), ('down-two', 45)]:
+    cases['k28-immediate-'+direction] = ('mouse wheel-up 80 20\n'*8+'sleep 200ms\n'+save('before')+
+        f'mouse down 80 20\nmouse motion 80 {y}\nmouse up 80 {y}\nsleep 200ms\n'+save('released'))
+
 timing = 'mouse down 80 20\nmouse motion 80 3\n'
 for i in range(6):
     timing += save(f'tick-{i}')+'sleep 100ms\n'
