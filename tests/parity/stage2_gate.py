@@ -68,7 +68,10 @@ for i in range(1,10):
  for form in ['symbol','base']:
   check('indexed-workspace',f'{form} {i} selects workspace',selected('indexed-workspace',f'{form}-{i}'),['parity' if i==1 else f'indexed-{i}'])
 for i in range(1,10):
+ other=9 if i==1 else i-1
+ check('user-all-numbers',f'cmd+{i} starts on a different expected workspace',selected('user-all-numbers',f'before-number-{i}'),['parity' if other==1 else f'indexed-{other}'])
  check('user-all-numbers',f'unchanged cmd+{i} selects expected workspace',selected('user-all-numbers',f'number-{i}'),['parity' if i==1 else f'indexed-{i}'])
+ check('user-all-numbers',f'cmd+{i} changes selection',lambda p:selected('user-all-numbers',f'before-number-{i}')(p)!=selected('user-all-numbers',f'number-{i}')(p),True)
 for case in ['config-invalid','config-printable']:
  check(case,'invalid binding does not restore default',has(case,'default','keybinds'),False)
  check(case,'plain a reaches shell',lambda p:bool(re.search(r'PARITY> a\s',screen(case,p,'plain'))),True)

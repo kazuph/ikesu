@@ -66,6 +66,8 @@ for name,spec,base,symbol,mod,prefix in [('slash-base','prefix+shift+slash',47,6
     add('review-'+name,steps,'help='+json.dumps(spec))
 unchanged=send('python3 @FIXTURES@/stage2_fixture.py indexed\r')+'waittext 5s STAGE2_FIXTURE_READY\n'
 for i in range(1,10):
+    other=9 if i==1 else i-1
+    unchanged+=send('\x1b['+str(ord('0')+other)+';9u')+screen('before-number-'+str(i))
     unchanged+=send('\x1b['+str(ord('0')+i)+';9u')+screen('number-'+str(i))
 add('user-all-numbers',unchanged)
 (root/'index.json').write_text(json.dumps(cases,indent=2)+'\n')
