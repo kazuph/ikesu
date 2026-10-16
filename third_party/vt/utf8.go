@@ -92,8 +92,9 @@ func (e *Emulator) printRun(run []byte) {
 		}
 
 		first, last := n, 0
+		c := uv.Cell{Width: 1, Style: pen, Link: link}
 		for k := 0; k < n; k++ {
-			c := uv.Cell{Content: asciiContent[run[i+k]], Width: 1, Style: pen, Link: link}
+			c.Content = asciiContent[run[i+k]]
 			if line[x+k] != c {
 				if k < first {
 					first = k

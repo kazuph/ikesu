@@ -2,6 +2,7 @@ package vt
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,8 @@ func TestPrintRunEquivalence(t *testing.T) {
 		in   string
 	}{
 		{"plain", "hello world"},
+		{"colors and links", "\x1b[38;2;17;33;65;48;5;24mcolor words\x1b]8;id=p1;https://example.com\x1b\\linked text\x1b]8;;\x1b\\\x1b[0m plain"},
+		{"rewrite styled cells", "\x1b[1;4;31mabcdefghij\r\x1b[0;32mabcdXfghij\r\x1b[0mfinal"},
 		{"lines scroll", strings.Repeat("abcdefg\r\n", 20)},
 		{"fill exact width", strings.Repeat("x", w) + "\r\nnext"},
 		{"overlong autowrap", long + "\r\nafter"},
@@ -88,8 +91,20 @@ func TestPrintRunEquivalence(t *testing.T) {
 			slow.disableFastPrint = true
 			runWrites(fast, []byte(tc.in), ch)
 			runWrites(slow, []byte(tc.in), ch)
+			for y := 0; y < h; y++ {
+				for x := 0; x < w; x++ {
+					if !reflect.DeepEqual(fast.scr.CellAt(x, y), slow.scr.CellAt(x, y)) {
+						t.Fatalf("%s chunk=%d cell=(%d,%d) differs including style and link", tc.name, ch, x, y)
+					}
+				}
+			}
 			if got, want := dumpEmulator(fast), dumpEmulator(slow); got != want {
 				t.Fatalf("%s chunk=%d mismatch\nfast:\n%s\nslow:\n%s", tc.name, ch, got, want)
+			}
+			for row := 0; row < fast.Scrollback().Len(); row++ {
+				if !reflect.DeepEqual(fast.Scrollback().Line(row), slow.Scrollback().Line(row)) {
+					t.Fatalf("%s chunk=%d retained row=%d differs including style and link", tc.name, ch, row)
+				}
 			}
 		}
 	}
