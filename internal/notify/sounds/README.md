@@ -6,8 +6,8 @@ MIT license. No herdr waveform, melody, decoded samples, or source code is used.
 
 Regenerate from the repository root with `python3 tools/generate_sounds.py`.
 The generator uses only Python's standard library and takes no audio input.
-Done is a soft two-note chime (E5 then B5); request is two light taps on G5
-followed by D6. Each note is a mallet-like sum of decaying partials with a
+Done is a soft two-note chime (E4 then B4); request is two light taps on G4
+followed by D5 (lowered one octave on 2026-10-17 at 店長's request). Each note is a mallet-like sum of decaying partials with a
 short attack, a light 37 ms echo and an end fade (replaced 2026-10-17 because
 the earlier flat sine motif was unpleasant).
 Pitches use twelve-tone equal temperament with A4 = 440 Hz.

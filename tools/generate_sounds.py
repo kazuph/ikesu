@@ -12,10 +12,10 @@ ROOT = Path(__file__).resolve().parents[1] / "internal/notify/sounds"
 # Pitches, mallet-like partials and envelopes are original, with no audio input.
 SOUNDS = {
     # name: (rate, duration, mean_db, notes as (midi, start_seconds, velocity))
-    # done: a soft two-note "pon-pin" (E5 then B5, a perfect fifth up).
-    "done": (48000, 1.080000, -23.9, ((76, 0.00, 1.0), (83, 0.13, 0.85))),
-    # request: two light taps then a brighter answer (G5, G5, D6) to ask for attention gently.
-    "request": (44100, 1.462844, -23.2, ((79, 0.00, 0.8), (79, 0.17, 0.7), (86, 0.42, 1.0))),
+    # done: a soft two-note "pon-pin" (E4 then B4, a perfect fifth up).
+    "done": (48000, 1.080000, -23.9, ((64, 0.00, 1.0), (71, 0.13, 0.85))),
+    # request: two light taps then a brighter answer (G4, G4, D5) to ask for attention gently.
+    "request": (44100, 1.462844, -23.2, ((67, 0.00, 0.8), (67, 0.17, 0.7), (74, 0.42, 1.0))),
 }
 
 # Mallet/glass-like timbre: harmonic and slightly inharmonic partials, each
