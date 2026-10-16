@@ -167,7 +167,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			hasState = true
 		}
 	}
-	if r.Line == 0 {
+	if r.Line == 0 && !hasConfiguredAgentRows(in.SidebarConfig, sn.Agent) {
 		if !hasState {
 			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg, Attrs: uv.AttrBold}, fixed: true})
 		}
@@ -193,6 +193,16 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		case "pane":
 			v.style.Attrs |= uv.AttrBold
 			v.text = fmt.Sprintf("%%%d", r.Pane)
+			if hasConfiguredAgentRows(in.SidebarConfig, sn.Agent) {
+				v.text = sn.Title
+				if label := s.PaneLabels[r.Pane]; label != "" {
+					v.text = label
+				}
+				if v.text == "" {
+					v.text = sn.Label
+				}
+				v.style.Attrs &^= uv.AttrBold
+			}
 			v.fixed = true
 		case "workspace":
 			v.text = in.WorkspaceNames[r.Ws]

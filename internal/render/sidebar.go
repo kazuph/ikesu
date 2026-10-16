@@ -118,7 +118,14 @@ func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.C
 		if specific, ok := panel.RowsByAgent[panes[r.Pane].Agent]; ok {
 			configured = specific
 		}
+		custom := hasConfiguredAgentRows(cfg, panes[r.Pane].Agent)
+		if custom {
+			configured = visibleAgentRows(s, panes, r, configured)
+		}
 		count := max(1, len(configured))
+		if custom {
+			count = len(configured)
+		}
 		for line := 0; line < count; line++ {
 			r.Line = line
 			rows = append(rows, r)
@@ -484,6 +491,9 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		rows := panel.Rows
 		if specific, ok := panel.RowsByAgent[in.Panes[r.Pane].Agent]; ok {
 			rows = specific
+		}
+		if hasConfiguredAgentRows(in.SidebarConfig, in.Panes[r.Pane].Agent) {
+			rows = visibleAgentRows(s, in.Panes, r, rows)
 		}
 		if len(rows) > 0 {
 			if r.Line < len(rows) {

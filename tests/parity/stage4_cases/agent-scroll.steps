@@ -1,0 +1,22 @@
+send "python3 @FIXTURES@/socket_action.py create-agent-overflow; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/parity-agent-overflow.json 10s
+sleep 1s
+screen @OUT@/overflow.txt
+cells @OUT@/overflow.json
+mouse wheel-down 10 30
+sleep 500ms
+screen @OUT@/agents-down.txt
+cells @OUT@/agents-down.json
+mouse wheel-up 10 30
+sleep 500ms
+screen @OUT@/agents-up.txt
+cells @OUT@/agents-up.json
+resize 160 25
+sleep 500ms
+screen @OUT@/short.txt
+cells @OUT@/short.json
+mouse wheel-down 10 18
+sleep 500ms
+screen @OUT@/short-down.txt
+cells @OUT@/short-down.json
+kill

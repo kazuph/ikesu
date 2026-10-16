@@ -1,6 +1,7 @@
 package render
 
 import (
+	"strings"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -34,6 +35,37 @@ func TestStage4ConfiguredAgentDimSurvivesDrawing(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("line %d: agent text missing", pos.Row.Line)
+		}
+	}
+}
+
+func TestStage4CustomAgentUsesOnlyRequestedTokensAndOmitsEmptyRows(t *testing.T) {
+	s := model.New("/tmp/project", 160, 45)
+	s.Workspaces[0].Name, s.Workspaces[0].CustomName = "project", true
+	s.PaneLabels = map[int]string{1: "CUSTOM_LABEL"}
+	for _, token := range []string{"pane", "workspace"} {
+		cfg := config.Config{}
+		cfg.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: token}}, {{Token: "$absent"}}}
+		in := Input{State: s, ServerUI: true, SidebarConfig: cfg,
+			Panes: map[int]*PaneSnap{1: {Agent: "codex", Title: "TITLE", Label: "codex", Status: StatusGlyph{Rune: "○"}}}}
+		out := Compose(in)
+		count := 0
+		for _, pos := range SidebarViewForInput(in).Rows {
+			if pos.Row.Kind != RowAgent {
+				continue
+			}
+			count++
+			line := frameLine(out.Frame, pos.Y)[:25]
+			want := "project"
+			if token == "pane" {
+				want = "CUSTOM_LABEL"
+			}
+			if strings.TrimSpace(line) != want {
+				t.Fatalf("%s: got %q want %q", token, line, want)
+			}
+		}
+		if count != 1 {
+			t.Fatalf("%s: %d rows, want 1", token, count)
 		}
 	}
 }
