@@ -1,6 +1,11 @@
 #!/bin/sh
 # Run on mini through work/perf-lock.py so builds and tests cannot disturb P1.
 set -eu
+phase="${2:-all}"
+case "$phase" in
+    all|validation) ;;
+    *) printf 'expected phase all or validation\n' >&2; exit 1 ;;
+esac
 root="$HOME/bench-terrace.noindex"
 export PATH="$root/tools/go/bin:$PATH"
 export GOMODCACHE="$root/gomodcache"
@@ -26,6 +31,10 @@ for scenario in graphics reuse; do
         python3 tests/parity/tb_graphics_gate.py "$out/$scenario"
     fi
 done
+if [ "$phase" = validation ]; then
+    printf 'PASS: gofmt, vet, test, race, T7/T10/T17 observations; P1 must be run separately\n'
+    exit 0
+fi
 GTX_PERF_BIN="$out/gtx" \
 GTX_PERF_BASELINE_BIN="$root/work/detail/gtx-baseline-06614cc" \
 GTX_PERF_OUT="$out/relative-perf.md" \
