@@ -98,6 +98,9 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	if event.Kind == input.KindTerminalReport {
+		m.tabMouse.report(event.Report, m.size)
+	}
 	if event.Kind == input.KindBlur {
 		m.blurred = true
 	} else if event.Kind == input.KindFocus {

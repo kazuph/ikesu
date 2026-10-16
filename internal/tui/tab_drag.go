@@ -24,7 +24,10 @@ func (a *App) tabGestureMouse(ev input.Event) {
 		g.drop = -1
 		if g.ws == a.st.Active {
 			g.drop = render.TabDropIndex(a.tabHits, m.X, m.Y)
-			g.target = render.TabDragIndex(a.tabHits, m.X)
+			g.target = g.drop
+			if a.serverUI {
+				g.target = render.TabDragIndex(a.tabHits, m.X)
+			}
 		}
 	}
 	if ev.Kind == input.KindMouseRelease {

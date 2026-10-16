@@ -240,6 +240,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				break
 			}
 			if event.id == m.active {
+				m.tabMouse.output(data)
 				_, _ = m.out.Write(data)
 			}
 		}

@@ -99,13 +99,11 @@ func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 		t.Fatal("outside target retained marker")
 	}
 	sidebarEvent(a, input.KindMouseRelease, last.X+1, 2)
-	want := []int{before[1], before[0], before[2]}
-	for i, id := range want {
+	for i, id := range before {
 		if ws.Tabs[i].ID != id {
-			t.Fatal("outside release discarded the last valid target")
+			t.Fatal("standalone outside motion reordered tabs")
 		}
 	}
-	before = want
 	if ws.TabRef().ID != active || a.tabGesture != nil {
 		t.Fatal("cancel retained gesture or changed focus")
 	}
@@ -133,5 +131,30 @@ func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 	}
 	if restored.TabRef().ID != active {
 		t.Fatal("save/restore lost focus")
+	}
+}
+
+func TestTabDragOutsideMotionMatchesAttachmentMode(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		t.Run(map[bool]string{false: "standalone", true: "server"}[server], func(t *testing.T) {
+			teststate.Lock(t)
+			a := specRuntimeApp(t)
+			a.serverUI = server
+			a.exec(model.CmdNewTab{Workspace: 0})
+			a.draw()
+			ws := a.st.ActiveWorkspace()
+			first, active := ws.Tabs[0].ID, ws.TabRef().ID
+			start, last := a.tabHits[0], a.tabHits[1]
+			sidebarEvent(a, input.KindMouseClick, start.X+1, start.Y)
+			sidebarEvent(a, input.KindMouseMotion, last.X+last.W-1, last.Y+2)
+			sidebarEvent(a, input.KindMouseRelease, last.X+last.W-1, last.Y+2)
+			index := 0
+			if server {
+				index = 1
+			}
+			if ws.Tabs[index].ID != first || ws.TabRef().ID != active {
+				t.Fatal("outside motion differs from the observed attachment mode")
+			}
+		})
 	}
 }
