@@ -26,9 +26,10 @@ func init() {
 // SnapshotEncoder retains wire type definitions for the lifetime of one
 // connection. The returned bytes must be consumed before the next call.
 type SnapshotEncoder struct {
-	data  bytes.Buffer
-	enc   *gob.Encoder
-	grids map[int][][]uv.Cell
+	data     bytes.Buffer
+	enc      *gob.Encoder
+	grids    map[int][][]uv.Cell
+	graphics map[graphicCacheKey]compressedGraphic
 }
 
 func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
@@ -42,12 +43,18 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 	wire := snapshotWire{Input: in, Grids: map[int]gridDelta{}}
 	wire.Optional = optionalPresence(in)
 	wire.Input.Panes = make(map[int]*render.PaneSnap, len(in.Panes))
+	aliveGraphics := map[graphicCacheKey]bool{}
 	for id, pane := range in.Panes {
 		if pane == nil {
 			return nil, fmt.Errorf("unsupported nil pane snapshot")
 		}
 		value := *pane
 		value.Grid = nil
+		var err error
+		value.Graphics, err = e.wireGraphics(id, pane.Graphics, aliveGraphics)
+		if err != nil {
+			return nil, err
+		}
 		wire.Input.Panes[id] = &value
 		grid := pane.Grid
 		old := e.grids[id]
@@ -70,6 +77,11 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 	for id := range e.grids {
 		if _, ok := in.Panes[id]; !ok {
 			delete(e.grids, id)
+		}
+	}
+	for key := range e.graphics {
+		if !aliveGraphics[key] {
+			delete(e.graphics, key)
 		}
 	}
 	if err := e.enc.Encode(wire); err != nil {
