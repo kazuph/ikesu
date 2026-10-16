@@ -51,6 +51,11 @@ if a.switch_hold and (a.measure or a.image_probe or a.visibility or a.pointer_pr
     p.error('switch hold requires SSH capture and actual tb input tap, separately from other modes')
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
+ssh_config = out/'ssh-config'
+control_path = '/tmp/tb-ssh-'+uuid.uuid4().hex[:12]
+ssh_config.write_text('Host *\n  ControlMaster auto\n  ControlPersist yes\n  ControlPath '+control_path+
+                      '\n  ConnectionAttempts 3\nInclude "'+str(Path.home()/'.ssh/config')+'"\n')
+ssh_args = ['/usr/bin/ssh', '-F', str(ssh_config)]
 observer_source = Path(__file__).read_bytes()
 (out/'observer-source.py').write_bytes(observer_source)
 binary = str(a.binary.resolve())
@@ -58,7 +63,7 @@ version = subprocess.check_output([binary, '--version'], text=True).strip()
 if a.product == 'herdr' and version != 'herdr 0.2.57':
     raise SystemExit(f'reference version changed: {version}')
 remote = '/Users/kazuph/bench-terrace.noindex/work/tb-optimize/r-'+uuid.uuid4().hex[:6]
-config = 'onboarding=false\n[experimental]\nkitty_graphics=true\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n'
+config = 'onboarding=false\n[experimental]\nkitty_graphics=true\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n[remote]\nmanage_ssh_config=false\n'
 expected_keys = 'abcdefghijklmnop'
 (out/'inputs.json').write_text(json.dumps({'product': a.product, 'binary': binary, 'version': version,
                                                        'observer_sha256': hashlib.sha256(observer_source).hexdigest(),
@@ -88,7 +93,7 @@ with socket.socket(socket.AF_UNIX) as c:
 
 
 def ssh(command, **kwargs):
-    return subprocess.run(['/usr/bin/ssh', '-o', 'BatchMode=yes', 'mini', command], check=True, **kwargs)
+    return subprocess.run(ssh_args+['-o', 'BatchMode=yes', 'mini', command], check=True, **kwargs)
 
 
 def local_rpc(path, method, params):
@@ -127,7 +132,7 @@ def wait_for_file(path, viewer):
 
 
 lock_log = (out/'lock.log').open('w')
-lock = subprocess.Popen(['/usr/bin/ssh', '-T', 'mini', '~/bench-terrace.noindex/work/perf-lock.py python3 -c '+
+lock = subprocess.Popen(ssh_args+['-T', 'mini', '~/bench-terrace.noindex/work/perf-lock.py python3 -c '+
                          shlex.quote("import sys;print('TB_LOCK_READY',flush=True);sys.stdin.read()")],
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=lock_log, text=True)
 try:
@@ -140,13 +145,21 @@ try:
         raise RuntimeError('mini lock was not acquired')
     with (out/'mini-load.log').open('w') as load_log:
         ssh('uptime', stdout=load_log)
+    distribution = ssh(shlex.join(['python3', '-c',
+                                  'import json,pathlib,subprocess,sys;print(json.dumps({"binary_version":subprocess.check_output([sys.argv[1],"--version"],text=True).strip(),"tb_version":(pathlib.Path(sys.argv[2])/"VERSION").read_text().strip()}))',
+                                  a.remote_binary, a.remote_tb]), capture_output=True, text=True)
+    (out/'remote-distribution.json').write_text(distribution.stdout)
+    if a.product == 'herdr' and json.loads(distribution.stdout)['binary_version'] != version:
+        raise RuntimeError('main and mini reference versions differ')
     with tempfile.TemporaryDirectory(prefix='tb-saved-', dir='/tmp') as temporary:
         root = Path(temporary)
         for name in ('home', 'config', 'state/t', 'data', 'bin'):
             (root/name).mkdir(parents=True, exist_ok=True)
         (root/'config.toml').write_text(config)
-        # Keep the existing SSH identity/config available without changing it.
-        (root/'home/.ssh').symlink_to(Path.home()/'.ssh', target_is_directory=True)
+        # The observer owns this configuration and master; existing identities
+        # and host settings are read through Include without changing them.
+        (root/'home/.ssh').mkdir(mode=0o700)
+        (root/'home/.ssh/config').write_text(ssh_config.read_text())
         (root/'home/.zshrc').write_text("PS1='TB_LOCAL> '\nunset HISTFILE\n")
         remote_env = {'HOME': remote+'/home', 'ZDOTDIR': remote+'/home',
                       'XDG_CONFIG_HOME': remote+'/c', 'XDG_STATE_HOME': remote+'/s',
@@ -180,7 +193,7 @@ for name in ['herdr','gtx']:
         ssh_wrapper.write_text('#!/usr/bin/python3\nimport os,sys\na=sys.argv[1:]\n'
                                "i=a.index('mini')\n"+
                                'a[i+1:]=['+repr(prefix)+'+" ".join(a[i+1:])]\n'
-                               'os.execv("/usr/bin/ssh",["ssh"]+a)\n')
+                               'os.execv("/usr/bin/ssh",'+repr(ssh_args)+'+a)\n')
         ssh_wrapper.chmod(0o700)
         env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CODEX', 'CLAUDE'))}
         env.update(HOME=str(root/'home'), ZDOTDIR=str(root/'home'), XDG_CONFIG_HOME=str(root/'config'),
@@ -191,7 +204,7 @@ for name in ['herdr','gtx']:
                    HERDR_MACHINE_REMOTE_BINARY=remote+'/bin/herdr', GTX_MACHINE_REMOTE_BINARY=remote+'/bin/gtx')
         if a.capture_ssh:
             ssh_wrapper.write_bytes(Path(__file__).with_name('tb_ssh_capture.py').read_bytes())
-            env.update(TB_SSH_OBSERVER_PREFIX=prefix, TB_SSH_CAPTURE_ROOT=str(out/'ssh'))
+            env.update(TB_SSH_OBSERVER_PREFIX=prefix, TB_SSH_CAPTURE_ROOT=str(out/'ssh'), TB_SSH_CONFIG=str(ssh_config))
             if a.resize_wait or a.switch_hold:
                 env.update(TB_SSH_HOLD_MARKER=str(root/'hold-remote-output.json'),
                            TB_SSH_RELEASE_MARKER=str(root/'release-remote-output'))
@@ -204,7 +217,7 @@ for name in ['herdr','gtx']:
         try:
             for name, command, child_env in [
                     ('local-server', [binary, '--session', 't', 'server'], env),
-                    ('remote-server', ['/usr/bin/ssh', '-T', 'mini', prefix+shlex.join([a.remote_binary, '--session', 't', 'server'])], None)]:
+                    ('remote-server', ssh_args+['-T', 'mini', prefix+shlex.join([a.remote_binary, '--session', 't', 'server'])], None)]:
                 log = (out/(name+'.log')).open('w'); logs.append(log)
                 owned.append(subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT))
             with closing(select.kqueue()) as events:
@@ -257,7 +270,9 @@ for name in ['herdr','gtx']:
                 receiver_command = shlex.join(['python3', receiver, '--out', remote+'/home/adjacent-keys.json'])
                 result(remote_rpc('pane.send_input', {'pane_id': adjacent, 'text': receiver_command, 'keys': ['Enter']}))
             added = subprocess.run([binary, '--session', 't', 'machine', 'add', 'mini', '--label', 'tb-host', '--remote-session', 't'],
-                                   env=env, capture_output=True, text=True, timeout=30, check=True)
+                                   env=env, capture_output=True, text=True, timeout=30)
+            (out/'machine-add.log').write_text(added.stdout+added.stderr)
+            added.check_returncode()
             (out/'machine-add.json').write_text(added.stdout)
             command = shlex.join([a.remote_tb+'/bin/terminal-browser', 'file://'+remote+'/page.html', '--no-merge',
                                   '--no-toolbar', '--no-shortcuts', '--no-context-menu', '--no-overlays', '--no-frame'])
@@ -291,7 +306,7 @@ for name in ['herdr','gtx']:
                 steps.write_text(steps.read_text().replace('kill\n', '')+tb_pointer_probe.procedure(root, a.pixel_mouse)+'kill\n')
             if a.adjacent_input:
                 steps.write_text(steps.read_text().replace('kill\n', '')+
-                                 'waittext 10s LOCAL_SWITCH_READY\nclick 120 22\nsend '+json.dumps(expected_keys+'\r')+'\n'
+                                 'waittext 10s LOCAL_SWITCH_READY\nmouse down 120 22\nmouse up 120 22\nsend '+json.dumps(expected_keys+'\r')+'\n'
                                  'waittext 10s LOCAL_KEYS_RECORDED\ncells '+str(out/'adjacent-input.json')+'\nkill\n')
             if a.resize_wait:
                 steps.write_text(steps.read_text().replace('kill\n', '')+
@@ -449,4 +464,6 @@ finally:
         lock.wait(timeout=10)
     lock.stdout.close()
     lock_log.close()
+    closed = subprocess.run(ssh_args+['-O', 'exit', 'mini'], capture_output=True, text=True)
+    (out/'ssh-master-close.log').write_text(closed.stdout+closed.stderr)
 print('Saved-machine image procedure captured; real-terminal visual acceptance remains unverified.')

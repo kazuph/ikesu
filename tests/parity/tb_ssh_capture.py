@@ -18,6 +18,7 @@ if not prefix.startswith('export HOME=/Users/kazuph/bench-terrace.noindex/work/t
     raise SystemExit('REFUSED: not an observer-owned remote environment')
 root.mkdir(parents=True, exist_ok=True)
 (root/(str(os.getpid())+'-observer.json')).write_text(json.dumps({
+    'argv': sys.argv[1:],
     'hold_marker': os.environ.get('TB_SSH_HOLD_MARKER'),
     'release_marker': os.environ.get('TB_SSH_RELEASE_MARKER'),
     'abort_marker': os.environ.get('TB_SSH_ABORT_MARKER'),
@@ -25,7 +26,10 @@ root.mkdir(parents=True, exist_ok=True)
 args = sys.argv[1:]
 index = args.index('mini')
 args[index+1:] = [prefix+' '.join(args[index+1:])]
-child = subprocess.Popen(['/usr/bin/ssh', *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, start_new_session=True)
+ssh_args = ['/usr/bin/ssh']
+if os.environ.get('TB_SSH_CONFIG'):
+    ssh_args += ['-F', os.environ['TB_SSH_CONFIG']]
+child = subprocess.Popen([*ssh_args, *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
 
 
 def stop(signum, frame):
@@ -93,6 +97,7 @@ def input_stream():
 
 
 threading.Thread(target=input_stream, daemon=True).start()
+threading.Thread(target=forward, args=(child.stderr.fileno(), 2, 'stderr'), daemon=True).start()
 try:
     forward(child.stdout.fileno(), 1, 'from-mini')
 finally:

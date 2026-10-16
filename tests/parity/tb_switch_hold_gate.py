@@ -26,6 +26,9 @@ finished = json.loads((root/('ssh/transport-resumed.json' if mode == 'expiry' el
 display_connections = []
 for file in (root/'ssh').glob('*-from-mini.bin'):
     first = file.read_bytes().partition(b'\n')[0]
+    if first == b'herdr-saved-ssh-bridge-ready':
+        display_connections.append(file.name)
+        continue
     try:
         welcome = json.loads(first)
     except (ValueError, UnicodeDecodeError):
