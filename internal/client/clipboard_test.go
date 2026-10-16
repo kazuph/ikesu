@@ -22,8 +22,8 @@ func TestRemoteClipboardConsumesCommandVAndKeepsOtherEndpointResponsive(t *testi
 		prefix             bool
 	}{
 		{"command-v", "", "\x1b[118;9u\x1b[118;9:3u", false},
-		{"configured-control-p", "ctrl+p", "\x10", false},
-		{"configured-prefix-i", "prefix+i", "i", true},
+		{"configured-control-p", "ctrl+p", "\x10\x1b[112;5:3u", false},
+		{"configured-prefix-i", "prefix+i", "i\x1b[105;1:3u", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) { remoteClipboardKeepsOtherEndpointResponsive(t, tc.binding, tc.raw, tc.prefix) })
 	}
@@ -136,7 +136,7 @@ func TestClipboardReadFailureDoesNotLeakCommandVOrDiscardFollowingInput(t *testi
 	}
 	var f input.Framer
 	release := f.Push([]byte("\x1b[118;9:3u"))
-	if len(release) != 1 || release[0].Kind != input.KindUnknown || release[0].Key.Mod != uv.ModSuper {
+	if len(release) != 1 || release[0].Kind != input.KindKeyRelease || release[0].Key.Mod != uv.ModSuper {
 		t.Fatal("release not decoded", release)
 	}
 }

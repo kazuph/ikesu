@@ -111,7 +111,10 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
-	if m.active != "local" && event.Kind == input.KindKey && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
+	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
+		if event.Kind == input.KindKeyRelease {
+			return nil
+		}
 		if activeView.snapshot.Prefix {
 			if activeView.connection == nil || activeView.connection.writer.available < endpoint.NotificationGeneration {
 				return fmt.Errorf("endpoint_action_unsupported: prefix remote image paste requires endpoint generation %d", endpoint.NotificationGeneration)
@@ -122,8 +125,8 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return m.pasteClipboard()
 	}
-	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
-		if event.Kind == input.KindUnknown {
+	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown || event.Kind == input.KindKeyRelease) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
+		if event.Kind != input.KindKey {
 			return nil
 		}
 		return m.pasteClipboard()
