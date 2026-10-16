@@ -69,11 +69,23 @@ func (c Chord) Match(k uv.Key, prefix bool) bool {
 	if c.Prefix != prefix {
 		return false
 	}
-	code := k.Code
-	mod := k.Mod
+	code, mod := k.Code, k.Mod
+	if mod.Contains(uv.ModShift) && k.ShiftedCode != 0 {
+		code = k.ShiftedCode
+	}
 	if code >= 'A' && code <= 'Z' {
 		code += 'a' - 'A'
 		mod |= uv.ModShift
+	}
+	if c.Indexed {
+		indexed := c.IndexCode(k)
+		if indexed != k.Code {
+			mod |= uv.ModShift
+		}
+		code = indexed
+	} else if code == c.Key.Code && code > ' ' && code <= '~' && !(code >= 'a' && code <= 'z') && !(code >= '0' && code <= '9') {
+		// Terminals may retain Shift when reporting the resulting punctuation.
+		mod = (mod &^ uv.ModShift) | (c.Key.Mod & uv.ModShift)
 	}
 	if mod != c.Key.Mod {
 		return false
@@ -82,6 +94,22 @@ func (c Chord) Match(k uv.Key, prefix bool) bool {
 		return code >= '1' && code <= '9'
 	}
 	return code == c.Key.Code
+}
+
+// IndexCode identifies the physical digit when Shift is reported as a symbol.
+func (c Chord) IndexCode(k uv.Key) rune {
+	code := k.Code
+	if k.Mod.Contains(uv.ModShift) && k.ShiftedCode != 0 {
+		code = k.ShiftedCode
+	}
+	if c.Key.Mod.Contains(uv.ModShift) {
+		for i, symbol := range "!@#$%^&*(" {
+			if code == symbol {
+				return rune('1' + i)
+			}
+		}
+	}
+	return code
 }
 
 // Defaults come from the 0.2.24 commented configuration, with the existing

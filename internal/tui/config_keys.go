@@ -49,6 +49,9 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 			}
 			chord, err := config.ParseChord(spec)
 			if err == nil && chord.Match(k, prefix) {
+				if chord.Indexed {
+					k.Code = chord.IndexCode(k)
+				}
 				return a.configAction(name, k)
 			}
 		}
