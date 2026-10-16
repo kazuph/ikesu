@@ -9,6 +9,7 @@ import re
 p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 p.add_argument('--dialog', action='store_true')
+p.add_argument('--toast', action='store_true')
 a = p.parse_args()
 results = {}
 for name in ('herdr', 'gtx'):
@@ -49,11 +50,12 @@ for name in ('herdr', 'gtx'):
         start = int(end)
     results[name] = {'stages': stages, 'uploads': uploads}
 reference = results['herdr']['stages']
-if a.dialog:
-    changed = ('overlay-dialog', 'overlay-restored')
+if a.dialog or a.toast:
+    stage = 'overlay-toast' if a.toast else 'overlay-dialog'
+    changed = (stage, 'overlay-restored')
     reference_valid = (len(reference['overlay-base']) == 2
-                       and reference['overlay-dialog'] != reference['overlay-base']
-                       and len(reference['overlay-dialog']) > 0
+                       and reference[stage] != reference['overlay-base']
+                       and len(reference[stage]) > 0
                        and reference['overlay-restored'] == reference['overlay-base'])
 else:
     changed = ('overlay-away', 'overlay-overlap')
