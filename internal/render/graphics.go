@@ -16,6 +16,13 @@ type Graphic struct {
 	Source    image.Rectangle
 }
 
+func frameGraphicsSources(f *Frame) []Graphic {
+	if len(f.GraphicsSources) == 0 {
+		return f.Graphics
+	}
+	return append(append([]Graphic(nil), f.Graphics...), f.GraphicsSources...)
+}
+
 func paneGraphics(f *Frame, pane int, snap *PaneSnap, x, y, width, height int) {
 	if len(snap.Graphics) == 0 {
 		return
@@ -54,6 +61,7 @@ func (e *Encoder) clearGraphics(b *bytes.Buffer) {
 	}
 	e.nativeImages = nil
 	e.graphicsIDs = nil
+	e.graphicsSources = nil
 }
 
 func graphicKey(pane int, image uint32) string {
@@ -68,7 +76,7 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 	}
 	ids := map[string]uint32{}
 	placementIDs := graphicsPlacementIDs(f.Graphics)
-	for i, graphic := range f.Graphics {
+	for i, graphic := range frameGraphicsSources(f) {
 		p := graphic.Placement
 		key := graphicKey(graphic.Pane, p.Image.ID)
 		id, exists := ids[key]
@@ -99,7 +107,7 @@ func (e *Encoder) emitGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 				}
 			}
 		}
-		if p.Virtual {
+		if p.Virtual && i < len(f.Graphics) {
 			unchanged := false
 			for _, old := range e.graphics {
 				unchanged = unchanged || old.Pane == graphic.Pane && reflect.DeepEqual(old.Placement, p)
@@ -132,6 +140,12 @@ func (e *Encoder) emitRealPlacements(f *Frame, b *bytes.Buffer, changed bool) {
 		if !graphic.Source.Empty() {
 			fmt.Fprintf(b, ",x=%d,y=%d,w=%d,h=%d", graphic.Source.Min.X, graphic.Source.Min.Y, graphic.Source.Dx(), graphic.Source.Dy())
 		}
+		if p.OffsetX != 0 {
+			fmt.Fprintf(b, ",X=%d", p.OffsetX)
+		}
+		if p.OffsetY != 0 {
+			fmt.Fprintf(b, ",Y=%d", p.OffsetY)
+		}
 		b.WriteString(";\x1b\\")
 	}
 }
@@ -147,6 +161,9 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 		id := e.graphicsMap[graphicKey(g.Pane, g.Placement.Image.ID)]
 		current[id] = true
 		placements[[2]uint32{id, placementIDs[i]}] = true
+	}
+	for _, g := range f.GraphicsSources {
+		current[e.graphicsMap[graphicKey(g.Pane, g.Placement.Image.ID)]] = true
 	}
 	oldIDs := map[string]uint32{}
 	oldPlacementIDs := graphicsPlacementIDs(e.graphics)
@@ -171,7 +188,7 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 	}
 	e.graphicsIDs = nil
 	seen := map[uint32]bool{}
-	for _, g := range f.Graphics {
+	for _, g := range frameGraphicsSources(f) {
 		id := e.graphicsMap[graphicKey(g.Pane, g.Placement.Image.ID)]
 		if !seen[id] {
 			seen[id] = true
@@ -179,6 +196,7 @@ func (e *Encoder) retireGraphics(f *Frame, b *bytes.Buffer, changed bool) {
 		}
 	}
 	e.graphics, e.graphicsNamespace = f.Graphics, f.GraphicsNamespace
+	e.graphicsSources = frameGraphicsSources(f)
 }
 
 func graphicsPlacementIDs(graphics []Graphic) []uint32 {

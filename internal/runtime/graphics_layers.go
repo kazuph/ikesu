@@ -141,6 +141,7 @@ func (p *Pane) appendGraphicsLayers(out []kitty.Placement) []kitty.Placement {
 		}
 		used[id] = true
 		placement := layer.placement
+		placement.APILayer = true
 		if placement.Cols == 0 && p.cellWidth > 0 {
 			placement.Cols = (placement.Image.Width + p.cellWidth - 1) / p.cellWidth
 		}

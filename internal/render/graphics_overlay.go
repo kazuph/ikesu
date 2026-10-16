@@ -39,6 +39,18 @@ func (f *Frame) coverGraphicsRects(covers []image.Rectangle) {
 }
 
 func coverInputGraphics(in Input, out *Output) {
+	if !in.ServerUI {
+		if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil {
+			for _, g := range out.Frame.Graphics {
+				if g.Placement.APILayer {
+					out.Frame.GraphicsSources = append(out.Frame.GraphicsSources, g)
+				}
+			}
+			out.Frame.Graphics = nil
+			out.Frame.Placeholders = nil
+		}
+		return
+	}
 	popup, pane := image.Rectangle{}, 0
 	if in.ServerUI && in.State.PopupVisible() {
 		r := in.State.PopupRect()
@@ -48,6 +60,7 @@ func coverInputGraphics(in Input, out *Output) {
 }
 
 func (f *Frame) coverGraphicsLayers(covers []image.Rectangle, popup image.Rectangle, popupPane int) {
+	f.GraphicsSources = append([]Graphic(nil), f.Graphics...)
 	var visible, untouched []Graphic
 	extra := 0
 	for _, graphic := range f.Graphics {
@@ -86,12 +99,32 @@ func (f *Frame) coverGraphicsLayers(covers []image.Rectangle, popup image.Rectan
 func cropGraphic(g Graphic, visible image.Rectangle) Graphic {
 	p := g.Placement
 	bounds := image.Rect(p.X, p.Y, p.X+p.Cols, p.Y+p.Rows)
+	source := g.Source
+	if source.Empty() {
+		width, height := p.SourceWidth, p.SourceHeight
+		if width == 0 {
+			width = p.Image.Width - p.SourceX
+		}
+		if height == 0 {
+			height = p.Image.Height - p.SourceY
+		}
+		source = image.Rect(p.SourceX, p.SourceY, p.SourceX+width, p.SourceY+height)
+		if p.SourceX != 0 || p.SourceY != 0 || p.SourceWidth != 0 || p.SourceHeight != 0 {
+			g.Source = source
+		}
+	}
 	if visible != bounds {
-		sx := (visible.Min.X - bounds.Min.X) * p.Image.Width / bounds.Dx()
-		sy := (visible.Min.Y - bounds.Min.Y) * p.Image.Height / bounds.Dy()
-		sw := max(1, visible.Dx()*p.Image.Width/bounds.Dx())
-		sh := max(1, visible.Dy()*p.Image.Height/bounds.Dy())
+		sx := source.Min.X + (visible.Min.X-bounds.Min.X)*source.Dx()/bounds.Dx()
+		sy := source.Min.Y + (visible.Min.Y-bounds.Min.Y)*source.Dy()/bounds.Dy()
+		sw := max(1, visible.Dx()*source.Dx()/bounds.Dx())
+		sh := max(1, visible.Dy()*source.Dy()/bounds.Dy())
 		g.Source = image.Rect(sx, sy, sx+sw, sy+sh)
+	}
+	if visible.Min.X != bounds.Min.X {
+		g.Placement.OffsetX = 0
+	}
+	if visible.Min.Y != bounds.Min.Y {
+		g.Placement.OffsetY = 0
 	}
 	g.Placement.X, g.Placement.Y = visible.Min.X, visible.Min.Y
 	g.Placement.Cols, g.Placement.Rows = visible.Dx(), visible.Dy()
@@ -142,6 +175,12 @@ func cropOverlayGraphic(g Graphic, visible image.Rectangle) Graphic {
 	ex := source.Min.X + (visible.Max.X-p.X)*source.Dx()/p.Cols
 	ey := source.Min.Y + (visible.Max.Y-p.Y)*source.Dy()/p.Rows
 	g.Source = image.Rect(sx, sy, max(sx+1, ex), max(sy+1, ey))
+	if visible.Min.X != p.X {
+		g.Placement.OffsetX = 0
+	}
+	if visible.Min.Y != p.Y {
+		g.Placement.OffsetY = 0
+	}
 	g.Placement.X, g.Placement.Y = visible.Min.X, visible.Min.Y
 	g.Placement.Cols, g.Placement.Rows = visible.Dx(), visible.Dy()
 	return g

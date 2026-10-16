@@ -25,6 +25,13 @@ type Placement struct {
 	X, Y, Cols, Rows, Z int
 	Alternate           bool
 	Virtual             bool
+	APILayer            bool `json:",omitempty"`
+	SourceX             int  `json:",omitempty"`
+	SourceY             int  `json:",omitempty"`
+	SourceWidth         int  `json:",omitempty"`
+	SourceHeight        int  `json:",omitempty"`
+	OffsetX             int  `json:",omitempty"`
+	OffsetY             int  `json:",omitempty"`
 }
 type Store struct {
 	Images     map[uint32]Image
@@ -88,10 +95,10 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 	}
 	s.ChunkKeys, s.ChunkData = nil, nil
 	for k := range keys {
-		if !strings.Contains("atifvsmqpcrzCdoUSO", k) {
+		if !strings.Contains("atifvsmqpcrzCdoUSOxywhXY", k) {
 			return reply(keys, "ENOTSUP:unsupported graphics key "+k), 0, 0, true
 		}
-		if strings.Contains("ifvsmqpcrCUSO", k) {
+		if strings.Contains("ifvsmqpcrCUSOxywhXY", k) {
 			if _, err := strconv.ParseUint(keys[k], 10, 32); err != nil {
 				return reply(keys, "EINVAL:invalid numeric graphics key "+k), 0, 0, true
 			}
@@ -251,7 +258,9 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 			}
 			s.Placements = kept
 		}
-		s.Placements = append(s.Placements, Placement{Image: image, ID: pid, X: x, Y: y, Cols: cols, Rows: rows, Z: number(keys, "z", 0), Alternate: alt, Virtual: virtual == 1})
+		s.Placements = append(s.Placements, Placement{Image: image, ID: pid, X: x, Y: y, Cols: cols, Rows: rows, Z: number(keys, "z", 0), Alternate: alt, Virtual: virtual == 1,
+			SourceX: number(keys, "x", 0), SourceY: number(keys, "y", 0), SourceWidth: number(keys, "w", 0), SourceHeight: number(keys, "h", 0),
+			OffsetX: number(keys, "X", 0), OffsetY: number(keys, "Y", 0)})
 		if virtual == 0 && number(keys, "C", 0) == 0 {
 			return reply(keys, "OK"), cols, rows, true
 		}

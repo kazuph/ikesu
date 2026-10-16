@@ -48,11 +48,12 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 	if len(f.Graphics) == 0 && len(e.graphicsIDs) == 0 && len(f.Placeholders) == 0 {
 		return false
 	}
-	changed := !f.RetainGraphics && (full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics))
+	sources := frameGraphicsSources(f)
+	changed := !f.RetainGraphics && (full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics) || !graphicsEqual(e.graphicsSources, sources))
 	if changed {
 		previous := e.graphicsMap
 		e.graphicsMap = map[string]uint32{}
-		for _, g := range f.Graphics {
+		for _, g := range sources {
 			key := graphicKey(g.Pane, g.Placement.Image.ID)
 			if _, exists := e.graphicsMap[key]; !exists {
 				if id := g.Placement.Image.NativeID; id != 0 {
@@ -60,7 +61,7 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 					continue
 				}
 				if e.graphicsNamespace == f.GraphicsNamespace && !removedDefaultPrototype(e.graphics, f.Graphics, g) {
-					for _, old := range e.graphics {
+					for _, old := range e.graphicsSources {
 						if old.Pane == g.Pane && reflect.DeepEqual(old.Placement.Image, g.Placement.Image) {
 							e.graphicsMap[key] = previous[key]
 							break

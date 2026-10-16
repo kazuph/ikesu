@@ -14,6 +14,7 @@ import (
 type Encoder struct {
 	nativeImages      map[uint32]bool
 	graphics          []Graphic
+	graphicsSources   []Graphic
 	graphicsNamespace string
 	graphicsIDs       []uint32
 	graphicsMap       map[string]uint32

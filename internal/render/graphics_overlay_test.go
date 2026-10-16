@@ -17,7 +17,7 @@ func TestOverlaysHideOnlyCoveredImageCells(t *testing.T) {
 		p.Image = kitty.Image{ID: uint32(i + 1), Format: 24, Width: 8, Height: 4, Data: make([]byte, 96)}
 		snap.Graphics = append(snap.Graphics, p)
 	}
-	base := Input{State: s, Panes: map[int]*PaneSnap{pid: snap}}
+	base := Input{State: s, Panes: map[int]*PaneSnap{pid: snap}, ServerUI: true}
 	original := Compose(base).Frame.Graphics
 	rect := func(r layout.Rect) image.Rectangle { return image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H) }
 	for _, name := range []string{"menu-away", "menu-overlap", "toast", "dialog", "help", "settings", "navigator"} {

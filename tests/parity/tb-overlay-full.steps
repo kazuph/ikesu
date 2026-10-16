@@ -1,0 +1,12 @@
+send "python3 @FIXTURES@/tb_overlay_program.py --small\r"
+waittext 5s TB_OVERLAY_READY
+stats overlay-base
+rclick 33 6
+waittext 5s Close pane
+stats overlay-full
+click 80 40
+send "c"
+waittext 5s TB_OVERLAY_CLOSED
+stats overlay-restored
+send "q"
+kill

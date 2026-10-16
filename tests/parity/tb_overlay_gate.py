@@ -10,6 +10,8 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 p.add_argument('--dialog', action='store_true')
 p.add_argument('--toast', action='store_true')
+p.add_argument('--full', action='store_true', help='one source completely covered by the menu and then restored')
+p.add_argument('--standalone-mode', action='store_true', help='full-mode hiding deletes legacy PTY image data and restores it by upload')
 p.add_argument('--standalone-toast', action='store_true', help='no-session reload toast keeps placements and ignores targetless prefix+o')
 a = p.parse_args()
 results = {}
@@ -45,13 +47,18 @@ for name in ('herdr', 'gtx'):
             width, height, pixels = images[image_id]
             crop = (int(keys.get(b'x', b'0')), int(keys.get(b'y', b'0')),
                     int(keys.get(b'w', str(width).encode())), int(keys.get(b'h', str(height).encode())))
-            records.append({'position': position, 'cells': (int(keys[b'c']), int(keys[b'r'])), 'source': crop, 'pixels': pixels})
+            records.append({'position': position, 'cells': (int(keys[b'c']), int(keys[b'r'])), 'source': crop,
+                            'offset': (int(keys.get(b'X', b'0')), int(keys.get(b'Y', b'0'))), 'pixels': pixels})
         stages[stage] = sorted(records, key=lambda item: json.dumps(item, sort_keys=True))
         uploads[stage] = count
         start = int(end)
     results[name] = {'stages': stages, 'uploads': uploads}
 reference = results['herdr']['stages']
-if a.standalone_toast:
+if a.full:
+    changed = ('overlay-full', 'overlay-restored')
+    reference_valid = (len(reference['overlay-base']) == 1 and not reference['overlay-full']
+                       and reference['overlay-restored'] == reference['overlay-base'])
+elif a.standalone_toast:
     changed = ('overlay-toast', 'overlay-restored')
     reference_valid = (len(reference['overlay-base']) == 2
                        and all(reference[stage] == reference['overlay-base'] for stage in changed))
@@ -73,7 +80,10 @@ else:
                        and len(reference['overlay-overlap']) > 2)
 passed = reference_valid and results['gtx']['stages'] == reference
 no_upload = all(r['uploads'][stage] == 0 for r in results.values() for stage in changed)
-report = {'reference_valid': reference_valid, 'placements_equal': passed, 'no_unchanged_uploads': no_upload, 'results': results}
+uploads_match = (all(r['uploads']['overlay-full'] == 0 and r['uploads']['overlay-restored'] == 1 for r in results.values())
+                 if a.full and a.standalone_mode else no_upload)
+report = {'reference_valid': reference_valid, 'placements_equal': passed, 'no_unchanged_uploads': no_upload,
+          'expected_uploads_match': uploads_match, 'results': results}
 (a.out/'overlay-gate.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps({key: report[key] for key in ('reference_valid', 'placements_equal', 'no_unchanged_uploads')}))
-raise SystemExit(0 if passed and no_upload else 1)
+raise SystemExit(0 if passed and uploads_match else 1)

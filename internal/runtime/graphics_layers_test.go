@@ -20,6 +20,9 @@ func TestGraphicsLayersPreservePixelsAndPTYNamespace(t *testing.T) {
 		t.Fatal(failure)
 	}
 	first := p.Graphics()[0].Image.ID
+	if !p.Graphics()[0].APILayer {
+		t.Fatal("API layer lost its source before rendering")
+	}
 	if failure := sup.SetGraphicsLayer(1, frame("a"), data, 0); failure != nil {
 		t.Fatal(failure)
 	}
