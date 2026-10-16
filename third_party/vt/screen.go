@@ -407,6 +407,10 @@ func (s *Screen) DeleteLine(n int) bool {
 		return false
 	}
 
+	if n == 1 && s.scrollOneReusingBlanks() {
+		return true
+	}
+
 	// Save lines to scrollback if we're at the top of the scroll region
 	// and the scroll region uses the full width (typical terminal scroll).
 	// This captures lines that would be lost during scroll up operations.

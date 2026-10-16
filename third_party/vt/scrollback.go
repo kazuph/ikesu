@@ -95,6 +95,11 @@ func (s *Scrollback) Push(line uv.Line) {
 		end = min(lastNonEmpty+max(line[lastNonEmpty].Width, 1), len(line))
 	}
 
+	s.pushTrimmed(line[:end])
+}
+
+func (s *Scrollback) pushTrimmed(line uv.Line) {
+	end := len(line)
 	if s.byteLimited {
 		s.pushBytes(line[:end])
 		return
