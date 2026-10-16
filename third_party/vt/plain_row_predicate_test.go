@@ -26,6 +26,10 @@ func TestPlainRowPredicateEquivalent(t *testing.T) {
 									if plainRow(uv.Line{c}) != want {
 										t.Fatalf("c=%+v want=%v", c, want)
 									}
+									packed := make([]byte, 1)
+									if packPlainRow(uv.Line{c}, packed) != want || (want && packed[0] != text[0]) {
+										t.Fatalf("packing c=%+v want=%v bytes=%v", c, want, packed)
+									}
 									cases++
 								}
 							}

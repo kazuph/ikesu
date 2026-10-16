@@ -4,14 +4,25 @@ import uv "github.com/charmbracelet/ultraviolet"
 
 // Plain single-column rows need only their bytes. Styled rows use runs in
 // scrollback_styled.go; dense changes can still retain the original cells.
+func plainCell(c *uv.Cell) bool {
+	return c.Width == 1 && len(c.Content) == 1 && c.Content[0] < 128 &&
+		int(c.Style.Attrs)|int(c.Style.Underline)|len(c.Link.URL)|len(c.Link.Params) == 0 &&
+		c.Style.Fg == nil && c.Style.Bg == nil && c.Style.UnderlineColor == nil
+}
 func plainRow(line uv.Line) bool {
 	for i := range line {
-		c := &line[i]
-		if c.Width != 1 || len(c.Content) != 1 || c.Content[0] >= 128 ||
-			int(c.Style.Attrs)|int(c.Style.Underline)|len(c.Link.URL)|len(c.Link.Params) != 0 ||
-			c.Style.Fg != nil || c.Style.Bg != nil || c.Style.UnderlineColor != nil {
+		if !plainCell(&line[i]) {
 			return false
 		}
+	}
+	return len(line) > 0
+}
+func packPlainRow(line uv.Line, text []byte) bool {
+	for i := range line {
+		if !plainCell(&line[i]) {
+			return false
+		}
+		text[i] = line[i].Content[0]
 	}
 	return len(line) > 0
 }
