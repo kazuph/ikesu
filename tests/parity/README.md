@@ -137,3 +137,6 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `tab-drag-release.steps` はmotionなしreleaseと連続down/motion/up、`tab-drag-overflow.steps` は5個の長いタブの比較手順。実物の表示範囲が違えば同じ座標が同じタブを指すとは扱わない。
 `observe.py` の `saved-json.json` は所有サーバーの終了後に保存した実sessionも含む。
 `import_directory_proof.py --snapshot <herdr/saved-json.json> --binary <gtx> --ptyrun <ptyrun> --config-file <店長設定> --out <出力先>` は、実物から保存したshellだけの2スペース（自動名alpha・手動名chosen）のsessionを変更せず取り込み、cd後の自動名・手動名・新規タブのcwdを実サーバーと接続画面で検査する。保存元の一時ディレクトリが既存なら上書きせず停止する。
+`spawn-follow-context.steps` と `spawn_follow_gate.py 出力先 context` は実Git worktree内と、別スペースをクリックした直後のタブ・分割の作成先を検査する。
+`tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
+`tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。

@@ -1,5 +1,6 @@
 """Verify the visible tab identities and release/cancellation results."""
 from pathlib import Path
+import json
 import re
 import sys
 root = Path(sys.argv[1])
@@ -15,4 +16,16 @@ for role in ['herdr', 'gtx']:
         row = (root/role/(name+'.txt')).read_text().splitlines()[0]
         observed = ''.join(re.findall(r'\b[A-D]\b', row))
         assert observed == order, (role, name, observed, order, row)
+for name in ('two-moving', 'four-moving'):
+    rows = {role: json.loads((root/role/(name+'.json')).read_text())['Cells'][0]
+            for role in ('herdr', 'gtx')}
+    positions = {role: [i for i, cell in enumerate(row) if i >= 26 and cell['Content'] == '│']
+                 for role, row in rows.items()}
+    if mode == 'server':
+        assert positions['herdr'] and positions['gtx'] == positions['herdr'], (name, positions)
+        for x in positions['herdr']:
+            assert rows['gtx'][x] == rows['herdr'][x], (name, x, 'marker cell differs')
+    else:
+        # Preserve the earlier approved standalone trailing-marker improvement.
+        assert positions['gtx'], (name, 'standalone trailing marker absent')
 print('PASS: two/four-tab identities, order and outside cancellation match')

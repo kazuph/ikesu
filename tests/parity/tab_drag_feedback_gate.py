@@ -24,7 +24,7 @@ for name in names:
     ref, gtx = cells(reference, name), cells(candidate, name)
     want = markers(ref)
     # The parent's explicit improvement over herdr's missing trailing marker.
-    if trailing and name == 'move-49':
+    if trailing and '--server' not in sys.argv[3:] and name == 'move-49':
         want = [51]
     assert markers(gtx) == want, (name, markers(gtx), want)
     for x in want:

@@ -1,0 +1,28 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\" \"$HOME/repo\"; git -C \"$HOME/repo\" init -q; git -C \"$HOME/repo\" -c user.name=Parity -c user.email=parity@example.invalid commit -q --allow-empty -m initial; git -C \"$HOME/repo\" worktree add -q -b feature \"$HOME/feature\"; cd \"$HOME/feature\"\r"
+sleep 2s
+send "\x14c"
+sleep 200ms
+send "worktree\r"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py worktree-tab\r"
+sleep 300ms
+screen @OUT@/worktree-tab.txt
+send "\x14N"
+sleep 1s
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+screen @OUT@/other-space.txt
+click 10 5
+send "\x14c"
+sleep 200ms
+send "switched\r"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py switched-tab\r"
+sleep 300ms
+screen @OUT@/switched-tab.txt
+send "\x14v"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py switched-split\r"
+sleep 300ms
+screen @OUT@/switched-split.txt
+kill
