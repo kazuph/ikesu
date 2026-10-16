@@ -1,0 +1,14 @@
+send "python3 @FIXTURES@/tb_clip_program.py\r"
+waittext 5s TB_CLIP_RIGHT
+cells @OUT@/clip-right.json
+stats clip-right
+send "b"
+waittext 5s TB_CLIP_BOTTOM
+cells @OUT@/clip-bottom.json
+stats clip-bottom
+send "i"
+waittext 5s TB_CLIP_INSIDE
+cells @OUT@/clip-inside.json
+stats clip-inside
+send "q"
+kill

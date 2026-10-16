@@ -44,6 +44,9 @@ def chunk(name, data):
 
 png = (b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 1, 8, 6, 0, 0, 0))
        +chunk(b'IDAT', zlib.compress(b'\0\xff\0\0\xff\0\xff\0\xff'))+chunk(b'IEND', b''))
+tty.setraw(0)
+os.write(1, b'\x1b[1;1HTB_API_READY')
+os.read(0, 1)
 request('pane.graphics.info', {})
 for format_name, data in [('rgb', b'\xff\0\0\0\xff\0'), ('rgba', b'\xff\0\0\xff\0\xff\0\xff'),
                           ('bgra', b'\0\0\xff\xff\0\xff\0\xff'), ('png', png)]:
