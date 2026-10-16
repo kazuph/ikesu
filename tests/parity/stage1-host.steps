@@ -1,0 +1,5 @@
+screen @OUT@/startup.txt
+send "\x14q"
+sleep 300ms
+screen @OUT@/detached.txt
+kill
