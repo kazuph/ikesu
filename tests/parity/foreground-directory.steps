@@ -1,0 +1,28 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\"; cd \"$HOME/beta\"\r"
+sleep 2s
+send "python3 @FIXTURES@/foreground_directory.py\r"
+sleep 2s
+screen @OUT@/foreground-alpha.txt
+cells @OUT@/foreground-alpha.json
+send "\x14c"
+sleep 200ms
+send "new\r"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py foreground-alpha-tab\r"
+sleep 300ms
+screen @OUT@/newtab.txt
+cells @OUT@/newtab.json
+mouse down 30 1
+mouse up 30 1
+sleep 300ms
+send "\r"
+sleep 2s
+screen @OUT@/foreground-beta.txt
+cells @OUT@/foreground-beta.json
+send "\x14v"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py foreground-beta-split\r"
+sleep 300ms
+screen @OUT@/split-beta.txt
+cells @OUT@/split-beta.json
+kill

@@ -15,6 +15,7 @@ type tabFeedback struct {
 }
 
 func (m *machineClient) tabDragInput(ev input.Event) (bool, error) {
+	ev = m.tabMouse.cells(ev)
 	if d := m.tabFeedback; d != nil {
 		if ev.Kind != input.KindMouseMotion && ev.Kind != input.KindMouseRelease {
 			return false, nil
@@ -67,6 +68,6 @@ func (m *machineClient) drawTabFeedback(out *render.Output) {
 		return
 	}
 	if d.moved {
-		render.DrawTabDrop(out, d.drop)
+		render.DrawTabDrop(out, d.drop, true)
 	}
 }

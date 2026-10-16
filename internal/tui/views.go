@@ -203,7 +203,7 @@ func (a *App) draw() {
 	}
 	out := render.Compose(in)
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
-		render.DrawTabDrop(out, g.drop)
+		render.DrawTabDrop(out, g.drop, a.serverUI)
 	}
 	a.tabViewWorkspace, a.tabViewActive = wsID, tabID
 	a.tabViewWidth = a.st.TabBarArea().W

@@ -167,3 +167,17 @@ ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾
 記号の競合に見える2割当は、実物0.2.57が無診断で両方をhelpに表示し、通常の記号入力とKitty入力ではhelpが勝つ。記述順も反転して検査する。これは実物を正とする親の判断により維持する。基底slash/数字とShift後の記号の指定は別々に観察し、Kittyの代替文字の有無・記号そのものの3入力を検査する。基底指定は基底/代替付き入力で成功、記号指定は代替付き/記号入力で成功することを必須にする。`user-all-numbers` は設定を変更せず9workspaceを作り、cmd+1〜9それぞれの選択先名を期待値と照合する（両製品の無操作が一致しただけでは成功しない）。
 
 全番号の観察では各cmd+番号の直前にもセルを保存する。1番の前は9番、2〜9番の前は直前番号へ明示的に移動し、比較器は押す番号とは異なる期待名から始まること、押した後の期待名、選択名が変化したことの3条件を各番号で検査する。最初から1番を表示したままcmd+1を送る手順では、そのキーが無反応でも成功するため受け入れない。
+
+`spawn-follow-actions.steps` は店長の ctrl+t 設定で、キー・+ボタン・OSC7後の縦分割・横分割・prefix+g・メニュー分割を実行する。
+`directory_evidence.py` が各操作後の実シェルで継承された絶対cwdを記録し、`spawn_follow_gate.py 出力先` が全6件のcwdと保存画面を検査する。サーバー接続と単独起動を別々に流す。
+`workspace-follow-name.steps` / `workspace-repository-name.steps` / `workspace-custom-name.steps` は、自動名の先頭shellへの追従、checkout名、手動名の保持を実API応答と画面に保存する。`workspace_name_gate.py 出力先 focus|repository|custom` で検査する。
+`directory-handoff.steps` はrunnerが隔離した両製品のサーバーだけをlive-handoffし、名前と作成先を記録する。`directory_handoff.py` はrunner所有のsocket以外を拒否する。
+`observe.py --pixel-mouse --cell-width 8 --cell-height 16` は実際のpixelモード交渉を可能にする。宣言だけでpixel検査済みとしない。raw出力の1016hと送信形式を確認する。
+`tab-drag-release.steps` はmotionなしreleaseと連続down/motion/up、`tab-drag-overflow.steps` は5個の長いタブの比較手順。実物の表示範囲が違えば同じ座標が同じタブを指すとは扱わない。
+`observe.py` の `saved-json.json` は所有サーバーの終了後に保存した実sessionも含む。
+`import_directory_proof.py --snapshot <herdr/saved-json.json> --binary <gtx> --ptyrun <ptyrun> --config-file <店長設定> --out <出力先>` は、実物から保存したshellだけの2スペース（自動名alpha・手動名chosen）のsessionを変更せず取り込み、cd後の自動名・手動名・新規タブのcwdを実サーバーと接続画面で検査する。保存元の一時ディレクトリが既存なら上書きせず停止する。
+`spawn-follow-context.steps` と `spawn_follow_gate.py 出力先 context` は実Git worktree内と、別スペースをクリックした直後のタブ・分割の作成先を検査する。
+`foreground-directory.steps` と `foreground_directory_gate.py 出力先` はshellのbetaから前面の実Pythonプロセスだけをalphaへ移して新規タブを作り、そのプロセスをbetaへ移した後に分割する。継承した絶対cwdとAPI応答を検査し、スペース名は前面プロセスでなく先頭shellのbetaをsidebar・APIとも保つことを確認する。
+`tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
+`tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。
+`mouse-negative.steps` と `mouse_negative_gate.py 出力先` はraw SGRの負座標と正の画面外座標を送る。`mouse_report_capture.py` は実端末で1002/1006を有効化する状態と無効な状態を実行し、受信した生バイトを記録する。通常キーの保持、マウス報告の文字漏れがないこと、有効な位置へ戻るまでタブのドラッグが続くことを実物と比較する。server/localをそれぞれcell/pixelで実行する。

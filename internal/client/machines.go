@@ -77,6 +77,7 @@ type machineClient struct {
 	title           windowTitleState
 	regions         *render.Output
 	tabFeedback     *tabFeedback
+	tabMouse        tabMouseCoordinates
 	held            []input.Event
 	suppressRelease bool
 	blurred         bool

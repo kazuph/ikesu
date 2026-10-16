@@ -24,7 +24,7 @@ for name in names:
     ref, gtx = cells(reference, name), cells(candidate, name)
     want = markers(ref)
     # The parent's explicit improvement over herdr's missing trailing marker.
-    if trailing and name == 'move-49':
+    if trailing and '--server' not in sys.argv[3:] and name == 'move-49':
         want = [51]
     assert markers(gtx) == want, (name, markers(gtx), want)
     for x in want:
@@ -43,5 +43,10 @@ for root in (reference, candidate):
     before, after = cells(root, 'before'), cells(root, 'dropped')
     # C was active before and stays active; its chip remains accent-filled.
     assert before[46]['Style'] == after[46]['Style'], (root, 'focus changed')
-    assert cells(root, 'cancelled') == after, (root, 'outside release changed tabs')
+    if '--server' in sys.argv[3:]:
+        released = (root / 'cancelled.txt').read_text().splitlines()[0][26:]
+        assert re.findall('[ABC]', released) == ['A', 'B', 'C'], (root, 'horizontal target not retained', released)
+        assert cells(root, 'cancelled')[46]['Style'] == before[46]['Style'], (root, 'outside release changed focus')
+    else:
+        assert cells(root, 'cancelled') == after, (root, 'standalone outside motion changed tabs')
 print(json.dumps(report, ensure_ascii=False, indent=2))

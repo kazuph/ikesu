@@ -42,12 +42,18 @@ func (a *App) onInput(ev input.Event) {
 			}
 		}
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseWheel, input.KindMouseMotion:
+		if ev.Mouse.X < 0 || ev.Mouse.Y < 0 {
+			return
+		}
 		if a.hostPixelMouse {
 			pixel := ev.Mouse
 			a.mousePixel = &pixel
 			defer func() { a.mousePixel = nil }()
 			ev.Mouse.X /= a.cellW
 			ev.Mouse.Y /= a.cellH
+		}
+		if ev.Mouse.X >= a.st.Cols || ev.Mouse.Y >= a.st.Rows {
+			return
 		}
 		a.onMouse(ev)
 	case input.KindFocus:
@@ -244,6 +250,13 @@ func (a *App) exec(cmd model.Command) {
 		a.mobileScroll = 0
 	}
 	beforeFocus := a.focusedPane()
+	spawnCwd := ""
+	if policyCwd {
+		if p := a.sup.Get(beforeFocus); p != nil {
+			p.PollProcess()
+			spawnCwd = p.SpawnCwd()
+		}
+	}
 	var metadataOrder []int
 	if _, moving := cmd.(model.CmdMoveWorkspace); moving {
 		for _, ws := range a.st.Workspaces {
@@ -262,6 +275,9 @@ func (a *App) exec(cmd model.Command) {
 	}
 	for _, e := range a.st.Apply(cmd) {
 		if spawn, ok := e.(model.EffSpawnPane); ok && policyCwd {
+			if spawnCwd != "" {
+				spawn.Cwd = spawnCwd
+			}
 			spawn.Cwd = a.newPaneCwd(spawn.Cwd)
 			e = spawn
 		}

@@ -7,8 +7,8 @@ import (
 )
 
 type tabGesture struct {
-	ws, tab, x, y, drop int
-	moved               bool
+	ws, tab, x, y, drop, target int
+	moved                       bool
 }
 
 func (a *App) tabGestureMouse(ev input.Event) {
@@ -24,6 +24,10 @@ func (a *App) tabGestureMouse(ev input.Event) {
 		g.drop = -1
 		if g.ws == a.st.Active {
 			g.drop = render.TabDropIndex(a.tabHits, m.X, m.Y)
+			g.target = g.drop
+			if a.serverUI {
+				g.target = render.TabDragIndex(a.tabHits, m.X)
+			}
 		}
 	}
 	if ev.Kind == input.KindMouseRelease {
@@ -32,9 +36,8 @@ func (a *App) tabGestureMouse(ev input.Event) {
 			return
 		}
 		if g.moved {
-			g.drop = render.TabDropIndex(a.tabHits, m.X, m.Y)
-			if g.drop >= 0 {
-				a.exec(model.CmdMoveTab{Workspace: g.ws, Index: g.tab, InsertIndex: g.drop})
+			if g.target >= 0 {
+				a.exec(model.CmdMoveTab{Workspace: g.ws, Index: g.tab, InsertIndex: g.target})
 			}
 			return
 		}

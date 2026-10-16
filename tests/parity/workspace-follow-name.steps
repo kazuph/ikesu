@@ -1,0 +1,36 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\"; cd \"$HOME/alpha\"\r"
+sleep 2s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/cd.txt
+cells @OUT@/cd.json
+send "\x14v"
+sleep 1s
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/right-beta.txt
+cells @OUT@/right-beta.json
+mouse down 30 8
+mouse up 30 8
+sleep 1s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/left-alpha.txt
+cells @OUT@/left-alpha.json
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/left-beta.txt
+cells @OUT@/left-beta.json
+send "python3 -c 'import os; os.chdir(os.environ[\"HOME\"]+\"/alpha\"); print(\"AGENT_READY\", flush=True); input(); os.chdir(os.environ[\"HOME\"]+\"/beta\"); print(\"AGENT_MOVED\", flush=True); input()'\r"
+sleep 2s
+screen @OUT@/agent-alpha.txt
+cells @OUT@/agent-alpha.json
+send "\r"
+sleep 2s
+screen @OUT@/agent-beta.txt
+cells @OUT@/agent-beta.json
+kill

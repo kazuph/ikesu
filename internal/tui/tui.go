@@ -264,6 +264,7 @@ type App struct {
 	metadataViews                            map[int]api.PaneMetadataView
 	workspaceGit                             map[int]render.GitStatus
 	workspaceNames                           map[int]string
+	workspaceLabels                          map[int]workspaceDirectoryLabel
 	gitAt                                    time.Time
 	gitPending                               bool
 	jobsAt                                   time.Time             // last job snapshot

@@ -1,0 +1,19 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\"; cd \"$HOME/alpha\"\r"
+sleep 2s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/automatic.txt
+cells @OUT@/automatic.json
+send "\x14N"
+sleep 1s
+send "\x14W"
+sleep 200ms
+send "\x03chosen\r"
+sleep 1s
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/custom.txt
+cells @OUT@/custom.json
+kill
