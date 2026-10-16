@@ -72,7 +72,11 @@ func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
 	}
 	return row, text, styled
 }
-func (s *Scrollback) pushBytes(line uv.Line) (dropped bool) {
+func (s *Scrollback) pushBytes(line uv.Line) bool {
+	return s.pushBytesWithPlain(line, false)
+}
+
+func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) (dropped bool) {
 	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
@@ -105,8 +109,15 @@ func (s *Scrollback) pushBytes(line uv.Line) (dropped bool) {
 	}
 	idx := s.wrap(s.start + s.count)
 	reusable := cap(text) == len(line)
-	plain := false
-	if reusable {
+	plain := knownPlain && len(line) > 0
+	if plain {
+		if reusable {
+			text = text[:len(line)]
+			for x := range line {
+				text[x] = line[x].Content[0]
+			}
+		}
+	} else if reusable {
 		// text belongs to the evicted row; a rejected prefix is never retained.
 		text = text[:len(line)]
 		plain = packPlainRow(line, text)

@@ -17,7 +17,7 @@ type Screen struct {
 	scrollRows         uv.Lines
 	scrollRowHead      int
 	runtimeASCII       bool
-	runtimeBlankBounds map[*uv.Cell]int
+	runtimeBlankBounds map[*uv.Cell]runtimeRowState
 	// The cur of the screen.
 	cur, saved Cursor
 	// scroll is the scroll region.

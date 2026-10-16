@@ -7,6 +7,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type runtimeRowState struct {
+	end   int
+	plain bool
+}
+
 // WriteRuntimeASCII writes complete short printable ASCII CRLF rows while the
 // runtime exclusively owns the emulator and its retained cell references. Its
 // cursor callback must only record the final position; other Write callers keep
@@ -36,7 +41,7 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 		rest = rest[n+2:]
 	}
 	if s.runtimeBlankBounds == nil {
-		s.runtimeBlankBounds = make(map[*uv.Cell]int, len(s.buf.Lines))
+		s.runtimeBlankBounds = make(map[*uv.Cell]runtimeRowState, len(s.buf.Lines))
 	}
 	clear(s.runtimeBlankBounds)
 	for _, line := range s.buf.Lines {
@@ -45,7 +50,7 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 			end--
 		}
 		if len(line) > 0 {
-			s.runtimeBlankBounds[&line[0]] = end
+			s.runtimeBlankBounds[&line[0]] = runtimeRowState{end: end, plain: end == 0}
 		}
 	}
 	old := s.cur.Position
@@ -63,10 +68,15 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 	for rest := p; len(rest) > 0; {
 		n := bytes.IndexByte(rest, '\r')
 		line := s.buf.Line(s.cur.Y)
-		canonical := len(line) > 0 && s.runtimeBlankBounds[&line[0]] == 0
+		canonical := len(line) > 0 && s.runtimeBlankBounds[&line[0]].end == 0
 		if len(line) > 0 {
 			key := &line[0]
-			s.runtimeBlankBounds[key] = max(s.runtimeBlankBounds[key], n)
+			state := s.runtimeBlankBounds[key]
+			state.end = max(state.end, n)
+			if n > 0 {
+				state.plain = canonical && s.cursorPen() == (uv.Style{}) && s.cursorLink() == (uv.Link{})
+			}
+			s.runtimeBlankBounds[key] = state
 		}
 		if canonical && n > 0 {
 			pen, link := s.cursorPen(), s.cursorLink()
