@@ -120,7 +120,7 @@ func makeGraphicsPatch(pane int, previous, current kitty.Image) (*render.Graphic
 	if err := encoder.Encode(&data, rgba.SubImage(image.Rect(left, top, right, bottom))); err != nil {
 		return nil, err
 	}
-	patch.Rects = append(patch.Rects, render.GraphicsPatchRect{left, top, right - left, bottom - top, data.Bytes()})
+	patch.Rects = append(patch.Rects, render.GraphicsPatchRect{X: left, Y: top, Width: right - left, Height: bottom - top, PNG: data.Bytes()})
 	return patch, nil
 }
 
