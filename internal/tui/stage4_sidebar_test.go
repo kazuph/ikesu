@@ -5,6 +5,8 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/goterrace/internal/runtime"
 )
 
 func TestStage4CollapsedAgentClickSelectsItsPane(t *testing.T) {
@@ -34,5 +36,22 @@ func TestStage4CollapsedAgentClickSelectsItsPane(t *testing.T) {
 	a.sidebarClick(uv.Mouse{X: 1, Y: 30, Button: uv.MouseLeft})
 	if s.Active != 0 {
 		t.Fatal("blank lower-panel row changed workspace")
+	}
+}
+
+func TestStage4PanelSwitchResetsAgentButRetainsJobScroll(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 45)
+	a := NewApp(s, runtime.NewSupervisor(), nil, t.TempDir())
+	a.SetServerUI()
+	a.agentScroll, a.jobScroll = 1, 2
+	y := render.SidebarSplitY(s) + 1
+	a.sidebarPress(uv.Mouse{X: 11, Y: y, Button: uv.MouseLeft})
+	if !a.jobsPanel || a.agentScroll != 0 || a.jobScroll != 2 {
+		t.Fatalf("switch to jobs: agents=%d jobs=%d", a.agentScroll, a.jobScroll)
+	}
+	a.agentScroll = 1
+	a.sidebarPress(uv.Mouse{X: 2, Y: y, Button: uv.MouseLeft})
+	if a.jobsPanel || a.agentScroll != 0 || a.jobScroll != 2 {
+		t.Fatalf("switch to agents: agents=%d jobs=%d", a.agentScroll, a.jobScroll)
 	}
 }
