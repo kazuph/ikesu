@@ -13,6 +13,8 @@ import hashlib
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
+p.add_argument('--cols', type=int, default=160)
+p.add_argument('--rows', type=int, default=45)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
@@ -23,8 +25,10 @@ p.add_argument('--startup-input', action='store_true', help='observe startup inp
 p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
+p.add_argument('--saved-session-fixture', help='JSON mapping product names to relative runner-owned session paths and saved documents')
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--out', required=True)
+p.add_argument('--close-workspace-fixture', action='store_true', help='close the last isolated workspace through the real API after the steps trigger')
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
 p.add_argument('--reconnect-keyboard', choices=['off', 'retain'], help='cut only the isolated display connection while pane modes change')
 p.add_argument('--server-default-workspace', action='store_true', help='observe server/client startup without creating a workspace through the API')
@@ -86,6 +90,15 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
+        if a.saved_session_fixture:
+            documents = json.loads(Path(a.saved_session_fixture).read_text())[name]
+            for relative, document in documents.items():
+                destination = root / relative.replace('@BINARY@', Path(binary).stem)
+                if not destination.resolve().is_relative_to(root.resolve()):
+                    raise RuntimeError('saved-session fixture escapes isolated root')
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(json.dumps(document)+'\n')
+            (target/'saved-session-fixture.json').write_text(json.dumps(documents, indent=2)+'\n')
         env['PARITY_OBSERVE_BINARY'] = str(Path(binary).resolve())
         if (a.config_file or a.in_app_toast) and name == 'gtx':
             env['GTX_CONFIG'] = str(config)
@@ -108,6 +121,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
             env['PARITY_BINARY_PATH'] = binary
             endpoint = None
             reconnect = None
+            close_workspace = None
             try:
                 if a.server:
                     server = subprocess.Popen(launcher + ['--session', 'parity', 'server'],
@@ -169,6 +183,11 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                         if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
+                if a.close_workspace_fixture:
+                    if endpoint is None: raise RuntimeError('close fixture requires isolated server')
+                    from stage5_workspace_controller import CloseWorkspace
+                    close_workspace = CloseWorkspace(endpoint, target)
+                    close_workspace.start()
                 if a.reconnect_keyboard:
                     from stage1_reconnect import Reconnect
                     reconnect = Reconnect(launcher, env, target, a.reconnect_keyboard)
@@ -176,11 +195,13 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     wrapper = root/'display.py'
                     wrapper.write_text('import os,sys\nfrom pathlib import Path\np=Path(sys.argv[1]); q=p.with_suffix(".next"); q.write_text(str(os.getpid())); q.replace(p)\nos.execv(sys.argv[2],sys.argv[2:])\n')
                     launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
-                subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse='+str(a.pixel_mouse).lower(),
+                subprocess.run([a.ptyrun, '-cols', str(a.cols), '-rows', str(a.rows), '-pixel-mouse='+str(a.pixel_mouse).lower(),
                             '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
+                if close_workspace:
+                    close_workspace.close()
                 if reconnect:
                     reconnect.close()
                 try:
