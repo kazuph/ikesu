@@ -1,0 +1,31 @@
+send "python3 @FIXTURES@/tb_mouse_program.py\r"
+waittext 5s TB_MOUSE_READY_0
+mouse hover 40 12
+send "~"
+waittext 5s TB_MOUSE_READY_1
+mouse wheel-left 40 12
+send "~"
+waittext 5s TB_MOUSE_READY_2
+mouse wheel-right 40 12
+send "~"
+waittext 5s TB_MOUSE_READY_3
+mouse hover 40 12
+send "~"
+waittext 5s TB_MOUSE_READY_4
+mouse down 40 12
+mouse motion 41 12
+mouse up 41 12
+mouse hover 42 12
+send "~"
+waittext 5s TB_MOUSE_READY_5
+mouse wheel-left 40 12
+send "~"
+waittext 5s TB_MOUSE_READY_6
+mouse wheel-right 40 12
+send "~"
+waitfile @HOME@/tb-mouse-probe.json 10s
+waittext 5s TB_MOUSE_RECORDED
+cells @OUT@/mouse-recorded.json
+stats mouse-recorded
+send "q"
+kill
