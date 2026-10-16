@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import select
 import socket
+import sys
 import time
 import tty
 
@@ -54,6 +55,8 @@ def graphic(action, pixels):
 
 
 os.write(1, b'\x1b[5;7H')
+if sys.argv[1:] == ['reuse']:
+    os.write(1, b'\x1b[12;7H\x1b_Ga=T,t=d,f=24,s=2,v=1,i=41,q=2,c=4,r=2,C=1;AP8AAP8A\x1b\\\x1b[5;7H')
 graphic('T', bytes([255, 0, 0, 0, 255, 0]))
 os.write(1, b'\x1b[1;1HTB_PLACED')
 while True:
