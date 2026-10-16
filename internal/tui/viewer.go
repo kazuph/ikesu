@@ -71,6 +71,7 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.focusHistory = nil
 	ui.focusHistoryAt = 0
 	ui.cm, ui.sel, ui.sep, ui.sb = nil, nil, nil, nil
+	ui.paneCopies = nil
 	ui.sidebarGesture, ui.tabGesture = nil, nil
 	ui.menu, ui.settings, ui.help = nil, nil, nil
 	ui.hostPixelMouse, ui.hostPixelSupported = false, false
@@ -130,11 +131,16 @@ func (v *Viewer) Input(a *App, bytes []byte) {
 }
 
 func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
+	var copySizes map[*copyMode]copySize
+	v.with(a, func(ui *App) {
+		copySizes = ui.copySizes()
+	})
 	v.cols, v.rows = cols, rows
 	v.with(a, func(ui *App) {
 		ui.enc.Reset()
 		ui.SetCellPixels(xp, yp)
 		ui.syncLayout()
+		ui.copyResizeAll(copySizes)
 		ui.dirty = true
 	})
 	a.st.Cols, a.st.Rows = v.cols, v.rows
@@ -146,6 +152,9 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
+	if v.app.sel != nil && v.app.sel.autoDir != 0 {
+		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })
+	}
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })
 	}

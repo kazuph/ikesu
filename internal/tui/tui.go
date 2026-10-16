@@ -132,6 +132,8 @@ type selState struct {
 	moved    bool
 	inner    layout.Rect // pane inner rect at drag start
 	scrollAt int         // scroll offset at drag start
+	autoDir  int
+	autoAt   time.Time
 }
 
 // appJob runs fn on the app loop goroutine and signals completion.
@@ -219,6 +221,7 @@ type App struct {
 	prefix                                   bool
 	navKey                                   rune // prefix+<navKey> jumps to the toast target
 	cm                                       *copyMode
+	paneCopies                               map[int]*copyMode
 	copyKeys                                 map[rune]bool // [keys] copy_mode bindings
 	splitVKeys                               map[rune]bool // [keys] split_vertical bindings
 	splitHKeys                               map[rune]bool // [keys] split_horizontal bindings

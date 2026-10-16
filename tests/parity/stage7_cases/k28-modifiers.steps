@@ -1,0 +1,18 @@
+send "printf '\\033[3J\\033[H\\033[2J'; for i in {1..120}; do printf 'ROW-%03d alpha ALPHA Beta abcdefghijklmnopqrstuvwxyz\\n' $i; done; sleep 120\r"
+sleep 200ms
+sleep 400ms
+send "\u001b[<4;80;20M"
+sleep 200ms
+send "\u001b[<36;80;3M"
+sleep 200ms
+screen @OUT@/shift-drag.txt
+cells @OUT@/shift-drag.json
+send "\u001b[<4;80;3m"
+sleep 200ms
+send "\u001b[<4;159;20M"
+sleep 200ms
+screen @OUT@/shift-scrollbar.txt
+cells @OUT@/shift-scrollbar.json
+send "\u001b[<4;159;20m"
+sleep 200ms
+kill

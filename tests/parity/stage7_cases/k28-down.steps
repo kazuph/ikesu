@@ -1,0 +1,33 @@
+send "printf '\\033[3J\\033[H\\033[2J'; for i in {1..120}; do printf 'ROW-%03d alpha ALPHA Beta abcdefghijklmnopqrstuvwxyz\\n' $i; done; sleep 120\r"
+sleep 200ms
+sleep 400ms
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+mouse wheel-up 80 20
+sleep 200ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 80 20
+mouse motion 80 43
+sleep 400ms
+screen @OUT@/edge.txt
+cells @OUT@/edge.json
+mouse motion 80 45
+sleep 200ms
+screen @OUT@/outside.txt
+cells @OUT@/outside.json
+mouse up 80 45
+kill

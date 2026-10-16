@@ -112,6 +112,16 @@ func (a *App) draw() {
 			tokens[i] = a.workspaceTokenSource(w.ID)
 		}
 	}
+	for pid, cm := range a.paneCopies {
+		if snap := panes[pid]; snap != nil {
+			if p := a.sup.Get(pid); p != nil {
+				r := a.innerRect(pid)
+				off := max(a.bufferLen(p)-r.H-cm.top, 0)
+				// Inactive copy views retain the read position but normal pane chrome.
+				snap.Grid = a.paneGrid(p, off, r.H, r.W)
+			}
+		}
+	}
 	if a.cm != nil {
 		if snap := panes[a.cm.pane]; snap != nil {
 			snap.Grid = a.copyGrid()

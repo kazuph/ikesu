@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/config"
 	"strings"
@@ -642,6 +641,9 @@ func (a *App) selMouse(ev input.Event) {
 	top := viewTop(p, a.scroll[s.pane], s.inner.H)
 	hx := m.X - s.inner.X
 	hy := top + m.Y - s.inner.Y
+	if !a.st.PopupVisible() && !a.st.OverlayVisible() {
+		hy = top + min(max(m.Y-s.inner.Y, 0), s.inner.H-1)
+	}
 	if hx < 0 {
 		hx = 0
 	}
@@ -651,6 +653,9 @@ func (a *App) selMouse(ev input.Event) {
 	s.hx, s.hy = hx, hy
 	if hx != s.ax || hy != s.ay {
 		s.moved = true
+	}
+	if ev.Kind == input.KindMouseMotion && !a.st.PopupVisible() && !a.st.OverlayVisible() {
+		a.selectionDragScroll(m)
 	}
 	if ev.Kind == input.KindMouseRelease {
 		pending := a.dblMenu
@@ -667,7 +672,7 @@ func (a *App) selMouse(ev input.Event) {
 	}
 }
 
-// finishSelection copies the selection via OSC 52 and shows the flash.
+// finishSelection copies the selection and shows the flash.
 func (a *App) finishSelection() {
 	s := a.sel
 	a.sel = nil
@@ -678,11 +683,11 @@ func (a *App) finishSelection() {
 		return
 	}
 	text, _ := a.selText(s)
+	text = strings.TrimRight(text, "\n")
 	if text == "" {
 		return
 	}
-	b64 := base64.StdEncoding.EncodeToString([]byte(text))
-	if _, err := fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64); err != nil {
+	if err := a.writeClipboard(text); err != nil {
 		return
 	}
 	// SPEC G1: "Copied N lines" on the sidebar's bottom row, 2 seconds.

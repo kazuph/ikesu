@@ -217,6 +217,7 @@ func (a *App) onTick() {
 		}
 	}
 	a.popupSelectionAutoScroll()
+	a.selectionAutoScroll(now)
 	a.refreshJobDots(now)
 	a.detectAll()
 }
@@ -263,9 +264,9 @@ func (a *App) exec(cmd model.Command) {
 			metadataOrder = append(metadataOrder, ws.ID)
 		}
 	}
-	copyHeight := 0
-	if _, resizing := cmd.(model.CmdResize); resizing && a.cm != nil {
-		copyHeight = a.copyInnerH()
+	var copySizes map[*copyMode]copySize
+	if _, resizing := cmd.(model.CmdResize); resizing {
+		copySizes = a.copySizes()
 	}
 	popupWasVisible := a.st.PopupVisible()
 	previousPopup := a.st.Popup
@@ -306,22 +307,14 @@ func (a *App) exec(cmd model.Command) {
 			a.exitCopy()
 		}
 	}
+	a.copyFocusChanged()
 	a.dirty = true
 	// Keystrokes and resizes never change persisted state; everything else
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
 	switch cmd.(type) {
 	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
-		if _, resized := cmd.(model.CmdResize); resized && a.cm != nil {
-			h := a.copyInnerH()
-			previousTop := a.cm.top
-			a.cm.top = max(min(a.cm.top+copyHeight-h, a.bufferLen(a.sup.Get(a.cm.pane))-h), 0)
-			a.cm.cy += a.cm.top - previousTop
-			a.copyClampCursor()
-			a.copyReveal()
-			if a.cm.anchor != nil {
-				a.cm.anchor.x = min(max(a.cm.anchor.x, 0), max(a.copyInnerW()-1, 0))
-				a.cm.anchor.y = min(max(a.cm.anchor.y, a.cm.top), a.cm.top+h-1)
-			}
+		if _, resized := cmd.(model.CmdResize); resized {
+			a.copyResizeAll(copySizes)
 		}
 	default:
 		a.changed()

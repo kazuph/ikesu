@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -26,16 +26,18 @@ type copyPoint struct{ x, y int }
 const copyPageOverlapRows = 2
 
 type copyMode struct {
-	pane       int
-	fullscreen bool
-	cx, cy     int // cursor in buffer coords (scrollback lines first)
-	top        int // buffer index of the first visible row
-	anchor     *copyPoint
-	searching  bool
-	searchDir  int // +1 after '/', -1 after '?'; drives n/N
-	query      string
-	matches    []copybuf.Range
-	matchIdx   int
+	pane          int
+	fullscreen    bool
+	cx, cy        int // cursor in buffer coords (scrollback lines first)
+	top           int // buffer index of the first visible row
+	anchor        *copyPoint
+	linewise      bool
+	searching     bool
+	searchDir     int // +1 after '/', -1 after '?'; drives n/N
+	query         string
+	previousQuery string
+	matches       []copybuf.Range
+	matchIdx      int
 }
 
 // copyCycle advances the button's 3-state cycle: normal → in-layout
@@ -63,7 +65,10 @@ func (a *App) enterCopy(fullscreen bool) {
 	a.sel = nil
 	snapshot := p.Snapshot()
 	a.cm = &copyMode{pane: pid, cx: snapshot.Cursor.X, cy: min(snapshot.ScrollbackLen+snapshot.Cursor.Y, max(n-1, 0)), searchDir: 1}
-	a.cm.top = max(n-a.copyInnerH(), 0)
+	a.cm.top = max(n-a.copyInnerH()-a.scroll[pid], 0)
+	if a.cm.cy < a.cm.top || a.cm.cy >= a.cm.top+a.copyInnerH() {
+		a.cm.cx, a.cm.cy = 0, a.cm.top+a.copyInnerH()-1
+	}
 	if fullscreen {
 		a.cm.fullscreen = true
 		a.copyEnterFullscreen()
@@ -140,7 +145,7 @@ func (a *App) copyReveal() {
 // copyKey handles one key inside copy mode (SPEC G6 本家 copy mode):
 // arrows/hjkl, w/b/e word motion, 0/$ real line ends, g/G, PgUp/PgDn,
 // C-u/C-d half page, / search, n/N matches, Space select, Enter yank,
-// q/Esc exit; prefix stays available (C-b).
+// q/Esc exit; the configured prefix stays available.
 func (a *App) copyKey(k uv.Key, raw []byte) {
 	cm := a.cm
 	p := a.sup.Get(cm.pane)
@@ -152,7 +157,7 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		a.copySearchKey(k)
 		return
 	}
-	if isCtrlB(k) {
+	if a.prefixMatches(k) {
 		a.prefix = true
 		return
 	}
@@ -180,7 +185,7 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.cy++
 	case k.Code == 'w':
 		a.copyMotion(copybuf.MotionNextWordStart)
-	case k.Code == 'b':
+	case k.Code == 'b' && !k.Mod.Contains(uv.ModCtrl):
 		a.copyMotion(copybuf.MotionPreviousWordStart)
 	case k.Code == 'e':
 		a.copyMotion(copybuf.MotionNextWordEnd)
@@ -198,11 +203,11 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.cy = 0
 	case k.Code == 'G':
 		cm.cy = n - 1
-	case k.Code == uv.KeyPgUp:
+	case k.Code == uv.KeyPgUp || k.Code == 'b' && k.Mod.Contains(uv.ModCtrl):
 		step := max(h-copyPageOverlapRows, 1)
 		cm.cy -= step
 		cm.top -= step
-	case k.Code == uv.KeyPgDown:
+	case k.Code == uv.KeyPgDown || k.Code == 'f' && k.Mod.Contains(uv.ModCtrl):
 		step := max(h-copyPageOverlapRows, 1)
 		cm.cy += step
 		cm.top += step
@@ -214,17 +219,23 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		cm.top += max(h/2, 1)
 	case k.Code == '/':
 		cm.searching = true
+		cm.previousQuery = cm.query
 		cm.searchDir = 1
 		cm.query = ""
 	case k.Code == '?':
 		cm.searching = true
+		cm.previousQuery = cm.query
 		cm.searchDir = -1
 		cm.query = ""
 	case k.Code == 'n':
 		a.copyNextMatch(cm.searchDir)
 	case k.Code == 'N':
 		a.copyNextMatch(-cm.searchDir)
+	case k.Code == 'V':
+		cm.linewise = true
+		cm.anchor = &copyPoint{x: cm.cx, y: cm.cy}
 	case k.Code == ' ' || k.Code == 'v':
+		cm.linewise = false
 		cm.anchor = &copyPoint{x: cm.cx, y: cm.cy}
 	case k.Code == uv.KeyEnter || k.Code == 'y':
 		if cm.anchor != nil {
@@ -260,10 +271,14 @@ func (a *App) copySearchKey(k uv.Key) {
 	switch {
 	case k.Code == uv.KeyEnter:
 		cm.searching = false
-		a.copyFindAll()
-		a.copyNextMatch(cm.searchDir)
+		if cm.query != "" {
+			a.copyFindAll()
+			a.copyNextMatch(cm.searchDir)
+		}
 	case k.Code == uv.KeyEscape:
 		cm.searching = false
+		cm.query = cm.previousQuery
+	case k.Code == 'u' && k.Mod.Contains(uv.ModCtrl):
 		cm.query = ""
 	case k.Code == uv.KeyBackspace || k.Code == uv.KeyDelete:
 		if r := []rune(cm.query); len(r) > 0 {
@@ -275,15 +290,25 @@ func (a *App) copySearchKey(k uv.Key) {
 	a.dirty = true
 }
 
-// copyFindAll lists every query occurrence in the buffer (case-
-// sensitive, non-overlapping — the pane.copy_search contract).
+// copyFindAll applies smart case to the UI search only. The API keeps
+// its case-sensitive copybuf.Search contract.
 func (a *App) copyFindAll() {
 	cm := a.cm
 	p := a.sup.Get(cm.pane)
 	if p == nil {
 		return
 	}
-	cm.matches = copybuf.Search(p.BufferLines(), cm.query)
+	lines, query := p.BufferLines(), cm.query
+	if strings.IndexFunc(query, unicode.IsUpper) < 0 {
+		query = strings.ToLower(query)
+		for y, row := range lines {
+			lines[y] = append([]uv.Cell(nil), row...)
+			for x := range lines[y] {
+				lines[y][x].Content = strings.ToLower(lines[y][x].Content)
+			}
+		}
+	}
+	cm.matches = copybuf.Search(lines, query)
 	cm.matchIdx = -1
 }
 
@@ -291,6 +316,12 @@ func (a *App) copyFindAll() {
 // (wrapping) — the same rule as pane.copy_search's current index.
 func (a *App) copyNextMatch(dir int) {
 	cm := a.cm
+	if cm.query == "" {
+		return
+	}
+	if len(cm.matches) == 0 {
+		a.copyFindAll()
+	}
 	if len(cm.matches) == 0 {
 		return
 	}
@@ -317,10 +348,13 @@ func (a *App) copySelRange() (copyPoint, copyPoint, bool) {
 	if to.y < from.y || (to.y == from.y && to.x < from.x) {
 		from, to = to, from
 	}
+	if cm.linewise {
+		from.x, to.x = 0, a.copyInnerW()-1
+	}
 	return from, to, true
 }
 
-// copyYank copies the selection via OSC 52 and flashes "Copied N lines"
+// copyYank copies the selection and flashes "Copied N lines"
 // on the sidebar's bottom row for 2 s (SPEC G1/G6).
 func (a *App) copyYank() {
 	cm := a.cm
@@ -336,8 +370,7 @@ func (a *App) copyYank() {
 	if text == "" {
 		return
 	}
-	b64 := base64.StdEncoding.EncodeToString([]byte(text))
-	if _, err := fmt.Fprintf(a.out, "\x1b]52;c;%s\a", b64); err != nil {
+	if err := a.writeClipboard(text); err != nil {
 		return
 	}
 	lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
@@ -402,7 +435,7 @@ func (a *App) copyHint() string {
 	if cm.anchor != nil {
 		selection = "selecting"
 	}
-	if cm.query != "" {
+	if cm.query != "" || len(cm.matches) > 0 {
 		hint += fmt.Sprintf(" %d/%d", cm.matchIdx+1, len(cm.matches))
 	}
 	hint += "  v/space " + selection + "  y/enter copy"
@@ -515,4 +548,80 @@ func (a *App) copyViewRect() layout.Rect {
 		return a.st.PanesArea()
 	}
 	return a.innerRect(a.cm.pane)
+}
+
+// copyFocusChanged keeps a pane's read position while another pane is active.
+func (a *App) copyFocusChanged() {
+	ws := a.st.ActiveWorkspace()
+	for pid := range a.paneCopies {
+		if ws == nil || ws.ActiveLayout() == nil || !ws.ActiveLayout().HasPane(pid) {
+			delete(a.paneCopies, pid)
+		}
+	}
+	if a.cm != nil && a.cm.pane != a.focusedPane() {
+		if a.paneCopies == nil {
+			a.paneCopies = map[int]*copyMode{}
+		}
+		// Observed 0.2.57 preserves search and cursor, but clears the selection.
+		a.cm.anchor = nil
+		a.paneCopies[a.cm.pane] = a.cm
+		a.cm = nil
+	}
+	if a.cm == nil {
+		pid := a.focusedPane()
+		a.cm = a.paneCopies[pid]
+		delete(a.paneCopies, pid)
+	}
+}
+
+func (a *App) copyResize(previousHeight, previousLength int) {
+	a.cm.matches, a.cm.matchIdx = nil, -1
+	h := a.copyInnerH()
+	previousTop := a.cm.top
+	length := a.bufferLen(a.sup.Get(a.cm.pane))
+	if a.cm.query != "" {
+		// Reflow preserves the viewport's distance from the end. The old search
+		// cursor stays invalid/outside the viewport until the next search.
+		a.cm.top = max(min(a.cm.top+previousHeight-h+length-previousLength, length-h), 0)
+		a.copyClampCursor()
+	} else {
+		a.cm.top = max(min(a.cm.top+previousHeight-h, length-h), 0)
+		a.cm.cy += a.cm.top - previousTop
+		a.copyClampCursor()
+		a.copyReveal()
+	}
+	if a.cm.anchor != nil {
+		a.cm.anchor.x = min(max(a.cm.anchor.x, 0), max(a.copyInnerW()-1, 0))
+		a.cm.anchor.y = min(max(a.cm.anchor.y, a.cm.top), a.cm.top+h-1)
+	}
+}
+
+// Each retained copy view needs its own pre-reflow dimensions, even while the
+// focused pane has no copy view. All access runs on the app loop.
+type copySize struct{ height, length int }
+
+func (a *App) copySizes() map[*copyMode]copySize {
+	sizes := make(map[*copyMode]copySize, len(a.paneCopies)+1)
+	active := a.cm
+	defer func() { a.cm = active }()
+	capture := func(cm *copyMode) {
+		a.cm = cm
+		sizes[cm] = copySize{a.copyInnerH(), a.bufferLen(a.sup.Get(cm.pane))}
+	}
+	if active != nil {
+		capture(active)
+	}
+	for _, cm := range a.paneCopies {
+		capture(cm)
+	}
+	return sizes
+}
+
+func (a *App) copyResizeAll(sizes map[*copyMode]copySize) {
+	active := a.cm
+	defer func() { a.cm = active }()
+	for cm, size := range sizes {
+		a.cm = cm
+		a.copyResize(size.height, size.length)
+	}
 }
