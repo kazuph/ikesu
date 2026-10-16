@@ -48,7 +48,7 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 	if len(f.Graphics) == 0 && len(e.graphicsIDs) == 0 && len(f.Placeholders) == 0 {
 		return false
 	}
-	changed := full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics)
+	changed := !f.RetainGraphics && (full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics))
 	if changed {
 		previous := e.graphicsMap
 		e.graphicsMap = map[string]uint32{}

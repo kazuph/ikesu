@@ -97,3 +97,49 @@ func TestNativePlacedResultRequiresSuccessfulTerminalWrite(t *testing.T) {
 		t.Fatal("failed terminal write emitted a success response", n, err)
 	}
 }
+
+func TestNativePlacedResultWaitsForMatchingResizeSurface(t *testing.T) {
+	m, wire, _, result := nativePaintFixture(t)
+	m.out.Close()
+	output, err := os.CreateTemp(t.TempDir(), "native-resize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	m.out = output
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := output.Seek(0, 1)
+	m.size = tui.Winsize{Cols: 140, Rows: 40}
+	if err := m.sendGraphicsFileResult(m.endpoints["local"].connection, result); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(output.Name())
+	if err != nil || bytes.Contains(data[before:], []byte("\x1b_G")) || m.nativeTransfer.sent {
+		t.Fatal("pending resize changed native images or acknowledged an unplaced image", err)
+	}
+	m.endpoints["local"].snapshot.State.Cols = 140
+	m.endpoints["local"].snapshot.State.Rows = 40
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	wire.SetReadDeadline(time.Now().Add(5 * time.Second))
+	decoder := json.NewDecoder(wire)
+	for {
+		var response msg
+		if err := decoder.Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Type == endpoint.GraphicsResultMessage {
+			if response.GraphicsResult == nil || !response.GraphicsResult.Success {
+				t.Fatal("fresh resize surface was not acknowledged", response)
+			}
+			break
+		}
+	}
+	data, err = os.ReadFile(output.Name())
+	if err != nil || !bytes.Contains(data[before:], []byte("a=p,i=17,")) {
+		t.Fatal("success arrived without the native placement", err)
+	}
+}

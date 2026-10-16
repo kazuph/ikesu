@@ -87,6 +87,7 @@ func (m *machineClient) paint() error {
 	}
 	if f.W != m.size.Cols || f.H != m.size.Rows {
 		clipped := f.Viewport(m.size.Cols, m.size.Rows)
+		clipped.RetainGraphics = true
 		composed.Frame = clipped
 		composed.AnchorVisible = composed.AnchorVisible && composed.AnchorX < clipped.W && composed.AnchorY < clipped.H
 	}
@@ -98,9 +99,12 @@ func (m *machineClient) paint() error {
 	if m.active == "local" {
 		nativePanes = in.Panes
 	}
-	retired, err := m.frames.ObserveNativeImages(nativePanes)
-	if err != nil {
-		return err
+	var retired []byte
+	if !composed.Frame.RetainGraphics {
+		retired, err = m.frames.ObserveNativeImages(nativePanes)
+		if err != nil {
+			return err
+		}
 	}
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
 	data = append(data, retired...)
@@ -115,6 +119,7 @@ func (m *machineClient) paint() error {
 	if err := m.title.painted(m.out, in); err != nil {
 		return err
 	}
+	graphicsRetained := composed.Frame.RetainGraphics
 	composed.Frame = nil
 	if e.connection != nil && (e.requestAck || m.regions == nil || !reflect.DeepEqual(m.regions, composed)) {
 		if err := e.connection.enqueue(msg{Type: "rendered", Rendered: composed, FocusEpoch: e.epoch}); err != nil {
@@ -123,7 +128,7 @@ func (m *machineClient) paint() error {
 		e.requestAck = false
 	}
 	m.regions = composed
-	if nativePaint {
+	if nativePaint && !graphicsRetained {
 		if err := m.nativePainted(); err != nil {
 			return err
 		}

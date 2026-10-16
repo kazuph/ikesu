@@ -42,7 +42,19 @@ func TestPendingResizeKeepsSnapshotGraphics(t *testing.T) {
 		t.Fatal(err)
 	}
 	resized := data[before:]
-	if bytes.Contains(resized, []byte("a=d,")) || bytes.Contains(resized, []byte("\x1b[2J")) || !bytes.Contains(resized, []byte("a=p,")) {
-		t.Fatal("waiting for the resized snapshot erased the displayed image")
+	if bytes.Contains(resized, []byte("\x1b_G")) || bytes.Contains(resized, []byte("\x1b[2J")) {
+		t.Fatal("waiting for the resized snapshot changed displayed graphics")
+	}
+	before, _ = out.Seek(0, 1)
+	snapshot.State.Cols, snapshot.State.Rows = 140, 40
+	graphics := snapshot.Panes[pane].Graphics
+	graphics[0].Image.Data = append([]byte(nil), graphics[0].Image.Data...)
+	graphics[0].Image.Data[0] = 17
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(out.Name())
+	if err != nil || !bytes.Contains(data[before:], []byte("a=t,")) || !bytes.Contains(data[before:], []byte("a=p,")) {
+		t.Fatal("matching fresh snapshot did not resume image updates", err)
 	}
 }

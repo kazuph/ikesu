@@ -66,7 +66,7 @@ for stop in (begin, end):
     start = stop
 period = raw[begin:end]
 counts = {'screen_clears': period.count(b'\x1b[2J'), 'uploads': period.count(b'a=t,'),
-          'deletes': period.count(b'a=d,')}
+          'deletes': period.count(b'a=d,'), 'all_graphics_controls': period.count(b'\x1b_G')}
 clock_valid = (held['pid'] == resumed['pid'] and held['bytes'] == resumed['bytes'] > 0
                and held['time_unix_ns']//1_000_000 <= pending['CapturedUnixMs'] <= resumed['time_unix_ns']//1_000_000)
 passed = (bool(states[0]) and states[0] == states[1] and not any(counts.values())

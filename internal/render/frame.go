@@ -13,6 +13,7 @@ type Frame struct {
 	Graphics          []Graphic
 	Placeholders      []Placeholder
 	GraphicsNamespace string
+	RetainGraphics    bool `json:"-"` // Wait for the producer's new dimensions without changing terminal images.
 	Palette           Palette
 	W, H              int
 	Cells             []uv.Cell
