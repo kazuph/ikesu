@@ -27,3 +27,16 @@ func TestStage2ResizeExit(t *testing.T) {
 		})
 	}
 }
+
+func TestStage2NavigateVisibleNumber(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.newWorkspace()
+	a.st.Workspaces[1].Section = "favorite"
+	a.workspaceNavigate = true
+	a.navigateSelected = 0
+	specFeed(a, "1")
+	if a.st.Active != 1 || a.workspaceNavigate {
+		t.Fatal(a.st.Active, a.workspaceNavigate)
+	}
+}
