@@ -18,8 +18,13 @@ for role in ['herdr', 'gtx']:
     assert len(actions) == len(expected), (role, len(actions), len(expected))
     for action, (screen_name, name) in zip(actions, expected):
         spaces = action['response']['result']['workspaces']
-        active = [w for w in spaces if w['focused']]
-        assert len(active) == 1 and active[0]['label'] == name, (role, screen_name, active, name)
+        if case == 'custom':
+            labels = [w['label'] for w in spaces]
+            want = ['alpha', 'chosen'] if screen_name == 'custom' else ['alpha']
+            assert labels == want, (role, screen_name, labels, want)
+        else:
+            active = [w for w in spaces if w['focused']]
+            assert len(active) == 1 and active[0]['label'] == name, (role, screen_name, active, name)
         screen = (root/role/(screen_name+'.txt')).read_text()
         sidebar = '\n'.join(line[:26] for line in screen.splitlines())
         assert name in sidebar, (role, screen_name, sidebar)

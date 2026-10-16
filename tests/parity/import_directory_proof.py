@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import time
 
+from clipboard_guard import SANDBOX_PROFILE
+
 p = argparse.ArgumentParser()
 p.add_argument('--snapshot', type=Path, required=True)
 p.add_argument('--binary', type=Path, required=True)
@@ -53,7 +55,8 @@ try:
         (root/'zdot/.zshrc').write_text("PS1='IMPORT> '\nunset HISTFILE\n")
         env.update(HOME=str(root/'home'), ZDOTDIR=str(root/'zdot'), SHELL='/bin/zsh',
                    GTX_STATE_DIR=str(root/'state'), GTX_CONFIG=str(cfg), XDG_CONFIG_HOME=str(root/'config'))
-        argv = [str(a.binary), '--session', 'import-directory']
+        argv = ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE,
+                str(a.binary), '--session', 'import-directory']
         imported = subprocess.run(argv+['session', 'import-herdr', '--source', str(root/'source'), '--yes'], env=env, capture_output=True, text=True, timeout=30)
         (a.out/'import.json').write_text(json.dumps(dict(exit=imported.returncode, stdout=imported.stdout, stderr=imported.stderr), indent=2))
         assert imported.returncode == 0, imported.stderr
