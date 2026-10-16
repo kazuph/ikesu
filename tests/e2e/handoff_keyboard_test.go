@@ -85,7 +85,10 @@ func liveKeyboardHandoff(t *testing.T, old string) {
 	}
 	change := func(state string) {
 		t.Helper()
-		if err := os.WriteFile(control, []byte(state), 0600); err != nil {
+		if err := os.WriteFile(control+".next", []byte(state), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(control+".next", control); err != nil {
 			t.Fatal(err)
 		}
 		s.waitFor(state, 5*time.Second, func(text string) bool { return strings.Contains(text, "HANDOFF_KEY_"+state) })

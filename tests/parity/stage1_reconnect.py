@@ -44,7 +44,8 @@ class Reconnect:
             if result.returncode:
                 raise RuntimeError('real server handoff failed: '+str(result.returncode))
             history.append({'phase':'disconnected', 'ns':time.monotonic_ns()})
-            (self.target/'pane-mode').write_text(self.mode)
+            (self.target/'pane-mode.next').write_text(self.mode)
+            (self.target/'pane-mode.next').replace(self.target/'pane-mode')
             self.wait('pane-changed')
             history.append({'phase':'pane-changed', 'ns':time.monotonic_ns()})
             os.kill(display, signal.SIGCONT)

@@ -170,7 +170,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     reconnect = Reconnect(launcher, env, target, a.reconnect_keyboard)
                     reconnect.start()
                     wrapper = root/'display.py'
-                    wrapper.write_text('import os,sys\nfrom pathlib import Path\nPath(sys.argv[1]).write_text(str(os.getpid()))\nos.execv(sys.argv[2],sys.argv[2:])\n')
+                    wrapper.write_text('import os,sys\nfrom pathlib import Path\np=Path(sys.argv[1]); q=p.with_suffix(".next"); q.write_text(str(os.getpid())); q.replace(p)\nos.execv(sys.argv[2],sys.argv[2:])\n')
                     launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
