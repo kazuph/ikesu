@@ -294,6 +294,10 @@ func HelpThumb(body, total, scroll int) (thumb, top int) {
 }
 
 func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
+	if d.WorktreeCreate {
+		drawWorktreeCreate(f, d, out)
+		return
+	}
 	if d.InputEdit {
 		drawNameInput(f, d, out)
 		return

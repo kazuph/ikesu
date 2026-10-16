@@ -479,6 +479,22 @@ func (a *App) menuKey(k uv.Key) {
 
 // dialogMouse resolves clicks on the confirmation dialog.
 func (a *App) dialogMouse(ev input.Event) {
+	if a.dialog.d.WorktreeCreate {
+		if ev.Kind != input.KindMouseClick || ev.Mouse.Button != uv.MouseLeft {
+			return
+		}
+		r := render.WorktreeCreateRect(a.st.Cols, a.st.Rows)
+		confirm, cancel := render.WorktreeCreateButtons(r)
+		if pointIn(ev.Mouse.X, ev.Mouse.Y, confirm) {
+			d := a.dialog
+			a.dialog = nil
+			d.run(a)
+		} else if pointIn(ev.Mouse.X, ev.Mouse.Y, cancel) || !pointIn(ev.Mouse.X, ev.Mouse.Y, r) {
+			a.cancelDialog()
+		}
+		a.dirty = true
+		return
+	}
 	if a.dialog.d.InputEdit && ev.Kind == input.KindMouseRelease {
 		return
 	}

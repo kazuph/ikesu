@@ -108,6 +108,7 @@ type uiDialog struct {
 	machineForm    bool
 	back           func()
 	replaceDefault bool
+	changed        func()
 	d              render.Dialog
 	run            func(a *App) // confirm action
 	cancel         func(a *App)

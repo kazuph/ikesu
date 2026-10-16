@@ -442,6 +442,9 @@ func (a *App) dialogKey(k uv.Key) {
 		}
 		*d.input = string(runes)
 		d.d.Input, d.d.InputCursor = *d.input, len(runes)
+		if d.changed != nil {
+			d.changed()
+		}
 	}
 	a.dirty = true
 }

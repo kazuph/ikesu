@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
@@ -19,22 +21,30 @@ func (a *App) newWorktreeDialog(index int) {
 		return
 	}
 	id := fmt.Sprintf("s%d", a.st.Workspaces[index].ID)
-	if _, err := a.WorktreeSource("", &id); err != nil {
+	src, err := a.WorktreeSource("", &id)
+	if err != nil {
 		a.SetConfigWarning("gtx worktree actions require a workspace inside a Git work tree.")
 		a.configWarningBanner = true
 		return
 	}
 	branch := ""
-	a.dialog = &uiDialog{input: &branch, d: render.Dialog{Title: "New worktree", Detail: "New or existing branch name", InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
-		if branch == "" {
-			a.worktreeError(fmt.Errorf("enter a branch name"))
-			return
-		}
+	d := &uiDialog{input: &branch, replaceDefault: true, d: render.Dialog{Title: "New worktree", WorktreeCreate: true, Confirm: "create and open", Cancel: "cancel"}}
+	d.changed = func() { d.d.Checkout = filepath.Join(*src.CheckoutPathPrefix, worktree.Slug(branch)) }
+	d.changed()
+	d.run = func(a *App) {
+		d.d.Input = branch
+		d.changed()
 		_, err := a.CreateWorktree(api.WorktreeCreateParams{WorkspaceID: &id, Branch: &branch, Focus: true})
 		if err != nil {
-			a.worktreeError(err)
+			var gitErr *worktree.GitError
+			d.d.Detail = err.Error()
+			if errors.As(err, &gitErr) {
+				d.d.Detail = gitErr.Output
+			}
+			a.dialog = d
 		}
-	}}
+	}
+	a.dialog = d
 	a.dirty = true
 }
 
