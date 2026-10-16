@@ -30,7 +30,8 @@ func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, fun
 		return nil, nil, err
 	}
 	wakeFD := int32(wake.Fd())
-	events := make(chan input.Event)
+	// Make already decoded input visible to the bounded pre-paint drain.
+	events := make(chan input.Event, queuedInputBatchLimit)
 	stopped := make(chan struct{})
 	done := make(chan struct{})
 	var once sync.Once

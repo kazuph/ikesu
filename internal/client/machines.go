@@ -75,6 +75,7 @@ type machineClient struct {
 	frames          render.Encoder
 	outputFence     render.OutputFence
 	paintQueued     bool
+	inputBatch      bool
 	title           windowTitleState
 	regions         *render.Output
 	tabFeedback     *tabFeedback
@@ -169,7 +170,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			if !ok {
 				return pumpDone
 			}
-			if err := m.input(event); err != nil {
+			if _, err := m.drainInput(event, input); err != nil {
 				m.notify(err.Error())
 				_ = m.paint()
 			}

@@ -22,5 +22,7 @@ while b'\r' not in received and b'\n' not in received:
     received.extend(chunk)
     a.out.write_text(json.dumps({'received_hex': received.hex()}, indent=2)+'\n')
 a.out.write_text(json.dumps({'received_hex': received.hex()}, indent=2)+'\n')
-os.write(1, b'\x1b[2;1HLOCAL_KEYS_RECORDED')
+# Follow the cursor through resize/reflow; an absolute row can overwrite the
+# original readiness marker and destroy its first-display timestamp.
+os.write(1, b'\r\nLOCAL_KEYS_RECORDED')
 os.read(0, 1)

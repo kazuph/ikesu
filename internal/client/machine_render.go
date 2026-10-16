@@ -9,7 +9,7 @@ import (
 )
 
 func (m *machineClient) paint() error {
-	if m.outputFence.Waiting(time.Now()) {
+	if m.inputBatch || m.outputFence.Waiting(time.Now()) {
 		m.paintQueued = true
 		return nil
 	}
