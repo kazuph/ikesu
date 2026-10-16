@@ -40,18 +40,18 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 		}
 		rest = rest[n+2:]
 	}
-	if s.runtimeBlankBounds == nil {
-		s.runtimeBlankBounds = make(map[*uv.Cell]runtimeRowState, len(s.buf.Lines))
+	if cap(s.runtimeBlankBounds) < len(s.buf.Lines) {
+		s.runtimeBlankBounds = make([]runtimeRowState, len(s.buf.Lines))
+	} else {
+		s.runtimeBlankBounds = s.runtimeBlankBounds[:len(s.buf.Lines)]
 	}
-	clear(s.runtimeBlankBounds)
-	for _, line := range s.buf.Lines {
+	s.runtimeRowHead = 0
+	for y, line := range s.buf.Lines {
 		end := len(line)
 		for end > 0 && line[end-1] == uv.EmptyCell {
 			end--
 		}
-		if len(line) > 0 {
-			s.runtimeBlankBounds[&line[0]] = runtimeRowState{end: end, plain: end == 0}
-		}
+		s.runtimeBlankBounds[y] = runtimeRowState{end: end, plain: end == 0}
 	}
 	old := s.cur.Position
 	callback := e.cb.CursorPosition
@@ -60,6 +60,8 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 	defer func() {
 		s.runtimeASCII = false
 		clear(s.runtimeBlankBounds)
+		s.runtimeBlankBounds = s.runtimeBlankBounds[:0]
+		s.runtimeRowHead = 0
 		e.cb.CursorPosition = callback
 		if callback != nil && old != s.cur.Position {
 			callback(old, s.cur.Position)
@@ -68,15 +70,18 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 	for rest := p; len(rest) > 0; {
 		n := bytes.IndexByte(rest, '\r')
 		line := s.buf.Line(s.cur.Y)
-		canonical := len(line) > 0 && s.runtimeBlankBounds[&line[0]].end == 0
+		canonical := false
 		if len(line) > 0 {
-			key := &line[0]
-			state := s.runtimeBlankBounds[key]
+			idx := s.runtimeRowHead + s.cur.Y
+			if idx >= len(s.runtimeBlankBounds) {
+				idx -= len(s.runtimeBlankBounds)
+			}
+			state := &s.runtimeBlankBounds[idx]
+			canonical = state.end == 0
 			state.end = max(state.end, n)
 			if n > 0 {
 				state.plain = canonical && s.cursorPen() == (uv.Style{}) && s.cursorLink() == (uv.Link{})
 			}
-			s.runtimeBlankBounds[key] = state
 		}
 		if canonical && n > 0 {
 			pen, link := s.cursorPen(), s.cursorLink()

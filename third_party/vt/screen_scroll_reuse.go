@@ -19,7 +19,7 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	clearEnd := 0
 	scanEnd := len(line)
 	if s.runtimeASCII && len(line) > 0 {
-		scanEnd = s.runtimeBlankBounds[&line[0]].end
+		scanEnd = s.runtimeBlankBounds[s.runtimeRowHead].end
 	}
 	for i := scanEnd - 1; i >= 0; i-- {
 		if !blankCell(&line[i]) {
@@ -38,7 +38,7 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	dropped := false
 	if line != nil {
 		if s.runtimeASCII && s.scrollback.byteLimited && len(line) > 0 {
-			dropped = s.scrollback.pushBytesWithPlain(line[:end], s.runtimeBlankBounds[&line[0]].plain)
+			dropped = s.scrollback.pushBytesWithPlain(line[:end], s.runtimeBlankBounds[s.runtimeRowHead].plain)
 		} else {
 			dropped = s.scrollback.pushTrimmed(line[:end])
 		}
@@ -71,7 +71,11 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		}
 	}
 	if s.runtimeASCII && len(line) > 0 {
-		s.runtimeBlankBounds[&line[0]] = runtimeRowState{plain: true}
+		s.runtimeBlankBounds[s.runtimeRowHead] = runtimeRowState{plain: true}
+		s.runtimeRowHead++
+		if s.runtimeRowHead == len(s.runtimeBlankBounds) {
+			s.runtimeRowHead = 0
+		}
 	}
 	// The first touch grows the bookkeeping for every row once.
 	s.buf.TouchLine(r.Min.X, r.Min.Y, r.Max.X-r.Min.X)

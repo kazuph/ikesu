@@ -89,6 +89,22 @@ func TestRuntimeASCIIKeepsMutatingCallbacks(t *testing.T) {
 	}
 }
 
+func TestRuntimeASCIIWithoutHistory(t *testing.T) {
+	for _, height := range []int{1, 5} {
+		got, want := NewEmulator(8, height), NewEmulator(8, height)
+		for _, e := range []*Emulator{got, want} {
+			e.SetScrollbackSize(0)
+			_, _ = e.Write([]byte("initial\r\n"))
+		}
+		text := []byte(strings.Repeat("a\r\n \r\n\r\n", 8))
+		_, _ = got.WriteRuntimeASCII(text)
+		_, _ = want.Write(text)
+		assertRuntimeASCIIEqual(t, got, want)
+		got.Close()
+		want.Close()
+	}
+}
+
 func TestRuntimeASCIIClosed(t *testing.T) {
 	e := NewEmulator(8, 2)
 	e.Close()
