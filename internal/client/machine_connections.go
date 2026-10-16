@@ -184,17 +184,12 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	case "decisions", "decision_answer_result":
 		// Older servers still send these controls; decisions are answered outside the display.
 	case "snapshot":
-		data, err := base64.StdEncoding.DecodeString(message.Data)
-		if err != nil {
-			m.fail(event.id, err)
+		if message.snapshot == nil {
+			m.fail(event.id, errors.New("snapshot was not decoded by endpoint reader"))
 			break
 		}
-		input, err := e.connection.snapshots.Decode(data)
-		if err != nil {
-			m.fail(event.id, err)
-			break
-		}
-		e.snapshot = &input
+		input := *message.snapshot
+		e.snapshot = message.snapshot
 		e.epoch = message.FocusEpoch
 		e.requestAck = message.RequestAck
 		if m.pending != nil && m.pending.id == event.id {

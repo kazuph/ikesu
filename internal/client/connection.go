@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -74,6 +75,18 @@ func (c *endpointConnection) read() (msg, error) {
 	var m msg
 	if err := json.Unmarshal(line, &m); err != nil {
 		return msg{}, fmt.Errorf("invalid endpoint message: %w", err)
+	}
+	if m.Type == "snapshot" {
+		data, err := base64.StdEncoding.DecodeString(m.Data)
+		if err != nil {
+			return msg{}, fmt.Errorf("invalid snapshot: %w", err)
+		}
+		in, err := c.snapshots.Decode(data)
+		if err != nil {
+			return msg{}, fmt.Errorf("invalid snapshot: %w", err)
+		}
+		m.snapshot = &in
+		m.Data = ""
 	}
 	return m, nil
 }
