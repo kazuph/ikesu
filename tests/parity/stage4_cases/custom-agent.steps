@@ -1,0 +1,5 @@
+send "python3 @FIXTURES@/socket_action.py report-state idle; \"$PARITY_BINARY_PATH\" pane rename \"${GTX_PANE_ID:-$HERDR_PANE_ID}\" CUSTOM_LABEL; printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 1s
+screen @OUT@/custom.txt
+cells @OUT@/custom.json
+kill

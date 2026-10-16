@@ -216,7 +216,6 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 		}
 		v.style = tokenStyle(t, v.style)
-		v.style.Attrs &^= uv.AttrFaint
 		tokens = append(tokens, v)
 	}
 	drawTokens(f, x+1, y, max(0, w-1), tokens)
