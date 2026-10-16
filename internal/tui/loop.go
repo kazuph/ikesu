@@ -242,12 +242,14 @@ func (a *App) exec(cmd model.Command) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			a.lastSpawnError = err
+			a.ShowToast("workspace close failed", err.Error(), "needs_attention", a.focusedPane())
 			return
 		}
 		a.lastSpawnError = nil
 		a.exec(model.CmdNewWorkspace{Cwd: home, Name: filepath.Base(home)})
 		if a.lastSpawnError != nil {
 			a.exec(model.CmdCloseWorkspace{Index: 1})
+			a.ShowToast("workspace close failed", a.lastSpawnError.Error(), "needs_attention", a.focusedPane())
 			return
 		}
 		delete(a.workspaceNames, 0)

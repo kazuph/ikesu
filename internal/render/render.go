@@ -414,7 +414,23 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				if pr.IsFocused && (snap == nil || !snap.Dead) {
 					titleSty.Attrs |= uv.AttrBold
 				}
-				f.Text(pr.Rect.X+1, pr.Rect.Y, " "+title+" ", titleSty, titleStop)
+				// The reference admits a wide glyph whose head fits before the
+				// restore slot, allowing its tail to occupy the leading space.
+				x := pr.Rect.X + 1
+				for _, r := range " " + title + " " {
+					if x >= titleStop {
+						break
+					}
+					width := ansi.StringWidth(string(r))
+					if width < 1 {
+						width = 1
+					}
+					if x+width > titleStop && titleStop == pr.Rect.X+pr.Rect.W-1 {
+						break
+					}
+					f.Set(x, pr.Rect.Y, string(r), titleSty)
+					x += width
+				}
 			}
 
 			// Scroll indicator on the top border, left of the restore

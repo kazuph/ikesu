@@ -41,7 +41,7 @@ func TestStage5HomeSpawnFailureKeepsLastWorkspace(t *testing.T) {
 	ws := a.st.ActiveWorkspace().ID
 	t.Setenv("HOME", t.TempDir()+"/missing-home")
 	a.ExecCmd(model.CmdCloseWorkspace{Index: 0})
-	if a.lastSpawnError == nil || a.quit || len(a.st.Workspaces) != 1 || a.st.ActiveWorkspace().ID != ws || a.focusedPane() != old || a.sup.Get(old) == nil {
+	if a.lastSpawnError == nil || a.quit || len(a.st.Workspaces) != 1 || a.st.ActiveWorkspace().ID != ws || a.focusedPane() != old || a.sup.Get(old) == nil || a.toast == nil || a.toast.body != a.lastSpawnError.Error() {
 		t.Fatal("failed home spawn must keep original workspace and terminal")
 	}
 }
