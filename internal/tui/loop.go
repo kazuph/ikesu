@@ -264,9 +264,10 @@ func (a *App) exec(cmd model.Command) {
 			metadataOrder = append(metadataOrder, ws.ID)
 		}
 	}
-	copyHeight := 0
+	copyHeight, copyLength := 0, 0
 	if _, resizing := cmd.(model.CmdResize); resizing && a.cm != nil {
 		copyHeight = a.copyInnerH()
+		copyLength = a.bufferLen(a.sup.Get(a.cm.pane))
 	}
 	popupWasVisible := a.st.PopupVisible()
 	previousPopup := a.st.Popup
@@ -314,7 +315,7 @@ func (a *App) exec(cmd model.Command) {
 	switch cmd.(type) {
 	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
 		if _, resized := cmd.(model.CmdResize); resized && a.cm != nil {
-			a.copyResize(copyHeight)
+			a.copyResize(copyHeight, copyLength)
 		}
 	default:
 		a.changed()

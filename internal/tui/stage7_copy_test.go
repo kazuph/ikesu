@@ -175,3 +175,29 @@ func TestStage7ViewerResizeInvalidatesSearchCoordinates(t *testing.T) {
 		t.Fatal("endpoint repeat did not recalculate")
 	}
 }
+
+func TestStage7SearchResizeReflowKeepsDistanceFromEnd(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	inner := a.innerRect(a.focusedPane())
+	p, err := a.sup.SpawnWith(a.focusedPane(), a.cwd, inner.W, inner.H, nil, []string{"/bin/sh", "-c", "i=0; while [ $i -lt 80 ]; do printf 'alpha %080d\\n' $i; i=$((i+1)); done; printf 'REFLOW_READY\\n'; exec /bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	specWaitText(t, p, "REFLOW_READY")
+	a.enterCopy(false)
+	specFeed(a, "/alpha\r")
+	before := *a.cm
+	distance := a.bufferLen(p) - a.copyInnerH() - before.top
+	a.exec(model.CmdResize{Cols: 80, Rows: 35})
+	if a.bufferLen(p)-a.copyInnerH()-a.cm.top != distance {
+		t.Fatal("reflow lost distance from buffer end")
+	}
+	if a.cm.cy != before.cy || a.cm.cx != before.cx || len(a.cm.matches) != 0 {
+		t.Fatal("resize moved old search cursor or retained matches")
+	}
+	a.copyNextMatch(1)
+	if a.cm.matchIdx < 0 || a.cm.cy < a.cm.top || a.cm.cy >= a.cm.top+a.copyInnerH() {
+		t.Fatal("repeat did not reveal recalculated search")
+	}
+}

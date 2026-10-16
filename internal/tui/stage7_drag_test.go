@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/teststate"
@@ -57,5 +58,20 @@ func TestStage7ViewerDragReceivesTicks(t *testing.T) {
 	}
 	if a.scroll[pid] != 0 {
 		t.Fatal("viewer changed session scroll")
+	}
+}
+
+func TestStage7DragCopyOmitsFinalBlankRow(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "SSH_CONNECTION", "isolated-test")
+	a := stage7CopyApp(t)
+	pid := a.cm.pane
+	a.exitCopy()
+	var out bytes.Buffer
+	a.out = &out
+	a.sel = &selState{pane: pid, ax: 0, ay: 120, hx: 0, hy: 121, moved: true, inner: a.innerRect(pid)}
+	a.finishSelection()
+	if out.String() != "\x1b]52;c;U1RBR0U3X1JFQURZ\a" {
+		t.Fatalf("clipboard included final empty row: %q", out.String())
 	}
 }

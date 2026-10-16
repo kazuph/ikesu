@@ -669,7 +669,7 @@ func (a *App) selMouse(ev input.Event) {
 	}
 }
 
-// finishSelection copies the selection via OSC 52 and shows the flash.
+// finishSelection copies the selection and shows the flash.
 func (a *App) finishSelection() {
 	s := a.sel
 	a.sel = nil
@@ -680,6 +680,7 @@ func (a *App) finishSelection() {
 		return
 	}
 	text, _ := a.selText(s)
+	text = strings.TrimRight(text, "\n")
 	if text == "" {
 		return
 	}

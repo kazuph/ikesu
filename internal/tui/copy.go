@@ -145,7 +145,7 @@ func (a *App) copyReveal() {
 // copyKey handles one key inside copy mode (SPEC G6 本家 copy mode):
 // arrows/hjkl, w/b/e word motion, 0/$ real line ends, g/G, PgUp/PgDn,
 // C-u/C-d half page, / search, n/N matches, Space select, Enter yank,
-// q/Esc exit; prefix stays available (C-b).
+// q/Esc exit; the configured prefix stays available.
 func (a *App) copyKey(k uv.Key, raw []byte) {
 	cm := a.cm
 	p := a.sup.Get(cm.pane)
@@ -354,7 +354,7 @@ func (a *App) copySelRange() (copyPoint, copyPoint, bool) {
 	return from, to, true
 }
 
-// copyYank copies the selection via OSC 52 and flashes "Copied N lines"
+// copyYank copies the selection and flashes "Copied N lines"
 // on the sidebar's bottom row for 2 s (SPEC G1/G6).
 func (a *App) copyYank() {
 	cm := a.cm
@@ -574,14 +574,22 @@ func (a *App) copyFocusChanged() {
 	}
 }
 
-func (a *App) copyResize(previousHeight int) {
+func (a *App) copyResize(previousHeight, previousLength int) {
 	a.cm.matches, a.cm.matchIdx = nil, -1
 	h := a.copyInnerH()
 	previousTop := a.cm.top
-	a.cm.top = max(min(a.cm.top+previousHeight-h, a.bufferLen(a.sup.Get(a.cm.pane))-h), 0)
-	a.cm.cy += a.cm.top - previousTop
-	a.copyClampCursor()
-	a.copyReveal()
+	length := a.bufferLen(a.sup.Get(a.cm.pane))
+	if a.cm.query != "" {
+		// Reflow preserves the viewport's distance from the end. The old search
+		// cursor stays invalid/outside the viewport until the next search.
+		a.cm.top = max(min(a.cm.top+previousHeight-h+length-previousLength, length-h), 0)
+		a.copyClampCursor()
+	} else {
+		a.cm.top = max(min(a.cm.top+previousHeight-h, length-h), 0)
+		a.cm.cy += a.cm.top - previousTop
+		a.copyClampCursor()
+		a.copyReveal()
+	}
 	if a.cm.anchor != nil {
 		a.cm.anchor.x = min(max(a.cm.anchor.x, 0), max(a.copyInnerW()-1, 0))
 		a.cm.anchor.y = min(max(a.cm.anchor.y, a.cm.top), a.cm.top+h-1)
