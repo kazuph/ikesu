@@ -31,10 +31,12 @@ p.add_argument('--tap-tb-input', action='store_true', help='record input deliver
 p.add_argument('--visibility', action='store_true', help='record real saved-machine graphics visibility across split, focus and zoom')
 p.add_argument('--pointer-probe', action='store_true', help='verify real link hover and horizontal scroll through page DOM event reports')
 p.add_argument('--adjacent-input', action='store_true', help='click a real adjacent saved-machine pane and record its immediate key input')
+p.add_argument('--resize-wait', action='store_true', help='hold real SSH output across resize and inspect the pending display')
+p.add_argument('--switch-hold', choices=('expiry', 'disconnect'), help='hold real destination output while typing, then exceed the three-second input limit or disconnect')
 a = p.parse_args()
 if a.image_probe and a.measure:
     p.error('the controlled image producer cannot be used for tb performance measurement')
-if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe or a.adjacent_input)):
+if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe or a.adjacent_input or a.switch_hold)):
     p.error('the input tap requires an actual tb measurement or pointer probe')
 if a.visibility and (a.measure or a.image_probe):
     p.error('visibility operations must be separate from timing and controlled-image measurements')
@@ -42,6 +44,11 @@ if a.pointer_probe and (a.measure or a.image_probe or a.visibility):
     p.error('pointer probe must be separate from other observation modes')
 if a.adjacent_input and (a.measure or a.image_probe or a.visibility or a.pointer_probe):
     p.error('adjacent-pane input must be separate from other observation modes')
+if a.resize_wait and (a.measure or a.image_probe or a.visibility or a.pointer_probe or a.adjacent_input or not a.capture_ssh):
+    p.error('resize wait requires SSH capture and must be separate from other observation modes')
+if a.switch_hold and (a.measure or a.image_probe or a.visibility or a.pointer_probe or a.adjacent_input or a.resize_wait
+                      or not a.capture_ssh or not a.tap_tb_input):
+    p.error('switch hold requires SSH capture and actual tb input tap, separately from other modes')
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
 observer_source = Path(__file__).read_bytes()
@@ -62,9 +69,11 @@ expected_keys = 'abcdefghijklmnop'
                                                        'visibility': a.visibility,
                                                        'pointer_probe': a.pointer_probe,
                                                        'adjacent_input': a.adjacent_input,
+                                                       'resize_wait': a.resize_wait,
+                                                       'switch_hold': a.switch_hold,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
-                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure or a.adjacent_input else None}, indent=2)+'\n')
+                                                       'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure or a.adjacent_input or a.switch_hold else None}, indent=2)+'\n')
 
 RPC = '''import json,pathlib,socket,sys
 path,method,params=sys.argv[1:4]
@@ -100,6 +109,21 @@ def result(reply):
     if 'error' in reply:
         raise RuntimeError(reply)
     return reply['result']
+
+
+def wait_for_file(path, viewer):
+    with closing(select.kqueue()) as events:
+        fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            events.control([select.kevent(fd, filter=select.KQ_FILTER_VNODE, flags=select.KQ_EV_ADD,
+                                          fflags=select.KQ_NOTE_WRITE)], 0, 0)
+            deadline = time.monotonic()+10
+            while not path.exists():
+                if viewer.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('saved-machine stage was not captured: '+path.name)
+                events.control(None, 1, max(0, deadline-time.monotonic()))
+        finally:
+            os.close(fd)
 
 
 lock_log = (out/'lock.log').open('w')
@@ -168,6 +192,11 @@ for name in ['herdr','gtx']:
         if a.capture_ssh:
             ssh_wrapper.write_bytes(Path(__file__).with_name('tb_ssh_capture.py').read_bytes())
             env.update(TB_SSH_OBSERVER_PREFIX=prefix, TB_SSH_CAPTURE_ROOT=str(out/'ssh'))
+            if a.resize_wait or a.switch_hold:
+                env.update(TB_SSH_HOLD_MARKER=str(root/'hold-remote-output.json'),
+                           TB_SSH_RELEASE_MARKER=str(root/'release-remote-output'))
+                if a.switch_hold == 'disconnect':
+                    env['TB_SSH_ABORT_MARKER'] = str(root/'disconnect-remote-output')
         owned, logs, cleanup = [], [], []
         remote_pane = ''
         local_pane = ''
@@ -214,7 +243,7 @@ for name in ['herdr','gtx']:
                     remote_pane = created['root_pane']['pane_id']
                 else:
                     local_pane = created['root_pane']['pane_id']
-            if a.measure:
+            if a.measure or a.switch_hold:
                 receiver = root/'key-receiver.py'
                 receiver.write_bytes(Path(__file__).with_name('tb_key_program.py').read_bytes())
                 receiver_command = shlex.join(['python3', str(receiver), '--out', str(root/'keys.json')])
@@ -242,7 +271,7 @@ for name in ['herdr','gtx']:
             ready, raw = root/'image-ready', out/'terminal.raw'
             raw.touch()
             steps = root/'steps'
-            steps.write_text(('waittext 20s LOCAL_SWITCH_READY\n' if a.measure else '')+'waittext 20s TB_REMOTE\ncells '+str(out/'pre-click.json')+'\nclicktext "TB_REMOTE"\nwaitfile '+str(ready)+' 30s\n'
+            steps.write_text(('waittext 20s LOCAL_SWITCH_READY\n' if a.measure or a.switch_hold else '')+'waittext 20s TB_REMOTE\ncells '+str(out/'pre-click.json')+'\nclicktext "TB_REMOTE"\nwaitfile '+str(ready)+' 30s\n'
                              'cells '+str(out/'tb-visible.json')+'\nstats tb-visible\nkill\n')
             if a.measure:
                 procedure = steps.read_text().replace('kill\n', '')
@@ -264,6 +293,19 @@ for name in ['herdr','gtx']:
                 steps.write_text(steps.read_text().replace('kill\n', '')+
                                  'waittext 10s LOCAL_SWITCH_READY\nclick 120 22\nsend '+json.dumps(expected_keys+'\r')+'\n'
                                  'waittext 10s LOCAL_KEYS_RECORDED\ncells '+str(out/'adjacent-input.json')+'\nkill\n')
+            if a.resize_wait:
+                steps.write_text(steps.read_text().replace('kill\n', '')+
+                                 'cells '+str(root/'hold-remote-output.json')+'\nmark resize-start\nresize 140 40\n'
+                                 'waitfile '+str(out/'ssh/transport-held.json')+' 10s\n'
+                                 'cells '+str(out/'pending-resize.json')+'\nstats pending-resize\n'
+                                 'waitfile '+str(out/'ssh/transport-resumed.json')+' 10s\n'
+                                 'cells '+str(out/'resumed-resize.json')+'\nstats resumed-resize\nkill\n')
+            if a.switch_hold:
+                steps.write_text(steps.read_text().replace('kill\n', '')+
+                                 'clicktext "TB_LOCAL"\nwaittext 10s LOCAL_SWITCH_READY\nlocate "TB_REMOTE"\n'
+                                 'cells '+str(root/'hold-remote-output.json')+'\nmark switch-hold-start\nclicklocated "TB_REMOTE"\n'
+                                 'send '+json.dumps(expected_keys+'\r')+'\ncells '+str(out/'pending-input.json')+'\n'
+                                 'waitfile '+str(root/'switch-hold-done')+' 10s\ncells '+str(out/'post-hold.json')+'\nstats switch-hold\nkill\n')
             (out/'steps').write_text(steps.read_text())
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
@@ -311,6 +353,33 @@ for name in ['herdr','gtx']:
                     os.close(fd)
             if a.pointer_probe:
                 tb_pointer_probe.collect(ssh, remote, root, out, viewer, a.pixel_mouse)
+            if a.resize_wait:
+                wait_for_file(out/'pending-resize.json', viewer)
+                (root/'release-remote-output').write_text('pending display captured; release real SSH data')
+            if a.switch_hold:
+                wait_for_file(out/'pending-input.json', viewer)
+                wait_for_file(out/'ssh/transport-held.json', viewer)
+                captured = json.loads((out/'pending-input.json').read_text())['CapturedUnixMs']
+                if a.switch_hold == 'expiry':
+                    # Stage8 T5 specifies a three-second input lifetime. Wait
+                    # from the post-input capture so release is beyond it.
+                    deadline = captured/1000+3
+                    with closing(select.kqueue()) as timer:
+                        while time.time() < deadline:
+                            timer.control(None, 1, max(0, deadline-time.time()))
+                else:
+                    (root/'disconnect-remote-output').write_text('disconnect this observer-owned SSH transport')
+                (root/'release-remote-output').write_text('release destination after the required failure condition')
+                wait_for_file(out/('ssh/transport-resumed.json' if a.switch_hold == 'expiry' else 'ssh/transport-disconnected.json'), viewer)
+                if a.switch_hold == 'disconnect':
+                    # Include reconnection during the existing input lifetime,
+                    # rather than ending the observation immediately at EOF.
+                    deadline = captured/1000+3
+                    with closing(select.kqueue()) as timer:
+                        while time.time() < deadline:
+                            timer.control(None, 1, max(0, deadline-time.time()))
+                (out/'switch-hold-control.json').write_text(json.dumps({'mode': a.switch_hold, 'time_unix_ns': time.time_ns()})+'\n')
+                (root/'switch-hold-done').write_text('actual destination transport condition completed')
             viewer.wait()
             if viewer.returncode != 0 or 'TIMEOUT' in (out/'viewer.log').read_text():
                 raise RuntimeError('saved-machine viewer procedure failed')
