@@ -507,7 +507,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		}
 		if in.ServerUI {
 			base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
-			if r.Ws == s.Active && s.Workspaces[r.Ws].TabRef().Layout.HasPane(r.Pane) {
+			if r.Ws == s.Active && s.Workspaces[r.Ws].TabRef().Layout.Focused() == r.Pane {
 				base.Fg, base.Bg = f.Palette.Text, f.Palette.PanelBG
 			}
 			f.Fill(ix, y, iw, 1, " ", uv.Style{Fg: f.Palette.Text, Bg: base.Bg})

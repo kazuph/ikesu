@@ -153,7 +153,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		}
 	}
 	base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
-	if r.Ws == s.Active {
+	if r.Ws == s.Active && ws.TabRef().Layout.Focused() == r.Pane {
 		base.Fg, base.Bg = f.Palette.Text, f.Palette.SurfDim
 	}
 	f.Fill(x, y, w, 1, " ", base)
@@ -202,6 +202,9 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 					v.text = sn.Label
 				}
 				v.style.Attrs &^= uv.AttrBold
+				if in.ServerUI {
+					v.style.Fg = f.Palette.Dim
+				}
 			}
 			v.fixed = true
 		case "workspace":
@@ -211,10 +214,16 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 		case "tab":
 			v.text = tab
+			if in.ServerUI {
+				v.style.Fg = f.Palette.Dim
+			}
 		case "agent":
 			v.text = sn.Agent
 			if sn.DisplayAgent != "" {
 				v.text = sn.DisplayAgent
+			}
+			if in.ServerUI {
+				v.style.Fg = f.Palette.Dim
 			}
 		case "terminal_title_stripped":
 			v.text = detect.StripTerminalTitle(sn.Title)
