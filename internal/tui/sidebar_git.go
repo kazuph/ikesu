@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/worktree"
 	"path/filepath"
@@ -34,22 +35,34 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	a.gitPending = true
 	a.gitAt = now
 	type target struct {
-		id  int
-		cwd string
+		id      int
+		cwd     string
+		nameCwd string
 	}
 	var targets []target
 	for _, w := range a.st.Workspaces {
-		targets = append(targets, target{w.ID, w.Cwd})
+		cwd := w.Cwd
+		if len(w.Tabs) > 0 {
+			ids := w.Tabs[0].Layout.PaneIDs()
+			if len(ids) > 0 {
+				if p := a.sup.Get(ids[0]); p != nil {
+					if current := platform.ProcCwd(p.ShellPID()); current != "" {
+						cwd = current
+					}
+				}
+			}
+		}
+		targets = append(targets, target{w.ID, w.Cwd, cwd})
 	}
 	go func() {
 		gs := map[int]render.GitStatus{}
 		names := map[int]string{}
 		for _, w := range targets {
 			gs[w.id] = readWorkspaceGit(w.cwd)
-			if src, err := worktree.Source(w.cwd); err == nil {
-				names[w.id] = src.RepoName
+			if src, err := worktree.Source(w.nameCwd); err == nil {
+				names[w.id] = filepath.Base(src.SourceCheckoutPath)
 			} else {
-				names[w.id] = filepath.Base(w.cwd)
+				names[w.id] = filepath.Base(w.nameCwd)
 			}
 		}
 		a.Do(func() {
@@ -60,6 +73,8 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 				name := names[w.ID]
 				if w.CustomName {
 					name = w.Name
+				} else if name != "" {
+					w.Name = name
 				}
 				if !w.CustomName && len(w.Tabs) > 0 {
 					ids := w.Tabs[0].Layout.PaneIDs()
