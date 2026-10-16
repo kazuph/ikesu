@@ -275,15 +275,23 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			}
 			v.style.Fg = f.Palette.Dim
 
-		case "git_status":
+		case "git_status", "git_diff":
+			if in.ServerUI || (ws.Worktree != nil && ws.Worktree.IsLinkedWorktree) {
+				continue
+			}
 			g := in.Git[r.Ws]
-			for _, stat := range []struct {
+			counts := []struct {
 				mark string
 				n    int
 				fg   color.Color
-			}{{"↑", g.Ahead, f.Palette.Green}, {"↓", g.Behind, f.Palette.Red}, {"+", g.Added, f.Palette.Green}, {"-", g.Deleted, f.Palette.Red}} {
+			}{{"↑", g.Ahead, f.Palette.Green}, {"↓", g.Behind, f.Palette.Red}}
+			if t.Token == "git_diff" {
+				counts[0].mark, counts[0].n = "+", g.Added
+				counts[1].mark, counts[1].n = "-", g.Deleted
+			}
+			for _, stat := range counts {
 				if stat.n > 0 {
-					tokens = append(tokens, styledToken{name: "git_status", text: fmt.Sprintf("%s%d", stat.mark, stat.n), style: tokenStyle(t, uv.Style{Fg: stat.fg, Bg: base.Bg}), fixed: true})
+					tokens = append(tokens, styledToken{name: t.Token, text: fmt.Sprintf("%s%d", stat.mark, stat.n), style: tokenStyle(t, uv.Style{Fg: stat.fg, Bg: base.Bg}), fixed: true})
 				}
 			}
 			continue
@@ -302,5 +310,9 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			tokens = append(tokens, styledToken{name: "job", text: "●", style: uv.Style{Fg: f.ThemeColor(dot.Color), Bg: base.Bg}, fixed: true})
 		}
 	}
-	drawTokens(f, x+1, y, max(0, w-1), tokens)
+	indent := 1
+	if r.Kind == RowGit {
+		indent = 3
+	}
+	drawTokens(f, x+indent, y, max(0, w-indent), tokens)
 }

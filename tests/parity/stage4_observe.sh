@@ -8,9 +8,19 @@ mkdir -p "$out"
 go test ./internal/render ./internal/tui -run TestStage4Collapsed -count=1 > "$out/collapsed-test.log" 2>&1
 go build -o "$root/gtx-stage4" ./cmd/gtx
 for name in "$@"; do
+    mode=--server
     config="$root/user-config.toml"
     steps="tests/parity/stage4_cases/$name.steps"
     case "$name" in
+        git-default-local|custom-git-local)
+            mode=
+            steps=tests/parity/stage4_cases/git-transitions.steps
+            if [ "$name" = custom-git-local ]; then
+                config="$out/$name.toml"
+                cp "$root/user-config.toml" "$config"
+                printf '\n[ui.sidebar.spaces]\nrows = [["git_status"], ["git_diff"]]\n' >> "$config"
+            fi
+            ;;
         git-default)
             steps=tests/parity/stage4_cases/custom-git.steps
             ;;
@@ -18,6 +28,7 @@ for name in "$@"; do
             steps=tests/parity/jobs-cancelling.steps
             ;;
         custom-git)
+            steps=tests/parity/stage4_cases/custom-git.steps
             config="$out/$name.toml"
             cp "$root/user-config.toml" "$config"
             printf '\n[ui.sidebar.spaces]\nrows = [["git_status"], ["git_diff"]]\n' >> "$config"
@@ -40,6 +51,6 @@ for name in "$@"; do
     esac
     python3 tests/parity/observe.py --herdr "$root/herdr-0.2.57" \
         --gtx "$root/gtx-stage4" --ptyrun "$root/ptyrun" \
-        --config-file "$config" --silent --server --clipboard-sandbox \
+        --config-file "$config" --silent $mode --clipboard-sandbox \
         --steps "$steps" --out "$out/$name"
 done

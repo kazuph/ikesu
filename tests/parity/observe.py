@@ -187,6 +187,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                (target / 'ui-exit.json').write_text(json.dumps({'exit': 0, 'server': a.server}) + '\n')
             finally:
                 if reconnect:
                     reconnect.close()

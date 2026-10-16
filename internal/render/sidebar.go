@@ -462,7 +462,11 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 					gitX = f.Text(gitX, y, " ", sty, ix+iw)
 				}
 			}
-			drawGitRow(f, gitX, y, max(0, ix+iw-gitX), in.Git[r.Ws], gitStyle)
+			g := in.Git[r.Ws]
+			if in.ServerUI {
+				g.Ahead, g.Behind, g.Added, g.Deleted = 0, 0, 0, 0
+			}
+			drawGitRow(f, gitX, y, max(0, ix+iw-gitX), g, gitStyle)
 			return
 		}
 		x := ix + 1
