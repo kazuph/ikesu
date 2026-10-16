@@ -181,3 +181,31 @@ ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾
 `tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
 `tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。
 `mouse-negative.steps` と `mouse_negative_gate.py 出力先` はraw SGRの負座標と正の画面外座標を送る。`mouse_report_capture.py` は実端末で1002/1006を有効化する状態と無効な状態を実行し、受信した生バイトを記録する。通常キーの保持、マウス報告の文字漏れがないこと、有効な位置へ戻るまでタブのドラッグが続くことを実物と比較する。server/localをそれぞれcell/pixelで実行する。
+
+段階5（タブバー・pane枠・下部、A27〜A33）の0.2.57比較は mini の
+`src/stage5` で `sh tests/parity/stage5_observe.sh <出力先>` を実行する。
+店長設定を基準に、マウス無効・枠なし・モバイル切替なしの条件だけを分ける。
+生成した `.steps` と `.toml` は出力先の `procedures/` に残る。
+`python3 tests/parity/stage5_gate.py <出力先>` は対象領域の全セルと
+実シェルのPTY幅、最後のスペースの閉鎖応答・新しいホームを検査する。
+対象外領域や未実行の操作を一致扱いにしない。
+
+空画面（A32）は親の追加判断に従い、最後のスペースを閉じた後のホーム再作成を
+APIと通常UIで確認する。APIの閉鎖は `--close-workspace-fixture` により、
+消えるシェルのプロセスグループの外から行い、実応答と新しいpaneのcwdを保存する。
+`--saved-session-fixture` は指定した実保存形式の文書を隔離領域に置いて起動する。
+0件の保存データからの起動と、初期workspaceを作らず接続する起動も採取する。
+`--no-session` は保存状態を復元せず初期シェルを作る。0件画面が実物で到達できなければ作らない。
+
+部分COPY（A33）の表示とクリックは単独起動で比較する。サーバー接続の実物では
+同じSGRクリックが通常幅でもCOPYを開かないため、単独起動の成功と区別して記録する。
+`stage5-narrow-click.steps` は部分幅と通常幅のクリックを切り分ける追加手順。
+既存のタブ状態の優先順位は変更しない。
+
+`sh tests/parity/stage5_gate.sh <ログ出力先>` はminiでgofmt・vet・通常test・raceを行う。
+miniの負荷が4以上のときに認められたubuntu-3090での相対P1は、
+`~/bench-terrace/env.sh` を読み、基準dd2168cのarchiveを `<ルート>/baseline`、
+候補ソースを `<ルート>/candidate` に置いて
+`sh tests/parity/stage5_perf.sh <ルート>` を実行する。
+両方を同じGoと引数でビルドし、固定の `perf-lock.py` 経由で既存の `TestRelative` を実行する。
+絶対P1はこの段階の判定に含めない。
