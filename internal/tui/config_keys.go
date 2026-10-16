@@ -127,6 +127,7 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 		cwd = w.Cwd
 	}
 	if p := a.sup.Get(a.focusedPane()); p != nil {
+		p.PollProcess()
 		if current := p.Snapshot().Cwd; current != "" {
 			cwd = current
 		} else {

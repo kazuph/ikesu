@@ -247,6 +247,7 @@ func (a *App) exec(cmd model.Command) {
 	spawnCwd := ""
 	if policyCwd {
 		if p := a.sup.Get(beforeFocus); p != nil {
+			p.PollProcess()
 			spawnCwd = p.SpawnCwd()
 		}
 	}
