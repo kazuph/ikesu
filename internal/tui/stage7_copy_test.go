@@ -40,6 +40,23 @@ func TestStage7ConfiguredPrefixCopyPages(t *testing.T) {
 	}
 }
 
+func TestStage7LineSelection(t *testing.T) {
+	teststate.Lock(t)
+	a := stage7CopyApp(t)
+	a.copyKey(uv.Key{Code: 'g'}, nil)
+	a.cm.cx = 5
+	a.copyKey(uv.Key{Code: 'V'}, nil)
+	a.copyKey(uv.Key{Code: 'j'}, nil)
+	from, to, ok := a.copySelRange()
+	if !ok || from.x != 0 || to.x != a.copyInnerW()-1 || from.y != 0 || to.y != 1 {
+		t.Fatalf("line selection: %v %v %v", from, to, ok)
+	}
+	text := a.copyText(a.sup.Get(a.cm.pane), from, to)
+	if text != "ROW-001 alpha ALPHA Beta\nROW-002 alpha ALPHA Beta" {
+		t.Fatalf("whole rows: %q", text)
+	}
+}
+
 func TestStage7EnterCopyPreservesScroll(t *testing.T) {
 	teststate.Lock(t)
 	a := stage7CopyApp(t)

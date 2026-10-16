@@ -31,6 +31,7 @@ type copyMode struct {
 	cx, cy     int // cursor in buffer coords (scrollback lines first)
 	top        int // buffer index of the first visible row
 	anchor     *copyPoint
+	linewise   bool
 	searching  bool
 	searchDir  int // +1 after '/', -1 after '?'; drives n/N
 	query      string
@@ -227,7 +228,11 @@ func (a *App) copyKey(k uv.Key, raw []byte) {
 		a.copyNextMatch(cm.searchDir)
 	case k.Code == 'N':
 		a.copyNextMatch(-cm.searchDir)
+	case k.Code == 'V':
+		cm.linewise = true
+		cm.anchor = &copyPoint{x: cm.cx, y: cm.cy}
 	case k.Code == ' ' || k.Code == 'v':
+		cm.linewise = false
 		cm.anchor = &copyPoint{x: cm.cx, y: cm.cy}
 	case k.Code == uv.KeyEnter || k.Code == 'y':
 		if cm.anchor != nil {
@@ -319,6 +324,9 @@ func (a *App) copySelRange() (copyPoint, copyPoint, bool) {
 	from, to := *cm.anchor, copyPoint{x: cm.cx, y: cm.cy}
 	if to.y < from.y || (to.y == from.y && to.x < from.x) {
 		from, to = to, from
+	}
+	if cm.linewise {
+		from.x, to.x = 0, a.copyInnerW()-1
 	}
 	return from, to, true
 }
