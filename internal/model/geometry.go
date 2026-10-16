@@ -119,13 +119,13 @@ type Rect = layout.Rect
 // PaneContentRect resolves a pane rect to its terminal-content rect and
 // gutter column count per SPEC G1: a frame eats one cell on each side but
 // only when borders are on and the pane is wider and taller than 2; the
-// rightmost inner column is a scrollbar gutter whenever the framed inner
+// rightmost inner column is a scrollbar gutter whenever the inner
 // width is at least 5.
 func PaneContentRect(r Rect, borders bool) (inner Rect, gutter int) {
-	if !borders || r.W <= 2 || r.H <= 2 {
-		return r, 0
+	inner = r
+	if borders && r.W > 2 && r.H > 2 {
+		inner = Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}
 	}
-	inner = Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}
 	if inner.W >= 5 {
 		gutter = 1
 	}

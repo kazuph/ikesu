@@ -3,13 +3,11 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
-	"math"
 	"strings"
 )
 
@@ -426,16 +424,14 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				f.Text(titleStop-w, pr.Rect.Y, ind, uv.Style{Fg: f.Palette.Yellow}, titleStop)
 			}
 
-			// Gutter: the rightmost inner column hosts the scrollbar;
-			// terminal content never reaches it (SPEC G1).
-			if gutter > 0 {
-				off := in.Scroll[pr.ID]
-				if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
-					off = snap.ScrollOff
-				}
-				drawGutter(f, inner, snap, off)
-				iw -= gutter
+		}
+		if gutter > 0 {
+			off := in.Scroll[pr.ID]
+			if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
+				off = snap.ScrollOff
 			}
+			drawGutter(f, inner, snap, off, pr.IsFocused)
+			iw -= gutter
 		}
 
 		// Content.
@@ -525,39 +521,6 @@ func truncateEllipsis(s string, n int) string {
 		return s
 	}
 	return string(rs[:n-1]) + "…"
-}
-
-// drawGutter fills the rightmost inner column: '▕' track with '▐' for the
-// thumb portion whenever the pane has scrollback (SPEC G1).
-func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
-	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 || snap.SuppressScrollbar {
-		return
-	}
-	gx := inner.X + inner.W - 1
-	for y := inner.Y; y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▕", uv.Style{Fg: f.Palette.Dim})
-	}
-	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 {
-		return
-	}
-	total := snap.ScrollN + inner.H
-	th := int(math.Round(float64(inner.H*inner.H) / float64(total)))
-	if th < 1 {
-		th = 1
-	}
-	if th > inner.H {
-		th = inner.H
-	}
-	// Thumb top: bottom-aligned at offset 0, top-aligned at max offset.
-	track := inner.H - th
-	top := inner.Y + track
-	if snap.ScrollN > 0 {
-		frac := float64(off) / float64(snap.ScrollN)
-		top = inner.Y + int(math.Round((1-frac)*float64(track)))
-	}
-	for y := top; y < top+th && y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▐", uv.Style{Fg: f.Palette.Overlay1})
-	}
 }
 
 // drawCopyCursor paints the copy-mode cursor: fg popup background, bg accent,
