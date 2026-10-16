@@ -263,7 +263,7 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 		}
 		valid := true
 		for _, b := range span[:n] {
-			if b < 32 || b >= 127 {
+			if b-ansi.SP >= ansi.DEL-ansi.SP {
 				valid = false
 				break
 			}
@@ -326,7 +326,7 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			r.utf8Pending = append(r.utf8Pending[:0], chunk...)
 			break
 		}
-		if r.state == ansi.NormalState && chunk[0] >= 32 && chunk[0] < 127 {
+		if r.state == ansi.NormalState && chunk[0]-ansi.SP < ansi.DEL-ansi.SP {
 			if r.pending && p.emu.ModeSet(ansi.ModeAutoWrap) {
 				r.linefeed(p, true)
 			}
@@ -337,7 +337,7 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			}
 			limit := min(len(chunk), p.emu.Width()-x)
 			n := 0
-			for n < limit && chunk[n] >= 32 && chunk[n] < 127 {
+			for n < limit && chunk[n]-ansi.SP < ansi.DEL-ansi.SP {
 				n++
 			}
 			_, _ = p.emu.Write(chunk[:n])
