@@ -1,0 +1,14 @@
+waittext 5s PARITY>
+send "python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl 00\r"
+waittext 5s PROBE_READY
+send "\x1b"
+sleep 15ms
+send "]11;rgb:1111/2222/3333\x1b\\"
+sleep 100ms
+screen @OUT@/color-response.txt
+cells @OUT@/color-response.json
+send "END"
+sleep 100ms
+screen @OUT@/complete.txt
+cells @OUT@/complete.json
+kill

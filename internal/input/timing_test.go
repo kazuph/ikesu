@@ -2,6 +2,25 @@ package input
 
 import "testing"
 
+func TestColorReplyGetsOneAdditionalEscapeWindow(t *testing.T) {
+	f := Framer{ColorReportPending: true}
+	f.Push([]byte{0x1b})
+	if events := f.FlushTimeout(); len(events) != 0 {
+		t.Fatalf("pending host reply emitted Escape: %+v", events)
+	}
+	events := f.Push([]byte("]11;rgb:1111/2222/3333\x1b\\"))
+	if len(events) != 1 || events[0].Kind != KindTerminalReport || f.ColorReportPending {
+		t.Fatalf("host reply=%+v pending=%v", events, f.ColorReportPending)
+	}
+	f.ColorReportPending = true
+	f.Push([]byte{0x1b})
+	f.FlushTimeout()
+	events = f.FlushTimeout()
+	if len(events) != 1 || events[0].Kind != KindKey || string(events[0].Raw) != "\x1b" {
+		t.Fatalf("Escape must not wait indefinitely: %+v", events)
+	}
+}
+
 func TestEscapeTimeoutDependsOnInputRoute(t *testing.T) {
 	for _, wait := range []int{0, EndpointEscapeFlushMs} {
 		f := Framer{EscapeWaitMs: wait}

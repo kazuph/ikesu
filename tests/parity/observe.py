@@ -16,6 +16,8 @@ p.add_argument('--herdr', required=True)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
+p.add_argument('--startup-input', action='store_true', help='observe startup input with onboarding=false; wait for readiness in the steps')
+p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
@@ -87,6 +89,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         steps = target / 'steps'
         # Only the first-run onboarding differs. The interaction body is identical.
         preamble = 'sleep 3s\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
+        if a.startup_input:
+            preamble = ''
         steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
@@ -158,7 +162,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
-                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
                 try:

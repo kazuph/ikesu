@@ -61,6 +61,9 @@ type Framer struct {
 	dec uv.EventDecoder
 	// EscapeWaitMs overrides the local Escape wait for an endpoint client.
 	EscapeWaitMs int
+	// ColorReportPending permits one extra local Escape window for a host reply.
+	ColorReportPending bool
+	escHeld            bool
 
 	// paste collects bracketed-paste payload bytes until CSI 201~.
 	paste    bool
@@ -74,6 +77,7 @@ func (f *Framer) Push(b []byte) []Event {
 	if len(b) == 0 {
 		return nil
 	}
+	f.escHeld = false
 	f.buf = append(f.buf, b...)
 	return f.drain(false)
 }
@@ -91,6 +95,11 @@ func (f *Framer) FlushTimeout() []Event {
 		return nil
 	}
 	if len(f.buf) == 1 && f.buf[0] == 0x1b {
+		if f.ColorReportPending && !f.escHeld {
+			f.escHeld = true
+			return nil
+		}
+		f.escHeld = false
 		f.buf = f.buf[:0]
 		return []Event{{Kind: KindKey, Raw: []byte{0x1b}, Key: uv.Key{Code: uv.KeyEscape}}}
 	}
@@ -342,6 +351,9 @@ func ss3Len(b []byte, i int) (int, bool) {
 }
 
 func (f *Framer) convert(raw []byte, ev uv.Event) Event {
+	if _, ok := ev.(uv.BackgroundColorEvent); ok {
+		f.ColorReportPending = false
+	}
 	switch e := ev.(type) {
 	case uv.CellSizeEvent, uv.PixelSizeEvent, uv.ModeReportEvent, uv.BackgroundColorEvent, uv.DarkColorSchemeEvent, uv.LightColorSchemeEvent:
 		return Event{Kind: KindTerminalReport, Raw: append([]byte(nil), raw...), Report: ev}

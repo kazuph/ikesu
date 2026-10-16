@@ -32,6 +32,7 @@ func main() {
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
+	holdColor := flag.Bool("hold-color-replies", false, "leave background-color queries for explicit steps to answer")
 	flag.Parse()
 	args := flag.Args()
 	cmd := exec.Command(args[0], args[1:]...)
@@ -42,6 +43,12 @@ func main() {
 		os.Exit(1)
 	}
 	emu := vt.NewEmulator(*cols, *rows)
+	if *holdColor {
+		emu.RegisterOscHandler(11, func(data []byte) bool {
+			fmt.Printf("held-color-report %q\n", data)
+			return true
+		})
+	}
 	if *cellWidth == 0 && *xpixel > 0 {
 		*cellWidth = *xpixel / *cols
 	}
