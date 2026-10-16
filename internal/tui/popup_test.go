@@ -6,6 +6,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
@@ -182,5 +183,14 @@ func TestStage6aDuplicatePopupPreservesRunningProcess(t *testing.T) {
 	}
 	if a.st.Popup != pop || a.st.Popup.TerminalID != first || a.sup.Get(pop.PaneID) != p {
 		t.Fatal("replaced running popup")
+	}
+}
+
+func TestStage6aPopupMinimumPTYGeometry(t *testing.T) {
+	for _, tc := range []struct{ outer, inner int }{{6, 4}, {7, 4}, {8, 5}, {60, 57}} {
+		r := popupInner(layout.Rect{X: 10, Y: 10, W: tc.outer, H: 4})
+		if r.W != tc.inner || r.H != 2 {
+			t.Fatal(tc, r)
+		}
 	}
 }
