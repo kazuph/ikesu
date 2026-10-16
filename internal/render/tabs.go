@@ -118,7 +118,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		if g.Rune == " " {
 			g.Rune = "·"
 		}
-		strip.Text(starts[i]+1, 0, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: style.Bg, Attrs: boldIf(g.Bold)}, starts[i]+widths[i])
+		strip.Text(starts[i]+1, 0, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: style.Bg, Attrs: boldIf(g.Bold || i == ws.ActiveTab && t.Name != "")}, starts[i]+widths[i])
 		left, right := max(starts[i], offset), min(starts[i]+widths[i], offset+viewport)
 		r := layout.Rect{}
 		if left < right {
@@ -148,7 +148,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 		if leftClipped || rightClipped {
 			cell.Content, cell.Width = "…", 1
-			if leftClipped {
+			if ws.ActiveTab < 0 || ws.ActiveTab >= len(starts) || offset+n < starts[ws.ActiveTab] || offset+n >= starts[ws.ActiveTab]+widths[ws.ActiveTab] {
 				cell.Style.Fg = f.Palette.Dim
 			}
 		}
