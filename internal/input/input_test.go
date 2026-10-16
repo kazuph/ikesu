@@ -44,8 +44,8 @@ func TestSplitMouseSequence(t *testing.T) {
 	}
 }
 
-// A truncated SGR fragment + orphan tail bytes are discarded entirely.
-func TestOrphanMouseTailDiscarded(t *testing.T) {
+// Once a mouse fragment expires, later bytes belong to new input.
+func TestExpiredMouseTailIsNewInput(t *testing.T) {
 	f := &Framer{}
 	if evs := f.Push([]byte("\x1b[<35;61")); len(evs) != 0 {
 		t.Fatalf("fragment emitted %v", drainKinds(evs))
@@ -54,7 +54,7 @@ func TestOrphanMouseTailDiscarded(t *testing.T) {
 		t.Fatalf("flush emitted %v", drainKinds(evs))
 	}
 	// The tail arrives as a separate read: only digits, ';' and terminator.
-	if evs := f.Push([]byte(";8M")); len(evs) != 0 {
+	if evs := f.Push([]byte(";8M")); len(evs) != 3 {
 		t.Fatalf("tail emitted %v", drainKinds(evs))
 	}
 	// Normal input resumes afterwards.
@@ -69,22 +69,16 @@ func TestLoneEscape(t *testing.T) {
 	if evs := f.Push([]byte{0x1b}); len(evs) != 0 {
 		t.Fatalf("esc emitted early")
 	}
-	if evs := f.FlushTimeout(); len(evs) != 0 {
-		t.Fatalf("first flush emitted %v", drainKinds(evs))
-	}
 	evs := f.FlushTimeout()
 	if len(evs) != 1 || evs[0].Key.Code != uv.KeyEscape {
 		t.Fatalf("escape = %v", drainKinds(evs))
 	}
 }
 
-// ESC + tail of an SGR mouse report: the held ESC plus the tail reassemble
-// into the real mouse event (reassembling beats discarding — the click is
-// not lost, and nothing reaches the pane as text).
+// A complete mouse tail arriving before Escape's idle timeout reassembles.
 func TestEscapePlusOrphanTail(t *testing.T) {
 	f := &Framer{}
 	f.Push([]byte{0x1b})
-	f.FlushTimeout() // now escHeld
 	evs := f.Push([]byte("[<35;61;8M"))
 	if len(evs) != 1 || evs[0].Kind != KindMouseMotion {
 		t.Fatalf("events = %v", drainKinds(evs))
@@ -196,11 +190,11 @@ func TestKittyShiftedText(t *testing.T) {
 	}
 }
 
-// SPEC G6: kitty release events are never forwarded as key input.
-func TestKittyReleaseDropped(t *testing.T) {
+// Retain releases so pane protocol negotiation can decide whether to forward them.
+func TestKittyReleaseDecoded(t *testing.T) {
 	f := &Framer{}
 	evs := f.Push([]byte("\x1b[13;2:3u"))
-	if len(evs) != 1 || evs[0].Kind != KindUnknown {
+	if len(evs) != 1 || evs[0].Kind != KindKeyRelease {
 		t.Fatalf("events = %v", drainKinds(evs))
 	}
 }

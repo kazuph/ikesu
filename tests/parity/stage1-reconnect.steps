@@ -1,0 +1,11 @@
+send "python3 @FIXTURES@/stage1_reconnect.py @OUT@\r"
+waittext 5s RECONNECT_READY
+waitfile @OUT@/reconnected 25s
+waittext 5s RECONNECT_CHANGED
+sleep 1s
+screen @OUT@/reconnected.txt
+send "日END"
+waitfile @OUT@/received-stable.bin 5s
+send "\u0014q"
+sleep 500ms
+kill

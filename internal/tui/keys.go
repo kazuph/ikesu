@@ -52,7 +52,7 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		a.dirty = true
 		if a.prefixMatches(k) {
 			if pid := a.focusedPane(); pid >= 0 {
-				a.sup.Input(pid, raw)
+				a.sendPaneKey(k, raw, false)
 			}
 			return
 		}
@@ -96,29 +96,36 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		a.copyKey(k, raw)
 		return
 	}
-	if a.st.PopupVisible() && k.Code == uv.KeyEscape {
-		a.exec(model.CmdClosePopup{})
-		return
-	}
 	pid := a.focusedPane()
 	if pid < 0 {
 		return
 	}
-	if a.scroll[pid] > 0 {
-		delete(a.scroll, pid) // key input snaps back to the live screen
-	}
-	if k.Code == uv.KeyEnter && k.Mod == uv.ModShift {
-		// FixTerm Shift+Enter arrives as the legacy sequence
-		// CSI 27;2;13~ (or kitty CSI 13;2u). Per SPEC G6 the pane
-		// receives a bare LF — unless the app explicitly pushed the
-		// kitty keyboard protocol, which takes over the key itself.
-		if p := a.sup.Get(pid); p != nil && !p.KbdExplicit() {
-			a.sup.Input(pid, []byte{'\n'})
-			a.dirty = true
+	if a.st.PopupVisible() && k.Code == uv.KeyEscape && k.Mod == 0 {
+		if p := a.sup.Get(pid); p != nil && !p.OwnsEscape() {
+			a.exec(model.CmdClosePopup{})
 			return
 		}
 	}
-	a.sup.Input(pid, raw)
+	if k.Mod == 0 && (k.Code == uv.KeyPgUp || k.Code == uv.KeyPgDown) {
+		if p := a.sup.Get(pid); p != nil {
+			sn := p.Snapshot()
+			if !sn.AltScreen && !sn.AppCursorKeys {
+				offset, height := a.scroll[pid], a.innerRect(pid).H
+				if k.Code == uv.KeyPgUp {
+					offset = min(offset+height, sn.ScrollbackLen)
+				} else {
+					offset = max(offset-height, 0)
+				}
+				a.setScrollOff(pid, offset)
+				a.dirty = true
+				return
+			}
+		}
+	}
+	if a.scroll[pid] > 0 {
+		delete(a.scroll, pid) // key input snaps back to the live screen
+	}
+	a.sendPaneKey(k, raw, false)
 	a.dirty = true
 }
 

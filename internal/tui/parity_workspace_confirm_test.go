@@ -34,7 +34,7 @@ func TestParityNewWorkspaceNamesOnlyTheCreatedWorkspace(t *testing.T) {
 		t.Fatal("confirmation did not close only the created terminal")
 	}
 	rp := a.sup.Get(a.focusedPane())
-	a.handleKey(uv.Key{Code: 'p', Text: "printf"}, []byte("printf 'ORIGINAL%s\\n' '_SHELL_ALIVE'\r"))
+	specFeed(a, "printf 'ORIGINAL%s\\n' '_SHELL_ALIVE'\r")
 	specWaitText(t, rp, "ORIGINAL_SHELL_ALIVE")
 }
 
@@ -109,7 +109,7 @@ func TestParityNavigatePrefixReturnsToShellAndDirectActionsLeaveNavigation(t *te
 		t.Fatal("Ctrl-b in navigation must return to the shell without arming prefix")
 	}
 	rp := a.sup.Get(a.focusedPane())
-	a.handleKey(uv.Key{Code: 'p', Text: "printf"}, []byte("printf 'NAV%s\\n' '_SHELL_INPUT'\r"))
+	specFeed(a, "printf 'NAV%s\\n' '_SHELL_INPUT'\r")
 	specWaitText(t, rp, "NAV_SHELL_INPUT")
 	a.workspaceNavigate = true
 	a.modeKey(uv.Key{Code: 'c'})

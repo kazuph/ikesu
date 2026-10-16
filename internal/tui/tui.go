@@ -54,22 +54,25 @@ const (
 	LeaveSeq = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
 )
 
-// KbdEnterSeq enables modifyOtherKeys mode 1 when the host terminal is
-// Ghostty so modified keys arrive in the legacy CSI 27;mod;key~ form
-// (SPEC G6). Unknown hosts get no protocol enable.
+// KbdEnterSeq negotiates the host keyboard independently of the pane protocol.
 func KbdEnterSeq() string {
-	if strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") {
-		return "\x1b[>4;1m"
+	sequence := "\x1b[>7u"
+	if os.Getenv("TMUX") != "" {
+		return sequence + "\x1b[>4;2m"
 	}
-	return ""
+	if strings.EqualFold(os.Getenv("TERM_PROGRAM"), "WezTerm") || os.Getenv("WEZTERM_PANE") != "" {
+		return sequence + "\x1b[>4;1m"
+	}
+	return sequence
 }
 
-// KbdLeaveSeq undoes KbdEnterSeq for Ghostty hosts.
+// KbdLeaveSeq reverses only the additional host mode that was requested.
 func KbdLeaveSeq() string {
-	if strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") {
-		return "\x1b[>4;0m"
+	sequence := ""
+	if os.Getenv("TMUX") != "" || strings.EqualFold(os.Getenv("TERM_PROGRAM"), "WezTerm") || os.Getenv("WEZTERM_PANE") != "" {
+		sequence = "\x1b[>4;0m"
 	}
-	return ""
+	return sequence + "\x1b[<1u"
 }
 
 type menuKind int
@@ -150,6 +153,7 @@ type App struct {
 	visiblePane       func(int) bool
 	sharedPaneSnaps   map[int]*render.PaneSnap
 	snapshotSink      func(render.Input) error
+	hostKbdFlags      int
 	agentStateCounter uint64
 	agentStates       map[int]string
 	decisionAttention map[int]bool
@@ -519,10 +523,10 @@ func (a *App) Run() {
 			}
 			if a.fr.Pending() {
 				if flushTimer == nil {
-					flushTimer = time.NewTimer(time.Duration(input.IdleFlushMs) * time.Millisecond)
+					flushTimer = time.NewTimer(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
 					flush = flushTimer.C
 				} else {
-					flushTimer.Reset(time.Duration(input.IdleFlushMs) * time.Millisecond)
+					flushTimer.Reset(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
 					flush = flushTimer.C
 				}
 			} else if flushTimer != nil {
@@ -534,7 +538,7 @@ func (a *App) Run() {
 				a.onInput(ev)
 			}
 			if a.fr.Pending() {
-				flushTimer.Reset(time.Duration(input.IdleFlushMs) * time.Millisecond)
+				flushTimer.Reset(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
 			} else {
 				flush = nil
 			}

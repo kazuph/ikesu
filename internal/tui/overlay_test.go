@@ -30,7 +30,7 @@ func TestOverlayRealInputAndRestoredLayout(t *testing.T) {
 	if a.focusedPane() != id {
 		t.Fatal("wrong input target")
 	}
-	a.handleKey(uv.Key{Code: 'x', Text: "x"}, []byte("overlay-input-proof\n"))
+	specFeed(a, "overlay-input-proof\n")
 	deadline := time.Now().Add(3 * time.Second)
 	for !containsScreen(sup.Get(id).ScreenLines(), "overlay-input-proof") {
 		if time.Now().After(deadline) {

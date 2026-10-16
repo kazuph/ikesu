@@ -1,0 +1,20 @@
+send "python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl 1b5b3f31303030681b5b3f3130303668\r"
+waittext 5s PROBE_READY
+send "\u001b"
+sleep 100ms
+cells @OUT@/escape.json
+send "\u001b[<0;70;20M"
+sleep 100ms
+send "\u001b[<0;70;"
+sleep 40ms
+send "20M"
+sleep 100ms
+send "\u001b[<0;70;"
+sleep 200ms
+send "20M"
+sleep 100ms
+send "END"
+sleep 100ms
+screen @OUT@/complete.txt
+cells @OUT@/complete.json
+kill

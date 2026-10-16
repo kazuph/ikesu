@@ -69,6 +69,7 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.drawViewers, ui.tickViewers, ui.visiblePane = nil, nil, nil
 	ui.scroll = map[int]int{}
 	ui.focusHistory = nil
+	ui.focusHistoryAt = 0
 	ui.cm, ui.sel, ui.sep, ui.sb = nil, nil, nil, nil
 	ui.sidebarGesture, ui.tabGesture = nil, nil
 	ui.menu, ui.settings, ui.help = nil, nil, nil
@@ -147,7 +148,7 @@ func (v *Viewer) Tick(a *App) {
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })
 	}
-	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(input.IdleFlushMs)*time.Millisecond {
+	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(v.app.fr.TimeoutMs())*time.Millisecond {
 		return
 	}
 	v.with(a, func(ui *App) {

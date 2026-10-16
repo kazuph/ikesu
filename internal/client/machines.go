@@ -30,6 +30,7 @@ type managedEndpoint struct {
 	snapshot                 *render.Input
 	epoch                    uint64
 	requestAck               bool
+	hostKbdFlags             int
 	removed                  bool
 	paste                    *clipboardPaste
 	restarting               bool
@@ -57,6 +58,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	hostKbdFlags    int
 	inputSource     platform.InputSource
 	session         string
 	settings        *localSettings
@@ -140,7 +142,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	if err := m.refreshMachineCatalog(); err != nil {
 		m.notify(err.Error())
 	}
-	input, stopInput, err := readMachineInput(in, ctx)
+	input, stopInput, err := readMachineInput(in, ctx, true)
 	if err != nil {
 		fmt.Fprintln(out, "gtx:", err)
 		return pumpDone

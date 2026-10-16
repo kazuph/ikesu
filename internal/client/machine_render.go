@@ -12,6 +12,9 @@ func (m *machineClient) paint() error {
 	if e.snapshot == nil {
 		return nil
 	}
+	if err := m.syncKeyboardOutput(e); err != nil {
+		return err
+	}
 	in := *e.snapshot
 	if err := m.inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
 		m.notify("input source: " + err.Error())

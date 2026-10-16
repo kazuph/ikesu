@@ -88,19 +88,23 @@ func TestHelpScrollClamp(t *testing.T) {
 	}
 }
 
-// Ghostty hosts get modifyOtherKeys on/off sequences; others get none.
 func TestKbdHostSeqs(t *testing.T) {
 	teststate.Lock(t)
-	teststate.Setenv(t, "TERM_PROGRAM", "ghostty")
-	if KbdEnterSeq() != "\x1b[>4;1m" || KbdLeaveSeq() != "\x1b[>4;0m" {
-		t.Fatalf("ghostty seqs = %q / %q", KbdEnterSeq(), KbdLeaveSeq())
-	}
-	teststate.Setenv(t, "TERM_PROGRAM", "Ghostty")
-	if KbdEnterSeq() == "" {
-		t.Fatal("Ghostty (capital) must also match")
-	}
-	teststate.Setenv(t, "TERM_PROGRAM", "iTerm.app")
-	if KbdEnterSeq() != "" || KbdLeaveSeq() != "" {
-		t.Fatal("non-ghostty host must get no modifyOtherKeys")
+	for _, tc := range []struct{ host, tmux, pane, extra string }{
+		{"", "", "", ""}, {"ghostty", "", "", ""}, {"Ghostty", "", "", ""},
+		{"iTerm.app", "", "", ""}, {"WezTerm", "", "", "\x1b[>4;1m"},
+		{"", "", "0", "\x1b[>4;1m"}, {"", "private-tmux", "", "\x1b[>4;2m"},
+		{"WezTerm", "private-tmux", "0", "\x1b[>4;2m"},
+	} {
+		teststate.Setenv(t, "TERM_PROGRAM", tc.host)
+		teststate.Setenv(t, "TMUX", tc.tmux)
+		teststate.Setenv(t, "WEZTERM_PANE", tc.pane)
+		leave := "\x1b[<1u"
+		if tc.extra != "" {
+			leave = "\x1b[>4;0m" + leave
+		}
+		if KbdEnterSeq() != "\x1b[>7u"+tc.extra || KbdLeaveSeq() != leave {
+			t.Fatalf("host=%q tmux=%q pane=%q: %q / %q", tc.host, tc.tmux, tc.pane, KbdEnterSeq(), KbdLeaveSeq())
+		}
 	}
 }
