@@ -8,6 +8,7 @@ import re
 
 p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
+p.add_argument('--dialog', action='store_true')
 a = p.parse_args()
 results = {}
 for name in ('herdr', 'gtx'):
@@ -48,12 +49,20 @@ for name in ('herdr', 'gtx'):
         start = int(end)
     results[name] = {'stages': stages, 'uploads': uploads}
 reference = results['herdr']['stages']
-reference_valid = (len(reference['overlay-base']) == 2
-                   and reference['overlay-away'] == reference['overlay-base']
-                   and reference['overlay-overlap'] != reference['overlay-base']
-                   and len(reference['overlay-overlap']) > 2)
+if a.dialog:
+    changed = ('overlay-dialog', 'overlay-restored')
+    reference_valid = (len(reference['overlay-base']) == 2
+                       and reference['overlay-dialog'] != reference['overlay-base']
+                       and len(reference['overlay-dialog']) > 0
+                       and reference['overlay-restored'] == reference['overlay-base'])
+else:
+    changed = ('overlay-away', 'overlay-overlap')
+    reference_valid = (len(reference['overlay-base']) == 2
+                       and reference['overlay-away'] == reference['overlay-base']
+                       and reference['overlay-overlap'] != reference['overlay-base']
+                       and len(reference['overlay-overlap']) > 2)
 passed = reference_valid and results['gtx']['stages'] == reference
-no_upload = all(r['uploads']['overlay-away'] == r['uploads']['overlay-overlap'] == 0 for r in results.values())
+no_upload = all(r['uploads'][stage] == 0 for r in results.values() for stage in changed)
 report = {'reference_valid': reference_valid, 'placements_equal': passed, 'no_unchanged_uploads': no_upload, 'results': results}
 (a.out/'overlay-gate.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps({key: report[key] for key in ('reference_valid', 'placements_equal', 'no_unchanged_uploads')}))
