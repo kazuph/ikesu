@@ -216,3 +216,41 @@ func TestStage6aWorktreePickerFiltersRealCheckouts(t *testing.T) {
 		t.Fatal(a.menu.m)
 	}
 }
+
+func TestStage6aWorktreeGroupConfirmationCountsAndClosesTargets(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "existing"
+	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+		t.Fatal(err)
+	}
+	child := a.st.Workspaces[1]
+	a.exec(model.CmdNewTab{Workspace: 1})
+	a.openCloseWorkspaceDialog(0)
+	if a.dialog.d.Title != "Close worktree group?" || !strings.Contains(a.dialog.d.Detail, "2 workspaces, 3 panes") {
+		t.Fatal(a.dialog.d)
+	}
+	d := a.dialog
+	a.dialog = nil
+	d.run(a)
+	if len(a.st.Workspaces) != 0 {
+		t.Fatal("group workspace remained", a.st.Workspaces)
+	}
+	if _, err := os.Stat(child.Cwd); err != nil {
+		t.Fatal("closing workspace deleted checkout", err)
+	}
+}
+
+func TestStage6aWorktreeDeletionExplainsRetainedBranch(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "existing"
+	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+		t.Fatal(err)
+	}
+	a.deleteWorktreeDialog(1, false)
+	text := strings.Join(a.dialog.d.Lines, "\n")
+	if !strings.Contains(text, a.st.Workspaces[1].Cwd) || !strings.Contains(text, "branch is not deleted") || !strings.Contains(text, "workspace will close") {
+		t.Fatal(a.dialog.d)
+	}
+}

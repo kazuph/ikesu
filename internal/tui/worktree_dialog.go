@@ -78,7 +78,11 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 		title = "Discard changes and delete checkout?"
 		detail = "Git refused the safe removal. Force removal discards uncommitted files: " + ws.Cwd
 	}
-	a.dialog = &uiDialog{d: render.Dialog{Title: title, Detail: detail, Confirm: "delete", Cancel: "cancel"}, run: func(a *App) {
+	dialog := render.Dialog{Title: title, Detail: detail, Confirm: "delete", Cancel: "cancel"}
+	if !force {
+		dialog = render.Dialog{Title: "delete worktree checkout?", Detail: "This removes the checkout folder:", Lines: []string{ws.Cwd, "The branch is not deleted. The GTX workspace will close.", "", "", ""}, Width: 72, CenterTerminal: true, Confirm: "remove", Cancel: "cancel"}
+	}
+	a.dialog = &uiDialog{d: dialog, run: func(a *App) {
 		for i, w := range a.st.Workspaces {
 			if w.ID != id {
 				continue
@@ -160,4 +164,18 @@ func (a *App) filterWorktrees() {
 		m.m.Sel = -1
 	}
 	m.m.Scroll = 0
+}
+
+func (a *App) closeWorkspaceTargets(index int) []model.WorkspaceID {
+	ws := a.st.Workspaces[index]
+	ids := []model.WorkspaceID{ws.ID}
+	if ws.Worktree == nil || ws.Worktree.IsLinkedWorktree {
+		return ids
+	}
+	for _, other := range a.st.Workspaces {
+		if other.ID != ws.ID && other.Worktree != nil && other.Worktree.RepoKey == ws.Worktree.RepoKey {
+			ids = append(ids, other.ID)
+		}
+	}
+	return ids
 }
