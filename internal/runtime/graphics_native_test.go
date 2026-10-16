@@ -24,7 +24,9 @@ func TestNativeGraphicsPreparationDoesNotPublishAndPreservesOwnership(t *testing
 		t.Fatal(failure)
 	}
 	got := p.Graphics()
-	if len(got) != 1 || !reflect.DeepEqual(got[0], placement) || len(got[0].Image.Data) != 0 {
+	expected := placement
+	expected.APILayer = true
+	if len(got) != 1 || !reflect.DeepEqual(got[0], expected) || len(got[0].Image.Data) != 0 {
 		t.Fatalf("native descriptor changed during commit: %+v", got)
 	}
 	if _, _, failure := s.NativeGraphicsPlacement(1, frame, 18, 2); failure == nil || failure.Code != "stream_conflict" {
