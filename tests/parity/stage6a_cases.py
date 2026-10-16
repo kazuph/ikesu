@@ -31,3 +31,9 @@ for name,label in [('worktree-list','Open worktree...'),('worktree-create','New 
 
 for kind in ['empty','body']:
     (out/f'toast-explicit-{kind}.steps').write_text(action(f'notification-{kind}')+snap('toast')+'kill\n')
+
+body=''
+for w in [20,30,40,56]:
+    for label,x,y in [('left',5,5),('center',w//2,4),('top',5,3),('outside',1,1)]:
+        body+=f'resize {w} 7\n'+send('\x14W')+snap(f'{w}-{label}-before')+f'click {x} {y}\n'+snap(f'{w}-{label}-after')+send('\x1b')+'sleep 200ms\n'
+(out/'name-click-probe.steps').write_text(body+'kill\n')
