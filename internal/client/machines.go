@@ -59,6 +59,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	nativeTransfer  *nativeViewerTransfer
 	fileGraphics    graphicsFileReceiver
 	mouse           hostMouseState
 	inputSource     platform.InputSource

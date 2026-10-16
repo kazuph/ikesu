@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+
+	"github.com/kazuph/goterrace/internal/kitty"
 )
 
 const DirectKittyTransport = "direct-kitty"
@@ -33,6 +35,12 @@ type GraphicsFile struct {
 type GraphicsTransmission struct {
 	TransferID uint64 `json:"transfer_id"`
 	ImageID    uint32 `json:"image_id"`
+}
+
+type GraphicsSurfaceAsset struct {
+	Pane         int             `json:"pane"`
+	ReplaceImage uint32          `json:"replace_image,omitempty"`
+	Placement    kitty.Placement `json:"placement"`
 }
 
 type GraphicsTransmissionResult struct {

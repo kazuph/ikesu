@@ -19,6 +19,10 @@ func (m *machineClient) paint() error {
 		return nil
 	}
 	in := *e.snapshot
+	in, nativePaint, err := m.nativePaintInput(in)
+	if err != nil {
+		return err
+	}
 	if err := m.inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
 		m.notify("input source: " + err.Error())
 	}
@@ -91,6 +95,9 @@ func (m *machineClient) paint() error {
 	if local := m.endpoints["local"]; local != nil && local.snapshot != nil {
 		nativePanes = local.snapshot.Panes
 	}
+	if m.active == "local" {
+		nativePanes = in.Panes
+	}
 	retired, err := m.frames.ObserveNativeImages(nativePanes)
 	if err != nil {
 		return err
@@ -116,6 +123,11 @@ func (m *machineClient) paint() error {
 		e.requestAck = false
 	}
 	m.regions = composed
+	if nativePaint {
+		if err := m.nativePainted(); err != nil {
+			return err
+		}
+	}
 	held := m.held
 	m.held = nil
 	for _, event := range held {

@@ -18,7 +18,11 @@ func hasNativeGraphics(in render.Input) bool {
 }
 
 func (m *machineClient) retirePendingGraphicsFile() {
-	if identity := m.fileGraphics.disconnected(time.Now()); identity != nil {
-		_, _ = m.out.Write(m.frames.ReleaseNativeImage(identity.ImageID))
+	identity := m.fileGraphics.disconnected(time.Now())
+	if m.nativeTransfer != nil {
+		identity = &m.nativeTransfer.identity
+	}
+	if identity != nil {
+		_ = m.cancelNativeTransfer(*identity)
 	}
 }
