@@ -60,19 +60,20 @@ func Decode(data []byte) (Config, error) {
 				if err := bindings.UnmarshalTOML(value); err != nil {
 					c.Warnings = append(c.Warnings, invalidType("keys."+name, value, "string or array of strings"))
 				} else {
-					valid := true
+					var valid Bindings
 					for _, spec := range bindings {
 						if spec != "" {
 							if _, err := ParseChord(spec); err != nil {
-								c.Warnings = append(c.Warnings, fmt.Sprintf("invalid keybinding: keys.%s = %q; using default binding", name, spec))
-								valid = false
-								break
+								c.Warnings = append(c.Warnings, fmt.Sprintf("invalid keybinding: keys.%s = %q; disabling binding", name, spec))
+								continue
 							}
+							valid = append(valid, spec)
 						}
 					}
-					if valid {
-						c.Keys.Actions[name] = bindings
+					if len(valid) == 0 {
+						valid = Bindings{""}
 					}
+					c.Keys.Actions[name] = valid
 				}
 				// Typed legacy fields remain available to existing callers.
 				if !legacyBindingField(name) {
@@ -102,6 +103,7 @@ func Decode(data []byte) (Config, error) {
 	}
 	c.validateValues()
 	c.validateCompat()
+	c.resolveKeyBindings()
 	c.unsupportedValues()
 	sort.Strings(c.Warnings)
 	return c, nil

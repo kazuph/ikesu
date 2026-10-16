@@ -128,3 +128,42 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `--cell-clock` と `prefix-notification-expiry.steps` は通知点・状態点の実PTY描画時刻を記録する。実物では開始遅延1秒（1001/1002ms）、表示期間8秒（開始999ms、終了9005ms）を観測した。時間は元のcell-clock JSONを証拠とし、検査していない時間や状態を代用しない。表示中のペインを既読にするSPEC規則は維持し、実物のdone残留は差として記録する。
 
 `original-menu-cleared.steps` と `original-menu-routing-cleared.steps` は最初の再現操作の前に双方へ同じ端末クリアを送る。初回案内を閉じるEnterのシェル表示を揃え、外クリック/Escape後のメニュー消失、実echo出力、別pane/タブ追加へのクリックが消費されることを比較する。元の準備無しの結果も保存し、準備を入れた文字比較を全スタイル一致とは扱わない。
+
+段階2（K8〜K14、0.2.57）は `stage2_matrix.py --out 出力先` をminiの
+`src/detail` から実行する。`work/detail/gtx-stage2` を事前にビルドし、
+`work/detail/user-config.toml` を使う。`stage2_cases.py` が同じ操作と設定の組を
+出力先の `procedures/` に残す。`--only 手順名...` で修正対象だけを再実行できる。
+`stage2_gate.py 出力先` は選択名・モード継続・子への文字配送・pane追加数・
+設定診断・1〜9の全選択先を検査する。画面全体の一致を主張するゲートではない。
+台帳より実物を優先し、名前変更と閉鎖は表示中workspace、Tabと方向キーは
+navigate維持という0.2.57の観察結果を固定している。
+`runtime-logs.json` は観察専用一時ディレクトリのserverログだけを保存する。
+相対性能は `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage2_perf.sh`
+で実行する。基準ソースは同じGo引数でビルドする `src/stage2-baseline-a68c878`。
+絶対性能はこの工程の判定対象に含めない。
+
+段階2では親の追加指示により、miniの負荷が4以上ならP1相対検査を
+ubuntu-3090へ移せる。`ssh ubuntu` で `source ~/bench-terrace/env.sh` を実行し、
+`~/bench-terrace/work/sol-stage2/{baseline,candidate}` に基準a68c878のarchiveと
+対象ソースを置く。両方を同じGo・同じ引数でlinux/amd64へビルドする。
+
+```sh
+source ~/bench-terrace/env.sh
+root="$HOME/bench-terrace/work/sol-stage2"
+(cd "$root/baseline" && go build -o "$root/gtx-baseline-a68c878" ./cmd/gtx)
+cd "$root/candidate"
+go build -o "$root/gtx-stage2" ./cmd/gtx
+GTX_PERF_BIN="$root/gtx-stage2" GTX_PERF_BASELINE_BIN="$root/gtx-baseline-a68c878" \
+  GTX_PERF_OUT="$root/perf-relative.md" \
+  python3 "$HOME/bench-terrace/work/perf-lock.py" \
+  go test -count=1 -tags perf ./tests/perf -run '^TestRelative$' -timeout 30m
+```
+
+ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾値を変えたり、
+最大RSSの判定を中央値へ置き換えたりしない。
+
+段階2のレビュー再現は `stage2_matrix.py --out <出力先> --only review-conflict-prefix review-conflict-prefix-reverse review-conflict-direct review-conflict-direct-reverse review-slash-base review-slash-symbol review-digit-base review-digit-symbol user-all-numbers` で実行する。比較器も `stage2_gate.py <出力先> --only <同じ9手順名>` で部分実行できる。全件実行時には `--only` を付けない。
+
+記号の競合に見える2割当は、実物0.2.57が無診断で両方をhelpに表示し、通常の記号入力とKitty入力ではhelpが勝つ。記述順も反転して検査する。これは実物を正とする親の判断により維持する。基底slash/数字とShift後の記号の指定は別々に観察し、Kittyの代替文字の有無・記号そのものの3入力を検査する。基底指定は基底/代替付き入力で成功、記号指定は代替付き/記号入力で成功することを必須にする。`user-all-numbers` は設定を変更せず9workspaceを作り、cmd+1〜9それぞれの選択先名を期待値と照合する（両製品の無操作が一致しただけでは成功しない）。
+
+全番号の観察では各cmd+番号の直前にもセルを保存する。1番の前は9番、2〜9番の前は直前番号へ明示的に移動し、比較器は押す番号とは異なる期待名から始まること、押した後の期待名、選択名が変化したことの3条件を各番号で検査する。最初から1番を表示したままcmd+1を送る手順では、そのキーが無反応でも成功するため受け入れない。

@@ -27,6 +27,11 @@ func (a *App) modeKey(k uv.Key) {
 		return
 	}
 	if a.resizeMode {
+		if k.Code == uv.KeyEnter || a.resizeExitKey(k) {
+			a.resizeMode = false
+			a.dirty = true
+			return
+		}
 		var dir layout.NavDir
 		switch k.Code {
 		case 'h', uv.KeyLeft:
@@ -62,6 +67,8 @@ func (a *App) modeKey(k uv.Key) {
 	}
 mapped:
 	switch {
+	case k.Code == 'h' || k.Code == 'j' || k.Code == 'k' || k.Code == 'l':
+		a.prefixKey(k)
 	case k.Code == uv.KeyUp || k.Code == uv.KeyDown:
 		order := a.st.VisibleWorkspaceOrder()
 		if len(order) == 0 {
@@ -84,17 +91,28 @@ mapped:
 		a.workspaceNavigate = false
 	case k.Code >= '1' && k.Code <= '9':
 		index := int(k.Code - '1')
-		if index < len(a.st.Workspaces) {
-			a.exec(model.CmdSelectWorkspace{Index: index})
+		order := a.st.VisibleWorkspaceOrder()
+		if index < len(order) {
+			a.exec(model.CmdSelectWorkspace{Index: order[index]})
 			a.workspaceNavigate = false
 		}
-	case k.Code == 'g':
-		a.openNavigator()
-	case k.Code == 'c' || k.Code == 'v':
-		a.workspaceNavigate = false
-		a.prefixKey(k)
 	default:
-		a.prefixKey(k)
+		if a.sidebarConfig.Keys.Actions != nil {
+			a.configuredKey(k, true)
+		} else {
+			a.workspaceNavigate = k.Code == 'h' || k.Code == 'j' || k.Code == 'k' || k.Code == 'l' || k.Code == uv.KeyLeft || k.Code == uv.KeyRight
+			a.prefixKey(k)
+		}
 	}
 	a.dirty = true
+}
+
+func (a *App) resizeExitKey(k uv.Key) bool {
+	for _, spec := range a.sidebarConfig.ActionBindings("resize_mode") {
+		chord, err := config.ParseChord(spec)
+		if err == nil && chord.Match(k, chord.Prefix) {
+			return true
+		}
+	}
+	return false
 }

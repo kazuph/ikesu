@@ -1,0 +1,9 @@
+send "\x14g"
+sleep 500ms
+screen @OUT@/normal-command.txt
+send "\x14w"
+sleep 200ms
+send "g"
+sleep 500ms
+screen @OUT@/navigate-command.txt
+kill

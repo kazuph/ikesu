@@ -12,6 +12,8 @@ type Chord struct {
 	Prefix, Indexed bool
 }
 
+var chordKeyNames = map[string]rune{"return": uv.KeyEnter, "bs": uv.KeyBackspace, "period": '.', "slash": '/', "backslash": '\\', "quote": '\'', "semicolon": ';', "colon": ':', "esc": uv.KeyEscape, "escape": uv.KeyEscape, "enter": uv.KeyEnter, "tab": uv.KeyTab, "backspace": uv.KeyBackspace, "left": uv.KeyLeft, "right": uv.KeyRight, "up": uv.KeyUp, "down": uv.KeyDown, "space": ' ', "minus": '-', "comma": ',', "ampersand": '&', "plus": '+', "backtick": '`', "percent": '%', "double_quote": '"'}
+
 func ParseChord(spec string) (Chord, error) {
 	var c Chord
 	rest := strings.ToLower(strings.TrimSpace(spec))
@@ -25,12 +27,14 @@ func ParseChord(spec string) (Chord, error) {
 			c.Prefix = true
 		case "ctrl", "control":
 			c.Key.Mod |= uv.ModCtrl
-		case "alt", "option":
+		case "alt", "option", "meta":
 			c.Key.Mod |= uv.ModAlt
 		case "shift":
 			c.Key.Mod |= uv.ModShift
-		case "cmd", "super":
+		case "cmd", "super", "command":
 			c.Key.Mod |= uv.ModSuper
+		case "hyper":
+			c.Key.Mod |= uv.ModHyper
 		default:
 			return c, fmt.Errorf("unknown key modifier %q", token)
 		}
@@ -41,8 +45,8 @@ func ParseChord(spec string) (Chord, error) {
 		c.Key.Code = '1'
 		return c, nil
 	}
-	special := map[string]rune{"esc": uv.KeyEscape, "escape": uv.KeyEscape, "enter": uv.KeyEnter, "tab": uv.KeyTab, "backspace": uv.KeyBackspace, "left": uv.KeyLeft, "right": uv.KeyRight, "up": uv.KeyUp, "down": uv.KeyDown, "space": ' ', "minus": '-', "comma": ',', "ampersand": '&', "plus": '+', "backtick": '`', "percent": '%', "double_quote": '"'}
-	if code, ok := special[rest]; ok {
+
+	if code, ok := chordKeyNames[rest]; ok {
 		c.Key.Code = code
 		return c, nil
 	}
@@ -67,19 +71,47 @@ func (c Chord) Match(k uv.Key, prefix bool) bool {
 	if c.Prefix != prefix {
 		return false
 	}
-	code := k.Code
-	mod := k.Mod
+	if !c.Indexed {
+		// Kitty reports both the physical key and its shifted character. Either
+		// can be explicitly configured; the alternate must not replace the base.
+		if c.matchCode(k.Code, k.Mod) {
+			return true
+		}
+		return k.Mod.Contains(uv.ModShift) && k.ShiftedCode != 0 && c.matchCode(k.ShiftedCode, k.Mod)
+	}
+	code, mod := c.IndexCode(k), k.Mod
+	if code != k.Code {
+		mod |= uv.ModShift
+	}
+	return mod == c.Key.Mod && code >= '1' && code <= '9'
+}
+
+func (c Chord) matchCode(code rune, mod uv.KeyMod) bool {
 	if code >= 'A' && code <= 'Z' {
 		code += 'a' - 'A'
 		mod |= uv.ModShift
 	}
-	if mod != c.Key.Mod {
-		return false
+	if code == c.Key.Code && code > ' ' && code <= '~' && !(code >= 'a' && code <= 'z') && !(code >= '0' && code <= '9') {
+		// Terminals may retain Shift when reporting the resulting punctuation.
+		mod = (mod &^ uv.ModShift) | (c.Key.Mod & uv.ModShift)
 	}
-	if c.Indexed {
-		return code >= '1' && code <= '9'
+	return mod == c.Key.Mod && code == c.Key.Code
+}
+
+// IndexCode identifies the physical digit when Shift is reported as a symbol.
+func (c Chord) IndexCode(k uv.Key) rune {
+	code := k.Code
+	if k.Mod.Contains(uv.ModShift) && k.ShiftedCode != 0 {
+		code = k.ShiftedCode
 	}
-	return code == c.Key.Code
+	if c.Key.Mod.Contains(uv.ModShift) {
+		for i, symbol := range "!@#$%^&*(" {
+			if code == symbol {
+				return rune('1' + i)
+			}
+		}
+	}
+	return code
 }
 
 // Defaults come from the 0.2.24 commented configuration, with the existing

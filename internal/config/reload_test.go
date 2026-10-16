@@ -29,9 +29,9 @@ func TestLoadReloadedPreservesUIAndDisablesInvalidBinding(t *testing.T) {
 	if !strings.Contains(c.Warning(), "disabling binding") || !strings.Contains(c.Warning(), "keeping current ui settings") {
 		t.Fatal(c.Warnings)
 	}
-	// Startup behavior stays unchanged.
+	// The observed 0.2.57 startup also disables an invalid binding.
 	start, err := Load()
-	if err != nil || !start.ShowTabBar() || start.ActionBindings("new_tab")[0] != ActionDefaults["new_tab"] {
+	if err != nil || !start.ShowTabBar() || start.ActionBindings("new_tab")[0] != "" {
 		t.Fatal(start, err)
 	}
 }

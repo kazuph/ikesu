@@ -1,0 +1,21 @@
+send "\x14v"
+sleep 300ms
+send "\x14r"
+sleep 200ms
+screen @OUT@/resize-enter-before.txt
+send "\r"
+sleep 200ms
+send "K10_ENTER"
+sleep 200ms
+screen @OUT@/resize-enter-after.txt
+send "\x1b"
+sleep 100ms
+send "\x15"
+send "\x14r"
+sleep 200ms
+send "r"
+sleep 200ms
+send "K10_R"
+sleep 200ms
+screen @OUT@/resize-r-after.txt
+kill

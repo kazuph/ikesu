@@ -29,6 +29,7 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 	for _, binding := range a.sidebarConfig.Keys.Command {
 		chord, err := config.ParseChord(binding.Key)
 		if err == nil && chord.Match(k, prefix) {
+			a.workspaceNavigate = false
 			a.runKeyCommand(binding)
 			return true
 		}
@@ -48,6 +49,9 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 			}
 			chord, err := config.ParseChord(spec)
 			if err == nil && chord.Match(k, prefix) {
+				if chord.Indexed {
+					k.Code = chord.IndexCode(k)
+				}
 				return a.configAction(name, k)
 			}
 		}
@@ -55,7 +59,13 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 	return false
 }
 func (a *App) configAction(name string, k uv.Key) bool {
+	if a.workspaceNavigate && !strings.HasPrefix(name, "focus_pane_") && name != "workspace_picker" && name != "cycle_pane_next" && name != "cycle_pane_previous" {
+		a.workspaceNavigate = false
+	}
 	switch name {
+	case "resize_mode":
+		a.resizeMode = !a.resizeMode
+		a.dirty = true
 	case "swap_pane_left", "swap_pane_down", "swap_pane_up", "swap_pane_right":
 		dirs := map[string]layout.NavDir{"swap_pane_left": layout.NavLeft, "swap_pane_down": layout.NavDown, "swap_pane_up": layout.NavUp, "swap_pane_right": layout.NavRight}
 		a.exec(model.CmdSwapDir{Pane: a.focusedPane(), Dir: dirs[name]})
