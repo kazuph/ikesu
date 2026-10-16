@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/detect"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/render"
@@ -54,9 +56,102 @@ func assertReportedBlockerRender(t *testing.T, a *App, key string) {
 		t.Fatalf("pane snapshot: %s", snaps[1].Status.Key)
 	}
 	out := render.Compose(render.Input{State: a.st, Panes: snaps})
+	statusCells := 0
+	for y := 0; y < a.st.Rows; y++ {
+		for x := 0; x < a.st.ExpandedSidebarWidth(); x++ {
+			cell := out.Frame.Cell(x, y)
+			if cell.Content == a.glyph(1).Rune && cell.Style.Fg == out.Frame.ThemeColor(a.glyph(1).Color) {
+				statusCells++
+			}
+		}
+	}
+	if statusCells == 0 {
+		t.Fatal("sidebar has no matching status-colored cell")
+	}
 	r := out.TabHits[0]
 	want := a.glyph(1)
 	if out.Frame.Cell(r.X+1, r.Y).Style.Fg != out.Frame.ThemeColor(want.Color) {
 		t.Fatal("tab status color differs")
+	}
+}
+
+func TestReportedBlockerPriorityAndObservationOrder(t *testing.T) {
+	a := specRuntimeApp(t)
+	at := time.Now()
+	visible := detect.Detection{State: detect.Blocked, VisibleBlocker: true}
+	cases := []struct {
+		name, source, agent, detected, state string
+		visible                              bool
+		age                                  time.Duration
+		want                                 string
+	}{
+		{"fresh", "claude", "claude", "claude", "working", true, time.Second, "blocked"},
+		{"idle", "claude", "claude", "claude", "idle", true, time.Second, "blocked"},
+		{"old", "claude", "claude", "claude", "working", true, -time.Second, "working"},
+		{"same time", "claude", "claude", "claude", "working", true, 0, "working"},
+		{"other agent", "claude", "claude", "codex", "working", true, time.Second, "working"},
+		{"not visible", "claude", "claude", "claude", "working", false, time.Second, "working"},
+		{"reported blocked", "claude", "claude", "claude", "blocked", false, time.Second, "blocked"},
+	}
+	for _, agent := range []string{"pi", "omp", "mastracode", "hermes", "opencode", "kilo", "kimi"} {
+		cases = append(cases, struct {
+			name, source, agent, detected, state string
+			visible                              bool
+			age                                  time.Duration
+			want                                 string
+		}{"official " + agent, "gtx:" + agent, agent, agent, "working", true, time.Second, "working"})
+		cases = append(cases, struct {
+			name, source, agent, detected, state string
+			visible                              bool
+			age                                  time.Duration
+			want                                 string
+		}{"custom " + agent, "custom:" + agent, agent, agent, "working", true, time.Second, "blocked"})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a.SetReportedSource(1, tc.agent, tc.state, tc.source)
+			r := a.reported[1]
+			r.at = at
+			a.reported[1] = r
+			d := visible
+			d.VisibleBlocker = tc.visible
+			a.observeBlocker(1, tc.detected, d, at.Add(tc.age))
+			if got := a.PaneStatusKey(1); got != tc.want {
+				t.Fatalf("got %s want %s", got, tc.want)
+			}
+			a.SetDecisionAttention(map[int]bool{1: true})
+			if a.PaneStatusKey(1) != "blocked" {
+				t.Fatal("decision lost priority")
+			}
+			a.SetDecisionAttention(nil)
+			if a.PaneStatusKey(1) != tc.want {
+				t.Fatal("decision did not restore state")
+			}
+		})
+	}
+	a.SetReportedSource(1, "claude", "working", "claude")
+	a.observeBlocker(1, "claude", visible, time.Now().Add(time.Second))
+	a.SetReportedSource(1, "claude", "idle", "claude")
+	// A new report must not use the earlier observation.
+	r := a.reported[1]
+	r.at = time.Now().Add(2 * time.Second)
+	a.reported[1] = r
+	if a.PaneStatusKey(1) != "idle" {
+		t.Fatal("new report reused old question")
+	}
+}
+
+func TestReportedBlockerHandoffPreservesAuthorityAndObservation(t *testing.T) {
+	a := specRuntimeApp(t)
+	a.SetReportedSource(1, "claude", "working", "claude")
+	a.observeBlocker(1, "claude", detect.Detection{State: detect.Blocked, VisibleBlocker: true}, time.Now().Add(time.Second))
+	b := specRuntimeApp(t)
+	b.RestoreHandoff(a.HandoffState())
+	if b.PaneStatusKey(1) != "blocked" {
+		t.Fatal("handoff lost question")
+	}
+	b.observeBlocker(1, "claude", detect.Detection{}, time.Now().Add(2*time.Second))
+	if b.PaneStatusKey(1) != "working" {
+		t.Fatal("handoff lost report")
 	}
 }

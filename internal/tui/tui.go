@@ -248,6 +248,7 @@ type App struct {
 	fwd                                      int         // pane receiving forwarded mouse events during a drag
 	scroll                                   map[int]int
 	trackers                                 map[int]*status.Tracker
+	blockerObservations                      map[int]blockerObservation
 	reported                                 map[int]reportedPane                     // pane.report_agent overrides
 	sessions                                 map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
 	fossils                                  map[int]*fossilWatch                     // last live-activity fingerprint per pane (15s expiry)

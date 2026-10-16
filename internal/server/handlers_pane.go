@@ -373,7 +373,7 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 	if pane := s.app.Supervisor().Get(pid); pane != nil {
 		pane.SetAgent(p.Agent)
 	}
-	s.app.SetReported(pid, p.Agent, p.State)
+	s.app.SetReportedSource(pid, p.Agent, p.State, p.Source)
 	if launch := s.agentLaunches[pid]; launch != nil {
 		pane := s.sup.Get(pid)
 		if pane != nil {
