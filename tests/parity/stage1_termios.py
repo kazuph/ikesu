@@ -9,6 +9,7 @@ from pathlib import Path
 import pty
 import re
 import select
+import signal
 import struct
 import subprocess
 import sys
@@ -20,13 +21,14 @@ p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
 p.add_argument('--gtx', required=True)
 p.add_argument('--out', required=True)
+p.add_argument('--sigterm', action='store_true', help='record the reference SIGTERM behavior instead of normal exit')
 a = p.parse_args()
 out = Path(a.out).resolve()
 out.mkdir(parents=True, exist_ok=True)
 failures = []
 for product, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
     binary = str(Path(binary).resolve())
-    for mode in ['local-quit', 'server-detach']:
+    for mode in (['local-sigterm'] if a.sigterm else ['local-quit', 'server-detach']):
         target = out / product / mode
         target.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='st1-', dir='/tmp') as temporary:
@@ -59,7 +61,9 @@ for product, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
             # Darwin revokes the slave once its session leader exits.
             sample = root/'after.json'
             worker = ('import json,subprocess,sys,termios; '
-                      'code=subprocess.call(sys.argv[2:]); '
+                      'child=subprocess.Popen(sys.argv[2:]); '
+                      'open(sys.argv[1]+".pid","w").write(str(child.pid)); '
+                      'code=child.wait(); '
                       'v=termios.tcgetattr(0); '
                       'v[6]=[x.hex() if isinstance(x,bytes) else x for x in v[6]]; '
                       'open(sys.argv[1],"w").write(json.dumps([code,v]))')
@@ -75,7 +79,10 @@ for product, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             os.write(master, b'\x1b]11;rgb:0000/0000/0000\x1b\\')
             try:
                 drain(4)
-                os.write(master, b'\x14q')
+                if a.sigterm:
+                    os.kill(int(Path(str(sample)+'.pid').read_text()), signal.SIGTERM)
+                else:
+                    os.write(master, b'\x14q')
                 drain(2)
                 code, after = json.loads(sample.read_text()) if sample.exists() else (None, termios.tcgetattr(slave))
                 def normalized(value):
@@ -90,7 +97,10 @@ for product, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                 (target/'result.json').write_text(json.dumps(result, indent=2)+'\n')
                 (target/'terminal.raw').write_bytes(raw)
                 print(product, mode, 'exit', code, 'restored', result['restored'], flush=True)
-                if code != 0 or not result['restored']:
+                expected = code == -signal.SIGTERM and not result['restored'] if a.sigterm else code == 0 and result['restored']
+                if a.sigterm:
+                    expected = expected and result['kitty'] == ['\x1b[>7u']
+                if not expected:
                     failures.append(product+'/'+mode)
             finally:
                 if process.poll() is None:
