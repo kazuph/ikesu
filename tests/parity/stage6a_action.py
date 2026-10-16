@@ -73,7 +73,21 @@ elif op in ('repo','repo-group','repo-delete'):
     if op != 'repo':
         request('worktree.open',{'cwd':str(repo),'path':str(root/'checkout-00'),'focus':True})
     request('workspace.list',{})
-elif op in ('notification-empty','notification-body'):
+elif op == 'notification-position':
+    request('notification.show',{'title':'日本語','body':'本文','sound':'none','position':sys.argv[2]})
+elif op == 'notification-trim':
+    request('notification.show',{'title':'  日本語  ','body':'  本文  ','sound':'none'})
+elif op == 'notification-blank':
+    request('notification.show',{'title':' \n ','sound':'none'})
+elif op == 'notification-probe':
+    for params in [
+        {}, {'title':''}, {'title':'日本語'}, {'title':'日本語'},
+        {'title':'次の通知','body':'本文','position':'top-left'},
+        {'title':'位置','position':'invalid'}, {'title':'音','sound':'invalid'},
+        {'title':None}, {'title':'追加','extra':True},
+    ]:
+        request('notification.show',params)
+elif op in ('notification-empty','notification-body','notification-second','notification-third'):
     request('notification.show',{'title':'日本語','body':'本文' if op.endswith('body') else None,'sound':'none'})
 elif op == 'list':
     request('workspace.list',{})

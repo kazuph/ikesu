@@ -37,3 +37,12 @@ for w in [20,30,40,56]:
     for label,x,y in [('left',5,5),('center',w//2,4),('top',5,3),('outside',1,1)]:
         body+=f'resize {w} 7\n'+send('\x14W')+snap(f'{w}-{label}-before')+f'click {x} {y}\n'+snap(f'{w}-{label}-after')+send('\x1b')+'sleep 200ms\n'
 (out/'name-click-probe.steps').write_text(body+'kill\n')
+
+(out/'toast-probe.steps').write_text(action('notification-probe')+snap('toast')+'kill\n')
+
+for position in ['top-left','top-right','bottom-left','bottom-right']:
+    (out/f'toast-position-{position}.steps').write_text(action(f'notification-position {position}')+snap('toast')+'kill\n')
+for kind in ['trim','blank']:
+    (out/f'toast-{kind}.steps').write_text(action(f'notification-{kind}')+snap('toast')+'kill\n')
+
+(out/'toast-lifecycle.steps').write_text(action('notification-empty')+snap('initial')+'click 153 2\n'+snap('dismissed')+action('notification-second')+snap('retry')+'sleep 8s\n'+snap('after-eight')+'sleep 2s\n'+snap('after-ten')+action('notification-third')+snap('third')+'kill\n')
