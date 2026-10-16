@@ -43,6 +43,7 @@ const (
 	// pane; Raw keeps the bytes for diagnostics.
 	KindUnknown
 	KindTerminalReport
+	KindKeyRelease
 )
 
 // Event is one framed input event.
@@ -363,7 +364,7 @@ func (f *Framer) convert(raw []byte, ev uv.Event) Event {
 	case uv.KeyPressEvent:
 		return Event{Kind: KindKey, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}
 	case uv.KeyReleaseEvent:
-		return Event{Kind: KindUnknown, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}
+		return Event{Kind: KindKeyRelease, Raw: append([]byte(nil), raw...), Key: uv.Key(e)}
 	case uv.MouseClickEvent:
 		return Event{Kind: KindMouseClick, Raw: append([]byte(nil), raw...), Mouse: uv.Mouse(e)}
 	case uv.MouseReleaseEvent:

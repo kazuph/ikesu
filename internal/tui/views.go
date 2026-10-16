@@ -195,6 +195,7 @@ func (a *App) draw() {
 	if a.help != nil {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}
 	}
+	a.syncHostKeyboard()
 	if a.snapshotSink != nil {
 		a.lastDraw = time.Now()
 		a.dirty = a.snapshotSink(in) != nil

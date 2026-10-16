@@ -153,6 +153,7 @@ type App struct {
 	visiblePane       func(int) bool
 	sharedPaneSnaps   map[int]*render.PaneSnap
 	snapshotSink      func(render.Input) error
+	hostKbdFlags      int
 	agentStateCounter uint64
 	agentStates       map[int]string
 	decisionAttention map[int]bool

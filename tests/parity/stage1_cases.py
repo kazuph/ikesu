@@ -12,6 +12,7 @@ def send(value):
     return 'send ' + json.dumps(value, ensure_ascii=False) + '\n'
 
 protocols = {
+    'mok1': '\x1b[>4;1m', 'mok2': '\x1b[>4;2m',
     'plain': '', 'cursor': '\x1b[?1h', 'kitty1': '\x1b[>1u',
     'kitty3': '\x1b[>3u', 'kitty7': '\x1b[>7u',
     'kitty8': '\x1b[>8u', 'kitty31': '\x1b[>31u',

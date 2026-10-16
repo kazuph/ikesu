@@ -46,13 +46,13 @@ func TestSPECRawLFShiftEnterAndFixTermActualPTYBytes(t *testing.T) {
 		{"rawLF", "", "\n", "\n"},
 		{"EndpointEscapePlainPane", "", "\x1b[27u", "\x1b"},
 		{"EndpointEscapeKittyPane", "\x1b[>1u", "\x1b[27u", "\x1b[27u"},
-		{"legacyShiftEnter", "", "\x1b[27;2;13~", "\n"},
+		{"legacyShiftEnter", "", "\x1b[27;2;13~", "\x1b[27;2;13~"},
 		{"legacyReleaseDropped", "", "\x1b[13;2:3uZ", "Z"},
 		{"FixTermQuery", "\x1b[?u", "", "\x1b[?0u"},
-		{"FixTermLegacyLF", "\x1b[?u", "\x1b[27;2;13~", "\x1b[?0u\n"},
-		{"ExplicitKittyKeepsProtocol", "\x1b[>1u", "\x1b[27;2;13~", "\x1b[27;2;13~"},
-		{"EmptyModifierA", "", "\x1b[97;;97u", "\x1b[97;;97u"},
-		{"ShiftedAssociatedA", "", "\x1b[97:65;2;65u", "\x1b[97:65;2;65u"},
+		{"FixTermLegacyLF", "\x1b[?u", "\x1b[27;2;13~", "\x1b[?0u\x1b[27;2;13~"},
+		{"ExplicitKittyEncodesProtocol", "\x1b[>1u", "\x1b[27;2;13~", "\x1b[13;2u"},
+		{"EmptyModifierA", "", "\x1b[97;;97u", "a"},
+		{"ShiftedAssociatedA", "", "\x1b[97:65;2;65u", "A"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := specRuntimeApp(t)

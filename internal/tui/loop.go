@@ -16,6 +16,8 @@ func (a *App) onInput(ev input.Event) {
 	case input.KindTerminalReport:
 		a.hostMouseReport(ev.Report)
 		a.hostThemeReport(ev.Report)
+	case input.KindKeyRelease:
+		a.sendPaneKey(ev.Key, ev.Raw, true)
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:

@@ -52,7 +52,7 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		a.dirty = true
 		if a.prefixMatches(k) {
 			if pid := a.focusedPane(); pid >= 0 {
-				a.sup.Input(pid, raw)
+				a.sendPaneKey(k, raw, false)
 			}
 			return
 		}
@@ -125,25 +125,7 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 	if a.scroll[pid] > 0 {
 		delete(a.scroll, pid) // key input snaps back to the live screen
 	}
-	if k.Code == uv.KeyEscape && k.Mod == 0 {
-		if p := a.sup.Get(pid); p != nil && !p.KbdExplicit() {
-			a.sup.Input(pid, []byte{0x1b})
-			a.dirty = true
-			return
-		}
-	}
-	if k.Code == uv.KeyEnter && k.Mod == uv.ModShift {
-		// FixTerm Shift+Enter arrives as the legacy sequence
-		// CSI 27;2;13~ (or kitty CSI 13;2u). Per SPEC G6 the pane
-		// receives a bare LF — unless the app explicitly pushed the
-		// kitty keyboard protocol, which takes over the key itself.
-		if p := a.sup.Get(pid); p != nil && !p.KbdExplicit() {
-			a.sup.Input(pid, []byte{'\n'})
-			a.dirty = true
-			return
-		}
-	}
-	a.sup.Input(pid, raw)
+	a.sendPaneKey(k, raw, false)
 	a.dirty = true
 }
 

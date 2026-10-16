@@ -122,7 +122,7 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 		e.keyboard.Legacy = true
 		e.keyboard.Stack = make([]keyboardEntry, t.Keyboard)
 		for i := range e.keyboard.Stack {
-			e.keyboard.Stack[i].Legacy = true
+			e.keyboard.Stack[i].Legacy = i > 0
 		}
 	}
 	e.iconName, e.title, e.cwd = t.Icon, t.Title, t.Cwd

@@ -190,11 +190,11 @@ func TestKittyShiftedText(t *testing.T) {
 	}
 }
 
-// SPEC G6: kitty release events are never forwarded as key input.
-func TestKittyReleaseDropped(t *testing.T) {
+// Retain releases so pane protocol negotiation can decide whether to forward them.
+func TestKittyReleaseDecoded(t *testing.T) {
 	f := &Framer{}
 	evs := f.Push([]byte("\x1b[13;2:3u"))
-	if len(evs) != 1 || evs[0].Kind != KindUnknown {
+	if len(evs) != 1 || evs[0].Kind != KindKeyRelease {
 		t.Fatalf("events = %v", drainKinds(evs))
 	}
 }
