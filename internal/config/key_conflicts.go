@@ -10,6 +10,9 @@ import (
 // Resolve explicit bindings before defaults so a configured chord replaces the
 // default owner. Navigation's plain keys belong to a separate input mode.
 func (c *Config) resolveKeyBindings() {
+	if len(c.Keys.Actions) == 0 && len(c.Keys.Command) == 0 {
+		return
+	}
 	type owner struct {
 		name  string
 		chord Chord
