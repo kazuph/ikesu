@@ -48,3 +48,33 @@ func TestStage7ClipboardSandboxFallback(t *testing.T) {
 		t.Fatal("SSH did not use OSC 52")
 	}
 }
+
+// Start the existing feedback test as a local (non-SSH) test invocation. TestMain
+// must isolate every copy test, not just the dedicated fallback test.
+func TestStage7CopyTestsDenyRealPasteboard(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	if os.Getenv("STAGE7_COPY_GUARD_CHILD") == "1" {
+		if os.Getenv("STAGE7_TUI_TEST_SANDBOX") != "1" {
+			t.Fatal("TestMain did not establish the pasteboard boundary")
+		}
+		probe := exec.Command("/usr/bin/pbcopy")
+		probe.Stdin = strings.NewReader("STAGE7_TEST_BOUNDARY_PROBE")
+		if probe.Run() == nil {
+			t.Fatal("copy tests can reach the real pasteboard")
+		}
+		return
+	}
+	cmd := exec.Command("/usr/bin/sandbox-exec", "-p", testPasteboardSandbox, os.Args[0], "-test.run=^(TestCopyObservedFeedbackWriteSuccessFailureAndTwoSecondDeadline|TestStage7CopyTestsDenyRealPasteboard)$", "-test.v")
+	for _, entry := range os.Environ() {
+		name := strings.SplitN(entry, "=", 2)[0]
+		if name != "SSH_CONNECTION" && name != "SSH_CLIENT" && name != "SSH_TTY" && name != "STAGE7_TUI_TEST_SANDBOX" {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	cmd.Env = append(cmd.Env, "STAGE7_COPY_GUARD_CHILD=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("local copy boundary: %v\n%s", err, out)
+	}
+}
