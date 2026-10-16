@@ -1,0 +1,10 @@
+send "\x14v"
+sleep 300ms
+send "\x14w"
+sleep 200ms
+send "\t"
+sleep 200ms
+send "K11_TAB"
+sleep 200ms
+screen @OUT@/navigate-tab.txt
+kill
