@@ -1,0 +1,15 @@
+send "python3 @FIXTURES@/tb_media_program.py\r"
+waittext 8s TB_MEDIA_F
+stats media-file
+send "n"
+waittext 8s TB_MEDIA_T
+stats media-temp
+send "n"
+waittext 8s TB_MEDIA_S
+stats media-shm
+send "n"
+waitfile @HOME@/tb-media.json 5s
+cells @OUT@/media-done.json
+stats media-done
+send "q"
+kill

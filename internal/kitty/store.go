@@ -87,10 +87,10 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 	}
 	s.ChunkKeys, s.ChunkData = nil, nil
 	for k := range keys {
-		if !strings.Contains("atifvsmqpcrzCdoU", k) {
+		if !strings.Contains("atifvsmqpcrzCdoUSO", k) {
 			return reply(keys, "ENOTSUP:unsupported graphics key "+k), 0, 0, true
 		}
-		if strings.Contains("ifvsmqpcrCU", k) {
+		if strings.Contains("ifvsmqpcrCUSO", k) {
 			if _, err := strconv.ParseUint(keys[k], 10, 32); err != nil {
 				return reply(keys, "EINVAL:invalid numeric graphics key "+k), 0, 0, true
 			}
@@ -154,8 +154,9 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 	}
 	image := s.Images[id]
 	if action != "p" {
-		if medium := keys["t"]; medium != "" && medium != "d" {
-			return reply(keys, "ENOTSUP:only direct image data is supported"), 0, 0, true
+		payload, err = mediaPayload(keys, payload)
+		if err != nil {
+			return reply(keys, err.Error()), 0, 0, true
 		}
 		if compression := keys["o"]; compression != "" {
 			if compression != "z" {
