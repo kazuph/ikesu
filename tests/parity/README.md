@@ -203,3 +203,8 @@ gtxの未実装応答を成功や似た値へ置き換えない。未知メソ�
 相対P1は基準dd2168cを `src/stage6a-baseline-dd2168c` に置き、
 `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage6a_perf.sh`
 で同じGo・同じ引数の2ビルドを交互に各5回検査する。絶対P1はこの段階の判定対象外。
+
+A41のクリック検査は `name-click-probe.steps` に20/30/40/56列×4点を保存する。
+実物は低い画面で内容を描かなくても保存ボタンのクリック範囲を保持し、
+枠内空白と枠外のクリックは無視する。`stage6a_gate.py --only name-probe` は
+16条件で開いている枠の有無を判定する。見た目が空だからクリック不能とは推測しない。

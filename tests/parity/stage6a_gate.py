@@ -120,9 +120,21 @@ def configured_popup():
   assert not any(b[2:]==(107,34) for b in boxes(cells('popup-user',product,'escape')))
  return 'User ctrl+t,t opens 80% popup, 107x34 frame/104x32 PTY; shell Esc closes it.'
 
+def name_probe():
+ for width in [20,30,40,56]:
+  expected=(2,1,min(56,width-4),5)
+  for point in ['left','center','top','outside']:
+   for product in ['herdr','gtx']:
+    before=boxes(cells('name-click-probe',product,f'{width}-{point}-before'))
+    after=boxes(cells('name-click-probe',product,f'{width}-{point}-after'))
+    assert expected in before,(width,point,product,before)
+    remains=expected in after
+    assert remains==(point!='left' or width==56),(width,point,product,after)
+ return 'All 16 point/width combinations match actual save targets and ignored clicks.'
+
 checks={'popup-ownership':popup_ownership,'menu':menu,'name':name,'sizes':sizes,
         'worktree-list':worktrees,'worktree-create':create,'worktree-delete':delete,
-        'worktree-group':group,'configured-popup':configured_popup}
+        'worktree-group':group,'configured-popup':configured_popup,'name-probe':name_probe}
 for key,check in checks.items():
  if a.only and key not in a.only:continue
  try:results[key]={'status':'PASS','evidence':check()}
