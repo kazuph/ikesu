@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
+	"io"
 	"testing"
 )
 
@@ -154,5 +155,23 @@ func TestStage7ResizeInvalidatesSearchCoordinates(t *testing.T) {
 	a.copyNextMatch(1)
 	if len(a.cm.matches) == 0 || a.cm.matchIdx < 0 {
 		t.Fatal("repeat did not search the resized buffer")
+	}
+}
+
+func TestStage7ViewerResizeInvalidatesSearchCoordinates(t *testing.T) {
+	teststate.Lock(t)
+	a := stage7CopyApp(t)
+	a.cm.query = "alpha"
+	a.copyFindAll()
+	a.copyNextMatch(1)
+	v := a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+	v.app.cm, a.cm = a.cm, nil
+	v.Resize(a, 100, 25, 0, 0)
+	if v.app.cm == nil || v.app.cm.query != "alpha" || len(v.app.cm.matches) != 0 || v.app.cm.matchIdx != -1 {
+		t.Fatal("endpoint resize retained stale search")
+	}
+	v.with(a, func(ui *App) { ui.copyNextMatch(1) })
+	if len(v.app.cm.matches) == 0 {
+		t.Fatal("endpoint repeat did not recalculate")
 	}
 }
