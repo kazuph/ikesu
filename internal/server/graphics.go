@@ -46,6 +46,9 @@ func (s *Server) graphicsRequest(req *api.Request) api.Response {
 		if err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
+		if len(data) > api.MaxGraphicsSetBytes {
+			return api.Failure(req.ID, "image_too_large", "image data is too large")
+		}
 		if failure := s.sup.SetGraphicsLayer(pid, params, data, 0); failure != nil {
 			return api.Failure(req.ID, failure.Code, failure.Message)
 		}

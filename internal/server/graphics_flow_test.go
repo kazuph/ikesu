@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/teststate"
@@ -73,10 +74,12 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 	}
 	read(func(in render.Input) bool { return len(in.Panes) > 0 })
 	pane := firstPaneID(t, dir)
-	pixels := bytes.Repeat([]byte{12, 34, 56, 255}, 1024*256)
+	const width = 1024
+	const height = api.MaxGraphicsSetBytes / 4 / width
+	pixels := bytes.Repeat([]byte{12, 34, 56, 255}, width*height)
 	set := func() {
 		t.Helper()
-		apiOK(t, dir, "pane.graphics.set", map[string]any{"pane_id": pane, "format": "rgba", "image_width": 1024, "image_height": 256, "data_base64": base64.StdEncoding.EncodeToString(pixels), "placement": map[string]any{"grid_cols": 4, "grid_rows": 2}}, nil)
+		apiOK(t, dir, "pane.graphics.set", map[string]any{"pane_id": pane, "format": "rgba", "image_width": width, "image_height": height, "data_base64": base64.StdEncoding.EncodeToString(pixels), "placement": map[string]any{"grid_cols": 4, "grid_rows": 2}}, nil)
 	}
 	hasImage := func(in render.Input) bool {
 		for _, p := range in.Panes {

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Observe an isolated product after a direct file's producer success ack."""
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -27,6 +28,7 @@ def main():
     parser.add_argument('--binary', required=True)
     parser.add_argument('--terminal', required=True)
     parser.add_argument('--out', required=True)
+    parser.add_argument('--set-limits-only', action='store_true', help='observe the documented decoded 512 KiB set boundary without attaching a terminal')
     args = parser.parse_args()
     binary, terminal = str(Path(args.binary).resolve()), str(Path(args.terminal).resolve())
     out = Path(args.out).resolve()
@@ -54,15 +56,19 @@ def main():
         config.write_text('onboarding=false\n[experimental]\nkitty_graphics=true\n')
         env.update(HERDR_CONFIG_PATH=str(config), GTX_CONFIG=str(config))
 
-        def request(method, params):
+        def raw_request(method, params):
             with socket.socket(socket.AF_UNIX) as connection:
                 connection.settimeout(15)
                 connection.connect(str(endpoint))
                 connection.sendall(json.dumps({'id': 'lifetime', 'method': method, 'params': params}).encode()+b'\n')
                 reply = line(connection)
-                if 'error' in reply:
-                    raise RuntimeError(reply)
-                return reply['result']
+                return reply
+
+        def request(method, params):
+            reply = raw_request(method, params)
+            if 'error' in reply:
+                raise RuntimeError(reply)
+            return reply['result']
 
         def attach(label):
             log = (out/f'{label}.log').open('w')
@@ -98,6 +104,19 @@ def main():
                 created = request('workspace.create', {'cwd': str(root/'cwd'), 'focus': True})
                 pane = created['root_pane']['pane_id']
                 result['pane'] = pane
+                if args.set_limits_only:
+                    result['set_limit_cases'] = []
+                    for size in (512*1024-4, 512*1024, 512*1024+4):
+                        pixels = bytes((17, 18, 19, 255))*(size//4)
+                        reply = raw_request('pane.graphics.set', {
+                            'pane_id': pane, 'format': 'rgba', 'image_width': size//4, 'image_height': 1,
+                            'data_base64': base64.b64encode(pixels).decode(),
+                            'placement': {'grid_cols': 1, 'grid_rows': 1}})
+                        result['set_limit_cases'].append({'decoded_bytes': size, 'reply': reply})
+                        if 'result' in reply:
+                            request('pane.graphics.clear', {'pane_id': pane})
+                    result['procedure_complete'] = True
+                    return
                 attach('first')
                 def direct_info():
                     try:

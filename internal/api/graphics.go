@@ -17,6 +17,7 @@ const (
 	MaxGraphicsLayers           = 16
 	MaxGraphicsTotalLayers      = 64
 	MaxGraphicsFrameHeaderBytes = 64 * 1024
+	MaxGraphicsSetBytes         = 512 * 1024
 	// Approved file-frame transport and aggregate inline bounds (T9).
 	MaxGraphicsFileInlineBytes = 16777216
 	MaxGraphicsFileDirectBytes = 419430400
