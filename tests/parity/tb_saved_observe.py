@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+import tb_pointer_probe
 
 p = argparse.ArgumentParser()
 p.add_argument('--product', choices=('herdr', 'gtx'), required=True)
@@ -28,13 +29,16 @@ p.add_argument('--status-delay', help='explicit ptyrun terminal-status response 
 p.add_argument('--pixel-mouse', action='store_true', help='let the outer terminal negotiate SGR pixel mouse instead of explicitly declining it')
 p.add_argument('--tap-tb-input', action='store_true', help='record input delivered to the actual remote tb PTY')
 p.add_argument('--visibility', action='store_true', help='record real saved-machine graphics visibility across split, focus and zoom')
+p.add_argument('--pointer-probe', action='store_true', help='verify real link hover and horizontal scroll through page DOM event reports')
 a = p.parse_args()
 if a.image_probe and a.measure:
     p.error('the controlled image producer cannot be used for tb performance measurement')
-if a.tap_tb_input and (a.image_probe or not a.measure):
-    p.error('the input tap requires an actual tb measurement')
+if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe)):
+    p.error('the input tap requires an actual tb measurement or pointer probe')
 if a.visibility and (a.measure or a.image_probe):
     p.error('visibility operations must be separate from timing and controlled-image measurements')
+if a.pointer_probe and (a.measure or a.image_probe or a.visibility):
+    p.error('pointer probe must be separate from other observation modes')
 out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
 observer_source = Path(__file__).read_bytes()
@@ -53,6 +57,7 @@ expected_keys = 'abcdefghijklmnop'
                                                        'pixel_mouse': a.pixel_mouse,
                                                        'tap_tb_input': a.tap_tb_input,
                                                        'visibility': a.visibility,
+                                                       'pointer_probe': a.pointer_probe,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
                                                        'remote_tb': a.remote_tb, 'measure': a.measure, 'capture_ssh': a.capture_ssh, 'image_probe': a.image_probe, 'expected_keys': expected_keys if a.measure else None}, indent=2)+'\n')
@@ -134,6 +139,9 @@ for name in ['herdr','gtx']:
 '''
         wrapper = '#!/bin/sh\n'+prefix+'exec '+shlex.quote(a.remote_binary)+' "$@"\n'
         ssh(shlex.join(['python3', '-c', setup, remote, config, wrapper]))
+        if a.pointer_probe:
+            ssh(shlex.join(['python3', '-c', 'import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])',
+                            remote+'/pointer-probe.py', Path(__file__).with_name('tb_pointer_probe.py').read_text()]))
         if a.image_probe:
             ssh(shlex.join(['python3', '-c', 'import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])',
                             remote+'/image-probe.py', Path(__file__).with_name('tb_transfer_program.py').read_text()]))
@@ -214,6 +222,8 @@ for name in ['herdr','gtx']:
                                   '--no-toolbar', '--no-shortcuts', '--no-context-menu', '--no-overlays', '--no-frame'])
             if a.image_probe:
                 command = shlex.join(['python3', remote+'/image-probe.py'])
+            if a.pointer_probe:
+                command = shlex.join(['python3', remote+'/pointer-probe.py', a.remote_tb, remote])
             if a.tap_tb_input:
                 command = shlex.join(['python3', remote+'/tb-input-tap.py', '--out', remote+'/home/tb-input.bin', '--'])+' '+command
             result(remote_rpc('pane.send_input', {'pane_id': remote_pane, 'text': command, 'keys': ['Enter']}))
@@ -236,6 +246,8 @@ for name in ['herdr','gtx']:
                 for key, label in [('s', 'SMALL'), ('l', 'LARGE'), ('n', 'NOISE')]:
                     procedure += 'send '+json.dumps(key)+'\nwaittext 10s TB_TRANSFER_'+label+'\nstats transfer-'+label.lower()+'\n'
                 steps.write_text(procedure+'kill\n')
+            if a.pointer_probe:
+                steps.write_text(steps.read_text().replace('kill\n', '')+tb_pointer_probe.procedure(root, a.pixel_mouse)+'kill\n')
             (out/'steps').write_text(steps.read_text())
             log = (out/'viewer.log').open('w'); logs.append(log)
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
@@ -276,9 +288,13 @@ for name in ['herdr','gtx']:
                         result(remote_rpc('pane.zoom', {'pane_id': split, 'mode': 'off'}))
                         result(remote_rpc('pane.focus', {'pane_id': remote_pane}))
                         sample('restored', [remote_pane, split])
+                    if a.pointer_probe:
+                        tb_pointer_probe.wait_ready(ssh, remote)
                     ready.write_text('actual image upload received')
                 finally:
                     os.close(fd)
+            if a.pointer_probe:
+                tb_pointer_probe.collect(ssh, remote, root, out, viewer, a.pixel_mouse)
             viewer.wait()
             if viewer.returncode != 0 or 'TIMEOUT' in (out/'viewer.log').read_text():
                 raise RuntimeError('saved-machine viewer procedure failed')
