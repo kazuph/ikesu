@@ -523,8 +523,13 @@ func fillLines(b *Buffer, y, n int, c *Cell) {
 		fill = *c
 	}
 	for i := y; i < y+n; i++ {
-		for x := range b.Lines[i] {
-			b.Lines[i][x] = fill
+		line := b.Lines[i]
+		if len(line) == 0 {
+			continue
+		}
+		line[0] = fill
+		for filled := 1; filled < len(line); {
+			filled += copy(line[filled:], line[:filled])
 		}
 	}
 }
