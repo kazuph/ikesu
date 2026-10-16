@@ -1,0 +1,21 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\"; cd \"$HOME/alpha\"; printf 'CWD_READY\\n'\r"
+sleep 2s
+screen @OUT@/cd.txt
+cells @OUT@/cd.json
+send "\x14c"
+sleep 200ms
+send "new\r"
+sleep 1s
+send "pwd\r"
+sleep 500ms
+screen @OUT@/newtab.txt
+cells @OUT@/newtab.json
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+send "\x14v"
+sleep 1s
+send "pwd\r"
+sleep 500ms
+screen @OUT@/split.txt
+cells @OUT@/split.json
+kill

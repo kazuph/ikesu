@@ -16,6 +16,7 @@ p.add_argument('--herdr', required=True)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
+p.add_argument('--pixel-mouse', action='store_true', help='advertise SGR pixel mouse support to the attached display')
 p.add_argument('--startup-input', action='store_true', help='observe startup input with onboarding=false; wait for readiness in the steps')
 p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
@@ -172,7 +173,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     wrapper = root/'display.py'
                     wrapper.write_text('import os,sys\nfrom pathlib import Path\np=Path(sys.argv[1]); q=p.with_suffix(".next"); q.write_text(str(os.getpid())); q.replace(p)\nos.execv(sys.argv[2],sys.argv[2:])\n')
                     launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
-                subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
+                subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse='+str(a.pixel_mouse).lower(),
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
