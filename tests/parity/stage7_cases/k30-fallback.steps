@@ -1,0 +1,14 @@
+send "printf '\\033[3J\\033[H\\033[2J'; for i in {1..120}; do printf 'ROW-%03d alpha ALPHA Beta abcdefghijklmnopqrstuvwxyz\\n' $i; done; sleep 120\r"
+sleep 200ms
+sleep 400ms
+send "\u0014["
+sleep 200ms
+send "g0vll"
+sleep 200ms
+screen @OUT@/selected.txt
+cells @OUT@/selected.json
+send "y"
+sleep 200ms
+screen @OUT@/copied.txt
+cells @OUT@/copied.json
+kill

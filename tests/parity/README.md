@@ -181,3 +181,22 @@ ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾
 `tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
 `tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。
 `mouse-negative.steps` と `mouse_negative_gate.py 出力先` はraw SGRの負座標と正の画面外座標を送る。`mouse_report_capture.py` は実端末で1002/1006を有効化する状態と無効な状態を実行し、受信した生バイトを記録する。通常キーの保持、マウス報告の文字漏れがないこと、有効な位置へ戻るまでタブのドラッグが続くことを実物と比較する。server/localをそれぞれcell/pixelで実行する。
+
+段階7（コピーのK23〜K30）は `stage7_cases.py` で共通手順を生成し、
+`sh tests/parity/stage7_observe.sh 出力先` をminiの同期先で実行する。
+店長設定・herdr 0.2.57・専用server・pasteboard sandboxを使い、
+末尾でSSH環境変数を外したローカルfallbackも同じsandbox内で観測する。
+第2引数を空文字にすると `--no-session` の比較になる。
+`stage7_measure.py 出力先` は保存セルの文字・幅・色・属性の差を座標付きで保存し、
+先頭行・検索欄・OSC52の文字列も抽出する。比較する領域はペイン本文とコピー操作欄で、
+タブ・ステータス・ペイン名は判定に含めない。動作中の自動スクロールは取得時刻も読み、
+静止画の差だけで速度や操作全体の一致としない。
+`k29-resize` の実物がsidebar表示中の縮小で異常終了した結果は成功へ置換せず保存し、
+`k29-folded` でsidebarを折り畳んだ同寸法の縮小、`k29-width` で幅のみの変更を追加確認する。
+`gate-stage7.sh 出力先` はminiでgofmt・vet・通常test・raceを非キャッシュで実行する。
+miniの負荷4以上で許可されたLinux比較は、dd2168cのarchiveを
+ubuntu-3090の `~/bench-terrace/work/stage7-baseline-dd2168c`、対象を
+`~/bench-terrace/work/stage7-src` に同期した上で、
+`python3 ~/bench-terrace/work/perf-lock.py sh tests/parity/stage7_perf.sh` として実行する。
+基準と対象は同じGoとビルド引数でビルドし、P1の相対値だけを判定する。
+ローカルpasteboardへの実書込み成功はsandbox観察では未検証のまま残す。
