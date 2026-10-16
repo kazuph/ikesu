@@ -24,6 +24,8 @@ func TestStage7DragEdgeAutoScrollAndClickControl(t *testing.T) {
 	if a.scroll[pid] != 0 {
 		t.Fatal("edge click scrolled")
 	}
+	// The observed control releases the edge click, then starts a new drag in the middle.
+	a.sel = &selState{pane: pid, ax: 5, ay: viewTop(a.sup.Get(pid), 0, inner.H) + inner.H/2, inner: inner}
 	a.selMouse(input.Event{Kind: input.KindMouseMotion, Mouse: uv.Mouse{X: inner.X + 5, Y: inner.Y - 2, Button: uv.MouseLeft}})
 	if a.scroll[pid] != 6 {
 		t.Fatalf("outside distance: offset=%d want 6", a.scroll[pid])
