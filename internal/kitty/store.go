@@ -230,6 +230,9 @@ func (s *Store) Handle(data []byte, x, y, cellW, cellH int, alt bool) (string, i
 		for _, p := range s.Placements {
 			if p.Image.ID != id {
 				kept = append(kept, p)
+			} else if action == "t" {
+				p.Image = image
+				kept = append(kept, p)
 			}
 		}
 		s.Placements = kept
