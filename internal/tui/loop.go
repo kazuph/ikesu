@@ -244,6 +244,12 @@ func (a *App) exec(cmd model.Command) {
 		a.mobileScroll = 0
 	}
 	beforeFocus := a.focusedPane()
+	spawnCwd := ""
+	if policyCwd {
+		if p := a.sup.Get(beforeFocus); p != nil {
+			spawnCwd = p.SpawnCwd()
+		}
+	}
 	var metadataOrder []int
 	if _, moving := cmd.(model.CmdMoveWorkspace); moving {
 		for _, ws := range a.st.Workspaces {
@@ -262,6 +268,9 @@ func (a *App) exec(cmd model.Command) {
 	}
 	for _, e := range a.st.Apply(cmd) {
 		if spawn, ok := e.(model.EffSpawnPane); ok && policyCwd {
+			if spawnCwd != "" {
+				spawn.Cwd = spawnCwd
+			}
 			spawn.Cwd = a.newPaneCwd(spawn.Cwd)
 			e = spawn
 		}
