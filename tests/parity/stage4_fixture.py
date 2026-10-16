@@ -45,7 +45,31 @@ def report(target, state='idle'):
 
 operation = sys.argv[1]
 owner = request('pane.get', {'pane_id': pane})['pane']
-if operation == 'job-schema':
+pane = owner['pane_id']
+if operation == 'create-finished-job':
+    started = request('run.start', {'caller_pane': pane, 'label': 'UNKNOWN_EXIT', 'cwd': str(Path.cwd()),
+                                   'argv': ['/usr/bin/true'], 'completion': 'none'})
+    (Path.home() / 'stage4-finished-job.json').write_text(json.dumps(started) + '\n')
+elif operation == 'remove-exit-code':
+    started = json.loads((Path.home() / 'stage4-finished-job.json').read_text())
+    root = next(path for path in Path(endpoint).resolve().parents if path.name.startswith('parity-'))
+    changed = []
+    for path in root.rglob('*.db'):
+        with sqlite3.connect(path) as db:
+            table = db.execute("select name from sqlite_master where type='table' and name='dispatches'").fetchone()
+            if table is None:
+                continue
+            before = db.execute('select status,finished_at,exit_code from dispatches where external_id=?', (started['job'],)).fetchall()
+            if not before:
+                continue
+            if len(before) != 1 or before[0][1] is None:
+                raise RuntimeError('real job has not finished')
+            db.execute('update dispatches set exit_code=NULL where external_id=?', (started['job'],))
+            changed.append({'path': str(path), 'before': before, 'exit_code': None})
+    if len(changed) != 1:
+        raise RuntimeError('expected exactly one saved job to lose its exit code')
+    (Path.home() / 'stage4-exit-code-removed.json').write_text(json.dumps(changed) + '\n')
+elif operation == 'job-schema':
     request('run.start', {'caller_pane': pane, 'label': 'AGE_JOB', 'cwd': str(Path.cwd()),
                          'argv': ['/bin/sleep', '60'], 'completion': 'none'})
     root = next(path for path in Path(endpoint).resolve().parents if path.name.startswith('parity-'))

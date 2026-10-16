@@ -320,7 +320,7 @@ func (a *App) refreshJobDots(now time.Time) {
 		case "cancelled", "cancelling":
 			col = render.Red
 		default:
-			if j.ExitCode != nil && *j.ExitCode != 0 {
+			if j.ExitCode == nil || *j.ExitCode != 0 {
 				col = render.Red
 			}
 		}
@@ -361,7 +361,7 @@ func (a *App) refreshJobDots(now time.Time) {
 				continue
 			}
 			col = render.Green
-			if j.Status == "cancelled" || (j.ExitCode != nil && *j.ExitCode != 0) {
+			if j.Status == "cancelled" || j.ExitCode == nil || *j.ExitCode != 0 {
 				col = render.Red
 			}
 		}

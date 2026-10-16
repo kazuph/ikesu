@@ -1,0 +1,13 @@
+send "python3 @FIXTURES@/stage4_fixture.py create-finished-job; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-finished-job.json 5s
+sleep 500ms
+clicktext "[jobs]"
+sleep 250ms
+screen @OUT@/known.txt
+cells @OUT@/known.json
+send "python3 @FIXTURES@/stage4_fixture.py remove-exit-code; printf '\\033[3J\\033[H\\033[2J'\r"
+waitfile @HOME@/stage4-exit-code-removed.json 5s
+sleep 1500ms
+screen @OUT@/unknown.txt
+cells @OUT@/unknown.json
+kill

@@ -78,6 +78,8 @@ func drawJobRow(f *Frame, in Input, index, x, y, width int) {
 		} else {
 			status = fmt.Sprintf("x%d", *j.ExitCode)
 		}
+	} else if status == "exited" || status == "finished" {
+		status = "done"
 	}
 	limit := x + width
 	bg := f.Palette.SurfDim

@@ -14,6 +14,9 @@ for name in "$@"; do
         git-default)
             steps=tests/parity/stage4_cases/custom-git.steps
             ;;
+        job-cancelling)
+            steps=tests/parity/jobs-cancelling.steps
+            ;;
         custom-git)
             config="$out/$name.toml"
             cp "$root/user-config.toml" "$config"
