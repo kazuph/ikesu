@@ -67,6 +67,8 @@ func (a *App) modeKey(k uv.Key) {
 	}
 mapped:
 	switch {
+	case k.Code == 'h' || k.Code == 'j' || k.Code == 'k' || k.Code == 'l':
+		a.prefixKey(k)
 	case k.Code == uv.KeyUp || k.Code == uv.KeyDown:
 		order := a.st.VisibleWorkspaceOrder()
 		if len(order) == 0 {

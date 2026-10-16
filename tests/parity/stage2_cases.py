@@ -46,4 +46,5 @@ for raw,name in [('\x1b[49;9u','one'),('\x1b[51;9u','three'),('\x1b[106;9u','nex
 add('user-direct',direct)
 for key,name in [('W','rename'),('D','close')]:
     add('workspace-cancel-'+name,fixture+send('\x14w')+send('\x1b[B')+screen('selected')+send(key)+screen('dialog')+send('\x1b')+screen('cancelled'))
+add('navigate-direction-remapped',send('\x14v')+screen('split')+send('\x14w')+send('u')+screen('action'), 'focus_pane_left="cmd+y"\nnavigate_pane_left="u"')
 (root/'index.json').write_text(json.dumps(cases,indent=2)+'\n')
