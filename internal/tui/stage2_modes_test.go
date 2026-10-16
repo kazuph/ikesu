@@ -40,3 +40,19 @@ func TestStage2NavigateVisibleNumber(t *testing.T) {
 		t.Fatal(a.st.Active, a.workspaceNavigate)
 	}
 }
+
+func TestStage2NavigateCustom(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	c, err := config.Decode([]byte("[keys]\nprefix='ctrl+t'\n[[keys.command]]\nkey='prefix+g'\ntype='pane'\ncommand='exec /bin/cat'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetSidebarConfig(c, false)
+	specFeed(a, "\x14w")
+	before := a.focusedPane()
+	specFeed(a, "g")
+	if a.navigator != nil || a.workspaceNavigate || a.focusedPane() == before {
+		t.Fatal("navigate custom command not executed", a.navigator, a.workspaceNavigate, a.focusedPane(), before)
+	}
+}
