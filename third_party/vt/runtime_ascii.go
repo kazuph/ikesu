@@ -63,14 +63,41 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 	for rest := p; len(rest) > 0; {
 		n := bytes.IndexByte(rest, '\r')
 		line := s.buf.Line(s.cur.Y)
+		canonical := len(line) > 0 && s.runtimeBlankBounds[&line[0]] == 0
 		if len(line) > 0 {
 			key := &line[0]
 			s.runtimeBlankBounds[key] = max(s.runtimeBlankBounds[key], n)
 		}
-		if _, err := e.Write(rest[:n+2]); err != nil {
-			return len(p) - len(rest), err
+		if canonical && n > 0 {
+			pen, link := s.cursorPen(), s.cursorLink()
+			plain := pen == (uv.Style{}) && link == (uv.Link{})
+			first, last := n, 0
+			if plain {
+				for k, b := range rest[:n] {
+					line[k].Content = asciiContent[b]
+					if b != ansi.SP {
+						first = min(first, k)
+						last = k + 1
+					}
+				}
+			} else {
+				for k, b := range rest[:n] {
+					line[k] = uv.Cell{Content: asciiContent[b], Width: 1, Style: pen, Link: link}
+				}
+				first, last = 0, n
+			}
+			if first < last {
+				s.buf.TouchLine(first, s.cur.Y, last-first)
+			}
+			e.lastChar = rune(rest[n-1])
+			s.setCursor(n, s.cur.Y, false)
+		} else if n > 0 {
+			e.printRun(rest[:n])
 		}
+		e.handleControl('\r')
+		e.handleControl('\n')
 		rest = rest[n+2:]
 	}
+	e.partial = e.partial[:0]
 	return len(p), nil
 }

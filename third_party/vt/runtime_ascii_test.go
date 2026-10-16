@@ -27,7 +27,7 @@ func TestRuntimeASCIIMatchesWrites(t *testing.T) {
 	for _, width := range []int{1, 8, 160} {
 		for _, height := range []int{1, 5} {
 			for _, budget := range []int{-1, 0, 10000} {
-				for _, prefix := range []string{"", "\x1b[31m", "\x1b[44m", "\x1b[?1049h", "\x1b[2;4r", "\x1b(0", "\x1b[3G", "\x1b["} {
+				for _, prefix := range []string{"", "\x1b[31m", "\x1b[44m", "\x1b]8;;https://example.test\x1b\\", "\x1b[1;3;4m", "\x1b[4h", "\x1b[?7l", "\x1b[20h", "\x1b[?1049h", "\x1b[2;4r", "\x1b(0", "\x1b[3G", "\x1b["} {
 					t.Run(fmt.Sprintf("%dx%d/%d/%q", width, height, budget, prefix), func(t *testing.T) {
 						got, want := NewEmulator(width, height), NewEmulator(width, height)
 						defer got.Close()
