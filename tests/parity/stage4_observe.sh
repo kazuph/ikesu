@@ -12,6 +12,11 @@ for name in "$@"; do
     config="$root/user-config.toml"
     steps="tests/parity/stage4_cases/$name.steps"
     case "$name" in
+        review-stripped)
+            config="$out/$name.toml"
+            cp "$root/user-config.toml" "$config"
+            printf '\n[ui.sidebar.agents]\nrows = [["terminal_title_stripped"]]\n' >> "$config"
+            ;;
         git-default-local|custom-git-local)
             mode=
             steps=tests/parity/stage4_cases/git-transitions.steps

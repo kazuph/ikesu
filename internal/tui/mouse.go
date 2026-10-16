@@ -459,14 +459,13 @@ func (a *App) sidebarClick(m uv.Mouse) {
 		return
 	}
 	s := a.st
-	area := s.SidebarArea()
 	if !a.serverUI && pointIn(m.X, m.Y, render.SidebarToggleRect(s)) {
 		a.exec(model.CmdToggleSidebar{})
 		return
 	}
 	if !s.SidebarVisible {
+		in := render.Input{State: s, ServerUI: a.serverUI, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll}
 		if a.serverUI {
-			in := render.Input{State: s, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, AgentScroll: a.agentScroll}
 			for _, pos := range render.CollapsedAgentRows(in) {
 				if pos.Y == m.Y && pos.Row.Kind == render.RowAgent {
 					a.exec(model.CmdSelectWorkspace{Index: pos.Row.Ws})
@@ -474,14 +473,13 @@ func (a *App) sidebarClick(m uv.Mouse) {
 					return
 				}
 			}
-			if m.Y > render.SidebarSplitY(s) {
-				return
-			}
 		}
 		// Collapsed strip: one row per workspace.
-		iy, ih := area.Y, max(0, area.H-1)
-		scroll := a.clampCollapsedScroll(len(s.Workspaces), ih)
-		i := m.Y - iy + scroll
+		viewport := render.CollapsedWorkspaceViewport(in)
+		if !pointIn(m.X, m.Y, viewport.Rect) {
+			return
+		}
+		i := m.Y - viewport.Rect.Y + viewport.Offset
 		if i >= 0 && i < len(s.Workspaces) {
 			a.exec(model.CmdSelectWorkspace{Index: i})
 		}
@@ -529,17 +527,6 @@ func (a *App) sidebarRightClick(m uv.Mouse) {
 	if ok && (r.Kind == render.RowWorkspace || r.Kind == render.RowGit || r.Kind == render.RowCardBlank) {
 		a.openWorkspaceMenu(m.X, m.Y, r.Ws)
 	}
-}
-
-func (a *App) clampCollapsedScroll(n, avail int) int {
-	scroll := a.sidebarScroll
-	if max := n - avail; scroll > max {
-		scroll = max
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	return scroll
 }
 
 // wheel routes scroll events per region (3.6).

@@ -20,6 +20,9 @@ func (a *App) sidebarView() render.SidebarView {
 }
 
 func (a *App) revealServerWorkspace() {
+	if !a.st.SidebarVisible {
+		return
+	}
 	view := a.sidebarView()
 	for _, pos := range view.Rows {
 		if pos.Row.Kind == render.RowWorkspace && pos.Row.Ws == a.st.Active {
@@ -50,12 +53,20 @@ func (a *App) revealServerWorkspace() {
 
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 	if !a.st.SidebarVisible {
-		if up {
-			a.sidebarScroll -= 3
-		} else {
-			a.sidebarScroll += 3
+		in := render.Input{State: a.st, ServerUI: a.serverUI, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll}
+		v, off, step := render.CollapsedWorkspaceViewport(in), &a.sidebarScroll, 3
+		if a.serverUI && pointIn(m.X, m.Y, render.CollapsedAgentViewport(in).Rect) {
+			v, off, step = render.CollapsedAgentViewport(in), &a.agentScroll, 1
 		}
-		a.sidebarScroll = a.clampCollapsedScroll(len(a.st.Workspaces), max(0, a.st.SidebarArea().H-1))
+		if !pointIn(m.X, m.Y, v.Rect) {
+			return
+		}
+		if up {
+			*off -= step
+		} else {
+			*off += step
+		}
+		*off = max(0, min(*off, max(0, v.Total-v.Rect.H)))
 		return
 	}
 	view := a.sidebarView()

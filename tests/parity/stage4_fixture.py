@@ -46,7 +46,27 @@ def report(target, state='idle'):
 operation = sys.argv[1]
 owner = request('pane.get', {'pane_id': pane})['pane']
 pane = owner['pane_id']
-if operation == 'custom-height':
+if operation == 'review-overflow':
+    records = [owner]
+    for index in range(1, 30):
+        created = request('workspace.create', {'cwd': str(Path.cwd()), 'label': f'REVIEW_{index+1:02}', 'focus': False})
+        records.append(created['root_pane'])
+    for index, record in enumerate(records):
+        request('pane.report_agent', {'pane_id': record['pane_id'], 'source': 'codex', 'agent': 'codex',
+                                     'state': 'blocked' if index == 0 else 'idle', 'session_id': session})
+    (Path.home() / 'stage4-review-overflow.json').write_text(json.dumps(records) + '\n')
+elif operation == 'review-stripped':
+    created = request('workspace.create', {'cwd': str(Path.cwd()), 'label': 'SECOND_WORKSPACE', 'focus': False})
+    for target, state in [(pane, 'blocked'), (created['root_pane']['pane_id'], 'idle')]:
+        request('pane.report_agent', {'pane_id': target, 'source': 'codex', 'agent': 'codex',
+                                     'state': state, 'session_id': session})
+    (Path.home() / 'stage4-review-stripped.json').write_text(json.dumps(created) + '\n')
+elif operation == 'review-title-second':
+    created = json.loads((Path.home() / 'stage4-review-stripped.json').read_text())
+    other = created['root_pane']['pane_id']
+    request('pane.send_text', {'pane_id': other, 'text': "printf '\\033]0;SECOND_ROW\\007'"})
+    request('pane.send_keys', {'pane_id': other, 'keys': ['Enter']})
+elif operation == 'custom-height':
     created = request('workspace.create', {'cwd': str(Path.cwd()), 'label': 'SECOND_WORKSPACE', 'focus': False})
     other = created['root_pane']['pane_id']
     request('pane.rename', {'pane_id': other, 'label': 'SECOND_LABEL'})

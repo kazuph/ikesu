@@ -657,20 +657,12 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 	for x := ix; !in.ServerUI && x < ix+iw; x++ {
 		f.Set(x, area.Y+(area.H+1)/2, "─", border)
 	}
-	avail := max(0, area.H-1)
-	if in.ServerUI {
-		avail = max(0, SidebarSplitY(s)-area.Y+1)
-	}
+	viewport := CollapsedWorkspaceViewport(in)
+	avail := viewport.Rect.H
 	if iw < 1 || avail < 1 {
 		return
 	}
-	scroll := in.SidebarScroll
-	if max := len(s.Workspaces) - avail; scroll > max {
-		scroll = max
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
+	scroll := viewport.Offset
 	for i := scroll; i < len(s.Workspaces) && i < scroll+avail; i++ {
 		y := iy + i - scroll
 		sty := uv.Style{Fg: f.Palette.Dim}

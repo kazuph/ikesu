@@ -1,0 +1,20 @@
+send "python3 @FIXTURES@/stage4_fixture.py review-stripped; printf '\\033]0;⠋\\007'\r"
+waitfile @HOME@/stage4-review-stripped.json 10s
+sleep 1s
+send "python3 @FIXTURES@/stage4_fixture.py review-title-second\r"
+sleep 500ms
+screen @OUT@/empty.txt
+cells @OUT@/empty.json
+send "printf '\\033]0;⠋ Task\\007'\r"
+sleep 500ms
+screen @OUT@/task.txt
+cells @OUT@/task.json
+send "printf '\\033]0;⠋\\007'\r"
+sleep 500ms
+screen @OUT@/empty-again.txt
+cells @OUT@/empty-again.json
+click 10 27
+sleep 250ms
+screen @OUT@/clicked.txt
+cells @OUT@/clicked.json
+kill

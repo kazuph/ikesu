@@ -6,7 +6,7 @@ sh tests/parity/gate-stage4.sh "$out/gates" > "$out/gates/summary.log" 2>&1
 sh tests/parity/stage4_observe.sh "$out/observations" \
     controls collapsed-agents agent-scroll custom-pane custom-workspace custom-dim \
     focus-agents custom-focus named-tab worktree-active worktree-selected panel-switch job-owner job-unknown job-minute \
-    custom-git-local git-default-local custom-git git-default \
+    custom-git-local git-default-local custom-git git-default review-overflow review-stripped \
     > "$out/observations/run.log" 2>&1
 python3 tests/parity/stage4_initial_gate.py "$out/observations/controls" "$out/observations/collapsed-agents" > "$out/initial-gate.json"
 python3 tests/parity/stage4_cards_gate.py "$out/observations/agent-scroll" "$out/observations" > "$out/cards-gate.json"
@@ -21,4 +21,5 @@ python3 tests/parity/stage4_unknown_gate.py "$out/observations/job-unknown" > "$
 python3 tests/parity/stage4_minute_gate.py "$out/observations/job-minute" > "$out/minute-gate.json"
 python3 tests/parity/stage4_git_gate.py "$out/observations" > "$out/git-gate.json"
 python3 tests/parity/stage4_silence_gate.py "$out/observations" > "$out/silence-gate.json"
+python3 tests/parity/stage4_review_gate.py "$out/observations" > "$out/review-gate.json"
 python3 "$HOME/bench-terrace.noindex/work/perf-lock.py" sh tests/parity/perf-stage4.sh "$out/perf"
