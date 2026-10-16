@@ -30,6 +30,9 @@ func MenuSize(m *Menu) (w, h int) {
 
 // MenuRect positions a menu inside (cols, rows).
 func MenuRect(m *Menu, cols, rows int) layout.Rect {
+	if m.Worktree {
+		return WorktreeMenuRect(cols, rows)
+	}
 	w, h := MenuSize(m)
 	w, h = min(w, max(0, cols)), min(h, max(0, rows))
 	x, y := m.X, m.Y
@@ -64,6 +67,10 @@ func MenuScroll(m *Menu, rows int) int {
 }
 
 func drawMenu(f *Frame, m *Menu, out *Output) {
+	if m.Worktree {
+		drawWorktreeMenu(f, m, out)
+		return
+	}
 	r := MenuRect(m, f.W, f.H)
 	border := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)

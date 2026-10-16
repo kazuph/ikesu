@@ -81,18 +81,23 @@ type Selection struct {
 
 // Menu is a right-click popup.
 type Menu struct {
-	X, Y     int // requested position (top-left), clamped at draw
-	Title    string
-	Items    []MenuItem
-	Global   bool
-	MinWidth int
-	Scroll   int
-	Hover    int // index under the pointer; -1 = none
-	Sel      int // keyboard-selected item; -1 = none
+	Worktree  bool
+	Filter    string
+	Filtering bool
+	X, Y      int // requested position (top-left), clamped at draw
+	Title     string
+	Items     []MenuItem
+	Global    bool
+	MinWidth  int
+	Scroll    int
+	Hover     int // index under the pointer; -1 = none
+	Sel       int // keyboard-selected item; -1 = none
 }
 
 // MenuItem is one menu row; Separator rows draw a rule.
 type MenuItem struct {
+	Detail    string
+	Status    string
 	Label     string
 	Separator bool
 	Disabled  bool

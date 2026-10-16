@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
@@ -60,20 +61,8 @@ func (a *App) openWorktreeMenu(index int) {
 		a.worktreeError(err)
 		return
 	}
-	menu := []render.MenuItem{}
-	paths := []string{}
-	for _, w := range items {
-		if w.IsBare || w.IsPrunable {
-			continue
-		}
-		label := w.Path
-		if w.Branch != nil {
-			label = *w.Branch
-		}
-		menu = append(menu, render.MenuItem{Label: label})
-		paths = append(paths, w.Path)
-	}
-	a.menu = &uiMenu{kind: menuWorktree, ws: index, worktreePaths: paths, m: render.Menu{X: 2, Y: 2, Hover: -1, Sel: -1, Items: menu}}
+	a.menu = &uiMenu{kind: menuWorktree, ws: index, worktreeItems: items, m: render.Menu{Worktree: true, Hover: -1, Sel: 0}}
+	a.filterWorktrees()
 	a.dirty = true
 }
 
@@ -142,4 +131,33 @@ func (a *App) workspaceWorktreeItems(index int) []render.MenuItem {
 		items = append(items, render.MenuItem{Label: label})
 	}
 	return items
+}
+
+func (a *App) filterWorktrees() {
+	m := a.menu
+	m.m.Items = nil
+	m.worktreePaths = nil
+	for _, item := range m.worktreeItems {
+		if item.IsBare || item.IsPrunable {
+			continue
+		}
+		label := item.Path
+		if item.Branch != nil {
+			label = *item.Branch
+		}
+		if !strings.Contains(strings.ToLower(label+" "+item.Path), strings.ToLower(m.m.Filter)) {
+			continue
+		}
+		status := ""
+		if item.OpenWorkspaceID != nil {
+			status = "open"
+		}
+		m.m.Items = append(m.m.Items, render.MenuItem{Label: label, Detail: item.Path, Status: status})
+		m.worktreePaths = append(m.worktreePaths, item.Path)
+	}
+	m.m.Sel = 0
+	if len(m.m.Items) == 0 {
+		m.m.Sel = -1
+	}
+	m.m.Scroll = 0
 }

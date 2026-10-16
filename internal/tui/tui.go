@@ -91,6 +91,7 @@ const (
 type uiMenu struct {
 	machines      []machine.Profile
 	worktreePaths []string
+	worktreeItems []api.WorktreeInfo
 	m             render.Menu
 	kind          menuKind
 	pane          int // target pane (menuPane)

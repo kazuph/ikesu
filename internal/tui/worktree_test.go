@@ -198,3 +198,21 @@ func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
 		t.Fatal("failed form lost input, path or Git error", a.dialog)
 	}
 }
+
+func TestStage6aWorktreePickerFiltersRealCheckouts(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "existing"
+	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+		t.Fatal(err)
+	}
+	a.openWorktreeMenu(0)
+	if !a.menu.m.Worktree || len(a.menu.m.Items) != 2 {
+		t.Fatal(a.menu)
+	}
+	a.menu.m.Filter = "exist"
+	a.filterWorktrees()
+	if len(a.menu.m.Items) != 1 || a.menu.m.Items[0].Label != "existing" || a.menu.m.Items[0].Status != "open" || a.menu.m.Items[0].Detail == "" {
+		t.Fatal(a.menu.m)
+	}
+}

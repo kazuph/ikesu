@@ -389,6 +389,9 @@ func (a *App) menuItemAt(x, y int) int {
 	if a.menu == nil {
 		return -1
 	}
+	if a.menu.m.Worktree {
+		return render.WorktreeMenuItemAt(&a.menu.m, a.st.Cols, a.st.Rows, x, y)
+	}
 	r := render.MenuRect(&a.menu.m, a.st.Cols, a.st.Rows)
 	row := y - r.Y - 1
 	i := row + render.MenuScroll(&a.menu.m, a.st.Rows)
@@ -437,6 +440,26 @@ func (a *App) menuKey(k uv.Key) {
 	m := a.menu
 	if m == nil {
 		return
+	}
+	if m.m.Worktree {
+		if k.Code == '/' && !m.m.Filtering {
+			m.m.Filtering = true
+			a.dirty = true
+			return
+		}
+		if m.m.Filtering && (k.Text != "" || k.Code == uv.KeyBackspace) {
+			if k.Code == uv.KeyBackspace {
+				r := []rune(m.m.Filter)
+				if len(r) > 0 {
+					m.m.Filter = string(r[:len(r)-1])
+				}
+			} else {
+				m.m.Filter += k.Text
+			}
+			a.filterWorktrees()
+			a.dirty = true
+			return
+		}
 	}
 	step := func(dir int) {
 		n := len(m.m.Items)
