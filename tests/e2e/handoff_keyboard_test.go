@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,19 @@ func TestLiveHandoffPreservesKeyboardModes(t *testing.T) {
 }
 
 func liveKeyboardHandoff(t *testing.T, old string) {
+	if old != "" {
+		data, err := os.ReadFile(old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Executable names select the real product namespace. Keep both
+		// versions named gtx so they share only this isolated test session.
+		old = filepath.Join(t.TempDir(), "gtx")
+		if err = os.WriteFile(old, data, 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("unchanged old server SHA256=%x", sha256.Sum256(data))
+	}
 	s := startVersionMode(t, nil, false, binPath, old)
 	s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	dir := t.TempDir()
