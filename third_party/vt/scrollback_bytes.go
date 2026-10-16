@@ -72,19 +72,21 @@ func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
 	}
 	return row, text, styled
 }
-func (s *Scrollback) pushBytes(line uv.Line) {
+func (s *Scrollback) pushBytes(line uv.Line) (dropped bool) {
 	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
 	var styled *styledRow
 	for s.count > 0 && (s.bytes+cost > s.maxBytes || s.count >= s.maxLines) {
+		dropped = dropped || s.OnDrop != nil
 		reuse, text, styled = s.dropOldest()
 	}
 	if cost > s.maxBytes {
 		if s.OnDrop != nil {
+			dropped = true
 			s.OnDrop()
 		}
-		return
+		return dropped
 	}
 	if s.count == len(s.lines) {
 		n := min(s.maxLines, max(1, 2*len(s.lines)))
@@ -127,4 +129,5 @@ func (s *Scrollback) pushBytes(line uv.Line) {
 	s.rowBytes[idx] = cost
 	s.bytes += cost
 	s.count++
+	return dropped
 }

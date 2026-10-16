@@ -31,14 +31,20 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		end = min(last+max(line[last].Width, 1), len(line))
 	}
 	clearEnd = max(clearEnd, end)
+	dropped := false
 	if line != nil {
-		s.scrollback.pushTrimmed(line[:end])
+		dropped = s.scrollback.pushTrimmed(line[:end])
 	}
-	copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
-	for i := 0; i < clearEnd; i++ {
-		line[i] = uv.EmptyCell
+	if dropped {
+		// OnDrop may change cells, the buffer, or the current background.
+		s.buf.Buffer.DeleteLineArea(y, 1, s.blankCell(), r)
+	} else {
+		copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
+		for i := 0; i < clearEnd; i++ {
+			line[i] = uv.EmptyCell
+		}
+		s.buf.Lines[r.Max.Y-1] = line
 	}
-	s.buf.Lines[r.Max.Y-1] = line
 	// The first touch grows the bookkeeping for every row once.
 	s.buf.TouchLine(r.Min.X, r.Min.Y, r.Max.X-r.Min.X)
 	start, endRow := r.Min.Y+1, min(r.Max.Y+1, len(s.buf.Lines))

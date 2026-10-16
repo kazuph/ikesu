@@ -88,16 +88,16 @@ func (s *Scrollback) Push(line uv.Line) {
 	s.pushTrimmed(line[:end])
 }
 
-func (s *Scrollback) pushTrimmed(line uv.Line) {
+// pushTrimmed reports whether an eviction callback ran.
+func (s *Scrollback) pushTrimmed(line uv.Line) bool {
 	end := len(line)
 	if s.byteLimited {
-		s.pushBytes(line[:end])
-		return
+		return s.pushBytes(line[:end])
 	}
 	if s.count < s.maxLines {
 		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
 		s.count++
-		return
+		return false
 	}
 
 	// The buffer is full: reuse the evicted line's backing array for the new
@@ -109,6 +109,7 @@ func (s *Scrollback) pushTrimmed(line uv.Line) {
 		s.lines[idx] = slices.Clone(line[:end])
 	}
 	s.start = s.wrap(s.start + 1)
+	return false
 }
 
 // PushN adds n lines from the buffer starting at line y to the scrollback.
