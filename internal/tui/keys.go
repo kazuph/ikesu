@@ -96,13 +96,31 @@ func (a *App) handleKey(k uv.Key, raw []byte) {
 		a.copyKey(k, raw)
 		return
 	}
-	if a.st.PopupVisible() && k.Code == uv.KeyEscape {
-		a.exec(model.CmdClosePopup{})
-		return
-	}
 	pid := a.focusedPane()
 	if pid < 0 {
 		return
+	}
+	if a.st.PopupVisible() && k.Code == uv.KeyEscape && k.Mod == 0 {
+		if p := a.sup.Get(pid); p != nil && !p.OwnsEscape() {
+			a.exec(model.CmdClosePopup{})
+			return
+		}
+	}
+	if k.Mod == 0 && (k.Code == uv.KeyPgUp || k.Code == uv.KeyPgDown) {
+		if p := a.sup.Get(pid); p != nil {
+			sn := p.Snapshot()
+			if !sn.AltScreen && !sn.AppCursorKeys {
+				offset, height := a.scroll[pid], a.innerRect(pid).H
+				if k.Code == uv.KeyPgUp {
+					offset = min(offset+height, sn.ScrollbackLen)
+				} else {
+					offset = max(offset-height, 0)
+				}
+				a.setScrollOff(pid, offset)
+				a.dirty = true
+				return
+			}
+		}
 	}
 	if a.scroll[pid] > 0 {
 		delete(a.scroll, pid) // key input snaps back to the live screen
