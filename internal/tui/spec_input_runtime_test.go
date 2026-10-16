@@ -44,6 +44,8 @@ func TestSPECRawLFShiftEnterAndFixTermActualPTYBytes(t *testing.T) {
 	teststate.Lock(t)
 	for _, tc := range []struct{ name, output, host, want string }{
 		{"rawLF", "", "\n", "\n"},
+		{"EndpointEscapePlainPane", "", "\x1b[27u", "\x1b"},
+		{"EndpointEscapeKittyPane", "\x1b[>1u", "\x1b[27u", "\x1b[27u"},
 		{"legacyShiftEnter", "", "\x1b[27;2;13~", "\n"},
 		{"legacyReleaseDropped", "", "\x1b[13;2:3uZ", "Z"},
 		{"FixTermQuery", "\x1b[?u", "", "\x1b[?0u"},

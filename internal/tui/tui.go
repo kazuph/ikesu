@@ -521,10 +521,10 @@ func (a *App) Run() {
 			}
 			if a.fr.Pending() {
 				if flushTimer == nil {
-					flushTimer = time.NewTimer(time.Duration(input.IdleFlushMs) * time.Millisecond)
+					flushTimer = time.NewTimer(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
 					flush = flushTimer.C
 				} else {
-					flushTimer.Reset(time.Duration(input.IdleFlushMs) * time.Millisecond)
+					flushTimer.Reset(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
 					flush = flushTimer.C
 				}
 			} else if flushTimer != nil {
@@ -536,7 +536,7 @@ func (a *App) Run() {
 				a.onInput(ev)
 			}
 			if a.fr.Pending() {
-				flushTimer.Reset(time.Duration(input.IdleFlushMs) * time.Millisecond)
+				flushTimer.Reset(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
 			} else {
 				flush = nil
 			}

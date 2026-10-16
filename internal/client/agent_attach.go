@@ -103,7 +103,7 @@ func AttachAgent(socket, target string, takeover bool, in, out *os.File) (int, e
 			default:
 			}
 			poll := []unix.PollFd{{Fd: int32(in.Fd()), Events: unix.POLLIN}}
-			n, e := unix.Poll(poll, input.IdleFlushMs)
+			n, e := unix.Poll(poll, framer.TimeoutMs())
 			if e == syscall.EINTR {
 				continue
 			}

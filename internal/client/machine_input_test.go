@@ -64,6 +64,53 @@ func TestMachineInputFramesSplitSequencesAndClosesOwnedReader(t *testing.T) {
 	}
 }
 
+func TestMachineInputWaitsForMouseAndFramesEscapeOnce(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events, stop, err := readMachineInput(r, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if _, err := w.Write([]byte("\x1b[<0;70;")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("incomplete mouse emitted %+v", event)
+	case <-time.After(40 * time.Millisecond):
+	}
+	if _, err := w.Write([]byte("20M")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if event.Kind != input.KindMouseClick || string(event.Raw) != "\x1b[<0;70;20M" {
+			t.Fatalf("split mouse=%+v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("split mouse not delivered")
+	}
+	start := time.Now()
+	if _, err := w.Write([]byte{0x1b}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if string(event.Raw) != "\x1b[27u" || time.Since(start) < time.Duration(input.EndpointEscapeFlushMs)*time.Millisecond {
+			t.Fatalf("endpoint Escape=%+v elapsed=%v", event, time.Since(start))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Escape not delivered")
+	}
+}
+
 func TestMachineWriterPreservesOrderWithoutBlockingOtherEndpoint(t *testing.T) {
 	blockedRead, blockedWrite, err := os.Pipe()
 	if err != nil {

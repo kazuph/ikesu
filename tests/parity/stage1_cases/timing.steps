@@ -16,4 +16,5 @@ sleep 100ms
 send "END"
 sleep 100ms
 screen @OUT@/complete.txt
+cells @OUT@/complete.json
 kill

@@ -40,12 +40,12 @@ func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, fun
 	go func() {
 		defer close(done)
 		defer close(events)
-		var framer input.Framer
+		framer := input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs}
 		buf := make([]byte, 64*1024)
 		for {
 			timeout := -1
 			if framer.Pending() {
-				timeout = input.IdleFlushMs
+				timeout = framer.TimeoutMs()
 			}
 			fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}, {Fd: wakeFD, Events: unix.POLLIN}}
 			ready, err := unix.Poll(fds, timeout)
@@ -71,6 +71,11 @@ func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, fun
 			for _, event := range decoded {
 				if event.Kind == input.KindUnknown && string(event.Raw) == "\x1b[200~" {
 					continue
+				}
+				if event.Kind == input.KindKey && event.Key.Code == uv.KeyEscape && event.Key.Mod == 0 {
+					// Escape is complete here; encode it unambiguously so the server
+					// does not start a second sequence-framing wait.
+					event.Raw = []byte("\x1b[27u")
 				}
 				select {
 				case events <- event:

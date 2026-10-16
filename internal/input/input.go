@@ -1,6 +1,5 @@
 // Package input frames raw terminal input bytes into events. It buffers
-// incomplete escape sequences across reads and discards split mouse-sequence
-// fragments so that they can never leak into a pane as text.
+// incomplete escape sequences across reads.
 package input
 
 import (
@@ -13,6 +12,12 @@ import (
 // IdleFlushMs is how long the framer waits for the tail of a sequence before
 // treating buffered bytes as complete input.
 const IdleFlushMs = 10
+
+// MouseFlushMs is the observed wait for a split SGR mouse report.
+const MouseFlushMs = 150
+
+// EndpointEscapeFlushMs is the observed standalone Escape wait in 0.2.55's client.
+const EndpointEscapeFlushMs = 150
 
 // sgrTailCap bounds how many bytes the orphaned-SGR-tail discards.
 const sgrTailCap = 32
@@ -54,30 +59,18 @@ type Event struct {
 type Framer struct {
 	buf []byte
 	dec uv.EventDecoder
+	// EscapeWaitMs overrides the local Escape wait for an endpoint client.
+	EscapeWaitMs int
 
 	// paste collects bracketed-paste payload bytes until CSI 201~.
 	paste    bool
 	pasteBuf []byte
-
-	// escHeld means a lone ESC is being held one extra flush window so a
-	// following "[<digits;...M" orphan tail can be discarded together with it.
-	escHeld bool
-
-	// tail drops SGR-mouse tail bytes (digits, ';', final 'M'/'m') that
-	// arrived after an incomplete SGR sequence was discarded.
-	tail    bool
-	tailLen int
 }
 
 // Push feeds freshly read bytes and returns every complete event. When the
-// returned Pending is true the caller must arm an idle timer (IdleFlushMs)
+// returned Pending is true the caller must arm an idle timer (TimeoutMs)
 // and call FlushTimeout if no further input arrives.
 func (f *Framer) Push(b []byte) []Event {
-	if len(b) == 0 {
-		return nil
-	}
-	// An orphaned SGR tail carries no ESC; drop it before it becomes text.
-	b = f.dropTail(b)
 	if len(b) == 0 {
 		return nil
 	}
@@ -85,10 +78,7 @@ func (f *Framer) Push(b []byte) []Event {
 	return f.drain(false)
 }
 
-// FlushTimeout is called when input has been idle for IdleFlushMs while
-// Pending was true. It resolves held bytes: incomplete SGR mouse fragments
-// are discarded, a held lone ESC becomes an Escape key unless a probable
-// tail is on its way.
+// FlushTimeout resolves buffered input after TimeoutMs of inactivity.
 func (f *Framer) FlushTimeout() []Event {
 	if f.paste {
 		return nil
@@ -97,33 +87,30 @@ func (f *Framer) FlushTimeout() []Event {
 		return nil
 	}
 	if isIncompleteSGRMouse(f.buf) {
-		// A mouse sequence split across reads; discard the fragment and any
-		// digits/; tail + terminator that arrive next. A held lone ESC is
-		// inside f.buf and goes away with it.
 		f.buf = f.buf[:0]
-		f.escHeld = false
-		f.tail = true
-		f.tailLen = 0
 		return nil
-	}
-	if f.escHeld {
-		// Second idle window with the lone ESC still alone: it is a real
-		// Escape keypress.
-		f.escHeld = false
-		f.buf = f.buf[:0]
-		return []Event{{Kind: KindKey, Raw: []byte{0x1b}, Key: uv.Key{Code: uv.KeyEscape}}}
 	}
 	if len(f.buf) == 1 && f.buf[0] == 0x1b {
-		// Hold the lone ESC one more window to catch an orphan tail.
-		f.escHeld = true
-		return nil
+		f.buf = f.buf[:0]
+		return []Event{{Kind: KindKey, Raw: []byte{0x1b}, Key: uv.Key{Code: uv.KeyEscape}}}
 	}
 	return f.drain(true)
 }
 
+// TimeoutMs selects the idle wait for the pending sequence.
+func (f *Framer) TimeoutMs() int {
+	if isIncompleteSGRMouse(f.buf) {
+		return MouseFlushMs
+	}
+	if len(f.buf) == 1 && f.buf[0] == 0x1b && f.EscapeWaitMs > 0 {
+		return f.EscapeWaitMs
+	}
+	return IdleFlushMs
+}
+
 // Pending reports whether buffered bytes await more input or a flush.
 func (f *Framer) Pending() bool {
-	return len(f.buf) > 0 || f.paste || f.escHeld
+	return len(f.buf) > 0 || f.paste
 }
 
 // drain decodes as many complete events as possible from f.buf. At timeout
@@ -132,29 +119,6 @@ func (f *Framer) Pending() bool {
 func (f *Framer) drain(forced bool) []Event {
 	var out []Event
 	for len(f.buf) > 0 {
-		// Held ESC plus a fresh SGR tail: discard both entirely.
-		if f.escHeld {
-			if len(f.buf) >= 2 && f.buf[0] == 0x1b && f.buf[1] == '[' {
-				// Need at least "[<" to decide.
-				if len(f.buf) >= 3 && f.buf[2] == '<' {
-					if isIncompleteSGRMouse(f.buf) {
-						break // wait for the rest / flush discards it
-					}
-					// Complete SGR mouse seq: drop the held ESC and emit.
-					f.escHeld = false
-					continue
-				}
-				if len(f.buf) < 3 {
-					break // wait for the third byte
-				}
-			}
-			// Held ESC followed by something else: emit Escape and continue.
-			f.escHeld = false
-			out = append(out, Event{Kind: KindKey, Raw: []byte{0x1b}, Key: uv.Key{Code: uv.KeyEscape}})
-			f.buf = f.buf[1:]
-			continue
-		}
-
 		if f.paste {
 			n, done := f.collectPaste(f.buf)
 			f.buf = f.buf[n:]
@@ -218,35 +182,6 @@ func incompleteRune(b []byte) bool {
 		b = b[1:]
 	}
 	return len(b) > 0 && b[0] >= 0xc0 && !utf8.FullRune(b)
-}
-
-// dropTail removes orphaned SGR-mouse tail bytes.
-func (f *Framer) dropTail(b []byte) []byte {
-	if !f.tail {
-		return b
-	}
-	for len(b) > 0 {
-		c := b[0]
-		switch {
-		case c == 'M' || c == 'm':
-			f.tail = false
-			f.tailLen = 0
-			b = b[1:]
-		case (c >= '0' && c <= '9') || c == ';' || c == '<' || c == '[':
-			f.tailLen++
-			b = b[1:]
-			if f.tailLen > sgrTailCap {
-				f.tail = false
-				f.tailLen = 0
-				return b
-			}
-		default:
-			f.tail = false
-			f.tailLen = 0
-			return b
-		}
-	}
-	return b
 }
 
 // orphanMouseLen matches an SGR mouse tail whose ESC was lost entirely:

@@ -147,7 +147,7 @@ func (v *Viewer) Tick(a *App) {
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })
 	}
-	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(input.IdleFlushMs)*time.Millisecond {
+	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(v.app.fr.TimeoutMs())*time.Millisecond {
 		return
 	}
 	v.with(a, func(ui *App) {
