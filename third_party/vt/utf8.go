@@ -80,9 +80,15 @@ func (e *Emulator) printRun(run []byte) {
 		// A direct cell assignment is only safe when every target cell is an
 		// ordinary 1-wide cell; overwriting part of a wide cell needs
 		// [Line.Set]'s fixups, so the rest goes through the regular path.
+		plain := pen == (uv.Style{}) && link == (uv.Link{})
 		fast := line != nil
 		for k := 0; fast && k < n; k++ {
-			if line[x+k].Width != 1 {
+			c := &line[x+k]
+			if plain {
+				st := &c.Style
+				plain = int(st.Attrs)|int(st.Underline)|len(c.Link.URL)|len(c.Link.Params) == 0 && st.Fg == nil && st.Bg == nil && st.UnderlineColor == nil
+			}
+			if c.Width != 1 {
 				fast = false
 			}
 		}
@@ -97,7 +103,11 @@ func (e *Emulator) printRun(run []byte) {
 		if len(e.scr.buf.Touched) >= len(e.scr.buf.Lines) {
 			touched = e.scr.buf.Touched[y]
 		}
-		if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n {
+		if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n && plain {
+			for k := 0; k < n; k++ {
+				line[x+k].Content = asciiContent[run[i+k]]
+			}
+		} else if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n {
 			for k := 0; k < n; k++ {
 				c.Content = asciiContent[run[i+k]]
 				line[x+k] = c
