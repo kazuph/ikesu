@@ -112,16 +112,28 @@ func EncodeKey(k uv.Key, raw []byte, flags int, explicit, cursor, endpoint, rele
 		return []byte{0x1b}
 	}
 	if code < uv.KeyExtended && k.Mod&uv.ModCtrl != 0 {
-
+		var control []byte
 		if code >= 'a' && code <= 'z' {
-			return []byte{byte(code - 'a' + 1)}
+			control = []byte{byte(code - 'a' + 1)}
 		}
 		if code == ' ' || code == '@' {
-			return []byte{0}
+			control = []byte{0}
 		}
 		if code >= '[' && code <= '_' {
-			return []byte{byte(code - '[' + 27)}
+			control = []byte{byte(code - '[' + 27)}
 		}
+		if control != nil {
+			if k.Mod&uv.ModAlt != 0 {
+				control = append([]byte{0x1b}, control...)
+			}
+			return control
+		}
+	}
+	if code < uv.KeyExtended && k.Mod&uv.ModAlt != 0 && k.Mod&uv.ModCtrl == 0 {
+		if k.Mod&uv.ModShift != 0 && k.ShiftedCode != 0 {
+			code = k.ShiftedCode
+		}
+		return []byte("\x1b" + string(code))
 	}
 	return raw
 }

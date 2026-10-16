@@ -2,6 +2,19 @@ package input
 
 import "testing"
 
+func TestPlainModifiersObservedInHerdr056(t *testing.T) {
+	var f Framer
+	var got []byte
+	for _, e := range f.Push([]byte("\x1b[97;3u\x1b[97;7u\x1b[97:65;6u")) {
+		if e.Kind == KindKey {
+			got = append(got, EncodeKey(e.Key, e.Raw, 0, false, false, false, false)...)
+		}
+	}
+	if string(got) != "\x1ba\x1b\x01\x01" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestPaneProtocolBytesObservedInHerdr056(t *testing.T) {
 	raw := "\x1b[97u\x1b[97;5u\x1b[97:65;2;65u\x1b[13;2u\x1b[A\x1bOA\x1b[1;2A\x1b[97;1:2u\x1b[97;1:3u\x1b[57441u\x1b[57441;1:3u\x1b[5;2~日END"
 	for _, tc := range []struct {
