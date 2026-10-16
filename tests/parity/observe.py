@@ -28,6 +28,7 @@ p.add_argument('--steps', required=True)
 p.add_argument('--saved-session-fixture', help='JSON mapping product names to relative runner-owned session paths and saved documents')
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--out', required=True)
+p.add_argument('--close-workspace-failure-fixture', action='store_true')
 p.add_argument('--close-workspace-fixture', action='store_true', help='close the last isolated workspace through the real API after the steps trigger')
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
 p.add_argument('--reconnect-keyboard', choices=['off', 'retain'], help='cut only the isolated display connection while pane modes change')
@@ -184,10 +185,10 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                         if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
-                if a.close_workspace_fixture:
+                if a.close_workspace_fixture or a.close_workspace_failure_fixture:
                     if endpoint is None: raise RuntimeError('close fixture requires isolated server')
                     from stage5_workspace_controller import CloseWorkspace
-                    close_workspace = CloseWorkspace(endpoint, target)
+                    close_workspace = CloseWorkspace(endpoint, target, failure=a.close_workspace_failure_fixture)
                     close_workspace.start()
                 if a.reconnect_keyboard:
                     from stage1_reconnect import Reconnect

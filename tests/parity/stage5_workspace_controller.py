@@ -7,7 +7,8 @@ import threading
 import time
 
 class CloseWorkspace:
-    def __init__(self, endpoint, target):
+    def __init__(self, endpoint, target, failure=False):
+        self.failure = failure
         self.endpoint, self.target = Path(endpoint), Path(target)
         if not str(self.endpoint.resolve()).startswith('/private/tmp/parity-'):
             raise RuntimeError('REFUSED: endpoint outside observation sandbox')
@@ -15,7 +16,7 @@ class CloseWorkspace:
         self.thread = threading.Thread(target=self.run)
         self.error = None
 
-    def request(self, method, params):
+    def request(self, method, params, allow_error=False):
         with socket.socket(socket.AF_UNIX) as sock:
             sock.settimeout(5); sock.connect(str(self.endpoint))
             sock.sendall(json.dumps({'id':'stage5','method':method,'params':params}).encode()+b'\n')
@@ -25,7 +26,7 @@ class CloseWorkspace:
                 if not chunk: raise RuntimeError('API closed before response')
                 data.extend(chunk)
         reply = json.loads(data.split(b'\n')[0])
-        if 'error' in reply: raise RuntimeError(reply)
+        if 'error' in reply and not allow_error: raise RuntimeError(reply)
         return reply
 
     def start(self): self.thread.start()
@@ -40,7 +41,16 @@ class CloseWorkspace:
             proof['before'] = self.request('workspace.list', {})
             workspaces = proof['before']['result']['workspaces']
             if len(workspaces)!=1: raise RuntimeError('expected one last workspace')
-            proof['closed'] = self.request('workspace.close', {'workspace_id':workspaces[0]['workspace_id']})
+            home = self.endpoint.resolve().parents[0]
+            while not home.name.startswith('parity-'): home = home.parent
+            home = home/'home'
+            moved = home.with_name('home-suspended')
+            if self.failure: home.rename(moved)
+            try:
+                proof['closed'] = self.request('workspace.close', {'workspace_id':workspaces[0]['workspace_id']}, allow_error=self.failure)
+            finally:
+                if self.failure: moved.rename(home)
+
             proof['after'] = self.request('workspace.list', {})
             current = proof['after']['result']['workspaces']
             proof['panes'] = self.request('pane.list', {'workspace_id':current[0]['workspace_id']}) if current else None
