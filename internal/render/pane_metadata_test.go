@@ -15,7 +15,7 @@ func TestG2PaneCustomMetadataStyledTokenAndStateLabels(t *testing.T) {
 	bold := true
 	var c config.Config
 	c.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "pane"}, {Token: "$custom", Fg: &fg, Bold: &bold}, {Token: "agent"}, {Token: "state_text"}}}
-	in := Input{State: s, SidebarConfig: c, Panes: map[int]*PaneSnap{1: {Agent: "codex", DisplayAgent: "Coder", Status: StatusGlyph{Key: "working", Rune: "◐", Color: Yellow}, StateLabels: map[string]string{"working": "Building"}, Tokens: map[string]string{"custom": "VALUE"}}}}
+	in := Input{State: s, SidebarConfig: c, Panes: map[int]*PaneSnap{1: {Label: "PN", Agent: "codex", DisplayAgent: "Coder", Status: StatusGlyph{Key: "working", Rune: "◐", Color: Yellow}, StateLabels: map[string]string{"working": "Building"}, Tokens: map[string]string{"custom": "VALUE"}}}}
 	frame := Compose(in).Frame
 	y := (s.SidebarArea().H+1)/2 + 2
 	var text strings.Builder
@@ -24,7 +24,7 @@ func TestG2PaneCustomMetadataStyledTokenAndStateLabels(t *testing.T) {
 			text.WriteString(cell.Content)
 		}
 	}
-	if !strings.Contains(text.String(), "%1") || !strings.Contains(text.String(), "VALUE") || !strings.Contains(text.String(), "Coder") {
+	if !strings.Contains(text.String(), "PN") || strings.Contains(text.String(), "%1") || !strings.Contains(text.String(), "VALUE") || !strings.Contains(text.String(), "Coder") {
 		t.Fatal(text.String())
 	}
 	x := strings.Index(text.String(), "VALUE")
