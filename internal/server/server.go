@@ -72,6 +72,7 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	graphicsFiles       graphicsFileHub
 	graphicsStreamOwner atomic.Uint64
 	handoffMu           sync.Mutex
 	handedOff           bool
@@ -153,19 +154,21 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
-	graphics     *graphicsFlow
-	configEditor func(config.Edit, func(config.Config, error))
-	viewer       *tui.Viewer
-	available    int
-	conn         net.Conn
-	wmu          sync.Mutex
-	id           int
-	lastUse      uint64
-	once         sync.Once
-	render       chan clientWrite
-	control      chan clientWrite
-	done         chan struct{}
-	closed       bool
+	directGraphics bool
+	directDisabled bool
+	graphics       *graphicsFlow
+	configEditor   func(config.Edit, func(config.Config, error))
+	viewer         *tui.Viewer
+	available      int
+	conn           net.Conn
+	wmu            sync.Mutex
+	id             int
+	lastUse        uint64
+	once           sync.Once
+	render         chan clientWrite
+	control        chan clientWrite
+	done           chan struct{}
+	closed         bool
 }
 
 var clientSequence atomic.Int64
@@ -176,7 +179,7 @@ func (c *clientConn) startWriter() {
 			c.id = int(clientSequence.Add(1))
 		}
 		c.render = make(chan clientWrite, 1)
-		c.control = make(chan clientWrite)
+		c.control = make(chan clientWrite, 1)
 		c.done = make(chan struct{})
 		go runClientWriter(c.conn, c.id, c.render, c.control, c.done)
 	})
@@ -471,6 +474,9 @@ func (s *Server) cleanup() {
 		_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
 	}
 	s.lock.Close()
+	if s.graphicsFiles.source != nil {
+		s.graphicsFiles.source.close()
+	}
 }
 
 // hasClient reports whether a display client is attached.
@@ -589,6 +595,10 @@ func (s *Server) attach(conn net.Conn) {
 		return
 	}
 	c.available = available
+	c.directGraphics = hello.GraphicsFileTransport == endpoint.DirectKittyTransport
+	for _, method := range []string{endpoint.GraphicsFileMessage, endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage, endpoint.GraphicsRetiredMessage} {
+		c.directGraphics = c.directGraphics && endpoint.Allows(available, 1, hello.Methods, method) && endpoint.Allows(available, 1, s.endpointPeer.Methods, method)
+	}
 	s.mu.Lock()
 	if closing := s.closing.Load(); closing != 0 {
 		s.mu.Unlock()
@@ -666,6 +676,8 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage:
+			s.app.Do(func() { s.graphicsTransmission(c, m) })
 		case "control":
 			s.app.Do(func() { s.graphicsControl(c, m) })
 		case "view_config":

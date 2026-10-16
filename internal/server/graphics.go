@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/endpoint"
 )
 
 func (s *Server) graphicsRequest(req *api.Request) api.Response {
@@ -28,10 +29,18 @@ func (s *Server) graphicsRequest(req *api.Request) api.Response {
 		if cw <= 0 || ch <= 0 {
 			return api.Failure(req.ID, "cell_size_unavailable", "exact terminal cell pixels are unavailable")
 		}
-		return api.Success(req.ID, api.PaneGraphicsInfoResult{
+		info := api.PaneGraphicsInfoResult{
 			Type: "pane_graphics_info", CellWidthPX: cw, CellHeightPX: ch,
-			PaneVisible: s.visiblePane(pid), FileFrameDamage: true, MaxLayersPerPane: api.MaxGraphicsLayers, PixelMouse: true,
-		})
+			PaneVisible: s.graphicsPaneVisible(pid), FileFrameDamage: true, MaxLayersPerPane: api.MaxGraphicsLayers, PixelMouse: true,
+		}
+		if s.directGraphicsViewer(pid, false) != nil {
+			if source := s.graphicsSource(); source != nil {
+				info.FileFrameDirectory, info.FileFrameFormats = source.source, []string{"rgba", "bgra"}
+				info.FileFrameMaxBytes, info.FileFrameDirectMaxBytes = api.MaxGraphicsFileInlineBytes, api.MaxGraphicsFileDirectBytes
+				info.FileFrameTransport = endpoint.DirectKittyTransport
+			}
+		}
+		return api.Success(req.ID, info)
 	case api.MethodPaneGraphicsSet:
 		data, err := base64.StdEncoding.DecodeString(params.DataBase64)
 		if err != nil {

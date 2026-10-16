@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"net"
 
@@ -26,6 +27,7 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 	owner := s.graphicsStreamOwner.Add(1)
 	layers := map[string]*string{}
 	defer s.app.Do(func() {
+		delete(s.graphicsFiles.streams, owner)
 		if pane := s.sup.Get(pid); pane != nil {
 			for _, id := range layers {
 				pane.ClearGraphicsLayer(id, owner)
@@ -45,8 +47,30 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 			return
 		}
 		if frame.File != nil {
-			fail("file frames are not supported")
-			return
+			if frame.LayerID == nil {
+				frame.LayerID = target.LayerID
+			}
+			id := fmt.Sprintf("%s:file:%d", req.ID, frame.Sequence)
+			key := "primary"
+			if frame.LayerID != nil {
+				key = *frame.LayerID
+			}
+			layers[key] = frame.LayerID
+			if failure := s.serveGraphicsFile(conn, pid, frame, owner); failure != nil {
+				_ = api.WriteResponse(conn, api.Failure(id, failure.Code, failure.Message))
+				return
+			}
+			if !graphicsProducerConnected(conn) {
+				return
+			}
+			if err := api.WriteResponse(conn, api.Success(id, struct {
+				Type     string `json:"type"`
+				Sequence uint64 `json:"sequence"`
+				Revision uint64 `json:"revision"`
+			}{"pane_graphics_frame_ack", frame.Sequence, frame.Revision})); err != nil {
+				return
+			}
+			continue
 		}
 		if frame.DataLength == nil {
 			fail("frame requires data_length or file")

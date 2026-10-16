@@ -14,6 +14,7 @@ import (
 const graphicsReceiptWait = 500 * time.Millisecond
 
 type graphicsFlow struct {
+	published          *graphicsPublishedSurface
 	encoder            endpoint.SnapshotEncoder
 	revision, awaiting uint64
 	pending            bool
@@ -31,6 +32,8 @@ func (s *Server) installGraphicsSnapshotSink(c *clientConn, peer endpoint.Peer) 
 			return nil
 		}
 		flow.awaiting = 0
+		in = s.nativeGraphicsInput(c, in)
+		surface := graphicsSurface(in)
 		flow.pending = false
 		flow.revision++
 		if flow.encoder.GraphicsPatches {
@@ -67,6 +70,8 @@ func (s *Server) installGraphicsSnapshotSink(c *clientConn, peer endpoint.Peer) 
 					s.dropConn(c)
 					return
 				}
+				flow.published = surface
+				s.nativeGraphicsDrained(c, surface)
 				if flow.awaiting == revision {
 					s.armGraphicsReceipt(c, revision)
 				} else if flow.pending {

@@ -9,6 +9,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Native placement requires this viewer's exact cell and pane dimensions.
+func (p *Pane) MatchesGraphicsGeometry(cols, rows, cw, ch int) bool {
+	if cols <= 0 || rows <= 0 || cw <= 0 || ch <= 0 {
+		return false
+	}
+	ws, err := unix.IoctlGetWinsize(p.ptyFD, unix.TIOCGWINSZ)
+	return err == nil && int(ws.Col) == cols && int(ws.Row) == rows && int(ws.Xpixel) == cols*cw && int(ws.Ypixel) == rows*ch
+}
+
 // CellPixels reads the pane's own PTY geometry; zero means unavailable.
 func (p *Pane) CellPixels() (int, int) {
 	ws, err := unix.IoctlGetWinsize(p.ptyFD, unix.TIOCGWINSZ)

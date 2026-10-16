@@ -47,13 +47,18 @@ type PaneGraphicsClearParams struct {
 }
 
 type PaneGraphicsInfoResult struct {
-	Type             string `json:"type"`
-	CellWidthPX      int    `json:"cell_width_px"`
-	CellHeightPX     int    `json:"cell_height_px"`
-	PaneVisible      bool   `json:"pane_visible"`
-	FileFrameDamage  bool   `json:"file_frame_damage"`
-	MaxLayersPerPane int    `json:"max_layers_per_pane"`
-	PixelMouse       bool   `json:"pixel_mouse"`
+	FileFrameDirectory      string   `json:"file_frame_directory,omitempty"`
+	FileFrameFormats        []string `json:"file_frame_formats,omitempty"`
+	FileFrameMaxBytes       uint64   `json:"file_frame_max_bytes,omitempty"`
+	FileFrameDirectMaxBytes uint64   `json:"file_frame_direct_max_bytes,omitempty"`
+	FileFrameTransport      string   `json:"file_frame_transport,omitempty"`
+	Type                    string   `json:"type"`
+	CellWidthPX             int      `json:"cell_width_px"`
+	CellHeightPX            int      `json:"cell_height_px"`
+	PaneVisible             bool     `json:"pane_visible"`
+	FileFrameDamage         bool     `json:"file_frame_damage"`
+	MaxLayersPerPane        int      `json:"max_layers_per_pane"`
+	PixelMouse              bool     `json:"pixel_mouse"`
 }
 
 type PaneGraphicsStreamFrame struct {

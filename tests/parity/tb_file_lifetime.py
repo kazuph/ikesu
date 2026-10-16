@@ -126,6 +126,12 @@ def main():
                 result['ack'] = line(stream)
                 if result['ack'].get('result', {}).get('type') != 'pane_graphics_frame_ack':
                     raise RuntimeError('source reuse denied: no successful producer ack')
+                result['terminal_records_at_ack'] = graphics('first')
+                result['terminal_pixels_received_before_ack'] = any(
+                    result['producer_sha256'] in item['hashes'].values()
+                    for item in result['terminal_records_at_ack'])
+                if not result['terminal_pixels_received_before_ack']:
+                    raise RuntimeError('producer ack preceded actual terminal pixel receipt')
                 def received_pixels(label):
                     records = graphics(label)
                     return records if any(result['producer_sha256'] in item['hashes'].values() for item in records) else None
