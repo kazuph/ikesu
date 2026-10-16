@@ -69,6 +69,7 @@ with socket.socket(socket.AF_UNIX) as connection:
     records.append({'method': 'pane.graphics.stream', 'response': response})
     if 'error' not in response:
         header = {'format': 'rgb', 'image_width': 2, 'image_height': 1,
+                  'data_length': 6, 'layer_id': 'stream',
                   'placement': {'grid_cols': 4, 'grid_rows': 2}}
         connection.sendall(json.dumps(header).encode()+b'\n'+b'\xff\0\0\0\xff\0')
         try:
