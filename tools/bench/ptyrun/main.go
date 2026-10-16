@@ -31,6 +31,7 @@ func main() {
 	cellHeight := flag.Int("cell-height", 0, "terminal character height in pixels for size queries")
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
+	fileImages := flag.String("file-images", "", "record file-image payload hashes while the viewer owns the files")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
 	statusDelay := flag.String("status-delay", "", "override terminal status replies with a duration or drop")
 	flag.Parse()
@@ -105,6 +106,19 @@ func main() {
 		}
 		defer rawFile.Close()
 	}
+	var chunkEnd int64
+	if *fileImages != "" {
+		log, err := os.Create(*fileImages)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer log.Close()
+		emu.RegisterApcHandler(func(data []byte) bool {
+			captureFileImage(log, data, chunkEnd)
+			return false
+		})
+	}
 	var mu sync.Mutex
 	go func() { _, _ = io.Copy(ptmx, emu) }() // emulator replies (DA etc.) back to the app
 	// Drain the PTY as fast as possible (like a fast real terminal) and feed the emulator
@@ -149,6 +163,7 @@ func main() {
 			}
 			mu.Lock()
 			for _, c := range q {
+				chunkEnd = drained + int64(len(c.data))
 				_, _ = emu.Write(c.data)
 				drained += int64(len(c.data))
 				if *cellClock {

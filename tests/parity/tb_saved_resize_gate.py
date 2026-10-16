@@ -24,6 +24,7 @@ images, chunks, placements = {}, {}, {}
 chunk_ident = None
 states = []
 start = 0
+file_records = iter(json.loads(line) for line in (root/'file-images.jsonl').read_text().splitlines()) if (root/'file-images.jsonl').exists() else iter(())
 for stop in (begin, end):
     for match in re.finditer(rb'\x1b_G(.*?)\x1b\\', raw[start:stop], re.S):
         header, _, payload = match[1].partition(b';')
@@ -31,6 +32,16 @@ for stop in (begin, end):
         action = keys.get(b'a', b't')
         ident = int(keys.get(b'i', str(chunk_ident or 0).encode()))
         if action == b't':
+            if keys.get(b't', b'd') == b'f':
+                record = next(file_records, None)
+                if (not record or 'error' in record or record['control'] != header.decode()
+                        or record['path'].encode() != base64.b64decode(payload, validate=True)
+                        or record['raw_bytes_end'] > stop
+                        or keys.get(b'f') != b'32'
+                        or record['length'] != int(keys[b's'])*int(keys[b'v'])*4):
+                    raise SystemExit('actual file pixels were not captured at the matching upload')
+                images[ident] = record['sha256']
+                continue
             if keys.get(b't', b'd') != b'd':
                 raise SystemExit('unsupported non-inline outer image; no payload retention verdict')
             chunks[ident] = chunks.get(ident, b'')+base64.b64decode(payload, validate=True)

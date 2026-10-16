@@ -32,6 +32,7 @@ p.add_argument('--visibility', action='store_true', help='record real saved-mach
 p.add_argument('--pointer-probe', action='store_true', help='verify real link hover and horizontal scroll through page DOM event reports')
 p.add_argument('--adjacent-input', action='store_true', help='click a real adjacent saved-machine pane and record its immediate key input')
 p.add_argument('--resize-wait', action='store_true', help='hold real SSH output across resize and inspect the pending display')
+p.add_argument('--capture-file-images', action='store_true', help='requires ptyrun file-image recording; read real files before viewer cleanup')
 p.add_argument('--switch-hold', choices=('expiry', 'disconnect'), help='hold real destination output while typing, then exceed the three-second input limit or disconnect')
 a = p.parse_args()
 if a.image_probe and a.measure:
@@ -75,6 +76,7 @@ expected_keys = 'abcdefghijklmnop'
                                                        'pointer_probe': a.pointer_probe,
                                                        'adjacent_input': a.adjacent_input,
                                                        'resize_wait': a.resize_wait,
+                                                       'capture_file_images': a.capture_file_images,
                                                        'switch_hold': a.switch_hold,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                                                        'remote_root': remote, 'remote_binary': a.remote_binary,
@@ -326,6 +328,7 @@ for name in ['herdr','gtx']:
             viewer = subprocess.Popen([str(a.ptyrun.resolve()), '-cols', '160', '-rows', '45', '-cell-width', '8',
                                        '-cell-height', '16', '-xpixel', '1280', '-ypixel', '720', '-steps', str(steps),
                                        '-raw-output', str(raw), '-cell-clock', '-pixel-mouse='+str(a.pixel_mouse).lower(),
+                                       *(['-file-images', str(out/'file-images.jsonl')] if a.capture_file_images else []),
                                        *(['-status-delay', a.status_delay] if a.status_delay is not None else []),
                                        '--', binary, '--session', 't'],
                                       env=env, stdout=log, stderr=subprocess.STDOUT)
