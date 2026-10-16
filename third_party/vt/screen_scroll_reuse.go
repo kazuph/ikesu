@@ -41,13 +41,16 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	s.buf.Lines[r.Max.Y-1] = line
 	// The first touch grows the bookkeeping for every row once.
 	s.buf.TouchLine(r.Min.X, r.Min.Y, r.Max.X-r.Min.X)
-	for row := r.Min.Y + 1; row <= r.Max.Y && row < len(s.buf.Lines); row++ {
-		ch := s.buf.Touched[row]
-		if ch == nil {
-			s.buf.Touched[row] = &uv.LineData{FirstCell: r.Min.X, LastCell: r.Max.X}
-		} else {
-			ch.FirstCell = min(ch.FirstCell, r.Min.X)
-			ch.LastCell = max(ch.LastCell, r.Max.X)
+	start, endRow := r.Min.Y+1, min(r.Max.Y+1, len(s.buf.Lines))
+	if start < endRow {
+		for offset, ch := range s.buf.Touched[start:endRow] {
+			row := start + offset
+			if ch == nil {
+				s.buf.Touched[row] = &uv.LineData{FirstCell: r.Min.X, LastCell: r.Max.X}
+			} else {
+				ch.FirstCell = min(ch.FirstCell, r.Min.X)
+				ch.LastCell = max(ch.LastCell, r.Max.X)
+			}
 		}
 	}
 	if s.cb.Scroll != nil {
