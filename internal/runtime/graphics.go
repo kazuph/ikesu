@@ -45,15 +45,17 @@ func (s *Supervisor) setupGraphics(p *Pane) {
 	s.mu.Unlock()
 	p.emu.RegisterCsiHandler('t', func(params ansi.Params) bool {
 		op, _, _ := params.Param(0, 0)
+		cw, ch := p.cellWidth, p.cellHeight
+		if cw <= 0 || ch <= 0 {
+			// Reference 0.2.57 answers queries with 8x16 when pixels are
+			// unavailable. Keep this separate from actual mouse geometry.
+			cw, ch = 8, 16
+		}
 		switch op {
 		case 14:
-			if p.cellWidth > 0 && p.cellHeight > 0 {
-				fmt.Fprintf(p.emu.InputPipe(), "\x1b[4;%d;%dt", p.emu.Height()*p.cellHeight, p.emu.Width()*p.cellWidth)
-			}
+			fmt.Fprintf(p.emu.InputPipe(), "\x1b[4;%d;%dt", p.emu.Height()*ch, p.emu.Width()*cw)
 		case 16:
-			if p.cellWidth > 0 && p.cellHeight > 0 {
-				fmt.Fprintf(p.emu.InputPipe(), "\x1b[6;%d;%dt", p.cellHeight, p.cellWidth)
-			}
+			fmt.Fprintf(p.emu.InputPipe(), "\x1b[6;%d;%dt", ch, cw)
 		case 18:
 			fmt.Fprintf(p.emu.InputPipe(), "\x1b[8;%d;%dt", p.emu.Height(), p.emu.Width())
 		default:

@@ -64,6 +64,7 @@ interaction = Path(a.steps).read_text()
 for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
     target = out / name
     target.mkdir(exist_ok=True)
+    (target/'host-load-before.txt').write_text(subprocess.check_output(['uptime'], text=True))
     with tempfile.TemporaryDirectory(prefix='parity-', dir='/tmp') as root:
         root = Path(root)
         for directory in ['home', 'config', 'state', 'data', 'zdot', 'cwd']:
