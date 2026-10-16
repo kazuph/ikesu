@@ -475,7 +475,7 @@ func (s *Server) wsInfo(i int) api.WorkspaceInfo {
 		WorkspaceID:         wsID,
 		Worktree:            ws.Worktree,
 		Number:              i + 1,
-		Label:               ws.Name,
+		Label:               s.app.WorkspaceLabel(i),
 		Focused:             i == st.Active,
 		PaneCount:           ws.PaneCount(),
 		TabCount:            len(ws.Tabs),

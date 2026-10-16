@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/worktree"
@@ -41,29 +42,14 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	}
 	var targets []target
 	for _, w := range a.st.Workspaces {
-		cwd := w.Cwd
-		if len(w.Tabs) > 0 {
-			ids := w.Tabs[0].Layout.PaneIDs()
-			if len(ids) > 0 {
-				if p := a.sup.Get(ids[0]); p != nil {
-					if current := platform.ProcCwd(p.ShellPID()); current != "" {
-						cwd = current
-					}
-				}
-			}
-		}
-		targets = append(targets, target{w.ID, w.Cwd, cwd})
+		targets = append(targets, target{w.ID, w.Cwd, a.workspaceNameCwd(w)})
 	}
 	go func() {
 		gs := map[int]render.GitStatus{}
 		names := map[int]string{}
 		for _, w := range targets {
 			gs[w.id] = readWorkspaceGit(w.cwd)
-			if src, err := worktree.Source(w.nameCwd); err == nil {
-				names[w.id] = filepath.Base(src.SourceCheckoutPath)
-			} else {
-				names[w.id] = filepath.Base(w.nameCwd)
-			}
+			names[w.id] = workspaceDirectoryName(w.nameCwd)
 		}
 		a.Do(func() {
 			a.workspaceGit = map[int]render.GitStatus{}
@@ -73,8 +59,6 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 				name := names[w.ID]
 				if w.CustomName {
 					name = w.Name
-				} else if name != "" {
-					w.Name = name
 				}
 				if !w.CustomName && len(w.Tabs) > 0 {
 					ids := w.Tabs[0].Layout.PaneIDs()
@@ -106,6 +90,37 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			a.dirty = true
 		})
 	}()
+}
+
+func (a *App) workspaceNameCwd(w *model.Workspace) string {
+	if len(w.Tabs) > 0 {
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) > 0 {
+			if p := a.sup.Get(ids[0]); p != nil {
+				if cwd := platform.ProcCwd(p.ShellPID()); cwd != "" {
+					return cwd
+				}
+			}
+		}
+	}
+	return w.Cwd
+}
+
+func workspaceDirectoryName(cwd string) string {
+	if src, err := worktree.Source(cwd); err == nil {
+		return filepath.Base(src.SourceCheckoutPath)
+	}
+	return filepath.Base(cwd)
+}
+
+// WorkspaceLabel resolves automatic names at the API read boundary, so a
+// metadata refresh or live handoff cannot expose a stale stored default.
+func (a *App) WorkspaceLabel(index int) string {
+	w := a.st.Workspaces[index]
+	if w.CustomName {
+		return w.Name
+	}
+	return workspaceDirectoryName(a.workspaceNameCwd(w))
 }
 func readWorkspaceGit(cwd string) render.GitStatus {
 	var g render.GitStatus

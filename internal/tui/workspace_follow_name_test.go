@@ -45,8 +45,8 @@ func TestAutomaticWorkspaceNameFollowsFirstShellAndPreservesCustomName(t *testin
 		if custom {
 			want = "chosen"
 		}
-		if a.workspaceNames[0] != want || a.st.Workspaces[0].Name != want {
-			t.Fatalf("sidebar=%q API label=%q, want %q", a.workspaceNames[0], a.st.Workspaces[0].Name, want)
+		if a.workspaceNames[0] != want || a.WorkspaceLabel(0) != want {
+			t.Fatalf("sidebar=%q API label=%q, want %q", a.workspaceNames[0], a.WorkspaceLabel(0), want)
 		}
 	}
 }
