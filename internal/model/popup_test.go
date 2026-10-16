@@ -67,3 +67,14 @@ func TestStage6aClosePopupRequiresActiveOwner(t *testing.T) {
 		t.Fatal("owner popup did not survive")
 	}
 }
+
+func TestStage6aPopupMinimumOuterDimensions(t *testing.T) {
+	for _, width := range []int{3, 5, 6} {
+		s := New("/tmp", 160, 45)
+		s.Apply(CmdOpenPopup{WorkspaceID: s.ActiveWorkspace().ID, Width: api.PopupSize{Cells: width}, Height: api.PopupSize{Cells: 3}})
+		r := s.PopupRect()
+		if r.W != 6 || r.H != 4 {
+			t.Fatal(width, r)
+		}
+	}
+}
