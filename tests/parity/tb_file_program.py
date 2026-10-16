@@ -11,6 +11,10 @@ pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
 if not endpoint or not pane or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned pane')
 records = []
+(Path.home()/'tb-frame-environment.json').write_text(json.dumps({
+    key: value for key, value in os.environ.items()
+    if key.startswith(('HERDR_', 'GTX_')) and ('GRAPHIC' in key or 'FRAME' in key)
+}, indent=2)+'\n')
 
 
 def line(connection):

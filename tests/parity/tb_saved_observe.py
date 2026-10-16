@@ -240,6 +240,8 @@ for name in ['herdr','gtx']:
                         if viewer.poll() is not None or time.monotonic() >= deadline:
                             raise RuntimeError('no actual tb image upload reached the saved-machine viewer')
                         events.control(None, 1, max(0, deadline-time.monotonic()))
+                    (out/'remote-graphics-info.json').write_text(json.dumps(
+                        remote_rpc('pane.graphics.info', {'pane_id': remote_pane}), indent=2)+'\n')
                     ready.write_text('actual image upload received')
                 finally:
                     os.close(fd)
