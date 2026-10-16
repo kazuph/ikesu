@@ -33,9 +33,12 @@ p.add_argument('--visibility-input', action='store_true', help='drive focus and 
 p.add_argument('--pointer-probe', action='store_true', help='verify real link hover and horizontal scroll through page DOM event reports')
 p.add_argument('--adjacent-input', action='store_true', help='click a real adjacent saved-machine pane and record its immediate key input')
 p.add_argument('--resize-wait', action='store_true', help='hold real SSH output across resize and inspect the pending display')
+p.add_argument('--repaint-probe', action='store_true', help='record same-space click, sidebar scroll and terminal focus return separately')
 p.add_argument('--capture-file-images', action='store_true', help='requires ptyrun file-image recording; read real files before viewer cleanup')
 p.add_argument('--switch-hold', choices=('expiry', 'disconnect'), help='hold real destination output while typing, then exceed the three-second input limit or disconnect')
 a = p.parse_args()
+if a.repaint_probe and (a.measure or a.image_probe or a.visibility or a.pointer_probe or a.adjacent_input or a.resize_wait or a.switch_hold):
+    p.error('repaint probe must be separate from other observation modes')
 if a.image_probe and a.measure:
     p.error('the controlled image producer cannot be used for tb performance measurement')
 if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe or a.adjacent_input or a.switch_hold)):
@@ -80,6 +83,7 @@ expected_keys = 'abcdefghijklmnop'
                                                        'pointer_probe': a.pointer_probe,
                                                        'adjacent_input': a.adjacent_input,
                                                        'resize_wait': a.resize_wait,
+                                                       'repaint_probe': a.repaint_probe,
                                                        'capture_file_images': a.capture_file_images,
                                                        'switch_hold': a.switch_hold,
                                                        'sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
@@ -332,6 +336,14 @@ for name in ['herdr','gtx']:
                                  'cells '+str(out/'pending-resize.json')+'\nstats pending-resize\n'
                                  'waitfile '+str(out/'ssh/transport-resumed.json')+' 10s\n'
                                  'cells '+str(out/'resumed-resize.json')+'\nstats resumed-resize\nkill\n')
+            if a.repaint_probe:
+                procedure = steps.read_text().replace('kill\n', '')
+                for phase, action in [('same-space', 'clicktext "TB_REMOTE"\n'),
+                                      ('sidebar-scroll', 'mouse wheel-down 2 10\n'),
+                                      ('focus-return', 'send "\\x1b[O"\nsend "\\x1b[I"\n')]:
+                    procedure += 'mark '+phase+'-start\n'+action+'sleep 1s\nstats '+phase+'-end\n'
+                    procedure += 'cells '+str(out/(phase+'.json'))+'\n'
+                steps.write_text(procedure+'kill\n')
             if a.switch_hold:
                 steps.write_text(steps.read_text().replace('kill\n', '')+
                                  'clicktext "TB_LOCAL"\nwaittext 10s LOCAL_SWITCH_READY\nlocate "TB_REMOTE"\n'
