@@ -13,6 +13,9 @@ type Screen struct {
 	buf *uv.RenderBuffer
 	// Immutable default cells, copied into rows without sharing their storage.
 	blankLine uv.Line
+	// Duplicated private row headers allow scrolling without moving each header.
+	scrollRows    uv.Lines
+	scrollRowHead int
 	// The cur of the screen.
 	cur, saved Cursor
 	// scroll is the scroll region.
@@ -87,6 +90,7 @@ func (s *Screen) resizeWithoutRestore(width int, height int) (pushed, pulled int
 }
 
 func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled int) {
+	s.scrollRows = nil
 	if len(s.blankLine) != width {
 		s.blankLine = nil
 	}
@@ -384,6 +388,7 @@ func (s *Screen) InsertLine(n int) bool {
 		return false
 	}
 
+	s.scrollRows = s.scrollRows[:0]
 	s.buf.InsertLineArea(y, n, s.blankCell(), s.scroll)
 	if s.cb.Scroll != nil {
 		s.cb.Scroll(s.scroll.Min.X, y, s.scroll.Max.X, s.scroll.Max.Y, min(n, s.scroll.Max.Y-y))
@@ -426,6 +431,7 @@ func (s *Screen) DeleteLine(n int) bool {
 		s.scrollback.PushN(s.buf, y, linesToSave)
 	}
 
+	s.scrollRows = s.scrollRows[:0]
 	s.buf.DeleteLineArea(y, n, s.blankCell(), scroll)
 	if s.cb.Scroll != nil {
 		s.cb.Scroll(scroll.Min.X, y, scroll.Max.X, scroll.Max.Y, -min(n, scroll.Max.Y-y))

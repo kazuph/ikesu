@@ -36,6 +36,7 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		dropped = s.scrollback.pushTrimmed(line[:end])
 	}
 	if dropped {
+		s.scrollRows = s.scrollRows[:0]
 		if s.cur.Pen.Bg == nil && uv.EmptyCell == (uv.Cell{Content: " ", Width: 1}) && r.Max.Y <= len(s.buf.Lines) && y < len(s.buf.Lines) && r.Max.X >= s.buf.Width() {
 			line = s.buf.Lines[y]
 			if len(s.blankLine) != len(line) {
@@ -44,14 +45,13 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 					s.blankLine[x] = uv.Cell{Content: " ", Width: 1}
 				}
 			}
-			copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
+			s.rotateScrollRows(y, r, line)
 			copy(line, s.blankLine)
-			s.buf.Lines[r.Max.Y-1] = line
 		} else {
 			s.buf.Buffer.DeleteLineArea(y, 1, s.blankCell(), r)
 		}
 	} else {
-		copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
+		s.rotateScrollRows(y, r, line)
 		if clearEnd > 0 {
 			if len(s.blankLine) != len(line) {
 				s.blankLine = make(uv.Line, len(line))
@@ -61,7 +61,6 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 			}
 			copy(line[:clearEnd], s.blankLine[:clearEnd])
 		}
-		s.buf.Lines[r.Max.Y-1] = line
 	}
 	// The first touch grows the bookkeeping for every row once.
 	s.buf.TouchLine(r.Min.X, r.Min.Y, r.Max.X-r.Min.X)

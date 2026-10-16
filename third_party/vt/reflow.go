@@ -133,6 +133,7 @@ func (s *Screen) reflow(width, height int, continued []ReflowRow, phantom bool) 
 	for _, row := range physical[dropped:cut] {
 		s.scrollback.Push(row)
 	}
+	s.scrollRows = nil
 	s.buf = uv.NewRenderBuffer(width, height)
 	for y, row := range physical[cut:] {
 		copy(s.buf.Line(y), row)
