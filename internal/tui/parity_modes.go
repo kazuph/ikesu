@@ -89,17 +89,18 @@ mapped:
 		a.workspaceNavigate = false
 	case k.Code >= '1' && k.Code <= '9':
 		index := int(k.Code - '1')
-		if index < len(a.st.Workspaces) {
-			a.exec(model.CmdSelectWorkspace{Index: index})
+		order := a.st.VisibleWorkspaceOrder()
+		if index < len(order) {
+			a.exec(model.CmdSelectWorkspace{Index: order[index]})
 			a.workspaceNavigate = false
 		}
-	case k.Code == 'g':
-		a.openNavigator()
-	case k.Code == 'c' || k.Code == 'v':
-		a.workspaceNavigate = false
-		a.prefixKey(k)
 	default:
-		a.prefixKey(k)
+		if a.sidebarConfig.Keys.Actions != nil {
+			a.configuredKey(k, true)
+		} else {
+			a.workspaceNavigate = k.Code == 'h' || k.Code == 'j' || k.Code == 'k' || k.Code == 'l' || k.Code == uv.KeyLeft || k.Code == uv.KeyRight
+			a.prefixKey(k)
+		}
 	}
 	a.dirty = true
 }

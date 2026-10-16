@@ -29,6 +29,7 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 	for _, binding := range a.sidebarConfig.Keys.Command {
 		chord, err := config.ParseChord(binding.Key)
 		if err == nil && chord.Match(k, prefix) {
+			a.workspaceNavigate = false
 			a.runKeyCommand(binding)
 			return true
 		}
@@ -55,6 +56,9 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 	return false
 }
 func (a *App) configAction(name string, k uv.Key) bool {
+	if a.workspaceNavigate && !strings.HasPrefix(name, "focus_pane_") && name != "workspace_picker" && name != "cycle_pane_next" && name != "cycle_pane_previous" {
+		a.workspaceNavigate = false
+	}
 	switch name {
 	case "resize_mode":
 		a.resizeMode = !a.resizeMode
