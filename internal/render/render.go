@@ -86,6 +86,7 @@ type Menu struct {
 	Items    []MenuItem
 	Global   bool
 	MinWidth int
+	Scroll   int
 	Hover    int // index under the pointer; -1 = none
 	Sel      int // keyboard-selected item; -1 = none
 }

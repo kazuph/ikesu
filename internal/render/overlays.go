@@ -31,6 +31,7 @@ func MenuSize(m *Menu) (w, h int) {
 // MenuRect positions a menu inside (cols, rows).
 func MenuRect(m *Menu, cols, rows int) layout.Rect {
 	w, h := MenuSize(m)
+	w, h = min(w, max(0, cols)), min(h, max(0, rows))
 	x, y := m.X, m.Y
 	if x+w > cols {
 		x = cols - w
@@ -47,6 +48,21 @@ func MenuRect(m *Menu, cols, rows int) layout.Rect {
 	return layout.Rect{X: x, Y: y, W: w, H: h}
 }
 
+// MenuScroll keeps the selected item visible and preserves the viewport on mouse movement.
+func MenuScroll(m *Menu, rows int) int {
+	height := max(0, min(len(m.Items), rows-2))
+	offset := min(max(0, m.Scroll), max(0, len(m.Items)-height))
+	if m.Sel >= 0 && m.Sel < len(m.Items) {
+		if m.Sel < offset {
+			offset = m.Sel
+		}
+		if m.Sel >= offset+height {
+			offset = m.Sel - height + 1
+		}
+	}
+	return min(max(0, offset), max(0, len(m.Items)-height))
+}
+
 func drawMenu(f *Frame, m *Menu, out *Output) {
 	r := MenuRect(m, f.W, f.H)
 	border := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
@@ -56,18 +72,21 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
 	}
 	out.MenuRect = r
-	out.MenuItemRows = nil
-	for i, it := range m.Items {
-		if i >= ih {
+	out.MenuItemRows = make([]layout.Rect, len(m.Items))
+	m.Scroll = MenuScroll(m, f.H)
+	for i := m.Scroll; i < len(m.Items); i++ {
+		it := m.Items[i]
+		y := iy + i - m.Scroll
+		if y >= iy+ih {
 			break
 		}
-		row := layout.Rect{X: ix, Y: iy + i, W: iw, H: 1}
-		out.MenuItemRows = append(out.MenuItemRows, row)
+		row := layout.Rect{X: ix, Y: y, W: iw, H: 1}
+		out.MenuItemRows[i] = row
 		if it.Separator {
 			if m.Global {
-				f.Fill(ix, iy+i, iw, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
+				f.Fill(ix, y, iw, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
 			} else {
-				f.Text(ix+1, iy+i, " --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+				f.Text(ix+1, y, " --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 			}
 			continue
 		}
@@ -75,16 +94,16 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		if i == m.Hover || i == m.Sel {
 			sty = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 			if !m.Global {
-				f.Fill(ix, iy+i, iw, 1, " ", sty)
+				f.Fill(ix, y, iw, 1, " ", sty)
 			}
 		}
 		if it.Disabled {
 			sty = uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
 		}
 		if m.Global {
-			f.Text(ix, iy+i, " "+it.Label+" ", sty, ix+iw)
+			f.Text(ix, y, " "+it.Label+" ", sty, ix+iw)
 		} else {
-			f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
+			f.Text(ix+1, y, it.Label, sty, ix+iw-1)
 		}
 	}
 }

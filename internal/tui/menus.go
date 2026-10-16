@@ -390,8 +390,9 @@ func (a *App) menuItemAt(x, y int) int {
 		return -1
 	}
 	r := render.MenuRect(&a.menu.m, a.st.Cols, a.st.Rows)
-	i := y - r.Y - 1
-	if x < r.X || x >= r.X+r.W || i < 0 || i >= len(a.menu.m.Items) {
+	row := y - r.Y - 1
+	i := row + render.MenuScroll(&a.menu.m, a.st.Rows)
+	if x < r.X || x >= r.X+r.W || row < 0 || row >= r.H-2 || i >= len(a.menu.m.Items) {
 		return -1
 	}
 	return i
