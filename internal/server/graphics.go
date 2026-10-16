@@ -25,9 +25,12 @@ func (s *Server) graphicsRequest(req *api.Request) api.Response {
 	switch req.Method {
 	case api.MethodPaneGraphicsInfo:
 		cw, ch := pane.CellPixels()
+		if cw <= 0 || ch <= 0 {
+			return api.Failure(req.ID, "cell_size_unavailable", "exact terminal cell pixels are unavailable")
+		}
 		return api.Success(req.ID, api.PaneGraphicsInfoResult{
 			Type: "pane_graphics_info", CellWidthPX: cw, CellHeightPX: ch,
-			PaneVisible: s.visiblePane(pid), MaxLayersPerPane: api.MaxGraphicsLayers, PixelMouse: true,
+			PaneVisible: s.visiblePane(pid), FileFrameDamage: true, MaxLayersPerPane: api.MaxGraphicsLayers, PixelMouse: true,
 		})
 	case api.MethodPaneGraphicsSet:
 		data, err := base64.StdEncoding.DecodeString(params.DataBase64)

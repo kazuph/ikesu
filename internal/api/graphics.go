@@ -3,6 +3,9 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 )
 
 const (
@@ -11,7 +14,8 @@ const (
 	MethodPaneGraphicsClear  = "pane.graphics.clear"
 	MethodPaneGraphicsStream = "pane.graphics.stream"
 	// The producer contract and the reference binary both allow 16 layers.
-	MaxGraphicsLayers = 16
+	MaxGraphicsLayers           = 16
+	MaxGraphicsFrameHeaderBytes = 64 * 1024
 )
 
 type PaneGraphicsPlacement struct {
@@ -61,9 +65,27 @@ type PaneGraphicsFile struct {
 
 func ReadGraphicsFrame(reader *bufio.Reader) (PaneGraphicsStreamFrame, error) {
 	var frame PaneGraphicsStreamFrame
-	line, err := readLine(reader)
-	if err == nil {
-		err = json.Unmarshal(line, &frame)
+	var line []byte
+	for {
+		part, err := reader.ReadSlice('\n')
+		terminated := len(part) > 0 && part[len(part)-1] == '\n'
+		if terminated {
+			part = part[:len(part)-1]
+		}
+		if len(part) > MaxGraphicsFrameHeaderBytes-len(line) {
+			return frame, fmt.Errorf("graphics frame header exceeds %d bytes", MaxGraphicsFrameHeaderBytes)
+		}
+		line = append(line, part...)
+		if terminated {
+			err := json.Unmarshal(line, &frame)
+			return frame, err
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		if err == io.EOF && len(line) > 0 {
+			err = io.ErrUnexpectedEOF
+		}
+		return frame, err
 	}
-	return frame, err
 }
