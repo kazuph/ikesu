@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/model"
@@ -28,6 +29,9 @@ func TestMachineImageOutputWaitsForTerminalStatusAndCoalesces(t *testing.T) {
 	if bytes.Count(first, []byte("\x1b[5n")) != 1 {
 		t.Fatal("image frame did not query terminal completion")
 	}
+	if ansi.Strip(string(first)) == "" {
+		t.Fatal("initial frame did not render real text cells")
+	}
 	for _, red := range []byte{1, 2, 3} {
 		pane.Graphics[0].Image.Data = []byte{red, 0, 0, 0, 255, 0}
 		if err := m.paint(); err != nil {
@@ -46,5 +50,11 @@ func TestMachineImageOutputWaitsForTerminalStatusAndCoalesces(t *testing.T) {
 	changed := after[len(first):]
 	if bytes.Count(changed, []byte("a=t,")) != 1 || !bytes.Contains(changed, []byte("AwAAAP8A")) || bytes.Count(changed, []byte("\x1b[5n")) != 1 {
 		t.Fatal("terminal completion did not release only the latest image")
+	}
+	if text := ansi.Strip(string(changed)); text != "" {
+		t.Fatalf("image-only deferred output rewrote unchanged text: %q", text)
+	}
+	if bytes.Contains(changed, []byte("\x1b[2J")) {
+		t.Fatal("image-only deferred output cleared the screen")
 	}
 }
