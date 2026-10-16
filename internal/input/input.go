@@ -91,11 +91,7 @@ func (f *Framer) Push(b []byte) []Event {
 // tail is on its way.
 func (f *Framer) FlushTimeout() []Event {
 	if f.paste {
-		// Flush a partial paste rather than swallowing it forever.
-		t := string(f.pasteBuf)
-		f.pasteBuf = f.pasteBuf[:0]
-		f.paste = false
-		return []Event{{Kind: KindPaste, Text: t}}
+		return nil
 	}
 	if len(f.buf) == 0 {
 		return nil
@@ -186,7 +182,7 @@ func (f *Framer) drain(forced bool) []Event {
 
 		n, complete := seqLen(f.buf)
 		if !complete {
-			if !forced {
+			if !forced || incompleteRune(f.buf) {
 				break
 			}
 			// At timeout, decode what we have; unknowns are dropped.
@@ -205,13 +201,23 @@ func (f *Framer) drain(forced bool) []Event {
 
 // collectPaste consumes bytes until the bracketed-paste terminator CSI 201~.
 func (f *Framer) collectPaste(b []byte) (consumed int, done bool) {
-	i := bytes.Index(b, []byte("\x1b[201~"))
+	previous := len(f.pasteBuf)
+	f.pasteBuf = append(f.pasteBuf, b...)
+	start := max(0, previous-len("\x1b[201~")+1)
+	i := bytes.Index(f.pasteBuf[start:], []byte("\x1b[201~"))
 	if i < 0 {
-		f.pasteBuf = append(f.pasteBuf, b...)
 		return len(b), false
 	}
-	f.pasteBuf = append(f.pasteBuf, b[:i]...)
-	return i + 6, true
+	i += start
+	f.pasteBuf = f.pasteBuf[:i]
+	return i + len("\x1b[201~") - previous, true
+}
+
+func incompleteRune(b []byte) bool {
+	if len(b) > 1 && b[0] == 0x1b {
+		b = b[1:]
+	}
+	return len(b) > 0 && b[0] >= 0xc0 && !utf8.FullRune(b)
 }
 
 // dropTail removes orphaned SGR-mouse tail bytes.
@@ -343,7 +349,11 @@ func escSeqLen(b []byte, i int) (int, bool) {
 	case 'O':
 		return ss3Len(b, i+1)
 	default:
-		return i + 1, true // ESC + one byte (alt key)
+		if !utf8.FullRune(b[i:]) {
+			return 0, false
+		}
+		_, size := utf8.DecodeRune(b[i:])
+		return i + size, true
 	}
 }
 
