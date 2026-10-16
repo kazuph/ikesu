@@ -10,14 +10,15 @@ func formatJobAge(elapsedMs int64) string {
 	const minute = int64(time.Minute / time.Second)
 	const hour = int64(time.Hour / time.Second)
 	const day = int64(24 * time.Hour / time.Second)
+	unit := "s"
 	switch {
 	case seconds >= day:
-		return fmt.Sprintf("%dd", seconds/day)
+		seconds, unit = seconds/day, "d"
 	case seconds >= hour:
-		return fmt.Sprintf("%dh", seconds/hour)
+		seconds, unit = seconds/hour, "h"
 	case seconds >= minute:
-		return fmt.Sprintf("%dm", seconds/minute)
-	default:
-		return fmt.Sprintf("%ds", seconds)
+		seconds, unit = seconds/minute, "m"
 	}
+	// The job column is three right-aligned digits followed by one unit.
+	return fmt.Sprintf("%3d%s", min(seconds, int64(999)), unit)
 }

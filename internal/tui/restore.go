@@ -324,16 +324,16 @@ func (a *App) refreshJobDots(now time.Time) {
 				col = render.Red
 			}
 		}
-		elapsed := ""
-		since := j.StartedMs
-		if j.StartedMs != nil {
-			if j.FinishedMs != nil {
-				since = j.FinishedMs
-			}
+		elapsed := "   -"
+		since := j.FinishedMs
+		if j.Status == "running" || j.Status == "queued" {
+			since = j.StartedMs
+		}
+		if since != nil {
 			elapsed = formatJobAge(now.UnixMilli() - *since)
 		}
 		if j.Status == "cancelling" {
-			elapsed, since = "-", nil
+			elapsed, since = "   -", nil
 		}
 		rows = append(rows, render.JobRow{ID: j.ID, Label: j.Label, Status: j.Status, Color: col,
 			CallerPane: j.CallerPane, Elapsed: elapsed, AgeSinceMs: since, ExitCode: j.ExitCode, LogPath: j.LogPath, Cwd: j.Cwd})
