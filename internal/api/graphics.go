@@ -16,6 +16,10 @@ const (
 	// The producer contract and the reference binary both allow 16 layers.
 	MaxGraphicsLayers           = 16
 	MaxGraphicsFrameHeaderBytes = 64 * 1024
+	// Approved file-frame transport and aggregate inline bounds (T9).
+	MaxGraphicsFileInlineBytes = 16777216
+	MaxGraphicsFileDirectBytes = 419430400
+	MaxGraphicsInlineBytes     = 67108864
 )
 
 type PaneGraphicsPlacement struct {

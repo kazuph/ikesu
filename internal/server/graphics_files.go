@@ -14,14 +14,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// File-frame limits from the approved T9 contract are independent of
-// the base64 set API's limit and the aggregate inline storage budget.
-const (
-	graphicsFileInlineLimit = 16777216
-	graphicsFileDirectLimit = 419430400
-	graphicsInlineBudget    = 67108864
-)
-
 type graphicsFileSource struct {
 	base, server, source string
 }
@@ -89,9 +81,9 @@ func graphicsFileFrameBytes(frame api.PaneGraphicsStreamFrame, direct bool) (uin
 	if frame.Format != "rgba" && frame.Format != "bgra" {
 		return 0, &api.Error{Code: "invalid_frame", Message: "file frames require rgba or bgra"}
 	}
-	limit := uint64(graphicsFileInlineLimit)
+	limit := uint64(api.MaxGraphicsFileInlineBytes)
 	if direct && frame.Format == "rgba" && (frame.LayerID == nil || *frame.LayerID == "primary") {
-		limit = graphicsFileDirectLimit
+		limit = api.MaxGraphicsFileDirectBytes
 	}
 	width, height := uint64(frame.ImageWidth), uint64(frame.ImageHeight)
 	if width == 0 || height == 0 || width > limit/4/height {
@@ -109,7 +101,7 @@ type graphicsSourceFile struct {
 }
 
 func (s *graphicsFileSource) open(path string, expected uint64) (*graphicsSourceFile, error) {
-	if expected == 0 || expected > graphicsFileDirectLimit || !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) != s.source {
+	if expected == 0 || expected > api.MaxGraphicsFileDirectBytes || !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) != s.source {
 		return nil, errors.New("invalid graphics source path or length")
 	}
 	directory, err := privateGraphicsDirectory(s.source)
@@ -153,7 +145,7 @@ func (f *graphicsSourceFile) check() error {
 }
 
 func (f *graphicsSourceFile) ownedPixels() ([]byte, error) {
-	if f.expected > graphicsFileInlineLimit {
+	if f.expected > api.MaxGraphicsFileInlineBytes {
 		return nil, errors.New("graphics source exceeds inline limit")
 	}
 	if err := f.check(); err != nil {

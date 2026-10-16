@@ -94,6 +94,9 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	if consumed, err := m.graphicsFileReply(event.Raw); consumed || err != nil {
+		return err
+	}
 	m.mouse.Report(event.Report, m.size)
 	if m.outputFence.Accept(event.Raw) {
 		if m.paintQueued {

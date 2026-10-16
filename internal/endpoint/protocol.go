@@ -21,7 +21,7 @@ func GraphicsPeer() Peer {
 	peer := Current()
 	peer.SurfaceCodecs = []string{GraphicsPatchCodec}
 	peer.Methods = append(peer.Methods, "control")
-	return peer
+	return WithGraphicsFiles(peer)
 }
 
 func HasGraphicsPatches(peer Peer) bool {

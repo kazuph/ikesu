@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
@@ -24,6 +25,9 @@ func (m *machineClient) post(ctx context.Context, event endpointEvent) bool {
 }
 
 func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
+	if id == "local" {
+		m.fileGraphics.disconnected(time.Now())
+	}
 	e := m.endpoints[id]
 	if e.cancel != nil {
 		e.cancel()
@@ -45,6 +49,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	session := m.session
 	// Background Local reconnects also require hidden-viewer admission.
 	hidden := id != "local" || (m.active != "local" && (m.pending == nil || m.pending.id != "local"))
+	fileTransport := graphicsFileTransport(m.in, m.out, id != "local")
 	m.workers.Add(1)
 	go func() {
 		defer m.workers.Done()
@@ -71,7 +76,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			}
 		}()
 		defer func() { stream.Close(); close(closed) }()
-		connection, err := connectEndpoint(stream, hidden, size, &settings)
+		connection, err := connectEndpoint(stream, hidden, size, &settings, fileTransport)
 		if err != nil {
 			m.post(ctx, endpointEvent{id: id, attempt: attempt, err: err})
 			return
@@ -141,6 +146,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.err != nil {
+		if event.id == "local" {
+			m.fileGraphics.disconnected(time.Now())
+		}
 		if event.id == "local" && e.snapshot == nil && needsAttention(event.err.Error()) {
 			fmt.Fprintln(m.out, "gtx:", event.err)
 			return pumpRejected, true
@@ -217,6 +225,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				}
 			}
 		}
+	case endpoint.GraphicsFileMessage, endpoint.GraphicsRetiredMessage:
+		if err := m.graphicsFileEvent(event.id, message); err != nil {
+			m.fail(event.id, err)
+		}
 	case "notify":
 		if message.Notification != nil && m.settings.config != nil {
 			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id)
@@ -292,6 +304,9 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 }
 
 func (m *machineClient) fail(id string, err error) {
+	if id == "local" {
+		m.fileGraphics.disconnected(time.Now())
+	}
 	e := m.endpoints[id]
 	if e.cancel != nil {
 		e.cancel()

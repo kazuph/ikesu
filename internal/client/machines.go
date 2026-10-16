@@ -59,6 +59,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	fileGraphics    graphicsFileReceiver
 	mouse           hostMouseState
 	inputSource     platform.InputSource
 	session         string

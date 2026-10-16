@@ -39,8 +39,12 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
-	EndPrefix    bool                   `json:"end_prefix,omitempty"`
-	Notification *endpoint.Notification `json:"notification,omitempty"`
+	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
+	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
+	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
+	GraphicsResult        *endpoint.GraphicsTransmissionResult `json:"graphics_result,omitempty"`
+	EndPrefix             bool                                 `json:"end_prefix,omitempty"`
+	Notification          *endpoint.Notification               `json:"notification,omitempty"`
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
 	Type           string                       `json:"type"`

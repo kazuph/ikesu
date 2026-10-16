@@ -26,7 +26,7 @@ type endpointConnection struct {
 	wake      chan struct{}
 }
 
-func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings) (*endpointConnection, error) {
+func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings, fileTransport string) (*endpointConnection, error) {
 	peer := endpoint.Current()
 	var visible *bool
 	if remote {
@@ -36,9 +36,13 @@ func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, s
 	}
 	peer.SurfaceCodecs = []string{endpoint.GraphicsPatchCodec}
 	peer.Methods = append(peer.Methods, "control")
+	if fileTransport != "" {
+		peer = endpoint.WithGraphicsFiles(peer)
+	}
 	c := &endpointConnection{stream: stream, reader: bufio.NewReader(stream), writer: &writer{conn: stream}, wake: make(chan struct{}, 1)}
 	hello := msg{Peer: peer, Type: "hello", Cols: size.Cols, Rows: size.Rows, Xpixel: size.Xpixel, Ypixel: size.Ypixel, Visible: visible,
-		Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}
+		GraphicsFileTransport: fileTransport,
+		Config:                settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}
 	if err := c.writer.send(hello); err != nil {
 		return nil, err
 	}

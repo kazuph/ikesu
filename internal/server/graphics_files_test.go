@@ -177,12 +177,12 @@ func TestGraphicsFileFrameTransportBounds(t *testing.T) {
 		want          uint64
 		code          string
 	}{
-		{"inline-bound", "rgba", graphicsFileInlineLimit / 4, 1, nil, false, graphicsFileInlineLimit, ""},
-		{"inline-over", "rgba", graphicsFileInlineLimit/4 + 1, 1, nil, false, 0, "invalid_image"},
-		{"direct-bound", "rgba", graphicsFileDirectLimit / 4, 1, nil, true, graphicsFileDirectLimit, ""},
-		{"direct-over", "rgba", graphicsFileDirectLimit/4 + 1, 1, nil, true, 0, "invalid_image"},
-		{"bgra-inline", "bgra", graphicsFileInlineLimit/4 + 1, 1, nil, true, 0, "invalid_image"},
-		{"secondary-inline", "rgba", graphicsFileInlineLimit/4 + 1, 1, &secondary, true, 0, "invalid_image"},
+		{"inline-bound", "rgba", api.MaxGraphicsFileInlineBytes / 4, 1, nil, false, api.MaxGraphicsFileInlineBytes, ""},
+		{"inline-over", "rgba", api.MaxGraphicsFileInlineBytes/4 + 1, 1, nil, false, 0, "invalid_image"},
+		{"direct-bound", "rgba", api.MaxGraphicsFileDirectBytes / 4, 1, nil, true, api.MaxGraphicsFileDirectBytes, ""},
+		{"direct-over", "rgba", api.MaxGraphicsFileDirectBytes/4 + 1, 1, nil, true, 0, "invalid_image"},
+		{"bgra-inline", "bgra", api.MaxGraphicsFileInlineBytes/4 + 1, 1, nil, true, 0, "invalid_image"},
+		{"secondary-inline", "rgba", api.MaxGraphicsFileInlineBytes/4 + 1, 1, &secondary, true, 0, "invalid_image"},
 		{"overflow", "rgba", ^uint32(0), ^uint32(0), nil, true, 0, "invalid_image"},
 		{"zero-height", "rgba", 2, 0, nil, true, 0, "invalid_image"},
 		{"zero-width", "rgba", 0, 3, nil, true, 0, "invalid_image"},
