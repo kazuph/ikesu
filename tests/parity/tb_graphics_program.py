@@ -14,7 +14,8 @@ pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
 if not endpoint or not pane or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned pane')
 
-records = {'pane': pane, 'api': [], 'queries': []}
+size = os.get_terminal_size()
+records = {'pane': pane, 'cols': size.columns, 'rows': size.lines, 'api': [], 'queries': []}
 proof = Path.home() / 'tb-probe.json'
 for method in ('pane.graphics.info', 'pane.graphics.set', 'pane.graphics.clear', 'pane.graphics.stream'):
     with socket.socket(socket.AF_UNIX) as connection:

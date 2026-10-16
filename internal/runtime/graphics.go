@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"io"
@@ -31,6 +32,24 @@ func (s *Supervisor) setupGraphics(p *Pane) {
 	s.mu.Lock()
 	p.graphicsEnabled, p.graphicsVersion = s.graphicsEnabled, s.graphicsVersion
 	s.mu.Unlock()
+	p.emu.RegisterCsiHandler('t', func(params ansi.Params) bool {
+		op, _, _ := params.Param(0, 0)
+		switch op {
+		case 14:
+			if p.cellWidth > 0 && p.cellHeight > 0 {
+				fmt.Fprintf(p.emu.InputPipe(), "\x1b[4;%d;%dt", p.emu.Height()*p.cellHeight, p.emu.Width()*p.cellWidth)
+			}
+		case 16:
+			if p.cellWidth > 0 && p.cellHeight > 0 {
+				fmt.Fprintf(p.emu.InputPipe(), "\x1b[6;%d;%dt", p.cellHeight, p.cellWidth)
+			}
+		case 18:
+			fmt.Fprintf(p.emu.InputPipe(), "\x1b[8;%d;%dt", p.emu.Height(), p.emu.Width())
+		default:
+			return false
+		}
+		return true
+	})
 	p.emu.RegisterCsiHandler(ansi.Command('>', 0, 'q'), func(params ansi.Params) bool {
 		name := "libghostty"
 		if p.graphicsEnabled {
