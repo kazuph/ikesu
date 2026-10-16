@@ -1,0 +1,13 @@
+send "mkdir -p \"$HOME/repo/sub\"; git -C \"$HOME/repo\" init -q; git -C \"$HOME/repo\" -c user.name=Parity -c user.email=parity@example.invalid commit -q --allow-empty -m initial; git -C \"$HOME/repo\" worktree add -q -b feature \"$HOME/feature\"; cd \"$HOME/repo/sub\"\r"
+sleep 3s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/sub.txt
+cells @OUT@/sub.json
+send "cd \"$HOME/feature\"\r"
+sleep 3s
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/worktree.txt
+cells @OUT@/worktree.json
+kill
