@@ -52,8 +52,14 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		}
 	} else {
 		copy(s.buf.Lines[y:r.Max.Y-1], s.buf.Lines[y+1:r.Max.Y])
-		for i := 0; i < clearEnd; i++ {
-			line[i] = uv.EmptyCell
+		if clearEnd > 0 {
+			if len(s.blankLine) != len(line) {
+				s.blankLine = make(uv.Line, len(line))
+				for x := range s.blankLine {
+					s.blankLine[x] = uv.Cell{Content: " ", Width: 1}
+				}
+			}
+			copy(line[:clearEnd], s.blankLine[:clearEnd])
 		}
 		s.buf.Lines[r.Max.Y-1] = line
 	}

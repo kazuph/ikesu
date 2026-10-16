@@ -1,17 +1,28 @@
 package vt
 
 import (
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"reflect"
 	"testing"
 )
 
 func TestScrollBlankTemplateDoesNotAliasCells(t *testing.T) {
+	for _, notify := range []bool{false, true} {
+		t.Run(fmt.Sprint("notify=", notify), func(t *testing.T) {
+			testScrollBlankTemplateDoesNotAliasCells(t, notify)
+		})
+	}
+}
+
+func testScrollBlankTemplateDoesNotAliasCells(t *testing.T, notify bool) {
 	got, want := NewScreen(8, 3), NewScreen(8, 3)
 	for _, s := range []*Screen{got, want} {
 		s.cb = &Callbacks{}
 		s.scrollback.SetMaxBytes(3 * (scrollbackRowBytes + 8*scrollbackCellBytes))
-		s.scrollback.OnDrop = func() {}
+		if notify {
+			s.scrollback.OnDrop = func() {}
+		}
 	}
 	for _, width := range []int{1, 8, 160, 3, 160} {
 		for _, s := range []*Screen{got, want} {
