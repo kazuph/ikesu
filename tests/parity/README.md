@@ -141,3 +141,23 @@ navigate維持という0.2.57の観察結果を固定している。
 相対性能は `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage2_perf.sh`
 で実行する。基準ソースは同じGo引数でビルドする `src/stage2-baseline-a68c878`。
 絶対性能はこの工程の判定対象に含めない。
+
+段階2では親の追加指示により、miniの負荷が4以上ならP1相対検査を
+ubuntu-3090へ移せる。`ssh ubuntu` で `source ~/bench-terrace/env.sh` を実行し、
+`~/bench-terrace/work/sol-stage2/{baseline,candidate}` に基準a68c878のarchiveと
+対象ソースを置く。両方を同じGo・同じ引数でlinux/amd64へビルドする。
+
+```sh
+source ~/bench-terrace/env.sh
+root="$HOME/bench-terrace/work/sol-stage2"
+(cd "$root/baseline" && go build -o "$root/gtx-baseline-a68c878" ./cmd/gtx)
+cd "$root/candidate"
+go build -o "$root/gtx-stage2" ./cmd/gtx
+GTX_PERF_BIN="$root/gtx-stage2" GTX_PERF_BASELINE_BIN="$root/gtx-baseline-a68c878" \
+  GTX_PERF_OUT="$root/perf-relative.md" \
+  python3 "$HOME/bench-terrace/work/perf-lock.py" \
+  go test -count=1 -tags perf ./tests/perf -run '^TestRelative$' -timeout 30m
+```
+
+ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾値を変えたり、
+最大RSSの判定を中央値へ置き換えたりしない。
