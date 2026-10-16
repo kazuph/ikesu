@@ -12,6 +12,8 @@ type Chord struct {
 	Prefix, Indexed bool
 }
 
+var chordKeyNames = map[string]rune{"return": uv.KeyEnter, "bs": uv.KeyBackspace, "period": '.', "slash": '/', "backslash": '\\', "quote": '\'', "semicolon": ';', "colon": ':', "esc": uv.KeyEscape, "escape": uv.KeyEscape, "enter": uv.KeyEnter, "tab": uv.KeyTab, "backspace": uv.KeyBackspace, "left": uv.KeyLeft, "right": uv.KeyRight, "up": uv.KeyUp, "down": uv.KeyDown, "space": ' ', "minus": '-', "comma": ',', "ampersand": '&', "plus": '+', "backtick": '`', "percent": '%', "double_quote": '"'}
+
 func ParseChord(spec string) (Chord, error) {
 	var c Chord
 	rest := strings.ToLower(strings.TrimSpace(spec))
@@ -43,8 +45,8 @@ func ParseChord(spec string) (Chord, error) {
 		c.Key.Code = '1'
 		return c, nil
 	}
-	special := map[string]rune{"return": uv.KeyEnter, "bs": uv.KeyBackspace, "period": '.', "slash": '/', "backslash": '\\', "quote": '\'', "semicolon": ';', "colon": ':', "esc": uv.KeyEscape, "escape": uv.KeyEscape, "enter": uv.KeyEnter, "tab": uv.KeyTab, "backspace": uv.KeyBackspace, "left": uv.KeyLeft, "right": uv.KeyRight, "up": uv.KeyUp, "down": uv.KeyDown, "space": ' ', "minus": '-', "comma": ',', "ampersand": '&', "plus": '+', "backtick": '`', "percent": '%', "double_quote": '"'}
-	if code, ok := special[rest]; ok {
+
+	if code, ok := chordKeyNames[rest]; ok {
 		c.Key.Code = code
 		return c, nil
 	}
