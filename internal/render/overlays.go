@@ -159,8 +159,8 @@ func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
 func DialogRects(d *Dialog, area layout.Rect) (outer, cancel, confirm layout.Rect) {
 	cols, rows := area.W, area.H
 	if d.InputEdit {
-		w, h := min(56, cols), min(7, rows)
-		return layout.Rect{X: (cols - w) / 2, Y: (rows - h) / 2, W: w, H: h}, layout.Rect{}, layout.Rect{}
+		w, h := min(56, max(0, cols-4)), min(7, max(0, rows-2))
+		return layout.Rect{X: area.X + (cols-w)/2, Y: area.Y + (rows-h)/2, W: w, H: h}, layout.Rect{}, layout.Rect{}
 	}
 	w := len([]rune(d.Title)) + 4
 	if l := len([]rune(d.Detail)) + 4; l > w {
@@ -331,6 +331,9 @@ var nameInputButtonLabels = [...]string{" ↵ save ", " ^c clear ", " esc cancel
 
 func NameInputButtons(r layout.Rect) [3]layout.Rect {
 	var buttons [3]layout.Rect
+	if r.H < 7 {
+		return buttons
+	}
 	width := 2 * (len(buttons) - 1)
 	for _, label := range nameInputButtonLabels {
 		width += ansi.StringWidth(label)
@@ -347,6 +350,11 @@ func drawNameInput(f *Frame, d *Dialog, out *Output) {
 	r, _, _ := DialogRects(d, layout.Rect{W: f.W, H: f.H})
 	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
+	out.DialogRect = r
+	if r.H < 7 {
+		out.AnchorVisible = false
+		return
+	}
 	title := strings.ToLower(d.Title)
 	if d.PreserveTitleCase {
 		title = d.Title
