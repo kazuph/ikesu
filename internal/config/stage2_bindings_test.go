@@ -47,3 +47,30 @@ func TestStage2InvalidArrayKeepsOtherBindings(t *testing.T) {
 		t.Fatal(c.Warnings)
 	}
 }
+
+// The real 0.2.57 accepts both punctuation forms without a conflict warning,
+// even though the help action wins for the observed input in either order.
+func TestStage2PunctuationBindingsCoexist(t *testing.T) {
+	for _, prefix := range []string{"prefix+", "cmd+"} {
+		for _, reverse := range []bool{false, true} {
+			help := "help='" + prefix + "?'\n"
+			settings := "settings='" + prefix + "shift+?'\n"
+			body := help + settings
+			if reverse {
+				body = settings + help
+			}
+			c, err := Decode([]byte("[keys]\n" + body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, want := range map[string]string{"help": prefix + "?", "settings": prefix + "shift+?"} {
+				if b := c.ActionBindings(name); len(b) != 1 || b[0] != want {
+					t.Fatalf("%s: %v", name, b)
+				}
+			}
+			if c.Warning() != "" {
+				t.Fatal(c.Warning())
+			}
+		}
+	}
+}

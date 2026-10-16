@@ -47,4 +47,25 @@ add('user-direct',direct)
 for key,name in [('W','rename'),('D','close')]:
     add('workspace-cancel-'+name,fixture+send('\x14w')+send('\x1b[B')+screen('selected')+send(key)+screen('dialog')+send('\x1b')+screen('cancelled'))
 add('navigate-direction-remapped',send('\x14v')+screen('split')+send('\x14w')+send('u')+screen('action'), 'focus_pane_left="cmd+y"\nnavigate_pane_left="u"')
+# First-review reproductions keep both config orders and both terminal encodings.
+for direct in (False, True):
+    prefix='' if direct else '\x14'
+    modifier='9' if direct else '1'
+    shifted='10' if direct else '2'
+    for reverse in (False, True):
+        bindings=[('help', ('cmd+' if direct else 'prefix+')+'?'),('settings', ('cmd+shift+' if direct else 'prefix+shift+')+'?')]
+        if reverse: bindings.reverse()
+        keys='\n'.join(name+'='+json.dumps(value) for name,value in bindings)
+        plain='\x1b[63;'+modifier+'u' if direct else '?'
+        steps=screen('startup')+send(prefix+plain)+screen('plain')+send('\x1b')+send(prefix+'\x1b[47:63;'+shifted+'u')+screen('kitty')
+        add('review-conflict-'+('direct' if direct else 'prefix')+('-reverse' if reverse else ''),steps,keys)
+for name,spec,base,symbol,mod,prefix in [('slash-base','prefix+shift+slash',47,63,2,'\x14'),('slash-symbol','prefix+?',47,63,2,'\x14'),('digit-base','cmd+shift+1',49,33,10,''),('digit-symbol','cmd+!',49,33,10,'')]:
+    steps=screen('startup')
+    for frame,code in [('base',str(base)),('alternate',str(base)+':'+str(symbol)),('symbol',str(symbol))]:
+        steps+=send(prefix+'\x1b['+code+';'+str(mod)+'u')+screen(frame)+send('\x1b')
+    add('review-'+name,steps,'help='+json.dumps(spec))
+unchanged=send('python3 @FIXTURES@/stage2_fixture.py indexed\r')+'waittext 5s STAGE2_FIXTURE_READY\n'
+for i in range(1,10):
+    unchanged+=send('\x1b['+str(ord('0')+i)+';9u')+screen('number-'+str(i))
+add('user-all-numbers',unchanged)
 (root/'index.json').write_text(json.dumps(cases,indent=2)+'\n')
