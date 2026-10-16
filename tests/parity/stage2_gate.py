@@ -62,10 +62,12 @@ for case in ['config-invalid','config-printable','config-conflict','config-rever
  def diagnostic(prod):
   folder=root/case/prod
   content='\n'.join(p.read_text(errors='replace') for name in ['runtime-logs.json','server.log','startup.txt'] if (p:=folder/name).is_file())
-  return ('invalid keybinding' in content or 'unmodified printable' in content or 'disabled keys.settings' in content or 'conflicts with keys.help' in content)
+  return ('invalid keybinding' in content or 'unsafe direct keybinding' in content or 'unmodified printable' in content or 'disabled keys.settings' in content or 'conflicts with keys.help' in content)
  check(case,'diagnostic recorded',diagnostic,True)
 for frame in ['one','three','next','previous','history-back','history-forward']:
  check('user-direct',frame+' selection matches',selected('user-direct',frame))
+check('navigate-direction-remapped','navigate remains active',has('navigate-direction-remapped','action','NAVIGATE'),True)
+check('navigate-direction-remapped','independent direction moves focus',lambda p:int(re.search(r'%([0-9]+)',screen('navigate-direction-remapped',p,'action')).group(1))-int(re.search(r'%([0-9]+)',screen('navigate-direction-remapped',p,'split')).group(1)),-1)
 # Every run must show real completion, a versioned reference and isolated cleanup.
 for case in sorted({r['case'] for r in results}):
  check(case,'exact reference version',lambda p:json.loads((root/case/'reference.json').read_text())['herdr_version'],'herdr 0.2.57')
