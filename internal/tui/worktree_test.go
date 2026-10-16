@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -178,5 +179,22 @@ func TestWorktreeMoveBackToGroupAndFailureWithoutMutation(t *testing.T) {
 	unknown := "unregistered"
 	if _, e := a.OpenWorktree(api.WorktreeOpenParams{Cwd: &r, Branch: &unknown}); e == nil {
 		t.Fatal("unknown checkout silently substituted")
+	}
+}
+
+func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
+	teststate.Lock(t)
+	a, r := worktreeApp(t)
+	branch, err := exec.Command("git", "-C", r, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.newWorktreeDialog(0)
+	d := a.dialog
+	*d.input = strings.TrimSpace(string(branch))
+	a.dialog = nil
+	d.run(a)
+	if a.dialog != d || a.dialog.input == nil || !strings.Contains(a.dialog.d.Detail, "already used") || !strings.Contains(a.dialog.d.Checkout, "worktrees") {
+		t.Fatal("failed form lost input, path or Git error", a.dialog)
 	}
 }
