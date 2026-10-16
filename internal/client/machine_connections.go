@@ -167,6 +167,14 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		// A new viewer starts with the base request. Its current pane may
+		// subsequently request more flags through the output channel.
+		e.hostKbdFlags = 7
+		if event.id == m.active {
+			if err := m.syncKeyboardOutput(e); err != nil {
+				return pumpDone, true
+			}
+		}
 		e.status = "online"
 		e.reason = ""
 		e.approval = ""

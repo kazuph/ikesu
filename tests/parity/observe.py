@@ -23,11 +23,14 @@ p.add_argument('--steps', required=True)
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
+p.add_argument('--reconnect-keyboard', choices=['off', 'retain'], help='cut only the isolated display connection while pane modes change')
 p.add_argument('--server-default-workspace', action='store_true', help='observe server/client startup without creating a workspace through the API')
 p.add_argument('--server-reuse-initial', action='store_true', help='use the real initial workspace when present, otherwise create it; save all preparation replies')
 p.add_argument('--clipboard-guard', action='store_true', help='capture clipboard commands and stop if a changed clipboard hash matches copied bytes')
 p.add_argument('--clipboard-sandbox', action='store_true', help='deny pasteboard Mach lookup in the UI/server and all their children')
 a = p.parse_args()
+if a.reconnect_keyboard and not a.server:
+    p.error('keyboard reconnect observation requires --server')
 if (a.server_default_workspace or a.server_reuse_initial) and not a.server:
     p.error('server fixture options require --server')
 if a.server_default_workspace and a.server_reuse_initial:
@@ -100,6 +103,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                 (target / 'sandbox-launch.json').write_text(json.dumps({'launcher': launcher, 'server': a.server}, indent=2)+'\n')
             env['PARITY_BINARY_PATH'] = binary
             endpoint = None
+            reconnect = None
             try:
                 if a.server:
                     server = subprocess.Popen(launcher + ['--session', 'parity', 'server'],
@@ -161,10 +165,19 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                         if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
+                if a.reconnect_keyboard:
+                    from stage1_reconnect import Reconnect
+                    reconnect = Reconnect(launcher, env, target, a.reconnect_keyboard)
+                    reconnect.start()
+                    wrapper = root/'display.py'
+                    wrapper.write_text('import os,sys\nfrom pathlib import Path\nPath(sys.argv[1]).write_text(str(os.getpid()))\nos.execv(sys.argv[2],sys.argv[2:])\n')
+                    launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
                 subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
                             '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
+                if reconnect:
+                    reconnect.close()
                 try:
                     runtime_json = {str(path.relative_to(root)): path.read_text(errors='replace')
                                     for path in root.rglob('*.json') if path.is_file()}
