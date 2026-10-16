@@ -49,3 +49,21 @@ func TestParityPopupCenteredAboveActionBar(t *testing.T) {
 		}
 	}
 }
+
+func TestStage6aClosePopupRequiresActiveOwner(t *testing.T) {
+	s := New("/tmp", 120, 40)
+	owner := s.ActiveWorkspace().ID
+	s.Apply(CmdOpenPopup{WorkspaceID: owner, Width: api.PopupSize{Cells: 40}, Height: api.PopupSize{Cells: 12}})
+	pop := s.Popup
+	s.Apply(CmdNewWorkspace{Cwd: "/tmp/other"})
+	if effects := s.Apply(CmdClosePopup{}); len(effects) != 0 {
+		t.Fatal("closed another workspace popup", effects)
+	}
+	if s.PopupByPane(pop.PaneID) != pop {
+		t.Fatal("lost background popup")
+	}
+	s.Apply(CmdSelectWorkspace{Index: 0})
+	if !s.PopupVisible() || s.Popup != pop {
+		t.Fatal("owner popup did not survive")
+	}
+}

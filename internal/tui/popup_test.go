@@ -164,3 +164,23 @@ func TestG2PopupMouseCoordinatesWheelSelectionAutoscrollAndOSC52(t *testing.T) {
 		})
 	}
 }
+
+func TestStage6aDuplicatePopupPreservesRunningProcess(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
+	a := specRuntimeApp(t)
+	t.Cleanup(a.sup.KillAll)
+	first, err := a.OpenPopup(a.cwd, "printf POPREADY; exec sleep 60", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pop := a.st.Popup
+	p := a.sup.Get(pop.PaneID)
+	specWaitText(t, p, "POPREADY")
+	if _, err := a.OpenPopup(a.cwd, "echo REPLACED", nil, nil); err == nil || err.Error() != "popup already open" {
+		t.Fatalf("duplicate: %v", err)
+	}
+	if a.st.Popup != pop || a.st.Popup.TerminalID != first || a.sup.Get(pop.PaneID) != p {
+		t.Fatal("replaced running popup")
+	}
+}
