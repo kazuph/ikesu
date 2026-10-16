@@ -346,16 +346,16 @@ var nameInputButtonLabels = [...]string{" ↵ save ", " ^c clear ", " esc cancel
 
 func NameInputButtons(r layout.Rect) [3]layout.Rect {
 	var buttons [3]layout.Rect
-	if r.H < 7 {
+	if r.W < 2 || r.H < 2 {
 		return buttons
 	}
 	width := 2 * (len(buttons) - 1)
 	for _, label := range nameInputButtonLabels {
 		width += ansi.StringWidth(label)
 	}
-	x := r.X + (r.W-width)/2
+	x := max(r.X+1, r.X+(r.W-width)/2)
 	for i, label := range nameInputButtonLabels {
-		buttons[i] = layout.Rect{X: x, Y: r.Y + 4, W: ansi.StringWidth(label), H: 1}
+		buttons[i] = layout.Rect{X: x, Y: min(r.Y+4, r.Y+r.H-2), W: max(0, min(ansi.StringWidth(label), r.X+r.W-1-x)), H: 1}
 		x += buttons[i].W + 2
 	}
 	return buttons
