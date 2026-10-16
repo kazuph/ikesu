@@ -20,6 +20,7 @@ type Encoder struct {
 	prev              *Frame
 	curSty            uv.Style
 	haveSty           bool
+	started           bool
 	cursorShape       int
 }
 
@@ -63,9 +64,10 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 
 	full := e.prev == nil || e.prev.W != f.W || e.prev.H != f.H
 	graphicsChanged := e.prepareGraphics(f, full)
-	if full {
+	if !e.started {
 		b.WriteString(cup(0, 0))
 		b.WriteString(clearAll)
+		e.started = true
 	}
 	// Virtual prototypes must exist before the corresponding Unicode cells.
 	e.emitGraphics(f, &b, graphicsChanged)

@@ -76,11 +76,7 @@ func (m *machineClient) paint() error {
 		}
 	}
 	if f.W != m.size.Cols || f.H != m.size.Rows {
-		clipped := render.NewFrame(m.size.Cols, m.size.Rows)
-		clipped.Palette = f.Palette
-		for y := 0; y < min(f.H, clipped.H); y++ {
-			copy(clipped.Cells[y*clipped.W:y*clipped.W+min(f.W, clipped.W)], f.Cells[y*f.W:y*f.W+min(f.W, clipped.W)])
-		}
+		clipped := f.Viewport(m.size.Cols, m.size.Rows)
 		composed.Frame = clipped
 		composed.AnchorVisible = composed.AnchorVisible && composed.AnchorX < clipped.W && composed.AnchorY < clipped.H
 	}
