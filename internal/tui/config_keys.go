@@ -56,6 +56,9 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 }
 func (a *App) configAction(name string, k uv.Key) bool {
 	switch name {
+	case "resize_mode":
+		a.resizeMode = !a.resizeMode
+		a.dirty = true
 	case "swap_pane_left", "swap_pane_down", "swap_pane_up", "swap_pane_right":
 		dirs := map[string]layout.NavDir{"swap_pane_left": layout.NavLeft, "swap_pane_down": layout.NavDown, "swap_pane_up": layout.NavUp, "swap_pane_right": layout.NavRight}
 		a.exec(model.CmdSwapDir{Pane: a.focusedPane(), Dir: dirs[name]})

@@ -27,6 +27,11 @@ func (a *App) modeKey(k uv.Key) {
 		return
 	}
 	if a.resizeMode {
+		if k.Code == uv.KeyEnter || a.resizeExitKey(k) {
+			a.resizeMode = false
+			a.dirty = true
+			return
+		}
 		var dir layout.NavDir
 		switch k.Code {
 		case 'h', uv.KeyLeft:
@@ -97,4 +102,14 @@ mapped:
 		a.prefixKey(k)
 	}
 	a.dirty = true
+}
+
+func (a *App) resizeExitKey(k uv.Key) bool {
+	for _, spec := range a.sidebarConfig.ActionBindings("resize_mode") {
+		chord, err := config.ParseChord(spec)
+		if err == nil && chord.Match(k, chord.Prefix) {
+			return true
+		}
+	}
+	return false
 }
