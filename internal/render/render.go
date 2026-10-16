@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/layout"
@@ -510,17 +511,12 @@ func paneTitle(pr layout.PaneRect, snap *PaneSnap, t *model.Tab) string {
 	return truncateEllipsis(title, pr.Rect.W-4)
 }
 
-// truncateEllipsis cuts s to at most n Unicode characters, replacing the
-// tail with a single '…' when it had to shorten.
+// truncateEllipsis limits terminal cells, keeping the ellipsis inside the frame.
 func truncateEllipsis(s string, n int) string {
-	rs := []rune(s)
 	if n <= 0 {
 		return ""
 	}
-	if len(rs) <= n {
-		return s
-	}
-	return string(rs[:n-1]) + "…"
+	return ansi.Truncate(s, n, "…")
 }
 
 // drawCopyCursor paints the copy-mode cursor: fg popup background, bg accent,
@@ -561,7 +557,8 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		copyLabel = " COPY "
 	}
 	cw := len([]rune(copyLabel))
-	if area.X+cw <= area.X+area.W {
+	if cw > 0 {
+		cw = min(cw, area.W)
 		f.Text(area.X, area.Y, copyLabel, btn, area.X+area.W)
 		out.ActionBar.Copy = layout.Rect{X: area.X, Y: area.Y, W: cw, H: 1}
 	}
