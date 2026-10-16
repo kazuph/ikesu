@@ -97,6 +97,13 @@ func (e *Emulator) printRun(run []byte) {
 			return
 		}
 
+		var cells uv.Line
+		var data []byte
+		if n > 0 {
+			cells = line[x : x+n]
+			data = run[i : i+n]
+			_ = cells[len(data)-1]
+		}
 		first, last := n, 0
 		c := uv.Cell{Width: 1, Style: pen, Link: link}
 		var touched *uv.LineData
@@ -104,24 +111,24 @@ func (e *Emulator) printRun(run []byte) {
 			touched = e.scr.buf.Touched[y]
 		}
 		if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n && plain {
-			for k := 0; k < n; k++ {
-				line[x+k].Content = asciiContent[run[i+k]]
+			for k, b := range data {
+				cells[k].Content = asciiContent[b]
 			}
 		} else if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n {
-			for k := 0; k < n; k++ {
-				c.Content = asciiContent[run[i+k]]
-				line[x+k] = c
+			for k, b := range data {
+				c.Content = asciiContent[b]
+				cells[k] = c
 			}
 		} else {
-			for k := 0; k < n; k++ {
-				c.Content = asciiContent[run[i+k]]
-				if line[x+k] != c {
+			for k, b := range data {
+				c.Content = asciiContent[b]
+				if cells[k] != c {
 					if k < first {
 						first = k
 					}
 					last = k + 1
 				}
-				line[x+k] = c
+				cells[k] = c
 			}
 			if first < last {
 				e.scr.buf.TouchLine(x+first, y, last-first)
