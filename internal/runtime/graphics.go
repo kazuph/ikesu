@@ -5,7 +5,18 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"io"
+
+	"golang.org/x/sys/unix"
 )
+
+// CellPixels reads the pane's own PTY geometry; zero means unavailable.
+func (p *Pane) CellPixels() (int, int) {
+	ws, err := unix.IoctlGetWinsize(p.ptyFD, unix.TIOCGWINSZ)
+	if err != nil || ws.Col == 0 || ws.Row == 0 {
+		return 0, 0
+	}
+	return int(ws.Xpixel) / int(ws.Col), int(ws.Ypixel) / int(ws.Row)
+}
 
 func (s *Supervisor) SetGraphicsVersion(version string) {
 	s.mu.Lock()
@@ -89,10 +100,14 @@ func (s *Supervisor) setupGraphics(p *Pane) {
 func (p *Pane) Graphics() []kitty.Placement {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.graphicsEnabled || p.graphics == nil {
+	if !p.graphicsEnabled {
 		return nil
 	}
-	return p.graphics.Visible(p.altScreen)
+	var out []kitty.Placement
+	if p.graphics != nil {
+		out = p.graphics.Visible(p.altScreen)
+	}
+	return p.appendGraphicsLayers(out)
 }
 
 func (p *Pane) scrollGraphics(left, top, right, bottom, lines int) {
