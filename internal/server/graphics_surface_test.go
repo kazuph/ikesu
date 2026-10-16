@@ -1,12 +1,38 @@
 package server
 
 import (
+	"io"
 	"testing"
 
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/kitty"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 )
+
+func TestGraphicsGeometrySurvivesAPISplitAndZoomWithoutFocusChange(t *testing.T) {
+	dir, viewer, original, _ := directGraphicsFixture(t)
+	drained := make(chan struct{})
+	go func() { _, _ = io.Copy(io.Discard, viewer.rd); close(drained) }()
+	t.Cleanup(func() { viewer.conn.Close(); <-drained })
+	var split api.PaneInfoResult
+	apiOK(t, dir, api.MethodPaneSplit, map[string]any{
+		"target_pane_id": original, "direction": "right", "focus": false,
+	}, &split)
+	check := func() {
+		t.Helper()
+		for _, pane := range []string{original, split.Pane.PaneID} {
+			var info api.PaneGraphicsInfoResult
+			apiOK(t, dir, api.MethodPaneGraphicsInfo, map[string]any{"pane_id": pane}, &info)
+			if info.CellWidthPX != 8 || info.CellHeightPX != 16 {
+				t.Fatal("API layout operation discarded negotiated geometry", pane, info)
+			}
+		}
+	}
+	check()
+	apiOK(t, dir, api.MethodPaneZoom, map[string]any{"pane_id": original, "mode": "on"}, nil)
+	check()
+}
 
 func TestGraphicsPublishedSurfaceDoesNotFollowRestoredViewerState(t *testing.T) {
 	state := model.New(".", 80, 24)

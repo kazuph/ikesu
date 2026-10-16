@@ -29,6 +29,7 @@ p.add_argument('--status-delay', help='explicit ptyrun terminal-status response 
 p.add_argument('--pixel-mouse', action='store_true', help='let the outer terminal negotiate SGR pixel mouse instead of explicitly declining it')
 p.add_argument('--tap-tb-input', action='store_true', help='record input delivered to the actual remote tb PTY')
 p.add_argument('--visibility', action='store_true', help='record real saved-machine graphics visibility across split, focus and zoom')
+p.add_argument('--visibility-input', action='store_true', help='drive focus and zoom through actual viewer keys instead of canonical API selection')
 p.add_argument('--pointer-probe', action='store_true', help='verify real link hover and horizontal scroll through page DOM event reports')
 p.add_argument('--adjacent-input', action='store_true', help='click a real adjacent saved-machine pane and record its immediate key input')
 p.add_argument('--resize-wait', action='store_true', help='hold real SSH output across resize and inspect the pending display')
@@ -41,6 +42,8 @@ if a.tap_tb_input and (a.image_probe or not (a.measure or a.pointer_probe or a.a
     p.error('the input tap requires an actual tb measurement or pointer probe')
 if a.visibility and (a.measure or a.image_probe):
     p.error('visibility operations must be separate from timing and controlled-image measurements')
+if a.visibility_input and not a.visibility:
+    p.error('visibility-input requires visibility')
 if a.pointer_probe and (a.measure or a.image_probe or a.visibility):
     p.error('pointer probe must be separate from other observation modes')
 if a.adjacent_input and (a.measure or a.image_probe or a.visibility or a.pointer_probe):
@@ -73,6 +76,7 @@ expected_keys = 'abcdefghijklmnop'
                                                        'pixel_mouse': a.pixel_mouse,
                                                        'tap_tb_input': a.tap_tb_input,
                                                        'visibility': a.visibility,
+                                                       'visibility_input': a.visibility_input,
                                                        'pointer_probe': a.pointer_probe,
                                                        'adjacent_input': a.adjacent_input,
                                                        'resize_wait': a.resize_wait,
@@ -306,6 +310,17 @@ for name in ['herdr','gtx']:
                 steps.write_text(procedure+'kill\n')
             if a.pointer_probe:
                 steps.write_text(steps.read_text().replace('kill\n', '')+tb_pointer_probe.procedure(root, a.pixel_mouse)+'kill\n')
+            if a.visibility_input:
+                procedure = steps.read_text().replace('kill\n', '')
+                procedure += 'cells '+str(out/'visibility-single.json')+'\nwaitfile '+str(root/'visibility-split-created')+' 10s\n'
+                procedure += 'waittext 10s VIS_SPLIT_READY\ncells '+str(out/'visibility-split-original-focused.json')+'\n'
+                for phase, key, marker in [('split-new-focused', '\x02l', 'VIS_FOCUS_READY'),
+                                           ('zoom-new', '\x02z', 'VIS_ZOOM_READY'),
+                                           ('restored', '\x02z', 'VIS_RESTORE_READY')]:
+                    procedure += 'waitfile '+str(root/('visibility-'+phase+'-go'))+' 10s\n'
+                    procedure += 'send '+json.dumps(key)+ '\nsend '+json.dumps("printf '%s\\n' "+marker+'\r')+'\n'
+                    procedure += 'waittext 10s '+marker+'\ncells '+str(out/('visibility-'+phase+'.json'))+'\n'
+                steps.write_text(procedure+'waitfile '+str(root/'visibility-done')+' 10s\nkill\n')
             if a.adjacent_input:
                 steps.write_text(steps.read_text().replace('kill\n', '')+
                                  'waittext 10s LOCAL_SWITCH_READY\nmouse down 120 22\nmouse up 120 22\nsend '+json.dumps(expected_keys+'\r')+'\n'
@@ -345,10 +360,12 @@ for name in ['herdr','gtx']:
                         events.control(None, 1, max(0, deadline-time.monotonic()))
                     (out/'remote-graphics-info.json').write_text(json.dumps(
                         remote_rpc('pane.graphics.info', {'pane_id': remote_pane}), indent=2)+'\n')
-                    if a.visibility:
+                    if a.visibility and not a.visibility_input:
                         visibility = []
 
                         def sample(phase, panes):
+                            (out/('visibility-layout-'+phase+'.json')).write_text(json.dumps(
+                                remote_rpc('pane.layout', {'pane_id': remote_pane}), indent=2)+'\n')
                             for pane in panes:
                                 visibility.append({'phase': phase, 'role': 'original' if pane == remote_pane else 'split',
                                                    'response': remote_rpc('pane.graphics.info', {'pane_id': pane})})
@@ -371,6 +388,25 @@ for name in ['herdr','gtx']:
                     os.close(fd)
             if a.pointer_probe:
                 tb_pointer_probe.collect(ssh, remote, root, out, viewer, a.pixel_mouse)
+            if a.visibility_input:
+                visibility = []
+
+                def sample_input(phase, panes):
+                    wait_for_file(out/('visibility-'+phase+'.json'), viewer)
+                    for pane in panes:
+                        visibility.append({'phase': phase, 'role': 'original' if pane == remote_pane else 'split',
+                                           'response': remote_rpc('pane.graphics.info', {'pane_id': pane})})
+                    (out/'remote-visibility.json').write_text(json.dumps(visibility, indent=2)+'\n')
+
+                sample_input('single', [remote_pane])
+                split = result(remote_rpc('pane.split', {'target_pane_id': remote_pane, 'direction': 'right', 'focus': False}))['pane']['pane_id']
+                result(remote_rpc('pane.send_input', {'pane_id': split, 'text': "printf '%s\\n' VIS_SPLIT_READY", 'keys': ['Enter']}))
+                (root/'visibility-split-created').write_text('actual split created')
+                sample_input('split-original-focused', [remote_pane, split])
+                for phase in ['split-new-focused', 'zoom-new', 'restored']:
+                    (root/('visibility-'+phase+'-go')).write_text('sample previous display before next real key input')
+                    sample_input(phase, [remote_pane, split])
+                (root/'visibility-done').write_text('all actual viewer visibility samples captured')
             if a.resize_wait:
                 wait_for_file(out/'pending-resize.json', viewer)
                 (root/'release-remote-output').write_text('pending display captured; release real SSH data')
