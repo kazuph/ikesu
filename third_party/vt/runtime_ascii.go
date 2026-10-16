@@ -67,6 +67,8 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 			callback(old, s.cur.Position)
 		}
 	}()
+	pen, link := s.cursorPen(), s.cursorLink()
+	plain := pen == (uv.Style{}) && link == (uv.Link{})
 	for rest := p; len(rest) > 0; {
 		n := bytes.IndexByte(rest, '\r')
 		line := s.buf.Line(s.cur.Y)
@@ -80,12 +82,10 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 			canonical = state.end == 0
 			state.end = max(state.end, n)
 			if n > 0 {
-				state.plain = canonical && s.cursorPen() == (uv.Style{}) && s.cursorLink() == (uv.Link{})
+				state.plain = canonical && plain
 			}
 		}
 		if canonical && n > 0 {
-			pen, link := s.cursorPen(), s.cursorLink()
-			plain := pen == (uv.Style{}) && link == (uv.Link{})
 			first, last := n, 0
 			if plain {
 				for k, b := range rest[:n] {
