@@ -25,12 +25,14 @@ func ParseChord(spec string) (Chord, error) {
 			c.Prefix = true
 		case "ctrl", "control":
 			c.Key.Mod |= uv.ModCtrl
-		case "alt", "option":
+		case "alt", "option", "meta":
 			c.Key.Mod |= uv.ModAlt
 		case "shift":
 			c.Key.Mod |= uv.ModShift
-		case "cmd", "super":
+		case "cmd", "super", "command":
 			c.Key.Mod |= uv.ModSuper
+		case "hyper":
+			c.Key.Mod |= uv.ModHyper
 		default:
 			return c, fmt.Errorf("unknown key modifier %q", token)
 		}
@@ -41,7 +43,7 @@ func ParseChord(spec string) (Chord, error) {
 		c.Key.Code = '1'
 		return c, nil
 	}
-	special := map[string]rune{"esc": uv.KeyEscape, "escape": uv.KeyEscape, "enter": uv.KeyEnter, "tab": uv.KeyTab, "backspace": uv.KeyBackspace, "left": uv.KeyLeft, "right": uv.KeyRight, "up": uv.KeyUp, "down": uv.KeyDown, "space": ' ', "minus": '-', "comma": ',', "ampersand": '&', "plus": '+', "backtick": '`', "percent": '%', "double_quote": '"'}
+	special := map[string]rune{"return": uv.KeyEnter, "bs": uv.KeyBackspace, "period": '.', "slash": '/', "backslash": '\\', "quote": '\'', "semicolon": ';', "colon": ':', "esc": uv.KeyEscape, "escape": uv.KeyEscape, "enter": uv.KeyEnter, "tab": uv.KeyTab, "backspace": uv.KeyBackspace, "left": uv.KeyLeft, "right": uv.KeyRight, "up": uv.KeyUp, "down": uv.KeyDown, "space": ' ', "minus": '-', "comma": ',', "ampersand": '&', "plus": '+', "backtick": '`', "percent": '%', "double_quote": '"'}
 	if code, ok := special[rest]; ok {
 		c.Key.Code = code
 		return c, nil
