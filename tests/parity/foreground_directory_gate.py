@@ -18,7 +18,7 @@ for role in ('herdr', 'gtx'):
     for record in records:
         result = record['response']['result']
         if record['method'] == 'pane.get':
-            assert Path(result['pane']['cwd']).name == record['phase'], (role, record)
+            assert Path(result['pane']['foreground_cwd']).name == record['phase'], (role, record)
         else:
             assert [w['label'] for w in result['workspaces']] == ['beta'], (role, record)
     for phase in ('alpha', 'beta'):
