@@ -2,10 +2,12 @@ package tui
 
 import (
 	"bytes"
+	"encoding/base64"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,5 +75,33 @@ func TestStage7DragCopyOmitsFinalBlankRow(t *testing.T) {
 	a.finishSelection()
 	if out.String() != "\x1b]52;c;U1RBR0U3X1JFQURZ\a" {
 		t.Fatalf("clipboard included final empty row: %q", out.String())
+	}
+}
+
+func TestStage7OutsideReleaseKeepsVisibleSelectionEnd(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "SSH_CONNECTION", "isolated-test")
+	for _, down := range []bool{false, true} {
+		a := stage7CopyApp(t)
+		pid := a.cm.pane
+		a.exitCopy()
+		a.scroll[pid] = 24
+		inner := a.innerRect(pid)
+		top := viewTop(a.sup.Get(pid), 24, inner.H)
+		a.sel = &selState{pane: pid, ax: 5, ay: top + inner.H/2, hx: 5, hy: top + inner.H/2, inner: inner}
+		y := inner.Y - 2
+		if down {
+			y = inner.Y + inner.H + 1
+		}
+		event := uv.Mouse{X: inner.X + 5, Y: y, Button: uv.MouseLeft}
+		a.selMouse(input.Event{Kind: input.KindMouseMotion, Mouse: event})
+		want, _ := a.selText(a.sel)
+		var out bytes.Buffer
+		a.out = &out
+		a.selMouse(input.Event{Kind: input.KindMouseRelease, Mouse: event})
+		want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(strings.TrimRight(want, "\n"))) + "\a"
+		if out.String() != want {
+			t.Fatalf("outside release changed visible selection down=%v", down)
+		}
 	}
 }

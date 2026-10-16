@@ -641,6 +641,9 @@ func (a *App) selMouse(ev input.Event) {
 	top := viewTop(p, a.scroll[s.pane], s.inner.H)
 	hx := m.X - s.inner.X
 	hy := top + m.Y - s.inner.Y
+	if !a.st.PopupVisible() && !a.st.OverlayVisible() {
+		hy = top + min(max(m.Y-s.inner.Y, 0), s.inner.H-1)
+	}
 	if hx < 0 {
 		hx = 0
 	}
