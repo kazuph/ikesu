@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create real workspaces only on observe.py's disposable socket."""
-import json,os,socket
+import json,os,socket,sys
 from pathlib import Path
 endpoint=os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
@@ -13,7 +13,7 @@ def request(method,params):
  r=json.loads(data.split(b'\n')[0]);proof.append(dict(method=method,params=params,response=r))
  if 'error' in r:raise RuntimeError(r)
  return r['result']
-for name in ['beta','gamma']:
+for name in ([f'indexed-{i}' for i in range(2,10)] if len(sys.argv)>1 and sys.argv[1]=='indexed' else ['beta','gamma']):
  r=request('workspace.create',dict(label=name,cwd=os.getcwd(),focus=False))
  if name=='gamma':request('workspace.set_section',dict(workspace_id=r['workspace']['workspace_id'],section='favorite'))
 request('workspace.list',{})

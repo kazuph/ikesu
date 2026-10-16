@@ -128,3 +128,16 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `--cell-clock` と `prefix-notification-expiry.steps` は通知点・状態点の実PTY描画時刻を記録する。実物では開始遅延1秒（1001/1002ms）、表示期間8秒（開始999ms、終了9005ms）を観測した。時間は元のcell-clock JSONを証拠とし、検査していない時間や状態を代用しない。表示中のペインを既読にするSPEC規則は維持し、実物のdone残留は差として記録する。
 
 `original-menu-cleared.steps` と `original-menu-routing-cleared.steps` は最初の再現操作の前に双方へ同じ端末クリアを送る。初回案内を閉じるEnterのシェル表示を揃え、外クリック/Escape後のメニュー消失、実echo出力、別pane/タブ追加へのクリックが消費されることを比較する。元の準備無しの結果も保存し、準備を入れた文字比較を全スタイル一致とは扱わない。
+
+段階2（K8〜K14、0.2.57）は `stage2_matrix.py --out 出力先` をminiの
+`src/detail` から実行する。`work/detail/gtx-stage2` を事前にビルドし、
+`work/detail/user-config.toml` を使う。`stage2_cases.py` が同じ操作と設定の組を
+出力先の `procedures/` に残す。`--only 手順名...` で修正対象だけを再実行できる。
+`stage2_gate.py 出力先` は選択名・モード継続・子への文字配送・pane追加数・
+設定診断・1〜9の全選択先を検査する。画面全体の一致を主張するゲートではない。
+台帳より実物を優先し、名前変更と閉鎖は表示中workspace、Tabと方向キーは
+navigate維持という0.2.57の観察結果を固定している。
+`runtime-logs.json` は観察専用一時ディレクトリのserverログだけを保存する。
+相対性能は `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage2_perf.sh`
+で実行する。基準ソースは同じGo引数でビルドする `src/stage2-baseline-a68c878`。
+絶対性能はこの工程の判定対象に含めない。

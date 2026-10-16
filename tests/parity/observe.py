@@ -188,6 +188,9 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     job_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
                                 for path in root.rglob('job-logs/*.log') if path.is_file()}
                     (target/'job-logs.json').write_text(json.dumps(job_logs, ensure_ascii=False, indent=2)+'\n')
+                    runtime_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                    for path in root.rglob('*server.log') if path.is_file()}
+                    (target/'runtime-logs.json').write_text(json.dumps(runtime_logs, ensure_ascii=False, indent=2)+'\n')
                     configs = {str(path.relative_to(root)): path.read_text() for path in root.rglob('config.toml') if path.is_file()}
                     (target/'config-files.json').write_text(json.dumps(configs, ensure_ascii=False, indent=2)+'\n')
                 finally:

@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Compare only stage-two claims; save raw facts and fail on missing evidence."""
+import json
+from pathlib import Path
+import re
+import sys
+root=Path(sys.argv[1]);results=[]
+def screen(case,prod,name):
+ p=root/case/prod/(name+'.txt')
+ if not p.is_file(): raise AssertionError('missing '+str(p))
+ return p.read_text()
+def check(case,name,extract,expected=None):
+ try:
+  values={prod:extract(prod) for prod in ['herdr','gtx']}
+  passed=values['herdr']==values['gtx'] and (expected is None or values['herdr']==expected)
+  results.append(dict(case=case,claim=name,values=values,expected=expected,result='PASS' if passed else 'FAIL'))
+ except Exception as e:results.append(dict(case=case,claim=name,result='FAIL',error=str(e)))
+def has(case,frame,word):return lambda prod:word in screen(case,prod,frame)
+def selected(case,frame):
+ return lambda prod:[re.sub(r'^▌[· ]*\d+\s*','',l[:26]).strip() for l in screen(case,prod,frame).splitlines() if l.startswith('▌') and re.search(r'\d+',l[:26])]
+for c in ['workspace-rename','workspace-close','workspace-worktree']:
+ check(c,'selected beta before action',lambda p:'beta' in selected(c,'selected')(p),True)
+ if c=='workspace-rename': check(c,'rename uses displayed workspace',lambda p:bool(re.search(r'│ parity +│',screen(c,p,'after'))),True)
+ if c=='workspace-close': check(c,'close confirmation uses displayed workspace',has(c,'after','parity — 1 pane'),True)
+ if c=='workspace-worktree':check(c,'worktree action executes and reports non-repository',has(c,'after','worktree actions require a workspace inside a Git work tree'),True)
+check('workspace-number','numeric selection uses visible order',selected('workspace-number','after'),['gamma'])
+for case in ['workspace-cancel-rename','workspace-cancel-close']:
+ check(case,'Esc closes dialog',lambda p:('rename workspace' in screen(case,p,'cancelled') or 'Close workspace?' in screen(case,p,'cancelled')),False)
+ check(case,'Esc navigate state',has(case,'cancelled','NAVIGATE'))
+ check(case,'Esc workspace selection',selected(case,'cancelled'))
+for mode in ['enter','r','direct']:
+ case='resize-'+mode
+ check(case,'resize entered',has(case,'before','RESIZE'),True)
+ check(case,'resize exited',has(case,'after','RESIZE'),False)
+ check(case,'subsequent text reaches shell',has(case,'after','stage2_marker'),True)
+case='navigate-custom'
+check(case,'custom command leaves navigate',has(case,'navigate','NAVIGATE'),False)
+check(case,'custom command opens one additional pane',lambda p:int(re.search(r'%([0-9]+)',screen(case,p,'navigate')).group(1))-int(re.search(r'%([0-9]+)',screen(case,p,'normal')).group(1)),1)
+for mode,stay in [('tab',True),('direction',True),('next',False),('zoom',False)]:
+ case='exit-detail-'+mode
+ check(case,'action navigate state',has(case,'action','NAVIGATE'),stay)
+ check(case,'unbound letter navigate state',has(case,'letter-u','NAVIGATE'),stay)
+ check(case,'sidebar action exits navigate',has(case,'letter-b','NAVIGATE'),False)
+ check(case,'subsequent text reaches shell',has(case,'after','marker'),True)
+for case in ['navigate-split','navigate-next-tab','navigate-zoom']:
+ check(case,'action exits navigate',has(case,'action','NAVIGATE'),False)
+ check(case,'ordinary input reaches pane',has(case,'after','abcdef'),True)
+for name in ['backslash','bs','colon','command','hyper','meta','period','quote','return','semicolon','slash']:
+ case='alias-'+name
+ check(case,'alias opens help',has(case,'after','keybinds'),True)
+for frame in ['kitty','plain']:check('shift-slash',frame+' opens help',has('shift-slash',frame,'keybinds'),True)
+for i in range(1,10):
+ for form in ['symbol','base']:
+  check('indexed-workspace',f'{form} {i} selects workspace',selected('indexed-workspace',f'{form}-{i}'),['parity' if i==1 else f'indexed-{i}'])
+for case in ['config-invalid','config-printable']:
+ check(case,'invalid binding does not restore default',has(case,'default','keybinds'),False)
+ check(case,'plain a reaches shell',lambda p:bool(re.search(r'PARITY> a\s',screen(case,p,'plain'))),True)
+for case in ['config-conflict','config-reverse-conflict','config-array']:
+ check(case,'accepted direct binding opens help',has(case,'direct','keybinds'),True)
+check('config-default-conflict','explicit binding replaces default owner',has('config-default-conflict','default','keybinds'),True)
+for case in ['config-invalid','config-printable','config-conflict','config-reverse-conflict','config-array']:
+ def diagnostic(prod):
+  folder=root/case/prod
+  content='\n'.join(p.read_text(errors='replace') for name in ['runtime-logs.json','server.log','startup.txt'] if (p:=folder/name).is_file())
+  return ('invalid keybinding' in content or 'unmodified printable' in content or 'disabled keys.settings' in content or 'conflicts with keys.help' in content)
+ check(case,'diagnostic recorded',diagnostic,True)
+for frame in ['one','three','next','previous','history-back','history-forward']:
+ check('user-direct',frame+' selection matches',selected('user-direct',frame))
+# Every run must show real completion, a versioned reference and isolated cleanup.
+for case in sorted({r['case'] for r in results}):
+ check(case,'exact reference version',lambda p:json.loads((root/case/'reference.json').read_text())['herdr_version'],'herdr 0.2.57')
+ for prod in ['herdr','gtx']:
+  folder=root/case/prod
+  try:
+   if 'TIMEOUT' in (folder/'run.log').read_text():raise AssertionError('TIMEOUT')
+   cleanup=json.loads((folder/'cleanup.json').read_text())
+   results.append(dict(case=case,claim=prod+' cleanup',values=cleanup,result='PASS' if cleanup.get('exit')==0 and len(cleanup.get('replies',[]))==1 and json.loads(cleanup['replies'][0]).get('result',{}).get('type')=='ok' else 'FAIL'))
+  except Exception as e:results.append(dict(case=case,claim=prod+' cleanup',result='FAIL',error=str(e)))
+report=dict(results=results,passed=sum(x['result']=='PASS' for x in results),failed=sum(x['result']!='PASS' for x in results))
+(root/'stage2-gate.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+for r in results:
+ if r['result']!='PASS':print(json.dumps(r,ensure_ascii=False))
+print(f"stage2 claims: {report['passed']} PASS, {report['failed']} FAIL")
+raise SystemExit(bool(report['failed']))
