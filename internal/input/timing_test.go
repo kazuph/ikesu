@@ -33,6 +33,12 @@ func TestEscapeTimeoutDependsOnInputRoute(t *testing.T) {
 			t.Fatalf("timeout=%d want=%d", f.TimeoutMs(), want)
 		}
 	}
+	f := Framer{EscapeWaitMs: EndpointEscapeFlushMs, ColorReportPending: true}
+	f.Push([]byte{0x1b})
+	f.FlushTimeout()
+	if f.TimeoutMs() != IdleFlushMs {
+		t.Fatalf("additional color wait=%d want=%d", f.TimeoutMs(), IdleFlushMs)
+	}
 }
 
 func TestMouseUsesLongerInputTimeout(t *testing.T) {

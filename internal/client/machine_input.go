@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, func(), error) {
+func readMachineInput(in *os.File, ctx context.Context, colorPending bool) (<-chan input.Event, func(), error) {
 	fd, err := unix.Dup(int(in.Fd()))
 	if err != nil {
 		return nil, nil, err
@@ -40,7 +40,7 @@ func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, fun
 	go func() {
 		defer close(done)
 		defer close(events)
-		framer := input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs}
+		framer := input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: colorPending}
 		buf := make([]byte, 64*1024)
 		for {
 			timeout := -1

@@ -140,7 +140,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	if err := m.refreshMachineCatalog(); err != nil {
 		m.notify(err.Error())
 	}
-	input, stopInput, err := readMachineInput(in, ctx)
+	input, stopInput, err := readMachineInput(in, ctx, settings.config != nil && settings.config.Theme.AutoSwitch)
 	if err != nil {
 		fmt.Fprintln(out, "gtx:", err)
 		return pumpDone

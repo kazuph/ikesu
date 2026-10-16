@@ -108,6 +108,9 @@ func (f *Framer) FlushTimeout() []Event {
 
 // TimeoutMs selects the idle wait for the pending sequence.
 func (f *Framer) TimeoutMs() int {
+	if f.escHeld {
+		return IdleFlushMs
+	}
 	if isIncompleteSGRMouse(f.buf) {
 		return MouseFlushMs
 	}

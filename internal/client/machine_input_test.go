@@ -27,7 +27,7 @@ func TestMachineInputFramesSplitSequencesAndClosesOwnedReader(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events, stop, err := readMachineInput(r, ctx)
+	events, stop, err := readMachineInput(r, ctx, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestMachineInputWaitsForMouseAndFramesEscapeOnce(t *testing.T) {
 	defer w.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events, stop, err := readMachineInput(r, ctx)
+	events, stop, err := readMachineInput(r, ctx, false)
 	if err != nil {
 		t.Fatal(err)
 	}
