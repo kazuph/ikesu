@@ -113,3 +113,19 @@ func TestStage2NavigateDisplayedWorkspaceDialogs(t *testing.T) {
 		})
 	}
 }
+
+func TestStage2NavigateDirectionIndependentFromPrefixRemap(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	c, err := config.Decode([]byte("[keys]\nprefix='ctrl+t'\nfocus_pane_left='cmd+y'\nnavigate_pane_left='u'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetSidebarConfig(c, false)
+	specFeed(a, "\x14v")
+	right := a.focusedPane()
+	specFeed(a, "\x14wu")
+	if a.focusedPane() == right || !a.workspaceNavigate {
+		t.Fatal("navigate's own direction binding was lost", a.focusedPane(), right, a.workspaceNavigate)
+	}
+}
