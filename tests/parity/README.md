@@ -197,7 +197,20 @@ tokyo-night/custom設定を読む。全比較でclipboard sandboxと隔離server
 group閉鎖範囲を検査する。menuは全セル・色・属性も比較する。その他の画面は
 指定した文言と座標の検査であり、画面全体の全セル一致とは扱わない。
 A40の `notification.show` は実物が12列×3行（本文なし）/4行（本文あり）を返す。
-gtxの未実装応答を成功や似た値へ置き換えない。未知メソッドは証拠に残す。
+親の判断に従い、同名APIとviewerへの配送を実装した。再検証では
+`stage6a_matrix.py --cell-clock --out <証拠先>` と
+`stage6a_notification_gate.py <証拠先>` を実行する。A40のゲートは明示通知の
+全セル・色・属性、4隅の位置指定、空白除去、本文なし/あり、空タイトル拒否、
+表示中のbusy、ターゲットのない通知をクリックしても消えない動作、期限切れ、
+期限切れ後の再表示と背景通知の移動先を検査する。寿命の差は既存描画tick以内で比較する。
+背景通知の本文が空なら「workspace名 · 実pane番号」を表示し、実IDだけを記録付きで
+正規化して全セルを比較する。パーサー固有のエラー文章は一致対象にせず、型・列挙値の
+拒否とinvalid_requestを比較する。空タイトルのエラー文章は同一であることを検査する。
+
+`--toast-delivery off` / `--toast-delivery terminal` で通知設定を追加比較できる。
+`stage6a_headless_notification.py <binary> <herdr|gtx> <証拠先> [--delivery off|terminal|system]`
+は新設一時HOMEの実serverにだけ接続し、表示clientなしの返り値と正常終了を保存する。
+音は再生しない。通知の明示要求ではsound=none、観察環境では既存の音抑止を維持する。
 
 `sh tests/parity/stage6a_checks.sh <証拠先>` はminiでgofmt・build・vet・通常test・raceを保存する。
 相対P1は基準dd2168cを `src/stage6a-baseline-dd2168c` に置き、
