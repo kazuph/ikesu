@@ -71,7 +71,7 @@ func (m *hostMouseState) CellEvent(event input.Event, size tui.Winsize) input.Ev
 }
 
 func (m *machineClient) setMouseMode(pixel bool) error {
-	if m.mouse.pixel == pixel {
+	if m.drag != nil || m.mouse.pixel == pixel {
 		return nil
 	}
 	sequence := "\x1b[?1016l"

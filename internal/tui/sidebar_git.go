@@ -2,6 +2,8 @@ package tui
 
 import (
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/worktree"
 	"path/filepath"
@@ -9,6 +11,10 @@ import (
 	"strings"
 	"time"
 )
+
+type workspaceDirectoryLabel struct {
+	cwd, name string
+}
 
 func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 	names := map[int]string{}
@@ -34,30 +40,28 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	a.gitPending = true
 	a.gitAt = now
 	type target struct {
-		id  int
-		cwd string
+		id      int
+		cwd     string
+		nameCwd string
 	}
 	var targets []target
 	for _, w := range a.st.Workspaces {
-		targets = append(targets, target{w.ID, w.Cwd})
+		targets = append(targets, target{w.ID, w.Cwd, a.workspaceNameCwd(w)})
 	}
 	go func() {
 		gs := map[int]render.GitStatus{}
-		names := map[int]string{}
+		names := map[int]workspaceDirectoryLabel{}
 		for _, w := range targets {
 			gs[w.id] = readWorkspaceGit(w.cwd)
-			if src, err := worktree.Source(w.cwd); err == nil {
-				names[w.id] = src.RepoName
-			} else {
-				names[w.id] = filepath.Base(w.cwd)
-			}
+			names[w.id] = workspaceDirectoryLabel{w.nameCwd, workspaceDirectoryName(w.nameCwd)}
 		}
 		a.Do(func() {
+			a.workspaceLabels = names
 			a.workspaceGit = map[int]render.GitStatus{}
 			a.workspaceNames = map[int]string{}
 			for i, w := range a.st.Workspaces {
 				a.workspaceGit[i] = gs[w.ID]
-				name := names[w.ID]
+				name := names[w.ID].name
 				if w.CustomName {
 					name = w.Name
 				}
@@ -91,6 +95,41 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			a.dirty = true
 		})
 	}()
+}
+
+func (a *App) workspaceNameCwd(w *model.Workspace) string {
+	if len(w.Tabs) > 0 {
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) > 0 {
+			if p := a.sup.Get(ids[0]); p != nil {
+				if cwd := platform.ProcCwd(p.ShellPID()); cwd != "" {
+					return cwd
+				}
+			}
+		}
+	}
+	return w.Cwd
+}
+
+func workspaceDirectoryName(cwd string) string {
+	if src, err := worktree.Source(cwd); err == nil {
+		return filepath.Base(src.SourceCheckoutPath)
+	}
+	return filepath.Base(cwd)
+}
+
+// WorkspaceLabel never runs Git on the input loop. Checkout names arrive from
+// the metadata worker; a changed directory immediately gets its basename.
+func (a *App) WorkspaceLabel(index int) string {
+	w := a.st.Workspaces[index]
+	if w.CustomName {
+		return w.Name
+	}
+	cwd := a.workspaceNameCwd(w)
+	if label, ok := a.workspaceLabels[w.ID]; ok && label.cwd == cwd {
+		return label.name
+	}
+	return filepath.Base(cwd)
 }
 func readWorkspaceGit(cwd string) render.GitStatus {
 	var g render.GitStatus

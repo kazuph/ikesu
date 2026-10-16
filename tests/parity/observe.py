@@ -19,16 +19,22 @@ p.add_argument('--cell-width', type=int, default=0, help='outer terminal cell wi
 p.add_argument('--cell-height', type=int, default=0, help='outer terminal cell height in pixels')
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
 p.add_argument('--status-delay', help='protocol fixture: delay or drop terminal status replies')
+p.add_argument('--pixel-mouse', action='store_true', help='advertise SGR pixel mouse support to the attached display')
+p.add_argument('--startup-input', action='store_true', help='observe startup input with onboarding=false; wait for readiness in the steps')
+p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--out', required=True)
 p.add_argument('--server', action='store_true', help='run a disposable persistent server for socket-driven UI')
+p.add_argument('--reconnect-keyboard', choices=['off', 'retain'], help='cut only the isolated display connection while pane modes change')
 p.add_argument('--server-default-workspace', action='store_true', help='observe server/client startup without creating a workspace through the API')
 p.add_argument('--server-reuse-initial', action='store_true', help='use the real initial workspace when present, otherwise create it; save all preparation replies')
 p.add_argument('--clipboard-guard', action='store_true', help='capture clipboard commands and stop if a changed clipboard hash matches copied bytes')
 p.add_argument('--clipboard-sandbox', action='store_true', help='deny pasteboard Mach lookup in the UI/server and all their children')
 a = p.parse_args()
+if a.reconnect_keyboard and not a.server:
+    p.error('keyboard reconnect observation requires --server')
 if (a.server_default_workspace or a.server_reuse_initial) and not a.server:
     p.error('server fixture options require --server')
 if a.server_default_workspace and a.server_reuse_initial:
@@ -83,6 +89,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
+        env['PARITY_OBSERVE_BINARY'] = str(Path(binary).resolve())
         if (a.config_file or a.in_app_toast) and name == 'gtx':
             env['GTX_CONFIG'] = str(config)
         if (a.config_file or a.in_app_toast) and name == 'herdr':
@@ -92,6 +99,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         steps = target / 'steps'
         # Only the first-run onboarding differs. The interaction body is identical.
         preamble = 'sleep 3s\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
+        if a.startup_input:
+            preamble = ''
         steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
@@ -101,6 +110,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                 (target / 'sandbox-launch.json').write_text(json.dumps({'launcher': launcher, 'server': a.server}, indent=2)+'\n')
             env['PARITY_BINARY_PATH'] = binary
             endpoint = None
+            reconnect = None
             try:
                 if a.server:
                     server = subprocess.Popen(launcher + ['--session', 'parity', 'server'],
@@ -162,12 +172,21 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                         if [w['workspace_id'] for w in final['result']['workspaces']] != [fixture_id]:
                             raise RuntimeError('isolated UI fixture must contain exactly the created workspace')
                         (target / 'fixture-workspaces.json').write_text(json.dumps({'initial':initial, 'closed':cleanup, 'final':final}, indent=2)+'\n')
-                subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse=false',
+                if a.reconnect_keyboard:
+                    from stage1_reconnect import Reconnect
+                    reconnect = Reconnect(launcher, env, target, a.reconnect_keyboard)
+                    reconnect.start()
+                    wrapper = root/'display.py'
+                    wrapper.write_text('import os,sys\nfrom pathlib import Path\np=Path(sys.argv[1]); q=p.with_suffix(".next"); q.write_text(str(os.getpid())); q.replace(p)\nos.execv(sys.argv[2],sys.argv[2:])\n')
+                    launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
+                subprocess.run([a.ptyrun, '-cols', '160', '-rows', '45', '-pixel-mouse='+str(a.pixel_mouse).lower(),
                             '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
                             '-xpixel', str(160*a.cell_width), '-ypixel', str(45*a.cell_height),
-                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-status-delay', a.status_delay] if a.status_delay else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + (['-status-delay', a.status_delay] if a.status_delay else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             finally:
+                if reconnect:
+                    reconnect.close()
                 try:
                     runtime_json = {str(path.relative_to(root)): path.read_text(errors='replace')
                                     for path in root.rglob('*.json') if path.is_file()}
@@ -178,6 +197,9 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     job_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
                                 for path in root.rglob('job-logs/*.log') if path.is_file()}
                     (target/'job-logs.json').write_text(json.dumps(job_logs, ensure_ascii=False, indent=2)+'\n')
+                    runtime_logs = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                    for path in root.rglob('*server.log') if path.is_file()}
+                    (target/'runtime-logs.json').write_text(json.dumps(runtime_logs, ensure_ascii=False, indent=2)+'\n')
                     configs = {str(path.relative_to(root)): path.read_text() for path in root.rglob('config.toml') if path.is_file()}
                     (target/'config-files.json').write_text(json.dumps(configs, ensure_ascii=False, indent=2)+'\n')
                 finally:
@@ -205,5 +227,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                             if 'FAIL: owned server required kill' in replies:
                                 raise RuntimeError('owned server did not stop gracefully')
                     finally:
+                        saved_json = {str(path.relative_to(root)): path.read_text(errors='replace')
+                                      for path in root.rglob('*.json') if path.is_file()}
+                        (target/'saved-json.json').write_text(json.dumps(saved_json, ensure_ascii=False, indent=2)+'\n')
                         if guard is not None:
                             guard.check(name, target/'terminal.raw')

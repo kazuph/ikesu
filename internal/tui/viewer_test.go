@@ -94,6 +94,17 @@ func TestViewerFramingDoesNotMixPartialInputs(t *testing.T) {
 	}
 }
 
+func TestNewViewerResetsFocusHistoryPosition(t *testing.T) {
+	app := NewApp(model.New(t.TempDir(), 120, 40), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	app.recordFocus(1, 2)
+	app.recordFocus(2, 3)
+	viewer := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	viewer.app.recordFocus(3, 4)
+	if len(viewer.app.focusHistory) != 2 || viewer.app.focusHistoryAt != 1 || app.focusHistoryAt != 2 {
+		t.Fatal("new viewer did not begin an independent focus history")
+	}
+}
+
 func TestViewersShareOneSessionMetadataRead(t *testing.T) {
 	st := model.New(t.TempDir(), 120, 40)
 	supervisor := runtime.NewSupervisor()

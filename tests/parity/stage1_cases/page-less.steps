@@ -1,0 +1,14 @@
+send "seq 1 120\r"
+sleep 200ms
+send "seq 1 120 | less -X\r"
+sleep 300ms
+send "\u001b[6~"
+sleep 100ms
+screen @OUT@/less-down.txt
+send "\u001b[5~"
+sleep 100ms
+screen @OUT@/less-up.txt
+send "q"
+sleep 100ms
+screen @OUT@/less-exit.txt
+kill

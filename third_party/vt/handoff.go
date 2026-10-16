@@ -41,6 +41,7 @@ type terminalTransfer struct {
 	DefaultFg, DefaultBg, DefaultCur, Fg, Bg, Cur color.Color
 	Charsets                                      [4]CharSet
 	GL, GR, GSingle, Keyboard                     int
+	KeyboardState                                 *keyboardTransfer
 	Last                                          rune
 	Grapheme                                      []byte
 	Phantom                                       bool
@@ -54,7 +55,7 @@ type terminalTransfer struct {
 func (e *Emulator) MarshalHandoff() ([]byte, error) {
 	t := terminalTransfer{Alternate: e.scr == &e.scrs[1], Modes: e.modes, Colors: e.colors,
 		DefaultFg: e.defaultFg, DefaultBg: e.defaultBg, DefaultCur: e.defaultCur, Fg: e.fgColor, Bg: e.bgColor, Cur: e.curColor,
-		Charsets: e.charsets, GL: e.gl, GR: e.gr, GSingle: e.gsingle, Keyboard: e.kbdStack, Last: e.lastChar, Grapheme: e.grapheme,
+		Charsets: e.charsets, GL: e.gl, GR: e.gr, GSingle: e.gsingle, Keyboard: len(e.keyboard.Stack), KeyboardState: &e.keyboard, Last: e.lastChar, Grapheme: e.grapheme,
 		Phantom: e.atPhantom, Icon: e.iconName, Title: e.title, Cwd: e.cwd, Partial: e.partial}
 	for x := 0; x < e.tabstops.Width(); x++ {
 		if e.tabstops.IsStop(x) {
@@ -112,7 +113,18 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 	e.defaultFg, e.defaultBg, e.defaultCur = t.DefaultFg, t.DefaultBg, t.DefaultCur
 	e.fgColor, e.bgColor, e.curColor = t.Fg, t.Bg, t.Cur
 	e.charsets, e.gl, e.gr, e.gsingle = t.Charsets, t.GL, t.GR, t.GSingle
-	e.kbdStack, e.lastChar, e.grapheme, e.atPhantom = t.Keyboard, t.Last, t.Grapheme, t.Phantom
+	e.lastChar, e.grapheme, e.atPhantom = t.Last, t.Grapheme, t.Phantom
+	e.keyboard = keyboardTransfer{}
+	if t.KeyboardState != nil {
+		e.keyboard = *t.KeyboardState
+	} else if t.Keyboard > 0 {
+		// Older servers only knew the push depth; retain their explicit/raw behavior.
+		e.keyboard.Legacy = true
+		e.keyboard.Stack = make([]keyboardEntry, t.Keyboard)
+		for i := range e.keyboard.Stack {
+			e.keyboard.Stack[i].Legacy = i > 0
+		}
+	}
 	e.iconName, e.title, e.cwd = t.Icon, t.Title, t.Cwd
 	e.tabstops = uv.DefaultTabStops(e.Width())
 	for x := 0; x < e.Width(); x++ {

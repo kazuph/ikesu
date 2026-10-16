@@ -1,0 +1,58 @@
+send "mkdir -p \"$HOME/alpha\" \"$HOME/beta\"; cd \"$HOME/alpha\"\r"
+sleep 2s
+send "\x14c"
+sleep 200ms
+send "keys\r"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py keys-alpha\r"
+sleep 300ms
+screen @OUT@/keys-alpha.txt
+cells @OUT@/keys-alpha.json
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+clicktext " +"
+sleep 200ms
+send "plus\r"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py plus-beta\r"
+sleep 300ms
+screen @OUT@/plus-beta.txt
+cells @OUT@/plus-beta.json
+send "cd \"$HOME/alpha\"; printf '\\033]7;file://localhost%s\\033\\\\' \"$PWD\"\r"
+sleep 2s
+send "\x14v"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py vertical-osc-alpha\r"
+sleep 300ms
+screen @OUT@/vertical-osc-alpha.txt
+cells @OUT@/vertical-osc-alpha.json
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+send "\x14-"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py horizontal-beta\r"
+sleep 300ms
+screen @OUT@/horizontal-beta.txt
+cells @OUT@/horizontal-beta.json
+send "cd \"$HOME/alpha\"\r"
+sleep 2s
+send "\x14g"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py login-alpha\r"
+sleep 300ms
+screen @OUT@/login-alpha.txt
+cells @OUT@/login-alpha.json
+send "exit\r"
+sleep 1s
+send "cd \"$HOME/beta\"\r"
+sleep 2s
+rclick 140 35
+sleep 200ms
+screen @OUT@/menu.txt
+clicktext "Split horizontal"
+sleep 1s
+send "python3 @FIXTURES@/directory_evidence.py menu-beta\r"
+sleep 300ms
+screen @OUT@/menu-beta.txt
+cells @OUT@/menu-beta.json
+kill

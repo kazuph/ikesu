@@ -18,6 +18,12 @@ func (m *machineClient) paint() error {
 	if e.snapshot == nil {
 		return nil
 	}
+	if err := m.syncKeyboardOutput(e); err != nil {
+		return err
+	}
+	if err := m.setMouseMode(e.mouse.pixel); err != nil {
+		return err
+	}
 	in := *e.snapshot
 	in, nativePaint, err := m.nativePaintInput(in)
 	if err != nil {

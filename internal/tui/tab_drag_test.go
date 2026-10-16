@@ -46,6 +46,24 @@ func TestG2TabOneCellDragSuppressesClickAndKeepsActiveIdentity(t *testing.T) {
 	}
 }
 
+func TestTabDragReleaseUsesLastMotionTarget(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.exec(model.CmdNewTab{Workspace: 0})
+	a.exec(model.CmdNewTab{Workspace: 0})
+	a.draw()
+	ws := a.st.ActiveWorkspace()
+	first, active := ws.Tabs[0].ID, ws.TabRef().ID
+	start, last := a.tabHits[0], a.tabHits[2]
+	sidebarEvent(a, input.KindMouseClick, start.X+1, start.Y)
+	sidebarEvent(a, input.KindMouseMotion, last.X+last.W-1, last.Y)
+	// A release-only position change does not replace the visible drag target.
+	sidebarEvent(a, input.KindMouseRelease, last.X+last.W-1, last.Y+2)
+	if ws.Tabs[2].ID != first || ws.TabRef().ID != active {
+		t.Fatal("release discarded the last motion target or changed the selected tab")
+	}
+}
+
 func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
@@ -83,11 +101,19 @@ func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 	sidebarEvent(a, input.KindMouseRelease, last.X+1, 2)
 	for i, id := range before {
 		if ws.Tabs[i].ID != id {
-			t.Fatal("outside release reordered")
+			t.Fatal("standalone outside motion reordered tabs")
 		}
 	}
 	if ws.TabRef().ID != active || a.tabGesture != nil {
 		t.Fatal("cancel retained gesture or changed focus")
+	}
+	a.draw()
+	sidebarEvent(a, input.KindMouseClick, a.tabHits[0].X+1, 0)
+	sidebarEvent(a, input.KindMouseRelease, last.X+1, 2)
+	for i, id := range before {
+		if ws.Tabs[i].ID != id {
+			t.Fatal("release without motion reordered tabs")
+		}
 	}
 	path := filepath.Join(t.TempDir(), "session.json")
 	if err := session.Save(path, a.st.Snapshot()); err != nil {
@@ -105,5 +131,30 @@ func TestTabDragMidpointCancellationAndRestore(t *testing.T) {
 	}
 	if restored.TabRef().ID != active {
 		t.Fatal("save/restore lost focus")
+	}
+}
+
+func TestTabDragOutsideMotionMatchesAttachmentMode(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		t.Run(map[bool]string{false: "standalone", true: "server"}[server], func(t *testing.T) {
+			teststate.Lock(t)
+			a := specRuntimeApp(t)
+			a.serverUI = server
+			a.exec(model.CmdNewTab{Workspace: 0})
+			a.draw()
+			ws := a.st.ActiveWorkspace()
+			first, active := ws.Tabs[0].ID, ws.TabRef().ID
+			start, last := a.tabHits[0], a.tabHits[1]
+			sidebarEvent(a, input.KindMouseClick, start.X+1, start.Y)
+			sidebarEvent(a, input.KindMouseMotion, last.X+last.W-1, last.Y+2)
+			sidebarEvent(a, input.KindMouseRelease, last.X+last.W-1, last.Y+2)
+			index := 0
+			if server {
+				index = 1
+			}
+			if ws.Tabs[index].ID != first || ws.TabRef().ID != active {
+				t.Fatal("outside motion differs from the observed attachment mode")
+			}
+		})
 	}
 }

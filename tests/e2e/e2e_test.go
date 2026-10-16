@@ -623,35 +623,28 @@ func TestRawLFToPane(t *testing.T) {
 	}
 }
 
-// SPEC G6: a legacy modifyOtherKeys Shift+Enter press delivers a bare LF
-// to the pane; the kitty release form delivers nothing.
+// Herdr 0.2.56 preserves the FixTerm form for an ordinary pane, drops
+// releases there, and converts the same press to CSI u for a kitty pane.
 func TestShiftEnterToPane(t *testing.T) {
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	prepareByteReader(s, 1)
-	s.send("\x1b[13;2:3u")  // kitty release event first: must emit nothing
-	s.send("\x1b[27;2;13~") // legacy Shift+Enter press → bare LF
-	s.waitFor("LF only", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, " 0a")
+	prepareByteReader(s, 10)
+	s.send("\x1b[13;2:3u")
+	s.send("\x1b[27;2;13~")
+	s.waitFor("FixTerm press only", 10*time.Second, func(tx string) bool {
+		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 32 37 3b 32 3b 31 33 7e")
 	})
-	if strings.Contains(s.text(), "1b") {
-		t.Fatalf("release or raw sequence leaked to pane:\n%s", s.text())
-	}
 }
 
-// SPEC G6: after the pane explicitly pushes the kitty keyboard protocol
-// (CSI > u), Shift+Enter falls through to the raw legacy bytes.
 func TestKittyExplicitShiftEnter(t *testing.T) {
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.send("printf '\\033[>1u'\r")
-	s.waitFor("push done", 5*time.Second, func(tx string) bool {
-		return strings.Count(tx, "❯") >= 2
-	})
-	prepareByteReader(s, 10)
-	s.send("\x1b[27;2;13~") // 10 bytes: ESC [ 2 7 ; 2 ; 1 3 ~
-	s.waitFor("raw legacy seq", 10*time.Second, func(tx string) bool {
-		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 32 37")
+	s.waitFor("push done", 5*time.Second, func(tx string) bool { return strings.Count(tx, "❯") >= 2 })
+	prepareByteReader(s, 7)
+	s.send("\x1b[27;2;13~")
+	s.waitFor("kitty encoded", 10*time.Second, func(tx string) bool {
+		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 31 33 3b 32 75")
 	})
 }
 

@@ -24,11 +24,6 @@ func LoadReloaded(current Config) (Config, error) {
 			c.UI = current.UI
 			c.Warnings[i] = "invalid ui config: " + warning + "; keeping current ui settings"
 		}
-		if key, ok := strings.CutPrefix(warning, "invalid keybinding: keys."); ok {
-			name, _, _ := strings.Cut(key, " = ")
-			c.Keys.Actions[name] = Bindings{""}
-			c.Warnings[i] = strings.Replace(warning, "using default binding", "disabling binding", 1)
-		}
 	}
 	return c, nil
 }

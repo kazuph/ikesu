@@ -1,0 +1,23 @@
+screen @OUT@/first.txt
+send "\u0014N"
+sleep 100ms
+send "STAGE1_SECOND\r"
+sleep 400ms
+screen @OUT@/second.txt
+send "\u001b[107;9u"
+sleep 150ms
+screen @OUT@/previous.txt
+cells @OUT@/previous.json
+send "\u001b[106;9u"
+sleep 150ms
+screen @OUT@/next.txt
+cells @OUT@/next.json
+send "\u001b[49;9u"
+sleep 150ms
+screen @OUT@/one.txt
+cells @OUT@/one.json
+send "\u001b[50;9u"
+sleep 150ms
+screen @OUT@/two.txt
+cells @OUT@/two.json
+kill

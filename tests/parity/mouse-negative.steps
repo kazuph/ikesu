@@ -1,0 +1,54 @@
+send "python3 @FIXTURES@/mouse_report_capture.py off\r"
+sleep 1s
+send "\x1b[<0;-8;24M\x1b[<0;333;-8m"
+mouse down 45 10
+send "\x1b[<32;333;-8M\x1b[<32;-8;24M\x1b[<0;333;-8m\x1b[<0;33;-8M\x1b[<32;33;-8M\x1b[<0;33;-8m"
+sleep 200ms
+mouse up 45 10
+send "OFF_END"
+send "\x1b[<0;5000;5000M\x1b[<32;5000;5000M\x1b[<0;5000;5000m"
+send "OFF_OUT"
+sleep 200ms
+screen @OUT@/off-negative.txt
+cells @OUT@/off-negative.json
+send "\x1b"
+sleep 200ms
+send "q"
+sleep 500ms
+send "python3 @FIXTURES@/mouse_report_capture.py on\r"
+sleep 1s
+send "\x1b[<0;-8;24M\x1b[<0;333;-8m"
+mouse down 45 10
+send "\x1b[<32;333;-8M\x1b[<32;-8;24M\x1b[<0;333;-8m\x1b[<0;33;-8M\x1b[<32;33;-8M\x1b[<0;33;-8m"
+sleep 200ms
+mouse up 45 10
+send "NEG_END"
+sleep 200ms
+mouse down 45 10
+send "\x1b[<32;5000;5000M\x1b[<0;5000;5000m"
+send "OUT_END"
+mouse up 45 10
+sleep 200ms
+screen @OUT@/on-outside.txt
+cells @OUT@/on-outside.json
+send "q"
+sleep 500ms
+send "\x14T"
+sleep 200ms
+send "\x03A\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "B\r"
+sleep 300ms
+mouse down 28 1
+mouse motion 42 1
+send "\x1b[<32;333;-8M\x1b[<0;333;-8m"
+sleep 200ms
+screen @OUT@/tab-negative-release.txt
+cells @OUT@/tab-negative-release.json
+mouse up 42 1
+sleep 200ms
+screen @OUT@/tab-return-release.txt
+cells @OUT@/tab-return-release.json
+kill

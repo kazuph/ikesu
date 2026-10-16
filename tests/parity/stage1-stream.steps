@@ -1,0 +1,25 @@
+send "python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl 1b5b3f3230303468\r"
+waittext 5s PROBE_READY
+send "\x1b[200~first\n"
+sleep 40ms
+send "second\n"
+sleep 40ms
+send "\x1b[20"
+sleep 40ms
+send "1~"
+sleep 100ms
+screen @OUT@/paste.txt
+send "\xe6"
+sleep 40ms
+send "\x97"
+sleep 40ms
+send "\xa5"
+sleep 40ms
+send "\x1b\xe6"
+sleep 40ms
+send "\x97\xa5"
+sleep 100ms
+send "END"
+sleep 100ms
+screen @OUT@/complete.txt
+kill

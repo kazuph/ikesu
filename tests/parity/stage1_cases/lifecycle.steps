@@ -1,0 +1,8 @@
+screen @OUT@/startup.txt
+send "python3 @FIXTURES@/keyboard_lifecycle.py\r"
+waittext 5s LIFECYCLE_DONE
+screen @OUT@/restored.txt
+send "\u0014q"
+sleep 300ms
+screen @OUT@/detached.txt
+kill

@@ -146,3 +146,33 @@ func TestSavedMachineSidebarRowTranslationRetainsPixelOffset(t *testing.T) {
 		t.Fatalf("cell to pixel sidebar translation: got=%q want=%q err=%v", got, want, err)
 	}
 }
+
+func TestMachineSwitchRetainsMouseUnitsUntilCardRelease(t *testing.T) {
+	out, err := os.CreateTemp(t.TempDir(), "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	state := model.New(t.TempDir(), 160, 45)
+	e := &managedEndpoint{snapshot: &render.Input{State: state}}
+	m := &machineClient{active: "remote", out: out, size: tui.Winsize{Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720}, regions: &render.Output{}, endpoints: map[string]*managedEndpoint{"remote": e}, drag: &machineDrag{id: "remote", y: 10, drop: -1}, suppressRelease: true}
+	m.mouse.Written([]byte("\x1b[?1016h"))
+	if _, done := m.event(endpointEvent{id: "remote", message: msg{Type: "output", Data: base64.StdEncoding.EncodeToString([]byte("\x1b[?1016l"))}}); done {
+		t.Fatal("mode output closed viewer")
+	}
+	if err := m.setMouseMode(false); err != nil {
+		t.Fatal(err)
+	}
+	if !m.mouse.pixel {
+		t.Fatal("switch changed coordinate units before the queued button release")
+	}
+	if err := m.input(mouseEvent(t, "\x1b[<0;45;169m")); err != nil {
+		t.Fatal(err)
+	}
+	if m.drag != nil || m.suppressRelease {
+		t.Fatal("valid pixel release was discarded as outside the cell viewport")
+	}
+	if m.mouse.pixel {
+		t.Fatal("released viewer did not synchronize the selected endpoint's cell mode")
+	}
+}

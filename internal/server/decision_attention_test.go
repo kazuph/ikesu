@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ func TestDecisionOriginAndAttentionOverlay(t *testing.T) {
 	s, _, _ := screenTerminal(t, "claude-single", "claude")
 	s.app.Do(func() {
 		st := s.app.State()
-		st.Workspaces[0].Name = "Review space"
+		s.app.ExecCmd(model.CmdRenameWorkspace{Index: 0, Name: "Review space"})
 		st.Workspaces[0].Tabs[0].Name = "Questions"
 		st.PaneLabels = map[int]string{1: "Worker"}
 		s.app.SetReported(1, "", "")
@@ -84,7 +85,7 @@ func TestDecisionRemoteOriginDoesNotNameOrBlockLocalPane(t *testing.T) {
 	s, _, _ := screenTerminal(t, "claude-single", "claude")
 	s.app.Do(func() {
 		st := s.app.State()
-		st.Workspaces[0].Name = "Local space"
+		s.app.ExecCmd(model.CmdRenameWorkspace{Index: 0, Name: "Local space"})
 		st.Workspaces[0].Tabs[0].Name = "Local tab"
 		st.PaneLabels = map[int]string{1: "Local worker"}
 		s.app.SetReported(1, "claude", "working")

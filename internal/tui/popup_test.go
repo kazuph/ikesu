@@ -44,7 +44,7 @@ func TestG2PopupOwnerInputPasteLFReorderAndSelectionCleanupActualPTY(t *testing.
 	a.exec(model.CmdNewWorkspace{Cwd: a.cwd})
 	bID := a.focusedPane()
 	a.sup.Kill(bID)
-	wantB := "B\nP\x1b[<0;2;2M\x1b[<0;2;2m"
+	wantB := "B\x1b[27;2;13~P\x1b[<0;2;2M\x1b[<0;2;2m"
 	b, err := a.sup.SpawnWith(bID, a.cwd, 80, 20, nil, []string{"/bin/sh", "-c", capture(bFile, len(wantB), "\x1b[?1000h\x1b[?1006hBREADY")})
 	if err != nil {
 		t.Fatal(err)

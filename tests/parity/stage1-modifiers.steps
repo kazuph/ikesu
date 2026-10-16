@@ -1,0 +1,11 @@
+send "python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl 00\r"
+waittext 5s PROBE_READY
+send "\x1b[97;3u"
+sleep 40ms
+send "\x1b[97;7u"
+sleep 40ms
+send "\x1b[97:65;6u"
+sleep 40ms
+screen @OUT@/complete.txt
+cells @OUT@/complete.json
+kill

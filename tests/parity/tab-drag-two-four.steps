@@ -1,0 +1,61 @@
+send "\x14T"
+sleep 200ms
+send "\x03A\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "B\r"
+sleep 200ms
+screen @OUT@/two-before.txt
+cells @OUT@/two-before.json
+mouse down 28 1
+mouse motion 42 1
+sleep 100ms
+screen @OUT@/two-moving.txt
+cells @OUT@/two-moving.json
+mouse up 42 1
+sleep 200ms
+screen @OUT@/two-after.txt
+cells @OUT@/two-after.json
+mouse down 37 1
+mouse motion 28 1
+mouse up 28 1
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "C\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "D\r"
+sleep 200ms
+screen @OUT@/four-before.txt
+cells @OUT@/four-before.json
+mouse down 28 1
+mouse motion 60 1
+sleep 100ms
+screen @OUT@/four-moving.txt
+cells @OUT@/four-moving.json
+mouse up 60 1
+sleep 200ms
+screen @OUT@/four-after.txt
+cells @OUT@/four-after.json
+mouse down 28 1
+mouse motion 60 1
+mouse up 60 3
+sleep 200ms
+screen @OUT@/release-last-target.txt
+cells @OUT@/release-last-target.json
+mouse down 28 1
+mouse motion 60 1
+mouse motion 60 3
+mouse up 60 3
+sleep 200ms
+screen @OUT@/outside-motion.txt
+cells @OUT@/outside-motion.json
+mouse down 28 1
+mouse up 60 3
+sleep 200ms
+screen @OUT@/cancelled.txt
+cells @OUT@/cancelled.json
+kill

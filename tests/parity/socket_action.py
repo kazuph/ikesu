@@ -41,6 +41,8 @@ def request(method, params):
 
 if operation == 'workspace-list':
     method, params = 'workspace.list', {}
+elif operation == 'tab-list':
+    method, params = 'tab.list', {}
 elif operation == 'pane-self':
     pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
     if not pane:

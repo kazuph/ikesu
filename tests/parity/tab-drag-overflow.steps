@@ -1,0 +1,32 @@
+send "\x14T"
+sleep 150ms
+send "AAAAAAAAAAAAAAAAAAAAAAAA\r"
+sleep 200ms
+send "\x14c"
+sleep 150ms
+send "BBBBBBBBBBBBBBBBBBBBBBBB\r"
+sleep 200ms
+send "\x14c"
+sleep 150ms
+send "CCCCCCCCCCCCCCCCCCCCCCCC\r"
+sleep 200ms
+send "\x14c"
+sleep 150ms
+send "DDDDDDDDDDDDDDDDDDDDDDDD\r"
+sleep 200ms
+send "\x14c"
+sleep 150ms
+send "EEEEEEEEEEEEEEEEEEEEEEEE\r"
+sleep 200ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 34 1
+mouse motion 112 1
+sleep 200ms
+screen @OUT@/moving.txt
+cells @OUT@/moving.json
+mouse up 112 1
+sleep 300ms
+screen @OUT@/after.txt
+cells @OUT@/after.json
+kill

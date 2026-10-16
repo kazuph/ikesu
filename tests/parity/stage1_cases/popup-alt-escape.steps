@@ -1,0 +1,7 @@
+send "\u0014t"
+sleep 400ms
+send "\u001b\u001b"
+sleep 100ms
+screen @OUT@/alt-escape.txt
+cells @OUT@/alt-escape.json
+kill

@@ -175,6 +175,14 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		// A new viewer starts with the base request. Its current pane may
+		// subsequently request more flags through the output channel.
+		e.hostKbdFlags = 7
+		if event.id == m.active {
+			if err := m.syncKeyboardOutput(e); err != nil {
+				return pumpDone, true
+			}
+		}
 		e.status = "online"
 		e.reason = ""
 		e.approval = ""
@@ -239,8 +247,15 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 	case "output":
 		if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {
+			if m.keyboardOutput(e, data) {
+				break
+			}
 			e.mouse.Written(data)
 			if event.id == m.active {
+				// A queued release still uses the press's terminal coordinates.
+				if m.drag != nil && (string(data) == "\x1b[?1016l" || string(data) == "\x1b[?1016h") {
+					break
+				}
 				n, _ := m.out.Write(data)
 				m.mouse.Written(data[:n])
 			}

@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, func(), error) {
+func readMachineInput(in *os.File, ctx context.Context, colorPending bool) (<-chan input.Event, func(), error) {
 	fd, err := unix.Dup(int(in.Fd()))
 	if err != nil {
 		return nil, nil, err
@@ -41,12 +41,12 @@ func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, fun
 	go func() {
 		defer close(done)
 		defer close(events)
-		var framer input.Framer
+		framer := input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: colorPending}
 		buf := make([]byte, 64*1024)
 		for {
 			timeout := -1
 			if framer.Pending() {
-				timeout = input.IdleFlushMs
+				timeout = framer.TimeoutMs()
 			}
 			fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}, {Fd: wakeFD, Events: unix.POLLIN}}
 			ready, err := unix.Poll(fds, timeout)
@@ -72,6 +72,11 @@ func readMachineInput(in *os.File, ctx context.Context) (<-chan input.Event, fun
 			for _, event := range decoded {
 				if event.Kind == input.KindUnknown && string(event.Raw) == "\x1b[200~" {
 					continue
+				}
+				if event.Kind == input.KindKey && event.Key.Code == uv.KeyEscape && event.Key.Mod == 0 {
+					// Escape is complete here; encode it unambiguously so the server
+					// does not start a second sequence-framing wait.
+					event.Raw = []byte("\x1b[27u")
 				}
 				select {
 				case events <- event:
@@ -104,6 +109,13 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return nil
 	}
+	switch event.Kind {
+	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseMotion, input.KindMouseWheel:
+		cell := m.mouse.CellEvent(event, m.size).Mouse
+		if event.Mouse.X < 0 || event.Mouse.Y < 0 || cell.X >= m.size.Cols || cell.Y >= m.size.Rows {
+			return nil
+		}
+	}
 	if event.Kind == input.KindBlur {
 		m.blurred = true
 	} else if event.Kind == input.KindFocus {
@@ -121,7 +133,10 @@ func (m *machineClient) input(event input.Event) error {
 	}
 	activeView := m.endpoints[m.active]
 	event = m.mouse.CellEvent(event, m.size)
-	if m.active != "local" && event.Kind == input.KindKey && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
+	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
+		if event.Kind == input.KindKeyRelease {
+			return nil
+		}
 		if activeView.snapshot.Prefix {
 			if activeView.connection == nil || activeView.connection.writer.available < endpoint.NotificationGeneration {
 				return fmt.Errorf("endpoint_action_unsupported: prefix remote image paste requires endpoint generation %d", endpoint.NotificationGeneration)
@@ -132,8 +147,8 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return m.pasteClipboard()
 	}
-	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
-		if event.Kind == input.KindUnknown {
+	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindUnknown || event.Kind == input.KindKeyRelease) && event.Key.Code == 'v' && event.Key.Mod == uv.ModSuper {
+		if event.Kind != input.KindKey {
 			return nil
 		}
 		return m.pasteClipboard()
@@ -145,7 +160,10 @@ func (m *machineClient) input(event input.Event) error {
 		return err
 	}
 	if m.drag != nil && (event.Kind == input.KindMouseMotion || event.Kind == input.KindMouseRelease) {
-		return m.dragInput(event)
+		if err := m.dragInput(event); err != nil {
+			return err
+		}
+		return m.setMouseMode(m.endpoints[m.active].mouse.pixel)
 	}
 	if activeView.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 		r := render.SidebarMenuRect(activeView.snapshot.State)

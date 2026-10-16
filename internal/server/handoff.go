@@ -262,6 +262,13 @@ func (s *Server) restoreLive(in *handoffImport) error {
 	if err := s.sup.ImportHandoff(in.State.Panes, in.Files); err != nil {
 		return err
 	}
+	// Older gob reports omit Source; restore it without treating this as a new report.
+	for pid, report := range in.State.App.Reported {
+		if report.Source == "" {
+			report.Source = in.State.ReportSources[pid]
+			in.State.App.Reported[pid] = report
+		}
+	}
 	s.app.RestoreHandoff(in.State.App)
 	s.paneMetadata, s.workspaceMetadata, s.reportSources = in.State.PaneMetadata, in.State.WorkspaceMetadata, in.State.ReportSources
 	s.pluginPanes, s.observedStart = in.State.PluginPanes, in.State.ObservedStart

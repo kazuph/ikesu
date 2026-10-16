@@ -48,7 +48,7 @@ func TestGraphicsFileMachinePathUsesActualTerminalReplyAndPreservesKeys(t *testi
 	defer cancel()
 	finished := make(chan error, 1)
 	go func() { finished <- connection.writeQueued(ctx) }()
-	events, stopInput, err := readMachineInput(terminal, ctx)
+	events, stopInput, err := readMachineInput(terminal, ctx, false)
 	if err != nil {
 		t.Fatal(err)
 	}

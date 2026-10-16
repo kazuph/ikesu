@@ -38,7 +38,7 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 			key = "done"
 		}
 	}
-	if a.decisionAttention[pid] {
+	if a.reportedVisibleBlocker(pid) || a.decisionAttention[pid] {
 		key = "blocked"
 	}
 	switch key {
@@ -195,6 +195,7 @@ func (a *App) draw() {
 	if a.help != nil {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}
 	}
+	a.syncHostKeyboard()
 	if a.snapshotSink != nil {
 		a.lastDraw = time.Now()
 		a.dirty = a.snapshotSink(in) != nil
@@ -202,7 +203,7 @@ func (a *App) draw() {
 	}
 	out := render.Compose(in)
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
-		render.DrawTabDrop(out, g.drop)
+		render.DrawTabDrop(out, g.drop, a.serverUI)
 	}
 	a.tabViewWorkspace, a.tabViewActive = wsID, tabID
 	a.tabViewWidth = a.st.TabBarArea().W
@@ -249,6 +250,12 @@ func (a *App) PaneStatusKey(pid int) string { a.noteAgentState(pid); return a.gl
 
 // SetReported applies a pane.report_agent override. Call on the app loop.
 func (a *App) SetReported(pid int, agent, state string) {
+	a.SetReportedSource(pid, agent, state, "")
+}
+
+// SetReportedSource retains the reporting authority without changing the stored session.
+func (a *App) SetReportedSource(pid int, agent, state, source string) {
+	before := a.glyph(pid).Key
 	if a.reported == nil {
 		a.reported = map[int]reportedPane{}
 	}
@@ -260,11 +267,11 @@ func (a *App) SetReported(pid int, agent, state string) {
 		if a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && pid == a.focusedPane() && !a.windowBlurred && (a.sinkOn == nil || a.sinkOn()) {
 			unseen = false
 		}
-		a.reported[pid] = reportedPane{agent: agent, state: state, unseen: unseen}
+		a.reported[pid] = reportedPane{agent: agent, state: state, unseen: unseen, source: source, at: time.Now()}
 	}
 	if a.availHook != nil {
 		cur := a.reported[pid]
-		if prev != cur {
+		if prev.agent != cur.agent || prev.state != cur.state || prev.unseen != cur.unseen || prev.source != cur.source || before != a.glyph(pid).Key {
 			a.availHook(pid)
 		}
 	}
@@ -281,6 +288,8 @@ func (a *App) Reported(pid int) (agent, state string, ok bool) {
 
 // reportedPane holds pane.report_agent overrides.
 type reportedPane struct {
+	source string
+	at     time.Time
 	agent  string
 	state  string
 	unseen bool

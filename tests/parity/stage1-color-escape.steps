@@ -1,0 +1,9 @@
+waittext 5s PARITY>
+sleep 1s
+send "python3 @FIXTURES@/key_probe.py @OUT@/received.jsonl 00\r"
+waittext 5s PROBE_READY
+send "\x1b"
+sleep 400ms
+screen @OUT@/escape.txt
+cells @OUT@/escape.json
+kill

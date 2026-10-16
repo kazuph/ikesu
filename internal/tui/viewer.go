@@ -87,11 +87,13 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 	v.app.st, v.app.sup = a.st, a.sup
 	v.app.trackers, v.app.reported, v.app.sessions = a.trackers, a.reported, a.sessions
 	v.app.decisionAttention = a.decisionAttention
+	v.app.blockerObservations = a.blockerObservations
 	v.app.agentStates, v.app.agentStateSeq = a.agentStates, a.agentStateSeq
 	v.app.agentStateCounter = a.agentStateCounter
 	v.app.fossils, v.app.visibleIdle = a.fossils, a.visibleIdle
 	v.app.jobRows, v.app.jobDots = a.jobRows, a.jobDots
 	v.app.workspaceGit, v.app.workspaceNames = a.workspaceGit, a.workspaceNames
+	v.app.workspaceLabels = a.workspaceLabels
 	v.app.metadataViews = a.metadataViews
 	v.app.sessionCwds = a.sessionCwds
 	v.app.editorFiles = a.editorFiles
@@ -150,7 +152,7 @@ func (v *Viewer) Tick(a *App) {
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })
 	}
-	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(input.IdleFlushMs)*time.Millisecond {
+	if !v.app.fr.Pending() || time.Since(v.pendingAt) < time.Duration(v.app.fr.TimeoutMs())*time.Millisecond {
 		return
 	}
 	v.with(a, func(ui *App) {

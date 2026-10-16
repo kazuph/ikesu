@@ -67,6 +67,6 @@ func (m *machineClient) drawTabFeedback(out *render.Output) {
 		return
 	}
 	if d.moved {
-		render.DrawTabDrop(out, d.drop)
+		render.DrawTabDrop(out, d.drop, true)
 	}
 }

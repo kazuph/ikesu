@@ -1,5 +1,16 @@
 # 実物の操作比較
 
+段階1の0.2.55比較は `stage1_observe.py` と `stage1_hosts.py` をminiで使う。
+`stage1_cases.py 出力先` がキー形式・popup・Page操作・分割マウス等の手順を生成し、同じstepsを両製品へ流す。
+`stage1-host.steps` のtmux比較は `stage1_hosts.py` が専用socketの実tmuxを起動する。
+WezTermはホスト識別情報による条件比較であり、WezTerm GUIでの確認を意味しない。
+`stage1_host_gate.py 出力先` は起動と終了の全キーボード要求列を検査する。
+`stage1_navigation_gate.py 出力先` は履歴の全行ラベル・受信バイトとpopupの枠数・Escの配送を比較する。
+`stage1_timing_measure.py 出力先` は送信と実paneへの配送時刻を保存し、単なる待ち時間の足し算を遅延としない。
+popup・kittyの終了時には実物がキー解放を合成するため、操作中の配送は保存画面の取得時刻まで、終了時の配送はそれ以降として別々に読む。
+`keyboard_lifecycle.py` はpane自身が要求を変更する。kitty全キー要求を出したshellへ通常文字で解除コマンドを打つ手順は使わない。
+`sh tests/parity/gate-stage1.sh 証拠ディレクトリ` はminiでgofmt・vet・通常test・raceを全実行し、失敗した検査も保存する。
+
 Mac mini の隔離領域で実行する。herdr の実装・テストは読まず、配布バイナリと gtx に同じ `*.steps` を流す。依存ライブラリを追加しない。
 
 ```sh
@@ -117,3 +128,56 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 `--cell-clock` と `prefix-notification-expiry.steps` は通知点・状態点の実PTY描画時刻を記録する。実物では開始遅延1秒（1001/1002ms）、表示期間8秒（開始999ms、終了9005ms）を観測した。時間は元のcell-clock JSONを証拠とし、検査していない時間や状態を代用しない。表示中のペインを既読にするSPEC規則は維持し、実物のdone残留は差として記録する。
 
 `original-menu-cleared.steps` と `original-menu-routing-cleared.steps` は最初の再現操作の前に双方へ同じ端末クリアを送る。初回案内を閉じるEnterのシェル表示を揃え、外クリック/Escape後のメニュー消失、実echo出力、別pane/タブ追加へのクリックが消費されることを比較する。元の準備無しの結果も保存し、準備を入れた文字比較を全スタイル一致とは扱わない。
+
+段階2（K8〜K14、0.2.57）は `stage2_matrix.py --out 出力先` をminiの
+`src/detail` から実行する。`work/detail/gtx-stage2` を事前にビルドし、
+`work/detail/user-config.toml` を使う。`stage2_cases.py` が同じ操作と設定の組を
+出力先の `procedures/` に残す。`--only 手順名...` で修正対象だけを再実行できる。
+`stage2_gate.py 出力先` は選択名・モード継続・子への文字配送・pane追加数・
+設定診断・1〜9の全選択先を検査する。画面全体の一致を主張するゲートではない。
+台帳より実物を優先し、名前変更と閉鎖は表示中workspace、Tabと方向キーは
+navigate維持という0.2.57の観察結果を固定している。
+`runtime-logs.json` は観察専用一時ディレクトリのserverログだけを保存する。
+相対性能は `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage2_perf.sh`
+で実行する。基準ソースは同じGo引数でビルドする `src/stage2-baseline-a68c878`。
+絶対性能はこの工程の判定対象に含めない。
+
+段階2では親の追加指示により、miniの負荷が4以上ならP1相対検査を
+ubuntu-3090へ移せる。`ssh ubuntu` で `source ~/bench-terrace/env.sh` を実行し、
+`~/bench-terrace/work/sol-stage2/{baseline,candidate}` に基準a68c878のarchiveと
+対象ソースを置く。両方を同じGo・同じ引数でlinux/amd64へビルドする。
+
+```sh
+source ~/bench-terrace/env.sh
+root="$HOME/bench-terrace/work/sol-stage2"
+(cd "$root/baseline" && go build -o "$root/gtx-baseline-a68c878" ./cmd/gtx)
+cd "$root/candidate"
+go build -o "$root/gtx-stage2" ./cmd/gtx
+GTX_PERF_BIN="$root/gtx-stage2" GTX_PERF_BASELINE_BIN="$root/gtx-baseline-a68c878" \
+  GTX_PERF_OUT="$root/perf-relative.md" \
+  python3 "$HOME/bench-terrace/work/perf-lock.py" \
+  go test -count=1 -tags perf ./tests/perf -run '^TestRelative$' -timeout 30m
+```
+
+ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾値を変えたり、
+最大RSSの判定を中央値へ置き換えたりしない。
+
+段階2のレビュー再現は `stage2_matrix.py --out <出力先> --only review-conflict-prefix review-conflict-prefix-reverse review-conflict-direct review-conflict-direct-reverse review-slash-base review-slash-symbol review-digit-base review-digit-symbol user-all-numbers` で実行する。比較器も `stage2_gate.py <出力先> --only <同じ9手順名>` で部分実行できる。全件実行時には `--only` を付けない。
+
+記号の競合に見える2割当は、実物0.2.57が無診断で両方をhelpに表示し、通常の記号入力とKitty入力ではhelpが勝つ。記述順も反転して検査する。これは実物を正とする親の判断により維持する。基底slash/数字とShift後の記号の指定は別々に観察し、Kittyの代替文字の有無・記号そのものの3入力を検査する。基底指定は基底/代替付き入力で成功、記号指定は代替付き/記号入力で成功することを必須にする。`user-all-numbers` は設定を変更せず9workspaceを作り、cmd+1〜9それぞれの選択先名を期待値と照合する（両製品の無操作が一致しただけでは成功しない）。
+
+全番号の観察では各cmd+番号の直前にもセルを保存する。1番の前は9番、2〜9番の前は直前番号へ明示的に移動し、比較器は押す番号とは異なる期待名から始まること、押した後の期待名、選択名が変化したことの3条件を各番号で検査する。最初から1番を表示したままcmd+1を送る手順では、そのキーが無反応でも成功するため受け入れない。
+
+`spawn-follow-actions.steps` は店長の ctrl+t 設定で、キー・+ボタン・OSC7後の縦分割・横分割・prefix+g・メニュー分割を実行する。
+`directory_evidence.py` が各操作後の実シェルで継承された絶対cwdを記録し、`spawn_follow_gate.py 出力先` が全6件のcwdと保存画面を検査する。サーバー接続と単独起動を別々に流す。
+`workspace-follow-name.steps` / `workspace-repository-name.steps` / `workspace-custom-name.steps` は、自動名の先頭shellへの追従、checkout名、手動名の保持を実API応答と画面に保存する。`workspace_name_gate.py 出力先 focus|repository|custom` で検査する。
+`directory-handoff.steps` はrunnerが隔離した両製品のサーバーだけをlive-handoffし、名前と作成先を記録する。`directory_handoff.py` はrunner所有のsocket以外を拒否する。
+`observe.py --pixel-mouse --cell-width 8 --cell-height 16` は実際のpixelモード交渉を可能にする。宣言だけでpixel検査済みとしない。raw出力の1016hと送信形式を確認する。
+`tab-drag-release.steps` はmotionなしreleaseと連続down/motion/up、`tab-drag-overflow.steps` は5個の長いタブの比較手順。実物の表示範囲が違えば同じ座標が同じタブを指すとは扱わない。
+`observe.py` の `saved-json.json` は所有サーバーの終了後に保存した実sessionも含む。
+`import_directory_proof.py --snapshot <herdr/saved-json.json> --binary <gtx> --ptyrun <ptyrun> --config-file <店長設定> --out <出力先>` は、実物から保存したshellだけの2スペース（自動名alpha・手動名chosen）のsessionを変更せず取り込み、cd後の自動名・手動名・新規タブのcwdを実サーバーと接続画面で検査する。保存元の一時ディレクトリが既存なら上書きせず停止する。
+`spawn-follow-context.steps` と `spawn_follow_gate.py 出力先 context` は実Git worktree内と、別スペースをクリックした直後のタブ・分割の作成先を検査する。
+`foreground-directory.steps` と `foreground_directory_gate.py 出力先` はshellのbetaから前面の実Pythonプロセスだけをalphaへ移して新規タブを作り、そのプロセスをbetaへ移した後に分割する。継承した絶対cwdとAPI応答を検査し、スペース名は前面プロセスでなく先頭shellのbetaをsidebar・APIとも保つことを確認する。
+`tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
+`tab-drag-five-overflow.steps` と `tab_drag_overflow_gate.py 出力先` は90列に5個の長いタブを置き、同じ見えているAからBの右半分へドラッグする。`socket_action.py tab-list` の実応答で非表示のタブを含む5個すべてのID・順序・選択を確認する。矢印へのドロップは行わない。
+`mouse-negative.steps` と `mouse_negative_gate.py 出力先` はraw SGRの負座標と正の画面外座標を送る。`mouse_report_capture.py` は実端末で1002/1006を有効化する状態と無効な状態を実行し、受信した生バイトを記録する。通常キーの保持、マウス報告の文字漏れがないこと、有効な位置へ戻るまでタブのドラッグが続くことを実物と比較する。server/localをそれぞれcell/pixelで実行する。

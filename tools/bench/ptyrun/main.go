@@ -34,6 +34,7 @@ func main() {
 	fileImages := flag.String("file-images", "", "record file-image payload hashes while the viewer owns the files")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
 	statusDelay := flag.String("status-delay", "", "override terminal status replies with a duration or drop")
+	holdColor := flag.Bool("hold-color-replies", false, "leave background-color queries for explicit steps to answer")
 	flag.Parse()
 	args := flag.Args()
 	cmd := exec.Command(args[0], args[1:]...)
@@ -63,6 +64,12 @@ func main() {
 					fmt.Printf("status-reply at_unix_us=%d error=%v\n", time.Now().UnixMicro(), err)
 				}()
 			}
+			return true
+		})
+	}
+	if *holdColor {
+		emu.RegisterOscHandler(11, func(data []byte) bool {
+			fmt.Printf("held-color-report %q\n", data)
 			return true
 		})
 	}

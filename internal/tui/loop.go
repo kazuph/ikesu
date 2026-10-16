@@ -16,6 +16,8 @@ func (a *App) onInput(ev input.Event) {
 	case input.KindTerminalReport:
 		a.hostMouseReport(ev.Report)
 		a.hostThemeReport(ev.Report)
+	case input.KindKeyRelease:
+		a.sendPaneKey(ev.Key, ev.Raw, true)
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
@@ -40,12 +42,18 @@ func (a *App) onInput(ev input.Event) {
 			}
 		}
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseWheel, input.KindMouseMotion:
+		if ev.Mouse.X < 0 || ev.Mouse.Y < 0 {
+			return
+		}
 		if a.hostPixelMouse {
 			pixel := ev.Mouse
 			a.mousePixel = &pixel
 			defer func() { a.mousePixel = nil }()
 			ev.Mouse.X /= a.cellW
 			ev.Mouse.Y /= a.cellH
+		}
+		if ev.Mouse.X >= a.st.Cols || ev.Mouse.Y >= a.st.Rows {
+			return
 		}
 		a.onMouse(ev)
 	case input.KindFocus:
@@ -125,10 +133,13 @@ func (a *App) detectAll() {
 				if agentID != "" {
 					in.Screen = p.ScreenText()
 				}
+				before := a.glyph(pid).Key
 				d := detect.Detect(agentID, in)
 				d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
+				a.observeBlocker(pid, agentID, d, now)
 				a.clearStaleReport(pid, agentID, d, now)
-				if tr.Update(d, agentID, sn.Dead, now) {
+				trackerChanged := tr.Update(d, agentID, sn.Dead, now)
+				if trackerChanged || before != a.glyph(pid).Key {
 					a.dirty = true
 					if a.availHook != nil {
 						a.availHook(pid)
@@ -153,6 +164,7 @@ func (a *App) detectAll() {
 	// Drop trackers for panes that no longer exist.
 	for pid := range a.trackers {
 		if a.sup.Get(pid) == nil {
+			delete(a.blockerObservations, pid)
 			delete(a.trackers, pid)
 			delete(a.reported, pid)
 		}
@@ -238,6 +250,13 @@ func (a *App) exec(cmd model.Command) {
 		a.mobileScroll = 0
 	}
 	beforeFocus := a.focusedPane()
+	spawnCwd := ""
+	if policyCwd {
+		if p := a.sup.Get(beforeFocus); p != nil {
+			p.PollProcess()
+			spawnCwd = p.SpawnCwd()
+		}
+	}
 	var metadataOrder []int
 	if _, moving := cmd.(model.CmdMoveWorkspace); moving {
 		for _, ws := range a.st.Workspaces {
@@ -256,6 +275,9 @@ func (a *App) exec(cmd model.Command) {
 	}
 	for _, e := range a.st.Apply(cmd) {
 		if spawn, ok := e.(model.EffSpawnPane); ok && policyCwd {
+			if spawnCwd != "" {
+				spawn.Cwd = spawnCwd
+			}
 			spawn.Cwd = a.newPaneCwd(spawn.Cwd)
 			e = spawn
 		}
