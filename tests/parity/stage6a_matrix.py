@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 import subprocess
-p=argparse.ArgumentParser();p.add_argument('--out',required=True);p.add_argument('--only',nargs='*');p.add_argument('--cell-clock',action='store_true');p.add_argument('--toast-delivery',choices=['off','terminal']);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--out',required=True);p.add_argument('--gtx',type=Path);p.add_argument('--only',nargs='*');p.add_argument('--cell-clock',action='store_true');p.add_argument('--toast-delivery',choices=['off','terminal']);a=p.parse_args()
 root=Path.home()/'bench-terrace.noindex';work=root/'work/detail';here=Path(__file__).resolve().parent
 out=Path(a.out);cases=out/'procedures'
 subprocess.run(['python3',str(here/'stage6a_cases.py'),str(cases)],check=True)
@@ -20,7 +20,7 @@ for path in sorted(cases.glob('*.steps')):
             config.write_text(config.read_text()+f'\n[ui.toast]\ndelivery = "{a.toast_delivery}"\n')
         else:
             extra=['--in-app-toast']
-    result=subprocess.run(['python3',str(here/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--gtx',str(work/'gtx-stage6a'),'--ptyrun',str(work/'ptyrun'),'--config-file',str(config),'--steps',str(path),'--out',str(out/path.stem),'--clipboard-sandbox','--server']+extra+(['--cell-clock'] if a.cell_clock else []))
+    result=subprocess.run(['python3',str(here/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--gtx',str(a.gtx or work/'gtx-stage6a'),'--ptyrun',str(work/'ptyrun'),'--config-file',str(config),'--steps',str(path),'--out',str(out/path.stem),'--clipboard-sandbox','--server']+extra+(['--cell-clock'] if a.cell_clock else []))
     if result.returncode: failed.append(path.stem)
 print('FAILED COLLECTION:',failed,flush=True)
 raise SystemExit(bool(failed))
