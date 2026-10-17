@@ -26,7 +26,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		data    []byte
 		rate    int
 		seconds float64
-	}{{"finished", doneSound, 48000, 1.08}, {"needs_attention", requestSound, 44100, 1.462844}} {
+	}{{"finished", doneSound, 48000, 0.8}, {"needs_attention", requestSound, 44100, 0.76}} {
 		b := tc.data
 		if len(b) < 44 || string(b[:4]) != "RIFF" || string(b[8:12]) != "WAVE" || binary.LittleEndian.Uint16(b[20:22]) != 1 || binary.LittleEndian.Uint16(b[22:24]) != 1 || binary.LittleEndian.Uint16(b[34:36]) != 16 {
 			t.Fatal("not mono PCM16 WAV")
