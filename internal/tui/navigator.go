@@ -168,19 +168,27 @@ func (a *App) navigatorKey(k uv.Key) {
 		switch k.Code {
 		case '/':
 			n.searching = true
+			n.filter = ""
 		case 'j':
 			a.navigatorMove(1)
 		case 'k':
 			a.navigatorMove(-1)
 		case 'b':
+			n.query = ""
 			n.filter = "blocked"
 		case 'w':
+			n.query = ""
 			n.filter = "working"
 		case 'i':
+			n.query = ""
 			n.filter = "idle"
 		case 'd':
+			n.query = ""
 			n.filter = "done"
 		case 'a':
+			n.query = ""
+			n.filter = ""
+		case uv.KeyBackspace:
 			n.filter = ""
 		}
 	}
