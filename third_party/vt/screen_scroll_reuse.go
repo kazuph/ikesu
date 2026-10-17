@@ -1,6 +1,9 @@
 package vt
 
-import uv "github.com/charmbracelet/ultraviolet"
+import (
+	"bytes"
+	uv "github.com/charmbracelet/ultraviolet"
+)
 
 // scrollOneReusingBlanks shares the history trim scan with row recycling.
 // Only an already identical EmptyCell suffix can avoid being filled again;
@@ -21,13 +24,24 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	if s.runtimeASCII && len(line) > 0 {
 		scanEnd = s.runtimeBlankBounds[s.runtimeRowHead].end
 	}
-	for i := scanEnd - 1; i >= 0; i-- {
-		if !blankCell(&line[i]) {
-			last = i
-			break
+	var plainText []byte
+	if s.runtimeASCII && len(line) > 0 {
+		state := s.runtimeBlankBounds[s.runtimeRowHead]
+		if state.plain && state.text != nil && len(state.text) == scanEnd {
+			plainText = bytes.TrimRight(state.text, " ")
 		}
-		if line[i].Width == 0 && clearEnd == 0 {
-			clearEnd = i + 1
+	}
+	if plainText != nil {
+		last = len(plainText) - 1
+	} else {
+		for i := scanEnd - 1; i >= 0; i-- {
+			if !blankCell(&line[i]) {
+				last = i
+				break
+			}
+			if line[i].Width == 0 && clearEnd == 0 {
+				clearEnd = i + 1
+			}
 		}
 	}
 	end := last + 1
@@ -38,7 +52,7 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	dropped := false
 	if line != nil {
 		if s.runtimeASCII && s.scrollback.byteLimited && len(line) > 0 {
-			dropped = s.scrollback.pushBytesWithPlain(line[:end], s.runtimeBlankBounds[s.runtimeRowHead].plain)
+			dropped = s.scrollback.pushBytesWithPlainText(line[:end], s.runtimeBlankBounds[s.runtimeRowHead].plain, plainText)
 		} else {
 			dropped = s.scrollback.pushTrimmed(line[:end])
 		}

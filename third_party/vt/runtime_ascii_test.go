@@ -169,3 +169,19 @@ func TestRuntimeASCIIKeepsLinefeedObserver(t *testing.T) {
 		t.Fatalf("linefeed observer calls = %d, want %d", gotCalls, wantCalls)
 	}
 }
+
+func TestRuntimeASCIIHistoryDoesNotRetainInput(t *testing.T) {
+	got, want := NewEmulator(8, 2), NewEmulator(8, 2)
+	defer got.Close()
+	defer want.Close()
+	for _, e := range []*Emulator{got, want} {
+		e.Scrollback().SetMaxBytes(10000)
+	}
+	text := []byte(strings.Repeat("row  \r\n \r\n", 20))
+	_, _ = got.WriteRuntimeASCII(text)
+	_, _ = want.Write(append([]byte(nil), text...))
+	for i := range text {
+		text[i] = 'z'
+	}
+	assertRuntimeASCIIEqual(t, got, want)
+}

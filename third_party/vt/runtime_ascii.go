@@ -8,6 +8,7 @@ import (
 )
 
 type runtimeRowState struct {
+	text  []byte
 	end   int
 	plain bool
 }
@@ -85,6 +86,10 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 			state.end = max(state.end, n)
 			if n > 0 {
 				state.plain = canonical && plain
+				state.text = nil
+				if state.plain {
+					state.text = rest[:n]
+				}
 			}
 		}
 		if canonical && n > 0 {

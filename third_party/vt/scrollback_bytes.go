@@ -76,7 +76,11 @@ func (s *Scrollback) pushBytes(line uv.Line) bool {
 	return s.pushBytesWithPlain(line, false)
 }
 
-func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) (dropped bool) {
+func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) bool {
+	return s.pushBytesWithPlainText(line, knownPlain, nil)
+}
+
+func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plainText []byte) (dropped bool) {
 	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
@@ -113,8 +117,12 @@ func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) (dropped 
 	if plain {
 		if reusable {
 			text = text[:len(line)]
-			for x := range line {
-				text[x] = line[x].Content[0]
+			if plainText != nil && len(plainText) == len(line) {
+				copy(text, plainText)
+			} else {
+				for x := range line {
+					text[x] = line[x].Content[0]
+				}
 			}
 		}
 	} else if reusable {
@@ -127,8 +135,12 @@ func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) (dropped 
 	if plain {
 		if !reusable {
 			text = make([]byte, len(line))
-			for x := range line {
-				text[x] = line[x].Content[0]
+			if plainText != nil && len(plainText) == len(line) {
+				copy(text, plainText)
+			} else {
+				for x := range line {
+					text[x] = line[x].Content[0]
+				}
 			}
 		}
 		s.packed[idx], s.lines[idx] = text, nil
