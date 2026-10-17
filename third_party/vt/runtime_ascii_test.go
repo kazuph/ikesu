@@ -18,7 +18,7 @@ func assertRuntimeASCIIEqual(t *testing.T, got, want *Emulator) {
 		got.parser.State() != want.parser.State() || !bytes.Equal(got.partial, want.partial) {
 		t.Fatalf("dump %t buffer %t history %t bytes %d/%d parser %d/%d partial %q/%q\ngot %s\nwant %s", dumpEmulator(got) == dumpEmulator(want), reflect.DeepEqual(got.scr.buf, want.scr.buf), reflect.DeepEqual(got.Scrollback().Lines(), want.Scrollback().Lines()), got.Scrollback().Bytes(), want.Scrollback().Bytes(), got.parser.State(), want.parser.State(), got.partial, want.partial, dumpEmulator(got), dumpEmulator(want))
 	}
-	if got.scr.runtimeASCII || len(got.scr.runtimeBlankBounds) != 0 {
+	if got.scr.runtimeASCII || got.scr.runtimeScrollTouched || len(got.scr.runtimeBlankBounds) != 0 {
 		t.Fatal("call-local blank knowledge survived")
 	}
 }

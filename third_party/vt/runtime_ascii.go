@@ -46,6 +46,7 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 		s.runtimeBlankBounds = s.runtimeBlankBounds[:len(s.buf.Lines)]
 	}
 	s.runtimeRowHead = 0
+	s.runtimeScrollTouched = false
 	for y, line := range s.buf.Lines {
 		end := len(line)
 		for end > 0 && line[end-1] == uv.EmptyCell {
@@ -59,6 +60,7 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 	s.runtimeASCII = true
 	defer func() {
 		s.runtimeASCII = false
+		s.runtimeScrollTouched = false
 		clear(s.runtimeBlankBounds)
 		s.runtimeBlankBounds = s.runtimeBlankBounds[:0]
 		s.runtimeRowHead = 0
