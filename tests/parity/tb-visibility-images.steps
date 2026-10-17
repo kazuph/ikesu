@@ -1,0 +1,9 @@
+send "python3 @FIXTURES@/tb_visibility_program.py --images\r"
+waittext 5s TB_VISIBILITY_READY
+send "v"
+waitfile @HOME@/tb-visibility.json 15s
+waittext 5s TB_VISIBILITY_RECORDED
+cells @OUT@/visibility-recorded.json
+stats visibility-recorded
+send "q"
+kill

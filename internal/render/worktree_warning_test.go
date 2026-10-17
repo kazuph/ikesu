@@ -35,7 +35,7 @@ func TestEndpointWorktreeRejectionKeepsActionButtonsAndToast(t *testing.T) {
 			t.Fatal("rejection did not dim behind settings")
 		}
 		in.Settings = nil
-		in.Toast = &Toast{Title: "notice", Body: "context"}
+		in.Toast = &Toast{Title: "notice", Body: "context", Position: "top-right"}
 		if out = Compose(in); out.ToastRect.Y != 0 {
 			t.Fatal("bottom rejection pushed the toast outside the screen")
 		}

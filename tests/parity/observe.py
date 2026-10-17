@@ -17,10 +17,11 @@ p.add_argument('--cols', type=int, default=160)
 p.add_argument('--rows', type=int, default=45)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
+p.add_argument('--cell-width', type=int, default=0, help='outer terminal cell width in pixels')
+p.add_argument('--cell-height', type=int, default=0, help='outer terminal cell height in pixels')
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
+p.add_argument('--status-delay', help='protocol fixture: delay or drop terminal status replies')
 p.add_argument('--pixel-mouse', action='store_true', help='advertise SGR pixel mouse support to the attached display')
-p.add_argument('--cell-width', type=int, default=0, help='PTY terminal cell width in pixels')
-p.add_argument('--cell-height', type=int, default=0, help='PTY terminal cell height in pixels')
 p.add_argument('--startup-input', action='store_true', help='observe startup input with onboarding=false; wait for readiness in the steps')
 p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
@@ -66,6 +67,7 @@ out.mkdir(parents=True, exist_ok=True)
     'gtx_sha256': hashlib.sha256(Path(a.gtx).read_bytes()).hexdigest(),
     'config': config_text if a.config_file or a.silent else None,
     'sound_disabled': a.silent,
+    'status_reply_delay': a.status_delay,
     'observer_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     'procedure_sha256': hashlib.sha256(Path(a.steps).read_bytes()).hexdigest(),
 }, indent=2)+'\n')
@@ -83,6 +85,7 @@ interaction = Path(a.steps).read_text()
 for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
     target = out / name
     target.mkdir(exist_ok=True)
+    (target/'host-load-before.txt').write_text(subprocess.check_output(['uptime'], text=True))
     with tempfile.TemporaryDirectory(prefix='parity-', dir='/tmp') as root:
         root = Path(root)
         for directory in ['home', 'config', 'state', 'data', 'zdot', 'cwd']:
@@ -211,7 +214,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     launcher = launcher[:-1]+[sys.executable, str(wrapper), str(target/'display-pid'), binary]
                 subprocess.run([a.ptyrun, '-cols', str(a.cols), '-rows', str(a.rows), '-pixel-mouse='+str(a.pixel_mouse).lower(),
                             '-cell-width', str(a.cell_width), '-cell-height', str(a.cell_height),
-                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
+                            '-xpixel', str(a.cols*a.cell_width), '-ypixel', str(a.rows*a.cell_height),
+                            '-steps', str(steps), '-raw-output', str(target/'terminal.raw')] + (['-cell-clock'] if a.cell_clock else []) + (['-hold-color-replies'] if a.hold_color_replies else []) + (['-status-delay', a.status_delay] if a.status_delay else []) + ['--'] + launcher + (['--session', 'parity'] if a.server else ['--no-session']),
                                cwd=root / 'home', env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
                 (target / 'ui-exit.json').write_text(json.dumps({'exit': 0, 'server': a.server}) + '\n')
             finally:

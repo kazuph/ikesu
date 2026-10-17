@@ -58,7 +58,8 @@ type Emulator struct {
 	cwd string
 
 	// tabstop is the list of tab stops.
-	tabstops *uv.TabStops
+	tabstops              *uv.TabStops
+	cellWidth, cellHeight int
 
 	// I/O pipes.
 	pr *io.PipeReader
@@ -255,7 +256,7 @@ func (e *Emulator) Resize(width int, height int) {
 	e.setCursor(x, y)
 
 	if e.isModeSet(ansi.ModeInBandResize) {
-		_, _ = io.WriteString(e.pw, ansi.InBandResize(e.Height(), e.Width(), 0, 0))
+		e.reportResize()
 	}
 }
 

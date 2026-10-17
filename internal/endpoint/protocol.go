@@ -14,6 +14,23 @@ type Peer struct {
 	Generation    int      `json:"generation"`
 	MinGeneration int      `json:"min_generation"`
 	Methods       []string `json:"methods,omitempty"`
+	SurfaceCodecs []string `json:"surface_codecs,omitempty"`
+}
+
+func GraphicsPeer() Peer {
+	peer := Current()
+	peer.SurfaceCodecs = []string{GraphicsPatchCodec}
+	peer.Methods = append(peer.Methods, "control")
+	return WithGraphicsFiles(peer)
+}
+
+func HasGraphicsPatches(peer Peer) bool {
+	for _, codec := range peer.SurfaceCodecs {
+		if codec == GraphicsPatchCodec {
+			return true
+		}
+	}
+	return false
 }
 
 func Current() Peer {

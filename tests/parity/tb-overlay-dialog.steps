@@ -1,0 +1,16 @@
+send "python3 @FIXTURES@/tb_overlay_program.py\r"
+waittext 5s TB_OVERLAY_READY
+cells @OUT@/overlay-base.json
+stats overlay-base
+send "\x02T"
+waittext 5s rename tab
+cells @OUT@/overlay-dialog.json
+stats overlay-dialog
+send "\x1b"
+sleep 200ms
+send "c"
+waittext 5s TB_OVERLAY_CLOSED
+cells @OUT@/overlay-restored.json
+stats overlay-restored
+send "q"
+kill

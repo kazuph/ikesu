@@ -11,12 +11,12 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 )
 
-func TestG9ToastByteWidthOriginAndWarning(t *testing.T) {
+func TestG9ToastCellWidthOriginAndWarning(t *testing.T) {
 	for _, tc := range []struct {
 		title, body string
 		width       int
 	}{
-		{"title", "body", 11}, {"a", "a longer context", 22}, {"日本語", "本文", 15},
+		{"title", "body", 11}, {"a", "a longer context", 22}, {"日本語", "本文", 12},
 	} {
 		toast := &Toast{Title: tc.title, Body: tc.body}
 		view := layout.Rect{X: 7, Y: 9, W: 80, H: 25}
@@ -47,6 +47,21 @@ func TestG9ToastByteWidthOriginAndWarning(t *testing.T) {
 		if !strings.Contains(text, v) {
 			t.Fatal("missing text", v, text)
 		}
+	}
+}
+
+func TestToastHeightUsesContextAndClampsToView(t *testing.T) {
+	view := layout.Rect{W: 80, H: 25}
+	toast := &Toast{Title: "日本語", Position: "top-right"}
+	if got := ToastRect(toast, view, layout.Rect{}); got != (layout.Rect{X: 68, W: 12, H: 3}) {
+		t.Fatal("title-only toast geometry", got)
+	}
+	toast.Body = "context"
+	if got := ToastRect(toast, view, layout.Rect{}); got != (layout.Rect{X: 67, W: 13, H: 4}) {
+		t.Fatal("context toast geometry", got)
+	}
+	if got := ToastRect(toast, layout.Rect{W: 5, H: 2}, layout.Rect{}); got != (layout.Rect{W: 5, H: 2}) {
+		t.Fatal("small view clamp", got)
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 )
 
 type managedEndpoint struct {
+	mouse                    hostMouseState
 	profile                  machine.Profile
 	connection               *endpointConnection
 	cancel                   context.CancelFunc
@@ -49,6 +50,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	keys               []input.Event
 	id                 string
 	workspace          int
 	deadline           time.Time
@@ -58,6 +60,9 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	nativeTransfer  *nativeViewerTransfer
+	fileGraphics    graphicsFileReceiver
+	mouse           hostMouseState
 	hostKbdFlags    int
 	inputSource     platform.InputSource
 	session         string
@@ -74,10 +79,12 @@ type machineClient struct {
 	workers         sync.WaitGroup
 	sidebar         render.MachineSidebar
 	frames          render.Encoder
+	outputFence     render.OutputFence
+	paintQueued     bool
+	inputBatch      bool
 	title           windowTitleState
 	regions         *render.Output
 	tabFeedback     *tabFeedback
-	tabMouse        tabMouseCoordinates
 	held            []input.Event
 	suppressRelease bool
 	blurred         bool
@@ -169,13 +176,14 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			if !ok {
 				return pumpDone
 			}
-			if err := m.input(event); err != nil {
+			if _, err := m.drainInput(event, input); err != nil {
 				m.notify(err.Error())
 				_ = m.paint()
 			}
 		case <-winch:
 			if size, err := tui.GetWinsize(in); err == nil {
 				m.size = size
+				m.mouse.Geometry(size)
 				if e := m.endpoints[m.active]; e.connection != nil {
 					_ = e.connection.enqueue(resizeMessage(size))
 				}
@@ -219,8 +227,14 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	include(m.noticeUntil)
+	if m.paintQueued {
+		include(m.outputFence.Deadline())
+	}
 	if m.pending != nil {
 		include(m.pending.deadline)
+		if len(m.pending.keys) > 0 {
+			include(m.pending.inputDeadline())
+		}
 	}
 	for _, e := range m.endpoints {
 		include(e.retry.next)
@@ -232,6 +246,9 @@ func (m *machineClient) advance(now time.Time) {
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
 		m.noticeUntil = time.Time{}
+	}
+	if m.pending != nil && !now.Before(m.pending.inputDeadline()) {
+		m.pending.keys = nil
 	}
 	if m.pending != nil && !now.Before(m.pending.deadline) {
 		m.endpoints[m.pending.id].reason = "machine switch timed out"

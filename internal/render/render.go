@@ -113,6 +113,8 @@ type JobDot struct {
 }
 
 type Input struct {
+	GraphicsPatches []PaneGraphicsPatch
+	SurfaceRevision uint64
 	PanePalette     *Palette
 	ServerUI        bool
 	State           *model.AppState
@@ -320,7 +322,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		f.Fill(r.X, r.Y, r.W, r.H, " ", style)
 		f.Text(r.X+1, r.Y, in.ConfigWarning, style, r.X+r.W)
 	}
-	if in.Toast != nil {
+	if in.Toast != nil && (!in.ServerUI || s.Mobile() || in.Toast.Position != "") {
 		drawToast(f, in.Toast, out)
 	}
 	if in.Copied != "" && !in.ServerUI {
@@ -343,9 +345,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		}
 		drawNavigator(f, in.Navigator, spin)
 	}
-	if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil || in.Toast != nil {
-		f.Graphics = nil
-	}
+	coverInputGraphics(in, out)
 	return out
 }
 

@@ -1,8 +1,6 @@
 package vt
 
 import (
-	"io"
-
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -32,7 +30,7 @@ func (e *Emulator) ResizeWithReflow(width, height int, continued []ReflowRow) []
 	x, y := e.scr.CursorPosition()
 	e.setCursor(min(x, width-1), min(y, height-1))
 	if e.isModeSet(ansi.ModeInBandResize) {
-		_, _ = io.WriteString(e.pw, ansi.InBandResize(height, width, 0, 0))
+		e.reportResize()
 	}
 	return flags
 }

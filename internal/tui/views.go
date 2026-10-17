@@ -199,7 +199,7 @@ func (a *App) draw() {
 	if a.sel != nil && a.sel.moved {
 		in.Sel = a.selRender()
 	}
-	if a.toast != nil && a.toast.shown {
+	if a.toastVisible() {
 		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind, Position: a.sidebarConfig.UI.Toast.Herdr.Position}
 	}
 	if a.help != nil {

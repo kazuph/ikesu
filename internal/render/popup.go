@@ -7,8 +7,10 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	if !s.PopupVisible() {
 		return
 	}
-	f.Graphics = nil
-	f.Placeholders = nil
+	if !in.ServerUI {
+		f.Graphics = nil
+		f.Placeholders = nil
+	}
 	r := s.PopupRect()
 	if r.W < 1 || r.H < 1 {
 		return
