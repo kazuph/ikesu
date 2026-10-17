@@ -60,7 +60,11 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		}
 	} else {
 		s.rotateScrollRows(y, r, line)
-		if clearEnd > 0 {
+		if clearEnd > 0 && s.runtimeASCII && s.runtimeBlankBounds[s.runtimeRowHead].plain {
+			for x := range line[:clearEnd] {
+				line[x].Content = " "
+			}
+		} else if clearEnd > 0 {
 			if len(s.blankLine) != len(line) {
 				s.blankLine = make(uv.Line, len(line))
 				for x := range s.blankLine {
