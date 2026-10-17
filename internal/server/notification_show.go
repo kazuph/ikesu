@@ -84,14 +84,12 @@ func (s *Server) notificationShow(req *api.Request) api.Response {
 	}
 	if s.cfg.ToastDelivery() == config.ToastTerminal {
 		sequence := foreground.terminal.NotificationBytes(title, body)
-		if sequence == "" {
-			result.Reason = "no_foreground_client"
-			return api.Success(req.ID, result)
-		}
-		if err := foreground.send(clientMsg{Type: "output", Data: encode64([]byte(sequence))}); err != nil {
-			s.dropConn(foreground)
-			result.Reason = "no_foreground_client"
-			return api.Success(req.ID, result)
+		if sequence != "" {
+			if err := foreground.send(clientMsg{Type: "output", Data: encode64([]byte(sequence))}); err != nil {
+				s.dropConn(foreground)
+				result.Reason = "no_foreground_client"
+				return api.Success(req.ID, result)
+			}
 		}
 	}
 	kind := "info"

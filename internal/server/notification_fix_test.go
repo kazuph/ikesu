@@ -47,14 +47,17 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 			c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
 			r := apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "body": "本文", "sound": "none"})
 			want := `{"type":"notification_show","shown":true,"reason":"shown"}`
-			if tt.want == "" {
-				want = `{"type":"notification_show","shown":false,"reason":"no_foreground_client"}`
-			}
 			if r.Err != nil || string(r.Result) != want {
 				t.Fatal(r.Err, string(r.Result), want)
 			}
 			if tt.want != "" {
 				c.readUntil(t, 5*time.Second, func(m clientMsg) bool { b, _ := base64.StdEncoding.DecodeString(m.Data); return string(b) == tt.want })
+			}
+			if tt.want == "" {
+				r = apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "sound": "none"})
+				if r.Err != nil || string(r.Result) != `{"type":"notification_show","shown":false,"reason":"rate_limited"}` {
+					t.Fatal(r.Err, string(r.Result))
+				}
 			}
 		})
 	}

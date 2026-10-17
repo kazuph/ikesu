@@ -110,6 +110,9 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
             server = None
             binary = str(Path(binary).resolve())
             launcher = ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE, binary] if a.clipboard_sandbox else [binary]
+            if a.terminal_env is not None:
+                # Restore the requested TERM after ptyrun's emulation default.
+                launcher = ['/usr/bin/env']+[f'{k}={v}' for k,v in a.terminal_env.items()]+launcher
             if a.clipboard_sandbox:
                 (target / 'sandbox-launch.json').write_text(json.dumps({'launcher': launcher, 'server': a.server}, indent=2)+'\n')
             env['PARITY_BINARY_PATH'] = binary

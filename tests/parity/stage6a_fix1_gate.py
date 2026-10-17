@@ -18,12 +18,12 @@ for name in ['ghostty','iterm','wezterm','kitty','term-ghostty','term-kitty','te
     replies=[]
     for who in ['herdr','gtx']:
         entries=actions(case,who);r=[e['reply'] for e in entries];assert len(r)==8,(case,who,len(r))
+        for i in [0,2,3,4,6,7]:assert r[i]['result']=={'type':'notification_show','shown':True,'reason':'shown'},(case,who,i,r[i])
+        assert r[1]['result']=={'type':'notification_show','shown':False,'reason':'rate_limited'},(case,who,r[1])
+        raw=(root/case/who/'terminal.raw').read_bytes()
         if name=='unknown':
-            for i in [0,1,2,3,4,6,7]:assert r[i]['result']=={'type':'notification_show','shown':False,'reason':'no_foreground_client'},(case,who,i,r[i])
+            assert b'\x1b]9;' not in raw and b'\x1b]99;' not in raw,(case,who,'unknown terminal emitted notification')
         else:
-            for i in [0,2,3,4,6,7]:assert r[i]['result']=={'type':'notification_show','shown':True,'reason':'shown'},(case,who,i,r[i])
-            assert r[1]['result']=={'type':'notification_show','shown':False,'reason':'rate_limited'},(case,who,r[1])
-            raw=(root/case/who/'terminal.raw').read_bytes()
             for title,body in [('日本語','本文'),('日本語',''),('A B','C D'),('日'*80,'語'*240),('日'*79,'語'*239)]:
                 expected=notification_bytes(name,title,body);assert expected in raw,(case,who,len(title),len(body),'missing full byte sequence')
         assert r[5]['error']=={'code':'invalid_params','message':'notification title is empty'},(case,who,r[5])
@@ -44,7 +44,7 @@ for count,height in [(1,12),(2,12),(3,13),(13,26)]:
         clicked=(root/case/who/'clicked.txt').read_text();assert 'open worktree' not in clicked,(case,who,'click did not open selected checkout')
         # The final API reply records the checkout actually opened by the click.
         final=actions(case,who)[-1]['reply']['result']['workspaces']
-        assert any(w['cwd'].endswith('/fixture-repo' if count==1 else f'/checkout-{count-2:02}') for w in final),(case,who,final)
+        assert any(w.get('worktree',{}).get('checkout_path','').endswith('/fixture-repo' if count==1 else f'/checkout-{count-2:02}') and w['focused'] for w in final),(case,who,final)
     proof[case]={'status':'PASS','height':height,'comparison':'initial and filtered geometry, last selection, real checkout opened by click'}
 
 for who in ['herdr','gtx']:

@@ -33,7 +33,7 @@ for name,env in terminals.items():observe('terminal-'+name,action('notification-
 for count,height in [(1,12),(2,12),(3,13),(13,26)]:
     steps=action(f'repo-count {count}')+'click 5 7\nsleep 200ms\nrclick 5 7\nsleep 300ms\nclicktext "Open worktree..."\n'+snap('initial')
     steps+=send('\x1b[B'*13)+snap('last')+send('/'+('main' if count==1 else 'branch'))+snap('filtered')+send('\x1b[B'*13)+snap('filtered-last')
-    visible=(height-7)//2;selected=min(count-1,visible-1)
+    visible=(height-7)//2;selected=min(max(1,count-1)-1,visible-1)
     y=(45-height)//2+4+2*selected
     steps+=f'click 40 {y+1}\n'+snap('clicked')+action('list')
     observe(f'worktree-{count}',steps,'in-app')
