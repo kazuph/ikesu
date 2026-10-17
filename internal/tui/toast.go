@@ -111,9 +111,13 @@ func (a *App) navToToastTarget() {
 }
 
 // ShowNotification preserves an existing toast instead of replacing it.
-func (a *App) ShowNotification(title, body, position string) bool {
+func (a *App) NotificationBusy() bool {
 	a.expireToast()
-	if a.toast != nil {
+	return a.toast != nil
+}
+
+func (a *App) ShowNotification(title, body, position string) bool {
+	if a.NotificationBusy() {
 		return false
 	}
 	a.ShowToast(title, body, "info", -1)

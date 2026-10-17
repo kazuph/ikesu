@@ -31,7 +31,7 @@ func MenuSize(m *Menu) (w, h int) {
 // MenuRect positions a menu inside (cols, rows).
 func MenuRect(m *Menu, cols, rows int) layout.Rect {
 	if m.Worktree {
-		return WorktreeMenuRect(cols, rows)
+		return WorktreeMenuRect(m, cols, rows)
 	}
 	w, h := MenuSize(m)
 	w, h = min(w, max(0, cols)), min(h, max(0, rows))

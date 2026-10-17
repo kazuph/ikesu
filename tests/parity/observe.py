@@ -16,6 +16,7 @@ p.add_argument('--herdr', required=True)
 p.add_argument('--gtx', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-clock', action='store_true', help='save the real PTY time of each cell content change')
+p.add_argument('--terminal-env', type=json.loads, help='isolated display terminal environment (JSON object)')
 p.add_argument('--pixel-mouse', action='store_true', help='advertise SGR pixel mouse support to the attached display')
 p.add_argument('--cell-width', type=int, default=0, help='PTY terminal cell width in pixels')
 p.add_argument('--cell-height', type=int, default=0, help='PTY terminal cell height in pixels')
@@ -87,6 +88,12 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
                    GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
         env['PARITY_OBSERVE_BINARY'] = str(Path(binary).resolve())
+        if a.terminal_env is not None:
+            allowed={'TERM_PROGRAM','TERM','KITTY_WINDOW_ID','TMUX'}
+            if not isinstance(a.terminal_env,dict) or set(a.terminal_env)-allowed:
+                raise ValueError('terminal-env accepts only terminal identification variables')
+            for key in allowed: env.pop(key,None)
+            env.update(a.terminal_env)
         if (a.config_file or a.in_app_toast) and name == 'gtx':
             env['GTX_CONFIG'] = str(config)
         if (a.config_file or a.in_app_toast) and name == 'herdr':

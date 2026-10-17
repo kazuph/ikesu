@@ -221,3 +221,11 @@ A41のクリック検査は `name-click-probe.steps` に20/30/40/56列×4点を�
 実物は低い画面で内容を描かなくても保存ボタンのクリック範囲を保持し、
 枠内空白と枠外のクリックは無視する。`stage6a_gate.py --only name-probe` は
 16条件で開いている枠の有無を判定する。見た目が空だからクリック不能とは推測しない。
+# 段階6aのレビュー修正4件
+
+miniで `python3 tests/parity/stage6a_fix1.py --gtx /absolute/fixed/gtx --out /absolute/evidence` を実行する。
+既存observe.pyの隔離server・実接続client・clipboard sandboxを使い、herdr 0.2.57と同一入力を送る。
+端末識別9条件、OSC 9/99とtmuxパススルーの全バイト、1秒のAPI連続要求制限、制御文字と80/240文字制限を検査する。
+文字数は画面の切れではなく端末通知の完全なバイト列で比較する。候補1/2/3/13件のworktree枠は検索前後の寸法、末尾の選択と実クリック後のcheckoutを検査する。
+成功結果はfix1-gate.json。収集終了だけでは合格としない。GoのTestStage6aFix系が書込み失敗と非成功時刻の保持も検査する。
+

@@ -2,11 +2,41 @@ package server
 
 import (
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 )
+
+// Explicit API notification limits from FIX-1; background cooldown is separate.
+const apiNotificationInterval = time.Second
+
+func notificationText(text string, limit int) string {
+	out := make([]rune, 0, limit)
+	space := false
+	for _, r := range text {
+		if r == '\n' || r == '\r' || r == '\t' {
+			r = ' '
+		} else if unicode.IsControl(r) {
+			continue
+		}
+		if unicode.IsSpace(r) {
+			if space {
+				continue
+			}
+			r, space = ' ', true
+		} else {
+			space = false
+		}
+		out = append(out, r)
+		if len(out) == limit {
+			break
+		}
+	}
+	return strings.TrimSpace(string(out))
+}
 
 func (s *Server) notificationShow(req *api.Request) api.Response {
 	var p api.NotificationShowParams
@@ -25,16 +55,24 @@ func (s *Server) notificationShow(req *api.Request) api.Response {
 			return api.Failure("", api.ErrInvalidRequest, "invalid notification position")
 		}
 	}
-	title := strings.TrimSpace(*p.Title)
+	title := notificationText(*p.Title, 80)
 	if title == "" {
 		return api.Failure(req.ID, "invalid_params", "notification title is empty")
 	}
 	body := ""
 	if p.Body != nil {
-		body = strings.TrimSpace(*p.Body)
+		body = notificationText(*p.Body, 240)
 	}
 	result := api.NotificationShowResult{Type: "notification_show", Reason: "disabled"}
 	if s.cfg.ToastDelivery() == config.ToastOff {
+		return api.Success(req.ID, result)
+	}
+	if s.cfg.ToastDelivery() == config.ToastGTX && s.app.NotificationBusy() {
+		result.Reason = "busy"
+		return api.Success(req.ID, result)
+	}
+	if time.Since(s.lastAPINotification) < apiNotificationInterval {
+		result.Reason = "rate_limited"
 		return api.Success(req.ID, result)
 	}
 	s.mu.Lock()
@@ -44,11 +82,18 @@ func (s *Server) notificationShow(req *api.Request) api.Response {
 		result.Reason = "no_foreground_client"
 		return api.Success(req.ID, result)
 	}
-	if s.cfg.ToastDelivery() == config.ToastGTX && !s.app.ShowNotification(title, body, position) {
-		result.Reason = "busy"
-		return api.Success(req.ID, result)
+	if s.cfg.ToastDelivery() == config.ToastTerminal {
+		sequence := foreground.terminal.NotificationBytes(title, body)
+		if sequence == "" {
+			result.Reason = "no_foreground_client"
+			return api.Success(req.ID, result)
+		}
+		if err := foreground.send(clientMsg{Type: "output", Data: encode64([]byte(sequence))}); err != nil {
+			s.dropConn(foreground)
+			result.Reason = "no_foreground_client"
+			return api.Success(req.ID, result)
+		}
 	}
-	result.Shown, result.Reason = true, "shown"
 	kind := "info"
 	switch p.Sound {
 	case "done":
@@ -65,8 +110,15 @@ func (s *Server) notificationShow(req *api.Request) api.Response {
 			n := endpoint.Notification{Title: title, Body: body, Kind: kind, SystemToast: s.cfg.ToastDelivery() == config.ToastSystem}
 			if err := c.send(clientMsg{Type: "notify", Notification: &n}); err != nil {
 				s.dropConn(c)
+				result.Reason = "no_foreground_client"
+				return api.Success(req.ID, result)
 			}
 		}
 	}
+	if s.cfg.ToastDelivery() == config.ToastGTX {
+		s.app.ShowNotification(title, body, position)
+	}
+	result.Shown, result.Reason = true, "shown"
+	s.lastAPINotification = time.Now()
 	return api.Success(req.ID, result)
 }
