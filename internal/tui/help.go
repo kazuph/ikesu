@@ -94,6 +94,28 @@ func (a *App) helpRows() []render.HelpRow {
 		{},
 	}
 	for i := range rows {
+		if rows[i].Cmd == "workspace list" || rows[i].Cmd == "move focus" {
+			names := []string{"navigate_workspace_up", "navigate_workspace_down"}
+			if rows[i].Cmd == "move focus" {
+				names = []string{"navigate_pane_left", "navigate_pane_down", "navigate_pane_up", "navigate_pane_right"}
+			}
+			var bindings []string
+			for _, name := range names {
+				for _, spec := range a.sidebarConfig.ActionBindings(name) {
+					if spec != "" {
+						bindings = append(bindings, spec)
+					}
+				}
+			}
+			if rows[i].Cmd == "move focus" {
+				bindings = append(bindings, "left", "right")
+			}
+			rows[i].Bind = strings.Join(bindings, " / ")
+			if rows[i].Bind == "" {
+				rows[i].Bind = "unset"
+			}
+			continue
+		}
 		if rows[i].Cmd == "prefix mode" {
 			rows[i].Bind = a.prefixSpec()
 			continue

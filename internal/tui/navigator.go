@@ -15,6 +15,7 @@ type navigatorView struct {
 	searching        bool
 	filter           string
 	selected, scroll int
+	collapsed        map[int]bool
 }
 
 func (a *App) openNavigator() {
@@ -90,7 +91,9 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 			continue
 		}
 		rows = append(rows, render.NavigatorRow{Workspace: wi, Pane: -1, Name: name, WorkspaceName: name, Count: ws.PaneCount(), Status: "○", Current: wi == a.st.Active})
-		rows = append(rows, children...)
+		if !n.collapsed[wi] {
+			rows = append(rows, children...)
+		}
 	}
 	return rows, count
 }
@@ -138,6 +141,25 @@ func (a *App) navigatorKey(k uv.Key) {
 		a.dirty = true
 		return
 	}
+	if k.Mod.Contains(uv.ModCtrl) {
+		switch k.Code {
+		case 'n':
+			a.navigatorMove(1)
+			return
+		case 'p':
+			a.navigatorMove(-1)
+			return
+		case 'd', 'u':
+			if !n.searching {
+				delta := max(1, (render.NavigatorRect(a.st.Cols, a.st.Rows).H-6)/2)
+				if k.Code == 'u' {
+					delta = -delta
+				}
+				a.navigatorMove(delta)
+				return
+			}
+		}
+	}
 	switch k.Code {
 	case uv.KeyUp:
 		a.navigatorMove(-1)
@@ -147,6 +169,15 @@ func (a *App) navigatorKey(k uv.Key) {
 		return
 	case uv.KeyEnter:
 		a.navigatorSelect()
+		return
+	case uv.KeyHome, uv.KeyEnd:
+		rows, _ := a.navigatorRows()
+		if k.Code == uv.KeyHome {
+			n.selected = 0
+		} else {
+			n.selected = max(0, len(rows)-1)
+		}
+		a.navigatorMove(0)
 		return
 	}
 	if n.searching {
@@ -173,6 +204,18 @@ func (a *App) navigatorKey(k uv.Key) {
 			a.navigatorMove(1)
 		case 'k':
 			a.navigatorMove(-1)
+		case 'G':
+			rows, _ := a.navigatorRows()
+			n.selected = max(0, len(rows)-1)
+		case ' ':
+			rows, _ := a.navigatorRows()
+			if len(rows) > 0 && rows[min(n.selected, len(rows)-1)].Pane == -1 {
+				row := rows[min(n.selected, len(rows)-1)]
+				if n.collapsed == nil {
+					n.collapsed = make(map[int]bool)
+				}
+				n.collapsed[row.Workspace] = !n.collapsed[row.Workspace]
+			}
 		case 'b':
 			n.query = ""
 			n.filter = "blocked"

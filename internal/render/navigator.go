@@ -115,6 +115,9 @@ func drawNavigator(f *Frame, n *Navigator, spin int) {
 		name := row.Name
 		if row.Pane == -1 {
 			prefix = fmt.Sprintf(" ▾ %s %s %s", selected, current, row.Status)
+			if n.Query == "" && n.Filter == "" && (i+1 == len(n.Rows) || n.Rows[i+1].Workspace != row.Workspace) {
+				prefix = fmt.Sprintf(" ▸ %s %s %s", selected, current, row.Status)
+			}
 			name = fmt.Sprintf("%s (%d)", row.Name, row.Count)
 		}
 		processMargin := 0
