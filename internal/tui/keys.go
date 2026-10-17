@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -420,10 +421,18 @@ func (a *App) dialogKey(k uv.Key) {
 		}
 		runes := []rune(*d.input)
 		switch {
-		case k.Code == 'c' && k.Mod.Contains(uv.ModCtrl):
+		case (k.Code == 'c' || k.Code == 'u') && k.Mod.Contains(uv.ModCtrl),
+			k.Code == uv.KeyBackspace && k.Mod.Contains(uv.ModSuper):
 			runes = nil
 			d.replaceDefault = false
+		case (k.Code == 'h' || k.Code == 'w') && k.Mod.Contains(uv.ModCtrl),
+			k.Code == uv.KeyBackspace && (k.Mod.Contains(uv.ModCtrl) || k.Mod.Contains(uv.ModAlt)):
+			runes = deleteNameWord(runes)
+			d.replaceDefault = false
 		case k.Code == uv.KeyBackspace:
+			if d.replaceDefault {
+				runes = nil
+			}
 			d.replaceDefault = false
 			if len(runes) > 0 {
 				runes = runes[:len(runes)-1]
@@ -439,6 +448,21 @@ func (a *App) dialogKey(k uv.Key) {
 		d.d.Input, d.d.InputCursor = *d.input, len(runes)
 	}
 	a.dirty = true
+}
+
+func deleteNameWord(runes []rune) []rune {
+	for len(runes) > 0 && unicode.IsSpace(runes[len(runes)-1]) {
+		runes = runes[:len(runes)-1]
+	}
+	if len(runes) == 0 {
+		return runes
+	}
+	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' }
+	kind := word(runes[len(runes)-1])
+	for len(runes) > 0 && !unicode.IsSpace(runes[len(runes)-1]) && word(runes[len(runes)-1]) == kind {
+		runes = runes[:len(runes)-1]
+	}
+	return runes
 }
 
 // openRenameTabDialog prompts for a new name for workspace ws's tab ti.
