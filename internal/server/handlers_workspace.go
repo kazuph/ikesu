@@ -86,7 +86,9 @@ func (s *Server) wsClose(id, ref string) api.Response {
 	if i < 0 {
 		return s.wsNotFound(id, ref)
 	}
-	s.app.ExecCmd(model.CmdCloseWorkspace{Index: i})
+	if err := s.app.CloseWorkspace(i); err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
+	}
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
 

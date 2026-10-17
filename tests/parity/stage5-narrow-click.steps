@@ -1,0 +1,199 @@
+resize 27 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w1-x27.txt
+cells @OUT@/w1-x27.json
+send "\x1b"
+sleep 200ms
+resize 28 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w2-x27.txt
+cells @OUT@/w2-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w2-x28.txt
+cells @OUT@/w2-x28.json
+send "\x1b"
+sleep 200ms
+resize 29 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w3-x27.txt
+cells @OUT@/w3-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w3-x28.txt
+cells @OUT@/w3-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w3-x29.txt
+cells @OUT@/w3-x29.json
+send "\x1b"
+sleep 200ms
+resize 30 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w4-x27.txt
+cells @OUT@/w4-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w4-x28.txt
+cells @OUT@/w4-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w4-x29.txt
+cells @OUT@/w4-x29.json
+send "\x1b"
+sleep 200ms
+resize 31 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w5-x27.txt
+cells @OUT@/w5-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w5-x28.txt
+cells @OUT@/w5-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w5-x29.txt
+cells @OUT@/w5-x29.json
+send "\x1b"
+sleep 200ms
+resize 32 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w6-x27.txt
+cells @OUT@/w6-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w6-x28.txt
+cells @OUT@/w6-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w6-x29.txt
+cells @OUT@/w6-x29.json
+send "\x1b"
+sleep 200ms
+resize 33 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w7-x27.txt
+cells @OUT@/w7-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w7-x28.txt
+cells @OUT@/w7-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w7-x29.txt
+cells @OUT@/w7-x29.json
+send "\x1b"
+sleep 200ms
+resize 36 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w10-x27.txt
+cells @OUT@/w10-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w10-x28.txt
+cells @OUT@/w10-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w10-x29.txt
+cells @OUT@/w10-x29.json
+send "\x1b"
+sleep 200ms
+resize 46 30
+sleep 300ms
+click 27 30
+sleep 300ms
+screen @OUT@/w20-x27.txt
+cells @OUT@/w20-x27.json
+send "\x1b"
+sleep 200ms
+click 28 30
+sleep 300ms
+screen @OUT@/w20-x28.txt
+cells @OUT@/w20-x28.json
+send "\x1b"
+sleep 200ms
+click 29 30
+sleep 300ms
+screen @OUT@/w20-x29.txt
+cells @OUT@/w20-x29.json
+send "\x1b"
+sleep 200ms
+resize 66 30
+sleep 300ms
+click 28 30
+sleep 300ms
+screen @OUT@/extra-40.txt
+cells @OUT@/extra-40.json
+send "\x1b"
+sleep 200ms
+resize 106 30
+sleep 300ms
+click 28 30
+sleep 300ms
+screen @OUT@/extra-80.txt
+cells @OUT@/extra-80.json
+send "\x1b"
+sleep 200ms
+resize 160 30
+sleep 300ms
+click 28 30
+sleep 300ms
+screen @OUT@/extra-134.txt
+cells @OUT@/extra-134.json
+send "\x1b"
+sleep 200ms
+resize 31 30
+sleep 300ms
+click 28 30
+sleep 300ms
+screen @OUT@/extra-5.txt
+cells @OUT@/extra-5.json
+send "\x1b"
+sleep 200ms
+send "\x14["
+sleep 300ms
+screen @OUT@/prefix.txt
+cells @OUT@/prefix.json
+kill

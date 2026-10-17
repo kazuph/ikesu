@@ -39,10 +39,14 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 			total++
 		}
 	}
-	buttonWidth := ansi.StringWidth(" + ")
+	mouse := in.SidebarConfig.UI.MouseCapture == nil || *in.SidebarConfig.UI.MouseCapture
+	buttonWidth := 0
+	if mouse {
+		buttonWidth = ansi.StringWidth(" + ")
+	}
 	viewport := max(0, area.W-buttonWidth)
 	x := area.X
-	if total > viewport {
+	if mouse && total > viewport {
 		arrowWidth := ansi.StringWidth(" < ")
 		viewport = max(0, viewport-2*arrowWidth)
 		x += arrowWidth
@@ -61,17 +65,12 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	}
 	offset := max(0, min(in.TabScroll, maxOffset))
 	if !in.TabScrollManual && ws.ActiveTab >= 0 && ws.ActiveTab < len(starts) {
-		start := starts[ws.ActiveTab]
-		end := start + 1
-		if start < offset {
-			offset = start
-		} else if end > offset+viewport {
-			offset = max(0, end-viewport)
-		}
+		offset = min(maxOffset, max(0, starts[ws.ActiveTab]-viewport/2))
 	}
-	if out.TabLeftRect.W == 0 {
+	if total <= viewport {
 		offset = 0
 	}
+
 	if !in.TabScrollManual {
 		// Overflow captures keep the left edge on a tab boundary,
 		// even when the active tab's trailing padding no longer fits.
@@ -119,7 +118,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		if g.Rune == " " {
 			g.Rune = "·"
 		}
-		strip.Text(starts[i]+1, 0, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: style.Bg, Attrs: boldIf(g.Bold)}, starts[i]+widths[i])
+		strip.Text(starts[i]+1, 0, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: style.Bg, Attrs: boldIf(g.Bold || i == ws.ActiveTab && t.Name != "")}, starts[i]+widths[i])
 		left, right := max(starts[i], offset), min(starts[i]+widths[i], offset+viewport)
 		r := layout.Rect{}
 		if left < right {
@@ -149,7 +148,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 		if leftClipped || rightClipped {
 			cell.Content, cell.Width = "…", 1
-			if leftClipped {
+			if leftClipped || offset != maxOffset {
 				cell.Style.Fg = f.Palette.Dim
 			}
 		}
@@ -175,7 +174,7 @@ func drawTabBar(f *Frame, s *model.AppState, in Input, out *Output) {
 	} else {
 		x += visible
 	}
-	if x+buttonWidth <= area.X+area.W {
+	if mouse && x+buttonWidth <= area.X+area.W {
 		f.Text(x, area.Y, " + ", uv.Style{Fg: f.Palette.Overlay1, Bg: f.Palette.PopupBG}, x+buttonWidth)
 		out.NewTabRect = layout.Rect{X: x, Y: area.Y, W: buttonWidth, H: 1}
 	}

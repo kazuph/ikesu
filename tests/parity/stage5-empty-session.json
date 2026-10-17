@@ -1,0 +1,27 @@
+{
+  "herdr": {
+    "config/herdr-0.2/sessions/parity/session.json": {
+      "version": 5,
+      "workspaces": [],
+      "active": 0,
+      "selected": 0,
+      "sidebar_width": 26,
+      "sidebar_section_split": 0.5,
+      "collapsed_space_keys": [],
+      "collapsed_workspace_sections": []
+    }
+  },
+  "gtx": {
+    "state/g/@BINARY@/parity/session.json": {
+      "version": 1,
+      "saved_at": "2026-10-16T13:38:49.803617Z",
+      "active": 0,
+      "sidebar_width": 26,
+      "sidebar_visible": true,
+      "next_pane_id": 2,
+      "next_workspace_id": 2,
+      "next_tab_id": 2,
+      "workspaces": []
+    }
+  }
+}

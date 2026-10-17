@@ -83,6 +83,18 @@ func (t *Tab) PaneRects(area Rect) []layout.PaneRect {
 // The logical split tree remains unchanged for API layout and navigation.
 func (s *AppState) PaneRectsForDisplay(t *Tab, area Rect) []layout.PaneRect {
 	out := t.PaneRects(area)
+	if !s.PaneBorders && s.PaneGaps && t.Zoomed == 0 {
+		for i := range out {
+			r := &out[i].Rect
+			if r.X+r.W < area.X+area.W {
+				r.W = max(0, r.W-1)
+			}
+			if r.Y+r.H < area.Y+area.H {
+				r.H = max(0, r.H-1)
+			}
+		}
+		return out
+	}
 	if s.PaneGaps || !s.PaneBorders || t.Zoomed != 0 {
 		return out
 	}
