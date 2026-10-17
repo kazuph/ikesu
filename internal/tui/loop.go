@@ -51,7 +51,7 @@ func (a *App) onInput(ev input.Event) {
 		if a.cm != nil {
 			return
 		}
-		if a.prefix || a.workspaceNavigate {
+		if a.workspaceNavigate {
 			return
 		}
 		if pid := a.focusedPane(); pid >= 0 {
