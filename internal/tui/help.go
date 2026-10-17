@@ -145,6 +145,7 @@ func (a *App) helpRows() []render.HelpRow {
 			}
 			rows = append(rows, render.HelpRow{Bind: b.Key, Cmd: description})
 		}
+		rows = append(rows, render.HelpRow{})
 	}
 	return rows
 

@@ -193,6 +193,12 @@ func (a *App) navigatorKey(k uv.Key) {
 			n.query += k.Text
 		}
 	} else {
+		if k.Text == "G" || k.Code == 'G' || k.Code == 'g' && k.Mod == uv.ModShift {
+			rows, _ := a.navigatorRows()
+			n.selected = max(0, len(rows)-1)
+			a.navigatorMove(0)
+			return
+		}
 		if k.Mod != 0 {
 			return
 		}
@@ -204,9 +210,6 @@ func (a *App) navigatorKey(k uv.Key) {
 			a.navigatorMove(1)
 		case 'k':
 			a.navigatorMove(-1)
-		case 'G':
-			rows, _ := a.navigatorRows()
-			n.selected = max(0, len(rows)-1)
 		case ' ':
 			rows, _ := a.navigatorRows()
 			if len(rows) > 0 && rows[min(n.selected, len(rows)-1)].Pane == -1 {

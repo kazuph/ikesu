@@ -104,7 +104,7 @@ func TestStage6bNavigatorMovementAndCollapse(t *testing.T) {
 	if a.navigator.selected != 0 {
 		t.Fatal("half page must clamp to start")
 	}
-	a.navigatorKey(uv.Key{Code: 'G'})
+	a.navigatorKey(uv.Key{Code: 'g', Mod: uv.ModShift, Text: "G"})
 	if a.navigator.selected != 1 {
 		t.Fatal("G must select last row")
 	}
