@@ -152,6 +152,9 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
+	if v.app.toast != nil {
+		v.with(a, func(ui *App) { ui.expireToast() })
+	}
 	if v.app.sel != nil && v.app.sel.autoDir != 0 {
 		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })
 	}
@@ -186,6 +189,10 @@ func (v *Viewer) VisiblePane(a *App, pid int) bool {
 
 func (v *Viewer) Draw(a *App, panes map[int]*render.PaneSnap) {
 	v.with(a, func(ui *App) { ui.sharedPaneSnaps = panes; ui.draw(); ui.sharedPaneSnaps = nil })
+}
+
+func (v *Viewer) ShowToast(a *App, title, body, kind string, target int) {
+	v.with(a, func(ui *App) { ui.ShowToast(title, body, kind, target) })
 }
 
 // SetViewerHooks diverts display work only in session server mode.

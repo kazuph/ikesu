@@ -91,7 +91,7 @@ func (a *App) onMouse(ev input.Event) {
 
 // click dispatches a mouse press by region.
 func (a *App) click(m uv.Mouse) {
-	if a.toastClick(m.X, m.Y) {
+	if m.Button == uv.MouseLeft && a.toastClick(m.X, m.Y) {
 		return
 	}
 	if r := a.st.StatusArea(); r.H > 0 && m.Y == r.Y {
@@ -165,7 +165,7 @@ func (a *App) click(m uv.Mouse) {
 
 	// Pane scrollbar: a press on the thumb starts a drag that keeps the
 	// grab offset; a press on the track jumps the thumb to the press
-	// point and keeps dragging from there (SPEC G6).
+	// point; subsequent motion anchors the thumb top to the pointer.
 	if gutter > 0 && m.X == inner.X+inner.W-1 &&
 		m.Y >= inner.Y && m.Y < inner.Y+inner.H {
 		a.exec(model.CmdFocusPane{Pane: pr.ID})
@@ -179,7 +179,6 @@ func (a *App) click(m uv.Mouse) {
 			} else {
 				newTop := rel - th/2
 				a.setScrollOff(pr.ID, offFromThumb(inner.H, sn.ScrollbackLen, newTop))
-				grab = th / 2
 			}
 		}
 		a.sb = &sbDrag{pane: pr.ID, inner: inner, grab: grab}
