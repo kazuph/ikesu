@@ -88,8 +88,12 @@ func (a *App) settingsKey(k uv.Key) {
 	switch k.Code {
 	case uv.KeyEscape:
 		a.settings = nil
-	case uv.KeyEnter, ' ':
+	case uv.KeyEnter:
 		a.settingsApply()
+	case ' ':
+		if s.Section != 0 {
+			a.settingsApply()
+		}
 	case uv.KeyTab:
 		dir := 1
 		if k.Mod.Contains(uv.ModShift) {
@@ -104,9 +108,17 @@ func (a *App) settingsKey(k uv.Key) {
 		s.Section = (s.Section + 1) % 3
 		a.settingsSelectCurrent()
 	case uv.KeyUp, 'k':
-		s.Selected = (s.Selected + a.settingsCount() - 1) % a.settingsCount()
+		if s.Section != 1 {
+			s.Selected = max(0, s.Selected-1)
+		} else {
+			s.Selected = (s.Selected + a.settingsCount() - 1) % a.settingsCount()
+		}
 	case uv.KeyDown, 'j':
-		s.Selected = (s.Selected + 1) % a.settingsCount()
+		if s.Section != 1 {
+			s.Selected = min(a.settingsCount()-1, s.Selected+1)
+		} else {
+			s.Selected = (s.Selected + 1) % a.settingsCount()
+		}
 	}
 	a.settingsSection = s.Section
 	if a.settings != nil && s.Section == 0 {
