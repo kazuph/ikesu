@@ -13,6 +13,13 @@ navigatorだけは競合する`prefix+g`を避けてgotoを`prefix+o`に置く�
 4未満ならmini、それ以外ならubuntu-3090でperf-lock.py経由の相対検査を行う。
 実クリップボードを使用した非空テキストのCmd/Ctrl+V挿入はこのsandbox観察では証明しない。
 private-fileの依存注入テストと、sandbox下でのキー漏出検査は別の証拠として扱う。
+親がminiのGUIクリップボード使用を明示許可した追加確認は、miniで
+`python3 tests/parity/stage6b_native_clipboard.py 出力先`を実行する。
+SSHユーザーとGUIユーザーの一致を確認し、全item/typeを権限0600で保存してから、
+pbcopy/pbpasteとNSPasteboardの同一文字列を照合する。両製品のCmd/Ctrl+Vを観察後、
+元の全形式データへ戻して完全一致を`proof.json`に記録する。
+`original-pasteboard.json`は元の内容を含むためmini外へコピー・表示・コミットしない。
+この追加確認は実pasteboardを読むため`--clipboard-sandbox`を付けない。
 
 段階4（サイドバー）はminiの `src/stage4` で `stage4_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。

@@ -41,12 +41,12 @@ func readDesktopClipboard(ctx context.Context) (clipboardContent, error) {
 	const script = `ObjC.import('AppKit');
 const p = $.NSPasteboard.generalPasteboard;
 let image = p.dataForType($.NSPasteboardTypePNG);
-if (!image) {
+if (image.isNil()) {
   const tiff = p.dataForType($.NSPasteboardTypeTIFF);
-  if (tiff) image = $.NSBitmapImageRep.imageRepWithData(tiff).representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({}));
+  if (!tiff.isNil()) image = $.NSBitmapImageRep.imageRepWithData(tiff).representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({}));
 }
 const text = p.stringForType($.NSPasteboardTypeString);
-JSON.stringify({text: text ? ObjC.unwrap(text) : '', png: image ? ObjC.unwrap(image.base64EncodedStringWithOptions(0)) : null});`
+JSON.stringify({text: text.isNil() ? '' : ObjC.unwrap(text), png: image.isNil() ? null : ObjC.unwrap(image.base64EncodedStringWithOptions(0))});`
 	data, err := childenv.CommandContext(ctx, "/usr/bin/osascript", "-l", "JavaScript", "-e", script).Output()
 	if err != nil {
 		return clipboardContent{}, fmt.Errorf("read desktop clipboard: %w", err)
