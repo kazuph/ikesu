@@ -222,9 +222,10 @@ func (a *App) popupMouse(ev input.Event) bool {
 		}
 	case input.KindMouseClick:
 		if p.Snapshot().MouseTracking {
+			a.fwdStrip = 0
 			a.forwardTo(pid, uv.MouseClickEvent(m))
 			a.fwd = pid
-		} else if m.Button == uv.MouseLeft {
+		} else if m.Button == uv.MouseLeft && m.Mod == 0 {
 			x, y := m.X-inner.X, viewTop(p, a.scroll[pid], inner.H)+m.Y-inner.Y
 			a.sel = &selState{pane: pid, ax: x, ay: y, hx: x, hy: y, inner: inner, scrollAt: a.scroll[pid]}
 		}

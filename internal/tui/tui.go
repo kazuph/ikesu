@@ -253,6 +253,7 @@ type App struct {
 	newTabRect                               layout.Rect // last frame's "+" button
 	sb                                       *sbDrag     // scrollbar-gutter drag in progress
 	fwd                                      int         // pane receiving forwarded mouse events during a drag
+	fwdStrip                                 uv.KeyMod
 	scroll                                   map[int]int
 	trackers                                 map[int]*status.Tracker
 	blockerObservations                      map[int]blockerObservation

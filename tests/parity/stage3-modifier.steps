@@ -1,0 +1,28 @@
+send "python3 @FIXTURES@/mouse_report_capture.py on\r"
+sleep 500ms
+send "\x1b[<18;45;10M\x1b[<50;50;12M\x1b[<18;50;12m"
+sleep 250ms
+screen @OUT@/right-forward.txt
+cells @OUT@/right-forward.json
+send "q"
+sleep 250ms
+send "printf '\\033[3J\\033[H\\033[2J'; printf 'SHIFT_SELECTION_TEXT\\n'\r"
+sleep 250ms
+send "\x1b[<4;28;4M\x1b[<36;38;4M"
+sleep 200ms
+screen @OUT@/shift-drag.txt
+cells @OUT@/shift-drag.json
+send "\x1b[<4;38;4m"
+sleep 250ms
+screen @OUT@/shift-release.txt
+cells @OUT@/shift-release.json
+mouse down 28 4
+mouse motion 38 4
+sleep 200ms
+screen @OUT@/plain-drag.txt
+cells @OUT@/plain-drag.json
+mouse up 38 4
+sleep 250ms
+screen @OUT@/plain-release.txt
+cells @OUT@/plain-release.json
+kill

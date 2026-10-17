@@ -126,8 +126,9 @@ func (a *App) click(m uv.Mouse) {
 			// every cell belongs to the terminal.
 			if tracking && a.rightClickPass(m) && !(framed && isBorderCell(pr.Rect, m.X, m.Y)) {
 				a.exec(model.CmdFocusPane{Pane: pr.ID})
-				a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 				a.fwd = pr.ID
+				a.fwdStrip = m.Mod
+				a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 				return
 			}
 			a.exec(model.CmdFocusPane{Pane: pr.ID})
@@ -209,8 +210,12 @@ func (a *App) click(m uv.Mouse) {
 	if p.Snapshot().MouseTracking {
 		// Mouse-reporting panes receive all four events; no menu gesture.
 		a.dblMenu = false
+		a.fwdStrip = 0
 		a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 		a.fwd = pr.ID
+		return
+	}
+	if m.Mod != 0 {
 		return
 	}
 	if a.sidebarConfig.UI.CopyOnSelect != nil && !*a.sidebarConfig.UI.CopyOnSelect {
@@ -745,6 +750,9 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 		return
 	}
 	tr := func(m uv.Mouse) uv.Mouse {
+		if a.fwd == pid {
+			m.Mod &^= a.fwdStrip
+		}
 		if pixel && a.mousePixel != nil {
 			m.X = a.mousePixel.X - inner.X*a.cellW
 			m.Y = a.mousePixel.Y - inner.Y*a.cellH

@@ -44,7 +44,7 @@ class ClipboardGuard:
             target = self.shims / name
             target.write_text('#!' + sys.executable + '\n' + source.read_text())
             target.chmod(0o700)
-        self.before = real_clipboard_hash()
+        self.before = real_clipboard_hash() if capture_commands else None
         self.audit = self.root / 'calls.jsonl'
         self.records = []
         self.copy_candidates = set()
@@ -60,11 +60,11 @@ class ClipboardGuard:
                 raise RuntimeError('STOP: clipboard shim not first in PATH')
 
     def check(self, name, raw_path=None):
-        after = real_clipboard_hash()
+        after = real_clipboard_hash() if self.capture_commands else None
         calls = [json.loads(line) for line in self.audit.read_text().splitlines()] if self.audit.exists() else []
         pbcopy_calls = sum(row['command'] == 'pbcopy' for row in calls)
         result = {'process': name, 'before_sha256': self.before, 'after_sha256': after,
-                  'unchanged': self.before == after, 'captured_pbcopy_calls': pbcopy_calls,
+                  'unchanged': self.before == after if self.capture_commands else None, 'captured_pbcopy_calls': pbcopy_calls,
                   'commands': [row['command'] for row in calls]}
         if raw_path is not None:
             self.copy_candidates.update(copy_hashes(Path(raw_path).read_bytes()))
@@ -73,7 +73,7 @@ class ClipboardGuard:
             data = captured.read_bytes()
             self.copy_candidates.update(hashlib.sha256(value).hexdigest() for value in (data, data + b'\n'))
         result['copy_candidate_sha256'] = sorted(self.copy_candidates)
-        result['change_kind'] = ('unchanged' if self.before == after else
+        result['change_kind'] = ('not_read_sandboxed' if not self.capture_commands else 'unchanged' if self.before == after else
                                  'suspected_copy_write' if after in self.copy_candidates else 'external')
         self.records.append(result)
         (self.root / 'proof.json').write_text(json.dumps(self.records, indent=2) + '\n')
@@ -87,15 +87,15 @@ class ClipboardGuard:
         command = ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE, '/bin/sh', '-c',
                    'printf PARITY_SANDBOX_PROBE | /usr/bin/pbcopy']
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        after = real_clipboard_hash()
+        after = real_clipboard_hash() if self.capture_commands else None
         proof = {'command': command, 'exit_code': result.returncode,
                  'stderr': result.stderr.decode(errors='replace'),
                  'before_sha256': self.before, 'after_sha256': after,
-                 'unchanged': self.before == after}
+                 'unchanged': self.before == after if self.capture_commands else None}
         candidates = {hashlib.sha256(value).hexdigest() for value in
                       (b'PARITY_SANDBOX_PROBE', b'PARITY_SANDBOX_PROBE\n')}
         proof['copy_candidate_sha256'] = sorted(candidates)
-        proof['change_kind'] = ('unchanged' if self.before == after else
+        proof['change_kind'] = ('not_read_sandboxed' if not self.capture_commands else 'unchanged' if self.before == after else
                                 'suspected_copy_write' if after in candidates else 'external')
         self.probe = proof
         (self.root / 'sandbox-probe.json').write_text(json.dumps(proof, indent=2) + '\n')
