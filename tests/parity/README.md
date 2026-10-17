@@ -1,5 +1,24 @@
 # 実物の操作比較
 
+段階3（マウス）はminiの `src/stage3` で `stage3_observe.sh 出力先 ケース名...` を使う。
+`PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
+店長設定（Ctrl+T prefix、80% popup、tab bar、tokyo-night と custom 色）をコピーし、
+`--silent --clipboard-sandbox` で音とpasteboardへの接続を隔離する。
+隔離モードは実クリップボードを読み取らず、証拠のハッシュを `null` として記録する。
+serverの初期ワークスペースが存在するときは再利用し、両製品の公開番号をそろえる。
+
+ケースは `stage3-wheel`、`stage3-wheel-local`、`stage3-workspace`、`stage3-arrows`、
+`stage3-sidebar-bars`、`stage3-modifier`、`stage3-pane-scroll`、`stage3-toast`。
+修飾キー比較だけControlによる右クリック転送を追加し、通知比較だけ画面内配信へ変更する。
+`stage3_mouse_gate.py ケースの出力先 wheel|workspace|arrows|sidebar-bars|modifier|pane-scroll|toast`
+が転送バイト・選択セル・タブ順・スクロール行・通知の前後を検査する。
+`stage3_config_gate.py 出力先` は実際に使われた設定・隔離・popup寸法を検査する。
+`compare.py` の生の画面差分も残し、番号や文言の差を同一と偽らない。
+`tab-drag-release` と `tab-drag-five-overflow` は既存ドラッグの回帰用に再実行する。
+
+台帳と実物の違いはRESULT.mdへ記録する。接続表示のホイール・押下・一覧バーと、
+単独表示のホイールは別条件として判定し、未観測の条件へPASSを広げない。
+
 段階4（サイドバー）はminiの `src/stage4` で `stage4_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
 店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。

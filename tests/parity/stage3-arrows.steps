@@ -1,0 +1,66 @@
+send "\x14T"
+sleep 200ms
+send "\x03AAAAAAAA\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03BBBBBBBB\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03CCCCCCCC\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03DDDDDDDD\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03EEEEEEEE\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03FFFFFFFF\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03GGGGGGGG\r"
+sleep 200ms
+send "\x14c"
+sleep 200ms
+send "\x03HHHHHHHH\r"
+sleep 200ms
+resize 80 45
+send "\x141"
+sleep 300ms
+click 75 1
+sleep 300ms
+send "python3 @FIXTURES@/socket_action.py tab-list\r"
+sleep 300ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 49 1
+mouse motion 28 1
+mouse up 28 1
+sleep 300ms
+send "python3 @FIXTURES@/socket_action.py tab-list\r"
+sleep 300ms
+screen @OUT@/left.txt
+cells @OUT@/left.json
+send "\x148"
+sleep 300ms
+send "\x141"
+sleep 300ms
+click 75 1
+sleep 300ms
+screen @OUT@/pre-right.txt
+cells @OUT@/pre-right.json
+mouse down 49 1
+mouse motion 75 1
+mouse up 75 1
+sleep 300ms
+send "python3 @FIXTURES@/socket_action.py tab-list\r"
+sleep 300ms
+screen @OUT@/right.txt
+cells @OUT@/right.json
+kill
