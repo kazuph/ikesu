@@ -9,7 +9,7 @@ import (
 
 func (a *App) openSettings() {
 	c := a.sidebarConfig
-	a.settings = &render.Settings{Section: a.settingsSection, Theme: c.ThemeName(), Sound: c.SoundEnabled(), Toast: string(c.ToastDelivery())}
+	a.settings = &render.Settings{Theme: c.ThemeName(), Sound: c.SoundEnabled(), Toast: string(c.ToastDelivery())}
 	a.settingsSelectCurrent()
 	a.dirty = true
 }
@@ -77,7 +77,7 @@ func (a *App) settingsApply() {
 		s.Theme = c.ThemeName()
 		s.Sound = c.SoundEnabled()
 		s.Toast = string(c.ToastDelivery())
-		if a.settings == s {
+		if a.settings == s && s.Section == 0 {
 			a.settings = nil
 		}
 		a.dirty = true
@@ -88,7 +88,7 @@ func (a *App) settingsKey(k uv.Key) {
 	switch k.Code {
 	case uv.KeyEscape:
 		a.settings = nil
-	case uv.KeyEnter:
+	case uv.KeyEnter, ' ':
 		a.settingsApply()
 	case uv.KeyTab:
 		dir := 1
@@ -97,16 +97,16 @@ func (a *App) settingsKey(k uv.Key) {
 		}
 		s.Section = (s.Section + dir + 3) % 3
 		a.settingsSelectCurrent()
-	case uv.KeyLeft:
+	case uv.KeyLeft, 'h':
 		s.Section = (s.Section + 2) % 3
 		a.settingsSelectCurrent()
-	case uv.KeyRight:
+	case uv.KeyRight, 'l':
 		s.Section = (s.Section + 1) % 3
 		a.settingsSelectCurrent()
-	case uv.KeyUp:
-		s.Selected = max(0, s.Selected-1)
-	case uv.KeyDown:
-		s.Selected = min(a.settingsCount()-1, s.Selected+1)
+	case uv.KeyUp, 'k':
+		s.Selected = (s.Selected + a.settingsCount() - 1) % a.settingsCount()
+	case uv.KeyDown, 'j':
+		s.Selected = (s.Selected + 1) % a.settingsCount()
 	}
 	a.settingsSection = s.Section
 	if a.settings != nil && s.Section == 0 {

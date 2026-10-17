@@ -36,25 +36,25 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 	}
 	a.openSettings()
 	specFeed(a, "\t\x1b[B\r")
-	if a.settings != nil || a.sidebarConfig.SoundEnabled() {
+	if a.settings == nil || a.sidebarConfig.SoundEnabled() {
 		t.Fatal("sound save")
 	}
 	if len(a.sidebarConfig.Warnings) != 0 {
 		t.Fatal("saved sound-off introduced a warning", a.sidebarConfig.Warnings)
 	}
 	a.openSettings()
-	specFeed(a, "\x1b[A\r")
-	if a.settings != nil || !a.sidebarConfig.SoundEnabled() || len(a.sidebarConfig.Warnings) != 0 {
+	specFeed(a, "\t\x1b[A\r")
+	if a.settings == nil || !a.sidebarConfig.SoundEnabled() || len(a.sidebarConfig.Warnings) != 0 {
 		t.Fatal("saved sound-on introduced a warning", a.sidebarConfig.Warnings)
 	}
 	a.openSettings()
-	specFeed(a, "\x1b[B\r")
-	a.openSettings()
-	if a.settings.Section != 1 {
-		t.Fatal("reopen must retain sound section")
-	}
 	specFeed(a, "\t\x1b[B\r")
-	if a.settings != nil || a.sidebarConfig.ToastDelivery() != config.ToastGTX || applied.ToastDelivery() != config.ToastGTX {
+	a.openSettings()
+	if a.settings.Section != 0 {
+		t.Fatal("0.2.57 reopens theme")
+	}
+	specFeed(a, "\t\t\x1b[B\r")
+	if a.settings == nil || a.sidebarConfig.ToastDelivery() != config.ToastGTX || applied.ToastDelivery() != config.ToastGTX {
 		t.Fatal("toast apply")
 	}
 	a.openSettings()

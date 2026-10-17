@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestParitySettingsThemePreviewAndRememberedSection(t *testing.T) {
+func TestParitySettingsThemePreviewAndReopenTheme(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
 	teststate.Setenv(t, "GTX_CONFIG", path)
@@ -40,10 +40,9 @@ func TestParitySettingsThemePreviewAndRememberedSection(t *testing.T) {
 		t.Fatal("sound apply must not save previewed theme", cfg, err)
 	}
 	a.openSettings()
-	if a.settings.Section != 1 {
-		t.Fatal("reopen must remember sound section")
+	if a.settings.Section != 0 {
+		t.Fatal("0.2.57 reopens the theme section")
 	}
-	a.settingsKey(uv.Key{Code: uv.KeyLeft})
 	if a.settings.Theme != "catppuccin" || a.settings.Selected != 0 {
 		t.Fatal("reopen must reload saved theme")
 	}
