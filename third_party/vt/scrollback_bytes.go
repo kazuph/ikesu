@@ -72,19 +72,29 @@ func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
 	}
 	return row, text, styled
 }
-func (s *Scrollback) pushBytes(line uv.Line) {
+func (s *Scrollback) pushBytes(line uv.Line) bool {
+	return s.pushBytesWithPlain(line, false)
+}
+
+func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) bool {
+	return s.pushBytesWithPlainText(line, knownPlain, nil)
+}
+
+func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plainText []byte) (dropped bool) {
 	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
 	var styled *styledRow
 	for s.count > 0 && (s.bytes+cost > s.maxBytes || s.count >= s.maxLines) {
+		dropped = dropped || s.OnDrop != nil
 		reuse, text, styled = s.dropOldest()
 	}
 	if cost > s.maxBytes {
 		if s.OnDrop != nil {
+			dropped = true
 			s.OnDrop()
 		}
-		return
+		return dropped
 	}
 	if s.count == len(s.lines) {
 		n := min(s.maxLines, max(1, 2*len(s.lines)))
@@ -102,14 +112,36 @@ func (s *Scrollback) pushBytes(line uv.Line) {
 		s.lines, s.rowBytes, s.packed, s.styled, s.start = rows, sizes, packed, styles, 0
 	}
 	idx := s.wrap(s.start + s.count)
-	if plainRow(line) {
-		if cap(text) != len(line) {
-			text = make([]byte, len(line))
-		} else {
+	reusable := cap(text) == len(line)
+	plain := knownPlain && len(line) > 0
+	if plain {
+		if reusable {
 			text = text[:len(line)]
+			if plainText != nil && len(plainText) == len(line) {
+				copy(text, plainText)
+			} else {
+				for x := range line {
+					text[x] = line[x].Content[0]
+				}
+			}
 		}
-		for x := range line {
-			text[x] = line[x].Content[0]
+	} else if reusable {
+		// text belongs to the evicted row; a rejected prefix is never retained.
+		text = text[:len(line)]
+		plain = packPlainRow(line, text)
+	} else {
+		plain = plainRow(line)
+	}
+	if plain {
+		if !reusable {
+			text = make([]byte, len(line))
+			if plainText != nil && len(plainText) == len(line) {
+				copy(text, plainText)
+			} else {
+				for x := range line {
+					text[x] = line[x].Content[0]
+				}
+			}
 		}
 		s.packed[idx], s.lines[idx] = text, nil
 	} else if styled = packStyled(line, styled); styled != nil {
@@ -127,4 +159,5 @@ func (s *Scrollback) pushBytes(line uv.Line) {
 	s.rowBytes[idx] = cost
 	s.bytes += cost
 	s.count++
+	return dropped
 }

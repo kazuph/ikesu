@@ -49,7 +49,7 @@ func (e *Emulator) printRun(run []byte) {
 	pending := run[len(run)-1]
 	run = run[:len(run)-1]
 
-	awm := e.isModeSet(ansi.ModeAutoWrap)
+	awm := e.autoWrap
 	pen := e.scr.cursorPen()
 	link := e.scr.cursorLink()
 	width := e.scr.buf.Width()
@@ -80,9 +80,15 @@ func (e *Emulator) printRun(run []byte) {
 		// A direct cell assignment is only safe when every target cell is an
 		// ordinary 1-wide cell; overwriting part of a wide cell needs
 		// [Line.Set]'s fixups, so the rest goes through the regular path.
+		plain := pen == (uv.Style{}) && link == (uv.Link{})
 		fast := line != nil
 		for k := 0; fast && k < n; k++ {
-			if line[x+k].Width != 1 {
+			c := &line[x+k]
+			if plain {
+				st := &c.Style
+				plain = int(st.Attrs)|int(st.Underline)|len(c.Link.URL)|len(c.Link.Params) == 0 && st.Fg == nil && st.Bg == nil && st.UnderlineColor == nil
+			}
+			if c.Width != 1 {
 				fast = false
 			}
 		}
@@ -91,19 +97,42 @@ func (e *Emulator) printRun(run []byte) {
 			return
 		}
 
-		first, last := n, 0
-		for k := 0; k < n; k++ {
-			c := uv.Cell{Content: asciiContent[run[i+k]], Width: 1, Style: pen, Link: link}
-			if line[x+k] != c {
-				if k < first {
-					first = k
-				}
-				last = k + 1
-			}
-			line[x+k] = c
+		var cells uv.Line
+		var data []byte
+		if n > 0 {
+			cells = line[x : x+n]
+			data = run[i : i+n]
+			_ = cells[len(data)-1]
 		}
-		if first < last {
-			e.scr.buf.TouchLine(x+first, y, last-first)
+		first, last := n, 0
+		c := uv.Cell{Width: 1, Style: pen, Link: link}
+		var touched *uv.LineData
+		if len(e.scr.buf.Touched) >= len(e.scr.buf.Lines) {
+			touched = e.scr.buf.Touched[y]
+		}
+		if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n && plain {
+			for k, b := range data {
+				cells[k].Content = asciiContent[b]
+			}
+		} else if touched != nil && touched.FirstCell <= x && touched.LastCell >= x+n {
+			for k, b := range data {
+				c.Content = asciiContent[b]
+				cells[k] = c
+			}
+		} else {
+			for k, b := range data {
+				c.Content = asciiContent[b]
+				if cells[k] != c {
+					if k < first {
+						first = k
+					}
+					last = k + 1
+				}
+				cells[k] = c
+			}
+			if first < last {
+				e.scr.buf.TouchLine(x+first, y, last-first)
+			}
 		}
 		i += n
 		x += n
@@ -167,6 +196,11 @@ func (e *Emulator) flushGrapheme() {
 	if len(e.grapheme) == 0 {
 		return
 	}
+	if len(e.grapheme) == 1 && printableASCII(rune(e.grapheme[0])) {
+		e.handleGrapheme(asciiContent[e.grapheme[0]], 1)
+		e.grapheme = e.grapheme[:0]
+		return
+	}
 
 	// XXX: We always use [ansi.GraphemeWidth] here to report accurate widths
 	// and it's up to the caller to decide how to handle Unicode vs non-Unicode
@@ -186,7 +220,7 @@ func (e *Emulator) flushGrapheme() {
 
 // handleGrapheme handles UTF-8 graphemes.
 func (e *Emulator) handleGrapheme(content string, width int) {
-	awm := e.isModeSet(ansi.ModeAutoWrap)
+	awm := e.autoWrap
 	cell := uv.Cell{
 		Content: content,
 		Width:   width,
