@@ -27,6 +27,7 @@ terminals={
  'kitty':{'KITTY_WINDOW_ID':'1','TERM':'xterm-256color'},
  'term-ghostty':{'TERM':'xterm-ghostty'},'term-kitty':{'TERM':'xterm-kitty'},'term-wezterm':{'TERM':'wezterm'},
  'tmux':{'TERM_PROGRAM':'ghostty','TERM':'xterm-256color','TMUX':'/tmp/parity-tmux'},
+ 'kitty-tmux':{'KITTY_WINDOW_ID':'1','TERM':'xterm-kitty','TMUX':'/tmp/parity-tmux'},
  'unknown':{'TERM':'xterm-256color'},
 }
 for name,env in terminals.items():observe('terminal-'+name,action('notification-fix-terminal')+snap('final'),'terminal',env)

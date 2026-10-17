@@ -11,9 +11,9 @@ def notification_bytes(name,title,body):
     if 'kitty' in name:
         result=b'\x1b]99;i=1:d=0;'+title+end+b'\x1b]99;i=1:p=body;'+body+end if body else b'\x1b]99;;'+title+end
     else:result=b'\x1b]9;'+title+(b': '+body if body else b'')+end
-    if name=='tmux':result=b'\x1bPtmux;'+result.replace(b'\x1b',b'\x1b\x1b')+end
+    if name.endswith('tmux'):result=b'\x1bPtmux;'+result.replace(b'\x1b',b'\x1b\x1b')+end
     return result
-for name in ['ghostty','iterm','wezterm','kitty','term-ghostty','term-kitty','term-wezterm','tmux','unknown']:
+for name in ['ghostty','iterm','wezterm','kitty','term-ghostty','term-kitty','term-wezterm','tmux','kitty-tmux','unknown']:
     case='terminal-'+name
     replies=[]
     for who in ['herdr','gtx']:
@@ -59,6 +59,6 @@ for path in sorted(root.glob('*/*/cleanup.json')):
     d=json.loads(path.read_text());assert d['exit']==0,(str(path),d)
     assert any(json.loads(x).get('result',{}).get('type')=='ok' for x in d['replies']),(str(path),d)
     cleanups.append(str(path.relative_to(root)))
-assert len(cleanups)==30,len(cleanups)
+assert len(cleanups)==32,len(cleanups)
 result={'cases':proof,'cleanup_servers':cleanups}
 (root/'fix1-gate.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps(result,ensure_ascii=False))
