@@ -1,6 +1,7 @@
 package tui
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/goterrace/internal/detect"
 	"github.com/kazuph/goterrace/internal/input"
@@ -22,6 +23,10 @@ func (a *App) onInput(ev input.Event) {
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
 		if a.navigator != nil {
+			if a.navigator.searching {
+				a.navigator.query += ev.Text
+				a.navigatorMove(0)
+			}
 			return
 		}
 		if a.settings != nil || a.menu != nil || a.help != nil {
@@ -29,10 +34,24 @@ func (a *App) onInput(ev input.Event) {
 		}
 		if a.dialog != nil {
 			if d := a.dialog; d.input != nil {
+				if d.machineForm {
+					a.machineInputKey(uv.Key{Text: ev.Text})
+					return
+				}
+				if d.replaceDefault {
+					*d.input = ""
+					d.replaceDefault = false
+				}
 				*d.input += ev.Text
 				d.d.Input, d.d.InputCursor = *d.input, len([]rune(*d.input))
 				a.dirty = true
 			}
+			return
+		}
+		if a.cm != nil {
+			return
+		}
+		if a.prefix || a.workspaceNavigate {
 			return
 		}
 		if pid := a.focusedPane(); pid >= 0 {

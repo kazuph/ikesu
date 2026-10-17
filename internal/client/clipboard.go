@@ -9,10 +9,12 @@ import (
 	"github.com/kazuph/goterrace/internal/childenv"
 	"runtime"
 	"strings"
+	"unicode"
 
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/goterrace/internal/render"
 )
 
 type clipboardContent struct {
@@ -26,6 +28,10 @@ type clipboardItem struct {
 }
 
 type clipboardPaste struct{ held []clipboardItem }
+
+func modalClipboardView(view *render.Input) bool {
+	return view != nil && (view.Dialog != nil && view.Dialog.InputEdit || view.Navigator != nil || view.Copy != nil)
+}
 
 func readDesktopClipboard(ctx context.Context) (clipboardContent, error) {
 	if runtime.GOOS != "darwin" {
@@ -97,6 +103,8 @@ func (m *machineClient) startClipboardPaste(id string) error {
 		read = readDesktopClipboard
 	}
 	connection, pane, profile := e.connection, e.snapshot.State.FocusedPane(), e.profile
+	textOnly := modalClipboardView(e.snapshot)
+	copySearch := e.snapshot.Copy != nil && strings.HasSuffix(e.snapshot.CopyHint, "  enter search  esc cancel")
 	op := &clipboardPaste{}
 	e.paste = op
 	m.workers.Add(1)
@@ -104,7 +112,7 @@ func (m *machineClient) startClipboardPaste(id string) error {
 		defer m.workers.Done()
 		content, err := read(m.ctx)
 		text := content.Text
-		if err == nil && len(content.PNG) > 0 {
+		if err == nil && len(content.PNG) > 0 && !textOnly {
 			var path string
 			path, err = uploadClipboardImage(m.ctx, profile, content.PNG)
 			text = machine.Quote(path)
@@ -114,7 +122,7 @@ func (m *machineClient) startClipboardPaste(id string) error {
 				return
 			}
 			e.paste = nil
-			if e.connection != connection || e.snapshot == nil || e.snapshot.State.FocusedPane() != pane {
+			if e.connection != connection || e.snapshot == nil || e.snapshot.State.FocusedPane() != pane || textOnly && !modalClipboardView(e.snapshot) || copySearch && (e.snapshot.Copy == nil || !strings.HasSuffix(e.snapshot.CopyHint, "  enter search  esc cancel")) {
 				m.notify("clipboard paste cancelled: target pane changed")
 				return
 			}
@@ -122,6 +130,14 @@ func (m *machineClient) startClipboardPaste(id string) error {
 				m.notify(err.Error())
 			} else {
 				data := eventBytes(input.Event{Kind: input.KindPaste, Text: text})
+				if copySearch {
+					data = []byte(strings.Map(func(r rune) rune {
+						if unicode.IsControl(r) {
+							return -1
+						}
+						return r
+					}, text))
+				}
 				if sendErr := connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)}); sendErr != nil {
 					m.notify(sendErr.Error())
 				}
