@@ -12,7 +12,7 @@ for name in "$@"; do
     toast=
     steps="tests/parity/$name.steps"
     case "$name" in
-        stage3-wheel-local) mode=; steps=tests/parity/stage3-wheel.steps ;;
+        *-local) mode=; steps="tests/parity/${name%-local}.steps" ;;
         stage3-toast)
             toast=--in-app-toast
             config="$out/toast.toml"
@@ -26,7 +26,7 @@ assert section in text
 Path(sys.argv[2]).write_text(text.replace(section, '', 1))
 PY
             ;;
-        stage3-modifier)
+        stage3-modifier|stage3-modifier-interrupt)
             config="$out/modifier.toml"
             python3 - "$root/user-config.toml" "$config" <<'PY'
 import sys

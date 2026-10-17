@@ -7,7 +7,7 @@ from pathlib import Path
 
 p = argparse.ArgumentParser()
 p.add_argument('directory', type=Path)
-p.add_argument('case', choices=['wheel', 'modifier', 'pane-scroll', 'toast', 'arrows', 'workspace', 'sidebar-bars'])
+p.add_argument('case', choices=['wheel', 'modifier', 'modifier-interrupt', 'pane-scroll', 'pane-scroll-local', 'thumb', 'toast', 'arrows', 'workspace', 'sidebar-bars'])
 a = p.parse_args()
 root = a.directory
 
@@ -47,11 +47,30 @@ def measure(app):
         assert all(v is None for v in result['shift-drag']), result
         assert all(v is not None for v in result['plain-drag']), result
         return result
-    if a.case == 'pane-scroll':
+    if a.case == 'modifier-interrupt':
+        saved = json.loads((root/app/'runtime-json.json').read_text())
+        data = b''.join(bytes.fromhex(s) for s in json.loads(saved['home/mouse-report-on.json']))
+        codes = [(2, 'M'), (80, 'M'), (18, 'm'), (16, 'M'), (16, 'm'),
+                 (2, 'M'), (16, 'M'), (18, 'm'), (16, 'M'), (16, 'm'),
+                 (2, 'M'), (17, 'M'), (18, 'm')]
+        want = ''.join(f'\x1b[<{code};18;8{suffix}' for code, suffix in codes).encode()+b'q'
+        assert data == want, (app, data, want)
+        return {'received': data.hex()}
+    if a.case in ('pane-scroll', 'pane-scroll-local'):
         values = [int(re.findall(r'SCROLL_LINE_(\d+)', text(app, name))[0])
                   for name in ('before', 'track-click', 'track-motion', 'track-release')]
-        assert values == [161, 24, 132, 132], values
+        want = [161, 24, 24, 24] if a.case == 'pane-scroll-local' else [161, 24, 132, 132]
+        assert values == want, values
         return values
+    if a.case == 'thumb':
+        names = ('before', 'thumb-click', 'thumb-motion', 'thumb-release')
+        values = [int(re.findall(r'SCROLL_LINE_(\d+)', text(app, name))[0]) for name in names]
+        tops = [next(y for y, row in enumerate(cells(app, name)) if row[158].get('Content') == '▐') for name in names]
+        assert values[0] == values[1] and values[2] == values[3] < values[0], values
+        # One-based press at row 40, move at row 25: preserve the four-cell grab.
+        assert tops == [35, 35, 20, 20], tops
+        (root/app/'thumb-measurement.json').write_text(json.dumps({'first_lines': values, 'thumb_top': tops})+'\n')
+        return {'thumb_top': tops}
     if a.case == 'toast':
         before, right, left = [text(app, name).splitlines() for name in ('before', 'right-click', 'left-click')]
         assert '┌' in before[0][140:] and before[0] == right[0], (app, 'notification absent or dismissed')

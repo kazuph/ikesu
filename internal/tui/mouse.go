@@ -165,7 +165,7 @@ func (a *App) click(m uv.Mouse) {
 
 	// Pane scrollbar: a press on the thumb starts a drag that keeps the
 	// grab offset; a press on the track jumps the thumb to the press
-	// point; subsequent motion anchors the thumb top to the pointer.
+	// point. Only server displays continue a track press as a drag.
 	if gutter > 0 && m.X == inner.X+inner.W-1 &&
 		m.Y >= inner.Y && m.Y < inner.Y+inner.H {
 		a.exec(model.CmdFocusPane{Pane: pr.ID})
@@ -179,6 +179,9 @@ func (a *App) click(m uv.Mouse) {
 			} else {
 				newTop := rel - th/2
 				a.setScrollOff(pr.ID, offFromThumb(inner.H, sn.ScrollbackLen, newTop))
+				if !a.serverUI {
+					return
+				}
 			}
 		}
 		a.sb = &sbDrag{pane: pr.ID, inner: inner, grab: grab}
@@ -710,6 +713,9 @@ func (a *App) finishSelection() {
 func (a *App) forwardMouse(ev input.Event) {
 	pid := a.fwd
 	m := ev.Mouse
+	if m.Button != uv.MouseRight {
+		a.fwdStrip = 0
+	}
 	switch ev.Kind {
 	case input.KindMouseMotion:
 		a.forwardTo(pid, uv.MouseMotionEvent(m))

@@ -1,0 +1,17 @@
+send "for i in {1..200}; do printf 'SCROLL_LINE_%03d\\n' $i; done\r"
+sleep 500ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse down 159 40
+sleep 200ms
+screen @OUT@/thumb-click.txt
+cells @OUT@/thumb-click.json
+mouse motion 159 25
+sleep 200ms
+screen @OUT@/thumb-motion.txt
+cells @OUT@/thumb-motion.json
+mouse up 159 25
+sleep 200ms
+screen @OUT@/thumb-release.txt
+cells @OUT@/thumb-release.json
+kill

@@ -13,6 +13,13 @@ serverの初期ワークスペースが存在するときは再利用し、両�
 `stage3_mouse_gate.py ケースの出力先 wheel|workspace|arrows|sidebar-bars|modifier|pane-scroll|toast`
 が転送バイト・選択セル・タブ順・スクロール行・通知の前後を検査する。
 `stage3_config_gate.py 出力先` は実際に使われた設定・隔離・popup寸法を検査する。
+
+段階3のレビュー修正は `stage3-modifier-interrupt`、`stage3-pane-scroll-local`、
+`stage3-thumb`、`stage3-thumb-local` も同じスクリプトへ渡す。
+`stage3_mouse_gate.py` の対応する検査名は `modifier-interrupt`、`pane-scroll-local`、
+`thumb`（両モード共通）。Control+右押下へのホイール・左・中ボタン割り込みは
+実アプリ受信バイトを比較し、余白は接続表示と単独起動の先頭行を別々に固定する。
+つまみ本体は両モードで掴んだ4セルの位置を維持することをセル座標で検査する。
 `compare.py` の生の画面差分も残し、番号や文言の差を同一と偽らない。
 `tab-drag-release` と `tab-drag-five-overflow` は既存ドラッグの回帰用に再実行する。
 
