@@ -1,0 +1,32 @@
+send "python3 /Users/kazuph/src/github.com/kazuph/goterrace/.worktree/feat/stage6b-keys/tests/parity/stage6b_paste_recorder.py\r"
+sleep 200ms
+sleep 400ms
+send "\u0014["
+sleep 200ms
+send "\u001b[200~FORBIDDEN_COPY\u001b[201~"
+sleep 200ms
+screen @OUT@/copy.txt
+cells @OUT@/copy.json
+send "q"
+sleep 200ms
+send "\u0014"
+sleep 200ms
+send "\u001b[200~FORBIDDEN_PREFIX\u001b[201~"
+sleep 200ms
+screen @OUT@/prefix.txt
+cells @OUT@/prefix.json
+send "\u001b"
+sleep 200ms
+send "\u0014w"
+sleep 200ms
+send "\u001b[200~FORBIDDEN_NAVIGATE\u001b[201~"
+sleep 200ms
+screen @OUT@/navigate.txt
+cells @OUT@/navigate.json
+send "\u001b"
+sleep 200ms
+send "DELIVERY_SENTINEL"
+sleep 200ms
+screen @OUT@/delivered.txt
+cells @OUT@/delivered.json
+kill

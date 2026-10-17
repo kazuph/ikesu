@@ -1,0 +1,13 @@
+send "\u0014c"
+sleep 200ms
+send "KEEP"
+sleep 200ms
+send "\u001b[118;9u"
+sleep 200ms
+screen @OUT@/command-v.txt
+cells @OUT@/command-v.json
+send "\u0016"
+sleep 200ms
+screen @OUT@/control-v.txt
+cells @OUT@/control-v.json
+kill

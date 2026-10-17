@@ -1,5 +1,19 @@
 # 実物の操作比較
 
+段階6b（名前入力・貼り付け・設定・navigator・ヘルプ）はminiの`src/stage6b`で
+`sh tests/parity/stage6b_observe.sh 出力先`を実行する。`stage6b_cases.py`が同じ入力を
+両製品へ送る手順を生成し、店長設定のコピー・一時HOME・貼付sandbox・サーバー接続を使う。
+navigatorだけは競合する`prefix+g`を避けてgotoを`prefix+o`に置く。
+`k22-user`は元の競合設定、`k22-nav`はnavigate再割当でヘルプと実操作を確かめる。
+`stage6b_fixture.py`は隔離socketだけに25個の実workspaceを作り、
+`stage6b_paste_recorder.py`は実shell-PTYへ届いた入力を記録する。
+`python3 tests/parity/stage6b_gate.py 出力先`が選択行・検索条件・保存値・背後への配送を検査する。
+`sh tests/parity/gate-stage6b.sh 出力先`は整形・vet・全test・raceのログを残す。
+性能は`stage6b_perf_launch.py 8236d5fのgit-archive.tar`でminiの負荷を確認し、
+4未満ならmini、それ以外ならubuntu-3090でperf-lock.py経由の相対検査を行う。
+実クリップボードを使用した非空テキストのCmd/Ctrl+V挿入はこのsandbox観察では証明しない。
+private-fileの依存注入テストと、sandbox下でのキー漏出検査は別の証拠として扱う。
+
 段階4（サイドバー）はminiの `src/stage4` で `stage4_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
 店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。
