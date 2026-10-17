@@ -111,8 +111,9 @@ func (e *Emulator) WriteRuntimeASCII(p []byte) (int, error) {
 		} else if n > 0 {
 			e.printRun(rest[:n])
 		}
-		e.handleControl('\r')
-		e.handleControl('\n')
+		e.flushGrapheme()
+		e.carriageReturn()
+		e.linefeed()
 		rest = rest[n+2:]
 	}
 	e.partial = e.partial[:0]

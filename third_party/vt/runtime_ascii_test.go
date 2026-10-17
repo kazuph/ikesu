@@ -66,7 +66,7 @@ func TestRuntimeASCIIMatchesWrites(t *testing.T) {
 }
 
 func TestRuntimeASCIIKeepsMutatingCallbacks(t *testing.T) {
-	for _, kind := range []string{"drop", "scroll", "control"} {
+	for _, kind := range []string{"drop", "scroll", "control", "linefeed"} {
 		got, want := NewEmulator(8, 2), NewEmulator(8, 2)
 		for _, e := range []*Emulator{got, want} {
 			e.Scrollback().SetMaxBytes(0)
@@ -78,6 +78,8 @@ func TestRuntimeASCIIKeepsMutatingCallbacks(t *testing.T) {
 				e.SetScrollCallback(func(_, _, _, _, _ int) { mutate() })
 			case "control":
 				e.registerCcHandler('\r', func() bool { mutate(); return false })
+			case "linefeed":
+				e.registerCcHandler('\n', func() bool { mutate(); return false })
 			}
 		}
 		text := []byte(strings.Repeat("row\r\n", 20))
@@ -149,5 +151,21 @@ func TestRuntimeASCIIOwnedCursorAndResize(t *testing.T) {
 			t.Fatal("ordinary Write lost movement callbacks")
 		}
 		assertRuntimeASCIIEqual(t, got, want)
+	}
+}
+
+func TestRuntimeASCIIKeepsLinefeedObserver(t *testing.T) {
+	got, want := NewEmulator(8, 2), NewEmulator(8, 2)
+	defer got.Close()
+	defer want.Close()
+	gotCalls, wantCalls := 0, 0
+	got.registerCcHandler('\n', func() bool { gotCalls++; return false })
+	want.registerCcHandler('\n', func() bool { wantCalls++; return false })
+	text := []byte(strings.Repeat("row\r\n", 20))
+	_, _ = got.WriteRuntimeASCII(text)
+	_, _ = want.Write(text)
+	assertRuntimeASCIIEqual(t, got, want)
+	if gotCalls != wantCalls || gotCalls != 20 {
+		t.Fatalf("linefeed observer calls = %d, want %d", gotCalls, wantCalls)
 	}
 }
