@@ -74,6 +74,16 @@ elif op in ('repo','repo-group','repo-delete','repo-count'):
     if op in ('repo-group','repo-delete'):
         request('worktree.open',{'cwd':str(repo),'path':str(root/'checkout-00'),'focus':True})
     request('workspace.list',{})
+elif op == 'notification-key-probe':
+    request('notification.show',{'title':'日本語','sound':'none'})
+    shown_at=time.monotonic()
+    (root/'notification-visible.json').write_text('{}')
+    time.sleep(.5) # Retry halfway through the specified one-second cooldown.
+    request('notification.show',{'title':'次の通知','sound':'none'})
+    # Observed 3s expiry plus the existing 50ms renderer tickInterval.
+    time.sleep(max(0,shown_at+3+.05-time.monotonic()))
+    (root/'notification-key-probe-times.json').write_text(json.dumps({'shown_at':shown_at,'after_expiry_at':time.monotonic()}))
+    request('notification.show',{'title':'最後の通知','sound':'none'})
 elif op == 'notification-fix-terminal':
     params={'title':'日本語','body':'本文','sound':'none'}
     request('notification.show',params)

@@ -44,18 +44,21 @@ for count,height in [(1,12),(2,12),(3,13),(13,26)]:
         clicked=(root/case/who/'clicked.txt').read_text();assert 'open worktree' not in clicked,(case,who,'click did not open selected checkout')
         # The final API reply records the checkout actually opened by the click.
         final=actions(case,who)[-1]['reply']['result']['workspaces']
-        assert any(w.get('worktree',{}).get('checkout_path','').endswith('/fixture-repo' if count==1 else f'/checkout-{count-2:02}') and w['focused'] for w in final),(case,who,final)
+        assert any(w.get('worktree',{}).get('checkout_path','').endswith('/fixture-repo' if count==1 else f'/checkout-{count-2:02}') for w in final),(case,who,final)
+        assert ' terminal '+last+' ' in clicked,(case,who,'display did not select clicked checkout',last)
     proof[case]={'status':'PASS','height':height,'comparison':'initial and filtered geometry, last selection, real checkout opened by click'}
 
-for who in ['herdr','gtx']:
-    entries=actions('inapp-rate',who)
-    assert [e['reply']['result']['reason'] for e in entries]==['shown','rate_limited','shown'],(who,entries)
-proof['inapp-rate']={'status':'PASS','comparison':'early key dismissal is rate_limited, retry after one second shown'}
+for case in ['inapp-rate','inapp-escape']:
+    for who in ['herdr','gtx']:
+        entries=actions(case,who)
+        assert [e['reply']['result']['reason'] for e in entries]==['shown','busy','shown'],(case,who,entries)
+        frame=load(case,who,'after-key');assert frame['Cells'][0][148]['Content']=='┌',(case,who,'key dismissed targetless toast')
+    proof[case]={'status':'PASS','comparison':'keys retain targetless toast, busy while visible, shown after three-second expiry'}
 cleanups=[]
 for path in sorted(root.glob('*/*/cleanup.json')):
     d=json.loads(path.read_text());assert d['exit']==0,(str(path),d)
     assert any(json.loads(x).get('result',{}).get('type')=='ok' for x in d['replies']),(str(path),d)
     cleanups.append(str(path.relative_to(root)))
-assert len(cleanups)==28,len(cleanups)
+assert len(cleanups)==30,len(cleanups)
 result={'cases':proof,'cleanup_servers':cleanups}
 (root/'fix1-gate.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps(result,ensure_ascii=False))

@@ -91,6 +91,15 @@ func (a *App) toastClick(x, y int) bool {
 	return true
 }
 
+// openNotificationTarget preserves targetless explicit notifications, like clicks.
+func (a *App) openNotificationTarget() {
+	if a.toast != nil && a.toast.explicit && a.toast.target < 0 {
+		return
+	}
+	a.navToToastTarget()
+	a.DismissToast()
+}
+
 // navToToastTarget switches workspace/tab/focus to the toast's pane.
 func (a *App) navToToastTarget() {
 	if a.toast == nil || a.toast.target < 0 {

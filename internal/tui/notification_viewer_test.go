@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	uv "github.com/charmbracelet/ultraviolet"
 	"testing"
 	"time"
 
@@ -9,6 +10,27 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
 )
+
+func TestStage6aExplicitNotificationKeysPreserveToastAndNormalTargets(t *testing.T) {
+	app := NewApp(model.New(t.TempDir(), 80, 24), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	app.SetNavKey('o')
+	app.ShowNotification("日本語", "", "")
+	app.handleKey(uv.Key{Code: uv.KeyEscape}, []byte{27})
+	app.prefixKey(uv.Key{Code: 'o'})
+	if !app.NotificationBusy() {
+		t.Fatal("explicit notification dismissed by Escape or prefix+o")
+	}
+	app.configAction("open_notification_target", uv.Key{})
+	if !app.NotificationBusy() {
+		t.Fatal("configured notification key dismissed targetless notification")
+	}
+	app.DismissToast()
+	app.ShowToast("通常通知", "本文", "info", app.st.FocusedPane())
+	app.prefixKey(uv.Key{Code: 'o'})
+	if app.toast != nil {
+		t.Fatal("normal targeted notification no longer dismisses after navigation")
+	}
+}
 
 func TestStage6aSessionToastReachesViewerAndStaysDismissed(t *testing.T) {
 	app := NewApp(model.New(t.TempDir(), 80, 24), runtime.NewSupervisor(), &bytes.Buffer{}, "")

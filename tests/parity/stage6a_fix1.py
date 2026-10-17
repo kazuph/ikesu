@@ -35,9 +35,11 @@ for count,height in [(1,12),(2,12),(3,13),(13,26)]:
     steps+=send('\x1b[B'*13)+snap('last')+send('/'+('main' if count==1 else 'branch'))+snap('filtered')+send('\x1b[B'*13)+snap('filtered-last')
     visible=(height-7)//2;selected=min(max(1,count-1)-1,visible-1)
     y=(45-height)//2+4+2*selected
-    steps+=f'click 40 {y+1}\n'+snap('clicked')+action('list')
+    steps+=f'click 40 {y+1}\n'+action('list')+snap('clicked')
     observe(f'worktree-{count}',steps,'in-app')
 
-# Close an in-app notification early with the real prefix+o key.
-observe('inapp-rate',action('notification-empty')+send('\x14o')+action('notification-second')+snap('limited')+'sleep 1s\n'+action('notification-third')+snap('after-second'),'in-app')
+# Targetless notifications ignore both keys; a new request succeeds on expiry.
+for name,key in [('inapp-rate','\x14o'),('inapp-escape','\x1b')]:
+    steps=send('python3 @FIXTURES@/stage6a_action.py notification-key-probe\r')+'waitfile @HOME@/notification-visible.json 15s\n'+send(key)+snap('after-key')+'waitfile @HOME@/action-notification-key-probe-done.json 15s\n'+snap('after-expiry')
+    observe(name,steps,'in-app')
 subprocess.run(['python3',str(here/'stage6a_fix1_gate.py'),str(a.out)],check=True)
