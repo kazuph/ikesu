@@ -45,19 +45,53 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 			defer c.conn.Close()
 			c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24, Terminal: tt.terminal})
 			c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+			// Keep draining real display frames while the independent API waits.
+			notifications := make(chan string, 1)
+			readDone := make(chan struct{})
+			notificationCount := 0
+			go func() {
+				defer close(readDone)
+				c.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+					b, _ := base64.StdEncoding.DecodeString(m.Data)
+					if strings.Contains(string(b), "\x1b]9;") || strings.Contains(string(b), "\x1b]99;") {
+						notificationCount++
+						select {
+						case notifications <- string(b):
+						default:
+						}
+					}
+					return false
+				})
+			}()
 			r := apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "body": "本文", "sound": "none"})
 			want := `{"type":"notification_show","shown":true,"reason":"shown"}`
 			if r.Err != nil || string(r.Result) != want {
 				t.Fatal(r.Err, string(r.Result), want)
 			}
 			if tt.want != "" {
-				c.readUntil(t, 5*time.Second, func(m clientMsg) bool { b, _ := base64.StdEncoding.DecodeString(m.Data); return string(b) == tt.want })
+				select {
+				case got := <-notifications:
+					if got != tt.want {
+						t.Fatalf("notification bytes=%q want=%q", got, tt.want)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("notification bytes not received")
+				}
 			}
 			if tt.want == "" {
 				r = apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "sound": "none"})
 				if r.Err != nil || string(r.Result) != `{"type":"notification_show","shown":false,"reason":"rate_limited"}` {
 					t.Fatal(r.Err, string(r.Result))
 				}
+			}
+			c.conn.Close()
+			<-readDone
+			wantCount := 1
+			if tt.want == "" {
+				wantCount = 0
+			}
+			if notificationCount != wantCount {
+				t.Fatalf("notification count=%d want=%d", notificationCount, wantCount)
 			}
 		})
 	}
