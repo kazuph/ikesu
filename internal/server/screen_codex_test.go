@@ -8,14 +8,25 @@ import (
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/goterrace/internal/screenprompt"
 	"github.com/kazuph/goterrace/internal/teststate"
 )
+
+func codexQuestionTerminal(t *testing.T, fixture string) (*Server, *runtime.Pane, string) {
+	t.Helper()
+	s, p, input := screenTerminal(t, fixture, "codex")
+	waitPromptCondition(t, func() bool {
+		return screenprompt.Parse("codex", p.DetectionScreenLines()) != nil
+	})
+	return s, p, input
+}
 
 func TestCodexQuestionUnreadableRetainsPending(t *testing.T) {
 	teststate.Lock(t)
 	for _, fixture := range []string{"codex-question", "codex-question-notes"} {
 		t.Run(fixture, func(t *testing.T) {
-			s, p, input := screenTerminal(t, fixture, "codex")
+			s, p, input := codexQuestionTerminal(t, fixture)
 			scanScreen(s)
 			d := screenRecord(t, s)
 			paintScreen(p, "  1. partial option row")
@@ -61,7 +72,7 @@ func TestCodexQuestionDelayedWritesStopAtChangedScreen(t *testing.T) {
 					fixture = "codex-question-notes"
 					prefix = answer
 				}
-				s, p, input := screenTerminal(t, fixture, "codex")
+				s, p, input := codexQuestionTerminal(t, fixture)
 				scanScreen(s)
 				d := screenRecord(t, s)
 				done := make(chan api.Response, 1)
@@ -106,7 +117,7 @@ func TestCodexQuestionFreeInputNavigationAndExistingNotes(t *testing.T) {
 			if open {
 				fixture = "codex-question-notes"
 			}
-			s, p, input := screenTerminal(t, fixture, "codex")
+			s, p, input := codexQuestionTerminal(t, fixture)
 			scanScreen(s)
 			d := screenRecord(t, s)
 			text := "Exact free answer"
