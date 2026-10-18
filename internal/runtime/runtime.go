@@ -38,6 +38,7 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
+	graphicsLayers        map[string]*graphicsLayer
 	graphics              *kitty.Store
 	graphicsEnabled       bool
 	graphicsVersion       string
@@ -530,15 +531,6 @@ func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
 	}
 	p.mu.Unlock()
 	_ = unix.IoctlSetWinsize(p.ptyFD, unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(rows), Col: uint16(cols), Xpixel: uint16(cols * cw), Ypixel: uint16(rows * ch)})
-}
-
-// CellPixels reads the pane's own PTY geometry; zero means unavailable.
-func (p *Pane) CellPixels() (int, int) {
-	ws, err := unix.IoctlGetWinsize(p.ptyFD, unix.TIOCGWINSZ)
-	if err != nil || ws.Col == 0 || ws.Row == 0 {
-		return 0, 0
-	}
-	return int(ws.Xpixel) / int(ws.Col), int(ws.Ypixel) / int(ws.Row)
 }
 
 // WithEmu runs fn with exclusive access to the pane's emulator.

@@ -1,0 +1,15 @@
+send "python3 @FIXTURES@/tb_graphics_program.py\r"
+waitfile @HOME@/tb-probe.json 15s
+waittext 5s TB_PLACED
+cells @OUT@/placed.json
+stats placed
+send "u"
+waittext 5s TB_UPDATED
+cells @OUT@/updated.json
+stats updated
+send "p"
+waittext 5s TB_REPLACED
+cells @OUT@/replaced.json
+stats replaced
+send "q"
+kill

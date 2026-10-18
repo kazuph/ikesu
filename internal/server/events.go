@@ -116,6 +116,11 @@ func ev(kind string, kv ...any) map[string]any {
 // on the app loop after effects are applied.
 func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 	follow := prev.Active != s.app.State().Active || prev.FocusedPane != s.app.State().FocusedPane()
+	resize := false
+	switch cmd.(type) {
+	case model.CmdSplitPane, model.CmdSplitImplicit, model.CmdZoomPane:
+		resize = true
+	}
 	switch c := cmd.(type) {
 	case model.CmdSelectWorkspace, model.CmdSelectTab, model.CmdFocusPane:
 		// An explicit focus also applies when the canonical selection was
@@ -130,6 +135,8 @@ func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 				c.viewer.FollowSessionFocus(s.app)
 			}
 		}
+	}
+	if !s.app.InViewer() && (follow || resize) {
 		s.mu.Lock()
 		foreground := s.client
 		s.mu.Unlock()

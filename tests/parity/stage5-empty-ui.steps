@@ -1,0 +1,9 @@
+send "\x14D"
+sleep 300ms
+screen @OUT@/confirm.txt
+cells @OUT@/confirm.json
+send "\r"
+sleep 500ms
+screen @OUT@/empty.txt
+cells @OUT@/empty.json
+kill

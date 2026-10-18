@@ -72,8 +72,7 @@ func (e *Emulator) setCursor(x, y int) {
 // setCursorPosition sets the cursor position. This respects [ansi.DECOM],
 // Origin Mode. This performs the same function as [ansi.CUP].
 func (e *Emulator) setCursorPosition(x, y int) {
-	mode, ok := e.modes[ansi.DECOM]
-	margins := ok && mode.IsSet()
+	margins := e.originMode
 	e.scr.setCursor(x, y, margins)
 	e.atPhantom = false
 }
@@ -84,8 +83,7 @@ func (e *Emulator) setCursorPosition(x, y int) {
 // Otherwise, the cursor is set to the leftmost column of the screen.
 // This performs the same function as [ansi.CR].
 func (e *Emulator) carriageReturn() {
-	mode, ok := e.modes[ansi.DECOM]
-	margins := ok && mode.IsSet()
+	margins := e.originMode
 	x, y := e.scr.CursorPosition()
 	if margins {
 		e.scr.setCursor(0, y, true)

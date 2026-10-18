@@ -155,6 +155,9 @@ func (v *Viewer) Tick(a *App) {
 	if v.app.sel != nil && v.app.sel.autoDir != 0 {
 		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })
 	}
+	if v.app.toast != nil {
+		v.with(a, func(ui *App) { ui.expireToast() })
+	}
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })
 	}

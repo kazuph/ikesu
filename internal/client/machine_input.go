@@ -30,7 +30,8 @@ func readMachineInput(in *os.File, ctx context.Context, colorPending bool) (<-ch
 		return nil, nil, err
 	}
 	wakeFD := int32(wake.Fd())
-	events := make(chan input.Event)
+	// Make already decoded input visible to the bounded pre-paint drain.
+	events := make(chan input.Event, queuedInputBatchLimit)
 	stopped := make(chan struct{})
 	done := make(chan struct{})
 	var once sync.Once
@@ -98,20 +99,30 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	if consumed, err := m.graphicsFileReply(event.Raw); consumed || err != nil {
+		return err
+	}
+	m.mouse.Report(event.Report, m.size)
+	if m.outputFence.Accept(event.Raw) {
+		if m.paintQueued {
+			return m.paint()
+		}
+		return nil
+	}
 	switch event.Kind {
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseMotion, input.KindMouseWheel:
-		cell := m.tabMouse.cells(event).Mouse
+		cell := m.mouse.CellEvent(event, m.size).Mouse
 		if event.Mouse.X < 0 || event.Mouse.Y < 0 || cell.X >= m.size.Cols || cell.Y >= m.size.Rows {
 			return nil
 		}
-	}
-	if event.Kind == input.KindTerminalReport {
-		m.tabMouse.report(event.Report, m.size)
 	}
 	if event.Kind == input.KindBlur {
 		m.blurred = true
 	} else if event.Kind == input.KindFocus {
 		m.blurred = false
+	}
+	if m.holdPendingInput(event, time.Now()) {
+		return nil
 	}
 	if m.regions == nil {
 		if m.legacyLocal() {
@@ -127,6 +138,7 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return m.pasteClipboard()
 	}
+	event = m.mouse.CellEvent(event, m.size)
 	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
 		if event.Kind == input.KindKeyRelease {
 			return nil
@@ -154,7 +166,10 @@ func (m *machineClient) input(event input.Event) error {
 		return err
 	}
 	if m.drag != nil && (event.Kind == input.KindMouseMotion || event.Kind == input.KindMouseRelease) {
-		return m.dragInput(event)
+		if err := m.dragInput(event); err != nil {
+			return err
+		}
+		return m.setMouseMode(m.endpoints[m.active].mouse.pixel)
 	}
 	if activeView.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 		r := render.SidebarMenuRect(activeView.snapshot.State)
@@ -297,7 +312,11 @@ func (m *machineClient) sidebarBytes(hit render.MachineHit, event input.Event) (
 		if _, err := fmt.Sscanf(string(event.Raw), "\x1b[<%d;%d;%d%c", &button, &x, &y, &final); err != nil {
 			return nil, fmt.Errorf("unsupported sidebar mouse encoding")
 		}
-		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, position.Y+1, final)), nil
+		x, y, err := m.sidebarMousePosition(e, event, position.Y)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, x, y, final)), nil
 	}
 	return nil, fmt.Errorf("unsupported sidebar row outside endpoint viewport")
 }

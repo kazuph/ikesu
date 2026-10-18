@@ -2,12 +2,18 @@ package client
 
 import (
 	"reflect"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
 func (m *machineClient) paint() error {
+	if m.inputBatch || m.outputFence.Waiting(time.Now()) {
+		m.paintQueued = true
+		return nil
+	}
+	m.paintQueued = false
 	e := m.endpoints[m.active]
 	if e.snapshot == nil {
 		return nil
@@ -15,7 +21,14 @@ func (m *machineClient) paint() error {
 	if err := m.syncKeyboardOutput(e); err != nil {
 		return err
 	}
+	if err := m.setMouseMode(e.mouse.pixel); err != nil {
+		return err
+	}
 	in := *e.snapshot
+	in, nativePaint, err := m.nativePaintInput(in)
+	if err != nil {
+		return err
+	}
 	if err := m.inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
 		m.notify("input source: " + err.Error())
 	}
@@ -79,22 +92,40 @@ func (m *machineClient) paint() error {
 		}
 	}
 	if f.W != m.size.Cols || f.H != m.size.Rows {
-		clipped := render.NewFrame(m.size.Cols, m.size.Rows)
-		clipped.Palette = f.Palette
-		for y := 0; y < min(f.H, clipped.H); y++ {
-			copy(clipped.Cells[y*clipped.W:y*clipped.W+min(f.W, clipped.W)], f.Cells[y*f.W:y*f.W+min(f.W, clipped.W)])
-		}
+		clipped := f.Viewport(m.size.Cols, m.size.Rows)
+		clipped.RetainGraphics = true
 		composed.Frame = clipped
 		composed.AnchorVisible = composed.AnchorVisible && composed.AnchorX < clipped.W && composed.AnchorY < clipped.H
 	}
 	composed.Frame.GraphicsNamespace = m.active
+	var nativePanes map[int]*render.PaneSnap
+	if local := m.endpoints["local"]; local != nil && local.snapshot != nil {
+		nativePanes = local.snapshot.Panes
+	}
+	if m.active == "local" {
+		nativePanes = in.Panes
+	}
+	var retired []byte
+	if !composed.Frame.RetainGraphics {
+		retired, err = m.frames.ObserveNativeImages(nativePanes)
+		if err != nil {
+			return err
+		}
+	}
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
+	data = append(data, retired...)
 	if _, err := m.out.Write(data); err != nil {
 		return err
+	}
+	if m.outputFence.Written(data, time.Now()) {
+		if _, err := m.out.WriteString(render.TerminalStatusQuery); err != nil {
+			return err
+		}
 	}
 	if err := m.title.painted(m.out, in); err != nil {
 		return err
 	}
+	graphicsRetained := composed.Frame.RetainGraphics
 	composed.Frame = nil
 	if e.connection != nil && (e.requestAck || m.regions == nil || !reflect.DeepEqual(m.regions, composed)) {
 		if err := e.connection.enqueue(msg{Type: "rendered", Rendered: composed, FocusEpoch: e.epoch}); err != nil {
@@ -103,6 +134,11 @@ func (m *machineClient) paint() error {
 		e.requestAck = false
 	}
 	m.regions = composed
+	if nativePaint && !graphicsRetained {
+		if err := m.nativePainted(); err != nil {
+			return err
+		}
+	}
 	held := m.held
 	m.held = nil
 	for _, event := range held {

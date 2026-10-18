@@ -53,21 +53,11 @@ func (s *Scrollback) wrap(i int) int {
 // the trailing-space scan in [Scrollback.Push] hits it for almost every cell
 // of every scrolled line and a whole-struct comparison is measurably slower.
 func blankCell(c *uv.Cell) bool {
-	if c.Content != "" && c.Content != " " {
+	if !((c.Width == 1 && c.Content == " ") || (c.Width == 0 && c.Content == "")) {
 		return false
 	}
 	st := &c.Style
-	if st.Fg != nil || st.Bg != nil || st.UnderlineColor != nil ||
-		st.Underline != uv.UnderlineNone || st.Attrs != 0 {
-		return false
-	}
-	if c.Link.URL != "" || c.Link.Params != "" {
-		return false
-	}
-	if c.Content == "" {
-		return c.Width == 0
-	}
-	return c.Width == 1
+	return int(st.Attrs)|int(st.Underline)|len(c.Link.URL)|len(c.Link.Params) == 0 && st.Fg == nil && st.Bg == nil && st.UnderlineColor == nil
 }
 
 // Push adds a line to the scrollback buffer.
@@ -95,14 +85,19 @@ func (s *Scrollback) Push(line uv.Line) {
 		end = min(lastNonEmpty+max(line[lastNonEmpty].Width, 1), len(line))
 	}
 
+	s.pushTrimmed(line[:end])
+}
+
+// pushTrimmed reports whether an eviction callback ran.
+func (s *Scrollback) pushTrimmed(line uv.Line) bool {
+	end := len(line)
 	if s.byteLimited {
-		s.pushBytes(line[:end])
-		return
+		return s.pushBytes(line[:end])
 	}
 	if s.count < s.maxLines {
 		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
 		s.count++
-		return
+		return false
 	}
 
 	// The buffer is full: reuse the evicted line's backing array for the new
@@ -114,6 +109,7 @@ func (s *Scrollback) Push(line uv.Line) {
 		s.lines[idx] = slices.Clone(line[:end])
 	}
 	s.start = s.wrap(s.start + 1)
+	return false
 }
 
 // PushN adds n lines from the buffer starting at line y to the scrollback.

@@ -4,7 +4,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
+
+func TestEachPrintableASCIIIsFlushedWhenWriteEnds(t *testing.T) {
+	term := newTestTerminal(t, ansi.DEL-ansi.SP, 1)
+	for b := byte(ansi.SP); b < ansi.DEL; b++ {
+		term.Write([]byte{b})
+		x := int(b - ansi.SP)
+		if cell := term.CellAt(x, 0); cell == nil || cell.Content != string(b) || cell.Width != 1 {
+			t.Fatalf("byte=%x cell=%v", b, cell)
+		}
+	}
+}
 
 // A combining mark belongs to the character before it, however that character
 // arrived. The printable-ASCII path used to write its cell immediately, which

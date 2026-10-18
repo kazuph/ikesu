@@ -128,6 +128,11 @@ func (s *Server) deliverNotification(pid int, kind string) {
 	switch s.cfg.ToastDelivery() {
 	case config.ToastGTX:
 		s.app.ShowToast(title, body, kind, pid)
+		for _, c := range s.displayClients() {
+			if c.viewer != nil {
+				c.viewer.ShowToast(s.app, title, body, kind, pid)
+			}
+		}
 	case config.ToastTerminal:
 		s.sendOSC9(title, body)
 	case config.ToastSystem:

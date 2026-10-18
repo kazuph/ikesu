@@ -3,6 +3,7 @@ package runtime
 import "github.com/charmbracelet/x/vt"
 
 func (p *Pane) resizeTerminal(width, height int) {
+	p.emu.SetCellPixels(p.cellWidth, p.cellHeight)
 	if p.read != nil && width != p.emu.Width() {
 		p.resizeReflow(width, height)
 	} else {

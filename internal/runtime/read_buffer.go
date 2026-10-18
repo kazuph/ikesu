@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -255,14 +256,22 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 	}
 	end, lines := 0, 0
 	for i := 0; i < len(chunk); {
-		start := i
-		for i < len(chunk) && chunk[i] >= 32 && chunk[i] < 127 && i-start < w {
-			i++
-		}
-		if i-start >= w || i+1 >= len(chunk) || chunk[i] != '\r' || chunk[i+1] != '\n' {
+		span := chunk[i : i+min(w, len(chunk)-i)]
+		n := bytes.IndexByte(span, '\r')
+		if n < 0 || i+n+1 >= len(chunk) || chunk[i+n+1] != '\n' {
 			break
 		}
-		i += 2
+		valid := true
+		for _, b := range span[:n] {
+			if b-ansi.SP >= ansi.DEL-ansi.SP {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			break
+		}
+		i += n + 2
 		end, lines = i, lines+1
 	}
 	if end == 0 {
@@ -274,7 +283,23 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 			pos.Y = min(pos.Y+1, p.emu.Height()-1)
 		}
 	}
-	_, _ = p.emu.Write(chunk[:end])
+	if r.byteHistory && !p.altScreen {
+		// This pane owns the drop callback, which only prunes row metadata.
+		// Short CRLF rows cannot invoke a mode/resize callback that reads it,
+		// so prune once after Write while the caller still holds p.mu.
+		sb := p.emu.Scrollback()
+		callback := sb.OnDrop
+		sb.OnDrop = nil
+		n, err := p.emu.WriteRuntimeASCII(chunk[:end])
+		sb.OnDrop = callback
+		if n == end && err == nil {
+			for r.historyCount > sb.Len() {
+				r.dropHistory()
+			}
+		}
+	} else {
+		_, _ = p.emu.WriteRuntimeASCII(chunk[:end])
+	}
 	return end
 }
 
@@ -301,7 +326,7 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			r.utf8Pending = append(r.utf8Pending[:0], chunk...)
 			break
 		}
-		if r.state == ansi.NormalState && chunk[0] >= 32 && chunk[0] < 127 {
+		if r.state == ansi.NormalState && chunk[0]-ansi.SP < ansi.DEL-ansi.SP {
 			if r.pending && p.emu.ModeSet(ansi.ModeAutoWrap) {
 				r.linefeed(p, true)
 			}
@@ -312,7 +337,7 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			}
 			limit := min(len(chunk), p.emu.Width()-x)
 			n := 0
-			for n < limit && chunk[n] >= 32 && chunk[n] < 127 {
+			for n < limit && chunk[n]-ansi.SP < ansi.DEL-ansi.SP {
 				n++
 			}
 			_, _ = p.emu.Write(chunk[:n])

@@ -1,0 +1,12 @@
+send "python3 @FIXTURES@/tb_size_program.py\r"
+waitfile @HOME@/tb-size-initial.json 15s
+waittext 5s TB_SIZE_INITIAL
+stats size-initial
+resize 140 40
+waitfile @HOME@/tb-size-winched.json 5s
+send "s"
+waitfile @HOME@/tb-size-after-resize.json 15s
+waittext 5s TB_SIZE_AFTER_RESIZE
+stats size-after-resize
+send "q"
+kill

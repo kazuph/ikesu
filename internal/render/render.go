@@ -9,7 +9,6 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"image/color"
-	"math"
 	"strings"
 )
 
@@ -114,6 +113,8 @@ type JobDot struct {
 }
 
 type Input struct {
+	GraphicsPatches []PaneGraphicsPatch
+	SurfaceRevision uint64
 	PanePalette     *Palette
 	ServerUI        bool
 	State           *model.AppState
@@ -321,7 +322,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		f.Fill(r.X, r.Y, r.W, r.H, " ", style)
 		f.Text(r.X+1, r.Y, in.ConfigWarning, style, r.X+r.W)
 	}
-	if in.Toast != nil {
+	if in.Toast != nil && (!in.ServerUI || s.Mobile() || in.Toast.Position != "") {
 		drawToast(f, in.Toast, out)
 	}
 	if in.Copied != "" && !in.ServerUI {
@@ -344,9 +345,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		}
 		drawNavigator(f, in.Navigator, spin)
 	}
-	if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil || in.Toast != nil {
-		f.Graphics = nil
-	}
+	coverInputGraphics(in, out)
 	return out
 }
 
@@ -415,7 +414,23 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				if pr.IsFocused && (snap == nil || !snap.Dead) {
 					titleSty.Attrs |= uv.AttrBold
 				}
-				f.Text(pr.Rect.X+1, pr.Rect.Y, " "+title+" ", titleSty, titleStop)
+				// The reference admits a wide glyph whose head fits before the
+				// restore slot, allowing its tail to occupy the leading space.
+				x := pr.Rect.X + 1
+				for _, r := range " " + title + " " {
+					if x >= titleStop {
+						break
+					}
+					width := ansi.StringWidth(string(r))
+					if width < 1 {
+						width = 1
+					}
+					if x+width > titleStop && titleStop == pr.Rect.X+pr.Rect.W-1 {
+						break
+					}
+					f.Set(x, pr.Rect.Y, string(r), titleSty)
+					x += width
+				}
 			}
 
 			// Scroll indicator on the top border, left of the restore
@@ -426,16 +441,14 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				f.Text(titleStop-w, pr.Rect.Y, ind, uv.Style{Fg: f.Palette.Yellow}, titleStop)
 			}
 
-			// Gutter: the rightmost inner column hosts the scrollbar;
-			// terminal content never reaches it (SPEC G1).
-			if gutter > 0 {
-				off := in.Scroll[pr.ID]
-				if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
-					off = snap.ScrollOff
-				}
-				drawGutter(f, inner, snap, off)
-				iw -= gutter
+		}
+		if gutter > 0 {
+			off := in.Scroll[pr.ID]
+			if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
+				off = snap.ScrollOff
 			}
+			drawGutter(f, inner, snap, off, pr.IsFocused)
+			iw -= gutter
 		}
 
 		// Content.
@@ -514,50 +527,12 @@ func paneTitle(pr layout.PaneRect, snap *PaneSnap, t *model.Tab) string {
 	return truncateEllipsis(title, pr.Rect.W-4)
 }
 
-// truncateEllipsis cuts s to at most n Unicode characters, replacing the
-// tail with a single '…' when it had to shorten.
+// truncateEllipsis limits terminal cells, keeping the ellipsis inside the frame.
 func truncateEllipsis(s string, n int) string {
-	rs := []rune(s)
 	if n <= 0 {
 		return ""
 	}
-	if len(rs) <= n {
-		return s
-	}
-	return string(rs[:n-1]) + "…"
-}
-
-// drawGutter fills the rightmost inner column: '▕' track with '▐' for the
-// thumb portion whenever the pane has scrollback (SPEC G1).
-func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int) {
-	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 || snap.SuppressScrollbar {
-		return
-	}
-	gx := inner.X + inner.W - 1
-	for y := inner.Y; y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▕", uv.Style{Fg: f.Palette.Dim})
-	}
-	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 {
-		return
-	}
-	total := snap.ScrollN + inner.H
-	th := int(math.Round(float64(inner.H*inner.H) / float64(total)))
-	if th < 1 {
-		th = 1
-	}
-	if th > inner.H {
-		th = inner.H
-	}
-	// Thumb top: bottom-aligned at offset 0, top-aligned at max offset.
-	track := inner.H - th
-	top := inner.Y + track
-	if snap.ScrollN > 0 {
-		frac := float64(off) / float64(snap.ScrollN)
-		top = inner.Y + int(math.Round((1-frac)*float64(track)))
-	}
-	for y := top; y < top+th && y < inner.Y+inner.H; y++ {
-		f.Set(gx, y, "▐", uv.Style{Fg: f.Palette.Overlay1})
-	}
+	return ansi.Truncate(s, n, "…")
 }
 
 // drawCopyCursor paints the copy-mode cursor: fg popup background, bg accent,
@@ -598,7 +573,8 @@ func drawActionBar(f *Frame, s *model.AppState, in Input, out *Output) {
 		copyLabel = " COPY "
 	}
 	cw := len([]rune(copyLabel))
-	if area.X+cw <= area.X+area.W {
+	if cw > 0 {
+		cw = min(cw, area.W)
 		f.Text(area.X, area.Y, copyLabel, btn, area.X+area.W)
 		out.ActionBar.Copy = layout.Rect{X: area.X, Y: area.Y, W: cw, H: 1}
 	}

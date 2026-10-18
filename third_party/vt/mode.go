@@ -27,6 +27,9 @@ func (e *Emulator) resetModes() {
 		ansi.ModeBracketedPaste:      ansi.ModeReset, // ?2004
 	}
 
+	e.autoWrap = e.modes[ansi.ModeAutoWrap].IsSet()
+	e.originMode = e.modes[ansi.ModeOrigin].IsSet()
+	e.newLineMode = e.modes[ansi.ModeLineFeedNewLine].IsSet()
 	// Set mode effects.
 	for mode, setting := range e.modes {
 		e.setMode(mode, setting)

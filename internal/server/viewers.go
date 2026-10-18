@@ -36,6 +36,7 @@ func (s *Server) visiblePane(pid int) bool {
 }
 
 func (s *Server) tickViewers() {
+	s.tickNativeGraphics()
 	for _, c := range s.displayClients() {
 		if c.viewer != nil {
 			c.viewer.Tick(s.app)

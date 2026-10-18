@@ -12,7 +12,9 @@ import (
 // It keeps the last written frame and the currently emitted style so diffs
 // are minimal: unchanged cells are never rewritten.
 type Encoder struct {
+	nativeImages      map[uint32]bool
 	graphics          []Graphic
+	graphicsSources   []Graphic
 	graphicsNamespace string
 	graphicsIDs       []uint32
 	graphicsMap       map[string]uint32
@@ -20,6 +22,7 @@ type Encoder struct {
 	prev              *Frame
 	curSty            uv.Style
 	haveSty           bool
+	started           bool
 	cursorShape       int
 }
 
@@ -63,9 +66,10 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 
 	full := e.prev == nil || e.prev.W != f.W || e.prev.H != f.H
 	graphicsChanged := e.prepareGraphics(f, full)
-	if full {
+	if !e.started {
 		b.WriteString(cup(0, 0))
 		b.WriteString(clearAll)
+		e.started = true
 	}
 	// Virtual prototypes must exist before the corresponding Unicode cells.
 	e.emitGraphics(f, &b, graphicsChanged)
@@ -76,6 +80,7 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 	}
 
 	e.emitRealPlacements(f, &b, graphicsChanged)
+	e.retireGraphics(f, &b, graphicsChanged)
 	// Park the cursor at the anchor before ending the sync block.
 	b.WriteString(cup(anchorY, anchorX))
 	if anchorVisible {

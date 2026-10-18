@@ -23,10 +23,16 @@ func newPumpPane(t *testing.T) (*Pane, *os.File, chan Event) {
 	emu := vt.NewEmulator(80, 24)
 	go io.Copy(io.Discard, emu)
 	evCh := make(chan Event, 64)
-	p := &Pane{ID: 1, ptyFile: r, ptyFD: int(r.Fd()), emu: emu, ev: evCh}
+	p := &Pane{ID: 1, emu: emu, ev: evCh}
+	if err := p.installPTY(r); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_ = w.Close()
-		_ = r.Close()
+		if p.pumpDone != nil {
+			<-p.pumpDone
+		}
+		p.closePTY()
 	})
 	return p, w, evCh
 }
@@ -48,21 +54,28 @@ func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 	defer func() { pumpBatchWait, pumpStreamGap = oldWait, oldGap }()
 
 	p, w, _ := newPumpPane(t)
-	go p.pumpPTYToEmu()
-	time.Sleep(50 * time.Millisecond) // pump settles into the blocking read
-
-	t0 := time.Now()
-	if _, err := w.WriteString("x"); err != nil {
-		t.Fatal(err)
-	}
-	deadline := t0.Add(50 * time.Millisecond) // far below pumpBatchWait
-	for time.Now().Before(deadline) {
-		if s := screenText(p); len(s) > 0 && s[0] == 'x' {
-			return
+	p.startPump()
+	want := ""
+	for _, letter := range []string{"x", "y"} {
+		time.Sleep(50 * time.Millisecond) // idle, including after an earlier burst
+		want += letter
+		t0 := time.Now()
+		if _, err := w.WriteString(letter); err != nil {
+			t.Fatal(err)
 		}
-		time.Sleep(200 * time.Microsecond)
+		deadline := t0.Add(50 * time.Millisecond) // far below pumpBatchWait
+		seen := false
+		for time.Now().Before(deadline) {
+			if s := screenText(p); len(s) >= len(want) && s[:len(want)] == want {
+				seen = true
+				break
+			}
+			time.Sleep(200 * time.Microsecond)
+		}
+		if !seen {
+			t.Fatalf("first byte after idle did not reach emulator within %v (batch wait %v)", time.Since(t0), pumpBatchWait)
+		}
 	}
-	t.Fatalf("first byte after idle did not reach emulator within %v (batch wait %v)", time.Since(t0), pumpBatchWait)
 }
 
 // TestPumpStreamingCoalesces verifies reads are gathered while output keeps
@@ -77,7 +90,7 @@ func TestPumpStreamingCoalesces(t *testing.T) {
 	defer func() { pumpBatchWait, pumpStreamGap = oldWait, oldGap }()
 
 	p, w, evCh := newPumpPane(t)
-	go p.pumpPTYToEmu()
+	p.startPump()
 
 	var events atomic.Int32
 	stop := make(chan struct{})
@@ -136,7 +149,7 @@ func TestPumpDeliversTrailingOutputAfterQuiet(t *testing.T) {
 	defer func() { pumpBatchWait, pumpStreamGap = oldWait, oldGap }()
 
 	p, w, evCh := newPumpPane(t)
-	go p.pumpPTYToEmu()
+	p.startPump()
 	go func() {
 		for range evCh {
 			p.MarkChangedRead()

@@ -2,6 +2,7 @@ package render
 
 import (
 	"github.com/kazuph/goterrace/internal/kitty"
+	"reflect"
 )
 
 type Placeholder struct {
@@ -47,15 +48,34 @@ func (e *Encoder) prepareGraphics(f *Frame, full bool) bool {
 	if len(f.Graphics) == 0 && len(e.graphicsIDs) == 0 && len(f.Placeholders) == 0 {
 		return false
 	}
-	changed := full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics)
+	sources := frameGraphicsSources(f)
+	changed := !f.RetainGraphics && (full || e.graphicsNamespace != f.GraphicsNamespace || !graphicsEqual(e.graphics, f.Graphics) || !graphicsEqual(e.graphicsSources, sources))
 	if changed {
+		previous := e.graphicsMap
 		e.graphicsMap = map[string]uint32{}
-		for _, g := range f.Graphics {
+		for _, g := range sources {
 			key := graphicKey(g.Pane, g.Placement.Image.ID)
 			if _, exists := e.graphicsMap[key]; !exists {
-				e.nextGraphicID++
-				if e.nextGraphicID == 0 {
+				if id := g.Placement.Image.NativeID; id != 0 {
+					e.graphicsMap[key] = id
+					continue
+				}
+				if e.graphicsNamespace == f.GraphicsNamespace && !removedDefaultPrototype(e.graphics, f.Graphics, g) {
+					for _, old := range e.graphicsSources {
+						if old.Pane == g.Pane && reflect.DeepEqual(old.Placement.Image, g.Placement.Image) {
+							e.graphicsMap[key] = previous[key]
+							break
+						}
+					}
+				}
+				if e.graphicsMap[key] != 0 {
+					continue
+				}
+				for {
 					e.nextGraphicID++
+					if _, reserved := e.nativeImages[e.nextGraphicID]; e.nextGraphicID != 0 && !reserved {
+						break
+					}
 				}
 				e.graphicsMap[key] = e.nextGraphicID
 			}

@@ -39,6 +39,8 @@ type Emulator struct {
 
 	// Terminal modes.
 	modes ansi.Modes
+	// Character paths avoid map lookups; mode changes update these before callbacks.
+	autoWrap, originMode, newLineMode bool
 
 	// The last written character.
 	lastChar rune // either ansi.Rune or ansi.Grapheme
@@ -58,7 +60,8 @@ type Emulator struct {
 	cwd string
 
 	// tabstop is the list of tab stops.
-	tabstops *uv.TabStops
+	tabstops              *uv.TabStops
+	cellWidth, cellHeight int
 
 	// I/O pipes.
 	pr *io.PipeReader
@@ -255,7 +258,7 @@ func (e *Emulator) Resize(width int, height int) {
 	e.setCursor(x, y)
 
 	if e.isModeSet(ansi.ModeInBandResize) {
-		_, _ = io.WriteString(e.pw, ansi.InBandResize(e.Height(), e.Width(), 0, 0))
+		e.reportResize()
 	}
 }
 
@@ -289,12 +292,12 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 	}
 	for i := 0; i < len(p); i++ {
 		b := p[i]
-		if b >= ansi.SP && b < ansi.DEL && !e.disableFastPrint && e.canFastPrint() {
+		if b-ansi.SP < ansi.DEL-ansi.SP && !e.disableFastPrint && e.canFastPrint() {
 			// A run of printable ASCII in ground state all dispatches the
 			// same print action, so it can be written as cells in one batch
 			// instead of advancing the parser byte by byte.
 			j := i + 1
-			for j < len(p) && p[j] >= ansi.SP && p[j] < ansi.DEL {
+			for j < len(p) && p[j]-ansi.SP < ansi.DEL-ansi.SP {
 				j++
 			}
 			e.printRun(p[i:j])

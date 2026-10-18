@@ -1,8 +1,6 @@
 package vt
 
 import (
-	"io"
-
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -72,6 +70,12 @@ func (e *Emulator) setMode(mode ansi.Mode, setting ansi.ModeSetting) {
 	e.logf("setting mode %T(%v) to %v", mode, mode, setting)
 	e.modes[mode] = setting
 	switch mode {
+	case ansi.ModeAutoWrap:
+		e.autoWrap = setting.IsSet()
+	case ansi.ModeOrigin:
+		e.originMode = setting.IsSet()
+	case ansi.ModeLineFeedNewLine:
+		e.newLineMode = setting.IsSet()
 	case ansi.ModeTextCursorEnable:
 		e.scr.setCursorHidden(!setting.IsSet())
 	case ansi.ModeAltScreen:
@@ -92,7 +96,7 @@ func (e *Emulator) setMode(mode ansi.Mode, setting ansi.ModeSetting) {
 		e.setAltScreenMode(setting.IsSet())
 	case ansi.ModeInBandResize:
 		if setting.IsSet() {
-			_, _ = io.WriteString(e.pw, ansi.InBandResize(e.Height(), e.Width(), 0, 0))
+			e.reportResize()
 		}
 	}
 	if setting.IsSet() {

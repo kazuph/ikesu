@@ -9,6 +9,8 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"github.com/kazuph/goterrace/internal/status"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -256,6 +258,24 @@ func (a *App) anyWorking() bool {
 
 // exec applies a command and performs its effects.
 func (a *App) exec(cmd model.Command) {
+	if c, ok := cmd.(model.CmdCloseWorkspace); ok && c.Index == 0 && len(a.st.Workspaces) == 1 {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			a.lastSpawnError = err
+			a.ShowToast("workspace close failed", err.Error(), "error", a.focusedPane())
+			return
+		}
+		a.lastSpawnError = nil
+		a.exec(model.CmdNewWorkspace{Cwd: home, Name: filepath.Base(home)})
+		if a.lastSpawnError != nil {
+			a.exec(model.CmdCloseWorkspace{Index: 1})
+			a.ShowToast("workspace close failed", a.lastSpawnError.Error(), "error", a.focusedPane())
+			return
+		}
+		delete(a.workspaceNames, 0)
+		delete(a.workspaceGit, 0)
+	}
+
 	policyCwd := false
 	switch c := cmd.(type) {
 	case model.CmdSplitFocused:
@@ -265,6 +285,8 @@ func (a *App) exec(cmd model.Command) {
 	}
 
 	switch cmd.(type) {
+	case model.CmdSelectTab, model.CmdNewTab, model.CmdRenameTab, model.CmdSelectWorkspace, model.CmdNewWorkspace, model.CmdResize:
+		a.tabScrollManual = false
 	case model.CmdSetSection, model.CmdToggleSection:
 		a.sidebarScroll = 0
 		a.mobileScroll = 0

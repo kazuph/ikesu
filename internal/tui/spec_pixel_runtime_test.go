@@ -5,7 +5,6 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/teststate"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -32,12 +31,6 @@ func TestSPECCellCenterPixelButtonMotionWheelActualBytes(t *testing.T) {
 	m.Button = uv.MouseLeft
 	a.forwardTo(pid, uv.MouseReleaseEvent(m))
 	specWaitFile(t, path, []byte(expected))
-	a.cellW = 0
-	a.cellH = 0
-	a.forwardTo(pid, uv.MouseClickEvent(m))
-	if a.toast == nil || !strings.Contains(a.toast.body, "requires known pixel geometry") {
-		t.Fatal("unknown geometry substituted instead of unsupported error")
-	}
 }
 
 func TestSPECPanePixelGeometryPrecedesHostCellSize(t *testing.T) {

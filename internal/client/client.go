@@ -43,11 +43,17 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
-	EndPrefix    bool                   `json:"end_prefix,omitempty"`
-	Notification *endpoint.Notification `json:"notification,omitempty"`
+	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
+	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
+	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
+	GraphicsResult        *endpoint.GraphicsTransmissionResult `json:"graphics_result,omitempty"`
+	snapshot              *render.Input
+	EndPrefix             bool                   `json:"end_prefix,omitempty"`
+	Notification          *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
 	Available     int                       `json:"available_generation,omitempty"`
 	Type          string                    `json:"type"`
+	Kind          string                    `json:"kind,omitempty"`
 	Data          string                    `json:"data,omitempty"`
 	Cols          int                       `json:"cols,omitempty"`
 	Rows          int                       `json:"rows,omitempty"`
