@@ -330,7 +330,11 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		f.Text(r.X+1, r.Y, in.ConfigWarning, style, r.X+r.W)
 	}
 	if in.Toast != nil {
-		drawToast(f, in.Toast, out)
+		if in.ServerUI && s.Mobile() {
+			drawMobileToast(f, in.Toast, out)
+		} else {
+			drawToast(f, in.Toast, out)
+		}
 	}
 	if in.Copied != "" && !in.ServerUI {
 		if position := in.SidebarConfig.UI.Toast.Clipboard.Position; position != "" {

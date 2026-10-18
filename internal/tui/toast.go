@@ -80,7 +80,7 @@ func (a *App) expireToast() {
 // we navigate to the toast target and dismiss. Returns true when the
 // click was consumed.
 func (a *App) toastClick(x, y int) bool {
-	if a.toast == nil || a.toast.explicit || !pointIn(x, y, a.toastRect) {
+	if a.toast == nil || a.toast.explicit || a.serverUI && a.st.Mobile() || !pointIn(x, y, a.toastRect) {
 		return false
 	}
 	if !a.serverUI && a.toast.target < 0 {

@@ -24,7 +24,8 @@ a.out.mkdir(parents=True, exist_ok=True)
 for kind, position, cols in [('api', True, 160), ('api', False, 160), ('api', False, 60),
                              ('agent', True, 160), ('agent', False, 160), ('agent', False, 60),
                              ('api', 'empty', 160), ('agent', 'empty', 160),
-                             ('api', 'empty', 60), ('agent', 'empty', 60)]:
+                             ('api', 'empty', 60), ('agent', 'empty', 60),
+                             ('api', True, 60), ('agent', True, 60)]:
     name = f'{kind}-{"empty" if position == "empty" else "position" if position else "default"}-{cols}'
     if a.only and name not in a.only:
         continue

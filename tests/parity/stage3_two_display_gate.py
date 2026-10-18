@@ -20,6 +20,7 @@ def measure(root, case):
     reasons = [r['reply']['result']['reason'] for r in replies
                if r['method'] == 'notification.show']
     shots = {}
+    band = None
     for phase in ['visible', 'clicked', 'retried', 'expired']:
         for n in [1, 2]:
             rows = (path/f'view{n}-{phase}.txt').read_text().splitlines()
@@ -28,7 +29,12 @@ def measure(root, case):
             # The toast occupies the top four rows or the mobile bottom band.
             shots[f'{n}-{phase}'] = [i for i in list(range(4))+[44]
                                       if marker in rows[i]]
-    return {'reasons': reasons, 'shots': shots}
+            if phase == 'visible' and n == 1 and case.endswith('-60'):
+                row = json.loads((path/f'view{n}-{phase}.json').read_text())['Cells'][44]
+                # Agent context is the real shell's latest line and can change
+                # during startup; its stable title prefix still matches cells.
+                band = row if case.startswith('api') else row[:15]
+    return {'reasons': reasons, 'shots': shots, 'band': band}
 
 
 results = []

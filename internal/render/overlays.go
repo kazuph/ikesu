@@ -117,6 +117,26 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 
 // --- toast ---
 
+func drawMobileToast(f *Frame, t *Toast, out *Output) {
+	y := f.H - 1
+	out.ToastRect = layout.Rect{Y: y, W: f.W, H: 1}
+	bg := f.Palette.Surface
+	f.Fill(0, y, f.W, 1, " ", uv.Style{Bg: bg})
+	color := f.Palette.Blue
+	if t.Kind == "needs_attention" {
+		color = f.Palette.Red
+	}
+	f.Set(1, y, "●", uv.Style{Fg: color, Bg: bg})
+	title := t.Title
+	if t.Kind == "info" {
+		title = "update ready"
+	}
+	x := f.Text(3, y, title, uv.Style{Fg: f.Palette.Text, Bg: bg, Attrs: uv.AttrBold})
+	if t.Body != "" {
+		f.Text(x, y, " · "+t.Body, uv.Style{Fg: f.Palette.Dim, Bg: bg})
+	}
+}
+
 // drawToast renders the status title and an optional body inside the notification border.
 func drawToast(f *Frame, t *Toast, out *Output) {
 	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
