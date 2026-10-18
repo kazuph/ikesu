@@ -5,7 +5,6 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
-	"time"
 )
 
 type sidebarGesture struct {
@@ -24,7 +23,7 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 	}
 	view := a.sidebarView()
 	for _, pos := range view.Rows {
-		if y == pos.Y {
+		if y == pos.Y && !pos.Right {
 			return pos.Row, true
 		}
 	}
@@ -33,26 +32,22 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 func (a *App) sidebarPress(m uv.Mouse) bool {
 	s := a.st
 	if !s.SidebarVisible {
-		return false
-	}
-	if (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
-		now := time.Now()
-		if !a.dividerAt.IsZero() && now.Sub(a.dividerAt) <= 350*time.Millisecond {
-			a.sidebarPreset("normal")
-			a.sidebarGesture = nil
-			a.dividerAt = time.Time{}
+		if m.X == s.SidebarArea().W-1 && m.Button == uv.MouseLeft {
+			s.SidebarVisible = true
+			s.SidebarHidden = false
+			a.syncLayout()
+			a.saveViewPreferences()
+			a.changed()
 			return true
 		}
-		a.dividerAt = now
+		return false
+	}
+	if m.X == s.SidebarArea().W-1 && m.Button == uv.MouseLeft {
 		a.sidebarGesture = &sidebarGesture{divider: true, x: m.X, y: m.Y}
 		return true
 	}
 	if m.Button != uv.MouseLeft {
 		return false
-	}
-	if m.Y == render.SidebarSplitY(s) {
-		a.sidebarGesture = &sidebarGesture{panelDivider: true, x: m.X, y: m.Y}
-		return true
 	}
 	if a.sidebarScrollbarPress(m) {
 		return true
@@ -146,16 +141,6 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 			a.changed()
 			return
 		}
-		if g.panelDivider {
-			area := a.st.SidebarArea()
-			if area.H > 0 {
-				// SPEC G9 bounds the panel divider to 10–90% of sidebar height.
-				split := max(.1, min(.9, float64(m.Y-area.Y)/float64(area.H)))
-				a.st.SidebarSectionSplit = &split
-				a.dirty = true
-			}
-			return
-		}
 		g.section = ""
 		g.drop = -1
 		r, ok := a.sidebarRowAt(m.X, m.Y)
@@ -186,12 +171,13 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 	}
 	if ev.Kind == input.KindMouseRelease {
 		a.sidebarGesture = nil
-		if g.panelDivider {
-			a.changed()
-			a.saveViewPreferences()
-			return
-		}
 		if g.divider {
+			if !g.moved {
+				a.st.SidebarVisible = false
+				a.st.SidebarHidden = false
+				a.syncLayout()
+				a.changed()
+			}
 			a.saveViewPreferences()
 			return
 		}

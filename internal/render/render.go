@@ -261,6 +261,7 @@ func compose(in Input, machines *MachineSidebar, version string, notice bool) *O
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
+	drawRightSidebar(f, s, in)
 	if machines != nil {
 		machines.draw(f, in)
 	}

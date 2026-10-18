@@ -25,19 +25,15 @@ func SidebarViewForInput(in Input) SidebarView {
 	}
 	rows := view.Rows[:0]
 	for _, p := range view.Rows {
-		if p.Y < view.Agents.Rect.Y {
+		if !p.Right || p.Row.Kind == RowSep {
 			rows = append(rows, p)
 		}
 	}
 	view.Rows = rows
-	if !in.ServerUI {
-		view.Agents.Rect.Y++
-		view.Agents.Rect.H = max(0, view.Agents.Rect.H-1)
-	}
 	view.Agents.Total = len(in.Jobs)
 	view.Agents.Offset = max(0, min(in.JobScroll, max(0, view.Agents.Total-view.Agents.Rect.H)))
 	for n := 0; n < view.Agents.Rect.H && n+view.Agents.Offset < view.Agents.Total; n++ {
-		view.Rows = append(view.Rows, SidebarPosition{Row: SidebarRow{Kind: RowJob, Line: n + view.Agents.Offset}, Y: view.Agents.Rect.Y + n})
+		view.Rows = append(view.Rows, SidebarPosition{Right: true, Row: SidebarRow{Kind: RowJob, Line: n + view.Agents.Offset}, Y: view.Agents.Rect.Y + n})
 	}
 	return view
 }
@@ -57,9 +53,9 @@ func SidebarAgentSortLabel(s *model.AppState) string {
 }
 
 func SidebarAgentSortRect(s *model.AppState, y int) layout.Rect {
-	a := s.SidebarArea()
+	a := s.RightSidebarArea()
 	w := len(SidebarAgentSortLabel(s))
-	return layout.Rect{X: a.X + a.W - 1 - w, Y: y, W: w, H: 1}
+	return layout.Rect{X: a.X + a.W - w, Y: y, W: w, H: 1}
 }
 
 func drawJobRow(f *Frame, in Input, index, x, y, width int) {

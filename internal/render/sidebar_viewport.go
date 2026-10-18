@@ -5,7 +5,6 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
-	"math"
 )
 
 type SidebarViewport struct {
@@ -14,8 +13,9 @@ type SidebarViewport struct {
 }
 
 type SidebarPosition struct {
-	Row SidebarRow
-	Y   int
+	Right bool
+	Row   SidebarRow
+	Y     int
 }
 
 type SidebarView struct {
@@ -23,33 +23,22 @@ type SidebarView struct {
 	Workspace, Agents SidebarViewport
 }
 
-// Settled small-height and dragged-edge captures keep a minimum divider at row 7.
-const sidebarMinimumSplit = 7
-
-// Headers and both footers remain fixed; each panel has its own scroll offset.
+// SidebarSplitY is retained as the workspace footer anchor; there is no panel split.
 func SidebarSplitY(s *model.AppState) int {
-	area := s.SidebarArea()
-	split := .5
-	if s.SidebarSectionSplit != nil {
-		split = *s.SidebarSectionSplit
-	}
-	y := int(math.Round(float64(area.H) * split))
-	upper := max(0, area.H-3)
-	y = min(upper, max(sidebarMinimumSplit, y))
-	return area.Y + y
+	a := s.SidebarArea()
+	return a.Y + max(0, a.H-2)
 }
 
 func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int, serverUI bool, selected *int) SidebarView {
 	a := s.SidebarArea()
 	iw := max(0, a.W-1)
 	mid := SidebarSplitY(s)
+	right := s.RightSidebarArea()
 	view := SidebarView{
 		Workspace: SidebarViewport{Rect: layout.Rect{X: a.X, Y: a.Y + 2, W: iw, H: max(0, mid-a.Y-3)}},
-		Agents:    SidebarViewport{Rect: layout.Rect{X: a.X, Y: mid + 2, W: iw, H: max(0, a.Y+a.H-mid-3)}},
+		Agents:    SidebarViewport{Rect: layout.Rect{X: right.X + 1, Y: 2, W: max(0, right.W-1), H: max(0, right.H-2)}},
 	}
 	if serverUI {
-		view.Agents.Rect.Y++
-		view.Agents.Rect.H = max(0, view.Agents.Rect.H-1)
 		if len(cfg.UI.Sidebar.Agents.Rows) == 0 {
 			cfg.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "workspace"}}, {{Token: "agent"}}}
 		}
@@ -150,10 +139,10 @@ func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Confi
 		}
 	}
 	if sep < len(rows) {
-		view.Rows = append(view.Rows, SidebarPosition{Row: rows[sep], Y: mid + 1})
+		view.Rows = append(view.Rows, SidebarPosition{Right: true, Row: rows[sep], Y: 0})
 	}
 	for n := 0; n < view.Agents.Rect.H && n+view.Agents.Offset < view.Agents.Total; n++ {
-		view.Rows = append(view.Rows, SidebarPosition{Row: rows[sep+1+n+view.Agents.Offset], Y: view.Agents.Rect.Y + n})
+		view.Rows = append(view.Rows, SidebarPosition{Right: true, Row: rows[sep+1+n+view.Agents.Offset], Y: view.Agents.Rect.Y + n})
 	}
 	return view
 }
