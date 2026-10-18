@@ -27,6 +27,13 @@ func TestCodexQuestionBoundaryAndFreeInput(t *testing.T) {
 	if q == nil || p.Signature() != q.Signature() || q.Cursor != 1 {
 		t.Fatal("countdown or cursor changed identity")
 	}
+	inline := append([]string{}, lines[:10]...)
+	inline[1] += " · auto-resolves in 1m 00s"
+	inline = append(inline, lines[11])
+	q = Parse("codex", inline)
+	if q == nil || q.Signature() != p.Signature() || q.Params.Body == nil || *q.Params.Body != "auto-resolves in m s" || *q.Params.QuestionLabel != *p.Params.QuestionLabel {
+		t.Fatalf("inline countdown: %+v", q)
+	}
 }
 
 func TestCodexQuestionIncompleteReadAndQuestionIdentity(t *testing.T) {
@@ -72,5 +79,27 @@ func TestObservedCodexLastQuestionSubmitAll(t *testing.T) {
 	p := Parse("codex", fixture(t, "codex-question-last"))
 	if p == nil || p.Params.Title != "Scope?" || p.Params.QuestionLabel == nil || *p.Params.QuestionLabel != "Question 2/2 (1 unanswered)" || !p.Params.AllowText || !p.CodexQuestion || p.Final {
 		t.Fatalf("last question: %+v", p)
+	}
+}
+
+func TestObservedCodexCountdownIdentity(t *testing.T) {
+	var signature string
+	for _, name := range []string{"codex-timed-first", "codex-timed-countdown", "codex-timed-cursor", "codex-timed-free", "codex-timed-notes"} {
+		p := Parse("codex", fixture(t, name))
+		if p == nil || !p.CodexQuestion || p.Params.Title != "Which report format should be used?" || p.Params.QuestionLabel == nil || *p.Params.QuestionLabel != "Question 1/2 (2 unanswered)" || !p.Params.AllowText || len(p.Params.Options) != 2 {
+			t.Fatalf("%s: %+v", name, p)
+		}
+		if strings.Contains(name, "first") || strings.Contains(name, "countdown") {
+			if p.Params.Body == nil || !strings.HasPrefix(*p.Params.Body, "auto-resolves in ") || strings.ContainsAny(*p.Params.Body, "0123456789") {
+				t.Fatalf("%s: body=%v", name, p.Params.Body)
+			}
+		}
+		if signature != "" && signature != p.Signature() {
+			t.Fatalf("%s changed identity", name)
+		}
+		signature = p.Signature()
+		if p.TextOpen != (name == "codex-timed-notes") {
+			t.Fatalf("%s notes state", name)
+		}
 	}
 }

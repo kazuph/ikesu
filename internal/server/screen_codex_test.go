@@ -22,6 +22,27 @@ func codexQuestionTerminal(t *testing.T, fixture string) (*Server, *runtime.Pane
 	return s, p, input
 }
 
+func TestCodexQuestionObservedCountdownKeepsDecisionID(t *testing.T) {
+	teststate.Lock(t)
+	s, p, input := codexQuestionTerminal(t, "codex-timed-first")
+	scanScreen(s)
+	d := screenRecord(t, s)
+	if d.Body == nil || strings.ContainsAny(*d.Body, "0123456789") {
+		t.Fatal("countdown body missing or contains numbers", d.Body)
+	}
+	for _, name := range []string{"codex-timed-countdown", "codex-timed-cursor", "codex-timed-free", "codex-timed-notes"} {
+		paintScreen(p, screenDialog(t, name))
+		scanScreen(s)
+		got := screenRecord(t, s)
+		if got.DecisionID != d.DecisionID || got.Title != d.Title || got.QuestionLabel == nil || *got.QuestionLabel != *d.QuestionLabel {
+			t.Fatalf("%s changed saved question: %+v", name, got)
+		}
+	}
+	if keys, err := os.ReadFile(input); err != nil || len(keys) != 0 {
+		t.Fatalf("observation wrote PTY input: %q %v", keys, err)
+	}
+}
+
 func TestCodexQuestionUnreadableRetainsPending(t *testing.T) {
 	teststate.Lock(t)
 	for _, fixture := range []string{"codex-question", "codex-question-notes"} {
