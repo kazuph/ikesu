@@ -9,6 +9,9 @@ import (
 type displayState struct {
 	visible, hidden, manual, tabs, hideSingle, borders, gaps bool
 	size, min, max, normal, mobile                           int
+	rightMode                                                string
+	rightSize                                                int
+	explicitHidden                                           bool
 	split                                                    *float64
 	density, scope                                           string
 }
@@ -17,7 +20,7 @@ func captureDisplay(s *model.AppState) displayState {
 	return displayState{s.SidebarVisible, s.SidebarCollapsedHidden, s.SidebarManual,
 		s.ShowTabBar, s.HideTabBarWhenSingleTab, s.PaneBorders, s.PaneGaps,
 		s.SidebarSize, s.SidebarMin, s.SidebarMax, s.SidebarDefault, s.MobileWidthThreshold,
-		s.SidebarSectionSplit, s.WorkspaceDensity, s.AgentScope}
+		s.RightSidebarMode, s.RightSidebarSize, s.SidebarHidden, s.SidebarSectionSplit, s.WorkspaceDensity, s.AgentScope}
 }
 
 func (d displayState) apply(s *model.AppState) {
@@ -26,6 +29,7 @@ func (d displayState) apply(s *model.AppState) {
 	s.SidebarSize, s.SidebarMin, s.SidebarMax, s.SidebarDefault = d.size, d.min, d.max, d.normal
 	s.MobileWidthThreshold, s.SidebarSectionSplit = d.mobile, d.split
 	s.WorkspaceDensity, s.AgentScope = d.density, d.scope
+	s.RightSidebarMode, s.RightSidebarSize, s.SidebarHidden = d.rightMode, d.rightSize, d.explicitHidden
 }
 
 func (v *Viewer) Configure(a *App, c *config.Config, preferences *endpoint.ViewPreferences, save func(endpoint.ViewPreferences) error) {
@@ -43,7 +47,8 @@ func (v *Viewer) Configure(a *App, c *config.Config, preferences *endpoint.ViewP
 			ui.st.SidebarSize = max(lo, min(hi, preferences.SidebarWidth))
 			ui.st.SidebarManual = preferences.SidebarManual
 			ui.st.SidebarVisible = !preferences.SidebarCollapsed
-			ui.st.SidebarSectionSplit = preferences.SidebarSectionSplit
+			ui.st.SidebarHidden = preferences.SidebarHidden
+			ui.st.RightSidebarMode = preferences.RightSidebarMode
 		}
 	})
 }
@@ -53,7 +58,7 @@ func (a *App) saveViewPreferences() {
 		return
 	}
 	p := endpoint.ViewPreferences{SidebarWidth: a.st.ExpandedSidebarWidth(), SidebarManual: a.st.SidebarManual,
-		SidebarCollapsed: !a.st.SidebarVisible, SidebarSectionSplit: a.st.SidebarSectionSplit}
+		SidebarCollapsed: !a.st.SidebarVisible, SidebarHidden: a.st.SidebarHidden, RightSidebarMode: a.st.RightSidebarMode}
 	if err := a.preferenceSave(p); err != nil {
 		a.worktreeError(err)
 	}

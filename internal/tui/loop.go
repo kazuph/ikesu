@@ -328,7 +328,8 @@ func (a *App) exec(cmd model.Command) {
 	if metadataOrder != nil {
 		a.reindexWorkspaceMetadata(metadataOrder)
 	}
-	if _, toggled := cmd.(model.CmdToggleSidebar); toggled {
+	switch cmd.(type) {
+	case model.CmdToggleSidebar, model.CmdToggleRightSidebar:
 		a.saveViewPreferences()
 	}
 	a.popupVisibilityChanged(popupWasVisible, previousPopup)

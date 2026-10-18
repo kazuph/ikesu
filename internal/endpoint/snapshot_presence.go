@@ -28,7 +28,7 @@ type tokenPresence struct {
 	Bold, Dim   bool
 }
 
-func configPointers(c *config.Config) ([20]**bool, [9]**int) {
+func configPointers(c *config.Config) ([20]**bool, [10]**int) {
 	return [20]**bool{
 		&c.Onboarding, &c.Remote.ManageSSHConfig, &c.Update.VersionCheck, &c.Update.ManifestCheck,
 		&c.UI.MouseCapture, &c.UI.CopyOnSelect, &c.UI.RedrawOnFocusGained, &c.UI.ConfirmClose,
@@ -36,10 +36,10 @@ func configPointers(c *config.Config) ([20]**bool, [9]**int) {
 		&c.UI.Toast.Enabled, &c.UI.ShowTabBar, &c.UI.HideTabBarWhenSingleTab, &c.UI.PaneBorders,
 		&c.Session.ResumeAgentsOnRestore, &c.AgentRestore.Enabled, &c.Guard.Enabled,
 		&c.Decisions.ScreenPrompts,
-	}, [9]**int{
+	}, [10]**int{
 		&c.Advanced.ScrollbackLimitBytes, &c.UI.MouseScrollLines, &c.UI.MobileWidthThreshold,
 		&c.UI.SidebarWidth, &c.UI.SidebarMinWidth, &c.UI.SidebarMaxWidth,
-		&c.UI.Toast.DelaySeconds, &c.AgentRestore.RestoreDelayMs, &c.Guard.AskTimeoutSeconds,
+		&c.UI.Toast.DelaySeconds, &c.AgentRestore.RestoreDelayMs, &c.Guard.AskTimeoutSeconds, &c.UI.RightSidebarWidth,
 	}
 }
 

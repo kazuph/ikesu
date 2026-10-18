@@ -204,7 +204,10 @@ func (s *AppState) Apply(cmd Command) (effects []Effect) {
 			}
 		}
 	case CmdToggleSidebar:
-		s.SidebarVisible = !s.SidebarVisible
+		s.ToggleSidebar()
+		return []Effect{EffSyncLayout{}}
+	case CmdToggleRightSidebar:
+		s.ToggleRightSidebar()
 		return []Effect{EffSyncLayout{}}
 	case CmdResize:
 		s.Cols, s.Rows = c.Cols, c.Rows
