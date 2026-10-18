@@ -14,6 +14,8 @@ for name in "$@"; do
     case "$name" in
         *-local) mode=; steps="tests/parity/${name%-local}.steps" ;;
         stage3-toast)
+            : "${PARITY_CONTROLLER_SESSION_ID:?set the actual controller transcript session ID}"
+            export PARITY_CONTROLLER_SESSION_ID
             toast=--in-app-toast
             config="$out/toast.toml"
             python3 - "$root/user-config.toml" "$config" <<'PY'

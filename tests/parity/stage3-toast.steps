@@ -13,7 +13,9 @@ sleep 200ms
 screen @OUT@/right-click.txt
 cells @OUT@/right-click.json
 send "\x1b"
-sleep 200ms
+sleep 1s
+screen @OUT@/menu-closed.txt
+cells @OUT@/menu-closed.json
 mouse down 150 2
 mouse up 150 2
 sleep 200ms

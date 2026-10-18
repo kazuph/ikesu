@@ -23,7 +23,7 @@ func TestStage3AgentToastSharedByTwoRealDisplays(t *testing.T) {
 	defer stopServer(t, dir, done)
 	ready := dialClient(t, dir)
 	ready.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45})
-	ready.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	ready.readUntil(t, 5*time.Second, func(m clientMsg) bool { return ready.lastRegions != nil })
 	ready.conn.Close()
 	target := firstPaneID(t, dir)
 	var foreground api.TabCreatedResult
@@ -32,23 +32,26 @@ func TestStage3AgentToastSharedByTwoRealDisplays(t *testing.T) {
 	for _, c := range clients {
 		defer c.conn.Close()
 		c.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45})
-		c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+		c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return c.lastRegions != nil })
 	}
 	waitToast := func(c *testConn, visible bool) {
 		t.Helper()
 		found := false
-		c.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+		frames := c.readUntil(t, 5*time.Second, func(m clientMsg) bool {
 			found = m.Type == "output" && c.lastRegions != nil && (c.lastRegions.ToastRect.W > 0) == visible
 			return found
 		})
 		if !found {
-			t.Fatalf("display toast visible=%v not observed", visible)
+			t.Fatalf("display toast visible=%v not observed, regions=%+v output=%q", visible, c.lastRegions, outputs(frames))
 		}
 	}
 	for _, state := range []string{"working", "idle"} {
 		apiOK(t, dir, api.MethodPaneReportAgent, map[string]any{"pane_id": target, "agent": "codex", "source": "codex", "session_id": t.Name(), "state": state}, nil)
 	}
-	for _, c := range clients {
+	t.Logf("target: %s", apiReq(t, dir, api.MethodPaneGet, api.PaneTarget{PaneID: target}).Result)
+	t.Logf("tabs: %s", apiReq(t, dir, api.MethodTabList, api.TabListParams{}).Result)
+	for i, c := range clients {
+		t.Logf("waiting for initial notification on display %d", i)
 		waitToast(c, true)
 	}
 	c := clients[0]

@@ -2,6 +2,7 @@
 
 段階3（マウス）はminiの `src/stage3` で `stage3_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
+通知のケースでは未指定なら採取前に停止する。
 店長設定（Ctrl+T prefix、80% popup、tab bar、tokyo-night と custom 色）をコピーし、
 `--silent --clipboard-sandbox` で音とpasteboardへの接続を隔離する。
 隔離モードは実クリップボードを読み取らず、証拠のハッシュを `null` として記録する。
