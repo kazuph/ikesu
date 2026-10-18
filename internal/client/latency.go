@@ -33,12 +33,16 @@ func (m *machineClient) tracePaint(data []byte, probe bool, in render.Input) {
 }
 
 func (m *machineClient) traceProbeTimeout(now time.Time) {
-	if m.trace == nil || m.probeSeq == 0 || now.Before(m.probeUntil) {
+	if m.trace == nil {
+		return
+	}
+	m.traceProbeContext()
+	if m.probeSeq == 0 || now.Before(m.probeUntil) {
 		return
 	}
 	seq := m.probeSeq
 	m.probeSeq = 0
-	m.probeAmbiguous = true
+	m.probeUnanswered++
 	m.trace.Event("probe.give_up", " pid=", os.Getpid(), " endpoint=", m.probeEndpoint, " generation=", m.probeGeneration, " draw_seq=", seq, " reason=timeout")
 }
 
@@ -49,12 +53,28 @@ func (m *machineClient) traceProbeReply() {
 	// Accept already cleared the functional fence. Expiration is also processed
 	// by advance; the trace keeps its own deadline for late-reply classification.
 	m.traceProbeTimeout(time.Now())
-	seq := m.probeSeq
-	m.probeSeq = 0
-	// Status replies carry no query ID. After an unanswered timeout, neither
-	// another reply nor an endpoint switch proves which draw it acknowledges.
-	if m.probeAmbiguous {
-		seq = 0
+	var seq uint64
+	if m.probeDiscardNext {
+		m.probeDiscardNext = false
+	} else if m.probeUnanswered > 0 {
+		m.probeUnanswered--
+	} else {
+		seq = m.probeSeq
+		m.probeSeq = 0
 	}
 	m.trace.Event("probe.reply", " pid=", os.Getpid(), " endpoint=", m.probeEndpoint, " generation=", m.probeGeneration, " draw_seq=", seq, " matched=", seq != 0)
+}
+
+func (m *machineClient) traceProbeContext() {
+	e := m.endpoints[m.active]
+	if e == nil || m.probeEndpoint == m.active && m.probeGeneration == e.attempt {
+		return
+	}
+	// A switch discards the old count but conservatively excludes one reply
+	// when an old query could still answer on the same terminal input stream.
+	m.probeDiscardNext = m.probeDiscardNext || m.probeSeq != 0 || m.probeUnanswered > 0
+	m.probeUnanswered = 0
+	m.probeSeq = 0
+	m.probeEndpoint = m.active
+	m.probeGeneration = e.attempt
 }
