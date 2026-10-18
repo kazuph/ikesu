@@ -100,7 +100,7 @@ func TestMachineSidebarKeepsOriginalIDsAndOnlySelectedEndpointAccent(t *testing.
 }
 
 func TestMachineSidebarScrollRetainsHeadingsAndFullCardWidth(t *testing.T) {
-	local, remote, second := Input{ServerUI: true, State: testState(160, 45)}, Input{ServerUI: true, State: testState(160, 45)}, Input{ServerUI: true, State: testState(160, 45)}
+	local, remote, second := Input{ServerUI: true, State: testState(160, 23)}, Input{ServerUI: true, State: testState(160, 23)}, Input{ServerUI: true, State: testState(160, 23)}
 	for i := 0; i < 5; i++ {
 		remote.State.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
 	}
@@ -114,7 +114,7 @@ func TestMachineSidebarScrollRetainsHeadingsAndFullCardWidth(t *testing.T) {
 		found := false
 		for _, hit := range m.Hits {
 			area := SidebarViewForInput(local).Workspace.Rect
-			if hit.Rect.Y >= area.Y+area.H {
+			if hit.Rect.X != area.X || hit.Rect.Y >= area.Y+area.H {
 				continue
 			}
 			if !hit.New && hit.Rect.W != 25 {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/model"
@@ -42,14 +43,7 @@ func (v *Viewer) Configure(a *App, c *config.Config, preferences *endpoint.ViewP
 			ui.SetKeybinds(c.CopyKeys(), c.SplitVerticalKeys(), c.SplitHorizontalKeys())
 			ui.SetPaneKeybinds(*c)
 		}
-		if preferences != nil {
-			lo, hi, _ := ui.st.SidebarBounds()
-			ui.st.SidebarSize = max(lo, min(hi, preferences.SidebarWidth))
-			ui.st.SidebarManual = preferences.SidebarManual
-			ui.st.SidebarVisible = !preferences.SidebarCollapsed
-			ui.st.SidebarHidden = preferences.SidebarHidden
-			ui.st.RightSidebarMode = preferences.RightSidebarMode
-		}
+		ui.applyViewPreferences(preferences)
 	})
 }
 
@@ -76,4 +70,27 @@ func (v *Viewer) UpdatePresentation(a *App, c *config.Config, preferences *endpo
 
 func (v *Viewer) ConfigError(a *App, reason string) {
 	v.with(a, func(ui *App) { ui.SetConfigWarning(reason); ui.dirty = true })
+}
+
+func (a *App) applyViewPreferences(p *endpoint.ViewPreferences) {
+	if p == nil {
+		return
+	}
+	lo, hi, _ := a.st.SidebarBounds()
+	a.st.SidebarSize = max(lo, min(hi, p.SidebarWidth))
+	a.st.SidebarManual = p.SidebarManual
+	a.st.SidebarVisible = !p.SidebarCollapsed
+	a.st.SidebarHidden = p.SidebarHidden
+	a.st.RightSidebarMode = p.RightSidebarMode
+}
+
+func (a *App) configureStandalonePreferences() error {
+	path := endpoint.ViewPreferencesPath(api.DefaultSession)
+	preferences, err := endpoint.LoadViewPreferences(path)
+	if err != nil {
+		return err
+	}
+	a.applyViewPreferences(preferences)
+	a.preferenceSave = func(p endpoint.ViewPreferences) error { return endpoint.SaveViewPreferences(path, p) }
+	return nil
 }

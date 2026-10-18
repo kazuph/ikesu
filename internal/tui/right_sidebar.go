@@ -12,6 +12,9 @@ func (a *App) rightSidebarInput() render.Input {
 }
 func (a *App) rightSidebarClick(m uv.Mouse) {
 	area := a.st.RightSidebarArea()
+	if !pointIn(m.X, m.Y, area) {
+		return
+	}
 	if m.Button == uv.MouseLeft && m.X == area.X {
 		if area.W == model.SidebarCollapsedWidth {
 			a.st.RightSidebarMode = ""
@@ -21,6 +24,9 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 		a.syncLayout()
 		a.saveViewPreferences()
 		a.changed()
+		return
+	}
+	if m.Button == uv.MouseLeft && area.W > model.SidebarCollapsedWidth && a.sidebarScrollbarPress(m) {
 		return
 	}
 	var rows []render.SidebarPosition
@@ -63,7 +69,7 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 			}
 			if pointIn(m.X, m.Y, render.RightSidebarJobsTab(a.st, m.Y)) {
 				if !a.jobsPanel {
-					a.jobScroll = 0
+					a.agentScroll = 0
 				}
 				a.jobsPanel = true
 			} else if m.X >= area.X+2 && m.X < area.X+2+len("[agents]") {
@@ -75,9 +81,6 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 			a.changed()
 		}
 		return
-	}
-	if m.Button == uv.MouseLeft && area.W > model.SidebarCollapsedWidth {
-		a.sidebarScrollbarPress(m)
 	}
 }
 func (a *App) focusJobCaller(index int) {

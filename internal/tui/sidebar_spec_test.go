@@ -9,7 +9,6 @@ import (
 	"github.com/kazuph/goterrace/internal/teststate"
 	"reflect"
 	"testing"
-	"time"
 )
 
 func sidebarCardY(a *App, wi int) int {
@@ -34,22 +33,21 @@ func sidebarEvent(a *App, kind input.Kind, x, y int) {
 	a.onMouse(input.Event{Kind: kind, Mouse: uv.Mouse{X: x, Y: y, Button: uv.MouseLeft}})
 }
 
-func TestEndpointSidebarPanelDividerDragKeepsMenuClosed(t *testing.T) {
+func TestEndpointSidebarHasNoPanelDividerDrag(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.serverUI = true
-	a.inputEOF = false
 	a.st.Rows = 45
-	sidebarEvent(a, input.KindMouseClick, 10, render.SidebarSplitY(a.st))
+	old := .5
+	a.st.SidebarSectionSplit = &old
+	sidebarEvent(a, input.KindMouseClick, 10, 22)
 	sidebarEvent(a, input.KindMouseMotion, 10, 0)
 	sidebarEvent(a, input.KindMouseRelease, 10, 0)
-	if a.st.SidebarSectionSplit == nil || *a.st.SidebarSectionSplit != .1 || render.SidebarSplitY(a.st) != 7 {
-		t.Fatal("endpoint drag did not retain the observed upper edge")
-	}
-	if a.menu != nil || a.sidebarGesture != nil {
-		t.Fatal("divider release left a menu or gesture")
+	if *a.st.SidebarSectionSplit != old || a.menu != nil || a.sidebarGesture != nil {
+		t.Fatal("obsolete panel divider still reacts")
 	}
 }
+
 func TestG2ActiveCardReleaseDragAndSection(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
@@ -140,15 +138,21 @@ func TestG2SectionNewAndCycleVisibleWrap(t *testing.T) {
 		t.Fatal("section new")
 	}
 }
-func TestG2DividerResetAndDangerousCancel(t *testing.T) {
+func TestG2DividerToggleAndDangerousCancel(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.st.SidebarDefault = 26
 	a.sidebarPreset("wide")
-	a.dividerAt = time.Now()
-	sidebarEvent(a, input.KindMouseClick, a.st.SidebarArea().W-1, 5)
-	if a.st.ExpandedSidebarWidth() != 26 || a.st.SidebarManual || a.sidebarGesture != nil {
-		t.Fatal("double reset")
+	x := a.st.SidebarArea().W - 1
+	sidebarEvent(a, input.KindMouseClick, x, 5)
+	sidebarEvent(a, input.KindMouseRelease, x, 5)
+	if a.st.SidebarArea().W != 2 || a.sidebarGesture != nil {
+		t.Fatal("divider did not collapse")
+	}
+	sidebarEvent(a, input.KindMouseClick, 1, 5)
+	sidebarEvent(a, input.KindMouseRelease, 1, 5)
+	if a.st.SidebarArea().W != 72 {
+		t.Fatal("divider did not restore configured width")
 	}
 	a.openQuitDialog()
 	if a.quit || a.dialog.d.Title != "Stop server?" || a.dialog.d.Confirm != "stop" || a.dialog.d.Width != 76 {
@@ -233,6 +237,7 @@ func TestG2SidebarConfigReloadKeepsCollapseAndManualWidth(t *testing.T) {
 	if a.st.SidebarVisible {
 		t.Fatal("startup collapse ignored")
 	}
+	a.exec(model.CmdToggleSidebar{})
 	a.exec(model.CmdToggleSidebar{})
 	a.sidebarPreset("wide")
 	a.SetSidebarConfig(c, false)

@@ -1,10 +1,7 @@
 package client
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
@@ -32,55 +29,23 @@ func loadLocalSettings(session string) (*localSettings, error) {
 	if !api.ValidSessionName(session) {
 		return nil, fmt.Errorf("invalid client session name")
 	}
-	s := &localSettings{session: session, path: filepath.Join(api.StateDir(), "client-shell", "local-"+session+".json")}
+	s := &localSettings{session: session, path: endpoint.ViewPreferencesPath(session)}
 	c, err := config.Load()
 	if err != nil {
 		s.warning = "client configuration: " + err.Error()
 	} else {
 		s.config = &c
 	}
-	data, err := os.ReadFile(s.path)
-	if os.IsNotExist(err) {
-		return s, nil
-	}
+	preferences, err := endpoint.LoadViewPreferences(s.path)
 	if err != nil {
 		return nil, err
 	}
-	var preferences endpoint.ViewPreferences
-	if err := json.Unmarshal(data, &preferences); err != nil {
-		return nil, fmt.Errorf("client preferences: %w", err)
-	}
-	if preferences.SidebarWidth < 1 || preferences.SidebarSectionSplit != nil && (*preferences.SidebarSectionSplit < .1 || *preferences.SidebarSectionSplit > .9) {
-		return nil, fmt.Errorf("invalid client sidebar preferences")
-	}
-	s.preferences = &preferences
+	s.preferences = preferences
 	return s, nil
 }
 
 func (s *localSettings) save(preferences endpoint.ViewPreferences) error {
-	data, err := json.Marshal(preferences)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(s.path), ".client-*.json")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if err = f.Chmod(0600); err == nil {
-		_, err = f.Write(append(data, '\n'))
-	}
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if err := os.Rename(f.Name(), s.path); err != nil {
+	if err := endpoint.SaveViewPreferences(s.path, preferences); err != nil {
 		return err
 	}
 	s.preferences = &preferences

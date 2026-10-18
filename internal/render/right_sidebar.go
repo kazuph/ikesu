@@ -6,10 +6,6 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 )
 
-func rightSidebarRow(r SidebarRow) bool {
-	return r.Kind == RowAgent || r.Kind == RowSep || r.Kind == RowJob || r.Kind == RowBlank
-}
-
 func RightSidebarJobsTab(s *model.AppState, y int) layout.Rect {
 	a := s.RightSidebarArea()
 	r := SidebarJobsTab(a.W, y)
@@ -102,6 +98,23 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 		}
 		drawSidebarRow(f, s, in, pos.Row, a.X+1, pos.Y, width)
 	}
+	if in.ServerUI {
+		for y := a.Y; y < a.Y+a.H; y++ {
+			for x := a.X + 1; x < a.X+a.W; x++ {
+				if c := f.Cell(x, y); c != nil && c.Style.Bg == nil {
+					c.Style.Bg = f.Palette.PopupBG
+				}
+			}
+		}
+		if in.SidebarConfig.UI.TransparentSidebarCards {
+			for _, pos := range view.Rows {
+				if pos.Right {
+					clearSidebarCardBackground(f, s, pos.Row, a.X+1, pos.Y, a.W-1)
+				}
+			}
+		}
+	}
+
 	if !in.ServerUI {
 		drawSidebarScrollbar(f, view.Agents, false)
 	}

@@ -2,6 +2,7 @@ package render
 
 import (
 	"github.com/kazuph/goterrace/internal/model"
+	"strings"
 	"testing"
 )
 
@@ -57,4 +58,16 @@ func TestRightSidebarStatusColumnsAndPanelOwnership(t *testing.T) {
 			t.Fatal("jobs replaced workspace panel")
 		}
 	}
+}
+
+func rightSidebarLine(f *Frame, s *model.AppState, y int) string {
+	a := s.RightSidebarArea()
+	var text strings.Builder
+	for x := a.X + 1; x < a.X+a.W; x++ {
+		c := f.Cell(x, y)
+		if c != nil && c.Width > 0 {
+			text.WriteString(c.Content)
+		}
+	}
+	return text.String()
 }

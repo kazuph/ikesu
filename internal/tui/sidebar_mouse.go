@@ -61,9 +61,6 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		return false
 	}
 	switch r.Kind {
-	case render.RowJob:
-		a.openJobLog(r.Line)
-		return true
 	case render.RowTitle:
 		if a.serverUI {
 			return true
@@ -71,28 +68,6 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		_, _, w, _ := render.SidebarContent(s.SidebarArea())
 		if m.X >= s.SidebarArea().X+w-6 {
 			a.toggleSidebarSetting(true)
-		}
-		return true
-	case render.RowSep:
-		if !a.serverUI && !a.jobsPanel && pointIn(m.X, m.Y, render.SidebarAgentSortRect(s, m.Y)) {
-			a.toggleSidebarSetting(false)
-			return true
-		}
-		if pointIn(m.X, m.Y, render.SidebarJobsTab(s.SidebarArea().W, m.Y)) {
-			if !a.jobsPanel {
-				a.agentScroll = 0
-			}
-			a.jobsPanel = true
-			a.changed()
-			return true
-		}
-		if m.X >= 1 && m.X < 1+len("[agents]") {
-			if a.jobsPanel {
-				a.agentScroll = 0
-			}
-			a.jobsPanel = false
-			a.changed()
-			return true
 		}
 		return true
 	case render.RowSection:

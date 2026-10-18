@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
@@ -87,5 +88,75 @@ func TestRightSidebarActualPTYGeometryAndClicks(t *testing.T) {
 		if a.st.Active != 0 {
 			t.Fatal("compact workspace click missed")
 		}
+	}
+}
+
+func TestRightSidebarStandaloneRestoresSameLocalPreferences(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GTX_STATE_DIR", root)
+	path := endpoint.ViewPreferencesPath(api.DefaultSession)
+	first := NewApp(model.New(root, 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, root)
+	if err := first.configureStandalonePreferences(); err != nil {
+		t.Fatal(err)
+	}
+	first.exec(model.CmdToggleSidebar{})
+	first.exec(model.CmdToggleSidebar{})
+	first.exec(model.CmdToggleRightSidebar{})
+	saved, err := endpoint.LoadViewPreferences(path)
+	if err != nil || saved == nil || !saved.SidebarHidden || saved.RightSidebarMode != "compact" {
+		t.Fatal("not saved", saved, err)
+	}
+	second := NewApp(model.New(root, 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, root)
+	if err := second.configureStandalonePreferences(); err != nil {
+		t.Fatal(err)
+	}
+	if second.st.SidebarArea().W != 0 || second.st.RightSidebarArea().W != 2 {
+		t.Fatal("standalone restart did not restore")
+	}
+	second.st.Cols = 41
+	second.saveViewPreferences()
+	saved, err = endpoint.LoadViewPreferences(path)
+	if err != nil || saved.RightSidebarMode != "compact" {
+		t.Fatal("automatic hide leaked into preference", saved, err)
+	}
+}
+
+func TestRightSidebarDefaultAndCustomKeyAndDividerCells(t *testing.T) {
+	root := t.TempDir()
+	a := NewApp(model.New(root, 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, root)
+	if !a.configuredKey(uv.Key{Code: 'B'}, true) || a.st.RightSidebarMode != "compact" {
+		t.Fatal("default prefix+shift+b missing")
+	}
+	if a.st.SidebarArea().W != 26 {
+		t.Fatal("right key changed left sidebar")
+	}
+	c, err := config.Decode([]byte("[keys]\ntoggle_right_sidebar='prefix+t'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.sidebarConfig = c
+	if a.configuredKey(uv.Key{Code: 'B'}, true) {
+		t.Fatal("old default survives explicit rebind")
+	}
+	if !a.configuredKey(uv.Key{Code: 't'}, true) || a.st.RightSidebarMode != "hidden" {
+		t.Fatal("custom key missing")
+	}
+	a.configuredKey(uv.Key{Code: 't'}, true)
+	right := a.st.RightSidebarArea()
+	sidebarEvent(a, input.KindMouseClick, right.X, 4)
+	if a.st.RightSidebarArea().W != 2 {
+		t.Fatal("right divider did not collapse")
+	}
+	sidebarEvent(a, input.KindMouseClick, a.st.RightSidebarArea().X, 4)
+	if a.st.RightSidebarArea().W != 26 {
+		t.Fatal("right divider did not expand")
+	}
+	sidebarEvent(a, input.KindMouseClick, 25, 4)
+	sidebarEvent(a, input.KindMouseRelease, 25, 4)
+	if a.st.SidebarArea().W != 2 {
+		t.Fatal("left divider did not collapse")
+	}
+	if a.st.RightSidebarArea().W != 26 {
+		t.Fatal("left divider changed right")
 	}
 }

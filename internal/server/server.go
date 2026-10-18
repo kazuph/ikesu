@@ -703,7 +703,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "control":
 			s.app.Do(func() { s.graphicsControl(c, m) })
 		case "view_config":
-			if m.Preferences != nil && (m.Preferences.SidebarWidth < 1 || m.Preferences.SidebarSectionSplit != nil && (*m.Preferences.SidebarSectionSplit < .1 || *m.Preferences.SidebarSectionSplit > .9)) {
+			if m.Preferences != nil && m.Preferences.Validate() != nil {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_preferences_invalid"})
 				continue
 			}

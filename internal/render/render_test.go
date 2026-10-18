@@ -67,8 +67,8 @@ func TestRenderCollapsedSidebar(t *testing.T) {
 	pid := s.Workspaces[0].Tabs[0].Layout.Focused()
 	out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	text := screenText(t, out, 80, 24)
-	if !strings.Contains(text, "»") {
-		t.Fatalf("missing » in:\n%s", text)
+	if s.SidebarArea().W != 2 || out.Frame.Cell(1, 0).Content != "│" || out.Frame.Cell(0, 0).Content != "·" {
+		t.Fatalf("collapsed sidebar must be one status cell and a divider:\n%s", text)
 	}
 	if strings.Contains(text, "[menu]") {
 		t.Fatalf("collapsed sidebar must not show footer:\n%s", text)

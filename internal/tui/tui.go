@@ -679,6 +679,9 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		a.setStartupConfigWarning([]string{err.Error()})
 	}
 
+	if err := a.configureStandalonePreferences(); err != nil {
+		return 1, err
+	}
 	if err := a.StartInitialPane(); err != nil {
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}

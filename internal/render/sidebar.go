@@ -230,9 +230,6 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		if !in.ServerUI && pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
 			width--
 		}
-		if !in.ServerUI && pos.Y >= view.Agents.Rect.Y && pos.Y < view.Agents.Rect.Y+view.Agents.Rect.H && view.Agents.Total > view.Agents.Rect.H {
-			width--
-		}
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
 	}
 	if !in.ServerUI {
@@ -287,6 +284,9 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	}
 	if in.ServerUI && in.SidebarConfig.UI.TransparentSidebarCards {
 		for _, pos := range view.Rows {
+			if pos.Right {
+				continue
+			}
 			clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
 		}
 	}
