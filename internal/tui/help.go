@@ -14,7 +14,7 @@ import (
 )
 
 // helpView is the keybind-help overlay state (SPEC G6): opened with
-// prefix+? or [menu]→Keybinds, scrollable, closed with esc/enter/q or a
+// prefix+? or [menu]→Keybinds, scrollable, closed with esc/enter/? or a
 // click outside the box.
 type helpView struct {
 	scroll   int
@@ -94,6 +94,28 @@ func (a *App) helpRows() []render.HelpRow {
 		{},
 	}
 	for i := range rows {
+		if rows[i].Cmd == "workspace list" || rows[i].Cmd == "move focus" {
+			names := []string{"navigate_workspace_up", "navigate_workspace_down"}
+			if rows[i].Cmd == "move focus" {
+				names = []string{"navigate_pane_left", "navigate_pane_down", "navigate_pane_up", "navigate_pane_right"}
+			}
+			var bindings []string
+			for _, name := range names {
+				for _, spec := range a.sidebarConfig.ActionBindings(name) {
+					if spec != "" {
+						bindings = append(bindings, spec)
+					}
+				}
+			}
+			if rows[i].Cmd == "move focus" {
+				bindings = append(bindings, "left", "right")
+			}
+			rows[i].Bind = strings.Join(bindings, " / ")
+			if rows[i].Bind == "" {
+				rows[i].Bind = "unset"
+			}
+			continue
+		}
 		if rows[i].Cmd == "prefix mode" {
 			rows[i].Bind = a.prefixSpec()
 			continue
@@ -123,6 +145,7 @@ func (a *App) helpRows() []render.HelpRow {
 			}
 			rows = append(rows, render.HelpRow{Bind: b.Key, Cmd: description})
 		}
+		rows = append(rows, render.HelpRow{})
 	}
 	return rows
 
@@ -186,16 +209,20 @@ func (a *App) helpScrollBy(d int) {
 // helpKey handles keys while the overlay is open.
 func (a *App) helpKey(k uv.Key) {
 	switch {
-	case k.Code == uv.KeyEscape || k.Code == uv.KeyEnter || k.Code == 'q':
+	case k.Code == uv.KeyEscape || k.Code == uv.KeyEnter || k.Code == '?':
 		a.help = nil
+	case k.Code == uv.KeyHome:
+		a.helpScrollBy(-a.help.scroll)
+	case k.Code == uv.KeyEnd:
+		a.helpScrollBy(a.helpMaxScroll())
 	case k.Code == uv.KeyUp || k.Code == 'k':
 		a.helpScrollBy(-1)
 	case k.Code == uv.KeyDown || k.Code == 'j':
 		a.helpScrollBy(1)
 	case k.Code == uv.KeyPgUp:
-		a.helpScrollBy(-(a.helpBody() + 1) / 2)
+		a.helpScrollBy(-8)
 	case k.Code == uv.KeyPgDown:
-		a.helpScrollBy((a.helpBody() + 1) / 2)
+		a.helpScrollBy(8)
 	}
 	a.dirty = true
 }

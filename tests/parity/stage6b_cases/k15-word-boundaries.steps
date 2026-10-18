@@ -1,0 +1,51 @@
+send "\u0014c"
+sleep 200ms
+send "one_two"
+sleep 200ms
+send "\u0017"
+sleep 200ms
+screen @OUT@/word-0.txt
+cells @OUT@/word-0.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "alpha---  "
+sleep 200ms
+send "\u0017"
+sleep 200ms
+screen @OUT@/word-1.txt
+cells @OUT@/word-1.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 abc"
+sleep 200ms
+send "\u0017"
+sleep 200ms
+screen @OUT@/word-2.txt
+cells @OUT@/word-2.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "alpha / /  "
+sleep 200ms
+send "\u0017"
+sleep 200ms
+screen @OUT@/word-3.txt
+cells @OUT@/word-3.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "alpha🙂🙂  "
+sleep 200ms
+send "\u0017"
+sleep 200ms
+screen @OUT@/word-4.txt
+cells @OUT@/word-4.json
+send "\u001b"
+sleep 200ms
+kill

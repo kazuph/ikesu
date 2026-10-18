@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestParitySettingsThemePreviewAndRememberedSection(t *testing.T) {
+func TestParitySettingsThemePreviewAndReopenTheme(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
 	teststate.Setenv(t, "GTX_CONFIG", path)
@@ -40,10 +40,9 @@ func TestParitySettingsThemePreviewAndRememberedSection(t *testing.T) {
 		t.Fatal("sound apply must not save previewed theme", cfg, err)
 	}
 	a.openSettings()
-	if a.settings.Section != 1 {
-		t.Fatal("reopen must remember sound section")
+	if a.settings.Section != 0 {
+		t.Fatal("0.2.57 reopens the theme section")
 	}
-	a.settingsKey(uv.Key{Code: uv.KeyLeft})
 	if a.settings.Theme != "catppuccin" || a.settings.Selected != 0 {
 		t.Fatal("reopen must reload saved theme")
 	}
@@ -52,5 +51,45 @@ func TestParitySettingsThemePreviewAndRememberedSection(t *testing.T) {
 	cfg, err = config.Load()
 	if err != nil || cfg.ThemeName() != "catppuccin" {
 		t.Fatal("cancel must not persist preview", cfg, err)
+	}
+}
+
+func TestStage6bThemeEdgesAndSpacePreview(t *testing.T) {
+	teststate.Lock(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	teststate.Setenv(t, "GTX_CONFIG", path)
+	if err := os.WriteFile(path, []byte("[theme]\nname='tokyo-night'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := specRuntimeApp(t)
+	a.reloadSidebarConfig()
+	a.openSettings()
+	a.settings.Selected = 0
+	a.settingsKey(uv.Key{Code: 'k', Text: "k"})
+	if a.settings.Selected != 0 {
+		t.Fatal("theme up must clamp")
+	}
+	a.settingsKey(uv.Key{Code: 'j', Text: "j"})
+	if a.settings.Selected != 1 {
+		t.Fatal("theme down must select latte")
+	}
+	a.settingsKey(uv.Key{Code: ' ', Text: " "})
+	if a.settings == nil {
+		t.Fatal("Space must keep theme preview open")
+	}
+	c, err := config.Load()
+	if err != nil || c.ThemeName() != "tokyo-night" {
+		t.Fatal("Space saved preview", c, err)
+	}
+	a.settings.Section = 2
+	a.settings.Selected = 3
+	a.settingsKey(uv.Key{Code: 'j', Text: "j"})
+	if a.settings.Selected != 3 {
+		t.Fatal("toast down must clamp")
+	}
+	a.settings.Selected = 0
+	a.settingsKey(uv.Key{Code: 'k', Text: "k"})
+	if a.settings.Selected != 0 {
+		t.Fatal("toast up must clamp")
 	}
 }

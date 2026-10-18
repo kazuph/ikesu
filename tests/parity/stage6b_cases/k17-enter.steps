@@ -1,0 +1,21 @@
+send "\u0014s"
+sleep 200ms
+send "l"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\r"
+sleep 200ms
+screen @OUT@/first.txt
+cells @OUT@/first.json
+send "\r"
+sleep 200ms
+screen @OUT@/second.txt
+cells @OUT@/second.json
+send "\u001b"
+sleep 200ms
+send "\u0014s"
+sleep 200ms
+screen @OUT@/reopen.txt
+cells @OUT@/reopen.json
+kill

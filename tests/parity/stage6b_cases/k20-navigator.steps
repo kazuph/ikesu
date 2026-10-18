@@ -1,0 +1,25 @@
+send "\u0014o/bogus"
+sleep 200ms
+send "\u001b"
+sleep 200ms
+send "a"
+sleep 200ms
+screen @OUT@/all.txt
+cells @OUT@/all.json
+send "b/"
+sleep 200ms
+send "pane"
+sleep 200ms
+screen @OUT@/filter-search.txt
+cells @OUT@/filter-search.json
+send "\u001b"
+sleep 200ms
+send "b"
+sleep 200ms
+screen @OUT@/filtered.txt
+cells @OUT@/filtered.json
+send ""
+sleep 200ms
+screen @OUT@/backspace.txt
+cells @OUT@/backspace.json
+kill

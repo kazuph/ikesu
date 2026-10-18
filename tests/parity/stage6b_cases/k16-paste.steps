@@ -1,0 +1,33 @@
+send "\u0014c"
+sleep 200ms
+send "\u001b[200~貼付 alpha\u001b[201~"
+sleep 200ms
+screen @OUT@/name.txt
+cells @OUT@/name.json
+send "\u001b"
+sleep 200ms
+send "\u0014o/"
+sleep 200ms
+send "\u001b[200~pane\u001b[201~"
+sleep 200ms
+screen @OUT@/navigator.txt
+cells @OUT@/navigator.json
+send "\u001b"
+sleep 200ms
+send "\u001b"
+sleep 200ms
+send "printf 'alpha beta\\n'\r"
+sleep 200ms
+send "\u0014[/"
+sleep 200ms
+send "\u001b[200~alpha\t\u0001beta\u001b[201~"
+sleep 200ms
+screen @OUT@/copy-search.txt
+cells @OUT@/copy-search.json
+send "\u001b"
+sleep 200ms
+send "\u001b[200~DO_NOT_DELIVER\u001b[201~"
+sleep 200ms
+screen @OUT@/copy-no-search.txt
+cells @OUT@/copy-no-search.json
+kill

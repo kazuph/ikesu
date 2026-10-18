@@ -1,0 +1,15 @@
+send "\u0014s"
+sleep 200ms
+send "kkkk"
+sleep 200ms
+screen @OUT@/up-edge.txt
+cells @OUT@/up-edge.json
+send "j"
+sleep 200ms
+screen @OUT@/down-edge.txt
+cells @OUT@/down-edge.json
+send " "
+sleep 200ms
+screen @OUT@/space.txt
+cells @OUT@/space.json
+kill

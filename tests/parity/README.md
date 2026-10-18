@@ -27,6 +27,28 @@ serverの初期ワークスペースが存在するときは再利用し、両�
 台帳と実物の違いはRESULT.mdへ記録する。接続表示のホイール・押下・一覧バーと、
 単独表示のホイールは別条件として判定し、未観測の条件へPASSを広げない。
 
+
+段階6b（名前入力・貼り付け・設定・navigator・ヘルプ）はminiの`src/stage6b`で
+`sh tests/parity/stage6b_observe.sh 出力先`を実行する。`stage6b_cases.py`が同じ入力を
+両製品へ送る手順を生成し、店長設定のコピー・一時HOME・貼付sandbox・サーバー接続を使う。
+navigatorだけは競合する`prefix+g`を避けてgotoを`prefix+o`に置く。
+`k22-user`は元の競合設定、`k22-nav`はnavigate再割当でヘルプと実操作を確かめる。
+`stage6b_fixture.py`は隔離socketだけに25個の実workspaceを作り、
+`stage6b_paste_recorder.py`は実shell-PTYへ届いた入力を記録する。
+`python3 tests/parity/stage6b_gate.py 出力先`が選択行・検索条件・保存値・背後への配送を検査する。
+`sh tests/parity/gate-stage6b.sh 出力先`は整形・vet・全test・raceのログを残す。
+性能は`stage6b_perf_launch.py 4d337f7のgit-archive.tar`でminiの負荷を確認し、
+4未満ならmini、それ以外ならubuntu-3090でperf-lock.py経由の相対検査を行う。
+実クリップボードを使用した非空テキストのCmd/Ctrl+V挿入はこのsandbox観察では証明しない。
+private-fileの依存注入テストと、sandbox下でのキー漏出検査は別の証拠として扱う。
+親がminiのGUIクリップボード使用を明示許可した追加確認は、miniで
+`python3 tests/parity/stage6b_native_clipboard.py 出力先`を実行する。
+SSHユーザーとGUIユーザーの一致を確認し、全item/typeを権限0600で保存してから、
+pbcopy/pbpasteとNSPasteboardの同一文字列を照合する。両製品のCmd/Ctrl+Vを観察後、
+元の全形式データへ戻して完全一致を`proof.json`に記録する。
+`original-pasteboard.json`は元の内容を含むためmini外へコピー・表示・コミットしない。
+この追加確認は実pasteboardを読むため`--clipboard-sandbox`を付けない。
+
 段階4（サイドバー）はminiの `src/stage4` で `stage4_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
 店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。
@@ -334,3 +356,13 @@ miniの負荷が4以上のときに認められたubuntu-3090での相対P1は�
 `sh tests/parity/stage5_perf.sh <ルート>` を実行する。
 両方を同じGoと引数でビルドし、固定の `perf-lock.py` 経由で既存の `TestRelative` を実行する。
 絶対P1はこの段階の判定に含めない。
+
+段階6bのFIX-1は `stage6b_fix_cases.py 出力先` で手順を生成し、
+`stage6b_observe.sh 観察先 出力先/fix1-fold.steps 出力先/fix1-keys.steps` をminiで実行する。
+`PARITY_CONTROLLER_SESSION_ID` に制御中の実セッションIDを設定する。
+`stage6b_fix_gate.py 観察先` は折り畳みからの検索・状態条件・解除時の記号と行数、
+実APIで取得した選択後のペインID、通常/検索中/修飾キー付きの選択先を数値・文字で検査する。
+`stage6b_clipboard_session.swift` と `stage6b_ssh_clipboard_probe.py` の直接起動も、
+入口と同じminiホスト名・GUIユーザー・GUIセッション確認に通るまでpasteboardへアクセスしない。
+メインMacの拒否検査は引数なしの直接実行でSTOPとなることを確認し、miniの成功検査は
+既存の全形式保存・復元のラッパー内で実施する。元pasteboardのデータは回収・公開しない。

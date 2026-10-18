@@ -1,0 +1,87 @@
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\u0015"
+sleep 200ms
+screen @OUT@/ctrl-u.txt
+cells @OUT@/ctrl-u.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\u001b[127;9u"
+sleep 200ms
+screen @OUT@/cmd-backspace.txt
+cells @OUT@/cmd-backspace.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\u001b[127;5u"
+sleep 200ms
+screen @OUT@/ctrl-backspace.txt
+cells @OUT@/ctrl-backspace.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\u001b"
+sleep 200ms
+screen @OUT@/alt-backspace.txt
+cells @OUT@/alt-backspace.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\b"
+sleep 200ms
+screen @OUT@/ctrl-h.txt
+cells @OUT@/ctrl-h.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\u0017"
+sleep 200ms
+screen @OUT@/ctrl-w.txt
+cells @OUT@/ctrl-w.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send ""
+sleep 200ms
+screen @OUT@/backspace.txt
+cells @OUT@/backspace.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send "日本語 alpha-beta  "
+sleep 200ms
+send "\u0003"
+sleep 200ms
+screen @OUT@/ctrl-c.txt
+cells @OUT@/ctrl-c.json
+send "\u001b"
+sleep 200ms
+send "\u0014c"
+sleep 200ms
+send ""
+sleep 200ms
+screen @OUT@/default-backspace.txt
+cells @OUT@/default-backspace.json
+kill

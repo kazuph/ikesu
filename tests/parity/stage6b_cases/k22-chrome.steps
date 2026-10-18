@@ -1,0 +1,7 @@
+send "\u0014c"
+sleep 200ms
+send "\r"
+sleep 200ms
+screen @OUT@/tabs.txt
+cells @OUT@/tabs.json
+kill

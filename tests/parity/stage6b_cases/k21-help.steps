@@ -1,0 +1,35 @@
+send "\u0014?"
+sleep 200ms
+screen @OUT@/open.txt
+cells @OUT@/open.json
+send "\u001b[6~"
+sleep 200ms
+screen @OUT@/page.txt
+cells @OUT@/page.json
+send "\u001b[F"
+sleep 200ms
+screen @OUT@/end.txt
+cells @OUT@/end.json
+send "\u001b[H"
+sleep 200ms
+screen @OUT@/home.txt
+cells @OUT@/home.json
+send "q"
+sleep 200ms
+screen @OUT@/q.txt
+cells @OUT@/q.json
+send "?"
+sleep 200ms
+screen @OUT@/question.txt
+cells @OUT@/question.json
+resize 160 18
+sleep 200ms
+send "\u0014?"
+sleep 200ms
+screen @OUT@/short-open.txt
+cells @OUT@/short-open.json
+send "\u001b[6~"
+sleep 200ms
+screen @OUT@/short-page.txt
+cells @OUT@/short-page.json
+kill

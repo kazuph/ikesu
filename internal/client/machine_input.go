@@ -132,6 +132,12 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
+	if modalClipboardView(activeView.snapshot) && (event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && event.Key.Code == 'v' && (event.Key.Mod == uv.ModCtrl || event.Key.Mod == uv.ModSuper) {
+		if event.Kind == input.KindKeyRelease {
+			return nil
+		}
+		return m.pasteClipboard()
+	}
 	event = m.mouse.CellEvent(event, m.size)
 	if m.active != "local" && (event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && activeView.snapshot != nil && remoteImagePasteKey(activeView.snapshot.SidebarConfig, event.Key, activeView.snapshot.Prefix) {
 		if event.Kind == input.KindKeyRelease {

@@ -1,0 +1,19 @@
+send "printf 'alpha beta\\n'\r"
+sleep 200ms
+send "\u0014["
+sleep 200ms
+screen @OUT@/copy.txt
+cells @OUT@/copy.json
+send "/"
+sleep 200ms
+screen @OUT@/search-open.txt
+cells @OUT@/search-open.json
+send "\u001b[200~alpha\u001b[201~"
+sleep 200ms
+screen @OUT@/plain.txt
+cells @OUT@/plain.json
+send "\u001b[200~\t\u0001beta\u001b[201~"
+sleep 200ms
+screen @OUT@/controls.txt
+cells @OUT@/controls.json
+kill

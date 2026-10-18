@@ -1,0 +1,12 @@
+send "python3 /Users/kazuph/src/github.com/kazuph/goterrace/.worktree/feat/stage6b-keys/tests/parity/stage6b_fixture.py tabs\r"
+sleep 200ms
+sleep 2s
+send "\u0014c"
+sleep 200ms
+screen @OUT@/initial.txt
+cells @OUT@/initial.json
+send ""
+sleep 200ms
+screen @OUT@/cleared.txt
+cells @OUT@/cleared.json
+kill
