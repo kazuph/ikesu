@@ -1,0 +1,35 @@
+
+  >_ OpenAI Codex (v0.160.1)
+     ~/bench-terrace.noindex/src/footer-codex-question
+
+  Your cursor called. It wants a plot.
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› Use request_user_input now with two questions in one call: Report format? with Plain
+  text and JSON options; Scope? with Small and Full options. This is a UI acceptance test.
+  Use no other tools. After answers respond with EXACT_ANSWERS followed by the exact
+  received answers as JSON and stop.
+
+
+
+
+
+
+
+
+  Question 2/2 (1 unanswered)
+  Scope?
+
+  › 1. Small              Use a small scope.
+    2. Full               Use the full scope.
+    3. None of the above  Optionally, add details in notes (tab)
+
+  tab to add notes | enter to submit all | ←/→ to navigate questions | esc to interrupt

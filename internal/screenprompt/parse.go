@@ -15,19 +15,21 @@ import (
 )
 
 type Prompt struct {
-	Final      bool
-	Flow       string
-	Question   int
-	Total      int
-	Params     api.DecisionCreateParams
-	Keys       map[string]string
-	Checked    map[string]bool
-	Items      []string // arrow-navigation order, including the free input and progress row
-	Cursor     int
-	TextID     string
-	Progress   int
-	HasPreview bool
-	Preview    *string
+	CodexQuestion bool
+	TextOpen      bool
+	Final         bool
+	Flow          string
+	Question      int
+	Total         int
+	Params        api.DecisionCreateParams
+	Keys          map[string]string
+	Checked       map[string]bool
+	Items         []string // arrow-navigation order, including the free input and progress row
+	Cursor        int
+	TextID        string
+	Progress      int
+	HasPreview    bool
+	Preview       *string
 }
 
 var numbered = regexp.MustCompile(`^\s*([❯›>]?)\s*(\d+)[.)]\s+(.*)$`)
@@ -87,6 +89,10 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if agent != "claude" && agent != "codex" && agent != "devin" {
 		return nil
 	}
+	codexLabel, codexBody := "", ""
+	if agent == "codex" {
+		screen, codexLabel, codexBody = codexQuestionScreen(screen)
+	}
 	screen, notice := cleanNotice(screen)
 	columns := screenColumns(screen)
 	plain, preview, hasPreview := extractPreview(screen)
@@ -112,7 +118,15 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	}
 	p := &Prompt{Keys: map[string]string{}, Checked: map[string]bool{}, Cursor: -1, Progress: -1, HasPreview: hasPreview, Preview: preview}
 	p.Params.Kind = "agent_prompt"
-	askUserQuestion := false
+	askUserQuestion := codexLabel != ""
+	if codexLabel != "" {
+		p.CodexQuestion = true
+		p.TextOpen = codexNotesOpen(screen)
+		p.Params.QuestionLabel = &codexLabel
+		if codexBody != "" {
+			p.Params.Body = &codexBody
+		}
+	}
 	var title []string
 	for _, line := range lines[start:first] {
 		physical := line
@@ -175,7 +189,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 				p.Checked[id] = checked[1] != " "
 				label = checked[2]
 			}
-			free := id == textID || id == chatID || strings.HasPrefix(strings.ToLower(label), "type something") || strings.HasPrefix(strings.ToLower(label), "chat about this")
+			free := p.CodexQuestion && strings.HasPrefix(strings.ToLower(label), "none of the above") || id == textID || id == chatID || strings.HasPrefix(strings.ToLower(label), "type something") || strings.HasPrefix(strings.ToLower(label), "chat about this")
 			lastOption = -1
 			if free {
 				p.Params.AllowText = true
@@ -234,7 +248,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			previousDescription = line
 		}
 	}
-	if len(p.Params.Options) == 0 {
+	if len(p.Params.Options) == 0 || p.CodexQuestion && (p.TextID == "" || !codexQuestionComplete(screen)) {
 		return nil
 	}
 	if askUserQuestion {
@@ -364,15 +378,20 @@ func (p *Prompt) Signature() string {
 		}
 		options = append(options, option{o.ID, stableText(o.Label), description})
 	}
+	var label *string
+	if p.Params.QuestionLabel != nil && codexQuestionHeader.MatchString(*p.Params.QuestionLabel) {
+		label = p.Params.QuestionLabel
+	}
 	data, _ := json.Marshal(struct {
+		QuestionLabel          *string `json:",omitempty"`
 		Title                  string
 		Options                []option
 		AllowText, MultiSelect bool
-	}{stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
+	}{label, stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
 
 func FromDecision(d api.Decision) string {
-	return (&Prompt{Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect}}).Signature()
+	return (&Prompt{Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
 }

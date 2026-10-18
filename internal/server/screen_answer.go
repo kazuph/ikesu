@@ -21,6 +21,9 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	}
 	w := s.screenPrompts.watches[pid]
 	current := s.readScreenPrompt(pid)
+	if ok && w != nil && w.prompt != nil && w.prompt.CodexQuestion && current == nil {
+		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the current Codex question and notes state"}
+	}
 	damaged := false
 	if pane := s.sup.Get(pid); pane != nil {
 		visible, _ := pane.ReadLines("visible", true)
@@ -35,6 +38,9 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	}
 	if current != nil {
 		w.prompt = current
+	}
+	if w.prompt.CodexQuestion && w.prompt.TextOpen && p.Text == nil {
+		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "close Codex notes before choosing a numbered option"}
 	}
 	answer, err := dispatch.ValidateDecisionAnswer(d, p)
 	if err != nil {
@@ -58,7 +64,7 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 	w.resolved = true
 	s.beginScreenFlowAnswer(pid, w.prompt)
 	prompt := w.prompt
-	w.editingText = prompt.Params.MultiSelect && answer.Text != nil
+	w.editingText = (prompt.Params.MultiSelect || prompt.CodexQuestion) && answer.Text != nil
 	go func() {
 		err := s.deliverScreenAnswer(pid, w.signature, prompt, answer)
 		s.app.Do(func() { w.editingText = false; s.finishScreenFlowAnswer(pid, prompt, err) })
@@ -70,7 +76,7 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 }
 
 // Each write is a separate PTY event; delay reuses the established agent prompt submit interval.
-func (s *Server) screenInput(pid int, signature, data string, verify bool) error {
+func (s *Server) screenInput(pid int, signature, data string, verify bool, notesOpen *bool) error {
 	err := fmt.Errorf("server stopped before input delivery")
 	s.app.Do(func() {
 		pane := s.sup.Get(pid)
@@ -87,6 +93,13 @@ func (s *Server) screenInput(pid int, signature, data string, verify bool) error
 			if p == nil || p.Signature() != signature {
 				err = fmt.Errorf("question changed during input delivery")
 				return
+			}
+			if p.CodexQuestion {
+				expected := notesOpen != nil && *notesOpen
+				if p.TextOpen != expected {
+					err = fmt.Errorf("Codex notes state changed during input delivery")
+					return
+				}
 			}
 		}
 		sequence := s.screenPrompts.watches[pid].answerInputSequence
@@ -107,15 +120,18 @@ func (s *Server) screenInputDelay() error {
 }
 
 func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer) error {
+	if prompt.CodexQuestion {
+		return s.deliverCodexQuestionAnswer(pid, signature, prompt, answer)
+	}
 	if !prompt.Params.MultiSelect {
 		if answer.Text == nil {
 			if answer.OptionID == nil {
 				return fmt.Errorf("missing option")
 			}
-			return s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], false)
+			return s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], false, nil)
 		}
 		for _, data := range []string{prompt.TextID, *answer.Text, "\r"} {
-			if err := s.screenInput(pid, signature, data, false); err != nil {
+			if err := s.screenInput(pid, signature, data, false, nil); err != nil {
 				return err
 			}
 			if err := s.screenInputDelay(); err != nil {
@@ -136,7 +152,7 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 		if prompt.Checked[o.ID] == desired[o.ID] {
 			continue
 		}
-		if err := s.screenInput(pid, signature, o.ID, true); err != nil {
+		if err := s.screenInput(pid, signature, o.ID, true, nil); err != nil {
 			return err
 		}
 		if err := s.screenInputDelay(); err != nil {
@@ -148,7 +164,7 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			return err
 		}
 		for _, data := range []string{*answer.Text, "\r"} {
-			if err := s.screenInput(pid, signature, data, false); err != nil {
+			if err := s.screenInput(pid, signature, data, false, nil); err != nil {
 				return err
 			}
 			if err := s.screenInputDelay(); err != nil {
@@ -172,7 +188,7 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 		if err := s.navigateScreenRow(pid, signature, prompt.TextID); err != nil {
 			return err
 		}
-		if err := s.screenInput(pid, signature, "\r", true); err != nil {
+		if err := s.screenInput(pid, signature, "\r", true, nil); err != nil {
 			return err
 		}
 		if err := s.screenInputDelay(); err != nil {
@@ -186,7 +202,7 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 	if err := s.navigateScreenRow(pid, signature, "progress"); err != nil {
 		return err
 	}
-	return s.screenInput(pid, signature, "\r", true)
+	return s.screenInput(pid, signature, "\r", true, nil)
 }
 
 // Number keys toggle multi-select checks without moving its cursor. Free
@@ -195,7 +211,7 @@ func (s *Server) navigateScreenRow(pid int, signature, row string) error {
 	for {
 		var current *screenprompt.Prompt
 		s.app.Do(func() { current = s.readScreenPrompt(pid) })
-		if current == nil || current.Signature() != signature || current.Progress < 0 || current.Cursor < 0 {
+		if current == nil || current.Signature() != signature || (!current.CodexQuestion && current.Progress < 0) || current.Cursor < 0 {
 			return fmt.Errorf("cannot locate multi-select row")
 		}
 		target := -1
@@ -216,7 +232,7 @@ func (s *Server) navigateScreenRow(pid int, signature, row string) error {
 			arrow = "\x1b[A"
 			next = current.Cursor - 1
 		}
-		if err := s.screenInput(pid, signature, arrow, true); err != nil {
+		if err := s.screenInput(pid, signature, arrow, true, nil); err != nil {
 			return err
 		}
 		if err := s.screenInputDelay(); err != nil {
