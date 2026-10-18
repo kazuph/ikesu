@@ -93,7 +93,13 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 	if err != nil {
 		t.Fatalf("state dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(stateDir) })
+	t.Cleanup(func() {
+		if t.Failed() && os.Getenv("GTX_E2E_KEEP_FAILED") == "1" {
+			t.Logf("preserved failed E2E state: %s", stateDir)
+			return
+		}
+		os.RemoveAll(stateDir)
+	})
 	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), []byte("PS1='❯ '\n"), 0o644); err != nil {
 		t.Fatalf("zshrc: %v", err)
 	}
