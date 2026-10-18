@@ -13,6 +13,7 @@ import (
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/latency"
 	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/platform"
 	"github.com/kazuph/goterrace/internal/render"
@@ -20,6 +21,8 @@ import (
 )
 
 type managedEndpoint struct {
+	boot                     string
+	textOnly                 bool
 	mouse                    hostMouseState
 	profile                  machine.Profile
 	connection               *endpointConnection
@@ -60,39 +63,46 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
-	clientVersion   string
-	nativeTransfer  *nativeViewerTransfer
-	fileGraphics    graphicsFileReceiver
-	mouse           hostMouseState
-	hostKbdFlags    int
-	inputSource     platform.InputSource
-	session         string
-	settings        *localSettings
-	endpoints       map[string]*managedEndpoint
-	order           []string
-	active          string
-	pending         *pendingMachine
-	drag            *machineDrag
-	size            tui.Winsize
-	in, out         *os.File
-	events          chan endpointEvent
-	ctx             context.Context
-	workers         sync.WaitGroup
-	sidebar         render.MachineSidebar
-	frames          render.Encoder
-	outputFence     render.OutputFence
-	paintQueued     bool
-	inputBatch      bool
-	title           windowTitleState
-	regions         *render.Output
-	tabFeedback     *tabFeedback
-	held            []input.Event
-	suppressRelease bool
-	blurred         bool
-	notice          string
-	noticeUntil     time.Time
-	forms           *tui.MachineForms
-	readClipboard   func(context.Context) (clipboardContent, error)
+	clientVersion     string
+	trace             *latency.Trace
+	drawSeq, probeSeq uint64
+	probeUntil        time.Time
+	probeEndpoint     string
+	probeGeneration   uint64
+	probeUnanswered   uint64
+	probeDiscardNext  bool
+	nativeTransfer    *nativeViewerTransfer
+	fileGraphics      graphicsFileReceiver
+	mouse             hostMouseState
+	hostKbdFlags      int
+	inputSource       platform.InputSource
+	session           string
+	settings          *localSettings
+	endpoints         map[string]*managedEndpoint
+	order             []string
+	active            string
+	pending           *pendingMachine
+	drag              *machineDrag
+	size              tui.Winsize
+	in, out           *os.File
+	events            chan endpointEvent
+	ctx               context.Context
+	workers           sync.WaitGroup
+	sidebar           render.MachineSidebar
+	frames            render.Encoder
+	outputFence       render.OutputFence
+	paintQueued       bool
+	inputBatch        bool
+	title             windowTitleState
+	regions           *render.Output
+	tabFeedback       *tabFeedback
+	held              []input.Event
+	suppressRelease   bool
+	blurred           bool
+	notice            string
+	noticeUntil       time.Time
+	forms             *tui.MachineForms
+	readClipboard     func(context.Context) (clipboardContent, error)
 }
 
 func savedMachines(session string) []machine.Profile {
@@ -116,6 +126,10 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
+	if latency.Enabled {
+		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
+	}
+	defer m.trace.Close()
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
@@ -244,6 +258,7 @@ func (m *machineClient) nextDeadline() time.Time {
 }
 
 func (m *machineClient) advance(now time.Time) {
+	m.traceProbeTimeout(now)
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
 		m.noticeUntil = time.Time{}

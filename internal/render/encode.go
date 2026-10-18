@@ -73,6 +73,7 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 	}
 	// Virtual prototypes must exist before the corresponding Unicode cells.
 	e.emitGraphics(f, &b, graphicsChanged)
+	e.haveSty = false
 	if full {
 		e.diffAll(f, &b)
 	} else {
@@ -161,16 +162,20 @@ func (e *Encoder) diffAll(f *Frame, b *bytes.Buffer) {
 }
 
 func (e *Encoder) emitCell(b *bytes.Buffer, c *uv.Cell) {
-	if !e.haveSty || !e.curSty.Equal(&c.Style) {
-		if c.Style.IsZero() {
-			b.WriteString(ansi.ResetStyle)
-		} else {
-			b.WriteString(ansi.ResetStyle)
+	if !e.haveSty {
+		b.WriteString(ansi.ResetStyle)
+		if !c.Style.IsZero() {
 			b.WriteString(c.Style.String())
 		}
-		e.curSty = c.Style
-		e.haveSty = true
+	} else if !e.curSty.Equal(&c.Style) {
+		seq := c.Style.Diff(&e.curSty)
+		if c.Style.IsZero() && len(seq) > len(ansi.ResetStyle) {
+			seq = ansi.ResetStyle
+		}
+		b.WriteString(seq)
 	}
+	e.curSty = c.Style
+	e.haveSty = true
 	content := c.Content
 	if content == "" {
 		content = " "

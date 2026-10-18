@@ -84,8 +84,8 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 					t.Fatal(r.Err, string(r.Result))
 				}
 			}
-			c.conn.Close()
 			<-readDone
+			c.conn.Close()
 			wantCount := 1
 			if tt.want == "" {
 				wantCount = 0

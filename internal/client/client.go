@@ -49,6 +49,9 @@ type msg struct {
 	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
 	GraphicsResult        *endpoint.GraphicsTransmissionResult `json:"graphics_result,omitempty"`
 	snapshot              *render.Input
+	traceBoot             string
+	traceBytes            int
+	traceTextOnly         bool
 	EndPrefix             bool                   `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer

@@ -15,6 +15,7 @@ type clientWrite struct {
 }
 
 type clientWriteResult struct {
+	bytes   int
 	drained *ClientWriterDrained
 	err     error
 }
@@ -66,6 +67,7 @@ type clientFrameWriter struct {
 func (w clientFrameWriter) write(request clientWrite, frame bool) bool {
 	conn := w.conn
 	data, err := json.Marshal(request.message)
+	size := len(data) + 1
 	if err == nil {
 		data = append(data, '\n')
 		_ = conn.SetWriteDeadline(time.Now().Add(clientWriteTimeout))
@@ -83,7 +85,7 @@ func (w clientFrameWriter) write(request clientWrite, frame bool) bool {
 		}
 		_ = conn.SetWriteDeadline(time.Time{})
 	}
-	result := clientWriteResult{err: err}
+	result := clientWriteResult{err: err, bytes: size}
 	if frame && err == nil {
 		result.drained = &ClientWriterDrained{ClientID: w.clientID}
 	}

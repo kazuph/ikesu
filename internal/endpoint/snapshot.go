@@ -34,6 +34,8 @@ type SnapshotEncoder struct {
 	GraphicsPatches   bool
 	bases             map[graphicCacheKey]kitty.Image
 	sentGraphicsPatch bool
+	textOnly          bool
+	pendingGrids      map[int][][]uv.Cell
 }
 
 func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
@@ -57,12 +59,16 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		value := *pane
 		value.Grid = nil
 		var err error
-		value.Graphics, err = wireGraphics(&e.graphics, id, pane.Graphics, aliveGraphics)
+		if !e.textOnly {
+			value.Graphics, err = wireGraphics(&e.graphics, id, pane.Graphics, aliveGraphics)
+		}
 		if err != nil {
 			return nil, err
 		}
-		if err := e.patchGraphics(id, pane.Graphics, &value, &wire.Input); err != nil {
-			return nil, err
+		if !e.textOnly {
+			if err := e.patchGraphics(id, pane.Graphics, &value, &wire.Input); err != nil {
+				return nil, err
+			}
 		}
 		wire.Input.Panes[id] = &value
 		grid := pane.Grid
@@ -77,7 +83,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 			}
 		}
 		wire.Grids[id] = delta
-		cached, err := applyGridDelta(old, delta, false)
+		cached, err := applyGridDelta(old, delta, e.textOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -88,14 +94,16 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 			delete(e.grids, id)
 		}
 	}
-	for key := range e.graphics {
-		if !aliveGraphics[key] {
-			delete(e.graphics, key)
+	if !e.textOnly {
+		for key := range e.graphics {
+			if !aliveGraphics[key] {
+				delete(e.graphics, key)
+			}
 		}
-	}
-	for key := range e.bases {
-		if !aliveGraphics[key] {
-			delete(e.bases, key)
+		for key := range e.bases {
+			if !aliveGraphics[key] {
+				delete(e.bases, key)
+			}
 		}
 	}
 	if err := e.enc.Encode(wire); err != nil {
@@ -116,6 +124,7 @@ type SnapshotDecoder struct {
 	GraphicsPatches    bool
 	graphicsPayloads   map[[2]int]int
 	displayGraphics    map[graphicCacheKey]compressedGraphic
+	retainedImages     map[graphicCacheKey]kitty.Image
 }
 
 func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
