@@ -76,7 +76,7 @@ type msg struct {
 
 // Attach connects the local terminal to the session's server, spawning it
 // if needed. It blocks until the client detaches or the server exits.
-func Attach(session string, in *os.File, out *os.File) (int, error) {
+func Attach(session string, in *os.File, out *os.File, version string) (int, error) {
 	if NestedBlocked() {
 		return 1, errors.New("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)")
 	}
@@ -84,6 +84,7 @@ func Attach(session string, in *os.File, out *os.File) (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	settings.clientVersion = version
 	if err := (machine.Catalog{Path: filepath.Join(api.SessionDir(session), "machines.json")}).Ensure(); err != nil {
 		return 1, fmt.Errorf("machine catalog: %w", err)
 	}
@@ -298,7 +299,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			if err := inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
 				fmt.Fprintln(os.Stderr, "gtx: input source:", err)
 			}
-			composed := render.Compose(in)
+			composed := render.ComposeClient(in, nil, settings.clientVersion, false)
 			if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible && composed.AnchorShape == 0 {
 				if cell := composed.Frame.Cell(composed.AnchorX, composed.AnchorY); cell != nil {
 					cell.Style.Attrs |= uv.AttrReverse

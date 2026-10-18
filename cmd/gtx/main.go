@@ -163,7 +163,7 @@ func run(noSession bool, session string) (int, error) {
 	if noSession {
 		return tui.Run(os.Stdin, os.Stdout, version)
 	}
-	return client.Attach(session, os.Stdin, os.Stdout)
+	return client.Attach(session, os.Stdin, os.Stdout, version)
 }
 
 // runDetect loads a captured screen file and reports every agent's state.

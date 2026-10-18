@@ -12,11 +12,12 @@ import (
 )
 
 type localSettings struct {
-	session     string
-	config      *config.Config
-	warning     string
-	preferences *endpoint.ViewPreferences
-	path        string
+	clientVersion string
+	session       string
+	config        *config.Config
+	warning       string
+	preferences   *endpoint.ViewPreferences
+	path          string
 }
 
 func (s *localSettings) apply(edit config.Edit) (config.Config, error) {

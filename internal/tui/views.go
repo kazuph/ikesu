@@ -215,7 +215,7 @@ func (a *App) draw() {
 		a.dirty = a.snapshotSink(in) != nil
 		return
 	}
-	out := render.Compose(in)
+	out := render.ComposeClient(in, nil, a.clientVersion, false)
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
 		render.DrawTabDrop(out, g.drop, a.serverUI)
 	}
