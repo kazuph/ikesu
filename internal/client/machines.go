@@ -68,6 +68,7 @@ type machineClient struct {
 	probeUntil        time.Time
 	probeEndpoint     string
 	probeGeneration   uint64
+	probeAmbiguous    bool
 	nativeTransfer    *nativeViewerTransfer
 	fileGraphics      graphicsFileReceiver
 	mouse             hostMouseState
