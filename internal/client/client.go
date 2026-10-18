@@ -43,6 +43,7 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
+	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
 	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
 	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
 	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
@@ -159,7 +160,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 		return pumpDone
 	}
 	w := &writer{conn: conn}
-	if err := w.send(msg{Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
+	if err := w.send(msg{Terminal: endpoint.LocalTerminal(), Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
 		leave()
 		fmt.Fprintf(out, "gtx: attach: %v\n", err)
 		return pumpDone

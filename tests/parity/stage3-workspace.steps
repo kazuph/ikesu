@@ -1,0 +1,40 @@
+send "printf 'OWNER_WORKSPACE\\n'\r"
+sleep 200ms
+send "python3 @FIXTURES@/socket_action.py create-other\r"
+sleep 500ms
+screen @OUT@/before.txt
+cells @OUT@/before.json
+mouse wheel-down 10 5
+sleep 250ms
+screen @OUT@/wheel-down.txt
+cells @OUT@/wheel-down.json
+mouse wheel-up 10 5
+sleep 250ms
+screen @OUT@/wheel-up.txt
+cells @OUT@/wheel-up.json
+mouse down 10 7
+sleep 250ms
+screen @OUT@/pressed.txt
+cells @OUT@/pressed.json
+mouse motion 10 5
+sleep 250ms
+screen @OUT@/dragging.txt
+cells @OUT@/dragging.json
+mouse motion 10 35
+mouse up 10 35
+sleep 300ms
+screen @OUT@/outside-release.txt
+cells @OUT@/outside-release.json
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/order.txt
+cells @OUT@/order.json
+mouse down 10 7
+mouse motion 10 5
+mouse up 10 5
+sleep 300ms
+send "python3 @FIXTURES@/socket_action.py workspace-list\r"
+sleep 300ms
+screen @OUT@/reordered.txt
+cells @OUT@/reordered.json
+kill

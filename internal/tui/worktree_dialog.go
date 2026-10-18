@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
@@ -19,22 +22,35 @@ func (a *App) newWorktreeDialog(index int) {
 		return
 	}
 	id := fmt.Sprintf("s%d", a.st.Workspaces[index].ID)
-	if _, err := a.WorktreeSource("", &id); err != nil {
+	src, err := a.WorktreeSource("", &id)
+	if err != nil {
 		a.SetConfigWarning("gtx worktree actions require a workspace inside a Git work tree.")
 		a.configWarningBanner = true
 		return
 	}
 	branch := ""
-	a.dialog = &uiDialog{input: &branch, d: render.Dialog{Title: "New worktree", Detail: "New or existing branch name", InputEdit: true, Confirm: "create", Cancel: "cancel"}, run: func(a *App) {
+	d := &uiDialog{input: &branch, replaceDefault: true, d: render.Dialog{Title: "New worktree", WorktreeCreate: true, Confirm: "create and open", Cancel: "cancel"}}
+	d.changed = func() { d.d.Checkout = filepath.Join(*src.CheckoutPathPrefix, worktree.Slug(branch)) }
+	d.changed()
+	d.run = func(a *App) {
+		d.d.Input = branch
+		d.changed()
 		if branch == "" {
-			a.worktreeError(fmt.Errorf("enter a branch name"))
+			d.d.Detail = "enter a branch name"
+			a.dialog = d
 			return
 		}
 		_, err := a.CreateWorktree(api.WorktreeCreateParams{WorkspaceID: &id, Branch: &branch, Focus: true})
 		if err != nil {
-			a.worktreeError(err)
+			var gitErr *worktree.GitError
+			d.d.Detail = err.Error()
+			if errors.As(err, &gitErr) {
+				d.d.Detail = gitErr.Output
+			}
+			a.dialog = d
 		}
-	}}
+	}
+	a.dialog = d
 	a.dirty = true
 }
 
@@ -50,20 +66,8 @@ func (a *App) openWorktreeMenu(index int) {
 		a.worktreeError(err)
 		return
 	}
-	menu := []render.MenuItem{}
-	paths := []string{}
-	for _, w := range items {
-		if w.IsBare || w.IsPrunable {
-			continue
-		}
-		label := w.Path
-		if w.Branch != nil {
-			label = *w.Branch
-		}
-		menu = append(menu, render.MenuItem{Label: label})
-		paths = append(paths, w.Path)
-	}
-	a.menu = &uiMenu{kind: menuWorktree, ws: index, worktreePaths: paths, m: render.Menu{X: 2, Y: 2, Hover: -1, Sel: -1, Items: menu}}
+	a.menu = &uiMenu{kind: menuWorktree, ws: index, worktreeItems: items, m: render.Menu{Worktree: true, Total: len(items), Hover: -1, Sel: 0}}
+	a.filterWorktrees()
 	a.dirty = true
 }
 
@@ -79,7 +83,11 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 		title = "Discard changes and delete checkout?"
 		detail = "Git refused the safe removal. Force removal discards uncommitted files: " + ws.Cwd
 	}
-	a.dialog = &uiDialog{d: render.Dialog{Title: title, Detail: detail, Confirm: "delete", Cancel: "cancel"}, run: func(a *App) {
+	dialog := render.Dialog{Title: title, Detail: detail, Confirm: "delete", Cancel: "cancel"}
+	if !force {
+		dialog = render.Dialog{Title: "delete worktree checkout?", Detail: "This removes the checkout folder:", Lines: []string{ws.Cwd, "The branch is not deleted. The GTX workspace will close.", "", "", ""}, Width: 72, CompactButtons: true, CenterTerminal: true, Confirm: "remove", Cancel: "cancel"}
+	}
+	a.dialog = &uiDialog{d: dialog, run: func(a *App) {
 		for i, w := range a.st.Workspaces {
 			if w.ID != id {
 				continue
@@ -132,4 +140,47 @@ func (a *App) workspaceWorktreeItems(index int) []render.MenuItem {
 		items = append(items, render.MenuItem{Label: label})
 	}
 	return items
+}
+
+func (a *App) filterWorktrees() {
+	m := a.menu
+	m.m.Items = nil
+	m.worktreePaths = nil
+	for _, item := range m.worktreeItems {
+		if item.IsBare || item.IsPrunable {
+			continue
+		}
+		label := item.Path
+		if item.Branch != nil {
+			label = *item.Branch
+		}
+		if !strings.Contains(strings.ToLower(label+" "+item.Path), strings.ToLower(m.m.Filter)) {
+			continue
+		}
+		status := ""
+		if item.OpenWorkspaceID != nil {
+			status = "open"
+		}
+		m.m.Items = append(m.m.Items, render.MenuItem{Label: label, Detail: item.Path, Status: status})
+		m.worktreePaths = append(m.worktreePaths, item.Path)
+	}
+	m.m.Sel = 0
+	if len(m.m.Items) == 0 {
+		m.m.Sel = -1
+	}
+	m.m.Scroll = 0
+}
+
+func (a *App) closeWorkspaceTargets(index int) []model.WorkspaceID {
+	ws := a.st.Workspaces[index]
+	ids := []model.WorkspaceID{ws.ID}
+	if ws.Worktree == nil || ws.Worktree.IsLinkedWorktree {
+		return ids
+	}
+	for _, other := range a.st.Workspaces {
+		if other.ID != ws.ID && other.Worktree != nil && other.Worktree.RepoKey == ws.Worktree.RepoKey {
+			ids = append(ids, other.ID)
+		}
+	}
+	return ids
 }

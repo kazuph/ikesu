@@ -80,17 +80,24 @@ type Selection struct {
 
 // Menu is a right-click popup.
 type Menu struct {
-	X, Y     int // requested position (top-left), clamped at draw
-	Title    string
-	Items    []MenuItem
-	Global   bool
-	MinWidth int
-	Hover    int // index under the pointer; -1 = none
-	Sel      int // keyboard-selected item; -1 = none
+	Worktree  bool
+	Filter    string
+	Filtering bool
+	Total     int
+	X, Y      int // requested position (top-left), clamped at draw
+	Title     string
+	Items     []MenuItem
+	Global    bool
+	MinWidth  int
+	Scroll    int
+	Hover     int // index under the pointer; -1 = none
+	Sel       int // keyboard-selected item; -1 = none
 }
 
 // MenuItem is one menu row; Separator rows draw a rule.
 type MenuItem struct {
+	Detail    string
+	Status    string
 	Label     string
 	Separator bool
 	Disabled  bool
@@ -322,8 +329,12 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		f.Fill(r.X, r.Y, r.W, r.H, " ", style)
 		f.Text(r.X+1, r.Y, in.ConfigWarning, style, r.X+r.W)
 	}
-	if in.Toast != nil && (!in.ServerUI || s.Mobile() || in.Toast.Position != "") {
-		drawToast(f, in.Toast, out)
+	if in.Toast != nil {
+		if in.ServerUI && s.Mobile() {
+			drawMobileToast(f, in.Toast, out)
+		} else {
+			drawToast(f, in.Toast, out)
+		}
 	}
 	if in.Copied != "" && !in.ServerUI {
 		if position := in.SidebarConfig.UI.Toast.Clipboard.Position; position != "" {

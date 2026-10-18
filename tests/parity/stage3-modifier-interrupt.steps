@@ -1,0 +1,23 @@
+send "python3 @FIXTURES@/mouse_report_capture.py on\r"
+sleep 500ms
+send "\x1b[<18;45;10M"
+sleep 100ms
+send "\x1b[<80;45;10M\x1b[<18;45;10m"
+sleep 100ms
+send "\x1b[<16;45;10M\x1b[<16;45;10m"
+sleep 100ms
+send "\x1b[<18;45;10M"
+sleep 100ms
+send "\x1b[<16;45;10M\x1b[<18;45;10m"
+sleep 100ms
+send "\x1b[<16;45;10M\x1b[<16;45;10m"
+sleep 100ms
+send "\x1b[<18;45;10M"
+sleep 100ms
+send "\x1b[<17;45;10M\x1b[<18;45;10m"
+sleep 100ms
+send "q"
+sleep 250ms
+screen @OUT@/interrupted.txt
+cells @OUT@/interrupted.json
+kill

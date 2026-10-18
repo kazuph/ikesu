@@ -22,9 +22,8 @@ func TestEndpointToastVisibilityFollowsDeliveryPositionAndViewerTick(t *testing.
 	a.SetSidebarConfig(cfg, false)
 	first := a.NewViewer(&bytes.Buffer{}, 160, 45, nil)
 	second := a.NewViewer(&bytes.Buffer{}, 160, 45, nil)
-	first.ShowToast(a, "finished", "context", "finished", state.FocusedPane())
-	second.ShowToast(a, "finished", "context", "finished", state.FocusedPane())
-	if first.app.toast.shown || second.app.toast.shown {
+	a.ShowToast("finished", "context", "finished", state.FocusedPane())
+	if a.toast.shown {
 		t.Fatal("server toast bypassed its scheduled transition")
 	}
 	first.Tick(a)
@@ -34,7 +33,7 @@ func TestEndpointToastVisibilityFollowsDeliveryPositionAndViewerTick(t *testing.
 			t.Fatal("viewer tick did not publish its scheduled toast")
 		}
 	})
-	if a.toast != nil || first.app.toast == second.app.toast {
+	if a.toast == nil || first.app.toast == second.app.toast || first.app.toast == a.toast || second.app.toast == a.toast {
 		t.Fatal("viewer toasts share mutable dismissal state")
 	}
 	first.with(a, func(ui *App) { ui.DismissToast() })
@@ -52,13 +51,8 @@ func TestEndpointToastVisibilityFollowsDeliveryPositionAndViewerTick(t *testing.
 	second.with(a, func(ui *App) {
 		ui.sidebarConfig.UI.Toast.Delivery = "herdr"
 		ui.sidebarConfig.UI.Toast.Herdr.Position = ""
-		if ui.toastVisible() {
-			t.Fatal("desktop displayed a position-less notification")
-		}
-		toast := ui.toast
-		ui.openToastTarget()
-		if ui.toast != toast {
-			t.Fatal("hidden notification target was opened/dismissed")
+		if !ui.toastVisible() {
+			t.Fatal("desktop hid a notification whose position was omitted")
 		}
 		ui.sidebarConfig.UI.Toast.Herdr.Position = "bottom-left"
 		if !ui.toastVisible() {

@@ -13,6 +13,15 @@ import (
 	"github.com/kazuph/goterrace/internal/api"
 )
 
+type GitError struct {
+	Args   []string
+	Output string
+}
+
+func (e *GitError) Error() string {
+	return fmt.Sprintf("git %s: %s", strings.Join(e.Args, " "), e.Output)
+}
+
 func git(cwd string, args ...string) (string, error) {
 	return gitWithEnv(cwd, nil, args...)
 }
@@ -24,7 +33,7 @@ func gitWithEnv(cwd string, environment []string, args ...string) (string, error
 	}
 	b, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(b)))
+		return "", &GitError{Args: args, Output: strings.TrimSpace(string(b))}
 	}
 	return strings.TrimSpace(string(b)), nil
 }

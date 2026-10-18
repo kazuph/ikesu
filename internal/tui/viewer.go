@@ -11,15 +11,16 @@ import (
 // Viewer owns presentation and input state. The model and PTYs remain
 // session-owned; all methods run on the session's existing app loop.
 type Viewer struct {
-	app        *App
-	workspace  int
-	tabs       map[int]int
-	cols, rows int
-	pendingAt  time.Time
-	focusUntil time.Time
-	focusEpoch uint64
-	heldKeys   []input.Event
-	display    displayState
+	app           *App
+	workspace     int
+	tabs          map[int]int
+	cols, rows    int
+	toastSequence uint64
+	pendingAt     time.Time
+	focusUntil    time.Time
+	focusEpoch    uint64
+	heldKeys      []input.Event
+	display       displayState
 }
 
 type viewSelection struct {
@@ -64,6 +65,10 @@ func (a *App) selectView(s viewSelection) {
 
 func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Viewer {
 	ui := *a
+	if a.toast != nil {
+		toast := *a.toast
+		ui.toast = &toast
+	}
 	ui.out, ui.detacher = out, detach
 	ui.fr, ui.enc = &input.Framer{}, &render.Encoder{}
 	ui.drawViewers, ui.tickViewers, ui.visiblePane = nil, nil, nil
@@ -76,7 +81,7 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.menu, ui.settings, ui.help = nil, nil, nil
 	ui.hostPixelMouse, ui.hostPixelSupported = false, false
 	s := a.selection()
-	v := &Viewer{app: &ui, workspace: s.workspace, tabs: s.tabs, cols: cols, rows: rows, display: s.display}
+	v := &Viewer{app: &ui, workspace: s.workspace, tabs: s.tabs, cols: cols, rows: rows, display: s.display, toastSequence: a.toastSequence}
 	ui.viewerOwner, ui.viewerContext = a, v
 	return v
 }
@@ -99,6 +104,14 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 	v.app.sessionCwds = a.sessionCwds
 	v.app.editorFiles = a.editorFiles
 	v.app.spin = a.spin
+	if v.toastSequence != a.toastSequence {
+		v.toastSequence = a.toastSequence
+		v.app.toast = nil
+		if a.toast != nil {
+			toast := *a.toast
+			v.app.toast = &toast
+		}
+	}
 	a.selectView(viewSelection{v.workspace, v.tabs, v.cols, v.rows, v.display})
 	defer func() {
 		s := a.selection()
@@ -152,11 +165,9 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
+	v.with(a, func(ui *App) { ui.expireToast() })
 	if v.app.sel != nil && v.app.sel.autoDir != 0 {
 		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })
-	}
-	if v.app.toast != nil {
-		v.with(a, func(ui *App) { ui.expireToast() })
 	}
 	if len(v.heldKeys) > 0 && !time.Now().Before(v.focusUntil) {
 		v.with(a, func(ui *App) { v.releaseKeys(ui) })

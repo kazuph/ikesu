@@ -40,6 +40,7 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
 	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
 	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
 	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
@@ -123,11 +124,12 @@ type Server struct {
 	jobCache jobCache
 
 	// notifications (SPEC G4)
-	cfgError      string
-	cfg           config.Config
-	lastStatus    map[int]string               // last seen status key per pane
-	notifyLast    map[int]map[string]time.Time // pane → kind → last shown
-	lastAttention time.Time                    // last needs_attention anywhere
+	cfgError            string
+	cfg                 config.Config
+	lastStatus          map[int]string               // last seen status key per pane
+	notifyLast          map[int]map[string]time.Time // pane → kind → last shown
+	lastAttention       time.Time                    // last needs_attention anywhere
+	lastAPINotification time.Time                    // last successfully shown explicit notification
 
 	// session persistence & restart (SPEC G3/G5)
 	saveMu     sync.Mutex
@@ -155,6 +157,7 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	terminal       *endpoint.Terminal
 	directGraphics bool
 	directDisabled bool
 	graphics       *graphicsFlow
@@ -601,6 +604,7 @@ func (s *Server) attach(conn net.Conn) {
 		return
 	}
 	c.available = available
+	c.terminal = hello.Terminal
 	c.directGraphics = hello.GraphicsFileTransport == endpoint.DirectKittyTransport
 	for _, method := range []string{endpoint.GraphicsFileMessage, endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage, endpoint.GraphicsRetiredMessage} {
 		c.directGraphics = c.directGraphics && endpoint.Allows(available, 1, hello.Methods, method) && endpoint.Allows(available, 1, s.endpointPeer.Methods, method)

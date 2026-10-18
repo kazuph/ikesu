@@ -389,9 +389,13 @@ func (a *App) menuItemAt(x, y int) int {
 	if a.menu == nil {
 		return -1
 	}
+	if a.menu.m.Worktree {
+		return render.WorktreeMenuItemAt(&a.menu.m, a.st.Cols, a.st.Rows, x, y)
+	}
 	r := render.MenuRect(&a.menu.m, a.st.Cols, a.st.Rows)
-	i := y - r.Y - 1
-	if x < r.X || x >= r.X+r.W || i < 0 || i >= len(a.menu.m.Items) {
+	row := y - r.Y - 1
+	i := row + render.MenuScroll(&a.menu.m, a.st.Rows)
+	if x < r.X || x >= r.X+r.W || row < 0 || row >= r.H-2 || i >= len(a.menu.m.Items) {
 		return -1
 	}
 	return i
@@ -437,6 +441,26 @@ func (a *App) menuKey(k uv.Key) {
 	if m == nil {
 		return
 	}
+	if m.m.Worktree {
+		if k.Code == '/' && !m.m.Filtering {
+			m.m.Filtering = true
+			a.dirty = true
+			return
+		}
+		if m.m.Filtering && (k.Text != "" || k.Code == uv.KeyBackspace) {
+			if k.Code == uv.KeyBackspace {
+				r := []rune(m.m.Filter)
+				if len(r) > 0 {
+					m.m.Filter = string(r[:len(r)-1])
+				}
+			} else {
+				m.m.Filter += k.Text
+			}
+			a.filterWorktrees()
+			a.dirty = true
+			return
+		}
+	}
 	step := func(dir int) {
 		n := len(m.m.Items)
 		sel := m.m.Sel
@@ -478,6 +502,22 @@ func (a *App) menuKey(k uv.Key) {
 
 // dialogMouse resolves clicks on the confirmation dialog.
 func (a *App) dialogMouse(ev input.Event) {
+	if a.dialog.d.WorktreeCreate {
+		if ev.Kind != input.KindMouseClick || ev.Mouse.Button != uv.MouseLeft {
+			return
+		}
+		r := render.WorktreeCreateRect(a.st.Cols, a.st.Rows)
+		confirm, cancel := render.WorktreeCreateButtons(r)
+		if pointIn(ev.Mouse.X, ev.Mouse.Y, confirm) {
+			d := a.dialog
+			a.dialog = nil
+			d.run(a)
+		} else if pointIn(ev.Mouse.X, ev.Mouse.Y, cancel) || !pointIn(ev.Mouse.X, ev.Mouse.Y, r) {
+			a.cancelDialog()
+		}
+		a.dirty = true
+		return
+	}
 	if a.dialog.d.InputEdit && ev.Kind == input.KindMouseRelease {
 		return
 	}
@@ -494,7 +534,7 @@ func (a *App) dialogMouse(ev input.Event) {
 			d.run(a)
 		} else if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, buttons[1]) {
 			a.dialogKey(uv.Key{Code: 'c', Mod: uv.ModCtrl})
-		} else if !a.dialog.machineForm {
+		} else if m.Button == uv.MouseLeft && pointIn(m.X, m.Y, buttons[2]) && !a.dialog.machineForm {
 			a.dialog = nil
 		}
 		return

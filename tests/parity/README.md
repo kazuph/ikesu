@@ -1,5 +1,32 @@
 # 実物の操作比較
 
+段階3（マウス）はminiの `src/stage3` で `stage3_observe.sh 出力先 ケース名...` を使う。
+`PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
+通知のケースでは未指定なら採取前に停止する。
+店長設定（Ctrl+T prefix、80% popup、tab bar、tokyo-night と custom 色）をコピーし、
+`--silent --clipboard-sandbox` で音とpasteboardへの接続を隔離する。
+隔離モードは実クリップボードを読み取らず、証拠のハッシュを `null` として記録する。
+serverの初期ワークスペースが存在するときは再利用し、両製品の公開番号をそろえる。
+
+ケースは `stage3-wheel`、`stage3-wheel-local`、`stage3-workspace`、`stage3-arrows`、
+`stage3-sidebar-bars`、`stage3-modifier`、`stage3-pane-scroll`、`stage3-toast`。
+修飾キー比較だけControlによる右クリック転送を追加し、通知比較だけ画面内配信へ変更する。
+`stage3_mouse_gate.py ケースの出力先 wheel|workspace|arrows|sidebar-bars|modifier|pane-scroll|toast`
+が転送バイト・選択セル・タブ順・スクロール行・通知の前後を検査する。
+`stage3_config_gate.py 出力先` は実際に使われた設定・隔離・popup寸法を検査する。
+
+段階3のレビュー修正は `stage3-modifier-interrupt`、`stage3-pane-scroll-local`、
+`stage3-thumb`、`stage3-thumb-local` も同じスクリプトへ渡す。
+`stage3_mouse_gate.py` の対応する検査名は `modifier-interrupt`、`pane-scroll-local`、
+`thumb`（両モード共通）。Control+右押下へのホイール・左・中ボタン割り込みは
+実アプリ受信バイトを比較し、余白は接続表示と単独起動の先頭行を別々に固定する。
+つまみ本体は両モードで掴んだ4セルの位置を維持することをセル座標で検査する。
+`compare.py` の生の画面差分も残し、番号や文言の差を同一と偽らない。
+`tab-drag-release` と `tab-drag-five-overflow` は既存ドラッグの回帰用に再実行する。
+
+台帳と実物の違いはRESULT.mdへ記録する。接続表示のホイール・押下・一覧バーと、
+単独表示のホイールは別条件として判定し、未観測の条件へPASSを広げない。
+
 段階4（サイドバー）はminiの `src/stage4` で `stage4_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
 店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。
@@ -231,6 +258,54 @@ ubuntu-3090の `~/bench-terrace/work/stage7-baseline-dd2168c`、対象を
 `k28-timing.steps` の速度は保存時刻と移動行数を使って比較する。許容する行差は、
 観測した33ms/行の参照側の位相1行とgtxの既存50ms更新周期から算出し、
 動作中のセル差そのものは消さずに証拠に残す。
+
+段階6a（A34〜A43、0.2.57）は `stage6a_matrix.py --out <証拠先>` をminiの
+`src/stage6a`で実行する。事前に同じソースを `work/detail/gtx-stage6a` へビルドする。
+`stage6a_cases.py` が全手順を保存し、matrixは店長のctrl+t・80% popup・tab bar・
+tokyo-night/custom設定を読む。全比較でclipboard sandboxと隔離serverを使用する。
+`stage6a_action.py` はobserve.pyが作った一時socketだけに接続し、worktreeの作成・
+削除確認・group閉鎖にはそのHOME内で新設したGitリポジトリだけを使用する。
+固定待機時間だけでGit準備完了とみなさず、操作完了ファイルを待ってから画面を開く。
+通知の状態報告には実行中Codexの証明済みIDを `PARITY_CONTROLLER_SESSION_ID` で渡す。
+`stage6a_size_child.py` はpopupの実PTY寸法をファイルに記録する。
+
+`stage6a_gate.py <証拠先>` はAPIエラー、popup内のEscと後続文字の全受信bytes、
+最小寸法、狭幅入力とクリック、menu末尾、worktree検索・エラー保持・削除説明・
+group閉鎖範囲を検査する。menuは全セル・色・属性も比較する。その他の画面は
+指定した文言と座標の検査であり、画面全体の全セル一致とは扱わない。
+A40の `notification.show` は実物が12列×3行（本文なし）/4行（本文あり）を返す。
+親の判断に従い、同名APIとviewerへの配送を実装した。再検証では
+`stage6a_matrix.py --cell-clock --out <証拠先>` と
+`stage6a_notification_gate.py <証拠先>` を実行する。A40のゲートは明示通知の
+全セル・色・属性、4隅の位置指定、空白除去、本文なし/あり、空タイトル拒否、
+表示中のbusy、ターゲットのない通知をクリックしても消えない動作、期限切れ、
+期限切れ後の再表示と背景通知の移動先を検査する。寿命の差は既存描画tick以内で比較する。
+背景通知の本文が空なら「workspace名 · 実pane番号」を表示し、実IDだけを記録付きで
+正規化して全セルを比較する。パーサー固有のエラー文章は一致対象にせず、型・列挙値の
+拒否とinvalid_requestを比較する。空タイトルのエラー文章は同一であることを検査する。
+
+`--toast-delivery off` / `--toast-delivery terminal` で通知設定を追加比較できる。
+`stage6a_headless_notification.py <binary> <herdr|gtx> <証拠先> [--delivery off|terminal|system]`
+は新設一時HOMEの実serverにだけ接続し、表示clientなしの返り値と正常終了を保存する。
+音は再生しない。通知の明示要求ではsound=none、観察環境では既存の音抑止を維持する。
+
+`sh tests/parity/stage6a_checks.sh <証拠先>` はminiでgofmt・build・vet・通常test・raceを保存する。
+相対P1は基準dd2168cを `src/stage6a-baseline-dd2168c` に置き、
+`python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage6a_perf.sh`
+で同じGo・同じ引数の2ビルドを交互に各5回検査する。絶対P1はこの段階の判定対象外。
+
+A41のクリック検査は `name-click-probe.steps` に20/30/40/56列×4点を保存する。
+実物は低い画面で内容を描かなくても保存ボタンのクリック範囲を保持し、
+枠内空白と枠外のクリックは無視する。`stage6a_gate.py --only name-probe` は
+16条件で開いている枠の有無を判定する。見た目が空だからクリック不能とは推測しない。
+
+## 段階6aのレビュー修正4件
+
+miniで `python3 tests/parity/stage6a_fix1.py --gtx /absolute/fixed/gtx --out /absolute/evidence` を実行する。
+既存observe.pyの隔離server・実接続client・clipboard sandboxを使い、herdr 0.2.57と同一入力を送る。
+端末識別10条件（kittyとtmuxの併用を含む）、OSC 9/99とtmuxパススルーの全バイト、1秒のAPI連続要求制限、制御文字と80/240文字制限を検査する。
+文字数は画面の切れではなく端末通知の完全なバイト列で比較する。候補1/2/3/13件のworktree枠は検索前後の寸法、末尾の選択と実クリック後のcheckoutを検査する。
+成功結果はfix1-gate.json。収集終了だけでは合格としない。GoのTestStage6aFix系が書込み失敗と非成功時刻の保持も検査する。
 
 段階5（タブバー・pane枠・下部、A27〜A33）の0.2.57比較は mini の
 `src/stage5` で `sh tests/parity/stage5_observe.sh <出力先>` を実行する。

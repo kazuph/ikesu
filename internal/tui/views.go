@@ -200,7 +200,11 @@ func (a *App) draw() {
 		in.Sel = a.selRender()
 	}
 	if a.toastVisible() {
-		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind, Position: a.sidebarConfig.UI.Toast.Herdr.Position}
+		position := a.toast.position
+		if position == "" {
+			position = a.sidebarConfig.UI.Toast.Herdr.Position
+		}
+		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind, Position: position}
 	}
 	if a.help != nil {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}

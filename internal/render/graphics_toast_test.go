@@ -9,7 +9,7 @@ import (
 	"github.com/kazuph/goterrace/internal/layout"
 )
 
-func TestEndpointPositionlessToastDoesNotDisplayOrCrop(t *testing.T) {
+func TestEndpointOmittedToastPositionDisplaysAndCropsAtTopRight(t *testing.T) {
 	state := testState(160, 45)
 	pid := state.FocusedPane()
 	snapshot := blankSnap()
@@ -18,13 +18,14 @@ func TestEndpointPositionlessToastDoesNotDisplayOrCrop(t *testing.T) {
 	base := Compose(in)
 	in.Toast = &Toast{Title: "notice", Body: "context"}
 	out := Compose(in)
-	if out.ToastRect.W != 0 || out.ToastRect.H != 0 || !reflect.DeepEqual(out.Frame.Graphics, base.Frame.Graphics) {
-		t.Fatal("position-less endpoint toast displayed or hid image cells")
+	if out.ToastRect.W == 0 || out.ToastRect.H == 0 || reflect.DeepEqual(out.Frame.Graphics, base.Frame.Graphics) {
+		t.Fatal("default-position endpoint toast did not display/crop")
 	}
+	defaultRect, defaultGraphics := out.ToastRect, out.Frame.Graphics
 	in.Toast.Position = "top-right"
 	out = Compose(in)
-	if out.ToastRect.W == 0 || reflect.DeepEqual(out.Frame.Graphics, base.Frame.Graphics) {
-		t.Fatal("positioned endpoint toast did not display/crop")
+	if out.ToastRect != defaultRect || !reflect.DeepEqual(out.Frame.Graphics, defaultGraphics) {
+		t.Fatal("omitted position differs from explicit top-right display/crop")
 	}
 }
 

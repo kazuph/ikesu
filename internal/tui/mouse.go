@@ -93,7 +93,7 @@ func (a *App) onMouse(ev input.Event) {
 
 // click dispatches a mouse press by region.
 func (a *App) click(m uv.Mouse) {
-	if a.toastClick(m.X, m.Y) {
+	if m.Button == uv.MouseLeft && a.toastClick(m.X, m.Y) {
 		return
 	}
 	if r := a.st.StatusArea(); r.H > 0 && m.Y == r.Y {
@@ -128,8 +128,9 @@ func (a *App) click(m uv.Mouse) {
 			// every cell belongs to the terminal.
 			if tracking && a.rightClickPass(m) && !(framed && isBorderCell(pr.Rect, m.X, m.Y)) {
 				a.exec(model.CmdFocusPane{Pane: pr.ID})
-				a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 				a.fwd = pr.ID
+				a.fwdStrip = m.Mod
+				a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 				return
 			}
 			a.exec(model.CmdFocusPane{Pane: pr.ID})
@@ -166,7 +167,7 @@ func (a *App) click(m uv.Mouse) {
 
 	// Pane scrollbar: a press on the thumb starts a drag that keeps the
 	// grab offset; a press on the track jumps the thumb to the press
-	// point and keeps dragging from there (SPEC G6).
+	// point. Only server displays continue a track press as a drag.
 	if gutter > 0 && m.X == inner.X+inner.W-1 &&
 		m.Y >= inner.Y && m.Y < inner.Y+inner.H {
 		a.exec(model.CmdFocusPane{Pane: pr.ID})
@@ -180,7 +181,9 @@ func (a *App) click(m uv.Mouse) {
 			} else {
 				newTop := rel - th/2
 				a.setScrollOff(pr.ID, offFromThumb(inner.H, sn.ScrollbackLen, newTop))
-				grab = th / 2
+				if !a.serverUI {
+					return
+				}
 			}
 		}
 		a.sb = &sbDrag{pane: pr.ID, inner: inner, grab: grab}
@@ -211,8 +214,12 @@ func (a *App) click(m uv.Mouse) {
 	if p.Snapshot().MouseTracking {
 		// Mouse-reporting panes receive all four events; no menu gesture.
 		a.dblMenu = false
+		a.fwdStrip = 0
 		a.forwardTo(pr.ID, uv.MouseClickEvent(m))
 		a.fwd = pr.ID
+		return
+	}
+	if m.Mod != 0 {
 		return
 	}
 	if a.sidebarConfig.UI.CopyOnSelect != nil && !*a.sidebarConfig.UI.CopyOnSelect {
@@ -714,6 +721,9 @@ func (a *App) finishSelection() {
 func (a *App) forwardMouse(ev input.Event) {
 	pid := a.fwd
 	m := ev.Mouse
+	if m.Button != uv.MouseRight {
+		a.fwdStrip = 0
+	}
 	switch ev.Kind {
 	case input.KindMouseMotion:
 		a.forwardTo(pid, uv.MouseMotionEvent(m))
@@ -752,6 +762,9 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 		pixel = false
 	}
 	tr := func(m uv.Mouse) uv.Mouse {
+		if a.fwd == pid {
+			m.Mod &^= a.fwdStrip
+		}
 		if pixel && a.mousePixel != nil {
 			m.X = a.mousePixel.X - inner.X*a.cellW
 			m.Y = a.mousePixel.Y - inner.Y*a.cellH
@@ -769,18 +782,6 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	case uv.MouseWheelEvent:
 		p.SendMouse(uv.MouseWheelEvent(tr(uv.Mouse(e))))
 	}
-}
-
-// paneMouseCoord converts a host cell coordinate to a pane-inner
-// coordinate. In pixel mode the result is the center pixel of the target
-// cell, sized from the known cell geometry. Unknown geometry uses cell coordinates.
-func paneMouseCoord(inner layout.Rect, pixel bool, cw, ch int, m uv.Mouse) uv.Mouse {
-	x, y := m.X-inner.X, m.Y-inner.Y
-	if pixel {
-		x = x*cw + cw/2
-		y = y*ch + ch/2
-	}
-	return uv.Mouse{X: x, Y: y, Button: m.Button, Mod: m.Mod}
 }
 
 func (a *App) rightClickPass(m uv.Mouse) bool {

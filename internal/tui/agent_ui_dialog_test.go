@@ -97,3 +97,28 @@ func TestParityStopConfirmationCancelReturnsToNavigate(t *testing.T) {
 		}
 	}
 }
+
+func TestStage6aNarrowNameInputClickTargets(t *testing.T) {
+	teststate.Lock(t)
+	for _, width := range []int{20, 30, 40, 56} {
+		a := specRuntimeApp(t)
+		a.st.Cols, a.st.Rows = width, 7
+		for _, point := range []uv.Mouse{{X: width/2 - 1, Y: 3, Button: uv.MouseLeft}, {X: 4, Y: 2, Button: uv.MouseLeft}, {X: 0, Y: 0, Button: uv.MouseLeft}} {
+			a.renameWorkspaceDialog(0)
+			d := a.dialog
+			a.dialogMouse(input.Event{Kind: input.KindMouseClick, Mouse: point})
+			if a.dialog != d {
+				t.Fatalf("width %d non-button click dismissed input at %+v", width, point)
+			}
+		}
+		a.renameWorkspaceDialog(0)
+		d := a.dialog
+		a.dialogMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: 4, Y: 4, Button: uv.MouseLeft}})
+		if width == 56 && a.dialog != d {
+			t.Fatal("left padding dismissed input")
+		}
+		if width < 56 && a.dialog != nil {
+			t.Fatalf("width %d observed save hit did not commit", width)
+		}
+	}
+}
