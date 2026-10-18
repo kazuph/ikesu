@@ -4,6 +4,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/goterrace/internal/layout"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"testing"
@@ -89,5 +90,40 @@ func TestGraphicsTextPopupAndLayoutChanges(t *testing.T) {
 	state.Popup = nil
 	if old.compatible(captureGraphicsText(in)) {
 		t.Fatal("popup closure accepted")
+	}
+}
+
+func TestGraphicsTextRejectsTabPaneSplitAndViewportChanges(t *testing.T) {
+	cases := []struct {
+		name   string
+		change func(*model.AppState, render.Input, int)
+	}{
+		{"tab identity", func(s *model.AppState, _ render.Input, _ int) { s.ActiveWorkspace().TabRef().ID++ }},
+		{"pane identity", func(s *model.AppState, _ render.Input, id int) {
+			s.ActiveWorkspace().TabRef().Layout = layout.New(id + 1)
+		}},
+		{"split", func(s *model.AppState, _ render.Input, id int) {
+			s.ActiveWorkspace().TabRef().Layout.SplitFocused(layout.Vertical, id+1)
+		}},
+		{"tab switch", func(s *model.AppState, _ render.Input, _ int) { s.Apply(model.CmdNewTab{Workspace: 0, Cwd: "."}) }},
+		{"workspace switch", func(s *model.AppState, _ render.Input, _ int) { s.Apply(model.CmdNewWorkspace{Cwd: "."}) }},
+		{"popup open", func(s *model.AppState, _ render.Input, _ int) {
+			s.Apply(model.CmdOpenPopup{WorkspaceID: s.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 40}, Height: api.PopupSize{Cells: 12}})
+		}},
+		{"rows", func(s *model.AppState, _ render.Input, _ int) { s.Rows++ }},
+		{"sidebar geometry", func(s *model.AppState, _ render.Input, _ int) { s.Apply(model.CmdToggleSidebar{}) }},
+		{"pane viewport", func(_ *model.AppState, in render.Input, id int) { in.Panes[id].Grid = append(in.Panes[id].Grid, nil) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := model.New(".", 100, 40)
+			id := state.FocusedPane()
+			in := render.Input{State: state, Panes: map[int]*render.PaneSnap{id: {Graphics: []kitty.Placement{{Image: kitty.Image{ID: 1, Format: 32, Width: 1, Height: 1, Data: []byte{1, 2, 3, 255}}}}}}}
+			old := captureGraphicsText(in)
+			tc.change(state, in, id)
+			if old.compatible(captureGraphicsText(in)) {
+				t.Fatal("changed view accepted text")
+			}
+		})
 	}
 }

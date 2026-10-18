@@ -68,4 +68,16 @@ func TestSnapshotTextPreservesPixelsAndPatchBase(t *testing.T) {
 	if len(got.GraphicsPatches) == 0 || dec.MissingGraphicsKey != nil || !bytes.Equal(got.Panes[pid].Graphics[0].Image.Data, changed) {
 		t.Fatal("patch after text not reconstructed")
 	}
+	in.Panes[pid].Graphics = nil
+	wire, err = enc.Encode(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dec.Decode(wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(dec.bases) != 0 || len(dec.retainedImages) != 0 {
+		t.Fatal("ordinary image removal retained stale pixels")
+	}
+
 }

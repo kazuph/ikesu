@@ -58,8 +58,12 @@ func (d *SnapshotDecoder) restoreGraphics(in *render.Input) error {
 		d.retainedImages = map[graphicCacheKey]kitty.Image{}
 	}
 	textOnly := len(in.GraphicsPatches) == 0
+	hasRaster := false
 	for pane, snapshot := range in.Panes {
 		for index, placement := range snapshot.Graphics {
+			if placement.Image.NativeID == 0 {
+				hasRaster = true
+			}
 			if d.graphicsPayloads == nil {
 				d.graphicsPayloads = map[[2]int]int{}
 			}
@@ -69,6 +73,7 @@ func (d *SnapshotDecoder) restoreGraphics(in *render.Input) error {
 			}
 		}
 	}
+	textOnly = textOnly && hasRaster
 	for _, item := range in.GraphicsPatches {
 		count := 0
 		for _, rect := range item.Patch.Rects {

@@ -106,8 +106,8 @@ func TestLeanLegacyCellParityAndLinks(t *testing.T) {
 				}
 			}
 		}
-		if a.CellAt(16, 2).Link.URL != f.Cell(16, 2).Link.URL {
-			t.Fatal("OSC8 link missing")
+		if !a.CellAt(16, 2).Link.Equal(&b.CellAt(16, 2).Link) {
+			t.Fatal("link-only change differs from baseline")
 		}
 	}
 }

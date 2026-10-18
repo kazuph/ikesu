@@ -22,7 +22,6 @@ type Encoder struct {
 	prev              *Frame
 	curSty            uv.Style
 	haveSty           bool
-	curLink           uv.Link
 	started           bool
 	cursorShape       int
 }
@@ -98,10 +97,6 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 		b.WriteString(showCursor)
 	}
 
-	if !e.curLink.IsZero() {
-		b.WriteString(ansi.SetHyperlink(""))
-		e.curLink = uv.Link{}
-	}
 	e.prev = f
 	return b.Bytes()
 }
@@ -167,10 +162,6 @@ func (e *Encoder) diffAll(f *Frame, b *bytes.Buffer) {
 }
 
 func (e *Encoder) emitCell(b *bytes.Buffer, c *uv.Cell) {
-	if !e.curLink.Equal(&c.Link) {
-		b.WriteString(ansi.SetHyperlink(c.Link.URL, c.Link.Params))
-		e.curLink = c.Link
-	}
 	if !e.haveSty {
 		b.WriteString(ansi.ResetStyle)
 		if !c.Style.IsZero() {

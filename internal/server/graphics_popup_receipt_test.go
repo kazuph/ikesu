@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -136,10 +137,11 @@ func TestReceiptPopupHistoryTextAndScrollOnRealSocket(t *testing.T) {
 			}
 		}
 	}
-	apiOK(t, dir, "popup.scroll", api.PopupScrollParams{TerminalID: *opened.PopupTerminalID, OffsetFromBottom: 2}, &info)
-	if info.Scroll.OffsetFromBottom != 2 {
-		t.Fatal("history scroll not applied", info)
-	}
+	// Scroll the viewer through its real UI input; popup.scroll targets the
+	// session view, while this socket owns an independent viewer scroll position.
+	popupRect := text.State.PopupRect()
+	wheel := fmt.Sprintf("\x1b[<64;%d;%dM", popupRect.X+3, popupRect.Y+3)
+	c.send(t, clientMsg{Type: "input", Data: encode64([]byte(wheel))})
 	blocked := func() {
 		t.Helper()
 		_ = c.conn.SetReadDeadline(time.Now().Add(graphicsReceiptWait / 8))
@@ -161,7 +163,7 @@ func TestReceiptPopupHistoryTextAndScrollOnRealSocket(t *testing.T) {
 	blocked()
 	ack(first.SurfaceRevision)
 	latest := read(time.Second, func(in render.Input) bool {
-		return in.State.PopupVisible() && in.Panes[in.State.Popup.PaneID].ScrollOff == 2 && len(in.GraphicsPatches) > 0
+		return in.State.PopupVisible() && in.Panes[in.State.Popup.PaneID].ScrollOff == 3 && len(in.GraphicsPatches) > 0
 	})
 	if latest.SurfaceRevision <= text.SurfaceRevision || c.snapshots.MissingGraphicsKey != nil {
 		t.Fatal("latest popup/image not delivered")
