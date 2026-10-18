@@ -24,7 +24,7 @@ func TestStage4ConfiguredAgentDimSurvivesDrawing(t *testing.T) {
 			continue
 		}
 		found := false
-		for x := 0; x < s.SidebarArea().W-1; x++ {
+		for x := s.RightSidebarArea().X + 1; x < s.Cols; x++ {
 			cell := out.Frame.Cell(x, pos.Y)
 			if cell.Content == "c" {
 				found = true
@@ -55,7 +55,7 @@ func TestStage4CustomAgentUsesOnlyRequestedTokensAndOmitsEmptyRows(t *testing.T)
 				continue
 			}
 			count++
-			line := frameLine(out.Frame, pos.Y)[:25]
+			line := rightSidebarLine(out.Frame, s, pos.Y)
 			want := "project"
 			if token == "pane" {
 				want = "CUSTOM_LABEL"

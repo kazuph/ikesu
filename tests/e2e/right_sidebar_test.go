@@ -1,0 +1,93 @@
+package e2e
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
+)
+
+// This drives the real binary and asks the shell for the kernel's PTY size.
+func TestRightSidebarNineStatesRealTerminal(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		mode := "server"
+		if local {
+			mode = "no-session"
+		}
+		t.Run(mode, func(t *testing.T) {
+			s := startMode(t, nil, local)
+			s.waitFor("shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+			widths := []int{26, 2, 0}
+			for left := 0; left < 3; left++ {
+				for right := 0; right < 3; right++ {
+					cols, rows := termW-widths[left]-widths[right]-3, termH-4
+					marker := fmt.Sprintf("SIZE_%d%d_%d_%d", left, right, rows, cols)
+					s.send(fmt.Sprintf("set -- $(stty size); printf '\\nSIZE_%d%d_%%s_%%s\\n' \"$1\" \"$2\"\r", left, right))
+					s.waitFor("kernel PTY size "+marker, 5*time.Second, func(tx string) bool { return strings.Contains(tx, marker) })
+					if widths[left] > 0 && s.emu.CellAt(widths[left]-1, 5).Content != "│" {
+						t.Fatal("left divider does not match PTY origin")
+					}
+					if widths[right] > 0 && s.emu.CellAt(termW-widths[right], 5).Content != "│" {
+						t.Fatal("right divider does not match PTY edge")
+					}
+					saveRightSidebarScreen(t, s, fmt.Sprintf("%s-left%d-right%d", mode, left, right))
+					s.send("\x02B")
+				}
+				s.send("\x02b")
+			}
+		})
+	}
+}
+
+func saveRightSidebarScreen(t *testing.T, s *session, name string) {
+	t.Helper()
+	root := os.Getenv("GTX_SIDEBAR_EVIDENCE")
+	if root == "" {
+		return
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	grid := make([][]uv.Cell, termH)
+	for y := range grid {
+		grid[y] = make([]uv.Cell, termW)
+		for x := range grid[y] {
+			if c := s.emu.CellAt(x, y); c != nil {
+				grid[y][x] = *c
+			}
+		}
+	}
+	data, err := json.Marshal(struct {
+		Cols, Rows int
+		Cells      [][]uv.Cell
+	}{termW, termH, grid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for extension, data := range map[string][]byte{"json": data, "txt": []byte(s.text())} {
+		if err := os.WriteFile(filepath.Join(root, name+"."+extension), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
+	first := start(t)
+	first.waitFor("first shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	first.send("\x02b\x02b\x02B")
+	first.send("printf 'SAVE_%s\\n' READY\r")
+	first.waitFor("saved display state", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "SAVE_READY") })
+	first.send("\x02q")
+	second := startEnv(t, map[string]string{"GTX_STATE_DIR": first.stateDir})
+	second.waitFor("reattached shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "SAVE_READY") })
+	second.send("set -- $(stty size); printf '\\nRESTORED_%s_%s\\n' \"$1\" \"$2\"\r")
+	second.waitFor("restored geometry", 5*time.Second, func(tx string) bool { return strings.Contains(tx, fmt.Sprintf("RESTORED_%d_%d", termH-4, termW-2-3)) })
+	if second.emu.CellAt(termW-2, 5).Content != "│" || second.emu.CellAt(0, 5).Content == "│" {
+		t.Fatal("reattach lost right compact / left hidden modes")
+	}
+}

@@ -83,6 +83,9 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 			if r.Kind == RowAgent && s.FocusedPane() == r.Pane {
 				style.Bg = f.Palette.PanelBG
 			}
+			if in.SidebarConfig.UI.TransparentSidebarCards {
+				style.Bg = nil
+			}
 			f.Set(a.X+1, pos.Y, g.Rune, style)
 		}
 		return
