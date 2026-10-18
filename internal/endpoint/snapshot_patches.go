@@ -54,12 +54,19 @@ func (e *SnapshotEncoder) patchGraphics(pane int, original []kitty.Placement, wi
 func (d *SnapshotDecoder) restoreGraphics(in *render.Input) error {
 	d.MissingGraphicsKey = nil
 	d.graphicsPayloads = nil
+	if d.retainedImages == nil {
+		d.retainedImages = map[graphicCacheKey]kitty.Image{}
+	}
+	textOnly := len(in.GraphicsPatches) == 0
 	for pane, snapshot := range in.Panes {
 		for index, placement := range snapshot.Graphics {
 			if d.graphicsPayloads == nil {
 				d.graphicsPayloads = map[[2]int]int{}
 			}
 			d.graphicsPayloads[[2]int{pane, index}] = len(placement.Image.Data)
+			if len(placement.Image.Data) > 0 {
+				textOnly = false
+			}
 		}
 	}
 	for _, item := range in.GraphicsPatches {
@@ -88,8 +95,12 @@ func (d *SnapshotDecoder) restoreGraphics(in *render.Input) error {
 			key := graphicCacheKey{pane, img.ID}
 			alive[key] = true
 			if len(img.Data) == 0 {
+				if previous, ok := d.retainedImages[key]; ok && img.NativeID == 0 {
+					snapshot.Graphics[index].Image = previous
+				}
 				continue
 			}
+			d.retainedImages[key] = img
 			// Small images cannot be bases for the negotiated large-image codec.
 			if img.Format != 100 && len(img.Data) < imageCompressionMinimum {
 				delete(d.bases, key)
@@ -101,6 +112,7 @@ func (d *SnapshotDecoder) restoreGraphics(in *render.Input) error {
 			}
 			if len(canonical.Data) >= imageCompressionMinimum {
 				d.bases[key] = canonical
+				d.retainedImages[key] = canonical
 				snapshot.Graphics[index].Image = canonical
 			} else {
 				delete(d.bases, key)
@@ -132,11 +144,19 @@ func (d *SnapshotDecoder) restoreGraphics(in *render.Input) error {
 			continue
 		}
 		d.bases[key] = restored
+		d.retainedImages[key] = restored
 		pane.Graphics[item.Placement].Image = restored
 	}
-	for key := range d.bases {
-		if !alive[key] {
-			delete(d.bases, key)
+	if !textOnly {
+		for key := range d.retainedImages {
+			if !alive[key] {
+				delete(d.retainedImages, key)
+			}
+		}
+		for key := range d.bases {
+			if !alive[key] {
+				delete(d.bases, key)
+			}
 		}
 	}
 	return nil

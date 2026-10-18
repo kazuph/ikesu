@@ -103,6 +103,9 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			if !m.post(ctx, endpointEvent{id: id, attempt: attempt, message: message, err: err}) || err != nil {
 				return
 			}
+			if m.trace != nil && message.snapshot != nil {
+				m.trace.Event("surface.received", " endpoint=", id, " generation=", attempt, " boot_id=", message.traceBoot, " revision=", message.snapshot.SurfaceRevision, " bytes=", message.traceBytes, " images=", hasNativeGraphics(*message.snapshot) || hasTraceImages(*message.snapshot), " text_only=", message.traceTextOnly)
+			}
 		}
 	}()
 }
@@ -210,6 +213,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		e.boot = message.traceBoot
+		e.textOnly = message.traceTextOnly
 		e.epoch = message.FocusEpoch
 		e.requestAck = message.RequestAck
 		if m.pending != nil && m.pending.id == event.id {

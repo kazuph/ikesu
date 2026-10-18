@@ -104,6 +104,7 @@ func (m *machineClient) input(event input.Event) error {
 	}
 	m.mouse.Report(event.Report, m.size)
 	if m.outputFence.Accept(event.Raw) {
+		m.traceProbeReply()
 		if m.paintQueued {
 			return m.paint()
 		}

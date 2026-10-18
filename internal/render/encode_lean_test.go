@@ -111,3 +111,38 @@ func TestLeanLegacyCellParityAndLinks(t *testing.T) {
 		}
 	}
 }
+
+func TestLeanStyleTransitionsMatchLegacy(t *testing.T) {
+	modern, legacy := &Encoder{}, &legacyTextEncoder{}
+	a, b := vt.NewEmulator(12, 3), vt.NewEmulator(12, 3)
+	defer a.Close()
+	defer b.Close()
+	for attrs := 0; attrs <= 255; attrs++ {
+		f := NewFrame(12, 3)
+		for y := 0; y < f.H; y++ {
+			for x := 0; x < f.W; x++ {
+				style := uv.Style{Attrs: uint8(attrs + x), Underline: uv.Underline((attrs + y) % 6)}
+				if x%3 != 0 {
+					style.Fg = ansi.IndexedColor((attrs + x) % 256)
+				}
+				if x%4 != 0 {
+					style.Bg = ansi.IndexedColor((attrs + y) % 256)
+				}
+				if x%5 != 0 {
+					style.UnderlineColor = ansi.IndexedColor((attrs + x + y) % 256)
+				}
+				f.Set(x, y, string(rune('a'+attrs%26)), style)
+			}
+		}
+		_, _ = a.Write(modern.Frame(f, 0, 0, false))
+		_, _ = b.Write(legacy.Frame(f, 0, 0, false))
+		for y := 0; y < f.H; y++ {
+			for x := 0; x < f.W; x++ {
+				got, want := a.CellAt(x, y), b.CellAt(x, y)
+				if got.Content != want.Content || got.Width != want.Width || !got.Style.Equal(&want.Style) {
+					t.Fatalf("attrs=%d (%d,%d) got %+v want %+v", attrs, x, y, got, want)
+				}
+			}
+		}
+	}
+}

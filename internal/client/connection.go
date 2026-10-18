@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/goterrace/internal/latency"
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
@@ -24,6 +25,7 @@ type endpointConnection struct {
 	queue     []msg
 	writeErr  error
 	wake      chan struct{}
+	boot      string
 }
 
 func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings, fileTransport string) (*endpointConnection, error) {
@@ -84,6 +86,16 @@ func (c *endpointConnection) read() (msg, error) {
 	if err := json.Unmarshal(line, &m); err != nil {
 		return msg{}, fmt.Errorf("invalid endpoint message: %w", err)
 	}
+	if latency.Enabled && m.Type == "decisions" {
+		var control struct {
+			Decisions *endpoint.DecisionProjection `json:"decisions"`
+		}
+		if json.Unmarshal(line, &control) == nil && control.Decisions != nil {
+			c.boot = control.Decisions.BootID
+		}
+	}
+	m.traceBoot = c.boot
+	m.traceBytes = len(line)
 	if m.Type == "snapshot" {
 		data, err := base64.StdEncoding.DecodeString(m.Data)
 		if err != nil {
@@ -97,6 +109,21 @@ func (c *endpointConnection) read() (msg, error) {
 			return msg{}, fmt.Errorf("invalid display graphics: %w", err)
 		}
 		m.snapshot = &in
+		m.traceTextOnly = true
+		hasRaster := false
+		for pane, p := range in.Panes {
+			for i, graphic := range p.Graphics {
+				if graphic.Image.NativeID == 0 {
+					hasRaster = true
+				}
+				if size, _ := c.snapshots.GraphicsPayloadSize(pane, i); size > 0 {
+					m.traceTextOnly = false
+				}
+			}
+		}
+		if !hasRaster || len(in.GraphicsPatches) > 0 {
+			m.traceTextOnly = false
+		}
 		m.Data = ""
 		if key := c.snapshots.MissingGraphicsKey; key != nil {
 			data, err := json.Marshal(struct {

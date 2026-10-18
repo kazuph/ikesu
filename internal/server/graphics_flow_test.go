@@ -128,21 +128,52 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("another viewer's input was blocked by image receipt")
 	}
-	// A queued update cannot pass the unacknowledged image, but its API
-	// request completed on the session loop without waiting for this viewer.
-	if err := client.conn.SetReadDeadline(time.Now().Add(graphicsReceiptWait / 4)); err != nil {
-		t.Fatal(err)
+	// Text frames can pass, but neither payload nor patch may advance.
+	assertNoImage := func() {
+		t.Helper()
+		deadline := time.Now().Add(graphicsReceiptWait / 4)
+		_ = client.conn.SetReadDeadline(deadline)
+		for {
+			line, err := client.rd.ReadBytes('\n')
+			if err != nil {
+				if timeout, ok := err.(interface{ Timeout() bool }); ok && timeout.Timeout() {
+					return
+				}
+				t.Fatal(err)
+			}
+			var message clientMsg
+			if err = json.Unmarshal(line, &message); err != nil {
+				t.Fatal(err)
+			}
+			if message.Type != "snapshot" {
+				continue
+			}
+			data, err := base64.StdEncoding.DecodeString(message.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := client.snapshots.Decode(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(in.GraphicsPatches) != 0 {
+				t.Fatal("unacknowledged image advanced", in.SurfaceRevision)
+			}
+			for id, p := range in.Panes {
+				for i := range p.Graphics {
+					if n, _ := client.snapshots.GraphicsPayloadSize(id, i); n != 0 {
+						t.Fatal("text frame carried pixels", n)
+					}
+					if old := first.Panes[id]; old != nil && len(old.Graphics) > i && !bytes.Equal(p.Graphics[i].Image.Data, old.Graphics[i].Image.Data) {
+						t.Fatal("text changed pixels")
+					}
+				}
+			}
+		}
 	}
-	if data, err := client.rd.ReadBytes('\n'); err == nil || len(data) > 0 {
-		t.Fatalf("image advanced without receipt: %s %v", data, err)
-	}
+	assertNoImage()
 	ack(first.SurfaceRevision - 1)
-	if err := client.conn.SetReadDeadline(time.Now().Add(graphicsReceiptWait / 4)); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := client.rd.ReadBytes('\n'); err == nil || len(data) > 0 {
-		t.Fatalf("stale receipt released pending image: %s %v", data, err)
-	}
+	assertNoImage()
 	ack(first.SurfaceRevision)
 	second := read(func(in render.Input) bool {
 		return len(in.GraphicsPatches) > 0 && len(in.GraphicsPatches[0].Patch.Rects) > 0

@@ -117,7 +117,8 @@ func (m *machineClient) paint() error {
 	if _, err := m.out.Write(data); err != nil {
 		return err
 	}
-	if m.outputFence.Written(data, time.Now()) {
+	probe := m.outputFence.Written(data, time.Now())
+	if probe {
 		if _, err := m.out.WriteString(render.TerminalStatusQuery); err != nil {
 			return err
 		}
@@ -139,6 +140,7 @@ func (m *machineClient) paint() error {
 			return err
 		}
 	}
+	m.tracePaint(data, probe, in)
 	held := m.held
 	m.held = nil
 	for _, event := range held {

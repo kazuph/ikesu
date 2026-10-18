@@ -23,6 +23,7 @@ import (
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/goterrace/internal/latency"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/plugin"
 	"github.com/kazuph/goterrace/internal/render"
@@ -74,6 +75,7 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	trace               *latency.Trace
 	graphicsFiles       graphicsFileHub
 	graphicsStreamOwner atomic.Uint64
 	handoffMu           sync.Mutex
@@ -278,6 +280,9 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		jobProcs:   jobProcsT{m: map[string]*exec.Cmd{}},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
+	if latency.Enabled {
+		s.trace = latency.Open(api.LogPath(dir))
+	}
 
 	if cfg, err := config.Load(); err == nil {
 		s.cfg = cfg
@@ -452,6 +457,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 }
 
 func (s *Server) cleanup() {
+	defer s.trace.Close()
 	s.saveMu.Lock()
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
@@ -582,6 +588,12 @@ func (s *Server) clientLoop() {
 // attach negotiates display capabilities before adding an independent viewer.
 func (s *Server) attach(conn net.Conn) {
 	c := &clientConn{conn: conn}
+	if s.trace != nil {
+		c.id = int(clientSequence.Add(1))
+		if peer := latency.PeerPID(conn); peer > 0 {
+			s.trace.Event("client.accepted", " client_id=", c.id, " peer_pid=", peer)
+		}
+	}
 	rd := bufio.NewReader(conn)
 	hello, err := readClientMsg(rd)
 	if err == nil && hello.Type == "agent_attach" {
