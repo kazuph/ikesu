@@ -239,14 +239,18 @@ type HelpInput struct {
 
 // Compose renders the entire screen into a frame.
 func Compose(in Input) *Output {
-	return compose(in, nil)
+	return compose(in, nil, "", false)
 }
 
 func ComposeMachines(in Input, machines *MachineSidebar) *Output {
-	return compose(in, machines)
+	return compose(in, machines, "", false)
 }
 
-func compose(in Input, machines *MachineSidebar) *Output {
+func ComposeClient(in Input, machines *MachineSidebar, version string, notice bool) *Output {
+	return compose(in, machines, version, notice)
+}
+
+func compose(in Input, machines *MachineSidebar, version string, notice bool) *Output {
 	s := in.State
 	f := NewFrame(s.Cols, s.Rows)
 	f.Palette = ConfigPalette(in.SidebarConfig)
@@ -278,6 +282,7 @@ func compose(in Input, machines *MachineSidebar) *Output {
 		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
 	}
 	drawActionBar(f, s, in, out)
+	drawClientVersion(f, version, notice, out)
 	if in.ServerUI && in.Copy != nil {
 		drawCopyStatus(f, 0, s.Rows-1, s.Cols, in.CopyHint, in.ServerUI)
 		out.ActionBar = ActionBarRects{}

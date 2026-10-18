@@ -149,6 +149,7 @@ type appJob struct {
 // through Do/PushInput/Resize so all state changes stay on the loop
 // goroutine.
 type App struct {
+	clientVersion     string
 	viewerOwner       *App
 	viewerContext     *Viewer
 	viewerActive      bool
@@ -649,6 +650,9 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		sup.SetGraphicsVersion(versions[0])
 	}
 	a := NewApp(st, sup, out, cwd)
+	if len(versions) > 0 {
+		a.clientVersion = versions[0]
+	}
 	defer func() { _, _ = out.Write(a.enc.RestoreCursor()) }()
 	if len(versions) > 0 {
 		var engine *plugin.Engine

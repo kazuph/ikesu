@@ -50,6 +50,9 @@ func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
 	}
 	visible, _ := p.ReadLines("visible", true)
 	current := screenprompt.ParseWithTextID(agent, p.DetectionScreenLines(), textID)
+	if w := s.screenPrompts.watches[pid]; w != nil && w.prompt != nil && w.prompt.CodexQuestion && current == nil {
+		return nil
+	}
 	if !screenprompt.HasOptionRows(visible) {
 		return nil
 	}
@@ -226,6 +229,13 @@ func (s *Server) scanScreenPrompts() {
 			p = nil
 		}
 		if w != nil {
+			if p == nil && w.prompt != nil && w.prompt.CodexQuestion && (!w.resolved || w.editingText) {
+				if pane := s.sup.Get(pid); pane != nil && !pane.Snapshot().Dead {
+					w.lastMatched = false
+					w.mismatches = 0
+					continue
+				}
+			}
 			if p != nil && !w.resolved && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
 				w.signature = p.Signature()
 				w.prompt = p
