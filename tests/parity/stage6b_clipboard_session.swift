@@ -3,11 +3,7 @@ import AppKit
 import CryptoKit
 import Foundation
 
-let args = Array(CommandLine.arguments.dropFirst())
-let out = URL(fileURLWithPath: args[0], isDirectory: true)
-let board = NSPasteboard.general
 let manager = FileManager.default
-try manager.createDirectory(at: out, withIntermediateDirectories: true)
 typealias Snapshot = [[String: Data]]
 func snapshot() throws -> Snapshot {
     try (board.pasteboardItems ?? []).map { item in
@@ -46,6 +42,24 @@ func command(_ executable: String, _ arguments: [String], input: Data? = nil) th
     child.waitUntilExit()
     return (child.terminationStatus, data)
 }
+let host = try command("/usr/bin/uname", ["-n"])
+let hostname = String(decoding: host.1, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+guard host.0 == 0 && ["kazuphnoMac-mini.local", "kazuphnoMac-mini"].contains(hostname) else {
+    fputs("STOP: this procedure is authorized only on mini\n", stderr)
+    exit(1)
+}
+let user = try command("/usr/bin/id", ["-un"])
+let console = try command("/usr/bin/stat", ["-f", "%Su", "/dev/console"])
+guard user.0 == 0 && console.0 == 0 && user.1 == console.1 else {
+    fputs("NOT_RUN: SSH user is not the active GUI user\n", stderr)
+    exit(1)
+}
+let gui = try command("/bin/launchctl", ["print", "gui/\(getuid())"])
+guard gui.0 == 0 else { exit(1) }
+let args = Array(CommandLine.arguments.dropFirst())
+let out = URL(fileURLWithPath: args[0], isDirectory: true)
+try manager.createDirectory(at: out, withIntermediateDirectories: true)
+let board = NSPasteboard.general
 let original = try snapshot()
 let saved = out.appendingPathComponent("original-pasteboard.json")
 try encode(original).write(to: saved, options: .atomic)

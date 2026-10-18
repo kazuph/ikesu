@@ -14,7 +14,7 @@ host='mini' if load < 4 else 'ubuntu-3090'
 root='bench-terrace.noindex' if host=='mini' else 'bench-terrace'
 remote_source=root+'/src/stage6b' if host=='mini' else root+'/work/stage6b-src'
 destination=root+'/work/detail/stage6b-perf'
-print(json.dumps({'mini_load':load,'host':host,'baseline':'8236d5f','source':str(source)}),flush=True)
+print(json.dumps({'mini_load':load,'host':host,'baseline':'4d337f7','source':str(source)}),flush=True)
 subprocess.run(['ssh',host,f'mkdir -p "$HOME/{destination}"'],check=True)
 subprocess.run(['rsync','-az',str(archive),f'{host}:{destination}/baseline.tar'],check=True)
 subprocess.run(['rsync','-az',str(source/'tests/parity/stage6b_perf.sh'),f'{host}:{destination}/run.sh'],check=True)

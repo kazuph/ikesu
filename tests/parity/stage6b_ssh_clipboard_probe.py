@@ -8,6 +8,10 @@ import subprocess
 import sys
 import tempfile
 
+from stage6b_mini_guard import require_mini_gui
+
+require_mini_gui()
+
 payload = Path(sys.argv[1]).read_bytes()
 proof_path = Path(sys.argv[2])
 with tempfile.TemporaryDirectory(prefix='parity-', dir='/tmp') as directory:

@@ -91,7 +91,7 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 			continue
 		}
 		rows = append(rows, render.NavigatorRow{Workspace: wi, Pane: -1, Name: name, WorkspaceName: name, Count: ws.PaneCount(), Status: "○", Current: wi == a.st.Active})
-		if !n.collapsed[wi] {
+		if !n.collapsed[wi] || n.query != "" || n.filter != "" {
 			rows = append(rows, children...)
 		}
 	}
@@ -141,14 +141,18 @@ func (a *App) navigatorKey(k uv.Key) {
 		a.dirty = true
 		return
 	}
-	if k.Mod.Contains(uv.ModCtrl) {
+	if k.Mod == uv.ModCtrl {
 		switch k.Code {
 		case 'n':
-			a.navigatorMove(1)
-			return
+			if n.searching {
+				a.navigatorMove(1)
+				return
+			}
 		case 'p':
-			a.navigatorMove(-1)
-			return
+			if n.searching {
+				a.navigatorMove(-1)
+				return
+			}
 		case 'd', 'u':
 			if !n.searching {
 				delta := max(1, (render.NavigatorRect(a.st.Cols, a.st.Rows).H-6)/2)
@@ -171,6 +175,9 @@ func (a *App) navigatorKey(k uv.Key) {
 		a.navigatorSelect()
 		return
 	case uv.KeyHome, uv.KeyEnd:
+		if n.searching {
+			return
+		}
 		rows, _ := a.navigatorRows()
 		if k.Code == uv.KeyHome {
 			n.selected = 0
@@ -182,7 +189,7 @@ func (a *App) navigatorKey(k uv.Key) {
 	}
 	if n.searching {
 		switch {
-		case k.Code == 'u' && k.Mod.Contains(uv.ModCtrl):
+		case k.Code == 'u' && k.Mod == uv.ModCtrl:
 			n.query = ""
 		case k.Code == uv.KeyBackspace:
 			runes := []rune(n.query)

@@ -4,7 +4,7 @@ root=$1
 source=$2
 export PATH="$root/tools/go/bin:$PATH"
 out="$root/work/detail/stage6b-perf"
-base="$root/work/stage6b-baseline-8236d5f"
+base="$root/work/stage6b-baseline-4d337f7"
 mkdir -p "$out" "$base"
 tar xf "$out/baseline.tar" -C "$base"
 go version > "$out/build.txt"
