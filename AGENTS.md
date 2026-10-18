@@ -22,3 +22,4 @@ gtx は herdr fork（`~/src/github.com/kazuph/herdr`、AGPL-3.0）の仕様に�
 - 仕様の正: herdr fork の `SPEC.md`（読むだけ）と、gtx 固有の要件を書いたこのリポジトリの `SPEC.md`。
 - ビルド・計測・race・結合テストは Mac mini（`ssh mini`、`~/bench-terrace.noindex`）で行い、メインの Mac では go build と軽い go test だけにする。
 - `.artifacts/` はコミットしない。amend・reset・force push をしない。
+- 版（`cmd/gtx/main.go` の `version`）は、main へ取り込むたびに上げる（2026-10-18 店長の決定）。普段は3つ目の数字を1つ上げ（0.2.0→0.2.1）、大きな区切りでは2つ目を上げる。下部バーの「gtx v版」で、サーバーだけ引き継いだ後の古い画面を見分けるため。
