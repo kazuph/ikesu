@@ -38,6 +38,7 @@ func TestStage5BorderlessGutterAndFocus(t *testing.T) {
 
 func TestStage5BorderlessSplitReservesGapAndPTYWidths(t *testing.T) {
 	s := testState(100, 30)
+	s.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 	s.PaneBorders = false
 	tab := s.ActiveWorkspace().TabRef()
 	tab.Layout.SplitFocused(layout.Vertical, 2)

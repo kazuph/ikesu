@@ -93,7 +93,7 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 	}
 }
 
-func TestCollapsedEndpointCardsKeepNumbersReadableAndRespectTransparency(t *testing.T) {
+func TestCollapsedEndpointStatusKeepsActiveBackground(t *testing.T) {
 	s := model.New(t.TempDir(), 160, 45)
 	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir()})
 	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir()})
@@ -103,22 +103,15 @@ func TestCollapsedEndpointCardsKeepNumbersReadableAndRespectTransparency(t *test
 		in.SidebarConfig.UI.TransparentSidebarCards = transparent
 		f := Compose(in).Frame
 		for y := 0; y < len(s.Workspaces); y++ {
-			bg := f.Palette.Surface
-			if y == s.Active {
-				bg = f.Palette.PanelBG
+			c := f.Cell(0, y)
+			if c.Content != "·" || c.Style.Fg != f.Palette.Dim {
+				t.Fatal("status cell missing", c)
 			}
-			if transparent {
-				bg = nil
+			if y == s.Active && c.Style.Bg != f.Palette.PanelBG {
+				t.Fatal("active workspace must retain a background even in transparent mode", c)
 			}
-			for x := 0; x < 3; x++ {
-				cell := f.Cell(x, y)
-				fg := f.Palette.Text
-				if x == 2 {
-					fg = f.Palette.Dim
-				}
-				if cell.Style.Fg != fg || cell.Style.Bg != bg {
-					t.Fatalf("collapsed card style at %d,%d (transparent=%v): %+v", x, y, transparent, cell.Style)
-				}
+			if f.Cell(1, y).Content != "│" {
+				t.Fatal("status divider missing")
 			}
 		}
 	}

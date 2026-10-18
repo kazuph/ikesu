@@ -89,32 +89,7 @@ func sidebarRows(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, 
 		rows = append(rows, SidebarRow{Kind: RowSection, Section: sec}, SidebarRow{Kind: RowRule, Section: sec})
 		rows = append(rows, cards...)
 	}
-	var agents []SidebarRow
-	for wi, w := range s.Workspaces {
-		if s.CollapsedSections[w.SidebarSection()] {
-			continue
-		}
-		for _, t := range w.Tabs {
-			for _, pid := range t.Layout.PaneIDs() {
-				if sn := panes[pid]; sn != nil && sn.Agent != "" {
-					agents = append(agents, SidebarRow{Kind: RowAgent, Ws: wi, Pane: pid})
-				}
-			}
-		}
-	}
-	if s.AgentScope == "sort" {
-		sort.SliceStable(agents, func(i, j int) bool {
-			left, right := panes[agents[i].Pane], panes[agents[j].Pane]
-			if rank := agentRank(left.Status.Key); rank != agentRank(right.Status.Key) {
-				return rank < agentRank(right.Status.Key)
-			}
-			if cfg.UI.AgentPanelSort == "priority" {
-				return left.StateChangeSeq > right.StateChangeSeq
-			}
-			return false
-		})
-	}
-	agents = projectAgentRows(s, panes, agents)
+	agents := sidebarAgentTargets(s, panes, cfg)
 	rows = append(rows, SidebarRow{Kind: RowSep})
 	for _, r := range agents {
 		panel := cfg.UI.Sidebar.Agents
@@ -682,4 +657,35 @@ func glyphRank(g StatusGlyph) int {
 		return 1
 	}
 	return 0
+}
+
+func sidebarAgentTargets(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config) []SidebarRow {
+	var agents []SidebarRow
+	for wi, w := range s.Workspaces {
+		if s.CollapsedSections[w.SidebarSection()] {
+			continue
+		}
+		for _, t := range w.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if sn := panes[pid]; sn != nil && sn.Agent != "" {
+					agents = append(agents, SidebarRow{Kind: RowAgent, Ws: wi, Pane: pid})
+				}
+			}
+		}
+	}
+	if s.AgentScope == "sort" {
+		sort.SliceStable(agents, func(i, j int) bool {
+			left, right := panes[agents[i].Pane], panes[agents[j].Pane]
+			if rank := agentRank(left.Status.Key); rank != agentRank(right.Status.Key) {
+				return rank < agentRank(right.Status.Key)
+			}
+			if cfg.UI.AgentPanelSort == "priority" {
+				return left.StateChangeSeq > right.StateChangeSeq
+			}
+			return false
+		})
+	}
+	agents = projectAgentRows(s, panes, agents)
+
+	return agents
 }

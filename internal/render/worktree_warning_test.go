@@ -11,6 +11,7 @@ import (
 func TestEndpointWorktreeRejectionKeepsActionButtonsAndToast(t *testing.T) {
 	for _, cols := range []int{100, 160} {
 		s := model.New(t.TempDir(), cols, 25)
+		s.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 		in := Input{State: s, ServerUI: true, ConfigWarningBanner: true, ConfigWarning: "gtx worktree actions require a workspace inside a Git work tree."}
 		base := Compose(Input{State: s, ServerUI: true})
 		out := Compose(in)

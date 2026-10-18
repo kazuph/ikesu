@@ -10,6 +10,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/creack/pty"
 )
 
 // This drives the real binary and asks the shell for the kernel's PTY size.
@@ -89,5 +90,49 @@ func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
 	second.waitFor("restored geometry", 5*time.Second, func(tx string) bool { return strings.Contains(tx, fmt.Sprintf("RESTORED_%d_%d", termH-4, termW-2-3)) })
 	if second.emu.CellAt(termW-2, 5).Content != "│" || second.emu.CellAt(0, 5).Content == "│" {
 		t.Fatal("reattach lost right compact / left hidden modes")
+	}
+}
+
+func TestRightSidebarNarrowTerminalAdaptsWithoutSaving(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		mode := "server"
+		if local {
+			mode = "no-session"
+		}
+		t.Run(mode, func(t *testing.T) {
+			s := startMode(t, nil, local)
+			s.waitFor("shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+			s.send("\x02B\x02B\x02B")
+			s.send("printf 'PREF_%s\\n' READY\r")
+			s.waitFor("explicit open preference", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "PREF_READY") })
+			name := s.name
+			if local {
+				name = "default"
+			}
+			path := filepath.Join(s.stateDir, "client-shell", "local-"+name+".json")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct{ cols, right, pty int }{{80, 2, 49}, {67, 0, 38}, {64, 0, 61}, {120, 26, 65}} {
+				if err := pty.Setsize(s.pt, &pty.Winsize{Cols: uint16(tc.cols), Rows: termH}); err != nil {
+					t.Fatal(err)
+				}
+				s.emu.Resize(tc.cols, termH)
+				marker := fmt.Sprintf("NARROW_%d_%d", tc.cols, tc.pty)
+				s.send(fmt.Sprintf("set -- $(stty size); printf '\\nNARROW_%d_%%s\\n' \"$2\"\r", tc.cols))
+				s.waitFor("adapted kernel width "+marker, 5*time.Second, func(tx string) bool { return strings.Contains(tx, marker) })
+				if tc.right > 0 && s.emu.CellAt(tc.cols-tc.right, 5).Content != "│" {
+					t.Fatal("automatic right divider missing")
+				}
+				if tc.cols == 64 && !strings.Contains(s.text(), "switch") {
+					t.Fatal("mobile switch control missing")
+				}
+				after, err := os.ReadFile(path)
+				if err != nil || string(after) != string(before) {
+					t.Fatal("automatic adaptation saved preference", err)
+				}
+			}
+		})
 	}
 }

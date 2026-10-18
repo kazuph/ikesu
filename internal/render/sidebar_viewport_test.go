@@ -78,7 +78,7 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 
 func TestEndpointCollapsedSectionScrollStopsAfterWholeSlimCard(t *testing.T) {
 	for _, slim := range []bool{false, true} {
-		s := model.New(t.TempDir(), 160, 45)
+		s := model.New(t.TempDir(), 160, 25)
 		for _, sec := range []model.Section{model.SectionFavorite, model.SectionWork, model.SectionPersonal} {
 			for i := 0; i < 2; i++ {
 				s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), Section: sec, NoFocus: true})

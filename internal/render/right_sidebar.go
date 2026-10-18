@@ -15,15 +15,7 @@ func RightSidebarJobsTab(s *model.AppState, y int) layout.Rect {
 
 // RightCompactRows collapses agent cards to one status cell and appends jobs.
 func RightCompactRows(in Input) []SidebarRow {
-	var rows []SidebarRow
-	seen := map[int]bool{}
-	for _, r := range SidebarRows(in.State, in.Panes, in.SidebarConfig) {
-		if r.Kind == RowAgent && !seen[r.Pane] {
-			r.Line = 0
-			rows = append(rows, r)
-			seen[r.Pane] = true
-		}
-	}
+	rows := sidebarAgentTargets(in.State, in.Panes, in.SidebarConfig)
 	rows = append(rows, SidebarRow{Kind: RowSep})
 	for i := range in.Jobs {
 		rows = append(rows, SidebarRow{Kind: RowJob, Line: i})

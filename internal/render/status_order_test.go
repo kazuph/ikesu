@@ -33,8 +33,8 @@ func TestStatusOrderWorkspaceSurfaces(t *testing.T) {
 					drawSidebarRow(f, s, in, SidebarRow{Kind: RowWorkspace, Ws: 0}, 0, 0, 30)
 					check(f, 1, 0)
 					f = NewFrame(160, 45)
-					drawSidebarCollapsed(f, s, in, layout.Rect{W: 4, H: 40})
-					check(f, 2, 0)
+					drawSidebarCollapsed(f, s, in, layout.Rect{W: 2, H: 40})
+					check(f, 0, 0)
 					s.Cols = 60
 					s.MobileWidthThreshold = 64
 					in.MobileSwitcher = true
