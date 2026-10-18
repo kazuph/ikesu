@@ -17,7 +17,7 @@ func TestResizeScrollbarVisibilityPreservesContentAndUsesCurrentHistory(t *testi
 		for y := inner.Y; y < inner.Y+inner.H; y++ {
 			f.Set(inner.X+inner.W-1, y, "Z", uv.Style{})
 		}
-		drawGutter(f, inner, &PaneSnap{ScrollN: 40, SuppressScrollbar: suppressed}, 0)
+		drawGutter(f, inner, &PaneSnap{ScrollN: 40, SuppressScrollbar: suppressed}, 0, true)
 		for y := 0; y < inner.H; y++ {
 			want := "Z"
 			if !suppressed {

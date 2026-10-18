@@ -2,12 +2,47 @@ package tui
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
 )
+
+func TestHiddenViewerRequeriesMouseWhenShown(t *testing.T) {
+	for _, capture := range []bool{false, true} {
+		t.Run(map[bool]string{false: "disabled", true: "enabled"}[capture], func(t *testing.T) {
+			st := model.New(t.TempDir(), 120, 40)
+			app := NewApp(st, runtime.NewSupervisor(), &bytes.Buffer{}, "")
+			var output bytes.Buffer
+			viewer := app.NewViewer(&output, 120, 40, nil)
+			viewer.app.sidebarConfig.UI.MouseCapture = &capture
+			viewer.Begin(app, 0, 0)
+			viewer.SetVisible(app, false)
+			output.Reset() // Background endpoint output never reached the host terminal.
+			viewer.SetVisible(app, true)
+			query := "\x1b[?1016$p\x1b[16t\x1b[14t"
+			if strings.Contains(output.String(), query) != capture {
+				t.Fatal("visibility did not respect mouse negotiation settings", output.String())
+			}
+			if viewer.app.hostPixelMouse {
+				t.Fatal("visibility fabricated terminal support")
+			}
+			viewer.Input(app, []byte("\x1b[?1016;2$y\x1b[6;16;8t"))
+			if viewer.app.hostPixelMouse != capture || viewer.app.cellW != 8 || viewer.app.cellH != 16 {
+				t.Fatal("real terminal reports did not negotiate pixel input")
+			}
+			viewer.SetVisible(app, true)
+			if capture && strings.Count(output.String(), query) != 1 {
+				t.Fatal("already visible endpoint repeated negotiation")
+			}
+			if app.hostPixelMouse || app.cellW != 0 || app.cellH != 0 {
+				t.Fatal("viewer negotiation changed the session host state")
+			}
+		})
+	}
+}
 
 func TestViewerSelectionAndDimensionsIndependent(t *testing.T) {
 	st := model.New(t.TempDir(), 120, 40)

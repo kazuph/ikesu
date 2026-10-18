@@ -50,6 +50,21 @@ func TestG9ToastCellWidthOriginAndWarning(t *testing.T) {
 	}
 }
 
+func TestToastHeightUsesContextAndClampsToView(t *testing.T) {
+	view := layout.Rect{W: 80, H: 25}
+	toast := &Toast{Title: "日本語", Position: "top-right"}
+	if got := ToastRect(toast, view, layout.Rect{}); got != (layout.Rect{X: 68, W: 12, H: 3}) {
+		t.Fatal("title-only toast geometry", got)
+	}
+	toast.Body = "context"
+	if got := ToastRect(toast, view, layout.Rect{}); got != (layout.Rect{X: 67, W: 13, H: 4}) {
+		t.Fatal("context toast geometry", got)
+	}
+	if got := ToastRect(toast, layout.Rect{W: 5, H: 2}, layout.Rect{}); got != (layout.Rect{W: 5, H: 2}) {
+		t.Fatal("small view clamp", got)
+	}
+}
+
 func TestG5SeparatorExactTextAndColor(t *testing.T) {
 	f := NewFrame(40, 15)
 	m := &Menu{X: 2, Y: 2, Items: []MenuItem{{Label: "normal"}, {Separator: true}}, Sel: -1, Hover: -1}

@@ -1,0 +1,15 @@
+package tui
+
+import "github.com/kazuph/goterrace/internal/config"
+
+func (a *App) toastVisible() bool {
+	if a.toast == nil || !a.toast.shown {
+		return false
+	}
+	if a.serverUI {
+		if a.toast.target >= 0 && a.sidebarConfig.ToastDelivery() != config.ToastGTX {
+			return false
+		}
+	}
+	return true
+}

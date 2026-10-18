@@ -1,0 +1,18 @@
+send "python3 @FIXTURES@/tb_overlay_program.py\r"
+waittext 5s TB_OVERLAY_READY
+cells @OUT@/overlay-base.json
+stats overlay-base
+rclick 150 10
+waittext 5s Close pane
+cells @OUT@/overlay-away.json
+stats overlay-away
+click 80 40
+send "c"
+waittext 5s TB_OVERLAY_CLOSED
+rclick 50 15
+waittext 5s Close pane
+cells @OUT@/overlay-overlap.json
+stats overlay-overlap
+click 80 40
+send "q"
+kill

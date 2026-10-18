@@ -141,25 +141,29 @@ func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
 	if warning.H > 0 {
 		y = max(y, warning.Y+warning.H)
 	}
-	height := 3
+	h := 3
 	if t.Body != "" {
-		height = 4
+		h = 4
 	}
-	h := min(height, max(0, view.Y+view.H-y))
+	bottom := view.Y + view.H
+	if warning.H > 0 && strings.HasPrefix(t.Position, "bottom-") {
+		bottom = max(view.Y, bottom-1)
+	}
+	h = min(h, max(0, bottom-y))
 	x := view.X + view.W - w
 	switch t.Position {
 	case "top-center":
 		x = view.X + (view.W-w)/2
 	case "bottom-center":
 		x = view.X + (view.W-w)/2
-		y = max(y, view.Y+view.H-h)
+		y = max(y, bottom-h)
 	case "top-left":
 		x = view.X
 	case "bottom-left":
 		x = view.X
-		y = max(y, view.Y+view.H-h)
+		y = max(y, bottom-h)
 	case "bottom-right":
-		y = max(y, view.Y+view.H-h)
+		y = max(y, bottom-h)
 	}
 	return layout.Rect{X: x, Y: y, W: w, H: h}
 }

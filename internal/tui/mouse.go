@@ -84,6 +84,8 @@ func (a *App) onMouse(ev input.Event) {
 			a.click(m)
 		case input.KindMouseWheel:
 			a.wheel(m)
+		case input.KindMouseMotion:
+			a.forwardTrackingBody(m, uv.MouseMotionEvent(m))
 		}
 	}
 	a.dirty = true
@@ -366,11 +368,13 @@ func (a *App) tabBarClick(m uv.Mouse) {
 			if a.serverUI && m.X == a.tabLeftRect.X {
 				return
 			}
+			a.tabScrollManual = true
 			a.tabScroll = a.tabScrollLeft
 			a.dirty = true
 			return
 		}
 		if pointIn(m.X, m.Y, a.tabRightRect) {
+			a.tabScrollManual = true
 			a.tabScroll = a.tabScrollRight
 			a.dirty = true
 			return
@@ -537,6 +541,10 @@ func (a *App) sidebarRightClick(m uv.Mouse) {
 
 // wheel routes scroll events per region (3.6).
 func (a *App) wheel(m uv.Mouse) {
+	if m.Button == uv.MouseWheelLeft || m.Button == uv.MouseWheelRight {
+		a.forwardTrackingBody(m, uv.MouseWheelEvent(m))
+		return
+	}
 	up := m.Button == uv.MouseWheelUp
 	if !up && m.Button != uv.MouseWheelDown {
 		return
@@ -751,8 +759,7 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 		}
 	}
 	if pixel && (cw <= 0 || ch <= 0) {
-		a.ShowToast("Unsupported", "pixel mouse requires known pixel geometry", "error", -1)
-		return
+		pixel = false
 	}
 	tr := func(m uv.Mouse) uv.Mouse {
 		if a.fwd == pid {
@@ -775,18 +782,6 @@ func (a *App) forwardTo(pid int, ev uv.MouseEvent) {
 	case uv.MouseWheelEvent:
 		p.SendMouse(uv.MouseWheelEvent(tr(uv.Mouse(e))))
 	}
-}
-
-// paneMouseCoord converts a host cell coordinate to a pane-inner
-// coordinate. In pixel mode the result is the center pixel of the target
-// cell, sized from the known cell geometry. The caller rejects unknown geometry.
-func paneMouseCoord(inner layout.Rect, pixel bool, cw, ch int, m uv.Mouse) uv.Mouse {
-	x, y := m.X-inner.X, m.Y-inner.Y
-	if pixel {
-		x = x*cw + cw/2
-		y = y*ch + ch/2
-	}
-	return uv.Mouse{X: x, Y: y, Button: m.Button, Mod: m.Mod}
 }
 
 func (a *App) rightClickPass(m uv.Mouse) bool {

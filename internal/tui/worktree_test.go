@@ -238,8 +238,12 @@ func TestStage6aWorktreeGroupConfirmationCountsAndClosesTargets(t *testing.T) {
 	d := a.dialog
 	a.dialog = nil
 	d.run(a)
-	if len(a.st.Workspaces) != 0 {
-		t.Fatal("group workspace remained", a.st.Workspaces)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.st.Workspaces) != 1 || a.st.Workspaces[0].ID == child.ID || a.st.Workspaces[0].Cwd != home || a.st.Workspaces[0].Name != filepath.Base(home) {
+		t.Fatal("closing the last group did not replace its targets with home", a.st.Workspaces)
 	}
 	if _, err := os.Stat(child.Cwd); err != nil {
 		t.Fatal("closing workspace deleted checkout", err)

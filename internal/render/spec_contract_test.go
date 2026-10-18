@@ -1,6 +1,7 @@
 package render
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"reflect"
 	"strings"
 	"testing"
@@ -54,9 +55,10 @@ func TestSPECFrameThresholdGutterAndTitle(t *testing.T) {
 				g := 0
 				if borders && w > 2 && h > 2 {
 					want = layout.Rect{X: 4, Y: 5, W: w - 2, H: h - 2}
-					if w-2 >= 5 {
-						g = 1
-					}
+
+				}
+				if want.W >= 5 {
+					g = 1
 				}
 				if inner != want || gutter != g {
 					t.Fatalf("%v %dx%d inner=%v gutter=%d", borders, w, h, inner, gutter)
@@ -72,8 +74,8 @@ func TestSPECFrameThresholdGutterAndTitle(t *testing.T) {
 		want := full
 		if w <= 4 {
 			want = ""
-		} else if len([]rune(full)) > w-4 {
-			want = string([]rune(full)[:w-5]) + "…"
+		} else {
+			want = ansi.Truncate(full, w-4, "…")
 		}
 		if got != want {
 			t.Fatalf("width=%d title=%q want=%q", w, got, want)

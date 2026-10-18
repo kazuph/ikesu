@@ -32,6 +32,8 @@ func (v *Viewer) SetSnapshotSink(sink func(render.Input) error) {
 	v.app.snapshotSink = sink
 }
 
+func (v *Viewer) Redraw(a *App) { v.with(a, func(ui *App) { ui.dirty = true }) }
+
 func (v *Viewer) AwaitingFocusRender() bool { return !v.focusUntil.IsZero() }
 
 func (v *Viewer) FocusEpoch() uint64 {

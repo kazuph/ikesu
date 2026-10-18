@@ -65,6 +65,10 @@ func (a *App) selectView(s viewSelection) {
 
 func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Viewer {
 	ui := *a
+	if a.toast != nil {
+		toast := *a.toast
+		ui.toast = &toast
+	}
 	ui.out, ui.detacher = out, detach
 	ui.fr, ui.enc = &input.Framer{}, &render.Encoder{}
 	ui.drawViewers, ui.tickViewers, ui.visiblePane = nil, nil, nil
@@ -104,7 +108,8 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 		v.toastSequence = a.toastSequence
 		v.app.toast = nil
 		if a.toast != nil {
-			v.app.toast = a.toast
+			toast := *a.toast
+			v.app.toast = &toast
 		}
 	}
 	a.selectView(viewSelection{v.workspace, v.tabs, v.cols, v.rows, v.display})

@@ -250,6 +250,7 @@ type App struct {
 	tabHits                                  []layout.Rect // last frame's tab strip hit areas
 	editorFiles                              map[int]string
 	tabScroll, tabScrollLeft, tabScrollRight int
+	tabScrollManual                          bool
 	tabViewWidth                             int
 	tabViewWorkspace, tabViewActive          int
 	tabLeftRect, tabRightRect                layout.Rect

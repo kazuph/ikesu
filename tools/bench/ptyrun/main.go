@@ -31,7 +31,9 @@ func main() {
 	cellHeight := flag.Int("cell-height", 0, "terminal character height in pixels for size queries")
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
+	fileImages := flag.String("file-images", "", "record file-image payload hashes while the viewer owns the files")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
+	statusDelay := flag.String("status-delay", "", "override terminal status replies with a duration or drop")
 	holdColor := flag.Bool("hold-color-replies", false, "leave background-color queries for explicit steps to answer")
 	flag.Parse()
 	args := flag.Args()
@@ -43,6 +45,28 @@ func main() {
 		os.Exit(1)
 	}
 	emu := vt.NewEmulator(*cols, *rows)
+	if *statusDelay != "" {
+		delay, err := time.ParseDuration(*statusDelay)
+		if *statusDelay != "drop" && (err != nil || delay < 0) {
+			fmt.Fprintln(os.Stderr, "invalid status reply delay:", *statusDelay)
+			os.Exit(1)
+		}
+		emu.RegisterCsiHandler('n', func(params ansi.Params) bool {
+			op, _, _ := params.Param(0, 0)
+			if op != 5 {
+				return false
+			}
+			fmt.Printf("status-query at_unix_us=%d\n", time.Now().UnixMicro())
+			if *statusDelay != "drop" {
+				go func() {
+					time.Sleep(delay)
+					_, err := io.WriteString(ptmx, "\x1b[0n")
+					fmt.Printf("status-reply at_unix_us=%d error=%v\n", time.Now().UnixMicro(), err)
+				}()
+			}
+			return true
+		})
+	}
 	if *holdColor {
 		emu.RegisterOscHandler(11, func(data []byte) bool {
 			fmt.Printf("held-color-report %q\n", data)
@@ -89,6 +113,19 @@ func main() {
 		}
 		defer rawFile.Close()
 	}
+	var chunkEnd int64
+	if *fileImages != "" {
+		log, err := os.Create(*fileImages)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer log.Close()
+		emu.RegisterApcHandler(func(data []byte) bool {
+			captureFileImage(log, data, chunkEnd)
+			return false
+		})
+	}
 	var mu sync.Mutex
 	go func() { _, _ = io.Copy(ptmx, emu) }() // emulator replies (DA etc.) back to the app
 	// Drain the PTY as fast as possible (like a fast real terminal) and feed the emulator
@@ -133,6 +170,7 @@ func main() {
 			}
 			mu.Lock()
 			for _, c := range q {
+				chunkEnd = drained + int64(len(c.data))
 				_, _ = emu.Write(c.data)
 				drained += int64(len(c.data))
 				if *cellClock {
@@ -206,6 +244,13 @@ func main() {
 	}
 	sc := bufio.NewScanner(f)
 	var sentAt time.Time
+	locations := map[string][2]int{}
+	mark := func(kind, label string) {
+		mu.Lock()
+		count := drained
+		mu.Unlock()
+		fmt.Printf("event %s label=%q at_unix_ms=%d outer_bytes=%d\n", kind, label, time.Now().UnixMilli(), count)
+	}
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -213,6 +258,8 @@ func main() {
 		}
 		op, rest, _ := strings.Cut(line, " ")
 		switch op {
+		case "mark":
+			mark("mark", rest)
 		case "sleep":
 			d, _ := time.ParseDuration(rest)
 			time.Sleep(d)
@@ -224,6 +271,40 @@ func main() {
 			}
 			_, _ = ptmx.Write([]byte(s))
 			sentAt = time.Now()
+		case "wheelburst": // COUNT HZ X Y: timed scroll input, independent of render completion
+			var count, rate, x, y int
+			if n, _ := fmt.Sscanf(rest, "%d %d %d %d", &count, &rate, &x, &y); n != 4 || count <= 0 || rate <= 0 || time.Second/time.Duration(rate) <= 0 {
+				fmt.Fprintln(os.Stderr, "bad wheelburst:", rest)
+				os.Exit(1)
+			}
+			mu.Lock()
+			pixel := emu.ModeSet(ansi.ModeMouseExtSgrPixel)
+			if pixel {
+				if *cellWidth <= 0 || *cellHeight <= 0 {
+					mu.Unlock()
+					fmt.Fprintln(os.Stderr, "pixel wheel needs cell size")
+					os.Exit(1)
+				}
+				x, y = (x-1)**cellWidth+*cellWidth/2+1, (y-1)**cellHeight+*cellHeight/2+1
+			}
+			mu.Unlock()
+			start := time.Now()
+			times := make([]int64, 0, count)
+			for i := 0; i < count; i++ {
+				time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / time.Duration(rate))))
+				times = append(times, time.Now().UnixMicro())
+				_, _ = fmt.Fprintf(ptmx, "\x1b[<65;%d;%dM", x, y)
+			}
+			time.Sleep(time.Until(start.Add(time.Duration(count) * time.Second / time.Duration(rate))))
+			mu.Lock()
+			sameMode := pixel == emu.ModeSet(ansi.ModeMouseExtSgrPixel)
+			mu.Unlock()
+			data, _ := json.Marshal(times)
+			fmt.Printf("wheelburst count=%d rate=%d times_unix_us=%s\n", count, rate, data)
+			if !sameMode {
+				fmt.Fprintln(os.Stderr, "mouse coordinate mode changed during timed scroll")
+				os.Exit(1)
+			}
 		case "mouse", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
 			var kind string
 			var x, y int
@@ -250,13 +331,16 @@ func main() {
 				emu.SendMouse(uv.MouseClickEvent(m))
 			case "up", "right-up":
 				emu.SendMouse(uv.MouseReleaseEvent(m))
+			case "hover":
+				m.Button = uv.MouseNone
+				emu.SendMouse(uv.MouseMotionEvent(m))
 			case "motion":
 				emu.SendMouse(uv.MouseMotionEvent(m))
 			case "wheel-up":
 				m.Button = uv.MouseWheelUp
 				emu.SendMouse(uv.MouseWheelEvent(m))
-			case "wheel-down":
-				m.Button = uv.MouseWheelDown
+			case "wheel-down", "wheel-left", "wheel-right":
+				m.Button = map[string]uv.MouseButton{"wheel-down": uv.MouseWheelDown, "wheel-left": uv.MouseWheelLeft, "wheel-right": uv.MouseWheelRight}[kind]
 				emu.SendMouse(uv.MouseWheelEvent(m))
 			default:
 				mu.Unlock()
@@ -282,27 +366,51 @@ func main() {
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
 			time.Sleep(30 * time.Millisecond)
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
-		case "clicktext":
+		case "clicktext", "locate", "clicklocated":
 			label, err := strconv.Unquote(rest)
 			if err != nil || label == "" {
 				fmt.Fprintln(os.Stderr, "bad clicktext:", rest)
 				os.Exit(1)
 			}
 			x, y, found := 0, 0, 0
-			for row, line := range strings.Split(screen(), "\n") {
-				if col := strings.Index(line, label); col >= 0 {
-					x, y = ansi.StringWidth(line[:col])+1, row+1
-					found++
+			if op == "clicklocated" {
+				if point, ok := locations[label]; ok {
+					x, y, found = point[0], point[1], 1
+				}
+			} else {
+				for row, line := range strings.Split(screen(), "\n") {
+					if col := strings.Index(line, label); col >= 0 {
+						x, y = ansi.StringWidth(line[:col])+1, row+1
+						found++
+					}
 				}
 			}
 			if found != 1 {
-				fmt.Fprintf(os.Stderr, "clicktext %q requires one visible match, got %d\n", label, found)
+				fmt.Fprintf(os.Stderr, "%s %q requires one located match, got %d\n", op, label, found)
 				_ = cmd.Process.Kill()
 				_, _ = cmd.Process.Wait()
 				os.Exit(1)
 			}
+			if op == "locate" {
+				locations[label] = [2]int{x, y}
+				continue
+			}
+			mu.Lock()
+			if emu.ModeSet(ansi.ModeMouseExtSgrPixel) {
+				if *cellWidth <= 0 || *cellHeight <= 0 {
+					mu.Unlock()
+					fmt.Fprintln(os.Stderr, "pixel click needs cell size")
+					os.Exit(1)
+				}
+				x, y = (x-1)**cellWidth+*cellWidth/2+1, (y-1)**cellHeight+*cellHeight/2+1
+			}
+			mu.Unlock()
+			sentAt = time.Now()
+			mark(op, label)
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
-			time.Sleep(30 * time.Millisecond)
+			if op == "clicktext" {
+				time.Sleep(30 * time.Millisecond)
+			}
 			_, _ = fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
 		case "rclick":
 			var x, y int

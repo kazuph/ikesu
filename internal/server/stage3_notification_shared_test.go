@@ -9,20 +9,29 @@ import (
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/teststate"
 )
 
-func TestStage3AgentToastSharedByTwoRealDisplays(t *testing.T) {
+func TestStage3AgentToastDismissalIsLocalToEachRealDisplay(t *testing.T) {
 	teststate.Lock(t)
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.toast]\ndelivery='gtx'\ndelay_seconds=0\n[ui.sound]\nenabled=false\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "GTX_CONFIG", cfg)
+	data, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := config.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
 	ready := dialClient(t, dir)
-	ready.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45})
+	ready.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45, Config: &settings})
 	ready.readUntil(t, 5*time.Second, func(m clientMsg) bool { return ready.lastRegions != nil })
 	ready.conn.Close()
 	target := firstPaneID(t, dir)
@@ -31,13 +40,13 @@ func TestStage3AgentToastSharedByTwoRealDisplays(t *testing.T) {
 	clients := []*testConn{dialClient(t, dir), dialClient(t, dir)}
 	for _, c := range clients {
 		defer c.conn.Close()
-		c.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45})
+		c.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45, Config: &settings})
 		c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return c.lastRegions != nil })
 	}
 	waitToast := func(c *testConn, visible bool) {
 		t.Helper()
 		found := false
-		frames := c.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+		frames := c.readUntil(t, 10*time.Second, func(m clientMsg) bool {
 			found = m.Type == "output" && c.lastRegions != nil && (c.lastRegions.ToastRect.W > 0) == visible
 			return found
 		})
@@ -68,22 +77,22 @@ func TestStage3AgentToastSharedByTwoRealDisplays(t *testing.T) {
 	c.send(t, clientMsg{Type: "input", Data: encode64([]byte{27})})
 	mouse(0, "M")
 	mouse(0, "m")
-	for _, display := range clients {
-		waitToast(display, false)
-	}
+	waitToast(clients[0], false)
+	waitToast(clients[1], true)
 	response := apiReq(t, dir, api.MethodNotificationShow, map[string]any{"title": "after click", "sound": "none"})
-	if response.Err != nil || string(response.Result) != `{"type":"notification_show","shown":true,"reason":"shown"}` {
-		t.Fatal("dismissed shared toast still busy", response)
+	if response.Err != nil || !strings.Contains(string(response.Result), `"reason":"busy"`) {
+		t.Fatal("viewer dismissal cleared the server's pending toast", response)
+	}
+	// The remaining display expires on the observed eight-second agent clock.
+	waitToast(clients[1], false)
+	response = apiReq(t, dir, api.MethodNotificationShow, map[string]any{"title": "after expiry", "sound": "none"})
+	if response.Err != nil || !strings.Contains(string(response.Result), `"reason":"shown"`) {
+		t.Fatal("expired server toast still busy", response)
 	}
 	for _, display := range clients {
 		waitToast(display, true)
 	}
-	// Wait on real snapshots for the documented three-second explicit expiry.
 	for _, display := range clients {
 		waitToast(display, false)
-	}
-	response = apiReq(t, dir, api.MethodNotificationShow, map[string]any{"title": "after expiry", "sound": "none"})
-	if response.Err != nil || !strings.Contains(string(response.Result), `"reason":"shown"`) {
-		t.Fatal("expired shared toast still busy", response)
 	}
 }

@@ -1,0 +1,12 @@
+send "python3 @FIXTURES@/tb_resize_program.py\r"
+waittext 5s TB_RESIZE_READY
+cells @OUT@/before-resize.json
+stats before-resize
+mark resize-start
+resize 140 40
+waittext 5s TB_RESIZED
+cells @OUT@/after-resize.json
+stats after-resize
+mark resize-end
+send "q"
+kill

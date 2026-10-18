@@ -13,6 +13,8 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 	switch req.Method {
 	case api.MethodNotificationShow:
 		return s.notificationShow(req)
+	case api.MethodPaneGraphicsInfo, api.MethodPaneGraphicsSet, api.MethodPaneGraphicsClear:
+		return s.graphicsRequest(req)
 	case api.MethodSessionImportHerdr:
 		return s.importHerdr(req)
 	case api.MethodServerReloadConfig:

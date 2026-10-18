@@ -7,12 +7,14 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	if !s.PopupVisible() {
 		return
 	}
+	if !in.ServerUI {
+		f.Graphics = nil
+		f.Placeholders = nil
+	}
 	r := s.PopupRect()
 	if r.W < 1 || r.H < 1 || r.W > f.W || r.H > f.H {
 		return
 	}
-	f.Graphics = nil
-	f.Placeholders = nil
 	bg := f.Palette.SurfDim
 	if in.ServerUI {
 		bg = f.Palette.PopupBG

@@ -306,3 +306,31 @@ miniで `python3 tests/parity/stage6a_fix1.py --gtx /absolute/fixed/gtx --out /a
 端末識別10条件（kittyとtmuxの併用を含む）、OSC 9/99とtmuxパススルーの全バイト、1秒のAPI連続要求制限、制御文字と80/240文字制限を検査する。
 文字数は画面の切れではなく端末通知の完全なバイト列で比較する。候補1/2/3/13件のworktree枠は検索前後の寸法、末尾の選択と実クリック後のcheckoutを検査する。
 成功結果はfix1-gate.json。収集終了だけでは合格としない。GoのTestStage6aFix系が書込み失敗と非成功時刻の保持も検査する。
+
+段階5（タブバー・pane枠・下部、A27〜A33）の0.2.57比較は mini の
+`src/stage5` で `sh tests/parity/stage5_observe.sh <出力先>` を実行する。
+店長設定を基準に、マウス無効・枠なし・モバイル切替なしの条件だけを分ける。
+生成した `.steps` と `.toml` は出力先の `procedures/` に残る。
+`python3 tests/parity/stage5_gate.py <出力先>` は対象領域の全セルと
+実シェルのPTY幅、最後のスペースの閉鎖応答・新しいホームを検査する。
+対象外領域や未実行の操作を一致扱いにしない。
+
+空画面（A32）は親の追加判断に従い、最後のスペースを閉じた後のホーム再作成を
+APIと通常UIで確認する。APIの閉鎖は `--close-workspace-fixture` により、
+消えるシェルのプロセスグループの外から行い、実応答と新しいpaneのcwdを保存する。
+`--saved-session-fixture` は指定した実保存形式の文書を隔離領域に置いて起動する。
+0件の保存データからの起動と、初期workspaceを作らず接続する起動も採取する。
+`--no-session` は保存状態を復元せず初期シェルを作る。0件画面が実物で到達できなければ作らない。
+
+部分COPY（A33）の表示とクリックは単独起動で比較する。サーバー接続の実物では
+同じSGRクリックが通常幅でもCOPYを開かないため、単独起動の成功と区別して記録する。
+`stage5-narrow-click.steps` は部分幅と通常幅のクリックを切り分ける追加手順。
+既存のタブ状態の優先順位は変更しない。
+
+`sh tests/parity/stage5_gate.sh <ログ出力先>` はminiでgofmt・vet・通常test・raceを行う。
+miniの負荷が4以上のときに認められたubuntu-3090での相対P1は、
+`~/bench-terrace/env.sh` を読み、基準dd2168cのarchiveを `<ルート>/baseline`、
+候補ソースを `<ルート>/candidate` に置いて
+`sh tests/parity/stage5_perf.sh <ルート>` を実行する。
+両方を同じGoと引数でビルドし、固定の `perf-lock.py` 経由で既存の `TestRelative` を実行する。
+絶対P1はこの段階の判定に含めない。

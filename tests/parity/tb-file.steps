@@ -1,0 +1,7 @@
+send "python3 @FIXTURES@/tb_file_program.py\r"
+waitfile @HOME@/tb-file-probe.json 30s
+waittext 5s TB_FILES_RECORDED
+cells @OUT@/files-recorded.json
+stats files-recorded
+send "q"
+kill

@@ -147,7 +147,7 @@ func (a *App) draw() {
 		ServerUI:            a.serverUI,
 		PanePalette:         a.panePalette,
 		TabScroll:           a.tabScroll,
-		TabScrollManual:     wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
+		TabScrollManual:     a.tabScrollManual && wsID == a.tabViewWorkspace && tabID == a.tabViewActive && a.st.TabBarArea().W == a.tabViewWidth,
 		State:               a.st,
 		Navigator:           a.navigatorRender(),
 		ConfigWarning:       warning,
@@ -199,7 +199,7 @@ func (a *App) draw() {
 	if a.sel != nil && a.sel.moved {
 		in.Sel = a.selRender()
 	}
-	if a.toast != nil && a.toast.shown && !a.toast.dismissed {
+	if a.toastVisible() {
 		position := a.toast.position
 		if position == "" {
 			position = a.sidebarConfig.UI.Toast.Herdr.Position

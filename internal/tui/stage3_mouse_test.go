@@ -54,8 +54,12 @@ func TestStage3ViewerNotificationSurvivesRightClickAndExpires(t *testing.T) {
 	}
 	v.app.toast.until = time.Now().Add(-time.Second)
 	v.Tick(a)
-	if v.app.toast != nil || a.NotificationBusy() {
-		t.Fatal("expired notification or viewer state leaked")
+	if v.app.toast != nil || !a.NotificationBusy() {
+		t.Fatal("viewer expiry changed the server's independent lifetime")
+	}
+	a.toast.until = time.Now().Add(-time.Second)
+	if a.NotificationBusy() {
+		t.Fatal("expired server notification remains busy")
 	}
 }
 

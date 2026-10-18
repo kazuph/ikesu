@@ -1,8 +1,6 @@
 package vt
 
 import (
-	"io"
-
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -32,7 +30,7 @@ func (e *Emulator) ResizeWithReflow(width, height int, continued []ReflowRow) []
 	x, y := e.scr.CursorPosition()
 	e.setCursor(min(x, width-1), min(y, height-1))
 	if e.isModeSet(ansi.ModeInBandResize) {
-		_, _ = io.WriteString(e.pw, ansi.InBandResize(height, width, 0, 0))
+		e.reportResize()
 	}
 	return flags
 }
@@ -133,6 +131,7 @@ func (s *Screen) reflow(width, height int, continued []ReflowRow, phantom bool) 
 	for _, row := range physical[dropped:cut] {
 		s.scrollback.Push(row)
 	}
+	s.scrollRows = nil
 	s.buf = uv.NewRenderBuffer(width, height)
 	for y, row := range physical[cut:] {
 		copy(s.buf.Line(y), row)

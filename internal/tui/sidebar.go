@@ -210,3 +210,10 @@ func (a *App) reloadSidebarConfig() {
 func (a *App) SetWorkspaceTokenSource(source func(int) map[string]string) {
 	a.workspaceTokenSource = source
 }
+
+// CloseWorkspace returns the replacement-shell error when the last workspace must remain open.
+func (a *App) CloseWorkspace(index int) error {
+	a.lastSpawnError = nil
+	a.exec(model.CmdCloseWorkspace{Index: index})
+	return a.lastSpawnError
+}

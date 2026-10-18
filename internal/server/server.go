@@ -40,12 +40,17 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
-	Terminal     *endpoint.Terminal     `json:"terminal,omitempty"`
-	EndPrefix    bool                   `json:"end_prefix,omitempty"`
-	Notification *endpoint.Notification `json:"notification,omitempty"`
+	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
+	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
+	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
+	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
+	GraphicsResult        *endpoint.GraphicsTransmissionResult `json:"graphics_result,omitempty"`
+	EndPrefix             bool                                 `json:"end_prefix,omitempty"`
+	Notification          *endpoint.Notification               `json:"notification,omitempty"`
 	endpoint.Peer
 	Available      int                          `json:"available_generation,omitempty"`
 	Type           string                       `json:"type"`
+	Kind           string                       `json:"kind,omitempty"`
 	Data           string                       `json:"data,omitempty"`
 	Cols           int                          `json:"cols,omitempty"`
 	Rows           int                          `json:"rows,omitempty"`
@@ -69,23 +74,25 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
-	handoffMu         sync.Mutex
-	handedOff         bool
-	decisions         decisionHub
-	screenPrompts     screenPromptHub
-	plugins           *plugin.Engine
-	pluginEvents      bool
-	pluginPanes       map[int]pluginPaneOwner
-	agentLaunches     map[int]*agentLaunch
-	closing           atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
-	workspaceMetadata map[int]map[string]*workspaceMetadata
-	paneMetadata      map[int]*paneMetadata
-	reportSources     map[int]string
-	session           string
-	dir               string
-	version           string
-	endpointPeer      endpoint.Peer
-	cwd               string // cwd the session was started from
+	graphicsFiles       graphicsFileHub
+	graphicsStreamOwner atomic.Uint64
+	handoffMu           sync.Mutex
+	handedOff           bool
+	decisions           decisionHub
+	screenPrompts       screenPromptHub
+	plugins             *plugin.Engine
+	pluginEvents        bool
+	pluginPanes         map[int]pluginPaneOwner
+	agentLaunches       map[int]*agentLaunch
+	closing             atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
+	workspaceMetadata   map[int]map[string]*workspaceMetadata
+	paneMetadata        map[int]*paneMetadata
+	reportSources       map[int]string
+	session             string
+	dir                 string
+	version             string
+	endpointPeer        endpoint.Peer
+	cwd                 string // cwd the session was started from
 
 	lock     *os.File
 	apiLn    net.Listener
@@ -150,19 +157,22 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
-	terminal     *endpoint.Terminal
-	configEditor func(config.Edit, func(config.Config, error))
-	viewer       *tui.Viewer
-	available    int
-	conn         net.Conn
-	wmu          sync.Mutex
-	id           int
-	lastUse      uint64
-	once         sync.Once
-	render       chan clientWrite
-	control      chan clientWrite
-	done         chan struct{}
-	closed       bool
+	terminal       *endpoint.Terminal
+	directGraphics bool
+	directDisabled bool
+	graphics       *graphicsFlow
+	configEditor   func(config.Edit, func(config.Config, error))
+	viewer         *tui.Viewer
+	available      int
+	conn           net.Conn
+	wmu            sync.Mutex
+	id             int
+	lastUse        uint64
+	once           sync.Once
+	render         chan clientWrite
+	control        chan clientWrite
+	done           chan struct{}
+	closed         bool
 }
 
 var clientSequence atomic.Int64
@@ -172,8 +182,8 @@ func (c *clientConn) startWriter() {
 		if c.id == 0 {
 			c.id = int(clientSequence.Add(1))
 		}
-		c.render = make(chan clientWrite)
-		c.control = make(chan clientWrite)
+		c.render = make(chan clientWrite, 1)
+		c.control = make(chan clientWrite, 1)
 		c.done = make(chan struct{})
 		go runClientWriter(c.conn, c.id, c.render, c.control, c.done)
 	})
@@ -224,7 +234,7 @@ func (c *clientConn) close() {
 // Run starts the server for session and blocks until the app quits.
 // version is the build version reported by ping.
 func Run(session, version string) (int, error) {
-	return runEndpoint(session, version, endpoint.Current())
+	return runEndpoint(session, version, endpoint.GraphicsPeer())
 }
 
 func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handoffImport) (int, error) {
@@ -473,6 +483,9 @@ func (s *Server) cleanup() {
 		_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
 	}
 	s.lock.Close()
+	if s.graphicsFiles.source != nil {
+		s.graphicsFiles.source.close()
+	}
 }
 
 // hasClient reports whether a display client is attached.
@@ -592,6 +605,10 @@ func (s *Server) attach(conn net.Conn) {
 	}
 	c.available = available
 	c.terminal = hello.Terminal
+	c.directGraphics = hello.GraphicsFileTransport == endpoint.DirectKittyTransport
+	for _, method := range []string{endpoint.GraphicsFileMessage, endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage, endpoint.GraphicsRetiredMessage} {
+		c.directGraphics = c.directGraphics && endpoint.Allows(available, 1, hello.Methods, method) && endpoint.Allows(available, 1, s.endpointPeer.Methods, method)
+	}
 	s.mu.Lock()
 	if closing := s.closing.Load(); closing != 0 {
 		s.mu.Unlock()
@@ -649,22 +666,13 @@ func (s *Server) attach(conn net.Conn) {
 			}
 			c.configEditor(edit, done)
 		})
-		var snapshots endpoint.SnapshotEncoder
 		c.viewer.SetMachineRequester(func(action string) error {
 			if !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, "machine_menu") {
 				return fmt.Errorf("endpoint_action_unsupported: machine_menu")
 			}
 			return c.send(clientMsg{Type: "machine_menu", MachineAction: action})
 		})
-		c.viewer.SetSnapshotSink(func(in render.Input) error {
-			data, err := snapshots.Encode(in)
-			if err != nil {
-				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_snapshot_invalid: " + err.Error()})
-				s.dropConn(c)
-				return err
-			}
-			return c.send(clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender(), FocusEpoch: c.viewer.FocusEpoch()})
-		})
+		s.installGraphicsSnapshotSink(c, hello.Peer)
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
 	})
 	defer s.dropConn(c)
@@ -678,6 +686,10 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage:
+			s.app.Do(func() { s.graphicsTransmission(c, m) })
+		case "control":
+			s.app.Do(func() { s.graphicsControl(c, m) })
 		case "view_config":
 			if m.Preferences != nil && (m.Preferences.SidebarWidth < 1 || m.Preferences.SidebarSectionSplit != nil && (*m.Preferences.SidebarSectionSplit < .1 || *m.Preferences.SidebarSectionSplit > .9)) {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_preferences_invalid"})

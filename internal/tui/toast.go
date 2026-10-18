@@ -23,7 +23,6 @@ type toastView struct {
 	title, body, kind string
 	position          string
 	explicit          bool
-	dismissed         bool
 	target            int // pane id; <0 = no target
 	until             time.Time
 	showAt            time.Time
@@ -53,7 +52,6 @@ func (a *App) ShowToast(title, body, kind string, target int) {
 // DismissToast removes the visible toast. Call on the app loop.
 func (a *App) DismissToast() {
 	if a.toast != nil {
-		a.toast.dismissed = true
 		a.toast = nil
 		a.dirty = true
 	}
@@ -69,7 +67,7 @@ func (a *App) expireToast() {
 		return
 	}
 	now := time.Now()
-	if a.toast.dismissed || now.After(a.toast.until) {
+	if now.After(a.toast.until) {
 		a.toast = nil
 		a.dirty = true
 	} else if !a.toast.shown && !now.Before(a.toast.showAt) {
@@ -85,19 +83,21 @@ func (a *App) toastClick(x, y int) bool {
 	if a.toast == nil || a.toast.explicit || !pointIn(x, y, a.toastRect) {
 		return false
 	}
-	a.navToToastTarget()
-	a.DismissToast()
-	a.dirty = true
+	if !a.serverUI && a.toast.target < 0 {
+		a.DismissToast()
+		return true
+	}
+	a.openToastTarget()
 	return true
 }
 
-// openNotificationTarget preserves targetless explicit notifications, like clicks.
-func (a *App) openNotificationTarget() {
-	if a.toast != nil && a.toast.explicit && a.toast.target < 0 {
+func (a *App) openToastTarget() {
+	if !a.toastVisible() || a.toast.target < 0 {
 		return
 	}
 	a.navToToastTarget()
 	a.DismissToast()
+	a.dirty = true
 }
 
 // navToToastTarget switches workspace/tab/focus to the toast's pane.

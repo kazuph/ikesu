@@ -1,0 +1,14 @@
+send "python3 @FIXTURES@/tb_status_program.py\r"
+waittext 5s TB_STATUS_READY
+stats status-ready
+mark status-start
+send "u"
+waittext 5s TB_STATUS_FINISHED
+stats status-finished
+mark status-end
+send "q"
+waitfile @HOME@/tb-status.json 5s
+waittext 5s TB_STATUS_RECORDED
+stats status-recorded
+send "x"
+kill
