@@ -7,12 +7,12 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	if !s.PopupVisible() {
 		return
 	}
-	f.Graphics = nil
-	f.Placeholders = nil
 	r := s.PopupRect()
-	if r.W < 1 || r.H < 1 {
+	if r.W < 1 || r.H < 1 || r.W > f.W || r.H > f.H {
 		return
 	}
+	f.Graphics = nil
+	f.Placeholders = nil
 	bg := f.Palette.SurfDim
 	if in.ServerUI {
 		bg = f.Palette.PopupBG
@@ -31,10 +31,10 @@ func drawPopup(f *Frame, in Input, out *Output) {
 	if snap == nil || r.W < 3 || r.H < 3 {
 		return
 	}
-	x, y, w, h := r.X+1, r.Y+1, max(1, r.W-3), r.H-2
+	x, y, w, h := r.X+1, r.Y+1, max(4, r.W-3), r.H-2
 	f.CopyGrid(x, y, clipGrid(snap.Grid, w, h))
 	paneGraphics(f, pid, snap, x, y, w, h)
-	if r.W > 3 {
+	if w < r.W-2 {
 		f.Fill(r.X+r.W-2, y, 1, h, " ", uv.Style{Bg: bg})
 	}
 	if in.Sel != nil && in.Sel.Pane == pid {

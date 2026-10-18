@@ -199,8 +199,12 @@ func (a *App) draw() {
 	if a.sel != nil && a.sel.moved {
 		in.Sel = a.selRender()
 	}
-	if a.toast != nil && a.toast.shown {
-		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind, Position: a.sidebarConfig.UI.Toast.Herdr.Position}
+	if a.toast != nil && a.toast.shown && !a.toast.dismissed {
+		position := a.toast.position
+		if position == "" {
+			position = a.sidebarConfig.UI.Toast.Herdr.Position
+		}
+		in.Toast = &render.Toast{Title: a.toast.title, Body: a.toast.body, Kind: a.toast.kind, Position: position}
 	}
 	if a.help != nil {
 		in.Help = &render.HelpInput{Rows: a.helpRows(), Scroll: a.help.scroll}

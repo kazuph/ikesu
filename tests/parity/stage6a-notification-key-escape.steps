@@ -1,0 +1,10 @@
+send "python3 @FIXTURES@/stage6a_action.py notification-key-probe\r"
+waitfile @HOME@/notification-visible.json 15s
+send "\u001b"
+sleep 300ms
+screen @OUT@/after-key.txt
+cells @OUT@/after-key.json
+waitfile @HOME@/action-notification-key-probe-done.json 15s
+screen @OUT@/final.txt
+cells @OUT@/final.json
+kill

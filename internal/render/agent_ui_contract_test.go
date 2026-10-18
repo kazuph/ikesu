@@ -11,12 +11,12 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 )
 
-func TestG9ToastByteWidthOriginAndWarning(t *testing.T) {
+func TestG9ToastCellWidthOriginAndWarning(t *testing.T) {
 	for _, tc := range []struct {
 		title, body string
 		width       int
 	}{
-		{"title", "body", 11}, {"a", "a longer context", 22}, {"日本語", "本文", 15},
+		{"title", "body", 11}, {"a", "a longer context", 22}, {"日本語", "本文", 12},
 	} {
 		toast := &Toast{Title: tc.title, Body: tc.body}
 		view := layout.Rect{X: 7, Y: 9, W: 80, H: 25}

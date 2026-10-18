@@ -155,8 +155,7 @@ func (a *App) prefixKey(k uv.Key) {
 		a.focusHistoryStep(true)
 	case a.navKey != 0 && k.Code == a.navKey:
 		// [keys] open_notification_target (default prefix+o).
-		a.navToToastTarget()
-		a.toast = nil
+		a.openNotificationTarget()
 	case isCtrlB(k):
 		// C-b C-b sends C-b to the focused pane.
 		if pid := a.focusedPane(); pid >= 0 {
@@ -371,17 +370,44 @@ func (a *App) openCloseWorkspaceDialog(idx int) {
 			}
 		}
 	}
+	targets := a.closeWorkspaceTargets(idx)
+	title := "Close workspace?"
+	detail := ""
 	panes := ws.TabRef().Layout.PaneCount()
+	if len(targets) > 1 {
+		title = "Close worktree group?"
+		panes = 0
+		for _, id := range targets {
+			for _, other := range a.st.Workspaces {
+				if other.ID == id {
+					for _, tab := range other.Tabs {
+						panes += tab.Layout.PaneCount()
+					}
+				}
+			}
+		}
+		detail = fmt.Sprintf("%s — %d workspaces, %d panes", name, len(targets), panes)
+	}
 	noun := "panes"
 	if panes == 1 {
 		noun = "pane"
 	}
+	if detail == "" {
+		detail = fmt.Sprintf("%s — %d %s", name, panes, noun)
+	}
 	a.workspaceNavigate = false
 	a.navigateHint = false
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Close workspace?", Detail: fmt.Sprintf("%s — %d %s", name, panes, noun), Lines: []string{""}, Width: 64, DimPanesOnly: true, Confirm: "confirm", Cancel: "cancel"},
+		d: render.Dialog{Title: title, Detail: detail, Lines: []string{""}, Width: 64, DimPanesOnly: true, Confirm: "confirm", Cancel: "cancel"},
 		run: func(a *App) {
-			a.exec(model.CmdCloseWorkspace{Index: idx})
+			for i := len(a.st.Workspaces) - 1; i >= 0; i-- {
+				for _, id := range targets {
+					if a.st.Workspaces[i].ID == id {
+						a.exec(model.CmdCloseWorkspace{Index: i})
+						break
+					}
+				}
+			}
 		},
 		cancel: func(a *App) {
 			a.workspaceNavigate = true
@@ -437,6 +463,9 @@ func (a *App) dialogKey(k uv.Key) {
 		}
 		*d.input = string(runes)
 		d.d.Input, d.d.InputCursor = *d.input, len(runes)
+		if d.changed != nil {
+			d.changed()
+		}
 	}
 	a.dirty = true
 }

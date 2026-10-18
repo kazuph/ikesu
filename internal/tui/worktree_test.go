@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kazuph/goterrace/internal/api"
@@ -178,5 +179,83 @@ func TestWorktreeMoveBackToGroupAndFailureWithoutMutation(t *testing.T) {
 	unknown := "unregistered"
 	if _, e := a.OpenWorktree(api.WorktreeOpenParams{Cwd: &r, Branch: &unknown}); e == nil {
 		t.Fatal("unknown checkout silently substituted")
+	}
+}
+
+func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
+	teststate.Lock(t)
+	a, r := worktreeApp(t)
+	branch, err := exec.Command("git", "-C", r, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.newWorktreeDialog(0)
+	d := a.dialog
+	a.dialog = nil
+	d.run(a)
+	if a.dialog != d || a.dialog.d.Detail != "enter a branch name" || len(a.st.Workspaces) != 1 {
+		t.Fatal("empty form created worktree", a.dialog)
+	}
+	*d.input = strings.TrimSpace(string(branch))
+	a.dialog = nil
+	d.run(a)
+	if a.dialog != d || a.dialog.input == nil || !strings.Contains(a.dialog.d.Detail, "already used") || !strings.Contains(a.dialog.d.Checkout, "worktrees") {
+		t.Fatal("failed form lost input, path or Git error", a.dialog)
+	}
+}
+
+func TestStage6aWorktreePickerFiltersRealCheckouts(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "existing"
+	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+		t.Fatal(err)
+	}
+	a.openWorktreeMenu(0)
+	if !a.menu.m.Worktree || len(a.menu.m.Items) != 2 {
+		t.Fatal(a.menu)
+	}
+	a.menu.m.Filter = "exist"
+	a.filterWorktrees()
+	if len(a.menu.m.Items) != 1 || a.menu.m.Items[0].Label != "existing" || a.menu.m.Items[0].Status != "open" || a.menu.m.Items[0].Detail == "" {
+		t.Fatal(a.menu.m)
+	}
+}
+
+func TestStage6aWorktreeGroupConfirmationCountsAndClosesTargets(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "existing"
+	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+		t.Fatal(err)
+	}
+	child := a.st.Workspaces[1]
+	a.exec(model.CmdNewTab{Workspace: 1})
+	a.openCloseWorkspaceDialog(0)
+	if a.dialog.d.Title != "Close worktree group?" || !strings.Contains(a.dialog.d.Detail, "2 workspaces, 3 panes") {
+		t.Fatal(a.dialog.d)
+	}
+	d := a.dialog
+	a.dialog = nil
+	d.run(a)
+	if len(a.st.Workspaces) != 0 {
+		t.Fatal("group workspace remained", a.st.Workspaces)
+	}
+	if _, err := os.Stat(child.Cwd); err != nil {
+		t.Fatal("closing workspace deleted checkout", err)
+	}
+}
+
+func TestStage6aWorktreeDeletionExplainsRetainedBranch(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "existing"
+	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+		t.Fatal(err)
+	}
+	a.deleteWorktreeDialog(1, false)
+	text := strings.Join(a.dialog.d.Lines, "\n")
+	if !strings.Contains(text, a.st.Workspaces[1].Cwd) || !strings.Contains(text, "branch is not deleted") || !strings.Contains(text, "workspace will close") {
+		t.Fatal(a.dialog.d)
 	}
 }

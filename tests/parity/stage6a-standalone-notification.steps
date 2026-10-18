@@ -1,0 +1,6 @@
+send "python3 @FIXTURES@/stage6a_standalone_notification.py\r"
+waitfile @HOME@/standalone-notification.json 15s
+sleep 300ms
+screen @OUT@/standalone.txt
+cells @OUT@/standalone.json
+kill

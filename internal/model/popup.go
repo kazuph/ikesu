@@ -44,13 +44,13 @@ func (s *AppState) PopupRect() layout.Rect {
 		return layout.Rect{}
 	}
 	a := s.PanesArea()
-	size := func(value api.PopupSize, total int) int {
+	size := func(value api.PopupSize, total, minimum int) int {
 		if value.Percent > 0 {
-			return max(0, min(total, max(3, total*value.Percent/100)))
+			return max(minimum, min(total, total*value.Percent/100))
 		}
-		return max(0, min(total, max(3, value.Cells)))
+		return max(minimum, min(total, value.Cells))
 	}
-	w, h := size(s.Popup.Width, a.W), size(s.Popup.Height, a.H)
+	w, h := size(s.Popup.Width, a.W, 6), size(s.Popup.Height, a.H, 4)
 	return layout.Rect{X: a.X + (a.W-w)/2, Y: a.Y + (a.H-h)/2, W: w, H: h}
 }
 
@@ -71,7 +71,10 @@ func (s *AppState) openPopup(c CmdOpenPopup) []Effect {
 			s.Popups[s.Popup.WorkspaceID] = s.Popup
 		}
 	}
-	effects := s.closePopupPane(s.Popups[c.WorkspaceID])
+	if s.Popups[c.WorkspaceID] != nil {
+		return nil
+	}
+	var effects []Effect
 	s.nextRuntimePaneID = max(s.nextRuntimePaneID, s.nextPaneID) + 1
 	id := s.nextRuntimePaneID
 	s.Popup = &PopupPaneState{WorkspaceID: c.WorkspaceID, PaneID: id, TerminalID: fmt.Sprintf("p%d", id), Width: c.Width, Height: c.Height, Title: c.Title}
@@ -90,7 +93,12 @@ func (s *AppState) PopupByPane(id PaneID) *PopupPaneState {
 	}
 	return nil
 }
-func (s *AppState) closePopup() []Effect { return s.closePopupPane(s.Popup) }
+func (s *AppState) closePopup() []Effect {
+	if !s.PopupVisible() {
+		return nil
+	}
+	return s.closePopupPane(s.Popup)
+}
 func (s *AppState) closePopupPane(pop *PopupPaneState) []Effect {
 	if pop == nil {
 		return nil

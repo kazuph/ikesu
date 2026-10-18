@@ -40,6 +40,7 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	Terminal     *endpoint.Terminal     `json:"terminal,omitempty"`
 	EndPrefix    bool                   `json:"end_prefix,omitempty"`
 	Notification *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
@@ -116,11 +117,12 @@ type Server struct {
 	jobCache jobCache
 
 	// notifications (SPEC G4)
-	cfgError      string
-	cfg           config.Config
-	lastStatus    map[int]string               // last seen status key per pane
-	notifyLast    map[int]map[string]time.Time // pane → kind → last shown
-	lastAttention time.Time                    // last needs_attention anywhere
+	cfgError            string
+	cfg                 config.Config
+	lastStatus          map[int]string               // last seen status key per pane
+	notifyLast          map[int]map[string]time.Time // pane → kind → last shown
+	lastAttention       time.Time                    // last needs_attention anywhere
+	lastAPINotification time.Time                    // last successfully shown explicit notification
 
 	// session persistence & restart (SPEC G3/G5)
 	saveMu     sync.Mutex
@@ -148,6 +150,7 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	terminal     *endpoint.Terminal
 	configEditor func(config.Edit, func(config.Config, error))
 	viewer       *tui.Viewer
 	available    int
@@ -588,6 +591,7 @@ func (s *Server) attach(conn net.Conn) {
 		return
 	}
 	c.available = available
+	c.terminal = hello.Terminal
 	s.mu.Lock()
 	if closing := s.closing.Load(); closing != 0 {
 		s.mu.Unlock()

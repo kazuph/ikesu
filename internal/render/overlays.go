@@ -30,7 +30,11 @@ func MenuSize(m *Menu) (w, h int) {
 
 // MenuRect positions a menu inside (cols, rows).
 func MenuRect(m *Menu, cols, rows int) layout.Rect {
+	if m.Worktree {
+		return WorktreeMenuRect(m, cols, rows)
+	}
 	w, h := MenuSize(m)
+	w, h = min(w, max(0, cols)), min(h, max(0, rows))
 	x, y := m.X, m.Y
 	if x+w > cols {
 		x = cols - w
@@ -47,7 +51,26 @@ func MenuRect(m *Menu, cols, rows int) layout.Rect {
 	return layout.Rect{X: x, Y: y, W: w, H: h}
 }
 
+// MenuScroll keeps the selected item visible and preserves the viewport on mouse movement.
+func MenuScroll(m *Menu, rows int) int {
+	height := max(0, min(len(m.Items), rows-2))
+	offset := min(max(0, m.Scroll), max(0, len(m.Items)-height))
+	if m.Sel >= 0 && m.Sel < len(m.Items) {
+		if m.Sel < offset {
+			offset = m.Sel
+		}
+		if m.Sel >= offset+height {
+			offset = m.Sel - height + 1
+		}
+	}
+	return min(max(0, offset), max(0, len(m.Items)-height))
+}
+
 func drawMenu(f *Frame, m *Menu, out *Output) {
+	if m.Worktree {
+		drawWorktreeMenu(f, m, out)
+		return
+	}
 	r := MenuRect(m, f.W, f.H)
 	border := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)
@@ -56,18 +79,21 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
 	}
 	out.MenuRect = r
-	out.MenuItemRows = nil
-	for i, it := range m.Items {
-		if i >= ih {
+	out.MenuItemRows = make([]layout.Rect, len(m.Items))
+	m.Scroll = MenuScroll(m, f.H)
+	for i := m.Scroll; i < len(m.Items); i++ {
+		it := m.Items[i]
+		y := iy + i - m.Scroll
+		if y >= iy+ih {
 			break
 		}
-		row := layout.Rect{X: ix, Y: iy + i, W: iw, H: 1}
-		out.MenuItemRows = append(out.MenuItemRows, row)
+		row := layout.Rect{X: ix, Y: y, W: iw, H: 1}
+		out.MenuItemRows[i] = row
 		if it.Separator {
 			if m.Global {
-				f.Fill(ix, iy+i, iw, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
+				f.Fill(ix, y, iw, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
 			} else {
-				f.Text(ix+1, iy+i, " --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+				f.Text(ix+1, y, " --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
 			}
 			continue
 		}
@@ -75,24 +101,23 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		if i == m.Hover || i == m.Sel {
 			sty = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
 			if !m.Global {
-				f.Fill(ix, iy+i, iw, 1, " ", sty)
+				f.Fill(ix, y, iw, 1, " ", sty)
 			}
 		}
 		if it.Disabled {
 			sty = uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
 		}
 		if m.Global {
-			f.Text(ix, iy+i, " "+it.Label+" ", sty, ix+iw)
+			f.Text(ix, y, " "+it.Label+" ", sty, ix+iw)
 		} else {
-			f.Text(ix+1, iy+i, it.Label, sty, ix+iw-1)
+			f.Text(ix+1, y, it.Label, sty, ix+iw-1)
 		}
 	}
 }
 
 // --- toast ---
 
-// drawToast renders the notification box at the top-right: a 4-row-high
-// bordered box with the status dot + title and one body line.
+// drawToast renders the status title and an optional body inside the notification border.
 func drawToast(f *Frame, t *Toast, out *Output) {
 	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
 	out.ToastRect = r
@@ -100,22 +125,27 @@ func drawToast(f *Frame, t *Toast, out *Output) {
 	if t.Kind == "needs_attention" {
 		dot.Fg = f.Palette.Red
 	}
-	ix, iy, iw, _ := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
-	f.Fill(ix, iy, iw, 2, " ", uv.Style{Bg: f.Palette.PopupBG})
+	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Set(ix, iy, "●", dot)
 	f.Text(ix+2, iy, t.Title, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, ix+iw)
-	f.Text(ix, iy+1, "  "+t.Body, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+	if t.Body != "" && ih > 1 {
+		f.Text(ix, iy+1, "  "+t.Body, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)
+	}
 }
 
-// ToastRect anchors to the view rather than the terminal origin. Width is
-// intentionally UTF-8 bytes, as required by SPEC G9.
+// ToastRect uses terminal cell widths, including wide and combining characters.
 func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
-	w := min(max(len(t.Title), len(t.Body))+6, max(0, view.W))
+	w := min(max(ansi.StringWidth(t.Title), ansi.StringWidth(t.Body))+6, max(0, view.W))
 	y := view.Y
 	if warning.H > 0 {
 		y = max(y, warning.Y+warning.H)
 	}
-	h := min(4, max(0, view.Y+view.H-y))
+	height := 3
+	if t.Body != "" {
+		height = 4
+	}
+	h := min(height, max(0, view.Y+view.H-y))
 	x := view.X + view.W - w
 	switch t.Position {
 	case "top-center":
@@ -140,8 +170,8 @@ func ToastRect(t *Toast, view, warning layout.Rect) layout.Rect {
 func DialogRects(d *Dialog, area layout.Rect) (outer, cancel, confirm layout.Rect) {
 	cols, rows := area.W, area.H
 	if d.InputEdit {
-		w, h := min(56, cols), min(7, rows)
-		return layout.Rect{X: (cols - w) / 2, Y: (rows - h) / 2, W: w, H: h}, layout.Rect{}, layout.Rect{}
+		w, h := min(56, max(0, cols-4)), min(7, max(0, rows-2))
+		return layout.Rect{X: area.X + (cols-w)/2, Y: area.Y + (rows-h)/2, W: w, H: h}, layout.Rect{}, layout.Rect{}
 	}
 	w := len([]rune(d.Title)) + 4
 	if l := len([]rune(d.Detail)) + 4; l > w {
@@ -275,6 +305,10 @@ func HelpThumb(body, total, scroll int) (thumb, top int) {
 }
 
 func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
+	if d.WorktreeCreate {
+		drawWorktreeCreate(f, d, out)
+		return
+	}
 	if d.InputEdit {
 		drawNameInput(f, d, out)
 		return
@@ -312,13 +346,16 @@ var nameInputButtonLabels = [...]string{" ↵ save ", " ^c clear ", " esc cancel
 
 func NameInputButtons(r layout.Rect) [3]layout.Rect {
 	var buttons [3]layout.Rect
+	if r.W < 2 || r.H < 2 {
+		return buttons
+	}
 	width := 2 * (len(buttons) - 1)
 	for _, label := range nameInputButtonLabels {
 		width += ansi.StringWidth(label)
 	}
-	x := r.X + (r.W-width)/2
+	x := max(r.X+1, r.X+(r.W-width)/2)
 	for i, label := range nameInputButtonLabels {
-		buttons[i] = layout.Rect{X: x, Y: r.Y + 4, W: ansi.StringWidth(label), H: 1}
+		buttons[i] = layout.Rect{X: x, Y: min(r.Y+4, r.Y+r.H-2), W: max(0, min(ansi.StringWidth(label), r.X+r.W-1-x)), H: 1}
 		x += buttons[i].W + 2
 	}
 	return buttons
@@ -328,6 +365,11 @@ func drawNameInput(f *Frame, d *Dialog, out *Output) {
 	r, _, _ := DialogRects(d, layout.Rect{W: f.W, H: f.H})
 	f.Fill(r.X, r.Y, r.W, r.H, " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
+	out.DialogRect = r
+	if r.H < 7 {
+		out.AnchorVisible = false
+		return
+	}
 	title := strings.ToLower(d.Title)
 	if d.PreserveTitleCase {
 		title = d.Title

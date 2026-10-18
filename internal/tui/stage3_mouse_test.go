@@ -42,7 +42,7 @@ func TestStage3ViewerNotificationSurvivesRightClickAndExpires(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	v := a.NewViewer(io.Discard, 120, 35, nil)
-	v.ShowToast(a, "target", "body", "info", a.focusedPane())
+	a.ShowToast("target", "body", "info", a.focusedPane())
 	v.Draw(a, nil)
 	r := v.app.toastRect
 	if r.W == 0 || v.app.toast == nil {
@@ -54,7 +54,7 @@ func TestStage3ViewerNotificationSurvivesRightClickAndExpires(t *testing.T) {
 	}
 	v.app.toast.until = time.Now().Add(-time.Second)
 	v.Tick(a)
-	if v.app.toast != nil || a.toast != nil {
+	if v.app.toast != nil || a.NotificationBusy() {
 		t.Fatal("expired notification or viewer state leaked")
 	}
 }

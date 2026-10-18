@@ -91,6 +91,7 @@ const (
 type uiMenu struct {
 	machines      []machine.Profile
 	worktreePaths []string
+	worktreeItems []api.WorktreeInfo
 	m             render.Menu
 	kind          menuKind
 	pane          int // target pane (menuPane)
@@ -108,6 +109,7 @@ type uiDialog struct {
 	machineForm    bool
 	back           func()
 	replaceDefault bool
+	changed        func()
 	d              render.Dialog
 	run            func(a *App) // confirm action
 	cancel         func(a *App)
@@ -233,6 +235,7 @@ type App struct {
 	focusHistory                             []int
 	focusHistoryAt                           int
 	traversingHistory                        bool
+	toastSequence                            uint64
 	toast                                    *toastView
 	toastRect                                layout.Rect
 	menu                                     *uiMenu

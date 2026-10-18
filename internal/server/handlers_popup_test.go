@@ -18,6 +18,14 @@ func TestG2PopupCloseTwiceHiddenOwnerAndTerminalLookupSocket(t *testing.T) {
 	if opened.Type != "command_executed" || opened.Pane != nil || opened.PopupTerminalID == nil {
 		t.Fatal(opened)
 	}
+	duplicate := apiReq(t, dir, "pane.command.execute", map[string]any{"pane_id": pid, "command": "echo REPLACED", "action": "popup"})
+	if duplicate.Err == nil || duplicate.Err.Code != "command_failed" || duplicate.Err.Message != "popup already open" {
+		t.Fatal(duplicate)
+	}
+	var owner struct {
+		Pane api.PaneInfo `json:"pane"`
+	}
+	apiOK(t, dir, "pane.get", api.PaneTarget{PaneID: pid}, &owner)
 	target := api.PopupTarget{TerminalID: *opened.PopupTerminalID}
 	var info api.PopupTerminalResult
 	apiOK(t, dir, "popup.get", target, &info)
@@ -34,6 +42,12 @@ func TestG2PopupCloseTwiceHiddenOwnerAndTerminalLookupSocket(t *testing.T) {
 	if info.Scroll.OffsetFromBottom != 0 {
 		t.Fatal(info)
 	}
+	hidden := apiReq(t, dir, "popup.close", api.EmptyParams{})
+	if hidden.Err == nil || hidden.Err.Code != "popup_not_open" {
+		t.Fatal("hidden owner close accepted", hidden)
+	}
+	apiOK(t, dir, "popup.get", target, &info)
+	apiOK(t, dir, "workspace.focus", api.WorkspaceTarget{WorkspaceID: owner.Pane.WorkspaceID}, nil)
 	apiOK(t, dir, "popup.close", api.EmptyParams{}, nil)
 	for _, method := range []string{"popup.close", "popup.get"} {
 		params := any(api.EmptyParams{})

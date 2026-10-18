@@ -145,7 +145,7 @@ func prepareRemapAction(t *testing.T, a *App, name string) func() bool {
 	case "open_worktree":
 		return func() bool { return a.menu != nil && len(a.menu.m.Items) > 0 }
 	case "remove_worktree":
-		return dialog("Delete worktree checkout")
+		return dialog("delete worktree checkout")
 	case "rename_workspace":
 		return dialog("Rename workspace")
 	case "close_workspace":

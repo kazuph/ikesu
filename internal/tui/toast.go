@@ -14,10 +14,16 @@ const toastTTL = 10 * time.Second
 const serverAgentToastDelay = time.Second
 const serverAgentToastTTL = 8 * time.Second
 
+// notification.show lasts 3s in the real stage6a toast-lifecycle cell clock.
+const explicitNotificationToastTTL = 3 * time.Second
+
 // toastView is one visible notification (SPEC G4): status dot + title,
 // body line, and an optional target pane for click/prefix+o navigation.
 type toastView struct {
 	title, body, kind string
+	position          string
+	explicit          bool
+	dismissed         bool
 	target            int // pane id; <0 = no target
 	until             time.Time
 	showAt            time.Time
@@ -27,6 +33,7 @@ type toastView struct {
 // ShowToast displays a notification box. Call on the app loop.
 func (a *App) ShowToast(title, body, kind string, target int) {
 	now := time.Now()
+	a.toastSequence++
 	a.toast = &toastView{
 		title: title, body: body, kind: kind,
 		target: target, until: now.Add(toastTTL), shown: true,
@@ -46,6 +53,7 @@ func (a *App) ShowToast(title, body, kind string, target int) {
 // DismissToast removes the visible toast. Call on the app loop.
 func (a *App) DismissToast() {
 	if a.toast != nil {
+		a.toast.dismissed = true
 		a.toast = nil
 		a.dirty = true
 	}
@@ -61,7 +69,7 @@ func (a *App) expireToast() {
 		return
 	}
 	now := time.Now()
-	if now.After(a.toast.until) {
+	if a.toast.dismissed || now.After(a.toast.until) {
 		a.toast = nil
 		a.dirty = true
 	} else if !a.toast.shown && !now.Before(a.toast.showAt) {
@@ -74,13 +82,22 @@ func (a *App) expireToast() {
 // we navigate to the toast target and dismiss. Returns true when the
 // click was consumed.
 func (a *App) toastClick(x, y int) bool {
-	if a.toast == nil || !pointIn(x, y, a.toastRect) {
+	if a.toast == nil || a.toast.explicit || !pointIn(x, y, a.toastRect) {
 		return false
 	}
 	a.navToToastTarget()
-	a.toast = nil
+	a.DismissToast()
 	a.dirty = true
 	return true
+}
+
+// openNotificationTarget preserves targetless explicit notifications, like clicks.
+func (a *App) openNotificationTarget() {
+	if a.toast != nil && a.toast.explicit && a.toast.target < 0 {
+		return
+	}
+	a.navToToastTarget()
+	a.DismissToast()
 }
 
 // navToToastTarget switches workspace/tab/focus to the toast's pane.
@@ -100,4 +117,21 @@ func (a *App) navToToastTarget() {
 		a.exec(model.CmdSelectTab{Workspace: wsIdx, Tab: tabIdx})
 	}
 	a.exec(model.CmdFocusPane{Pane: model.PaneID(a.toast.target)})
+}
+
+// ShowNotification preserves an existing toast instead of replacing it.
+func (a *App) NotificationBusy() bool {
+	a.expireToast()
+	return a.toast != nil
+}
+
+func (a *App) ShowNotification(title, body, position string) bool {
+	if a.NotificationBusy() {
+		return false
+	}
+	a.ShowToast(title, body, "info", -1)
+	a.toast.position = position
+	a.toast.explicit = true
+	a.toast.until = time.Now().Add(explicitNotificationToastTTL)
+	return true
 }

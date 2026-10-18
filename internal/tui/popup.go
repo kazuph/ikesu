@@ -16,8 +16,8 @@ import (
 const popupDefaultPercent = 80
 
 func popupInner(r layout.Rect) layout.Rect {
-	// The observed popup leaves one inner column outside the terminal grid.
-	return layout.Rect{X: r.X + 1, Y: r.Y + 1, W: max(1, r.W-3), H: max(1, r.H-2)}
+	// Normal popups reserve a right gutter; the smallest observed PTY is four columns.
+	return layout.Rect{X: r.X + 1, Y: r.Y + 1, W: max(4, r.W-3), H: max(2, r.H-2)}
 }
 
 func (a *App) OpenPopup(cwd, command string, width, height *api.PopupSize) (string, error) {
@@ -34,6 +34,9 @@ func (a *App) OpenPluginPopup(cwd string, argv []string, env map[string]string, 
 	w := a.st.ActiveWorkspace()
 	if w == nil {
 		return "", fmt.Errorf("no active workspace")
+	}
+	if a.st.PopupVisible() {
+		return "", fmt.Errorf("popup already open")
 	}
 	dimension := func(size *api.PopupSize) api.PopupSize {
 		if size != nil {
