@@ -60,6 +60,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	clientVersion   string
 	nativeTransfer  *nativeViewerTransfer
 	fileGraphics    graphicsFileReceiver
 	mouse           hostMouseState
@@ -114,7 +115,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		return pumpDone
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &machineClient{session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
+	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
