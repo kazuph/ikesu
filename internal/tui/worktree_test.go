@@ -199,7 +199,9 @@ func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
 	*d.input = strings.TrimSpace(string(branch))
 	a.dialog = nil
 	d.run(a)
-	if a.dialog != d || a.dialog.input == nil || !strings.Contains(a.dialog.d.Detail, "already used") || !strings.Contains(a.dialog.d.Checkout, "worktrees") {
+	// Git 2.42+ says "already used by worktree"; older Git says "already checked out".
+	gitErr := strings.Contains(a.dialog.d.Detail, "already used") || strings.Contains(a.dialog.d.Detail, "already checked out")
+	if a.dialog != d || a.dialog.input == nil || !gitErr || !strings.Contains(a.dialog.d.Checkout, "worktrees") {
 		t.Fatal("failed form lost input, path or Git error", a.dialog)
 	}
 }
