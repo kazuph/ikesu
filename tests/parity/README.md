@@ -9,7 +9,7 @@ navigatorだけは競合する`prefix+g`を避けてgotoを`prefix+o`に置く�
 `stage6b_paste_recorder.py`は実shell-PTYへ届いた入力を記録する。
 `python3 tests/parity/stage6b_gate.py 出力先`が選択行・検索条件・保存値・背後への配送を検査する。
 `sh tests/parity/gate-stage6b.sh 出力先`は整形・vet・全test・raceのログを残す。
-性能は`stage6b_perf_launch.py 8236d5fのgit-archive.tar`でminiの負荷を確認し、
+性能は`stage6b_perf_launch.py 4d337f7のgit-archive.tar`でminiの負荷を確認し、
 4未満ならmini、それ以外ならubuntu-3090でperf-lock.py経由の相対検査を行う。
 実クリップボードを使用した非空テキストのCmd/Ctrl+V挿入はこのsandbox観察では証明しない。
 private-fileの依存注入テストと、sandbox下でのキー漏出検査は別の証拠として扱う。
@@ -280,3 +280,13 @@ miniの負荷が4以上のときに認められたubuntu-3090での相対P1は�
 `sh tests/parity/stage5_perf.sh <ルート>` を実行する。
 両方を同じGoと引数でビルドし、固定の `perf-lock.py` 経由で既存の `TestRelative` を実行する。
 絶対P1はこの段階の判定に含めない。
+
+段階6bのFIX-1は `stage6b_fix_cases.py 出力先` で手順を生成し、
+`stage6b_observe.sh 観察先 出力先/fix1-fold.steps 出力先/fix1-keys.steps` をminiで実行する。
+`PARITY_CONTROLLER_SESSION_ID` に制御中の実セッションIDを設定する。
+`stage6b_fix_gate.py 観察先` は折り畳みからの検索・状態条件・解除時の記号と行数、
+実APIで取得した選択後のペインID、通常/検索中/修飾キー付きの選択先を数値・文字で検査する。
+`stage6b_clipboard_session.swift` と `stage6b_ssh_clipboard_probe.py` の直接起動も、
+入口と同じminiホスト名・GUIユーザー・GUIセッション確認に通るまでpasteboardへアクセスしない。
+メインMacの拒否検査は引数なしの直接実行でSTOPとなることを確認し、miniの成功検査は
+既存の全形式保存・復元のラッパー内で実施する。元pasteboardのデータは回収・公開しない。
