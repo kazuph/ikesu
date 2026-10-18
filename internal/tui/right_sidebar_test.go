@@ -160,3 +160,17 @@ func TestRightSidebarDefaultAndCustomKeyAndDividerCells(t *testing.T) {
 		t.Fatal("left divider changed right")
 	}
 }
+
+func TestRightSidebarLeftCompactLastRowStillSelectsWorkspace(t *testing.T) {
+	root := t.TempDir()
+	s := model.New(root, 160, 4)
+	for i := 1; i < 4; i++ {
+		s.Apply(model.CmdNewWorkspace{Cwd: root, NoFocus: true})
+	}
+	a := NewApp(s, runtime.NewSupervisor(), &bytes.Buffer{}, root)
+	a.exec(model.CmdToggleSidebar{})
+	sidebarEvent(a, input.KindMouseClick, 0, 3)
+	if s.Active != 3 || s.SidebarArea().W != 2 {
+		t.Fatal("bottom status cell was intercepted by obsolete expand button")
+	}
+}

@@ -19,7 +19,7 @@ func (a *App) sidebarClick(m uv.Mouse) {
 		return
 	}
 	s := a.st
-	if !a.serverUI && pointIn(m.X, m.Y, render.SidebarToggleRect(s)) {
+	if s.SidebarVisible && !a.serverUI && pointIn(m.X, m.Y, render.SidebarToggleRect(s)) {
 		a.exec(model.CmdToggleSidebar{})
 		return
 	}
