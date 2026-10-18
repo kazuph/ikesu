@@ -53,6 +53,13 @@ class CloseWorkspace:
 
             proof['after'] = self.request('workspace.list', {})
             current = proof['after']['result']['workspaces']
+            proof['replacement_observations'] = [proof['after']]
+            while not current and not self.failure:
+                if self.stop.wait(.02) or time.monotonic()>deadline:
+                    raise RuntimeError('replacement workspace did not appear')
+                proof['after'] = self.request('workspace.list', {})
+                proof['replacement_observations'].append(proof['after'])
+                current = proof['after']['result']['workspaces']
             proof['panes'] = self.request('pane.list', {'workspace_id':current[0]['workspace_id']}) if current else None
         except Exception as error:
             self.error = str(error); proof['error'] = self.error
