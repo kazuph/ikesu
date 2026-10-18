@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"testing"
 )
@@ -172,5 +173,71 @@ func TestRightSidebarLeftCompactLastRowStillSelectsWorkspace(t *testing.T) {
 	sidebarEvent(a, input.KindMouseClick, 0, 3)
 	if s.Active != 3 || s.SidebarArea().W != 2 {
 		t.Fatal("bottom status cell was intercepted by obsolete expand button")
+	}
+}
+
+func TestRightSidebarCompactScrollAndJobCallerActualPTY(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		a := specRuntimeApp(t)
+		a.st.Cols, a.st.Rows = 160, 8
+		if server {
+			a.SetServerUI()
+		}
+		if err := a.StartInitialPane(); err != nil {
+			t.Fatal(err)
+		}
+		for i := 1; i < 12; i++ {
+			a.exec(model.CmdNewWorkspace{Cwd: a.cwd, NoFocus: true})
+		}
+		for _, ws := range a.st.Workspaces {
+			a.SetReported(ws.TabRef().Layout.Focused(), "codex", "idle")
+		}
+		a.st.RightSidebarMode = "compact"
+		a.st.AgentScope = "all"
+		a.jobRows = []render.JobRow{{Label: "first", CallerPane: "p2"}, {Label: "second", CallerPane: "p1"}}
+		x := a.st.RightSidebarArea().X + 1
+		a.wheel(uv.Mouse{X: x, Y: 0, Button: uv.MouseWheelDown})
+		sidebarEvent(a, input.KindMouseClick, x, 0)
+		if a.agentScroll != 1 || a.focusedPane() != 2 {
+			t.Fatal("compact scroll click missed the next agent")
+		}
+		for i := 0; i < 20; i++ {
+			a.wheel(uv.Mouse{X: x, Y: 0, Button: uv.MouseWheelDown})
+		}
+		sidebarEvent(a, input.KindMouseClick, x, 7)
+		if a.focusedPane() != 1 || a.st.Active != 0 {
+			t.Fatal("compact job click did not focus its caller")
+		}
+		a.st.SidebarVisible = false
+		a.sidebarScroll = 0
+		a.wheel(uv.Mouse{X: 0, Y: 0, Button: uv.MouseWheelDown})
+		sidebarEvent(a, input.KindMouseClick, 0, 0)
+		if a.sidebarScroll != 3 || a.st.Active != 3 {
+			t.Fatal("left compact scroll click missed workspace")
+		}
+	}
+}
+
+func TestRightSidebarWidthConfigurationIsIndependent(t *testing.T) {
+	c, err := config.Decode([]byte("[ui]\nsidebar_width=30\nright_sidebar_width=42\n"))
+	if err != nil || len(c.Warnings) > 0 {
+		t.Fatal(c.Warnings, err)
+	}
+	root := t.TempDir()
+	a := NewApp(model.New(root, 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, root)
+	a.SetSidebarConfig(c, true)
+	if a.st.SidebarArea().W != 30 || a.st.RightSidebarArea().W != 42 {
+		t.Fatal("configured widths lost independence")
+	}
+	a.exec(model.CmdToggleRightSidebar{})
+	a.exec(model.CmdToggleRightSidebar{})
+	a.exec(model.CmdToggleRightSidebar{})
+	if a.st.RightSidebarArea().W != 42 {
+		t.Fatal("open did not restore configured right width")
+	}
+	c.UI.RightSidebarWidth = nil
+	a.SetSidebarConfig(c, false)
+	if a.st.RightSidebarArea().W != 30 {
+		t.Fatal("missing right width must use left width")
 	}
 }
