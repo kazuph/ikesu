@@ -25,6 +25,7 @@ const (
 )
 
 var binPath string
+var keepFailedE2EState = os.Getenv("GTX_E2E_KEEP_FAILED") == "1"
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "gtx-e2e")
@@ -94,7 +95,7 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 		t.Fatalf("state dir: %v", err)
 	}
 	t.Cleanup(func() {
-		if t.Failed() && os.Getenv("GTX_E2E_KEEP_FAILED") == "1" {
+		if t.Failed() && keepFailedE2EState {
 			t.Logf("preserved failed E2E state: %s", stateDir)
 			return
 		}
