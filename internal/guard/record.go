@@ -45,6 +45,9 @@ func ReadMarker(i Input) (Marker, bool, error) {
 	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || !filepath.IsAbs(m.Socket) || !filepath.IsAbs(m.Cwd) {
 		return m, true, fmt.Errorf("目印ファイルの画面・エージェント・接続先が不正です")
 	}
+	if m.Policy == nil {
+		return m, true, fmt.Errorf("目印にサーバーのガード設定がありません")
+	}
 	return m, true, nil
 }
 func Log(root string, i Input, m Marker, v Verdict, via string) error {

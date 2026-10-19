@@ -36,9 +36,6 @@ func Authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	return authorize(c, root, i, via, errOut, await, nil)
 }
 func authorize(c Config, root string, i Input, via string, errOut io.Writer, await Await, override *Verdict) bool {
-	if !c.Active() {
-		return true
-	}
 	m, active, e := ReadMarker(i)
 	if e != nil {
 		fmt.Fprintln(errOut, "❌ 実行を停止しました:", e)
@@ -48,6 +45,10 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		return false
 	}
 	if !active {
+		return true
+	}
+	c = *m.Policy
+	if !c.Active() {
 		return true
 	}
 	i.LaunchCwd = m.Cwd

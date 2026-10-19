@@ -11,13 +11,14 @@ import (
 )
 
 type Marker struct {
-	Pane      string `json:"pane_id"`
-	Agent     string `json:"agent"`
-	Cwd       string `json:"launch_cwd"`
-	Workspace string `json:"workspace_id"`
-	Tab       string `json:"tab_id"`
-	Socket    string `json:"socket"`
-	Mode      string `json:"mode"`
+	Pane      string  `json:"pane_id"`
+	Agent     string  `json:"agent"`
+	Cwd       string  `json:"launch_cwd"`
+	Workspace string  `json:"workspace_id"`
+	Tab       string  `json:"tab_id"`
+	Socket    string  `json:"socket"`
+	Mode      string  `json:"mode"`
+	Policy    *Config `json:"guard_config,omitempty"`
 }
 type Assets struct {
 	mu                                      sync.Mutex
@@ -178,7 +179,8 @@ func (a *Assets) sync(agent string) error {
 			return a.setIssue(e.Error())
 		}
 	}
-	a.meta.Agent, a.meta.Mode = agent, a.Config.EffectiveMode()
+	policy := a.Config
+	a.meta.Agent, a.meta.Mode, a.meta.Policy = agent, a.Config.EffectiveMode(), &policy
 	b, e := json.Marshal(a.meta)
 	if e != nil {
 		return a.setIssue(e.Error())

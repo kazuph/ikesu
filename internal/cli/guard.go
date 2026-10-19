@@ -19,10 +19,14 @@ func (r *runner) guardCLI(a []string) int {
 	}
 	sub := a[0]
 	a = a[1:]
-	c, e := config.Load()
-	if e != nil {
-		fmt.Fprintln(r.errOut(), e)
-		return 1
+	var c config.Config
+	var e error
+	if (sub != "exec" && sub != "line") || os.Getenv("GTX_GUARD_MARKER") == "" {
+		c, e = config.Load()
+		if e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
 	}
 	root := api.StateDir()
 	cwd, _ := os.Getwd()

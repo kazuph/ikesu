@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 )
 
@@ -38,7 +39,7 @@ func (a *Assets) coverageReason() string {
 func (a *Assets) intact() bool {
 	b, e := os.ReadFile(a.MarkerPath)
 	var marker Marker
-	if e != nil || json.Unmarshal(b, &marker) != nil || marker != a.meta || marker.Agent != a.active || marker.Mode != a.Config.EffectiveMode() {
+	if e != nil || json.Unmarshal(b, &marker) != nil || !reflect.DeepEqual(marker, a.meta) || !reflect.DeepEqual(marker.Policy, &a.Config) || marker.Agent != a.active || marker.Mode != a.Config.EffectiveMode() {
 		return false
 	}
 	for _, cmd := range a.Config.Commands() {

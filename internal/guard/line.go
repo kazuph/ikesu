@@ -15,16 +15,18 @@ func LineInput(i Input, line string) (Input, error) {
 	return i, err
 }
 func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer, await Await) bool {
-	if !c.Active() {
-		return true
-	}
-	_, active, e := ReadMarker(i)
+	m, active, e := ReadMarker(i)
 	if e != nil {
 		return authorize(c, root, i, "line", errOut, await, nil)
 	}
 	if !active {
 		return true
 	}
+	c = *m.Policy
+	if !c.Active() {
+		return true
+	}
+	i.LaunchCwd = m.Cwd
 	i, verdict, parseErr := lineVerdict(c, i, line)
 	if parseErr != nil {
 		fmt.Fprintln(errOut, parseErr)
