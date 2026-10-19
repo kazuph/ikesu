@@ -44,12 +44,18 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
-	RawLine   string            `json:"-"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args"`
-	Cwd       string            `json:"cwd"`
-	LaunchCwd string            `json:"launch_cwd"`
-	Env       map[string]string `json:"-"`
+	CwdUncertain     bool              `json:"-"`
+	AuthorizationEnv map[string]string `json:"-"`
+	GuardCommands    []string          `json:"-"`
+	GuardRoot        string            `json:"-"`
+	ShellEnvChanged  bool              `json:"-"`
+	Unresolved       bool              `json:"-"`
+	RawLine          string            `json:"-"`
+	Command          string            `json:"command"`
+	Args             []string          `json:"args"`
+	Cwd              string            `json:"cwd"`
+	LaunchCwd        string            `json:"launch_cwd"`
+	Env              map[string]string `json:"-"`
 }
 type Verdict struct {
 	Decision   string `json:"verdict"`
@@ -101,6 +107,7 @@ func arg(a []string, n int) string {
 }
 func result(d, r, s string) Verdict { return Verdict{Decision: d, Rule: r, Reason: s} }
 func Evaluate(c Config, i Input) Verdict {
+	i.GuardCommands = c.Commands()
 	v := classify(c, i)
 	v.DayKey = "day:" + physical(i.Cwd)
 	v.TempKey = temporaryKey(c, i)
@@ -126,6 +133,9 @@ func classify(c Config, i Input) Verdict {
 	}
 	if has([]string{"gtx", "herdr"}, cmd) && wildcard(a) {
 		return result("block", "wildcard", "宛先 '*' は --room を付けても room 内に限定されず、全agentへ一斉配信されます。これは承認では解除できません。")
+	}
+	if reason := commandBoundary(i); reason != "" {
+		return result("ask", "guard-boundary", reason)
 	}
 	if cmd == "git" {
 		switch arg(a, 0) {

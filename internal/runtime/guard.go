@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"github.com/kazuph/goterrace/internal/guard"
 	"sort"
 	"strings"
@@ -85,4 +86,30 @@ func cleanEnv(env []string) []string {
 		out = append(out, kv)
 	}
 	return out
+}
+
+func (s *Supervisor) RebindGuardSocket(socket string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	type changed struct {
+		assets *guard.Assets
+		socket string
+	}
+	var done []changed
+	for _, p := range s.panes {
+		if p.guard == nil {
+			continue
+		}
+		old := p.guard.Transfer().Meta.Socket
+		if err := p.guard.RebindSocket(socket); err != nil {
+			for _, change := range done {
+				if rollback := change.assets.RebindSocket(change.socket); rollback != nil {
+					err = fmt.Errorf("%w; 目印の復元失敗: %v", err, rollback)
+				}
+			}
+			return err
+		}
+		done = append(done, changed{p.guard, old})
+	}
+	return nil
 }

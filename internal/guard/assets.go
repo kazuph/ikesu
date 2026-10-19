@@ -11,13 +11,14 @@ import (
 )
 
 type Marker struct {
-	Pane      string `json:"pane_id"`
-	Agent     string `json:"agent"`
-	Cwd       string `json:"launch_cwd"`
-	Workspace string `json:"workspace_id"`
-	Tab       string `json:"tab_id"`
-	Socket    string `json:"socket"`
-	Mode      string `json:"mode"`
+	Pane      string  `json:"pane_id"`
+	Agent     string  `json:"agent"`
+	Cwd       string  `json:"launch_cwd"`
+	Workspace string  `json:"workspace_id"`
+	Tab       string  `json:"tab_id"`
+	Socket    string  `json:"socket"`
+	Mode      string  `json:"mode"`
+	Policy    *Config `json:"-"`
 }
 type Assets struct {
 	mu                                      sync.Mutex
@@ -83,40 +84,64 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 
 	return environment(m), nil
 }
-func (a *Assets) shellFunctions() string {
-	var b strings.Builder
-	for _, cmd := range a.Config.Commands() {
-		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
-%s() { if [[ -f "$GTX_GUARD_MARKER" ]]; then %s guard exec --via shell-func -- %s "$@"; else builtin command %s "$@"; fi; }
-fi
-`, quote(cmd), quote(cmd), cmd, quote(a.Executable), quote(cmd), quote(cmd))
-	}
+
+// Pin identity at the generated entry point, before the CLI sees the caller's
+// environment. The socket remains in the marker so handoff can replace it.
+func (a *Assets) identity() string {
+	return "GTX_GUARD_MARKER=" + quote(a.MarkerPath) + " GTX_PANE_ID=" + quote(a.meta.Pane)
+}
+func (a *Assets) invocation() string {
+	return a.identity() + " " + quote(a.Executable)
+}
+func (a *Assets) shellActive() string {
 	if len(a.Config.Commands()) == 0 {
-		return b.String()
+		return "-e " + quote(a.MarkerPath)
 	}
-	fmt.Fprintf(&b, `if ! typeset -f command >/dev/null 2>&1 && ! alias command >/dev/null 2>&1; then
-command() {
- if [[ -f "$GTX_GUARD_MARKER" && "${1:-}" != -* ]]; then
- case "${1:-}" in %s) %s guard exec --via shell-func -- "$@"; return $?;; esac
+	return "-e " + quote(a.MarkerPath) + " || -e " + quote(filepath.Join(a.Bin, a.Config.Commands()[0]))
+}
+func (a *Assets) shellFunctions() string {
+	if len(a.Config.Commands()) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `_gtx_guard_forward() {
+ if [[ %s ]]; then %s guard exec --via shell-func -- "$@"; else builtin command "$@"; fi
+}
+_gtx_guard_command() {
+ if [[ "${1:-}" != -* ]]; then
+ case "${1:-}" in %s) _gtx_guard_forward "$@"; return $?;; esac
  fi
  builtin command "$@"
 }
+`, a.shellActive(), a.invocation(), strings.Join(a.Config.Commands(), "|"))
+	for _, cmd := range a.Config.Commands() {
+		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
+%s() { _gtx_guard_forward %s "$@"; }
 fi
-`, strings.Join(a.Config.Commands(), "|"), quote(a.Executable))
+`, quote(cmd), quote(cmd), cmd, quote(cmd))
+	}
+	if len(a.Config.Commands()) > 0 {
+		b.WriteString(`if ! typeset -f command >/dev/null 2>&1 && ! alias command >/dev/null 2>&1; then
+command() { _gtx_guard_command "$@"; }
+fi
+`)
+	}
 	return b.String()
 }
 
-const zshLineHook = `
+func (a *Assets) lineHook() string {
+	return fmt.Sprintf(`
 if [[ -o interactive ]]; then
  _gtx_guard_accept_line() {
-  if [[ -f "$GTX_GUARD_MARKER" ]]; then
-   "$GTX_GUARD_EXECUTABLE" guard line -- "$BUFFER" || { zle redisplay; return 0; }
+  if [[ %s ]]; then
+   %s guard line -- "$BUFFER" || { zle redisplay; return 0; }
   fi
   zle .accept-line
  }
  if ! zle -l accept-line >/dev/null 2>&1; then zle -N accept-line _gtx_guard_accept_line; fi
 fi
-`
+`, a.shellActive(), a.invocation())
+}
 
 func (a *Assets) Sync(agent string) error {
 	a.mu.Lock()
@@ -148,14 +173,18 @@ func (a *Assets) sync(agent string) error {
 	// Publish only after all forwarding entries exist. Repair deleted assets
 	// even when the detected agent has not changed.
 	for _, cmd := range a.Config.Commands() {
-		s := "#!/bin/sh\nexec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
+		s := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
 		if e := os.WriteFile(filepath.Join(a.Bin, cmd), []byte(s), 0700); e != nil {
 			_ = a.remove()
 			return a.setIssue(e.Error())
 		}
 	}
-	a.meta.Agent, a.meta.Mode = agent, a.Config.EffectiveMode()
-	b, e := json.Marshal(a.meta)
+	policy := a.Config
+	a.meta.Agent, a.meta.Mode, a.meta.Policy = agent, a.Config.EffectiveMode(), &policy
+	b, e := json.Marshal(struct {
+		Marker
+		Policy *Config `json:"guard_config"`
+	}{a.meta, &policy})
 	if e != nil {
 		return a.setIssue(e.Error())
 	}

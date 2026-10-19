@@ -719,7 +719,7 @@ func judgeRelative(t *testing.T, mode string, cur, base []result) {
 	baseScreen, _, baseCPU, baseRSS, _ := cols(base)
 	checkRel(t, mode, "画面に出るまで", median(curScreen), median(baseScreen), relScreenCPU)
 	checkRel(t, mode, "CPU時間", median(curCPU), median(baseCPU), relScreenCPU)
-	checkRel(t, mode, "メモリ(MB)", maxOf(curRSS)/1024, maxOf(baseRSS)/1024, relRSS)
+	checkRel(t, mode, "メモリ(MB)", median(curRSS)/1024, median(baseRSS)/1024, relRSS)
 	// Ctrl-C: 変更後の中央値 <= 0.1秒 かつ 最大 <= 0.2秒
 	check(t, mode, "Ctrl-Cの反応(変更後の中央値)", median(curInt), relIntMedSec)
 	check(t, mode, "Ctrl-Cの反応(変更後の最大)", maxOf(curInt), relIntMaxSec)

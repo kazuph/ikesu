@@ -2,6 +2,7 @@ package guard
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
 	"golang.org/x/sys/unix"
 	"os"
@@ -34,18 +35,18 @@ func ReadMarker(i Input) (Marker, bool, error) {
 		return Marker{}, false, nil
 	}
 	b, e := os.ReadFile(p)
-	if os.IsNotExist(e) {
-		return Marker{}, false, nil
-	}
 	if e != nil {
-		return Marker{}, false, e
+		return Marker{Pane: i.Env["GTX_PANE_ID"]}, true, fmt.Errorf("目印ファイルを読めません: %w", e)
 	}
-	var m Marker
-	if e = json.Unmarshal(b, &m); e != nil {
-		return m, false, e
+	m, e := decodeMarker(b)
+	if e != nil {
+		return m, true, fmt.Errorf("目印ファイルが壊れています: %w", e)
 	}
-	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || m.Socket != i.Env["GTX_SOCKET_PATH"] {
-		return m, false, nil
+	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || !filepath.IsAbs(m.Socket) || !filepath.IsAbs(m.Cwd) {
+		return m, true, fmt.Errorf("目印ファイルの画面・エージェント・接続先が不正です")
+	}
+	if m.Policy == nil {
+		return m, true, fmt.Errorf("目印にサーバーのガード設定がありません")
 	}
 	return m, true, nil
 }
@@ -83,4 +84,15 @@ func Execute(i Input) error {
 		return e
 	}
 	return syscall.Exec(path, append([]string{i.Command}, i.Args...), childenv.Scrub(inherited))
+}
+
+// The server policy is storage-only; guard status retains its public marker shape.
+func decodeMarker(b []byte) (Marker, error) {
+	var stored struct {
+		Marker
+		Policy *Config `json:"guard_config"`
+	}
+	err := json.Unmarshal(b, &stored)
+	stored.Marker.Policy = stored.Policy
+	return stored.Marker, err
 }

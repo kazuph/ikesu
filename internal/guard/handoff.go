@@ -1,5 +1,7 @@
 package guard
 
+import "path/filepath"
+
 type Transfer struct {
 	Root, Pane, Bin, MarkerPath, Executable, Active string
 	Config                                          Config
@@ -15,4 +17,25 @@ func (a *Assets) Transfer() Transfer {
 }
 func Import(t Transfer) *Assets {
 	return &Assets{Root: t.Root, Pane: t.Pane, Bin: t.Bin, MarkerPath: t.MarkerPath, Executable: t.Executable, active: t.Active, Config: t.Config, meta: t.Meta, injected: t.Injected, prompt: t.Prompt, mode: t.Mode, unsupported: t.Unsupported, issue: t.Issue}
+}
+
+// RebindSocket preserves the marker location inherited by an existing shell.
+// Publication is atomic; a failed handoff can restore the old endpoint.
+func (a *Assets) RebindSocket(socket string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !filepath.IsAbs(socket) {
+		return a.setIssue("引き継ぎ先のソケットは絶対パスで指定してください")
+	}
+	old := a.meta.Socket
+	agent := a.active
+	a.meta.Socket, a.active = socket, ""
+	if agent == "" {
+		return nil
+	}
+	if err := a.sync(agent); err != nil {
+		a.meta.Socket, a.active = old, agent
+		return err
+	}
+	return nil
 }
