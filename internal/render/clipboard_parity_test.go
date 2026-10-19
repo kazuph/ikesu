@@ -43,3 +43,20 @@ func TestClipboardFeedbackSidebarBothRuntimes(t *testing.T) {
 		}
 	}
 }
+
+func TestClipboardFeedbackHiddenSuppressesAllSurfaces(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		for _, hidden := range []bool{false, true} {
+			s := testState(100, 30)
+			s.SidebarVisible = !hidden
+			enabled := hidden
+			in := Input{State: s, ServerUI: server, Copied: "Copied 3 lines"}
+			in.SidebarConfig.UI.Toast.Clipboard.Enabled = &enabled
+			out := Compose(in)
+			text := screenText(t, out, s.Cols, s.Rows)
+			if strings.Contains(text, "Copied") {
+				t.Fatal("suppressed feedback visible", server, hidden, text)
+			}
+		}
+	}
+}

@@ -347,7 +347,7 @@ func compose(in Input, machines *MachineSidebar, version string, notice bool) *O
 			drawToast(f, in.Toast, out)
 		}
 	}
-	if in.Copied != "" && !in.ServerUI {
+	if in.Copied != "" && !in.ServerUI && s.SidebarVisible && s.SidebarArea().W > 0 && (in.SidebarConfig.UI.Toast.Clipboard.Enabled == nil || *in.SidebarConfig.UI.Toast.Clipboard.Enabled) {
 		if position := in.SidebarConfig.UI.Toast.Clipboard.Position; position != "" {
 			drawToast(f, &Toast{Title: in.Copied, Position: position}, out)
 		} else {
