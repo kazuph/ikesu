@@ -41,8 +41,11 @@ func commandBoundary(i Input) string {
 		return ""
 	}
 	cmd, args := filepath.Base(i.Command), i.Args
+	if i.Unresolved && has([]string{"trap", "unset", "unfunction", "functions", "alias", "unalias", "setopt", "unsetopt", "shopt", "set", "chmod", "chown", "chgrp"}, cmd) {
+		return "判定・権限を変更する操作の対象を安全に確定できません"
+	}
 	switch cmd {
-	case "eval", "source", ".", "xargs", "sudo", "doas":
+	case "eval", "source", ".", "xargs", "sudo", "doas", "timeout", "stdbuf", "arch", "chroot", "setsid", "ionice":
 		return "実行を委譲する " + cmd + " の中身を安全に確定できません"
 	case "find":
 		for _, a := range args {

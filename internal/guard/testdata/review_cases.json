@@ -294,5 +294,17 @@
   {
     "line": "/bin/bash --norc -c ls",
     "want": "allow"
+  },
+  {
+    "line": "timeout 1 /bin/rm ${TARGET}",
+    "want": "ask"
+  },
+  {
+    "line": "arch -x86_64 /bin/rm ${TARGET}",
+    "want": "ask"
+  },
+  {
+    "line": "unset -f \"$UNKNOWN_FUNCTION\"",
+    "want": "ask"
   }
 ]

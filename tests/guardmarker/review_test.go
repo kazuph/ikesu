@@ -1,6 +1,7 @@
 package guardmarker
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -50,6 +51,20 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 					}
 				}
 				line := strings.NewReplacer("${ROOT}", a.Root, "${GUARD}", filepath.Join(a.Root, "guard"), "${TARGET}", target).Replace(tc.Line)
+				protected := []string{a.MarkerPath, filepath.Join(a.Bin, "rm"), filepath.Join(a.Root, "guard", "shell", "p_1", ".zshenv")}
+				before := map[string][]byte{}
+				modes := map[string]os.FileMode{}
+				for _, path := range protected {
+					b, e := os.ReadFile(path)
+					if e != nil {
+						t.Fatal(e)
+					}
+					st, e := os.Lstat(path)
+					if e != nil {
+						t.Fatal(e)
+					}
+					before[path], modes[path] = b, st.Mode()
+				}
 				c := exec.Command(shell, "-lc", line)
 				c.Env = env
 				c.Dir = a.Root
@@ -68,8 +83,15 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 				if _, e = os.Stat(target); e != nil {
 					t.Fatal("test target deleted", e)
 				}
-				if _, e = os.Stat(a.MarkerPath); e != nil {
-					t.Fatal("marker changed", e)
+				for _, path := range protected {
+					b, e := os.ReadFile(path)
+					if e != nil {
+						t.Fatal(e)
+					}
+					st, e := os.Lstat(path)
+					if e != nil || !bytes.Equal(before[path], b) || modes[path] != st.Mode() {
+						t.Fatal("guard asset changed", path, e)
+					}
 				}
 			})
 		}
