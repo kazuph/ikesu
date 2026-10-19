@@ -176,6 +176,9 @@ func TestViewerDisconnectKeepsFrozenBasisUntilOneRemains(t *testing.T) {
 			var viewers []*Viewer
 			for _, size := range [][2]int{{200, 50}, {100, 30}, {180, 40}} {
 				v := a.NewViewer(io.Discard, size[0], size[1], nil)
+				if v.app.sizeViewer != nil || len(v.app.sizeViewers) != 0 {
+					t.Fatal("viewer clone retained session attachment ownership")
+				}
 				v.Begin(a, 0, 0)
 				viewers = append(viewers, v)
 			}
