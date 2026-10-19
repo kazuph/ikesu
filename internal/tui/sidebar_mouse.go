@@ -105,7 +105,7 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 		}
 		if g.divider {
 			lo, hi, _ := a.st.SidebarBounds()
-			if g.right {
+			if g.right || !g.moved {
 				return
 			}
 			a.st.SidebarVisible = true

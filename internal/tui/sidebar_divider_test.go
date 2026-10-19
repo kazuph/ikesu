@@ -2,15 +2,73 @@ package tui
 
 import (
 	"bytes"
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/runtime"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestLeftSidebarDividerSameCellMotionRemainsClick(t *testing.T) {
+	for _, compact := range []bool{false, true} {
+		for _, offset := range []int{-1, 0} {
+			for _, manual := range []bool{false, true} {
+				for _, double := range []bool{false, true} {
+					t.Run(fmt.Sprintf("compact=%t/offset=%d/manual=%t/double=%t", compact, offset, manual, double), func(t *testing.T) {
+						a := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+						a.st.SidebarSize, a.st.SidebarManual = 42, manual
+						a.st.SidebarVisible = !compact
+						path := filepath.Join(t.TempDir(), "preferences.json")
+						a.preferenceSave = func(p endpoint.ViewPreferences) error { return endpoint.SaveViewPreferences(path, p) }
+						a.saveViewPreferences()
+						check := func(visible bool, width int, manual bool) {
+							t.Helper()
+							p, err := endpoint.LoadViewPreferences(path)
+							if err != nil || p == nil {
+								t.Fatalf("read saved preferences: %v, %v", p, err)
+							}
+							if a.st.SidebarVisible != visible || a.st.SidebarHidden || a.st.SidebarSize != width || a.st.ExpandedSidebarWidth() != width || a.st.SidebarManual != manual {
+								t.Fatalf("state: visible=%t hidden=%t width=%d expanded=%d manual=%t; want %t/false/%d/%d/%t", a.st.SidebarVisible, a.st.SidebarHidden, a.st.SidebarSize, a.st.ExpandedSidebarWidth(), a.st.SidebarManual, visible, width, width, manual)
+							}
+							if p.SidebarWidth != width || p.SidebarManual != manual || p.SidebarCollapsed == visible || p.SidebarHidden {
+								t.Fatalf("saved preferences: %+v; want width=%d manual=%t collapsed=%t hidden=false", p, width, manual, !visible)
+							}
+						}
+						m := uv.Mouse{X: a.st.SidebarArea().W + offset, Y: 5, Button: uv.MouseLeft}
+						if !a.sidebarPress(m) || a.sidebarGesture == nil || !a.sidebarGesture.divider {
+							t.Fatal("left divider column not grabbed")
+						}
+						now := time.Now()
+						click := func(at time.Time) {
+							a.sidebarGestureMouseAt(input.Event{Kind: input.KindMouseMotion, Mouse: m}, at)
+							check(!compact, 42, manual)
+							a.sidebarGestureMouseAt(input.Event{Kind: input.KindMouseRelease, Mouse: m}, at)
+						}
+						click(now)
+						a.flushSidebarDividerClicks(now.Add(sidebarDividerDoubleClick))
+						check(!compact, 42, manual)
+						if double {
+							a.beginSidebarDivider(m, false, now.Add(sidebarDividerDoubleClick))
+							click(now.Add(sidebarDividerDoubleClick))
+						}
+						a.flushSidebarDividerClicks(now.Add(2*sidebarDividerDoubleClick + time.Nanosecond))
+						if double {
+							_, _, normal := a.st.SidebarBounds()
+							check(true, normal, false)
+						} else {
+							check(compact, 42, manual)
+						}
+					})
+				}
+			}
+		}
+	}
+}
 
 func TestLeftSidebarDividerBothColumnsStillDrag(t *testing.T) {
 	for _, offset := range []int{-1, 0} {
