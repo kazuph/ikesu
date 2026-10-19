@@ -16,10 +16,6 @@ gofmt -l . > "$out/gofmt.log"
 test ! -s "$out/gofmt.log"
 go build -trimpath '-ldflags=-s -w' -o "$out/gtx" ./cmd/gtx > "$out/build.log" 2>&1
 go vet ./... > "$out/vet.log" 2>&1
-GTX_SIDEBAR_EVIDENCE="$out/screens" go test -p 1 -v -count=1 -timeout 20m ./... > "$out/test.log" 2>&1
-go test -race -p 1 -v -count=1 -timeout 20m ./... > "$out/race.log" 2>&1
-(cd third_party/vt && go test -count=1 ./... && go test -race -count=1 ./...) > "$out/vt.log" 2>&1
-python3 tests/parity/right_sidebar_gate.py "$out/screens"
 for scenario in sidebar-controls sidebar-width sidebar-collapsed sidebar-drag mobile-layout; do
  set -- --gtx-steps "tests/parity/right-$scenario.steps"
  python3 tests/parity/observe.py "$@" --silent --clipboard-sandbox --herdr "$herdr" --gtx "$out/gtx" --ptyrun "$ptyrun" --steps "tests/parity/$scenario.steps" --out "$out/$scenario" > "$out/$scenario.log" 2>&1
@@ -30,4 +26,8 @@ import json,sys
 rows=json.load(open(sys.argv[1]))
 assert len(rows)==2 and all(r['status']=='PASS' and r['difference_count']==0 for r in rows),rows
 PY
+GTX_SIDEBAR_EVIDENCE="$out/screens" go test -p 1 -v -count=1 -timeout 20m ./... > "$out/test.log" 2>&1
+go test -race -p 1 -v -count=1 -timeout 20m ./... > "$out/race.log" 2>&1
+(cd third_party/vt && go test -count=1 ./... && go test -race -count=1 ./...) > "$out/vt.log" 2>&1
+python3 tests/parity/right_sidebar_gate.py "$out/screens"
 python3 tests/parity/right_sidebar_perf.py "$archive" "$out/perf"
