@@ -35,7 +35,7 @@ func TestModalPasteMixedVersionsActualPTY(t *testing.T) {
 				s.send("\r")
 				s.waitFor("old client can confirm", 5*time.Second, func(tx string) bool { return hasTabLabel(tx, "SAFE_MODAL_PASTE") && !strings.Contains(tx, "new tab") })
 			} else {
-				s.waitFor("unsupported paste explained", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "endpoint_action_unsupported: paste") })
+				s.waitFor("unsupported paste explained", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "paste unsupported") })
 				if strings.Contains(s.text(), "SAFE_MODAL_PASTE") || !strings.Contains(s.text(), "new tab") {
 					t.Fatal("unsupported payload changed field or pane", s.text())
 				}

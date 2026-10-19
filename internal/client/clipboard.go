@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/render"
@@ -167,6 +168,9 @@ func (m *machineClient) sendModalPaste(id, text string) error {
 	e := m.endpoints[id]
 	if e.connection == nil {
 		return fmt.Errorf("clipboard paste: machine is not connected")
+	}
+	if !endpoint.Allows(e.connection.writer.available, endpoint.RequiredGeneration("paste"), e.connection.writer.methods, "paste") {
+		return fmt.Errorf("paste unsupported")
 	}
 	if e.paste != nil {
 		e.paste.held = append(e.paste.held, clipboardItem{modalText: &text})
