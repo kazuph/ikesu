@@ -6,14 +6,10 @@ import (
 	"github.com/kazuph/goterrace/internal/teststate"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 func TestStandaloneModalPasteFromTestClipboard(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		return
-	}
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	path := filepath.Join(t.TempDir(), "clipboard")

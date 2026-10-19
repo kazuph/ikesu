@@ -12,7 +12,7 @@ import (
 )
 
 func (a *App) modalClipboardKey(k uv.Key) bool {
-	if a.serverUI || runtime.GOOS != "darwin" || k.Code != 'v' || (k.Mod != uv.ModCtrl && k.Mod != uv.ModSuper) {
+	if a.serverUI || k.Code != 'v' || (k.Mod != uv.ModCtrl && k.Mod != uv.ModSuper) {
 		return false
 	}
 	if !a.modalTextInput() {
@@ -20,6 +20,9 @@ func (a *App) modalClipboardKey(k uv.Key) bool {
 	}
 	read := a.readClipboardText
 	if read == nil {
+		if runtime.GOOS != "darwin" {
+			return false
+		}
 		read = func() (string, error) {
 			data, err := childenv.Command("/usr/bin/pbpaste").Output()
 			return string(data), err
