@@ -77,6 +77,18 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 		if out, e := s.cli("decision", "answer", pending.Decisions[0].DecisionID, choice); e != nil {
 			t.Fatal(e, out)
 		}
+		if choice == "reject" {
+			s.waitFor("old shell rejected before accept-line", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "Command cancelled") })
+			if _, e = os.Stat(target); e != nil {
+				t.Fatal("rejected old-shell command executed", e)
+			}
+			if _, e = os.Stat(status); !os.IsNotExist(e) {
+				t.Fatal("trailing command executed after line rejection", e)
+			}
+			s.send("\x15")
+			t.Log("old shell rejected the whole line; target retained; trailing printf did not run")
+			continue
+		}
 		s.waitFor("old shell resolved", 5*time.Second, func(string) bool { _, e := os.Stat(status); return e == nil })
 		b, e := os.ReadFile(status)
 		if e != nil {
