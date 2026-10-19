@@ -368,7 +368,7 @@ func (a *App) exec(cmd model.Command) {
 func (a *App) effect(e model.Effect) {
 	switch e := e.(type) {
 	case model.EffSpawnPane:
-		r := a.rectForPane(e.Pane)
+		r := a.ptyRectForPane(e.Pane)
 		var env []string
 		for k, v := range e.Env {
 			env = append(env, k+"="+v)
@@ -407,6 +407,10 @@ func (a *App) effect(e model.Effect) {
 
 // syncLayout resizes every pane of the active workspace to its inner rect.
 func (a *App) syncLayout() {
+	a.withPTYGeometry(a.syncPaneLayout)
+}
+
+func (a *App) syncPaneLayout() {
 	if a.st.OverlayVisible() {
 		r := a.innerRect(a.st.Overlay.PaneID)
 		a.sup.ResizeWithPixels(a.st.Overlay.PaneID, r.W, r.H, a.cellW, a.cellH)
