@@ -12,6 +12,10 @@ func TestStage6bModalPaste(t *testing.T) {
 	a := specRuntimeApp(t)
 	name := "12"
 	a.dialog = &uiDialog{input: &name, replaceDefault: true}
+	a.onInput(input.Event{Kind: input.KindPaste})
+	if name != "12" || !a.dialog.replaceDefault {
+		t.Fatal("empty paste changed rename default")
+	}
 	a.onInput(input.Event{Kind: input.KindPaste, Text: "日本語"})
 	if name != "日本語" || a.dialog.replaceDefault {
 		t.Fatal("paste must replace default", name)

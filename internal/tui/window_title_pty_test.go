@@ -77,7 +77,7 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 	cfg := a.sidebarConfig
 	cfg.UI.WindowTitle = "plain"
 	a.ApplyReloadedConfig(cfg)
-	paint("gtx")
+	paint("gtx:coding")
 	var unchanged bytes.Buffer
 	a.out = &unchanged
 	a.ApplyReloadedConfig(cfg)

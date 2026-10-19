@@ -18,12 +18,19 @@ func (a *App) modalClipboardKey(k uv.Key) bool {
 	if !a.modalTextInput() {
 		return false
 	}
-	data, err := childenv.Command("/usr/bin/pbpaste").Output()
+	read := a.readClipboardText
+	if read == nil {
+		read = func() (string, error) {
+			data, err := childenv.Command("/usr/bin/pbpaste").Output()
+			return string(data), err
+		}
+	}
+	text, err := read()
 	if err != nil {
 		a.worktreeError(fmt.Errorf("read clipboard: %w", err))
 		return true
 	}
-	a.insertClipboardText(string(data))
+	a.insertClipboardText(text)
 	return true
 }
 

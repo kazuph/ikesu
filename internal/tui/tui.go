@@ -297,6 +297,7 @@ type App struct {
 	hostPixelMouse                           bool
 	mousePixel                               *uv.Mouse // original coordinates for the current host event
 	help                                     *helpView
+	readClipboardText                        func() (string, error)
 	copied                                   string
 	copiedAt                                 time.Time
 	lastClick                                clickMark // last left press inside a normal pane body

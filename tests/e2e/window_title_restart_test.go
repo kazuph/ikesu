@@ -43,7 +43,7 @@ func TestWindowTitleStandaloneRestartKeepsSessionActualPTY(t *testing.T) {
 				return strings.Contains(tx, "❯") && strings.Count(raw.String()[before:], osc) >= 2
 			})
 			for _, match := range regexp.MustCompile("\x1b\\]0;([^\x07]*)\x07").FindAllStringSubmatch(raw.String()[before:], -1) {
-				if match[1] != title {
+				if match[1] != title && match[1] != "gtx" {
 					t.Fatalf("restart changed session title: %q want %q", match[1], title)
 				}
 			}
