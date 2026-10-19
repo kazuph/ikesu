@@ -213,6 +213,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		e.snapshotAttempt = e.attempt
 		e.boot = message.traceBoot
 		e.textOnly = message.traceTextOnly
 		e.epoch = message.FocusEpoch

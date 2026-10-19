@@ -51,7 +51,7 @@ const (
 	// bytes can be flushed before the outer shell sees them (fix #6).
 	MouseOffSeq = "\x1b[?1016l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
 	// LeaveSeq restores the terminal.
-	LeaveSeq = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
+	LeaveSeq = "\x1b]0;gtx\x07" + "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
 )
 
 // KbdEnterSeq negotiates the host keyboard independently of the pane protocol.

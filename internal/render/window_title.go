@@ -10,9 +10,6 @@ import (
 // WindowTitle uses the sidebar's workspace aggregation, including off-screen
 // workspaces and the other connected machines.
 func WindowTitle(frame Input, session string, groups []MachineGroup) string {
-	if frame.SidebarConfig.UI.WindowTitle == "plain" {
-		return "gtx"
-	}
 	name := "gtx"
 	if session != "" && session != "default" {
 		var safe strings.Builder
@@ -24,6 +21,9 @@ func WindowTitle(frame Input, session string, groups []MachineGroup) string {
 			}
 		}
 		name += ":" + safe.String()
+	}
+	if frame.SidebarConfig.UI.WindowTitle == "plain" {
+		return name
 	}
 	states := map[string]bool{}
 	collect := func(in *Input) {

@@ -14,15 +14,16 @@ func TestWindowTitleSessionNamesAndPlain(t *testing.T) {
 			in := titleInput("working")
 			in.SidebarConfig.UI.WindowTitle = mode
 			got, want := WindowTitle(in, session, nil), "gtx"
-			if mode == "summary" {
-				want = "🟡 gtx"
-				if session != "default" {
-					want += ":" + session
-					if strings.HasPrefix(session, "demo") {
-						want = "🟡 gtx:demo\\u0007\\u001B[2J\\u000A\\u000D\\u007F\\u009C"
-					}
+			if session != "default" {
+				want += ":" + session
+				if strings.HasPrefix(session, "demo") {
+					want = "gtx:demo\\u0007\\u001B[2J\\u000A\\u000D\\u007F\\u009C"
 				}
 			}
+			if mode == "summary" {
+				want = "🟡 " + want
+			}
+
 			if got != want {
 				t.Fatalf("%s session=%q got=%q want=%q", mode, session, got, want)
 			}
@@ -58,7 +59,7 @@ func TestWindowTitleConfigModeChangesWriteOnce(t *testing.T) {
 	var out bytes.Buffer
 	for _, step := range []struct{ mode, want string }{
 		{"summary", "🟡 gtx:coding"}, {"summary", "🟡 gtx:coding"}, // activation
-		{"summary", ""}, {"plain", "gtx"}, {"plain", ""},
+		{"summary", ""}, {"plain", "gtx:coding"}, {"plain", ""},
 		{"summary", "🟡 gtx:coding"}, {"summary", ""},
 	} {
 		in.SidebarConfig.UI.WindowTitle = step.mode
