@@ -85,8 +85,8 @@ func TestModalPasteControlBodiesStayInAllThreeFields(t *testing.T) {
 	// including a delivery whose modal target closed before it arrived.
 	v := a.NewViewer(io.Discard, 120, 35, nil)
 	v.Paste(a, "outside\x1b[201~\rX")
-	got, err := os.ReadFile(capture)
-	if err != nil || len(got) != 0 {
-		t.Fatalf("pane received %q err=%v", got, err)
-	}
+	// A harness marker proves the raw sink has drained every preceding byte,
+	// rather than observing an empty capture before a stray write arrives.
+	a.sup.Input(a.focusedPane(), []byte("PASTE_TEST_BARRIER"))
+	specWaitFile(t, capture, []byte("PASTE_TEST_BARRIER"))
 }
