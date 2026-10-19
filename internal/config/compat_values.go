@@ -11,6 +11,7 @@ func (c *Config) validateValues() {
 		value   *string
 		allowed []string
 	}{
+		{"ui.window_title", &c.UI.WindowTitle, []string{"summary", "plain"}},
 		{"terminal.shell_mode", &c.Terminal.ShellMode, []string{"auto", "login", "non_login"}},
 		{"update.channel", &c.Update.Channel, []string{"stable", "preview"}},
 		{"ui.sidebar_collapsed_mode", &c.UI.SidebarCollapsedMode, []string{"compact", "hidden"}},

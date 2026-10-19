@@ -161,7 +161,7 @@ func run(noSession bool, session string) (int, error) {
 		return 1, fmt.Errorf("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit)")
 	}
 	if noSession {
-		return tui.Run(os.Stdin, os.Stdout, version)
+		return tui.Run(os.Stdin, os.Stdout, version, session)
 	}
 	return client.Attach(session, os.Stdin, os.Stdout, version)
 }

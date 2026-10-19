@@ -243,7 +243,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	var snapshots endpoint.SnapshotDecoder
 	var frames render.Encoder
 	defer func() { _, _ = out.Write(frames.RestoreCursor()) }()
-	var windowTitle windowTitleState
+	windowTitle := windowTitleState{session: settings.session}
 	var inputSource platform.InputSource
 	defer inputSource.Prefix(false, false)
 	var lastRegions *render.Output

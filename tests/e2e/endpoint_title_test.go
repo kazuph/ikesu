@@ -35,7 +35,7 @@ func TestEndpointWindowTitleBelongsToEachAttachedTerminal(t *testing.T) {
 			t.Fatalf("%s terminal did not receive its window title", name)
 		}
 		for _, title := range found {
-			if title[1] != "gtx" {
+			if title[1] != "gtx:"+first.name {
 				t.Fatalf("%s terminal received pane title as window title: %q", name, title[1])
 			}
 		}

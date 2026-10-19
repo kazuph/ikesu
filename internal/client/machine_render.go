@@ -123,6 +123,7 @@ func (m *machineClient) paint() error {
 			return err
 		}
 	}
+	m.title.session, m.title.groups = m.session, m.sidebar.Groups
 	if err := m.title.painted(m.out, in); err != nil {
 		return err
 	}

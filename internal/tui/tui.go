@@ -306,6 +306,9 @@ type App struct {
 	lastSpawnError                           error
 	dirty                                    bool
 	quit                                     bool
+
+	windowTitle        render.WindowTitleState
+	windowTitleSession string
 }
 
 // SetCellPixels records the host terminal's pixel geometry so SGR 1016
@@ -650,6 +653,10 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		sup.SetGraphicsVersion(versions[0])
 	}
 	a := NewApp(st, sup, out, cwd)
+	// The optional second startup value is the outer terminal session name.
+	if len(versions) > 1 {
+		a.windowTitleSession = versions[1]
+	}
 	if len(versions) > 0 {
 		a.clientVersion = versions[0]
 	}

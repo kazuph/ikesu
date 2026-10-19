@@ -248,6 +248,11 @@ func (a *App) draw() {
 		a.enc.Reset()
 		a.dirty = true
 	}
+	if !a.serverUI {
+		if err := a.windowTitle.Painted(a.out, in, a.windowTitleSession, nil); err != nil {
+			a.dirty = true
+		}
+	}
 }
 
 // ResetEncoder drops the diff state so the next frame repaints fully. The

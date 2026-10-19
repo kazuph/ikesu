@@ -66,6 +66,7 @@ type Config struct {
 		Custom       map[string]string `toml:"custom"`
 	} `toml:"theme"`
 	UI struct {
+		WindowTitle                   string        `toml:"window_title"`
 		MouseCapture                  *bool         `toml:"mouse_capture"`
 		CopyOnSelect                  *bool         `toml:"copy_on_select"`
 		HostCursor                    string        `toml:"host_cursor"`

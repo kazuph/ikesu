@@ -19,6 +19,7 @@ enabled = true
 delivery = "off"
 
 [ui]
+window_title = "summary"
 mobile_width_threshold = 64
 sidebar_min_width = 18
 sidebar_max_width = 72
