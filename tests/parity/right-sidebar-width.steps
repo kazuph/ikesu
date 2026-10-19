@@ -1,3 +1,5 @@
+send "\r"
+sleep 1s
 screen @OUT@/boot.txt
 cells @OUT@/boot.json
 send "\x02b"

@@ -21,10 +21,7 @@ go test -race -p 1 -v -count=1 -timeout 20m ./... > "$out/race.log" 2>&1
 (cd third_party/vt && go test -count=1 ./... && go test -race -count=1 ./...) > "$out/vt.log" 2>&1
 python3 tests/parity/right_sidebar_gate.py "$out/screens"
 for scenario in sidebar-controls sidebar-width sidebar-collapsed sidebar-drag mobile-layout; do
- case "$scenario" in
-  sidebar-controls|sidebar-width) set -- --gtx-steps "tests/parity/right-$scenario.steps" ;;
-  *) set -- ;;
- esac
+ set -- --gtx-steps "tests/parity/right-$scenario.steps"
  python3 tests/parity/observe.py "$@" --silent --clipboard-sandbox --herdr "$herdr" --gtx "$out/gtx" --ptyrun "$ptyrun" --steps "tests/parity/$scenario.steps" --out "$out/$scenario" > "$out/$scenario.log" 2>&1
 done
 python3 tests/parity/region_compare.py "$out/sidebar-collapsed" --rect 0,0,60,2 --screens mobile mobile-escape --result mobile-header-comparison.json

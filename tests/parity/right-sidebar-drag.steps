@@ -1,0 +1,40 @@
+send "\r"
+sleep 1s
+send "\x02W"
+sleep 250ms
+send "\x03ONE\r"
+sleep 250ms
+send "\x02N"
+sleep 250ms
+send "\x02W"
+sleep 250ms
+send "\x03TWO\r"
+sleep 250ms
+send "\x02N"
+sleep 250ms
+send "\x02W"
+sleep 250ms
+send "\x03THREE\r"
+sleep 250ms
+screen @OUT@/three.txt
+cells @OUT@/three.json
+mouse down 5 11
+mouse motion 5 5
+screen @OUT@/drag-preview.txt
+cells @OUT@/drag-preview.json
+mouse up 5 5
+sleep 250ms
+screen @OUT@/reordered.txt
+cells @OUT@/reordered.json
+mouse down 26 15
+mouse motion 40 15
+mouse up 40 15
+sleep 250ms
+screen @OUT@/divider-drag.txt
+cells @OUT@/divider-drag.json
+click 40 15
+click 40 15
+sleep 250ms
+screen @OUT@/divider-reset.txt
+cells @OUT@/divider-reset.json
+kill

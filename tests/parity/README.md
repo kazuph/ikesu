@@ -384,3 +384,5 @@ miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <�
 相対P1の合否と全測定値は出力先のperf/に保存する。未実行を合格として扱わない。
 
 右へ移したボタンのクリック座標と左の3状態切替は、`right-sidebar-controls.steps` / `right-sidebar-width.steps` を `observe.py --gtx-steps` でgtxだけへ送る。参照側の既存入力は変更せず、両者の実際に使ったstepsを保存する。対象の操作を削除せず、新しい配置で同じ操作を観察する。
+
+gtx用の5つの `right-*.steps` は、初回案内を通常のEnter入力で閉じてから観察する。参照側はobserve.pyの従来の起動手順を保持する。案内を残したまま観察するとキー入力が案内へ渡るため、状態切替やクリックの成功証拠にならない。

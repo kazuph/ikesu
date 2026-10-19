@@ -138,3 +138,16 @@ func TestRightSidebarNarrowTerminalAdaptsWithoutSaving(t *testing.T) {
 		})
 	}
 }
+
+func TestRightSidebarWidthFooterPresetsRealTerminal(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		t.Run(fmt.Sprint("no-session=", local), func(t *testing.T) {
+			s := startMode(t, nil, local)
+			s.waitFor("normal footer", 10*time.Second, func(text string) bool { return strings.Contains(text, " NORMAL ") })
+			for _, want := range []string{" WIDE ", " NARROW ", " NORMAL "} {
+				s.send(fmt.Sprintf("\x1b[<0;2;%dM\x1b[<0;2;%dm", termH, termH))
+				s.waitFor(want, 5*time.Second, func(text string) bool { return strings.Contains(text, want) })
+			}
+		})
+	}
+}
