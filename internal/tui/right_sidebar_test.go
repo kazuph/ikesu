@@ -80,8 +80,8 @@ func TestRightSidebarActualPTYGeometryAndClicks(t *testing.T) {
 			t.Fatal("compact priority click missed pane")
 		}
 		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: x, Y: 1, Button: uv.MouseRight}})
-		if a.menu == nil {
-			t.Fatal("right-click menu missing")
+		if a.menu == nil || a.focusedPane() != 1 || a.st.Active != 0 {
+			t.Fatal("right-click menu must select its target pane before operating")
 		}
 		a.menu = nil
 		a.exec(model.CmdToggleSidebar{})

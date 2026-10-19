@@ -42,6 +42,8 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 		}
 		if m.Button == uv.MouseRight {
 			if r.Kind == render.RowAgent {
+				a.exec(model.CmdSelectWorkspace{Index: r.Ws})
+				a.exec(model.CmdFocusPane{Pane: r.Pane})
 				a.openPaneMenu(m.X, m.Y, r.Pane)
 			}
 			return
