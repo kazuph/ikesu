@@ -14,14 +14,14 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
+		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- [prefix args...] <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
 		return 0
 	}
 	sub := a[0]
 	a = a[1:]
 	var c config.Config
 	var e error
-	if (sub != "exec" && sub != "line") || os.Getenv("GTX_GUARD_MARKER") == "" {
+	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || os.Getenv("GTX_GUARD_MARKER") == "" {
 		c, e = config.Load()
 		if e != nil {
 			fmt.Fprintln(r.errOut(), e)
@@ -35,7 +35,7 @@ func (r *runner) guardCLI(a []string) int {
 	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ())}
 	// Generated entries pin the marker path. Keep diagnostics with that pane's
 	// assets even when its shell still carries the pre-handoff state directory.
-	if marker := i.Env["GTX_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line") {
+	if marker := i.Env["GTX_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line" || sub == "claude-prefix") {
 		root = filepath.Dir(filepath.Dir(filepath.Dir(marker)))
 	}
 	await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
@@ -66,6 +66,33 @@ func (r *runner) guardCLI(a []string) int {
 		enc.SetIndent("", "  ")
 		if e := enc.Encode(v); e != nil {
 			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		return 0
+	}
+	if sub == "claude-prefix" {
+		if len(a) > 0 && a[0] == "--" {
+			a = a[1:]
+		}
+		if len(a) == 0 {
+			return usageErr(r, "guard claude-prefix requires a command line")
+		}
+		line := a[len(a)-1]
+		i.Command, i.Args = line, nil
+		if !guard.AuthorizeLine(c.Guard, root, i, guard.ClaudePrefixLine(i, line), r.errOut(), await) {
+			return 1
+		}
+		if len(a) > 1 {
+			i.Command, i.Args = a[0], a[1:]
+		} else {
+			i.Command = i.Env["SHELL"]
+			if i.Command == "" {
+				i.Command = "/bin/sh"
+			}
+			i.Args = []string{"-c", line}
+		}
+		if err := guard.Execute(i); err != nil {
+			fmt.Fprintln(r.errOut(), err)
 			return 1
 		}
 		return 0

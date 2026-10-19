@@ -22,6 +22,10 @@ const pinPath = `case "$PATH" in "$GTX_GUARD_BIN"|"$GTX_GUARD_BIN":*) ;; *) expo
 `
 
 func (a *Assets) prepareStartup(m map[string]string, dir string) error {
+	prefix := "#!/bin/sh\nif [ -n \"${GTX_GUARD_CLAUDE_PREFIX_ORIG:-}\" ]; then set -- \"$GTX_GUARD_CLAUDE_PREFIX_ORIG\" \"$@\"; fi\n" + a.identity() + " exec " + quote(a.Executable) + " guard claude-prefix -- \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "claude-prefix"), []byte(prefix), 0700); err != nil {
+		return err
+	}
 	wrappers := a.shellFunctions() + a.agentFunctions(dir)
 	m["GTX_GUARD_ZDOTDIR_ORIG"], m["GTX_GUARD_ZDOTDIR_SET"] = m["ZDOTDIR"], "0"
 	if _, ok := m["ZDOTDIR"]; ok {
@@ -95,10 +99,15 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 func (a *Assets) agentFunctions(dir string) string {
 	var body string
 	for _, agent := range []string{"codex", "claude"} {
+		invocation := `ZDOTDIR=` + quote(dir) + ` BASH_ENV=` + quote(filepath.Join(dir, "bash-env")) + ` builtin command ` + agent + ` "$@"`
+		if agent == "claude" {
+			invocation = `local _gtx_claude_prefix=` + quote(filepath.Join(dir, "claude-prefix")) + `
+ GTX_GUARD_CLAUDE_PREFIX_ORIG="${CLAUDE_CODE_SHELL_PREFIX:-}" GTX_GUARD_CLAUDE_PREFIX_SET="${CLAUDE_CODE_SHELL_PREFIX+x}" GTX_GUARD_CLAUDE_PREFIX="$_gtx_claude_prefix" CLAUDE_CODE_SHELL_PREFIX="$_gtx_claude_prefix" ` + invocation
+		}
 		body += fmt.Sprintf(`if ! typeset -f %[1]s >/dev/null 2>&1 && ! alias %[1]s >/dev/null 2>&1; then
-%[1]s() { ZDOTDIR=%[2]s BASH_ENV=%[3]s builtin command %[1]s "$@"; }
+%[1]s() { %[2]s; }
 fi
-`, agent, quote(dir), quote(filepath.Join(dir, "bash-env")))
+`, agent, invocation)
 	}
 	return body
 }

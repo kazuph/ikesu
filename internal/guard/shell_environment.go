@@ -5,7 +5,9 @@ import (
 	"strings"
 )
 
-func startupVariable(name string) bool { return has([]string{"BASH_ENV", "ZDOTDIR", "ENV"}, name) }
+func startupVariable(name string) bool {
+	return has([]string{"BASH_ENV", "ZDOTDIR", "ENV", "CLAUDE_CODE_SHELL_PREFIX"}, name)
+}
 
 // Prefix options change the child environment, not the environment used by
 // the caller shell to expand its already parsed words.

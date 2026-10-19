@@ -118,6 +118,9 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 				emu.Close()
 				return nil, err
 			}
+			if len(argv) > 0 && (filepath.Base(argv[0]) == "claude" || filepath.Base(argv[0]) == "claude-code") {
+				cmd.Env = p.guard.PrepareClaude(cmd.Env)
+			}
 			if len(withoutPane) > 1 && withoutPane[1] {
 				p.guardStarted = filepath.Base(argv[0])
 				if err = p.guard.Sync(p.guardStarted); err != nil {
