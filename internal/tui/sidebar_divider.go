@@ -28,7 +28,9 @@ func (a *App) finishSidebarDivider(g *sidebarGesture, now time.Time) {
 	}
 	if g.moved {
 		a.dividerClicks[side] = nil
-		a.saveViewPreferences()
+		if !g.right {
+			a.saveViewPreferences()
+		}
 		return
 	}
 	if !g.double {
@@ -37,10 +39,7 @@ func (a *App) finishSidebarDivider(g *sidebarGesture, now time.Time) {
 	}
 	if g.right {
 		a.st.RightSidebarMode = ""
-		a.st.RightSidebarSize = 0
-		if width := a.sidebarConfig.UI.RightSidebarWidth; width != nil {
-			a.st.RightSidebarSize = *width
-		}
+
 	} else {
 		a.st.SidebarVisible = true
 		a.st.SidebarHidden = false

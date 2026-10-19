@@ -32,6 +32,9 @@ func TestSidebarDividerTimedSingleDoubleDragAndPreferences(t *testing.T) {
 	for _, right := range []bool{false, true} {
 		for _, compact := range []bool{false, true} {
 			for _, gesture := range []string{"single", "double", "drag"} {
+				if right && gesture == "drag" {
+					continue
+				}
 				a := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
 				width := 42
 				a.sidebarConfig = config.Config{}
@@ -70,9 +73,6 @@ func TestSidebarDividerTimedSingleDoubleDragAndPreferences(t *testing.T) {
 				case "drag":
 					a.beginSidebarDivider(uv.Mouse{X: x, Y: 5}, right, now.Add(time.Millisecond))
 					to := 33
-					if right {
-						to = 122
-					}
 					a.sidebarGestureMouseAt(input.Event{Kind: input.KindMouseMotion, Mouse: uv.Mouse{X: to, Y: 5, Button: uv.MouseLeft}}, now.Add(2*time.Millisecond))
 					a.sidebarGestureMouseAt(input.Event{Kind: input.KindMouseRelease, Mouse: uv.Mouse{X: to, Y: 5, Button: uv.MouseLeft}}, now.Add(3*time.Millisecond))
 				}

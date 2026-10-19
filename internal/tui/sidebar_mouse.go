@@ -106,14 +106,13 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 		if g.divider {
 			lo, hi, _ := a.st.SidebarBounds()
 			if g.right {
-				a.st.RightSidebarMode = ""
-				a.st.RightSidebarSize = max(lo, min(hi, a.st.Cols-m.X))
-			} else {
-				a.st.SidebarVisible = true
-				a.st.SidebarHidden = false
-				a.st.SidebarSize = max(lo, min(hi, m.X+1))
-				a.st.SidebarManual = true
+				return
 			}
+			a.st.SidebarVisible = true
+			a.st.SidebarHidden = false
+			a.st.SidebarSize = max(lo, min(hi, m.X+1))
+			a.st.SidebarManual = true
+
 			a.syncLayout()
 			a.changed()
 			return
