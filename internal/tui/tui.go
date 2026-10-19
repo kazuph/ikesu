@@ -287,7 +287,7 @@ type App struct {
 	panePalette                              *render.Palette
 	sidebarGesture                           *sidebarGesture
 	tabGesture                               *tabGesture
-	dividerAt                                time.Time
+	dividerClicks                            [2]*sidebarDividerClick
 	sidebarScroll                            int
 	agentScroll                              int
 	sidebarBar                               *sidebarScrollDrag

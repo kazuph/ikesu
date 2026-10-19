@@ -5,6 +5,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"time"
 )
 
 func (a *App) rightSidebarInput() render.Input {
@@ -16,14 +17,7 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 		return
 	}
 	if m.Button == uv.MouseLeft && m.X == area.X {
-		if area.W == model.SidebarCollapsedWidth {
-			a.st.RightSidebarMode = ""
-		} else {
-			a.st.RightSidebarMode = "compact"
-		}
-		a.syncLayout()
-		a.saveViewPreferences()
-		a.changed()
+		a.beginSidebarDivider(m, true, time.Now())
 		return
 	}
 	if m.Button == uv.MouseLeft && area.W > model.SidebarCollapsedWidth && a.sidebarScrollbarPress(m) {

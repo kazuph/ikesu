@@ -217,6 +217,7 @@ func (a *App) onTick() {
 		a.tickViewers()
 	}
 	now := time.Now()
+	a.flushSidebarDividerClicks(now)
 	if a.localRestore {
 		a.observeLocalSessions()
 	}

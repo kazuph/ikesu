@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/goterrace/internal/teststate"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func sidebarCardY(a *App, wi int) int {
@@ -146,11 +147,13 @@ func TestG2DividerToggleAndDangerousCancel(t *testing.T) {
 	x := a.st.SidebarArea().W - 1
 	sidebarEvent(a, input.KindMouseClick, x, 5)
 	sidebarEvent(a, input.KindMouseRelease, x, 5)
+	a.flushSidebarDividerClicks(time.Now().Add(sidebarDividerDoubleClick + time.Millisecond))
 	if a.st.SidebarArea().W != 2 || a.sidebarGesture != nil {
 		t.Fatal("divider did not collapse")
 	}
 	sidebarEvent(a, input.KindMouseClick, 1, 5)
 	sidebarEvent(a, input.KindMouseRelease, 1, 5)
+	a.flushSidebarDividerClicks(time.Now().Add(sidebarDividerDoubleClick + time.Millisecond))
 	if a.st.SidebarArea().W != 72 {
 		t.Fatal("divider did not restore configured width")
 	}

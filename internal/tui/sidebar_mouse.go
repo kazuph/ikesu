@@ -5,12 +5,13 @@ import (
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
+	"time"
 )
 
 type sidebarGesture struct {
 	ws, x, y               int
 	active, moved, divider bool
-	panelDivider           bool
+	right, double          bool
 	gitRow                 bool
 	section                model.Section
 	drop                   int
@@ -31,21 +32,14 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 }
 func (a *App) sidebarPress(m uv.Mouse) bool {
 	s := a.st
-	if !s.SidebarVisible {
-		if m.X == s.SidebarArea().W-1 && m.Button == uv.MouseLeft {
-			s.SidebarVisible = true
-			s.SidebarHidden = false
-			a.syncLayout()
-			a.saveViewPreferences()
-			a.changed()
-			return true
-		}
-		return false
-	}
-	if (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
-		a.sidebarGesture = &sidebarGesture{divider: true, x: m.X, y: m.Y}
+	if s.SidebarArea().W > 0 && (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
+		a.beginSidebarDivider(m, false, time.Now())
 		return true
 	}
+	if !s.SidebarVisible {
+		return false
+	}
+
 	if m.Button != uv.MouseLeft {
 		return false
 	}
@@ -98,7 +92,8 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	}
 	return false
 }
-func (a *App) sidebarGestureMouse(ev input.Event) {
+func (a *App) sidebarGestureMouse(ev input.Event) { a.sidebarGestureMouseAt(ev, time.Now()) }
+func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 	g := a.sidebarGesture
 	if g == nil {
 		return
@@ -110,8 +105,15 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 		}
 		if g.divider {
 			lo, hi, _ := a.st.SidebarBounds()
-			a.st.SidebarSize = max(lo, min(hi, m.X+1))
-			a.st.SidebarManual = true
+			if g.right {
+				a.st.RightSidebarMode = ""
+				a.st.RightSidebarSize = max(lo, min(hi, a.st.Cols-m.X))
+			} else {
+				a.st.SidebarVisible = true
+				a.st.SidebarHidden = false
+				a.st.SidebarSize = max(lo, min(hi, m.X+1))
+				a.st.SidebarManual = true
+			}
 			a.syncLayout()
 			a.changed()
 			return
@@ -147,15 +149,10 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 	if ev.Kind == input.KindMouseRelease {
 		a.sidebarGesture = nil
 		if g.divider {
-			if !g.moved {
-				a.st.SidebarVisible = false
-				a.st.SidebarHidden = false
-				a.syncLayout()
-				a.changed()
-			}
-			a.saveViewPreferences()
+			a.finishSidebarDivider(g, now)
 			return
 		}
+
 		if g.moved {
 			if g.section != "" {
 				a.setSection(g.ws, g.section)

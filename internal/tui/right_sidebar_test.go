@@ -12,6 +12,7 @@ import (
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
 	"testing"
+	"time"
 )
 
 func TestRightSidebarViewerPreferencesIndependentAndRestored(t *testing.T) {
@@ -145,15 +146,20 @@ func TestRightSidebarDefaultAndCustomKeyAndDividerCells(t *testing.T) {
 	a.configuredKey(uv.Key{Code: 't'}, true)
 	right := a.st.RightSidebarArea()
 	sidebarEvent(a, input.KindMouseClick, right.X, 4)
+	sidebarEvent(a, input.KindMouseRelease, right.X, 4)
+	a.flushSidebarDividerClicks(time.Now().Add(sidebarDividerDoubleClick + time.Millisecond))
 	if a.st.RightSidebarArea().W != 2 {
 		t.Fatal("right divider did not collapse")
 	}
 	sidebarEvent(a, input.KindMouseClick, a.st.RightSidebarArea().X, 4)
+	sidebarEvent(a, input.KindMouseRelease, a.st.RightSidebarArea().X, 4)
+	a.flushSidebarDividerClicks(time.Now().Add(sidebarDividerDoubleClick + time.Millisecond))
 	if a.st.RightSidebarArea().W != 26 {
 		t.Fatal("right divider did not expand")
 	}
 	sidebarEvent(a, input.KindMouseClick, 25, 4)
 	sidebarEvent(a, input.KindMouseRelease, 25, 4)
+	a.flushSidebarDividerClicks(time.Now().Add(sidebarDividerDoubleClick + time.Millisecond))
 	if a.st.SidebarArea().W != 2 {
 		t.Fatal("left divider did not collapse")
 	}

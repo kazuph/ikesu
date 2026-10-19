@@ -176,7 +176,7 @@ func (a *App) draw() {
 	if a.workspaceNavigate {
 		in.SelectedWorkspace = &a.navigateSelected
 	}
-	if a.sidebarGesture != nil && !a.sidebarGesture.divider && !a.sidebarGesture.panelDivider {
+	if a.sidebarGesture != nil && !a.sidebarGesture.divider {
 		in.Dragging = a.sidebarGesture.moved
 		in.DragFromGit = a.sidebarGesture.gitRow
 		in.DraggedWorkspace = a.sidebarGesture.ws
