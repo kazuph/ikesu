@@ -40,9 +40,12 @@ func TestServerCopyStatusConsumesButtonAndYanksOSC52(t *testing.T) {
 	s.waitFor("OSC52 and copy mode exit", 5*time.Second, func(tx string) bool {
 		return strings.Contains(raw.String(), "\x1b]52;c;") && !strings.Contains(tx, "y/enter copy")
 	})
-	if strings.Contains(s.text(), "Copied") {
-		t.Fatal("server displayed the local-only success flash", s.text())
-	}
+	s.waitFor("successful one-line copy feedback on sidebar bottom", 5*time.Second, func(tx string) bool {
+		return strings.HasPrefix(strings.Split(tx, "\n")[termH-1], "Copied 1 line")
+	})
+	s.waitFor("copy feedback expires", 5*time.Second, func(tx string) bool {
+		return !strings.Contains(tx, "Copied")
+	})
 }
 
 func TestServerTabStripHasNoAddControl(t *testing.T) {
