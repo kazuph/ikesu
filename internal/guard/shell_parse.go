@@ -19,6 +19,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
 	}
 	i.GuardRoot = guardDirectory(i)
+	i.CwdUncertain = i.CwdUncertain || treeChangesDirectory(tree)
 	var commands []Input
 	redirections := map[*syntax.CallExpr][]*syntax.Redirect{}
 	syntax.Walk(tree, func(node syntax.Node) bool {

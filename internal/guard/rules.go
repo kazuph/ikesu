@@ -44,6 +44,7 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
+	CwdUncertain     bool              `json:"-"`
 	AuthorizationEnv map[string]string `json:"-"`
 	GuardCommands    []string          `json:"-"`
 	GuardRoot        string            `json:"-"`

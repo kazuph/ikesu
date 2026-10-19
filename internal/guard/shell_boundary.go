@@ -68,7 +68,11 @@ func commandBoundary(i Input) string {
 				return "判定の関数・エイリアスの変更には承認が必要です"
 			}
 		}
-	case "setopt", "unsetopt", "shopt", "set":
+	case "set":
+		if setChangesGuard(args) {
+			return "実行前の判定に関わる設定の変更には承認が必要です"
+		}
+	case "setopt", "unsetopt", "shopt":
 		for _, a := range args {
 			option := strings.TrimPrefix(strings.ToLower(strings.ReplaceAll(a, "_", "")), "no")
 			if has([]string{"debugbeforecmd", "extdebug", "functrace", "errtrace", "localtraps", "localoptions"}, option) || has([]string{"+T", "-T", "+E", "-E"}, a) {
@@ -94,13 +98,16 @@ func commandBoundary(i Input) string {
 		}
 	case "sed":
 		for _, a := range args {
-			if a == "--in-place" || strings.HasPrefix(a, "--in-place=") || strings.HasPrefix(a, "-i") {
+			if a == "--in-place" || strings.HasPrefix(a, "--in-place=") || strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.ContainsRune(a[1:], 'i') {
 				targets = args
 				break
 			}
 		}
 	}
 	for _, path := range targets {
+		if !strings.HasPrefix(path, "-") && !filepath.IsAbs(path) && i.CwdUncertain {
+			return "ディレクトリ変更を含む入力の書き込み先を安全に確定できません"
+		}
 		if !strings.HasPrefix(path, "-") && guardPath(i, path) {
 			return "ガードの目印・シム・起動ファイルへの操作には承認が必要です"
 		}
@@ -123,12 +130,22 @@ func treeBoundary(i Input, tree *syntax.File) error {
 					failure = fmt.Errorf("子シェルの起動ファイルを変更する設定には承認が必要です")
 				}
 			}
+		case *syntax.CallExpr:
+			if len(n.Args) == 0 {
+				for _, assignment := range n.Assigns {
+					if assignment.Name != nil && startupVariable(assignment.Name.Value) {
+						failure = fmt.Errorf("子シェルの起動ファイルを変更する単独代入には承認が必要です")
+					}
+				}
+			}
 		case *syntax.Redirect:
 			switch n.Op {
-			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.RdrAll, syntax.AppAll:
+			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.RdrAll, syntax.AppAll, syntax.ClbOut, syntax.DplOut:
 				path, e := expand.Literal(cfg, n.Word)
 				if e != nil {
 					failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
+				} else if i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
+					failure = fmt.Errorf("ディレクトリ変更を含む入力の書き込み先を安全に確定できません")
 				} else if guardPath(i, path) {
 					failure = fmt.Errorf("ガードの置き場所へのリダイレクトには承認が必要です")
 				}
@@ -142,7 +159,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error {
 	cmd := filepath.Base(i.Command)
 	shell := has([]string{"sh", "bash", "zsh", "dash", "ksh"}, cmd)
-	interpreter := shell || has([]string{"fish", "python", "python2", "python3", "perl", "ruby", "node"}, cmd)
+	interpreter := shell || has([]string{"fish", "python", "python2", "python3", "perl", "ruby", "node", "osascript"}, cmd)
 	if !interpreter {
 		return nil
 	}
@@ -158,6 +175,9 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			*commands = append(*commands, nested...)
 			return e
 		}
+	}
+	if !shell && interpreterHasProgram(cmd, i.Args) {
+		return nil
 	}
 	for _, redir := range redirs {
 		switch redir.Op {
@@ -180,7 +200,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			return fmt.Errorf("ファイル・パイプから渡すスクリプトを確定できません")
 		}
 	}
-	if len(i.Args) == 0 || has(i.Args, "-") {
+	if !shell || len(i.Args) == 0 || has(i.Args, "-") {
 		return fmt.Errorf("標準入力から実行するスクリプトを確定できません")
 	}
 	if shell {

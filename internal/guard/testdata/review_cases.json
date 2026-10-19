@@ -314,5 +314,237 @@
   {
     "line": "A=/bin/rm B=$A /bin/zsh -c '$B ${TARGET}'",
     "want": "ask"
+  },
+  {
+    "line": "printf bad >| ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "printf bad >>| ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "printf bad <> ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "printf bad &> ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "printf bad &>> ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "printf bad >& ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "exec >| ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "exec 3<> ${GUARD}/bin/p_1/rm",
+    "want": "ask"
+  },
+  {
+    "line": "exec &> ${GUARD}/shell/p_1/.zshenv",
+    "want": "ask"
+  },
+  {
+    "line": "sed -Ei s/a/b/ ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "sh -c 'cd ${GUARD}; printf bad > agent-panes/p_1.json'",
+    "want": "ask"
+  },
+  {
+    "line": "cd ${GUARD}; printf bad > agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "set +ET",
+    "want": "ask"
+  },
+  {
+    "line": "set -ET",
+    "want": "ask"
+  },
+  {
+    "line": "set +o functrace",
+    "want": "ask"
+  },
+  {
+    "line": "set -o errtrace",
+    "want": "ask"
+  },
+  {
+    "line": "set +o debugbeforecmd",
+    "want": "ask"
+  },
+  {
+    "line": "shopt -u extdebug",
+    "want": "ask"
+  },
+  {
+    "line": "BASH_ENV=/dev/null; bash -c ls",
+    "want": "ask"
+  },
+  {
+    "line": "BASH_ENV=/dev/null",
+    "want": "ask"
+  },
+  {
+    "line": "ZDOTDIR=/dev/null; zsh -c ls",
+    "want": "ask"
+  },
+  {
+    "line": "ENV=/dev/null; sh -c ls",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | python3 -u",
+    "want": "ask"
+  },
+  {
+    "line": "python3 -u <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | python3 -W ignore",
+    "want": "ask"
+  },
+  {
+    "line": "python3 -W ignore <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | fish --no-config",
+    "want": "ask"
+  },
+  {
+    "line": "fish --no-config <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | perl -w",
+    "want": "ask"
+  },
+  {
+    "line": "perl -w <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | ruby -w",
+    "want": "ask"
+  },
+  {
+    "line": "ruby -w <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | node --input-type=module",
+    "want": "ask"
+  },
+  {
+    "line": "node --input-type=module <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf 'print(1)' | osascript -l JavaScript",
+    "want": "ask"
+  },
+  {
+    "line": "osascript -l JavaScript <<'EOF'\nprint(1)\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "printf ok >| ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "printf ok <> ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "printf ok &> ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "printf ok >& ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "printf ok 2>&1",
+    "want": "allow"
+  },
+  {
+    "line": "exec 3> ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "set -eu",
+    "want": "allow"
+  },
+  {
+    "line": "set +e",
+    "want": "allow"
+  },
+  {
+    "line": "set -o pipefail",
+    "want": "allow"
+  },
+  {
+    "line": "set -- +ET",
+    "want": "allow"
+  },
+  {
+    "line": "X=ordinary; printf ok",
+    "want": "allow"
+  },
+  {
+    "line": "cd /tmp; ls",
+    "want": "allow"
+  },
+  {
+    "line": "cd /tmp; printf ok 2>&1",
+    "want": "allow"
+  },
+  {
+    "line": "python3 -u tp.py",
+    "want": "allow"
+  },
+  {
+    "line": "printf data | python3 tp.py",
+    "want": "allow"
+  },
+  {
+    "line": "printf data | python3 -c 'print(\"ordinary\")'",
+    "want": "allow"
+  },
+  {
+    "line": "ZDOTDIR=/dev/null",
+    "want": "ask"
+  },
+  {
+    "line": "ENV=/dev/null",
+    "want": "ask"
+  },
+  {
+    "line": "set -o functrace",
+    "want": "ask"
+  },
+  {
+    "line": "set +o errtrace",
+    "want": "ask"
+  },
+  {
+    "line": "set -o",
+    "want": "allow"
+  },
+  {
+    "line": "set +o",
+    "want": "allow"
   }
 ]
