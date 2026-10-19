@@ -2,7 +2,9 @@ package guard
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -75,5 +77,31 @@ func TestServerPolicyReloadPublishesNewRules(t *testing.T) {
 	i.Command, i.Args, i.Env = "rm", []string{root + "/../victim"}, EnvMap(env)
 	if !Authorize(Config{}, record.Root, i, "shim", &out, nil) {
 		t.Fatal(out.String())
+	}
+}
+
+func TestStoredPolicyNotExposedInMarkerOutput(t *testing.T) {
+	policy := Config{Mode: "enforce"}
+	b, e := json.Marshal(Marker{Pane: "p1", Policy: &policy})
+	if e != nil || strings.Contains(string(b), "guard_config") {
+		t.Fatal(string(b), e)
+	}
+}
+
+func TestChildEnvCannotDropAuthorizationIdentity(t *testing.T) {
+	root := t.TempDir()
+	a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
+	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/socket"}, root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = a.Sync("codex"); e != nil {
+		t.Fatal(e)
+	}
+	for _, prefix := range []string{"env -i ", "env -u GTX_GUARD_MARKER ", "env -u GTX_PANE_ID "} {
+		var out bytes.Buffer
+		if AuthorizeLine(Config{}, root, Input{Cwd: root, Env: EnvMap(env)}, prefix+"/bin/rm "+root+"/../victim", &out, nil) {
+			t.Fatal(prefix, out.String())
+		}
 	}
 }

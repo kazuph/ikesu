@@ -22,7 +22,7 @@ const pinPath = `case "$PATH" in "$GTX_GUARD_BIN"|"$GTX_GUARD_BIN":*) ;; *) expo
 `
 
 func (a *Assets) prepareStartup(m map[string]string, dir string) error {
-	wrappers := a.shellFunctions()
+	wrappers := a.shellFunctions() + a.agentFunctions(dir)
 	m["GTX_GUARD_ZDOTDIR_ORIG"], m["GTX_GUARD_ZDOTDIR_SET"] = m["ZDOTDIR"], "0"
 	if _, ok := m["ZDOTDIR"]; ok {
 		m["GTX_GUARD_ZDOTDIR_SET"] = "1"
@@ -88,4 +88,17 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 		delete(m, "GTX_GUARD_ENFORCING")
 	}
 	return nil
+}
+
+// Keep the user's ZDOTDIR in their interactive shell, while external agents
+// inherit the generated startup chain for every tool shell they launch.
+func (a *Assets) agentFunctions(dir string) string {
+	var body string
+	for _, agent := range []string{"codex", "claude"} {
+		body += fmt.Sprintf(`if ! typeset -f %[1]s >/dev/null 2>&1 && ! alias %[1]s >/dev/null 2>&1; then
+%[1]s() { ZDOTDIR=%[2]s BASH_ENV=%[3]s builtin command %[1]s "$@"; }
+fi
+`, agent, quote(dir), quote(filepath.Join(dir, "bash-env")))
+	}
+	return body
 }

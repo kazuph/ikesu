@@ -38,8 +38,8 @@ func ReadMarker(i Input) (Marker, bool, error) {
 	if e != nil {
 		return Marker{Pane: i.Env["GTX_PANE_ID"]}, true, fmt.Errorf("目印ファイルを読めません: %w", e)
 	}
-	var m Marker
-	if e = json.Unmarshal(b, &m); e != nil {
+	m, e := decodeMarker(b)
+	if e != nil {
 		return m, true, fmt.Errorf("目印ファイルが壊れています: %w", e)
 	}
 	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || !filepath.IsAbs(m.Socket) || !filepath.IsAbs(m.Cwd) {
@@ -84,4 +84,15 @@ func Execute(i Input) error {
 		return e
 	}
 	return syscall.Exec(path, append([]string{i.Command}, i.Args...), childenv.Scrub(inherited))
+}
+
+// The server policy is storage-only; guard status retains its public marker shape.
+func decodeMarker(b []byte) (Marker, error) {
+	var stored struct {
+		Marker
+		Policy *Config `json:"guard_config"`
+	}
+	err := json.Unmarshal(b, &stored)
+	stored.Marker.Policy = stored.Policy
+	return stored.Marker, err
 }

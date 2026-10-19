@@ -38,8 +38,8 @@ func (a *Assets) coverageReason() string {
 }
 func (a *Assets) intact() bool {
 	b, e := os.ReadFile(a.MarkerPath)
-	var marker Marker
-	if e != nil || json.Unmarshal(b, &marker) != nil || !reflect.DeepEqual(marker, a.meta) || !reflect.DeepEqual(marker.Policy, &a.Config) || marker.Agent != a.active || marker.Mode != a.Config.EffectiveMode() {
+	marker, decodeErr := decodeMarker(b)
+	if e != nil || decodeErr != nil || !reflect.DeepEqual(marker, a.meta) || !reflect.DeepEqual(marker.Policy, &a.Config) || marker.Agent != a.active || marker.Mode != a.Config.EffectiveMode() {
 		return false
 	}
 	for _, cmd := range a.Config.Commands() {

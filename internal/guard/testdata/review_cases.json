@@ -1,0 +1,298 @@
+[
+  {
+    "line": "xargs /bin/rm ${TARGET}",
+    "want": "ask"
+  },
+  {
+    "line": "find /tmp/empty -exec /bin/rm ${TARGET} \\;",
+    "want": "ask"
+  },
+  {
+    "line": "find . -execdir /bin/rm {} +",
+    "want": "ask"
+  },
+  {
+    "line": "find . -ok /bin/rm {} \\;",
+    "want": "ask"
+  },
+  {
+    "line": "find . -okdir /bin/rm {} \\;",
+    "want": "ask"
+  },
+  {
+    "line": "sudo /bin/rm ${TARGET}",
+    "want": "ask"
+  },
+  {
+    "line": "doas /bin/rm ${TARGET}",
+    "want": "ask"
+  },
+  {
+    "line": "env -i /bin/sh <<'EOF'\n/bin/rm ${TARGET}\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "/bin/sh <<'EOF'\n/bin/rm ${TARGET}\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "/bin/sh <<'EOF'\nls\nEOF",
+    "want": "allow"
+  },
+  {
+    "line": "/bin/sh <<< '/bin/rm ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "printf ls | sh",
+    "want": "ask"
+  },
+  {
+    "line": "sh < script",
+    "want": "ask"
+  },
+  {
+    "line": "dash < script",
+    "want": "ask"
+  },
+  {
+    "line": "ksh < script",
+    "want": "ask"
+  },
+  {
+    "line": "fish < script",
+    "want": "ask"
+  },
+  {
+    "line": "python3 < script",
+    "want": "ask"
+  },
+  {
+    "line": "python3 - <<'EOF'\npass\nEOF",
+    "want": "ask"
+  },
+  {
+    "line": "eval '/bin/rm ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "source script",
+    "want": "ask"
+  },
+  {
+    "line": ". script",
+    "want": "ask"
+  },
+  {
+    "line": "env X=/bin/rm BASH_ENV=/dev/null /bin/bash -c '$X ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "env X=/bin/rm /bin/bash -c '$X ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "env -u X /bin/bash -c '$X ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "env -i /bin/bash -c '$X ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "env -S 'X=/bin/rm /bin/bash -c \"$X ${TARGET}\"'",
+    "want": "ask"
+  },
+  {
+    "line": "ZDOTDIR=/dev/null /bin/zsh -c ls",
+    "want": "ask"
+  },
+  {
+    "line": "ENV=/dev/null sh -c ls",
+    "want": "ask"
+  },
+  {
+    "line": "export BASH_ENV=/dev/null",
+    "want": "ask"
+  },
+  {
+    "line": "unset BASH_ENV",
+    "want": "ask"
+  },
+  {
+    "line": "trap - DEBUG",
+    "want": "ask"
+  },
+  {
+    "line": "trap - ERR",
+    "want": "ask"
+  },
+  {
+    "line": "trap - RETURN",
+    "want": "ask"
+  },
+  {
+    "line": "trap ':' DEBUG",
+    "want": "ask"
+  },
+  {
+    "line": "unset -f TRAPDEBUG",
+    "want": "ask"
+  },
+  {
+    "line": "unfunction TRAPDEBUG",
+    "want": "ask"
+  },
+  {
+    "line": "functions -c good TRAPDEBUG",
+    "want": "ask"
+  },
+  {
+    "line": "_gtx_guard_debug() { :; }",
+    "want": "ask"
+  },
+  {
+    "line": "TRAPDEBUG() { :; }",
+    "want": "ask"
+  },
+  {
+    "line": "_gtx_guard_command() { /bin/rm ${TARGET}; }; _gtx_guard_command",
+    "want": "ask"
+  },
+  {
+    "line": "alias TRAPDEBUG=true",
+    "want": "ask"
+  },
+  {
+    "line": "alias rm=echo",
+    "want": "ask"
+  },
+  {
+    "line": "unalias rm",
+    "want": "ask"
+  },
+  {
+    "line": "shopt -u extdebug",
+    "want": "ask"
+  },
+  {
+    "line": "set +T",
+    "want": "ask"
+  },
+  {
+    "line": "set +o functrace",
+    "want": "ask"
+  },
+  {
+    "line": "unsetopt DEBUG_BEFORE_CMD",
+    "want": "ask"
+  },
+  {
+    "line": "setopt NO_DEBUG_BEFORE_CMD",
+    "want": "ask"
+  },
+  {
+    "line": "printf bad > ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "cat >> ${GUARD}/shell/p_1/.zshenv",
+    "want": "ask"
+  },
+  {
+    "line": "cp ordinary ${GUARD}/shell/p_1/.zshenv",
+    "want": "ask"
+  },
+  {
+    "line": "mv ${GUARD}/bin/p_1/rm ordinary",
+    "want": "ask"
+  },
+  {
+    "line": "rm ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "ln -sf ordinary ${GUARD}/agent-panes/p_1.json",
+    "want": "ask"
+  },
+  {
+    "line": "chmod 777 ${GUARD}/shell/p_1/.zshenv",
+    "want": "ask"
+  },
+  {
+    "line": "tee ${GUARD}/bin/p_1/rm",
+    "want": "ask"
+  },
+  {
+    "line": "sed -i '' s/a/b/ ${GUARD}/bin/p_1/rm",
+    "want": "ask"
+  },
+  {
+    "line": "ls",
+    "want": "allow"
+  },
+  {
+    "line": "git status",
+    "want": "allow"
+  },
+  {
+    "line": "cd /tmp",
+    "want": "allow"
+  },
+  {
+    "line": "printf ok | grep ok",
+    "want": "allow"
+  },
+  {
+    "line": "go test ./...",
+    "want": "allow"
+  },
+  {
+    "line": "make",
+    "want": "allow"
+  },
+  {
+    "line": "cat > ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "printf ok > ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "env X=/bin/echo /bin/bash -c '$X ok'",
+    "want": "allow"
+  },
+  {
+    "line": "env -u X ls",
+    "want": "allow"
+  },
+  {
+    "line": "python3 tp.py elapsed",
+    "want": "allow"
+  },
+  {
+    "line": "cp ${GUARD}/shell/p_1/.zshenv ordinary",
+    "want": "allow"
+  },
+  {
+    "line": "trap -p DEBUG",
+    "want": "allow"
+  },
+  {
+    "line": "printf bad > ${ROOT}/guard-link/newfile",
+    "want": "ask"
+  },
+  {
+    "line": "unset -f rm",
+    "want": "ask"
+  },
+  {
+    "line": "unset -f _gtx_guard_forward",
+    "want": "ask"
+  },
+  {
+    "line": "/bin/bash --norc -c ls",
+    "want": "allow"
+  }
+]

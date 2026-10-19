@@ -18,7 +18,20 @@ func lineCommands(i Input, line string) ([]Input, error) {
 	if err != nil {
 		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
 	}
+	i.GuardRoot = guardDirectory(i)
 	var commands []Input
+	redirections := map[*syntax.CallExpr][]*syntax.Redirect{}
+	syntax.Walk(tree, func(node syntax.Node) bool {
+		if stmt, ok := node.(*syntax.Stmt); ok {
+			if call, ok := stmt.Cmd.(*syntax.CallExpr); ok {
+				redirections[call] = stmt.Redirs
+			}
+		}
+		return true
+	})
+	if e := treeBoundary(i, tree); e != nil {
+		err = e
+	}
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		call, ok := node.(*syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
@@ -32,8 +45,13 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			if assignment.Value == nil {
 				continue
 			}
+			if startupVariable(assignment.Name.Value) {
+				next.ShellEnvChanged = true
+			}
 			value, e := expand.Literal(cfg, assignment.Value)
 			if e != nil {
+				next.Unresolved = true
+				delete(next.Env, assignment.Name.Value)
 				continue
 			}
 			key := assignment.Name.Value
@@ -41,7 +59,8 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				next.Env[key] = value
 			}
 		}
-		cfg.Env = expand.ListEnviron(environment(next.Env)...)
+		// Shell words expand in the parent environment, before prefix assignments.
+		cfg.Env = expand.ListEnviron(environment(i.Env)...)
 		var argv []string
 		unknownCommand := false
 		for n, word := range call.Args {
@@ -62,27 +81,14 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			err = fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command)
 		}
 		unwrapped, e := unwrapCommand(next)
+		commands = append(commands, unwrapped)
 		if e != nil {
 			err = e
-		} else {
-			commands = append(commands, unwrapped)
-			if has([]string{"sh", "bash", "zsh"}, filepath.Base(unwrapped.Command)) {
-				for n, option := range unwrapped.Args {
-					if strings.HasPrefix(option, "-") && strings.Contains(option, "c") {
-						if n+1 >= len(unwrapped.Args) {
-							err = prefixError(unwrapped.Command)
-							break
-						}
-						nested, nestedErr := lineCommands(unwrapped, unwrapped.Args[n+1])
-						commands = append(commands, nested...)
-						if nestedErr != nil {
-							err = nestedErr
-						}
-						break
-					}
-				}
-			}
 		}
+		if e := commandScript(unwrapped, redirections[call], &commands); e != nil {
+			err = e
+		}
+
 		return true
 	})
 	return commands, err
@@ -126,6 +132,10 @@ func unwrapCommand(i Input) (Input, error) {
 					}
 					continue
 				}
+				if option == "-c" {
+					i.Env = map[string]string{}
+					i.ShellEnvChanged = true
+				}
 				if option != "-c" && option != "-l" {
 					return i, prefixError(cmd)
 				}
@@ -154,51 +164,12 @@ func unwrapCommand(i Input) (Input, error) {
 				args = args[1:]
 			}
 		case "env":
-			for len(args) > 0 {
-				option := args[0]
-				switch {
-				case option == "--":
-					args = args[1:]
-				case option == "-i" || option == "--ignore-environment" || option == "-":
-					args = args[1:]
-					continue
-				case option == "-u" || option == "--unset":
-					if !take(2) {
-						return i, prefixError(cmd)
-					}
-					continue
-				case strings.HasPrefix(option, "--unset=") || strings.HasPrefix(option, "-u") && len(option) > 2:
-					args = args[1:]
-					continue
-				case option == "-S" || option == "--split-string" || strings.HasPrefix(option, "--split-string=") || strings.HasPrefix(option, "-S") && len(option) > 2:
-					var split string
-					if option == "-S" || option == "--split-string" {
-						if len(args) < 2 {
-							return i, prefixError(cmd)
-						}
-						split = args[1]
-						args = args[2:]
-					} else if strings.HasPrefix(option, "-S") {
-						split = option[2:]
-						args = args[1:]
-					} else {
-						split = strings.TrimPrefix(option, "--split-string=")
-						args = args[1:]
-					}
-					words, e := splitPrefix(split, i.Env)
-					if e != nil {
-						return i, e
-					}
-					args = append(words, args...)
-					continue
-				case strings.Contains(option, "=") && !strings.HasPrefix(option, "-"):
-					args = args[1:]
-					continue
-				case strings.HasPrefix(option, "-"):
-					return i, prefixError(cmd)
-				}
-				break
+			var e error
+			args, e = envArguments(&i, args)
+			if e != nil {
+				return i, e
 			}
+
 		default:
 			return i, nil
 		}
@@ -233,6 +204,7 @@ func splitPrefix(text string, env map[string]string) ([]string, error) {
 }
 
 func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
+	i.GuardCommands = c.Commands()
 	commands, err := lineCommands(i, line)
 	i.RawLine = line
 	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line})

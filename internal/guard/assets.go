@@ -18,7 +18,7 @@ type Marker struct {
 	Tab       string  `json:"tab_id"`
 	Socket    string  `json:"socket"`
 	Mode      string  `json:"mode"`
-	Policy    *Config `json:"guard_config,omitempty"`
+	Policy    *Config `json:"-"`
 }
 type Assets struct {
 	mu                                      sync.Mutex
@@ -181,7 +181,10 @@ func (a *Assets) sync(agent string) error {
 	}
 	policy := a.Config
 	a.meta.Agent, a.meta.Mode, a.meta.Policy = agent, a.Config.EffectiveMode(), &policy
-	b, e := json.Marshal(a.meta)
+	b, e := json.Marshal(struct {
+		Marker
+		Policy *Config `json:"guard_config"`
+	}{a.meta, &policy})
 	if e != nil {
 		return a.setIssue(e.Error())
 	}
