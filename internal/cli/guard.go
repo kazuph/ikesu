@@ -29,6 +29,34 @@ func (r *runner) guardCLI(a []string) int {
 	launch := r.o.getenv("GTX_GUARD_LAUNCH_CWD")
 	via := "shim"
 	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ())}
+	// Generated entries pin the marker path. Keep diagnostics with that pane's
+	// assets even when its shell still carries the pre-handoff state directory.
+	if marker := i.Env["GTX_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line") {
+		root = filepath.Dir(filepath.Dir(filepath.Dir(marker)))
+	}
+	await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+		marker, active, err := guard.ReadMarker(i)
+		if err != nil {
+			return api.Decision{}, err
+		}
+		if !active {
+			return api.Decision{}, fmt.Errorf("承認先の目印がありません")
+		}
+		next := *r
+		getenv := next.o.getenv
+		next.o.Explicit = false
+		next.o.Getenv = func(key string) string {
+			if key == "GTX_SOCKET_PATH_EXPLICIT" {
+				return "1"
+			}
+			if key == "GTX_SOCKET_PATH" {
+				return marker.Socket
+			}
+			return getenv(key)
+		}
+		return next.guardAwait(p, timeout)
+	}
+
 	writeJSON := func(v any) int {
 		enc := json.NewEncoder(r.out())
 		enc.SetIndent("", "  ")
@@ -160,12 +188,12 @@ func (r *runner) guardCLI(a []string) int {
 		if len(argv) != 1 {
 			return usageErr(r, "guard line requires one command line")
 		}
-		if !guard.AuthorizeLine(c.Guard, root, i, argv[0], r.errOut(), r.guardAwait) {
+		if !guard.AuthorizeLine(c.Guard, root, i, argv[0], r.errOut(), await) {
 			return 1
 		}
 		return 0
 	}
-	if !guard.Authorize(c.Guard, root, i, via, r.errOut(), r.guardAwait) {
+	if !guard.Authorize(c.Guard, root, i, via, r.errOut(), await) {
 		return 1
 	}
 	if e = guard.Execute(i); e != nil {

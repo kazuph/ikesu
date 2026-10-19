@@ -41,8 +41,11 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	m, active, e := ReadMarker(i)
 	if e != nil {
-		fmt.Fprintln(errOut, "guard marker:", e)
-		return c.EffectiveMode() == "record"
+		fmt.Fprintln(errOut, "❌ 実行を停止しました:", e)
+		if logErr := Log(root, i, m, result("block", "guard-marker", e.Error()), via); logErr != nil {
+			fmt.Fprintln(errOut, "guard log:", logErr)
+		}
+		return false
 	}
 	if !active {
 		return true

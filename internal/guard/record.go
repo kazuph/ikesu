@@ -2,6 +2,7 @@ package guard
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
 	"golang.org/x/sys/unix"
 	"os"
@@ -34,18 +35,15 @@ func ReadMarker(i Input) (Marker, bool, error) {
 		return Marker{}, false, nil
 	}
 	b, e := os.ReadFile(p)
-	if os.IsNotExist(e) {
-		return Marker{}, false, nil
-	}
 	if e != nil {
-		return Marker{}, false, e
+		return Marker{Pane: i.Env["GTX_PANE_ID"]}, true, fmt.Errorf("目印ファイルを読めません: %w", e)
 	}
 	var m Marker
 	if e = json.Unmarshal(b, &m); e != nil {
-		return m, false, e
+		return m, true, fmt.Errorf("目印ファイルが壊れています: %w", e)
 	}
-	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || m.Socket != i.Env["GTX_SOCKET_PATH"] {
-		return m, false, nil
+	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || !filepath.IsAbs(m.Socket) || !filepath.IsAbs(m.Cwd) {
+		return m, true, fmt.Errorf("目印ファイルの画面・エージェント・接続先が不正です")
 	}
 	return m, true, nil
 }

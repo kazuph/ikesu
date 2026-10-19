@@ -31,8 +31,7 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 	}
 	_, active, e := ReadMarker(i)
 	if e != nil {
-		fmt.Fprintln(errOut, e)
-		return c.EffectiveMode() == "record"
+		return authorize(c, root, i, "line", errOut, await, nil)
 	}
 	if !active {
 		return true

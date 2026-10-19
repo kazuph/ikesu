@@ -43,7 +43,7 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 	for _, phase := range phases {
 		body := restore + fmt.Sprintf("if [[ -f \"${ZDOTDIR:-$HOME}/%s\" ]]; then source \"${ZDOTDIR:-$HOME}/%s\"; fi\n", phase.name, phase.name) + capture + pinPath
 		if phase.name == ".zshenv" {
-			body += wrappers + zshLineHook
+			body += wrappers + a.lineHook()
 		}
 		body += "if " + phase.next + "; then export ZDOTDIR=\"$GTX_GUARD_SHELL_DIR\"; fi\n"
 		if e := os.WriteFile(filepath.Join(dir, phase.name), []byte(body), 0600); e != nil {

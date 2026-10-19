@@ -83,40 +83,57 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 
 	return environment(m), nil
 }
+
+// Pin identity at the generated entry point, before the CLI sees the caller's
+// environment. The socket remains in the marker so handoff can replace it.
+func (a *Assets) identity() string {
+	return "GTX_GUARD_MARKER=" + quote(a.MarkerPath) + " GTX_PANE_ID=" + quote(a.meta.Pane)
+}
+func (a *Assets) invocation() string {
+	return a.identity() + " " + quote(a.Executable)
+}
+func (a *Assets) shellActive() string {
+	if len(a.Config.Commands()) == 0 {
+		return "-e " + quote(a.MarkerPath)
+	}
+	return "-e " + quote(a.MarkerPath) + " || -e " + quote(filepath.Join(a.Bin, a.Config.Commands()[0]))
+}
 func (a *Assets) shellFunctions() string {
 	var b strings.Builder
 	for _, cmd := range a.Config.Commands() {
 		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
-%s() { if [[ -f "$GTX_GUARD_MARKER" ]]; then %s guard exec --via shell-func -- %s "$@"; else builtin command %s "$@"; fi; }
+%s() { if [[ %s ]]; then %s guard exec --via shell-func -- %s "$@"; else builtin command %s "$@"; fi; }
 fi
-`, quote(cmd), quote(cmd), cmd, quote(a.Executable), quote(cmd), quote(cmd))
+`, quote(cmd), quote(cmd), cmd, a.shellActive(), a.invocation(), quote(cmd), quote(cmd))
 	}
 	if len(a.Config.Commands()) == 0 {
 		return b.String()
 	}
 	fmt.Fprintf(&b, `if ! typeset -f command >/dev/null 2>&1 && ! alias command >/dev/null 2>&1; then
 command() {
- if [[ -f "$GTX_GUARD_MARKER" && "${1:-}" != -* ]]; then
+ if [[ ( %s ) && "${1:-}" != -* ]]; then
  case "${1:-}" in %s) %s guard exec --via shell-func -- "$@"; return $?;; esac
  fi
  builtin command "$@"
 }
 fi
-`, strings.Join(a.Config.Commands(), "|"), quote(a.Executable))
+`, a.shellActive(), strings.Join(a.Config.Commands(), "|"), a.invocation())
 	return b.String()
 }
 
-const zshLineHook = `
+func (a *Assets) lineHook() string {
+	return fmt.Sprintf(`
 if [[ -o interactive ]]; then
  _gtx_guard_accept_line() {
-  if [[ -f "$GTX_GUARD_MARKER" ]]; then
-   "$GTX_GUARD_EXECUTABLE" guard line -- "$BUFFER" || { zle redisplay; return 0; }
+  if [[ %s ]]; then
+   %s guard line -- "$BUFFER" || { zle redisplay; return 0; }
   fi
   zle .accept-line
  }
  if ! zle -l accept-line >/dev/null 2>&1; then zle -N accept-line _gtx_guard_accept_line; fi
 fi
-`
+`, a.shellActive(), a.invocation())
+}
 
 func (a *Assets) Sync(agent string) error {
 	a.mu.Lock()
@@ -148,7 +165,7 @@ func (a *Assets) sync(agent string) error {
 	// Publish only after all forwarding entries exist. Repair deleted assets
 	// even when the detected agent has not changed.
 	for _, cmd := range a.Config.Commands() {
-		s := "#!/bin/sh\nexec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
+		s := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
 		if e := os.WriteFile(filepath.Join(a.Bin, cmd), []byte(s), 0700); e != nil {
 			_ = a.remove()
 			return a.setIssue(e.Error())
