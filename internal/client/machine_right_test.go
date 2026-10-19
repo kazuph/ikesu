@@ -125,6 +125,11 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 			case err := <-done:
 				if err != nil {
 					t.Error(err)
+					for _, id := range m.order {
+						if data, readErr := os.ReadFile(filepath.Join(root, id+".log")); readErr == nil {
+							t.Logf("%s server output: %s", id, data)
+						}
+					}
 				}
 			case <-time.After(10 * time.Second):
 				cmd.Process.Kill()
