@@ -42,7 +42,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		}
 		return false
 	}
-	if m.X == s.SidebarArea().W-1 && m.Button == uv.MouseLeft {
+	if (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
 		a.sidebarGesture = &sidebarGesture{divider: true, x: m.X, y: m.Y}
 		return true
 	}
