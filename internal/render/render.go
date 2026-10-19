@@ -285,9 +285,14 @@ func compose(in Input, machines *MachineSidebar, version string, notice bool) *O
 	drawActionBar(f, s, in, out)
 	drawClientVersion(f, version, notice, out)
 	if in.ServerUI && in.Copy != nil {
-		drawCopyStatus(f, 0, s.Rows-1, s.Cols, in.CopyHint, in.ServerUI)
+		x := 0
+		if in.Copied != "" {
+			x = s.PanesArea().X
+		}
+		drawCopyStatus(f, x, s.Rows-1, s.Cols-x, in.CopyHint, in.ServerUI)
 		out.ActionBar = ActionBarRects{}
 	}
+	drawSidebarCopyFeedback(f, in)
 	drawPopup(f, in, out)
 	if s.Mobile() {
 		drawMobile(f, in, out)

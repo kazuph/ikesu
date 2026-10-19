@@ -265,19 +265,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 			clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
 		}
 	}
-	if in.Copied != "" && !in.ServerUI && area.W > 1 && area.H > 0 {
-		x, y, w := area.X, area.Y+area.H-1, area.W-1
-		f.Fill(x, y, w-1, 1, " ", uv.Style{})
-		copyStyle := uv.Style{Fg: f.Palette.Green, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}
-		label := truncate(in.Copied, w-1)
-		f.Text(x, y, label, copyStyle, x+w-1)
-		prefix := strings.TrimSuffix(in.Copied, " lines")
-		for xx := x; xx < x+min(len([]rune(prefix)), len([]rune(label))); xx++ {
-			if cell := f.Cell(xx, y); cell != nil {
-				cell.Style.Underline = uv.UnderlineSingle
-			}
-		}
-	}
+
 }
 
 func sectionDropIndex(in Input) *int {

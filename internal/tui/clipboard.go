@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // SSH copies travel to the viewing terminal. Local macOS copies use the
@@ -21,4 +22,15 @@ func (a *App) writeClipboard(text string) error {
 	}
 	_, err := fmt.Fprintf(a.out, "\x1b]52;c;%s\a", base64.StdEncoding.EncodeToString([]byte(text)))
 	return err
+}
+
+func (a *App) copiedText(text string) {
+	lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
+	unit := "lines"
+	if lines == 1 {
+		unit = "line"
+	}
+	a.copied = fmt.Sprintf("Copied %d %s", lines, unit)
+	a.copiedAt = time.Now()
+	a.dirty = true
 }

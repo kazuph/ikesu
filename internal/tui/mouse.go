@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"github.com/kazuph/goterrace/internal/config"
 	"strings"
 	"time"
@@ -637,16 +636,7 @@ func (a *App) finishSelection() {
 	if err := a.writeClipboard(text); err != nil {
 		return
 	}
-	// SPEC G1: "Copied N lines" on the sidebar's bottom row, 2 seconds.
-	lines := strings.Count(text, "\n") + 1
-	if strings.HasSuffix(text, "\n") {
-		lines--
-	}
-	if lines < 1 {
-		lines = 1
-	}
-	a.copied = fmt.Sprintf("Copied %d lines", lines)
-	a.copiedAt = time.Now()
+	a.copiedText(text)
 }
 
 // forwardMouse keeps relaying events to a mouse-tracking pane during a drag.
