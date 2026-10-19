@@ -29,9 +29,10 @@ func TestStage6bModalPaste(t *testing.T) {
 	a.navigator = nil
 	a.cm = &copyMode{searching: true, query: "al"}
 	a.onInput(input.Event{Kind: input.KindPaste, Text: "pha\t\x01beta\n"})
-	if a.cm.query != "al" {
-		t.Fatal("0.2.57 ignores bracketed paste in copy search")
+	if a.cm.query != "alphabeta" {
+		t.Fatal("copy search dropped or failed to filter bracketed paste", a.cm.query)
 	}
+	a.cm.query = "al"
 	a.insertClipboardText("pha\t\x01beta\n")
 	if a.cm.query != "alphabeta" {
 		t.Fatalf("copy query = %q", a.cm.query)

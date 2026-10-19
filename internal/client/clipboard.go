@@ -30,7 +30,7 @@ type clipboardItem struct {
 type clipboardPaste struct{ held []clipboardItem }
 
 func modalClipboardView(view *render.Input) bool {
-	return view != nil && (view.Dialog != nil && view.Dialog.InputEdit || view.Navigator != nil || view.Copy != nil)
+	return view != nil && (view.Dialog != nil && view.Dialog.InputEdit || view.Navigator != nil && view.Navigator.Searching || view.Copy != nil && strings.HasSuffix(view.CopyHint, "  enter search  esc cancel"))
 }
 
 func readDesktopClipboard(ctx context.Context) (clipboardContent, error) {
@@ -128,7 +128,7 @@ func (m *machineClient) startClipboardPaste(id string) error {
 			}
 			if err != nil {
 				m.notify(err.Error())
-			} else {
+			} else if text != "" {
 				data := eventBytes(input.Event{Kind: input.KindPaste, Text: text})
 				if copySearch {
 					data = []byte(strings.Map(func(r rune) rune {
