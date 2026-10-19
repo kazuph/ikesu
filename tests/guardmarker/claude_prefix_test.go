@@ -14,6 +14,54 @@ func TestClaudePrefixBeforeSnapshotEval(t *testing.T) {
 	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/gtx").CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
+	for _, kind := range []string{"shell-tail", "shell-tail-variant", "rm-prefix", "touch-tail", "env-prefix", "env-shell-prefix", "raw-line"} {
+		t.Run("direct-"+kind, func(t *testing.T) {
+			a, env, target := newEntry(t, binary)
+			defer a.Close()
+			if e := a.Sync("claude"); e != nil {
+				t.Fatal(e)
+			}
+			args := []string{"guard", "claude-prefix", "--"}
+			switch kind {
+			case "shell-tail":
+				args = append(args, "/bin/sh", "-c", "/bin/rm "+shellQuote(target), "ls")
+			case "shell-tail-variant":
+				args = append(args, "/bin/zsh", "-c", "false || /bin/rm "+shellQuote(target), "echo ordinary")
+			case "rm-prefix":
+				args = append(args, "/bin/rm", target)
+			case "touch-tail":
+				args = append(args, "/usr/bin/touch", target+"-unexpected", "ls")
+			case "env-prefix":
+				env = append(env, "GTX_GUARD_CLAUDE_PREFIX_ORIG=/bin/rm")
+				args = append(args, target)
+			case "env-shell-prefix":
+				script := filepath.Join(t.TempDir(), "unchecked-script")
+				if e := os.WriteFile(script, []byte("touch "+shellQuote(target+"-unexpected")+"\n"), 0700); e != nil {
+					t.Fatal(e)
+				}
+				env = append(env, "GTX_GUARD_CLAUDE_PREFIX_ORIG=/bin/sh")
+				args = append(args, script)
+			case "raw-line":
+				args = append(args, "echo ordinary; /bin/rm "+shellQuote(target))
+			}
+			c := exec.Command(binary, args...)
+			c.Env = env
+			b, e := c.CombinedOutput()
+			if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+				t.Fatal(e, string(b))
+			}
+			if _, e := os.Stat(target); e != nil {
+				t.Fatal("victim changed", e)
+			}
+			if _, e := os.Stat(target + "-unexpected"); !os.IsNotExist(e) {
+				t.Fatal("unchecked command executed", e)
+			}
+			log, e := os.ReadFile(filepath.Join(a.Root, "guard", "decisions.jsonl"))
+			if e != nil || !strings.Contains(string(log), `"verdict":"ask"`) {
+				t.Fatal(e, string(log))
+			}
+		})
+	}
 	for _, payload := range []string{"/bin/rm TARGET", "env -i /bin/rm TARGET", "false || /bin/rm TARGET", "command rm TARGET", "rm TARGET", "ls", "git status", "cd /tmp; pwd", "printf '%s' ok | cat", "echo ordinary"} {
 		t.Run(payload, func(t *testing.T) {
 			a, env, target := newEntry(t, binary)

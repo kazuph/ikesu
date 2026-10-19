@@ -79,3 +79,39 @@ func TestClaudePrefixEnvironmentIsScopedAndRestored(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudePrefixRemovalRequiresAsk(t *testing.T) {
+	i := Input{Cwd: "/tmp/work", LaunchCwd: "/tmp/work", Env: map[string]string{"HOME": "/tmp/home", "CLAUDE_CODE_SHELL_PREFIX": "/tmp/prefix"}}
+	for _, line := range []string{
+		"env -u CLAUDE_CODE_SHELL_PREFIX /tmp/claude --print hello",
+		"env --unset=CLAUDE_CODE_SHELL_PREFIX /tmp/claude-code hello",
+		"env -uCLAUDE_CODE_SHELL_PREFIX /tmp/claude hello",
+		"env -i /tmp/claude hello", "exec -c /tmp/claude hello",
+		"CLAUDE_CODE_SHELL_PREFIX= /tmp/claude hello",
+		"CLAUDE_CODE_SHELL_PREFIX=/tmp/other command /tmp/claude hello",
+		"env CLAUDE_CODE_SHELL_PREFIX= /tmp/claude hello",
+		"command env --unset CLAUDE_CODE_SHELL_PREFIX /tmp/claude hello",
+		"env -S '-u CLAUDE_CODE_SHELL_PREFIX /tmp/claude' hello",
+		"unset -v CLAUDE_CODE_SHELL_PREFIX; claude hello",
+		"export CLAUDE_CODE_SHELL_PREFIX=; /tmp/claude hello",
+		"export -n CLAUDE_CODE_SHELL_PREFIX; claude hello",
+		"gtx guard claude-prefix -- /bin/sh -c '/bin/rm /tmp/home/../victim' ls",
+		"command gtx guard claude-prefix -- /bin/rm /tmp/home/../victim",
+		"env gtx guard claude-prefix -- /bin/zsh -c 'touch /tmp/victim' echo",
+	} {
+		t.Run(line, func(t *testing.T) {
+			_, v, _ := lineVerdict(Config{}, i, line)
+			if v.Decision != "ask" {
+				t.Fatalf("%s: %+v", line, v)
+			}
+		})
+	}
+	for _, line := range []string{"claude hello", "/tmp/claude --print hello", "env TEST=ok /tmp/claude hello", "env -i /tmp/codex hello", "CLAUDE_CODE_SHELL_PREFIX= /bin/echo ordinary", "ls", "git status", "echo ordinary | cat"} {
+		t.Run(line, func(t *testing.T) {
+			_, v, e := lineVerdict(Config{}, i, line)
+			if e != nil || v.Decision != "allow" {
+				t.Fatalf("%s: %+v %v", line, v, e)
+			}
+		})
+	}
+}

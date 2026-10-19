@@ -43,11 +43,12 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		next.RawLine = line
 		cfg := &expand.Config{Env: expand.ListEnviron(environment(next.Env)...), NoUnset: true}
 		for _, assignment := range call.Assigns {
-			if assignment.Value == nil {
-				continue
-			}
 			if startupVariable(assignment.Name.Value) {
 				next.ShellEnvChanged = true
+				next.ClaudePrefixChanged = next.ClaudePrefixChanged || assignment.Name.Value == "CLAUDE_CODE_SHELL_PREFIX"
+			}
+			if assignment.Value == nil {
+				continue
 			}
 			cfg.Env = expand.ListEnviron(environment(next.Env)...)
 			value, e := expand.Literal(cfg, assignment.Value)
@@ -141,6 +142,7 @@ func unwrapCommand(i Input) (Input, error) {
 				if option == "-c" {
 					i.Env = map[string]string{}
 					i.ShellEnvChanged = true
+					i.ClaudePrefixChanged = true
 				}
 				if option != "-c" && option != "-l" {
 					return i, prefixError(cmd)

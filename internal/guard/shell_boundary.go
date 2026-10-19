@@ -45,6 +45,10 @@ func commandBoundary(i Input) string {
 		return "判定・権限を変更する操作の対象を安全に確定できません"
 	}
 	switch cmd {
+	case "gtx", "herdr":
+		if len(args) >= 2 && args[0] == "guard" && args[1] == "claude-prefix" {
+			return "専用入口の実行内容は入口自身で全体を確認する必要があります"
+		}
 	case "eval", "source", ".", "xargs", "sudo", "doas", "timeout", "stdbuf", "arch", "chroot", "setsid", "ionice":
 		return "実行を委譲する " + cmd + " の中身を安全に確定できません"
 	case "find":
@@ -125,10 +129,19 @@ func treeBoundary(i Input, tree *syntax.File) error {
 				failure = fmt.Errorf("判定と同名の関数の定義には承認が必要です")
 			}
 		case *syntax.DeclClause:
+			removeExport, prefixName := false, false
 			for _, assignment := range n.Args {
-				if assignment.Name != nil && startupVariable(assignment.Name.Value) && assignment.Value != nil {
+				if assignment.Value != nil {
+					value, _ := expand.Literal(cfg, assignment.Value)
+					removeExport = removeExport || value == "-n"
+					prefixName = prefixName || value == "CLAUDE_CODE_SHELL_PREFIX"
+				}
+				if assignment.Name != nil && startupVariable(assignment.Name.Value) {
 					failure = fmt.Errorf("子シェルの起動ファイルを変更する設定には承認が必要です")
 				}
+			}
+			if removeExport && prefixName {
+				failure = fmt.Errorf("Claudeの実行前判定を子プロセスから消す設定には承認が必要です")
 			}
 		case *syntax.CallExpr:
 			if len(n.Args) == 0 {
@@ -158,6 +171,9 @@ func treeBoundary(i Input, tree *syntax.File) error {
 
 func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error {
 	cmd := filepath.Base(i.Command)
+	if has([]string{"claude", "claude-code"}, cmd) && i.ClaudePrefixChanged {
+		return fmt.Errorf("Claudeの実行前判定を外す起動環境の変更には承認が必要です")
+	}
 	shell := has([]string{"sh", "bash", "zsh", "dash", "ksh"}, cmd)
 	interpreter := shell || has([]string{"fish", "python", "python2", "python3", "perl", "ruby", "node", "osascript"}, cmd)
 	if !interpreter {

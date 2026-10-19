@@ -14,7 +14,7 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- [prefix args...] <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
+		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
 		return 0
 	}
 	sub := a[0]
@@ -74,16 +74,21 @@ func (r *runner) guardCLI(a []string) int {
 		if len(a) > 0 && a[0] == "--" {
 			a = a[1:]
 		}
-		if len(a) == 0 {
-			return usageErr(r, "guard claude-prefix requires a command line")
+		if len(a) != 1 {
+			i.Command, i.Args = "gtx", append([]string{"guard", "claude-prefix", "--"}, a...)
+			guard.Authorize(c.Guard, root, i, "line", r.errOut(), await)
+			return usageErr(r, "guard claude-prefix requires exactly one command line")
 		}
-		line := a[len(a)-1]
+		line := a[0]
 		i.Command, i.Args = line, nil
 		if !guard.AuthorizeLine(c.Guard, root, i, guard.ClaudePrefixLine(i, line), r.errOut(), await) {
 			return 1
 		}
-		if len(a) > 1 {
-			i.Command, i.Args = a[0], a[1:]
+		if prefix := i.Env["GTX_GUARD_CLAUDE_PREFIX_ORIG"]; prefix != "" {
+			i.Command, i.Args = prefix, []string{line}
+			if !guard.AuthorizeLine(c.Guard, root, i, shellQuote(prefix)+" "+shellQuote(line), r.errOut(), await) {
+				return 1
+			}
 		} else {
 			i.Command = i.Env["SHELL"]
 			if i.Command == "" {

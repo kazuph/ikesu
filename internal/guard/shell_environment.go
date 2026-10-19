@@ -20,6 +20,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 		case option == "-i" || option == "--ignore-environment" || option == "-":
 			i.Env = map[string]string{}
 			i.ShellEnvChanged = true
+			i.ClaudePrefixChanged = true
 			args = args[1:]
 		case option == "-u" || option == "--unset":
 			if len(args) < 2 {
@@ -28,6 +29,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 			key := args[1]
 			delete(i.Env, key)
 			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key)
+			i.ClaudePrefixChanged = i.ClaudePrefixChanged || key == "CLAUDE_CODE_SHELL_PREFIX"
 			args = args[2:]
 		case strings.HasPrefix(option, "--unset=") || strings.HasPrefix(option, "-u") && len(option) > 2:
 			key := strings.TrimPrefix(option, "--unset=")
@@ -36,6 +38,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 			}
 			delete(i.Env, key)
 			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key)
+			i.ClaudePrefixChanged = i.ClaudePrefixChanged || key == "CLAUDE_CODE_SHELL_PREFIX"
 			args = args[1:]
 		case option == "-S" || option == "--split-string" || strings.HasPrefix(option, "--split-string=") || strings.HasPrefix(option, "-S") && len(option) > 2:
 			var split string
@@ -63,6 +66,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 			key, value, _ := strings.Cut(option, "=")
 			i.Env[key] = value
 			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key)
+			i.ClaudePrefixChanged = i.ClaudePrefixChanged || key == "CLAUDE_CODE_SHELL_PREFIX"
 			args = args[1:]
 		case strings.HasPrefix(option, "-"):
 			return nil, prefixError("env")

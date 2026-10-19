@@ -22,7 +22,7 @@ const pinPath = `case "$PATH" in "$GTX_GUARD_BIN"|"$GTX_GUARD_BIN":*) ;; *) expo
 `
 
 func (a *Assets) prepareStartup(m map[string]string, dir string) error {
-	prefix := "#!/bin/sh\nif [ -n \"${GTX_GUARD_CLAUDE_PREFIX_ORIG:-}\" ]; then set -- \"$GTX_GUARD_CLAUDE_PREFIX_ORIG\" \"$@\"; fi\n" + a.identity() + " exec " + quote(a.Executable) + " guard claude-prefix -- \"$@\"\n"
+	prefix := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard claude-prefix -- \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "claude-prefix"), []byte(prefix), 0700); err != nil {
 		return err
 	}
