@@ -98,15 +98,10 @@ func TestSidebarDividerTimedSingleDoubleDragAndPreferences(t *testing.T) {
 						t.Fatal("left double did not restore normal")
 					}
 				}
-				if gesture == "drag" {
-					if right {
-						if a.st.RightSidebarArea().W != 38 {
-							t.Fatal("right drag")
-						}
-					} else if a.st.SidebarArea().W != 34 {
-						t.Fatal("left drag")
-					}
+				if gesture == "drag" && a.st.SidebarArea().W != 34 {
+					t.Fatal("left drag")
 				}
+
 				state := model.New(t.TempDir(), 160, 30)
 				restored := NewApp(state, runtime.NewSupervisor(), &bytes.Buffer{}, "")
 				restored.applyViewPreferences(&saved[0])

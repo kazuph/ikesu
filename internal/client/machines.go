@@ -53,6 +53,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	sidebar            *machineSidebarAction
 	keys               []input.Event
 	id                 string
 	workspace          int

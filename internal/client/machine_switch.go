@@ -92,6 +92,11 @@ func (m *machineClient) finishSwitch() {
 	} else if visible {
 		_ = m.sendInput(m.active, []byte("\x1b[I"))
 	}
+	if p.sidebar != nil {
+		if err := m.sidebarInput(p.sidebar.hit, p.sidebar.event); err != nil {
+			m.notify(err.Error())
+		}
+	}
 	if err := m.flushDrag(); err != nil {
 		m.fail(m.active, err)
 	}
