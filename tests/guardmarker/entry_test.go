@@ -115,7 +115,11 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 
 func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 	t.Helper()
-	root := t.TempDir()
+	root, err := os.MkdirTemp("", "gtx-entry-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	home := filepath.Join(root, "home")
 	if e := os.Mkdir(home, 0700); e != nil {
 		t.Fatal(e)
@@ -131,4 +135,74 @@ func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 		t.Fatal(e)
 	}
 	return a, env, target
+}
+
+func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "gtx")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/gtx")
+	if b, e := build.CombinedOutput(); e != nil {
+		t.Fatal(e, string(b))
+	}
+	cases := []string{
+		`/bin/rm TARGET`,
+		`/usr/bin/env -i /bin/rm TARGET`,
+		`/usr/bin/env -u GTX_GUARD_MARKER /bin/rm TARGET`,
+		`command /bin/rm TARGET`,
+		`builtin command /bin/rm TARGET`,
+		`exec /bin/rm TARGET`,
+		`nohup /bin/rm TARGET`,
+		`nice -n 2 /bin/rm TARGET`,
+		`false || /bin/rm TARGET`,
+		`true && /bin/rm TARGET`,
+		`printf ok; /bin/rm TARGET`,
+		`printf ok | /bin/rm TARGET`,
+		`if true; then /bin/rm TARGET; fi`,
+		`while true; do /bin/rm TARGET; done`,
+		`for x in 1; do /bin/rm TARGET; done`,
+		`case x in x) /bin/rm TARGET;; esac`,
+		`( /bin/rm TARGET )`,
+		`printf '%s' $(/bin/rm TARGET)`,
+		"printf '%s' `/bin/rm TARGET`",
+		`f() { /bin/rm TARGET; }; f`,
+		`/usr/bin/env -i /bin/zsh -c '"/bin/rm" TARGET'`,
+	}
+	for _, shell := range []string{"/bin/bash", "/bin/zsh"} {
+		for _, code := range cases {
+			t.Run(filepath.Base(shell)+"/"+code, func(t *testing.T) {
+				a, env, target := newEntry(t, binary)
+				if e := a.Sync("codex"); e != nil {
+					t.Fatal(e)
+				}
+				// TempDir contains no quote characters; preserve its explicit '..' spelling.
+				code = strings.ReplaceAll(code, "TARGET", target)
+				command := exec.Command(shell, "-lc", code)
+				command.Env = env
+				b, e := command.CombinedOutput()
+				if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+					t.Fatal("pre-execution guard did not reject", e, string(b))
+				}
+				if _, e = os.Stat(target); e != nil {
+					t.Fatal("target deleted", e)
+				}
+			})
+		}
+		for _, code := range []string{"ls", "cd /tmp", "printf ok | grep ok", "git status"} {
+			t.Run(filepath.Base(shell)+"/allow/"+code, func(t *testing.T) {
+				a, env, _ := newEntry(t, binary)
+				if e := a.Sync("codex"); e != nil {
+					t.Fatal(e)
+				}
+				init := exec.Command("git", "init", "-q", a.Root)
+				if b, e := init.CombinedOutput(); e != nil {
+					t.Fatal(e, string(b))
+				}
+				command := exec.Command(shell, "-lc", code)
+				command.Env = env
+				command.Dir = a.Root
+				if b, e := command.CombinedOutput(); e != nil {
+					t.Fatal("allow command failed", e, string(b))
+				}
+			})
+		}
+	}
 }

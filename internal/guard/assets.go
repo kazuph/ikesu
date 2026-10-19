@@ -99,25 +99,32 @@ func (a *Assets) shellActive() string {
 	return "-e " + quote(a.MarkerPath) + " || -e " + quote(filepath.Join(a.Bin, a.Config.Commands()[0]))
 }
 func (a *Assets) shellFunctions() string {
-	var b strings.Builder
-	for _, cmd := range a.Config.Commands() {
-		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
-%s() { if [[ %s ]]; then %s guard exec --via shell-func -- %s "$@"; else builtin command %s "$@"; fi; }
-fi
-`, quote(cmd), quote(cmd), cmd, a.shellActive(), a.invocation(), quote(cmd), quote(cmd))
-	}
 	if len(a.Config.Commands()) == 0 {
-		return b.String()
+		return ""
 	}
-	fmt.Fprintf(&b, `if ! typeset -f command >/dev/null 2>&1 && ! alias command >/dev/null 2>&1; then
-command() {
- if [[ ( %s ) && "${1:-}" != -* ]]; then
- case "${1:-}" in %s) %s guard exec --via shell-func -- "$@"; return $?;; esac
+	var b strings.Builder
+	fmt.Fprintf(&b, `_gtx_guard_forward() {
+ if [[ %s ]]; then %s guard exec --via shell-func -- "$@"; else builtin command "$@"; fi
+}
+_gtx_guard_command() {
+ if [[ "${1:-}" != -* ]]; then
+ case "${1:-}" in %s) _gtx_guard_forward "$@"; return $?;; esac
  fi
  builtin command "$@"
 }
+`, a.shellActive(), a.invocation(), strings.Join(a.Config.Commands(), "|"))
+	for _, cmd := range a.Config.Commands() {
+		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
+%s() { _gtx_guard_forward %s "$@"; }
 fi
-`, a.shellActive(), strings.Join(a.Config.Commands(), "|"), a.invocation())
+`, quote(cmd), quote(cmd), cmd, quote(cmd))
+	}
+	if len(a.Config.Commands()) > 0 {
+		b.WriteString(`if ! typeset -f command >/dev/null 2>&1 && ! alias command >/dev/null 2>&1; then
+command() { _gtx_guard_command "$@"; }
+fi
+`)
+	}
 	return b.String()
 }
 

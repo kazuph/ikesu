@@ -44,12 +44,13 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
-	RawLine   string            `json:"-"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args"`
-	Cwd       string            `json:"cwd"`
-	LaunchCwd string            `json:"launch_cwd"`
-	Env       map[string]string `json:"-"`
+	Unresolved bool              `json:"-"`
+	RawLine    string            `json:"-"`
+	Command    string            `json:"command"`
+	Args       []string          `json:"args"`
+	Cwd        string            `json:"cwd"`
+	LaunchCwd  string            `json:"launch_cwd"`
+	Env        map[string]string `json:"-"`
 }
 type Verdict struct {
 	Decision   string `json:"verdict"`

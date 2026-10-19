@@ -1,0 +1,261 @@
+package guard
+
+import (
+	"bytes"
+	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"mvdan.cc/sh/v3/expand"
+	"mvdan.cc/sh/v3/syntax"
+)
+
+// Shell analysis never evaluates substitutions, reads files, or invokes a
+// shell. Walk also visits commands in substitutions and function bodies.
+func lineCommands(i Input, line string) ([]Input, error) {
+	tree, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(line), "guard line")
+	if err != nil {
+		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
+	}
+	var commands []Input
+	syntax.Walk(tree, func(node syntax.Node) bool {
+		call, ok := node.(*syntax.CallExpr)
+		if !ok || len(call.Args) == 0 {
+			return true
+		}
+		next := i
+		next.Env = EnvMap(environment(i.Env))
+		next.RawLine = line
+		cfg := &expand.Config{Env: expand.ListEnviron(environment(next.Env)...), NoUnset: true}
+		for _, assignment := range call.Assigns {
+			if assignment.Value == nil {
+				continue
+			}
+			value, e := expand.Literal(cfg, assignment.Value)
+			if e != nil {
+				continue
+			}
+			key := assignment.Name.Value
+			if key != "GTX_GUARD_MARKER" && key != "GTX_PANE_ID" && key != "GTX_SOCKET_PATH" {
+				next.Env[key] = value
+			}
+		}
+		cfg.Env = expand.ListEnviron(environment(next.Env)...)
+		var argv []string
+		unknownCommand := false
+		for n, word := range call.Args {
+			value, e := expand.Literal(cfg, word)
+			if e != nil {
+				next.Unresolved = true
+				var printed bytes.Buffer
+				_ = syntax.NewPrinter().Print(&printed, word)
+				value = printed.String()
+				if n == 0 {
+					unknownCommand = true
+				}
+			}
+			argv = append(argv, value)
+		}
+		next.Command, next.Args = argv[0], argv[1:]
+		if unknownCommand {
+			err = fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command)
+		}
+		unwrapped, e := unwrapCommand(next)
+		if e != nil {
+			err = e
+		} else {
+			commands = append(commands, unwrapped)
+			if has([]string{"sh", "bash", "zsh"}, filepath.Base(unwrapped.Command)) {
+				for n, option := range unwrapped.Args {
+					if strings.HasPrefix(option, "-") && strings.Contains(option, "c") {
+						if n+1 >= len(unwrapped.Args) {
+							err = prefixError(unwrapped.Command)
+							break
+						}
+						nested, nestedErr := lineCommands(unwrapped, unwrapped.Args[n+1])
+						commands = append(commands, nested...)
+						if nestedErr != nil {
+							err = nestedErr
+						}
+						break
+					}
+				}
+			}
+		}
+		return true
+	})
+	return commands, err
+}
+
+func unwrapCommand(i Input) (Input, error) {
+	for {
+		cmd, args := filepath.Base(i.Command), i.Args
+		take := func(n int) bool {
+			if len(args) < n {
+				return false
+			}
+			args = args[n:]
+			return true
+		}
+		switch cmd {
+		case "command":
+			if len(args) > 0 && (args[0] == "-v" || args[0] == "-V") {
+				return i, nil
+			}
+			if len(args) > 0 && args[0] == "-p" {
+				args = args[1:]
+			}
+			if len(args) > 0 && args[0] == "--" {
+				args = args[1:]
+			}
+		case "builtin", "nohup":
+			if len(args) > 0 && args[0] == "--" {
+				args = args[1:]
+			}
+		case "exec":
+			for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+				option := args[0]
+				args = args[1:]
+				if option == "--" {
+					break
+				}
+				if option == "-a" {
+					if !take(1) {
+						return i, prefixError(cmd)
+					}
+					continue
+				}
+				if option != "-c" && option != "-l" {
+					return i, prefixError(cmd)
+				}
+			}
+		case "time":
+			if len(args) > 0 && args[0] == "-p" {
+				args = args[1:]
+			}
+			if len(args) > 0 && args[0] == "--" {
+				args = args[1:]
+			}
+		case "nice":
+			if len(args) > 0 && (args[0] == "-n" || args[0] == "--adjustment") {
+				if !take(2) {
+					return i, prefixError(cmd)
+				}
+			} else if len(args) > 0 && strings.HasPrefix(args[0], "--adjustment=") {
+				args = args[1:]
+			} else if len(args) > 0 && strings.HasPrefix(args[0], "-") && args[0] != "--" {
+				if _, e := strconv.Atoi(args[0][1:]); e != nil {
+					return i, prefixError(cmd)
+				}
+				args = args[1:]
+			}
+			if len(args) > 0 && args[0] == "--" {
+				args = args[1:]
+			}
+		case "env":
+			for len(args) > 0 {
+				option := args[0]
+				switch {
+				case option == "--":
+					args = args[1:]
+				case option == "-i" || option == "--ignore-environment" || option == "-":
+					args = args[1:]
+					continue
+				case option == "-u" || option == "--unset":
+					if !take(2) {
+						return i, prefixError(cmd)
+					}
+					continue
+				case strings.HasPrefix(option, "--unset=") || strings.HasPrefix(option, "-u") && len(option) > 2:
+					args = args[1:]
+					continue
+				case option == "-S" || option == "--split-string" || strings.HasPrefix(option, "--split-string=") || strings.HasPrefix(option, "-S") && len(option) > 2:
+					var split string
+					if option == "-S" || option == "--split-string" {
+						if len(args) < 2 {
+							return i, prefixError(cmd)
+						}
+						split = args[1]
+						args = args[2:]
+					} else if strings.HasPrefix(option, "-S") {
+						split = option[2:]
+						args = args[1:]
+					} else {
+						split = strings.TrimPrefix(option, "--split-string=")
+						args = args[1:]
+					}
+					words, e := splitPrefix(split, i.Env)
+					if e != nil {
+						return i, e
+					}
+					args = append(words, args...)
+					continue
+				case strings.Contains(option, "=") && !strings.HasPrefix(option, "-"):
+					args = args[1:]
+					continue
+				case strings.HasPrefix(option, "-"):
+					return i, prefixError(cmd)
+				}
+				break
+			}
+		default:
+			return i, nil
+		}
+		if len(args) == 0 {
+			return i, nil
+		}
+		if strings.HasPrefix(args[0], "-") {
+			return i, prefixError(cmd)
+		}
+		i.Command, i.Args = args[0], args[1:]
+	}
+}
+func prefixError(cmd string) error {
+	return fmt.Errorf("前置き %s の中のコマンドを確定できません", cmd)
+}
+func splitPrefix(text string, env map[string]string) ([]string, error) {
+	var words []string
+	var expandErr error
+	err := syntax.NewParser().Words(strings.NewReader(text), func(word *syntax.Word) bool {
+		value, e := expand.Literal(&expand.Config{Env: expand.ListEnviron(environment(env)...), NoUnset: true}, word)
+		if e != nil {
+			expandErr = e
+			return false
+		}
+		words = append(words, value)
+		return true
+	})
+	if err != nil || expandErr != nil || len(words) == 0 {
+		return nil, fmt.Errorf("env -S の中のコマンドを分解できません")
+	}
+	return words, nil
+}
+
+func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
+	commands, err := lineCommands(i, line)
+	i.RawLine = line
+	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line})
+	if best.Decision == "block" {
+		return i, best, nil
+	}
+	if danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
+		best = result("ask", "danger-word-line", "deploy/publish を含む入力行は確認対象です")
+	}
+	for _, command := range commands {
+		v := Evaluate(c, command)
+		if command.Unresolved && v.Decision == "allow" && (has(c.Commands(), filepath.Base(command.Command)) || strings.ContainsAny(command.Command, "$`")) {
+			v = result("ask", "shell-line", "展開後のコマンドまたは引数を安全に確定できません")
+		}
+		if v.Decision == "block" || v.Decision == "ask" && best.Decision == "allow" {
+			i, best = command, v
+		}
+		if best.Decision == "block" {
+			return i, best, nil
+		}
+	}
+	if err != nil {
+		return i, result("ask", "shell-line", err.Error()), err
+	}
+	return i, best, nil
+}

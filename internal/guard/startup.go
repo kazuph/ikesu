@@ -46,6 +46,13 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 			body += wrappers + a.lineHook()
 		}
 		body += "if " + phase.next + "; then export ZDOTDIR=\"$GTX_GUARD_SHELL_DIR\"; fi\n"
+		if phase.name == ".zshenv" {
+			body += "if [[ ! -o login && ! -o interactive ]]; then\n" + a.debugHook("zsh") + "fi\n"
+		}
+		if phase.name == ".zlogin" {
+			body += a.debugHook("zsh")
+		}
+
 		if e := os.WriteFile(filepath.Join(dir, phase.name), []byte(body), 0600); e != nil {
 			return e
 		}
@@ -53,7 +60,7 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 	m["ZDOTDIR"] = dir
 	m["GTX_GUARD_BASH_ENV_ORIG"] = m["BASH_ENV"]
 	bash := restore + `if [[ -n "$GTX_GUARD_BASH_ENV_ORIG" && -f "$GTX_GUARD_BASH_ENV_ORIG" ]]; then source "$GTX_GUARD_BASH_ENV_ORIG"; fi
-` + pinPath + wrappers
+` + pinPath + wrappers + a.debugHook("bash")
 	if e := os.WriteFile(filepath.Join(dir, "bash-env"), []byte(bash), 0600); e != nil {
 		return e
 	}
