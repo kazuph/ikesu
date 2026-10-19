@@ -48,3 +48,21 @@ func (v *Viewer) takeSize(a *App) {
 	}
 	a.sizeViewer = v
 }
+
+// Detach preserves the last basis while multiple displays remain. When only
+// one remains, its latest viewport becomes the basis, even if it never typed.
+func (v *Viewer) Detach(a *App) {
+	for i, attached := range a.sizeViewers {
+		if attached != v {
+			continue
+		}
+		a.sizeViewers = append(a.sizeViewers[:i], a.sizeViewers[i+1:]...)
+		if len(a.sizeViewers) == 1 {
+			remaining := a.sizeViewers[0]
+			a.sizeViewer = remaining
+			remaining.with(a, func(ui *App) { ui.syncLayout() })
+			a.st.Cols, a.st.Rows = remaining.cols, remaining.rows
+		}
+		return
+	}
+}

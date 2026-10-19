@@ -164,3 +164,57 @@ func TestSingleViewerResizeSidebarSplitAndZoomKeepExistingGeometry(t *testing.T)
 	v.with(a, func(ui *App) { ui.exec(model.CmdZoomPane{Pane: ui.focusedPane(), Mode: "off"}) })
 	checkAll(65, 36)
 }
+
+func TestViewerDisconnectKeepsFrozenBasisUntilOneRemains(t *testing.T) {
+	teststate.Lock(t)
+	for _, detachOwner := range []bool{false, true} {
+		t.Run(fmt.Sprintf("detachOwner=%t", detachOwner), func(t *testing.T) {
+			a := specRuntimeApp(t)
+			if err := a.StartInitialPane(); err != nil {
+				t.Fatal(err)
+			}
+			var viewers []*Viewer
+			for _, size := range [][2]int{{200, 50}, {100, 30}, {180, 40}} {
+				v := a.NewViewer(io.Discard, size[0], size[1], nil)
+				v.Begin(a, 0, 0)
+				viewers = append(viewers, v)
+			}
+			check := func(w, h int) {
+				t.Helper()
+				for id, size := range viewerTerminalSizes(a) {
+					if size != [2]int{w, h} {
+						t.Fatalf("pane%d: got %v want %dx%d", id, size, w, h)
+					}
+				}
+			}
+			if detachOwner {
+				viewers[2].Detach(a)
+				viewers[0].Resize(a, 220, 55, 0, 0)
+				viewers[1].Resize(a, 110, 35, 0, 0)
+				check(151, 36)
+				viewers[1].Detach(a)
+			} else {
+				viewers[1].Detach(a)
+				viewers[0].Resize(a, 220, 55, 0, 0)
+				check(151, 36)
+				viewers[2].Resize(a, 190, 45, 0, 0)
+				check(161, 41)
+				viewers[2].Detach(a)
+			}
+			check(191, 51)
+			if a.sizeViewer != viewers[0] || len(a.sizeViewers) != 1 {
+				t.Fatal("remaining viewer did not become size basis")
+			}
+			viewers[2].Detach(a)
+			check(191, 51)
+			viewers[0].Detach(a)
+			if len(a.sizeViewers) != 0 {
+				t.Fatal("disconnected viewer retained in attachment list")
+			}
+			check(191, 51)
+			fresh := a.NewViewer(io.Discard, 100, 30, nil)
+			fresh.Begin(a, 0, 0)
+			check(71, 26)
+		})
+	}
+}
