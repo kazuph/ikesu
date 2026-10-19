@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -39,6 +40,7 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 		}
 	}()
 	a.out = slave
+	a.windowTitleSession = "coding"
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
@@ -67,15 +69,30 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 		t.Logf("outer PTY title: %s", want)
 	}
 	a.SetReported(pid, "codex", "working")
-	paint("🟡 gtx")
-	paint("🟡 gtx") // second activation paint
+	paint("🟡 gtx:coding")
+	paint("🟡 gtx:coding") // second activation paint
+	cfg := a.sidebarConfig
+	cfg.UI.WindowTitle = "plain"
+	a.ApplyReloadedConfig(cfg)
+	paint("gtx")
+	var unchanged bytes.Buffer
+	a.out = &unchanged
+	a.ApplyReloadedConfig(cfg)
+	a.draw()
+	if strings.Contains(unchanged.String(), "\x1b]0;") {
+		t.Fatal("unchanged plain config resent title")
+	}
+	a.out = slave
+	cfg.UI.WindowTitle = "summary"
+	a.ApplyReloadedConfig(cfg)
+	paint("🟡 gtx:coding")
 	a.SetReported(pid, "codex", "blocked")
-	paint("🔴 gtx")
+	paint("🔴 gtx:coding")
 	a.SetReported(pid, "codex", "idle")
-	paint("🔵 gtx")
+	paint("🔵 gtx:coding")
 	a.exec(model.CmdSelectWorkspace{Index: 1})
 	a.detectAll()
-	paint("gtx")
+	paint("gtx:coding")
 	if out := os.Getenv("GTX_TITLE_EVIDENCE"); out != "" {
 		if err := os.MkdirAll(out, 0700); err != nil {
 			t.Fatal(err)

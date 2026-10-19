@@ -46,7 +46,7 @@ func TestWindowTitleSummaryCombinationsAndMachines(t *testing.T) {
 		t.Fatal(got)
 	}
 	local.SidebarConfig.UI.WindowTitle = "plain"
-	if got := WindowTitle(local, "coding", groups); got != "gtx:coding" {
+	if got := WindowTitle(local, "coding", groups); got != "gtx" {
 		t.Fatal(got)
 	}
 }

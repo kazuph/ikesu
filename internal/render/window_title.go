@@ -1,16 +1,29 @@
 package render
 
-import "io"
+import (
+	"fmt"
+	"io"
+	"strings"
+	"unicode"
+)
 
 // WindowTitle uses the sidebar's workspace aggregation, including off-screen
 // workspaces and the other connected machines.
 func WindowTitle(frame Input, session string, groups []MachineGroup) string {
+	if frame.SidebarConfig.UI.WindowTitle == "plain" {
+		return "gtx"
+	}
 	name := "gtx"
 	if session != "" && session != "default" {
-		name += ":" + session
-	}
-	if frame.SidebarConfig.UI.WindowTitle == "plain" {
-		return name
+		var safe strings.Builder
+		for _, r := range session {
+			if unicode.IsControl(r) {
+				fmt.Fprintf(&safe, "\\u%04X", r)
+			} else {
+				safe.WriteRune(r)
+			}
+		}
+		name += ":" + safe.String()
 	}
 	states := map[string]bool{}
 	collect := func(in *Input) {
