@@ -1,9 +1,32 @@
 #!/bin/sh
-# gtx's independent left/right layout intentionally differs from herdr.
+# Run on mini. Preserve the shared/mobile gates; replace only sidebar visuals.
 set -eu
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-out="$HOME/bench-terrace.noindex/work/right-sidebar/screens"
+out="${1:?usage: gate-sidebar.sh OUTPUT BASELINE_BFDB572_ARCHIVE}"
+archive="${2:?baseline bfdb572 git archive is required}"
 mkdir -p "$out"
-GTX_SIDEBAR_EVIDENCE="$out" go test -count=1 ./tests/e2e -run '^TestRightSidebar' -timeout 5m
-python3 tests/parity/right_sidebar_gate.py "$out"
+out="$(cd "$out" && pwd)"
+work="$HOME/bench-terrace.noindex/work"
+herdr="${GTX_PARITY_HERDR:-$work/herdr-0.2.24}"
+ptyrun="${GTX_PARITY_PTYRUN:-$work/ptyrun-parity-cells}"
+test -x "$herdr"
+test -x "$ptyrun"
+gofmt -l . > "$out/gofmt.log"
+test ! -s "$out/gofmt.log"
+go build -trimpath '-ldflags=-s -w' -o "$out/gtx" ./cmd/gtx > "$out/build.log" 2>&1
+go vet ./... > "$out/vet.log" 2>&1
+GTX_SIDEBAR_EVIDENCE="$out/screens" go test -p 1 -v -count=1 -timeout 20m ./... > "$out/test.log" 2>&1
+go test -race -p 1 -v -count=1 -timeout 20m ./... > "$out/race.log" 2>&1
+(cd third_party/vt && go test -count=1 ./... && go test -race -count=1 ./...) > "$out/vt.log" 2>&1
+python3 tests/parity/right_sidebar_gate.py "$out/screens"
+for scenario in sidebar-controls sidebar-width sidebar-collapsed sidebar-drag mobile-layout; do
+ python3 tests/parity/observe.py --silent --clipboard-sandbox --herdr "$herdr" --gtx "$out/gtx" --ptyrun "$ptyrun" --steps "tests/parity/$scenario.steps" --out "$out/$scenario" > "$out/$scenario.log" 2>&1
+done
+python3 tests/parity/region_compare.py "$out/sidebar-collapsed" --rect 0,0,60,2 --screens mobile mobile-escape --result mobile-header-comparison.json
+python3 - "$out/sidebar-collapsed/mobile-header-comparison.json" <<'PY'
+import json,sys
+rows=json.load(open(sys.argv[1]))
+assert len(rows)==2 and all(r['status']=='PASS' and r['difference_count']==0 for r in rows),rows
+PY
+python3 tests/parity/right_sidebar_perf.py "$archive" "$out/perf"
