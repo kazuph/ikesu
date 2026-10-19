@@ -7,10 +7,10 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 )
 
-func TestStage4CollapsedAgentsKeepPriorityAndTwoLineCards(t *testing.T) {
+func TestStage4RightCollapsedAgentsKeepPriorityAndSingleStatusCells(t *testing.T) {
 	s := model.New(t.TempDir(), 160, 45)
 	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
-	s.SidebarVisible = false
+	s.RightSidebarMode = "compact"
 	s.AgentScope = "sort"
 	cfg := config.Config{}
 	cfg.UI.TransparentSidebarCards = true
@@ -21,11 +21,11 @@ func TestStage4CollapsedAgentsKeepPriorityAndTwoLineCards(t *testing.T) {
 	}
 	in := Input{State: s, ServerUI: true, SidebarConfig: cfg, Panes: panes}
 	positions := CollapsedAgentRows(in)
-	if len(positions) != 4 {
-		t.Fatalf("got %d card rows, want 4", len(positions))
+	if len(positions) != 3 {
+		t.Fatalf("got %d card rows, want 3", len(positions))
 	}
-	for i, wantPane := range []int{2, 2, 1, 1} {
-		if positions[i].Y != 24+i || positions[i].Row.Pane != wantPane || positions[i].Row.Line != i%2 {
+	for i, wantPane := range []int{2, 1} {
+		if positions[i].Y != i || positions[i].Row.Pane != wantPane || positions[i].Row.Line != 0 {
 			t.Fatalf("row %d: %+v", i, positions[i])
 		}
 	}
@@ -33,8 +33,8 @@ func TestStage4CollapsedAgentsKeepPriorityAndTwoLineCards(t *testing.T) {
 	for _, check := range []struct {
 		y    int
 		text string
-	}{{24, "●"}, {25, "c"}, {26, "○"}, {27, "c"}} {
-		cell := out.Frame.Cell(1, check.y)
+	}{{0, "●"}, {1, "○"}, {2, "─"}} {
+		cell := out.Frame.Cell(s.RightSidebarArea().X+1, check.y)
 		if cell.Content != check.text || cell.Style.Bg != nil {
 			t.Fatalf("cell (1,%d): %+v", check.y, cell)
 		}

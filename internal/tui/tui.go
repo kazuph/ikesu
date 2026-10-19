@@ -287,7 +287,7 @@ type App struct {
 	panePalette                              *render.Palette
 	sidebarGesture                           *sidebarGesture
 	tabGesture                               *tabGesture
-	dividerAt                                time.Time
+	dividerClicks                            [2]*sidebarDividerClick
 	sidebarScroll                            int
 	agentScroll                              int
 	sidebarBar                               *sidebarScrollDrag
@@ -686,6 +686,9 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		a.setStartupConfigWarning([]string{err.Error()})
 	}
 
+	if err := a.configureStandalonePreferences(); err != nil {
+		return 1, err
+	}
 	if err := a.StartInitialPane(); err != nil {
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}

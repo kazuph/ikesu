@@ -189,9 +189,20 @@ func (m *machineClient) input(event input.Event) error {
 		active := m.endpoints[m.active]
 		// Overlay hit areas belong to the selected server and take precedence.
 		if active.snapshot != nil && active.snapshot.Menu == nil && active.snapshot.Dialog == nil && active.snapshot.Help == nil {
+			if event.Kind == input.KindMouseWheel && len(m.sidebar.Groups) > 1 && contains(active.snapshot.State.RightSidebarArea().X, 0, active.snapshot.State.RightSidebarArea().W, m.size.Rows, event.Mouse.X, event.Mouse.Y) {
+				if event.Mouse.Button == uv.MouseWheelUp {
+					m.sidebar.RightScroll--
+				} else {
+					m.sidebar.RightScroll++
+				}
+				return m.paint()
+			}
 			for _, hit := range m.sidebar.Hits {
 				if !contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
 					continue
+				}
+				if hit.Right && !hit.Header {
+					return m.rightMachineInput(hit, event)
 				}
 				if event.Kind == input.KindMouseWheel {
 					step := 3
@@ -300,6 +311,9 @@ func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) e
 
 func (m *machineClient) sidebarBytes(hit render.MachineHit, event input.Event) ([]byte, error) {
 	e := m.endpoints[hit.Machine]
+	if hit.Right {
+		return m.rightSidebarBytes(hit, event)
+	}
 	if e.connection == nil || e.snapshot == nil {
 		return nil, nil
 	}

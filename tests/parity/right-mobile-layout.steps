@@ -1,0 +1,51 @@
+send "\r"
+sleep 1s
+resize 30 25
+sleep 250ms
+screen @OUT@/width-30.txt
+cells @OUT@/width-30.json
+click 25 2
+sleep 250ms
+screen @OUT@/switch-30.txt
+cells @OUT@/switch-30.json
+send "\x1b"
+sleep 250ms
+resize 40 25
+sleep 250ms
+screen @OUT@/width-40.txt
+cells @OUT@/width-40.json
+click 35 2
+sleep 250ms
+screen @OUT@/switch-40.txt
+cells @OUT@/switch-40.json
+send "\x1b"
+sleep 250ms
+resize 60 25
+sleep 250ms
+screen @OUT@/width-60.txt
+cells @OUT@/width-60.json
+click 55 2
+sleep 250ms
+screen @OUT@/switch-60.txt
+cells @OUT@/switch-60.json
+send "\x1b"
+sleep 250ms
+resize 64 25
+sleep 250ms
+screen @OUT@/width-64.txt
+cells @OUT@/width-64.json
+click 59 2
+sleep 250ms
+screen @OUT@/switch-64.txt
+cells @OUT@/switch-64.json
+send "\x1b"
+sleep 250ms
+resize 65 25
+sleep 250ms
+screen @OUT@/width-65.txt
+cells @OUT@/width-65.json
+resize 80 25
+sleep 250ms
+screen @OUT@/width-80.txt
+cells @OUT@/width-80.json
+kill

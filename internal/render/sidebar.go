@@ -89,32 +89,7 @@ func sidebarRows(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, 
 		rows = append(rows, SidebarRow{Kind: RowSection, Section: sec}, SidebarRow{Kind: RowRule, Section: sec})
 		rows = append(rows, cards...)
 	}
-	var agents []SidebarRow
-	for wi, w := range s.Workspaces {
-		if s.CollapsedSections[w.SidebarSection()] {
-			continue
-		}
-		for _, t := range w.Tabs {
-			for _, pid := range t.Layout.PaneIDs() {
-				if sn := panes[pid]; sn != nil && sn.Agent != "" {
-					agents = append(agents, SidebarRow{Kind: RowAgent, Ws: wi, Pane: pid})
-				}
-			}
-		}
-	}
-	if s.AgentScope == "sort" {
-		sort.SliceStable(agents, func(i, j int) bool {
-			left, right := panes[agents[i].Pane], panes[agents[j].Pane]
-			if rank := agentRank(left.Status.Key); rank != agentRank(right.Status.Key) {
-				return rank < agentRank(right.Status.Key)
-			}
-			if cfg.UI.AgentPanelSort == "priority" {
-				return left.StateChangeSeq > right.StateChangeSeq
-			}
-			return false
-		})
-	}
-	agents = projectAgentRows(s, panes, agents)
+	agents := sidebarAgentTargets(s, panes, cfg)
 	rows = append(rows, SidebarRow{Kind: RowSep})
 	for _, r := range agents {
 		panel := cfg.UI.Sidebar.Agents
@@ -213,7 +188,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	if in.SelectedWorkspace != nil {
 		boundary.Fg = f.Palette.Accent
 	}
-	for y := area.Y; !in.ServerUI && y < area.Y+area.H; y++ {
+	for y := area.Y; y < area.Y+area.H; y++ {
 		f.Set(area.X+area.W-1, y, "│", boundary)
 	}
 	ix, iy, iw, _ := SidebarContent(area)
@@ -223,21 +198,17 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 
 	view := SidebarViewForInput(in)
 	for _, pos := range view.Rows {
+		if pos.Right {
+			continue
+		}
 		width := iw
 		if !in.ServerUI && pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
 			width--
 		}
-		if !in.ServerUI && pos.Y >= view.Agents.Rect.Y && pos.Y < view.Agents.Rect.Y+view.Agents.Rect.H && view.Agents.Total > view.Agents.Rect.H {
-			width--
-		}
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
-	}
-	for x := ix; x < ix+iw; x++ {
-		f.Set(x, SidebarSplitY(s), "─", border)
 	}
 	if !in.ServerUI {
 		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
-		drawSidebarScrollbar(f, view.Agents, false)
 	}
 	drop := in.DropIndex
 	if drop == nil && in.Dragging {
@@ -288,6 +259,9 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	}
 	if in.ServerUI && in.SidebarConfig.UI.TransparentSidebarCards {
 		for _, pos := range view.Rows {
+			if pos.Right {
+				continue
+			}
 			clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
 		}
 	}
@@ -377,27 +351,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Text, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
 		}
 	case RowSep:
-		agentStyle := border
-		if !in.JobsPanel {
-			agentStyle.Fg = f.Palette.Accent
-			agentStyle.Attrs = uv.AttrBold
-		}
-		f.Text(ix+1, y, "[agents]", agentStyle, ix+iw)
-		jr := SidebarJobsTab(s.SidebarArea().W, y)
-		if jr.W > 0 {
-			jobStyle := border
-			if in.JobsPanel {
-				jobStyle.Fg = f.Palette.Accent
-				jobStyle.Attrs = uv.AttrBold
-			}
-			f.Text(jr.X, y, "[jobs]", jobStyle, jr.X+jr.W)
-		}
-		if !in.JobsPanel && !in.ServerUI {
-			sortStyle := border
-			sortStyle.Attrs = uv.AttrBold
-			r := SidebarAgentSortRect(s, y)
-			f.Text(r.X, y, SidebarAgentSortLabel(s), sortStyle, ix+iw)
-		}
+		drawRightSidebarHeader(f, s, in, y)
 	case RowJob:
 		drawJobRow(f, in, r.Line, ix, y, iw)
 	case RowWorkspace, RowGit, RowCardBlank:
@@ -648,68 +602,6 @@ func wsGlyph(s *model.AppState, wi int, in Input) StatusGlyph {
 	return aggregateGlyph(s.Workspaces[wi], in)
 }
 
-func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rect) {
-	border := uv.Style{Fg: f.Palette.Dim}
-	for y := area.Y; !in.ServerUI && y < area.Y+area.H; y++ {
-		f.Set(area.X+area.W-1, y, "│", border)
-	}
-	ix, iy, iw := area.X, area.Y, area.W-1
-	for x := ix; !in.ServerUI && x < ix+iw; x++ {
-		f.Set(x, area.Y+(area.H+1)/2, "─", border)
-	}
-	viewport := CollapsedWorkspaceViewport(in)
-	avail := viewport.Rect.H
-	if iw < 1 || avail < 1 {
-		return
-	}
-	scroll := viewport.Offset
-	for i := scroll; i < len(s.Workspaces) && i < scroll+avail; i++ {
-		y := iy + i - scroll
-		sty := uv.Style{Fg: f.Palette.Dim}
-		if in.ServerUI {
-			sty = uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface}
-		}
-		if i == s.Active {
-			sty = uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PanelBG}
-		}
-		if in.ServerUI && in.SidebarConfig.UI.TransparentSidebarCards {
-			sty.Bg = nil
-		}
-		fill := uv.Style{Bg: sty.Bg}
-		label := fmt.Sprint(s.Workspaces[i].ID)
-		if in.ServerUI {
-			fill.Fg = f.Palette.Text
-			label = " " + label
-		}
-		f.Fill(ix, y, iw, 1, " ", fill)
-		x := f.Text(ix, y, label, sty, ix+iw)
-		if !in.ServerUI {
-			x++
-		}
-		// Aggregate agent glyph for the workspace (highest priority state).
-		g := aggregateGlyph(s.Workspaces[i], in)
-		if g.Rune == " " {
-			g.Rune = "·"
-		}
-		f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg, Attrs: boldIf(g.Bold)}, ix+iw)
-	}
-	if in.ServerUI {
-		for _, pos := range CollapsedAgentRows(in) {
-			drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, iw)
-			if pos.Row.Kind == RowAgent && pos.Row.Line == 0 && iw == model.SidebarCollapsedWidth-1 {
-				f.Set(ix+iw-1, pos.Y, " ", uv.Style{Fg: f.Palette.Text})
-			}
-			if in.SidebarConfig.UI.TransparentSidebarCards {
-				clearSidebarCardBackground(f, s, pos.Row, ix, pos.Y, iw)
-			}
-		}
-	}
-	// Expand button centred on the bottom border row.
-	if !in.ServerUI {
-		f.Set(area.X+(area.W-1)/2, area.Y+area.H-1, "»", uv.Style{Fg: f.Palette.Dim})
-	}
-}
-
 // aggregateGlyph picks the most attention-worthy pane glyph of a workspace.
 func aggregateGlyph(ws *model.Workspace, in Input) StatusGlyph {
 	best := StatusGlyph{Rune: " ", Color: Dim}
@@ -745,4 +637,35 @@ func glyphRank(g StatusGlyph) int {
 		return 1
 	}
 	return 0
+}
+
+func sidebarAgentTargets(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config) []SidebarRow {
+	var agents []SidebarRow
+	for wi, w := range s.Workspaces {
+		if s.CollapsedSections[w.SidebarSection()] {
+			continue
+		}
+		for _, t := range w.Tabs {
+			for _, pid := range t.Layout.PaneIDs() {
+				if sn := panes[pid]; sn != nil && sn.Agent != "" {
+					agents = append(agents, SidebarRow{Kind: RowAgent, Ws: wi, Pane: pid})
+				}
+			}
+		}
+	}
+	if s.AgentScope == "sort" {
+		sort.SliceStable(agents, func(i, j int) bool {
+			left, right := panes[agents[i].Pane], panes[agents[j].Pane]
+			if rank := agentRank(left.Status.Key); rank != agentRank(right.Status.Key) {
+				return rank < agentRank(right.Status.Key)
+			}
+			if cfg.UI.AgentPanelSort == "priority" {
+				return left.StateChangeSeq > right.StateChangeSeq
+			}
+			return false
+		})
+	}
+	agents = projectAgentRows(s, panes, agents)
+
+	return agents
 }

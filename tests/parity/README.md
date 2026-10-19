@@ -366,3 +366,23 @@ miniの負荷が4以上のときに認められたubuntu-3090での相対P1は�
 入口と同じminiホスト名・GUIユーザー・GUIセッション確認に通るまでpasteboardへアクセスしない。
 メインMacの拒否検査は引数なしの直接実行でSTOPとなることを確認し、miniの成功検査は
 既存の全形式保存・復元のラッパー内で実施する。元pasteboardのデータは回収・公開しない。
+
+
+## gtx独自の左右サイドバー（right-sidebar）
+
+miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <ログ出力先> <bfdb572のgit-archive.tar>` を実行する。
+`GTX_PARITY_HERDR` と `GTX_PARITY_PTYRUN` で配布用herdrバイナリとptyrunの絶対パスを指定できる。
+既定は `~/bench-terrace.noindex/work/herdr-0.2.24` と `work/ptyrun-parity-cells`。
+稼働中のherdrではなく隔離実行用バイナリを使い、音とクリップボードは隔離する。
+この入口はgofmt・build・vet・全通常テスト・race・VT検査を実行し、
+既存のsidebar-controls/width/collapsed/dragおよびmobile-layoutの操作観察を保持する。
+意図して変えた左の4セル縮小のセル比較だけを、サーバー経由/単独起動の左右3×3・18画面と
+カーネルPTY寸法の `right_sidebar_gate.py` に置き換える。
+`sidebar-collapsed` のmobile/mobile-escape見出しは従来の60×2セル比較を残し、差異があれば失敗する。
+最後に `right_sidebar_perf.py` がminiの負荷4未満ならmini、4以上ならubuntu-3090を選び、
+共有perf-lock経由で同じGo・`-trimpath -ldflags='-s -w'` の基準と候補を交互に各5回測る。
+相対P1の合否と全測定値は出力先のperf/に保存する。未実行を合格として扱わない。
+
+右へ移したボタンのクリック座標と左の3状態切替は、`right-sidebar-controls.steps` / `right-sidebar-width.steps` を `observe.py --gtx-steps` でgtxだけへ送る。参照側の既存入力は変更せず、両者の実際に使ったstepsを保存する。対象の操作を削除せず、新しい配置で同じ操作を観察する。
+
+gtx用の5つの `right-*.steps` は、初回案内を通常のEnter入力で閉じてから観察する。参照側はobserve.pyの従来の起動手順を保持する。案内を残したまま観察するとキー入力が案内へ渡るため、状態切替やクリックの成功証拠にならない。

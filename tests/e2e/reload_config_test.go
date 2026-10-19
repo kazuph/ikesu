@@ -35,7 +35,7 @@ func TestReloadConfigAllTerminalsAndEntryPointsKeepPane(t *testing.T) {
 	first := startEnv(t, map[string]string{"GTX_CONFIG": path})
 	first.waitFor("first prompt", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	// Opening the sidebar is a viewer preference; startup-only collapse must not reapply.
-	first.send("\x02b")
+	first.send("\x02b\x02b")
 	first.waitFor("expanded sidebar", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "spaces") })
 	second := startEnv(t, map[string]string{"GTX_STATE_DIR": first.stateDir, "GTX_CONFIG": path})
 	second.waitFor("second prompt", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })

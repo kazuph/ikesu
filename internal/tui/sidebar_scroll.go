@@ -3,6 +3,7 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
@@ -52,12 +53,10 @@ func (a *App) revealServerWorkspace() {
 }
 
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
-	if !a.st.SidebarVisible {
+	if !a.st.SidebarVisible && pointIn(m.X, m.Y, a.st.SidebarArea()) {
 		in := render.Input{State: a.st, ServerUI: a.serverUI, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll}
 		v, off, step := render.CollapsedWorkspaceViewport(in), &a.sidebarScroll, 3
-		if a.serverUI && pointIn(m.X, m.Y, render.CollapsedAgentViewport(in).Rect) {
-			v, off, step = render.CollapsedAgentViewport(in), &a.agentScroll, 1
-		}
+
 		if !pointIn(m.X, m.Y, v.Rect) {
 			return
 		}
@@ -67,6 +66,17 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 			*off += step
 		}
 		*off = max(0, min(*off, max(0, v.Total-v.Rect.H)))
+		return
+	}
+	if a.st.RightSidebarArea().W == model.SidebarCollapsedWidth && pointIn(m.X, m.Y, a.st.RightSidebarArea()) {
+		in := a.rightSidebarInput()
+		v := render.CollapsedAgentViewport(in)
+		if up {
+			a.agentScroll--
+		} else {
+			a.agentScroll++
+		}
+		a.agentScroll = max(0, min(a.agentScroll, max(0, v.Total-v.Rect.H)))
 		return
 	}
 	view := a.sidebarView()

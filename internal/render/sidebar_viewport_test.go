@@ -42,7 +42,7 @@ func TestG2ObservedMultipleCollapsedAndEmptySectionLines(t *testing.T) {
 }
 
 func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
-	s := model.New("/tmp", 100, 30)
+	s := model.New("/tmp", 100, 15)
 	panes := map[int]*PaneSnap{}
 	for i := 0; i < 20; i++ {
 		if i > 0 {
@@ -62,12 +62,12 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 	}
 	footer := SidebarWidthRect(s)
 	for _, row := range v.Rows {
-		if row.Row.Kind == RowAgent && row.Y >= footer.Y {
-			t.Fatal("agent invaded footer", row)
+		if !row.Right && row.Y >= SidebarFooter(s).Y {
+			t.Fatal("workspace invaded footer", row)
 		}
 	}
-	if v.Agents.Rect.Y+v.Agents.Rect.H > footer.Y {
-		t.Fatal("scrollbar invaded footer")
+	if v.Agents.Rect.Y+v.Agents.Rect.H != s.Rows || v.Agents.Rect.X <= footer.X+footer.W {
+		t.Fatal("right scrollbar must fill its own sidebar")
 	}
 	s.Apply(model.CmdToggleSection{Section: model.SectionWork})
 	next := SidebarViewFor(s, panes, config.Config{}, 100, 100, false, nil)
@@ -78,7 +78,7 @@ func TestG2PanelScrollTotalsCollapseAndFooterExclusion(t *testing.T) {
 
 func TestEndpointCollapsedSectionScrollStopsAfterWholeSlimCard(t *testing.T) {
 	for _, slim := range []bool{false, true} {
-		s := model.New(t.TempDir(), 160, 45)
+		s := model.New(t.TempDir(), 160, 25)
 		for _, sec := range []model.Section{model.SectionFavorite, model.SectionWork, model.SectionPersonal} {
 			for i := 0; i < 2; i++ {
 				s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), Section: sec, NoFocus: true})

@@ -11,7 +11,7 @@ import (
 type sidebarGesture struct {
 	ws, x, y               int
 	active, moved, divider bool
-	panelDivider           bool
+	right, double          bool
 	gitRow                 bool
 	section                model.Section
 	drop                   int
@@ -24,7 +24,7 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 	}
 	view := a.sidebarView()
 	for _, pos := range view.Rows {
-		if y == pos.Y {
+		if y == pos.Y && !pos.Right {
 			return pos.Row, true
 		}
 	}
@@ -32,27 +32,16 @@ func (a *App) sidebarRowAt(x, y int) (render.SidebarRow, bool) {
 }
 func (a *App) sidebarPress(m uv.Mouse) bool {
 	s := a.st
+	if s.SidebarArea().W > 0 && (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
+		a.beginSidebarDivider(m, false, time.Now())
+		return true
+	}
 	if !s.SidebarVisible {
 		return false
 	}
-	if (m.X == s.SidebarArea().W-1 || m.X == s.SidebarArea().W) && m.Button == uv.MouseLeft {
-		now := time.Now()
-		if !a.dividerAt.IsZero() && now.Sub(a.dividerAt) <= 350*time.Millisecond {
-			a.sidebarPreset("normal")
-			a.sidebarGesture = nil
-			a.dividerAt = time.Time{}
-			return true
-		}
-		a.dividerAt = now
-		a.sidebarGesture = &sidebarGesture{divider: true, x: m.X, y: m.Y}
-		return true
-	}
+
 	if m.Button != uv.MouseLeft {
 		return false
-	}
-	if m.Y == render.SidebarSplitY(s) {
-		a.sidebarGesture = &sidebarGesture{panelDivider: true, x: m.X, y: m.Y}
-		return true
 	}
 	if a.sidebarScrollbarPress(m) {
 		return true
@@ -66,9 +55,6 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		return false
 	}
 	switch r.Kind {
-	case render.RowJob:
-		a.openJobLog(r.Line)
-		return true
 	case render.RowTitle:
 		if a.serverUI {
 			return true
@@ -76,28 +62,6 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		_, _, w, _ := render.SidebarContent(s.SidebarArea())
 		if m.X >= s.SidebarArea().X+w-6 {
 			a.toggleSidebarSetting(true)
-		}
-		return true
-	case render.RowSep:
-		if !a.serverUI && !a.jobsPanel && pointIn(m.X, m.Y, render.SidebarAgentSortRect(s, m.Y)) {
-			a.toggleSidebarSetting(false)
-			return true
-		}
-		if pointIn(m.X, m.Y, render.SidebarJobsTab(s.SidebarArea().W, m.Y)) {
-			if !a.jobsPanel {
-				a.agentScroll = 0
-			}
-			a.jobsPanel = true
-			a.changed()
-			return true
-		}
-		if m.X >= 1 && m.X < 1+len("[agents]") {
-			if a.jobsPanel {
-				a.agentScroll = 0
-			}
-			a.jobsPanel = false
-			a.changed()
-			return true
 		}
 		return true
 	case render.RowSection:
@@ -128,7 +92,8 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	}
 	return false
 }
-func (a *App) sidebarGestureMouse(ev input.Event) {
+func (a *App) sidebarGestureMouse(ev input.Event) { a.sidebarGestureMouseAt(ev, time.Now()) }
+func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 	g := a.sidebarGesture
 	if g == nil {
 		return
@@ -140,20 +105,16 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 		}
 		if g.divider {
 			lo, hi, _ := a.st.SidebarBounds()
+			if g.right || !g.moved {
+				return
+			}
+			a.st.SidebarVisible = true
+			a.st.SidebarHidden = false
 			a.st.SidebarSize = max(lo, min(hi, m.X+1))
 			a.st.SidebarManual = true
+
 			a.syncLayout()
 			a.changed()
-			return
-		}
-		if g.panelDivider {
-			area := a.st.SidebarArea()
-			if area.H > 0 {
-				// SPEC G9 bounds the panel divider to 10–90% of sidebar height.
-				split := max(.1, min(.9, float64(m.Y-area.Y)/float64(area.H)))
-				a.st.SidebarSectionSplit = &split
-				a.dirty = true
-			}
 			return
 		}
 		g.section = ""
@@ -186,15 +147,11 @@ func (a *App) sidebarGestureMouse(ev input.Event) {
 	}
 	if ev.Kind == input.KindMouseRelease {
 		a.sidebarGesture = nil
-		if g.panelDivider {
-			a.changed()
-			a.saveViewPreferences()
-			return
-		}
 		if g.divider {
-			a.saveViewPreferences()
+			a.finishSidebarDivider(g, now)
 			return
 		}
+
 		if g.moved {
 			if g.section != "" {
 				a.setSection(g.ws, g.section)

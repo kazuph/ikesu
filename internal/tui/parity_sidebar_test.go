@@ -14,7 +14,7 @@ func TestParityCollapsedSidebarUsesFirstTerminalRowActualPTY(t *testing.T) {
 	a.exec(model.CmdNewWorkspace{Cwd: a.cwd})
 	a.exec(model.CmdNewWorkspace{Cwd: a.cwd})
 	a.exec(model.CmdToggleSidebar{})
-	if a.st.SidebarArea().W != 4 {
+	if a.st.SidebarArea().W != 2 {
 		t.Fatal(a.st.SidebarArea())
 	}
 	sidebarEvent(a, input.KindMouseClick, 0, 0)

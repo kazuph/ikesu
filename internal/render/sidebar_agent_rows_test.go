@@ -35,17 +35,24 @@ func TestStage4ReviewStrippedTitleTransitions(t *testing.T) {
 		}
 		in := Input{State: s, Panes: panes, SidebarConfig: cfg, ServerUI: true}
 		for _, collapsed := range []bool{false, true} {
-			s.SidebarVisible = !collapsed
-			positions, start := SidebarViewForInput(in).Rows, 26
+			s.RightSidebarMode = ""
 			if collapsed {
-				positions, start = CollapsedAgentRows(in), 24
+				s.RightSidebarMode = "compact"
+			}
+			positions, start := SidebarViewForInput(in).Rows, 2
+			if collapsed {
+				positions, start = CollapsedAgentRows(in), 0
 			}
 			found := false
 			for _, pos := range positions {
 				if pos.Row.Kind == RowAgent && pos.Row.Pane == 2 {
 					found = true
-					if pos.Y != start+want-1 {
-						t.Errorf("title %q collapsed=%t next agent Y=%d want=%d", title, collapsed, pos.Y, start+want-1)
+					offset := want - 1
+					if collapsed {
+						offset = 1
+					}
+					if pos.Y != start+offset {
+						t.Errorf("title %q collapsed=%t next agent Y=%d want=%d", title, collapsed, pos.Y, start+offset)
 					}
 				}
 			}

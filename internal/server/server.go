@@ -117,6 +117,7 @@ type Server struct {
 	store  *dispatch.Store
 	dbErr  error
 	mailCh chan mailWrite
+	mailWG sync.WaitGroup
 
 	mailMu       sync.Mutex
 	mailInFlight map[int64]bool  // regular message ids staged for PTY write
@@ -423,7 +424,8 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		}
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
-	go s.mailWorker()
+	s.mailWG.Add(1)
+	go func() { defer s.mailWG.Done(); s.mailWorker() }()
 	// These startup sweeps all open the SQLite store; when the DB file has
 	// never been created there is nothing to seed, abort, or flush, so skip
 	// them to keep the engine (and its memory) out of the process.
@@ -482,6 +484,7 @@ func (s *Server) cleanup() {
 	if !s.handedOff {
 		s.sup.KillAll()
 	}
+	s.mailWG.Wait()
 	if s.store != nil {
 		s.store.Close()
 	}
@@ -705,7 +708,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "control":
 			s.app.Do(func() { s.graphicsControl(c, m) })
 		case "view_config":
-			if m.Preferences != nil && (m.Preferences.SidebarWidth < 1 || m.Preferences.SidebarSectionSplit != nil && (*m.Preferences.SidebarSectionSplit < .1 || *m.Preferences.SidebarSectionSplit > .9)) {
+			if m.Preferences != nil && m.Preferences.Validate() != nil {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_preferences_invalid"})
 				continue
 			}

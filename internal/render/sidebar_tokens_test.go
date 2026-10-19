@@ -30,14 +30,14 @@ func TestG2TokenStylesContextAndOccurrence(t *testing.T) {
 	_, y, _, _ := SidebarContent(s.SidebarArea())
 	for _, r := range rows {
 		if r.Kind == RowAgent {
-			y = s.SidebarArea().Y + (s.SidebarArea().H+1)/2 + 2
-			line := frameLine(out.Frame, y)
+			y = 2
+			line := rightSidebarLine(out.Frame, s, y)
 			if strings.Contains(line, "%1") || strings.Contains(line, "◐") {
 				t.Fatal("custom row contains an unconfigured target or state", line)
 			}
 			first := strings.Index(line, "project")
 			second := strings.LastIndex(line, "project")
-			if first == second || !reflect.DeepEqual(out.Frame.Cell(first, y).Style.Fg, color.RGBA{0xaa, 0xbb, 0xcc, 255}) || !reflect.DeepEqual(out.Frame.Cell(second, y).Style.Fg, Text) {
+			if first == second || !reflect.DeepEqual(out.Frame.Cell(s.RightSidebarArea().X+1+first, y).Style.Fg, color.RGBA{0xaa, 0xbb, 0xcc, 255}) || !reflect.DeepEqual(out.Frame.Cell(s.RightSidebarArea().X+1+second, y).Style.Fg, Text) {
 				t.Fatal("occurrence styles", line)
 			}
 		}

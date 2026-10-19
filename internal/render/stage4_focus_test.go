@@ -43,7 +43,7 @@ func TestStage4AgentHighlightFollowsFocusedPaneOnly(t *testing.T) {
 				if pos.Row.Pane == focused {
 					want = out.Frame.Palette.Text
 				}
-				if got := out.Frame.Cell(x, pos.Y).Style.Fg; !reflect.DeepEqual(got, want) {
+				if got := out.Frame.Cell(s.RightSidebarArea().X+1+x, pos.Y).Style.Fg; !reflect.DeepEqual(got, want) {
 					t.Fatalf("custom=%t focused=%d card=%d color=%v want=%v", custom, focused, pos.Row.Pane, got, want)
 				}
 			}

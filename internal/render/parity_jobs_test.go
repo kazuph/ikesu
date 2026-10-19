@@ -66,6 +66,7 @@ func TestEndpointJobRowUsesPanelBackgroundIndependentlyOfCardFlag(t *testing.T) 
 
 func TestServerJobDotAndRestoreStyleRecordedCells(t *testing.T) {
 	s := testState(160, 45)
+	s.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	out := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: {Agent: "codex", Restore: "saved session"}}, JobDots: map[int][]JobDot{0: {{Color: Yellow}}}})
 	if out.Frame.Cell(3, 5).Content != "●" || out.Frame.Cell(4, 5).Style.Fg != out.Frame.Palette.Text || out.Frame.Cell(5, 5).Content != "n" || out.Frame.Cell(24, 4).Content != " " {

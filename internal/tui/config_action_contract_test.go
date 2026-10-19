@@ -177,6 +177,9 @@ func prepareRemapAction(t *testing.T, a *App, name string) func() bool {
 		return func() bool { return tab().Zoomed == second }
 	case "resize_mode":
 		return func() bool { return a.resizeMode }
+	case "toggle_right_sidebar":
+		mode := a.st.RightSidebarMode
+		return func() bool { return a.st.RightSidebarMode != mode }
 	case "toggle_sidebar":
 		visible := a.st.SidebarVisible
 		return func() bool { return a.st.SidebarVisible != visible }

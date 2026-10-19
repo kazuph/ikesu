@@ -48,6 +48,11 @@ func TestServerCopyStatusConsumesButtonAndYanksOSC52(t *testing.T) {
 func TestServerTabStripHasNoAddControl(t *testing.T) {
 	s := start(t)
 	s.waitFor("server tab", 10*time.Second, func(tx string) bool { return hasTabLabel(tx, "1") && strings.Contains(tx, "❯") })
+	// Preserve the original pane width for this tab-strip regression.
+	s.send("\x02B\x02B")
+	s.send("printf 'PANE_%s\\n' WIDTH_READY\r")
+	s.waitFor("original pane geometry", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "PANE_WIDTH_READY") })
+
 	if strings.Contains(strings.Split(s.text(), "\n")[0], " + ") {
 		t.Fatal("server tab strip exposes a local-only add control")
 	}

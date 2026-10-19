@@ -80,6 +80,7 @@ type Config struct {
 		Accent                        string        `toml:"accent"`
 		MobileWidthThreshold          *int          `toml:"mobile_width_threshold"`
 		Sidebar                       SidebarPanels `toml:"sidebar"`
+		RightSidebarWidth             *int          `toml:"right_sidebar_width"`
 		SidebarWidth                  *int          `toml:"sidebar_width"`
 		SidebarMinWidth               *int          `toml:"sidebar_min_width"`
 		SidebarMaxWidth               *int          `toml:"sidebar_max_width"`
