@@ -96,6 +96,17 @@ func (a *App) click(m uv.Mouse) {
 	if m.Button == uv.MouseLeft && a.toastClick(m.X, m.Y) {
 		return
 	}
+	if m.Button == uv.MouseRight && a.toastVisible() && pointIn(m.X, m.Y, a.toastRect) {
+		pid := a.focusedPane()
+		if pr, ok := a.paneAt(m.X, m.Y); ok {
+			pid = pr.ID
+		}
+		if pid >= 0 {
+			a.exec(model.CmdFocusPane{Pane: pid})
+			a.openPaneMenu(m.X, m.Y, pid)
+		}
+		return
+	}
 	if r := a.st.StatusArea(); r.H > 0 && m.Y == r.Y {
 		a.statusClick(m)
 		return
