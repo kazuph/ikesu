@@ -13,6 +13,8 @@ import (
 	"github.com/creack/pty"
 )
 
+var rightSidebarEvidenceDir = os.Getenv("GTX_SIDEBAR_EVIDENCE")
+
 // This drives the real binary and asks the shell for the kernel's PTY size.
 func TestRightSidebarNineStatesRealTerminal(t *testing.T) {
 	for _, local := range []bool{false, true} {
@@ -47,7 +49,7 @@ func TestRightSidebarNineStatesRealTerminal(t *testing.T) {
 
 func saveRightSidebarScreen(t *testing.T, s *session, name string) {
 	t.Helper()
-	root := os.Getenv("GTX_SIDEBAR_EVIDENCE")
+	root := rightSidebarEvidenceDir
 	if root == "" {
 		return
 	}
