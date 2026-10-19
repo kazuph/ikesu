@@ -29,9 +29,21 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 	i.LaunchCwd = m.Cwd
 	callerEnv := i.Env
 	i, verdict, parseErr := lineVerdict(c, i, line)
-	// Parsed child environments are for classification. Authorization and its
-	// request reason always belong to the pinned caller, even for env -i/-u.
-	i.Env = callerEnv
+	// Keep the caller's authorization context across env -i/-u, while retaining
+	// inline request reasons and approval-file settings from the parsed command.
+	parsedEnv := i.Env
+	authorizationEnv := i.AuthorizationEnv
+	i.Env = EnvMap(environment(callerEnv))
+	for key, value := range authorizationEnv {
+		if key != "GTX_GUARD_MARKER" && key != "GTX_PANE_ID" && key != "GTX_SOCKET_PATH" {
+			i.Env[key] = value
+		}
+	}
+	for key, value := range parsedEnv {
+		if key != "GTX_GUARD_MARKER" && key != "GTX_PANE_ID" && key != "GTX_SOCKET_PATH" {
+			i.Env[key] = value
+		}
+	}
 	if parseErr != nil {
 		fmt.Fprintln(errOut, parseErr)
 	}

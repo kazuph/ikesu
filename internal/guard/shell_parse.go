@@ -81,6 +81,10 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		if unknownCommand {
 			err = fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command)
 		}
+		next.AuthorizationEnv = EnvMap(environment(i.AuthorizationEnv))
+		for key, value := range next.Env {
+			next.AuthorizationEnv[key] = value
+		}
 		unwrapped, e := unwrapCommand(next)
 		commands = append(commands, unwrapped)
 		if e != nil {
@@ -228,6 +232,9 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 		}
 	}
 	if err != nil {
+		if i.AuthorizationEnv == nil && len(commands) > 0 {
+			i.AuthorizationEnv = commands[0].AuthorizationEnv
+		}
 		return i, result("ask", "shell-line", err.Error()), err
 	}
 	return i, best, nil

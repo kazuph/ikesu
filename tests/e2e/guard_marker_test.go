@@ -54,7 +54,15 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 	// generated entry must still talk to the inherited server endpoint.
 	// Run through the pre-handoff shell itself, rather than only invoking a
 	// generated shim from a new host process.
-	for _, choice := range []string{"approve", "reject"} {
+	for _, tc := range []struct {
+		choice   string
+		cleanEnv bool
+	}{{"approve", false}, {"reject", false}, {"approve", true}, {"reject", true}} {
+		choice := tc.choice
+		command := "rm"
+		if tc.cleanEnv {
+			command = "/usr/bin/env -i /bin/rm"
+		}
 		dir := t.TempDir()
 		home := filepath.Join(dir, "home")
 		if e = os.Mkdir(home, 0700); e != nil {
@@ -65,7 +73,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			t.Fatal(e)
 		}
 		status := filepath.Join(dir, "status")
-		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する AI_GUARD_TEMP_APPROVAL_FILE=%q GTX_GUARD_MARKER= GTX_SOCKET_PATH=/missing.sock GTX_PANE_ID=p999 rm %q; printf '%%s' $? > %q\r", filepath.Join(dir, "approval"), target, status))
+		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する AI_GUARD_TEMP_APPROVAL_FILE=%q GTX_GUARD_MARKER= GTX_SOCKET_PATH=/missing.sock GTX_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", filepath.Join(dir, "approval"), command, target, status))
 		var pending api.DecisionListResult
 		s.waitFor("old shell pending", 5*time.Second, func(string) bool {
 			s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
