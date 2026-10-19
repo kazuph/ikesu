@@ -306,5 +306,13 @@
   {
     "line": "unset -f \"$UNKNOWN_FUNCTION\"",
     "want": "ask"
+  },
+  {
+    "line": "A=/bin/rm B=$A /bin/bash -c '$B ${TARGET}'",
+    "want": "ask"
+  },
+  {
+    "line": "A=/bin/rm B=$A /bin/zsh -c '$B ${TARGET}'",
+    "want": "ask"
   }
 ]

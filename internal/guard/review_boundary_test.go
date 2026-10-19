@@ -20,7 +20,7 @@ func TestReviewedShellBoundaries(t *testing.T) {
 	if e := os.Symlink(guard, filepath.Join(root, "guard-link")); e != nil {
 		t.Fatal(e)
 	}
-	input := Input{Cwd: root, LaunchCwd: root, Env: map[string]string{"HOME": root, "PATH": "/usr/bin:/bin", "X": "/bin/echo", "GTX_GUARD_MARKER": guard + "/agent-panes/p_1.json"}}
+	input := Input{Cwd: root, LaunchCwd: root, Env: map[string]string{"HOME": root, "PATH": "/usr/bin:/bin", "X": "/bin/echo", "A": "/bin/echo", "GTX_GUARD_MARKER": guard + "/agent-panes/p_1.json"}}
 	data, e := os.ReadFile("testdata/review_cases.json")
 	if e != nil {
 		t.Fatal(e)

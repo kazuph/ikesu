@@ -50,6 +50,7 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 						env[n] = "PATH=" + filepath.Dir(goExe) + ":" + strings.TrimPrefix(kv, "PATH=")
 					}
 				}
+				env = append(env, "A=/bin/echo")
 				line := strings.NewReplacer("${ROOT}", a.Root, "${GUARD}", filepath.Join(a.Root, "guard"), "${TARGET}", target).Replace(tc.Line)
 				protected := []string{a.MarkerPath, filepath.Join(a.Bin, "rm"), filepath.Join(a.Root, "guard", "shell", "p_1", ".zshenv")}
 				before := map[string][]byte{}

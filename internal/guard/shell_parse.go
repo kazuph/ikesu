@@ -48,6 +48,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			if startupVariable(assignment.Name.Value) {
 				next.ShellEnvChanged = true
 			}
+			cfg.Env = expand.ListEnviron(environment(next.Env)...)
 			value, e := expand.Literal(cfg, assignment.Value)
 			if e != nil {
 				next.Unresolved = true
