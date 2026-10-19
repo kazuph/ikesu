@@ -9,7 +9,6 @@ import (
 	"github.com/kazuph/goterrace/internal/childenv"
 	"runtime"
 	"strings"
-	"unicode"
 
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/input"
@@ -23,8 +22,9 @@ type clipboardContent struct {
 }
 
 type clipboardItem struct {
-	data  []byte
-	paste bool
+	modalText *string
+	data      []byte
+	paste     bool
 }
 
 type clipboardPaste struct{ held []clipboardItem }
@@ -130,21 +130,21 @@ func (m *machineClient) startClipboardPaste(id string) error {
 				m.notify(err.Error())
 			} else if text != "" {
 				data := eventBytes(input.Event{Kind: input.KindPaste, Text: text})
-				if copySearch {
-					data = []byte(strings.Map(func(r rune) rune {
-						if unicode.IsControl(r) {
-							return -1
-						}
-						return r
-					}, text))
+				var sendErr error
+				if textOnly {
+					sendErr = m.sendModalPaste(id, text)
+				} else {
+					sendErr = connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)})
 				}
-				if sendErr := connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)}); sendErr != nil {
+				if sendErr != nil {
 					m.notify(sendErr.Error())
 				}
 			}
 			for _, held := range op.held {
 				var sendErr error
-				if held.paste {
+				if held.modalText != nil {
+					sendErr = m.sendModalPaste(id, *held.modalText)
+				} else if held.paste {
 					sendErr = m.startClipboardPaste(id)
 				} else {
 					sendErr = m.sendInput(id, held.data)
@@ -156,4 +156,21 @@ func (m *machineClient) startClipboardPaste(id string) error {
 		}})
 	}()
 	return nil
+}
+
+// A clipboard body is data, never a terminal stream. Negotiate the typed
+// message so an older server cannot reinterpret its bytes as keys.
+func (m *machineClient) sendModalPaste(id, text string) error {
+	if text == "" {
+		return nil
+	}
+	e := m.endpoints[id]
+	if e.connection == nil {
+		return fmt.Errorf("clipboard paste: machine is not connected")
+	}
+	if e.paste != nil {
+		e.paste.held = append(e.paste.held, clipboardItem{modalText: &text})
+		return nil
+	}
+	return e.connection.enqueue(msg{Type: "paste", Data: base64.StdEncoding.EncodeToString([]byte(text))})
 }

@@ -79,9 +79,9 @@ func TestStage6bLocalModalClipboard(t *testing.T) {
 					t.Fatal("missing paste")
 				}
 				data, err := base64.StdEncoding.DecodeString(connection.queue[0].Data)
-				want := "\x1b[200~" + text + "\x1b[201~"
-				if mode == "copy" {
-					want = "日本語alpha"
+				want := text
+				if connection.queue[0].Type != "paste" {
+					t.Fatal("modal clipboard was reframed as keys")
 				}
 				if err != nil || string(data) != want {
 					t.Fatalf("got %q want %q: %v", data, want, err)

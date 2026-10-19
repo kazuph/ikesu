@@ -133,6 +133,12 @@ func (m *machineClient) input(event input.Event) error {
 		return nil
 	}
 	activeView := m.endpoints[m.active]
+	if event.Kind == input.KindPaste && modalClipboardView(activeView.snapshot) {
+		if err := m.sendModalPaste(m.active, event.Text); err != nil {
+			m.notify(err.Error())
+		}
+		return m.paint()
+	}
 	if modalClipboardView(activeView.snapshot) && (event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && event.Key.Code == 'v' && (event.Key.Mod == uv.ModCtrl || event.Key.Mod == uv.ModSuper) {
 		if event.Kind == input.KindKeyRelease {
 			return nil

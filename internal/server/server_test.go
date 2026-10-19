@@ -30,6 +30,7 @@ type testConn struct {
 	frames      render.Encoder
 	lastRegions *render.Output
 	lastFrame   *render.Frame
+	lastInput   *render.Input
 }
 
 func dialClient(t *testing.T, dir string) *testConn {
@@ -86,6 +87,7 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 				if err != nil {
 					t.Fatal(err)
 				}
+				c.lastInput = &in
 				out := render.Compose(in)
 				c.lastFrame = out.Frame
 				m.Type, m.Data = "output", encode64(c.frames.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible))

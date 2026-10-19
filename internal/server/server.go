@@ -766,24 +766,8 @@ func (s *Server) attach(conn net.Conn) {
 			if m.Rendered != nil {
 				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered, m.FocusEpoch) })
 			}
-		case "input":
-			if m.EndPrefix {
-				s.app.Do(func() {
-					if c.viewer != nil {
-						c.viewer.EndPrefix(s.app)
-					}
-				})
-			}
-			if data, err := decode64(m.Data); err == nil && len(data) > 0 {
-				s.app.Do(func() {
-					s.mu.Lock()
-					s.client = c
-					s.lastUse++
-					c.lastUse = s.lastUse
-					s.mu.Unlock()
-					c.viewer.Input(s.app, data)
-				})
-			}
+		case "input", "paste":
+			s.viewerInput(c, m)
 		case "resize":
 			s.app.Do(func() { c.viewer.Resize(s.app, m.Cols, m.Rows, m.Xpixel, m.Ypixel) })
 		}

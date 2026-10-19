@@ -232,3 +232,16 @@ func (v *Viewer) FollowSessionFocus(a *App) {
 }
 
 func (v *Viewer) AcquireSize(a *App) { v.with(a, func(ui *App) { ui.syncLayout() }) }
+
+// Paste keeps clipboard data out of the terminal framer and drops a stale
+// delivery if its text field closed while the clipboard was being read.
+func (v *Viewer) Paste(a *App, text string) {
+	v.with(a, func(ui *App) {
+		ui.syncLayout()
+		if !ui.modalTextInput() {
+			return
+		}
+		ui.insertClipboardText(text)
+	})
+	a.st.Cols, a.st.Rows = v.cols, v.rows
+}
