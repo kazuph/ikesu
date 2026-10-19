@@ -65,10 +65,10 @@ func commandBoundary(i Input) string {
 				}
 			}
 		}
-	case "unset", "unfunction", "functions", "alias", "unalias":
+	case "unset", "unsetenv", "setenv", "export", "typeset", "declare", "readonly", "unfunction", "functions", "alias", "unalias":
 		for _, a := range args {
 			name, _, _ := strings.Cut(a, "=")
-			if guardFunction(i, name) || cmd == "unset" && startupVariable(name) {
+			if guardFunction(i, name) || has([]string{"unset", "unsetenv", "setenv", "export", "typeset", "declare", "readonly"}, cmd) && startupVariable(name) {
 				return "判定の関数・エイリアスの変更には承認が必要です"
 			}
 		}
@@ -132,8 +132,12 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			removeExport, prefixName := false, false
 			for _, assignment := range n.Args {
 				if assignment.Value != nil {
-					value, _ := expand.Literal(cfg, assignment.Value)
-					removeExport = removeExport || value == "-n"
+					value, e := expand.Literal(cfg, assignment.Value)
+					name, _, assigned := strings.Cut(value, "=")
+					if e != nil || assigned && startupVariable(name) {
+						failure = fmt.Errorf("子シェルの起動設定の変更内容を確認する必要があります")
+					}
+					removeExport = removeExport || value == "-n" || value == "+x"
 					prefixName = prefixName || value == "CLAUDE_CODE_SHELL_PREFIX"
 				}
 				if assignment.Name != nil && startupVariable(assignment.Name.Value) {
@@ -171,8 +175,8 @@ func treeBoundary(i Input, tree *syntax.File) error {
 
 func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error {
 	cmd := filepath.Base(i.Command)
-	if has([]string{"claude", "claude-code"}, cmd) && i.ClaudePrefixChanged {
-		return fmt.Errorf("Claudeの実行前判定を外す起動環境の変更には承認が必要です")
+	if i.ClaudePrefixChanged {
+		return fmt.Errorf("Claudeの実行前判定を外す環境の変更には承認が必要です")
 	}
 	shell := has([]string{"sh", "bash", "zsh", "dash", "ksh"}, cmd)
 	interpreter := shell || has([]string{"fish", "python", "python2", "python3", "perl", "ruby", "node", "osascript"}, cmd)

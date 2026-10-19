@@ -1,6 +1,8 @@
 package guard
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,7 +83,7 @@ func TestClaudePrefixEnvironmentIsScopedAndRestored(t *testing.T) {
 }
 
 func TestClaudePrefixRemovalRequiresAsk(t *testing.T) {
-	i := Input{Cwd: "/tmp/work", LaunchCwd: "/tmp/work", Env: map[string]string{"HOME": "/tmp/home", "CLAUDE_CODE_SHELL_PREFIX": "/tmp/prefix"}}
+	i := Input{Cwd: "/tmp/work", LaunchCwd: "/tmp/work", Env: map[string]string{"HOME": "/tmp/home", "CLAUDE_CODE_SHELL_PREFIX": "/tmp/prefix", "KEY": "CLAUDE_CODE_SHELL_PREFIX"}}
 	for _, line := range []string{
 		"env -u CLAUDE_CODE_SHELL_PREFIX /tmp/claude --print hello",
 		"env --unset=CLAUDE_CODE_SHELL_PREFIX /tmp/claude-code hello",
@@ -95,6 +97,7 @@ func TestClaudePrefixRemovalRequiresAsk(t *testing.T) {
 		"unset -v CLAUDE_CODE_SHELL_PREFIX; claude hello",
 		"export CLAUDE_CODE_SHELL_PREFIX=; /tmp/claude hello",
 		"export -n CLAUDE_CODE_SHELL_PREFIX; claude hello",
+		"env -i /tmp/codex hello", "CLAUDE_CODE_SHELL_PREFIX= /bin/echo ordinary",
 		"gtx guard claude-prefix -- /bin/sh -c '/bin/rm /tmp/home/../victim' ls",
 		"command gtx guard claude-prefix -- /bin/rm /tmp/home/../victim",
 		"env gtx guard claude-prefix -- /bin/zsh -c 'touch /tmp/victim' echo",
@@ -106,7 +109,60 @@ func TestClaudePrefixRemovalRequiresAsk(t *testing.T) {
 			}
 		})
 	}
-	for _, line := range []string{"claude hello", "/tmp/claude --print hello", "env TEST=ok /tmp/claude hello", "env -i /tmp/codex hello", "CLAUDE_CODE_SHELL_PREFIX= /bin/echo ordinary", "ls", "git status", "echo ordinary | cat"} {
+	for _, line := range []string{"claude hello", "/tmp/claude --print hello", "env TEST=ok /tmp/claude hello", "ls", "git status", "echo ordinary | cat"} {
+		t.Run(line, func(t *testing.T) {
+			_, v, e := lineVerdict(Config{}, i, line)
+			if e != nil || v.Decision != "allow" {
+				t.Fatalf("%s: %+v %v", line, v, e)
+			}
+		})
+	}
+}
+
+func TestClaudePrefixChangesDoNotDependOnExecutableName(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "claude")
+	if e := os.WriteFile(target, []byte("#!/bin/sh\nexit 99\n"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	alias := filepath.Join(dir, "assistant")
+	if e := os.Symlink(target, alias); e != nil {
+		t.Fatal(e)
+	}
+	i := Input{Cwd: dir, LaunchCwd: dir, Env: map[string]string{"HOME": dir, "KEY": "CLAUDE_CODE_SHELL_PREFIX", "CLAUDE_CODE_SHELL_PREFIX": "/tmp/prefix"}}
+	lines := []string{
+		"env -u CLAUDE_CODE_SHELL_PREFIX npx @anthropic-ai/claude-code --print hello",
+		"env -S '-u CLAUDE_CODE_SHELL_PREFIX npx @anthropic-ai/claude-code' --print hello",
+		"env -u CLAUDE_CODE_SHELL_PREFIX " + quote(alias) + " --print hello",
+		"CLAUDE_CODE_SHELL_PREFIX= exec " + quote(alias) + " --print hello",
+		"env --ignore-environment echo ordinary", "env - echo ordinary",
+		"env CLAUDE_CODE_SHELL_PREFIX=/tmp/other /bin/echo ordinary",
+		"unsetenv CLAUDE_CODE_SHELL_PREFIX", "setenv CLAUDE_CODE_SHELL_PREFIX /tmp/other",
+		`unset "$KEY"`, `unsetenv "$KEY"`,
+		`CLAUDE_CODE_SHELL_PREFIX="" /bin/echo ordinary`,
+		`CLAUDE_CODE_SHELL_PREFIX="/tmp/"other /bin/echo ordinary`,
+		`env CLAUDE_CODE_SHELL_PREFIX="" npx --version`,
+		"builtin unset CLAUDE_CODE_SHELL_PREFIX", "builtin export \"CLAUDE_CODE_SHELL_PREFIX=\"",
+		"export -n \"$KEY\"", "typeset +x \"$KEY\"",
+	}
+	for _, declaration := range []string{"export", "typeset", "declare", "readonly"} {
+		for _, value := range []string{`"CLAUDE_CODE_SHELL_PREFIX="`, `"CLAUDE_CODE_SHELL_PREFIX=/tmp/other"`, `"$KEY="`, `"${KEY}=/tmp/other"`, `'CLAUDE_CODE_'"SHELL_PREFIX="`, `"CLAUDE_CODE_SHELL_PREFIX"'=/tmp/other'`} {
+			lines = append(lines, declaration+" "+value+"; command claude hello")
+		}
+	}
+	for _, line := range lines {
+		t.Run(line, func(t *testing.T) {
+			_, v, _ := lineVerdict(Config{}, i, line)
+			if v.Decision != "ask" {
+				t.Fatalf("%s: %+v", line, v)
+			}
+			var out bytes.Buffer
+			if !AuthorizeLine(Config{}, dir, i, line, &out, nil) {
+				t.Fatalf("ordinary pane unexpectedly guarded: %s", out.String())
+			}
+		})
+	}
+	for _, line := range []string{"echo ordinary", "ls", "git status", "codex hello", "env TEST=ok codex hello", "export TEST=ordinary", `export "TEST=ordinary"`, "typeset TEST=ok", "readonly TEST=ok", "declare TEST=ok", "env -u TEST echo ordinary", "TEST=ok npx --version"} {
 		t.Run(line, func(t *testing.T) {
 			_, v, e := lineVerdict(Config{}, i, line)
 			if e != nil || v.Decision != "allow" {
