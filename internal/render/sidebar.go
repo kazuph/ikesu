@@ -351,27 +351,7 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Text, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
 		}
 	case RowSep:
-		agentStyle := border
-		if !in.JobsPanel {
-			agentStyle.Fg = f.Palette.Accent
-			agentStyle.Attrs = uv.AttrBold
-		}
-		f.Text(ix+1, y, "[agents]", agentStyle, ix+iw)
-		jr := RightSidebarJobsTab(s, y)
-		if jr.W > 0 {
-			jobStyle := border
-			if in.JobsPanel {
-				jobStyle.Fg = f.Palette.Accent
-				jobStyle.Attrs = uv.AttrBold
-			}
-			f.Text(jr.X, y, "[jobs]", jobStyle, jr.X+jr.W)
-		}
-		if !in.JobsPanel {
-			sortStyle := border
-			sortStyle.Attrs = uv.AttrBold
-			r := SidebarAgentSortRect(s, y)
-			f.Text(r.X, y, SidebarAgentSortLabel(s), sortStyle, ix+iw)
-		}
+		drawRightSidebarHeader(f, s, in, y)
 	case RowJob:
 		drawJobRow(f, in, r.Line, ix, y, iw)
 	case RowWorkspace, RowGit, RowCardBlank:

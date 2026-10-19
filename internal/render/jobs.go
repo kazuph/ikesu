@@ -53,9 +53,7 @@ func SidebarAgentSortLabel(s *model.AppState) string {
 }
 
 func SidebarAgentSortRect(s *model.AppState, y int) layout.Rect {
-	a := s.RightSidebarArea()
-	w := len(SidebarAgentSortLabel(s))
-	return layout.Rect{X: a.X + a.W - w, Y: y, W: w, H: 1}
+	return RightSidebarHeaderFor(s, y).Sort
 }
 
 func drawJobRow(f *Frame, in Input, index, x, y, width int) {

@@ -6,11 +6,45 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 )
 
-func RightSidebarJobsTab(s *model.AppState, y int) layout.Rect {
+type RightSidebarHeader struct {
+	Agents, Jobs, Sort layout.Rect
+}
+
+func RightSidebarHeaderFor(s *model.AppState, y int) RightSidebarHeader {
 	a := s.RightSidebarArea()
-	r := SidebarJobsTab(a.W, y)
-	r.X += a.X + 1
-	return r
+	if a.W <= model.SidebarCollapsedWidth {
+		return RightSidebarHeader{}
+	}
+	h := RightSidebarHeader{
+		Agents: layout.Rect{X: a.X + 1, Y: y, W: len("[agents]"), H: 1},
+		Jobs:   layout.Rect{X: a.X + 1 + len("[agents]"), Y: y, W: len("[jobs]"), H: 1},
+		Sort:   layout.Rect{X: a.X + a.W - len(SidebarAgentSortLabel(s)), Y: y, W: len(SidebarAgentSortLabel(s)), H: 1},
+	}
+	if h.Jobs.X+h.Jobs.W > h.Sort.X {
+		h.Sort.Y++
+	}
+	return h
+}
+
+func RightSidebarJobsTab(s *model.AppState, y int) layout.Rect {
+	return RightSidebarHeaderFor(s, y).Jobs
+}
+
+func drawRightSidebarHeader(f *Frame, s *model.AppState, in Input, y int) {
+	h := RightSidebarHeaderFor(s, y)
+	for _, button := range []struct {
+		r        layout.Rect
+		label    string
+		selected bool
+	}{
+		{h.Agents, "[agents]", !in.JobsPanel}, {h.Jobs, "[jobs]", in.JobsPanel}, {h.Sort, SidebarAgentSortLabel(s), false},
+	} {
+		style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
+		if button.selected {
+			style.Fg = f.Palette.Accent
+		}
+		f.Text(button.r.X, button.r.Y, button.label, style, button.r.X+button.r.W)
+	}
 }
 
 // RightCompactRows collapses agent cards to one status cell and appends jobs.
@@ -93,6 +127,7 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 		}
 		drawSidebarRow(f, s, in, pos.Row, a.X+1, pos.Y, width)
 	}
+	drawRightSidebarHeader(f, s, in, 0)
 	if in.ServerUI {
 		for y := a.Y; y < a.Y+a.H; y++ {
 			for x := a.X + 1; x < a.X+a.W; x++ {

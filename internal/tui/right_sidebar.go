@@ -29,6 +29,22 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 	if m.Button == uv.MouseLeft && area.W > model.SidebarCollapsedWidth && a.sidebarScrollbarPress(m) {
 		return
 	}
+	if m.Button == uv.MouseLeft && area.W > model.SidebarCollapsedWidth {
+		h := render.RightSidebarHeaderFor(a.st, 0)
+		if pointIn(m.X, m.Y, h.Sort) {
+			a.toggleSidebarSetting(false)
+			return
+		}
+		if pointIn(m.X, m.Y, h.Agents) || pointIn(m.X, m.Y, h.Jobs) {
+			jobs := pointIn(m.X, m.Y, h.Jobs)
+			if a.jobsPanel != jobs {
+				a.agentScroll = 0
+			}
+			a.jobsPanel = jobs
+			a.changed()
+			return
+		}
+	}
 	var rows []render.SidebarPosition
 	if area.W == model.SidebarCollapsedWidth {
 		rows = render.CollapsedAgentRows(a.rightSidebarInput())
@@ -65,21 +81,7 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 			if area.W == model.SidebarCollapsedWidth {
 				return
 			}
-			if !a.jobsPanel && pointIn(m.X, m.Y, render.SidebarAgentSortRect(a.st, m.Y)) {
-				a.toggleSidebarSetting(false)
-				return
-			}
-			if pointIn(m.X, m.Y, render.RightSidebarJobsTab(a.st, m.Y)) {
-				if !a.jobsPanel {
-					a.agentScroll = 0
-				}
-				a.jobsPanel = true
-			} else if m.X >= area.X+2 && m.X < area.X+2+len("[agents]") {
-				if a.jobsPanel {
-					a.agentScroll = 0
-				}
-				a.jobsPanel = false
-			}
+
 			a.changed()
 		}
 		return
