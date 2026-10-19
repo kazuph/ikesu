@@ -86,7 +86,13 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			t.Fatal(e, out)
 		}
 		if choice == "reject" {
-			s.waitFor("old shell rejected before accept-line", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "Command cancelled") })
+			s.waitFor("old shell rejected before accept-line", 5*time.Second, func(string) bool {
+				// The pane can wrap inside "Command cancelled"; inspect the
+				// same PTY output with its soft wraps joined, without UI borders.
+				var output api.PaneReadResultEnvelope
+				s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", Source: "recent-unwrapped", StripANSI: true}, &output)
+				return strings.Contains(output.Read.Text, "Command cancelled")
+			})
 			if _, e = os.Stat(target); e != nil {
 				t.Fatal("rejected old-shell command executed", e)
 			}
