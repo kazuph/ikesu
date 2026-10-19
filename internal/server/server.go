@@ -269,7 +269,9 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	if err != nil {
 		return 1, err
 	}
-	apiSock := api.APISocketPath(dir)
+	// A live importer owns the inherited listener, whose pathname can belong
+	// to a previous executable namespace. That is the endpoint actually listening.
+	apiSock := apiLn.Addr().String()
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -390,7 +392,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	// Restore the saved session when session.json exists; otherwise start
 	// the initial shell. A corrupt file fails closed to a fresh state.
 	if imported != nil {
-		if err := s.restoreLive(imported); err != nil {
+		if err := s.restoreLive(imported, apiSock); err != nil {
 			s.handedOff = true
 			s.sup.ReleaseHandoff()
 			s.cleanup()
