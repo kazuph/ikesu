@@ -17,9 +17,7 @@ func TestClipboardFeedbackSidebarBothRuntimes(t *testing.T) {
 						s.SidebarMin = 1
 						in := Input{State: s, ServerUI: server, Copied: "Copied 3 lines"}
 						in.SidebarConfig.UI.Toast.Clipboard.Enabled = &enabled
-						f := NewFrame(s.Cols, s.Rows)
-						drawSidebar(f, s, in)
-						drawSidebarCopyFeedback(f, in)
+						f := Compose(in).Frame
 						area := s.SidebarArea()
 						var row strings.Builder
 						for x := area.X; x < area.X+area.W; x++ {

@@ -266,7 +266,9 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		}
 	}
 
-	drawSidebarCopyFeedback(f, in)
+	if !in.ServerUI {
+		drawSidebarCopyFeedback(f, in)
+	}
 }
 
 func sectionDropIndex(in Input) *int {

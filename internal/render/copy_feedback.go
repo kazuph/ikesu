@@ -23,11 +23,11 @@ func drawCopyFeedback(f *Frame, area layout.Rect, text string) {
 
 func drawSidebarCopyFeedback(f *Frame, in Input) {
 	s := in.State
-	area := s.SidebarArea()
-	if !s.SidebarVisible {
+	if in.Copied == "" || !s.SidebarVisible || in.SidebarConfig.UI.Toast.Clipboard.Enabled != nil && !*in.SidebarConfig.UI.Toast.Clipboard.Enabled {
 		return
 	}
-	if in.Copied != "" && (in.SidebarConfig.UI.Toast.Clipboard.Enabled == nil || *in.SidebarConfig.UI.Toast.Clipboard.Enabled) && area.W > 1 && area.H > 0 {
+	area := s.SidebarArea()
+	if area.W > 1 && area.H > 0 {
 		x, y, w := area.X, area.Y+area.H-1, area.W-1
 		f.Fill(x, y, w-1, 1, " ", uv.Style{})
 		copyStyle := uv.Style{Fg: f.Palette.Green, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}
