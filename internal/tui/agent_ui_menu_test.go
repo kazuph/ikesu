@@ -106,6 +106,7 @@ func TestG5PaneMenuRootSideMovesAndSinglePaneExcluded(t *testing.T) {
 func TestReview1SlowLoginShellDoesNotBlockRightClick(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.st.RightSidebarMode = "hidden" // Preserve the original pane geometry for this operation regression.
 	shell, loginStarted, loginRelease := teststate.GatedLoginShell(t)
 	teststate.Setenv(t, "SHELL", shell)
 	if err := a.StartInitialPane(); err != nil {

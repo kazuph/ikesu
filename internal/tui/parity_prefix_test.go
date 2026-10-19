@@ -64,6 +64,7 @@ func TestParityFinalShellCloseReplacesWorkspaceAndShell(t *testing.T) {
 func TestParityResizeUsesObservedStepAndEscape(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.st.RightSidebarMode = "hidden" // Preserve the original pane geometry for this operation regression.
 	a.st.Cols, a.st.Rows = 160, 45
 	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
 	specFeed(a, "\x02r")

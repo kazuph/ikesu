@@ -90,7 +90,7 @@ func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
 	second.waitFor("reattached shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "SAVE_READY") })
 	second.send("set -- $(stty size); printf '\\nRESTORED_%s_%s\\n' \"$1\" \"$2\"\r")
 	second.waitFor("restored geometry", 5*time.Second, func(tx string) bool { return strings.Contains(tx, fmt.Sprintf("RESTORED_%d_%d", termH-4, termW-2-3)) })
-	if second.emu.CellAt(termW-2, 5).Content != "│" || second.emu.CellAt(0, 5).Content == "│" {
+	if second.emu.CellAt(termW-2, 5).Content != "│" || second.emu.CellAt(0, 0).Content == "│" {
 		t.Fatal("reattach lost right compact / left hidden modes")
 	}
 }

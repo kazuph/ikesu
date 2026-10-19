@@ -11,6 +11,7 @@ import (
 func TestParityTabbarOverflowKeepsRealPTYSelectionAndManualScroll(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.st.RightSidebarMode = "hidden" // Preserve the original pane geometry for this operation regression.
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
