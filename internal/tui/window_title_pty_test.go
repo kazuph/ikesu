@@ -14,6 +14,9 @@ import (
 	"github.com/kazuph/goterrace/internal/teststate"
 )
 
+// Keep the opt-in output path before TestMain isolates GTX_* defaults.
+var titleEvidenceDir = os.Getenv("GTX_TITLE_EVIDENCE")
+
 // Exercise the standalone draw path with real shell PTYs and an outer PTY.
 // State changes use the production reporting/acknowledgment methods.
 func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
@@ -93,7 +96,7 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 	a.exec(model.CmdSelectWorkspace{Index: 1})
 	a.detectAll()
 	paint("gtx:coding")
-	if out := os.Getenv("GTX_TITLE_EVIDENCE"); out != "" {
+	if out := titleEvidenceDir; out != "" {
 		if err := os.MkdirAll(out, 0700); err != nil {
 			t.Fatal(err)
 		}

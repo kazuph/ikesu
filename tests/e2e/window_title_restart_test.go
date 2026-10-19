@@ -48,7 +48,7 @@ func TestWindowTitleStandaloneRestartKeepsSessionActualPTY(t *testing.T) {
 				}
 			}
 			t.Logf("standalone restart: %s -> %s", title, title)
-			if out := os.Getenv("GTX_TITLE_EVIDENCE"); out != "" {
+			if out := titleEvidenceDir; out != "" {
 				if err := os.MkdirAll(out, 0700); err != nil {
 					t.Fatal(err)
 				}

@@ -11,6 +11,9 @@ import (
 	"github.com/kazuph/goterrace/internal/api"
 )
 
+// Match keepFailedE2EState: TestMain isolates GTX_* after package initialization.
+var titleEvidenceDir = os.Getenv("GTX_TITLE_EVIDENCE")
+
 func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
 	s := start(t)
 	var raw strings.Builder
@@ -32,7 +35,7 @@ func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
 	}
 	want := "\x1b]0;gtx:" + s.name + "\x07"
 	s.waitFor("acknowledged outer title", 10*time.Second, func(_ string) bool { return strings.Contains(raw.String()[before:], want) })
-	if out := os.Getenv("GTX_TITLE_EVIDENCE"); out != "" {
+	if out := titleEvidenceDir; out != "" {
 		if err := os.MkdirAll(out, 0700); err != nil {
 			t.Fatal(err)
 		}
