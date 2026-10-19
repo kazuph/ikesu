@@ -382,3 +382,5 @@ miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <�
 最後に `right_sidebar_perf.py` がminiの負荷4未満ならmini、4以上ならubuntu-3090を選び、
 共有perf-lock経由で同じGo・`-trimpath -ldflags='-s -w'` の基準と候補を交互に各5回測る。
 相対P1の合否と全測定値は出力先のperf/に保存する。未実行を合格として扱わない。
+
+右へ移したボタンのクリック座標と左の3状態切替は、`right-sidebar-controls.steps` / `right-sidebar-width.steps` を `observe.py --gtx-steps` でgtxだけへ送る。参照側の既存入力は変更せず、両者の実際に使ったstepsを保存する。対象の操作を削除せず、新しい配置で同じ操作を観察する。

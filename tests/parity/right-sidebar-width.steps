@@ -1,0 +1,34 @@
+screen @OUT@/boot.txt
+cells @OUT@/boot.json
+send "\x02b"
+sleep 250ms
+screen @OUT@/collapsed.txt
+cells @OUT@/collapsed.json
+send "\x02b"
+send "\x02b"
+sleep 250ms
+screen @OUT@/expanded.txt
+cells @OUT@/expanded.json
+clicktext "NORMAL"
+sleep 250ms
+screen @OUT@/wide.txt
+cells @OUT@/wide.json
+clicktext "WIDE"
+sleep 250ms
+screen @OUT@/narrow.txt
+cells @OUT@/narrow.json
+clicktext "NARROW"
+sleep 250ms
+screen @OUT@/normal-again.txt
+cells @OUT@/normal-again.json
+send "\x02b"
+sleep 250ms
+resize 100 25
+sleep 250ms
+screen @OUT@/collapsed-100.txt
+cells @OUT@/collapsed-100.json
+resize 60 25
+sleep 250ms
+screen @OUT@/collapsed-60.txt
+cells @OUT@/collapsed-60.json
+kill

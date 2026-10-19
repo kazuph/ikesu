@@ -27,6 +27,7 @@ p.add_argument('--startup-input', action='store_true', help='observe startup inp
 p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
+p.add_argument('--gtx-steps', help='gtx-only input for intentional layout/key-cycle differences')
 p.add_argument('--saved-session-fixture', help='JSON mapping product names to relative runner-owned session paths and saved documents')
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--silent', action='store_true', help='disable sound in both isolated comparison configs before startup')
@@ -134,7 +135,8 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         preamble = 'sleep 3s\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
         if a.startup_input:
             preamble = ''
-        steps.write_text(preamble + interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
+        target_interaction = Path(a.gtx_steps).read_text() if name == 'gtx' and a.gtx_steps else interaction
+        steps.write_text(preamble + target_interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
             binary = str(Path(binary).resolve())
