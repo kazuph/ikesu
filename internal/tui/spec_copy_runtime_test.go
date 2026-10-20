@@ -75,7 +75,7 @@ func TestCopyObservedFeedbackWriteSuccessFailureAndTwoSecondDeadline(t *testing.
 		a.cm = &copyMode{pane: pid, anchor: &copyPoint{0, 0}, cx: 4, cy: lines - 1}
 		a.copyYank()
 		text := "alpha"
-		want := "Copied 1 lines"
+		want := "Copied 1 line"
 		if lines == 2 {
 			text = "alpha\nbeta"
 			want = "Copied 2 lines"

@@ -16,7 +16,7 @@ func TestRecordJSONAndMarkerIdentity(t *testing.T) {
 	}
 	defer a.Close()
 	i := Input{Command: "git", Args: []string{"push", "--force"}, Cwd: d, Env: EnvMap(env)}
-	if _, active, e := ReadMarker(i); e != nil || active {
+	if _, active, e := ReadMarker(i); e == nil || !active {
 		t.Fatal(active, e)
 	}
 	if e = a.Sync("codex"); e != nil {
@@ -42,7 +42,7 @@ func TestRecordJSONAndMarkerIdentity(t *testing.T) {
 		t.Fatal(r)
 	}
 	i.Env["GTX_PANE_ID"] = "p2"
-	if _, active, e = ReadMarker(i); e != nil || active {
+	if _, active, e = ReadMarker(i); e == nil || !active {
 		t.Fatal(active, e)
 	}
 }

@@ -79,6 +79,7 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.cm, ui.sel, ui.sep, ui.sb = nil, nil, nil, nil
 	ui.paneCopies = nil
 	ui.sidebarGesture, ui.tabGesture = nil, nil
+	ui.dividerClicks = [2]*sidebarDividerClick{}
 	ui.menu, ui.settings, ui.help = nil, nil, nil
 	ui.hostPixelMouse, ui.hostPixelSupported = false, false
 	s := a.selection()
@@ -169,7 +170,7 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
-	v.with(a, func(ui *App) { ui.expireToast() })
+	v.with(a, func(ui *App) { ui.expireToast(); ui.flushSidebarDividerClicks(time.Now()) })
 	if v.app.sel != nil && v.app.sel.autoDir != 0 {
 		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })
 	}
@@ -235,3 +236,16 @@ func (v *Viewer) FollowSessionFocus(a *App) {
 }
 
 func (v *Viewer) AcquireSize(a *App) { v.with(a, func(ui *App) { ui.syncLayout() }) }
+
+// Paste keeps clipboard data out of the terminal framer and drops a stale
+// delivery if its text field closed while the clipboard was being read.
+func (v *Viewer) Paste(a *App, text string) {
+	v.with(a, func(ui *App) {
+		ui.syncLayout()
+		if !ui.modalTextInput() {
+			return
+		}
+		ui.insertClipboardText(text)
+	})
+	a.st.Cols, a.st.Rows = v.cols, v.rows
+}

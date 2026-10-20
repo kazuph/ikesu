@@ -28,6 +28,7 @@ func TestStage5RestoreTitleObservedRows(t *testing.T) {
 	}
 	for _, c := range cases {
 		st := testState(model.SidebarWidth+c.width, 30)
+		st.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 		id := st.ActiveWorkspace().TabRef().Layout.Focused()
 		out := Compose(Input{State: st, ServerUI: true, Panes: map[int]*PaneSnap{id: {Label: c.title, Agent: "codex", Restore: c.restore}}})
 		var row strings.Builder

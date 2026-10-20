@@ -77,16 +77,15 @@ func TestEndpointPresentationUpdateIsViewerLocalAndRejectsInvalidPreferences(t *
 	}
 	initial := readSnapshot(first, func(render.Input) bool { return true })
 	readSnapshot(second, func(render.Input) bool { return true })
-	split := .6
-	first.send(t, clientMsg{Type: "view_config", Preferences: &endpoint.ViewPreferences{SidebarWidth: 34, SidebarManual: true, SidebarSectionSplit: &split}})
+	first.send(t, clientMsg{Type: "view_config", Preferences: &endpoint.ViewPreferences{SidebarWidth: 34, SidebarManual: true, RightSidebarMode: "compact"}})
 	updated := readSnapshot(first, func(in render.Input) bool { return in.State.SidebarSize == 34 })
-	if !updated.State.SidebarManual || updated.State.SidebarSectionSplit == nil || *updated.State.SidebarSectionSplit != split {
+	if !updated.State.SidebarManual || updated.State.RightSidebarMode != "compact" {
 		t.Fatal("presentation update lost the saved preferences", updated.State)
 	}
 	// A new snapshot from the second viewer must retain its own display state.
 	second.send(t, clientMsg{Type: "resize", Cols: 159, Rows: 45})
 	other := readSnapshot(second, func(in render.Input) bool { return in.State.Cols == 159 })
-	if other.State.SidebarSize != initial.State.SidebarSize || other.State.SidebarSectionSplit != nil {
+	if other.State.SidebarSize != initial.State.SidebarSize || other.State.RightSidebarMode != "" {
 		t.Fatal("updating one viewer changed another", other.State)
 	}
 	first.send(t, clientMsg{Type: "view_config", Preferences: &endpoint.ViewPreferences{SidebarWidth: 0}})

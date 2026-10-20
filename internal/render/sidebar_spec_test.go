@@ -31,7 +31,7 @@ func TestG2SectionsRowsCollapseAndAgents(t *testing.T) {
 	}
 }
 func TestG2SlimRowsHighlightAndFixedTarget(t *testing.T) {
-	s := model.New("/tmp/long-workspace-name", 90, 30)
+	s := model.New("/tmp/long-workspace-name", 120, 30)
 	s.WorkspaceDensity = "slim"
 	panes := map[int]*PaneSnap{1: {Agent: "codex", Status: StatusGlyph{Key: "working", Rune: "◐", Color: Yellow}}}
 	out := Compose(Input{State: s, Panes: panes, Git: map[int]GitStatus{0: {Branch: "main", Ahead: 2, Behind: 1, Added: 123, Deleted: 11}}})
@@ -45,7 +45,7 @@ func TestG2SlimRowsHighlightAndFixedTarget(t *testing.T) {
 		case RowGit:
 			git = iy + i
 		case RowAgent:
-			agent = s.SidebarArea().Y + (s.SidebarArea().H+1)/2 + 2
+			agent = 2
 		}
 	}
 	if git != name+1 {
@@ -169,7 +169,7 @@ func TestG2WorkspaceNumberAndGlobalPane22(t *testing.T) {
 	for i, r := range rows {
 		rowY := y + i
 		if r.Kind == RowAgent {
-			rowY = s.SidebarArea().Y + (s.SidebarArea().H+1)/2 + 2
+			rowY = 2
 		}
 		line := frameLine(out.Frame, rowY)
 		if r.Kind == RowWorkspace && !strings.Contains(line, "· 1 one") {

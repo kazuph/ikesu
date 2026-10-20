@@ -51,7 +51,7 @@ const (
 	// bytes can be flushed before the outer shell sees them (fix #6).
 	MouseOffSeq = "\x1b[?1016l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
 	// LeaveSeq restores the terminal.
-	LeaveSeq = "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
+	LeaveSeq = "\x1b]0;gtx\x07" + "\x1b[?1004l" + "\x1b[?2004l" + "\x1b[?25h" + "\x1b[?1049l"
 )
 
 // KbdEnterSeq negotiates the host keyboard independently of the pane protocol.
@@ -289,7 +289,7 @@ type App struct {
 	panePalette                              *render.Palette
 	sidebarGesture                           *sidebarGesture
 	tabGesture                               *tabGesture
-	dividerAt                                time.Time
+	dividerClicks                            [2]*sidebarDividerClick
 	sidebarScroll                            int
 	agentScroll                              int
 	sidebarBar                               *sidebarScrollDrag
@@ -299,6 +299,7 @@ type App struct {
 	hostPixelMouse                           bool
 	mousePixel                               *uv.Mouse // original coordinates for the current host event
 	help                                     *helpView
+	readClipboardText                        func() (string, error)
 	copied                                   string
 	copiedAt                                 time.Time
 	lastClick                                clickMark // last left press inside a normal pane body
@@ -308,6 +309,9 @@ type App struct {
 	lastSpawnError                           error
 	dirty                                    bool
 	quit                                     bool
+
+	windowTitle        render.WindowTitleState
+	windowTitleSession string
 }
 
 // SetCellPixels records the host terminal's pixel geometry so SGR 1016
@@ -652,6 +656,10 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		sup.SetGraphicsVersion(versions[0])
 	}
 	a := NewApp(st, sup, out, cwd)
+	// The optional second startup value is the outer terminal session name.
+	if len(versions) > 1 {
+		a.windowTitleSession = versions[1]
+	}
 	if len(versions) > 0 {
 		a.clientVersion = versions[0]
 	}
@@ -681,6 +689,9 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 		a.setStartupConfigWarning([]string{err.Error()})
 	}
 
+	if err := a.configureStandalonePreferences(); err != nil {
+		return 1, err
+	}
 	if err := a.StartInitialPane(); err != nil {
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}

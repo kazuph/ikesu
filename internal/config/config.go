@@ -66,6 +66,7 @@ type Config struct {
 		Custom       map[string]string `toml:"custom"`
 	} `toml:"theme"`
 	UI struct {
+		WindowTitle                   string        `toml:"window_title"`
 		MouseCapture                  *bool         `toml:"mouse_capture"`
 		CopyOnSelect                  *bool         `toml:"copy_on_select"`
 		HostCursor                    string        `toml:"host_cursor"`
@@ -79,6 +80,7 @@ type Config struct {
 		Accent                        string        `toml:"accent"`
 		MobileWidthThreshold          *int          `toml:"mobile_width_threshold"`
 		Sidebar                       SidebarPanels `toml:"sidebar"`
+		RightSidebarWidth             *int          `toml:"right_sidebar_width"`
 		SidebarWidth                  *int          `toml:"sidebar_width"`
 		SidebarMinWidth               *int          `toml:"sidebar_min_width"`
 		SidebarMaxWidth               *int          `toml:"sidebar_max_width"`

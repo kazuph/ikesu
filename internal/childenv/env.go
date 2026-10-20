@@ -65,6 +65,13 @@ func Scrub(env []string) []string {
 				delete(m, key)
 			}
 		}
+		if generated := m[prefix+"CLAUDE_PREFIX"]; generated != "" && m["CLAUDE_CODE_SHELL_PREFIX"] == generated {
+			if m[prefix+"CLAUDE_PREFIX_SET"] == "x" {
+				m["CLAUDE_CODE_SHELL_PREFIX"] = m[prefix+"CLAUDE_PREFIX_ORIG"]
+			} else {
+				delete(m, "CLAUDE_CODE_SHELL_PREFIX")
+			}
+		}
 		// Only an exact suffix produced by our startup writer is removed.
 		pin := `case "$PATH" in "$` + prefix + `BIN"|"$` + prefix + `BIN":*) ;; *) export PATH="$` + prefix + `BIN:$PATH";; esac` + "\n"
 		ready := `if [[ ! -f "$` + prefix + `READY" ]]; then builtin printf '' > "$` + prefix + `READY"; fi` + "\n"

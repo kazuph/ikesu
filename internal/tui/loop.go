@@ -20,10 +20,16 @@ func (a *App) onInput(ev input.Event) {
 		a.hostMouseReport(ev.Report)
 		a.hostThemeReport(ev.Report)
 	case input.KindKeyRelease:
+		if a.modalTextInput() && ev.Key.Code == 'v' && (ev.Key.Mod == uv.ModCtrl || ev.Key.Mod == uv.ModSuper) {
+			return
+		}
 		a.sendPaneKey(ev.Key, ev.Raw, true)
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
+		if ev.Text == "" {
+			return
+		}
 		if a.navigator != nil {
 			if a.navigator.searching {
 				a.navigator.query += ev.Text
@@ -51,6 +57,9 @@ func (a *App) onInput(ev input.Event) {
 			return
 		}
 		if a.cm != nil {
+			if a.cm.searching {
+				a.insertClipboardText(ev.Text)
+			}
 			return
 		}
 		if a.workspaceNavigate {
@@ -217,6 +226,7 @@ func (a *App) onTick() {
 		a.tickViewers()
 	}
 	now := time.Now()
+	a.flushSidebarDividerClicks(now)
 	if a.localRestore {
 		a.observeLocalSessions()
 	}
@@ -328,7 +338,8 @@ func (a *App) exec(cmd model.Command) {
 	if metadataOrder != nil {
 		a.reindexWorkspaceMetadata(metadataOrder)
 	}
-	if _, toggled := cmd.(model.CmdToggleSidebar); toggled {
+	switch cmd.(type) {
+	case model.CmdToggleSidebar, model.CmdToggleRightSidebar:
 		a.saveViewPreferences()
 	}
 	a.popupVisibilityChanged(popupWasVisible, previousPopup)

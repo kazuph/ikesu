@@ -70,9 +70,27 @@ func TestStage3AgentToastDismissalIsLocalToEachRealDisplay(t *testing.T) {
 	}
 	mouse(2, "M")
 	mouse(2, "m")
-	frames := c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return strings.Contains(outputs([]clientMsg{m}), "Rename pane") })
-	if !strings.Contains(outputs(frames), "Rename pane") || c.lastRegions.ToastRect.W == 0 {
-		t.Fatal("right click did not retain toast and open menu")
+	menuHasRename := func() bool {
+		if c.lastFrame == nil || c.lastRegions == nil {
+			return false
+		}
+		r := c.lastRegions.MenuRect
+		for y := r.Y; y < r.Y+r.H; y++ {
+			var row strings.Builder
+			for x := r.X; x < r.X+r.W; x++ {
+				if cell := c.lastFrame.Cell(x, y); cell != nil {
+					row.WriteString(cell.Content)
+				}
+			}
+			if strings.Contains(row.String(), "Rename pane") {
+				return true
+			}
+		}
+		return false
+	}
+	frames := c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" && menuHasRename() })
+	if !menuHasRename() || c.lastRegions.ToastRect.W == 0 {
+		t.Fatalf("right click did not retain toast and open menu: toast=%+v menu=%+v output=%q", c.lastRegions.ToastRect, c.lastRegions.MenuRect, outputs(frames))
 	}
 	c.send(t, clientMsg{Type: "input", Data: encode64([]byte{27})})
 	mouse(0, "M")

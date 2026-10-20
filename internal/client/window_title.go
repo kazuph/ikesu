@@ -6,43 +6,26 @@ import (
 	"github.com/kazuph/goterrace/internal/render"
 )
 
-type titleView struct{ workspace, tab int }
-
 type windowTitleState struct {
-	seen      map[titleView]bool
-	view      titleView
-	remaining int
+	shared  render.WindowTitleState
+	session string
+	groups  []render.MachineGroup
 }
 
-// The isolated 0.2.24 byte captures show two title writes after paints
-// on attach and returning to an existing tab in the same workspace.
-// Workspace changes, new tabs and pane OSC titles do not resend it.
-const windowTitleActivationPaints = 2
-
 func (title *windowTitleState) painted(out io.Writer, frame render.Input) error {
-	ws := frame.State.ActiveWorkspace()
-	if ws == nil || ws.TabRef() == nil {
-		return nil
-	}
-	view := titleView{ws.ID, ws.TabRef().ID}
-	if title.seen == nil {
-		title.seen = map[titleView]bool{view: true}
-		title.remaining = windowTitleActivationPaints
-	} else if view != title.view {
-		if title.seen[view] && view.workspace == title.view.workspace {
-			title.remaining = windowTitleActivationPaints
-		} else {
-			title.remaining = 0
+	return title.shared.Painted(out, frame, title.session, title.groups)
+}
+
+// Keep retained offline pictures in the sidebar, but never count their status.
+func (m *machineClient) titleGroups() []render.MachineGroup {
+	groups := make([]render.MachineGroup, 0, len(m.order))
+	for _, id := range m.order {
+		e := m.endpoints[id]
+		group := render.MachineGroup{ID: id}
+		if e != nil && e.profile.Enabled && e.connection != nil && e.snapshotAttempt == e.attempt {
+			group.Input = e.snapshot
 		}
-		title.seen[view] = true
+		groups = append(groups, group)
 	}
-	title.view = view
-	if title.remaining == 0 {
-		return nil
-	}
-	if _, err := io.WriteString(out, "\x1b]0;gtx\x07"); err != nil {
-		return err
-	}
-	title.remaining--
-	return nil
+	return groups
 }

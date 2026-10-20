@@ -10,7 +10,7 @@ import (
 	"github.com/kazuph/goterrace/internal/runtime"
 )
 
-func TestStage4CollapsedAgentClickSelectsItsPane(t *testing.T) {
+func TestStage4RightCollapsedAgentClickSelectsItsPane(t *testing.T) {
 	a := specRuntimeApp(t)
 	s := a.st
 	s.Cols, s.Rows = 160, 45
@@ -18,25 +18,23 @@ func TestStage4CollapsedAgentClickSelectsItsPane(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.exec(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
-	s.SidebarVisible = false
+	s.RightSidebarMode = "compact"
 	s.AgentScope = "sort"
 	a.SetServerUI()
 	a.SetReported(1, "codex", "idle")
 	a.SetReported(2, "codex", "blocked")
-	for _, y := range []int{24, 25} {
-		s.Active = 0
-		a.sidebarClick(uv.Mouse{X: 1, Y: y, Button: uv.MouseLeft})
-		if s.Active != 1 || a.focusedPane() != 2 {
-			t.Fatalf("row %d selected workspace %d pane %d", y, s.Active, a.focusedPane())
-		}
+	x := s.RightSidebarArea().X + 1
+	a.rightSidebarClick(uv.Mouse{X: x, Y: 0, Button: uv.MouseLeft})
+	if s.Active != 1 || a.focusedPane() != 2 {
+		t.Fatal("first priority status did not select its pane")
 	}
-	a.sidebarClick(uv.Mouse{X: 1, Y: 26, Button: uv.MouseLeft})
+	a.rightSidebarClick(uv.Mouse{X: x, Y: 1, Button: uv.MouseLeft})
 	if s.Active != 0 || a.focusedPane() != 1 {
-		t.Fatal("second agent did not select first workspace")
+		t.Fatal("second status did not select its pane")
 	}
-	a.sidebarClick(uv.Mouse{X: 1, Y: 30, Button: uv.MouseLeft})
+	a.rightSidebarClick(uv.Mouse{X: x, Y: 3, Button: uv.MouseLeft})
 	if s.Active != 0 {
-		t.Fatal("blank lower-panel row changed workspace")
+		t.Fatal("blank right row changed workspace")
 	}
 }
 
@@ -61,13 +59,14 @@ func TestStage4PanelSwitchResetsAgentButRetainsJobScroll(t *testing.T) {
 	a := NewApp(s, runtime.NewSupervisor(), nil, t.TempDir())
 	a.SetServerUI()
 	a.agentScroll, a.jobScroll = 1, 2
-	y := render.SidebarSplitY(s) + 1
-	a.sidebarPress(uv.Mouse{X: 11, Y: y, Button: uv.MouseLeft})
+	y := 0
+	x := s.RightSidebarArea().X + 1
+	a.rightSidebarClick(uv.Mouse{X: x + 11, Y: y, Button: uv.MouseLeft})
 	if !a.jobsPanel || a.agentScroll != 0 || a.jobScroll != 2 {
 		t.Fatalf("switch to jobs: agents=%d jobs=%d", a.agentScroll, a.jobScroll)
 	}
 	a.agentScroll = 1
-	a.sidebarPress(uv.Mouse{X: 2, Y: y, Button: uv.MouseLeft})
+	a.rightSidebarClick(uv.Mouse{X: x + 2, Y: y, Button: uv.MouseLeft})
 	if a.jobsPanel || a.agentScroll != 0 || a.jobScroll != 2 {
 		t.Fatalf("switch to agents: agents=%d jobs=%d", a.agentScroll, a.jobScroll)
 	}

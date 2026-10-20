@@ -258,7 +258,7 @@ func handoffStreamError(err error) error {
 	return fmt.Errorf("handoff stream closed while reading line")
 }
 
-func (s *Server) restoreLive(in *handoffImport) error {
+func (s *Server) restoreLive(in *handoffImport, socket string) error {
 	if err := s.sup.ImportHandoff(in.State.Panes, in.Files); err != nil {
 		return err
 	}
@@ -287,6 +287,9 @@ func (s *Server) restoreLive(in *handoffImport) error {
 	}
 	if result.State != "commit" {
 		return fmt.Errorf("handoff not committed")
+	}
+	if err := s.sup.RebindGuardSocket(socket); err != nil {
+		return err
 	}
 	s.sup.StartImported()
 	return nil

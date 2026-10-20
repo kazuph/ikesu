@@ -54,7 +54,7 @@ func TestLegacyReportHandoffRestoresOfficialAuthority(t *testing.T) {
 			}
 			hooks := 0
 			s.app.SetAvailHook(func(int) { hooks++ })
-			if err := s.restoreLive(&in); err != nil {
+			if err := s.restoreLive(&in, s.dir+"/gtx.sock"); err != nil {
 				t.Fatal(err)
 			}
 			if hooks != 0 {

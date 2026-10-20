@@ -63,6 +63,8 @@ func (a *App) configAction(name string, k uv.Key) bool {
 		a.workspaceNavigate = false
 	}
 	switch name {
+	case "toggle_right_sidebar":
+		a.exec(model.CmdToggleRightSidebar{})
 	case "resize_mode":
 		a.resizeMode = !a.resizeMode
 		a.dirty = true

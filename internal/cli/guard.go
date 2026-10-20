@@ -14,26 +14,90 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
+		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
 		return 0
 	}
 	sub := a[0]
 	a = a[1:]
-	c, e := config.Load()
-	if e != nil {
-		fmt.Fprintln(r.errOut(), e)
-		return 1
+	var c config.Config
+	var e error
+	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || os.Getenv("GTX_GUARD_MARKER") == "" {
+		c, e = config.Load()
+		if e != nil {
+			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
 	}
 	root := api.StateDir()
 	cwd, _ := os.Getwd()
 	launch := r.o.getenv("GTX_GUARD_LAUNCH_CWD")
 	via := "shim"
 	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ())}
+	// Generated entries pin the marker path. Keep diagnostics with that pane's
+	// assets even when its shell still carries the pre-handoff state directory.
+	if marker := i.Env["GTX_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line" || sub == "claude-prefix") {
+		root = filepath.Dir(filepath.Dir(filepath.Dir(marker)))
+	}
+	await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+		marker, active, err := guard.ReadMarker(i)
+		if err != nil {
+			return api.Decision{}, err
+		}
+		if !active {
+			return api.Decision{}, fmt.Errorf("承認先の目印がありません")
+		}
+		next := *r
+		getenv := next.o.getenv
+		next.o.Explicit = false
+		next.o.Getenv = func(key string) string {
+			if key == "GTX_SOCKET_PATH_EXPLICIT" {
+				return "1"
+			}
+			if key == "GTX_SOCKET_PATH" {
+				return marker.Socket
+			}
+			return getenv(key)
+		}
+		return next.guardAwait(p, timeout)
+	}
+
 	writeJSON := func(v any) int {
 		enc := json.NewEncoder(r.out())
 		enc.SetIndent("", "  ")
 		if e := enc.Encode(v); e != nil {
 			fmt.Fprintln(r.errOut(), e)
+			return 1
+		}
+		return 0
+	}
+	if sub == "claude-prefix" {
+		if len(a) > 0 && a[0] == "--" {
+			a = a[1:]
+		}
+		if len(a) != 1 {
+			i.Command, i.Args = "gtx", append([]string{"guard", "claude-prefix", "--"}, a...)
+			guard.Authorize(c.Guard, root, i, "line", r.errOut(), await)
+			return usageErr(r, "guard claude-prefix requires exactly one command line")
+		}
+		line := a[0]
+		i.Command, i.Args = line, nil
+		if !guard.AuthorizeLine(c.Guard, root, i, guard.ClaudePrefixLine(i, line), r.errOut(), await) {
+			return 1
+		}
+		if prefix := i.Env["GTX_GUARD_CLAUDE_PREFIX_ORIG"]; prefix != "" {
+			i.Command, i.Args = prefix, []string{line}
+			if !guard.AuthorizeLine(c.Guard, root, i, shellQuote(prefix)+" "+shellQuote(line), r.errOut(), await) {
+				return 1
+			}
+		} else {
+			i.Command = i.Env["SHELL"]
+			if i.Command == "" {
+				i.Command = "/bin/sh"
+			}
+			i.Args = []string{"-c", line}
+		}
+		if err := guard.Execute(i); err != nil {
+			fmt.Fprintln(r.errOut(), err)
 			return 1
 		}
 		return 0
@@ -160,12 +224,12 @@ func (r *runner) guardCLI(a []string) int {
 		if len(argv) != 1 {
 			return usageErr(r, "guard line requires one command line")
 		}
-		if !guard.AuthorizeLine(c.Guard, root, i, argv[0], r.errOut(), r.guardAwait) {
+		if !guard.AuthorizeLine(c.Guard, root, i, argv[0], r.errOut(), await) {
 			return 1
 		}
 		return 0
 	}
-	if !guard.Authorize(c.Guard, root, i, via, r.errOut(), r.guardAwait) {
+	if !guard.Authorize(c.Guard, root, i, via, r.errOut(), await) {
 		return 1
 	}
 	if e = guard.Execute(i); e != nil {

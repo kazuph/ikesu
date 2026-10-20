@@ -20,12 +20,14 @@ type MachineHit struct {
 	Row         SidebarRow
 	Rect        layout.Rect
 	Header, New bool
+	Right       bool
 }
 
 type MachineSidebar struct {
 	Groups      []MachineGroup
 	Active      string
 	Scroll      int
+	RightScroll int
 	Hits        []MachineHit
 	PaneStatus  []string
 	DropMachine string
@@ -44,6 +46,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 	if len(m.Groups) == 1 {
 		return
 	}
+	defer m.drawRight(f, active)
 	s := active.State
 	if !s.SidebarVisible {
 		return
@@ -189,59 +192,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			}
 		}
 	}
-	if active.JobsPanel {
-		return
-	}
-	area = view.Agents.Rect
-	f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
-	y = area.Y
-	for _, group := range m.Groups {
-		if y >= area.Y+area.H {
-			break
-		}
-		f.Text(area.X, y, "▾ "+group.Label+": "+group.Status, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}, area.X+area.W)
-		m.Hits = append(m.Hits, MachineHit{Machine: group.ID, Rect: layout.Rect{X: area.X, Y: y, W: area.W, H: 1}, Header: true})
-		y++
-		if group.Reason != "" && (group.Status == "awaiting approval" || group.Status == "承認待ち。クリックで承認ページを開く") {
-			for _, text := range []string{group.Status, group.Reason} {
-				x := area.X
-				for _, r := range text {
-					width := ansi.StringWidth(string(r))
-					if x+width > area.X+area.W {
-						y++
-						x = area.X
-					}
-					if y >= area.Y+area.H {
-						break
-					}
-					f.Set(x, y, string(r), uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
-					x += width
-				}
-				y++
-			}
-		}
-		if group.Input == nil {
-			continue
-		}
-		in := *group.Input
-		source := SidebarRows(in.State, in.Panes, in.SidebarConfig)
-		agents := false
-		for _, row := range source {
-			if row.Kind == RowSep {
-				agents = true
-				continue
-			}
-			if !agents || y >= area.Y+area.H {
-				continue
-			}
-			drawSidebarRow(f, in.State, in, row, area.X, y, area.W)
-			machineRowBackground(f, area.X, y, area.W)
-			if in.SidebarConfig.UI.TransparentSidebarCards {
-				clearSidebarCardBackground(f, in.State, row, area.X, y, area.W)
-			}
-			y++
-		}
-	}
+
 }
 
 func (m *MachineSidebar) drawPaneStatus(f *Frame, in Input, out *Output) {

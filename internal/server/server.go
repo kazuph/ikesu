@@ -117,6 +117,7 @@ type Server struct {
 	store  *dispatch.Store
 	dbErr  error
 	mailCh chan mailWrite
+	mailWG sync.WaitGroup
 
 	mailMu       sync.Mutex
 	mailInFlight map[int64]bool  // regular message ids staged for PTY write
@@ -269,7 +270,9 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	if err != nil {
 		return 1, err
 	}
-	apiSock := api.APISocketPath(dir)
+	// A live importer owns the inherited listener, whose pathname can belong
+	// to a previous executable namespace. That is the endpoint actually listening.
+	apiSock := apiLn.Addr().String()
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -390,7 +393,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	// Restore the saved session when session.json exists; otherwise start
 	// the initial shell. A corrupt file fails closed to a fresh state.
 	if imported != nil {
-		if err := s.restoreLive(imported); err != nil {
+		if err := s.restoreLive(imported, apiSock); err != nil {
 			s.handedOff = true
 			s.sup.ReleaseHandoff()
 			s.cleanup()
@@ -421,7 +424,8 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		}
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
-	go s.mailWorker()
+	s.mailWG.Add(1)
+	go func() { defer s.mailWG.Done(); s.mailWorker() }()
 	// These startup sweeps all open the SQLite store; when the DB file has
 	// never been created there is nothing to seed, abort, or flush, so skip
 	// them to keep the engine (and its memory) out of the process.
@@ -480,6 +484,7 @@ func (s *Server) cleanup() {
 	if !s.handedOff {
 		s.sup.KillAll()
 	}
+	s.mailWG.Wait()
 	if s.store != nil {
 		s.store.Close()
 	}
@@ -713,7 +718,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "control":
 			s.app.Do(func() { s.graphicsControl(c, m) })
 		case "view_config":
-			if m.Preferences != nil && (m.Preferences.SidebarWidth < 1 || m.Preferences.SidebarSectionSplit != nil && (*m.Preferences.SidebarSectionSplit < .1 || *m.Preferences.SidebarSectionSplit > .9)) {
+			if m.Preferences != nil && m.Preferences.Validate() != nil {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_preferences_invalid"})
 				continue
 			}
@@ -771,24 +776,8 @@ func (s *Server) attach(conn net.Conn) {
 			if m.Rendered != nil {
 				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered, m.FocusEpoch) })
 			}
-		case "input":
-			if m.EndPrefix {
-				s.app.Do(func() {
-					if c.viewer != nil {
-						c.viewer.EndPrefix(s.app)
-					}
-				})
-			}
-			if data, err := decode64(m.Data); err == nil && len(data) > 0 {
-				s.app.Do(func() {
-					s.mu.Lock()
-					s.client = c
-					s.lastUse++
-					c.lastUse = s.lastUse
-					s.mu.Unlock()
-					c.viewer.Input(s.app, data)
-				})
-			}
+		case "input", "paste":
+			s.viewerInput(c, m)
 		case "resize":
 			s.app.Do(func() { c.viewer.Resize(s.app, m.Cols, m.Rows, m.Xpixel, m.Ypixel) })
 		}

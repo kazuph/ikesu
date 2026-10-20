@@ -12,7 +12,7 @@ func TestG2IndependentPanelWheelThumbDragAndCollapse(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	a := specRuntimeApp(t)
-	a.exec(model.CmdResize{Cols: 100, Rows: 30})
+	a.exec(model.CmdResize{Cols: 100, Rows: 15})
 	for i := 0; i < 16; i++ {
 		if i > 0 {
 			a.exec(model.CmdNewWorkspace{Cwd: a.cwd, Section: model.SectionWork, NoFocus: true})
@@ -34,7 +34,7 @@ func TestG2IndependentPanelWheelThumbDragAndCollapse(t *testing.T) {
 	if a.sidebarScroll != 3 || a.agentScroll != 0 {
 		t.Fatal("workspace wheel crossed panel")
 	}
-	a.sidebarWheel(uv.Mouse{X: 2, Y: v.Agents.Rect.Y}, false)
+	a.sidebarWheel(uv.Mouse{X: v.Agents.Rect.X, Y: v.Agents.Rect.Y}, false)
 	if a.sidebarScroll != 3 || a.agentScroll != 3 {
 		t.Fatal("agent wheel crossed panel")
 	}

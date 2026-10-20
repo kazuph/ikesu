@@ -42,6 +42,7 @@ func TestG2PopupStableOwnerReorderAndShutdownExactlyOnce(t *testing.T) {
 func TestParityPopupCenteredAboveActionBar(t *testing.T) {
 	for _, dimensions := range []struct{ cols, rows, x, y int }{{160, 45, 63, 12}, {100, 25, 33, 2}} {
 		s := New("/tmp", dimensions.cols, dimensions.rows)
+		s.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 		s.Apply(CmdOpenPopup{WorkspaceID: s.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 60}, Height: api.PopupSize{Cells: 20}})
 		r := s.PopupRect()
 		if r.X != dimensions.x || r.Y != dimensions.y || r.W != 60 || r.H != 20 {

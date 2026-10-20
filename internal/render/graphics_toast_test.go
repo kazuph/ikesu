@@ -11,6 +11,7 @@ import (
 
 func TestEndpointOmittedToastPositionDisplaysAndCropsAtTopRight(t *testing.T) {
 	state := testState(160, 45)
+	state.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 	pid := state.FocusedPane()
 	snapshot := blankSnap()
 	snapshot.Graphics = []kitty.Placement{{Image: kitty.Image{ID: 8, Width: 100, Height: 40}, Cols: 127, Rows: 40}}
@@ -31,6 +32,7 @@ func TestEndpointOmittedToastPositionDisplaysAndCropsAtTopRight(t *testing.T) {
 
 func TestEndpointModeFooterAndVisibleNoticeCoverOnlyTheirCells(t *testing.T) {
 	state := testState(160, 45)
+	state.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 	state.PaneBorders = false
 	pid := state.FocusedPane()
 	snapshot := blankSnap()

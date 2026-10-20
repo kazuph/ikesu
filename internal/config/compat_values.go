@@ -11,6 +11,7 @@ func (c *Config) validateValues() {
 		value   *string
 		allowed []string
 	}{
+		{"ui.window_title", &c.UI.WindowTitle, []string{"summary", "plain"}},
 		{"terminal.shell_mode", &c.Terminal.ShellMode, []string{"auto", "login", "non_login"}},
 		{"update.channel", &c.Update.Channel, []string{"stable", "preview"}},
 		{"ui.sidebar_collapsed_mode", &c.UI.SidebarCollapsedMode, []string{"compact", "hidden"}},
@@ -59,7 +60,7 @@ func (c *Config) validateValues() {
 		value     **int
 		allowZero bool
 	}{
-		{"ui.sidebar_width", &c.UI.SidebarWidth, false}, {"ui.sidebar_min_width", &c.UI.SidebarMinWidth, false}, {"ui.sidebar_max_width", &c.UI.SidebarMaxWidth, false}, {"ui.mouse_scroll_lines", &c.UI.MouseScrollLines, false}, {"ui.mobile_width_threshold", &c.UI.MobileWidthThreshold, true}, {"ui.toast.delay_seconds", &c.UI.Toast.DelaySeconds, true}, {"agent_restore.restore_delay_ms", &c.AgentRestore.RestoreDelayMs, true}, {"advanced.scrollback_limit_bytes", &c.Advanced.ScrollbackLimitBytes, true},
+		{"ui.right_sidebar_width", &c.UI.RightSidebarWidth, false}, {"ui.sidebar_width", &c.UI.SidebarWidth, false}, {"ui.sidebar_min_width", &c.UI.SidebarMinWidth, false}, {"ui.sidebar_max_width", &c.UI.SidebarMaxWidth, false}, {"ui.mouse_scroll_lines", &c.UI.MouseScrollLines, false}, {"ui.mobile_width_threshold", &c.UI.MobileWidthThreshold, true}, {"ui.toast.delay_seconds", &c.UI.Toast.DelaySeconds, true}, {"agent_restore.restore_delay_ms", &c.AgentRestore.RestoreDelayMs, true}, {"advanced.scrollback_limit_bytes", &c.Advanced.ScrollbackLimitBytes, true},
 	} {
 		if *n.value != nil && (**n.value < 0 || **n.value == 0 && !n.allowZero) {
 			c.warn(n.key, "out of range; using default")

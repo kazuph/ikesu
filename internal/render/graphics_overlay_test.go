@@ -110,6 +110,7 @@ func TestOverlayAdditionalPlacementBoundaryPreservesUntouchedImages(t *testing.T
 
 func TestStandaloneToastKeepsImagePlacementsWhileEndpointCrops(t *testing.T) {
 	s := testState(160, 45)
+	s.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	snap := blankSnap()
 	snap.Graphics = []kitty.Placement{{Image: kitty.Image{ID: 8, Width: 100, Height: 40}, X: 0, Y: 0, Cols: 127, Rows: 40}}

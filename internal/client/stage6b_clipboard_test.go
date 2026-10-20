@@ -17,7 +17,7 @@ import (
 )
 
 func TestStage6bLocalModalClipboard(t *testing.T) {
-	for _, mode := range []string{"name", "navigator", "copy", "cancelled"} {
+	for _, mode := range []string{"name", "navigator", "copy", "empty", "cancelled"} {
 		for _, mod := range []uv.KeyMod{uv.ModCtrl, uv.ModSuper} {
 			t.Run(fmt.Sprintf("%s-%d", mode, mod), func(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -37,6 +37,9 @@ func TestStage6bLocalModalClipboard(t *testing.T) {
 				m := &machineClient{ctx: ctx, active: "local", regions: &render.Output{}, events: make(chan endpointEvent), endpoints: map[string]*managedEndpoint{"local": {connection: connection, snapshot: view}}}
 				path := filepath.Join(t.TempDir(), "clipboard.txt")
 				text := "日本語\talpha\n"
+				if mode == "empty" {
+					text = ""
+				}
 				if err := os.WriteFile(path, []byte(text), 0600); err != nil {
 					t.Fatal(err)
 				}
@@ -47,6 +50,12 @@ func TestStage6bLocalModalClipboard(t *testing.T) {
 				defer func() { cancel(); m.workers.Wait() }()
 				if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: 'v', Mod: mod}}); err != nil {
 					t.Fatal(err)
+				}
+				if err := m.input(input.Event{Kind: input.KindKeyRelease, Key: uv.Key{Code: 'v', Mod: mod}}); err != nil {
+					t.Fatal(err)
+				}
+				if len(connection.queue) != 0 {
+					t.Fatal("modal release leaked to pane")
 				}
 				if m.endpoints["local"].paste == nil {
 					t.Fatal("modal key did not start read")
@@ -60,7 +69,7 @@ func TestStage6bLocalModalClipboard(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("clipboard read did not finish")
 				}
-				if mode == "cancelled" {
+				if mode == "cancelled" || mode == "empty" {
 					if len(connection.queue) != 0 {
 						t.Fatal("closed dialog leaked text to pane")
 					}
@@ -70,9 +79,9 @@ func TestStage6bLocalModalClipboard(t *testing.T) {
 					t.Fatal("missing paste")
 				}
 				data, err := base64.StdEncoding.DecodeString(connection.queue[0].Data)
-				want := "\x1b[200~" + text + "\x1b[201~"
-				if mode == "copy" {
-					want = "日本語alpha"
+				want := text
+				if connection.queue[0].Type != "paste" {
+					t.Fatal("modal clipboard was reframed as keys")
 				}
 				if err != nil || string(data) != want {
 					t.Fatalf("got %q want %q: %v", data, want, err)

@@ -19,6 +19,9 @@ func (a *App) SetSidebarConfig(c config.Config, startup bool) {
 
 func (a *App) setSidebarConfig(c config.Config, startup bool) {
 	a.sidebarConfig = c
+	if enabled := c.UI.Toast.Clipboard.Enabled; enabled != nil && !*enabled {
+		a.copied = ""
+	}
 	a.st.PaneGaps = c.UI.PaneGaps == nil || *c.UI.PaneGaps
 	a.st.SidebarCollapsedHidden = c.UI.SidebarCollapsedMode == "hidden"
 	a.setStartupConfigWarning(c.Warnings)
@@ -30,6 +33,10 @@ func (a *App) setSidebarConfig(c config.Config, startup bool) {
 	a.st.SidebarMin, a.st.SidebarMax, a.st.SidebarDefault = lo, hi, n
 	if !a.st.SidebarManual {
 		a.st.SidebarSize = n
+	}
+	a.st.RightSidebarSize = 0
+	if c.UI.RightSidebarWidth != nil {
+		a.st.RightSidebarSize = max(lo, min(hi, *c.UI.RightSidebarWidth))
 	}
 	a.st.WorkspaceDensity = c.WorkspaceDensity()
 	a.st.AgentScope = c.AgentScope()

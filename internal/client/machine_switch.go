@@ -86,11 +86,16 @@ func (m *machineClient) finishSwitch() {
 	p.keys = nil
 	m.pending = nil
 	m.regions = nil
-	visible = !m.blurred
+	selectedVisible := !m.blurred
 	if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "visibility") {
-		_ = e.connection.enqueue(msg{Type: "visibility", Visible: &visible})
-	} else if visible {
+		_ = e.connection.enqueue(msg{Type: "visibility", Visible: &selectedVisible})
+	} else if selectedVisible {
 		_ = m.sendInput(m.active, []byte("\x1b[I"))
+	}
+	if p.sidebar != nil {
+		if err := m.sidebarInput(p.sidebar.hit, p.sidebar.event); err != nil {
+			m.notify(err.Error())
+		}
 	}
 	if err := m.flushDrag(); err != nil {
 		m.fail(m.active, err)

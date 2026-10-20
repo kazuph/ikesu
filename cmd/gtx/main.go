@@ -19,7 +19,7 @@ import (
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
-const version = "0.2.0"
+const version = "0.2.4"
 
 func main() {
 	api.ConfigureExecutable(os.Args[0])
@@ -142,7 +142,7 @@ dispatch:
 	if errors.Is(err, tui.ErrStandaloneRestart) {
 		exe, e := os.Executable()
 		if e == nil {
-			e = syscall.Exec(exe, []string{os.Args[0], "--no-session"}, os.Environ())
+			e = syscall.Exec(exe, []string{os.Args[0], "--no-session", "--session", session}, os.Environ())
 		}
 		fmt.Fprintln(os.Stderr, "gtx restart:", e)
 		os.Exit(1)
@@ -161,7 +161,7 @@ func run(noSession bool, session string) (int, error) {
 		return 1, fmt.Errorf("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit)")
 	}
 	if noSession {
-		return tui.Run(os.Stdin, os.Stdout, version)
+		return tui.Run(os.Stdin, os.Stdout, version, session)
 	}
 	return client.Attach(session, os.Stdin, os.Stdout, version)
 }

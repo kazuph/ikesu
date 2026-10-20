@@ -261,6 +261,7 @@ func compose(in Input, machines *MachineSidebar, version string, notice bool) *O
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
+	drawRightSidebar(f, s, in)
 	if machines != nil {
 		machines.draw(f, in)
 	}
@@ -284,8 +285,15 @@ func compose(in Input, machines *MachineSidebar, version string, notice bool) *O
 	drawActionBar(f, s, in, out)
 	drawClientVersion(f, version, notice, out)
 	if in.ServerUI && in.Copy != nil {
-		drawCopyStatus(f, 0, s.Rows-1, s.Cols, in.CopyHint, in.ServerUI)
+		x := 0
+		if in.Copied != "" {
+			x = s.PanesArea().X
+		}
+		drawCopyStatus(f, x, s.Rows-1, s.Cols-x, in.CopyHint, in.ServerUI)
 		out.ActionBar = ActionBarRects{}
+	}
+	if in.ServerUI {
+		drawSidebarCopyFeedback(f, in)
 	}
 	drawPopup(f, in, out)
 	if s.Mobile() {
@@ -341,7 +349,7 @@ func compose(in Input, machines *MachineSidebar, version string, notice bool) *O
 			drawToast(f, in.Toast, out)
 		}
 	}
-	if in.Copied != "" && !in.ServerUI {
+	if in.Copied != "" && !in.ServerUI && s.SidebarVisible && s.SidebarArea().W > 0 && (in.SidebarConfig.UI.Toast.Clipboard.Enabled == nil || *in.SidebarConfig.UI.Toast.Clipboard.Enabled) {
 		if position := in.SidebarConfig.UI.Toast.Clipboard.Position; position != "" {
 			drawToast(f, &Toast{Title: in.Copied, Position: position}, out)
 		} else {

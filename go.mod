@@ -11,6 +11,7 @@ require (
 	github.com/ncruces/go-sqlite3 v0.35.6
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
+	mvdan.cc/sh/v3 v3.10.0
 	golang.org/x/term v0.46.0
 )
 

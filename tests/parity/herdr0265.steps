@@ -1,0 +1,48 @@
+send "\x02c"
+sleep 200ms
+send "\x1b[200~日本語 alpha\x1b[201~"
+sleep 200ms
+screen @OUT@/name-paste.txt
+send "\x1b"
+sleep 200ms
+send "\x02o/"
+sleep 200ms
+send "\x1b[200~日本語 alpha\x1b[201~"
+sleep 200ms
+screen @OUT@/navigator-paste.txt
+send "\x1b"
+sleep 200ms
+send "\x1b"
+sleep 200ms
+send "printf '\\033[3J\\033[H\\033[2J'\r"
+sleep 200ms
+send "for i in {1..70}; do printf 'ROW-%02d alpha beta gamma\\n' $i; done\r"
+sleep 500ms
+send "\x02[/"
+sleep 200ms
+send "\x1b[200~al\tpha\x01\nbeta\x1b[201~"
+sleep 200ms
+screen @OUT@/search-paste.txt
+send "\x1b"
+sleep 200ms
+send "q"
+sleep 200ms
+send "\x02["
+sleep 200ms
+send "g0vjjll"
+sleep 200ms
+send "y"
+sleep 200ms
+screen @OUT@/copied-three.txt
+cells @OUT@/copied-three.json
+sleep 2200ms
+screen @OUT@/expired.txt
+send "\x02["
+sleep 200ms
+send "g0vll"
+sleep 200ms
+send "y"
+sleep 200ms
+screen @OUT@/copied-one.txt
+cells @OUT@/copied-one.json
+kill

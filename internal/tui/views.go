@@ -176,7 +176,7 @@ func (a *App) draw() {
 	if a.workspaceNavigate {
 		in.SelectedWorkspace = &a.navigateSelected
 	}
-	if a.sidebarGesture != nil && !a.sidebarGesture.divider && !a.sidebarGesture.panelDivider {
+	if a.sidebarGesture != nil && !a.sidebarGesture.divider {
 		in.Dragging = a.sidebarGesture.moved
 		in.DragFromGit = a.sidebarGesture.gitRow
 		in.DraggedWorkspace = a.sidebarGesture.ws
@@ -247,6 +247,11 @@ func (a *App) draw() {
 	if _, err := a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible, out.AnchorShape)); err != nil {
 		a.enc.Reset()
 		a.dirty = true
+	}
+	if !a.serverUI {
+		if err := a.windowTitle.Painted(a.out, in, a.windowTitleSession, nil); err != nil {
+			a.dirty = true
+		}
 	}
 }
 

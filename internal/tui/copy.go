@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -373,9 +372,7 @@ func (a *App) copyYank() {
 	if err := a.writeClipboard(text); err != nil {
 		return
 	}
-	lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
-	a.copied = fmt.Sprintf("Copied %d lines", lines)
-	a.copiedAt = time.Now()
+	a.copiedText(text)
 }
 
 // copyText extracts the buffer text between two points (inclusive),

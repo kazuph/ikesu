@@ -13,19 +13,19 @@ func TestServerChromeRecordedControlsAndCopyStatus(t *testing.T) {
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	out := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	text := screenText(t, out, s.Cols, s.Rows)
-	for _, hidden := range []string{"[full]", "[grouped]", "«"} {
+	for _, hidden := range []string{"[full]", "«"} {
 		if strings.Contains(text, hidden) {
 			t.Fatalf("server shows an unobserved control %q", hidden)
 		}
 	}
-	if out.NewTabRect.W != 3 || !strings.Contains(text, " NORMAL ") || out.Frame.Cell(s.SidebarArea().W-1, 10).Content != " " {
-		t.Fatal("server retains a hidden tab-add target or sidebar boundary")
+	if out.NewTabRect.W != 3 || !strings.Contains(text, " NORMAL ") || out.Frame.Cell(s.SidebarArea().W-1, 10).Content != "│" {
+		t.Fatal("server lost tab-add target or sidebar boundary")
 	}
 	copyOut := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: blankSnap()},
-		Copy: &CopyMark{Pane: pid}, CopyHint: " COPY  line 1  y/enter copy", Copied: "Copied 1 lines"})
+		Copy: &CopyMark{Pane: pid}, CopyHint: " COPY  line 1  y/enter copy", Copied: "Copied 1 line"})
 	copyText := screenText(t, copyOut, s.Cols, s.Rows)
-	if !strings.HasPrefix(strings.Split(copyText, "\n")[s.Rows-1], " COPY ") || strings.Contains(copyText, "Copied 1") {
-		t.Fatal("server copy status must cover the bottom row without local success feedback")
+	if !strings.Contains(strings.Split(copyText, "\n")[s.Rows-1], " COPY ") || !strings.Contains(copyText, "Copied 1 line") {
+		t.Fatal("server copy status and sidebar success feedback must both remain visible", copyText)
 	}
 }
 

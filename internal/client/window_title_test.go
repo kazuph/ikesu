@@ -35,3 +35,28 @@ func TestWindowTitleMatchesWorkspaceAndTabActivationBytes(t *testing.T) {
 	state.ActiveWorkspace().ActiveTab = 0
 	paint(two)
 }
+
+func TestTitleGroupsExcludeDisconnectedStaleAndDisabledSnapshots(t *testing.T) {
+	state := model.New("/tmp", 160, 45)
+	snapshot := &render.Input{State: state}
+	endpoint := &managedEndpoint{snapshot: snapshot, connection: &endpointConnection{}, attempt: 2, snapshotAttempt: 2}
+	endpoint.profile.Enabled = true
+	m := &machineClient{order: []string{"local"}, endpoints: map[string]*managedEndpoint{"local": endpoint}}
+	if m.titleGroups()[0].Input != snapshot {
+		t.Fatal("current snapshot omitted")
+	}
+	endpoint.snapshotAttempt = 1
+	if m.titleGroups()[0].Input != nil {
+		t.Fatal("old connection counted")
+	}
+	endpoint.snapshotAttempt = 2
+	endpoint.connection = nil
+	if m.titleGroups()[0].Input != nil {
+		t.Fatal("disconnected snapshot counted")
+	}
+	endpoint.connection = &endpointConnection{}
+	endpoint.profile.Enabled = false
+	if m.titleGroups()[0].Input != nil {
+		t.Fatal("disabled snapshot counted")
+	}
+}

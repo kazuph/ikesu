@@ -9,9 +9,9 @@ import (
 	"github.com/kazuph/goterrace/internal/childenv"
 	"runtime"
 	"strings"
-	"unicode"
 
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/machine"
 	"github.com/kazuph/goterrace/internal/render"
@@ -23,14 +23,15 @@ type clipboardContent struct {
 }
 
 type clipboardItem struct {
-	data  []byte
-	paste bool
+	modalText *string
+	data      []byte
+	paste     bool
 }
 
 type clipboardPaste struct{ held []clipboardItem }
 
 func modalClipboardView(view *render.Input) bool {
-	return view != nil && (view.Dialog != nil && view.Dialog.InputEdit || view.Navigator != nil || view.Copy != nil)
+	return view != nil && (view.Dialog != nil && view.Dialog.InputEdit || view.Navigator != nil && view.Navigator.Searching || view.Copy != nil && strings.HasSuffix(view.CopyHint, "  enter search  esc cancel"))
 }
 
 func readDesktopClipboard(ctx context.Context) (clipboardContent, error) {
@@ -128,23 +129,23 @@ func (m *machineClient) startClipboardPaste(id string) error {
 			}
 			if err != nil {
 				m.notify(err.Error())
-			} else {
+			} else if text != "" {
 				data := eventBytes(input.Event{Kind: input.KindPaste, Text: text})
-				if copySearch {
-					data = []byte(strings.Map(func(r rune) rune {
-						if unicode.IsControl(r) {
-							return -1
-						}
-						return r
-					}, text))
+				var sendErr error
+				if textOnly {
+					sendErr = m.sendModalPaste(id, text)
+				} else {
+					sendErr = connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)})
 				}
-				if sendErr := connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data)}); sendErr != nil {
+				if sendErr != nil {
 					m.notify(sendErr.Error())
 				}
 			}
 			for _, held := range op.held {
 				var sendErr error
-				if held.paste {
+				if held.modalText != nil {
+					sendErr = m.sendModalPaste(id, *held.modalText)
+				} else if held.paste {
 					sendErr = m.startClipboardPaste(id)
 				} else {
 					sendErr = m.sendInput(id, held.data)
@@ -156,4 +157,24 @@ func (m *machineClient) startClipboardPaste(id string) error {
 		}})
 	}()
 	return nil
+}
+
+// A clipboard body is data, never a terminal stream. Negotiate the typed
+// message so an older server cannot reinterpret its bytes as keys.
+func (m *machineClient) sendModalPaste(id, text string) error {
+	if text == "" {
+		return nil
+	}
+	e := m.endpoints[id]
+	if e.connection == nil {
+		return fmt.Errorf("clipboard paste: machine is not connected")
+	}
+	if !endpoint.Allows(e.connection.writer.available, endpoint.RequiredGeneration("paste"), e.connection.writer.methods, "paste") {
+		return fmt.Errorf("paste unsupported")
+	}
+	if e.paste != nil {
+		e.paste.held = append(e.paste.held, clipboardItem{modalText: &text})
+		return nil
+	}
+	return e.connection.enqueue(msg{Type: "paste", Data: base64.StdEncoding.EncodeToString([]byte(text))})
 }

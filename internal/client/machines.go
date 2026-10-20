@@ -21,6 +21,7 @@ import (
 )
 
 type managedEndpoint struct {
+	snapshotAttempt          uint64
 	boot                     string
 	textOnly                 bool
 	mouse                    hostMouseState
@@ -53,6 +54,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	sidebar            *machineSidebarAction
 	keys               []input.Event
 	id                 string
 	workspace          int
