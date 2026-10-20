@@ -277,8 +277,8 @@ func TestRightSidebarTwoMachinesActualPTYMatrixAndWheel(t *testing.T) {
 			}
 			frame := render.ComposeClient(*m.endpoints[m.active].snapshot, &m.sidebar, "test", false).Frame
 			for _, hit := range hits {
-				if right == 1 && hit.Header && frame.Cell(hit.Rect.X, hit.Rect.Y).Content != " " {
-					t.Fatal("compact machine header overwrote status")
+				if right == 1 && hit.Header && frame.Cell(hit.Rect.X, hit.Rect.Y).Content != "▾" {
+					t.Fatal("narrow machine header differs from the width18 prefix")
 				}
 				if hit.Header || hit.Row.Kind != render.RowAgent && (hit.Row.Kind != render.RowJob || right != 1) {
 					continue

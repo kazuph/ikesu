@@ -1,6 +1,9 @@
 package render
 
-import "github.com/kazuph/goterrace/internal/model"
+import (
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/model"
+)
 
 // Narrow panels retain the v0.2.5 expanded layout at width 18. Only its
 // visible columns are copied; layout and token budgeting never see the crop.
@@ -47,7 +50,14 @@ func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, row
 			}
 		}
 		for dx := 0; dx < area.W-1; dx++ {
-			*dst.Cell(x+dx, y) = *src.Cell(start+dx, y)
+			cell := *src.Cell(start+dx, y)
+			if cell.Width == 2 && dx+cell.Width > area.W-1 || cell.Width == 0 && dx == 0 {
+				cell = uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: cell.Style.Bg}}
+			} else if cell.Width == 0 {
+				// The preceding wide head paints both cells; its tail is not encoded.
+				cell = uv.Cell{Width: 0}
+			}
+			*dst.Cell(x+dx, y) = cell
 			if area.W == 2 && src.Cell(sx, y).Content == "▌" && dst.Cell(x+dx, y).Style.Bg == nil {
 				dst.Cell(x+dx, y).Style.Bg = src.Palette.PanelBG
 			}

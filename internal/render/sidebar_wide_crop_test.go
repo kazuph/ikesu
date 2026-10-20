@@ -44,7 +44,7 @@ func TestNarrowSidebarJapaneseEncoderMatchesEveryCell(t *testing.T) {
 										t.Fatalf("split wide character at (%d,%d): %+v", x, y, want)
 									}
 									if got.Content != want.Content || got.Width != want.Width || !got.Style.Equal(&want.Style) {
-										t.Fatalf("name=%s cell(%d,%d) decoded=%+v frame=%+v", name, x, y, got, want)
+										t.Fatalf("name=%s cell(%d,%d) decoded=%#v frame=%#v", name, x, y, got, want)
 									}
 								}
 							}
