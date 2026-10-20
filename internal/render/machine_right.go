@@ -5,7 +5,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
 )
 
 // RightAgentRows is the full endpoint card sequence before viewport clipping.
@@ -31,7 +30,7 @@ type machineRightRow struct {
 }
 
 func (m *MachineSidebar) rightRows(active Input) []machineRightRow {
-	compact := active.State.RightSidebarArea().W == model.SidebarCollapsedWidth
+	compact := active.State.RightSidebarCompact()
 	var rows []machineRightRow
 	if compact {
 		for gi, group := range m.Groups {
@@ -102,7 +101,7 @@ func (m *MachineSidebar) drawRight(f *Frame, active Input) {
 	if area.W == 0 {
 		return
 	}
-	compact := area.W == model.SidebarCollapsedWidth
+	compact := active.State.RightSidebarCompact()
 	area.X++
 	area.W--
 	if !compact {
@@ -141,6 +140,7 @@ func (m *MachineSidebar) drawRight(f *Frame, active Input) {
 				style.Bg = f.Palette.PanelBG
 			}
 			f.Set(area.X, y, g.Rune, style)
+			f.Text(area.X+1, y, compactSidebarRowName(in, r), style, area.X+area.W)
 		} else {
 			drawSidebarRow(f, in.State, in, entry.row, area.X, y, area.W)
 			machineRowBackground(f, area.X, y, area.W)

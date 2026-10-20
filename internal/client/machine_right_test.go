@@ -326,3 +326,125 @@ func TestRightSidebarTwoMachinesActualPTYMatrixAndWheel(t *testing.T) {
 		m.suppressRelease = false
 	}
 }
+
+func TestNarrowRightSidebarTwoMachinesEveryRowAndIndependentModes(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	t.Cleanup(func() {
+		for id, e := range m.endpoints {
+			t.Logf("FINAL endpoint=%s focused=%d scroll=%d jobs=%t", id, e.snapshot.State.FocusedPane(), e.snapshot.AgentScroll, e.snapshot.JobsPanel)
+		}
+	})
+	switchSource := func(source string) {
+		t.Helper()
+		if m.active == source {
+			return
+		}
+		m.pending = &pendingMachine{id: source, workspace: m.endpoints[source].snapshot.State.ActiveWorkspace().ID, deadline: time.Now().Add(machineSwitchWait)}
+		m.requestPending()
+		h.until("source machine visible", func() bool { return m.pending == nil && m.active == source })
+	}
+	for _, width := range []int{2, 3, 5, 10, 17, 18} {
+		for _, mixed := range []bool{false, true} {
+			widths := map[string]int{"local": width, "remote": width}
+			if mixed {
+				widths["remote"] = 26
+				if width == 18 {
+					widths["remote"] = 10
+				}
+			}
+			m.size = tui.Winsize{Cols: 160, Rows: 6}
+			for id, e := range m.endpoints {
+				p := endpoint.ViewPreferences{SidebarWidth: 26, RightSidebarWidth: widths[id], RightSidebarManual: true}
+				if widths[id] < 18 {
+					p.RightSidebarMode = "compact"
+				}
+				e.connection.enqueue(resizeMessage(m.size))
+				e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: &p})
+			}
+			h.until("independent widths", func() bool {
+				for id, e := range m.endpoints {
+					if e.snapshot.State.RightSidebarArea().W != widths[id] || e.snapshot.State.Rows != 6 {
+						return false
+					}
+				}
+				return true
+			})
+			for _, source := range []string{"local", "remote"} {
+				for _, jobsPanel := range []bool{false, true} {
+					// Switch through the real viewer protocol so visibility and snapshots stay current.
+					switchSource(source)
+					if m.endpoints[source].snapshot.JobsPanel != jobsPanel && !m.endpoints[source].snapshot.State.RightSidebarCompact() {
+						header := render.RightSidebarHeaderFor(m.endpoints[source].snapshot.State, 0)
+						tab := header.Agents
+						if jobsPanel {
+							tab = header.Jobs
+						}
+						raw := fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", tab.X+1, tab.Y+1, tab.X+1, tab.Y+1)
+						if err := m.sendInput(source, []byte(raw)); err != nil {
+							t.Fatal(err)
+						}
+						h.until("jobs tab", func() bool { return m.endpoints[source].snapshot.JobsPanel == jobsPanel })
+					}
+					for scroll := 0; scroll < 12; scroll++ {
+						switchSource(source)
+						m.sidebar.RightScroll = scroll
+						m.outputFence.Accept([]byte("\x1b[0n"))
+						if err := m.paint(); err != nil {
+							t.Fatal(err)
+						}
+						hits := append([]render.MachineHit(nil), m.sidebar.Hits...)
+						actualScroll := m.sidebar.RightScroll
+						for _, hit := range hits {
+							if !hit.Right || hit.Header || (hit.Row.Kind != render.RowAgent && hit.Row.Kind != render.RowJob) {
+								continue
+							}
+							pane := hit.Row.Pane
+							if hit.Row.Kind == render.RowJob {
+								pane = 1
+							}
+							switchSource(source)
+							m.sidebar.RightScroll = actualScroll
+							m.outputFence.Accept([]byte("\x1b[0n"))
+							if err := m.paint(); err != nil {
+								t.Fatal(err)
+							}
+							event := mouseEvent(t, fmt.Sprintf("\x1b[<0;%d;%dM", hit.Rect.X+1, hit.Rect.Y+1))
+							raw, err := m.rightSidebarBytes(hit, event)
+							if err != nil {
+								t.Fatal(err)
+							}
+							target := m.endpoints[hit.Machine].snapshot
+							compact := target.State.RightSidebarCompact()
+							expectedScroll := target.AgentScroll
+							if !compact && hit.Row.Kind == render.RowJob {
+								expectedScroll = target.JobScroll
+							}
+							if !compact && hit.Row.Kind == render.RowAgent && target.JobsPanel {
+								expectedScroll = 0
+							}
+							expectedScroll += strings.Count(string(raw), "\x1b[<65;") - strings.Count(string(raw), "\x1b[<64;")
+							t.Logf("INPUT target=%s row=%+v xy=%d,%d encoded=%q", hit.Machine, hit.Row, hit.Rect.X, hit.Rect.Y, raw)
+							if err := m.input(event); err != nil {
+								t.Fatal(err)
+							}
+							h.until(fmt.Sprintf("width=%d mixed=%t source=%s jobs=%t scroll=%d target=%s pane=%d row=%+v agentScroll=%d", width, mixed, source, jobsPanel, actualScroll, hit.Machine, pane, hit.Row, m.endpoints[hit.Machine].snapshot.AgentScroll), func() bool {
+								snapshot := m.endpoints[hit.Machine].snapshot
+								scroll := snapshot.AgentScroll
+								if !compact && hit.Row.Kind == render.RowJob {
+									scroll = snapshot.JobScroll
+								}
+								return m.pending == nil && m.active == hit.Machine && snapshot.State.FocusedPane() == pane && scroll == expectedScroll
+							})
+							m.suppressRelease = false
+							t.Logf("width=%d mixed=%t source=%s jobs=%t scroll=%d target=%s pane=%d kind=%d", width, mixed, source, jobsPanel, actualScroll, hit.Machine, pane, hit.Row.Kind)
+						}
+						if actualScroll < scroll {
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+}
