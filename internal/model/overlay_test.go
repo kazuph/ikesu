@@ -2,7 +2,7 @@ package model
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 	"reflect"
 	"testing"
 )

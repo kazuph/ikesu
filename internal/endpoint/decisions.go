@@ -1,6 +1,6 @@
 package endpoint
 
-import "github.com/kazuph/goterrace/internal/api"
+import "github.com/kazuph/ikesu/internal/api"
 
 const DecisionGeneration = 3
 

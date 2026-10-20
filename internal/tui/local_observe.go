@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/session"
 	"strings"
 	"time"
 )

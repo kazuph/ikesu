@@ -2,8 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 	"io"
 	"testing"
 )

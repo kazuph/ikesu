@@ -2,10 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
-const waitHelp = "gtx wait commands:\n  gtx wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]\n  gtx wait agent-status <pane_id> --status <idle|working|blocked|done|unknown> [--timeout MS]\n"
+const waitHelp = "ikesu wait commands:\n  ikesu wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]\n  ikesu wait agent-status <pane_id> --status <idle|working|blocked|done|unknown> [--timeout MS]\n"
 
 func (r *runner) waitCLI(args []string) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
@@ -24,7 +24,7 @@ func (r *runner) waitCLI(args []string) int {
 
 func (r *runner) waitOutputCLI(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]")
+		return usageErr(r, "usage: ikesu wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]")
 	}
 	strip := true
 	p := api.PaneWaitForOutputParams{PaneID: args[0], Source: "recent_unwrapped", Match: api.OutputMatch{Type: "substring"}, StripAnsi: &strip}

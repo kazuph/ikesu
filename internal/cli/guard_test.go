@@ -3,8 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/guard"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/guard"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"

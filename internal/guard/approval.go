@@ -3,8 +3,8 @@ package guard
 import (
 	"bufio"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"

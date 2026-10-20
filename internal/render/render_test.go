@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 // screenText runs the encoded frame through a real VT emulator and returns

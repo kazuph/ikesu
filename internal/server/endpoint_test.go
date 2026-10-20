@@ -3,16 +3,16 @@ package server
 import (
 	"bufio"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/model"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestEndpointSnapshotCarriesStateAndPaneCells(t *testing.T) {

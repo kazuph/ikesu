@@ -5,7 +5,7 @@ package e2e
 import (
 	"bytes"
 	"context"
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/guard"
 	"os"
 	"os/exec"
 	"path/filepath"

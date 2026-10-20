@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 var base = time.Unix(0, 0)

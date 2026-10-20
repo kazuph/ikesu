@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestEndpointProgramClipboardUsesLastVisibleViewerWithoutTruncation(t *testing.T) {

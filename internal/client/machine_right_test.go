@@ -13,16 +13,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/machine"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/server"
-	"github.com/kazuph/goterrace/internal/teststate"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/server"
+	"github.com/kazuph/ikesu/internal/teststate"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func TestMachineRightServerHelper(t *testing.T) {

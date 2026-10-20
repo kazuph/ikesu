@@ -1,6 +1,6 @@
 package render
 
-import "github.com/kazuph/goterrace/internal/model"
+import "github.com/kazuph/ikesu/internal/model"
 
 func WorkspaceHidden(s *model.AppState, index int) bool {
 	child := s.Workspaces[index].Worktree

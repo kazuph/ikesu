@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 // B sends no input after its marker, so shell redraw cannot hide a loss.

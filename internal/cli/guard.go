@@ -3,10 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/envcompat"
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/guard"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,7 +15,7 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
+		fmt.Fprintln(r.out(), "ikesu guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
 		return 0
 	}
 	sub := a[0]

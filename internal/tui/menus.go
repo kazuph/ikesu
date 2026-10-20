@@ -3,12 +3,12 @@ package tui
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // openPaneMenu shows the per-pane right-click menu at (x, y). Layout ops

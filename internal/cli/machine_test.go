@@ -68,7 +68,7 @@ func TestMachineForwardRejectsBeforeLocalDispatch(t *testing.T) {
 		t.Fatal(code)
 	}
 	out.Reset()
-	if code := ForwardMachine("unknown", []string{"pane", "list", "--help"}, o); code != 0 || !strings.Contains(out.String(), "# gtx") {
+	if code := ForwardMachine("unknown", []string{"pane", "list", "--help"}, o); code != 0 || !strings.Contains(out.String(), "# ikesu") {
 		t.Fatal(code, out.String())
 	}
 }

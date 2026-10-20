@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 type agentAttachTarget struct {

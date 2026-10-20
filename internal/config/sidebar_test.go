@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/BurntSushi/toml"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"

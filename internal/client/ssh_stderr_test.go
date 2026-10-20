@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/machine"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestSSHStderrTailRetainsExactLast64KiBAcrossWraps(t *testing.T) {

@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"os"
 	"path/filepath"
 	"strings"

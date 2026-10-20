@@ -8,14 +8,14 @@ package server
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"syscall"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // sessionSaveDelay coalesces bursts of state changes into one write.
@@ -79,7 +79,7 @@ func (s *Server) saveSession() {
 		}
 	})
 	if err := session.Save(session.Path(s.dir), f); err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: save session: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: save session: %v\n", err)
 		return
 	}
 	s.savePaneHistory(f)
@@ -91,14 +91,14 @@ func (s *Server) saveSession() {
 func (s *Server) loadSession() *session.File {
 	f, err := session.Load(session.Path(s.dir))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: ignoring saved session: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: ignoring saved session: %v\n", err)
 		return nil
 	}
 	if f == nil {
 		return nil
 	}
 	for _, w := range f.Validate() {
-		fmt.Fprintf(os.Stderr, "gtx: session restore: %s\n", w)
+		fmt.Fprintf(os.Stderr, "ikesu: session restore: %s\n", w)
 	}
 	if len(f.Workspaces) == 0 {
 		return nil
@@ -125,18 +125,18 @@ func (s *Server) notifyRestart() { s.closeClients("restart") }
 func (s *Server) spawnSuccessor() {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: restart: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: restart: %v\n", err)
 		return
 	}
 	devNull, err := os.OpenFile(os.DevNull, os.O_RDONLY, 0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: restart: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: restart: %v\n", err)
 		return
 	}
 	defer devNull.Close()
 	logf, err := os.OpenFile(api.LogPath(s.dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: restart: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: restart: %v\n", err)
 		return
 	}
 	defer logf.Close()
@@ -149,7 +149,7 @@ func (s *Server) spawnSuccessor() {
 	cmd.Stderr = logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: restart: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: restart: %v\n", err)
 		return
 	}
 	_ = cmd.Process.Release()

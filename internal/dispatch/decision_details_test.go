@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func TestDecisionDetailsOldPayloadAndPersistence(t *testing.T) {

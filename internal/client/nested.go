@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/platform"
 )
 
 // NestedBlocked reports whether a real gtx server process is an ancestor

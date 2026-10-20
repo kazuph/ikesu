@@ -3,19 +3,19 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (r *runner) pluginPaneCLI(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx plugin pane <open|focus|close>")
+		return usageErr(r, "usage: ikesu plugin pane <open|focus|close>")
 	}
 	p := map[string]any{}
 	env := map[string]string{}
 	switch args[0] {
 	case "focus", "close":
 		if len(args) != 2 {
-			return usageErr(r, "usage: gtx plugin pane "+args[0]+" <pane_id>")
+			return usageErr(r, "usage: ikesu plugin pane "+args[0]+" <pane_id>")
 		}
 		p["pane_id"] = args[1]
 	case "open":

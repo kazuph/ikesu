@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"path/filepath"
 	"testing"
 )

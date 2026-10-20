@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 func (s *Server) decisionProjection() (*endpoint.DecisionProjection, error) {

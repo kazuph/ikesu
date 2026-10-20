@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"path/filepath"
 	"testing"
 )

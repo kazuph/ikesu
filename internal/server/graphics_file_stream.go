@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/endpoint"
 	"golang.org/x/sys/unix"
 )
 

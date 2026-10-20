@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func TestTabMousePixelFeedbackPreservesServerInputBytes(t *testing.T) {

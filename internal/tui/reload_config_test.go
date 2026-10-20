@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 func TestViewerReloadKeepsManualWidthCollapsedStateAndSessionDisplay(t *testing.T) {

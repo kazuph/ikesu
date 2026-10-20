@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"

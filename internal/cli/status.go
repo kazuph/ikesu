@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 func (r *runner) statusCLI(args []string) int {
 	if len(args) > 1 || len(args) == 1 && args[0] != "--json" {
-		return usageErr(r, "usage: gtx status [--json]")
+		return usageErr(r, "usage: ikesu status [--json]")
 	}
 	server := map[string]any{"status": "not_running", "running": false, "session": r.o.Session, "socket": api.APISocket(r.o.Session, r.o.Explicit, r.o.getenv)}
 	raw, err := r.request("cli:status", api.MethodPing, api.EmptyParams{})
@@ -34,7 +34,7 @@ func (r *runner) statusCLI(args []string) int {
 		server["restart_needed"] = pong.Version != r.o.Version || pong.Protocol != api.Protocol
 	}
 	if len(args) == 0 {
-		fmt.Fprintf(r.out(), "gtx server: %s (session %s)\n", server["status"], r.o.Session)
+		fmt.Fprintf(r.out(), "ikesu server: %s (session %s)\n", server["status"], r.o.Session)
 		return 0
 	}
 	binary, _ := os.Executable()

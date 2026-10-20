@@ -6,10 +6,10 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 func TestViewerFocusAcknowledgmentCannotReleaseNewerKeys(t *testing.T) {

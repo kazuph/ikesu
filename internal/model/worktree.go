@@ -1,6 +1,6 @@
 package model
 
-import "github.com/kazuph/goterrace/internal/api"
+import "github.com/kazuph/ikesu/internal/api"
 
 type CmdSetWorktree struct {
 	Index int

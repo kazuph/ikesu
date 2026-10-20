@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/kitty"
 )
 
 const DirectKittyTransport = "direct-kitty"

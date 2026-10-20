@@ -1,6 +1,6 @@
 package client
 
-import "github.com/kazuph/goterrace/internal/input"
+import "github.com/kazuph/ikesu/internal/input"
 
 // T4's observed bound is the first input plus at most 512 queued inputs.
 const queuedInputBatchLimit = 512

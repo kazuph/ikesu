@@ -1,9 +1,9 @@
 package model
 
 import (
-	"github.com/kazuph/goterrace/internal/agentview"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/agentview"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/layout"
 )
 
 // PaneID identifies a pane across the whole app (not per workspace).

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	saved "github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/api"
+	saved "github.com/kazuph/ikesu/internal/session"
 )
 
 func TestStage5LastWorkspaceCloseSaveRestore(t *testing.T) { stage5CloseLifecycle(t, false) }

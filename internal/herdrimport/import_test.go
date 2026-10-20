@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/ikesu/internal/config"
 	"golang.org/x/sys/unix"
 )
 

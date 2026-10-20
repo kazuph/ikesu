@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"strconv"
 	"strings"
 )

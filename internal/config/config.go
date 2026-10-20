@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/envcompat"
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/guard"
 )
 
 // EnvVar overrides the config file location.

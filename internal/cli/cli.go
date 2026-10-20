@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/envcompat"
 )
 
 // Options configures a CLI invocation.
@@ -76,7 +76,7 @@ func Run(args []string, o Options) int {
 	}
 	r := &runner{o: o}
 	if len(args) == 0 {
-		fmt.Fprintln(r.errOut(), "usage: gtx <pane|workspace|tab|server|send|inbox|msg|run|log|agent> <command> ...")
+		fmt.Fprintln(r.errOut(), "usage: ikesu <pane|workspace|tab|server|send|inbox|msg|run|log|agent> <command> ...")
 		return 2
 	}
 	switch args[0] {
@@ -176,12 +176,12 @@ func (r *runner) request(id, method string, params any) ([]byte, error) {
 // API socket is unreachable.
 func (r *runner) serverNotRunning(id string) []byte {
 	socket := r.socketPath()
-	start := "gtx"
+	start := "ikesu"
 	if r.o.Explicit && r.o.Session != "" {
-		start = "gtx --session " + r.o.Session
+		start = "ikesu --session " + r.o.Session
 	}
 	resp := api.Failure(id, api.ErrServerNotRunning,
-		fmt.Sprintf("no gtx server is running at %s; run `%s` to start or attach it", socket, start))
+		fmt.Sprintf("no ikesu server is running at %s; run `%s` to start or attach it", socket, start))
 	raw, _ := json.Marshal(resp)
 	return raw
 }
@@ -195,7 +195,7 @@ func (r *runner) printResult(id, method string, params any) int {
 	}
 	var resp api.Response
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	if resp.Err != nil {
@@ -215,7 +215,7 @@ func (r *runner) sendOK(method string, params any) int {
 	}
 	var resp api.Response
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	if resp.Err != nil {

@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"os"
 	"runtime"
 	"runtime/pprof"

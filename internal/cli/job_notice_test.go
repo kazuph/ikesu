@@ -2,8 +2,8 @@ package cli
 
 import (
 	"bytes"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"path/filepath"
 	"testing"
 )

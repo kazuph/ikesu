@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/machine"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 // Pane-less background jobs (gtx run). A job is a command dispatch row in
@@ -288,7 +288,7 @@ func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc
 	if !writeFinish || completion == "none" {
 		return
 	}
-	body := fmt.Sprintf("[gtx run] exit=%d label=%s job=%s details: gtx log %s",
+	body := fmt.Sprintf("[ikesu run] exit=%d label=%s job=%s details: ikesu log %s",
 		exitCode, labelOrDash(label), jobID, jobID)
 	if completion == "full" {
 		if tail := readLogTail(jobLogPathFrom(store, jobID), 40); tail != "" {
@@ -438,7 +438,7 @@ func (s *Server) cancelIfCancelling(jobID string) {
 }
 func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) {
 	if changed, _ := store.MarkCommandCancelled(j.ID); changed && j.Completion != "none" {
-		body := fmt.Sprintf("[gtx run] cancelled label=%s job=%s details: gtx log %s", labelOrDash(j.Label), j.ID, j.ID)
+		body := fmt.Sprintf("[ikesu run] cancelled label=%s job=%s details: ikesu log %s", labelOrDash(j.Label), j.ID, j.ID)
 		s.queueJobNotice(store, j.CallerPane, body, onLoop)
 	}
 }

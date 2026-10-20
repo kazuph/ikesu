@@ -3,9 +3,9 @@ package server
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 )
 

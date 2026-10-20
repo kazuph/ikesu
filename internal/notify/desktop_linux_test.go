@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 func TestLinuxSoundSelectionAndMissingPlayerKeepsNotification(t *testing.T) {

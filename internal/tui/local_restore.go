@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // restoreLocalAgents uses only this app's exact pane-session associations.

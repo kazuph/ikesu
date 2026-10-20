@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/session"
 	"os"
 	"strings"
 )
@@ -25,7 +25,7 @@ func (s *Server) savePaneHistory(f *session.File) {
 		}
 	})
 	if err := session.SaveHistory(s.dir, h); err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: save pane history: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: save pane history: %v\n", err)
 	}
 }
 func (s *Server) restorePaneHistory(f *session.File) {
@@ -34,7 +34,7 @@ func (s *Server) restorePaneHistory(f *session.File) {
 	}
 	h, err := session.LoadHistory(s.dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gtx: read pane history: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ikesu: read pane history: %v\n", err)
 		return
 	}
 	if h == nil {

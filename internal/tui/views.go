@@ -2,12 +2,12 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"

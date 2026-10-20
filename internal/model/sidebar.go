@@ -1,6 +1,6 @@
 package model
 
-import "github.com/kazuph/goterrace/internal/layout"
+import "github.com/kazuph/ikesu/internal/layout"
 
 type Section string
 

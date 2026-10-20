@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/ikesu/internal/config"
 )
 
 func (r *runner) configCLI(args []string) int {
 	if len(args) != 1 || args[0] != "check" {
-		return usageErr(r, "usage: gtx config check")
+		return usageErr(r, "usage: ikesu config check")
 	}
 	c, err := config.Load()
 	if err == nil && len(c.Warnings) == 0 {

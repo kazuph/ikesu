@@ -8,10 +8,10 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestSnapshotRoundTripPreservesCellsLayoutAndChrome(t *testing.T) {

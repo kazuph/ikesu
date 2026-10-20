@@ -8,17 +8,17 @@ archive="${2:?baseline bfdb572 git archive is required}"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 work="$HOME/bench-terrace.noindex/work"
-herdr="${GTX_PARITY_HERDR:-$work/herdr-0.2.24}"
-ptyrun="${GTX_PARITY_PTYRUN:-$work/ptyrun-parity-cells}"
+herdr="${IKESU_PARITY_HERDR:-${GTX_PARITY_HERDR:-$work/herdr-0.2.24}}"
+ptyrun="${IKESU_PARITY_PTYRUN:-${GTX_PARITY_PTYRUN:-$work/ptyrun-parity-cells}}"
 test -x "$herdr"
 test -x "$ptyrun"
 gofmt -l . > "$out/gofmt.log"
 test ! -s "$out/gofmt.log"
-go build -trimpath '-ldflags=-s -w' -o "$out/gtx" ./cmd/gtx > "$out/build.log" 2>&1
+go build -trimpath '-ldflags=-s -w' -o "$out/gtx" ./cmd/ikesu > "$out/build.log" 2>&1
 go vet ./... > "$out/vet.log" 2>&1
 for scenario in sidebar-controls sidebar-width sidebar-collapsed sidebar-drag mobile-layout; do
- set -- --gtx-steps "tests/parity/right-$scenario.steps"
- python3 tests/parity/observe.py "$@" --silent --clipboard-sandbox --herdr "$herdr" --gtx "$out/gtx" --ptyrun "$ptyrun" --steps "tests/parity/$scenario.steps" --out "$out/$scenario" > "$out/$scenario.log" 2>&1
+ set -- --ikesu-steps "tests/parity/right-$scenario.steps"
+ python3 tests/parity/observe.py "$@" --silent --clipboard-sandbox --herdr "$herdr" --ikesu "$out/gtx" --ptyrun "$ptyrun" --steps "tests/parity/$scenario.steps" --out "$out/$scenario" > "$out/$scenario.log" 2>&1
 done
 python3 tests/parity/region_compare.py "$out/sidebar-collapsed" --rect 0,0,60,2 --screens mobile mobile-escape --result mobile-header-comparison.json
 python3 - "$out/sidebar-collapsed/mobile-header-comparison.json" <<'PY'

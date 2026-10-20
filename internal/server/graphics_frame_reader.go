@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // The approved stream contract starts these clocks only after input starts.

@@ -2,14 +2,14 @@ package cli
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
-const worktreeHelp = `gtx worktree commands:
-  gtx worktree list [--workspace ID | --cwd PATH] [--json]
-  gtx worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--json]
-  gtx worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--json]
-  gtx worktree remove --workspace ID [--force] [--json]`
+const worktreeHelp = `ikesu worktree commands:
+  ikesu worktree list [--workspace ID | --cwd PATH] [--json]
+  ikesu worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--json]
+  ikesu worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--json]
+  ikesu worktree remove --workspace ID [--force] [--json]`
 
 func (r *runner) worktree(args []string) int {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {

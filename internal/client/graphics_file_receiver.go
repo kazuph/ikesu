@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 const graphicsFileReplyDrain = time.Second

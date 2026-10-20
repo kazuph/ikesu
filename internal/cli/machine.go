@@ -4,24 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 const machineHelp = `Usage:
-  gtx machine list [--json]
-  gtx machine add <ssh-target> --label <label> [--remote-session <name>]
-  gtx machine rename <label-or-id> --label <label>
-  gtx machine remove <label-or-id>
-  gtx machine enable <label-or-id>
-  gtx machine disable <label-or-id>
+  ikesu machine list [--json]
+  ikesu machine add <ssh-target> --label <label> [--remote-session <name>]
+  ikesu machine rename <label-or-id> --label <label>
+  ikesu machine remove <label-or-id>
+  ikesu machine enable <label-or-id>
+  ikesu machine disable <label-or-id>
 
-Saved machines contain only a label, SSH target, explicit gtx session, and enabled state.
+Saved machines contain only a label, SSH target, explicit ikesu session, and enabled state.
 SSH credentials and key material remain owned by OpenSSH.
 Adding probes SSH reachability first; unreachable machines are not saved.
 Removing or disabling a machine leaves its remote sessions running.

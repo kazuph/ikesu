@@ -2,14 +2,14 @@ package client
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/notify"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/notify"
 	"os"
 )
 
 func deliverDesktop(n endpoint.Notification, c config.Config, session, machine string) {
 	if err := (notify.Desktop{}).Deliver(n, c, session, machine); err != nil {
-		fmt.Fprintln(os.Stderr, "gtx: notification:", err)
+		fmt.Fprintln(os.Stderr, "ikesu: notification:", err)
 	}
 }

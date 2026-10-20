@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 // Observations belong to the live runtime, not the saved agent report.

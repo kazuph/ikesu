@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestSidebarContinuousDifferentEndpointPanels(t *testing.T) {

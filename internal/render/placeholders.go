@@ -1,7 +1,7 @@
 package render
 
 import (
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"reflect"
 )
 

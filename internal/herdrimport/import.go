@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // Plan is the immutable preview for one source snapshot. Digest prevents

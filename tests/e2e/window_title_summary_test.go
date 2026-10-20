@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // Match keepFailedE2EState: TestMain isolates GTX_* after package initialization.

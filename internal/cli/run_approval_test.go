@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 	"os/exec"
 	"strings"
 	"testing"

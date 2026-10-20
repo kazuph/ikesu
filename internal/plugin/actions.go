@@ -3,9 +3,9 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -265,7 +265,7 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 		record.Stdout = &out
 		record.Stderr = &errout
 		if err := write(record); err != nil {
-			fmt.Fprintf(os.Stderr, "gtx plugin log %s: %v\n", record.LogID, err)
+			fmt.Fprintf(os.Stderr, "ikesu plugin log %s: %v\n", record.LogID, err)
 		}
 	}()
 	return log, nil

@@ -1,9 +1,9 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/platform"
-	"github.com/kazuph/goterrace/internal/session"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/platform"
+	"github.com/kazuph/ikesu/internal/session"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func observedSessionRecord(agent, id, title string, job platform.ForegroundJob) tui.AgentRecord {

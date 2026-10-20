@@ -1,6 +1,6 @@
 package api
 
-import "github.com/kazuph/goterrace/internal/detect"
+import "github.com/kazuph/ikesu/internal/detect"
 
 const MethodAgentExplain = "agent.explain"
 

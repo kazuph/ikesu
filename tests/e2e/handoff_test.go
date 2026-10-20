@@ -2,7 +2,7 @@ package e2e
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +20,7 @@ func TestLiveHandoffKeepsPIDInputAndExit(t *testing.T) {
 	if pong.Capabilities["live_handoff"] != true {
 		t.Fatalf("handoff capability missing: %+v", pong)
 	}
-	if help, err := s.cli("server", "--help"); err != nil || !strings.Contains(help, "gtx server live-handoff") {
+	if help, err := s.cli("server", "--help"); err != nil || !strings.Contains(help, "ikesu server live-handoff") {
 		t.Fatalf("server help: %v %s", err, help)
 	}
 	t.Cleanup(func() {

@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/runtime"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestEndpointToastVisibilityFollowsDeliveryPositionAndViewerTick(t *testing.T) {

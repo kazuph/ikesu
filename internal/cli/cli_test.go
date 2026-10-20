@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func testEnv(stateDir string) func(string) string {
@@ -56,7 +56,7 @@ func TestPaneGetUsage(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
-	if !strings.Contains(errOut, "usage: gtx pane get") {
+	if !strings.Contains(errOut, "usage: ikesu pane get") {
 		t.Fatalf("stderr = %q", errOut)
 	}
 }

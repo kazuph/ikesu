@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 )
 
 // Apply mutates the state for cmd and returns the effects the runtime must

@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/platform"
-	"github.com/kazuph/goterrace/internal/runtime"
-	"github.com/kazuph/goterrace/internal/session"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/platform"
+	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/session"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 // waitAPISocketGone polls until the api socket disappears.

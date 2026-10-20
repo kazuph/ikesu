@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/notify"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/notify"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"strings"
 	"testing"
 )

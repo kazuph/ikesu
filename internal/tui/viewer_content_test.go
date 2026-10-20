@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestViewerQuietPTYCropRetainsPromptAndPreservesScrollAndStandalone(t *testing.T) {

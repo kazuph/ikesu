@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/guard"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/guard"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestGuardReloadWarnsUninjectedPaneAndClearsOnExit(t *testing.T) {

@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
-const decisionHelp = `gtx decision commands:
-  gtx decision ask --title <title> --option <id:label:role> [--option ...] [--option-desc <id:text>] [--kind ask|command_guard|tool_permission|agent_prompt] [--body <text>] [--allow-text] [--multi-select] [--timeout <ms>]
-  gtx decision watch [--all-machines]
-  gtx decision answer <id> [<option_id> ...] [--text <text>] [--responder <name>] [--machine <label-or-id>]
-  gtx decision list [--status pending|answered|expired|cancelled]
-  gtx decision get <id>
-  gtx decision cancel <id>
+const decisionHelp = `ikesu decision commands:
+  ikesu decision ask --title <title> --option <id:label:role> [--option ...] [--option-desc <id:text>] [--kind ask|command_guard|tool_permission|agent_prompt] [--body <text>] [--allow-text] [--multi-select] [--timeout <ms>]
+  ikesu decision watch [--all-machines]
+  ikesu decision answer <id> [<option_id> ...] [--text <text>] [--responder <name>] [--machine <label-or-id>]
+  ikesu decision list [--status pending|answered|expired|cancelled]
+  ikesu decision get <id>
+  ikesu decision cancel <id>
 `
 
 func (r *runner) decisionCLI(args []string) int {

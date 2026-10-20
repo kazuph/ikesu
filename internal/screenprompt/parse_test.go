@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func fixture(t *testing.T, name string) []string {

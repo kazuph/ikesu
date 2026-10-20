@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (r *runner) workspace(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx workspace <list|create|get|focus|rename|close> ...")
+		return usageErr(r, "usage: ikesu workspace <list|create|get|focus|rename|close> ...")
 	}
 	switch args[0] {
 	case "report-metadata":
@@ -75,21 +75,21 @@ func (r *runner) workspaceCreate(args []string) int {
 
 func (r *runner) workspaceGet(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx workspace get <workspace_id>")
+		return usageErr(r, "usage: ikesu workspace get <workspace_id>")
 	}
 	return r.printResult("cli:workspace:get", api.MethodWorkspaceGet, api.WorkspaceTarget{WorkspaceID: args[0]})
 }
 
 func (r *runner) workspaceFocus(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx workspace focus <workspace_id>")
+		return usageErr(r, "usage: ikesu workspace focus <workspace_id>")
 	}
 	return r.printResult("cli:workspace:focus", api.MethodWorkspaceFocus, api.WorkspaceTarget{WorkspaceID: args[0]})
 }
 
 func (r *runner) workspaceRename(args []string) int {
 	if len(args) != 2 {
-		return usageErr(r, "usage: gtx workspace rename <workspace_id> <label>")
+		return usageErr(r, "usage: ikesu workspace rename <workspace_id> <label>")
 	}
 	return r.printResult("cli:workspace:rename", api.MethodWorkspaceRename, api.WorkspaceRenameParams{
 		WorkspaceID: args[0],
@@ -99,7 +99,7 @@ func (r *runner) workspaceRename(args []string) int {
 
 func (r *runner) workspaceClose(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx workspace close <workspace_id>")
+		return usageErr(r, "usage: ikesu workspace close <workspace_id>")
 	}
 	return r.printResult("cli:workspace:close", api.MethodWorkspaceClose, api.WorkspaceTarget{WorkspaceID: args[0]})
 }

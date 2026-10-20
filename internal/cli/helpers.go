@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // parseEnvAssignment splits "KEY=VALUE"; the key may not be empty.
@@ -94,39 +94,39 @@ func printMsgMessage(w io.Writer, m api.MsgMessage) {
 }
 
 func printSendHelp(r *runner) {
-	fmt.Fprintln(r.errOut(), "usage: gtx send <to> <text> [--room R] [--reply-to ID] [--from NAME]")
+	fmt.Fprintln(r.errOut(), "usage: ikesu send <to> <text> [--room R] [--reply-to ID] [--from NAME]")
 	fmt.Fprintln(r.errOut(), "sends a message to an agent or pane; --room selects the room (default \"default\")")
 	fmt.Fprintln(r.errOut(), "  --reply-to links this message to a received dispatch id")
 	fmt.Fprintln(r.errOut(), "  --from overrides the sender name (default: your pane's reported name)")
 }
 
 func printMsgHelp(r *runner) {
-	fmt.Fprintln(r.errOut(), "gtx msg commands:")
-	fmt.Fprintln(r.errOut(), "  gtx send <to> <text> [--room R] [--reply-to ID] [--from NAME]")
-	fmt.Fprintln(r.errOut(), "  gtx inbox [--room R] [--to NAME]           # queued messages delivered to you")
-	fmt.Fprintln(r.errOut(), "  gtx msg history [--room R] [--project P] [--limit N]")
-	fmt.Fprintln(r.errOut(), "  gtx msg rooms                              # rooms with activity, recent first")
+	fmt.Fprintln(r.errOut(), "ikesu msg commands:")
+	fmt.Fprintln(r.errOut(), "  ikesu send <to> <text> [--room R] [--reply-to ID] [--from NAME]")
+	fmt.Fprintln(r.errOut(), "  ikesu inbox [--room R] [--to NAME]           # queued messages delivered to you")
+	fmt.Fprintln(r.errOut(), "  ikesu msg history [--room R] [--project P] [--limit N]")
+	fmt.Fprintln(r.errOut(), "  ikesu msg rooms                              # rooms with activity, recent first")
 }
 
 func printLogHelp(r *runner) {
-	fmt.Fprintln(r.errOut(), "gtx log commands:")
-	fmt.Fprintln(r.errOut(), "  gtx log [--room R] [--project P] [--limit N]   # dispatch timeline, oldest first")
-	fmt.Fprintln(r.errOut(), "  gtx log <job_id> [--tail N]                    # output log of a gtx run job")
-	fmt.Fprintln(r.errOut(), "  gtx log --db                                   # SQLite database path (WAL; safe to query)")
-	fmt.Fprintln(r.errOut(), "  gtx log --schema                               # database schema")
-	fmt.Fprintln(r.errOut(), "lowest-level API: sqlite3 \"$(gtx log --db)\"")
+	fmt.Fprintln(r.errOut(), "ikesu log commands:")
+	fmt.Fprintln(r.errOut(), "  ikesu log [--room R] [--project P] [--limit N]   # dispatch timeline, oldest first")
+	fmt.Fprintln(r.errOut(), "  ikesu log <job_id> [--tail N]                    # output log of a ikesu run job")
+	fmt.Fprintln(r.errOut(), "  ikesu log --db                                   # SQLite database path (WAL; safe to query)")
+	fmt.Fprintln(r.errOut(), "  ikesu log --schema                               # database schema")
+	fmt.Fprintln(r.errOut(), "lowest-level API: sqlite3 \"$(ikesu log --db)\"")
 }
 
 func printRunHelp(r *runner) {
-	fmt.Fprintln(r.errOut(), "gtx run commands:")
-	fmt.Fprintln(r.errOut(), "  gtx run [--label L] [--cwd D] [--completion summary|full|none] -- <command...>")
-	fmt.Fprintln(r.errOut(), "  gtx run --pane [--split right|down] [--close-on-success] -- <command...>")
-	fmt.Fprintln(r.errOut(), "  gtx run --machine <label-or-id> [--sync] [run options] -- <command...>")
-	fmt.Fprintln(r.errOut(), "  gtx run list                # active jobs")
-	fmt.Fprintln(r.errOut(), "  gtx run cancel <job_id>     # request cancellation of a queued/running job")
+	fmt.Fprintln(r.errOut(), "ikesu run commands:")
+	fmt.Fprintln(r.errOut(), "  ikesu run [--label L] [--cwd D] [--completion summary|full|none] -- <command...>")
+	fmt.Fprintln(r.errOut(), "  ikesu run --pane [--split right|down] [--close-on-success] -- <command...>")
+	fmt.Fprintln(r.errOut(), "  ikesu run --machine <label-or-id> [--sync] [run options] -- <command...>")
+	fmt.Fprintln(r.errOut(), "  ikesu run list                # active jobs")
+	fmt.Fprintln(r.errOut(), "  ikesu run cancel <job_id>     # request cancellation of a queued/running job")
 	fmt.Fprintln(r.errOut(), "waiting: do not sleep or poll for the job. When it exits, the caller receives a")
-	fmt.Fprintln(r.errOut(), "  \"[gtx run] exit=<code> label=<label> job=<id>\" notice (pane mode: pane=<pane>);")
-	fmt.Fprintln(r.errOut(), "  end your turn and wait for it, then read the output with \"gtx log <job>\".")
+	fmt.Fprintln(r.errOut(), "  \"[ikesu run] exit=<code> label=<label> job=<id>\" notice (pane mode: pane=<pane>);")
+	fmt.Fprintln(r.errOut(), "  end your turn and wait for it, then read the output with \"ikesu log <job>\".")
 }
 
 // defaultRunLabel is the label a `gtx run` gets without --label: the last
@@ -159,15 +159,15 @@ func runSpawnNextHint(job, label string, pane *string, completion string) string
 	switch {
 	case pane != nil:
 		return fmt.Sprintf(
-			"a [gtx run] exit=<code> label=%s pane=%s notice will reach the caller; wait for it without sleeping or polling, then read the result with \"gtx log %s\"",
+			"a [ikesu run] exit=<code> label=%s pane=%s notice will reach the caller; wait for it without sleeping or polling, then read the result with \"ikesu log %s\"",
 			label, *pane, job)
 	case completion == "none":
 		return fmt.Sprintf(
-			"no completion notice is sent; check progress yourself with \"gtx run list\" or \"gtx log %s\"",
+			"no completion notice is sent; check progress yourself with \"ikesu run list\" or \"ikesu log %s\"",
 			job)
 	default:
 		return fmt.Sprintf(
-			"a [gtx run] exit=<code> label=%s job=%s notice will reach the caller; end your turn and wait without sleeping or polling, then read the result with \"gtx log %s\"",
+			"a [ikesu run] exit=<code> label=%s job=%s notice will reach the caller; end your turn and wait without sleeping or polling, then read the result with \"ikesu log %s\"",
 			label, job, job)
 	}
 }

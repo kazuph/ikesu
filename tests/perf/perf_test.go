@@ -9,7 +9,8 @@ package perf
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"net"
 	"os"
@@ -94,12 +95,12 @@ func TestMain(m *testing.M) {
 	host, _ := os.Hostname()
 	rprintf("# gtx perf — SPEC.md P1")
 	rprintf("# date=%s host=%s go=%s", time.Now().Format(time.RFC3339), host, runtime.Version())
-	rprintf("# GTX_PERF_BIN=%s", os.Getenv("GTX_PERF_BIN"))
-	rprintf("# GTX_PERF_BASELINE_BIN=%s", os.Getenv("GTX_PERF_BASELINE_BIN"))
+	rprintf("# GTX_PERF_BIN=%s", envcompat.Get("GTX_PERF_BIN"))
+	rprintf("# GTX_PERF_BASELINE_BIN=%s", envcompat.Get("GTX_PERF_BASELINE_BIN"))
 	code := teststate.Run(m.Run)
 	out := rep.String()
 	fmt.Print(out)
-	if p := os.Getenv("GTX_PERF_OUT"); p != "" {
+	if p := envcompat.Get("GTX_PERF_OUT"); p != "" {
 		_ = os.MkdirAll(filepath.Dir(p), 0o755)
 		if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, "GTX_PERF_OUT:", err)
@@ -110,7 +111,7 @@ func TestMain(m *testing.M) {
 
 func perfBin(t *testing.T) string {
 	t.Helper()
-	b := os.Getenv("GTX_PERF_BIN")
+	b := envcompat.Get("GTX_PERF_BIN")
 	if b == "" {
 		t.Skip("GTX_PERF_BIN not set")
 	}
@@ -150,7 +151,7 @@ func TestRelative(t *testing.T) {
 		t.Skip("perf tests support macOS and Linux")
 	}
 	cur := perfBin(t)
-	base := os.Getenv("GTX_PERF_BASELINE_BIN")
+	base := envcompat.Get("GTX_PERF_BASELINE_BIN")
 	if base == "" {
 		t.Skip("GTX_PERF_BASELINE_BIN not set")
 	}

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 const jobCleanupInterval = 10 * time.Minute
@@ -104,7 +104,7 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 			s.jobCache.mu.Lock()
 			s.jobCache.err = err
 			s.jobCache.mu.Unlock()
-			fmt.Fprintf(os.Stderr, "gtx job snapshot/cleanup: %v\n", err)
+			fmt.Fprintf(os.Stderr, "ikesu job snapshot/cleanup: %v\n", err)
 			return
 		}
 		alive := map[string]bool{}

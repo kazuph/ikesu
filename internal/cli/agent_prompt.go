@@ -3,12 +3,12 @@ package cli
 import (
 	"strconv"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (r *runner) agentPromptCLI(args []string) int {
 	if len(args) < 2 {
-		return usageErr(r, "usage: gtx agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]")
+		return usageErr(r, "usage: ikesu agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]")
 	}
 	p := api.AgentPromptParams{Target: args[0], Text: args[1]}
 	options := api.AgentPromptWaitOptions{Until: []api.AgentStatus{}}

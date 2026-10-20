@@ -5,7 +5,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func (m *machineClient) paint() error {

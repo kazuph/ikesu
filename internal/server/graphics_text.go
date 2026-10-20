@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/kazuph/goterrace/internal/kitty"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/kitty"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // Capture values, never pointers into the app's temporarily selected state.

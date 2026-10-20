@@ -3,7 +3,7 @@ package model
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 )
 
 func newState() *AppState { return New("/tmp", 120, 40) }

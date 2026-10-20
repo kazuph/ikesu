@@ -1,6 +1,6 @@
 package server
 
-import "github.com/kazuph/goterrace/internal/api"
+import "github.com/kazuph/ikesu/internal/api"
 
 func (s *Server) completeDecisionOrigin(origin *api.DecisionOrigin) {
 	if origin == nil || origin.Machine != "" && origin.Machine != "local" {

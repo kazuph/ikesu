@@ -5,11 +5,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 func MachineUsageError(out io.Writer, message string) {
-	fmt.Fprintf(out, "error: %s\nrun 'gtx --help' for usage\n", message)
+	fmt.Fprintf(out, "error: %s\nrun 'ikesu --help' for usage\n", message)
 }
 
 // GlobalMachineError validates only invocations with a leading global

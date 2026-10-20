@@ -21,7 +21,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/kitty"
 )
 
 func run() error {

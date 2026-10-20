@@ -3,9 +3,9 @@ package server
 import (
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 // dispatchOnLoop runs on the app goroutine; it may touch st/sup safely.

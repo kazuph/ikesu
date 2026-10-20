@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (r *runner) tab(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx tab <list|create|get|focus|rename|close> ...")
+		return usageErr(r, "usage: ikesu tab <list|create|get|focus|rename|close> ...")
 	}
 	switch args[0] {
 	case "list":
@@ -97,21 +97,21 @@ func (r *runner) tabCreate(args []string) int {
 
 func (r *runner) tabGet(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx tab get <tab_id>")
+		return usageErr(r, "usage: ikesu tab get <tab_id>")
 	}
 	return r.printResult("cli:tab:get", api.MethodTabGet, api.TabTarget{TabID: args[0]})
 }
 
 func (r *runner) tabFocus(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx tab focus <tab_id>")
+		return usageErr(r, "usage: ikesu tab focus <tab_id>")
 	}
 	return r.printResult("cli:tab:focus", api.MethodTabFocus, api.TabTarget{TabID: args[0]})
 }
 
 func (r *runner) tabRename(args []string) int {
 	if len(args) != 2 {
-		return usageErr(r, "usage: gtx tab rename <tab_id> <label>")
+		return usageErr(r, "usage: ikesu tab rename <tab_id> <label>")
 	}
 	return r.printResult("cli:tab:rename", api.MethodTabRename, api.TabRenameParams{
 		TabID: args[0],
@@ -121,7 +121,7 @@ func (r *runner) tabRename(args []string) int {
 
 func (r *runner) tabClose(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx tab close <tab_id>")
+		return usageErr(r, "usage: ikesu tab close <tab_id>")
 	}
 	return r.printResult("cli:tab:close", api.MethodTabClose, api.TabTarget{TabID: args[0]})
 }

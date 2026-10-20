@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/envcompat"
 )
 
 // DefaultSession is used when --session is not given.

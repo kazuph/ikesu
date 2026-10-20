@@ -3,7 +3,7 @@ package guard
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"

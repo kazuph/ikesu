@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"testing"
 )

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 // Isolated distribution observations are saved in herdr-prompt-*.json.

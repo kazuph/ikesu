@@ -1,14 +1,14 @@
 package cli
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"strconv"
 	"strings"
 )
 
 func (r *runner) paneReportMetadata(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx pane report-metadata <pane_id> --source ID [--agent LABEL] [--applies-to-source ID] [--title TEXT|--clear-title] [--display-agent TEXT|--clear-display-agent] [--state-label STATUS=TEXT] [--clear-state-labels] [--token NAME=VALUE] [--clear-token NAME] [--seq N] [--ttl-ms N]")
+		return usageErr(r, "usage: ikesu pane report-metadata <pane_id> --source ID [--agent LABEL] [--applies-to-source ID] [--title TEXT|--clear-title] [--display-agent TEXT|--clear-display-agent] [--state-label STATUS=TEXT] [--clear-state-labels] [--token NAME=VALUE] [--clear-token NAME] [--seq N] [--ttl-ms N]")
 	}
 	p := api.PaneReportMetadataParams{PaneID: args[0], Tokens: map[string]*string{}, StateLabels: map[string]string{}}
 	for i := 1; i < len(args); {

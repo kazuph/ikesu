@@ -14,7 +14,7 @@ import time
 from clipboard_guard import SANDBOX_PROFILE
 
 p = argparse.ArgumentParser()
-p.add_argument('--gtx', required=True)
+p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
 p.add_argument('--codex', required=True)
 p.add_argument('--out', required=True)
 a = p.parse_args()

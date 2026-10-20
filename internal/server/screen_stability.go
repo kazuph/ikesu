@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/screenprompt"
 	"time"
 )
 

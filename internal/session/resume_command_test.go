@@ -1,7 +1,7 @@
 package session
 
 import (
-	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/ikesu/internal/config"
 	"testing"
 )
 

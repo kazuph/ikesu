@@ -3,8 +3,8 @@ package server
 import (
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/screenprompt"
 )
 
 func (s *Server) deliverCodexQuestionAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer) error {

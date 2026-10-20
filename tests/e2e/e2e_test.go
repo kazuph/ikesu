@@ -5,7 +5,7 @@ package e2e
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"os"
 	"os/exec"
@@ -33,8 +33,8 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	defer os.RemoveAll(dir)
-	binPath = filepath.Join(dir, "gtx")
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/gtx")
+	binPath = filepath.Join(dir, "ikesu")
+	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/ikesu")
 	cmd.Dir = repoRoot()
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

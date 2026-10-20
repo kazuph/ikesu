@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/kazuph/goterrace/internal/agentview"
+import "github.com/kazuph/ikesu/internal/agentview"
 
 func (a *App) SetAgentView(view *agentview.View) { a.st.AgentView = view; a.dirty = true }
 func (a *App) noteAgentState(pid int) {

@@ -1,14 +1,14 @@
 package cli
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"strconv"
 	"strings"
 )
 
 func (r *runner) workspaceReportMetadata(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx workspace report-metadata <workspace_id> --source ID [--token NAME=VALUE] [--clear-token NAME] [--seq N] [--ttl-ms N]")
+		return usageErr(r, "usage: ikesu workspace report-metadata <workspace_id> --source ID [--token NAME=VALUE] [--clear-token NAME] [--seq N] [--ttl-ms N]")
 	}
 	p := api.WorkspaceReportMetadataParams{WorkspaceID: args[0], Tokens: map[string]*string{}}
 	for i := 1; i < len(args); {

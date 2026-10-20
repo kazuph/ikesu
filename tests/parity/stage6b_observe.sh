@@ -4,7 +4,7 @@ out=$1
 shift
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
 work="$HOME/bench-terrace.noindex/work/detail"
-go build -o "$work/gtx-stage6b" ./cmd/gtx
+go build -o "$work/gtx-stage6b" ./cmd/ikesu
 python3 tests/parity/stage6b_cases.py tests/parity/stage6b_cases
 config="$out/config.toml"
 mkdir -p "$out"
@@ -31,5 +31,5 @@ navigate_pane_up="w"\
 navigate_pane_right="f"\
 ' "$config" > "$out/nav.toml"; selected="$out/nav.toml" ;;
   esac
-  python3 tests/parity/observe.py --herdr "$work/herdr-0.2.57" --gtx "$work/gtx-stage6b" --ptyrun "$work/ptyrun" --config-file "$selected" --steps "$procedure" --out "$out/$name" --silent --clipboard-sandbox --server
+  python3 tests/parity/observe.py --herdr "$work/herdr-0.2.57" --ikesu "$work/gtx-stage6b" --ptyrun "$work/ptyrun" --config-file "$selected" --steps "$procedure" --out "$out/$name" --silent --clipboard-sandbox --server
 done

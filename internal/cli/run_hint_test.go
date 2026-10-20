@@ -14,9 +14,9 @@ func TestG9RunCompletionGuidanceAndJSONOrder(t *testing.T) {
 		required   []string
 		forbidden  string
 	}{
-		{nil, "summary", []string{"[gtx run] exit=<code> label=label job=job", "end your turn", "gtx log job"}, ""},
-		{nil, "none", []string{"no completion notice is sent", "gtx log job"}, "will reach the caller"},
-		{&pane, "summary", []string{"[gtx run] exit=<code> label=label pane=p7", "without sleeping or polling", "gtx log job"}, ""},
+		{nil, "summary", []string{"[ikesu run] exit=<code> label=label job=job", "end your turn", "ikesu log job"}, ""},
+		{nil, "none", []string{"no completion notice is sent", "ikesu log job"}, "will reach the caller"},
+		{&pane, "summary", []string{"[ikesu run] exit=<code> label=label pane=p7", "without sleeping or polling", "ikesu log job"}, ""},
 	} {
 		hint := runSpawnNextHint("job", "label", tc.pane, tc.completion)
 		for _, want := range tc.required {

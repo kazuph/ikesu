@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 	"testing"
 )
 

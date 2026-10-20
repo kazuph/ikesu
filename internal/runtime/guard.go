@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/guard"
 	"sort"
 	"strings"
 )

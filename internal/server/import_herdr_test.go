@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/herdrimport"
-	"github.com/kazuph/goterrace/internal/session"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/herdrimport"
+	"github.com/kazuph/ikesu/internal/session"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func importSource(t *testing.T) string {

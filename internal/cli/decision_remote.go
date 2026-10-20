@@ -5,14 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"io"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 const decisionSSHAuthPrefix = "To authenticate, visit:"

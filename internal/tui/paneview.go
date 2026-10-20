@@ -6,8 +6,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 // paneGrid extracts the innerH×w cells a pane displays at scroll offset off

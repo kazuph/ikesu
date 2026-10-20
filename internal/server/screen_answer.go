@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/screenprompt"
 )
 
 func screenOrigin(d api.Decision) bool { return d.Origin != nil && d.Origin.Reason == "screen_prompt" }

@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/latency"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/latency"
 	"os"
 	"path/filepath"
 	"strings"

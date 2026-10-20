@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/kitty"
 )
 
 // API admissions share the supervisor lock so simultaneous streams cannot

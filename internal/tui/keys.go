@@ -9,10 +9,10 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // isCtrlB detects the prefix key.
@@ -330,7 +330,7 @@ func (a *App) openQuitDialog() {
 	a.workspaceNavigate = false
 	a.navigateHint = false
 	a.dialog = &uiDialog{
-		d: render.Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76, CenterTerminal: a.serverUI},
+		d: render.Dialog{Title: "Stop server?", Detail: "Stops the ikesu server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76, CenterTerminal: a.serverUI},
 		run: func(a *App) {
 			a.exec(model.CmdQuit{})
 		},

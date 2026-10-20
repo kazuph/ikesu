@@ -2,7 +2,7 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 // Narrow panels retain the v0.2.5 expanded layout at width 18. Only its

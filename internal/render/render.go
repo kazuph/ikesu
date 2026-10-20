@@ -4,10 +4,10 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/kitty"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/kitty"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"image/color"
 	"strings"
 )
@@ -746,7 +746,7 @@ func drawStatusLine(f *Frame, s *model.AppState, in Input) {
 	base := uv.Style{Fg: f.Palette.Subtle, Bg: f.Palette.Surface}
 	f.Fill(0, y, s.Cols, 1, " ", base)
 
-	x := f.Text(0, y, " gtx  prefix: C-b", base, s.Cols)
+	x := f.Text(0, y, " ikesu  prefix: C-b", base, s.Cols)
 	if in.Prefix {
 		f.Text(x, y, "  PREFIX ", uv.Style{Attrs: uv.AttrReverse, Bg: f.Palette.Surface}, s.Cols)
 	}

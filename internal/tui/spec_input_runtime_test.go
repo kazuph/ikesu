@@ -2,14 +2,14 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 func specWaitFile(t *testing.T, path string, want []byte) {

@@ -3,7 +3,7 @@ package render
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 	"image/color"
 	"math"
 	"strings"

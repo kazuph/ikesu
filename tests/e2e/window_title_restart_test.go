@@ -20,7 +20,7 @@ func TestWindowTitleStandaloneRestartKeepsSessionActualPTY(t *testing.T) {
 			s := startVersionMode(t, nil, true, wrapper, "")
 			var raw strings.Builder
 			s.observeOutput = func(b []byte) { raw.Write(b) }
-			title := "gtx"
+			title := "ikesu"
 			if name != "default" {
 				title += ":" + name
 			}
@@ -36,14 +36,14 @@ func TestWindowTitleStandaloneRestartKeepsSessionActualPTY(t *testing.T) {
 			s.waitFor("restart menu", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "restart") })
 			x, y = s.find("restart")
 			s.click(x, y)
-			s.waitFor("restart confirmation", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "Restart gtx?") })
+			s.waitFor("restart confirmation", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "Restart ikesu?") })
 			before := raw.Len()
 			s.send("\r")
 			s.waitFor("restarted title and shell", 15*time.Second, func(tx string) bool {
 				return strings.Contains(tx, "❯") && strings.Count(raw.String()[before:], osc) >= 2
 			})
 			for _, match := range regexp.MustCompile("\x1b\\]0;([^\x07]*)\x07").FindAllStringSubmatch(raw.String()[before:], -1) {
-				if match[1] != title && match[1] != "gtx" {
+				if match[1] != title && match[1] != "ikesu" {
 					t.Fatalf("restart changed session title: %q want %q", match[1], title)
 				}
 			}

@@ -3,7 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"net"
 	"os"
 	"os/exec"
@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/cli"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/cli"
 )
 
 func gitRepo(t *testing.T) string {

@@ -1,6 +1,6 @@
 package render
 
-import "github.com/kazuph/goterrace/internal/config"
+import "github.com/kazuph/ikesu/internal/config"
 
 func CustomPalette(name string, custom map[string]string) Palette {
 	p := ThemePalette(name)

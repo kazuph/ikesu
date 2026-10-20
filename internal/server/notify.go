@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/notify"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/notify"
 )
 
 // Agent notifications (SPEC G4). A background pane transitions to
@@ -96,7 +96,7 @@ func (s *Server) notifyTitle(pid int) string {
 	st := s.app.State()
 	wsIdx, tabIdx := st.FindPane(pid)
 	if wsIdx < 0 {
-		return "gtx"
+		return "ikesu"
 	}
 	ws := st.Workspaces[wsIdx]
 	name := ws.Name
@@ -154,7 +154,7 @@ func (s *Server) deliverNotification(pid int, kind string) {
 		s.mu.Unlock()
 		if c != nil {
 			if c.available < endpoint.NotificationGeneration {
-				fmt.Fprintln(os.Stderr, "gtx: endpoint_action_unsupported: desktop notification requires endpoint generation 4")
+				fmt.Fprintln(os.Stderr, "ikesu: endpoint_action_unsupported: desktop notification requires endpoint generation 4")
 				return
 			}
 			if err := c.send(clientMsg{Type: "notify", Notification: &n}); err != nil {

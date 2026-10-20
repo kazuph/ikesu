@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/input"
 	"golang.org/x/sys/unix"
 )
 

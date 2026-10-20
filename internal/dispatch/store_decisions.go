@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 const decisionSchema = `CREATE TABLE IF NOT EXISTS decisions (

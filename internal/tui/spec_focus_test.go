@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,9 +9,9 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func TestSPECConfiguredFocusHistoryAcrossTabsWorkspacesAndDeletedPane(t *testing.T) {

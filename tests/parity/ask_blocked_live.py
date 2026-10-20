@@ -214,7 +214,7 @@ def observe(name, binary, args):
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('--gtx',required=True)
+    parser.add_argument('--ikesu','--gtx',dest='gtx',required=True)
     parser.add_argument('--herdr',required=True)
     parser.add_argument('--claude',required=True)
     parser.add_argument('--ptyrun',required=True)

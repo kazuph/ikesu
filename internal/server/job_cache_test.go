@@ -1,11 +1,11 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 func TestG9JobSnapshotAdaptiveIntervalAndExternalWrite(t *testing.T) {

@@ -19,10 +19,10 @@ import (
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
 
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/guard"
-	"github.com/kazuph/goterrace/internal/kitty"
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/guard"
+	"github.com/kazuph/ikesu/internal/kitty"
+	"github.com/kazuph/ikesu/internal/platform"
 )
 
 // ScrollbackSize is the number of lines kept per pane.

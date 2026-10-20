@@ -3,14 +3,14 @@ package worktree
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 type GitError struct {

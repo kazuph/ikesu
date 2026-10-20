@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/screenprompt"
 )
 
 type screenPreviewScan struct {

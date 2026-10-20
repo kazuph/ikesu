@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestCopyWheelEndpointKeepsViewportAndStandaloneScrollsRealPTY(t *testing.T) {

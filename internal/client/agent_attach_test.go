@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 func TestAgentAttachKeys(t *testing.T) {

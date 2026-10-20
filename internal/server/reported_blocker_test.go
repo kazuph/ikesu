@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/notify"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/notify"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {

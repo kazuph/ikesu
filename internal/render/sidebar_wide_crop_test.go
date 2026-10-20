@@ -3,8 +3,8 @@ package render
 import (
 	"fmt"
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/model"
 	"testing"
 )
 

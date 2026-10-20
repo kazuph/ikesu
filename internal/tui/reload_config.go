@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/kazuph/goterrace/internal/config"
+import "github.com/kazuph/ikesu/internal/config"
 
 // The configuration editor completes inside this viewer's existing context.
 func (v *Viewer) ApplyReloadedConfig(c config.Config) {

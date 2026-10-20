@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 func TestAgentExplainFile(t *testing.T) {

@@ -2,7 +2,7 @@ package guard
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"io"
 	"path/filepath"
 	"strconv"

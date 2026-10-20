@@ -3,7 +3,7 @@ package plugin
 import (
 	"bytes"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"path/filepath"
 	"regexp"

@@ -2,8 +2,8 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
 	"image/color"
 	"strings"
 )
@@ -115,7 +115,7 @@ func drawSettings(f *Frame, s *Settings) {
 		}
 	case 2:
 		description = "choose where background popup notifications should appear"
-		names = []string{"notification popups: off", "notification popups: inside gtx", "notification popups: via terminal", "notification popups: via system"}
+		names = []string{"notification popups: off", "notification popups: inside ikesu", "notification popups: via terminal", "notification popups: via system"}
 		for i, n := range ToastNames {
 			if s.Toast == n {
 				current = names[i]

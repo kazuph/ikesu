@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 // Reference limits for keys waiting on a saved-machine switch (stage8 T5).

@@ -8,11 +8,11 @@ if ! test -x "$work/herdr-0.2.24"; then
  exit 0
 fi
 test -z "$(gofmt -l internal/render/mobile.go internal/render/mobile_test.go internal/render/render.go internal/render/sidebar.go internal/tui/mobile.go internal/tui/mobile_test.go internal/tui/menus.go internal/tui/keys.go internal/tui/views.go internal/tui/sidebar.go internal/tui/parity_name_buttons_test.go)"
-go build -o "$work/gtx-parity-mobile" ./cmd/gtx
+go build -o "$work/gtx-parity-mobile" ./cmd/ikesu
 go vet ./...
 go test -count=1 ./...
 for scenario in mobile-switcher mobile-git; do
- python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --gtx "$work/gtx-parity-mobile" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-fixed"
+ python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$work/gtx-parity-mobile" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-fixed"
 done
 python3 tests/parity/region_compare.py "$work/parity-mobile-switcher-fixed" --rect 0,0,60,25 --screens open wheel-down bottom wheel-up reopen
 python3 tests/parity/region_compare.py "$work/parity-mobile-switcher-fixed" --rect 0,0,60,45 --screens tall --result tall-comparison.json
@@ -31,6 +31,6 @@ for directory, filename, screens in (
     assert {row['screen'] for row in rows} == screens, rows
     assert all(row['status'] == 'PASS' and row['difference_count'] == 0 for row in rows), rows
 PY
-GTX_PARITY_BIN="$work/gtx-parity-mobile" sh tests/parity/probe-mobile.sh
+IKESU_PARITY_BIN="$work/gtx-parity-mobile" sh tests/parity/probe-mobile.sh
 python3 tests/parity/mobile_compare.py "$work/parity-mobile-actions"
-GTX_PERF_BIN="$work/gtx-parity-mobile" GTX_PERF_BASELINE_BIN="$work/gtx-look-baseline-b0a18b0" GTX_PERF_OUT="$work/parity-mobile-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m
+IKESU_PERF_BIN="$work/gtx-parity-mobile" IKESU_PERF_BASELINE_BIN="$work/gtx-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-mobile-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m

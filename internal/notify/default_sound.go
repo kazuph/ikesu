@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 //go:embed sounds/done.wav
@@ -81,7 +81,7 @@ func (d Desktop) warnSound(err error) {
 		if d.Warn != nil {
 			d.Warn(err)
 		} else {
-			fmt.Fprintln(os.Stderr, "gtx: notification:", err)
+			fmt.Fprintln(os.Stderr, "ikesu: notification:", err)
 		}
 	})
 }

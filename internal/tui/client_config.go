@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/kazuph/goterrace/internal/config"
+import "github.com/kazuph/ikesu/internal/config"
 
 func (a *App) editConfiguration(edit config.Edit, done func(config.Config, error)) {
 	if a.configEdit != nil {

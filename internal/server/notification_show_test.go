@@ -1,9 +1,9 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/render"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestStage6aNotificationShowRealSocketAndViewer(t *testing.T) {

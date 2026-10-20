@@ -3,7 +3,7 @@ package runtime
 import (
 	"fmt"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"io"
 
 	"golang.org/x/sys/unix"
@@ -75,7 +75,7 @@ func (s *Supervisor) setupGraphics(p *Pane) {
 	p.emu.RegisterCsiHandler(ansi.Command('>', 0, 'q'), func(params ansi.Params) bool {
 		name := "libghostty"
 		if p.graphicsEnabled {
-			name = "ghostty (gtx " + p.graphicsVersion + ")"
+			name = "ghostty (ikesu " + p.graphicsVersion + ")"
 		}
 		_, _ = io.WriteString(p.emu.InputPipe(), "\x1bP>|"+name+"\x1b\\")
 		return true

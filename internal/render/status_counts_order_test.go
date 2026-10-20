@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func TestMobileStatusCountsAttentionOrder(t *testing.T) {

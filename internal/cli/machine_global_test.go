@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 func TestGlobalMachineErrorObservedRejections(t *testing.T) {
@@ -48,10 +48,10 @@ func TestForwardMachineObservedErrors(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		{"a", []string{"run", "--", "true"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'gtx --help' for usage\n"},
-		{"a", []string{"inbox"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'gtx --help' for usage\n"},
-		{"a", []string{"machine", "list"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'gtx --help' for usage\n"},
-		{"a", nil, 2, "error: --machine requires a subcommand\nrun 'gtx --help' for usage\n"},
+		{"a", []string{"run", "--", "true"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'ikesu --help' for usage\n"},
+		{"a", []string{"inbox"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'ikesu --help' for usage\n"},
+		{"a", []string{"machine", "list"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'ikesu --help' for usage\n"},
+		{"a", nil, 2, "error: --machine requires a subcommand\nrun 'ikesu --help' for usage\n"},
 		{"nosuch", []string{"pane", "list"}, 1, "error: machine \"nosuch\" was not found\n"},
 		{"disabled", []string{"pane", "list"}, 1, "error: machine \"disabled\" is disabled; enable it before use\n"},
 	} {

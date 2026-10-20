@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 type Prompt struct {

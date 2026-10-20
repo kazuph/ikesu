@@ -7,11 +7,11 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/kazuph/goterrace/internal/copybuf"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/copybuf"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 // Copy mode (SPEC G6): a tmux-style read view over a pane's scrollback +

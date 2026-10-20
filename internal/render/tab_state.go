@@ -1,6 +1,6 @@
 package render
 
-import "github.com/kazuph/goterrace/internal/model"
+import "github.com/kazuph/ikesu/internal/model"
 
 func paneTaskOrOSC(p *PaneSnap) string {
 	if p.TaskTitle != "" {

@@ -19,7 +19,7 @@ import time
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
-p.add_argument('--gtx', required=True)
+p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
 p.add_argument('--out', required=True)
 p.add_argument('--sigterm', action='store_true', help='record the reference SIGTERM behavior instead of normal exit')
 a = p.parse_args()

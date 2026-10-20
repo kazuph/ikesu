@@ -2,18 +2,18 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func (a *App) prefixMatches(k uv.Key) bool {

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestEndpointPresentationUpdateIsViewerLocalAndRejectsInvalidPreferences(t *testing.T) {

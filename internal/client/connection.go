@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/latency"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/latency"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 // Each connection keeps its own decoder and writer. Only the terminal

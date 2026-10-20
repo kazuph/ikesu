@@ -3,7 +3,7 @@ package client
 import (
 	"time"
 
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func hasNativeGraphics(in render.Input) bool {

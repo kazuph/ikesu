@@ -6,10 +6,10 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"sync"
 
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/machine"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // MachineForms shares the native form controls without owning a model or PTYs.

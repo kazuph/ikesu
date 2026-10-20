@@ -1,9 +1,9 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"testing"
 	"time"
 )

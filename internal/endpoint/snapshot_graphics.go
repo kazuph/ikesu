@@ -7,8 +7,8 @@ import (
 	"image"
 	"image/png"
 
-	"github.com/kazuph/goterrace/internal/kitty"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/kitty"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // P4b starts lossless compression at 512 KiB; non-patch viewers keep raw

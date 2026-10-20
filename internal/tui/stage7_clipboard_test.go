@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestStage7ClipboardSandboxFallback(t *testing.T) {

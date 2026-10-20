@@ -1,8 +1,8 @@
 package model
 
 import (
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // Snapshot renders the state as a session.File for persistence. Pane

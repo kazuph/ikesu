@@ -3,7 +3,7 @@ package client
 import (
 	"io"
 
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 type windowTitleState struct {

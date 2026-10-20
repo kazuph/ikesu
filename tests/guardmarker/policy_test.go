@@ -10,7 +10,7 @@ import (
 
 func TestPinnedServerPolicyAgainstCallerConfig(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "gtx")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/gtx").CombinedOutput(); e != nil {
+	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
 	for _, mode := range []string{"enabled=false", "mode=\"record\""} {

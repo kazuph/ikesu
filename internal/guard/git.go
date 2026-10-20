@@ -2,7 +2,7 @@ package guard
 
 import (
 	"context"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"path/filepath"
 	"strings"
 	"time"

@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/client"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/client"
 )
 
 func (r *runner) agentAttachCLI(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx agent attach <target> [--takeover]")
+		return usageErr(r, "usage: ikesu agent attach <target> [--takeover]")
 	}
 	target := args[0]
 	takeover := false
@@ -42,7 +42,7 @@ func (r *runner) agentAttachCLI(args []string) int {
 	}
 	code, err := client.AttachAgent(api.ClientSocketPath(filepath.Dir(r.socketPath())), info.Agent.PaneID, takeover, os.Stdin, os.Stdout)
 	if err != nil {
-		fmt.Fprintln(r.errOut(), "gtx:", err)
+		fmt.Fprintln(r.errOut(), "ikesu:", err)
 	}
 	return code
 }

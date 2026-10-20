@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/agentview"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/agentview"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (s *Server) agentViewRequest(req *api.Request) api.Response {

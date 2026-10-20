@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 // Keep the opt-in output path before TestMain isolates GTX_* defaults.
@@ -77,7 +77,7 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 	cfg := a.sidebarConfig
 	cfg.UI.WindowTitle = "plain"
 	a.ApplyReloadedConfig(cfg)
-	paint("gtx:coding")
+	paint("ikesu:coding")
 	var unchanged bytes.Buffer
 	a.out = &unchanged
 	a.ApplyReloadedConfig(cfg)
@@ -95,7 +95,7 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 	paint("🔵 gtx:coding")
 	a.exec(model.CmdSelectWorkspace{Index: 1})
 	a.detectAll()
-	paint("gtx:coding")
+	paint("ikesu:coding")
 	if out := titleEvidenceDir; out != "" {
 		if err := os.MkdirAll(out, 0700); err != nil {
 			t.Fatal(err)

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 )
 

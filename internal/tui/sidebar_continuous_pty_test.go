@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {

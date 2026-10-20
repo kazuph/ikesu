@@ -4,7 +4,7 @@ package latency
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"io"
 	"os"
 	"sync"

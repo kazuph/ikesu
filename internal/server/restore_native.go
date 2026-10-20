@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/platform"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/platform"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 var nativeResumeAgents = session.NativeResumeAgents

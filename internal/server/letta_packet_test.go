@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 func TestLettaExplicitConversationRestoreAndDetection(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 
 func TestClaudePrefixBeforeSnapshotEval(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "gtx")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/gtx").CombinedOutput(); e != nil {
+	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
 	for _, kind := range []string{"shell-tail", "shell-tail-variant", "rm-prefix", "touch-tail", "env-prefix", "env-shell-prefix", "raw-line"} {

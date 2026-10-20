@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (r *runner) pane(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|report-metadata|run> ...")
+		return usageErr(r, "usage: ikesu pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|report-metadata|run> ...")
 	}
 	switch args[0] {
 	case "report-metadata":
@@ -85,7 +85,7 @@ func paneSelector(r *runner, args []string) (*string, error) {
 func (r *runner) paneLayout(args []string) int {
 	paneID, err := paneSelector(r, args)
 	if err != nil {
-		return usageErr(r, "usage: gtx pane layout [--pane ID|--current]")
+		return usageErr(r, "usage: ikesu pane layout [--pane ID|--current]")
 	}
 	return r.printResult("cli:pane:layout", api.MethodPaneLayout, api.PaneLayoutParams{PaneID: paneID})
 }
@@ -122,7 +122,7 @@ func (r *runner) paneNeighbor(args []string) int {
 		}
 	}
 	if params.Direction == "" {
-		return usageErr(r, "usage: gtx pane neighbor --direction left|right|up|down [--pane ID|--current]")
+		return usageErr(r, "usage: ikesu pane neighbor --direction left|right|up|down [--pane ID|--current]")
 	}
 	return r.printResult("cli:pane:neighbor", api.MethodPaneNeighbor, params)
 }
@@ -130,7 +130,7 @@ func (r *runner) paneNeighbor(args []string) int {
 func (r *runner) paneEdges(args []string) int {
 	paneID, err := paneSelector(r, args)
 	if err != nil {
-		return usageErr(r, "usage: gtx pane edges [--pane ID|--current]")
+		return usageErr(r, "usage: ikesu pane edges [--pane ID|--current]")
 	}
 	return r.printResult("cli:pane:edges", api.MethodPaneEdges, api.PaneEdgesParams{PaneID: paneID})
 }
@@ -178,7 +178,7 @@ func (r *runner) paneResize(args []string) int {
 		}
 	}
 	if params.Direction == "" {
-		return usageErr(r, "usage: gtx pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]")
+		return usageErr(r, "usage: ikesu pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]")
 	}
 	return r.printResult("cli:pane:resize", api.MethodPaneResize, params)
 }
@@ -265,14 +265,14 @@ func (r *runner) paneSwap(args []string) int {
 		}
 	}
 	if params.Direction == nil && (params.SourcePaneID == nil || params.TargetPaneID == nil) {
-		return usageErr(r, "usage: gtx pane swap --direction left|right|up|down [--pane ID|--current] | gtx pane swap --source-pane ID --target-pane ID")
+		return usageErr(r, "usage: ikesu pane swap --direction left|right|up|down [--pane ID|--current] | ikesu pane swap --source-pane ID --target-pane ID")
 	}
 	return r.printResult("cli:pane:swap", api.MethodPaneSwap, params)
 }
 
 func (r *runner) paneMove(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx pane move <pane_id> --tab <tab_id> --split right|down [--target-pane ID] [--ratio FLOAT] [--focus|--no-focus] | --new-tab [--workspace ID] [--label TEXT] | --new-workspace [--label TEXT] [--tab-label TEXT]")
+		return usageErr(r, "usage: ikesu pane move <pane_id> --tab <tab_id> --split right|down [--target-pane ID] [--ratio FLOAT] [--focus|--no-focus] | --new-tab [--workspace ID] [--label TEXT] | --new-workspace [--label TEXT] [--tab-label TEXT]")
 	}
 	params := api.PaneMoveParams{PaneID: args[0]}
 	var tabID *string
@@ -418,21 +418,21 @@ func (r *runner) paneCurrent(args []string) int {
 
 func (r *runner) paneGet(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx pane get <pane_id>")
+		return usageErr(r, "usage: ikesu pane get <pane_id>")
 	}
 	return r.printResult("cli:pane:get", api.MethodPaneGet, api.PaneTarget{PaneID: args[0]})
 }
 
 func (r *runner) paneFocus(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx pane focus <pane_id>")
+		return usageErr(r, "usage: ikesu pane focus <pane_id>")
 	}
 	return r.printResult("cli:pane:focus", api.MethodPaneFocus, api.PaneFocusParams{PaneID: args[0]})
 }
 
 func (r *runner) paneRename(args []string) int {
 	if len(args) < 2 {
-		return usageErr(r, "usage: gtx pane rename <pane_id> <label>|--clear")
+		return usageErr(r, "usage: ikesu pane rename <pane_id> <label>|--clear")
 	}
 	var label *string
 	if len(args) == 2 && args[1] == "--clear" {
@@ -449,7 +449,7 @@ func (r *runner) paneRename(args []string) int {
 
 func (r *runner) paneRead(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N]")
+		return usageErr(r, "usage: ikesu pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N]")
 	}
 	params := api.PaneReadParams{
 		PaneID:    args[0],
@@ -503,7 +503,7 @@ func (r *runner) paneRead(args []string) int {
 	}
 	var resp api.Response
 	if uerr := json.Unmarshal(raw, &resp); uerr != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", uerr)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", uerr)
 		return 1
 	}
 	if resp.Err != nil {
@@ -593,7 +593,7 @@ func (r *runner) paneSplit(args []string) int {
 		}
 	}
 	if direction == "" {
-		return usageErr(r, "usage: gtx pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--focus] [--no-focus]")
+		return usageErr(r, "usage: ikesu pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--focus] [--no-focus]")
 	}
 	params.Direction = direction
 	return r.printResult("cli:pane:split", api.MethodPaneSplit, params)
@@ -601,14 +601,14 @@ func (r *runner) paneSplit(args []string) int {
 
 func (r *runner) paneClose(args []string) int {
 	if len(args) != 1 {
-		return usageErr(r, "usage: gtx pane close <pane_id>")
+		return usageErr(r, "usage: ikesu pane close <pane_id>")
 	}
 	return r.printResult("cli:pane:close", api.MethodPaneClose, api.PaneTarget{PaneID: args[0]})
 }
 
 func (r *runner) paneSendText(args []string) int {
 	if len(args) < 2 {
-		return usageErr(r, "usage: gtx pane send-text <pane_id> <text>")
+		return usageErr(r, "usage: ikesu pane send-text <pane_id> <text>")
 	}
 	return r.sendOK(api.MethodPaneSendText, api.PaneSendTextParams{
 		PaneID: args[0],
@@ -618,7 +618,7 @@ func (r *runner) paneSendText(args []string) int {
 
 func (r *runner) paneSendKeys(args []string) int {
 	if len(args) < 2 {
-		return usageErr(r, "usage: gtx pane send-keys <pane_id> <key> [key ...]")
+		return usageErr(r, "usage: ikesu pane send-keys <pane_id> <key> [key ...]")
 	}
 	return r.sendOK(api.MethodPaneSendKeys, api.PaneSendKeysParams{
 		PaneID: args[0],
@@ -628,7 +628,7 @@ func (r *runner) paneSendKeys(args []string) int {
 
 func (r *runner) paneRun(args []string) int {
 	if len(args) < 2 {
-		return usageErr(r, "usage: gtx pane run <pane_id> <command>")
+		return usageErr(r, "usage: ikesu pane run <pane_id> <command>")
 	}
 	return r.sendOK(api.MethodPaneSendInput, api.PaneSendInputParams{
 		PaneID: args[0],
@@ -639,7 +639,7 @@ func (r *runner) paneRun(args []string) int {
 
 func (r *runner) paneReportAgent(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx pane report-agent <pane_id> --source ID --agent LABEL --state idle|working|blocked|unknown [--message TEXT] [--custom-status TEXT] [--seq N] [--title TEXT] [--session-id ID] [--agent-session-id ID] [--agent-session-path PATH] [--model NAME]")
+		return usageErr(r, "usage: ikesu pane report-agent <pane_id> --source ID --agent LABEL --state idle|working|blocked|unknown [--message TEXT] [--custom-status TEXT] [--seq N] [--title TEXT] [--session-id ID] [--agent-session-id ID] [--agent-session-path PATH] [--model NAME]")
 	}
 	params := api.PaneReportAgentParams{PaneID: args[0]}
 	for i := 1; i < len(args); {
@@ -688,7 +688,7 @@ func (r *runner) paneReportAgent(args []string) int {
 		}
 	}
 	if params.Source == "" || params.Agent == "" || params.State == "" {
-		return usageErr(r, "usage: gtx pane report-agent <pane_id> --source ID --agent LABEL --state idle|working|blocked|unknown [--message TEXT] [--custom-status TEXT] [--seq N] [--title TEXT] [--session-id ID] [--agent-session-id ID] [--agent-session-path PATH] [--model NAME]")
+		return usageErr(r, "usage: ikesu pane report-agent <pane_id> --source ID --agent LABEL --state idle|working|blocked|unknown [--message TEXT] [--custom-status TEXT] [--seq N] [--title TEXT] [--session-id ID] [--agent-session-id ID] [--agent-session-path PATH] [--model NAME]")
 	}
 	return r.sendOK(api.MethodPaneReportAgent, params)
 }

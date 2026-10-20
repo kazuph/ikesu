@@ -9,7 +9,7 @@ import subprocess
 
 p = argparse.ArgumentParser()
 p.add_argument('--tb-dist', type=Path, required=True)
-p.add_argument('--gtx', type=Path, required=True)
+p.add_argument('--ikesu','--gtx',dest='gtx', type=Path, required=True)
 p.add_argument('--out', type=Path, required=True)
 a = p.parse_args()
 a.out.mkdir(parents=True, exist_ok=True)

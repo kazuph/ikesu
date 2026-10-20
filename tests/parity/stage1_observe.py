@@ -7,7 +7,7 @@ import subprocess
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
-p.add_argument('--gtx', required=True)
+p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--config-file', required=True)
 p.add_argument('--out', required=True)
@@ -28,7 +28,7 @@ for mode in ['local', 'server']:
         env.pop('WEZTERM_PANE', None)
         env['TERM_PROGRAM'] = 'ghostty'
         command = ['python3', str(here/'observe.py'), '--herdr', a.herdr,
-                   '--gtx', a.gtx, '--ptyrun', a.ptyrun, '--config-file', a.config_file,
+                   '--ikesu', a.gtx, '--ptyrun', a.ptyrun, '--config-file', a.config_file,
                    '--steps', str(procedure), '--out', str(Path(a.out)/mode/procedure.stem),
                    '--clipboard-sandbox']
         if mode == 'server':

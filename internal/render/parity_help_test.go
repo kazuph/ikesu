@@ -3,7 +3,7 @@ package render
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 )
 
 func TestParityHelpObservedGeometry(t *testing.T) {

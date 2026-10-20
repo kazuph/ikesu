@@ -2,9 +2,9 @@ package render
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/agentview"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/agentview"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"testing"
 )
 

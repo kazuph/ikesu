@@ -2,7 +2,7 @@ package screenprompt
 
 import (
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"regexp"
 	"strings"
 )

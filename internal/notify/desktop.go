@@ -2,11 +2,11 @@ package notify
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/envcompat"
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/machine"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,7 +38,7 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 			}
 			go func() {
 				if err := cmd.Wait(); err != nil {
-					fmt.Fprintln(os.Stderr, "gtx: notification command:", err)
+					fmt.Fprintln(os.Stderr, "ikesu: notification command:", err)
 				}
 			}()
 			return nil

@@ -1,8 +1,8 @@
 package session
 
 import (
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/platform"
 	"strings"
 )
 

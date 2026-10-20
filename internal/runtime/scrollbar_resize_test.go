@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestResizeKeepsOutputMeasuredScrollbarAndRetainsReadHistoryRealPTY(t *testing.T) {

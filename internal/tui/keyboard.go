@@ -4,7 +4,7 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 func (a *App) sendPaneKey(k uv.Key, raw []byte, release bool) {
