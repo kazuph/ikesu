@@ -28,7 +28,7 @@ func TestSidebarPanelDisplayCompatibility(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, hit := range m.sidebar.Hits {
-				if hit.Machine != "remote" || !hit.Right || (!compact && hit.Row.Kind != render.RowJob) || (compact && (hit.Row.Kind != render.RowAgent || hit.Row.Pane != 2 || hit.Row.Line != 0)) {
+				if hit.Machine != "remote" || !hit.Right || (!compact && hit.Row.Kind != render.RowJob) || (compact && (hit.Row.Kind != render.RowAgent || hit.Row.Pane != 3 || hit.Row.Line != 0)) {
 					continue
 				}
 				if err := m.input(mouseEvent(t, fmt.Sprintf("\x1b[<0;%d;%dM", hit.Rect.X+1, hit.Rect.Y+1))); err != nil {
@@ -37,7 +37,7 @@ func TestSidebarPanelDisplayCompatibility(t *testing.T) {
 				h.until("compatible row action", func() bool {
 					s := m.endpoints["remote"].snapshot
 					if compact {
-						return m.pending == nil && m.active == "remote" && s.State.FocusedPane() == 2
+						return m.pending == nil && m.active == "remote" && s.State.FocusedPane() == 3
 					}
 					return m.pending == nil && m.active == "remote" && s.JobsPanel && s.State.PopupVisible()
 				})
