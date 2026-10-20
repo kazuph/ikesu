@@ -198,7 +198,8 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 			continue
 		}
 		width := iw
-		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
+		bar := !in.ServerUI && view.Workspace.Rect.W > 1 && view.Workspace.Total > view.Workspace.Rect.H
+		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width, bar)
 	}
 	if !in.ServerUI {
 		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)

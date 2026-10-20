@@ -102,7 +102,7 @@ func (m *MachineSidebar) drawRight(f *Frame, active Input) {
 		}
 		in := *group.Input
 
-		drawSidebarRow(f, in.State, in, entry.row, area.X, y, area.W)
+		drawSidebarRow(f, in.State, in, entry.row, area.X, y, area.W, false)
 		machineRowBackground(f, area.X, y, area.W)
 		if in.SidebarConfig.UI.TransparentSidebarCards {
 			clearSidebarCardBackground(f, in.State, entry.row, area.X, y, area.W)

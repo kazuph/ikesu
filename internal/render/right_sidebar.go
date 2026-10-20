@@ -71,7 +71,8 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 			continue
 		}
 		width := a.W - 1
-		drawSidebarRow(f, s, in, pos.Row, a.X+1, pos.Y, width)
+		bar := !in.ServerUI && view.Agents.Rect.W > 1 && view.Agents.Total > view.Agents.Rect.H
+		drawSidebarRow(f, s, in, pos.Row, a.X+1, pos.Y, width, bar)
 	}
 	drawRightSidebarHeader(f, s, in, 0)
 	if in.ServerUI {

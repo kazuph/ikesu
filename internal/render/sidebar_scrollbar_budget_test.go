@@ -40,7 +40,11 @@ func TestSidebarOverflowReservesTextScrollbarAndStatusCells(t *testing.T) {
 					continue
 				}
 				bar := v.Rect.X + v.Rect.W - 2
-				if got := f.Cell(bar-1, pos.Y).Content; got != "…" {
+				tail := "…"
+				if width == 5 && !right {
+					tail = "1" // The fixed workspace number consumes the remaining text budget.
+				}
+				if got := f.Cell(bar-1, pos.Y).Content; got != tail {
 					t.Fatalf("width=%d right=%t text tail=%q; scrollbar overwrote text budget", width, right, got)
 				}
 				if got := f.Cell(bar, pos.Y).Content; got != "│" && got != "█" {

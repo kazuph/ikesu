@@ -133,7 +133,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			}
 			machineRowBackground(f, area.X, y, width)
 		} else if entry.row.Kind == RowRule {
-			drawSidebarRow(f, active.State, active, entry.row, area.X, y, width)
+			drawSidebarRow(f, active.State, active, entry.row, area.X, y, width, false)
 			machineRowBackground(f, area.X, y, width)
 		} else if group.Input != nil {
 			in := *group.Input
@@ -148,7 +148,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 			if group.ID == m.DropMachine && m.DropSection != "" {
 				in.DragSection = m.DropSection
 			}
-			drawSidebarRow(f, &state, in, entry.row, area.X, y, width)
+			drawSidebarRow(f, &state, in, entry.row, area.X, y, width, false)
 			machineRowBackground(f, area.X, y, width)
 			if in.SidebarConfig.UI.TransparentSidebarCards {
 				clearSidebarCardBackground(f, &state, entry.row, area.X, y, width)

@@ -7,7 +7,7 @@ import (
 
 // Every width uses the expanded rows. Only text loses space; its status cell
 // stays at the panel's right edge, including the one-cell interior.
-func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, x, y, w int) {
+func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, x, y, w int, scrollbar bool) {
 	if w <= 0 {
 		return
 	}
@@ -28,6 +28,9 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, x, y, w
 	textWidth := w
 	if hasStatus {
 		textWidth--
+	}
+	if scrollbar {
+		textWidth = min(textWidth, w-2)
 	}
 	if textWidth > 0 && (w > 1 || hasStatus) {
 		drawSidebarRowContent(f, s, in, r, x, y, textWidth)
