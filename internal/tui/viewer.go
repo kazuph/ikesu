@@ -11,16 +11,21 @@ import (
 // Viewer owns presentation and input state. The model and PTYs remain
 // session-owned; all methods run on the session's existing app loop.
 type Viewer struct {
-	app           *App
-	workspace     int
-	tabs          map[int]int
-	cols, rows    int
-	toastSequence uint64
-	pendingAt     time.Time
-	focusUntil    time.Time
-	focusEpoch    uint64
-	heldKeys      []input.Event
-	display       displayState
+	app               *App
+	workspace         int
+	tabs              map[int]int
+	cols, rows        int
+	toastSequence     uint64
+	pendingAt         time.Time
+	focusUntil        time.Time
+	focusEpoch        uint64
+	heldKeys          []input.Event
+	display           displayState
+	legacySidebarRows bool
+}
+
+func (v *Viewer) SetContinuousSidebarRows(supported bool) {
+	v.legacySidebarRows = !supported
 }
 
 type viewSelection struct {

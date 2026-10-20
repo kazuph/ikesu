@@ -20,6 +20,10 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 		a.beginSidebarDivider(m, true, time.Now())
 		return
 	}
+	if a.legacyCompactSidebar() {
+		a.legacyRightSidebarClick(m)
+		return
+	}
 	if m.Button == uv.MouseLeft && a.sidebarScrollbarPress(m) {
 		return
 	}

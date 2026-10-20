@@ -52,7 +52,15 @@ func (a *App) revealServerWorkspace() {
 }
 
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
-
+	if a.legacyCompactSidebar() && pointIn(m.X, m.Y, a.st.RightSidebarArea()) {
+		if up {
+			a.agentScroll--
+		} else {
+			a.agentScroll++
+		}
+		a.agentScroll = max(0, min(a.agentScroll, max(0, len(render.LegacyRightSidebarRows(a.rightSidebarInput()))-a.st.RightSidebarArea().H)))
+		return
+	}
 	view := a.sidebarView()
 	v, off := view.Workspace, &a.sidebarScroll
 	step := 3

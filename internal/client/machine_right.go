@@ -69,11 +69,12 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 	}
 	var rows []render.SidebarRow
 	offset, height, y := in.AgentScroll, max(0, area.H-2), 2
+	legacy := in.State.RightSidebarCompact() && !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "sidebar_continuous")
 	jobs := hit.Row.Kind == render.RowJob
-	if jobs != in.JobsPanel && !jobs {
+	if !legacy && jobs != in.JobsPanel && !jobs {
 		offset = 0
 	}
-	if jobs != in.JobsPanel && !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "sidebar_panel") {
+	if !legacy && jobs != in.JobsPanel && !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "sidebar_panel") {
 		h := render.RightSidebarHeaderFor(in.State, 0)
 		tab := h.Agents
 		if jobs {
@@ -86,7 +87,9 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 			return nil, err
 		}
 	}
-	if jobs {
+	if legacy {
+		rows, height, y = render.LegacyRightSidebarRows(in), area.H, 0
+	} else if jobs {
 		offset = in.JobScroll
 		for i := range in.Jobs {
 			rows = append(rows, render.SidebarRow{Kind: render.RowJob, Line: i})
@@ -97,6 +100,9 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 	index := -1
 	for i, row := range rows {
 		same := row == hit.Row
+		if legacy && row.Kind == render.RowAgent && hit.Row.Kind == render.RowAgent {
+			same = row.Pane == hit.Row.Pane && row.Ws == hit.Row.Ws
+		}
 		if same {
 			index = i
 			break

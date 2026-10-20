@@ -662,6 +662,7 @@ func (s *Server) attach(conn net.Conn) {
 		}
 		s.sendDecisionProjection(c)
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
+		c.viewer.SetContinuousSidebarRows(endpoint.Allows(available, 1, hello.Methods, "sidebar_continuous"))
 		if hello.Visible != nil && !*hello.Visible {
 			c.viewer.SetVisible(s.app, false)
 		}
