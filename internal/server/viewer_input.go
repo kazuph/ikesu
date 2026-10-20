@@ -18,7 +18,7 @@ func (s *Server) viewerInput(c *clientConn, m clientMsg) {
 			if m.Type == "paste" {
 				c.viewer.Paste(s.app, string(data))
 			} else {
-				c.viewer.Input(s.app, data)
+				c.viewer.InputWithSidebarPanel(s.app, data, m.SidebarJobs)
 			}
 		})
 	}

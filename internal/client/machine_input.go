@@ -324,6 +324,11 @@ func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) e
 	if err != nil {
 		return err
 	}
+	e := m.endpoints[hit.Machine]
+	if hit.Right && endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "sidebar_panel") {
+		jobs := hit.Row.Kind == render.RowJob
+		return e.connection.enqueue(msg{Type: "input", Data: base64.StdEncoding.EncodeToString(data), SidebarJobs: &jobs})
+	}
 	return m.sendInput(hit.Machine, data)
 }
 

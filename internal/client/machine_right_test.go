@@ -147,6 +147,9 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		}
 		defer log.Close()
 		cmd := exec.Command(exe, "-test.run=^TestMachineRightServerHelper$")
+		if binary := os.Getenv("GTX_RIGHT_TEST_SERVER_BIN"); binary != "" {
+			cmd = exec.Command(binary, "--session", session, "server")
+		}
 		cmd.Env = append(os.Environ(), "GTX_RIGHT_SERVER_TEST="+session, "GTX_STATE_DIR="+root, "GTX_CONFIG="+cfgPath, "GTX_DISABLE_SOUND=1", "SHELL=/bin/sh")
 		cmd.Stdout = log
 		cmd.Stderr = log

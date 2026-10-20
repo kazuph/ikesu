@@ -135,7 +135,15 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 }
 
 func (v *Viewer) Input(a *App, bytes []byte) {
+	v.InputWithSidebarPanel(a, bytes, nil)
+}
+
+func (v *Viewer) InputWithSidebarPanel(a *App, bytes []byte, jobs *bool) {
 	v.with(a, func(ui *App) {
+		if jobs != nil && ui.jobsPanel != *jobs {
+			ui.jobsPanel = *jobs
+			ui.agentScroll = 0
+		}
 		for _, event := range ui.fr.Push(bytes) {
 			v.onInput(ui, event)
 		}

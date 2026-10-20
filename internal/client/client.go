@@ -59,6 +59,7 @@ type msg struct {
 	Type          string                    `json:"type"`
 	Kind          string                    `json:"kind,omitempty"`
 	Data          string                    `json:"data,omitempty"`
+	SidebarJobs   *bool                     `json:"sidebar_jobs,omitempty"`
 	Cols          int                       `json:"cols,omitempty"`
 	Rows          int                       `json:"rows,omitempty"`
 	Xpixel        int                       `json:"xpixel,omitempty"`

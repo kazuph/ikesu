@@ -35,7 +35,7 @@ func HasGraphicsPatches(peer Peer) bool {
 
 func Current() Peer {
 	return Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config", "machine_menu", "decision_answer"}}
+		Methods: []string{"input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config", "machine_menu", "decision_answer", "sidebar_panel"}}
 }
 
 // MachinePeer refuses an older server before it can create a visible viewer.

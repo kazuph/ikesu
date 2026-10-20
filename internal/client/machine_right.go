@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/goterrace/internal/endpoint"
 	"github.com/kazuph/goterrace/internal/input"
 	"github.com/kazuph/goterrace/internal/render"
 	"strings"
@@ -69,7 +70,10 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 	var rows []render.SidebarRow
 	offset, height, y := in.AgentScroll, max(0, area.H-2), 2
 	jobs := hit.Row.Kind == render.RowJob
-	if jobs != in.JobsPanel {
+	if jobs != in.JobsPanel && !jobs {
+		offset = 0
+	}
+	if jobs != in.JobsPanel && !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "sidebar_panel") {
 		h := render.RightSidebarHeaderFor(in.State, 0)
 		tab := h.Agents
 		if jobs {
@@ -80,9 +84,6 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 		}
 		if err := encode(0, tab.X, tab.Y, 'm'); err != nil {
 			return nil, err
-		}
-		if !jobs {
-			offset = 0
 		}
 	}
 	if jobs {
