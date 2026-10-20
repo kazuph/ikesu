@@ -524,10 +524,21 @@ func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
 		return
 	}
 	p.mu.Lock()
+	charactersChanged := p.emu.Width() != cols || p.emu.Height() != rows
+	if !charactersChanged && p.cellWidth == cw && p.cellHeight == ch {
+		p.mu.Unlock()
+		return
+	}
 	p.cellWidth, p.cellHeight = cw, ch
-	p.resizeTerminal(cols, rows)
-	if p.read != nil {
-		p.read.resize(cols, rows)
+	if charactersChanged {
+		p.resizeTerminal(cols, rows)
+		if p.read != nil {
+			p.read.resize(cols, rows)
+		}
+	} else {
+		// Pixel reports still change without resetting terminal tab stops
+		// and scroll margins at unchanged character dimensions.
+		p.resizeTerminal(cols, rows)
 	}
 	p.mu.Unlock()
 	_ = unix.IoctlSetWinsize(p.ptyFD, unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(rows), Col: uint16(cols), Xpixel: uint16(cols * cw), Ypixel: uint16(rows * ch)})
