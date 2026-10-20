@@ -144,3 +144,26 @@ func TestSidebarDragNeverHidesWithCollapsedHiddenSetting(t *testing.T) {
 		}
 	}
 }
+
+func TestSidebarRightManualWidthSurvivesReload(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		a := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+		if server {
+			a.SetServerUI()
+		}
+		c := config.Config{}
+		configured := 42
+		c.UI.RightSidebarWidth = &configured
+		a.setSidebarConfig(c, true)
+		sidebarEvent(a, input.KindMouseClick, 25, 5)
+		sidebarEvent(a, input.KindMouseMotion, 34, 5)
+		sidebarEvent(a, input.KindMouseRelease, 34, 5)
+		sidebarEvent(a, input.KindMouseClick, a.st.RightSidebarArea().X, 5)
+		sidebarEvent(a, input.KindMouseMotion, 150, 5)
+		sidebarEvent(a, input.KindMouseRelease, 150, 5)
+		a.ApplyReloadedConfig(c)
+		if a.st.RightSidebarArea().W != 10 || a.st.RightSidebarMode != "compact" {
+			t.Fatalf("server=%t reload lost right manual width: %v mode=%s", server, a.st.RightSidebarArea(), a.st.RightSidebarMode)
+		}
+	}
+}

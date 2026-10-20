@@ -40,3 +40,30 @@ func TestNarrowSidebarNamesStayWithinDividers(t *testing.T) {
 		}
 	}
 }
+
+func TestNarrowSidebarPrefersTitleOverLabel(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 30)
+	s.RightSidebarSize = 10
+	s.RightSidebarMode = "compact"
+	in := Input{State: s, Panes: map[int]*PaneSnap{1: {Agent: "codex", Title: "TITLE", Label: "LABEL", Status: StatusGlyph{Rune: "●", Key: "idle"}}}}
+	f := Compose(in).Frame
+	var text strings.Builder
+	for x := s.RightSidebarArea().X + 2; x < 160; x++ {
+		text.WriteString(f.Cell(x, 0).Content)
+	}
+	if strings.TrimSpace(text.String()) != "TITLE" {
+		t.Fatalf("narrow name=%q", text.String())
+	}
+}
+
+func TestMachineNarrowSidebarUsesCompactRows(t *testing.T) {
+	s := model.New(t.TempDir(), 160, 30)
+	s.RightSidebarSize = 10
+	s.RightSidebarMode = "compact"
+	in := Input{State: s, Panes: map[int]*PaneSnap{1: {Agent: "codex", Title: "TITLE", Label: "LABEL", Status: StatusGlyph{Rune: "●", Key: "idle"}}}}
+	m := MachineSidebar{Groups: []MachineGroup{{ID: "local", Label: "local", Input: &in}}}
+	rows := m.rightRows(in)
+	if len(rows) != 2 || rows[0].header || rows[0].row.Kind != RowAgent {
+		t.Fatalf("narrow rows=%+v", rows)
+	}
+}
