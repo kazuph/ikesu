@@ -73,7 +73,7 @@ func TestConfigUnsupportedWarningUsesTopBanner(t *testing.T) {
 		t.Fatal(err, c.Warnings)
 	}
 	a.SetSidebarConfig(c, false)
-	if !a.configWarningBanner || a.configWarning != "config.toml: update.version_check unsupported; gtx config check" {
+	if !a.configWarningBanner || a.configWarning != "config.toml: update.version_check unsupported; ikesu config check" {
 		t.Fatal(a.configWarning, a.configWarningBanner)
 	}
 }

@@ -33,7 +33,7 @@ func TestConfigAllowNestedWithRealServerAncestor(t *testing.T) {
 			t.Cleanup(stop)
 			s.send(fmt.Sprintf("%q --session inner server\r", binPath))
 			if !allow {
-				s.waitFor("nested refusal", 5*time.Second, func(text string) bool { return strings.Contains(text, "refusing to start a nested gtx server") })
+				s.waitFor("nested refusal", 5*time.Second, func(text string) bool { return strings.Contains(text, "refusing to start a nested ikesu server") })
 				if _, err := os.Stat(socket); !os.IsNotExist(err) {
 					t.Fatal("refused server created socket", err)
 				}

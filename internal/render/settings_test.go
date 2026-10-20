@@ -58,7 +58,7 @@ func TestG2SettingsReferenceGeometryOrderAndExcludedSections(t *testing.T) {
 				t.Fatal("sound rows")
 			}
 		case 2:
-			if line(22) != "notification popups: off ✓" || line(24) != "notification popups: inside gtx" || line(28) != "notification popups: via system" {
+			if line(22) != "notification popups: off ✓" || line(24) != "notification popups: inside ikesu" || line(28) != "notification popups: via system" {
 				t.Fatal("toast rows")
 			}
 		}

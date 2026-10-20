@@ -72,8 +72,8 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 		t.Logf("outer PTY title: %s", want)
 	}
 	a.SetReported(pid, "codex", "working")
-	paint("🟡 gtx:coding")
-	paint("🟡 gtx:coding") // second activation paint
+	paint("🟡 ikesu:coding")
+	paint("🟡 ikesu:coding") // second activation paint
 	cfg := a.sidebarConfig
 	cfg.UI.WindowTitle = "plain"
 	a.ApplyReloadedConfig(cfg)
@@ -88,11 +88,11 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 	a.out = slave
 	cfg.UI.WindowTitle = "summary"
 	a.ApplyReloadedConfig(cfg)
-	paint("🟡 gtx:coding")
+	paint("🟡 ikesu:coding")
 	a.SetReported(pid, "codex", "blocked")
-	paint("🔴 gtx:coding")
+	paint("🔴 ikesu:coding")
 	a.SetReported(pid, "codex", "idle")
-	paint("🔵 gtx:coding")
+	paint("🔵 ikesu:coding")
 	a.exec(model.CmdSelectWorkspace{Index: 1})
 	a.detectAll()
 	paint("ikesu:coding")

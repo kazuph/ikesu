@@ -24,7 +24,7 @@ func TestWindowTitleMatchesWorkspaceAndTabActivationBytes(t *testing.T) {
 			t.Fatalf("title bytes got %q want %q", output.String(), want)
 		}
 	}
-	two := "\x1b]0;gtx\x07\x1b]0;gtx\x07"
+	two := "\x1b]0;ikesu\x07\x1b]0;ikesu\x07"
 	paint(two)
 	state.Apply(model.CmdNewWorkspace{Cwd: "/tmp"})
 	paint("")

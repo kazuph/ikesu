@@ -128,10 +128,24 @@ func paneShellDirectory(path string) bool {
 // ScrubProcess is called before server workers or standalone pane spawns.
 func ScrubProcess() {
 	old := os.Environ()
+	original := map[string]string{}
+	for _, kv := range old {
+		k, v, _ := strings.Cut(kv, "=")
+		original[k] = v
+	}
 	clean := Scrub(old)
 	keys := map[string]bool{}
 	for _, kv := range clean {
 		k, v, _ := strings.Cut(kv, "=")
+		// Pair settings when launching a child, without rewriting the server's
+		// own explicit settings or introducing a new environment override.
+		if strings.HasPrefix(k, "IKESU_") || strings.HasPrefix(k, "GTX_") {
+			value, present := original[k]
+			if !present {
+				continue
+			}
+			v = value
+		}
 		keys[k] = true
 		_ = os.Setenv(k, v)
 	}

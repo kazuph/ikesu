@@ -59,7 +59,7 @@ func TestRestartDialogWarnings(t *testing.T) {
 	a2 := &App{st: st}
 	a2.warningsHook = func() []api.AgentSessionWarningInfo { return nil }
 	a2.openRestartDialog()
-	if a2.dialog.d.Title != "Restart gtx?" || len(a2.dialog.d.Lines) != 0 {
+	if a2.dialog.d.Title != "Restart ikesu?" || len(a2.dialog.d.Lines) != 0 {
 		t.Fatalf("unexpected warning form: %+v", a2.dialog.d)
 	}
 }
