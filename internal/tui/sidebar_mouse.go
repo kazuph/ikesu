@@ -104,14 +104,32 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 			g.moved = true
 		}
 		if g.divider {
-			lo, hi, _ := a.st.SidebarBounds()
-			if g.right || !g.moved {
+			if !g.moved || a.st.Mobile() {
 				return
 			}
-			a.st.SidebarVisible = true
-			a.st.SidebarHidden = false
-			a.st.SidebarSize = max(lo, min(hi, m.X+1))
-			a.st.SidebarManual = true
+			s := a.st
+			lo, hi, _ := s.SidebarBounds()
+			width, other := m.X+1, s.RightSidebarArea().W
+			if g.right {
+				width, other = s.Cols-m.X, s.SidebarArea().W
+			}
+			hi = min(hi, s.Cols-other-model.MinimumPaneAreaWidth)
+			if hi < model.SidebarCollapsedWidth {
+				return
+			}
+			width = max(model.SidebarCollapsedWidth, min(hi, width))
+			if g.right {
+				s.RightSidebarSize = width
+				s.RightSidebarMode = ""
+				if width < lo {
+					s.RightSidebarMode = "compact"
+				}
+			} else {
+				s.SidebarVisible = width >= lo
+				s.SidebarHidden = false
+				s.SidebarSize = width
+				s.SidebarManual = true
+			}
 
 			a.syncLayout()
 			a.changed()

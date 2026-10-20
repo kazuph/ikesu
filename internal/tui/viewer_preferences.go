@@ -51,8 +51,11 @@ func (a *App) saveViewPreferences() {
 	if a.preferenceSave == nil {
 		return
 	}
-	p := endpoint.ViewPreferences{SidebarWidth: a.st.ExpandedSidebarWidth(), SidebarManual: a.st.SidebarManual,
-		SidebarCollapsed: !a.st.SidebarVisible, SidebarHidden: a.st.SidebarHidden, RightSidebarMode: a.st.RightSidebarMode}
+	p := endpoint.ViewPreferences{SidebarWidth: a.st.SidebarSize, SidebarManual: a.st.SidebarManual,
+		SidebarCollapsed: !a.st.SidebarVisible, SidebarHidden: a.st.SidebarHidden, RightSidebarMode: a.st.RightSidebarMode, RightSidebarWidth: a.st.RightSidebarSize}
+	if p.SidebarWidth <= 0 {
+		p.SidebarWidth = a.st.ExpandedSidebarWidth()
+	}
 	if err := a.preferenceSave(p); err != nil {
 		a.worktreeError(err)
 	}
@@ -76,12 +79,15 @@ func (a *App) applyViewPreferences(p *endpoint.ViewPreferences) {
 	if p == nil {
 		return
 	}
-	lo, hi, _ := a.st.SidebarBounds()
-	a.st.SidebarSize = max(lo, min(hi, p.SidebarWidth))
+	_, hi, _ := a.st.SidebarBounds()
+	a.st.SidebarSize = max(model.SidebarCollapsedWidth, min(hi, p.SidebarWidth))
 	a.st.SidebarManual = p.SidebarManual
 	a.st.SidebarVisible = !p.SidebarCollapsed
 	a.st.SidebarHidden = p.SidebarHidden
 	a.st.RightSidebarMode = p.RightSidebarMode
+	if p.RightSidebarWidth > 0 {
+		a.st.RightSidebarSize = max(model.SidebarCollapsedWidth, min(hi, p.RightSidebarWidth))
+	}
 }
 
 func (a *App) configureStandalonePreferences() error {

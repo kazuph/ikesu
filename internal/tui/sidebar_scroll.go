@@ -3,7 +3,6 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
@@ -68,7 +67,7 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 		*off = max(0, min(*off, max(0, v.Total-v.Rect.H)))
 		return
 	}
-	if a.st.RightSidebarArea().W == model.SidebarCollapsedWidth && pointIn(m.X, m.Y, a.st.RightSidebarArea()) {
+	if a.st.RightSidebarCompact() && pointIn(m.X, m.Y, a.st.RightSidebarArea()) {
 		in := a.rightSidebarInput()
 		v := render.CollapsedAgentViewport(in)
 		if up {
