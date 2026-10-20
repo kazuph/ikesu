@@ -35,6 +35,7 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 	restore := `if [[ "$GTX_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$GTX_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
 `
 	capture := `GTX_GUARD_ZDOTDIR_ORIG="${ZDOTDIR:-}"; GTX_GUARD_ZDOTDIR_SET=${+ZDOTDIR}
+export IKESU_GUARD_ZDOTDIR_ORIG="$GTX_GUARD_ZDOTDIR_ORIG" IKESU_GUARD_ZDOTDIR_SET="$GTX_GUARD_ZDOTDIR_SET"
 `
 	// Each original file sees the user's ZDOTDIR. Only the intervals between
 	// startup files use our directory; the final phase restores it permanently.
@@ -81,7 +82,7 @@ func (a *Assets) prepareStartup(m map[string]string, dir string) error {
 		_ = os.Remove(m["GTX_GUARD_READY"])
 		hook := pinPath
 		if a.Config.EffectiveMode() == "enforce" {
-			hook += "export GTX_GUARD_ENFORCING=1\n"
+			hook += "export GTX_GUARD_ENFORCING=1 IKESU_GUARD_ENFORCING=1\n"
 		}
 		hook += `if [[ ! -f "$GTX_GUARD_READY" ]]; then builtin printf '' > "$GTX_GUARD_READY"; fi
 `
@@ -102,7 +103,7 @@ func (a *Assets) agentFunctions(dir string) string {
 		invocation := `ZDOTDIR=` + quote(dir) + ` BASH_ENV=` + quote(filepath.Join(dir, "bash-env")) + ` builtin command ` + agent + ` "$@"`
 		if agent == "claude" {
 			invocation = `local _gtx_claude_prefix=` + quote(filepath.Join(dir, "claude-prefix")) + `
- GTX_GUARD_CLAUDE_PREFIX_ORIG="${CLAUDE_CODE_SHELL_PREFIX:-}" GTX_GUARD_CLAUDE_PREFIX_SET="${CLAUDE_CODE_SHELL_PREFIX+x}" GTX_GUARD_CLAUDE_PREFIX="$_gtx_claude_prefix" CLAUDE_CODE_SHELL_PREFIX="$_gtx_claude_prefix" ` + invocation
+ IKESU_GUARD_CLAUDE_PREFIX_ORIG="${CLAUDE_CODE_SHELL_PREFIX:-}" IKESU_GUARD_CLAUDE_PREFIX_SET="${CLAUDE_CODE_SHELL_PREFIX+x}" IKESU_GUARD_CLAUDE_PREFIX="$_gtx_claude_prefix" GTX_GUARD_CLAUDE_PREFIX_ORIG="${CLAUDE_CODE_SHELL_PREFIX:-}" GTX_GUARD_CLAUDE_PREFIX_SET="${CLAUDE_CODE_SHELL_PREFIX+x}" GTX_GUARD_CLAUDE_PREFIX="$_gtx_claude_prefix" CLAUDE_CODE_SHELL_PREFIX="$_gtx_claude_prefix" ` + invocation
 		}
 		body += fmt.Sprintf(`if ! typeset -f %[1]s >/dev/null 2>&1 && ! alias %[1]s >/dev/null 2>&1; then
 %[1]s() { %[2]s; }

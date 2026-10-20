@@ -38,7 +38,7 @@ func isGtxServerProcess(pid int) bool {
 		return false
 	}
 	base := filepath.Base(args[0])
-	if base != "gtx" && base != "goterrace" {
+	if base != "ikesu" && base != "gtx" && base != "goterrace" {
 		return false
 	}
 	for _, a := range args[1:] {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/goterrace/internal/envcompat"
 	"github.com/kazuph/goterrace/internal/guard"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ func (r *runner) guardCLI(a []string) int {
 	a = a[1:]
 	var c config.Config
 	var e error
-	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || os.Getenv("GTX_GUARD_MARKER") == "" {
+	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || envcompat.Get("GTX_GUARD_MARKER") == "" {
 		c, e = config.Load()
 		if e != nil {
 			fmt.Fprintln(r.errOut(), e)
@@ -50,10 +51,10 @@ func (r *runner) guardCLI(a []string) int {
 		getenv := next.o.getenv
 		next.o.Explicit = false
 		next.o.Getenv = func(key string) string {
-			if key == "GTX_SOCKET_PATH_EXPLICIT" {
+			if key == "IKESU_SOCKET_PATH_EXPLICIT" || key == "GTX_SOCKET_PATH_EXPLICIT" {
 				return "1"
 			}
-			if key == "GTX_SOCKET_PATH" {
+			if key == "IKESU_SOCKET_PATH" || key == "GTX_SOCKET_PATH" {
 				return marker.Socket
 			}
 			return getenv(key)

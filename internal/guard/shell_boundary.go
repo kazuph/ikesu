@@ -45,7 +45,7 @@ func commandBoundary(i Input) string {
 		return "判定・権限を変更する操作の対象を安全に確定できません"
 	}
 	switch cmd {
-	case "gtx", "herdr":
+	case "ikesu", "gtx", "herdr":
 		if len(args) >= 2 && args[0] == "guard" && args[1] == "claude-prefix" {
 			return "専用入口の実行内容は入口自身で全体を確認する必要があります"
 		}

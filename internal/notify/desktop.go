@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/goterrace/internal/envcompat"
 	"github.com/kazuph/goterrace/internal/machine"
 	"os"
 	"os/exec"
@@ -83,7 +84,7 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 		}
 	}
 	path, enabled := SoundPath(c, n.Agent, n.Kind)
-	if !enabled || os.Getenv("GTX_DISABLE_SOUND") != "" {
+	if !enabled || envcompat.Get("GTX_DISABLE_SOUND") != "" {
 		return nil
 	}
 	if path == "" {

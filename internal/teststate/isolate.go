@@ -24,7 +24,7 @@ func Run(run func() int) (code int) {
 	}()
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(key, "GTX_") && !strings.HasPrefix(key, "GTX_PERF_") || key == "GOTERRACE" || key == "GOTERRACE_PANE_ID" {
+		if strings.HasPrefix(key, "GTX_") && !strings.HasPrefix(key, "GTX_PERF_") || strings.HasPrefix(key, "IKESU_") && !strings.HasPrefix(key, "IKESU_PERF_") || key == "IKESU" || key == "GOTERRACE" || key == "GOTERRACE_PANE_ID" {
 			if err := os.Unsetenv(key); err != nil {
 				fmt.Fprintln(os.Stderr, "gtx test isolation:", err)
 				return 1

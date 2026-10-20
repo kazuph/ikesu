@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/envcompat"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -149,7 +150,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(k, "GTX_PLUGIN_") || k == "GTX_PANE_ID" || k == "GTX_TAB_ID" || k == "GTX_WORKSPACE_ID" {
+		if strings.HasPrefix(k, "IKESU_PLUGIN_") || strings.HasPrefix(k, "GTX_PLUGIN_") || k == "GTX_PANE_ID" || k == "GTX_TAB_ID" || k == "GTX_WORKSPACE_ID" || k == "IKESU_PANE_ID" || k == "IKESU_TAB_ID" || k == "IKESU_WORKSPACE_ID" {
 			continue
 		}
 		values[k] = v
@@ -159,6 +160,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	}
 	for k, v := range map[string]string{"GTX_SOCKET_PATH": e.SocketPath, "GTX_BIN_PATH": stableBinPath(e.BinPath), "GTX_ENV": "1", "GTX_PLUGIN_ID": p.ID, "GTX_PLUGIN_ROOT": p.Root, "GTX_PLUGIN_CONFIG_DIR": config, "GTX_PLUGIN_STATE_DIR": state, "GTX_PLUGIN_CONTEXT_JSON": string(raw)} {
 		values[k] = v
+		values["IKESU_"+strings.TrimPrefix(k, "GTX_")] = v
 	}
 	for field, key := range map[string]string{"workspace_id": "GTX_WORKSPACE_ID", "tab_id": "GTX_TAB_ID", "focused_pane_id": "GTX_PANE_ID", "clicked_url": "GTX_PLUGIN_CLICKED_URL", "link_handler_id": "GTX_PLUGIN_LINK_HANDLER_ID"} {
 		if v, ok := context[field].(string); ok && v != "" {
@@ -174,7 +176,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	for _, k := range keys {
 		env = append(env, k+"="+values[k])
 	}
-	return env, nil
+	return envcompat.Both(env), nil
 }
 func (e *Engine) Invoke(pluginID, actionID string, context Context) (ActionInfo, CommandLog, error) {
 	owner, a, info, err := e.Store.ResolveAction(pluginID, actionID)

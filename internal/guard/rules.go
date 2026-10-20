@@ -40,7 +40,7 @@ func defaults(v, d []string) []string {
 	return v
 }
 func (c Config) Commands() []string {
-	return defaults(c.Targets, strings.Fields("rm rmdir rimraf trash mv dd mkfs fdisk diskutil format parted gparted git gh curl wget http https aws npm npx pnpm pnpx yarn bun bunx deno cargo env arch firebase vercel flyctl fly wrangler sqlite3 psql mysql netlify railway render amplify cdk serverless sls pulumi terraform gtx herdr touch tee cp ln"))
+	return defaults(c.Targets, strings.Fields("rm rmdir rimraf trash mv dd mkfs fdisk diskutil format parted gparted git gh curl wget http https aws npm npx pnpm pnpx yarn bun bunx deno cargo env arch firebase vercel flyctl fly wrangler sqlite3 psql mysql netlify railway render amplify cdk serverless sls pulumi terraform ikesu gtx herdr touch tee cp ln"))
 }
 
 type Input struct {
@@ -132,7 +132,7 @@ func classify(c Config, i Input) Verdict {
 			return result("block", "protected", "AIプロセスによる .allow-main 関連操作は完全に禁止されています")
 		}
 	}
-	if has([]string{"gtx", "herdr"}, cmd) && wildcard(a) {
+	if has([]string{"ikesu", "gtx", "herdr"}, cmd) && wildcard(a) {
 		return result("block", "wildcard", "宛先 '*' は --room を付けても room 内に限定されず、全agentへ一斉配信されます。これは承認では解除できません。")
 	}
 	if reason := commandBoundary(i); reason != "" {
@@ -281,7 +281,7 @@ func wildcard(a []string) bool {
 	return false
 }
 func danger(c Config, i Input) bool {
-	if has([]string{"git", "gh", "gtx", "herdr"}, filepath.Base(i.Command)) {
+	if has([]string{"git", "gh", "ikesu", "gtx", "herdr"}, filepath.Base(i.Command)) {
 		return false
 	}
 	for _, w := range strings.FieldsFunc(strings.ToLower(i.Line()), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
@@ -293,7 +293,7 @@ func danger(c Config, i Input) bool {
 }
 func temporaryKey(c Config, i Input) string {
 	cmd, a := filepath.Base(i.Command), i.Args
-	if wildcard(a) && has([]string{"gtx", "herdr"}, cmd) || has(strings.Fields("dd mkfs fdisk diskutil format parted gparted"), cmd) {
+	if wildcard(a) && has([]string{"ikesu", "gtx", "herdr"}, cmd) || has(strings.Fields("dd mkfs fdisk diskutil format parted gparted"), cmd) {
 		return ""
 	}
 	scope := probe(i, "git", "rev-parse", "--show-toplevel")

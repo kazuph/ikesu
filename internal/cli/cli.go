@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/envcompat"
 )
 
 // Options configures a CLI invocation.
@@ -37,10 +38,7 @@ type Options struct {
 }
 
 func (o Options) getenv(key string) string {
-	if o.Getenv != nil {
-		return o.Getenv(key)
-	}
-	return os.Getenv(key)
+	return envcompat.Lookup(o.Getenv, key)
 }
 
 func (o Options) pid() uint32 {

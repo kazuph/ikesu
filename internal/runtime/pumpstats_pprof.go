@@ -2,6 +2,6 @@
 
 package runtime
 
-import "os"
+import "github.com/kazuph/goterrace/internal/envcompat"
 
-func init() { pumpStatsPath = os.Getenv("GTX_PUMP_STATS") }
+func init() { pumpStatsPath = envcompat.Get("GTX_PUMP_STATS") }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/goterrace/internal/envcompat"
 	"io"
 	"os"
 	"os/exec"
@@ -47,7 +48,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 			managed.Close()
 		}
 	}()
-	binary := os.Getenv("GTX_MACHINE_REMOTE_BINARY")
+	binary := envcompat.Get("GTX_MACHINE_REMOTE_BINARY")
 	if binary == "" {
 		binary = "gtx"
 	}

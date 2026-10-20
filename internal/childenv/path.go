@@ -26,7 +26,7 @@ func IsGuardShimDirectory(path string, env []string) bool {
 			values[k] = v
 		}
 	}
-	for _, key := range []string{"GTX_GUARD_BIN", "HERDR_GUARD_BIN", "HERDR_GUARD_SHIM_DIR"} {
+	for _, key := range []string{"IKESU_GUARD_BIN", "GTX_GUARD_BIN", "HERDR_GUARD_BIN", "HERDR_GUARD_SHIM_DIR"} {
 		if value := values[key]; value != "" && physicalPath(path) == physicalPath(value) {
 			return true
 		}
@@ -35,7 +35,7 @@ func IsGuardShimDirectory(path string, env []string) bool {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	roots := []string{values["GTX_STATE_DIR"], filepath.Join(home, ".local", "state")}
+	roots := []string{values["IKESU_STATE_DIR"], values["GTX_STATE_DIR"], filepath.Join(home, ".local", "state")}
 	for _, root := range roots {
 		if root == "" {
 			continue
