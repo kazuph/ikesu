@@ -24,8 +24,9 @@ func TestSidebarContinuousTwoServersRightClicks(t *testing.T) {
 			if err := m.input(mouseEvent(t, fmt.Sprintf("\x1b[<2;%d;%dM", hit.Rect.X+1, hit.Rect.Y+1))); err != nil {
 				t.Fatal(err)
 			}
+			t.Logf("compact=%d machine=%s right=%t row=%+v x=%d y=%d", compact, hit.Machine, hit.Right, hit.Row, hit.Rect.X, hit.Rect.Y)
 			e := m.endpoints[hit.Machine]
-			h.until("right-click menu at target endpoint", func() bool {
+			h.until(fmt.Sprintf("right-click compact=%d machine=%s right=%t row=%+v menu=%t", compact, hit.Machine, hit.Right, hit.Row, e.snapshot.Menu != nil), func() bool {
 				return m.pending == nil && m.active == hit.Machine && e.snapshot.Menu != nil
 			})
 			key := fmt.Sprintf("%s/%t/%+v", hit.Machine, hit.Right, hit.Row)
