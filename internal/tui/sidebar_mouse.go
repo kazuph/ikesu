@@ -120,6 +120,7 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 			width = max(model.SidebarCollapsedWidth, min(hi, width))
 			if g.right {
 				s.RightSidebarSize = width
+				s.RightSidebarManual = true
 				s.RightSidebarMode = ""
 				if width < lo {
 					s.RightSidebarMode = "compact"

@@ -194,13 +194,7 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			v.style.Attrs |= uv.AttrBold
 			v.text = fmt.Sprintf("%%%d", r.Pane)
 			if hasConfiguredAgentRows(in.SidebarConfig, sn.Agent) {
-				v.text = sn.Title
-				if label := s.PaneLabels[r.Pane]; label != "" {
-					v.text = label
-				}
-				if v.text == "" {
-					v.text = sn.Label
-				}
+				v.text = sidebarPaneName(s, sn, r.Pane)
 				v.style.Attrs &^= uv.AttrBold
 				if in.ServerUI {
 					v.style.Fg = f.Palette.Dim
@@ -315,4 +309,31 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 		indent = 3
 	}
 	drawTokens(f, x+indent, y, max(0, w-indent), tokens)
+}
+
+// sidebarPaneName keeps the same name when an endpoint switches presentation.
+func sidebarPaneName(s *model.AppState, sn *PaneSnap, pane int) string {
+	if name := s.PaneLabels[pane]; name != "" {
+		return name
+	}
+	if sn == nil {
+		return ""
+	}
+	if sn.Title != "" {
+		return sn.Title
+	}
+	return sn.Label
+}
+
+func compactSidebarRowName(in Input, row SidebarRow) string {
+	if row.Kind == RowJob {
+		return in.Jobs[row.Line].Label
+	}
+	if row.Kind != RowAgent {
+		return ""
+	}
+	if name := sidebarPaneName(in.State, in.Panes[row.Pane], row.Pane); name != "" {
+		return name
+	}
+	return WorkspaceDisplayName(in.State.Workspaces[row.Ws], in.Panes)
 }

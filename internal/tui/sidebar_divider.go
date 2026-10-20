@@ -37,6 +37,7 @@ func (a *App) finishSidebarDivider(g *sidebarGesture, now time.Time) {
 	}
 	if g.right {
 		a.st.RightSidebarMode = ""
+		a.st.RightSidebarManual = false
 		_, _, normal := a.st.SidebarBounds()
 		a.st.RightSidebarSize = normal
 		if width := a.sidebarConfig.UI.RightSidebarWidth; width != nil {

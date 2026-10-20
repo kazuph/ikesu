@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/endpoint"
@@ -164,6 +165,61 @@ func TestSidebarRightManualWidthSurvivesReload(t *testing.T) {
 		a.ApplyReloadedConfig(c)
 		if a.st.RightSidebarArea().W != 10 || a.st.RightSidebarMode != "compact" {
 			t.Fatalf("server=%t reload lost right manual width: %v mode=%s", server, a.st.RightSidebarArea(), a.st.RightSidebarMode)
+		}
+	}
+}
+
+func TestSidebarRightManualReloadThemeToggleRestoreAndDefault(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		a := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+		if server {
+			a.SetServerUI()
+		}
+		c := config.Config{}
+		configured := 42
+		c.UI.RightSidebarWidth = &configured
+		a.setSidebarConfig(c, true)
+		var saved endpoint.ViewPreferences
+		a.preferenceSave = func(p endpoint.ViewPreferences) error { saved = p; return nil }
+		for _, width := range []int{10, 35} {
+			sidebarEvent(a, input.KindMouseClick, a.st.SidebarArea().W-1, 5)
+			sidebarEvent(a, input.KindMouseMotion, 34, 5)
+			sidebarEvent(a, input.KindMouseRelease, 34, 5)
+			x := a.st.Cols - width
+			sidebarEvent(a, input.KindMouseClick, a.st.RightSidebarArea().X, 5)
+			sidebarEvent(a, input.KindMouseMotion, x, 5)
+			sidebarEvent(a, input.KindMouseRelease, x, 5)
+			check := func(stage string) {
+				t.Helper()
+				if a.st.RightSidebarArea().W != width || (a.st.RightSidebarMode == "compact") != (width < 18) {
+					t.Fatalf("%s server=%t width=%d actual=%v mode=%s", stage, server, width, a.st.RightSidebarArea(), a.st.RightSidebarMode)
+				}
+			}
+			a.ApplyReloadedConfig(c)
+			check("reload")
+			c.Theme.Name = "catppuccin-latte"
+			a.ApplyReloadedConfig(c)
+			check("theme")
+			a.exec(model.CmdToggleSidebar{})
+			check("left toggle")
+			a.saveViewPreferences()
+			restored := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+			restored.setSidebarConfig(c, true)
+			restored.applyViewPreferences(&saved)
+			restored.ApplyReloadedConfig(c)
+			if restored.st.RightSidebarArea().W != width || !restored.st.RightSidebarManual {
+				t.Fatal("manual metadata not restored")
+			}
+		}
+		g := &sidebarGesture{right: true, double: true, divider: true}
+		a.finishSidebarDivider(g, time.Now())
+		if a.st.RightSidebarArea().W != 42 || a.st.RightSidebarManual {
+			t.Fatal("double click must reset manual and restore configured width")
+		}
+		configured = 38
+		a.ApplyReloadedConfig(c)
+		if a.st.RightSidebarArea().W != 38 {
+			t.Fatal("default view must follow config after double click")
 		}
 	}
 }

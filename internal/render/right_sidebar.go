@@ -114,24 +114,7 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 				style.Bg = nil
 			}
 			f.Set(a.X+1, pos.Y, g.Rune, style)
-			name := ""
-			if r.Kind == RowAgent {
-				name = s.PaneLabels[r.Pane]
-				if name == "" {
-					if sn := in.Panes[r.Pane]; sn != nil {
-						name = sn.Label
-						if name == "" {
-							name = sn.Title
-						}
-					}
-				}
-				if name == "" {
-					name = WorkspaceDisplayName(s.Workspaces[r.Ws], in.Panes)
-				}
-			} else if r.Kind == RowJob {
-				name = in.Jobs[r.Line].Label
-			}
-			f.Text(a.X+2, pos.Y, name, style, a.X+a.W)
+			f.Text(a.X+2, pos.Y, compactSidebarRowName(in, r), style, a.X+a.W)
 		}
 		return
 	}

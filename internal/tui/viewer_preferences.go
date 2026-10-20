@@ -15,13 +15,14 @@ type displayState struct {
 	explicitHidden                                           bool
 	split                                                    *float64
 	density, scope                                           string
+	rightManual                                              bool
 }
 
 func captureDisplay(s *model.AppState) displayState {
 	return displayState{s.SidebarVisible, s.SidebarCollapsedHidden, s.SidebarManual,
 		s.ShowTabBar, s.HideTabBarWhenSingleTab, s.PaneBorders, s.PaneGaps,
 		s.SidebarSize, s.SidebarMin, s.SidebarMax, s.SidebarDefault, s.MobileWidthThreshold,
-		s.RightSidebarMode, s.RightSidebarSize, s.SidebarHidden, s.SidebarSectionSplit, s.WorkspaceDensity, s.AgentScope}
+		s.RightSidebarMode, s.RightSidebarSize, s.SidebarHidden, s.SidebarSectionSplit, s.WorkspaceDensity, s.AgentScope, s.RightSidebarManual}
 }
 
 func (d displayState) apply(s *model.AppState) {
@@ -30,6 +31,7 @@ func (d displayState) apply(s *model.AppState) {
 	s.SidebarSize, s.SidebarMin, s.SidebarMax, s.SidebarDefault = d.size, d.min, d.max, d.normal
 	s.MobileWidthThreshold, s.SidebarSectionSplit = d.mobile, d.split
 	s.WorkspaceDensity, s.AgentScope = d.density, d.scope
+	s.RightSidebarManual = d.rightManual
 	s.RightSidebarMode, s.RightSidebarSize, s.SidebarHidden = d.rightMode, d.rightSize, d.explicitHidden
 }
 
@@ -52,7 +54,7 @@ func (a *App) saveViewPreferences() {
 		return
 	}
 	p := endpoint.ViewPreferences{SidebarWidth: a.st.SidebarSize, SidebarManual: a.st.SidebarManual,
-		SidebarCollapsed: !a.st.SidebarVisible, SidebarHidden: a.st.SidebarHidden, RightSidebarMode: a.st.RightSidebarMode, RightSidebarWidth: a.st.RightSidebarSize}
+		SidebarCollapsed: !a.st.SidebarVisible, SidebarHidden: a.st.SidebarHidden, RightSidebarMode: a.st.RightSidebarMode, RightSidebarWidth: a.st.RightSidebarSize, RightSidebarManual: a.st.RightSidebarManual}
 	if p.SidebarWidth <= 0 {
 		p.SidebarWidth = a.st.ExpandedSidebarWidth()
 	}
@@ -85,6 +87,7 @@ func (a *App) applyViewPreferences(p *endpoint.ViewPreferences) {
 	a.st.SidebarVisible = !p.SidebarCollapsed
 	a.st.SidebarHidden = p.SidebarHidden
 	a.st.RightSidebarMode = p.RightSidebarMode
+	a.st.RightSidebarManual = p.RightSidebarManual
 	if p.RightSidebarWidth > 0 {
 		a.st.RightSidebarSize = max(model.SidebarCollapsedWidth, min(hi, p.RightSidebarWidth))
 	}

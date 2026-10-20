@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/model"
 )
 
@@ -65,5 +66,38 @@ func TestMachineNarrowSidebarUsesCompactRows(t *testing.T) {
 	rows := m.rightRows(in)
 	if len(rows) != 2 || rows[0].header || rows[0].row.Kind != RowAgent {
 		t.Fatalf("narrow rows=%+v", rows)
+	}
+}
+
+func TestSidebarPaneNameConsistentAcrossWidths(t *testing.T) {
+	for _, manual := range []string{"", "MANUAL"} {
+		s := model.New(t.TempDir(), 160, 30)
+		s.PaneLabels = map[int]string{1: manual}
+		in := Input{State: s, Panes: map[int]*PaneSnap{1: {Agent: "codex", Title: "TITLE", Label: "LABEL", Status: StatusGlyph{Rune: "●", Key: "idle"}}}}
+		in.SidebarConfig.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "pane"}}}
+		want := "TITLE"
+		if manual != "" {
+			want = manual
+		}
+		for _, width := range []int{10, 26} {
+			s.RightSidebarSize = width
+			s.RightSidebarMode = ""
+			if width < 18 {
+				s.RightSidebarMode = "compact"
+			}
+			frame := Compose(in).Frame
+			y, x := 2, s.RightSidebarArea().X+1
+			if width < 18 {
+				y = 0
+				x++
+			}
+			text := ""
+			for ; x < 160; x++ {
+				text += frame.Cell(x, y).Content
+			}
+			if strings.TrimSpace(text) != want {
+				t.Fatalf("width %d: got %q want %q", width, text, want)
+			}
+		}
 	}
 }

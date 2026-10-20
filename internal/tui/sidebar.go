@@ -34,9 +34,11 @@ func (a *App) setSidebarConfig(c config.Config, startup bool) {
 	if !a.st.SidebarManual {
 		a.st.SidebarSize = n
 	}
-	a.st.RightSidebarSize = 0
-	if c.UI.RightSidebarWidth != nil {
-		a.st.RightSidebarSize = max(lo, min(hi, *c.UI.RightSidebarWidth))
+	if !a.st.RightSidebarManual {
+		a.st.RightSidebarSize = 0
+		if c.UI.RightSidebarWidth != nil {
+			a.st.RightSidebarSize = max(lo, min(hi, *c.UI.RightSidebarWidth))
+		}
 	}
 	a.st.WorkspaceDensity = c.WorkspaceDensity()
 	a.st.AgentScope = c.AgentScope()
