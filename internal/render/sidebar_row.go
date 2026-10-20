@@ -37,10 +37,16 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, x, y, w
 	}
 	if glyph.Rune == "" || glyph.Rune == " " {
 		glyph.Rune = "·"
+		if glyph.Color == nil {
+			glyph.Color = Dim
+		}
 	}
 	style := uv.Style{Fg: f.ThemeColor(glyph.Color), Attrs: boldIf(glyph.Bold)}
-	if cell := f.Cell(x+w-1, y); cell != nil {
+	if cell := f.Cell(x, y); cell != nil {
 		style.Bg = cell.Style.Bg
+	}
+	if w == 1 && r.Kind == RowWorkspace && r.Ws == s.Active {
+		style.Bg = f.Palette.PanelBG
 	}
 	f.Set(x+w-1, y, glyph.Rune, style)
 }

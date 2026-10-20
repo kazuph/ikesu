@@ -32,13 +32,18 @@ func TestRightSidebarStatusColumnsAndPanelOwnership(t *testing.T) {
 		s.Apply(model.CmdToggleSidebar{})
 		s.Apply(model.CmdToggleRightSidebar{})
 		f = Compose(in).Frame
-		if f.Cell(0, 0).Content != "?" || f.Cell(0, 1).Content != "●" {
-			t.Fatal("workspace status column")
-		}
-		right = s.RightSidebarArea()
-		for y, want := range []string{"?", "●", "─", "●"} {
-			if f.Cell(right.X+1, y).Content != want {
-				t.Fatalf("server=%v row=%d: %q", server, y, f.Cell(right.X+1, y).Content)
+		for _, pos := range SidebarViewForInput(in).Rows {
+			if pos.Row.Kind == RowWorkspace {
+				want := []string{"?", "●"}[pos.Row.Ws]
+				if f.Cell(0, pos.Y).Content != want {
+					t.Fatalf("workspace row %d status", pos.Y)
+				}
+			}
+			if pos.Row.Kind == RowAgent && pos.Row.Line == 0 {
+				want := in.Panes[pos.Row.Pane].Status.Rune
+				if f.Cell(159, pos.Y).Content != want {
+					t.Fatalf("agent row %d status", pos.Y)
+				}
 			}
 		}
 		in.JobsPanel = true

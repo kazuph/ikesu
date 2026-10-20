@@ -28,7 +28,7 @@ func TestRightSidebarHeaderButtonsNeverOverlapAndBothEdgesClick(t *testing.T) {
 				frame := render.Compose(render.Input{State: a.st, JobsPanel: jobs}).Frame
 				for i, label := range []string{"[agents]", "[jobs]", render.SidebarAgentSortLabel(a.st)} {
 					r := rects[i]
-					for offset, ch := range label {
+					for offset, ch := range label[:r.W] {
 						if frame.Cell(r.X+offset, r.Y).Content != string(ch) {
 							t.Fatal("drawn header differs from hit rectangle", width, scope, jobs, label, offset)
 						}
@@ -45,6 +45,9 @@ func TestRightSidebarHeaderButtonsNeverOverlapAndBothEdgesClick(t *testing.T) {
 					}
 				}
 				for i, r := range rects {
+					if r.W == 0 {
+						continue
+					}
 					for _, x := range []int{r.X, r.X + r.W - 1} {
 						a := newApp()
 						a.rightSidebarClick(uv.Mouse{X: x, Y: r.Y, Button: uv.MouseLeft})

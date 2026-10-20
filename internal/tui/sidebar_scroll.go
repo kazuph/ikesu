@@ -20,7 +20,7 @@ func (a *App) sidebarView() render.SidebarView {
 }
 
 func (a *App) revealServerWorkspace() {
-	if !a.st.SidebarVisible {
+	if a.st.SidebarArea().W == 0 {
 		return
 	}
 	view := a.sidebarView()

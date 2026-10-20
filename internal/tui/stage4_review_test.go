@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/render"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -13,31 +15,37 @@ func TestStage4ReviewCollapsedWorkspaceOverflow(t *testing.T) {
 	for i := 1; i < 60; i++ {
 		s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
 	}
-	s.SidebarVisible = false
 	a := NewApp(s, runtime.NewSupervisor(), nil, t.TempDir())
 	a.SetServerUI()
 	a.sidebarScroll = 3
-	a.sidebarClick(uv.Mouse{X: 0, Y: 0, Button: uv.MouseLeft})
-	if s.Active != 3 {
-		t.Errorf("visible workspace index 3 clicked index %d", s.Active)
+	expanded := a.sidebarView()
+	s.SidebarVisible = false
+	compact := a.sidebarView()
+	if expanded.Workspace.Total != compact.Workspace.Total || expanded.Workspace.Offset != compact.Workspace.Offset || expanded.Workspace.Rect.Y != compact.Workspace.Rect.Y {
+		t.Fatal("collapse changed workspace viewport")
 	}
-	for range 10 {
+	var target int
+	for _, pos := range compact.Rows {
+		if !pos.Right && pos.Row.Kind == render.RowWorkspace {
+			target = pos.Row.Ws
+			a.sidebarClick(uv.Mouse{X: 0, Y: pos.Y, Button: uv.MouseLeft})
+			a.sidebarGestureMouse(input.Event{Kind: input.KindMouseRelease, Mouse: uv.Mouse{X: 0, Y: pos.Y}})
+			break
+		}
+	}
+	if s.Active != target {
+		t.Fatalf("expanded row selected wrong workspace: %d want %d", s.Active, target)
+	}
+	for range 100 {
 		a.sidebarWheel(uv.Mouse{X: 0, Y: 10}, false)
 	}
-	if want := len(s.Workspaces) - s.Rows; a.sidebarScroll != want {
-		t.Fatalf("upper viewport cannot reach tail: offset=%d want=%d", a.sidebarScroll, want)
+	v := a.sidebarView().Workspace
+	if a.sidebarScroll != max(0, v.Total-v.Rect.H) {
+		t.Fatalf("cannot reach tail: %d view=%+v", a.sidebarScroll, v)
 	}
-	upper := a.sidebarScroll
-	a.revealServerWorkspace()
-	if a.sidebarScroll != upper {
-		t.Fatal("collapsed selection changed upper offset using expanded card heights")
-	}
-	a.sidebarWheel(uv.Mouse{X: 0, Y: 25}, false)
-	if a.sidebarScroll != upper {
-		t.Fatal("wheel at the bottom moved beyond the final workspace")
-	}
+	before := s.Active
 	a.sidebarClick(uv.Mouse{X: 1, Y: 25, Button: uv.MouseLeft})
-	if s.Active != 3 {
-		t.Fatal("divider selected a workspace")
+	if s.Active != before {
+		t.Fatal("divider selected workspace")
 	}
 }

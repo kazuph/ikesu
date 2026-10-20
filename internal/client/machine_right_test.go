@@ -274,7 +274,7 @@ func TestRightSidebarTwoMachinesActualPTYMatrixAndWheel(t *testing.T) {
 			}
 			frame := render.ComposeClient(*m.endpoints[m.active].snapshot, &m.sidebar, "test", false).Frame
 			for _, hit := range hits {
-				if right == 1 && (hit.Header || frame.Cell(hit.Rect.X, hit.Rect.Y).Content == "▾") {
+				if right == 1 && hit.Header && frame.Cell(hit.Rect.X, hit.Rect.Y).Content != " " {
 					t.Fatal("compact machine header overwrote status")
 				}
 				if hit.Header || hit.Row.Kind != render.RowAgent && (hit.Row.Kind != render.RowJob || right != 1) {
@@ -374,17 +374,32 @@ func TestNarrowRightSidebarTwoMachinesEveryRowAndIndependentModes(t *testing.T) 
 				for _, jobsPanel := range []bool{false, true} {
 					// Switch through the real viewer protocol so visibility and snapshots stay current.
 					switchSource(source)
-					if m.endpoints[source].snapshot.JobsPanel != jobsPanel && !m.endpoints[source].snapshot.State.RightSidebarCompact() {
-						header := render.RightSidebarHeaderFor(m.endpoints[source].snapshot.State, 0)
-						tab := header.Agents
-						if jobsPanel {
-							tab = header.Jobs
+					// Select the shared panel while expanded, then preserve it
+					// while collapsing, exactly as the product's two-cell UI.
+					for id, e := range m.endpoints {
+						pref := endpoint.ViewPreferences{SidebarWidth: 26, RightSidebarWidth: 26, RightSidebarManual: true}
+						e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: &pref})
+						h.until("expanded panel selector", func() bool { return e.snapshot.State.RightSidebarArea().W == 26 })
+						if e.snapshot.JobsPanel != jobsPanel {
+							header := render.RightSidebarHeaderFor(e.snapshot.State, 0)
+							tab := header.Agents
+							if jobsPanel {
+								tab = header.Jobs
+							}
+							raw := fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", tab.X+1, tab.Y+1, tab.X+1, tab.Y+1)
+							if err := m.sendInput(id, []byte(raw)); err != nil {
+								t.Fatal(err)
+							}
+							h.until("panel chosen while open", func() bool { return e.snapshot.JobsPanel == jobsPanel })
 						}
-						raw := fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", tab.X+1, tab.Y+1, tab.X+1, tab.Y+1)
-						if err := m.sendInput(source, []byte(raw)); err != nil {
-							t.Fatal(err)
+						pref.RightSidebarWidth = widths[id]
+						if widths[id] < 18 {
+							pref.RightSidebarMode = "compact"
 						}
-						h.until("jobs tab", func() bool { return m.endpoints[source].snapshot.JobsPanel == jobsPanel })
+						e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: &pref})
+						h.until("collapsed selection retained", func() bool {
+							return e.snapshot.State.RightSidebarArea().W == widths[id] && e.snapshot.JobsPanel == jobsPanel
+						})
 					}
 					for scroll := 0; scroll < 12; scroll++ {
 						switchSource(source)
@@ -424,12 +439,11 @@ func TestNarrowRightSidebarTwoMachinesEveryRowAndIndependentModes(t *testing.T) 
 								t.Fatal(err)
 							}
 							target := m.endpoints[hit.Machine].snapshot
-							compact := target.State.RightSidebarCompact()
 							expectedScroll := target.AgentScroll
-							if !compact && hit.Row.Kind == render.RowJob {
+							if hit.Row.Kind == render.RowJob {
 								expectedScroll = target.JobScroll
 							}
-							if !compact && hit.Row.Kind == render.RowAgent && target.JobsPanel {
+							if hit.Row.Kind == render.RowAgent && target.JobsPanel {
 								expectedScroll = 0
 							}
 							expectedScroll += strings.Count(string(raw), "\x1b[<65;") - strings.Count(string(raw), "\x1b[<64;")
@@ -440,7 +454,7 @@ func TestNarrowRightSidebarTwoMachinesEveryRowAndIndependentModes(t *testing.T) 
 							h.until(fmt.Sprintf("width=%d mixed=%t source=%s jobs=%t scroll=%d target=%s pane=%d row=%+v agentScroll=%d", width, mixed, source, jobsPanel, actualScroll, hit.Machine, pane, hit.Row, m.endpoints[hit.Machine].snapshot.AgentScroll), func() bool {
 								snapshot := m.endpoints[hit.Machine].snapshot
 								scroll := snapshot.AgentScroll
-								if !compact && hit.Row.Kind == render.RowJob {
+								if hit.Row.Kind == render.RowJob {
 									scroll = snapshot.JobScroll
 								}
 								return m.pending == nil && m.active == hit.Machine && snapshot.State.FocusedPane() == pane && scroll == expectedScroll

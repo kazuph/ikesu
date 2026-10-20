@@ -114,11 +114,12 @@ func TestNarrowSidebarActualPTYClickTargetsAndToggle(t *testing.T) {
 		a.st.RightSidebarMode = "compact"
 		a.SetReported(1, "codex", "idle")
 		a.SetReported(2, "codex", "idle")
-		sidebarEvent(a, input.KindMouseClick, width-2, 1)
+		sidebarEvent(a, input.KindMouseClick, width-2, 7)
+		sidebarEvent(a, input.KindMouseRelease, width-2, 7)
 		if a.st.Active != 1 {
 			t.Fatalf("width=%d workspace name click missed", width)
 		}
-		sidebarEvent(a, input.KindMouseClick, a.st.RightSidebarArea().X+width-1, 0)
+		sidebarEvent(a, input.KindMouseClick, a.st.RightSidebarArea().X+width-1, 2)
 		if a.st.Active != 0 || a.focusedPane() != 1 {
 			t.Fatalf("width=%d right name click missed", width)
 		}

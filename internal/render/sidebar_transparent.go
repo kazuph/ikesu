@@ -17,6 +17,10 @@ func clearSidebarCardBackground(f *Frame, s *model.AppState, row SidebarRow, x, 
 		}
 	}
 	if row.Ws == s.Active && row.Kind != RowAgent {
-		f.Set(x, y, "▌", uv.Style{Fg: f.Palette.Accent})
+		if width > 1 {
+			f.Set(x, y, "▌", uv.Style{Fg: f.Palette.Accent})
+		} else if cell := f.Cell(x, y); cell != nil {
+			cell.Style.Bg = f.Palette.PanelBG
+		}
 	}
 }

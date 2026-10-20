@@ -103,14 +103,14 @@ func TestCollapsedEndpointStatusKeepsActiveBackground(t *testing.T) {
 		in.SidebarConfig.UI.TransparentSidebarCards = transparent
 		f := Compose(in).Frame
 		for y := 0; y < len(s.Workspaces); y++ {
-			c := f.Cell(0, y)
+			c := f.Cell(0, 4+y*3)
 			if c.Content != "·" || c.Style.Fg != f.Palette.Dim {
 				t.Fatal("status cell missing", c)
 			}
 			if y == s.Active && c.Style.Bg != f.Palette.PanelBG {
 				t.Fatal("active workspace must retain a background even in transparent mode", c)
 			}
-			if f.Cell(1, y).Content != "│" {
+			if f.Cell(1, 4+y*3).Content != "│" {
 				t.Fatal("status divider missing")
 			}
 		}

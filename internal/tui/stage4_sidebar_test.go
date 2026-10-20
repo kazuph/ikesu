@@ -24,15 +24,15 @@ func TestStage4RightCollapsedAgentClickSelectsItsPane(t *testing.T) {
 	a.SetReported(1, "codex", "idle")
 	a.SetReported(2, "codex", "blocked")
 	x := s.RightSidebarArea().X + 1
-	a.rightSidebarClick(uv.Mouse{X: x, Y: 0, Button: uv.MouseLeft})
+	a.rightSidebarClick(uv.Mouse{X: x, Y: 2, Button: uv.MouseLeft})
 	if s.Active != 1 || a.focusedPane() != 2 {
 		t.Fatal("first priority status did not select its pane")
 	}
-	a.rightSidebarClick(uv.Mouse{X: x, Y: 1, Button: uv.MouseLeft})
+	a.rightSidebarClick(uv.Mouse{X: x, Y: 4, Button: uv.MouseLeft})
 	if s.Active != 0 || a.focusedPane() != 1 {
 		t.Fatal("second status did not select its pane")
 	}
-	a.rightSidebarClick(uv.Mouse{X: x, Y: 3, Button: uv.MouseLeft})
+	a.rightSidebarClick(uv.Mouse{X: x, Y: 6, Button: uv.MouseLeft})
 	if s.Active != 0 {
 		t.Fatal("blank right row changed workspace")
 	}

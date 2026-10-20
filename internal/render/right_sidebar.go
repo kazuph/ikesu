@@ -15,12 +15,15 @@ func RightSidebarHeaderFor(s *model.AppState, y int) RightSidebarHeader {
 	if a.W <= model.SidebarCollapsedWidth {
 		return RightSidebarHeader{}
 	}
-	h := RightSidebarHeader{
-		Agents: layout.Rect{X: a.X + 1, Y: y, W: len("[agents]"), H: 1},
-		Jobs:   layout.Rect{X: a.X + 1 + len("[agents]"), Y: y, W: len("[jobs]"), H: 1},
-		Sort:   layout.Rect{X: a.X + a.W - len(SidebarAgentSortLabel(s)), Y: y, W: len(SidebarAgentSortLabel(s)), H: 1},
+	headerRect := func(x, width int) layout.Rect {
+		x = min(x, a.X+a.W)
+		return layout.Rect{X: x, Y: y, W: min(width, max(0, a.X+a.W-x)), H: 1}
 	}
-
+	h := RightSidebarHeader{
+		Agents: headerRect(a.X+1, len("[agents]")),
+		Jobs:   headerRect(a.X+1+len("[agents]"), len("[jobs]")),
+		Sort:   headerRect(max(a.X+1+len("[agents][jobs]"), a.X+a.W-len(SidebarAgentSortLabel(s))), len(SidebarAgentSortLabel(s))),
+	}
 	return h
 }
 

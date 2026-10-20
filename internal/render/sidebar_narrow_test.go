@@ -26,17 +26,12 @@ func TestNarrowSidebarNamesStayWithinDividers(t *testing.T) {
 				t.Fatalf("width=%d row=%d divider overwritten", width, y)
 			}
 		}
-		if width < 18 {
-			l, r := "", ""
-			for x := 1; x < width-1; x++ {
-				l += f.Cell(x, 0).Content
-				r += f.Cell(right.X+x+1, 0).Content
+		for _, pos := range SidebarViewForInput(in).Rows {
+			if pos.Row.Kind == RowWorkspace && f.Cell(width-2, pos.Y).Content != "●" {
+				t.Fatalf("width=%d workspace status missing at original row", width)
 			}
-			if l != "workspace-name-long"[:width-2] || r != "agent-name-long"[:min(width-2, len("agent-name-long"))]+strings.Repeat(" ", max(0, width-2-len("agent-name-long"))) {
-				t.Fatalf("width=%d names left=%q right=%q", width, l, r)
-			}
-			if f.Cell(right.X+1, 0).Content != "●" {
-				t.Fatal("status missing")
+			if pos.Right && pos.Row.Kind == RowAgent && pos.Row.Line == 0 && f.Cell(159, pos.Y).Content != "●" {
+				t.Fatalf("width=%d agent status missing at original row", width)
 			}
 		}
 	}
@@ -47,10 +42,11 @@ func TestNarrowSidebarPrefersTitleOverLabel(t *testing.T) {
 	s.RightSidebarSize = 10
 	s.RightSidebarMode = "compact"
 	in := Input{State: s, Panes: map[int]*PaneSnap{1: {Agent: "codex", Title: "TITLE", Label: "LABEL", Status: StatusGlyph{Rune: "●", Key: "idle"}}}}
+	in.SidebarConfig.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "pane"}}}
 	f := Compose(in).Frame
 	var text strings.Builder
-	for x := s.RightSidebarArea().X + 2; x < 160; x++ {
-		text.WriteString(f.Cell(x, 0).Content)
+	for x := s.RightSidebarArea().X + 1; x < 159; x++ {
+		text.WriteString(f.Cell(x, 2).Content)
 	}
 	if strings.TrimSpace(text.String()) != "TITLE" {
 		t.Fatalf("narrow name=%q", text.String())
@@ -64,7 +60,7 @@ func TestMachineNarrowSidebarUsesCompactRows(t *testing.T) {
 	in := Input{State: s, Panes: map[int]*PaneSnap{1: {Agent: "codex", Title: "TITLE", Label: "LABEL", Status: StatusGlyph{Rune: "●", Key: "idle"}}}}
 	m := MachineSidebar{Groups: []MachineGroup{{ID: "local", Label: "local", Input: &in}}}
 	rows := m.rightRows(in)
-	if len(rows) != 2 || rows[0].header || rows[0].row.Kind != RowAgent {
+	if len(rows) != 2 || !rows[0].header || rows[1].row.Kind != RowAgent {
 		t.Fatalf("narrow rows=%+v", rows)
 	}
 }
@@ -87,12 +83,9 @@ func TestSidebarPaneNameConsistentAcrossWidths(t *testing.T) {
 			}
 			frame := Compose(in).Frame
 			y, x := 2, s.RightSidebarArea().X+1
-			if width < 18 {
-				y = 0
-				x++
-			}
+
 			text := ""
-			for ; x < 160; x++ {
+			for ; x < 159; x++ {
 				text += frame.Cell(x, y).Content
 			}
 			if strings.TrimSpace(text) != want {

@@ -11,6 +11,8 @@ import (
 	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"github.com/kazuph/goterrace/internal/runtime"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -76,17 +78,23 @@ func TestRightSidebarActualPTYGeometryAndClicks(t *testing.T) {
 		}
 		a.exec(model.CmdToggleRightSidebar{})
 		x := a.st.RightSidebarArea().X + 1
-		sidebarEvent(a, input.KindMouseClick, x, 0)
+		sidebarEvent(a, input.KindMouseClick, x, 2)
 		if a.focusedPane() != 2 || a.st.Active != 1 {
 			t.Fatal("compact priority click missed pane")
 		}
-		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: x, Y: 1, Button: uv.MouseRight}})
+		a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: x, Y: func() int {
+			if server {
+				return 4
+			}
+			return 3
+		}(), Button: uv.MouseRight}})
 		if a.menu == nil || a.focusedPane() != 1 || a.st.Active != 0 {
 			t.Fatal("right-click menu must select its target pane before operating")
 		}
 		a.menu = nil
 		a.exec(model.CmdToggleSidebar{})
-		sidebarEvent(a, input.KindMouseClick, 0, 0)
+		sidebarEvent(a, input.KindMouseClick, 0, 4)
+		sidebarEvent(a, input.KindMouseRelease, 0, 4)
 		if a.st.Active != 0 {
 			t.Fatal("compact workspace click missed")
 		}
@@ -170,13 +178,14 @@ func TestRightSidebarDefaultAndCustomKeyAndDividerCells(t *testing.T) {
 
 func TestRightSidebarLeftCompactLastRowStillSelectsWorkspace(t *testing.T) {
 	root := t.TempDir()
-	s := model.New(root, 160, 4)
+	s := model.New(root, 160, 20)
 	for i := 1; i < 4; i++ {
 		s.Apply(model.CmdNewWorkspace{Cwd: root, NoFocus: true})
 	}
 	a := NewApp(s, runtime.NewSupervisor(), &bytes.Buffer{}, root)
 	a.exec(model.CmdToggleSidebar{})
-	sidebarEvent(a, input.KindMouseClick, 0, 3)
+	sidebarEvent(a, input.KindMouseClick, 0, 13)
+	sidebarEvent(a, input.KindMouseRelease, 0, 13)
 	if s.Active != 3 || s.SidebarArea().W != 2 {
 		t.Fatal("bottom status cell was intercepted by obsolete expand button")
 	}
@@ -185,7 +194,7 @@ func TestRightSidebarLeftCompactLastRowStillSelectsWorkspace(t *testing.T) {
 func TestRightSidebarCompactScrollAndJobCallerActualPTY(t *testing.T) {
 	for _, server := range []bool{false, true} {
 		a := specRuntimeApp(t)
-		a.st.Cols, a.st.Rows = 160, 8
+		a.st.Cols, a.st.Rows = 160, 12
 		if server {
 			a.SetServerUI()
 		}
@@ -200,26 +209,52 @@ func TestRightSidebarCompactScrollAndJobCallerActualPTY(t *testing.T) {
 		}
 		a.st.RightSidebarMode = "compact"
 		a.st.AgentScope = "all"
-		a.jobRows = []render.JobRow{{Label: "first", CallerPane: "p2"}, {Label: "second", CallerPane: "p1"}}
 		x := a.st.RightSidebarArea().X + 1
-		a.wheel(uv.Mouse{X: x, Y: 0, Button: uv.MouseWheelDown})
-		sidebarEvent(a, input.KindMouseClick, x, 0)
-		if a.agentScroll != 1 || a.focusedPane() != 2 {
-			t.Fatal("compact scroll click missed the next agent")
+		a.wheel(uv.Mouse{X: x, Y: 2, Button: uv.MouseWheelDown})
+		if a.agentScroll <= 0 {
+			t.Fatal("collapsed panel did not scroll")
 		}
-		for i := 0; i < 20; i++ {
-			a.wheel(uv.Mouse{X: x, Y: 0, Button: uv.MouseWheelDown})
+		var want int
+		for _, pos := range a.sidebarView().Rows {
+			if pos.Right && pos.Row.Kind == render.RowAgent {
+				want = pos.Row.Pane
+				sidebarEvent(a, input.KindMouseClick, x, pos.Y)
+				break
+			}
 		}
-		sidebarEvent(a, input.KindMouseClick, x, 7)
-		if a.focusedPane() != 1 || a.st.Active != 0 {
-			t.Fatal("compact job click did not focus its caller")
+		if a.focusedPane() != want {
+			t.Fatal("same expanded card row did not select its pane")
 		}
+		log := filepath.Join(t.TempDir(), "job.log")
+		if err := os.WriteFile(log, []byte("JOB_REAL_LOG\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		a.jobRows = []render.JobRow{{Label: "first", CallerPane: "p1", LogPath: log, Cwd: a.cwd}}
+		a.jobsPanel = true
+		a.jobScroll = 0
+		a.exec(model.CmdFocusPane{Pane: 2})
+		sidebarEvent(a, input.KindMouseClick, x, 2)
+		if a.focusedPane() != 1 {
+			t.Fatal("job row did not focus its caller")
+		}
+		sidebarEvent(a, input.KindMouseClick, x, 2)
+		if !a.st.PopupVisible() {
+			t.Fatal("same job row did not open its log")
+		}
+		specWaitText(t, a.sup.Get(a.st.Popup.PaneID), "JOB_REAL_LOG")
+		a.exec(model.CmdClosePopup{})
 		a.st.SidebarVisible = false
 		a.sidebarScroll = 0
-		a.wheel(uv.Mouse{X: 0, Y: 0, Button: uv.MouseWheelDown})
-		sidebarEvent(a, input.KindMouseClick, 0, 0)
-		if a.sidebarScroll != 3 || a.st.Active != 3 {
-			t.Fatal("left compact scroll click missed workspace")
+		a.sidebarWheel(uv.Mouse{X: 0, Y: 4}, false)
+		for _, pos := range a.sidebarView().Rows {
+			if !pos.Right && pos.Row.Kind == render.RowWorkspace {
+				sidebarEvent(a, input.KindMouseClick, 0, pos.Y)
+				sidebarEvent(a, input.KindMouseRelease, 0, pos.Y)
+				if a.st.Active != pos.Row.Ws {
+					t.Fatal("collapsed workspace scroll target mismatch")
+				}
+				break
+			}
 		}
 	}
 }

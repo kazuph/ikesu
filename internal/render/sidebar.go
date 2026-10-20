@@ -230,7 +230,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	}
 
 	fr := SidebarFooter(s)
-	if fr.W > 0 && fr.Y >= iy {
+	if fr.W > 1 && fr.Y >= iy {
 		f.Text(fr.X, fr.Y, "[menu]", uv.Style{Fg: f.Palette.Dim}, fr.X+fr.W)
 		f.Text(fr.X+fr.W-len("[new]"), fr.Y, "[new]", uv.Style{Fg: f.Palette.Dim}, fr.X+fr.W)
 	}
