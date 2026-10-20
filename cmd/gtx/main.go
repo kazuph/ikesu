@@ -19,7 +19,7 @@ import (
 	"github.com/kazuph/goterrace/internal/tui"
 )
 
-const version = "0.2.4"
+const version = "0.2.5"
 
 func main() {
 	api.ConfigureExecutable(os.Args[0])
