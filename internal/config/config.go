@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/envcompat"
 	"github.com/kazuph/goterrace/internal/guard"
 )
 
@@ -173,7 +174,7 @@ type Config struct {
 
 // Path is the resolved config file location.
 func Path() string {
-	if p := os.Getenv(EnvVar); p != "" {
+	if p := envcompat.Get(EnvVar); p != "" {
 		return p
 	}
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/envcompat"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 )
 
@@ -39,7 +40,7 @@ func tsToMs(s string) *int64 {
 // DBPath is the dispatch database location: $GTX_DB_PATH when set, else
 // gtx.db under the state dir.
 func DBPath(sessionName ...string) string {
-	if p := os.Getenv(DBPathEnvVar); p != "" {
+	if p := envcompat.Get(DBPathEnvVar); p != "" {
 		return p
 	}
 	return filepath.Join(sessionDataDir(sessionName), "gtx.db")

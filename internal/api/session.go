@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kazuph/goterrace/internal/envcompat"
 )
 
 // DefaultSession is used when --session is not given.
@@ -75,7 +77,7 @@ func APISocket(session string, explicit bool, getenv func(string) string) string
 		getenv = os.Getenv
 	}
 	if !explicit {
-		if path := getenv("GTX_SOCKET_PATH"); path != "" && inheritedSocket(BinaryNamespace(), path, getenv("GTX_SOCKET_PATH_EXPLICIT") == "1") {
+		if path := envcompat.Lookup(getenv, "GTX_SOCKET_PATH"); path != "" && inheritedSocket(BinaryNamespace(), path, envcompat.Lookup(getenv, "GTX_SOCKET_PATH_EXPLICIT") == "1") {
 			return path
 		}
 	}
