@@ -12,7 +12,7 @@ type RightSidebarHeader struct {
 
 func RightSidebarHeaderFor(s *model.AppState, y int) RightSidebarHeader {
 	a := s.RightSidebarArea()
-	if a.W <= model.SidebarCollapsedWidth {
+	if a.W <= model.SidebarCollapsedWidth || s.RightSidebarCompact() {
 		return RightSidebarHeader{}
 	}
 	h := RightSidebarHeader{
@@ -73,6 +73,7 @@ func drawSidebarCollapsed(f *Frame, s *model.AppState, in Input, area layout.Rec
 			style.Bg = f.Palette.PanelBG
 		}
 		f.Set(area.X, v.Rect.Y+n, g.Rune, style)
+		f.Text(area.X+1, v.Rect.Y+n, WorkspaceDisplayName(s.Workspaces[i], in.Panes), style, area.X+area.W-1)
 	}
 }
 
@@ -89,7 +90,7 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 	for y := a.Y; y < a.Y+a.H; y++ {
 		f.Set(a.X, y, "│", uv.Style{Fg: f.Palette.Dim, Bg: bg.Bg})
 	}
-	if a.W == model.SidebarCollapsedWidth {
+	if s.RightSidebarCompact() {
 		for _, pos := range CollapsedAgentRows(in) {
 			r := pos.Row
 			g := StatusGlyph{Rune: "─", Color: Dim}
@@ -113,6 +114,7 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 				style.Bg = nil
 			}
 			f.Set(a.X+1, pos.Y, g.Rune, style)
+			f.Text(a.X+2, pos.Y, compactSidebarRowName(in, r), style, a.X+a.W)
 		}
 		return
 	}

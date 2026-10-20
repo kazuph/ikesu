@@ -31,7 +31,7 @@ func LoadViewPreferences(path string) (*ViewPreferences, error) {
 }
 
 func (p ViewPreferences) Validate() error {
-	if p.SidebarWidth < 1 || p.SidebarSectionSplit != nil && (*p.SidebarSectionSplit < .1 || *p.SidebarSectionSplit > .9) {
+	if p.SidebarWidth < 1 || p.RightSidebarWidth < 0 || p.SidebarSectionSplit != nil && (*p.SidebarSectionSplit < .1 || *p.SidebarSectionSplit > .9) {
 		return fmt.Errorf("invalid client sidebar preferences")
 	}
 	switch p.RightSidebarMode {

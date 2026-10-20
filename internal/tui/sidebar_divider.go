@@ -28,9 +28,7 @@ func (a *App) finishSidebarDivider(g *sidebarGesture, now time.Time) {
 	}
 	if g.moved {
 		a.dividerClicks[side] = nil
-		if !g.right {
-			a.saveViewPreferences()
-		}
+		a.saveViewPreferences()
 		return
 	}
 	if !g.double {
@@ -39,6 +37,13 @@ func (a *App) finishSidebarDivider(g *sidebarGesture, now time.Time) {
 	}
 	if g.right {
 		a.st.RightSidebarMode = ""
+		a.st.RightSidebarManual = false
+		_, _, normal := a.st.SidebarBounds()
+		a.st.RightSidebarSize = normal
+		if width := a.sidebarConfig.UI.RightSidebarWidth; width != nil {
+			lo, hi, _ := a.st.SidebarBounds()
+			a.st.RightSidebarSize = max(lo, min(hi, *width))
+		}
 
 	} else {
 		a.st.SidebarVisible = true
@@ -60,9 +65,13 @@ func (a *App) flushSidebarDividerClicks(now time.Time) {
 				a.st.RightSidebarMode = "compact"
 			} else {
 				a.st.RightSidebarMode = ""
+				a.st.RightSidebarSize = a.st.ExpandedRightSidebarWidth()
 			}
 		} else {
 			a.st.SidebarVisible = !a.st.SidebarVisible
+			if a.st.SidebarVisible {
+				a.st.SidebarSize = a.st.ExpandedSidebarWidth()
+			}
 			a.st.SidebarHidden = false
 		}
 		a.syncLayout()

@@ -26,7 +26,7 @@ func TestStage4SingleNamedTabAndBalancedLocation(t *testing.T) {
 	} {
 		s.Workspaces[0].Name = tc.workspace
 		s.Workspaces[0].Tabs[0].Name = tc.tab
-		s.SidebarSize = tc.width
+		s.RightSidebarSize = tc.width
 		out := Compose(in)
 		var text strings.Builder
 		for x := 0; x < tc.width-1; x++ {

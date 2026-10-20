@@ -4,7 +4,6 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 	"strings"
 	"time"
@@ -67,7 +66,7 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 		fmt.Fprintf(&commands, "\x1b[<%d;%d;%d%c", code, xx, yy, suffix)
 		return nil
 	}
-	compact := area.W == model.SidebarCollapsedWidth
+	compact := in.State.RightSidebarCompact()
 	var rows []render.SidebarRow
 	offset, height, y := in.AgentScroll, area.H, 0
 	if compact {
@@ -103,7 +102,11 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 	}
 	index := -1
 	for i, row := range rows {
-		if row == hit.Row {
+		same := row == hit.Row
+		if compact && row.Kind == render.RowAgent && hit.Row.Kind == render.RowAgent {
+			same = row.Pane == hit.Row.Pane && row.Ws == hit.Row.Ws
+		}
+		if same {
 			index = i
 			break
 		}
