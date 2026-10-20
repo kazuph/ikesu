@@ -48,7 +48,7 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 	}
 	defer m.drawRight(f, active)
 	s := active.State
-	if !s.SidebarVisible {
+	if s.SidebarArea().W == 0 {
 		return
 	}
 	view := SidebarViewForInput(active)
@@ -114,6 +114,11 @@ func (m *MachineSidebar) draw(f *Frame, active Input) {
 		group := m.Groups[entry.group]
 		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header}
 		if entry.header {
+			if width <= 1 {
+				m.Hits = append(m.Hits, hit)
+				y++
+				continue
+			}
 			style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
 			f.Text(area.X, y, "▾", uv.Style{Fg: f.Palette.Accent}, area.X+width)
 			newRect := SectionNewRect(area.X, y, width)

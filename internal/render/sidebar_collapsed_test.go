@@ -21,11 +21,11 @@ func TestStage4RightCollapsedAgentsKeepPriorityAndSingleStatusCells(t *testing.T
 	}
 	in := Input{State: s, ServerUI: true, SidebarConfig: cfg, Panes: panes}
 	positions := CollapsedAgentRows(in)
-	if len(positions) != 3 {
-		t.Fatalf("got %d card rows, want 3", len(positions))
+	if len(positions) != 5 {
+		t.Fatalf("got %d card rows, want 5", len(positions))
 	}
 	for i, wantPane := range []int{2, 1} {
-		if positions[i].Y != i || positions[i].Row.Pane != wantPane || positions[i].Row.Line != 0 {
+		if positions[1+2*i].Y != 2+2*i || positions[1+2*i].Row.Pane != wantPane || positions[1+2*i].Row.Line != 0 {
 			t.Fatalf("row %d: %+v", i, positions[i])
 		}
 	}
@@ -33,7 +33,7 @@ func TestStage4RightCollapsedAgentsKeepPriorityAndSingleStatusCells(t *testing.T
 	for _, check := range []struct {
 		y    int
 		text string
-	}{{0, "●"}, {1, "○"}, {2, "─"}} {
+	}{{0, " "}, {1, " "}, {2, "●"}, {3, " "}, {4, "○"}, {5, " "}} {
 		cell := out.Frame.Cell(s.RightSidebarArea().X+1, check.y)
 		if cell.Content != check.text || cell.Style.Bg != nil {
 			t.Fatalf("cell (1,%d): %+v", check.y, cell)

@@ -199,7 +199,7 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 	}
 	h.until("real panes and jobs", func() bool {
 		for _, e := range m.endpoints {
-			if len(e.snapshot.State.Workspaces) != 2 || len(e.snapshot.Jobs) == 0 || len(render.RightCompactRows(*e.snapshot)) != 5 {
+			if len(e.snapshot.State.Workspaces) != 2 || len(e.snapshot.Jobs) == 0 || len(render.RightAgentRows(*e.snapshot)) != 6 {
 				return false
 			}
 		}

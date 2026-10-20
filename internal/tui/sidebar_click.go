@@ -23,19 +23,7 @@ func (a *App) sidebarClick(m uv.Mouse) {
 		a.exec(model.CmdToggleSidebar{})
 		return
 	}
-	if !s.SidebarVisible {
-		in := render.Input{State: s, ServerUI: a.serverUI, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll}
-		// Collapsed strip: one row per workspace.
-		viewport := render.CollapsedWorkspaceViewport(in)
-		if !pointIn(m.X, m.Y, viewport.Rect) {
-			return
-		}
-		i := m.Y - viewport.Rect.Y + viewport.Offset
-		if i >= 0 && i < len(s.Workspaces) {
-			a.exec(model.CmdSelectWorkspace{Index: i})
-		}
-		return
-	}
+
 	// Footer buttons.
 	if pointIn(m.X, m.Y, render.SidebarMenuRect(s)) {
 		a.openMainMenu(0, render.SidebarMenuRect(s).Y)
@@ -68,9 +56,6 @@ func (a *App) sidebarClick(m uv.Mouse) {
 // Card padding retains its workspace owner; empty panel rows stay inert.
 func (a *App) sidebarRightClick(m uv.Mouse) {
 	s := a.st
-	if !s.SidebarVisible {
-		return
-	}
 	if pointIn(m.X, m.Y, render.SidebarMenuRect(s)) || pointIn(m.X, m.Y, render.SidebarNewRect(s)) {
 		return
 	}

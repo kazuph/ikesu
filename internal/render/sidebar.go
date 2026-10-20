@@ -176,10 +176,6 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	if in.ServerUI {
 		f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
 	}
-	if !s.SidebarVisible {
-		drawSidebarCollapsed(f, s, in, area)
-		return
-	}
 	border := uv.Style{Fg: f.Palette.Dim}
 	if in.ServerUI {
 		border.Bg = f.Palette.PopupBG
@@ -202,9 +198,6 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 			continue
 		}
 		width := iw
-		if !in.ServerUI && pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H {
-			width--
-		}
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width)
 	}
 	if !in.ServerUI {
@@ -297,7 +290,7 @@ func SectionNewRect(x, y, w int) layout.Rect {
 	}
 	return layout.Rect{X: x + w - 5, Y: y, W: 5, H: 1}
 }
-func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, iw int) {
+func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, iw int) {
 	border := uv.Style{Fg: f.Palette.Dim}
 	switch r.Kind {
 	case RowTitle:
@@ -418,11 +411,6 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 		if ws.Worktree != nil && ws.Worktree.IsLinkedWorktree {
 			x += 2
 		}
-		g := wsGlyph(s, r.Ws, in)
-		if g.Rune == " " {
-			g.Rune = "·"
-		}
-		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg}, ix+iw)
 		idSpace := uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrFaint}
 		x = f.Text(x, y, " ", idSpace, ix+iw)
 		x = f.Text(x, y, fmt.Sprint(ws.ID), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
@@ -482,7 +470,6 @@ func drawSidebarRow(f *Frame, s *model.AppState, in Input, r SidebarRow, ix, y, 
 						break
 					}
 				}
-				f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg}, ix+iw)
 				f.Text(ix+2, y, " ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
 				drawTokens(f, ix+3, y, max(0, iw-3), []styledToken{
 					{name: "workspace", text: name, style: base},

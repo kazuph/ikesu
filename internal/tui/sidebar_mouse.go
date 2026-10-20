@@ -36,7 +36,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 		a.beginSidebarDivider(m, false, time.Now())
 		return true
 	}
-	if !s.SidebarVisible {
+	if s.SidebarArea().W == 0 {
 		return false
 	}
 

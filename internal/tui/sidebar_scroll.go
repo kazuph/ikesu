@@ -52,32 +52,7 @@ func (a *App) revealServerWorkspace() {
 }
 
 func (a *App) sidebarWheel(m uv.Mouse, up bool) {
-	if !a.st.SidebarVisible && pointIn(m.X, m.Y, a.st.SidebarArea()) {
-		in := render.Input{State: a.st, ServerUI: a.serverUI, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll}
-		v, off, step := render.CollapsedWorkspaceViewport(in), &a.sidebarScroll, 3
 
-		if !pointIn(m.X, m.Y, v.Rect) {
-			return
-		}
-		if up {
-			*off -= step
-		} else {
-			*off += step
-		}
-		*off = max(0, min(*off, max(0, v.Total-v.Rect.H)))
-		return
-	}
-	if a.st.RightSidebarCompact() && pointIn(m.X, m.Y, a.st.RightSidebarArea()) {
-		in := a.rightSidebarInput()
-		v := render.CollapsedAgentViewport(in)
-		if up {
-			a.agentScroll--
-		} else {
-			a.agentScroll++
-		}
-		a.agentScroll = max(0, min(a.agentScroll, max(0, v.Total-v.Rect.H)))
-		return
-	}
 	view := a.sidebarView()
 	v, off := view.Workspace, &a.sidebarScroll
 	step := 3
@@ -110,7 +85,7 @@ func (a *App) sidebarScrollbarPress(m uv.Mouse) bool {
 	}
 	view := a.sidebarView()
 	for i, v := range []render.SidebarViewport{view.Workspace, view.Agents} {
-		if v.Total <= v.Rect.H || v.Rect.H <= 0 || m.X != v.Rect.X+v.Rect.W-1 || !pointIn(m.X, m.Y, v.Rect) {
+		if v.Total <= v.Rect.H || v.Rect.H <= 0 || v.Rect.W <= 1 || m.X != v.Rect.X+v.Rect.W-2 || !pointIn(m.X, m.Y, v.Rect) {
 			continue
 		}
 		h, top := render.SidebarThumb(v)

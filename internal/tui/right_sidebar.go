@@ -20,10 +20,10 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 		a.beginSidebarDivider(m, true, time.Now())
 		return
 	}
-	if m.Button == uv.MouseLeft && !a.st.RightSidebarCompact() && a.sidebarScrollbarPress(m) {
+	if m.Button == uv.MouseLeft && a.sidebarScrollbarPress(m) {
 		return
 	}
-	if m.Button == uv.MouseLeft && !a.st.RightSidebarCompact() {
+	if m.Button == uv.MouseLeft {
 		h := render.RightSidebarHeaderFor(a.st, 0)
 		if pointIn(m.X, m.Y, h.Sort) {
 			a.toggleSidebarSetting(false)
@@ -39,12 +39,7 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 			return
 		}
 	}
-	var rows []render.SidebarPosition
-	if a.st.RightSidebarCompact() {
-		rows = render.CollapsedAgentRows(a.rightSidebarInput())
-	} else {
-		rows = a.sidebarView().Rows
-	}
+	rows := a.sidebarView().Rows
 	for _, pos := range rows {
 		r := pos.Row
 		if !pos.Right || m.Y != pos.Y || (r.Kind != render.RowAgent && r.Kind != render.RowJob && r.Kind != render.RowSep) {
@@ -66,11 +61,7 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 			a.exec(model.CmdSelectWorkspace{Index: r.Ws})
 			a.exec(model.CmdFocusPane{Pane: r.Pane})
 		case render.RowJob:
-			if a.st.RightSidebarCompact() {
-				a.focusJobCaller(r.Line)
-			} else {
-				a.openJobLog(r.Line)
-			}
+			a.openJobLog(r.Line)
 		case render.RowSep:
 			if a.st.RightSidebarCompact() {
 				return

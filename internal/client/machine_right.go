@@ -66,46 +66,36 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 		fmt.Fprintf(&commands, "\x1b[<%d;%d;%d%c", code, xx, yy, suffix)
 		return nil
 	}
-	compact := in.State.RightSidebarCompact()
 	var rows []render.SidebarRow
-	offset, height, y := in.AgentScroll, area.H, 0
-	if compact {
-		rows = render.RightCompactRows(in)
-	} else {
-		height = max(0, area.H-2)
-		y = 2
-		jobs := hit.Row.Kind == render.RowJob
-		if jobs != in.JobsPanel {
-			h := render.RightSidebarHeaderFor(in.State, 0)
-			tab := h.Agents
-			if jobs {
-				tab = h.Jobs
-			}
-			if err := encode(0, tab.X, tab.Y, 'M'); err != nil {
-				return nil, err
-			}
-			if err := encode(0, tab.X, tab.Y, 'm'); err != nil {
-				return nil, err
-			}
-			if !jobs {
-				offset = 0
-			}
-		}
+	offset, height, y := in.AgentScroll, max(0, area.H-2), 2
+	jobs := hit.Row.Kind == render.RowJob
+	if jobs != in.JobsPanel {
+		h := render.RightSidebarHeaderFor(in.State, 0)
+		tab := h.Agents
 		if jobs {
-			offset = in.JobScroll
-			for i := range in.Jobs {
-				rows = append(rows, render.SidebarRow{Kind: render.RowJob, Line: i})
-			}
-		} else {
-			rows = render.RightAgentRows(in)
+			tab = h.Jobs
 		}
+		if err := encode(0, tab.X, tab.Y, 'M'); err != nil {
+			return nil, err
+		}
+		if err := encode(0, tab.X, tab.Y, 'm'); err != nil {
+			return nil, err
+		}
+		if !jobs {
+			offset = 0
+		}
+	}
+	if jobs {
+		offset = in.JobScroll
+		for i := range in.Jobs {
+			rows = append(rows, render.SidebarRow{Kind: render.RowJob, Line: i})
+		}
+	} else {
+		rows = render.RightAgentRows(in)
 	}
 	index := -1
 	for i, row := range rows {
 		same := row == hit.Row
-		if compact && row.Kind == render.RowAgent && hit.Row.Kind == render.RowAgent {
-			same = row.Pane == hit.Row.Pane && row.Ws == hit.Row.Ws
-		}
 		if same {
 			index = i
 			break

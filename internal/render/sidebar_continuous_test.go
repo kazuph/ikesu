@@ -94,6 +94,9 @@ func TestMachineSidebarContinuousRowsAtEveryWidth(t *testing.T) {
 			ComposeMachines(in, &m)
 			var got []row
 			for _, hit := range m.Hits {
+				if hit.New {
+					continue
+				}
 				got = append(got, row{hit.Machine, hit.Row, hit.Rect.Y, hit.Right, hit.Header, hit.New})
 			}
 			if w == 26 {

@@ -158,19 +158,14 @@ func drawConfiguredAgent(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 	}
 	f.Fill(x, y, w, 1, " ", base)
 	var tokens []styledToken
-	hasPane, hasState := false, false
+	hasPane := false
 	for _, t := range configured {
 		if t.Token == "pane" {
 			hasPane = true
 		}
-		if t.Token == "state_icon" {
-			hasState = true
-		}
 	}
 	if r.Line == 0 && !hasConfiguredAgentRows(in.SidebarConfig, sn.Agent) {
-		if !hasState {
-			tokens = append(tokens, styledToken{name: "state_icon", text: sn.Status.Rune, style: uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg, Attrs: uv.AttrBold}, fixed: true})
-		}
+
 		if !hasPane {
 			tokens = append(tokens, styledToken{name: "pane", text: fmt.Sprintf("%%%d", r.Pane), style: uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold}, fixed: true})
 		}
