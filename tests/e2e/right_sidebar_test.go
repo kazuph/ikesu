@@ -122,7 +122,9 @@ func TestRightSidebarNarrowTerminalAdaptsWithoutSaving(t *testing.T) {
 				}
 				s.emu.Resize(tc.cols, termH)
 				marker := fmt.Sprintf("NARROW_%d_%d", tc.cols, tc.pty)
-				s.send(fmt.Sprintf("set -- $(stty size); printf '\\nNARROW_%d_%%s\\n' \"$2\"\r", tc.cols))
+				// SIGWINCH and input arrive independently. Wait for the actual
+				// kernel resize before printing, without another input event.
+				s.send(fmt.Sprintf("while :; do set -- $(stty size); [ \"$2\" = %d ] && break; sleep 0.01; done; printf '\\nNARROW_%d_%%s\\n' \"$2\"\r", tc.pty, tc.cols))
 				s.waitFor("adapted kernel width "+marker, 5*time.Second, func(tx string) bool { return strings.Contains(tx, marker) })
 				if tc.right > 0 && s.emu.CellAt(tc.cols-tc.right, 5).Content != "│" {
 					t.Fatal("automatic right divider missing")

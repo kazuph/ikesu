@@ -41,6 +41,7 @@ func TestStage7ParkedSearchResize(t *testing.T) {
 				var v *Viewer
 				if viewer {
 					v = a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+					v.Begin(a, 0, 0)
 					v.app.paneCopies, a.paneCopies = a.paneCopies, nil
 					ui = v.app
 					v.Resize(a, 90, rows, 0, 0)
