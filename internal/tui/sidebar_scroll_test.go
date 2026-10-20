@@ -44,7 +44,7 @@ func TestG2IndependentPanelWheelThumbDragAndCollapse(t *testing.T) {
 		if agents {
 			panel = v.Agents
 		}
-		x := panel.Rect.X + panel.Rect.W - 1
+		x := panel.Rect.X + panel.Rect.W - 2
 		if !a.sidebarScrollbarPress(uv.Mouse{X: x, Y: panel.Rect.Y, Button: uv.MouseLeft}) {
 			t.Fatal("missing scrollbar hit")
 		}

@@ -62,7 +62,7 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 	}
 	var records []evidence
 	save := func(name string) {
-		root := os.Getenv("GTX_CONTINUOUS_EVIDENCE")
+		root := os.Getenv("SIDEBAR_CONTINUOUS_EVIDENCE")
 		if root == "" {
 			return
 		}
@@ -199,7 +199,7 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 			save(fmt.Sprintf("standalone-%s-click-jobs%t", side, jobs))
 		}
 	}
-	if root := os.Getenv("GTX_CONTINUOUS_EVIDENCE"); root != "" {
+	if root := os.Getenv("SIDEBAR_CONTINUOUS_EVIDENCE"); root != "" {
 		b, _ := json.MarshalIndent(records, "", "  ")
 		if err := os.WriteFile(filepath.Join(root, "standalone-rows.json"), b, 0600); err != nil {
 			t.Fatal(err)

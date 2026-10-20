@@ -172,7 +172,7 @@ func TestG2WorkspaceNumberAndGlobalPane22(t *testing.T) {
 			rowY = 2
 		}
 		line := frameLine(out.Frame, rowY)
-		if r.Kind == RowWorkspace && !strings.Contains(line, "· 1 one") {
+		if r.Kind == RowWorkspace && (!strings.Contains(line, "1 one") || out.Frame.Cell(s.SidebarArea().W-2, rowY).Content != "·") {
 			t.Fatal(line)
 		}
 		if r.Kind == RowAgent && (!strings.Contains(line, "%22") || strings.Contains(line, "1-1") || strings.Contains(line, "2-1")) {

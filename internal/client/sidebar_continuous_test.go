@@ -106,7 +106,7 @@ func TestSidebarContinuousTwoServersEveryCell(t *testing.T) {
 			}
 			records = append(records, record{side, width, got})
 			if width == 2 || width == 5 || width == 10 || width == 17 || width == 26 {
-				if root := os.Getenv("GTX_CONTINUOUS_EVIDENCE"); root != "" {
+				if root := os.Getenv("SIDEBAR_CONTINUOUS_EVIDENCE"); root != "" {
 					if err := os.MkdirAll(root, 0700); err != nil {
 						t.Fatal(err)
 					}
@@ -118,7 +118,7 @@ func TestSidebarContinuousTwoServersEveryCell(t *testing.T) {
 			}
 		}
 	}
-	if root := os.Getenv("GTX_CONTINUOUS_EVIDENCE"); root != "" {
+	if root := os.Getenv("SIDEBAR_CONTINUOUS_EVIDENCE"); root != "" {
 		b, _ := json.MarshalIndent(records, "", "  ")
 		if err := os.WriteFile(filepath.Join(root, "servers-rows.json"), b, 0600); err != nil {
 			t.Fatal(err)

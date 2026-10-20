@@ -2,9 +2,9 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
-	"strings"
 )
 
 // RightAgentRows is the full endpoint card sequence before viewport clipping.
@@ -31,14 +31,31 @@ type machineRightRow struct {
 
 func (m *MachineSidebar) rightRows(active Input) []machineRightRow {
 	var rows []machineRightRow
+	_, _, normal := active.State.SidebarBounds()
+	if width := active.SidebarConfig.UI.RightSidebarWidth; width != nil {
+		normal = *width
+	}
+	// Approval details wrap at the configured expanded width so dragging does
+	// not move the following cards or discard the rest of a long URL.
+	limit := max(1, normal-1)
 
 	for gi, group := range m.Groups {
 		rows = append(rows, machineRightRow{group: gi, header: true, text: "▾ " + group.Label + ": " + group.Status})
 		if group.Reason != "" && (group.Status == "awaiting approval" || group.Status == "承認待ち。クリックで承認ページを開く") {
 			for _, text := range []string{group.Status, group.Reason} {
-				for _, line := range strings.Split(text, "\n") {
-					rows = append(rows, machineRightRow{group: gi, header: true, text: line})
+				line, width := "", 0
+				for _, r := range text {
+					w := ansi.StringWidth(string(r))
+					if width+w > limit || r == '\n' {
+						rows = append(rows, machineRightRow{group: gi, header: true, text: line})
+						line, width = "", 0
+					}
+					if r != '\n' {
+						line += string(r)
+						width += w
+					}
 				}
+				rows = append(rows, machineRightRow{group: gi, header: true, text: line})
 			}
 		}
 		if group.Input == nil {

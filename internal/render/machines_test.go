@@ -47,6 +47,25 @@ func TestMachineApprovalStateAndWholeURLWrapWithoutOverwritingPane(t *testing.T)
 	}
 }
 
+func TestMachineApprovalRowsStayAtConfiguredWidthWhileDragging(t *testing.T) {
+	in := Input{State: testState(240, 60)}
+	for _, normal := range []int{model.SidebarMinDefault, model.SidebarNormalDefault, model.SidebarMaxDefault} {
+		in.SidebarConfig.UI.RightSidebarWidth = &normal
+		m := MachineSidebar{Active: "local", Groups: []MachineGroup{
+			{ID: "remote", Status: "awaiting approval", Reason: "https://example.invalid/check/token-with-a-full-query?confirm=one&machine=remote"},
+			{ID: "local", Input: &in},
+		}}
+		in.State.RightSidebarSize = normal
+		want := m.rightRows(in)
+		for width := model.SidebarMaxDefault; width >= model.SidebarCollapsedWidth; width-- {
+			in.State.RightSidebarSize = width
+			if got := m.rightRows(in); !reflect.DeepEqual(got, want) {
+				t.Fatalf("configured=%d actual=%d changed approval text/row count/targets", normal, width)
+			}
+		}
+	}
+}
+
 func TestMachineSidebarKeepsOriginalIDsAndOnlySelectedEndpointAccent(t *testing.T) {
 	localState, remoteState := testState(160, 45), testState(160, 45)
 	for i, state := range []*Input{{State: localState}, {State: remoteState}} {
