@@ -402,6 +402,15 @@ func TestNarrowRightSidebarTwoMachinesEveryRowAndIndependentModes(t *testing.T) 
 							pane := hit.Row.Pane
 							if hit.Row.Kind == render.RowJob {
 								pane = 1
+								// Select another real pane first: the first job click navigates,
+								// while repeating on its caller intentionally opens a log popup.
+								switchSource(hit.Machine)
+								if m.endpoints[hit.Machine].snapshot.State.FocusedPane() == pane {
+									if err := m.sendInput(hit.Machine, []byte("\x02\t")); err != nil {
+										t.Fatal(err)
+									}
+									h.until("job caller deselected", func() bool { return m.endpoints[hit.Machine].snapshot.State.FocusedPane() != pane })
+								}
 							}
 							switchSource(source)
 							m.sidebar.RightScroll = actualScroll
