@@ -124,5 +124,5 @@ func TestSidebarContinuousTwoServersEveryCell(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Logf("PASS %d widths from real endpoint snapshots: all machine/workspace/pane row identities, Y/order and edge status", len(records))
+	t.Logf("PASS %d widths from real endpoint snapshots: all machine/workspace/pane row identities, Y/order and left state cells", len(records))
 }

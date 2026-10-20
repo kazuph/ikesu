@@ -1,6 +1,7 @@
 package render
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -90,6 +91,41 @@ func TestSidebarPaneNameConsistentAcrossWidths(t *testing.T) {
 			}
 			if strings.TrimSpace(text) != want {
 				t.Fatalf("width %d: got %q want %q", width, text, want)
+			}
+		}
+	}
+}
+
+func TestNarrowSidebarReferenceDoesNotReapplyTerminalOrConfiguredWidthLimits(t *testing.T) {
+	for _, cols := range []int{80, 100} {
+		for _, maximum := range []int{10, 72} {
+			s := model.New(t.TempDir(), cols, 30)
+			s.SidebarMin, s.SidebarMax = 1, maximum
+			s.SidebarVisible, s.SidebarSize = true, min(26, maximum)
+			s.RightSidebarMode, s.RightSidebarSize = "compact", 2
+			before := *s
+			frame := Compose(Input{State: s}).Frame
+			if frame.W != cols || s.Cols != before.Cols || s.SidebarArea() != before.SidebarArea() || s.RightSidebarArea() != before.RightSidebarArea() {
+				t.Fatal("reference render changed live geometry")
+			}
+		}
+	}
+}
+
+func TestNarrowSidebarSingleMachineKeepsStandaloneCells(t *testing.T) {
+	in := continuousInput(t, true, false)
+	for _, width := range []int{18, 17, 5, 3, 2} {
+		continuousWidth(in, width)
+		plain := Compose(in).Frame
+		m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Input: &in}}}
+		got := ComposeMachines(in, &m).Frame
+		for _, area := range []model.Rect{in.State.SidebarArea(), in.State.RightSidebarArea()} {
+			for y := area.Y; y < area.Y+area.H; y++ {
+				for x := area.X; x < area.X+area.W; x++ {
+					if !reflect.DeepEqual(got.Cell(x, y), plain.Cell(x, y)) {
+						t.Fatal("single machine changed sidebar cell", width, x, y)
+					}
+				}
 			}
 		}
 	}

@@ -207,5 +207,5 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Logf("PASS %d real-PTY widths: row identity/Y/order, right-edge status, kernel size, key and divider collapse", len(records))
+	t.Logf("PASS %d real-PTY widths: row identity/Y/order, left state cells, kernel size, key and divider collapse", len(records))
 }

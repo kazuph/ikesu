@@ -6,6 +6,10 @@ import "github.com/kazuph/goterrace/internal/model"
 // visible columns are copied; layout and token budgeting never see the crop.
 func sidebarReferenceInput(in Input) Input {
 	s := *in.State
+	s.SidebarMin = min(s.SidebarMin, model.SidebarMinDefault)
+	if s.SidebarMax > 0 {
+		s.SidebarMax = max(s.SidebarMax, model.SidebarMinDefault)
+	}
 	if s.SidebarArea().W > 0 && s.SidebarArea().W < model.SidebarMinDefault {
 		s.SidebarVisible, s.SidebarSize = true, model.SidebarMinDefault
 	}
@@ -34,16 +38,19 @@ func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, row
 		start := sx
 		if area.W == 2 {
 			row, ok := rows[y]
-			if ok && sidebarLeadingState(actual, row) {
-				// At one content cell, omit only the approved leading blank.
-				// Selection rails stay until their treatment is explicitly decided.
-				if cell := src.Cell(start, y); cell != nil && cell.Content == " " {
+			if ok && (row.Kind == RowWorkspace || row.Kind == RowAgent && row.Line == 0 || row.Kind == RowJob) {
+				// Only the one-cell interior drops its leading blank or selection rail.
+				// The existing state character and selected background remain.
+				if cell := src.Cell(start, y); cell != nil && (cell.Content == " " || cell.Content == "▌") {
 					start++
 				}
 			}
 		}
 		for dx := 0; dx < area.W-1; dx++ {
 			*dst.Cell(x+dx, y) = *src.Cell(start+dx, y)
+			if area.W == 2 && src.Cell(sx, y).Content == "▌" && dst.Cell(x+dx, y).Style.Bg == nil {
+				dst.Cell(x+dx, y).Style.Bg = src.Palette.PanelBG
+			}
 		}
 		border, refBorder := area.X+area.W-1, ref.X+ref.W-1
 		if right {
@@ -55,6 +62,7 @@ func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, row
 
 func drawNarrowSidebar(f *Frame, s *model.AppState, in Input, right bool) {
 	reference := sidebarReferenceInput(in)
+	reference.Copied = ""
 	ref := NewFrame(reference.State.Cols, f.H)
 	ref.Palette = f.Palette
 	if right {
@@ -69,13 +77,16 @@ func drawNarrowSidebar(f *Frame, s *model.AppState, in Input, right bool) {
 		}
 	}
 	copyNarrowSidebar(f, ref, in, reference, right, rows)
-	if !right && s.SidebarVisible {
+	if !right && !in.ServerUI && s.SidebarVisible {
 		drawSidebarCopyFeedback(f, in)
 	}
 }
 
 func (m *MachineSidebar) draw(f *Frame, in Input) {
 	m.drawExpanded(f, in)
+	if len(m.Groups) == 1 {
+		return
+	}
 	if in.State.SidebarArea().W >= model.SidebarMinDefault && in.State.RightSidebarArea().W >= model.SidebarMinDefault {
 		return
 	}
@@ -83,6 +94,7 @@ func (m *MachineSidebar) draw(f *Frame, in Input) {
 	if reference.State.SidebarArea() == in.State.SidebarArea() && reference.State.RightSidebarArea() == in.State.RightSidebarArea() {
 		return
 	}
+	reference.Copied = ""
 	ref := NewFrame(reference.State.Cols, f.H)
 	ref.Palette = f.Palette
 	drawSidebar(ref, reference.State, reference)
@@ -99,8 +111,7 @@ func (m *MachineSidebar) draw(f *Frame, in Input) {
 		}
 		copyNarrowSidebar(f, ref, in, reference, right, rows)
 	}
-}
-
-func sidebarLeadingState(in Input, row SidebarRow) bool {
-	return row.Kind == RowWorkspace || row.Kind == RowAgent && row.Line == 0 || row.Kind == RowJob
+	if !in.ServerUI {
+		drawSidebarCopyFeedback(f, in)
+	}
 }

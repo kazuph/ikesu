@@ -110,6 +110,9 @@ func TestCollapsedEndpointStatusKeepsActiveBackground(t *testing.T) {
 			if y == s.Active && c.Style.Bg != f.Palette.PanelBG {
 				t.Fatal("active workspace must retain a background even in transparent mode", c)
 			}
+			if y != s.Active && c.Style.Bg == f.Palette.PanelBG {
+				t.Fatal("inactive workspace has selected background", c)
+			}
 			if f.Cell(1, 4+y*3).Content != "│" {
 				t.Fatal("status divider missing")
 			}
