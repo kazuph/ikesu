@@ -30,6 +30,17 @@ func TestStageOnePathReadWriteMatrix(t *testing.T) {
 								if err := os.MkdirAll(filepath.Join(home, ".local", "state", ns), 0700); err != nil {
 									t.Fatal(err)
 								}
+								configDir := filepath.Join(home, "config", ns)
+								if err := os.MkdirAll(configDir, 0700); err != nil {
+									t.Fatal(err)
+								}
+								text := "onboarding=false\n"
+								if ns == "ikesu" {
+									text = "onboarding=true\n"
+								}
+								if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(text), 0600); err != nil {
+									t.Fatal(err)
+								}
 							}
 						}
 						root := filepath.Join(home, ".local", "state", "gtx")
@@ -50,6 +61,17 @@ func TestStageOnePathReadWriteMatrix(t *testing.T) {
 						api.ConfigureExecutable(exe)
 						if Path() != cfg || api.StateDir() != root {
 							t.Fatalf("config/state: %s / %s want %s / %s", Path(), api.StateDir(), cfg, root)
+						}
+						initial, err := Load()
+						if err != nil {
+							t.Fatal(err)
+						}
+						if names == "none" && (dirs == "old-only" || dirs == "both") {
+							if initial.Onboarding == nil || *initial.Onboarding {
+								t.Fatal("did not read existing old config")
+							}
+						} else if initial.Onboarding != nil {
+							t.Fatal("read a config outside the selected path")
 						}
 						wantSocket := socket
 						if explicit || socket == "" {
@@ -86,8 +108,13 @@ func TestStageOnePathReadWriteMatrix(t *testing.T) {
 						if _, err := os.Stat(db); err != nil {
 							t.Fatal(err)
 						}
-						if _, err := os.Stat(filepath.Join(home, "config", "ikesu", "config.toml")); !os.IsNotExist(err) {
-							t.Fatal("wrote ignored config", err)
+						ignored, err := os.ReadFile(filepath.Join(home, "config", "ikesu", "config.toml"))
+						if dirs == "new-only" || dirs == "both" {
+							if err != nil || string(ignored) != "onboarding=true\n" {
+								t.Fatal("modified ignored config", err, string(ignored))
+							}
+						} else if !os.IsNotExist(err) {
+							t.Fatal("created ignored config", err)
 						}
 						if _, err := os.Stat(filepath.Join(home, ".local", "state", "ikesu", "gtx.db")); !os.IsNotExist(err) {
 							t.Fatal("wrote ignored DB", err)
