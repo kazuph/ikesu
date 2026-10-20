@@ -96,16 +96,16 @@ func TestSidebarContinuousTwoServersEveryCell(t *testing.T) {
 				case render.RowJob:
 					glyph = "●"
 				}
-				x := width - 2
+				x := min(1, width-2)
 				if right {
-					x = in.State.Cols - 1
+					x = in.State.RightSidebarArea().X + min(2, width-1)
 				}
 				if glyph != "" && f.Cell(x, hit.Rect.Y).Content != glyph {
 					t.Fatalf("side=%s width=%d machine=%s row=%+v Y=%d status=%q want=%q", side, width, hit.Machine, hit.Row, hit.Rect.Y, f.Cell(x, hit.Rect.Y).Content, glyph)
 				}
 			}
 			records = append(records, record{side, width, got})
-			if width == 2 || width == 5 || width == 10 || width == 17 || width == 26 {
+			if width == 2 || width == 3 || width == 4 || width == 5 || width == 10 || width == 17 || width == 26 {
 				if root := os.Getenv("SIDEBAR_CONTINUOUS_EVIDENCE"); root != "" {
 					if err := os.MkdirAll(root, 0700); err != nil {
 						t.Fatal(err)

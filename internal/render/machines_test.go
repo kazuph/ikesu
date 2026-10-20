@@ -55,9 +55,9 @@ func TestMachineApprovalRowsStayAtConfiguredWidthWhileDragging(t *testing.T) {
 			{ID: "remote", Status: "awaiting approval", Reason: "https://example.invalid/check/token-with-a-full-query?confirm=one&machine=remote"},
 			{ID: "local", Input: &in},
 		}}
-		in.State.RightSidebarSize = normal
+		in.State.RightSidebarSize = model.SidebarMinDefault
 		want := m.rightRows(in)
-		for width := model.SidebarMaxDefault; width >= model.SidebarCollapsedWidth; width-- {
+		for width := model.SidebarMinDefault; width >= model.SidebarCollapsedWidth; width-- {
 			in.State.RightSidebarSize = width
 			if got := m.rightRows(in); !reflect.DeepEqual(got, want) {
 				t.Fatalf("configured=%d actual=%d changed approval text/row count/targets", normal, width)

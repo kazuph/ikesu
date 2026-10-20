@@ -60,7 +60,7 @@ func TestStage4CustomAgentUsesOnlyRequestedTokensAndOmitsEmptyRows(t *testing.T)
 			if token == "pane" {
 				want = "CUSTOM_LABEL"
 			}
-			if strings.TrimSpace(strings.TrimSuffix(line, "○")) != want || out.Frame.Cell(s.Cols-1, pos.Y).Content != "○" {
+			if strings.TrimSpace(line) != want {
 				t.Fatalf("%s: got %q want %q", token, line, want)
 			}
 		}

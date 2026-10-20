@@ -41,7 +41,7 @@ func TestRightSidebarStatusColumnsAndPanelOwnership(t *testing.T) {
 			}
 			if pos.Row.Kind == RowAgent && pos.Row.Line == 0 {
 				want := in.Panes[pos.Row.Pane].Status.Rune
-				if f.Cell(159, pos.Y).Content != want {
+				if f.Cell(s.RightSidebarArea().X+1, pos.Y).Content != want {
 					t.Fatalf("agent row %d status", pos.Y)
 				}
 			}

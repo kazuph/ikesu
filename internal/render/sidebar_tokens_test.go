@@ -32,7 +32,7 @@ func TestG2TokenStylesContextAndOccurrence(t *testing.T) {
 		if r.Kind == RowAgent {
 			y = 2
 			line := rightSidebarLine(out.Frame, s, y)
-			if strings.Contains(line, "%1") || out.Frame.Cell(s.Cols-1, y).Content != "◐" || strings.Contains(strings.TrimSuffix(line, "◐"), "◐") {
+			if strings.Contains(line, "%1") || strings.Contains(line, "◐") {
 				t.Fatal("custom row contains an unconfigured target or state", line)
 			}
 			first := strings.Index(line, "project")

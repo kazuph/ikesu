@@ -1,10 +1,10 @@
 package render
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
+	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/model"
 )
 
@@ -35,49 +35,67 @@ func continuousWidth(in Input, w int) {
 func TestSidebarContinuousRowsAndStatusAtEveryWidth(t *testing.T) {
 	for _, server := range []bool{false, true} {
 		for _, jobs := range []bool{false, true} {
-			t.Run(fmt.Sprintf("server=%t/jobs=%t", server, jobs), func(t *testing.T) {
-				in := continuousInput(t, server, jobs)
-				continuousWidth(in, 26)
-				expected := SidebarViewForInput(in).Rows
-				for _, w := range []int{26, 18, 17, 10, 5, 3, 2} {
-					continuousWidth(in, w)
-					f := Compose(in).Frame
-					if !reflect.DeepEqual(SidebarViewForInput(in).Rows, expected) {
-						t.Fatalf("width %d changes rows", w)
+			for _, custom := range []bool{false, true} {
+				for _, machine := range []bool{false, true} {
+					in := continuousInput(t, server, jobs)
+					if custom {
+						in.SidebarConfig.UI.Sidebar.Spaces.Rows = [][]config.SidebarToken{{{Token: "workspace"}}}
+						in.SidebarConfig.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "workspace"}}}
 					}
-					for _, pos := range expected {
-						r := pos.Row
-						glyph := ""
-						switch r.Kind {
-						case RowWorkspace:
-							glyph = wsGlyph(in.State, r.Ws, in).Rune
-						case RowAgent:
-							if r.Line == 0 {
-								glyph = in.Panes[r.Pane].Status.Rune
+					draw := func() (*Frame, []MachineHit) {
+						if machine {
+							m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Label: "LOCAL", Input: &in}, {ID: "remote", Label: "REMOTE", Input: &in}}}
+							f := ComposeMachines(in, &m).Frame
+							return f, m.Hits
+						}
+						return Compose(in).Frame, nil
+					}
+					continuousWidth(in, 18)
+					reference, hits := draw()
+					expected := SidebarViewForInput(in).Rows
+					statusRows := map[bool]map[int]bool{false: {}, true: {}}
+					if machine {
+						for _, hit := range hits {
+							if !hit.Header && !hit.New {
+								statusRows[hit.Right][hit.Rect.Y] = hit.Row.Kind == RowWorkspace || hit.Row.Kind == RowAgent && hit.Row.Line == 0 || hit.Row.Kind == RowJob
 							}
-						case RowJob:
-							glyph = "●"
 						}
-						if glyph == " " {
-							glyph = "·"
+					} else {
+						for _, pos := range expected {
+							statusRows[pos.Right][pos.Y] = pos.Row.Kind == RowWorkspace || pos.Row.Kind == RowAgent && pos.Row.Line == 0 || pos.Row.Kind == RowJob
 						}
-						x := w - 2
-						if pos.Right {
-							x = in.State.Cols - 1
+					}
+					for width := 17; width >= 2; width-- {
+						continuousWidth(in, width)
+						f, _ := draw()
+						if !reflect.DeepEqual(SidebarViewForInput(in).Rows, expected) {
+							t.Fatal("narrow width changed row target/Y/order", width)
 						}
-						got := f.Cell(x, pos.Y).Content
-						if glyph != "" && got != glyph {
-							t.Fatalf("width %d right=%t row=%+v y=%d status=%q want=%q", w, pos.Right, r, pos.Y, got, glyph)
-						}
-						if w == 2 && glyph == "" && got != " " {
-							t.Fatalf("non-status row at width2 must be blank: %+v y=%d %q", r, pos.Y, got)
+						for _, right := range []bool{false, true} {
+							x, rx := 0, 0
+							if right {
+								x = in.State.Cols - width + 1
+								rx = in.State.Cols - 18 + 1
+							}
+							for y := 0; y < in.State.Rows; y++ {
+								skip := 0
+								if width == 2 && statusRows[right][y] && (reference.Cell(rx, y).Content == " " || reference.Cell(rx, y).Content == "▌") {
+									skip = 1
+								}
+								for col := 0; col < width-1; col++ {
+									if !reflect.DeepEqual(f.Cell(x+col, y), reference.Cell(rx+skip+col, y)) {
+										t.Fatalf("width=%d server=%t jobs=%t custom=%t machine=%t right=%t x=%d y=%d got=%+v want=%+v", width, server, jobs, custom, machine, right, col, y, f.Cell(x+col, y), reference.Cell(rx+skip+col, y))
+									}
+								}
+							}
 						}
 					}
 				}
-			})
+			}
 		}
 	}
 }
+
 func TestMachineSidebarContinuousRowsAtEveryWidth(t *testing.T) {
 	for _, jobs := range []bool{false, true} {
 		in := continuousInput(t, true, jobs)

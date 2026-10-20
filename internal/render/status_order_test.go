@@ -31,7 +31,7 @@ func TestStatusOrderWorkspaceSurfaces(t *testing.T) {
 					}
 					f := NewFrame(160, 45)
 					drawSidebarRow(f, s, in, SidebarRow{Kind: RowWorkspace, Ws: 0}, 0, 0, 30, false)
-					check(f, 29, 0)
+					check(f, 1, 0)
 					f = NewFrame(160, 45)
 					s.SidebarVisible = false
 					s.SidebarSize = 2

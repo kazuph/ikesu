@@ -33,7 +33,7 @@ func TestStage4RightCollapsedAgentsKeepPriorityAndSingleStatusCells(t *testing.T
 	for _, check := range []struct {
 		y    int
 		text string
-	}{{0, " "}, {1, " "}, {2, "●"}, {3, " "}, {4, "○"}, {5, " "}} {
+	}{{0, "["}, {1, " "}, {2, "●"}, {3, " "}, {4, "○"}, {5, " "}} {
 		cell := out.Frame.Cell(s.RightSidebarArea().X+1, check.y)
 		if cell.Content != check.text || check.y >= 2 && cell.Style.Bg != nil {
 			t.Fatalf("cell (1,%d): %+v", check.y, cell)

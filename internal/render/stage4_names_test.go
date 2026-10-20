@@ -19,20 +19,20 @@ func TestStage4SingleNamedTabAndBalancedLocation(t *testing.T) {
 		width          int
 		want           string
 	}{
-		{"parity", "", 26, "parity"},
-		{"parity", "NAMED_TAB", 26, "parity · NAMED_TAB"},
-		{"WORKSPACE_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "TAB_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", 26, "WORKSPAC… · TAB_LONG…"},
-		{"WORKSPACE_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "TAB_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", 72, "WORKSPACE_LONG_ABCDEFGHIJKLMNOP… · TAB_LONG_ABCDEFGHIJKLMNOPQRSTUV…"},
+		{"parity", "", 26, "○ parity"},
+		{"parity", "NAMED_TAB", 26, "○ parity · NAMED_TAB"},
+		{"WORKSPACE_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "TAB_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", 26, "○ WORKSPACE… · TAB_LONG…"},
+		{"WORKSPACE_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "TAB_LONG_ABCDEFGHIJKLMNOPQRSTUVWXYZ", 72, "○ WORKSPACE_LONG_ABCDEFGHIJKLMNOPQ… · TAB_LONG_ABCDEFGHIJKLMNOPQRSTUV…"},
 	} {
 		s.Workspaces[0].Name = tc.workspace
 		s.Workspaces[0].Tabs[0].Name = tc.tab
 		s.RightSidebarSize = tc.width
 		out := Compose(in)
 		var text strings.Builder
-		for x := 0; x < tc.width-2; x++ {
+		for x := 0; x < tc.width-1; x++ {
 			text.WriteString(out.Frame.Cell(s.RightSidebarArea().X+1+x, 2).Content)
 		}
-		if got := strings.TrimSpace(text.String()); got != tc.want || out.Frame.Cell(s.Cols-1, 2).Content != "○" {
+		if got := strings.TrimSpace(text.String()); got != tc.want {
 			t.Fatalf("width %d tab %q: got %q want %q", tc.width, tc.tab, got, tc.want)
 		}
 	}

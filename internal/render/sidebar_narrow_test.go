@@ -27,10 +27,10 @@ func TestNarrowSidebarNamesStayWithinDividers(t *testing.T) {
 			}
 		}
 		for _, pos := range SidebarViewForInput(in).Rows {
-			if pos.Row.Kind == RowWorkspace && f.Cell(width-2, pos.Y).Content != "●" {
+			if pos.Row.Kind == RowWorkspace && f.Cell(min(1, width-2), pos.Y).Content != "●" {
 				t.Fatalf("width=%d workspace status missing at original row", width)
 			}
-			if pos.Right && pos.Row.Kind == RowAgent && pos.Row.Line == 0 && f.Cell(159, pos.Y).Content != "●" {
+			if pos.Right && pos.Row.Kind == RowAgent && pos.Row.Line == 0 && f.Cell(right.X+min(2, width-1), pos.Y).Content != "●" {
 				t.Fatalf("width=%d agent status missing at original row", width)
 			}
 		}

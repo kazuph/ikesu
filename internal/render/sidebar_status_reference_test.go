@@ -1,6 +1,7 @@
 package render
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -14,6 +15,15 @@ import (
 
 // Both versions run this fixture; the runner compares every cell, color and attribute.
 func TestSidebarStatusReferenceCells(t *testing.T) {
+	goldenData, err := os.ReadFile("testdata/sidebar_status_v025_sha256.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden := map[string]string{}
+	if err := json.Unmarshal(goldenData, &golden); err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
 	for _, server := range []bool{false, true} {
 		for _, jobs := range []bool{false, true} {
 			for _, overflow := range []bool{false, true} {
@@ -65,6 +75,11 @@ func TestSidebarStatusReferenceCells(t *testing.T) {
 								if err != nil {
 									t.Fatal(err)
 								}
+								name := fmt.Sprintf("%s_right-%t.json", key, right)
+								if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != golden[name] {
+									t.Errorf("v0.2.5 cells differ: %s got=%s want=%s", name, got, golden[name])
+								}
+								checked++
 								if dir := os.Getenv("SIDEBAR_REFERENCE_OUT"); dir != "" {
 									if err := os.MkdirAll(dir, 0755); err != nil {
 										t.Fatal(err)
@@ -80,4 +95,8 @@ func TestSidebarStatusReferenceCells(t *testing.T) {
 			}
 		}
 	}
+	if checked != len(golden) {
+		t.Fatalf("checked=%d golden=%d", checked, len(golden))
+	}
+
 }

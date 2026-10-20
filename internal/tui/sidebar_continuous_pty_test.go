@@ -142,18 +142,21 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 							glyph = in.Panes[r.Pane].Status.Rune
 						}
 					case render.RowJob:
-						glyph = "●"
+						glyph = "o"
 					}
-					x := width - 2
+					x := min(1, width-2)
 					if right {
-						x = a.st.Cols - 1
+						x = a.st.RightSidebarArea().X + min(2, width-1)
 					}
 					got := terminal.CellAt(x, pos.Y).Content
 					if glyph != "" && got != glyph {
 						t.Fatalf("%s jobs=%t width=%d row=%+v Y=%d got=%q want=%q", side, jobs, width, r, pos.Y, got, glyph)
 					}
-					if width == 2 && glyph == "" && strings.TrimSpace(got) != "" {
-						t.Fatalf("non-status row occupied: %s %+v Y%d %q", side, r, pos.Y, got)
+					if glyph == "" {
+						expected := render.Compose(in).Frame.Cell(x, pos.Y).Content
+						if got != expected {
+							t.Fatalf("decoded non-state row differs: %s width=%d row=%+v got=%q want=%q", side, width, r, got, expected)
+						}
 					}
 				}
 				// Ask the kernel through the real pane shell, independently of render.
@@ -168,7 +171,7 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 				}
 				specWaitText(t, pane, fmt.Sprintf("%s_%d_%d", marker, rect.H, rect.W))
 				records = append(records, evidence{side, jobs, width, rows, []int{rect.H, rect.W}})
-				if width == 2 || width == 5 || width == 10 || width == 17 || width == 26 {
+				if width == 2 || width == 3 || width == 4 || width == 5 || width == 10 || width == 17 || width == 26 {
 					save(fmt.Sprintf("standalone-%s-jobs%t-width%d", side, jobs, width))
 				}
 			}
