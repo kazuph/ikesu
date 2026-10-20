@@ -154,7 +154,6 @@ func (s *Supervisor) Get(id int) *Pane {
 	defer s.mu.Unlock()
 	return s.panes[id]
 }
-
 func (p *Pane) onMode(m ansi.Mode, on bool) {
 	if p.modes == nil {
 		p.modes = map[ansi.Mode]bool{}
@@ -166,7 +165,6 @@ func (p *Pane) onMode(m ansi.Mode, on bool) {
 	p.mouseMotion = p.modes[ansi.ModeMouseButtonEvent] || p.modes[ansi.ModeMouseAnyEvent]
 	p.appCursorKeys = p.modes[ansi.ModeCursorKeys]
 }
-
 func (p *Pane) onOSCTitle(t string) { p.oscTitle = t }
 
 // pumpStreamGap is how recent the previous flush must be for the pump to
@@ -378,7 +376,6 @@ func (p *Pane) pumpEmuToPTY() {
 		}
 	}
 }
-
 func (p *Pane) waitExit() {
 	defer close(p.done)
 	_ = p.cmd.Wait()
