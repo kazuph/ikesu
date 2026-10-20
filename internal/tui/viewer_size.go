@@ -1,6 +1,23 @@
 package tui
 
-import "github.com/kazuph/goterrace/internal/layout"
+import (
+	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/goterrace/internal/model"
+)
+
+// A zoomed pane uses the whole area; its hidden siblings still receive their
+// normal split rectangles at resize, rather than catching up on unzoom.
+func (a *App) ptyPaneRects(tab *model.Tab, area layout.Rect) []layout.PaneRect {
+	base := *tab
+	base.Zoomed = 0
+	rects := a.st.PaneRectsForDisplay(&base, area)
+	for i := range rects {
+		if rects[i].ID == tab.Zoomed {
+			rects[i].Rect = area
+		}
+	}
+	return rects
+}
 
 // withPTYGeometry keeps each viewer's render viewport independent of the
 // attachment which determines the shared terminals' dimensions.

@@ -27,12 +27,19 @@ func viewerTerminalSizes(a *App) map[int][2]int {
 	return sizes
 }
 
+func sizeOwnerRuntimeApp(t *testing.T) *App {
+	t.Helper()
+	a := specRuntimeApp(t)
+	a.st.RightSidebarMode = "hidden"
+	return a
+}
+
 func TestViewerOrdinaryInputKeepsPTYSizeWithTwoOrThreeClientsAndSplits(t *testing.T) {
 	teststate.Lock(t)
 	for _, peers := range []int{1, 2, 3} {
 		for _, split := range []bool{false, true} {
 			t.Run(fmt.Sprintf("clients=%d/split=%t", peers, split), func(t *testing.T) {
-				a := specRuntimeApp(t)
+				a := sizeOwnerRuntimeApp(t)
 				if err := a.StartInitialPane(); err != nil {
 					t.Fatal(err)
 				}
@@ -63,7 +70,7 @@ func TestViewerOrdinaryInputKeepsPTYSizeWithTwoOrThreeClientsAndSplits(t *testin
 
 func TestViewerOnlySizeOwnerResizeChangesPTYAndDrawsStayLocal(t *testing.T) {
 	teststate.Lock(t)
-	a := specRuntimeApp(t)
+	a := sizeOwnerRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +110,7 @@ func TestViewerOnlySizeOwnerResizeChangesPTYAndDrawsStayLocal(t *testing.T) {
 
 func TestViewerExplicitSplitFromNonOwnerUsesSizeOwner(t *testing.T) {
 	teststate.Lock(t)
-	a := specRuntimeApp(t)
+	a := sizeOwnerRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +134,7 @@ func TestViewerExplicitSplitFromNonOwnerUsesSizeOwner(t *testing.T) {
 		ui.exec(model.CmdToggleSidebar{})
 	})
 	for id, size := range viewerTerminalSizes(a) {
-		if size != [2]int{45, 26} {
+		if size != [2]int{46, 26} {
 			t.Fatalf("sidebar did not change pane%d: %v", id, size)
 		}
 	}
@@ -135,7 +142,7 @@ func TestViewerExplicitSplitFromNonOwnerUsesSizeOwner(t *testing.T) {
 
 func TestSingleViewerResizeSidebarSplitAndZoomKeepExistingGeometry(t *testing.T) {
 	teststate.Lock(t)
-	a := specRuntimeApp(t)
+	a := sizeOwnerRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
@@ -153,23 +160,23 @@ func TestSingleViewerResizeSidebarSplitAndZoomKeepExistingGeometry(t *testing.T)
 	v.Resize(a, 140, 40, 0, 0)
 	checkAll(111, 36)
 	v.with(a, func(ui *App) { ui.exec(model.CmdToggleSidebar{}) })
-	checkAll(133, 36)
+	checkAll(135, 36)
 	v.with(a, func(ui *App) { ui.exec(model.CmdSplitFocused{Dir: layout.Vertical}) })
-	checkAll(65, 36)
+	checkAll(66, 36)
 	v.with(a, func(ui *App) { ui.exec(model.CmdZoomPane{Pane: ui.focusedPane(), Mode: "on"}) })
 	focused := a.st.FocusedPane()
-	if got := viewerTerminalSizes(a)[focused]; got != [2]int{133, 36} {
+	if got := viewerTerminalSizes(a)[focused]; got != [2]int{135, 36} {
 		t.Fatal("single viewer zoom no longer updates PTY", got)
 	}
 	v.with(a, func(ui *App) { ui.exec(model.CmdZoomPane{Pane: ui.focusedPane(), Mode: "off"}) })
-	checkAll(65, 36)
+	checkAll(66, 36)
 }
 
 func TestViewerDisconnectKeepsFrozenBasisUntilOneRemains(t *testing.T) {
 	teststate.Lock(t)
 	for _, detachOwner := range []bool{false, true} {
 		t.Run(fmt.Sprintf("detachOwner=%t", detachOwner), func(t *testing.T) {
-			a := specRuntimeApp(t)
+			a := sizeOwnerRuntimeApp(t)
 			if err := a.StartInitialPane(); err != nil {
 				t.Fatal(err)
 			}

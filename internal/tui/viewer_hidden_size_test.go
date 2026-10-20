@@ -35,11 +35,19 @@ func checkAllHiddenSizes(t *testing.T, a *App, cols, rows int) {
 	t.Helper()
 	want := map[int][2]int{}
 	state := *a.st
+	if a.sizeViewer != nil {
+		a.sizeViewer.display.apply(&state)
+	}
 	state.Cols, state.Rows = cols, rows
 	for wi, ws := range state.Workspaces {
 		state.Active = wi
 		for _, tab := range ws.Tabs {
-			for _, pr := range state.PaneRectsForDisplay(tab, state.PanesArea()) {
+			base := *tab
+			base.Zoomed = 0
+			for _, pr := range state.PaneRectsForDisplay(&base, state.PanesArea()) {
+				if pr.ID == tab.Zoomed {
+					pr.Rect = state.PanesArea()
+				}
 				w, h := model.PaneTermSize(pr.Rect, state.PaneBorders)
 				want[pr.ID] = [2]int{w, h}
 			}
@@ -47,6 +55,33 @@ func checkAllHiddenSizes(t *testing.T, a *App, cols, rows int) {
 	}
 	if got := viewerTerminalSizes(a); !reflect.DeepEqual(got, want) {
 		t.Fatalf("all panes must update before selection at %dx%d: got %v want %v", cols, rows, got, want)
+	}
+}
+
+func TestViewerHiddenPanesUseOwnWorkspaceGeometryAndExplicitLayouts(t *testing.T) {
+	teststate.Lock(t)
+	for _, peers := range []int{1, 2} {
+		t.Run(fmt.Sprint(peers), func(t *testing.T) {
+			a := hiddenSizeApp(t)
+			a.st.HideTabBarWhenSingleTab = true
+			a.exec(model.CmdCloseTab{Workspace: 1, Tab: 1})
+			var owner *Viewer
+			for _, size := range [][2]int{{200, 50}, {100, 30}}[:peers] {
+				owner = a.NewViewer(io.Discard, size[0], size[1], nil)
+				owner.Begin(a, 0, 0)
+				checkAllHiddenSizes(t, a, size[0], size[1])
+			}
+			for _, cmd := range []model.Command{
+				model.CmdToggleSidebar{}, model.CmdToggleRightSidebar{},
+				model.CmdSplitFocused{Dir: layout.Horizontal},
+				model.CmdZoomPane{Pane: a.st.FocusedPane(), Mode: "on"},
+			} {
+				owner.with(a, func(ui *App) { ui.exec(cmd) })
+				checkAllHiddenSizes(t, a, owner.cols, owner.rows)
+			}
+			owner.Resize(a, 210, 60, 0, 0)
+			checkAllHiddenSizes(t, a, 210, 60)
+		})
 	}
 }
 
