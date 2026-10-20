@@ -379,7 +379,7 @@ func (a *App) exec(cmd model.Command) {
 func (a *App) effect(e model.Effect) {
 	switch e := e.(type) {
 	case model.EffSpawnPane:
-		r := a.rectForPane(e.Pane)
+		r := a.ptyRectForPane(e.Pane)
 		var env []string
 		for k, v := range e.Env {
 			env = append(env, k+"="+v)
@@ -416,33 +416,39 @@ func (a *App) effect(e model.Effect) {
 	}
 }
 
-// syncLayout resizes every pane of the active workspace to its inner rect.
+// syncLayout applies the size basis to all tabs before a viewer can select them.
 func (a *App) syncLayout() {
-	if a.st.OverlayVisible() {
-		r := a.innerRect(a.st.Overlay.PaneID)
-		a.sup.ResizeWithPixels(a.st.Overlay.PaneID, r.W, r.H, a.cellW, a.cellH)
-	}
-	if a.st.PopupVisible() && !a.st.Popup.ResizeLocked {
-		r := a.innerRect(a.st.Popup.PaneID)
-		a.sup.ResizeWithPixels(a.st.Popup.PaneID, r.W, r.H, a.cellW, a.cellH)
-	}
-	ws := a.st.ActiveWorkspace()
-	if ws == nil {
-		return
-	}
-	area := a.st.PanesArea()
-	if t := ws.TabRef(); t != nil {
-		for _, pr := range a.st.PaneRectsForDisplay(t, area) {
-			w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
-			a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
+	a.withPTYGeometry(a.syncPaneLayout)
+}
+
+func (a *App) syncPaneLayout() {
+	previous := a.selection()
+	defer a.selectView(previous)
+	for wi, ws := range a.st.Workspaces {
+		a.st.Active = wi
+		for ti, tab := range ws.Tabs {
+			ws.ActiveTab = ti
+			for _, pr := range a.ptyPaneRects(tab, a.st.PanesArea()) {
+				w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
+				a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
+			}
+			if a.st.OverlayVisible() {
+				r := a.innerRect(a.st.Overlay.PaneID)
+				a.sup.ResizeWithPixels(a.st.Overlay.PaneID, r.W, r.H, a.cellW, a.cellH)
+			}
+			if a.st.PopupVisible() && !a.st.Popup.ResizeLocked {
+				r := a.innerRect(a.st.Popup.PaneID)
+				a.sup.ResizeWithPixels(a.st.Popup.PaneID, r.W, r.H, a.cellW, a.cellH)
+			}
 		}
 	}
 }
 
 // rectForPane returns the terminal-content rect of a pane in whichever
-// workspace owns it; panes of a hidden workspace spawn at a default size
-// and are resized when their workspace becomes active.
+// workspace owns it, including the workspace's own tab bar geometry.
 func (a *App) rectForPane(pid int) layout.Rect {
+	previous := a.selection()
+	defer a.selectView(previous)
 	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
 		if r, ok := a.st.OverlayRect(); ok {
 			inner, gutter := model.PaneContentRect(r, a.st.PaneBorders)
@@ -453,9 +459,10 @@ func (a *App) rectForPane(pid int) layout.Rect {
 	if a.st.Popup != nil && pid == a.st.Popup.PaneID {
 		return popupInner(a.st.PopupRect())
 	}
-	for _, ws := range a.st.Workspaces {
+	for wi, ws := range a.st.Workspaces {
+		a.st.Active = wi
 		for _, t := range ws.Tabs {
-			for _, pr := range a.st.PaneRectsForDisplay(t, a.st.PanesArea()) {
+			for _, pr := range a.ptyPaneRects(t, a.st.PanesArea()) {
 				if pr.ID == pid {
 					inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
 					inner.W = max(inner.W-gutter, 1)

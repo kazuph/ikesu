@@ -65,6 +65,7 @@ func (a *App) selectView(s viewSelection) {
 
 func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Viewer {
 	ui := *a
+	ui.sizeViewer, ui.sizeViewers = nil, nil
 	if a.toast != nil {
 		toast := *a.toast
 		ui.toast = &toast
@@ -135,13 +136,11 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 
 func (v *Viewer) Input(a *App, bytes []byte) {
 	v.with(a, func(ui *App) {
-		ui.syncLayout()
 		for _, event := range ui.fr.Push(bytes) {
 			v.onInput(ui, event)
 		}
 		v.pendingAt = time.Now()
 	})
-	a.st.Cols, a.st.Rows = v.cols, v.rows
 }
 
 func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
@@ -153,14 +152,19 @@ func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
 	v.with(a, func(ui *App) {
 		ui.enc.Reset()
 		ui.SetCellPixels(xp, yp)
-		ui.syncLayout()
+		if a.sizeViewer == v {
+			ui.syncLayout()
+		}
 		ui.copyResizeAll(copySizes)
 		ui.dirty = true
 	})
-	a.st.Cols, a.st.Rows = v.cols, v.rows
+	if a.sizeViewer == v {
+		a.st.Cols, a.st.Rows = v.cols, v.rows
+	}
 }
 
 func (v *Viewer) Begin(a *App, xp, yp int) {
+	v.takeSize(a)
 	v.with(a, func(ui *App) { ui.BeginHostMouse(xp, yp); ui.dirty = true })
 	a.st.Cols, a.st.Rows = v.cols, v.rows
 }

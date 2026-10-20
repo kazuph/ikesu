@@ -153,6 +153,8 @@ type App struct {
 	viewerOwner       *App
 	viewerContext     *Viewer
 	viewerActive      bool
+	sizeViewer        *Viewer
+	sizeViewers       []*Viewer
 	drawViewers       func()
 	tickViewers       func()
 	visiblePane       func(int) bool

@@ -82,7 +82,7 @@ func testParityScrollbackEditor(t *testing.T, popup, server bool) {
 	// message wider than the PTY. Continue the real editor, then inspect it.
 	deadline := time.Now().Add(5 * time.Second)
 	for !strings.Contains(ep.ScreenText(), "EDITOR_CAPTURE_SENTINEL") {
-		if strings.Contains(ep.ScreenText(), "Press ENTER or type command to continue") {
+		if strings.Contains(strings.Join(strings.Fields(ep.ScreenText()), " "), "Press ENTER or type command to continue") {
 			a.sup.Input(editor, []byte("\r"))
 			break
 		}

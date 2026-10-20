@@ -46,9 +46,10 @@ func TestPaneCopyAPI(t *testing.T) {
 
 	p1 := firstPaneID(t, dir)
 	// QMARK_ok only exists in the printf output, not the command echo.
+	// Keep the buffer unchanged while the revision-bound requests run.
 	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{
 		PaneID: p1,
-		Text:   "clear; printf 'foo bar.baz qux\\nhello   world\\nQMARK_%s\\n' ok",
+		Text:   "clear; printf 'foo bar.baz qux\\nhello   world\\nQMARK_%s\\n' ok; exec /bin/cat",
 		Keys:   []string{"enter"},
 	}, nil)
 	waitRead(t, dir, p1, "QMARK_ok")

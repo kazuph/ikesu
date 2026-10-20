@@ -567,6 +567,7 @@ func (s *Server) writeClientOutput(data string) {
 // dropConn removes c if it is still the attached client (broken pipe).
 func (s *Server) dropConn(c *clientConn) {
 	s.mu.Lock()
+	wasAttached := s.clients[c]
 	delete(s.clients, c)
 	if s.client == c {
 		s.client = nil
@@ -577,6 +578,9 @@ func (s *Server) dropConn(c *clientConn) {
 	}
 	s.mu.Unlock()
 	c.close()
+	if wasAttached && s.app != nil {
+		go s.releaseSizeViewer(c)
+	}
 }
 
 // clientLoop accepts display clients until the listener closes.
@@ -652,6 +656,9 @@ func (s *Server) attach(conn net.Conn) {
 	var configID uint64
 	pendingConfig := map[uint64]func(config.Config, error){}
 	s.app.Do(func() {
+		if !s.displayClientAttached(c) {
+			return
+		}
 		s.sendDecisionProjection(c)
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
 		if hello.Visible != nil && !*hello.Visible {
@@ -692,6 +699,9 @@ func (s *Server) attach(conn net.Conn) {
 		s.installGraphicsSnapshotSink(c, hello.Peer)
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
 	})
+	if c.viewer == nil {
+		return
+	}
 	defer s.dropConn(c)
 	for {
 		m, err := readClientMsg(rd)

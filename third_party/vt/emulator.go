@@ -218,6 +218,12 @@ func (e *Emulator) CursorPosition() uv.Position {
 
 // Resize resizes the terminal.
 func (e *Emulator) Resize(width int, height int) {
+	if e.Width() == width && e.Height() == height {
+		if e.isModeSet(ansi.ModeInBandResize) {
+			e.reportResize()
+		}
+		return
+	}
 	x, y := e.scr.CursorPosition()
 	if e.atPhantom {
 		if x < width-1 {
