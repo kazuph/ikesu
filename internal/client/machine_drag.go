@@ -20,10 +20,17 @@ type machineDrag struct {
 	section           model.Section
 	targetSection     model.Section
 	started, released bool
+	divider           bool
 }
 
 func (m *machineClient) dragInput(event input.Event) error {
 	d := m.drag
+	if d.divider {
+		if event.Kind == input.KindMouseRelease {
+			m.drag = nil
+		}
+		return m.sendInput(d.id, eventBytes(event))
+	}
 	if event.Kind == input.KindMouseRelease {
 		m.suppressRelease = false
 		if !d.started {

@@ -178,6 +178,18 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return m.setMouseMode(m.endpoints[m.active].mouse.pixel)
 	}
+	if event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
+		left, right := activeView.snapshot.State.SidebarArea(), activeView.snapshot.State.RightSidebarArea()
+		x, y := event.Mouse.X, event.Mouse.Y
+		leftEdge := left.W > 0 && (x == left.X+left.W-1 || x == left.X+left.W) && y >= left.Y && y < left.Y+left.H
+		rightEdge := right.W > 0 && x == right.X && y >= right.Y && y < right.Y+right.H
+		if leftEdge || rightEdge {
+			// Keep the original endpoint for the entire divider gesture;
+			// composed cards crossed by its motion are not new targets.
+			m.drag = &machineDrag{id: m.active, divider: true}
+			return m.sendInput(m.active, eventBytes(event))
+		}
+	}
 	if activeView.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 		r := render.SidebarMenuRect(activeView.snapshot.State)
 		if contains(r.X, r.Y, r.W, r.H, event.Mouse.X, event.Mouse.Y) {
