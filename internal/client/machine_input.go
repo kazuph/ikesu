@@ -260,6 +260,16 @@ func (m *machineClient) input(event input.Event) error {
 					m.suppressRelease = true
 					return m.paint()
 				}
+				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
+					e := m.endpoints[hit.Machine]
+					if e.connection == nil || e.snapshot == nil {
+						return fmt.Errorf("endpoint_action_unsupported: workspace sidebar target unavailable")
+					}
+					m.suppressRelease = true
+					m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait), sidebar: &machineSidebarAction{hit: hit, event: event}}
+					m.requestPending()
+					return nil
+				}
 				if hit.Workspace != 0 && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 					m.suppressRelease = true
 					e := m.endpoints[hit.Machine]
