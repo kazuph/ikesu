@@ -33,7 +33,8 @@ func TestSidebarContinuousDifferentEndpointPanels(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.until("compact remote job click reaches displayed caller", func() bool {
-			return m.pending == nil && m.active == "remote" && m.endpoints["remote"].snapshot.State.FocusedPane() == 1
+			snapshot := m.endpoints["remote"].snapshot
+			return m.pending == nil && m.active == "remote" && snapshot.JobsPanel && snapshot.State.FocusedPane() == 1
 		})
 		return
 	}
