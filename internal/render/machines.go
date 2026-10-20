@@ -41,7 +41,7 @@ type machineRow struct {
 	header bool
 }
 
-func (m *MachineSidebar) draw(f *Frame, active Input) {
+func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	m.Hits = m.Hits[:0]
 	if len(m.Groups) == 1 {
 		return

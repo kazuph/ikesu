@@ -173,6 +173,10 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	if area.W == 0 || area.H == 0 {
 		return
 	}
+	if area.W < model.SidebarMinDefault {
+		drawNarrowSidebar(f, s, in, false)
+		return
+	}
 	if in.ServerUI {
 		f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
 	}
@@ -198,7 +202,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 			continue
 		}
 		width := iw
-		bar := !in.ServerUI && view.Workspace.Rect.W > 1 && view.Workspace.Total > view.Workspace.Rect.H
+		bar := !in.ServerUI && pos.Y >= view.Workspace.Rect.Y && pos.Y < view.Workspace.Rect.Y+view.Workspace.Rect.H && view.Workspace.Total > view.Workspace.Rect.H
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width, bar)
 	}
 	if !in.ServerUI {
@@ -412,6 +416,11 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 		if ws.Worktree != nil && ws.Worktree.IsLinkedWorktree {
 			x += 2
 		}
+		g := wsGlyph(s, r.Ws, in)
+		if g.Rune == " " {
+			g.Rune = "·"
+		}
+		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: sty.Bg}, ix+iw)
 		idSpace := uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrFaint}
 		x = f.Text(x, y, " ", idSpace, ix+iw)
 		x = f.Text(x, y, fmt.Sprint(ws.ID), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg, Attrs: uv.AttrBold}, ix+iw)
@@ -471,6 +480,7 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 						break
 					}
 				}
+				f.Text(ix+1, y, sn.Status.Rune, uv.Style{Fg: f.ThemeColor(sn.Status.Color), Bg: base.Bg}, ix+iw)
 				f.Text(ix+2, y, " ", uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrFaint}, ix+iw)
 				drawTokens(f, ix+3, y, max(0, iw-3), []styledToken{
 					{name: "workspace", text: name, style: base},

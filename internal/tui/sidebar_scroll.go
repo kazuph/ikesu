@@ -3,6 +3,7 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/goterrace/internal/model"
 	"github.com/kazuph/goterrace/internal/render"
 )
 
@@ -93,7 +94,7 @@ func (a *App) sidebarScrollbarPress(m uv.Mouse) bool {
 	}
 	view := a.sidebarView()
 	for i, v := range []render.SidebarViewport{view.Workspace, view.Agents} {
-		if v.Total <= v.Rect.H || v.Rect.H <= 0 || v.Rect.W <= 1 || m.X != v.Rect.X+v.Rect.W-2 || !pointIn(m.X, m.Y, v.Rect) {
+		if v.Rect.W < model.SidebarMinDefault-1 || v.Total <= v.Rect.H || v.Rect.H <= 0 || v.Rect.W <= 1 || m.X != v.Rect.X+v.Rect.W-1 || !pointIn(m.X, m.Y, v.Rect) {
 			continue
 		}
 		h, top := render.SidebarThumb(v)

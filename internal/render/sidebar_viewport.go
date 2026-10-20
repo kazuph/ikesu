@@ -173,6 +173,6 @@ func drawSidebarScrollbar(f *Frame, v SidebarViewport, slim bool) {
 				fg = f.Palette.Dim
 			}
 		}
-		f.Set(v.Rect.X+v.Rect.W-2, v.Rect.Y+y, glyph, uv.Style{Fg: fg})
+		f.Set(v.Rect.X+v.Rect.W-1, v.Rect.Y+y, glyph, uv.Style{Fg: fg})
 	}
 }

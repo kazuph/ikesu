@@ -15,14 +15,18 @@ func RightSidebarHeaderFor(s *model.AppState, y int) RightSidebarHeader {
 	if a.W <= model.SidebarCollapsedWidth {
 		return RightSidebarHeader{}
 	}
-	headerRect := func(x, width int) layout.Rect {
-		x = min(x, a.X+a.W)
-		return layout.Rect{X: x, Y: y, W: min(width, max(0, a.X+a.W-x)), H: 1}
-	}
+	width := max(model.SidebarMinDefault, a.W)
 	h := RightSidebarHeader{
-		Agents: headerRect(a.X+1, len("[agents]")),
-		Jobs:   headerRect(a.X+1+len("[agents]"), len("[jobs]")),
-		Sort:   headerRect(max(a.X+1+len("[agents][jobs]"), a.X+a.W-len(SidebarAgentSortLabel(s))), len(SidebarAgentSortLabel(s))),
+		Agents: layout.Rect{X: a.X + 1, Y: y, W: len("[agents]"), H: 1},
+		Jobs:   layout.Rect{X: a.X + 1 + len("[agents]"), Y: y, W: len("[jobs]"), H: 1},
+		Sort:   layout.Rect{X: a.X + width - len(SidebarAgentSortLabel(s)), Y: y, W: len(SidebarAgentSortLabel(s)), H: 1},
+	}
+	if h.Jobs.X+h.Jobs.W > h.Sort.X {
+		h.Sort.Y++
+	}
+	for _, r := range []*layout.Rect{&h.Agents, &h.Jobs, &h.Sort} {
+		r.X = min(r.X, a.X+a.W)
+		r.W = min(r.W, max(0, a.X+a.W-r.X))
 	}
 	return h
 }
@@ -54,6 +58,10 @@ func drawRightSidebarHeader(f *Frame, s *model.AppState, in Input, y int) {
 func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 	a := s.RightSidebarArea()
 	if a.W == 0 || a.H == 0 {
+		return
+	}
+	if a.W < model.SidebarMinDefault {
+		drawNarrowSidebar(f, s, in, true)
 		return
 	}
 	bg := uv.Style{Fg: f.Palette.Text}

@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/goterrace/internal/config"
 	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/goterrace/internal/model"
 )
 
 // RightAgentRows is the full endpoint card sequence before viewport clipping.
@@ -31,13 +32,7 @@ type machineRightRow struct {
 
 func (m *MachineSidebar) rightRows(active Input) []machineRightRow {
 	var rows []machineRightRow
-	_, _, normal := active.State.SidebarBounds()
-	if width := active.SidebarConfig.UI.RightSidebarWidth; width != nil {
-		normal = *width
-	}
-	// Approval details wrap at the configured expanded width so dragging does
-	// not move the following cards or discard the rest of a long URL.
-	limit := max(1, normal-1)
+	limit := max(model.SidebarMinDefault, active.State.RightSidebarArea().W) - 1
 
 	for gi, group := range m.Groups {
 		rows = append(rows, machineRightRow{group: gi, header: true, text: "▾ " + group.Label + ": " + group.Status})
