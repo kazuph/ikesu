@@ -1,0 +1,94 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {execFile,spawn} from 'node:child_process';
+import {promisify} from 'node:util';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import readline from 'node:readline';
+const exec=promisify(execFile);
+const quote=s=>`'${String(s).replaceAll("'","'\\''")}'`;
+
+test('real remote Claude question screen reaches the decision API', {timeout:360_000},async t=>{
+ const evidence=process.env.GTX_LIVE_TEST_EVIDENCE;
+ assert.ok(evidence);fs.mkdirSync(evidence,{recursive:true});
+ const root=(await exec('ssh',['mini','mktemp -d /tmp/gmd-screen-XXXXXX'])).stdout.trim();
+ const config='onboarding=false\n[experimental]\nallow_nested=true\n[ui.sound]\nenabled=false\n[session]\nresume_agents_on_restore=false\n';
+ const script=`mkdir -p ${quote(root+'/home')}\ncat > ${quote(root+'/config.toml')} <<'CONFIG'\n${config}CONFIG\ncat > ${quote(root+'/gtx')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=/Users/kazuph\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(root+'/approval')}\nexport GTX_DB_PATH=${quote(root+'/dispatch.db')}\nexport GTX_STATE_DIR=${quote(root+'/state')}\nexport GTX_CONFIG=${quote(root+'/config.toml')}\nexec /Users/kazuph/.local/bin/gtx "$@"\nWRAPPER\nchmod +x ${quote(root+'/gtx')}`;
+ await exec('ssh',['mini',script]);
+ const command=args=>[root+'/gtx','--session','screen-proof',...args].map(quote).join(' ');
+ const cli=async args=>(await exec('ssh',['mini',command(args)],{timeout:30_000})).stdout;
+ const server=spawn('ssh',['mini',command(['server'])]);
+ let serverLog='';server.stderr.on('data',b=>serverLog+=b);
+ const localRoot=fs.mkdtempSync(path.join(os.tmpdir(),'gmd-real-'));
+ const bin='/Users/kazuph/.local/bin/gtx';
+ const localEnv={...process.env,HOME:localRoot+'/home',GTX_STATE_DIR:localRoot+'/state',GTX_DB_PATH:localRoot+'/dispatch.db',GTX_CONFIG:localRoot+'/config.toml',GTX_MACHINE_REMOTE_BINARY:root+'/gtx'};
+ for(const key of ['GTX_SOCKET_PATH','GTX_PANE_ID','GTX_TAB_ID','GTX_WORKSPACE_ID','CODEX_THREAD_ID','CLAUDECODE'])delete localEnv[key];
+ fs.mkdirSync(localRoot+'/home');fs.writeFileSync(localRoot+'/config.toml',config);
+ const localServer=spawn(bin,['--session','screen-proof','server'],{env:localEnv});
+ const local=async args=>(await exec(bin,['--session','screen-proof',...args],{env:localEnv,timeout:30_000})).stdout;
+ const nativeState=localRoot+'/state/plugins/kazuph.mac-dialog-decisions';
+ const pluginRoot=path.resolve(path.dirname(new URL(import.meta.url).pathname),'../../apps/mac-dialog-decisions');
+ const hash=createHash('sha256').update(fs.readFileSync(pluginRoot+'/dialog.swift')).digest('hex').slice(0,12);
+ fs.mkdirSync(nativeState+'/bin',{recursive:true});fs.copyFileSync(process.env.GTX_LIVE_TEST_NATIVE_BINARY,nativeState+'/bin/gtx-decision-dialog-'+hash);fs.chmodSync(nativeState+'/bin/gtx-decision-dialog-'+hash,0o755);
+ let pane,watch;const lines=[];
+ t.after(async()=>{
+  if(pane){try{fs.writeFileSync(evidence+'/actual-screen.txt',await cli(['pane','read',pane,'--lines','100']));}catch{}}
+  watch?.kill('SIGTERM');
+  try{process.kill(JSON.parse(fs.readFileSync(nativeState+'/daemon.json','utf8')).pid,'SIGTERM');}catch{}
+  try{await local(['server','stop']);}catch{}
+  localServer.kill('SIGTERM');
+  fs.writeFileSync(evidence+'/watch.json',JSON.stringify(lines,null,2));
+  for(const file of fs.readdirSync(localRoot+'/state/sessions/screen-proof/job-logs',{throwIfNoEntry:false})||[]) {
+   if(file.includes('mac-dialog'))fs.copyFileSync(localRoot+'/state/sessions/screen-proof/job-logs/'+file,evidence+'/daemon-job.log');
+  }
+  fs.copyFileSync(localRoot+'/config.toml',evidence+'/local-config.toml');
+  fs.writeFileSync(evidence+'/remote-config.toml',await exec('ssh',['mini','cat '+quote(root+'/config.toml')]).then(x=>x.stdout));
+  await cli(['server','stop']);
+  if(server.exitCode===null&&server.signalCode===null)await new Promise(resolve=>server.once('close',resolve));
+  fs.writeFileSync(evidence+'/environment.json',JSON.stringify({root,localRoot,serverLog},null,2));
+  await exec('ssh',['mini','rm -r -- '+quote(root)]);
+  fs.rmSync(localRoot,{recursive:true});
+  assert.ok(!fs.existsSync(localRoot));
+ });
+ // This probe waits on a real API connection; no screen client is attached.
+ const start=Date.now();let ready=false;
+ while(!ready&&Date.now()-start<15_000){try{await cli(['workspace','list']);ready=true;}catch{await new Promise(r=>setTimeout(r,100));}}
+ assert.ok(ready,'isolated server readiness');
+ const until=async(fn)=>{let err;const end=Date.now()+90_000;do{try{return await fn();}catch(e){err=e;}await new Promise(r=>setTimeout(r,100));}while(Date.now()<end);throw err;};
+ await until(()=>local(['workspace','list']));
+ await local(['machine','add','mini','--label','mini-screen','--remote-session','screen-proof']);
+ await local(['plugin','link',pluginRoot]);await local(['plugin','action','invoke','start','--plugin','kazuph.mac-dialog-decisions']);
+ watch=spawn(bin,['--session','screen-proof','decision','watch','--all-machines'],{env:localEnv});
+ readline.createInterface({input:watch.stdout}).on('line',s=>lines.push(JSON.parse(s)));
+
+ const launched=JSON.parse(await cli(['agent','start','screen-proof','--cwd',root,'--no-focus','--','/Users/kazuph/.local/bin/claude','--model','claude-opus-5-5','--permission-mode','auto','これは画面検出の短いテストです。ファイル編集とコマンドはせず、AskUserQuestionで「テスト：飲み物は？」を選択肢「コーヒー」「お茶」で質問してください。回答後は1行で終了してください。']));
+ pane=launched.result.agent.pane_id;fs.writeFileSync(evidence+'/launch.json',JSON.stringify(launched,null,2));
+ try{await cli(['wait','output',pane,'--match','(trust|飲み物|Select login method)','--regex','--source','visible','--timeout','15000']);}catch{}
+ let screen=await cli(['pane','read',pane,'--lines','100']);
+ fs.writeFileSync(evidence+'/initial-screen.txt',screen);
+ if(/trust/i.test(screen)) {
+  assert.ok(screen.includes(root)||screen.includes(root.replace('/tmp/','/private/tmp/')),'only the authorized temporary folder may be trusted');
+  if(screen.includes('❯ No, exit')) await cli(['pane','send-keys',pane,'Down']);
+  await cli(['pane','send-keys',pane,'Enter']);
+ }
+ await until(async()=>assert.ok(lines.some(x=>x.event==='created'&&x.decision?.kind==='agent_prompt')));
+ screen=await cli(['pane','read',pane,'--lines','100']);fs.writeFileSync(evidence+'/actual-screen.txt',screen);
+ const decisions=JSON.parse(await cli(['decision','list','--status','pending']));fs.writeFileSync(evidence+'/decisions.json',JSON.stringify(decisions,null,2));
+ const record=decisions.result.decisions.find(x=>x.kind==='agent_prompt');
+ assert.ok(record,'real question must be reached; inspect actual-screen.txt for human setup/authentication blockers');
+ let specPath,spec;
+ await until(async()=>{const dir=nativeState+'/dialogs';specPath=fs.readdirSync(dir).map(x=>dir+'/'+x).find(x=>JSON.parse(fs.readFileSync(x,'utf8')).decision_id===record.decision_id);assert.ok(specPath);spec=JSON.parse(fs.readFileSync(specPath,'utf8'));});
+ assert.equal(spec.machine,'mini-screen');assert.equal(spec.options.length,record.options.length);
+ fs.writeFileSync(evidence+'/native-screen-spec.json',JSON.stringify(spec,null,2));
+ const destination=evidence+'/native-screen.png';
+ const message='実Claude質問由来の隔離Macパネル表示中。クリックせず撮影し '+destination+' に保存してください。保存後CLIで回答します。';
+ await exec(bin,['send','p4',message,'--from','machines'],{env:process.env});
+ const parent=await exec(bin,['pane','read','p4','--lines','15'],{env:process.env});if(parent.stdout.includes(message))await exec(bin,['pane','send-keys','p4','Enter'],{env:process.env});
+ await new Promise((resolve,reject)=>{if(fs.existsSync(destination)){resolve();return;}const timer=setTimeout(()=>{watcher.close();reject(Error('screenshot not delivered'));},180_000);const watcher=fs.watch(evidence,()=>{if(fs.existsSync(destination)){clearTimeout(timer);watcher.close();resolve();}});});
+ await local(['decision','answer',record.decision_id,record.options[0].id,'--machine','mini-screen']);
+ await until(async()=>assert.ok(!fs.existsSync(specPath)));
+ const answered=JSON.parse(await cli(['decision','get',record.decision_id]));assert.equal(answered.result.decision.answer.option_id,record.options[0].id);
+ fs.writeFileSync(evidence+'/answered.json',JSON.stringify(answered,null,2));
+});
