@@ -53,7 +53,7 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 			remove = false
 		}
 		log := st.ColumnText(5)
-		if active && log != "" {
+		if active && st.ColumnInt64(2) > 0 && log != "" {
 			// A detached runner owns these files until terminal collection commits.
 			// This also protects them when that DB transaction is temporarily rejected.
 			for _, suffix := range []string{".runner", ".result"} {
