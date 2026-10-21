@@ -7,8 +7,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/guard"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,18 +80,20 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"GOTERRACE=1",
+		"IKESU=1",
 		"GOTERRACE_PANE_ID="+itoa(id),
+		"GTX_PANE_ID=p"+itoa(id),
 	)
 	cmd.Env = env
 	if s.Env != nil {
-		cmd.Env = append(cmd.Env, s.Env(id)...)
+		cmd.Env = append(cmd.Env, envcompat.Both(s.Env(id))...)
 	}
-	cmd.Env = append(cmd.Env, extra...)
+	cmd.Env = append(cmd.Env, envcompat.Both(extra)...)
 	if len(withoutPane) > 0 && withoutPane[0] {
 		filtered := make([]string, 0, len(cmd.Env))
 		for _, kv := range cmd.Env {
 			key, _, _ := strings.Cut(kv, "=")
-			if key != "GTX_PANE_ID" && key != "GOTERRACE_PANE_ID" {
+			if key != "IKESU_PANE_ID" && key != "GTX_PANE_ID" && key != "GOTERRACE_PANE_ID" {
 				filtered = append(filtered, kv)
 			}
 		}
@@ -130,6 +133,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 			}
 		}
 	}
+	cmd.Env = envcompat.Both(cmd.Env)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		if p.guard != nil {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/plugin"
+	"github.com/kazuph/ikesu/internal/plugin"
 )
 
 func writePluginInstallPreview(out io.Writer, preview plugin.InstallPreview, source string) {

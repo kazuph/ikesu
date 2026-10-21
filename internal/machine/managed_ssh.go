@@ -3,8 +3,8 @@ package machine
 import (
 	"context"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/config"
 	"os"
 	"path/filepath"
 	"time"

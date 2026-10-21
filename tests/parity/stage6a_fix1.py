@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 
-p=argparse.ArgumentParser();p.add_argument('--gtx',required=True,type=Path);p.add_argument('--out',required=True,type=Path);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--ikesu','--gtx',dest='gtx',required=True,type=Path);p.add_argument('--out',required=True,type=Path);a=p.parse_args()
 here=Path(__file__).resolve().parent;work=Path.home()/'bench-terrace.noindex/work/detail'
 a.out.mkdir(parents=True,exist_ok=True);procedures=a.out/'procedures';procedures.mkdir(exist_ok=True)
 def send(text):return 'send '+json.dumps(text)+'\n'
@@ -15,7 +15,7 @@ def observe(name,steps,delivery,env=None):
     path=procedures/(name+'.steps');path.write_text(steps+'kill\n')
     config=procedures/(name+'.toml')
     config.write_text((work/'user-config.toml').read_text().replace('[ui.toast]\ndelivery = "system"','')+(f'\n[ui.toast]\ndelivery="{delivery}"\n' if delivery!='in-app' else ''))
-    cmd=['python3',str(here/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--gtx',str(a.gtx),'--ptyrun',str(work/'ptyrun'),'--config-file',str(config),'--steps',str(path),'--out',str(a.out/name),'--clipboard-sandbox','--server']
+    cmd=['python3',str(here/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--ikesu',str(a.gtx),'--ptyrun',str(work/'ptyrun'),'--config-file',str(config),'--steps',str(path),'--out',str(a.out/name),'--clipboard-sandbox','--server']
     if env is not None:cmd+=['--terminal-env',json.dumps(env)]
     if delivery=='in-app':cmd+=['--in-app-toast']
     print(name,flush=True);subprocess.run(cmd,check=True)

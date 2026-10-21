@@ -8,12 +8,12 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/platform"
-	"github.com/kazuph/goterrace/internal/runtime"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/platform"
+	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 func (s *Server) paneList(id string, p api.PaneListParams) api.Response {
@@ -76,7 +76,7 @@ func (s *Server) paneCurrent(id string, p api.PaneCurrentParams) api.Response {
 			return api.Success(id, api.PaneCurrentResult{Type: "pane_current", Pane: info})
 		}
 	}
-	return api.Failure(id, api.ErrPaneNotFound, "caller is not inside a gtx pane")
+	return api.Failure(id, api.ErrPaneNotFound, "caller is not inside an ikesu pane")
 }
 
 // paneForProcess walks the ancestry of pid looking for a pane shell.

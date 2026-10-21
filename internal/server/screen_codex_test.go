@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/runtime"
-	"github.com/kazuph/goterrace/internal/screenprompt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func codexQuestionTerminal(t *testing.T, fixture string) (*Server, *runtime.Pane, string) {

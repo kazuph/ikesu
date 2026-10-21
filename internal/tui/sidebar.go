@@ -2,10 +2,10 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 	"strings"
 )
 
@@ -56,16 +56,16 @@ func (a *App) setStartupConfigWarning(warnings []string) {
 	for _, warning := range warnings {
 		if strings.Contains(warning, "unsupported:") {
 			key := strings.SplitN(warning, ":", 2)[0]
-			message = "config.toml: " + key + " unsupported; gtx config check"
+			message = "config.toml: " + key + " unsupported; ikesu config check"
 			break
 		}
 		if !a.serverUI {
 			if strings.HasPrefix(warning, "invalid keybinding:") {
 				if message == "" {
-					message = "config.toml; gtx config check"
+					message = "config.toml; ikesu config check"
 				}
 			} else {
-				message = "config.toml invalid; using defaults; gtx config check"
+				message = "config.toml invalid; using defaults; ikesu config check"
 			}
 		}
 	}

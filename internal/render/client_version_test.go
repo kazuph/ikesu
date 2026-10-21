@@ -13,8 +13,8 @@ func TestClientVersionGapAndButtons(t *testing.T) {
 			bar := base.ActionBar
 			text := screenText(t, out, cols, 24)
 			left, right := bar.Copy.X+bar.Copy.W, bar.Cycle.X
-			fits := !notice && bar.Area.H > 0 && bar.Copy.W > 0 && bar.Cycle.W > 0 && right-left >= 12
-			if strings.Contains(text, "gtx v0.1.0") != fits || out.ActionBar != bar {
+			fits := !notice && bar.Area.H > 0 && bar.Copy.W > 0 && bar.Cycle.W > 0 && right-left >= len("ikesu v0.1.0")+2
+			if strings.Contains(text, "ikesu v0.1.0") != fits || out.ActionBar != bar {
 				t.Fatalf("cols=%d notice=%v: visibility or hit regions changed", cols, notice)
 			}
 			if !fits && screenText(t, base, cols, 24) != text {
@@ -23,12 +23,12 @@ func TestClientVersionGapAndButtons(t *testing.T) {
 			if fits {
 				x := -1
 				for col := left; col < right; col++ {
-					if out.Frame.Cell(col, bar.Area.Y).Content == "g" {
+					if out.Frame.Cell(col, bar.Area.Y).Content == "i" {
 						x = col
 						break
 					}
 				}
-				l, r := x-left, right-x-len("gtx v0.1.0")
+				l, r := x-left, right-x-len("ikesu v0.1.0")
 				if l < 1 || r < 1 || l-r > 1 || r-l > 1 {
 					t.Fatalf("margins %d,%d", l, r)
 				}

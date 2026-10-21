@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/latency"
-	"github.com/kazuph/goterrace/internal/machine"
-	"github.com/kazuph/goterrace/internal/platform"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/latency"
+	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/platform"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 type managedEndpoint struct {
@@ -123,7 +123,7 @@ func hasEnabledMachine(profiles []machine.Profile) bool {
 func pumpMachines(session string, local net.Conn, in, out *os.File, settings *localSettings, profiles []machine.Profile) pumpResult {
 	size, err := tui.GetWinsize(in)
 	if err != nil {
-		fmt.Fprintln(out, "gtx:", err)
+		fmt.Fprintln(out, "ikesu:", err)
 		return pumpDone
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -160,7 +160,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		m.post(ctx, endpointEvent{catalogChanged: true, err: err})
 	})
 	if err != nil {
-		fmt.Fprintln(out, "gtx: machine catalog watch:", err)
+		fmt.Fprintln(out, "ikesu: machine catalog watch:", err)
 		return pumpRejected
 	}
 	defer stopCatalog()
@@ -169,7 +169,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	}
 	input, stopInput, err := readMachineInput(in, ctx, true)
 	if err != nil {
-		fmt.Fprintln(out, "gtx:", err)
+		fmt.Fprintln(out, "ikesu:", err)
 		return pumpDone
 	}
 	defer stopInput()

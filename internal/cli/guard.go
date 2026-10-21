@@ -3,9 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/envcompat"
+	"github.com/kazuph/ikesu/internal/guard"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,14 +15,14 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "gtx guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
+		fmt.Fprintln(r.out(), "ikesu guard exec -- <cmd> [args...]\nikesu guard line -- <command line>\nikesu guard claude-prefix -- <command line>\nikesu guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\nikesu guard log [--lines N] [--json]\nikesu guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\nikesu guard status")
 		return 0
 	}
 	sub := a[0]
 	a = a[1:]
 	var c config.Config
 	var e error
-	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || os.Getenv("GTX_GUARD_MARKER") == "" {
+	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || envcompat.Get("GTX_GUARD_MARKER") == "" {
 		c, e = config.Load()
 		if e != nil {
 			fmt.Fprintln(r.errOut(), e)
@@ -50,10 +51,10 @@ func (r *runner) guardCLI(a []string) int {
 		getenv := next.o.getenv
 		next.o.Explicit = false
 		next.o.Getenv = func(key string) string {
-			if key == "GTX_SOCKET_PATH_EXPLICIT" {
+			if key == "IKESU_SOCKET_PATH_EXPLICIT" || key == "GTX_SOCKET_PATH_EXPLICIT" {
 				return "1"
 			}
-			if key == "GTX_SOCKET_PATH" {
+			if key == "IKESU_SOCKET_PATH" || key == "GTX_SOCKET_PATH" {
 				return marker.Socket
 			}
 			return getenv(key)

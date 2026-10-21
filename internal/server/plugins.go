@@ -3,8 +3,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/plugin"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/plugin"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +22,7 @@ func (s *Server) refreshPluginHooks() {
 	items, err := engine.Store.List("")
 	s.pluginEvents = false
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gtx plugin registry:", err)
+		fmt.Fprintln(os.Stderr, "ikesu plugin registry:", err)
 		return
 	}
 	for _, item := range items {
@@ -141,6 +141,6 @@ func (s *Server) pluginEvent(kind string, raw json.RawMessage) {
 	}
 	context := s.pluginContext("", plugin.Context{"invocation_source": "event"})
 	if err := s.plugins.Event(name, raw, context); err != nil {
-		fmt.Fprintln(os.Stderr, "gtx plugin event:", err)
+		fmt.Fprintln(os.Stderr, "ikesu plugin event:", err)
 	}
 }

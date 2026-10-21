@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/guard"
 )
 
 func TestHandoffRebindsEveryGuardMarker(t *testing.T) {

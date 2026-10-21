@@ -123,6 +123,12 @@ func TestRestoreInheritedGuardPreservesUserEnvironment(t *testing.T) {
 	defer a.Close()
 	restored := EnvMap(RestoreInherited(prepared))
 	for k, v := range EnvMap(original) {
+		if k == "GTX_PANE_ID" {
+			if restored[k] != "" {
+				t.Fatal("parent pane identity survived cleanup")
+			}
+			continue
+		}
 		if restored[k] != v {
 			t.Fatal(k, restored[k], v)
 		}

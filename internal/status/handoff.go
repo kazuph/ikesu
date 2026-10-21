@@ -1,7 +1,7 @@
 package status
 
 import (
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/detect"
 	"time"
 )
 

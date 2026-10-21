@@ -3,8 +3,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestNotificationTargetKeyKeepsTargetlessReloadToast(t *testing.T) {

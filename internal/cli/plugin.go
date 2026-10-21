@@ -4,26 +4,26 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/plugin"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/plugin"
 	"golang.org/x/term"
 	"os"
 	"strconv"
 	"strings"
 )
 
-const pluginHelp = `gtx plugin commands:
-  gtx plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]
-  gtx plugin uninstall <plugin_id|owner/repo[/subdir...]>
-  gtx plugin link <path> [--disabled]
-  gtx plugin list [--plugin ID] [--json]
-  gtx plugin config-dir <plugin_id>
-  gtx plugin unlink <plugin_id>
-  gtx plugin enable <plugin_id>
-  gtx plugin disable <plugin_id>
-  gtx plugin action <list|invoke>
-  gtx plugin log list [--plugin ID] [--limit N]
-  gtx plugin pane <open|focus|close>
+const pluginHelp = `ikesu plugin commands:
+  ikesu plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]
+  ikesu plugin uninstall <plugin_id|owner/repo[/subdir...]>
+  ikesu plugin link <path> [--disabled]
+  ikesu plugin list [--plugin ID] [--json]
+  ikesu plugin config-dir <plugin_id>
+  ikesu plugin unlink <plugin_id>
+  ikesu plugin enable <plugin_id>
+  ikesu plugin disable <plugin_id>
+  ikesu plugin action <list|invoke>
+  ikesu plugin log list [--plugin ID] [--limit N]
+  ikesu plugin pane <open|focus|close>
 `
 
 func (r *runner) pluginCLI(args []string) int {
@@ -44,7 +44,7 @@ func (r *runner) pluginCLI(args []string) int {
 		return r.pluginPaneCLI(args[1:])
 	case "install":
 		if len(args) < 2 {
-			return usageErr(r, "usage: gtx plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]")
+			return usageErr(r, "usage: ikesu plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]")
 		}
 		source, ref, yes := args[1], "", false
 		for i := 2; i < len(args); {
@@ -91,7 +91,7 @@ func (r *runner) pluginCLI(args []string) int {
 		return 0
 	case "uninstall":
 		if len(args) != 2 {
-			return usageErr(r, "usage: gtx plugin uninstall <plugin_id|owner/repo[/subdir...]>")
+			return usageErr(r, "usage: ikesu plugin uninstall <plugin_id|owner/repo[/subdir...]>")
 		}
 		id, removed, err := store.Uninstall(args[1])
 		if err != nil {
@@ -106,16 +106,16 @@ func (r *runner) pluginCLI(args []string) int {
 		return 0
 	case "action":
 		if len(args) < 2 {
-			return usageErr(r, "usage: gtx plugin action <list|invoke>")
+			return usageErr(r, "usage: ikesu plugin action <list|invoke>")
 		}
 		method = "plugin.action." + args[1]
 		if args[1] != "list" && args[1] != "invoke" {
-			return usageErr(r, "usage: gtx plugin action <list|invoke>")
+			return usageErr(r, "usage: ikesu plugin action <list|invoke>")
 		}
 		start := 2
 		if args[1] == "invoke" {
 			if len(args) < 3 {
-				return usageErr(r, "usage: gtx plugin action invoke <action_id> [--plugin ID]")
+				return usageErr(r, "usage: ikesu plugin action invoke <action_id> [--plugin ID]")
 			}
 			p["action_id"] = args[2]
 			p["context"] = map[string]any{"invocation_source": "cli"}
@@ -134,7 +134,7 @@ func (r *runner) pluginCLI(args []string) int {
 		return r.printResult("cli:plugin", method, p)
 	case "log":
 		if len(args) < 2 || args[1] != "list" {
-			return usageErr(r, "usage: gtx plugin log list [--plugin ID] [--limit N]")
+			return usageErr(r, "usage: ikesu plugin log list [--plugin ID] [--limit N]")
 		}
 		method = "plugin.log.list"
 		for i := 2; i < len(args); {
@@ -159,7 +159,7 @@ func (r *runner) pluginCLI(args []string) int {
 		return r.printResult("cli:plugin", method, p)
 	case "link":
 		if len(args) < 2 || len(args) > 3 || (len(args) == 3 && args[2] != "--disabled") {
-			return usageErr(r, "usage: gtx plugin link <path> [--disabled]")
+			return usageErr(r, "usage: ikesu plugin link <path> [--disabled]")
 		}
 		p["path"] = args[1]
 		p["enabled"] = len(args) == 2
@@ -176,17 +176,17 @@ func (r *runner) pluginCLI(args []string) int {
 				}
 				p["plugin_id"] = v
 			default:
-				return usageErr(r, "usage: gtx plugin list [--plugin ID] [--json]")
+				return usageErr(r, "usage: ikesu plugin list [--plugin ID] [--json]")
 			}
 		}
 	case "unlink", "enable", "disable":
 		if len(args) != 2 {
-			return usageErr(r, "usage: gtx plugin "+args[0]+" <plugin_id>")
+			return usageErr(r, "usage: ikesu plugin "+args[0]+" <plugin_id>")
 		}
 		p["plugin_id"] = args[1]
 	case "config-dir":
 		if len(args) != 2 {
-			return usageErr(r, "usage: gtx plugin config-dir <plugin_id>")
+			return usageErr(r, "usage: ikesu plugin config-dir <plugin_id>")
 		}
 		path, err := store.ConfigDir(args[1])
 		if err != nil {

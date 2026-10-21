@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // P4b bounds image receipt waits independently for every viewer.

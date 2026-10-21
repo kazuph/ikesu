@@ -5,14 +5,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 	"io"
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func (m *machineClient) post(ctx context.Context, event endpointEvent) bool {
@@ -153,7 +153,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			m.retirePendingGraphicsFile()
 		}
 		if event.id == "local" && e.snapshot == nil && needsAttention(event.err.Error()) {
-			fmt.Fprintln(m.out, "gtx:", event.err)
+			fmt.Fprintln(m.out, "ikesu:", event.err)
 			return pumpRejected, true
 		}
 		e.connection = nil

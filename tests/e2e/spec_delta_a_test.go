@@ -2,7 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/dispatch"
 	"path/filepath"
 	"strings"
 	"testing"

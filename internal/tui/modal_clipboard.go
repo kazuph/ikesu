@@ -7,8 +7,8 @@ import (
 	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 func (a *App) modalClipboardKey(k uv.Key) bool {

@@ -8,7 +8,7 @@ import (
 	"image"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/kitty"
 )
 
 func croppedSourcePlacement(t *testing.T) kitty.Placement {

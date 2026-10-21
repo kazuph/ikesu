@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestSidebarContinuousTwoServersRightClicks(t *testing.T) {

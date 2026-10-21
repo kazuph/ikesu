@@ -2,7 +2,7 @@ package endpoint
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // EncodeText preserves image caches and defers the text delta baseline until

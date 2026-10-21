@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/machine"
 	"io"
 	"os"
 	"os/exec"
@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 // `gtx run` (background + pane jobs), `gtx run list|cancel`, `gtx log`
@@ -35,7 +35,7 @@ func (r *runner) runCLI(args []string) int {
 		return r.runListCLI(args[1:])
 	case "cancel":
 		if len(args) < 2 {
-			fmt.Fprintln(r.errOut(), "usage: gtx run cancel <job_id>")
+			fmt.Fprintln(r.errOut(), "usage: ikesu run cancel <job_id>")
 			return 2
 		}
 		return r.runCancelCLI(args[1])
@@ -175,7 +175,7 @@ func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion 
 	}
 	var res api.RunStartedResult
 	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	out, _ := json.Marshal(runSpawnOutput{
@@ -203,7 +203,7 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 	rawCaller, e := r.request("cli:run:caller", api.MethodPaneGet, api.PaneTarget{PaneID: caller})
 	var callerResponse api.Response
 	if e != nil || json.Unmarshal(rawCaller, &callerResponse) != nil || callerResponse.Err != nil {
-		fmt.Fprintln(r.errOut(), "gtx run --pane: caller pane could not be resolved")
+		fmt.Fprintln(r.errOut(), "ikesu run --pane: caller pane could not be resolved")
 		return 1
 	}
 	var callerInfo api.PaneInfoResult
@@ -233,7 +233,7 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 	}
 	var res api.PaneInfoResult
 	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	paneID := res.Pane.PaneID
@@ -258,8 +258,8 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 
 	bin, err := os.Executable()
 	if err != nil {
-		bin = "gtx"
-		if p, e := exec.LookPath("gtx"); e == nil {
+		bin = "ikesu"
+		if p, e := exec.LookPath("ikesu"); e == nil {
 			bin = p
 		}
 	}
@@ -334,7 +334,7 @@ func (r *runner) runCancelCLI(jobID string) int {
 	}
 	var res api.RunCancelledResult
 	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(r.out(), "job %s %s (signal=%s)\n", res.Job, res.Status, res.Signal)
@@ -344,18 +344,18 @@ func (r *runner) runCancelCLI(jobID string) int {
 // runListCLI prints jobs newest first, straight from the store.
 func (r *runner) runListCLI(args []string) int {
 	if len(args) > 0 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(r.errOut(), "usage: gtx run list")
+		fmt.Fprintln(r.errOut(), "usage: ikesu run list")
 		return 0
 	}
 	store, err := dispatch.OpenReadOnly(dispatch.DBPath(r.o.Session))
 	if err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: cannot open store: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: cannot open store: %v\n", err)
 		return 1
 	}
 	defer store.Close()
 	jobs, err := store.CommandRows(0)
 	if err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: %v\n", err)
 		return 1
 	}
 	if len(jobs) == 0 {
@@ -459,7 +459,7 @@ func (r *runner) logJobCLI(args []string) int {
 	}
 	data, err := os.ReadFile(logPath)
 	if err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: cannot read log: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: cannot read log: %v\n", err)
 		return 1
 	}
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
@@ -525,7 +525,7 @@ func (r *runner) paneRunWrapper(args []string) int {
 	}
 	if i >= len(args) || args[i] != "--" || i+1 >= len(args) ||
 		jobID == "" || target == "" || !validPaneJobID(jobID) {
-		fmt.Fprintln(r.errOut(), "usage: gtx __pane-run --target PANE --job-id ID [--parent-agent NAME] [--run-label L] [--close-on-success|--close-on-exit] -- <command...>")
+		fmt.Fprintln(r.errOut(), "usage: ikesu __pane-run --target PANE --job-id ID [--parent-agent NAME] [--run-label L] [--close-on-success|--close-on-exit] -- <command...>")
 		return 2
 	}
 	command := strings.Join(args[i+1:], " ")
@@ -535,12 +535,12 @@ func (r *runner) paneRunWrapper(args []string) int {
 
 	logPath := dispatch.JobLogPath(jobID, label, r.o.Session)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx __pane-run: cannot create log dir: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu __pane-run: cannot create log dir: %v\n", err)
 		return 1
 	}
 	log, err := os.Create(logPath)
 	if err != nil {
-		fmt.Fprintf(r.errOut(), "gtx __pane-run: cannot create log: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu __pane-run: cannot create log: %v\n", err)
 		return 1
 	}
 	defer log.Close()
@@ -551,7 +551,7 @@ func (r *runner) paneRunWrapper(args []string) int {
 		store.Close()
 	}
 	started := time.Now()
-	fmt.Fprintf(log, "== gtx run %s label=%s started=%s cmd=%s\n\n",
+	fmt.Fprintf(log, "== ikesu run %s label=%s started=%s cmd=%s\n\n",
 		jobID, label, started.Format(time.RFC3339), command)
 
 	profiles := r.catalog().Load()
@@ -616,11 +616,11 @@ func (r *runner) paneRunWrapper(args []string) int {
 		approval.Close()
 	}
 
-	fmt.Fprintf(log, "\n== gtx run %s exit=%d finished=%s\n",
+	fmt.Fprintf(log, "\n== ikesu run %s exit=%d finished=%s\n",
 		jobID, code, time.Now().Format(time.RFC3339))
 
 	{
-		line := fmt.Sprintf("[gtx run] exit=%d label=%s pane=%s details: gtx log %s",
+		line := fmt.Sprintf("[ikesu run] exit=%d label=%s pane=%s details: ikesu log %s",
 			code, oneLineField(label), target, jobID)
 		caller := ""
 		if store, err := dispatch.Open(dispatch.DBPath(r.o.Session)); err == nil {

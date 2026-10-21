@@ -2,8 +2,8 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/render"
 	"io"
 )
 
@@ -58,7 +58,7 @@ func (a *App) StartOnboarding() {
 	if a.sidebarConfig.Onboarding != nil && !*a.sidebarConfig.Onboarding {
 		return
 	}
-	a.dialog = &uiDialog{onboarding: true, d: render.Dialog{ContinueOnly: true, Title: "gtx", Detail: "terminal workspace manager for coding agents", Width: 64, CenterTerminal: true, Confirm: "continue", Lines: []string{"this is a mouse-first terminal.", "click the sidebar to switch workspaces, drag pane", "borders to resize, right-click for context menus.", "", a.prefixSpec() + " enters prefix mode · ? shows keybinds and settings", "next: start managing persistent terminal workspaces"}}, run: func(a *App) {
+	a.dialog = &uiDialog{onboarding: true, d: render.Dialog{ContinueOnly: true, Title: "ikesu", Detail: "terminal workspace manager for coding agents", Width: 64, CenterTerminal: true, Confirm: "continue", Lines: []string{"this is a mouse-first terminal.", "click the sidebar to switch workspaces, drag pane", "borders to resize, right-click for context menus.", "", a.prefixSpec() + " enters prefix mode · ? shows keybinds and settings", "next: start managing persistent terminal workspaces"}}, run: func(a *App) {
 		if a.configEdit != nil {
 			// Continuing releases subsequent keys immediately; disk writes
 			// happen on the client without holding the session input loop.

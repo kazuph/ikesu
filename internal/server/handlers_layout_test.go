@@ -3,12 +3,12 @@ package server
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"net"
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // splitRight adds one pane via pane.split and returns its id.

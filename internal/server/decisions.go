@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 // The app loop owns records, expiry scheduling and notification order.

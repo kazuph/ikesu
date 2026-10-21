@@ -6,7 +6,7 @@ out=$1
 shift
 mkdir -p "$out"
 go test ./internal/render ./internal/tui -run TestStage4Collapsed -count=1 > "$out/collapsed-test.log" 2>&1
-go build -o "$root/gtx-stage4" ./cmd/gtx
+go build -o "$root/gtx-stage4" ./cmd/ikesu
 for name in "$@"; do
     mode=--server
     config="$root/user-config.toml"
@@ -55,7 +55,7 @@ for name in "$@"; do
             ;;
     esac
     python3 tests/parity/observe.py --herdr "$root/herdr-0.2.57" \
-        --gtx "$root/gtx-stage4" --ptyrun "$root/ptyrun" \
+        --ikesu "$root/gtx-stage4" --ptyrun "$root/ptyrun" \
         --config-file "$config" --silent $mode --clipboard-sandbox \
         --steps "$steps" --out "$out/$name"
 done

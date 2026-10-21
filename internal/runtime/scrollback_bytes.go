@@ -1,6 +1,6 @@
 package runtime
 
-import "github.com/kazuph/goterrace/internal/config"
+import "github.com/kazuph/ikesu/internal/config"
 
 // Configuration applies between output batches, on the app loop.
 func (s *Supervisor) SetScrollbackBytes(c config.Config) {

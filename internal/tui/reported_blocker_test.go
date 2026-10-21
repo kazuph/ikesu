@@ -3,13 +3,13 @@ package tui
 import (
 	"bytes"
 	"encoding/gob"
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/detect"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 // Terminal bytes exercise the actual detector; live Claude acceptance is separate.

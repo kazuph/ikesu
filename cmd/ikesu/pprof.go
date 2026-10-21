@@ -3,6 +3,7 @@
 package main
 
 import (
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -17,16 +18,16 @@ import (
 // $GTX_MEMPROFILE additionally dumps a heap profile to that file after
 // the same delay (post-GC), which pinpoints what holds memory.
 func init() {
-	if tp := os.Getenv("GTX_TRACE"); tp != "" {
+	if tp := envcompat.Get("GTX_TRACE"); tp != "" {
 		if f, err := os.Create(tp); err == nil && trace.Start(f) == nil {
 			time.AfterFunc(15*time.Second, func() { trace.Stop(); f.Close() })
 		}
 	}
-	secs, _ := strconv.Atoi(os.Getenv("GTX_CPUPROFILE_SECS"))
+	secs, _ := strconv.Atoi(envcompat.Get("GTX_CPUPROFILE_SECS"))
 	if secs <= 0 {
 		secs = 30
 	}
-	if mp := os.Getenv("GTX_MEMPROFILE"); mp != "" {
+	if mp := envcompat.Get("GTX_MEMPROFILE"); mp != "" {
 		time.AfterFunc(time.Duration(secs)*time.Second, func() {
 			runtime.GC()
 			if f, err := os.Create(mp); err == nil {
@@ -35,7 +36,7 @@ func init() {
 			}
 		})
 	}
-	path := os.Getenv("GTX_CPUPROFILE")
+	path := envcompat.Get("GTX_CPUPROFILE")
 	if path == "" {
 		return
 	}

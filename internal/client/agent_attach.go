@@ -16,8 +16,8 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 // AttachAgent connects to an already-resolved terminal without starting a

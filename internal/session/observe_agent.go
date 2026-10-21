@@ -3,7 +3,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/platform"
 	"io"
 	"os"
 	"path/filepath"

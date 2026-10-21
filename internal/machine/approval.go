@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/childenv"
 )
 
 const ApprovalStopped = "承認待ち。クリックで承認ページを開く"

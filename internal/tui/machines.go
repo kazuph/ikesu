@@ -7,9 +7,9 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/machine"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func (a *App) SetMachineCatalog(path string) { a.machineCatalog = path }

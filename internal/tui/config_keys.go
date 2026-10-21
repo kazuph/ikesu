@@ -2,17 +2,18 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func (a *App) prefixMatches(k uv.Key) bool {
@@ -173,13 +174,18 @@ func (a *App) runKeyCommand(binding config.PluginKeyBinding) {
 func (a *App) keyCommandEnv(cwd string) map[string]string {
 	bin, _ := os.Executable()
 	env := map[string]string{"GTX_BIN_PATH": bin, "GTX_ACTIVE_PANE_CWD": cwd, "GTX_ACTIVE_PANE_ID": fmt.Sprintf("p%d", a.focusedPane())}
-	if socket := os.Getenv("GTX_SOCKET_PATH"); socket != "" {
+	if socket := envcompat.Get("GTX_SOCKET_PATH"); socket != "" {
 		env["GTX_SOCKET_PATH"] = socket
 	}
 	if w := a.st.ActiveWorkspace(); w != nil {
 		env["GTX_ACTIVE_WORKSPACE_ID"] = fmt.Sprintf("s%d", w.ID)
 		if t := w.TabRef(); t != nil {
 			env["GTX_ACTIVE_TAB_ID"] = fmt.Sprintf("s%d:t%d", w.ID, t.ID)
+		}
+	}
+	for key, value := range env {
+		if strings.HasPrefix(key, "GTX_") {
+			env["IKESU_"+strings.TrimPrefix(key, "GTX_")] = value
 		}
 	}
 	return env

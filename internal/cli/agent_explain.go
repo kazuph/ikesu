@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 func (r *runner) agentExplainCLI(args []string) int {
-	const usage = "usage: gtx agent explain <target> [--json]\nusage: gtx agent explain --file PATH --agent LABEL [--json]"
+	const usage = "usage: ikesu agent explain <target> [--json]\nusage: ikesu agent explain --file PATH --agent LABEL [--json]"
 	var target, file, agent string
 	jsonOutput := false
 	for i := 0; i < len(args); {
@@ -43,10 +43,10 @@ func (r *runner) agentExplainCLI(args []string) int {
 	var e detect.Explanation
 	if file != "" {
 		if agent == "" {
-			return usageErr(r, "gtx agent explain --file requires --agent LABEL")
+			return usageErr(r, "ikesu agent explain --file requires --agent LABEL")
 		}
 		if target != "" {
-			return usageErr(r, "usage: gtx agent explain --file PATH --agent LABEL [--json]")
+			return usageErr(r, "usage: ikesu agent explain --file PATH --agent LABEL [--json]")
 		}
 		data, err := os.ReadFile(file)
 		if err != nil {

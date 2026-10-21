@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/screenprompt"
 	"os"
 	"strings"
 )
@@ -76,7 +76,7 @@ func (s *Server) submitScreenFlow(pid int, p *screenprompt.Prompt) {
 		n, err := pane.WriteScreenPrompt([]byte(key), &f.inputSequence)
 		if err != nil || n != len(key) {
 			message := fmt.Sprintf("screen prompt Submit failed: written=%d: %v", n, err)
-			fmt.Fprintln(os.Stderr, "gtx: "+message)
+			fmt.Fprintln(os.Stderr, "ikesu: "+message)
 			s.app.SetConfigWarning(message)
 			return
 		}

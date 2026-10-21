@@ -2,8 +2,8 @@ package render
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/agentview"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/agentview"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func projectAgentRows(s *model.AppState, panes map[int]*PaneSnap, rows []SidebarRow) []SidebarRow {

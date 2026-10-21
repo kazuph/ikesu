@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"os"
 	"sync/atomic"

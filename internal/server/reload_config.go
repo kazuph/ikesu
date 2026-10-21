@@ -3,8 +3,8 @@ package server
 import (
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
 )
 
 func (s *Server) reloadConfig() api.ConfigReloadResult {

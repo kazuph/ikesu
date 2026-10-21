@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/kazuph/goterrace/internal/model"
+import "github.com/kazuph/ikesu/internal/model"
 
 // Hidden machine endpoints still supply sidebar snapshots, but cannot mark
 // panes seen or receive clipboard writes until this terminal displays them.

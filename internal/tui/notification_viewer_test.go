@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/layout"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 func TestStage6aExplicitNotificationKeysPreserveToastAndNormalTargets(t *testing.T) {

@@ -2,7 +2,7 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 // Shared borders combine the incident edges at each split intersection.

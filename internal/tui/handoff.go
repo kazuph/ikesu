@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/status"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/status"
 	"time"
 )
 

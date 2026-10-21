@@ -2,7 +2,7 @@ package session
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/platform"
 	"os"
 	"path/filepath"
 	"strconv"

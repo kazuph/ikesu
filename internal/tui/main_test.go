@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"os/exec"
 	"runtime"

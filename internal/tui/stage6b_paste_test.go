@@ -3,8 +3,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestStage6bModalPaste(t *testing.T) {

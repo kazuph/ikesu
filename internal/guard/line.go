@@ -35,12 +35,12 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 	authorizationEnv := i.AuthorizationEnv
 	i.Env = EnvMap(environment(callerEnv))
 	for key, value := range authorizationEnv {
-		if key != "GTX_GUARD_MARKER" && key != "GTX_PANE_ID" && key != "GTX_SOCKET_PATH" {
+		if !authorizationIdentityKey(key) {
 			i.Env[key] = value
 		}
 	}
 	for key, value := range parsedEnv {
-		if key != "GTX_GUARD_MARKER" && key != "GTX_PANE_ID" && key != "GTX_SOCKET_PATH" {
+		if !authorizationIdentityKey(key) {
 			i.Env[key] = value
 		}
 	}
@@ -51,4 +51,13 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 		return true
 	}
 	return authorize(c, root, i, "line", errOut, await, &verdict)
+}
+
+// Inline shell assignments cannot redirect the caller's authorization context.
+func authorizationIdentityKey(key string) bool {
+	switch key {
+	case "GTX_GUARD_MARKER", "GTX_PANE_ID", "GTX_SOCKET_PATH", "IKESU_GUARD_MARKER", "IKESU_PANE_ID", "IKESU_SOCKET_PATH":
+		return true
+	}
+	return false
 }

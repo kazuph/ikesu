@@ -98,7 +98,7 @@ func ReadManifest(path, version string) (Manifest, string, error) {
 	}
 	for i := range minimum {
 		if minimum[i] > current[i] {
-			return m, "", fmt.Errorf("requires gtx %s; running %s", m.MinVersion, version)
+			return m, "", fmt.Errorf("requires ikesu %s; running %s", m.MinVersion, version)
 		}
 		if minimum[i] < current[i] {
 			break

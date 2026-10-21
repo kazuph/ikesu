@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/guard"
+	"github.com/kazuph/ikesu/internal/guard"
 )
 
 // Exercise the actual CLI and generated shell entries, with no replacement
 // authorization server. These commands require a reason before any RPC.
 func TestPinnedGuardEntryPoints(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "gtx")
-	build := exec.Command("go", "build", "-o", binary, "../../cmd/gtx")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
 	if b, e := build.CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
@@ -139,7 +139,7 @@ func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 
 func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "gtx")
-	build := exec.Command("go", "build", "-o", binary, "../../cmd/gtx")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
 	if b, e := build.CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}

@@ -10,13 +10,13 @@ if [ "$which" = all ] || [ "$which" = go ]; then
   cd $B/src/goterrace || exit 1
   export GOCACHE=$W/gocache
   rm -rf "$GOCACHE"
-  tm go_dev_clean go build -o $W/gtx-dev ./cmd/gtx
-  touch internal/render/render.go; tm go_dev_incr go build -o $W/gtx-dev ./cmd/gtx
-  touch internal/render/render.go; tm go_dev_incr2 go build -o $W/gtx-dev ./cmd/gtx
+  tm go_dev_clean go build -o $W/gtx-dev ./cmd/ikesu
+  touch internal/render/render.go; tm go_dev_incr go build -o $W/gtx-dev ./cmd/ikesu
+  touch internal/render/render.go; tm go_dev_incr2 go build -o $W/gtx-dev ./cmd/ikesu
   rm -rf "$GOCACHE"
-  tm go_rel_clean go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/gtx
-  touch internal/render/render.go; tm go_rel_incr go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/gtx
-  touch internal/render/render.go; tm go_rel_incr2 go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/gtx
+  tm go_rel_clean go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/ikesu
+  touch internal/render/render.go; tm go_rel_incr go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/ikesu
+  touch internal/render/render.go; tm go_rel_incr2 go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/ikesu
   touch internal/render/render.go; tm go_vet go vet ./...
   tm go_fmt_check gofmt -l .
   touch internal/render/render.go; tm go_test go test -count=1 ./...

@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func (a *App) OpenOverlay(target int, cwd string, argv []string, env map[string]string) (int, error) {

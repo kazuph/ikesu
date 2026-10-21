@@ -3,7 +3,8 @@ package client
 import (
 	"errors"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"io"
 	"os"
 	"os/exec"
@@ -11,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 // sshEndpoint owns only the SSH process it started. The remote helper dials
@@ -47,7 +48,7 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 			managed.Close()
 		}
 	}()
-	binary := os.Getenv("GTX_MACHINE_REMOTE_BINARY")
+	binary := envcompat.Get("GTX_MACHINE_REMOTE_BINARY")
 	if binary == "" {
 		binary = "gtx"
 	}

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestStartupConfigWarningsMatchSessionAndMonolith(t *testing.T) {
@@ -24,7 +24,7 @@ func TestStartupConfigWarningsMatchSessionAndMonolith(t *testing.T) {
 				if a.configWarning != "" {
 					t.Fatal("session warned", source, a.configWarning)
 				}
-			} else if !a.configWarningBanner || !strings.Contains(a.configWarning, "gtx config check") {
+			} else if !a.configWarningBanner || !strings.Contains(a.configWarning, "ikesu config check") {
 				t.Fatal(source, a.configWarning)
 			}
 		}

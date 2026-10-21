@@ -2,8 +2,8 @@ package client
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // Feedback belongs to the terminal, not the endpoint snapshot protocol. Input

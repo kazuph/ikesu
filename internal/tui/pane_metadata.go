@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // gitBranch reads Git's public HEAD metadata without launching a process

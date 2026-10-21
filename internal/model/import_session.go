@@ -1,6 +1,6 @@
 package model
 
-import "github.com/kazuph/goterrace/internal/session"
+import "github.com/kazuph/ikesu/internal/session"
 
 // AppendSession adopts only the newly allocated workspaces, retaining
 // runtime-only state (including overlays) and existing workspace objects.

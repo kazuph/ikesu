@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"

@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"io"
 	"net"
 	"os"
@@ -25,13 +25,13 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/machine"
-	"github.com/kazuph/goterrace/internal/platform"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/platform"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 // attachTimeout is how long Attach waits for a freshly spawned server to
@@ -82,7 +82,7 @@ type msg struct {
 // if needed. It blocks until the client detaches or the server exits.
 func Attach(session string, in *os.File, out *os.File, version string) (int, error) {
 	if NestedBlocked() {
-		return 1, errors.New("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)")
+		return 1, errors.New("refusing to start a nested ikesu session (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)")
 	}
 	settings, err := loadLocalSettings(session)
 	if err != nil {
@@ -101,7 +101,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		}
 		conn, err = waitDial(dir, attachTimeout)
 		if err != nil {
-			return 1, fmt.Errorf("could not reach the gtx server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+			return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
 		}
 	}
 
@@ -161,13 +161,13 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	ws, err := tui.GetWinsize(in)
 	if err != nil {
 		leave()
-		fmt.Fprintf(out, "gtx: winsize: %v\n", err)
+		fmt.Fprintf(out, "ikesu: winsize: %v\n", err)
 		return pumpDone
 	}
 	w := &writer{conn: conn}
 	if err := w.send(msg{Terminal: endpoint.LocalTerminal(), Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
 		leave()
-		fmt.Fprintf(out, "gtx: attach: %v\n", err)
+		fmt.Fprintf(out, "ikesu: attach: %v\n", err)
 		return pumpDone
 	}
 
@@ -179,7 +179,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	var welcome msg
 	if err := json.Unmarshal(line, &welcome); err != nil {
 		leave()
-		fmt.Fprintln(out, "gtx: invalid endpoint welcome:", err)
+		fmt.Fprintln(out, "ikesu: invalid endpoint welcome:", err)
 		return pumpRejected
 	}
 	if welcome.Type == "restart" {
@@ -190,18 +190,18 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	}
 	if welcome.Type == "error" {
 		leave()
-		fmt.Fprintln(out, "gtx:", welcome.Reason)
+		fmt.Fprintln(out, "ikesu:", welcome.Reason)
 		return pumpRejected
 	}
 	if welcome.Type != "welcome" {
 		leave()
-		fmt.Fprintln(out, "gtx: endpoint_generation_unsupported: upgrade the server to endpoint generation 1 or later")
+		fmt.Fprintln(out, "ikesu: endpoint_generation_unsupported: upgrade the server to endpoint generation 1 or later")
 		return pumpRejected
 	}
 	available, err := endpoint.Negotiate(endpoint.Current(), welcome.Peer)
 	if err != nil {
 		leave()
-		fmt.Fprintln(out, "gtx:", err)
+		fmt.Fprintln(out, "ikesu:", err)
 		return pumpRejected
 	}
 	w.available, w.methods = available, welcome.Methods
@@ -291,17 +291,17 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			data, err := base64.StdEncoding.DecodeString(m.Data)
 			if err != nil {
 				leave()
-				fmt.Fprintln(out, "gtx: invalid snapshot:", err)
+				fmt.Fprintln(out, "ikesu: invalid snapshot:", err)
 				return pumpRejected
 			}
 			in, err := snapshots.Decode(data)
 			if err != nil {
 				leave()
-				fmt.Fprintln(out, "gtx: invalid snapshot:", err)
+				fmt.Fprintln(out, "ikesu: invalid snapshot:", err)
 				return pumpRejected
 			}
 			if err := inputSource.Prefix(in.Prefix, in.SidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
-				fmt.Fprintln(os.Stderr, "gtx: input source:", err)
+				fmt.Fprintln(os.Stderr, "ikesu: input source:", err)
 			}
 			composed := render.ComposeClient(in, nil, settings.clientVersion, false)
 			if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible && composed.AnchorShape == 0 {
@@ -339,16 +339,16 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 		case "welcome":
 			if _, err := endpoint.Negotiate(endpoint.Current(), m.Peer); err != nil {
 				leave()
-				fmt.Fprintln(out, "gtx:", err)
+				fmt.Fprintln(out, "ikesu:", err)
 				return pumpDone
 			}
 		case "error":
 			if strings.HasPrefix(m.Reason, "endpoint_action_unsupported:") {
-				fmt.Fprintln(os.Stderr, "gtx:", m.Reason)
+				fmt.Fprintln(os.Stderr, "ikesu:", m.Reason)
 				continue
 			}
 			leave()
-			fmt.Fprintln(out, "gtx:", m.Reason)
+			fmt.Fprintln(out, "ikesu:", m.Reason)
 			return pumpDone
 		case "notify":
 			if m.Notification != nil && settings.config != nil {
@@ -361,9 +361,9 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 		case "detached":
 			leave()
 			if m.Reason != "" {
-				fmt.Fprintf(out, "gtx: detached: %s\n", m.Reason)
+				fmt.Fprintf(out, "ikesu: detached: %s\n", m.Reason)
 			} else {
-				fmt.Fprintln(out, "gtx: detached")
+				fmt.Fprintln(out, "ikesu: detached")
 			}
 			return pumpDone
 		case "restart":
@@ -481,7 +481,7 @@ func spawnServer(session, dir string) error {
 	// Inherit the client's cwd so the session's first pane opens there.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start gtx server: %w", err)
+		return fmt.Errorf("start ikesu server: %w", err)
 	}
 	return cmd.Process.Release()
 }

@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"os"
 	"testing"
 	"time"

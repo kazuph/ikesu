@@ -7,7 +7,7 @@ package server
 import (
 	"bufio"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"net"
 	"os"
 	"os/exec"
@@ -19,16 +19,16 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/latency"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/plugin"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/runtime"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/latency"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/plugin"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 // clientMsg is one JSON line on gtx-client.sock in either direction.
@@ -292,12 +292,12 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 		s.cfg = cfg
 		for _, warning := range cfg.Warnings {
 			if strings.HasPrefix(warning, "invalid keybinding:") || strings.HasPrefix(warning, "keys.") {
-				fmt.Fprintf(os.Stderr, "gtx: config diagnostic %s\n", warning)
+				fmt.Fprintf(os.Stderr, "ikesu: config diagnostic %s\n", warning)
 			}
 		}
 	} else {
 		s.cfgError = err.Error()
-		fmt.Fprintf(os.Stderr, "gtx: %s: %v\n", config.Path(), err)
+		fmt.Fprintf(os.Stderr, "ikesu: %s: %v\n", config.Path(), err)
 	}
 
 	sup := runtime.NewSupervisor()

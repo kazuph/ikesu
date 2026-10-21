@@ -4,7 +4,7 @@ import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/plugin"
+	"github.com/kazuph/ikesu/internal/plugin"
 	"regexp"
 	"strings"
 )

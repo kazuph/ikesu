@@ -1,8 +1,8 @@
 package render
 
 import (
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 func revealIMECursor(c config.Config, agent string) bool {

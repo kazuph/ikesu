@@ -2,11 +2,11 @@ package client
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/endpoint"
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestSidebarPanelJobsDisplayCompatibility(t *testing.T) {

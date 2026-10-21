@@ -1,10 +1,10 @@
 package client
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // A cross-machine press selects its viewer first. Drop requests wait for that

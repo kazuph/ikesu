@@ -2,8 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // AppendSession reuses model.Restore for imported layouts. All shells are

@@ -9,21 +9,21 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/herdrimport"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/herdrimport"
+	"github.com/kazuph/ikesu/internal/session"
 	"golang.org/x/sys/unix"
 )
 
-const importUsage = "gtx session import-herdr [--source DIR] [--dry-run] [--yes]"
+const importUsage = "ikesu session import-herdr [--source DIR] [--dry-run] [--yes]"
 
 func (r *runner) sessionCLI(args []string) int {
 	if len(args) == 0 {
 		return usageErr(r, "usage: "+importUsage)
 	}
 	if args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
-		fmt.Fprintln(r.out(), importUsage+"\nRead ~/.config/herdr by default. Preview first; --dry-run never writes. Confirm with yes or --yes. Existing gtx workspaces are retained. Live herdr agents are restored as shells.")
+		fmt.Fprintln(r.out(), importUsage+"\nRead ~/.config/herdr by default. Preview first; --dry-run never writes. Confirm with yes or --yes. Existing ikesu workspaces are retained. Live herdr agents are restored as shells.")
 		return 0
 	}
 	if args[0] != "import-herdr" {
@@ -90,7 +90,7 @@ func (r *runner) sessionCLI(args []string) int {
 	}
 	defer lock.Close()
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return r.importError(fmt.Errorf("gtx is running but unreachable; no changes made: %w", err))
+		return r.importError(fmt.Errorf("ikesu is running but unreachable; no changes made: %w", err))
 	}
 	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
 	latest, err := herdrimport.Load(source, cfg)
@@ -113,11 +113,11 @@ func (r *runner) sessionCLI(args []string) int {
 	if err := session.Save(session.Path(dir), merged); err != nil {
 		return r.importError(err)
 	}
-	fmt.Fprintf(r.out(), "%d スペースを保存しました。gtx --session %s で復元します\n", len(latest.File.Workspaces), r.o.Session)
+	fmt.Fprintf(r.out(), "%d スペースを保存しました。ikesu --session %s で復元します\n", len(latest.File.Workspaces), r.o.Session)
 	return 0
 }
 func (r *runner) importError(err error) int {
-	fmt.Fprintln(r.errOut(), "gtx import-herdr:", err)
+	fmt.Fprintln(r.errOut(), "ikesu import-herdr:", err)
 	return 1
 }
 func (r *runner) printImport(p *herdrimport.Plan) {

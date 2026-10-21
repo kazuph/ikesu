@@ -1,6 +1,6 @@
 package server
 
-import "github.com/kazuph/goterrace/internal/render"
+import "github.com/kazuph/ikesu/internal/render"
 
 func (s *Server) deliverPaneClipboard(pid int, data string) {
 	var target *clientConn

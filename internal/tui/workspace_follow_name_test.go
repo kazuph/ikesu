@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestAutomaticWorkspaceNameFollowsFirstShellAndPreservesCustomName(t *testing.T) {

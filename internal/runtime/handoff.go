@@ -3,8 +3,8 @@ package runtime
 import (
 	"fmt"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/goterrace/internal/guard"
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/guard"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"golang.org/x/sys/unix"
 	"os"
 	"sort"

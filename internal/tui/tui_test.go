@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 // innerRect must never return a non-positive size: a too-narrow terminal
@@ -59,7 +59,7 @@ func TestRestartDialogWarnings(t *testing.T) {
 	a2 := &App{st: st}
 	a2.warningsHook = func() []api.AgentSessionWarningInfo { return nil }
 	a2.openRestartDialog()
-	if a2.dialog.d.Title != "Restart gtx?" || len(a2.dialog.d.Lines) != 0 {
+	if a2.dialog.d.Title != "Restart ikesu?" || len(a2.dialog.d.Lines) != 0 {
 		t.Fatalf("unexpected warning form: %+v", a2.dialog.d)
 	}
 }

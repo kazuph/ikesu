@@ -58,7 +58,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				continue
 			}
 			key := assignment.Name.Value
-			if key != "GTX_GUARD_MARKER" && key != "GTX_PANE_ID" && key != "GTX_SOCKET_PATH" {
+			if !authorizationIdentityKey(key) {
 				next.Env[key] = value
 			}
 		}

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 )
 
 func TestEndpointMobileToastUsesObservedBottomBand(t *testing.T) {

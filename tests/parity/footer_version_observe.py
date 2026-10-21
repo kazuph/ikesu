@@ -9,7 +9,7 @@ import sys
 import tomllib
 
 p=argparse.ArgumentParser()
-p.add_argument('--gtx',required=True)
+p.add_argument('--ikesu','--gtx',dest='gtx',required=True)
 p.add_argument('--herdr',required=True)
 p.add_argument('--ptyrun',required=True)
 p.add_argument('--config',required=True)
@@ -31,7 +31,7 @@ procedure=out/'matrix.steps';procedure.write_text('\n'.join(steps)+'\n')
 records=[]
 for mode in ['server','standalone']:
     target=out/mode
-    command=[sys.executable,str(Path(__file__).with_name('observe.py')),'--gtx',a.gtx,'--herdr',a.herdr,'--ptyrun',a.ptyrun,'--steps',str(procedure),'--out',str(target),'--config-file',str(out/'config.toml'),'--silent','--clipboard-sandbox']
+    command=[sys.executable,str(Path(__file__).with_name('observe.py')),'--ikesu',a.gtx,'--herdr',a.herdr,'--ptyrun',a.ptyrun,'--steps',str(procedure),'--out',str(target),'--config-file',str(out/'config.toml'),'--silent','--clipboard-sandbox']
     if mode=='server':command+=['--server','--server-reuse-initial']
     subprocess.run(command,check=True)
     for width in widths:

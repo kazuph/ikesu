@@ -2,7 +2,7 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 // Hover and horizontal wheel belong to the application body, not the pane

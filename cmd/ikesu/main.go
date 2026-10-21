@@ -1,4 +1,4 @@
-// Command gtx is the goterrace terminal multiplexer.
+// Command ikesu is the terminal workspace manager.
 package main
 
 import (
@@ -10,13 +10,13 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/cli"
-	"github.com/kazuph/goterrace/internal/client"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/server"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/cli"
+	"github.com/kazuph/ikesu/internal/client"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/server"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 const version = "0.2.7"
@@ -29,7 +29,7 @@ func main() {
 		os.Exit(2)
 	}
 	if cli.MachineRemoteConflict(args) {
-		fmt.Fprintln(os.Stderr, "gtx: --machine cannot be combined with --remote")
+		fmt.Fprintln(os.Stderr, "ikesu: --machine cannot be combined with --remote")
 		os.Exit(2)
 	}
 
@@ -43,7 +43,7 @@ func main() {
 		switch {
 		case args[0] == "--session":
 			if len(args) < 2 {
-				fmt.Fprintln(os.Stderr, "gtx: --session requires a name")
+				fmt.Fprintln(os.Stderr, "ikesu: --session requires a name")
 				os.Exit(2)
 			}
 			session = args[1]
@@ -55,7 +55,7 @@ func main() {
 			args = args[1:]
 		case args[0] == "--machine":
 			if len(args) < 2 {
-				fmt.Fprintln(os.Stderr, "gtx: --machine requires a name")
+				fmt.Fprintln(os.Stderr, "ikesu: --machine requires a name")
 				os.Exit(2)
 			}
 			machineRequested = true
@@ -74,13 +74,13 @@ func main() {
 	}
 dispatch:
 	if !api.ValidSessionName(session) {
-		fmt.Fprintf(os.Stderr, "gtx: invalid session name %q\n", session)
+		fmt.Fprintf(os.Stderr, "ikesu: invalid session name %q\n", session)
 		os.Exit(2)
 	}
 
 	if machineRequested {
 		if machineRef == "" {
-			fmt.Fprintln(os.Stderr, "gtx: --machine requires a name")
+			fmt.Fprintln(os.Stderr, "ikesu: --machine requires a name")
 			os.Exit(2)
 		}
 		os.Exit(cli.ForwardMachine(machineRef, args, cli.Options{Session: session, Explicit: explicitSession}))
@@ -90,11 +90,11 @@ dispatch:
 		switch args[0] {
 		case "__endpoint":
 			if len(args) != 1 || noSession {
-				fmt.Fprintln(os.Stderr, "gtx: invalid private endpoint invocation")
+				fmt.Fprintln(os.Stderr, "ikesu: invalid private endpoint invocation")
 				os.Exit(2)
 			}
 			if err := client.Relay(session, os.Stdin, os.Stdout); err != nil {
-				fmt.Fprintln(os.Stderr, "gtx:", err)
+				fmt.Fprintln(os.Stderr, "ikesu:", err)
 				os.Exit(1)
 			}
 			return
@@ -102,7 +102,7 @@ dispatch:
 			fmt.Print(config.DefaultExample)
 			return
 		case "--version", "-version", "version":
-			fmt.Printf("goterrace %s\n", version)
+			fmt.Printf("ikesu %s\n", version)
 			return
 		case "detect":
 			os.Exit(runDetect(args[1:]))
@@ -110,19 +110,19 @@ dispatch:
 			if len(args) == 2 && args[1] == "--handoff-import" {
 				code, err := server.RunHandoffImport(session, version)
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "gtx handoff import:", err)
+					fmt.Fprintln(os.Stderr, "ikesu handoff import:", err)
 				}
 				os.Exit(code)
 			}
 			// `gtx server` runs the server; `gtx server <sub>` is the CLI.
 			if len(args) == 1 {
 				if client.NestedBlocked() {
-					fmt.Fprintln(os.Stderr, "gtx: refusing to start a nested gtx server (a gtx server is an ancestor; set [experimental] allow_nested = true to permit)")
+					fmt.Fprintln(os.Stderr, "ikesu: refusing to start a nested ikesu server (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit)")
 					os.Exit(1)
 				}
 				code, err := server.Run(session, version)
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "gtx server:", err)
+					fmt.Fprintln(os.Stderr, "ikesu server:", err)
 				}
 				os.Exit(code)
 			}
@@ -144,11 +144,11 @@ dispatch:
 		if e == nil {
 			e = syscall.Exec(exe, []string{os.Args[0], "--no-session", "--session", session}, os.Environ())
 		}
-		fmt.Fprintln(os.Stderr, "gtx restart:", e)
+		fmt.Fprintln(os.Stderr, "ikesu restart:", e)
 		os.Exit(1)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gtx:", err)
+		fmt.Fprintln(os.Stderr, "ikesu:", err)
 	}
 	os.Exit(code)
 }
@@ -158,7 +158,7 @@ func run(noSession bool, session string) (int, error) {
 		return 1, fmt.Errorf("stdin is not a terminal")
 	}
 	if client.NestedBlocked() {
-		return 1, fmt.Errorf("refusing to start a nested gtx session (a gtx server is an ancestor; set [experimental] allow_nested = true to permit)")
+		return 1, fmt.Errorf("refusing to start a nested ikesu session (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit)")
 	}
 	if noSession {
 		return tui.Run(os.Stdin, os.Stdout, version, session)
@@ -169,12 +169,12 @@ func run(noSession bool, session string) (int, error) {
 // runDetect loads a captured screen file and reports every agent's state.
 func runDetect(args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: gtx detect <screen-file>")
+		fmt.Fprintln(os.Stderr, "usage: ikesu detect <screen-file>")
 		return 2
 	}
 	data, err := os.ReadFile(args[0])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gtx detect:", err)
+		fmt.Fprintln(os.Stderr, "ikesu detect:", err)
 		return 1
 	}
 	in := detect.Input{Screen: string(data)}

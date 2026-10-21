@@ -2,8 +2,8 @@ package server
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/detect"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/detect"
 )
 
 func (s *Server) agentExplain(id, target string) api.Response {

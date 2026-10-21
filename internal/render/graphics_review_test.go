@@ -5,7 +5,7 @@ import (
 	"image"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/kitty"
 )
 
 func TestFullOverlayRestoresWithoutImageUpload(t *testing.T) {

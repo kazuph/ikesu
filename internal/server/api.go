@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // apiLoop accepts API connections until the listener closes.

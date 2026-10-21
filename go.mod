@@ -1,4 +1,4 @@
-module github.com/kazuph/goterrace
+module github.com/kazuph/ikesu
 
 go 1.27.0
 

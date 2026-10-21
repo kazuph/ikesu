@@ -3,9 +3,9 @@ package render
 import (
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func hasConfiguredAgentRows(cfg config.Config, agent string) bool {

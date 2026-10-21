@@ -1,8 +1,8 @@
 package machine
 
 import (
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"os/exec"
 	"path/filepath"

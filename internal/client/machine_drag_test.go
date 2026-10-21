@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/input"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 func TestMachineDragTimeoutDiscardsDropWithoutChangingLocal(t *testing.T) {

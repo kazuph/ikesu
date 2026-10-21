@@ -1,8 +1,8 @@
 package model
 
 import (
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/layout"
 )
 
 // --- command-diff snapshot (domain events) ---

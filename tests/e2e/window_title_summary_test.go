@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // Match keepFailedE2EState: TestMain isolates GTX_* after package initialization.
@@ -25,15 +25,15 @@ func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
 	for _, step := range []struct{ state, mark string }{{"working", "🟡"}, {"blocked", "🔴"}, {"idle", "🔵"}} {
 		before := raw.Len()
 		s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: created.RootPane.PaneID, Source: "title-test", Agent: "codex", State: step.state}, nil)
-		want := "\x1b]0;" + step.mark + " gtx:" + s.name + "\x07"
+		want := "\x1b]0;" + step.mark + " ikesu:" + s.name + "\x07"
 		s.waitFor("outer title "+step.mark, 10*time.Second, func(_ string) bool { return strings.Contains(raw.String()[before:], want) })
-		t.Logf("outer PTY title: %s gtx:%s", step.mark, s.name)
+		t.Logf("outer PTY title: %s ikesu:%s", step.mark, s.name)
 	}
 	before := raw.Len()
 	if out, err := s.cli("workspace", "focus", created.Workspace.WorkspaceID); err != nil {
 		t.Fatal(out, err)
 	}
-	want := "\x1b]0;gtx:" + s.name + "\x07"
+	want := "\x1b]0;ikesu:" + s.name + "\x07"
 	s.waitFor("acknowledged outer title", 10*time.Second, func(_ string) bool { return strings.Contains(raw.String()[before:], want) })
 	if out := titleEvidenceDir; out != "" {
 		if err := os.MkdirAll(out, 0700); err != nil {
@@ -53,5 +53,5 @@ func TestWindowTitleStandaloneBinaryActualPTYStartup(t *testing.T) {
 	s := startVersionMode(t, nil, true, wrapper, "")
 	var raw strings.Builder
 	s.observeOutput = func(b []byte) { raw.Write(b) }
-	s.waitFor("standalone outer title", 10*time.Second, func(_ string) bool { return strings.Contains(raw.String(), "\x1b]0;gtx:title-demo\x07") })
+	s.waitFor("standalone outer title", 10*time.Second, func(_ string) bool { return strings.Contains(raw.String(), "\x1b]0;ikesu:title-demo\x07") })
 }

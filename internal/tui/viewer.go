@@ -4,8 +4,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // Viewer owns presentation and input state. The model and PTYs remain

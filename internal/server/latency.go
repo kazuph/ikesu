@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/render"
 	"os"
 	"time"
 )

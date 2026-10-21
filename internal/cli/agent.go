@@ -6,26 +6,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // `gtx agent` — agent-facing commands mirroring herdr's agent group.
 
 func printAgentHelp(w *runner) {
-	fmt.Fprintln(w.errOut(), "gtx agent commands:")
-	fmt.Fprintln(w.errOut(), "  gtx agent list")
-	fmt.Fprintln(w.errOut(), "  gtx agent attach <target> [--takeover]")
-	fmt.Fprintln(w.errOut(), "  gtx agent get <target>")
-	fmt.Fprintln(w.errOut(), "  gtx agent explain <target> [--json]")
-	fmt.Fprintln(w.errOut(), "  gtx agent explain --file PATH --agent LABEL [--json]")
-	fmt.Fprintln(w.errOut(), "  gtx agent read <target> [--source visible|recent|recent-unwrapped] [--lines N]")
-	fmt.Fprintln(w.errOut(), "  gtx agent send <target> <text>")
-	fmt.Fprintln(w.errOut(), "  gtx agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]")
-	fmt.Fprintln(w.errOut(), "  gtx agent rename <target> <name>")
-	fmt.Fprintln(w.errOut(), "  gtx agent focus <target>")
-	fmt.Fprintln(w.errOut(), "  gtx agent wait <target> --status <idle|working|blocked|done|unknown> [--timeout MS]")
-	fmt.Fprintln(w.errOut(), "  gtx agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>")
-	fmt.Fprintln(w.errOut(), "  gtx agent restore [--dry-run]")
+	fmt.Fprintln(w.errOut(), "ikesu agent commands:")
+	fmt.Fprintln(w.errOut(), "  ikesu agent list")
+	fmt.Fprintln(w.errOut(), "  ikesu agent attach <target> [--takeover]")
+	fmt.Fprintln(w.errOut(), "  ikesu agent get <target>")
+	fmt.Fprintln(w.errOut(), "  ikesu agent explain <target> [--json]")
+	fmt.Fprintln(w.errOut(), "  ikesu agent explain --file PATH --agent LABEL [--json]")
+	fmt.Fprintln(w.errOut(), "  ikesu agent read <target> [--source visible|recent|recent-unwrapped] [--lines N]")
+	fmt.Fprintln(w.errOut(), "  ikesu agent send <target> <text>")
+	fmt.Fprintln(w.errOut(), "  ikesu agent prompt <target> <text> [--wait] [--until STATUS]... [--timeout MS]")
+	fmt.Fprintln(w.errOut(), "  ikesu agent rename <target> <name>")
+	fmt.Fprintln(w.errOut(), "  ikesu agent focus <target>")
+	fmt.Fprintln(w.errOut(), "  ikesu agent wait <target> --status <idle|working|blocked|done|unknown> [--timeout MS]")
+	fmt.Fprintln(w.errOut(), "  ikesu agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>")
+	fmt.Fprintln(w.errOut(), "  ikesu agent restore [--dry-run]")
 	fmt.Fprintln(w.errOut(), "targets accept pane ids (pN), unique agent names, and detected/reported agent labels")
 }
 
@@ -45,14 +45,14 @@ func (r *runner) agentCLI(args []string) int {
 		return r.agentExplainCLI(rest)
 	case "get":
 		if len(rest) != 1 {
-			return usageErr(r, "usage: gtx agent get <target>")
+			return usageErr(r, "usage: ikesu agent get <target>")
 		}
 		return r.agentGetCLI(rest[0])
 	case "read":
 		return r.agentReadCLI(rest)
 	case "send":
 		if len(rest) < 2 {
-			return usageErr(r, "usage: gtx agent send <target> <text>")
+			return usageErr(r, "usage: ikesu agent send <target> <text>")
 		}
 		return r.printResult("cli:agent:send", api.MethodAgentSend,
 			api.AgentSendParams{Target: rest[0], Text: joinArgs(rest[1:])})
@@ -60,13 +60,13 @@ func (r *runner) agentCLI(args []string) int {
 		return r.agentPromptCLI(rest)
 	case "rename":
 		if len(rest) != 2 {
-			return usageErr(r, "usage: gtx agent rename <target> <name>")
+			return usageErr(r, "usage: ikesu agent rename <target> <name>")
 		}
 		return r.printResult("cli:agent:rename", api.MethodAgentRename,
 			api.AgentRenameParams{Target: rest[0], Name: &rest[1]})
 	case "focus":
 		if len(rest) != 1 {
-			return usageErr(r, "usage: gtx agent focus <target>")
+			return usageErr(r, "usage: ikesu agent focus <target>")
 		}
 		return r.printResult("cli:agent:focus", api.MethodAgentFocus,
 			api.AgentTarget{Target: rest[0]})
@@ -80,7 +80,7 @@ func (r *runner) agentCLI(args []string) int {
 			if a == "--dry-run" {
 				dryRun = true
 			} else {
-				return usageErr(r, "usage: gtx agent restore [--dry-run]")
+				return usageErr(r, "usage: ikesu agent restore [--dry-run]")
 			}
 		}
 		return r.printResult("cli:agent:restore", api.MethodAgentRestore,
@@ -125,7 +125,7 @@ func (r *runner) agentListCLI() int {
 	}
 	var res api.AgentListResult
 	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	for _, a := range res.Agents {
@@ -156,7 +156,7 @@ func (r *runner) agentGetCLI(target string) int {
 
 func (r *runner) agentReadCLI(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx agent read <target> [--source visible|recent|recent-unwrapped] [--lines N]")
+		return usageErr(r, "usage: ikesu agent read <target> [--source visible|recent|recent-unwrapped] [--lines N]")
 	}
 	params := api.AgentReadParams{
 		Target: args[0], Source: "recent", Format: "text", StripANSI: true,
@@ -207,7 +207,7 @@ func (r *runner) agentReadCLI(args []string) int {
 	}
 	var resp api.Response
 	if uerr := json.Unmarshal(raw, &resp); uerr != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", uerr)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", uerr)
 		return 1
 	}
 	if resp.Err != nil {
@@ -224,7 +224,7 @@ func (r *runner) agentReadCLI(args []string) int {
 
 func (r *runner) agentWaitCLI(args []string) int {
 	if len(args) < 1 {
-		return usageErr(r, "usage: gtx agent wait <target> --status <idle|working|blocked|done|unknown> [--timeout MS]")
+		return usageErr(r, "usage: ikesu agent wait <target> --status <idle|working|blocked|done|unknown> [--timeout MS]")
 	}
 	target := args[0]
 	status := ""
@@ -278,7 +278,7 @@ func (r *runner) agentWaitCLI(args []string) int {
 
 func (r *runner) agentStartCLI(args []string) int {
 	if len(args) < 1 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Fprintln(r.errOut(), "usage: gtx agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>")
+		fmt.Fprintln(r.errOut(), "usage: ikesu agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>")
 		if len(args) < 1 {
 			return 2
 		}
@@ -341,7 +341,7 @@ func (r *runner) agentStartCLI(args []string) int {
 		}
 	}
 	if len(p.Argv) == 0 {
-		return usageErr(r, "usage: gtx agent start <name> [options] -- <argv...>")
+		return usageErr(r, "usage: ikesu agent start <name> [options] -- <argv...>")
 	}
 	return r.printResult("cli:agent:start", api.MethodAgentStart, p)
 }

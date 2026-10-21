@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 func (m *machineClient) legacyLocal() bool {
@@ -25,7 +25,7 @@ func (m *machineClient) configureMachineDisplay() {
 		return
 	}
 	const reason = "endpoint_action_unsupported: machine sidebar requires a Local server with client rendering; Local input remains available"
-	fmt.Fprintln(os.Stderr, "gtx:", reason)
+	fmt.Fprintln(os.Stderr, "ikesu:", reason)
 	for _, id := range m.order[1:] {
 		e := m.endpoints[id]
 		if !e.profile.Enabled {
@@ -45,7 +45,7 @@ func (m *machineClient) configureMachineDisplay() {
 	m.held = nil
 	for _, event := range held {
 		if err := m.input(event); err != nil {
-			fmt.Fprintln(os.Stderr, "gtx:", err)
+			fmt.Fprintln(os.Stderr, "ikesu:", err)
 		}
 	}
 }

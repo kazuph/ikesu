@@ -2,7 +2,7 @@ package dispatch
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 	"path/filepath"
 	"reflect"
 	"sync"

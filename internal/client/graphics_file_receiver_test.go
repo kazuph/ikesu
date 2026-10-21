@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 func graphicsReceiverOutput(t *testing.T) *os.File {

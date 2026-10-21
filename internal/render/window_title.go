@@ -10,7 +10,7 @@ import (
 // WindowTitle uses the sidebar's workspace aggregation, including off-screen
 // workspaces and the other connected machines.
 func WindowTitle(frame Input, session string, groups []MachineGroup) string {
-	name := "gtx"
+	name := "ikesu"
 	if session != "" && session != "default" {
 		var safe strings.Builder
 		for _, r := range session {

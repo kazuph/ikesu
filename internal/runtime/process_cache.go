@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/platform"
 )
 
 const foregroundJobCacheLifetime = 1500 * time.Millisecond

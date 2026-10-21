@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func TestServerChromeRecordedControlsAndCopyStatus(t *testing.T) {

@@ -4,6 +4,7 @@ package latency
 
 import (
 	"fmt"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"io"
 	"os"
 	"sync"
@@ -14,7 +15,7 @@ import (
 const Limit = 33554432
 const LimitMessage = "gtx_latency 上限に達したので以降の遅延記録を捨てる\n"
 
-var Enabled = os.Getenv("GTX_LATENCY_TRACE") == "1"
+var Enabled = envcompat.Get("GTX_LATENCY_TRACE") == "1"
 
 type Trace struct {
 	mu      sync.Mutex

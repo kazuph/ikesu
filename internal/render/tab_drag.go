@@ -1,6 +1,6 @@
 package render
 
-import "github.com/kazuph/goterrace/internal/layout"
+import "github.com/kazuph/ikesu/internal/layout"
 
 // TabDragIndex follows horizontal chip midpoints even below the tab bar.
 // Hidden chips do not turn the visible arrows into global-end targets.

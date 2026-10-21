@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/machine"
 	"golang.org/x/sys/unix"
 )
 
@@ -68,7 +68,7 @@ func (r *runner) decisionWatch(args []string) int {
 	if len(args) == 1 && args[0] == "--all-machines" {
 		all = true
 	} else if len(args) != 0 {
-		return usageErr(r, "usage: gtx decision watch [--all-machines]")
+		return usageErr(r, "usage: ikesu decision watch [--all-machines]")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

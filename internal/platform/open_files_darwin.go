@@ -3,7 +3,7 @@
 package platform
 
 import (
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"strconv"
 	"strings"
 )

@@ -2,9 +2,9 @@ package server
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/herdrimport"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/herdrimport"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 func (s *Server) importHerdr(req *api.Request) api.Response {

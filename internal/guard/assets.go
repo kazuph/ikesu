@@ -3,7 +3,7 @@ package guard
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,7 +88,7 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 // Pin identity at the generated entry point, before the CLI sees the caller's
 // environment. The socket remains in the marker so handoff can replace it.
 func (a *Assets) identity() string {
-	return "GTX_GUARD_MARKER=" + quote(a.MarkerPath) + " GTX_PANE_ID=" + quote(a.meta.Pane)
+	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " GTX_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane) + " GTX_PANE_ID=" + quote(a.meta.Pane)
 }
 func (a *Assets) invocation() string {
 	return a.identity() + " " + quote(a.Executable)

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/config"
+	"github.com/kazuph/ikesu/internal/config"
 )
 
 func TestEndpointSettingsWriteClientConfigurationAndKeepShellInput(t *testing.T) {

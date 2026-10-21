@@ -2,10 +2,10 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"reflect"
 	"testing"
 )
@@ -154,8 +154,8 @@ func TestG2DangerousDialogTextAndStandaloneRestartState(t *testing.T) {
 		open                 func()
 		title, detail, label string
 	}{
-		{a.openQuitDialog, "Stop server?", "Stops the gtx server and all running panes.", "stop"},
-		{a.openRestartDialog, "Restart gtx?", "Restarts the gtx server. The saved session can be restored.", "restart"},
+		{a.openQuitDialog, "Stop server?", "Stops the ikesu server and all running panes.", "stop"},
+		{a.openRestartDialog, "Restart ikesu?", "Restarts the ikesu server. The saved session can be restored.", "restart"},
 		{a.openRestoreDialog, "Restore agents?", "Types resume commands into panes with recorded agent sessions.", "restore"},
 	}
 	for _, tc := range tests {

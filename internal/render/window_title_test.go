@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func titleInput(states ...string) Input {
@@ -31,7 +31,7 @@ func TestWindowTitleSummaryCombinationsAndMachines(t *testing.T) {
 				}
 			}
 			in := titleInput(states...)
-			want := "gtx"
+			want := "ikesu"
 			if marks != "" {
 				want = marks + " " + want
 			}
@@ -42,11 +42,11 @@ func TestWindowTitleSummaryCombinationsAndMachines(t *testing.T) {
 	}
 	local, remote := titleInput("done", "working"), titleInput("blocked")
 	groups := []MachineGroup{{ID: "local", Input: &local}, {ID: "remote", Input: &remote}, {ID: "offline"}}
-	if got := WindowTitle(local, "coding", groups); got != "🔴🟡🔵 gtx:coding" {
+	if got := WindowTitle(local, "coding", groups); got != "🔴🟡🔵 ikesu:coding" {
 		t.Fatal(got)
 	}
 	local.SidebarConfig.UI.WindowTitle = "plain"
-	if got := WindowTitle(local, "coding", groups); got != "gtx:coding" {
+	if got := WindowTitle(local, "coding", groups); got != "ikesu:coding" {
 		t.Fatal(got)
 	}
 }
@@ -57,7 +57,7 @@ func TestWindowTitleUsesWorkspacePriorityAcrossTabs(t *testing.T) {
 		in.State.Apply(model.CmdNewTab{})
 		in.Panes[in.State.FocusedPane()] = &PaneSnap{Status: StatusGlyph{Key: key}}
 	}
-	if got := WindowTitle(in, "", nil); got != "🔴 gtx" {
+	if got := WindowTitle(in, "", nil); got != "🔴 ikesu" {
 		t.Fatal("lower priority panes must not add workspace states", got)
 	}
 }
@@ -73,12 +73,12 @@ func TestWindowTitleOnlyWritesChangedBytesAfterActivation(t *testing.T) {
 			t.Fatalf("bytes=%q want=%q error=%v", out.String(), want, err)
 		}
 	}
-	paint("\x1b]0;🟡 gtx\x07")
-	paint("\x1b]0;🟡 gtx\x07")
+	paint("\x1b]0;🟡 ikesu\x07")
+	paint("\x1b]0;🟡 ikesu\x07")
 	paint("")
 	in.Spin++
 	paint("")
-	for _, state := range []struct{ key, title string }{{"blocked", "🔴 gtx"}, {"done", "🔵 gtx"}, {"idle", "gtx"}} {
+	for _, state := range []struct{ key, title string }{{"blocked", "🔴 ikesu"}, {"done", "🔵 ikesu"}, {"idle", "ikesu"}} {
 		in.Panes[in.State.FocusedPane()].Status.Key = state.key
 		paint("\x1b]0;" + state.title + "\x07")
 		paint("")

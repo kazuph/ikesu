@@ -3,7 +3,8 @@ package guard
 import (
 	"bufio"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/envcompat"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
@@ -92,7 +93,7 @@ func environment(m map[string]string) []string {
 	for k, v := range m {
 		out = append(out, k+"="+v)
 	}
-	return out
+	return envcompat.Both(out)
 }
 func Resolve(cmd string, env []string) (string, error) {
 	m := EnvMap(env)
@@ -128,9 +129,10 @@ func executable(p string) bool {
 }
 func EnvMap(env []string) map[string]string {
 	m := map[string]string{}
-	for _, v := range env {
+	for _, v := range envcompat.Both(env) {
 		k, s, ok := strings.Cut(v, "=")
-		if ok {
+		// Guard internals use one canonical key; export restores both names.
+		if ok && !strings.HasPrefix(k, "IKESU_") {
 			m[k] = s
 		}
 	}

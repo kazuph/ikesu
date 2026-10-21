@@ -1,14 +1,14 @@
 package tui
 
 import (
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/detect"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestSPECBranchUsesRuntimeCwdBeforeSavedCwd(t *testing.T) {

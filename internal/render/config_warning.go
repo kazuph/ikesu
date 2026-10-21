@@ -1,6 +1,6 @@
 package render
 
-import "github.com/kazuph/goterrace/internal/layout"
+import "github.com/kazuph/ikesu/internal/layout"
 
 func configWarningBounds(r layout.Rect, sidebar, cols int, out *Output) layout.Rect {
 	left := sidebar

@@ -2,7 +2,7 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func clearSidebarCardBackground(f *Frame, s *model.AppState, row SidebarRow, x, y, width int) {

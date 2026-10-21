@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/platform"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/platform"
 )
 
 // NestedBlocked reports whether a real gtx server process is an ancestor
@@ -38,7 +38,7 @@ func isGtxServerProcess(pid int) bool {
 		return false
 	}
 	base := filepath.Base(args[0])
-	if base != "gtx" && base != "goterrace" {
+	if base != "ikesu" && base != "gtx" && base != "goterrace" {
 		return false
 	}
 	for _, a := range args[1:] {

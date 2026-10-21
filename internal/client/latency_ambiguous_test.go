@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/input"
-	"github.com/kazuph/goterrace/internal/latency"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/latency"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestTraceExpiredProbeCannotMatchLaterReply(t *testing.T) {

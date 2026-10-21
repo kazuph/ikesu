@@ -6,22 +6,22 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (r *runner) server(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: gtx server <stop|restart|reload-config|ping>")
+		return usageErr(r, "usage: ikesu server <stop|restart|reload-config|ping>")
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		fmt.Fprintln(r.out(), "gtx server commands:\n  gtx server                run as headless server\n  gtx server stop           stop the running server via the API socket\n  gtx server restart        restart the running server and restore its saved session\n  gtx server reload-config  reload config.toml in the running server\n  gtx server ping           query the running server\n  gtx server live-handoff   hand off live panes to a new local server")
+		fmt.Fprintln(r.out(), "ikesu server commands:\n  ikesu server                run as headless server\n  ikesu server stop           stop the running server via the API socket\n  ikesu server restart        restart the running server and restore its saved session\n  ikesu server reload-config  reload config.toml in the running server\n  ikesu server ping           query the running server\n  ikesu server live-handoff   hand off live panes to a new local server")
 		return 0
 	case "live-handoff":
 		var p api.ServerLiveHandoffParams
 		for i := 1; i < len(args); i++ {
 			if i+1 >= len(args) {
-				return usageErr(r, "usage: gtx server live-handoff [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]")
+				return usageErr(r, "usage: ikesu server live-handoff [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]")
 			}
 			key, value := args[i], args[i+1]
 			i++
@@ -44,17 +44,17 @@ func (r *runner) server(args []string) int {
 		return r.sendOK(api.MethodServerLiveHandoff, p)
 	case "reload-config":
 		if len(args) != 1 {
-			return usageErr(r, "usage: gtx server reload-config")
+			return usageErr(r, "usage: ikesu server reload-config")
 		}
 		return r.printResult("cli:server:reload-config", api.MethodServerReloadConfig, api.EmptyParams{})
 	case "stop":
 		if len(args) != 1 {
-			return usageErr(r, "usage: gtx server stop")
+			return usageErr(r, "usage: ikesu server stop")
 		}
 		return r.sendOK(api.MethodServerStop, api.EmptyParams{})
 	case "restart":
 		if len(args) != 1 {
-			return usageErr(r, "usage: gtx server restart")
+			return usageErr(r, "usage: ikesu server restart")
 		}
 		if code := r.sendOK(api.MethodServerRestart, api.EmptyParams{}); code != 0 {
 			return code
@@ -62,7 +62,7 @@ func (r *runner) server(args []string) int {
 		return r.waitForServer()
 	case "ping":
 		if len(args) != 1 {
-			return usageErr(r, "usage: gtx server ping")
+			return usageErr(r, "usage: ikesu server ping")
 		}
 		return r.printResult("cli:ping", api.MethodPing, api.EmptyParams{})
 	default:
@@ -85,6 +85,6 @@ func (r *runner) waitForServer() int {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	fmt.Fprintln(r.errOut(), "gtx: server did not come back after restart")
+	fmt.Fprintln(r.errOut(), "ikesu: server did not come back after restart")
 	return 1
 }

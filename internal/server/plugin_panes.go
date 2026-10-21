@@ -3,8 +3,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/model"
 	"strings"
 )
 
@@ -112,12 +112,13 @@ func (s *Server) pluginPaneRequest(req *api.Request) api.Response {
 	env := map[string]string{}
 	for _, kv := range rawEnv {
 		k, v, _ := strings.Cut(kv, "=")
-		if k == "GTX_PANE_ID" || p.Placement != "popup" && (k == "GTX_WORKSPACE_ID" || k == "GTX_TAB_ID") {
+		if k == "IKESU_PANE_ID" || k == "GTX_PANE_ID" || p.Placement != "popup" && (k == "GTX_WORKSPACE_ID" || k == "GTX_TAB_ID" || k == "IKESU_WORKSPACE_ID" || k == "IKESU_TAB_ID") {
 			continue
 		}
 		env[k] = v
 	}
 	env["GTX_PLUGIN_ENTRYPOINT_ID"] = entry.ID
+	env["IKESU_PLUGIN_ENTRYPOINT_ID"] = entry.ID
 	if p.Placement == "popup" {
 		for _, size := range []struct {
 			source any

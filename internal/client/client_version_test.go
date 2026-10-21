@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func TestClientVersionNoticeClearsEntireLabel(t *testing.T) {
@@ -43,12 +43,12 @@ func TestClientVersionNoticeClearsEntireLabel(t *testing.T) {
 		return b.String()
 	}
 	before := text()
-	if !strings.Contains(before, "gtx vold-client") {
+	if !strings.Contains(before, "ikesu vold-client") {
 		t.Fatal(before)
 	}
 	m.notify("ok")
 	during := text()
-	if strings.Contains(during, "gtx") || strings.Contains(during, "old-client") || !strings.Contains(during, "ok") {
+	if strings.Contains(during, "ikesu") || strings.Contains(during, "old-client") || !strings.Contains(during, "ok") {
 		t.Fatal(during)
 	}
 	// A new server snapshot cannot replace the display's own version.
@@ -56,7 +56,7 @@ func TestClientVersionNoticeClearsEntireLabel(t *testing.T) {
 	m.endpoints["local"].snapshot = &replacement
 	m.advance(m.noticeUntil)
 	after := text()
-	if !strings.Contains(after, "gtx vold-client") || strings.Contains(after, "ok") {
+	if !strings.Contains(after, "ikesu vold-client") || strings.Contains(after, "ok") {
 		t.Fatal(after)
 	}
 }

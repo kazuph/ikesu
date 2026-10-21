@@ -10,8 +10,8 @@ import (
 	"image/color"
 	"image/png"
 
-	"github.com/kazuph/goterrace/internal/kitty"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/kitty"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 const GraphicsPatchCodec = "graphics.patch.v1"

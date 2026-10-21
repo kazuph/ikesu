@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 // toastTTL is how long a notification box stays on screen.

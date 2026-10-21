@@ -2,8 +2,8 @@ package endpoint
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 // Gob omits pointer fields whose scalar value is zero. Preserve presence

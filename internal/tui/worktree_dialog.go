@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/worktree"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/worktree"
 )
 
 func (a *App) worktreeError(err error) {
@@ -24,7 +24,7 @@ func (a *App) newWorktreeDialog(index int) {
 	id := fmt.Sprintf("s%d", a.st.Workspaces[index].ID)
 	src, err := a.WorktreeSource("", &id)
 	if err != nil {
-		a.SetConfigWarning("gtx worktree actions require a workspace inside a Git work tree.")
+		a.SetConfigWarning("ikesu worktree actions require a workspace inside a Git work tree.")
 		a.configWarningBanner = true
 		return
 	}

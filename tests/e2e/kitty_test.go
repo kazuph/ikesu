@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/kitty"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/kitty"
 )
 
 func TestKittyActualPTYPlacementAndHandoff(t *testing.T) {
@@ -81,7 +81,7 @@ while True:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(b, []byte("\x1bP>|ghostty (gtx ")) || !bytes.Contains(b, []byte("\x1b_Gi=31;OK\x1b\\")) {
+	if !bytes.Contains(b, []byte("\x1bP>|ghostty (ikesu ")) || !bytes.Contains(b, []byte("\x1b_Gi=31;OK\x1b\\")) {
 		t.Fatalf("version/query responses=%q", b)
 	}
 	if out, err := s.cli("server", "live-handoff"); err != nil {

@@ -1,7 +1,7 @@
 package render
 
 import (
-	"github.com/kazuph/goterrace/internal/layout"
+	"github.com/kazuph/ikesu/internal/layout"
 	"strings"
 	"testing"
 )

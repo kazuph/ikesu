@@ -6,7 +6,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *api.Request) {

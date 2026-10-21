@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func (a *App) SetPaneKeybinds(c config.Config) {

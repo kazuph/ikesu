@@ -5,7 +5,7 @@ root="$HOME/bench-terrace.noindex/work/detail"
 out=$1
 shift
 mkdir -p "$out"
-go build -o "$root/gtx-stage3" ./cmd/gtx
+go build -o "$root/gtx-stage3" ./cmd/ikesu
 for name in "$@"; do
     mode='--server --server-reuse-initial'
     config="$root/user-config.toml"
@@ -41,7 +41,7 @@ PY
             ;;
     esac
     python3 tests/parity/observe.py --herdr "$root/herdr-0.2.57" \
-        --gtx "$root/gtx-stage3" --ptyrun "$root/ptyrun" \
+        --ikesu "$root/gtx-stage3" --ptyrun "$root/ptyrun" \
         --config-file "$config" --silent $mode $toast --clipboard-sandbox \
         --steps "$steps" --out "$out/$name"
 done

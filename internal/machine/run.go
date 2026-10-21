@@ -2,7 +2,7 @@ package machine
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/childenv"
+	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"path/filepath"
 	"strings"

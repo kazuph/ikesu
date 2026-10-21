@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 // Keep the opt-in output path before TestMain isolates GTX_* defaults.
@@ -72,12 +72,12 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 		t.Logf("outer PTY title: %s", want)
 	}
 	a.SetReported(pid, "codex", "working")
-	paint("🟡 gtx:coding")
-	paint("🟡 gtx:coding") // second activation paint
+	paint("🟡 ikesu:coding")
+	paint("🟡 ikesu:coding") // second activation paint
 	cfg := a.sidebarConfig
 	cfg.UI.WindowTitle = "plain"
 	a.ApplyReloadedConfig(cfg)
-	paint("gtx:coding")
+	paint("ikesu:coding")
 	var unchanged bytes.Buffer
 	a.out = &unchanged
 	a.ApplyReloadedConfig(cfg)
@@ -88,14 +88,14 @@ func TestWindowTitleStandaloneActualPTYTransitions(t *testing.T) {
 	a.out = slave
 	cfg.UI.WindowTitle = "summary"
 	a.ApplyReloadedConfig(cfg)
-	paint("🟡 gtx:coding")
+	paint("🟡 ikesu:coding")
 	a.SetReported(pid, "codex", "blocked")
-	paint("🔴 gtx:coding")
+	paint("🔴 ikesu:coding")
 	a.SetReported(pid, "codex", "idle")
-	paint("🔵 gtx:coding")
+	paint("🔵 ikesu:coding")
 	a.exec(model.CmdSelectWorkspace{Index: 1})
 	a.detectAll()
-	paint("gtx:coding")
+	paint("ikesu:coding")
 	if out := titleEvidenceDir; out != "" {
 		if err := os.MkdirAll(out, 0700); err != nil {
 			t.Fatal(err)

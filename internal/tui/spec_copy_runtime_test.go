@@ -2,15 +2,15 @@ package tui
 
 import (
 	"encoding/base64"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/runtime"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 func specRuntimeApp(t *testing.T) *App {

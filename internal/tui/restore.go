@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/session"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 // AgentRecord is a pane's persisted agent-session association: which
@@ -161,7 +161,7 @@ func dirExists(p string) bool {
 // missing a safe session id the dialog switches to the fail-closed
 // warning form, listing each unsafe pane (SPEC G3).
 func (a *App) openRestartDialog() {
-	d := render.Dialog{Title: "Restart gtx?", Detail: "Restarts the gtx server. The saved session can be restored.", Confirm: "restart", Cancel: "cancel", Width: 76}
+	d := render.Dialog{Title: "Restart ikesu?", Detail: "Restarts the ikesu server. The saved session can be restored.", Confirm: "restart", Cancel: "cancel", Width: 76}
 	if a.warningsHook != nil {
 		if ws := a.warningsHook(); len(ws) > 0 {
 			d.Title = "Restart with missing agent sessions?"

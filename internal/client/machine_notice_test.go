@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/model"
-	"github.com/kazuph/goterrace/internal/render"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func TestMachineNoticeUsesAvailableCellsAndExpiresAtTenSeconds(t *testing.T) {

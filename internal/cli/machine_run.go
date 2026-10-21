@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kazuph/goterrace/internal/machine"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 func (r *runner) remoteRun(ref string, sync bool, argv []string, cwd string, pane bool) ([]string, error) {

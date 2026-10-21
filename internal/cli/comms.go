@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 // Mail/job CLI: send, inbox, msg history|rooms, log, run. The argument
@@ -145,7 +145,7 @@ func (r *runner) msgCLI(args []string) int {
 			api.MsgHistoryParams{Room: room, Project: project, Limit: limit}, "history")
 	case "rooms":
 		if len(args) != 1 {
-			fmt.Fprintln(r.errOut(), "usage: gtx msg rooms")
+			fmt.Fprintln(r.errOut(), "usage: ikesu msg rooms")
 			return 2
 		}
 		raw, err := r.request("cli:msg:rooms", api.MethodMsgRooms, api.EmptyParams{})
@@ -159,7 +159,7 @@ func (r *runner) msgCLI(args []string) int {
 		}
 		var res api.MsgRoomsResult
 		if err := json.Unmarshal(resp.Result, &res); err != nil {
-			fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+			fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 			return 1
 		}
 		for _, room := range res.Rooms {
@@ -283,7 +283,7 @@ func (r *runner) printMsgSend(p api.MsgSendParams) int {
 	}
 	var res api.MsgSendResult
 	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(r.out(), "sent %d message(s)\n", len(res.Messages))
@@ -310,7 +310,7 @@ func (r *runner) printMessages(id, method string, params any, label string) int 
 		Messages []api.MsgMessage `json:"messages"`
 	}
 	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "gtx: invalid server response: %v\n", err)
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
 	if len(res.Messages) == 0 {

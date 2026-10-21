@@ -3,7 +3,7 @@ package render
 import (
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/model"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func TestConfigBannerPreservesSidebarTabsAndAddButton(t *testing.T) {

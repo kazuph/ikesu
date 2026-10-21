@@ -11,7 +11,7 @@ func drawClientVersion(f *Frame, version string, notice bool, out *Output) {
 	}
 	bar := out.ActionBar
 	left, right := bar.Copy.X+bar.Copy.W, bar.Cycle.X
-	label := "gtx v" + version
+	label := "ikesu v" + version
 	width := ansi.StringWidth(label)
 	if bar.Area.H == 0 || bar.Copy.W == 0 || bar.Cycle.W == 0 || right-left < width+2 {
 		return

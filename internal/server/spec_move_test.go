@@ -2,12 +2,12 @@ package server
 
 import (
 	"encoding/json"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"strings"
 	"testing"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/cli"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/cli"
 )
 
 func TestSPECMoveAllDestinationsViaSocketCLIAndEvents(t *testing.T) {

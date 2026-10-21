@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"strings"
 	"testing"
 	"time"

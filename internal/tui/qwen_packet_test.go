@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/status"
-	"github.com/kazuph/goterrace/internal/teststate"
+	"github.com/kazuph/ikesu/internal/status"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestQwenApprovalPublishesBlockedAvailabilityFromRealPTY(t *testing.T) {

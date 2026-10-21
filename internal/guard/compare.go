@@ -115,7 +115,7 @@ func Compare(o CompareOptions, w io.Writer) (int, error) {
 		}
 		if best < 0 {
 			counts["gtx-only"]++
-			fmt.Fprintf(w, "  GTX-ONLY  %s  (gtx=%s:%s)\n", r.line, r.verdict, r.rule)
+			fmt.Fprintf(w, "  IKESU-ONLY  %s  (gtx=%s:%s)\n", r.line, r.verdict, r.rule)
 			continue
 		}
 		used[best] = true

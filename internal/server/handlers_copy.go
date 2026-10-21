@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kazuph/goterrace/internal/api"
-	"github.com/kazuph/goterrace/internal/copybuf"
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/copybuf"
 )
 
 func (s *Server) paneCopyMotion(id string, p api.PaneCopyMotionParams) api.Response {

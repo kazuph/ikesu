@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kazuph/goterrace/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 // A slow SSH writer must never block terminal input to another endpoint.

@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/kazuph/goterrace/internal/config"
-	"github.com/kazuph/goterrace/internal/endpoint"
-	"github.com/kazuph/goterrace/internal/teststate"
-	"github.com/kazuph/goterrace/internal/tui"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/teststate"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func TestConfigNotificationDeliveryChangesRealOutput(t *testing.T) {

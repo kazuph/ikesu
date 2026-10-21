@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/goterrace/internal/dispatch"
-	"github.com/kazuph/goterrace/internal/render"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestStage4JobAgeUnitsAndBoundaries(t *testing.T) {
