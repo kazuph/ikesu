@@ -1,12 +1,8 @@
 package server
 
 import (
-	"context"
 	"fmt"
-	"github.com/kazuph/ikesu/internal/childenv"
-	"github.com/kazuph/ikesu/internal/machine"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -23,12 +19,16 @@ import (
 // caller's jobs-room mailbox; delivery follows the regular mailbox
 // pipeline.
 
-// jobProcs tracks live jobs (external job id → process) so run.cancel can
-// signal the process group.
+// jobProcs keeps server-local numbering and cancellation-monitor ownership.
+// The runner process and its durable records survive this server.
 type jobProcsT struct {
-	mu  sync.Mutex
-	m   map[string]*exec.Cmd
-	seq int // next external job number, seeded from the store
+	mu         sync.Mutex
+	seq        int // next external job number, seeded from the store
+	cancelling map[string]bool
+	stopping   bool
+	stop       chan struct{}
+	wg         sync.WaitGroup
+	cancelMu   sync.Mutex
 }
 
 func (j *jobProcsT) nextID() string {
@@ -36,24 +36,6 @@ func (j *jobProcsT) nextID() string {
 	defer j.mu.Unlock()
 	j.seq++
 	return fmt.Sprintf("j%04d", j.seq)
-}
-
-func (j *jobProcsT) put(id string, cmd *exec.Cmd) {
-	j.mu.Lock()
-	j.m[id] = cmd
-	j.mu.Unlock()
-}
-
-func (j *jobProcsT) get(id string) *exec.Cmd {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.m[id]
-}
-
-func (j *jobProcsT) drop(id string) {
-	j.mu.Lock()
-	delete(j.m, id)
-	j.mu.Unlock()
 }
 
 func (s *Server) seedJobSeq() {
@@ -74,7 +56,7 @@ func (s *Server) jobLogPath(jobID, label string) string {
 }
 
 // runStart handles run.start: insert the row, spawn the detached process,
-// and hand completion to a watcher goroutine.
+// and hand execution and logging to a detached runner.
 func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	if len(p.Argv) == 0 || strings.TrimSpace(p.Argv[0]) == "" {
 		return api.Failure(id, api.ErrInvalidRequest, "argv must not be empty")
@@ -121,103 +103,10 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 
-	logFile, err := openJobLog(logPath)
-	if err != nil {
+	if err := s.startJobRunner(store, jobID, logPath, cwd, p.Argv); err != nil {
 		s.finishJob(store, jobID, nil)
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	profiles := (machine.Catalog{Path: filepath.Join(s.dir, "machines.json")}).Load()
-	var cmd *exec.Cmd
-	approval, argv := machine.PrepareRunApproval(profiles, p.Argv, func() {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		cancel()
-	})
-	var progress *machine.SyncProgress
-	if approval != nil {
-		argv, progress, err = approval.SyncProgress(argv)
-		if err != nil {
-			cancel()
-			logFile.Close()
-			s.finishJob(store, jobID, nil)
-			return api.Failure(id, api.ErrJobStore, err.Error())
-		}
-	}
-	cmd = childenv.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Env = childenv.Scrub(os.Environ())
-	cmd.Dir = cwd
-	var logMu sync.Mutex
-	logMu.Lock()
-	cmd.Stdout = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stdout] ", lineStart: true}
-	cmd.Stderr = &jobLogStream{out: logFile, mu: &logMu, prefix: "[stderr] ", lineStart: true}
-	var approvalOut, approvalErr *machine.ApprovalStream
-	if approval != nil {
-		approvalOut = &machine.ApprovalStream{State: approval, Out: cmd.Stdout}
-		approvalErr = &machine.ApprovalStream{State: approval, Out: cmd.Stderr}
-		cmd.Stdout, cmd.Stderr = approvalOut, approvalErr
-	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if progress != nil {
-		cmd.ExtraFiles = progress.Child
-	}
-	if err := cmd.Start(); err != nil {
-		if progress != nil {
-			_ = progress.Close()
-		}
-		logMu.Unlock()
-		cancel()
-		logFile.Close()
-		s.finishJob(store, jobID, nil)
-		return api.Failure(id, api.ErrJobStore, err.Error())
-	}
-	if progress != nil {
-		progress.Started(approvalErr)
-	}
-	abortRun := func() {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		cancel()
-		_ = cmd.Wait()
-		if progress != nil {
-			_ = progress.Close()
-		}
-		if approval != nil {
-			approval.Close()
-		}
-	}
-	s.jobProcs.put(jobID, cmd)
-	if err := store.MarkCommandRunning(jobID, int64(cmd.Process.Pid)); err != nil {
-		logMu.Unlock()
-		s.jobProcs.drop(jobID)
-		abortRun()
-		logFile.Close()
-		return api.Failure(id, api.ErrJobStore, err.Error())
-	}
-	row, rowErr := store.CommandRow(jobID)
-	if rowErr != nil || row == nil || row.StartedMs == nil {
-		logMu.Unlock()
-		abortRun()
-		_ = logFile.Close()
-		s.jobProcs.drop(jobID)
-		s.finishJob(store, jobID, nil)
-		return api.Failure(id, api.ErrJobStore, "started job timestamp unavailable")
-	}
-	quoted := make([]string, len(p.Argv))
-	for i, arg := range p.Argv {
-		quoted[i] = "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
-	}
-	_, headerErr := fmt.Fprintf(logFile, "job_id: %s\nrunner_pid: %d\ncommand: %s\ncwd: %s\nstarted_unix_ms: %d\n\n",
-		jobID, cmd.Process.Pid, strings.Join(quoted, " "), cwd, *row.StartedMs)
-	logMu.Unlock()
-	if headerErr != nil {
-		abortRun()
-		_ = logFile.Close()
-		s.jobProcs.drop(jobID)
-		s.finishJob(store, jobID, nil)
-		return api.Failure(id, api.ErrJobStore, headerErr.Error())
-	}
-	go s.watchJob(jobID, cmd, cancel, logFile, callerPane, label, completion, approval, approvalOut, approvalErr, progress)
 	s.invalidateJobCache()
 
 	return api.Success(id, api.RunStartedResult{
@@ -235,82 +124,11 @@ func (s *Server) finishJob(store *dispatch.Store, jobID string, exitCode *int64)
 	}
 }
 
-// watchJob waits for the process, persists the terminal state, and posts
-// the completion nudge.
-func (s *Server) watchJob(jobID string, cmd *exec.Cmd, cancel context.CancelFunc,
-	logFile *os.File, callerAgent, label, completion string, approval *machine.RunApproval, approvalOut, approvalErr *machine.ApprovalStream, progress *machine.SyncProgress) {
-	defer s.invalidateJobCache()
-	_ = cmd.Wait()
-	if progress != nil {
-		_ = progress.Close()
-	}
-	if approval != nil {
-		_ = approvalOut.Close()
-		_ = approvalErr.Close()
-		approval.Close()
-	}
-	exit := -1
-	if cmd.ProcessState != nil {
-		exit = cmd.ProcessState.ExitCode()
-	}
-	store, derr := s.db()
-	writeFinish := true
-	if derr == nil {
-		if j, err := store.CommandRow(jobID); err == nil && j != nil {
-			writeFinish = j.Status != "cancelling" && j.Status != "cancelled"
-		}
-	}
-	if writeFinish {
-		_, _ = fmt.Fprintf(logFile, "\nfinished_unix_ms: %d\nexit_code: %d\n", time.Now().UnixMilli(), exit)
-	}
-	logFile.Close()
-	cancel()
-	s.jobProcs.drop(jobID)
-
-	if derr != nil {
-		return
-	}
-	var exitCode int64 = -1
-	if cmd.ProcessState != nil {
-		exitCode = int64(cmd.ProcessState.ExitCode())
-	}
-	// 'running' → 'exited' with the real code. When run.cancel already
-	// moved the row to 'cancelling', finish is a no-op — and the row must
-	// NOT go 'cancelled' here: SPEC G9 requires the whole process group to
-	// be gone first, which only the cancel monitor (finishCancel) checks.
-	if ok, _ := store.MarkCommandFinished(jobID, &exitCode); !ok {
-		if j, _ := store.CommandRow(jobID); j == nil || j.Status != "cancelling" {
-			_, _ = store.MarkCommandCancelled(jobID)
-		}
-		return // cancellation owns its notice; never also report an exit
-	}
-
-	if !writeFinish || completion == "none" {
-		return
-	}
-	body := fmt.Sprintf("[ikesu run] exit=%d label=%s job=%s details: ikesu log %s",
-		exitCode, labelOrDash(label), jobID, jobID)
-	if completion == "full" {
-		if tail := readLogTail(jobLogPathFrom(store, jobID), 40); tail != "" {
-			body += "\n" + tail
-		}
-	}
-	s.queueJobNotice(store, callerAgent, body, false)
-}
-
 func labelOrDash(s string) string {
 	if s == "" {
 		return "-"
 	}
 	return s
-}
-
-func jobLogPathFrom(store *dispatch.Store, jobID string) string {
-	j, err := store.CommandRow(jobID)
-	if err != nil || j == nil {
-		return ""
-	}
-	return j.LogPath
 }
 
 // runCancel handles run.cancel, following SPEC G9: the runner pid must be
@@ -336,12 +154,9 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobNotFound,
 			fmt.Sprintf("job %s is not running (status=%s)", job.ID, job.Status))
 	}
-	// Resolve the runner pid: the live process map first, else the pid
-	// persisted in the row (survives server restarts).
+	// The persisted PID retains the real command identity across handoffs.
 	pgid := 0
-	if cmd := s.jobProcs.get(job.ID); cmd != nil && cmd.Process != nil {
-		pgid = cmd.Process.Pid
-	} else if job.RunnerPID != nil {
+	if job.RunnerPID != nil {
 		pgid = int(*job.RunnerPID)
 	}
 	if pgid <= 0 {
@@ -350,6 +165,14 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Success(id, api.RunCancelledResult{
 			Type: "run_cancelled", Job: job.ID, Status: "cancelled", Signal: "none",
 		})
+	}
+	manifest, managedErr := managedJobRecord(*job)
+	managed := managedErr == nil
+	if managedErr != nil && !os.IsNotExist(managedErr) {
+		return api.Failure(id, api.ErrJobStore, managedErr.Error())
+	}
+	if managed {
+		return s.runManagedCancel(id, store, *job, manifest)
 	}
 	if err := syscall.Kill(pgid, 0); err == syscall.ESRCH {
 		// Runner already gone → the group may still have orphans;
@@ -370,6 +193,10 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobStore,
 			fmt.Sprintf("job %s runner pid %d is not a process group leader; refusing to signal", job.ID, pgid))
 	}
+	identity, err := jobProcessIdentity(pgid)
+	if err != nil {
+		return api.Failure(id, api.ErrJobStore, "process start identity unavailable; refusing to signal: "+err.Error())
+	}
 	ok, err := store.MarkCommandCancelling(job.ID)
 	if err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
@@ -380,7 +207,10 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
 	s.invalidateJobCache()
-	go s.finishCancel(job.ID, pgid)
+	s.startJobMonitor(job.ID, func(stop <-chan struct{}) error {
+		s.finishCancel(job.ID, jobRunnerRecord{PID: pgid, Identity: identity}, stop)
+		return nil
+	})
 	return api.Success(id, api.RunCancelledResult{
 		Type: "run_cancelled", Job: job.ID, Status: "cancelling", Signal: "TERM",
 	})
@@ -400,28 +230,25 @@ func processGroupAlive(pgid int) bool {
 // the group 2 s, escalates to SIGKILL, and only then — once the whole
 // group is confirmed gone — marks the job 'cancelled'. If the group
 // outlives SIGKILL the row stays 'cancelling' (fail closed, SPEC G9).
-func (s *Server) finishCancel(jobID string, pgid int) {
-	if waitProcessGroupGone(pgid, 2*time.Second) {
+func (s *Server) finishCancel(jobID string, manifest jobRunnerRecord, stop <-chan struct{}) {
+	pgid := manifest.PID
+	if waitJobGroupGone(pgid, 2*time.Second, stop) {
 		s.cancelIfCancelling(jobID)
 		return
 	}
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
-	if waitProcessGroupGone(pgid, 30*time.Second) {
+	if jobMonitorStopped(stop) {
+		return
+	}
+	state := jobCancelState{VerifiedPGID: pgid, VerifiedIdentity: manifest.Identity}
+	if err := signalCancellationGroup(manifest, state, syscall.SIGKILL); err != nil {
+		fmt.Fprintf(os.Stderr, "ikesu job cancellation %s: %v; refusing to signal\n", jobID, err)
+		return
+	}
+	if waitJobGroupGone(pgid, 30*time.Second, stop) {
 		s.cancelIfCancelling(jobID)
 	}
 	// else: leave 'cancelling' — better to keep polling state honest than
 	// to claim a process group is dead when it is not.
-}
-
-func waitProcessGroupGone(pgid int, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if !processGroupAlive(pgid) {
-			return true
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return !processGroupAlive(pgid)
 }
 
 // cancelIfCancelling records 'cancelled' only while the row is still in
@@ -433,14 +260,55 @@ func (s *Server) cancelIfCancelling(jobID string) {
 		return
 	}
 	if j, err := store.CommandRow(jobID); err == nil && j != nil && j.Status == "cancelling" {
-		s.recordCancellation(store, *j, false)
+		if err := s.recordCancellation(store, *j, false); err != nil {
+			fmt.Fprintf(os.Stderr, "ikesu job cancellation: %v\n", err)
+		}
 	}
 }
-func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) {
-	if changed, _ := store.MarkCommandCancelled(j.ID); changed && j.Completion != "none" {
-		body := fmt.Sprintf("[ikesu run] cancelled label=%s job=%s details: ikesu log %s", labelOrDash(j.Label), j.ID, j.ID)
-		s.queueJobNotice(store, j.CallerPane, body, onLoop)
+func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) error {
+	reason := ""
+	if manifest, err := managedJobRecord(j); err == nil {
+		if processGroupAlive(manifest.PID) {
+			return nil
+		}
+		// The helper drains and closes the log before publishing this result.
+		if _, err := completedJobRecord(j, manifest); err != nil {
+			gone, probeErr := jobMonitorGone(manifest)
+			if probeErr != nil {
+				return probeErr
+			}
+			if !gone {
+				return nil
+			}
+			reason = "completion unavailable: runner monitor disappeared: " + err.Error()
+		}
 	}
+	body := ""
+	if j.Completion != "none" {
+		body = fmt.Sprintf("[ikesu run] cancelled label=%s job=%s details: ikesu log %s", labelOrDash(j.Label), j.ID, j.ID)
+		if reason != "" {
+			body += " reason: " + reason
+		}
+	}
+	changed, err := store.CompleteJob(j.ID, j.Status, "cancelled", nil, time.Now().UnixMilli(), j.CallerPane, body)
+	if err != nil {
+		return err
+	}
+	if changed && reason != "" {
+		fmt.Fprintf(os.Stderr, "ikesu job %s: %s\n", j.ID, reason)
+		if f, e := openJobLog(j.LogPath); e == nil {
+			_, _ = fmt.Fprintln(f, "\ncancellation_error: "+reason)
+			_ = f.Close()
+		}
+	}
+	if changed && body != "" {
+		if onLoop {
+			s.flushJobNudgeFor(dispatch.JobsRoom, j.CallerPane)
+		} else {
+			s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, j.CallerPane) })
+		}
+	}
+	return nil
 }
 
 func openJobLog(path string) (*os.File, error) {
@@ -479,6 +347,9 @@ func (s *Server) abortOrphanedJobs() {
 	}
 	for _, j := range jobs {
 		if j.Status == "running" || j.Status == "cancelling" {
+			if _, err := managedJobRecord(j); err == nil {
+				continue
+			}
 			_, _ = store.MarkCommandCancelled(j.ID)
 		}
 	}

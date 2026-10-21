@@ -53,6 +53,15 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 			remove = false
 		}
 		log := st.ColumnText(5)
+		if active && st.ColumnInt64(2) > 0 && log != "" {
+			// A detached runner owns these files until terminal collection commits.
+			// This also protects them when that DB transaction is temporarily rejected.
+			for _, suffix := range []string{".runner", ".result"} {
+				if _, err := os.Stat(log + suffix); !os.IsNotExist(err) {
+					remove = false
+				}
+			}
+		}
 		if remove {
 			expired = append(expired, expiredJob{st.ColumnInt64(0), log})
 		} else {
@@ -80,7 +89,7 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 		if job.log == "" || keptLogs[filepath.Clean(job.log)] {
 			continue
 		}
-		if err := os.Remove(job.log); err != nil && !os.IsNotExist(err) {
+		if err := removeJobFiles(job.log); err != nil {
 			return fmt.Errorf("remove job log %s: %w", job.log, err)
 		}
 	}
@@ -101,9 +110,18 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 			return err
 		}
 		if !info.ModTime().After(cutoff) {
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			if err := removeJobFiles(path); err != nil {
 				return fmt.Errorf("remove orphan log %s: %w", path, err)
 			}
+		}
+	}
+	return nil
+}
+
+func removeJobFiles(log string) error {
+	for _, suffix := range []string{"", ".runner", ".result", ".cancel"} {
+		if err := os.Remove(log + suffix); err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
 	return nil

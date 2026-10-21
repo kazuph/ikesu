@@ -74,6 +74,8 @@ func TestG8StartupHasNoUpdateNetworkTransport(t *testing.T) {
 					}
 				} else if (sel.Sel.Name == "FileConn" || sel.Sel.Name == "FileListener") && filepath.ToSlash(path) == "../../internal/server/handoff.go" {
 					// Only wraps inherited Unix descriptors; it never opens an Internet connection.
+				} else if sel.Sel.Name == "FileConn" && filepath.ToSlash(path) == "../../internal/server/job_runner.go" {
+					// The runner handshake wraps descriptors from unix.Socketpair(AF_UNIX).
 				} else {
 					t.Errorf("unreviewed network operation %s in %s", sel.Sel.Name, path)
 				}
