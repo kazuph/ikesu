@@ -17,7 +17,7 @@ func openSessionSockets(session, dir string) (*os.File, net.Listener, net.Listen
 	}
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		lock.Close()
-		return nil, nil, nil, fmt.Errorf("a gtx server is already running for session %q", session)
+		return nil, nil, nil, fmt.Errorf("an ikesu server is already running for session %q", session)
 	}
 
 	apiSock := api.APISocketPath(dir)

@@ -15,7 +15,7 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "ikesu guard exec -- <cmd> [args...]\ngtx guard line -- <command line>\ngtx guard claude-prefix -- <command line>\ngtx guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\ngtx guard log [--lines N] [--json]\ngtx guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\ngtx guard status")
+		fmt.Fprintln(r.out(), "ikesu guard exec -- <cmd> [args...]\nikesu guard line -- <command line>\nikesu guard claude-prefix -- <command line>\nikesu guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\nikesu guard log [--lines N] [--json]\nikesu guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\nikesu guard status")
 		return 0
 	}
 	sub := a[0]

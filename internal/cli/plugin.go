@@ -12,18 +12,18 @@ import (
 	"strings"
 )
 
-const pluginHelp = `gtx plugin commands:
-  gtx plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]
-  gtx plugin uninstall <plugin_id|owner/repo[/subdir...]>
-  gtx plugin link <path> [--disabled]
-  gtx plugin list [--plugin ID] [--json]
-  gtx plugin config-dir <plugin_id>
-  gtx plugin unlink <plugin_id>
-  gtx plugin enable <plugin_id>
-  gtx plugin disable <plugin_id>
-  gtx plugin action <list|invoke>
-  gtx plugin log list [--plugin ID] [--limit N]
-  gtx plugin pane <open|focus|close>
+const pluginHelp = `ikesu plugin commands:
+  ikesu plugin install <owner>/<repo>[/subdir...] [--ref REF] [--yes]
+  ikesu plugin uninstall <plugin_id|owner/repo[/subdir...]>
+  ikesu plugin link <path> [--disabled]
+  ikesu plugin list [--plugin ID] [--json]
+  ikesu plugin config-dir <plugin_id>
+  ikesu plugin unlink <plugin_id>
+  ikesu plugin enable <plugin_id>
+  ikesu plugin disable <plugin_id>
+  ikesu plugin action <list|invoke>
+  ikesu plugin log list [--plugin ID] [--limit N]
+  ikesu plugin pane <open|focus|close>
 `
 
 func (r *runner) pluginCLI(args []string) int {

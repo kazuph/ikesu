@@ -65,10 +65,10 @@ func Load(dir string, cfg config.Config) (*Plan, error) {
 	// These herdr-only display preferences have no gtx counterpart. They
 	// are explicitly disclosed, never mapped to a similar unrelated value.
 	if src.SidebarSectionSplit != 0 {
-		p.Unrestored = append(p.Unrestored, "sidebar_section_split: gtx はセクションの高さ比率を保存しない")
+		p.Unrestored = append(p.Unrestored, "sidebar_section_split: ikesu はセクションの高さ比率を保存しない")
 	}
 	if *src.Selected != *src.Active {
-		p.Unrestored = append(p.Unrestored, "selected: gtx は sidebar 選択を独立して保存しない（active のフォーカスを復元）")
+		p.Unrestored = append(p.Unrestored, "selected: ikesu は sidebar 選択を独立して保存しない（active のフォーカスを復元）")
 	}
 	if len(src.CollapsedSpaceKeys) > 0 {
 		return nil, fmt.Errorf("unsupported collapsed_space_keys")

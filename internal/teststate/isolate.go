@@ -13,12 +13,12 @@ import (
 func Run(run func() int) (code int) {
 	root, err := os.MkdirTemp("/tmp", "gtx-test-")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gtx test isolation:", err)
+		fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 		return 1
 	}
 	defer func() {
 		if err := os.RemoveAll(root); err != nil {
-			fmt.Fprintln(os.Stderr, "gtx test cleanup:", err)
+			fmt.Fprintln(os.Stderr, "ikesu test cleanup:", err)
 			code = 1
 		}
 	}()
@@ -26,7 +26,7 @@ func Run(run func() int) (code int) {
 		key, _, _ := strings.Cut(entry, "=")
 		if strings.HasPrefix(key, "GTX_") && !strings.HasPrefix(key, "GTX_PERF_") || strings.HasPrefix(key, "IKESU_") && !strings.HasPrefix(key, "IKESU_PERF_") || key == "IKESU" || key == "GOTERRACE" || key == "GOTERRACE_PANE_ID" {
 			if err := os.Unsetenv(key); err != nil {
-				fmt.Fprintln(os.Stderr, "gtx test isolation:", err)
+				fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 				return 1
 			}
 		}
@@ -41,11 +41,11 @@ func Run(run func() int) (code int) {
 	for key, name := range paths {
 		path := filepath.Join(root, name)
 		if err := os.MkdirAll(path, 0700); err != nil {
-			fmt.Fprintln(os.Stderr, "gtx test isolation:", err)
+			fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 			return 1
 		}
 		if err := os.Setenv(key, path); err != nil {
-			fmt.Fprintln(os.Stderr, "gtx test isolation:", err)
+			fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 			return 1
 		}
 	}

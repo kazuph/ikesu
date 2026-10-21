@@ -76,7 +76,7 @@ func (s *Server) paneCurrent(id string, p api.PaneCurrentParams) api.Response {
 			return api.Success(id, api.PaneCurrentResult{Type: "pane_current", Pane: info})
 		}
 	}
-	return api.Failure(id, api.ErrPaneNotFound, "caller is not inside a gtx pane")
+	return api.Failure(id, api.ErrPaneNotFound, "caller is not inside an ikesu pane")
 }
 
 // paneForProcess walks the ancestry of pid looking for a pane shell.
