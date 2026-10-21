@@ -14,8 +14,8 @@ import (
 
 func TestEndpointProgramClipboardUsesLastVisibleViewerWithoutTruncation(t *testing.T) {
 	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	defer stopServer(t, dir, done)
+	s, processed := startClipboardEndpoint(t)
+	dir := s.dir
 	ready := dialClient(t, dir)
 	ready.conn.Close()
 	pid := firstPaneID(t, dir)
@@ -69,14 +69,24 @@ func TestEndpointProgramClipboardUsesLastVisibleViewerWithoutTruncation(t *testi
 		command += fmt.Sprintf("; printf 'CLIP_SENT_%%s\\n' %d", emitted)
 		apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: pid, Text: command, Keys: []string{"enter"}}, nil)
 		waitRead(t, dir, pid, fmt.Sprintf("CLIP_SENT_%d", emitted))
-		return "\x1b]52;c;" + encoded + "\a"
+		want := "\x1b]52;c;" + encoded + "\a"
+		// Reading the marker observes emulator output, not app-loop delivery.
+		select {
+		case got := <-processed:
+			if got != want {
+				t.Fatalf("processed clipboard = %q, want %q", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("clipboard event was not processed")
+		}
+		return want
 	}
 	expect := func(index int, text string) {
 		t.Helper()
 		select {
 		case got := <-received[index]:
 			if got != text {
-				t.Fatalf("viewer %d clipboard bytes differ: got %d, want %d", index, len(got), len(text))
+				t.Fatalf("viewer %d clipboard bytes differ: got %d %q, want %d %q", index, len(got), got, len(text), text)
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatalf("viewer %d did not receive clipboard", index)
