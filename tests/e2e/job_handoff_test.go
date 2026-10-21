@@ -14,6 +14,9 @@ import (
 	"github.com/kazuph/goterrace/internal/dispatch"
 )
 
+// teststate.Run clears GTX_*; retain this explicit input before isolation.
+var jobHandoffOldBin = os.Getenv("GTX_JOB_HANDOFF_OLD_BIN")
+
 func TestJobsAcrossLiveHandoff(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -141,7 +144,7 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 // The first upgrade cannot reconstruct a legacy parent's wait status or
 // missing log pipes. Preserve the accepted legacy running state verbatim.
 func TestLegacyJobsAcrossLiveHandoff(t *testing.T) {
-	old := os.Getenv("GTX_JOB_HANDOFF_OLD_BIN")
+	old := jobHandoffOldBin
 	if old == "" {
 		dir := t.TempDir()
 		archive := filepath.Join(dir, "baseline.tar")
