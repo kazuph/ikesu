@@ -20,6 +20,20 @@ export function requireLiveConfig(env = process.env, {screen = false} = {}) {
  if(pick('NATIVE_BINARY')) config.NATIVE_BINARY=pick('NATIVE_BINARY');
  return config;
 }
+// Only a fully bounded, recognizable Claude input area is evidence of an
+// unsent report. Unknown/truncated layouts fail closed; history never counts.
+export function hasUnsentReport(screen, message) {
+ if (!message || /[\r\n]/.test(message)) return false;
+ const lines=screen.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').split('\n');
+ let prompt=-1;
+ for(let i=0;i<lines.length;i++) if(/^❯[ \u00a0]/u.test(lines[i])) prompt=i;
+ if(prompt<1 || !/^─+$/u.test(lines[prompt-1].trim())) return false;
+ let end=prompt+1;
+ while(end<lines.length && !/^─+$/u.test(lines[end].trim())) end++;
+ if(end===lines.length) return false;
+ const input=[lines[prompt].replace(/^❯[ \u00a0]/u,''),...lines.slice(prompt+1,end).map(line=>line.startsWith('  ')?line.slice(2):line)].join('');
+ return input===message;
+}
 export async function reportToParent(config, message) {
  const env={...process.env,IKESU_SOCKET_PATH:config.REPORT_SOCKET,GTX_SOCKET_PATH:config.REPORT_SOCKET,IKESU_SOCKET_EXPLICIT:'1',GTX_SOCKET_EXPLICIT:'1'};
  const run=args=>exec(config.REPORT_BIN,args,{env,timeout:15_000});
@@ -27,7 +41,7 @@ export async function reportToParent(config, message) {
  if(result?.result?.pane?.pane_id!==config.PARENT_PANE) throw Error('parent pane validation failed');
  await run(['send',config.PARENT_PANE,message,'--from','machines']);
  const check=await run(['pane','read',config.PARENT_PANE,'--lines','15']);
- if(check.stdout.includes(message)) await run(['pane','send-keys',config.PARENT_PANE,'Enter']);
+ if(hasUnsentReport(check.stdout,message)) await run(['pane','send-keys',config.PARENT_PANE,'Enter']);
 }
 export async function cleanupSteps(steps) {
  const errors=[];

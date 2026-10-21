@@ -255,6 +255,7 @@ export class MacDialogDecisionsDaemon {
     runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
     spawnDialog, // (specPath, spec) => {lines: AsyncIterable<string>, kill()}
     specFilePath, // (key) => path to write the spec JSON
+    onFatal, // fatal dialog startup failures terminate the owning run
     log: logFn = log,
   }) {
     this.config = config;
@@ -262,6 +263,7 @@ export class MacDialogDecisionsDaemon {
     this.runAnswer = runAnswer;
     this.spawnDialog = spawnDialog;
     this.specFilePath = specFilePath;
+    this.onFatal = onFatal;
     this.log = logFn;
     this.entries = new Map(); // key -> entry
     this.queue = []; // keys waiting for the dialog
@@ -491,12 +493,18 @@ export class MacDialogDecisionsDaemon {
     }
     // exited
     const entry = child.entry;
-    await child.exited;
+    const outcome = await child.exited;
     removeDialogFiles(child.specPath);
     entry.showing = false;
     if (this.child === child) {
       this.showing = null;
       this.child = null;
+    }
+    if (outcome?.error) {
+      this.log(`パネルを起動できないため停止します: ${outcome.error.code}`);
+      void this.stop();
+      this.onFatal?.(outcome.error);
+      return;
     }
     this.schedulePump();
   }
@@ -659,9 +667,11 @@ function spawnHelperDialog(config, specPath, logFn = () => {}) {
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdin.on("error", error => logFn(`dialog stdin: ${error.message}`));
-  child.on("error", (error) =>
-    logFn(`dialog spawn に失敗: ${error.message} (argv=${argv.join(" ")})`),
-  );
+  let spawnError;
+  child.on("error", error => {
+    spawnError = error;
+    logFn(`dialog spawn に失敗: ${error.message} (argv=${argv.join(" ")})`);
+  });
   child.on("exit", (code, signal) =>
     logFn(`dialog が終了: code=${code} signal=${signal}`),
   );
@@ -671,10 +681,8 @@ function spawnHelperDialog(config, specPath, logFn = () => {}) {
     }
   });
   const rl = readline.createInterface({ input: child.stdout });
-  let resolveExit;
   const exited = new Promise((resolve) => {
-    resolveExit = resolve;
-    child.on("exit", resolve);
+    child.once("close", (code, signal) => resolve({code, signal, error: spawnError}));
   });
   return {
     lines: (async function* () {
@@ -968,6 +976,7 @@ async function main() {
   fs.rmSync(specDir, {recursive: true, force: true});
   const daemon = new MacDialogDecisionsDaemon({
     config,
+    onFatal: () => shutdown(1),
     spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),
     runAnswer: createRunAnswer(config, log),
     spawnDialog: (specPath) =>
@@ -980,11 +989,8 @@ async function main() {
       path.join(specDir, `${key.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`),
     log,
   });
-  await daemon.start();
-  log("watch 開始 (gtx decision watch --all-machines)");
-
   let shuttingDown = false;
-  const shutdown = () => {
+  const shutdown = (exitCode = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
     void (async () => {
@@ -996,15 +1002,17 @@ async function main() {
         } catch (error) { if (error.code !== "ENOENT") log(`所有情報の削除に失敗: ${error.message}`); }
       } finally {
         await lock.close();
-        process.exit(0);
+        process.exit(exitCode);
       }
     })();
   };
   void lock.exited.then(() => {
     if (!shuttingDown) { log("所有ロックのプロセスが終了したためデーモンを停止します"); shutdown(); }
   });
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => shutdown());
+  process.on("SIGTERM", () => shutdown());
+  await daemon.start();
+  log("watch 開始 (gtx decision watch --all-machines)");
 }
 
 const invokedAsScript = (() => {
