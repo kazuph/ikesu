@@ -9,7 +9,7 @@ if ! test -x "$work/herdr-0.2.24"; then
  echo "NOT_RUN: herdr distribution binary is absent"
  exit 0
 fi
-: "${IKESU_PARITY_BIN:=$work/gtx-parity-agent-overflow}"
+: "${IKESU_PARITY_BIN:=${GTX_PARITY_BIN:-$work/gtx-parity-agent-overflow}}"
 for scenario in agent-server-overflow agent-server-multi popup-owner-ui; do
  python3 tests/parity/observe.py --server --server-reuse-initial --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$IKESU_PARITY_BIN" --ptyrun "$work/ptyrun-jobs-final" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-cells"
  python3 tests/parity/full_frame_gate.py "$work/parity-$scenario-cells" "tests/parity/$scenario.steps"
