@@ -93,24 +93,40 @@ func TestCancelReapedLeaderWithSurvivingChild(t *testing.T) {
 			pid := int(*j.job.RunnerPID)
 			t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
 			data, err := os.ReadFile(childFile)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			child := strings.TrimSpace(string(data))
-			if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil { t.Fatal(out, err) }
+			if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil {
+				t.Fatal(out, err)
+			}
 			j.s.waitFor("leader reaped while child holds stdout", 5*time.Second, func(string) bool { return syscall.Kill(pid, 0) == syscall.ESRCH })
 			state, err := exec.Command("ps", "-o", "stat=", "-p", child).Output()
-			if err != nil || strings.HasPrefix(strings.TrimSpace(string(state)), "Z") { t.Fatal("child did not survive TERM", string(state), err) }
-			if _, err := os.Stat(j.job.LogPath+".result"); !os.IsNotExist(err) { t.Fatal("stdout pipe was not held by child", err) }
+			if err != nil || strings.HasPrefix(strings.TrimSpace(string(state)), "Z") {
+				t.Fatal("child did not survive TERM", string(state), err)
+			}
+			if _, err := os.Stat(j.job.LogPath + ".result"); !os.IsNotExist(err) {
+				t.Fatal("stdout pipe was not held by child", err)
+			}
 			if handoff {
-				if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil { t.Fatal(out, err) }
+				if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
+					t.Fatal(out, err)
+				}
 			}
 			j.s.waitFor("remaining child killed and cancellation delivered once", 10*time.Second, func(string) bool {
 				row, _ := j.store.CommandRow(j.job.ID)
 				return row != nil && row.Status == "cancelled" && row.ExitCode == nil && j.notices() == 1
 			})
 			state, err = exec.Command("ps", "-o", "stat=", "-p", child).Output()
-			if err == nil && !strings.HasPrefix(strings.TrimSpace(string(state)), "Z") { t.Fatal("child still executes after cancellation", string(state)) }
-			if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil { t.Fatal(out, err) }
-			if j.notices() != 1 { t.Fatal("duplicate cancellation notice", j.notices()) }
+			if err == nil && !strings.HasPrefix(strings.TrimSpace(string(state)), "Z") {
+				t.Fatal("child still executes after cancellation", string(state))
+			}
+			if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
+				t.Fatal(out, err)
+			}
+			if j.notices() != 1 {
+				t.Fatal("duplicate cancellation notice", j.notices())
+			}
 			t.Log("leader reaped, child survived TERM and retained pipe, then KILL completed cancellation with nil exit and one real PTY notice")
 		})
 	}

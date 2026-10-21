@@ -1,8 +1,11 @@
 package server
 
 import (
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/teststate"
+	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -104,9 +107,77 @@ func TestManagedSignalRejectsMismatchAndUnavailableStart(t *testing.T) {
 	if err := syscall.Kill(pid, 0); err != nil {
 		t.Fatal("unrelated live process was killed", err)
 	}
+	if err := signalCancellationGroup(jobRunnerRecord{PID: pid, Identity: "different start"}, jobCancelState{VerifiedPGID: pid, VerifiedIdentity: "different start"}, syscall.SIGTERM); err == nil {
+		t.Fatal("saved cancellation bypassed live identity mismatch")
+	}
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
 	_ = cmd.Wait()
 	if err := signalManagedJob(jobRunnerRecord{PID: pid, Identity: "unavailable"}, syscall.SIGTERM); err == nil {
 		t.Fatal("missing start identity accepted")
+	}
+	if err := signalCancellationGroup(jobRunnerRecord{PID: pid, Identity: "unavailable"}, jobCancelState{}, syscall.SIGTERM); err == nil {
+		t.Fatal("unverified missing leader accepted")
+	}
+}
+
+func TestLegacyCancelReapedLeaderWithSurvivingChild(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "legacy-reaped-leader")
+	defer s.stopJobMonitors()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, err := os.CreateTemp(t.TempDir(), "legacy-log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	cmd := exec.Command("/bin/sh", "-c", `/bin/sh -c 'trap "" TERM; printf READY; exec sleep 60' & wait`)
+	cmd.Stdout, cmd.Stderr = log, log
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	defer func() { _ = syscall.Kill(-pid, syscall.SIGKILL); _ = cmd.Wait() }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		data, _ := os.ReadFile(log.Name())
+		if strings.Contains(string(data), "READY") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child not ready")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := store.InsertCommand("legacy", "legacy", "sh", t.TempDir(), "p1", "owner", "none", log.Name()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkCommandRunning("legacy", int64(pid)); err != nil {
+		t.Fatal(err)
+	}
+	response := s.runCancel("cancel", api.RunCancelParams{JobID: "legacy"})
+	if response.Err != nil {
+		t.Fatal(response.Err)
+	}
+	_ = cmd.Wait()
+	if !processGroupAlive(pid) {
+		t.Fatal("child did not survive TERM")
+	}
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		row, err := store.CommandRow("legacy")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row != nil && row.Status == "cancelled" && row.ExitCode == nil && !processGroupAlive(pid) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("legacy cancellation did not finish", row)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

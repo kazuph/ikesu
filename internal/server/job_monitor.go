@@ -98,7 +98,7 @@ func waitJobGroupGone(pid int, timeout time.Duration, stop <-chan struct{}) bool
 	}
 }
 
-func signalManagedJob(manifest jobRunnerRecord, signal syscall.Signal) error {
+func verifyJobGroup(manifest jobRunnerRecord) error {
 	if manifest.PID <= 0 {
 		return fmt.Errorf("invalid runner PID; refusing to signal")
 	}
@@ -112,7 +112,23 @@ func signalManagedJob(manifest jobRunnerRecord, signal syscall.Signal) error {
 	if group, err := syscall.Getpgid(manifest.PID); err != nil || group != manifest.PID {
 		return fmt.Errorf("runner no longer leads its process group; refusing to signal")
 	}
+	return nil
+}
+
+func signalManagedJob(manifest jobRunnerRecord, signal syscall.Signal) error {
+	if err := verifyJobGroup(manifest); err != nil {
+		return err
+	}
 	return syscall.Kill(-manifest.PID, signal)
+}
+
+// A reaped leader does not revoke ownership of its surviving process group.
+// A live leader still has to match, even when cancellation was verified earlier.
+func signalCancellationGroup(manifest jobRunnerRecord, state jobCancelState, signal syscall.Signal) error {
+	if manifest.PID > 0 && state.VerifiedPGID == manifest.PID && state.VerifiedIdentity != "" && state.VerifiedIdentity == manifest.Identity && syscall.Kill(manifest.PID, 0) == syscall.ESRCH {
+		return syscall.Kill(-manifest.PID, signal)
+	}
+	return signalManagedJob(manifest, signal)
 }
 
 func jobMonitorGone(manifest jobRunnerRecord) (bool, error) {
@@ -126,23 +142,25 @@ func jobMonitorGone(manifest jobRunnerRecord) (bool, error) {
 	return identity != manifest.MonitorIdentity, nil
 }
 
-type jobCancelState struct{ TermSentMs int64 }
+type jobCancelState struct {
+	TermSentMs       int64
+	VerifiedPGID     int
+	VerifiedIdentity string
+}
 
 // cancelMu serializes preparation, persistence and signalling with recovery.
 func (s *Server) runManagedCancel(id string, store *dispatch.Store, job dispatch.Job, manifest jobRunnerRecord) api.Response {
 	s.jobProcs.cancelMu.Lock()
 	defer s.jobProcs.cancelMu.Unlock()
+	var state jobCancelState
 	if processGroupAlive(manifest.PID) {
-		identity, err := jobProcessIdentity(manifest.PID)
-		if err != nil {
-			return api.Failure(id, api.ErrJobStore, "process start identity unavailable; refusing to signal: "+err.Error())
+		if err := verifyJobGroup(manifest); err != nil {
+			return api.Failure(id, api.ErrJobStore, err.Error())
 		}
-		if identity != manifest.Identity {
-			return api.Failure(id, api.ErrJobStore, "runner process identity changed; refusing to signal")
-		}
+		state.VerifiedPGID, state.VerifiedIdentity = manifest.PID, manifest.Identity
 	}
 	// A preparation failure must leave the public running state untouched.
-	if err := writeJobRecord(job.LogPath+".cancel", jobCancelState{}); err != nil {
+	if err := writeJobRecord(job.LogPath+".cancel", state); err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 	ok, err := store.MarkCommandCancelling(job.ID)
@@ -155,12 +173,13 @@ func (s *Server) runManagedCancel(id string, store *dispatch.Store, job dispatch
 	}
 	signal := "none"
 	if processGroupAlive(manifest.PID) {
-		if err := signalManagedJob(manifest, syscall.SIGTERM); err != nil {
+		if err := signalCancellationGroup(manifest, state, syscall.SIGTERM); err != nil {
 			s.resumeJobCancel(job.ID, manifest)
 			return api.Failure(id, api.ErrJobStore, err.Error())
 		}
 		signal = "TERM"
-		if err := writeJobRecord(job.LogPath+".cancel", jobCancelState{TermSentMs: time.Now().UnixMilli()}); err != nil {
+		state.TermSentMs = time.Now().UnixMilli()
+		if err := writeJobRecord(job.LogPath+".cancel", state); err != nil {
 			s.resumeJobCancel(job.ID, manifest)
 			return api.Failure(id, api.ErrJobStore, err.Error())
 		}
@@ -198,7 +217,16 @@ func (s *Server) resumeJobCancel(id string, manifest jobRunnerRecord) {
 			err = nil
 		}
 		if err == nil && state.TermSentMs == 0 && processGroupAlive(manifest.PID) {
-			err = signalManagedJob(manifest, syscall.SIGTERM)
+			if state.VerifiedPGID != manifest.PID || state.VerifiedIdentity != manifest.Identity {
+				err = verifyJobGroup(manifest)
+				if err == nil {
+					state.VerifiedPGID, state.VerifiedIdentity = manifest.PID, manifest.Identity
+					err = writeJobRecord(job.LogPath+".cancel", state)
+				}
+			}
+			if err == nil {
+				err = signalCancellationGroup(manifest, state, syscall.SIGTERM)
+			}
 			if err == nil {
 				state.TermSentMs = time.Now().UnixMilli()
 				err = writeJobRecord(job.LogPath+".cancel", state)
@@ -213,7 +241,7 @@ func (s *Server) resumeJobCancel(id string, manifest jobRunnerRecord) {
 			if jobMonitorStopped(stop) {
 				return nil
 			}
-			if err := signalManagedJob(manifest, syscall.SIGKILL); err != nil {
+			if err := signalCancellationGroup(manifest, state, syscall.SIGKILL); err != nil {
 				return err
 			}
 			if !waitJobGroupGone(manifest.PID, 30*time.Second, stop) {

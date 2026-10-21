@@ -193,7 +193,8 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobStore,
 			fmt.Sprintf("job %s runner pid %d is not a process group leader; refusing to signal", job.ID, pgid))
 	}
-	if _, err := jobProcessIdentity(pgid); err != nil {
+	identity, err := jobProcessIdentity(pgid)
+	if err != nil {
 		return api.Failure(id, api.ErrJobStore, "process start identity unavailable; refusing to signal: "+err.Error())
 	}
 	ok, err := store.MarkCommandCancelling(job.ID)
@@ -206,7 +207,10 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
 	s.invalidateJobCache()
-	s.startJobMonitor(job.ID, func(stop <-chan struct{}) error { s.finishCancel(job.ID, pgid, stop); return nil })
+	s.startJobMonitor(job.ID, func(stop <-chan struct{}) error {
+		s.finishCancel(job.ID, jobRunnerRecord{PID: pgid, Identity: identity}, stop)
+		return nil
+	})
 	return api.Success(id, api.RunCancelledResult{
 		Type: "run_cancelled", Job: job.ID, Status: "cancelling", Signal: "TERM",
 	})
@@ -226,7 +230,8 @@ func processGroupAlive(pgid int) bool {
 // the group 2 s, escalates to SIGKILL, and only then — once the whole
 // group is confirmed gone — marks the job 'cancelled'. If the group
 // outlives SIGKILL the row stays 'cancelling' (fail closed, SPEC G9).
-func (s *Server) finishCancel(jobID string, pgid int, stop <-chan struct{}) {
+func (s *Server) finishCancel(jobID string, manifest jobRunnerRecord, stop <-chan struct{}) {
+	pgid := manifest.PID
 	if waitJobGroupGone(pgid, 2*time.Second, stop) {
 		s.cancelIfCancelling(jobID)
 		return
@@ -234,11 +239,11 @@ func (s *Server) finishCancel(jobID string, pgid int, stop <-chan struct{}) {
 	if jobMonitorStopped(stop) {
 		return
 	}
-	if _, err := jobProcessIdentity(pgid); err != nil {
+	state := jobCancelState{VerifiedPGID: pgid, VerifiedIdentity: manifest.Identity}
+	if err := signalCancellationGroup(manifest, state, syscall.SIGKILL); err != nil {
 		fmt.Fprintf(os.Stderr, "gtx job cancellation %s: %v; refusing to signal\n", jobID, err)
 		return
 	}
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	if waitJobGroupGone(pgid, 30*time.Second, stop) {
 		s.cancelIfCancelling(jobID)
 	}
