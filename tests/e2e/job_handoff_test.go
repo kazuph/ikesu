@@ -173,64 +173,70 @@ func TestLegacyJobsAcrossLiveHandoff(t *testing.T) {
 	if err := os.Symlink(old, canonicalOld); err != nil {
 		t.Fatal(err)
 	}
-	s := startVersionMode(t, nil, false, binPath, canonicalOld)
-	s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "legacy-job", Agent: "codex", State: "idle"}, nil)
-	fifo := filepath.Join(t.TempDir(), "release")
-	if err := syscall.Mkfifo(fifo, 0600); err != nil {
-		t.Fatal(err)
+	for _, successor := range []struct{ name, binary string }{
+		{"baseline", canonicalOld}, {"upgrade", binPath},
+	} {
+		t.Run(successor.name, func(t *testing.T) {
+			s := startVersionMode(t, nil, false, binPath, canonicalOld)
+			s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+			s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "legacy-job", Agent: "codex", State: "idle"}, nil)
+			fifo := filepath.Join(t.TempDir(), "release")
+			if err := syscall.Mkfifo(fifo, 0600); err != nil {
+				t.Fatal(err)
+			}
+			release, err := os.OpenFile(fifo, os.O_RDWR, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release.Close()
+			var started api.RunStartedResult
+			s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "legacy", Completion: "summary", Argv: []string{"/bin/sh", "-c", fmt.Sprintf("read value < %q; exit 9", fifo)}}, &started)
+			store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "gtx.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			before, err := store.CommandRow(started.Job)
+			if err != nil || before == nil || before.RunnerPID == nil {
+				t.Fatal(before, err)
+			}
+			pid := int(*before.RunnerPID)
+			t.Cleanup(func() {
+				if syscall.Kill(pid, 0) == nil {
+					_ = syscall.Kill(-pid, syscall.SIGKILL)
+				}
+			})
+			if out, err := s.cli("server", "live-handoff", "--import-exe", successor.binary); err != nil {
+				t.Fatal(out, err)
+			}
+			if syscall.Kill(pid, 0) != nil {
+				t.Fatal("legacy job stopped by handoff")
+			}
+			if _, err := release.WriteString("go\n"); err != nil {
+				t.Fatal(err)
+			}
+			s.waitFor("legacy command exits", 10*time.Second, func(string) bool {
+				out, _ := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+				return strings.TrimSpace(string(out)) == "" || strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
+			})
+			// Force reconciliation in another importer without changing the row.
+			if out, err := s.cli("server", "live-handoff", "--import-exe", successor.binary); err != nil {
+				t.Fatal(out, err)
+			}
+			after, err := store.CommandRow(started.Job)
+			if err != nil || after == nil || after.RunnerPID == nil || *after.RunnerPID != *before.RunnerPID || after.Status != "running" || after.ExitCode != nil || after.FinishedMs != nil {
+				t.Fatal("legacy state changed", after, err)
+			}
+			messages, err := store.History(dispatch.JobsRoom, nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, message := range messages {
+				if strings.Contains(message.Body, "[gtx run]") {
+					t.Fatal("fabricated legacy completion", message)
+				}
+			}
+			t.Logf("legacy PID=%d preserved; after actual exit status=running exit=nil finished=nil, no fabricated notice", pid)
+		})
 	}
-	release, err := os.OpenFile(fifo, os.O_RDWR, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer release.Close()
-	var started api.RunStartedResult
-	s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "legacy", Completion: "summary", Argv: []string{"/bin/sh", "-c", fmt.Sprintf("read value < %q; exit 9", fifo)}}, &started)
-	store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "gtx.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	before, err := store.CommandRow(started.Job)
-	if err != nil || before == nil || before.RunnerPID == nil {
-		t.Fatal(before, err)
-	}
-	pid := int(*before.RunnerPID)
-	t.Cleanup(func() {
-		if syscall.Kill(pid, 0) == nil {
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
-		}
-	})
-	if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
-		t.Fatal(out, err)
-	}
-	if syscall.Kill(pid, 0) != nil {
-		t.Fatal("legacy job stopped by handoff")
-	}
-	if _, err := release.WriteString("go\n"); err != nil {
-		t.Fatal(err)
-	}
-	s.waitFor("legacy command exits", 10*time.Second, func(string) bool {
-		out, _ := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
-		return strings.TrimSpace(string(out)) == "" || strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
-	})
-	// Force reconciliation in another importer without changing the row.
-	if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
-		t.Fatal(out, err)
-	}
-	after, err := store.CommandRow(started.Job)
-	if err != nil || after == nil || after.RunnerPID == nil || *after.RunnerPID != *before.RunnerPID || after.Status != "running" || after.ExitCode != nil || after.FinishedMs != nil {
-		t.Fatal("legacy state changed", after, err)
-	}
-	messages, err := store.History(dispatch.JobsRoom, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, message := range messages {
-		if strings.Contains(message.Body, "[gtx run]") {
-			t.Fatal("fabricated legacy completion", message)
-		}
-	}
-	t.Logf("legacy PID=%d preserved; after actual exit status=running exit=nil finished=nil, no fabricated notice", pid)
 }
