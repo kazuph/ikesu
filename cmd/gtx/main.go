@@ -22,6 +22,13 @@ import (
 const version = "0.2.7"
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "__job-runner" {
+		code, err := server.RunJobRunner()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gtx job runner:", err)
+		}
+		os.Exit(code)
+	}
 	api.ConfigureExecutable(os.Args[0])
 	args := os.Args[1:]
 	if message := cli.GlobalMachineError(args); message != "" {

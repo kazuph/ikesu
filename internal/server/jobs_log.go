@@ -11,13 +11,18 @@ type jobLogStream struct {
 	mu        *sync.Mutex
 	prefix    string
 	lineStart bool
+	err       error
 }
 
 // Each stream keeps its own line boundary; the shared lock preserves complete writes.
-func (s *jobLogStream) Write(p []byte) (int, error) {
+func (s *jobLogStream) Write(p []byte) (written int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	written := 0
+	defer func() {
+		if err != nil {
+			s.err = err
+		}
+	}()
 	for len(p) > 0 {
 		if s.lineStart {
 			if _, err := io.WriteString(s.out, s.prefix); err != nil {
@@ -41,4 +46,10 @@ func (s *jobLogStream) Write(p []byte) (int, error) {
 		p = p[length:]
 	}
 	return written, nil
+}
+
+func (s *jobLogStream) Error() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.err
 }

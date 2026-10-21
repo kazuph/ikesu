@@ -10,7 +10,6 @@ import (
 	"github.com/kazuph/goterrace/internal/childenv"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -121,10 +120,11 @@ type Server struct {
 	mailWG sync.WaitGroup
 
 	mailMu       sync.Mutex
+	mailDelivery sync.RWMutex    // fence PTY write + acknowledgement before handoff
 	mailInFlight map[int64]bool  // regular message ids staged for PTY write
 	jobInFlight  map[string]bool // job-mail batch keys staged for PTY write
 
-	jobProcs jobProcsT // live background jobs (external job id → process)
+	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
 
 	// notifications (SPEC G4)
@@ -282,7 +282,6 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 
 	s := &Server{session: session, dir: dir, version: version, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
 		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
-		jobProcs:   jobProcsT{m: map[string]*exec.Cmd{}},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
 	if latency.Enabled {
 		s.trace = latency.Open(api.LogPath(dir))

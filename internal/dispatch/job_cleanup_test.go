@@ -29,6 +29,11 @@ func TestG9JobRetentionRepliesOrphanLogsAndKindIndex(t *testing.T) {
 		if err := os.WriteFile(log, []byte(name), 0600); err != nil {
 			t.Fatal(err)
 		}
+		for _, suffix := range []string{".runner", ".result", ".cancel"} {
+			if err := os.WriteFile(log+suffix, []byte(name), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if err := s.InsertCommand(name, name, "true", logDir, "p1", "owner", "none", log); err != nil {
 			t.Fatal(err)
 		}
@@ -78,11 +83,23 @@ func TestG9JobRetentionRepliesOrphanLogsAndKindIndex(t *testing.T) {
 		t.Fatal(jobs, err)
 	}
 	for _, name := range []string{"old-finished", "old-dead", "old-orphan"} {
+		for _, suffix := range []string{".runner", ".result", ".cancel"} {
+			if _, err := os.Stat(filepath.Join(logDir, name+".log"+suffix)); !os.IsNotExist(err) {
+				t.Fatal("expired runner file retained", name, suffix, err)
+			}
+		}
 		if _, err := os.Stat(filepath.Join(logDir, name+".log")); !os.IsNotExist(err) {
 			t.Fatal("expired log retained", name, err)
 		}
 	}
 	for _, name := range []string{"recent-finished", "old-live", "recent-orphan"} {
+		if name != "recent-orphan" {
+			for _, suffix := range []string{".runner", ".result", ".cancel"} {
+				if _, err := os.Stat(filepath.Join(logDir, name+".log"+suffix)); err != nil {
+					t.Fatal("retained runner file lost", name, suffix, err)
+				}
+			}
+		}
 		if _, err := os.Stat(filepath.Join(logDir, name+".log")); err != nil {
 			t.Fatal("retained log lost", name, err)
 		}

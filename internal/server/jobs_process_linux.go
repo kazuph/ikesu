@@ -3,10 +3,27 @@
 package server
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 )
+
+func jobProcessIdentity(pid int) (string, error) {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return "", err
+	}
+	end := strings.LastIndexByte(string(data), ')')
+	if end < 0 {
+		return "", fmt.Errorf("invalid process stat")
+	}
+	fields := strings.Fields(string(data[end+1:]))
+	if len(fields) <= 19 {
+		return "", fmt.Errorf("missing process start time")
+	}
+	return fields[19], nil
+}
 
 // Linux keeps an unreaped zombie in its process group. It cannot run or
 // receive a signal, so it must not keep a workspace dot or cancellation alive.

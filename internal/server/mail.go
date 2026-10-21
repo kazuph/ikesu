@@ -34,27 +34,37 @@ type mailWrite struct {
 // requests flush the same pane concurrently.
 func (s *Server) mailWorker() {
 	for w := range s.mailCh {
-		p := s.sup.Get(w.pane)
-		if p == nil {
+		if s.deliverMailWrite(w) {
 			s.failMissingJobWrite(w)
-			s.mailDone(w)
-			continue
-		}
-		p.RecordExternalInput()
-		if _, err := p.WriteToPTY(w.payload); err != nil {
-			s.failMissingJobWrite(w)
-			s.mailDone(w)
-			continue
-		}
-		if store, err := s.db(); err == nil {
-			if w.msgID != 0 {
-				_, _ = store.MarkMessageDelivered(w.msgID)
-			} else if len(w.msgIDs) > 0 {
-				_, _ = store.MarkDeliveredByIDs(w.msgIDs)
-			}
 		}
 		s.mailDone(w)
 	}
+}
+
+// No app-loop callback is allowed while holding the delivery fence: handoff
+// acquires it on that loop. Failure handling runs after this method returns.
+func (s *Server) deliverMailWrite(w mailWrite) bool {
+	s.mailDelivery.RLock()
+	defer s.mailDelivery.RUnlock()
+	if s.closing.Load() == 2 {
+		return false
+	} // importer owns the still-queued notice
+	p := s.sup.Get(w.pane)
+	if p == nil {
+		return true
+	}
+	p.RecordExternalInput()
+	if _, err := p.WriteToPTY(w.payload); err != nil {
+		return true
+	}
+	if store, err := s.db(); err == nil {
+		if w.msgID != 0 {
+			_, _ = store.MarkMessageDelivered(w.msgID)
+		} else if len(w.msgIDs) > 0 {
+			_, _ = store.MarkDeliveredByIDs(w.msgIDs)
+		}
+	}
+	return false
 }
 
 func jobKey(room, toAgent string) string { return room + "\x00" + toAgent }

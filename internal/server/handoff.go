@@ -127,6 +127,10 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 }
 
 func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err error) {
+	// The importer must not replay a notice already written by the retiring
+	// server whose delivery acknowledgement is still in flight.
+	s.mailDelivery.Lock()
+	defer s.mailDelivery.Unlock()
 	panes, files, err := s.sup.PauseHandoff()
 	if err != nil {
 		return err

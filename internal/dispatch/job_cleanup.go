@@ -80,7 +80,7 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 		if job.log == "" || keptLogs[filepath.Clean(job.log)] {
 			continue
 		}
-		if err := os.Remove(job.log); err != nil && !os.IsNotExist(err) {
+		if err := removeJobFiles(job.log); err != nil {
 			return fmt.Errorf("remove job log %s: %w", job.log, err)
 		}
 	}
@@ -101,9 +101,18 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 			return err
 		}
 		if !info.ModTime().After(cutoff) {
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			if err := removeJobFiles(path); err != nil {
 				return fmt.Errorf("remove orphan log %s: %w", path, err)
 			}
+		}
+	}
+	return nil
+}
+
+func removeJobFiles(log string) error {
+	for _, suffix := range []string{"", ".runner", ".result", ".cancel"} {
+		if err := os.Remove(log + suffix); err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
 	return nil
