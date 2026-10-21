@@ -17,6 +17,7 @@ export function requireLiveConfig(env = process.env, {screen = false} = {}) {
  for(const name of ['BIN','REMOTE_BIN','REPORT_BIN','REPORT_SOCKET','EVIDENCE',...(screen?['REMOTE_HOME','CLAUDE_BIN','NATIVE_BINARY']:[])]) {
   if(!config[name].startsWith('/')) throw Error('required absolute path: '+name);
  }
+ if(pick('NATIVE_BINARY')) config.NATIVE_BINARY=pick('NATIVE_BINARY');
  return config;
 }
 export async function reportToParent(config, message) {

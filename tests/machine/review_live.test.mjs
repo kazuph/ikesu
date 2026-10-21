@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
+import {createHash} from 'node:crypto';
 import {requireLiveConfig,isolatedEnv,cleanupSteps,reportToParent} from './live_test_support.mjs';
 import {MacDialogDecisionsDaemon,createRunAnswer,spawnDecisionWatch,spawnHelperDialog,acquireDaemonLock} from '../../apps/mac-dialog-decisions/mac-dialog-decisions.mjs';
 const exec=promisify(execFile),quote=s=>`'${String(s).replaceAll("'","'\\''")}'`;
@@ -41,12 +42,30 @@ test('review failures use real isolated servers, CLI transports and native panel
  const lock=await acquireDaemonLock(native,cfg.stateDir);assert.ok(lock);
  assert.equal(await acquireDaemonLock(native,cfg.stateDir),null);await lock.close();
  const successor=await acquireDaemonLock(native,cfg.stateDir);assert.ok(successor);await successor.close();results.lock='exclusive, released, reacquired';
+ if(process.env.GTX_LIVE_TEST_REVIEW_ONLY==='ownership') {
+  const pluginRoot=path.resolve('apps/mac-dialog-decisions');
+  const state=cfg.stateDir+'/run-owner';const hash=createHash('sha256').update(fs.readFileSync(pluginRoot+'/dialog.swift')).digest('hex').slice(0,12);
+  fs.mkdirSync(state+'/bin',{recursive:true});fs.copyFileSync(native,state+'/bin/gtx-decision-dialog-'+hash);fs.chmodSync(state+'/bin/gtx-decision-dialog-'+hash,0o755);
+  const runEnv={...env,IKESU_PLUGIN_STATE_DIR:state,IKESU_PLUGIN_CONFIG_DIR:root+'/plugin-config',IKESU_BIN_PATH:bin};
+  const daemons=[0,1].map(()=>spawn(process.execPath,[pluginRoot+'/mac-dialog-decisions.mjs','run'],{env:runEnv}));
+  for(const proc of daemons){requests.push(proc);proc.stderr.on('data',b=>logs.push('run: '+b));}
+  await until(()=>assert.ok(fs.existsSync(state+'/daemon.json')));
+  await until(()=>assert.equal(daemons.filter(p=>p.exitCode===0).length,1));
+  const owner=JSON.parse(fs.readFileSync(state+'/daemon.json','utf8'));
+  const active=daemons.filter(p=>p.exitCode===null&&p.signalCode===null);assert.equal(active.length,1);assert.equal(active[0].pid,owner.pid);
+  assert.equal(await acquireDaemonLock(native,state),null);
+  active[0].kill('SIGTERM');await waitExit(active[0]);assert.ok(!fs.existsSync(state+'/daemon.json'));
+  const next=await acquireDaemonLock(native,state);assert.ok(next);await next.close();
+  results.runOwnership={simultaneousRuns:2,livingOwner:1,ownerPID:owner.pid,ownerState:owner.stateDir,lockReleased:true};save();return;
+ }
  const answer=createRunAnswer(cfg,s=>logs.push(s),answerEnv);
  daemon=new MacDialogDecisionsDaemon({config:cfg,spawnWatch:async()=>spawnDecisionWatch(cfg,s=>logs.push(s),env),runAnswer:async args=>{sends++;return answer(args);},spawnDialog:(spec)=>spawnHelperDialog(cfg,spec,s=>logs.push(s)),specFilePath:key=>root+'/plugin/'+key.replaceAll(':','_')+'.json',log:s=>logs.push(s)});
  const original=daemon.onWatchLine.bind(daemon);daemon.onWatchLine=line=>{events.push(line);original(line);};await daemon.start();
  const ask=(owner,title)=>{const args=['--session','review-proof','decision','ask','--title',title,'--option','yes:確認:approve','--option','no:却下:reject'];const request=owner==='local'?spawn(bin,args,{env}):spawn('ssh',[target,[remoteRoot+'/gtx',...args].map(quote).join(' ')]);requests.push(request);request.stdout.on('data',b=>logs.push('ask: '+b));request.stderr.on('data',b=>logs.push('ask stderr: '+b));return request;};
  const shown=async title=>until(()=>{assert.equal(daemon.child?.entry.decision.title,title);assert.ok(fs.existsSync(daemon.child.specPath+'.result.jsonl'));return daemon.child;});
- ask('local','レビュー：回答接続の失敗');let child=await shown('レビュー：回答接続の失敗');const first=child.entry,firstPID=child.pid;
+ let child;
+ if(process.env.GTX_LIVE_TEST_REVIEW_ONLY!=='disconnect') {
+ ask('local','レビュー：回答接続の失敗');child=await shown('レビュー：回答接続の失敗');const first=child.entry,firstPID=child.pid;
  answerEnv.GTX_SOCKET_PATH=root+'/missing-answer.sock';
  assert.equal(await daemon.submitAnswer(first,{optionIds:['yes']}),false);
  assert.equal(first.answerPending,false);assert.equal(daemon.child,child);assert.equal(child.pid,firstPID);
@@ -63,13 +82,15 @@ test('review failures use real isolated servers, CLI transports and native panel
  ask('local','レビュー：他所のCLI回答');child=await shown('レビュー：他所のCLI回答');
  await local(['decision','answer',child.entry.decision.decision_id,'yes','--machine','local']);
  await until(()=>assert.ok(!fs.existsSync(child.specPath)&&!fs.existsSync(child.specPath+'.result.jsonl')));results.cliCleanup={spec:false,result:false};
+ }
  ask('remote','レビュー：切断時の古い回答');child=await shown('レビュー：切断時の古い回答');const stale=child.entry;
  await remote(['server','stop']);await waitExit(remoteServer);
  await until(()=>assert.ok(daemon.machinesDown.has(profile.id)&&!daemon.entries.has(stale.key)));
  const before=sends;assert.equal(await daemon.submitAnswer(stale,{optionIds:['yes']}),false);assert.equal(sends,before);
  startRemote();await until(()=>remote(['workspace','list']));
- // Ask again after a genuine disconnect/reconnect. The stale object cannot send.
- ask('remote','レビュー：再接続後の別の選択');const current=await shown('レビュー：再接続後の別の選択');
+ // Reconnection replays the same pending decision into a fresh entry.
+ const current=await shown('レビュー：切断時の古い回答');
+ assert.notEqual(current.entry,stale);assert.equal(current.entry.key,stale.key);
  assert.equal(await daemon.submitAnswer(stale,{optionIds:['yes']}),false);assert.equal(sends,before);
  assert.equal(await daemon.submitAnswer(current.entry,{optionIds:['no']}),true);
  await until(()=>assert.ok(!fs.existsSync(current.specPath)&&!fs.existsSync(current.specPath+'.result.jsonl')));

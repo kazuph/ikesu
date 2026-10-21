@@ -739,15 +739,6 @@ function ensureNativeDialog(config, logFn = () => {}) {
     return null;
   }
   fs.renameSync(tmp, binary);
-  // older builds of the panel are no longer needed
-  for (const name of fs.readdirSync(path.dirname(binary))) {
-    const full = path.join(path.dirname(binary), name);
-    if (full !== binary && name.startsWith("gtx-decision-dialog-")) {
-      try {
-        fs.rmSync(full, { force: true });
-      } catch {}
-    }
-  }
   logFn(`ダイアログをビルドしました: ${binary}`);
   return binary;
 }
@@ -771,7 +762,7 @@ async function acquireDaemonLock(binary, stateDir) {
   });
   lines.close();
   if (!acquired) { child.stdin.end(); await exited; return null; }
-  return {async close() { child.stdin.end(); await exited; }};
+  return {exited, async close() { child.stdin.end(); await exited; }};
 }
 
 function createRunAnswer(config, logFn = () => {}, env = process.env) {
@@ -881,6 +872,8 @@ async function ensureDaemon(config, env) {
       ["GTX_PLUGIN_STATE_DIR", config.stateDir],
       ["GTX_SOCKET_PATH", env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH || ""],
       ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH || ""],
+      ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH) ? "1" : ""],
+      ["GTX_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH) ? "1" : ""],
       ["IKESU_PLUGIN_CONFIG_DIR", config.configDir],
       ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
       ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.gtxBin],
@@ -990,14 +983,26 @@ async function main() {
   await daemon.start();
   log("watch 開始 (gtx decision watch --all-machines)");
 
+  let shuttingDown = false;
   const shutdown = () => {
-    void daemon.stop().then(async () => {
-      const owner = JSON.parse(fs.readFileSync(daemonPidPath(config.stateDir), "utf8"));
-      if (owner.owner === config.daemonOwner) fs.rmSync(daemonPidPath(config.stateDir));
-      await lock.close();
-      process.exit(0);
-    });
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void (async () => {
+      try {
+        await daemon.stop();
+        try {
+          const owner = JSON.parse(fs.readFileSync(daemonPidPath(config.stateDir), "utf8"));
+          if (owner.owner === config.daemonOwner) fs.rmSync(daemonPidPath(config.stateDir));
+        } catch (error) { if (error.code !== "ENOENT") log(`所有情報の削除に失敗: ${error.message}`); }
+      } finally {
+        await lock.close();
+        process.exit(0);
+      }
+    })();
   };
+  void lock.exited.then(() => {
+    if (!shuttingDown) { log("所有ロックのプロセスが終了したためデーモンを停止します"); shutdown(); }
+  });
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

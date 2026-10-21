@@ -42,7 +42,6 @@ test('real remote Claude question screen reaches the decision API', {timeout:360
  cleanups.unshift(async()=>{
   if(pane){try{fs.writeFileSync(evidence+'/actual-screen.txt',await cli(['pane','read',pane,'--lines','100']));}catch{}}
   watch?.kill('SIGTERM');
-  try{process.kill(JSON.parse(fs.readFileSync(nativeState+'/daemon.json','utf8')).pid,'SIGTERM');}catch{}
   try{await local(['server','stop']);}catch{}
   localServer.kill('SIGTERM');
   fs.writeFileSync(evidence+'/watch.json',JSON.stringify(lines,null,2));

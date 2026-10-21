@@ -53,3 +53,11 @@ test('IKESU環境を読み、消えた旧CLIの代わりにikesuを先に探す'
  assert.equal(config.configDir,root+'/config');assert.equal(config.stateDir,root+'/state');
  assert.equal(plugin.resolveIkesuBin(config,()=>{}, {PATH:root}),root+'/ikesu');
 });
+
+test('後片付けは先行する失敗後も自分の資源だけを削除する',async t=>{
+ const {cleanupSteps}=await import('../../../tests/machine/live_test_support.mjs');
+ const root=temporary(t),owned=path.join(root,'owned'),unrelated=path.join(root,'unrelated');
+ fs.mkdirSync(owned);fs.writeFileSync(unrelated,'preserve');
+ await assert.rejects(cleanupSteps([()=>{throw Error('setup failed');},()=>fs.rmSync(owned,{recursive:true})]),/owned test resource cleanup failed/);
+ assert.equal(fs.existsSync(owned),false);assert.equal(fs.readFileSync(unrelated,'utf8'),'preserve');
+});

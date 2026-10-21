@@ -33,7 +33,6 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
  const ssh=async args=>(await exec('ssh',[target,[remoteRoot+'/gtx','--session','proof',...args].map(quote).join(' ')],{timeout:15_000})).stdout;
  let local,remote,watch,ask,guard,nativeState;const nativeRequests=[];const lines=[];let localLog='',remoteLog='',guardOutput='',guardErr='';
  cleanups.unshift(async()=>{
-  if(nativeState) {try {const pid=JSON.parse(fs.readFileSync(path.join(nativeState,'daemon.json'),'utf8')).pid;process.kill(pid,'SIGTERM');}catch{}}
   for(const request of nativeRequests) request.kill('SIGTERM');
   watch?.kill('SIGTERM'); ask?.kill('SIGTERM'); guard?.kill('SIGTERM');
   try {await run(['server','stop']);}catch{}
@@ -81,7 +80,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
  const guardDecision=lines.find(x=>x.event==='created'&&x.decision?.kind==='command_guard');
  assert.equal(guardOutput,'');await run(['decision','answer',guardDecision.decision.decision_id,'approve','--machine','mini-proof']);
  await until(async()=>assert.equal(guardOutput,'deploy-proof-approve\n'));
- const nativeBinary=process.env.GTX_LIVE_TEST_NATIVE_BINARY;
+ const nativeBinary=live.NATIVE_BINARY;
  if(nativeBinary) {
   const pluginRoot=path.resolve(path.dirname(new URL(import.meta.url).pathname),'../../apps/mac-dialog-decisions');
   nativeState=path.join(root,'state/plugins/kazuph.mac-dialog-decisions');
