@@ -38,7 +38,12 @@ func TestStoppedAppAPIRejectsInsteadOfZeroSuccess(t *testing.T) {
 	go func() { s.serveAPI(peer); close(served) }()
 	_ = client.SetDeadline(time.Now().Add(5 * time.Second))
 	reader := bufio.NewReader(client)
-	for _, method := range []string{api.MethodPaneList, api.MethodPing, "decision.list", "plugin.list", "agent.view.clear"} {
+	for _, method := range []string{api.MethodPaneList, "decision.list", "plugin.list", "agent.view.clear", api.MethodPing} {
+		// Stateful callbacks must fail even before the closing flag is observed;
+		// stateless ping is rejected by the production quit hook's closing flag.
+		if method == api.MethodPing {
+			s.closing.Store(1)
+		}
 		req := api.Request{ID: method, Method: method, Params: api.MarshalParams(api.EmptyParams{})}
 		if err := api.WriteRequest(client, req); err != nil {
 			t.Fatal(err)

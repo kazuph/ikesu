@@ -142,18 +142,12 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	case api.MethodServerLiveHandoff:
 		return s.liveHandoff(req)
 	case api.MethodPing:
-		s.app.Do(func() {
-			if s.closing.Load() != 0 {
-				return
-			}
-			response = api.Success(req.ID, api.PongResult{
-				Type:         "pong",
-				Version:      s.version,
-				Protocol:     api.Protocol,
-				Capabilities: map[string]any{"live_handoff": true, "screen_prompt_decisions": true},
-			})
+		return api.Success(req.ID, api.PongResult{
+			Type:         "pong",
+			Version:      s.version,
+			Protocol:     api.Protocol,
+			Capabilities: map[string]any{"live_handoff": true, "screen_prompt_decisions": true},
 		})
-		return response
 	case api.MethodServerStop:
 		var p api.EmptyParams
 		if err := req.DecodeParams(&p); err != nil {
