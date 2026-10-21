@@ -55,11 +55,7 @@ func TestSidebarContinuousTwoServersEveryCell(t *testing.T) {
 			}
 		}
 		h.until(fmt.Sprintf("continuous drag right=%t width=%d start=%d target=%d beforeL=%d beforeR=%d pixel=%t", right, w, start, target, s.SidebarArea().W, s.RightSidebarArea().W, m.mouse.pixel), func() bool {
-			s := m.endpoints[m.active].snapshot.State
-			if right {
-				return s.RightSidebarArea().W == w
-			}
-			return s.SidebarArea().W == w
+			return sidebarDragSettled(m, right, w)
 		})
 		paint()
 	}
