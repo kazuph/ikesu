@@ -36,7 +36,9 @@ if [ "$mode" = ubuntu ]; then
         internal/server/mail.go internal/server/job_runner.go internal/server/job_runner_test.go \
         internal/server/jobs_log.go internal/dispatch/job_completion.go \
         internal/dispatch/job_completion_test.go internal/dispatch/job_cleanup.go \
-        internal/dispatch/job_cleanup_test.go tests/e2e/job_handoff_test.go > "$out/gofmt.log"
+        internal/dispatch/job_cleanup_test.go tests/e2e/job_handoff_test.go \
+        internal/server/job_monitor.go internal/server/job_monitor_lifecycle_test.go \
+        tests/e2e/job_handoff_fault_test.go > "$out/gofmt.log"
     if [ -s "$out/gofmt.log" ]; then printf '%s\n' 'gofmt FAIL' >> "$out/summary.log"; failed=1
     else printf '%s\n' 'gofmt PASS' >> "$out/summary.log"; fi
     check vet go vet ./...

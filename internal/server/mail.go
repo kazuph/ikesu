@@ -2,8 +2,11 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -33,38 +36,89 @@ type mailWrite struct {
 // write-completion tracking stay consistent even when several API
 // requests flush the same pane concurrently.
 func (s *Server) mailWorker() {
-	for w := range s.mailCh {
-		if s.deliverMailWrite(w) {
-			s.failMissingJobWrite(w)
+	tick := time.NewTicker(jobActiveRefresh)
+	defer tick.Stop()
+	for {
+		select {
+		case w, ok := <-s.mailCh:
+			if !ok {
+				return
+			}
+			written, err := s.deliverMailWrite(w)
+			if written && err != nil {
+				fmt.Fprintf(os.Stderr, "gtx mail acknowledgement: %v\n", err)
+				continue
+			}
+			if err != nil {
+				s.failMissingJobWrite(w)
+			}
+			s.mailDone(w)
+		case <-tick.C:
+			s.mailDelivery.Lock()
+			hadPending := len(s.mailAwaitingAck) > 0
+			err := s.retryMailAcknowledgementsLocked()
+			s.mailDelivery.Unlock()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "gtx mail acknowledgement: %v\n", err)
+			}
+			if hadPending && err == nil {
+				s.app.Do(s.flushAllMail)
+			}
 		}
-		s.mailDone(w)
 	}
 }
 
 // No app-loop callback is allowed while holding the delivery fence: handoff
 // acquires it on that loop. Failure handling runs after this method returns.
-func (s *Server) deliverMailWrite(w mailWrite) bool {
-	s.mailDelivery.RLock()
-	defer s.mailDelivery.RUnlock()
+func (s *Server) deliverMailWrite(w mailWrite) (bool, error) {
+	s.mailDelivery.Lock()
+	defer s.mailDelivery.Unlock()
 	if s.closing.Load() == 2 {
-		return false
+		return false, nil
 	} // importer owns the still-queued notice
 	p := s.sup.Get(w.pane)
 	if p == nil {
-		return true
+		return false, fmt.Errorf("mail destination missing")
 	}
 	p.RecordExternalInput()
 	if _, err := p.WriteToPTY(w.payload); err != nil {
-		return true
+		return false, err
 	}
-	if store, err := s.db(); err == nil {
-		if w.msgID != 0 {
-			_, _ = store.MarkMessageDelivered(w.msgID)
-		} else if len(w.msgIDs) > 0 {
-			_, _ = store.MarkDeliveredByIDs(w.msgIDs)
+	if err := s.acknowledgeMailWrite(w); err != nil {
+		s.mailAwaitingAck = append(s.mailAwaitingAck, w)
+		return true, err
+	}
+	return true, nil
+}
+
+func (s *Server) acknowledgeMailWrite(w mailWrite) error {
+	store, err := s.db()
+	if err != nil {
+		return err
+	}
+	if w.msgID != 0 {
+		_, err = store.MarkMessageDelivered(w.msgID)
+	} else if len(w.msgIDs) > 0 {
+		_, err = store.MarkDeliveredByIDs(w.msgIDs)
+	}
+	return err
+}
+
+// Caller holds mailDelivery. Pending writes retain their in-flight keys so
+// neither a periodic flush nor another batch may write their payload again.
+func (s *Server) retryMailAcknowledgementsLocked() error {
+	var pending []mailWrite
+	var failures []error
+	for _, w := range s.mailAwaitingAck {
+		if err := s.acknowledgeMailWrite(w); err != nil {
+			pending = append(pending, w)
+			failures = append(failures, err)
+		} else {
+			s.mailDone(w)
 		}
 	}
-	return false
+	s.mailAwaitingAck = pending
+	return errors.Join(failures...)
 }
 
 func jobKey(room, toAgent string) string { return room + "\x00" + toAgent }

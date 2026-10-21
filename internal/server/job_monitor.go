@@ -1,0 +1,236 @@
+package server
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"syscall"
+	"time"
+
+	"github.com/kazuph/goterrace/internal/api"
+	"github.com/kazuph/goterrace/internal/dispatch"
+)
+
+// Admission and shutdown share the mutex: Add cannot race a shutdown Wait.
+func (s *Server) startJobMonitor(id string, work func(<-chan struct{}) error) {
+	j := &s.jobProcs
+	j.mu.Lock()
+	if j.stopping || s.closing.Load() != 0 || j.cancelling[id] {
+		j.mu.Unlock()
+		return
+	}
+	if j.cancelling == nil {
+		j.cancelling = map[string]bool{}
+	}
+	if j.stop == nil {
+		j.stop = make(chan struct{})
+	}
+	j.cancelling[id] = true
+	stop := j.stop
+	j.wg.Add(1)
+	j.mu.Unlock()
+	go func() {
+		defer j.wg.Done()
+		defer func() { j.mu.Lock(); delete(j.cancelling, id); j.mu.Unlock() }()
+		if jobMonitorStopped(stop) {
+			return
+		}
+		if err := work(stop); err != nil {
+			fmt.Fprintf(os.Stderr, "gtx job cancellation %s: %v\n", id, err)
+		}
+	}()
+}
+
+func (s *Server) stopJobMonitors() {
+	j := &s.jobProcs
+	j.mu.Lock()
+	if !j.stopping {
+		j.stopping = true
+		if j.stop != nil {
+			close(j.stop)
+		}
+	}
+	j.mu.Unlock()
+	j.wg.Wait()
+}
+
+func (s *Server) restartJobMonitors() {
+	j := &s.jobProcs
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if s.closing.Load() == 0 {
+		j.stopping = false
+		j.stop = make(chan struct{})
+	}
+}
+
+func jobMonitorStopped(stop <-chan struct{}) bool {
+	select {
+	case <-stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func waitJobGroupGone(pid int, timeout time.Duration, stop <-chan struct{}) bool {
+	if jobMonitorStopped(stop) {
+		return false
+	}
+	if !processGroupAlive(pid) {
+		return true
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-stop:
+			return false
+		case <-timer.C:
+			return !processGroupAlive(pid)
+		case <-tick.C:
+			if !processGroupAlive(pid) {
+				return true
+			}
+		}
+	}
+}
+
+func signalManagedJob(manifest jobRunnerRecord, signal syscall.Signal) error {
+	if manifest.PID <= 0 {
+		return fmt.Errorf("invalid runner PID; refusing to signal")
+	}
+	identity, err := jobProcessIdentity(manifest.PID)
+	if err != nil {
+		return fmt.Errorf("process start identity unavailable; refusing to signal: %w", err)
+	}
+	if identity != manifest.Identity {
+		return fmt.Errorf("runner process identity changed; refusing to signal")
+	}
+	if group, err := syscall.Getpgid(manifest.PID); err != nil || group != manifest.PID {
+		return fmt.Errorf("runner no longer leads its process group; refusing to signal")
+	}
+	return syscall.Kill(-manifest.PID, signal)
+}
+
+func jobMonitorGone(manifest jobRunnerRecord) (bool, error) {
+	if !processGroupAlive(manifest.MonitorPID) {
+		return true, nil
+	}
+	identity, err := jobProcessIdentity(manifest.MonitorPID)
+	if err != nil {
+		return false, fmt.Errorf("cannot establish runner monitor identity: %w", err)
+	}
+	return identity != manifest.MonitorIdentity, nil
+}
+
+type jobCancelState struct{ TermSentMs int64 }
+
+// cancelMu serializes preparation, persistence and signalling with recovery.
+func (s *Server) runManagedCancel(id string, store *dispatch.Store, job dispatch.Job, manifest jobRunnerRecord) api.Response {
+	s.jobProcs.cancelMu.Lock()
+	defer s.jobProcs.cancelMu.Unlock()
+	if processGroupAlive(manifest.PID) {
+		identity, err := jobProcessIdentity(manifest.PID)
+		if err != nil {
+			return api.Failure(id, api.ErrJobStore, "process start identity unavailable; refusing to signal: "+err.Error())
+		}
+		if identity != manifest.Identity {
+			return api.Failure(id, api.ErrJobStore, "runner process identity changed; refusing to signal")
+		}
+	}
+	// A preparation failure must leave the public running state untouched.
+	if err := writeJobRecord(job.LogPath+".cancel", jobCancelState{}); err != nil {
+		return api.Failure(id, api.ErrJobStore, err.Error())
+	}
+	ok, err := store.MarkCommandCancelling(job.ID)
+	if err != nil || !ok {
+		_ = os.Remove(job.LogPath + ".cancel")
+		if err != nil {
+			return api.Failure(id, api.ErrJobStore, err.Error())
+		}
+		return api.Failure(id, api.ErrJobNotFound, "job is no longer running")
+	}
+	signal := "none"
+	if processGroupAlive(manifest.PID) {
+		if err := signalManagedJob(manifest, syscall.SIGTERM); err != nil {
+			s.resumeJobCancel(job.ID, manifest)
+			return api.Failure(id, api.ErrJobStore, err.Error())
+		}
+		signal = "TERM"
+		if err := writeJobRecord(job.LogPath+".cancel", jobCancelState{TermSentMs: time.Now().UnixMilli()}); err != nil {
+			s.resumeJobCancel(job.ID, manifest)
+			return api.Failure(id, api.ErrJobStore, err.Error())
+		}
+	}
+	s.invalidateJobCache()
+	s.resumeJobCancel(job.ID, manifest)
+	return api.Success(id, api.RunCancelledResult{Type: "run_cancelled", Job: job.ID, Status: "cancelling", Signal: signal})
+}
+
+func (s *Server) resumeJobCancel(id string, manifest jobRunnerRecord) {
+	s.startJobMonitor(id, func(stop <-chan struct{}) error {
+		store, err := s.db()
+		if err != nil {
+			return err
+		}
+		job, err := store.CommandRow(id)
+		if err != nil {
+			return err
+		}
+		if job == nil || job.Status != "cancelling" {
+			return nil
+		}
+		s.jobProcs.cancelMu.Lock()
+		if jobMonitorStopped(stop) {
+			s.jobProcs.cancelMu.Unlock()
+			return nil
+		}
+		var state jobCancelState
+		data, err := os.ReadFile(job.LogPath + ".cancel")
+		// Empty is the existing cancellation intent; it has no durable TERM acknowledgement.
+		if err == nil && len(data) > 0 {
+			err = json.Unmarshal(data, &state)
+		}
+		if os.IsNotExist(err) {
+			err = nil
+		}
+		if err == nil && state.TermSentMs == 0 && processGroupAlive(manifest.PID) {
+			err = signalManagedJob(manifest, syscall.SIGTERM)
+			if err == nil {
+				state.TermSentMs = time.Now().UnixMilli()
+				err = writeJobRecord(job.LogPath+".cancel", state)
+			}
+		}
+		s.jobProcs.cancelMu.Unlock()
+		if err != nil {
+			return err
+		}
+		remaining := time.Until(time.UnixMilli(state.TermSentMs).Add(2 * time.Second))
+		if !waitJobGroupGone(manifest.PID, max(0, remaining), stop) {
+			if jobMonitorStopped(stop) {
+				return nil
+			}
+			if err := signalManagedJob(manifest, syscall.SIGKILL); err != nil {
+				return err
+			}
+			if !waitJobGroupGone(manifest.PID, 30*time.Second, stop) {
+				return nil
+			}
+		}
+		if jobMonitorStopped(stop) {
+			return nil
+		}
+		// Owned until this callback returns; cleanup cannot close store here.
+		current, err := store.CommandRow(id)
+		if err != nil {
+			return err
+		}
+		if current == nil || current.Status != "cancelling" {
+			return nil
+		}
+		return s.recordCancellation(store, *current, false)
+	})
+}

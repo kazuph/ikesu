@@ -45,7 +45,7 @@ type jobRunnerRecord struct {
 	Error                  string
 }
 
-func writeJobRecord(path string, record jobRunnerRecord) error {
+func writeJobRecord(path string, record any) error {
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -223,7 +223,10 @@ func RunJobRunner() (int, error) {
 	if waitErr != nil && !errors.As(waitErr, &exitErr) {
 		record.Error = waitErr.Error()
 	}
-	if _, cancelErr := os.Stat(request.LogPath + ".cancel"); os.IsNotExist(cancelErr) {
+	var cancellation jobCancelState
+	cancelData, cancelErr := os.ReadFile(request.LogPath + ".cancel")
+	cancelled := cancelErr == nil && json.Unmarshal(cancelData, &cancellation) == nil && cancellation.TermSentMs > 0
+	if !cancelled {
 		if _, err = fmt.Fprintf(logFile, "\nfinished_unix_ms: %d\nexit_code: %d\n", record.FinishedMs, record.ExitCode); err != nil {
 			record.Error = err.Error()
 		}
@@ -330,53 +333,6 @@ func completedJobRecord(job dispatch.Job, manifest jobRunnerRecord) (jobRunnerRe
 		return result, fmt.Errorf("job %s runner: %s", job.ID, result.Error)
 	}
 	return result, nil
-}
-
-// A monitor is local to the current server; its authority is the persisted
-// cancelling state and original process identity, not a transferred goroutine.
-func (s *Server) resumeJobCancel(jobID string, manifest jobRunnerRecord) {
-	s.jobProcs.mu.Lock()
-	if s.jobProcs.cancelling == nil {
-		s.jobProcs.cancelling = map[string]bool{}
-	}
-	if s.jobProcs.cancelling[jobID] {
-		s.jobProcs.mu.Unlock()
-		return
-	}
-	s.jobProcs.cancelling[jobID] = true
-	s.jobProcs.mu.Unlock()
-	go func() {
-		defer func() { s.jobProcs.mu.Lock(); delete(s.jobProcs.cancelling, jobID); s.jobProcs.mu.Unlock() }()
-		store, err := s.db()
-		if err != nil {
-			return
-		}
-		job, err := store.CommandRow(jobID)
-		if err != nil || job == nil || job.Status != "cancelling" {
-			return
-		}
-		if err = os.WriteFile(job.LogPath+".cancel", nil, 0600); err != nil {
-			return
-		}
-		if !waitProcessGroupGone(manifest.PID, 2*time.Second) {
-			if s.closing.Load() != 0 {
-				return
-			}
-			// A dead leader may leave children in the original group. Only a
-			// different live leader proves PID reuse and forbids signalling it.
-			identity, err := jobProcessIdentity(manifest.PID)
-			if err == nil && identity != manifest.Identity {
-				return
-			}
-			_ = syscall.Kill(-manifest.PID, syscall.SIGKILL)
-			if !waitProcessGroupGone(manifest.PID, 30*time.Second) {
-				return
-			}
-		}
-		if s.closing.Load() == 0 {
-			s.cancelIfCancelling(jobID)
-		}
-	}()
 }
 
 func (s *Server) reconcileJobResults(store *dispatch.Store, jobs []dispatch.Job) error {

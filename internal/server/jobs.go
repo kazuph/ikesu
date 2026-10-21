@@ -25,6 +25,10 @@ type jobProcsT struct {
 	mu         sync.Mutex
 	seq        int // next external job number, seeded from the store
 	cancelling map[string]bool
+	stopping   bool
+	stop       chan struct{}
+	wg         sync.WaitGroup
+	cancelMu   sync.Mutex
 }
 
 func (j *jobProcsT) nextID() string {
@@ -168,9 +172,7 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobStore, managedErr.Error())
 	}
 	if managed {
-		if identity, err := jobProcessIdentity(pgid); err == nil && identity != manifest.Identity {
-			return api.Failure(id, api.ErrJobStore, "runner process identity changed; refusing to signal")
-		}
+		return s.runManagedCancel(id, store, *job, manifest)
 	}
 	if err := syscall.Kill(pgid, 0); err == syscall.ESRCH {
 		// Runner already gone → the group may still have orphans;
@@ -191,6 +193,9 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobStore,
 			fmt.Sprintf("job %s runner pid %d is not a process group leader; refusing to signal", job.ID, pgid))
 	}
+	if _, err := jobProcessIdentity(pgid); err != nil {
+		return api.Failure(id, api.ErrJobStore, "process start identity unavailable; refusing to signal: "+err.Error())
+	}
 	ok, err := store.MarkCommandCancelling(job.ID)
 	if err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
@@ -199,18 +204,9 @@ func (s *Server) runCancel(id string, p api.RunCancelParams) api.Response {
 		return api.Failure(id, api.ErrJobNotFound,
 			fmt.Sprintf("job %s is not running (status=%s)", job.ID, job.Status))
 	}
-	if managed {
-		if err := os.WriteFile(job.LogPath+".cancel", nil, 0600); err != nil {
-			return api.Failure(id, api.ErrJobStore, err.Error())
-		}
-	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
 	s.invalidateJobCache()
-	if managed {
-		s.resumeJobCancel(job.ID, manifest)
-	} else {
-		go s.finishCancel(job.ID, pgid)
-	}
+	s.startJobMonitor(job.ID, func(stop <-chan struct{}) error { s.finishCancel(job.ID, pgid, stop); return nil })
 	return api.Success(id, api.RunCancelledResult{
 		Type: "run_cancelled", Job: job.ID, Status: "cancelling", Signal: "TERM",
 	})
@@ -230,28 +226,24 @@ func processGroupAlive(pgid int) bool {
 // the group 2 s, escalates to SIGKILL, and only then — once the whole
 // group is confirmed gone — marks the job 'cancelled'. If the group
 // outlives SIGKILL the row stays 'cancelling' (fail closed, SPEC G9).
-func (s *Server) finishCancel(jobID string, pgid int) {
-	if waitProcessGroupGone(pgid, 2*time.Second) {
+func (s *Server) finishCancel(jobID string, pgid int, stop <-chan struct{}) {
+	if waitJobGroupGone(pgid, 2*time.Second, stop) {
 		s.cancelIfCancelling(jobID)
 		return
 	}
+	if jobMonitorStopped(stop) {
+		return
+	}
+	if _, err := jobProcessIdentity(pgid); err != nil {
+		fmt.Fprintf(os.Stderr, "gtx job cancellation %s: %v; refusing to signal\n", jobID, err)
+		return
+	}
 	_ = syscall.Kill(-pgid, syscall.SIGKILL)
-	if waitProcessGroupGone(pgid, 30*time.Second) {
+	if waitJobGroupGone(pgid, 30*time.Second, stop) {
 		s.cancelIfCancelling(jobID)
 	}
 	// else: leave 'cancelling' — better to keep polling state honest than
 	// to claim a process group is dead when it is not.
-}
-
-func waitProcessGroupGone(pgid int, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if !processGroupAlive(pgid) {
-			return true
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return !processGroupAlive(pgid)
 }
 
 // cancelIfCancelling records 'cancelled' only while the row is still in
@@ -263,27 +255,55 @@ func (s *Server) cancelIfCancelling(jobID string) {
 		return
 	}
 	if j, err := store.CommandRow(jobID); err == nil && j != nil && j.Status == "cancelling" {
-		s.recordCancellation(store, *j, false)
+		if err := s.recordCancellation(store, *j, false); err != nil {
+			fmt.Fprintf(os.Stderr, "gtx job cancellation: %v\n", err)
+		}
 	}
 }
-func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) {
+func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) error {
+	reason := ""
 	if manifest, err := managedJobRecord(j); err == nil {
+		if processGroupAlive(manifest.PID) {
+			return nil
+		}
 		// The helper drains and closes the log before publishing this result.
 		if _, err := completedJobRecord(j, manifest); err != nil {
-			return
+			gone, probeErr := jobMonitorGone(manifest)
+			if probeErr != nil {
+				return probeErr
+			}
+			if !gone {
+				return nil
+			}
+			reason = "completion unavailable: runner monitor disappeared: " + err.Error()
 		}
 	}
 	body := ""
 	if j.Completion != "none" {
 		body = fmt.Sprintf("[gtx run] cancelled label=%s job=%s details: gtx log %s", labelOrDash(j.Label), j.ID, j.ID)
+		if reason != "" {
+			body += " reason: " + reason
+		}
 	}
-	if changed, err := store.CompleteJob(j.ID, j.Status, "cancelled", nil, time.Now().UnixMilli(), j.CallerPane, body); err == nil && changed && body != "" {
+	changed, err := store.CompleteJob(j.ID, j.Status, "cancelled", nil, time.Now().UnixMilli(), j.CallerPane, body)
+	if err != nil {
+		return err
+	}
+	if changed && reason != "" {
+		fmt.Fprintf(os.Stderr, "gtx job %s: %s\n", j.ID, reason)
+		if f, e := openJobLog(j.LogPath); e == nil {
+			_, _ = fmt.Fprintln(f, "\ncancellation_error: "+reason)
+			_ = f.Close()
+		}
+	}
+	if changed && body != "" {
 		if onLoop {
 			s.flushJobNudgeFor(dispatch.JobsRoom, j.CallerPane)
 		} else {
 			s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, j.CallerPane) })
 		}
 	}
+	return nil
 }
 
 func openJobLog(path string) (*os.File, error) {

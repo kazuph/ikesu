@@ -119,10 +119,11 @@ type Server struct {
 	mailCh chan mailWrite
 	mailWG sync.WaitGroup
 
-	mailMu       sync.Mutex
-	mailDelivery sync.RWMutex    // fence PTY write + acknowledgement before handoff
-	mailInFlight map[int64]bool  // regular message ids staged for PTY write
-	jobInFlight  map[string]bool // job-mail batch keys staged for PTY write
+	mailMu          sync.Mutex
+	mailDelivery    sync.RWMutex    // fence PTY write + acknowledgement before handoff
+	mailAwaitingAck []mailWrite     // written to PTY; retry only these exact IDs
+	mailInFlight    map[int64]bool  // regular message ids staged for PTY write
+	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
@@ -485,6 +486,7 @@ func (s *Server) cleanup() {
 		s.sup.KillAll()
 	}
 	s.mailWG.Wait()
+	s.stopJobMonitors()
 	if s.store != nil {
 		s.store.Close()
 	}

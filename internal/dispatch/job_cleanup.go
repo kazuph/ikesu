@@ -53,6 +53,15 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 			remove = false
 		}
 		log := st.ColumnText(5)
+		if active && log != "" {
+			// A detached runner owns these files until terminal collection commits.
+			// This also protects them when that DB transaction is temporarily rejected.
+			for _, suffix := range []string{".runner", ".result"} {
+				if _, err := os.Stat(log + suffix); !os.IsNotExist(err) {
+					remove = false
+				}
+			}
+		}
 		if remove {
 			expired = append(expired, expiredJob{st.ColumnInt64(0), log})
 		} else {

@@ -111,6 +111,15 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 		return api.Failure(req.ID, "handoff_failed", "handoff already in progress")
 	}
 	defer s.handoffMu.Unlock()
+	// Stop DB-using monitors while the app loop can still finish their callbacks.
+	// Rollback restarts admission; the persisted cancelling rows resume on refresh.
+	s.stopJobMonitors()
+	defer func() {
+		if !s.handedOff {
+			s.restartJobMonitors()
+			s.invalidateJobCache()
+		}
+	}()
 	exe, err := os.Executable()
 	if p.ImportExe != nil {
 		exe = *p.ImportExe
@@ -131,6 +140,9 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 	// server whose delivery acknowledgement is still in flight.
 	s.mailDelivery.Lock()
 	defer s.mailDelivery.Unlock()
+	if err := s.retryMailAcknowledgementsLocked(); err != nil {
+		return fmt.Errorf("mail acknowledgement pending: %w", err)
+	}
 	panes, files, err := s.sup.PauseHandoff()
 	if err != nil {
 		return err
