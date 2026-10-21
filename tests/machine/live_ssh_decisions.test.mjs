@@ -7,22 +7,23 @@ import {spawn, execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import readline from 'node:readline';
 import {createHash} from 'node:crypto';
+import {requireLiveConfig, reportToParent, cleanupSteps, isolatedEnv} from './live_test_support.mjs';
 const exec = promisify(execFile);
 const quote = s => `'${String(s).replaceAll("'", "'\\''")}'`;
-const bin = process.env.GTX_LIVE_TEST_BIN;
-const remoteBin = process.env.GTX_LIVE_TEST_REMOTE_BIN;
-const target = process.env.GTX_LIVE_TEST_TARGET;
-const evidence = process.env.GTX_LIVE_TEST_EVIDENCE;
 const configText = 'onboarding=false\n[experimental]\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n[ui.sound]\nenabled=false\n';
 
 test('real SSH saved machine, pane operation, remote run, ask and guard answers', {timeout:600_000}, async t => {
- assert.ok(bin && remoteBin && target && evidence, 'all GTX_LIVE_TEST_* prerequisites must be explicit');
+ const live=requireLiveConfig();
+ const {BIN:bin,REMOTE_BIN:remoteBin,TARGET:target,EVIDENCE:evidence}=live;
  fs.mkdirSync(evidence,{recursive:true});
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'gmd-'));
- const remoteRoot=(await exec('ssh',[target,'mktemp -d /tmp/gmd-XXXXXX'])).stdout.trim();
+ let remoteRoot;
+ const cleanups=[()=>{fs.rmSync(root,{recursive:true,force:true});},async()=>{if(remoteRoot)await exec('ssh',[target,'rm -r -- '+quote(remoteRoot)]);} ];
+ t.after(()=>cleanupSteps(cleanups));
+ remoteRoot=(await exec('ssh',[target,'mktemp -d /tmp/gmd-XXXXXX'])).stdout.trim();
  fs.mkdirSync(path.join(root,'home'));
  const cfg=path.join(root,'config.toml'); fs.writeFileSync(cfg,configText);
- const env={...process.env,HOME:path.join(root,'home'),AI_GUARD_TEMP_APPROVAL_FILE:path.join(root,'approval'),GTX_STATE_DIR:path.join(root,'state'),GTX_DB_PATH:path.join(root,'dispatch.db'),GTX_CONFIG:cfg,GTX_MACHINE_REMOTE_BINARY:remoteRoot+'/gtx'};
+ const env={...isolatedEnv(process.env),HOME:path.join(root,'home'),AI_GUARD_TEMP_APPROVAL_FILE:path.join(root,'approval'),GTX_STATE_DIR:path.join(root,'state'),GTX_DB_PATH:path.join(root,'dispatch.db'),GTX_CONFIG:cfg,GTX_MACHINE_REMOTE_BINARY:remoteRoot+'/gtx'};
  for(const k of ['GTX_SOCKET_PATH','GTX_PANE_ID','GTX_TAB_ID','GTX_WORKSPACE_ID','HERDR_PANE_ID','CODEX_THREAD_ID','CLAUDECODE']) delete env[k];
  const transcript=[];
  const run=async(args,allowFail=false)=>{
@@ -30,23 +31,23 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
   catch(e) { transcript.push({args,code:e.code,stdout:e.stdout,stderr:e.stderr}); if(!allowFail) throw e; return e; }
  };
  const ssh=async args=>(await exec('ssh',[target,[remoteRoot+'/gtx','--session','proof',...args].map(quote).join(' ')],{timeout:15_000})).stdout;
- const setup=spawn('ssh',[target,`mkdir -p ${quote(remoteRoot+'/home')} && cat > ${quote(remoteRoot+'/config.toml')} && cat > ${quote(remoteRoot+'/gtx')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(remoteRoot+'/approval')}\nexport GTX_STATE_DIR=${quote(remoteRoot+'/state')}\nexport GTX_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport GTX_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(remoteRoot+'/gtx')}`]);
- setup.stdin.end(configText); await new Promise((r,j)=>setup.on('exit',c=>c===0?r():j(Error('remote setup '+c))));
- const local=spawn(bin,['--session','proof','server'],{env,stdio:['ignore','pipe','pipe']});
- const remote=spawn('ssh',[target,`${quote(remoteRoot+'/gtx')} --session proof server`],{stdio:['ignore','pipe','pipe']});
- let localLog='',remoteLog=''; local.stderr.on('data',b=>localLog+=b);remote.stderr.on('data',b=>remoteLog+=b);
- let watch,ask,guard,nativeState;const nativeRequests=[]; const lines=[];let guardOutput='',guardErr='';
- t.after(async()=>{
+ let local,remote,watch,ask,guard,nativeState;const nativeRequests=[];const lines=[];let localLog='',remoteLog='',guardOutput='',guardErr='';
+ cleanups.unshift(async()=>{
   if(nativeState) {try {const pid=JSON.parse(fs.readFileSync(path.join(nativeState,'daemon.json'),'utf8')).pid;process.kill(pid,'SIGTERM');}catch{}}
   for(const request of nativeRequests) request.kill('SIGTERM');
   watch?.kill('SIGTERM'); ask?.kill('SIGTERM'); guard?.kill('SIGTERM');
   try {await run(['server','stop']);}catch{}
   try {await ssh(['server','stop']);}catch{}
-  local.kill('SIGTERM');remote.kill('SIGTERM');
+  local?.kill('SIGTERM');remote?.kill('SIGTERM');
   fs.writeFileSync(path.join(evidence,'watch.json'),JSON.stringify(lines,null,2));
   fs.writeFileSync(path.join(evidence,'guard.json'),JSON.stringify({guardOutput,guardErr},null,2));
   fs.writeFileSync(path.join(evidence,'live-ssh.json'),JSON.stringify({root,remoteRoot,transcript,localLog,remoteLog},null,2));
  });
+ const setup=spawn('ssh',[target,`mkdir -p ${quote(remoteRoot+'/home')} && cat > ${quote(remoteRoot+'/config.toml')} && cat > ${quote(remoteRoot+'/gtx')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(remoteRoot+'/approval')}\nexport GTX_STATE_DIR=${quote(remoteRoot+'/state')}\nexport GTX_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport GTX_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(remoteRoot+'/gtx')}`]);
+ setup.stdin.end(configText); await new Promise((r,j)=>setup.on('exit',c=>c===0?r():j(Error('remote setup '+c))));
+ local=spawn(bin,['--session','proof','server'],{env,stdio:['ignore','pipe','pipe']});
+ remote=spawn('ssh',[target,`${quote(remoteRoot+'/gtx')} --session proof server`],{stdio:['ignore','pipe','pipe']});
+ local.stderr.on('data',b=>localLog+=b);remote.stderr.on('data',b=>remoteLog+=b);
  const until=async(fn,limit=15_000)=>{const end=Date.now()+limit;let last;do{try{return await fn();}catch(e){last=e;} await new Promise(r=>setTimeout(r,100));}while(Date.now()<end);throw last;};
  await until(()=>run(['workspace','list']));await until(()=>ssh(['workspace','list']));
  await run(['machine','add',target,'--label','mini-proof','--remote-session','proof']);
@@ -99,9 +100,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
    const destination=path.join(evidence,name+'.png');
    fs.writeFileSync(path.join(evidence,name+'-spec.json'),JSON.stringify(spec,null,2));
    const message=`隔離・音無効のMac実パネル表示中（${name}）。クリックせずネイティブパネルだけを撮影し ${destination} に保存してください。保存を検出したらCLIで回答して閉鎖を検証します。`;
-   await exec(bin,['send','p4',message,'--from','machines'],{env:process.env});
-   const check=await exec(bin,['pane','read','p4','--lines','15'],{env:process.env});
-   if(check.stdout.includes(message)) await exec(bin,['pane','send-keys','p4','Enter'],{env:process.env});
+   await reportToParent(live,message);
    await new Promise((resolve,reject)=>{
     if(fs.existsSync(destination)) {resolve();return;}
     const timeout=setTimeout(()=>{observer.close();reject(Error('parent screenshot not delivered: '+destination));},180_000);
@@ -109,7 +108,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
    });
   };
   for(const owner of process.env.GTX_LIVE_TEST_NATIVE_GUARD_ONLY==='1'?[]:['local','mini-proof']) {
-   const title='テスト：'+(owner==='local'?'親Mac':'mini')+' ネイティブパネル';
+   const title='テスト：'+(owner==='local'?'親Mac':'リモート')+' ネイティブパネル';
    const argv=['--session','proof','decision','ask','--title',title,'--body','音は無効。CLIで回答し、パネルをクリックせず閉鎖を確認する。','--option','yes:テストを確認:approve','--option','no:却下:reject'];
    const paneArgs=owner==='local'?[]:['--machine','mini-proof'];
    const sourcePane=owner==='local'?'p1':pane;
@@ -129,7 +128,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
    await screenshotReady(owner==='local'?'native-local':'native-mini',spec);
    const record=lines.find(x=>x.event==='created'&&x.decision?.title===title);assert.ok(record);
    await run(['decision','answer',record.decision.decision_id,'yes','--machine',owner,'--responder','native-test-cli']);
-   await until(async()=>{assert.ok(!fs.existsSync(specPath));requestOutput=await run([...paneArgs,'pane','read',sourcePane,'--lines','100']);assert.match(requestOutput,/answered/);});
+   await until(async()=>{assert.ok(!fs.existsSync(specPath));assert.ok(!fs.existsSync(specPath+'.result.jsonl'));requestOutput=await run([...paneArgs,'pane','read',sourcePane,'--lines','100']);assert.match(requestOutput,/answered/);});
    const duplicate=await run(['decision','answer',record.decision.decision_id,'no','--machine',owner],true);
    assert.notEqual(duplicate.code,undefined);
    transcript.push({nativePanel:owner,decision:record.decision.decision_id,requestOutput,spec});
@@ -147,7 +146,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
    await screenshotReady('native-guard',spec);
    const record=lines.find(x=>x.event==='created'&&x.decision?.origin?.command?.includes('deploy-native-proof'));assert.ok(record);
    await run(['decision','answer',record.decision.decision_id,'approve','--machine','mini-proof','--responder','native-test-cli']);
-   await until(async()=>{assert.ok(!fs.existsSync(specPath));assert.equal(output,'deploy-native-proof\n');});
+   await until(async()=>{assert.ok(!fs.existsSync(specPath));assert.ok(!fs.existsSync(specPath+'.result.jsonl'));assert.equal(output,'deploy-native-proof\n');});
    const duplicate=await run(['decision','answer',record.decision.decision_id,'approve','--machine','mini-proof'],true);assert.notEqual(duplicate.code,undefined);
    transcript.push({nativeGuard:{decision:record.decision.decision_id,output,error,spec}});
   }

@@ -40,10 +40,10 @@ test('切断時は予約済みの古いタイマーを解除する',async t=>{
  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(fs.existsSync(marker),false);
 });
 test('実SSH試験は親宛先と接続先の明示なしでは外部処理前に拒否する',async()=>{
- const support=await import('../../../../tests/machine/live_test_support.mjs');
+ const support=await import('../../../tests/machine/live_test_support.mjs');
  assert.throws(()=>support.requireLiveConfig({}, {screen:true}),/required/);
  for(const filename of ['live_ssh_decisions.test.mjs','live_screen_prompt.test.mjs']) {
-  const text=fs.readFileSync(new URL('../../../../tests/machine/'+filename,import.meta.url),'utf8');
+  const text=fs.readFileSync(new URL('../../../tests/machine/'+filename,import.meta.url),'utf8');
   assert.doesNotMatch(text,/['"]p4['"]|['"]mini['"]|\/Users\/kazuph\//);
  }
 });

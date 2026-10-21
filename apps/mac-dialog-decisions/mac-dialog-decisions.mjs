@@ -12,7 +12,7 @@
 // is never sent.
 
 import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,10 +26,6 @@ const WATCH_RETRY_MS = 2_000;
 const DAEMON_PID_FILE = "daemon.json";
 const RESPONDER = "mac-dialog";
 const DEFAULT_LATER_MS = 10 * 60_000;
-// Resending an answer a saved machine could not take yet (Tailscale SSH
-// re-approval): every 15 s for up to 30 minutes, until the decision resolves.
-const ANSWER_RETRY_MS = 15_000;
-const ANSWER_RETRY_LIMIT = 120;
 
 function log(...args) {
   const at = new Date().toTimeString().slice(0, 8);
@@ -46,6 +42,7 @@ function homePath(...parts) {
 
 function loadConfig(env = process.env) {
   const configDir =
+    env.IKESU_PLUGIN_CONFIG_DIR ||
     env.GTX_PLUGIN_CONFIG_DIR ||
     homePath(".config", "gtx", "plugins", "config", PLUGIN_ID);
   const configPath =
@@ -58,6 +55,7 @@ function loadConfig(env = process.env) {
   }
   const stateDir =
     env.MAC_DIALOG_STATE_DIR ||
+    env.IKESU_PLUGIN_STATE_DIR ||
     env.GTX_PLUGIN_STATE_DIR ||
     homePath(".local", "state", "gtx", "plugins", PLUGIN_ID);
   const pickNumber = (envValue, fileValue, fallback) => {
@@ -80,7 +78,7 @@ function loadConfig(env = process.env) {
     enabled:
       (env.MAC_DIALOG_ENABLED ?? file.enabled ?? true) !== false &&
       env.MAC_DIALOG_ENABLED !== "0",
-    gtxBin: env.GTX_BIN_PATH || file.gtx_bin || "gtx",
+    gtxBin: env.IKESU_BIN_PATH || env.GTX_BIN_PATH || file.ikesu_bin || file.gtx_bin || "ikesu",
     helperCmd, // null = built-in osascript dialog.js
     // Brief delay before a queued decision takes the screen, so a burst of
     // simultaneous decisions reports the true queue size on the first dialog.
@@ -105,29 +103,17 @@ function loadConfig(env = process.env) {
 // GTX_BIN_PATH as a versioned Cellar path that `brew upgrade` deletes, so
 // every gtx invocation resolves the binary afresh — the configured path
 // while it exists, then PATH, then the usual prefixes.
-function resolveIkesuBin(config, logFn = () => {}) {
+function resolveIkesuBin(config, logFn = () => {}, env = process.env) {
   const configured = config.gtxBin;
-  if (configured && configured !== "gtx" && fs.existsSync(configured)) {
-    return configured;
-  }
-  const candidates = [
-    ...(process.env.PATH || "")
-      .split(path.delimiter)
-      .filter(Boolean)
-      .map((dir) => path.join(dir, "gtx")),
-    "/opt/homebrew/bin/gtx",
-    path.join(os.homedir(), ".local", "bin", "gtx"),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      if (configured && configured !== "gtx" && !fs.existsSync(configured)) {
-        logFn(
-          `GTX_BIN_PATH (${configured}) が存在しないため ${candidate} を使います`,
-        );
-      }
-      return candidate;
+  if (configured && !["ikesu", "gtx"].includes(configured) && fs.existsSync(configured)) return configured;
+  for (const name of ["ikesu", "gtx"]) {
+    const candidates = [...(env.PATH || "").split(path.delimiter).filter(Boolean),
+      "/opt/homebrew/bin", path.join(os.homedir(), ".local", "bin")].map(dir => path.join(dir, name));
+    for (const candidate of candidates) {
+      try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch {}
     }
   }
+  logFn("ikesu / gtx 実行ファイルが見つかりません");
   return null;
 }
 
@@ -286,6 +272,7 @@ export class MacDialogDecisionsDaemon {
     this._pumpTimer = null;
     this._watchHandle = null;
     this._watchDone = null;
+    this._dialogDone = null;
   }
 
   async start() {
@@ -297,7 +284,10 @@ export class MacDialogDecisionsDaemon {
     if (this._pumpTimer) clearTimeout(this._pumpTimer);
     this._watchHandle?.close?.();
     this._closeDialog();
-    await Promise.allSettled([this._watchDone]);
+    for (const entry of this.entries.values()) {
+      clearTimeout(entry.snoozeTimer); clearTimeout(entry.answerRetryTimer);
+    }
+    await Promise.allSettled([this._watchDone, this._dialogDone]);
   }
 
   // A short delay before taking the screen lets a burst of simultaneous
@@ -428,6 +418,7 @@ export class MacDialogDecisionsDaemon {
       entry.machineDown = true;
       entry.queued = false;
       clearTimeout(entry.snoozeTimer);
+      clearTimeout(entry.answerRetryTimer);
       this.queue = this.queue.filter((k) => k !== entry.key);
       if (entry.showing) this._closeDialog();
       this.entries.delete(entry.key);
@@ -459,6 +450,9 @@ export class MacDialogDecisionsDaemon {
     try {
       specPath = this.specFilePath(entry.key);
       spec.result_path = `${specPath}.result.jsonl`;
+      spec.daemon_pid = process.pid;
+      spec.daemon_owner = this.config.daemonOwner;
+      spec.daemon_ownership_path = daemonPidPath(this.config.stateDir);
       fs.mkdirSync(path.dirname(specPath), { recursive: true });
       fs.writeFileSync(specPath, JSON.stringify(spec), { mode: 0o600 });
     } catch (error) {
@@ -473,7 +467,7 @@ export class MacDialogDecisionsDaemon {
     child.specPath = specPath;
     child.handled = false;
     this.child = child;
-    this._consumeChild(child);
+    this._dialogDone = this._consumeChild(child);
   }
 
   async _consumeChild(child) {
@@ -497,13 +491,13 @@ export class MacDialogDecisionsDaemon {
     }
     // exited
     const entry = child.entry;
-    try {
-      fs.unlinkSync(child.specPath);
-      fs.unlinkSync(`${child.specPath}.result.jsonl`);
-    } catch {}
+    await child.exited;
+    removeDialogFiles(child.specPath);
     entry.showing = false;
-    if (this.showing === entry.key) this.showing = null;
-    this.child = null;
+    if (this.child === child) {
+      this.showing = null;
+      this.child = null;
+    }
     this.schedulePump();
   }
 
@@ -561,52 +555,34 @@ export class MacDialogDecisionsDaemon {
 
   // ---- answering ---------------------------------------------------------------
 
+  isActive(entry) {
+    return !this.stopped && !entry.resolved && !entry.machineDown &&
+      !this.machinesDown.has(entry.machineId) && this.entries.get(entry.key) === entry;
+  }
+
   async submitAnswer(entry, { optionIds = [], text = "" }) {
-    if (entry.resolved || entry.answerPending) return;
+    if (!this.isActive(entry) || entry.answerPending) return false;
     entry.answerPending = true;
     const did = entry.decision.decision_id;
-    const args = [
-      "decision",
-      "answer",
-      did,
-      ...optionIds,
-      "--responder",
-      RESPONDER,
-      "--machine",
-      entry.machineId,
-    ];
+    const args = ["decision", "answer", did, ...optionIds, "--responder", RESPONDER, "--machine", entry.machineId];
     if (text) args.push("--text", text);
-    this.log(
-      `回答を送信: ${did} option=${optionIds.join(",") || "-"}${text ? " +text" : ""}`,
-    );
-    const result = await this.runAnswer(args);
-    if (result.code === 0) return; // the resolved event closes/removes the entry
+    this.log(`回答を送信: ${did} option=${optionIds.join(",") || "-"}${text ? " +text" : ""}`);
+    let result;
+    try { result = await this.runAnswer(args); }
+    catch (error) { result = {code: 1, stderr: error.message}; }
+    if (result.code === 0) return true;
+    if (!this.isActive(entry)) return false; // watch resolved closes the panel
     entry.answerPending = false;
-    const combined = `${result.stdout}\n${result.stderr}`;
-    if (combined.includes("decision_already_resolved")) {
-      this.log(`ほかの窓口で決定済みでした: ${did}`);
-      return;
-    }
-    const approvalUrl = combined.match(/https:\/\/login\.tailscale\.com\/\S+/)?.[0];
-    if (approvalUrl && !entry.resolved) {
-      // The saved machine wants a Tailscale SSH re-approval for a new
-      // connection: keep the answer and resend it until it lands or the
-      // decision resolves elsewhere.
-      entry.answerRetries = (entry.answerRetries || 0) + 1;
-      this.log(`回答を送れません (${did}): Tailscale の承認待ち ${approvalUrl}（${entry.answerRetries}回目）`);
-      if (entry.answerRetries < ANSWER_RETRY_LIMIT) {
-        clearTimeout(entry.answerRetryTimer);
-        entry.answerRetryTimer = setTimeout(() => {
-          if (!entry.resolved) void this.submitAnswer(entry, { optionIds, text });
-        }, this.config.answerRetryMs ?? ANSWER_RETRY_MS);
-        entry.answerRetryTimer.unref?.();
-      }
-      return;
-    }
-    const detail =
-      combined.trim().split("\n").pop()?.slice(0, 300) || "unknown";
+    const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "unknown";
     this.log(`回答の送信に失敗 (${did}): ${detail}`);
+    const child = this.child;
+    if (child?.entry === entry) {
+      child.handled = false;
+      child.respond({status: "error", message: `回答を送信できませんでした。再回答できます。\n${detail}`});
+    }
+    return false;
   }
+
 }
 
 // --- process plumbing -------------------------------------------------------------
@@ -615,7 +591,7 @@ function pluginRootDir() {
   return path.dirname(fileURLToPath(import.meta.url));
 }
 
-function spawnDecisionWatch(config, logFn) {
+function spawnDecisionWatch(config, logFn, env = process.env) {
   const bin = resolveIkesuBin(config, logFn);
   if (!bin) {
     return {
@@ -629,6 +605,7 @@ function spawnDecisionWatch(config, logFn) {
     };
   }
   const child = spawn(bin, ["decision", "watch", "--all-machines"], {
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stderr.on("data", (chunk) => {
@@ -679,8 +656,9 @@ function spawnDecisionWatch(config, logFn) {
 function spawnHelperDialog(config, specPath, logFn = () => {}) {
   const argv = config.helperCmd;
   const child = spawn(argv[0], [...argv.slice(1), specPath], {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  child.stdin.on("error", error => logFn(`dialog stdin: ${error.message}`));
   child.on("error", (error) =>
     logFn(`dialog spawn に失敗: ${error.message} (argv=${argv.join(" ")})`),
   );
@@ -710,11 +688,15 @@ function spawnHelperDialog(config, specPath, logFn = () => {}) {
       }
     })(),
     exited,
+    pid: child.pid,
+    respond(message) {
+      if (!child.stdin.destroyed && child.exitCode === null) child.stdin.write(JSON.stringify(message) + "\n");
+    },
     kill() {
       try {
         child.kill("SIGTERM");
       } catch {}
-      resolveExit?.(0);
+
     },
   };
 }
@@ -770,25 +752,29 @@ function ensureNativeDialog(config, logFn = () => {}) {
   return binary;
 }
 
-function killOrphanDialogs(config) {
-  try {
-    const orphans = execFileSync(
-      "pgrep",
-      ["-f", path.join(config.stateDir, "bin", "gtx-decision-dialog-")],
-      { encoding: "utf8" },
-    )
-      .split("\n")
-      .map((s) => Number(s.trim()))
-      .filter(Boolean);
-    for (const pid of orphans) {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {}
-    }
-  } catch {}
+function removeDialogFiles(specPath) {
+  for (const file of [specPath, `${specPath}.result.jsonl`]) {
+    try { fs.unlinkSync(file); } catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
 }
 
-function createRunAnswer(config, logFn = () => {}) {
+async function acquireDaemonLock(binary, stateDir) {
+  fs.mkdirSync(stateDir, {recursive: true});
+  const child = spawn(binary, ["--daemon-lock", path.join(stateDir, "run.lock")], {stdio: ["pipe", "pipe", "pipe"]});
+  const lines = readline.createInterface({input: child.stdout});
+  const exited = new Promise(resolve => child.once("close", resolve));
+  child.stdin.on("error", () => {});
+  const acquired = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    lines.once("line", line => { try { resolve(JSON.parse(line).acquired === true); } catch (error) { reject(error); } });
+    child.once("close", () => resolve(false));
+  });
+  lines.close();
+  if (!acquired) { child.stdin.end(); await exited; return null; }
+  return {async close() { child.stdin.end(); await exited; }};
+}
+
+function createRunAnswer(config, logFn = () => {}, env = process.env) {
   return (args) => {
     const bin = resolveIkesuBin(config, logFn);
     if (!bin) {
@@ -800,7 +786,7 @@ function createRunAnswer(config, logFn = () => {}) {
           "PATH・/opt/homebrew/bin・~/.local/bin を確認してください",
       });
     }
-    return execFileText(bin, args, { timeoutMs: 60_000 });
+    return execFileText(bin, args, { timeoutMs: 60_000, env });
   };
 }
 
@@ -813,20 +799,6 @@ function pidAlive(pid) {
   } catch {
     return false;
   }
-}
-
-function pidLooksOurs(pid) {
-  const out = (() => {
-    try {
-      return execFileSync("ps", ["-o", "command=", "-p", String(pid)], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
-    } catch {
-      return "";
-    }
-  })();
-  return out.includes("mac-dialog-decisions.mjs");
 }
 
 function daemonPidPath(stateDir) {
@@ -844,14 +816,20 @@ function readDaemonPid(stateDir) {
 
 function daemonRunning(stateDir) {
   const pid = readDaemonPid(stateDir);
-  return pid > 0 && pidAlive(pid) && pidLooksOurs(pid);
+  try {
+    const owner = JSON.parse(fs.readFileSync(daemonPidPath(stateDir), "utf8"));
+    const exact = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {encoding: "utf8"}).trim();
+    return pid > 0 && pidAlive(pid) && owner.stateDir === fs.realpathSync(stateDir) &&
+      owner.script === fileURLToPath(import.meta.url) &&
+      [process.execPath, "node"].some(node => exact === `${node} ${owner.script} run`);
+  } catch { return false; }
 }
 
-function writeDaemonPid(stateDir) {
+function writeDaemonPid(stateDir, owner) {
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(
     daemonPidPath(stateDir),
-    JSON.stringify({ pid: process.pid, started: Date.now() }),
+    JSON.stringify({ pid: process.pid, started: Date.now(), owner, stateDir: fs.realpathSync(stateDir), script: fileURLToPath(import.meta.url) }),
     { mode: 0o600 },
   );
 }
@@ -901,7 +879,11 @@ async function ensureDaemon(config, env) {
     const exportsList = [
       ["GTX_PLUGIN_CONFIG_DIR", config.configDir],
       ["GTX_PLUGIN_STATE_DIR", config.stateDir],
-      ["GTX_SOCKET_PATH", env.GTX_SOCKET_PATH || ""],
+      ["GTX_SOCKET_PATH", env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH || ""],
+      ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH || ""],
+      ["IKESU_PLUGIN_CONFIG_DIR", config.configDir],
+      ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
+      ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.gtxBin],
       ["GTX_BIN_PATH", resolveIkesuBin(config, log) || config.gtxBin],
       ["PATH", env.PATH || ""],
     ]
@@ -922,7 +904,7 @@ async function ensureDaemon(config, env) {
       [
         "run",
         "--caller",
-        env.GTX_PANE_ID,
+        env.IKESU_PANE_ID || env.GTX_PANE_ID,
         "--label",
         RUN_LABEL,
         "--cwd",
@@ -981,26 +963,16 @@ async function main() {
     process.exit(2);
   }
 
-  if (daemonRunning(config.stateDir)) {
-    log(
-      `すでにデーモンが動いています (pid ${readDaemonPid(config.stateDir)})。終了します。`,
-    );
-    return;
-  }
-
-  // Clean up dialog spec files and orphaned applets left by an earlier daemon.
+  const nativeDialog = ensureNativeDialog(config, log);
+  if (!nativeDialog) throw new Error("native dialog build failed");
+  const lock = await acquireDaemonLock(nativeDialog, config.stateDir);
+  if (!lock) { log("同じstateのデーモンは起動済みです"); return; }
+  config.daemonOwner = randomUUID();
+  writeDaemonPid(config.stateDir, config.daemonOwner);
+  // Only the lifetime lock owner may replace this state's specs. Old panels
+  // detect the changed owner token; no process-name matching or killing.
   const specDir = path.join(config.stateDir, "dialogs");
-  try {
-    fs.rmSync(specDir, { recursive: true, force: true });
-  } catch {}
-  killOrphanDialogs(config);
-
-  writeDaemonPid(config.stateDir);
-  const nativeDialog = config.helperCmd ? null : ensureNativeDialog(config, log);
-  if (!config.helperCmd && !nativeDialog) {
-    log("ダイアログを作れないため終了します（上のビルドエラーを確認してください）");
-    process.exit(1);
-  }
+  fs.rmSync(specDir, {recursive: true, force: true});
   const daemon = new MacDialogDecisionsDaemon({
     config,
     spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),
@@ -1019,7 +991,12 @@ async function main() {
   log("watch 開始 (gtx decision watch --all-machines)");
 
   const shutdown = () => {
-    void daemon.stop().then(() => process.exit(0));
+    void daemon.stop().then(async () => {
+      const owner = JSON.parse(fs.readFileSync(daemonPidPath(config.stateDir), "utf8"));
+      if (owner.owner === config.daemonOwner) fs.rmSync(daemonPidPath(config.stateDir));
+      await lock.close();
+      process.exit(0);
+    });
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
@@ -1045,6 +1022,9 @@ if (invokedAsScript) {
 }
 
 export {
+  removeDialogFiles,
+  acquireDaemonLock,
+  spawnDecisionWatch,
   buildDialogSpec,
   createRunAnswer,
   decisionKey,

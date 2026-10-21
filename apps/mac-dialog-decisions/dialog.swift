@@ -52,6 +52,8 @@ struct DialogSpec: Decodable {
   let later_label: String?
   let result_path: String?
   let daemon_pid: Int32?
+  let daemon_owner: String?
+  let daemon_ownership_path: String?
 }
 
 // MARK: - output
@@ -280,6 +282,8 @@ final class DialogController: NSObject, NSWindowDelegate {
   var cards: [OptionCard] = []
   var textView: FirstClickTextView?
   var submitButton: FirstClickButton!
+  var answerPending = false
+  let statusLabel = NSTextField(wrappingLabelWithString: "")
 
   init(spec: DialogSpec, specPath: String) {
     self.spec = spec
@@ -292,14 +296,18 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func answer(ids: [String]) {
-    finish(["result": "answer", "option_ids": ids, "text": currentText()])
+    guard !answerPending else { return }
+    answerPending = true
+    statusLabel.stringValue = "回答を送信中…"
+    refreshSubmit()
+    emit(["result": "answer", "option_ids": ids, "text": currentText()])
   }
 
   @objc func submit() {
     let ids = checkedIds()
     let text = currentText()
     if ids.isEmpty && text.isEmpty {
-      NSSound.beep()
+      statusLabel.stringValue = "選択肢を選ぶか、回答を入力してください。"
       return
     }
     answer(ids: ids)
@@ -328,7 +336,7 @@ final class DialogController: NSObject, NSWindowDelegate {
 
   func refreshSubmit() {
     let ready = !checkedIds().isEmpty || !currentText().isEmpty
-    submitButton.isEnabled = ready
+    submitButton.isEnabled = ready && !answerPending
   }
 
   func handleKey(_ event: NSEvent) -> NSEvent? {
@@ -442,6 +450,10 @@ final class DialogController: NSObject, NSWindowDelegate {
     bottom.orientation = .vertical
     bottom.alignment = .leading
     bottom.spacing = 8
+    statusLabel.textColor = .systemRed
+    statusLabel.font = NSFont.systemFont(ofSize: Look.base)
+    bottom.addArrangedSubview(statusLabel)
+    statusLabel.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -2 * Look.pad).isActive = true
     bottom.translatesAutoresizingMaskIntoConstraints = false
     bottom.edgeInsets = NSEdgeInsets(top: 12, left: Look.pad, bottom: 16, right: Look.pad)
 
@@ -558,12 +570,39 @@ final class DialogController: NSObject, NSWindowDelegate {
 
   // Close with the decision: the daemon deletes the spec when it is resolved
   // elsewhere or when the daemon stops; a dead daemon also ends the panel.
+  func startResponses() {
+    DispatchQueue.global().async { [weak self] in
+      while let line = readLine() {
+        guard let data = line.data(using: .utf8),
+          let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          message["status"] as? String == "error" else { continue }
+        DispatchQueue.main.async { [weak self] in
+          guard let self else { return }
+          self.answerPending = false
+          self.statusLabel.stringValue = message["message"] as? String ?? "回答の送信に失敗しました。"
+          self.refreshSubmit()
+          // Long transport errors remain readable without growing off-screen.
+          self.panel.contentView?.layoutSubtreeIfNeeded()
+        }
+      }
+    }
+    _ = FileHandle.standardInput // stdin carries daemon response statuses
+  }
+
   func startWatchdog() {
     Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
       guard let self else { return }
       if !FileManager.default.fileExists(atPath: self.specPath) {
         finished = true
         NSApp.terminate(nil)
+      }
+      if let token = self.spec.daemon_owner, let ownerPath = self.spec.daemon_ownership_path {
+        let data = FileManager.default.contents(atPath: ownerPath)
+        let owner = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        if owner?["owner"] as? String != token || (owner?["pid"] as? Int) != Int(self.spec.daemon_pid ?? 0) {
+          finished = true
+          NSApp.terminate(nil)
+        }
       }
       if let pid = self.spec.daemon_pid, pid > 0, kill(pid, 0) != 0, errno == ESRCH {
         finished = true
@@ -580,6 +619,15 @@ extension DialogController: NSTextViewDelegate {
 // MARK: - main
 
 let args = CommandLine.arguments
+if args.count == 3 && args[1] == "--daemon-lock" {
+  let fd = open(args[2], O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+  guard fd >= 0 else { exit(1) }
+  let acquired = flock(fd, LOCK_EX | LOCK_NB) == 0
+  FileHandle.standardOutput.write("{\"acquired\":\(acquired)}\n".data(using: .utf8)!)
+  if acquired { while !FileHandle.standardInput.availableData.isEmpty {} }
+  close(fd)
+  exit(acquired ? 0 : 1)
+}
 guard args.count >= 2,
   let data = FileManager.default.contents(atPath: args[1]),
   let spec = try? JSONDecoder().decode(DialogSpec.self, from: data)
@@ -597,4 +645,5 @@ controller.build()
 NSEvent.addLocalMonitorForEvents(matching: .keyDown) { controller.handleKey($0) }
 controller.show()
 controller.startWatchdog()
+controller.startResponses()
 app.run()
