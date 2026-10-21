@@ -31,6 +31,10 @@ func (s *Server) serveAPI(conn net.Conn) {
 		if err != nil {
 			return
 		}
+		if s.closing.Load() != 0 {
+			_ = api.WriteResponse(conn, api.Failure(req.ID, "server_stopping", "server is stopping"))
+			return
+		}
 		// events.subscribe turns this connection into an event stream;
 		// events.wait may block for the timeout, off the app loop.
 		switch req.Method {
@@ -68,7 +72,18 @@ func (s *Server) serveAPI(conn net.Conn) {
 
 // dispatch routes a request. Stateless methods answer directly; everything
 // touching application state is serialized through the app loop via Do.
-func (s *Server) dispatch(req *api.Request) api.Response {
+func (s *Server) dispatch(req *api.Request) (response api.Response) {
+	stopping := api.Failure(req.ID, "server_stopping", "server is stopping")
+	response = stopping
+	// Do may return without running a callback once the app exits.
+	defer func() {
+		if len(response.Result) == 0 && response.Err == nil {
+			response = stopping
+		}
+	}()
+	if s.closing.Load() != 0 {
+		return stopping
+	}
 	if response, blocked := s.rejectOverlayLayoutRequest(req); blocked {
 		return response
 	}
@@ -127,12 +142,18 @@ func (s *Server) dispatch(req *api.Request) api.Response {
 	case api.MethodServerLiveHandoff:
 		return s.liveHandoff(req)
 	case api.MethodPing:
-		return api.Success(req.ID, api.PongResult{
-			Type:         "pong",
-			Version:      s.version,
-			Protocol:     api.Protocol,
-			Capabilities: map[string]any{"live_handoff": true, "screen_prompt_decisions": true},
+		s.app.Do(func() {
+			if s.closing.Load() != 0 {
+				return
+			}
+			response = api.Success(req.ID, api.PongResult{
+				Type:         "pong",
+				Version:      s.version,
+				Protocol:     api.Protocol,
+				Capabilities: map[string]any{"live_handoff": true, "screen_prompt_decisions": true},
+			})
 		})
+		return response
 	case api.MethodServerStop:
 		var p api.EmptyParams
 		if err := req.DecodeParams(&p); err != nil {

@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"strconv"
 	"time"
 
@@ -56,10 +59,7 @@ func (r *runner) server(args []string) int {
 		if len(args) != 1 {
 			return usageErr(r, "usage: ikesu server restart")
 		}
-		if code := r.sendOK(api.MethodServerRestart, api.EmptyParams{}); code != 0 {
-			return code
-		}
-		return r.waitForServer()
+		return r.restartServer()
 	case "ping":
 		if len(args) != 1 {
 			return usageErr(r, "usage: ikesu server ping")
@@ -71,6 +71,43 @@ func (r *runner) server(args []string) int {
 	}
 }
 
+// Keep the original transport open: EOF identifies retirement of that server,
+// even if the successor has the same version and socket pathname.
+func (r *runner) restartServer() int {
+	conn, err := net.DialTimeout("unix", r.socketPath(), 3*time.Second)
+	if err != nil {
+		fmt.Fprintln(r.errOut(), string(r.serverNotRunning("cli:request")))
+		return 1
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	if err := api.WriteRequest(conn, api.Request{ID: "cli:request", Method: api.MethodServerRestart, Params: api.MarshalParams(api.EmptyParams{})}); err != nil {
+		fmt.Fprintln(r.errOut(), string(r.serverNotRunning("cli:request")))
+		return 1
+	}
+	reader := bufio.NewReader(conn)
+	raw, err := readRawLine(reader)
+	if err != nil {
+		fmt.Fprintln(r.errOut(), string(r.serverNotRunning("cli:request")))
+		return 1
+	}
+	var response api.Response
+	if err := json.Unmarshal(raw, &response); err != nil {
+		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
+		return 1
+	}
+	if response.Err != nil {
+		fmt.Fprintln(r.errOut(), string(raw))
+		return 1
+	}
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		fmt.Fprintf(r.errOut(), "ikesu: server did not stop after restart: %v\n", err)
+		return 1
+	}
+	_ = conn.Close()
+	return r.waitForServer()
+}
+
 // waitForServer polls ping until the restarted server answers, so scripts
 // can chain commands right after `gtx server restart`.
 func (r *runner) waitForServer() int {
@@ -80,7 +117,10 @@ func (r *runner) waitForServer() int {
 		if err == nil {
 			var resp api.Response
 			if json.Unmarshal(raw, &resp) == nil && resp.Err == nil {
-				return 0
+				var pong api.PongResult
+				if json.Unmarshal(resp.Result, &pong) == nil && pong.Type == "pong" {
+					return 0
+				}
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
