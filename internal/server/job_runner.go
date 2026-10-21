@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kazuph/goterrace/internal/api"
 	"github.com/kazuph/goterrace/internal/childenv"
 	"github.com/kazuph/goterrace/internal/dispatch"
 	"github.com/kazuph/goterrace/internal/machine"
@@ -26,6 +27,7 @@ const jobRunnerArg = "__job-runner"
 
 type jobRunnerRequest struct {
 	JobID, LogPath, Cwd, ProfilesPath, Token string
+	Namespace                                string
 	Argv                                     []string
 }
 type jobRunnerStarted struct {
@@ -90,6 +92,9 @@ func RunJobRunner() (int, error) {
 	if err = dec.Decode(&request); err != nil {
 		return 1, err
 	}
+	// os.Executable may resolve a versioned target behind a gtx symlink.
+	// Approval files must retain the calling server's namespace.
+	api.ConfigureExecutable(request.Namespace)
 	fail := func(err error) (int, error) { _ = enc.Encode(jobRunnerStarted{Error: err.Error()}); return 1, err }
 	if len(request.Argv) == 0 {
 		return fail(errors.New("empty runner argv"))
@@ -269,7 +274,7 @@ func (s *Server) startJobRunner(store *dispatch.Store, jobID, logPath, cwd strin
 	// Reaping the helper does not own completion; its durable result does.
 	go func() { _ = cmd.Wait(); s.invalidateJobCache() }()
 	enc, dec := gob.NewEncoder(conn), gob.NewDecoder(conn)
-	request := jobRunnerRequest{JobID: jobID, LogPath: logPath, Cwd: cwd, ProfilesPath: filepath.Join(s.dir, "machines.json"), Argv: argv, Token: rand.Text()}
+	request := jobRunnerRequest{JobID: jobID, LogPath: logPath, Cwd: cwd, ProfilesPath: filepath.Join(s.dir, "machines.json"), Argv: argv, Token: rand.Text(), Namespace: api.BinaryNamespace()}
 	if err = enc.Encode(request); err != nil {
 		return err
 	}

@@ -163,7 +163,17 @@ func TestLegacyJobsAcrossLiveHandoff(t *testing.T) {
 			t.Fatal(err, string(out))
 		}
 	}
-	s := startVersionMode(t, nil, false, binPath, old)
+	// Executable names select independent state roots. Keep the baseline
+	// bytes unchanged while starting it under the public gtx name.
+	old, err := filepath.Abs(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalOld := filepath.Join(t.TempDir(), "gtx")
+	if err := os.Symlink(old, canonicalOld); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, nil, false, binPath, canonicalOld)
 	s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "legacy-job", Agent: "codex", State: "idle"}, nil)
 	fifo := filepath.Join(t.TempDir(), "release")
