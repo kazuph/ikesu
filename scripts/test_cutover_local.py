@@ -82,6 +82,12 @@ class CutoverTest(unittest.TestCase):
         self.checked(['git', '-C', self.repo, 'add', '.'])
         self.checked(['git', '-C', self.repo, '-c', 'user.name=test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-m', 'fixture'])
         self.sha = self.checked(['git', '-C', self.repo, 'rev-parse', 'HEAD']).strip()
+        config = self.local / '.config/gtx'
+        (config / 'plugins.json').write_text(json.dumps([{'plugin_id': 'kazuph.mac-dialog-decisions', 'plugin_root': str(self.repo / 'apps/mac-dialog-decisions'), 'manifest_path': str(self.repo / 'apps/mac-dialog-decisions/gtx-plugin.toml'), 'enabled': True}]))
+        self.scripts = self.local / 'ikesu-cutover-scripts'
+        self.scripts.mkdir()
+        for name in ('cutover-local.sh', 'cutover_local.py', 'migrate-ikesu.py'):
+            shutil.copy2(HERE / name, self.scripts / name)
         self.checked(['git', '-C', self.repo, 'worktree', 'add', '-b', 'task', self.repo / '.worktree/task'])
         prefix = str(self.repo).replace('/', '-')
         for name in (prefix, prefix + '--worktree-task'):
@@ -147,8 +153,8 @@ class CutoverTest(unittest.TestCase):
 
     def cutover(self, *args):
         env = dict(self.envs[self.local])
-        result = run([HERE / 'cutover-local.sh', '--binary', NEW, '--mini-binary', NEW,
-                      '--sha', self.sha, '--ssh', self.ssh, '--source-socket', self.local / '.local/state/gtx-2e01183/default/gtx.sock', *args], env=env, cwd=self.root)
+        result = run([self.scripts / 'cutover-local.sh', '--binary', NEW, '--mini-binary', NEW,
+                      *([] if '--dry-run' in args else ['--sha', self.sha]), '--ssh', self.ssh, '--source-socket', self.local / '.local/state/gtx-2e01183/default/gtx.sock', *args], env=env, cwd=self.root)
         logs = '\n'.join(p.read_text() for p in self.local.glob('ikesu-cutover-*.log'))
         return result, logs
 
@@ -181,6 +187,7 @@ class CutoverTest(unittest.TestCase):
         result, logs = self.cutover()
         self.assertEqual(result.returncode, 0, result.stdout + logs)
         self.assertIn('SUCCESS', logs)
+        self.assertIn('VERIFIED relocated plugin manifest', logs)
         for home in (self.local, self.mini):
             self.assertIn('0.4.0', self.wait_cli(home, ['server', 'ping'], True))
             self.assertFalse((home / '.local/lib/gtx').exists())
