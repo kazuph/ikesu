@@ -93,6 +93,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if agent == "codex" {
 		screen, codexLabel, codexBody = codexQuestionScreen(screen)
 	}
+	screen = currentQuestionLines(screen)
 	screen, notice := cleanNotice(screen)
 	columns := screenColumns(screen)
 	plain, preview, hasPreview := extractPreview(screen)
@@ -289,50 +290,6 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		}
 	}
 	return p
-}
-
-// Claude paints previews beside the options, so split the box independently of the option block.
-func extractPreview(lines []string) ([]string, *string, bool) {
-	var plain, content []string
-	inBox, found := false, false
-	for _, line := range lines {
-		if at := strings.IndexAny(line, "┌╭"); at >= 0 {
-			inBox, found = true, true
-			if prefix := strings.TrimRight(line[:at], " "); prefix != "" {
-				plain = append(plain, prefix)
-			}
-			continue
-		}
-		if inBox {
-			if at := strings.IndexAny(line, "└╰"); at >= 0 {
-				inBox = false
-				if prefix := strings.TrimRight(line[:at], " "); prefix != "" {
-					plain = append(plain, prefix)
-				}
-				continue
-			}
-			if at := strings.Index(line, "│"); at >= 0 {
-				if prefix := strings.TrimRight(line[:at], " "); prefix != "" {
-					plain = append(plain, prefix)
-				}
-				value := strings.TrimPrefix(line[at:], "│")
-				if end := strings.LastIndex(value, "│"); end >= 0 {
-					value = value[:end]
-				}
-				content = append(content, strings.TrimRight(value, " "))
-				continue
-			}
-		}
-		plain = append(plain, line)
-	}
-	if !found {
-		return plain, nil, false
-	}
-	if inBox {
-		return plain, nil, true
-	}
-	value := strings.Join(content, "\n")
-	return plain, &value, true
 }
 
 func solidRule(s string) bool {

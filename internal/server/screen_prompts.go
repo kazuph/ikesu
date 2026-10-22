@@ -153,10 +153,7 @@ func (s *Server) screenPromptConfig(c config.Config) {
 		return
 	}
 	s.stopScreenPromptTimer()
-	for pid, w := range s.screenPrompts.watches {
-		if w.preview != nil {
-			s.restorePreviewCursor(pid, w)
-		}
+	for _, w := range s.screenPrompts.watches {
 		s.cancelScreenPrompt(w)
 	}
 	s.screenPrompts.watches = nil
@@ -246,7 +243,6 @@ func (s *Server) scanScreenPrompts() {
 				w.lastMatched = false
 				w.mismatches++
 				if w.preview != nil {
-					s.restorePreviewCursor(pid, w)
 					s.cachePreviewScan(w)
 				}
 				if w.mismatches < 2 {

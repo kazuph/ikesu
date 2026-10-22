@@ -1,18 +1,16 @@
 package server
 
 import (
-	"strings"
 	"time"
 
 	"github.com/kazuph/ikesu/internal/screenprompt"
 )
 
 type screenPreviewScan struct {
-	original      int
-	expected      int
-	visited       map[string]*string
-	lastStep      time.Time
-	lastDirection string
+	original int
+	expected int
+	visited  map[string]*string
+	lastStep time.Time
 }
 
 func (s *Server) startPreviewScan(pid int, w *screenPromptWatch) {
@@ -46,7 +44,6 @@ func (s *Server) previewArrow(pid int, w *screenPromptWatch, current, target int
 		return false
 	}
 	w.preview.expected = next
-	w.preview.lastDirection = arrow
 	w.preview.lastStep = time.Now()
 	return true
 }
@@ -61,13 +58,11 @@ func (s *Server) stepPreviewScan(pid int, w *screenPromptWatch, p *screenprompt.
 		return
 	}
 	if p.Cursor < 0 || p.Cursor >= len(p.Items) || scan.expected >= 0 && p.Cursor != scan.expected {
-		s.restorePreviewCursor(pid, w)
 		s.finishPreviewScan(pid, w)
 		return
 	}
 	scan.expected = -1
 	if p.HasPreview && p.Preview == nil {
-		s.restorePreviewCursor(pid, w)
 		s.finishPreviewScan(pid, w)
 		return
 	}
@@ -87,52 +82,17 @@ func (s *Server) stepPreviewScan(pid int, w *screenPromptWatch, p *screenprompt.
 			}
 		}
 		if target < 0 || !s.previewArrow(pid, w, p.Cursor, target) {
-			s.restorePreviewCursor(pid, w)
 			s.finishPreviewScan(pid, w)
 		}
 		return
 	}
 	if p.Cursor != scan.original {
 		if !s.previewArrow(pid, w, p.Cursor, scan.original) {
-			s.restorePreviewCursor(pid, w)
 			s.finishPreviewScan(pid, w)
 		}
 		return
 	}
 	s.finishPreviewScan(pid, w)
-}
-
-// Best-effort restoration uses only arrow keys, even on disappearance or reload.
-func (s *Server) restorePreviewCursor(pid int, w *screenPromptWatch) {
-	if s.screenUserActive(pid) {
-		return
-	}
-	scan := w.preview
-	if scan == nil {
-		return
-	}
-	pane := s.sup.Get(pid)
-	if pane == nil {
-		return
-	}
-	p := s.readScreenPrompt(pid)
-	if p != nil && p.Signature() == w.signature && p.Cursor >= 0 && scan.original >= 0 {
-		delta := scan.original - p.Cursor
-		arrow := "\x1b[B"
-		if delta < 0 {
-			arrow = "\x1b[A"
-			delta = -delta
-		}
-		if delta > 0 {
-			_, _ = pane.WriteScreenPrompt([]byte(strings.Repeat(arrow, delta)), nil)
-		}
-	} else if scan.lastDirection != "" {
-		arrow := "\x1b[A"
-		if scan.lastDirection == arrow {
-			arrow = "\x1b[B"
-		}
-		_, _ = pane.WriteScreenPrompt([]byte(arrow), nil)
-	}
 }
 
 func (s *Server) finishPreviewScan(pid int, w *screenPromptWatch) {
