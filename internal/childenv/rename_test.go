@@ -38,3 +38,10 @@ func TestStageOneProcessScrubKeepsSettingNamesAndValues(t *testing.T) {
 		}
 	}
 }
+
+func TestDropExternalLegacyKeys(t *testing.T) {
+	got := envMap(Scrub([]string{"GTX_CONFIG=/ignored", "GOTERRACE_EXTRA=ignored", "IKESU_CONFIG=/kept", "SAFE=yes"}))
+	if got["GTX_CONFIG"] != "" || got["GOTERRACE_EXTRA"] != "" || got["IKESU_CONFIG"] != "/kept" || got["SAFE"] != "yes" {
+		t.Fatal(got)
+	}
+}

@@ -174,7 +174,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	for _, k := range keys {
 		env = append(env, k+"="+values[k])
 	}
-	return env, nil
+	return childenv.DropLegacy(env), nil
 }
 func (e *Engine) Invoke(pluginID, actionID string, context Context) (ActionInfo, CommandLog, error) {
 	owner, a, info, err := e.Store.ResolveAction(pluginID, actionID)

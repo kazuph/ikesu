@@ -78,9 +78,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	env := append(cleanEnv(os.Environ()),
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-		"GOTERRACE=1",
 		"IKESU=1",
-		"GOTERRACE_PANE_ID="+itoa(id),
 		"IKESU_PANE_ID=p"+itoa(id),
 	)
 	cmd.Env = env
@@ -132,6 +130,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 			}
 		}
 	}
+	cmd.Env = childenv.DropLegacy(cmd.Env)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		if p.guard != nil {

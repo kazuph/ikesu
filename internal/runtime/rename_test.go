@@ -20,7 +20,7 @@ func TestStageOnePaneEnvironment(t *testing.T) {
 	sup := NewSupervisor()
 	defer sup.KillAll()
 	sup.Env = func(int) []string {
-		return []string{"IKESU_PANE_ID=p7", "IKESU_SOCKET_PATH=/fresh/ikesu.sock", "IKESU_SOCKET_PATH_EXPLICIT=1"}
+		return []string{"IKESU_PANE_ID=p7", "IKESU_SOCKET_PATH=/fresh/ikesu.sock", "IKESU_SOCKET_PATH_EXPLICIT=1", "GTX_EXTERNAL=ignored", "GOTERRACE_EXTERNAL=ignored"}
 	}
 	pane, err := sup.SpawnWith(7, dir, 80, 24, nil, []string{"/bin/sh", "-c", "/usr/bin/env > " + path})
 	if err != nil {
@@ -42,12 +42,12 @@ func TestStageOnePaneEnvironment(t *testing.T) {
 			env[key] = value
 		}
 	}
-	for key, want := range map[string]string{"IKESU": "1", "GOTERRACE": "1", "IKESU_PANE_ID": "p7", "IKESU_SOCKET_PATH": "/fresh/ikesu.sock"} {
+	for key, want := range map[string]string{"IKESU": "1", "IKESU_PANE_ID": "p7", "IKESU_SOCKET_PATH": "/fresh/ikesu.sock"} {
 		if env[key] != want {
 			t.Errorf("%s=%q want %q", key, env[key], want)
 		}
 	}
-	if env["IKESU_GUARD_MARKER"] != "" {
+	if env["GTX_EXTERNAL"] != "" || env["GOTERRACE_EXTERNAL"] != "" || env["IKESU_GUARD_MARKER"] != "" {
 		t.Fatal("parent guard leaked")
 	}
 }
