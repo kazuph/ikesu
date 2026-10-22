@@ -111,4 +111,3 @@ export function decisionKey(machineId, decisionId) {
 export function decisionIdOf(decision) {
   return String(decision?.decision_id || "");
 }
-
