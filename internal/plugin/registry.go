@@ -104,26 +104,19 @@ func (s *Store) transaction(update bool, fn func(*[]Installed) error) error {
 	return os.Rename(tmp.Name(), path)
 }
 func (s *Store) Link(path string, enabled bool, source *Source) (Installed, error) {
-	m, path, err := ReadManifest(path, s.Version)
+	p, err := s.PreparedLink(path, enabled, source)
 	if err != nil {
 		return Installed{}, err
 	}
-	p := Installed{Manifest: m, ManifestPath: path, Root: filepath.Dir(path), Enabled: enabled, Source: Source{Kind: "local"}}
-	if source != nil {
-		p.Source = *source
-	}
-	if m.Platforms == nil {
-		p.Warnings = append(p.Warnings, "manifest does not declare platforms; platform support unknown")
-	}
-	if _, err = s.ConfigDir(m.ID); err != nil {
+	if _, err = s.ConfigDir(p.ID); err != nil {
 		return p, err
 	}
-	if _, err = s.StateDir(m.ID); err != nil {
+	if _, err = s.StateDir(p.ID); err != nil {
 		return p, err
 	}
 	err = s.transaction(true, func(entries *[]Installed) error {
 		for i, e := range *entries {
-			if e.ID == m.ID {
+			if e.ID == p.ID {
 				(*entries)[i] = p
 				return nil
 			}

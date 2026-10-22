@@ -113,3 +113,11 @@ mini の負荷が下がらないときでも判定できるように、**変更�
 プラグインの操作・イベントと、新しく起動するペインへ、ikesu が実際に読む設定ファイルの場所を `IKESU_CONFIG_PATH` として渡す。設定の読み込み先を決める `IKESU_CONFIG` と既存の環境変数の意味は変えない。
 
 `IKESU_CONFIG_PATH` はサーバー起動時に実際に読んだ設定ファイルの絶対パスで、`IKESU_CONFIG` の指定があればその場所、なければ既定の場所を絶対パスにして保持する。`ikesu server reload-config` の result にも同じ値を `config_path` として追加する。既存の type・status・diagnostics は保持する。tb はこの値を設定の書き換え先として使い、未設定なら書き換えずエラーにする。
+
+## 明示的な配布版の導入
+
+`ikesu tb install [--version MAJOR.MINOR.PATCH] [--take-over-wrapper]` と `ikesu tb status` は macOS arm64 専用。kazuph/herdr の `kazuph-tb-v` 安定版のうち 0.7.3 以上だけを選び、`terminal-browser-darwin-arm64.tar.gz` と `SHA256SUMS` の揃った版を取得する。`ikesu-plugin/ikesu-plugin.toml` を必須とし、`~/.local/share/ikesu/terminal-browser/<版>` に置く。`~/.local/bin/tb` は存在しないか ikesu が作ったラッパーの時だけ変更し、ほかのラッパーは `--take-over-wrapper` を明示した時だけ引き取る。登録したプラグインと直接の tb が違う版を指す時は status の `wrapper_mismatch` に出す。status は最新版の取得に失敗しても、導入済みの版と登録先を表示する。
+
+取得先とリダイレクトは HTTPS に限定する。チェックサムの欠け・重複・不正を拒否し、SHA-256 を照合する。圧縮ファイルの全項目を展開前に調べ、絶対パス・親参照・外向きリンク・リンク経由の脱出・デバイスを拒否し、内部リンクは保つ。同じファイルシステムの staging から版ごとの場所へ確定し、同版に異なる内容があれば上書きしない。導入はロックで排他し、旧版と動作中の tb を削除・停止しない。
+
+切替後の登録は既存の plugin link と同じ登録経路を使う。失敗時はラッパーと current-version を戻す。登録を送る前の失敗では登録復元を書き込まない。送った後は、レジストリのロック内で自分の登録値と一致する時だけ前の登録を戻し、別操作の link・disable・unlink を保持して競合を返す。SIGINT/SIGTERM は準備中なら中止し、切替開始後なら切替または復元の安全な区切りまで待つ。SIGKILL と電源断は保証の対象外。

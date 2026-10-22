@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/distribution"
 )
 
 // Options configures a CLI invocation.
@@ -82,6 +83,10 @@ func Run(args []string, o Options) int {
 		return 2
 	}
 	switch args[0] {
+	case "tb":
+		return r.distributionCLI(distribution.TerminalBrowser, args[1:])
+	case "mac-dialog":
+		return r.distributionCLI(distribution.MacDialog, args[1:])
 	case "session":
 		return r.sessionCLI(args[1:])
 	case "status":
