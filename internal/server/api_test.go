@@ -18,11 +18,12 @@ import (
 // apiReq sends one request and returns the decoded response.
 func apiReq(t *testing.T, dir, method string, params any) api.Response {
 	t.Helper()
-	conn, err := net.Dial("unix", api.APISocketPath(dir))
+	conn, err := net.DialTimeout("unix", api.APISocketPath(dir), 10*time.Second)
 	if err != nil {
 		t.Fatalf("dial api: %v", err)
 	}
 	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
 	if err := api.WriteRequest(conn, api.Request{
 		ID:     "t:" + method,
 		Method: method,
@@ -314,7 +315,7 @@ func waitAPISocket(t *testing.T, dir string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		conn, err := net.Dial("unix", api.APISocketPath(dir))
+		conn, err := net.DialTimeout("unix", api.APISocketPath(dir), time.Until(deadline))
 		if err == nil {
 			conn.Close()
 			return

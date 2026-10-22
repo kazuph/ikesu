@@ -37,7 +37,7 @@ func TestNativeAgentsRestoreExactPaneIDsAfterRealServerRestart(t *testing.T) {
 	waitForSessionFile(t, dir)
 	apiOK(t, dir, api.MethodServerRestart, api.EmptyParams{}, nil)
 	waitAPISocketGone(t, dir)
-	<-done
+	waitServerExit(t, done)
 	dir, done = startServerAt(t, "test")
 	defer stopServer(t, dir, done)
 	var result api.AgentRestoreResult

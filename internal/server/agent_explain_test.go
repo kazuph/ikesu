@@ -12,7 +12,7 @@ func TestAgentExplainAPI(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	waitAPISocket(t, dir)
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 	var created api.WorkspaceCreatedResult
 	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: true}, &created)
 	target := created.RootPane.PaneID

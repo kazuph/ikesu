@@ -113,7 +113,7 @@ func TestDistributionResponseLossRollback(t *testing.T) {
 			}
 			t.Cleanup(func() { os.RemoveAll(proxyDir) })
 			proxyPath := filepath.Join(proxyDir, "drop.sock")
-			proxy, err := net.Listen("unix", proxyPath)
+			proxy, err := net.ListenUnix("unix", &net.UnixAddr{Name: proxyPath, Net: "unix"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -121,13 +121,14 @@ func TestDistributionResponseLossRollback(t *testing.T) {
 			observed := make(chan error, 1)
 			var concurrent *plugin.Installed
 			go func() {
+				proxy.SetDeadline(time.Now().Add(10 * time.Second))
 				client, err := proxy.Accept()
 				if err != nil {
 					observed <- err
 					return
 				}
 				defer client.Close()
-				backend, err := net.Dial("unix", api.APISocketPath(dir))
+				backend, err := net.DialTimeout("unix", api.APISocketPath(dir), 10*time.Second)
 				if err != nil {
 					observed <- err
 					return
@@ -206,12 +207,19 @@ func TestDistributionResponseLossRollback(t *testing.T) {
 				_, err = bufio.NewReader(client).ReadBytes('\n')
 				return true, err
 			}
-			_, err = i.Install(context.Background(), release, false)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_, err = i.Install(ctx, release, false)
 			if err == nil || !strings.Contains(err.Error(), "EOF") {
 				t.Fatalf("expected real lost response, got %v", err)
 			}
-			if err := <-observed; err != nil {
-				t.Fatal(err)
+			select {
+			case err := <-observed:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-ctx.Done():
+				t.Fatal("registration relay completion deadline", ctx.Err())
 			}
 			got, err := store.Registration("fixture.rollback")
 			if err != nil {

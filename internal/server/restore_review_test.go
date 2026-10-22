@@ -39,7 +39,7 @@ func TestReview2RestoreLaunchedDespiteFailedLoginPATH(t *testing.T) {
 	teststate.Setenv(t, "IKESU_CONFIG", cfg)
 	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "r2")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 	// The real start API proves that the one cached login lookup failed.
 	failed := apiReq(t, dir, api.MethodAgentStart, api.AgentStartParams{Argv: []string{"/bin/echo", "must-not-start"}})
 	if failed.Err == nil || !strings.Contains(failed.Err.Message, "login shell PATH") {

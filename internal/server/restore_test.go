@@ -132,10 +132,10 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	// Restart: panes come back as shells carrying their records.
 	apiOK(t, dir, api.MethodServerRestart, api.EmptyParams{}, nil)
 	waitAPISocketGone(t, dir)
-	<-done // the old Run must fully release the session lock first
+	waitServerExit(t, done) // the old Run must fully release the session lock first
 	dir2, done2 := startServerAt(t, "rest")
 	done = done2
-	defer func() { apiOK(t, dir2, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir2, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 
 	var res api.AgentRestoreResult
 	apiOK(t, dir2, api.MethodAgentRestore, api.AgentRestoreParams{DryRun: true}, &res)
@@ -222,7 +222,7 @@ func TestAgentRestoreLaunchesCommand(t *testing.T) {
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "launch")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 
 	reportAgent(t, dir, "p1", "claude", "sess-launch")
 	reportAgent(t, dir, "p1", "", "")
@@ -598,7 +598,7 @@ func TestLedgerDeleteOnPaneClose(t *testing.T) {
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "leddel")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
 	ids := paneIDs(t, dir)
@@ -695,7 +695,7 @@ func TestRestorablePaneRetainedOnExit(t *testing.T) {
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "retain")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
 	ids := paneIDs(t, dir)
@@ -754,7 +754,7 @@ func TestInactiveShellPaneClosesOnExit(t *testing.T) {
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "cleanup")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
 	ids := paneIDs(t, dir)
