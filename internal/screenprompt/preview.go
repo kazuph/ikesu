@@ -1,7 +1,7 @@
 package screenprompt
 
 import (
-	"github.com/charmbracelet/x/ansi"
+	"github.com/kazuph/ikesu/internal/cellwidth"
 	"strings"
 )
 
@@ -64,7 +64,7 @@ func extractPreview(lines []string) ([]string, *string, bool) {
 		if !strings.ContainsAny(line[at:], "┐╮") {
 			continue
 		}
-		start, column = i, ansi.StringWidth(line[:at])
+		start, column = i, cellwidth.String(line[:at])
 		break
 	}
 	if start < 0 {
@@ -74,15 +74,15 @@ func extractPreview(lines []string) ([]string, *string, bool) {
 	var content []string
 	closed := false
 	for i := start; i < footer; i++ {
-		width := ansi.StringWidth(lines[i])
+		width := cellwidth.String(lines[i])
 		if width <= column {
 			return lines, nil, true
 		}
-		prefix := strings.TrimRight(ansi.Cut(lines[i], 0, column), " ")
+		prefix := strings.TrimRight(cellwidth.Cut(lines[i], 0, column), " ")
 		if prefix != "" {
 			plain = append(plain, prefix)
 		}
-		box := ansi.Cut(lines[i], column, width)
+		box := cellwidth.Cut(lines[i], column, width)
 		if i == start {
 			continue
 		}

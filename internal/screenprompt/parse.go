@@ -15,6 +15,7 @@ import (
 )
 
 type Prompt struct {
+	MCPServer     string
 	CodexQuestion bool
 	TextOpen      bool
 	Final         bool
@@ -46,7 +47,7 @@ func HasOptionRows(lines []string) bool {
 			return true
 		}
 	}
-	return false
+	return parseMCP(lines) != nil
 }
 
 // Full-width highlight padding can join two painted rows in the logical screen.
@@ -88,6 +89,11 @@ func Parse(agent string, screen []string) *Prompt {
 func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if agent != "claude" && agent != "codex" && agent != "devin" {
 		return nil
+	}
+	if agent == "claude" {
+		if p := parseMCP(screen); p != nil {
+			return p
+		}
 	}
 	codexLabel, codexBody := "", ""
 	if agent == "codex" {
@@ -340,15 +346,20 @@ func (p *Prompt) Signature() string {
 		label = p.Params.QuestionLabel
 	}
 	data, _ := json.Marshal(struct {
+		MCPServer              string  `json:",omitempty"`
 		QuestionLabel          *string `json:",omitempty"`
 		Title                  string
 		Options                []option
 		AllowText, MultiSelect bool
-	}{label, stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
+	}{p.MCPServer, label, stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
 
 func FromDecision(d api.Decision) string {
-	return (&Prompt{Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
+	server := ""
+	if d.Origin != nil {
+		_, server, _ = strings.Cut(d.Origin.Agent, mcpOriginSeparator)
+	}
+	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
 }

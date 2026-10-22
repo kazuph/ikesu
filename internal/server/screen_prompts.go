@@ -57,6 +57,12 @@ func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
 		return nil
 	}
 	expanded := screenprompt.ParseWithTextID(agent, p.DetectionLines(), textID)
+	if current != nil && current.MCPServer != "" {
+		return current
+	}
+	if expanded != nil && expanded.MCPServer != "" {
+		return nil
+	}
 	footer := strings.ToLower(strings.Join(visible, " "))
 	if expanded != nil && expanded.Params.Kind == "tool_permission" && (current != nil && current.Params.Kind == "tool_permission" || current == nil && strings.Contains(footer, "esc") && strings.Contains(footer, "cancel")) {
 		return expanded
@@ -233,7 +239,7 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 			}
-			if p != nil && !w.resolved && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
+			if p != nil && !w.resolved && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
 				w.signature = p.Signature()
 				w.prompt = p
 				s.updateScreenPrompt(w)
@@ -339,7 +345,7 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
 		agent = reported
 	}
-	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: agent, Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
+	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: w.prompt.OriginAgent(agent), Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
 	s.completeDecisionOrigin(p.Origin)
 	d, err := store.CreateDecision(p, time.Now())
 	if err != nil {
