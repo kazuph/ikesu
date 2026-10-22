@@ -386,3 +386,21 @@ miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <�
 右へ移したボタンのクリック座標と左の3状態切替は、`right-sidebar-controls.steps` / `right-sidebar-width.steps` を `observe.py --gtx-steps` でgtxだけへ送る。参照側の既存入力は変更せず、両者の実際に使ったstepsを保存する。対象の操作を削除せず、新しい配置で同じ操作を観察する。
 
 gtx用の5つの `right-*.steps` は、初回案内を通常のEnter入力で閉じてから観察する。参照側はobserve.pyの従来の起動手順を保持する。案内を残したまま観察するとキー入力が案内へ渡るため、状態切替やクリックの成功証拠にならない。
+
+## 保存済みSSH先の判断待ち取得
+
+`mac_dialog_machine_get.mjs` はNodeの実試験で、SSH先の隔離HOMEへ実サーバーを起動し、
+保存済みマシンのID・ラベルによる `decision get --machine` と直接取得の出力一致、
+接続できない先の非0終了を確認する。SSH先には既にビルドしたikesuとPython 3が必要。
+稼働中のサーバー・設定・セッションには触れず、試験サーバーは正常停止する。
+
+```sh
+IKESU_TEST_SSH_HOST=mini \
+IKESU_TEST_REMOTE_BIN=/absolute/path/on/mini/ikesu \
+IKESU_TEST_LOCAL_BIN=/absolute/path/to/current/ikesu \
+node --test tests/parity/mac_dialog_machine_get.mjs
+```
+
+再接続時の既決回収・照会失敗時の保持は、Macパネルの
+`test/reconnect-real-server.test.mjs` で実サーバーへ別のクライアントから回答・取消して検査する。
+`MAC_DIALOG_TEST_IKESU` に検査する実ikesuの絶対パスを指定する。
