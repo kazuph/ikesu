@@ -21,23 +21,23 @@ test('real remote Claude question screen reaches the decision API', {timeout:360
  t.after(()=>cleanupSteps(cleanups));
  root=(await exec('ssh',[target,'mktemp -d /tmp/gmd-screen-XXXXXX'])).stdout.trim();
  const config='onboarding=false\n[experimental]\nallow_nested=true\n[ui.sound]\nenabled=false\n[session]\nresume_agents_on_restore=false\n';
- const script=`mkdir -p ${quote(root+'/home')}\ncat > ${quote(root+'/config.toml')} <<'CONFIG'\n${config}CONFIG\ncat > ${quote(root+'/gtx')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteHome)}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(root+'/approval')}\nexport GTX_DB_PATH=${quote(root+'/dispatch.db')}\nexport GTX_STATE_DIR=${quote(root+'/state')}\nexport GTX_CONFIG=${quote(root+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(root+'/gtx')}`;
+ const script=`mkdir -p ${quote(root+'/home')}\ncat > ${quote(root+'/config.toml')} <<'CONFIG'\n${config}CONFIG\ncat > ${quote(root+'/ikesu')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteHome)}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(root+'/approval')}\nexport IKESU_DB_PATH=${quote(root+'/dispatch.db')}\nexport IKESU_STATE_DIR=${quote(root+'/state')}\nexport IKESU_CONFIG=${quote(root+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(root+'/ikesu')}`;
  await exec('ssh',[target,script]);
- const command=args=>[root+'/gtx','--session','screen-proof',...args].map(quote).join(' ');
+ const command=args=>[root+'/ikesu','--session','screen-proof',...args].map(quote).join(' ');
  const cli=async args=>(await exec('ssh',[target,command(args)],{timeout:30_000})).stdout;
  let server,localServer;
  cleanups.unshift(async()=>cleanupSteps([async()=>{if(localServer){try{await local(['server','stop']);}finally{localServer.kill('SIGTERM');}}},async()=>{if(server){try{await cli(['server','stop']);}finally{server.kill('SIGTERM');}}}]));
  server=spawn('ssh',[target,command(['server'])]);
  let serverLog='';server.stderr.on('data',b=>serverLog+=b);
- const localEnv={...isolatedEnv(process.env),AI_GUARD_TEMP_APPROVAL_FILE:localRoot+'/approval',HOME:localRoot+'/home',GTX_STATE_DIR:localRoot+'/state',GTX_DB_PATH:localRoot+'/dispatch.db',GTX_CONFIG:localRoot+'/config.toml',GTX_MACHINE_REMOTE_BINARY:root+'/gtx'};
- for(const key of ['GTX_SOCKET_PATH','GTX_PANE_ID','GTX_TAB_ID','GTX_WORKSPACE_ID','CODEX_THREAD_ID','CLAUDECODE'])delete localEnv[key];
+ const localEnv={...isolatedEnv(process.env),AI_GUARD_TEMP_APPROVAL_FILE:localRoot+'/approval',HOME:localRoot+'/home',IKESU_STATE_DIR:localRoot+'/state',IKESU_DB_PATH:localRoot+'/dispatch.db',IKESU_CONFIG:localRoot+'/config.toml',IKESU_MACHINE_REMOTE_BINARY:root+'/ikesu'};
+ for(const key of ['IKESU_SOCKET_PATH','IKESU_PANE_ID','IKESU_TAB_ID','IKESU_WORKSPACE_ID','CODEX_THREAD_ID','CLAUDECODE'])delete localEnv[key];
  fs.mkdirSync(localRoot+'/home');fs.writeFileSync(localRoot+'/config.toml',config);
  localServer=spawn(bin,['--session','screen-proof','server'],{env:localEnv});
  const local=async args=>(await exec(bin,['--session','screen-proof',...args],{env:localEnv,timeout:30_000})).stdout;
  const nativeState=localRoot+'/state/plugins/kazuph.mac-dialog-decisions';
  const pluginRoot=path.resolve(path.dirname(new URL(import.meta.url).pathname),'../../apps/mac-dialog-decisions');
  const hash=createHash('sha256').update(fs.readFileSync(pluginRoot+'/dialog.swift')).digest('hex').slice(0,12);
- fs.mkdirSync(nativeState+'/bin',{recursive:true});fs.copyFileSync(live.NATIVE_BINARY,nativeState+'/bin/gtx-decision-dialog-'+hash);fs.chmodSync(nativeState+'/bin/gtx-decision-dialog-'+hash,0o755);
+ fs.mkdirSync(nativeState+'/bin',{recursive:true});fs.copyFileSync(live.NATIVE_BINARY,nativeState+'/bin/ikesu-decision-dialog-'+hash);fs.chmodSync(nativeState+'/bin/ikesu-decision-dialog-'+hash,0o755);
  let pane,watch;const lines=[];
  cleanups.unshift(async()=>{
   if(pane){try{fs.writeFileSync(evidence+'/actual-screen.txt',await cli(['pane','read',pane,'--lines','100']));}catch{}}

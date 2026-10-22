@@ -48,7 +48,7 @@ test('実SSH試験は親宛先と接続先の明示なしでは外部処理前�
  }
 });
 test('IKESU環境を読み、消えた旧CLIの代わりにikesuを先に探す',t=>{
- const root=temporary(t);fs.symlinkSync(process.execPath,path.join(root,'ikesu'));fs.symlinkSync(process.execPath,path.join(root,'gtx'));
+ const root=temporary(t);fs.symlinkSync(process.execPath,path.join(root,'ikesu'));
  const config=plugin.loadConfig({IKESU_PLUGIN_CONFIG_DIR:root+'/config',IKESU_PLUGIN_STATE_DIR:root+'/state',IKESU_BIN_PATH:root+'/removed'});
  assert.equal(config.configDir,root+'/config');assert.equal(config.stateDir,root+'/state');
  assert.equal(plugin.resolveIkesuBin(config,()=>{}, {PATH:root}),root+'/ikesu');

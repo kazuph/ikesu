@@ -2,7 +2,7 @@
 
 Ikesu の判断待ち（`ikesu decision ask`、guard の `ask`、画面プロンプト検出など）を、macOS の最前面に開くネイティブダイアログで回答できるようにするプラグインです。Slack・Sabera グラス・アプリ・ターミナルと同じ `ikesu decision watch` の流れに乗る、もう1つの回答窓口です（後回しではなく、created と同時に並行して出ます）。
 
-CLI は `ikesu` を先に探索し、無ければ `gtx` を使用します。以下の例は `gtx` に置き換えても動きます。
+CLI は `ikesu` を先に探索し、無ければ `ikesu` を使用します。以下の例は `ikesu` に置き換えても動きます。
 
 ## 動作
 
@@ -47,14 +47,14 @@ ikesu plugin link <repo>/apps/mac-dialog-decisions
 | キー | 既定 | 意味 |
 | --- | --- | --- |
 | `enabled` | `true` | `false` でプラグイン無効（デーモンを起動しません） |
-| `ikesu_bin` | `ikesu` / `IKESU_BIN_PATH` | CLIのパス。旧 `gtx_bin` / `GTX_BIN_PATH` も使用可 |
+| `ikesu_bin` | `ikesu` / `IKESU_BIN_PATH` | CLIのパス。旧 `ikesu_bin` / `IKESU_BIN_PATH` も使用可 |
 | `helper_command` | なし | パネル表示プロセスの差し替え（テスト用。argv の配列。引数に spec JSON のパスが渡り、結果を stdout に JSON 行で返します） |
 | `later_minutes` | `10` | 「あとで」で閉じた判断待ちをもう一度出すまでの分数 |
 | `present_delay_ms` | `250` | キューの先頭を画面に出すまでの待ち。同時に届いた複数の判断待ちを束ねて、最初のダイアログの「ほかN件」を正確にします |
 
 環境変数でも上書きできます: `MAC_DIALOG_ENABLED`（`0`/`false` で無効）、`MAC_DIALOG_PRESENT_DELAY_MS`、`MAC_DIALOG_LATER_MS`、`MAC_DIALOG_HELPER_CMD`（JSON の argv）、`MAC_DIALOG_STATE_DIR`、`MAC_DIALOG_CONFIG`（設定ファイルのパス）。
 
-`IKESU_PLUGIN_CONFIG_DIR`、`IKESU_PLUGIN_STATE_DIR`、`IKESU_BIN_PATH`、`IKESU_SOCKET_PATH`、`IKESU_PANE_ID` を読みます。対応する `GTX_*` も使用でき、両方あるときは `IKESU_*` が優先です。
+`IKESU_PLUGIN_CONFIG_DIR`、`IKESU_PLUGIN_STATE_DIR`、`IKESU_BIN_PATH`、`IKESU_SOCKET_PATH`、`IKESU_PANE_ID` を読みます。対応する `IKESU_*` も使用でき、両方あるときは `IKESU_*` が優先です。
 
 ## オフにする方法
 
@@ -74,4 +74,4 @@ node --test apps/mac-dialog-decisions/test/render.test.mjs
 
 ## 出典
 
-作者本人の許可に基づき kazuph/herdr の `apps/mac-dialog-decisions` から導入。コマンド・環境変数・設定名・マニフェストを gtx に合わせて変更した。herdr 本体の実装は使用していない。
+作者本人の許可に基づき kazuph/herdr の `apps/mac-dialog-decisions` から導入。コマンド・環境変数・設定名・マニフェストを ikesu に合わせて変更した。herdr 本体の実装は使用していない。

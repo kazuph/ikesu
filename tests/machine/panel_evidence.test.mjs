@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-const base=process.env.GTX_PANEL_EVIDENCE_DIR;
+const base=process.env.IKESU_PANEL_EVIDENCE_DIR;
 const json=file=>JSON.parse(fs.readFileSync(file,'utf8'));
 
 test('saved native panel evidence matches real decision origin, single answer and process exit',()=>{
- assert.ok(base,'GTX_PANEL_EVIDENCE_DIR is required');
+ assert.ok(base,'IKESU_PANEL_EVIDENCE_DIR is required');
  for(const group of ['native','native-guard']) {
   const dir=path.join(base,group);
   const history=json(path.join(dir,'live-ssh.json')).transcript;
@@ -42,7 +42,7 @@ test('saved native panel evidence matches real decision origin, single answer an
 });
 
 test('real Claude screen question is answered through the parent and its native process exits',()=>{
- assert.ok(base,'GTX_PANEL_EVIDENCE_DIR is required');
+ assert.ok(base,'IKESU_PANEL_EVIDENCE_DIR is required');
  const dir=path.join(base,'real-screen-native');
  const decision=json(path.join(dir,'answered.json')).result.decision;
  const spec=json(path.join(dir,'native-screen-spec.json'));

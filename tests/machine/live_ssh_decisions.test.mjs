@@ -23,14 +23,14 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
  remoteRoot=(await exec('ssh',[target,'mktemp -d /tmp/gmd-XXXXXX'])).stdout.trim();
  fs.mkdirSync(path.join(root,'home'));
  const cfg=path.join(root,'config.toml'); fs.writeFileSync(cfg,configText);
- const env={...isolatedEnv(process.env),HOME:path.join(root,'home'),AI_GUARD_TEMP_APPROVAL_FILE:path.join(root,'approval'),GTX_STATE_DIR:path.join(root,'state'),GTX_DB_PATH:path.join(root,'dispatch.db'),GTX_CONFIG:cfg,GTX_MACHINE_REMOTE_BINARY:remoteRoot+'/gtx'};
- for(const k of ['GTX_SOCKET_PATH','GTX_PANE_ID','GTX_TAB_ID','GTX_WORKSPACE_ID','HERDR_PANE_ID','CODEX_THREAD_ID','CLAUDECODE']) delete env[k];
+ const env={...isolatedEnv(process.env),HOME:path.join(root,'home'),AI_GUARD_TEMP_APPROVAL_FILE:path.join(root,'approval'),IKESU_STATE_DIR:path.join(root,'state'),IKESU_DB_PATH:path.join(root,'dispatch.db'),IKESU_CONFIG:cfg,IKESU_MACHINE_REMOTE_BINARY:remoteRoot+'/ikesu'};
+ for(const k of ['IKESU_SOCKET_PATH','IKESU_PANE_ID','IKESU_TAB_ID','IKESU_WORKSPACE_ID','HERDR_PANE_ID','CODEX_THREAD_ID','CLAUDECODE']) delete env[k];
  const transcript=[];
  const run=async(args,allowFail=false)=>{
   try { const r=await exec(bin,['--session','proof',...args],{env,timeout:15_000}); transcript.push({args,code:0,...r}); return r.stdout; }
   catch(e) { transcript.push({args,code:e.code,stdout:e.stdout,stderr:e.stderr}); if(!allowFail) throw e; return e; }
  };
- const ssh=async args=>(await exec('ssh',[target,[remoteRoot+'/gtx','--session','proof',...args].map(quote).join(' ')],{timeout:15_000})).stdout;
+ const ssh=async args=>(await exec('ssh',[target,[remoteRoot+'/ikesu','--session','proof',...args].map(quote).join(' ')],{timeout:15_000})).stdout;
  let local,remote,watch,ask,guard,nativeState;const nativeRequests=[];const lines=[];let localLog='',remoteLog='',guardOutput='',guardErr='';
  cleanups.unshift(async()=>{
   for(const request of nativeRequests) request.kill('SIGTERM');
@@ -42,10 +42,10 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
   fs.writeFileSync(path.join(evidence,'guard.json'),JSON.stringify({guardOutput,guardErr},null,2));
   fs.writeFileSync(path.join(evidence,'live-ssh.json'),JSON.stringify({root,remoteRoot,transcript,localLog,remoteLog},null,2));
  });
- const setup=spawn('ssh',[target,`mkdir -p ${quote(remoteRoot+'/home')} && cat > ${quote(remoteRoot+'/config.toml')} && cat > ${quote(remoteRoot+'/gtx')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(remoteRoot+'/approval')}\nexport GTX_STATE_DIR=${quote(remoteRoot+'/state')}\nexport GTX_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport GTX_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(remoteRoot+'/gtx')}`]);
+ const setup=spawn('ssh',[target,`mkdir -p ${quote(remoteRoot+'/home')} && cat > ${quote(remoteRoot+'/config.toml')} && cat > ${quote(remoteRoot+'/ikesu')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(remoteRoot+'/approval')}\nexport IKESU_STATE_DIR=${quote(remoteRoot+'/state')}\nexport IKESU_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport IKESU_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(remoteRoot+'/ikesu')}`]);
  setup.stdin.end(configText); await new Promise((r,j)=>setup.on('exit',c=>c===0?r():j(Error('remote setup '+c))));
  local=spawn(bin,['--session','proof','server'],{env,stdio:['ignore','pipe','pipe']});
- remote=spawn('ssh',[target,`${quote(remoteRoot+'/gtx')} --session proof server`],{stdio:['ignore','pipe','pipe']});
+ remote=spawn('ssh',[target,`${quote(remoteRoot+'/ikesu')} --session proof server`],{stdio:['ignore','pipe','pipe']});
  local.stderr.on('data',b=>localLog+=b);remote.stderr.on('data',b=>remoteLog+=b);
  const until=async(fn,limit=15_000)=>{const end=Date.now()+limit;let last;do{try{return await fn();}catch(e){last=e;} await new Promise(r=>setTimeout(r,100));}while(Date.now()<end);throw last;};
  await until(()=>run(['workspace','list']));await until(()=>ssh(['workspace','list']));
@@ -63,7 +63,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
  watch=spawn(bin,['--session','proof','decision','watch','--all-machines'],{env});
  readline.createInterface({input:watch.stdout}).on('line',line=>{lines.push(JSON.parse(line));});
  await until(async()=>assert.ok(lines.some(x=>x.event==='machine_up'&&x.machine.id===profiles[0].id)));
- ask=spawn('ssh',[target,[remoteRoot+'/gtx','--session','proof','decision','ask','--title','テスト mini SSH ask','--option','yes:確認:approve','--option','no:却下:reject'].map(quote).join(' ')]);
+ ask=spawn('ssh',[target,[remoteRoot+'/ikesu','--session','proof','decision','ask','--title','テスト mini SSH ask','--option','yes:確認:approve','--option','no:却下:reject'].map(quote).join(' ')]);
  let askOutput='';ask.stdout.on('data',b=>askOutput+=b);
  await until(async()=>assert.ok(lines.some(x=>x.event==='created'&&x.decision?.title==='テスト mini SSH ask')));
  const decision=lines.find(x=>x.event==='created'&&x.decision?.title==='テスト mini SSH ask');assert.equal(decision.machine.id,profiles[0].id);
@@ -74,7 +74,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
  await until(async()=>assert.ok(lines.some(x=>x.event==='resolved'&&x.decision?.decision_id===decision.decision.decision_id)));
  await run(['--machine','mini-proof','pane','report-agent',pane,'--source','live-ssh-test','--agent','codex','--state','idle']);
  const marker=remoteRoot+'/state/guard/agent-panes/p_'+pane.slice(1)+'.json';
- const guardWords=['env','GTX_PANE_ID='+pane,'GTX_GUARD_MARKER='+marker,'AI_GUARD_REQUEST_REASON=テスト SSH guard',remoteRoot+'/gtx','--session','proof','guard','exec','--','/bin/echo','deploy-proof-approve'];
+ const guardWords=['env','IKESU_PANE_ID='+pane,'IKESU_GUARD_MARKER='+marker,'AI_GUARD_REQUEST_REASON=テスト SSH guard',remoteRoot+'/ikesu','--session','proof','guard','exec','--','/bin/echo','deploy-proof-approve'];
  guard=spawn('ssh',[target,guardWords.map(quote).join(' ')]);guard.stdout.on('data',b=>guardOutput+=b);guard.stderr.on('data',b=>guardErr+=b);
  await until(async()=>assert.ok(lines.some(x=>x.event==='created'&&x.decision?.kind==='command_guard')));
  const guardDecision=lines.find(x=>x.event==='created'&&x.decision?.kind==='command_guard');
@@ -86,8 +86,8 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
   nativeState=path.join(root,'state/plugins/kazuph.mac-dialog-decisions');
   const hash=createHash('sha256').update(fs.readFileSync(path.join(pluginRoot,'dialog.swift'))).digest('hex').slice(0,12);
   fs.mkdirSync(path.join(nativeState,'bin'),{recursive:true});
-  fs.copyFileSync(nativeBinary,path.join(nativeState,'bin/gtx-decision-dialog-'+hash));
-  fs.chmodSync(path.join(nativeState,'bin/gtx-decision-dialog-'+hash),0o755);
+  fs.copyFileSync(nativeBinary,path.join(nativeState,'bin/ikesu-decision-dialog-'+hash));
+  fs.chmodSync(path.join(nativeState,'bin/ikesu-decision-dialog-'+hash),0o755);
   await run(['workspace','rename','s1','テスト親Mac']);
   await run(['tab','rename','s1:t1','判断テスト']);
   await run(['pane','rename','p1','ローカル質問']);
@@ -106,12 +106,12 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
     const observer=fs.watch(evidence,()=>{if(fs.existsSync(destination)){clearTimeout(timeout);observer.close();resolve();}});
    });
   };
-  for(const owner of process.env.GTX_LIVE_TEST_NATIVE_GUARD_ONLY==='1'?[]:['local','mini-proof']) {
+  for(const owner of process.env.IKESU_LIVE_TEST_NATIVE_GUARD_ONLY==='1'?[]:['local','mini-proof']) {
    const title='テスト：'+(owner==='local'?'親Mac':'リモート')+' ネイティブパネル';
    const argv=['--session','proof','decision','ask','--title',title,'--body','音は無効。CLIで回答し、パネルをクリックせず閉鎖を確認する。','--option','yes:テストを確認:approve','--option','no:却下:reject'];
    const paneArgs=owner==='local'?[]:['--machine','mini-proof'];
    const sourcePane=owner==='local'?'p1':pane;
-   const sourceBin=owner==='local'?bin:remoteRoot+'/gtx';
+   const sourceBin=owner==='local'?bin:remoteRoot+'/ikesu';
    await run([...paneArgs,'pane','send-text',sourcePane,[sourceBin,...argv].map(quote).join(' ')]);
    await run([...paneArgs,'pane','send-keys',sourcePane,'Enter']);
    let requestOutput='';
@@ -132,8 +132,8 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
    assert.notEqual(duplicate.code,undefined);
    transcript.push({nativePanel:owner,decision:record.decision.decision_id,requestOutput,spec});
   }
-  if(process.env.GTX_LIVE_TEST_NATIVE_GUARD_ONLY==='1') {
-   const nativeGuard=spawn('ssh',[target,`cd /tmp && ${['env','GTX_PANE_ID='+pane,'GTX_GUARD_MARKER='+remoteRoot+'/state/guard/agent-panes/p_'+pane.slice(1)+'.json','AI_GUARD_REQUEST_REASON=テスト mini guard パネル',remoteRoot+'/gtx','--session','proof','guard','exec','--','/bin/echo','deploy-native-proof'].map(quote).join(' ')}`]);
+  if(process.env.IKESU_LIVE_TEST_NATIVE_GUARD_ONLY==='1') {
+   const nativeGuard=spawn('ssh',[target,`cd /tmp && ${['env','IKESU_PANE_ID='+pane,'IKESU_GUARD_MARKER='+remoteRoot+'/state/guard/agent-panes/p_'+pane.slice(1)+'.json','AI_GUARD_REQUEST_REASON=テスト mini guard パネル',remoteRoot+'/ikesu','--session','proof','guard','exec','--','/bin/echo','deploy-native-proof'].map(quote).join(' ')}`]);
    nativeRequests.push(nativeGuard);let output='',error='';nativeGuard.stdout.on('data',b=>output+=b);nativeGuard.stderr.on('data',b=>error+=b);
    let specPath,spec;
    await until(async()=>{

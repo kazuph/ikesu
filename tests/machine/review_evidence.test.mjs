@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-const root=process.env.GTX_PANEL_EVIDENCE_DIR;
-const read=folder=>{assert.ok(root,'GTX_PANEL_EVIDENCE_DIR required');return JSON.parse(fs.readFileSync(path.join(root,folder,'review-live.json'),'utf8'));};
+const root=process.env.IKESU_PANEL_EVIDENCE_DIR;
+const read=folder=>{assert.ok(root,'IKESU_PANEL_EVIDENCE_DIR required');return JSON.parse(fs.readFileSync(path.join(root,folder,'review-live.json'),'utf8'));};
 test('実サーバーの送信失敗・同じパネルの再回答・CLI後の独立削除の保存証拠',()=>{
  const proof=read('review-live');
  assert.equal(proof.results.answerFailure.pending,'pending');assert.equal(proof.results.answerFailure.automaticRetries,0);

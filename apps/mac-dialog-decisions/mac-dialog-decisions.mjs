@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// gtx plugin daemon: show pending decisions as a floating macOS panel.
+// ikesu plugin daemon: show pending decisions as a floating macOS panel.
 //
-// A `gtx decision watch --all-machines` subscription feeds `created` /
+// A `ikesu decision watch --all-machines` subscription feeds `created` /
 // `resolved` / `machine_up` / `machine_down` lines. Each pending decision is
 // presented one at a time in a native AppKit panel (dialog.swift) that shows
 // where it comes from, the question, every option with its description and
 // preview, and a free-text field, and returns the picked option(s) and/or
 // free text as a JSON line on stdout. The daemon turns
-// that into `gtx decision answer ... --responder mac-dialog`. When the
+// that into `ikesu decision answer ... --responder mac-dialog`. When the
 // decision resolves anywhere else, the open dialog is killed so a stale answer
 // is never sent.
 
@@ -43,8 +43,8 @@ function homePath(...parts) {
 function loadConfig(env = process.env) {
   const configDir =
     env.IKESU_PLUGIN_CONFIG_DIR ||
-    env.GTX_PLUGIN_CONFIG_DIR ||
-    homePath(".config", "gtx", "plugins", "config", PLUGIN_ID);
+    env.IKESU_PLUGIN_CONFIG_DIR ||
+    homePath(".config", "ikesu", "plugins", "config", PLUGIN_ID);
   const configPath =
     env.MAC_DIALOG_CONFIG || path.join(configDir, "config.json");
   let file = {};
@@ -56,8 +56,8 @@ function loadConfig(env = process.env) {
   const stateDir =
     env.MAC_DIALOG_STATE_DIR ||
     env.IKESU_PLUGIN_STATE_DIR ||
-    env.GTX_PLUGIN_STATE_DIR ||
-    homePath(".local", "state", "gtx", "plugins", PLUGIN_ID);
+    env.IKESU_PLUGIN_STATE_DIR ||
+    homePath(".local", "state", "ikesu", "plugins", PLUGIN_ID);
   const pickNumber = (envValue, fileValue, fallback) => {
     const parsed = Number(envValue ?? fileValue);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -78,7 +78,7 @@ function loadConfig(env = process.env) {
     enabled:
       (env.MAC_DIALOG_ENABLED ?? file.enabled ?? true) !== false &&
       env.MAC_DIALOG_ENABLED !== "0",
-    gtxBin: env.IKESU_BIN_PATH || env.GTX_BIN_PATH || file.ikesu_bin || file.gtx_bin || "ikesu",
+    ikesuBin: env.IKESU_BIN_PATH || file.ikesu_bin || "ikesu",
     helperCmd, // null = built-in osascript dialog.js
     // Brief delay before a queued decision takes the screen, so a burst of
     // simultaneous decisions reports the true queue size on the first dialog.
@@ -100,20 +100,20 @@ function loadConfig(env = process.env) {
 }
 
 // The daemon outlives the server that launched it: a Homebrew install records
-// GTX_BIN_PATH as a versioned Cellar path that `brew upgrade` deletes, so
-// every gtx invocation resolves the binary afresh — the configured path
+// IKESU_BIN_PATH as a versioned Cellar path that `brew upgrade` deletes, so
+// every ikesu invocation resolves the binary afresh — the configured path
 // while it exists, then PATH, then the usual prefixes.
 function resolveIkesuBin(config, logFn = () => {}, env = process.env) {
-  const configured = config.gtxBin;
-  if (configured && !["ikesu", "gtx"].includes(configured) && fs.existsSync(configured)) return configured;
-  for (const name of ["ikesu", "gtx"]) {
+  const configured = config.ikesuBin;
+  if (configured && configured !== "ikesu" && fs.existsSync(configured)) return configured;
+  for (const name of ["ikesu"]) {
     const candidates = [...(env.PATH || "").split(path.delimiter).filter(Boolean),
       "/opt/homebrew/bin", path.join(os.homedir(), ".local", "bin")].map(dir => path.join(dir, name));
     for (const candidate of candidates) {
       try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch {}
     }
   }
-  logFn("ikesu / gtx 実行ファイルが見つかりません");
+  logFn("ikesu 実行ファイルが見つかりません");
   return null;
 }
 
@@ -605,7 +605,7 @@ function spawnDecisionWatch(config, logFn, env = process.env) {
     return {
       lines: (async function* () {
         throw new Error(
-          `gtx 実行ファイルが見つかりません (GTX_BIN_PATH=${config.gtxBin})。` +
+          `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
             "PATH・/opt/homebrew/bin・~/.local/bin を確認してください",
         );
       })(),
@@ -720,7 +720,7 @@ function nativeDialogPath(config) {
     .update(fs.readFileSync(source))
     .digest("hex")
     .slice(0, 12);
-  return path.join(config.stateDir, "bin", `gtx-decision-dialog-${hash}`);
+  return path.join(config.stateDir, "bin", `ikesu-decision-dialog-${hash}`);
 }
 
 function ensureNativeDialog(config, logFn = () => {}) {
@@ -781,7 +781,7 @@ function createRunAnswer(config, logFn = () => {}, env = process.env) {
         code: 127,
         stdout: "",
         stderr:
-          `gtx 実行ファイルが見つかりません (GTX_BIN_PATH=${config.gtxBin})。` +
+          `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
           "PATH・/opt/homebrew/bin・~/.local/bin を確認してください",
       });
     }
@@ -876,16 +876,11 @@ async function ensureDaemon(config, env) {
 
     const pluginRoot = pluginRootDir();
     const exportsList = [
-      ["GTX_PLUGIN_CONFIG_DIR", config.configDir],
-      ["GTX_PLUGIN_STATE_DIR", config.stateDir],
-      ["GTX_SOCKET_PATH", env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH || ""],
-      ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH || ""],
-      ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH) ? "1" : ""],
-      ["GTX_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH || env.GTX_SOCKET_PATH) ? "1" : ""],
       ["IKESU_PLUGIN_CONFIG_DIR", config.configDir],
       ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
-      ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.gtxBin],
-      ["GTX_BIN_PATH", resolveIkesuBin(config, log) || config.gtxBin],
+      ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || ""],
+      ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
+      ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.ikesuBin],
       ["PATH", env.PATH || ""],
     ]
       .filter(([, value]) => value)
@@ -895,7 +890,7 @@ async function ensureDaemon(config, env) {
     const daemonBin = resolveIkesuBin(config, log);
     if (!daemonBin) {
       log(
-        `gtx 実行ファイルが見つかりません (GTX_BIN_PATH=${config.gtxBin})。` +
+        `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
           "デーモンを起動できません",
       );
       return;
@@ -905,7 +900,7 @@ async function ensureDaemon(config, env) {
       [
         "run",
         "--caller",
-        env.IKESU_PANE_ID || env.GTX_PANE_ID,
+        env.IKESU_PANE_ID,
         "--label",
         RUN_LABEL,
         "--cwd",
@@ -920,7 +915,7 @@ async function ensureDaemon(config, env) {
       { timeoutMs: 15_000 },
     );
     if (result.code !== 0) {
-      log(`gtx run に失敗: ${(result.stderr || result.stdout).trim()}`);
+      log(`ikesu run に失敗: ${(result.stderr || result.stdout).trim()}`);
       return;
     }
     fs.writeFileSync(
@@ -928,7 +923,7 @@ async function ensureDaemon(config, env) {
       JSON.stringify({ started: Date.now() }),
       { mode: 0o600 },
     );
-    log(`デーモンを gtx run ジョブとして起動しました (label=${RUN_LABEL})`);
+    log(`デーモンを ikesu run ジョブとして起動しました (label=${RUN_LABEL})`);
   } finally {
     fs.rmSync(lockDir, { recursive: true, force: true });
   }
@@ -1012,7 +1007,7 @@ async function main() {
   process.on("SIGINT", () => shutdown());
   process.on("SIGTERM", () => shutdown());
   await daemon.start();
-  log("watch 開始 (gtx decision watch --all-machines)");
+  log("watch 開始 (ikesu decision watch --all-machines)");
 }
 
 const invokedAsScript = (() => {

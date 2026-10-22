@@ -1,9 +1,9 @@
-// gtx decision dialog — a native AppKit panel built from the daemon's spec.
+// ikesu decision dialog — a native AppKit panel built from the daemon's spec.
 //
-//   gtx-decision-dialog <spec.json>
+//   ikesu-decision-dialog <spec.json>
 //
 // The daemon (mac-dialog-decisions.mjs) compiles this file with swiftc and
-// runs the binary directly. The panel never activates gtx's process and
+// runs the binary directly. The panel never activates ikesu's process and
 // never pulls focus back: it is a floating, non-activating panel that appears
 // on top of the current Space once, and the user clicks into it when ready.
 // Every control accepts the first click, so a click on an option answers even
@@ -562,7 +562,7 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func show() {
-    // Shown once, on top, without activating gtx's process or taking the
+    // Shown once, on top, without activating ikesu's process or taking the
     // keyboard from whatever the user is doing.
     panel.orderFrontRegardless()
     emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier)])
@@ -632,7 +632,7 @@ guard args.count >= 2,
   let data = FileManager.default.contents(atPath: args[1]),
   let spec = try? JSONDecoder().decode(DialogSpec.self, from: data)
 else {
-  FileHandle.standardError.write("usage: gtx-decision-dialog <spec.json> (spec unreadable)\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: ikesu-decision-dialog <spec.json> (spec unreadable)\n".data(using: .utf8)!)
   exit(2)
 }
 resultPath = spec.result_path

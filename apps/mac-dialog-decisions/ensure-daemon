@@ -1,6 +1,6 @@
 #!/bin/sh
-# gtx plugin entry point (decision.created hook / "start" action).
-# Ensures the mac-dialog-decisions daemon is running as a `gtx run` job, then exits.
+# ikesu plugin entry point (decision.created hook / "start" action).
+# Ensures the mac-dialog-decisions daemon is running as a `ikesu run` job, then exits.
 cd "$(dirname "$0")" || exit 1
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 exec node ./mac-dialog-decisions.mjs ensure
