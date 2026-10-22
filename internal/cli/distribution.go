@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/distribution"
 	"github.com/kazuph/ikesu/internal/plugin"
 )
@@ -68,9 +69,47 @@ func (r *runner) distributionCLI(p distribution.Product, args []string) int {
 		version = "0.4.1"
 	}
 	store := plugin.DefaultStore(version)
+	configPath := r.o.getenv("IKESU_CONFIG_PATH")
+	if configPath != "" {
+		if !filepath.IsAbs(configPath) {
+			fmt.Fprintln(r.errOut(), "IKESU_CONFIG_PATH must be absolute")
+			return 1
+		}
+		store.ConfigRoot = filepath.Dir(configPath)
+	} else {
+		configPath, err = filepath.Abs(config.Path())
+		if err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+	}
 	installer := &distribution.Installer{Product: p, Home: home, Store: store, Fetch: distribution.Curl{}}
 	installer.Register = func(ctx context.Context, manifest string) (bool, error) {
-		return r.registerDistribution(ctx, store, manifest)
+		sent, err := r.registerDistribution(ctx, store, manifest)
+		if err != nil || command != "mac-dialog" {
+			return sent, err
+		}
+		p, err := store.PreparedLink(manifest, true, nil)
+		if err != nil {
+			return true, err
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			return true, err
+		}
+		engine := plugin.Engine{Store: store, SocketPath: r.socketPath(), BinPath: exe, ConfigPath: configPath}
+		env, err := engine.Environment(p, plugin.Context{}, nil)
+		if err != nil {
+			return true, err
+		}
+		cmd := exec.CommandContext(ctx, "node", filepath.Join(p.Root, "mac-dialog-decisions.mjs"), "ensure")
+		cmd.Env = env
+		cmd.Dir = p.Root
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return true, fmt.Errorf("start or request Mac dialog cutover: %w: %s", err, output)
+		}
+		return true, nil
 	}
 	if command == "mac-dialog" {
 		installer.Verify = verifyMacDialogSignature

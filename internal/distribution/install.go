@@ -133,11 +133,13 @@ func (i *Installer) validate(root, v string) error {
 	if len(m.Build) != 0 {
 		return fmt.Errorf("release plugin must not require a build")
 	}
-	if i.Product.Name == "terminal-browser" {
+	{
 		data, err := os.ReadFile(filepath.Join(root, "VERSION"))
 		if err != nil || strings.TrimSpace(string(data)) != v {
 			return fmt.Errorf("release VERSION does not match %s", v)
 		}
+	}
+	if i.Product.Name == "terminal-browser" {
 		info, err := os.Stat(filepath.Join(root, "bin", "terminal-browser"))
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 			return fmt.Errorf("release executable missing or not executable")

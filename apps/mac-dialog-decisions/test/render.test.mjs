@@ -42,6 +42,11 @@ function decision(overrides = {}) {
 
 const machine = { id: "local", label: "Local" };
 
+test("質問進捗と同じ本文だけを省き、異なる本文は保持する", () => {
+  assert.equal(buildDialogSpec(decision({body: "質問 2/3"}), machine).body, "");
+  assert.equal(buildDialogSpec(decision({body: "質問 2/3\n説明は残す"}), machine).body, "質問 2/3\n説明は残す");
+});
+
 test("spec carries origin, question and every option field without truncation", () => {
   const spec = buildDialogSpec(decision(), machine, 0, { daemonPid: 42 });
   assert.equal(spec.window_title, "ikesu 判断待ち — work");
