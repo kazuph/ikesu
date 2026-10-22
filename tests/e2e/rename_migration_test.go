@@ -390,7 +390,7 @@ with sqlite3.connect(sys.argv[1]) as db:
 				var screenRaw []byte
 				for time.Now().Before(screenDeadline) {
 					var screen map[string]any
-					migrationRPC(t, newSocket, "pane.read", api.PaneReadParams{PaneID: pane}, &screen)
+					migrationRPC(t, newSocket, "pane.read", api.PaneReadParams{PaneID: pane, Source: "recent_unwrapped"}, &screen)
 					screenRaw, _ = json.Marshal(screen)
 					count = strings.Count(string(screenRaw), "label=retained-job")
 					if count > 0 {
