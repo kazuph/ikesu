@@ -222,7 +222,7 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 	}
 	queued := 0
 	for _, message := range pending {
-		if message.DeliveredAt == nil && strings.Contains(message.Body, "retained-job") {
+		if message.ToAgent == pane && message.DeliveredAt == nil && strings.Contains(message.Body, "retained-job") {
 			queued++
 		}
 	}
