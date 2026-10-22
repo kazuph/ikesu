@@ -47,6 +47,43 @@ class MigrationTest(unittest.TestCase):
         return {str(path.relative_to(self.home)): hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in self.home.rglob('*') if path.is_file()}
 
+    def seed_job_notice(self):
+        source = Path(__file__).parents[1].joinpath('internal/dispatch/store.go').read_text()
+        schema = source.split('const schemaSQL = decisionSchema + `', 1)[1].split('`;', 1)[0]
+        with sqlite3.connect(self.state / 'gtx.db') as db:
+            db.executescript(schema)
+            for identifier, kind, name in [(1,'agent','gtx-run'), (2,'agent','ikesu-run'), (3,'agent','p7')]:
+                db.execute("INSERT INTO actors(id,kind,name,first_seen_at,last_seen_at) VALUES(?,?,?,'before','before')",(identifier,kind,name))
+            db.execute("INSERT INTO dispatches(kind,room,from_actor,to_actor,body,created_at,status) VALUES('message','gtx-jobs',1,3,'pending completion','before','queued')")
+            db.execute("INSERT INTO dispatches(kind,room,from_actor,to_actor,body,created_at,status) VALUES('message','default',3,1,'runner reply','before','delivered')")
+
+    def test_internal_job_names_and_actor_collision(self):
+        self.seed_job_notice()
+        original = (self.state / 'gtx.db').read_bytes()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        target = self.home / '.local/state/ikesu/ikesu.db'
+        with sqlite3.connect(target) as db:
+            self.assertEqual(db.execute("SELECT room,from_actor,to_actor,status FROM dispatches ORDER BY id").fetchall(),
+                             [('ikesu-jobs',2,3,'queued'), ('default',3,2,'delivered')])
+            self.assertEqual(db.execute("SELECT id,name FROM actors WHERE name IN ('gtx-run','ikesu-run')").fetchall(),[(2,'ikesu-run')])
+            self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(),[])
+            self.assertEqual(db.execute("SELECT count(*) FROM dispatches WHERE kind='message' AND status='queued' AND room <> 'ikesu-jobs'").fetchone()[0],0)
+        self.assertEqual(Path(str(self.state)+'.pre-ikesu').joinpath('gtx.db').read_bytes(),original)
+        with sqlite3.connect(Path(str(target).replace('ikesu.db','gtx.db.pre-ikesu'))) as backup:
+            self.assertEqual(backup.execute("SELECT room FROM dispatches WHERE id=1").fetchone()[0],'gtx-jobs')
+
+    def test_job_log_bytes_and_reference_are_independent(self):
+        log = self.state / 'jobs/j1.log'
+        log.write_bytes((str(self.state) + '/original-output\n').encode() + bytes([0xff]))
+        before = hashlib.sha256(log.read_bytes()).hexdigest()
+        result = self.run_script()
+        self.assertEqual(result.returncode,0,result.stderr)
+        new = self.home / '.local/state/ikesu'
+        self.assertEqual(hashlib.sha256(new.joinpath('jobs/j1.log').read_bytes()).hexdigest(),before)
+        with sqlite3.connect(new / 'ikesu.db') as db:
+            self.assertEqual(db.execute('SELECT log_path FROM jobs').fetchone()[0],str(new/'jobs/j1.log'))
+
     def test_dry_run_is_read_only(self):
         before = self.snapshot()
         result = self.run_script('--dry-run')
@@ -173,6 +210,7 @@ inline = { "gtx" = "gtx" }
         self.assertEqual(list(self.home.rglob('.ikesu-migrate-*')), [])
 
     def test_commit_permission_failure_rolls_back_in_reverse(self):
+        self.seed_job_notice()
         before = self.snapshot()
         # An audit observer changes real directory permissions as the state
         # commit starts. No rename or filesystem result is substituted.
