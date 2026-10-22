@@ -90,12 +90,20 @@ class MigrationTest(unittest.TestCase):
     def test_mini_explicit_source_and_missing_config(self):
         destination = self.home / '.local/state/gtx'
         self.state.rename(destination)
+        with sqlite3.connect(destination / 'gtx.db') as db:
+            db.execute('UPDATE jobs SET log_path=?',(str(destination / 'jobs/j1.log'),))
+        session=destination / 'default/session.json'
+        data=json.loads(session.read_text())
+        data['log']=str(destination / 'jobs/j1.log')
+        session.write_text(json.dumps(data))
         import shutil
         shutil.rmtree(self.config)
         result = self.run_script('--source-state', str(destination), '--source-config', str(self.config))
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(self.home.joinpath('.local/state/ikesu/ikesu.db').is_file())
         self.assertTrue(self.home.joinpath('.config/ikesu').is_dir())
+        with sqlite3.connect(self.home / '.local/state/ikesu/ikesu.db') as db:
+            self.assertEqual(db.execute('SELECT log_path FROM jobs').fetchone()[0],str(self.home / '.local/state/ikesu/jobs/j1.log'))
         self.assertFalse(destination.exists())
         self.assertTrue(Path(str(destination)+'.pre-ikesu').is_dir())
 
@@ -128,6 +136,16 @@ class MigrationTest(unittest.TestCase):
             record=json.loads(db.execute('SELECT record FROM decisions').fetchone()[0])
         self.assertEqual(record['origin']['cwd'],str(self.home / '.local/state/ikesu'))
         self.assertEqual(record['body'],str(self.state)+'/historical-output')
+
+    def test_internal_job_actor_without_collision_keeps_identity(self):
+        self.seed_job_notice()
+        with sqlite3.connect(self.state / 'gtx.db') as db:
+            db.execute('DELETE FROM actors WHERE id=2')
+        result=self.run_script()
+        self.assertEqual(result.returncode,0,result.stderr)
+        with sqlite3.connect(self.home / '.local/state/ikesu/ikesu.db') as db:
+            self.assertEqual(db.execute("SELECT id,name FROM actors WHERE name='ikesu-run'").fetchall(),[(1,'ikesu-run')])
+            self.assertEqual(db.execute('SELECT from_actor,to_actor FROM dispatches WHERE id=1').fetchone(),(1,3))
 
     def test_dry_run_is_read_only(self):
         before = self.snapshot()
