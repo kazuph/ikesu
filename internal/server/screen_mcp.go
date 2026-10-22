@@ -44,14 +44,21 @@ func (s *Server) deliverMCPAnswer(pid int, signature string, prompt *screenpromp
 	return s.screenInputChecked(pid, signature, "\r", true, nil, &target)
 }
 
+const previewAnswerReadLimit = 5 // Parent's 2026-10-22 contract: first read plus four retries.
+
 func (s *Server) confirmPreviewAnswer(pid int, signature, option string) error {
-	if err := s.screenInputDelay(); err != nil {
-		return err
+	for read := 0; read < previewAnswerReadLimit; read++ {
+		if err := s.screenInputDelay(); err != nil {
+			return err
+		}
+		var current *screenprompt.Prompt
+		s.app.Do(func() { current = s.readScreenPrompt(pid) })
+		if current == nil || current.Signature() != signature || !current.HasPreview || current.Cursor < 0 || current.Cursor >= len(current.Items) {
+			return fmt.Errorf("preview question or selection became unreadable")
+		}
+		if current.Items[current.Cursor] == option {
+			return s.screenInputChecked(pid, signature, "\r", true, nil, &current.Cursor)
+		}
 	}
-	var current *screenprompt.Prompt
-	s.app.Do(func() { current = s.readScreenPrompt(pid) })
-	if current == nil || current.Signature() != signature || !current.HasPreview || current.Cursor < 0 || current.Cursor >= len(current.Items) || current.Items[current.Cursor] != option {
-		return fmt.Errorf("preview question or selected option changed")
-	}
-	return s.screenInputChecked(pid, signature, "\r", true, nil, &current.Cursor)
+	return fmt.Errorf("preview selection did not move after %d reads", previewAnswerReadLimit)
 }

@@ -2,6 +2,7 @@ package screenprompt
 
 import (
 	"github.com/kazuph/ikesu/internal/api"
+	"os"
 	"strings"
 	"testing"
 )
@@ -55,5 +56,28 @@ func TestMCPUnsupportedAndStaleHistoryAreNotConfirmations(t *testing.T) {
 	p := Parse("claude", append(old, next...))
 	if p == nil || p.MCPServer != "" || p.Params.Title != "New question?" || strings.Contains(p.Params.Title, "old") {
 		t.Fatalf("old MCP mixed into next question: %+v", p)
+	}
+}
+
+// Parent captured both screens from Claude Code v2.1.307, codex-cu's real
+// TextEdit permission request, and authorized keeping them as test fixtures.
+func TestMCPCapturedClaude21307Screens(t *testing.T) {
+	var previous *Prompt
+	for cursor, name := range []string{"accept", "decline"} {
+		data, err := os.ReadFile("testdata/claude-mcp-" + name + ".txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := Parse("claude", strings.Split(string(data), "\n"))
+		if p == nil || p.Params.Kind != "tool_permission" || p.Params.Title != `Allow Computer Use to use "TextEdit"?` || p.MCPServer != "codex-cu" || p.OriginAgent("claude") != "claude / MCP: codex-cu" || p.Cursor != cursor || p.Params.AllowText || p.Params.MultiSelect {
+			t.Fatalf("captured %s: %+v", name, p)
+		}
+		if len(p.Params.Options) != 2 || p.Params.Options[0].Label != "Accept" || p.Params.Options[0].Role != "approve" || p.Params.Options[1].Label != "Decline" || p.Params.Options[1].Role != "reject" {
+			t.Fatal(p.Params.Options)
+		}
+		if previous != nil && previous.Signature() != p.Signature() {
+			t.Fatal("cursor movement changed captured question identity")
+		}
+		previous = p
 	}
 }

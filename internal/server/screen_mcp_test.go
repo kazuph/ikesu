@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/screenprompt"
@@ -11,11 +12,16 @@ import (
 )
 
 func mcpScreen(server, question string, decline bool) string {
-	buttons := "❯ Accept   Decline"
+	name := "accept"
 	if decline {
-		buttons = "  Accept ❯ Decline"
+		name = "decline"
 	}
-	return "MCP server \"" + server + "\" requests your input\n\n" + question + "\n\n" + buttons + "\n\nEsc to cancel · ↑/↓ to navigate\n"
+	data, err := os.ReadFile("../screenprompt/testdata/claude-mcp-" + name + ".txt")
+	if err != nil {
+		panic(err)
+	}
+	picture := strings.ReplaceAll(string(data), "codex-cu", server)
+	return strings.ReplaceAll(picture, `Allow Computer Use to use "TextEdit"?`, question)
 }
 
 func TestMCPRealPTYArrowThenVerifiedEnter(t *testing.T) {
@@ -98,5 +104,58 @@ func TestMCPServerChangeDoesNotReuseOrFloodUpdateOldDecision(t *testing.T) {
 	d := screenRecord(t, s)
 	if d.Title != "New question?" || strings.Contains(d.Origin.Agent, "MCP") {
 		t.Fatal(d)
+	}
+}
+
+func TestPreviewAnswerReadsFiveTimesBeforeGivingUp(t *testing.T) {
+	for _, mode := range []string{"immediate", "late", "never", "question-changed"} {
+		t.Run(mode, func(t *testing.T) {
+			teststate.Lock(t)
+			s, p, input := screenTerminal(t, "claude-preview", "claude")
+			var prompt *screenprompt.Prompt
+			s.app.Do(func() {
+				prompt = s.readScreenPrompt(1)
+				s.screenPrompts.watches = map[int]*screenPromptWatch{}
+				s.screenPrompts.watches[1] = &screenPromptWatch{prompt: prompt, signature: prompt.Signature(), resolved: true, decisionID: "delivering"}
+				s.beginScreenFlowAnswer(1, prompt)
+			})
+			target := "2"
+			start := time.Now()
+			done := make(chan error, 1)
+			go func() {
+				done <- s.deliverScreenAnswer(1, prompt.Signature(), prompt, api.DecisionAnswer{OptionID: &target})
+			}()
+			waitPromptCondition(t, func() bool { data, _ := os.ReadFile(input); return string(data) == "2" })
+			if mode == "late" {
+				time.Sleep(2*agentPromptSubmitDelay + agentPromptSubmitDelay/2)
+			}
+			if mode != "never" {
+				picture := screenDialog(t, "claude-preview")
+				picture = strings.ReplaceAll(picture, "❯ 1. Short", "  1. Short")
+				picture = strings.ReplaceAll(picture, "  2. Detailed", "❯ 2. Detailed")
+				if mode == "question-changed" {
+					picture = strings.ReplaceAll(picture, "Which draft should we keep?", "Which different draft should we keep?")
+				}
+				paintScreen(p, picture)
+			}
+			err := <-done
+			if mode == "immediate" || mode == "late" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				waitPromptCondition(t, func() bool { data, _ := os.ReadFile(input); return string(data) == "2\r" })
+			} else {
+				if err == nil {
+					t.Fatal("unsafe preview answer succeeded")
+				}
+				if data, _ := os.ReadFile(input); string(data) != "2" {
+					t.Fatalf("unexpected confirmation after %s: %q", mode, data)
+				}
+				if mode == "never" && time.Since(start) < previewAnswerReadLimit*agentPromptSubmitDelay {
+					t.Fatal("gave up before all five read intervals")
+				}
+			}
+			t.Logf("%s: elapsed=%s error=%v", mode, time.Since(start), err)
+		})
 	}
 }
