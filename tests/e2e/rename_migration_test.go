@@ -155,7 +155,7 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 	if err = os.MkdirAll(plugin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	manifest := "id='migration.example'\nname='Migration example'\nversion='1.0.0'\nmin_gtx_version='0.3.0'\n[[actions]]\nid='proof'\ntitle='Proof'\ncommand=['/bin/sh','-c','printf plugin-ok']\n"
+	manifest := "id='migration.example'\nname='Migration example'\nversion='1.0.0'\nmin_gtx_version='0.3.0'\n[[actions]]\nid='proof'\ntitle='Proof'\ncommand=['/usr/bin/env']\n"
 	if err = os.WriteFile(filepath.Join(plugin, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -264,6 +264,51 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 			pluginRaw, _ := json.Marshal(plugins)
 			if !strings.Contains(string(pluginRaw), "migration.example") || strings.Contains(string(pluginRaw), oldRepo) {
 				t.Fatal(string(pluginRaw))
+			}
+			type envLog struct {
+				LogID  string  `json:"log_id"`
+				Status string  `json:"status"`
+				Stdout *string `json:"stdout"`
+			}
+			var invoked struct {
+				Log envLog `json:"log"`
+			}
+			migrationRPC(t, newSocket, "plugin.action.invoke", map[string]any{"plugin_id": "migration.example", "action_id": "migration.example.proof"}, &invoked)
+			logDeadline := time.Now().Add(15 * time.Second)
+			for time.Now().Before(logDeadline) {
+				var logs struct {
+					Logs []envLog `json:"logs"`
+				}
+				migrationRPC(t, newSocket, "plugin.log.list", map[string]any{"plugin_id": "migration.example"}, &logs)
+				for _, log := range logs.Logs {
+					if log.LogID == invoked.Log.LogID {
+						invoked.Log = log
+						break
+					}
+				}
+				if invoked.Log.Status != "running" {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+
+			if invoked.Log.Stdout == nil || !strings.Contains(*invoked.Log.Stdout, "IKESU_PLUGIN_ID=migration.example") || !strings.Contains(*invoked.Log.Stdout, "IKESU_PLUGIN_ROOT="+filepath.Join(newRepo, "apps/example")) || strings.Contains("\n"+*invoked.Log.Stdout, "\nGTX_") {
+				t.Fatalf("plugin environment not restored with new names: %+v", invoked)
+			}
+			envPath := filepath.Join(home, "pane-env-"+name)
+			migrationRPC(t, newSocket, "pane.send_text", api.PaneSendTextParams{PaneID: pane, Text: "/usr/bin/env > " + envPath}, nil)
+			migrationRPC(t, newSocket, "pane.send_keys", api.PaneSendKeysParams{PaneID: pane, Keys: []string{"Enter"}}, nil)
+			deadline := time.Now().Add(15 * time.Second)
+			var paneEnv []byte
+			for time.Now().Before(deadline) {
+				paneEnv, _ = os.ReadFile(envPath)
+				if strings.Contains(string(paneEnv), "IKESU_PANE_ID="+pane) {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if !strings.Contains(string(paneEnv), "IKESU_PANE_ID="+pane) || strings.Contains("\n"+string(paneEnv), "\nGTX_") {
+				t.Fatalf("restored pane environment: %s", paneEnv)
 			}
 			db, err := dispatch.Open(filepath.Join(newRoot, "sessions/stage3/ikesu.db"))
 			if err != nil {
