@@ -16,7 +16,7 @@ func TestStoppedAppAPIRejectsInsteadOfZeroSuccess(t *testing.T) {
 	done := make(chan struct{})
 	go func() { s.app.Run(); close(done) }()
 	s.app.Stop()
-	<-done
+	waitServerExit(t, done)
 	defer s.sup.KillAll()
 	path := filepath.Join(teststate.TempDir(t), "stopping.sock")
 	listener, err := net.Listen("unix", path)
@@ -57,5 +57,5 @@ func TestStoppedAppAPIRejectsInsteadOfZeroSuccess(t *testing.T) {
 		}
 	}
 	_ = client.Close()
-	<-served
+	waitServerExit(t, served)
 }

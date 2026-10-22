@@ -37,7 +37,7 @@ func dialClient(t *testing.T, dir string) *testConn {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		conn, err := net.Dial("unix", api.ClientSocketPath(dir))
+		conn, err := net.DialTimeout("unix", api.ClientSocketPath(dir), time.Until(deadline))
 		if err == nil {
 			return &testConn{conn: conn, rd: bufio.NewReader(conn)}
 		}
@@ -156,12 +156,15 @@ func startTestEndpoint(t *testing.T, peer endpoint.Peer) (dir string, done chan 
 		}
 		done <- code
 	}()
+	waitAPISocket(t, dir)
 	return dir, done
 }
 
 func TestAttachDetachReattach(t *testing.T) {
 	teststate.Lock(t)
+	useTestShellPrompt(t)
 	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
 
 	// Attach 1: hello, then drive the pane.
 	c1 := dialClient(t, dir)
@@ -172,6 +175,7 @@ func TestAttachDetachReattach(t *testing.T) {
 	if outputs(msgs) == "" {
 		t.Fatal("no output frames received")
 	}
+	waitRead(t, dir, firstPaneID(t, dir), "ikesu-test-ready")
 
 	// Type a command; the echo output should arrive over the socket.
 	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo ikesumarker42\n"))})
@@ -252,6 +256,7 @@ func TestAttachDetachReattach(t *testing.T) {
 
 func TestSecondClientPreservesFirst(t *testing.T) {
 	teststate.Lock(t)
+	useTestShellPrompt(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
 	waitAPISocket(t, dir)
@@ -278,6 +283,7 @@ func TestSecondClientPreservesFirst(t *testing.T) {
 	defer c1.conn.Close()
 	c1.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	waitRead(t, dir, pid, "ikesu-test-ready")
 	firstEnded := consume(c1)
 	c2 := dialClient(t, dir)
 	defer c2.conn.Close()
@@ -311,11 +317,14 @@ func TestSecondClientPreservesFirst(t *testing.T) {
 
 func TestServerExitsWhenLastPaneExits(t *testing.T) {
 	teststate.Lock(t)
+	useTestShellPrompt(t)
 	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
 
 	c := dialClient(t, dir)
 	c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	waitRead(t, dir, firstPaneID(t, dir), "ikesu-test-ready")
 
 	// Exit the only pane's shell: the app quits, the client sees "exit".
 	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("exit\n"))})
@@ -337,19 +346,38 @@ func TestServerExitsWhenLastPaneExits(t *testing.T) {
 	}
 }
 
+// A real login shell reads this after the system profile. macOS's /etc/bashrc
+// overwrites an inherited PS1, so an environment-only readiness marker is lost.
+func useTestShellPrompt(t *testing.T) {
+	t.Helper()
+	home := teststate.TempDir(t)
+	teststate.Setenv(t, "HOME", home)
+	// Linux's non-login shell inherits PS1; macOS resets it before .profile.
+	teststate.Setenv(t, "PS1", "ikesu-test-ready$ ")
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte("PS1='ikesu-test-ready$ '\nexport PS1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func stopServer(t *testing.T, dir string, done chan int) {
 	t.Helper()
-	conn, err := net.Dial("unix", api.APISocketPath(dir))
+	conn, err := net.DialTimeout("unix", api.APISocketPath(dir), 10*time.Second)
 	if err != nil {
 		return
 	}
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
 	json.NewEncoder(conn).Encode(map[string]any{"id": "t", "method": "server.stop", "params": map[string]any{}})
 	bufio.NewReader(conn).ReadBytes('\n')
 	conn.Close()
+	waitServerExit(t, done)
+}
+
+func waitServerExit[T any](t *testing.T, done <-chan T) {
+	t.Helper()
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("server did not exit")
+		t.Fatal("server did not exit before fixture deadline")
 	}
 }
 

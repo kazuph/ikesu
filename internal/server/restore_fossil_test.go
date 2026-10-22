@@ -21,7 +21,7 @@ func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
 	teststate.Setenv(t, "LC_ALL", locale)
 
 	dir, done := startServerAt(t, "fossil")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
 

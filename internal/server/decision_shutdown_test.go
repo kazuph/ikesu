@@ -19,7 +19,7 @@ func TestDecisionWaitAfterAppStopClosesWithoutInvalidResponse(t *testing.T) {
 	done := make(chan struct{})
 	go func() { s.app.Run(); close(done) }()
 	s.app.Stop()
-	<-done
+	waitServerExit(t, done)
 	defer s.sup.KillAll()
 	path := filepath.Join(teststate.TempDir(t), "wait.sock")
 	listener, err := net.Listen("unix", path)
@@ -49,5 +49,5 @@ func TestDecisionWaitAfterAppStopClosesWithoutInvalidResponse(t *testing.T) {
 	if err != nil || len(data) != 0 {
 		t.Fatalf("stopped wait must close for reconnect, response=%s err=%v", data, err)
 	}
-	<-served
+	waitServerExit(t, served)
 }

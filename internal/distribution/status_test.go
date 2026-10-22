@@ -3,7 +3,6 @@ package distribution
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -11,10 +10,7 @@ import (
 )
 
 func TestMacStatusSeparatesRegistrationRunningAndUnknownOwner(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Fatal("node is required for the real daemon-owner process test", err)
-	}
+	node := fixtureNode(t)
 	home := t.TempDir()
 	store := &plugin.Store{ConfigRoot: filepath.Join(home, "config"), StateRoot: filepath.Join(home, "state"), Version: "0.4.1"}
 	i := &Installer{Product: MacDialog, Home: home, Store: store}
@@ -44,7 +40,7 @@ platforms=["macos"]
 	if err := os.WriteFile(script, []byte("setInterval(()=>{}, 1000);\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	process := exec.Command(node, script, "run")
+	process := fixtureCommand(t, fixtureEnvironment(home), node, script, "run")
 	if err := process.Start(); err != nil {
 		t.Fatal(err)
 	}

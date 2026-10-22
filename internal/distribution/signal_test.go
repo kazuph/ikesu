@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -140,8 +139,10 @@ func TestRealSignalsCompleteRegistrationRollback(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			command := exec.Command(exe, "-test.run=^TestInstallSignalProcess$", "-test.v")
-			command.Env = append(os.Environ(), "IKESU_INSTALL_SIGNAL_HELPER=1", "IKESU_INSTALL_SIGNAL_HOME="+fixture.Home, "IKESU_INSTALL_SIGNAL_URL="+service.URL, "IKESU_INSTALL_SIGNAL_CERT="+certificate)
+			command := fixtureCommand(t, fixtureEnvironment(fixture.Home,
+				"IKESU_INSTALL_SIGNAL_HELPER=1", "IKESU_INSTALL_SIGNAL_HOME="+fixture.Home,
+				"IKESU_INSTALL_SIGNAL_URL="+service.URL, "IKESU_INSTALL_SIGNAL_CERT="+certificate),
+				exe, "-test.run=^TestInstallSignalProcess$", "-test.v")
 			input, err := command.StdinPipe()
 			if err != nil {
 				t.Fatal(err)

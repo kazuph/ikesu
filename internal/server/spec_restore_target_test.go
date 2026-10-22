@@ -39,9 +39,9 @@ func TestSPECStableAgentTargetAfterRestart(t *testing.T) {
 	waitForSessionFile(t, dir)
 	apiOK(t, dir, api.MethodServerRestart, api.EmptyParams{}, nil)
 	waitAPISocketGone(t, dir)
-	<-done
+	waitServerExit(t, done)
 	dir, done = startServerAt(t, "stable")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 	if got := paneIDs(t, dir); !reflect.DeepEqual(got, ids) {
 		t.Fatal("restored IDs", got, ids)
 	}

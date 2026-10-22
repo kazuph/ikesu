@@ -224,5 +224,5 @@ func TestRestartNotifiesClient(t *testing.T) {
 		}
 		t.Fatalf("client never got restart msg; saw %v", types)
 	}
-	<-done
+	waitServerExit(t, done)
 }

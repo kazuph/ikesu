@@ -19,7 +19,7 @@ func TestReview1SlowLoginShellDoesNotBlockPaneList(t *testing.T) {
 	teststate.Setenv(t, "SHELL", shell)
 	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "review1-slow")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 	started := make(chan api.Response, 1)
 	go func() {
 		started <- apiReq(t, dir, api.MethodAgentStart, api.AgentStartParams{Argv: []string{"/bin/sleep", "60"}})
@@ -54,7 +54,7 @@ func TestReview1AgentStartExplicitPATH(t *testing.T) {
 	teststate.Setenv(t, "SHELL", shell)
 	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "explicit")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
+	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
 	record := filepath.Join(root, "env")
 	var res api.AgentStartedResult
 	apiOK(t, dir, api.MethodAgentStart, api.AgentStartParams{Env: map[string]string{"PATH": "/x"}, Argv: []string{"/bin/sh", "-c", "printf '%s' \"$PATH\" > '" + record + "'; exec /bin/sleep 60"}}, &res)
