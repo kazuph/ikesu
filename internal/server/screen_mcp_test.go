@@ -33,12 +33,12 @@ func TestMCPRealPTYArrowThenVerifiedEnter(t *testing.T) {
 			paintScreen(p, picture)
 			scanScreen(s)
 			d := screenRecord(t, s)
-			if d.Origin == nil || d.Origin.Agent != "claude / MCP: first" || d.Kind != "tool_permission" || d.AllowText {
+			if d.Origin == nil || d.Origin.Agent != "claude / MCP server “first”" || d.Kind != "tool_permission" || d.AllowText {
 				t.Fatal(d)
 			}
 			var prompt *screenprompt.Prompt
 			s.app.Do(func() { prompt = s.screenPrompts.watches[1].prompt; s.beginScreenFlowAnswer(1, prompt) })
-			id := "decline"
+			id := "2"
 			done := make(chan error, 1)
 			go func() {
 				done <- s.deliverScreenAnswer(1, prompt.Signature(), prompt, api.DecisionAnswer{OptionID: &id})
@@ -87,7 +87,7 @@ func TestMCPServerChangeDoesNotReuseOrFloodUpdateOldDecision(t *testing.T) {
 		scanScreen(s)
 		scanScreen(s)
 		d := screenRecord(t, s)
-		if d.DecisionID == previous.DecisionID || d.Origin.Agent != "claude / MCP: "+server {
+		if d.DecisionID == previous.DecisionID || d.Origin.Agent != "claude / MCP server “"+server+"”" {
 			t.Fatal("server change reused old decision", d, previous)
 		}
 		if previous.DecisionID != "" {

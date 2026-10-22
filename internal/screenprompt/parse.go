@@ -360,6 +360,7 @@ func FromDecision(d api.Decision) string {
 	server := ""
 	if d.Origin != nil {
 		_, server, _ = strings.Cut(d.Origin.Agent, mcpOriginSeparator)
+		server = strings.TrimSuffix(server, "”")
 	}
 	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
 }

@@ -9,11 +9,11 @@ import (
 var mcpHeader = regexp.MustCompile(`^\s*MCP server ["“]([^"”]+)["”] requests your input\s*$`)
 var mcpButtons = regexp.MustCompile(`^[ \t]*([❯›>]?[ \t]*)Accept[ \t]+([❯›>]?[ \t]*)Decline[ \t]*$`)
 
-const mcpOriginSeparator = " / MCP: "
+const mcpOriginSeparator = " / MCP server “"
 
 func (p *Prompt) OriginAgent(agent string) string {
 	if p.MCPServer != "" {
-		return agent + mcpOriginSeparator + p.MCPServer
+		return agent + mcpOriginSeparator + p.MCPServer + "”"
 	}
 	return agent
 }
@@ -78,7 +78,7 @@ func parseMCP(screen []string) *Prompt {
 	if title == "" {
 		return nil
 	}
-	return &Prompt{MCPServer: server, Cursor: cursor, Progress: -1, Items: []string{"accept", "decline"}, Keys: map[string]string{}, Checked: map[string]bool{}, Params: api.DecisionCreateParams{Kind: "tool_permission", Title: title, Options: []api.DecisionOption{
-		{ID: "accept", Label: "Accept", Role: "approve"}, {ID: "decline", Label: "Decline", Role: "reject"},
+	return &Prompt{MCPServer: server, Cursor: cursor, Progress: -1, Items: []string{"1", "2"}, Keys: map[string]string{}, Checked: map[string]bool{}, Params: api.DecisionCreateParams{Kind: "tool_permission", Title: title, Options: []api.DecisionOption{
+		{ID: "1", Label: "Accept", Role: "approve"}, {ID: "2", Label: "Decline", Role: "reject"},
 	}}}
 }

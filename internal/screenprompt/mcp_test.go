@@ -69,7 +69,7 @@ func TestMCPCapturedClaude21307Screens(t *testing.T) {
 			t.Fatal(err)
 		}
 		p := Parse("claude", strings.Split(string(data), "\n"))
-		if p == nil || p.Params.Kind != "tool_permission" || p.Params.Title != `Allow Computer Use to use "TextEdit"?` || p.MCPServer != "codex-cu" || p.OriginAgent("claude") != "claude / MCP: codex-cu" || p.Cursor != cursor || p.Params.AllowText || p.Params.MultiSelect {
+		if p == nil || p.Params.Kind != "tool_permission" || p.Params.Title != `Allow Computer Use to use "TextEdit"?` || p.MCPServer != "codex-cu" || p.OriginAgent("claude") != "claude / MCP server “codex-cu”" || p.Cursor != cursor || p.Params.AllowText || p.Params.MultiSelect {
 			t.Fatalf("captured %s: %+v", name, p)
 		}
 		if len(p.Params.Options) != 2 || p.Params.Options[0].Label != "Accept" || p.Params.Options[0].Role != "approve" || p.Params.Options[1].Label != "Decline" || p.Params.Options[1].Role != "reject" {
