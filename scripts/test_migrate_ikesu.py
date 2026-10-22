@@ -56,6 +56,46 @@ class MigrationTest(unittest.TestCase):
         self.assertIn('gtx-unused', result.stdout)
         self.assertEqual(self.snapshot(), before)
 
+    def test_config_values_are_listed_converted_and_backed_up(self):
+        text = """# gtx remains in this comment
+[ui.toast]
+delivery = "gtx"
+[guard]
+targets = [
+  'gtx',
+  'herdr',
+]
+[example]
+"gtx" = "system"
+inline = { "gtx" = "gtx" }
+"""
+        path = self.config / 'config.toml'
+        path.write_text(text)
+        before = self.snapshot()
+        dry = self.run_script('--dry-run')
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertIn('ui.toast.delivery: gtx -> ikesu', dry.stdout)
+        self.assertIn('guard.targets: gtx -> ikesu', dry.stdout)
+        self.assertEqual(self.snapshot(), before)
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        new = self.home / '.config/ikesu/config.toml'
+        after = new.read_text()
+        self.assertIn('delivery = "ikesu"', after)
+        self.assertIn("'ikesu'", after)
+        self.assertIn('"gtx" = "system"', after)
+        self.assertIn('inline = { "gtx" = "ikesu" }', after)
+        self.assertIn('# gtx remains in this comment', after)
+        self.assertEqual(Path(str(new) + '.pre-ikesu').read_text(), text)
+
+    def test_system_delivery_is_unchanged(self):
+        text = '[ui.toast]\ndelivery = "system"\n'
+        self.config.joinpath('config.toml').write_text(text)
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('CONFIG VALUE', result.stdout)
+        self.assertEqual(self.home.joinpath('.config/ikesu/config.toml').read_text(), text)
+
     def test_move_rewrite_backup_and_preserve(self):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)

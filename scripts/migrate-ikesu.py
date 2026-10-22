@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Offline, reversible stage-three migration. Run on each host with servers stopped."""
 import argparse
+import ast
 import errno
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -122,6 +124,50 @@ class Migration:
                 for sql, args in statements:
                     db.execute(sql, args)
 
+    def config_values(self, text, path):
+        # Preserve TOML keys, comments and formatting. This edits string
+        # tokens rather than reserializing the user's configuration.
+        pattern = re.compile(r"""#[^\n]*|"{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{3}|"(?:\\.|[^"\\])*"|'[^']*'|[^"'#]+""")
+        table, key = '', ''
+        in_value, depth = False, 0
+        out = []
+        for match in pattern.finditer(text):
+            token = match.group()
+            if token.startswith('#'):
+                out.append(token)
+                continue
+            if token.startswith(('"', "'")):
+                width = 3 if token.startswith(('"""', "'''")) else 1
+                value = token[width:-width]
+                if token.startswith('"'):
+                    value = ast.literal_eval(token)
+                if width == 3 and value.startswith('\n'):
+                    value = value[1:]
+                is_key = text[match.end():].lstrip().startswith(('=', '.'))
+                if in_value and not is_key and value == 'gtx':
+                    print(f'CONFIG VALUE {path}: {table + "." if table else ""}{key}: gtx -> ikesu')
+                    token = token[:width] + 'ikesu' + token[-width:]
+                elif not in_value:
+                    key += token
+                out.append(token)
+                continue
+            for char in token:
+                if char == '=' and not in_value:
+                    in_value = True
+                elif char == '\n' and depth == 0:
+                    if not in_value and key.strip().startswith('['):
+                        table = key.strip().strip('[]')
+                    key, in_value = '', False
+                elif in_value:
+                    if char in '[{':
+                        depth += 1
+                    elif char in ']}':
+                        depth -= 1
+                elif not char.isspace():
+                    key += char
+            out.append(token)
+        return ''.join(out)
+
     def rewrite(self, root, dry):
         for path in sorted(root.rglob('*')):
             if path.is_symlink():
@@ -153,6 +199,8 @@ class Migration:
                 after = before if parsed == changed else json.dumps(changed, ensure_ascii=False, indent=2) + '\n'
             else:
                 after = self.text(before)
+                if path.name == 'config.toml':
+                    after = self.config_values(after, path)
             if after != before:
                 print(f'REWRITE FILE {path} (keep .pre-ikesu)')
                 if not dry:
