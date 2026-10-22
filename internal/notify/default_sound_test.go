@@ -62,7 +62,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		if err != nil || !bytes.Equal(got, b) {
 			t.Fatal("wrong materialized sound", err)
 		}
-		for _, path := range []string{filepath.Join(cache, "ikesu-next"), filepath.Dir(want), want} {
+		for _, path := range []string{filepath.Join(cache, "ikesu"), filepath.Dir(want), want} {
 			info, err := os.Stat(path)
 			if err != nil {
 				t.Fatal(err)
@@ -89,8 +89,8 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		other := d
 		other.Executable = "/tmp/ikesu"
 		otherPath, err := other.defaultSound(tc.kind)
-		if err != nil || otherPath == want || filepath.Dir(otherPath) != filepath.Join(cache, "ikesu", "sounds") {
-			t.Fatal("namespace collision", otherPath, err)
+		if err != nil || otherPath != want || filepath.Dir(otherPath) != filepath.Join(cache, "ikesu", "sounds") {
+			t.Fatal("executable-dependent sound cache", otherPath, err)
 		}
 	}
 }

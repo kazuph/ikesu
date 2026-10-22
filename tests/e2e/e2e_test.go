@@ -104,7 +104,9 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), []byte("PS1='❯ '\n"), 0o644); err != nil {
 		t.Fatalf("zshrc: %v", err)
 	}
-	sess := strings.ReplaceAll(t.Name(), "/", "_")
+	// Each launch has its own state root; a short name keeps the new socket
+	// filename within macOS's Unix socket address limit, even in long tests.
+	sess := "e2e"
 	// Disable startup auto-resume so a restored session can never launch
 	// a real agent binary inside a test.
 	cfgDir := t.TempDir()

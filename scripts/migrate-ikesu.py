@@ -170,6 +170,12 @@ class Migration:
 
     def rewrite(self, root, dry):
         for path in sorted(root.rglob('*')):
+            relative = path.relative_to(root)
+            if path.name == 'gtx' and relative.parts[:2] == ('guard', 'bin'):
+                print(f'RETIRE guard entry {path} (preserved in original directory backup)')
+                if not dry:
+                    path.unlink()
+                continue
             if path.is_symlink():
                 old = os.readlink(path)
                 new = self.text(old)

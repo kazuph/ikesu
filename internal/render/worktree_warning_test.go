@@ -15,7 +15,7 @@ func TestEndpointWorktreeRejectionKeepsActionButtonsAndToast(t *testing.T) {
 		in := Input{State: s, ServerUI: true, ConfigWarningBanner: true, ConfigWarning: "ikesu worktree actions require a workspace inside a Git work tree."}
 		base := Compose(Input{State: s, ServerUI: true})
 		out := Compose(in)
-		if c := out.Frame.Cell(34, 24); c.Content != "g" || c.Style.Fg != out.Frame.Palette.Red || c.Style.Bg != nil {
+		if c := out.Frame.Cell(34, 24); c.Content != "i" || c.Style.Fg != out.Frame.Palette.Red || c.Style.Bg != nil {
 			t.Fatal("rejection did not occupy the observed action bar slot", c)
 		}
 		if cols == 100 {

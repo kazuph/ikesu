@@ -96,6 +96,21 @@ inline = { "gtx" = "gtx" }
         self.assertNotIn('CONFIG VALUE', result.stdout)
         self.assertEqual(self.home.joinpath('.config/ikesu/config.toml').read_text(), text)
 
+    def test_old_guard_command_is_retained_only_in_backup(self):
+        shim = self.state / 'guard/bin/p_1/gtx'
+        shim.parent.mkdir(parents=True)
+        shim.write_text('#!/bin/sh\nexit 0\n')
+        shim.chmod(0o700)
+        dry = self.run_script('--dry-run')
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertIn('RETIRE guard entry', dry.stdout)
+        self.assertTrue(shim.exists())
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.home.joinpath('.local/state/ikesu/guard/bin/p_1/gtx').exists())
+        backup = Path(str(self.state) + '.pre-ikesu') / 'guard/bin/p_1/gtx'
+        self.assertEqual(backup.read_text(), '#!/bin/sh\nexit 0\n')
+
     def test_move_rewrite_backup_and_preserve(self):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
