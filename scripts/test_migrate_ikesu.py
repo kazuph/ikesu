@@ -26,6 +26,9 @@ class MigrationTest(unittest.TestCase):
         self.config.mkdir(parents=True)
         self.old_cwd = str(self.home / 'src/github.com/kazuph/goterrace')
         self.config.joinpath('config.toml').write_text('onboarding=false\n')
+        plugin = Path(self.old_cwd) / 'apps/example'
+        plugin.mkdir(parents=True)
+        plugin.joinpath('ikesu-plugin.toml').write_text("id='example'\nmin_ikesu_version='0.4.0'\n")
         self.config.joinpath('plugins.json').write_text(json.dumps({'plugins': [{'plugin_root': self.old_cwd + '/apps/example'}]}))
         session = self.state / 'default/session.json'
         session.parent.mkdir()
@@ -83,6 +86,37 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(new.joinpath('jobs/j1.log').read_bytes()).hexdigest(),before)
         with sqlite3.connect(new / 'ikesu.db') as db:
             self.assertEqual(db.execute('SELECT log_path FROM jobs').fetchone()[0],str(new/'jobs/j1.log'))
+
+    def test_mini_explicit_source_and_missing_config(self):
+        destination = self.home / '.local/state/gtx'
+        self.state.rename(destination)
+        import shutil
+        shutil.rmtree(self.config)
+        result = self.run_script('--source-state', str(destination), '--source-config', str(self.config))
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue(self.home.joinpath('.local/state/ikesu/ikesu.db').is_file())
+        self.assertTrue(self.home.joinpath('.config/ikesu').is_dir())
+        self.assertFalse(destination.exists())
+        self.assertTrue(Path(str(destination)+'.pre-ikesu').is_dir())
+
+    def test_missing_new_manifest_refuses_without_changes(self):
+        Path(self.old_cwd).joinpath('apps/example/ikesu-plugin.toml').unlink()
+        before=self.snapshot()
+        result=self.run_script()
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('new plugin manifest is missing',result.stderr)
+        self.assertEqual(self.snapshot(),before)
+
+    def test_mac_plugin_worktree_root_becomes_canonical(self):
+        old=self.old_cwd+'/.worktree/feat/machines-mac-dialog/apps/mac-dialog-decisions'
+        self.config.joinpath('plugins.json').write_text(json.dumps([{'plugin_id':'kazuph.mac-dialog-decisions','plugin_root':old,'manifest_path':old+'/gtx-plugin.toml','min_gtx_version':'0.2.7'}]))
+        result=self.run_script()
+        self.assertEqual(result.returncode,0,result.stderr)
+        plugin=json.loads(self.home.joinpath('.config/ikesu/plugins.json').read_text())[0]
+        want=self.old_cwd.replace('/goterrace','/ikesu')+'/apps/mac-dialog-decisions'
+        self.assertEqual(plugin['plugin_root'],want)
+        self.assertEqual(plugin['manifest_path'],want+'/ikesu-plugin.toml')
+        self.assertNotIn('min_gtx_version',plugin)
 
     def test_dry_run_is_read_only(self):
         before = self.snapshot()

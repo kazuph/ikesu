@@ -17,12 +17,12 @@ import tempfile
 
 
 class Migration:
-    def __init__(self, home):
+    def __init__(self, home, source_state=None, source_config=None):
         self.home = home
         self.state = home / '.local/state'
         self.config = home / '.config'
-        self.pairs = [(self.state / 'gtx-2e01183', self.state / 'ikesu'),
-                      (self.config / 'gtx', self.config / 'ikesu')]
+        self.pairs = [(source_state or self.state / 'gtx-2e01183', self.state / 'ikesu'),
+                      (source_config or self.config / 'gtx', self.config / 'ikesu')]
         self.locks = []
         self.replacements = [(str(self.pairs[0][0] / "gtx.db"), str(self.pairs[0][1] / "ikesu.db")),
                              (str(self.pairs[0][0]), str(self.pairs[0][1])),
@@ -32,11 +32,11 @@ class Migration:
 
     def check(self):
         for source, target in self.pairs:
-            if source.is_symlink() or not source.is_dir():
+            if source.is_symlink() or (source.exists() and not source.is_dir()) or (source == self.pairs[0][0] and not source.is_dir()):
                 raise RuntimeError(f'source must be a real directory: {source}')
             if os.path.lexists(target):
                 raise RuntimeError(f'destination already exists: {target}')
-        for root in sorted(self.state.glob('gtx*')):
+        for root in sorted(set(self.state.glob('gtx*')) | {self.pairs[0][0]}):
             if not root.is_dir():
                 continue
             for path in sorted(root.rglob('*')):
@@ -92,6 +92,10 @@ class Migration:
         uri = path.resolve().as_uri() + '?mode=ro'
         with sqlite3.connect(uri, uri=True) as db:
             statements = []
+            tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            job_namespace = 'actors' in tables and 'dispatches' in tables
+            if job_namespace:
+                print(f'JOB NAMESPACE {path}: gtx-jobs -> ikesu-jobs; gtx-run -> ikesu-run (merge actor references on collision)')
             for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
                 quote = lambda name: '"' + name.replace('"', '""') + '"'
                 columns = list(db.execute(f'PRAGMA table_info({quote(table)})'))
@@ -100,6 +104,9 @@ class Migration:
                     keys = ['rowid']
                 for column in columns:
                     name = column[1]
+                    # Historical message bodies, commands and output are evidence.
+                    if name not in ('cwd', 'project', 'log_path', 'payload'):
+                        continue
                     rows = db.execute(f'SELECT {",".join(map(quote, keys))}, {quote(name)} FROM {quote(table)} WHERE typeof({quote(name)}) = \'text\'')
                     for row in rows:
                         before = row[-1]
@@ -114,15 +121,54 @@ class Migration:
                             print(f'REWRITE DB {path} table={table} column={name} key={row[:-1]!r}')
                             sql = f'UPDATE {quote(table)} SET {quote(name)}=? WHERE ' + ' AND '.join(f'{quote(key)} IS ?' for key in keys)
                             statements.append((sql, (after,) + row[:-1]))
-        if statements and not dry:
+        if (statements or job_namespace) and not dry:
             backup = Path(str(path) + '.pre-ikesu')
             if backup.exists():
                 raise RuntimeError(f'backup exists: {backup}')
             with sqlite3.connect(uri, uri=True) as original, sqlite3.connect(backup) as saved:
                 original.backup(saved)
             with sqlite3.connect(path) as db:
+                db.execute('PRAGMA foreign_keys=ON')
                 for sql, args in statements:
                     db.execute(sql, args)
+                if job_namespace:
+                    db.execute("UPDATE dispatches SET room='ikesu-jobs' WHERE room='gtx-jobs'")
+                    for old_id, kind in db.execute("SELECT id,kind FROM actors WHERE name='gtx-run'").fetchall():
+                        target = db.execute("SELECT id FROM actors WHERE name='ikesu-run' AND kind=?", (kind,)).fetchone()
+                        if target:
+                            new_id = target[0]
+                            for column in ('from_actor', 'to_actor'):
+                                db.execute(f'UPDATE dispatches SET {column}=? WHERE {column}=?', (new_id, old_id))
+                            for column in ('source', 'model', 'session_id', 'pane_id'):
+                                db.execute(f'UPDATE actors SET {column}=COALESCE({column},(SELECT {column} FROM actors WHERE id=?)) WHERE id=?', (old_id,new_id))
+                            db.execute('UPDATE actors SET first_seen_at=min(first_seen_at,(SELECT first_seen_at FROM actors WHERE id=?)),last_seen_at=max(last_seen_at,(SELECT last_seen_at FROM actors WHERE id=?)) WHERE id=?',(old_id,old_id,new_id))
+                            db.execute('DELETE FROM actors WHERE id=?', (old_id,))
+                        else:
+                            db.execute("UPDATE actors SET name='ikesu-run' WHERE id=?", (old_id,))
+
+    def registry(self, original):
+        changed = self.value(original)
+        old_entries = original if isinstance(original, list) else original.get('plugins', [])
+        new_entries = changed if isinstance(changed, list) else changed.get('plugins', [])
+        for old, new in zip(old_entries, new_entries):
+            root = old.get('plugin_root')
+            if not root:
+                continue
+            if old.get('plugin_id') == 'kazuph.mac-dialog-decisions' or Path(root).name == 'mac-dialog-decisions':
+                new_root = self.home / 'src/github.com/kazuph/ikesu/apps/mac-dialog-decisions'
+                prepared = Path(__file__).resolve().parents[1] / 'apps/mac-dialog-decisions/ikesu-plugin.toml'
+                candidates = [new_root / 'ikesu-plugin.toml', prepared]
+            else:
+                new_root = Path(self.text(root))
+                candidates = [new_root / 'ikesu-plugin.toml', Path(root) / 'ikesu-plugin.toml']
+            if not any(candidate.is_file() for candidate in candidates):
+                raise RuntimeError(f'new plugin manifest is missing: {new_root / "ikesu-plugin.toml"}; prepare it before migration')
+            new['plugin_root'] = str(new_root)
+            new['manifest_path'] = str(new_root / 'ikesu-plugin.toml')
+            if 'min_gtx_version' in new:
+                new['min_ikesu_version'] = new.pop('min_gtx_version')
+            print(f'PLUGIN ROOT {root} -> {new_root}; manifest validated')
+        return changed
 
     def config_values(self, text, path):
         # Preserve TOML keys, comments and formatting. This edits string
@@ -187,6 +233,8 @@ class Migration:
                 continue
             if not path.is_file():
                 continue
+            if path.suffix == '.log' or 'job-logs' in relative.parts:
+                continue
             if path.suffix == '.db':
                 self.database(path, dry)
                 continue
@@ -201,7 +249,7 @@ class Migration:
                 continue
             if path.suffix == '.json':
                 parsed = json.loads(before)
-                changed = self.value(parsed)
+                changed = self.registry(parsed) if path.name == "plugins.json" else self.value(parsed)
                 after = before if parsed == changed else json.dumps(changed, ensure_ascii=False, indent=2) + '\n'
             else:
                 after = self.text(before)
@@ -228,7 +276,7 @@ class Migration:
     def run(self, dry):
         self.check()
         for source, target in self.pairs:
-            print(f'MOVE {source} -> {target}; preserve original at {source}.pre-ikesu')
+            print(f'MOVE {source} -> {target}; preserve original at {source}.pre-ikesu' if source.exists() else f'CREATE {target}: source config is absent')
         if dry:
             for source, _ in self.pairs:
                 self.rewrite(source, True)
@@ -242,16 +290,19 @@ class Migration:
                 backup = Path(str(source) + '.pre-ikesu')
                 if os.path.lexists(backup):
                     raise RuntimeError(f'backup exists: {backup}')
+                target.parent.mkdir(parents=True, exist_ok=True)
                 stage = Path(tempfile.mkdtemp(prefix='.ikesu-migrate-', dir=target.parent))
                 staged.append(stage)
                 # Stale Unix sockets are transport endpoints, never persisted data.
-                shutil.copytree(source, stage, dirs_exist_ok=True, symlinks=True,
+                if source.exists():
+                    shutil.copytree(source, stage, dirs_exist_ok=True, symlinks=True,
                                 ignore=lambda directory, names: [name for name in names if stat.S_ISSOCK((Path(directory) / name).lstat().st_mode)])
                 self.rewrite(stage, False)
             for (source, target), stage in zip(self.pairs, staged):
                 backup = Path(str(source) + '.pre-ikesu')
-                source.rename(backup)
-                undo.append((backup, source))
+                if source.exists():
+                    source.rename(backup)
+                    undo.append((backup, source))
                 # Do not overwrite a destination created after the preflight.
                 if os.path.lexists(target):
                     raise RuntimeError(f'destination appeared: {target}')
@@ -272,8 +323,10 @@ class Migration:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--source-state', type=lambda value: Path(value).expanduser().absolute())
+    parser.add_argument('--source-config', type=lambda value: Path(value).expanduser().absolute())
     args = parser.parse_args()
-    migration = Migration(Path.home())
+    migration = Migration(Path.home(), args.source_state, args.source_config)
     try:
         migration.run(args.dry_run)
     except Exception as error:

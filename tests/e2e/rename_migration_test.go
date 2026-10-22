@@ -262,7 +262,7 @@ with sqlite3.connect(sys.argv[1]) as db:
 		t.Fatal(err)
 	}
 	regular, err := migrated.PendingForAgentCreationOrder(pane)
-	if err != nil || len(regular) != 0 {
+	if err != nil || len(regular) != 1 || regular[0].Body != "retained-mail" {
 		t.Fatalf("job notice entered ordinary mail: %+v %v", regular, err)
 	}
 	jobMessages, err := migrated.PendingJobMessages()
@@ -384,12 +384,32 @@ with sqlite3.connect(sys.argv[1]) as db:
 			for repeat := 0; repeat < 2; repeat++ {
 				migrationRPC(t, newSocket, "pane.report_agent", api.PaneReportAgentParams{PaneID: pane, Source: "migration", Agent: "codex", State: "idle"}, nil)
 			}
-			var screen map[string]any
-			migrationRPC(t, newSocket, "pane.read", api.PaneReadParams{PaneID: pane}, &screen)
-			screenRaw, _ := json.Marshal(screen)
-			if name == "ikesu" && strings.Count(string(screenRaw), "label=retained-job") != 1 {
-				t.Fatalf("completion did not reach original pane once: %s", screenRaw)
+			if name == "ikesu" {
+				screenDeadline := time.Now().Add(15 * time.Second)
+				count := 0
+				var screenRaw []byte
+				for time.Now().Before(screenDeadline) {
+					var screen map[string]any
+					migrationRPC(t, newSocket, "pane.read", api.PaneReadParams{PaneID: pane}, &screen)
+					screenRaw, _ = json.Marshal(screen)
+					count = strings.Count(string(screenRaw), "label=retained-job")
+					if count > 0 {
+						break
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+				if count != 1 {
+					t.Fatalf("completion did not reach original pane once: %s", screenRaw)
+				}
 			}
+			verifyLost := exec.Command("python3", "-c", `import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+ assert db.execute("SELECT status FROM dispatches WHERE body='lost notification'").fetchone()==('failed',)
+`, filepath.Join(newRoot, "sessions/stage3/ikesu.db"))
+			if out, err := verifyLost.CombinedOutput(); err != nil {
+				t.Fatal(err, string(out))
+			}
+
 			row, err := db.CommandRow(job.Job)
 			if err != nil || row == nil {
 				t.Fatal(row, err)
