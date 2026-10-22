@@ -118,6 +118,17 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(plugin['manifest_path'],want+'/ikesu-plugin.toml')
         self.assertNotIn('min_gtx_version',plugin)
 
+    def test_db_structured_reference_preserves_historical_body(self):
+        with sqlite3.connect(self.state / 'gtx.db') as db:
+            db.execute('CREATE TABLE decisions (decision_id TEXT PRIMARY KEY,record TEXT)')
+            db.execute('INSERT INTO decisions VALUES(?,?)',('dec-one',json.dumps({'origin':{'cwd':str(self.state)},'body':str(self.state)+'/historical-output'})))
+        result=self.run_script()
+        self.assertEqual(result.returncode,0,result.stderr)
+        with sqlite3.connect(self.home / '.local/state/ikesu/ikesu.db') as db:
+            record=json.loads(db.execute('SELECT record FROM decisions').fetchone()[0])
+        self.assertEqual(record['origin']['cwd'],str(self.home / '.local/state/ikesu'))
+        self.assertEqual(record['body'],str(self.state)+'/historical-output')
+
     def test_dry_run_is_read_only(self):
         before = self.snapshot()
         result = self.run_script('--dry-run')

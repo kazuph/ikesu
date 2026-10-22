@@ -87,6 +87,14 @@ class Migration:
             return {key: self.value(item) for key, item in value.items()}
         return value
 
+    def references(self, value):
+        if isinstance(value, list):
+            return [self.references(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self.value(item) if key in ('cwd', 'log_path', 'session_path', 'plugin_root', 'manifest_path') else self.references(item)
+                    for key, item in value.items()}
+        return value
+
     def database(self, path, dry):
         # Database rows can contain JSON payloads as well as plain absolute paths.
         uri = path.resolve().as_uri() + '?mode=ro'
@@ -105,7 +113,7 @@ class Migration:
                 for column in columns:
                     name = column[1]
                     # Historical message bodies, commands and output are evidence.
-                    if name not in ('cwd', 'project', 'log_path', 'payload'):
+                    if name not in ('cwd', 'project', 'log_path', 'session_id', 'payload', 'record'):
                         continue
                     rows = db.execute(f'SELECT {",".join(map(quote, keys))}, {quote(name)} FROM {quote(table)} WHERE typeof({quote(name)}) = \'text\'')
                     for row in rows:
@@ -115,7 +123,7 @@ class Migration:
                         except (ValueError, TypeError):
                             after = self.text(before)
                         else:
-                            changed = self.value(decoded)
+                            changed = self.references(decoded)
                             after = before if changed == decoded else json.dumps(changed, ensure_ascii=False, separators=(',', ':'))
                         if before != after:
                             print(f'REWRITE DB {path} table={table} column={name} key={row[:-1]!r}')
