@@ -345,6 +345,22 @@ with sqlite3.connect(sys.argv[1]) as db:
 			if !strings.Contains(string(paneEnv), "IKESU_PANE_ID="+pane) || strings.Contains("\n"+string(paneEnv), "\nGTX_") {
 				t.Fatalf("restored pane environment: %s", paneEnv)
 			}
+			noticePath := filepath.Join(home, "pane-notice-input")
+			if name == "ikesu" {
+				// Record bytes consumed by the real pane, avoiding shell input redraws.
+				migrationRPC(t, newSocket, "pane.send_text", api.PaneSendTextParams{PaneID: pane, Text: "stty -echo; : > " + noticePath + ".ready; exec /bin/cat > " + noticePath}, nil)
+				migrationRPC(t, newSocket, "pane.send_keys", api.PaneSendKeysParams{PaneID: pane, Keys: []string{"Enter"}}, nil)
+				readyDeadline := time.Now().Add(15 * time.Second)
+				for {
+					if _, err := os.Stat(noticePath + ".ready"); err == nil {
+						break
+					}
+					if time.Now().After(readyDeadline) {
+						t.Fatal("pane input recorder not ready")
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+			}
 			db, err := dispatch.Open(filepath.Join(newRoot, "sessions/stage3/ikesu.db"))
 			if err != nil {
 				t.Fatal(err)
@@ -385,21 +401,17 @@ with sqlite3.connect(sys.argv[1]) as db:
 				migrationRPC(t, newSocket, "pane.report_agent", api.PaneReportAgentParams{PaneID: pane, Source: "migration", Agent: "codex", State: "idle"}, nil)
 			}
 			if name == "ikesu" {
-				screenDeadline := time.Now().Add(15 * time.Second)
-				count := 0
-				var screenRaw []byte
-				for time.Now().Before(screenDeadline) {
-					var screen map[string]any
-					migrationRPC(t, newSocket, "pane.read", api.PaneReadParams{PaneID: pane, Source: "recent_unwrapped"}, &screen)
-					screenRaw, _ = json.Marshal(screen)
-					count = strings.Count(string(screenRaw), "label=retained-job")
-					if count > 0 {
+				inputDeadline := time.Now().Add(15 * time.Second)
+				var received []byte
+				for time.Now().Before(inputDeadline) {
+					received, _ = os.ReadFile(noticePath)
+					if strings.Contains(string(received), "label=retained-job") {
 						break
 					}
 					time.Sleep(20 * time.Millisecond)
 				}
-				if count != 1 {
-					t.Fatalf("completion did not reach original pane once: %s", screenRaw)
+				if strings.Count(string(received), "label=retained-job") != 1 {
+					t.Fatalf("completion did not reach original pane once: %s", received)
 				}
 			}
 			verifyLost := exec.Command("python3", "-c", `import sqlite3,sys
