@@ -18,12 +18,15 @@ with tempfile.TemporaryDirectory(prefix="ikesu-rollback-mutation-") as work:
     ))
     overlay = work / "overlay.json"
     overlay.write_text(json.dumps({"Replace": {str(source): str(mutant)}}))
-    result = subprocess.run([
-        "go", "test", "-overlay", str(overlay), "./internal/distribution",
-        "-run", "^TestRegistrationFailureRestoresFilesAndPreservesConcurrentOperations$/^saved-response-lost$",
-        "-count=1", "-v",
-    ], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    print(result.stdout, end="")
-    assert result.returncode != 0, "rollback deletion survived the regression test"
-    assert "registration rollback did not remove own write" in result.stdout, "mutation did not fail for the expected behavioral reason"
-    print("PASS: deleting registration restoration fails the saved-response-loss assertion")
+    for package, test in [
+        ("./internal/distribution", "TestRegistrationFailureRestoresFilesAndPreservesConcurrentOperations"),
+        ("./internal/server", "TestDistributionResponseLossRollback"),
+    ]:
+        result = subprocess.run([
+            "go", "test", "-overlay", str(overlay), package,
+            "-run", "^" + test + "$/^saved-response-lost$", "-count=1", "-v",
+        ], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        print(result.stdout, end="")
+        assert result.returncode != 0, "rollback deletion survived the regression test"
+        assert "registration rollback did not remove own write" in result.stdout, "mutation did not fail for the expected behavioral reason"
+        print("PASS: deleting restoration fails the saved-response-loss assertion in " + package)
