@@ -190,13 +190,13 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 	}
 	pane := panes.Panes[len(panes.Panes)-1].PaneID
 	migrationRPC(t, oldSocket, "pane.rename", map[string]any{"pane_id": pane, "label": "migration-pane"}, nil)
-	migrationRPC(t, oldSocket, "pane.report_agent", api.PaneReportAgentParams{PaneID: pane, Source: "migration", Agent: "codex", State: "idle"}, nil)
+	migrationRPC(t, oldSocket, "pane.report_agent", api.PaneReportAgentParams{PaneID: pane, Source: "migration", Agent: "codex", State: "blocked"}, nil)
 	migrationRPC(t, oldSocket, "msg.send", api.MsgSendParams{Room: "migration", FromAgent: "writer", To: pane, Body: "retained-mail"}, nil)
 	var decision api.DecisionResult
 	migrationRPC(t, oldSocket, "decision.create", api.DecisionCreateParams{Kind: "ask", Title: "retained-decision", Options: []api.DecisionOption{{ID: "yes", Label: "Yes", Role: "approve"}}}, &decision)
 	migrationRPC(t, oldSocket, "plugin.link", map[string]any{"path": plugin, "enabled": true}, nil)
 	var job api.RunStartedResult
-	migrationRPC(t, oldSocket, "run.start", api.RunStartParams{CallerPane: pane, Label: "retained-job", Cwd: oldRepo, Argv: []string{"/bin/sh", "-c", "printf retained-job-output"}, Completion: "none"}, &job)
+	migrationRPC(t, oldSocket, "run.start", api.RunStartParams{CallerPane: pane, Label: "retained-job", Cwd: oldRepo, Argv: []string{"/bin/sh", "-c", "printf retained-job-output"}, Completion: "summary"}, &job)
 	db, err := dispatch.Open(filepath.Join(oldRoot, "sessions/stage3/gtx.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -216,8 +216,30 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 	if oldJob == nil || oldJob.Status != "exited" {
 		t.Fatalf("job not complete: %+v", oldJob)
 	}
+	pending, err := db.History("gtx-jobs", nil, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued := 0
+	for _, message := range pending {
+		if message.DeliveredAt == nil && strings.Contains(message.Body, "retained-job") {
+			queued++
+		}
+	}
+	if queued != 1 {
+		t.Fatalf("old server must leave exactly one queued completion: %+v", pending)
+	}
 	_ = db.Close()
 	stop()
+	seed := exec.Command("python3", "-c", `import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+ db.execute("INSERT INTO actors(kind,name,first_seen_at,last_seen_at) VALUES('agent','ikesu-run','before','before')")
+ db.execute("INSERT INTO actors(kind,name,first_seen_at,last_seen_at) VALUES('agent','p999999','before','before')")
+ db.execute("INSERT INTO dispatches(kind,room,from_actor,to_actor,body,created_at,status) SELECT 'message','gtx-jobs',f.id,t.id,'lost notification','before','queued' FROM actors f, actors t WHERE f.kind='agent' AND f.name='gtx-run' AND t.kind='agent' AND t.name='p999999'")
+`, filepath.Join(oldRoot, "sessions/stage3/gtx.db"))
+	if out, err := seed.CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
 	saved := filepath.Join(oldRoot, "stage3/session.json")
 	if _, err = os.Stat(saved); err != nil {
 		t.Fatal(err)
@@ -235,6 +257,19 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 	// Run under three deployment names, all using the same state/config and session.
 	newRoot := filepath.Join(home, ".local/state/ikesu")
 	newSocket := filepath.Join(newRoot, "stage3/ikesu.sock")
+	migrated, err := dispatch.Open(filepath.Join(newRoot, "sessions/stage3/ikesu.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	regular, err := migrated.PendingForAgentCreationOrder(pane)
+	if err != nil || len(regular) != 0 {
+		t.Fatalf("job notice entered ordinary mail: %+v %v", regular, err)
+	}
+	jobMessages, err := migrated.PendingJobMessages()
+	if err != nil || len(jobMessages) != 2 {
+		t.Fatalf("job notification classification: %+v %v", jobMessages, err)
+	}
+	_ = migrated.Close()
 	for _, name := range []string{"ikesu", "ikesu-xyz", "foo"} {
 		t.Run(name, func(t *testing.T) {
 			binary := filepath.Join(home, name)
@@ -315,6 +350,46 @@ func TestStageThreeOfflineMigration(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
+			migrationRPC(t, newSocket, "pane.report_agent", api.PaneReportAgentParams{PaneID: pane, Source: "migration", Agent: "codex", State: "idle"}, nil)
+			deliveryDeadline := time.Now().Add(15 * time.Second)
+			for time.Now().Before(deliveryDeadline) {
+				messages, e := db.PendingJobMessages()
+				if e != nil {
+					t.Fatal(e)
+				}
+				if len(messages) == 0 {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			messages, e := db.History(dispatch.JobsRoom, nil, 50)
+			if e != nil {
+				t.Fatal(e)
+			}
+			delivered, failed := 0, 0
+			for _, m := range messages {
+				if strings.Contains(m.Body, "retained-job") && m.DeliveredAt != nil {
+					delivered++
+				}
+				if m.Body == "lost notification" {
+					if m.DeliveredAt != nil {
+						t.Fatal("lost notice delivered")
+					}
+					failed++
+				}
+			}
+			if delivered != 1 || failed != 1 {
+				t.Fatalf("delivery rows %+v", messages)
+			}
+			for repeat := 0; repeat < 2; repeat++ {
+				migrationRPC(t, newSocket, "pane.report_agent", api.PaneReportAgentParams{PaneID: pane, Source: "migration", Agent: "codex", State: "idle"}, nil)
+			}
+			var screen map[string]any
+			migrationRPC(t, newSocket, "pane.read", api.PaneReadParams{PaneID: pane}, &screen)
+			screenRaw, _ := json.Marshal(screen)
+			if name == "ikesu" && strings.Count(string(screenRaw), "label=retained-job") != 1 {
+				t.Fatalf("completion did not reach original pane once: %s", screenRaw)
+			}
 			row, err := db.CommandRow(job.Job)
 			if err != nil || row == nil {
 				t.Fatal(row, err)
