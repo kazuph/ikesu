@@ -92,7 +92,7 @@ func RunJobRunner() (int, error) {
 	if err = dec.Decode(&request); err != nil {
 		return 1, err
 	}
-	// os.Executable may resolve a versioned target behind a gtx symlink.
+	// os.Executable may resolve a versioned target behind a ikesu symlink.
 	// Approval files must retain the calling server's namespace.
 	api.ConfigureExecutable(request.Namespace)
 	fail := func(err error) (int, error) { _ = enc.Encode(jobRunnerStarted{Error: err.Error()}); return 1, err }

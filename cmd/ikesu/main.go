@@ -19,7 +19,7 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-const version = "0.3.0"
+const version = "0.4.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "__job-runner" {
@@ -121,7 +121,7 @@ dispatch:
 				}
 				os.Exit(code)
 			}
-			// `gtx server` runs the server; `gtx server <sub>` is the CLI.
+			// `ikesu server` runs the server; `ikesu server <sub>` is the CLI.
 			if len(args) == 1 {
 				if client.NestedBlocked() {
 					fmt.Fprintln(os.Stderr, "ikesu: refusing to start a nested ikesu server (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit)")

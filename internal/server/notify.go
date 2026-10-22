@@ -136,7 +136,7 @@ func (s *Server) deliverNotification(pid int, kind string) {
 		}
 	}
 	switch s.cfg.ToastDelivery() {
-	case config.ToastGTX:
+	case config.ToastIKESU:
 		s.app.ShowToast(title, body, kind, pid)
 	case config.ToastTerminal:
 		s.sendOSC9(title, body)

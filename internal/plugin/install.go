@@ -111,7 +111,7 @@ func (s *Store) Install(source, ref string, confirm func(InstallPreview) bool) (
 		cmd.Dir = root
 		for _, kv := range childenv.Scrub(os.Environ()) {
 			key, _, _ := strings.Cut(kv, "=")
-			if strings.HasPrefix(key, "IKESU_") || strings.HasPrefix(key, "GTX_") || strings.HasPrefix(key, "HERDR_") {
+			if strings.HasPrefix(key, "IKESU_") || strings.HasPrefix(key, "HERDR_") {
 				continue
 			}
 			cmd.Env = append(cmd.Env, kv)

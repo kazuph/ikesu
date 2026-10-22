@@ -130,7 +130,7 @@ type Supervisor struct {
 	loginPathErr    error
 
 	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
-	// environment (the server uses it for GTX_PANE_ID/GTX_SOCKET_PATH).
+	// environment (the server uses it for IKESU_PANE_ID/IKESU_SOCKET_PATH).
 	Env                     func(paneID int) []string
 	defaultShell, shellMode string
 	scrollbackBytes         *int

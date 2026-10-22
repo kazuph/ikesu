@@ -15,7 +15,7 @@ import (
 func TestGuardLogStatusAndCompareCLI(t *testing.T) {
 	teststate.Lock(t)
 	d := t.TempDir()
-	for k, v := range map[string]string{"HOME": d, "GTX_CONFIG": filepath.Join(d, "config.toml"), "GTX_STATE_DIR": filepath.Join(d, "state"), "GTX_GUARD_MARKER": "", "GTX_SOCKET_PATH": filepath.Join(d, "absent.sock")} {
+	for k, v := range map[string]string{"HOME": d, "IKESU_CONFIG": filepath.Join(d, "config.toml"), "IKESU_STATE_DIR": filepath.Join(d, "state"), "IKESU_GUARD_MARKER": "", "IKESU_SOCKET_PATH": filepath.Join(d, "absent.sock")} {
 		teststate.Setenv(t, k, v)
 	}
 	path := filepath.Join(api.StateDir(), "guard", "decisions.jsonl")

@@ -25,7 +25,7 @@ type AgentRecord struct {
 	Kind               string // "id" | "path"
 	Value              string // session id or transcript path
 	Title              string
-	Source             string // "report:<source>" | "gtx:<agent>" | "observed" | "restore"
+	Source             string // "report:<source>" | "ikesu:<agent>" | "observed" | "restore"
 }
 
 // SetChangeHook registers the callback invoked on the app loop after any

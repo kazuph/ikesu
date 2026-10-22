@@ -70,8 +70,8 @@ func TestTraceClientFileDisabled(t *testing.T) {
 }
 
 func TestTraceStartupEnvironmentAndExistingBytes(t *testing.T) {
-	if os.Getenv("GTX_TRACE_TEST_CHILD") == "1" {
-		path := os.Getenv("GTX_TRACE_TEST_PATH")
+	if os.Getenv("IKESU_TRACE_TEST_CHILD") == "1" {
+		path := os.Getenv("IKESU_TRACE_TEST_PATH")
 		trace := Open(path)
 		trace.Event("startup")
 		trace.Close()
@@ -82,13 +82,13 @@ func TestTraceStartupEnvironmentAndExistingBytes(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "client.log")
 			cmd := exec.Command(os.Args[0], "-test.run=^TestTraceStartupEnvironmentAndExistingBytes$")
 			for _, item := range os.Environ() {
-				if !strings.HasPrefix(item, "GTX_LATENCY_TRACE=") {
+				if !strings.HasPrefix(item, "IKESU_LATENCY_TRACE=") {
 					cmd.Env = append(cmd.Env, item)
 				}
 			}
-			cmd.Env = append(cmd.Env, "GTX_TRACE_TEST_CHILD=1", "GTX_TRACE_TEST_PATH="+path)
+			cmd.Env = append(cmd.Env, "IKESU_TRACE_TEST_CHILD=1", "IKESU_TRACE_TEST_PATH="+path)
 			if value != "unset" {
-				cmd.Env = append(cmd.Env, "GTX_LATENCY_TRACE="+value)
+				cmd.Env = append(cmd.Env, "IKESU_LATENCY_TRACE="+value)
 			}
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("child %v %s", err, out)

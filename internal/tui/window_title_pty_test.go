@@ -14,8 +14,8 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
-// Keep the opt-in output path before TestMain isolates GTX_* defaults.
-var titleEvidenceDir = os.Getenv("GTX_TITLE_EVIDENCE")
+// Keep the opt-in output path before TestMain isolates IKESU_* defaults.
+var titleEvidenceDir = os.Getenv("IKESU_TITLE_EVIDENCE")
 
 // Exercise the standalone draw path with real shell PTYs and an outer PTY.
 // State changes use the production reporting/acknowledgment methods.

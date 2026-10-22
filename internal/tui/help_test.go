@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// SPEC G6: the keybind help lists every command gtx implements, ordered
+// SPEC G6: the keybind help lists every command ikesu implements, ordered
 // global → navigation → workspaces/tabs → panes, ending with cycle pane next →
 // previous. Unconfigured command bindings are shown as unset.
 func TestHelpRowsContract(t *testing.T) {

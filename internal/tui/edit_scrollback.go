@@ -26,7 +26,7 @@ func (a *App) editScrollback() {
 		lines = append(lines, strings.TrimRight(b.String(), " \t"))
 	}
 	text := strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
-	f, err := os.CreateTemp("", "gtx-scrollback-*.txt")
+	f, err := os.CreateTemp("", "ikesu-scrollback-*.txt")
 	if err == nil {
 		_, err = f.WriteString(text)
 		closeErr := f.Close()
@@ -60,7 +60,7 @@ func (a *App) editScrollback() {
 		}
 		a.lastSpawnError = nil
 		a.exec(model.CmdSplitPane{Workspace: wi, Pane: pid, Dir: layout.Vertical, Ratio: 0.5, Focus: true,
-			Cwd: p.SpawnCwd(), Argv: []string{"/bin/sh", "-c", "exec " + editor + ` "$1"`, "gtx-scrollback", f.Name()}})
+			Cwd: p.SpawnCwd(), Argv: []string{"/bin/sh", "-c", "exec " + editor + ` "$1"`, "ikesu-scrollback", f.Name()}})
 		editorPane := a.st.FocusedPane()
 		if a.lastSpawnError != nil || editorPane == pid {
 			os.Remove(f.Name())

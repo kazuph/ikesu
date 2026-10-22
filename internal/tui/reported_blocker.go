@@ -32,7 +32,7 @@ func (a *App) reportedVisibleBlocker(pid int) bool {
 func fullLifecycleReport(source, agent string) bool {
 	switch agent {
 	case "pi", "omp", "mastracode", "hermes", "opencode", "kilo", "kimi":
-		return source == "gtx:"+agent
+		return source == "ikesu:"+agent
 	}
 	return false
 }

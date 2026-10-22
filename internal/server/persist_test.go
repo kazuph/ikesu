@@ -25,23 +25,23 @@ func paneIDs(t *testing.T, dir string) []string {
 	return ids
 }
 
-// pinTestConfig points GTX_CONFIG at a test config that disables
+// pinTestConfig points IKESU_CONFIG at a test config that disables
 // resume_agents_on_restore so the startup auto-restore can never launch
 // a real agent binary from a test's reported session record. Tests that
-// set their own GTX_CONFIG before calling keep it.
+// set their own IKESU_CONFIG before calling keep it.
 func pinTestConfig(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GTX_CONFIG") != "" {
+	if os.Getenv("IKESU_CONFIG") != "" {
 		return
 	}
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore = false\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfg)
+	teststate.Setenv(t, "IKESU_CONFIG", cfg)
 }
 
-// startServerAt boots a server for sess under an existing GTX_STATE_DIR
+// startServerAt boots a server for sess under an existing IKESU_STATE_DIR
 // base — unlike startTestServer it does not make a fresh base, so a test
 // can run two servers over the same state dir back to back.
 func startServerAt(t *testing.T, sess string) (dir string, done chan int) {
@@ -79,12 +79,12 @@ func waitForSessionFile(t *testing.T, dir string) *session.File {
 // server process restores the same pane numbers, layout, and labels.
 func TestSessionSaveAndReload(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "persist")
@@ -170,12 +170,12 @@ func TestServerRestartRespondsAndSaves(t *testing.T) {
 // to a fresh single-pane state.
 func TestCorruptSessionStartsFresh(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir := api.SessionDir("corrupt")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

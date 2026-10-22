@@ -9,9 +9,9 @@ import (
 )
 
 func bootstrapForTest(snapshot, payload, cwd string) string {
-	s := strings.Replace(claudeBootstrap, "GTX_SNAPSHOT", quote(snapshot), 1)
-	s = strings.Replace(s, "GTX_PAYLOAD", quote(payload), 1)
-	return strings.Replace(s, "GTX_CWD", quote(cwd), 1)
+	s := strings.Replace(claudeBootstrap, "IKESU_SNAPSHOT", quote(snapshot), 1)
+	s = strings.Replace(s, "IKESU_PAYLOAD", quote(payload), 1)
+	return strings.Replace(s, "IKESU_CWD", quote(cwd), 1)
 }
 
 func TestClaudePrefixRecognizesOnlyCanonicalBootstrap(t *testing.T) {
@@ -56,7 +56,7 @@ func TestClaudePrefixEnvironmentIsScopedAndRestored(t *testing.T) {
 	for _, old := range []string{"", "custom-prefix --unchanged"} {
 		for _, present := range []bool{false, true} {
 			a := NewAssets(t.TempDir(), "p_1", "/usr/bin/true", Config{})
-			input := []string{"HOME=" + t.TempDir(), "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1"}
+			input := []string{"HOME=" + t.TempDir(), "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}
 			if present {
 				input = append(input, "CLAUDE_CODE_SHELL_PREFIX="+old)
 			}
@@ -98,9 +98,9 @@ func TestClaudePrefixRemovalRequiresAsk(t *testing.T) {
 		"export CLAUDE_CODE_SHELL_PREFIX=; /tmp/claude hello",
 		"export -n CLAUDE_CODE_SHELL_PREFIX; claude hello",
 		"env -i /tmp/codex hello", "CLAUDE_CODE_SHELL_PREFIX= /bin/echo ordinary",
-		"gtx guard claude-prefix -- /bin/sh -c '/bin/rm /tmp/home/../victim' ls",
-		"command gtx guard claude-prefix -- /bin/rm /tmp/home/../victim",
-		"env gtx guard claude-prefix -- /bin/zsh -c 'touch /tmp/victim' echo",
+		"ikesu guard claude-prefix -- /bin/sh -c '/bin/rm /tmp/home/../victim' ls",
+		"command ikesu guard claude-prefix -- /bin/rm /tmp/home/../victim",
+		"env ikesu guard claude-prefix -- /bin/zsh -c 'touch /tmp/victim' echo",
 	} {
 		t.Run(line, func(t *testing.T) {
 			_, v, _ := lineVerdict(Config{}, i, line)

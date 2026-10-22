@@ -20,7 +20,7 @@ func TestGraphicsStreamRealSocketOwnershipAndDisconnect(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfg)
+	teststate.Setenv(t, "IKESU_CONFIG", cfg)
 	dir, done := startTestServer(t)
 	viewer := dialClient(t, dir)
 	defer viewer.conn.Close()

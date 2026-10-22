@@ -7,7 +7,7 @@ import (
 )
 
 func TestParityConfirmationPaneAreaAndButtons(t *testing.T) {
-	d := &Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76}
+	d := &Dialog{Title: "Stop server?", Detail: "Stops the ikesu server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76}
 	for _, tc := range []struct{ area, outer, confirm, cancel layout.Rect }{
 		{layout.Rect{X: 26, Y: 1, W: 134, H: 43}, layout.Rect{X: 55, Y: 20, W: 76, H: 5}, layout.Rect{X: 80, Y: 23, W: 11, H: 1}, layout.Rect{X: 93, Y: 23, W: 12, H: 1}},
 		{layout.Rect{X: 26, Y: 1, W: 74, H: 23}, layout.Rect{X: 28, Y: 10, W: 70, H: 5}, layout.Rect{X: 50, Y: 13, W: 11, H: 1}, layout.Rect{X: 63, Y: 13, W: 12, H: 1}},

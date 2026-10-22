@@ -145,7 +145,7 @@ func TestGraphicsSourceRetiresOnlyDeadOwnedServerTrees(t *testing.T) {
 	if err := child.Run(); err != nil {
 		t.Fatal(err)
 	}
-	dead := filepath.Join(source.base, fmt.Sprintf("server-%d-gtx-stale", child.Process.Pid))
+	dead := filepath.Join(source.base, fmt.Sprintf("server-%d-ikesu-stale", child.Process.Pid))
 	other := filepath.Join(source.base, fmt.Sprintf("server-%d-reference", child.Process.Pid))
 	for _, path := range []string{dead, other} {
 		if err := os.Mkdir(path, 0700); err != nil {
@@ -157,7 +157,7 @@ func TestGraphicsSourceRetiresOnlyDeadOwnedServerTrees(t *testing.T) {
 	}
 	retireGraphicsFileSources(source.base)
 	if _, err := os.Stat(dead); !os.IsNotExist(err) {
-		t.Fatal("dead gtx source tree was not retired", err)
+		t.Fatal("dead ikesu source tree was not retired", err)
 	}
 	for _, path := range []string{other, source.server} {
 		if _, err := os.Stat(path); err != nil {

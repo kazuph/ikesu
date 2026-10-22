@@ -12,7 +12,7 @@ func TestEndpointWindowTitleBelongsToEachAttachedTerminal(t *testing.T) {
 	var firstRaw strings.Builder
 	first.observeOutput = func(bytes []byte) { firstRaw.Write(bytes) }
 	first.waitFor("first shell", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-	second := startEnv(t, map[string]string{"GTX_STATE_DIR": first.stateDir})
+	second := startEnv(t, map[string]string{"IKESU_STATE_DIR": first.stateDir})
 	var secondRaw strings.Builder
 	second.observeOutput = func(bytes []byte) { secondRaw.Write(bytes) }
 	second.waitFor("second shell", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })

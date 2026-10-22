@@ -21,7 +21,7 @@ func TestAgentAttachActualTerminal(t *testing.T) {
 	pane := listed.Panes[0].PaneID
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: pane, Source: "test", Agent: "codex", State: "idle"}, nil)
 	command := exec.Command(binPath, "--session", s.name, "agent", "attach", pane)
-	command.Env = append(s.cmd.Env, "GTX_STATE_DIR="+s.stateDir)
+	command.Env = append(s.cmd.Env, "IKESU_STATE_DIR="+s.stateDir)
 	pt, err := pty.StartWithSize(command, &pty.Winsize{Cols: termW, Rows: termH})
 	if err != nil {
 		t.Fatal(err)

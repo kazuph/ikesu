@@ -140,12 +140,12 @@ func startTestEndpoint(t *testing.T, peer endpoint.Peer) (dir string, done chan 
 	pinTestConfig(t)
 	// unix sockets cap sun_path around 104 bytes; t.TempDir() paths on
 	// macOS exceed that, so use a short base under /tmp.
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir = api.SessionDir("test")
 	done = make(chan int, 1)
@@ -174,17 +174,17 @@ func TestAttachDetachReattach(t *testing.T) {
 	}
 
 	// Type a command; the echo output should arrive over the socket.
-	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo gtxmarker42\n"))})
+	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo ikesumarker42\n"))})
 	var sawMarker bool
 	for i := 0; i < 20 && !sawMarker; i++ {
 		msgs = c1.readUntil(t, time.Second, func(m clientMsg) bool {
 			b, _ := base64.StdEncoding.DecodeString(m.Data)
-			return m.Type == "output" && strings.Contains(string(b), "gtxmarker42")
+			return m.Type == "output" && strings.Contains(string(b), "ikesumarker42")
 		})
-		sawMarker = strings.Contains(outputs(msgs), "gtxmarker42")
+		sawMarker = strings.Contains(outputs(msgs), "ikesumarker42")
 	}
 	if !sawMarker {
-		t.Fatal("pane output never echoed gtxmarker42")
+		t.Fatal("pane output never echoed ikesumarker42")
 	}
 
 	// Detach via the observed Ctrl-B q binding.
@@ -206,9 +206,9 @@ func TestAttachDetachReattach(t *testing.T) {
 	c2.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	msgs = c2.readUntil(t, 10*time.Second, func(m clientMsg) bool {
 		b, _ := base64.StdEncoding.DecodeString(m.Data)
-		return m.Type == "output" && strings.Contains(string(b), "gtxmarker42")
+		return m.Type == "output" && strings.Contains(string(b), "ikesumarker42")
 	})
-	if !strings.Contains(outputs(msgs), "gtxmarker42") {
+	if !strings.Contains(outputs(msgs), "ikesumarker42") {
 		t.Fatal("reattach did not repaint the pane contents")
 	}
 	c2.conn.Close()
@@ -245,8 +245,8 @@ func TestAttachDetachReattach(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("server did not exit after server.stop")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "gtx.sock")); !os.IsNotExist(err) {
-		t.Error("gtx.sock not removed on shutdown")
+	if _, err := os.Stat(filepath.Join(dir, "ikesu.sock")); !os.IsNotExist(err) {
+		t.Error("ikesu.sock not removed on shutdown")
 	}
 }
 
@@ -426,12 +426,12 @@ func TestPingAndUnknownMethod(t *testing.T) {
 // file, which made the child exit "already running" under load).
 func TestServerStartsWhileSpawnLockHeld(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir := api.SessionDir("test")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

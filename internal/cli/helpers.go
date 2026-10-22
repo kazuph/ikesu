@@ -77,7 +77,7 @@ func (r *runner) resolveAgentName(target string) (string, error) {
 }
 
 // resolveCurrentPaneID resolves this CLI's own pane, preferring the
-// GTX_PANE_ID env var as caller.
+// IKESU_PANE_ID env var as caller.
 func (r *runner) resolveCurrentPaneID() (string, error) {
 	var caller *string
 	if env := r.envPaneID(); env != "" {
@@ -129,7 +129,7 @@ func printRunHelp(r *runner) {
 	fmt.Fprintln(r.errOut(), "  end your turn and wait for it, then read the output with \"ikesu log <job>\".")
 }
 
-// defaultRunLabel is the label a `gtx run` gets without --label: the last
+// defaultRunLabel is the label a `ikesu run` gets without --label: the last
 // path component of the command, "run" when there is none.
 func defaultRunLabel(argv []string) string {
 	if len(argv) == 0 {

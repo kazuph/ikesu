@@ -38,7 +38,7 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 			if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.toast]\ndelivery='terminal'\n[ui.sound]\nenabled=false\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			teststate.Setenv(t, "GTX_CONFIG", cfg)
+			teststate.Setenv(t, "IKESU_CONFIG", cfg)
 			dir, done := startTestServer(t)
 			defer stopServer(t, dir, done)
 			c := dialClient(t, dir)
@@ -120,7 +120,7 @@ func TestStage6aFixRateOrderAndFailures(t *testing.T) {
 	if !s.lastAPINotification.IsZero() {
 		t.Fatal("failure advanced success time")
 	}
-	set("gtx")
+	set("ikesu")
 	call("shown")
 	success := s.lastAPINotification
 	call("busy")
@@ -135,7 +135,7 @@ func TestStage6aFixRateOrderAndFailures(t *testing.T) {
 	call("rate_limited")
 	<-time.After(apiNotificationInterval)
 	call("no_foreground_client")
-	set("gtx")
+	set("ikesu")
 	call("shown")
 }
 
@@ -143,7 +143,7 @@ func TestStage6aFixTerminalWriteFailure(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "terminal-write-failure")
 	s.cfg, _ = config.Decode([]byte("[ui.toast]\ndelivery='terminal'\n"))
-	dir, err := os.MkdirTemp("/tmp", "gtx-notify-")
+	dir, err := os.MkdirTemp("/tmp", "ikesu-notify-")
 	if err != nil {
 		t.Fatal(err)
 	}

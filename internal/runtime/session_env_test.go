@@ -14,7 +14,7 @@ func TestPaneChildSessionScrubAndExplicitExtras(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, "CLAUDE_CODE_CHILD_SESSION", "1")
 	teststate.Setenv(t, "CODEX_THREAD_ID", "inherited")
-	teststate.Setenv(t, "GTX_GUARD_ENFORCING", "1")
+	teststate.Setenv(t, "IKESU_GUARD_ENFORCING", "1")
 	teststate.Setenv(t, "CLAUDE_EFFORT", "high")
 	dir := t.TempDir()
 	sup := NewSupervisor()
@@ -39,7 +39,7 @@ func TestPaneChildSessionScrubAndExplicitExtras(t *testing.T) {
 			t.Fatal(err)
 		}
 		m := guard.EnvMap(strings.Split(string(raw), "\n"))
-		if m["CLAUDE_CODE_CHILD_SESSION"] != "" || m["GTX_GUARD_ENFORCING"] != "" || m["CLAUDE_EFFORT"] != "high" {
+		if m["CLAUDE_CODE_CHILD_SESSION"] != "" || m["IKESU_GUARD_ENFORCING"] != "" || m["CLAUDE_EFFORT"] != "high" {
 			t.Fatal(m)
 		}
 		expected := ""

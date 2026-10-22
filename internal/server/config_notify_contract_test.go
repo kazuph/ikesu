@@ -39,7 +39,7 @@ func TestConfigNotificationDeliveryChangesRealOutput(t *testing.T) {
 			s.app.SetSidebarConfig(c, false)
 			// Terminal delivery goes through the production client writer and a real
 			// local Unix socket, independently of the app's render output.
-			dir, err := os.MkdirTemp("/tmp", "gtx-notify-")
+			dir, err := os.MkdirTemp("/tmp", "ikesu-notify-")
 			if err != nil {
 				t.Fatal(err)
 			}

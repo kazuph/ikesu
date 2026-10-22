@@ -21,7 +21,7 @@ import (
 func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
 	teststate.Lock(t)
 	s, p, _ := screenTerminal(t, "claude-single", "claude")
-	dir, err := os.MkdirTemp("/tmp", "gtx-question-")
+	dir, err := os.MkdirTemp("/tmp", "ikesu-question-")
 	if err != nil {
 		t.Fatal(err)
 	}

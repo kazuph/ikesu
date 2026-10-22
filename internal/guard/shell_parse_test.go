@@ -15,8 +15,8 @@ func TestShellGrammarAndPrefixesUseExistingRules(t *testing.T) {
 	cases := []struct{ line, want string }{
 		{"/bin/rm " + target, "ask"},
 		{"env -i /bin/rm " + target, "ask"},
-		{"env -u GTX_GUARD_MARKER rm " + target, "ask"},
-		{"env --ignore-environment --unset=GTX_PANE_ID X=x /bin/rm " + target, "ask"},
+		{"env -u IKESU_GUARD_MARKER rm " + target, "ask"},
+		{"env --ignore-environment --unset=IKESU_PANE_ID X=x /bin/rm " + target, "ask"},
 		{"env -S '/bin/rm " + target + "'", "ask"},
 		{"env --split-string='/bin/rm " + target + "'", "ask"},
 		{"builtin command /bin/rm " + target, "ask"},
@@ -48,7 +48,7 @@ func TestShellGrammarAndPrefixesUseExistingRules(t *testing.T) {
 		{"if true; then git status; else ls; fi", "allow"},
 		{"for x in a b; do printf '%s' \"$x\"; done", "allow"},
 		{"command -v rm", "allow"},
-		{"env -u GTX_GUARD_MARKER ls", "allow"},
+		{"env -u IKESU_GUARD_MARKER ls", "allow"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.line, func(t *testing.T) {

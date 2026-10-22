@@ -1,4 +1,4 @@
-// Package cli implements the non-interactive gtx subcommands (pane,
+// Package cli implements the non-interactive ikesu subcommands (pane,
 // workspace, tab, server stop). Each command sends one request to the
 // session's API socket and prints the raw response, matching herdr's CLI
 // conventions: success responses go to stdout, errors to stderr, and
@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
-	"github.com/kazuph/ikesu/internal/envcompat"
 )
 
 // Options configures a CLI invocation.
@@ -27,7 +26,7 @@ type Options struct {
 	Session string
 	Version string
 	// Explicit reports whether --session was given on the command line.
-	// Explicit sessions ignore the GTX_SOCKET_PATH pane override.
+	// Explicit sessions ignore the IKESU_SOCKET_PATH pane override.
 	Explicit bool
 	Stdout   io.Writer
 	Stderr   io.Writer
@@ -38,7 +37,10 @@ type Options struct {
 }
 
 func (o Options) getenv(key string) string {
-	return envcompat.Lookup(o.Getenv, key)
+	if o.Getenv == nil {
+		return os.Getenv(key)
+	}
+	return o.Getenv(key)
 }
 
 func (o Options) pid() uint32 {
@@ -252,9 +254,9 @@ func (r *runner) currentPaneID(callerPaneID *string) (string, error) {
 	return res.Pane.PaneID, nil
 }
 
-// envPaneID returns the GTX_PANE_ID set inside gtx panes.
+// envPaneID returns the IKESU_PANE_ID set inside ikesu panes.
 func (r *runner) envPaneID() string {
-	return strings.TrimSpace(r.o.getenv("GTX_PANE_ID"))
+	return strings.TrimSpace(r.o.getenv("IKESU_PANE_ID"))
 }
 
 func usageErr(r *runner, usage string) int {

@@ -18,7 +18,7 @@ import (
 )
 
 func TestTextSendFailureDoesNotCommitRevisionOrBaseline(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "gtxfail-")
+	dir, err := os.MkdirTemp("/tmp", "ikesufail-")
 	if err != nil {
 		t.Fatal(err)
 	}

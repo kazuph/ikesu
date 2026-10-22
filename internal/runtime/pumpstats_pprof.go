@@ -2,6 +2,6 @@
 
 package runtime
 
-import "github.com/kazuph/ikesu/internal/envcompat"
+import "os"
 
-func init() { pumpStatsPath = envcompat.Get("GTX_PUMP_STATS") }
+func init() { pumpStatsPath = os.Getenv("IKESU_PUMP_STATS") }

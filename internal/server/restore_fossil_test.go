@@ -10,7 +10,7 @@ import (
 
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
 	teststate.Lock(t)
-	teststate.Setenv(t, "GTX_STATE_DIR", teststate.TempDir(t))
+	teststate.Setenv(t, "IKESU_STATE_DIR", teststate.TempDir(t))
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	// The fixture types UTF-8 into a real interactive shell. macOS /bin/sh
 	// treats high bytes as readline commands in the default C locale.

@@ -1,4 +1,4 @@
-// Package herdrimport reads observed herdr v5 data into the existing gtx
+// Package herdrimport reads observed herdr v5 data into the existing ikesu
 // session contract. It does not execute saved launch commands.
 package herdrimport
 

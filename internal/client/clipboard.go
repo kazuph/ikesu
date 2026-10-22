@@ -70,7 +70,7 @@ func uploadClipboardImage(ctx context.Context, profile machine.Profile, png []by
 	}
 	defer managed.Close()
 	// mktemp creates a private file; no remote server or persistent state is touched.
-	const script = `set -eu; f=$(mktemp "${TMPDIR:-/tmp}/gtx-clipboard.XXXXXX"); trap 'rm -f "$f" "$f.png"' EXIT HUP INT TERM; cat > "$f"; mv "$f" "$f.png"; printf '%s' "$f.png"; trap - EXIT HUP INT TERM`
+	const script = `set -eu; f=$(mktemp "${TMPDIR:-/tmp}/ikesu-clipboard.XXXXXX"); trap 'rm -f "$f" "$f.png"' EXIT HUP INT TERM; cat > "$f"; mv "$f" "$f.png"; printf '%s' "$f.png"; trap - EXIT HUP INT TERM`
 	cmd := childenv.CommandContext(ctx, "ssh", managed.Args(machine.SSHArgs(profile, []string{"sh", "-c", script}))...)
 	cmd.Stdin = bytes.NewReader(png)
 	var stderr bytes.Buffer

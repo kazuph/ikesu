@@ -50,7 +50,7 @@ func TestDecisionAskInsidePaneOrigin(t *testing.T) {
 func TestDecisionPendingInvisibleAndCLIAnswer(t *testing.T) {
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	conn, err := net.Dial("unix", filepath.Join(s.stateDir, s.name, "gtx.sock"))
+	conn, err := net.Dial("unix", filepath.Join(s.stateDir, s.name, "ikesu.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}

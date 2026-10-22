@@ -25,8 +25,8 @@ import (
 // The pre-rename binary must be built from unchanged main 2e01183.
 func TestRenameStageOneMixedHandoffAndRollback(t *testing.T) {
 	old := os.Getenv("RENAME_OLD_BIN")
-	if old == "" || filepath.Base(old) != "gtx" {
-		t.Fatal("RENAME_OLD_BIN must point to main 2e01183 binary named gtx")
+	if old == "" || filepath.Base(old) != "ikesu" {
+		t.Fatal("RENAME_OLD_BIN must point to main 2e01183 binary named ikesu")
 	}
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[ui]\nsidebar_width=23\n"), 0600); err != nil {
@@ -40,7 +40,7 @@ func TestRenameStageOneMixedHandoffAndRollback(t *testing.T) {
 	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\ncd %q\nexec %q \"$@\"\n", cwd, old)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	s := startVersionMode(t, map[string]string{"GTX_CONFIG": cfg}, false, binPath, wrapper)
+	s := startVersionMode(t, map[string]string{"IKESU_CONFIG": cfg}, false, binPath, wrapper)
 	s.waitFor("new client attached to old server", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	pidfile := filepath.Join(t.TempDir(), "identity")
 	s.send(fmt.Sprintf("printf '%%s %%s\\n' $$ \"$PWD\" > %q; %q pane current >> %q; printf 'OLD_COMMAND_%%s\\n' READY\r", pidfile, old, pidfile))
@@ -194,7 +194,7 @@ func TestRenameStageOneImagesSocketsAndLocksAcrossRollback(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s := startVersionMode(t, map[string]string{"GTX_CONFIG": cfg}, false, binPath, old)
+	s := startVersionMode(t, map[string]string{"IKESU_CONFIG": cfg}, false, binPath, old)
 	var outer kitty.Store
 	s.emu.RegisterApcHandler(func(data []byte) bool {
 		pos := s.emu.CursorPosition()
@@ -208,12 +208,12 @@ func TestRenameStageOneImagesSocketsAndLocksAcrossRollback(t *testing.T) {
 	if !bytes.Equal(initial.Image.Data, []byte{0, 255, 0}) {
 		t.Fatal(initial)
 	}
-	socket := filepath.Join(s.stateDir, s.name, "gtx.sock")
+	socket := filepath.Join(s.stateDir, s.name, "ikesu.sock")
 	before, err := os.Stat(socket)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := os.OpenFile(filepath.Join(s.stateDir, s.name, "gtx.lock"), os.O_RDWR, 0)
+	lock, err := os.OpenFile(filepath.Join(s.stateDir, s.name, "ikesu.lock"), os.O_RDWR, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestRenameStageOneImagesSocketsAndLocksAcrossRollback(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		duplicate := exec.CommandContext(ctx, binPath, "--session", s.name, "server")
-		duplicate.Env = append(os.Environ(), "GTX_STATE_DIR="+s.stateDir)
+		duplicate.Env = append(os.Environ(), "IKESU_STATE_DIR="+s.stateDir)
 		out, err := duplicate.CombinedOutput()
 		cancel()
 		if err == nil || !strings.Contains(string(out), "server is already running") {
@@ -279,7 +279,7 @@ func TestRenameStageOneJobsAcrossHandoff(t *testing.T) {
 			defer release.Close()
 			var started api.RunStartedResult
 			s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "rename-retained-job", Completion: "summary", Argv: []string{"/bin/sh", "-c", fmt.Sprintf("read value < %q; printf 'RENAME_JOB_FINISHED\\n'", fifo)}}, &started)
-			store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "gtx.db"))
+			store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "ikesu.db"))
 			if err != nil {
 				t.Fatal(err)
 			}

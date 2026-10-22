@@ -1,4 +1,4 @@
-// Reference encoder from gtx 98ab284, retained only as a byte/cell oracle.
+// Reference encoder from ikesu 98ab284, retained only as a byte/cell oracle.
 package render
 
 import (

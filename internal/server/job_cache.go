@@ -102,7 +102,7 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 		}
 		if err == nil {
 			if collectErr := s.reconcileJobResults(store, jobs); collectErr != nil {
-				fmt.Fprintf(os.Stderr, "gtx job completion: %v\n", collectErr)
+				fmt.Fprintf(os.Stderr, "ikesu job completion: %v\n", collectErr)
 			}
 			jobs, err = store.CommandRows(0)
 		}

@@ -14,23 +14,23 @@ import (
 // Exercise the actual CLI and generated shell entries, with no replacement
 // authorization server. These commands require a reason before any RPC.
 func TestPinnedGuardEntryPoints(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "gtx")
+	binary := filepath.Join(t.TempDir(), "ikesu")
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
 	if b, e := build.CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
 	cases := []struct{ name, code string }{
 		{"plain", `rm "$1"`},
-		{"marker-empty", `GTX_GUARD_MARKER= rm "$1"`},
-		{"marker-other", `GTX_GUARD_MARKER="$HOME/other.json" rm "$1"`},
-		{"marker-missing", `GTX_GUARD_MARKER=/missing-marker rm "$1"`},
-		{"socket-empty", `GTX_SOCKET_PATH= rm "$1"`},
-		{"socket-other", `GTX_SOCKET_PATH=/missing.sock rm "$1"`},
-		{"pane-other", `GTX_PANE_ID=p2 rm "$1"`},
-		{"unset-marker", `/usr/bin/env -u GTX_GUARD_MARKER rm "$1"`},
-		{"unset-pane", `/usr/bin/env -u GTX_PANE_ID rm "$1"`},
-		{"unset-socket", `/usr/bin/env -u GTX_SOCKET_PATH rm "$1"`},
-		{"export-empty", `export GTX_GUARD_MARKER=; rm "$1"`},
+		{"marker-empty", `IKESU_GUARD_MARKER= rm "$1"`},
+		{"marker-other", `IKESU_GUARD_MARKER="$HOME/other.json" rm "$1"`},
+		{"marker-missing", `IKESU_GUARD_MARKER=/missing-marker rm "$1"`},
+		{"socket-empty", `IKESU_SOCKET_PATH= rm "$1"`},
+		{"socket-other", `IKESU_SOCKET_PATH=/missing.sock rm "$1"`},
+		{"pane-other", `IKESU_PANE_ID=p2 rm "$1"`},
+		{"unset-marker", `/usr/bin/env -u IKESU_GUARD_MARKER rm "$1"`},
+		{"unset-pane", `/usr/bin/env -u IKESU_PANE_ID rm "$1"`},
+		{"unset-socket", `/usr/bin/env -u IKESU_SOCKET_PATH rm "$1"`},
+		{"export-empty", `export IKESU_GUARD_MARKER=; rm "$1"`},
 		{"sh", `/bin/sh -c 'rm "$1"' nested "$1"`},
 		{"bash", `/bin/bash -c 'rm "$1"' nested "$1"`},
 		{"zsh", `/bin/zsh -c 'rm "$1"' nested "$1"`},
@@ -91,7 +91,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				c := exec.Command(shell, "-c", `GTX_GUARD_MARKER= rm "$1"`, "test", target)
+				c := exec.Command(shell, "-c", `IKESU_GUARD_MARKER= rm "$1"`, "test", target)
 				c.Env = env
 				b, e := c.CombinedOutput()
 				_, fileErr := os.Stat(target)
@@ -115,7 +115,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 
 func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 	t.Helper()
-	root, err := os.MkdirTemp("", "gtx-entry-")
+	root, err := os.MkdirTemp("", "ikesu-entry-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 		t.Fatal(e)
 	}
 	a := guard.NewAssets(root, "p_1", binary, guard.Config{})
-	env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/socket", "GTX_CONFIG=" + root + "/missing.toml", "GTX_STATE_DIR=" + root}, home)
+	env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket", "IKESU_CONFIG=" + root + "/missing.toml", "IKESU_STATE_DIR=" + root}, home)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -138,7 +138,7 @@ func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 }
 
 func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "gtx")
+	binary := filepath.Join(t.TempDir(), "ikesu")
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
 	if b, e := build.CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
@@ -146,7 +146,7 @@ func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
 	cases := []string{
 		`/bin/rm TARGET`,
 		`/usr/bin/env -i /bin/rm TARGET`,
-		`/usr/bin/env -u GTX_GUARD_MARKER /bin/rm TARGET`,
+		`/usr/bin/env -u IKESU_GUARD_MARKER /bin/rm TARGET`,
 		`command /bin/rm TARGET`,
 		`builtin command /bin/rm TARGET`,
 		`exec /bin/rm TARGET`,

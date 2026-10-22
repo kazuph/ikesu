@@ -14,7 +14,7 @@ import (
 )
 
 func TestLinuxSoundSelectionAndMissingPlayerKeepsNotification(t *testing.T) {
-	t.Setenv("GTX_DISABLE_SOUND", "")
+	t.Setenv("IKESU_DISABLE_SOUND", "")
 	candidates := []string{"paplay", "pw-play", "ffplay", "mpg123", "mpv"}
 	for selected := 0; selected <= len(candidates); selected++ {
 		name := "missing"

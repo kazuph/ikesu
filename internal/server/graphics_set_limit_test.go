@@ -16,7 +16,7 @@ func TestGraphicsSetDecodedLimitIsIndependentOfFileAndStreamBudgets(t *testing.T
 	if err := os.WriteFile(config, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", config)
+	teststate.Setenv(t, "IKESU_CONFIG", config)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
 	client := dialClient(t, dir)

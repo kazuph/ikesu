@@ -292,7 +292,7 @@ func TestLayoutApplyCommandLeaf(t *testing.T) {
 	defer stopServer(t, dir, done)
 
 	cmdLeaf := &api.LayoutNode{
-		Type: "pane", Command: []string{"/bin/sh", "-c", "echo gtxapply1; sleep 30"},
+		Type: "pane", Command: []string{"/bin/sh", "-c", "echo ikesuapply1; sleep 30"},
 	}
 	_ = cmdLeaf
 	var ar api.LayoutApplyResult
@@ -316,7 +316,7 @@ func TestLayoutApplyCommandLeaf(t *testing.T) {
 		apiOK(t, dir, api.MethodPaneRead, api.PaneReadParams{
 			PaneID: paneID, Source: "recent", Format: "text",
 		}, &rd)
-		if text := rd.Read.Text; text != "" && contains(text, "gtxapply1") {
+		if text := rd.Read.Text; text != "" && contains(text, "ikesuapply1") {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)

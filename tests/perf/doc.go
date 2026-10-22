@@ -5,7 +5,7 @@
 //
 //	go test -tags perf ./tests/perf -run . -timeout 30m
 //
-// GTX_PERF_BIN picks the gtx under test, GTX_PERF_BASELINE_BIN the version
-// compared against for the relative check, and GTX_PERF_OUT an optional
+// IKESU_PERF_BIN picks the ikesu under test, IKESU_PERF_BASELINE_BIN the version
+// compared against for the relative check, and IKESU_PERF_OUT an optional
 // file that also receives the printed result tables.
 package perf

@@ -9,7 +9,7 @@ func TestPluginChildSessionScrub(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_CHILD_SESSION", "1")
 	t.Setenv("CODEX_THREAD_ID", "inherited")
 	t.Setenv("HERDR_AGENT", "old")
-	t.Setenv("GTX_GUARD_ENFORCING", "1")
+	t.Setenv("IKESU_GUARD_ENFORCING", "1")
 	t.Setenv("CLAUDE_EFFORT", "high")
 	e, p := actionEngine(t, minimal+`[[actions]]
 id="env"
@@ -26,7 +26,7 @@ command=["/usr/bin/env"]
 		t.Fatal(logs, err)
 	}
 	output := *logs[0].Stdout
-	for _, key := range []string{"CLAUDE_CODE_CHILD_SESSION", "CODEX_THREAD_ID", "HERDR_AGENT", "GTX_GUARD_ENFORCING"} {
+	for _, key := range []string{"CLAUDE_CODE_CHILD_SESSION", "CODEX_THREAD_ID", "HERDR_AGENT", "IKESU_GUARD_ENFORCING"} {
 		if strings.Contains(output, key+"=") {
 			t.Fatal(output)
 		}

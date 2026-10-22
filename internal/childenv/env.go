@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/kazuph/ikesu/internal/envcompat"
 )
 
 var markers = map[string]bool{
@@ -17,16 +15,16 @@ var markers = map[string]bool{
 	"CLAUDE_CODE_SESSION_ATTENDED": true, "CLAUDE_CODE_MESSAGING_SOCKET": true,
 	"CLAUDE_CODE_MESSAGING_TOKEN": true, "CLAUDE_CODE_ENTRYPOINT": true,
 	"CLAUDE_CODE_EXECPATH": true, "CODEX_THREAD_ID": true, "HERDR_AGENT": true,
-	"GTX_PANE_ID": true, "IKESU_PANE_ID": true, "GOTERRACE_PANE_ID": true,
-	"GTX_TAB_ID": true, "IKESU_TAB_ID": true,
-	"GTX_WORKSPACE_ID": true, "IKESU_WORKSPACE_ID": true,
+	"IKESU_PANE_ID": true, "GOTERRACE_PANE_ID": true,
+	"IKESU_TAB_ID":       true,
+	"IKESU_WORKSPACE_ID": true,
 }
 
 // Scrub restores proven generated shell settings before dropping pane state.
 // Explicit launch extras and fresh guard injection must follow this call.
 func Scrub(env []string) []string {
 	m := map[string]string{}
-	for _, kv := range envcompat.Both(env) {
+	for _, kv := range env {
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			m[k] = v
 		}
@@ -44,7 +42,7 @@ func Scrub(env []string) []string {
 		}
 		m["PATH"] = strings.Join(paths, string(os.PathListSeparator))
 	}
-	for _, ns := range []string{"IKESU", "GTX", "HERDR"} {
+	for _, ns := range []string{"IKESU", "HERDR"} {
 		prefix := ns + "_GUARD_"
 		bin := m[prefix+"BIN"]
 		if bin == "" {
@@ -80,7 +78,7 @@ func Scrub(env []string) []string {
 		// Only an exact suffix produced by our startup writer is removed.
 		pin := `case "$PATH" in "$` + prefix + `BIN"|"$` + prefix + `BIN":*) ;; *) export PATH="$` + prefix + `BIN:$PATH";; esac` + "\n"
 		ready := `if [[ ! -f "$` + prefix + `READY" ]]; then builtin printf '' > "$` + prefix + `READY"; fi` + "\n"
-		for _, enforce := range []string{"", "export " + prefix + "ENFORCING=1\n", "export GTX_GUARD_ENFORCING=1 IKESU_GUARD_ENFORCING=1\n"} {
+		for _, enforce := range []string{"", "export " + prefix + "ENFORCING=1\n", "export IKESU_GUARD_ENFORCING=1\n"} {
 			suffix := "\n" + pin + enforce + ready
 			if strings.HasSuffix(m["PROMPT_COMMAND"], suffix) {
 				m["PROMPT_COMMAND"] = strings.TrimSuffix(m["PROMPT_COMMAND"], suffix)
@@ -91,7 +89,7 @@ func Scrub(env []string) []string {
 		}
 	}
 	for k := range m {
-		if markers[k] || strings.HasPrefix(k, "IKESU_GUARD_") || strings.HasPrefix(k, "GTX_GUARD_") || strings.HasPrefix(k, "HERDR_GUARD_") && k != "HERDR_GUARD_PANE_SHELL" {
+		if markers[k] || strings.HasPrefix(k, "IKESU_GUARD_") || strings.HasPrefix(k, "HERDR_GUARD_") && k != "HERDR_GUARD_PANE_SHELL" {
 			delete(m, k)
 		}
 	}
@@ -128,24 +126,10 @@ func paneShellDirectory(path string) bool {
 // ScrubProcess is called before server workers or standalone pane spawns.
 func ScrubProcess() {
 	old := os.Environ()
-	original := map[string]string{}
-	for _, kv := range old {
-		k, v, _ := strings.Cut(kv, "=")
-		original[k] = v
-	}
 	clean := Scrub(old)
 	keys := map[string]bool{}
 	for _, kv := range clean {
 		k, v, _ := strings.Cut(kv, "=")
-		// Pair settings when launching a child, without rewriting the server's
-		// own explicit settings or introducing a new environment override.
-		if strings.HasPrefix(k, "IKESU_") || strings.HasPrefix(k, "GTX_") {
-			value, present := original[k]
-			if !present {
-				continue
-			}
-			v = value
-		}
 		keys[k] = true
 		_ = os.Setenv(k, v)
 	}

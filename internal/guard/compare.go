@@ -114,8 +114,8 @@ func Compare(o CompareOptions, w io.Writer) (int, error) {
 			}
 		}
 		if best < 0 {
-			counts["gtx-only"]++
-			fmt.Fprintf(w, "  IKESU-ONLY  %s  (gtx=%s:%s)\n", r.line, r.verdict, r.rule)
+			counts["ikesu-only"]++
+			fmt.Fprintf(w, "  IKESU-ONLY  %s  (ikesu=%s:%s)\n", r.line, r.verdict, r.rule)
 			continue
 		}
 		used[best] = true
@@ -132,7 +132,7 @@ func Compare(o CompareOptions, w io.Writer) (int, error) {
 			key = "diverge"
 		}
 		counts[key]++
-		fmt.Fprintf(w, "  %-8s %s  (gtx=%s ai_guard=%s)\n", status, r.line, r.verdict, s.verdict)
+		fmt.Fprintf(w, "  %-8s %s  (ikesu=%s ai_guard=%s)\n", status, r.line, r.verdict, s.verdict)
 	}
 	for n, s := range a {
 		if !used[n] && s.epoch >= o.Since {
@@ -140,9 +140,9 @@ func Compare(o CompareOptions, w io.Writer) (int, error) {
 			fmt.Fprintf(w, "  AI-GUARD-ONLY  %s  (ai_guard=%s)\n", s.line, s.verdict)
 		}
 	}
-	fmt.Fprintf(w, "\nsummary: agree=%d diverge=%d gtx-only=%d ai-guard-only=%d out-of-window=%d\n", counts["agree"], counts["diverge"], counts["gtx-only"], counts["ai-guard-only"], counts["out-of-window"])
+	fmt.Fprintf(w, "\nsummary: agree=%d diverge=%d ikesu-only=%d ai-guard-only=%d out-of-window=%d\n", counts["agree"], counts["diverge"], counts["ikesu-only"], counts["ai-guard-only"], counts["out-of-window"])
 	if bg+ba > 0 {
-		fmt.Fprintf(w, "malformed: gtx=%d ai-guard=%d\n", bg, ba)
+		fmt.Fprintf(w, "malformed: ikesu=%d ai-guard=%d\n", bg, ba)
 	}
 	if counts["diverge"] > 0 {
 		return 1, nil
@@ -205,7 +205,7 @@ func Status(c Config, root string, i Input) (any, error) {
 	}
 	var marker any
 	if active {
-		marker = map[string]string{"agent": m.Agent, "cwd": m.Cwd, "path": i.Env["GTX_GUARD_MARKER"]}
+		marker = map[string]string{"agent": m.Agent, "cwd": m.Cwd, "path": i.Env["IKESU_GUARD_MARKER"]}
 	}
 	return map[string]any{"ask_timeout_seconds": int64(c.Timeout() / time.Second), "enabled": c.Active(), "log_path": path, "log_records": len(rows), "marker": marker, "mode": c.EffectiveMode(), "shim_dir": root + "/guard/bin"}, nil
 }

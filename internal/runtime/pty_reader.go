@@ -20,7 +20,7 @@ func (p *Pane) installPTY(original *os.File) error {
 		return err
 	}
 	original.Close()
-	file := os.NewFile(uintptr(fd), "gtx-pty")
+	file := os.NewFile(uintptr(fd), "ikesu-pty")
 	read, write, err := os.Pipe()
 	if err != nil {
 		file.Close()

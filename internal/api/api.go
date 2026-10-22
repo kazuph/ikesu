@@ -1,5 +1,5 @@
 // Package api defines the newline-delimited JSON protocol spoken over
-// <session-dir>/gtx.sock between the gtx server and its CLI. Method names,
+// <session-dir>/ikesu.sock between the ikesu server and its CLI. Method names,
 // parameter fields, and result envelopes mirror the herdr subset documented
 // in docs/ref/herdr-api-schema.json.
 package api
@@ -12,7 +12,7 @@ import (
 	"io"
 )
 
-// Protocol is the gtx wire protocol version. It is independent of herdr's
+// Protocol is the ikesu wire protocol version. It is independent of herdr's
 // protocol number; only the documented subset of methods is implemented.
 const Protocol = 1
 

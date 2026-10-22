@@ -11,13 +11,13 @@ import (
 )
 
 func TestDesktopNotificationClickAndSoundCommands(t *testing.T) {
-	t.Setenv("GTX_DISABLE_SOUND", "")
+	t.Setenv("IKESU_DISABLE_SOUND", "")
 	c, err := config.Decode([]byte("[ui.sound]\npath='all.mp3'\ndone_path='done.mp3'\nrequest_path='request.mp3'\n[ui.sound.agents]\ndroid='on'\nclaude='off'\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var calls [][]string
-	d := Desktop{Executable: "/tmp/my gtx", TerminalBundleID: "com.mitchellh.ghostty", ConfigPath: filepath.Join(t.TempDir(), "config.toml"), LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
+	d := Desktop{Executable: "/tmp/my ikesu", TerminalBundleID: "com.mitchellh.ghostty", ConfigPath: filepath.Join(t.TempDir(), "config.toml"), LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
 		calls = append(calls, append([]string{name}, args...))
 		return nil
 	}}

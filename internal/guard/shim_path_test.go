@@ -9,8 +9,8 @@ import (
 )
 
 func TestExecuteRemovesEveryShimWithoutMarkerVariables(t *testing.T) {
-	if os.Getenv("GTX_EXECUTE_TEST_CHILD") == "1" {
-		if err := Execute(Input{Command: "sh", Args: []string{"-c", "printf '%s\\n' REAL_EXEC \"$PATH\"; command -v sh"}, Cwd: os.Getenv("GTX_EXECUTE_TEST_CWD"), Env: EnvMap(os.Environ())}); err != nil {
+	if os.Getenv("IKESU_EXECUTE_TEST_CHILD") == "1" {
+		if err := Execute(Input{Command: "sh", Args: []string{"-c", "printf '%s\\n' REAL_EXEC \"$PATH\"; command -v sh"}, Cwd: os.Getenv("IKESU_EXECUTE_TEST_CWD"), Env: EnvMap(os.Environ())}); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -27,7 +27,7 @@ func TestExecuteRemovesEveryShimWithoutMarkerVariables(t *testing.T) {
 		}
 	}
 	for _, cmd := range []string{"sh", filepath.Join(paths[0], "sh")} {
-		env := []string{"PATH=" + strings.Join(paths, ":") + ":/usr/bin:/bin", "GTX_STATE_DIR=" + state}
+		env := []string{"PATH=" + strings.Join(paths, ":") + ":/usr/bin:/bin", "IKESU_STATE_DIR=" + state}
 		path, err := Resolve(cmd, env)
 		if cmd != "sh" {
 			if err == nil {
@@ -41,7 +41,7 @@ func TestExecuteRemovesEveryShimWithoutMarkerVariables(t *testing.T) {
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestExecuteRemovesEveryShimWithoutMarkerVariables$")
 	// Explicit clean environment: the test cannot inherit the user's guard bins.
-	cmd.Env = []string{"HOME=" + root, "PATH=" + strings.Join(paths, ":") + ":/usr/bin:/bin", "GTX_STATE_DIR=" + state, "GTX_EXECUTE_TEST_CHILD=1", "GTX_EXECUTE_TEST_CWD=" + root}
+	cmd.Env = []string{"HOME=" + root, "PATH=" + strings.Join(paths, ":") + ":/usr/bin:/bin", "IKESU_STATE_DIR=" + state, "IKESU_EXECUTE_TEST_CHILD=1", "IKESU_EXECUTE_TEST_CWD=" + root}
 	output, err := cmd.CombinedOutput()
 	if err != nil || !strings.HasPrefix(string(output), "REAL_EXEC\n/usr/bin:/bin\n") {
 		t.Fatal(string(output), err)

@@ -85,7 +85,7 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 	}
 	dialog := render.Dialog{Title: title, Detail: detail, Confirm: "delete", Cancel: "cancel"}
 	if !force {
-		dialog = render.Dialog{Title: "delete worktree checkout?", Detail: "This removes the checkout folder:", Lines: []string{ws.Cwd, "The branch is not deleted. The GTX workspace will close.", "", "", ""}, Width: 72, CompactButtons: true, CenterTerminal: true, Confirm: "remove", Cancel: "cancel"}
+		dialog = render.Dialog{Title: "delete worktree checkout?", Detail: "This removes the checkout folder:", Lines: []string{ws.Cwd, "The branch is not deleted. The IKESU workspace will close.", "", "", ""}, Width: 72, CompactButtons: true, CenterTerminal: true, Confirm: "remove", Cancel: "cancel"}
 	}
 	a.dialog = &uiDialog{d: dialog, run: func(a *App) {
 		for i, w := range a.st.Workspaces {

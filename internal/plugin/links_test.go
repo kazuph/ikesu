@@ -13,11 +13,11 @@ func TestLinkHandlersOrderContextAndDisabledRealCommand(t *testing.T) {
 	manifest := `id="link.test"
 name="Link"
 version="0.1.0"
-min_gtx_version="0.1.0"
+min_ikesu_version="0.1.0"
 [[actions]]
 id="capture"
 title="Capture"
-command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_CONTEXT_JSON\""]
+command=["/bin/sh","-c","printf '%s' \"$IKESU_PLUGIN_CONTEXT_JSON\""]
 [[link_handlers]]
 id="first"
 title="First"
@@ -29,13 +29,13 @@ title="Second"
 pattern="example"
 action="capture"
 `
-	if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Link(root, true, nil); err != nil {
 		t.Fatal(err)
 	}
-	e := Engine{Store: s, BinPath: "/gtx", SocketPath: "/socket"}
+	e := Engine{Store: s, BinPath: "/ikesu", SocketPath: "/socket"}
 	found, err := e.InvokeLink("https://example.test/a", Context{"workspace_id": "s1"})
 	if !found || err != nil {
 		t.Fatal(found, err)

@@ -13,13 +13,13 @@ func guardDirectory(i Input) string {
 	if i.GuardRoot != "" {
 		return i.GuardRoot
 	}
-	if p := i.Env["GTX_GUARD_MARKER"]; p != "" {
+	if p := i.Env["IKESU_GUARD_MARKER"]; p != "" {
 		return filepath.Dir(filepath.Dir(p))
 	}
 	return ""
 }
 func guardFunction(i Input, name string) bool {
-	return name == "TRAPDEBUG" || strings.HasPrefix(name, "_gtx_guard_") || name == "command" || has(defaults(i.GuardCommands, (Config{}).Commands()), name)
+	return name == "TRAPDEBUG" || strings.HasPrefix(name, "_ikesu_guard_") || name == "command" || has(defaults(i.GuardCommands, (Config{}).Commands()), name)
 }
 func guardPath(i Input, path string) bool {
 	root := guardDirectory(i)
@@ -45,7 +45,7 @@ func commandBoundary(i Input) string {
 		return "判定・権限を変更する操作の対象を安全に確定できません"
 	}
 	switch cmd {
-	case "ikesu", "gtx", "herdr":
+	case "ikesu", "herdr":
 		if len(args) >= 2 && args[0] == "guard" && args[1] == "claude-prefix" {
 			return "専用入口の実行内容は入口自身で全体を確認する必要があります"
 		}

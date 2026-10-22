@@ -103,7 +103,7 @@ func TestRightSidebarActualPTYGeometryAndClicks(t *testing.T) {
 
 func TestRightSidebarStandaloneRestoresSameLocalPreferences(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("GTX_STATE_DIR", root)
+	t.Setenv("IKESU_STATE_DIR", root)
 	path := endpoint.ViewPreferencesPath(api.DefaultSession)
 	first := NewApp(model.New(root, 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, root)
 	if err := first.configureStandalonePreferences(); err != nil {

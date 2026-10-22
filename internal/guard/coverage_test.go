@@ -20,7 +20,7 @@ func TestLoginStartupAndSnapshotKeepShimFirst(t *testing.T) {
 	}
 	a := NewAssets(d, "p_1", "/usr/bin/true", Config{})
 	a.ConfigureShell("/bin/zsh")
-	env, e := a.Prepare([]string{"HOME=" + home, "ZDOTDIR=" + home, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1"}, d)
+	env, e := a.Prepare([]string{"HOME=" + home, "ZDOTDIR=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, d)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -47,7 +47,7 @@ func TestLoginStartupAndSnapshotKeepShimFirst(t *testing.T) {
 func TestSameAgentRepairsAssetsAndHandoff(t *testing.T) {
 	d := t.TempDir()
 	a := NewAssets(d, "p_1", "/usr/bin/true", Config{})
-	if _, e := a.Prepare([]string{"HOME=" + d, "PATH=/bin", "GTX_PANE_ID=p1"}, d); e != nil {
+	if _, e := a.Prepare([]string{"HOME=" + d, "PATH=/bin", "IKESU_PANE_ID=p1"}, d); e != nil {
 		t.Fatal(e)
 	}
 	if e := a.Sync("claude"); e != nil {
@@ -78,12 +78,12 @@ func TestUninjectedAndUnsupportedNeverPublishMarker(t *testing.T) {
 			if shell != "disabled" {
 				a.ConfigureShell(shell)
 			}
-			env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1"}, d)
+			env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, d)
 			if e != nil {
 				t.Fatal(e)
 			}
 			t.Cleanup(func() { a.Close() })
-			if EnvMap(env)["GTX_GUARD_ENFORCING"] != "" {
+			if EnvMap(env)["IKESU_GUARD_ENFORCING"] != "" {
 				t.Fatal("unconfirmed shell suppresses ai_guard")
 			}
 			if e = a.Reconfigure(Config{}); e != nil {

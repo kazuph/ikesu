@@ -30,19 +30,19 @@ type Record struct {
 }
 
 func ReadMarker(i Input) (Marker, bool, error) {
-	p := i.Env["GTX_GUARD_MARKER"]
+	p := i.Env["IKESU_GUARD_MARKER"]
 	if p == "" {
 		return Marker{}, false, nil
 	}
 	b, e := os.ReadFile(p)
 	if e != nil {
-		return Marker{Pane: i.Env["GTX_PANE_ID"]}, true, fmt.Errorf("目印ファイルを読めません: %w", e)
+		return Marker{Pane: i.Env["IKESU_PANE_ID"]}, true, fmt.Errorf("目印ファイルを読めません: %w", e)
 	}
 	m, e := decodeMarker(b)
 	if e != nil {
 		return m, true, fmt.Errorf("目印ファイルが壊れています: %w", e)
 	}
-	if m.Agent == "" || m.Pane != i.Env["GTX_PANE_ID"] || !filepath.IsAbs(m.Socket) || !filepath.IsAbs(m.Cwd) {
+	if m.Agent == "" || m.Pane != i.Env["IKESU_PANE_ID"] || !filepath.IsAbs(m.Socket) || !filepath.IsAbs(m.Cwd) {
 		return m, true, fmt.Errorf("目印ファイルの画面・エージェント・接続先が不正です")
 	}
 	if m.Policy == nil {

@@ -15,14 +15,14 @@ import (
 func TestPingAndStatusRespondWhileAppBlocked(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "busy-ping")
-	path := filepath.Join(teststate.TempDir(t), "gtx.sock")
+	path := filepath.Join(teststate.TempDir(t), "ikesu.sock")
 	listener, err := net.Listen("unix", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.apiLn = listener
-	teststate.Setenv(t, "GTX_SOCKET_PATH", path)
-	teststate.Setenv(t, "GTX_SOCKET_PATH_EXPLICIT", "1")
+	teststate.Setenv(t, "IKESU_SOCKET_PATH", path)
+	teststate.Setenv(t, "IKESU_SOCKET_PATH_EXPLICIT", "1")
 	apiDone, appDone := make(chan struct{}), make(chan struct{})
 	go func() { s.apiLoop(); close(apiDone) }()
 	go func() { s.app.Run(); close(appDone) }()

@@ -86,7 +86,7 @@ func Identify(procName, argv0 string) string {
 	return lookupAgent(normalizedLookupName(base))
 }
 
-// AgentIDs returns all canonical manifest ids, sorted — for `gtx detect`.
+// AgentIDs returns all canonical manifest ids, sorted — for `ikesu detect`.
 func AgentIDs() []string {
 	ids := make([]string, len(manifests))
 	for i, m := range manifests {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "gtx")
+	binary := filepath.Join(t.TempDir(), "ikesu")
 	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}

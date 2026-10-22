@@ -13,7 +13,7 @@ import (
 )
 
 func TestSyncPriorStagesClearApprovalBeforeNextStage(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	if err := claimApproval("m1", "initial", func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestSyncPriorStagesClearApprovalBeforeNextStage(t *testing.T) {
 }
 
 func TestSyncFailedApprovalKeepsRecordAndDoesNotExecuteBody(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	if err := claimApproval("m1", "waiting", func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestSyncFailedApprovalKeepsRecordAndDoesNotExecuteBody(t *testing.T) {
 }
 
 func TestRunApprovalTimeoutIsThirtyMinutesAndStopsAfterSuccess(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	if err := claimApproval("m1", "waiting", func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}

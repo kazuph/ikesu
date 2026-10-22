@@ -12,15 +12,15 @@ import (
 func TestStageOnePaneEnvironment(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, "IKESU_PANE_ID", "p99")
-	teststate.Setenv(t, "IKESU_SOCKET_PATH", "/inherited/gtx.sock")
-	teststate.Setenv(t, "GTX_SOCKET_PATH", "/inherited/gtx.sock")
+	teststate.Setenv(t, "IKESU_SOCKET_PATH", "/inherited/ikesu.sock")
+	teststate.Setenv(t, "IKESU_SOCKET_PATH", "/inherited/ikesu.sock")
 	teststate.Setenv(t, "IKESU_GUARD_MARKER", "/inherited/guard")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "env")
 	sup := NewSupervisor()
 	defer sup.KillAll()
 	sup.Env = func(int) []string {
-		return []string{"GTX_PANE_ID=p7", "GTX_SOCKET_PATH=/fresh/gtx.sock", "GTX_SOCKET_PATH_EXPLICIT=1"}
+		return []string{"IKESU_PANE_ID=p7", "IKESU_SOCKET_PATH=/fresh/ikesu.sock", "IKESU_SOCKET_PATH_EXPLICIT=1"}
 	}
 	pane, err := sup.SpawnWith(7, dir, 80, 24, nil, []string{"/bin/sh", "-c", "/usr/bin/env > " + path})
 	if err != nil {
@@ -42,12 +42,12 @@ func TestStageOnePaneEnvironment(t *testing.T) {
 			env[key] = value
 		}
 	}
-	for key, want := range map[string]string{"IKESU": "1", "GOTERRACE": "1", "IKESU_PANE_ID": "p7", "GTX_PANE_ID": "p7", "IKESU_SOCKET_PATH": "/fresh/gtx.sock", "GTX_SOCKET_PATH": "/fresh/gtx.sock"} {
+	for key, want := range map[string]string{"IKESU": "1", "GOTERRACE": "1", "IKESU_PANE_ID": "p7", "IKESU_SOCKET_PATH": "/fresh/ikesu.sock"} {
 		if env[key] != want {
 			t.Errorf("%s=%q want %q", key, env[key], want)
 		}
 	}
-	if env["IKESU_GUARD_MARKER"] != "" || env["GTX_GUARD_MARKER"] != "" {
+	if env["IKESU_GUARD_MARKER"] != "" {
 		t.Fatal("parent guard leaked")
 	}
 }

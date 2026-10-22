@@ -26,7 +26,7 @@ func TestLinuxPerfStartupOnly(t *testing.T) {
 				t.Fatal("startup prompt unavailable", process.screen())
 			}
 			table := psTable()
-			pids := gtxPids(table, process.cmd.Process.Pid, bins)
+			pids := ikesuPids(table, process.cmd.Process.Pid, bins)
 			want := 1
 			if mode.name == "server" {
 				want = 2

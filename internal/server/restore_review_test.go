@@ -15,7 +15,7 @@ import (
 
 func review2FailedShell(t *testing.T) string {
 	t.Helper()
-	root, err := os.MkdirTemp("/tmp", "gtxr2-")
+	root, err := os.MkdirTemp("/tmp", "ikesur2-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,8 +36,8 @@ func TestReview2RestoreLaunchedDespiteFailedLoginPATH(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("[session]\nresume_agents_on_restore = false\n[agent_restore.templates]\nclaude = \"/bin/echo {session_id}\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfg)
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(root, "state"))
+	teststate.Setenv(t, "IKESU_CONFIG", cfg)
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "r2")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
 	// The real start API proves that the one cached login lookup failed.

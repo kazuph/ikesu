@@ -13,7 +13,7 @@ import (
 	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
-// Pane-less background jobs (gtx run). A job is a command dispatch row in
+// Pane-less background jobs (ikesu run). A job is a command dispatch row in
 // the SQLite store plus a detached child process whose output streams to a
 // log file under StateDir()/job-logs. Completion writes one nudge into the
 // caller's jobs-room mailbox; delivery follows the regular mailbox

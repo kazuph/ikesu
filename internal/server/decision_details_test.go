@@ -115,6 +115,6 @@ func TestDecisionDescriptionMultiCLIWatchAndStatusRealServer(t *testing.T) {
 	if err := json.Unmarshal(statusOut.Bytes(), &status); err != nil || !status.Server.Running || !status.Server.Capabilities["screen_prompt_decisions"] {
 		t.Fatal(status, err)
 	}
-	t.Log("gtx multi JSON:", answerOut.String())
-	t.Log("gtx status JSON:", statusOut.String())
+	t.Log("ikesu multi JSON:", answerOut.String())
+	t.Log("ikesu status JSON:", statusOut.String())
 }

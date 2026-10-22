@@ -10,8 +10,8 @@ import (
 
 // --- jobs (command dispatches) ---
 
-// InsertCommand records a `gtx run` job: a 'command' dispatch in the jobs
-// room from gtx-run to the caller's mailbox, queued until the runner starts.
+// InsertCommand records a `ikesu run` job: a 'command' dispatch in the jobs
+// room from ikesu-run to the caller's mailbox, queued until the runner starts.
 func (s *Store) InsertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

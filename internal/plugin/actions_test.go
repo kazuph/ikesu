@@ -17,13 +17,13 @@ func actionEngine(t *testing.T, text string) (*Engine, Installed) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Engine{Store: s, SocketPath: filepath.Join(root, "socket"), BinPath: "/test/gtx"}, p
+	return &Engine{Store: s, SocketPath: filepath.Join(root, "socket"), BinPath: "/test/ikesu"}, p
 }
 func TestActionRealExecutionAndEnvironment(t *testing.T) {
 	e, p := actionEngine(t, minimal+`[[actions]]
 id="run"
 title="Run"
-command=["/bin/sh", "-c", "printf '%s\\n' \"$PWD\" \"$GTX_BIN_PATH\" \"$GTX_PLUGIN_ID\" \"$GTX_PLUGIN_ACTION_ID\" \"$GTX_WORKSPACE_ID\" \"$GTX_TAB_ID\" \"$GTX_PANE_ID\" \"$GTX_PLUGIN_CONTEXT_JSON\"; printf 'saved' > \"$GTX_PLUGIN_STATE_DIR/state\"; printf 'config' > \"$GTX_PLUGIN_CONFIG_DIR/config\""]
+command=["/bin/sh", "-c", "printf '%s\\n' \"$PWD\" \"$IKESU_BIN_PATH\" \"$IKESU_PLUGIN_ID\" \"$IKESU_PLUGIN_ACTION_ID\" \"$IKESU_WORKSPACE_ID\" \"$IKESU_TAB_ID\" \"$IKESU_PANE_ID\" \"$IKESU_PLUGIN_CONTEXT_JSON\"; printf 'saved' > \"$IKESU_PLUGIN_STATE_DIR/state\"; printf 'config' > \"$IKESU_PLUGIN_CONFIG_DIR/config\""]
 `)
 	context := Context{"workspace_id": "s1", "tab_id": "s1:t1", "focused_pane_id": "p1", "invocation_source": "cli"}
 	info, started, err := e.Invoke("", p.ID+".run", context)
@@ -42,7 +42,7 @@ command=["/bin/sh", "-c", "printf '%s\\n' \"$PWD\" \"$GTX_BIN_PATH\" \"$GTX_PLUG
 	if log.Status != "succeeded" || log.ExitCode == nil || *log.ExitCode != 0 || log.Stdout == nil {
 		t.Fatal(log)
 	}
-	for _, want := range []string{p.Root, "/test/gtx", p.ID, "run", "s1", "s1:t1", "p1", "\"invocation_source\":\"cli\""} {
+	for _, want := range []string{p.Root, "/test/ikesu", p.ID, "run", "s1", "s1:t1", "p1", "\"invocation_source\":\"cli\""} {
 		if !strings.Contains(*log.Stdout, want) {
 			t.Fatalf("missing %s in %q", want, *log.Stdout)
 		}
@@ -120,7 +120,7 @@ command=["/bin/echo","ok"]
 func TestEventHooksAndStartupNeverRuns(t *testing.T) {
 	e, p := actionEngine(t, minimal+`[[events]]
 on="worktree.created"
-command=["/bin/sh","-c","printf '%s\\n' \"$GTX_PLUGIN_EVENT\" \"$GTX_PLUGIN_EVENT_JSON\""]
+command=["/bin/sh","-c","printf '%s\\n' \"$IKESU_PLUGIN_EVENT\" \"$IKESU_PLUGIN_EVENT_JSON\""]
 [[startup]]
 command=["/bin/sh","-c","touch startup-ran"]
 `)

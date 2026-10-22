@@ -8,9 +8,9 @@ import (
 
 func TestPluginBinPathHomebrewStablePrecedence(t *testing.T) {
 	root := t.TempDir()
-	original := filepath.Join(root, "Cellar", "goterrace", "1.2.3", "bin", "gtx")
-	opt := filepath.Join(root, "opt", "goterrace", "bin", "gtx")
-	bin := filepath.Join(root, "bin", "gtx")
+	original := filepath.Join(root, "Cellar", "goterrace", "1.2.3", "bin", "ikesu")
+	opt := filepath.Join(root, "opt", "goterrace", "bin", "ikesu")
+	bin := filepath.Join(root, "bin", "ikesu")
 	if got := stableBinPath(original); got != original {
 		t.Fatal(got)
 	}
@@ -25,7 +25,7 @@ func TestPluginBinPathHomebrewStablePrecedence(t *testing.T) {
 			t.Fatal(got, path)
 		}
 	}
-	for _, path := range []string{"/usr/local/bin/gtx", filepath.Join(root, "Cellar", "bad", "bin", "gtx"), "relative/gtx"} {
+	for _, path := range []string{"/usr/local/bin/ikesu", filepath.Join(root, "Cellar", "bad", "bin", "ikesu"), "relative/ikesu"} {
 		if got := stableBinPath(path); got != path {
 			t.Fatal(got, path)
 		}
@@ -38,7 +38,7 @@ func TestPluginBinPathHomebrewStablePrecedence(t *testing.T) {
 	}
 	found := false
 	for _, v := range env {
-		if v == "GTX_BIN_PATH="+opt {
+		if v == "IKESU_BIN_PATH="+opt {
 			found = true
 		}
 	}

@@ -9,7 +9,7 @@ import (
 func TestCommandAndContextScrubRealChildren(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_CHILD_SESSION", "1")
 	t.Setenv("CODEX_THREAD_ID", "outer")
-	t.Setenv("GTX_GUARD_ENFORCING", "1")
+	t.Setenv("IKESU_GUARD_ENFORCING", "1")
 	t.Setenv("CLAUDE_EFFORT", "high")
 	commands := []struct {
 		name string
@@ -25,7 +25,7 @@ func TestCommandAndContextScrubRealChildren(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := string(out)
-			for _, key := range []string{"CLAUDE_CODE_CHILD_SESSION", "CODEX_THREAD_ID", "GTX_GUARD_ENFORCING"} {
+			for _, key := range []string{"CLAUDE_CODE_CHILD_SESSION", "CODEX_THREAD_ID", "IKESU_GUARD_ENFORCING"} {
 				if strings.Contains(text, key+"=") {
 					t.Fatal(text)
 				}

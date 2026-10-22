@@ -2,7 +2,7 @@ package machine
 
 import "strings"
 
-// DecodeCommand reads literal words emitted by gtx's shell encoders. It rejects
+// DecodeCommand reads literal words emitted by ikesu's shell encoders. It rejects
 // expansion, substitutions and operators; it is not a general shell parser.
 func DecodeCommand(text string) ([]string, bool) {
 	var words []string

@@ -15,7 +15,7 @@ func TestEndpointSettingsWriteClientConfigurationAndKeepShellInput(t *testing.T)
 	if err := os.WriteFile(path, []byte("onboarding=false\n[extra]\nkeep='endpoint-value'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s := startEnv(t, map[string]string{"GTX_CONFIG": path})
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": path})
 	s.waitFor("shell", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.send("\x02s")
 	s.waitFor("settings", 5*time.Second, func(text string) bool { return strings.Contains(text, "settings") && strings.Contains(text, "toasts") })

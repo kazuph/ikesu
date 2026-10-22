@@ -37,11 +37,11 @@ func NewAssets(root, pane, exe string, c Config) *Assets {
 }
 func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	m := EnvMap(env)
-	a.meta = Marker{Pane: m["GTX_PANE_ID"], Cwd: cwd, Workspace: m["GTX_WORKSPACE_ID"], Tab: m["GTX_TAB_ID"], Socket: m["GTX_SOCKET_PATH"], Mode: a.Config.EffectiveMode()}
+	a.meta = Marker{Pane: m["IKESU_PANE_ID"], Cwd: cwd, Workspace: m["IKESU_WORKSPACE_ID"], Tab: m["IKESU_TAB_ID"], Socket: m["IKESU_SOCKET_PATH"], Mode: a.Config.EffectiveMode()}
 	if !a.Config.Active() {
 		return env, nil
 	}
-	if m["GTX_PANE_ID"] == "" && m["GOTERRACE_PANE_ID"] == "" {
+	if m["IKESU_PANE_ID"] == "" && m["GOTERRACE_PANE_ID"] == "" {
 		return env, nil
 	}
 	if !has([]string{"record", "enforce"}, a.Config.EffectiveMode()) || a.Config.Timeout() <= 0 {
@@ -62,15 +62,15 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	if e := a.remove(); e != nil {
 		return nil, e
 	}
-	a.meta = Marker{Pane: m["GTX_PANE_ID"], Cwd: cwd, Workspace: m["GTX_WORKSPACE_ID"], Tab: m["GTX_TAB_ID"], Socket: m["GTX_SOCKET_PATH"], Mode: a.Config.EffectiveMode()}
-	m["GTX_GUARD_BIN"] = a.Bin
-	m["GTX_GUARD_MARKER"] = a.MarkerPath
-	m["GTX_GUARD_LAUNCH_CWD"] = cwd
-	m["GTX_GUARD_EXECUTABLE"] = a.Executable
+	a.meta = Marker{Pane: m["IKESU_PANE_ID"], Cwd: cwd, Workspace: m["IKESU_WORKSPACE_ID"], Tab: m["IKESU_TAB_ID"], Socket: m["IKESU_SOCKET_PATH"], Mode: a.Config.EffectiveMode()}
+	m["IKESU_GUARD_BIN"] = a.Bin
+	m["IKESU_GUARD_MARKER"] = a.MarkerPath
+	m["IKESU_GUARD_LAUNCH_CWD"] = cwd
+	m["IKESU_GUARD_EXECUTABLE"] = a.Executable
 	if a.Config.EffectiveMode() == "enforce" {
-		m["GTX_GUARD_ENFORCING"] = "1"
+		m["IKESU_GUARD_ENFORCING"] = "1"
 	} else {
-		delete(m, "GTX_GUARD_ENFORCING")
+		delete(m, "IKESU_GUARD_ENFORCING")
 	}
 	m["PATH"] = a.Bin + string(os.PathListSeparator) + m["PATH"]
 	shellDir := filepath.Join(a.Root, "guard", "shell", a.Pane)
@@ -88,7 +88,7 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 // Pin identity at the generated entry point, before the CLI sees the caller's
 // environment. The socket remains in the marker so handoff can replace it.
 func (a *Assets) identity() string {
-	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " GTX_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane) + " GTX_PANE_ID=" + quote(a.meta.Pane)
+	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane)
 }
 func (a *Assets) invocation() string {
 	return a.identity() + " " + quote(a.Executable)
@@ -104,25 +104,25 @@ func (a *Assets) shellFunctions() string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `_gtx_guard_forward() {
+	fmt.Fprintf(&b, `_ikesu_guard_forward() {
  if [[ %s ]]; then %s guard exec --via shell-func -- "$@"; else builtin command "$@"; fi
 }
-_gtx_guard_command() {
+_ikesu_guard_command() {
  if [[ "${1:-}" != -* ]]; then
- case "${1:-}" in %s) _gtx_guard_forward "$@"; return $?;; esac
+ case "${1:-}" in %s) _ikesu_guard_forward "$@"; return $?;; esac
  fi
  builtin command "$@"
 }
 `, a.shellActive(), a.invocation(), strings.Join(a.Config.Commands(), "|"))
 	for _, cmd := range a.Config.Commands() {
 		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
-%s() { _gtx_guard_forward %s "$@"; }
+%s() { _ikesu_guard_forward %s "$@"; }
 fi
 `, quote(cmd), quote(cmd), cmd, quote(cmd))
 	}
 	if len(a.Config.Commands()) > 0 {
 		b.WriteString(`if ! typeset -f command >/dev/null 2>&1 && ! alias command >/dev/null 2>&1; then
-command() { _gtx_guard_command "$@"; }
+command() { _ikesu_guard_command "$@"; }
 fi
 `)
 	}
@@ -132,13 +132,13 @@ fi
 func (a *Assets) lineHook() string {
 	return fmt.Sprintf(`
 if [[ -o interactive ]]; then
- _gtx_guard_accept_line() {
+ _ikesu_guard_accept_line() {
   if [[ %s ]]; then
    %s guard line -- "$BUFFER" || { zle redisplay; return 0; }
   fi
   zle .accept-line
  }
- if ! zle -l accept-line >/dev/null 2>&1; then zle -N accept-line _gtx_guard_accept_line; fi
+ if ! zle -l accept-line >/dev/null 2>&1; then zle -N accept-line _ikesu_guard_accept_line; fi
 fi
 `, a.shellActive(), a.invocation())
 }

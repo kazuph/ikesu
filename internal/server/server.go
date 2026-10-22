@@ -1,6 +1,6 @@
-// Package server runs the gtx background server: it owns the PTY
+// Package server runs the ikesu background server: it owns the PTY
 // supervisor, the model/application state, rendering, the API socket
-// (gtx.sock), and the client attach socket (gtx-client.sock). The server
+// (ikesu.sock), and the client attach socket (ikesu-client.sock). The server
 // outlives clients so panes keep running across attach/detach.
 package server
 
@@ -30,7 +30,7 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-// clientMsg is one JSON line on gtx-client.sock in either direction.
+// clientMsg is one JSON line on ikesu-client.sock in either direction.
 //
 // Server→client: {"type":"output","data":"<base64 ANSI>"}|
 //
@@ -306,9 +306,9 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	apiSockAbs := apiSock
 	sup.Env = func(paneID int) []string {
 		env := []string{
-			fmt.Sprintf("GTX_PANE_ID=p%d", paneID),
-			"GTX_SOCKET_PATH=" + apiSockAbs,
-			"GTX_SOCKET_PATH_EXPLICIT=1",
+			fmt.Sprintf("IKESU_PANE_ID=p%d", paneID),
+			"IKESU_SOCKET_PATH=" + apiSockAbs,
+			"IKESU_SOCKET_PATH_EXPLICIT=1",
 		}
 		// Spawn runs on the app loop, so State() is safe here and the pane
 		// already exists in the model when its shell starts.
@@ -316,8 +316,8 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 			if wsIdx, tabIdx := st.FindPane(paneID); wsIdx >= 0 {
 				ws := st.Workspaces[wsIdx]
 				env = append(env,
-					"GTX_WORKSPACE_ID="+fmtWorkspaceID(ws.ID),
-					"GTX_TAB_ID="+fmtTabID(ws.ID, ws.Tabs[tabIdx].ID),
+					"IKESU_WORKSPACE_ID="+fmtWorkspaceID(ws.ID),
+					"IKESU_TAB_ID="+fmtTabID(ws.ID, ws.Tabs[tabIdx].ID),
 				)
 			}
 		}

@@ -12,7 +12,7 @@ func TestGrokNativeRestoreAndSafeLaunchObservation(t *testing.T) {
 	if Identify := detect.Identify("grok", "grok"); Identify != "grok" {
 		t.Fatal(Identify)
 	}
-	if source := nativeResumeAgents["grok"].Source; source != "gtx:grok" {
+	if source := nativeResumeAgents["grok"].Source; source != "ikesu:grok" {
 		t.Fatal(source)
 	}
 }

@@ -120,8 +120,8 @@ type AgentStartParams struct {
 	Focus       bool              `json:"focus"`
 }
 
-// AgentInfo mirrors herdr's AgentInfo where gtx has an equivalent field.
-// global_pane_id and pane_id are the same public pN id in gtx.
+// AgentInfo mirrors herdr's AgentInfo where ikesu has an equivalent field.
+// global_pane_id and pane_id are the same public pN id in ikesu.
 type AgentInfo struct {
 	Agent          *string           `json:"agent"`
 	AgentSession   *AgentSessionInfo `json:"agent_session"`

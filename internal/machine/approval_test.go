@@ -11,9 +11,9 @@ import (
 )
 
 func TestApprovalAcrossProcesses(t *testing.T) {
-	if os.Getenv("GTX_APPROVAL_TEST_CHILD") == "1" {
+	if os.Getenv("IKESU_APPROVAL_TEST_CHILD") == "1" {
 		err := claimApproval("saved-machine", "https://example.invalid/approval", func() error {
-			f, err := os.OpenFile(os.Getenv("GTX_APPROVAL_TEST_OPENED"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+			f, err := os.OpenFile(os.Getenv("IKESU_APPROVAL_TEST_OPENED"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 			if err != nil {
 				return err
 			}
@@ -34,7 +34,7 @@ func TestApprovalAcrossProcesses(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			cmd := exec.Command(os.Args[0], "-test.run=^TestApprovalAcrossProcesses$")
-			cmd.Env = append(os.Environ(), "GTX_STATE_DIR="+root, "GTX_APPROVAL_TEST_CHILD=1", "GTX_APPROVAL_TEST_OPENED="+opened)
+			cmd.Env = append(os.Environ(), "IKESU_STATE_DIR="+root, "IKESU_APPROVAL_TEST_CHILD=1", "IKESU_APPROVAL_TEST_OPENED="+opened)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Errorf("%s: %v", out, err)
 			}
@@ -65,7 +65,7 @@ func TestApprovalAcrossProcesses(t *testing.T) {
 }
 
 func TestApprovalClearRetryAndWriteFailure(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	opens := 0
 	open := func() error { opens++; return nil }
 	for _, url := range []string{"first", "reconnect", "second-client"} {
@@ -104,7 +104,7 @@ func TestApprovalClearRetryAndWriteFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "machine-approvals"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GTX_STATE_DIR", root)
+	t.Setenv("IKESU_STATE_DIR", root)
 	if err := claimApproval("id-1", "write-failure", open); err == nil {
 		t.Fatal("write failure hidden")
 	}

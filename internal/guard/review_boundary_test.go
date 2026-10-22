@@ -20,7 +20,7 @@ func TestReviewedShellBoundaries(t *testing.T) {
 	if e := os.Symlink(guard, filepath.Join(root, "guard-link")); e != nil {
 		t.Fatal(e)
 	}
-	input := Input{Cwd: root, LaunchCwd: root, Env: map[string]string{"HOME": root, "PATH": "/usr/bin:/bin", "X": "/bin/echo", "A": "/bin/echo", "GTX_GUARD_MARKER": guard + "/agent-panes/p_1.json"}}
+	input := Input{Cwd: root, LaunchCwd: root, Env: map[string]string{"HOME": root, "PATH": "/usr/bin:/bin", "X": "/bin/echo", "A": "/bin/echo", "IKESU_GUARD_MARKER": guard + "/agent-panes/p_1.json"}}
 	data, e := os.ReadFile("testdata/review_cases.json")
 	if e != nil {
 		t.Fatal(e)
@@ -29,7 +29,7 @@ func TestReviewedShellBoundaries(t *testing.T) {
 	if e = json.Unmarshal(data, &cases); e != nil {
 		t.Fatal(e)
 	}
-	replace := strings.NewReplacer("${ROOT}", root, "${GUARD}", guard, "${TARGET}", target)
+	replace := strings.NewReplacer("_gtx_guard_", "_ikesu_guard_", "${ROOT}", root, "${GUARD}", guard, "${TARGET}", target)
 
 	for _, tc := range cases {
 		t.Run(replace.Replace(tc.Line), func(t *testing.T) {

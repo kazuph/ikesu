@@ -9,7 +9,7 @@ import (
 )
 
 func TestPinnedServerPolicyAgainstCallerConfig(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "gtx")
+	binary := filepath.Join(t.TempDir(), "ikesu")
 	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
@@ -21,16 +21,16 @@ func TestPinnedServerPolicyAgainstCallerConfig(t *testing.T) {
 					t.Fatal(e)
 				}
 				home := filepath.Join(a.Root, "caller-home")
-				if e := os.MkdirAll(filepath.Join(home, ".config", "gtx"), 0700); e != nil {
+				if e := os.MkdirAll(filepath.Join(home, ".config", "ikesu"), 0700); e != nil {
 					t.Fatal(e)
 				}
 				cfg := filepath.Join(home, "alternate.toml")
 				if e := os.WriteFile(cfg, []byte("[guard]\n"+mode+"\n"), 0600); e != nil {
 					t.Fatal(e)
 				}
-				for _, via := range []string{"GTX_CONFIG", "HOME"} {
+				for _, via := range []string{"IKESU_CONFIG", "HOME"} {
 					// The HOME route loads its usual per-user config; the explicit route loads cfg.
-					if e := os.WriteFile(filepath.Join(home, ".config", "gtx", "config.toml"), []byte("[guard]\n"+mode+"\n"), 0600); e != nil {
+					if e := os.WriteFile(filepath.Join(home, ".config", "ikesu", "config.toml"), []byte("[guard]\n"+mode+"\n"), 0600); e != nil {
 						t.Fatal(e)
 					}
 					actual := append([]string{}, env...)
@@ -38,11 +38,11 @@ func TestPinnedServerPolicyAgainstCallerConfig(t *testing.T) {
 						if strings.HasPrefix(kv, "HOME=") {
 							actual[n] = "HOME=" + home
 						}
-						if strings.HasPrefix(kv, "GTX_CONFIG=") {
-							if via == "GTX_CONFIG" {
-								actual[n] = "GTX_CONFIG=" + cfg
+						if strings.HasPrefix(kv, "IKESU_CONFIG=") {
+							if via == "IKESU_CONFIG" {
+								actual[n] = "IKESU_CONFIG=" + cfg
 							} else {
-								actual[n] = "GTX_CONFIG="
+								actual[n] = "IKESU_CONFIG="
 							}
 						}
 					}

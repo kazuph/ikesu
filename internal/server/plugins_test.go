@@ -14,12 +14,12 @@ import (
 func startPluginServer(t *testing.T) (string, chan int) {
 	t.Helper()
 	pinTestConfig(t)
-	base, err := os.MkdirTemp("/tmp", "gtxp-")
+	base, err := os.MkdirTemp("/tmp", "ikesup-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(base, "state"))
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(base, "state"))
 	teststate.Setenv(t, "XDG_CONFIG_HOME", filepath.Join(base, "config"))
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	// Config path is already isolated by pinTestConfig. The registry follows it.
@@ -46,17 +46,17 @@ func TestPluginSocketActionAndEvent(t *testing.T) {
 	manifest := `id="socket.test"
 name="Socket Test"
 version="0.1.0"
-min_gtx_version="0.1.0"
+min_ikesu_version="0.1.0"
 platforms=["macos","linux"]
 [[actions]]
 id="context"
 title="Context"
-command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_CONTEXT_JSON\""]
+command=["/bin/sh","-c","printf '%s' \"$IKESU_PLUGIN_CONTEXT_JSON\""]
 [[events]]
 on="workspace.created"
-command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_EVENT\""]
+command=["/bin/sh","-c","printf '%s' \"$IKESU_PLUGIN_EVENT\""]
 `
-	if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	apiOK(t, dir, "plugin.link", map[string]any{"path": root}, nil)

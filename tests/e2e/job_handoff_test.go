@@ -12,11 +12,10 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
-	"github.com/kazuph/ikesu/internal/envcompat"
 )
 
 // teststate.Run clears GTX_*; retain this explicit input before isolation.
-var jobHandoffOldBin = envcompat.Get("IKESU_JOB_HANDOFF_OLD_BIN")
+var jobHandoffOldBin = os.Getenv("IKESU_JOB_HANDOFF_OLD_BIN")
 
 func TestJobsAcrossLiveHandoff(t *testing.T) {
 	for _, tc := range []struct {

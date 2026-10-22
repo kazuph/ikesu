@@ -12,7 +12,7 @@ import (
 
 func TestClientPreferencesPersistLocallyAndReportWriteFailure(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("GTX_STATE_DIR", filepath.Join(root, "state"))
+	t.Setenv("IKESU_STATE_DIR", filepath.Join(root, "state"))
 	t.Setenv(config.EnvVar, filepath.Join(root, "config.toml"))
 	s, err := loadLocalSettings("endpoint-preferences")
 	if err != nil {
@@ -50,7 +50,7 @@ func TestClientPreferencesPersistLocallyAndReportWriteFailure(t *testing.T) {
 
 func TestClientPreferencesRejectCorruptState(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("GTX_STATE_DIR", root)
+	t.Setenv("IKESU_STATE_DIR", root)
 	t.Setenv(config.EnvVar, filepath.Join(root, "config.toml"))
 	s, err := loadLocalSettings("endpoint-preferences")
 	if err != nil {

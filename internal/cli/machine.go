@@ -150,9 +150,9 @@ func ForwardMachine(ref string, args []string, o Options) int {
 		fmt.Fprintln(r.errOut(), "error:", err)
 		return 1
 	}
-	bin := o.getenv("GTX_MACHINE_REMOTE_BINARY")
+	bin := o.getenv("IKESU_MACHINE_REMOTE_BINARY")
 	if bin == "" {
-		bin = "gtx"
+		bin = "ikesu"
 	}
 	cmd := childenv.Command("ssh", machine.ForwardArgs(p, bin, args)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, r.out(), r.errOut()

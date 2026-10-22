@@ -25,7 +25,7 @@ func TestAssetsLifecycleAndShellChain(t *testing.T) {
 				t.Fatal(e)
 			}
 			a := NewAssets(d, "p_1", "/usr/bin/true", Config{})
-			env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1", "ZDOTDIR=" + orig, "BASH_ENV=" + bashOrig}, d)
+			env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "ZDOTDIR=" + orig, "BASH_ENV=" + bashOrig}, d)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -79,7 +79,7 @@ func TestDisabledAndIdentityless(t *testing.T) {
 		a := NewAssets(d, "p_1", "/usr/bin/true", c)
 		env := []string{"PATH=/usr/bin:/bin"}
 		if disabled {
-			env = append(env, "GTX_PANE_ID=p1")
+			env = append(env, "IKESU_PANE_ID=p1")
 		}
 		got, e := a.Prepare(env, d)
 		if e != nil || strings.Join(got, "\n") != strings.Join(env, "\n") {
@@ -95,12 +95,12 @@ func TestModeEnvironmentAndEmptyTargets(t *testing.T) {
 	for _, mode := range []string{"record", "enforce"} {
 		d := t.TempDir()
 		a := NewAssets(d, "p_1", "/usr/bin/true", Config{Mode: mode, Targets: []string{}})
-		env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1"}, d)
+		env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, d)
 		if e != nil {
 			t.Fatal(e)
 		}
 		defer a.Close()
-		if (EnvMap(env)["GTX_GUARD_ENFORCING"] == "1") != (mode == "enforce") {
+		if (EnvMap(env)["IKESU_GUARD_ENFORCING"] == "1") != (mode == "enforce") {
 			t.Fatal(env)
 		}
 		c := exec.Command("/bin/zsh", "-c", "printf SAFE_EMPTY_TARGETS")
@@ -115,7 +115,7 @@ func TestModeEnvironmentAndEmptyTargets(t *testing.T) {
 func TestRestoreInheritedGuardPreservesUserEnvironment(t *testing.T) {
 	d := t.TempDir()
 	a := NewAssets(d, "p_1", "/usr/bin/true", Config{})
-	original := []string{"HOME=" + d, "PATH=/usr/bin:/bin", "ZDOTDIR=" + d + "/user", "BASH_ENV=" + d + "/user/bash-env", "GTX_PANE_ID=p1", "KEEP=unchanged"}
+	original := []string{"HOME=" + d, "PATH=/usr/bin:/bin", "ZDOTDIR=" + d + "/user", "BASH_ENV=" + d + "/user/bash-env", "IKESU_PANE_ID=p1", "KEEP=unchanged"}
 	prepared, e := a.Prepare(original, d)
 	if e != nil {
 		t.Fatal(e)
@@ -123,7 +123,7 @@ func TestRestoreInheritedGuardPreservesUserEnvironment(t *testing.T) {
 	defer a.Close()
 	restored := EnvMap(RestoreInherited(prepared))
 	for k, v := range EnvMap(original) {
-		if k == "GTX_PANE_ID" {
+		if k == "IKESU_PANE_ID" {
 			if restored[k] != "" {
 				t.Fatal("parent pane identity survived cleanup")
 			}
@@ -134,7 +134,7 @@ func TestRestoreInheritedGuardPreservesUserEnvironment(t *testing.T) {
 		}
 	}
 	for k := range restored {
-		if strings.HasPrefix(k, "GTX_GUARD_") {
+		if strings.HasPrefix(k, "IKESU_GUARD_") {
 			t.Fatal("inherited guard env", k)
 		}
 	}

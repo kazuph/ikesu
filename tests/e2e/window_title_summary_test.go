@@ -11,8 +11,8 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
-// Match keepFailedE2EState: TestMain isolates GTX_* after package initialization.
-var titleEvidenceDir = os.Getenv("GTX_TITLE_EVIDENCE")
+// Match keepFailedE2EState: TestMain isolates IKESU_* after package initialization.
+var titleEvidenceDir = os.Getenv("IKESU_TITLE_EVIDENCE")
 
 func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
 	s := start(t)

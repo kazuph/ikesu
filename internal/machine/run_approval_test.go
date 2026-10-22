@@ -34,14 +34,14 @@ func TestObserveRunSharesPrefixAndChoosesSmallestSavedID(t *testing.T) {
 			t.Fatal(string(output), want, err)
 		}
 	}
-	ordinary := []string{"/usr/bin/env", "GTX_RUN_MACHINE_ID=m1", "true"}
+	ordinary := []string{"/usr/bin/env", "IKESU_RUN_MACHINE_ID=m1", "true"}
 	if id, argv := ObserveRun(profiles, ordinary, "marker"); id != "" || !reflect.DeepEqual(argv, ordinary) {
 		t.Fatal(id, argv)
 	}
 }
 
 func TestApprovalStreamPreservesStderrAndClearsOnConnection(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	// Existing record represents a browser already opened by another client.
 	if err := claimApproval("m1", "old-url", func() error { return nil }); err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestApprovalStreamPreservesStderrAndClearsOnConnection(t *testing.T) {
 }
 
 func TestRunPrivateMarkerCannotClearOtherMachineOrLeakOutput(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	for _, id := range []string{"m1", "m2"} {
 		if err := claimApproval(id, "url", func() error { return nil }); err != nil {
 			t.Fatal(err)
@@ -88,7 +88,7 @@ func TestRunPrivateMarkerCannotClearOtherMachineOrLeakOutput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	out := &ApprovalStream{State: state, Out: &stdout}
 	errOut := &ApprovalStream{State: state, Out: &stderr}
-	forged := "gtx-ssh-connected-m2\n"
+	forged := "ikesu-ssh-connected-m2\n"
 	if _, err := errOut.Write([]byte(forged)); err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func isolatedRunShell(t *testing.T) (string, []string) {
 }
 
 func TestRunMarkerHandlesShellStartupStderrLines(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	home, env := isolatedRunShell(t)
 	if err := os.WriteFile(filepath.Join(home, "startup"), []byte("printf 'shell startup notice\\n' >&2\n"), 0600); err != nil {
 		t.Fatal(err)

@@ -30,7 +30,7 @@ func TestCompareStatusesWindowsAndMalformed(t *testing.T) {
 		if e != nil || code != 1 {
 			t.Fatal(code, e)
 		}
-		for _, s := range []string{"AGREE", "DIVERGE", "IKESU-ONLY", "AI-GUARD-ONLY", "malformed: gtx=1 ai-guard=1"} {
+		for _, s := range []string{"AGREE", "DIVERGE", "IKESU-ONLY", "AI-GUARD-ONLY", "malformed: ikesu=1 ai-guard=1"} {
 			if !strings.Contains(out.String(), s) {
 				t.Fatal(s, out.String())
 			}

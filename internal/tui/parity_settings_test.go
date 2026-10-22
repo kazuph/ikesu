@@ -14,7 +14,7 @@ import (
 func TestParitySettingsThemePreviewAndReopenTheme(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	if err := os.WriteFile(path, []byte("[theme]\nname='catppuccin'\n[ui.sound]\nenabled=true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestParitySettingsThemePreviewAndReopenTheme(t *testing.T) {
 func TestStage6bThemeEdgesAndSpacePreview(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	if err := os.WriteFile(path, []byte("[theme]\nname='tokyo-night'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

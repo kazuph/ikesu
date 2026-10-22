@@ -14,8 +14,8 @@ func TestGuardCheckJSON(t *testing.T) {
 	teststate.Lock(t)
 	d := t.TempDir()
 	teststate.Setenv(t, "HOME", d)
-	teststate.Setenv(t, "GTX_CONFIG", filepath.Join(d, "config.toml"))
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(d, "state"))
+	teststate.Setenv(t, "IKESU_CONFIG", filepath.Join(d, "config.toml"))
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(d, "state"))
 	var out, errout bytes.Buffer
 	code := Run([]string{"guard", "check", "--cwd", d, "--launch-cwd", d, "--", "git", "push", "--force"}, Options{Stdout: &out, Stderr: &errout})
 	var v guard.Verdict
@@ -31,7 +31,7 @@ func TestGuardCheckObservedOutputContract(t *testing.T) {
 	teststate.Lock(t)
 	d := t.TempDir()
 	teststate.Setenv(t, "HOME", d)
-	teststate.Setenv(t, "GTX_CONFIG", filepath.Join(d, "config.toml"))
+	teststate.Setenv(t, "IKESU_CONFIG", filepath.Join(d, "config.toml"))
 	var out, errs bytes.Buffer
 	code := Run([]string{"guard", "check", "--", "echo", "hello", "--cwd", d, "--launch-dir", d}, Options{Stdout: &out, Stderr: &errs})
 	var v map[string]any

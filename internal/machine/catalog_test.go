@@ -104,8 +104,8 @@ func TestSSHArguments(t *testing.T) {
 		t.Fatal("option target accepted")
 	}
 	p := Profile{Target: "host", Session: "work"}
-	args := ForwardArgs(p, "/tmp/my gtx", []string{"pane", "send-text", "p1", "a'b;$HOME"})
-	if !reflect.DeepEqual(args[:6], want[:6]) || args[6] != Quote("/tmp/my gtx") || args[len(args)-1] != Quote("a'b;$HOME") {
+	args := ForwardArgs(p, "/tmp/my ikesu", []string{"pane", "send-text", "p1", "a'b;$HOME"})
+	if !reflect.DeepEqual(args[:6], want[:6]) || args[6] != Quote("/tmp/my ikesu") || args[len(args)-1] != Quote("a'b;$HOME") {
 		t.Fatal(args)
 	}
 }

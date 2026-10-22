@@ -9,9 +9,9 @@ import (
 func TestSessionDatabasePathsPreserveDefaultAndExplicitOverride(t *testing.T) {
 	teststate.Lock(t)
 	root := t.TempDir()
-	teststate.Setenv(t, "GTX_STATE_DIR", root)
-	teststate.Setenv(t, "GTX_DB_PATH", "")
-	if got := DBPath(); got != filepath.Join(root, "gtx.db") {
+	teststate.Setenv(t, "IKESU_STATE_DIR", root)
+	teststate.Setenv(t, "IKESU_DB_PATH", "")
+	if got := DBPath(); got != filepath.Join(root, "ikesu.db") {
 		t.Fatal(got)
 	}
 	if DBPath("default") != DBPath() || DBPath("") != DBPath() {
@@ -26,7 +26,7 @@ func TestSessionDatabasePathsPreserveDefaultAndExplicitOverride(t *testing.T) {
 	}
 	legacy.Close()
 	for _, name := range []string{"aa", "bb"} {
-		want := filepath.Join(root, "sessions", name, "gtx.db")
+		want := filepath.Join(root, "sessions", name, "ikesu.db")
 		if got := DBPath(name); got != want {
 			t.Fatalf("%s: %s", name, got)
 		}
@@ -53,7 +53,7 @@ func TestSessionDatabasePathsPreserveDefaultAndExplicitOverride(t *testing.T) {
 		t.Fatalf("legacy data lost: %v %v", rows, err)
 	}
 	explicit := filepath.Join(root, "chosen.db")
-	teststate.Setenv(t, "GTX_DB_PATH", explicit)
+	teststate.Setenv(t, "IKESU_DB_PATH", explicit)
 	for _, name := range []string{"default", "aa", "bb"} {
 		if DBPath(name) != explicit {
 			t.Fatal("explicit database override ignored", name)

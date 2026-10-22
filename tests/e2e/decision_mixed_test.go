@@ -14,8 +14,8 @@ import (
 
 func TestDecisionMixedVersionsNoBreak(t *testing.T) {
 	old := os.Getenv("NODIALOG_BASELINE_BIN")
-	if old == "" || filepath.Base(old) != "gtx" {
-		t.Fatal("NODIALOG_BASELINE_BIN must point to the original binary named gtx")
+	if old == "" || filepath.Base(old) != "ikesu" {
+		t.Fatal("NODIALOG_BASELINE_BIN must point to the original binary named ikesu")
 	}
 	for _, pair := range []struct {
 		name, client, server string

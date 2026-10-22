@@ -34,7 +34,7 @@ func Source(cwd string) (api.WorktreeSourceInfo, error) {
 	if err != nil {
 		return api.WorktreeSourceInfo{}, err
 	}
-	prefix := filepath.Join(home, ".gtx", "worktrees", name) + string(filepath.Separator)
+	prefix := filepath.Join(home, ".ikesu", "worktrees", name) + string(filepath.Separator)
 	return api.WorktreeSourceInfo{RepoKey: common, RepoName: name, RepoRoot: root, SourceCheckoutPath: checkout, CheckoutPathPrefix: &prefix}, nil
 }
 

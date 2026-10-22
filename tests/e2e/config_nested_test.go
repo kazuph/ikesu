@@ -21,9 +21,9 @@ func TestConfigAllowNestedWithRealServerAncestor(t *testing.T) {
 			if err := os.WriteFile(cfg, []byte(fmt.Sprintf("onboarding=false\n[experimental]\nallow_nested=%t\n[session]\nresume_agents_on_restore=false\n", allow)), 0600); err != nil {
 				t.Fatal(err)
 			}
-			s := startEnv(t, map[string]string{"GTX_CONFIG": cfg})
+			s := startEnv(t, map[string]string{"IKESU_CONFIG": cfg})
 			s.waitFor("initial prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-			socket := filepath.Join(s.stateDir, "inner", "gtx.sock")
+			socket := filepath.Join(s.stateDir, "inner", "ikesu.sock")
 			stop := func() {
 				if c, err := net.Dial("unix", socket); err == nil {
 					_ = json.NewEncoder(c).Encode(map[string]any{"id": "stop-inner", "method": "server.stop", "params": map[string]any{}})

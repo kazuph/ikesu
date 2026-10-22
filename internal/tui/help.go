@@ -29,7 +29,7 @@ func (a *App) openHelp() {
 	a.dirty = true
 }
 
-// helpRows lists every command gtx implements, grouped like the herdr
+// helpRows lists every command ikesu implements, grouped like the herdr
 // overlay: global → workspaces/tabs → panes. Configured [keys] bindings
 // are expanded so remapped users see their actual keys.
 func (a *App) helpRows() []render.HelpRow {

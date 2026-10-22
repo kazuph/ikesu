@@ -27,7 +27,7 @@ func TestG2PaneMetadataSocketCLISequenceFilteringClearAndExpiry(t *testing.T) {
 	apiOK(t, dir, "pane.report_agent", map[string]any{"pane_id": pid, "source": "status", "agent": "codex", "state": "working"}, nil)
 	var stdout, stderr bytes.Buffer
 	code := cli.Run([]string{"pane", "report-metadata", pid, "--source", "metadata", "--agent", "codex", "--applies-to-source", "status", "--title", " Task ", "--display-agent", "Coder", "--state-label", "working=Building", "--token", "custom=VALUE", "--seq", "2"}, cli.Options{Stdout: &stdout, Stderr: &stderr, Getenv: func(k string) string {
-		if k == "GTX_SOCKET_PATH" {
+		if k == "IKESU_SOCKET_PATH" {
 			return api.APISocketPath(dir)
 		}
 		return ""

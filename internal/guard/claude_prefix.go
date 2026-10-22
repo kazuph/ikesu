@@ -9,7 +9,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-const claudeBootstrap = `source GTX_SNAPSHOT 2>/dev/null || true && { shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval GTX_PAYLOAD < /dev/null && pwd -P >| GTX_CWD`
+const claudeBootstrap = `source IKESU_SNAPSHOT 2>/dev/null || true && { shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval IKESU_PAYLOAD < /dev/null && pwd -P >| IKESU_CWD`
 
 // ClaudePrefixLine recognizes only the observed Claude bootstrap. Everything
 // else retains the ordinary whole-line policy, including unknown source/eval.
@@ -45,10 +45,10 @@ func ClaudePrefixLine(i Input, line string) string {
 			}
 			if name == "source" {
 				snapshot = value
-				call.Args[1] = claudeWord("GTX_SNAPSHOT")
+				call.Args[1] = claudeWord("IKESU_SNAPSHOT")
 			} else {
 				payload = value
-				call.Args[1] = claudeWord("GTX_PAYLOAD")
+				call.Args[1] = claudeWord("IKESU_PAYLOAD")
 			}
 		case "pwd":
 			counts[name]++
@@ -60,7 +60,7 @@ func ClaudePrefixLine(i Input, line string) string {
 				return true
 			}
 			cwd = value
-			stmt.Redirs[0].Word = claudeWord("GTX_CWD")
+			stmt.Redirs[0].Word = claudeWord("IKESU_CWD")
 		}
 		return true
 	})
@@ -79,7 +79,7 @@ func ClaudePrefixLine(i Input, line string) string {
 	}
 	template := claudeBootstrap
 	if counts["source"] == 0 {
-		template = strings.TrimPrefix(template, "source GTX_SNAPSHOT 2>/dev/null || true && ")
+		template = strings.TrimPrefix(template, "source IKESU_SNAPSHOT 2>/dev/null || true && ")
 	}
 	expected, err := syntax.NewParser().Parse(strings.NewReader(template), "expected")
 	if err != nil {
@@ -138,12 +138,12 @@ func (a *Assets) PrepareClaude(env []string) []string {
 	m := EnvMap(env)
 	old, exists := m["CLAUDE_CODE_SHELL_PREFIX"]
 	prefix := filepath.Join(a.Root, "guard", "shell", a.Pane, "claude-prefix")
-	m["GTX_GUARD_CLAUDE_PREFIX_ORIG"] = old
-	m["GTX_GUARD_CLAUDE_PREFIX_SET"] = ""
+	m["IKESU_GUARD_CLAUDE_PREFIX_ORIG"] = old
+	m["IKESU_GUARD_CLAUDE_PREFIX_SET"] = ""
 	if exists {
-		m["GTX_GUARD_CLAUDE_PREFIX_SET"] = "x"
+		m["IKESU_GUARD_CLAUDE_PREFIX_SET"] = "x"
 	}
 	m["CLAUDE_CODE_SHELL_PREFIX"] = prefix
-	m["GTX_GUARD_CLAUDE_PREFIX"] = prefix
+	m["IKESU_GUARD_CLAUDE_PREFIX"] = prefix
 	return environment(m)
 }

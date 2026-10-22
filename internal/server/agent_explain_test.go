@@ -16,7 +16,7 @@ func TestAgentExplainAPI(t *testing.T) {
 	var created api.WorkspaceCreatedResult
 	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: true}, &created)
 	target := created.RootPane.PaneID
-	// Existing gtx target resolution requires detected/reported identity.
+	// Existing ikesu target resolution requires detected/reported identity.
 	response := apiReq(t, dir, api.MethodAgentExplain, api.AgentTarget{Target: target})
 	if response.Err == nil || response.Err.Code != api.ErrAgentNotFound {
 		t.Fatal(response)

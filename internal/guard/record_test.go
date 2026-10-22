@@ -10,7 +10,7 @@ import (
 func TestRecordJSONAndMarkerIdentity(t *testing.T) {
 	d := t.TempDir()
 	a := NewAssets(d, "p_1", "/usr/bin/true", Config{Mode: "record"})
-	env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + d + "/socket", "GTX_WORKSPACE_ID=s1", "GTX_TAB_ID=s1:t1"}, d)
+	env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + d + "/socket", "IKESU_WORKSPACE_ID=s1", "IKESU_TAB_ID=s1:t1"}, d)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -41,7 +41,7 @@ func TestRecordJSONAndMarkerIdentity(t *testing.T) {
 	if r.Epoch == 0 || r.Timestamp == "" || r.Decision != "block" || r.Rule != "git-push-force" || r.CommandLine != "git push --force" || r.Cwd != d || r.LaunchCwd != d || r.Pane != "p1" || r.Workspace != "s1" || r.Tab != "s1:t1" || r.Agent != "codex" || r.Via != "shim" {
 		t.Fatal(r)
 	}
-	i.Env["GTX_PANE_ID"] = "p2"
+	i.Env["IKESU_PANE_ID"] = "p2"
 	if _, active, e = ReadMarker(i); e == nil || !active {
 		t.Fatal(active, e)
 	}
@@ -56,7 +56,7 @@ func TestResolveSelfShimAndEmptyPATHEntry(t *testing.T) {
 	for _, p := range []string{filepath.Join(shim, "tool"), filepath.Join(real, "tool")} {
 		os.WriteFile(p, []byte("#!/bin/sh\nexit 0\n"), 0700)
 	}
-	got, e := Resolve("tool", []string{"PATH=" + shim + ":" + real, "GTX_GUARD_BIN=" + shim})
+	got, e := Resolve("tool", []string{"PATH=" + shim + ":" + real, "IKESU_GUARD_BIN=" + shim})
 	if e != nil || got != filepath.Join(real, "tool") {
 		t.Fatal(got, e)
 	}

@@ -26,7 +26,7 @@ func PrepareSSH(c config.Config, target string) (*ManagedSSH, error) {
 	if err != nil {
 		return nil, err
 	}
-	m.Dir, err = os.MkdirTemp("/tmp", "gtx-ssh-")
+	m.Dir, err = os.MkdirTemp("/tmp", "ikesu-ssh-")
 	if err != nil {
 		return nil, err
 	}

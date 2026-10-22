@@ -1,5 +1,5 @@
-// Package session defines the session.json schema a gtx server writes
-// under $GTX_STATE_DIR/<session>/ and restores on startup (SPEC G3/G5).
+// Package session defines the session.json schema a ikesu server writes
+// under $IKESU_STATE_DIR/<session>/ and restores on startup (SPEC G3/G5).
 // The file is pure data: workspaces, tabs, split trees, per-pane working
 // directories, stable pane numbers, pane labels, and each pane's agent
 // record (agent kind, session id, title). Writes are atomic — a temp file

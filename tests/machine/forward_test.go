@@ -13,11 +13,11 @@ import (
 )
 
 // TestGlobalMachineReferenceParity compares the two real CLI processes.
-// Run on mini with GTX_MACHINE_PARITY_BIN and GTX_MACHINE_REFERENCE_BIN;
+// Run on mini with IKESU_MACHINE_PARITY_BIN and IKESU_MACHINE_REFERENCE_BIN;
 // a missing prerequisite fails rather than substituting captured output.
 func TestGlobalMachineReferenceParity(t *testing.T) {
-	gtx := requiredBinary(t, "GTX_MACHINE_PARITY_BIN")
-	reference := requiredBinary(t, "GTX_MACHINE_REFERENCE_BIN")
+	ikesu := requiredBinary(t, "IKESU_MACHINE_PARITY_BIN")
+	reference := requiredBinary(t, "IKESU_MACHINE_REFERENCE_BIN")
 	root := t.TempDir()
 	config := filepath.Join(root, "config")
 	state := filepath.Join(root, "state")
@@ -38,7 +38,7 @@ func TestGlobalMachineReferenceParity(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	env := append(os.Environ(), "XDG_CONFIG_HOME="+config, "XDG_STATE_HOME="+state, "HERDR_STATE_DIR="+filepath.Join(root, "herdr-state"), "GTX_STATE_DIR="+state, "GTX_CONFIG="+filepath.Join(root, "gtx-config.toml"), "HERDR_SOCKET_PATH=", "GTX_SOCKET_PATH=", "HERDR_PANE_ID=", "GTX_PANE_ID=")
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+config, "XDG_STATE_HOME="+state, "HERDR_STATE_DIR="+filepath.Join(root, "herdr-state"), "IKESU_STATE_DIR="+state, "IKESU_CONFIG="+filepath.Join(root, "ikesu-config.toml"), "HERDR_SOCKET_PATH=", "IKESU_SOCKET_PATH=", "HERDR_PANE_ID=", "IKESU_PANE_ID=")
 	cases := []struct {
 		name string
 		args []string
@@ -72,23 +72,23 @@ func TestGlobalMachineReferenceParity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			args := append([]string{"--session", "compare"}, tc.args...)
 			refCode, refErr, refOut := invoke(t, reference, args, env)
-			code, stderr, stdout := invoke(t, gtx, args, env)
-			wantErr := strings.ReplaceAll(refErr, "herdr", "gtx")
-			t.Logf("argv=%q reference_exit=%d gtx_exit=%d reference_stderr=%q gtx_stderr=%q", tc.args, refCode, code, refErr, stderr)
+			code, stderr, stdout := invoke(t, ikesu, args, env)
+			wantErr := strings.ReplaceAll(refErr, "herdr", "ikesu")
+			t.Logf("argv=%q reference_exit=%d ikesu_exit=%d reference_stderr=%q ikesu_stderr=%q", tc.args, refCode, code, refErr, stderr)
 			if code != refCode || stderr != wantErr {
-				t.Fatalf("reference code=%d stderr=%q; gtx code=%d stderr=%q", refCode, wantErr, code, stderr)
+				t.Fatalf("reference code=%d stderr=%q; ikesu code=%d stderr=%q", refCode, wantErr, code, stderr)
 			}
 			if refCode != 0 && (refOut != "" || stdout != "") {
-				t.Fatalf("rejection printed stdout: reference=%q gtx=%q", refOut, stdout)
+				t.Fatalf("rejection printed stdout: reference=%q ikesu=%q", refOut, stdout)
 			}
-			if refCode == 0 && (!strings.Contains(refOut, "# herdr") || !strings.Contains(stdout, "# gtx")) {
+			if refCode == 0 && (!strings.Contains(refOut, "# herdr") || !strings.Contains(stdout, "# ikesu")) {
 				t.Fatal("local help absent")
 			}
 		})
 	}
 	// The installed reference lacks this fork's remote-run entry point;
-	// compare only P2 above. Guard the existing gtx G9 path independently.
-	code, stderr, _ := invoke(t, gtx, []string{"--session", "compare", "run", "--machine", "nosuch", "--", "true"}, env)
+	// compare only P2 above. Guard the existing ikesu G9 path independently.
+	code, stderr, _ := invoke(t, ikesu, []string{"--session", "compare", "run", "--machine", "nosuch", "--", "true"}, env)
 	if code != 2 || stderr != "remote run: machine \"nosuch\" was not found\n" {
 		t.Fatalf("run --machine changed: code=%d stderr=%q", code, stderr)
 	}

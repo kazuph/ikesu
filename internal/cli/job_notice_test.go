@@ -11,13 +11,13 @@ import (
 func TestJobNoticeQueuesExactCallerWithoutServer(t *testing.T) {
 	teststate.Lock(t)
 	dir := t.TempDir()
-	teststate.Setenv(t, "GTX_STATE_DIR", dir)
+	teststate.Setenv(t, "IKESU_STATE_DIR", dir)
 	var errors bytes.Buffer
 	r := runner{o: Options{Session: "isolated", Getenv: testEnv(dir), Stderr: &errors}}
 	r.notifyPaneJob("p42", "exact completion")
 	r.notifyPaneJob("same-name", "rejected completion")
 	r.notifyPaneJob("", "unknown caller")
-	store, err := dispatch.Open(filepath.Join(dir, "sessions", "isolated", "gtx.db"))
+	store, err := dispatch.Open(filepath.Join(dir, "sessions", "isolated", "ikesu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

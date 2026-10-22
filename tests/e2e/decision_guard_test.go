@@ -27,9 +27,9 @@ func TestDecisionGuardInvisibleCLIApproveAndReject(t *testing.T) {
 			cmd.Dir = t.TempDir()
 			view := *s
 			view.t = t
-			cmd.Env = append(os.Environ(), "GTX_STATE_DIR="+s.stateDir,
-				"GTX_PANE_ID=p1", "GTX_SOCKET_PATH="+api.APISocketPath(filepath.Join(s.stateDir, s.name)),
-				"GTX_GUARD_MARKER="+marker, "AI_GUARD_REQUEST_REASON=隔離環境で画面表示と承認後の実行を確認する")
+			cmd.Env = append(os.Environ(), "IKESU_STATE_DIR="+s.stateDir,
+				"IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH="+api.APISocketPath(filepath.Join(s.stateDir, s.name)),
+				"IKESU_GUARD_MARKER="+marker, "AI_GUARD_REQUEST_REASON=隔離環境で画面表示と承認後の実行を確認する")
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			if err := cmd.Start(); err != nil {

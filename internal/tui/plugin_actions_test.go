@@ -19,25 +19,25 @@ func TestPluginConfiguredKeyAndControlHyperlinkActualPTY(t *testing.T) {
 	manifest := `id="ui.test"
 name="UI"
 version="0.1.0"
-min_gtx_version="0.1.0"
+min_ikesu_version="0.1.0"
 [[actions]]
 id="capture"
 title="Capture"
-command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_CONTEXT_JSON\""]
+command=["/bin/sh","-c","printf '%s' \"$IKESU_PLUGIN_CONTEXT_JSON\""]
 [[link_handlers]]
 id="link"
 title="Link"
 pattern="^https://example[.]test/"
 action="capture"
 `
-	if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store := &plugin.Store{ConfigRoot: t.TempDir(), StateRoot: t.TempDir(), Version: "0.1.0"}
 	if _, err := store.Link(root, true, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine := &plugin.Engine{Store: store, BinPath: "/gtx", SocketPath: "/socket"}
+	engine := &plugin.Engine{Store: store, BinPath: "/ikesu", SocketPath: "/socket"}
 	a.SetPluginHost(func() *plugin.Engine { return engine }, nil)
 	var cfg config.Config
 	cfg.Keys.Command = []config.PluginKeyBinding{{Key: "prefix+l", Type: "plugin_action", Command: "ui.test.capture"}}

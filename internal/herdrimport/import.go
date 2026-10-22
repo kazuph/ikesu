@@ -62,7 +62,7 @@ func Load(dir string, cfg config.Config) (*Plan, error) {
 		return nil, err
 	}
 	p := &Plan{Digest: fmt.Sprintf("%x", h.Sum(nil)), Running: running, File: &session.File{Version: session.CurrentVersion, Active: *src.Active, SidebarWidth: *src.SidebarWidth, SidebarManual: true, SidebarVisible: true, CollapsedSections: map[string]bool{}}}
-	// These herdr-only display preferences have no gtx counterpart. They
+	// These herdr-only display preferences have no ikesu counterpart. They
 	// are explicitly disclosed, never mapped to a similar unrelated value.
 	if src.SidebarSectionSplit != 0 {
 		p.Unrestored = append(p.Unrestored, "sidebar_section_split: ikesu はセクションの高さ比率を保存しない")

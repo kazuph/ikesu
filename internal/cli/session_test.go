@@ -31,7 +31,7 @@ func TestImportHerdrDryRunAndCancellationNeverWrite(t *testing.T) {
 	cfg := filepath.Join(root, "config.toml")
 	os.WriteFile(cfg, []byte("onboarding=false\n"), 0600)
 	teststate.Setenv(t, config.EnvVar, cfg)
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(root, "state"))
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	var out, errs bytes.Buffer
 	o := Options{Session: "import-test", Explicit: true, Stdout: &out, Stderr: &errs}
 	if code := Run([]string{"session", "import-herdr", "--source", source, "--dry-run"}, o); code != 0 {
@@ -57,7 +57,7 @@ func TestImportHerdrOfflineAppendAndErrorsPreserveTarget(t *testing.T) {
 	cfg := filepath.Join(root, "config.toml")
 	os.WriteFile(cfg, []byte("onboarding=false\n"), 0600)
 	teststate.Setenv(t, config.EnvVar, cfg)
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(root, "state"))
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	var out, errs bytes.Buffer
 	o := Options{Session: "offline", Explicit: true, Stdout: &out, Stderr: &errs}
 	args := []string{"session", "import-herdr", "--source", source, "--yes"}

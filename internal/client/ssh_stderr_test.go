@@ -56,11 +56,11 @@ func TestSSHStderrProcessPreservesFullFinalErrorAndApprovalURL(t *testing.T) {
 	if err := os.WriteFile(file, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte("#!/bin/sh\n/bin/cat \"$GTX_TEST_SSH_STDERR\" >&2\nexit 7\n"), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte("#!/bin/sh\n/bin/cat \"$IKESU_TEST_SSH_STDERR\" >&2\nexit 7\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	teststate.Setenv(t, "GTX_TEST_SSH_STDERR", file)
+	teststate.Setenv(t, "IKESU_TEST_SSH_STDERR", file)
 	var opened []string
 	s, err := openSSHEndpoint(machine.Profile{Target: "test-input.invalid"}, func(u string) { opened = append(opened, u) })
 	if err != nil {

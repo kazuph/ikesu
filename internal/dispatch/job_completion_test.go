@@ -8,7 +8,7 @@ import (
 )
 
 func TestJobCompletionAndNoticeAreAtomic(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "gtx.db")
+	path := filepath.Join(t.TempDir(), "ikesu.db")
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)

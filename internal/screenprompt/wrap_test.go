@@ -14,7 +14,7 @@ func TestWrappedQuestionText(t *testing.T) {
 	}{
 		{"Japanese", []string{"かけ", "ら"}, 20, "かけら"},
 		{"filename", []string{"report_neck4ey", "e.png"}, 20, "report_neck4eye.png"},
-		{"path", []string{"/private/tmp/gtx-ac", "cept/proof.txt"}, 20, "/private/tmp/gtx-accept/proof.txt"},
+		{"path", []string{"/private/tmp/ikesu-ac", "cept/proof.txt"}, 20, "/private/tmp/ikesu-accept/proof.txt"},
 		{"English", []string{"Which output format", "should the report use?"}, 24, "Which output format should the report use?"},
 		{"long word", []string{"abcdefghijklmnopqrst", "uvwxyz"}, 20, "abcdefghijklmnopqrstuvwxyz"},
 		{"indented long word", []string{"  abcdefghijklmnopqr", "  st"}, 20, "abcdefghijklmnopqrst"},
@@ -65,14 +65,14 @@ func TestWrappedPermissionCommand(t *testing.T) {
 
 func TestRealClaudeWrappedQuestion(t *testing.T) {
 	screen := []string{strings.Repeat("─", 51), " ☐ 保存確認", "",
-		"│ report_neck4eye.pngのかけらを/private/tmp/gtx-acc",
+		"│ report_neck4eye.pngのかけらを/private/tmp/ikesu-acc",
 		"│ ept/very_long_filename_for_question_wrap_join/rep",
 		"│ ort_neck4eye.pngに保存するか確認します。Which",
 		"│ output format should the report use?", "",
 		"❯ 1. はい", "     保存する", "  2. いいえ", "     保存しない", "  3. Type something.",
 		strings.Repeat("─", 51), "  4. Chat about this", "Enter to select · ↑/↓ to navigate · Esc to cancel"}
 	p := Parse("claude", screen)
-	want := "report_neck4eye.pngのかけらを/private/tmp/gtx-accept/very_long_filename_for_question_wrap_join/report_neck4eye.pngに保存するか確認します。Which output format should the report use?"
+	want := "report_neck4eye.pngのかけらを/private/tmp/ikesu-accept/very_long_filename_for_question_wrap_join/report_neck4eye.pngに保存するか確認します。Which output format should the report use?"
 	if p == nil || p.Params.Title != want {
 		t.Fatalf("want %q: %+v", want, p)
 	}

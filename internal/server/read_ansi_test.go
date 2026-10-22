@@ -25,7 +25,7 @@ func TestPaneAndAgentReadANSIThroughRealSocketCLI(t *testing.T) {
 			var out, errs bytes.Buffer
 			args := append([]string{command, "read", pid}, flag...)
 			code := cli.Run(args, cli.Options{Stdout: &out, Stderr: &errs, Getenv: func(key string) string {
-				if key == "GTX_SOCKET_PATH" {
+				if key == "IKESU_SOCKET_PATH" {
 					return api.APISocketPath(dir)
 				}
 				return ""

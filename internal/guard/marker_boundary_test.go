@@ -15,7 +15,7 @@ func TestMarkerFailuresAlwaysDenyAndRecord(t *testing.T) {
 			t.Run(mode+"/"+failure, func(t *testing.T) {
 				root := t.TempDir()
 				a := NewAssets(root, "p_1", "/usr/bin/true", Config{Mode: mode})
-				env, e := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/socket"}, root)
+				env, e := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -76,7 +76,7 @@ func TestMarkerFailuresAlwaysDenyAndRecord(t *testing.T) {
 func TestMarkerSocketIndependentOfShellEnvironment(t *testing.T) {
 	root := t.TempDir()
 	a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
-	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/old.sock"}, root)
+	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/old.sock"}, root)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -85,7 +85,7 @@ func TestMarkerSocketIndependentOfShellEnvironment(t *testing.T) {
 	}
 	i := Input{Env: EnvMap(env)}
 	for _, socket := range []string{"", "/missing.sock", root + "/other.sock"} {
-		i.Env["GTX_SOCKET_PATH"] = socket
+		i.Env["IKESU_SOCKET_PATH"] = socket
 		m, active, e := ReadMarker(i)
 		if e != nil || !active || m.Socket != root+"/old.sock" {
 			t.Fatal(m, active, e)

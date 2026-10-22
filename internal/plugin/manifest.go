@@ -49,7 +49,7 @@ type Manifest struct {
 	ID           string        `toml:"id" json:"plugin_id"`
 	Name         string        `toml:"name" json:"name"`
 	Version      string        `toml:"version" json:"version"`
-	MinVersion   string        `toml:"min_gtx_version" json:"min_gtx_version"`
+	MinVersion   string        `toml:"min_ikesu_version" json:"min_ikesu_version"`
 	Description  string        `toml:"description" json:"description,omitempty"`
 	Platforms    []string      `toml:"platforms" json:"platforms,omitempty"`
 	Build        []Build       `toml:"build" json:"build,omitempty"`
@@ -74,7 +74,7 @@ func ReadManifest(path, version string) (Manifest, string, error) {
 		return m, "", err
 	}
 	if fi.IsDir() {
-		path = filepath.Join(path, "gtx-plugin.toml")
+		path = filepath.Join(path, "ikesu-plugin.toml")
 	}
 	if _, err = toml.DecodeFile(path, &m); err != nil {
 		return m, "", err
@@ -90,7 +90,7 @@ func ReadManifest(path, version string) (Manifest, string, error) {
 	}
 	minimum, err := parseVersion(m.MinVersion)
 	if err != nil {
-		return m, "", fmt.Errorf("min_gtx_version: %w", err)
+		return m, "", fmt.Errorf("min_ikesu_version: %w", err)
 	}
 	current, err := parseVersion(version)
 	if err != nil {

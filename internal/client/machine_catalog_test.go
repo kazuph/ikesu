@@ -11,7 +11,7 @@ import (
 )
 
 func TestMachineCatalogRemovalCancelsPendingSwitchAndOwnedAttempt(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	remote := &managedEndpoint{profile: machine.Profile{ID: "remote", Enabled: true}, cancel: cancel}
@@ -32,7 +32,7 @@ func TestMachineCatalogRemovalCancelsPendingSwitchAndOwnedAttempt(t *testing.T) 
 }
 
 func TestMachineCatalogInvalidJSONKeepsConnectionsAndSelection(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	remote := &managedEndpoint{profile: machine.Profile{ID: "remote", Enabled: true}, cancel: cancel}

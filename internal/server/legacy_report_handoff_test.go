@@ -27,7 +27,7 @@ type legacyReportHandoff struct {
 func TestLegacyReportHandoffRestoresOfficialAuthority(t *testing.T) {
 	teststate.Lock(t)
 	for _, tc := range []struct{ source, want string }{
-		{"gtx:opencode", "working"},
+		{"ikesu:opencode", "working"},
 		{"custom:opencode", "blocked"},
 	} {
 		t.Run(tc.source, func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestLegacyReportHandoffRestoresOfficialAuthority(t *testing.T) {
 			}
 			hooks := 0
 			s.app.SetAvailHook(func(int) { hooks++ })
-			if err := s.restoreLive(&in, s.dir+"/gtx.sock"); err != nil {
+			if err := s.restoreLive(&in, s.dir+"/ikesu.sock"); err != nil {
 				t.Fatal(err)
 			}
 			if hooks != 0 {

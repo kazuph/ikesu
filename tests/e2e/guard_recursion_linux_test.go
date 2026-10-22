@@ -30,7 +30,7 @@ func TestGuardExecWithoutShimVariableRunsRealCommandOnce(t *testing.T) {
 	var bins []string
 	for _, pane := range []string{"p_1", "p_2"} {
 		assets := guard.NewAssets(root, pane, binPath, guard.Config{Mode: "record", Targets: []string{"printf"}})
-		if _, err := assets.Prepare([]string{"HOME=" + home, "GTX_PANE_ID=p1", "PATH=/usr/bin:/bin"}, home); err != nil {
+		if _, err := assets.Prepare([]string{"HOME=" + home, "IKESU_PANE_ID=p1", "PATH=/usr/bin:/bin"}, home); err != nil {
 			t.Fatal(err)
 		}
 		if err := assets.Sync("codex"); err != nil {
@@ -39,8 +39,8 @@ func TestGuardExecWithoutShimVariableRunsRealCommandOnce(t *testing.T) {
 		defer assets.Close()
 		bins = append(bins, assets.Bin)
 	}
-	env := []string{"HOME=" + home, "GTX_STATE_DIR=" + root, "GTX_CONFIG=" + config, "PATH=" + strings.Join(append(bins, "/usr/bin", "/bin"), ":")}
-	// No GTX_GUARD_BIN / MARKER / other guard-state variable is present.
+	env := []string{"HOME=" + home, "IKESU_STATE_DIR=" + root, "IKESU_CONFIG=" + config, "PATH=" + strings.Join(append(bins, "/usr/bin", "/bin"), ":")}
+	// No IKESU_GUARD_BIN / MARKER / other guard-state variable is present.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binPath, "guard", "exec", "--", "printf", "REAL_COMMAND_ONCE\\n")

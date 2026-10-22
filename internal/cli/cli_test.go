@@ -14,7 +14,7 @@ import (
 
 func testEnv(stateDir string) func(string) string {
 	return func(key string) string {
-		if key == "GTX_STATE_DIR" {
+		if key == "IKESU_STATE_DIR" {
 			return stateDir
 		}
 		return ""
@@ -93,7 +93,7 @@ type fakeServer struct {
 func newFakeServer(t *testing.T, reply api.Response) *fakeServer {
 	t.Helper()
 	dir := t.TempDir()
-	sock := filepath.Join(dir, "gtx.sock")
+	sock := filepath.Join(dir, "ikesu.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func (fs *fakeServer) close() { fs.ln.Close(); <-fs.done }
 
 func sockEnv(sock string) func(string) string {
 	return func(key string) string {
-		if key == "GTX_SOCKET_PATH" {
+		if key == "IKESU_SOCKET_PATH" {
 			return sock
 		}
 		return ""
@@ -224,9 +224,9 @@ func TestPaneCurrentUsesEnvAndPid(t *testing.T) {
 
 	getenv := func(key string) string {
 		switch key {
-		case "GTX_SOCKET_PATH":
+		case "IKESU_SOCKET_PATH":
 			return fs.sock
-		case "GTX_PANE_ID":
+		case "IKESU_PANE_ID":
 			return "p_3"
 		}
 		return ""
@@ -274,10 +274,10 @@ func TestPaneSplitArgs(t *testing.T) {
 func TestExplicitSessionOverridesEnvSocket(t *testing.T) {
 	dir := t.TempDir()
 	getenv := func(key string) string {
-		if key == "GTX_SOCKET_PATH" {
+		if key == "IKESU_SOCKET_PATH" {
 			return "/nonexistent/elsewhere.sock"
 		}
-		if key == "GTX_STATE_DIR" {
+		if key == "IKESU_STATE_DIR" {
 			return dir
 		}
 		return ""
@@ -287,7 +287,7 @@ func TestExplicitSessionOverridesEnvSocket(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d", code)
 	}
-	if !strings.Contains(errOut, filepath.Join(dir, "mine", "gtx.sock")) {
+	if !strings.Contains(errOut, filepath.Join(dir, "mine", "ikesu.sock")) {
 		t.Fatalf("expected session socket path in error, got %q", errOut)
 	}
 }

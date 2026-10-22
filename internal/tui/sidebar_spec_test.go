@@ -214,7 +214,7 @@ func TestG2DuplicateRuntimeSpawnFailureRollsBack(t *testing.T) {
 	a := specRuntimeApp(t)
 	before := len(a.st.Workspaces)
 	active := a.st.Active
-	a.st.Workspaces[0].Cwd = "/path/that/does/not/exist/gtx-test"
+	a.st.Workspaces[0].Cwd = "/path/that/does/not/exist/ikesu-test"
 	if _, err := a.DuplicateWorkspace(0, true); err == nil {
 		t.Fatal("spawn failure reported success")
 	}
@@ -251,7 +251,7 @@ func TestG2SidebarConfigReloadKeepsCollapseAndManualWidth(t *testing.T) {
 
 func TestG2HeaderTogglesPersistAndResetScroll(t *testing.T) {
 	teststate.Lock(t)
-	teststate.Setenv(t, "GTX_CONFIG", t.TempDir()+"/config.toml")
+	teststate.Setenv(t, "IKESU_CONFIG", t.TempDir()+"/config.toml")
 	a := specRuntimeApp(t)
 	a.sidebarScroll = 12
 	a.toggleSidebarSetting(true)

@@ -61,7 +61,7 @@ func startFaultJobScript(t *testing.T, script func(string) string) *faultJob {
 	t.Cleanup(func() { release.Close() })
 	var started api.RunStartedResult
 	s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "fault-job", Completion: "summary", Argv: []string{"/bin/sh", "-c", script(fifo)}}, &started)
-	dbPath := filepath.Join(s.stateDir, "sessions", s.name, "gtx.db")
+	dbPath := filepath.Join(s.stateDir, "sessions", s.name, "ikesu.db")
 	store, err := dispatch.OpenReadOnly(dbPath)
 	if err != nil {
 		t.Fatal(err)

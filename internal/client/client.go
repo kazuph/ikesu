@@ -1,6 +1,6 @@
-// Package client attaches the local terminal to a running gtx server:
+// Package client attaches the local terminal to a running ikesu server:
 // it puts the terminal in raw mode, forwards input and resizes over
-// gtx-client.sock, and renders the frames the server sends back.
+// ikesu-client.sock, and renders the frames the server sends back.
 package client
 
 import (
@@ -433,10 +433,10 @@ func waitDial(dir string, timeout time.Duration) (net.Conn, error) {
 	return nil, lastErr
 }
 
-// spawnServer starts `gtx server` detached, with its output going to the
+// spawnServer starts `ikesu server` detached, with its output going to the
 // session's server.log. A NB flock on the spawn lock coordinates
 // concurrent spawners: the lock holder spawns; others just poll for the
-// socket. This lock is separate from the server's lifetime gtx.lock so
+// socket. This lock is separate from the server's lifetime ikesu.lock so
 // the child can take its lock before we release ours.
 func spawnServer(session, dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {

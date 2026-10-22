@@ -10,14 +10,14 @@ import (
 
 func TestReview1SlowLoginShellDoesNotBlockPaneList(t *testing.T) {
 	teststate.Lock(t)
-	root, err := os.MkdirTemp("/tmp", "gtxr1-")
+	root, err := os.MkdirTemp("/tmp", "ikesur1-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
 	shell, loginStarted, loginRelease := teststate.GatedLoginShell(t)
 	teststate.Setenv(t, "SHELL", shell)
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(root, "state"))
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "review1-slow")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
 	started := make(chan api.Response, 1)
@@ -42,7 +42,7 @@ func TestReview1SlowLoginShellDoesNotBlockPaneList(t *testing.T) {
 
 func TestReview1AgentStartExplicitPATH(t *testing.T) {
 	teststate.Lock(t)
-	root, err := os.MkdirTemp("/tmp", "gtxr1-")
+	root, err := os.MkdirTemp("/tmp", "ikesur1-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestReview1AgentStartExplicitPATH(t *testing.T) {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "SHELL", shell)
-	teststate.Setenv(t, "GTX_STATE_DIR", filepath.Join(root, "state"))
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Join(root, "state"))
 	dir, done := startServerAt(t, "explicit")
 	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); <-done }()
 	record := filepath.Join(root, "env")

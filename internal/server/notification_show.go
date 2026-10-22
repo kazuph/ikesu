@@ -67,7 +67,7 @@ func (s *Server) notificationShow(req *api.Request) api.Response {
 	if s.cfg.ToastDelivery() == config.ToastOff {
 		return api.Success(req.ID, result)
 	}
-	if s.cfg.ToastDelivery() == config.ToastGTX && s.app.NotificationBusy() {
+	if s.cfg.ToastDelivery() == config.ToastIKESU && s.app.NotificationBusy() {
 		result.Reason = "busy"
 		return api.Success(req.ID, result)
 	}
@@ -113,7 +113,7 @@ func (s *Server) notificationShow(req *api.Request) api.Response {
 			}
 		}
 	}
-	if s.cfg.ToastDelivery() == config.ToastGTX {
+	if s.cfg.ToastDelivery() == config.ToastIKESU {
 		s.app.ShowNotification(title, body, position)
 	}
 	result.Shown, result.Reason = true, "shown"

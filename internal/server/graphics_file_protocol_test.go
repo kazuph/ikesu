@@ -24,7 +24,7 @@ func directGraphicsFixture(t *testing.T) (string, *testConn, string, map[string]
 	if err := os.WriteFile(config, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", config)
+	teststate.Setenv(t, "IKESU_CONFIG", config)
 	teststate.Setenv(t, "XDG_RUNTIME_DIR", t.TempDir())
 	dir, done := startTestEndpoint(t, endpoint.GraphicsPeer())
 	t.Cleanup(func() { stopServer(t, dir, done) })

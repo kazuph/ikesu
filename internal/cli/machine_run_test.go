@@ -7,7 +7,7 @@ import (
 )
 
 func TestRunMachineRoutingAndRefusal(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	o := Options{Stdout: &out, Stderr: &errOut}
 	for _, args := range [][]string{{"run", "--sync", "--", "true"}, {"run", "--machine", "missing", "--", "true"}} {

@@ -16,14 +16,14 @@ func TestPluginPanePlacementsAndOwnership(t *testing.T) {
 	manifest := `id="pane.test"
 name="Panes"
 version="0.1.0"
-min_gtx_version="0.1.0"
+min_ikesu_version="0.1.0"
 platforms=["macos","linux"]
 [[panes]]
 id="board"
 title="Board"
 command=["/bin/cat"]
 `
-	if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	apiOK(t, dir, "plugin.link", map[string]any{"path": root}, nil)

@@ -7,7 +7,7 @@ func (a *App) toastVisible() bool {
 		return false
 	}
 	if a.serverUI {
-		if a.toast.target >= 0 && a.sidebarConfig.ToastDelivery() != config.ToastGTX {
+		if a.toast.target >= 0 && a.sidebarConfig.ToastDelivery() != config.ToastIKESU {
 			return false
 		}
 	}

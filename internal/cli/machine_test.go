@@ -9,7 +9,7 @@ import (
 )
 
 func TestMachineListAndRejections(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	o := Options{Stdout: &out, Stderr: &errOut}
 	for _, args := range [][]string{{"machine", "list"}, {"machine", "list", "--json"}} {
@@ -47,7 +47,7 @@ func TestMachineListAndRejections(t *testing.T) {
 }
 
 func TestMachineForwardRejectsBeforeLocalDispatch(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	o := Options{Stdout: &out, Stderr: &errOut}
 	c := (&runner{o: o}).catalog()

@@ -17,7 +17,7 @@ import (
 
 func TestMachineApprovalExpiryStopsRetryAndConnectionClearsSharedRecord(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("GTX_STATE_DIR", root)
+	t.Setenv("IKESU_STATE_DIR", root)
 	// Hold a real pre-existing shared record so event processing cannot launch a browser.
 	dir := filepath.Join(root, "machine-approvals")
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -65,8 +65,8 @@ func TestMachineApprovalHeaderClickCancelsWaitAndStartsNewAttempt(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			t.Setenv("HOME", root)
-			t.Setenv("GTX_STATE_DIR", filepath.Join(root, "state"))
-			t.Setenv("GTX_CONFIG", filepath.Join(root, "config.toml"))
+			t.Setenv("IKESU_STATE_DIR", filepath.Join(root, "state"))
+			t.Setenv("IKESU_CONFIG", filepath.Join(root, "config.toml"))
 			if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(""), 0600); err != nil {
 				t.Fatal(err)
 			}

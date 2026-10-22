@@ -11,13 +11,13 @@ import (
 const minimal = `id = "example.local"
 name = "Local"
 version = "0.1.0"
-min_gtx_version = "0.1.0"
+min_ikesu_version = "0.1.0"
 `
 
 func writeManifest(t *testing.T, text string) string {
 	t.Helper()
 	dir := t.TempDir()
-	if e := os.WriteFile(filepath.Join(dir, "gtx-plugin.toml"), []byte(text), 0600); e != nil {
+	if e := os.WriteFile(filepath.Join(dir, "ikesu-plugin.toml"), []byte(text), 0600); e != nil {
 		t.Fatal(e)
 	}
 	return dir
@@ -28,8 +28,8 @@ func TestManifestValidation(t *testing.T) {
 		valid      bool
 	}{
 		{"minimal", minimal, true},
-		{"required", strings.ReplaceAll(minimal, "min_gtx_version = \"0.1.0\"", ""), false},
-		{"newer", strings.ReplaceAll(minimal, "min_gtx_version = \"0.1.0\"", "min_gtx_version = \"0.2.0\""), false},
+		{"required", strings.ReplaceAll(minimal, "min_ikesu_version = \"0.1.0\"", ""), false},
+		{"newer", strings.ReplaceAll(minimal, "min_ikesu_version = \"0.1.0\"", "min_ikesu_version = \"0.2.0\""), false},
 		{"id", strings.ReplaceAll(minimal, "example.local", "../local"), false},
 		{"platform", minimal + "platforms = [\"plan9\"]\n", false},
 		{"empty-command", minimal + "[[actions]]\nid=\"x\"\ntitle=\"X\"\ncommand=[]\n", false},
@@ -65,7 +65,7 @@ func TestRegistrySharedAndOffline(t *testing.T) {
 	if e != nil || len(list) != 1 || !list[0].Enabled {
 		t.Fatal(list, e)
 	}
-	if e = os.Remove(filepath.Join(path, "gtx-plugin.toml")); e != nil {
+	if e = os.Remove(filepath.Join(path, "ikesu-plugin.toml")); e != nil {
 		t.Fatal(e)
 	}
 	list, e = s.List("")
@@ -111,7 +111,7 @@ func TestRegistryFailureDoesNotReplace(t *testing.T) {
 	if _, e := s.Link(writeManifest(t, minimal), true, nil); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.Link(writeManifest(t, strings.ReplaceAll(minimal, "min_gtx_version = \"0.1.0\"", "min_gtx_version = \"9.0.0\"")), false, nil); e == nil {
+	if _, e := s.Link(writeManifest(t, strings.ReplaceAll(minimal, "min_ikesu_version = \"0.1.0\"", "min_ikesu_version = \"9.0.0\"")), false, nil); e == nil {
 		t.Fatal("accepted newer manifest")
 	}
 	list, e := s.List("")

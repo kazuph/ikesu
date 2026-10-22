@@ -12,7 +12,7 @@ import (
 )
 
 // rowRef records physical row boundaries as output reaches the emulator. The
-// emulator owns cells, styles and links; gtx owns automatic-wrap metadata.
+// emulator owns cells, styles and links; ikesu owns automatic-wrap metadata.
 type rowRef struct {
 	continued bool
 	width     int

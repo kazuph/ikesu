@@ -14,7 +14,7 @@ func TestHandoffRebindsEveryGuardMarker(t *testing.T) {
 	socket := filepath.Join(root, "live.sock")
 	for id := 1; id <= 2; id++ {
 		a := guard.NewAssets(root, fmt.Sprintf("p_%d", id), "/usr/bin/true", guard.Config{})
-		_, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", fmt.Sprintf("GTX_PANE_ID=p%d", id), "GTX_SOCKET_PATH=" + root + "/stale.sock"}, root)
+		_, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", fmt.Sprintf("IKESU_PANE_ID=p%d", id), "IKESU_SOCKET_PATH=" + root + "/stale.sock"}, root)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -27,7 +27,7 @@ func TestHandoffRebindsEveryGuardMarker(t *testing.T) {
 		t.Fatal(e)
 	}
 	for id, p := range s.panes {
-		meta, active, e := guard.ReadMarker(guard.Input{Env: map[string]string{"GTX_GUARD_MARKER": p.guard.MarkerPath, "GTX_PANE_ID": fmt.Sprintf("p%d", id), "GTX_SOCKET_PATH": root + "/stale.sock"}})
+		meta, active, e := guard.ReadMarker(guard.Input{Env: map[string]string{"IKESU_GUARD_MARKER": p.guard.MarkerPath, "IKESU_PANE_ID": fmt.Sprintf("p%d", id), "IKESU_SOCKET_PATH": root + "/stale.sock"}})
 		if e != nil || !active || meta.Socket != socket {
 			t.Fatal(meta, active, e)
 		}

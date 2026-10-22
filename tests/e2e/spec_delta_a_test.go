@@ -26,7 +26,7 @@ func TestPaneRunPersistsExactCallerAndFailureCompletion(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &spawned); err != nil || spawned.Job == "" || spawned.Pane == "" {
 		t.Fatal(raw, err)
 	}
-	store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "gtx.db"))
+	store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "ikesu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

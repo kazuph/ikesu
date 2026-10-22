@@ -8,7 +8,7 @@ import (
 )
 
 func TestPeerPIDRealSockets(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "gtxpeer-")
+	dir, err := os.MkdirTemp("/tmp", "ikesupeer-")
 	if err != nil {
 		t.Fatal(err)
 	}

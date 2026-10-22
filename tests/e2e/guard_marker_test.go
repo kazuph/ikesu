@@ -20,12 +20,12 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 	if e := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[guard]\nask_timeout_seconds=1\n"), 0600); e != nil {
 		t.Fatal(e)
 	}
-	s := startEnv(t, map[string]string{"GTX_CONFIG": cfg})
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": cfg})
 	s.waitFor("shell", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "guard-marker-test", Agent: "codex", State: "idle"}, nil)
 	// A different executable name changes StateDir. The inherited listener,
 	// not a guessed pathname under that new namespace, must remain authoritative.
-	next := filepath.Join(t.TempDir(), "gtx-guard-next")
+	next := filepath.Join(t.TempDir(), "ikesu-guard-next")
 	data, e := os.ReadFile(binPath)
 	if e != nil {
 		t.Fatal(e)
@@ -73,7 +73,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			t.Fatal(e)
 		}
 		status := filepath.Join(dir, "status")
-		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する AI_GUARD_TEMP_APPROVAL_FILE=%q GTX_GUARD_MARKER= GTX_SOCKET_PATH=/missing.sock GTX_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", filepath.Join(dir, "approval"), command, target, status))
+		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する AI_GUARD_TEMP_APPROVAL_FILE=%q IKESU_GUARD_MARKER= IKESU_SOCKET_PATH=/missing.sock IKESU_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", filepath.Join(dir, "approval"), command, target, status))
 		var pending api.DecisionListResult
 		s.waitFor("old shell pending", 5*time.Second, func(string) bool {
 			s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
@@ -129,9 +129,9 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 				t.Fatal(e)
 			}
 			shim := filepath.Join(s.stateDir, "guard", "bin", "p_1", "rm")
-			cmd := exec.Command("/bin/zsh", "-c", `GTX_GUARD_MARKER= GTX_PANE_ID=p999 GTX_SOCKET_PATH=/missing.sock "$1" "$2"`, "guard-test", shim, target)
+			cmd := exec.Command("/bin/zsh", "-c", `IKESU_GUARD_MARKER= IKESU_PANE_ID=p999 IKESU_SOCKET_PATH=/missing.sock "$1" "$2"`, "guard-test", shim, target)
 			approval := filepath.Join(dir, "approval")
-			cmd.Env = append(os.Environ(), "GTX_CONFIG="+cfg, "GTX_STATE_DIR="+s.stateDir, "AI_GUARD_TEMP_APPROVAL_FILE="+approval, "AI_GUARD_REQUEST_REASON=隔離した検査用ファイルの削除を確認する")
+			cmd.Env = append(os.Environ(), "IKESU_CONFIG="+cfg, "IKESU_STATE_DIR="+s.stateDir, "AI_GUARD_TEMP_APPROVAL_FILE="+approval, "AI_GUARD_REQUEST_REASON=隔離した検査用ファイルの削除を確認する")
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			if e := cmd.Start(); e != nil {

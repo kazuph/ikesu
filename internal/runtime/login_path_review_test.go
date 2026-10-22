@@ -17,7 +17,7 @@ func TestReview1LoginPATHTimeoutFailsClosed(t *testing.T) {
 	old := loginShellPATHTimeout
 	loginShellPATHTimeout = 500 * time.Millisecond
 	t.Cleanup(func() { loginShellPATHTimeout = old })
-	dir, err := os.MkdirTemp("/tmp", "gtxr1-")
+	dir, err := os.MkdirTemp("/tmp", "ikesur1-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestReview1LoginPATHDeadlineIncludesInheritedOutput(t *testing.T) {
 	old := loginShellPATHTimeout
 	loginShellPATHTimeout = 500 * time.Millisecond
 	t.Cleanup(func() { loginShellPATHTimeout = old })
-	dir, err := os.MkdirTemp("/tmp", "gtxr1-")
+	dir, err := os.MkdirTemp("/tmp", "ikesur1-")
 	if err != nil {
 		t.Fatal(err)
 	}

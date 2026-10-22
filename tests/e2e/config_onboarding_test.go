@@ -26,7 +26,7 @@ func TestOnboardingContinueImmediateShellInput(t *testing.T) {
 		for name, key := range map[string]string{"enter": "\r", "l": "l", "right": "\x1b[C"} {
 			t.Run(mode+"/"+name, func(t *testing.T) {
 				path := onboardingConfig(t, "true")
-				s := startMode(t, map[string]string{"GTX_CONFIG": path}, local)
+				s := startMode(t, map[string]string{"IKESU_CONFIG": path}, local)
 				s.waitFor("welcome", 10*time.Second, func(text string) bool { return strings.Contains(text, "continue") })
 				s.send(key + "printf '%s_%s\\n' IMMEDIATE INPUT_OK\r")
 				s.waitFor("shell output after continue", 10*time.Second, func(text string) bool { return strings.Contains(text, "IMMEDIATE_INPUT_OK") })
@@ -44,7 +44,7 @@ func TestOnboardingContinueImmediateShellInput(t *testing.T) {
 
 func TestServerInheritsExternalOnboardingConfig(t *testing.T) {
 	path := onboardingConfig(t, "false")
-	s := startEnv(t, map[string]string{"GTX_CONFIG": path})
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": path})
 	s.waitFor("shell prompt", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.send("printf '%s_%s\\n' EXTERNAL CONFIG_OK\r")
 	s.waitFor("shell output with external config", 10*time.Second, func(text string) bool { return strings.Contains(text, "EXTERNAL_CONFIG_OK") })

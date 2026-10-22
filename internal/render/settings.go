@@ -10,7 +10,7 @@ import (
 
 // Settings geometry and options follow the recorded distribution screens.
 var ThemeNames = config.ThemeNames
-var ToastNames = []string{"off", "gtx", "terminal", "system"}
+var ToastNames = []string{"off", "ikesu", "terminal", "system"}
 
 type Settings struct {
 	Section, Selected int

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/childenv"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"io"
 	"os"
 	"os/exec"
@@ -48,9 +47,9 @@ func openSSHEndpoint(profile machine.Profile, approval func(string)) (*sshEndpoi
 			managed.Close()
 		}
 	}()
-	binary := envcompat.Get("GTX_MACHINE_REMOTE_BINARY")
+	binary := os.Getenv("IKESU_MACHINE_REMOTE_BINARY")
 	if binary == "" {
-		binary = "gtx"
+		binary = "ikesu"
 	}
 	cmd := childenv.Command("ssh", managed.Args(machine.ForwardArgs(profile, binary, []string{"__endpoint"}))...)
 	in, err := cmd.StdinPipe()

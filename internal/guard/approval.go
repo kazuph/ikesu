@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/childenv"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
@@ -93,7 +92,7 @@ func environment(m map[string]string) []string {
 	for k, v := range m {
 		out = append(out, k+"="+v)
 	}
-	return envcompat.Both(out)
+	return out
 }
 func Resolve(cmd string, env []string) (string, error) {
 	m := EnvMap(env)
@@ -107,7 +106,7 @@ func Resolve(cmd string, env []string) (string, error) {
 		return "", fmt.Errorf("command is not executable: %s", cmd)
 	}
 	for _, d := range strings.Split(m["PATH"], string(os.PathListSeparator)) {
-		if m["GTX_GUARD_BIN"] != "" && physical(d) == physical(m["GTX_GUARD_BIN"]) {
+		if m["IKESU_GUARD_BIN"] != "" && physical(d) == physical(m["IKESU_GUARD_BIN"]) {
 			continue
 		}
 		if d == "" {
@@ -129,10 +128,10 @@ func executable(p string) bool {
 }
 func EnvMap(env []string) map[string]string {
 	m := map[string]string{}
-	for _, v := range envcompat.Both(env) {
+	for _, v := range env {
 		k, s, ok := strings.Cut(v, "=")
-		// Guard internals use one canonical key; export restores both names.
-		if ok && !strings.HasPrefix(k, "IKESU_") {
+
+		if ok {
 			m[k] = s
 		}
 	}

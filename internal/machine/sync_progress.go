@@ -55,7 +55,7 @@ func (s *RunApproval) SyncProgress(argv []string) ([]string, *SyncProgress, erro
 		p.Child = append(p.Child, w)
 		p.reads = append(p.reads, r)
 		p.drained = append(p.drained, make(chan error, 1))
-		commands = append(commands, fmt.Sprintf("%s 2>&%d %d>&-", Command(stage), fd, fd), fmt.Sprintf("{ exec %d>&-; printf '\\n' >&3 && IFS= read -r _gtx_sync_ack <&4; }", fd))
+		commands = append(commands, fmt.Sprintf("%s 2>&%d %d>&-", Command(stage), fd, fd), fmt.Sprintf("{ exec %d>&-; printf '\\n' >&3 && IFS= read -r _ikesu_sync_ack <&4; }", fd))
 	}
 	observed := append([]string{}, argv...)
 	observed[2] = strings.Join(commands, " && ")

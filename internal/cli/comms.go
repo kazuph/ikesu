@@ -14,7 +14,7 @@ import (
 // Mail/job CLI: send, inbox, msg history|rooms, log, run. The argument
 // shapes and output formats mirror herdr's comms.rs.
 
-// sendCLI implements `gtx send`.
+// sendCLI implements `ikesu send`.
 func (r *runner) sendCLI(args []string) int {
 	if len(args) > 0 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
 		printSendHelp(r)
@@ -85,7 +85,7 @@ func (r *runner) sendCLI(args []string) int {
 	})
 }
 
-// inboxCLI implements `gtx inbox`.
+// inboxCLI implements `ikesu inbox`.
 func (r *runner) inboxCLI(args []string) int {
 	room := dispatch.DefaultRoom
 	var toAgent string
@@ -129,7 +129,7 @@ func (r *runner) inboxCLI(args []string) int {
 		api.MsgInboxParams{Room: room, ToAgent: toAgent}, "inbox")
 }
 
-// msgCLI implements `gtx msg <history|rooms>`.
+// msgCLI implements `ikesu msg <history|rooms>`.
 func (r *runner) msgCLI(args []string) int {
 	if len(args) == 0 {
 		printMsgHelp(r)

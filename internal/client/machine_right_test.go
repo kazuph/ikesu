@@ -26,7 +26,7 @@ import (
 )
 
 func TestMachineRightServerHelper(t *testing.T) {
-	session := os.Getenv("GTX_RIGHT_SERVER_TEST")
+	session := os.Getenv("IKESU_RIGHT_SERVER_TEST")
 	if session == "" {
 		return
 	}
@@ -82,7 +82,7 @@ func (h *rightMachineHarness) until(label string, pred func() bool) {
 }
 func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 	teststate.Lock(t)
-	root, err := os.MkdirTemp("/tmp", "gtx-right-")
+	root, err := os.MkdirTemp("/tmp", "ikesu-right-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,10 +147,10 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		}
 		defer log.Close()
 		cmd := exec.Command(exe, "-test.run=^TestMachineRightServerHelper$")
-		if binary := os.Getenv("GTX_RIGHT_TEST_SERVER_BIN"); binary != "" {
+		if binary := os.Getenv("IKESU_RIGHT_TEST_SERVER_BIN"); binary != "" {
 			cmd = exec.Command(binary, "--session", session, "server")
 		}
-		cmd.Env = append(os.Environ(), "GTX_RIGHT_SERVER_TEST="+session, "GTX_STATE_DIR="+root, "GTX_CONFIG="+cfgPath, "GTX_DISABLE_SOUND=1", "SHELL=/bin/sh")
+		cmd.Env = append(os.Environ(), "IKESU_RIGHT_SERVER_TEST="+session, "IKESU_STATE_DIR="+root, "IKESU_CONFIG="+cfgPath, "IKESU_DISABLE_SOUND=1", "SHELL=/bin/sh")
 		cmd.Stdout = log
 		cmd.Stderr = log
 		if err := cmd.Start(); err != nil {

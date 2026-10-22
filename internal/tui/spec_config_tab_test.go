@@ -16,7 +16,7 @@ func TestSPECExistingConfigHidesEveryTabHitAndKeepsBottomBar(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[ui]\nshow_tab_bar=false\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)

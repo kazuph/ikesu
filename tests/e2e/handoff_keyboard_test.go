@@ -22,8 +22,8 @@ func liveKeyboardHandoff(t *testing.T, old string) {
 			t.Fatal(err)
 		}
 		// Executable names select the real product namespace. Keep both
-		// versions named gtx so they share only this isolated test session.
-		old = filepath.Join(t.TempDir(), "gtx")
+		// versions named ikesu so they share only this isolated test session.
+		old = filepath.Join(t.TempDir(), "ikesu")
 		if err = os.WriteFile(old, data, 0700); err != nil {
 			t.Fatal(err)
 		}

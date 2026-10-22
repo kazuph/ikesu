@@ -22,7 +22,7 @@ import (
 )
 
 func TestTextSnapshotsRealSocketRetainOffscreenBaseWithoutControlsOrUploads(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "gtxtext-")
+	dir, err := os.MkdirTemp("/tmp", "ikesutext-")
 	if err != nil {
 		t.Fatal(err)
 	}

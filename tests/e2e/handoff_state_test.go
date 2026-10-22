@@ -50,7 +50,7 @@ func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s := startEnv(t, map[string]string{"GTX_CONFIG": cfg})
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": cfg})
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	sessionID := "handoff-saved-conversation"
 	lockDir := filepath.Join(os.Getenv("HOME"), ".codex", "thread-writer-locks")
@@ -74,8 +74,8 @@ func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
 	}
 	link := func(id string) {
 		root := t.TempDir()
-		manifest := fmt.Sprintf("id=%q\nname=%q\nversion=\"0.1.0\"\nmin_gtx_version=\"0.1.0\"\nplatforms=[\"macos\",\"linux\"]\n[[panes]]\nid=\"board\"\ntitle=\"Board\"\ncommand=[\"/bin/cat\"]\n", id, id)
-		if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+		manifest := fmt.Sprintf("id=%q\nname=%q\nversion=\"0.1.0\"\nmin_ikesu_version=\"0.1.0\"\nplatforms=[\"macos\",\"linux\"]\n[[panes]]\nid=\"board\"\ntitle=\"Board\"\ncommand=[\"/bin/cat\"]\n", id, id)
+		if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 			t.Fatal(err)
 		}
 		s.rpc("plugin.link", map[string]any{"path": root}, nil)

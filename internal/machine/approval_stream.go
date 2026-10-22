@@ -28,7 +28,7 @@ type ApprovalStream struct {
 }
 
 func PrepareRunApproval(profiles []Profile, argv []string, expire func()) (*RunApproval, []string) {
-	marker := "gtx-ssh-connected-" + rand.Text()
+	marker := "ikesu-ssh-connected-" + rand.Text()
 	id, observed := ObserveRun(profiles, argv, marker)
 	if id == "" {
 		return nil, argv

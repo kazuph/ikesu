@@ -10,12 +10,12 @@ import (
 
 func TestSPECStableAgentTargetAfterRestart(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtx-spec-restore-")
+	base, err := os.MkdirTemp("/tmp", "ikesu-spec-restore-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir, done := startServerAt(t, "stable")
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)

@@ -7,7 +7,7 @@ import (
 )
 
 func TestG9ParallelStateLockAndExplicitRestore(t *testing.T) {
-	const key = "GTX_TEST_PROCESS_STATE"
+	const key = "IKESU_TEST_PROCESS_STATE"
 	old, present := os.LookupEnv(key)
 	t.Run("parallel", func(t *testing.T) {
 		for i := 0; i < 16; i++ {

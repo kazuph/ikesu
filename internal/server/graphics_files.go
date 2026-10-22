@@ -45,7 +45,7 @@ func newGraphicsFileSource() (*graphicsFileSource, error) {
 	retireGraphicsFileSources(base)
 	// Mark our nonce so lifecycle cleanup never claims another application's
 	// directories under the shared advertised base.
-	server, err := os.MkdirTemp(base, fmt.Sprintf("server-%d-gtx-", os.Getpid()))
+	server, err := os.MkdirTemp(base, fmt.Sprintf("server-%d-ikesu-", os.Getpid()))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func retireGraphicsFileSources(base string) {
 		return
 	}
 	for _, entry := range entries {
-		pidText, nonce, ok := strings.Cut(strings.TrimPrefix(entry.Name(), "server-"), "-gtx-")
+		pidText, nonce, ok := strings.Cut(strings.TrimPrefix(entry.Name(), "server-"), "-ikesu-")
 		pid, err := strconv.Atoi(pidText)
 		if !strings.HasPrefix(entry.Name(), "server-") || !ok || nonce == "" || err != nil || pid <= 0 || unix.Kill(pid, 0) != unix.ESRCH {
 			continue

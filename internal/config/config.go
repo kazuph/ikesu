@@ -1,5 +1,5 @@
-// Package config loads ~/.config/gtx/config.toml (override with
-// $GTX_CONFIG). The AI-link stage reads [ui.toast] delivery,
+// Package config loads ~/.config/ikesu/config.toml (override with
+// $IKESU_CONFIG). The AI-link stage reads [ui.toast] delivery,
 // [experimental] allow_nested, [keys] open_notification_target, and
 // [agent] shell/env.
 package config
@@ -10,12 +10,11 @@ import (
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/api"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"github.com/kazuph/ikesu/internal/guard"
 )
 
 // EnvVar overrides the config file location.
-const EnvVar = "GTX_CONFIG"
+const EnvVar = "IKESU_CONFIG"
 
 // Distribution default-config: per-pane scrollback byte budget.
 const DefaultScrollbackLimitBytes = 10000000
@@ -25,7 +24,7 @@ type ToastDelivery string
 
 const (
 	ToastOff      ToastDelivery = "off"      // default: no notifications
-	ToastGTX      ToastDelivery = "gtx"      // in-app toast
+	ToastIKESU    ToastDelivery = "ikesu"    // in-app toast
 	ToastTerminal ToastDelivery = "terminal" // outer terminal (OSC 9)
 	ToastSystem   ToastDelivery = "system"   // OS notification
 )
@@ -33,7 +32,7 @@ const (
 // Valid reports whether d is a known delivery value.
 func (d ToastDelivery) Valid() bool {
 	switch d {
-	case ToastOff, ToastGTX, ToastTerminal, ToastSystem:
+	case ToastOff, ToastIKESU, ToastTerminal, ToastSystem:
 		return true
 	}
 	return false
@@ -107,7 +106,7 @@ type Config struct {
 				Enabled  *bool  `toml:"enabled"`
 				Position string `toml:"position"`
 			} `toml:"clipboard"`
-			// Enabled is the legacy boolean: true→"gtx", false→"off";
+			// Enabled is the legacy boolean: true→"ikesu", false→"off";
 			// delivery wins when both are present.
 			Enabled *bool `toml:"enabled"`
 		} `toml:"toast"`
@@ -174,7 +173,7 @@ type Config struct {
 
 // Path is the resolved config file location.
 func Path() string {
-	if p := envcompat.Get(EnvVar); p != "" {
+	if p := os.Getenv(EnvVar); p != "" {
 		return p
 	}
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
@@ -206,7 +205,7 @@ func (c Config) ToastDelivery() ToastDelivery {
 	switch {
 	case c.UI.Toast.Delivery != "":
 		if c.UI.Toast.Delivery == "herdr" {
-			return ToastGTX
+			return ToastIKESU
 		}
 		if d := ToastDelivery(c.UI.Toast.Delivery); d.Valid() {
 			return d
@@ -214,14 +213,14 @@ func (c Config) ToastDelivery() ToastDelivery {
 		return ToastOff
 	case c.UI.Toast.Enabled != nil:
 		if *c.UI.Toast.Enabled {
-			return ToastGTX
+			return ToastIKESU
 		}
 		return ToastOff
 	}
 	return ToastOff
 }
 
-// AllowNested reports whether nested gtx sessions are permitted.
+// AllowNested reports whether nested ikesu sessions are permitted.
 func (c Config) AllowNested() bool { return c.Experimental.AllowNested }
 
 // ShowTabBar reports whether the desktop tab bar is drawn (default true).

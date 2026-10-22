@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"github.com/kazuph/ikesu/internal/guard"
 	"os"
 	"path/filepath"
@@ -22,7 +21,7 @@ func (r *runner) guardCLI(a []string) int {
 	a = a[1:]
 	var c config.Config
 	var e error
-	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || envcompat.Get("GTX_GUARD_MARKER") == "" {
+	if (sub != "exec" && sub != "line" && sub != "claude-prefix") || os.Getenv("IKESU_GUARD_MARKER") == "" {
 		c, e = config.Load()
 		if e != nil {
 			fmt.Fprintln(r.errOut(), e)
@@ -31,12 +30,12 @@ func (r *runner) guardCLI(a []string) int {
 	}
 	root := api.StateDir()
 	cwd, _ := os.Getwd()
-	launch := r.o.getenv("GTX_GUARD_LAUNCH_CWD")
+	launch := r.o.getenv("IKESU_GUARD_LAUNCH_CWD")
 	via := "shim"
 	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ())}
 	// Generated entries pin the marker path. Keep diagnostics with that pane's
 	// assets even when its shell still carries the pre-handoff state directory.
-	if marker := i.Env["GTX_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line" || sub == "claude-prefix") {
+	if marker := i.Env["IKESU_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line" || sub == "claude-prefix") {
 		root = filepath.Dir(filepath.Dir(filepath.Dir(marker)))
 	}
 	await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
@@ -51,10 +50,10 @@ func (r *runner) guardCLI(a []string) int {
 		getenv := next.o.getenv
 		next.o.Explicit = false
 		next.o.Getenv = func(key string) string {
-			if key == "IKESU_SOCKET_PATH_EXPLICIT" || key == "GTX_SOCKET_PATH_EXPLICIT" {
+			if key == "IKESU_SOCKET_PATH_EXPLICIT" {
 				return "1"
 			}
-			if key == "IKESU_SOCKET_PATH" || key == "GTX_SOCKET_PATH" {
+			if key == "IKESU_SOCKET_PATH" {
 				return marker.Socket
 			}
 			return getenv(key)
@@ -76,7 +75,7 @@ func (r *runner) guardCLI(a []string) int {
 			a = a[1:]
 		}
 		if len(a) != 1 {
-			i.Command, i.Args = "gtx", append([]string{"guard", "claude-prefix", "--"}, a...)
+			i.Command, i.Args = "ikesu", append([]string{"guard", "claude-prefix", "--"}, a...)
 			guard.Authorize(c.Guard, root, i, "line", r.errOut(), await)
 			return usageErr(r, "guard claude-prefix requires exactly one command line")
 		}
@@ -85,7 +84,7 @@ func (r *runner) guardCLI(a []string) int {
 		if !guard.AuthorizeLine(c.Guard, root, i, guard.ClaudePrefixLine(i, line), r.errOut(), await) {
 			return 1
 		}
-		if prefix := i.Env["GTX_GUARD_CLAUDE_PREFIX_ORIG"]; prefix != "" {
+		if prefix := i.Env["IKESU_GUARD_CLAUDE_PREFIX_ORIG"]; prefix != "" {
 			i.Command, i.Args = prefix, []string{line}
 			if !guard.AuthorizeLine(c.Guard, root, i, shellQuote(prefix)+" "+shellQuote(line), r.errOut(), await) {
 				return 1

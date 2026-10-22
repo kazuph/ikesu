@@ -104,7 +104,7 @@ func TestImportHerdrRejectChangedSourceAndSpawnFailureWithoutStateChange(t *test
 func TestGtxZoomSurvivesSavedSessionRestart(t *testing.T) {
 	teststate.Lock(t)
 	base := teststate.TempDir(t)
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	dir, done := startServerAt(t, "zoom-persist")
 	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)

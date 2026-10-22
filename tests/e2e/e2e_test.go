@@ -1,4 +1,4 @@
-// Package e2e boots the real gtx binary on a PTY and drives it with raw
+// Package e2e boots the real ikesu binary on a PTY and drives it with raw
 // input bytes, reading the screen through a vt.Emulator — the same things a
 // user terminal does.
 package e2e
@@ -25,10 +25,10 @@ const (
 )
 
 var binPath string
-var keepFailedE2EState = os.Getenv("GTX_E2E_KEEP_FAILED") == "1"
+var keepFailedE2EState = os.Getenv("IKESU_E2E_KEEP_FAILED") == "1"
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "gtx-e2e")
+	dir, err := os.MkdirTemp("", "ikesu-e2e")
 	if err != nil {
 		panic(err)
 	}
@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 	cmd.Dir = repoRoot()
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		panic("build gtx: " + err.Error())
+		panic("build ikesu: " + err.Error())
 	}
 	code := teststate.Run(m.Run)
 	if err := os.RemoveAll(dir); err != nil {
@@ -55,7 +55,7 @@ func repoRoot() string {
 	return filepath.Clean(filepath.Join(wd, "..", ".."))
 }
 
-// session is a running gtx under a PTY with its screen decoded to an
+// session is a running ikesu under a PTY with its screen decoded to an
 // emulator.
 type session struct {
 	t             *testing.T
@@ -63,8 +63,8 @@ type session struct {
 	cmd           *exec.Cmd
 	emu           *vt.Emulator
 	buf           *lockedBuf
-	name          string // session name (gtx --session)
-	stateDir      string // GTX_STATE_DIR
+	name          string // session name (ikesu --session)
+	stateDir      string // IKESU_STATE_DIR
 	observeOutput func([]byte)
 }
 
@@ -90,7 +90,7 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 	// prompt waits do not depend on the host's zshrc/direnv.
 	zdot := t.TempDir()
 	// Short root: unix socket paths must stay under ~104 bytes.
-	stateDir, err := os.MkdirTemp("/tmp", "gtx-e2e")
+	stateDir, err := os.MkdirTemp("/tmp", "ikesu-e2e")
 	if err != nil {
 		t.Fatalf("state dir: %v", err)
 	}
@@ -118,8 +118,8 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 		"TERM=xterm-256color",
 		"SHELL=/bin/zsh",
 		"ZDOTDIR="+zdot,
-		"GTX_STATE_DIR="+stateDir,
-		"GTX_CONFIG="+cfgFile,
+		"IKESU_STATE_DIR="+stateDir,
+		"IKESU_CONFIG="+cfgFile,
 	)
 	for k, v := range extra {
 		cmd.Env = append(cmd.Env, k+"="+v)
@@ -139,7 +139,7 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 		})
 		deadline := time.Now().Add(10 * time.Second)
 		for {
-			if _, err := os.Stat(filepath.Join(stateDir, sess, "gtx-client.sock")); err == nil {
+			if _, err := os.Stat(filepath.Join(stateDir, sess, "ikesu-client.sock")); err == nil {
 				break
 			}
 			if time.Now().After(deadline) {
@@ -154,7 +154,7 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 		t.Fatalf("pty start: %v", err)
 	}
 	s := &session{t: t, pt: f, cmd: cmd, emu: vt.NewEmulator(termW, termH), buf: &lockedBuf{ch: make(chan []byte, 4096)}, name: sess, stateDir: stateDir}
-	// Consume emulator replies without sending them to gtx: this outer
+	// Consume emulator replies without sending them to ikesu: this outer
 	// terminal deliberately leaves every capability query unanswered.
 	// The emulator's reply pipe must still be read or its screen parser blocks.
 	go func() { _, _ = io.Copy(io.Discard, s.emu) }()
@@ -286,11 +286,11 @@ func (s *session) send(b string) {
 	}
 }
 
-// cli runs the gtx binary against this test session and returns stdout.
+// cli runs the ikesu binary against this test session and returns stdout.
 func (s *session) cli(args ...string) (string, error) {
 	s.t.Helper()
 	cmd := exec.Command(binPath, append([]string{"--session", s.name}, args...)...)
-	cmd.Env = append(os.Environ(), "GTX_STATE_DIR="+s.stateDir)
+	cmd.Env = append(os.Environ(), "IKESU_STATE_DIR="+s.stateDir)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -401,10 +401,10 @@ func TestMouseFullFlow(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("gtx exit: %v", err)
+			t.Fatalf("ikesu exit: %v", err)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("gtx did not exit")
+		t.Fatal("ikesu did not exit")
 	}
 }
 
@@ -578,7 +578,7 @@ func TestTmuxSplitKeys(t *testing.T) {
 	})
 }
 
-// G3/G5: gtx server restart saves the session, respawns the server, and
+// G3/G5: ikesu server restart saves the session, respawns the server, and
 // the attached client reconnects to restored panes with stable ids.
 func TestServerRestartKeepsPanes(t *testing.T) {
 	s := start(t)

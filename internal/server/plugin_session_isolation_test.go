@@ -28,8 +28,8 @@ func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
 	defer client.conn.Close()
 	defer stopServer(t, other, otherDone)
 	root := t.TempDir()
-	manifest := "id=\"isolation.test\"\nname=\"Isolation\"\nversion=\"0.1.0\"\nmin_gtx_version=\"0.1.0\"\n"
-	if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	manifest := "id=\"isolation.test\"\nname=\"Isolation\"\nversion=\"0.1.0\"\nmin_ikesu_version=\"0.1.0\"\n"
+	if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	apiOK(t, first, "plugin.link", map[string]any{"path": root}, nil)
@@ -73,16 +73,16 @@ func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
 	out.Reset()
 	err.Reset()
 	code = cli.Run([]string{"log", "--db"}, cli.Options{Session: "other", Explicit: true, Stdout: &out, Stderr: &err})
-	if code != 0 || out.String() != filepath.Join(api.StateDir(), "sessions", "other", "gtx.db")+"\n" {
+	if code != 0 || out.String() != filepath.Join(api.StateDir(), "sessions", "other", "ikesu.db")+"\n" {
 		t.Fatalf("other session database: %d %s %s", code, &out, &err)
 	}
 	out.Reset()
 	err.Reset()
 	code = cli.Run([]string{"run", "list"}, cli.Options{Session: "default", Stdout: &out, Stderr: &err, Getenv: func(key string) string {
-		if key == "GTX_SOCKET_PATH" {
+		if key == "IKESU_SOCKET_PATH" {
 			return api.APISocketPath(first)
 		}
-		if key == "GTX_SOCKET_PATH_EXPLICIT" {
+		if key == "IKESU_SOCKET_PATH_EXPLICIT" {
 			return "1"
 		}
 		return os.Getenv(key)

@@ -14,7 +14,7 @@ func TestTransparentPanelKeepsBrightControlTextAndConfirmationBackdrop(t *testin
 	in := Input{State: s, ServerUI: true}
 	in.SidebarConfig.Theme.Custom = map[string]string{"panel_bg": "transparent", "surface_dim": "#16161e"}
 	base := Compose(in)
-	in.Dialog = &Dialog{Title: "Stop server?", Detail: "Stops the gtx server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76, CenterTerminal: true}
+	in.Dialog = &Dialog{Title: "Stop server?", Detail: "Stops the ikesu server and all running panes.", Confirm: "stop", Cancel: "cancel", Width: 76, CenterTerminal: true}
 	confirmed := Compose(in)
 	if confirmed.DialogRect != (layout.Rect{X: 42, Y: 20, W: 76, H: 5}) {
 		t.Fatal("endpoint stop confirmation is not centered in the terminal", confirmed.DialogRect)

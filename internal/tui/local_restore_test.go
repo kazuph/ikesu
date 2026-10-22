@@ -11,7 +11,7 @@ import (
 func TestLocalRestoreTypesOnlyExactRecordedSessionIntoRealPTY(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	if err := os.WriteFile(path, []byte("[agent_restore.templates]\nclaude = \"printf 'RE%s:%s\\\\n' 'STORE_EXACT' '{session_id}'\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

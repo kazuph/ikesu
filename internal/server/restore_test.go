@@ -25,7 +25,7 @@ func waitAPISocketGone(t *testing.T, dir string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(filepath.Join(dir, "gtx.sock")); os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(dir, "ikesu.sock")); os.IsNotExist(err) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -33,18 +33,18 @@ func waitAPISocketGone(t *testing.T, dir string) {
 	t.Fatal("api socket never went away")
 }
 
-// loadTestConfig parses $GTX_CONFIG for tests.
+// loadTestConfig parses $IKESU_CONFIG for tests.
 func loadTestConfig(t *testing.T) (config.Config, error) {
 	t.Helper()
 	return config.Load()
 }
 
 // newTestServer builds a bare Server for unit tests: model state + app +
-// supervisor, no sockets. db() resolves through $GTX_STATE_DIR.
+// supervisor, no sockets. db() resolves through $IKESU_STATE_DIR.
 func newTestServer(t *testing.T, session string) *Server {
 	t.Helper()
 	base := t.TempDir()
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	cwd := filepath.Join(base, "cwd")
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		t.Fatal(err)
@@ -79,12 +79,12 @@ func reportAgent(t *testing.T, dir, paneID, agent, sessionID string) {
 // shared cwd-latest guess.
 func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "rest")
@@ -213,12 +213,12 @@ func TestAgentRestoreSkipsUnsafeID(t *testing.T) {
 // A real (non-dry-run) restore types the resume command into the pane.
 func TestAgentRestoreLaunchesCommand(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "launch")
@@ -274,7 +274,7 @@ codex = ["codex", "--sandbox", "workspace-write", "--model", "gpt-6-astra"]
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfgFile)
+	teststate.Setenv(t, "IKESU_CONFIG", cfgFile)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +297,7 @@ claude = "claude --resume"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfgFile)
+	teststate.Setenv(t, "IKESU_CONFIG", cfgFile)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -319,7 +319,7 @@ codex = "codex resume {session_id} --last"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfgFile)
+	teststate.Setenv(t, "IKESU_CONFIG", cfgFile)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +336,7 @@ func TestBuildResumeCommandRejectsLastInConfiguredArgv(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[agent_start.commands]\ncodex = [\"codex\", \"--last\"]\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	cfg, err := loadTestConfig(t)
 	if err != nil {
 		t.Fatal(err)
@@ -549,7 +549,7 @@ func TestObserveCodexSessionFileStrict(t *testing.T) {
 func TestPaneSessionLedger(t *testing.T) {
 	teststate.Lock(t)
 	base := t.TempDir()
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	store, err := dispatch.Open(dispatch.DBPath())
 	if err != nil {
 		t.Fatal(err)
@@ -589,12 +589,12 @@ func TestPaneSessionLedger(t *testing.T) {
 // Closing a pane removes its ledger row (ownership cleanup boundary).
 func TestLedgerDeleteOnPaneClose(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "leddel")
@@ -686,12 +686,12 @@ func waitPanes(t *testing.T, dir string, want []string) []string {
 // its process exits — it comes back as a shell instead of closing.
 func TestRestorablePaneRetainedOnExit(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "retain")
@@ -745,12 +745,12 @@ func TestRestorablePaneRetainedOnExit(t *testing.T) {
 // its ledger row goes with it.
 func TestInactiveShellPaneClosesOnExit(t *testing.T) {
 	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "gtxtest-")
+	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "GTX_STATE_DIR", base)
+	teststate.Setenv(t, "IKESU_STATE_DIR", base)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 
 	dir, done := startServerAt(t, "cleanup")

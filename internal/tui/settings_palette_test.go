@@ -17,7 +17,7 @@ func TestSettingsApplyKeepsEndpointPaneThemeUntilConfigReload(t *testing.T) {
 	for _, endpoint := range []bool{false, true} {
 		t.Run(fmt.Sprint(endpoint), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
-			teststate.Setenv(t, "GTX_CONFIG", path)
+			teststate.Setenv(t, "IKESU_CONFIG", path)
 			if err := os.WriteFile(path, []byte("[theme]\nname='tokyo-night'\n[theme.custom]\npanel_bg='transparent'\n"), 0600); err != nil {
 				t.Fatal(err)
 			}

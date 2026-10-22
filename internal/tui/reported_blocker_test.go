@@ -92,7 +92,7 @@ func TestReportedBlockerPriorityAndObservationOrder(t *testing.T) {
 		{"idle", "claude", "claude", "claude", "idle", true, time.Second, "blocked"},
 		{"old", "claude", "claude", "claude", "working", true, -time.Second, "working"},
 		{"same time", "claude", "claude", "claude", "working", true, 0, "working"},
-		{"source label mismatch", "gtx:pi", "claude", "claude", "working", true, time.Second, "blocked"},
+		{"source label mismatch", "ikesu:pi", "claude", "claude", "working", true, time.Second, "blocked"},
 		{"other agent", "claude", "claude", "codex", "working", true, time.Second, "working"},
 		{"not visible", "claude", "claude", "claude", "working", false, time.Second, "working"},
 		{"reported blocked", "claude", "claude", "claude", "blocked", false, time.Second, "blocked"},
@@ -103,7 +103,7 @@ func TestReportedBlockerPriorityAndObservationOrder(t *testing.T) {
 			visible                              bool
 			age                                  time.Duration
 			want                                 string
-		}{"official " + agent, "gtx:" + agent, agent, agent, "working", true, time.Second, "working"})
+		}{"official " + agent, "ikesu:" + agent, agent, agent, "working", true, time.Second, "working"})
 		cases = append(cases, struct {
 			name, source, agent, detected, state string
 			visible                              bool

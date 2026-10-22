@@ -121,7 +121,7 @@ func TestDecisionCLIRealServer(t *testing.T) {
 		}
 		go func() {
 			exit <- cli.Run(args, cli.Options{Session: "test", Explicit: true, Stdout: &out, Stderr: &errs, Getenv: func(key string) string {
-				if key == "GTX_PANE_ID" {
+				if key == "IKESU_PANE_ID" {
 					return "p1"
 				}
 				return os.Getenv(key)
@@ -208,15 +208,15 @@ func TestDecisionPluginFullRecord(t *testing.T) {
 	manifest := `id="decision.test"
 name="Decision Test"
 version="0.1.0"
-min_gtx_version="0.1.0"
+min_ikesu_version="0.1.0"
 [[events]]
 on="decision.created"
-command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_EVENT_JSON\""]
+command=["/bin/sh","-c","printf '%s' \"$IKESU_PLUGIN_EVENT_JSON\""]
 [[events]]
 on="decision.resolved"
-command=["/bin/sh","-c","printf '%s' \"$GTX_PLUGIN_EVENT_JSON\""]
+command=["/bin/sh","-c","printf '%s' \"$IKESU_PLUGIN_EVENT_JSON\""]
 `
-	if err := os.WriteFile(filepath.Join(root, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	apiOK(t, dir, "plugin.link", map[string]any{"path": root}, nil)

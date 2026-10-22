@@ -31,7 +31,7 @@ func testKittyVirtual(t *testing.T, format int) {
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n[ui]\nmouse_scroll_lines=1\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s := startEnv(t, map[string]string{"GTX_CONFIG": cfg})
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": cfg})
 	var raw bytes.Buffer
 	s.observeOutput = func(b []byte) { raw.Write(b) }
 	defer func() {

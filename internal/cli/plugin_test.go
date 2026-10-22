@@ -12,13 +12,13 @@ import (
 func TestPluginOfflineCLIAndSessionSharing(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
-	t.Setenv("GTX_STATE_DIR", filepath.Join(root, "state"))
-	t.Setenv("GTX_CONFIG", "")
+	t.Setenv("IKESU_STATE_DIR", filepath.Join(root, "state"))
+	t.Setenv("IKESU_CONFIG", "")
 	path := filepath.Join(root, "plugin")
 	if e := os.Mkdir(path, 0700); e != nil {
 		t.Fatal(e)
 	}
-	if e := os.WriteFile(filepath.Join(path, "gtx-plugin.toml"), []byte("id='local.example'\nname='Example'\nversion='0.1.0'\nmin_gtx_version='0.1.0'\n"), 0600); e != nil {
+	if e := os.WriteFile(filepath.Join(path, "ikesu-plugin.toml"), []byte("id='local.example'\nname='Example'\nversion='0.1.0'\nmin_ikesu_version='0.1.0'\n"), 0600); e != nil {
 		t.Fatal(e)
 	}
 	run := func(session string, args ...string) api.Response {

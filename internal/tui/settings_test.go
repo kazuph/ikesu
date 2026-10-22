@@ -16,7 +16,7 @@ import (
 func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	if err := os.WriteFile(path, []byte("[ui]\nworkspace_panel_density='slim'\n[ui.toast]\ndelivery='off'\n[extra]\nkeep='value'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 		t.Fatal("0.2.57 reopens theme")
 	}
 	specFeed(a, "\t\t\x1b[B\r")
-	if a.settings == nil || a.sidebarConfig.ToastDelivery() != config.ToastGTX || applied.ToastDelivery() != config.ToastGTX {
+	if a.settings == nil || a.sidebarConfig.ToastDelivery() != config.ToastIKESU || applied.ToastDelivery() != config.ToastIKESU {
 		t.Fatal("toast apply")
 	}
 	a.openSettings()
@@ -63,7 +63,7 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 		t.Fatal("escape close")
 	}
 	a.openSettings()
-	if a.settings.Theme != "catppuccin-latte" || a.settings.Sound || a.settings.Toast != "gtx" {
+	if a.settings.Theme != "catppuccin-latte" || a.settings.Sound || a.settings.Toast != "ikesu" {
 		t.Fatal("reopen values")
 	}
 	b, err := os.ReadFile(path)
@@ -76,7 +76,7 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 		t.Fatal("tab mouse")
 	}
 	sidebarEvent(a, input.KindMouseClick, r.X+4, render.SettingsChoiceY(r, 2, 3))
-	if a.settings.Selected != 3 || a.sidebarConfig.ToastDelivery() != config.ToastGTX {
+	if a.settings.Selected != 3 || a.sidebarConfig.ToastDelivery() != config.ToastIKESU {
 		t.Fatal("choice applied before confirmation")
 	}
 	sidebarEvent(a, input.KindMouseClick, r.X+30, r.Y+r.H-2)
@@ -92,7 +92,7 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 func TestG2SettingsFailedWriteDoesNotApply(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
-	teststate.Setenv(t, "GTX_CONFIG", path)
+	teststate.Setenv(t, "IKESU_CONFIG", path)
 	if err := os.WriteFile(path, []byte("invalid ["), 0600); err != nil {
 		t.Fatal(err)
 	}

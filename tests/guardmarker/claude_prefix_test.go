@@ -10,7 +10,7 @@ import (
 )
 
 func TestClaudePrefixBeforeSnapshotEval(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "gtx")
+	binary := filepath.Join(t.TempDir(), "ikesu")
 	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
 		t.Fatal(e, string(b))
 	}
@@ -32,14 +32,14 @@ func TestClaudePrefixBeforeSnapshotEval(t *testing.T) {
 			case "touch-tail":
 				args = append(args, "/usr/bin/touch", target+"-unexpected", "ls")
 			case "env-prefix":
-				env = append(env, "GTX_GUARD_CLAUDE_PREFIX_ORIG=/bin/rm")
+				env = append(env, "IKESU_GUARD_CLAUDE_PREFIX_ORIG=/bin/rm")
 				args = append(args, target)
 			case "env-shell-prefix":
 				script := filepath.Join(t.TempDir(), "unchecked-script")
 				if e := os.WriteFile(script, []byte("touch "+shellQuote(target+"-unexpected")+"\n"), 0700); e != nil {
 					t.Fatal(e)
 				}
-				env = append(env, "GTX_GUARD_CLAUDE_PREFIX_ORIG=/bin/sh")
+				env = append(env, "IKESU_GUARD_CLAUDE_PREFIX_ORIG=/bin/sh")
 				args = append(args, script)
 			case "raw-line":
 				args = append(args, "echo ordinary; /bin/rm "+shellQuote(target))

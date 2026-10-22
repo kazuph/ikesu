@@ -15,14 +15,14 @@ func localGitInstall(t *testing.T, manifest string) (*Store, string) {
 	if err := os.Mkdir(repo, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, "gtx-plugin.toml"), []byte(manifest), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"init", repo}, {"-C", repo, "add", "gtx-plugin.toml"}, {"-C", repo, "-c", "user.name=Plugin Test", "-c", "user.email=plugin@example.invalid", "commit", "-m", "fixture"}} {
+	for _, args := range [][]string{{"init", repo}, {"-C", repo, "add", "ikesu-plugin.toml"}, {"-C", repo, "-c", "user.name=Plugin Test", "-c", "user.email=plugin@example.invalid", "commit", "-m", "fixture"}} {
 		c := exec.Command(realGit, args...)
 		c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
 		if out, err := c.CombinedOutput(); err != nil {
@@ -49,9 +49,9 @@ func localGitInstall(t *testing.T, manifest string) (*Store, string) {
 func TestInstallBuildReinstallAndUninstallRealGit(t *testing.T) {
 	s, _ := localGitInstall(t, minimal+`platforms=["macos","linux"]
 [[build]]
-command=["/bin/sh","-c","test -z \"$GTX_PLUGIN_CONTEXT_JSON\" && printf built > built"]
+command=["/bin/sh","-c","test -z \"$IKESU_PLUGIN_CONTEXT_JSON\" && printf built > built"]
 `)
-	t.Setenv("GTX_PLUGIN_CONTEXT_JSON", "inherited-context")
+	t.Setenv("IKESU_PLUGIN_CONTEXT_JSON", "inherited-context")
 	confirm := func(p InstallPreview) bool { return p.Manifest.ID == "example.local" && len(p.Manifest.Build) == 1 }
 	item, err := s.Install("owner/repo", "", confirm)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestInstallFailureNeverRegisters(t *testing.T) {
 	for _, body := range []string{`[[build]]
 command=["/bin/sh","-c","exit 3"]
 `, `[[build]]
-command=["/bin/sh","-c","printf '\\n# changed' >> gtx-plugin.toml"]
+command=["/bin/sh","-c","printf '\\n# changed' >> ikesu-plugin.toml"]
 `} {
 		t.Run(body, func(t *testing.T) {
 			s, _ := localGitInstall(t, minimal+body)

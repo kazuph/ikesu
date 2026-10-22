@@ -18,7 +18,7 @@ func TestShimOnlyPathDoesNotIntroduceCurrentDirectoryFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(cwd)
-	env := []string{"HOME=" + t.TempDir(), "GTX_STATE_DIR=" + root, "PATH=" + shim}
+	env := []string{"HOME=" + t.TempDir(), "IKESU_STATE_DIR=" + root, "PATH=" + shim}
 	if value, err := Resolve("probe", env); err == nil {
 		t.Fatal("removed shims introduced a cwd fallback", value)
 	}

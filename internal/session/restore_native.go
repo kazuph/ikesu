@@ -9,10 +9,10 @@ import (
 type NativeResumeSpec struct{ Flag, Source string }
 
 var NativeResumeAgents = map[string]NativeResumeSpec{
-	"grok":  {Flag: "--resume", Source: "gtx:grok"},
-	"qwen":  {Flag: "--resume", Source: "gtx:qwen"},
-	"agy":   {Flag: "--conversation", Source: "gtx:antigravity_cli"},
-	"letta": {Flag: "--conversation", Source: "gtx:letta"},
+	"grok":  {Flag: "--resume", Source: "ikesu:grok"},
+	"qwen":  {Flag: "--resume", Source: "ikesu:qwen"},
+	"agy":   {Flag: "--conversation", Source: "ikesu:antigravity_cli"},
+	"letta": {Flag: "--conversation", Source: "ikesu:letta"},
 }
 
 // Only the documented native launch flag is session evidence for these agents.

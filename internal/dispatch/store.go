@@ -1,8 +1,8 @@
-// Package dispatch is gtx's durable mailbox and job ledger: one SQLite
-// database (WAL) records agent-to-agent messages, `gtx run` command
+// Package dispatch is ikesu's durable mailbox and job ledger: one SQLite
+// database (WAL) records agent-to-agent messages, `ikesu run` command
 // dispatches, and the pane↔agent-session ledger used by restart restore.
 // Table and column names follow docs/ref/herdr-db-schema.sql so the same
-// DB can be inspected with `sqlite3 "$(gtx log --db)"`.
+// DB can be inspected with `sqlite3 "$(ikesu log --db)"`.
 package dispatch
 
 import (
@@ -14,14 +14,13 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 )
 
 const DefaultRoom = "default"
-const JobsRoom = "gtx-jobs"
-const RunShellActor = "gtx-run"
-const DBPathEnvVar = "GTX_DB_PATH"
+const JobsRoom = "ikesu-jobs"
+const RunShellActor = "ikesu-run"
+const DBPathEnvVar = "IKESU_DB_PATH"
 
 // tsLayout is the millisecond UTC timestamp format stored in *_at columns.
 const tsLayout = "2006-01-02T15:04:05.000Z"
@@ -37,13 +36,13 @@ func tsToMs(s string) *int64 {
 	return &ms
 }
 
-// DBPath is the dispatch database location: $GTX_DB_PATH when set, else
-// gtx.db under the state dir.
+// DBPath is the dispatch database location: $IKESU_DB_PATH when set, else
+// ikesu.db under the state dir.
 func DBPath(sessionName ...string) string {
-	if p := envcompat.Get(DBPathEnvVar); p != "" {
+	if p := os.Getenv(DBPathEnvVar); p != "" {
 		return p
 	}
-	return filepath.Join(sessionDataDir(sessionName), "gtx.db")
+	return filepath.Join(sessionDataDir(sessionName), "ikesu.db")
 }
 
 func sessionDataDir(names []string) string {
@@ -59,13 +58,13 @@ func DBExists(sessionName ...string) bool {
 	return err == nil
 }
 
-// JobLogDir is where `gtx run` job logs live.
+// JobLogDir is where `ikesu run` job logs live.
 func JobLogDir(sessionName ...string) string {
 	return filepath.Join(sessionDataDir(sessionName), "job-logs")
 }
 
 // JobLogPath is the log file name for a job: <id>-<label>.log, or
-// <id>.log when the label is empty. `gtx log <job>` looks logs up under
+// <id>.log when the label is empty. `ikesu log <job>` looks logs up under
 // this scheme.
 func JobLogPath(jobID, label string, sessionName ...string) string {
 	if safe := sanitizeLabel(label); safe != "" {
@@ -91,7 +90,7 @@ func sanitizeLabel(s string) string {
 
 // schemaSQL is the DDL executed on open. Column names and status values
 // match the reference schema; pane_sessions (the restore ledger) and
-// dispatches.caller_pane are gtx additions.
+// dispatches.caller_pane are ikesu additions.
 const schemaSQL = decisionSchema + `
 CREATE TABLE IF NOT EXISTS actors (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,7 +184,7 @@ CREATE TABLE IF NOT EXISTS pane_sessions (
   PRIMARY KEY (session, pane_id)
 );`
 
-// Schema returns the DDL applied on open — `gtx log --schema` prints it.
+// Schema returns the DDL applied on open — `ikesu log --schema` prints it.
 func Schema() string { return schemaSQL + "\n" }
 
 // Message is one dispatch row of kind 'message' as callers see it.

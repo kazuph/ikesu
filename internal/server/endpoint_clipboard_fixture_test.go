@@ -20,7 +20,7 @@ func startClipboardEndpoint(t *testing.T) (*Server, <-chan string) {
 	pinTestConfig(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "clipboard")
-	dir, err := os.MkdirTemp("/tmp", "gtx-clip-")
+	dir, err := os.MkdirTemp("/tmp", "ikesu-clip-")
 	if err != nil {
 		t.Fatal(err)
 	}

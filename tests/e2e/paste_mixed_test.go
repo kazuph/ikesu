@@ -12,8 +12,8 @@ import (
 
 func TestModalPasteMixedVersionsActualPTY(t *testing.T) {
 	old := os.Getenv("PASTE_BASELINE_BIN")
-	if old == "" || filepath.Base(old) != "gtx" {
-		t.Fatal("PASTE_BASELINE_BIN must be the original binary named gtx")
+	if old == "" || filepath.Base(old) != "ikesu" {
+		t.Fatal("PASTE_BASELINE_BIN must be the original binary named ikesu")
 	}
 	for _, pair := range []struct {
 		name, client, server string

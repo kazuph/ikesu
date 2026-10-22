@@ -3,7 +3,7 @@ package server
 // Session persistence and restart (SPEC G3/G5): the server writes
 // session.json under the session directory after every persistent state
 // change (coalesced), again on shutdown, and restores it on startup.
-// Restart saves, stops, respawns a detached `gtx server`, and the
+// Restart saves, stops, respawns a detached `ikesu server`, and the
 // attached client reconnects to it.
 
 import (
@@ -107,7 +107,7 @@ func (s *Server) loadSession() *session.File {
 }
 
 // requestRestart saves, then quits the app loop; cleanup respawns a
-// detached `gtx server` which restores session.json. Must run on the app
+// detached `ikesu server` which restores session.json. Must run on the app
 // loop.
 func (s *Server) requestRestart() {
 	s.restarting = true
@@ -119,7 +119,7 @@ func (s *Server) requestRestart() {
 // can reconnect, then drops the connection.
 func (s *Server) notifyRestart() { s.closeClients("restart") }
 
-// spawnSuccessor launches a detached `gtx server` for this session. It is
+// spawnSuccessor launches a detached `ikesu server` for this session. It is
 // called only after cleanup released the session lock, so the child
 // acquires it cleanly. Mirrors spawnServer in internal/client.
 func (s *Server) spawnSuccessor() {

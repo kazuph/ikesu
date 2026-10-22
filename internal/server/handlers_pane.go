@@ -59,7 +59,7 @@ func (s *Server) paneCurrent(id string, p api.PaneCurrentParams) api.Response {
 			return s.paneNotFound(id, *p.CallerPaneID)
 		}
 		// When the caller process is known, the asserted pane must be
-		// provable from its ancestry — a leaked GTX_PANE_ID in a process
+		// provable from its ancestry — a leaked IKESU_PANE_ID in a process
 		// outside the pane fails closed (SPEC G5).
 		if p.CallerProcessID != nil {
 			if proven := s.paneForProcess(int(*p.CallerProcessID)); proven != pid {

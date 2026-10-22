@@ -4,7 +4,6 @@ package latency
 
 import (
 	"fmt"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"io"
 	"os"
 	"sync"
@@ -13,9 +12,9 @@ import (
 
 // The parent approved this per-process, per-destination diagnostics budget.
 const Limit = 33554432
-const LimitMessage = "gtx_latency 上限に達したので以降の遅延記録を捨てる\n"
+const LimitMessage = "ikesu_latency 上限に達したので以降の遅延記録を捨てる\n"
 
-var Enabled = envcompat.Get("GTX_LATENCY_TRACE") == "1"
+var Enabled = os.Getenv("IKESU_LATENCY_TRACE") == "1"
 
 type Trace struct {
 	mu      sync.Mutex
@@ -59,7 +58,7 @@ func (t *Trace) Event(event string, fields ...any) {
 	if t.stopped {
 		return
 	}
-	line := fmt.Sprintf("gtx_latency unix_us=%d event=%s%s\n", time.Now().UnixMicro(), event, fmt.Sprint(fields...))
+	line := fmt.Sprintf("ikesu_latency unix_us=%d event=%s%s\n", time.Now().UnixMicro(), event, fmt.Sprint(fields...))
 	if len(line) > Limit-t.bytes {
 		t.queue = append(t.queue, LimitMessage)
 		t.stopped = true

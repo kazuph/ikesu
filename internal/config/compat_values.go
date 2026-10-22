@@ -19,7 +19,7 @@ func (c *Config) validateValues() {
 		{"ui.agent_panel_sort", &c.UI.AgentPanelSort, []string{"spaces", "workspaces", "priority"}},
 		{"ui.agent_panel_scope", &c.UI.AgentPanelScope, []string{"all", "sort", "current"}},
 		{"ui.workspace_panel_density", &c.UI.WorkspacePanelDensity, []string{"full", "slim"}},
-		{"ui.toast.delivery", &c.UI.Toast.Delivery, []string{"off", "herdr", "gtx", "terminal", "system"}},
+		{"ui.toast.delivery", &c.UI.Toast.Delivery, []string{"off", "herdr", "ikesu", "terminal", "system"}},
 		{"ui.toast.herdr.position", &c.UI.Toast.Herdr.Position, []string{"top-left", "top-right", "bottom-left", "bottom-right"}},
 		{"ui.toast.clipboard.position", &c.UI.Toast.Clipboard.Position, []string{"top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"}},
 		{"experimental.cjk_ime_cursor_shape", &c.Experimental.CJKIMECursorShape, []string{"block", "steady_block", "underline", "steady_underline", "bar", "steady_bar"}},

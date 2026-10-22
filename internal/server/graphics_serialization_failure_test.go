@@ -27,7 +27,7 @@ func TestSnapshotGobFailureReportsErrorAndClosesRealSocket(t *testing.T) {
 			name = "text"
 		}
 		t.Run(name, func(t *testing.T) {
-			dir, err := os.MkdirTemp("/tmp", "gtxgob-")
+			dir, err := os.MkdirTemp("/tmp", "ikesugob-")
 			if err != nil {
 				t.Fatal(err)
 			}

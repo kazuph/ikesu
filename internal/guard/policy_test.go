@@ -14,7 +14,7 @@ func TestServerPolicyCannotBeDowngraded(t *testing.T) {
 		for _, caller := range []Config{{Enabled: &disabled}, {Mode: "record"}} {
 			root := t.TempDir()
 			a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
-			env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/socket"}, root)
+			env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -46,7 +46,7 @@ func TestServerPolicyCannotBeDowngraded(t *testing.T) {
 func TestServerPolicyReloadPublishesNewRules(t *testing.T) {
 	root := t.TempDir()
 	a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
-	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/socket"}, root)
+	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -67,7 +67,7 @@ func TestServerPolicyReloadPublishesNewRules(t *testing.T) {
 	// Reloading record is reported as uncovered by the existing mode contract;
 	// a fresh record pane still records without requiring an approval.
 	record := NewAssets(t.TempDir(), "p_2", "/usr/bin/true", Config{Mode: "record"})
-	env, e = record.Prepare([]string{"HOME=" + root, "PATH=/bin", "GTX_PANE_ID=p2", "GTX_SOCKET_PATH=" + root + "/socket"}, root)
+	env, e = record.Prepare([]string{"HOME=" + root, "PATH=/bin", "IKESU_PANE_ID=p2", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -91,14 +91,14 @@ func TestStoredPolicyNotExposedInMarkerOutput(t *testing.T) {
 func TestChildEnvCannotDropAuthorizationIdentity(t *testing.T) {
 	root := t.TempDir()
 	a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
-	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "GTX_PANE_ID=p1", "GTX_SOCKET_PATH=" + root + "/socket"}, root)
+	env, e := a.Prepare([]string{"HOME=" + root, "PATH=/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
 	if e != nil {
 		t.Fatal(e)
 	}
 	if e = a.Sync("codex"); e != nil {
 		t.Fatal(e)
 	}
-	for _, prefix := range []string{"env -i ", "env -u GTX_GUARD_MARKER ", "env -u GTX_PANE_ID "} {
+	for _, prefix := range []string{"env -i ", "env -u IKESU_GUARD_MARKER ", "env -u IKESU_PANE_ID "} {
 		var out bytes.Buffer
 		if AuthorizeLine(Config{}, root, Input{Cwd: root, Env: EnvMap(env)}, prefix+"/bin/rm "+root+"/../victim", &out, nil) {
 			t.Fatal(prefix, out.String())

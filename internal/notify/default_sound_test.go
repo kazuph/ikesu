@@ -19,7 +19,7 @@ import (
 )
 
 func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
-	t.Setenv("GTX_DISABLE_SOUND", "")
+	t.Setenv("IKESU_DISABLE_SOUND", "")
 	cache := t.TempDir()
 	for _, tc := range []struct {
 		kind    string
@@ -47,7 +47,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		}
 		t.Logf("%s: %d Hz, %.9f seconds, RMS %.3f dBFS, peak %.3f dBFS", tc.kind, rate, float64(frames)/float64(rate), 20*math.Log10(math.Sqrt(squares/float64(frames))), 20*math.Log10(peak))
 		var calls [][]string
-		d := Desktop{Executable: "/tmp/gtx-next", CacheDir: func() (string, error) { return cache, nil }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
+		d := Desktop{Executable: "/tmp/ikesu-next", CacheDir: func() (string, error) { return cache, nil }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
 			calls = append(calls, append([]string{name}, args...))
 			return nil
 		}}
@@ -62,7 +62,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		if err != nil || !bytes.Equal(got, b) {
 			t.Fatal("wrong materialized sound", err)
 		}
-		for _, path := range []string{filepath.Join(cache, "gtx-next"), filepath.Dir(want), want} {
+		for _, path := range []string{filepath.Join(cache, "ikesu-next"), filepath.Dir(want), want} {
 			info, err := os.Stat(path)
 			if err != nil {
 				t.Fatal(err)
@@ -87,16 +87,16 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 			t.Fatal("existing hash rewritten")
 		}
 		other := d
-		other.Executable = "/tmp/gtx"
+		other.Executable = "/tmp/ikesu"
 		otherPath, err := other.defaultSound(tc.kind)
-		if err != nil || otherPath == want || filepath.Dir(otherPath) != filepath.Join(cache, "gtx", "sounds") {
+		if err != nil || otherPath == want || filepath.Dir(otherPath) != filepath.Join(cache, "ikesu", "sounds") {
 			t.Fatal("namespace collision", otherPath, err)
 		}
 	}
 }
 
 func TestDefaultSoundCacheFailureKeepsNotificationAndWarnsOnce(t *testing.T) {
-	t.Setenv("GTX_DISABLE_SOUND", "")
+	t.Setenv("IKESU_DISABLE_SOUND", "")
 	base := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(base, []byte("occupied"), 0600); err != nil {
 		t.Fatal(err)

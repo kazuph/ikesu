@@ -15,7 +15,7 @@ import (
 
 // agentInfoAt builds the AgentInfo view for a pane. Name is the manual
 // label (pane rename / agent rename); Agent is the detected or reported
-// agent kind (claude, codex, ...). gtx has no global/short pane id split:
+// agent kind (claude, codex, ...). ikesu has no global/short pane id split:
 // all id fields carry the public pN id.
 func (s *Server) agentInfoAt(pid, wsIdx, tabIdx int) api.AgentInfo {
 	st := s.app.State()

@@ -7,7 +7,7 @@ import (
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "gtx.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "ikesu.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestPendingNudgesGroupByRoom(t *testing.T) {
 
 func TestJobLifecycleAcrossReopen(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "gtx.db")
+	path := filepath.Join(dir, "ikesu.db")
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +226,7 @@ func TestReplyToCommandSetsRepliedAtWithoutStatusChange(t *testing.T) {
 	if err != nil || did == nil {
 		t.Fatalf("dispatch id missing: %v", err)
 	}
-	if _, err := s.InsertMessage(JobsRoom, "/r", "gtx-run", "alpha", "done", did, false); err != nil {
+	if _, err := s.InsertMessage(JobsRoom, "/r", "ikesu-run", "alpha", "done", did, false); err != nil {
 		t.Fatal(err)
 	}
 	job, _ := s.CommandRow("job-x")
@@ -235,13 +235,13 @@ func TestReplyToCommandSetsRepliedAtWithoutStatusChange(t *testing.T) {
 	}
 }
 
-// The gtx-jobs batch writer must mark only the message ids it actually
+// The ikesu-jobs batch writer must mark only the message ids it actually
 // wrote: a completion that lands between payload assembly and the PTY
 // write finishing would otherwise be marked delivered without ever
 // reaching the pane.
 func TestMarkDeliveredByIDsLeavesNewArrivalsQueued(t *testing.T) {
 	s := testStore(t)
-	first, err := s.InsertMessage(JobsRoom, "", "gtx-run", "bob", "done-1", nil, false)
+	first, err := s.InsertMessage(JobsRoom, "", "ikesu-run", "bob", "done-1", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestMarkDeliveredByIDsLeavesNewArrivalsQueued(t *testing.T) {
 		t.Fatalf("assemble: %+v err=%v", pending, err)
 	}
 	// ...then a second completion lands before the write completes.
-	second, err := s.InsertMessage(JobsRoom, "", "gtx-run", "bob", "done-2", nil, false)
+	second, err := s.InsertMessage(JobsRoom, "", "ikesu-run", "bob", "done-2", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

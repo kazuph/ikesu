@@ -11,7 +11,7 @@ import (
 // Run isolates defaults before any tests or their child processes execute.
 // Short roots also keep macOS Unix socket paths within the OS limit.
 func Run(run func() int) (code int) {
-	root, err := os.MkdirTemp("/tmp", "gtx-test-")
+	root, err := os.MkdirTemp("/tmp", "ikesu-test-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 		return 1
@@ -24,7 +24,7 @@ func Run(run func() int) (code int) {
 	}()
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(key, "GTX_") && !strings.HasPrefix(key, "GTX_PERF_") || strings.HasPrefix(key, "IKESU_") && !strings.HasPrefix(key, "IKESU_PERF_") || key == "IKESU" || key == "GOTERRACE" || key == "GOTERRACE_PANE_ID" {
+		if strings.HasPrefix(key, "IKESU_") && !strings.HasPrefix(key, "IKESU_PERF_") || key == "IKESU" || key == "GOTERRACE" || key == "GOTERRACE_PANE_ID" {
 			if err := os.Unsetenv(key); err != nil {
 				fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 				return 1
@@ -32,7 +32,7 @@ func Run(run func() int) (code int) {
 		}
 	}
 	paths := map[string]string{
-		"HOME": "home", "ZDOTDIR": "home", "GTX_STATE_DIR": "state",
+		"HOME": "home", "ZDOTDIR": "home", "IKESU_STATE_DIR": "state",
 		"XDG_CONFIG_HOME": "config", "XDG_CONFIG_DIRS": "config",
 		"XDG_DATA_HOME": "data", "XDG_DATA_DIRS": "data",
 		"XDG_STATE_HOME": "xdg-state", "XDG_CACHE_HOME": "cache",
@@ -54,7 +54,7 @@ func Run(run func() int) (code int) {
 
 func TempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "gtx-test-")
+	dir, err := os.MkdirTemp("/tmp", "ikesu-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

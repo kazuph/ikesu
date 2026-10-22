@@ -16,10 +16,10 @@ import (
 func TestStage3AgentToastDismissalIsLocalToEachRealDisplay(t *testing.T) {
 	teststate.Lock(t)
 	cfg := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.toast]\ndelivery='gtx'\ndelay_seconds=0\n[ui.sound]\nenabled=false\n"), 0600); err != nil {
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.toast]\ndelivery='ikesu'\ndelay_seconds=0\n[ui.sound]\nenabled=false\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfg)
+	teststate.Setenv(t, "IKESU_CONFIG", cfg)
 	data, err := os.ReadFile(cfg)
 	if err != nil {
 		t.Fatal(err)

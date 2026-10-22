@@ -21,7 +21,7 @@ func TestSPECConfiguredFocusHistoryAcrossTabsWorkspacesAndDeletedPane(t *testing
 	if err := os.WriteFile(cfgPath, []byte("[keys]\nfocus_history_back=['prefix+u']\nfocus_history_forward=['prefix+i']\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	teststate.Setenv(t, "GTX_CONFIG", cfgPath)
+	teststate.Setenv(t, "IKESU_CONFIG", cfgPath)
 	c, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -112,11 +112,11 @@ func TestSPECEditScrollbackInvokesEditorWithRetainedText(t *testing.T) {
 	dir := t.TempDir()
 	editor := filepath.Join(dir, "editor")
 	output := filepath.Join(dir, "retained.txt")
-	if err = os.WriteFile(editor, []byte("#!/bin/sh\ncp \"$1\" \"$GTX_TEST_EDITOR_OUTPUT\"\nrm \"$1\"\n"), 0700); err != nil {
+	if err = os.WriteFile(editor, []byte("#!/bin/sh\ncp \"$1\" \"$IKESU_TEST_EDITOR_OUTPUT\"\nrm \"$1\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "EDITOR", editor)
-	teststate.Setenv(t, "GTX_TEST_EDITOR_OUTPUT", output)
+	teststate.Setenv(t, "IKESU_TEST_EDITOR_OUTPUT", output)
 	a.prefixKey(uv.Key{Code: 'e'})
 	editorPane := a.st.FocusedPane()
 	if editorPane == pid || a.sup.Get(editorPane) == nil {

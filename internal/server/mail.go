@@ -46,7 +46,7 @@ func (s *Server) mailWorker() {
 			}
 			written, err := s.deliverMailWrite(w)
 			if written && err != nil {
-				fmt.Fprintf(os.Stderr, "gtx mail acknowledgement: %v\n", err)
+				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
 				continue
 			}
 			if err != nil {
@@ -59,7 +59,7 @@ func (s *Server) mailWorker() {
 			err := s.retryMailAcknowledgementsLocked()
 			s.mailDelivery.Unlock()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "gtx mail acknowledgement: %v\n", err)
+				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
 			}
 			if hadPending && err == nil {
 				s.app.Do(s.flushAllMail)

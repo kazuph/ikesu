@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -150,7 +149,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(k, "IKESU_PLUGIN_") || strings.HasPrefix(k, "GTX_PLUGIN_") || k == "GTX_PANE_ID" || k == "GTX_TAB_ID" || k == "GTX_WORKSPACE_ID" || k == "IKESU_PANE_ID" || k == "IKESU_TAB_ID" || k == "IKESU_WORKSPACE_ID" {
+		if strings.HasPrefix(k, "IKESU_PLUGIN_") || k == "IKESU_PANE_ID" || k == "IKESU_TAB_ID" || k == "IKESU_WORKSPACE_ID" {
 			continue
 		}
 		values[k] = v
@@ -158,11 +157,10 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	for k, v := range extra {
 		values[k] = v
 	}
-	for k, v := range map[string]string{"GTX_SOCKET_PATH": e.SocketPath, "GTX_BIN_PATH": stableBinPath(e.BinPath), "GTX_ENV": "1", "GTX_PLUGIN_ID": p.ID, "GTX_PLUGIN_ROOT": p.Root, "GTX_PLUGIN_CONFIG_DIR": config, "GTX_PLUGIN_STATE_DIR": state, "GTX_PLUGIN_CONTEXT_JSON": string(raw)} {
+	for k, v := range map[string]string{"IKESU_SOCKET_PATH": e.SocketPath, "IKESU_BIN_PATH": stableBinPath(e.BinPath), "IKESU_ENV": "1", "IKESU_PLUGIN_ID": p.ID, "IKESU_PLUGIN_ROOT": p.Root, "IKESU_PLUGIN_CONFIG_DIR": config, "IKESU_PLUGIN_STATE_DIR": state, "IKESU_PLUGIN_CONTEXT_JSON": string(raw)} {
 		values[k] = v
-		values["IKESU_"+strings.TrimPrefix(k, "GTX_")] = v
 	}
-	for field, key := range map[string]string{"workspace_id": "GTX_WORKSPACE_ID", "tab_id": "GTX_TAB_ID", "focused_pane_id": "GTX_PANE_ID", "clicked_url": "GTX_PLUGIN_CLICKED_URL", "link_handler_id": "GTX_PLUGIN_LINK_HANDLER_ID"} {
+	for field, key := range map[string]string{"workspace_id": "IKESU_WORKSPACE_ID", "tab_id": "IKESU_TAB_ID", "focused_pane_id": "IKESU_PANE_ID", "clicked_url": "IKESU_PLUGIN_CLICKED_URL", "link_handler_id": "IKESU_PLUGIN_LINK_HANDLER_ID"} {
 		if v, ok := context[field].(string); ok && v != "" {
 			values[key] = v
 		}
@@ -176,14 +174,14 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	for _, k := range keys {
 		env = append(env, k+"="+values[k])
 	}
-	return envcompat.Both(env), nil
+	return env, nil
 }
 func (e *Engine) Invoke(pluginID, actionID string, context Context) (ActionInfo, CommandLog, error) {
 	owner, a, info, err := e.Store.ResolveAction(pluginID, actionID)
 	if err != nil {
 		return info, CommandLog{}, err
 	}
-	log, err := e.start(owner, a.Command, a.ID, "", context, map[string]string{"GTX_PLUGIN_ACTION_ID": a.ID})
+	log, err := e.start(owner, a.Command, a.ID, "", context, map[string]string{"IKESU_PLUGIN_ACTION_ID": a.ID})
 	return info, log, err
 }
 func (e *Engine) start(p Installed, argv []string, action, event string, context Context, extra map[string]string) (CommandLog, error) {
@@ -323,7 +321,7 @@ func (e *Engine) Event(name string, data json.RawMessage, context Context) error
 			if hook.On != name || !supported(effectivePlatforms(hook.Platforms, p.Platforms)) {
 				continue
 			}
-			if _, err = e.start(p, hook.Command, "", name, context, map[string]string{"GTX_PLUGIN_EVENT": name, "GTX_PLUGIN_EVENT_JSON": string(data)}); err != nil {
+			if _, err = e.start(p, hook.Command, "", name, context, map[string]string{"IKESU_PLUGIN_EVENT": name, "IKESU_PLUGIN_EVENT_JSON": string(data)}); err != nil {
 				return err
 			}
 		}

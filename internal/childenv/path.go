@@ -13,7 +13,7 @@ func IsGuardShimDirectory(path string, env []string) bool {
 		parts := strings.Split(filepath.ToSlash(candidate), "/")
 		for i := 0; i+4 < len(parts); i++ {
 			namespace := parts[i+2]
-			known := namespace == "gtx" || strings.HasPrefix(namespace, "gtx-") || namespace == "herdr" || strings.HasPrefix(namespace, "herdr-")
+			known := namespace == "ikesu" || strings.HasPrefix(namespace, "ikesu-") || namespace == "herdr" || strings.HasPrefix(namespace, "herdr-")
 			if parts[i] == ".local" && parts[i+1] == "state" && known && parts[i+3] == "guard" && parts[i+4] == "bin" {
 				return true
 			}
@@ -26,7 +26,7 @@ func IsGuardShimDirectory(path string, env []string) bool {
 			values[k] = v
 		}
 	}
-	for _, key := range []string{"IKESU_GUARD_BIN", "GTX_GUARD_BIN", "HERDR_GUARD_BIN", "HERDR_GUARD_SHIM_DIR"} {
+	for _, key := range []string{"IKESU_GUARD_BIN", "HERDR_GUARD_BIN", "HERDR_GUARD_SHIM_DIR"} {
 		if value := values[key]; value != "" && physicalPath(path) == physicalPath(value) {
 			return true
 		}
@@ -35,7 +35,7 @@ func IsGuardShimDirectory(path string, env []string) bool {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	roots := []string{values["IKESU_STATE_DIR"], values["GTX_STATE_DIR"], filepath.Join(home, ".local", "state")}
+	roots := []string{values["IKESU_STATE_DIR"], filepath.Join(home, ".local", "state")}
 	for _, root := range roots {
 		if root == "" {
 			continue

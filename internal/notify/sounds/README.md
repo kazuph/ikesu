@@ -1,6 +1,6 @@
-# gtx original notification sounds (MIT)
+# ikesu original notification sounds (MIT)
 
-店長の決定（2026-10-11）: ライセンスの都合で herdr の音は使わず gtx 独自の音。
+店長の決定（2026-10-11）: ライセンスの都合で herdr の音は使わず ikesu 独自の音。
 These generated WAV and MIDI files and their generator are covered by the
 repository's MIT license. No herdr waveform, melody, decoded samples, or source
 code is used.
@@ -30,7 +30,7 @@ locally on 2026-10-17 for short notification-jingle prompts. Only the note choic
 were taken, re-voiced and articulated by hand; no YuE2 audio is included.
 
 Only the reference files' sample rate and mean dBFS are kept as level
-guidelines: done 48000 Hz, -23.9 dBFS; request 44100 Hz, -23.2 dBFS. gtx's
+guidelines: done 48000 Hz, -23.9 dBFS; request 44100 Hz, -23.2 dBFS. ikesu's
 files are mono PCM16. Peak levels follow from these waveforms.
 
 The binary embeds both WAV files. Default playback materializes a content-hash

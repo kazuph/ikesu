@@ -1,6 +1,6 @@
 //go:build perf
 
-// The perf tests measure gtx the same way tools/bench does: the binary
+// The perf tests measure ikesu the same way tools/bench does: the binary
 // runs in a 160x45 PTY, a pane shell floods it with 2,000,000 python3
 // lines, and a vt.Emulator — fed from an unbounded queue that never
 // throttles the app — reports when text lands on screen. See SPEC.md
@@ -9,7 +9,6 @@ package perf
 
 import (
 	"fmt"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"net"
@@ -86,24 +85,24 @@ var modes = []startMode{
 }
 
 // rep accumulates the result tables; TestMain prints them and optionally
-// writes them to $GTX_PERF_OUT.
+// writes them to $IKESU_PERF_OUT.
 var rep strings.Builder
 
 func rprintf(format string, a ...any) { fmt.Fprintf(&rep, format+"\n", a...) }
 
 func TestMain(m *testing.M) {
 	host, _ := os.Hostname()
-	rprintf("# gtx perf — SPEC.md P1")
+	rprintf("# ikesu perf — SPEC.md P1")
 	rprintf("# date=%s host=%s go=%s", time.Now().Format(time.RFC3339), host, runtime.Version())
-	rprintf("# GTX_PERF_BIN=%s", envcompat.Get("GTX_PERF_BIN"))
-	rprintf("# GTX_PERF_BASELINE_BIN=%s", envcompat.Get("GTX_PERF_BASELINE_BIN"))
+	rprintf("# IKESU_PERF_BIN=%s", os.Getenv("IKESU_PERF_BIN"))
+	rprintf("# IKESU_PERF_BASELINE_BIN=%s", os.Getenv("IKESU_PERF_BASELINE_BIN"))
 	code := teststate.Run(m.Run)
 	out := rep.String()
 	fmt.Print(out)
-	if p := envcompat.Get("GTX_PERF_OUT"); p != "" {
+	if p := os.Getenv("IKESU_PERF_OUT"); p != "" {
 		_ = os.MkdirAll(filepath.Dir(p), 0o755)
 		if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
-			fmt.Fprintln(os.Stderr, "GTX_PERF_OUT:", err)
+			fmt.Fprintln(os.Stderr, "IKESU_PERF_OUT:", err)
 		}
 	}
 	os.Exit(code)
@@ -111,16 +110,16 @@ func TestMain(m *testing.M) {
 
 func perfBin(t *testing.T) string {
 	t.Helper()
-	b := envcompat.Get("GTX_PERF_BIN")
+	b := os.Getenv("IKESU_PERF_BIN")
 	if b == "" {
-		t.Skip("GTX_PERF_BIN not set")
+		t.Skip("IKESU_PERF_BIN not set")
 	}
 	abs, err := filepath.Abs(b)
 	if err != nil {
-		t.Fatalf("GTX_PERF_BIN: %v", err)
+		t.Fatalf("IKESU_PERF_BIN: %v", err)
 	}
 	if _, err := os.Stat(abs); err != nil {
-		t.Fatalf("GTX_PERF_BIN %s: %v", abs, err)
+		t.Fatalf("IKESU_PERF_BIN %s: %v", abs, err)
 	}
 	return abs
 }
@@ -144,23 +143,23 @@ func TestAbsolute(t *testing.T) {
 	}
 }
 
-// TestRelative alternates GTX_PERF_BIN and GTX_PERF_BASELINE_BIN relRuns
+// TestRelative alternates IKESU_PERF_BIN and IKESU_PERF_BASELINE_BIN relRuns
 // times each per startup mode and checks the SPEC's regression limits.
 func TestRelative(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("perf tests support macOS and Linux")
 	}
 	cur := perfBin(t)
-	base := envcompat.Get("GTX_PERF_BASELINE_BIN")
+	base := os.Getenv("IKESU_PERF_BASELINE_BIN")
 	if base == "" {
-		t.Skip("GTX_PERF_BASELINE_BIN not set")
+		t.Skip("IKESU_PERF_BASELINE_BIN not set")
 	}
 	base, err := filepath.Abs(base)
 	if err != nil {
-		t.Fatalf("GTX_PERF_BASELINE_BIN: %v", err)
+		t.Fatalf("IKESU_PERF_BASELINE_BIN: %v", err)
 	}
 	if _, err := os.Stat(base); err != nil {
-		t.Fatalf("GTX_PERF_BASELINE_BIN %s: %v", base, err)
+		t.Fatalf("IKESU_PERF_BASELINE_BIN %s: %v", base, err)
 	}
 	h := newHarness(t)
 	for _, mode := range modes {
@@ -180,11 +179,11 @@ type result struct {
 	load      float64 // 1-min load average at measurement start
 	screenSec float64 // send -> last line on screen
 	lagSec    float64 // python exit -> last line on screen
-	cpuSec    float64 // user+sys of every gtx process
-	rssKB     int64   // max RSS across the gtx processes
+	cpuSec    float64 // user+sys of every ikesu process
+	rssKB     int64   // max RSS across the ikesu processes
 	ctrlcSec  float64 // Ctrl-C -> KeyboardInterrupt on screen
 	pySec     float64 // python's own elapsed (informational)
-	procs     string  // gtx pids seen (diagnostics)
+	procs     string  // ikesu pids seen (diagnostics)
 	err       error
 }
 
@@ -192,7 +191,7 @@ type result struct {
 type harness struct {
 	t        *testing.T
 	work     string // tp.py and the *.elapsed files
-	stateDir string // GTX_STATE_DIR root; one <sess> dir per launch
+	stateDir string // IKESU_STATE_DIR root; one <sess> dir per launch
 	zdot     string // minimal ZDOTDIR so the pane prompt is deterministic
 	tpPath   string
 	seq      int
@@ -200,7 +199,7 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	work, err := os.MkdirTemp("", "gtx-perf")
+	work, err := os.MkdirTemp("", "ikesu-perf")
 	if err != nil {
 		t.Fatalf("work dir: %v", err)
 	}
@@ -209,7 +208,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("state dir: %v", err)
 	}
-	zdot, err := os.MkdirTemp("", "gtx-perf-zdot")
+	zdot, err := os.MkdirTemp("", "ikesu-perf-zdot")
 	if err != nil {
 		t.Fatalf("zdot dir: %v", err)
 	}
@@ -226,7 +225,7 @@ func newHarness(t *testing.T) *harness {
 	return h
 }
 
-// binPaths are the comm strings that count as gtx processes: the binary as
+// binPaths are the comm strings that count as ikesu processes: the binary as
 // invoked plus its symlink-resolved form (os.Executable can differ on
 // macOS, e.g. /tmp -> /private/tmp).
 func binPaths(bin string) map[string]bool {
@@ -323,7 +322,7 @@ func (h *harness) stop(m *mux, sess string, server bool, bins map[string]bool) {
 	// collect its pids before killing.
 	var servers []int
 	if server {
-		for pid := range gtxPids(psTable(), m.cmd.Process.Pid, bins) {
+		for pid := range ikesuPids(psTable(), m.cmd.Process.Pid, bins) {
 			if pid != m.cmd.Process.Pid {
 				servers = append(servers, pid)
 			}
@@ -340,7 +339,7 @@ func (h *harness) stop(m *mux, sess string, server bool, bins map[string]bool) {
 	}
 	_ = m.pt.Close()
 	if server {
-		if c, err := net.Dial("unix", filepath.Join(h.stateDir, sess, "gtx.sock")); err == nil {
+		if c, err := net.Dial("unix", filepath.Join(h.stateDir, sess, "ikesu.sock")); err == nil {
 			_, _ = c.Write([]byte(`{"id":"perf","method":"server.stop","params":{}}` + "\n"))
 			c.Close()
 		}
@@ -370,7 +369,7 @@ func waitExit(pids []int, timeout time.Duration) {
 	}
 }
 
-// mux drives one gtx in a PTY. It is the ptyrun drain design: reads go to
+// mux drives one ikesu in a PTY. It is the ptyrun drain design: reads go to
 // an unbounded queue and a feeder writes them to the emulator, so emulator
 // speed never throttles the app under test.
 type mux struct {
@@ -487,7 +486,7 @@ func (m *mux) waitText(timeout time.Duration, text string) (time.Time, bool) {
 func childEnv(zdot, stateDir, configPath string) []string {
 	drop := map[string]bool{
 		"GOTERRACE": true, "GOTERRACE_PANE_ID": true,
-		"GTX_SOCKET_PATH": true, "GTX_PANE_ID": true, "GTX_STATE_DIR": true, "GTX_CONFIG": true,
+		"IKESU_SOCKET_PATH": true, "IKESU_PANE_ID": true, "IKESU_STATE_DIR": true, "IKESU_CONFIG": true,
 		"TERM": true, "SHELL": true, "ZDOTDIR": true,
 	}
 	var env []string
@@ -502,8 +501,8 @@ func childEnv(zdot, stateDir, configPath string) []string {
 		"TERM=xterm-256color",
 		"SHELL=/bin/zsh",
 		"ZDOTDIR="+zdot,
-		"GTX_STATE_DIR="+stateDir,
-		"GTX_CONFIG="+configPath,
+		"IKESU_STATE_DIR="+stateDir,
+		"IKESU_CONFIG="+configPath,
 	)
 }
 
@@ -530,10 +529,10 @@ type procInfo struct {
 	comm   string
 }
 
-// gtxPids returns root plus every descendant whose executable is the gtx
-// binary (the spawned `gtx server`). Pane shells and python are not gtx
+// ikesuPids returns root plus every descendant whose executable is the ikesu
+// binary (the spawned `ikesu server`). Pane shells and python are not ikesu
 // processes.
-func gtxPids(tbl map[int]procInfo, root int, bins map[string]bool) map[int]bool {
+func ikesuPids(tbl map[int]procInfo, root int, bins map[string]bool) map[int]bool {
 	children := map[int][]int{}
 	for pid, pi := range tbl {
 		children[pi.ppid] = append(children[pi.ppid], pid)
@@ -554,7 +553,7 @@ func gtxPids(tbl map[int]procInfo, root int, bins map[string]bool) map[int]bool 
 }
 
 // sampler polls process snapshots and accumulates the per-pid max RSS and
-// latest cumulative CPU for the gtx processes under root.
+// latest cumulative CPU for the ikesu processes under root.
 type sampler struct {
 	root   int
 	bins   map[string]bool
@@ -590,7 +589,7 @@ func (s *sampler) sample() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for pid := range gtxPids(tbl, s.root, s.bins) {
+	for pid := range ikesuPids(tbl, s.root, s.bins) {
 		pi := tbl[pid]
 		if pi.rssKB > s.maxRSS[pid] {
 			s.maxRSS[pid] = pi.rssKB
@@ -600,7 +599,7 @@ func (s *sampler) sample() {
 }
 
 // finish stops sampling, takes one last snapshot, and returns the max RSS
-// across gtx processes, the summed CPU time, and the pids seen.
+// across ikesu processes, the summed CPU time, and the pids seen.
 func (s *sampler) finish() (rssKB int64, cpuSec float64, procs string) {
 	close(s.done)
 	s.wg.Wait()

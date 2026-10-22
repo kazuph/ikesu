@@ -9,7 +9,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
-// `gtx agent` — agent-facing commands mirroring herdr's agent group.
+// `ikesu agent` — agent-facing commands mirroring herdr's agent group.
 
 func printAgentHelp(w *runner) {
 	fmt.Fprintln(w.errOut(), "ikesu agent commands:")

@@ -1,4 +1,4 @@
-// Package platform collects the OS-specific bits gtx needs: foreground
+// Package platform collects the OS-specific bits ikesu needs: foreground
 // process of a PTY, process names, argv, cwd, and input flushing.
 // Everything else in the codebase stays platform-neutral.
 package platform

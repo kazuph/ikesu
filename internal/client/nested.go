@@ -8,10 +8,10 @@ import (
 	"github.com/kazuph/ikesu/internal/platform"
 )
 
-// NestedBlocked reports whether a real gtx server process is an ancestor
+// NestedBlocked reports whether a real ikesu server process is an ancestor
 // of this process and the config does not opt into nesting. Leaked
-// GOTERRACE/GTX_* environment alone is not enough — the guard only bites
-// when the process tree actually contains `gtx server` (SPEC G5).
+// GOTERRACE/IKESU_* environment alone is not enough — the guard only bites
+// when the process tree actually contains `ikesu server` (SPEC G5).
 func NestedBlocked() bool {
 	cfg, err := config.Load()
 	if err == nil && cfg.AllowNested() {
@@ -30,7 +30,7 @@ func NestedBlocked() bool {
 	return false
 }
 
-// isGtxServerProcess reports whether pid is `gtx server` (the supervisor
+// isGtxServerProcess reports whether pid is `ikesu server` (the supervisor
 // process — pane shells are its children).
 func isGtxServerProcess(pid int) bool {
 	args := platform.ProcArgs(pid)
@@ -38,7 +38,7 @@ func isGtxServerProcess(pid int) bool {
 		return false
 	}
 	base := filepath.Base(args[0])
-	if base != "ikesu" && base != "gtx" && base != "goterrace" {
+	if base != "ikesu" && base != "goterrace" {
 		return false
 	}
 	for _, a := range args[1:] {

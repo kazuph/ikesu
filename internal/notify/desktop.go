@@ -5,7 +5,6 @@ import (
 	"github.com/kazuph/ikesu/internal/childenv"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
-	"github.com/kazuph/ikesu/internal/envcompat"
 	"github.com/kazuph/ikesu/internal/machine"
 	"os"
 	"os/exec"
@@ -84,7 +83,7 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 		}
 	}
 	path, enabled := SoundPath(c, n.Agent, n.Kind)
-	if !enabled || envcompat.Get("GTX_DISABLE_SOUND") != "" {
+	if !enabled || os.Getenv("IKESU_DISABLE_SOUND") != "" {
 		return nil
 	}
 	if path == "" {

@@ -109,7 +109,7 @@ func (r *runner) restartServer() int {
 }
 
 // waitForServer polls ping until the restarted server answers, so scripts
-// can chain commands right after `gtx server restart`.
+// can chain commands right after `ikesu server restart`.
 func (r *runner) waitForServer() int {
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {

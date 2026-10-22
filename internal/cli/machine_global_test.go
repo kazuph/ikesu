@@ -31,7 +31,7 @@ func TestGlobalMachineErrorObservedRejections(t *testing.T) {
 }
 
 func TestForwardMachineObservedErrors(t *testing.T) {
-	t.Setenv("GTX_STATE_DIR", t.TempDir())
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	o := Options{Stdout: &out, Stderr: &errOut}
 	c := (&runner{o: o}).catalog()

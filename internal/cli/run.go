@@ -20,7 +20,7 @@ import (
 	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
-// `gtx run` (background + pane jobs), `gtx run list|cancel`, `gtx log`
+// `ikesu run` (background + pane jobs), `ikesu run list|cancel`, `ikesu log`
 // (job log viewer + dispatch timeline + --db/--schema). `run list` and
 // `log` read the store directly — like herdr they keep working when no
 // server is running.
@@ -44,7 +44,7 @@ func (r *runner) runCLI(args []string) int {
 		return 0
 	}
 
-	// `gtx run [flags] -- <command...>` — herdr also accepts the command
+	// `ikesu run [flags] -- <command...>` — herdr also accepts the command
 	// without a bare `--` separator.
 	var label, cwd, caller, completion, split, machineRef string
 	syncRemote := false
@@ -141,7 +141,7 @@ func (r *runner) runCLI(args []string) int {
 	return r.runBackgroundCLI(argv, label, cwd, caller, completion)
 }
 
-// runSpawnOutput is the one-line JSON both `gtx run` modes print — same
+// runSpawnOutput is the one-line JSON both `ikesu run` modes print — same
 // shape as herdr's RunSpawnOutput so callers (and AI agents) can read the
 // job id and the "wait for the notice" hint without parsing prose.
 type runSpawnOutput struct {
@@ -186,9 +186,9 @@ func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion 
 	return 0
 }
 
-// runPaneCLI opens a split pane and types `gtx __pane-run ...` inside it.
+// runPaneCLI opens a split pane and types `ikesu __pane-run ...` inside it.
 // The wrapper runs the command, logs to job-logs, sends the caller pane a
-// gtx-jobs completion nudge, and closes its own pane on success when
+// ikesu-jobs completion nudge, and closes its own pane on success when
 // --close-on-success was given — mirroring herdr's run --pane contract.
 func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSuccess bool, explicitCaller string) int {
 	caller := explicitCaller
@@ -380,7 +380,7 @@ func printRunListJob(w interface{ Write([]byte) (int, error) }, j dispatch.Job) 
 	fmt.Fprintf(w, "%s %s exit=%s label=%s cmd=%s\n", j.ID, j.Status, exit, label, j.Command)
 }
 
-// --- gtx log ---
+// --- ikesu log ---
 
 func (r *runner) logCLI(args []string) int {
 	if len(args) > 0 {
@@ -399,7 +399,7 @@ func (r *runner) logCLI(args []string) int {
 			return r.logJobCLI(args)
 		}
 	}
-	// Dispatch timeline (gtx log with only filter flags / no args).
+	// Dispatch timeline (ikesu log with only filter flags / no args).
 	room, project, limit, code := r.parseHistoryArgs(args)
 	if code >= 0 {
 		return code
@@ -474,9 +474,9 @@ func (r *runner) logJobCLI(args []string) int {
 
 // --- internal: __pane-run ---
 
-// paneRunWrapper is the `gtx __pane-run` wrapper typed into the job pane
-// by `gtx run --pane`. It runs the command via `sh -lc`, tees output to
-// the job log, sends the caller a gtx-jobs completion nudge, and closes
+// paneRunWrapper is the `ikesu __pane-run` wrapper typed into the job pane
+// by `ikesu run --pane`. It runs the command via `sh -lc`, tees output to
+// the job log, sends the caller a ikesu-jobs completion nudge, and closes
 // the pane per --close-on-success / --close-on-exit (herdr's __pane-run).
 func (r *runner) paneRunWrapper(args []string) int {
 	var target, jobID, label string
@@ -555,7 +555,7 @@ func (r *runner) paneRunWrapper(args []string) int {
 		jobID, label, started.Format(time.RFC3339), command)
 
 	profiles := r.catalog().Load()
-	marker := "gtx-ssh-connected-" + rand.Text()
+	marker := "ikesu-ssh-connected-" + rand.Text()
 	machineID, observed := machine.ObservePaneRun(profiles, command, marker, shellCommandFromArgs)
 	var progress *machine.SyncProgress
 	var approval *machine.RunApproval

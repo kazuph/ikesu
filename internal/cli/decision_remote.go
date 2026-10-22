@@ -18,10 +18,10 @@ import (
 const decisionSSHAuthPrefix = "To authenticate, visit:"
 
 func (r *runner) remoteDecisionBinary() string {
-	if bin := r.o.getenv("GTX_MACHINE_REMOTE_BINARY"); bin != "" {
+	if bin := r.o.getenv("IKESU_MACHINE_REMOTE_BINARY"); bin != "" {
 		return bin
 	}
-	return "gtx"
+	return "ikesu"
 }
 func decisionAuthReason(line string) (string, bool) {
 	_, url, ok := strings.Cut(line, decisionSSHAuthPrefix)
