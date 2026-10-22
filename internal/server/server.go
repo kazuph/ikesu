@@ -309,6 +309,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 			fmt.Sprintf("IKESU_PANE_ID=p%d", paneID),
 			"IKESU_SOCKET_PATH=" + apiSockAbs,
 			"IKESU_SOCKET_PATH_EXPLICIT=1",
+			"IKESU_CONFIG_PATH=" + config.Path(),
 		}
 		// Spawn runs on the app loop, so State() is safe here and the pane
 		// already exists in the model when its shell starts.

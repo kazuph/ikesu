@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
+	configpkg "github.com/kazuph/ikesu/internal/config"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -157,6 +158,7 @@ func (e *Engine) Environment(p Installed, context Context, extra map[string]stri
 	for k, v := range extra {
 		values[k] = v
 	}
+	values["IKESU_CONFIG_PATH"] = configpkg.Path()
 	for k, v := range map[string]string{"IKESU_SOCKET_PATH": e.SocketPath, "IKESU_BIN_PATH": stableBinPath(e.BinPath), "IKESU_ENV": "1", "IKESU_PLUGIN_ID": p.ID, "IKESU_PLUGIN_ROOT": p.Root, "IKESU_PLUGIN_CONFIG_DIR": config, "IKESU_PLUGIN_STATE_DIR": state, "IKESU_PLUGIN_CONTEXT_JSON": string(raw)} {
 		values[k] = v
 	}

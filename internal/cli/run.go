@@ -156,7 +156,7 @@ type runSpawnOutput struct {
 func (r *runner) runBackgroundCLI(argv []string, label, cwd, caller, completion string) int {
 	if caller == "" {
 		paneID, err := r.resolveCurrentPaneID()
-		if err != nil {
+		if err != nil && completion != "none" {
 			fmt.Fprintln(r.errOut(), err.Error())
 			return 1
 		}
