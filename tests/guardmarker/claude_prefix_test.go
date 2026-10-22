@@ -47,7 +47,7 @@ func TestClaudePrefixBeforeSnapshotEval(t *testing.T) {
 			c := exec.Command(binary, args...)
 			c.Env = env
 			b, e := c.CombinedOutput()
-			if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+			if e == nil || !strings.Contains(string(b), "対象プロジェクト・必要な理由・実施内容を説明する申請文が必要") {
 				t.Fatal(e, string(b))
 			}
 			if _, e := os.Stat(target); e != nil {
@@ -114,7 +114,7 @@ func TestClaudePrefixBeforeSnapshotEval(t *testing.T) {
 					b, e := c.CombinedOutput()
 					deny := strings.Contains(payload, "rm TARGET")
 					if deny {
-						if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+						if e == nil || !strings.Contains(string(b), "対象プロジェクト・必要な理由・実施内容を説明する申請文が必要") {
 							t.Fatal(chained, e, string(b))
 						}
 						if _, e := os.Stat(target); e != nil {

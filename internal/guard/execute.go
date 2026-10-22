@@ -10,12 +10,15 @@ import (
 	"time"
 )
 
-func requestReason(i Input) string {
+func requestReasonEnvName(i Input) string {
 	key := i.Env["AI_GUARD_REQUEST_ENV_NAME"]
 	if key == "" {
 		key = "AI_GUARD_REQUEST_REASON"
 	}
-	return i.Env[key]
+	return key
+}
+func requestReason(i Input) string {
+	return i.Env[requestReasonEnvName(i)]
 }
 func ValidReason(s string) bool {
 	if strings.TrimSpace(s) == "" {
@@ -74,7 +77,12 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	reason := requestReason(i)
 	if !ValidReason(reason) {
-		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n   理由: 要承認コマンドには日本語の申請文が必要です。\n", i.Line())
+		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n", i.Line())
+		if strings.TrimSpace(reason) == "" {
+			fmt.Fprintf(errOut, "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: %s='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n", requestReasonEnvName(i))
+		} else {
+			fmt.Fprintf(errOut, "   理由: 要承認コマンドの申請文は日本語で書いてください。英語の申請文は禁止です。\n   例: %s='なぜ必要か、何を確認済みか、戻し方は何かを日本語で書く' <command>\n", requestReasonEnvName(i))
+		}
 		return false
 	}
 	if await == nil {
