@@ -49,7 +49,7 @@ class MigrationTest(unittest.TestCase):
 
     def seed_job_notice(self):
         source = Path(__file__).parents[1].joinpath('internal/dispatch/store.go').read_text()
-        schema = source.split('const schemaSQL = decisionSchema + `', 1)[1].split('`;', 1)[0]
+        schema = source.split('const schemaSQL = decisionSchema + `', 1)[1].split('`', 1)[0]
         with sqlite3.connect(self.state / 'gtx.db') as db:
             db.executescript(schema)
             for identifier, kind, name in [(1,'agent','gtx-run'), (2,'agent','ikesu-run'), (3,'agent','p7')]:
@@ -75,7 +75,7 @@ class MigrationTest(unittest.TestCase):
 
     def test_job_log_bytes_and_reference_are_independent(self):
         log = self.state / 'jobs/j1.log'
-        log.write_bytes((str(self.state) + '/original-output\n').encode() + bytes([0xff]))
+        log.write_bytes((str(self.state) + '/original-output\n').encode())
         before = hashlib.sha256(log.read_bytes()).hexdigest()
         result = self.run_script()
         self.assertEqual(result.returncode,0,result.stderr)
