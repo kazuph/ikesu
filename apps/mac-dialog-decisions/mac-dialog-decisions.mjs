@@ -329,6 +329,17 @@ function createRunAnswer(config, logFn = () => {}, env = process.env) {
   };
 }
 
+function createGetDecision(config, logFn = () => {}, env = process.env) {
+  const run = createRunAnswer(config, logFn, env);
+  return async (machine, id) => {
+    const response = await run(["decision", "get", id, "--machine", machine]);
+    if (response.code !== 0) throw Error(response.stderr || response.stdout || "decision get failed");
+    const decision = JSON.parse(response.stdout)?.result?.decision;
+    if (!decision) throw Error("decision get returned no saved decision");
+    return decision;
+  };
+}
+
 // --- singleton ensure ----------------------------------------------------------------
 
 function pidAlive(pid) {
@@ -531,6 +542,7 @@ async function main() {
     onFatal: () => shutdown(1),
     spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),
     runAnswer: createRunAnswer(config, log),
+    getDecision: createGetDecision(config, log),
     spawnDialog: (specPath) => host ? host.open(specPath) : spawnHelperDialog(
         { ...config, helperCmd: config.helperCmd || [nativeDialog] },
         specPath,
@@ -602,6 +614,7 @@ export {
   spawnDecisionWatch,
   buildDialogSpec,
   createRunAnswer,
+  createGetDecision,
   decisionKey,
   fmtDeadline,
   loadConfig,
@@ -609,4 +622,5 @@ export {
   resolveIkesuBin,
   spawnHelperDialog,
   ensureNativeDialog,
+  ensureDaemon,
 };

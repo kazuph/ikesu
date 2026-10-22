@@ -15,7 +15,7 @@ const decisionHelp = `ikesu decision commands:
   ikesu decision watch [--all-machines]
   ikesu decision answer <id> [<option_id> ...] [--text <text>] [--responder <name>] [--machine <label-or-id>]
   ikesu decision list [--status pending|answered|expired|cancelled]
-  ikesu decision get <id>
+  ikesu decision get <id> [--machine <label-or-id>]
   ikesu decision cancel <id>
 `
 
@@ -30,6 +30,11 @@ func (r *runner) decisionCLI(args []string) int {
 	case "ask":
 		return r.decisionAsk(args[1:])
 	case "get", "cancel":
+		if args[0] == "get" {
+			if handled, code := r.decisionMachineCommand("get", args[1:]); handled {
+				return code
+			}
+		}
 		if len(args) != 2 {
 			return usageErr(r, decisionHelp)
 		}

@@ -11,6 +11,7 @@ export class MacDialogDecisionsDaemon {
     config,
     spawnWatch, // () => {lines: AsyncIterable<object>, close()}
     runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
+    getDecision, // (machine, id) => authoritative saved decision
     spawnDialog, // (specPath, spec) => {lines: AsyncIterable<string>, kill()}
     specFilePath, // (key) => path to write the spec JSON
     onFatal, // fatal dialog startup failures terminate the owning run
@@ -19,6 +20,7 @@ export class MacDialogDecisionsDaemon {
     this.config = config;
     this.spawnWatch = spawnWatch;
     this.runAnswer = runAnswer;
+    this.getDecision = getDecision;
     this.spawnDialog = spawnDialog;
     this.specFilePath = specFilePath;
     this.onFatal = onFatal;
@@ -28,6 +30,7 @@ export class MacDialogDecisionsDaemon {
     this.children = new Map(); // machine + decision -> displayed window
     this.resolvedKeys = new Set();
     this.machinesDown = new Set();
+    this.machineEpochs = new Map();
     this.stopped = false;
     this._pumpTimer = null;
     this._watchHandle = null;
@@ -97,6 +100,9 @@ export class MacDialogDecisionsDaemon {
 
     if (event === "machine_up") {
       this.machinesDown.delete(mid);
+      const epoch = (this.machineEpochs.get(mid) || 0) + 1;
+      this.machineEpochs.set(mid, epoch);
+      void this.reconcileMachine(mid, epoch);
       return;
     }
     if (event === "machine_down") {
@@ -110,6 +116,26 @@ export class MacDialogDecisionsDaemon {
     if (event === "resolved" && did) {
       this.onResolved(mid, decision);
     }
+  }
+
+  async reconcileMachine(mid, epoch) {
+    const entries = [...this.entries.values()].filter(entry => entry.machineId === mid && entry.machineDown);
+    for (const entry of entries) {
+      if (this.stopped || this.machinesDown.has(mid) || this.machineEpochs.get(mid) !== epoch) return;
+      try {
+        if (!this.getDecision) throw Error("decision lookup is unavailable");
+        const decision = await this.getDecision(mid, entry.decision.decision_id);
+        if (this.stopped || this.machinesDown.has(mid) || this.machineEpochs.get(mid) !== epoch) return;
+        if (this.entries.get(entry.key) !== entry) continue;
+        if (decisionIdOf(decision) !== entry.decision.decision_id) throw Error("decision lookup returned a different ID");
+        if (["answered", "cancelled", "expired"].includes(decision.status)) this.onResolved(mid, decision);
+        else if (decision.status === "pending") this.onCreated(mid, entry.machine, decision);
+        else throw Error(`unknown saved decision status: ${decision.status}`);
+      } catch (error) {
+        this.log(`再接続時の判断待ち照合に失敗（保持します）: ${entry.decision.decision_id}: ${error.message}`);
+      }
+    }
+    this.notify();
   }
 
   onCreated(mid, machine, decision) {
@@ -172,6 +198,10 @@ export class MacDialogDecisionsDaemon {
       entry.queued = false;
       clearTimeout(entry.snoozeTimer);
       clearTimeout(entry.answerRetryTimer);
+      entry.snoozeTimer = null;
+      entry.answerRetryTimer = null;
+      entry.answerPending = false;
+      entry.retry = null;
       this.queue = this.queue.filter((k) => k !== key);
       if (entry.showing) this._closeDialog(entry);
       this.entries.delete(key);
@@ -182,6 +212,7 @@ export class MacDialogDecisionsDaemon {
 
   onMachineDown(mid, reason) {
     this.machinesDown.add(mid);
+    this.machineEpochs.set(mid, (this.machineEpochs.get(mid) || 0) + 1);
     for (const entry of [...this.entries.values()]) {
       if (entry.machineId !== mid) continue;
       entry.machineDown = true;
