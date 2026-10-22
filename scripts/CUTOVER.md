@@ -28,3 +28,5 @@ with open(home + '/ikesu-cutover-launch.log', 'ab') as log:
 元設定/state は `.pre-ikesu` として保持する。過去の `gtx*` state や `.config/gtx-2e01183.pre-v030`、`.race-0851` などは一覧表示だけで削除しない。Claude の記録も元を残す。正常終了後、店長が `ikesu` で画面へ接続する。
 
 試験の `--fail-after` は `preflight/stop/migrate/repo/claude/install/verify/delete`、mini 側は `mini:` prefix で、指定工程の直後に例外を発生させる。**本番では指定しない**。一時 HOME の検証は本物の旧新版バイナリ・SQLite・Git worktree を使い、SSH 接続だけ別 HOME に向ける。
+
+スクリプト3本をリポジトリ外へコピーして起動してよい。`--sha` 未指定時はコピー先ではなく、現用 `~/src/github.com/kazuph/goterrace` の HEAD で解決する。移行前のプラグイン検査は現用 main 直下の manifest を確認し、移行台帳には新repoのパスを書き、repo移動直後に新パスの manifest を再確認する。

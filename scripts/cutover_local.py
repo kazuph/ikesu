@@ -51,6 +51,9 @@ class Host:
         self.home = Path(settings['home'])
         self.repo = self.home / 'src/github.com/kazuph/goterrace'
         self.new_repo = self.repo.with_name('ikesu')
+        if not settings['sha']:
+            settings['sha'] = command(['git', 'rev-parse', 'HEAD'], cwd=self.repo)
+        assert all(c in '0123456789abcdef' for c in settings['sha']), 'release SHA must be hex'
         self.state = self.home / '.local/state' / ('gtx' if settings['mini'] else 'gtx-2e01183')
         self.config = self.home / '.config/gtx'
         self.new_state = self.home / '.local/state/ikesu'
@@ -155,7 +158,7 @@ class Host:
     def migration(self):
         namespace = {'__name__': 'cutover_migration', '__file__': self.s['migration_file']}
         exec(compile(self.migration_source, self.s['migration_file'], 'exec'), namespace)
-        return namespace['Migration'](self.home, self.state, self.config)
+        return namespace['Migration'](self.home, self.state, self.config, prepared_repo=self.repo)
 
     def stopped(self):
         roots = [self.new_state] if 'migrate' in self.record['done'] else list((self.home / '.local/state').glob('gtx*'))
@@ -199,6 +202,9 @@ class Host:
         self.record['done'].append('repo')
         self.save()
         self.repair(self.new_repo)
+        manifest = self.new_repo / 'apps/mac-dialog-decisions/ikesu-plugin.toml'
+        assert manifest.is_file(), f'relocated new plugin manifest missing: {manifest}'
+        print(f'VERIFIED relocated plugin manifest {manifest}', flush=True)
         self.checkpoint('repo')
 
     def repair(self, root):
@@ -373,8 +379,7 @@ def main():
             if args.remote_phase == 'prepare': host.rollback()
             raise
         return 0
-    sha = args.sha or command(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).resolve().parents[1])
-    assert sha and all(c in '0123456789abcdef' for c in sha), 'release SHA must be hex'
+    sha = args.sha
     settings = dict(home=str(Path.home()), mini=False, binary=str(args.binary.resolve()), sha=sha,
                     migration_file=str(migration_file), source_socket=str(args.source_socket), fail_after=args.fail_after)
     host = Host(settings, migration_source)

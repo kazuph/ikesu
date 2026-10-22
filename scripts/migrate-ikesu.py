@@ -17,8 +17,9 @@ import tempfile
 
 
 class Migration:
-    def __init__(self, home, source_state=None, source_config=None):
+    def __init__(self, home, source_state=None, source_config=None, prepared_repo=None):
         self.home = home
+        self.prepared_repo = prepared_repo or Path(__file__).resolve().parents[1]
         self.state = home / '.local/state'
         self.config = home / '.config'
         self.pairs = [(source_state or self.state / 'gtx-2e01183', self.state / 'ikesu'),
@@ -164,7 +165,7 @@ class Migration:
                 continue
             if old.get('plugin_id') == 'kazuph.mac-dialog-decisions' or Path(root).name == 'mac-dialog-decisions':
                 new_root = self.home / 'src/github.com/kazuph/ikesu/apps/mac-dialog-decisions'
-                prepared = Path(__file__).resolve().parents[1] / 'apps/mac-dialog-decisions/ikesu-plugin.toml'
+                prepared = self.prepared_repo / 'apps/mac-dialog-decisions/ikesu-plugin.toml'
                 candidates = [new_root / 'ikesu-plugin.toml', prepared]
             else:
                 new_root = Path(self.text(root))
