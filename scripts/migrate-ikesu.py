@@ -74,7 +74,7 @@ class Migration:
                     start = at + len(new)
                 else:
                     start = end
-        return value
+        return value.replace("/gtx-plugin.toml", "/ikesu-plugin.toml")
 
     def value(self, value):
         if isinstance(value, str):

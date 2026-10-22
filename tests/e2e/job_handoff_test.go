@@ -1,9 +1,10 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -13,9 +14,6 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
 )
-
-// teststate.Run clears GTX_*; retain this explicit input before isolation.
-var jobHandoffOldBin = os.Getenv("IKESU_JOB_HANDOFF_OLD_BIN")
 
 func TestJobsAcrossLiveHandoff(t *testing.T) {
 	for _, tc := range []struct {
@@ -48,7 +46,7 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 				completion = "full"
 			}
 			s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "handoff", Completion: completion, Argv: []string{"/bin/sh", "-c", script}}, &started)
-			store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "gtx.db"))
+			store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "ikesu.db"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,102 +139,98 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 	}
 }
 
-// The first upgrade cannot reconstruct a legacy parent's wait status or
-// missing log pipes. Preserve the accepted legacy running state verbatim.
-func TestLegacyJobsAcrossLiveHandoff(t *testing.T) {
-	old := jobHandoffOldBin
-	if old == "" {
-		dir := t.TempDir()
-		archive := filepath.Join(dir, "baseline.tar")
-		cmd := exec.Command("git", "archive", "--format=tar", "--output", archive, "2e01183")
-		cmd.Dir = repoRoot()
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("prepare baseline (or set GTX_JOB_HANDOFF_OLD_BIN): %v %s", err, out)
-		}
-		if out, err := exec.Command("tar", "-xf", archive, "-C", dir).CombinedOutput(); err != nil {
-			t.Fatal(err, string(out))
-		}
-		old = filepath.Join(dir, "gtx-old")
-		cmd = exec.Command("go", "build", "-o", old, "./cmd/gtx")
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatal(err, string(out))
-		}
-	}
-	// Executable names select independent state roots. Keep the baseline
-	// bytes unchanged while starting it under the public gtx name.
-	old, err := filepath.Abs(old)
+// Stage three intentionally replaces cross-name live upgrades with offline
+// migration. Rejection must leave the retiring server's data and PTYs usable.
+func TestLegacyLiveHandoffRefusedWithoutDamage(t *testing.T) {
+	baseline := prepareMigrationBaseline(t)
+	home, err := os.MkdirTemp("/tmp", "ih-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	canonicalOld := filepath.Join(t.TempDir(), "gtx")
-	if err := os.Symlink(old, canonicalOld); err != nil {
+	defer os.RemoveAll(home)
+	config := filepath.Join(home, ".config/gtx-2e01183")
+	if err = os.MkdirAll(config, 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, successor := range []struct{ name, binary string }{
-		{"baseline", canonicalOld}, {"upgrade", binPath},
-	} {
-		t.Run(successor.name, func(t *testing.T) {
-			s := startVersionMode(t, nil, false, binPath, canonicalOld)
-			s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-			s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "legacy-job", Agent: "codex", State: "idle"}, nil)
-			fifo := filepath.Join(t.TempDir(), "release")
-			if err := syscall.Mkfifo(fifo, 0600); err != nil {
-				t.Fatal(err)
-			}
-			release, err := os.OpenFile(fifo, os.O_RDWR, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer release.Close()
-			var started api.RunStartedResult
-			s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "legacy", Completion: "summary", Argv: []string{"/bin/sh", "-c", fmt.Sprintf("read value < %q; exit 9", fifo)}}, &started)
-			store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "gtx.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
-			before, err := store.CommandRow(started.Job)
-			if err != nil || before == nil || before.RunnerPID == nil {
-				t.Fatal(before, err)
-			}
-			pid := int(*before.RunnerPID)
-			t.Cleanup(func() {
-				if syscall.Kill(pid, 0) == nil {
-					_ = syscall.Kill(-pid, syscall.SIGKILL)
-				}
-			})
-			if out, err := s.cli("server", "live-handoff", "--import-exe", successor.binary); err != nil {
-				t.Fatal(out, err)
-			}
-			if syscall.Kill(pid, 0) != nil {
-				t.Fatal("legacy job stopped by handoff")
-			}
-			if _, err := release.WriteString("go\n"); err != nil {
-				t.Fatal(err)
-			}
-			s.waitFor("legacy command exits", 10*time.Second, func(string) bool {
-				out, _ := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
-				return strings.TrimSpace(string(out)) == "" || strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
-			})
-			// Force reconciliation in another importer without changing the row.
-			if out, err := s.cli("server", "live-handoff", "--import-exe", successor.binary); err != nil {
-				t.Fatal(out, err)
-			}
-			after, err := store.CommandRow(started.Job)
-			if err != nil || after == nil || after.RunnerPID == nil || *after.RunnerPID != *before.RunnerPID || after.Status != "running" || after.ExitCode != nil || after.FinishedMs != nil {
-				t.Fatal("legacy state changed", after, err)
-			}
-			messages, err := store.History(dispatch.JobsRoom, nil, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, message := range messages {
-				if strings.Contains(message.Body, "[ikesu run]") {
-					t.Fatal("fabricated legacy completion", message)
-				}
-			}
-			t.Logf("legacy PID=%d preserved; after actual exit status=running exit=nil finished=nil, no fabricated notice", pid)
-		})
+	if err = os.WriteFile(filepath.Join(config, "config.toml"), []byte("onboarding=false\n[experimental]\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
+	socket := filepath.Join(home, ".local/state/gtx-2e01183/stage3/gtx.sock")
+	stop := migrationServer(t, baseline, home, socket)
+	defer stop()
+	var before map[string]any
+	migrationRPC(t, socket, "pane.list", map[string]any{}, &before)
+	var originalPanes struct {
+		Panes []struct {
+			PaneID string `json:"pane_id"`
+		} `json:"panes"`
+	}
+	migrationRPC(t, socket, "pane.list", map[string]any{}, &originalPanes)
+	if len(originalPanes.Panes) == 0 {
+		t.Fatal("no panes before handoff")
+	}
+	migrationRPC(t, socket, "pane.report_agent", api.PaneReportAgentParams{PaneID: originalPanes.Panes[0].PaneID, Source: "reject", Agent: "codex", State: "idle"}, nil)
+	var originalDecision api.DecisionResult
+	migrationRPC(t, socket, "decision.create", api.DecisionCreateParams{Kind: "ask", Title: "survives-refusal", Options: []api.DecisionOption{{ID: "yes", Label: "Yes", Role: "approve"}}}, &originalDecision)
+	conn, err := net.Dial("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(45 * time.Second))
+	if err = json.NewEncoder(conn).Encode(map[string]any{"id": "reject", "method": "server.live_handoff", "params": map[string]any{"import_exe": binPath}}); err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Error *api.Error `json:"error"`
+	}
+	if err = json.NewDecoder(conn).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+	if response.Error == nil || !strings.Contains(response.Error.Message, "offline migration") || strings.Contains(strings.ToLower(response.Error.Message), "gtx") {
+		t.Fatalf("unclear rejection: %+v", response.Error)
+	}
+	var after map[string]any
+	migrationRPC(t, socket, "pane.list", map[string]any{}, &after)
+	oldRaw, _ := json.Marshal(before)
+	newRaw, _ := json.Marshal(after)
+	// Pane status metadata can change while shells run; stable identity and cwd must stay.
+	var panes struct {
+		Panes []struct {
+			PaneID string `json:"pane_id"`
+		} `json:"panes"`
+	}
+	migrationRPC(t, socket, "pane.list", map[string]any{}, &panes)
+	if len(panes.Panes) == 0 {
+		t.Fatal("panes lost", string(oldRaw), string(newRaw))
+	}
+	pane := panes.Panes[0].PaneID
+	if len(panes.Panes) != len(originalPanes.Panes) || pane != originalPanes.Panes[0].PaneID {
+		t.Fatal("pane identity changed")
+	}
+	var retained api.DecisionResult
+	migrationRPC(t, socket, "decision.get", api.DecisionTargetParams{DecisionID: originalDecision.Decision.DecisionID}, &retained)
+	if retained.Decision.Title != originalDecision.Decision.Title || retained.Decision.Status != "pending" {
+		t.Fatal("DB decision changed", retained)
+	}
+
+	migrationRPC(t, socket, "pane.send_text", api.PaneSendTextParams{PaneID: pane, Text: "printf handoff-rejection-survived\n"}, nil)
+	migrationRPC(t, socket, "pane.send_keys", api.PaneSendKeysParams{PaneID: pane, Keys: []string{"Enter"}}, nil)
+	deadline := time.Now().Add(15 * time.Second)
+	found := false
+	for time.Now().Before(deadline) {
+		var read map[string]any
+		migrationRPC(t, socket, "pane.read", api.PaneReadParams{PaneID: pane}, &read)
+		raw, _ := json.Marshal(read)
+		if strings.Contains(string(raw), "handoff-rejection-survived") {
+			found = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !found {
+		t.Fatal("old pane stopped processing input")
+	}
+	migrationRPC(t, socket, "msg.send", api.MsgSendParams{Room: "reject", FromAgent: "proof", To: pane, Body: "after-rejection"}, nil)
+	t.Log("old server API, pane output and database remain usable after explicit refusal")
 }

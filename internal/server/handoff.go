@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -94,10 +95,27 @@ func RunHandoffImport(session, version string) (int, error) {
 	if err = dec.Decode(&in.State); err != nil {
 		return 1, err
 	}
+	if err = validateHandoffStorage(4); err != nil {
+		_ = enc.Encode(handoffResult{State: "error", Error: err.Error()})
+		return 1, err
+	}
 	for i := range in.State.Panes {
 		in.Files = append(in.Files, os.NewFile(uintptr(7+i), "handoff-pty"))
 	}
 	return runEndpoint(session, version, endpoint.Current(), in)
+}
+
+// Inspect the inherited API descriptor without opening storage or adopting PTYs.
+func validateHandoffStorage(fd int) error {
+	address, err := unix.Getsockname(fd)
+	if err != nil {
+		return err
+	}
+	socket, ok := address.(*unix.SockaddrUnix)
+	if !ok || filepath.Base(socket.Name) != filepath.Base(api.APISocketPath("")) {
+		return fmt.Errorf("live handoff across storage names is unsupported; stop the old server, run the offline migration script, then start ikesu")
+	}
+	return nil
 }
 
 // The app loop remains frozen during the transaction. The retiring server

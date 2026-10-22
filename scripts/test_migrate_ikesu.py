@@ -117,6 +117,42 @@ class MigrationTest(unittest.TestCase):
         self.assertFalse(self.home.joinpath('.config/ikesu').exists())
         self.assertEqual(list(self.home.rglob('.ikesu-migrate-*')), [])
 
+    def test_commit_permission_failure_rolls_back_in_reverse(self):
+        before = self.snapshot()
+        # An audit observer changes real directory permissions as the state
+        # commit starts. No rename or filesystem result is substituted.
+        code = r"""
+import os, runpy, sys
+from pathlib import Path
+home = Path.home()
+state = home / '.local/state/gtx-2e01183'
+config = home / '.config'
+def observe(event, args):
+    if event == 'os.rename':
+        source = Path(os.fsdecode(args[0]))
+        if source == state:
+            config.chmod(0o500)
+        elif source == Path(str(state) + '.pre-ikesu'):
+            config.chmod(0o700)
+sys.addaudithook(observe)
+sys.argv = [sys.argv[1]]
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+        try:
+            result = subprocess.run([sys.executable, '-c', code, str(SCRIPT)],
+                                    env={**os.environ, 'HOME': str(self.home)},
+                                    capture_output=True, text=True)
+        finally:
+            self.home.joinpath('.config').chmod(0o700)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Permission denied', result.stderr)
+        self.assertIn('ROLLBACK: originals restored', result.stderr)
+        self.assertEqual(self.snapshot(), before)
+        self.assertTrue(self.state.is_dir())
+        self.assertTrue(self.config.is_dir())
+        self.assertFalse(self.home.joinpath('.local/state/ikesu').exists())
+        self.assertEqual(list(self.home.rglob('.ikesu-migrate-*')), [])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
