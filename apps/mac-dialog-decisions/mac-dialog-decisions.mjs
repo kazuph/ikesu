@@ -456,11 +456,10 @@ async function ensureDaemon(config, env) {
     const inner = `export ${exportsList}; exec node ${shellQuote(path.join(pluginRoot, "mac-dialog-decisions.mjs"))} run`;
     const daemonBin = resolveIkesuBin(config, log);
     if (!daemonBin) {
-      log(
+      throw Error(
         `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
           "デーモンを起動できません",
       );
-      return;
     }
     const result = await execFileText(
       daemonBin,
@@ -481,8 +480,7 @@ async function ensureDaemon(config, env) {
       { timeoutMs: 15_000 },
     );
     if (result.code !== 0) {
-      log(`ikesu run に失敗: ${(result.stderr || result.stdout).trim()}`);
-      return;
+      throw Error(`ikesu run に失敗: ${(result.stderr || result.stdout).trim()}`);
     }
     fs.writeFileSync(
       path.join(config.stateDir, "starting.json"),
