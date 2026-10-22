@@ -95,6 +95,7 @@ type Server struct {
 	version             string
 	endpointPeer        endpoint.Peer
 	cwd                 string // cwd the session was started from
+	configPath          string // absolute path read when this server started
 
 	lock     *os.File
 	apiLn    net.Listener
@@ -251,6 +252,10 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	if !api.ValidSessionName(session) {
 		return 2, fmt.Errorf("invalid session name %q", session)
 	}
+	configPath, err := filepath.Abs(config.Path())
+	if err != nil {
+		return 1, fmt.Errorf("resolve configuration path: %w", err)
+	}
 	dir := api.SessionDir(session)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return 1, err
@@ -258,7 +263,6 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 
 	var lock *os.File
 	var apiLn, clientLn net.Listener
-	var err error
 	if imported != nil {
 		unix.CloseOnExec(6)
 		lock = os.NewFile(6, "handoff-lock")
@@ -284,6 +288,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	s := &Server{session: session, dir: dir, version: version, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
 		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
+	s.configPath = configPath
 	if latency.Enabled {
 		s.trace = latency.Open(api.LogPath(dir))
 	}
@@ -309,6 +314,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 			fmt.Sprintf("IKESU_PANE_ID=p%d", paneID),
 			"IKESU_SOCKET_PATH=" + apiSockAbs,
 			"IKESU_SOCKET_PATH_EXPLICIT=1",
+			"IKESU_CONFIG_PATH=" + s.configPath,
 		}
 		// Spawn runs on the app loop, so State() is safe here and the pane
 		// already exists in the model when its shell starts.

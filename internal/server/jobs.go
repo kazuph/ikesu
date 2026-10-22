@@ -70,10 +70,10 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 			`completion must be "summary", "full", or "none"`)
 	}
 	label := p.Label
-	// Notifications require an agent mailbox; silent jobs only need a live pane.
+	// Nonempty callers are validated even when notifications are disabled.
 	callerAgent := ""
 	callerPane := ""
-	if p.CallerPane == "" {
+	if p.CallerPane == "" && completion != "none" {
 		return api.Failure(id, api.ErrInvalidRequest, "caller pane is required; specify --caller <pane>")
 	}
 	if p.CallerPane != "" {

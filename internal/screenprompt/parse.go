@@ -15,6 +15,7 @@ import (
 )
 
 type Prompt struct {
+	MCPServer     string
 	CodexQuestion bool
 	TextOpen      bool
 	Final         bool
@@ -46,7 +47,7 @@ func HasOptionRows(lines []string) bool {
 			return true
 		}
 	}
-	return false
+	return parseMCP(lines) != nil
 }
 
 // Full-width highlight padding can join two painted rows in the logical screen.
@@ -89,10 +90,16 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	if agent != "claude" && agent != "codex" && agent != "devin" {
 		return nil
 	}
+	if agent == "claude" {
+		if p := parseMCP(screen); p != nil {
+			return p
+		}
+	}
 	codexLabel, codexBody := "", ""
 	if agent == "codex" {
 		screen, codexLabel, codexBody = codexQuestionScreen(screen)
 	}
+	screen = currentQuestionLines(screen)
 	screen, notice := cleanNotice(screen)
 	columns := screenColumns(screen)
 	plain, preview, hasPreview := extractPreview(screen)
@@ -291,50 +298,6 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	return p
 }
 
-// Claude paints previews beside the options, so split the box independently of the option block.
-func extractPreview(lines []string) ([]string, *string, bool) {
-	var plain, content []string
-	inBox, found := false, false
-	for _, line := range lines {
-		if at := strings.IndexAny(line, "┌╭"); at >= 0 {
-			inBox, found = true, true
-			if prefix := strings.TrimRight(line[:at], " "); prefix != "" {
-				plain = append(plain, prefix)
-			}
-			continue
-		}
-		if inBox {
-			if at := strings.IndexAny(line, "└╰"); at >= 0 {
-				inBox = false
-				if prefix := strings.TrimRight(line[:at], " "); prefix != "" {
-					plain = append(plain, prefix)
-				}
-				continue
-			}
-			if at := strings.Index(line, "│"); at >= 0 {
-				if prefix := strings.TrimRight(line[:at], " "); prefix != "" {
-					plain = append(plain, prefix)
-				}
-				value := strings.TrimPrefix(line[at:], "│")
-				if end := strings.LastIndex(value, "│"); end >= 0 {
-					value = value[:end]
-				}
-				content = append(content, strings.TrimRight(value, " "))
-				continue
-			}
-		}
-		plain = append(plain, line)
-	}
-	if !found {
-		return plain, nil, false
-	}
-	if inBox {
-		return plain, nil, true
-	}
-	value := strings.Join(content, "\n")
-	return plain, &value, true
-}
-
 func solidRule(s string) bool {
 	s = strings.TrimSpace(s)
 	return strings.HasPrefix(s, "─") && strings.Trim(s, "─") == ""
@@ -383,15 +346,21 @@ func (p *Prompt) Signature() string {
 		label = p.Params.QuestionLabel
 	}
 	data, _ := json.Marshal(struct {
+		MCPServer              string  `json:",omitempty"`
 		QuestionLabel          *string `json:",omitempty"`
 		Title                  string
 		Options                []option
 		AllowText, MultiSelect bool
-	}{label, stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
+	}{p.MCPServer, label, stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
 
 func FromDecision(d api.Decision) string {
-	return (&Prompt{Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
+	server := ""
+	if d.Origin != nil {
+		_, server, _ = strings.Cut(d.Origin.Agent, mcpOriginSeparator)
+		server = strings.TrimSuffix(server, "”")
+	}
+	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
 }

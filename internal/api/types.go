@@ -142,6 +142,7 @@ type OkResult struct {
 }
 
 type ConfigReloadResult struct {
+	ConfigPath  string   `json:"config_path"`
 	Type        string   `json:"type"`
 	Status      string   `json:"status"`
 	Diagnostics []string `json:"diagnostics"`

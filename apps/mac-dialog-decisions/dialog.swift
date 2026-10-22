@@ -1,20 +1,6 @@
-// ikesu decision dialog — a native AppKit panel built from the daemon's spec.
-//
-//   ikesu-decision-dialog <spec.json>
-//
-// The daemon (mac-dialog-decisions.mjs) compiles this file with swiftc and
-// runs the binary directly. The panel never activates ikesu's process and
-// never pulls focus back: it is a floating, non-activating panel that appears
-// on top of the current Space once, and the user clicks into it when ready.
-// Every control accepts the first click, so a click on an option answers even
-// while another app is frontmost.
-//
-// Output: JSON lines on stdout (and appended to spec.result_path):
-//   {"event":"shown","pid":N}
-//   {"result":"answer","option_ids":[...],"text":"..."}
-//   {"result":"later"}          あとで / Esc / close button
-// The panel exits on its own when the daemon dies or deletes the spec file,
-// so no window outlives the decision.
+// AppKit controller for one decision window; DialogHost owns process lifetime.
+// New windows appear once without taking focus. Selection requires explicit submit.
+// Draft, result, shown and closed events carry the window key.
 
 import AppKit
 import Foundation
@@ -54,14 +40,14 @@ struct DialogSpec: Decodable {
   let daemon_pid: Int32?
   let daemon_owner: String?
   let daemon_ownership_path: String?
+  let draft: DialogDraft?
 }
+
+struct DialogDraft: Decodable { let option_ids: [String]; let text: String }
 
 // MARK: - output
 
-var resultPath: String?
-var finished = false
-
-func emit(_ object: [String: Any]) {
+func writeOutput(_ object: [String: Any], resultPath: String? = nil) {
   guard let data = try? JSONSerialization.data(withJSONObject: object),
     var line = String(data: data, encoding: .utf8)
   else { return }
@@ -76,13 +62,6 @@ func emit(_ object: [String: Any]) {
       FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
     }
   }
-}
-
-func finish(_ object: [String: Any]) {
-  if finished { return }
-  finished = true
-  emit(object)
-  NSApp.terminate(nil)
 }
 
 // MARK: - look
@@ -202,10 +181,9 @@ final class OptionCard: NSView {
       stack.addArrangedSubview(label(d, size: Look.small + 1, color: .secondaryLabelColor, selectable: false))
     }
     if let p = option.preview, !p.isEmpty {
-      let box = label(p, size: Look.small, color: .labelColor, mono: true, selectable: false)
-      box.drawsBackground = true
-      box.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.6)
+      let box = previewScroll(p)
       stack.addArrangedSubview(box)
+      box.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     } else if option.preview_unavailable == true {
       stack.addArrangedSubview(label("プレビューあり（エージェントの画面で確認）", size: Look.small, color: .tertiaryLabelColor, selectable: false))
     }
@@ -284,6 +262,10 @@ final class DialogController: NSObject, NSWindowDelegate {
   var submitButton: FirstClickButton!
   var answerPending = false
   let statusLabel = NSTextField(wrappingLabelWithString: "")
+  var infoLabel: NSTextField!
+  var onClose: ((DialogController) -> Void)?
+  var closed = false
+  var key: String { URL(fileURLWithPath: specPath).lastPathComponent }
 
   init(spec: DialogSpec, specPath: String) {
     self.spec = spec
@@ -293,6 +275,26 @@ final class DialogController: NSObject, NSWindowDelegate {
   func checkedIds() -> [String] { cards.filter { $0.checked }.map { $0.option.id } }
   func currentText() -> String {
     (textView?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  func emit(_ object: [String: Any]) {
+    var event = object
+    event["key"] = key
+    writeOutput(event, resultPath: spec.result_path)
+  }
+
+  func saveDraft() {
+    emit(["event": "draft", "draft": ["option_ids": checkedIds(), "text": textView?.string ?? ""]])
+  }
+
+  func close() {
+    if closed { return }
+    closed = true
+    saveDraft()
+    panel.orderOut(nil)
+    panel.close()
+    emit(["event": "closed"])
+    onClose?(self)
   }
 
   func answer(ids: [String]) {
@@ -313,7 +315,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     answer(ids: ids)
   }
 
-  @objc func later() { finish(["result": "later"]) }
+  @objc func later() { emit(["result": "later"]); close() }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
     later()
@@ -332,6 +334,7 @@ final class DialogController: NSObject, NSWindowDelegate {
       for other in cards { other.checked = !clear && other === card }
     }
     refreshSubmit()
+    saveDraft()
   }
 
   func refreshSubmit() {
@@ -505,7 +508,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     var info: [String] = []
     if let d = spec.deadline, !d.isEmpty { info.append(d) }
     if let q = spec.queue_remaining, q > 0 { info.append("ほかに \(q) 件待っています") }
-    let infoLabel = label(info.joined(separator: "  ·  "), size: Look.small, color: .secondaryLabelColor, selectable: false)
+    infoLabel = label(info.joined(separator: "  ·  "), size: Look.small, color: .secondaryLabelColor, selectable: false)
 
     let row = NSStackView(views: [infoLabel, NSView(), laterButton, submitButton])
     row.orientation = .horizontal
@@ -538,16 +541,16 @@ final class DialogController: NSObject, NSWindowDelegate {
     let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     panel = KeyPanel(
       contentRect: NSRect(x: 0, y: 0, width: Look.width, height: 400),
-      styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .utilityWindow],
+      styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
       backing: .buffered, defer: false)
     panel.title = spec.window_title
     panel.contentView = root
     panel.delegate = self
-    panel.level = .floating
+    panel.level = .normal
     panel.hidesOnDeactivate = false
-    panel.isFloatingPanel = true
+    panel.isFloatingPanel = false
     panel.becomesKeyOnlyIfNeeded = false
-    panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    panel.collectionBehavior = [.moveToActiveSpace]
     panel.minSize = NSSize(width: 520, height: 260)
     // Size: as tall as the content needs at the real width, capped to 85% of
     // the screen (the premise scrolls; the buttons never leave the window).
@@ -558,6 +561,10 @@ final class DialogController: NSObject, NSWindowDelegate {
     panel.setContentSize(NSSize(width: Look.width, height: height))
     panel.center()
     panel.setFrameTopLeftPoint(NSPoint(x: panel.frame.minX, y: screen.maxY - 60))
+    if let draft = spec.draft {
+      for card in cards { card.checked = draft.option_ids.contains(card.option.id) }
+      textView?.string = draft.text
+    }
     refreshSubmit()
   }
 
@@ -565,85 +572,45 @@ final class DialogController: NSObject, NSWindowDelegate {
     // Shown once, on top, without activating ikesu's process or taking the
     // keyboard from whatever the user is doing.
     panel.orderFrontRegardless()
-    emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier)])
+    emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier), "x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0])
   }
 
   // Close with the decision: the daemon deletes the spec when it is resolved
   // elsewhere or when the daemon stops; a dead daemon also ends the panel.
-  func startResponses() {
-    DispatchQueue.global().async { [weak self] in
-      while let line = readLine() {
-        guard let data = line.data(using: .utf8),
-          let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          message["status"] as? String == "error" else { continue }
-        DispatchQueue.main.async { [weak self] in
-          guard let self else { return }
+  func respond(_ message: [String: Any]) {
+    if message["status"] as? String == "error" {
           self.answerPending = false
           self.statusLabel.stringValue = message["message"] as? String ?? "回答の送信に失敗しました。"
           self.refreshSubmit()
-          // Long transport errors remain readable without growing off-screen.
           self.panel.contentView?.layoutSubtreeIfNeeded()
-        }
-      }
+    } else if message["status"] as? String == "windows", let count = message["queue_remaining"] as? Int {
+      var parts: [String] = []
+      if let deadline = spec.deadline, !deadline.isEmpty { parts.append(deadline) }
+      if count > 0 { parts.append("ほかに \(count) 件開いています") }
+      infoLabel.stringValue = parts.joined(separator: "  ·  ")
     }
-    _ = FileHandle.standardInput // stdin carries daemon response statuses
   }
 
   func startWatchdog() {
     Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
       guard let self else { return }
       if !FileManager.default.fileExists(atPath: self.specPath) {
-        finished = true
-        NSApp.terminate(nil)
+        self.close()
       }
       if let token = self.spec.daemon_owner, let ownerPath = self.spec.daemon_ownership_path {
         let data = FileManager.default.contents(atPath: ownerPath)
         let owner = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         if owner?["owner"] as? String != token || (owner?["pid"] as? Int) != Int(self.spec.daemon_pid ?? 0) {
-          finished = true
-          NSApp.terminate(nil)
+          self.close()
         }
       }
       if let pid = self.spec.daemon_pid, pid > 0, kill(pid, 0) != 0, errno == ESRCH {
-        finished = true
-        NSApp.terminate(nil)
+        self.close()
       }
     }
   }
 }
 
 extension DialogController: NSTextViewDelegate {
-  func textDidChange(_ notification: Notification) { refreshSubmit() }
+  func textDidChange(_ notification: Notification) { refreshSubmit(); saveDraft() }
 }
-
-// MARK: - main
-
-let args = CommandLine.arguments
-if args.count == 3 && args[1] == "--daemon-lock" {
-  let fd = open(args[2], O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-  guard fd >= 0 else { exit(1) }
-  let acquired = flock(fd, LOCK_EX | LOCK_NB) == 0
-  FileHandle.standardOutput.write("{\"acquired\":\(acquired)}\n".data(using: .utf8)!)
-  if acquired { while !FileHandle.standardInput.availableData.isEmpty {} }
-  close(fd)
-  exit(acquired ? 0 : 1)
-}
-guard args.count >= 2,
-  let data = FileManager.default.contents(atPath: args[1]),
-  let spec = try? JSONDecoder().decode(DialogSpec.self, from: data)
-else {
-  FileHandle.standardError.write("usage: ikesu-decision-dialog <spec.json> (spec unreadable)\n".data(using: .utf8)!)
-  exit(2)
-}
-resultPath = spec.result_path
-signal(SIGTERM) { _ in exit(0) }
-
-let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
-let controller = DialogController(spec: spec, specPath: args[1])
-controller.build()
-NSEvent.addLocalMonitorForEvents(matching: .keyDown) { controller.handleKey($0) }
-controller.show()
-controller.startWatchdog()
-controller.startResponses()
-app.run()

@@ -1,15 +1,6 @@
 #!/usr/bin/env node
-// ikesu plugin daemon: show pending decisions as a floating macOS panel.
-//
-// A `ikesu decision watch --all-machines` subscription feeds `created` /
-// `resolved` / `machine_up` / `machine_down` lines. Each pending decision is
-// presented one at a time in a native AppKit panel (dialog.swift) that shows
-// where it comes from, the question, every option with its description and
-// preview, and a free-text field, and returns the picked option(s) and/or
-// free text as a JSON line on stdout. The daemon turns
-// that into `ikesu decision answer ... --responder mac-dialog`. When the
-// decision resolves anywhere else, the open dialog is killed so a stale answer
-// is never sent.
+// A single AppKit host presents independent windows for all pending decisions.
+// Machine events retain drafts and answers; resolution closes only its own window.
 
 import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -20,22 +11,15 @@ import process from "node:process";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { MacDialogDecisionsDaemon } from "./daemon.mjs";
+import { NativeDialogHost } from "./native-host.mjs";
+import { releaseVersion, readOwner, ownerAlive, ownerProven, requestSwitch, cancelSwitch, manageDaemon } from "./lifecycle.mjs";
+import { buildDialogSpec, decisionKey, fmtDeadline, locationLabel, durationLabel } from "./spec.mjs";
+import { DEFAULT_LATER_MS, log, sleep, daemonPidPath, removeDialogFiles } from "./common.mjs";
+export { MacDialogDecisionsDaemon };
+
 const PLUGIN_ID = "kazuph.mac-dialog-decisions";
 const RUN_LABEL = "mac-dialog-decisions";
-const WATCH_RETRY_MS = 2_000;
-const DAEMON_PID_FILE = "daemon.json";
-const RESPONDER = "mac-dialog";
-const DEFAULT_LATER_MS = 10 * 60_000;
-
-function log(...args) {
-  const at = new Date().toTimeString().slice(0, 8);
-  process.stderr.write(`[mac-dialog-decisions ${at}] ${args.join(" ")}\n`);
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function homePath(...parts) {
   return path.join(os.homedir(), ...parts);
 }
@@ -136,462 +120,6 @@ function execFileText(file, args, options = {}) {
 }
 
 // --- dialog spec (display text) ------------------------------------------------
-
-function fmtDeadline(decision, now = Date.now()) {
-  if (!decision.expires_unix_ms) return "期限なし";
-  const at = new Date(decision.expires_unix_ms);
-  const remainSec = Math.max(
-    0,
-    Math.round((decision.expires_unix_ms - now) / 1000),
-  );
-  const hh = String(at.getHours()).padStart(2, "0");
-  const mm = String(at.getMinutes()).padStart(2, "0");
-  const remain =
-    remainSec >= 120 ? `${Math.round(remainSec / 60)}分` : `${remainSec}秒`;
-  return `${hh}:${mm}（残り約${remain}）`;
-}
-
-function optionDescription(option) {
-  return typeof option?.description === "string" ? option.description.trim() : "";
-}
-
-function optionPreview(option) {
-  return typeof option?.preview === "string" ? option.preview.trimEnd() : "";
-}
-
-function durationLabel(ms) {
-  if (ms >= 60_000) return `${Math.round(ms / 60_000)}分`;
-  return `${Math.max(1, Math.round(ms / 1000))}秒`;
-}
-
-function sourceLabel(decision) {
-  const origin = decision.origin || {};
-  if (origin.agent) return `🤖 ${origin.agent}`;
-  const kinds = {
-    command_guard: "🛡 危険コマンドの承認",
-    tool_permission: "🔐 ツールの許可",
-    agent_prompt: "💬 エージェントの質問",
-    ask: "❓ 確認",
-  };
-  return kinds[decision.kind] || "";
-}
-
-// プロジェクト（スペース） › タブ › ペイン — what the user scans first.
-function locationLabel(decision) {
-  const origin = decision.origin || {};
-  const parts = [];
-  if (origin.workspace_label) parts.push(origin.workspace_label);
-  else if (origin.cwd) parts.push(path.basename(origin.cwd));
-  if (origin.tab_label) parts.push(origin.tab_label);
-  if (origin.pane_label) parts.push(origin.pane_label);
-  return parts.join(" › ");
-}
-
-function projectName(decision) {
-  const origin = decision.origin || {};
-  if (origin.workspace_label) return origin.workspace_label;
-  if (origin.cwd) return path.basename(origin.cwd);
-  return "";
-}
-
-function buildDialogSpec(decision, machine, queueRemaining = 0, options = {}) {
-  const origin = decision.origin || {};
-  const details = [];
-  if (origin.command) {
-    details.push({ label: "コマンド", value: String(origin.command), monospace: true });
-  }
-  if (origin.cwd) details.push({ label: "場所", value: String(origin.cwd), monospace: true });
-  if (origin.branch) details.push({ label: "ブランチ", value: String(origin.branch), monospace: true });
-  if (origin.reason && origin.reason !== "screen_prompt") {
-    details.push({ label: "理由", value: String(origin.reason) });
-  }
-  if (origin.pane_id) details.push({ label: "ペイン", value: String(origin.pane_id), monospace: true });
-
-  const machineId = machine?.id || origin.machine || "local";
-  const remote = machineId !== "local";
-  const project = projectName(decision);
-  return {
-    window_title: project ? `ikesu 判断待ち — ${project}` : "ikesu 判断待ち",
-    source: sourceLabel(decision),
-    location: locationLabel(decision),
-    machine: remote ? String(machine?.label || machineId) : "",
-    question_label: decision.question_label || "",
-    title: String(decision.title || decision.decision_id || ""),
-    body: decision.body ? String(decision.body) : "",
-    details,
-    options: (Array.isArray(decision.options) ? decision.options : []).map(
-      (option) => ({
-        id: String(option.id),
-        label: String(option.label || option.id),
-        description: optionDescription(option),
-        preview: optionPreview(option),
-        preview_unavailable: option?.preview_unavailable === true,
-      }),
-    ),
-    multi_select: decision.multi_select === true,
-    allow_text: decision.allow_text === true,
-    deadline: decision.expires_unix_ms ? `期限 ${fmtDeadline(decision)}` : "",
-    queue_remaining: queueRemaining,
-    later_label: durationLabel(options.laterMs ?? DEFAULT_LATER_MS),
-    daemon_pid: options.daemonPid ?? process.pid,
-    decision_id: String(decision.decision_id || ""),
-  };
-}
-
-// --- daemon ---------------------------------------------------------------------
-
-function decisionKey(machineId, decisionId) {
-  return `${machineId} ${decisionId}`;
-}
-
-function decisionIdOf(decision) {
-  return String(decision?.decision_id || "");
-}
-
-export class MacDialogDecisionsDaemon {
-  constructor({
-    config,
-    spawnWatch, // () => {lines: AsyncIterable<object>, close()}
-    runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
-    spawnDialog, // (specPath, spec) => {lines: AsyncIterable<string>, kill()}
-    specFilePath, // (key) => path to write the spec JSON
-    onFatal, // fatal dialog startup failures terminate the owning run
-    log: logFn = log,
-  }) {
-    this.config = config;
-    this.spawnWatch = spawnWatch;
-    this.runAnswer = runAnswer;
-    this.spawnDialog = spawnDialog;
-    this.specFilePath = specFilePath;
-    this.onFatal = onFatal;
-    this.log = logFn;
-    this.entries = new Map(); // key -> entry
-    this.queue = []; // keys waiting for the dialog
-    this.showing = null; // key currently on screen
-    this.child = null; // dialog child handle while showing
-    this.machinesDown = new Set();
-    this.stopped = false;
-    this._pumpTimer = null;
-    this._watchHandle = null;
-    this._watchDone = null;
-    this._dialogDone = null;
-  }
-
-  async start() {
-    this._watchDone = this.watchLoop();
-  }
-
-  async stop() {
-    this.stopped = true;
-    if (this._pumpTimer) clearTimeout(this._pumpTimer);
-    this._watchHandle?.close?.();
-    this._closeDialog();
-    for (const entry of this.entries.values()) {
-      clearTimeout(entry.snoozeTimer); clearTimeout(entry.answerRetryTimer);
-    }
-    await Promise.allSettled([this._watchDone, this._dialogDone]);
-  }
-
-  // A short delay before taking the screen lets a burst of simultaneous
-  // decisions coalesce so the first dialog reports the true queue size.
-  schedulePump() {
-    if (this.stopped) return;
-    // reset on each new event so a burst coalesces into one presentation
-    clearTimeout(this._pumpTimer);
-    this._pumpTimer = setTimeout(() => {
-      this._pumpTimer = null;
-      this.pump();
-    }, this.config.presentDelayMs ?? 0);
-  }
-
-  // ---- watch stream ---------------------------------------------------------
-
-  async watchLoop() {
-    while (!this.stopped) {
-      const watch = await this.spawnWatch();
-      this._watchHandle = watch;
-      try {
-        for await (const line of watch.lines) {
-          if (this.stopped) break;
-          try {
-            this.onWatchLine(line);
-          } catch (error) {
-            this.log(`watch 行の処理に失敗: ${error.message}`);
-          }
-        }
-      } catch (error) {
-        this.log(`decision watch が切れました: ${error.message}`);
-      }
-      if (this.stopped) break;
-      this.log("decision watch を再接続します");
-      await sleep(WATCH_RETRY_MS);
-    }
-  }
-
-  onWatchLine(line) {
-    const event = line?.event;
-    const machine = line?.machine || {};
-    const mid = String(machine.id || "local");
-    const decision = line?.decision || {};
-    const did = decisionIdOf(decision);
-
-    if (event === "machine_up") {
-      this.machinesDown.delete(mid);
-      return;
-    }
-    if (event === "machine_down") {
-      this.onMachineDown(mid, line?.reason || "");
-      return;
-    }
-    if (event === "created" && did) {
-      this.onCreated(mid, machine, decision);
-      return;
-    }
-    if (event === "resolved" && did) {
-      this.onResolved(mid, decision);
-    }
-  }
-
-  onCreated(mid, machine, decision) {
-    const key = decisionKey(mid, decisionIdOf(decision));
-    const existing = this.entries.get(key);
-    if (existing) {
-      // Reconnect replay, or a repeat created for a decision whose dialog
-      // crashed. A dialog put off with あとで comes back on its own timer.
-      existing.machineDown = false;
-      existing.decision = decision;
-      if (
-        !existing.showing &&
-        !existing.queued &&
-        !existing.dismissed &&
-        !existing.resolved
-      ) {
-        existing.queued = true;
-        this.queue.push(key);
-        this.schedulePump();
-      }
-      return;
-    }
-    if (decision.status && decision.status !== "pending") return;
-
-    const entry = {
-      key,
-      machineId: mid,
-      machine,
-      decision,
-      queued: false,
-      showing: false,
-      dismissed: false,
-      resolved: false,
-      machineDown: false,
-      answerPending: false,
-    };
-    this.entries.set(key, entry);
-    if (this.machinesDown.has(mid)) {
-      this.log(`${mid} は切断中: ${decision.decision_id} のダイアログは出しません`);
-      entry.machineDown = true;
-      return;
-    }
-    entry.queued = true;
-    this.queue.push(key);
-    this.log(`判断待ちをキューに追加: ${decision.decision_id} (queue=${this.queue.length})`);
-    this.schedulePump();
-  }
-
-  onResolved(mid, decision) {
-    const key = decisionKey(mid, decisionIdOf(decision));
-    const entry = this.entries.get(key);
-    if (entry) {
-      entry.resolved = true;
-      entry.queued = false;
-      clearTimeout(entry.snoozeTimer);
-      clearTimeout(entry.answerRetryTimer);
-      this.queue = this.queue.filter((k) => k !== key);
-      if (entry.showing) this._closeDialog();
-      this.entries.delete(key);
-    }
-    this.log(`決定済み: ${decision.decision_id} (${decision.status})`);
-  }
-
-  onMachineDown(mid, reason) {
-    this.machinesDown.add(mid);
-    for (const entry of [...this.entries.values()]) {
-      if (entry.machineId !== mid) continue;
-      entry.machineDown = true;
-      entry.queued = false;
-      clearTimeout(entry.snoozeTimer);
-      clearTimeout(entry.answerRetryTimer);
-      this.queue = this.queue.filter((k) => k !== entry.key);
-      if (entry.showing) this._closeDialog();
-      this.entries.delete(entry.key);
-    }
-    this.log(`マシン切断: ${mid} (${reason})`);
-  }
-
-  // ---- dialog presentation ----------------------------------------------------
-
-  pump() {
-    if (this.showing || this.stopped) return;
-    while (this.queue.length > 0) {
-      const key = this.queue.shift();
-      const entry = this.entries.get(key);
-      if (!entry || entry.resolved || entry.dismissed || entry.machineDown) {
-        continue;
-      }
-      entry.queued = false;
-      this._present(entry);
-      return;
-    }
-  }
-
-  _present(entry) {
-    const spec = buildDialogSpec(entry.decision, entry.machine, this.queue.length, {
-      laterMs: this.config.laterMs,
-    });
-    let specPath = "";
-    try {
-      specPath = this.specFilePath(entry.key);
-      spec.result_path = `${specPath}.result.jsonl`;
-      spec.daemon_pid = process.pid;
-      spec.daemon_owner = this.config.daemonOwner;
-      spec.daemon_ownership_path = daemonPidPath(this.config.stateDir);
-      fs.mkdirSync(path.dirname(specPath), { recursive: true });
-      fs.writeFileSync(specPath, JSON.stringify(spec), { mode: 0o600 });
-    } catch (error) {
-      this.log(`spec ファイルの書き込みに失敗 (${entry.decision.decision_id}): ${error.message}`);
-      return;
-    }
-    entry.showing = true;
-    this.showing = entry.key;
-    this.log(`ダイアログを表示: ${entry.decision.decision_id}`);
-    const child = this.spawnDialog(specPath, spec);
-    child.entry = entry;
-    child.specPath = specPath;
-    child.handled = false;
-    this.child = child;
-    this._dialogDone = this._consumeChild(child);
-  }
-
-  async _consumeChild(child) {
-    try {
-      for await (const line of child.lines) {
-        if (child.handled || this.stopped) continue;
-        let message;
-        try {
-          message = JSON.parse(line);
-        } catch {
-          this.log(`ダイアログの JSON でない行を捨てました: ${String(line).slice(0, 120)}`);
-          continue;
-        }
-        if (message?.event === "shown") continue;
-        if (typeof message?.result !== "string") continue;
-        child.handled = true;
-        await this._handleResult(child, message);
-      }
-    } catch (error) {
-      this.log(`ダイアログプロセスの読み取りに失敗: ${error.message}`);
-    }
-    // exited
-    const entry = child.entry;
-    const outcome = await child.exited;
-    removeDialogFiles(child.specPath);
-    entry.showing = false;
-    if (this.child === child) {
-      this.showing = null;
-      this.child = null;
-    }
-    if (outcome?.error) {
-      this.log(`パネルを起動できないため停止します: ${outcome.error.code}`);
-      void this.stop();
-      this.onFatal?.(outcome.error);
-      return;
-    }
-    this.schedulePump();
-  }
-
-  async _handleResult(child, message) {
-    const entry = child.entry;
-    if (message.result === "answer") {
-      const ids = Array.isArray(message.option_ids)
-        ? message.option_ids.filter((id) => typeof id === "string" && id)
-        : [];
-      const text = typeof message.text === "string" ? message.text.trim() : "";
-      if (!entry.resolved && (ids.length > 0 || text)) {
-        await this.submitAnswer(entry, { optionIds: ids, text });
-      }
-      return;
-    }
-    if (["later", "dismiss", "closed"].includes(message.result)) {
-      this.snooze(entry);
-    }
-  }
-
-  // あとで: hide now, show again after laterMs if nobody has answered by then.
-  snooze(entry) {
-    entry.dismissed = true;
-    const laterMs = this.config.laterMs ?? DEFAULT_LATER_MS;
-    this.log(
-      `あとで: ${entry.decision.decision_id} を ${Math.round(laterMs / 60_000)} 分後にもう一度出します`,
-    );
-    clearTimeout(entry.snoozeTimer);
-    entry.snoozeTimer = setTimeout(() => {
-      entry.snoozeTimer = null;
-      if (this.stopped || entry.resolved || entry.machineDown) return;
-      if (this.entries.get(entry.key) !== entry) return;
-      entry.dismissed = false;
-      if (!entry.queued && !entry.showing) {
-        entry.queued = true;
-        this.queue.push(entry.key);
-        this.schedulePump();
-      }
-    }, laterMs);
-    entry.snoozeTimer.unref?.();
-  }
-
-  _closeDialog() {
-    if (!this.child) return;
-    this.log(`ダイアログを閉じます: ${this.child.entry.decision.decision_id}`);
-    // The panel watches its spec file and exits as soon as it disappears;
-    // the signal is the fast path.
-    try {
-      fs.unlinkSync(this.child.specPath);
-    } catch {}
-    try {
-      this.child.kill();
-    } catch {}
-  }
-
-  // ---- answering ---------------------------------------------------------------
-
-  isActive(entry) {
-    return !this.stopped && !entry.resolved && !entry.machineDown &&
-      !this.machinesDown.has(entry.machineId) && this.entries.get(entry.key) === entry;
-  }
-
-  async submitAnswer(entry, { optionIds = [], text = "" }) {
-    if (!this.isActive(entry) || entry.answerPending) return false;
-    entry.answerPending = true;
-    const did = entry.decision.decision_id;
-    const args = ["decision", "answer", did, ...optionIds, "--responder", RESPONDER, "--machine", entry.machineId];
-    if (text) args.push("--text", text);
-    this.log(`回答を送信: ${did} option=${optionIds.join(",") || "-"}${text ? " +text" : ""}`);
-    let result;
-    try { result = await this.runAnswer(args); }
-    catch (error) { result = {code: 1, stderr: error.message}; }
-    if (result.code === 0) return true;
-    if (!this.isActive(entry)) return false; // watch resolved closes the panel
-    entry.answerPending = false;
-    const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "unknown";
-    this.log(`回答の送信に失敗 (${did}): ${detail}`);
-    const child = this.child;
-    if (child?.entry === entry) {
-      child.handled = false;
-      child.respond({status: "error", message: `回答を送信できませんでした。再回答できます。\n${detail}`});
-    }
-    return false;
-  }
-
-}
 
 // --- process plumbing -------------------------------------------------------------
 
@@ -714,17 +242,35 @@ function spawnHelperDialog(config, specPath, logFn = () => {}) {
 // a signal closes it. swiftc must use Xcode's default toolchain: a
 // DEVELOPER_DIR pointing at CommandLineTools makes the SDK and compiler
 // disagree and the build fails.
+function nativeSources() {
+  return ["dialog.swift", "main.swift", "host.swift", "preview.swift", "unicode-width.swift"].map(name => path.join(pluginRootDir(), name));
+}
+
 function nativeDialogPath(config) {
-  const source = path.join(pluginRootDir(), "dialog.swift");
-  const hash = createHash("sha256")
-    .update(fs.readFileSync(source))
-    .digest("hex")
+  const hash = nativeSources().reduce((hash, source) => hash.update(fs.readFileSync(source)), createHash("sha256")).digest("hex")
     .slice(0, 12);
   return path.join(config.stateDir, "bin", `ikesu-decision-dialog-${hash}`);
 }
 
 function ensureNativeDialog(config, logFn = () => {}) {
-  const source = path.join(pluginRootDir(), "dialog.swift");
+  const root = pluginRootDir();
+  const app = path.join(root, "IkesuDecisionDialog.app");
+  const installedRoot = homePath(".local", "share", "ikesu", "mac-dialog-decisions");
+  if (fs.existsSync(path.join(root, "CHANNEL")) || path.dirname(root) === installedRoot || fs.existsSync(app)) {
+    try {
+      if (fs.readFileSync(path.join(root, "CHANNEL"), "utf8").trim() !== "release") throw Error("release CHANNEL is missing or invalid");
+      const requirement = 'anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" and certificate leaf[subject.CN] = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"';
+      execFileSync("codesign", ["--verify", "--deep", "--strict", "-R", requirement, app], {stdio: "pipe"});
+      const executable = path.join(app, "Contents", "MacOS", "ikesu-decision-dialog");
+      fs.accessSync(executable, fs.constants.X_OK);
+      logFn(`署名済み配布パネルを起動します: ${executable}`);
+      return executable;
+    } catch (error) {
+      logFn(`配布パネルの検証に失敗（swiftcへは戻りません）: ${error.message}`);
+      return null;
+    }
+  }
+  logFn("開発用パネルを使用します (swiftc)");
   const binary = nativeDialogPath(config);
   if (fs.existsSync(binary)) return binary;
   fs.mkdirSync(path.dirname(binary), { recursive: true });
@@ -732,7 +278,7 @@ function ensureNativeDialog(config, logFn = () => {}) {
   const env = { ...process.env };
   delete env.DEVELOPER_DIR;
   logFn("ダイアログをビルドします (swiftc、初回は1〜2分かかります)");
-  const res = spawnSync("swiftc", ["-O", source, "-o", tmp], {
+  const res = spawnSync("swiftc", ["-O", ...nativeSources(), "-o", tmp], {
     encoding: "utf8",
     env,
     timeout: 600_000,
@@ -749,12 +295,6 @@ function ensureNativeDialog(config, logFn = () => {}) {
   fs.renameSync(tmp, binary);
   logFn(`ダイアログをビルドしました: ${binary}`);
   return binary;
-}
-
-function removeDialogFiles(specPath) {
-  for (const file of [specPath, `${specPath}.result.jsonl`]) {
-    try { fs.unlinkSync(file); } catch (error) { if (error.code !== "ENOENT") throw error; }
-  }
 }
 
 async function acquireDaemonLock(binary, stateDir) {
@@ -789,6 +329,17 @@ function createRunAnswer(config, logFn = () => {}, env = process.env) {
   };
 }
 
+function createGetDecision(config, logFn = () => {}, env = process.env) {
+  const run = createRunAnswer(config, logFn, env);
+  return async (machine, id) => {
+    const response = await run(["decision", "get", id, "--machine", machine]);
+    if (response.code !== 0) throw Error(response.stderr || response.stdout || "decision get failed");
+    const decision = JSON.parse(response.stdout)?.result?.decision;
+    if (!decision) throw Error("decision get returned no saved decision");
+    return decision;
+  };
+}
+
 // --- singleton ensure ----------------------------------------------------------------
 
 function pidAlive(pid) {
@@ -798,10 +349,6 @@ function pidAlive(pid) {
   } catch {
     return false;
   }
-}
-
-function daemonPidPath(stateDir) {
-  return path.join(stateDir, DAEMON_PID_FILE);
 }
 
 function readDaemonPid(stateDir) {
@@ -814,13 +361,9 @@ function readDaemonPid(stateDir) {
 }
 
 function daemonRunning(stateDir) {
-  const pid = readDaemonPid(stateDir);
   try {
-    const owner = JSON.parse(fs.readFileSync(daemonPidPath(stateDir), "utf8"));
-    const exact = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {encoding: "utf8"}).trim();
-    return pid > 0 && pidAlive(pid) && owner.stateDir === fs.realpathSync(stateDir) &&
-      owner.script === fileURLToPath(import.meta.url) &&
-      [process.execPath, "node"].some(node => exact === `${node} ${owner.script} run`);
+    const owner = readOwner(stateDir);
+    return ownerProven(owner,stateDir) && owner.script === fileURLToPath(import.meta.url);
   } catch { return false; }
 }
 
@@ -828,13 +371,24 @@ function writeDaemonPid(stateDir, owner) {
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(
     daemonPidPath(stateDir),
-    JSON.stringify({ pid: process.pid, started: Date.now(), owner, stateDir: fs.realpathSync(stateDir), script: fileURLToPath(import.meta.url) }),
+    JSON.stringify({ pid: process.pid, started: Date.now(), owner, stateDir: fs.realpathSync(stateDir), script: fileURLToPath(import.meta.url), node: process.execPath, root: pluginRootDir(), version: releaseVersion(pluginRootDir()) }),
     { mode: 0o600 },
   );
 }
 
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+async function registeredPluginRoot(config, env = process.env) {
+  const bin = resolveIkesuBin(config, log, env);
+  if (!bin) throw Error("cannot verify plugin registration: ikesu executable unavailable");
+  const response = await execFileText(bin,["plugin","list","--json"],{env});
+  if (response.code!==0) throw Error(`cannot verify plugin registration: ${response.stderr || response.stdout}`);
+  const plugins=JSON.parse(response.stdout)?.result?.plugins;
+  if (!Array.isArray(plugins)) throw Error("invalid plugin registry response");
+  const entry=plugins.find(p=>p.plugin_id===PLUGIN_ID && p.enabled);
+  return entry ? path.dirname(entry.manifest_path) : null;
 }
 
 async function ensureDaemon(config, env) {
@@ -859,10 +413,21 @@ async function ensureDaemon(config, env) {
     }
   }
   try {
+    const registered = await registeredPluginRoot(config,env);
+    if (!registered) throw Error("Mac dialog plugin is not registered and enabled");
+    if (registered !== pluginRootDir()) { log("登録先が変わったため、この版は起動しません"); return; }
     if (daemonRunning(config.stateDir)) {
+      cancelSwitch(config.stateDir);
       log(`デーモンは起動済み (pid ${readDaemonPid(config.stateDir)})`);
       return;
     }
+    const owner = readOwner(config.stateDir);
+    if (ownerAlive(owner)) {
+      requestSwitch(config.stateDir,pluginRootDir());
+      log(ownerProven(owner,config.stateDir) ? "旧版に安全な切替を要求しました" : "稼働版不明・切替待ち（強制停止しません）");
+      return;
+    }
+    cancelSwitch(config.stateDir);
     let startedAt = 0;
     try {
       startedAt = JSON.parse(
@@ -880,6 +445,8 @@ async function ensureDaemon(config, env) {
       ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
       ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || ""],
       ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
+      ["IKESU_SOCKET_PATH_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
+      ["IKESU_CONFIG_PATH", env.IKESU_CONFIG_PATH || ""],
       ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.ikesuBin],
       ["PATH", env.PATH || ""],
     ]
@@ -889,18 +456,16 @@ async function ensureDaemon(config, env) {
     const inner = `export ${exportsList}; exec node ${shellQuote(path.join(pluginRoot, "mac-dialog-decisions.mjs"))} run`;
     const daemonBin = resolveIkesuBin(config, log);
     if (!daemonBin) {
-      log(
+      throw Error(
         `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
           "デーモンを起動できません",
       );
-      return;
     }
     const result = await execFileText(
       daemonBin,
       [
         "run",
-        "--caller",
-        env.IKESU_PANE_ID,
+        ...(env.IKESU_PANE_ID ? ["--caller", env.IKESU_PANE_ID] : []),
         "--label",
         RUN_LABEL,
         "--cwd",
@@ -915,8 +480,7 @@ async function ensureDaemon(config, env) {
       { timeoutMs: 15_000 },
     );
     if (result.code !== 0) {
-      log(`ikesu run に失敗: ${(result.stderr || result.stdout).trim()}`);
-      return;
+      throw Error(`ikesu run に失敗: ${(result.stderr || result.stdout).trim()}`);
     }
     fs.writeFileSync(
       path.join(config.stateDir, "starting.json"),
@@ -969,34 +533,46 @@ async function main() {
   // detect the changed owner token; no process-name matching or killing.
   const specDir = path.join(config.stateDir, "dialogs");
   fs.rmSync(specDir, {recursive: true, force: true});
+  const host = config.helperCmd ? null : new NativeDialogHost(nativeDialog, specDir, log);
+  let lifecycle;
   const daemon = new MacDialogDecisionsDaemon({
     config,
     onFatal: () => shutdown(1),
     spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),
     runAnswer: createRunAnswer(config, log),
-    spawnDialog: (specPath) =>
-      spawnHelperDialog(
+    getDecision: createGetDecision(config, log),
+    spawnDialog: (specPath) => host ? host.open(specPath) : spawnHelperDialog(
         { ...config, helperCmd: config.helperCmd || [nativeDialog] },
         specPath,
         log,
       ),
     specFilePath: (key) =>
-      path.join(specDir, `${key.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`),
+      path.join(specDir, `${createHash("sha256").update(key).digest("hex")}.json`),
     log,
   });
   let shuttingDown = false;
-  const shutdown = (exitCode = 0) => {
+  const shutdown = (exitCode = 0, nextRoot = null) => {
     if (shuttingDown) return;
     shuttingDown = true;
     void (async () => {
       try {
+        lifecycle?.stop();
         await daemon.stop();
+        await host?.stop();
         try {
           const owner = JSON.parse(fs.readFileSync(daemonPidPath(config.stateDir), "utf8"));
           if (owner.owner === config.daemonOwner) fs.rmSync(daemonPidPath(config.stateDir));
         } catch (error) { if (error.code !== "ENOENT") log(`所有情報の削除に失敗: ${error.message}`); }
       } finally {
         await lock.close();
+        if (nextRoot) {
+          try {
+            if (await registeredPluginRoot(config) === nextRoot) {
+              const result = await execFileText(process.execPath,[path.join(nextRoot,"mac-dialog-decisions.mjs"),"ensure"],{env:process.env});
+              if (result.code!==0) log(`次の版の起動に失敗: ${result.stderr || result.stdout}`);
+            } else log("切替先が再変更されたため、古い切替先は起動しません");
+          } catch (error) { log(`次の版の起動確認に失敗: ${error.message}`); }
+        }
         process.exit(exitCode);
       }
     })();
@@ -1006,6 +582,7 @@ async function main() {
   });
   process.on("SIGINT", () => shutdown());
   process.on("SIGTERM", () => shutdown());
+  lifecycle = manageDaemon(daemon,config,{root:pluginRootDir(),registeredRoot:()=>registeredPluginRoot(config),onSwitch:root=>shutdown(0,root),log});
   await daemon.start();
   log("watch 開始 (ikesu decision watch --all-machines)");
 }
@@ -1035,6 +612,7 @@ export {
   spawnDecisionWatch,
   buildDialogSpec,
   createRunAnswer,
+  createGetDecision,
   decisionKey,
   fmtDeadline,
   loadConfig,
@@ -1042,4 +620,5 @@ export {
   resolveIkesuBin,
   spawnHelperDialog,
   ensureNativeDialog,
+  ensureDaemon,
 };

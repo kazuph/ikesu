@@ -20,6 +20,21 @@ func TestClaudeNarrowRealQuestionIsBlocked(t *testing.T) {
 	}
 }
 
+func TestClaudeCapturedMCPConfirmationIsBlocked(t *testing.T) {
+	for _, cursor := range []string{"accept", "decline"} {
+		t.Run(cursor, func(t *testing.T) {
+			data, err := os.ReadFile("../screenprompt/testdata/claude-mcp-" + cursor + ".txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := Detect("claude", Input{Screen: string(data)})
+			if d.State != Blocked || d.RuleID != "mcp_elicitation_prompt" {
+				t.Fatal(d)
+			}
+		})
+	}
+}
+
 func TestClaudeCompleteFooterAcceptsWhitespaceWrapOnly(t *testing.T) {
 	base := "Question?\n──────────\n❯ 1. First\n  2. Second\n──────────\n"
 	for _, footer := range []string{"Enter to select · Tab/Arrow keys to navigate · Esc to cancel", "Enter to select · ↑/↓ to navigate · Esc to cancel", "Enter to confirm · Esc to cancel"} {

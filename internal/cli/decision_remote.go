@@ -31,6 +31,10 @@ func decisionAuthReason(line string) (string, bool) {
 	return "SSH authentication required: " + strings.TrimSpace(url), true
 }
 func (r *runner) decisionMachineAnswer(args []string) (bool, int) {
+	return r.decisionMachineCommand("answer", args)
+}
+
+func (r *runner) decisionMachineCommand(command string, args []string) (bool, int) {
 	ref := ""
 	clean := []string{}
 	found := false
@@ -72,14 +76,14 @@ func (r *runner) decisionMachineAnswer(args []string) (bool, int) {
 		return false, 0
 	}
 	if ref == "local" {
-		return true, r.decisionCLI(append([]string{"answer"}, clean...))
+		return true, r.decisionCLI(append([]string{command}, clean...))
 	}
 	p, err := machine.Resolve(r.catalog().Load(), ref, true)
 	if err != nil {
 		fmt.Fprintln(r.errOut(), err)
 		return true, 1
 	}
-	cmd := childenv.Command("ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), append([]string{"decision", "answer"}, clean...))...)
+	cmd := childenv.Command("ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), append([]string{"decision", command}, clean...))...)
 	cmd.Stdout, cmd.Stderr = r.out(), r.errOut()
 	if err := cmd.Run(); err != nil {
 		if e, ok := err.(*exec.ExitError); ok {

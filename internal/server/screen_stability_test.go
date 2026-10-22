@@ -61,9 +61,8 @@ func TestScreenExternalInputPreventsCreateAndPreviewRestoration(t *testing.T) {
 	}
 	s.app.Do(func() {
 		w := s.screenPrompts.watches[1]
-		w.preview = &screenPreviewScan{original: 1, visited: map[string]*string{}, lastDirection: "\x1b[B"}
+		w.preview = &screenPreviewScan{original: 1, visited: map[string]*string{}}
 		p.RecordExternalInput()
-		s.restorePreviewCursor(1, w)
 		s.scanScreenPrompts()
 		if w.preview != nil {
 			t.Error("scan did not abort")

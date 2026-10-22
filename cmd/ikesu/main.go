@@ -19,7 +19,7 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-const version = "0.4.0"
+const version = "0.4.1"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "__job-runner" {
@@ -134,7 +134,7 @@ dispatch:
 				os.Exit(code)
 			}
 			fallthrough
-		case "session", "status", "guard", "decision", "config", "wait", "plugin", "pane", "workspace", "worktree", "tab",
+		case "session", "status", "guard", "decision", "config", "wait", "plugin", "tb", "mac-dialog", "pane", "workspace", "worktree", "tab",
 			"send", "inbox", "msg", "run", "log", "agent", "machine",
 			"help", "--help", "-h", "__pane-run":
 			os.Exit(cli.Run(args, cli.Options{

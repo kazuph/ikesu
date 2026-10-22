@@ -1,8 +1,8 @@
 package screenprompt
 
 import (
-	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/cellwidth"
 	"regexp"
 	"strings"
 )
@@ -127,7 +127,7 @@ func mergeCommandRows(lines []string, columns int) []string {
 		trim := strings.TrimLeft(line, " ")
 		if strings.HasPrefix(trim, "│ ") {
 			content := strings.TrimPrefix(trim, "│ ")
-			commandColumns = columns - ansi.StringWidth(line[:len(line)-len(content)])
+			commandColumns = columns - cellwidth.String(line[:len(line)-len(content)])
 			command = append(command, content)
 		} else {
 			flush()

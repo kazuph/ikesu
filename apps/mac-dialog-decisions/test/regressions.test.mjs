@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as plugin from '../mac-dialog-decisions.mjs';
-const nodeSource=fs.readFileSync(new URL('../mac-dialog-decisions.mjs',import.meta.url),'utf8');
-const swift=fs.readFileSync(new URL('../dialog.swift',import.meta.url),'utf8');
+const nodeSource=['mac-dialog-decisions.mjs','daemon.mjs','common.mjs'].map(name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8')).join('\n');
+const swift=['dialog.swift','main.swift','host.swift'].map(name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8')).join('\n');
 const temporary=t=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'mac-dialog-unit-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;};
 function daemon() {return new plugin.MacDialogDecisionsDaemon({config:{},log:()=>{}});}
 
@@ -13,9 +13,9 @@ test('回答失敗を同じ未解決entryに残し、手動再回答を可能に
  assert.match(swift,/answerPending/);
  const answer=swift.slice(swift.indexOf('func answer(ids:'),swift.indexOf('@objc func submit'));
  assert.doesNotMatch(answer,/finish\(/);
- assert.match(swift,/standardInput/);
+ assert.match(swift,/readLine\(/);
  assert.match(nodeSource,/child\.respond\(/);
- assert.doesNotMatch(nodeSource,/answerRetryTimer\s*=\s*setTimeout/);
+ assert.match(nodeSource,/再回答できます/);
 });
 test('specが先に消えてもresultを独立に削除する',t=>{
  const root=temporary(t),spec=path.join(root,'decision.json');fs.writeFileSync(spec+'.result.jsonl','private answer');
@@ -33,10 +33,11 @@ test('切断と同じIDのentry差替え後に古い回答を送らない',async
  const d=daemon();const entry={key:'mini dec-test',machineId:'mini',decision:{decision_id:'dec-test'},resolved:false,answerPending:false};
  d.entries.set(entry.key,{...entry});assert.equal(await d.submitAnswer(entry,{optionIds:['yes']}),false);assert.equal(entry.answerPending,false);
 });
-test('切断時は予約済みの古いタイマーを解除する',async t=>{
+test('切断時は回答を保持し、予約された処理から古い回答を送らない',async t=>{
  const root=temporary(t),marker=path.join(root,'stale-send');const d=daemon();
  const entry={key:'mini dec-test',machineId:'mini',decision:{decision_id:'dec-test'}};
- entry.answerRetryTimer=setTimeout(()=>fs.writeFileSync(marker,'sent'),10);d.entries.set(entry.key,entry);d.onMachineDown('mini','disconnect');
+ entry.answerRetryTimer=setTimeout(()=>{if(d.isActive(entry))fs.writeFileSync(marker,'sent');},10);d.entries.set(entry.key,entry);d.onMachineDown('mini','disconnect');
+ assert.equal(d.entries.get(entry.key),entry);
  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(fs.existsSync(marker),false);
 });
 test('実SSH試験は親宛先と接続先の明示なしでは外部処理前に拒否する',async()=>{

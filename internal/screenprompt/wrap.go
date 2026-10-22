@@ -5,15 +5,15 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi"
+	"github.com/kazuph/ikesu/internal/cellwidth"
 )
 
 func screenColumns(lines []string) int {
 	width, ruleWidth := 0, 0
 	for _, line := range lines {
-		width = max(width, ansi.StringWidth(line))
+		width = max(width, cellwidth.String(line))
 		if solidRule(line) {
-			ruleWidth = max(ruleWidth, ansi.StringWidth(line))
+			ruleWidth = max(ruleWidth, cellwidth.String(line))
 		}
 	}
 	if ruleWidth > 0 {
@@ -60,11 +60,11 @@ func wrappedSeparator(previous, next string, columns int) string {
 	if pathPrefix && pathSuffix || strings.ContainsRune("/\\_-", a) || strings.ContainsRune("/\\_.-", b) {
 		return ""
 	}
-	indent := ansi.StringWidth(previous) - ansi.StringWidth(strings.TrimLeftFunc(previous, unicode.IsSpace))
-	if columns > indent && ansi.StringWidth(last+first) > columns-indent {
+	indent := cellwidth.String(previous) - cellwidth.String(strings.TrimLeftFunc(previous, unicode.IsSpace))
+	if columns > indent && cellwidth.String(last+first) > columns-indent {
 		return ""
 	}
-	if columns > 0 && ansi.StringWidth(previous) >= columns-1 && strings.ContainsFunc(previous, cjk) {
+	if columns > 0 && cellwidth.String(previous) >= columns-1 && strings.ContainsFunc(previous, cjk) {
 		return ""
 	}
 	return " "

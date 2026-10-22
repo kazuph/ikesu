@@ -24,6 +24,9 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if ok && w != nil && w.prompt != nil && w.prompt.CodexQuestion && current == nil {
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the current Codex question and notes state"}
 	}
+	if ok && w != nil && w.prompt != nil && w.prompt.MCPServer != "" && current == nil {
+		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify current MCP confirmation"}
+	}
 	damaged := false
 	if pane := s.sup.Get(pid); pane != nil {
 		visible, _ := pane.ReadLines("visible", true)
@@ -77,6 +80,10 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 
 // Each write is a separate PTY event; delay reuses the established agent prompt submit interval.
 func (s *Server) screenInput(pid int, signature, data string, verify bool, notesOpen *bool) error {
+	return s.screenInputChecked(pid, signature, data, verify, notesOpen, nil)
+}
+
+func (s *Server) screenInputChecked(pid int, signature, data string, verify bool, notesOpen *bool, cursor *int) error {
 	err := fmt.Errorf("server stopped before input delivery")
 	s.app.Do(func() {
 		pane := s.sup.Get(pid)
@@ -92,6 +99,10 @@ func (s *Server) screenInput(pid int, signature, data string, verify bool, notes
 			p := s.readScreenPrompt(pid)
 			if p == nil || p.Signature() != signature {
 				err = fmt.Errorf("question changed during input delivery")
+				return
+			}
+			if cursor != nil && p.Cursor != *cursor {
+				err = fmt.Errorf("selected option changed before input delivery")
 				return
 			}
 			if p.CodexQuestion {
@@ -120,6 +131,9 @@ func (s *Server) screenInputDelay() error {
 }
 
 func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer) error {
+	if prompt.MCPServer != "" {
+		return s.deliverMCPAnswer(pid, signature, prompt, answer)
+	}
 	if prompt.CodexQuestion {
 		return s.deliverCodexQuestionAnswer(pid, signature, prompt, answer)
 	}
@@ -128,7 +142,13 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			if answer.OptionID == nil {
 				return fmt.Errorf("missing option")
 			}
-			return s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], false, nil)
+			if err := s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], false, nil); err != nil {
+				return err
+			}
+			if prompt.HasPreview {
+				return s.confirmPreviewAnswer(pid, signature, *answer.OptionID)
+			}
+			return nil
 		}
 		for _, data := range []string{prompt.TextID, *answer.Text, "\r"} {
 			if err := s.screenInput(pid, signature, data, false, nil); err != nil {
