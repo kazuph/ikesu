@@ -71,7 +71,7 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 				c.Dir = a.Root
 				b, e := c.CombinedOutput()
 				if tc.Want == "ask" {
-					if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+					if e == nil || !strings.Contains(string(b), "対象プロジェクト・必要な理由・実施内容を説明する申請文が必要") {
 						t.Fatalf("not stopped before execution: %v %s", e, b)
 					}
 					records, e := os.ReadFile(filepath.Join(a.Root, "guard", "decisions.jsonl"))

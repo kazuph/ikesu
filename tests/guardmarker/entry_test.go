@@ -46,7 +46,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 				c := exec.Command(shell, "-c", tc.code, "test", target)
 				c.Env = env
 				b, e := c.CombinedOutput()
-				if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+				if e == nil || !strings.Contains(string(b), "対象プロジェクト・必要な理由・実施内容を説明する申請文が必要") {
 					t.Fatal(e, string(b))
 				}
 				if _, e = os.Stat(target); e != nil {
@@ -178,7 +178,7 @@ func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
 				command := exec.Command(shell, "-lc", code)
 				command.Env = env
 				b, e := command.CombinedOutput()
-				if e == nil || !strings.Contains(string(b), "日本語の申請文が必要") {
+				if e == nil || !strings.Contains(string(b), "対象プロジェクト・必要な理由・実施内容を説明する申請文が必要") {
 					t.Fatal("pre-execution guard did not reject", e, string(b))
 				}
 				if _, e = os.Stat(target); e != nil {
