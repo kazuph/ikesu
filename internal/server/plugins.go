@@ -13,7 +13,7 @@ import (
 func (s *Server) ensurePlugins() *plugin.Engine {
 	if s.plugins == nil {
 		bin, _ := os.Executable()
-		s.plugins = &plugin.Engine{Store: plugin.DefaultStore(s.version), SocketPath: api.APISocketPath(s.dir), BinPath: bin}
+		s.plugins = &plugin.Engine{Store: plugin.DefaultStore(s.version), SocketPath: api.APISocketPath(s.dir), BinPath: bin, ConfigPath: s.configPath}
 	}
 	return s.plugins
 }

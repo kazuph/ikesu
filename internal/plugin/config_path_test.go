@@ -13,12 +13,13 @@ func TestActionConfigurationPathIsActualReadPath(t *testing.T) {
 	for _, override := range []string{"", filepath.Join(t.TempDir(), "custom.toml")} {
 		t.Setenv("IKESU_CONFIG", override)
 		t.Setenv("IKESU_CONFIG_PATH", "/inherited/outer.toml")
+		e.ConfigPath, _ = filepath.Abs(config.Path())
 		env, err := e.Environment(p, Context{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := guard.EnvMap(env)["IKESU_CONFIG_PATH"]; got != config.Path() {
-			t.Fatalf("got %q want %q", got, config.Path())
+		if got := guard.EnvMap(env)["IKESU_CONFIG_PATH"]; got != e.ConfigPath {
+			t.Fatalf("got %q want %q", got, e.ConfigPath)
 		}
 	}
 }

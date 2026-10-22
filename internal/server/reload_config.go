@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) reloadConfig() api.ConfigReloadResult {
-	result := api.ConfigReloadResult{Type: "config_reload", Status: "applied", Diagnostics: []string{}}
+	result := api.ConfigReloadResult{Type: "config_reload", Status: "applied", Diagnostics: []string{}, ConfigPath: s.configPath}
 	c, err := config.LoadReloaded(s.cfg)
 	if err != nil {
 		result.Status = "failed"
