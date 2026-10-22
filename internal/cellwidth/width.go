@@ -1,4 +1,5 @@
 // Package cellwidth implements Unicode scalar cell widths from unicode-width 0.2.2.
+// License: third_party/unicode-width/LICENSE-MIT; generator: tools/unicode-width/generate.py
 // The generated ranges use UnicodeWidthChar::width; undefined/control widths are zero.
 package cellwidth
 

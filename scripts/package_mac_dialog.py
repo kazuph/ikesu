@@ -20,6 +20,15 @@ REQUIREMENT = ('anchor apple generic and certificate leaf[subject.OU] = "67M8FDF
                'and certificate leaf[subject.CN] = "' + IDENTITY + '"')
 
 
+def stage_release_files(repository, package):
+    sources = repository / "apps/mac-dialog-decisions"
+    for source in sources.glob("*.mjs"):
+        shutil.copy2(source, package / source.name)
+    for name in ("ensure-daemon", "ikesu-plugin.toml"):
+        shutil.copy2(sources / name, package / name)
+    shutil.copytree(repository / "third_party/unicode-width", package / "third_party/unicode-width")
+
+
 def main():
     if len(sys.argv) != 3 or not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", sys.argv[1]):
         raise RuntimeError("usage: package_mac_dialog.py MAJOR.MINOR.PATCH OUTPUT")
@@ -77,10 +86,7 @@ def main():
             run("codesign", "--force", "--options", "runtime", "--timestamp", "--sign", IDENTITY,
                 "--keychain", str(keychain), str(app))
             run("codesign", "--verify", "--deep", "--strict", "-R", REQUIREMENT, str(app))
-            for source in sources.glob("*.mjs"):
-                shutil.copy2(source, package / source.name)
-            for name in ("ensure-daemon", "ikesu-plugin.toml"):
-                shutil.copy2(sources / name, package / name)
+            stage_release_files(repository, package)
             (package / "VERSION").write_text(version + "\n")
             (package / "CHANNEL").write_text("release\n")
             output.mkdir(parents=True, exist_ok=True)

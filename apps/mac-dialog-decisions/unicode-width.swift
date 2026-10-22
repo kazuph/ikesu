@@ -1,4 +1,5 @@
 // Generated from unicode-width 0.2.2 UnicodeWidthChar::width (None -> 0).
+// License: third_party/unicode-width/LICENSE-MIT; generator: tools/unicode-width/generate.py
 // Unicode scalar widths, rather than grapheme-cluster widths.
 import Foundation
 let scalarWidthRanges: [(UInt32, UInt32, Int)] = [
