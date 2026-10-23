@@ -181,7 +181,7 @@ func verifyMacDialogSignature(root string) error {
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("signed IkesuDecisionDialog.app is required")
 	}
-	requirement := `anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" and certificate leaf[subject.CN] = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"`
+	requirement := `=anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" and certificate leaf[subject.CN] = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"`
 	cmd := exec.Command("codesign", "--verify", "--deep", "--strict", "-R", requirement, app)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("Developer ID verification: %w: %s", err, output)

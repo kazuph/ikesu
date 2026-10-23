@@ -16,7 +16,7 @@ import tarfile
 import tempfile
 
 IDENTITY = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"
-REQUIREMENT = ('anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" '
+REQUIREMENT = ('=anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" '
                'and certificate leaf[subject.CN] = "' + IDENTITY + '"')
 
 

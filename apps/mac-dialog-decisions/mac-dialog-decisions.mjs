@@ -252,6 +252,10 @@ function nativeDialogPath(config) {
   return path.join(config.stateDir, "bin", `ikesu-decision-dialog-${hash}`);
 }
 
+function verifyNativeDialogSignature(app, requirement = '=anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" and certificate leaf[subject.CN] = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"') {
+  execFileSync("codesign", ["--verify", "--deep", "--strict", "-R", requirement, app], {stdio: "pipe"});
+}
+
 function ensureNativeDialog(config, logFn = () => {}) {
   const root = pluginRootDir();
   const app = path.join(root, "IkesuDecisionDialog.app");
@@ -259,8 +263,7 @@ function ensureNativeDialog(config, logFn = () => {}) {
   if (fs.existsSync(path.join(root, "CHANNEL")) || path.dirname(root) === installedRoot || fs.existsSync(app)) {
     try {
       if (fs.readFileSync(path.join(root, "CHANNEL"), "utf8").trim() !== "release") throw Error("release CHANNEL is missing or invalid");
-      const requirement = 'anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" and certificate leaf[subject.CN] = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"';
-      execFileSync("codesign", ["--verify", "--deep", "--strict", "-R", requirement, app], {stdio: "pipe"});
+      verifyNativeDialogSignature(app);
       const executable = path.join(app, "Contents", "MacOS", "ikesu-decision-dialog");
       fs.accessSync(executable, fs.constants.X_OK);
       logFn(`署名済み配布パネルを起動します: ${executable}`);
@@ -620,5 +623,6 @@ export {
   resolveIkesuBin,
   spawnHelperDialog,
   ensureNativeDialog,
+  verifyNativeDialogSignature,
   ensureDaemon,
 };
