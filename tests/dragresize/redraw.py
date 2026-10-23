@@ -2,6 +2,7 @@
 """Real resize-driven full-screen terminal workload, no product stubs."""
 import os,signal,sys,time
 log=sys.argv[1]
+if len(sys.argv)>2 and sys.argv[2]=='alt':os.write(1,b'\x1b[?1049h')
 def draw(*args):
  size=os.get_terminal_size()
  with open(log,'a') as f: f.write(f'{time.time_ns()} {size.columns} {size.lines}\n')

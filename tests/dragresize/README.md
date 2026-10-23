@@ -39,3 +39,7 @@ these are diagnostic runs, excluded from comparison summaries.
 
 Only the isolated server is stopped, through `server.stop`; its exit is verified.
 No clipboard commands, sounds, running user sessions, or herdr source are used.
+
+`heavy-alt` runs the same redraw workload in DEC alternate-screen mode. Compare
+it with `heavy` to separate main-screen reflow/history work from redraw traffic.
+It is a diagnostic control, not a replacement for the required heavy workload.

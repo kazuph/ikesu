@@ -38,8 +38,8 @@ try:
  panes=request('pane.list',dict(workspace_id=w['workspace']['workspace_id']))['panes']; (root/'panes.json').write_text(json.dumps(panes,indent=2))
  for p in panes:
   log=root/(p['pane_id']+'.resize')
-  if mode=='heavy':
-   command=f'python3 {base}/source/tests/dragresize/redraw.py {log}'
+  if mode.startswith('heavy'):
+   command=f'python3 {base}/source/tests/dragresize/redraw.py {log}'+(' alt' if mode=='heavy-alt' else '')
   else:
    command=f"function TRAPWINCH() {{ print -r -- \"$EPOCHREALTIME $COLUMNS $LINES\" >> {log}; }}; zmodload zsh/datetime; PS1='LIGHT> '; clear"
   request('pane.send_text',dict(pane_id=p['pane_id'],text=command)); request('pane.send_keys',dict(pane_id=p['pane_id'],keys=['Enter']))
