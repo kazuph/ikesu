@@ -456,7 +456,7 @@ async function ensureDaemon(config, env) {
       .filter(([, value]) => value)
       .map(([key, value]) => `${key}=${shellQuote(value)}`)
       .join(" ");
-    const inner = `export ${exportsList}; exec node ${shellQuote(path.join(pluginRoot, "mac-dialog-decisions.mjs"))} run`;
+    const inner = `export ${exportsList}; exec ${shellQuote(process.execPath)} ${shellQuote(path.join(pluginRoot, "mac-dialog-decisions.mjs"))} run`;
     const daemonBin = resolveIkesuBin(config, log);
     if (!daemonBin) {
       throw Error(
