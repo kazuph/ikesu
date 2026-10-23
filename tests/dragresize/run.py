@@ -3,6 +3,8 @@
 import os,sys,json,socket,subprocess,time,tempfile
 from pathlib import Path
 base=Path(sys.argv[1]).resolve(); product=sys.argv[2]; mode=sys.argv[3]; case=sys.argv[4]
+if product=='herdr' and case=='right':
+ raise SystemExit('UNSUPPORTED: herdr 0.2.66 has no right sidebar; no substitute is measured')
 profiling=os.environ.get('DRAG_PROFILE')=='1'
 root=base/(f'{product}-{mode}-{case}'+('-profile' if profiling else '')); root.mkdir(parents=True,exist_ok=True)
 binary=base/'ikesu' if product=='ikesu' else Path.home()/'.local/share/herdr-builds/0.2.66/herdr'
