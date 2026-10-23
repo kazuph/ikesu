@@ -43,3 +43,8 @@ No clipboard commands, sounds, running user sessions, or herdr source are used.
 `heavy-alt` runs the same redraw workload in DEC alternate-screen mode. Compare
 it with `heavy` to separate main-screen reflow/history work from redraw traffic.
 It is a diagnostic control, not a replacement for the required heavy workload.
+
+After copying completed observations locally, run `analyze.py` and `audit.py`.
+The audit requires all 14 supported base cases and both alternate-screen controls,
+40 observed updates per case, the expected per-input signals, restored corner
+positions, successful isolated-server exits, and ten readable CPU profiles.
