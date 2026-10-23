@@ -139,6 +139,7 @@ func main() {
 	var cellChanged [][]int64
 	var cellContent [][]string
 	var drained int64
+	var completeAt int64
 	go func() {
 		buf := make([]byte, 1<<16)
 		for {
@@ -173,6 +174,9 @@ func main() {
 				chunkEnd = drained + int64(len(c.data))
 				_, _ = emu.Write(c.data)
 				drained += int64(len(c.data))
+				if !emu.ModeSet(ansi.ModeSynchronizedOutput) {
+					completeAt = c.at
+				}
 				if *cellClock {
 					if len(cellChanged) != *rows || len(cellChanged[0]) != *cols {
 						cellChanged, cellContent = make([][]int64, *rows), make([][]string, *rows)
@@ -305,6 +309,70 @@ func main() {
 				fmt.Fprintln(os.Stderr, "mouse coordinate mode changed during timed scroll")
 				os.Exit(1)
 			}
+		case "dragmeasure": // COUNT X Y DX DY WATCHX WATCHY: alternate one-cell movements
+			var count, x, y, dx, dy, wx, wy int
+			if n, _ := fmt.Sscanf(rest, "%d %d %d %d %d %d %d", &count, &x, &y, &dx, &dy, &wx, &wy); n != 7 {
+				panic("invalid dragmeasure")
+			}
+			settle()
+			mu.Lock()
+			if x == 0 {
+				for col := 27; col < *cols; col++ {
+					if c := emu.CellAt(col-1, 1); c != nil && c.Content == "┐" {
+						x = col
+						wx = col
+						break
+					}
+				}
+			}
+			if y == 0 {
+				for row := 3; row < *rows; row++ {
+					if c := emu.CellAt(26, row-1); c != nil && c.Content == "└" {
+						y = row
+						wy = row
+						break
+					}
+				}
+			}
+			fmt.Printf("drag-geometry x=%d y=%d watch=%d,%d\n", x, y, wx, wy)
+			glyph := emu.CellAt(wx-1, wy-1).Content
+			mu.Unlock()
+			cpu := func(label string) {
+				for _, pid := range []int{cmd.Process.Pid, func() int { n, _ := strconv.Atoi(os.Getenv("PARITY_OBSERVE_PID")); return n }()} {
+					out, _ := exec.Command("ps", "-o", "pid=,time=,%cpu=", "-p", strconv.Itoa(pid)).Output()
+					fmt.Printf("cpu %s %s\n", label, strings.TrimSpace(string(out)))
+				}
+			}
+			cpu("before")
+			fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
+			time.Sleep(100 * time.Millisecond)
+			for i := 0; i < count; i++ {
+				off := (i + 1) % 2
+				tx, ty := x+off*dx, y+off*dy
+				sx, sy := wx+off*dx, wy+off*dy
+				mu.Lock()
+				begin := drained
+				mu.Unlock()
+				start := time.Now()
+				fmt.Fprintf(ptmx, "\x1b[<32;%d;%dM", tx, ty)
+				observed := int64(0)
+				deadline := start.Add(250 * time.Millisecond)
+				for time.Now().Before(deadline) {
+					mu.Lock()
+					cell := emu.CellAt(sx-1, sy-1)
+					if observed == 0 && cell != nil && cell.Content == glyph && cellChanged[sy-1][sx-1] >= start.UnixMilli() && !emu.ModeSet(ansi.ModeSynchronizedOutput) {
+						observed = max(cellChanged[sy-1][sx-1], completeAt)
+					}
+					mu.Unlock()
+					time.Sleep(time.Millisecond)
+				}
+				mu.Lock()
+				end := drained
+				mu.Unlock()
+				fmt.Printf("drag sample=%d sent_us=%d seen_ms=%d bytes=%d begin=%d end=%d target=%d,%d glyph=%q\n", i, start.UnixMicro(), observed, end-begin, begin, end, sx, sy, glyph)
+			}
+			fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
+			cpu("after")
 		case "mouse", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
 			var kind string
 			var x, y int
