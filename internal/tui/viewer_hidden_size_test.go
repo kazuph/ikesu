@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"io"
-	"reflect"
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/config"
@@ -31,7 +30,7 @@ func hiddenSizeApp(t *testing.T) *App {
 	return a
 }
 
-func checkAllHiddenSizes(t *testing.T, a *App, cols, rows int) {
+func checkCurrentTabSizes(t *testing.T, a *App, cols, rows int) {
 	t.Helper()
 	want := map[int][2]int{}
 	state := *a.st
@@ -40,8 +39,14 @@ func checkAllHiddenSizes(t *testing.T, a *App, cols, rows int) {
 	}
 	state.Cols, state.Rows = cols, rows
 	for wi, ws := range state.Workspaces {
+		if ws.ID != a.st.ActiveWorkspace().ID {
+			continue
+		}
 		state.Active = wi
 		for _, tab := range ws.Tabs {
+			if tab != ws.TabRef() {
+				continue
+			}
 			base := *tab
 			base.Zoomed = 0
 			for _, pr := range state.PaneRectsForDisplay(&base, state.PanesArea()) {
@@ -53,8 +58,11 @@ func checkAllHiddenSizes(t *testing.T, a *App, cols, rows int) {
 			}
 		}
 	}
-	if got := viewerTerminalSizes(a); !reflect.DeepEqual(got, want) {
-		t.Fatalf("all panes must update before selection at %dx%d: got %v want %v", cols, rows, got, want)
+	got := viewerTerminalSizes(a)
+	for id, expected := range want {
+		if got[id] != expected {
+			t.Fatalf("visible pane %d at %dx%d: got %v want %v", id, cols, rows, got[id], expected)
+		}
 	}
 }
 
@@ -69,7 +77,7 @@ func TestViewerHiddenPanesUseOwnWorkspaceGeometryAndExplicitLayouts(t *testing.T
 			for _, size := range [][2]int{{200, 50}, {100, 30}}[:peers] {
 				owner = a.NewViewer(io.Discard, size[0], size[1], nil)
 				owner.Begin(a, 0, 0)
-				checkAllHiddenSizes(t, a, size[0], size[1])
+				checkCurrentTabSizes(t, a, size[0], size[1])
 			}
 			for _, cmd := range []model.Command{
 				model.CmdToggleSidebar{}, model.CmdToggleRightSidebar{},
@@ -77,15 +85,15 @@ func TestViewerHiddenPanesUseOwnWorkspaceGeometryAndExplicitLayouts(t *testing.T
 				model.CmdZoomPane{Pane: a.st.FocusedPane(), Mode: "on"},
 			} {
 				owner.with(a, func(ui *App) { ui.exec(cmd) })
-				checkAllHiddenSizes(t, a, owner.cols, owner.rows)
+				checkCurrentTabSizes(t, a, owner.cols, owner.rows)
 			}
 			owner.Resize(a, 210, 60, 0, 0)
-			checkAllHiddenSizes(t, a, 210, 60)
+			checkCurrentTabSizes(t, a, 210, 60)
 		})
 	}
 }
 
-func TestViewerHiddenPanesUpdateAtSizeEventsBeforeAnySelection(t *testing.T) {
+func TestViewerVisibleTabUpdatesAtSizeEvents(t *testing.T) {
 	teststate.Lock(t)
 	for _, peers := range []int{1, 2, 3} {
 		t.Run(fmt.Sprint(peers), func(t *testing.T) {
@@ -95,20 +103,20 @@ func TestViewerHiddenPanesUpdateAtSizeEventsBeforeAnySelection(t *testing.T) {
 				v := a.NewViewer(io.Discard, size[0], size[1], nil)
 				v.Begin(a, 0, 0)
 				viewers = append(viewers, v)
-				checkAllHiddenSizes(t, a, size[0], size[1])
+				checkCurrentTabSizes(t, a, size[0], size[1])
 			}
 			owner := viewers[len(viewers)-1]
 			owner.Resize(a, 190, 45, 0, 0)
-			checkAllHiddenSizes(t, a, 190, 45)
+			checkCurrentTabSizes(t, a, 190, 45)
 			if peers > 1 {
 				viewers[0].Resize(a, 220, 55, 0, 0)
-				checkAllHiddenSizes(t, a, 190, 45)
+				checkCurrentTabSizes(t, a, 220, 55)
 				owner.Detach(a)
 				if peers == 3 {
-					checkAllHiddenSizes(t, a, 190, 45)
+					checkCurrentTabSizes(t, a, 220, 55)
 					viewers[1].Detach(a)
 				}
-				checkAllHiddenSizes(t, a, 220, 55)
+				checkCurrentTabSizes(t, a, 220, 55)
 			}
 		})
 	}
@@ -116,12 +124,9 @@ func TestViewerHiddenPanesUpdateAtSizeEventsBeforeAnySelection(t *testing.T) {
 
 func hiddenSizeNavigation(t *testing.T, a *App, v *Viewer) {
 	t.Helper()
-	want := viewerTerminalSizes(a)
 	check := func() {
 		t.Helper()
-		if got := viewerTerminalSizes(a); !reflect.DeepEqual(got, want) {
-			t.Fatalf("selection changed PTYs: got %v want %v", got, want)
-		}
+		v.with(a, func(ui *App) { checkCurrentTabSizes(t, a, v.cols, v.rows) })
 	}
 	v.Input(a, []byte{2, '2'})
 	if v.tabs[a.st.Workspaces[0].ID] != a.st.Workspaces[0].Tabs[1].ID {
@@ -166,7 +171,7 @@ func hiddenSizeNavigation(t *testing.T, a *App, v *Viewer) {
 	}
 }
 
-func TestViewerHiddenPaneSizesDoNotChangeOnKeyOrClickSelection(t *testing.T) {
+func TestViewerSelectedTabsAcquireViewerSizeOnKeyOrClick(t *testing.T) {
 	teststate.Lock(t)
 	for _, peers := range []int{1, 2, 3} {
 		t.Run(fmt.Sprint(peers), func(t *testing.T) {

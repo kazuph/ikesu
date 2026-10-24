@@ -163,15 +163,16 @@ func TestEndpointIndependentTabsAndSizeOwnerLifecycle(t *testing.T) {
 		return fmt.Sprintf("%d %d", height, width)
 	}
 	for _, test := range []struct {
-		client *testConn
-		marker string
-	}{{first, "FIRSTSIZE"}, {second, "SECONDSIZE"}, {first, "RESTOREDSIZE"}} {
+		client     *testConn
+		marker     string
+		cols, rows int
+	}{{first, "FIRSTSIZE", 80, 24}, {second, "SECONDSIZE", 160, 45}, {first, "RESTOREDSIZE", 80, 24}} {
 		test.client.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf '" + test.marker + " '; stty size\n"))})
-		waitRead(t, dir, firstPane, test.marker+" "+expected(160, 45))
+		waitRead(t, dir, firstPane, test.marker+" "+expected(test.cols, test.rows))
 	}
 	first.send(t, clientMsg{Type: "resize", Cols: 90, Rows: 26})
-	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'NONOWNERSIZE '; stty size\n"))})
-	waitRead(t, dir, firstPane, "NONOWNERSIZE "+expected(160, 45))
+	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'RESIZECLAIMSIZE '; stty size\n"))})
+	waitRead(t, dir, firstPane, "RESIZECLAIMSIZE "+expected(90, 26))
 	second.send(t, clientMsg{Type: "resize", Cols: 150, Rows: 44})
 	second.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'OWNERSIZE '; stty size\n"))})
 	waitRead(t, dir, firstPane, "OWNERSIZE "+expected(150, 44))

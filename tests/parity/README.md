@@ -1,5 +1,17 @@
 # 実物の操作比較
 
+複数クライアントの寸法基準は Mac mini で
+`python3 tests/parity/multi_client_size.py 配布版の絶対パス 出力先` を実行する。
+末尾に `extra` を付けると、基準画面の切断と別タブの表示・resize を測る。
+別 HOME・専用ソケット・実PTYを作り、sound と toast を無効化し、pasteboard への接続を sandbox で拒否する。
+マウス・キー・貼り付け・focus の入力列と、PTY 内の `stty size` の生ログを保存する。
+各採取点は末尾3サンプルの一致を要求し、終了時は隔離サーバーを正常停止する。
+比較対象は herdr の配布版 0.2.66（実装ソースは読まない）。
+`python3 tests/parity/multi_client_size_gate.py 証拠の親ディレクトリ 変更後の基本観察ディレクトリ名 変更後の追加観察ディレクトリ名`
+で操作ごとの寸法と非表示ペインの不変性を検査する。
+親ディレクトリ内の `reference-final` と `reference-extra` に同じ手順の herdr 観察を置く。
+右サイドバー等の既存表示領域は製品ごとに単独ペインで採取し、異なる幅を同一の値と扱わない。
+
 段階3（マウス）はminiの `src/stage3` で `stage3_observe.sh 出力先 ケース名...` を使う。
 `PARITY_CONTROLLER_SESSION_ID` に現在の検証済みセッションIDを渡す。
 通知のケースでは未指定なら採取前に停止する。
