@@ -35,6 +35,16 @@ func TestGraphicsRelayoutKeepsPublishedGenerationAtCurrentAnchors(t *testing.T) 
 	if current.Image.Width != in.Panes[id].Graphics[0].Image.Width || !bytes.Equal(old.placements[id][0].Image.Data, published.Image.Data) {
 		t.Fatal("projection changed a source generation")
 	}
+	for _, boundary := range []kitty.Placement{
+		{ID: published.ID, Image: published.Image, Alternate: true},
+		{ID: published.ID, Image: published.Image, Virtual: true},
+		{ID: published.ID, Image: published.Image, APILayer: true},
+	} {
+		in.Panes[id].Graphics = []kitty.Placement{boundary}
+		if len(old.relayoutInput(in).Panes[id].Graphics) != 0 {
+			t.Fatal("retained generation crossed a surface boundary", boundary)
+		}
+	}
 	in.Panes[id].Graphics = nil
 	if len(old.relayoutInput(in).Panes[id].Graphics) != 0 {
 		t.Fatal("removed placement remained visible")

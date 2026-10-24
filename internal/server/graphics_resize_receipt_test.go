@@ -132,7 +132,7 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 				c = connect()
 			case "other-view":
 				other := connect()
-				other.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'OTHER_RECEIPT_VIEW\\n'\r"))})
+				other.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'OTHER_RECEIPT_%s\\n' VIEW\r"))})
 				read(other, graphicsReceiptWait/2, func(in render.Input) bool {
 					for _, p := range in.Panes {
 						var text strings.Builder
