@@ -369,8 +369,9 @@ func TestLateMonitorEvidenceDoesNotAttachToReusedLogPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	signalLossProcess(t, m.SupervisorPID, syscall.SIGSTOP, binPath)
+	resumed := false
 	t.Cleanup(func() {
-		if syscall.Kill(m.SupervisorPID, 0) == nil {
+		if !resumed && syscall.Kill(m.SupervisorPID, 0) == nil {
 			signalLossProcess(t, m.SupervisorPID, syscall.SIGCONT, binPath)
 		}
 	})
@@ -390,6 +391,7 @@ func TestLateMonitorEvidenceDoesNotAttachToReusedLogPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	signalLossProcess(t, m.SupervisorPID, syscall.SIGCONT, binPath)
+	resumed = true
 	j.s.waitFor("old reaper completed", 10*time.Second, func(string) bool {
 		b, e := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(m.SupervisorPID)).Output()
 		return e != nil || strings.HasPrefix(strings.TrimSpace(string(b)), "Z")
