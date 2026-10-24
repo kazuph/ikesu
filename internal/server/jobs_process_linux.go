@@ -7,26 +7,31 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 func jobProcessIdentity(pid int) (string, error) {
+	info, err := jobProcessState(pid)
+	return info.identity, err
+}
+
+func jobProcessState(pid int) (jobProcessInfo, error) {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
-		return "", err
+		return jobProcessInfo{}, err
 	}
 	end := strings.LastIndexByte(string(data), ')')
 	if end < 0 {
-		return "", fmt.Errorf("invalid process stat")
+		return jobProcessInfo{}, fmt.Errorf("invalid process stat")
 	}
 	fields := strings.Fields(string(data[end+1:]))
 	if len(fields) <= 19 {
-		return "", fmt.Errorf("missing process start time")
+		return jobProcessInfo{}, fmt.Errorf("missing process start time")
 	}
-	if fields[0] == "Z" || fields[0] == "X" {
-		return "", syscall.ESRCH
+	pgid, err := strconv.Atoi(fields[2])
+	if err != nil {
+		return jobProcessInfo{}, err
 	}
-	return fields[19], nil
+	return jobProcessInfo{identity: fields[19], exited: fields[0] == "Z" || fields[0] == "X", pgid: pgid}, nil
 }
 
 // Linux keeps an unreaped zombie in its process group. It cannot run or

@@ -35,7 +35,7 @@ func monitorProcessGone(pid int, identity string) (bool, error) {
 	if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
 		return true, nil
 	}
-	current, err := jobProcessIdentity(pid)
+	current, err := jobProcessState(pid)
 	if os.IsNotExist(err) || err == syscall.ESRCH {
 		return true, nil
 	}
@@ -45,7 +45,7 @@ func monitorProcessGone(pid int, identity string) (bool, error) {
 		}
 		return false, fmt.Errorf("cannot establish runner monitor identity: %w", err)
 	}
-	return current != identity, nil
+	return current.identity != identity || current.exited, nil
 }
 
 // Recovery never signals a process. Evidence publication is deliberately not a

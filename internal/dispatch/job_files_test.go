@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -75,7 +76,10 @@ func TestDiagnosticPublicationSerializesWithCleanup(t *testing.T) {
 	if err := <-published; err != nil {
 		t.Fatal(err)
 	}
-	if err := <-removed; err != nil {
+	if err := <-removed; err != nil && !errors.Is(err, errJobCleanupDeferred) {
+		t.Fatal(err)
+	}
+	if err := removeJobFiles(log); err != nil {
 		t.Fatal(err)
 	}
 	for _, suffix := range jobFileSuffixes {

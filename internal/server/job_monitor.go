@@ -11,6 +11,12 @@ import (
 	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
+type jobProcessInfo struct {
+	identity string
+	exited   bool
+	pgid     int
+}
+
 // Admission and shutdown share the mutex: Add cannot race a shutdown Wait.
 func (s *Server) startJobMonitor(id string, work func(<-chan struct{}) error) {
 	j := &s.jobProcs
@@ -107,14 +113,14 @@ func verifyJobGroup(manifest jobRunnerRecord) error {
 	if manifest.PID <= 0 {
 		return fmt.Errorf("invalid runner PID; refusing to signal")
 	}
-	identity, err := jobProcessIdentity(manifest.PID)
+	info, err := jobProcessState(manifest.PID)
 	if err != nil {
 		return fmt.Errorf("process start identity unavailable; refusing to signal: %w", err)
 	}
-	if identity != manifest.Identity {
+	if info.identity != manifest.Identity {
 		return fmt.Errorf("runner process identity changed; refusing to signal")
 	}
-	if group, err := syscall.Getpgid(manifest.PID); err != nil || group != manifest.PID {
+	if info.pgid != manifest.PID {
 		return fmt.Errorf("runner no longer leads its process group; refusing to signal")
 	}
 	return nil

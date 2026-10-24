@@ -9,14 +9,19 @@ import (
 )
 
 func jobProcessIdentity(pid int) (string, error) {
+	info, err := jobProcessState(pid)
+	return info.identity, err
+}
+
+func jobProcessState(pid int) (jobProcessInfo, error) {
 	proc, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil {
-		return "", err
+		return jobProcessInfo{}, err
 	}
-	if proc.Proc.P_pid == 0 || proc.Proc.P_stat == darwinZombieState {
-		return "", syscall.ESRCH
+	if proc.Proc.P_pid == 0 {
+		return jobProcessInfo{}, syscall.ESRCH
 	}
-	return fmt.Sprintf("%d:%d", proc.Proc.P_starttime.Sec, proc.Proc.P_starttime.Usec), nil
+	return jobProcessInfo{identity: fmt.Sprintf("%d:%d", proc.Proc.P_starttime.Sec, proc.Proc.P_starttime.Usec), exited: proc.Proc.P_stat == darwinZombieState, pgid: int(proc.Eproc.Pgid)}, nil
 }
 
 // SZOMB in the Darwin SDK sys/proc.h: an exited process awaiting its parent.
