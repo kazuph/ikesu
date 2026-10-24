@@ -321,6 +321,18 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			p.emu.Scrollback().OnDrop = r.dropHistory
 		}
 	}
+	defer func() {
+		history := r.historyLen()
+		p.emu.PrepareReflowHistory(func(y int) vt.ReflowRow {
+			var ref rowRef
+			if y < history {
+				ref = r.historyRef(y)
+			} else {
+				ref = r.main[0]
+			}
+			return vt.ReflowRow{Continued: ref.continued, Width: ref.width}
+		})
+	}()
 	if len(r.utf8Pending) > 0 {
 		chunk = append(r.utf8Pending, chunk...)
 		r.utf8Pending = nil

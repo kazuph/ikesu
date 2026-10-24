@@ -73,13 +73,14 @@ func (p *reflowShapePool) release(shape *reflowShape) {
 }
 
 type reflowLogicalLine struct {
-	shape    *reflowShape
-	pooled   *reflowShape
-	packed   []byte
-	styled   *styledRow
-	dense    uv.Line
-	clipping *reflowClipping
-	serial   uint64
+	shape      *reflowShape
+	pooled     *reflowShape
+	packed     []byte
+	styled     *styledRow
+	dense      uv.Line
+	clipping   *reflowClipping
+	serial     uint64
+	sourceRows int
 }
 
 type reflowClipping struct {

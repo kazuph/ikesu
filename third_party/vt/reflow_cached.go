@@ -31,10 +31,10 @@ func (r ReflowSnapshot) materialize() []ReflowRow {
 
 // reusableHistory separates complete immutable logical lines from the mutable
 // boundary line. Only the boundaries and new output need reconstruction.
-func (s *Screen) reusableHistory() (h *reflowHistory, first *reflowLogicalLine, from, groups, source int) {
+func (s *Screen) reusableHistory(rowRef func(int) ReflowRow) (h *reflowHistory, first *reflowLogicalLine, from, groups, source int) {
 	h = s.scrollback.indexed
 	if h == nil || h.view.rows == 0 {
-		return &reflowHistory{}, nil, 0, 0, 0
+		return s.reusablePrepared(rowRef)
 	}
 	p := h.view
 	firstGroup, firstCell, _, _, _ := p.row(0)
@@ -70,7 +70,7 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 	}
 	h, first, from, groups, source := &reflowHistory{}, (*reflowLogicalLine)(nil), 0, 0, 0
 	if stableHistory {
-		h, first, from, groups, source = s.reusableHistory()
+		h, first, from, groups, source = s.reusableHistory(rowRef)
 	}
 	var tail []*reflowLogicalLine
 	var logical, scratch uv.Line

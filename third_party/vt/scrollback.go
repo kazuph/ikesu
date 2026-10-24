@@ -25,6 +25,7 @@ type Scrollback struct {
 	packed          [][]byte
 	styled          []*styledRow
 	indexed         *reflowHistory
+	prepared        *reflowPrepared
 	OnDrop          func()
 }
 
@@ -109,6 +110,9 @@ func (s *Scrollback) pushTrimmed(line uv.Line) bool {
 
 	// The buffer is full: reuse the evicted line's backing array for the new
 	// copy instead of allocating a fresh one for every pushed line.
+	if s.prepared != nil {
+		s.prepared.dropFirst()
+	}
 	idx := s.start
 	if dst := s.lines[idx]; cap(dst) >= end {
 		s.lines[idx] = append(dst[:0], line[:end]...)
@@ -143,6 +147,9 @@ func (s *Scrollback) popLast() uv.Line {
 			s.bytes -= charge
 		}
 		return line
+	}
+	if s.prepared != nil {
+		s.prepared.popLast(s.count)
 	}
 	idx := s.wrap(s.start + s.count - 1)
 	line := s.lines[idx]
@@ -331,6 +338,7 @@ func (s *Scrollback) Clear() {
 	s.count = 0
 	s.bytes = 0
 	s.indexed = nil
+	s.prepared = nil
 }
 
 // CellAt returns the cell at the given position in the scrollback buffer.

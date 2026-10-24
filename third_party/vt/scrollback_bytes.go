@@ -67,6 +67,9 @@ func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
 		}
 		return nil, nil, nil
 	}
+	if s.prepared != nil {
+		s.prepared.dropFirst()
+	}
 	idx := s.start
 	row := s.lines[idx]
 	var text []byte
