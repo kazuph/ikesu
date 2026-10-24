@@ -7,15 +7,34 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
-func indexedHistoryFixture(rows int) (*Screen, ReflowSnapshot) {
+func unindexedHistoryFixture(rows int) *Screen {
 	s := NewScreen(160, 45)
 	s.scrollback.SetMaxBytes(10000000)
 	for i := 0; i < rows; i++ {
 		s.scrollback.Push(uv.Line{{Content: "x", Width: 1}})
 	}
 	s.cur.Y = s.Height() - 1
+	return s
+}
+
+func indexedHistoryFixture(rows int) (*Screen, ReflowSnapshot) {
+	s := unindexedHistoryFixture(rows)
 	view := s.reflowIndexed(159, 45, func(int) ReflowRow { return ReflowRow{} }, false, true)
 	return s, view
+}
+
+func BenchmarkFirstIndexedWidthHistoryScaling(b *testing.B) {
+	for _, rows := range []int{DefaultScrollbackSize / 10, DefaultScrollbackSize} {
+		b.Run(fmt.Sprintf("rows=%d", rows), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				s := unindexedHistoryFixture(rows)
+				b.StartTimer()
+				s.reflowIndexed(159, 45, func(int) ReflowRow { return ReflowRow{} }, false, true)
+			}
+		})
+	}
 }
 
 func indexedNextWidth(s *Screen, view ReflowSnapshot, width int) ReflowSnapshot {
