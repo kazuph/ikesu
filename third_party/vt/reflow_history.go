@@ -11,6 +11,7 @@ type reflowHistory struct {
 	start, count int
 	cachedRow    int
 	cached       uv.Line
+	cachedValid  bool
 	clipping     reflowClipping
 	maxSpan      int
 }
@@ -40,7 +41,7 @@ func (h *reflowHistory) appendLine(line *reflowLogicalLine) {
 	h.lines[(h.start+h.count)%len(h.lines)] = line
 	h.count++
 	h.view.index = h.view.index.append(line.shape)
-	h.cached = nil
+	h.cached, h.cachedValid = nil, false
 }
 
 func (h *reflowHistory) prependLine(line *reflowLogicalLine) {
@@ -50,7 +51,7 @@ func (h *reflowHistory) prependLine(line *reflowLogicalLine) {
 	h.lines[h.start] = line
 	h.count++
 	h.view.index = joinReflowIndex((*reflowIndex)(nil).append(line.shape), h.view.index)
-	h.cached = nil
+	h.cached, h.cachedValid = nil, false
 }
 
 func (h *reflowHistory) attach(line *reflowLogicalLine) {
@@ -77,7 +78,7 @@ func (h *reflowHistory) dropGroups(groups int) {
 		h.count--
 	}
 	h.view.index = h.view.index.dropGroups(groups)
-	h.cached = nil
+	h.cached, h.cachedValid = nil, false
 }
 
 func (h *reflowHistory) takeGroups(groups int) {
@@ -88,7 +89,7 @@ func (h *reflowHistory) takeGroups(groups int) {
 		h.count--
 	}
 	h.view.index = h.view.index.takeGroups(groups)
-	h.cached = nil
+	h.cached, h.cachedValid = nil, false
 }
 
 func (h *reflowHistory) line(row int) uv.Line {
@@ -127,8 +128,9 @@ func (h *reflowHistory) cellAt(x, row int) *uv.Cell {
 	if x < 0 || row < 0 || row >= h.view.rows {
 		return nil
 	}
-	if h.cached == nil || h.cachedRow != row {
+	if !h.cachedValid || h.cachedRow != row {
 		h.cached, h.cachedRow = h.line(row), row
+		h.cachedValid = true
 	}
 	if x >= len(h.cached) {
 		return nil
@@ -152,7 +154,7 @@ func (h *reflowHistory) dropRows(rows int) int {
 		h.dropGroups(group)
 		h.view.first -= first
 	}
-	h.cached = nil
+	h.cached, h.cachedValid = nil, false
 	return before - h.view.bytes()
 }
 
@@ -165,6 +167,6 @@ func (h *reflowHistory) popLast() (uv.Line, int) {
 		h.view.first = 0
 		return row, before
 	}
-	h.cached = nil
+	h.cached, h.cachedValid = nil, false
 	return row, before - h.view.bytes()
 }
