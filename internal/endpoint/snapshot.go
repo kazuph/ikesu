@@ -36,6 +36,8 @@ type SnapshotEncoder struct {
 	sentGraphicsPatch bool
 	textOnly          bool
 	pendingGrids      map[int][][]uv.Cell
+	cells             []cellDelta
+	widths            []int
 }
 
 func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
@@ -44,6 +46,9 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		e.enc = gob.NewEncoder(&e.data)
 	}
 	e.data.Reset()
+	clear(e.cells)
+	e.cells = e.cells[:0]
+	e.widths = e.widths[:0]
 	if e.grids == nil {
 		e.grids = map[int][][]uv.Cell{}
 	}
@@ -73,15 +78,16 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		wire.Input.Panes[id] = &value
 		grid := pane.Grid
 		old := e.grids[id]
-		delta := gridDelta{Present: grid != nil, Widths: make([]int, len(grid))}
+		widthStart, cellStart := len(e.widths), len(e.cells)
 		for y, row := range grid {
-			delta.Widths[y] = len(row)
+			e.widths = append(e.widths, len(row))
 			for x := range row {
 				if y >= len(old) || x >= len(old[y]) || old[y][x] != row[x] {
-					delta.Cells = append(delta.Cells, cellDelta{X: x, Y: y, Cell: row[x]})
+					e.cells = append(e.cells, cellDelta{X: x, Y: y, Cell: row[x]})
 				}
 			}
 		}
+		delta := gridDelta{Present: grid != nil, Widths: e.widths[widthStart:], Cells: e.cells[cellStart:]}
 		wire.Grids[id] = delta
 		cached, err := applyGridDelta(old, delta, e.textOnly)
 		if err != nil {
@@ -192,20 +198,39 @@ func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.C
 		return nil, nil
 	}
 	if immutable || grid == nil || len(grid) != len(delta.Widths) {
-		next := make([][]uv.Cell, len(delta.Widths))
-		copy(next, grid)
-		grid = next
+		if !immutable && cap(grid) >= len(delta.Widths) {
+			if len(delta.Widths) < len(grid) {
+				clear(grid[len(delta.Widths):])
+			}
+			grid = grid[:len(delta.Widths)]
+		} else {
+			next := make([][]uv.Cell, len(delta.Widths))
+			copy(next, grid)
+			grid = next
+		}
 	}
-	owned := make([]bool, len(grid))
+	var owned []bool
+	if immutable {
+		owned = make([]bool, len(grid))
+	}
 	for y, width := range delta.Widths {
 		if width < 0 {
 			return nil, fmt.Errorf("invalid pane row width")
 		}
 		if len(grid[y]) != width {
-			next := make([]uv.Cell, width)
-			copy(next, grid[y])
-			grid[y] = next
-			owned[y] = true
+			if !immutable && cap(grid[y]) >= width {
+				if width < len(grid[y]) {
+					clear(grid[y][width:])
+				}
+				grid[y] = grid[y][:width]
+			} else {
+				next := make([]uv.Cell, width)
+				copy(next, grid[y])
+				grid[y] = next
+			}
+			if immutable {
+				owned[y] = true
+			}
 		}
 	}
 	for _, change := range delta.Cells {
