@@ -64,7 +64,8 @@ func (n *reflowIndex) refresh() {
 }
 
 func (n *reflowIndex) rotateLeft() *reflowIndex {
-	r := n.right
+	copyNode, copyRight := *n, *n.right
+	n, r := &copyNode, &copyRight
 	n.right, r.left = r.left, n
 	n.refresh()
 	r.refresh()
@@ -72,7 +73,8 @@ func (n *reflowIndex) rotateLeft() *reflowIndex {
 }
 
 func (n *reflowIndex) rotateRight() *reflowIndex {
-	l := n.left
+	copyNode, copyLeft := *n, *n.left
+	n, l := &copyNode, &copyLeft
 	n.left, l.right = l.right, n
 	n.refresh()
 	l.refresh()
@@ -105,9 +107,11 @@ func (n *reflowIndex) append(shape *reflowShape) *reflowIndex {
 		n.refresh()
 		return n
 	}
+	copyNode := *n
+	n = &copyNode
 	if n.left == nil {
 		if len(n.shapes) < bits.UintSize {
-			n.shapes = append(n.shapes, shape)
+			n.shapes = append(append([]*reflowShape(nil), n.shapes...), shape)
 			n.refresh()
 			return n
 		}
@@ -126,10 +130,8 @@ func (n *reflowIndex) dropGroups(count int) *reflowIndex {
 		return n
 	}
 	if n.left == nil {
-		copy(n.shapes, n.shapes[count:])
-		clear(n.shapes[len(n.shapes)-count:])
-		n.shapes = n.shapes[:len(n.shapes)-count]
-		return n.balance()
+		leaf := &reflowIndex{shapes: append([]*reflowShape(nil), n.shapes[count:]...)}
+		return leaf.balance()
 	}
 	if count >= n.left.groups {
 		return n.right.dropGroups(count - n.left.groups)
@@ -145,10 +147,14 @@ func joinReflowIndex(left, right *reflowIndex) *reflowIndex {
 		return left
 	}
 	if left.height > right.height+1 {
+		copyNode := *left
+		left = &copyNode
 		left.right = joinReflowIndex(left.right, right)
 		return left.balance()
 	}
 	if right.height > left.height+1 {
+		copyNode := *right
+		right = &copyNode
 		right.left = joinReflowIndex(left, right.left)
 		return right.balance()
 	}
@@ -204,4 +210,44 @@ func (n *reflowIndex) prefixBytes(width, rows int) int {
 		rows -= cost.rows
 	}
 	return charged
+}
+
+func (n *reflowIndex) prefixGroups(width, groups int) reflowCost {
+	if n == nil || groups <= 0 {
+		return reflowCost{}
+	}
+	if groups >= n.groups {
+		return n.cost(width)
+	}
+	if n.left != nil {
+		if groups <= n.left.groups {
+			return n.left.prefixGroups(width, groups)
+		}
+		a, b := n.left.cost(width), n.right.prefixGroups(width, groups-n.left.groups)
+		return reflowCost{a.rows + b.rows, a.bytes + b.bytes}
+	}
+	var total reflowCost
+	for _, shape := range n.shapes[:groups] {
+		c := shape.cost(width)
+		total.rows += c.rows
+		total.bytes += c.bytes
+	}
+	return total
+}
+
+func (n *reflowIndex) takeGroups(groups int) *reflowIndex {
+	if n == nil || groups <= 0 {
+		return nil
+	}
+	if groups >= n.groups {
+		return n
+	}
+	if n.left == nil {
+		leaf := &reflowIndex{shapes: append([]*reflowShape(nil), n.shapes[:groups]...)}
+		return leaf.balance()
+	}
+	if groups <= n.left.groups {
+		return n.left.takeGroups(groups)
+	}
+	return joinReflowIndex(n.left, n.right.takeGroups(groups-n.left.groups))
 }
