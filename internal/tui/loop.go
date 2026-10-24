@@ -419,34 +419,36 @@ func (a *App) effect(e model.Effect) {
 
 // syncLayout applies the last active display geometry to the visible tab.
 func (a *App) syncLayout() {
-	a.withPTYGeometry(a.syncPaneLayout)
+	a.syncPaneLayout()
 }
 
 func (a *App) syncPaneLayout() {
 	previous := a.selection()
 	defer a.selectView(previous)
 	for wi, ws := range a.st.Workspaces {
-		if (a.viewerOwner != nil || len(a.sizeViewers) > 0) && ws.ID != previous.workspace {
+		if a.viewerOwner != nil && ws.ID != previous.workspace {
 			continue
 		}
 		a.st.Active = wi
 		for ti, tab := range ws.Tabs {
-			if (a.viewerOwner != nil || len(a.sizeViewers) > 0) && tab.ID != previous.tabs[ws.ID] {
+			if a.viewerOwner != nil && tab.ID != previous.tabs[ws.ID] {
 				continue
 			}
 			ws.ActiveTab = ti
-			for _, pr := range a.ptyPaneRects(tab, a.st.PanesArea()) {
-				w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
-				a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
-			}
-			if a.st.OverlayVisible() {
-				r := a.innerRect(a.st.Overlay.PaneID)
-				a.sup.ResizeWithPixels(a.st.Overlay.PaneID, r.W, r.H, a.cellW, a.cellH)
-			}
-			if a.st.PopupVisible() && !a.st.Popup.ResizeLocked {
-				r := a.innerRect(a.st.Popup.PaneID)
-				a.sup.ResizeWithPixels(a.st.Popup.PaneID, r.W, r.H, a.cellW, a.cellH)
-			}
+			a.withTabPTYGeometry(tab, func() {
+				for _, pr := range a.ptyPaneRects(tab, a.st.PanesArea()) {
+					w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)
+					a.sup.ResizeWithPixels(pr.ID, w, h, a.cellW, a.cellH)
+				}
+				if a.st.OverlayVisible() {
+					r := a.innerRect(a.st.Overlay.PaneID)
+					a.sup.ResizeWithPixels(a.st.Overlay.PaneID, r.W, r.H, a.cellW, a.cellH)
+				}
+				if a.st.PopupVisible() && !a.st.Popup.ResizeLocked {
+					r := a.innerRect(a.st.Popup.PaneID)
+					a.sup.ResizeWithPixels(a.st.Popup.PaneID, r.W, r.H, a.cellW, a.cellH)
+				}
+			})
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
@@ -136,6 +137,31 @@ func TestViewerDisconnectOnlyReplacesDepartingOwner(t *testing.T) {
 				t.Fatalf("gone=%d active=%d: wrong remaining owner", gone, active)
 			}
 			checkCurrentTabSizes(t, a, views[expected].cols, views[expected].rows)
+		}
+	}
+}
+
+func TestViewerAPIHiddenSplitKeepsItsOwnGeometry(t *testing.T) {
+	teststate.Lock(t)
+	a := sizeOwnerRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	first := a.NewViewer(io.Discard, 196, 50, nil)
+	first.Begin(a, 0, 0)
+	a.exec(model.CmdNewTab{Workspace: 0, NoFocus: true})
+	first.Input(a, []byte{2, '2'})
+	second := a.NewViewer(io.Discard, 82, 30, nil)
+	second.Begin(a, 0, 0)
+	second.Input(a, []byte{2, '1'})
+	tab := a.st.Workspaces[0].Tabs[1]
+	pid := tab.Layout.Focused()
+	before := viewerTerminalSizes(a)[pid]
+	a.exec(model.CmdSplitPane{Pane: pid, Dir: layout.Vertical, Ratio: .5})
+	after := viewerTerminalSizes(a)
+	for _, id := range tab.Layout.PaneIDs() {
+		if after[id][1] != before[1] || after[id][0] != (before[0]-3)/2 {
+			t.Fatal("hidden API split used another tab's viewport", before, after[id])
 		}
 	}
 }
