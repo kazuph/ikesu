@@ -110,7 +110,7 @@ func (old *graphicsTextSurface) relayoutInput(in render.Input) render.Input {
 		if old != nil && old.terminals[id] == terminal {
 			for _, current := range p.Graphics {
 				for _, published := range old.placements[id] {
-					if current.ID == published.ID && current.Image.ID == published.Image.ID && current.Image.NativeID == published.Image.NativeID {
+					if current.ID == published.ID && current.Image.ID == published.Image.ID && current.Image.NativeID == published.Image.NativeID && current.Alternate == published.Alternate && current.Virtual == published.Virtual && current.APILayer == published.APILayer {
 						published.X, published.Y = current.X, current.Y
 						published.Image.Data = nil
 						value.Graphics = append(value.Graphics, published)
