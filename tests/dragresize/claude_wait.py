@@ -86,7 +86,7 @@ try:
    if project.exists():raise RuntimeError('refuse to overwrite existing conversation folder')
    project.mkdir();copies.append(project);shutil.copyfile(source,project/source.name)
    relay_log=out/f'claude-{i+1}.jsonl';close=out/f'claude-{i+1}.close'
-   args=['/usr/bin/env','-u','XDG_CONFIG_HOME','-u','XDG_STATE_HOME','-u','XDG_DATA_HOME','-u','ZDOTDIR',f'HOME={home}',f'CLAUDE_CONFIG_DIR={home/".claude"}',str(observer),'-claude-relay-log',str(relay_log),'-claude-relay-exit',str(close),'--',str(home/'.local/bin/claude'),'--resume',session_id,'--permission-mode','auto']
+   args=['/usr/bin/env','-u','XDG_CONFIG_HOME','-u','XDG_STATE_HOME','-u','XDG_DATA_HOME','-u','ZDOTDIR',f'HOME={home}',str(observer),'-claude-relay-log',str(relay_log),'-claude-relay-exit',str(close),'--',str(home/'.local/bin/claude'),'--resume',session_id,'--permission-mode','auto']
    command='cd '+shlex.quote(str(cwd))+' && '+shlex.join(args)
    request('pane.send_text',dict(pane_id=pane['pane_id'],text=command));request('pane.send_keys',dict(pane_id=pane['pane_id'],keys=['Enter']))
   deadline=time.monotonic()+120
