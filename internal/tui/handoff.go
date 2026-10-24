@@ -25,6 +25,14 @@ type HandoffState struct {
 	AgentStates         map[int]string
 	AgentSequences      map[int]uint64
 	AgentCounter        uint64
+	SizeBases           map[int]sizeBasisTransfer
+}
+
+// Only the private live-handoff stream carries these display snapshots.
+// Session JSON and the public model retain their existing shape.
+type sizeBasisTransfer struct {
+	Display      model.AppState
+	CellW, CellH int
 }
 
 type FossilTransfer struct {
@@ -45,11 +53,26 @@ func (a *App) HandoffState() HandoffState {
 	for id, r := range a.reported {
 		t.Reported[id] = ReportTransfer{Agent: r.agent, State: r.state, Unseen: r.unseen, Source: r.source, At: r.at}
 	}
+	t.SizeBases = map[int]sizeBasisTransfer{}
+	for tab, basis := range a.sizeOwners {
+		view := model.AppState{Cols: basis.cols, Rows: basis.rows}
+		basis.display.apply(&view)
+		t.SizeBases[tab.ID] = sizeBasisTransfer{view, basis.cellW, basis.cellH}
+	}
 	return t
 }
 func (a *App) RestoreHandoff(t HandoffState) {
 	a.st = t.State
 	a.st.RestoreHandoffCounters(t.Counters)
+	a.sizeViewer, a.sizeViewers = nil, nil
+	a.sizeOwners = map[*model.Tab]ptySizeBasis{}
+	for _, ws := range a.st.Workspaces {
+		for _, tab := range ws.Tabs {
+			if view, ok := t.SizeBases[tab.ID]; ok {
+				a.sizeOwners[tab] = ptySizeBasis{cols: view.Display.Cols, rows: view.Display.Rows, cellW: view.CellW, cellH: view.CellH, display: captureDisplay(&view.Display)}
+			}
+		}
+	}
 	a.sessions = map[int]*AgentRecord{}
 	for id, r := range t.Sessions {
 		rec := r

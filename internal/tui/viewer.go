@@ -70,7 +70,7 @@ func (a *App) selectView(s viewSelection) {
 
 func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Viewer {
 	ui := *a
-	ui.sizeViewer, ui.sizeViewers = nil, nil
+	ui.sizeViewer, ui.sizeViewers, ui.sizeOwners = nil, nil, nil
 	if a.toast != nil {
 		toast := *a.toast
 		ui.toast = &toast
@@ -165,9 +165,8 @@ func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
 	v.with(a, func(ui *App) {
 		ui.enc.Reset()
 		ui.SetCellPixels(xp, yp)
-		if a.sizeViewer == v {
-			ui.syncLayout()
-		}
+		v.takeSize(a)
+		ui.syncLayout()
 		ui.copyResizeAll(copySizes)
 		ui.dirty = true
 	})
@@ -177,8 +176,7 @@ func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
 }
 
 func (v *Viewer) Begin(a *App, xp, yp int) {
-	v.takeSize(a)
-	v.with(a, func(ui *App) { ui.BeginHostMouse(xp, yp); ui.dirty = true })
+	v.with(a, func(ui *App) { v.takeSize(a); ui.BeginHostMouse(xp, yp); ui.dirty = true })
 	a.st.Cols, a.st.Rows = v.cols, v.rows
 }
 
