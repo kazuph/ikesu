@@ -93,6 +93,7 @@ func RunJobSupervisor() (int, error) {
 	evidence := jobMonitorExit{JobID: req.JobID, Token: req.Token, MonitorPID: cmd.Process.Pid}
 	evidence.MonitorIdentity, err = jobProcessIdentity(cmd.Process.Pid)
 	de, dd := gob.NewEncoder(down), gob.NewDecoder(down)
+	owned := jobRunnerRecord{BootID: req.BootID}
 	relay := func() error {
 		if err != nil {
 			return err
@@ -103,6 +104,9 @@ func RunJobSupervisor() (int, error) {
 		var started jobRunnerStarted
 		if e := dd.Decode(&started); e != nil {
 			return e
+		}
+		if started.Error == "" {
+			owned.PID, owned.Identity = started.PID, started.Identity
 		}
 		if e := ue.Encode(started); e != nil {
 			return e
@@ -135,6 +139,16 @@ func RunJobSupervisor() (int, error) {
 	}
 	relayErr := relay()
 	down.Close()
+	if relayErr != nil && owned.PID > 0 {
+		// The monitor may have died before it could execute its own abort.
+		// Its startup response proves ownership of this child group.
+		state := jobCancelState{VerifiedPGID: owned.PID, VerifiedIdentity: owned.Identity}
+		if e := signalCancellationGroup(owned, state, syscall.SIGKILL); e != nil && e != syscall.ESRCH {
+			relayErr = fmt.Errorf("%w; startup child abort: %v", relayErr, e)
+		} else if !waitJobGroupGone(owned.PID, handoffWait, nil) {
+			relayErr = fmt.Errorf("%w; startup child group did not exit", relayErr)
+		}
+	}
 	up.Close()
 	waitErr := cmd.Wait()
 	evidence.ObservedMs = time.Now().UnixMilli()

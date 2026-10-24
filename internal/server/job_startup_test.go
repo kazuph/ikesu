@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -16,7 +18,7 @@ import (
 )
 
 func TestSupervisorStartupDisconnectAbortsRealChild(t *testing.T) {
-	for _, phase := range []string{"before-request", "before-commit", "before-release"} {
+	for _, phase := range []string{"before-request", "before-commit", "before-release", "monitor-killed-before-commit"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := t.TempDir()
 			log := filepath.Join(dir, "job.log")
@@ -72,6 +74,25 @@ func TestSupervisorStartupDisconnectAbortsRealChild(t *testing.T) {
 					}
 				}
 			}
+			if phase == "monitor-killed-before-commit" {
+				matches, e := exec.Command("pgrep", "-u", strconv.Itoa(os.Getuid()), "-f", exe).Output()
+				if e != nil {
+					t.Fatal(e)
+				}
+				monitor := 0
+				for _, candidate := range strings.Fields(string(matches)) {
+					parent, e := exec.Command("ps", "-o", "ppid=", "-p", candidate).Output()
+					if e == nil && strings.TrimSpace(string(parent)) == strconv.Itoa(cmd.Process.Pid) {
+						monitor, _ = strconv.Atoi(candidate)
+					}
+				}
+				if monitor == 0 {
+					t.Fatal("monitor process not verified")
+				}
+				if e := exec.Command("kill", "-KILL", strconv.Itoa(monitor)).Run(); e != nil {
+					t.Fatal(e)
+				}
+			}
 			conn.Close()
 			done := make(chan error, 1)
 			go func() { done <- cmd.Wait() }()
@@ -92,7 +113,7 @@ func TestSupervisorStartupDisconnectAbortsRealChild(t *testing.T) {
 					t.Fatal("startup evidence missing", string(evidence), err)
 				}
 				stderr, err := os.ReadFile(log + ".monitor-stderr.log")
-				if err != nil || !strings.Contains(string(stderr), "EOF") {
+				if err != nil || phase != "monitor-killed-before-commit" && !strings.Contains(string(stderr), "EOF") {
 					t.Fatal("monitor startup stderr not captured", string(stderr), err)
 				}
 			}
