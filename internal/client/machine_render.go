@@ -59,10 +59,10 @@ func (m *machineClient) paint() error {
 	}
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil {
-		composed = render.ComposeClient(in, nil, m.clientVersion, m.notice != "")
+		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
 		m.sidebar.Hits = m.sidebar.Hits[:0]
 	} else {
-		composed = render.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
+		composed = m.composer.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
 	}
 	m.drawTabFeedback(composed)
 	f := composed.Frame
