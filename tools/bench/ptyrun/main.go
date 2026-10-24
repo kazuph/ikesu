@@ -32,6 +32,9 @@ func main() {
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
 	fileImages := flag.String("file-images", "", "record file-image payload hashes while the viewer owns the files")
+	relayLog := flag.String("claude-relay-log", "", "observe unmodified Claude Code without forwarding conversation input")
+	relayExit := flag.String("claude-relay-exit", "", "owned controller file requesting ordinary Ctrl-C exit")
+	includeBodies := flag.Bool("body-grids", false, "record real pane text for copied Claude conversations")
 	processPath := flag.String("process-file", "", "save the measured product PID")
 	timelinePath := flag.String("timeline", "", "monotonic synchronized-frame and workload-marker records")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
@@ -39,6 +42,10 @@ func main() {
 	holdColor := flag.Bool("hold-color-replies", false, "leave background-color queries for explicit steps to answer")
 	flag.Parse()
 	args := flag.Args()
+	if *relayLog != "" {
+		runClaudeRelay(args, *relayLog, *relayExit)
+		return
+	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(*cols), Rows: uint16(*rows), X: uint16(*xpixel), Y: uint16(*ypixel)})
@@ -138,6 +145,7 @@ func main() {
 	if observer != nil {
 		observer.reply = ptmx
 		observer.receiver.reply = ptmx
+		observer.includeBodies = *includeBodies
 	}
 	defer observer.close()
 	var mu sync.Mutex

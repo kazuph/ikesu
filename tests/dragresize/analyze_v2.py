@@ -2,16 +2,16 @@
 """Correlate separate input, border, PTY receipt, and application frame clocks."""
 import argparse,json,math,statistics
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('directory');a=p.parse_args();d=Path(a.directory)
+p=argparse.ArgumentParser();p.add_argument('directory');p.add_argument('--timeline',default='timeline.jsonl');p.add_argument('--app-glob',default='app-*.jsonl');a=p.parse_args();d=Path(a.directory)
 def load(path):return [json.loads(l) for l in path.read_text().splitlines()] if path.exists() else []
 def quantile(xs,p):return sorted(xs)[max(0,math.ceil(p*len(xs))-1)] if xs else None
 def summary(xs):return dict(n=len(xs),median=statistics.median(xs) if xs else None,p95=quantile(xs,.95),maximum=max(xs) if xs else None)
-events=load(d/'timeline.jsonl');meta=json.loads((d/'metadata.json').read_text());trial=next(e for e in events if e['type']=='trial');inputs=[e for e in events if e['type']=='input'];release=next(e for e in events if e['type']=='release');finish=next(e for e in events if e['type']=='finish');frames=[e for e in events if e['type']=='frame'];inputs.sort(key=lambda e:e['clock_ns']);frames.sort(key=lambda e:e['clock_ns']);
+events=load(d/a.timeline);meta=json.loads((d/'metadata.json').read_text());trial=next(e for e in events if e['type']=='trial');inputs=[e for e in events if e['type']=='input'];release=next(e for e in events if e['type']=='release');finish=next(e for e in events if e['type']=='finish');frames=[e for e in events if e['type']=='frame'];inputs.sort(key=lambda e:e['clock_ns']);frames.sort(key=lambda e:e['clock_ns']);
 for f in frames:f['corners']=f['corners'] or [];f['panes']=f['panes'] or []
 cfg=trial['config'];wanted={'vertical':'┐','horizontal':'└','left':'┌','right':'┐'}[cfg['kind']]
 def matches(f,e):return any(c['X']==e['watch_x'] and c['Y']==e['watch_y'] and c['Glyph']==wanted for c in f['corners'])
 applications={}
-for f in d.glob('app-*.jsonl'):
+for f in d.glob(a.app_glob):
  for e in load(f):
   if e['event'] in ['initial','pty_size','app_written']:applications[(e['id'],e['seq'],e['event'])]=e
 motion=[];miss=[];app_motion=[];app_miss=[]

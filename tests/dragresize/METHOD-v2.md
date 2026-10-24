@@ -100,3 +100,27 @@ are accessed. Actual Claude Code is a separately authorized real-app condition:
 ordinary HOME, copied conversation record, temporary cwd, no conversation input.
 Its output-active state is explicitly not met under the parent's instruction;
 the dedicated output workload is recorded as a separate condition.
+
+
+## Unmodified Claude waiting display
+
+`claude_wait.py` starts the real executable with `--resume <copied id>
+--permission-mode auto` inside a disposable server pane and a fresh temporary
+working directory. Only that executable uses the ordinary HOME. The controller
+copies one authorized conversation JSONL into its newly created project folder;
+credentials and settings are never read, copied or edited. No conversation input
+is forwarded. Folder trust or onboarding is an explicit blocker, not an accepted
+prompt. Exit uses ordinary Ctrl-C; the copied folder and temporary cwd are removed
+only after process exit is verified. Source hash and mtime are checked afterward.
+
+A transparent PTY relay records actual SIGWINCH-applied dimensions and complete
+synchronized stdout frames. The outer observer separately records real pane text.
+`correlate_claude_wait.py` requires an exact text hash and dimensions match at the
+current applied size sequence; changed borders with old application content never
+count as app catch-up. Source-output time and outer-visible time remain separate.
+This matches plain displayed text; it does not prove style/link preservation,
+which requires the separate product contract tests. Raw conversation screen logs
+are private local evidence and are not attached or printed in parent reports.
+
+The extended conditions also include alternate screen after long main-screen
+history, because resizing an alternate screen must not hide main-history costs.

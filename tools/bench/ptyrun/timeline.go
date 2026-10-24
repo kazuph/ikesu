@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,18 +32,27 @@ type trialFrame struct {
 	Corners []trialCorner `json:"corners"`
 	Panes   []trialPane   `json:"panes"`
 }
+type trialBody struct {
+	X, Y, Width, Height int
+	Lines               []string
+	Hash                string
+}
+
 type timeline struct {
-	mu         sync.Mutex
-	file       *os.File
-	log        *json.Encoder
-	emu        *vt.Emulator
-	cols, rows int
-	total      int64
-	tail       []byte
-	latest     trialFrame
-	closed     bool
-	receiver   kittyReceiver
-	reply      io.Writer
+	mu                sync.Mutex
+	file              *os.File
+	log               *json.Encoder
+	emu               *vt.Emulator
+	cols, rows        int
+	total             int64
+	tail              []byte
+	latest            trialFrame
+	closed            bool
+	synchronizedFrame bool
+	includeBodies     bool
+	onFrame           func(int64)
+	receiver          kittyReceiver
+	reply             io.Writer
 }
 
 var trialMarker = regexp.MustCompile(`@([0-9a-f])([0-9a-f]{4})([0-9a-f]{2})([0-9a-f]{2})!`)
@@ -104,6 +114,7 @@ func (t *timeline) feed(data []byte, at int64) {
 		_, _ = t.emu.Write(data[previous:cut])
 		t.total += int64(cut - previous)
 		previous = cut
+		t.synchronizedFrame = true
 		t.capture(at)
 	}
 	if previous < len(data) {
@@ -111,6 +122,7 @@ func (t *timeline) feed(data []byte, at int64) {
 		t.total += int64(len(data) - previous)
 	}
 	if !t.emu.ModeSet(ansi.ModeSynchronizedOutput) {
+		t.synchronizedFrame = false
 		t.capture(at)
 	}
 	t.tail = append(t.tail[:0], combined[max(0, len(combined)-len(end)+1):]...)
@@ -179,6 +191,45 @@ func (t *timeline) capture(at int64) {
 	}
 	t.latest = frame
 	t.record(frame)
+	if t.includeBodies {
+		var bodies []trialBody
+		for _, corner := range frame.Corners {
+			if corner.Glyph != "┌" {
+				continue
+			}
+			left, top := corner.X-1, corner.Y-1
+			right, bottom := -1, -1
+			for x := left + 1; x < t.cols; x++ {
+				if lines[top][x] == "┐" {
+					right = x
+					break
+				}
+			}
+			for y := top + 1; y < t.rows; y++ {
+				if lines[y][left] == "└" {
+					bottom = y
+					break
+				}
+			}
+			if right < 0 || bottom < 0 {
+				continue
+			}
+			width := right - left - 1
+			if width >= 5 {
+				width--
+			}
+			height := bottom - top - 1
+			rows := make([]string, height)
+			for y := 0; y < height; y++ {
+				rows[y] = strings.TrimRight(strings.Join(lines[top+1+y][left+1:left+1+width], ""), " ")
+			}
+			bodies = append(bodies, trialBody{left + 2, top + 2, width, height, rows, textHash(rows)})
+		}
+		t.record(map[string]any{"type": "bodies", "clock_ns": at, "bytes": t.total, "bodies": bodies, "synchronized": t.synchronizedFrame})
+	}
+	if t.onFrame != nil {
+		t.onFrame(at)
+	}
 }
 func (t *timeline) close() {
 	if t != nil {
@@ -189,4 +240,27 @@ func (t *timeline) close() {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}
+}
+
+func terminalLines(emu *vt.Emulator, cols, rows int) []string {
+	lines := make([]string, rows)
+	for y := 0; y < rows; y++ {
+		var line strings.Builder
+		for x := 0; x < cols; x++ {
+			c := emu.CellAt(x, y)
+			if c == nil || c.Content == "" {
+				if c != nil && c.Width == 0 {
+					continue
+				}
+				line.WriteByte(' ')
+			} else {
+				line.WriteString(c.Content)
+			}
+		}
+		lines[y] = strings.TrimRight(line.String(), " ")
+	}
+	return lines
+}
+func textHash(lines []string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(lines, "\n"))))
 }
