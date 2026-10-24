@@ -236,7 +236,11 @@ func (s *Scrollback) Line(index int) uv.Line {
 		return nil
 	}
 	if index < s.indexedLen() {
-		return s.indexed.line(index)
+		line := s.indexed.line(index)
+		if len(line) == 0 && !s.byteLimited {
+			return uv.Line{}
+		}
+		return line
 	}
 	index -= s.indexedLen()
 	idx := s.wrap(s.start + index)

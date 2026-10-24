@@ -73,10 +73,25 @@ func (p *reflowShapePool) release(shape *reflowShape) {
 }
 
 type reflowLogicalLine struct {
-	shape  *reflowShape
-	packed []byte
-	styled *styledRow
-	dense  uv.Line
+	shape    *reflowShape
+	pooled   *reflowShape
+	packed   []byte
+	styled   *styledRow
+	dense    uv.Line
+	clipping *reflowClipping
+	serial   uint64
+}
+
+type reflowClipping struct {
+	serial  uint64
+	through map[int]uint64
+}
+
+func (l *reflowLogicalLine) ownedShape() *reflowShape {
+	if l.pooled != nil {
+		return l.pooled
+	}
+	return l.shape
 }
 
 func newReflowLogicalLine(line uv.Line, pool *reflowShapePool) *reflowLogicalLine {
@@ -116,6 +131,23 @@ func (l *reflowLogicalLine) copyRange(dst uv.Line, start, end int) {
 			copy(dst, l.dense[start:min(end, len(l.dense))])
 		}
 	}
+	// A glyph clipped by a previous viewport lost those continuation cells in
+	// physical storage. Reconstruct the same default blanks on a later reflow.
+	if l.clipping != nil && !l.shape.plain {
+		clipped := 0
+		for width, serial := range l.clipping.through {
+			if l.serial <= serial && (clipped == 0 || width < clipped) {
+				clipped = width
+			}
+		}
+		if clipped > 0 {
+			for x := start; x < end; x++ {
+				if x-l.shape.heads[x] >= clipped {
+					dst[x-start] = uv.EmptyCell
+				}
+			}
+		}
+	}
 }
 
 // Snapshots contain only shape metadata. A height change can consume rows from
@@ -144,6 +176,9 @@ func (p reflowProjection) row(index int) (group, start, end int, flag ReflowRow,
 			consumed, _ = shape.next(start, p.width)
 		}
 		flag.Width = consumed - start
+	}
+	if shape.endMarker && row-before == shape.cost(p.width).rows-1 {
+		flag.Width--
 	}
 	return group, start, end, flag, ok
 }

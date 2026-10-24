@@ -18,21 +18,24 @@ type rowRef struct {
 	width     int
 }
 type readBuffer struct {
-	main, alternate []rowRef
-	history         []rowRef
-	byteHistory     bool
-	historyCount    int
-	start           int
-	altHistory      []rowRef
-	altStart        int
-	pending         bool
-	state           byte
-	kind            byte
-	parser          *ansi.Parser
-	utf8Pending     []byte
-	partial         []byte
-	top, bottom     int
-	left, right     int
+	main, alternate      []rowRef
+	history              []rowRef
+	byteHistory          bool
+	historyCount         int
+	historyIndexed       bool
+	historyBase          *vt.ReflowSnapshot
+	baseFirst, baseCount int
+	start                int
+	altHistory           []rowRef
+	altStart             int
+	pending              bool
+	state                byte
+	kind                 byte
+	parser               *ansi.Parser
+	utf8Pending          []byte
+	partial              []byte
+	top, bottom          int
+	left, right          int
 }
 
 func newReadBuffer(w, h int) *readBuffer {
@@ -45,8 +48,11 @@ func (r *readBuffer) rows(alt bool) []rowRef {
 	return r.main
 }
 func (r *readBuffer) pushHistory(alt bool, row rowRef) {
-	if !alt && r.byteHistory {
+	if !alt && (r.byteHistory || r.historyIndexed) {
 		r.pushByteHistory(row)
+		if !r.byteHistory && r.historyCount > ScrollbackSize {
+			r.dropHistory()
+		}
 		return
 	}
 	history, start := &r.history, &r.start
@@ -172,6 +178,7 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 			clear(r.alternate)
 			r.history = nil
 			r.historyCount = 0
+			r.historyBase, r.baseFirst, r.baseCount, r.historyIndexed = nil, 0, 0, false
 			r.start = 0
 			r.altHistory = nil
 			r.altStart = 0
@@ -212,6 +219,7 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 		} else if a == 3 {
 			r.history = nil
 			r.historyCount = 0
+			r.historyBase, r.baseFirst, r.baseCount, r.historyIndexed = nil, 0, 0, false
 			r.start = 0
 			clear(rows)
 		} else if a == 0 {

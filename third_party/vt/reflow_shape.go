@@ -19,6 +19,7 @@ type reflowCheckpoint struct{ start, bytes int }
 type reflowShape struct {
 	length, maxSpan int
 	plain           bool
+	endMarker       bool
 	heads, last     []int
 	events          []reflowCostEvent
 	checkpoints     map[int][]reflowCheckpoint

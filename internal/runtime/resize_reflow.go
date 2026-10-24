@@ -17,24 +17,27 @@ func (p *Pane) resizeTerminal(width, height int) {
 // styles and hyperlinks remain attached to cells during width changes.
 func (p *Pane) resizeReflow(width, height int) {
 	r := p.read
-	continued := make([]vt.ReflowRow, r.historyLen()+len(r.main))
-	for y := 0; y < r.historyLen(); y++ {
-		ref := r.historyRef(y)
-		continued[y] = vt.ReflowRow{Continued: ref.continued, Width: ref.width}
-	}
-	for y, ref := range r.main {
-		continued[r.historyLen()+y] = vt.ReflowRow{Continued: ref.continued, Width: ref.width}
-	}
-	continued = p.emu.ResizeWithReflow(width, height, continued)
-	n := p.emu.ScrollbackLen()
-	r.history = make([]rowRef, n)
-	r.start = 0
-	r.historyCount = n
-	for y := range r.history {
-		r.history[y] = rowRef{continued: continued[y].Continued, width: continued[y].Width}
+	oldHistory := r.historyLen()
+	snapshot := p.emu.ResizeWithReflowView(width, height, func(y int) vt.ReflowRow {
+		var ref rowRef
+		if y < oldHistory {
+			ref = r.historyRef(y)
+		} else if y-oldHistory < len(r.main) {
+			ref = r.main[y-oldHistory]
+		}
+		return vt.ReflowRow{Continued: ref.continued, Width: ref.width}
+	})
+	r.history, r.start = nil, 0
+	r.historyIndexed = true
+	r.historyBase = &snapshot
+	r.baseFirst, r.baseCount = 0, snapshot.HistoryLen()
+	r.historyCount = r.baseCount
+	if r.baseCount == 0 {
+		r.historyBase = nil
 	}
 	r.main = make([]rowRef, height)
 	for y := range r.main {
-		r.main[y] = rowRef{continued: continued[n+y].Continued, width: continued[n+y].Width}
+		ref := snapshot.MainRow(y)
+		r.main[y] = rowRef{continued: ref.Continued, width: ref.Width}
 	}
 }

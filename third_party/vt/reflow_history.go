@@ -11,6 +11,8 @@ type reflowHistory struct {
 	start, count int
 	cachedRow    int
 	cached       uv.Line
+	clipping     reflowClipping
+	maxSpan      int
 }
 
 func (h *reflowHistory) at(group int) *reflowLogicalLine {
@@ -19,6 +21,10 @@ func (h *reflowHistory) at(group int) *reflowLogicalLine {
 
 func (h *reflowHistory) append(cells uv.Line) {
 	line := newReflowLogicalLine(cells, &h.pool)
+	h.appendLine(line)
+}
+
+func (h *reflowHistory) grow() {
 	if h.count == len(h.lines) {
 		lines := make([]*reflowLogicalLine, max(1, 2*len(h.lines)))
 		for group := 0; group < h.count; group++ {
@@ -26,16 +32,46 @@ func (h *reflowHistory) append(cells uv.Line) {
 		}
 		h.lines, h.start = lines, 0
 	}
+}
+
+func (h *reflowHistory) appendLine(line *reflowLogicalLine) {
+	h.attach(line)
+	h.grow()
 	h.lines[(h.start+h.count)%len(h.lines)] = line
 	h.count++
 	h.view.index = h.view.index.append(line.shape)
 	h.cached = nil
 }
 
+func (h *reflowHistory) prependLine(line *reflowLogicalLine) {
+	h.attach(line)
+	h.grow()
+	h.start = (h.start + len(h.lines) - 1) % len(h.lines)
+	h.lines[h.start] = line
+	h.count++
+	h.view.index = joinReflowIndex((*reflowIndex)(nil).append(line.shape), h.view.index)
+	h.cached = nil
+}
+
+func (h *reflowHistory) attach(line *reflowLogicalLine) {
+	h.clipping.serial++
+	line.clipping, line.serial = &h.clipping, h.clipping.serial
+	h.maxSpan = max(h.maxSpan, line.shape.maxSpan)
+}
+
+func (h *reflowHistory) project(width int) {
+	if width < h.maxSpan {
+		if h.clipping.through == nil {
+			h.clipping.through = make(map[int]uint64)
+		}
+		h.clipping.through[width] = h.clipping.serial
+	}
+}
+
 func (h *reflowHistory) dropGroups(groups int) {
 	for i := 0; i < groups; i++ {
 		line := h.lines[h.start]
-		h.pool.release(line.shape)
+		h.pool.release(line.ownedShape())
 		h.lines[h.start] = nil
 		h.start = (h.start + 1) % len(h.lines)
 		h.count--
@@ -47,7 +83,7 @@ func (h *reflowHistory) dropGroups(groups int) {
 func (h *reflowHistory) takeGroups(groups int) {
 	for h.count > groups {
 		at := (h.start + h.count - 1) % len(h.lines)
-		h.pool.release(h.lines[at].shape)
+		h.pool.release(h.lines[at].ownedShape())
 		h.lines[at] = nil
 		h.count--
 	}
@@ -57,6 +93,13 @@ func (h *reflowHistory) takeGroups(groups int) {
 
 func (h *reflowHistory) line(row int) uv.Line {
 	return h.lineInto(row, nil)
+}
+
+func (h *reflowHistory) copyRow(dst uv.Line, row int) {
+	group, start, end, _, ok := h.view.row(row)
+	if ok {
+		h.at(group).copyRange(dst, start, end)
+	}
 }
 
 func (h *reflowHistory) lineInto(row int, dst uv.Line) uv.Line {

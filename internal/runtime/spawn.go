@@ -199,7 +199,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 				p.graphics.Scroll(alt, 0, 0, oldWidth, height+pushed, pulled-pushed)
 			}
 			if p.read != nil {
-				if p.read.byteHistory && !alt {
+				if (p.read.byteHistory || p.read.historyIndexed) && !alt {
 					p.read.resizeByteRows(oldWidth, height, pushed, pulled, p.emu.ScrollbackLen())
 				} else {
 					p.read.resizeRows(alt, oldWidth, height, pushed, pulled)
