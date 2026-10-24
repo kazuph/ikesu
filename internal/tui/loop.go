@@ -395,6 +395,7 @@ func (a *App) effect(e model.Effect) {
 			a.lastSpawnError = err
 		}
 	case model.EffKillPane:
+		a.forgetClosedSizeTabs()
 		a.removeEditorFile(e.Pane)
 		a.clearPopupInteraction(e.Pane)
 		a.sup.Kill(e.Pane)

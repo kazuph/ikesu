@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"io"
-	"reflect"
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
@@ -34,7 +33,7 @@ func sizeOwnerRuntimeApp(t *testing.T) *App {
 	return a
 }
 
-func TestViewerOrdinaryInputKeepsPTYSizeWithTwoOrThreeClientsAndSplits(t *testing.T) {
+func TestViewerLastActivitySizesPTYWithTwoOrThreeClientsAndSplits(t *testing.T) {
 	teststate.Lock(t)
 	for _, peers := range []int{1, 2, 3} {
 		for _, split := range []bool{false, true} {
@@ -54,13 +53,10 @@ func TestViewerOrdinaryInputKeepsPTYSizeWithTwoOrThreeClientsAndSplits(t *testin
 				if split {
 					owner.with(a, func(ui *App) { ui.exec(model.CmdSplitFocused{Dir: layout.Vertical}) })
 				}
-				want := viewerTerminalSizes(a)
 				for _, v := range viewers {
-					for _, input := range []string{"x", "\x1b[I", "\x1b[<0;40;10M\x1b[<0;40;10m", "\x1b[<64;40;10M"} {
+					for _, input := range []string{"x", "\x1b[I", "\x1b[<35;40;10M", "\x1b[<64;40;10M", "\x1b[200~abc\x1b[201~"} {
 						v.Input(a, []byte(input))
-						if got := viewerTerminalSizes(a); !reflect.DeepEqual(got, want) {
-							t.Fatalf("input %q on %dx%d changed PTYs: got %v, want %v", input, v.cols, v.rows, got, want)
-						}
+						checkCurrentTabSizes(t, a, v.cols, v.rows)
 					}
 				}
 			})
@@ -68,7 +64,7 @@ func TestViewerOrdinaryInputKeepsPTYSizeWithTwoOrThreeClientsAndSplits(t *testin
 	}
 }
 
-func TestViewerOnlySizeOwnerResizeChangesPTYAndDrawsStayLocal(t *testing.T) {
+func TestViewerResizeClaimsPTYAndDrawsStayLocal(t *testing.T) {
 	teststate.Lock(t)
 	a := sizeOwnerRuntimeApp(t)
 	if err := a.StartInitialPane(); err != nil {
@@ -88,7 +84,7 @@ func TestViewerOnlySizeOwnerResizeChangesPTYAndDrawsStayLocal(t *testing.T) {
 	}
 	check(71, 26)
 	first.Resize(a, 220, 55, 0, 0)
-	check(71, 26)
+	check(191, 51)
 	for _, tc := range []struct {
 		v    *Viewer
 		w, h int
@@ -100,11 +96,11 @@ func TestViewerOnlySizeOwnerResizeChangesPTYAndDrawsStayLocal(t *testing.T) {
 			t.Fatal("render viewport followed another client", got)
 		}
 	}
-	check(71, 26)
+	check(191, 51)
 	second.Resize(a, 101, 31, 0, 0)
 	check(72, 27)
 	if a.st.Cols != 101 || a.st.Rows != 31 {
-		t.Fatal("session dimensions were taken by a non-owner", a.st.Cols, a.st.Rows)
+		t.Fatal("session dimensions did not follow latest resize", a.st.Cols, a.st.Rows)
 	}
 }
 
@@ -201,12 +197,12 @@ func TestViewerDisconnectKeepsFrozenBasisUntilOneRemains(t *testing.T) {
 				viewers[2].Detach(a)
 				viewers[0].Resize(a, 220, 55, 0, 0)
 				viewers[1].Resize(a, 110, 35, 0, 0)
-				check(151, 36)
+				check(81, 31)
 				viewers[1].Detach(a)
 			} else {
 				viewers[1].Detach(a)
 				viewers[0].Resize(a, 220, 55, 0, 0)
-				check(151, 36)
+				check(191, 51)
 				viewers[2].Resize(a, 190, 45, 0, 0)
 				check(161, 41)
 				viewers[2].Detach(a)

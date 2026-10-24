@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
@@ -70,5 +71,71 @@ func TestViewerActivityLeavesOtherTabsAndViewerSelectionIndependent(t *testing.T
 	second.Resize(a, 90, 32, 0, 0)
 	if got := viewerTerminalSizes(a)[a.st.Workspaces[0].Tabs[0].Layout.Focused()]; got != firstSize {
 		t.Fatal("resize of other tab changed first tab", got, firstSize)
+	}
+}
+
+func TestViewerHiddenTabsKeepSizesAndBasisUntilSelected(t *testing.T) {
+	teststate.Lock(t)
+	a := hiddenSizeApp(t)
+	first := a.NewViewer(io.Discard, 196, 50, nil)
+	first.Begin(a, 0, 0)
+	second := a.NewViewer(io.Discard, 82, 30, nil)
+	second.Begin(a, 0, 0)
+	before := viewerTerminalSizes(a)
+	visible := map[int]bool{}
+	for _, id := range a.st.ActiveWorkspace().TabRef().Layout.PaneIDs() {
+		visible[id] = true
+	}
+	for _, event := range []string{"x", "\x1b[<35;40;10M", "\x1b[<64;40;10M", "\x1b[I"} {
+		first.Input(a, []byte(event))
+		for id, size := range viewerTerminalSizes(a) {
+			if !visible[id] && size != before[id] {
+				t.Fatalf("hidden pane %d changed: %v -> %v", id, before[id], size)
+			}
+		}
+	}
+	// A viewer's later resize on a different tab must not change the stored
+	// geometry used by an API command targeting its former tab.
+	first.Rendered(a, render.Output{}, first.FocusEpoch())
+	first.Input(a, []byte{2, '2'})
+	if first.tabs[first.workspace] == second.tabs[second.workspace] {
+		t.Fatal("tab selection did not complete")
+	}
+	oldPane := a.st.Workspaces[0].Tabs[0].Layout.Focused()
+	oldRect := a.ptyRectForPane(oldPane)
+	first.Resize(a, 210, 55, 0, 0)
+	if got := a.ptyRectForPane(oldPane); got != oldRect {
+		t.Fatal("hidden tab basis followed another tab's resize", oldRect, got)
+	}
+}
+
+func TestViewerDisconnectOnlyReplacesDepartingOwner(t *testing.T) {
+	teststate.Lock(t)
+	for gone := 0; gone < 3; gone++ {
+		for active := 1; active < 3; active++ {
+			a := sizeOwnerRuntimeApp(t)
+			if err := a.StartInitialPane(); err != nil {
+				t.Fatal(err)
+			}
+			var views []*Viewer
+			for _, size := range [][2]int{{196, 50}, {82, 30}, {140, 40}} {
+				v := a.NewViewer(io.Discard, size[0], size[1], nil)
+				v.Begin(a, 0, 0)
+				views = append(views, v)
+			}
+			views[active].Input(a, []byte("x"))
+			views[gone].Detach(a)
+			expected := active
+			if gone == active {
+				expected = 0
+				if gone == 0 {
+					expected = 1
+				}
+			}
+			if a.sizeOwners[a.currentSizeTab()].viewer != views[expected] {
+				t.Fatalf("gone=%d active=%d: wrong remaining owner", gone, active)
+			}
+			checkCurrentTabSizes(t, a, views[expected].cols, views[expected].rows)
+		}
 	}
 }
