@@ -53,3 +53,34 @@ func TestJobDiagnosticsShareRetentionAndCannotResurrect(t *testing.T) {
 		t.Fatal("late writer recreated retired job", err, called)
 	}
 }
+
+func TestDiagnosticPublicationSerializesWithCleanup(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "job.log")
+	if err := os.WriteFile(log, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	locked, release := make(chan struct{}), make(chan struct{})
+	published := make(chan error, 1)
+	go func() {
+		published <- WithJobLogLock(log, func() error {
+			close(locked)
+			<-release
+			return os.WriteFile(log+".monitor-exit.json", []byte("diagnosis"), 0600)
+		})
+	}()
+	<-locked
+	removed := make(chan error, 1)
+	go func() { removed <- removeJobFiles(log) }()
+	close(release)
+	if err := <-published; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-removed; err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range jobFileSuffixes {
+		if _, err := os.Stat(log + suffix); !os.IsNotExist(err) {
+			t.Fatal("publication resurrected cleanup", suffix, err)
+		}
+	}
+}

@@ -91,6 +91,10 @@ func TestSupervisorStartupDisconnectAbortsRealChild(t *testing.T) {
 				if err != nil || !strings.Contains(string(evidence), "startup-identity") {
 					t.Fatal("startup evidence missing", string(evidence), err)
 				}
+				stderr, err := os.ReadFile(log + ".monitor-stderr.log")
+				if err != nil || !strings.Contains(string(stderr), "EOF") {
+					t.Fatal("monitor startup stderr not captured", string(stderr), err)
+				}
 			}
 		})
 	}

@@ -312,3 +312,28 @@ func TestSSHFailureStillHasActualExitCode(t *testing.T) {
 		return r != nil && r.Status == "exited" && r.ExitCode != nil && *r.ExitCode == 255 && j.notices() == 1
 	})
 }
+
+func TestMonitorNormalExitEvidenceIsSeparateFromCommandExit(t *testing.T) {
+	j := startFaultJob(t)
+	if _, err := j.release.WriteString("go\n"); err != nil {
+		t.Fatal(err)
+	}
+	j.s.waitFor("command and monitor finish with different actual codes", 10*time.Second, func(string) bool {
+		row, _ := j.store.CommandRow(j.job.ID)
+		if row == nil || row.Status != "exited" || row.ExitCode == nil || *row.ExitCode != 7 {
+			return false
+		}
+		data, err := os.ReadFile(j.job.LogPath + ".monitor-exit.json")
+		if err != nil {
+			return false
+		}
+		var evidence struct {
+			ExitCode *int
+			Signal   *string
+		}
+		if err := json.Unmarshal(data, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		return evidence.ExitCode != nil && *evidence.ExitCode == 0 && evidence.Signal == nil && j.notices() == 1
+	})
+}
