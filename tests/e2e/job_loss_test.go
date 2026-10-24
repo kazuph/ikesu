@@ -91,7 +91,7 @@ func TestLostMonitorPreservesLiveChildAndNotifiesOnce(t *testing.T) {
 }
 
 func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
-	for _, tc := range []string{"before-handoff", "after-handoff", "stopped-supervisor", "unwritable-diagnostic", "full", "none"} {
+	for _, tc := range []string{"before-handoff", "after-handoff", "stopped-supervisor", "unwritable-diagnostic", "busy-diagnostic-lock", "full", "none"} {
 		t.Run(tc, func(t *testing.T) {
 			completion := "summary"
 			if tc == "full" || tc == "none" {
@@ -131,6 +131,18 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 				}
 				t.Cleanup(func() { os.Chmod(dir, 0700) })
 			}
+			var heldLog *os.File
+			if tc == "busy-diagnostic-lock" {
+				heldLog, err = os.Open(j.job.LogPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = unix.Flock(int(heldLog.Fd()), unix.LOCK_EX); err != nil {
+					heldLog.Close()
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { heldLog.Close() })
+			}
 			signalLossProcess(t, m.MonitorPID, syscall.SIGKILL, binPath)
 			if tc == "before-handoff" {
 				if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
@@ -163,6 +175,14 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 					t.Fatal(string(got))
 				}
 			} else {
+				if tc == "busy-diagnostic-lock" {
+					if !strings.Contains(string(got), "diagnostic save failed") {
+						t.Fatal("busy diagnostic did not report save failure", string(got))
+					}
+					if err = unix.Flock(int(heldLog.Fd()), unix.LOCK_UN); err != nil {
+						t.Fatal(err)
+					}
+				}
 				if tc == "stopped-supervisor" {
 					if _, err := os.Stat(j.job.LogPath + ".monitor-exit.json"); !os.IsNotExist(err) {
 						t.Fatal("stopped supervisor published", err)
