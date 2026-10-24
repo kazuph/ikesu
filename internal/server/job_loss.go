@@ -52,7 +52,15 @@ func monitorProcessGone(pid int, identity string) (bool, error) {
 // prerequisite: a stopped reaper or an unwritable log must not strand a job.
 func (s *Server) recoverLostJob(store *dispatch.Store, job dispatch.Job, m jobRunnerRecord) error {
 	s.jobProcs.cancelMu.Lock()
-	defer s.jobProcs.cancelMu.Unlock()
+	shouldNudge := false
+	defer func() {
+		// run.cancel takes cancelMu on the app loop. Never wait for that
+		// loop while still owning the mutex it needs.
+		s.jobProcs.cancelMu.Unlock()
+		if shouldNudge {
+			s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, job.CallerPane) })
+		}
+	}()
 	current, err := store.CommandRow(job.ID)
 	if err != nil {
 		return err
@@ -83,7 +91,7 @@ func (s *Server) recoverLostJob(store *dispatch.Store, job dispatch.Job, m jobRu
 		MonitorIdentity      string
 		ObservedMs           int64
 	}{job.ID, m.Token, reason, m.MonitorPID, m.MonitorIdentity, finished}
-	if e := dispatch.WithJobLogLock(job.LogPath, func() error { return writeJobRecord(job.LogPath+".completion-unavailable.json", diagnostic) }); e != nil {
+	if e := dispatch.TryWithJobLogLock(job.LogPath, func() error { return writeJobRecord(job.LogPath+".completion-unavailable.json", diagnostic) }); e != nil {
 		reason += "; diagnostic save failed: " + e.Error()
 		fmt.Fprintf(os.Stderr, "ikesu job %s: %s\n", job.ID, reason)
 	}
@@ -97,8 +105,6 @@ func (s *Server) recoverLostJob(store *dispatch.Store, job dispatch.Job, m jobRu
 		}
 	}
 	changed, err := store.CompleteJob(job.ID, "running", "exited", nil, finished, job.CallerPane, body)
-	if err == nil && changed && body != "" {
-		s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, job.CallerPane) })
-	}
+	shouldNudge = err == nil && changed && body != ""
 	return err
 }

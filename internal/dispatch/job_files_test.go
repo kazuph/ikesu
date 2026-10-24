@@ -107,3 +107,34 @@ func TestOrphanCleanupRemovesRelatedLogsWithoutFalseError(t *testing.T) {
 		t.Fatal("orphan diagnostics retained", entries, err)
 	}
 }
+
+func TestDiagnosticTryLockReturnsWhilePublisherOwnsLog(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "job.log")
+	if err := os.WriteFile(log, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	held, release := make(chan struct{}), make(chan struct{})
+	ownerDone := make(chan error, 1)
+	go func() { ownerDone <- WithJobLogLock(log, func() error { close(held); <-release; return nil }) }()
+	<-held
+	called := false
+	attempt := make(chan error, 1)
+	go func() { attempt <- TryWithJobLogLock(log, func() error { called = true; return nil }) }()
+	select {
+	case err := <-attempt:
+		if err == nil || called {
+			close(release)
+			<-ownerDone
+			t.Fatal("busy diagnostic lock accepted", err, called)
+		}
+	case <-time.After(5 * time.Second):
+		close(release)
+		<-ownerDone
+		<-attempt
+		t.Fatal("diagnostic lock blocked completion")
+	}
+	close(release)
+	if err := <-ownerDone; err != nil {
+		t.Fatal(err)
+	}
+}
