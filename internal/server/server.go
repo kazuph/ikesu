@@ -712,8 +712,19 @@ func (s *Server) attach(conn net.Conn) {
 		return
 	}
 	defer s.dropConn(c)
+	var pendingInput *clientMsg
+	var bufferedInputErr error
 	for {
-		m, err := readClientMsg(rd)
+		if bufferedInputErr != nil {
+			return
+		}
+		var m clientMsg
+		var err error
+		if pendingInput != nil {
+			m, pendingInput = *pendingInput, nil
+		} else {
+			m, err = readClientMsg(rd)
+		}
 		if err != nil {
 			return
 		}
@@ -786,6 +797,7 @@ func (s *Server) attach(conn net.Conn) {
 				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered, m.FocusEpoch) })
 			}
 		case "input", "paste":
+			m, pendingInput, bufferedInputErr = bufferedMotions(rd, m)
 			s.viewerInput(c, m)
 		case "resize":
 			s.app.Do(func() { c.viewer.Resize(s.app, m.Cols, m.Rows, m.Xpixel, m.Ypixel) })

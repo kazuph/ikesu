@@ -149,9 +149,7 @@ func (v *Viewer) InputWithSidebarPanel(a *App, bytes []byte, jobs *bool) {
 			ui.jobsPanel = *jobs
 			ui.agentScroll = 0
 		}
-		for _, event := range ui.fr.Push(bytes) {
-			v.onInput(ui, event)
-		}
+		ui.dispatchInputEvents(ui.fr.Push(bytes), func(event input.Event) { v.onInput(ui, event) })
 		v.pendingAt = time.Now()
 	})
 }

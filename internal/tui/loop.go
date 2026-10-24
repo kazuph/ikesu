@@ -420,6 +420,10 @@ func (a *App) effect(e model.Effect) {
 
 // syncLayout applies the last active display geometry to the visible tab.
 func (a *App) syncLayout() {
+	if a.deferResize {
+		a.resizePending = true
+		return
+	}
 	a.syncPaneLayout()
 }
 

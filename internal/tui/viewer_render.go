@@ -7,10 +7,19 @@ import (
 )
 
 func (v *Viewer) onInput(ui *App, event input.Event) {
+	ui.resizeInput(event, func() { v.applyInput(ui, event) })
+}
+
+func (v *Viewer) applyInput(ui *App, event input.Event) {
 	switch event.Kind {
 	case input.KindKey, input.KindPaste, input.KindMouseMotion, input.KindMouseWheel, input.KindFocus:
 		v.takeSize(ui.viewerOwner)
 		ui.syncLayout()
+	case input.KindMouseRelease:
+		if ui.resizeDragActive() {
+			v.takeSize(ui.viewerOwner)
+			ui.syncLayout()
+		}
 	}
 	if event.Kind == input.KindFocus {
 		v.focusEpoch++

@@ -40,9 +40,17 @@ func TestParityPaneBorderDragKeepsPressedBorderCellActualPTY(t *testing.T) {
 			if got != b.Pos+delta {
 				t.Fatal("pressed border cell must retain its offset", dir, edge, got, b.Pos+delta)
 			}
+			if dir == layout.Vertical {
+				x += delta
+			} else {
+				y += delta
+			}
 			a.onMouse(input.Event{Kind: input.KindMouseRelease, Mouse: uv.Mouse{X: x, Y: y, Button: uv.MouseLeft}})
 			if a.sep != nil {
 				t.Fatal("release did not end divider drag")
+			}
+			if got := l.Splits(area)[0].Pos; got != b.Pos+2*delta {
+				t.Fatal("release position was not applied", dir, edge, got, b.Pos+2*delta)
 			}
 		}
 	}

@@ -556,11 +556,7 @@ func (a *App) hostScroll(pid, scrollN int, up bool) {
 // sepMouse updates the ratio while a split border is dragged.
 func (a *App) sepMouse(ev input.Event) {
 	m := ev.Mouse
-	if ev.Kind == input.KindMouseRelease {
-		a.sep = nil
-		return
-	}
-	if ev.Kind != input.KindMouseMotion {
+	if ev.Kind != input.KindMouseMotion && ev.Kind != input.KindMouseRelease {
 		return
 	}
 	s := a.sep
@@ -572,6 +568,9 @@ func (a *App) sepMouse(ev input.Event) {
 	}
 	if s.l.SetRatioAt(s.path, ratio) {
 		a.syncLayout()
+	}
+	if ev.Kind == input.KindMouseRelease {
+		a.sep = nil
 	}
 }
 

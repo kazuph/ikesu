@@ -156,6 +156,8 @@ type App struct {
 	sizeViewer        *Viewer
 	sizeViewers       []*Viewer
 	sizeOwners        map[*model.Tab]ptySizeBasis
+	deferResize       bool
+	resizePending     bool
 	drawViewers       func()
 	tickViewers       func()
 	visiblePane       func(int) bool
@@ -535,9 +537,11 @@ func (a *App) Run() {
 				}
 				continue
 			}
-			for _, ev := range a.fr.Push(b) {
-				a.onInput(ev)
+			events := a.fr.Push(b)
+			for queued := len(a.input); queued > 0; queued-- {
+				events = append(events, a.fr.Push(<-a.input)...)
 			}
+			a.dispatchInputEvents(events, a.onInput)
 			if a.fr.Pending() {
 				if flushTimer == nil {
 					flushTimer = time.NewTimer(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
