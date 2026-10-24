@@ -291,7 +291,7 @@ func (s *Scrollback) lineInto(index int, dst uv.Line) uv.Line {
 	switch {
 	case packed != nil:
 		for x, b := range packed {
-			dst[x] = uv.Cell{Content: string(b), Width: 1}
+			dst[x] = uv.Cell{Content: asciiContent[b], Width: 1}
 		}
 	case styled != nil:
 		start := 0

@@ -193,5 +193,8 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 	s.buf, s.scrollRows = buf, nil
 	s.cur.X, s.cur.Y = newCursor.X, max(0, newCursor.Y-cut)
 	s.scroll = s.buf.Bounds()
+	if h.view.cursor == nil {
+		h.view.cursor = &reflowCursor{}
+	}
 	return ReflowSnapshot{history: h.view, main: main}
 }

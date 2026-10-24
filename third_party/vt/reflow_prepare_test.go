@@ -39,6 +39,39 @@ func TestPreparedHistoryOversizedOutputReleasesRetiredCells(t *testing.T) {
 	}
 }
 
+func TestPreparedPayloadReuseMatchesPhysicalHistoryOnActivation(t *testing.T) {
+	for _, bounded := range []bool{false, true} {
+		old, indexed := NewScreen(6, 2), NewScreen(6, 2)
+		for _, s := range []*Screen{old, indexed} {
+			s.scrollback = NewScrollback(2)
+			if bounded {
+				s.scrollback.SetMaxBytes(2 * (scrollbackRowBytes + 6*scrollbackCellBytes))
+			}
+			s.cur.Y = 1
+		}
+		get := func(int) ReflowRow { return ReflowRow{} }
+		for index, text := range []string{"abcdef", " gh ij", "klmnop", "q rst ", "uvwxyz"} {
+			var row uv.Line
+			for _, r := range text {
+				row = append(row, uv.Cell{Content: string(r), Width: 1})
+			}
+			if index%2 == 1 {
+				for x := range row {
+					row[x].Style.Attrs = uv.AttrBold
+				}
+			}
+			old.scrollback.Push(row)
+			indexed.scrollback.Push(row)
+			indexed.prepareReflowHistory(get)
+		}
+		flags := old.referenceStreamingReflow(4, 2, nil, false)
+		view := indexed.reflowIndexed(4, 2, get, false, true)
+		if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || !reflect.DeepEqual(flags, view.materialize()) {
+			t.Fatal("reused payload changed activation contents")
+		}
+	}
+}
+
 func TestPreparedHistoryEvictionAndPullPreserveFirstResize(t *testing.T) {
 	old, indexed := NewScreen(6, 2), NewScreen(6, 2)
 	for _, s := range []*Screen{old, indexed} {

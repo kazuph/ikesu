@@ -8,6 +8,7 @@ type reflowPrepared struct {
 	history                *reflowHistory
 	rows, skipped, scanned int
 	pendingGroups          int
+	cells                  uv.Line
 }
 
 func appendReflowCells(logical uv.Line, row uv.Line, ref ReflowRow, wraps bool, width int) uv.Line {
@@ -76,16 +77,57 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 		physical = 0
 	}
 	for y := p.rows; y < closed; y++ {
-		if y > p.rows && !rowRef(y).Continued {
-			flush()
+		wraps := rowRef(y + 1).Continued
+		if physical == 0 && !wraps {
+			lines = append(lines, p.savedRow(sb, y))
+			continue
 		}
 		scratch = sb.lineInto(y, scratch)
-		logical = appendReflowCells(logical, scratch, rowRef(y), rowRef(y+1).Continued, s.Width())
+		logical = appendReflowCells(logical, scratch, rowRef(y), wraps, s.Width())
 		physical++
+		if !wraps {
+			flush()
+		}
 	}
-	flush()
 	p.history.appendPreparedBatch(lines)
 	p.rows = closed
+}
+
+// Retired groups are excluded before raw slots are reused. On activation,
+// clearing the raw headers transfers the retained payloads without mutation.
+func (p *reflowPrepared) savedRow(sb *Scrollback, y int) *reflowLogicalLine {
+	i := sb.wrap(sb.start + y)
+	line := &reflowLogicalLine{sourceRows: 1}
+	switch {
+	case len(sb.packed) > i && sb.packed[i] != nil:
+		line.packed = sb.packed[i]
+		latest := p.history.pool.latest
+		matches := latest != nil && latest.maxSpan == 1 && latest.length == len(line.packed)
+		if matches {
+			for x, b := range line.packed {
+				if latest.plain {
+					matches = matches && b != ' '
+				} else {
+					matches = matches && ((latest.last[x+1] == x) == (b != ' '))
+				}
+			}
+		}
+		if matches {
+			line.shape = latest
+			p.history.pool.refs[latest]++
+		} else {
+			p.cells = sb.lineInto(y, p.cells)
+			line.shape = p.history.pool.acquire(p.cells)
+		}
+	case len(sb.styled) > i && sb.styled[i] != nil:
+		line.styled = sb.styled[i]
+		p.cells = sb.lineInto(y, p.cells)
+		line.shape = p.history.pool.acquire(p.cells)
+	default:
+		line.dense = sb.lines[i]
+		line.shape = p.history.pool.acquire(line.dense)
+	}
+	return line
 }
 
 func (p *reflowPrepared) dropFirst() {

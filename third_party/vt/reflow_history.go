@@ -5,15 +5,16 @@ import uv "github.com/charmbracelet/ultraviolet"
 // Cells and their cache ownership live here, separately from the immutable
 // metadata tree. The ring releases evicted cell references immediately.
 type reflowHistory struct {
-	view         reflowProjection
-	pool         reflowShapePool
-	lines        []*reflowLogicalLine
-	start, count int
-	cachedRow    int
-	cached       uv.Line
-	cachedValid  bool
-	clipping     reflowClipping
-	maxSpan      int
+	view                     reflowProjection
+	pool                     reflowShapePool
+	lines                    []*reflowLogicalLine
+	start, count             int
+	cachedRow                int
+	cachedLine               *reflowLogicalLine
+	cachedStart, cachedWidth int
+	cachedValid              bool
+	clipping                 reflowClipping
+	maxSpan                  int
 }
 
 func (h *reflowHistory) at(group int) *reflowLogicalLine {
@@ -41,7 +42,8 @@ func (h *reflowHistory) appendLine(line *reflowLogicalLine) {
 	h.lines[(h.start+h.count)%len(h.lines)] = line
 	h.count++
 	h.view.index = h.view.index.append(line.shape)
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 }
 
 func (h *reflowHistory) appendPreparedBatch(lines []*reflowLogicalLine) {
@@ -54,7 +56,8 @@ func (h *reflowHistory) appendPreparedBatch(lines []*reflowLogicalLine) {
 		shapes[i] = line.shape
 	}
 	h.view.index = joinReflowIndex(h.view.index, reflowIndexBatch(shapes))
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 }
 
 func (h *reflowHistory) prependLine(line *reflowLogicalLine) {
@@ -64,7 +67,8 @@ func (h *reflowHistory) prependLine(line *reflowLogicalLine) {
 	h.lines[h.start] = line
 	h.count++
 	h.view.index = joinReflowIndex((*reflowIndex)(nil).append(line.shape), h.view.index)
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 }
 
 func (h *reflowHistory) attach(line *reflowLogicalLine) {
@@ -91,7 +95,8 @@ func (h *reflowHistory) dropGroups(groups int) {
 		h.count--
 	}
 	h.view.index = h.view.index.dropGroups(groups)
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 }
 
 func (h *reflowHistory) takeGroups(groups int) {
@@ -102,7 +107,8 @@ func (h *reflowHistory) takeGroups(groups int) {
 		h.count--
 	}
 	h.view.index = h.view.index.takeGroups(groups)
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 }
 
 func (h *reflowHistory) line(row int) uv.Line {
@@ -121,11 +127,11 @@ func (h *reflowHistory) lineInto(row int, dst uv.Line) uv.Line {
 	if !ok {
 		return nil
 	}
-	physical := h.view.first + row
-	local := physical - h.view.index.prefixGroups(h.view.width, group).rows
 	shape := h.at(group).shape
-	charge := shape.prefixBytes(h.view.width, local+1) - shape.prefixBytes(h.view.width, local)
-	width := (charge - scrollbackRowBytes) / scrollbackCellBytes
+	width := end - start
+	if !shape.plain && width > 0 {
+		width = max(0, shape.last[end]-start+1)
+	}
 	line := dst
 	if cap(line) < width {
 		line = make(uv.Line, width)
@@ -142,14 +148,20 @@ func (h *reflowHistory) cellAt(x, row int) *uv.Cell {
 		return nil
 	}
 	if !h.cachedValid || h.cachedRow != row {
-		h.cached, h.cachedRow = h.line(row), row
+		group, start, end, _, _ := h.view.row(row)
+		h.cachedLine, h.cachedStart, h.cachedWidth = h.at(group), start, end-start
+		if !h.cachedLine.shape.plain && h.cachedWidth > 0 {
+			h.cachedWidth = max(0, h.cachedLine.shape.last[end]-start+1)
+		}
+		h.cachedRow = row
 		h.cachedValid = true
 	}
-	if x >= len(h.cached) {
+	if x >= h.cachedWidth {
 		return nil
 	}
-	cell := h.cached[x]
-	return &cell
+	var cell [1]uv.Cell
+	h.cachedLine.copyRange(cell[:], h.cachedStart+x, h.cachedStart+x+1)
+	return &cell[0]
 }
 
 func (h *reflowHistory) dropRows(rows int) int {
@@ -167,7 +179,8 @@ func (h *reflowHistory) dropRows(rows int) int {
 		h.dropGroups(group)
 		h.view.first -= first
 	}
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 	return before - h.view.bytes()
 }
 
@@ -180,6 +193,7 @@ func (h *reflowHistory) popLast() (uv.Line, int) {
 		h.view.first = 0
 		return row, before
 	}
-	h.cached, h.cachedValid = nil, false
+	h.cachedLine, h.cachedValid = nil, false
+	h.view.cursor = nil
 	return row, before - h.view.bytes()
 }

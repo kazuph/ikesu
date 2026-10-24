@@ -12,9 +12,14 @@ type reflowShapePool struct {
 	general map[string]*reflowShape
 	refs    map[*reflowShape]int
 	keys    map[*reflowShape]string
+	latest  *reflowShape
 }
 
 func (p *reflowShapePool) acquire(line uv.Line) *reflowShape {
+	if p.latest != nil && p.latest.matches(line) {
+		p.refs[p.latest]++
+		return p.latest
+	}
 	if p.refs == nil {
 		p.plain = make(map[int]*reflowShape)
 		p.general = make(map[string]*reflowShape)
@@ -53,6 +58,7 @@ func (p *reflowShapePool) acquire(line uv.Line) *reflowShape {
 		}
 	}
 	p.refs[shape]++
+	p.latest = shape
 	return shape
 }
 
@@ -64,12 +70,39 @@ func (p *reflowShapePool) release(shape *reflowShape) {
 		return
 	}
 	delete(p.refs, shape)
+	if p.latest == shape {
+		p.latest = nil
+	}
 	if shape.plain {
 		delete(p.plain, shape.length)
 		return
 	}
 	delete(p.general, p.keys[shape])
 	delete(p.keys, shape)
+}
+
+func (s *reflowShape) matches(line uv.Line) bool {
+	if s.plain {
+		if len(line) != s.length {
+			return false
+		}
+		for i := range line {
+			if line[i].Width != 1 || blankCell(&line[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	position := 0
+	for i := 0; i < len(line); {
+		span := max(line[i].Width, 1)
+		if position+span > s.length || s.heads[position] != position || s.heads[position+span-1] != position || (s.last[position+1] == position) == blankCell(&line[i]) {
+			return false
+		}
+		position += span
+		i += span
+	}
+	return position == s.length
 }
 
 type reflowLogicalLine struct {
@@ -115,7 +148,7 @@ func (l *reflowLogicalLine) copyRange(dst uv.Line, start, end int) {
 	case l.packed != nil:
 		end = min(end, len(l.packed))
 		for x := start; x < end; x++ {
-			dst[x-start] = uv.Cell{Content: string(l.packed[x]), Width: 1}
+			dst[x-start] = uv.Cell{Content: asciiContent[l.packed[x]], Width: 1}
 		}
 	case l.styled != nil:
 		end = min(end, len(l.styled.glyphs))
@@ -156,32 +189,22 @@ func (l *reflowLogicalLine) copyRange(dst uv.Line, start, end int) {
 type reflowProjection struct {
 	index              *reflowIndex
 	width, first, rows int
+	cursor             *reflowCursor
 }
 
 func (p reflowProjection) bytes() int {
 	return p.index.prefixBytes(p.width, p.first+p.rows) - p.index.prefixBytes(p.width, p.first)
 }
 
-func (p reflowProjection) row(index int) (group, start, end int, flag ReflowRow, ok bool) {
+func (p *reflowProjection) row(index int) (group, start, end int, flag ReflowRow, ok bool) {
 	if index < 0 || index >= p.rows {
 		return 0, 0, 0, ReflowRow{}, false
 	}
-	row := p.first + index
-	group, start, end, ok = p.index.selectRow(p.width, row)
-	before := p.index.prefixGroups(p.width, group).rows
-	shape := p.index.shapeAt(group)
-	flag.Continued = row > before
-	if start != end {
-		consumed := end
-		if !shape.plain {
-			consumed, _ = shape.next(start, p.width)
-		}
-		flag.Width = consumed - start
+	if p.cursor == nil {
+		p.cursor = &reflowCursor{}
 	}
-	if shape.endMarker && row-before == shape.cost(p.width).rows-1 {
-		flag.Width--
-	}
-	return group, start, end, flag, ok
+	position := p.cursor.locate(p.index, p.width, p.first+index)
+	return position.group, position.start, position.end, position.flag, true
 }
 
 func (n *reflowIndex) shapeAt(group int) *reflowShape {
