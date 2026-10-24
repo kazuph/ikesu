@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
+	"golang.org/x/sys/unix"
+	"net"
 )
 
 type lossManifest struct {
@@ -41,6 +44,20 @@ func TestLostMonitorPreservesLiveChildAndNotifiesOnce(t *testing.T) {
 	var m lossManifest
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatal(err)
+	}
+	for _, pid := range []int{m.SupervisorPID, m.MonitorPID, m.PID} {
+		pgid, err := syscall.Getpgid(pid)
+		if err != nil || pgid != pid {
+			t.Fatal("group ownership changed", pid, pgid, err)
+		}
+		sid, err := unix.Getsid(pid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pid != m.PID && sid != pid {
+			t.Fatal("monitor/reaper is not session leader", pid, sid)
+		}
+		t.Logf("pid=%d pgid=%d sid=%d", pid, pgid, sid)
 	}
 	signalLossProcess(t, m.MonitorPID, syscall.SIGKILL, binPath)
 	var control api.RunStartedResult
@@ -165,4 +182,133 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCancelWaitsForStoppedMonitorAndPreservesHandoff(t *testing.T) {
+	for _, handoff := range []bool{false, true} {
+		t.Run(fmt.Sprint(handoff), func(t *testing.T) {
+			j := startFaultJob(t)
+			data, err := os.ReadFile(j.job.LogPath + ".runner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m lossManifest
+			if err = json.Unmarshal(data, &m); err != nil {
+				t.Fatal(err)
+			}
+			signalLossProcess(t, m.MonitorPID, syscall.SIGSTOP, binPath)
+			t.Cleanup(func() {
+				if syscall.Kill(m.MonitorPID, 0) == nil {
+					signalLossProcess(t, m.MonitorPID, syscall.SIGCONT, binPath)
+				}
+			})
+			if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil {
+				t.Fatal(out, err)
+			}
+			if handoff {
+				if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
+					t.Fatal(out, err)
+				}
+			}
+			j.s.waitFor("child group stopped before monitor can publish", 10*time.Second, func(string) bool {
+				b, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(m.PID)).Output()
+				return err != nil || strings.HasPrefix(strings.TrimSpace(string(b)), "Z")
+			})
+			r, err := j.store.CommandRow(j.job.ID)
+			if err != nil || r.Status != "cancelling" || j.notices() != 0 {
+				t.Fatal("live stopped monitor was called gone", r, err, j.notices())
+			}
+			signalLossProcess(t, m.MonitorPID, syscall.SIGCONT, binPath)
+			j.s.waitFor("cancel completed after monitor resumed", 10*time.Second, func(string) bool {
+				r, _ := j.store.CommandRow(j.job.ID)
+				return r != nil && r.Status == "cancelled" && r.ExitCode == nil && j.notices() == 1
+			})
+		})
+	}
+}
+
+func TestLostJobAfterAllOwnerProcessesDisappearAndRestart(t *testing.T) {
+	j := startFaultJob(t)
+	data, err := os.ReadFile(j.job.LogPath + ".runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m lossManifest
+	if err = json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := exec.Command("ps", "-o", "ppid=", "-p", fmt.Sprint(m.SupervisorPID)).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverPID, err := strconv.Atoi(strings.TrimSpace(string(parent)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.s.waitFor("session saved before process loss", 5*time.Second, func(string) bool {
+		_, err := os.Stat(filepath.Join(j.s.stateDir, j.s.name, "session.json"))
+		return err == nil
+	})
+	signalLossProcess(t, serverPID, syscall.SIGKILL, binPath)
+	signalLossProcess(t, m.SupervisorPID, syscall.SIGKILL, binPath)
+	signalLossProcess(t, m.MonitorPID, syscall.SIGKILL, binPath)
+	signalLossProcess(t, m.PID, syscall.SIGKILL, j.release.Name())
+	j.s.waitFor("old server gone", 5*time.Second, func(string) bool {
+		b, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(serverPID)).Output()
+		return err != nil || strings.HasPrefix(strings.TrimSpace(string(b)), "Z")
+	})
+	successor := exec.Command(binPath, "--session", j.s.name, "server")
+	successor.Env = j.s.cmd.Env
+	successor.Stderr = os.Stderr
+	if err := successor.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		j.s.stopServer()
+		if err := successor.Wait(); err != nil {
+			t.Error("successor exit", err)
+		}
+	})
+	notices := func() int {
+		messages, err := j.store.History(dispatch.JobsRoom, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, msg := range messages {
+			if strings.Contains(msg.Body, "job="+j.job.ID+" ") {
+				n++
+			}
+		}
+		return n
+	}
+	j.s.waitFor("startup recovers result loss once", 10*time.Second, func(string) bool {
+		r, _ := j.store.CommandRow(j.job.ID)
+		return r != nil && r.Status == "exited" && r.ExitCode == nil && notices() == 1
+	})
+	if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
+		t.Fatal(out, err)
+	}
+	if notices() != 1 {
+		t.Fatal("recovery duplicated notice", notices())
+	}
+}
+
+func TestSSHFailureStillHasActualExitCode(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	j := startFaultJobScript(t, func(fifo string) string {
+		return fmt.Sprintf("printf 'READY\\n'; read value < %q; exec /usr/bin/ssh -oBatchMode=yes -oConnectTimeout=5 -p %d 127.0.0.1 true", fifo, port)
+	})
+	if _, err := j.release.WriteString("go\n"); err != nil {
+		t.Fatal(err)
+	}
+	j.s.waitFor("actual SSH error is collected", 10*time.Second, func(string) bool {
+		r, _ := j.store.CommandRow(j.job.ID)
+		return r != nil && r.Status == "exited" && r.ExitCode != nil && *r.ExitCode == 255 && j.notices() == 1
+	})
 }

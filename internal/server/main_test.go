@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"testing"
@@ -8,7 +9,10 @@ import (
 
 func TestMain(m *testing.M) {
 	if len(os.Args) == 2 && os.Args[1] == jobRunnerArg {
-		code, _ := RunJobRunner()
+		code, err := RunJobRunner()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu job runner:", err)
+		}
 		os.Exit(code)
 	}
 	if len(os.Args) == 2 && os.Args[1] == jobSupervisorArg {

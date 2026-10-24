@@ -32,11 +32,17 @@ func monitorProcessGone(pid int, identity string) (bool, error) {
 	if pid <= 0 || identity == "" {
 		return false, fmt.Errorf("monitor identity unavailable")
 	}
+	if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
+		return true, nil
+	}
 	current, err := jobProcessIdentity(pid)
 	if os.IsNotExist(err) || err == syscall.ESRCH {
 		return true, nil
 	}
 	if err != nil {
+		if syscall.Kill(pid, 0) == syscall.ESRCH {
+			return true, nil
+		}
 		return false, fmt.Errorf("cannot establish runner monitor identity: %w", err)
 	}
 	return current != identity, nil
