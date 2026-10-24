@@ -19,6 +19,7 @@ type graphicsFlow struct {
 	encoder            endpoint.SnapshotEncoder
 	revision, awaiting uint64
 	pending            bool
+	redraw             bool
 	writing            bool
 	until              time.Time
 	traceAwaiting      uint64
@@ -38,19 +39,24 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 	flow := c.graphics
 	if flow.writing {
 		flow.pending = true
+		flow.redraw = true
 		return nil
 	}
 	waiting := flow.awaiting != 0 && time.Now().Before(flow.until)
 	textOnly := false
+	relayout := false
 	var candidate *graphicsTextSurface
 	if waiting {
 		candidate = captureGraphicsText(in)
 		flow.pending = true
-		if !flow.textSurface.compatible(candidate) {
-			return nil
-		}
 		textOnly = true
-		in = flow.textSurface.input(in)
+		relayout = !flow.textSurface.compatible(candidate)
+		if relayout {
+			in = flow.textSurface.relayoutInput(in)
+			in = s.nativeGraphicsInput(c, in)
+		} else {
+			in = flow.textSurface.input(in)
+		}
 	} else {
 		flow.awaiting = 0
 		s.traceReceiptEnd(c, "timeout")
@@ -103,6 +109,10 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 			flow.revision = revision
 			if textOnly {
 				flow.encoder.CommitText()
+				if relayout {
+					flow.encoder.ResetGraphics()
+					flow.published = surface
+				}
 			} else {
 				flow.published = surface
 				flow.textSurface = candidate
@@ -112,6 +122,10 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 				s.armGraphicsReceipt(c, revision)
 			} else if flow.pending && (!textOnly || flow.awaiting == 0 || !time.Now().Before(flow.until)) {
 				flow.pending = false
+				c.viewer.Redraw(s.app)
+			}
+			if flow.redraw {
+				flow.redraw = false
 				c.viewer.Redraw(s.app)
 			}
 			if s.trace != nil {

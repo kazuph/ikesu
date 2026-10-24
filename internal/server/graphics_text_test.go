@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/kitty"
@@ -9,6 +10,49 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 	"testing"
 )
+
+func TestGraphicsRelayoutKeepsPublishedGenerationAtCurrentAnchors(t *testing.T) {
+	state := model.New(".", 106, 38)
+	id := state.FocusedPane()
+	published := kitty.Placement{ID: 2, Image: kitty.Image{ID: 1, Width: 8, Height: 8, Format: 32, Data: bytes.Repeat([]byte{1}, 8*8*4)}, X: 2, Y: 3, Cols: 4, Rows: 2, SourceWidth: 8, SourceHeight: 8}
+	in := render.Input{State: state, Panes: map[int]*render.PaneSnap{id: {Graphics: []kitty.Placement{published}}}}
+	old := captureGraphicsText(in)
+	current := published
+	current.X, current.Y, current.Cols, current.Rows = 7, 9, 8, 4
+	current.Image.Width, current.Image.Height = 16, 16
+	current.Image.Data = bytes.Repeat([]byte{2}, 16*16*4)
+	in.Panes[id].Graphics = []kitty.Placement{current, {ID: 3, Image: kitty.Image{ID: 9}}}
+	in.Panes[id].Grid = [][]uv.Cell{{{Content: "latest", Width: 1}}}
+	state.Cols, state.Rows = 160, 45
+	got := old.relayoutInput(in)
+	if got.State != state || got.Panes[id].Grid[0][0].Content != "latest" || len(got.Panes[id].Graphics) != 1 {
+		t.Fatal("latest geometry/text or image identity was lost")
+	}
+	image := got.Panes[id].Graphics[0]
+	if image.X != 7 || image.Y != 9 || image.Cols != published.Cols || image.Rows != published.Rows || image.Image.Width != 8 || image.Image.Height != 8 || image.SourceWidth != 8 || image.SourceHeight != 8 || len(image.Image.Data) != 0 {
+		t.Fatal("pending pixels or geometry mixed with published generation", image)
+	}
+	if current.Image.Width != in.Panes[id].Graphics[0].Image.Width || !bytes.Equal(old.placements[id][0].Image.Data, published.Image.Data) {
+		t.Fatal("projection changed a source generation")
+	}
+	in.Panes[id].Graphics = nil
+	if len(old.relayoutInput(in).Panes[id].Graphics) != 0 {
+		t.Fatal("removed placement remained visible")
+	}
+}
+
+func TestGraphicsRelayoutNeverMovesAnImageToAnotherPopupTerminal(t *testing.T) {
+	state := model.New(".", 160, 45)
+	state.Apply(model.CmdOpenPopup{WorkspaceID: state.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 40}, Height: api.PopupSize{Cells: 12}})
+	id := state.Popup.PaneID
+	state.Popup.TerminalID = "first"
+	in := render.Input{State: state, Panes: map[int]*render.PaneSnap{id: {Graphics: []kitty.Placement{{ID: 1, Image: kitty.Image{ID: 1}}}}}}
+	old := captureGraphicsText(in)
+	state.Popup.TerminalID = "second"
+	if len(old.relayoutInput(in).Panes[id].Graphics) != 0 {
+		t.Fatal("a prior terminal's image crossed the terminal boundary")
+	}
+}
 
 func TestGraphicsTextGeometryAndGeneration(t *testing.T) {
 	state := model.New(".", 80, 24)

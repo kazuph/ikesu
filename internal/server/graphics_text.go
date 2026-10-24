@@ -13,6 +13,7 @@ import (
 type graphicsTextSurface struct {
 	geometry   string
 	placements map[int][]kitty.Placement
+	terminals  map[int]string
 }
 
 func captureGraphicsText(in render.Input) *graphicsTextSurface {
@@ -52,7 +53,11 @@ func captureGraphicsText(in render.Input) *graphicsTextSurface {
 	if err != nil {
 		return nil
 	}
-	return &graphicsTextSurface{string(geometry), placements}
+	terminals := map[int]string{}
+	if state.PopupVisible() {
+		terminals[popupID] = terminal
+	}
+	return &graphicsTextSurface{geometry: string(geometry), placements: placements, terminals: terminals}
 }
 
 func (old *graphicsTextSurface) compatible(next *graphicsTextSurface) bool {
@@ -88,5 +93,34 @@ func (old *graphicsTextSurface) input(in render.Input) render.Input {
 	}
 	in.Panes = panes
 	in.GraphicsPatches = nil
+	return in
+}
+
+// Reposition the retained generation without using pending pixels, crop, or
+// dimensions. New image identities wait for the ordinary full publication.
+func (old *graphicsTextSurface) relayoutInput(in render.Input) render.Input {
+	panes := make(map[int]*render.PaneSnap, len(in.Panes))
+	for id, p := range in.Panes {
+		value := *p
+		value.Graphics = nil
+		terminal := ""
+		if in.State != nil && in.State.PopupVisible() && in.State.Popup.PaneID == id {
+			terminal = in.State.Popup.TerminalID
+		}
+		if old != nil && old.terminals[id] == terminal {
+			for _, current := range p.Graphics {
+				for _, published := range old.placements[id] {
+					if current.ID == published.ID && current.Image.ID == published.Image.ID && current.Image.NativeID == published.Image.NativeID {
+						published.X, published.Y = current.X, current.Y
+						published.Image.Data = nil
+						value.Graphics = append(value.Graphics, published)
+						break
+					}
+				}
+			}
+		}
+		panes[id] = &value
+	}
+	in.Panes, in.GraphicsPatches = panes, nil
 	return in
 }
