@@ -45,48 +45,73 @@ func (s *Screen) reflow(width, height int, continued []ReflowRow, phantom bool) 
 			break
 		}
 	}
-	var physical []uv.Line
+	previous := s.scrollback
+	next := NewScrollback(len(previous.lines))
+	if previous.byteLimited {
+		next.SetMaxBytes(previous.maxBytes)
+	}
+	next.maxLines = previous.maxLines
+	visible := make([]uv.Line, height)
+	for y := range visible {
+		visible[y] = make(uv.Line, width)
+	}
+	output := make(uv.Line, width)
+	physical, visibleStart, visibleCount := 0, 0, 0
+	emit := func() {
+		physical++
+		if visibleCount < height {
+			idx := (visibleStart + visibleCount) % height
+			output, visible[idx] = visible[idx], output
+			visibleCount++
+		} else {
+			next.Push(visible[visibleStart])
+			output, visible[visibleStart] = visible[visibleStart], output
+			visibleStart = (visibleStart + 1) % height
+		}
+		clear(output)
+	}
 	var flags []ReflowRow
 	var logical uv.Line
 	cursorOffset := -1
 	newCursor := uv.Position{}
 	flush := func() {
-		start := len(physical)
-		row := make(uv.Line, width)
+		start := physical
 		x := 0
 		for i := 0; i < len(logical); {
 			cell := logical[i]
 			span := max(cell.Width, 1)
 			if x+span > width {
-				physical = append(physical, row)
-				flags = append(flags, ReflowRow{Continued: len(physical)-1 > start, Width: x})
-				row = make(uv.Line, width)
+				emit()
+				flags = append(flags, ReflowRow{Continued: physical-1 > start, Width: x})
 				x = 0
 			}
 			if cursorOffset >= i && cursorOffset < i+span {
-				newCursor = uv.Position{X: x + cursorOffset - i, Y: len(physical)}
+				newCursor = uv.Position{X: x + cursorOffset - i, Y: physical}
 			}
-			copy(row[x:], logical[i:min(i+span, len(logical))])
+			copy(output[x:], logical[i:min(i+span, len(logical))])
 			x += span
 			i += span
 		}
-		physical = append(physical, row)
-		flags = append(flags, ReflowRow{Continued: len(physical)-1 > start, Width: x})
+		emit()
+		flags = append(flags, ReflowRow{Continued: physical-1 > start, Width: x})
 		if cursorOffset == len(logical) {
-			newCursor = uv.Position{X: x, Y: len(physical) - 1}
+			newCursor = uv.Position{X: x, Y: physical - 1}
 			if x >= width {
-				newCursor.X, newCursor.Y = 0, len(physical)
-				physical = append(physical, make(uv.Line, width))
+				newCursor.X, newCursor.Y = 0, physical
+				emit()
 				flags = append(flags, ReflowRow{Continued: true})
 			}
 		}
-		logical = nil
+		clear(logical)
+		logical = logical[:0]
 		cursorOffset = -1
 	}
+	var scratch uv.Line
 	for y := 0; y <= history+last; y++ {
 		var row uv.Line
 		if y < history {
-			row = s.scrollback.Line(y)
+			scratch = s.scrollback.lineInto(y, scratch)
+			row = scratch
 		} else {
 			row = s.buf.Line(y - history)
 		}
@@ -124,21 +149,26 @@ func (s *Screen) reflow(width, height int, continued []ReflowRow, phantom bool) 
 		}
 	}
 	flush()
-	cut := max(0, len(physical)-height)
-	limit := s.scrollback.MaxLines()
-	dropped := max(0, cut-limit)
-	s.scrollback.Clear()
-	for _, row := range physical[dropped:cut] {
-		s.scrollback.Push(row)
+	cut := max(0, physical-height)
+	// The old algorithm omitted rows beyond the line limit before applying
+	// byte eviction. Retain that notification count while streaming all rows.
+	skipped := max(0, cut-previous.MaxLines())
+	drops := cut - next.Len() - skipped
+	next.OnDrop = previous.OnDrop
+	*s.scrollback = *next
+	if next.ByteLimited() && next.OnDrop != nil {
+		for i := 0; i < drops; i++ {
+			next.OnDrop()
+		}
 	}
 	s.scrollRows = nil
 	s.buf = uv.NewRenderBuffer(width, height)
-	for y, row := range physical[cut:] {
-		copy(s.buf.Line(y), row)
+	for y := 0; y < visibleCount; y++ {
+		copy(s.buf.Line(y), visible[(visibleStart+y)%height])
 	}
 	s.cur.X, s.cur.Y = newCursor.X, max(0, newCursor.Y-cut)
 	s.scroll = s.buf.Bounds()
-	dropped = cut - s.scrollback.Len()
+	dropped := cut - s.scrollback.Len()
 	flags = flags[dropped:]
 	for len(flags) < s.scrollback.Len()+height {
 		flags = append(flags, ReflowRow{})

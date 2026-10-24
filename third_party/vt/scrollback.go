@@ -225,6 +225,47 @@ func (s *Scrollback) Line(index int) uv.Line {
 	return s.lines[idx]
 }
 
+// lineInto reconstructs a saved row without allocating a fresh expanded row
+// for each history entry. The caller owns dst; saved storage stays immutable.
+func (s *Scrollback) lineInto(index int, dst uv.Line) uv.Line {
+	idx := s.wrap(s.start + index)
+	var packed []byte
+	var styled *styledRow
+	width := len(s.lines[idx])
+	if len(s.packed) > idx && s.packed[idx] != nil {
+		packed = s.packed[idx]
+		width = len(packed)
+	}
+	if len(s.styled) > idx && s.styled[idx] != nil {
+		styled = s.styled[idx]
+		width = len(styled.glyphs)
+	}
+	if cap(dst) < width {
+		dst = make(uv.Line, width)
+	} else {
+		clear(dst)
+		dst = dst[:width]
+	}
+	switch {
+	case packed != nil:
+		for x, b := range packed {
+			dst[x] = uv.Cell{Content: string(b), Width: 1}
+		}
+	case styled != nil:
+		start := 0
+		for _, run := range styled.runs {
+			for x := start; x < run.end; x++ {
+				g := styled.glyphs[x]
+				dst[x] = uv.Cell{Content: g.content, Width: g.width, Style: run.style, Link: run.link}
+			}
+			start = run.end
+		}
+	default:
+		copy(dst, s.lines[idx])
+	}
+	return dst
+}
+
 // Lines returns all lines in the scrollback buffer.
 // Index 0 is the oldest line.
 func (s *Scrollback) Lines() []uv.Line {
