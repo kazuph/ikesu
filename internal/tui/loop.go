@@ -416,7 +416,7 @@ func (a *App) effect(e model.Effect) {
 	}
 }
 
-// syncLayout applies the size basis to all tabs before a viewer can select them.
+// syncLayout applies the last active display geometry to the visible tab.
 func (a *App) syncLayout() {
 	a.withPTYGeometry(a.syncPaneLayout)
 }
@@ -425,8 +425,14 @@ func (a *App) syncPaneLayout() {
 	previous := a.selection()
 	defer a.selectView(previous)
 	for wi, ws := range a.st.Workspaces {
+		if (a.viewerOwner != nil || len(a.sizeViewers) > 0) && ws.ID != previous.workspace {
+			continue
+		}
 		a.st.Active = wi
 		for ti, tab := range ws.Tabs {
+			if (a.viewerOwner != nil || len(a.sizeViewers) > 0) && tab.ID != previous.tabs[ws.ID] {
+				continue
+			}
 			ws.ActiveTab = ti
 			for _, pr := range a.ptyPaneRects(tab, a.st.PanesArea()) {
 				w, h := model.PaneTermSize(pr.Rect, a.st.PaneBorders)

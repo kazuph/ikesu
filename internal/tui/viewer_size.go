@@ -26,7 +26,10 @@ func (a *App) withPTYGeometry(fn func()) {
 	if a.viewerOwner != nil {
 		root = a.viewerOwner
 	}
-	owner := root.sizeViewer
+	owner := root.sizeOwners[a.currentSizeTab()]
+	if owner == nil {
+		owner = root.sizeViewer
+	}
 	if owner == nil {
 		fn()
 		return
@@ -64,10 +67,14 @@ func (v *Viewer) takeSize(a *App) {
 		a.sizeViewers = append(a.sizeViewers, v)
 	}
 	a.sizeViewer = v
+	if a.sizeOwners == nil {
+		a.sizeOwners = make(map[*model.Tab]*Viewer)
+	}
+	a.sizeOwners[a.currentSizeTab()] = v
 }
 
-// Detach preserves the last basis while multiple displays remain. When only
-// one remains, its latest viewport becomes the basis, even if it never typed.
+// Detach freezes the current tab sizes while multiple displays remain. The
+// final remaining display immediately sizes only the tab it is showing.
 func (v *Viewer) Detach(a *App) {
 	for i, attached := range a.sizeViewers {
 		if attached != v {
@@ -76,10 +83,16 @@ func (v *Viewer) Detach(a *App) {
 		a.sizeViewers = append(a.sizeViewers[:i], a.sizeViewers[i+1:]...)
 		if len(a.sizeViewers) == 1 {
 			remaining := a.sizeViewers[0]
-			a.sizeViewer = remaining
-			remaining.with(a, func(ui *App) { ui.syncLayout() })
+			remaining.with(a, func(ui *App) { remaining.takeSize(a); ui.syncLayout() })
 			a.st.Cols, a.st.Rows = remaining.cols, remaining.rows
 		}
 		return
 	}
+}
+
+func (a *App) currentSizeTab() *model.Tab {
+	if ws := a.st.ActiveWorkspace(); ws != nil {
+		return ws.TabRef()
+	}
+	return nil
 }

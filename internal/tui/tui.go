@@ -155,6 +155,7 @@ type App struct {
 	viewerActive      bool
 	sizeViewer        *Viewer
 	sizeViewers       []*Viewer
+	sizeOwners        map[*model.Tab]*Viewer
 	drawViewers       func()
 	tickViewers       func()
 	visiblePane       func(int) bool

@@ -7,6 +7,18 @@ import (
 )
 
 func (v *Viewer) onInput(ui *App, event input.Event) {
+	before := ui.currentSizeTab()
+	defer func() {
+		if ui.currentSizeTab() != before {
+			v.takeSize(ui.viewerOwner)
+			ui.syncLayout()
+		}
+	}()
+	switch event.Kind {
+	case input.KindKey, input.KindPaste, input.KindMouseMotion, input.KindMouseWheel, input.KindFocus:
+		v.takeSize(ui.viewerOwner)
+		ui.syncLayout()
+	}
 	if event.Kind == input.KindFocus {
 		v.focusEpoch++
 		v.focusUntil = time.Now().Add(time.Second) // SPEC G11: at most one second
@@ -21,7 +33,7 @@ func (v *Viewer) onInput(ui *App, event input.Event) {
 func (v *Viewer) releaseKeys(ui *App) {
 	v.focusUntil = time.Time{}
 	for _, event := range v.heldKeys {
-		ui.onInput(event)
+		v.onInput(ui, event)
 	}
 	v.heldKeys = nil
 }
