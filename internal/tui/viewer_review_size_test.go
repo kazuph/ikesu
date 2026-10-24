@@ -109,15 +109,15 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 			}
 			v := a.NewViewer(io.Discard, 196, 50, nil)
 			v.Begin(a, 196*8, 50*16)
-			pids := map[int]int{}
-			for id := range viewerTerminalSizes(a) {
-				pids[id] = a.sup.Get(id).ShellPID()
-			}
 			source := a.st.Workspaces[0].Tabs[0]
 			moving := source.Layout.Focused()
 			shell := a.sup.Get(moving).ShellPID()
 			if kind == "leave-sibling" {
 				v.with(a, func(ui *App) { ui.exec(model.CmdSplitFocused{Dir: layout.Vertical}) })
+			}
+			pids := map[int]int{}
+			for id := range viewerTerminalSizes(a) {
+				pids[id] = a.sup.Get(id).ShellPID()
 			}
 			if kind == "close" {
 				a.exec(model.CmdCloseTab{Workspace: 0, Tab: 0})
