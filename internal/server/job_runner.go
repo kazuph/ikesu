@@ -81,12 +81,19 @@ func readJobRecord(path string) (jobRunnerRecord, error) {
 	return record, err
 }
 
+// jobControlConn wraps only inherited AF_UNIX descriptors and closes the
+// original file after net takes its duplicate.
+func jobControlConn(f *os.File) (net.Conn, error) {
+	conn, err := net.FileConn(f)
+	f.Close()
+	return conn, err
+}
+
 // RunJobRunner is an internal child entry point, also used by the real-process
 // server tests. Descriptor 3 is a private startup handshake, never user input.
 func RunJobRunner() (int, error) {
 	f := os.NewFile(3, "job-startup")
-	conn, err := net.FileConn(f)
-	f.Close()
+	conn, err := jobControlConn(f)
 	if err != nil {
 		return 1, err
 	}
@@ -271,8 +278,7 @@ func (s *Server) startJobRunner(store *dispatch.Store, jobID, logPath, cwd strin
 	}
 	parent, child := os.NewFile(uintptr(pair[0]), "job-parent"), os.NewFile(uintptr(pair[1]), "job-child")
 	defer child.Close()
-	conn, err := net.FileConn(parent)
-	parent.Close()
+	conn, err := jobControlConn(parent)
 	if err != nil {
 		return err
 	}

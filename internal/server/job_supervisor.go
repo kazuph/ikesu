@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
-	"net"
 	"os"
 	"syscall"
 	"time"
@@ -29,8 +28,7 @@ type jobMonitorExit struct {
 // startup protocol and records evidence; it never decides job completion.
 func RunJobSupervisor() (int, error) {
 	f := os.NewFile(3, "supervisor-startup")
-	up, err := net.FileConn(f)
-	f.Close()
+	up, err := jobControlConn(f)
 	if err != nil {
 		return 1, err
 	}
@@ -71,8 +69,7 @@ func RunJobSupervisor() (int, error) {
 		return fail(err)
 	}
 	a, b := os.NewFile(uintptr(pair[0]), "monitor-parent"), os.NewFile(uintptr(pair[1]), "monitor-child")
-	down, err := net.FileConn(a)
-	a.Close()
+	down, err := jobControlConn(a)
 	if err != nil {
 		b.Close()
 		return fail(err)
