@@ -12,7 +12,7 @@ elif a.group=='smoke':
 else:
  # Each dimension is varied alone, followed by a combined stress case. The
  # core group already covers every operation, size, mode and input rate.
- variants=[dict(panes=3),dict(panes=4),dict(invisible=True),dict(history_rows=10000),dict(mode='alt',history_rows=10000),dict(no_session=True),dict(mode='image'),dict(mode='image-update'),dict(path='long'),dict(path='limit'),dict(panes=4,invisible=True,history_rows=10000,mode='image-update',path='long')]
+ variants=[dict(panes=3),dict(panes=4),dict(invisible=True),dict(history_rows=10000),dict(mode='alt',history_rows=10000),dict(no_session=True),dict(mode='image'),dict(mode='image-update'),dict(path='long'),dict(path='limit'),dict(release_different=True),dict(panes=4,invisible=True,history_rows=10000,mode='image-update',path='long')]
  for variant,kind,rate in itertools.product(variants,kinds,rates):
   c=dict(cols=160,rows=45,kind=kind,mode='heavy',rate=rate,panes=2);c.update(variant);cases.append(c)
 for i,c in enumerate(cases):

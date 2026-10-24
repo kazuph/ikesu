@@ -124,3 +124,10 @@ are private local evidence and are not attached or printed in parent reports.
 
 The extended conditions also include alternate screen after long main-screen
 history, because resizing an alternate screen must not hide main-history costs.
+
+
+The extended group includes a separate `release_different=true` condition for
+each operation and rate. It sends a release coordinate different from the last
+motion. Its final-position result is a semantic regression result, including
+reference failures; it never replaces or relaxes the normal-release G1–G3
+performance comparison. The same raw input and final-size evidence is retained.
