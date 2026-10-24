@@ -28,6 +28,8 @@ const jobRunnerArg = "__job-runner"
 type jobRunnerRequest struct {
 	JobID, LogPath, Cwd, ProfilesPath, Token string
 	Namespace                                string
+	SupervisorPID                            int
+	SupervisorIdentity, BootID               string
 	Argv                                     []string
 }
 type jobRunnerStarted struct {
@@ -35,14 +37,17 @@ type jobRunnerStarted struct {
 	Identity, Error string
 }
 type jobRunnerCommit struct{ StartedMs int64 }
+type jobRunnerRelease struct{}
 type jobRunnerRecord struct {
-	JobID, Token, Identity string
-	PID                    int
-	MonitorPID             int
-	MonitorIdentity        string
-	StartedMs, FinishedMs  int64
-	ExitCode               int64
-	Error                  string
+	JobID, Token, Identity     string
+	PID                        int
+	MonitorPID                 int
+	MonitorIdentity            string
+	SupervisorPID              int
+	SupervisorIdentity, BootID string
+	StartedMs, FinishedMs      int64
+	ExitCode                   int64
+	Error                      string
 }
 
 func writeJobRecord(path string, record any) error {
@@ -173,6 +178,7 @@ func RunJobRunner() (int, error) {
 		return 1, err
 	}
 	record := jobRunnerRecord{JobID: request.JobID, PID: cmd.Process.Pid, Identity: identity, Token: request.Token, StartedMs: commit.StartedMs}
+	record.SupervisorPID, record.SupervisorIdentity, record.BootID = request.SupervisorPID, request.SupervisorIdentity, request.BootID
 	record.MonitorPID = os.Getpid()
 	record.MonitorIdentity, err = jobProcessIdentity(record.MonitorPID)
 	if err != nil {
@@ -192,6 +198,11 @@ func RunJobRunner() (int, error) {
 		return fail(err)
 	}
 	if err = enc.Encode(jobRunnerStarted{PID: cmd.Process.Pid, Identity: identity}); err != nil {
+		abort()
+		return 1, err
+	}
+	var release jobRunnerRelease
+	if err = dec.Decode(&release); err != nil {
 		abort()
 		return 1, err
 	}
@@ -267,7 +278,8 @@ func (s *Server) startJobRunner(store *dispatch.Store, jobID, logPath, cwd strin
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(handoffWait))
-	cmd := childenv.Command(exe, jobRunnerArg)
+	cmd := childenv.Command(exe, jobSupervisorArg)
+	cmd.Stderr = os.Stderr
 	cmd.ExtraFiles = []*os.File{child}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err = cmd.Start(); err != nil {
@@ -307,7 +319,7 @@ func (s *Server) startJobRunner(store *dispatch.Store, jobID, logPath, cwd strin
 	if started.Error != "" {
 		return errors.New(started.Error)
 	}
-	return nil
+	return enc.Encode(jobRunnerRelease{})
 }
 
 func managedJobRecord(job dispatch.Job) (jobRunnerRecord, error) {
@@ -354,18 +366,10 @@ func (s *Server) reconcileJobResults(store *dispatch.Store, jobs []dispatch.Job)
 			continue
 		}
 		result, err := completedJobRecord(job, manifest)
-		if os.IsNotExist(err) {
-			identity, identityErr := jobProcessIdentity(manifest.MonitorPID)
-			if identityErr != nil || identity != manifest.MonitorIdentity {
-				// The result may have appeared between the first read and exit.
-				if _, e := os.Stat(job.LogPath + ".result"); os.IsNotExist(e) {
-					failures = append(failures, fmt.Errorf("job %s monitor disappeared without a completion result", job.ID))
-				}
-			}
-			continue
-		}
 		if err != nil {
-			failures = append(failures, err)
+			if recoverErr := s.recoverLostJob(store, job, manifest); recoverErr != nil {
+				failures = append(failures, recoverErr)
+			}
 			continue
 		}
 		body := ""

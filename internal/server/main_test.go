@@ -11,5 +11,9 @@ func TestMain(m *testing.M) {
 		code, _ := RunJobRunner()
 		os.Exit(code)
 	}
+	if len(os.Args) == 2 && os.Args[1] == jobSupervisorArg {
+		code, _ := RunJobSupervisor()
+		os.Exit(code)
+	}
 	os.Exit(teststate.Run(m.Run))
 }

@@ -29,6 +29,13 @@ func main() {
 		}
 		os.Exit(code)
 	}
+	if len(os.Args) == 2 && os.Args[1] == "__job-supervisor" {
+		code, err := server.RunJobSupervisor()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu job supervisor:", err)
+		}
+		os.Exit(code)
+	}
 	api.ConfigureExecutable(os.Args[0])
 	args := os.Args[1:]
 	if message := cli.GlobalMachineError(args); message != "" {

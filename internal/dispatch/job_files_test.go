@@ -1,0 +1,55 @@
+package dispatch
+
+import (
+	"os"
+	"path/filepath"
+	"syscall"
+	"testing"
+	"time"
+)
+
+func TestJobDiagnosticsShareRetentionAndCannotResurrect(t *testing.T) {
+	s := testStore(t)
+	dir := t.TempDir()
+	log := filepath.Join(dir, "owned.log")
+	now := time.Now().UTC()
+	for _, suffix := range jobFileSuffixes {
+		if err := os.WriteFile(log+suffix, []byte("owned"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(log+suffix, now.Add(-2*JobRetention), now.Add(-2*JobRetention)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.InsertCommand("owned", "owned", "true", dir, "p1", "owner", "none", log); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkCommandRunning("owned", int64(os.Getpid())); err != nil {
+		t.Fatal(err)
+	}
+	alive := func(pid int) bool { return syscall.Kill(pid, 0) == nil }
+	if err := s.CleanupJobs(now.Add(JobRetention), dir, alive); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range jobFileSuffixes {
+		if _, err := os.Stat(log + suffix); err != nil {
+			t.Fatal("active diagnostic removed", suffix, err)
+		}
+	}
+	if _, err := s.MarkCommandFinished("owned", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CleanupJobs(now.Add(2*JobRetention), dir, alive); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range jobFileSuffixes {
+		if _, err := os.Stat(log + suffix); !os.IsNotExist(err) {
+			t.Fatal("expired diagnostic retained", suffix, err)
+		}
+	}
+	called := false
+	err := WithJobLogLock(log, func() error { called = true; return os.WriteFile(log+".monitor-exit.json", []byte("late"), 0600) })
+	if !os.IsNotExist(err) || called {
+		t.Fatal("late writer recreated retired job", err, called)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func jobProcessIdentity(pid int) (string, error) {
@@ -21,6 +22,9 @@ func jobProcessIdentity(pid int) (string, error) {
 	fields := strings.Fields(string(data[end+1:]))
 	if len(fields) <= 19 {
 		return "", fmt.Errorf("missing process start time")
+	}
+	if fields[0] == "Z" || fields[0] == "X" {
+		return "", syscall.ESRCH
 	}
 	return fields[19], nil
 }
@@ -59,4 +63,9 @@ func processGroupHasLiveMembers(pgid int) bool {
 		}
 	}
 	return unknown
+}
+
+func jobBootIdentity() (string, error) {
+	b, e := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	return strings.TrimSpace(string(b)), e
 }

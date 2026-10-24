@@ -65,7 +65,9 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 		if remove {
 			expired = append(expired, expiredJob{st.ColumnInt64(0), log})
 		} else {
-			keptLogs[filepath.Clean(log)] = true
+			for _, suffix := range jobFileSuffixes {
+				keptLogs[filepath.Clean(log+suffix)] = true
+			}
 		}
 	}
 	err = st.Err()
@@ -119,7 +121,15 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 }
 
 func removeJobFiles(log string) error {
-	for _, suffix := range []string{"", ".runner", ".result", ".cancel"} {
+	err := WithJobLogLock(log, func() error { return unlinkJobFiles(log) })
+	if os.IsNotExist(err) {
+		return unlinkJobFiles(log)
+	}
+	return err
+}
+
+func unlinkJobFiles(log string) error {
+	for _, suffix := range jobFileSuffixes {
 		if err := os.Remove(log + suffix); err != nil && !os.IsNotExist(err) {
 			return err
 		}
