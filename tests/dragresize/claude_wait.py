@@ -141,7 +141,12 @@ try:
    info=subprocess.check_output(['lsof','-a','-p',str(started['pid']),'-d','cwd','-Fn'],text=True)
    actual=[Path(line[1:]).resolve() for line in info.splitlines() if line.startswith('n')]
    if actual!=[cwd.resolve()]:raise RuntimeError('Claude did not retain authorized working directory')
-  (out/'metadata.json').write_text(json.dumps(dict(product=a.product,version=subprocess.check_output([str(binary),'--version'],text=True).strip(),claude_version=subprocess.check_output([str(home/'.local/bin/claude'),'--version'],text=True).strip(),conversation_input_sent=False,source_session=str(source),source_sha256=source_hash,temporary_workdirs=[str(v) for v in workdirs],copied_session_files=[str(v) for v in copies],copied_session_ids=copied_ids,launch_cwds=[str(v) for v in launch_cwds],temporary_cwd=temporary,trust_selected=trust_selected,trial=trial,scenario=dict(kind=a.kind,mode='claude-wait',panes=2,count=a.count,rate=a.rate,cols=a.cols,rows=a.rows),proxy_right=a.product=='herdr' and a.kind=='right',cols=a.cols,rows=a.rows,cell_pixels=[8,16]),indent=2))
+  history=[]
+  for pane in request('pane.list',dict(workspace_id=w['workspace']['workspace_id']))['panes']:
+   observed=request('pane.read',dict(pane_id=pane['pane_id'],source='recent',lines=10000,format='text',strip_ansi=True))['read']
+   history.append(dict(pane=pane,read_rows=len(observed['text'].splitlines()),read_utf8_bytes=len(observed['text'].encode()),truncated=observed['truncated']))
+  (out/'history-before.json').write_text(json.dumps(history,indent=2))
+  (out/'metadata.json').write_text(json.dumps(dict(product=a.product,binary=str(binary),binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),observer_sha256=hashlib.sha256(observer.read_bytes()).hexdigest(),version=subprocess.check_output([str(binary),'--version'],text=True).strip(),claude_version=subprocess.check_output([str(home/'.local/bin/claude'),'--version'],text=True).strip(),conversation_input_sent=False,source_session=str(source),source_sha256=source_hash,source_size_bytes=source_stat.st_size,temporary_workdirs=[str(v) for v in workdirs],copied_session_files=[str(v) for v in copies],copied_session_ids=copied_ids,launch_cwds=[str(v) for v in launch_cwds],temporary_cwd=temporary,trust_selected=trust_selected,trial=trial,scenario=dict(kind=a.kind,mode='claude-wait',panes=2,count=a.count,rate=a.rate,cols=a.cols,rows=a.rows),proxy_right=a.product=='herdr' and a.kind=='right',cols=a.cols,rows=a.rows,cell_pixels=[8,16]),indent=2))
   (out/'claude-ready').write_text('ready\n')
   deadline=time.monotonic()+a.count/a.rate+120
   while not (out/'trial-finished').exists():
