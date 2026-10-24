@@ -357,3 +357,51 @@ func TestMonitorNormalExitEvidenceIsSeparateFromCommandExit(t *testing.T) {
 		return evidence.ExitCode != nil && *evidence.ExitCode == 0 && evidence.Signal == nil && j.notices() == 1
 	})
 }
+
+func TestLateMonitorEvidenceDoesNotAttachToReusedLogPath(t *testing.T) {
+	j := startFaultJob(t)
+	data, err := os.ReadFile(j.job.LogPath + ".runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m lossManifest
+	if err = json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	signalLossProcess(t, m.SupervisorPID, syscall.SIGSTOP, binPath)
+	t.Cleanup(func() {
+		if syscall.Kill(m.SupervisorPID, 0) == nil {
+			signalLossProcess(t, m.SupervisorPID, syscall.SIGCONT, binPath)
+		}
+	})
+	if _, err = j.release.WriteString("go\n"); err != nil {
+		t.Fatal(err)
+	}
+	j.s.waitFor("normal result collected while reaper is paused", 10*time.Second, func(string) bool {
+		r, _ := j.store.CommandRow(j.job.ID)
+		return r != nil && r.Status == "exited" && r.ExitCode != nil && *r.ExitCode == 7 && j.notices() == 1
+	})
+	for _, suffix := range []string{"", ".runner", ".result", ".cancel", ".monitor-stderr.log", ".completion-unavailable.json"} {
+		if err := os.Remove(j.job.LogPath + suffix); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(j.job.LogPath, []byte("new owner"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	signalLossProcess(t, m.SupervisorPID, syscall.SIGCONT, binPath)
+	j.s.waitFor("old reaper completed", 10*time.Second, func(string) bool {
+		b, e := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(m.SupervisorPID)).Output()
+		return e != nil || strings.HasPrefix(strings.TrimSpace(string(b)), "Z")
+	})
+	if _, err := os.Stat(j.job.LogPath + ".monitor-exit.json"); !os.IsNotExist(err) {
+		t.Fatal("retired job attached evidence to new owner", err)
+	}
+	data, err = os.ReadFile(j.job.LogPath)
+	if err != nil || string(data) != "new owner" {
+		t.Fatal(string(data), err)
+	}
+	if j.notices() != 1 {
+		t.Fatal("late evidence sent another notice", j.notices())
+	}
+}

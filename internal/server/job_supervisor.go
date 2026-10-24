@@ -57,7 +57,7 @@ func RunJobSupervisor() (int, error) {
 	if err != nil {
 		return fail(err)
 	}
-	parentLog.Close()
+	defer parentLog.Close()
 	syscall.ForkLock.RLock()
 	pair, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err == nil {
@@ -148,7 +148,20 @@ func RunJobSupervisor() (int, error) {
 		v := cmd.ProcessState.ExitCode()
 		evidence.ExitCode = &v
 	}
-	err = dispatch.WithJobLogLock(req.LogPath, func() error { return writeJobRecord(req.LogPath+".monitor-exit.json", evidence) })
+	err = dispatch.WithJobLogLock(req.LogPath, func() error {
+		original, e := parentLog.Stat()
+		if e != nil {
+			return e
+		}
+		current, e := os.Stat(req.LogPath)
+		if e != nil {
+			return e
+		}
+		if !os.SameFile(original, current) {
+			return os.ErrNotExist
+		}
+		return writeJobRecord(req.LogPath+".monitor-exit.json", evidence)
+	})
 	if err != nil && !os.IsNotExist(err) {
 		return 1, err
 	}
