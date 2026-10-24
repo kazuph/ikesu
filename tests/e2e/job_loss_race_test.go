@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 )
 
@@ -24,6 +25,9 @@ func TestResultLossAndCancelArbitrateInRealSQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			signalLossProcess(t, m.MonitorPID, syscall.SIGKILL, binPath)
+			var control api.RunStartedResult
+			j.s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "race-control", Argv: []string{"/bin/echo", "ready"}, Completion: "none"}, &control)
+			j.s.waitFor("collector active before SQLite contention", 10*time.Second, func(string) bool { r, _ := j.store.CommandRow(control.Job); return r != nil && r.Status == "exited" })
 			blocker, err := sqlite3.Open(j.dbPath)
 			if err != nil {
 				t.Fatal(err)
