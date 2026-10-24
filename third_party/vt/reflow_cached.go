@@ -142,9 +142,7 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 		h.prependLine(first)
 	}
 	cursorGroup += h.count
-	for _, line := range tail {
-		h.appendLine(line)
-	}
+	h.appendPreparedBatch(tail)
 	h.view.width, h.view.first = width, 0
 	h.view.rows = h.view.index.cost(width).rows
 	h.project(width)
