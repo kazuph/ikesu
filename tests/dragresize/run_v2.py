@@ -2,9 +2,11 @@
 """Version-two real PTY measurement. Every run owns a private HOME/socket."""
 import argparse,json,os,shlex,socket,subprocess,tempfile,time,hashlib,threading,sys
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--base',required=True);p.add_argument('--binary',required=True);p.add_argument('--product',choices=['ikesu','herdr'],required=True);p.add_argument('--scenario',required=True);p.add_argument('--out',required=True);p.add_argument('--profile',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--base',required=True);p.add_argument('--binary',required=True);p.add_argument('--client-binary');p.add_argument('--product',choices=['ikesu','herdr'],required=True);p.add_argument('--scenario',required=True);p.add_argument('--out',required=True);p.add_argument('--profile',action='store_true');a=p.parse_args()
 if a.profile and a.product!='ikesu':p.error('profiling is supported only by the ikesu diagnostic build')
 base=Path(a.base).resolve();harness=Path(os.environ.get('DRAG_HARNESS',str(base/'source'))).resolve();observer_binary=Path(os.environ.get('DRAG_OBSERVER',str(base/'ptyrun-v2'))).resolve();binary=Path(a.binary).resolve();out=Path(a.out).resolve();out.mkdir(parents=True,exist_ok=False);c=json.loads(Path(a.scenario).read_text());state=Path(tempfile.mkdtemp(prefix='drag2-',dir='/tmp'))
+client_binary=Path(a.client_binary).resolve() if a.client_binary else binary
+if c.get('no_session') and client_binary!=binary:raise RuntimeError('mixed client/server is unsupported in no-session mode')
 for n in ['home','config','state','data','zdot']:(state/n).mkdir()
 (state/'zdot/.zshrc').write_text("PS1='LIGHT> '\nunset HISTFILE\nSAVEHIST=0\n")
 env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','GTX','CODEX','CLAUDE'))}
@@ -78,10 +80,10 @@ try:
  else:lines+=['notifyfile '+str(out/'geometry-ready'),'waitfile '+str(out/'commands-ready')+' 30s']
  lines+=['sleep 4s',f'waitmarkers {c.get("panes",2)} 15s','notifyfile '+str(out/'prepared'),'waitfile '+str(out/'prepared-ack')+' 30s','screen '+str(out/'before.txt'),'dragtrial '+str(out/'trial.json'),'screen '+str(out/'after.txt')]
  (out/'steps').write_text('\n'.join(lines)+'\n')
- (out/'metadata.json').write_text(json.dumps(dict(scenario=c,trial=trial,product=a.product,binary=str(binary),binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),version=subprocess.check_output([str(binary),'--version'],text=True).strip(),state=str(state),cols=c['cols'],rows=c['rows'],cell_pixels=[8,16],clock='CLOCK_MONOTONIC',diagnostic_profile=a.profile,gc_env={k:env.get(k) for k in ['GOGC','GOMEMLIMIT']},proxy_right=a.product=='herdr' and c['kind']=='right',config=config.read_text(),python=sys.version,clock_resolution_seconds=time.clock_getres(time.CLOCK_MONOTONIC),observer_sha256=hashlib.sha256(observer_binary.read_bytes()).hexdigest(),workload_sha256=hashlib.sha256((harness/'tests/dragresize/workload.py').read_bytes()).hexdigest(),image_pixels=[4,4] if c['mode'].startswith('image') else None),indent=2))
+ (out/'metadata.json').write_text(json.dumps(dict(scenario=c,trial=trial,product=a.product,binary=str(binary),binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),version=subprocess.check_output([str(binary),'--version'],text=True).strip(),client_binary=str(client_binary),client_binary_sha256=hashlib.sha256(client_binary.read_bytes()).hexdigest(),client_version=subprocess.check_output([str(client_binary),'--version'],text=True).strip(),state=str(state),cols=c['cols'],rows=c['rows'],cell_pixels=[8,16],clock='CLOCK_MONOTONIC',diagnostic_profile=a.profile,gc_env={k:env.get(k) for k in ['GOGC','GOMEMLIMIT']},proxy_right=a.product=='herdr' and c['kind']=='right',config=config.read_text(),python=sys.version,clock_resolution_seconds=time.clock_getres(time.CLOCK_MONOTONIC),observer_sha256=hashlib.sha256(observer_binary.read_bytes()).hexdigest(),workload_sha256=hashlib.sha256((harness/'tests/dragresize/workload.py').read_bytes()).hexdigest(),image_pixels=[4,4] if c['mode'].startswith('image') else None),indent=2))
  if a.product=='ikesu':env['IKESU_BENCH_STATS']=str(out/'client-runtime.jsonl')
  if a.profile:env.update(IKESU_CPUPROFILE=str(out/'client-cpu.pprof'),IKESU_MEMPROFILE=str(out/'client-memory.pprof'))
- launch=[str(binary),'--no-session'] if no_session else [str(binary),'--session','drag2']
+ launch=[str(binary),'--no-session'] if no_session else [str(client_binary),'--session','drag2']
  # Redirect only the product's diagnostics, so runtime sampling never prints
  # over the measured screen. The exec preserves the display PID.
  launcher=['/bin/sh','-c','exec "$@" 2>"'+str(out/'client.stderr')+'"','drag2',*launch]
