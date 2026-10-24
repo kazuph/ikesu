@@ -24,6 +24,19 @@ func TestGraphicsRelayoutKeepsPublishedGenerationAtCurrentAnchors(t *testing.T) 
 	in.Panes[id].Graphics = []kitty.Placement{current, {ID: 3, Image: kitty.Image{ID: 9}}}
 	in.Panes[id].Grid = [][]uv.Cell{{{Content: "latest", Width: 1}}}
 	state.Cols, state.Rows = 160, 45
+	if !old.resized(captureGraphicsText(in)) {
+		t.Fatal("real size change was not accepted")
+	}
+	in.Panes[id].ScrollOff = 3
+	if old.resized(captureGraphicsText(in)) {
+		t.Fatal("scrolling escaped the existing receipt wait")
+	}
+	in.Panes[id].ScrollOff = 0
+	state.ActiveWorkspace().TabRef().ID++
+	if old.resized(captureGraphicsText(in)) {
+		t.Fatal("a tab change was mistaken for a resize")
+	}
+	state.ActiveWorkspace().TabRef().ID--
 	got := old.relayoutInput(in)
 	if got.State != state || got.Panes[id].Grid[0][0].Content != "latest" || len(got.Panes[id].Graphics) != 1 {
 		t.Fatal("latest geometry/text or image identity was lost")
@@ -46,6 +59,9 @@ func TestGraphicsRelayoutKeepsPublishedGenerationAtCurrentAnchors(t *testing.T) 
 		}
 	}
 	in.Panes[id].Graphics = nil
+	if !old.resized(captureGraphicsGeometry(in)) {
+		t.Fatal("a concurrent image removal blocked a real size change")
+	}
 	if len(old.relayoutInput(in).Panes[id].Graphics) != 0 {
 		t.Fatal("removed placement remained visible")
 	}

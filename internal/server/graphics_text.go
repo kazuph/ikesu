@@ -12,6 +12,8 @@ import (
 // Image bytes are immutable snapshots and stay with the published generation.
 type graphicsTextSurface struct {
 	geometry   string
+	scope      string
+	size       string
 	placements map[int][]kitty.Placement
 	terminals  map[int]string
 }
@@ -27,6 +29,10 @@ func captureGraphicsText(in render.Input) *graphicsTextSurface {
 	if !hasImages {
 		return nil
 	}
+	return captureGraphicsGeometry(in)
+}
+
+func captureGraphicsGeometry(in render.Input) *graphicsTextSurface {
 	if in.State == nil || in.State.ActiveWorkspace() == nil || in.State.ActiveWorkspace().TabRef() == nil {
 		return nil
 	}
@@ -57,7 +63,27 @@ func captureGraphicsText(in render.Input) *graphicsTextSurface {
 	if state.PopupVisible() {
 		terminals[popupID] = terminal
 	}
-	return &graphicsTextSurface{geometry: string(geometry), placements: placements, terminals: terminals}
+	ids := []int{}
+	for _, pane := range state.DisplayPaneRects() {
+		ids = append(ids, pane.ID)
+	}
+	offsets := make(map[int]int, len(views))
+	for id, view := range views {
+		offsets[id] = view.Offset
+	}
+	scope, err := json.Marshal([]any{ws.ID, tab.ID, ids, in.Scroll, offsets, popupID, terminal})
+	if err != nil {
+		return nil
+	}
+	size, err := json.Marshal([]any{state.Cols, state.Rows, state.DisplayPaneRects(), state.PopupRect()})
+	if err != nil {
+		return nil
+	}
+	return &graphicsTextSurface{geometry: string(geometry), scope: string(scope), size: string(size), placements: placements, terminals: terminals}
+}
+
+func (old *graphicsTextSurface) resized(next *graphicsTextSurface) bool {
+	return old != nil && next != nil && old.scope == next.scope && old.size != next.size
 }
 
 func (old *graphicsTextSurface) compatible(next *graphicsTextSurface) bool {

@@ -52,6 +52,12 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 		textOnly = true
 		relayout = !flow.textSurface.compatible(candidate)
 		if relayout {
+			if candidate == nil {
+				candidate = captureGraphicsGeometry(in)
+			}
+			if !flow.textSurface.resized(candidate) {
+				return nil
+			}
 			in = flow.textSurface.relayoutInput(in)
 			in = s.nativeGraphicsInput(c, in)
 		} else {
