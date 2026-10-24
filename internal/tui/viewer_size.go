@@ -58,6 +58,7 @@ func (a *App) withTabPTYGeometry(tab *model.Tab, fn func()) {
 		basis.display.apply(a.st)
 	} else {
 		basis.display = display
+		basis.cellW, basis.cellH = cw, ch
 		root.sizeOwners[tab] = basis
 	}
 	a.cellW, a.cellH = basis.cellW, basis.cellH

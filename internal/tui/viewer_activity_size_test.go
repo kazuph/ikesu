@@ -165,3 +165,25 @@ func TestViewerAPIHiddenSplitKeepsItsOwnGeometry(t *testing.T) {
 		}
 	}
 }
+
+func TestViewerSizeBasisRetainsExactCellPixels(t *testing.T) {
+	teststate.Lock(t)
+	a := sizeOwnerRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	v := a.NewViewer(io.Discard, 196, 50, nil)
+	v.Begin(a, 196*8, 50*16)
+	p := a.sup.Get(a.st.FocusedPane())
+	if w, h := p.CellPixels(); w != 8 || h != 16 {
+		t.Fatal("attachment pixels lost", w, h)
+	}
+	v.Input(a, []byte("\x1b[6;18;9t"))
+	if w, h := p.CellPixels(); w != 9 || h != 18 {
+		t.Fatal("cell size reply lost", w, h)
+	}
+	v.Resize(a, 210, 55, 210*10, 55*20)
+	if w, h := p.CellPixels(); w != 10 || h != 20 {
+		t.Fatal("resize pixels lost", w, h)
+	}
+}

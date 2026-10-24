@@ -61,13 +61,18 @@ rows = []
 panes = []
 
 def sample(label):
-    time.sleep(0.7)
     sizes = {}
     for pid in panes:
         f = root / (pid + '.sizes')
-        lines = f.read_text().splitlines() if f.exists() else []
-        if len(lines) < 3 or len(set(lines[-3:])) != 1:
-            raise RuntimeError(('unstable PTY measurement', label, pid, lines[-3:]))
+        initial = len(f.read_text().splitlines()) if f.exists() else 0
+        deadline = time.monotonic() + 15
+        while True:
+            lines = f.read_text().splitlines() if f.exists() else []
+            if len(lines) >= initial + 3 and len(set(lines[-3:])) == 1:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(('unstable PTY measurement', label, pid, lines[-3:]))
+            time.sleep(0.02)
         sizes[pid] = lines[-1]
     row = dict(phase=label, sizes=sizes)
     rows.append(row)
@@ -180,6 +185,10 @@ try:
         clients[c][0].wait(timeout=10)
         sample('C-disconnect-one-remains')
 finally:
+    for p, m in clients:
+        if p.poll() is None:
+            os.write(m, b'\x02q')
+            p.wait(timeout=10)
     try:
         cli('server', 'stop')
     except Exception as e:
