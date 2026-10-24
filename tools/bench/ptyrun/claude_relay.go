@@ -79,9 +79,17 @@ func runClaudeRelay(args []string, logPath, closePath string) {
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
+		trustSent := false
 		for {
 			select {
 			case <-ticker.C:
+				if !trustSent {
+					if _, err := os.Stat(closePath + ".trust"); err == nil {
+						observer.record(map[string]any{"type": "claude.trust_selected", "clock_ns": monotonicNS()})
+						_, _ = terminal.Write([]byte{'\r'})
+						trustSent = true
+					}
+				}
 				if _, err := os.Stat(closePath); err == nil {
 					observer.record(map[string]any{"type": "claude.exit_requested", "clock_ns": monotonicNS()})
 					_, _ = terminal.Write([]byte{3})

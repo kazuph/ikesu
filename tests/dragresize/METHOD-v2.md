@@ -105,13 +105,20 @@ the dedicated output workload is recorded as a separate condition.
 ## Unmodified Claude waiting display
 
 `claude_wait.py` starts the real executable with `--resume <copied id>
---permission-mode auto` inside a disposable server pane and a fresh temporary
-working directory. Only that executable uses the ordinary HOME. The controller
-copies one authorized conversation JSONL into its newly created project folder;
-credentials and settings are never read, copied or edited. No conversation input
-is forwarded. Folder trust or onboarding is an explicit blocker, not an accepted
-prompt. Exit uses ordinary Ctrl-C; the copied folder and temporary cwd are removed
-only after process exit is verified. Source hash and mtime are checked afterward.
+--permission-mode auto` inside a disposable server pane. Only that executable
+uses the ordinary HOME. The parent updated the method on 2026-10-25: prefer the
+original conversation's existing working directory, copy the authorized JSONL
+to a fresh session id in the same project-record folder, and remove only that
+copy afterward. No conversation input is forwarded. Credentials and settings
+are never directly read, copied or edited. Source hash and mtime are verified.
+
+If the original cwd is missing, or still requests trust, use a fresh temporary
+cwd. Only in that temporary cwd the parent explicitly authorizes selecting
+"Yes, I trust this folder" once. Start the two measured panes sequentially so
+both use that same cwd without a second trust selection. Record the residual
+folder entry in ~/.claude.json; do not read that file. A controlled relay file
+selects the observed trust prompt once, never forwarding arbitrary stdin.
+Ordinary exit and copied-file cleanup must be verified before a temporary retry.
 
 A transparent PTY relay records actual SIGWINCH-applied dimensions and complete
 synchronized stdout frames. The outer observer separately records real pane text.
