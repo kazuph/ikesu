@@ -7,14 +7,6 @@ import (
 )
 
 func (v *Viewer) onInput(ui *App, event input.Event) {
-	before := ui.currentSizeTab()
-	defer func() {
-		if ui.currentSizeTab() != before {
-			v.releaseSizeTab(ui.viewerOwner, before)
-			v.takeSize(ui.viewerOwner)
-			ui.syncLayout()
-		}
-	}()
 	switch event.Kind {
 	case input.KindKey, input.KindPaste, input.KindMouseMotion, input.KindMouseWheel, input.KindFocus:
 		v.takeSize(ui.viewerOwner)
@@ -28,13 +20,24 @@ func (v *Viewer) onInput(ui *App, event input.Event) {
 		v.heldKeys = append(v.heldKeys, event)
 		return
 	}
+	v.deliverInput(ui, event)
+}
+
+// Delivery can happen after another display has handled newer input.
+func (v *Viewer) deliverInput(ui *App, event input.Event) {
+	before := ui.currentSizeTab()
 	ui.onInput(event)
+	if ui.currentSizeTab() != before {
+		v.releaseSizeTab(ui.viewerOwner, before)
+		v.takeSize(ui.viewerOwner)
+		ui.syncLayout()
+	}
 }
 
 func (v *Viewer) releaseKeys(ui *App) {
 	v.focusUntil = time.Time{}
 	for _, event := range v.heldKeys {
-		v.onInput(ui, event)
+		v.deliverInput(ui, event)
 	}
 	v.heldKeys = nil
 }

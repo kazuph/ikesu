@@ -409,6 +409,7 @@ func (a *App) effect(e model.Effect) {
 			a.paneClosedHook(e.Pane)
 		}
 	case model.EffSyncLayout:
+		a.forgetClosedSizeTabs()
 		a.syncLayout()
 	case model.EffInput:
 		a.sup.Input(e.Pane, e.Bytes)

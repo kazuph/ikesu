@@ -54,7 +54,7 @@ func (a *App) withTabPTYGeometry(tab *model.Tab, fn func()) {
 	display := captureDisplay(a.st)
 	cw, ch := a.cellW, a.cellH
 	a.st.Cols, a.st.Rows = basis.cols, basis.rows
-	if a.viewerContext != basis.viewer || tab != a.currentSizeTab() {
+	if basis.viewer == nil || a.viewerContext != basis.viewer || tab != a.currentSizeTab() {
 		basis.display.apply(a.st)
 	} else {
 		basis.display = display
@@ -113,7 +113,6 @@ func (v *Viewer) Detach(a *App) {
 			}
 		}
 		if len(a.sizeViewers) == 0 {
-			a.sizeOwners = nil
 			a.sizeViewer = nil
 		}
 		if len(a.sizeViewers) == 1 {
@@ -149,6 +148,9 @@ func (v *Viewer) releaseSizeTab(a *App, tab *model.Tab) {
 			return
 		}
 	}
+	basis := a.sizeOwners[tab]
+	basis.viewer = nil
+	a.sizeOwners[tab] = basis
 }
 
 func (a *App) currentSizeTab() *model.Tab {
