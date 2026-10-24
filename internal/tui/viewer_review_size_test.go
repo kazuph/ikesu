@@ -109,6 +109,10 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 			}
 			v := a.NewViewer(io.Discard, 196, 50, nil)
 			v.Begin(a, 196*8, 50*16)
+			pids := map[int]int{}
+			for id := range viewerTerminalSizes(a) {
+				pids[id] = a.sup.Get(id).ShellPID()
+			}
 			source := a.st.Workspaces[0].Tabs[0]
 			moving := source.Layout.Focused()
 			shell := a.sup.Get(moving).ShellPID()
@@ -117,6 +121,9 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 			}
 			if kind == "close" {
 				a.exec(model.CmdCloseTab{Workspace: 0, Tab: 0})
+				if a.sup.Get(moving) != nil {
+					t.Fatal("closed pane still alive")
+				}
 			} else {
 				dest := model.MoveDest{Kind: model.MoveDestTab, TabW: 0, TabT: 1, Split: layout.Vertical, Ratio: .5}
 				switch kind {
@@ -137,9 +144,17 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 					w = 82
 				}
 				reviewPTYSize(t, a, moving, w, 46, 8, 16)
+				for _, id := range a.st.Workspaces[out.TgtWsIdx].Tabs[out.TgtTabIdx].Layout.PaneIDs() {
+					reviewPTYSize(t, a, id, w, 46, 8, 16)
+				}
 				if kind == "leave-sibling" {
 					for _, id := range source.Layout.PaneIDs() {
 						reviewPTYSize(t, a, id, 167, 46, 8, 16)
+					}
+				}
+				for id, pid := range pids {
+					if a.sup.Get(id) == nil || a.sup.Get(id).ShellPID() != pid {
+						t.Fatal("surviving process changed", id, pid)
 					}
 				}
 			}
