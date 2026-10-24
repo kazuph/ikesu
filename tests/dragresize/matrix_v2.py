@@ -2,7 +2,7 @@
 """Interleave whole trials; never turn absent measurements into a pass."""
 import argparse,itertools,json,os,subprocess
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--base',required=True);p.add_argument('--out',required=True);p.add_argument('--group',choices=['core','extended','smoke'],required=True);p.add_argument('--repeats',type=int,default=3);p.add_argument('--candidate',required=True);a=p.parse_args();base=Path(a.base).resolve();harness=Path(os.environ.get('DRAG_HARNESS',str(base/'source'))).resolve();root=Path(a.out).resolve();root.mkdir(parents=True,exist_ok=True)
+p=argparse.ArgumentParser();p.add_argument('--base',required=True);p.add_argument('--out',required=True);p.add_argument('--group',choices=['core','extended','smoke'],required=True);p.add_argument('--repeats',type=int,default=3);p.add_argument('--candidate',required=True);p.add_argument('--names',nargs='+');a=p.parse_args();base=Path(a.base).resolve();harness=Path(os.environ.get('DRAG_HARNESS',str(base/'source'))).resolve();root=Path(a.out).resolve();root.mkdir(parents=True,exist_ok=True)
 sizes=[(106,38),(160,45),(250,70)];kinds=['vertical','horizontal','left','right'];modes=['light','heavy','alt'];rates=[4,60,120]
 cases=[]
 if a.group=='core':
@@ -26,6 +26,10 @@ for i,c in enumerate(cases):
   c['extent']=extent-(1 if c['path']=='long' else 0)
  else:c['extent']=1 if c['rate']==4 else 3
  c['name']=f'{i:03d}-{c["cols"]}x{c["rows"]}-{c["kind"]}-{c["mode"]}-{c["rate"]}hz'
+if a.names:
+ missing=set(a.names)-{c['name'] for c in cases}
+ if missing:raise RuntimeError('unknown requested conditions: '+str(sorted(missing)))
+ cases=[c for c in cases if c['name'] in a.names]
 (root/'conditions.json').write_text(json.dumps(cases,indent=2)+'\n')
 for c in cases:
  scenario=root/(c['name']+'.json');scenario.write_text(json.dumps(c))
