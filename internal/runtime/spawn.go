@@ -51,6 +51,9 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	}
 
 	p := s.newPane(id, cwd, cols, rows)
+	if benchPaneMonitor != nil {
+		benchPaneMonitor(p)
+	}
 	p.spawnArgv = argv
 	emu := p.emu
 
