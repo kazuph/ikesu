@@ -7,6 +7,7 @@ import uv "github.com/charmbracelet/ultraviolet"
 type reflowPrepared struct {
 	history                *reflowHistory
 	rows, skipped, scanned int
+	pendingGroups          int
 }
 
 func appendReflowCells(logical uv.Line, row uv.Line, ref ReflowRow, wraps bool, width int) uv.Line {
@@ -39,7 +40,14 @@ func (e *Emulator) PrepareReflowHistory(rowRef func(int) ReflowRow) {
 
 func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 	sb := s.scrollback
-	if sb.indexedLen() > 0 || sb.count == 0 {
+	if sb.indexedLen() > 0 {
+		return
+	}
+	if sb.prepared != nil {
+		sb.prepared.applyDrops()
+	}
+	if sb.count == 0 {
+		sb.prepared = nil
 		return
 	}
 	if sb.prepared == nil {
@@ -58,10 +66,11 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 	}
 	var logical, scratch uv.Line
 	physical := 0
+	var lines []*reflowLogicalLine
 	flush := func() {
 		line := newReflowLogicalLine(logical, &p.history.pool)
 		line.sourceRows = physical
-		p.history.appendLine(line)
+		lines = append(lines, line)
 		clear(logical)
 		logical = logical[:0]
 		physical = 0
@@ -75,6 +84,7 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 		physical++
 	}
 	flush()
+	p.history.appendPreparedBatch(lines)
 	p.rows = closed
 }
 
@@ -85,13 +95,14 @@ func (p *reflowPrepared) dropFirst() {
 	}
 	p.rows--
 	p.skipped++
-	if p.skipped == p.history.at(0).sourceRows {
-		p.history.dropGroups(1)
+	if p.skipped == p.history.at(p.pendingGroups).sourceRows {
+		p.pendingGroups++
 		p.skipped = 0
 	}
 }
 
 func (p *reflowPrepared) popLast(oldRows int) {
+	p.applyDrops()
 	p.scanned = min(p.scanned, oldRows-1)
 	if oldRows > p.rows || p.history.count == 0 {
 		return
@@ -104,8 +115,18 @@ func (p *reflowPrepared) popLast(oldRows int) {
 	p.history.takeGroups(p.history.count - 1)
 }
 
+func (p *reflowPrepared) applyDrops() {
+	if p.pendingGroups > 0 {
+		p.history.dropGroups(p.pendingGroups)
+		p.pendingGroups = 0
+	}
+}
+
 func (s *Screen) reusablePrepared(rowRef func(int) ReflowRow) (h *reflowHistory, first *reflowLogicalLine, from, groups, source int) {
 	p := s.scrollback.prepared
+	if p != nil {
+		p.applyDrops()
+	}
 	if p == nil || p.history.count == 0 {
 		return &reflowHistory{}, nil, 0, 0, 0
 	}

@@ -37,6 +37,22 @@ func BenchmarkFirstIndexedWidthHistoryScaling(b *testing.B) {
 	}
 }
 
+func BenchmarkPreparedFirstIndexedWidthHistoryScaling(b *testing.B) {
+	for _, rows := range []int{DefaultScrollbackSize / 10, DefaultScrollbackSize} {
+		b.Run(fmt.Sprintf("rows=%d", rows), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				s := unindexedHistoryFixture(rows)
+				get := func(int) ReflowRow { return ReflowRow{} }
+				s.prepareReflowHistory(get)
+				b.StartTimer()
+				s.reflowIndexed(159, 45, get, false, true)
+			}
+		})
+	}
+}
+
 func indexedNextWidth(s *Screen, view ReflowSnapshot, width int) ReflowSnapshot {
 	history := view.HistoryLen()
 	return s.reflowIndexed(width, 45, func(y int) ReflowRow {

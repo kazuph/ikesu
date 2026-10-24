@@ -207,6 +207,9 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 	for s.Len() > maxLines {
 		s.dropOldest()
 	}
+	if s.prepared != nil {
+		s.prepared.applyDrops()
+	}
 	s.OnDrop = callback
 	s.maxLines = maxLines
 	if len(s.lines) != maxLines {

@@ -25,6 +25,20 @@ func TestPreparedHistoryFirstWidthChangeReusesClosedLines(t *testing.T) {
 	}
 }
 
+func TestPreparedHistoryOversizedOutputReleasesRetiredCells(t *testing.T) {
+	s := NewScreen(6, 2)
+	s.scrollback.SetMaxBytes(scrollbackRowBytes + scrollbackCellBytes)
+	s.scrollback.Push(uv.Line{{Content: "x", Width: 1}})
+	get := func(int) ReflowRow { return ReflowRow{} }
+	s.prepareReflowHistory(get)
+	h := s.scrollback.prepared.history
+	s.scrollback.Push(uv.Line{{Content: "a", Width: 1}, {Content: "b", Width: 1}})
+	s.prepareReflowHistory(get)
+	if h.count != 0 || len(h.pool.refs) != 0 {
+		t.Fatal("discarded history retained cells or shapes")
+	}
+}
+
 func TestPreparedHistoryEvictionAndPullPreserveFirstResize(t *testing.T) {
 	old, indexed := NewScreen(6, 2), NewScreen(6, 2)
 	for _, s := range []*Screen{old, indexed} {

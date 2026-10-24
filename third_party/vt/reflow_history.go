@@ -44,6 +44,19 @@ func (h *reflowHistory) appendLine(line *reflowLogicalLine) {
 	h.cached, h.cachedValid = nil, false
 }
 
+func (h *reflowHistory) appendPreparedBatch(lines []*reflowLogicalLine) {
+	shapes := make([]*reflowShape, len(lines))
+	for i, line := range lines {
+		h.attach(line)
+		h.grow()
+		h.lines[(h.start+h.count)%len(h.lines)] = line
+		h.count++
+		shapes[i] = line.shape
+	}
+	h.view.index = joinReflowIndex(h.view.index, reflowIndexBatch(shapes))
+	h.cached, h.cachedValid = nil, false
+}
+
 func (h *reflowHistory) prependLine(line *reflowLogicalLine) {
 	h.attach(line)
 	h.grow()

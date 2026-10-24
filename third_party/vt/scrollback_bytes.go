@@ -45,6 +45,9 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 	for s.Len() > 0 && (s.bytes > limit || s.Len() > s.maxLines) {
 		s.dropOldest()
 	}
+	if s.prepared != nil {
+		s.prepared.applyDrops()
+	}
 }
 func (s *Scrollback) ByteLimited() bool { return s != nil && s.byteLimited }
 func (s *Scrollback) Bytes() int {

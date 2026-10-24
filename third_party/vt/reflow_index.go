@@ -52,6 +52,17 @@ func sumReflowEvents(a, b []reflowCostEvent) []reflowCostEvent {
 func (n *reflowIndex) refresh() {
 	if n.left == nil {
 		n.groups, n.height = len(n.shapes), 1
+		same := len(n.shapes) > 0
+		for _, shape := range n.shapes {
+			same = same && shape == n.shapes[0]
+		}
+		if same {
+			n.events = make([]reflowCostEvent, len(n.shapes[0].events))
+			for i, event := range n.shapes[0].events {
+				n.events[i] = reflowCostEvent{event.width, reflowCost{event.cost.rows * n.groups, event.cost.bytes * n.groups}}
+			}
+			return
+		}
 		n.events = nil
 		for _, shape := range n.shapes {
 			n.events = sumReflowEvents(n.events, shape.events)
@@ -61,6 +72,21 @@ func (n *reflowIndex) refresh() {
 	n.groups = n.left.groups + n.right.groups
 	n.height = max(n.left.height, n.right.height) + 1
 	n.events = sumReflowEvents(n.left.events, n.right.events)
+}
+
+func reflowIndexBatch(shapes []*reflowShape) *reflowIndex {
+	if len(shapes) == 0 {
+		return nil
+	}
+	n := &reflowIndex{}
+	if len(shapes) <= bits.UintSize {
+		n.shapes = append([]*reflowShape(nil), shapes...)
+	} else {
+		middle := len(shapes) / 2
+		n.left, n.right = reflowIndexBatch(shapes[:middle]), reflowIndexBatch(shapes[middle:])
+	}
+	n.refresh()
+	return n
 }
 
 func (n *reflowIndex) rotateLeft() *reflowIndex {
