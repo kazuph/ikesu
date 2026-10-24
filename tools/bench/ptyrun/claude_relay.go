@@ -16,8 +16,8 @@ import (
 )
 
 // An ordinary terminal around the unmodified Claude Code executable. It never
-// forwards conversation input. The only injected keys are Ctrl-C to exit after
-// the controller creates the owned close file. All model requests are absent.
+// forwards conversation input. Owned controller files request ordinary Ctrl-C
+// exit or the parent's single explicitly authorized temporary-folder trust key.
 func runClaudeRelay(args []string, logPath, closePath string) {
 	size, err := pty.GetsizeFull(os.Stdin)
 	if err != nil {
@@ -37,12 +37,17 @@ func runClaudeRelay(args []string, logPath, closePath string) {
 	observer.receiver.reply = terminal
 	var mu sync.Mutex
 	var sizeSequence int
+	var resizedAt int64
+	resizeHash := textHash(terminalLines(emu, int(size.Cols), int(size.Rows)))
+	changedSinceResize := false
 	observer.onFrame = func(at int64) {
-		if !observer.synchronizedFrame {
+		if at < resizedAt {
 			return
 		}
 		lines := terminalLines(emu, int(size.Cols), int(size.Rows))
-		observer.record(map[string]any{"type": "claude.frame", "clock_ns": at, "size_sequence": sizeSequence, "width": size.Cols, "height": size.Rows, "lines": lines, "text_hash": textHash(lines)})
+		hash := textHash(lines)
+		changedSinceResize = changedSinceResize || hash != resizeHash
+		observer.record(map[string]any{"type": "claude.frame", "clock_ns": at, "size_sequence": sizeSequence, "width": size.Cols, "height": size.Rows, "lines": lines, "text_hash": hash, "synchronized": observer.synchronizedFrame, "stdout_bytes": observer.total, "changed_since_resize": changedSinceResize})
 	}
 	observer.record(map[string]any{"type": "claude.started", "clock_ns": monotonicNS(), "pid": command.Process.Pid, "relay_pid": os.Getpid(), "cwd": func() string { p, _ := os.Getwd(); return p }(), "args": args})
 	stop := make(chan struct{})
@@ -64,11 +69,14 @@ func runClaudeRelay(args []string, logPath, closePath string) {
 						mu.Unlock()
 						panic(err)
 					}
+					resizedAt = monotonicNS()
 					sizeSequence++
 					size = next
 					emu.Resize(int(size.Cols), int(size.Rows))
+					resizeHash = textHash(terminalLines(emu, int(size.Cols), int(size.Rows)))
+					changedSinceResize = false
 					observer.cols, observer.rows = int(size.Cols), int(size.Rows)
-					observer.record(map[string]any{"type": "claude.pty_size", "clock_ns": monotonicNS(), "size_sequence": sizeSequence, "width": size.Cols, "height": size.Rows})
+					observer.record(map[string]any{"type": "claude.pty_size", "clock_ns": resizedAt, "size_sequence": sizeSequence, "width": size.Cols, "height": size.Rows})
 				}
 				mu.Unlock()
 			case <-stop:

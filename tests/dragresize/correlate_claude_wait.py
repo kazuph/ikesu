@@ -10,7 +10,7 @@ for id in [1,2]:
  for e in values:
   if e['type']=='claude.pty_size':receipts[id][e['size_sequence']]=e
   if e['type']=='claude.frame':
-   # This is the observed complete stdout frame number, not an invented
+   # This is the observed stdout snapshot number, not an invented
    # application-internal sequence or a marker inserted into Claude's screen.
    e=dict(e,observed_frame=len(inner[id])+1);inner[id].append(e)
  numbered[id]=[]
@@ -27,15 +27,15 @@ for e in events:
  seen_frames+=1;at=e['clock_ns'];bodies=roots(e['bodies'] or [])
  if len(bodies)==2:
   for id,body in enumerate(bodies,1):
-   prior=[v for v in inner[id] if v['clock_ns']<=at]
+   prior=[v for v in inner[id] if v['clock_ns']<=at and v['changed_since_resize']]
    latest_size=max((r for r in receipts[id].values() if r['clock_ns']<=at),key=lambda r:r['clock_ns'],default=None)
    size_sequence=latest_size['size_sequence'] if latest_size else 0
    match=next((v for v in reversed(prior) if v['size_sequence']==size_sequence and v['width']==body['Width'] and v['height']==body['Height'] and v['text_hash']==body['Hash']),None)
    if match is None:continue
-   pending['panes'].append(dict(ID=id,Seq=match['observed_frame'],Width=match['width'],Height=match['height'],LayoutWidth=body['Width'],LayoutHeight=body['Height'],X=body['X'],Y=body['Y'],provenance='exact-unmodified-stdout-frame-hash'))
+   pending['panes'].append(dict(ID=id,Seq=match['observed_frame'],Width=match['width'],Height=match['height'],LayoutWidth=body['Width'],LayoutHeight=body['Height'],X=body['X'],Y=body['Y'],provenance='exact-unmodified-stdout-snapshot-hash',source_synchronized=match['synchronized']))
    if latest_size:
     numbered[id].append(dict(event='pty_size',clock_ns=latest_size['clock_ns'],id=id,seq=match['observed_frame'],width=match['width'],height=match['height']))
-   correlation.append(dict(id=id,observed_stdout_frame=match['observed_frame'],pty_size_sequence=size_sequence,pty_size_ns=None if latest_size is None else latest_size['clock_ns'],app_source_seen_ns=match['clock_ns'],app_visible_ns=at,width=body['Width'],height=body['Height'],text_hash=body['Hash']))
+   correlation.append(dict(id=id,observed_stdout_frame=match['observed_frame'],pty_size_sequence=size_sequence,pty_size_ns=None if latest_size is None else latest_size['clock_ns'],app_source_seen_ns=match['clock_ns'],app_visible_ns=at,width=body['Width'],height=body['Height'],text_hash=body['Hash'],source_synchronized=match['synchronized']))
  if len(pending['panes'])==2:matched_frames+=1
  output.append(pending);pending=None
 (d/'timeline-correlated.jsonl').write_text(''.join(json.dumps(e)+'\n' for e in output))

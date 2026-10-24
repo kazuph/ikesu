@@ -120,11 +120,18 @@ folder entry in ~/.claude.json; do not read that file. A controlled relay file
 selects the observed trust prompt once, never forwarding arbitrary stdin.
 Ordinary exit and copied-file cleanup must be verified before a temporary retry.
 
-A transparent PTY relay records actual SIGWINCH-applied dimensions and complete
-synchronized stdout frames. The outer observer separately records real pane text.
+A transparent PTY relay records actual SIGWINCH-applied dimensions and stdout
+grid snapshots at PTY-read times. Each snapshot records whether the application
+supplied a synchronized-output boundary. Claude 2.1.309 did not supply one in
+the real preflight; unsynchronized snapshots are explicitly labeled as such,
+never claimed to mark an atomic application redraw. Require the real stdout
+grid to change after the new size was applied, excluding mere clipping of the
+old grid or cursor-only protocol output. The outer observer separately records
+real pane text.
 `correlate_claude_wait.py` requires an exact text hash and dimensions match at the
 current applied size sequence; changed borders with old application content never
-count as app catch-up. Source-output time and outer-visible time remain separate.
+count as app catch-up. Source-output time and outer-visible time remain separate. Only exact hashes
+from the current applied-size sequence with changed content can qualify.
 This matches plain displayed text; it does not prove style/link preservation,
 which requires the separate product contract tests. Raw conversation screen logs
 are private local evidence and are not attached or printed in parent reports.
