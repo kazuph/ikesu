@@ -24,6 +24,7 @@ type Scrollback struct {
 	rowBytes        []int
 	packed          [][]byte
 	styled          []*styledRow
+	indexed         *reflowHistory
 	OnDrop          func()
 }
 
@@ -94,6 +95,12 @@ func (s *Scrollback) pushTrimmed(line uv.Line) bool {
 	if s.byteLimited {
 		return s.pushBytes(line[:end])
 	}
+	if s.indexedLen() > 0 && s.Len() >= s.maxLines {
+		callback := s.OnDrop
+		s.OnDrop = nil
+		s.dropOldest()
+		s.OnDrop = callback
+	}
 	if s.count < s.maxLines {
 		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
 		s.count++
@@ -127,8 +134,15 @@ func (s *Scrollback) PushN(buf *uv.RenderBuffer, y, n int) {
 
 // popLast transfers the newest saved row back to a growing screen.
 func (s *Scrollback) popLast() uv.Line {
-	if s == nil || s.count == 0 {
+	if s == nil || s.Len() == 0 {
 		return nil
+	}
+	if s.count == 0 {
+		line, charge := s.indexed.popLast()
+		if s.byteLimited {
+			s.bytes -= charge
+		}
+		return line
 	}
 	idx := s.wrap(s.start + s.count - 1)
 	line := s.lines[idx]
@@ -154,7 +168,14 @@ func (s *Scrollback) Len() int {
 	if s == nil {
 		return 0
 	}
-	return s.count
+	return s.count + s.indexedLen()
+}
+
+func (s *Scrollback) indexedLen() int {
+	if s.indexed == nil {
+		return 0
+	}
+	return s.indexed.view.rows
 }
 
 // MaxLines returns the maximum number of lines the scrollback buffer can hold.
@@ -172,15 +193,14 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 		return
 	}
 
-	if s.byteLimited {
-		for s.count > maxLines {
-			s.dropOldest()
-		}
+	callback := s.OnDrop
+	if !s.byteLimited {
+		s.OnDrop = nil
 	}
-	if s.count > maxLines {
-		s.start = s.wrap(s.start + s.count - maxLines)
-		s.count = maxLines
+	for s.Len() > maxLines {
+		s.dropOldest()
 	}
+	s.OnDrop = callback
 	s.maxLines = maxLines
 	if len(s.lines) != maxLines {
 		// Rebuild the ring at the new capacity, unwrapping into order.
@@ -212,9 +232,13 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 // Index 0 is the oldest line, Len()-1 is the most recent.
 // Returns nil if index is out of bounds.
 func (s *Scrollback) Line(index int) uv.Line {
-	if s == nil || index < 0 || index >= s.count {
+	if s == nil || index < 0 || index >= s.Len() {
 		return nil
 	}
+	if index < s.indexedLen() {
+		return s.indexed.line(index)
+	}
+	index -= s.indexedLen()
 	idx := s.wrap(s.start + index)
 	if len(s.styled) > idx && s.styled[idx] != nil {
 		return s.styled[idx].line()
@@ -228,6 +252,10 @@ func (s *Scrollback) Line(index int) uv.Line {
 // lineInto reconstructs a saved row without allocating a fresh expanded row
 // for each history entry. The caller owns dst; saved storage stays immutable.
 func (s *Scrollback) lineInto(index int, dst uv.Line) uv.Line {
+	if index < s.indexedLen() {
+		return s.indexed.lineInto(index, dst)
+	}
+	index -= s.indexedLen()
 	idx := s.wrap(s.start + index)
 	var packed []byte
 	var styled *styledRow
@@ -272,14 +300,14 @@ func (s *Scrollback) Lines() []uv.Line {
 	if s == nil {
 		return nil
 	}
-	if s.count == 0 {
+	if s.Len() == 0 {
 		return nil
 	}
-	if !s.byteLimited && s.start == 0 {
+	if !s.byteLimited && s.start == 0 && s.indexedLen() == 0 {
 		return s.lines[:s.count]
 	}
 	// The ring is wrapped; return the lines in order on a fresh slice.
-	out := make([]uv.Line, s.count)
+	out := make([]uv.Line, s.Len())
 	for i := range out {
 		out[i] = s.Line(i)
 	}
@@ -298,15 +326,20 @@ func (s *Scrollback) Clear() {
 	s.start = 0
 	s.count = 0
 	s.bytes = 0
+	s.indexed = nil
 }
 
 // CellAt returns the cell at the given position in the scrollback buffer.
 // x is the column, y is the line index (0 = oldest).
 // Returns nil if position is out of bounds.
 func (s *Scrollback) CellAt(x, y int) *uv.Cell {
-	if s == nil || y < 0 || y >= s.count {
+	if s == nil || y < 0 || y >= s.Len() {
 		return nil
 	}
+	if y < s.indexedLen() {
+		return s.indexed.cellAt(x, y)
+	}
+	y -= s.indexedLen()
 	idx := s.wrap(s.start + y)
 	if len(s.styled) > idx && s.styled[idx] != nil {
 		return s.styled[idx].cellAt(x)
@@ -317,7 +350,7 @@ func (s *Scrollback) CellAt(x, y int) *uv.Cell {
 		}
 		return &uv.Cell{Content: string(s.packed[idx][x]), Width: 1}
 	}
-	line := s.Line(y)
+	line := s.lines[idx]
 	if line == nil || x < 0 || x >= len(line) {
 		return nil
 	}

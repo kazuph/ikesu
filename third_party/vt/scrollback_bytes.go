@@ -27,6 +27,9 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 		s.styled = make([]*styledRow, len(s.lines))
 	}
 	s.bytes = 0
+	if s.indexed != nil {
+		s.bytes = s.indexed.view.bytes()
+	}
 	for i := 0; i < s.count; i++ {
 		idx := s.wrap(s.start + i)
 		width := cap(s.lines[idx])
@@ -39,7 +42,7 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 		s.rowBytes[idx] = scrollbackRowBytes + width*scrollbackCellBytes
 		s.bytes += s.rowBytes[idx]
 	}
-	for s.count > 0 && (s.bytes > limit || s.count > s.maxLines) {
+	for s.Len() > 0 && (s.bytes > limit || s.Len() > s.maxLines) {
 		s.dropOldest()
 	}
 }
@@ -51,15 +54,27 @@ func (s *Scrollback) Bytes() int {
 	return s.bytes
 }
 func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
-	if s.count == 0 {
+	if s.Len() == 0 {
+		return nil, nil, nil
+	}
+	if s.indexedLen() > 0 {
+		charge := s.indexed.dropRows(1)
+		if s.byteLimited {
+			s.bytes -= charge
+		}
+		if s.OnDrop != nil {
+			s.OnDrop()
+		}
 		return nil, nil, nil
 	}
 	idx := s.start
 	row := s.lines[idx]
-	text := s.packed[idx]
-	styled := s.styled[idx]
-	s.styled[idx] = nil
-	s.packed[idx] = nil
+	var text []byte
+	var styled *styledRow
+	if len(s.styled) > idx {
+		text, styled = s.packed[idx], s.styled[idx]
+		s.styled[idx], s.packed[idx] = nil, nil
+	}
 	s.lines[idx] = nil
 	if s.byteLimited {
 		s.bytes -= s.rowBytes[idx]
@@ -85,7 +100,7 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 	var reuse uv.Line
 	var text []byte
 	var styled *styledRow
-	for s.count > 0 && (s.bytes+cost > s.maxBytes || s.count >= s.maxLines) {
+	for s.Len() > 0 && (s.bytes+cost > s.maxBytes || s.Len() >= s.maxLines) {
 		dropped = dropped || s.OnDrop != nil
 		reuse, text, styled = s.dropOldest()
 	}
