@@ -84,3 +84,26 @@ func TestDiagnosticPublicationSerializesWithCleanup(t *testing.T) {
 		}
 	}
 }
+
+func TestOrphanCleanupRemovesRelatedLogsWithoutFalseError(t *testing.T) {
+	s := testStore(t)
+	dir := t.TempDir()
+	log := filepath.Join(dir, "orphan.log")
+	now := time.Now().UTC()
+	for _, suffix := range jobFileSuffixes {
+		path := log + suffix
+		if err := os.WriteFile(path, []byte("orphan"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, now.Add(-2*JobRetention), now.Add(-2*JobRetention)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.CleanupJobs(now, dir, func(pid int) bool { return syscall.Kill(pid, 0) == nil }); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("orphan diagnostics retained", entries, err)
+	}
+}

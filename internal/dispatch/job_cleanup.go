@@ -108,6 +108,10 @@ func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) 
 			continue
 		}
 		info, err := entry.Info()
+		if os.IsNotExist(err) {
+			// An earlier parent entry may have removed this associated log.
+			continue
+		}
 		if err != nil {
 			return err
 		}
