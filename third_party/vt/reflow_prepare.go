@@ -1,6 +1,10 @@
 package vt
 
-import uv "github.com/charmbracelet/ultraviolet"
+import (
+	"bytes"
+
+	uv "github.com/charmbracelet/ultraviolet"
+)
 
 // Preparation never changes the physical history presented to callers. A
 // recorded logical line can be cached once its following boundary is known.
@@ -9,6 +13,10 @@ type reflowPrepared struct {
 	rows, skipped, scanned int
 	pendingGroups          int
 	cells                  uv.Line
+	free                   []*reflowLogicalLine
+	batch                  []*reflowLogicalLine
+	sample                 []byte
+	sampleShape            *reflowShape
 }
 
 func appendReflowCells(logical uv.Line, row uv.Line, ref ReflowRow, wraps bool, width int) uv.Line {
@@ -67,7 +75,7 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 	}
 	var logical, scratch uv.Line
 	physical := 0
-	var lines []*reflowLogicalLine
+	lines := p.batch[:0]
 	flush := func() {
 		line := newReflowLogicalLine(logical, &p.history.pool)
 		line.sourceRows = physical
@@ -90,6 +98,8 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 		}
 	}
 	p.history.appendPreparedBatch(lines)
+	clear(lines)
+	p.batch = lines[:0]
 	p.rows = closed
 }
 
@@ -97,13 +107,21 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 // clearing the raw headers transfers the retained payloads without mutation.
 func (p *reflowPrepared) savedRow(sb *Scrollback, y int) *reflowLogicalLine {
 	i := sb.wrap(sb.start + y)
-	line := &reflowLogicalLine{sourceRows: 1}
+	var line *reflowLogicalLine
+	if n := len(p.free); n > 0 {
+		line = p.free[n-1]
+		p.free[n-1] = nil
+		p.free = p.free[:n-1]
+	} else {
+		line = &reflowLogicalLine{}
+	}
+	line.sourceRows = 1
 	switch {
 	case len(sb.packed) > i && sb.packed[i] != nil:
 		line.packed = sb.packed[i]
 		latest := p.history.pool.latest
 		matches := latest != nil && latest.maxSpan == 1 && latest.length == len(line.packed)
-		if matches {
+		if matches && !(p.sampleShape == latest && bytes.Equal(p.sample, line.packed)) {
 			for x, b := range line.packed {
 				if latest.plain {
 					matches = matches && b != ' '
@@ -119,6 +137,8 @@ func (p *reflowPrepared) savedRow(sb *Scrollback, y int) *reflowLogicalLine {
 			p.cells = sb.lineInto(y, p.cells)
 			line.shape = p.history.pool.acquire(p.cells)
 		}
+		p.sample = append(p.sample[:0], line.packed...)
+		p.sampleShape = line.shape
 	case len(sb.styled) > i && sb.styled[i] != nil:
 		line.styled = sb.styled[i]
 		p.cells = sb.lineInto(y, p.cells)
@@ -159,7 +179,14 @@ func (p *reflowPrepared) popLast(oldRows int) {
 
 func (p *reflowPrepared) applyDrops() {
 	if p.pendingGroups > 0 {
+		first := len(p.free)
+		for i := 0; i < p.pendingGroups; i++ {
+			p.free = append(p.free, p.history.at(i))
+		}
 		p.history.dropGroups(p.pendingGroups)
+		for _, line := range p.free[first:] {
+			*line = reflowLogicalLine{}
+		}
 		p.pendingGroups = 0
 	}
 }
