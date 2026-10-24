@@ -16,7 +16,7 @@ def draw(receipt=False):
  log.write(json.dumps(dict(event='pty_size' if receipt else 'initial',clock_ns=at,id=a.id,seq=seq,width=w,height=h))+'\n')
  if a.mode!='light':os.write(1,('\x1b[2J'+''.join(f'\x1b[{y+1};1H'+str(y%10)*w for y in range(h))).encode())
  if not(0<a.id<16 and w<256 and h<256 and seq<65536):raise RuntimeError('unsupported marker dimensions/sequence')
- marker=f'@{a.id:x}{seq:04x}{w:02x}{h:02x}!' 
+ marker=f'@{a.id:x}{seq:04x}{w:02x}{h:02x}!'
  # Position every glyph explicitly, including across a very narrow pane.
  data='\x1b7'+''.join(f'\x1b[{i//w+1};{i%w+1}H{c}' for i,c in enumerate(marker) if i//w<h)+'\x1b8'
  sent_at=clock();os.write(1,data.encode())
