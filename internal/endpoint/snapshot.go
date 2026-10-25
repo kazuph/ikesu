@@ -34,6 +34,7 @@ type SnapshotEncoder struct {
 	grids             map[int][][]uv.Cell
 	graphics          map[graphicCacheKey]compressedGraphic
 	GraphicsPatches   bool
+	LegacyGrids       bool
 	bases             map[graphicCacheKey]kitty.Image
 	sentGraphicsPatch bool
 	textOnly          bool
@@ -116,7 +117,21 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 			}
 		}
 	}
-	if err := e.enc.Encode(wire); err != nil {
+	var encoded any = wire
+	if ExperimentalFlatDiff && !e.LegacyGrids {
+		flat := flatSnapshotWire{Input: wire.Input, Grids: wire.Grids, Optional: wire.Optional, FlatGrids: make(map[int]flatGridDelta, len(wire.Grids))}
+		for id, delta := range wire.Grids {
+			cells, err := flattenCells(delta.Cells)
+			if err != nil {
+				return nil, err
+			}
+			flat.FlatGrids[id] = cells
+			delta.Cells = nil
+			flat.Grids[id] = delta
+		}
+		encoded = flat
+	}
+	if err := e.enc.Encode(encoded); err != nil {
 		return nil, err
 	}
 	benchstage.Values("snapshot.bytes", e.data.Len(), 0)
@@ -144,7 +159,7 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 		d.dec = gob.NewDecoder(&d.data)
 	}
 	d.data.Write(data)
-	var wire snapshotWire
+	var wire flatSnapshotWire
 	if err := d.dec.Decode(&wire); err != nil {
 		return render.Input{}, err
 	}
@@ -153,6 +168,18 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 	}
 	if d.grids == nil {
 		d.grids = map[int][][]uv.Cell{}
+	}
+	for id, flat := range wire.FlatGrids {
+		delta, ok := wire.Grids[id]
+		if !ok || len(delta.Cells) != 0 {
+			return render.Input{}, fmt.Errorf("invalid mixed flat pane delta")
+		}
+		cells, err := expandCells(flat)
+		if err != nil {
+			return render.Input{}, err
+		}
+		delta.Cells = cells
+		wire.Grids[id] = delta
 	}
 	for id, delta := range wire.Grids {
 		grid, err := applyGridDelta(d.grids[id], delta, true)
@@ -181,6 +208,13 @@ type snapshotWire struct {
 	Input    render.Input
 	Grids    map[int]gridDelta
 	Optional snapshotPresence
+}
+
+type flatSnapshotWire struct {
+	Input     render.Input
+	Grids     map[int]gridDelta
+	Optional  snapshotPresence
+	FlatGrids map[int]flatGridDelta
 }
 
 type gridDelta struct {

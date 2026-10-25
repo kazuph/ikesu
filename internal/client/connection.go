@@ -37,7 +37,7 @@ func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, s
 		hidden := false
 		visible = &hidden
 	}
-	peer.SurfaceCodecs = []string{endpoint.GraphicsPatchCodec}
+	peer.SurfaceCodecs = append(peer.SurfaceCodecs, endpoint.GraphicsPatchCodec)
 	peer.Methods = append(peer.Methods, "control")
 	if fileTransport != "" {
 		peer = endpoint.WithGraphicsFiles(peer)

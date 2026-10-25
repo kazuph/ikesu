@@ -30,6 +30,7 @@ type graphicsFlow struct {
 
 func (s *Server) installGraphicsSnapshotSink(c *clientConn, peer endpoint.Peer) {
 	flow := &graphicsFlow{}
+	flow.encoder.LegacyGrids = !endpoint.HasFlatDiff(peer) || !endpoint.HasFlatDiff(s.endpointPeer)
 	flow.encoder.GraphicsPatches = endpoint.HasGraphicsPatches(peer) && endpoint.HasGraphicsPatches(s.endpointPeer)
 	c.graphics = flow
 	c.viewer.SetSnapshotSink(func(in render.Input) error { return s.sendGraphicsSnapshot(c, in) })
