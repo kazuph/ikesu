@@ -19,13 +19,20 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-const version = "0.4.5"
+const version = "0.4.6"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "__job-runner" {
 		code, err := server.RunJobRunner()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "ikesu job runner:", err)
+		}
+		os.Exit(code)
+	}
+	if len(os.Args) == 2 && os.Args[1] == "__job-supervisor" {
+		code, err := server.RunJobSupervisor()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu job supervisor:", err)
 		}
 		os.Exit(code)
 	}

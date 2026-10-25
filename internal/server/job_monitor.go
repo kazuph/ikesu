@@ -11,6 +11,12 @@ import (
 	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
+type jobProcessInfo struct {
+	identity string
+	exited   bool
+	pgid     int
+}
+
 // Admission and shutdown share the mutex: Add cannot race a shutdown Wait.
 func (s *Server) startJobMonitor(id string, work func(<-chan struct{}) error) {
 	j := &s.jobProcs
@@ -99,17 +105,22 @@ func waitJobGroupGone(pid int, timeout time.Duration, stop <-chan struct{}) bool
 }
 
 func verifyJobGroup(manifest jobRunnerRecord) error {
+	if changed, err := jobBootChanged(manifest); err != nil {
+		return err
+	} else if changed {
+		return fmt.Errorf("job belongs to another OS boot; refusing to signal")
+	}
 	if manifest.PID <= 0 {
 		return fmt.Errorf("invalid runner PID; refusing to signal")
 	}
-	identity, err := jobProcessIdentity(manifest.PID)
+	info, err := jobProcessState(manifest.PID)
 	if err != nil {
 		return fmt.Errorf("process start identity unavailable; refusing to signal: %w", err)
 	}
-	if identity != manifest.Identity {
+	if info.identity != manifest.Identity {
 		return fmt.Errorf("runner process identity changed; refusing to signal")
 	}
-	if group, err := syscall.Getpgid(manifest.PID); err != nil || group != manifest.PID {
+	if info.pgid != manifest.PID {
 		return fmt.Errorf("runner no longer leads its process group; refusing to signal")
 	}
 	return nil
@@ -125,6 +136,11 @@ func signalManagedJob(manifest jobRunnerRecord, signal syscall.Signal) error {
 // A reaped leader does not revoke ownership of its surviving process group.
 // A live leader still has to match, even when cancellation was verified earlier.
 func signalCancellationGroup(manifest jobRunnerRecord, state jobCancelState, signal syscall.Signal) error {
+	if changed, err := jobBootChanged(manifest); err != nil {
+		return err
+	} else if changed {
+		return fmt.Errorf("job belongs to another OS boot; refusing to signal")
+	}
 	if manifest.PID > 0 && state.VerifiedPGID == manifest.PID && state.VerifiedIdentity != "" && state.VerifiedIdentity == manifest.Identity && syscall.Kill(manifest.PID, 0) == syscall.ESRCH {
 		return syscall.Kill(-manifest.PID, signal)
 	}
@@ -132,14 +148,10 @@ func signalCancellationGroup(manifest jobRunnerRecord, state jobCancelState, sig
 }
 
 func jobMonitorGone(manifest jobRunnerRecord) (bool, error) {
-	if !processGroupAlive(manifest.MonitorPID) {
-		return true, nil
+	if changed, err := jobBootChanged(manifest); err != nil || changed {
+		return changed, err
 	}
-	identity, err := jobProcessIdentity(manifest.MonitorPID)
-	if err != nil {
-		return false, fmt.Errorf("cannot establish runner monitor identity: %w", err)
-	}
-	return identity != manifest.MonitorIdentity, nil
+	return monitorProcessGone(manifest.MonitorPID, manifest.MonitorIdentity)
 }
 
 type jobCancelState struct {
@@ -152,8 +164,12 @@ type jobCancelState struct {
 func (s *Server) runManagedCancel(id string, store *dispatch.Store, job dispatch.Job, manifest jobRunnerRecord) api.Response {
 	s.jobProcs.cancelMu.Lock()
 	defer s.jobProcs.cancelMu.Unlock()
+	alive, probeErr := managedJobGroupAlive(manifest)
+	if probeErr != nil {
+		return api.Failure(id, api.ErrJobStore, probeErr.Error())
+	}
 	var state jobCancelState
-	if processGroupAlive(manifest.PID) {
+	if alive {
 		if err := verifyJobGroup(manifest); err != nil {
 			return api.Failure(id, api.ErrJobStore, err.Error())
 		}
@@ -172,7 +188,7 @@ func (s *Server) runManagedCancel(id string, store *dispatch.Store, job dispatch
 		return api.Failure(id, api.ErrJobNotFound, "job is no longer running")
 	}
 	signal := "none"
-	if processGroupAlive(manifest.PID) {
+	if alive {
 		if err := signalCancellationGroup(manifest, state, syscall.SIGTERM); err != nil {
 			s.resumeJobCancel(job.ID, manifest)
 			return api.Failure(id, api.ErrJobStore, err.Error())
@@ -201,6 +217,11 @@ func (s *Server) resumeJobCancel(id string, manifest jobRunnerRecord) {
 		}
 		if job == nil || job.Status != "cancelling" {
 			return nil
+		}
+		if changed, err := jobBootChanged(manifest); err != nil {
+			return err
+		} else if changed {
+			return s.recordCancellation(store, *job, false)
 		}
 		s.jobProcs.cancelMu.Lock()
 		if jobMonitorStopped(stop) {

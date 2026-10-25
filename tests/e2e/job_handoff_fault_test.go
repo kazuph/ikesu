@@ -43,6 +43,10 @@ func startFaultJob(t *testing.T) *faultJob {
 }
 
 func startFaultJobScript(t *testing.T, script func(string) string) *faultJob {
+	return startFaultJobScriptCompletion(t, script, "summary")
+}
+
+func startFaultJobScriptCompletion(t *testing.T, script func(string) string, completion string) *faultJob {
 	t.Helper()
 	s := start(t)
 	s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
@@ -60,7 +64,7 @@ func startFaultJobScript(t *testing.T, script func(string) string) *faultJob {
 	}
 	t.Cleanup(func() { release.Close() })
 	var started api.RunStartedResult
-	s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "fault-job", Completion: "summary", Argv: []string{"/bin/sh", "-c", script(fifo)}}, &started)
+	s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "fault-job", Completion: completion, Argv: []string{"/bin/sh", "-c", script(fifo)}}, &started)
 	dbPath := filepath.Join(s.stateDir, "sessions", s.name, "ikesu.db")
 	store, err := dispatch.OpenReadOnly(dbPath)
 	if err != nil {

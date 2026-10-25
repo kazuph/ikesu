@@ -268,7 +268,11 @@ func (s *Server) cancelIfCancelling(jobID string) {
 func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoop bool) error {
 	reason := ""
 	if manifest, err := managedJobRecord(j); err == nil {
-		if processGroupAlive(manifest.PID) {
+		alive, probeErr := managedJobGroupAlive(manifest)
+		if probeErr != nil {
+			return probeErr
+		}
+		if alive {
 			return nil
 		}
 		// The helper drains and closes the log before publishing this result.
