@@ -9,6 +9,38 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestReflowUnitWidthShapePreservesBlankAndAppearanceRules(t *testing.T) {
+	style := uv.Style{Fg: color.RGBA{R: 255, A: 255}}
+	base := uv.Line{{Content: "a", Width: 1}, uv.EmptyCell, {Content: "b", Width: 1}}
+	shape := newReflowShape(base)
+	for _, test := range []struct {
+		name string
+		line uv.Line
+		want bool
+	}{
+		{"text and appearance", uv.Line{{Content: "e\u0301", Width: 1, Style: style, Link: uv.Link{URL: "https://example.com"}}, {}, {Content: "界", Width: 1}}, true},
+		{"styled space is meaningful", uv.Line{{Content: "a", Width: 1}, {Content: " ", Width: 1, Style: style}, {Content: "b", Width: 1}}, false},
+		{"linked space is meaningful", uv.Line{{Content: "a", Width: 1}, {Content: " ", Width: 1, Link: uv.Link{URL: "https://example.com"}}, {Content: "b", Width: 1}}, false},
+		{"blank position changed", uv.Line{uv.EmptyCell, {Content: "a", Width: 1}, {Content: "b", Width: 1}}, false},
+		{"wide glyph", uv.Line{{Content: "界", Width: 2}, {}, {Content: "b", Width: 1}}, false},
+		{"short row", base[:2], false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if shape.matches(test.line) != test.want {
+				t.Fatalf("shape match=%v want=%v", shape.matches(test.line), test.want)
+			}
+			if test.want {
+				other := newReflowShape(test.line)
+				for width := 1; width <= len(base)+1; width++ {
+					if shape.cost(width) != other.cost(width) {
+						t.Fatal("shared shape changed wrapping or byte accounting", width)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestReflowShapeEntryReferencesSurviveInterleavedRelease(t *testing.T) {
 	pool := &reflowShapePool{}
 	row := uv.Line{{Content: "x", Width: 1}}

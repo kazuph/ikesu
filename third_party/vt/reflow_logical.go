@@ -100,6 +100,17 @@ func (s *reflowShape) matches(line uv.Line) bool {
 		}
 		return true
 	}
+	if s.maxSpan == 1 {
+		if len(line) != s.length {
+			return false
+		}
+		for i := range line {
+			if line[i].Width > 1 || (s.last[i+1] == i) == blankCell(&line[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	position := 0
 	for i := 0; i < len(line); {
 		span := max(line[i].Width, 1)
