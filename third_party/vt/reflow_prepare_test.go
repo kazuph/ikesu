@@ -1,11 +1,70 @@
 package vt
 
 import (
+	"math/bits"
 	"reflect"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
+
+func TestPreparedIndexRecyclesOnlyRetiredNodes(t *testing.T) {
+	h := &reflowHistory{}
+	appendRows := func(count int) {
+		lines := make([]*reflowLogicalLine, count)
+		for i := range lines {
+			row := uv.Line{{Content: "x", Width: 1}}
+			if i%2 == 1 {
+				row = append(row, uv.EmptyCell)
+			}
+			lines[i] = newReflowLogicalLine(row, &h.pool)
+		}
+		h.appendPreparedBatchOwned(lines, true)
+	}
+	appendRows(bits.UintSize * 8)
+	for cycle := 0; cycle < 3; cycle++ {
+		h.dropGroupsOwned(bits.UintSize*4, true)
+		free := map[*reflowIndex]bool{}
+		for _, node := range h.freeIndex {
+			if node.left != nil || node.right != nil || len(node.shapes) != 0 || len(node.events) != 0 {
+				t.Fatal("retired node retained references")
+			}
+			free[node] = true
+		}
+		if len(free) == 0 {
+			t.Fatal("complete retired subtrees were not recycled")
+		}
+		var visit func(*reflowIndex, bool) int
+		visit = func(node *reflowIndex, before bool) int {
+			if node == nil {
+				return 0
+			}
+			reused := 0
+			if free[node] {
+				if before {
+					t.Fatal("active tree entered free pool")
+				}
+				reused++
+			}
+			return reused + visit(node.left, before) + visit(node.right, before)
+		}
+		visit(h.view.index, true)
+		appendRows(bits.UintSize * 4)
+		if visit(h.view.index, false) == 0 {
+			t.Fatal("new batch did not reuse retired nodes")
+		}
+		shapes := make([]*reflowShape, h.count)
+		for i := range shapes {
+			shapes[i] = h.at(i).shape
+		}
+		expected := reflowIndexBatch(shapes)
+		for width := 1; width <= bits.UintSize; width++ {
+			if h.view.index.cost(width) != expected.cost(width) {
+				t.Fatal("recycled index changed width charge")
+			}
+		}
+	}
+}
 
 func TestPreparedHistoryFirstWidthChangeReusesClosedLines(t *testing.T) {
 	for _, rows := range []int{DefaultScrollbackSize / 10, DefaultScrollbackSize} {

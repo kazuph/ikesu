@@ -20,6 +20,8 @@ type reflowHistory struct {
 	tailGroup, tailCell      int
 	tailHistory, tailGroups  int
 	tailWidth                int
+	freeIndex                []*reflowIndex
+	shapeBatch               []*reflowShape
 }
 
 func (h *reflowHistory) at(group int) *reflowLogicalLine {
@@ -56,15 +58,28 @@ func (h *reflowHistory) appendPreparedBatch(lines []*reflowLogicalLine) {
 }
 
 func (h *reflowHistory) appendPreparedBatchOwned(lines []*reflowLogicalLine, owned bool) {
-	shapes := make([]*reflowShape, len(lines))
-	for i, line := range lines {
+	shapes := h.shapeBatch[:0]
+	if !owned || cap(shapes) < len(lines) {
+		shapes = make([]*reflowShape, 0, len(lines))
+	}
+	for _, line := range lines {
 		h.attach(line)
 		h.grow()
 		h.lines[(h.start+h.count)%len(h.lines)] = line
 		h.count++
-		shapes[i] = line.shape
+		shapes = append(shapes, line.shape)
 	}
-	h.view.index = joinReflowIndexOwned(h.view.index, reflowIndexBatch(shapes), nil, owned)
+	var batch *reflowIndex
+	if owned {
+		batch = reflowIndexBatchRecycled(shapes, &h.freeIndex)
+	} else {
+		batch = reflowIndexBatch(shapes)
+	}
+	h.view.index = joinReflowIndexOwned(h.view.index, batch, nil, owned)
+	clear(shapes)
+	if owned {
+		h.shapeBatch = shapes[:0]
+	}
 	h.cachedLine, h.cachedValid = nil, false
 	h.view.cursor = nil
 }
@@ -107,7 +122,18 @@ func (h *reflowHistory) dropGroupsOwned(groups int, owned bool) {
 		h.start = (h.start + 1) % len(h.lines)
 		h.count--
 	}
+	firstFree := len(h.freeIndex)
+	if owned {
+		h.view.index.collectDropped(groups, &h.freeIndex)
+	}
 	h.view.index = h.view.index.dropGroupsOwned(groups, owned)
+	for _, node := range h.freeIndex[firstFree:] {
+		node.left, node.right = nil, nil
+		clear(node.shapes)
+		node.shapes = node.shapes[:0]
+		node.events = node.events[:0]
+		node.groups, node.height = 0, 0
+	}
 	h.cachedLine, h.cachedValid = nil, false
 	h.view.cursor = nil
 }

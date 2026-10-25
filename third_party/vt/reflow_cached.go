@@ -181,6 +181,7 @@ func (s *Screen) unchangedReflowMain(rowRef func(int) ReflowRow, phantom bool) b
 }
 
 func (s *Screen) projectReflowHistory(h *reflowHistory, width, height, cursorGroup, cursorCell int) ReflowSnapshot {
+	h.freeIndex, h.shapeBatch = nil, nil
 	h.view.width, h.view.first = width, 0
 	h.view.rows = h.view.index.cost(width).rows
 	h.project(width)

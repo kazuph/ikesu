@@ -94,18 +94,53 @@ func (n *reflowIndex) refreshOwned(owned bool) {
 }
 
 func reflowIndexBatch(shapes []*reflowShape) *reflowIndex {
+	return reflowIndexBatchRecycled(shapes, nil)
+}
+
+func reflowIndexBatchRecycled(shapes []*reflowShape, free *[]*reflowIndex) *reflowIndex {
 	if len(shapes) == 0 {
 		return nil
 	}
-	n := &reflowIndex{}
+	var n *reflowIndex
+	if free != nil && len(*free) > 0 {
+		count := len(*free)
+		n = (*free)[count-1]
+		(*free)[count-1] = nil
+		*free = (*free)[:count-1]
+	} else {
+		n = &reflowIndex{}
+	}
 	if len(shapes) <= bits.UintSize {
-		n.shapes = append([]*reflowShape(nil), shapes...)
+		n.shapes = append(n.shapes[:0], shapes...)
 	} else {
 		middle := len(shapes) / 2
-		n.left, n.right = reflowIndexBatch(shapes[:middle]), reflowIndexBatch(shapes[middle:])
+		n.left = reflowIndexBatchRecycled(shapes[:middle], free)
+		n.right = reflowIndexBatchRecycled(shapes[middle:], free)
 	}
-	n.refresh()
+	n.refreshOwned(true)
 	return n
+}
+
+// Collect only nodes that dropGroupsOwned discards completely. A partially
+// retained parent is reused by joinReflowIndexOwned and cannot enter the pool.
+func (n *reflowIndex) collectDropped(count int, free *[]*reflowIndex) {
+	if n == nil || count <= 0 {
+		return
+	}
+	if count >= n.groups {
+		n.left.collectDropped(count, free)
+		n.right.collectDropped(count, free)
+		*free = append(*free, n)
+		return
+	}
+	if n.left == nil {
+		return
+	}
+	n.left.collectDropped(count, free)
+	if count >= n.left.groups {
+		n.right.collectDropped(count-n.left.groups, free)
+		*free = append(*free, n)
+	}
 }
 
 // owned is permitted only while the preparation tree has never been exposed
