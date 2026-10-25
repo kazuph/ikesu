@@ -97,7 +97,7 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 			flush()
 		}
 	}
-	p.history.appendPreparedBatch(lines)
+	p.history.appendPreparedBatchOwned(lines, true)
 	clear(lines)
 	p.batch = lines[:0]
 	p.rows = closed
@@ -174,7 +174,7 @@ func (p *reflowPrepared) popLast(oldRows int) {
 	} else {
 		p.rows -= p.history.at(p.history.count - 1).sourceRows
 	}
-	p.history.takeGroups(p.history.count - 1)
+	p.history.takeGroupsOwned(p.history.count-1, true)
 }
 
 func (p *reflowPrepared) applyDrops() {
@@ -183,7 +183,7 @@ func (p *reflowPrepared) applyDrops() {
 		for i := 0; i < p.pendingGroups; i++ {
 			p.free = append(p.free, p.history.at(i))
 		}
-		p.history.dropGroups(p.pendingGroups)
+		p.history.dropGroupsOwned(p.pendingGroups, true)
 		for _, line := range p.free[first:] {
 			*line = reflowLogicalLine{}
 		}

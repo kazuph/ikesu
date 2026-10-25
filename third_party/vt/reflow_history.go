@@ -47,6 +47,10 @@ func (h *reflowHistory) appendLine(line *reflowLogicalLine) {
 }
 
 func (h *reflowHistory) appendPreparedBatch(lines []*reflowLogicalLine) {
+	h.appendPreparedBatchOwned(lines, false)
+}
+
+func (h *reflowHistory) appendPreparedBatchOwned(lines []*reflowLogicalLine, owned bool) {
 	shapes := make([]*reflowShape, len(lines))
 	for i, line := range lines {
 		h.attach(line)
@@ -55,7 +59,7 @@ func (h *reflowHistory) appendPreparedBatch(lines []*reflowLogicalLine) {
 		h.count++
 		shapes[i] = line.shape
 	}
-	h.view.index = joinReflowIndex(h.view.index, reflowIndexBatch(shapes))
+	h.view.index = joinReflowIndexOwned(h.view.index, reflowIndexBatch(shapes), nil, owned)
 	h.cachedLine, h.cachedValid = nil, false
 	h.view.cursor = nil
 }
@@ -87,6 +91,10 @@ func (h *reflowHistory) project(width int) {
 }
 
 func (h *reflowHistory) dropGroups(groups int) {
+	h.dropGroupsOwned(groups, false)
+}
+
+func (h *reflowHistory) dropGroupsOwned(groups int, owned bool) {
 	for i := 0; i < groups; i++ {
 		line := h.lines[h.start]
 		h.pool.release(line.ownedShape())
@@ -94,19 +102,23 @@ func (h *reflowHistory) dropGroups(groups int) {
 		h.start = (h.start + 1) % len(h.lines)
 		h.count--
 	}
-	h.view.index = h.view.index.dropGroups(groups)
+	h.view.index = h.view.index.dropGroupsOwned(groups, owned)
 	h.cachedLine, h.cachedValid = nil, false
 	h.view.cursor = nil
 }
 
 func (h *reflowHistory) takeGroups(groups int) {
+	h.takeGroupsOwned(groups, false)
+}
+
+func (h *reflowHistory) takeGroupsOwned(groups int, owned bool) {
 	for h.count > groups {
 		at := (h.start + h.count - 1) % len(h.lines)
 		h.pool.release(h.lines[at].ownedShape())
 		h.lines[at] = nil
 		h.count--
 	}
-	h.view.index = h.view.index.takeGroups(groups)
+	h.view.index = h.view.index.takeGroupsOwned(groups, owned)
 	h.cachedLine, h.cachedValid = nil, false
 	h.view.cursor = nil
 }

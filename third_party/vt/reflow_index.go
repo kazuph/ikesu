@@ -24,7 +24,14 @@ func (n *reflowIndex) cost(width int) reflowCost {
 }
 
 func sumReflowEvents(a, b []reflowCostEvent) []reflowCostEvent {
-	out := make([]reflowCostEvent, 0, len(a)+len(b))
+	return sumReflowEventsInto(make([]reflowCostEvent, 0, len(a)+len(b)), a, b)
+}
+
+func sumReflowEventsInto(out, a, b []reflowCostEvent) []reflowCostEvent {
+	out = out[:0]
+	if cap(out) == 0 {
+		out = make([]reflowCostEvent, 0, len(a)+len(b))
+	}
 	var x, y reflowCost
 	for i, j := 0, 0; i < len(a) || j < len(b); {
 		width := 0
@@ -50,6 +57,10 @@ func sumReflowEvents(a, b []reflowCostEvent) []reflowCostEvent {
 }
 
 func (n *reflowIndex) refresh() {
+	n.refreshOwned(false)
+}
+
+func (n *reflowIndex) refreshOwned(owned bool) {
 	if n.left == nil {
 		n.groups, n.height = len(n.shapes), 1
 		same := len(n.shapes) > 0
@@ -57,7 +68,11 @@ func (n *reflowIndex) refresh() {
 			same = same && shape == n.shapes[0]
 		}
 		if same {
-			n.events = make([]reflowCostEvent, len(n.shapes[0].events))
+			var reuse []reflowCostEvent
+			if owned {
+				reuse = n.events[:0]
+			}
+			n.events = append(reuse, n.shapes[0].events...)
 			for i, event := range n.shapes[0].events {
 				n.events[i] = reflowCostEvent{event.width, reflowCost{event.cost.rows * n.groups, event.cost.bytes * n.groups}}
 			}
@@ -71,7 +86,11 @@ func (n *reflowIndex) refresh() {
 	}
 	n.groups = n.left.groups + n.right.groups
 	n.height = max(n.left.height, n.right.height) + 1
-	n.events = sumReflowEvents(n.left.events, n.right.events)
+	if owned {
+		n.events = sumReflowEventsInto(n.events, n.left.events, n.right.events)
+	} else {
+		n.events = sumReflowEvents(n.left.events, n.right.events)
+	}
 }
 
 func reflowIndexBatch(shapes []*reflowShape) *reflowIndex {
@@ -89,40 +108,54 @@ func reflowIndexBatch(shapes []*reflowShape) *reflowIndex {
 	return n
 }
 
-func (n *reflowIndex) rotateLeft() *reflowIndex {
-	copyNode, copyRight := *n, *n.right
-	n, r := &copyNode, &copyRight
+// owned is permitted only while the preparation tree has never been exposed
+// through a ReflowSnapshot. Published trees always use persistent updates.
+func copyReflowNode(n *reflowIndex, owned bool) *reflowIndex {
+	if owned {
+		return n
+	}
+	copy := *n
+	return &copy
+}
+
+func (n *reflowIndex) rotateLeftOwned(owned bool) *reflowIndex {
+	n = copyReflowNode(n, owned)
+	r := copyReflowNode(n.right, owned)
 	n.right, r.left = r.left, n
-	n.refresh()
-	r.refresh()
+	n.refreshOwned(owned)
+	r.refreshOwned(owned)
 	return r
 }
 
-func (n *reflowIndex) rotateRight() *reflowIndex {
-	copyNode, copyLeft := *n, *n.left
-	n, l := &copyNode, &copyLeft
+func (n *reflowIndex) rotateRightOwned(owned bool) *reflowIndex {
+	n = copyReflowNode(n, owned)
+	l := copyReflowNode(n.left, owned)
 	n.left, l.right = l.right, n
-	n.refresh()
-	l.refresh()
+	n.refreshOwned(owned)
+	l.refreshOwned(owned)
 	return l
 }
 
 func (n *reflowIndex) balance() *reflowIndex {
-	n.refresh()
+	return n.balanceOwned(false)
+}
+
+func (n *reflowIndex) balanceOwned(owned bool) *reflowIndex {
+	n.refreshOwned(owned)
 	if n.left == nil {
 		return n
 	}
 	if n.left.height > n.right.height+1 {
 		if n.left.right.height > n.left.left.height {
-			n.left = n.left.rotateLeft()
+			n.left = n.left.rotateLeftOwned(owned)
 		}
-		return n.rotateRight()
+		return n.rotateRightOwned(owned)
 	}
 	if n.right.height > n.left.height+1 {
 		if n.right.left.height > n.right.right.height {
-			n.right = n.right.rotateRight()
+			n.right = n.right.rotateRightOwned(owned)
 		}
-		return n.rotateLeft()
+		return n.rotateLeftOwned(owned)
 	}
 	return n
 }
@@ -149,6 +182,10 @@ func (n *reflowIndex) append(shape *reflowShape) *reflowIndex {
 }
 
 func (n *reflowIndex) dropGroups(count int) *reflowIndex {
+	return n.dropGroupsOwned(count, false)
+}
+
+func (n *reflowIndex) dropGroupsOwned(count int, owned bool) *reflowIndex {
 	if n == nil || count >= n.groups {
 		return nil
 	}
@@ -156,16 +193,25 @@ func (n *reflowIndex) dropGroups(count int) *reflowIndex {
 		return n
 	}
 	if n.left == nil {
+		if owned {
+			clear(n.shapes[:count])
+			n.shapes = n.shapes[count:]
+			return n.balanceOwned(true)
+		}
 		leaf := &reflowIndex{shapes: append([]*reflowShape(nil), n.shapes[count:]...)}
 		return leaf.balance()
 	}
 	if count >= n.left.groups {
-		return n.right.dropGroups(count - n.left.groups)
+		return n.right.dropGroupsOwned(count-n.left.groups, owned)
 	}
-	return joinReflowIndex(n.left.dropGroups(count), n.right)
+	return joinReflowIndexOwned(n.left.dropGroupsOwned(count, owned), n.right, n, owned)
 }
 
 func joinReflowIndex(left, right *reflowIndex) *reflowIndex {
+	return joinReflowIndexOwned(left, right, nil, false)
+}
+
+func joinReflowIndexOwned(left, right, spare *reflowIndex, owned bool) *reflowIndex {
 	if left == nil {
 		return right
 	}
@@ -173,19 +219,21 @@ func joinReflowIndex(left, right *reflowIndex) *reflowIndex {
 		return left
 	}
 	if left.height > right.height+1 {
-		copyNode := *left
-		left = &copyNode
-		left.right = joinReflowIndex(left.right, right)
-		return left.balance()
+		left = copyReflowNode(left, owned)
+		left.right = joinReflowIndexOwned(left.right, right, spare, owned)
+		return left.balanceOwned(owned)
 	}
 	if right.height > left.height+1 {
-		copyNode := *right
-		right = &copyNode
-		right.left = joinReflowIndex(left, right.left)
-		return right.balance()
+		right = copyReflowNode(right, owned)
+		right.left = joinReflowIndexOwned(left, right.left, spare, owned)
+		return right.balanceOwned(owned)
 	}
-	n := &reflowIndex{left: left, right: right}
-	n.refresh()
+	n := spare
+	if !owned || n == nil {
+		n = &reflowIndex{}
+	}
+	n.left, n.right, n.shapes = left, right, nil
+	n.refreshOwned(owned)
 	return n
 }
 
@@ -262,6 +310,10 @@ func (n *reflowIndex) prefixGroups(width, groups int) reflowCost {
 }
 
 func (n *reflowIndex) takeGroups(groups int) *reflowIndex {
+	return n.takeGroupsOwned(groups, false)
+}
+
+func (n *reflowIndex) takeGroupsOwned(groups int, owned bool) *reflowIndex {
 	if n == nil || groups <= 0 {
 		return nil
 	}
@@ -269,11 +321,16 @@ func (n *reflowIndex) takeGroups(groups int) *reflowIndex {
 		return n
 	}
 	if n.left == nil {
+		if owned {
+			clear(n.shapes[groups:])
+			n.shapes = n.shapes[:groups]
+			return n.balanceOwned(true)
+		}
 		leaf := &reflowIndex{shapes: append([]*reflowShape(nil), n.shapes[:groups]...)}
 		return leaf.balance()
 	}
 	if groups <= n.left.groups {
-		return n.left.takeGroups(groups)
+		return n.left.takeGroupsOwned(groups, owned)
 	}
-	return joinReflowIndex(n.left, n.right.takeGroups(groups-n.left.groups))
+	return joinReflowIndexOwned(n.left, n.right.takeGroupsOwned(groups-n.left.groups, owned), n, owned)
 }
