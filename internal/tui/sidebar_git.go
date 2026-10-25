@@ -52,9 +52,21 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	go func() {
 		gs := map[int]render.GitStatus{}
 		names := map[int]workspaceDirectoryLabel{}
+		gitByCwd := map[string]render.GitStatus{}
+		nameByCwd := map[string]string{}
 		for _, w := range targets {
-			gs[w.id] = readWorkspaceGit(w.cwd)
-			names[w.id] = workspaceDirectoryLabel{w.nameCwd, workspaceDirectoryName(w.nameCwd)}
+			g, ok := gitByCwd[w.cwd]
+			if !ok {
+				g = readWorkspaceGit(w.cwd)
+				gitByCwd[w.cwd] = g
+			}
+			gs[w.id] = g
+			name, ok := nameByCwd[w.nameCwd]
+			if !ok {
+				name = workspaceDirectoryName(w.nameCwd)
+				nameByCwd[w.nameCwd] = name
+			}
+			names[w.id] = workspaceDirectoryLabel{w.nameCwd, name}
 		}
 		a.Do(func() {
 			previousLabels, previousGit, previousNames := a.workspaceLabels, a.workspaceGit, a.workspaceNames

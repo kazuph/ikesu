@@ -15,6 +15,7 @@ var processChanges struct {
 	fd    int
 	err   error
 	panes map[int]map[*Pane]bool
+	owned map[*Pane]map[int]bool
 }
 
 func processEventQueue() bool {
@@ -26,6 +27,7 @@ func processEventQueue() bool {
 		}
 		unix.CloseOnExec(w.fd)
 		w.panes = make(map[int]map[*Pane]bool)
+		w.owned = make(map[*Pane]map[int]bool)
 		go func() {
 			events := make([]unix.Kevent_t, 64)
 			for {
@@ -41,6 +43,12 @@ func processEventQueue() bool {
 					for p := range w.panes[int(ev.Ident)] {
 						p.markProcessChanged()
 						p.notifyChanged()
+						if ev.Fflags&unix.NOTE_EXIT != 0 {
+							delete(w.owned[p], int(ev.Ident))
+							if len(w.owned[p]) == 0 {
+								delete(w.owned, p)
+							}
+						}
 					}
 					if ev.Fflags&unix.NOTE_EXIT != 0 {
 						delete(w.panes, int(ev.Ident))
@@ -67,8 +75,8 @@ func (p *Pane) watchProcessChanges(group int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	shell := p.ShellPID()
-	for pid, panes := range w.panes {
-		if panes[p] && pid != shell && pid != group {
+	for pid := range w.owned[p] {
+		if pid != shell && pid != group {
 			removeProcessWatch(pid, p)
 		}
 	}
@@ -89,6 +97,10 @@ func (p *Pane) watchProcessChanges(group int) {
 			w.panes[pid] = panes
 		}
 		panes[p] = true
+		if w.owned[p] == nil {
+			w.owned[p] = make(map[int]bool)
+		}
+		w.owned[p][pid] = true
 	}
 }
 
@@ -97,6 +109,10 @@ func removeProcessWatch(pid int, p *Pane) {
 	w := &processChanges
 	panes := w.panes[pid]
 	delete(panes, p)
+	delete(w.owned[p], pid)
+	if len(w.owned[p]) == 0 {
+		delete(w.owned, p)
+	}
 	if len(panes) == 0 {
 		delete(w.panes, pid)
 		event := unix.Kevent_t{Ident: uint64(pid), Filter: unix.EVFILT_PROC, Flags: unix.EV_DELETE}
@@ -116,9 +132,7 @@ func (p *Pane) endProcessWatch() {
 	w := &processChanges
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for pid, panes := range w.panes {
-		if panes[p] {
-			removeProcessWatch(pid, p)
-		}
+	for pid := range w.owned[p] {
+		removeProcessWatch(pid, p)
 	}
 }
