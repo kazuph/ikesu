@@ -497,6 +497,9 @@ func childEnv(zdot, stateDir, configPath string) []string {
 		}
 		env = append(env, kv)
 	}
+	if samples := os.Getenv("IKESU_PERF_RUNTIME_SAMPLES"); samples != "" {
+		env = append(env, "IKESU_BENCH_STATS="+samples)
+	}
 	return append(env,
 		"TERM=xterm-256color",
 		"SHELL=/bin/zsh",

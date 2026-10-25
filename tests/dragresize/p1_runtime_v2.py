@@ -26,7 +26,7 @@ with (out/'commands.jsonl').open('w') as log:
  for name,cwd in [('before',baseline),('after',source)]:
   if run(name+'-build',cwd,['go','build','-tags=pprof','-o',str(out/name),'./cmd/ikesu']):raise RuntimeError('diagnostic build failed')
  (out/'metadata.json').write_text(json.dumps(dict(diagnostic_only=True,before_source=str(before),revision=a.revision,sampler_sha256=hashlib.sha256((source/sampler).read_bytes()).hexdigest(),binaries={name:hashlib.sha256((out/name).read_bytes()).hexdigest() for name in ['before','after']},gc_env={k:env.get(k) for k in ['GOGC','GOMEMLIMIT']}),indent=2)+'\n')
- env.update(IKESU_PERF_BIN=str(out/'after'),IKESU_PERF_BASELINE_BIN=str(out/'before'),IKESU_PERF_OUT=str(out/'relative-diagnostic.md'),IKESU_BENCH_STATS=str(out/'runtime/{binary}-{pid}.jsonl'))
+ env.update(IKESU_PERF_BIN=str(out/'after'),IKESU_PERF_BASELINE_BIN=str(out/'before'),IKESU_PERF_OUT=str(out/'relative-diagnostic.md'),IKESU_PERF_RUNTIME_SAMPLES=str(out/'runtime/{binary}-{pid}.jsonl'))
  code=run('p1-runtime-diagnostic',source,['go','test','-tags=perf','./tests/perf','-run=^TestRelative$','-count=1','-timeout=30m'])
  if not list((out/'runtime').glob('before-*.jsonl')) or not list((out/'runtime').glob('after-*.jsonl')):raise RuntimeError('missing per-process runtime samples')
 raise SystemExit(code)
