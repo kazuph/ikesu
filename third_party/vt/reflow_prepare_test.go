@@ -266,7 +266,7 @@ func TestPreparedHistoryEvictionAndPullPreserveFirstResize(t *testing.T) {
 		}
 		return ReflowRow{}
 	}
-	indexed.prepareReflowHistory(get)
+	indexed.prepareReflowHistoryBatch(get)
 	for _, s := range []*Screen{old, indexed} {
 		s.scrollback.dropOldest()
 		copy(s.buf.Line(0), s.scrollback.popLast())
