@@ -56,17 +56,17 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	started := time.Now()
+	defer func() { a.lastDraw = started }()
 	if a.drawViewers != nil {
 		a.drawViewers()
 		a.dirty = false
-		a.lastDraw = time.Now()
 		return
 	}
 	if a.sinkOn != nil && !a.sinkOn() {
 		// No display attached: drop the frame work but clear the flag so a
 		// later attach gets a full repaint via the resize/reset path.
 		a.dirty = false
-		a.lastDraw = time.Now()
 		return
 	}
 	panes := a.sharedPaneSnaps
@@ -211,7 +211,6 @@ func (a *App) draw() {
 	}
 	a.syncHostKeyboard()
 	if a.snapshotSink != nil {
-		a.lastDraw = time.Now()
 		a.dirty = a.snapshotSink(in) != nil
 		return
 	}
@@ -237,7 +236,6 @@ func (a *App) draw() {
 			out.AnchorVisible = false
 		}
 	}
-	a.lastDraw = time.Now()
 	a.dirty = false
 	if !a.serverUI {
 		if err := a.inputSource.Prefix(a.prefix, a.sidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
