@@ -27,17 +27,17 @@ func TestResizeDrawWaitFollowsCapturedGestureAndSizeOwner(t *testing.T) {
 	}
 	check(drawMinInterval)
 	a.sep = &sepDrag{}
-	check(drawMinInterval)
+	check(0)
 	a.sep = nil
 	a.sidebarGesture = &sidebarGesture{divider: true}
-	check(drawMinInterval)
+	check(0)
 	a.sidebarGesture = &sidebarGesture{}
 	check(drawMinInterval)
 	a.sidebarGesture = nil
 	first := &Viewer{app: &App{sep: &sepDrag{}}}
 	second := &Viewer{app: &App{}}
 	a.sizeViewer = first
-	check(drawMinInterval)
+	check(0)
 	a.sizeViewer = second
 	check(drawMinInterval)
 	a.sizeViewer = first

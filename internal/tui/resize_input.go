@@ -7,6 +7,9 @@ import (
 )
 
 func (a *App) redrawDelay(now time.Time) time.Duration {
+	if a.resizeDragActive() || a.sizeViewer != nil && a.sizeViewer.app.resizeDragActive() {
+		return 0
+	}
 	return a.lastDraw.Add(drawMinInterval).Sub(now)
 }
 
