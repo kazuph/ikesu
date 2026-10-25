@@ -13,7 +13,20 @@ import (
 // paneGrid extracts the innerH×w cells a pane displays at scroll offset off
 // (0 = live screen bottom). Rows come from scrollback followed by screen.
 func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
-	var g [][]uv.Cell
+	if h <= 0 {
+		return nil
+	}
+	if a.paneGridRows == nil {
+		a.paneGridRows = make(map[*runtime.Pane][][]uv.Cell)
+	}
+	for pane := range a.paneGridRows {
+		if a.sup.Get(pane.ID) != pane {
+			delete(a.paneGridRows, pane)
+		}
+	}
+	previous := a.paneGridRows[p]
+	rows := make([][]uv.Cell, h)
+	g := make([][]uv.Cell, h)
 	p.WithEmu(func(e *vt.Emulator) {
 		sb := e.ScrollbackLen()
 		eh := e.Height()
@@ -31,7 +44,14 @@ func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
 		}
 		for r := 0; r < h; r++ {
 			i := end - h + 1 + r
-			row := make([]uv.Cell, w)
+			var old, row []uv.Cell
+			if r < len(previous) {
+				old = previous[r]
+			}
+			if len(old) < w {
+				row = make([]uv.Cell, w)
+				copy(row, old)
+			}
 			for x := 0; x < w; x++ {
 				var c *uv.Cell
 				switch {
@@ -41,15 +61,28 @@ func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
 				case i-sb < eh:
 					c = e.CellAt(x, i-sb)
 				}
+				cell := uv.Cell{Content: " ", Width: 1}
 				if c != nil {
-					row[x] = *c
-				} else {
-					row[x] = uv.Cell{Content: " ", Width: 1}
+					cell = *c
+				}
+				if row == nil && old[x] != cell {
+					row = make([]uv.Cell, len(old))
+					copy(row, old)
+				}
+				if row != nil {
+					row[x] = cell
 				}
 			}
-			g = append(g, row)
+			if row == nil {
+				row = old
+			}
+			// Published rows stay immutable. Keep the wider source privately so
+			// alternating widths can share it after comparing every visible cell.
+			rows[r] = row
+			g[r] = row[:w:w]
 		}
 	})
+	a.paneGridRows[p] = rows
 	return g
 }
 

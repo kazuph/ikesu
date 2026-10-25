@@ -162,6 +162,7 @@ type App struct {
 	tickViewers       func()
 	visiblePane       func(int) bool
 	sharedPaneSnaps   map[int]*render.PaneSnap
+	paneGridRows      map[*runtime.Pane][][]uv.Cell
 	snapshotSink      func(render.Input) error
 	hostKbdFlags      int
 	agentStateCounter uint64
