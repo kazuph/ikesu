@@ -58,6 +58,11 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	if a.sizeViewer != nil {
+		a.sizeViewer.with(a, func(ui *App) { ui.flushResize() })
+	} else {
+		a.flushResize()
+	}
 	defer benchstage.Span("ui.draw")()
 	started := time.Now()
 	defer func() { a.lastDraw = started }()

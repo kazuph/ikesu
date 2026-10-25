@@ -7,9 +7,6 @@ import (
 )
 
 func (a *App) redrawDelay(now time.Time) time.Duration {
-	if a.resizeDragActive() || a.sizeViewer != nil && a.sizeViewer.app.resizeDragActive() {
-		return 0
-	}
 	return a.lastDraw.Add(drawMinInterval).Sub(now)
 }
 
@@ -54,19 +51,26 @@ func (a *App) dispatchInputEvents(events []input.Event, deliver func(input.Event
 }
 
 // Size ownership and the resulting drag position are applied together. The
-// event is processed immediately; this scope creates no timer or queue.
+// event is processed immediately; PTY geometry is committed at the frame boundary.
 func (a *App) resizeInput(ev input.Event, deliver func()) {
 	if !a.resizeDragActive() || ev.Kind != input.KindMouseMotion && ev.Kind != input.KindMouseRelease {
+		a.flushResize()
 		deliver()
 		return
 	}
 	a.deferResize = true
 	defer func() {
 		a.deferResize = false
-		if a.resizePending {
-			a.resizePending = false
-			a.syncLayout()
+		if ev.Kind == input.KindMouseRelease {
+			a.flushResize()
 		}
 	}()
 	deliver()
+}
+
+func (a *App) flushResize() {
+	if a.resizePending {
+		a.resizePending = false
+		a.syncPaneLayout()
+	}
 }

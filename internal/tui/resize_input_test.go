@@ -27,17 +27,17 @@ func TestResizeDrawWaitFollowsCapturedGestureAndSizeOwner(t *testing.T) {
 	}
 	check(drawMinInterval)
 	a.sep = &sepDrag{}
-	check(0)
+	check(drawMinInterval)
 	a.sep = nil
 	a.sidebarGesture = &sidebarGesture{divider: true}
-	check(0)
+	check(drawMinInterval)
 	a.sidebarGesture = &sidebarGesture{}
 	check(drawMinInterval)
 	a.sidebarGesture = nil
 	first := &Viewer{app: &App{sep: &sepDrag{}}}
 	second := &Viewer{app: &App{}}
 	a.sizeViewer = first
-	check(0)
+	check(drawMinInterval)
 	a.sizeViewer = second
 	check(drawMinInterval)
 	a.sizeViewer = first
@@ -71,6 +71,10 @@ func TestResizeInputClaimsViewerAndAppliesFinalGeometryTogetherRealPTY(t *testin
 				t.Fatal("old ratio was applied before final drag geometry", before, got)
 			}
 		})
+		if got := viewerTerminalSizes(a); !reflect.DeepEqual(got, before) {
+			t.Fatal("motion resized PTYs before frame", before, got)
+		}
+		ui.flushResize()
 		for _, pr := range ui.ptyPaneRects(ui.currentSizeTab(), ui.st.PanesArea()) {
 			w, h := model.PaneTermSize(pr.Rect, ui.st.PaneBorders)
 			reviewPTYSize(t, a, pr.ID, w, h, 8, 16)

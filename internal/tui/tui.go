@@ -541,7 +541,7 @@ func (a *App) Run() {
 			for queued := len(a.input); queued > 0; queued-- {
 				events = append(events, a.fr.Push(<-a.input)...)
 			}
-			a.dispatchInputEvents(events, a.onInput)
+			a.dispatchInputEvents(events, func(ev input.Event) { a.resizeInput(ev, func() { a.onInput(ev) }) })
 			if a.fr.Pending() {
 				if flushTimer == nil {
 					flushTimer = time.NewTimer(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
