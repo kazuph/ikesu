@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"runtime/metrics"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -20,6 +22,7 @@ func init() {
 	if path == "" {
 		return
 	}
+	path = strings.ReplaceAll(path, "{pid}", strconv.Itoa(os.Getpid()))
 	file, err := os.Create(path)
 	if err != nil {
 		panic(err)
