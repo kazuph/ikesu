@@ -8,32 +8,36 @@ import (
 )
 
 type reflowShapePool struct {
-	plain   map[int]*reflowShape
-	general map[string]*reflowShape
-	refs    map[*reflowShape]int
-	keys    map[*reflowShape]string
-	latest  *reflowShape
+	plain   map[int]*reflowShapeEntry
+	general map[string]*reflowShapeEntry
+	refs    map[*reflowShape]*reflowShapeEntry
+	latest  *reflowShapeEntry
+}
+
+type reflowShapeEntry struct {
+	shape *reflowShape
+	refs  int
+	key   string
 }
 
 func (p *reflowShapePool) acquire(line uv.Line) *reflowShape {
-	if p.latest != nil && p.latest.matches(line) {
-		p.refs[p.latest]++
-		return p.latest
+	if p.latest != nil && p.latest.shape.matches(line) {
+		p.latest.refs++
+		return p.latest.shape
 	}
 	if p.refs == nil {
-		p.plain = make(map[int]*reflowShape)
-		p.general = make(map[string]*reflowShape)
-		p.refs = make(map[*reflowShape]int)
-		p.keys = make(map[*reflowShape]string)
+		p.plain = make(map[int]*reflowShapeEntry)
+		p.general = make(map[string]*reflowShapeEntry)
+		p.refs = make(map[*reflowShape]*reflowShapeEntry)
 	}
 	plain := true
 	for i := 0; i < len(line); i++ {
 		plain = plain && line[i].Width == 1 && !blankCell(&line[i])
 	}
 	var key string
-	var shape *reflowShape
+	var entry *reflowShapeEntry
 	if plain {
-		shape = p.plain[len(line)]
+		entry = p.plain[len(line)]
 	} else {
 		var data []byte
 		for i := 0; i < len(line); {
@@ -46,39 +50,42 @@ func (p *reflowShapePool) acquire(line uv.Line) *reflowShape {
 			i += span
 		}
 		key = string(data)
-		shape = p.general[key]
+		entry = p.general[key]
 	}
-	if shape == nil {
-		shape = newReflowShape(line)
+	if entry == nil {
+		entry = &reflowShapeEntry{shape: newReflowShape(line), key: key}
+		p.refs[entry.shape] = entry
 		if plain {
-			p.plain[len(line)] = shape
+			p.plain[len(line)] = entry
 		} else {
-			p.general[key] = shape
-			p.keys[shape] = key
+			p.general[key] = entry
 		}
 	}
-	p.refs[shape]++
-	p.latest = shape
-	return shape
+	entry.refs++
+	p.latest = entry
+	return entry.shape
 }
 
 // Remove only the cache reference. Immutable metadata snapshots may still use
 // the shape, without keeping any evicted text or appearance alive.
 func (p *reflowShapePool) release(shape *reflowShape) {
-	p.refs[shape]--
-	if p.refs[shape] != 0 {
+	entry := p.latest
+	if entry == nil || entry.shape != shape {
+		entry = p.refs[shape]
+	}
+	entry.refs--
+	if entry.refs != 0 {
 		return
 	}
 	delete(p.refs, shape)
-	if p.latest == shape {
+	if p.latest == entry {
 		p.latest = nil
 	}
 	if shape.plain {
 		delete(p.plain, shape.length)
 		return
 	}
-	delete(p.general, p.keys[shape])
-	delete(p.keys, shape)
+	delete(p.general, entry.key)
 }
 
 func (s *reflowShape) matches(line uv.Line) bool {

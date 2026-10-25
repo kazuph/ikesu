@@ -119,7 +119,11 @@ func (p *reflowPrepared) savedRow(sb *Scrollback, y int) *reflowLogicalLine {
 	switch {
 	case len(sb.packed) > i && sb.packed[i] != nil:
 		line.packed = sb.packed[i]
-		latest := p.history.pool.latest
+		entry := p.history.pool.latest
+		var latest *reflowShape
+		if entry != nil {
+			latest = entry.shape
+		}
 		matches := latest != nil && latest.maxSpan == 1 && latest.length == len(line.packed)
 		if matches && !(p.sampleShape == latest && bytes.Equal(p.sample, line.packed)) {
 			for x, b := range line.packed {
@@ -132,7 +136,7 @@ func (p *reflowPrepared) savedRow(sb *Scrollback, y int) *reflowLogicalLine {
 		}
 		if matches {
 			line.shape = latest
-			p.history.pool.refs[latest]++
+			entry.refs++
 		} else {
 			p.cells = sb.lineInto(y, p.cells)
 			line.shape = p.history.pool.acquire(p.cells)

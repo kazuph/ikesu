@@ -9,6 +9,32 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestReflowShapeEntryReferencesSurviveInterleavedRelease(t *testing.T) {
+	pool := &reflowShapePool{}
+	row := uv.Line{{Content: "x", Width: 1}}
+	a := pool.acquire(row)
+	if pool.acquire(row) != a {
+		t.Fatal("latest shape not reused")
+	}
+	b := pool.acquire(uv.Line{{Content: "界", Width: 2}, {}})
+	if pool.acquire(row) != a {
+		t.Fatal("non-latest shape not reused")
+	}
+	pool.release(b)
+	if pool.latest == nil || pool.latest.shape != a || pool.latest.refs != 3 || len(pool.refs) != 1 || len(pool.general) != 0 {
+		t.Fatal("releasing non-latest changed live references")
+	}
+	pool.release(a)
+	pool.release(a)
+	if pool.latest.refs != 1 || pool.refs[a] != pool.latest {
+		t.Fatal("live shape was evicted early")
+	}
+	pool.release(a)
+	if pool.latest != nil || len(pool.refs)+len(pool.plain)+len(pool.general) != 0 {
+		t.Fatal("last release retained cache entry")
+	}
+}
+
 func TestReflowLogicalCompactCellsAndShapeSharing(t *testing.T) {
 	pool := &reflowShapePool{}
 	style := uv.Style{Fg: color.RGBA{R: 255, A: 255}}
@@ -41,7 +67,7 @@ func TestReflowLogicalCompactCellsAndShapeSharing(t *testing.T) {
 	for _, line := range lines {
 		pool.release(line.shape)
 	}
-	if len(pool.refs)+len(pool.plain)+len(pool.general)+len(pool.keys) != 0 {
+	if len(pool.refs)+len(pool.plain)+len(pool.general) != 0 {
 		t.Fatal("evicted shape retained by cache")
 	}
 }
