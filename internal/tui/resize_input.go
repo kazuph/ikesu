@@ -25,7 +25,7 @@ func (a *App) dispatchInputEvents(events []input.Event, deliver func(input.Event
 	for i := 0; i < len(events); i++ {
 		ev := events[i]
 		if a.resizeMotion(ev) {
-			for i+1 < len(events) && a.resizeMotion(events[i+1]) && events[i+1].Mouse.Button == ev.Mouse.Button && events[i+1].Mouse.Mod == ev.Mouse.Mod {
+			for i+1 < len(events) && a.resizeMotion(events[i+1]) {
 				if g := a.sidebarGesture; g != nil && g.divider {
 					x, y := ev.Mouse.X, ev.Mouse.Y
 					if a.hostPixelMouse {

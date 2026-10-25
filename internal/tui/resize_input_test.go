@@ -59,6 +59,10 @@ func TestResizeInputCoalescesOnlyConsecutiveActiveMotions(t *testing.T) {
 		return input.Event{Kind: kind, Mouse: uv.Mouse{X: border + dx, Y: area.Y + area.H/2, Button: uv.MouseLeft}}
 	}
 	events := []input.Event{event(input.KindMouseClick, 0), event(input.KindMouseMotion, 4), event(input.KindMouseMotion, 8), event(input.KindMouseWheel, 8), event(input.KindMouseMotion, 9), {Kind: input.KindKey, Key: uv.Key{Text: "x", Code: 'x'}}, event(input.KindMouseMotion, 10), event(input.KindMouseRelease, 11)}
+	// Modifiers do not end a captured resize. Their motion must still collapse
+	// into the last position before the next real input boundary.
+	events[2].Mouse.Mod = uv.ModShift
+	events[2].Mouse.Button = uv.MouseNone
 	var delivered []input.Kind
 	a.dispatchInputEvents(events, func(ev input.Event) {
 		delivered = append(delivered, ev.Kind)
