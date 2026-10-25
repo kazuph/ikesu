@@ -29,21 +29,36 @@ func (s *Server) markSessionDirty() {
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
 	}
-	s.saveTimer = time.AfterFunc(sessionSaveDelay, func() {
-		s.app.Do(s.saveSession)
-	})
+	s.saveTimer = time.AfterFunc(sessionSaveDelay, s.saveScheduledSession)
+}
+
+type sessionSnapshot struct {
+	sequence uint64
+	file     *session.File
+	history  *session.History
+}
+
+// Capture on the model owner, then let the timer goroutine perform disk I/O.
+func (s *Server) saveScheduledSession() {
+	var snapshot *sessionSnapshot
+	s.app.Do(func() { snapshot = s.captureSession() })
+	s.writeSession(snapshot)
 }
 
 // saveSession writes session.json atomically. It must run on the app loop
 // because it reads model state and session records.
 func (s *Server) saveSession() {
+	s.writeSession(s.captureSession())
+}
+
+func (s *Server) captureSession() *sessionSnapshot {
 	if s.app == nil {
-		return
+		return nil
 	}
 	s.observeAgentSessions()
 	f := s.app.State().Snapshot()
 	if len(f.Workspaces) == 0 {
-		return
+		return nil
 	}
 	f.EachPane(func(w *session.Workspace, _ *session.Tab, p *session.Pane) {
 		if rp := s.sup.Get(p.ID); rp != nil {
@@ -78,11 +93,31 @@ func (s *Server) saveSession() {
 			}
 		}
 	})
-	if err := session.Save(session.Path(s.dir), f); err != nil {
+	s.saveSequence++
+	return &sessionSnapshot{sequence: s.saveSequence, file: f, history: s.capturePaneHistory(f)}
+}
+
+func (s *Server) writeSession(snapshot *sessionSnapshot) {
+	if snapshot == nil {
+		return
+	}
+	s.saveWriteMu.Lock()
+	defer s.saveWriteMu.Unlock()
+	// Shutdown/restart saves synchronously. A delayed older timer must never
+	// overwrite that final state, or another newer captured generation.
+	if snapshot.sequence <= s.savedSequence {
+		return
+	}
+	if err := session.Save(session.Path(s.dir), snapshot.file); err != nil {
 		fmt.Fprintf(os.Stderr, "ikesu: save session: %v\n", err)
 		return
 	}
-	s.savePaneHistory(f)
+	if snapshot.history != nil {
+		if err := session.SaveHistory(s.dir, *snapshot.history); err != nil {
+			fmt.Fprintf(os.Stderr, "ikesu: save pane history: %v\n", err)
+		}
+	}
+	s.savedSequence = snapshot.sequence
 }
 
 // loadSession reads and validates session.json. It returns nil when there

@@ -138,9 +138,12 @@ type Server struct {
 	lastAPINotification time.Time                    // last successfully shown explicit notification
 
 	// session persistence & restart (SPEC G3/G5)
-	saveMu     sync.Mutex
-	saveTimer  *time.Timer // pending coalesced session.json write
-	restarting bool        // set on the app loop; cleanup respawns a server
+	saveMu        sync.Mutex
+	saveTimer     *time.Timer // pending coalesced session.json write
+	saveWriteMu   sync.Mutex
+	saveSequence  uint64 // assigned only on the app loop
+	savedSequence uint64 // guarded by saveWriteMu
+	restarting    bool   // set on the app loop; cleanup respawns a server
 
 	// observedStart remembers the process start an observed session id
 	// was recorded for, so the same process is never re-observed.
