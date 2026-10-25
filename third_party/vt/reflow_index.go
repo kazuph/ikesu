@@ -116,19 +116,22 @@ func (n *reflowIndex) fillLastLeafOwned(shapes []*reflowShape) int {
 	return count
 }
 
+func takeReflowIndex(free *[]*reflowIndex) *reflowIndex {
+	if free != nil && len(*free) > 0 {
+		count := len(*free)
+		n := (*free)[count-1]
+		(*free)[count-1] = nil
+		*free = (*free)[:count-1]
+		return n
+	}
+	return &reflowIndex{}
+}
+
 func reflowIndexBatchRecycled(shapes []*reflowShape, free *[]*reflowIndex) *reflowIndex {
 	if len(shapes) == 0 {
 		return nil
 	}
-	var n *reflowIndex
-	if free != nil && len(*free) > 0 {
-		count := len(*free)
-		n = (*free)[count-1]
-		(*free)[count-1] = nil
-		*free = (*free)[:count-1]
-	} else {
-		n = &reflowIndex{}
-	}
+	n := takeReflowIndex(free)
 	if len(shapes) <= bits.UintSize {
 		n.shapes = append(n.shapes[:0], shapes...)
 	} else {

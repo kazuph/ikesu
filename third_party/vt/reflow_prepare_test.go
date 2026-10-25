@@ -8,6 +8,53 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestPreparedChurnKeepsRetiredNodesWithinLiveTreeBudget(t *testing.T) {
+	h := &reflowHistory{}
+	keep := bits.UintSize * 3
+	appendLines := func(count int) {
+		lines := make([]*reflowLogicalLine, count)
+		for i := range lines {
+			lines[i] = newReflowLogicalLine(uv.Line{{Content: "x", Width: 1}}, &h.pool)
+		}
+		h.appendPreparedBatchOwned(lines, true)
+	}
+	appendLines(keep)
+	seen := map[*reflowIndex]bool{}
+	for step := range bits.UintSize * bits.UintSize {
+		count := step%bits.UintSize + 1
+		h.dropGroupsOwned(count, true)
+		appendLines(count)
+		clear(seen)
+		var visit func(*reflowIndex)
+		visit = func(n *reflowIndex) {
+			if n == nil {
+				return
+			}
+			if _, exists := seen[n]; exists {
+				t.Fatal("node is shared within the active tree")
+			}
+			seen[n] = true
+			visit(n.left)
+			visit(n.right)
+		}
+		visit(h.view.index)
+		for _, n := range h.freeIndex {
+			if _, exists := seen[n]; exists {
+				t.Fatal("retired node is active or duplicated")
+			}
+			seen[n] = false
+		}
+		// Each leaf holds at least one group; a binary tree has at most
+		// twice its leaf count minus one nodes, including an incoming batch.
+		if len(seen) > 2*(keep+bits.UintSize)-1 {
+			t.Fatalf("retired storage grew across stable-size output: step=%d active+retired=%d", step, len(seen))
+		}
+		if h.view.index.groups != keep || h.view.index.cost(1).rows != keep {
+			t.Fatal("churn changed the retained logical groups")
+		}
+	}
+}
+
 func TestPreparedSmallBatchesFillLeavesWithoutChangingPublishedSnapshots(t *testing.T) {
 	for _, row := range []uv.Line{
 		{{Content: "x", Width: 1}},
