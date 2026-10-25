@@ -8,6 +8,34 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestPreparedShapeSurvivesWholeBatchReplacementOnlyWhileReused(t *testing.T) {
+	for _, bounded := range []bool{false, true} {
+		s := NewScreen(6, 2)
+		s.scrollback = NewScrollback(2)
+		if bounded {
+			s.scrollback.SetMaxBytes(2 * (scrollbackRowBytes + 3*scrollbackCellBytes))
+		}
+		get := func(int) ReflowRow { return ReflowRow{} }
+		push := func(row uv.Line) {
+			for range 2 {
+				s.scrollback.Push(row)
+			}
+			s.prepareReflowHistory(get)
+		}
+		push(uv.Line{{Content: "a", Width: 1}, uv.EmptyCell, {Content: "b", Width: 1}})
+		h := s.scrollback.prepared.history
+		shape := h.at(0).shape
+		push(uv.Line{{Content: "x", Width: 1}, uv.EmptyCell, {Content: "y", Width: 1}})
+		if h.at(0).shape != shape || h.at(1).shape != shape || len(h.pool.refs) != 1 || h.pool.refs[shape].refs != 2 || s.scrollback.Line(0)[0].Content != "x" {
+			t.Fatal("replaced batch lost reusable shape or changed physical cells", bounded)
+		}
+		push(uv.Line{{Content: "界", Width: 2}, {}, {Content: "z", Width: 1}})
+		if h.pool.refs[shape] != nil || len(h.pool.refs) != 1 || h.pool.latest.refs != 2 {
+			t.Fatal("temporary shape reference survived a different batch", bounded)
+		}
+	}
+}
+
 func TestPreparedIndexRecyclesOnlyRetiredNodes(t *testing.T) {
 	h := &reflowHistory{}
 	appendRows := func(count int) {

@@ -229,8 +229,9 @@ func (n *reflowIndex) dropGroupsOwned(count int, owned bool) *reflowIndex {
 	}
 	if n.left == nil {
 		if owned {
-			clear(n.shapes[:count])
-			n.shapes = n.shapes[count:]
+			remaining := copy(n.shapes, n.shapes[count:])
+			clear(n.shapes[remaining:])
+			n.shapes = n.shapes[:remaining]
 			return n.balanceOwned(true)
 		}
 		leaf := &reflowIndex{shapes: append([]*reflowShape(nil), n.shapes[count:]...)}

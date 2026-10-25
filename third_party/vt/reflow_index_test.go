@@ -8,6 +8,25 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestUnpublishedLeafPrefixDropKeepsReusableCapacityAndClearsReferences(t *testing.T) {
+	shapes := make([]*reflowShape, bits.UintSize)
+	for i := range shapes {
+		shapes[i] = newReflowShape(uv.Line{{Content: "a", Width: 1}})
+	}
+	index := reflowIndexBatch(shapes)
+	storage, capacity := &index.shapes[0], cap(index.shapes)
+	index = index.dropGroupsOwned(1, true)
+	if cap(index.shapes) != capacity || &index.shapes[0] != storage || index.shapes[0] != shapes[1] || index.shapes[:capacity][capacity-1] != nil {
+		t.Fatal("owned prefix drop lost reusable storage or retained removed references")
+	}
+	expected := reflowIndexBatch(shapes[1:])
+	for width := 1; width <= bits.UintSize; width++ {
+		if index.cost(width) != expected.cost(width) {
+			t.Fatal("prefix drop changed width costs", width)
+		}
+	}
+}
+
 func TestUnpublishedReflowIndexOwnedUpdatesMatchPersistent(t *testing.T) {
 	shapes := []*reflowShape{
 		newReflowShape(nil),

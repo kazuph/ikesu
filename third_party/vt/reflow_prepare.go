@@ -53,6 +53,12 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 		return
 	}
 	if sb.prepared != nil {
+		// A whole batch can retire before an identical shape is acquired below.
+		// Keep only its metadata alive until this preparation finishes.
+		if entry := sb.prepared.history.pool.latest; entry != nil {
+			entry.refs++
+			defer sb.prepared.history.pool.release(entry.shape)
+		}
 		sb.prepared.applyDrops()
 	}
 	if sb.count == 0 {
