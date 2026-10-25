@@ -24,6 +24,9 @@ type Encoder struct {
 	haveSty           bool
 	started           bool
 	cursorShape       int
+	styleGroups       []encodedStyleGroup
+	stylePoints       []encodedStylePoint
+	styleIndexes      map[encodedStyleKey]int
 }
 
 const (
@@ -111,6 +114,7 @@ func cup(row, col int) string {
 }
 
 func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {
+	e.beginStyleGroups()
 	prev := e.prev
 	unchanged := func(x, y int) bool {
 		cell := f.Cell(x, y)
@@ -128,7 +132,6 @@ func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {
 				continue
 			}
 			// Emit the run of changed cells.
-			b.WriteString(cup(y, x))
 			for x < f.W {
 				nc := f.Cell(x, y)
 				if unchanged(x, y) {
@@ -140,25 +143,27 @@ func (e *Encoder) diff(f *Frame, b *bytes.Buffer) {
 					x++
 					continue
 				}
-				e.emitCell(b, nc)
+				e.groupStyleCell(f, x, y)
 				x += max(nc.Width, 1)
 			}
 		}
 	}
+	e.emitStyleGroups(f, b)
 }
 
 // diffAll writes every cell (used on the first frame or after resize).
 func (e *Encoder) diffAll(f *Frame, b *bytes.Buffer) {
+	e.beginStyleGroups()
 	for y := 0; y < f.H; y++ {
-		b.WriteString(cup(y, 0))
 		for x := 0; x < f.W; x++ {
 			c := f.Cell(x, y)
 			if c.Width == 0 {
 				continue // covered by the wide cell before it
 			}
-			e.emitCell(b, c)
+			e.groupStyleCell(f, x, y)
 		}
 	}
+	e.emitStyleGroups(f, b)
 }
 
 func (e *Encoder) emitCell(b *bytes.Buffer, c *uv.Cell) {
