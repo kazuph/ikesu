@@ -1,6 +1,17 @@
 package tui
 
-import "github.com/kazuph/ikesu/internal/input"
+import (
+	"time"
+
+	"github.com/kazuph/ikesu/internal/input"
+)
+
+func (a *App) redrawDelay(now time.Time) time.Duration {
+	if a.resizeDragActive() || a.sizeViewer != nil && a.sizeViewer.app.resizeDragActive() {
+		return 0
+	}
+	return a.lastDraw.Add(drawMinInterval).Sub(now)
+}
 
 func (a *App) resizeDragActive() bool {
 	return a.navigator == nil && a.settings == nil && a.help == nil && a.dialog == nil && a.menu == nil && a.cm == nil && a.sidebarBar == nil && a.tabGesture == nil &&

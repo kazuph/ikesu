@@ -592,7 +592,7 @@ func (a *App) Run() {
 			break
 		}
 		if a.dirty {
-			remaining := time.Until(a.lastDraw.Add(drawMinInterval))
+			remaining := a.redrawDelay(time.Now())
 			if remaining <= 0 {
 				if drawTimer != nil {
 					drawTimer.Stop()

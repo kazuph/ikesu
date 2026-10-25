@@ -16,6 +16,37 @@ import (
 	"path/filepath"
 )
 
+func TestResizeDrawWaitFollowsCapturedGestureAndSizeOwner(t *testing.T) {
+	now := time.Unix(0, 0)
+	a := &App{lastDraw: now}
+	check := func(want time.Duration) {
+		t.Helper()
+		if got := a.redrawDelay(now); got != want {
+			t.Fatalf("redraw delay=%s want=%s", got, want)
+		}
+	}
+	check(drawMinInterval)
+	a.sep = &sepDrag{}
+	check(0)
+	a.sep = nil
+	a.sidebarGesture = &sidebarGesture{divider: true}
+	check(0)
+	a.sidebarGesture = &sidebarGesture{}
+	check(drawMinInterval)
+	a.sidebarGesture = nil
+	first := &Viewer{app: &App{sep: &sepDrag{}}}
+	second := &Viewer{app: &App{}}
+	a.sizeViewer = first
+	check(0)
+	a.sizeViewer = second
+	check(drawMinInterval)
+	a.sizeViewer = first
+	first.app.sep = nil
+	check(drawMinInterval)
+	a.lastDraw = now.Add(-drawMinInterval)
+	check(0)
+}
+
 func TestResizeInputClaimsViewerAndAppliesFinalGeometryTogetherRealPTY(t *testing.T) {
 	teststate.Lock(t)
 	a := sizeOwnerRuntimeApp(t)
