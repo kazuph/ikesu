@@ -40,20 +40,21 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
-	graphicsLayers        map[string]*graphicsLayer
-	graphics              *kitty.Store
-	graphicsEnabled       bool
-	graphicsVersion       string
-	cellWidth, cellHeight int
-	guard                 *guard.Assets
-	guardStarted          string
-	ID                    int
-	cwd                   string // spawn cwd; OSC 7 or proc cwd may refine it
-	spawnArgv             []string
-	processCache          foregroundCache
-	processChanged        atomic.Bool
-	processSettlingUntil  time.Time
-	processCwdAt          time.Time
+	graphicsLayers         map[string]*graphicsLayer
+	graphics               *kitty.Store
+	graphicsEnabled        bool
+	graphicsVersion        string
+	cellWidth, cellHeight  int
+	guard                  *guard.Assets
+	guardStarted           string
+	ID                     int
+	cwd                    string // spawn cwd; OSC 7 or proc cwd may refine it
+	spawnArgv              []string
+	processCache           foregroundCache
+	processChanged         atomic.Bool
+	processIdentityChanged atomic.Bool
+	processSettlingUntil   time.Time
+	processCwdAt           time.Time
 
 	cmd                 *exec.Cmd
 	ptyFile             *os.File
@@ -697,8 +698,17 @@ func (p *Pane) PollProcess() {
 		return
 	}
 	p.processChanged.Store(false)
+	if p.processIdentityChanged.Swap(false) {
+		p.processCache.mu.Lock()
+		p.processCache.readAt = time.Time{}
+		p.processCache.mu.Unlock()
+	}
 	job := p.cachedForegroundJob()
-	p.watchProcessChanges(job.ProcessGroupID)
+	pids := make([]int, 0, len(job.Processes))
+	for _, pr := range job.Processes {
+		pids = append(pids, pr.PID)
+	}
+	p.watchProcessChanges(job.ProcessGroupID, pids...)
 	if len(job.Processes) == 0 {
 		return
 	}
@@ -818,20 +828,27 @@ func (s *Supervisor) SetShell(shell, mode string) {
 func (p *Pane) PollProcessChanged() {
 	p.mu.Lock()
 	guarded := p.guard != nil && (p.effectiveAgent() != "" || p.guardStarted != "")
-	active := p.fgPID != 0 && p.fgPID != p.ShellPID() || len(p.spawnArgv) > 0 || time.Now().Before(p.processSettlingUntil)
-	switch p.procName {
-	case "sh", "bash", "zsh", "fish":
-	default:
-		active = true
+	effective, dead := p.effectiveAgent(), p.dead
+	if effective == "" {
+		effective = p.guardStarted
+	}
+	now := time.Now()
+	settling := now.Before(p.processSettlingUntil)
+	settled := !p.processSettlingUntil.IsZero() && !settling
+	if settled {
+		p.processSettlingUntil = time.Time{}
+		p.processIdentityChanged.Store(true)
 	}
 	p.mu.Unlock()
-	if !processEventQueue() || guarded || active || p.processChanged.Load() {
+	if !processEventQueue() || settling || settled || p.processChanged.Load() {
 		p.PollProcess()
 		return
 	}
-	// kqueue has no cwd-change event. Keep this existing-cadence probe for
-	// silent shell builtins, without rescanning jobs or touching guard files.
-	now := time.Now()
+	if guarded && !dead {
+		_ = p.guard.Sync(effective)
+	}
+	// kqueue has no chdir/tcsetpgrp event. Silent programs keep the existing
+	// cwd-observation cadence without repeating the process-group scan.
 	p.mu.Lock()
 	due := now.Sub(p.processCwdAt) >= foregroundJobCacheLifetime
 	if due {
@@ -839,14 +856,13 @@ func (p *Pane) PollProcessChanged() {
 	}
 	p.mu.Unlock()
 	if due {
-		cwd := platform.ProcCwd(p.ShellPID())
+		group := platform.ForegroundPID(p.ptyFD)
+		cwd := platform.ProcCwd(group)
 		p.mu.Lock()
-		changed := cwd != "" && cwd != p.procCwd
-		if changed {
-			p.procCwd = cwd
-		}
+		changed := group != p.fgPID || cwd != "" && cwd != p.procCwd
 		p.mu.Unlock()
 		if changed {
+			p.PollProcess()
 			p.notifyChanged()
 		}
 	}

@@ -41,6 +41,7 @@ func processEventQueue() bool {
 				w.mu.Lock()
 				for _, ev := range events[:n] {
 					for p := range w.panes[int(ev.Ident)] {
+						p.processIdentityChanged.Store(true)
 						p.markProcessChanged()
 						p.notifyChanged()
 						if ev.Fflags&unix.NOTE_EXIT != 0 {
@@ -61,7 +62,7 @@ func processEventQueue() bool {
 	return w.err == nil
 }
 
-func (p *Pane) watchProcessChanges(group int) {
+func (p *Pane) watchProcessChanges(group int, members ...int) {
 	p.mu.Lock()
 	dead := p.dead
 	p.mu.Unlock()
@@ -75,15 +76,18 @@ func (p *Pane) watchProcessChanges(group int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	shell := p.ShellPID()
+	wanted := make(map[int]bool, len(members)+2)
+	for _, pid := range append(members, shell, group) {
+		if pid > 0 {
+			wanted[pid] = true
+		}
+	}
 	for pid := range w.owned[p] {
-		if pid != shell && pid != group {
+		if !wanted[pid] {
 			removeProcessWatch(pid, p)
 		}
 	}
-	for _, pid := range []int{shell, group} {
-		if pid <= 0 {
-			continue
-		}
+	for pid := range wanted {
 		panes := w.panes[pid]
 		if panes[p] {
 			continue
