@@ -8,6 +8,46 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestPreparedSmallBatchesFillLeavesWithoutChangingPublishedSnapshots(t *testing.T) {
+	for _, row := range []uv.Line{
+		{{Content: "x", Width: 1}},
+		{{Content: "界", Width: 2}, {}, uv.EmptyCell, {Content: "e\u0301", Width: 1}},
+	} {
+		h := &reflowHistory{}
+		count := bits.UintSize*3 + 1
+		var shapes []*reflowShape
+		for range count {
+			line := newReflowLogicalLine(row, &h.pool)
+			h.appendPreparedBatchOwned([]*reflowLogicalLine{line}, true)
+			shapes = append(shapes, line.shape)
+		}
+		leaves := 0
+		var visit func(*reflowIndex)
+		visit = func(n *reflowIndex) {
+			if n.left == nil {
+				leaves++
+				return
+			}
+			visit(n.left)
+			visit(n.right)
+		}
+		visit(h.view.index)
+		if leaves != (count+bits.UintSize-1)/bits.UintSize {
+			t.Fatal("small output batches left sparse leaves", leaves)
+		}
+		published := h.view.index
+		expected := reflowIndexBatch(shapes)
+		h.appendPreparedBatch([]*reflowLogicalLine{newReflowLogicalLine(row, &h.pool)})
+		for width := 1; width <= bits.UintSize; width++ {
+			before, added := expected.cost(width), shapes[0].cost(width)
+			want := reflowCost{before.rows + added.rows, before.bytes + added.bytes}
+			if published.cost(width) != before || h.view.index.cost(width) != want {
+				t.Fatal("leaf packing or published append changed width costs", width)
+			}
+		}
+	}
+}
+
 func TestPreparedShapeSurvivesWholeBatchReplacementOnlyWhileReused(t *testing.T) {
 	for _, bounded := range []bool{false, true} {
 		s := NewScreen(6, 2)

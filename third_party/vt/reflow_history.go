@@ -71,7 +71,11 @@ func (h *reflowHistory) appendPreparedBatchOwned(lines []*reflowLogicalLine, own
 	}
 	var batch *reflowIndex
 	if owned {
-		batch = reflowIndexBatchRecycled(shapes, &h.freeIndex)
+		remaining := shapes
+		if h.view.index != nil {
+			remaining = shapes[h.view.index.fillLastLeafOwned(shapes):]
+		}
+		batch = reflowIndexBatchRecycled(remaining, &h.freeIndex)
 	} else {
 		batch = reflowIndexBatch(shapes)
 	}
