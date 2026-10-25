@@ -55,12 +55,19 @@ func TestSidebarDragIndependentContinuousAndRestored(t *testing.T) {
 					t.Fatal("left mode")
 				}
 			}
-			sidebarEvent(a, input.KindMouseRelease, start, 5)
+			released := a.st.SidebarArea().W - 1
+			if right {
+				released = a.st.Cols - a.st.RightSidebarArea().W
+			}
+			sidebarEvent(a, input.KindMouseRelease, released, 5)
 			encoded, _ := json.Marshal(saved)
 			var fields map[string]any
 			_ = json.Unmarshal(encoded, &fields)
 			if right && fields["right_sidebar_width"] != float64(2) {
 				t.Fatalf("right width not saved: %s", encoded)
+			}
+			if !right && fields["sidebar_width"] != float64(2) {
+				t.Fatalf("left width not saved: %s", encoded)
 			}
 			restored := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
 			restored.setSidebarConfig(config.Config{}, true)
