@@ -78,6 +78,26 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 	}
 	var tail []*reflowLogicalLine
 	var logical, scratch uv.Line
+	if stableHistory && source+1 < history {
+		capacity := 0
+		sb := s.scrollback
+		switch {
+		case sb.indexed != nil && source < sb.indexedLen():
+			group, start, _, _, _ := sb.indexed.view.row(source)
+			capacity = sb.indexed.at(group).shape.length - start
+		case sb.prepared != nil && sb.prepared.rows == source && sb.prepared.scanned == sb.count:
+			for y := source; y < history; y++ {
+				width := rowRef(y).Width
+				if width <= 0 {
+					width = s.Width()
+				}
+				capacity += width
+			}
+		}
+		if capacity > 0 {
+			logical = make(uv.Line, 0, capacity+(last+1)*s.Width()+1)
+		}
+	}
 	cursorOffset, cursorGroup, cursorCell := -1, -1, 0
 	flush := func() {
 		marker := cursorOffset == len(logical)

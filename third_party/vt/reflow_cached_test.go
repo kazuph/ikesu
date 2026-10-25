@@ -37,6 +37,9 @@ func TestUnchangedBoundaryProjectionMatchesStreaming(t *testing.T) {
 					}
 					return ReflowRow{}
 				}
+				if step == 0 {
+					indexed.prepareReflowHistory(get)
+				}
 				view := indexed.reflowIndexed(size[0], size[1], get, false, true)
 				flags = old.referenceStreamingReflow(size[0], size[1], flags, false)
 				if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || old.cur.Position != indexed.cur.Position || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.scrollback.Bytes() != indexed.scrollback.Bytes() || !reflect.DeepEqual(flags, view.materialize()) {
