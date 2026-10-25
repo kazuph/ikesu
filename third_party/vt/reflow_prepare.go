@@ -2,6 +2,7 @@ package vt
 
 import (
 	"bytes"
+	"math/bits"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
@@ -44,10 +45,17 @@ func appendReflowCells(logical uv.Line, row uv.Line, ref ReflowRow, wraps bool, 
 // PrepareReflowHistory consumes recorded boundaries after an output batch.
 // The callback includes the first main-screen row at ScrollbackLen().
 func (e *Emulator) PrepareReflowHistory(rowRef func(int) ReflowRow) {
-	e.scrs[0].prepareReflowHistory(rowRef)
+	e.scrs[0].prepareReflowHistoryBatch(rowRef)
 }
 
 func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
+	s.prepareReflowHistoryBatch(rowRef)
+	if p := s.scrollback.prepared; p != nil {
+		p.flushBatch()
+	}
+}
+
+func (s *Screen) prepareReflowHistoryBatch(rowRef func(int) ReflowRow) {
 	sb := s.scrollback
 	if sb.indexedLen() > 0 {
 		return
@@ -81,7 +89,7 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 	}
 	var logical, scratch uv.Line
 	physical := 0
-	lines := p.batch[:0]
+	lines := p.batch
 	flush := func() {
 		line := newReflowLogicalLine(logical, &p.history.pool)
 		line.sourceRows = physical
@@ -103,9 +111,10 @@ func (s *Screen) prepareReflowHistory(rowRef func(int) ReflowRow) {
 			flush()
 		}
 	}
-	p.history.appendPreparedBatchOwned(lines, true)
-	clear(lines)
-	p.batch = lines[:0]
+	p.batch = lines
+	if len(p.batch) >= bits.UintSize {
+		p.flushBatch()
+	}
 	p.rows = closed
 }
 
@@ -167,13 +176,20 @@ func (p *reflowPrepared) dropFirst() {
 	}
 	p.rows--
 	p.skipped++
-	if p.skipped == p.history.at(p.pendingGroups).sourceRows {
+	var first *reflowLogicalLine
+	if p.pendingGroups < p.history.count {
+		first = p.history.at(p.pendingGroups)
+	} else {
+		first = p.batch[p.pendingGroups-p.history.count]
+	}
+	if p.skipped == first.sourceRows {
 		p.pendingGroups++
 		p.skipped = 0
 	}
 }
 
 func (p *reflowPrepared) popLast(oldRows int) {
+	p.flushBatch()
 	p.applyDrops()
 	p.scanned = min(p.scanned, oldRows-1)
 	if oldRows > p.rows || p.history.count == 0 {
@@ -189,6 +205,7 @@ func (p *reflowPrepared) popLast(oldRows int) {
 
 func (p *reflowPrepared) applyDrops() {
 	if p.pendingGroups > 0 {
+		p.flushBatch()
 		first := len(p.free)
 		for i := 0; i < p.pendingGroups; i++ {
 			p.free = append(p.free, p.history.at(i))
@@ -204,6 +221,7 @@ func (p *reflowPrepared) applyDrops() {
 func (s *Screen) reusablePrepared(rowRef func(int) ReflowRow) (h *reflowHistory, first *reflowLogicalLine, from, groups, source int) {
 	p := s.scrollback.prepared
 	if p != nil {
+		p.flushBatch()
 		p.applyDrops()
 	}
 	if p == nil || p.history.count == 0 {
@@ -227,4 +245,15 @@ func (s *Screen) reusablePrepared(rowRef func(int) ReflowRow) (h *reflowHistory,
 		first = newReflowLogicalLine(cells, &h.pool)
 	}
 	return h, first, from, groups, p.rows
+}
+
+// Only unpublished preparation owns these lines. Publishing a projection or
+// retiring their raw slots flushes the tail before it can change ownership.
+func (p *reflowPrepared) flushBatch() {
+	if len(p.batch) == 0 {
+		return
+	}
+	p.history.appendPreparedBatchOwned(p.batch, true)
+	clear(p.batch)
+	p.batch = p.batch[:0]
 }

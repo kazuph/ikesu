@@ -283,3 +283,26 @@ func TestPreparedHistoryEvictionAndPullPreserveFirstResize(t *testing.T) {
 		}
 	}
 }
+
+// Small output bursts retain cells immediately but share one index leaf build.
+func TestPreparedSmallOutputsBatchIndexBeforeFirstResize(t *testing.T) {
+	s := NewScreen(8, 2)
+	get := func(int) ReflowRow { return ReflowRow{} }
+	for i := 0; i < 3; i++ {
+		s.scrollback.Push(uv.Line{{Content: string(rune('a' + i)), Width: 1}})
+		s.prepareReflowHistoryBatch(get)
+	}
+	p := s.scrollback.prepared
+	if p.history.view.index != nil {
+		t.Fatal("small outputs built an index before a full leaf or resize")
+	}
+	reference := NewScreen(8, 2)
+	for _, row := range s.scrollback.Lines() {
+		reference.scrollback.Push(row)
+	}
+	flags := reference.referenceStreamingReflow(7, 2, nil, false)
+	view := s.reflowIndexed(7, 2, get, false, true)
+	if !reflect.DeepEqual(view.materialize(), flags) || !reflect.DeepEqual(s.scrollback.Lines(), reference.scrollback.Lines()) || !reflect.DeepEqual(s.buf.Lines, reference.buf.Lines) {
+		t.Fatal("first resize lost pending history")
+	}
+}
