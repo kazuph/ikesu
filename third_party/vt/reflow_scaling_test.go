@@ -74,8 +74,8 @@ func TestRepeatedIndexedWidthRetainsWholeHistoryWithoutRebuildingIt(t *testing.T
 		for _, width := range []int{160, 159, 160} {
 			serial := h.clipping.serial
 			view = indexedNextWidth(s, view, width)
-			if s.scrollback.indexed != h || h.at(rows/2) != middle || h.clipping.serial != serial+uint64(s.Height()) {
-				t.Fatalf("rows=%d width=%d retained=%v created=%d want=%d", rows, width, h.at(rows/2) == middle, h.clipping.serial-serial, s.Height())
+			if s.scrollback.indexed != h || h.at(rows/2) != middle || h.clipping.serial != serial {
+				t.Fatalf("rows=%d width=%d retained=%v created=%d want=0", rows, width, h.at(rows/2) == middle, h.clipping.serial-serial)
 			}
 			if view.HistoryLen() != rows {
 				t.Fatal("history count changed")

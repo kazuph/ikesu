@@ -8,6 +8,45 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestUnchangedBoundaryProjectionMatchesStreaming(t *testing.T) {
+	for _, limited := range []bool{false, true} {
+		for _, wide := range []bool{false, true} {
+			old, indexed := NewScreen(6, 3), NewScreen(6, 3)
+			row := uv.Line{{Content: "a", Width: 1}, {Content: "b", Width: 1}, {Content: "c", Width: 1}, {Content: "d", Width: 1}, {Content: "e", Width: 1}, {Content: "f", Width: 1}}
+			if wide {
+				row = uv.Line{{Content: "e\u0301", Width: 1}, uv.EmptyCell, {Content: "界", Width: 2, Style: uv.Style{Attrs: uv.AttrBold}, Link: uv.Link{URL: "https://example.com"}}, {}, uv.EmptyCell, {Content: "z", Width: 1}}
+			}
+			for _, s := range []*Screen{old, indexed} {
+				if limited {
+					s.scrollback.SetMaxBytes(8 * (scrollbackRowBytes + 6*scrollbackCellBytes))
+				}
+				for i := 0; i < 8; i++ {
+					s.scrollback.Push(row)
+				}
+				copy(s.buf.Line(0), row)
+				s.cur.X = 3
+			}
+			flags := make([]ReflowRow, 11)
+			for y := range flags[:9] {
+				flags[y] = ReflowRow{Continued: y > 0, Width: 6}
+			}
+			for step, size := range [][2]int{{4, 3}, {8, 4}, {2, 3}, {7, 2}, {1, 3}, {6, 3}, {9, 4}} {
+				get := func(y int) ReflowRow {
+					if y < len(flags) {
+						return flags[y]
+					}
+					return ReflowRow{}
+				}
+				view := indexed.reflowIndexed(size[0], size[1], get, false, true)
+				flags = old.referenceStreamingReflow(size[0], size[1], flags, false)
+				if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || old.cur.Position != indexed.cur.Position || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.scrollback.Bytes() != indexed.scrollback.Bytes() || !reflect.DeepEqual(flags, view.materialize()) {
+					t.Fatalf("limited=%v wide=%v step=%d size=%v projection changed contents", limited, wide, step, size)
+				}
+			}
+		}
+	}
+}
+
 func TestIndexedReflowMatchesStreamingThroughResizeAndOutput(t *testing.T) {
 	for _, limited := range []bool{false, true} {
 		for _, phantom := range []bool{false, true} {

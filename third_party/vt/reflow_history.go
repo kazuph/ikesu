@@ -15,6 +15,11 @@ type reflowHistory struct {
 	cachedValid              bool
 	clipping                 reflowClipping
 	maxSpan                  int
+	tailMain                 []ReflowRow
+	tailCursor               uv.Position
+	tailGroup, tailCell      int
+	tailHistory, tailGroups  int
+	tailWidth                int
 }
 
 func (h *reflowHistory) at(group int) *reflowLogicalLine {

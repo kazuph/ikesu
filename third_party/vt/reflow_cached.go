@@ -59,6 +59,10 @@ func (s *Screen) reusableHistory(rowRef func(int) ReflowRow) (h *reflowHistory, 
 }
 
 func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, phantom, stableHistory bool) ReflowSnapshot {
+	if stableHistory && s.unchangedReflowMain(rowRef, phantom) {
+		h := s.scrollback.indexed
+		return s.projectReflowHistory(h, width, height, h.tailGroup, h.tailCell)
+	}
 	history := s.scrollback.Len()
 	cursorRow := history + s.cur.Y
 	last := s.cur.Y
@@ -143,6 +147,40 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 	}
 	cursorGroup += h.count
 	h.appendPreparedBatch(tail)
+	return s.projectReflowHistory(h, width, height, cursorGroup, cursorCell)
+}
+
+// The previous projection still owns the complete logical boundary line.
+// Verify only the visible part before reusing it; new output remains on the
+// ordinary reconstruction path, including cursor and metadata-only changes.
+func (s *Screen) unchangedReflowMain(rowRef func(int) ReflowRow, phantom bool) bool {
+	sb := s.scrollback
+	h := sb.indexed
+	if phantom || h == nil || sb.count != 0 || h.view.first != 0 || h.view.rows != h.tailHistory || h.count != h.tailGroups || s.Width() != h.tailWidth || len(h.tailMain) != s.Height() || s.cur.Position != h.tailCursor {
+		return false
+	}
+	p := h.view
+	p.rows = p.index.cost(p.width).rows
+	scratch := make(uv.Line, s.Width())
+	for y, flag := range h.tailMain {
+		if rowRef(h.view.rows+y) != flag {
+			return false
+		}
+		clear(scratch)
+		group, start, end, _, ok := p.row(h.view.rows + y)
+		if ok {
+			h.at(group).copyRange(scratch, start, end)
+		}
+		for x, cell := range s.buf.Line(y) {
+			if cell != scratch[x] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (s *Screen) projectReflowHistory(h *reflowHistory, width, height, cursorGroup, cursorCell int) ReflowSnapshot {
 	h.view.width, h.view.first = width, 0
 	h.view.rows = h.view.index.cost(width).rows
 	h.project(width)
@@ -173,6 +211,7 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 			return h.view.index.prefixBytes(width, rows) >= need
 		}))
 	}
+	groupsBeforeDrop := h.count
 	if cut > 0 && dropped > 0 {
 		h.dropRows(dropped)
 	}
@@ -191,6 +230,9 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 	s.buf, s.scrollRows = buf, nil
 	s.cur.X, s.cur.Y = newCursor.X, max(0, newCursor.Y-cut)
 	s.scroll = s.buf.Bounds()
+	h.tailMain, h.tailCursor = main, s.cur.Position
+	h.tailHistory, h.tailGroups, h.tailWidth = h.view.rows, h.count, width
+	h.tailGroup, h.tailCell = cursorGroup-(groupsBeforeDrop-h.count), cursorCell
 	if h.view.cursor == nil {
 		h.view.cursor = &reflowCursor{}
 	}

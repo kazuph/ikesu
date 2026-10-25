@@ -44,3 +44,24 @@ func BenchmarkRecordedBoundaryResizeScaling(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkRecordedRepeatedBoundaryResizeScaling(b *testing.B) {
+	for _, rows := range []int{ScrollbackSize / 10, ScrollbackSize} {
+		b.Run(fmt.Sprintf("rows=%d", rows), func(b *testing.B) {
+			p := &Pane{emu: vt.NewEmulator(160, 45)}
+			defer p.emu.Close()
+			p.emu.SetScrollbackSize(ScrollbackSize)
+			p.emu.Scrollback().SetMaxBytes(config.DefaultScrollbackLimitBytes)
+			p.writeRecorded([]byte(strings.Repeat("x", 160*(rows+45))))
+			p.resizeTerminal(158, 45)
+			retained, charged := p.emu.ScrollbackLen(), p.emu.Scrollback().Bytes()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				p.resizeTerminal(158+(i+1)%2, 45)
+			}
+			b.ReportMetric(float64(retained), "history-rows")
+			b.ReportMetric(float64(charged), "history-bytes")
+		})
+	}
+}
