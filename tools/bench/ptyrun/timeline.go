@@ -55,6 +55,8 @@ type timeline struct {
 	reply             io.Writer
 }
 
+var capacityReply = regexp.MustCompile(`CAPRX[0-9]{3}!`)
+
 var trialMarker = regexp.MustCompile(`@([0-9a-f])([0-9a-f]{4})([0-9a-f]{2})([0-9a-f]{2})!`)
 
 func newTimeline(path string, emu *vt.Emulator, cols, rows int) *timeline {
@@ -172,6 +174,9 @@ func (t *timeline) capture(at int64) {
 					body.WriteString(c)
 				}
 			}
+		}
+		for _, token := range capacityReply.FindAllString(body.String(), -1) {
+			t.record(map[string]any{"type": "capacity.reply", "clock_ns": at, "token": token})
 		}
 		match := trialMarker.FindStringSubmatch(body.String())
 		if match == nil {

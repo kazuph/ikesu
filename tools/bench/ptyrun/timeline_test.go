@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -32,5 +35,48 @@ func TestMonotonicClockNeverGoesBackwards(t *testing.T) {
 			t.Fatalf("clock regressed: %d -> %d", before, after)
 		}
 		before = after
+	}
+}
+
+func TestCapacityReplyWaitsForCompletedOuterFrame(t *testing.T) {
+	emu := vt.NewEmulator(20, 8)
+	path := filepath.Join(t.TempDir(), "frames.jsonl")
+	observer := newTimeline(path, emu, 20, 8)
+	defer observer.close()
+	observer.feed([]byte("\x1b[?2026h\x1b[2;2H┌─────────────┐\x1b[6;2H└─────────────┘\x1b[3;3HCAPRX007!\x1b[?202"), 100)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("capacity.reply")) {
+		t.Fatal("reply escaped incomplete synchronized frame")
+	}
+	observer.feed([]byte("6l"), 200)
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, line := range bytes.Split(data, []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		var event struct {
+			Type  string `json:"type"`
+			Clock int64  `json:"clock_ns"`
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(line, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type == "capacity.reply" {
+			if event.Clock != 200 || event.Token != "CAPRX007!" {
+				t.Fatalf("wrong completed reply: %+v", event)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("completed reply was not recorded")
 	}
 }

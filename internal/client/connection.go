@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"io"
 	"strconv"
 	"sync"
@@ -101,6 +102,7 @@ func (c *endpointConnection) read() (msg, error) {
 		if err != nil {
 			return msg{}, fmt.Errorf("invalid snapshot: %w", err)
 		}
+		benchstage.Values("snapshot.received", len(line), len(data))
 		in, err := c.snapshots.Decode(data)
 		if err != nil {
 			return msg{}, fmt.Errorf("invalid snapshot: %w", err)

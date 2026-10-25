@@ -300,13 +300,21 @@ func main() {
 		case "sleep":
 			d, _ := time.ParseDuration(rest)
 			time.Sleep(d)
-		case "send":
+		case "send", "sendtimed":
 			s, err := strconv.Unquote(rest)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "bad send:", rest)
 				os.Exit(1)
 			}
-			_, _ = ptmx.Write([]byte(s))
+			if op == "sendtimed" {
+				at := monotonicNS()
+				if _, err := ptmx.Write([]byte(s)); err != nil {
+					panic(err)
+				}
+				observer.record(map[string]any{"type": "capacity.input", "clock_ns": at, "data": s})
+			} else {
+				_, _ = ptmx.Write([]byte(s))
+			}
 			sentAt = time.Now()
 		case "wheelburst": // COUNT HZ X Y: timed scroll input, independent of render completion
 			var count, rate, x, y int

@@ -16,6 +16,13 @@ env.update({f'{a.product.upper()}_STATE_DIR':str(state/'state'),('IKESU_CONFIG' 
 pending_hidden=[]
 server=None;endpoint=None;serverlog=(out/'server.log').open('w');monitor_stop=threading.Event();display=None
 clock=lambda:time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+def profile_env(role):
+ if c.get('stage_trace'):
+  # Stage coverage spans every physical input. Keep forced heap-profile GC
+  # out of this run and close the trace explicitly while the PTY is alive.
+  return dict(IKESU_TRACE=str(out/(role+'-runtime.trace')),IKESU_TRACE_STOP_FILE=str(out/(role+'-trace-stop')))
+ return dict(IKESU_CPUPROFILE=str(out/(role+'-cpu.pprof')),IKESU_MEMPROFILE=str(out/(role+'-memory.pprof')),IKESU_TRACE=str(out/(role+'-runtime.trace')))
+
 def request(method,params):
  with socket.socket(socket.AF_UNIX) as sock:
   sock.settimeout(10);sock.connect(str(endpoint));sock.sendall(json.dumps(dict(id='drag2',method=method,params=params)).encode()+b'\n');data=b''
@@ -40,7 +47,7 @@ try:
  no_session=c.get('no_session',False)
  if not no_session:
   if a.product=='ikesu':env['IKESU_BENCH_STATS']=str(out/'server-runtime.jsonl')
-  if a.profile:env.update(IKESU_CPUPROFILE=str(out/'server-cpu.pprof'),IKESU_MEMPROFILE=str(out/'server-memory.pprof'),IKESU_TRACE=str(out/'server-runtime.trace'))
+  if a.profile:env.update(profile_env('server'))
   server=subprocess.Popen([str(binary),'--session','drag2','server'],env=env,cwd=out,stdout=serverlog,stderr=serverlog)
   deadline=time.monotonic()+15
   while endpoint is None:
@@ -79,10 +86,14 @@ try:
  if no_session:lines+=['panecommands '+str(out/'commands.json')]
  else:lines+=['notifyfile '+str(out/'geometry-ready'),'waitfile '+str(out/'commands-ready')+' 30s']
  lines+=['sleep 4s',f'waitmarkers {c.get("panes",2)} 15s','notifyfile '+str(out/'prepared'),'waitfile '+str(out/'prepared-ack')+' 30s','screen '+str(out/'before.txt'),'dragtrial '+str(out/'trial.json'),'screen '+str(out/'after.txt')]
+ if a.profile and c.get('stage_trace'):
+  extra=['notifyfile '+str(out/'trace-input-complete')]
+  for role in (['client'] if no_session else ['client','server']):extra+=['waitfile '+str(out/(role+'-trace-stop.done'))+' 30s']
+  lines[-1:-1]=extra
  (out/'steps').write_text('\n'.join(lines)+'\n')
  (out/'metadata.json').write_text(json.dumps(dict(scenario=c,trial=trial,product=a.product,binary=str(binary),binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),version=subprocess.check_output([str(binary),'--version'],text=True).strip(),client_binary=str(client_binary),client_binary_sha256=hashlib.sha256(client_binary.read_bytes()).hexdigest(),client_version=subprocess.check_output([str(client_binary),'--version'],text=True).strip(),state=str(state),cols=c['cols'],rows=c['rows'],cell_pixels=[8,16],clock='CLOCK_MONOTONIC',diagnostic_profile=a.profile,gc_env={k:env.get(k) for k in ['GOGC','GOMEMLIMIT']},proxy_right=a.product=='herdr' and c['kind']=='right',config=config.read_text(),python=sys.version,clock_resolution_seconds=time.clock_getres(time.CLOCK_MONOTONIC),observer_sha256=hashlib.sha256(observer_binary.read_bytes()).hexdigest(),workload_sha256=hashlib.sha256((harness/'tests/dragresize/workload.py').read_bytes()).hexdigest(),image_pixels=[4,4] if c['mode'].startswith('image') else None),indent=2))
  if a.product=='ikesu':env['IKESU_BENCH_STATS']=str(out/'client-runtime.jsonl')
- if a.profile:env.update(IKESU_CPUPROFILE=str(out/'client-cpu.pprof'),IKESU_MEMPROFILE=str(out/'client-memory.pprof'),IKESU_TRACE=str(out/'client-runtime.trace'))
+ if a.profile:env.update(profile_env('client'))
  launch=[str(binary),'--no-session'] if no_session else [str(client_binary),'--session','drag2']
  # Redirect only the product's diagnostics, so runtime sampling never prints
  # over the measured screen. The exec preserves the display PID.
@@ -113,6 +124,12 @@ try:
     history.append(dict(pane=pane,read_rows=len(read['text'].splitlines()),read_utf8_bytes=len(read['text'].encode()),truncated=read['truncated']))
   (out/'history-before.json').write_text(json.dumps(history,indent=2))
   (out/'prepared-ack').write_text('ready\n')
+  if a.profile and c.get('stage_trace'):
+   deadline=time.monotonic()+c.get('count',200)/c['rate']+c.get('warmup',10)/c['rate']+30
+   while not (out/'trace-input-complete').exists():
+    if display.poll() is not None or time.monotonic()>deadline:raise RuntimeError('stage trace did not reach final input')
+    time.sleep(.025)
+   for role in (['client'] if no_session else ['client','server']):(out/(role+'-trace-stop')).write_text('stop\n')
   code=display.wait();monitor_stop.set();monitor_thread.join()
   if code:raise RuntimeError(f'observer exit {code}')
  if endpoint:(out/'panes-after.json').write_text(json.dumps(request('pane.list',dict(workspace_id=w['workspace']['workspace_id'])),indent=2))
