@@ -11,8 +11,52 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
+	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 )
+
+func TestInputWritePrecedesBlockedTimelineStorage(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	emu := vt.NewEmulator(80, 24)
+	defer emu.Close()
+	observer := newTimeline(filepath.Join(t.TempDir(), "timeline"), emu, 80, 24)
+	defer observer.close()
+	observer.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			observer.mu.Unlock()
+		}
+	}()
+	event := map[string]any{"type": "input"}
+	finished := make(chan struct{})
+	go func() { recordMouseInput(observer, slave, event, 32, 27, 10, false); close(finished) }()
+	fds := []unix.PollFd{{Fd: int32(master.Fd()), Events: unix.POLLIN}}
+	if ready, err := unix.Poll(fds, 5000); err != nil || ready == 0 {
+		t.Fatal("timeline storage delayed the physical input write", ready, err)
+	}
+	data := make([]byte, len("\x1b[<32;27;10M"))
+	if _, err := io.ReadFull(master, data); err != nil || string(data) != "\x1b[<32;27;10M" {
+		t.Fatal("physical mouse bytes changed", data, err)
+	}
+	select {
+	case <-finished:
+		t.Fatal("timeline storage lock was bypassed")
+	default:
+	}
+	observer.mu.Unlock()
+	locked = false
+	<-finished
+	if event["clock_ns"].(int64) > monotonicNS() {
+		t.Fatal("input clock lies after physical delivery")
+	}
+}
 
 func TestSlowRawLogDoesNotBackpressureMeasuredPTY(t *testing.T) {
 	dir := t.TempDir()

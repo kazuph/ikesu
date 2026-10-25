@@ -19,6 +19,22 @@ type dragTrial struct {
 	ReleaseDifferent bool   `json:"release_different"`
 }
 
+func writeMouseInput(out io.Writer, button, x, y int, release bool) {
+	suffix := "M"
+	if release {
+		suffix = "m"
+	}
+	if _, err := fmt.Fprintf(out, "\x1b[<%d;%d;%d%s", button, x, y, suffix); err != nil {
+		panic(err)
+	}
+}
+
+func recordMouseInput(observer *timeline, out io.Writer, event map[string]any, button, x, y int, release bool) {
+	event["clock_ns"] = monotonicNS()
+	writeMouseInput(out, button, x, y, release)
+	observer.record(event)
+}
+
 func runDragTrial(path string, observer *timeline, out io.Writer, mu *sync.Mutex) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -65,13 +81,7 @@ func runDragTrial(path string, observer *timeline, out io.Writer, mu *sync.Mutex
 	}
 	observer.record(map[string]any{"type": "trial", "clock_ns": monotonicNS(), "config": trial, "x": x, "y": y, "watch_x": wx, "watch_y": wy, "dx": dx, "dy": dy, "cols": observer.cols, "rows": observer.rows})
 	send := func(button, px, py int, release bool) {
-		suffix := "M"
-		if release {
-			suffix = "m"
-		}
-		if _, err := fmt.Fprintf(out, "\x1b[<%d;%d;%d%s", button, px, py, suffix); err != nil {
-			panic(err)
-		}
+		writeMouseInput(out, button, px, py, release)
 	}
 	send(0, x, y, false)
 	extent := trial.Extent
@@ -98,8 +108,7 @@ func runDragTrial(path string, observer *timeline, out io.Writer, mu *sync.Mutex
 		time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / time.Duration(trial.Rate))))
 		off := step(i)
 		px, py := x+off*dx, y+off*dy
-		observer.record(map[string]any{"type": "input", "clock_ns": monotonicNS(), "index": i, "x": px, "y": py, "watch_x": wx + off*dx, "watch_y": wy + off*dy})
-		send(32, px, py, false)
+		recordMouseInput(observer, out, map[string]any{"type": "input", "index": i, "x": px, "y": py, "watch_x": wx + off*dx, "watch_y": wy + off*dy}, 32, px, py, false)
 	}
 	time.Sleep(time.Until(start.Add(time.Duration(trial.Count) * time.Second / time.Duration(trial.Rate))))
 	// A separate semantic case exercises a release coordinate different from
@@ -112,8 +121,7 @@ func runDragTrial(path string, observer *timeline, out io.Writer, mu *sync.Mutex
 			off++
 		}
 	}
-	observer.record(map[string]any{"type": "release", "clock_ns": monotonicNS(), "x": x + off*dx, "y": y + off*dy, "watch_x": wx + off*dx, "watch_y": wy + off*dy})
-	send(0, x+off*dx, y+off*dy, true)
+	recordMouseInput(observer, out, map[string]any{"type": "release", "x": x + off*dx, "y": y + off*dy, "watch_x": wx + off*dx, "watch_y": wy + off*dy}, 0, x+off*dx, y+off*dy, true)
 	time.Sleep(2 * time.Second)
 	observer.record(map[string]any{"type": "finish", "clock_ns": monotonicNS()})
 }
