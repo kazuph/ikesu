@@ -14,8 +14,11 @@ env.update(HOME=str(out/'home'),XDG_CONFIG_HOME=str(out/'config'),XDG_STATE_HOME
 env.update(IKESU_PERF_BIN=str(out/'candidate'),IKESU_PERF_BASELINE_BIN=str(out/'baseline-main-b83c38e'),IKESU_PERF_OUT=str(out/'relative.md'))
 migration=Path(a.migration_baseline).resolve()
 if not migration.is_file():raise FileNotFoundError(migration)
-env['IKESU_MIGRATION_BASE_BIN']=str(migration)
-(out/'migration-baseline.json').write_text(json.dumps(dict(path=str(migration),sha256=hashlib.sha256(migration.read_bytes()).hexdigest()),indent=2)+'\n')
+# The legacy executable selects its state namespace from argv[0]. Match the
+# existing migration fixture's executable name without modifying its bytes.
+legacy=out/'gtx-2e01183';legacy.symlink_to(migration)
+env['IKESU_MIGRATION_BASE_BIN']=str(legacy)
+(out/'migration-baseline.json').write_text(json.dumps(dict(path=str(migration),invocation_path=str(legacy),sha256=hashlib.sha256(migration.read_bytes()).hexdigest()),indent=2)+'\n')
 failed=False
 with (out/'commands.jsonl').open('w') as log:
  def run(label,cwd,command):
