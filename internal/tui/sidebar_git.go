@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/worktree"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,7 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			names[w.id] = workspaceDirectoryLabel{w.nameCwd, workspaceDirectoryName(w.nameCwd)}
 		}
 		a.Do(func() {
+			previousLabels, previousGit, previousNames := a.workspaceLabels, a.workspaceGit, a.workspaceNames
 			a.workspaceLabels = names
 			a.workspaceGit = map[int]render.GitStatus{}
 			a.workspaceNames = map[int]string{}
@@ -92,7 +94,9 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 				a.workspaceNames[i] = name
 			}
 			a.gitPending = false
-			a.dirty = true
+			if !reflect.DeepEqual(previousLabels, a.workspaceLabels) || !reflect.DeepEqual(previousGit, a.workspaceGit) || !reflect.DeepEqual(previousNames, a.workspaceNames) {
+				a.dirty = true
+			}
 		})
 	}()
 }

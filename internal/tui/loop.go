@@ -238,16 +238,13 @@ func (a *App) onTick() {
 	a.refreshPaneMetadata()
 	a.refreshWorkspaceGit(now)
 	a.expireToast()
-	if a.copied != "" && now.Sub(a.copiedAt) >= copiedDuration {
-		a.copied = ""
-		a.dirty = true
-	}
+	a.expireCopied(now)
 	// Foreground process poll: every ~1s per pane.
 	for _, ws := range a.st.Workspaces {
 		for _, t := range ws.Tabs {
 			for _, pid := range t.Layout.PaneIDs() {
 				if p := a.sup.Get(pid); p != nil {
-					p.PollProcess()
+					p.PollProcessChanged()
 				}
 			}
 		}
@@ -406,6 +403,9 @@ func (a *App) effect(e model.Effect) {
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
+		delete(a.metadataViews, e.Pane)
+		delete(a.metadataPending, e.Pane)
+		delete(a.metadataDeadlines, e.Pane)
 		delete(a.agentStates, e.Pane)
 		delete(a.agentStateSeq, e.Pane)
 		delete(a.sessions, e.Pane)
@@ -547,4 +547,11 @@ func (a *App) paneRect(pid int) (layout.Rect, bool) {
 		}
 	}
 	return layout.Rect{}, false
+}
+
+func (a *App) expireCopied(now time.Time) {
+	if a.copied != "" && now.Sub(a.copiedAt) >= copiedDuration {
+		a.copied = ""
+		a.dirty = true
+	}
 }

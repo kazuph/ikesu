@@ -157,6 +157,32 @@ func (s *Server) paneMetadataRequest(req *api.Request) api.Response {
 			m.Tokens[k] = value(*v)
 		}
 	}
+	s.app.InvalidatePaneMetadata(pid)
 	s.emitEvent("pane_metadata_updated", ev("pane_metadata_updated", "pane_id", p.PaneID))
 	return api.Success(req.ID, api.OkResult{Type: "ok"})
+}
+
+// Expiry work is bounded by live panes, not the number of metadata reports.
+func (s *Server) paneMetadataNextExpiry(pid int) time.Time {
+	m := s.paneMetadata[pid]
+	if m == nil {
+		return time.Time{}
+	}
+	now, next := time.Now(), time.Time{}
+	include := func(v metadataToken) {
+		if v.Expires.After(now) && (next.IsZero() || v.Expires.Before(next)) {
+			next = v.Expires
+		}
+	}
+	for _, v := range m.Tokens {
+		include(v)
+	}
+	for _, presentation := range m.Presentations {
+		include(presentation.Title)
+		include(presentation.DisplayAgent)
+		for _, v := range presentation.Labels {
+			include(v)
+		}
+	}
+	return next
 }

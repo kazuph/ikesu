@@ -371,6 +371,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
 	s.app.SetConfigChanged(s.screenPromptConfig)
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
+	s.app.UsePaneMetadataEvents(s.paneMetadataNextExpiry)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) {

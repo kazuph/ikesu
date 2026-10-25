@@ -306,6 +306,7 @@ func (a *App) SetReportedSource(pid int, agent, state, source string) {
 		}
 	}
 	a.noteAgentState(pid)
+	a.dirty = true
 	a.changed()
 }
 

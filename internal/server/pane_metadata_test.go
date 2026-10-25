@@ -178,25 +178,32 @@ func TestG2PaneMetadataTitlePreservesRealGitBranch(t *testing.T) {
 		t.Fatal(panes)
 	}
 	apiOK(t, dir, "pane.report_metadata", map[string]any{"pane_id": panes.Panes[0].PaneID, "source": "metadata", "title": "Task"}, nil)
-	deadline := time.NewTimer(10 * time.Second)
-	defer deadline.Stop()
-	title := ""
-	for {
-		select {
-		case <-changed:
-			screenMu.Lock()
-			title = ""
-			for x := 26; x < 120; x++ {
-				if cell := emu.CellAt(x, 1); cell != nil {
-					title += cell.Content
+	waitTitle := func(want, absent string) {
+		t.Helper()
+		deadline := time.NewTimer(10 * time.Second)
+		defer deadline.Stop()
+		title := ""
+		for {
+			select {
+			case <-changed:
+				screenMu.Lock()
+				title = ""
+				for x := 26; x < 120; x++ {
+					if cell := emu.CellAt(x, 1); cell != nil {
+						title += cell.Content
+					}
 				}
+				screenMu.Unlock()
+				if strings.Contains(title, want) && (absent == "" || !strings.Contains(title, absent)) {
+					return
+				}
+			case <-deadline.C:
+				t.Fatal("metadata title/branch or expiry not rendered", want, absent, title)
 			}
-			screenMu.Unlock()
-			if strings.Contains(title, "Task metadata-branch") {
-				return
-			}
-		case <-deadline.C:
-			t.Fatal("metadata removed branch from rendered title", title)
 		}
 	}
+	waitTitle("Task metadata-branch", "")
+	apiOK(t, dir, "pane.report_metadata", map[string]any{"pane_id": panes.Panes[0].PaneID, "source": "expiry", "title": "Expiring", "ttl_ms": time.Second.Milliseconds()}, nil)
+	waitTitle("Expiring metadata-branch", "")
+	waitTitle("Task metadata-branch", "Expiring")
 }

@@ -151,6 +151,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		return nil, err
 	}
 
+	p.beginProcessWatch()
 	p.startPump()
 	go p.pumpEmuToPTY()
 	go p.waitExit()

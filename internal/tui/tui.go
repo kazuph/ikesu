@@ -275,6 +275,10 @@ type App struct {
 	jobDots                                  map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
 	workspaceTokenSource                     func(int) map[string]string
 	paneMetadataSource                       func(int) api.PaneMetadataView
+	metadataPending                          map[int]bool
+	metadataExpirySource                     func(int) time.Time
+	metadataDeadlines                        map[int]time.Time
+	metadataNext                             time.Time
 	metadataViews                            map[int]api.PaneMetadataView
 	workspaceGit                             map[int]render.GitStatus
 	workspaceNames                           map[int]string

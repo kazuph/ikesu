@@ -5,3 +5,5 @@ package benchstage
 
 func Span(string) func()      { return func() {} }
 func Values(string, int, int) {}
+
+func Output(int, []byte) {}

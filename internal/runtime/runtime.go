@@ -51,6 +51,9 @@ type Pane struct {
 	cwd                   string // spawn cwd; OSC 7 or proc cwd may refine it
 	spawnArgv             []string
 	processCache          foregroundCache
+	processChanged        atomic.Bool
+	processSettlingUntil  time.Time
+	processCwdAt          time.Time
 
 	cmd                 *exec.Cmd
 	ptyFile             *os.File
@@ -347,11 +350,13 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 		}
 	}
 	p.writeRecorded(chunk)
+	benchstage.Output(p.ID, chunk)
 	clipboard := p.clipboard
 	p.clipboard = nil
 	p.scrollbarVisible = p.emu.ScrollbackLen() > 0
 	p.mu.Unlock()
 	p.revision.Add(1)
+	p.markProcessChanged()
 	p.notifyChanged()
 	for _, data := range clipboard {
 		select {
@@ -379,6 +384,7 @@ func (p *Pane) pumpEmuToPTY() {
 	}
 }
 func (p *Pane) waitExit() {
+	defer p.endProcessWatch()
 	defer close(p.done)
 	_ = p.cmd.Wait()
 	if p.retired.Load() {
@@ -458,6 +464,7 @@ func (s *Supervisor) Input(id int, b []byte) {
 // writes. It returns the number of bytes written; a short count means
 // delivery did not complete (callers keep the message queued).
 func (p *Pane) WriteToPTY(b []byte) (int, error) {
+	defer p.markProcessChanged()
 	p.mu.Lock()
 	f := p.ptyFile
 	p.mu.Unlock()
@@ -689,7 +696,9 @@ func (p *Pane) PollProcess() {
 	if p.ptyFile == nil {
 		return
 	}
+	p.processChanged.Store(false)
 	job := p.cachedForegroundJob()
+	p.watchProcessChanges(job.ProcessGroupID)
 	if len(job.Processes) == 0 {
 		return
 	}
@@ -706,6 +715,7 @@ func (p *Pane) PollProcess() {
 	cwd := platform.ProcCwd(job.ProcessGroupID)
 	p.mu.Lock()
 	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name || p.agentID != agentID
+	p.processCwdAt = time.Now()
 	p.fgPID = job.ProcessGroupID
 	p.procName = name
 	p.agentID = agentID
@@ -723,7 +733,7 @@ func (p *Pane) PollProcess() {
 	}
 	dead := p.dead
 	p.mu.Unlock()
-	if p.guard != nil && !dead {
+	if p.guard != nil && !dead && (agentChanged || effective != "") {
 		_ = p.guard.Sync(effective)
 	}
 	if agentChanged {
@@ -801,4 +811,52 @@ func (s *Supervisor) SetShell(shell, mode string) {
 	s.mu.Lock()
 	s.defaultShell, s.shellMode = shell, mode
 	s.mu.Unlock()
+}
+
+// PollProcessChanged observes native process notifications and PTY activity.
+// Explicit API reads still use PollProcess for immediate freshness.
+func (p *Pane) PollProcessChanged() {
+	p.mu.Lock()
+	guarded := p.guard != nil && (p.effectiveAgent() != "" || p.guardStarted != "")
+	active := p.fgPID != 0 && p.fgPID != p.ShellPID() || len(p.spawnArgv) > 0 || time.Now().Before(p.processSettlingUntil)
+	switch p.procName {
+	case "sh", "bash", "zsh", "fish":
+	default:
+		active = true
+	}
+	p.mu.Unlock()
+	if !processEventQueue() || guarded || active || p.processChanged.Load() {
+		p.PollProcess()
+		return
+	}
+	// kqueue has no cwd-change event. Keep this existing-cadence probe for
+	// silent shell builtins, without rescanning jobs or touching guard files.
+	now := time.Now()
+	p.mu.Lock()
+	due := now.Sub(p.processCwdAt) >= foregroundJobCacheLifetime
+	if due {
+		p.processCwdAt = now
+	}
+	p.mu.Unlock()
+	if due {
+		cwd := platform.ProcCwd(p.ShellPID())
+		p.mu.Lock()
+		changed := cwd != "" && cwd != p.procCwd
+		if changed {
+			p.procCwd = cwd
+		}
+		p.mu.Unlock()
+		if changed {
+			p.notifyChanged()
+		}
+	}
+}
+
+// fork/exec notification precedes tcsetpgrp and shell builtins can finish after
+// the input write. Observe that transition over the existing cache lifetime.
+func (p *Pane) markProcessChanged() {
+	p.mu.Lock()
+	p.processSettlingUntil = time.Now().Add(foregroundJobCacheLifetime)
+	p.mu.Unlock()
+	p.processChanged.Store(true)
 }
