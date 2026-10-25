@@ -170,9 +170,6 @@ func main() {
 			n, err := ptmx.Read(buf)
 			readMono, readWall := monotonicNS(), time.Now().UnixMilli()
 			if n > 0 {
-				if rawFile != nil {
-					_, _ = rawFile.Write(buf[:n])
-				}
 				c := make([]byte, n)
 				copy(c, buf[:n])
 				qmu.Lock()
@@ -200,6 +197,9 @@ func main() {
 			}
 			mu.Lock()
 			for _, c := range q {
+				if rawFile != nil {
+					_, _ = rawFile.Write(c.data)
+				}
 				chunkEnd = drained + int64(len(c.data))
 				if observer != nil {
 					observer.feed(c.data, c.mono)
