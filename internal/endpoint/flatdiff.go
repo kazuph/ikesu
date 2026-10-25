@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"reflect"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
@@ -31,6 +32,9 @@ func flattenCells(cells []cellDelta) (flatGridDelta, error) {
 	for _, change := range cells {
 		if change.X < 0 || change.Y < 0 || uint64(change.X) > math.MaxUint32 || uint64(change.Y) > math.MaxUint32 {
 			return flatGridDelta{}, fmt.Errorf("unsupported flat cell coordinate")
+		}
+		if !reflect.ValueOf(change.Cell).Comparable() {
+			return flatGridDelta{}, fmt.Errorf("unsupported flat cell dictionary value")
 		}
 		id, ok := ids[change.Cell]
 		if !ok {

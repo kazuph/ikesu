@@ -15,6 +15,24 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 )
 
+type flatUnsupportedColor []byte
+
+func (flatUnsupportedColor) RGBA() (uint32, uint32, uint32, uint32) {
+	return 0, 0, 0, 0
+}
+
+func TestFlatDiffUnsupportedColorReturnsError(t *testing.T) {
+	cell := uv.Cell{Content: "x", Width: 1, Style: uv.Style{Fg: flatUnsupportedColor{1}}}
+	in := render.Input{State: model.New(".", 80, 24), Panes: map[int]*render.PaneSnap{1: {Grid: [][]uv.Cell{{cell}}}}}
+	legacy := SnapshotEncoder{LegacyGrids: true}
+	if _, err := legacy.Encode(in); err == nil {
+		t.Fatal("unregistered color unexpectedly serialized on the legacy path")
+	}
+	if _, err := flattenCells([]cellDelta{{Cell: cell}}); err == nil {
+		t.Fatal("unsupported color did not return an explicit error")
+	}
+}
+
 func TestFlatDiffFixedRecordsPreserveExactCells(t *testing.T) {
 	cells := []cellDelta{
 		{X: 0, Y: 0, Cell: uv.Cell{Content: "界", Width: 2, Style: uv.Style{Fg: ansi.IndexedColor(15), Bg: ansi.TrueColor(0x112233), Underline: uv.UnderlineCurly, UnderlineColor: ansi.BasicColor(2), Attrs: uv.AttrBold}, Link: uv.NewLink("https://example.com", "id=wide")}},
