@@ -9,6 +9,31 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+func TestReflowShapeCheckpointThresholdPreservesBoundsAndCharge(t *testing.T) {
+	for _, rows := range []int{bits.UintSize - 1, bits.UintSize, bits.UintSize + 1, 2*bits.UintSize + 1} {
+		line := make(uv.Line, rows)
+		for i := range line {
+			line[i] = uv.EmptyCell
+		}
+		line[rows-1] = uv.Cell{Content: "x", Width: 1}
+		shape := newReflowShape(line)
+		for row := 0; row < rows; row++ {
+			start, end, ok := shape.bounds(1, row)
+			if !ok || start != row || end != row+1 || shape.prefixBytes(1, row) != row*scrollbackRowBytes {
+				t.Fatalf("rows=%d row=%d changed bounds or prefix", rows, row)
+			}
+		}
+		if shape.cost(1) != (reflowCost{rows, rows*scrollbackRowBytes + scrollbackCellBytes}) {
+			t.Fatal("total byte charge changed")
+		}
+		for width := 1; width <= rows; width++ {
+			if (len(shape.checkpoints[width]) > 0) != (shape.cost(width).rows > bits.UintSize) {
+				t.Fatalf("rows=%d width=%d retained unnecessary or missing checkpoint", rows, width)
+			}
+		}
+	}
+}
+
 func TestReflowShapeMatchesActualRowsAndExpandedCharge(t *testing.T) {
 	style := uv.Style{Fg: color.RGBA{R: 255, A: 255}}
 	linked := uv.Cell{Content: "e\u0301", Width: 1, Style: style, Link: uv.Link{URL: "https://example.com"}}

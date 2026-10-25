@@ -62,12 +62,14 @@ func newReflowShape(line uv.Line) *reflowShape {
 		i += span
 	}
 	s.heads[s.length] = s.length
-	s.checkpoints = make(map[int][]reflowCheckpoint)
 	for width := 1; width <= max(1, s.length); width++ {
 		cost := reflowCost{}
 		var checkpoints []reflowCheckpoint
-		for start := s.first(width); ; {
-			if cost.rows%bits.UintSize == 0 {
+		first := s.first(width)
+		for start := first; ; {
+			if cost.rows == bits.UintSize {
+				checkpoints = append(checkpoints, reflowCheckpoint{first, 0}, reflowCheckpoint{start, cost.bytes})
+			} else if cost.rows > bits.UintSize && cost.rows%bits.UintSize == 0 {
 				checkpoints = append(checkpoints, reflowCheckpoint{start, cost.bytes})
 			}
 			end, painted := s.next(start, width)
@@ -86,6 +88,9 @@ func newReflowShape(line uv.Line) *reflowShape {
 			s.events = append(s.events, reflowCostEvent{width, cost})
 		}
 		if cost.rows > bits.UintSize {
+			if s.checkpoints == nil {
+				s.checkpoints = make(map[int][]reflowCheckpoint)
+			}
 			s.checkpoints[width] = checkpoints
 		}
 	}
