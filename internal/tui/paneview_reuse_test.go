@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"io"
 	"reflect"
 	"testing"
 
@@ -19,6 +20,11 @@ func TestPaneGridRowsShareOnlyUnchangedCellsAndKeepPublishedScreens(t *testing.T
 	write := func(text string) { p.WithEmu(func(e *vt.Emulator) { e.Write([]byte(text)) }) }
 	write("\x1b[2J\x1b[H\x1b[31m日本e\u0301\x1b[0m\x1b]8;;https://example.test\x1b\\LINK\x1b]8;;\x1b\\\r\nSECOND")
 	first := a.paneGrid(p, 0, 8, 40)
+	viewer := a.NewViewer(io.Discard, 106, 38, nil)
+	viewer.app.paneGrid(p, 0, 5, 7)
+	if len(a.paneGridRows[p]) != 8 || len(viewer.app.paneGridRows[p]) != 5 {
+		t.Fatal("viewer inherited another display's projection cache")
+	}
 	saved := make([][]uv.Cell, len(first))
 	for y := range first {
 		saved[y] = append([]uv.Cell(nil), first[y]...)
