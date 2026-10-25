@@ -2,10 +2,12 @@ package tui
 
 import (
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"reflect"
 )
 
 func (a *App) refreshPaneMetadata() {
+	defer benchstage.Span("ui.metadata")()
 	if a.paneMetadataSource == nil {
 		return
 	}

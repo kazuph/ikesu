@@ -142,6 +142,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 
 // detectAll runs the detection/status pass over every live pane.
 func (a *App) detectAll() {
+	defer benchstage.Span("ui.detect")()
 	now := time.Now()
 	activeWS := a.st.ActiveWorkspace()
 	for _, ws := range a.st.Workspaces {
@@ -225,6 +226,7 @@ func (a *App) copiedFlashAt(now time.Time) string {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
+	defer benchstage.Span("ui.tick")()
 	if a.tickViewers != nil {
 		a.tickViewers()
 	}

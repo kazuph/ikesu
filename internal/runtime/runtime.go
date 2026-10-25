@@ -685,6 +685,7 @@ func (p *Pane) ScrollbackLines() []string {
 
 // PollProcess refreshes the foreground process info. Called periodically.
 func (p *Pane) PollProcess() {
+	defer benchstage.Span("runtime.pollprocess")()
 	if p.ptyFile == nil {
 		return
 	}
