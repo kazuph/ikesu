@@ -7,6 +7,7 @@ import (
 	paneruntime "github.com/kazuph/ikesu/internal/runtime"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime/metrics"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ func init() {
 		return
 	}
 	path = strings.ReplaceAll(path, "{pid}", strconv.Itoa(os.Getpid()))
+	path = strings.ReplaceAll(path, "{binary}", filepath.Base(os.Args[0]))
 	file, err := os.Create(path)
 	if err != nil {
 		panic(err)
@@ -30,7 +32,7 @@ func init() {
 	go func() {
 		defer file.Close()
 		encoder := json.NewEncoder(file)
-		names := []string{"/gc/heap/allocs:bytes", "/gc/heap/frees:bytes", "/gc/heap/live:bytes", "/memory/classes/heap/objects:bytes", "/memory/classes/total:bytes", "/gc/pauses:seconds", "/gc/cycles/total:gc-cycles"}
+		names := []string{"/gc/heap/allocs:bytes", "/gc/heap/frees:bytes", "/gc/heap/live:bytes", "/gc/heap/goal:bytes", "/memory/classes/heap/objects:bytes", "/memory/classes/heap/free:bytes", "/memory/classes/heap/unused:bytes", "/memory/classes/heap/released:bytes", "/memory/classes/total:bytes", "/gc/pauses:seconds", "/gc/cycles/total:gc-cycles"}
 		samples := make([]metrics.Sample, len(names))
 		for i, name := range names {
 			samples[i].Name = name
