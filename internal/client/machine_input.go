@@ -1,5 +1,7 @@
 package client
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"context"
 	"encoding/base64"
@@ -99,6 +101,7 @@ func eventBytes(event input.Event) []byte {
 }
 
 func (m *machineClient) input(event input.Event) error {
+	defer benchstage.Span("client.input")()
 	if consumed, err := m.graphicsFileReply(event.Raw); consumed || err != nil {
 		return err
 	}

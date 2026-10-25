@@ -1,5 +1,7 @@
 package runtime
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"bytes"
 	"fmt"
@@ -139,6 +141,7 @@ func (r *readBuffer) linefeedAt(p *Pane, pos uv.Position, continued bool) {
 	}
 }
 func (r *readBuffer) resize(w, h int) {
+	defer benchstage.Span("runtime.readresize")()
 	for _, target := range []*[]rowRef{&r.main, &r.alternate} {
 		next := make([]rowRef, h)
 		copy(next, *target)
@@ -312,6 +315,7 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 }
 
 func (p *Pane) writeRecorded(chunk []byte) {
+	defer benchstage.Span("runtime.recorded")()
 	r := p.read
 	if r == nil {
 		r = newReadBuffer(p.emu.Width(), p.emu.Height())
@@ -322,6 +326,7 @@ func (p *Pane) writeRecorded(chunk []byte) {
 		}
 	}
 	defer func() {
+		defer benchstage.Span("runtime.prepareindex")()
 		history := r.historyLen()
 		p.emu.PrepareReflowHistory(func(y int) vt.ReflowRow {
 			var ref rowRef

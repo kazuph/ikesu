@@ -1,5 +1,7 @@
 package render
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -257,6 +259,7 @@ func ComposeClient(in Input, machines *MachineSidebar, version string, notice bo
 type Composer struct{ latest, spare *Frame }
 
 func (c *Composer) ComposeClient(in Input, machines *MachineSidebar, version string, notice bool) *Output {
+	defer benchstage.Span("render.compose")()
 	out := composeInto(in, machines, version, notice, c.spare)
 	c.spare, c.latest = c.latest, out.Frame
 	return out

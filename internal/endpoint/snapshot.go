@@ -1,5 +1,7 @@
 package endpoint
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"bytes"
 	"encoding/gob"
@@ -41,6 +43,7 @@ type SnapshotEncoder struct {
 }
 
 func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
+	defer benchstage.Span("snapshot.encode")()
 	e.sentGraphicsPatch = false
 	if e.enc == nil {
 		e.enc = gob.NewEncoder(&e.data)
@@ -95,6 +98,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		}
 		e.grids[id] = cached
 	}
+	benchstage.Values("snapshot.cells", len(e.cells), 0)
 	for id := range e.grids {
 		if _, ok := in.Panes[id]; !ok {
 			delete(e.grids, id)
@@ -115,6 +119,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 	if err := e.enc.Encode(wire); err != nil {
 		return nil, err
 	}
+	benchstage.Values("snapshot.bytes", e.data.Len(), 0)
 	e.sentGraphicsPatch = len(wire.Input.GraphicsPatches) > 0
 	return e.data.Bytes(), nil
 }
@@ -134,6 +139,7 @@ type SnapshotDecoder struct {
 }
 
 func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
+	defer benchstage.Span("snapshot.decode")()
 	if d.dec == nil {
 		d.dec = gob.NewDecoder(&d.data)
 	}
@@ -191,6 +197,14 @@ type cellDelta struct {
 // Received snapshots stay immutable: only changed rows are copied. The
 // encoder's private comparison cache can update those cells in place.
 func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.Cell, error) {
+	copiedCells, allocatedCells := 0, 0
+	defer func() {
+		if immutable {
+			benchstage.Values("decode.cellcopy", copiedCells, allocatedCells)
+		} else {
+			benchstage.Values("encode.cellcopy", copiedCells, allocatedCells)
+		}
+	}()
 	if !delta.Present {
 		if len(delta.Cells) != 0 {
 			return nil, fmt.Errorf("cells in absent pane grid")
@@ -229,7 +243,8 @@ func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.C
 				grid[y] = grid[y][:width]
 			} else {
 				next := make([]uv.Cell, width)
-				copy(next, grid[y])
+				allocatedCells += width
+				copiedCells += copy(next, grid[y])
 				grid[y] = next
 			}
 			if immutable {
@@ -242,6 +257,8 @@ func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.C
 			return nil, fmt.Errorf("invalid pane cell position")
 		}
 		if immutable && !owned[change.Y] {
+			copiedCells += len(grid[change.Y])
+			allocatedCells += len(grid[change.Y])
 			grid[change.Y] = append([]uv.Cell(nil), grid[change.Y]...)
 			owned[change.Y] = true
 		}

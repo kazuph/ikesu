@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
@@ -56,6 +58,7 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	defer benchstage.Span("ui.draw")()
 	started := time.Now()
 	defer func() { a.lastDraw = started }()
 	if a.drawViewers != nil {
@@ -242,7 +245,12 @@ func (a *App) draw() {
 			a.SetConfigWarning("input source: " + err.Error())
 		}
 	}
-	if _, err := a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible, out.AnchorShape)); err != nil {
+	data := a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible, out.AnchorShape)
+	endWrite := benchstage.Span("ui.write")
+	_, writeErr := a.out.Write(data)
+	endWrite()
+	benchstage.Values("ui.bytes", len(data), 0)
+	if err := writeErr; err != nil {
 		a.enc.Reset()
 		a.dirty = true
 	}

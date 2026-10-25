@@ -1,5 +1,7 @@
 package render
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"bytes"
 	"fmt"
@@ -55,6 +57,7 @@ func (e *Encoder) RestoreCursor() []byte {
 // pane's cursor (the IME anchor) with the right visibility — both inside
 // and outside the sync region.
 func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shape ...int) []byte {
+	defer benchstage.Span("render.encode")()
 	var b bytes.Buffer
 	b.WriteString(syncStart)
 	b.WriteString(hideCursor)

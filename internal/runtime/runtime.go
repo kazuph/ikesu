@@ -3,6 +3,8 @@
 // state lives in model; runtime only materialises it.
 package runtime
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"context"
 	"fmt"
@@ -516,6 +518,7 @@ func (s *Supervisor) Resize(id, cols, rows int) {
 
 // ResizeWithPixels supplies the pane's character geometry through its PTY.
 func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
+	defer benchstage.Span("runtime.resize")()
 	p := s.Get(id)
 	if p == nil || cols <= 0 || rows <= 0 {
 		return

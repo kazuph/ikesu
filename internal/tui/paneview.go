@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -13,6 +14,8 @@ import (
 // paneGrid extracts the innerH×w cells a pane displays at scroll offset off
 // (0 = live screen bottom). Rows come from scrollback followed by screen.
 func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
+	defer benchstage.Span("ui.panegrid")()
+	benchstage.Values("panegrid.materialized", h*w, 0)
 	var g [][]uv.Cell
 	p.WithEmu(func(e *vt.Emulator) {
 		sb := e.ScrollbackLen()

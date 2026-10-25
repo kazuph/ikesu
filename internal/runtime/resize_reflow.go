@@ -1,5 +1,7 @@
 package runtime
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import "github.com/charmbracelet/x/vt"
 
 func (p *Pane) resizeTerminal(width, height int) {
@@ -16,6 +18,7 @@ func (p *Pane) resizeTerminal(width, height int) {
 // resizeReflow gives the terminal cells their recorded logical boundaries;
 // styles and hyperlinks remain attached to cells during width changes.
 func (p *Pane) resizeReflow(width, height int) {
+	defer benchstage.Span("runtime.reflow")()
 	r := p.read
 	oldHistory := r.historyLen()
 	snapshot := p.emu.ResizeWithReflowView(width, height, func(y int) vt.ReflowRow {

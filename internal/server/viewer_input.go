@@ -1,6 +1,9 @@
 package server
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 func (s *Server) viewerInput(c *clientConn, m clientMsg) {
+	defer benchstage.Span("server.input")()
 	if m.EndPrefix {
 		s.app.Do(func() {
 			if c.viewer != nil {

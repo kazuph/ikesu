@@ -7,6 +7,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"net"
 	"os"
@@ -200,6 +201,7 @@ func (c *clientConn) startWriter() {
 }
 
 func (c *clientConn) send(m clientMsg) error {
+	defer benchstage.Span("server.send")()
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 	if c.closed {

@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
@@ -15,6 +17,7 @@ import (
 )
 
 func (a *App) onInput(ev input.Event) {
+	defer benchstage.Span("ui.input")()
 	switch ev.Kind {
 	case input.KindTerminalReport:
 		a.hostMouseReport(ev.Report)
@@ -428,6 +431,7 @@ func (a *App) syncLayout() {
 }
 
 func (a *App) syncPaneLayout() {
+	defer benchstage.Span("ui.layout")()
 	previous := a.selection()
 	defer a.selectView(previous)
 	for wi, ws := range a.st.Workspaces {
