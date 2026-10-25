@@ -218,6 +218,10 @@ func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.C
 			return nil, fmt.Errorf("invalid pane row width")
 		}
 		if len(grid[y]) != width {
+			if immutable && width < len(grid[y]) {
+				grid[y] = grid[y][:width:width]
+				continue
+			}
 			if !immutable && cap(grid[y]) >= width {
 				if width < len(grid[y]) {
 					clear(grid[y][width:])

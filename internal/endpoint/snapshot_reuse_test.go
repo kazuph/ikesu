@@ -9,6 +9,80 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 )
 
+func TestSnapshotNarrowRowsRemainImmutableThroughChangesAndGrowth(t *testing.T) {
+	var enc SnapshotEncoder
+	var dec SnapshotDecoder
+	input := render.Input{State: model.New(".", 160, 45), Panes: map[int]*render.PaneSnap{1: {Grid: [][]uv.Cell{{{Content: "a", Width: 1}, {Content: "b", Width: 1}, {Content: "c", Width: 1}}}}}}
+	decode := func() render.Input {
+		t.Helper()
+		data, err := enc.Encode(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := dec.Decode(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	full := decode()
+	input.Panes[1].Grid[0] = input.Panes[1].Grid[0][:2]
+	narrow := decode()
+	if row := narrow.Panes[1].Grid[0]; len(row) != 2 || cap(row) != 2 || row[1].Content != "b" {
+		t.Fatal("narrow row exposed removed cells", row, cap(row))
+	}
+	input.Panes[1].Grid[0][0].Content = "x"
+	changed := decode()
+	input.Panes[1].Grid[0] = append(input.Panes[1].Grid[0], uv.Cell{Content: "z", Width: 1})
+	grown := decode()
+	if full.Panes[1].Grid[0][0].Content != "a" || full.Panes[1].Grid[0][2].Content != "c" || narrow.Panes[1].Grid[0][0].Content != "a" || len(narrow.Panes[1].Grid[0]) != 2 || changed.Panes[1].Grid[0][0].Content != "x" || len(changed.Panes[1].Grid[0]) != 2 || grown.Panes[1].Grid[0][2].Content != "z" {
+		t.Fatal("later decode changed an earlier snapshot")
+	}
+}
+
+func BenchmarkSnapshotGridResizeDecode(b *testing.B) {
+	var enc SnapshotEncoder
+	var dec SnapshotDecoder
+	input := render.Input{State: model.New(".", 160, 45), Panes: map[int]*render.PaneSnap{}}
+	for id := 1; id <= 2; id++ {
+		grid := make([][]uv.Cell, 45)
+		for y := range grid {
+			grid[y] = make([]uv.Cell, 160/2)
+			for x := range grid[y] {
+				grid[y][x] = uv.Cell{Content: "x", Width: 1}
+			}
+		}
+		input.Panes[id] = &render.PaneSnap{Grid: grid}
+	}
+	seed, err := enc.Encode(input)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := dec.Decode(seed); err != nil {
+		b.Fatal(err)
+	}
+	var data [2][]byte
+	for i := range data {
+		for id, pane := range input.Panes {
+			for y := range pane.Grid {
+				pane.Grid[y] = pane.Grid[y][:160/2-(i+id)%2]
+			}
+		}
+		encoded, err := enc.Encode(input)
+		if err != nil {
+			b.Fatal(err)
+		}
+		data[i] = append([]byte(nil), encoded...)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := dec.Decode(data[i%len(data)]); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestSnapshotScratchReusePreservesMultiplePanesAndEarlierFrames(t *testing.T) {
 	in := render.Input{State: model.New(".", 160, 45), Panes: map[int]*render.PaneSnap{}}
 	var enc SnapshotEncoder
