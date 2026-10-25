@@ -154,6 +154,10 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 }
 
 func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err error) {
+	// Drain old disk writes before the importer can publish state. Rollback
+	// reopens normal writing; success retires every captured old generation.
+	s.saveWriteMu.Lock()
+	defer s.saveWriteMu.Unlock()
 	// The importer must not replay a notice already written by the retiring
 	// server whose delivery acknowledgement is still in flight.
 	s.mailDelivery.Lock()
@@ -277,6 +281,7 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return fmt.Errorf("handoff import failed: %s", result.Error)
 	}
 	transferred = true
+	s.saveClosed = true
 	s.handedOff = true
 	s.closing.Store(2)
 	s.stopDecisions()

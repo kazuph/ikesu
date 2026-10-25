@@ -100,4 +100,9 @@ func TestSessionWriteOrderFinalSaveAndFailurePreserveNewestSnapshot(t *testing.T
 	check("FINAL")
 	s.writeSession(retry)
 	check("RETRY")
+	s.app.State().Workspaces[0].Name = "RETIRED"
+	retired := s.captureSession()
+	s.closeSessionWrites()
+	s.writeSession(retired)
+	check("RETRY")
 }

@@ -105,7 +105,7 @@ func (s *Server) writeSession(snapshot *sessionSnapshot) {
 	defer s.saveWriteMu.Unlock()
 	// Shutdown/restart saves synchronously. A delayed older timer must never
 	// overwrite that final state, or another newer captured generation.
-	if snapshot.sequence <= s.savedSequence {
+	if s.saveClosed || snapshot.sequence <= s.savedSequence {
 		return
 	}
 	if err := session.Save(session.Path(s.dir), snapshot.file); err != nil {
@@ -118,6 +118,12 @@ func (s *Server) writeSession(snapshot *sessionSnapshot) {
 		}
 	}
 	s.savedSequence = snapshot.sequence
+}
+
+func (s *Server) closeSessionWrites() {
+	s.saveWriteMu.Lock()
+	defer s.saveWriteMu.Unlock()
+	s.saveClosed = true
 }
 
 // loadSession reads and validates session.json. It returns nil when there

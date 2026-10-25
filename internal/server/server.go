@@ -143,6 +143,7 @@ type Server struct {
 	saveWriteMu   sync.Mutex
 	saveSequence  uint64 // assigned only on the app loop
 	savedSequence uint64 // guarded by saveWriteMu
+	saveClosed    bool   // guarded by saveWriteMu
 	restarting    bool   // set on the app loop; cleanup respawns a server
 
 	// observedStart remembers the process start an observed session id
@@ -478,6 +479,7 @@ func (s *Server) cleanup() {
 		s.saveTimer = nil
 	}
 	s.saveMu.Unlock()
+	s.closeSessionWrites()
 	// notifyExit already told the attached client; drop whatever remains.
 	s.detach("server exiting")
 	s.closeAgentAttachments()
