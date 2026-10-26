@@ -17,13 +17,11 @@ func TestScreenAnswerInvestigation(t *testing.T) {
 	picture := screenDialog(t, "claude-single")
 	scanScreen(s)
 	first := screenRecord(t, s)
-	framed := strings.Split(picture, "\n")
-	for i, line := range framed {
-		framed[i] = "│ " + line + " │"
-	}
-	plain := screenprompt.Parse("claude", strings.Split(picture, "\n"))
-	boxed := screenprompt.Parse("claude", framed)
-	t.Logf("frame: plain=%v boxed=%v", plain.Params.Title, boxed)
+	observed := screenDialog(t, "claude-left-border")
+	plain := screenprompt.Parse("claude", strings.Split(observed, "\n"))
+	bordered := strings.Replace(observed, "│ 検証用", "│\n│ 検証用", 1)
+	boxed := screenprompt.Parse("claude", strings.Split(bordered, "\n"))
+	t.Logf("frame blank row: plain=%q bordered=%q sameSignature=%t", plain.Params.Title, boxed.Params.Title, plain.Signature() == boxed.Signature())
 	if response := answerScreen(s, first, "1", nil); response.Err != nil {
 		t.Fatal(response.Err)
 	}
