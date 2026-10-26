@@ -69,8 +69,12 @@ func approvalCommand(i Input) string {
 var approvalFields = regexp.MustCompile(`[\t \r\n]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]`)
 
 func approvalTrigger(i Input, v Verdict) string {
-	i.RawLine = ""
-	return "承認が必要な理由: " + v.Reason + "（規則: " + v.Rule + "）\n引っかかったコマンド: " + i.Line()
+	command := i.TriggerCommand
+	if command == "" {
+		i.RawLine = ""
+		command = i.Line()
+	}
+	return "承認が必要な理由: " + v.Reason + "（規則: " + v.Rule + "）\n引っかかったコマンド: " + command
 }
 
 func approvalBody(command, reason, cwd string) string {

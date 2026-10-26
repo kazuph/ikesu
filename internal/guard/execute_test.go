@@ -259,3 +259,75 @@ func TestApprovalTriggerForMultipleCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestDangerWordLineTriggerUsesActualCLICommand(t *testing.T) {
+	for _, mode := range []string{"line", "claude-prefix"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			a := NewAssets(root, "p1", "/usr/bin/true", Config{})
+			env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.Sync("codex"); err != nil {
+				t.Fatal(err)
+			}
+			payload := "printf safe && npx wrangler deploy"
+			launch := payload
+			i := Input{Cwd: root, Env: EnvMap(env)}
+			i.Env["AI_GUARD_REQUEST_REASON"] = "対象プロジェクト: ikesu。必要な理由: 表示を検証する。"
+			line := payload
+			if mode == "claude-prefix" {
+				launch = bootstrapForTest(filepath.Join(root, ".claude/shell-snapshots/snapshot-zsh-1-a.sh"), payload, "/tmp/claude-1-cwd")
+				line = ClaudePrefixLine(i, launch)
+				if line != payload {
+					t.Fatal("canonical payload not extracted")
+				}
+			}
+			// Match the real CLI, which puts the entire launch line in Command.
+			i.Command = launch
+			_, v, err := lineVerdict(Config{}, i, line)
+			if err != nil || v.Decision != "ask" || v.Rule != "danger-word-line" || v.TempKey != "" || v.DayKey != "" {
+				t.Fatalf("verdict contract changed: %+v %v", v, err)
+			}
+			store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			called := false
+			target := "引っかかったコマンド: npx wrangler deploy\n"
+			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+				called = true
+				if p.Body == nil || !strings.Contains(*p.Body, target) {
+					t.Errorf("body target incorrect: %v", p.Body)
+				}
+				if p.Origin.Command != payload {
+					t.Errorf("recorded line changed: %q", p.Origin.Command)
+				}
+				d, err := store.CreateDecision(p, time.Now())
+				if err != nil {
+					return d, err
+				}
+				return store.CancelDecision(d.DecisionID, time.Now())
+			}
+			var out bytes.Buffer
+			if AuthorizeLine(Config{}, root, i, line, &out, await) || !called {
+				t.Fatalf("ask changed: %s", out.String())
+			}
+			if !strings.Contains(out.String(), target) {
+				t.Errorf("stderr target incorrect: %s", out.String())
+			}
+		})
+	}
+}
+
+func TestApprovalTriggerExplicitWholeLineFallback(t *testing.T) {
+	for _, line := range []string{"printf safe &&", "git log --grep deploy"} {
+		i := Input{Command: line, Cwd: t.TempDir(), Env: map[string]string{}}
+		selected, v, _ := lineVerdict(Config{}, i, line)
+		if v.Decision != "ask" || !strings.Contains(approvalTrigger(selected, v), "引っかかったコマンド: 入力行全体: "+line) {
+			t.Fatalf("whole-line target not explicit: %+v %s", v, approvalTrigger(selected, v))
+		}
+	}
+}

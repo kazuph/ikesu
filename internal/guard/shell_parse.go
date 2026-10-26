@@ -238,7 +238,18 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 		if i.AuthorizationEnv == nil && len(commands) > 0 {
 			i.AuthorizationEnv = commands[0].AuthorizationEnv
 		}
+		i.TriggerCommand = "入力行全体: " + line
 		return i, result("ask", "shell-line", err.Error()), err
+	}
+	if best.Rule == "danger-word-line" {
+		i.TriggerCommand = "入力行全体: " + line
+		for _, command := range commands {
+			command.RawLine = ""
+			if danger(c, command) {
+				i.TriggerCommand = command.Line()
+				break
+			}
+		}
 	}
 	return i, best, nil
 }
