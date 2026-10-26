@@ -95,3 +95,24 @@ func TestExecuteStopsDirectShimReentryButAllowsNestedCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestWriterAndShimRecognizerShareForwardingShape(t *testing.T) {
+	root := t.TempDir()
+	for _, bin := range []string{"/odd place/ikesu", "/odd'place/herdr"} {
+		p := filepath.Join(root, "entry")
+		script := shimScript("IKESU_GUARD_MARKER='/tmp/a marker' IKESU_PANE_ID='p1'", bin, "git")
+		if err := os.WriteFile(p, []byte(script), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if !isForwardingShim(p) {
+			t.Fatalf("writer produced unrecognized shim: %s", script)
+		}
+	}
+	ordinary := filepath.Join(root, "ordinary")
+	if err := os.WriteFile(ordinary, []byte("#!/bin/sh\n# exec ikesu guard exec --via shim -- git\nprintf '%s' 'guard exec --via shim'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if isForwardingShim(ordinary) {
+		t.Fatal("ordinary script was mistaken for a shim")
+	}
+}

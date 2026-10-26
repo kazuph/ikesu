@@ -74,7 +74,30 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	return e
 }
 
+// The PID distinguishes an exec loop from a real child process. The argv
+// distinguishes direct reentry from an exec into another guarded command.
+const shimExecContext = "IKESU_GUARD_EXEC_CONTEXT"
+
+func executionContext(i Input) string {
+	data, _ := json.Marshal(struct {
+		PID  int
+		Argv []string
+	}{os.Getpid(), append([]string{i.Command}, i.Args...)})
+	return string(data)
+}
+
+func CheckShimRecursion(i Input) error {
+	if i.Env[shimExecContext] == executionContext(i) {
+		return fmt.Errorf("身代わりスクリプトが自分自身を呼び直しました: %s", i.Command)
+	}
+	return nil
+}
+
 func Execute(i Input) error {
+	if err := CheckShimRecursion(i); err != nil {
+		return err
+	}
+	context := executionContext(i)
 	if e := os.Chdir(i.Cwd); e != nil {
 		return e
 	}
@@ -83,7 +106,11 @@ func Execute(i Input) error {
 	if e != nil {
 		return e
 	}
-	return syscall.Exec(path, append([]string{i.Command}, i.Args...), childenv.Scrub(inherited))
+	clean := childenv.Scrub(inherited)
+	// Scrub removes inherited guard state; this fresh process-local marker must
+	// survive the exec so direct reentry cannot start a new guard invocation.
+	clean = append(clean, shimExecContext+"="+context)
+	return syscall.Exec(path, append([]string{i.Command}, i.Args...), clean)
 }
 
 // The server policy is storage-only; guard status retains its public marker shape.
