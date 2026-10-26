@@ -136,7 +136,7 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		}
 		root, rootErr := gitActivityOutput(cwd, "rev-parse", "--show-toplevel")
 		if rootErr == nil {
-			tracked, trackedErr := gitActivityOutput(cwd, "ls-files", "--cached", "-z")
+			tracked, trackedErr := gitActivityOutput(cwd, "ls-files", "--cached", "--full-name", "-z")
 			ready = ready && trackedErr == nil
 			for _, name := range strings.Split(string(tracked), "\x00") {
 				if name != "" {

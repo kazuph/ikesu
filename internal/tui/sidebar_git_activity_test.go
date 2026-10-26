@@ -234,3 +234,32 @@ func TestWorkspaceGitActivityTracksAttributesOutsideIndex(t *testing.T) {
 	}
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 1 })
 }
+
+func TestWorkspaceGitSubdirectoryTracksFileAndAttributes(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	repo := t.TempDir()
+	nested := filepath.Join(repo, "nested")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	file := filepath.Join(nested, "tracked.txt")
+	if err := os.WriteFile(file, []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "base")
+	a.st.Workspaces[0].Cwd = nested
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "main" })
+	if err := os.WriteFile(file, []byte("changed\none\ntwo\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 3 && a.workspaceGit[0].Deleted == 1 })
+	if err := os.WriteFile(filepath.Join(nested, ".gitattributes"), []byte("*.txt binary\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 0 && a.workspaceGit[0].Deleted == 0 })
+}
