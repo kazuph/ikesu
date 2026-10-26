@@ -1,0 +1,2338 @@
+#!/usr/bin/env node
+// ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
+// glasses are not answering, and turn Slack answers (number reactions or
+// thread replies) into `ikesu decision answer --responder slack`.
+//
+// Slack sends only ever happen on kazuph's machine, and only when the
+// slack-ask credentials resolve. On any other machine, or without
+// credentials, this exits quietly after logging the reason.
+
+import { execFile, execFileSync, spawn } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+import readline from "node:readline";
+import { fileURLToPath } from "node:url";
+
+// Resending an answer a saved machine could not take yet (Tailscale SSH
+// re-approval): every 15 s for up to 30 minutes, until the decision resolves.
+const ANSWER_RETRY_MS = 15_000;
+const ANSWER_RETRY_LIMIT = 120;
+const PLUGIN_ID = "kazuph.slack-decisions";
+const RUN_LABEL = "slack-decisions";
+const DEFAULT_ALLOWED_USER = "kazuph";
+const DEFAULT_POST_DELAY_MS = 180_000; // glasses connected: wait before posting
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
+const SABERA_TIMEOUT_MS = 3_000;
+const WATCH_RETRY_MS = 2_000;
+const SOCKET_RECONNECT_MS = 1_000;
+const RECONCILE_DELAY_MS = 3_000;
+const STALE_POST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const POST_RETRY_MS = 60_000;
+// Initial request plus two retries, using the existing post retry interval.
+const POST_MUTATION_ATTEMPTS = 3;
+const POST_MUTATION_RETRY_MS = POST_RETRY_MS;
+// How long a cancelled decision's Slack post stays adoptable by a
+// recreated copy of the same question before it is deleted (screen-prompt
+// churn rebuilds the decision ~1s apart; the recreated post can arrive
+// only after the glasses post delay, so the window must outlast it).
+const RECREATED_POST_REUSE_MARGIN_MS = 30_000;
+const RECREATED_POST_REUSE_MIN_MS = 60_000;
+const NUMBER_EMOJIS = [
+  "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+];
+const SLACK_GET_METHODS = new Set([
+  "conversations.replies",
+  "conversations.history",
+  "conversations.info",
+  "reactions.get",
+  "users.info",
+]);
+const DAEMON_PID_FILE = "daemon.json";
+const POSTS_FILE = "posts.json";
+
+function log(...args) {
+  const at = new Date().toTimeString().slice(0, 8);
+  process.stderr.write(`[slack-decisions ${at}] ${args.join(" ")}\n`);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function homePath(...parts) {
+  return path.join(os.homedir(), ...parts);
+}
+
+function parseEnvFile(filePath) {
+  let content;
+  try {
+    content = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return {};
+  }
+  const env = {};
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || !line.includes("=")) continue;
+    const [key, ...rest] = line.split("=");
+    env[key.trim()] = rest.join("=").trim().replace(/^["']|["']$/g, "");
+  }
+  return env;
+}
+
+function defaultCredentialEnvFiles() {
+  // Same files slack-ask's get-credentials.sh reads.
+  return [
+    homePath("dotfiles", "claude", "hooks", ".env"),
+    homePath(".claude", "hooks", ".env"),
+    homePath(".config", "claude-slack", "credentials"),
+  ];
+}
+
+function execFileTextSync(file, args) {
+  try {
+    return execFileSync(file, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function keychainValue(service) {
+  // Same store slack-ask reads: security -a claude-slack -s <key>.
+  return execFileTextSync(
+    "security",
+    ["find-generic-password", "-w", "-a", "claude-slack", "-s", service],
+  );
+}
+
+function passValue(entry) {
+  return execFileTextSync("pass", ["show", entry]).split("\n")[0].trim();
+}
+
+function loadConfig(env = process.env) {
+  const configDir =
+    env.IKESU_PLUGIN_CONFIG_DIR ||
+    homePath(".config", "ikesu", "plugins", "config", PLUGIN_ID);
+  const configPath =
+    env.SLACK_DECISIONS_CONFIG || path.join(configDir, "config.json");
+  let file = {};
+  try {
+    file = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch {
+    file = {};
+  }
+  const pickNumber = (envValue, fileValue, fallback) => {
+    const parsed = Number(envValue ?? fileValue);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+  const stateDir =
+    env.SLACK_DECISIONS_STATE_DIR ||
+    env.IKESU_PLUGIN_STATE_DIR ||
+    homePath(".local", "state", "ikesu", "plugins", PLUGIN_ID);
+  return {
+    enabled:
+      (env.SLACK_DECISIONS_ENABLED ?? file.enabled ?? true) !== false &&
+      env.SLACK_DECISIONS_ENABLED !== "0",
+    allowedOsUser:
+      env.SLACK_DECISIONS_ALLOWED_USER ||
+      file.allowed_os_user ||
+      DEFAULT_ALLOWED_USER,
+    osUser: env.SLACK_DECISIONS_OS_USER || "",
+    postDelayMs: pickNumber(
+      env.SLACK_DECISIONS_POST_DELAY_MS,
+      file.post_delay_ms,
+      DEFAULT_POST_DELAY_MS,
+    ),
+    pollIntervalMs: pickNumber(
+      env.SLACK_DECISIONS_POLL_INTERVAL_MS,
+      file.poll_interval_ms,
+      DEFAULT_POLL_INTERVAL_MS,
+    ),
+    saberaSocket:
+      env.SLACK_DECISIONS_SABERA_SOCK ||
+      file.sabera_socket ||
+      homePath(".sabera-relay.sock"),
+    apiBase:
+      env.SLACK_DECISIONS_API_BASE ||
+      file.slack_api_base ||
+      "https://slack.com/api",
+    slackChannel: env.SLACK_DECISIONS_CHANNEL || file.slack_channel || "",
+    mention: env.SLACK_DECISIONS_MENTION ?? file.mention ?? "",
+    socketMode:
+      (env.SLACK_DECISIONS_SOCKET_MODE ?? file.socket_mode ?? true) !== false &&
+      env.SLACK_DECISIONS_SOCKET_MODE !== "0",
+    credentialEnvFiles:
+      Array.isArray(file.credentials_env_files) &&
+      file.credentials_env_files.length > 0
+        ? file.credentials_env_files.map((p) => p.replace(/^~/, os.homedir()))
+        : defaultCredentialEnvFiles(),
+    noKeychain:
+      env.SLACK_DECISIONS_NO_KEYCHAIN === "1" || file.no_keychain === true,
+    noPass: env.SLACK_DECISIONS_NO_PASS === "1" || file.no_pass === true,
+    ikesuBin: env.IKESU_BIN_PATH || file.ikesu_bin || "ikesu",
+    stateDir,
+    configDir,
+    configPath,
+  };
+}
+
+function loadCredentials(config, env = process.env) {
+  let token = env.SLACK_BOT_TOKEN || "";
+  let channel = env.SLACK_CHANNEL || env.SLACK_CHANNEL_ID || "";
+  let appToken = env.SLACK_APP_TOKEN || "";
+  let mention = config.mention || "";
+
+  for (const filePath of config.credentialEnvFiles) {
+    const parsed = parseEnvFile(filePath);
+    token ||= parsed.SLACK_BOT_TOKEN || "";
+    channel ||= parsed.SLACK_CHANNEL || parsed.SLACK_CHANNEL_ID || "";
+    appToken ||= parsed.SLACK_APP_TOKEN || "";
+    mention ||=
+      parsed.SLACK_APPROVAL_MENTION || parsed.SLACK_DECISIONS_MENTION || "";
+  }
+
+  if (!config.noKeychain) {
+    token ||= keychainValue("SLACK_BOT_TOKEN");
+    channel ||=
+      keychainValue("SLACK_CHANNEL") || keychainValue("SLACK_CHANNEL_ID");
+    appToken ||= keychainValue("SLACK_APP_TOKEN");
+  }
+  if (!config.noPass) {
+    token ||= passValue("claude/slack-bot-token");
+    channel ||= passValue("claude/slack-channel");
+    appToken ||= passValue("claude/slack-app-token");
+  }
+
+  if (config.slackChannel) channel = config.slackChannel;
+  return { token, channel, appToken, mention };
+}
+
+// The daemon outlives the server that launched it: a Homebrew install
+// records IKESU_BIN_PATH as a versioned Cellar path that `brew upgrade`
+// deletes, so every ikesu invocation resolves the binary afresh — the
+// configured path while it exists, then PATH, then the usual prefixes.
+function resolveIkesuBin(config, logFn = () => {}) {
+  const configured = config.ikesuBin;
+  if (configured && configured !== "ikesu" && fs.existsSync(configured)) {
+    return configured;
+  }
+  const candidates = [
+    ...(process.env.PATH || "")
+      .split(path.delimiter)
+      .filter(Boolean)
+      .map((dir) => path.join(dir, "ikesu")),
+    "/opt/homebrew/bin/ikesu",
+    path.join(os.homedir(), ".local", "bin", "ikesu"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      if (configured && configured !== "ikesu" && !fs.existsSync(configured)) {
+        logFn(
+          `IKESU_BIN_PATH (${configured}) が存在しないため ${candidate} を使います`,
+        );
+      }
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function execFileText(file, args, options = {}) {
+  return new Promise((resolve) => {
+    execFile(
+      file,
+      args,
+      { encoding: "utf8", timeout: options.timeoutMs ?? 30_000, ...options },
+      (error, stdout, stderr) => {
+        resolve({
+          code:
+            error && typeof error.code === "number" ? error.code : error ? 1 : 0,
+          stdout: String(stdout || ""),
+          stderr: String(stderr || (error ? error.message : "")),
+        });
+      },
+    );
+  });
+}
+
+// --- Slack API client -------------------------------------------------------
+
+class SlackClient {
+  constructor({ token, appToken, channel, apiBase }) {
+    this.token = token;
+    this.appToken = appToken;
+    this.channel = channel;
+    this.apiBase = (apiBase || "https://slack.com/api").replace(/\/+$/, "");
+    this.mention = "";
+  }
+
+  async api(method, params = {}, { form = false } = {}) {
+    const url = new URL(`${this.apiBase}/${method}`);
+    const headers = { Authorization: `Bearer ${this.token}` };
+    const init = { signal: AbortSignal.timeout(30_000) };
+    if (SLACK_GET_METHODS.has(method)) {
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, String(value));
+      }
+      init.method = "GET";
+      init.headers = headers;
+    } else if (form) {
+      init.method = "POST";
+      headers["Content-Type"] = "application/x-www-form-urlencoded";
+      init.headers = headers;
+      init.body = new URLSearchParams(params).toString();
+    } else {
+      init.method = "POST";
+      headers["Content-Type"] = "application/json; charset=utf-8";
+      init.headers = headers;
+      init.body = JSON.stringify(params);
+    }
+    const response = await fetch(url.toString(), init);
+    const json = await response.json();
+    if (!json.ok) {
+      const error = new Error(json.error || "unknown_slack_error");
+      error.payload = json;
+      throw error;
+    }
+    return json;
+  }
+
+  authTest() {
+    return this.api("auth.test", {});
+  }
+
+  postMessage({ text, blocks }) {
+    return this.api("chat.postMessage", { channel: this.channel, text, blocks });
+  }
+
+  updateMessage(ts, { text, blocks }) {
+    return this.api("chat.update", { channel: this.channel, ts, text, blocks });
+  }
+
+  deleteMessage(ts) {
+    return this.api("chat.delete", { channel: this.channel, ts });
+  }
+
+  postThreadReply(threadTs, text) {
+    return this.api("chat.postMessage", {
+      channel: this.channel,
+      thread_ts: threadTs,
+      text,
+    });
+  }
+
+  async addReactions(ts, names) {
+    for (const name of names) {
+      try {
+        await this.api("reactions.add", {
+          channel: this.channel,
+          timestamp: ts,
+          name,
+        });
+      } catch {
+        // already reacted / propagation lag — safe to ignore
+      }
+    }
+  }
+
+  async message(ts) {
+    const result = await this.api("conversations.history", {
+      channel: this.channel,
+      latest: ts,
+      inclusive: true,
+      limit: 1,
+    });
+    return result.messages?.[0] || null;
+  }
+
+  async replies(threadTs) {
+    const result = await this.api("conversations.replies", {
+      channel: this.channel,
+      ts: threadTs,
+      inclusive: true,
+      limit: 100,
+    });
+    return result.messages || [];
+  }
+
+  async openSocketUrl() {
+    const response = await fetch(`${this.apiBase}/apps.connections.open`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.appToken}` },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const json = await response.json();
+    if (!json.ok || !json.url) {
+      throw new Error(json.error || "socket_mode_open_failed");
+    }
+    return json.url;
+  }
+
+  // Same flow as slack-ask's slack-send.mjs: optional comment message, then
+  // files.getUploadURLExternal -> raw upload -> files.completeUploadExternal.
+  async uploadFile({ filePath, title = "", comment = "" }) {
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`file not found: ${resolved}`);
+    }
+    const data = fs.readFileSync(resolved);
+    const fileName = path.basename(resolved);
+    const fileTitle = title || fileName;
+
+    let messageTs = "";
+    if (comment.trim()) {
+      const posted = await this.postMessage({ text: comment });
+      messageTs = posted.ts || "";
+    }
+
+    const meta = await this.api(
+      "files.getUploadURLExternal",
+      { filename: fileName, length: String(data.length) },
+      { form: true },
+    );
+    const upload = await fetch(meta.upload_url, {
+      method: "POST",
+      body: data,
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!upload.ok) {
+      throw new Error(`binary upload failed: ${upload.status}`);
+    }
+    const completed = await this.api("files.completeUploadExternal", {
+      files: [{ id: meta.file_id, title: fileTitle }],
+      channel_id: this.channel,
+    });
+    return {
+      ok: true,
+      type: "file",
+      channel: this.channel,
+      file_id: meta.file_id,
+      message_ts: messageTs,
+      path: resolved,
+      file: completed.files?.[0] || null,
+    };
+  }
+}
+
+// --- Sabera relay (unix-socket WebSocket) -----------------------------------
+// The saberante hub (`sabera.py serve`) owns ~/.sabera-relay.sock. A local
+// request client sends {"type":"hello"} and the hub replies {"type":"link",
+// ..., "glasses": "connected"|null}. Only the glasses field matters here.
+
+function wsFrameText(text) {
+  const payload = Buffer.from(text, "utf8");
+  const mask = crypto.randomBytes(4);
+  let header;
+  if (payload.length < 126) {
+    header = Buffer.from([0x81, 0x80 | payload.length]);
+  } else if (payload.length < 65536) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
+  const masked = Buffer.alloc(payload.length);
+  for (let i = 0; i < payload.length; i += 1) {
+    masked[i] = payload[i] ^ mask[i % 4];
+  }
+  return Buffer.concat([header, mask, masked]);
+}
+
+// Incremental parser for server->client (unmasked) WebSocket frames.
+function createWsParser(onText, onClose) {
+  let buffer = Buffer.alloc(0);
+  let fragments = [];
+  return (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    for (;;) {
+      if (buffer.length < 2) return;
+      const fin = (buffer[0] & 0x80) !== 0;
+      const opcode = buffer[0] & 0x0f;
+      const masked = (buffer[1] & 0x80) !== 0;
+      let length = buffer[1] & 0x7f;
+      let offset = 2;
+      if (length === 126) {
+        if (buffer.length < 4) return;
+        length = buffer.readUInt16BE(2);
+        offset = 4;
+      } else if (length === 127) {
+        if (buffer.length < 10) return;
+        length = Number(buffer.readBigUInt64BE(2));
+        offset = 10;
+      }
+      const maskLen = masked ? 4 : 0;
+      if (buffer.length < offset + maskLen + length) return;
+      let payload = buffer.subarray(offset + maskLen, offset + maskLen + length);
+      if (masked) {
+        const mask = buffer.subarray(offset, offset + 4);
+        const unmasked = Buffer.alloc(payload.length);
+        for (let i = 0; i < payload.length; i += 1) {
+          unmasked[i] = payload[i] ^ mask[i % 4];
+        }
+        payload = unmasked;
+      }
+      buffer = buffer.subarray(offset + maskLen + length);
+      if (opcode === 0x8) {
+        onClose?.();
+        return;
+      }
+      if (opcode === 0x9) continue; // ping: no reply needed for a 3s probe
+      if (opcode === 0x1 || opcode === 0x0) {
+        fragments.push(payload);
+        if (fin) {
+          const text = Buffer.concat(fragments).toString("utf8");
+          fragments = [];
+          onText(text);
+        }
+      }
+    }
+  };
+}
+
+function wsUnixRequest(sockPath, sendObj, timeoutMs = SABERA_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const socket = net.connect({ path: sockPath });
+    const timer = setTimeout(() => done(null), timeoutMs);
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(value);
+    };
+    let handshakeDone = false;
+    let handshake = Buffer.alloc(0);
+    const parser = createWsParser(
+      (text) => {
+        try {
+          done(JSON.parse(text));
+        } catch {
+          done(null);
+        }
+      },
+      () => done(null),
+    );
+    socket.on("connect", () => {
+      const key = crypto.randomBytes(16).toString("base64");
+      socket.write(
+        "GET / HTTP/1.1\r\n" +
+          "Host: localhost\r\n" +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Key: ${key}\r\n` +
+          "Sec-WebSocket-Version: 13\r\n\r\n",
+      );
+    });
+    socket.on("data", (chunk) => {
+      if (!handshakeDone) {
+        handshake = Buffer.concat([handshake, chunk]);
+        const marker = handshake.indexOf("\r\n\r\n");
+        if (marker === -1) return;
+        const head = handshake.subarray(0, marker).toString("utf8");
+        if (!/^HTTP\/1\.1 101/i.test(head)) {
+          done(null);
+          return;
+        }
+        handshakeDone = true;
+        socket.write(wsFrameText(JSON.stringify(sendObj)));
+        const rest = handshake.subarray(marker + 4);
+        if (rest.length > 0) parser(rest);
+        return;
+      }
+      parser(chunk);
+    });
+    socket.on("error", () => done(null));
+    socket.on("close", () => done(null));
+  });
+}
+
+// "connected" / other status string, or null when the hub socket is missing
+// or does not answer — treated as "glasses not connected".
+async function saberaGlassesState(sockPath, timeoutMs = SABERA_TIMEOUT_MS) {
+  try {
+    fs.statSync(sockPath);
+  } catch {
+    return null;
+  }
+  const reply = await wsUnixRequest(sockPath, { type: "hello" }, timeoutMs);
+  if (!reply || typeof reply !== "object") return null;
+  return typeof reply.glasses === "string" ? reply.glasses : null;
+}
+
+// Local notify request (saberante relay-protocol): hello -> link -> notify ->
+// queued. Returns false when the hub socket is missing or does not answer;
+// delivery callers skip the notification in that case rather than failing.
+function saberaNotify(sockPath, { text, from }, timeoutMs = SABERA_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    try {
+      fs.statSync(sockPath);
+    } catch {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    const socket = net.connect({ path: sockPath });
+    const timer = setTimeout(() => done(false), timeoutMs);
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(value);
+    };
+    let handshakeDone = false;
+    let notifySent = false;
+    let handshake = Buffer.alloc(0);
+    const parser = createWsParser(
+      (raw) => {
+        let message;
+        try {
+          message = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        if (message?.type === "link" && !notifySent) {
+          notifySent = true;
+          try {
+            socket.write(
+              wsFrameText(JSON.stringify({ type: "notify", text, from })),
+            );
+          } catch {
+            done(false);
+          }
+          return;
+        }
+        if (message?.type === "queued" && notifySent) done(true);
+      },
+      () => done(false),
+    );
+    socket.on("connect", () => {
+      const key = crypto.randomBytes(16).toString("base64");
+      socket.write(
+        "GET / HTTP/1.1\r\n" +
+          "Host: localhost\r\n" +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Key: ${key}\r\n` +
+          "Sec-WebSocket-Version: 13\r\n\r\n",
+      );
+    });
+    socket.on("data", (chunk) => {
+      if (!handshakeDone) {
+        handshake = Buffer.concat([handshake, chunk]);
+        const marker = handshake.indexOf("\r\n\r\n");
+        if (marker === -1) return;
+        const head = handshake.subarray(0, marker).toString("utf8");
+        if (!/^HTTP\/1\.1 101/i.test(head)) {
+          done(false);
+          return;
+        }
+        handshakeDone = true;
+        socket.write(wsFrameText(JSON.stringify({ type: "hello" })));
+        const rest = handshake.subarray(marker + 4);
+        if (rest.length > 0) parser(rest);
+        return;
+      }
+      parser(chunk);
+    });
+    socket.on("error", () => done(false));
+    socket.on("close", () => done(false));
+  });
+}
+
+// --- Slack message rendering -------------------------------------------------
+
+function fmtDeadline(decision, now = Date.now()) {
+  if (!decision.expires_unix_ms) return "期限なし";
+  const at = new Date(decision.expires_unix_ms);
+  const remainSec = Math.max(
+    0,
+    Math.round((decision.expires_unix_ms - now) / 1000),
+  );
+  const hh = String(at.getHours()).padStart(2, "0");
+  const mm = String(at.getMinutes()).padStart(2, "0");
+  const remain =
+    remainSec >= 120 ? `${Math.round(remainSec / 60)}分` : `${remainSec}秒`;
+  return `${hh}:${mm}（残り約${remain}）`;
+}
+
+function originLines(decision) {
+  const origin = decision.origin || {};
+  const lines = [];
+  if (origin.machine) lines.push(`*出どころマシン* ${origin.machine}`);
+  if (origin.workspace_label)
+    lines.push(`*スペース* ${origin.workspace_label}`);
+  if (origin.tab_label) lines.push(`*タブ* ${origin.tab_label}`);
+  if (origin.pane_label) lines.push(`*ペイン* ${origin.pane_label}`);
+  if (origin.pane_id) lines.push(`*ペインID* \`${origin.pane_id}\``);
+  if (origin.agent) lines.push(`*エージェント* \`${origin.agent}\``);
+  if (origin.cwd) lines.push(`*ディレクトリ* \`${origin.cwd}\``);
+  if (origin.branch) lines.push(`*ブランチ* \`${origin.branch}\``);
+  if (origin.command) lines.push(`*コマンド* \`${origin.command}\``);
+  if (origin.reason) lines.push(`*理由* ${origin.reason}`);
+  return lines;
+}
+
+const STATUS_TEXT = {
+  pending: ":hourglass_flowing_sand: 回答待ち",
+  answered: ":white_check_mark: 決定済み",
+  expired: ":hourglass: 期限切れ",
+  cancelled: ":no_entry_sign: 取り消し",
+  machine_down: ":warning: マシン切断",
+};
+
+// Slack caps a section's mrkdwn text around 3000 characters; keep a margin.
+const SLACK_SECTION_TEXT_LIMIT = 2800;
+
+function optionDescription(option) {
+  return typeof option?.description === "string" ? option.description.trim() : "";
+}
+
+function optionPreview(option) {
+  return typeof option?.preview === "string" ? option.preview.trimEnd() : "";
+}
+
+function optionEntryText(option, index, multiSelect = false) {
+  const emoji = NUMBER_EMOJIS[index] || `${index + 1}番`;
+  const box = multiSelect ? ":white_medium_square: " : "";
+  const label = `:${emoji}: ${box}${option.label || option.id}`;
+  const description = optionDescription(option);
+  let entry = description
+    ? `${label}\n> ${description.replace(/\n+/g, "\n> ")}`
+    : label;
+  const preview = optionPreview(option);
+  if (preview) {
+    entry += `\n\`\`\`\n${preview.replace(/\`\`\`/g, "'\`\`'")}\n\`\`\``;
+  } else if (option?.preview_unavailable) {
+    entry += "\n> プレビューあり（画面で確認）";
+  }
+  return entry;
+}
+
+// Split text into pieces that each fit the section limit — newline cut when
+// possible, code-point-safe hard cut otherwise. Nothing is ever truncated.
+function splitOptionText(text, limit) {
+  const parts = [];
+  let rest = text;
+  while (rest.length > limit) {
+    let cut = rest.lastIndexOf("\n", limit);
+    if (cut <= 0) {
+      cut = Array.from(rest).slice(0, limit).join("").length;
+    }
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n/, "");
+  }
+  parts.push(rest);
+  return parts;
+}
+
+function optionBlockChunks(options, multiSelect = false) {
+  const pieces = options
+    .map((option, index) => optionEntryText(option, index, multiSelect))
+    .flatMap((entry) => splitOptionText(entry, SLACK_SECTION_TEXT_LIMIT));
+  const chunks = [];
+  let current = "";
+  for (const piece of pieces) {
+    if (current && current.length + 1 + piece.length > SLACK_SECTION_TEXT_LIMIT) {
+      chunks.push(current);
+      current = piece;
+    } else {
+      current = current ? `${current}\n${piece}` : piece;
+    }
+  }
+  if (current) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
+function buildDecisionBlocks({
+  decision,
+  machine,
+  status = "pending",
+  mention = "",
+  now = Date.now(),
+}) {
+  const statusText = STATUS_TEXT[status] || status;
+  const machineLabel = machine?.label || machine?.id || "local";
+  const headParts = [`【${statusText}】判断待ち`, machineLabel];
+  if (decision.question_label) headParts.push(decision.question_label);
+  if (mention) headParts.push(mention);
+  const head = headParts.join(" | ");
+  const blocks = [
+    { type: "context", elements: [{ type: "mrkdwn", text: head }] },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: `*${decision.title || decision.decision_id}*` },
+    },
+  ];
+  if (decision.body) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: decision.body },
+    });
+  }
+  const origins = originLines(decision);
+  if (origins.length > 0) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: origins.join("\n") },
+    });
+  }
+
+  if (status === "pending") {
+    const options = Array.isArray(decision.options) ? decision.options : [];
+    if (options.length > 0) {
+      blocks.push({ type: "divider" });
+      for (const chunk of optionBlockChunks(
+        options,
+        decision.multi_select === true,
+      )) {
+        blocks.push({ type: "section", text: { type: "mrkdwn", text: chunk } });
+      }
+      const hints = decision.multi_select
+        ? [
+            "複数選択: 番号リアクションで選んで :white_check_mark: で確定 or スレッドに「1,3」と番号を並べて返信",
+          ]
+        : ["数字リアクションで選択 or スレッドに番号で返信"];
+      if (decision.allow_text) {
+        hints.push("自由記述はスレッドに文で返信");
+      }
+      const hint = hints.join(" / ");
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `${hint}  |  ⏱️ 期限: ${fmtDeadline(decision, now)}  |  ${decision.decision_id}`,
+          },
+        ],
+      });
+    } else {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `スレッドに返信してください  |  ⏱️ 期限: ${fmtDeadline(decision, now)}  |  ${decision.decision_id}`,
+          },
+        ],
+      });
+    }
+    return blocks;
+  }
+
+  const answer = decision.answer || {};
+  const answerIds = Array.isArray(answer.option_ids) && answer.option_ids.length
+    ? answer.option_ids
+    : [answer.option_id].filter(Boolean);
+  const what = answerIds
+    .map(
+      (id) =>
+        (decision.options || []).find((o) => o.id === id)?.label || id,
+    )
+    .join(" + ") || answer.text || "";
+  const who = answer.responder || "";
+  let resultText;
+  if (status === "answered") {
+    resultText = `*結果* ${what || "（空）"}${who ? `\n*回答者* ${who}` : ""}`;
+  } else if (status === "expired") {
+    resultText = "期限切れになりました";
+  } else if (status === "cancelled") {
+    resultText = "取り消されました";
+  } else if (status === "machine_down") {
+    resultText = "マシンとの接続が切れました（回答を送れません）";
+  } else {
+    resultText = `状態: ${status}`;
+  }
+  blocks.push({ type: "divider" });
+  blocks.push({ type: "section", text: { type: "mrkdwn", text: resultText } });
+  return blocks;
+}
+
+function fallbackText({ decision, machine }) {
+  const options = (decision.options || [])
+    .map((option, index) => {
+      const line = `${index + 1}. ${option.label || option.id}`;
+      const description = optionDescription(option);
+      return description ? `${line}\n   ${description}` : line;
+    })
+    .join("\n");
+  return [
+    `[${machine?.label || "local"}] ${decision.title || decision.decision_id}`,
+    decision.body || "",
+    options,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// --- Daemon -------------------------------------------------------------------
+
+function decisionKey(machineId, decisionId) {
+  return `${machineId} ${decisionId}`;
+}
+
+function decisionIdOf(decision) {
+  return String(decision?.decision_id || "");
+}
+
+// Identity of the question a decision carries. A churned decision comes
+// back under a new decision_id while the question — same pane, title,
+// options, question_label — is unchanged, which is what the post-reuse
+// path matches on.
+function questionKey(machineId, decision) {
+  const origin = decision?.origin || {};
+  const options = (decision?.options || [])
+    .map((option) => `${option?.id ?? ""} ${option?.label ?? ""}`)
+    .join("");
+  return JSON.stringify([
+    String(machineId),
+    origin.pane_id || "",
+    decision?.kind || "",
+    decision?.title || "",
+    decision?.question_label || "",
+    options,
+    decision?.allow_text === true,
+    decision?.multi_select === true,
+  ]);
+}
+
+export class SlackDecisionsDaemon {
+  constructor({
+    config,
+    slack,
+    botUserId = "",
+    spawnWatch, // () => {lines: AsyncIterable<object>, close()}
+    runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
+    getDecision, // (machineId, decisionId) => Promise<decision|null>
+    glassesState, // () => Promise<string|null>
+    log: logFn = log,
+    postsFilePath = null,
+  }) {
+    this.config = config;
+    this.slack = slack;
+    this.botUserId = botUserId;
+    this.spawnWatch = spawnWatch;
+    this.runAnswer = runAnswer;
+    this.getDecision = getDecision;
+    this.glassesState = glassesState;
+    this.log = logFn;
+    this.postsFilePath = postsFilePath;
+    this.entries = new Map(); // key -> entry
+    this.machinesDown = new Set();
+    this.posts = new Map(); // key -> {channel, ts, machineId, decisionId}
+    // questionKey -> {channel, ts, at, mapKey, timer}: posts of decisions
+    // cancelled moments ago, adoptable by a recreated copy of the same
+    // question, deleted when the window ends.
+    this.reusablePosts = new Map();
+    this.recreateReuseMs =
+      config.recreatePostReuseMs ??
+      Math.max(
+        RECREATED_POST_REUSE_MIN_MS,
+        (config.postDelayMs ?? DEFAULT_POST_DELAY_MS) +
+          RECREATED_POST_REUSE_MARGIN_MS,
+      );
+    this.stopped = false;
+    this.pollTimer = null;
+    this.socketAbort = new AbortController();
+    this._watchHandle = null;
+    this._watchDone = null;
+    this._socketDone = null;
+  }
+
+  loadPostsFile() {
+    if (!this.postsFilePath) return;
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.postsFilePath, "utf8"));
+      const now = Date.now();
+      for (const [key, value] of Object.entries(raw || {})) {
+        if (!value || typeof value.ts !== "string" || !value.ts) continue;
+        if (now - (value.saved_at || 0) > STALE_POST_MAX_AGE_MS) continue;
+        this.posts.set(key, {
+          channel: value.channel,
+          ts: value.ts,
+          machineId: value.machine_id,
+          decisionId: value.decision_id,
+        });
+      }
+      if (this.posts.size > 0) {
+        this.log(`Slack 投稿記録を復元: ${this.posts.size} 件`);
+      }
+    } catch {
+      // no posts file yet
+    }
+  }
+
+  savePostsFile() {
+    if (!this.postsFilePath) return;
+    try {
+      fs.mkdirSync(path.dirname(this.postsFilePath), { recursive: true });
+      const out = {};
+      for (const [key, value] of this.posts) {
+        out[key] = {
+          channel: value.channel,
+          ts: value.ts,
+          machine_id: value.machineId,
+          decision_id: value.decisionId,
+          saved_at: Date.now(),
+        };
+      }
+      fs.writeFileSync(this.postsFilePath, JSON.stringify(out, null, 2), {
+        mode: 0o600,
+      });
+    } catch (error) {
+      this.log(`posts ファイルの保存に失敗: ${error.message}`);
+    }
+  }
+
+  async start() {
+    this.loadPostsFile();
+    this._watchDone = this.watchLoop();
+    this._schedulePoll();
+    if (this.config.socketMode && this.slack.appToken) {
+      this._socketDone = this.socketLoop();
+    } else if (!this.slack.appToken) {
+      this.log(
+        "SLACK_APP_TOKEN なし: Socket Mode なしで履歴ポーリングだけで回答を拾います",
+      );
+    }
+  }
+
+  async stop() {
+    this.stopped = true;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    for (const entry of this.entries.values()) {
+      if (entry.postTimer) clearTimeout(entry.postTimer);
+    }
+    for (const record of this.reusablePosts.values()) {
+      if (record.timer) clearTimeout(record.timer);
+    }
+    this.reusablePosts.clear();
+    this.socketAbort.abort();
+    this._watchHandle?.close?.();
+    await Promise.allSettled([this._watchDone, this._socketDone]);
+  }
+
+  // ---- watch stream ---------------------------------------------------------
+
+  async watchLoop() {
+    while (!this.stopped) {
+      const watch = await this.spawnWatch();
+      this._watchHandle = watch;
+      try {
+        for await (const line of watch.lines) {
+          if (this.stopped) break;
+          try {
+            this.onWatchLine(line);
+          } catch (error) {
+            this.log(`watch 行の処理に失敗: ${error.message}`);
+          }
+        }
+      } catch (error) {
+        this.log(`decision watch が切れました: ${error.message}`);
+      }
+      if (this.stopped) break;
+      this.log("decision watch を再接続します");
+      await sleep(WATCH_RETRY_MS);
+    }
+  }
+
+  onWatchLine(line) {
+    const event = line?.event;
+    const machine = line?.machine || {};
+    const mid = String(machine.id || "local");
+    const decision = line?.decision || {};
+    const did = decisionIdOf(decision);
+
+    if (event === "machine_up") {
+      void this.onMachineUp(mid);
+      return;
+    }
+    if (event === "machine_down") {
+      void this.onMachineDown(mid, line?.reason || "");
+      return;
+    }
+    if (event === "created" && did) {
+      void this.onCreated(mid, machine, decision);
+      return;
+    }
+    if (event === "resolved" && did) {
+      void this.onResolved(mid, decision);
+    }
+  }
+
+  async onCreated(mid, machine, decision) {
+    const key = decisionKey(mid, decisionIdOf(decision));
+    const existing = this.entries.get(key);
+    if (existing) {
+      // Reconnect replay. If it was marked machine-down, re-arm it now.
+      // Its post was deleted on machine_down, so a still-pending one is
+      // posted again.
+      if (existing.machineDown) {
+        existing.machineDown = false;
+        existing.decision = decision;
+        if (existing.post) {
+          await this.renderPending(existing);
+        } else {
+          await this.postDecision(existing);
+        }
+      }
+      return;
+    }
+    if (decision.status && decision.status !== "pending") return;
+
+    const entry = {
+      key,
+      machineId: mid,
+      machine,
+      decision,
+      post: this.posts.get(key)
+        ? { channel: this.posts.get(key).channel, ts: this.posts.get(key).ts }
+        : null,
+      machineDown: false,
+      answerPending: false,
+      resolved: false,
+      postTimer: null,
+      seenReplies: new Set(),
+      seenReactions: new Set(),
+      // Option ids picked via number reactions on a multi_select decision;
+      // submitted when a :white_check_mark: reaction confirms them.
+      selection: new Set(),
+    };
+    this.entries.set(key, entry);
+    if (entry.post) {
+      this.log(`再起動後に追跡を再開: ${decision.decision_id}`);
+      return;
+    }
+    if (this.machinesDown.has(mid)) {
+      this.log(`${mid} は切断中: ${decision.decision_id} は投稿しません`);
+      return;
+    }
+
+    const glasses = await this.glassesState();
+    if (glasses === "connected") {
+      this.log(
+        `グラス接続中: ${decision.decision_id} は ${Math.round(this.config.postDelayMs / 1000)}秒たっても未回答なら投稿`,
+      );
+      entry.postTimer = setTimeout(() => {
+        entry.postTimer = null;
+        void this.postDecision(entry);
+      }, this.config.postDelayMs);
+    } else {
+      this.log(`グラス未接続: ${decision.decision_id} をすぐ投稿します`);
+      await this.postDecision(entry);
+    }
+  }
+
+  async postDecision(entry) {
+    if (entry.resolved || entry.post || entry.posting || this.stopped) return;
+    if (this.machinesDown.has(entry.machineId)) return;
+    if (entry.decision.status && entry.decision.status !== "pending") return;
+    const { decision, machine } = entry;
+    // The same question recreated right after a cancel — the
+    // screen-prompt churn this guards against — reuses the cancelled
+    // decision's post instead of stacking a new one.
+    const reuse = this.takeReusablePost(entry);
+    if (reuse) {
+      entry.post = { channel: reuse.channel, ts: reuse.ts };
+      if (reuse.mapKey) this.posts.delete(reuse.mapKey);
+      this.posts.set(entry.key, {
+        channel: reuse.channel,
+        ts: reuse.ts,
+        machineId: entry.machineId,
+        decisionId: decision.decision_id,
+      });
+      this.savePostsFile();
+      // Reactions and thread replies left on the old post answered the
+      // cancelled decision; they must not answer the recreated one.
+      try {
+        const [message, replies] = await Promise.all([
+          this.slack.message(reuse.ts),
+          this.slack.replies(reuse.ts),
+        ]);
+        for (const reaction of message?.reactions || []) {
+          for (const user of reaction.users || []) {
+            if (user !== this.botUserId) {
+              entry.seenReactions.add(`${reaction.name}:${user}`);
+            }
+          }
+        }
+        for (const reply of replies || []) {
+          if (reply.ts && reply.ts !== reuse.ts) entry.seenReplies.add(reply.ts);
+        }
+      } catch (error) {
+        this.log(`使い回す投稿の既読化に失敗: ${error.message}`);
+      }
+      if (entry.resolved) {
+        await this.finishResolvedPost(entry);
+        return;
+      }
+      await this.renderPending(entry);
+      if (entry.resolved) {
+        await this.finishResolvedPost(entry);
+        return;
+      }
+      const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
+      if (emojis.length > 0 && this.ownsPost(entry.key, entry.post)) {
+        await this.slack.addReactions(reuse.ts, emojis);
+      }
+      this.log(`Slack 投稿を使い回し: ${decision.decision_id} (${reuse.ts})`);
+      return;
+    }
+    const blocks = buildDecisionBlocks({
+      decision,
+      machine,
+      status: "pending",
+      mention: this.slack.mention || "",
+    });
+    entry.posting = true;
+    try {
+      const posted = await this.slack.postMessage({
+        text: fallbackText({ decision, machine }),
+        blocks,
+      });
+      entry.post = { channel: this.slack.channel, ts: posted.ts };
+      this.posts.set(entry.key, {
+        channel: this.slack.channel,
+        ts: posted.ts,
+        machineId: entry.machineId,
+        decisionId: decision.decision_id,
+      });
+      this.savePostsFile();
+      if (entry.resolved) {
+        await this.finishResolvedPost(entry);
+        return;
+      }
+      const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
+      if (emojis.length > 0) {
+        await this.slack.addReactions(posted.ts, emojis);
+      }
+      this.log(`Slack へ投稿: ${decision.decision_id} (${posted.ts})`);
+    } catch (error) {
+      this.log(`Slack 投稿に失敗 (${decision.decision_id}): ${error.message}`);
+      if (!entry.resolved && !this.stopped) {
+        entry.postTimer = setTimeout(() => {
+          entry.postTimer = null;
+          void this.postDecision(entry);
+        }, POST_RETRY_MS);
+      }
+    } finally {
+      entry.posting = false;
+    }
+  }
+
+  async renderPending(entry) {
+    if (!entry.post || entry.resolved) return;
+    const post = entry.post;
+    try {
+      await this.retryPostMutation(() => {
+        if (entry.resolved || !this.ownsPost(entry.key, post)) return;
+        return this.slack.updateMessage(post.ts, {
+          text: fallbackText(entry),
+          blocks: buildDecisionBlocks({
+            decision: entry.decision,
+            machine: entry.machine,
+            status: "pending",
+            mention: this.slack.mention || "",
+          }),
+        });
+      }, () => !entry.resolved && this.ownsPost(entry.key, post));
+    } catch (error) {
+      this.log(`投稿の再表示に失敗 (${entry.decision.decision_id}): ${error.message}`);
+    }
+  }
+
+  async updatePostStatus(entry, status, decision) {
+    const post = entry.post;
+    if (!this.ownsPost(entry.key, post)) return;
+    try {
+      await this.retryPostMutation(() => this.slack.updateMessage(post.ts, {
+        text: `${(STATUS_TEXT[status] || status).replace(/:[a-z_0-9]+:/g, "").trim()}: ${decision.title || decision.decision_id}`,
+        blocks: buildDecisionBlocks({
+          decision,
+          machine: entry.machine,
+          status,
+          mention: this.slack.mention || "",
+        }),
+      }), () => this.ownsPost(entry.key, post));
+    } catch (error) {
+      this.log(`投稿の更新に失敗 (${decision.decision_id}): ${error.message}`);
+    }
+  }
+
+  async onResolved(mid, decision) {
+    const key = decisionKey(mid, decisionIdOf(decision));
+    const entry =
+      this.entries.get(key) || {
+        key,
+        machineId: mid,
+        machine: { id: mid, label: mid },
+        decision,
+        post: this.posts.get(key) || null,
+        resolved: false,
+        postTimer: null,
+      };
+    entry.resolved = true;
+    entry.decision = decision;
+    clearTimeout(entry.answerRetryTimer);
+    if (entry.postTimer) clearTimeout(entry.postTimer);
+    await this.finishResolvedPost(entry);
+    this.entries.delete(key);
+    this.log(`決定済み: ${decision.decision_id} (${decision.status})`);
+  }
+
+  ownsPost(key, post) {
+    const owner = this.posts.get(key);
+    return !!post && owner?.ts === post.ts && owner.channel === post.channel;
+  }
+
+  finishResolvedPost(entry) {
+    if (!this.ownsPost(entry.key, entry.post)) return;
+    if (entry.resolutionWork) return entry.resolutionWork;
+    entry.resolutionWork = (async () => {
+      const decision = entry.decision;
+      const post = entry.post;
+      const status = decision.status || "answered";
+      if (status === "cancelled") {
+        await this.updatePostStatus(entry, status, decision);
+        if (this.ownsPost(entry.key, post)) {
+          this.rememberReusablePost(entry.machineId, decision, post, entry.key);
+        }
+      } else {
+        await this.deletePost(entry);
+      }
+    })();
+    return entry.resolutionWork;
+  }
+
+  async retryPostMutation(operation, stillOwned = () => true) {
+    const attempts = this.config.postMutationAttempts ?? POST_MUTATION_ATTEMPTS;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        if (!stillOwned()) return;
+        return await operation();
+      } catch (error) {
+        const communicationFailure = error instanceof TypeError ||
+          ["AbortError", "TimeoutError"].includes(error.name) ||
+          /^(ECONN|ENET|EHOST|ETIMEDOUT|EAI_)/.test(error.code || "");
+        if (!communicationFailure || attempt >= attempts || this.stopped) throw error;
+        await sleep(this.config.postMutationRetryMs ?? POST_MUTATION_RETRY_MS);
+      }
+    }
+  }
+
+  // Deletes the post and the bot's own thread replies. A human's replies
+  // cannot be deleted with a bot token, but they leave the channel view
+  // together with the parent post.
+  async deletePost(entry) {
+    const post = entry.post;
+    const stillOwned = () => this.ownsPost(entry.key, post);
+    if (!stillOwned()) return;
+    if (await this.deletePostByTs(post, stillOwned) && stillOwned()) {
+      entry.post = null;
+      this.posts.delete(entry.key);
+      this.savePostsFile();
+    }
+  }
+
+  async deletePostByTs(post, stillOwned) {
+    if (!stillOwned()) return false;
+    let replies = [];
+    try {
+      replies = await this.slack.replies(post.ts);
+    } catch (error) {
+      this.log(`スレッド返信の取得に失敗 (${post.ts}): ${error.message}`);
+    }
+    for (const reply of replies) {
+      if (reply.ts === post.ts) continue;
+      if (!reply.bot_id && reply.user !== this.botUserId) continue;
+      try {
+        await this.retryPostMutation(() => this.slack.deleteMessage(reply.ts), stillOwned);
+      } catch (error) {
+        this.log(`スレッド返信の削除に失敗 (${reply.ts}): ${error.message}`);
+      }
+    }
+    try {
+      await this.retryPostMutation(() => this.slack.deleteMessage(post.ts), stillOwned);
+      if (!stillOwned()) return false;
+      this.log(`Slack 投稿を削除: ${post.ts}`);
+      return true;
+    } catch (error) {
+      // Retrying an already-deleted message is successful cleanup.
+      if (error.payload?.error === "message_not_found") return true;
+      this.log(`Slack 投稿の削除に失敗 (${post.ts}): ${error.message}`);
+      return false;
+    }
+  }
+
+  rememberReusablePost(machineId, decision, post, mapKey) {
+    if (!this.ownsPost(mapKey, post)) return;
+    const now = Date.now();
+    for (const [key, record] of this.reusablePosts) {
+      if (now - record.at > this.recreateReuseMs) {
+        this.reusablePosts.delete(key);
+      }
+    }
+    const qkey = questionKey(machineId, decision);
+    const previous = this.reusablePosts.get(qkey);
+    if (previous?.timer) clearTimeout(previous.timer);
+    const record = { channel: post.channel, ts: post.ts, at: now, mapKey };
+    record.timer = setTimeout(async () => {
+      if (this.reusablePosts.get(qkey) !== record) return;
+      this.reusablePosts.delete(qkey);
+      const stillOwned = () => this.ownsPost(mapKey, record);
+      if (await this.deletePostByTs(record, stillOwned) && stillOwned()) {
+        this.posts.delete(mapKey);
+        this.savePostsFile();
+      }
+    }, this.recreateReuseMs);
+    record.timer.unref?.();
+    this.reusablePosts.set(qkey, record);
+  }
+
+  takeReusablePost(entry) {
+    const qkey = questionKey(entry.machineId, entry.decision);
+    const record = this.reusablePosts.get(qkey);
+    if (!record) return null;
+    this.reusablePosts.delete(qkey);
+    if (record.timer) clearTimeout(record.timer);
+    if (Date.now() - record.at > this.recreateReuseMs ||
+        !this.ownsPost(record.mapKey, record)) return null;
+    return record;
+  }
+
+  async onMachineDown(mid, reason) {
+    this.machinesDown.add(mid);
+    const handled = new Set();
+    for (const entry of [...this.entries.values()]) {
+      if (entry.machineId !== mid) continue;
+      if (!entry.post) {
+        if (entry.postTimer) clearTimeout(entry.postTimer);
+        this.entries.delete(entry.key);
+        continue; // unposted items of a down machine are never posted
+      }
+      entry.machineDown = true;
+      handled.add(entry.key);
+      // Deleted, not marked: a down machine's question cannot be answered.
+      // A still-pending decision is re-posted on machine_up.
+      await this.deletePost(entry);
+    }
+    // Posts restored from the posts file with no live entry get the same
+    // treatment — their status cannot be verified while the machine is
+    // down, and a pending one is re-posted on machine_up.
+    let removedOrphans = false;
+    for (const [key, post] of [...this.posts]) {
+      if (post.machineId !== mid || handled.has(key)) continue;
+      const stillOwned = () => this.ownsPost(key, post);
+      if (await this.deletePostByTs(post, stillOwned) && stillOwned()) {
+        this.posts.delete(key);
+        removedOrphans = true;
+      }
+    }
+    if (removedOrphans) this.savePostsFile();
+    this.log(`マシン切断: ${mid} (${reason})`);
+  }
+
+  async onMachineUp(mid) {
+    const wasDown = this.machinesDown.delete(mid);
+    if (wasDown) this.log(`マシン復帰: ${mid}`);
+    // Decisions resolved while the machine was down (or while this daemon was
+    // down) are reconciled once the created replay has had a moment to arrive.
+    setTimeout(() => void this.reconcileMachine(mid), RECONCILE_DELAY_MS);
+  }
+
+  async reconcileMachine(mid) {
+    const stale = [...this.entries.values()].filter(
+      (entry) =>
+        entry.machineId === mid &&
+        (entry.machineDown ||
+          (!entry.post && !entry.postTimer && !entry.resolved)),
+    );
+    for (const [key, post] of this.posts) {
+      if (post.machineId === mid && !this.entries.has(key)) {
+        stale.push({
+          key,
+          machineId: mid,
+          machine: { id: mid, label: mid },
+          decision: { decision_id: post.decisionId },
+          post: { channel: post.channel, ts: post.ts },
+          resolved: false,
+          postTimer: null,
+        });
+      }
+    }
+    for (const entry of stale) {
+      const did = entry.decision?.decision_id || entry.post?.decisionId;
+      if (!did) continue;
+      try {
+        const current = await this.getDecision(mid, did);
+        if (!current || current.status !== "pending") {
+          await this.onResolved(
+            mid,
+            current || {
+              decision_id: did,
+              title: entry.decision?.title || did,
+              options: entry.decision?.options || [],
+              status: "cancelled",
+            },
+          );
+        } else {
+          entry.machineDown = false;
+          entry.decision = current;
+          if (!this.entries.has(entry.key)) this.entries.set(entry.key, entry);
+          if (entry.post) {
+            await this.renderPending(entry);
+          } else {
+            // Its post was deleted while the machine was down.
+            await this.postDecision(entry);
+          }
+        }
+      } catch (error) {
+        this.log(`decision get に失敗 (${mid}/${did}): ${error.message}`);
+      }
+    }
+  }
+
+  // ---- answering ------------------------------------------------------------
+
+  pendingEntryByTs(ts) {
+    for (const entry of this.entries.values()) {
+      if (entry.post && entry.post.ts === ts && !entry.resolved) return entry;
+    }
+    return null;
+  }
+
+  async submitAnswer(entry, { optionId = null, optionIds = null, text = null, via }) {
+    if (entry.resolved || entry.answerPending) return;
+    entry.answerPending = true;
+    const did = entry.decision.decision_id;
+    const ids = Array.isArray(optionIds) && optionIds.length
+      ? optionIds
+      : [optionId ?? ""];
+    const args = [
+      "decision",
+      "answer",
+      did,
+      ...ids,
+      "--responder",
+      "slack",
+      "--machine",
+      entry.machineId,
+    ];
+    if (text) args.push("--text", text);
+    this.log(`回答を送信: ${did} option=${ids.join(",") || "-"} via=${via}`);
+    const result = await this.runAnswer(args);
+    if (result.code === 0) return; // the resolved event updates the post
+    entry.answerPending = false;
+    const combined = `${result.stdout}\n${result.stderr}`;
+    if (combined.includes("decision_already_resolved")) {
+      await this.postThreadNote(entry, "ほかの窓口で決定済みでした。");
+      return;
+    }
+    const approvalUrl = combined.match(/https:\/\/login\.tailscale\.com\/\S+/)?.[0];
+    if (approvalUrl && !entry.resolved) {
+      // The saved machine wants a Tailscale SSH re-approval for a new
+      // connection. Keep the answer and resend it until it goes through or
+      // the decision resolves, and tell the user where to approve.
+      entry.answerRetries = (entry.answerRetries || 0) + 1;
+      this.log(`回答を送れません (${did}): Tailscale の承認待ち ${approvalUrl}（${entry.answerRetries}回目）`);
+      if (entry.lastApprovalUrl !== approvalUrl) {
+        entry.lastApprovalUrl = approvalUrl;
+        const machine = entry.machine?.label || entry.machineId;
+        await this.postThreadNote(
+          entry,
+          `回答はまだ ${machine} に届いていません。${machine} への接続に Tailscale の承認が必要です: ${approvalUrl}\n承認すると、この回答を自動で送り直します。`,
+        );
+      }
+      if (entry.answerRetries < ANSWER_RETRY_LIMIT) {
+        clearTimeout(entry.answerRetryTimer);
+        entry.answerRetryTimer = setTimeout(() => {
+          if (!entry.resolved) {
+            void this.submitAnswer(entry, { optionId, optionIds, text, via: `${via} (resend)` });
+          }
+        }, this.config.answerRetryMs ?? ANSWER_RETRY_MS);
+        entry.answerRetryTimer.unref?.();
+      }
+      return;
+    }
+    const detail =
+      combined.trim().split("\n").pop()?.slice(0, 300) || "unknown";
+    this.log(`回答の送信に失敗 (${did}): ${detail}`);
+    await this.postThreadNote(entry, `回答を送れませんでした: ${detail}`);
+  }
+
+  async postThreadNote(entry, text) {
+    if (!entry.post) return;
+    try {
+      await this.slack.postThreadReply(entry.post.ts, text);
+    } catch (error) {
+      this.log(`スレッドへの書き込みに失敗: ${error.message}`);
+    }
+  }
+
+  // A human reply in the decision thread: a bare number picks that option;
+  // anything else is free text (only valid for allow_text decisions).
+  async handleThreadReply(entry, text, user = "") {
+    const trimmed = (text || "").normalize("NFKC").trim();
+    if (!trimmed) return;
+    const options = entry.decision.options || [];
+    const numbers = trimmed.match(/^\d[\d\s,、]*$/)
+      ? trimmed.split(/[\s,、]+/).filter(Boolean).map(Number)
+      : null;
+    if (numbers && numbers.length > 0) {
+      const picked = [
+        ...new Set(
+          numbers
+            .map((n) => n - 1)
+            .filter((index) => index >= 0 && index < options.length)
+            .map((index) => options[index].id),
+        ),
+      ];
+      const acceptsMany = entry.decision.multi_select === true;
+      const ids = acceptsMany ? picked : picked.slice(0, 1);
+      if (ids.length > 0) {
+        await this.submitAnswer(entry, {
+          optionId: ids[0],
+          optionIds: ids,
+          via: `slack reply by ${user || "?"}`,
+        });
+        return;
+      }
+    }
+    if (entry.decision.allow_text) {
+      await this.submitAnswer(entry, {
+        text: trimmed,
+        via: `slack reply by ${user || "?"}`,
+      });
+      return;
+    }
+    await this.postThreadNote(
+      entry,
+      "この判断待ちは自由記述を受け付けていません。数字のリアクションか、番号の返信で選んでください。",
+    );
+  }
+
+  async handleReaction(entry, reactionName, user = "") {
+    const options = entry.decision.options || [];
+    const multiSelect = entry.decision.multi_select === true;
+    if (multiSelect && reactionName === "white_check_mark") {
+      if (entry.selection.size === 0) {
+        await this.postThreadNote(
+          entry,
+          "まだ選択肢が選ばれていません。先に番号リアクションを付けてから :white_check_mark: で確定してください。",
+        );
+        return;
+      }
+      const ids = [...entry.selection]
+        .map((index) => options[index]?.id)
+        .filter(Boolean);
+      await this.submitAnswer(entry, {
+        optionId: ids[0],
+        optionIds: ids,
+        via: `slack confirm :white_check_mark: by ${user || "?"}`,
+      });
+      return;
+    }
+    const index = NUMBER_EMOJIS.indexOf(reactionName);
+    if (index === -1) return;
+    if (index >= options.length) return;
+    if (multiSelect) {
+      entry.selection.add(index);
+      const picked = [...entry.selection]
+        .sort((a, b) => a - b)
+        .map((pickedIndex) => `:${NUMBER_EMOJIS[pickedIndex]}:`)
+        .join(" ");
+      await this.postThreadNote(
+        entry,
+        `選択中: ${picked} — :white_check_mark: で確定します。`,
+      );
+      return;
+    }
+    await this.submitAnswer(entry, {
+      optionId: options[index].id,
+      via: `slack reaction :${reactionName}: by ${user || "?"}`,
+    });
+  }
+
+  // ---- Socket Mode ------------------------------------------------------------
+
+  async socketLoop() {
+    while (!this.stopped) {
+      let url;
+      try {
+        url = await this.slack.openSocketUrl();
+      } catch (error) {
+        this.log(`Socket Mode URL の取得に失敗: ${error.message}`);
+        await sleep(SOCKET_RECONNECT_MS);
+        continue;
+      }
+      await this.runSocket(url);
+      if (!this.stopped) await sleep(SOCKET_RECONNECT_MS);
+    }
+  }
+
+  runSocket(url) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        this.socketAbort.signal.removeEventListener("abort", onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        try {
+          ws.close();
+        } catch {}
+        finish();
+      };
+      const ws = new WebSocket(url);
+      this.socketAbort.signal.addEventListener("abort", onAbort, { once: true });
+      ws.addEventListener("message", (event) => {
+        let envelope;
+        try {
+          envelope = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+        if (envelope?.envelope_id) {
+          try {
+            ws.send(JSON.stringify({ envelope_id: envelope.envelope_id }));
+          } catch {}
+        }
+        if (envelope?.type === "disconnect") {
+          try {
+            ws.close();
+          } catch {}
+          finish();
+          return;
+        }
+        if (envelope?.payload) void this.handleSocketPayload(envelope.payload);
+      });
+      ws.addEventListener("close", finish);
+      ws.addEventListener("error", () => {
+        try {
+          ws.close();
+        } catch {}
+        finish();
+      });
+    });
+  }
+
+  async handleSocketPayload(payload) {
+    const event = payload?.type === "event_callback" ? payload.event : payload;
+    if (event?.type === "reaction_added") {
+      if (this.botUserId && event.user === this.botUserId) return;
+      if (event.item?.type !== "message" || !event.item?.ts) return;
+      const entry = this.pendingEntryByTs(event.item.ts);
+      if (!entry) return;
+      await this.handleReaction(entry, event.reaction, event.user || "");
+      return;
+    }
+    if (event?.type === "message") {
+      if (event.subtype && event.subtype !== "file_share") return;
+      if (event.bot_id || (this.botUserId && event.user === this.botUserId)) {
+        return;
+      }
+      const threadTs = event.thread_ts;
+      if (!threadTs) return;
+      const entry = this.pendingEntryByTs(threadTs);
+      if (!entry) return;
+      if (event.ts && event.ts === entry.post?.ts) return;
+      await this.handleThreadReply(entry, event.text || "", event.user || "");
+    }
+  }
+
+  // ---- history polling fallback ----------------------------------------------
+  // Socket Mode events can land on another consumer's connection (ai_guard
+  // opens its own). Missed answers are recovered by reading channel history.
+
+  _schedulePoll() {
+    if (this.stopped) return;
+    this.pollTimer = setTimeout(async () => {
+      try {
+        await this.pollOnce();
+      } catch (error) {
+        this.log(`履歴ポーリングに失敗: ${error.message}`);
+      }
+      this._schedulePoll();
+    }, this.config.pollIntervalMs);
+  }
+
+  async pollOnce() {
+    for (const entry of this.entries.values()) {
+      if (!entry.post || entry.resolved || entry.answerPending || entry.machineDown) {
+        continue;
+      }
+      await this.pollEntryReactions(entry);
+      await this.pollEntryReplies(entry);
+    }
+  }
+
+  async pollEntryReactions(entry) {
+    let message;
+    try {
+      message = await this.slack.message(entry.post.ts);
+    } catch {
+      return;
+    }
+    const multiSelect = entry.decision.multi_select === true;
+    const options = entry.decision.options || [];
+    let confirmUser = "";
+    for (const reaction of message?.reactions || []) {
+      const users = (reaction.users || []).filter((u) => u !== this.botUserId);
+      if (users.length === 0) continue;
+      const marker = `${reaction.name}:${users[0]}`;
+      if (entry.seenReactions.has(marker)) continue;
+      if (multiSelect && reaction.name === "white_check_mark") {
+        entry.seenReactions.add(marker);
+        confirmUser = users[0];
+        continue;
+      }
+      const index = NUMBER_EMOJIS.indexOf(reaction.name);
+      if (index === -1 || index >= options.length) continue;
+      entry.seenReactions.add(marker);
+      if (multiSelect) {
+        entry.selection.add(index);
+      } else {
+        await this.submitAnswer(entry, {
+          optionId: options[index].id,
+          via: `slack reaction :${reaction.name}: (history)`,
+        });
+        return;
+      }
+    }
+    if (confirmUser) {
+      await this.handleReaction(entry, "white_check_mark", confirmUser);
+    }
+  }
+
+  async pollEntryReplies(entry) {
+    let messages;
+    try {
+      messages = await this.slack.replies(entry.post.ts);
+    } catch {
+      return;
+    }
+    const postTs = entry.post.ts;
+    const fresh = messages
+      .filter((message) => message.ts && Number(message.ts) > Number(postTs))
+      .filter((message) => !entry.seenReplies.has(message.ts))
+      .filter(
+        (message) =>
+          message.user !== this.botUserId &&
+          !message.bot_id &&
+          message.subtype !== "bot_message" &&
+          (!message.subtype || message.subtype === "file_share"),
+      )
+      .sort((a, b) => Number(a.ts) - Number(b.ts));
+    for (const message of fresh) {
+      entry.seenReplies.add(message.ts);
+      await this.handleThreadReply(entry, message.text || "", message.user || "");
+      if (entry.answerPending || entry.resolved) return;
+    }
+  }
+}
+
+// --- process plumbing -----------------------------------------------------------
+
+function spawnDecisionWatch(config, logFn) {
+  const bin = resolveIkesuBin(config, logFn);
+  if (!bin) {
+    return {
+      lines: (async function* () {
+        throw new Error(
+          `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
+            "PATH・/opt/homebrew/bin・~/.local/bin を確認してください",
+        );
+      })(),
+      close() {},
+    };
+  }
+  const child = spawn(
+    bin,
+    ["decision", "watch", "--all-machines"],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  child.stderr.on("data", (chunk) => {
+    for (const line of String(chunk).split("\n")) {
+      if (line.trim()) logFn(`watch stderr: ${line.trim()}`);
+    }
+  });
+  const rl = readline.createInterface({ input: child.stdout });
+  let resolveExit;
+  const exited = new Promise((resolve) => {
+    resolveExit = resolve;
+    child.on("exit", resolve);
+  });
+  return {
+    lines: (async function* () {
+      try {
+        for await (const raw of rl) {
+          if (!raw.trim()) continue;
+          try {
+            yield JSON.parse(raw);
+          } catch {
+            logFn(`watch の JSON でない行を捨てました: ${raw.slice(0, 120)}`);
+          }
+        }
+        const code = await exited;
+        throw new Error(`decision watch exited (code ${code})`);
+      } finally {
+        rl.close();
+        try {
+          child.kill();
+        } catch {}
+      }
+    })(),
+    close() {
+      rl.close();
+      try {
+        child.kill();
+      } catch {}
+      resolveExit?.(0);
+    },
+  };
+}
+
+function createRunAnswer(config, logFn = () => {}) {
+  return (args) => {
+    const bin = resolveIkesuBin(config, logFn);
+    if (!bin) {
+      return Promise.resolve({
+        code: 127,
+        stdout: "",
+        stderr:
+          `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
+          "PATH・/opt/homebrew/bin・~/.local/bin を確認してください",
+      });
+    }
+    return execFileText(bin, args, { timeoutMs: 60_000 });
+  };
+}
+
+function createGetDecision(config, logFn = () => {}) {
+  return async (machineId, decisionId) => {
+    const bin = resolveIkesuBin(config, logFn);
+    if (!bin) {
+      throw new Error(
+        `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
+          "PATH・/opt/homebrew/bin・~/.local/bin を確認してください",
+      );
+    }
+    const result = await execFileText(
+      bin,
+      ["decision", "get", decisionId, "--machine", machineId],
+      { timeoutMs: 60_000 },
+    );
+    if (result.code !== 0) {
+      throw new Error(result.stderr.trim() || `exit ${result.code}`);
+    }
+    const parsed = JSON.parse(result.stdout);
+    return parsed?.result?.decision || null;
+  };
+}
+
+// --- singleton ensure -----------------------------------------------------------
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pidLooksOurs(pid) {
+  const out = execFileTextSync("ps", ["-o", "command=", "-p", String(pid)]);
+  return out.includes("slack-decisions.mjs");
+}
+
+function daemonPidPath(stateDir) {
+  return path.join(stateDir, DAEMON_PID_FILE);
+}
+
+function readDaemonPid(stateDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(daemonPidPath(stateDir), "utf8"));
+    return Number(parsed.pid) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function daemonRunning(stateDir) {
+  const pid = readDaemonPid(stateDir);
+  return pid > 0 && pidAlive(pid) && pidLooksOurs(pid);
+}
+
+function writeDaemonPid(stateDir) {
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    daemonPidPath(stateDir),
+    JSON.stringify({ pid: process.pid, started: Date.now() }),
+    { mode: 0o600 },
+  );
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+async function ensureDaemon(config, env) {
+  fs.mkdirSync(config.stateDir, { recursive: true });
+  const lockDir = path.join(config.stateDir, "ensure.lock");
+  // mkdir is atomic: it serializes concurrent event-hook invocations.
+  for (;;) {
+    try {
+      fs.mkdirSync(lockDir);
+      break;
+    } catch {
+      let age = Number.MAX_SAFE_INTEGER;
+      try {
+        age = Date.now() - fs.statSync(lockDir).mtimeMs;
+      } catch {}
+      if (age > 60_000) {
+        fs.rmSync(lockDir, { recursive: true, force: true });
+        continue;
+      }
+      await sleep(200);
+      if (age > 10_000) return; // another ensure is mid-flight
+    }
+  }
+  try {
+    if (daemonRunning(config.stateDir)) {
+      log(`デーモンは起動済み (pid ${readDaemonPid(config.stateDir)})`);
+      return;
+    }
+    let startedAt = 0;
+    try {
+      startedAt = JSON.parse(
+        fs.readFileSync(path.join(config.stateDir, "starting.json"), "utf8"),
+      ).started;
+    } catch {}
+    if (Date.now() - startedAt < 30_000) {
+      log("起動中のデーモンがあるため何もしません");
+      return;
+    }
+
+    const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
+    const exportsList = [
+      ["IKESU_PLUGIN_CONFIG_DIR", config.configDir],
+      ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
+      ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || ""],
+      ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.ikesuBin],
+      ["PATH", env.PATH || ""],
+    ]
+      .filter(([, value]) => value)
+      .map(([key, value]) => `${key}=${shellQuote(value)}`)
+      .join(" ");
+    const inner = `export ${exportsList}; exec node ${shellQuote(path.join(pluginRoot, "slack-decisions.mjs"))} run`;
+    const daemonBin = resolveIkesuBin(config, log);
+    if (!daemonBin) {
+      log(
+        `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
+          "デーモンを起動できません",
+      );
+      return;
+    }
+    const result = await execFileText(
+      daemonBin,
+      [
+        "run",
+        "--label",
+        RUN_LABEL,
+        "--cwd",
+        pluginRoot,
+        "--completion",
+        "none",
+        "--",
+        "sh",
+        "-c",
+        inner,
+      ],
+      { timeoutMs: 15_000 },
+    );
+    if (result.code !== 0) {
+      log(`ikesu run に失敗: ${(result.stderr || result.stdout).trim()}`);
+      return;
+    }
+    fs.writeFileSync(
+      path.join(config.stateDir, "starting.json"),
+      JSON.stringify({ started: Date.now() }),
+      { mode: 0o600 },
+    );
+    log(`デーモンを ikesu run ジョブとして起動しました (label=${RUN_LABEL})`);
+  } finally {
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  }
+}
+
+// --- artifact delivery ----------------------------------------------------------
+
+function usage() {
+  process.stderr.write(
+    [
+      "usage:",
+      "  slack-decisions.mjs [run|ensure|check-sabera]",
+      "  slack-decisions.mjs deliver <file> [--title T] [--comment C]",
+      "  slack-decisions.mjs deliver-context   (plugin action: path from",
+      "                                       IKESU_PLUGIN_CONTEXT_JSON.selected_text)",
+    ].join("\n") + "\n",
+  );
+}
+
+// Uploads the file to the configured Slack channel, then notifies the Sabera
+// hub ("「<題名>」を Slack に送りました"). The notify is skipped silently when
+// the hub socket is absent.
+async function deliverFile(
+  config,
+  creds,
+  { filePath, title = "", comment = "" },
+) {
+  const slack = new SlackClient({
+    token: creds.token,
+    channel: creds.channel,
+    apiBase: config.apiBase,
+  });
+  const result = await slack.uploadFile({ filePath, title, comment });
+  const display = title || path.basename(result.path);
+  const notified = await saberaNotify(config.saberaSocket, {
+    text: `「${display}」を Slack に送りました`,
+    from: "slack-decisions",
+  });
+  return { ...result, notified };
+}
+
+async function deliverMain(config, args) {
+  let filePath = "";
+  let title = "";
+  let comment = "";
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--title") {
+      title = args[i + 1] ?? "";
+      i += 1;
+    } else if (arg.startsWith("--title=")) {
+      title = arg.slice("--title=".length);
+    } else if (arg === "--comment") {
+      comment = args[i + 1] ?? "";
+      i += 1;
+    } else if (arg.startsWith("--comment=")) {
+      comment = arg.slice("--comment=".length);
+    } else if (arg.startsWith("--")) {
+      process.stderr.write(`unknown option: ${arg}\n`);
+      return 2;
+    } else if (!filePath) {
+      filePath = arg;
+    } else {
+      process.stderr.write(`unexpected argument: ${arg}\n`);
+      return 2;
+    }
+  }
+  if (!filePath) {
+    usage();
+    return 2;
+  }
+  const creds = loadCredentials(config);
+  if (!creds.token || !creds.channel) {
+    process.stderr.write(
+      "Slack 資格情報が読めません（トークンまたはチャンネルなし）。\n",
+    );
+    return 1;
+  }
+  try {
+    const result = await deliverFile(config, creds, {
+      filePath,
+      title,
+      comment,
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  } catch (error) {
+    process.stderr.write(`deliver に失敗: ${error?.message || error}\n`);
+    return 1;
+  }
+}
+
+// Plugin actions run a fixed argv, so the file path travels in
+// IKESU_PLUGIN_CONTEXT_JSON.selected_text — the selection the user invoked the
+// "deliver" action on. Relative paths resolve against the pane's cwd.
+async function deliverContextMain(config) {
+  let context = {};
+  try {
+    context = JSON.parse(process.env.IKESU_PLUGIN_CONTEXT_JSON || "{}");
+  } catch {
+    context = {};
+  }
+  const selected = String(context.selected_text || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!selected) {
+    process.stderr.write(
+      "deliver: ペインでファイルパスを選択してから呼んでください " +
+        "(IKESU_PLUGIN_CONTEXT_JSON.selected_text が空です)\n",
+    );
+    return 1;
+  }
+  const base = context.focused_pane_cwd || context.workspace_cwd;
+  const filePath =
+    path.isAbsolute(selected) || !base ? selected : path.resolve(base, selected);
+  return deliverMain(config, [filePath]);
+}
+
+// --- entry point -----------------------------------------------------------------
+
+async function gateCheck(config) {
+  if (!config.enabled) {
+    log("設定で無効化されています (enabled=false)");
+    return false;
+  }
+  const user = config.osUser || os.userInfo().username;
+  if (user !== config.allowedOsUser) {
+    log(
+      `このマシンでは Slack 送信をしません (whoami=${user}; 許可: ${config.allowedOsUser})`,
+    );
+    return false;
+  }
+  return true;
+}
+
+async function main() {
+  const mode = process.argv[2] || "run";
+  const config = loadConfig(process.env);
+
+  if (mode === "check-sabera") {
+    const state = await saberaGlassesState(config.saberaSocket);
+    process.stdout.write(
+      `${JSON.stringify({ socket: config.saberaSocket, glasses: state })}\n`,
+    );
+    return;
+  }
+
+  if (!(await gateCheck(config))) return;
+
+  if (mode === "ensure") {
+    await ensureDaemon(config, process.env);
+    return;
+  }
+
+  if (mode === "deliver") {
+    const code = await deliverMain(config, process.argv.slice(3));
+    if (code) process.exit(code);
+    return;
+  }
+
+  if (mode === "deliver-context") {
+    const code = await deliverContextMain(config);
+    if (code) process.exit(code);
+    return;
+  }
+
+  if (mode !== "run") {
+    usage();
+    process.exit(2);
+  }
+
+  const creds = loadCredentials(config);
+  if (!creds.token || !creds.channel) {
+    log("Slack 資格情報が読めません（トークンまたはチャンネルなし）。停止します。");
+    return;
+  }
+  if (daemonRunning(config.stateDir)) {
+    log(
+      `すでにデーモンが動いています (pid ${readDaemonPid(config.stateDir)})。終了します。`,
+    );
+    return;
+  }
+
+  const slack = new SlackClient({
+    token: creds.token,
+    appToken: creds.appToken,
+    channel: creds.channel,
+    apiBase: config.apiBase,
+  });
+  slack.mention = creds.mention;
+
+  let botUserId = "";
+  try {
+    const auth = await slack.authTest();
+    botUserId = auth.user_id || "";
+    log(`Slack 接続OK (bot=${botUserId}, channel=${creds.channel})`);
+  } catch (error) {
+    log(`Slack auth.test に失敗: ${error.message}。停止します。`);
+    return;
+  }
+
+  writeDaemonPid(config.stateDir);
+  const daemon = new SlackDecisionsDaemon({
+    config,
+    slack,
+    botUserId,
+    spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),
+    runAnswer: createRunAnswer(config, log),
+    getDecision: createGetDecision(config, log),
+    glassesState: () => saberaGlassesState(config.saberaSocket),
+    log,
+    postsFilePath: path.join(config.stateDir, POSTS_FILE),
+  });
+  await daemon.start();
+  log("watch 開始 (ikesu decision watch --all-machines)");
+
+  const shutdown = () => {
+    void daemon.stop().then(() => process.exit(0));
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+const invokedAsScript = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) {
+  main().catch((error) => {
+    log(`fatal: ${error?.stack || error}`);
+    process.exit(1);
+  });
+}
+
+export {
+  buildDecisionBlocks,
+  createRunAnswer,
+  resolveIkesuBin,
+  optionBlockChunks,
+  decisionKey,
+  deliverFile,
+  fallbackText,
+  fmtDeadline,
+  loadConfig,
+  loadCredentials,
+  parseEnvFile,
+  saberaGlassesState,
+  saberaNotify,
+  SlackClient,
+  wsUnixRequest,
+};

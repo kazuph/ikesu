@@ -1,0 +1,24 @@
+id = "kazuph.slack-decisions"
+name = "Slack Decisions"
+version = "0.1.0"
+min_ikesu_version = "0.4.8"
+description = "Post pending ikesu decisions to Slack when the Sabera glasses are not reachable; answers (number reactions or thread replies) become `ikesu decision answer`."
+platforms = ["macos"]
+
+[[events]]
+on = "decision.created"
+command = ["./ensure-daemon"]
+
+[[actions]]
+id = "start"
+title = "Start the Slack decisions daemon"
+description = "Start the background daemon that mirrors decisions to Slack"
+contexts = ["global"]
+command = ["./ensure-daemon"]
+
+[[actions]]
+id = "deliver"
+title = "Deliver selected file to Slack"
+description = "Upload the file whose path is selected in the pane to the configured Slack channel, then notify the Sabera hub"
+contexts = ["selection"]
+command = ["./deliver-selected"]

@@ -18,7 +18,7 @@ import { FakeSlack, FakeWsServer, waitUntil } from "./fakes.mjs";
 
 const APP_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const REPO_ROOT = path.resolve(APP_ROOT, "..", "..");
-const IKESU = path.join(REPO_ROOT, "target", "debug", "ikesu");
+const IKESU = process.env.SLACK_DECISIONS_TEST_IKESU || "/Users/kazuph/.local/bin/ikesu";
 const DAEMON = path.join(APP_ROOT, "slack-decisions.mjs");
 
 const outIndex = process.argv.indexOf("--out");
@@ -28,18 +28,20 @@ const OUT =
     : path.join(REPO_ROOT, ".artifacts", "feat-slack-decisions", "e2e");
 fs.mkdirSync(OUT, { recursive: true });
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "slack-decisions-e2e-"));
+const tmp = fs.mkdtempSync("/tmp/ikesu-slack-");
 const configHome = path.join(tmp, "config");
 const runtimeDir = path.join(tmp, "runtime");
 const stateDir = path.join(tmp, "state");
-const socketPath = path.join(runtimeDir, "ikesu.sock");
+const socketPath = path.join(tmp, "ikesu-state", "default", "ikesu.sock");
 fs.mkdirSync(path.join(configHome, "ikesu"), { recursive: true });
 fs.mkdirSync(runtimeDir, { recursive: true });
 fs.mkdirSync(stateDir, { recursive: true });
-fs.writeFileSync(path.join(configHome, "ikesu", "config.toml"), "onboarding = false\n");
+fs.writeFileSync(path.join(configHome, "ikesu", "config.toml"), "[experimental]\nallow_nested = true\n");
 
 const ikesuEnv = {
   XDG_CONFIG_HOME: configHome,
+  IKESU_CONFIG: path.join(configHome, "ikesu", "config.toml"),
+  IKESU_STATE_DIR: path.join(tmp, "ikesu-state"),
   XDG_RUNTIME_DIR: runtimeDir,
   IKESU_SOCKET_PATH: socketPath,
   IKESU_SOCKET_PATH_EXPLICIT: "1",
@@ -139,12 +141,12 @@ async function main() {
       "--body",
       "feat/slack-decisions の動作確認",
       "--option",
-      "approve:承認する",
+      "approve:承認する:approve",
       "--option",
-      "reject:却下する",
+      "reject:却下する:reject",
       "--allow-text",
       "--timeout",
-      "120",
+      "120000",
     ],
     { env: { ...process.env, ...ikesuEnv }, encoding: "utf8" },
     (error, stdout, stderr) => {
@@ -181,20 +183,51 @@ async function main() {
   // 7. decision ask resolves with the picked option
   await waitUntil(() => askCode !== null, { timeout: 15_000 });
   fs.writeFileSync(path.join(OUT, "ask-output.txt"), askOut);
-  const answered =
-    askOut.includes('"approve"') || askOut.includes("opt") || askOut.includes("answered");
+  const saved = JSON.parse(askOut.trim()).result.decision;
+  const answered = saved.answer.option_id === "approve" && saved.status === "answered";
   step("ikesu decision ask resolved", askCode === 0, askOut.trim().slice(0, 200));
   step("answer recorded as approve via slack", answered && askOut.includes('"slack"'), askOut.trim().slice(0, 200));
 
-  // 8. the slack post is updated to 決定済み
-  await waitUntil(() => fake.updates.some((u) => u.ts === post.ts));
-  const update = fake.updates.find((u) => u.ts === post.ts);
-  const updatedText = JSON.stringify(update.blocks);
-  step(
-    "slack post updated to resolved",
-    /決定済み/.test(updatedText) && /slack/.test(updatedText),
-    updatedText.slice(0, 200),
-  );
+  // The migrated plugin removes resolved posts, preserving the source behavior.
+  await waitUntil(() => fake.deletes.some((u) => u.ts === post.ts));
+  step("resolved Slack post closed by deletion", true, post.ts);
+
+  // Exercise the actual guard process and its feedback, using the real isolated
+  // server. echo is harmless; the default policy asks for the word "deploy".
+  const marker = path.join(tmp, "guard", "agent-panes", "proof.json");
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, JSON.stringify({
+    pane_id: "proof", agent: "codex", launch_cwd: tmp,
+    socket: socketPath, mode: "enforce", guard_config: {},
+  }));
+  for (const scenario of [
+    { name: "guard-approve", reaction: "one", code: 0, expected: "deploy" },
+    { name: "guard-reject", reaction: "three", code: 1, expected: "理由: 未入力" },
+    { name: "guard-comment", text: "この試験コマンドは実行しないで", code: 1, expected: "理由: この試験コマンドは実行しないで" },
+  ]) {
+    let output = "", code = null;
+    const priorTs = new Set(fake.posts.map(p => p.ts));
+    const guard = execFile(IKESU, ["guard", "exec", "--", "/bin/echo", "deploy"], {
+      cwd: tmp, encoding: "utf8", env: { ...process.env, ...ikesuEnv,
+        HOME: tmp, IKESU_GUARD_MARKER: marker, IKESU_PANE_ID: "proof",
+        AI_GUARD_REQUEST_REASON: "対象プロジェクトのSlack承認試験。無害なechoだけを実行するため。",
+        AI_GUARD_TEMP_APPROVAL_FILE: path.join(tmp, scenario.name + "-approval"),
+      },
+    }, (err, stdout, stderr) => { output = stdout + stderr; code = err?.code ?? 0; });
+    cleanup.push(() => guard.kill("SIGTERM"));
+    await waitUntil(() => fake.posts.some(p => !priorTs.has(p.ts)));
+    const guardPost = fake.posts.find(p => !priorTs.has(p.ts));
+    ws.send({ envelope_id: scenario.name, type: "events_api", payload: {
+      type: "event_callback", event: scenario.text
+        ? { type: "message", user: "UHUMAN", thread_ts: guardPost.ts, ts: String(Number(guardPost.ts)+1), text: scenario.text }
+        : { type: "reaction_added", user: "UHUMAN", reaction: scenario.reaction, item: { type: "message", channel: "C-e2e", ts: guardPost.ts } },
+    }});
+    await waitUntil(() => code !== null, { timeout: 15_000 });
+    fs.writeFileSync(path.join(OUT, scenario.name + ".txt"), output);
+    step(scenario.name + " feedback", code === scenario.code && output.includes(scenario.expected), output.trim());
+    await waitUntil(() => fake.deletes.some(p => p.ts === guardPost.ts));
+    step(scenario.name + " post closed", true, guardPost.ts);
+  }
 
   fs.writeFileSync(
     path.join(OUT, "slack-state.json"),

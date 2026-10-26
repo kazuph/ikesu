@@ -1,0 +1,6 @@
+#!/bin/sh
+# ikesu plugin action "deliver" (contexts: selection).
+# The file path comes from IKESU_PLUGIN_CONTEXT_JSON.selected_text.
+cd "$(dirname "$0")" || exit 1
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+exec node ./slack-decisions.mjs deliver-context
