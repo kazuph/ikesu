@@ -5,6 +5,14 @@ app.setActivationPolicy(.accessory)
 app.appearance = NSAppearance(named: .darkAqua)
 let baseline = CommandLine.arguments.contains("--baseline")
 let spec = try JSONDecoder().decode(DialogSpec.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
+for separator in [" ", "\t", "\n", " \t\n"] {
+ for colon in [":", "："] {
+  let original = "対象プロジェクト\(colon) ikesu。\(separator)必要な理由\(colon) 表示確認。\(separator)実施内容\(colon) 検証。\(separator)確認済み\(colon) 差分。\(separator)戻し方\(colon) 中止。"
+  let formatted = "対象プロジェクト: ikesu。\n必要な理由: 表示確認。\n実施内容: 検証。\n確認済み: 差分。\n戻し方: 中止。"
+  precondition(comparableApprovalDetail(original) == comparableApprovalDetail(formatted), "field boundary normalization differs")
+ }
+}
+precondition(comparableApprovalDetail("必要な理由: A B") != comparableApprovalDetail("必要な理由: AB"), "whitespace within fields must be preserved")
 let controller = DialogController(spec: spec, specPath: CommandLine.arguments[1])
 controller.build()
 controller.show()
@@ -33,6 +41,14 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
    }
    parent = view.superview
   }
+ }
+ if CommandLine.arguments.contains("--field-count") {
+  let lines=fields.map {$0.stringValue}.joined(separator:"\n").components(separatedBy:"\n")
+  for name in ["対象プロジェクト", "必要な理由", "実施内容", "確認済み", "戻し方"] {
+   let count=lines.filter {$0.hasPrefix(name+":") || $0.hasPrefix(name+"：")}.count
+   precondition(count == 1, "request field must appear exactly once: \(name)=\(count)")
+  }
+  print("five request fields each rendered exactly once")
  }
  print("requested body labels fully inside window and scroll viewport")
  precondition(!fields.contains { field in ["コマンド：", "理由：", "場所："].contains(where: field.stringValue.hasPrefix) }, "duplicate Origin details")

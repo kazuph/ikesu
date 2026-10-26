@@ -76,6 +76,15 @@ enum Look {
   static let accent = NSColor.controlAccentColor
 }
 
+// Match the guard's field-boundary formatting when comparing the original
+// request with its display copy; keep whitespace inside each field intact.
+func comparableApprovalDetail(_ text: String) -> String {
+  text.replacingOccurrences(of: #"[\t \r\n]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]"#,
+    with: "$1:", options: .regularExpression)
+    .replacingOccurrences(of: "\n", with: "")
+    .replacingOccurrences(of: "：", with: ":")
+}
+
 func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular,
            color: NSColor = .labelColor, mono: Bool = false, selectable: Bool = true) -> NSTextField {
   let field = NSTextField(wrappingLabelWithString: text)
@@ -438,8 +447,8 @@ final class DialogController: NSObject, NSWindowDelegate {
       grid.spacing = 3
       for d in details {
         if spec.kind == "command_guard", let body = spec.body {
-          let normalizedBody = body.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "：", with: ":")
-          let normalizedValue = d.value.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "：", with: ":")
+          let normalizedBody = comparableApprovalDetail(body)
+          let normalizedValue = comparableApprovalDetail(d.value)
           if d.label == "コマンド", body.contains("コマンド: ") { continue }
           if ["理由", "場所"].contains(d.label), normalizedBody.contains(normalizedValue) { continue }
         }
