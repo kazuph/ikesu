@@ -3,6 +3,9 @@ package model
 // The display preference is independent of temporary adaptation to a narrow terminal.
 const MinimumPaneAreaWidth = 40
 
+// Preset selections reserve at least 20 cells for the center pane.
+const MinimumPresetPaneAreaWidth = 20
+
 type CmdToggleRightSidebar struct{}
 
 func (CmdToggleRightSidebar) isCommand() {}
@@ -43,7 +46,7 @@ func (s *AppState) leftSidebarWidth() int {
 		return 0
 	}
 	if s.SidebarVisible {
-		return s.ExpandedSidebarWidth()
+		return s.presetSidebarWidth(s.ExpandedSidebarWidth())
 	}
 	if s.SidebarHidden {
 		return 0
@@ -69,6 +72,9 @@ func (s *AppState) rightSidebarWidth() int {
 			w = s.RightSidebarSize
 		}
 	}
+	if s.SidebarPresetActive {
+		return s.presetSidebarWidth(w)
+	}
 	available := s.Cols - s.leftSidebarWidth() - MinimumPaneAreaWidth
 	if w > available {
 		w = SidebarCollapsedWidth
@@ -86,4 +92,13 @@ func (s *AppState) RightSidebarArea() Rect {
 // RightSidebarCompact includes both the user's compact mode and narrow-screen adaptation.
 func (s *AppState) RightSidebarCompact() bool {
 	return s.RightSidebarMode == "compact" || s.RightSidebarArea().W == SidebarCollapsedWidth
+}
+
+// Equal caps keep narrow <= normal <= wide even when the configured left and
+// right defaults differ. The requested widths remain intact for larger screens.
+func (s *AppState) presetSidebarWidth(width int) int {
+	if !s.SidebarPresetActive {
+		return width
+	}
+	return min(width, max(0, (s.Cols-MinimumPresetPaneAreaWidth)/2))
 }

@@ -74,6 +74,7 @@ type AppState struct {
 	RightSidebarMode                                    string
 	RightSidebarSize                                    int
 	RightSidebarManual                                  bool
+	SidebarPresetActive                                 bool
 	SidebarCollapsedHidden                              bool
 	SidebarVisible                                      bool
 	SidebarSize, SidebarMin, SidebarMax, SidebarDefault int
