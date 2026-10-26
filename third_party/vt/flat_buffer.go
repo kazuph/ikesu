@@ -176,6 +176,45 @@ func (b *flatScreenBuffer) Resize(width, height int) {
 	if width == oldWidth && height == oldHeight {
 		return
 	}
+	// A one-column drag must not allocate/copy the full plane on every step.
+	// Retain the physical stride while all new logical rows fit its capacity.
+	if height == oldHeight && width <= b.stride {
+		fits := true
+		for y := range height {
+			n := b.rowLength(y)
+			if width > oldWidth {
+				n = max(n, 0) + width - oldWidth
+			} else {
+				n = width
+			}
+			if n > b.stride {
+				fits = false
+				break
+			}
+		}
+		if fits {
+			blank := b.tables.pack(uv.EmptyCell)
+			for y := range height {
+				old := b.rowLength(y)
+				next := width
+				if width > oldWidth {
+					next = max(old, 0) + width - oldWidth
+				}
+				for x := next; x < old; x++ {
+					b.assign(x, y, FlatCell{})
+				}
+				for x := max(old, 0); x < next; x++ {
+					b.assign(x, y, blank)
+				}
+				b.lengths[b.physical(y)] = next
+				if width > oldWidth {
+					b.TouchLine(oldWidth, y, width-oldWidth)
+				}
+			}
+			b.tables.release(blank)
+			return
+		}
+	}
 	lengths := make([]int, height)
 	stride := width
 	for y := range min(oldHeight, height) {

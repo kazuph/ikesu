@@ -13,10 +13,10 @@ import (
 
 func assertRuntimeASCIIEqual(t *testing.T, got, want *Emulator) {
 	t.Helper()
-	if dumpEmulator(got) != dumpEmulator(want) || !reflect.DeepEqual(got.scr.buf, want.scr.buf) ||
+	if dumpEmulator(got) != dumpEmulator(want) || !reflect.DeepEqual(screenTestState(got.scr.buf), screenTestState(want.scr.buf)) ||
 		!reflect.DeepEqual(got.Scrollback().Lines(), want.Scrollback().Lines()) || got.Scrollback().Bytes() != want.Scrollback().Bytes() ||
 		got.parser.State() != want.parser.State() || !bytes.Equal(got.partial, want.partial) {
-		t.Fatalf("dump %t buffer %t history %t bytes %d/%d parser %d/%d partial %q/%q\ngot %s\nwant %s", dumpEmulator(got) == dumpEmulator(want), reflect.DeepEqual(got.scr.buf, want.scr.buf), reflect.DeepEqual(got.Scrollback().Lines(), want.Scrollback().Lines()), got.Scrollback().Bytes(), want.Scrollback().Bytes(), got.parser.State(), want.parser.State(), got.partial, want.partial, dumpEmulator(got), dumpEmulator(want))
+		t.Fatalf("dump %t buffer %t history %t bytes %d/%d parser %d/%d partial %q/%q\ngot %s\nwant %s", dumpEmulator(got) == dumpEmulator(want), reflect.DeepEqual(screenTestState(got.scr.buf), screenTestState(want.scr.buf)), reflect.DeepEqual(got.Scrollback().Lines(), want.Scrollback().Lines()), got.Scrollback().Bytes(), want.Scrollback().Bytes(), got.parser.State(), want.parser.State(), got.partial, want.partial, dumpEmulator(got), dumpEmulator(want))
 	}
 	if got.scr.runtimeASCII || got.scr.runtimeScrollTouched || len(got.scr.runtimeBlankBounds) != 0 {
 		t.Fatal("call-local blank knowledge survived")
@@ -39,7 +39,6 @@ func TestRuntimeASCIIMatchesWrites(t *testing.T) {
 							}
 							_, _ = e.Write([]byte(prefix))
 						}
-						ga, wa := got.CellAt(width-1, 0), want.CellAt(width-1, 0)
 						for _, text := range []string{strings.Repeat(strings.Repeat("a", width-1)+"\r\n \r\n\r\n", 8), strings.Repeat("b\r\n", 12), "x\r\n\t\r\n", "界\r\n", "\x1b[0m\r\n", "\r", "\n", strings.Repeat("z", width) + "\r\n"} {
 							got.scr.ClearTouched()
 							want.scr.ClearTouched()
@@ -55,8 +54,11 @@ func TestRuntimeASCIIMatchesWrites(t *testing.T) {
 								t.Fatal("write result differs")
 							}
 							assertRuntimeASCIIEqual(t, got, want)
-							// Previously obtained pointers may refer to recycled rows.
-							*ga, *wa = uv.Cell{Content: "!", Width: 1, Link: uv.Link{URL: "alias"}}, uv.Cell{Content: "!", Width: 1, Link: uv.Link{URL: "alias"}}
+							// Apply the same visible edit explicitly on both storage backends.
+							edit := uv.Cell{Content: "!", Width: 1, Link: uv.Link{URL: "alias"}}
+							got.SetCell(width-1, 0, &edit)
+							want.SetCell(width-1, 0, &edit)
+							assertRuntimeASCIIEqual(t, got, want)
 						}
 					})
 				}
@@ -70,7 +72,7 @@ func TestRuntimeASCIIKeepsMutatingCallbacks(t *testing.T) {
 		got, want := NewEmulator(8, 2), NewEmulator(8, 2)
 		for _, e := range []*Emulator{got, want} {
 			e.Scrollback().SetMaxBytes(0)
-			mutate := func() { *e.CellAt(7, 0) = uv.Cell{Content: "!", Width: 1} }
+			mutate := func() { e.SetCell(7, 0, &uv.Cell{Content: "!", Width: 1}) }
 			switch kind {
 			case "drop":
 				e.Scrollback().OnDrop = mutate

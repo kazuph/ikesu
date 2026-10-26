@@ -28,12 +28,12 @@ func TestPrintRunPreservesExistingCellFields(t *testing.T) {
 				slow.disableFastPrint = true
 				for _, e := range []*Emulator{fast, slow} {
 					e.Write([]byte("xxxxxx\r"))
-					*e.CellAt(column, 0) = cell
+					e.SetCell(column, 0, &cell)
 					e.scr.buf.Touched = make([]*uv.LineData, 3)
 					e.scr.buf.Touched[0] = &uv.LineData{FirstCell: 0, LastCell: 8}
 					e.Write([]byte(input))
 				}
-				if !reflect.DeepEqual(fast.scr.buf, slow.scr.buf) || dumpEmulator(fast) != dumpEmulator(slow) {
+				if !reflect.DeepEqual(screenTestState(fast.scr.buf), screenTestState(slow.scr.buf)) || dumpEmulator(fast) != dumpEmulator(slow) {
 					t.Fatalf("cell=%d column=%d input=%q", index, column, input)
 				}
 				cases++

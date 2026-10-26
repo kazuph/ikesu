@@ -120,28 +120,28 @@ func TestScrollReuseMatchesOriginal(t *testing.T) {
 										for y := 0; y < height; y++ {
 											for x := 0; x < width; x++ {
 												if pattern < 7 && x < width/2 {
-													s.buf.Lines[y][x] = cells[(x+y+pattern)%len(cells)]
+													screenTestRaw(s, x, y, cells[(x+y+pattern)%len(cells)])
 												} else if pattern == 7 {
-													s.buf.Lines[y][x] = cells[(x+y)%2]
+													screenTestRaw(s, x, y, cells[(x+y)%2])
 												}
 											}
 										}
 										if pattern == 8 {
-											for y := range s.buf.Lines {
-												for x := range s.buf.Lines[y] {
-													s.buf.Lines[y][x] = uv.Cell{}
+											for y := 0; y < s.buf.Height(); y++ {
+												for x := range s.buf.Line(y) {
+													screenTestRaw(s, x, y, uv.Cell{})
 												}
 											}
 										}
 										if pattern == 9 {
-											s.buf.Lines[top] = nil
+											screenTestNilRow(s, top)
 										}
 										if pattern == 10 {
-											s.buf.Lines[0] = nil
+											screenTestNilRow(s, 0)
 										}
 										if pattern == 11 {
-											for y := range s.buf.Lines {
-												s.buf.Lines[y][width-1] = cells[6]
+											for y := 0; y < s.buf.Height(); y++ {
+												screenTestRaw(s, width-1, y, cells[6])
 											}
 										}
 										return s
@@ -149,7 +149,7 @@ func TestScrollReuseMatchesOriginal(t *testing.T) {
 									got, want := makeScreen(&ga), makeScreen(&wa)
 									for rep := 0; rep < 4; rep++ {
 										gr, wr := got.DeleteLine(n), want.originalDeleteLine(n)
-										if gr != wr || !reflect.DeepEqual(got.buf, want.buf) || !reflect.DeepEqual(ga, wa) {
+										if gr != wr || !reflect.DeepEqual(screenTestState(got.buf), screenTestState(want.buf)) || !reflect.DeepEqual(ga, wa) {
 											t.Fatalf("screen w=%d h=%d kind=%s pattern=%d bg=%v n=%d top=%d bottom=%d rep=%d", width, height, kind, pattern, bg, n, top, bottom, rep)
 										}
 										if got.scrollback != nil {

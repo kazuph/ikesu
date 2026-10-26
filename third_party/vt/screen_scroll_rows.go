@@ -1,3 +1,5 @@
+//go:build !flatcells
+
 package vt
 
 import uv "github.com/charmbracelet/ultraviolet"

@@ -240,7 +240,7 @@ func TestPreparedPayloadReuseMatchesPhysicalHistoryOnActivation(t *testing.T) {
 		}
 		flags := old.referenceStreamingReflow(4, 2, nil, false)
 		view := indexed.reflowIndexed(4, 2, get, false, true)
-		if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || !reflect.DeepEqual(flags, view.materialize()) {
+		if !reflect.DeepEqual(screenTestLines(old.buf), screenTestLines(indexed.buf)) || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || !reflect.DeepEqual(flags, view.materialize()) {
 			t.Fatal("reused payload changed activation contents")
 		}
 	}
@@ -269,13 +269,13 @@ func TestPreparedHistoryEvictionAndPullPreserveFirstResize(t *testing.T) {
 	indexed.prepareReflowHistoryBatch(get)
 	for _, s := range []*Screen{old, indexed} {
 		s.scrollback.dropOldest()
-		copy(s.buf.Line(0), s.scrollback.popLast())
+		s.writeScreenLine(0, s.scrollback.popLast())
 	}
 	flags = flags[1:]
 	for _, size := range [][2]int{{4, 2}, {8, 3}, {3, 2}} {
 		view := indexed.reflowIndexed(size[0], size[1], get, false, true)
 		flags = old.referenceStreamingReflow(size[0], size[1], flags, false)
-		if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.cur.Position != indexed.cur.Position || old.scrollback.Bytes() != indexed.scrollback.Bytes() {
+		if !reflect.DeepEqual(screenTestLines(old.buf), screenTestLines(indexed.buf)) || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.cur.Position != indexed.cur.Position || old.scrollback.Bytes() != indexed.scrollback.Bytes() {
 			t.Fatalf("size=%v output differed", size)
 		}
 		if !reflect.DeepEqual(flags, view.materialize()) {
@@ -302,7 +302,7 @@ func TestPreparedSmallOutputsBatchIndexBeforeFirstResize(t *testing.T) {
 	}
 	flags := reference.referenceStreamingReflow(7, 2, nil, false)
 	view := s.reflowIndexed(7, 2, get, false, true)
-	if !reflect.DeepEqual(view.materialize(), flags) || !reflect.DeepEqual(s.scrollback.Lines(), reference.scrollback.Lines()) || !reflect.DeepEqual(s.buf.Lines, reference.buf.Lines) {
+	if !reflect.DeepEqual(view.materialize(), flags) || !reflect.DeepEqual(s.scrollback.Lines(), reference.scrollback.Lines()) || !reflect.DeepEqual(screenTestLines(s.buf), screenTestLines(reference.buf)) {
 		t.Fatal("first resize lost pending history")
 	}
 }

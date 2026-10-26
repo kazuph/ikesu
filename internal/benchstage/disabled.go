@@ -3,6 +3,8 @@
 // Package benchstage marks opt-in measurement regions on the monotonic clock.
 package benchstage
 
+const Enabled = false
+
 func Span(string) func()      { return func() {} }
 func Values(string, int, int) {}
 

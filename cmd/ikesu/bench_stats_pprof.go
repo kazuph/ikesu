@@ -32,7 +32,7 @@ func init() {
 	go func() {
 		defer file.Close()
 		encoder := json.NewEncoder(file)
-		names := []string{"/gc/heap/allocs:bytes", "/gc/heap/frees:bytes", "/gc/heap/live:bytes", "/gc/heap/goal:bytes", "/memory/classes/heap/objects:bytes", "/memory/classes/heap/free:bytes", "/memory/classes/heap/unused:bytes", "/memory/classes/heap/released:bytes", "/memory/classes/total:bytes", "/gc/pauses:seconds", "/gc/cycles/total:gc-cycles"}
+		names := []string{"/gc/heap/allocs:bytes", "/gc/heap/frees:bytes", "/gc/heap/live:bytes", "/gc/heap/goal:bytes", "/memory/classes/heap/objects:bytes", "/memory/classes/heap/free:bytes", "/memory/classes/heap/unused:bytes", "/memory/classes/heap/released:bytes", "/memory/classes/total:bytes", "/gc/pauses:seconds", "/gc/cycles/total:gc-cycles", "/gc/scan/heap:bytes", "/cpu/classes/gc/total:cpu-seconds"}
 		samples := make([]metrics.Sample, len(names))
 		for i, name := range names {
 			samples[i].Name = name
@@ -50,6 +50,8 @@ func init() {
 				switch sample.Value.Kind() {
 				case metrics.KindUint64:
 					record[sample.Name] = sample.Value.Uint64()
+				case metrics.KindFloat64:
+					record[sample.Name] = sample.Value.Float64()
 				case metrics.KindFloat64Histogram:
 					histogram := sample.Value.Float64Histogram()
 					// Infinite boundary values cannot be JSON numbers. Preserve them as

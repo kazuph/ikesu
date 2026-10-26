@@ -108,6 +108,7 @@ type flatColorSlot struct {
 type flatTables struct {
 	text    flatIDs[string]
 	styles  flatIDs[flatStyle]
+	decoded []uv.Style
 	links   flatIDs[uv.Link]
 	colors  []flatColorSlot
 	free    []uint32
@@ -147,13 +148,6 @@ func (t *flatTables) acquireColor(c color.Color) uint32 {
 		if id, ok := t.byColor[c]; ok {
 			t.colors[id].refs++
 			return flatIndirect | id
-		}
-	} else {
-		for id := 1; id < len(t.colors); id++ {
-			if s := &t.colors[id]; s.refs != 0 && reflect.DeepEqual(s.value, c) {
-				s.refs++
-				return flatIndirect | uint32(id)
-			}
 		}
 	}
 	if t.colors == nil {
@@ -245,6 +239,11 @@ func (t *flatTables) pack(c uv.Cell) FlatCell {
 		t.releaseColor(style.Fg)
 		t.releaseColor(style.Bg)
 		t.releaseColor(style.UnderlineColor)
+	} else if id != 0 {
+		for int(id) >= len(t.decoded) {
+			t.decoded = append(t.decoded, uv.Style{})
+		}
+		t.decoded[id] = uv.Style{Fg: t.color(style.Fg), Bg: t.color(style.Bg), UnderlineColor: t.color(style.UnderlineColor), Underline: style.Underline, Attrs: style.Attrs}
 	}
 	return FlatCell{Text: text, Style: id, Link: t.links.acquire(c.Link), Width: c.Width}
 }
@@ -262,8 +261,7 @@ func (t *flatTables) unpack(c FlatCell) uv.Cell {
 		}
 	}
 	if c.Style != 0 {
-		s := t.styles.values[c.Style]
-		out.Style = uv.Style{Fg: t.color(s.Fg), Bg: t.color(s.Bg), UnderlineColor: t.color(s.UnderlineColor), Underline: s.Underline, Attrs: s.Attrs}
+		out.Style = t.decoded[c.Style]
 	}
 	if c.Link != 0 {
 		out.Link = t.links.values[c.Link]
@@ -286,8 +284,12 @@ func (t *flatTables) release(c FlatCell) {
 	}
 	t.links.release(c.Link)
 	if s, last := t.styles.release(c.Style); last {
+		t.decoded[c.Style] = uv.Style{}
 		t.releaseColor(s.Fg)
 		t.releaseColor(s.Bg)
 		t.releaseColor(s.UnderlineColor)
+		if t.styles.live == 0 {
+			t.decoded = nil
+		}
 	}
 }

@@ -35,6 +35,11 @@ func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
 		for r := 0; r < h; r++ {
 			i := end - h + 1 + r
 			row := make([]uv.Cell, w)
+			if vt.ExperimentalFlatScreen && i >= sb && i-sb < eh {
+				e.CopyScreenRow(row, 0, i-sb)
+				g = append(g, row)
+				continue
+			}
 			for x := 0; x < w; x++ {
 				var c *uv.Cell
 				switch {
@@ -51,6 +56,13 @@ func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
 				}
 			}
 			g = append(g, row)
+		}
+		if benchstage.Enabled {
+			info := e.ScreenStorage()
+			benchstage.Values("screen.cell.bytes", p.ID, info.CellBytes)
+			benchstage.Values("screen.cell.capacity", p.ID, info.CellCapacity)
+			benchstage.Values("screen.ids.arraybytes", p.ID, info.IDArrayBytes)
+			benchstage.Values("screen.ids.live", p.ID, info.LiveIDs)
 		}
 	})
 	return g

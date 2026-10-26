@@ -1,3 +1,5 @@
+//go:build !flatcells
+
 package vt
 
 import (
@@ -6,12 +8,6 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
-
-type runtimeRowState struct {
-	text  []byte
-	end   int
-	plain bool
-}
 
 // WriteRuntimeASCII writes complete short printable ASCII CRLF rows while the
 // runtime exclusively owns the emulator and its retained cell references. Its

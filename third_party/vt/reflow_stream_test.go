@@ -23,8 +23,8 @@ func TestReflowStreamingHistoryBudgetCursorAndContinuation(t *testing.T) {
 		}
 		s.scrollback.Push(line("abcdef"))
 		s.scrollback.Push(line("ghijkl"))
-		copy(s.buf.Line(0), line("mnopqr"))
-		copy(s.buf.Line(1), line("ST"))
+		s.writeScreenLine(0, line("mnopqr"))
+		s.writeScreenLine(1, line("ST"))
 		s.cur.X, s.cur.Y = 2, 1
 		drops := 0
 		s.scrollback.OnDrop = func() { drops++ }

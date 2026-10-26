@@ -67,7 +67,7 @@ func (s *Screen) reflowIndexed(width, height int, rowRef func(int) ReflowRow, ph
 	cursorRow := history + s.cur.Y
 	last := s.cur.Y
 	for y := s.Height() - 1; y > last; y-- {
-		if !s.isLineEmpty(s.buf.Line(y)) {
+		if !s.isScreenLineEmpty(y) {
 			last = y
 			break
 		}
@@ -191,10 +191,8 @@ func (s *Screen) unchangedReflowMain(rowRef func(int) ReflowRow, phantom bool) b
 		if ok {
 			h.at(group).copyRange(scratch, start, end)
 		}
-		for x, cell := range s.buf.Line(y) {
-			if cell != scratch[x] {
-				return false
-			}
+		if !s.screenRowMatches(y, scratch) {
+			return false
 		}
 	}
 	return true
@@ -216,13 +214,7 @@ func (s *Screen) projectReflowHistory(h *reflowHistory, width, height, cursorGro
 	start, _, _ := shape.bounds(width, row)
 	newCursor := uv.Position{X: cursorCell - start, Y: h.view.index.prefixGroups(width, cursorGroup).rows + row}
 	cut := max(0, h.view.rows-height)
-	buf := uv.NewRenderBuffer(width, height)
-	main := make([]ReflowRow, height)
-	for y := 0; y < min(height, h.view.rows); y++ {
-		clear(buf.Line(y))
-		h.copyRow(buf.Line(y), cut+y)
-		_, _, _, main[y], _ = h.view.row(cut + y)
-	}
+	buf, main := projectReflowBuffer(h, width, height, cut)
 	h.view.rows = cut
 	skipped := max(0, cut-s.scrollback.maxLines)
 	dropped := skipped

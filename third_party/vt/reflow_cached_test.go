@@ -23,7 +23,7 @@ func TestUnchangedBoundaryProjectionMatchesStreaming(t *testing.T) {
 				for i := 0; i < 8; i++ {
 					s.scrollback.Push(row)
 				}
-				copy(s.buf.Line(0), row)
+				s.writeScreenLine(0, row)
 				s.cur.X = 3
 			}
 			flags := make([]ReflowRow, 11)
@@ -42,7 +42,7 @@ func TestUnchangedBoundaryProjectionMatchesStreaming(t *testing.T) {
 				}
 				view := indexed.reflowIndexed(size[0], size[1], get, false, true)
 				flags = old.referenceStreamingReflow(size[0], size[1], flags, false)
-				if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || old.cur.Position != indexed.cur.Position || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.scrollback.Bytes() != indexed.scrollback.Bytes() || !reflect.DeepEqual(flags, view.materialize()) {
+				if !reflect.DeepEqual(screenTestLines(old.buf), screenTestLines(indexed.buf)) || old.cur.Position != indexed.cur.Position || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.scrollback.Bytes() != indexed.scrollback.Bytes() || !reflect.DeepEqual(flags, view.materialize()) {
 					t.Fatalf("limited=%v wide=%v step=%d size=%v projection changed contents", limited, wide, step, size)
 				}
 			}
@@ -63,8 +63,8 @@ func TestIndexedReflowMatchesStreamingThroughResizeAndOutput(t *testing.T) {
 				for i := 0; i < 4; i++ {
 					s.scrollback.Push(row)
 				}
-				copy(s.buf.Line(0), row)
-				copy(s.buf.Line(1), row)
+				s.writeScreenLine(0, row)
+				s.writeScreenLine(1, row)
 				s.cur.X, s.cur.Y = 6-1, 1
 			}
 			flags := []ReflowRow{{Width: 6}, {Continued: true, Width: 6}, {Width: 6}, {Width: 6}, {Continued: true, Width: 6}, {Width: 6}, {}}
@@ -77,11 +77,11 @@ func TestIndexedReflowMatchesStreamingThroughResizeAndOutput(t *testing.T) {
 				}
 				snapshot := indexed.reflowIndexed(size[0], size[1], get, phantom && step == 0, true)
 				flags = old.referenceStreamingReflow(size[0], size[1], flags, phantom && step == 0)
-				if !reflect.DeepEqual(old.buf.Lines, indexed.buf.Lines) || old.cur.Position != indexed.cur.Position || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.scrollback.Bytes() != indexed.scrollback.Bytes() {
-					for source, rows := range [][]uv.Line{old.scrollback.Lines(), old.buf.Lines} {
+				if !reflect.DeepEqual(screenTestLines(old.buf), screenTestLines(indexed.buf)) || old.cur.Position != indexed.cur.Position || !reflect.DeepEqual(old.scrollback.Lines(), indexed.scrollback.Lines()) || old.scrollback.Bytes() != indexed.scrollback.Bytes() {
+					for source, rows := range [][]uv.Line{old.scrollback.Lines(), screenTestLines(old.buf)} {
 						other := indexed.scrollback.Lines()
 						if source == 1 {
-							other = indexed.buf.Lines
+							other = screenTestLines(indexed.buf)
 						}
 						for y, row := range rows {
 							if y < len(other) && len(row) == 0 && (row == nil) != (other[y] == nil) {
@@ -97,7 +97,7 @@ func TestIndexedReflowMatchesStreamingThroughResizeAndOutput(t *testing.T) {
 							}
 						}
 					}
-					t.Fatalf("limited=%v phantom=%v step=%d size=%v cursor=%v/%v history=%v/%v screen=%v/%v", limited, phantom, step, size, old.cur.Position, indexed.cur.Position, old.scrollback.Lines(), indexed.scrollback.Lines(), old.buf.Lines, indexed.buf.Lines)
+					t.Fatalf("limited=%v phantom=%v step=%d size=%v cursor=%v/%v history=%v/%v screen=%v/%v", limited, phantom, step, size, old.cur.Position, indexed.cur.Position, old.scrollback.Lines(), indexed.scrollback.Lines(), screenTestLines(old.buf), screenTestLines(indexed.buf))
 				}
 				for y, want := range flags {
 					var got ReflowRow

@@ -19,8 +19,8 @@ func TestScrollMarkBatchDirtyStates(t *testing.T) {
 							s.scrollback = NewScrollback(2)
 							s.scroll = uv.Rect(0, top, width, bottom-top)
 							s.cur.Y = top
-							for y := range s.buf.Lines {
-								s.buf.Lines[y][0] = uv.Cell{Content: "x", Width: 1}
+							for y := 0; y < s.buf.Height(); y++ {
+								screenTestRaw(s, 0, y, uv.Cell{Content: "x", Width: 1})
 							}
 							switch state {
 							case "nil":
@@ -45,7 +45,7 @@ func TestScrollMarkBatchDirtyStates(t *testing.T) {
 						}
 						got, want := makeScreen(), makeScreen()
 						for rep := 0; rep < 3; rep++ {
-							if got.DeleteLine(1) != want.originalDeleteLine(1) || !reflect.DeepEqual(got.buf, want.buf) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) {
+							if got.DeleteLine(1) != want.originalDeleteLine(1) || !reflect.DeepEqual(screenTestState(got.buf), screenTestState(want.buf)) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) {
 								t.Fatalf("width=%d height=%d state=%s top=%d bottom=%d rep=%d", width, height, state, top, bottom, rep)
 							}
 							cases++

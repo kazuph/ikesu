@@ -130,9 +130,9 @@ func (s *Screen) referenceStreamingReflow(width, height int, continued []ReflowR
 		}
 	}
 	s.scrollRows = nil
-	s.buf = uv.NewRenderBuffer(width, height)
+	s.buf = newScreenBuffer(width, height)
 	for y := 0; y < visibleCount; y++ {
-		copy(s.buf.Line(y), visible[(visibleStart+y)%height])
+		s.writeScreenLine(y, visible[(visibleStart+y)%height])
 	}
 	s.cur.X, s.cur.Y = newCursor.X, max(0, newCursor.Y-cut)
 	s.scroll = s.buf.Bounds()

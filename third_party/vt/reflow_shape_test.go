@@ -57,7 +57,7 @@ func TestReflowShapeMatchesActualRowsAndExpandedCharge(t *testing.T) {
 		shape := newReflowShape(line)
 		for width := 1; width <= len(line)+2; width++ {
 			s := NewScreen(max(1, len(line)+1), 1)
-			copy(s.buf.Line(0), line)
+			s.writeScreenLine(0, line)
 			s.reflow(width, 1, nil, false)
 			actual := append(s.scrollback.Lines(), s.buf.Line(0))
 			charged := NewScrollback(len(actual))

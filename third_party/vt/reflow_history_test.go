@@ -22,7 +22,7 @@ func TestIndexedHistoryReadsDropsAndPullsMatchRealReflow(t *testing.T) {
 		for _, line := range lines {
 			h.append(line)
 			s := NewScreen(max(1, len(line)+1), 1)
-			copy(s.buf.Line(0), line)
+			s.writeScreenLine(0, line)
 			s.reflow(width, 1, nil, false)
 			for _, row := range append(s.scrollback.Lines(), s.buf.Line(0)) {
 				trim := NewScrollback(1)

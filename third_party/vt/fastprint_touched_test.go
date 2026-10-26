@@ -27,7 +27,7 @@ func TestPrintRunTouchedRangeEquivalence(t *testing.T) {
 							}
 							e.Write([]byte(input + "\r"))
 						}
-						if !reflect.DeepEqual(fast.scr.buf, slow.scr.buf) || dumpEmulator(fast) != dumpEmulator(slow) {
+						if !reflect.DeepEqual(screenTestState(fast.scr.buf), screenTestState(slow.scr.buf)) || dumpEmulator(fast) != dumpEmulator(slow) {
 							t.Fatalf("column=%d dirty=%d:%d length=%d input=%q", column, first, last, length, input)
 						}
 						cases++

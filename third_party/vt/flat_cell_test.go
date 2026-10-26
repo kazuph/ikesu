@@ -80,7 +80,7 @@ func TestFlatCellIDReuseKeepsDecodedSnapshotAndReleasesTables(t *testing.T) {
 		for _, c := range cells {
 			tables.release(c)
 		}
-		if tables.text.index != nil || tables.styles.index != nil || tables.links.index != nil || tables.byColor != nil || tables.colors != nil {
+		if tables.text.index != nil || tables.styles.index != nil || tables.links.index != nil || tables.byColor != nil || tables.colors != nil || tables.decoded != nil {
 			t.Fatal("empty screen still owns dictionary storage")
 		}
 	}
@@ -89,6 +89,19 @@ func TestFlatCellIDReuseKeepsDecodedSnapshotAndReleasesTables(t *testing.T) {
 			t.Fatal("ID reuse changed a decoded snapshot", i, c)
 		}
 	}
+}
+
+func TestFlatCellOpaqueColorsKeepOriginalOwnership(t *testing.T) {
+	a, b := flatSliceColor{3, 5, 7}, flatSliceColor{3, 5, 7}
+	var tables flatTables
+	ca := tables.pack(uv.Cell{Width: 1, Style: uv.Style{Fg: a}})
+	cb := tables.pack(uv.Cell{Width: 1, Style: uv.Style{Fg: b}})
+	a[0] = 11
+	if tables.unpack(ca).Style.Fg.(flatSliceColor)[0] != 11 || tables.unpack(cb).Style.Fg.(flatSliceColor)[0] != 3 {
+		t.Fatal("equal custom colors lost distinct source ownership")
+	}
+	tables.release(ca)
+	tables.release(cb)
 }
 
 func BenchmarkFlatCellRetainedASCII(b *testing.B) {
