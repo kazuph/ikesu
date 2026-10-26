@@ -53,12 +53,16 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	clearEnd = max(clearEnd, end)
 	dropped := false
 	if length >= 0 {
-		line := make(uv.Line, end)
-		s.buf.copyRow(line, 0, y)
-		if s.runtimeASCII && s.scrollback.byteLimited && length > 0 {
-			dropped = s.scrollback.pushBytesWithPlainText(line, s.runtimeBlankBounds[s.runtimeRowHead].plain, plainText)
+		if s.runtimeASCII && s.scrollback.byteLimited && length > 0 && s.runtimeBlankBounds[s.runtimeRowHead].plain && plainText != nil && len(plainText) == end {
+			dropped = s.scrollback.pushPlainScreenBytes(plainText, end)
 		} else {
-			dropped = s.scrollback.pushTrimmed(line)
+			line := make(uv.Line, end)
+			s.buf.copyRow(line, 0, y)
+			if s.runtimeASCII && s.scrollback.byteLimited && length > 0 {
+				dropped = s.scrollback.pushBytesWithPlainText(line, s.runtimeBlankBounds[s.runtimeRowHead].plain, plainText)
+			} else {
+				dropped = s.scrollback.pushTrimmed(line)
+			}
 		}
 	}
 	if dropped && !(s.cur.Pen.Bg == nil && uv.EmptyCell == (uv.Cell{Content: " ", Width: 1}) && r.Max.Y <= s.buf.Height() && y < s.buf.Height() && r.Max.X >= s.buf.Width()) {

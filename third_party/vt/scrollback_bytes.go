@@ -102,7 +102,11 @@ func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) bool {
 }
 
 func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plainText []byte) (dropped bool) {
-	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
+	return s.pushByteRow(line, len(line), knownPlain, plainText)
+}
+
+func (s *Scrollback) pushByteRow(line uv.Line, columns int, knownPlain bool, plainText []byte) (dropped bool) {
+	cost := scrollbackRowBytes + columns*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
 	var styled *styledRow
@@ -133,12 +137,12 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 		s.lines, s.rowBytes, s.packed, s.styled, s.start = rows, sizes, packed, styles, 0
 	}
 	idx := s.wrap(s.start + s.count)
-	reusable := cap(text) == len(line)
-	plain := knownPlain && len(line) > 0
+	reusable := cap(text) == columns
+	plain := knownPlain && columns > 0
 	if plain {
 		if reusable {
-			text = text[:len(line)]
-			if plainText != nil && len(plainText) == len(line) {
+			text = text[:columns]
+			if plainText != nil && len(plainText) == columns {
 				copy(text, plainText)
 			} else {
 				for x := range line {
@@ -148,15 +152,15 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 		}
 	} else if reusable {
 		// text belongs to the evicted row; a rejected prefix is never retained.
-		text = text[:len(line)]
+		text = text[:columns]
 		plain = packPlainRow(line, text)
 	} else {
 		plain = plainRow(line)
 	}
 	if plain {
 		if !reusable {
-			text = make([]byte, len(line))
-			if plainText != nil && len(plainText) == len(line) {
+			text = make([]byte, columns)
+			if plainText != nil && len(plainText) == columns {
 				copy(text, plainText)
 			} else {
 				for x := range line {
@@ -169,10 +173,10 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 		s.styled[idx], s.lines[idx], s.packed[idx] = styled, nil, nil
 	} else {
 		// Exact capacity prevents an evicted wider row retaining hidden storage.
-		if cap(reuse) == len(line) {
+		if cap(reuse) == columns {
 			reuse = append(reuse[:0], line...)
 		} else {
-			reuse = make(uv.Line, len(line))
+			reuse = make(uv.Line, columns)
 			copy(reuse, line)
 		}
 		s.lines[idx], s.packed[idx] = reuse, nil
