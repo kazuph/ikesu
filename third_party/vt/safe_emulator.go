@@ -62,6 +62,18 @@ func (se *SafeEmulator) CellAt(x, y int) *uv.Cell {
 	return se.Emulator.CellAt(x, y)
 }
 
+func (se *SafeEmulator) CopyScreenRow(dst []uv.Cell, x, y int) {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+	se.Emulator.CopyScreenRow(dst, x, y)
+}
+
+func (se *SafeEmulator) ScreenStorage() ScreenStorageInfo {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+	return se.Emulator.ScreenStorage()
+}
+
 // SendKey sends a key event to the emulator in a concurrency-safe manner.
 func (se *SafeEmulator) SendKey(key uv.KeyEvent) {
 	se.mu.Lock()
