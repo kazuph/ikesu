@@ -171,7 +171,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 	}
 	s.mu.Unlock()
 
-	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
+	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{}), owner: s}
 	p.cursor.Visible = true
 	s.setupGraphics(p)
 	emu.RegisterOscHandler(52, func(data []byte) bool {

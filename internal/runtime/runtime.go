@@ -55,6 +55,7 @@ type Pane struct {
 	processIdentityChanged atomic.Bool
 	processSettlingUntil   time.Time
 	processCwdAt           time.Time
+	owner                  *Supervisor
 
 	cmd                 *exec.Cmd
 	ptyFile             *os.File
@@ -129,6 +130,8 @@ type Supervisor struct {
 	mu              sync.Mutex
 	panes           map[int]*Pane
 	events          chan Event
+	missedMu        sync.Mutex
+	missed          map[*Pane]EventKind
 	done            chan struct{}
 	loginPathOnce   sync.Once
 	loginPathDone   chan struct{}
@@ -404,6 +407,9 @@ func (p *Pane) notify(k EventKind) {
 	select {
 	case p.ev <- Event{Pane: p.ID, Kind: k}:
 	default:
+		if k == EventChanged || k == EventExited {
+			p.keepMissedChange(k)
+		}
 	}
 }
 
@@ -418,6 +424,7 @@ func (p *Pane) notifyChanged() {
 	select {
 	case p.ev <- Event{Pane: p.ID, Kind: EventChanged}:
 	default:
+		p.keepMissedChange(EventChanged)
 		p.changedPending.Store(false)
 	}
 }
@@ -426,6 +433,7 @@ func (p *Pane) notifyChanged() {
 // when it consumes the event, allowing the next screen change to notify
 // again.
 func (p *Pane) MarkChangedRead() {
+	p.clearMissedChange()
 	p.changedPending.Store(false)
 }
 

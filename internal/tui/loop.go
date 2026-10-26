@@ -246,6 +246,9 @@ func (a *App) onTick() {
 	}
 	now := time.Now()
 	a.flushSidebarDividerClicks(now)
+	for _, ev := range a.sup.TakePendingChanges() {
+		a.onRuntimeEvent(ev)
+	}
 	if a.localRestore {
 		a.observeLocalSessions()
 	}
