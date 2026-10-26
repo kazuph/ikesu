@@ -290,8 +290,8 @@ test("allow_text thread reply forwards --text", async () => {
     });
     assert.equal(daemon.testAnswers.length, 1);
     const argv = daemon.testAnswers[0];
-    assert.equal(argv[3], "");
-    assert.deepEqual(argv.slice(4), [
+    assert.ok(!argv.includes(""), "text-only answer must omit the option argument");
+    assert.deepEqual(argv.slice(3), [
       "--responder",
       "slack",
       "--machine",

@@ -6,7 +6,7 @@
 // against it with Slack pointed at a local http+ws fake, creates a decision
 // with `ikesu decision ask`, answers it by injecting a number reaction over
 // the socket-mode websocket, and asserts the decision resolves with the
-// picked option and the Slack post is updated to 決定済み.
+// picked option and the resolved Slack post is removed.
 
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
@@ -18,7 +18,7 @@ import { FakeSlack, FakeWsServer, waitUntil } from "./fakes.mjs";
 
 const APP_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const REPO_ROOT = path.resolve(APP_ROOT, "..", "..");
-const IKESU = process.env.SLACK_DECISIONS_TEST_IKESU || "/Users/kazuph/.local/bin/ikesu";
+const IKESU = process.env.SLACK_DECISIONS_TEST_IKESU || process.env.IKESU_BIN_PATH || "ikesu";
 const DAEMON = path.join(APP_ROOT, "slack-decisions.mjs");
 
 const outIndex = process.argv.indexOf("--out");

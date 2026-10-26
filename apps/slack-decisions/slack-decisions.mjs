@@ -883,7 +883,7 @@ function fallbackText({ decision, machine }) {
 // --- Daemon -------------------------------------------------------------------
 
 function decisionKey(machineId, decisionId) {
-  return `${machineId} ${decisionId}`;
+  return `${machineId}\u0000${decisionId}`;
 }
 
 function decisionIdOf(decision) {
@@ -897,7 +897,7 @@ function decisionIdOf(decision) {
 function questionKey(machineId, decision) {
   const origin = decision?.origin || {};
   const options = (decision?.options || [])
-    .map((option) => `${option?.id ?? ""} ${option?.label ?? ""}`)
+    .map((option) => `${option?.id ?? ""}\u0000${option?.label ?? ""}`)
     .join("");
   return JSON.stringify([
     String(machineId),
@@ -1522,7 +1522,7 @@ export class SlackDecisionsDaemon {
     const did = entry.decision.decision_id;
     const ids = Array.isArray(optionIds) && optionIds.length
       ? optionIds
-      : [optionId ?? ""];
+      : optionId ? [optionId] : [];
     const args = [
       "decision",
       "answer",
