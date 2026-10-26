@@ -77,3 +77,14 @@ node --test apps/mac-dialog-decisions/test/render.test.mjs
 ## 出典
 
 作者本人の許可に基づき kazuph/herdr の `apps/mac-dialog-decisions` から導入。コマンド・環境変数・設定名・マニフェストを ikesu に合わせて変更した。herdr 本体の実装は使用していない。
+
+command_guard のパネルでは、選択肢を本文のスクロール領域の外に置き、選択と送信は従来どおり分離する。本文に含まれるコマンド・申請文・場所は Origin 欄に重ねて表示しない。判定理由と対象コマンドは見出し直下に強調表示する。
+
+ネイティブ配置の回帰確認は、長い本文の試験用 spec JSON を渡して実パネルを表示し、全選択肢が画面とクリップ領域の内側にあることを数値で検査する。選択だけでは送信されず、再クリックで解除できることも確認する。撮影は自分の試験パネルをダークモードで表示し、`screencapture -l <窓ID>` で実ウィンドウだけを保存する。ほかのアプリは操作しない。
+
+```sh
+env -u DEVELOPER_DIR swiftc apps/mac-dialog-decisions/{dialog,preview,unicode-width}.swift apps/mac-dialog-decisions/test/layout/main.swift -o /tmp/ikesu-panel-layout
+/tmp/ikesu-panel-layout /absolute/path/to/test-spec.json /absolute/path/to/panel.png
+```
+
+非アクティブなパネルの丸印と選択肢の文字は、最初の1回のクリックで選択できる。選択だけでは送信しない。回帰試験 `test/first-click/main.swift` は、自分の試験ウィンドウを非キー・非アクティブにして、クリック先の first-mouse 受付と、最初のマウス down/up による選択を確認する。`--choice=0`〜`--choice=2` で選択肢、`--title` で文字部分を指定でき、⌘1〜⌘3 が選択だけを行うことも検査する。

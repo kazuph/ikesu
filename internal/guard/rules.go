@@ -44,6 +44,7 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
+	TriggerCommand      string            `json:"-"` // Display only; never used by policy or approval keys.
 	CwdUncertain        bool              `json:"-"`
 	AuthorizationEnv    map[string]string `json:"-"`
 	GuardCommands       []string          `json:"-"`

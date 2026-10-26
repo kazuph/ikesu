@@ -124,3 +124,12 @@ test("fmtDeadline shows absolute time and remaining; no deadline when absent", (
   assert.match(fmtDeadline(d, now), /^\d{2}:\d{2}（残り約5分）$/);
   assert.equal(fmtDeadline(decision({ expires_unix_ms: null }), now), "期限なし");
 });
+
+test("native panel can identify guard decisions without changing origin details or answer options", () => {
+ const input=decision();
+ const spec=buildDialogSpec(input,machine);
+ assert.equal(spec.kind,"command_guard");
+ assert.equal(spec.details.find(d=>d.label==="理由").value,input.origin.reason);
+ assert.deepEqual(spec.options.map(o=>o.id),input.options.map(o=>o.id));
+ assert.equal(buildDialogSpec(decision({kind:"agent_prompt"}),machine).kind,"agent_prompt");
+});
