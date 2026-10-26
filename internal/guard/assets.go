@@ -179,7 +179,12 @@ func (a *Assets) sync(agent string) error {
 	// even when the detected agent has not changed.
 	for _, cmd := range a.Config.Commands() {
 		s := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
-		if e := os.WriteFile(filepath.Join(a.Bin, cmd), []byte(s), 0700); e != nil {
+		path := filepath.Join(a.Bin, cmd)
+		if e := os.WriteFile(path, []byte(s), 0700); e != nil {
+			_ = a.remove()
+			return a.setIssue(e.Error())
+		}
+		if e := os.Chmod(path, 0700); e != nil {
 			_ = a.remove()
 			return a.setIssue(e.Error())
 		}

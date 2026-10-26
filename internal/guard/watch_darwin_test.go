@@ -4,6 +4,7 @@ package guard
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -83,19 +84,16 @@ func TestAssetChangesRepairAndRearm(t *testing.T) {
 			waitRepair(t, change.intact)
 		})
 	}
-	// Attribute changes must notify even though repairing executable modes
-	// belongs to the existing Sync contract, outside this scheduling change.
 	drain()
 	if err := os.Chmod(shim, 0600); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-changes:
-	case <-time.After(5 * time.Second):
-		t.Fatal("shim attribute change was not notified")
-	}
-	if err := os.Chmod(shim, 0700); err != nil {
-		t.Fatal(err)
+	waitRepair(t, func() bool {
+		info, err := os.Stat(shim)
+		return err == nil && info.Mode().Perm() == 0700
+	})
+	if out, err := exec.Command(shim, "--version").CombinedOutput(); err != nil {
+		t.Fatalf("repaired shim cannot execute: %v %s", err, out)
 	}
 	if err := a.Sync(""); err != nil {
 		t.Fatal(err)
