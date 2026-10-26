@@ -97,6 +97,11 @@ final class FirstClickButton: NSButton {
   override var needsPanelToBecomeKey: Bool { true }
 }
 
+final class FirstClickImageView: NSImageView {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  override var needsPanelToBecomeKey: Bool { true }
+}
+
 final class FirstClickTextView: NSTextView {
   var onCommandReturn: (() -> Void)?
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -155,7 +160,7 @@ final class OptionCard: NSView {
   var onClick: ((OptionCard) -> Void)?
   private var hovering = false { didSet { refresh() } }
   private let mark = NSTextField(labelWithString: "")
-  private let box = NSImageView()
+  private let box = FirstClickImageView()
 
   init(option: DialogOption, index: Int, multi: Bool) {
     self.option = option
