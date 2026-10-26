@@ -58,8 +58,9 @@ func TestPendingProcessSchedulePreservesQuietAndSilentCwd(t *testing.T) {
 	wait(func() bool {
 		p.mu.Lock()
 		until := p.processSettlingUntil
+		outputUntil := p.processOutputUntil
 		p.mu.Unlock()
-		return strings.Contains(p.ScreenText(), "\nPROCESS_SCHEDULE_READY\n") && p.Snapshot().FgPID != p.ShellPID() && until.IsZero()
+		return strings.Contains(p.ScreenText(), "\nPROCESS_SCHEDULE_READY\n") && p.Snapshot().FgPID != p.ShellPID() && until.IsZero() && outputUntil.IsZero()
 	})
 	s.processMu.Lock()
 	periodic := s.processTicks[p]

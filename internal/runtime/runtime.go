@@ -55,6 +55,7 @@ type Pane struct {
 	processIdentityChanged atomic.Bool
 	processRevision        atomic.Uint64
 	processSettlingUntil   time.Time
+	processOutputUntil     time.Time
 	processCwdAt           time.Time
 	owner                  *Supervisor
 
@@ -366,7 +367,7 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	p.scrollbarVisible = p.emu.ScrollbackLen() > 0
 	p.mu.Unlock()
 	p.revision.Add(1)
-	p.markProcessChanged()
+	p.markProcessOutput()
 	p.notifyChanged()
 	for _, data := range clipboard {
 		select {
@@ -858,6 +859,10 @@ func (p *Pane) PollProcessChanged() {
 		p.processSettlingUntil = time.Time{}
 		p.processIdentityChanged.Store(true)
 	}
+	output := !p.processOutputUntil.IsZero()
+	if output && !now.Before(p.processOutputUntil) {
+		p.processOutputUntil = time.Time{}
+	}
 	p.mu.Unlock()
 	if !processEventQueue() || settling || settled || p.processChanged.Load() {
 		p.PollProcess()
@@ -867,9 +872,10 @@ func (p *Pane) PollProcessChanged() {
 		_ = p.guard.Sync(effective)
 	}
 	// kqueue has no chdir/tcsetpgrp event. Silent programs keep the existing
-	// cwd-observation cadence without repeating the process-group scan.
+	// cwd-observation cadence. Output keeps the same per-tick observation
+	// window, but only an observed change needs the full PID/argv scan.
 	p.mu.Lock()
-	due := now.Sub(p.processCwdAt) >= foregroundJobCacheLifetime
+	due := output || now.Sub(p.processCwdAt) >= foregroundJobCacheLifetime
 	if due {
 		p.processCwdAt = now
 	}
@@ -885,6 +891,13 @@ func (p *Pane) PollProcessChanged() {
 			p.notifyChanged()
 		}
 	}
+}
+
+func (p *Pane) markProcessOutput() {
+	p.mu.Lock()
+	p.processOutputUntil = time.Now().Add(foregroundJobCacheLifetime)
+	p.mu.Unlock()
+	p.queueProcessChange()
 }
 
 // fork/exec notification precedes tcsetpgrp and shell builtins can finish after
