@@ -34,6 +34,9 @@ func reviewWaitFile(t *testing.T, path, want string) {
 
 func reviewPTYSize(t *testing.T, a *App, pid int, w, h, cw, ch int) {
 	t.Helper()
+	if size := viewerTerminalSizes(a)[pid]; size != [2]int{w, h} {
+		t.Fatalf("pane %d emulator size: got %v want %dx%d", pid, size, w, h)
+	}
 	file := filepath.Join(t.TempDir(), "size")
 	a.sup.Input(pid, []byte(fmt.Sprintf("stty size > '%s'\n", file)))
 	reviewWaitFile(t, file, fmt.Sprintf("%d %d", h, w))
@@ -106,6 +109,12 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 			if kind == "remove-workspace" {
 				a.exec(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
 				a.exec(model.CmdCloseTab{Workspace: 0, Tab: 1})
+			}
+			// Readline restores the size it read while preparing the first
+			// prompt. Start this move contract after that initialization.
+			for id := range viewerTerminalSizes(a) {
+				a.sup.Input(id, []byte("printf '\\n'; PS1='SIZE_READY> '\n"))
+				specWaitText(t, a.sup.Get(id), "\nSIZE_READY>")
 			}
 			v := a.NewViewer(io.Discard, 196, 50, nil)
 			v.Begin(a, 196*8, 50*16)
