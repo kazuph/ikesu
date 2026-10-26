@@ -310,6 +310,11 @@ func (s *Server) restoreLive(in *handoffImport, socket string) error {
 	}
 	s.app.RestoreHandoff(in.State.App)
 	s.paneMetadata, s.workspaceMetadata, s.reportSources = in.State.PaneMetadata, in.State.WorkspaceMetadata, in.State.ReportSources
+	for pid := range s.paneMetadata {
+		if s.sup.Get(pid) != nil {
+			s.app.InvalidatePaneMetadata(pid)
+		}
+	}
 	s.pluginPanes, s.observedStart = in.State.PluginPanes, in.State.ObservedStart
 	s.lastStatus, s.lastAgent, s.notifyLast, s.lastAttention = in.State.LastStatus, in.State.LastAgent, in.State.NotifyLast, in.State.LastAttention
 	s.journal = in.State.Journal
