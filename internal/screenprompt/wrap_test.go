@@ -73,8 +73,8 @@ func TestRealClaudeWrappedQuestion(t *testing.T) {
 		strings.Repeat("─", 51), "  4. Chat about this", "Enter to select · ↑/↓ to navigate · Esc to cancel"}
 	p := Parse("claude", screen)
 	want := "report_neck4eye.pngのかけらを/private/tmp/ikesu-accept/very_long_filename_for_question_wrap_join/report_neck4eye.pngに保存するか確認します。Which output format should the report use?"
-	if p == nil || p.Params.Title != want {
-		t.Fatalf("want %q: %+v", want, p)
+	if p == nil || p.Params.Body == nil || *p.Params.Body != want || len([]rune(p.Params.Title)) > 80 {
+		t.Fatalf("want full body %q and short title: %+v", want, p)
 	}
 }
 

@@ -45,6 +45,27 @@ func TestObservedScreenContractsMatchHerdr0240(t *testing.T) {
 				value := strings.ReplaceAll(*want.Options[1].Description, "/ outside.txt", "/outside.txt")
 				want.Options[1].Description = &value
 			}
+			// The observed wire contracts retain all content; long-question
+			// presentation now separates the heading and paragraph body.
+			switch name {
+			case "claude-permission":
+				text := strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+					if r == '╌' {
+						return -1
+					}
+					return r
+				}, want.Title)), " ")
+				want.Title = string([]rune(text)[:79]) + "…"
+				want.Body = &text
+			case "codex-permission":
+				text := "+ Show details\n\nWould you like to run the following command?\n\nEnvironment: local\n\nReason: 権限ダイアログの観察のため、指定の一時ファイルへ observation を書き込むコマンドを承認しますか？\n\n$ printf observation > /tmp/gs-j0m1z8np/outside.txt"
+				want.Title = "+ Show details"
+				want.Body = &text
+			case "claude-final-confirm":
+				text := "Review your answers\n\n● Which sections should the report include? → Summary, Evidence ● Which language should the report use? → Japanese\n\nReady to submit your answers?"
+				want.Title = "Review your answers"
+				want.Body = &text
+			}
 			got := p.Params
 			if got.Title != want.Title || got.Kind != want.Kind || got.AllowText != want.AllowText || got.MultiSelect != want.MultiSelect || !reflect.DeepEqual(got.Options, want.Options) || !reflect.DeepEqual(got.QuestionLabel, want.QuestionLabel) || !reflect.DeepEqual(got.Body, want.Body) {
 				t.Fatalf("got %+v\nwant %+v", got, want)

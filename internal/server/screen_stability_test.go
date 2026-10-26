@@ -191,7 +191,7 @@ func TestScreenPermissionTallerThanPaneRetainsHeaderAndCommand(t *testing.T) {
 	s.sup.Resize(1, 160, 12)
 	s.app.Do(func() {
 		prompt := s.readScreenPrompt(1)
-		if prompt == nil || !strings.Contains(prompt.Params.Title, "Bash command") || !strings.Contains(prompt.Params.Title, "/tmp/gs-j0m1z8np/work/permission-observation.txt") {
+		if prompt == nil || !strings.Contains(prompt.Params.Title, "Bash command") || (prompt.Params.Body == nil || !strings.Contains(*prompt.Params.Body, "/tmp/gs-j0m1z8np/work/permission-observation.txt")) {
 			t.Error("tall permission lost context", prompt, p.DetectionLines())
 		}
 	})

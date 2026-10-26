@@ -95,7 +95,7 @@ func finalPrompt(p *Prompt) bool {
 }
 
 func (p *Prompt) PreviewSignature() string {
-	parts := []string{stableText(p.Params.Title)}
+	parts := []string{questionIdentity(p.Params)}
 	for _, o := range p.Params.Options {
 		parts = append(parts, o.ID, stableText(o.Label))
 	}
