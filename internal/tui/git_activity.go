@@ -17,6 +17,40 @@ type gitCwdActivity struct {
 	revision      uint64
 	git           render.GitStatus
 	name          string
+	paths         map[string]gitPathState
+}
+
+type gitPathState struct {
+	info     os.FileInfo
+	contents bool
+}
+
+// Ancestor directory writes include unrelated siblings. Keep their identity
+// watches, but only Git metadata directories need content-change invalidation.
+func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
+	revision := entry.watch.Revision()
+	if revision == entry.revision {
+		return entry, true
+	}
+	for path, previous := range entry.paths {
+		info, err := os.Stat(path)
+		if err != nil && !os.IsNotExist(err) {
+			return entry, false
+		}
+		if previous.info == nil || info == nil {
+			if previous.info != nil || info != nil {
+				return entry, false
+			}
+			continue
+		}
+		if !os.SameFile(previous.info, info) || previous.info.Mode() != info.Mode() ||
+			(previous.contents && !sameGitFileState(previous.info, info)) {
+			return entry, false
+		}
+	}
+	// A notification arriving during the probes must remain pending.
+	entry.revision = revision
+	return entry, true
 }
 
 type gitActivityState struct{ entries map[string]gitCwdActivity }
@@ -64,6 +98,13 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	}
 	paths := map[string]bool{}
 	gitAncestors(cwd, paths)
+	for path := filepath.Clean(cwd); ; path = filepath.Dir(path) {
+		paths[filepath.Join(path, ".git")] = true
+		if filepath.Dir(path) == path {
+			break
+		}
+	}
+	var metadataDirs []string
 	// Install the directory discovery watch before querying Git. After discovering
 	// tracked files, install their watches before reading the values we cache.
 	ready := entry.watch.Update(gitPathList(paths))
@@ -80,6 +121,7 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 				continue
 			}
 			gitAncestors(dir, paths)
+			metadataDirs = append(metadataDirs, dir)
 			walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 				if os.IsNotExist(err) {
 					return nil
@@ -114,6 +156,20 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		ready = gitConfigurationPaths(cwd, paths) && ready
 	}
 	covered := entry.watch.Update(gitPathList(paths))
+	entry.paths = make(map[string]gitPathState, len(paths))
+	for path := range paths {
+		info, statErr := os.Stat(path)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			covered = false
+		}
+		contents := info != nil && !info.IsDir()
+		for _, dir := range metadataDirs {
+			if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
+				contents = true
+			}
+		}
+		entry.paths[path] = gitPathState{info: info, contents: contents}
+	}
 	return values(ready && covered, revision)
 }
 

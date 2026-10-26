@@ -29,8 +29,50 @@ func TestWorkspaceGitQuietDoesNotStartAnotherQuery(t *testing.T) {
 	finish()
 	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
 	if a.gitPending {
+		for cwd, entry := range a.gitActivity.entries {
+			t.Logf("Git activity cwd=%q ready=%t loaded=%t saved=%d current=%d", cwd, entry.ready, entry.loaded, entry.revision, entry.watch.Revision())
+		}
 		finish()
 		t.Fatal("unchanged workspace started another Git query")
+	}
+}
+
+func TestWorkspaceGitQuietIgnoresUnrelatedSiblingActivity(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	parent := t.TempDir()
+	repo := filepath.Join(parent, "repo")
+	if err := os.Mkdir(repo, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "init", "-qb", "quiet")
+	a.st.Workspaces[0].Cwd = repo
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "quiet" })
+	entry := a.gitActivity.entries[repo]
+	if !entry.ready {
+		t.Fatal("native Git watch not established")
+	}
+	before := entry.watch.Revision()
+	if err := os.Mkdir(filepath.Join(parent, "unrelated"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	until := time.Now().Add(5 * time.Second)
+	for entry.watch.Revision() == before {
+		if time.Now().After(until) {
+			t.Fatal("real sibling change did not reach ancestor watch")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	if a.gitPending {
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-time.After(5 * time.Second):
+			t.Fatal("unexpected Git query did not finish")
+		}
+		t.Fatal("unrelated sibling activity restarted unchanged workspace Git query")
 	}
 }
 
@@ -102,6 +144,34 @@ func TestWorkspaceGitActivityPreservesTrackedChangesAndLinkedHead(t *testing.T) 
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "renamed" && a.workspaceGit[1].Branch == "linked" })
 	sidebarGit(t, linked, "symbolic-ref", "HEAD", "refs/heads/linked-new")
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[1].Branch == "linked-new" && a.workspaceNames[1] == "linked" })
+}
+
+func TestWorkspaceGitActivityKeepsWriteWithRestoredMtime(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	path := filepath.Join(repo, "tracked")
+	if err := os.WriteFile(path, []byte("a\nb\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "base")
+	a.st.Workspaces[0].Cwd = repo
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "main" })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("xxxx"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 1 && a.workspaceGit[0].Deleted == 2 })
 }
 
 func TestWorkspaceGitActivityFindsInitAndCwdChange(t *testing.T) {

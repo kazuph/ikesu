@@ -62,6 +62,13 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			entry.watch = filewatch.New(nil)
 			state.entries[cwd] = entry
 		}
+		if entry.loaded && entry.ready {
+			updated, unchanged := unchangedGitActivity(entry)
+			if unchanged {
+				state.entries[cwd] = updated
+				continue
+			}
+		}
 		if !entry.loaded || !entry.ready || entry.watch.Revision() != entry.revision {
 			pending[cwd] = entry
 		}
