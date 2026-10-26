@@ -83,6 +83,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		} else {
 			fmt.Fprintf(errOut, "   理由: 要承認コマンドの申請文は日本語で書いてください。英語の申請文は禁止です。\n   例: %s='なぜ必要か、何を確認済みか、戻し方は何かを日本語で書く' <command>\n", requestReasonEnvName(i))
 		}
+		fmt.Fprintf(errOut, "   判定理由: %s\n", v.Reason)
 		return false
 	}
 	if await == nil {

@@ -2,6 +2,7 @@ package guard
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,8 +41,10 @@ func TestClaudePrefixRecognizesOnlyCanonicalBootstrap(t *testing.T) {
 		"syntax error":          "eval '",
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got := ClaudePrefixLine(i, line); got != line {
-				t.Fatalf("unexpected normalization %q", got)
+			for _, candidate := range []string{line, strings.Replace(line, " < /dev/null", "", 1)} {
+				if got := ClaudePrefixLine(i, candidate); got != candidate {
+					t.Fatalf("unexpected normalization %q", got)
+				}
 			}
 		})
 	}
@@ -49,6 +52,53 @@ func TestClaudePrefixRecognizesOnlyCanonicalBootstrap(t *testing.T) {
 	custom := bootstrapForTest("/tmp/custom-claude/shell-snapshots/snapshot-zsh-1-a.sh", "ls", "/tmp/claude-1-cwd")
 	if got := ClaudePrefixLine(i, custom); got != "ls" {
 		t.Fatal(got)
+	}
+}
+
+func TestClaudePrefixWithoutDevNull(t *testing.T) {
+	i := Input{Cwd: "/tmp/work", LaunchCwd: "/tmp/work", Env: map[string]string{"HOME": "/tmp/test-user"}}
+	snapshot := "/tmp/test-user/.claude/shell-snapshots/snapshot-zsh-123-x.sh"
+	payloads := []string{
+		"ls",
+		`git commit -q -m "x" -m "Co-Authored-By: A <a@b.c>"`,
+		`AI_GUARD_REQUEST_REASON='対象プロジェクト: dotfiles。必要な理由: …。実施内容: …。確認済み: …。戻し方: …。' git commit -q -m "msg" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"`,
+		"dd if=/dev/zero of=/tmp/victim",
+		"ikesu send '*' hello",
+		"eval ls",
+	}
+	for _, payload := range payloads {
+		for _, withSource := range []bool{true, false} {
+			for _, withDevNull := range []bool{true, false} {
+				line := bootstrapForTest(snapshot, payload, "/tmp/claude-123-cwd")
+				if !withSource {
+					line = strings.TrimPrefix(line, "source "+quote(snapshot)+" 2>/dev/null || true && ")
+				}
+				if !withDevNull {
+					line = strings.Replace(line, " < /dev/null", "", 1)
+				}
+				t.Run(payload+fmt.Sprint(withSource, withDevNull), func(t *testing.T) {
+					normalized := ClaudePrefixLine(i, line)
+					_, got, err := lineVerdict(Config{}, i, normalized)
+					_, want, wantErr := lineVerdict(Config{}, i, payload)
+					t.Logf("source=%v devnull=%v decision=%s rule=%s reason=%s", withSource, withDevNull, got.Decision, got.Rule, got.Reason)
+					if normalized != payload || err != nil || wantErr != nil || got.Decision != want.Decision || got.Rule != want.Rule {
+						t.Fatalf("normalization=%q verdict=%+v want=%+v errors=%v/%v", normalized, got, want, err, wantErr)
+					}
+				})
+			}
+		}
+	}
+	good := bootstrapForTest(snapshot, "ls", "/tmp/claude-123-cwd")
+	for _, withSource := range []bool{true, false} {
+		for _, redirect := range []string{" < /etc/passwd", " <<< 'ls'", " < /dev/null < /etc/passwd", " 3< /dev/null"} {
+			line := strings.Replace(good, " < /dev/null", redirect, 1)
+			if !withSource {
+				line = strings.TrimPrefix(line, "source "+quote(snapshot)+" 2>/dev/null || true && ")
+			}
+			if got := ClaudePrefixLine(i, line); got != line {
+				t.Fatalf("accepted redirect %q: %q", redirect, got)
+			}
+		}
 	}
 }
 

@@ -37,6 +37,7 @@ func TestRequestReasonCancellationHint(t *testing.T) {
 				} else {
 					want += "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: " + key + "='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n"
 				}
+				want += "   判定理由: 実行前に承認が必要です。\n"
 				if out.String() != want {
 					t.Fatalf("got:\n%swant:\n%s", &out, want)
 				}
