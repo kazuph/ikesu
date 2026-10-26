@@ -74,7 +74,7 @@ func approvalTrigger(i Input, v Verdict) string {
 		i.RawLine = ""
 		command = i.Line()
 	}
-	return "承認が必要な理由: " + v.Reason + "（規則: " + v.Rule + "）\n引っかかったコマンド: " + command
+	return "ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command
 }
 
 func approvalBody(command, reason, cwd string) string {

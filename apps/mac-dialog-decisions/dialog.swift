@@ -431,7 +431,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     full(titleLabel)
 
     if let body = spec.body, !body.isEmpty {
-      if spec.kind == "command_guard", body.hasPrefix("承認が必要な理由:"),
+      if spec.kind == "command_guard", (body.hasPrefix("ブロック理由：") || body.hasPrefix("承認が必要な理由:")),
         let boundary = body.range(of: "\n\n") {
         full(label(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent))
         full(label(String(body[boundary.upperBound...]), size: Look.base))
