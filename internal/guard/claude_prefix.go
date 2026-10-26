@@ -82,7 +82,9 @@ func ClaudePrefixLine(i Input, line string) string {
 		template = strings.TrimPrefix(template, "source IKESU_SNAPSHOT 2>/dev/null || true && ")
 	}
 	var got bytes.Buffer
-	printer := syntax.NewPrinter()
+	// The payload has been replaced; ignore its original line positions when
+	// comparing the remaining bootstrap syntax.
+	printer := syntax.NewPrinter(syntax.SingleLine(true))
 	if printer.Print(&got, tree) != nil {
 		return line
 	}
