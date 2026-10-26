@@ -24,6 +24,8 @@ type Scrollback struct {
 	rowBytes        []int
 	packed          [][]byte
 	styled          []*styledRow
+	indexed         *reflowHistory
+	prepared        *reflowPrepared
 	OnDrop          func()
 }
 
@@ -94,6 +96,12 @@ func (s *Scrollback) pushTrimmed(line uv.Line) bool {
 	if s.byteLimited {
 		return s.pushBytes(line[:end])
 	}
+	if s.indexedLen() > 0 && s.Len() >= s.maxLines {
+		callback := s.OnDrop
+		s.OnDrop = nil
+		s.dropOldest()
+		s.OnDrop = callback
+	}
 	if s.count < s.maxLines {
 		s.lines[s.wrap(s.start+s.count)] = slices.Clone(line[:end])
 		s.count++
@@ -102,6 +110,9 @@ func (s *Scrollback) pushTrimmed(line uv.Line) bool {
 
 	// The buffer is full: reuse the evicted line's backing array for the new
 	// copy instead of allocating a fresh one for every pushed line.
+	if s.prepared != nil {
+		s.prepared.dropFirst()
+	}
 	idx := s.start
 	if dst := s.lines[idx]; cap(dst) >= end {
 		s.lines[idx] = append(dst[:0], line[:end]...)
@@ -127,8 +138,18 @@ func (s *Scrollback) PushN(buf *uv.RenderBuffer, y, n int) {
 
 // popLast transfers the newest saved row back to a growing screen.
 func (s *Scrollback) popLast() uv.Line {
-	if s == nil || s.count == 0 {
+	if s == nil || s.Len() == 0 {
 		return nil
+	}
+	if s.count == 0 {
+		line, charge := s.indexed.popLast()
+		if s.byteLimited {
+			s.bytes -= charge
+		}
+		return line
+	}
+	if s.prepared != nil {
+		s.prepared.popLast(s.count)
 	}
 	idx := s.wrap(s.start + s.count - 1)
 	line := s.lines[idx]
@@ -154,7 +175,14 @@ func (s *Scrollback) Len() int {
 	if s == nil {
 		return 0
 	}
-	return s.count
+	return s.count + s.indexedLen()
+}
+
+func (s *Scrollback) indexedLen() int {
+	if s.indexed == nil {
+		return 0
+	}
+	return s.indexed.view.rows
 }
 
 // MaxLines returns the maximum number of lines the scrollback buffer can hold.
@@ -172,15 +200,17 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 		return
 	}
 
-	if s.byteLimited {
-		for s.count > maxLines {
-			s.dropOldest()
-		}
+	callback := s.OnDrop
+	if !s.byteLimited {
+		s.OnDrop = nil
 	}
-	if s.count > maxLines {
-		s.start = s.wrap(s.start + s.count - maxLines)
-		s.count = maxLines
+	for s.Len() > maxLines {
+		s.dropOldest()
 	}
+	if s.prepared != nil {
+		s.prepared.applyDrops()
+	}
+	s.OnDrop = callback
 	s.maxLines = maxLines
 	if len(s.lines) != maxLines {
 		// Rebuild the ring at the new capacity, unwrapping into order.
@@ -212,9 +242,17 @@ func (s *Scrollback) SetMaxLines(maxLines int) {
 // Index 0 is the oldest line, Len()-1 is the most recent.
 // Returns nil if index is out of bounds.
 func (s *Scrollback) Line(index int) uv.Line {
-	if s == nil || index < 0 || index >= s.count {
+	if s == nil || index < 0 || index >= s.Len() {
 		return nil
 	}
+	if index < s.indexedLen() {
+		line := s.indexed.line(index)
+		if len(line) == 0 && !s.byteLimited {
+			return uv.Line{}
+		}
+		return line
+	}
+	index -= s.indexedLen()
 	idx := s.wrap(s.start + index)
 	if len(s.styled) > idx && s.styled[idx] != nil {
 		return s.styled[idx].line()
@@ -225,20 +263,65 @@ func (s *Scrollback) Line(index int) uv.Line {
 	return s.lines[idx]
 }
 
+// lineInto reconstructs a saved row without allocating a fresh expanded row
+// for each history entry. The caller owns dst; saved storage stays immutable.
+func (s *Scrollback) lineInto(index int, dst uv.Line) uv.Line {
+	if index < s.indexedLen() {
+		return s.indexed.lineInto(index, dst)
+	}
+	index -= s.indexedLen()
+	idx := s.wrap(s.start + index)
+	var packed []byte
+	var styled *styledRow
+	width := len(s.lines[idx])
+	if len(s.packed) > idx && s.packed[idx] != nil {
+		packed = s.packed[idx]
+		width = len(packed)
+	}
+	if len(s.styled) > idx && s.styled[idx] != nil {
+		styled = s.styled[idx]
+		width = len(styled.glyphs)
+	}
+	if cap(dst) < width {
+		dst = make(uv.Line, width)
+	} else {
+		clear(dst)
+		dst = dst[:width]
+	}
+	switch {
+	case packed != nil:
+		for x, b := range packed {
+			dst[x] = uv.Cell{Content: asciiContent[b], Width: 1}
+		}
+	case styled != nil:
+		start := 0
+		for _, run := range styled.runs {
+			for x := start; x < run.end; x++ {
+				g := styled.glyphs[x]
+				dst[x] = uv.Cell{Content: g.content, Width: g.width, Style: run.style, Link: run.link}
+			}
+			start = run.end
+		}
+	default:
+		copy(dst, s.lines[idx])
+	}
+	return dst
+}
+
 // Lines returns all lines in the scrollback buffer.
 // Index 0 is the oldest line.
 func (s *Scrollback) Lines() []uv.Line {
 	if s == nil {
 		return nil
 	}
-	if s.count == 0 {
+	if s.Len() == 0 {
 		return nil
 	}
-	if !s.byteLimited && s.start == 0 {
+	if !s.byteLimited && s.start == 0 && s.indexedLen() == 0 {
 		return s.lines[:s.count]
 	}
 	// The ring is wrapped; return the lines in order on a fresh slice.
-	out := make([]uv.Line, s.count)
+	out := make([]uv.Line, s.Len())
 	for i := range out {
 		out[i] = s.Line(i)
 	}
@@ -257,15 +340,21 @@ func (s *Scrollback) Clear() {
 	s.start = 0
 	s.count = 0
 	s.bytes = 0
+	s.indexed = nil
+	s.prepared = nil
 }
 
 // CellAt returns the cell at the given position in the scrollback buffer.
 // x is the column, y is the line index (0 = oldest).
 // Returns nil if position is out of bounds.
 func (s *Scrollback) CellAt(x, y int) *uv.Cell {
-	if s == nil || y < 0 || y >= s.count {
+	if s == nil || y < 0 || y >= s.Len() {
 		return nil
 	}
+	if y < s.indexedLen() {
+		return s.indexed.cellAt(x, y)
+	}
+	y -= s.indexedLen()
 	idx := s.wrap(s.start + y)
 	if len(s.styled) > idx && s.styled[idx] != nil {
 		return s.styled[idx].cellAt(x)
@@ -276,7 +365,7 @@ func (s *Scrollback) CellAt(x, y int) *uv.Cell {
 		}
 		return &uv.Cell{Content: string(s.packed[idx][x]), Width: 1}
 	}
-	line := s.Line(y)
+	line := s.lines[idx]
 	if line == nil || x < 0 || x >= len(line) {
 		return nil
 	}

@@ -19,7 +19,22 @@ import (
 func init() {
 	if tp := os.Getenv("IKESU_TRACE"); tp != "" {
 		if f, err := os.Create(tp); err == nil && trace.Start(f) == nil {
-			time.AfterFunc(15*time.Second, func() { trace.Stop(); f.Close() })
+			if stop := os.Getenv("IKESU_TRACE_STOP_FILE"); stop != "" {
+				go func() {
+					tick := time.NewTicker(100 * time.Millisecond)
+					defer tick.Stop()
+					for range tick.C {
+						if _, err := os.Stat(stop); err == nil {
+							trace.Stop()
+							f.Close()
+							_ = os.WriteFile(stop+".done", []byte("closed\n"), 0600)
+							return
+						}
+					}
+				}()
+			} else {
+				time.AfterFunc(15*time.Second, func() { trace.Stop(); f.Close() })
+			}
 		}
 	}
 	secs, _ := strconv.Atoi(os.Getenv("IKESU_CPUPROFILE_SECS"))

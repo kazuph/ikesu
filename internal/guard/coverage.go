@@ -101,6 +101,7 @@ func (a *Assets) Reconfigure(c Config) error {
 	if a.closed {
 		return nil
 	}
+	defer a.refreshChanges()
 	// Drop forwarding entries for targets removed by the new configuration.
 	for _, cmd := range a.Config.Commands() {
 		if !has(c.Commands(), cmd) {

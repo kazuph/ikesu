@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 	"path/filepath"
@@ -37,11 +38,15 @@ func TestDecisionWaitAfterAppStopClosesWithoutInvalidResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	served := make(chan struct{})
+	s.apiWG.Add(1)
 	go func() {
 		defer close(served)
 		defer peer.Close()
-		s.serveDecisionWait(peer, &api.Request{ID: "wait", Method: api.MethodDecisionWait, Params: api.MarshalParams(api.DecisionWaitParams{DecisionID: "persisted"})})
+		s.serveAPI(peer)
 	}()
+	if err := json.NewEncoder(client).Encode(api.Request{ID: "wait", Method: api.MethodDecisionWait, Params: api.MarshalParams(api.DecisionWaitParams{DecisionID: "persisted"})}); err != nil {
+		t.Fatal(err)
+	}
 	if err := client.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}

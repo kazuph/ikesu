@@ -154,6 +154,10 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 }
 
 func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err error) {
+	// Drain old disk writes before the importer can publish state. Rollback
+	// reopens normal writing; success retires every captured old generation.
+	s.saveWriteMu.Lock()
+	defer s.saveWriteMu.Unlock()
 	// The importer must not replay a notice already written by the retiring
 	// server whose delivery acknowledgement is still in flight.
 	s.mailDelivery.Lock()
@@ -277,6 +281,7 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return fmt.Errorf("handoff import failed: %s", result.Error)
 	}
 	transferred = true
+	s.saveClosed = true
 	s.handedOff = true
 	s.closing.Store(2)
 	s.stopDecisions()
@@ -305,6 +310,11 @@ func (s *Server) restoreLive(in *handoffImport, socket string) error {
 	}
 	s.app.RestoreHandoff(in.State.App)
 	s.paneMetadata, s.workspaceMetadata, s.reportSources = in.State.PaneMetadata, in.State.WorkspaceMetadata, in.State.ReportSources
+	for pid := range s.paneMetadata {
+		if s.sup.Get(pid) != nil {
+			s.app.InvalidatePaneMetadata(pid)
+		}
+	}
 	s.pluginPanes, s.observedStart = in.State.PluginPanes, in.State.ObservedStart
 	s.lastStatus, s.lastAgent, s.notifyLast, s.lastAttention = in.State.LastStatus, in.State.LastAgent, in.State.NotifyLast, in.State.LastAttention
 	s.journal = in.State.Journal

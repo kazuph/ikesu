@@ -19,7 +19,7 @@ type Peer struct {
 
 func GraphicsPeer() Peer {
 	peer := Current()
-	peer.SurfaceCodecs = []string{GraphicsPatchCodec}
+	peer.SurfaceCodecs = append(peer.SurfaceCodecs, GraphicsPatchCodec)
 	peer.Methods = append(peer.Methods, "control")
 	return WithGraphicsFiles(peer)
 }
@@ -34,8 +34,12 @@ func HasGraphicsPatches(peer Peer) bool {
 }
 
 func Current() Peer {
-	return Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
+	peer := Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
 		Methods: []string{"input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous"}}
+	if ExperimentalFlatDiff {
+		peer.SurfaceCodecs = []string{FlatDiffCodec}
+	}
+	return peer
 }
 
 // MachinePeer refuses an older server before it can create a visible viewer.

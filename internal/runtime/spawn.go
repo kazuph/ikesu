@@ -51,6 +51,9 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 	}
 
 	p := s.newPane(id, cwd, cols, rows)
+	if benchPaneMonitor != nil {
+		benchPaneMonitor(p)
+	}
 	p.spawnArgv = argv
 	emu := p.emu
 
@@ -148,12 +151,14 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		return nil, err
 	}
 
+	p.beginProcessWatch()
 	p.startPump()
 	go p.pumpEmuToPTY()
 	go p.waitExit()
 
 	s.mu.Lock()
 	s.panes[id] = p
+	p.queueProcessChange()
 	s.mu.Unlock()
 	return p, nil
 }
@@ -167,7 +172,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 	}
 	s.mu.Unlock()
 
-	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{})}
+	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{}), owner: s}
 	p.cursor.Visible = true
 	s.setupGraphics(p)
 	emu.RegisterOscHandler(52, func(data []byte) bool {
@@ -196,7 +201,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 				p.graphics.Scroll(alt, 0, 0, oldWidth, height+pushed, pulled-pushed)
 			}
 			if p.read != nil {
-				if p.read.byteHistory && !alt {
+				if (p.read.byteHistory || p.read.historyIndexed) && !alt {
 					p.read.resizeByteRows(oldWidth, height, pushed, pulled, p.emu.ScrollbackLen())
 				} else {
 					p.read.resizeRows(alt, oldWidth, height, pushed, pulled)

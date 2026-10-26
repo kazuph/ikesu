@@ -24,6 +24,7 @@ func Import(t Transfer) *Assets {
 func (a *Assets) RebindSocket(socket string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	defer a.refreshChanges()
 	if !filepath.IsAbs(socket) {
 		return a.setIssue("引き継ぎ先のソケットは絶対パスで指定してください")
 	}

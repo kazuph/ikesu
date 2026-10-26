@@ -34,6 +34,7 @@ func (p *Pane) startPump() {
 		defer close(p.pumpDone)
 		p.pumpPTYToEmu()
 		if p.importedPID != 0 && !p.pausing.Load() && !p.retired.Load() {
+			p.endProcessWatch()
 			p.importedExited.Store(true)
 			p.mu.Lock()
 			p.dead = true
@@ -149,6 +150,7 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 }
 func (s *Supervisor) StartImported() {
 	for _, p := range s.panes {
+		p.beginProcessWatch()
 		p.startPump()
 		go p.pumpEmuToPTY()
 	}

@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
@@ -56,17 +58,23 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	if a.sizeViewer != nil {
+		a.sizeViewer.with(a, func(ui *App) { ui.flushResize() })
+	} else {
+		a.flushResize()
+	}
+	defer benchstage.Span("ui.draw")()
+	started := time.Now()
+	defer func() { a.lastDraw = started }()
 	if a.drawViewers != nil {
 		a.drawViewers()
 		a.dirty = false
-		a.lastDraw = time.Now()
 		return
 	}
 	if a.sinkOn != nil && !a.sinkOn() {
 		// No display attached: drop the frame work but clear the flag so a
 		// later attach gets a full repaint via the resize/reset path.
 		a.dirty = false
-		a.lastDraw = time.Now()
 		return
 	}
 	panes := a.sharedPaneSnaps
@@ -211,7 +219,6 @@ func (a *App) draw() {
 	}
 	a.syncHostKeyboard()
 	if a.snapshotSink != nil {
-		a.lastDraw = time.Now()
 		a.dirty = a.snapshotSink(in) != nil
 		return
 	}
@@ -237,14 +244,18 @@ func (a *App) draw() {
 			out.AnchorVisible = false
 		}
 	}
-	a.lastDraw = time.Now()
 	a.dirty = false
 	if !a.serverUI {
 		if err := a.inputSource.Prefix(a.prefix, a.sidebarConfig.Experimental.SwitchASCIIInputSourceInPrefix); err != nil {
 			a.SetConfigWarning("input source: " + err.Error())
 		}
 	}
-	if _, err := a.out.Write(a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible, out.AnchorShape)); err != nil {
+	data := a.enc.Frame(out.Frame, out.AnchorX, out.AnchorY, out.AnchorVisible, out.AnchorShape)
+	endWrite := benchstage.Span("ui.write")
+	_, writeErr := a.out.Write(data)
+	endWrite()
+	benchstage.Values("ui.bytes", len(data), 0)
+	if err := writeErr; err != nil {
 		a.enc.Reset()
 		a.dirty = true
 	}
@@ -274,6 +285,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 
 // SetReportedSource retains the reporting authority without changing the stored session.
 func (a *App) SetReportedSource(pid int, agent, state, source string) {
+	a.invalidateDetection(pid)
 	before := a.glyph(pid).Key
 	if a.reported == nil {
 		a.reported = map[int]reportedPane{}
@@ -295,6 +307,7 @@ func (a *App) SetReportedSource(pid int, agent, state, source string) {
 		}
 	}
 	a.noteAgentState(pid)
+	a.dirty = true
 	a.changed()
 }
 

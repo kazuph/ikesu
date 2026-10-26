@@ -92,6 +92,7 @@ type machineClient struct {
 	workers           sync.WaitGroup
 	sidebar           render.MachineSidebar
 	frames            render.Encoder
+	composer          render.Composer
 	outputFence       render.OutputFence
 	paintQueued       bool
 	inputBatch        bool

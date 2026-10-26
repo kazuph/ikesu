@@ -12,7 +12,10 @@ import (
 // Image bytes are immutable snapshots and stay with the published generation.
 type graphicsTextSurface struct {
 	geometry   string
+	scope      string
+	size       string
 	placements map[int][]kitty.Placement
+	terminals  map[int]string
 }
 
 func captureGraphicsText(in render.Input) *graphicsTextSurface {
@@ -26,6 +29,10 @@ func captureGraphicsText(in render.Input) *graphicsTextSurface {
 	if !hasImages {
 		return nil
 	}
+	return captureGraphicsGeometry(in)
+}
+
+func captureGraphicsGeometry(in render.Input) *graphicsTextSurface {
 	if in.State == nil || in.State.ActiveWorkspace() == nil || in.State.ActiveWorkspace().TabRef() == nil {
 		return nil
 	}
@@ -52,7 +59,31 @@ func captureGraphicsText(in render.Input) *graphicsTextSurface {
 	if err != nil {
 		return nil
 	}
-	return &graphicsTextSurface{string(geometry), placements}
+	terminals := map[int]string{}
+	if state.PopupVisible() {
+		terminals[popupID] = terminal
+	}
+	ids := []int{}
+	for _, pane := range state.DisplayPaneRects() {
+		ids = append(ids, pane.ID)
+	}
+	offsets := make(map[int]int, len(views))
+	for id, view := range views {
+		offsets[id] = view.Offset
+	}
+	scope, err := json.Marshal([]any{ws.ID, tab.ID, ids, in.Scroll, offsets, popupID, terminal})
+	if err != nil {
+		return nil
+	}
+	size, err := json.Marshal([]any{state.Cols, state.Rows, state.DisplayPaneRects(), state.PopupRect()})
+	if err != nil {
+		return nil
+	}
+	return &graphicsTextSurface{geometry: string(geometry), scope: string(scope), size: string(size), placements: placements, terminals: terminals}
+}
+
+func (old *graphicsTextSurface) resized(next *graphicsTextSurface) bool {
+	return old != nil && next != nil && old.scope == next.scope && old.size != next.size
 }
 
 func (old *graphicsTextSurface) compatible(next *graphicsTextSurface) bool {
@@ -88,5 +119,34 @@ func (old *graphicsTextSurface) input(in render.Input) render.Input {
 	}
 	in.Panes = panes
 	in.GraphicsPatches = nil
+	return in
+}
+
+// Reposition the retained generation without using pending pixels, crop, or
+// dimensions. New image identities wait for the ordinary full publication.
+func (old *graphicsTextSurface) relayoutInput(in render.Input) render.Input {
+	panes := make(map[int]*render.PaneSnap, len(in.Panes))
+	for id, p := range in.Panes {
+		value := *p
+		value.Graphics = nil
+		terminal := ""
+		if in.State != nil && in.State.PopupVisible() && in.State.Popup.PaneID == id {
+			terminal = in.State.Popup.TerminalID
+		}
+		if old != nil && old.terminals[id] == terminal {
+			for _, current := range p.Graphics {
+				for _, published := range old.placements[id] {
+					if current.ID == published.ID && current.Image.ID == published.Image.ID && current.Image.NativeID == published.Image.NativeID && current.Alternate == published.Alternate && current.Virtual == published.Virtual && current.APILayer == published.APILayer {
+						published.X, published.Y = current.X, current.Y
+						published.Image.Data = nil
+						value.Graphics = append(value.Graphics, published)
+						break
+					}
+				}
+			}
+		}
+		panes[id] = &value
+	}
+	in.Panes, in.GraphicsPatches = panes, nil
 	return in
 }

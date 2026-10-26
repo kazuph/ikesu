@@ -3,6 +3,8 @@
 // state lives in model; runtime only materialises it.
 package runtime
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"context"
 	"fmt"
@@ -38,17 +40,24 @@ type CursorState struct {
 
 // Pane is a running terminal: a process on a PTY plus its emulator state.
 type Pane struct {
-	graphicsLayers        map[string]*graphicsLayer
-	graphics              *kitty.Store
-	graphicsEnabled       bool
-	graphicsVersion       string
-	cellWidth, cellHeight int
-	guard                 *guard.Assets
-	guardStarted          string
-	ID                    int
-	cwd                   string // spawn cwd; OSC 7 or proc cwd may refine it
-	spawnArgv             []string
-	processCache          foregroundCache
+	graphicsLayers         map[string]*graphicsLayer
+	graphics               *kitty.Store
+	graphicsEnabled        bool
+	graphicsVersion        string
+	cellWidth, cellHeight  int
+	guard                  *guard.Assets
+	guardStarted           string
+	ID                     int
+	cwd                    string // spawn cwd; OSC 7 or proc cwd may refine it
+	spawnArgv              []string
+	processCache           foregroundCache
+	processChanged         atomic.Bool
+	processIdentityChanged atomic.Bool
+	processRevision        atomic.Uint64
+	processSettlingUntil   time.Time
+	processOutputUntil     time.Time
+	processCwdAt           time.Time
+	owner                  *Supervisor
 
 	cmd                 *exec.Cmd
 	ptyFile             *os.File
@@ -123,6 +132,13 @@ type Supervisor struct {
 	mu              sync.Mutex
 	panes           map[int]*Pane
 	events          chan Event
+	missedMu        sync.Mutex
+	missed          map[*Pane]EventKind
+	processMu       sync.Mutex
+	processWork     map[*Pane]bool
+	processTicks    map[*Pane]bool
+	processDue      map[*Pane]time.Time
+	processNext     time.Time
 	done            chan struct{}
 	loginPathOnce   sync.Once
 	loginPathDone   chan struct{}
@@ -345,11 +361,13 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 		}
 	}
 	p.writeRecorded(chunk)
+	benchstage.Output(p.ID, chunk)
 	clipboard := p.clipboard
 	p.clipboard = nil
 	p.scrollbarVisible = p.emu.ScrollbackLen() > 0
 	p.mu.Unlock()
 	p.revision.Add(1)
+	p.markProcessOutput()
 	p.notifyChanged()
 	for _, data := range clipboard {
 		select {
@@ -377,6 +395,7 @@ func (p *Pane) pumpEmuToPTY() {
 	}
 }
 func (p *Pane) waitExit() {
+	defer p.endProcessWatch()
 	defer close(p.done)
 	_ = p.cmd.Wait()
 	if p.retired.Load() {
@@ -395,6 +414,9 @@ func (p *Pane) notify(k EventKind) {
 	select {
 	case p.ev <- Event{Pane: p.ID, Kind: k}:
 	default:
+		if k == EventChanged || k == EventExited {
+			p.keepMissedChange(k)
+		}
 	}
 }
 
@@ -409,6 +431,7 @@ func (p *Pane) notifyChanged() {
 	select {
 	case p.ev <- Event{Pane: p.ID, Kind: EventChanged}:
 	default:
+		p.keepMissedChange(EventChanged)
 		p.changedPending.Store(false)
 	}
 }
@@ -417,6 +440,7 @@ func (p *Pane) notifyChanged() {
 // when it consumes the event, allowing the next screen change to notify
 // again.
 func (p *Pane) MarkChangedRead() {
+	p.clearMissedChange()
 	p.changedPending.Store(false)
 }
 
@@ -456,6 +480,7 @@ func (s *Supervisor) Input(id int, b []byte) {
 // writes. It returns the number of bytes written; a short count means
 // delivery did not complete (callers keep the message queued).
 func (p *Pane) WriteToPTY(b []byte) (int, error) {
+	defer p.markProcessChanged()
 	p.mu.Lock()
 	f := p.ptyFile
 	p.mu.Unlock()
@@ -516,6 +541,7 @@ func (s *Supervisor) Resize(id, cols, rows int) {
 
 // ResizeWithPixels supplies the pane's character geometry through its PTY.
 func (s *Supervisor) ResizeWithPixels(id, cols, rows, cw, ch int) {
+	defer benchstage.Span("runtime.resize")()
 	p := s.Get(id)
 	if p == nil || cols <= 0 || rows <= 0 {
 		return
@@ -682,10 +708,22 @@ func (p *Pane) ScrollbackLines() []string {
 
 // PollProcess refreshes the foreground process info. Called periodically.
 func (p *Pane) PollProcess() {
+	defer benchstage.Span("runtime.pollprocess")()
 	if p.ptyFile == nil {
 		return
 	}
+	p.processChanged.Store(false)
+	if p.processIdentityChanged.Swap(false) {
+		p.processCache.mu.Lock()
+		p.processCache.readAt = time.Time{}
+		p.processCache.mu.Unlock()
+	}
 	job := p.cachedForegroundJob()
+	pids := make([]int, 0, len(job.Processes))
+	for _, pr := range job.Processes {
+		pids = append(pids, pr.PID)
+	}
+	p.watchProcessChanges(job.ProcessGroupID, pids...)
 	if len(job.Processes) == 0 {
 		return
 	}
@@ -702,6 +740,8 @@ func (p *Pane) PollProcess() {
 	cwd := platform.ProcCwd(job.ProcessGroupID)
 	p.mu.Lock()
 	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name || p.agentID != agentID
+	cwdChanged := cwd != "" && cwd != p.procCwd
+	p.processCwdAt = time.Now()
 	p.fgPID = job.ProcessGroupID
 	p.procName = name
 	p.agentID = agentID
@@ -718,8 +758,11 @@ func (p *Pane) PollProcess() {
 		effective = p.guardStarted
 	}
 	dead := p.dead
+	if agentChanged || cwdChanged {
+		p.processRevision.Add(1)
+	}
 	p.mu.Unlock()
-	if p.guard != nil && !dead {
+	if p.guard != nil && !dead && (agentChanged || effective != "") {
 		_ = p.guard.Sync(effective)
 	}
 	if agentChanged {
@@ -797,4 +840,72 @@ func (s *Supervisor) SetShell(shell, mode string) {
 	s.mu.Lock()
 	s.defaultShell, s.shellMode = shell, mode
 	s.mu.Unlock()
+}
+
+// PollProcessChanged observes native process notifications and PTY activity.
+// Explicit API reads still use PollProcess for immediate freshness.
+func (p *Pane) PollProcessChanged() {
+	defer benchstage.Span("runtime.process.check")()
+	p.mu.Lock()
+	guarded := p.guard != nil && (p.effectiveAgent() != "" || p.guardStarted != "")
+	effective, dead := p.effectiveAgent(), p.dead
+	if effective == "" {
+		effective = p.guardStarted
+	}
+	now := time.Now()
+	settling := now.Before(p.processSettlingUntil)
+	settled := !p.processSettlingUntil.IsZero() && !settling
+	if settled {
+		p.processSettlingUntil = time.Time{}
+		p.processIdentityChanged.Store(true)
+	}
+	output := !p.processOutputUntil.IsZero()
+	if output && !now.Before(p.processOutputUntil) {
+		p.processOutputUntil = time.Time{}
+	}
+	p.mu.Unlock()
+	if !processEventQueue() || settling || settled || p.processChanged.Load() {
+		p.PollProcess()
+		return
+	}
+	if guarded && !dead {
+		_ = p.guard.Sync(effective)
+	}
+	// kqueue has no chdir/tcsetpgrp event. Silent programs keep the existing
+	// cwd-observation cadence. Output keeps the same per-tick observation
+	// window, but only an observed change needs the full PID/argv scan.
+	p.mu.Lock()
+	due := output || now.Sub(p.processCwdAt) >= foregroundJobCacheLifetime
+	if due {
+		p.processCwdAt = now
+	}
+	p.mu.Unlock()
+	if due {
+		group := platform.ForegroundPID(p.ptyFD)
+		cwd := platform.ProcCwd(group)
+		p.mu.Lock()
+		changed := group != p.fgPID || cwd != "" && cwd != p.procCwd
+		p.mu.Unlock()
+		if changed {
+			p.PollProcess()
+			p.notifyChanged()
+		}
+	}
+}
+
+func (p *Pane) markProcessOutput() {
+	p.mu.Lock()
+	p.processOutputUntil = time.Now().Add(foregroundJobCacheLifetime)
+	p.mu.Unlock()
+	p.queueProcessChange()
+}
+
+// fork/exec notification precedes tcsetpgrp and shell builtins can finish after
+// the input write. Observe that transition over the existing cache lifetime.
+func (p *Pane) markProcessChanged() {
+	p.mu.Lock()
+	p.processSettlingUntil = time.Now().Add(foregroundJobCacheLifetime)
+	p.mu.Unlock()
+	p.processChanged.Store(true)
+	p.queueProcessChange()
 }

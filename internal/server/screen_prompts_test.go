@@ -57,7 +57,14 @@ func screenTerminal(t *testing.T, name, agent string) (*Server, *runtime.Pane, s
 			s.store.Close()
 		}
 	})
-	waitPromptCondition(t, func() bool { return strings.Contains(p.ScreenText(), "1.") })
+	lines := strings.Split(strings.TrimSpace(picture), "\n")
+	footer := strings.TrimSpace(lines[len(lines)-1])
+	// The first option can arrive before its preview panel and footer.
+	// Answer tests must begin with the complete fixture.
+	waitPromptCondition(t, func() bool {
+		text := p.ScreenText()
+		return strings.Contains(text, "1.") && strings.Contains(text, footer)
+	})
 	return s, p, input
 }
 

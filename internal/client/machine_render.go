@@ -1,5 +1,7 @@
 package client
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"reflect"
 	"time"
@@ -9,6 +11,7 @@ import (
 )
 
 func (m *machineClient) paint() error {
+	defer benchstage.Span("client.paint")()
 	if m.inputBatch || m.outputFence.Waiting(time.Now()) {
 		m.paintQueued = true
 		return nil
@@ -59,10 +62,10 @@ func (m *machineClient) paint() error {
 	}
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil {
-		composed = render.ComposeClient(in, nil, m.clientVersion, m.notice != "")
+		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
 		m.sidebar.Hits = m.sidebar.Hits[:0]
 	} else {
-		composed = render.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
+		composed = m.composer.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
 	}
 	m.drawTabFeedback(composed)
 	f := composed.Frame
@@ -114,7 +117,11 @@ func (m *machineClient) paint() error {
 	}
 	data := m.frames.Frame(composed.Frame, composed.AnchorX, composed.AnchorY, composed.AnchorVisible, composed.AnchorShape)
 	data = append(data, retired...)
-	if _, err := m.out.Write(data); err != nil {
+	endWrite := benchstage.Span("outer.write")
+	_, writeErr := m.out.Write(data)
+	endWrite()
+	benchstage.Values("outer.bytes", len(data), 0)
+	if err := writeErr; err != nil {
 		return err
 	}
 	probe := m.outputFence.Written(data, time.Now())

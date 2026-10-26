@@ -1,5 +1,7 @@
 package runtime
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"bytes"
 	"fmt"
@@ -18,21 +20,24 @@ type rowRef struct {
 	width     int
 }
 type readBuffer struct {
-	main, alternate []rowRef
-	history         []rowRef
-	byteHistory     bool
-	historyCount    int
-	start           int
-	altHistory      []rowRef
-	altStart        int
-	pending         bool
-	state           byte
-	kind            byte
-	parser          *ansi.Parser
-	utf8Pending     []byte
-	partial         []byte
-	top, bottom     int
-	left, right     int
+	main, alternate      []rowRef
+	history              []rowRef
+	byteHistory          bool
+	historyCount         int
+	historyIndexed       bool
+	historyBase          *vt.ReflowSnapshot
+	baseFirst, baseCount int
+	start                int
+	altHistory           []rowRef
+	altStart             int
+	pending              bool
+	state                byte
+	kind                 byte
+	parser               *ansi.Parser
+	utf8Pending          []byte
+	partial              []byte
+	top, bottom          int
+	left, right          int
 }
 
 func newReadBuffer(w, h int) *readBuffer {
@@ -45,8 +50,11 @@ func (r *readBuffer) rows(alt bool) []rowRef {
 	return r.main
 }
 func (r *readBuffer) pushHistory(alt bool, row rowRef) {
-	if !alt && r.byteHistory {
+	if !alt && (r.byteHistory || r.historyIndexed) {
 		r.pushByteHistory(row)
+		if !r.byteHistory && r.historyCount > ScrollbackSize {
+			r.dropHistory()
+		}
 		return
 	}
 	history, start := &r.history, &r.start
@@ -133,6 +141,7 @@ func (r *readBuffer) linefeedAt(p *Pane, pos uv.Position, continued bool) {
 	}
 }
 func (r *readBuffer) resize(w, h int) {
+	defer benchstage.Span("runtime.readresize")()
 	for _, target := range []*[]rowRef{&r.main, &r.alternate} {
 		next := make([]rowRef, h)
 		copy(next, *target)
@@ -172,6 +181,7 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 			clear(r.alternate)
 			r.history = nil
 			r.historyCount = 0
+			r.historyBase, r.baseFirst, r.baseCount, r.historyIndexed = nil, 0, 0, false
 			r.start = 0
 			r.altHistory = nil
 			r.altStart = 0
@@ -212,6 +222,7 @@ func (r *readBuffer) control(p *Pane, seq []byte) {
 		} else if a == 3 {
 			r.history = nil
 			r.historyCount = 0
+			r.historyBase, r.baseFirst, r.baseCount, r.historyIndexed = nil, 0, 0, false
 			r.start = 0
 			clear(rows)
 		} else if a == 0 {
@@ -304,6 +315,7 @@ func (p *Pane) writeShortLines(chunk []byte) int {
 }
 
 func (p *Pane) writeRecorded(chunk []byte) {
+	defer benchstage.Span("runtime.recorded")()
 	r := p.read
 	if r == nil {
 		r = newReadBuffer(p.emu.Width(), p.emu.Height())
@@ -313,6 +325,19 @@ func (p *Pane) writeRecorded(chunk []byte) {
 			p.emu.Scrollback().OnDrop = r.dropHistory
 		}
 	}
+	defer func() {
+		defer benchstage.Span("runtime.prepareindex")()
+		history := r.historyLen()
+		p.emu.PrepareReflowHistory(func(y int) vt.ReflowRow {
+			var ref rowRef
+			if y < history {
+				ref = r.historyRef(y)
+			} else {
+				ref = r.main[0]
+			}
+			return vt.ReflowRow{Continued: ref.continued, Width: ref.width}
+		})
+	}()
 	if len(r.utf8Pending) > 0 {
 		chunk = append(r.utf8Pending, chunk...)
 		r.utf8Pending = nil

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -13,6 +14,8 @@ import (
 // paneGrid extracts the innerH×w cells a pane displays at scroll offset off
 // (0 = live screen bottom). Rows come from scrollback followed by screen.
 func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
+	defer benchstage.Span("ui.panegrid")()
+	benchstage.Values("panegrid.materialized", h*w, 0)
 	var g [][]uv.Cell
 	p.WithEmu(func(e *vt.Emulator) {
 		sb := e.ScrollbackLen()
@@ -32,6 +35,11 @@ func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
 		for r := 0; r < h; r++ {
 			i := end - h + 1 + r
 			row := make([]uv.Cell, w)
+			if vt.ExperimentalFlatScreen && i >= sb && i-sb < eh {
+				e.CopyScreenRow(row, 0, i-sb)
+				g = append(g, row)
+				continue
+			}
 			for x := 0; x < w; x++ {
 				var c *uv.Cell
 				switch {
@@ -48,6 +56,13 @@ func (a *App) paneGrid(p *runtime.Pane, off, h, w int) [][]uv.Cell {
 				}
 			}
 			g = append(g, row)
+		}
+		if benchstage.Enabled {
+			info := e.ScreenStorage()
+			benchstage.Values("screen.cell.bytes", p.ID, info.CellBytes)
+			benchstage.Values("screen.cell.capacity", p.ID, info.CellCapacity)
+			benchstage.Values("screen.ids.arraybytes", p.ID, info.IDArrayBytes)
+			benchstage.Values("screen.ids.live", p.ID, info.LiveIDs)
 		}
 	})
 	return g

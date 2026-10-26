@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
@@ -15,6 +17,7 @@ import (
 )
 
 func (a *App) onInput(ev input.Event) {
+	defer benchstage.Span("ui.input")()
 	switch ev.Kind {
 	case input.KindTerminalReport:
 		a.hostMouseReport(ev.Report)
@@ -107,6 +110,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 			a.clipboardHook(ev.Pane, ev.Data)
 		}
 	case runtime.EventChanged:
+		a.invalidateDetection(ev.Pane)
 		if p := a.sup.Get(ev.Pane); p != nil {
 			p.MarkChangedRead()
 		}
@@ -115,6 +119,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		}
 		a.dirty = true
 	case runtime.EventExited:
+		a.invalidateDetection(ev.Pane)
 		if a.st.Overlay != nil && ev.Pane == a.st.Overlay.PaneID {
 			a.exec(model.CmdCloseOverlay{})
 			return
@@ -139,7 +144,10 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 
 // detectAll runs the detection/status pass over every live pane.
 func (a *App) detectAll() {
+	defer benchstage.Span("ui.detect")()
 	now := time.Now()
+	state := a.paneActivity()
+	state.initialized = true
 	activeWS := a.st.ActiveWorkspace()
 	for _, ws := range a.st.Workspaces {
 		focusedID := -1
@@ -148,57 +156,67 @@ func (a *App) detectAll() {
 		}
 		for _, t := range ws.Tabs {
 			for _, pid := range t.Layout.PaneIDs() {
-				p := a.sup.Get(pid)
-				if p == nil {
-					continue
-				}
-				tr := a.trackers[pid]
-				if tr == nil {
-					tr = status.NewTracker()
-					a.trackers[pid] = tr
-				}
-				sn := p.Snapshot()
-				agentID := sn.AgentID
-				in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
-				if agentID != "" {
-					in.Screen = p.ScreenText()
-				}
-				before := a.glyph(pid).Key
-				d := detect.Detect(agentID, in)
-				d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
-				a.observeBlocker(pid, agentID, d, now)
-				a.clearStaleReport(pid, agentID, d, now)
-				trackerChanged := tr.Update(d, agentID, sn.Dead, now)
-				if trackerChanged || before != a.glyph(pid).Key {
-					a.dirty = true
-					if a.availHook != nil {
-						a.availHook(pid)
-					}
-				}
-				a.noteAgentState(pid)
-				// The focused pane in the visible workspace is seen.
-				if a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && ws == activeWS && pid == focusedID && !a.windowBlurred {
-					if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
-						rep.unseen = false
-						a.reported[pid] = rep
-						a.dirty = true
-					}
-					if !tr.Seen {
-						tr.Focus()
-						a.dirty = true
-					}
-				}
+				delete(state.pending, pid)
+				visible := a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && ws == activeWS && pid == focusedID && !a.windowBlurred
+				a.detectPane(pid, visible, now)
 			}
 		}
 	}
-	// Drop trackers for panes that no longer exist.
 	for pid := range a.trackers {
 		if a.sup.Get(pid) == nil {
 			delete(a.blockerObservations, pid)
 			delete(a.trackers, pid)
 			delete(a.reported, pid)
+			delete(state.deadlines, pid)
+			delete(state.confirming, pid)
 		}
 	}
+	a.nextDetectionDeadline()
+}
+
+func (a *App) detectPane(pid int, visible bool, now time.Time) {
+	defer benchstage.Span("ui.detect.pane")()
+	p := a.sup.Get(pid)
+	if p == nil {
+		return
+	}
+	tr := a.trackers[pid]
+	if tr == nil {
+		tr = status.NewTracker()
+		a.trackers[pid] = tr
+	}
+	sn := p.Snapshot()
+	agentID := sn.AgentID
+	in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
+	if agentID != "" {
+		in.Screen = p.ScreenText()
+	}
+	before := a.glyph(pid).Key
+	d := detect.Detect(agentID, in)
+	d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
+	a.observeBlocker(pid, agentID, d, now)
+	a.clearStaleReport(pid, agentID, d, now)
+	trackerChanged := tr.Update(d, agentID, sn.Dead, now)
+	if trackerChanged || before != a.glyph(pid).Key {
+		a.dirty = true
+		if a.availHook != nil {
+			a.availHook(pid)
+		}
+	}
+	a.noteAgentState(pid)
+	// The focused pane in the visible workspace is seen.
+	if visible {
+		if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
+			rep.unseen = false
+			a.reported[pid] = rep
+			a.dirty = true
+		}
+		if !tr.Seen {
+			tr.Focus()
+			a.dirty = true
+		}
+	}
+	a.scheduleDetection(pid, now)
 }
 
 // copiedFlash returns the " Copied N lines " text while inside its 2s
@@ -222,35 +240,29 @@ func (a *App) copiedFlashAt(now time.Time) string {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
+	defer benchstage.Span("ui.tick")()
 	if a.tickViewers != nil {
 		a.tickViewers()
 	}
 	now := time.Now()
 	a.flushSidebarDividerClicks(now)
+	for _, ev := range a.sup.TakePendingChanges() {
+		a.onRuntimeEvent(ev)
+	}
 	if a.localRestore {
 		a.observeLocalSessions()
 	}
 	a.refreshPaneMetadata()
 	a.refreshWorkspaceGit(now)
 	a.expireToast()
-	if a.copied != "" && now.Sub(a.copiedAt) >= copiedDuration {
-		a.copied = ""
-		a.dirty = true
-	}
-	// Foreground process poll: every ~1s per pane.
-	for _, ws := range a.st.Workspaces {
-		for _, t := range ws.Tabs {
-			for _, pid := range t.Layout.PaneIDs() {
-				if p := a.sup.Get(pid); p != nil {
-					p.PollProcess()
-				}
-			}
-		}
+	a.expireCopied(now)
+	for _, pid := range a.sup.PollPendingProcesses(now) {
+		a.invalidateDetection(pid)
 	}
 	a.popupSelectionAutoScroll()
 	a.selectionAutoScroll(now)
 	a.refreshJobDots(now)
-	a.detectAll()
+	a.detectChanged(now)
 }
 
 func (a *App) anyWorking() bool {
@@ -401,6 +413,9 @@ func (a *App) effect(e model.Effect) {
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
 		delete(a.reported, e.Pane)
+		delete(a.metadataViews, e.Pane)
+		delete(a.metadataPending, e.Pane)
+		delete(a.metadataDeadlines, e.Pane)
 		delete(a.agentStates, e.Pane)
 		delete(a.agentStateSeq, e.Pane)
 		delete(a.sessions, e.Pane)
@@ -420,10 +435,15 @@ func (a *App) effect(e model.Effect) {
 
 // syncLayout applies the last active display geometry to the visible tab.
 func (a *App) syncLayout() {
+	if a.deferResize {
+		a.resizePending = true
+		return
+	}
 	a.syncPaneLayout()
 }
 
 func (a *App) syncPaneLayout() {
+	defer benchstage.Span("ui.layout")()
 	previous := a.selection()
 	defer a.selectView(previous)
 	for wi, ws := range a.st.Workspaces {
@@ -537,4 +557,11 @@ func (a *App) paneRect(pid int) (layout.Rect, bool) {
 		}
 	}
 	return layout.Rect{}, false
+}
+
+func (a *App) expireCopied(now time.Time) {
+	if a.copied != "" && now.Sub(a.copiedAt) >= copiedDuration {
+		a.copied = ""
+		a.dirty = true
+	}
 }

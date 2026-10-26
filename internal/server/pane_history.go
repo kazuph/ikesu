@@ -8,8 +8,16 @@ import (
 )
 
 func (s *Server) savePaneHistory(f *session.File) {
+	if h := s.capturePaneHistory(f); h != nil {
+		if err := session.SaveHistory(s.dir, *h); err != nil {
+			fmt.Fprintf(os.Stderr, "ikesu: save pane history: %v\n", err)
+		}
+	}
+}
+
+func (s *Server) capturePaneHistory(f *session.File) *session.History {
 	if !s.cfg.Experimental.PaneHistory {
-		return
+		return nil
 	}
 	h := session.History{Version: session.CurrentVersion, Panes: map[int]session.PaneHistory{}}
 	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
@@ -24,9 +32,7 @@ func (s *Server) savePaneHistory(f *session.File) {
 			h.Panes[p.ID] = session.PaneHistory{ANSI: strings.Join(rows, "\r\n"), Lines: len(rows)}
 		}
 	})
-	if err := session.SaveHistory(s.dir, h); err != nil {
-		fmt.Fprintf(os.Stderr, "ikesu: save pane history: %v\n", err)
-	}
+	return &h
 }
 func (s *Server) restorePaneHistory(f *session.File) {
 	if !s.cfg.Experimental.PaneHistory {

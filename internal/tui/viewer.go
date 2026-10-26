@@ -149,9 +149,7 @@ func (v *Viewer) InputWithSidebarPanel(a *App, bytes []byte, jobs *bool) {
 			ui.jobsPanel = *jobs
 			ui.agentScroll = 0
 		}
-		for _, event := range ui.fr.Push(bytes) {
-			v.onInput(ui, event)
-		}
+		ui.dispatchInputEvents(ui.fr.Push(bytes), func(event input.Event) { v.onInput(ui, event) })
 		v.pendingAt = time.Now()
 	})
 }
@@ -181,7 +179,7 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
-	v.with(a, func(ui *App) { ui.expireToast(); ui.flushSidebarDividerClicks(time.Now()) })
+	v.with(a, func(ui *App) { ui.expireToast(); ui.expireCopied(time.Now()); ui.flushSidebarDividerClicks(time.Now()) })
 	if v.app.sel != nil && v.app.sel.autoDir != 0 {
 		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })
 	}

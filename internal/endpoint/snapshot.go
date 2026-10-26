@@ -1,5 +1,7 @@
 package endpoint
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"bytes"
 	"encoding/gob"
@@ -32,18 +34,25 @@ type SnapshotEncoder struct {
 	grids             map[int][][]uv.Cell
 	graphics          map[graphicCacheKey]compressedGraphic
 	GraphicsPatches   bool
+	LegacyGrids       bool
 	bases             map[graphicCacheKey]kitty.Image
 	sentGraphicsPatch bool
 	textOnly          bool
 	pendingGrids      map[int][][]uv.Cell
+	cells             []cellDelta
+	widths            []int
 }
 
 func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
+	defer benchstage.Span("snapshot.encode")()
 	e.sentGraphicsPatch = false
 	if e.enc == nil {
 		e.enc = gob.NewEncoder(&e.data)
 	}
 	e.data.Reset()
+	clear(e.cells)
+	e.cells = e.cells[:0]
+	e.widths = e.widths[:0]
 	if e.grids == nil {
 		e.grids = map[int][][]uv.Cell{}
 	}
@@ -73,15 +82,16 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		wire.Input.Panes[id] = &value
 		grid := pane.Grid
 		old := e.grids[id]
-		delta := gridDelta{Present: grid != nil, Widths: make([]int, len(grid))}
+		widthStart, cellStart := len(e.widths), len(e.cells)
 		for y, row := range grid {
-			delta.Widths[y] = len(row)
+			e.widths = append(e.widths, len(row))
 			for x := range row {
 				if y >= len(old) || x >= len(old[y]) || old[y][x] != row[x] {
-					delta.Cells = append(delta.Cells, cellDelta{X: x, Y: y, Cell: row[x]})
+					e.cells = append(e.cells, cellDelta{X: x, Y: y, Cell: row[x]})
 				}
 			}
 		}
+		delta := gridDelta{Present: grid != nil, Widths: e.widths[widthStart:], Cells: e.cells[cellStart:]}
 		wire.Grids[id] = delta
 		cached, err := applyGridDelta(old, delta, e.textOnly)
 		if err != nil {
@@ -89,6 +99,7 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 		}
 		e.grids[id] = cached
 	}
+	benchstage.Values("snapshot.cells", len(e.cells), 0)
 	for id := range e.grids {
 		if _, ok := in.Panes[id]; !ok {
 			delete(e.grids, id)
@@ -106,9 +117,24 @@ func (e *SnapshotEncoder) Encode(in render.Input) ([]byte, error) {
 			}
 		}
 	}
-	if err := e.enc.Encode(wire); err != nil {
+	var encoded any = wire
+	if ExperimentalFlatDiff && !e.LegacyGrids {
+		flat := flatSnapshotWire{Input: wire.Input, Grids: wire.Grids, Optional: wire.Optional, FlatGrids: make(map[int]flatGridDelta, len(wire.Grids))}
+		for id, delta := range wire.Grids {
+			cells, err := flattenCells(delta.Cells)
+			if err != nil {
+				return nil, err
+			}
+			flat.FlatGrids[id] = cells
+			delta.Cells = nil
+			flat.Grids[id] = delta
+		}
+		encoded = flat
+	}
+	if err := e.enc.Encode(encoded); err != nil {
 		return nil, err
 	}
+	benchstage.Values("snapshot.bytes", e.data.Len(), 0)
 	e.sentGraphicsPatch = len(wire.Input.GraphicsPatches) > 0
 	return e.data.Bytes(), nil
 }
@@ -128,11 +154,12 @@ type SnapshotDecoder struct {
 }
 
 func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
+	defer benchstage.Span("snapshot.decode")()
 	if d.dec == nil {
 		d.dec = gob.NewDecoder(&d.data)
 	}
 	d.data.Write(data)
-	var wire snapshotWire
+	var wire flatSnapshotWire
 	if err := d.dec.Decode(&wire); err != nil {
 		return render.Input{}, err
 	}
@@ -141,6 +168,18 @@ func (d *SnapshotDecoder) Decode(data []byte) (render.Input, error) {
 	}
 	if d.grids == nil {
 		d.grids = map[int][][]uv.Cell{}
+	}
+	for id, flat := range wire.FlatGrids {
+		delta, ok := wire.Grids[id]
+		if !ok || len(delta.Cells) != 0 {
+			return render.Input{}, fmt.Errorf("invalid mixed flat pane delta")
+		}
+		cells, err := expandCells(flat)
+		if err != nil {
+			return render.Input{}, err
+		}
+		delta.Cells = cells
+		wire.Grids[id] = delta
 	}
 	for id, delta := range wire.Grids {
 		grid, err := applyGridDelta(d.grids[id], delta, true)
@@ -171,6 +210,13 @@ type snapshotWire struct {
 	Optional snapshotPresence
 }
 
+type flatSnapshotWire struct {
+	Input     render.Input
+	Grids     map[int]gridDelta
+	Optional  snapshotPresence
+	FlatGrids map[int]flatGridDelta
+}
+
 type gridDelta struct {
 	Present bool
 	Widths  []int
@@ -185,6 +231,14 @@ type cellDelta struct {
 // Received snapshots stay immutable: only changed rows are copied. The
 // encoder's private comparison cache can update those cells in place.
 func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.Cell, error) {
+	copiedCells, allocatedCells := 0, 0
+	defer func() {
+		if immutable {
+			benchstage.Values("decode.cellcopy", copiedCells, allocatedCells)
+		} else {
+			benchstage.Values("encode.cellcopy", copiedCells, allocatedCells)
+		}
+	}()
 	if !delta.Present {
 		if len(delta.Cells) != 0 {
 			return nil, fmt.Errorf("cells in absent pane grid")
@@ -192,20 +246,44 @@ func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.C
 		return nil, nil
 	}
 	if immutable || grid == nil || len(grid) != len(delta.Widths) {
-		next := make([][]uv.Cell, len(delta.Widths))
-		copy(next, grid)
-		grid = next
+		if !immutable && cap(grid) >= len(delta.Widths) {
+			if len(delta.Widths) < len(grid) {
+				clear(grid[len(delta.Widths):])
+			}
+			grid = grid[:len(delta.Widths)]
+		} else {
+			next := make([][]uv.Cell, len(delta.Widths))
+			copy(next, grid)
+			grid = next
+		}
 	}
-	owned := make([]bool, len(grid))
+	var owned []bool
+	if immutable {
+		owned = make([]bool, len(grid))
+	}
 	for y, width := range delta.Widths {
 		if width < 0 {
 			return nil, fmt.Errorf("invalid pane row width")
 		}
 		if len(grid[y]) != width {
-			next := make([]uv.Cell, width)
-			copy(next, grid[y])
-			grid[y] = next
-			owned[y] = true
+			if immutable && width < len(grid[y]) {
+				grid[y] = grid[y][:width:width]
+				continue
+			}
+			if !immutable && cap(grid[y]) >= width {
+				if width < len(grid[y]) {
+					clear(grid[y][width:])
+				}
+				grid[y] = grid[y][:width]
+			} else {
+				next := make([]uv.Cell, width)
+				allocatedCells += width
+				copiedCells += copy(next, grid[y])
+				grid[y] = next
+			}
+			if immutable {
+				owned[y] = true
+			}
 		}
 	}
 	for _, change := range delta.Cells {
@@ -213,6 +291,8 @@ func applyGridDelta(grid [][]uv.Cell, delta gridDelta, immutable bool) ([][]uv.C
 			return nil, fmt.Errorf("invalid pane cell position")
 		}
 		if immutable && !owned[change.Y] {
+			copiedCells += len(grid[change.Y])
+			allocatedCells += len(grid[change.Y])
 			grid[change.Y] = append([]uv.Cell(nil), grid[change.Y]...)
 			owned[change.Y] = true
 		}

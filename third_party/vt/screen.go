@@ -10,7 +10,7 @@ type Screen struct {
 	// cb is the callbacks struct to use.
 	cb *Callbacks
 	// The buffer of the screen.
-	buf *uv.RenderBuffer
+	buf *screenBuffer
 	// Immutable default cells, copied into rows without sharing their storage.
 	blankLine uv.Line
 	// Duplicated private row headers allow scrolling without moving each header.
@@ -31,7 +31,7 @@ type Screen struct {
 // NewScreen creates a new screen.
 func NewScreen(w, h int) *Screen {
 	s := Screen{
-		buf:        uv.NewRenderBuffer(w, h),
+		buf:        newScreenBuffer(w, h),
 		scrollback: NewScrollback(DefaultScrollbackSize),
 	}
 	s.scroll = s.buf.Bounds()
@@ -100,7 +100,7 @@ func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled
 	}
 	oldCursor := s.cur.Position
 	if s.buf == nil {
-		s.buf = uv.NewRenderBuffer(width, height)
+		s.buf = newScreenBuffer(width, height)
 	} else {
 		pull := 0
 		if restore {
@@ -110,7 +110,7 @@ func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled
 		if height < s.buf.Height() {
 			last := s.cur.Y
 			for y := s.buf.Height() - 1; y > last; y-- {
-				if !s.isLineEmpty(s.buf.Line(y)) {
+				if !s.isScreenLineEmpty(y) {
 					last = y
 					break
 				}
@@ -119,7 +119,7 @@ func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled
 			pushed = shift
 			if shift > 0 {
 				if restore && s.scrollback != nil {
-					s.scrollback.PushN(s.buf, 0, shift)
+					s.pushScreenRows(0, shift)
 				}
 				s.buf.DeleteLineArea(0, shift, s.blankCell(), s.buf.Bounds())
 				s.cur.Y = max(s.cur.Y-shift, 0)
@@ -129,7 +129,7 @@ func (s *Screen) resizeRows(width int, height int, restore bool) (pushed, pulled
 		if pull > 0 {
 			s.buf.InsertLineArea(0, pull, s.blankCell(), s.buf.Bounds())
 			for y := pull - 1; y >= 0; y-- {
-				copy(s.buf.Line(y), s.scrollback.popLast())
+				s.writeScreenLine(y, s.scrollback.popLast())
 			}
 			s.cur.Y += pull
 		}
@@ -432,7 +432,7 @@ func (s *Screen) DeleteLine(n int) bool {
 		scroll.Min.X == 0 && scroll.Max.X == s.buf.Width() {
 		// Save lines that will be deleted
 		linesToSave := min(n, scroll.Max.Y-y)
-		s.scrollback.PushN(s.buf, y, linesToSave)
+		s.pushScreenRows(y, linesToSave)
 	}
 
 	s.scrollRows = s.scrollRows[:0]

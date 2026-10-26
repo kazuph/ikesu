@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/filewatch"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,9 @@ type Assets struct {
 	mu                                      sync.Mutex
 	Root, Pane, Bin, MarkerPath, Executable string
 	Config                                  Config
+	pathWatch                               *filewatch.Watcher
+	watchChanges                            func()
+	watchInstalled                          bool
 	meta                                    Marker
 	active                                  string
 	closed                                  bool
@@ -146,6 +150,7 @@ fi
 func (a *Assets) Sync(agent string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	defer a.refreshChanges()
 	return a.sync(agent)
 }
 func (a *Assets) sync(agent string) error {
@@ -174,7 +179,12 @@ func (a *Assets) sync(agent string) error {
 	// even when the detected agent has not changed.
 	for _, cmd := range a.Config.Commands() {
 		s := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard exec --via shim -- " + quote(cmd) + " \"$@\"\n"
-		if e := os.WriteFile(filepath.Join(a.Bin, cmd), []byte(s), 0700); e != nil {
+		path := filepath.Join(a.Bin, cmd)
+		if e := os.WriteFile(path, []byte(s), 0700); e != nil {
+			_ = a.remove()
+			return a.setIssue(e.Error())
+		}
+		if e := os.Chmod(path, 0700); e != nil {
 			_ = a.remove()
 			return a.setIssue(e.Error())
 		}
@@ -229,6 +239,7 @@ func (a *Assets) remove() error {
 func (a *Assets) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.stopChanges()
 	a.active = ""
 	a.closed = true
 	return a.clearCoverage()

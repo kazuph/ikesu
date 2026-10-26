@@ -32,7 +32,15 @@ func (r *readBuffer) transfer() *readTransfer {
 	if r == nil {
 		return nil
 	}
-	return &readTransfer{Main: transferRows(r.main), Alternate: transferRows(r.alternate), History: transferRows(r.history), AltHistory: transferRows(r.altHistory), ByteHistory: r.byteHistory, Pending: r.pending, HistoryCount: r.historyCount, Start: r.start, AltStart: r.altStart, Top: r.top, Bottom: r.bottom, Left: r.left, Right: r.right, State: r.state, Kind: r.kind, UTF8: r.utf8Pending, Partial: r.partial}
+	history, count, start := r.history, r.historyCount, r.start
+	if r.historyIndexed {
+		history = make([]rowRef, r.historyLen())
+		for y := range history {
+			history[y] = r.historyRef(y)
+		}
+		count, start = len(history), 0
+	}
+	return &readTransfer{Main: transferRows(r.main), Alternate: transferRows(r.alternate), History: transferRows(history), AltHistory: transferRows(r.altHistory), ByteHistory: r.byteHistory, Pending: r.pending, HistoryCount: count, Start: start, AltStart: r.altStart, Top: r.top, Bottom: r.bottom, Left: r.left, Right: r.right, State: r.state, Kind: r.kind, UTF8: r.utf8Pending, Partial: r.partial}
 }
 func (r *readTransfer) restore() *readBuffer {
 	if r == nil {

@@ -99,6 +99,9 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 		return
 	}
 	m := ev.Mouse
+	if g.divider && ev.Kind == input.KindMouseRelease {
+		a.sidebarGestureMouseAt(input.Event{Kind: input.KindMouseMotion, Mouse: m}, now)
+	}
 	if ev.Kind == input.KindMouseMotion {
 		if m.X != g.x || m.Y != g.y {
 			g.moved = true

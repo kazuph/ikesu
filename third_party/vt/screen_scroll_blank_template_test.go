@@ -31,27 +31,28 @@ func testScrollBlankTemplateDoesNotAliasCells(t *testing.T, notify bool) {
 		}
 		for rep := 0; rep < 5; rep++ {
 			for _, s := range []*Screen{got, want} {
-				for row := range s.buf.Lines {
-					for x := range s.buf.Lines[row] {
-						s.buf.Lines[row][x] = uv.Cell{Content: "x", Width: 1}
+				for row := 0; row < s.buf.Height(); row++ {
+					for x := range s.buf.Line(row) {
+						screenTestRaw(s, x, row, uv.Cell{Content: "x", Width: 1})
 					}
 				}
 			}
 			got.DeleteLine(1)
 			want.originalDeleteLine(1)
-			if !reflect.DeepEqual(got.buf, want.buf) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) || got.scrollback.Bytes() != want.scrollback.Bytes() {
+			if !reflect.DeepEqual(screenTestState(got.buf), screenTestState(want.buf)) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) || got.scrollback.Bytes() != want.scrollback.Bytes() {
 				t.Fatalf("width=%d rep=%d", width, rep)
 			}
 			// Mutate the public cell from the cleared row; the next clear must not reuse it.
 			for _, s := range []*Screen{got, want} {
-				c := s.CellAt(width-1, 2)
+				c := *s.CellAt(width-1, 2)
 				c.Content = "edited"
 				c.Style.Attrs = uv.AttrBold
 				c.Link.URL = "changed"
+				s.SetCell(width-1, 2, &c)
 			}
 			got.DeleteLine(1)
 			want.originalDeleteLine(1)
-			if !reflect.DeepEqual(got.buf, want.buf) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) || got.scrollback.Bytes() != want.scrollback.Bytes() {
+			if !reflect.DeepEqual(screenTestState(got.buf), screenTestState(want.buf)) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) || got.scrollback.Bytes() != want.scrollback.Bytes() {
 				t.Fatalf("public alias width=%d rep=%d", width, rep)
 			}
 		}

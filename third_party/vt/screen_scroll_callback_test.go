@@ -22,7 +22,7 @@ func TestScrollDropCallbackMatchesOriginal(t *testing.T) {
 				for i := 0; i < 3; i++ {
 					s.scrollback.Push(row)
 				}
-				copy(s.buf.Lines[0], row)
+				s.writeScreenLine(0, row)
 				drops := 0
 				s.scrollback.OnDrop = func() {
 					drops++
@@ -36,16 +36,20 @@ func TestScrollDropCallbackMatchesOriginal(t *testing.T) {
 					case "empty-width":
 						uv.EmptyCell.Width = 2
 					case "suffix-style":
-						s.buf.Lines[0][7].Style.Attrs = uv.AttrBold
+						fixtureCell := *s.CellAt(7, 0)
+						fixtureCell.Style.Attrs = uv.AttrBold
+						screenTestRaw(s, 7, 0, fixtureCell)
 					case "suffix-wide":
-						s.buf.Lines[0][6] = uv.Cell{Content: "世", Width: 2}
-						s.buf.Lines[0][7] = uv.Cell{}
+						screenTestRaw(s, 6, 0, uv.Cell{Content: "世", Width: 2})
+						screenTestRaw(s, 7, 0, uv.Cell{})
 					case "suffix-zero":
-						s.buf.Lines[0][7] = uv.Cell{}
+						screenTestRaw(s, 7, 0, uv.Cell{})
 					case "prefix-style":
-						s.buf.Lines[0][0].Style.Attrs = uv.AttrBold
+						fixtureCell := *s.CellAt(0, 0)
+						fixtureCell.Style.Attrs = uv.AttrBold
+						screenTestRaw(s, 0, 0, fixtureCell)
 					case "prefix-wide":
-						s.buf.Lines[0][0] = uv.Cell{Content: "世", Width: 2}
+						screenTestRaw(s, 0, 0, uv.Cell{Content: "世", Width: 2})
 					case "empty-style":
 						uv.EmptyCell.Style.Attrs = uv.AttrBold
 					case "empty-content":
@@ -61,7 +65,7 @@ func TestScrollDropCallbackMatchesOriginal(t *testing.T) {
 			}
 			got, gd := run(false)
 			want, wd := run(true)
-			if gd != wd || !reflect.DeepEqual(got.buf, want.buf) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) || got.scrollback.Bytes() != want.scrollback.Bytes() {
+			if gd != wd || !reflect.DeepEqual(screenTestState(got.buf), screenTestState(want.buf)) || !reflect.DeepEqual(got.scrollback.Lines(), want.scrollback.Lines()) || got.scrollback.Bytes() != want.scrollback.Bytes() {
 				t.Fatalf("mutation=%s budgetRows=%d drops=%d/%d", mutation, budgetRows, gd, wd)
 			}
 		}

@@ -1,5 +1,7 @@
 package render
 
+import "github.com/kazuph/ikesu/internal/benchstage"
+
 import (
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -250,9 +252,30 @@ func ComposeClient(in Input, machines *MachineSidebar, version string, notice bo
 	return compose(in, machines, version, notice)
 }
 
+// Composer owns alternating frame buffers for a single presentation loop.
+// A returned frame remains unchanged through the following composition, so
+// the terminal encoder can compare it with the next frame. It must not escape
+// that loop or be retained across two subsequent compositions.
+type Composer struct{ latest, spare *Frame }
+
+func (c *Composer) ComposeClient(in Input, machines *MachineSidebar, version string, notice bool) *Output {
+	out := composeInto(in, machines, version, notice, c.spare)
+	c.spare, c.latest = c.latest, out.Frame
+	return out
+}
+
 func compose(in Input, machines *MachineSidebar, version string, notice bool) *Output {
+	return composeInto(in, machines, version, notice, nil)
+}
+
+func composeInto(in Input, machines *MachineSidebar, version string, notice bool, f *Frame) *Output {
+	defer benchstage.Span("render.compose")()
 	s := in.State
-	f := NewFrame(s.Cols, s.Rows)
+	if f == nil {
+		f = NewFrame(s.Cols, s.Rows)
+	} else {
+		f.reset(s.Cols, s.Rows)
+	}
 	f.Palette = ConfigPalette(in.SidebarConfig)
 	appliedPalette := f.Palette
 	if in.Settings != nil {

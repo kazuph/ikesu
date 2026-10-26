@@ -92,7 +92,7 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 			if len(line) != v.Width {
 				return fmt.Errorf("invalid terminal handoff row")
 			}
-			copy(s.buf.Line(y), line)
+			s.writeScreenLine(y, line)
 		}
 		s.cur, s.saved, s.scroll = v.Cursor, v.Saved, v.Scroll
 		s.scrollback = NewScrollback(v.HistoryLimit)

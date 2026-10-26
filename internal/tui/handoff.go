@@ -84,6 +84,7 @@ func (a *App) RestoreHandoff(t HandoffState) {
 	}
 	a.scroll = t.Scroll
 	a.blockerObservations = t.BlockerObservations
+	a.activity = nil
 	a.trackers, a.fossils = map[int]*status.Tracker{}, map[int]*fossilWatch{}
 	for id, tr := range t.Trackers {
 		a.trackers[id] = status.Restore(tr)

@@ -7,6 +7,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"net"
 	"os"
@@ -138,9 +139,13 @@ type Server struct {
 	lastAPINotification time.Time                    // last successfully shown explicit notification
 
 	// session persistence & restart (SPEC G3/G5)
-	saveMu     sync.Mutex
-	saveTimer  *time.Timer // pending coalesced session.json write
-	restarting bool        // set on the app loop; cleanup respawns a server
+	saveMu        sync.Mutex
+	saveTimer     *time.Timer // pending coalesced session.json write
+	saveWriteMu   sync.Mutex
+	saveSequence  uint64 // assigned only on the app loop
+	savedSequence uint64 // guarded by saveWriteMu
+	saveClosed    bool   // guarded by saveWriteMu
+	restarting    bool   // set on the app loop; cleanup respawns a server
 
 	// observedStart remembers the process start an observed session id
 	// was recorded for, so the same process is never re-observed.
@@ -196,6 +201,7 @@ func (c *clientConn) startWriter() {
 }
 
 func (c *clientConn) send(m clientMsg) error {
+	defer benchstage.Span("server.send")()
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 	if c.closed {
@@ -365,6 +371,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
 	s.app.SetConfigChanged(s.screenPromptConfig)
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
+	s.app.UsePaneMetadataEvents(s.paneMetadataNextExpiry)
 	// Mail delivery and agent notifications fire on status transitions
 	// (and once at startup below) — event-driven, never polled.
 	s.app.SetAvailHook(func(pid int) {
@@ -475,6 +482,7 @@ func (s *Server) cleanup() {
 		s.saveTimer = nil
 	}
 	s.saveMu.Unlock()
+	s.closeSessionWrites()
 	// notifyExit already told the attached client; drop whatever remains.
 	s.detach("server exiting")
 	s.closeAgentAttachments()
@@ -712,8 +720,19 @@ func (s *Server) attach(conn net.Conn) {
 		return
 	}
 	defer s.dropConn(c)
+	var pendingInput *clientMsg
+	var bufferedInputErr error
 	for {
-		m, err := readClientMsg(rd)
+		if bufferedInputErr != nil {
+			return
+		}
+		var m clientMsg
+		var err error
+		if pendingInput != nil {
+			m, pendingInput = *pendingInput, nil
+		} else {
+			m, err = readClientMsg(rd)
+		}
 		if err != nil {
 			return
 		}
@@ -786,6 +805,7 @@ func (s *Server) attach(conn net.Conn) {
 				s.app.Do(func() { c.viewer.Rendered(s.app, *m.Rendered, m.FocusEpoch) })
 			}
 		case "input", "paste":
+			m, pendingInput, bufferedInputErr = bufferedMotions(rd, m)
 			s.viewerInput(c, m)
 		case "resize":
 			s.app.Do(func() { c.viewer.Resize(s.app, m.Cols, m.Rows, m.Xpixel, m.Ypixel) })

@@ -115,10 +115,17 @@ func TestPreviewAnswerReadsFiveTimesBeforeGivingUp(t *testing.T) {
 			var prompt *screenprompt.Prompt
 			s.app.Do(func() {
 				prompt = s.readScreenPrompt(1)
+				if prompt == nil || !prompt.HasPreview {
+					t.Errorf("preview fixture was not fully read before delivery: prompt=%+v screen=%q", prompt, p.ScreenText())
+					return
+				}
 				s.screenPrompts.watches = map[int]*screenPromptWatch{}
 				s.screenPrompts.watches[1] = &screenPromptWatch{prompt: prompt, signature: prompt.Signature(), resolved: true, decisionID: "delivering"}
 				s.beginScreenFlowAnswer(1, prompt)
 			})
+			if t.Failed() {
+				t.FailNow()
+			}
 			target := "2"
 			start := time.Now()
 			done := make(chan error, 1)

@@ -22,17 +22,31 @@ type Frame struct {
 
 // NewFrame allocates an empty frame.
 func NewFrame(w, h int) *Frame {
+	f := &Frame{}
+	f.reset(w, h)
+	return f
+}
+
+func (f *Frame) reset(w, h int) {
 	if w < 0 {
 		w = 0
 	}
 	if h < 0 {
 		h = 0
 	}
-	cells := make([]uv.Cell, w*h)
+	cells := f.Cells
+	if cap(cells) < w*h {
+		cells = make([]uv.Cell, w*h)
+	} else {
+		if w*h < len(cells) {
+			clear(cells[w*h:])
+		}
+		cells = cells[:w*h]
+	}
 	for i := range cells {
 		cells[i] = uv.Cell{Content: " ", Width: 1}
 	}
-	return &Frame{W: w, H: h, Cells: cells, Palette: ThemePalette("catppuccin")}
+	*f = Frame{W: w, H: h, Cells: cells, Palette: ThemePalette("catppuccin")}
 }
 
 // Cell returns the cell at (x, y) or nil when out of bounds.

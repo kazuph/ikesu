@@ -2,11 +2,13 @@ package tui
 
 import (
 	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/worktree"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -37,63 +39,108 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	if a.gitPending || now.Sub(a.gitAt) < 1500*time.Millisecond {
 		return
 	}
-	a.gitPending = true
 	a.gitAt = now
+	if a.gitActivity == nil {
+		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}}
+	}
 	type target struct {
-		id      int
-		cwd     string
-		nameCwd string
+		id           int
+		cwd, nameCwd string
 	}
 	var targets []target
+	wanted := map[string]bool{}
 	for _, w := range a.st.Workspaces {
-		targets = append(targets, target{w.ID, w.Cwd, a.workspaceNameCwd(w)})
+		nameCwd := a.workspaceNameCwd(w)
+		targets = append(targets, target{w.ID, w.Cwd, nameCwd})
+		wanted[w.Cwd], wanted[nameCwd] = true, true
 	}
-	go func() {
+	state := a.gitActivity
+	pending := map[string]gitCwdActivity{}
+	for cwd := range wanted {
+		entry, ok := state.entries[cwd]
+		if !ok {
+			entry.watch = filewatch.New(nil)
+			state.entries[cwd] = entry
+		}
+		if entry.loaded && entry.ready {
+			updated, unchanged := unchangedGitActivity(entry)
+			if unchanged {
+				state.entries[cwd] = updated
+				continue
+			}
+		}
+		if !entry.loaded || !entry.ready || entry.watch.Revision() != entry.revision {
+			pending[cwd] = entry
+		}
+	}
+	for cwd, entry := range state.entries {
+		if !wanted[cwd] {
+			entry.watch.Close()
+			delete(state.entries, cwd)
+		}
+	}
+	apply := func(updated map[string]gitCwdActivity) {
+		for cwd, entry := range updated {
+			state.entries[cwd] = entry
+		}
 		gs := map[int]render.GitStatus{}
 		names := map[int]workspaceDirectoryLabel{}
 		for _, w := range targets {
-			gs[w.id] = readWorkspaceGit(w.cwd)
-			names[w.id] = workspaceDirectoryLabel{w.nameCwd, workspaceDirectoryName(w.nameCwd)}
+			gs[w.id] = state.entries[w.cwd].git
+			names[w.id] = workspaceDirectoryLabel{w.nameCwd, state.entries[w.nameCwd].name}
 		}
-		a.Do(func() {
-			a.workspaceLabels = names
-			a.workspaceGit = map[int]render.GitStatus{}
-			a.workspaceNames = map[int]string{}
-			for i, w := range a.st.Workspaces {
-				a.workspaceGit[i] = gs[w.ID]
-				name := names[w.ID].name
-				if w.CustomName {
-					name = w.Name
-				}
-				if !w.CustomName && len(w.Tabs) > 0 {
-					ids := w.Tabs[0].Layout.PaneIDs()
-					if len(ids) > 0 {
-						if p := a.sup.Get(ids[0]); p != nil {
-							sn := p.Snapshot()
-							agent := sn.AgentID
-							if r := a.reported[ids[0]]; r.agent != "" {
-								agent = r.agent
+		previousLabels, previousGit, previousNames := a.workspaceLabels, a.workspaceGit, a.workspaceNames
+		a.workspaceLabels = names
+		a.workspaceGit = map[int]render.GitStatus{}
+		a.workspaceNames = map[int]string{}
+		for i, w := range a.st.Workspaces {
+			a.workspaceGit[i] = gs[w.ID]
+			name := names[w.ID].name
+			if w.CustomName {
+				name = w.Name
+			}
+			if !w.CustomName && len(w.Tabs) > 0 {
+				ids := w.Tabs[0].Layout.PaneIDs()
+				if len(ids) > 0 {
+					if p := a.sup.Get(ids[0]); p != nil {
+						sn := p.Snapshot()
+						agent := sn.AgentID
+						if r := a.reported[ids[0]]; r.agent != "" {
+							agent = r.agent
+						}
+						title := sn.OSCTitle
+						if rec := a.sessions[ids[0]]; rec != nil && rec.Title != "" {
+							title = rec.Title
+						}
+						if a.paneMetadataSource != nil {
+							if m := a.paneMetadataSource(ids[0]); m.Title != "" {
+								title = m.Title
 							}
-							title := sn.OSCTitle
-							if rec := a.sessions[ids[0]]; rec != nil && rec.Title != "" {
-								title = rec.Title
-							}
-							if a.paneMetadataSource != nil {
-								if m := a.paneMetadataSource(ids[0]); m.Title != "" {
-									title = m.Title
-								}
-							}
-							if agent != "" && title != "" && title != name {
-								name += "-" + title
-							}
+						}
+						if agent != "" && title != "" && title != name {
+							name += "-" + title
 						}
 					}
 				}
-				a.workspaceNames[i] = name
 			}
-			a.gitPending = false
+			a.workspaceNames[i] = name
+		}
+		a.gitPending = false
+		if !reflect.DeepEqual(previousLabels, a.workspaceLabels) || !reflect.DeepEqual(previousGit, a.workspaceGit) || !reflect.DeepEqual(previousNames, a.workspaceNames) {
 			a.dirty = true
-		})
+		}
+	}
+	if len(pending) == 0 {
+		apply(nil)
+		return
+	}
+	a.gitPending = true
+	go func() {
+		updated := map[string]gitCwdActivity{}
+		for cwd, entry := range pending {
+			updated[cwd] = readGitActivity(cwd, entry)
+		}
+		a.Do(func() { apply(updated) })
 	}()
 }
 

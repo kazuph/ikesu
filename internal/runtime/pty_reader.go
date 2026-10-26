@@ -54,6 +54,7 @@ func (p *Pane) readPTYReady(buf []byte) (int, error) {
 }
 
 func (p *Pane) closePTY() {
+	p.endProcessWatch()
 	if p.wakeWrite != nil {
 		p.wakeWrite.Close()
 	}

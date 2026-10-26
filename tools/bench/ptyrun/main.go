@@ -32,17 +32,32 @@ func main() {
 	pixelMouse := flag.Bool("pixel-mouse", true, "outer terminal supports SGR pixel mouse")
 	rawOutput := flag.String("raw-output", "", "save raw terminal output")
 	fileImages := flag.String("file-images", "", "record file-image payload hashes while the viewer owns the files")
+	relayLog := flag.String("claude-relay-log", "", "observe unmodified Claude Code without forwarding conversation input")
+	relayExit := flag.String("claude-relay-exit", "", "owned controller file requesting ordinary Ctrl-C exit")
+	includeBodies := flag.Bool("body-grids", false, "record real pane text for copied Claude conversations")
+	processPath := flag.String("process-file", "", "save the measured product PID")
+	timelinePath := flag.String("timeline", "", "monotonic synchronized-frame and workload-marker records")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
 	statusDelay := flag.String("status-delay", "", "override terminal status replies with a duration or drop")
 	holdColor := flag.Bool("hold-color-replies", false, "leave background-color queries for explicit steps to answer")
 	flag.Parse()
 	args := flag.Args()
+	if *relayLog != "" {
+		runClaudeRelay(args, *relayLog, *relayExit)
+		return
+	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(*cols), Rows: uint16(*rows), X: uint16(*xpixel), Y: uint16(*ypixel)})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "start:", err)
 		os.Exit(1)
+	}
+	if *processPath != "" {
+		data, _ := json.Marshal(map[string]any{"pid": cmd.Process.Pid, "clock_ns": monotonicNS(), "args": args})
+		if err := os.WriteFile(*processPath, data, 0600); err != nil {
+			panic(err)
+		}
 	}
 	emu := vt.NewEmulator(*cols, *rows)
 	if *statusDelay != "" {
@@ -126,6 +141,13 @@ func main() {
 			return false
 		})
 	}
+	observer := newTimeline(*timelinePath, emu, *cols, *rows)
+	if observer != nil {
+		observer.reply = ptmx
+		observer.receiver.reply = ptmx
+		observer.includeBodies = *includeBodies
+	}
+	defer observer.close()
 	var mu sync.Mutex
 	go func() { _, _ = io.Copy(ptmx, emu) }() // emulator replies (DA etc.) back to the app
 	// Drain the PTY as fast as possible (like a fast real terminal) and feed the emulator
@@ -134,23 +156,28 @@ func main() {
 	type outputChunk struct {
 		data []byte
 		at   int64
+		mono int64
 	}
 	var queue []outputChunk
+	queueWake := make(chan struct{}, 1)
 	var cellChanged [][]int64
 	var cellContent [][]string
 	var drained int64
+	var completeAt int64
 	go func() {
 		buf := make([]byte, 1<<16)
 		for {
 			n, err := ptmx.Read(buf)
+			readMono, readWall := monotonicNS(), time.Now().UnixMilli()
 			if n > 0 {
-				if rawFile != nil {
-					_, _ = rawFile.Write(buf[:n])
-				}
 				c := make([]byte, n)
 				copy(c, buf[:n])
 				qmu.Lock()
-				queue = append(queue, outputChunk{data: c, at: time.Now().UnixMilli()})
+				queue = append(queue, outputChunk{data: c, at: readWall, mono: readMono})
+				select {
+				case queueWake <- struct{}{}:
+				default:
+				}
 				qmu.Unlock()
 			}
 			if err != nil {
@@ -165,14 +192,24 @@ func main() {
 			queue = nil
 			qmu.Unlock()
 			if len(q) == 0 {
-				time.Sleep(5 * time.Millisecond)
+				<-queueWake
 				continue
 			}
 			mu.Lock()
 			for _, c := range q {
+				if rawFile != nil {
+					_, _ = rawFile.Write(c.data)
+				}
 				chunkEnd = drained + int64(len(c.data))
-				_, _ = emu.Write(c.data)
+				if observer != nil {
+					observer.feed(c.data, c.mono)
+				} else {
+					_, _ = emu.Write(c.data)
+				}
 				drained += int64(len(c.data))
+				if !emu.ModeSet(ansi.ModeSynchronizedOutput) {
+					completeAt = c.at
+				}
 				if *cellClock {
 					if len(cellChanged) != *rows || len(cellChanged[0]) != *cols {
 						cellChanged, cellContent = make([][]int64, *rows), make([][]string, *rows)
@@ -263,13 +300,21 @@ func main() {
 		case "sleep":
 			d, _ := time.ParseDuration(rest)
 			time.Sleep(d)
-		case "send":
+		case "send", "sendtimed":
 			s, err := strconv.Unquote(rest)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "bad send:", rest)
 				os.Exit(1)
 			}
-			_, _ = ptmx.Write([]byte(s))
+			if op == "sendtimed" {
+				at := monotonicNS()
+				if _, err := ptmx.Write([]byte(s)); err != nil {
+					panic(err)
+				}
+				observer.record(map[string]any{"type": "capacity.input", "clock_ns": at, "data": s})
+			} else {
+				_, _ = ptmx.Write([]byte(s))
+			}
 			sentAt = time.Now()
 		case "wheelburst": // COUNT HZ X Y: timed scroll input, independent of render completion
 			var count, rate, x, y int
@@ -305,6 +350,155 @@ func main() {
 				fmt.Fprintln(os.Stderr, "mouse coordinate mode changed during timed scroll")
 				os.Exit(1)
 			}
+		case "notifyfile":
+			if err := os.WriteFile(rest, []byte("ready\n"), 0600); err != nil {
+				panic(err)
+			}
+		case "waitmarkers":
+			var n int
+			var duration string
+			if _, err := fmt.Sscanf(rest, "%d %s", &n, &duration); err != nil {
+				panic(err)
+			}
+			timeout, err := time.ParseDuration(duration)
+			if err != nil {
+				panic(err)
+			}
+			deadline := time.Now().Add(timeout)
+			for {
+				mu.Lock()
+				count := len(observer.latest.Panes)
+				mu.Unlock()
+				if count == n {
+					break
+				}
+				if time.Now().After(deadline) {
+					fmt.Fprintln(os.Stderr, screen())
+					panic("workload markers did not appear")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+		case "panecommands":
+			if observer == nil {
+				panic("panecommands needs -timeline")
+			}
+			settle()
+			data, err := os.ReadFile(rest)
+			if err != nil {
+				panic(err)
+			}
+			var commands []string
+			if err = json.Unmarshal(data, &commands); err != nil {
+				panic(err)
+			}
+			mu.Lock()
+			corners := append([]trialCorner(nil), observer.latest.Corners...)
+			mu.Unlock()
+			index := 0
+			for _, corner := range corners {
+				if corner.Glyph != "┌" {
+					continue
+				}
+				if index >= len(commands) {
+					panic("more panes than workload commands")
+				}
+				x, y := corner.X+1, corner.Y+1
+				fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y)
+				time.Sleep(30 * time.Millisecond)
+				fmt.Fprint(ptmx, commands[index]+"\r")
+				index++
+				readyBy := time.Now().Add(15 * time.Second)
+				for {
+					mu.Lock()
+					ready := false
+					for _, pane := range observer.latest.Panes {
+						if pane.ID == index {
+							ready = true
+						}
+					}
+					mu.Unlock()
+					if ready {
+						break
+					}
+					if time.Now().After(readyBy) {
+						panic("pane command did not reach target")
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			if index != len(commands) {
+				panic("missing pane workload")
+			}
+		case "dragtrial":
+			if observer == nil {
+				panic("dragtrial needs -timeline")
+			}
+			settle()
+			runDragTrial(rest, observer, ptmx, &mu)
+		case "dragmeasure": // COUNT X Y DX DY WATCHX WATCHY: alternate one-cell movements
+			var count, x, y, dx, dy, wx, wy int
+			if n, _ := fmt.Sscanf(rest, "%d %d %d %d %d %d %d", &count, &x, &y, &dx, &dy, &wx, &wy); n != 7 {
+				panic("invalid dragmeasure")
+			}
+			settle()
+			mu.Lock()
+			if x == 0 {
+				for col := 27; col < *cols; col++ {
+					if c := emu.CellAt(col-1, 1); c != nil && c.Content == "┐" {
+						x = col
+						wx = col
+						break
+					}
+				}
+			}
+			if y == 0 {
+				for row := 3; row < *rows; row++ {
+					if c := emu.CellAt(26, row-1); c != nil && c.Content == "└" {
+						y = row
+						wy = row
+						break
+					}
+				}
+			}
+			fmt.Printf("drag-geometry x=%d y=%d watch=%d,%d\n", x, y, wx, wy)
+			glyph := emu.CellAt(wx-1, wy-1).Content
+			mu.Unlock()
+			cpu := func(label string) {
+				for _, pid := range []int{cmd.Process.Pid, func() int { n, _ := strconv.Atoi(os.Getenv("PARITY_OBSERVE_PID")); return n }()} {
+					out, _ := exec.Command("ps", "-o", "pid=,time=,%cpu=", "-p", strconv.Itoa(pid)).Output()
+					fmt.Printf("cpu %s %s\n", label, strings.TrimSpace(string(out)))
+				}
+			}
+			cpu("before")
+			fmt.Fprintf(ptmx, "\x1b[<0;%d;%dM", x, y)
+			time.Sleep(100 * time.Millisecond)
+			for i := 0; i < count; i++ {
+				off := (i + 1) % 2
+				tx, ty := x+off*dx, y+off*dy
+				sx, sy := wx+off*dx, wy+off*dy
+				mu.Lock()
+				begin := drained
+				mu.Unlock()
+				start := time.Now()
+				fmt.Fprintf(ptmx, "\x1b[<32;%d;%dM", tx, ty)
+				observed := int64(0)
+				deadline := start.Add(250 * time.Millisecond)
+				for time.Now().Before(deadline) {
+					mu.Lock()
+					cell := emu.CellAt(sx-1, sy-1)
+					if observed == 0 && cell != nil && cell.Content == glyph && cellChanged[sy-1][sx-1] >= start.UnixMilli() && !emu.ModeSet(ansi.ModeSynchronizedOutput) {
+						observed = max(cellChanged[sy-1][sx-1], completeAt)
+					}
+					mu.Unlock()
+					time.Sleep(time.Millisecond)
+				}
+				mu.Lock()
+				end := drained
+				mu.Unlock()
+				fmt.Printf("drag sample=%d sent_us=%d seen_ms=%d bytes=%d begin=%d end=%d target=%d,%d glyph=%q\n", i, start.UnixMicro(), observed, end-begin, begin, end, sx, sy, glyph)
+			}
+			fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
+			cpu("after")
 		case "mouse", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
 			var kind string
 			var x, y int

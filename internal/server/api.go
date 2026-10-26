@@ -32,6 +32,10 @@ func (s *Server) serveAPI(conn net.Conn) {
 			return
 		}
 		if s.closing.Load() != 0 {
+			// Pending waits reconnect to the successor with the same decision ID.
+			if req.Method == api.MethodDecisionWait {
+				return
+			}
 			_ = api.WriteResponse(conn, api.Failure(req.ID, "server_stopping", "server is stopping"))
 			return
 		}

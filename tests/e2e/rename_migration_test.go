@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bufio"
+	_ "embed"
 	"encoding/json"
 	"net"
 	"os"
@@ -17,6 +18,9 @@ import (
 
 // Capture before TestMain isolates the test environment.
 var migrationBaseline = os.Getenv("IKESU_MIGRATION_BASE_BIN")
+
+//go:embed testdata/migration-baseline-49f0363.tar.gz
+var migrationBaselineSource []byte
 
 func migrationRPC(t *testing.T, socket, method string, params any, out any) {
 	t.Helper()
@@ -122,24 +126,48 @@ func migrationServer(t *testing.T, binary, home, socket string) func() {
 func prepareMigrationBaseline(t *testing.T) string {
 	t.Helper()
 	if migrationBaseline == "" {
-		dir := t.TempDir()
-		archive := filepath.Join(dir, "baseline.tar")
-		cmd := exec.Command("git", "archive", "--output", archive, "49f0363")
-		cmd.Dir = repoRoot()
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("baseline archive (or set IKESU_MIGRATION_BASE_BIN): %v %s", err, out)
+		// TestMain owns this directory; both migration tests reuse the build.
+		dir := filepath.Join(filepath.Dir(binPath), "migration-baseline")
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
 		}
-		if out, err := exec.Command("tar", "-xf", archive, "-C", dir).CombinedOutput(); err != nil {
+		archive := filepath.Join(dir, "baseline.tar.gz")
+		if err := os.WriteFile(archive, migrationBaselineSource, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("tar", "-xzf", archive, "-C", dir).CombinedOutput(); err != nil {
 			t.Fatal(err, string(out))
 		}
-		migrationBaseline = filepath.Join(dir, "gtx-2e01183")
-		cmd = exec.Command("go", "build", "-o", migrationBaseline, "./cmd/ikesu")
+		binary := filepath.Join(dir, "gtx-2e01183")
+		cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binary, "./cmd/ikesu")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatal(err, string(out))
 		}
+		migrationBaseline = binary
 	}
 	return migrationBaseline
+}
+
+func TestMigrationBaselineSurvivesCallingTestCleanup(t *testing.T) {
+	previous := migrationBaseline
+	migrationBaseline = ""
+	defer func() { migrationBaseline = previous }()
+	var first string
+	t.Run("first-caller", func(t *testing.T) { first = prepareMigrationBaseline(t) })
+	if first == "" {
+		t.Fatal("baseline build did not finish")
+	}
+	if _, err := os.Stat(first); err != nil {
+		t.Fatal("baseline was removed with its first caller", err)
+	}
+	second := prepareMigrationBaseline(t)
+	if second != first {
+		t.Fatal("baseline was rebuilt for the next caller", first, second)
+	}
+	if out, err := exec.Command(second, "--version").CombinedOutput(); err != nil {
+		t.Fatalf("baseline cannot execute after first test cleanup: %v %s", err, out)
+	}
 }
 
 func TestStageThreeOfflineMigration(t *testing.T) {

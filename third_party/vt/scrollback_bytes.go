@@ -27,6 +27,9 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 		s.styled = make([]*styledRow, len(s.lines))
 	}
 	s.bytes = 0
+	if s.indexed != nil {
+		s.bytes = s.indexed.view.bytes()
+	}
 	for i := 0; i < s.count; i++ {
 		idx := s.wrap(s.start + i)
 		width := cap(s.lines[idx])
@@ -39,8 +42,11 @@ func (s *Scrollback) SetMaxBytes(limit int) {
 		s.rowBytes[idx] = scrollbackRowBytes + width*scrollbackCellBytes
 		s.bytes += s.rowBytes[idx]
 	}
-	for s.count > 0 && (s.bytes > limit || s.count > s.maxLines) {
+	for s.Len() > 0 && (s.bytes > limit || s.Len() > s.maxLines) {
 		s.dropOldest()
+	}
+	if s.prepared != nil {
+		s.prepared.applyDrops()
 	}
 }
 func (s *Scrollback) ByteLimited() bool { return s != nil && s.byteLimited }
@@ -51,15 +57,30 @@ func (s *Scrollback) Bytes() int {
 	return s.bytes
 }
 func (s *Scrollback) dropOldest() (uv.Line, []byte, *styledRow) {
-	if s.count == 0 {
+	if s.Len() == 0 {
 		return nil, nil, nil
+	}
+	if s.indexedLen() > 0 {
+		charge := s.indexed.dropRows(1)
+		if s.byteLimited {
+			s.bytes -= charge
+		}
+		if s.OnDrop != nil {
+			s.OnDrop()
+		}
+		return nil, nil, nil
+	}
+	if s.prepared != nil {
+		s.prepared.dropFirst()
 	}
 	idx := s.start
 	row := s.lines[idx]
-	text := s.packed[idx]
-	styled := s.styled[idx]
-	s.styled[idx] = nil
-	s.packed[idx] = nil
+	var text []byte
+	var styled *styledRow
+	if len(s.styled) > idx {
+		text, styled = s.packed[idx], s.styled[idx]
+		s.styled[idx], s.packed[idx] = nil, nil
+	}
 	s.lines[idx] = nil
 	if s.byteLimited {
 		s.bytes -= s.rowBytes[idx]
@@ -81,11 +102,15 @@ func (s *Scrollback) pushBytesWithPlain(line uv.Line, knownPlain bool) bool {
 }
 
 func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plainText []byte) (dropped bool) {
-	cost := scrollbackRowBytes + len(line)*scrollbackCellBytes
+	return s.pushByteRow(line, len(line), knownPlain, plainText)
+}
+
+func (s *Scrollback) pushByteRow(line uv.Line, columns int, knownPlain bool, plainText []byte) (dropped bool) {
+	cost := scrollbackRowBytes + columns*scrollbackCellBytes
 	var reuse uv.Line
 	var text []byte
 	var styled *styledRow
-	for s.count > 0 && (s.bytes+cost > s.maxBytes || s.count >= s.maxLines) {
+	for s.Len() > 0 && (s.bytes+cost > s.maxBytes || s.Len() >= s.maxLines) {
 		dropped = dropped || s.OnDrop != nil
 		reuse, text, styled = s.dropOldest()
 	}
@@ -112,12 +137,12 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 		s.lines, s.rowBytes, s.packed, s.styled, s.start = rows, sizes, packed, styles, 0
 	}
 	idx := s.wrap(s.start + s.count)
-	reusable := cap(text) == len(line)
-	plain := knownPlain && len(line) > 0
+	reusable := cap(text) == columns
+	plain := knownPlain && columns > 0
 	if plain {
 		if reusable {
-			text = text[:len(line)]
-			if plainText != nil && len(plainText) == len(line) {
+			text = text[:columns]
+			if plainText != nil && len(plainText) == columns {
 				copy(text, plainText)
 			} else {
 				for x := range line {
@@ -127,15 +152,15 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 		}
 	} else if reusable {
 		// text belongs to the evicted row; a rejected prefix is never retained.
-		text = text[:len(line)]
+		text = text[:columns]
 		plain = packPlainRow(line, text)
 	} else {
 		plain = plainRow(line)
 	}
 	if plain {
 		if !reusable {
-			text = make([]byte, len(line))
-			if plainText != nil && len(plainText) == len(line) {
+			text = make([]byte, columns)
+			if plainText != nil && len(plainText) == columns {
 				copy(text, plainText)
 			} else {
 				for x := range line {
@@ -148,10 +173,10 @@ func (s *Scrollback) pushBytesWithPlainText(line uv.Line, knownPlain bool, plain
 		s.styled[idx], s.lines[idx], s.packed[idx] = styled, nil, nil
 	} else {
 		// Exact capacity prevents an evicted wider row retaining hidden storage.
-		if cap(reuse) == len(line) {
+		if cap(reuse) == columns {
 			reuse = append(reuse[:0], line...)
 		} else {
-			reuse = make(uv.Line, len(line))
+			reuse = make(uv.Line, columns)
 			copy(reuse, line)
 		}
 		s.lines[idx], s.packed[idx] = reuse, nil

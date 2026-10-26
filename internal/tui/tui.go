@@ -156,6 +156,8 @@ type App struct {
 	sizeViewer        *Viewer
 	sizeViewers       []*Viewer
 	sizeOwners        map[*model.Tab]ptySizeBasis
+	deferResize       bool
+	resizePending     bool
 	drawViewers       func()
 	tickViewers       func()
 	visiblePane       func(int) bool
@@ -264,6 +266,7 @@ type App struct {
 	fwdStrip                                 uv.KeyMod
 	scroll                                   map[int]int
 	trackers                                 map[int]*status.Tracker
+	activity                                 *paneActivity
 	blockerObservations                      map[int]blockerObservation
 	reported                                 map[int]reportedPane                     // pane.report_agent overrides
 	sessions                                 map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)
@@ -273,10 +276,15 @@ type App struct {
 	jobDots                                  map[int][]render.JobDot                  // workspace index → dots (SPEC G2)
 	workspaceTokenSource                     func(int) map[string]string
 	paneMetadataSource                       func(int) api.PaneMetadataView
+	metadataPending                          map[int]bool
+	metadataExpirySource                     func(int) time.Time
+	metadataDeadlines                        map[int]time.Time
+	metadataNext                             time.Time
 	metadataViews                            map[int]api.PaneMetadataView
 	workspaceGit                             map[int]render.GitStatus
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
+	gitActivity                              *gitActivityState
 	gitAt                                    time.Time
 	gitPending                               bool
 	jobsAt                                   time.Time             // last job snapshot
@@ -505,6 +513,7 @@ func (a *App) Run() {
 	defer a.inputSource.Prefix(false, false)
 	defer a.removeEditorFiles()
 	defer close(a.doneCh)
+	defer a.closeGitActivity()
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 	spin := time.NewTicker(spinInterval)
@@ -535,9 +544,11 @@ func (a *App) Run() {
 				}
 				continue
 			}
-			for _, ev := range a.fr.Push(b) {
-				a.onInput(ev)
+			events := a.fr.Push(b)
+			for queued := len(a.input); queued > 0; queued-- {
+				events = append(events, a.fr.Push(<-a.input)...)
 			}
+			a.dispatchInputEvents(events, func(ev input.Event) { a.resizeInput(ev, func() { a.onInput(ev) }) })
 			if a.fr.Pending() {
 				if flushTimer == nil {
 					flushTimer = time.NewTimer(time.Duration(a.fr.TimeoutMs()) * time.Millisecond)
@@ -588,7 +599,7 @@ func (a *App) Run() {
 			break
 		}
 		if a.dirty {
-			remaining := time.Until(a.lastDraw.Add(drawMinInterval))
+			remaining := a.redrawDelay(time.Now())
 			if remaining <= 0 {
 				if drawTimer != nil {
 					drawTimer.Stop()
