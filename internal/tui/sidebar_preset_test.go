@@ -149,22 +149,24 @@ func menuIndexInItems(items []render.MenuItem, label string) int {
 }
 
 func TestSidebarPresetDragRestoresFortyCellMinimum(t *testing.T) {
-	for _, right := range []bool{false, true} {
-		a := NewApp(model.New(t.TempDir(), 65, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
-		a.setSidebarConfig(config.Config{}, true)
-		a.sidebarPreset("wide")
-		if a.st.PanesArea().W < 20 || a.st.PanesArea().W >= model.MinimumPaneAreaWidth {
-			t.Fatal("preset did not use approved narrow adaptation")
-		}
-		x := a.st.SidebarArea().W - 1
-		if right {
-			x = a.st.RightSidebarArea().X
-		}
-		sidebarEvent(a, input.KindMouseClick, x, 5)
-		sidebarEvent(a, input.KindMouseMotion, x+1, 5)
-		sidebarEvent(a, input.KindMouseRelease, x+1, 5)
-		if a.st.SidebarPresetActive || a.st.PanesArea().W < model.MinimumPaneAreaWidth {
-			t.Fatalf("right=%v active=%v center=%d", right, a.st.SidebarPresetActive, a.st.PanesArea().W)
+	for _, cols := range []int{65, 80, 100} {
+		for _, right := range []bool{false, true} {
+			a := NewApp(model.New(t.TempDir(), cols, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+			a.setSidebarConfig(config.Config{}, true)
+			a.sidebarPreset("wide")
+			if a.st.PanesArea().W < 20 || a.st.PanesArea().W >= model.MinimumPaneAreaWidth {
+				t.Fatal("preset did not use approved narrow adaptation")
+			}
+			x := a.st.SidebarArea().W - 1
+			if right {
+				x = a.st.RightSidebarArea().X
+			}
+			sidebarEvent(a, input.KindMouseClick, x, 5)
+			sidebarEvent(a, input.KindMouseMotion, x+1, 5)
+			sidebarEvent(a, input.KindMouseRelease, x+1, 5)
+			if a.st.SidebarPresetActive || a.st.PanesArea().W < model.MinimumPaneAreaWidth {
+				t.Fatalf("right=%v active=%v center=%d", right, a.st.SidebarPresetActive, a.st.PanesArea().W)
+			}
 		}
 	}
 }
@@ -205,5 +207,57 @@ func TestSidebarPresetPreferencesFileAndViewerIsolation(t *testing.T) {
 	restored.exec(model.CmdToggleRightSidebar{})
 	if restored.st.RightSidebarArea().W != model.SidebarMinDefault {
 		t.Fatal("reopening did not use chosen preset")
+	}
+}
+
+func TestSidebarPresetDragPreservesCollapsedOtherWidth(t *testing.T) {
+	for _, dragRight := range []bool{false, true} {
+		t.Run(fmt.Sprint(dragRight), func(t *testing.T) {
+			a := NewApp(model.New(t.TempDir(), 200, 30), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+			a.setSidebarConfig(config.Config{}, true)
+			path := t.TempDir() + "/preferences.json"
+			a.preferenceSave = func(p endpoint.ViewPreferences) error { return endpoint.SaveViewPreferences(path, p) }
+			a.sidebarPreset("wide")
+			if dragRight {
+				a.exec(model.CmdToggleSidebar{})
+			} else {
+				a.exec(model.CmdToggleRightSidebar{})
+			}
+			x := a.st.SidebarArea().W - 1
+			if dragRight {
+				x = a.st.RightSidebarArea().X
+			}
+			sidebarEvent(a, input.KindMouseClick, x, 5)
+			sidebarEvent(a, input.KindMouseMotion, x+1, 5)
+			sidebarEvent(a, input.KindMouseRelease, x+1, 5)
+			saved, err := endpoint.LoadViewPreferences(path)
+			if err != nil || saved == nil {
+				t.Fatal(saved, err)
+			}
+			retained, persisted := a.st.RightSidebarSize, saved.RightSidebarWidth
+			if dragRight {
+				retained, persisted = a.st.SidebarSize, saved.SidebarWidth
+			}
+			if retained != model.SidebarMaxDefault || persisted != model.SidebarMaxDefault {
+				t.Fatalf("dragRight=%v other requested=%d saved=%d want=%d", dragRight, retained, persisted, model.SidebarMaxDefault)
+			}
+			if a.st.SidebarPresetActive || a.st.PanesArea().W < model.MinimumPaneAreaWidth {
+				t.Fatal("drag did not restore normal center constraint")
+			}
+			if dragRight {
+				a.exec(model.CmdToggleSidebar{})
+				a.exec(model.CmdToggleSidebar{})
+			} else {
+				a.exec(model.CmdToggleRightSidebar{})
+				a.exec(model.CmdToggleRightSidebar{})
+			}
+			width := a.st.RightSidebarArea().W
+			if dragRight {
+				width = a.st.SidebarArea().W
+			}
+			if width != model.SidebarMaxDefault {
+				t.Fatalf("reopened width=%d", width)
+			}
+		})
 	}
 }
