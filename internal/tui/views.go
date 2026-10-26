@@ -285,6 +285,7 @@ func (a *App) SetReported(pid int, agent, state string) {
 
 // SetReportedSource retains the reporting authority without changing the stored session.
 func (a *App) SetReportedSource(pid int, agent, state, source string) {
+	a.invalidateDetection(pid)
 	before := a.glyph(pid).Key
 	if a.reported == nil {
 		a.reported = map[int]reportedPane{}

@@ -266,6 +266,7 @@ type App struct {
 	fwdStrip                                 uv.KeyMod
 	scroll                                   map[int]int
 	trackers                                 map[int]*status.Tracker
+	activity                                 *paneActivity
 	blockerObservations                      map[int]blockerObservation
 	reported                                 map[int]reportedPane                     // pane.report_agent overrides
 	sessions                                 map[int]*AgentRecord                     // persisted agent-session record per pane (SPEC G3)

@@ -110,6 +110,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 			a.clipboardHook(ev.Pane, ev.Data)
 		}
 	case runtime.EventChanged:
+		a.invalidateDetection(ev.Pane)
 		if p := a.sup.Get(ev.Pane); p != nil {
 			p.MarkChangedRead()
 		}
@@ -118,6 +119,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 		}
 		a.dirty = true
 	case runtime.EventExited:
+		a.invalidateDetection(ev.Pane)
 		if a.st.Overlay != nil && ev.Pane == a.st.Overlay.PaneID {
 			a.exec(model.CmdCloseOverlay{})
 			return
@@ -144,6 +146,8 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 func (a *App) detectAll() {
 	defer benchstage.Span("ui.detect")()
 	now := time.Now()
+	state := a.paneActivity()
+	state.initialized = true
 	activeWS := a.st.ActiveWorkspace()
 	for _, ws := range a.st.Workspaces {
 		focusedID := -1
@@ -152,57 +156,67 @@ func (a *App) detectAll() {
 		}
 		for _, t := range ws.Tabs {
 			for _, pid := range t.Layout.PaneIDs() {
-				p := a.sup.Get(pid)
-				if p == nil {
-					continue
-				}
-				tr := a.trackers[pid]
-				if tr == nil {
-					tr = status.NewTracker()
-					a.trackers[pid] = tr
-				}
-				sn := p.Snapshot()
-				agentID := sn.AgentID
-				in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
-				if agentID != "" {
-					in.Screen = p.ScreenText()
-				}
-				before := a.glyph(pid).Key
-				d := detect.Detect(agentID, in)
-				d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
-				a.observeBlocker(pid, agentID, d, now)
-				a.clearStaleReport(pid, agentID, d, now)
-				trackerChanged := tr.Update(d, agentID, sn.Dead, now)
-				if trackerChanged || before != a.glyph(pid).Key {
-					a.dirty = true
-					if a.availHook != nil {
-						a.availHook(pid)
-					}
-				}
-				a.noteAgentState(pid)
-				// The focused pane in the visible workspace is seen.
-				if a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && ws == activeWS && pid == focusedID && !a.windowBlurred {
-					if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
-						rep.unseen = false
-						a.reported[pid] = rep
-						a.dirty = true
-					}
-					if !tr.Seen {
-						tr.Focus()
-						a.dirty = true
-					}
-				}
+				delete(state.pending, pid)
+				visible := a.visiblePane != nil && a.visiblePane(pid) || a.visiblePane == nil && ws == activeWS && pid == focusedID && !a.windowBlurred
+				a.detectPane(pid, visible, now)
 			}
 		}
 	}
-	// Drop trackers for panes that no longer exist.
 	for pid := range a.trackers {
 		if a.sup.Get(pid) == nil {
 			delete(a.blockerObservations, pid)
 			delete(a.trackers, pid)
 			delete(a.reported, pid)
+			delete(state.deadlines, pid)
+			delete(state.confirming, pid)
 		}
 	}
+	a.nextDetectionDeadline()
+}
+
+func (a *App) detectPane(pid int, visible bool, now time.Time) {
+	defer benchstage.Span("ui.detect.pane")()
+	p := a.sup.Get(pid)
+	if p == nil {
+		return
+	}
+	tr := a.trackers[pid]
+	if tr == nil {
+		tr = status.NewTracker()
+		a.trackers[pid] = tr
+	}
+	sn := p.Snapshot()
+	agentID := sn.AgentID
+	in := detect.Input{OSCTitle: sn.OSCTitle, OSCProgress: sn.OSCProgress}
+	if agentID != "" {
+		in.Screen = p.ScreenText()
+	}
+	before := a.glyph(pid).Key
+	d := detect.Detect(agentID, in)
+	d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
+	a.observeBlocker(pid, agentID, d, now)
+	a.clearStaleReport(pid, agentID, d, now)
+	trackerChanged := tr.Update(d, agentID, sn.Dead, now)
+	if trackerChanged || before != a.glyph(pid).Key {
+		a.dirty = true
+		if a.availHook != nil {
+			a.availHook(pid)
+		}
+	}
+	a.noteAgentState(pid)
+	// The focused pane in the visible workspace is seen.
+	if visible {
+		if rep := a.reported[pid]; rep.unseen && (a.sinkOn == nil || a.sinkOn()) {
+			rep.unseen = false
+			a.reported[pid] = rep
+			a.dirty = true
+		}
+		if !tr.Seen {
+			tr.Focus()
+			a.dirty = true
+		}
+	}
+	a.scheduleDetection(pid, now)
 }
 
 // copiedFlash returns the " Copied N lines " text while inside its 2s
@@ -252,7 +266,7 @@ func (a *App) onTick() {
 	a.popupSelectionAutoScroll()
 	a.selectionAutoScroll(now)
 	a.refreshJobDots(now)
-	a.detectAll()
+	a.detectChanged(now)
 }
 
 func (a *App) anyWorking() bool {
