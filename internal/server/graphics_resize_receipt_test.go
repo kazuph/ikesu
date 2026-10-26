@@ -81,10 +81,33 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 				return nil
 			}
 			set()
-			read(c, time.Second, func(in render.Input) bool { return len(imagePixels(in)) > 0 })
+			initial := read(c, time.Second, func(in render.Input) bool { return len(imagePixels(in)) > 0 })
+			base := bytes.Clone(pixels)
+			if !bytes.Equal(imagePixels(initial), base) {
+				t.Fatal("initial image was not reconstructed exactly")
+			}
+			if len(initial.GraphicsPatches) > 0 {
+				c.send(t, clientMsg{Type: "control", Kind: endpoint.GraphicsPatchAck, Data: strconv.FormatUint(initial.SurfaceRevision, 10)})
+			}
 			pixels[0]++
 			set()
-			pending := read(c, time.Second, func(in render.Input) bool { return len(in.GraphicsPatches) > 0 })
+			pending := read(c, time.Second, func(in render.Input) bool {
+				if len(in.GraphicsPatches) == 0 {
+					return false
+				}
+				if bytes.Equal(imagePixels(in), pixels) {
+					return true
+				}
+				// A redraw queued before set() can carry a valid no-change
+				// patch for the previous image. ACK only its exact known bytes;
+				// keep the requested update unacknowledged for the resize test.
+				if !bytes.Equal(imagePixels(in), base) {
+					t.Fatal("unexpected pixels in a queued image generation")
+				}
+				c.send(t, clientMsg{Type: "control", Kind: endpoint.GraphicsPatchAck, Data: strconv.FormatUint(in.SurfaceRevision, 10)})
+				t.Logf("acknowledged queued previous image: revision=%d", in.SurfaceRevision)
+				return false
+			})
 			if !bytes.Equal(imagePixels(pending), pixels) {
 				t.Fatal("do not acknowledge a generation without exact pixels")
 			}
