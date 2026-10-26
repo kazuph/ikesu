@@ -20,6 +20,9 @@ func (p *Pane) queueProcessChange() {
 }
 
 func (p *Pane) forgetProcessSchedule() {
+	if p.guard != nil {
+		p.guard.StopObserving()
+	}
 	if p.owner == nil {
 		return
 	}
@@ -80,9 +83,12 @@ func (s *Supervisor) PollPendingProcesses(now time.Time) []int {
 		settling := !p.processSettlingUntil.IsZero()
 		at := p.processCwdAt.Add(foregroundJobCacheLifetime)
 		p.mu.Unlock()
+		if guarded && p.guard.ObserveChanges(p.queueProcessChange) {
+			guarded = false
+		}
 		s.processMu.Lock()
-		// Guard asset repair is still observed at the original cadence until
-		// its filesystem notifications are wired in; it must not be disabled.
+		// Keep the original integrity-check cadence if native asset watches
+		// cannot cover this pane. Successful watches queue only changed assets.
 		if settling || guarded || !processEventQueue() {
 			s.processTicks[p] = true
 			delete(s.processDue, p)

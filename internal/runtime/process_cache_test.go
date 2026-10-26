@@ -74,8 +74,10 @@ func TestG9ForegroundCacheReusesScanAndInvalidatesCwdAndProgram(t *testing.T) {
 	if p.processCache.readAt.Equal(readAt) {
 		t.Fatal("new foreground process group reused old scan")
 	}
-	if err := unix.Kill(-p.processCache.key.groupID, unix.SIGTERM); err != nil {
-		t.Fatal(err)
+	group := p.processCache.key.groupID
+	pgid, groupErr := unix.Getpgid(group)
+	if err := unix.Kill(-group, unix.SIGTERM); err != nil {
+		t.Fatal("foreground group termination failed", err, "key", p.processCache.key, "job", p.processCache.job, "leader pgid", pgid, groupErr, "screen", p.ScreenText())
 	}
 	wait(func() bool { p.PollProcess(); return p.processCache.key.groupID == p.ShellPID() })
 	readAt = p.processCache.readAt

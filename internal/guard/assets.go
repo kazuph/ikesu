@@ -24,6 +24,8 @@ type Assets struct {
 	mu                                      sync.Mutex
 	Root, Pane, Bin, MarkerPath, Executable string
 	Config                                  Config
+	watchChanges                            func()
+	watchInstalled                          bool
 	meta                                    Marker
 	active                                  string
 	closed                                  bool
@@ -146,6 +148,7 @@ fi
 func (a *Assets) Sync(agent string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	defer a.refreshChanges()
 	return a.sync(agent)
 }
 func (a *Assets) sync(agent string) error {
@@ -229,6 +232,7 @@ func (a *Assets) remove() error {
 func (a *Assets) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.stopChanges()
 	a.active = ""
 	a.closed = true
 	return a.clearCoverage()

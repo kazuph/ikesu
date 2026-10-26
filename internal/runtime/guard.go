@@ -26,6 +26,7 @@ func (s *Supervisor) SetGuard(c guard.Config, root string) {
 		p.mu.Unlock()
 		if p.guard != nil && !dead {
 			_ = p.guard.Sync(effective)
+			p.queueProcessChange()
 		}
 	}
 }
@@ -61,6 +62,7 @@ func (p *Pane) SetAgent(id string) {
 	p.mu.Unlock()
 	if p.guard != nil && !dead {
 		_ = p.guard.Sync(effective)
+		p.queueProcessChange()
 	}
 }
 
