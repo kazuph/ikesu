@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"io"
+	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +22,10 @@ func requestReasonEnvName(i Input) string {
 	return key
 }
 func requestReason(i Input) string {
-	return i.Env[requestReasonEnvName(i)]
+	if value := i.Env[requestReasonEnvName(i)]; value != "" {
+		return value
+	}
+	return i.Env["IKESU_GUARD_PARENT_REASON"]
 }
 func ValidReason(s string) bool {
 	if strings.TrimSpace(s) == "" {
@@ -66,6 +71,27 @@ func approvalCommand(i Input) string {
 	return strings.TrimSpace(line)
 }
 
+// Shell quoting alone does not make a different target command.
+func wholeCommand(command string, i Input) bool {
+	tree, err := syntax.NewParser().Parse(strings.NewReader(command), "approval command")
+	if err != nil || len(tree.Stmts) != 1 {
+		return false
+	}
+	call, ok := tree.Stmts[0].Cmd.(*syntax.CallExpr)
+	if !ok || len(tree.Stmts[0].Redirs) != 0 {
+		return false
+	}
+	var argv []string
+	for _, word := range call.Args {
+		value, err := expand.Literal(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+		if err != nil {
+			return false
+		}
+		argv = append(argv, value)
+	}
+	return slices.Equal(argv, append([]string{i.Command}, i.Args...))
+}
+
 var approvalFields = regexp.MustCompile(`[\t \r\n]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]`)
 
 func approvalTrigger(i Input, v Verdict) string {
@@ -74,12 +100,17 @@ func approvalTrigger(i Input, v Verdict) string {
 		i.RawLine = ""
 		command = i.Line()
 	}
-	return "ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command
+	return redact("ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command)
 }
 
-func approvalBody(command, reason, cwd string) string {
-	formatted := strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
-	return "コマンド: " + command + "\n\n" + formatted + "\n場所: " + cwd
+func approvalTitle(i Input) string {
+	title := "実行確認: " + redact(filepath.Base(i.Command))
+	// BRIEF-2 requests a short heading, approximately 80 characters.
+	runes := []rune(title)
+	if len(runes) > 80 {
+		return string(runes[:79]) + "…"
+	}
+	return title
 }
 
 // Await is backed by the existing decision API. It never runs a command.
@@ -89,6 +120,7 @@ func Authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	return authorize(c, root, i, via, errOut, await, nil)
 }
 func authorize(c Config, root string, i Input, via string, errOut io.Writer, await Await, override *Verdict) bool {
+	errOut = redactedWriter{errOut}
 	m, active, e := ReadMarker(i)
 	if e != nil {
 		fmt.Fprintln(errOut, "❌ 実行を停止しました:", e)
@@ -130,7 +162,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		return false
 	}
 	reason := requestReason(i)
-	if !ValidReason(reason) {
+	if !ValidReason(reason) && i.Env["IKESU_GUARD_PARENT_COMMAND"] == "" {
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n", i.Line())
 		if strings.TrimSpace(reason) == "" {
 			fmt.Fprintf(errOut, "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: %s='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n", requestReasonEnvName(i))
@@ -151,8 +183,29 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	ms := uint64(timeout / time.Millisecond)
 	command := approvalCommand(i)
-	body := approvalTrigger(i, v) + "\n\n" + approvalBody(command, reason, i.Cwd)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: "実行確認: " + command, Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.Cwd, Command: i.Line(), Reason: reason}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	trigger := i.TriggerCommand
+	if trigger == "" {
+		selected := i
+		selected.RawLine = ""
+		trigger = approvalCommand(selected)
+	}
+	body := "ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）"
+	if trigger != command && !wholeCommand(command, i) {
+		body += "\n対象コマンド：" + trigger
+	}
+	body += "\n\nコマンド: " + command
+	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
+		if reason == "" {
+			body += "\n\n申請文なし（外側のコマンド " + parent + " にも申請文がありません）"
+		} else if reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
+			body += "\n\n申請文（外側のコマンド " + parent + " から引き継ぎ）"
+		}
+	}
+	if reason != "" {
+		body += "\n\n" + strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
+	}
+	body = redact(body)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: redact(i.Cwd), Command: redact(command), Reason: redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()
@@ -211,6 +264,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	return true
 }
 func PrintBlock(w io.Writer, i Input, v Verdict) {
+	w = redactedWriter{w}
 	switch v.Rule {
 	case "protected":
 		fmt.Fprintf(w, "\n🚫🚫🚫 SECURITY BLOCK 🚫🚫🚫\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n❌ AIプロセスによる .allow-main 関連操作は完全に禁止されています\n\nブロックされたコマンド:\n  %s\n\n理由: .allow-main はセキュリティ上重要なファイルです。\n      AIがこのファイルを操作することは許可されていません。\n\n必要な場合は、人間が手動で操作してください。\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", i.Line())

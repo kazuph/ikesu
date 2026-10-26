@@ -15,6 +15,7 @@ func LineInput(i Input, line string) (Input, error) {
 	return i, err
 }
 func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer, await Await) bool {
+	errOut = redactedWriter{errOut}
 	m, active, e := ReadMarker(i)
 	if e != nil {
 		return authorize(c, root, i, "line", errOut, await, nil)

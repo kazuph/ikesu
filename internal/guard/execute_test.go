@@ -192,16 +192,16 @@ func TestApprovalPresentation(t *testing.T) {
 			defer store.Close()
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				want := "bash /tmp/rebuild_all.sh && printf '%s' done"
-				if p.Title != "実行確認: "+want {
+				if p.Title != "実行確認: bash" {
 					t.Errorf("title=%q", p.Title)
 				}
-				body := "ブロック理由：表示試験（規則: presentation-test）\n対象コマンド：bash /tmp/rebuild_all.sh\n\nコマンド: " + want + "\n\n" + strings.ReplaceAll(reason, "。", "。\n") + "\n場所: " + root
+				body := "ブロック理由：表示試験（規則: presentation-test）\n対象コマンド：bash /tmp/rebuild_all.sh\n\nコマンド: " + want + "\n\n" + strings.ReplaceAll(reason, "。", "。\n")
 				// Trailing prose punctuation does not add a blank line between fields.
 				body = strings.ReplaceAll(body, "。\n\n場所:", "。\n場所:")
-				if p.Body == nil || *p.Body != body {
+				if p.Body == nil || *p.Body != strings.TrimSpace(body) {
 					t.Errorf("body=%v want=%q", p.Body, body)
 				}
-				if p.Origin.Command != line || p.Origin.Reason != reason {
+				if p.Origin.Command != want || p.Origin.Reason != reason {
 					t.Errorf("origin semantics changed: %+v", p.Origin)
 				}
 				d, err := store.CreateDecision(p, time.Now())
@@ -243,7 +243,7 @@ func TestApprovalTriggerForMultipleCommands(t *testing.T) {
 				if p.Body == nil || !strings.HasPrefix(*p.Body, prefix) {
 					t.Errorf("missing actual trigger: %+v", p.Body)
 				}
-				if p.Origin.Command != line {
+				if p.Origin.Command != strings.TrimPrefix(line, "AI_GUARD_REQUEST_REASON='対象プロジェクトの試験のため' ") {
 					t.Errorf("origin changed: %q", p.Origin.Command)
 				}
 				d, err := store.CreateDecision(p, time.Now())

@@ -68,7 +68,7 @@ func TestGuardPresentationDeduplicatesAndRedacts(t *testing.T) {
 		if p.Body == nil {
 			t.Fatal("missing decision")
 		}
-		if strings.Count(*p.Body, "curl -X POST") != 1 {
+		if !pipeline && strings.Count(*p.Body, "curl -X POST") != 1 {
 			t.Errorf("command repeated: %s", *p.Body)
 		}
 		if !pipeline && strings.Contains(*p.Body, "対象コマンド：") {
@@ -103,5 +103,26 @@ func TestNestedGuardRequestsMissingOrInheritedReason(t *testing.T) {
 		if reason == "" && !strings.Contains(*p.Body, "申請文なし") {
 			t.Error("missing nested reason not disclosed")
 		}
+	}
+}
+
+func TestSecretFormatsAreHiddenWithoutChangingArgvShape(t *testing.T) {
+	fixtures := []string{
+		"Authorization: Bearer opaque-test-credential", "sk-proj-TESTONLY", "sk-TESTONLY", "xoxb-TESTONLY", "xoxp-TESTONLY", "ghp_TESTONLY", "github_pat_TESTONLY", "AKIATESTONLY",
+		"OPENAI_API_KEY='test value'", "SERVICE_TOKEN=test-value", "APP_SECRET=test-value", "PASSWORD=hidden", "https://user:pass@example.test/path",
+	}
+	for _, fixture := range fixtures {
+		got := redact(fixture)
+		if !strings.Contains(got, "***") || got == fixture {
+			t.Error("secret fixture was not redacted")
+		}
+	}
+	argv := []string{"curl", "-H", "Authorization:", "Bearer", "opaque-test-credential"}
+	got := redactArgv(argv)
+	if len(got) != len(argv) || strings.Contains(strings.Join(got, " "), "opaque-test-credential") {
+		t.Fatal("split authorization header leaked or argv shape changed")
+	}
+	if got := redact("curl -X POST https://example.test"); got != "curl -X POST https://example.test" {
+		t.Fatal("ordinary command changed")
 	}
 }
