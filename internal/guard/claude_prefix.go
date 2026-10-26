@@ -81,16 +81,22 @@ func ClaudePrefixLine(i Input, line string) string {
 	if counts["source"] == 0 {
 		template = strings.TrimPrefix(template, "source IKESU_SNAPSHOT 2>/dev/null || true && ")
 	}
-	expected, err := syntax.NewParser().Parse(strings.NewReader(template), "expected")
-	if err != nil {
-		return line
-	}
-	var got, want bytes.Buffer
+	var got bytes.Buffer
 	printer := syntax.NewPrinter()
-	if printer.Print(&got, tree) != nil || printer.Print(&want, expected) != nil || got.String() != want.String() {
+	if printer.Print(&got, tree) != nil {
 		return line
 	}
-	return payload
+	for _, candidate := range []string{template, strings.Replace(template, " < /dev/null", "", 1)} {
+		expected, err := syntax.NewParser().Parse(strings.NewReader(candidate), "expected")
+		if err != nil {
+			return line
+		}
+		var want bytes.Buffer
+		if printer.Print(&want, expected) == nil && got.String() == want.String() {
+			return payload
+		}
+	}
+	return line
 }
 
 func claudeWord(value string) *syntax.Word {
