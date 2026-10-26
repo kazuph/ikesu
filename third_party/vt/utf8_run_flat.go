@@ -9,10 +9,18 @@ func (b *flatScreenBuffer) writeASCII(x, y int, data []byte, pen uv.Style, link 
 	first, last := len(data), 0
 	for i, value := range data {
 		cell.Text = uint32(value) + 1
-		if b.raw(x+i, y) != cell {
+		old := b.raw(x+i, y)
+		if old != cell {
 			first = min(first, i)
 			last = i + 1
-			b.assign(x+i, y, cell)
+			if cell.Style == 0 && cell.Link == 0 && old.Style == 0 && old.Link == 0 && old.Width == 1 {
+				if old.Text&flatIndirect != 0 {
+					b.tables.text.release(old.Text &^ flatIndirect)
+				}
+				b.cells[b.physical(y)*b.stride+x+i].Text = cell.Text
+			} else {
+				b.assign(x+i, y, cell)
+			}
 		}
 	}
 	if first < last {

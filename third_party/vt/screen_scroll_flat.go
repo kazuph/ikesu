@@ -24,7 +24,7 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	if s.runtimeASCII && length > 0 {
 		scanEnd = s.runtimeBlankBounds[s.runtimeRowHead].end
 	}
-	last := -1
+	last, clearEnd := -1, 0
 	var plainText []byte
 	if s.runtimeASCII && length > 0 {
 		state := s.runtimeBlankBounds[s.runtimeRowHead]
@@ -36,9 +36,13 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		last = len(plainText) - 1
 	} else {
 		for x := scanEnd - 1; x >= 0; x-- {
-			if !flatBlank(s.buf.raw(x, y)) {
+			cell := s.buf.raw(x, y)
+			if !flatBlank(cell) {
 				last = x
 				break
+			}
+			if cell.Width == 0 && clearEnd == 0 {
+				clearEnd = x + 1
 			}
 		}
 	}
@@ -46,6 +50,7 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 	if last >= 0 {
 		end = min(last+max(s.buf.raw(last, y).Width, 1), max(length, 0))
 	}
+	clearEnd = max(clearEnd, end)
 	dropped := false
 	if length >= 0 {
 		line := make(uv.Line, end)
@@ -60,7 +65,22 @@ func (s *Screen) scrollOneReusingBlanks() bool {
 		s.buf.deleteLines(y, 1, s.blankCell(), r)
 	} else {
 		s.buf.rotateRows(y, r.Max.Y, 1)
-		s.buf.fillRows(r.Max.Y-1, r.Max.Y, nil)
+		if dropped {
+			s.buf.fillRows(r.Max.Y-1, r.Max.Y, nil)
+		} else {
+			row := r.Max.Y - 1
+			if clearEnd > 0 && s.runtimeASCII && s.runtimeBlankBounds[s.runtimeRowHead].plain {
+				for x := 0; x < clearEnd; x++ {
+					s.buf.cells[s.buf.physical(row)*s.buf.stride+x].Text = ' ' + 1
+				}
+			} else {
+				blank := s.buf.tables.pack(uv.EmptyCell)
+				for x := 0; x < clearEnd; x++ {
+					s.buf.assign(x, row, blank)
+				}
+				s.buf.tables.release(blank)
+			}
+		}
 	}
 	if s.runtimeASCII && length > 0 {
 		s.runtimeBlankBounds[s.runtimeRowHead] = runtimeRowState{plain: true}

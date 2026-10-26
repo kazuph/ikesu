@@ -221,9 +221,8 @@ func (t *flatTables) color(code uint32) color.Color {
 func (t *flatTables) pack(c uv.Cell) FlatCell {
 	var text uint32
 	if c.Content != "" {
-		r, n := utf8.DecodeRuneInString(c.Content)
-		if n == len(c.Content) && utf8.ValidString(c.Content) {
-			text = uint32(r) + 1
+		if len(c.Content) == 1 && c.Content[0] < utf8.RuneSelf {
+			text = uint32(c.Content[0]) + 1
 		} else {
 			id := t.text.acquire(c.Content)
 			if id >= flatIndirect {
@@ -253,12 +252,7 @@ func (t *flatTables) unpack(c FlatCell) uv.Cell {
 	if c.Text&flatIndirect != 0 {
 		out.Content = t.text.values[c.Text&^flatIndirect]
 	} else if c.Text != 0 {
-		r := rune(c.Text - 1)
-		if r < utf8.RuneSelf {
-			out.Content = asciiContent[r]
-		} else {
-			out.Content = string(r)
-		}
+		out.Content = asciiContent[c.Text-1]
 	}
 	if c.Style != 0 {
 		out.Style = t.decoded[c.Style]
