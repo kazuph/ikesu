@@ -22,6 +22,9 @@ func TestScreenAnswerInvestigation(t *testing.T) {
 	bordered := strings.Replace(observed, "│ 検証用", "│\n│ 検証用", 1)
 	boxed := screenprompt.Parse("claude", strings.Split(bordered, "\n"))
 	t.Logf("frame blank row: plain=%q bordered=%q sameSignature=%t", plain.Params.Title, boxed.Params.Title, plain.Signature() == boxed.Signature())
+	if plain.Signature() != boxed.Signature() {
+		t.Error("frame blank row changed question identity")
+	}
 	if response := answerScreen(s, first, "1", nil); response.Err != nil {
 		t.Fatal(response.Err)
 	}
@@ -40,4 +43,7 @@ func TestScreenAnswerInvestigation(t *testing.T) {
 		t.Logf("decision: id=%s status=%s title=%q", row.DecisionID, row.Status, row.Title)
 	}
 	t.Logf("completed screen replay decision count=%d", len(rows))
+	if len(rows) != 1 {
+		t.Error("answered history recreated as a pending question")
+	}
 }
