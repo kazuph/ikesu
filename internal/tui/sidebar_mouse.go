@@ -108,6 +108,16 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 				return
 			}
 			s := a.st
+			if s.SidebarPresetActive {
+				left, right := s.SidebarArea().W, s.RightSidebarArea().W
+				s.SidebarPresetActive = false
+				if left > 0 {
+					s.SidebarSize = left
+				}
+				if right > 0 {
+					s.RightSidebarSize = right
+				}
+			}
 			lo, hi, _ := s.SidebarBounds()
 			width, other := m.X+1, s.RightSidebarArea().W
 			if g.right {

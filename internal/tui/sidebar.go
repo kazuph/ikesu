@@ -73,6 +73,24 @@ func (a *App) setStartupConfigWarning(warnings []string) {
 	a.configWarningBanner = message != ""
 }
 func (a *App) sidebarPreset(p string) {
+	lo, hi, normal := a.st.SidebarBounds()
+	switch p {
+	case "narrow":
+		a.st.SidebarPresetActive = true
+		a.st.RightSidebarSize = lo
+		a.st.RightSidebarManual = true
+	case "normal":
+		a.st.SidebarPresetActive = true
+		a.st.RightSidebarSize = normal
+		if width := a.sidebarConfig.UI.RightSidebarWidth; width != nil {
+			a.st.RightSidebarSize = max(lo, min(hi, *width))
+		}
+		a.st.RightSidebarManual = false
+	case "wide":
+		a.st.SidebarPresetActive = true
+		a.st.RightSidebarSize = hi
+		a.st.RightSidebarManual = true
+	}
 	a.exec(model.CmdSidebarPreset{Preset: p})
 	a.saveViewPreferences()
 }
