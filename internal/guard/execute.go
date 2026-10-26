@@ -98,14 +98,33 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	ms := uint64(timeout / time.Millisecond)
 	body := reason + "\nコマンド: " + i.Line() + "\n場所: " + i.Cwd
 	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: "実行確認: " + i.Line(), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.Cwd, Command: i.Line(), Reason: reason}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
-	if e != nil || d.Status != "answered" || d.Answer == nil || d.Answer.OptionID == nil {
-		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちが承認されませんでした (%s): %v\n", d.Status, e)
+	if e != nil {
+		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return false
 	}
-	choice := *d.Answer.OptionID
+	switch d.Status {
+	case "expired":
+		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちが期限切れになりました (status: expired)")
+		return false
+	case "cancelled":
+		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちがキャンセルされました (status: cancelled)")
+		return false
+	case "answered":
+	default:
+		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちが承認されませんでした (status: %s)\n", d.Status)
+		return false
+	}
+	if d.Answer == nil || (d.Answer.OptionID == nil || *d.Answer.OptionID == "") && (d.Answer.Text == nil || strings.TrimSpace(*d.Answer.Text) == "") {
+		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちの回答が空です (status: answered)")
+		return false
+	}
+	choice := ""
+	if d.Answer.OptionID != nil {
+		choice = *d.Answer.OptionID
+	}
 	if choice != "approve" && choice != "day_allow" {
 		text := "未入力"
-		if d.Answer.Text != nil {
+		if d.Answer.Text != nil && strings.TrimSpace(*d.Answer.Text) != "" {
 			text = *d.Answer.Text
 		}
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n   理由: %s\n", i.Line(), text)

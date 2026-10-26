@@ -144,7 +144,7 @@ func TestShimRequestReasonWithRealServer(t *testing.T) {
 						}
 						select {
 						case err := <-finished:
-							if err == nil || !strings.Contains(out.String(), "判断待ちが承認されませんでした (cancelled)") {
+							if err == nil || !strings.Contains(out.String(), "判断待ちがキャンセルされました (status: cancelled)") {
 								t.Fatalf("cancelled decision executed: %v: %s", err, &out)
 							}
 						case <-time.After(10 * time.Second):

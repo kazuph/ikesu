@@ -73,10 +73,12 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 		{"day_allow", "day_allow", "", "answered", "", true},
 		{"reject_comment", "reject", "実行しないで", "answered", "理由: 実行しないで", false},
 		{"reject_no_comment", "reject", "", "answered", "理由: 未入力", false},
+		{"reject_whitespace", "reject", " \t", "answered", "理由: 未入力", false},
 		{"text_only", "", "ええやん", "answered", "理由: ええやん", false},
 		{"expired", "", "", "expired", "判断待ちが期限切れになりました (status: expired)", false},
 		{"cancelled", "", "", "cancelled", "判断待ちがキャンセルされました (status: cancelled)", false},
 		{"empty_answer", "", "", "answered", "判断待ちの回答が空です (status: answered)", false},
+		{"whitespace_answer", "", " \t\n", "answered", "判断待ちの回答が空です (status: answered)", false},
 		{"connection_failure", "", "", "error", "判断待ちのサーバーとの通信に失敗しました:", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,7 +106,7 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 					t.Fatalf("request contract changed: %+v", p)
 				}
 				if tc.status == "error" {
-					conn, err := net.Dial("unix", filepath.Join("/tmp", "ikesu-guard-missing.socket"))
+					conn, err := net.Dial("unix", filepath.Join(t.TempDir(), "x"))
 					if conn != nil {
 						conn.Close()
 						t.Fatal("unexpected connection")
