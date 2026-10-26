@@ -83,3 +83,52 @@ func TestDetectionActivityKeepsGraceAndFossilDeadlines(t *testing.T) {
 		t.Fatal("expired fossil kept a periodic detection deadline")
 	}
 }
+
+func TestDetectionActivitySelectionMarksOnlyQuietDoneTargetSeen(t *testing.T) {
+	for _, mode := range []string{"pane", "tab", "workspace"} {
+		t.Run(mode, func(t *testing.T) {
+			teststate.Lock(t)
+			a := specRuntimeApp(t)
+			if err := a.StartInitialPane(); err != nil {
+				t.Fatal(err)
+			}
+			first := a.focusedPane()
+			switch mode {
+			case "pane":
+				a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
+			case "tab":
+				a.exec(model.CmdNewTab{Workspace: 0, Cwd: t.TempDir()})
+			case "workspace":
+				a.newWorkspace()
+			}
+			target := a.focusedPane()
+			a.newWorkspace()
+			other := a.focusedPane()
+			a.exec(model.CmdSelectWorkspace{Index: 0})
+			if mode == "tab" {
+				a.exec(model.CmdSelectTab{Workspace: 0, Tab: 0})
+			}
+			a.exec(model.CmdFocusPane{Pane: first})
+			for _, pid := range []int{target, other} {
+				a.SetReported(pid, "codex", "working")
+				a.SetReported(pid, "codex", "idle")
+			}
+			a.detectAll()
+			if a.glyph(target).Key != "done" || a.glyph(other).Key != "done" {
+				t.Fatal("background fixture not DONE")
+			}
+			switch mode {
+			case "pane":
+				a.exec(model.CmdFocusPane{Pane: target})
+			case "tab":
+				a.exec(model.CmdSelectTab{Workspace: 0, Tab: 1})
+			case "workspace":
+				a.exec(model.CmdSelectWorkspace{Index: 1})
+			}
+			a.detectChanged(time.Now().Add(tickInterval))
+			if a.glyph(target).Key != "idle" || a.glyph(other).Key != "done" {
+				t.Fatal("selection did not mark only its quiet DONE pane seen", a.glyph(target).Key, a.glyph(other).Key)
+			}
+		})
+	}
+}
