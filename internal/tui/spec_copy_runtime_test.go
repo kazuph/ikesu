@@ -19,6 +19,7 @@ func specRuntimeApp(t *testing.T) *App {
 	sup := runtime.NewSupervisor()
 	a := NewApp(model.New(t.TempDir(), 120, 35), sup, io.Discard, t.TempDir())
 	t.Cleanup(func() {
+		a.closeGitActivity()
 		for _, w := range a.st.Workspaces {
 			for _, tab := range w.Tabs {
 				for _, id := range tab.Layout.PaneIDs() {

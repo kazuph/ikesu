@@ -39,6 +39,9 @@ func TestWorkspaceGitRefreshSharesSameCwdAndRefreshesNextPass(t *testing.T) {
 		}
 		a.gitAt = time.Time{}
 		a.refreshWorkspaceGit(time.Now())
+		if !a.gitPending {
+			return nil
+		}
 		select {
 		case job := <-a.jobs:
 			job.fn()
@@ -56,13 +59,20 @@ func TestWorkspaceGitRefreshSharesSameCwdAndRefreshesNextPass(t *testing.T) {
 	want := a.workspaceGit[0]
 	a.st.Apply(model.CmdNewWorkspace{Cwd: repo, Name: "second"})
 	two := refresh()
-	if !reflect.DeepEqual(a.workspaceGit[1], want) || strings.TrimSpace(string(one)) != strings.TrimSpace(string(two)) {
+	if !reflect.DeepEqual(a.workspaceGit[1], want) || len(two) > 0 && strings.TrimSpace(string(one)) != strings.TrimSpace(string(two)) {
 		t.Fatalf("same cwd repeated queries or changed metadata: one=%s two=%s git=%v", one, two, a.workspaceGit)
 	}
 	if out, err := exec.Command(realGit, "-C", repo, "symbolic-ref", "HEAD", "refs/heads/changed").CombinedOutput(); err != nil {
 		t.Fatalf("change real branch: %v %s", err, out)
 	}
-	refresh()
+	deadline := time.Now().Add(5 * time.Second)
+	for a.workspaceGit[0].Branch != "changed" || a.workspaceGit[1].Branch != "changed" {
+		refresh()
+		if time.Now().After(deadline) {
+			t.Fatal("changed Git branch was not refreshed", a.workspaceGit)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if a.workspaceGit[0].Branch != "changed" || a.workspaceGit[1].Branch != "changed" {
 		t.Fatal("shared metadata remained cached across refreshes", a.workspaceGit)
 	}

@@ -284,6 +284,7 @@ type App struct {
 	workspaceGit                             map[int]render.GitStatus
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
+	gitActivity                              *gitActivityState
 	gitAt                                    time.Time
 	gitPending                               bool
 	jobsAt                                   time.Time             // last job snapshot
@@ -512,6 +513,7 @@ func (a *App) Run() {
 	defer a.inputSource.Prefix(false, false)
 	defer a.removeEditorFiles()
 	defer close(a.doneCh)
+	defer a.closeGitActivity()
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 	spin := time.NewTicker(spinInterval)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/filewatch"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ type Assets struct {
 	mu                                      sync.Mutex
 	Root, Pane, Bin, MarkerPath, Executable string
 	Config                                  Config
+	pathWatch                               *filewatch.Watcher
 	watchChanges                            func()
 	watchInstalled                          bool
 	meta                                    Marker

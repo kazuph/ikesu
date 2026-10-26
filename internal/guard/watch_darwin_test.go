@@ -100,10 +100,7 @@ func TestAssetChangesRepairAndRearm(t *testing.T) {
 	if err := a.Sync(""); err != nil {
 		t.Fatal(err)
 	}
-	assetChanges.mu.Lock()
-	_, inactiveOwned := assetChanges.owned[a]
-	assetChanges.mu.Unlock()
-	if inactiveOwned {
+	if a.pathWatch != nil {
 		t.Fatal("inactive guard retained filesystem watches")
 	}
 	if err := a.Sync("codex"); err != nil {
@@ -115,16 +112,8 @@ func TestAssetChangesRepairAndRearm(t *testing.T) {
 	}
 	waitRepair(t, func() bool { return exists(a.MarkerPath) })
 	a.StopObserving()
-	assetChanges.mu.Lock()
-	_, owned := assetChanges.owned[a]
-	for _, file := range assetChanges.paths {
-		if file.listeners[a] != nil {
-			t.Error("stopped assets retained a listener")
-		}
-	}
-	assetChanges.mu.Unlock()
-	if owned {
-		t.Fatal("stopped assets retained watches")
+	if a.pathWatch != nil {
+		t.Fatal("stopped guard retained filesystem watches")
 	}
 }
 
