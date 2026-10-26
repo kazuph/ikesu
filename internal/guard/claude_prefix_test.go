@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 func bootstrapForTest(snapshot, payload, cwd string) string {
@@ -99,6 +101,95 @@ func TestClaudePrefixWithoutDevNull(t *testing.T) {
 				t.Fatalf("accepted redirect %q: %q", redirect, got)
 			}
 		}
+	}
+}
+
+func TestClaudePrefixMultiline(t *testing.T) {
+	i := Input{Env: map[string]string{"HOME": "/tmp/test-user"}}
+	snapshot := "/tmp/test-user/.claude/shell-snapshots/snapshot-zsh-123-x.sh"
+	payload := "printf '%s\n' \"quoted\"\ncat <<'EOF'\nhello 'world'\nEOF"
+	for _, withSource := range []bool{true, false} {
+		for _, withDevNull := range []bool{true, false} {
+			line := bootstrapForTest(snapshot, payload, "/tmp/claude-123-cwd")
+			if !withSource {
+				line = strings.TrimPrefix(line, "source "+quote(snapshot)+" 2>/dev/null || true && ")
+			}
+			if !withDevNull {
+				line = strings.Replace(line, " < /dev/null", "", 1)
+			}
+			t.Run(fmt.Sprint(withSource, withDevNull), func(t *testing.T) {
+				if got := ClaudePrefixLine(i, line); got != payload {
+					t.Fatalf("multiline payload not extracted: %q", got)
+				}
+			})
+		}
+	}
+}
+
+func TestClaudePrefixMultilineRejectsChanges(t *testing.T) {
+	i := Input{Env: map[string]string{"HOME": "/tmp/test-user"}}
+	snapshot := "/tmp/test-user/.claude/shell-snapshots/snapshot-zsh-123-x.sh"
+	payload := "cat <<'EOF'\nhello 'world'\nEOF"
+	good := bootstrapForTest(snapshot, payload, "/tmp/claude-123-cwd")
+	changes := map[string]string{
+		"extra command":         good + "; /bin/rm /tmp/victim",
+		"glob snapshot":         strings.Replace(good, quote(snapshot), "/tmp/test-user/.claude/shell-snapshots/snapshot-zsh-*.sh", 1),
+		"different snapshot":    strings.Replace(good, snapshot, "/tmp/untrusted.sh", 1),
+		"different destination": strings.Replace(good, "/tmp/claude-123-cwd", "/tmp/victim", 1),
+		"changed settings":      strings.Replace(good, "shopt -u extglob", "shopt -u extdebug", 1),
+		"expanded eval":         strings.Replace(good, quote(payload), quote(payload)+`"$PAYLOAD"`, 1),
+		"negated":               "! " + good,
+		"extra eval":            strings.Replace(good, "eval "+quote(payload), "eval "+quote(payload)+" && eval 'ls'", 1),
+	}
+	for name, line := range changes {
+		for _, devnull := range []bool{true, false} {
+			if !devnull {
+				line = strings.Replace(line, " < /dev/null", "", 1)
+			}
+			t.Run(name+fmt.Sprint(devnull), func(t *testing.T) {
+				if got := ClaudePrefixLine(i, line); got != line {
+					t.Fatalf("accepted changed bootstrap: %q", got)
+				}
+			})
+		}
+	}
+	for _, redirect := range []string{" < /etc/passwd", " <<< 'ls'", " < /dev/null < /etc/passwd", " 3< /dev/null"} {
+		for _, source := range []bool{true, false} {
+			line := strings.Replace(good, " < /dev/null", redirect, 1)
+			if !source {
+				line = strings.TrimPrefix(line, "source "+quote(snapshot)+" 2>/dev/null || true && ")
+			}
+			if got := ClaudePrefixLine(i, line); got != line {
+				t.Fatalf("accepted redirect %q", redirect)
+			}
+		}
+	}
+}
+
+func TestClaudePrefixRealMultiline(t *testing.T) {
+	data, err := os.ReadFile("testdata/claude-multiline.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := string(data)
+	tree, err := syntax.NewParser().Parse(strings.NewReader(line), "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload string
+	syntax.Walk(tree, func(n syntax.Node) bool {
+		if call, ok := n.(*syntax.CallExpr); ok && len(call.Args) == 2 {
+			if name, _ := claudeLiteral(call.Args[0]); name == "eval" {
+				payload, _ = claudeLiteral(call.Args[1])
+			}
+		}
+		return true
+	})
+	if !strings.Contains(payload, "\n") || !strings.Contains(payload, "<<'EOF'") {
+		t.Fatal("fixture lost multiline heredoc")
+	}
+	if got := ClaudePrefixLine(Input{}, line); got != payload {
+		t.Fatal("real launch line not extracted")
 	}
 }
 

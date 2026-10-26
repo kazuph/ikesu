@@ -1,0 +1,34 @@
+{ shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'S=/private/tmp/claude-501/-Users-kazuph-src-github-com-gaiwaya-development-mangene2/0d10555c-70fd-4830-b782-a23271dfcd9a/scratchpad; cd $S
+python3 - <<'"'"'EOF'"'"'
+p='"'"'/private/tmp/claude-501/-Users-kazuph-src-github-com-gaiwaya-development-mangene2/0d10555c-70fd-4830-b782-a23271dfcd9a/scratchpad/scripts/html3d.py'"'"'
+s=open(p).read()
+R=[("rotateX(var(--rx,62deg)) rotateZ(var(--rz,-30deg))","rotateX(var(--rx,0deg)) rotateZ(var(--rz,0deg))"),
+   ("var(--gap,0.9cqw)","var(--gap,0cqw)"),
+   ("width:21cqw;height:31.5cqw;left:-10.5cqw;top:-15.75cqw","width:33cqw;height:49.5cqw;left:-16.5cqw;top:-24.75cqw"),
+   ("left:50%;top:47%;width:0","left:50%;top:50%;width:0"),
+   ("let rx=62,rz=-30,s=1,gap=.9,drag=null","let rx=0,rz=0,s=1,gap=0,drag=null"),
+   ("drag={{x:e.clientX,y:e.clientY,rx,rz}}","if(!gap)gap=.9;drag={{x:e.clientX,y:e.clientY,rx,rz}}"),
+   ('"'"'<button id="b-oblique" type="button">斜めに戻す</button><button id="b-front" type="button">正面で重ねる</button>'"'"','"'"'<button id="b-front" type="button">正面に戻す</button><button id="b-oblique" type="button">斜めに広げる</button>'"'"'),
+   ("rx=62;rz=-30;s=1;gap=.9;ap()","rx=58;rz=-30;s=.62;gap=.9;ap()"),
+   ("rx=0;rz=0;gap=0;ap()","rx=0;rz=0;s=1;gap=0;ap()"),
+   ("下が用紙、上ほど手前のレイヤー（全{n}枚）／ドラッグで回転・ホイールで拡大","全{n}レイヤーを重ねた状態／ドラッグか「斜めに広げる」で立体に・ホイールで拡大"),
+   ("上ほど手前。名前の行でコマ単位、小さなサムネで1枚ずつ表示をON・OFF。","上ほど手前。名前の行でコマ単位、小さなサムネで1枚ずつ表示をON・OFF。ドラッグで斜めに広げて層を見られます。")]
+for a,b in R:
+    assert a in s,a; s=s.replace(a,b)
+open(p,'"'"'w'"'"').write(s)
+EOF
+uv run -q --with pillow python -I scripts/html3d.py && python3 /Users/kazuph/dotfiles/claude/skills/slack-html/scripts/validate_slack_html.py "$HOME/Downloads/バトル漫画_レイヤー立体ビュー.html" | grep -E "FAIL|RESULT"
+cat > node/check3.mjs <<'"'"'EOF'"'"'
+import { chromium } from '"'"'playwright'"'"';
+const f='"'"'file://'"'"'+process.env.HOME+'"'"'/Downloads/バトル漫画_レイヤー立体ビュー.html'"'"';
+const b=await chromium.launch();
+for (const [w,h,js] of [[1600,900,true],[1600,900,false],[390,844,true]]) {
+ const p=await (await b.newContext({viewport:{width:w,height:h},javaScriptEnabled:js})).newPage(); await p.goto(f); await p.waitForTimeout(400);
+ const m=await p.evaluate(()=>({sh:document.documentElement.scrollHeight,ih:innerHeight,sw:document.documentElement.scrollWidth,iw:innerWidth}));
+ console.log(w,js?'"'"'js'"'"':'"'"'nojs'"'"',JSON.stringify(m)); await p.screenshot({path:`../bt/html/d_${w}_${js?'"'"'js'"'"':'"'"'nojs'"'"'}.png`});
+ if(w===1600&&js){ await p.click('"'"'#b-oblique'"'"'); await p.waitForTimeout(200); await p.screenshot({path:'"'"'../bt/html/d_oblique.png'"'"'});
+   await p.click('"'"'#b-front'"'"'); await p.mouse.move(500,450); await p.mouse.down(); await p.mouse.move(420,560,{steps:10}); await p.mouse.up(); await p.screenshot({path:'"'"'../bt/html/d_drag.png'"'"'}); }
+}
+await b.close();
+EOF
+cd node && node check3.mjs' && pwd -P >| /tmp/claude-4994-cwd
