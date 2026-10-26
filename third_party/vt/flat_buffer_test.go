@@ -97,3 +97,27 @@ func TestFlatBufferDecodedRowsStayImmutableAndTablesRelease(t *testing.T) {
 		t.Fatal("clear retained table entries")
 	}
 }
+
+func TestFlatBufferWideDeletePreservesLegacyFixupOrder(t *testing.T) {
+	for wide := 0; wide < 8; wide++ {
+		for at := 0; at < 8; at++ {
+			for n := 1; n <= 8; n++ {
+				legacy := uv.NewRenderBuffer(8, 1)
+				flat := newFlatScreenBuffer(8, 1)
+				for x := 0; x < 8; x++ {
+					c := uv.Cell{Content: string(rune('a' + x)), Width: 1}
+					legacy.SetCell(x, 0, &c)
+					flat.SetCell(x, 0, &c)
+				}
+				c := uv.Cell{Content: "界", Width: 2, Style: uv.Style{Fg: color.RGBA{R: 19, G: 83, B: 151, A: 255}}, Link: uv.Link{URL: "https://example.test/wide"}}
+				legacy.SetCell(wide, 0, &c)
+				flat.SetCell(wide, 0, &c)
+				legacy.DeleteCellArea(at, 0, n, nil, legacy.Bounds())
+				flat.DeleteCellArea(at, 0, n, nil, flat.Bounds())
+				if got, want := flat.Line(0), legacy.Line(0); !reflect.DeepEqual(got, want) {
+					t.Fatalf("wide=%d at=%d n=%d\ngot=%#v\nwant=%#v", wide, at, n, got, want)
+				}
+			}
+		}
+	}
+}

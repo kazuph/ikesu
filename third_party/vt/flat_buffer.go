@@ -133,6 +133,12 @@ func (b *flatScreenBuffer) setCell(x, y int, c *uv.Cell, touch bool) {
 	if x < 0 || x >= lineWidth {
 		return
 	}
+	b.clearWideAt(x, y)
+	b.writeCellValue(x, y, c)
+}
+
+func (b *flatScreenBuffer) clearWideAt(x, y int) {
+	lineWidth := b.rowLength(y)
 	prev := b.tables.unpack(b.raw(x, y))
 	if prev.Width > 1 {
 		empty := prev
@@ -153,6 +159,11 @@ func (b *flatScreenBuffer) setCell(x, y int, c *uv.Cell, touch bool) {
 			}
 		}
 	}
+
+}
+
+func (b *flatScreenBuffer) writeCellValue(x, y int, c *uv.Cell) {
+	lineWidth := b.rowLength(y)
 	if c == nil {
 		b.setRaw(x, y, uv.EmptyCell)
 		return
@@ -424,8 +435,11 @@ func (b *flatScreenBuffer) deleteCells(x, y, n int, c *uv.Cell, area uv.Rectangl
 	}
 	n = min(n, area.Max.X-x)
 	for dst := x; dst < area.Max.X-n; dst++ {
+		// The original in-row source pointer observes wide-cell fixups first.
+		// Read explicitly after them rather than relying on mutable CellAt aliases.
+		b.clearWideAt(dst, y)
 		cell := b.tables.unpack(b.raw(dst+n, y))
-		b.setCell(dst, y, &cell, false)
+		b.writeCellValue(dst, y, &cell)
 	}
 	for dst := area.Max.X - n; dst < area.Max.X; dst++ {
 		b.setCell(dst, y, c, false)
