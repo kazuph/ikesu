@@ -154,8 +154,8 @@ func TestG2DividerToggleAndDangerousCancel(t *testing.T) {
 	sidebarEvent(a, input.KindMouseClick, 1, 5)
 	sidebarEvent(a, input.KindMouseRelease, 1, 5)
 	a.flushSidebarDividerClicks(time.Now().Add(sidebarDividerDoubleClick + time.Millisecond))
-	if a.st.SidebarArea().W != 72 {
-		t.Fatal("divider did not restore configured width")
+	if a.st.ExpandedSidebarWidth() != 72 || a.st.SidebarArea().W != min(72, (a.st.Cols-model.MinimumPresetPaneAreaWidth)/2) {
+		t.Fatal("divider did not restore the wide preset within its display cap")
 	}
 	a.openQuitDialog()
 	if a.quit || a.dialog.d.Title != "Stop server?" || a.dialog.d.Confirm != "stop" || a.dialog.d.Width != 76 {
