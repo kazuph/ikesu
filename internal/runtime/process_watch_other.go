@@ -7,4 +7,4 @@ func processEventQueue() bool                   { return false }
 func (p *Pane) watchProcessChanges(int, ...int) {}
 func (p *Pane) beginProcessWatch()              {}
 
-func (p *Pane) endProcessWatch() {}
+func (p *Pane) endProcessWatch() { p.forgetProcessSchedule() }

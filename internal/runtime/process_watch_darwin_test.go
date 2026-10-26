@@ -59,7 +59,7 @@ func TestQuietShellUsesProcessEventsAndKeepsCwdForkExecExit(t *testing.T) {
 		p.mu.Lock()
 		until := p.processSettlingUntil
 		p.mu.Unlock()
-		return time.Now().After(until)
+		return until.IsZero()
 	})
 	// Polling past the old cache lifetime must not rescan a quiet shell.
 	p.PollProcess()

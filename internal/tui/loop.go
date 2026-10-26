@@ -256,15 +256,8 @@ func (a *App) onTick() {
 	a.refreshWorkspaceGit(now)
 	a.expireToast()
 	a.expireCopied(now)
-	// Foreground process poll: every ~1s per pane.
-	for _, ws := range a.st.Workspaces {
-		for _, t := range ws.Tabs {
-			for _, pid := range t.Layout.PaneIDs() {
-				if p := a.sup.Get(pid); p != nil {
-					p.PollProcessChanged()
-				}
-			}
-		}
+	for _, pid := range a.sup.PollPendingProcesses(now) {
+		a.invalidateDetection(pid)
 	}
 	a.popupSelectionAutoScroll()
 	a.selectionAutoScroll(now)

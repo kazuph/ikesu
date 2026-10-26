@@ -126,10 +126,12 @@ func removeProcessWatch(pid int, p *Pane) {
 
 func (p *Pane) beginProcessWatch() {
 	p.processChanged.Store(true)
+	p.queueProcessChange()
 	p.watchProcessChanges(0)
 }
 
 func (p *Pane) endProcessWatch() {
+	p.forgetProcessSchedule()
 	if !processEventQueue() {
 		return
 	}

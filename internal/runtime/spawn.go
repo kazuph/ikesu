@@ -158,6 +158,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 
 	s.mu.Lock()
 	s.panes[id] = p
+	p.queueProcessChange()
 	s.mu.Unlock()
 	return p, nil
 }

@@ -53,6 +53,7 @@ type Pane struct {
 	processCache           foregroundCache
 	processChanged         atomic.Bool
 	processIdentityChanged atomic.Bool
+	processRevision        atomic.Uint64
 	processSettlingUntil   time.Time
 	processCwdAt           time.Time
 	owner                  *Supervisor
@@ -132,6 +133,11 @@ type Supervisor struct {
 	events          chan Event
 	missedMu        sync.Mutex
 	missed          map[*Pane]EventKind
+	processMu       sync.Mutex
+	processWork     map[*Pane]bool
+	processTicks    map[*Pane]bool
+	processDue      map[*Pane]time.Time
+	processNext     time.Time
 	done            chan struct{}
 	loginPathOnce   sync.Once
 	loginPathDone   chan struct{}
@@ -733,6 +739,7 @@ func (p *Pane) PollProcess() {
 	cwd := platform.ProcCwd(job.ProcessGroupID)
 	p.mu.Lock()
 	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name || p.agentID != agentID
+	cwdChanged := cwd != "" && cwd != p.procCwd
 	p.processCwdAt = time.Now()
 	p.fgPID = job.ProcessGroupID
 	p.procName = name
@@ -750,6 +757,9 @@ func (p *Pane) PollProcess() {
 		effective = p.guardStarted
 	}
 	dead := p.dead
+	if agentChanged || cwdChanged {
+		p.processRevision.Add(1)
+	}
 	p.mu.Unlock()
 	if p.guard != nil && !dead && (agentChanged || effective != "") {
 		_ = p.guard.Sync(effective)
@@ -834,6 +844,7 @@ func (s *Supervisor) SetShell(shell, mode string) {
 // PollProcessChanged observes native process notifications and PTY activity.
 // Explicit API reads still use PollProcess for immediate freshness.
 func (p *Pane) PollProcessChanged() {
+	defer benchstage.Span("runtime.process.check")()
 	p.mu.Lock()
 	guarded := p.guard != nil && (p.effectiveAgent() != "" || p.guardStarted != "")
 	effective, dead := p.effectiveAgent(), p.dead
@@ -883,4 +894,5 @@ func (p *Pane) markProcessChanged() {
 	p.processSettlingUntil = time.Now().Add(foregroundJobCacheLifetime)
 	p.mu.Unlock()
 	p.processChanged.Store(true)
+	p.queueProcessChange()
 }
