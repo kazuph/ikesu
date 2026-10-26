@@ -42,7 +42,7 @@ func TestRequestReasonCancellationHint(t *testing.T) {
 				} else {
 					want += "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: " + key + "='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n"
 				}
-				want += "   判定理由: 実行前に承認が必要です。\n"
+				want += "   判定理由: 実行前に承認が必要です。\n   承認が必要な理由: 実行前に承認が必要です。（規則: dangerous）\n   引っかかったコマンド: dd\n"
 				if out.String() != want {
 					t.Fatalf("got:\n%swant:\n%s", &out, want)
 				}
@@ -137,10 +137,16 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 			var out bytes.Buffer
 			got := Authorize(Config{}, root, i, "shim", &out, await)
 			t.Logf("allowed=%v stderr=%q", got, out.String())
+			if !tc.allowed && (!strings.Contains(out.String(), "承認が必要な理由: deploy/publish 系の操作は確認が必要です（規則: danger-word）") || !strings.Contains(out.String(), "引っかかったコマンド: npx wrangler deploy --env staging")) {
+				t.Errorf("missing guard diagnostics: %s", out.String())
+			}
 			if got != tc.allowed || !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), "<nil>") {
 				t.Errorf("allowed=%v stderr=%q; want allowed=%v contains=%q", got, out.String(), tc.allowed, tc.want)
 			}
 			if tc.allowed {
+				if out.Len() != 0 {
+					t.Errorf("approval output changed: %s", out.String())
+				}
 				key := verdict.TempKey
 				if tc.option == "day_allow" {
 					key = verdict.DayKey
@@ -157,6 +163,98 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 				}
 			} else if _, err := os.Stat(approval); !os.IsNotExist(err) {
 				t.Errorf("denied command wrote approval: %v", err)
+			}
+		})
+	}
+}
+
+func TestApprovalPresentation(t *testing.T) {
+	reason := "対象プロジェクト: ikesu。必要な理由: 表示を確認する。実施内容: パネルを検証する。確認済み: コマンドは実行しない。戻し方: パネルを閉じる。"
+	for _, name := range []string{"AI_GUARD_REQUEST_REASON", "PROJECT_APPROVAL_REASON"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			a := NewAssets(root, "p1", "/usr/bin/true", Config{})
+			env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.Sync("codex"); err != nil {
+				t.Fatal(err)
+			}
+			line := name + "='" + reason + "' bash /tmp/rebuild_all.sh && printf '%s' done"
+			i := Input{Command: "bash", Args: []string{"/tmp/rebuild_all.sh"}, RawLine: line, Cwd: root, Env: EnvMap(env)}
+			i.Env["AI_GUARD_REQUEST_ENV_NAME"] = name
+			i.Env[name] = reason
+			store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+				want := "bash /tmp/rebuild_all.sh && printf '%s' done"
+				if p.Title != "実行確認: "+want {
+					t.Errorf("title=%q", p.Title)
+				}
+				body := "承認が必要な理由: 表示試験（規則: presentation-test）\n引っかかったコマンド: bash /tmp/rebuild_all.sh\n\nコマンド: " + want + "\n\n" + strings.ReplaceAll(reason, "。", "。\n") + "\n場所: " + root
+				// Trailing prose punctuation does not add a blank line between fields.
+				body = strings.ReplaceAll(body, "。\n\n場所:", "。\n場所:")
+				if p.Body == nil || *p.Body != body {
+					t.Errorf("body=%v want=%q", p.Body, body)
+				}
+				if p.Origin.Command != line || p.Origin.Reason != reason {
+					t.Errorf("origin semantics changed: %+v", p.Origin)
+				}
+				d, err := store.CreateDecision(p, time.Now())
+				if err != nil {
+					return d, err
+				}
+				return store.CancelDecision(d.DecisionID, time.Now())
+			}
+			var out bytes.Buffer
+			authorize(Config{}, root, i, "line", &out, await, &Verdict{Decision: "ask", Rule: "presentation-test", Reason: "表示試験"})
+		})
+	}
+}
+
+func TestApprovalTriggerForMultipleCommands(t *testing.T) {
+	for _, separator := range []string{" | ", " && ", "; "} {
+		t.Run(separator, func(t *testing.T) {
+			root := t.TempDir()
+			a := NewAssets(root, "p1", "/usr/bin/true", Config{})
+			env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket"}, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.Sync("codex"); err != nil {
+				t.Fatal(err)
+			}
+			i := Input{Cwd: root, Env: EnvMap(env)}
+			i.Env["AI_GUARD_REQUEST_REASON"] = "対象プロジェクトの試験のため"
+			line := "AI_GUARD_REQUEST_REASON='対象プロジェクトの試験のため' printf safe" + separator + "dd if=/dev/null"
+			store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			called := false
+			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+				called = true
+				prefix := "承認が必要な理由: 実行前に承認が必要です。（規則: dangerous）\n引っかかったコマンド: dd if=/dev/null\n\n"
+				if p.Body == nil || !strings.HasPrefix(*p.Body, prefix) {
+					t.Errorf("missing actual trigger: %+v", p.Body)
+				}
+				if p.Origin.Command != line {
+					t.Errorf("origin changed: %q", p.Origin.Command)
+				}
+				d, err := store.CreateDecision(p, time.Now())
+				if err != nil {
+					return d, err
+				}
+				return store.CancelDecision(d.DecisionID, time.Now())
+			}
+			var out bytes.Buffer
+			if AuthorizeLine(Config{}, root, i, line, &out, await) || !called {
+				t.Fatalf("not requested: %s", out.String())
 			}
 		})
 	}

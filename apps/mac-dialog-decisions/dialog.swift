@@ -22,6 +22,7 @@ struct DialogDetail: Decodable {
 }
 
 struct DialogSpec: Decodable {
+  let kind: String?
   let window_title: String
   let source: String?        // 🤖 claude
   let location: String?      // プロジェクト › タブ › ペイン
@@ -408,10 +409,21 @@ final class DialogController: NSObject, NSWindowDelegate {
 
     var titleText = spec.title
     if let q = spec.question_label, !q.isEmpty { titleText = "［\(q)］ " + titleText }
-    full(label(titleText, size: Look.title, weight: .bold))
+    let titleLabel = label(titleText, size: Look.title, weight: .bold)
+    if spec.kind == "command_guard" {
+      titleLabel.maximumNumberOfLines = 1
+      titleLabel.lineBreakMode = .byTruncatingTail
+    }
+    full(titleLabel)
 
     if let body = spec.body, !body.isEmpty {
-      full(label(body, size: Look.base))
+      if spec.kind == "command_guard", body.hasPrefix("承認が必要な理由:"),
+        let boundary = body.range(of: "\n\n") {
+        full(label(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent))
+        full(label(String(body[boundary.upperBound...]), size: Look.base))
+      } else {
+        full(label(body, size: Look.base))
+      }
     }
 
     if let details = spec.details, !details.isEmpty {
@@ -420,6 +432,12 @@ final class DialogController: NSObject, NSWindowDelegate {
       grid.alignment = .leading
       grid.spacing = 3
       for d in details {
+        if spec.kind == "command_guard", let body = spec.body {
+          let normalizedBody = body.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "：", with: ":")
+          let normalizedValue = d.value.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "：", with: ":")
+          if d.label == "コマンド", body.contains("コマンド: ") { continue }
+          if ["理由", "場所"].contains(d.label), normalizedBody.contains(normalizedValue) { continue }
+        }
         let row = label("\(d.label)：\(d.value)", size: Look.small, color: .secondaryLabelColor, mono: d.monospace == true)
         grid.addArrangedSubview(row)
         row.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
@@ -427,6 +445,11 @@ final class DialogController: NSObject, NSWindowDelegate {
       full(grid)
     }
 
+    let fixedChoices = NSStackView()
+    fixedChoices.orientation = .horizontal
+    fixedChoices.distribution = .fillEqually
+    fixedChoices.spacing = 8
+    fixedChoices.translatesAutoresizingMaskIntoConstraints = false
     if !spec.options.isEmpty {
       let hint = spec.multi_select
         ? "当てはまるものを選んで（複数可・⌘1〜⌘\(min(spec.options.count, 9)) でも可）、右下の「回答する」か ⌘↩ で送ります。"
@@ -436,7 +459,11 @@ final class DialogController: NSObject, NSWindowDelegate {
         let card = OptionCard(option: option, index: i, multi: spec.multi_select)
         card.onClick = { [weak self] c in self?.cardClicked(c) }
         cards.append(card)
-        full(card)
+        if spec.kind == "command_guard" {
+          fixedChoices.addArrangedSubview(card)
+        } else {
+          full(card)
+        }
       }
     }
 
@@ -460,6 +487,10 @@ final class DialogController: NSObject, NSWindowDelegate {
     bottom.translatesAutoresizingMaskIntoConstraints = false
     bottom.edgeInsets = NSEdgeInsets(top: 12, left: Look.pad, bottom: 16, right: Look.pad)
 
+    if spec.kind == "command_guard", !cards.isEmpty {
+      bottom.addArrangedSubview(fixedChoices)
+      fixedChoices.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -2 * Look.pad).isActive = true
+    }
     if spec.allow_text {
       let caption = label(spec.options.isEmpty
         ? "回答（⌘↩ で送信）"
@@ -557,6 +588,10 @@ final class DialogController: NSObject, NSWindowDelegate {
     root.layoutSubtreeIfNeeded()
     let contentHeight = stack.fittingSize.height + 32
     let bottomHeight = bottom.fittingSize.height
+    if spec.kind == "command_guard" {
+      let chromeHeight = panel.frame.height - panel.contentLayoutRect.height
+      panel.minSize.height = max(panel.minSize.height, bottomHeight + chromeHeight)
+    }
     let height = min(contentHeight + bottomHeight + 2, screen.height * 0.85)
     panel.setContentSize(NSSize(width: Look.width, height: height))
     panel.center()

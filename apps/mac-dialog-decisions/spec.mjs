@@ -75,6 +75,7 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
   const remote = machineId !== "local";
   const project = projectName(decision);
   return {
+    kind: decision.kind || "",
     window_title: project ? `ikesu 判断待ち — ${project}` : "ikesu 判断待ち",
     source: sourceLabel(decision),
     location: locationLabel(decision),

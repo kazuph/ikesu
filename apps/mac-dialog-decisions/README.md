@@ -77,3 +77,12 @@ node --test apps/mac-dialog-decisions/test/render.test.mjs
 ## 出典
 
 作者本人の許可に基づき kazuph/herdr の `apps/mac-dialog-decisions` から導入。コマンド・環境変数・設定名・マニフェストを ikesu に合わせて変更した。herdr 本体の実装は使用していない。
+
+command_guard のパネルでは、選択肢を本文のスクロール領域の外に置き、選択と送信は従来どおり分離する。本文に含まれるコマンド・申請文・場所は Origin 欄に重ねて表示しない。判定理由と対象コマンドは見出し直下に強調表示する。
+
+ネイティブ配置の回帰確認は、長い本文の試験用 spec JSON を渡して実パネルを表示し、全選択肢が画面とクリップ領域の内側にあることを数値で検査する。選択だけでは送信されず、再クリックで解除できることも確認する。自分の試験パネルだけを撮影し、ほかのアプリは操作しない。
+
+```sh
+env -u DEVELOPER_DIR swiftc apps/mac-dialog-decisions/{dialog,preview,unicode-width}.swift apps/mac-dialog-decisions/test/layout/main.swift -o /tmp/ikesu-panel-layout
+/tmp/ikesu-panel-layout /absolute/path/to/test-spec.json /absolute/path/to/panel.png
+```
