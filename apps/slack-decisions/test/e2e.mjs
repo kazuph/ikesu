@@ -250,7 +250,7 @@ async function main() {
   await waitUntil(() => fake.posts.some(p => JSON.stringify(p.blocks).includes(firstCancel.decision_id)));
   await rpc("decision.cancel", { decision_id: firstCancel.decision_id });
   await waitUntil(() => fake.posts.length === 0);
-  step("cancelled decision removed from Slack", true, firstCancel.decision_id);
+  step("cancelled decision removed from Slack", (await rpc("decision.get", { decision_id: firstCancel.decision_id })).decision.status === "cancelled", firstCancel.decision_id);
   const original = (await rpc("decision.create", question)).decision;
   await waitUntil(() => fake.posts.length === 1);
   await rpc("decision.cancel", { decision_id: original.decision_id });
@@ -264,7 +264,7 @@ async function main() {
   const expiring = (await rpc("decision.create", { ...question, timeout_ms: 200 })).decision;
   await waitUntil(() => fake.posts.length === 1);
   await waitUntil(() => fake.posts.length === 0);
-  step("expired decision removed from Slack", true, expiring.decision_id);
+  step("expired decision removed from Slack", (await rpc("decision.get", { decision_id: expiring.decision_id })).decision.status === "expired", expiring.decision_id);
 
   fs.writeFileSync(
     path.join(OUT, "slack-state.json"),
