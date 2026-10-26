@@ -14,7 +14,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FakeSlack, FakeWsServer, waitUntil } from "./fakes.mjs";
+import { FakeSlack, FakeWsServer, waitUntil as waitUntilBase } from "./fakes.mjs";
+
+const waitUntil = (fn, options = {}) => waitUntilBase(fn, { timeout: 15_000, ...options });
 
 const APP_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const REPO_ROOT = path.resolve(APP_ROOT, "..", "..");
@@ -215,7 +217,7 @@ async function main() {
       },
     }, (err, stdout, stderr) => { output = stdout + stderr; code = err?.code ?? 0; });
     cleanup.push(() => guard.kill("SIGTERM"));
-    await waitUntil(() => fake.posts.some(p => !priorTs.has(p.ts)));
+    await waitUntil(() => { if (code !== null) throw Error(scenario.name + " ended before Slack post: " + output); return fake.posts.some(p => !priorTs.has(p.ts)); });
     const guardPost = fake.posts.find(p => !priorTs.has(p.ts));
     ws.send({ envelope_id: scenario.name, type: "events_api", payload: {
       type: "event_callback", event: scenario.text
@@ -228,6 +230,41 @@ async function main() {
     await waitUntil(() => fake.deletes.some(p => p.ts === guardPost.ts));
     step(scenario.name + " post closed", true, guardPost.ts);
   }
+
+  const rpc = (method, params) => new Promise((resolve, reject) => {
+    const socket = net.connect(socketPath);
+    let buffer = "";
+    socket.on("connect", () => socket.write(JSON.stringify({ id: "slack-proof", method, params }) + "\n"));
+    socket.on("error", reject);
+    socket.on("data", data => {
+      buffer += data;
+      if (!buffer.includes("\n")) return;
+      socket.end();
+      const response = JSON.parse(buffer.split("\n")[0]);
+      response.error ? reject(Error(JSON.stringify(response.error))) : resolve(response.result);
+    });
+  });
+  const question = { kind: "ask", title: "cancel and recreate proof", body: "same question",
+    allow_text: true, options: [{ id: "yes", label: "Yes", role: "approve" }] };
+  const firstCancel = (await rpc("decision.create", question)).decision;
+  await waitUntil(() => fake.posts.some(p => JSON.stringify(p.blocks).includes(firstCancel.decision_id)));
+  await rpc("decision.cancel", { decision_id: firstCancel.decision_id });
+  await waitUntil(() => fake.posts.length === 0);
+  step("cancelled decision removed from Slack", true, firstCancel.decision_id);
+  const original = (await rpc("decision.create", question)).decision;
+  await waitUntil(() => fake.posts.length === 1);
+  await rpc("decision.cancel", { decision_id: original.decision_id });
+  const replacement = (await rpc("decision.create", question)).decision;
+  await waitUntil(() => fake.posts.length === 1 && JSON.stringify(fake.posts[0].blocks).includes(replacement.decision_id));
+  // Let any cancellation delete that was in flight settle before checking again.
+  await rpc("decision.get", { decision_id: replacement.decision_id });
+  step("recreated question has exactly one pending Slack post", fake.posts.length === 1 && !JSON.stringify(fake.posts[0].blocks).includes("取り消し"), replacement.decision_id);
+  await rpc("decision.cancel", { decision_id: replacement.decision_id });
+  await waitUntil(() => fake.posts.length === 0);
+  const expiring = (await rpc("decision.create", { ...question, timeout_ms: 200 })).decision;
+  await waitUntil(() => fake.posts.length === 1);
+  await waitUntil(() => fake.posts.length === 0);
+  step("expired decision removed from Slack", true, expiring.decision_id);
 
   fs.writeFileSync(
     path.join(OUT, "slack-state.json"),

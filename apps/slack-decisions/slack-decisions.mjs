@@ -1146,7 +1146,7 @@ export class SlackDecisionsDaemon {
     // The same question recreated right after a cancel — the
     // screen-prompt churn this guards against — reuses the cancelled
     // decision's post instead of stacking a new one.
-    const reuse = this.takeReusablePost(entry);
+    const reuse = await this.takeReusablePost(entry);
     if (reuse) {
       entry.post = { channel: reuse.channel, ts: reuse.ts };
       if (reuse.mapKey) this.posts.delete(reuse.mapKey);
@@ -1308,9 +1308,27 @@ export class SlackDecisionsDaemon {
       const post = entry.post;
       const status = decision.status || "answered";
       if (status === "cancelled") {
-        await this.updatePostStatus(entry, status, decision);
-        if (this.ownsPost(entry.key, post)) {
-          this.rememberReusablePost(entry.machineId, decision, post, entry.key);
+        const record = this.rememberReusablePost(entry.machineId, decision, post, entry.key);
+        if (record) {
+          record.cleanup = Promise.resolve().then(async () => {
+            // Adoption before chat.delete starts keeps the existing post. Once
+            // deletion is in flight, the new decision waits and posts anew.
+            const canDelete = () => this.ownsPost(entry.key, post) &&
+              (!record.claimed || record.deletionStarted);
+            const deleted = await this.deletePostByTs(post, canDelete, () => {
+              record.deletionStarted = true;
+            });
+            if (deleted && this.ownsPost(entry.key, post)) {
+              this.posts.delete(entry.key);
+              this.savePostsFile();
+              const qkey = questionKey(entry.machineId, decision);
+              if (this.reusablePosts.get(qkey) === record) {
+                clearTimeout(record.timer);
+                this.reusablePosts.delete(qkey);
+              }
+            }
+          });
+          await record.cleanup;
         }
       } else {
         await this.deletePost(entry);
@@ -1349,7 +1367,7 @@ export class SlackDecisionsDaemon {
     }
   }
 
-  async deletePostByTs(post, stillOwned) {
+  async deletePostByTs(post, stillOwned, onDeleteStart = () => {}) {
     if (!stillOwned()) return false;
     let replies = [];
     try {
@@ -1367,7 +1385,10 @@ export class SlackDecisionsDaemon {
       }
     }
     try {
-      await this.retryPostMutation(() => this.slack.deleteMessage(post.ts), stillOwned);
+      await this.retryPostMutation(() => {
+        onDeleteStart();
+        return this.slack.deleteMessage(post.ts);
+      }, stillOwned);
       if (!stillOwned()) return false;
       this.log(`Slack 投稿を削除: ${post.ts}`);
       return true;
@@ -1402,14 +1423,17 @@ export class SlackDecisionsDaemon {
     }, this.recreateReuseMs);
     record.timer.unref?.();
     this.reusablePosts.set(qkey, record);
+    return record;
   }
 
-  takeReusablePost(entry) {
+  async takeReusablePost(entry) {
     const qkey = questionKey(entry.machineId, entry.decision);
     const record = this.reusablePosts.get(qkey);
     if (!record) return null;
     this.reusablePosts.delete(qkey);
+    record.claimed = true;
     if (record.timer) clearTimeout(record.timer);
+    await record.cleanup;
     if (Date.now() - record.at > this.recreateReuseMs ||
         !this.ownsPost(record.mapKey, record)) return null;
     return record;

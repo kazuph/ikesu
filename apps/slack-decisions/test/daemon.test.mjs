@@ -429,68 +429,21 @@ test("answered via a Slack reply -> resolved event deletes the post", async () =
   }
 });
 
-test("resolved expired deletes the post; cancelled deletes it after the reuse window", async () => {
-  // Expired posts are deleted immediately. A cancelled post stays
-  // adoptable for the reuse window (churn guard), then is deleted.
+test("resolved expired and cancelled delete posts without waiting for reuse expiry", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
-  const daemon = makeDaemon({
-    slack,
-    glasses: null,
-    config: { recreatePostReuseMs: 400 },
-  });
+  const daemon = makeDaemon({ slack });
   try {
-    await feedAndSettle(daemon, {
-      event: "created",
-      machine: LOCAL,
-      decision: sampleDecision({ decision_id: "dec-exp" }),
-    });
-    const expiredTs = fake.posts.at(-1).ts;
-    await feedAndSettle(daemon, {
-      event: "resolved",
-      machine: LOCAL,
-      decision: { ...sampleDecision({ decision_id: "dec-exp" }), status: "expired" },
-    });
-    await waitUntil(() => !fake.posts.some((p) => p.ts === expiredTs));
-    assert.ok(
-      fake.deletes.some((d) => d.ts === expiredTs),
-      "expired post deleted immediately",
-    );
-
-    await feedAndSettle(daemon, {
-      event: "created",
-      machine: LOCAL,
-      decision: sampleDecision({ decision_id: "dec-can" }),
-    });
-    const cancelledTs = fake.posts.at(-1).ts;
-    feed(daemon, {
-      event: "resolved",
-      machine: LOCAL,
-      decision: {
-        ...sampleDecision({ decision_id: "dec-can" }),
-        status: "cancelled",
-      },
-    });
-    await waitUntil(() => fake.updates.some((u) => u.ts === cancelledTs));
-    assert.ok(
-      fake.posts.some((p) => p.ts === cancelledTs),
-      "cancelled post stays adoptable during the reuse window",
-    );
-    assert.match(
-      JSON.stringify(
-        fake.updates.find((u) => u.ts === cancelledTs)?.blocks || [],
-      ),
-      /取り消し/,
-    );
-    await waitUntil(() => !fake.posts.some((p) => p.ts === cancelledTs));
-    assert.ok(
-      fake.deletes.some((d) => d.ts === cancelledTs),
-      "cancelled post deleted once the reuse window ends",
-    );
-  } finally {
-    await daemon.stop();
-    await fake.stop();
-  }
+    for (const status of ["expired", "cancelled"]) {
+      const decision = sampleDecision({ decision_id: "resolved-" + status });
+      await daemon.onCreated("local", LOCAL, decision);
+      const ts = fake.posts[0].ts;
+      await daemon.onResolved("local", { ...decision, status });
+      assert.equal(fake.posts.length, 0);
+      assert.ok(fake.deletes.some(d => d.ts === ts));
+      assert.equal(fake.updates.length, 0);
+    }
+  } finally { await daemon.stop(); await fake.stop(); }
 });
 
 test("recreated same question right after cancel reuses the post", async () => {
@@ -522,25 +475,15 @@ test("recreated same question right after cancel reuses the post", async () => {
 
     // Churn: cancelled, then recreated under a new id with the same
     // question payload.
-    await feedAndSettle(daemon, {
-      event: "resolved",
-      machine: LOCAL,
-      decision: {
-        ...sampleDecision({ ...question, decision_id: "dec-a" }),
-        status: "cancelled",
-      },
+    const cancellation = daemon.onResolved("local", {
+      ...sampleDecision({ ...question, decision_id: "dec-a" }), status: "cancelled",
     });
-    await feedAndSettle(daemon, {
-      event: "created",
-      machine: LOCAL,
-      decision: sampleDecision({ ...question, decision_id: "dec-b" }),
-    });
+    const creation = daemon.onCreated("local", LOCAL,
+      sampleDecision({ ...question, decision_id: "dec-b" }));
+    await Promise.all([cancellation, creation]);
+    assert.equal(fake.posts[0].ts, ts, "existing post adopted before deletion starts");
     assert.equal(fake.posts.length, 1, "no second post for the same question");
     const backToPending = fake.updates.filter((u) => u.ts === ts);
-    assert.ok(
-      backToPending.some((u) => JSON.stringify(u.blocks).match(/取り消し/)),
-      "cancel updated the reused post",
-    );
     assert.ok(
       backToPending.some((u) =>
         JSON.stringify(u.blocks).match(/質問 2\/2 動物/),
@@ -1094,14 +1037,8 @@ for (const status of ["answered", "cancelled"]) {
       await daemon.onResolved("local", { ...decision, status });
       release();
       await created;
-      if (status === "answered") {
-        assert.equal(fake.posts.length, 0);
-        assert.equal(daemon.posts.size, 0);
-      } else {
-        assert.equal(daemon.reusablePosts.size, 1);
-        assert.match(JSON.stringify(fake.posts[0].blocks), /取り消し/);
-        await waitUntil(() => fake.posts.length === 0);
-      }
+      assert.equal(fake.posts.length, 0);
+      assert.equal(daemon.posts.size, 0);
     } finally {
       release();
       await daemon.stop();
@@ -1141,7 +1078,7 @@ test("communication failures retry and exhausted deletes survive restart cleanup
   }
 });
 
-test("cancelled update and deletion recover after transient communication errors", async () => {
+test("cancelled deletion recovers after transient communication errors", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
   const daemon = makeDaemon({ slack, config: {
@@ -1163,7 +1100,7 @@ test("cancelled update and deletion recover after transient communication errors
     const decision = sampleDecision();
     await daemon.onCreated("local", LOCAL, decision);
     await daemon.onResolved("local", { ...decision, status: "cancelled" });
-    assert.equal(updates, 3);
+    assert.equal(updates, 0, "cancelled status is not rendered");
     await waitUntil(() => fake.posts.length === 0);
     assert.equal(deletes, 3);
     assert.equal(daemon.posts.size, 0);
@@ -1215,17 +1152,19 @@ test("late reuse read cannot resolve or delete a post adopted by the next decisi
   const third = sampleDecision({ decision_id: "reuse-third" });
   try {
     await daemon.onCreated("local", LOCAL, first);
-    await daemon.onResolved("local", { ...first, status: "cancelled" });
     const ts = fake.posts[0].ts;
     let held = false;
     slack.message = async (...args) => {
       if (!held) { held = true; started(); await blocked; }
       return read(...args);
     };
+    const firstCancel = daemon.onResolved("local", { ...first, status: "cancelled" });
     const secondPost = daemon.onCreated("local", LOCAL, second);
     await reading;
-    await daemon.onResolved("local", { ...second, status: "cancelled" });
-    await daemon.onCreated("local", LOCAL, third);
+    await firstCancel;
+    const secondCancel = daemon.onResolved("local", { ...second, status: "cancelled" });
+    const thirdPost = daemon.onCreated("local", LOCAL, third);
+    await Promise.all([secondCancel, thirdPost]);
     const updateCount = fake.updates.length;
     release();
     await secondPost;
@@ -1277,38 +1216,63 @@ test("machine down retries each live post only three times and still cleans a di
   }
 });
 
-test("cancelled status retries stop once another decision owns the post", async () => {
+test("failed cancellation deletion settles before replacement adopts the surviving post", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
-  const daemon = makeDaemon({ slack, config: {
-    recreatePostReuseMs: 200, postMutationRetryMs: 40, postMutationAttempts: 3,
-  } });
-  const update = slack.updateMessage.bind(slack);
-  let attempts = 0;
-  let started;
-  const failing = new Promise((resolve) => { started = resolve; });
+  const daemon = makeDaemon({ slack, config: { postMutationRetryMs: 2, postMutationAttempts: 3 } });
+  let attempts = 0, started;
+  const failing = new Promise(r => { started = r; });
   const first = sampleDecision({ decision_id: "retry-owner-old" });
   const next = sampleDecision({ decision_id: "retry-owner-new" });
   try {
     await daemon.onCreated("local", LOCAL, first);
-    await daemon.onResolved("local", { ...first, status: "cancelled" });
-    slack.updateMessage = async (ts, payload) => {
-      if (/取り消し/.test(JSON.stringify(payload))) {
-        ++attempts; started(); throw new TypeError("fetch failed");
-      }
-      return update(ts, payload);
-    };
-    const replay = daemon.onResolved("local", { ...first, status: "cancelled" });
+    const ts = fake.posts[0].ts;
+    slack.deleteMessage = async () => { ++attempts; started(); throw new TypeError("fetch failed"); };
+    const cancellation = daemon.onResolved("local", { ...first, status: "cancelled" });
     await failing;
-    await daemon.onCreated("local", LOCAL, next);
-    await replay;
-    assert.equal(attempts, 1, "no retry against the next decision's post");
+    const creation = daemon.onCreated("local", LOCAL, next);
+    await Promise.all([cancellation, creation]);
+    assert.equal(attempts, 3);
     assert.equal(fake.posts.length, 1);
-    assert.equal(daemon.reusablePosts.size, 0);
+    assert.equal(fake.posts[0].ts, ts);
     assert.doesNotMatch(JSON.stringify(fake.posts[0].blocks), /取り消し/);
     assert.equal([...daemon.posts.values()][0].decisionId, next.decision_id);
-  } finally {
-    await daemon.stop();
-    await fake.stop();
-  }
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("cancelled closes Slack immediately without waiting for the reuse window", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
+  const daemon = makeDaemon({ slack });
+  try {
+    const decision = sampleDecision();
+    await daemon.onCreated("local", LOCAL, decision);
+    await daemon.onResolved("local", { ...decision, status: "cancelled" });
+    assert.equal(fake.posts.length, 0);
+    assert.equal(fake.updates.length, 0, "do not leave a cancelled status message");
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("recreation during in-flight cancellation deletion leaves one pending post", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
+  const daemon = makeDaemon({ slack });
+  let release;
+  const held = new Promise(r => { release = r; });
+  let entered;
+  const deleting = new Promise(r => { entered = r; });
+  const remove = slack.deleteMessage.bind(slack);
+  slack.deleteMessage = async (...args) => { entered(); await held; return remove(...args); };
+  try {
+    const first = sampleDecision({ decision_id: "cancel-in-flight" });
+    await daemon.onCreated("local", LOCAL, first);
+    const cancelled = daemon.onResolved("local", { ...first, status: "cancelled" });
+    await deleting;
+    const recreated = daemon.onCreated("local", LOCAL, { ...first, decision_id: "recreated-in-flight" });
+    release();
+    await Promise.all([cancelled, recreated]);
+    assert.equal(fake.posts.length, 1);
+    assert.match(JSON.stringify(fake.posts[0].blocks), /recreated-in-flight/);
+    assert.doesNotMatch(JSON.stringify(fake.posts[0].blocks), /取り消し/);
+  } finally { release(); await daemon.stop(); await fake.stop(); }
 });
