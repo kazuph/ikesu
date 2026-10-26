@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
@@ -72,7 +73,12 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 		err := s.deliverScreenAnswer(pid, w.signature, prompt, answer)
 		s.app.Do(func() { w.editingText = false; s.finishScreenFlowAnswer(pid, prompt, err) })
 		if err != nil {
-			s.app.Do(func() { s.app.SetConfigWarning("screen prompt input failed: " + err.Error()) })
+			message := fmt.Sprintf("screen prompt input failed: decision=%s pane=%s: %v", w.decisionID, fmtPaneID(pid), err)
+			fmt.Fprintln(os.Stderr, "ikesu: "+message)
+			s.app.Do(func() {
+				s.app.SetConfigWarning(message)
+				s.app.ShowToast("画面への回答送信に失敗", fmt.Sprintf("ペイン %s: %v", fmtPaneID(pid), err), "info", pid)
+			})
 		}
 		result <- err
 	}()
