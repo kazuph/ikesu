@@ -49,7 +49,8 @@ for mode in ('direct','nested'):
    if 'label="outer-booted"' in line and mode=='nested':
     pane=cli(outer,'pane','list')['result']['panes'][0]['pane_id']
     snap=cli(outer,'pane','layout','--pane',pane)['result']['layout']
-    rect=next(v['rect'] for v in snap['panes'] if v['pane_id']==pane)
+    border=next(v['rect'] for v in snap['panes'] if v['pane_id']==pane)
+    rect={'x':border['x']+1,'y':border['y']+1,'width':border['width']-2,'height':border['height']-2}
     # Drop all inherited routing variables, then apply this inner session's own paths.
     command=['env']
     for key in ('IKESU_SOCKET_PATH','IKESU_SOCKET_PATH_EXPLICIT','IKESU','IKESU_PANE_ID','IKESU_WORKSPACE_ID','IKESU_TAB_ID'):
