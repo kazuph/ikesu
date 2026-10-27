@@ -104,7 +104,7 @@ func approvalTrigger(i Input, v Verdict) string {
 }
 
 func approvalTitle(i Input) string {
-	title := "実行確認: " + redact(filepath.Base(i.Command))
+	title := "実行確認: " + i.redact(filepath.Base(i.Command))
 	// BRIEF-2 requests a short heading, approximately 80 characters.
 	runes := []rune(title)
 	if len(runes) > 80 {
@@ -205,7 +205,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		body += "\n\n" + strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
 	}
 	body = i.redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: redact(i.Cwd), Command: i.redact(command), Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()

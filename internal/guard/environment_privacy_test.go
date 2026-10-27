@@ -36,3 +36,23 @@ func TestEnvironmentSecretDisplayDoesNotChangeVerdictOrExecuteBytes(t *testing.T
 		t.Fatal("display changed policy")
 	}
 }
+
+func TestEnvironmentSecretNameAndLengthBoundaries(t *testing.T) {
+	cases := []struct{ name, value, want string }{
+		{"PUBLIC_VALUE", "abcdefgh", "abcdefgh"},
+		{"TOKEN", "abcdefg", "abcdefg"},
+		{"TOKEN", "abcdefgh", "$TOKEN"},
+		{"AUTH", "あいうえおかき", "あいうえおかき"},
+		{"AUTH", "あいうえおかきく", "$AUTH"},
+	}
+	for _, tc := range cases {
+		i := Input{Env: map[string]string{tc.name: tc.value}}
+		if got := i.redact(tc.value); got != tc.want {
+			t.Fatalf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+	i := Input{Env: map[string]string{"LONG_TOKEN": "abcdefghijkl", "SHORT_TOKEN": "abcdefgh", "ALIAS_KEY": "abcdefghijkl"}}
+	if got := i.redact("abcdefghijkl abcdefgh Authorization: Bearer abcdefgh TOKEN=abcdefgh sk-project-TESTONLY"); got != "$ALIAS_KEY $SHORT_TOKEN Authorization: Bearer $SHORT_TOKEN TOKEN=$SHORT_TOKEN ***" {
+		t.Fatal("overlapping values or legacy masking changed:", got)
+	}
+}

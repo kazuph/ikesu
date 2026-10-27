@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
@@ -24,6 +25,10 @@ func secretSpans(text string) []secretSpan {
 	var spans []secretSpan
 	for _, pattern := range secretPatterns {
 		for _, m := range pattern.FindAllStringSubmatchIndex(text, -1) {
+			value := strings.Trim(text[m[2]:m[3]], "\"'")
+			if environmentReference.MatchString(value) || m[2] > 0 && text[m[2]-1] == '$' && environmentName.MatchString(value) {
+				continue
+			}
 			spans = append(spans, secretSpan{m[2], m[3]})
 		}
 	}
@@ -52,10 +57,55 @@ func maskSpans(text string, spans []secretSpan) string {
 	return out.String()
 }
 
+var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var environmentReference = regexp.MustCompile(`^\$[A-Za-z_][A-Za-z0-9_]*$`)
+
+// BRIEF-2 criterion 9: restore qualifying values before pattern redaction.
+func (i Input) restoreEnvironment(text string) string {
+	type binding struct{ name, value string }
+	var bindings []binding
+	for key, value := range i.Env {
+		if utf8.RuneCountInString(value) < 8 {
+			continue
+		}
+		upper := strings.ToUpper(key)
+		for _, part := range []string{"TOKEN", "KEY", "SECRET", "PASSWORD", "PASS", "AUTH", "CREDENTIAL", "COOKIE", "SESSION"} {
+			if strings.Contains(upper, part) {
+				bindings = append(bindings, binding{key, value})
+				break
+			}
+		}
+	}
+	// Prefer a longer value to its prefix; aliases use a stable name.
+	sort.Slice(bindings, func(a, b int) bool {
+		if len(bindings[a].value) != len(bindings[b].value) {
+			return len(bindings[a].value) > len(bindings[b].value)
+		}
+		return bindings[a].name < bindings[b].name
+	})
+	var pairs []string
+	for _, binding := range bindings {
+		pairs = append(pairs, binding.value, "$"+binding.name)
+	}
+	return strings.NewReplacer(pairs...).Replace(text)
+}
+
+func (i Input) redactedArgv() []string {
+	argv := append([]string{i.Command}, i.Args...)
+	restored := make([]string, len(argv))
+	for n, arg := range argv {
+		restored[n] = i.restoreEnvironment(arg)
+	}
+	return redactArgv(restored)
+}
+
 var secretArgument = regexp.MustCompile(`(?i)\b(?:[A-Za-z_][A-Za-z0-9_]*_(?:TOKEN|KEY|SECRET)|PASSWORD|TOKEN|KEY|SECRET)=`)
 
 func redactArgument(arg string) string {
 	if loc := secretArgument.FindStringIndex(arg); loc != nil {
+		if environmentReference.MatchString(strings.Trim(arg[loc[1]:], "\"'")) {
+			return arg
+		}
 		return arg[:loc[1]] + "***"
 	}
 	return arg
@@ -89,7 +139,9 @@ func redact(text string) string {
 
 // Argv boundaries are authoritative when shell quoting is no longer available.
 func (i Input) redact(text string) string {
+	text = i.restoreEnvironment(text)
 	for _, arg := range append([]string{i.Command}, i.Args...) {
+		arg = i.restoreEnvironment(arg)
 		safe := redactArgument(arg)
 		if safe == arg {
 			continue
