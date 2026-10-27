@@ -52,7 +52,15 @@ async function abortable(promise,signal) {
 }
 export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onConnect}={}) {
   const timeout=AbortSignal.timeout(RICH_LIMITS.timeoutMs);
-  const combined=signal?AbortSignal.any([signal,timeout]):timeout;
+  const controller=new AbortController();
+  const sources=[signal,timeout].filter(Boolean);
+  const cancel=event=>controller.abort(event.target.reason);
+  for(const source of sources) {
+    source.addEventListener('abort',cancel,{once:true});
+    if(source.aborted) controller.abort(source.reason);
+  }
+  const combined=controller.signal;
+  try {
   let current=raw;
   for(let redirects=0;;redirects++) {
     combined.throwIfAborted();
@@ -78,6 +86,7 @@ export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onC
     for await(const chunk of response) { bytes+=chunk.length; if(bytes>maxBytes) {response.destroy();throw Error('取得サイズの上限です');} chunks.push(chunk); }
     return {data:Buffer.concat(chunks),url:url.href,type:response.headers['content-type']||''};
   }
+  } finally { for(const source of sources) source.removeEventListener('abort',cancel); }
 }
 export async function pageMetadata(data,base,signal) {
   // libxml's HTML parser treats metadata as text. --nonet prevents external I/O;
