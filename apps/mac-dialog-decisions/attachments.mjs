@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { RICH_LIMITS, imagePath } from './rich.mjs';
 
 export function safeID(value) { if(typeof value!=='string'||!value||!/^[-_a-zA-Z0-9.]+$/.test(value)||value==='.'||value==='..') throw Error('保存先の ID が不正です'); return value; }
@@ -11,7 +12,7 @@ export async function readBounded(file,limit) {
  return buffer.subarray(0,used);
 }
 export class AttachmentStore {
- constructor(stateDir) {this.root=path.resolve(stateDir);}
+ constructor(stateDir,{log=message=>process.stderr.write(`${message}\n`)}={}) {this.root=path.resolve(stateDir);this.log=log;}
  async readResolution(file) {
   const handle=await fs.open(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   try {
@@ -26,12 +27,16 @@ export class AttachmentStore {
   safeID(machine);safeID(id);
   if(!['answered','cancelled','expired'].includes(status)||!Number.isFinite(now)) throw Error('解決状態が不正です');
   const dir=await this.directory('resolutions',machine,id);const file=path.join(dir,'resolution.json');
-  let handle;
-  try {handle=await fs.open(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);}
-  catch(error) {if(error.code!=='EEXIST')throw error;return this.readResolution(file);}
+  try {return await this.readResolution(file);}catch(error){if(error.code!=='ENOENT')throw error;}
+  const temporary=path.join(dir,randomUUID()+'.writing');
+  const handle=await fs.open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
   const record={machine,id,status,now};
   try {await handle.writeFile(JSON.stringify(record));await handle.sync();} finally {await handle.close();}
-  return record;
+  // Publish only complete bytes, without replacing the original resolution time.
+  // A failed/interrupted write remains separately visible for diagnosis.
+  try {await fs.link(temporary,file);}
+  catch(error) {if(error.code!=='EEXIST')throw error;const existing=await this.readResolution(file);await fs.unlink(temporary);return existing;}
+  await fs.unlink(temporary);return record;
  }
  async pendingResolutions(machine) {
   if(machine!==undefined)safeID(machine);
@@ -42,9 +47,17 @@ export class AttachmentStore {
    const dir=path.join(base,m.name);
    for(const d of await fs.readdir(dir,{withFileTypes:true})) {
     if(!d.isDirectory()||d.isSymbolicLink())continue;
-    const record=await this.readResolution(path.join(dir,d.name,'resolution.json'));
-    if(record.machine!==m.name||record.id!==d.name)throw Error('整理待ちの保存先が一致しません');
-    records.push(record);
+    const file=path.join(dir,d.name,'resolution.json');
+    try {
+     const record=await this.readResolution(file);
+     if(record.machine!==m.name||record.id!==d.name)throw Error('整理待ちの保存先が一致しません');
+     records.push(record);
+    }catch(error){
+     if(error.code==='ENOENT') {
+      try {await fs.lstat(path.join(dir,d.name));}catch(missing){if(missing.code==='ENOENT')continue;}
+     }
+     this.log(`不完全な添付整理記録を保持（未完了）: ${file}: ${error.message}`);
+    }
    }
   }
   return records;
