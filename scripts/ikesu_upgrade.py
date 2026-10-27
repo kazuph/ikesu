@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -56,6 +57,26 @@ def retain(source, version, home):
     return destination
 
 
+def socket_is_absent(session, env):
+    # All CLI calls pass --session explicitly: inherited IKESU_SOCKET_PATH
+    # therefore does not select this socket (internal/api/session.go).
+    home = env.get('HOME')
+    if home:
+        root = Path(env.get('IKESU_STATE_DIR') or Path(home) / '.local/state/ikesu')
+    else:
+        root = Path(env.get('TMPDIR') or '/tmp') / 'ikesu-state'
+    path = os.path.normpath(root / session / 'ikesu.sock')
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(3)  # existing CLI Unix dial deadline
+            connection.connect(str(path))
+    except (FileNotFoundError, ConnectionRefusedError):
+        return True
+    except OSError as error:
+        raise RuntimeError(f'cannot establish server state for session {session}: {error}') from error
+    return False
+
+
 def ping(binary, session, env):
     result = run([binary, '--session', session, 'server', 'ping'], env)
     if result.returncode:
@@ -64,7 +85,10 @@ def ping(binary, session, env):
         except ValueError:
             raise RuntimeError('cannot establish server state for session ' + session)
         if payload.get('error', {}).get('code') == 'server_not_running':
-            return None
+            if socket_is_absent(session, env):
+                return None
+            raise RuntimeError('server state unknown for session ' + session
+                               + ': ping failed but its socket still accepts connections')
         raise RuntimeError('server ping failed for session ' + session + ': ' + result.stdout + result.stderr)
     return json.loads(result.stdout)['result']['version']
 

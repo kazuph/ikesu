@@ -199,6 +199,10 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         self.assertEqual(self.entry.resolve(),self.old)
 
     def test_paused_server_timeout_stops_before_later_session(self):
+        # Go filepath.Join cleans '..' before resolving symlinks.
+        (self.root/'different/branch').mkdir(parents=True)
+        (self.root/'redirect').symlink_to(self.root/'different/branch')
+        self.env['IKESU_STATE_DIR']=str(self.root/'redirect/../state')
         self.start('paused')
         self.start('later')
         pid=self.servers[0][1].pid
@@ -217,6 +221,9 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         self.assertNotIn('paused: not running',result.stdout)
 
     def test_stale_refused_socket_is_confirmed_not_running(self):
+        self.start('other')
+        self.env['IKESU_SOCKET_PATH']=str(self.root/'state/other/ikesu.sock')
+        self.env['IKESU_SOCKET_PATH_EXPLICIT']='1'
         socket_path=self.root/'state/default/ikesu.sock'
         socket_path.parent.mkdir(parents=True)
         with socket.socket(socket.AF_UNIX) as stale:
