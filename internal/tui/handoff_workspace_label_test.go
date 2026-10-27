@@ -1,7 +1,8 @@
 package tui
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,12 +27,12 @@ func TestLiveHandoffKeepsLoadedWorkspaceLabel(t *testing.T) {
 	}
 	waitWorkspaceGitActivity(t, a, func() bool { return a.WorkspaceLabel(0) == filepath.Base(repo) })
 	before := a.WorkspaceLabel(0)
-	encoded, err := json.Marshal(a.HandoffState())
-	if err != nil {
+	var encoded bytes.Buffer
+	if err := gob.NewEncoder(&encoded).Encode(a.HandoffState()); err != nil {
 		t.Fatal(err)
 	}
 	var transfer HandoffState
-	if err := json.Unmarshal(encoded, &transfer); err != nil {
+	if err := gob.NewDecoder(&encoded).Decode(&transfer); err != nil {
 		t.Fatal(err)
 	}
 	imported := NewApp(a.st, a.sup, io.Discard, child)
@@ -42,7 +43,7 @@ func TestLiveHandoffKeepsLoadedWorkspaceLabel(t *testing.T) {
 	// A moved shell must still invalidate the transferred directory label.
 	other := t.TempDir()
 	p := a.sup.Get(a.focusedPane())
-	if _, err := p.WriteToPTY([]byte("cd '" + other + "'; printf 'LABEL_MOVED\\n'\r")); err != nil {
+	if _, err := p.WriteToPTY([]byte("cd '" + other + "'; printf 'LABEL_%s\\n' MOVED\r")); err != nil {
 		t.Fatal(err)
 	}
 	specWaitText(t, p, "LABEL_MOVED")
