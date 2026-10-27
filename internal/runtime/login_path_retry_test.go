@@ -35,6 +35,14 @@ func TestLoginPathRecoversAfterTimeoutAndCachesSuccess(t *testing.T) {
 	}
 	started, startErr := os.ReadFile(count)
 	t.Logf("first timeout: shell starts=%q readError=%v", started, startErr)
+	if startErr != nil && !os.IsNotExist(startErr) {
+		t.Fatal(startErr)
+	}
+	// The deadline may cancel before exec. Release the real shell's slow phase
+	// explicitly, so recovery does not depend on whether that exec happened.
+	if err := os.WriteFile(first, []byte("retry ready"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if retry := s.WaitLoginPath(); retry != err {
 		t.Fatal("failure must be returned during cooldown")
 	}
@@ -62,8 +70,8 @@ func TestLoginPathRecoversAfterTimeoutAndCachesSuccess(t *testing.T) {
 			t.Fatal(path, err)
 		}
 	}
-	if data, _ := os.ReadFile(count); string(data) != "xx" {
-		t.Fatalf("lookup count=%q", data)
+	if data, _ := os.ReadFile(count); string(data) != string(started)+"x" {
+		t.Fatalf("lookup count=%q; before retry=%q", data, started)
 	}
 }
 
