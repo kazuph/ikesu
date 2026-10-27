@@ -102,3 +102,61 @@ func TestLocalHTTPUnknownConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalHTTPConfigSymlinkParent(t *testing.T) {
+	for _, tc := range []struct{ cmd, key, relative string }{
+		{"curl", "CURL_HOME", ".curlrc"},
+		{"curl", "HOME", ".curlrc"},
+		{"curl", "XDG_CONFIG_HOME", ".curlrc"},
+		{"http", "HTTPIE_CONFIG_DIR", "config.json"},
+		{"http", "HOME", ".config/httpie/config.json"},
+		{"https", "XDG_CONFIG_HOME", "httpie/config.json"},
+	} {
+		t.Run(tc.cmd+"/"+tc.key, func(t *testing.T) {
+			root := t.TempDir()
+			other := filepath.Join(root, "other")
+			if err := os.MkdirAll(filepath.Join(other, "child"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			link := filepath.Join(root, "link")
+			if err := os.Symlink(filepath.Join(other, "child"), link); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(other, tc.relative)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			content := `connect-to = "localhost:80:example.invalid:80"`
+			if tc.cmd != "curl" {
+				content = `{"default_options":["--follow"]}`
+			}
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Preserve the parent component exactly as the client receives it.
+			base := link + "/.."
+			env := map[string]string{"HOME": t.TempDir(), tc.key: base}
+			// The OS finds the config, while lexical Join points to a missing file.
+			if _, err := os.Stat(base + "/" + tc.relative); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(base, tc.relative)); !os.IsNotExist(err) {
+				t.Fatalf("bad reproduction: %v", err)
+			}
+			args := []string{"-XPOST", "http://localhost"}
+			if tc.cmd != "curl" {
+				args = []string{"POST", "http://localhost"}
+			}
+			i := Input{Command: tc.cmd, Args: args, Env: env, Cwd: root}
+			if v := Evaluate(Config{}, i); v.Decision != "ask" {
+				t.Fatalf("symlink parent config bypassed: %+v", v)
+			}
+			if tc.cmd == "curl" {
+				i.Args = append([]string{"-q"}, args...)
+				if v := Evaluate(Config{}, i); v.Decision != "allow" {
+					t.Fatalf("disabled config: %+v", v)
+				}
+			}
+		})
+	}
+}
