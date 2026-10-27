@@ -191,8 +191,12 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 }
 
 func (a *App) mainMenuItems() []render.MenuItem {
+	koiLabel := "koi: off"
+	if a.sidebarConfig.KoiEnabled() {
+		koiLabel = "koi: on"
+	}
 	items := []render.MenuItem{
-		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
+		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: koiLabel}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}
 	if a.clientMachines || a.machineRequest != nil {
 		var base, machines []render.MenuItem
@@ -344,7 +348,7 @@ func (a *App) activateMenu(i int) {
 			a.closeTabAt(m.ws, m.tab)
 		}
 	case menuMain:
-		if a.clientMachines && m.m.Items[i].Label != "add machine..." && m.m.Items[i].Label != "remove machine..." {
+		if a.clientMachines && m.m.Items[i].Label != "koi: on" && m.m.Items[i].Label != "koi: off" && m.m.Items[i].Label != "add machine..." && m.m.Items[i].Label != "remove machine..." {
 			a.machineError(fmt.Errorf("machine is disconnected; select a connected space to use %s", m.m.Items[i].Label))
 			return
 		}
@@ -363,6 +367,8 @@ func (a *App) activateMenu(i int) {
 			a.openHelp()
 		case "reload config":
 			a.reloadSidebarConfig()
+		case "koi: on", "koi: off":
+			a.toggleKoi()
 		case "sidebar narrow":
 			a.sidebarPreset("narrow")
 		case "sidebar normal":

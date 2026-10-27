@@ -7,6 +7,10 @@ import (
 )
 
 func (m *machineClient) paintKoi(now time.Time) error {
+	if m.koiRetained {
+		m.koiNext = time.Time{}
+		return nil
+	}
 	if !m.koiInput.KoiKitty {
 		return m.paint()
 	}

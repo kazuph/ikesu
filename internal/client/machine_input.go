@@ -193,7 +193,7 @@ func (m *machineClient) input(event input.Event) error {
 			return m.sendInput(m.active, eventBytes(event))
 		}
 	}
-	if event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft && m.koiClock.Click(m.koiScene.Pond, event.Mouse.X, event.Mouse.Y, time.Now()) && m.koiInput.Koi && len(m.koiScene.Fish) > 0 {
+	if event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft && !m.koiRetained && m.koiClock.Click(m.koiScene, m.koiInput.Koi, event.Mouse.X, event.Mouse.Y, time.Now()) {
 		m.suppressRelease = true
 		return m.paint()
 	}

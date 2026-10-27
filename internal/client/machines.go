@@ -71,6 +71,7 @@ type machineClient struct {
 	koiClock          render.KoiAnimation
 	koiVisible        bool
 	koiKitty          bool
+	koiRetained       bool
 	koiInput          render.Input
 	koiScene          render.KoiScene
 	clientVersion     string

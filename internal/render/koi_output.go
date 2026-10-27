@@ -80,6 +80,92 @@ func koiPixelPosition(fish KoiFish, cw, ch int) image.Point {
 }
 
 func drawKoiOctants(f *Frame, fish KoiFish) {
+	if fish.Rect.H < 3 {
+		drawKoiRowOctants(f, fish)
+		return
+	}
+	source, _ := koiSpriteCached(koiSpriteKey{koiVariant(fish), fish.Direction, fish.Wag, fish.Rect.W * 2, fish.Rect.H * 4})
+	// Translate on the pond's 2x4-dot plane before packing cells, including
+	// the final partial cell at either edge of a moving sprite.
+	ox, oy := int(math.Round(fish.X*2)), int(math.Round(fish.Y*4))
+	x0, y0 := max(fish.Lane.X, int(math.Floor(float64(ox)/2))), max(fish.Lane.Y, int(math.Floor(float64(oy)/4)))
+	x1, y1 := min(fish.Lane.X+fish.Lane.W, (ox+source.Bounds().Dx()+1)/2), min(fish.Lane.Y+fish.Lane.H, (oy+source.Bounds().Dy()+3)/4)
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			cell := f.Cell(x, y)
+			if cell == nil || cell.Width != 1 {
+				continue
+			}
+			oldMask := -1
+			if cell.Content != " " {
+				for i, r := range octantRunes {
+					if cell.Content == string(r) {
+						oldMask = i
+						break
+					}
+				}
+				if oldMask < 0 {
+					continue
+				}
+			}
+			bg := cell.Style.Bg
+			if bg == nil {
+				bg = f.Palette.PanelBG
+			}
+			if bg == nil {
+				bg = waterBG
+			}
+			var px [8]color.RGBA
+			visible := false
+			for i := range px {
+				previous := bg
+				if oldMask >= 0 && oldMask&(1<<i) != 0 && cell.Style.Fg != nil {
+					previous = cell.Style.Fg
+				}
+				px[i] = color.RGBAModel.Convert(previous).(color.RGBA)
+				c := source.RGBAAt(x*2+i%2-ox, y*4+i/2-oy)
+				if c.A != 0 {
+					px[i] = c
+					visible = true
+				}
+			}
+			if !visible {
+				continue
+			}
+			fg, back, mask := twoColorOctant(px)
+			background := color.RGBAModel.Convert(bg).(color.RGBA)
+			hasBackground := false
+			counts := map[color.RGBA]int{}
+			for _, c := range px {
+				hasBackground = hasBackground || c == background
+				if c != background {
+					counts[c]++
+				}
+			}
+			if hasBackground {
+				back = background
+				best := 0
+				for _, c := range px {
+					if c != background && counts[c] > best {
+						fg = c
+						best = counts[c]
+					}
+				}
+				mask = 0
+				for i, c := range px {
+					if c != background {
+						mask |= 1 << i
+					}
+				}
+			}
+			style := cell.Style
+			style.Fg, style.Bg = fg, back
+			f.Set(x, y, string(octantRunes[mask]), style)
+		}
+	}
+}
+
+func drawKoiRowOctants(f *Frame, fish KoiFish) {
 	w, h := fish.Rect.W*2, fish.Rect.H*4
 	source, _ := koiSpriteCached(koiSpriteKey{koiVariant(fish), fish.Direction, fish.Wag, w, h})
 	rows := fish.Rect.H

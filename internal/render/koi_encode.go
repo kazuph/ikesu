@@ -24,6 +24,12 @@ type koiEncoder struct {
 func withoutKoi(f *Frame) (*Frame, []Graphic) {
 	regular := *f
 	regular.Graphics = nil
+	regular.GraphicsSources = nil
+	for _, g := range f.GraphicsSources {
+		if !g.Koi {
+			regular.GraphicsSources = append(regular.GraphicsSources, g)
+		}
+	}
 	var koi []Graphic
 	for _, g := range f.Graphics {
 		if g.Koi {
@@ -111,6 +117,10 @@ func (e *Encoder) KoiFrame(f *Frame, x, y int, visible bool) []byte {
 		if g.Koi {
 			koi = append(koi, g)
 		}
+	}
+	if f.RetainGraphics {
+		e.imageFence = false
+		return nil
 	}
 	data := e.encodeKoi(koi, false)
 	e.imageFence = bytes.Contains(data, []byte("\x1b_Ga=t,"))

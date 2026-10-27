@@ -96,7 +96,10 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 	e.emitRealPlacements(f, &b, graphicsChanged)
 	e.retireGraphics(f, &b, graphicsChanged)
 	e.imageFence = bytes.Contains(b.Bytes(), []byte("\x1b_Ga=t,")) || bytes.Contains(b.Bytes(), []byte("\x1b_Ga=p,"))
-	koiData := e.encodeKoi(koi, full)
+	var koiData []byte
+	if !f.RetainGraphics {
+		koiData = e.encodeKoi(koi, full)
+	}
 	e.imageFence = e.imageFence || bytes.Contains(koiData, []byte("\x1b_Ga=t,"))
 	b.Write(koiData)
 	// Park the cursor at the anchor before ending the sync block.

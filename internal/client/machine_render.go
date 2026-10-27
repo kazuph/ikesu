@@ -84,7 +84,8 @@ func (m *machineClient) paint() error {
 		composed = m.composer.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
 	}
 	m.koiInput, m.koiScene = in, composed.Frame.KoiScene
-	m.koiVisible = !m.blurred && composed.Frame.KoiActive
+	m.koiRetained = composed.Frame.W != m.size.Cols || composed.Frame.H != m.size.Rows
+	m.koiVisible = !m.koiRetained && !m.blurred && composed.Frame.KoiActive
 	if !m.koiVisible {
 		m.koiNext = time.Time{}
 	} else if m.koiNext.IsZero() {

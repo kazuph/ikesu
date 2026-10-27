@@ -126,6 +126,10 @@ func SaveTheme(name string) error {
 	}
 	return saveValues([]string{"theme"}, map[string]any{"name": name, "auto_switch": false})
 }
+func SaveKoi(enabled bool) error {
+	return saveValues([]string{"ui"}, map[string]any{"koi": enabled})
+}
+
 func SaveSound(enabled bool) error {
 	return saveValues([]string{"ui", "sound"}, map[string]any{"enabled": enabled})
 }

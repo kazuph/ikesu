@@ -124,10 +124,10 @@ func TestKoiRevision2SmoothClickAndRelease(t *testing.T) {
 	frame := Compose(in).Frame
 	scene := frame.KoiScene
 	x, y := scene.Pond.X+scene.Pond.W/2, scene.Pond.Y+scene.Pond.H/2
-	if clock.Click(scene.Pond, x, scene.Pond.Y-1, now) {
+	if clock.Click(scene, true, x, scene.Pond.Y-1, now) {
 		t.Fatal("list/header consumed")
 	}
-	if !clock.Click(scene.Pond, x, y, now) {
+	if !clock.Click(scene, true, x, y, now) {
 		t.Fatal("pond click rejected")
 	}
 	distance := func(scene KoiScene) float64 {
@@ -263,7 +263,7 @@ func TestExportKoiRevision2Proof(t *testing.T) {
 		out := Compose(in)
 		scene := out.Frame.KoiScene
 		if tick == 40 {
-			clock.Click(scene.Pond, scene.Pond.X+scene.Pond.W/2, scene.Pond.Y+scene.Pond.H/2, now)
+			clock.Click(scene, true, scene.Pond.X+scene.Pond.W/2, scene.Pond.Y+scene.Pond.H/2, now)
 		}
 		if tick != 0 && tick != 41 && tick != 80 && tick != 180 {
 			continue

@@ -245,7 +245,7 @@ func (a *App) draw() {
 	}
 	in.KoiCellW, in.KoiCellH = a.cellW, a.cellH
 	out := render.ComposeClient(in, nil, a.clientVersion, false)
-	a.koiPond = out.Frame.KoiScene.Pond
+	a.koiScene = out.Frame.KoiScene
 	a.koiLocalActive = out.Frame.KoiActive && !a.windowBlurred
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
 		render.DrawTabDrop(out, g.drop, a.serverUI)

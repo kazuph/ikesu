@@ -2,12 +2,17 @@ package tui
 
 import (
 	"bytes"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestKoiStandaloneClockCannotTriggerSnapshotSink(t *testing.T) {
@@ -76,5 +81,50 @@ func TestKoiServerFrameViewerDoesNotOwnDecorationClock(t *testing.T) {
 	}
 	if viewer.app.koiLocalActive {
 		t.Fatal("server frame viewer owns a client-only decoration clock")
+	}
+}
+
+func TestKoiRev3MainMenuTogglePersists(t *testing.T) {
+	teststate.Lock(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	teststate.Setenv(t, config.EnvVar, path)
+	a := specRuntimeApp(t)
+	for _, label := range []string{"koi: on", "koi: off"} {
+		a.openMainMenu(0, 0)
+		index := -1
+		for i, item := range a.menu.m.Items {
+			if item.Label == label {
+				index = i
+			}
+		}
+		if index < 0 {
+			t.Fatal("menu does not show current koi state", label)
+		}
+		before := a.sidebarConfig.KoiEnabled()
+		a.activateMenu(index)
+		saved, err := config.Load()
+		if err != nil || a.sidebarConfig.KoiEnabled() == before || saved.KoiEnabled() != a.sidebarConfig.KoiEnabled() {
+			t.Fatal("menu/save/reload disagree", err)
+		}
+	}
+}
+
+func TestKoiRev3StandaloneEmptyClickHasNoAnimationSideEffect(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.draw()
+	r := a.koiScene.Pond
+	if r.W == 0 || r.H == 0 {
+		t.Fatal("fixture needs an empty visible pond")
+	}
+	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: r.X + r.W/2, Y: r.Y + r.H/2, Button: uv.MouseLeft}})
+	in := render.Input{}
+	a.koiClock.Apply(&in, nil, time.Now(), 15*time.Second)
+	if in.KoiRipple != nil {
+		t.Fatal("empty pond click started a ripple")
+	}
+	a.draw()
+	if a.koiLocalActive {
+		t.Fatal("empty click started periodic repaint")
 	}
 }

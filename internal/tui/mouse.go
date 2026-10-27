@@ -80,7 +80,7 @@ func (a *App) onMouse(ev input.Event) {
 	default:
 		switch ev.Kind {
 		case input.KindMouseClick:
-			if !(a.viewerOwner == nil && a.sidebarConfig.KoiEnabled() && m.Button == uv.MouseLeft && a.koiClock.Click(a.koiPond, m.X, m.Y, time.Now())) {
+			if !(a.viewerOwner == nil && a.sidebarConfig.KoiEnabled() && m.Button == uv.MouseLeft && a.koiClock.Click(a.koiScene, a.sidebarConfig.KoiEnabled(), m.X, m.Y, time.Now())) {
 				a.click(m)
 			}
 		case input.KindMouseWheel:

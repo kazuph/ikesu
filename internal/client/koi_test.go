@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/input"
@@ -169,5 +170,93 @@ func TestKoiSnapshotRefreshRetainsAnimationDeadlineAndPose(t *testing.T) {
 	}
 	if !m.koiNext.Equal(deadline) || !reflect.DeepEqual(m.koiScene.Fish, pose.Fish) || !reflect.DeepEqual(m.koiScene.Mini, pose.Mini) {
 		t.Fatalf("server spinner refresh advanced or postponed independent koi animation: deadlines %v %v fish=%+v / %+v mini=%+v / %+v", deadline, m.koiNext, pose.Fish, m.koiScene.Fish, pose.Mini, m.koiScene.Mini)
+	}
+}
+
+func TestKoiRev3PendingResizeHoldsDecorations(t *testing.T) {
+	state := model.New(t.TempDir(), 160, 45)
+	state.SidebarVisible = true
+	state.SidebarSize = 26
+	state.RightSidebarSize = 30
+	snapshot := render.Input{State: state, Panes: map[int]*render.PaneSnap{1: {Agent: "codex", Status: render.StatusGlyph{Key: "working"}}}}
+	file, err := os.CreateTemp(t.TempDir(), "output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	m := &machineClient{active: "local", order: []string{"local"}, out: file, koiKitty: true, size: tui.Winsize{Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720}, settings: &localSettings{}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot, profile: machine.Profile{ID: "local", Enabled: true}}}}
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	m.outputFence.Accept([]byte("\x1b[0n"))
+	before, _ := file.Seek(0, 1)
+	m.size = tui.Winsize{Cols: 140, Rows: 40, Xpixel: 1120, Ypixel: 640}
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 3; i++ {
+		if err := m.paintKoi(time.Now().Add(time.Duration(i) * render.KoiInterval)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wire, _ := os.ReadFile(file.Name())
+	if bytes.Contains(wire[before:], []byte("\x1b_G")) {
+		t.Fatal("pending resize repositions koi using old pond")
+	}
+	snapshot.State.Cols, snapshot.State.Rows = 140, 40
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	if m.koiNext.IsZero() {
+		t.Fatal("matching dimensions did not resume koi")
+	}
+}
+
+func TestKoiRev3EmptyClicksNeverStartAnimation(t *testing.T) {
+	for _, condition := range []string{"empty", "capacity", "jobs", "off"} {
+		t.Run(condition, func(t *testing.T) {
+			state := model.New(t.TempDir(), 160, 45)
+			state.SidebarVisible = true
+			state.SidebarSize = 26
+			state.RightSidebarSize = 30
+			var cfg config.Config
+			snapshot := render.Input{State: state, Panes: map[int]*render.PaneSnap{}, SidebarConfig: cfg}
+			if condition != "empty" {
+				snapshot.Panes[1] = &render.PaneSnap{Agent: "codex", Status: render.StatusGlyph{Key: "idle"}}
+			}
+			if condition == "capacity" {
+				state.Rows = 9
+			}
+			if condition == "jobs" {
+				snapshot.JobsPanel = true
+			}
+			if condition == "off" {
+				off := false
+				cfg.UI.Koi = &off
+				snapshot.SidebarConfig = cfg
+			}
+			file, err := os.CreateTemp(t.TempDir(), "output")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			m := &machineClient{active: "local", order: []string{"local"}, out: file, size: tui.Winsize{Cols: state.Cols, Rows: state.Rows}, settings: &localSettings{config: &cfg}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot, profile: machine.Profile{ID: "local", Enabled: true}}}}
+			if err := m.paint(); err != nil {
+				t.Fatal(err)
+			}
+			if len(m.koiScene.Fish) != 0 {
+				t.Fatal("ineligible fixture unexpectedly contains fish", condition, m.koiScene.Pond)
+			}
+			r := m.koiScene.Pond
+			x, y := r.X+r.W/2, r.Y+r.H/2
+			if err := m.input(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: x, Y: y, Button: uv.MouseLeft}}); err != nil {
+				t.Fatal(err)
+			}
+			check := m.koiInput
+			m.koiClock.Apply(&check, nil, time.Now(), tui.FossilExpiry())
+			if check.KoiRipple != nil || !m.koiNext.IsZero() {
+				t.Fatalf("ineligible click started ripple/deadline %s ripple=%+v deadline=%v scene=%+v", condition, check.KoiRipple, m.koiNext, m.koiScene)
+			}
+		})
 	}
 }

@@ -1,7 +1,6 @@
 package render
 
 import (
-	"github.com/kazuph/ikesu/internal/layout"
 	"time"
 )
 
@@ -57,7 +56,11 @@ func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time,
 }
 
 // Click accepts only the unoccupied pond from the last actual composition.
-func (a *KoiAnimation) Click(pond layout.Rect, x, y int, now time.Time) bool {
+func (a *KoiAnimation) Click(scene KoiScene, enabled bool, x, y int, now time.Time) bool {
+	pond := scene.Pond
+	if !enabled || len(scene.Fish) == 0 {
+		return false
+	}
 	if pond.W == 0 || pond.H == 0 || x < pond.X || y < pond.Y || x >= pond.X+pond.W || y >= pond.Y+pond.H {
 		return false
 	}
