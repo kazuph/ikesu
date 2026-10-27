@@ -43,3 +43,20 @@ func TestKoiReturnRippleReachesEveryPondEdge(t *testing.T) {
 		}
 	}
 }
+
+func TestKoiReturnRepeatedRippleReusesTerminalImages(t *testing.T) {
+	scene := KoiScene{Pond: layout.Rect{X: 130, Y: 10, W: 29, H: 40}}
+	var enc Encoder
+	for repeat := 0; repeat < 2; repeat++ {
+		for tick := 0; tick < int(KoiRippleLifetime/KoiInterval.Seconds()); tick++ {
+			scene.Ripple = &KoiRipple{X: 144, Y: 30, Time: float64(tick) * KoiInterval.Seconds()}
+			frame := NewFrame(160, 60)
+			drawKoiRippleGraphics(frame, scene, Input{KoiCellW: 8, KoiCellH: 16})
+			data := enc.KoiFrame(frame, 0, 0, false)
+			if repeat == 1 && bytes.Contains(data, []byte("a=t,")) {
+				t.Fatalf("same ripple picture uploaded again at frame %d", tick)
+			}
+		}
+		enc.KoiFrame(NewFrame(160, 60), 0, 0, false)
+	}
+}
