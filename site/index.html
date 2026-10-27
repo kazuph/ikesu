@@ -5,7 +5,13 @@
 <meta name="description" content="ikesu — エージェントを池で飼う。A quiet home for your coding agents.">
 <title>ikesu — エージェントを池で飼う</title>
 <style>
-:root{color-scheme:light;--paper:#f4f0e6;--ink:#252f2b;--red:#b83729;--dim:#58685c}*{box-sizing:border-box}body{position:relative;margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y}main{position:relative;min-height:100dvh;display:flex;flex-direction:column;pointer-events:none;background:linear-gradient(90deg,rgba(244,240,230,.94),rgba(244,240,230,.72) 35%,transparent 72%)}header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px 5%}.wordmark{font:32px Georgia,serif;text-decoration:none;color:var(--ink)}.wordmark span{color:var(--red)}nav{display:flex;align-items:center;gap:12px;pointer-events:auto;background:var(--paper);padding:2px 8px}button{font:inherit;color:var(--dim);border:0;background:transparent;padding:10px 12px;cursor:pointer}button[aria-pressed=true]{color:var(--red);border-bottom:1px solid var(--red)}button:focus-visible,a:focus-visible{outline:2px solid var(--red);outline-offset:5px}.intro{margin:auto 5%;max-width:650px;padding:48px 0 80px}.eyebrow{color:var(--red);font-size:12px;letter-spacing:.16em;margin:0 0 28px}.intro h1{font:72px/1.3 "Hiragino Mincho ProN","Yu Mincho",Georgia,serif;margin:0 0 30px;font-weight:400}.lead{font-size:16px;line-height:2;max-width:410px;margin:0 0 30px}.link{pointer-events:auto;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--red);padding:12px 0;display:inline-block}.link span{color:var(--red);margin-left:16px}footer{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;padding:24px 5% calc(24px + env(safe-area-inset-bottom));font-size:12px;color:var(--dim)}.hint{max-width:240px;line-height:1.8;color:var(--paper);text-shadow:0 1px 3px #102921}a{pointer-events:auto}html[lang=en] .intro h1{font-size:76px;line-height:1.08;max-width:580px}[hidden]{display:none!important}@media(max-width:640px){header{padding:18px 6%;gap:12px}.wordmark{font-size:27px}.intro{margin:auto 6%;padding:28px 0 110px;max-width:88%}.intro h1,.intro .eyebrow,.intro .lead,.intro .link,header,footer{background:var(--paper)}.hint{color:var(--ink);text-shadow:none}.intro h1,html[lang=en] .intro h1{font-size:44px}.eyebrow{margin-bottom:20px;font-size:10px}.lead{font-size:14px;max-width:300px}footer{padding:20px 6%;font-size:10px;gap:20px}.hint{max-width:160px}main{background:linear-gradient(110deg,rgba(244,240,230,.96),rgba(244,240,230,.70) 55%,transparent)}}
+:root{color-scheme:light;--paper:#f4f0e6;--ink:#07100a;--red:#8d291f;--dim:#354437}*{box-sizing:border-box}body{position:relative;overflow-x:clip;margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y}main{position:relative;overflow:clip;min-height:100dvh;display:flex;flex-direction:column;pointer-events:none;background:linear-gradient(90deg,rgba(244,240,230,.94),rgba(244,240,230,.72) 35%,transparent 72%)}header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px 5%}.wordmark{font:32px Georgia,serif;text-decoration:none;color:var(--ink)}.wordmark span{color:var(--red)}nav{display:flex;align-items:center;gap:12px;pointer-events:auto;background:var(--paper);padding:2px 8px}button{font:inherit;color:var(--dim);border:0;background:transparent;padding:10px 12px;cursor:pointer}button[aria-pressed=true]{color:var(--red);border-bottom:1px solid var(--red)}button:focus-visible,a:focus-visible{outline:2px solid var(--red);outline-offset:5px}.intro{margin:auto 5%;max-width:650px;padding:48px 0 80px}.eyebrow{color:var(--red);font-size:12px;letter-spacing:.16em;margin:0 0 28px}.intro h1{font:72px/1.3 "Hiragino Mincho ProN","Yu Mincho",Georgia,serif;margin:0 0 30px;font-weight:400}.lead{font-size:16px;line-height:2;max-width:410px;margin:0 0 30px}.link{pointer-events:auto;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--red);padding:12px 0;display:inline-block}.link span{color:var(--red);margin-left:16px}footer{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;padding:24px 5% calc(24px + env(safe-area-inset-bottom));font-size:12px;color:var(--dim)}.hint{max-width:240px;line-height:1.8;color:var(--paper);text-shadow:0 1px 3px #102921}a{pointer-events:auto}html[lang=en] .intro h1{font-size:76px;line-height:1.08;max-width:580px}[hidden]{display:none!important}@media(max-width:640px){header{padding:18px 6%;gap:12px}.wordmark{font-size:27px}.intro{margin:auto 6%;padding:28px 0 110px;max-width:88%}.hint{color:var(--ink);text-shadow:none}.intro h1,html[lang=en] .intro h1{font-size:44px}.eyebrow{margin-bottom:20px;font-size:10px}.lead{font-size:14px;max-width:300px}footer{padding:20px 6%;font-size:10px;gap:20px}.hint{max-width:160px}main{background:linear-gradient(110deg,rgba(244,240,230,.96),rgba(244,240,230,.70) 55%,transparent)}}
+
+.intro>*,footer>span,.wordmark{position:relative;background:transparent}
+.intro,footer,.wordmark{isolation:isolate}
+.intro> *::before,footer>span::before,.wordmark::before{content:"";position:absolute;inset:-36px;background:rgba(244,240,230,.88);filter:blur(12px);z-index:-1;pointer-events:none}
+.intro h1,.intro .lead,.intro .eyebrow{width:fit-content;max-width:100%}
+.hint{color:var(--ink);text-shadow:none}
 </style>
 </head>
 <body>
@@ -37,7 +43,7 @@ void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));uv=p;gl_
 const fragment=`#version 300 es
 precision highp float;
 in vec2 uv;out vec4 color;
-uniform vec2 resolution;uniform float time;uniform sampler2D koi;
+uniform vec2 resolution;uniform vec2 spriteSize;uniform float time;uniform sampler2D koi;
 uniform vec4 swimmers[5];uniform vec3 rings[8];
 vec3 ro=vec3(0.,6.8,7.8);
 vec3 ray(vec2 frag){vec3 fw=normalize(vec3(0.,-.25,0.)-ro);vec3 rt=normalize(cross(fw,vec3(0.,1.,0.)));vec3 up=cross(rt,fw);vec2 p=(frag-.5)*vec2(resolution.x/resolution.y,1.);return normalize(fw*1.35+rt*p.x+up*p.y);}
@@ -68,7 +74,7 @@ void main(){
    float depth=swimmers[i].w;vec2 hit=p+refr.xz*(depth/max(.1,-refr.y));
    vec2 q=hit-swimmers[i].xy;float a=swimmers[i].z;float direction=cos(a)<0.?1.:0.;a-=direction*3.14159265;
    q=mat2(cos(a),-sin(a),sin(a),cos(a))*q;
-   vec2 st=q/vec2(1.6,.64)+.5;
+   vec2 st=q/spriteSize+.5;
    if(all(greaterThanEqual(st,vec2(0.)))&&all(lessThan(st,vec2(1.)))){
     int wag=int(mod((time*6.+float(i)*1.7),6.2831853)/6.2831853*8.);
     ivec2 cell=ivec2(floor(st*vec2(40.,16.)));
@@ -85,16 +91,46 @@ void main(){
 function makeShader(type,source){const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(shader));return shader;}
 if(gl){
  program=gl.createProgram();gl.attachShader(program,makeShader(gl.VERTEX_SHADER,vertex));gl.attachShader(program,makeShader(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
- for(const name of ['resolution','time','koi','swimmers[0]','rings[0]'])locations[name]=gl.getUniformLocation(program,name);
+ for(const name of ['resolution','spriteSize','time','koi','swimmers[0]','rings[0]'])locations[name]=gl.getUniformLocation(program,name);
  texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
 }else{ctx=canvas.getContext('2d');}
-function screenToPond(x,y){const aspect=width/height;const fw=[0,-7.05,-7.8];const norm=Math.hypot(...fw);fw.forEach((_,i)=>fw[i]/=norm);const up=[0,-fw[2],fw[1]];const sx=(x/width-.5)*aspect,sy=.5-y/height;const rd=[sx,fw[1]*1.35+up[1]*sy,fw[2]*1.35+up[2]*sy];const t=-6.8/rd[1];return{x:rd[0]*t,y:7.8+rd[2]*t};}
-function resize(){width=innerWidth;height=Math.max(innerHeight,Math.ceil(document.querySelector('main').getBoundingClientRect().height));canvas.style.height=height+'px';const dpr=devicePixelRatio||1;canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);if(gl)gl.viewport(0,0,canvas.width,canvas.height);else ctx.setTransform(dpr,0,0,dpr,0,0);paint();}
+function screenToPond(x,y){if(!gl)return{x:(x/width-.5)*10,y:(y/height-.5)*8};const aspect=width/height;const fw=[0,-7.05,-7.8];const norm=Math.hypot(...fw);fw.forEach((_,i)=>fw[i]/=norm);const up=[0,-fw[2],fw[1]];const sx=(x/width-.5)*aspect,sy=.5-y/height;const rd=[sx,fw[1]*1.35+up[1]*sy,fw[2]*1.35+up[2]*sy];const t=-6.8/rd[1];return{x:rd[0]*t,y:7.8+rd[2]*t};}
+let protectedText=[];
+function resize(){width=innerWidth;height=Math.max(innerHeight,Math.ceil(document.querySelector('main').getBoundingClientRect().height));canvas.style.height=height+'px';const dpr=devicePixelRatio||1;canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);if(gl)gl.viewport(0,0,canvas.width,canvas.height);else ctx.setTransform(dpr,0,0,dpr,0,0);
+ protectedText=[];for(const el of document.querySelectorAll('.wordmark,nav button,.eyebrow,h1,.lead,.link,footer>span')){const range=document.createRange();range.selectNodeContents(el);for(const r of range.getClientRects())protectedText.push({x:r.x,y:r.y+scrollY,w:r.width,h:r.height})}
+ settleFish();paint();}
+
+function koiDot(){return width<640?.02:.04}
+function pondToScreen(x,y,depth){
+ if(!gl)return{x:(x/10+.5)*width,y:(y/8+.5)*height};
+ const norm=Math.hypot(7.05,7.8),fy=-7.05/norm,fz=-7.8/norm,dy=-depth/1.333-6.8,dz=y-7.8;
+ const forward=dy*fy+dz*fz,up=dy*(-fz)+dz*fy;
+ return{x:width/2+x*1.35/forward*height,y:height/2-up*1.35/forward*height};
+}
+function fishScreenBounds(f,index){
+ if(!gl){const scale=width<640?2:4;const x=Math.round((f.x/10+.5)*width/scale)*scale,y=Math.round((f.y/8+.5)*height/scale)*scale;return{x:x-20*scale,y:y-8*scale,w:40*scale,h:16*scale}}
+ const depth=.45+index*.04;
+ // Enclose every sprite heading, source-dot rounding and the apparent-depth shift.
+ const radius=Math.hypot(40,16)*koiDot()/2+2*koiDot()+depth*(1-1/1.333);
+ const corners=[];for(const dx of [-radius,radius])for(const dy of [-radius,radius])corners.push(pondToScreen(f.x+dx,f.y+dy,depth));
+ const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y),x=Math.min(...xs),y=Math.min(...ys);return{x,y,w:Math.max(...xs)-x,h:Math.max(...ys)-y};
+}
+function insidePond(f){if(!gl)return true;const x=Math.abs(f.x)-4.6,y=Math.abs(f.y)-3.5;const edge=Math.hypot(Math.max(x,0),Math.max(y,0))+Math.min(Math.max(x,y),0)-.65;return edge+Math.hypot(40,16)*koiDot()/2+2*koiDot()<=0}
+function avoidsText(f,index){const box=fishScreenBounds(f,index);return protectedText.every(r=>box.x+box.w<=r.x||r.x+r.w<=box.x||box.y+box.h<=r.y||r.y+r.h<=box.y)}
+function separated(f,index){const scale=width<640?2:4;const distance=Math.max(Math.hypot(1.6,.64),gl?0:Math.hypot(40*scale*10/width,16*scale*8/height))+2*.04;return fish.every((other,i)=>i===index||Math.hypot(f.x-other.x,f.y-other.y)>=distance)}
+function settleFish(){
+ fish.forEach((f,index)=>{if(insidePond(f)&&avoidsText(f,index)&&separated(f,index))return;
+  const candidates=[],grid=fish.length*2;for(let row=0;row<grid;row++)for(let col=0;col<grid;col++){const p=screenToPond((col+.5)/grid*width,(row+.5)/grid*height);candidates.push({...f,...p})}
+  candidates.sort((a,b)=>Math.hypot(a.x-f.x,a.y-f.y)-Math.hypot(b.x-f.x,b.y-f.y));
+  const next=candidates.find(p=>insidePond(p)&&avoidsText(p,index)&&separated(p,index));if(next){f.x=next.x;f.y=next.y}
+ });
+}
+
 function paint(){
  if(!atlas.complete||!atlas.naturalWidth)return;
  if(gl){
-  gl.uniform2f(locations.resolution,canvas.width,canvas.height);gl.uniform1f(locations.time,clock);gl.uniform1i(locations.koi,0);
-  const states=[];fish.forEach((f,i)=>states.push(Math.round(f.x/.04)*.04,Math.round(f.y/.04)*.04,Math.round(f.angle/(Math.PI/4))*(Math.PI/4),.45+i*.04));gl.uniform4fv(locations['swimmers[0]'],states);
+  gl.uniform2f(locations.resolution,canvas.width,canvas.height);gl.uniform2f(locations.spriteSize,40*koiDot(),16*koiDot());gl.uniform1f(locations.time,clock);gl.uniform1i(locations.koi,0);
+  const states=[];fish.forEach((f,i)=>states.push(Math.round(f.x/koiDot())*koiDot(),Math.round(f.y/koiDot())*koiDot(),Math.round(f.angle/(Math.PI/4))*(Math.PI/4),.45+i*.04));gl.uniform4fv(locations['swimmers[0]'],states);
   const rings=[];for(let i=0;i<8;i++){const r=ripples[ripples.length-1-i];rings.push(r?r.x:0,r?r.y:0,r?r.start:-100)}gl.uniform3fv(locations['rings[0]'],rings);gl.drawArrays(gl.TRIANGLES,0,3);
  }else{
   ctx.fillStyle='#173f37';ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
@@ -104,14 +140,13 @@ function paint(){
 }
 function frame(stamp){raf=0;if(document.hidden||motion.matches)return;const dt=last?Math.min((stamp-last)/1000,.1):0;last=stamp;clock+=dt;
  // The collision radius encloses the complete 1.6 × .64 sprite at every angle.
- const separation=Math.hypot(1.6,.64)+2*.04;
- for(const f of fish){let tx,ty;if(target){tx=target.x+Math.cos(f.phase)*.6;ty=target.y+Math.sin(f.phase)*.6}else{tx=4*Math.sin(clock*.12+f.phase);ty=3.5*Math.sin(clock*.09+f.phase*2)}const dx=tx-f.x,dy=ty-f.y;const desired=Math.atan2(dy,dx);const turn=Math.atan2(Math.sin(desired-f.angle),Math.cos(desired-f.angle));f.angle=target?desired:f.angle+turn*Math.min(1,dt*1.5);const speed=Math.min(.6,Math.hypot(dx,dy)*.35)*(1-f.variety/(fish.length*2));for(const offset of [0,Math.PI/2,-Math.PI/2,Math.PI]){const angle=f.angle+offset,x=f.x+Math.cos(angle)*speed*dt,y=f.y+Math.sin(angle)*speed*dt;if(fish.every(other=>other===f||Math.hypot(x-other.x,y-other.y)>=separation)){f.x=x;f.y=y;f.angle=angle;break;}}}
+ for(const [index,f] of fish.entries()){let tx,ty;if(target){tx=target.x+Math.cos(f.phase)*.6;ty=target.y+Math.sin(f.phase)*.6}else{tx=4*Math.sin(clock*.12+f.phase);ty=3.5*Math.sin(clock*.09+f.phase*2)}const dx=tx-f.x,dy=ty-f.y;const desired=Math.atan2(dy,dx);const turn=Math.atan2(Math.sin(desired-f.angle),Math.cos(desired-f.angle));f.angle=target?desired:f.angle+turn*Math.min(1,dt*1.5);const speed=Math.min(.6,Math.hypot(dx,dy)*.35)*(1-f.variety/(fish.length*2));for(const offset of [0,Math.PI/2,-Math.PI/2,Math.PI]){const angle=f.angle+offset,x=f.x+Math.cos(angle)*speed*dt,y=f.y+Math.sin(angle)*speed*dt;if(insidePond({...f,x,y})&&separated({...f,x,y},index)&&avoidsText({...f,x,y},index)){f.x=x;f.y=y;f.angle=angle;break;}}}
 
  while(ripples.length&&clock-ripples[0].start>3)ripples.shift();paint();raf=requestAnimationFrame(frame);}
 function syncMotion(){cancelAnimationFrame(raf);raf=0;last=0;paint();if(!document.hidden&&!motion.matches)raf=requestAnimationFrame(frame);}
 canvas.addEventListener('pointerdown',event=>{target=screenToPond(event.clientX,event.clientY+scrollY);target.x=Math.max(-4,Math.min(4,target.x));target.y=Math.max(-3,Math.min(3,target.y));ripples.push({...target,start:clock});paint();});
 new ResizeObserver(resize).observe(document.querySelector('main'));addEventListener('resize',resize);document.addEventListener('visibilitychange',syncMotion);motion.addEventListener('change',syncMotion);atlas.addEventListener('load',()=>{if(gl){gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,atlas);}resize();syncMotion();});
-document.querySelectorAll('[data-lang]').forEach(button=>button.addEventListener('click',()=>{const lang=button.dataset.lang;document.documentElement.lang=lang;document.querySelectorAll('[data-ja]').forEach(element=>element.innerHTML=element.dataset[lang]);document.querySelectorAll('[data-lang]').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));canvas.setAttribute('aria-label',lang==='ja'?'触れると波紋が広がる3Dの池とピクセルアートの鯉':'A 3D pond with pixel-art koi and touch ripples');document.title=lang==='ja'?'ikesu — エージェントを池で飼う':'ikesu — A quiet home for your agents';}));
+document.querySelectorAll('[data-lang]').forEach(button=>button.addEventListener('click',()=>{const lang=button.dataset.lang;document.documentElement.lang=lang;document.querySelectorAll('[data-ja]').forEach(element=>element.innerHTML=element.dataset[lang]);document.querySelectorAll('[data-lang]').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));canvas.setAttribute('aria-label',lang==='ja'?'触れると波紋が広がる3Dの池とピクセルアートの鯉':'A 3D pond with pixel-art koi and touch ripples');document.title=lang==='ja'?'ikesu — エージェントを池で飼う':'ikesu — A quiet home for your agents';resize();}));
 resize();
 </script>
 </body></html>
