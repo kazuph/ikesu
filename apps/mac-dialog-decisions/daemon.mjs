@@ -13,11 +13,13 @@ export class MacDialogDecisionsDaemon {
     runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
     getDecision, // (machine, id) => authoritative saved decision
     spawnDialog, // (specPath, spec) => {lines: AsyncIterable<string>, kill()}
+    rich, // local/SSH rich content and attachment storage
     specFilePath, // (key) => path to write the spec JSON
     onFatal, // fatal dialog startup failures terminate the owning run
     log: logFn = log,
   }) {
     this.config = config;
+    this.rich = rich;
     this.spawnWatch = spawnWatch;
     this.runAnswer = runAnswer;
     this.getDecision = getDecision;
@@ -192,6 +194,7 @@ export class MacDialogDecisionsDaemon {
   onResolved(mid, decision) {
     const key = decisionKey(mid, decisionIdOf(decision));
     this.resolvedKeys.add(key);
+    if (this.rich) void this.rich.resolve(mid, decisionIdOf(decision), decision.status).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
     const entry = this.entries.get(key);
     if (entry) {
       entry.resolved = true;
@@ -239,11 +242,17 @@ export class MacDialogDecisionsDaemon {
     }
   }
 
-  _present(entry) {
+  async _present(entry) {
+    entry.showing = true;
     const spec = buildDialogSpec(entry.decision, entry.machine, this.children.size, {
       laterMs: this.config.laterMs,
     });
     if (entry.draft) spec.draft = entry.draft;
+    if (this.rich && spec.allow_text) {
+      try { spec.draft_directory = await this.rich.store.draftDirectory(entry.machineId, entry.decision.decision_id); }
+      catch (error) { entry.showing = false; this.log(`添付の準備に失敗: ${error.message}`); return; }
+      if (!this.isActive(entry)) { entry.showing = false; return; }
+    }
     let specPath = "";
     try {
       specPath = this.specFilePath(entry.key);
@@ -264,6 +273,8 @@ export class MacDialogDecisionsDaemon {
     child.specPath = specPath;
     child.handled = false;
     this.children.set(entry.key, child);
+    child.richAbort = new AbortController();
+    if (this.rich) void this.rich.load(spec, entry.machineId, child.richAbort.signal, message => { if (!child.richAbort.signal.aborted) child.respond?.(message); }).catch(error => this.log(`画像の読み込みに失敗: ${error.message}`));
     this._dialogDone = Promise.allSettled([this._dialogDone, this._consumeChild(child)]);
     this.refreshWindowCounts();
     this.notify();
@@ -292,6 +303,7 @@ export class MacDialogDecisionsDaemon {
     // exited
     const entry = child.entry;
     const outcome = await child.exited;
+    child.richAbort?.abort();
     removeDialogFiles(child.specPath);
     entry.showing = false;
     if (this.children.get(entry.key) === child) this.children.delete(entry.key);
@@ -318,8 +330,9 @@ export class MacDialogDecisionsDaemon {
         ? message.option_ids.filter((id) => typeof id === "string" && id)
         : [];
       const text = typeof message.text === "string" ? message.text.trim() : "";
-      if (!entry.resolved && (ids.length > 0 || text)) {
-        await this.submitAnswer(entry, { optionIds: ids, text });
+      const attachments = entry.decision.allow_text && Array.isArray(message.attachments) ? message.attachments : [];
+      if (!entry.resolved && (ids.length > 0 || text || attachments.length)) {
+        await this.submitAnswer(entry, { optionIds: ids, text, attachments });
       }
       return;
     }
@@ -355,6 +368,7 @@ export class MacDialogDecisionsDaemon {
   _closeDialog(entry) {
     const children = entry ? [this.children.get(entry.key)].filter(Boolean) : [...this.children.values()];
     for (const child of children) {
+    child.richAbort?.abort();
     child.closedByDaemon = true;
     this.log(`ダイアログを閉じます: ${child.entry.decision.decision_id}`);
     // The panel watches its spec file and exits as soon as it disappears;
@@ -386,17 +400,26 @@ export class MacDialogDecisionsDaemon {
       !this.machinesDown.has(entry.machineId) && this.entries.get(entry.key) === entry;
   }
 
-  async submitAnswer(entry, { optionIds = [], text = "" }) {
+  async submitAnswer(entry, { optionIds = [], text = "", attachments = entry.draft?.attachments || [] }) {
     if (!this.isActive(entry) || entry.answerPending) return false;
     entry.answerPending = true;
-    entry.draft = {option_ids: optionIds, text};
+    entry.draft = {option_ids: optionIds, text, ...(attachments.length ? {attachments} : {})};
     this.notify();
     const did = entry.decision.decision_id;
     const args = ["decision", "answer", did, ...optionIds, "--responder", RESPONDER, "--machine", entry.machineId];
-    if (text) args.push("--text", text);
+    let answerText = text;
     this.log(`回答を送信: ${did} option=${optionIds.join(",") || "-"}${text ? " +text" : ""}`);
     let result;
-    try { result = await this.runAnswer(args); }
+    try {
+      if (attachments.length) {
+        if (!this.rich || !entry.decision.allow_text) throw Error("この判断待ちは画像を添付できません");
+        const files = await this.rich.save(entry.machineId, did, attachments);
+        answerText = [text, ...files.map(file => `添付画像: ${file}`)].filter(Boolean).join("\n");
+      }
+      if (!this.isActive(entry)) { entry.answerPending = false; return false; }
+      if (answerText) args.push("--text", answerText);
+      result = await this.runAnswer(args);
+    }
     catch (error) { result = {code: 1, stderr: error.message}; }
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "unknown";
     if (result.code === 0 || /decision_already_resolved/.test(detail)) { this.settleAnswer(entry); return true; }
@@ -404,7 +427,7 @@ export class MacDialogDecisionsDaemon {
     entry.answerPending = false;
     this.log(`回答の送信に失敗 (${did}): ${detail}`);
     if (/https:\/\/login\.tailscale\.com\//.test(detail)) {
-      entry.retry ??= {optionIds, text, attempts: 0, deadline: Date.now() + ANSWER_RETRY_MS * ANSWER_RETRY_LIMIT};
+      entry.retry ??= {optionIds, text, attachments, attempts: 0, deadline: Date.now() + ANSWER_RETRY_MS * ANSWER_RETRY_LIMIT};
       entry.retry.attempts++;
       this._closeDialog(entry);
       this.scheduleAnswerRetry(entry);

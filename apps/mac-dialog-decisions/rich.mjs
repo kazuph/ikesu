@@ -32,9 +32,11 @@ export function publicAddress(address) {
   }
   if(version!==6) return false;
   // Only global unicast 2000::/3; exclude transition/documentation ranges.
-  const first=parseInt(address.split(':')[0],16);
+  const groups=address.split(':');
+  const first=parseInt(groups[0],16);
+  const second=parseInt(groups[1]||'0',16);
   if(!Number.isFinite(first)||first<0x2000||first>0x3fff) return false;
-  return !/^2001:(?:0:|db8:|2:|10:|20:)/i.test(address) && !/^2002:/i.test(address);
+  return !(first===0x2001&&(second<0x200||second===0xdb8)) && first!==0x2002 && first!==0x3fff;
 }
 function candidate(raw) {
   const url=new URL(raw);
@@ -43,7 +45,7 @@ function candidate(raw) {
   for(const name of url.searchParams.keys()) if(/^(token|access_token|api_?key|password|secret|authorization)$/i.test(name)) throw Error('資格情報付き URL は取得しません');
   return {url,host};
 }
-export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes}={}) {
+export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onConnect}={}) {
   const timeout=AbortSignal.timeout(RICH_LIMITS.timeoutMs);
   const combined=signal?AbortSignal.any([signal,timeout]):timeout;
   let current=raw;
@@ -56,6 +58,7 @@ export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes}={}
     const selected=addresses[0];
     const response=await new Promise((resolve,reject)=>{
       const request=(url.protocol==='https:'?https:http).get(url,{agent:false,signal:combined,headers:{Accept:'text/html,image/*', 'Accept-Encoding':'identity'},lookup:(_host,options,callback)=>{if(options.all) callback(null,[selected]); else callback(null,selected.address,selected.family);}},resolve);
+      request.on('socket',socket=>socket.once('connect',()=>onConnect?.({address:socket.remoteAddress,port:socket.remotePort,url:url.href})));
       request.on('error',reject);
     });
     if([301,302,303,307,308].includes(response.statusCode)) {

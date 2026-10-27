@@ -2,6 +2,13 @@ import AppKit
 import Foundation
 
 let args = CommandLine.arguments
+if args.count == 3 && args[1] == "--image-info" {
+  do {
+    let bitmap = try richBitmap(Data(contentsOf: URL(fileURLWithPath: args[2])), attachment: true)
+    writeOutput(["width": bitmap.width, "height": bitmap.height, "extension": bitmap.ext])
+    exit(0)
+  } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)); exit(1) }
+}
 if args.count == 3 && args[1] == "--daemon-lock" {
   let fd = open(args[2], O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
   guard fd >= 0 else { exit(1) }
