@@ -280,7 +280,17 @@ func (a *App) anyWorking() bool {
 
 // exec applies a command and performs its effects.
 func (a *App) exec(cmd model.Command) {
-	if c, ok := cmd.(model.CmdCloseWorkspace); ok && c.Index == 0 && len(a.st.Workspaces) == 1 {
+	closingLastWorkspace := false
+	if len(a.st.Workspaces) == 1 {
+		switch c := cmd.(type) {
+		case model.CmdCloseWorkspace:
+			closingLastWorkspace = c.Index == 0
+		case model.CmdPaneExited:
+			ws := a.st.Workspaces[0]
+			closingLastWorkspace = len(ws.Tabs) == 1 && ws.Tabs[0].Layout.PaneCount() == 1 && ws.Tabs[0].Layout.HasPane(c.Pane)
+		}
+	}
+	if closingLastWorkspace {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			a.lastSpawnError = err
