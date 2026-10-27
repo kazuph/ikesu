@@ -17,7 +17,7 @@ for mode in ('direct','nested'):
  def instance(binary,name):
   directory=state/name;directory.mkdir()
   cfg=directory/'config.toml'
-  cfg.write_text('onboarding=false\n[session]\nresume_agents_on_restore=false\n[experimental]\nallow_nested=true\n')
+  cfg.write_text('onboarding=false\n[session]\nresume_agents_on_restore=false\n[experimental]\nallow_nested=true\nkitty_graphics=true\n')
   (directory/'.zshrc').write_text("PS1='koi-"+name+"-ready> '\n")
   env={**base,'IKESU_CONFIG':str(cfg),'IKESU_STATE_DIR':str(directory),'ZDOTDIR':str(directory),'SHELL':'/bin/zsh','TERM_PROGRAM':'ghostty'}
   session=f'koi-wire-{os.getpid()}-{mode}-{name}'
@@ -41,7 +41,8 @@ for mode in ('direct','nested'):
   # ptyrun consumes its steps stream continuously; FIFO lets geometry choose the click.
   fifo=state/'commands';os.mkfifo(fifo)
   log=[]
-  client=subprocess.Popen([a.ptyrun,'-cols','220','-rows','70','-xpixel','1760','-ypixel','1120','-timeline',str(out/f'{mode}.jsonl'),'-raw-output',str(out/f'{mode}.ansi'),'-steps',str(fifo),'--',outer[0],'--session',outer[1]],env=outer[2],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+  clientenv={**outer[2], 'IKESU_CPUPROFILE':str(out/f'{mode}-outer.cpu'),'IKESU_CPUPROFILE_SECS':'10'} if mode=='nested' else outer[2]
+  client=subprocess.Popen([a.ptyrun,'-cols','220','-rows','70','-xpixel','1760','-ypixel','1120','-timeline',str(out/f'{mode}.jsonl'),'-raw-output',str(out/f'{mode}.ansi'),'-steps',str(fifo),'--',outer[0],'--session',outer[1]],env=clientenv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
   commands=open(fifo,'w',buffering=1);commands.write(steps.read_text())
   rect={'x':0,'y':0,'width':220,'height':70}
   for line in client.stdout:
