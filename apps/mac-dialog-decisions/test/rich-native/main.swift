@@ -56,5 +56,18 @@ for width in [720.0, 520.0] {
 }
 controller.panel.setContentSize(NSSize(width:720,height:controller.panel.contentLayoutRect.height));view.layoutSubtreeIfNeeded()
 let capture=Process();capture.executableURL=URL(fileURLWithPath:"/usr/sbin/screencapture");capture.arguments=["-x","-l",String(controller.panel.windowNumber),root+"/rich-native.png"];try capture.run();capture.waitUntilExit();precondition(capture.terminationStatus==0)
+let card=controller.cards[0]
+let description=card.subviews.compactMap {$0 as? NSStackView}.flatMap {$0.arrangedSubviews}.compactMap {$0 as? NSTextField}.first {$0.stringValue.contains("https://example.com/b")}!
+description.selectText(nil)
+let editor=description.currentEditor() as! NSTextView
+let manager=editor.layoutManager!,container=editor.textContainer!
+let linkRange=(editor.string as NSString).range(of:"https://example.com/b")
+let glyphs=manager.glyphRange(forCharacterRange:NSRange(location:linkRange.location+2,length:1),actualCharacterRange:nil)
+let linkRect=manager.boundingRect(forGlyphRange:glyphs,in:container)
+let linkPoint=editor.convert(NSPoint(x:linkRect.midX+editor.textContainerOrigin.x,y:linkRect.midY+editor.textContainerOrigin.y),to:nil)
+let linkUp=NSEvent.mouseEvent(with:.leftMouseUp,location:linkPoint,modifierFlags:[],timestamp:0,windowNumber:controller.panel.windowNumber,context:nil,eventNumber:0,clickCount:1,pressure:1)!
+card.mouseUp(with:linkUp)
+precondition(!card.checked,"a link mouse-up must not select its option card")
+precondition(!controller.answerPending,"link mouse-up must not send")
 print("NATIVE_RICH_PASS attachments=3 namedPasteboard=1 commandV=1 tiff=1 invalidRejected=1 buttonsInside=1 selected=0 sent=0")
 controller.close()
