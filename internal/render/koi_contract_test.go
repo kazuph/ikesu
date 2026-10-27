@@ -342,3 +342,30 @@ func TestKoiOctantsKeepSourcePalette(t *testing.T) {
 		}
 	}
 }
+
+func TestKoiMiniPlacementUsesEnlargedPixelGrid(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.Panes[1].Status.Key = "working"
+	in.State.Workspaces[0].Name = "鯉"
+	in.KoiKitty = true
+	in.KoiCellW, in.KoiCellH = 8, 16
+	miniFrames := 0
+	for tick := 0; tick < 100; tick++ {
+		in.KoiTime = float64(tick) / 20
+		out := Compose(in)
+		for _, g := range out.Frame.Graphics {
+			if g.Pane != -2 {
+				continue
+			}
+			miniFrames++
+			p := g.Placement
+			// The 24x8 source is doubled to 48x16 in this one-row terminal box.
+			if (p.X*8+p.OffsetX)%2 != 0 || (p.Y*16+p.OffsetY)%2 != 0 {
+				t.Fatalf("mini moved by less than one source dot: tick=%d x=%d y=%d", tick, p.X*8+p.OffsetX, p.Y*16+p.OffsetY)
+			}
+		}
+	}
+	if miniFrames != 100 {
+		t.Fatal("mini was not rendered for every sampled frame", miniFrames)
+	}
+}

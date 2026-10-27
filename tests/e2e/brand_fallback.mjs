@@ -11,9 +11,9 @@ try {
  const proof=await page.evaluate(()=>{
   const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data,colors=new Set();
   for(let i=0;i<pixels.length;i+=4)colors.add(pixels.slice(i,i+4).join(','));
-  return {webgl:gl!==null,smoothing:ctx.imageSmoothingEnabled,colorCount:colors.size,clock,canvas:[canvas.width,canvas.height]};
+  return {webgl:gl!==null,smoothing:ctx.imageSmoothingEnabled,colorCount:colors.size,hasKoiOutline:colors.has("23,43,42,255"),clock,canvas:[canvas.width,canvas.height]};
  });
- assert.equal(proof.webgl,false);assert.equal(proof.smoothing,false);assert.ok(proof.colorCount<=41,`interpolated colors: ${proof.colorCount}`);
+ assert.equal(proof.webgl,false);assert.equal(proof.smoothing,false);assert.equal(proof.hasKoiOutline,true);assert.ok(proof.colorCount<=41,`interpolated colors: ${proof.colorCount}`);
  await page.screenshot({path:join(resolve(process.argv[2]),'site-fallback-390.png'),fullPage:true});
  await writeFile(join(resolve(process.argv[2]),'fallback-results.json'),JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));
 }finally{await browser.close();}

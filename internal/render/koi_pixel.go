@@ -81,14 +81,18 @@ func KoiPixelSprite(variety, direction, wag, w, h int) *image.RGBA {
 	return img
 }
 
-// KoiSprite pads an integer nearest-neighbor enlargement to the terminal box.
-// No sampling creates intermediate colors, including the fins and state frames.
-func KoiSprite(variety, direction, wag, w, h int) *image.RGBA {
+func koiPixelGrid(w, h int) (int, int, int) {
 	bw, bh := koiPixelWidth, koiPixelHeight
 	if w >= h*3 {
 		bw, bh = 24, 8
 	}
-	scale := max(1, min(w/bw, h/bh))
+	return bw, bh, max(1, min(w/bw, h/bh))
+}
+
+// KoiSprite pads an integer nearest-neighbor enlargement to the terminal box.
+// No sampling creates intermediate colors, including the fins and state frames.
+func KoiSprite(variety, direction, wag, w, h int) *image.RGBA {
+	bw, bh, scale := koiPixelGrid(w, h)
 	source := KoiPixelSprite(variety, direction, wag, bw, bh)
 	out := image.NewRGBA(image.Rect(0, 0, w, h))
 	ox, oy := (w-bw*scale)/2, (h-bh*scale)/2
