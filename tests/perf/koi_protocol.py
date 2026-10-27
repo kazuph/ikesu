@@ -32,19 +32,24 @@ for condition in sorted({r['condition'] for r in results}):
  else:
   off_snap,on_snap=median('snapshot_messages',False),median('snapshot_messages',True)
   transport={'off_snapshots':off_snap,'on_snapshots':on_snap,'additional_snapshots':on_snap-off_snap,'off_raw_bytes':median('server_bytes',False),'on_raw_bytes':median('server_bytes',True),'raw_byte_difference':median('server_bytes',True)-median('server_bytes',False)}
-  # Compare identical spinner progress rather than different fractions of the boundary tick.
-  values={r['session']:attribution[r['session']+'-traffic.json']['spinner_values'][r['snapshot_range'][0]:r['snapshot_range'][1]] for r in group}
-  first=max(v[0] for v in values.values())+1;last=min(v[-1] for v in values.values())-1
-  assert last>=first,'no complete common spinner range'
-  matched={key:sum(first<=spin<=last for spin in v) for key,v in values.items()}
-  normalized=[]
-  for repeat in sorted({r['repeat'] for r in group}):
-   pair={r['enabled']:matched[r['session']] for r in group if r['repeat']==repeat}
-   assert pair[True]-pair[False]==0,'koi added updates within identical spinner progress'
-   normalized.append({'repeat':repeat,'off':pair[False],'on':pair[True],'additional_updates':0})
   assert all(attribution[r['session']+'-traffic.json']['client_animation_snapshots']==0 for r in group)
-  transport.update({'common_spinner_first':first,'common_spinner_last':last,'matched_updates':normalized,'additional_koi_updates':0,'client_animation_snapshots':0})
-  if group[0].get('state')=='idle':assert transport['off_raw_bytes']==transport['on_raw_bytes']==0
+  if group[0].get('state')=='idle':
+   assert all(r['server_bytes']==r['snapshot_messages']==0 for r in group),'stationary koi caused server traffic'
+   assert all(r['terminal_bytes']==0 for r in group),'stationary koi caused terminal output'
+   transport.update({'additional_koi_updates':0,'client_animation_snapshots':0})
+  else:
+   # Compare identical spinner progress rather than different fractions of the boundary tick.
+   values={r['session']:attribution[r['session']+'-traffic.json']['spinner_values'][r['snapshot_range'][0]:r['snapshot_range'][1]] for r in group}
+   first=max(v[0] for v in values.values())+1;last=min(v[-1] for v in values.values())-1
+   assert last>=first,'no complete common spinner range'
+   matched={key:sum(first<=spin<=last for spin in v) for key,v in values.items()}
+   normalized=[]
+   for repeat in sorted({r['repeat'] for r in group}):
+    pair={r['enabled']:matched[r['session']] for r in group if r['repeat']==repeat}
+    assert pair[True]-pair[False]==0,'koi added updates within identical spinner progress'
+    normalized.append({'repeat':repeat,'off':pair[False],'on':pair[True],'additional_updates':0})
+   assert all(attribution[r['session']+'-traffic.json']['client_animation_snapshots']==0 for r in group)
+   transport.update({'common_spinner_first':first,'common_spinner_last':last,'matched_updates':normalized,'additional_koi_updates':0,'client_animation_snapshots':0})
  summary.append({'condition':condition,'seconds':seconds,'off_cpu_seconds':off,'on_cpu_seconds':on,'additional_one_core_percent':delta,'off_terminal_bytes':median('terminal_bytes',False),'on_terminal_bytes':median('terminal_bytes',True),'server_transport':transport,'under_one_percent':delta<1})
 
 output={'wire':proof,'summary':summary}
