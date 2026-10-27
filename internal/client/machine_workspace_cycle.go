@@ -86,6 +86,9 @@ func (m *machineClient) workspaceCycleInput(event input.Event) bool {
 	if view.State == nil || view.Dialog != nil || view.Menu != nil || view.Help != nil || view.Navigator != nil || view.Settings != nil || view.Prefix || view.Copy != nil || view.ModeHint != "" {
 		return false
 	}
+	if m.pending != nil && len(m.pending.keys) > 0 {
+		return false
+	}
 	dir := workspaceCycleDirection(local.snapshot.SidebarConfig, event.Key)
 	if dir == 0 || workspaceCycleCommand(active.snapshot.SidebarConfig, event.Key) {
 		return false

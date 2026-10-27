@@ -11,6 +11,7 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func cycleFixture(t *testing.T) *machineClient {
@@ -349,4 +350,46 @@ func TestWorkspaceCycleReceiptOrderingWithRealServers(t *testing.T) {
 	h.until("cross machine after receipt", func() bool {
 		return m.pending == nil && m.active == "remote" && m.endpoints["remote"].snapshot.State.Active == 0
 	})
+}
+
+func TestWorkspaceCycleQueuedPrefixCannotBeOvertaken(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	cfg, err := config.Decode([]byte("onboarding=false\n[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range m.endpoints {
+		e.connection.enqueue(msg{Type: "view_config", Config: &cfg})
+	}
+	h.until("navigation bindings", func() bool {
+		for _, e := range m.endpoints {
+			if workspaceCycleDirection(e.snapshot.SidebarConfig, cycleKey('j').Key) != 1 {
+				return false
+			}
+		}
+		return true
+	})
+	e := m.endpoints["remote"]
+	m.pending = &pendingMachine{id: "remote", workspace: e.snapshot.State.Workspaces[1].ID, deadline: time.Now().Add(machineSwitchWait)}
+	m.requestPending()
+	prefix := input.Event{Kind: input.KindKey, Key: uv.Key{Code: 'b', Mod: uv.ModCtrl}, Raw: []byte("\x02")}
+	navigation := cycleKey('j')
+	navigation.Raw = []byte("\x1b[106;9u")
+	if err := m.input(prefix); err != nil {
+		t.Fatal(err)
+	}
+	p := m.pending
+	if err := m.input(navigation); err != nil {
+		t.Fatal(err)
+	}
+	if m.pending != p || len(p.keys) != 2 || string(p.keys[0].Raw) != "\x02" || string(p.keys[1].Raw) != "\x1b[106;9u" {
+		t.Fatal("navigation overtook queued prefix", m.pending)
+	}
+	h.until("destination and held input receipt", func() bool {
+		return m.active == "remote" && m.pending == nil && len(m.held) == 0 && e.processedInput == e.connection.lastSentInput()
+	})
+	if e.snapshot.State.Active != 1 || e.snapshot.Prefix {
+		t.Fatal("queued prefix/navigation order changed destination", e.snapshot.State.Active, e.snapshot.Prefix)
+	}
 }
