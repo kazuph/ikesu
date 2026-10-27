@@ -139,3 +139,6 @@ func SaveToast(delivery ToastDelivery) error {
 func SaveOnboarding(enabled bool) error {
 	return saveValues(nil, map[string]any{"onboarding": enabled})
 }
+
+// KoiEnabled follows the existing optional-boolean convention: unset means on.
+func (c Config) KoiEnabled() bool { return c.UI.Koi == nil || *c.UI.Koi }

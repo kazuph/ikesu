@@ -591,7 +591,7 @@ func (a *App) Run() {
 			a.onTick()
 		case <-spin.C:
 			a.spin++
-			if koiEnabled || a.anyWorking() {
+			if a.anyWorking() {
 				a.dirty = true
 			}
 		}
@@ -732,3 +732,6 @@ func Run(in *os.File, out *os.File, versions ...string) (int, error) {
 
 // onInput routes a framed input event. Unknown fragments are dropped —
 // never forwarded to a pane (fix #3).
+
+// FossilExpiry shares the existing status afterglow lifetime with client decoration.
+func FossilExpiry() time.Duration { return fossilExpiry }

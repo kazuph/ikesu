@@ -1,8 +1,7 @@
 package render
 
-// SPIKE (feat/koi-branding): resolution-independent koi seen from above.
-// The same drawing feeds every output method: half blocks (1x2 dots per
-// cell), octants (2x4 dots per cell, two colors) and real images.
+// Resolution-independent koi seen from above, shared by terminal graphics,
+// Unicode octants, README animation and the brand site sprite atlas.
 
 import (
 	"image"

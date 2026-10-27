@@ -66,6 +66,11 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	koiNext           time.Time
+	koiDone           map[string]time.Time
+	koiEpoch          time.Time
+	koiVisible        bool
+	koiKitty          bool
 	clientVersion     string
 	trace             *latency.Trace
 	drawSeq, probeSeq uint64
@@ -138,6 +143,8 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
 	defer m.trace.Close()
+	m.koiEpoch = time.Now()
+	m.koiKitty = graphicsFileTransport(in, out, false) != ""
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
@@ -250,6 +257,7 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	include(m.noticeUntil)
+	include(m.koiNext)
 	if m.paintQueued {
 		include(m.outputFence.Deadline())
 	}

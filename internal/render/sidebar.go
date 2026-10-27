@@ -208,15 +208,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	if !in.ServerUI {
 		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
 	}
-	if in.Koi {
-		for _, pos := range view.Rows {
-			if pos.Right || pos.Row.Kind != RowWorkspace {
-				continue
-			}
-			x0, w := blankRun(f, pos.Y, ix, ix+iw-1)
-			drawMiniKoi(f, x0, pos.Y, w, pos.Row.Ws, in.Spin)
-		}
-	}
+
 	drop := in.DropIndex
 	if drop == nil && in.Dragging {
 		drop = sectionDropIndex(in)

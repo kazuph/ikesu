@@ -83,22 +83,7 @@ func drawRightSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarRow(f, s, in, pos.Row, a.X+1, pos.Y, width, bar)
 	}
 	drawRightSidebarHeader(f, s, in, 0)
-	if in.Koi && !in.JobsPanel {
-		agents, last := 0, a.Y+1
-		for _, pos := range view.Rows {
-			if !pos.Right {
-				continue
-			}
-			if pos.Row.Kind == RowAgent && pos.Row.Line == 0 {
-				agents++
-			}
-			last = max(last, pos.Y+1)
-		}
-		top := last + 1
-		h := a.Y + a.H - top
-		w := a.W - 1
-		drawKoiPond(f, a.X+1, top, w, h, KoiCount(agents, w, h), in.Spin)
-	}
+
 	if in.ServerUI {
 		for y := a.Y; y < a.Y+a.H; y++ {
 			for x := a.X + 1; x < a.X+a.W; x++ {

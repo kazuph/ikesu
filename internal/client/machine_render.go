@@ -8,6 +8,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func (m *machineClient) paint() error {
@@ -28,6 +29,19 @@ func (m *machineClient) paint() error {
 		return err
 	}
 	in := *e.snapshot
+	in.Koi = true
+	if m.settings != nil && m.settings.config != nil {
+		in.Koi = m.settings.config.KoiEnabled()
+	}
+	in.KoiTime = time.Since(m.koiEpoch).Seconds()
+	in.KoiKitty = m.koiKitty
+	if m.size.Cols > 0 && m.size.Rows > 0 {
+		in.KoiCellW = m.size.Xpixel / m.size.Cols
+		in.KoiCellH = m.size.Ypixel / m.size.Rows
+	}
+	if in.KoiCellW <= 0 || in.KoiCellH <= 0 {
+		in.KoiKitty = false
+	}
 	in, nativePaint, err := m.nativePaintInput(in)
 	if err != nil {
 		return err
@@ -60,6 +74,29 @@ func (m *machineClient) paint() error {
 		}
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
+	now := time.Now()
+	if m.koiDone == nil {
+		m.koiDone = map[string]time.Time{}
+	}
+	in.KoiGlow = map[string]bool{}
+	present := map[string]bool{}
+	for _, agent := range render.KoiAgentsFor(in, &m.sidebar) {
+		if agent.State != "done" {
+			continue
+		}
+		present[agent.ID] = true
+		since, ok := m.koiDone[agent.ID]
+		if !ok {
+			since = now
+			m.koiDone[agent.ID] = since
+		}
+		in.KoiGlow[agent.ID] = now.Sub(since) < tui.FossilExpiry()
+	}
+	for id := range m.koiDone {
+		if !present[id] {
+			delete(m.koiDone, id)
+		}
+	}
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil {
 		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
@@ -67,6 +104,11 @@ func (m *machineClient) paint() error {
 	} else {
 		composed = m.composer.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
 	}
+	m.koiVisible = !m.blurred && composed.Frame.KoiActive
+	m.koiNext = time.Time{}
+	if m.koiVisible {
+		m.koiNext = time.Now().Add(50 * time.Millisecond)
+	} // existing TUI tick interval and agreed 20fps
 	m.drawTabFeedback(composed)
 	f := composed.Frame
 	if m.notice != "" {
