@@ -31,6 +31,7 @@ try {
    const xs=state.fish.map(f=>f.x);assert.ok(Math.max(...xs)-Math.min(...xs)>1.6,'fish collapsed into a vertical sample column');
    for(let i=0;i<state.fish.length;i++)for(let j=i+1;j<state.fish.length;j++)assert.ok(Math.hypot(state.fish[i].x-state.fish[j].x,state.fish[i].y-state.fish[j].y)>=Math.hypot(1.6,.64)+.04,'rotated sprite bounds overlap');
    if(viewport.width<640)assert.ok(state.textSurfaces.every(color=>color==='rgb(244, 240, 230)'),'mobile text must have an opaque surface');
+   if(scattered.length)assert.ok(state.fish.every((f,i)=>Math.hypot(f.x-scattered.at(-1).fish[i].x,f.y-scattered.at(-1).fish[i].y)>0),'every koi must keep swimming between captures');
    scattered.push(state);await page.screenshot({path:join(evidence,`site-${viewport.width}-ja-time-${sample}.png`),fullPage:true});
   }
   await writeFile(join(evidence,`scatter-${viewport.width}-${viewport.height}.json`),JSON.stringify(scattered,null,2));
