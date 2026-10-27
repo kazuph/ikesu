@@ -20,6 +20,7 @@ func TestLiveHandoffKeepsLoadedWorkspaceLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.st.Workspaces[0].Cwd = child
+	a.cwd = child
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
