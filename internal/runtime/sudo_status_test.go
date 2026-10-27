@@ -56,4 +56,23 @@ func TestForegroundSudoRestoresOnInterrupt(t *testing.T) {
 	}
 	wait(false)
 
+	if _, err := p.WriteToPTY([]byte("exec /usr/bin/sudo -n -u " + u.Username + " /bin/sleep 60\n")); err != nil {
+		t.Fatal(err)
+	}
+	wait(true)
+	if _, err := p.WriteToPTY([]byte{3}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !p.Snapshot().Dead {
+		if time.Now().After(deadline) {
+			t.Fatal("exec sudo pane did not exit")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// No new process scan is needed to remove the overlay from a dead pane.
+	if p.ForegroundSudo() {
+		t.Fatal("sudo overlay survived pane exit")
+	}
+
 }

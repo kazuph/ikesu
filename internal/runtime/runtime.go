@@ -727,7 +727,6 @@ func (p *Pane) PollProcess() {
 	}
 	p.watchProcessChanges(job.ProcessGroupID, pids...)
 	if len(job.Processes) == 0 {
-		p.setForegroundSudo(false)
 		return
 	}
 	dj := detect.Job{ProcessGroupID: job.ProcessGroupID}
@@ -917,7 +916,7 @@ func (p *Pane) markProcessChanged() {
 func (p *Pane) ForegroundSudo() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.foregroundSudo
+	return p.foregroundSudo && !p.dead
 }
 
 func (p *Pane) setForegroundSudo(active bool) {
