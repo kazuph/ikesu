@@ -1,8 +1,14 @@
 package render
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"github.com/kazuph/ikesu/internal/layout"
+	"html"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -227,5 +233,80 @@ func TestKoiRevision2CapacityAcrossPopulationAndArea(t *testing.T) {
 		if math.Abs(float64(upper-lower)) > float64(upper+lower)/4 {
 			t.Fatalf("top/bottom bias seed=%d %d/%d", seed, upper, lower)
 		}
+	}
+}
+
+func TestExportKoiRevision2Proof(t *testing.T) {
+	dest := os.Getenv("KOI_REVISION2_EXPORT")
+	if dest == "" {
+		return
+	}
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		t.Fatal(err)
+	}
+	in := koiFixture(t, 5)
+	in.State.Rows = 45
+	in.KoiKitty = true
+	in.KoiCellW = 8
+	in.KoiCellH = 16
+	for _, p := range in.Panes {
+		p.Status.Key = "working"
+	}
+	in.Panes[4].Status.Key = "idle"
+	in.Panes[5].Status.Key = "blocked"
+	var clock KoiAnimation
+	epoch := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
+	var frames []map[string]any
+	for tick := 0; tick <= 180; tick++ {
+		now := epoch.Add(time.Duration(tick) * KoiInterval)
+		clock.Apply(&in, nil, now, 15*time.Second)
+		out := Compose(in)
+		scene := out.Frame.KoiScene
+		if tick == 40 {
+			clock.Click(scene.Pond, scene.Pond.X+scene.Pond.W/2, scene.Pond.Y+scene.Pond.H/2, now)
+		}
+		if tick != 0 && tick != 41 && tick != 80 && tick != 180 {
+			continue
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "<!doctype html><meta charset=utf-8><title>Actual ikesu frame %d</title><style>body{margin:0}#frame{position:relative;width:1280px;height:720px}span{position:absolute;font:13px/16px monospace;white-space:pre}img{position:absolute;image-rendering:pixelated}</style><div id=frame>", tick)
+		for y := 0; y < out.Frame.H; y++ {
+			for x := 0; x < out.Frame.W; x++ {
+				c := out.Frame.Cell(x, y)
+				if c.Width == 0 {
+					continue
+				}
+				fmt.Fprintf(&b, `<span style="left:%dpx;top:%dpx;width:%dpx;height:16px;color:%s;background:%s">%s</span>`, x*8, y*16, c.Width*8, cssColor(c.Style.Fg, "#cdd6f4"), cssColor(c.Style.Bg, "#1e1e2e"), html.EscapeString(c.Content))
+			}
+		}
+		for _, g := range out.Frame.Graphics {
+			p := g.Placement
+			fmt.Fprintf(&b, `<img data-z="%d" style="left:%dpx;top:%dpx;width:%dpx;height:%dpx;z-index:%d" src="data:image/png;base64,%s">`, p.Z, p.X*8+p.OffsetX, p.Y*16+p.OffsetY, p.Cols*8, p.Rows*16, p.Z, base64.StdEncoding.EncodeToString(p.Image.Data))
+		}
+		b.WriteString("</div>")
+		name := fmt.Sprintf("frame-%d.html", tick)
+		if err := os.WriteFile(filepath.Join(dest, name), []byte(b.String()), 0644); err != nil {
+			t.Fatal(err)
+		}
+		frames = append(frames, map[string]any{"file": name, "time": in.KoiTime, "scene": scene})
+	}
+	data, _ := json.MarshalIndent(frames, "", "  ")
+	if err := os.WriteFile(filepath.Join(dest, "frames.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKoiRippleLifetimeMatchesBrandSite(t *testing.T) {
+	site, err := os.ReadFile("../../site/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`clock-ripples\[0\]\.start>([0-9.]+)`).FindSubmatch(site)
+	if len(match) != 2 {
+		t.Fatal("site ripple lifetime source not found")
+	}
+	seconds, err := strconv.ParseFloat(string(match[1]), 64)
+	if err != nil || seconds != KoiRippleLifetime {
+		t.Fatalf("terminal and site ripple lifetimes differ: %v %v", seconds, err)
 	}
 }
