@@ -35,6 +35,7 @@ func TestAuditKoiTraffic(t *testing.T) {
 		var onEncoder, offEncoder endpoint.SnapshotEncoder
 		count, overhead := 0, 0
 		var steps []int
+		var values []int
 		previousSpin := -1
 		for _, m := range messages {
 			if m.Type != "snapshot" {
@@ -55,6 +56,7 @@ func TestAuditKoiTraffic(t *testing.T) {
 				steps = append(steps, in.Spin-previousSpin)
 			}
 			previousSpin = in.Spin
+			values = append(values, in.Spin)
 			on, off := true, false
 			in.SidebarConfig.UI.Koi = &on
 			a, err := onEncoder.Encode(in)
@@ -70,7 +72,7 @@ func TestAuditKoiTraffic(t *testing.T) {
 			overhead += aLen - base64.StdEncoding.EncodedLen(len(b))
 			count++
 		}
-		output = append(output, map[string]any{"file": filepath.Base(file), "snapshots": count, "spinner_steps": steps, "client_animation_snapshots": 0, "same_input_config_on_minus_off_base64_bytes": overhead})
+		output = append(output, map[string]any{"file": filepath.Base(file), "snapshots": count, "spinner_steps": steps, "spinner_values": values, "client_animation_snapshots": 0, "same_input_config_on_minus_off_base64_bytes": overhead})
 	}
 	data, _ := json.MarshalIndent(output, "", "  ")
 	if err := os.WriteFile(filepath.Join(dir, "attribution.json"), data, 0644); err != nil {
