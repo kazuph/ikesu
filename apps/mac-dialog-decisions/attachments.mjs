@@ -34,9 +34,10 @@ export class AttachmentStore {
   for(let i=0;i<attachments.length;i++) {
    const item=attachments[i]; const source=path.resolve(item.path||'');
    if(path.dirname(source)!==draft||!imagePath(source)) throw Error('添付の下書きパスが不正です');
-   const input=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW);
+   const input=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
    try {
-    const stat=await input.stat(); if(!stat.isFile()||stat.size>RICH_LIMITS.attachmentBytes) throw Error('添付は1枚20MBまでです');
+    const stat=await input.stat(); if(!stat.isFile()) throw Error('通常ファイルだけを添付できます');
+    if(stat.size>RICH_LIMITS.attachmentBytes) throw Error('添付は1枚20MBまでです');
     const data=await readBounded(input,RICH_LIMITS.attachmentBytes); if(data.length>RICH_LIMITS.attachmentBytes) throw Error('添付は1枚20MBまでです');
     const filename=`${i+1}${path.extname(source).toLowerCase()}`;
     const destination=path.join(dir,filename);

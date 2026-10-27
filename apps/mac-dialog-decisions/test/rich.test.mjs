@@ -36,7 +36,7 @@ test('metadata is parsed as text, resolves og image and never evaluates markup',
 test('image discovery preserves prose and Markdown boundaries without adding punctuation or redacted candidates',()=>{
  const body=['結果は /tmp/after.png です','スクショ: `/tmp/code.png`','[画像](/tmp/日本語.png)','![画像](/tmp/日本語%20空白.png)','"/tmp/日本語 空白.png"','`https://example.com/image.png`','[画像](https://example.com/linked.jpg)','画像: /tmp/秘密***/secret.png'].join('\n');
  const found=discoverRichContent({body});
- assert.deepEqual(found.images,['/tmp/after.png','/tmp/code.png','/tmp/日本語.png','/tmp/日本語%20空白.png']);
+ assert.deepEqual(found.images,['/tmp/after.png','/tmp/code.png','/tmp/日本語.png','/tmp/日本語 空白.png']);
  assert.deepEqual(discoverRichContent({body:'"/tmp/日本語 空白.png"\n`https://example.com/image.png`\n[画像](https://example.com/linked.jpg)'}).images,['/tmp/日本語 空白.png','https://example.com/image.png','https://example.com/linked.jpg']);
  assert.equal(JSON.stringify(found).includes('***'),false);
 });

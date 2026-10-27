@@ -9,18 +9,24 @@ export const RICH_LIMITS = Object.freeze({cards:3, images:4, imageBytes:10*1024*
 const imageExtension=/\.(png|jpe?g|gif|webp)$/i;
 export function imagePath(value) { try { return imageExtension.test(new URL(value).pathname); } catch { return imageExtension.test(value); } }
 function visibleURLs(text) {
-  return (text.match(/https?:\/\/[^\s<>"'「」『』]+/gu)||[]).map(s=>s.replace(/[.,;!?)）\]、。]+$/gu,'')).filter(s=>!s.includes('***'));
+  return (text.match(/https?:\/\/[^\s<>"'`「」『』]+/gu)||[]).map(s=>s.replace(/[.,;!?)）\]、。]+$/gu,'')).filter(s=>!s.includes('***'));
 }
 export function discoverRichContent(spec) {
   const text=[spec.title||'',spec.body||'',...(spec.options||[]).map(o=>o.description||'')].join('\n');
   const links=[...new Set(visibleURLs(text))].slice(0,RICH_LIMITS.cards);
   const images=[];
   for(const line of (spec.body||'').split('\n')) {
-    // Quoted paths and a whole-line path permit Japanese names and spaces.
-    const paths=[...(line.matchAll(/["「]([^"」]+\.(?:png|jpe?g|gif|webp))["」]/gi))].map(m=>m[1]);
+    const paths=[];
+    // Delimited paths may contain spaces; bare paths stop at prose/Markdown boundaries.
+    for(const match of line.matchAll(/["'`「<](\/[^"'`」>\n]+\.(?:png|jpe?g|gif|webp))["'`」>]/gi)) paths.push(match[1]);
     const whole=line.match(/^(?:画像|スクショ|添付画像)[:：]\s*(\/.*\.(?:png|jpe?g|gif|webp))\s*$/i)||line.match(/^\s*(\/.*\.(?:png|jpe?g|gif|webp))\s*$/i);
     if(whole) paths.push(whole[1]);
-    for(const p of [...paths,...visibleURLs(line).filter(imagePath)]) if(!p.includes('***') && (p.startsWith('/')||/^https?:/.test(p)) && !images.includes(p)) images.push(p);
+    for(const match of line.matchAll(/(?:^|[\s(])((?:\/)[^\s<>"'`「」()[\]]+\.(?:png|jpe?g|gif|webp))(?=$|[\s)\]、。])/gi)) paths.push(match[1]);
+    for(const raw of [...paths,...visibleURLs(line).filter(imagePath)]) {
+      let source=raw;
+      if(source.startsWith('/')) {try {source=decodeURIComponent(source);}catch {continue;}}
+      if(!source.includes('***') && (source.startsWith('/')||/^https?:/.test(source)) && !images.includes(source)) images.push(source);
+    }
   }
   return {links,images:images.slice(0,RICH_LIMITS.images)};
 }

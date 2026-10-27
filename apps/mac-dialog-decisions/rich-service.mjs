@@ -29,9 +29,11 @@ def directory(parts):
  return d
 if r['action']=='read':
  if not os.path.isabs(r['path']): raise ValueError('absolute path required')
- fd=os.open(r['path'],os.O_RDONLY|os.O_NOFOLLOW)
+ fd=os.open(r['path'],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
  with os.fdopen(fd,'rb') as f:
-  if os.fstat(f.fileno()).st_size>r['limit']: raise ValueError('image exceeds 10MB')
+  info=os.fstat(f.fileno())
+  if not stat.S_ISREG(info.st_mode): raise ValueError('regular image file required')
+  if info.st_size>r['limit']: raise ValueError('image exceeds 10MB')
   data=f.read(r['limit']+1)
   if len(data)>r['limit']: raise ValueError('image exceeds 10MB')
   sys.stdout.buffer.write(data)
@@ -91,8 +93,13 @@ export class RichService {
   if(/^https?:/.test(source)) return (await fetchPublic(source,{signal,maxBytes:RICH_LIMITS.imageBytes})).data;
   if(!path.isAbsolute(source)) throw Error('画像の絶対パスが必要です');
   if(machine!=='local') return this.remote(machine,{action:'read',path:source,limit:RICH_LIMITS.imageBytes},signal,RICH_LIMITS.imageBytes);
-  const file=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW);
-  try {if((await file.stat()).size>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです'); const data=await readBounded(file,RICH_LIMITS.imageBytes);if(data.length>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです');return data;} finally {await file.close();}
+  signal?.throwIfAborted();
+  const file=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  try {
+   const stat=await file.stat();if(!stat.isFile()) throw Error('通常ファイルの画像だけを表示できます');
+   if(stat.size>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです');
+   signal?.throwIfAborted();const data=await readBounded(file,RICH_LIMITS.imageBytes);signal?.throwIfAborted();return data;
+  } finally {await file.close();}
  }
  async cache(data,extension,signal) {
   signal?.throwIfAborted();

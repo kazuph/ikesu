@@ -355,7 +355,7 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func answer(ids: [String]) {
-    guard !answerPending else { return }
+    guard !answerPending, !closed, attachmentLoading == 0 else { return }
     answerPending = true
     statusLabel.stringValue = "回答を送信中…"
     refreshSubmit()
@@ -817,7 +817,7 @@ extension DialogController {
       do {
         var bytes: Data
         if let data { bytes = data } else if let file {
-          let fd = open(file.path, O_RDONLY | O_NOFOLLOW)
+          let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
           guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
           let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
           var info = stat()
