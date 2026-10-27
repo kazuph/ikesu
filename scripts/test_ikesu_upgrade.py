@@ -48,24 +48,110 @@ class UpgradeTest(unittest.TestCase):
         self.prefix = self.root/'Cellar/ikesu/current'
         (self.prefix/'bin').mkdir(parents=True)
         shutil.copy2(NEW, self.prefix/'bin/ikesu')
+        self.tap_origin = self.root/'tap-origin'
+        self.tap = self.root/'tap'
+        self.tap_origin.mkdir()
+        git_env = dict(self.env, GIT_AUTHOR_NAME='Upgrade test', GIT_AUTHOR_EMAIL='test@localhost', GIT_COMMITTER_NAME='Upgrade test', GIT_COMMITTER_EMAIL='test@localhost')
+        self.git_env = git_env
+        subprocess.run(['git','init','-q','--initial-branch=main',str(self.tap_origin)],env=git_env,check=True)
+        (self.tap_origin/'stable-version').write_text(command(NEW,'--version',env=self.env).stdout.strip().split()[-1])
+        self.git('add','stable-version',cwd=self.tap_origin)
+        self.git('commit','-qm','initial tap',cwd=self.tap_origin)
+        subprocess.run(['git','clone','-q',str(self.tap_origin),str(self.tap)],env=git_env,check=True)
+        self.git('config','url.https://github.com/kazuph/homebrew-tap.insteadOf','https://github.com/kazuph/homebrew-tap',cwd=self.tap)
         self.brew = self.root/'brew'
         self.brew.write_text('''#!/usr/bin/env python3
-import json,os,sys,pathlib
+import json,os,sys,pathlib,shutil
 root=pathlib.Path(os.environ['HOME'])
-with (root/'brew-calls.jsonl').open('a') as f:f.write(json.dumps({'args':sys.argv[1:],'cleanup':os.environ.get('HOMEBREW_NO_INSTALL_CLEANUP')})+'\\n')
-if sys.argv[1:]==['list','--versions','ikesu']:
+with (root/'brew-calls.jsonl').open('a') as f:f.write(json.dumps({'args':sys.argv[1:],'cleanup':os.environ.get('HOMEBREW_NO_INSTALL_CLEANUP'),'auto_update':os.environ.get('HOMEBREW_NO_AUTO_UPDATE')})+'\\n')
+if sys.argv[1:]==['tap','kazuph/tap']:pass
+elif sys.argv[1:]==['--repository','kazuph/tap']:print(root/'tap')
+elif sys.argv[1:]==['list','--versions','ikesu']:
  if os.environ.get('TEST_BREW_INSTALLED','1')=='0':raise SystemExit(1)
  print('ikesu '+os.environ['TEST_BREW_VERSION'])
 elif sys.argv[1:]==['--prefix','ikesu']:print(root/'Cellar/ikesu/current')
-elif sys.argv[1:]==['info','--json=v2','ikesu']:print(json.dumps({'formulae':[{'versions':{'stable':os.environ['TEST_BREW_VERSION']}}]}))
-elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:raise SystemExit(2)
+elif sys.argv[1:] in [['info','--json=v2','ikesu'],['info','--json=v2','kazuph/tap/ikesu']]:
+ version=(root/'tap/stable-version').read_text() if os.environ.get('TEST_BREW_TRACK_TAP')=='1' else os.environ['TEST_BREW_VERSION']
+ print(json.dumps({'formulae':[{'versions':{'stable':version}}]}))
+elif sys.argv[1:] in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:
+ if os.environ.get('TEST_BREW_TRACK_TAP')=='1' and os.environ.get('TEST_BREW_STUCK')!='1':
+  source=os.environ['TEST_BREW_NEW'] if (root/'tap/stable-version').read_text()==os.environ['TEST_BREW_VERSION'] else os.environ['TEST_BREW_OLD']
+  shutil.copy2(source,root/'Cellar/ikesu/current/bin/ikesu')
+else:raise SystemExit(2)
 ''')
         self.brew.chmod(0o755)
         self.old_version = command(OLD, '--version', env=self.env).stdout.strip().split()[-1]
         self.new_version = command(NEW, '--version', env=self.env).stdout.strip().split()[-1]
-        self.env['TEST_BREW_VERSION'] = self.new_version
+        self.env.update(TEST_BREW_VERSION=self.new_version, TEST_BREW_OLD=str(OLD), TEST_BREW_NEW=str(NEW))
         self.servers = []
         self.addCleanup(self.cleanup)
+
+    def git(self, *args, cwd):
+        result = command('git','-C',cwd,*args,env=self.git_env)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        return result.stdout.strip()
+
+    def stale_tap(self):
+        (self.tap_origin/'stable-version').write_text(self.old_version)
+        self.git('commit','-qam','old formula',cwd=self.tap_origin)
+        self.git('pull','--ff-only',cwd=self.tap)
+        (self.tap_origin/'stable-version').write_text(self.new_version)
+        self.git('commit','-qam','published formula',cwd=self.tap_origin)
+        shutil.copy2(OLD,self.prefix/'bin/ikesu')
+        self.env['TEST_BREW_TRACK_TAP']='1'
+
+    def test_stale_tap_is_refreshed_before_upgrade(self):
+        self.start()
+        self.stale_tap()
+        self.git('config','--global','url.git@github.com:.insteadOf','https://github.com/',cwd=self.tap)
+        url='https://github.com/kazuph/homebrew-tap'
+        self.assertEqual(self.git('ls-remote','--get-url',url,cwd=self.tap),url)
+        config=(self.tap/'.git/config').read_bytes()
+        global_config=(self.root/'.gitconfig').read_bytes()
+        result=self.upgrade()
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual((self.tap/'stable-version').read_text(),self.new_version)
+        self.assertEqual(command(self.entry,'--version',env=self.env).stdout.strip(),'ikesu '+self.new_version)
+        self.assertEqual((self.tap/'.git/config').read_bytes(),config)
+        self.assertEqual((self.root/'.gitconfig').read_bytes(),global_config)
+        self.assertEqual(self.git('ls-remote','--get-url',url,cwd=self.tap),url)
+        self.assertIn('tap latest: '+self.new_version,result.stdout)
+        self.assertIn('installed: '+self.new_version,result.stdout)
+
+    def test_tap_fetch_failure_preserves_session_and_entry(self):
+        self.start()
+        self.git('config','remote.origin.url',str(self.root/'missing-remote'),cwd=self.tap)
+        result=self.upgrade()
+        self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('tap',result.stderr)
+        self.assertEqual(self.entry.resolve(),self.old)
+        self.assertEqual(json.loads(self.cli('server','ping').stdout)['result']['version'],self.old_version)
+        calls=[json.loads(l)['args'] for l in (self.root/'brew-calls.jsonl').read_text().splitlines()]
+        self.assertNotIn(['upgrade','ikesu'],calls)
+
+    def test_diverged_tap_is_not_merged(self):
+        self.start()
+        self.stale_tap()
+        (self.tap/'local-change').write_text('preserve this commit')
+        self.git('add','local-change',cwd=self.tap)
+        self.git('commit','-qm','local divergence',cwd=self.tap)
+        head=self.git('rev-parse','HEAD',cwd=self.tap)
+        result=self.upgrade()
+        self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(self.git('rev-parse','HEAD',cwd=self.tap),head)
+        self.assertEqual(self.entry.resolve(),self.old)
+        self.assertEqual(json.loads(self.cli('server','ping').stdout)['result']['version'],self.old_version)
+
+    def test_noop_upgrade_cannot_report_stale_binary_success(self):
+        self.start()
+        self.stale_tap()
+        self.env['TEST_BREW_STUCK']='1'
+        result=self.upgrade()
+        self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('tap latest: '+self.new_version,result.stdout)
+        self.assertIn('installed: '+self.old_version,result.stdout)
+        self.assertEqual(self.entry.resolve(),self.old)
+        self.assertEqual(json.loads(self.cli('server','ping').stdout)['result']['version'],self.old_version)
 
     def cli(self, *args, session='default'):
         return command(self.old, '--session', session, *args, env=self.env)
@@ -140,7 +226,8 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         until(child.exists)
         self.assertEqual(command(self.entry,'--version',env=self.env).stdout.strip(), 'ikesu '+self.new_version)
         calls=[json.loads(l) for l in (self.root/'brew-calls.jsonl').read_text().splitlines()]
-        self.assertTrue(all(c['cleanup']=='1' for c in calls))
+        self.assertTrue(all(c['cleanup']=='1' and c['auto_update']=='1' for c in calls))
+        self.assertFalse(any(c['args'] and c['args'][0]=='update' for c in calls))
 
     def test_failed_real_protocol_handoff_retains_old_entry_and_server(self):
         pane=self.start()[0]['pane_id']
