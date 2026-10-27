@@ -1,8 +1,10 @@
 package teststate
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +13,24 @@ import (
 // Run isolates defaults before any tests or their child processes execute.
 // Short roots also keep macOS Unix socket paths within the OS limit.
 func Run(run func() int) (code int) {
+	// Nested integration builds must reuse the tool caches resolved before
+	// HOME is isolated; otherwise every fixture rebuilds the whole program.
+	output, err := exec.Command("go", "env", "-json", "GOCACHE", "GOMODCACHE", "GOPATH").Output()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ikesu test Go environment:", err)
+		return 1
+	}
+	var goEnvironment map[string]string
+	if err := json.Unmarshal(output, &goEnvironment); err != nil {
+		fmt.Fprintln(os.Stderr, "ikesu test Go environment:", err)
+		return 1
+	}
+	for key, value := range goEnvironment {
+		if err := os.Setenv(key, value); err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu test Go environment:", err)
+			return 1
+		}
+	}
 	root, err := os.MkdirTemp("/tmp", "ikesu-test-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)

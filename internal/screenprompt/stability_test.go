@@ -60,7 +60,7 @@ func TestFreeInputAttachedSeparatorKeepsIdentity(t *testing.T) {
 func TestPermissionTitleIgnoresResponseRowsAndPreservesWrappedCommand(t *testing.T) {
 	lines := []string{"⏺ User declined to answer questions", "⏺ Writing proof file", "────────────────", "Bash command", "╌╌╌╌", ` │ python3 -c "Path('/private/tmp/ikesu-accept/delta-c-`, ` │ proof.txt').write_text('value')"`, "╌╌╌╌", "Do you want to proceed?", "❯ 1. Yes", " 2. No"}
 	p := Parse("claude", lines)
-	if p == nil || strings.Contains(p.Params.Title, "⏺") || !strings.Contains(p.Params.Title, `Path('/private/tmp/ikesu-accept/delta-c-proof.txt')`) {
+	if p == nil || strings.Contains(p.Params.Title, "⏺") || (p.Params.Body == nil || !strings.Contains(*p.Params.Body, `Path('/private/tmp/ikesu-accept/delta-c-proof.txt')`)) {
 		t.Fatal(p)
 	}
 	changed := append([]string{}, lines[1:]...)

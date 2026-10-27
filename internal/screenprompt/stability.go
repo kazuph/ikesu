@@ -95,7 +95,7 @@ func finalPrompt(p *Prompt) bool {
 }
 
 func (p *Prompt) PreviewSignature() string {
-	parts := []string{stableText(p.Params.Title)}
+	parts := []string{questionIdentity(p.Params)}
 	for _, o := range p.Params.Options {
 		parts = append(parts, o.ID, stableText(o.Label))
 	}
@@ -125,7 +125,11 @@ func mergeCommandRows(lines []string, columns int) []string {
 	}
 	for _, line := range lines {
 		trim := strings.TrimLeft(line, " ")
-		if strings.HasPrefix(trim, "│ ") {
+		if strings.TrimSpace(trim) == "│" {
+			// Empty question paragraphs retain only Claude's left border.
+			flush()
+			out = append(out, "")
+		} else if strings.HasPrefix(trim, "│ ") {
 			content := strings.TrimPrefix(trim, "│ ")
 			commandColumns = columns - cellwidth.String(line[:len(line)-len(content)])
 			command = append(command, content)
