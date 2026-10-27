@@ -126,6 +126,14 @@ func (c Config) ActionBindings(name string) Bindings {
 		return b
 	}
 	switch name {
+	case "next_tab":
+		if c.Keys.NextTab != nil {
+			return c.Keys.NextTab
+		}
+	case "previous_tab":
+		if c.Keys.PreviousTab != nil {
+			return c.Keys.PreviousTab
+		}
 	case "copy_mode":
 		if c.Keys.CopyMode != nil {
 			return c.Keys.CopyMode
@@ -159,5 +167,9 @@ func (c Config) ActionBindings(name string) Bindings {
 			return Bindings{c.Keys.OpenNotificationTarget}
 		}
 	}
-	return append(Bindings(nil), ActionDefaults[name]...)
+	defaults, ok := ActionDefaults[name]
+	if !ok {
+		return Bindings{""}
+	}
+	return append(Bindings(nil), defaults...)
 }
