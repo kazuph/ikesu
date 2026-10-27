@@ -31,6 +31,10 @@ func noHTTPDefaultConfig(i Input, cmd string) bool {
 		if !filepath.IsAbs(base) {
 			return false
 		}
+		// Join would erase .. before the OS can resolve a preceding symlink.
+		if has(strings.Split(base, string(os.PathSeparator)), "..") {
+			return false
+		}
 		_, err := os.Lstat(filepath.Join(base, relative))
 		return os.IsNotExist(err)
 	}
