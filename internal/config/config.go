@@ -137,6 +137,8 @@ type Config struct {
 		} `toml:"indexed"`
 		Command                []PluginKeyBinding `toml:"command"`
 		OpenNotificationTarget string             `toml:"open_notification_target"`
+		NextTab                Bindings           `toml:"next_tab"`
+		PreviousTab            Bindings           `toml:"previous_tab"`
 		CopyMode               Bindings           `toml:"copy_mode"`
 		SplitVertical          Bindings           `toml:"split_vertical"`
 		SplitHorizontal        Bindings           `toml:"split_horizontal"`

@@ -110,7 +110,7 @@ func Decode(data []byte) (Config, error) {
 }
 func legacyBindingField(s string) bool {
 	switch s {
-	case "copy_mode", "split_vertical", "split_horizontal", "rename_pane", "edit_scrollback", "focus_history_back", "focus_history_forward", "open_notification_target":
+	case "next_tab", "previous_tab", "copy_mode", "split_vertical", "split_horizontal", "rename_pane", "edit_scrollback", "focus_history_back", "focus_history_forward", "open_notification_target":
 		return true
 	}
 	return false

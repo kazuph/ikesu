@@ -43,6 +43,9 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 		if strings.HasPrefix(name, "navigate_") || (name == "remote_image_paste" || name == "fullscreen") {
 			continue
 		}
+		if a.cm != nil && !prefix && ((name == "next_tab" && a.sidebarConfig.Keys.NextTab == nil) || (name == "previous_tab" && a.sidebarConfig.Keys.PreviousTab == nil)) {
+			continue
+		}
 		for _, spec := range a.sidebarConfig.ActionBindings(name) {
 			if spec == "" {
 				continue

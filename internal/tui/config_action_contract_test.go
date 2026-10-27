@@ -51,7 +51,10 @@ func TestConfigEveryActionRemapThroughRealInput(t *testing.T) {
 			if check() {
 				t.Fatal("precondition already satisfies action")
 			}
-			if old := config.ActionDefaults[name]; old != "" {
+			for _, old := range config.ActionDefaults[name] {
+				if old == "" {
+					continue
+				}
 				feedConfigChord(t, a, old)
 				if check() {
 					t.Fatal("old binding still performs action", old)
@@ -92,6 +95,13 @@ func feedConfigChord(t *testing.T, a *App, spec string) {
 		raw = "\t"
 		if k.Mod.Contains(uv.ModShift) {
 			raw = "\x1b[Z"
+		}
+		if k.Mod.Contains(uv.ModCtrl) {
+			mods := 5
+			if k.Mod.Contains(uv.ModShift) {
+				mods++
+			}
+			raw = fmt.Sprintf("\x1b[9;%du", mods)
 		}
 	default:
 		mods := 1
