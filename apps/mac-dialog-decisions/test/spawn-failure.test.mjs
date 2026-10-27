@@ -21,7 +21,9 @@ for(const code of ['ENOENT','EACCES']) {
   const spec=root+'/spec.json',cfg={stateDir:root,helperCmd:[binary]};
   const d=new MacDialogDecisionsDaemon({config:cfg,spawnDialog:p=>spawnHelperDialog(cfg,p),specFilePath:()=>spec,log:()=>{}});
   fs.writeFileSync(spec+'.result.jsonl','previous result');
-  d._present({key:'local:test',machineId:'local',machine:{id:'local'},decision:{decision_id:'test',title:'failure',options:[]}});
+  const entry={key:'local:test',machineId:'local',machine:{id:'local'},decision:{decision_id:'test',title:'failure',options:[]}};
+  d.entries.set(entry.key,entry);
+  await d._present(entry);
   try{await bounded(d._dialogDone);assert.equal(d.stopped,true);await bounded(d.stop());}finally{await lock.close();}
   assert.equal(d.children.size,0);assert.equal(fs.existsSync(spec),false);assert.equal(fs.existsSync(spec+'.result.jsonl'),false);
   const next=await acquireDaemonLock(native,root);assert.ok(next);await next.close();

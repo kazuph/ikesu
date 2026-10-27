@@ -143,6 +143,7 @@ func (m *machineClient) paint() error {
 		e.requestAck = false
 	}
 	m.regions = composed
+	m.reportClientView()
 	if nativePaint && !graphicsRetained {
 		if err := m.nativePainted(); err != nil {
 			return err

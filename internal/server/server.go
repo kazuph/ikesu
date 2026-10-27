@@ -41,6 +41,7 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	ClientView            *api.ClientView                      `json:"client_view,omitempty"`
 	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
 	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
 	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
@@ -168,6 +169,7 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	clientView     *api.ClientView // guarded by Server.mu
 	terminal       *endpoint.Terminal
 	directGraphics bool
 	directDisabled bool
@@ -751,6 +753,8 @@ func (s *Server) attach(conn net.Conn) {
 				continue
 			}
 			s.app.Do(func() { c.viewer.UpdatePresentation(s.app, m.Config, m.Preferences) })
+		case "client_view":
+			s.app.Do(func() { s.updateClientView(c, m.ClientView) })
 		case "visibility":
 			if m.Visible == nil {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_visibility_invalid: missing visible state"})

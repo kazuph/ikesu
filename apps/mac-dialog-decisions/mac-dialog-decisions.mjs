@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 import { MacDialogDecisionsDaemon } from "./daemon.mjs";
 import { RichService } from "./rich-service.mjs";
+import { ClientViews } from "./client-views.mjs";
 import { NativeDialogHost } from "./native-host.mjs";
 import { releaseVersion, readOwner, ownerAlive, ownerProven, requestSwitch, cancelSwitch, manageDaemon } from "./lifecycle.mjs";
 import { buildDialogSpec, decisionKey, fmtDeadline, locationLabel, durationLabel } from "./spec.mjs";
@@ -541,6 +542,7 @@ async function main() {
   let lifecycle;
   const daemon = new MacDialogDecisionsDaemon({
     config,
+    clientViews: new ClientViews(),
     rich: new RichService({...config, nativeDialog}),
     onFatal: () => shutdown(1),
     spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),

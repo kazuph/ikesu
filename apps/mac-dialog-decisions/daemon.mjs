@@ -13,12 +13,14 @@ export class MacDialogDecisionsDaemon {
     runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
     getDecision, // (machine, id) => authoritative saved decision
     spawnDialog, // (specPath, spec) => {lines: AsyncIterable<string>, kill()}
+    clientViews, // local terminal visibility query and change stream
     rich, // local/SSH rich content and attachment storage
     specFilePath, // (key) => path to write the spec JSON
     onFatal, // fatal dialog startup failures terminate the owning run
     log: logFn = log,
   }) {
     this.config = config;
+    this.clientViews = clientViews;
     this.rich = rich;
     this.spawnWatch = spawnWatch;
     this.runAnswer = runAnswer;
@@ -41,6 +43,7 @@ export class MacDialogDecisionsDaemon {
   }
 
   async start() {
+    this.clientViews?.start(() => this.refreshBackgroundWindows());
     await this.rich?.start();
     this._watchDone = this.watchLoop();
   }
@@ -49,6 +52,7 @@ export class MacDialogDecisionsDaemon {
 
   async stop() {
     this.stopped = true;
+    this.clientViews?.stop();
     if (this._pumpTimer) clearTimeout(this._pumpTimer);
     this._watchHandle?.close?.();
     this._closeDialog();
@@ -263,6 +267,19 @@ export class MacDialogDecisionsDaemon {
       catch (error) { entry.showing = false; this.log(`添付の準備に失敗: ${error.message}`); return; }
       if (!this.isActive(entry)) { entry.showing = false; return; }
     }
+    const presentation = await this.presentation(entry);
+    if (presentation === null) {
+      entry.showing = false;
+      // A reconnect can complete during the query. Discard the old query and
+      // present again using the new machine epoch and saved decision state.
+      if (this.isActive(entry) && !entry.queued && !entry.dismissed && !entry.answerPending && !entry.retry) {
+        entry.queued = true;
+        this.queue.push(entry.key);
+        this.schedulePump();
+      }
+      return;
+    }
+    spec.present_in_background = presentation;
     let specPath = "";
     try {
       specPath = this.specFilePath(entry.key);
@@ -282,12 +299,59 @@ export class MacDialogDecisionsDaemon {
     child.entry = entry;
     child.specPath = specPath;
     child.handled = false;
+    child.inBackground = spec.present_in_background === true;
     this.children.set(entry.key, child);
+    if (child.inBackground) this.refreshBackgroundWindows();
     child.richAbort = new AbortController();
     if (this.rich) void this.rich.load(spec, entry.machineId, child.richAbort.signal, message => { if (!child.richAbort.signal.aborted) child.respond?.(message); }).catch(error => this.log(`画像の読み込みに失敗: ${error.message}`));
     this._dialogDone = Promise.allSettled([this._dialogDone, this._consumeChild(child)]);
     this.refreshWindowCounts();
     this.notify();
+  }
+
+  async presentation(entry) {
+    const epoch = this.machineEpochs.get(entry.machineId);
+    let background = false;
+    if (this.clientViews) {
+      try { background = this.displayedByFocusedClient(entry, await this.clientViews.list()); }
+      catch (error) { this.log(`表示状態を照会できないため前面に表示: ${error.message}`); }
+    }
+    return this.isActive(entry) && this.machineEpochs.get(entry.machineId) === epoch ? background : null;
+  }
+
+  takeFrontCommand(entry, inBackground, views) {
+    if (!inBackground || entry.refronted || !this.isActive(entry) || this.displayedByFocusedClient(entry, views)) return null;
+    entry.refronted = true;
+    return {status: "front"};
+  }
+
+  displayedByFocusedClient(entry, views) {
+    const pane = entry.decision.origin?.pane_id;
+    const session = this.clientViews.sessionFor(entry.machineId);
+    if (!pane || !session || !Array.isArray(views)) return false;
+    return views.some(view => view.focused === true && view.machine_id === entry.machineId &&
+      view.session === session && typeof view.workspace_id === "string" && view.workspace_id &&
+      Array.isArray(view.pane_ids) && view.pane_ids.includes(pane));
+  }
+
+  refreshBackgroundWindows() {
+    // Serialize queries: an older reply must never undo a newer change.
+    this._visibilityDone = (this._visibilityDone ?? Promise.resolve()).then(async () => {
+      const children = [...this.children.values()].filter(child => child.inBackground && !child.entry.refronted);
+      if (this.stopped || !children.length) return;
+      let views;
+      try { views = await this.clientViews.list(); } catch { views = []; }
+      for (const child of children) {
+        const entry = child.entry;
+        if (this.stopped || !this.isActive(entry) || this.children.get(entry.key) !== child || child.handled) continue;
+        const command = this.takeFrontCommand(entry, child.inBackground, views);
+        if (command) {
+          child.inBackground = false;
+          child.respond?.(command);
+        }
+      }
+    }).catch(error => this.log(`背面窓の表示確認に失敗: ${error.message}`));
+    return this._visibilityDone;
   }
 
   async _consumeChild(child) {

@@ -151,6 +151,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	if event.err != nil {
 		if event.id == "local" {
+			m.focusKnown = false
+			m.lastClientView = nil
 			m.retirePendingGraphicsFile()
 		}
 		if event.id == "local" && e.snapshot == nil && needsAttention(event.err.Error()) {
