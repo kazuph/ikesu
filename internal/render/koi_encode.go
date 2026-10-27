@@ -113,6 +113,7 @@ func (e *Encoder) KoiFrame(f *Frame, x, y int, visible bool) []byte {
 		}
 	}
 	data := e.encodeKoi(koi, false)
+	e.imageFence = bytes.Contains(data, []byte("\x1b_Ga=t,"))
 	if len(data) == 0 {
 		return nil
 	}

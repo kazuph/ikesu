@@ -147,7 +147,10 @@ func (m *machineClient) paint() error {
 	if err := writeErr; err != nil {
 		return err
 	}
-	probe := m.outputFence.Written(data, time.Now())
+	probe := false
+	if m.frames.RequiresImageFence() {
+		probe = m.outputFence.Written(data, time.Now())
+	}
 	if probe {
 		if _, err := m.out.WriteString(render.TerminalStatusQuery); err != nil {
 			return err

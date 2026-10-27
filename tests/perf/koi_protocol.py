@@ -27,8 +27,13 @@ for condition in sorted({r['condition'] for r in results}):
  off,on=median('cpu_seconds',False),median('cpu_seconds',True)
  seconds=group[0]['seconds']
  delta=(on-off)/seconds*100
- for r in group:
-  if r['condition']!='empty':assert r['server_bytes']==0 and r['snapshot_messages']==0,'decoration caused server transport'
- summary.append({'condition':condition,'seconds':seconds,'off_cpu_seconds':off,'on_cpu_seconds':on,'additional_one_core_percent':delta,'off_terminal_bytes':median('terminal_bytes',False),'on_terminal_bytes':median('terminal_bytes',True),'server_transport':'0 bytes / 0 snapshots' if condition!='empty' else 'standalone','under_one_percent':delta<1})
+ if condition=='empty':transport={'mode':'standalone','additional_snapshots':0}
+ else:
+  off_snap,on_snap=median('snapshot_messages',False),median('snapshot_messages',True)
+  transport={'off_snapshots':off_snap,'on_snapshots':on_snap,'additional_snapshots':on_snap-off_snap,'off_raw_bytes':median('server_bytes',False),'on_raw_bytes':median('server_bytes',True),'raw_byte_difference':median('server_bytes',True)-median('server_bytes',False)}
+  assert transport['additional_snapshots']==0,'koi changed median server snapshot count'
+  if group[0].get('state')=='idle':assert transport['off_raw_bytes']==transport['on_raw_bytes']==0
+ summary.append({'condition':condition,'seconds':seconds,'off_cpu_seconds':off,'on_cpu_seconds':on,'additional_one_core_percent':delta,'off_terminal_bytes':median('terminal_bytes',False),'on_terminal_bytes':median('terminal_bytes',True),'server_transport':transport,'under_one_percent':delta<1})
+
 output={'wire':proof,'summary':summary}
 (root/'protocol.json').write_text(json.dumps(output,indent=2));print(json.dumps(output,indent=2))

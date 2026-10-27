@@ -15,6 +15,7 @@ import (
 // are minimal: unchanged cells are never rewritten.
 type Encoder struct {
 	koi               koiEncoder
+	imageFence        bool
 	nativeImages      map[uint32]bool
 	graphics          []Graphic
 	graphicsSources   []Graphic
@@ -94,7 +95,10 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 
 	e.emitRealPlacements(f, &b, graphicsChanged)
 	e.retireGraphics(f, &b, graphicsChanged)
-	b.Write(e.encodeKoi(koi, full))
+	e.imageFence = bytes.Contains(b.Bytes(), []byte("\x1b_Ga=t,")) || bytes.Contains(b.Bytes(), []byte("\x1b_Ga=p,"))
+	koiData := e.encodeKoi(koi, full)
+	e.imageFence = e.imageFence || bytes.Contains(koiData, []byte("\x1b_Ga=t,"))
+	b.Write(koiData)
 	// Park the cursor at the anchor before ending the sync block.
 	b.WriteString(cup(anchorY, anchorX))
 	if anchorVisible {
@@ -197,3 +201,7 @@ func (e *Encoder) emitCell(b *bytes.Buffer, c *uv.Cell) {
 	}
 	b.WriteString(content)
 }
+
+// RequiresImageFence preserves application image processing, but cached koi
+// placements need no new decode/terminal-completion round trip.
+func (e *Encoder) RequiresImageFence() bool { return e.imageFence }

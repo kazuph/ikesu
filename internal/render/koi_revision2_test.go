@@ -310,3 +310,42 @@ func TestKoiRippleLifetimeMatchesBrandSite(t *testing.T) {
 		t.Fatalf("terminal and site ripple lifetimes differ: %v %v", seconds, err)
 	}
 }
+
+func TestKoiCachedPlacementNeedsNoNewFence(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.KoiKitty = true
+	in.KoiCellW = 8
+	in.KoiCellH = 16
+	var enc Encoder
+	frame := Compose(in).Frame
+	first := enc.Frame(frame, 0, 0, false)
+	var fence OutputFence
+	now := time.Now()
+	if !fence.Written(first, now) {
+		t.Fatal("new koi image lost its fence")
+	}
+	fence.Accept([]byte("\x1b[0n"))
+	frame.Graphics[0].Placement.X++
+	data := enc.KoiFrame(frame, 0, 0, false)
+	if strings.Contains(string(data), "a=t,") {
+		t.Fatal("cached move retransmits pixels")
+	}
+	if !strings.Contains(string(data), "a=p,") {
+		t.Fatal("cached move missing")
+	}
+	if enc.RequiresImageFence() {
+		t.Fatal("cached koi move starts another fence")
+	}
+	// The same cached a=p from a real pane retains the existing contract.
+	regular := NewFrame(frame.W, frame.H)
+	g := frame.Graphics[0]
+	g.Koi = false
+	g.Pane = 1
+	regular.Graphics = []Graphic{g}
+	enc.Frame(regular, 0, 0, false)
+	regular.Graphics[0].Placement.X++
+	data = enc.Frame(regular, 0, 0, false)
+	if !strings.Contains(string(data), "a=p,") || !enc.RequiresImageFence() {
+		t.Fatal("pane app placement lost its existing fence")
+	}
+}

@@ -27,7 +27,7 @@ func (m *machineClient) paintKoi(now time.Time) error {
 	if len(data) == 0 {
 		return nil
 	}
-	if m.outputFence.Written(data, now) {
+	if m.frames.RequiresImageFence() && m.outputFence.Written(data, now) {
 		data = append(data, render.TerminalStatusQuery...)
 	}
 	_, err := m.out.Write(data)

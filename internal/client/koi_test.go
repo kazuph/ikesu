@@ -92,6 +92,24 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	if err := m.paint(); err != nil {
 		t.Fatal(err)
 	}
+	beforeWait, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A real freshly uploaded frame already has a completion fence. Twenty
+	// animation ticks must produce no writes or growing placement queue.
+	for i := 0; i < 20; i++ {
+		if err := m.paintKoi(time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	afterWait, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beforeWait.Size() != afterWait.Size() || !m.paintQueued {
+		t.Fatal("waiting fence accumulated koi output")
+	}
 	m.outputFence.Accept([]byte("\x1b[0n"))
 	m.paintQueued = false
 	regions := m.regions
