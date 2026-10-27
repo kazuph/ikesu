@@ -12,7 +12,7 @@ results=[]
 
 class Traffic:
  def __init__(self,path):
-  self.bytes=0;self.snapshots=0;self.lock=threading.Lock()
+  self.bytes=0;self.snapshots=0;self.messages=[];self.lock=threading.Lock()
   backend=path.with_name('measure-backend.sock');path.rename(backend)
   self.listener=socket.socket(socket.AF_UNIX);self.listener.bind(str(path));self.listener.listen(1)
   def relay():
@@ -29,6 +29,7 @@ class Traffic:
         while b'\n' in tail:
          line,tail=tail.split(b'\n',1)
          message=json.loads(line)
+         self.messages.append(message)
          if message.get('type')=='snapshot':self.snapshots+=1
       (server if source is client else client).sendall(data)
    finally:client.close();server.close();self.listener.close()
@@ -103,6 +104,7 @@ def execute(condition,enabled,repeat):
    subprocess.run(['kill',str(process.pid)],check=True);process.wait(timeout=10)
   (out/f'{session}-cleanup.json').write_text(json.dumps({'session':session,'server_signaled':cleanup},indent=2))
   if server:server.wait(timeout=15)
+  if traffic:(out/f'{session}-traffic.json').write_text(json.dumps(traffic.messages))
  logpath.write_text(''.join(lines))
  (out/f'{session}-cleanup.json').write_text(json.dumps({'session':session,'server_signaled':cleanup},indent=2))
  captures=re.findall(r'stats (before|after) pid=(\d+) rss_kb,cpu=(\d+)\s+([0-9:.]+) outer_bytes_so_far=(\d+)',''.join(lines))
