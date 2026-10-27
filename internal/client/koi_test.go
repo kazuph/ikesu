@@ -125,3 +125,31 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 		t.Fatal("pond release would escape to server")
 	}
 }
+
+func TestKoiSnapshotRefreshRetainsAnimationDeadlineAndPose(t *testing.T) {
+	state := model.New(t.TempDir(), 160, 45)
+	state.SidebarVisible = true
+	state.SidebarSize = 26
+	state.RightSidebarSize = 30
+	snapshot := render.Input{State: state, Panes: map[int]*render.PaneSnap{1: {Agent: "codex", Status: render.StatusGlyph{Key: "working"}}}}
+	file, err := os.CreateTemp(t.TempDir(), "output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	m := &machineClient{active: "local", order: []string{"local"}, out: file, koiKitty: true, size: tui.Winsize{Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720}, settings: &localSettings{}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot, profile: machine.Profile{ID: "local", Enabled: true}}}}
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := m.koiNext
+	pose := m.koiScene
+	m.outputFence.Accept([]byte("\x1b[0n"))
+	m.paintQueued = false
+	snapshot.Spin++
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	if !m.koiNext.Equal(deadline) || !reflect.DeepEqual(m.koiScene.Fish, pose.Fish) || !reflect.DeepEqual(m.koiScene.Mini, pose.Mini) {
+		t.Fatalf("server spinner refresh advanced or postponed independent koi animation: deadlines %v %v fish=%+v / %+v mini=%+v / %+v", deadline, m.koiNext, pose.Fish, m.koiScene.Fish, pose.Mini, m.koiScene.Mini)
+	}
+}

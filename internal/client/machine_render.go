@@ -72,6 +72,10 @@ func (m *machineClient) paint() error {
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
 	m.koiClock.Apply(&in, &m.sidebar, time.Now(), tui.FossilExpiry())
+	if m.koiInput.KoiKitty && in.KoiKitty {
+		in.KoiTime = m.koiInput.KoiTime
+	}
+
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil {
 		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
@@ -81,8 +85,9 @@ func (m *machineClient) paint() error {
 	}
 	m.koiInput, m.koiScene = in, composed.Frame.KoiScene
 	m.koiVisible = !m.blurred && composed.Frame.KoiActive
-	m.koiNext = time.Time{}
-	if m.koiVisible {
+	if !m.koiVisible {
+		m.koiNext = time.Time{}
+	} else if m.koiNext.IsZero() {
 		m.koiNext = time.Now().Add(render.KoiInterval)
 	} // existing TUI tick interval and agreed 20fps
 	m.drawTabFeedback(composed)

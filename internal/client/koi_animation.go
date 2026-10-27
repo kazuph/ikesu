@@ -17,6 +17,7 @@ func (m *machineClient) paintKoi(now time.Time) error {
 	in := m.koiInput
 	m.koiClock.Apply(&in, &m.sidebar, now, tui.FossilExpiry())
 	frame := render.AnimateKoi(m.koiScene, in)
+	m.koiInput = in
 	data := m.frames.KoiFrame(frame, m.regions.AnchorX, m.regions.AnchorY, m.regions.AnchorVisible)
 	m.koiVisible = !m.blurred && frame.KoiActive
 	m.koiNext = time.Time{}
@@ -26,12 +27,9 @@ func (m *machineClient) paintKoi(now time.Time) error {
 	if len(data) == 0 {
 		return nil
 	}
-	if _, err := m.out.Write(data); err != nil {
-		return err
-	}
 	if m.outputFence.Written(data, now) {
-		_, err := m.out.WriteString(render.TerminalStatusQuery)
-		return err
+		data = append(data, render.TerminalStatusQuery...)
 	}
-	return nil
+	_, err := m.out.Write(data)
+	return err
 }
