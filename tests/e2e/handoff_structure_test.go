@@ -1,7 +1,11 @@
 package e2e
 
 import (
+	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,17 +13,41 @@ import (
 )
 
 func TestLiveHandoffStructureCountersAndSiblingExit(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "handoff-checkout")
+	child := filepath.Join(repo, "shell-directory")
+	if err := os.MkdirAll(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := childenv.Command("git", "-C", repo, "init", "-qb", "main").CombinedOutput(); err != nil {
+		t.Fatal(string(out), err)
+	}
 	s := start(t)
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.send(fmt.Sprintf("cd %q; printf 'DIRECTORY_%%s\\n' READY\r", child))
+	s.waitFor("shell entered real Git checkout", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "DIRECTORY_READY") })
 	var workspace api.WorkspaceCreatedResult
-	s.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: false}, &workspace)
+	s.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Cwd: &child, Focus: false}, &workspace)
 	first := "s1"
 	var tab api.TabCreatedResult
 	s.rpc(api.MethodTabCreate, api.TabCreateParams{WorkspaceID: &first, Focus: false}, &tab)
 	paneID := "p1"
 	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &paneID, Direction: "right", Focus: false}, nil)
 	var before api.WorkspaceListResult
-	s.rpc(api.MethodWorkspaceList, api.EmptyParams{}, &before)
+	// Default names resolve asynchronously from basename(cwd) to the Git
+	// checkout name. Compare handoff after that legitimate update, and keep
+	// exercising automatic names even when the test source is a tar archive.
+	s.waitFor("automatic checkout names resolved before handoff", 15*time.Second, func(_ string) bool {
+		s.rpc(api.MethodWorkspaceList, api.EmptyParams{}, &before)
+		if len(before.Workspaces) != 2 {
+			return false
+		}
+		for _, w := range before.Workspaces {
+			if w.Label != filepath.Base(repo) {
+				return false
+			}
+		}
+		return true
+	})
 	var tabs api.TabListResult
 	s.rpc(api.MethodTabList, api.TabListParams{WorkspaceID: &first}, &tabs)
 	var layout api.LayoutExportResult
