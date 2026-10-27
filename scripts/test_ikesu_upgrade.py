@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import socket
+import signal
 import time
 import unittest
 
@@ -196,6 +197,34 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         self.assertIn('refusing to overwrite immutable release',result.stderr)
         self.assertEqual(original,target.read_bytes())
         self.assertEqual(self.entry.resolve(),self.old)
+
+    def test_paused_server_timeout_stops_before_later_session(self):
+        self.start('paused')
+        self.start('later')
+        pid=self.servers[0][1].pid
+        identity=subprocess.check_output(['ps','-p',str(pid),'-o','uid=,command='],text=True)
+        self.assertEqual(int(identity.split()[0]),os.getuid())
+        self.assertIn(str(self.old),identity)
+        os.kill(pid,signal.SIGSTOP)
+        try:
+            result=self.upgrade('paused','later')
+        finally:
+            os.kill(pid,signal.SIGCONT)
+        self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(self.entry.resolve(),self.old)
+        self.assertEqual(json.loads(self.cli('server','ping',session='paused').stdout)['result']['version'],self.old_version)
+        self.assertEqual(json.loads(self.cli('server','ping',session='later').stdout)['result']['version'],self.old_version)
+        self.assertNotIn('paused: not running',result.stdout)
+
+    def test_stale_refused_socket_is_confirmed_not_running(self):
+        socket_path=self.root/'state/default/ikesu.sock'
+        socket_path.parent.mkdir(parents=True)
+        with socket.socket(socket.AF_UNIX) as stale:
+            stale.bind(str(socket_path))
+        result=self.upgrade()
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(self.entry.resolve(),self.root/'.local/lib/ikesu/releases'/self.new_version/'ikesu')
+        self.assertIn('default: not running',result.stdout)
 
 
 if __name__ == '__main__':
