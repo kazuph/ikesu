@@ -40,6 +40,7 @@ type ForegroundProcess struct {
 // process group.
 type ForegroundJob struct {
 	ProcessGroupID int
+	Sudo           bool
 	Processes      []ForegroundProcess
 }
 

@@ -99,7 +99,7 @@ func foregroundJob(fd int) ForegroundJob {
 	if pgid <= 0 {
 		return ForegroundJob{}
 	}
-	job := ForegroundJob{ProcessGroupID: pgid}
+	job := ForegroundJob{ProcessGroupID: pgid, Sudo: foregroundSudo(pgid)}
 	for _, pid := range groupPids(pgid) {
 		// Re-validate membership; the pid may have been reused or moved
 		// between the listing and this check.
@@ -110,6 +110,7 @@ func foregroundJob(fd int) ForegroundJob {
 		if name == "" {
 			continue
 		}
+		job.Sudo = job.Sudo || name == "sudo"
 		argv := procArgs(pid)
 		job.Processes = append(job.Processes, ForegroundProcess{
 			PID:     pid,
@@ -150,4 +151,28 @@ func groupPids(pgid int) []int {
 
 func flushInput(fd int) {
 	_ = unix.IoctlSetPointerInt(fd, unix.TIOCFLUSH, unix.TCIFLUSH)
+}
+
+// A sudo monitor can remain outside the child's foreground group. Follow
+// ancestors only across this terminal, including sudo at a PTY boundary.
+func foregroundSudo(pid int) bool {
+	seen := map[int]bool{}
+	var tty int32
+	for pid > 1 && !seen[pid] {
+		seen[pid] = true
+		kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+		if err != nil {
+			return false
+		}
+		if bytes.Equal(bytes.TrimRight(kp.Proc.P_comm[:], "\x00"), []byte("sudo")) {
+			return true
+		}
+		if len(seen) == 1 {
+			tty = kp.Eproc.Tdev
+		} else if kp.Eproc.Tdev != tty {
+			return false
+		}
+		pid = int(kp.Eproc.Ppid)
+	}
+	return false
 }

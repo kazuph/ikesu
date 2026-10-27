@@ -35,3 +35,15 @@ func TestNavigatorSudoDiamondUsesDedicatedColor(t *testing.T) {
 		t.Fatal("sudo marker not rendered")
 	}
 }
+
+func TestSudoAttentionRankBetweenBlockedAndOtherStates(t *testing.T) {
+	sudo := glyphRank(StatusGlyph{Key: "unknown", Rune: "◆"})
+	if sudo >= glyphRank(StatusGlyph{Key: "blocked", Rune: "●"}) {
+		t.Fatal("sudo overrode blocked")
+	}
+	for _, key := range []string{"working", "done", "idle", "unknown"} {
+		if sudo <= glyphRank(StatusGlyph{Key: key}) {
+			t.Fatal("sudo did not override", key)
+		}
+	}
+}
