@@ -116,3 +116,36 @@ func TestLoginPathConcurrentRequestsShareLookupAndAppLoopDoesNotWait(t *testing.
 		}
 	}
 }
+
+func TestLoginPathRecoversAfterExitFailureAndEmptyPATH(t *testing.T) {
+	teststate.Lock(t)
+	for _, failure := range []string{"exit 1", "printf '\\000\\000'; exit 0"} {
+		func() {
+			dir := t.TempDir()
+			shell := filepath.Join(dir, "login-shell")
+			first := filepath.Join(dir, "first")
+			count := filepath.Join(dir, "count")
+			script := "#!/bin/sh\nprintf x >> '" + count + "'\nif [ ! -f '" + first + "' ]; then printf x > '" + first + "'; " + failure + "; fi\nprintf '\\000/usr/bin:/bin\\000'\n"
+			if err := os.WriteFile(shell, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			teststate.Setenv(t, "SHELL", shell)
+			s := NewSupervisor()
+			defer s.KillAll()
+			err := s.WaitLoginPath()
+			if err == nil {
+				t.Fatal("invalid PATH lookup accepted")
+			}
+			if retry := s.WaitLoginPath(); retry != err {
+				t.Fatal("failure cooldown not retained")
+			}
+			time.Sleep(5*time.Second + time.Millisecond)
+			if err := s.WaitLoginPath(); err != nil {
+				t.Fatal("lookup did not recover", err)
+			}
+			if data, _ := os.ReadFile(count); string(data) != "xx" {
+				t.Fatalf("lookup count=%q", data)
+			}
+		}()
+	}
+}
