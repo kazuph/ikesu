@@ -31,6 +31,8 @@ def checksums(path):
 def render(tag, sums, template, destination):
     release = version(tag)
     destination = Path(destination)
+    if destination.is_symlink() or destination.parent.is_symlink():
+        raise ValueError('Formula must be a regular file in its own directory')
     if destination.exists():
         previous = re.search(r'^  version "([0-9]+\.[0-9]+\.[0-9]+)"$', destination.read_text(), re.M)
         if not previous:

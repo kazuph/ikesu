@@ -106,8 +106,7 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         pane = before[0]['pane_id']
         pidfile = self.root/'pane-pid'
         self.assertEqual(self.cli('pane', 'run', pane, 'printf "%s" $$ > '+shlex.quote(str(pidfile))).returncode, 0)
-        until(pidfile.exists)
-        pid = pidfile.read_bytes()
+        pid = until(lambda: pidfile.read_bytes() if pidfile.exists() else None)
         plugin = self.root/'plugin'
         plugin.mkdir()
         (plugin/'ikesu-plugin.toml').write_text('id="brew.proof"\nname="Upgrade proof"\nversion="0.1.0"\nmin_ikesu_version="0.1.0"\nplatforms=["macos","linux"]\n[[panes]]\nid="board"\ntitle="Board"\ncommand=["/bin/cat"]\n')
@@ -129,27 +128,32 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         self.assertEqual([p['pane_id'] for p in before], [p['pane_id'] for p in after])
         pidfile.unlink()
         self.cli('pane', 'run', pane, 'printf "%s" $$ > '+shlex.quote(str(pidfile)))
-        until(pidfile.exists)
-        self.assertEqual(pid, pidfile.read_bytes())
+        self.assertEqual(pid, until(lambda: pidfile.read_bytes() if pidfile.exists() else None))
         self.assertEqual(plugins,self.rpc('plugin.list',{}))
         with fifo.open('w') as stream: stream.write('job survived handoff')
         until(lambda: finished.exists() and finished.read_text()=='job survived handoff')
+        shutil.rmtree(self.root/'Cellar')
         child = self.root/'new-child'
         agent = self.cli('agent','start','upgrade-proof','--cwd',str(self.root),'--no-focus','--','/bin/sh','-c','printf child > '+shlex.quote(str(child)))
         self.assertEqual(agent.returncode,0,agent.stdout+agent.stderr)
         until(child.exists)
-        shutil.rmtree(self.root/'Cellar')
         self.assertEqual(command(self.entry,'--version',env=self.env).stdout.strip(), 'ikesu '+self.new_version)
         calls=[json.loads(l) for l in (self.root/'brew-calls.jsonl').read_text().splitlines()]
         self.assertTrue(all(c['cleanup']=='1' for c in calls))
 
     def test_failed_real_protocol_handoff_retains_old_entry_and_server(self):
-        self.start()
+        pane=self.start()[0]['pane_id']
+        pidfile=self.root/'failure-pid'
+        self.cli('pane','run',pane,'printf "%s" $$ > '+shlex.quote(str(pidfile)))
+        before=until(lambda:pidfile.read_bytes() if pidfile.exists() else None)
         shutil.copy2(INCOMPATIBLE, self.prefix/'bin/ikesu')
         result = self.upgrade()
         self.assertNotEqual(result.returncode, 0, result.stdout+result.stderr)
         self.assertEqual(self.entry.resolve(), self.old)
         self.assertEqual(json.loads(self.cli('server','ping').stdout)['result']['version'], self.old_version)
+        pidfile.unlink()
+        self.cli('pane','run',pane,'printf "%s" $$ > '+shlex.quote(str(pidfile)))
+        self.assertEqual(before,until(lambda:pidfile.read_bytes() if pidfile.exists() else None))
 
     def test_brew_binary_version_mismatch_never_handoffs(self):
         self.start()

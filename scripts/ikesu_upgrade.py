@@ -151,6 +151,8 @@ def main():
                     print(f'  {session}: unavailable ({error})', flush=True)
             if entry.exists():
                 print(f'entry version: {binary_version(entry, env)} ({entry.resolve()})', flush=True)
+            else:
+                print(f'entry version: unavailable ({entry})', flush=True)
     return status
 
 
