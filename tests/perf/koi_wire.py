@@ -65,7 +65,7 @@ for mode in ([a.mode] if a.mode else ('direct','nested')):
     for i in range(4):cli(inner,'tab','create','--no-focus','--label','wire-fish-'+str(i))
     panes=cli(inner,'pane','list')['result']['panes']
     for pane in panes:cli(inner,'pane','report-agent',pane['pane_id'],'--source','codex','--agent','codex','--state','working','--title','wire measurement')
-    # Right sidebar is 30 columns; click its center, well below the agent list.
+    # Choose an empty point inside the right sidebar, below the agent list.
     x=rect['x']+rect['width']-15;y=rect['y']+rect['height']//2
     metadata={'mode':mode,'outer_pane':rect,'click_cell':[x,y],'click_px':[(x-1)*8+4,(y-1)*16+8],'free_seconds':a.seconds,'agents':len(panes),'inner':inner[0],'outer':outer[0],'sessions':[s for _,s in owned]}
     (out/f'{mode}-metadata.json').write_text(json.dumps(metadata,indent=2))
