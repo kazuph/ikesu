@@ -67,8 +67,7 @@ type pendingMachine struct {
 
 type machineClient struct {
 	koiNext           time.Time
-	koiDone           map[string]time.Time
-	koiEpoch          time.Time
+	koiClock          render.KoiAnimation
 	koiVisible        bool
 	koiKitty          bool
 	clientVersion     string
@@ -143,7 +142,6 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
 	defer m.trace.Close()
-	m.koiEpoch = time.Now()
 	m.koiKitty = graphicsFileTransport(in, out, false) != ""
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })

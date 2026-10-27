@@ -2,8 +2,6 @@ package render
 
 import (
 	"github.com/kazuph/ikesu/internal/layout"
-	"image"
-	"image/color"
 	"math"
 	"sort"
 	"strconv"
@@ -186,38 +184,4 @@ func drawKoiDecoration(f *Frame, in Input, machines *MachineSidebar) {
 	for _, fish := range append(scene.Fish, scene.Mini...) {
 		drawKoiOctants(f, fish)
 	}
-}
-
-// KoiSprite is the common raster source for terminals, documentation and the site atlas.
-func KoiSprite(variety, direction, wag, w, h int) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	heading := float64(direction) * math.Pi
-	length := math.Min(float64(w)/1.05, float64(h)/0.45)
-	DrawKoiAlpha(img, KoiPatterns[variety%len(KoiPatterns)], float64(w)/2, float64(h)/2, length, heading, math.Sin(float64(wag)/8*2*math.Pi))
-	// State frames retain the original variety underneath their surface cues.
-	if variety >= 2*len(KoiPatterns) {
-		for y := 0; y < h; y++ {
-			for x := 0; x < w; x++ {
-				c := img.RGBAAt(x, y)
-				if c.A == 0 {
-					continue
-				}
-				c.R = uint8((int(c.R) + int(c.A)) / 2)
-				c.G = uint8((int(c.G) + int(c.A)*3/4) / 2)
-				c.B /= 2
-				img.SetRGBA(x, y, c)
-			}
-		}
-	} else if variety >= len(KoiPatterns) {
-		cx := float64(w)/2 + length*0.43*math.Cos(heading)
-		for y := 0; y < h; y++ {
-			for x := 0; x < w; x++ {
-				r := math.Hypot(float64(x)-cx, float64(y)-float64(h)/2)
-				if r < length*0.035 {
-					img.SetRGBA(x, y, color.RGBA{30, 25, 20, 255})
-				}
-			}
-		}
-	}
-	return img
 }

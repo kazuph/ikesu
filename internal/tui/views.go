@@ -6,6 +6,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
@@ -235,7 +236,14 @@ func (a *App) draw() {
 		a.dirty = a.snapshotSink(in) != nil
 		return
 	}
+	in.Koi = a.sidebarConfig.KoiEnabled()
+	a.koiClock.Apply(&in, nil, time.Now(), fossilExpiry)
+	if file, ok := a.out.(*os.File); ok {
+		in.KoiKitty = kitty.SupportsTerminal(os.Stdin, file, false) && a.cellW > 0 && a.cellH > 0
+	}
+	in.KoiCellW, in.KoiCellH = a.cellW, a.cellH
 	out := render.ComposeClient(in, nil, a.clientVersion, false)
+	a.koiLocalActive = out.Frame.KoiActive && !a.windowBlurred
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
 		render.DrawTabDrop(out, g.drop, a.serverUI)
 	}

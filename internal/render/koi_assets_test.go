@@ -1,9 +1,10 @@
 package render
 
 import (
+	"fmt"
 	"github.com/kazuph/ikesu/internal/layout"
 	"image"
-	"image/color/palette"
+	"image/color"
 	"image/draw"
 	"image/gif"
 	"image/png"
@@ -22,12 +23,12 @@ func TestExportKoiBrandAssets(t *testing.T) {
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		t.Fatal(err)
 	}
-	atlas := image.NewRGBA(image.Rect(0, 0, 80*8, 32*len(KoiPatterns)*2))
+	atlas := image.NewRGBA(image.Rect(0, 0, 40*8, 16*len(KoiPatterns)*2))
 	for v := range KoiPatterns {
 		for d := 0; d < 2; d++ {
 			for wag := 0; wag < 8; wag++ {
-				sprite := KoiSprite(v, d, wag, 80, 32)
-				at := image.Pt(wag*80, (v*2+d)*32)
+				sprite := KoiSprite(v, d, wag, 40, 16)
+				at := image.Pt(wag*40, (v*2+d)*16)
 				draw.Draw(atlas, image.Rectangle{Min: at, Max: at.Add(sprite.Bounds().Size())}, sprite, image.Point{}, draw.Src)
 			}
 		}
@@ -53,8 +54,22 @@ func TestExportKoiBrandAssets(t *testing.T) {
 			at := image.Pt(int(fish.X*8), int(fish.Y*16))
 			draw.Draw(img, image.Rectangle{Min: at, Max: at.Add(sprite.Bounds().Size())}, sprite, image.Point{}, draw.Over)
 		}
-		frame := image.NewPaletted(img.Bounds(), palette.Plan9)
-		draw.FloydSteinberg.Draw(frame, img.Bounds(), img, image.Point{})
+		colors := color.Palette{}
+		seen := map[color.RGBA]bool{}
+		for y := 0; y < img.Bounds().Dy(); y++ {
+			for x := 0; x < img.Bounds().Dx(); x++ {
+				c := img.RGBAAt(x, y)
+				if !seen[c] {
+					seen[c] = true
+					colors = append(colors, c)
+				}
+			}
+		}
+		if len(colors) > 256 {
+			t.Fatalf("GIF palette overflow: %d", len(colors))
+		}
+		frame := image.NewPaletted(img.Bounds(), colors)
+		draw.Draw(frame, img.Bounds(), img, image.Point{}, draw.Src)
 		anim.Image = append(anim.Image, frame)
 		anim.Delay = append(anim.Delay, 5)
 	}
@@ -66,4 +81,30 @@ func TestExportKoiBrandAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
+}
+
+func TestExportKoiPixelProof(t *testing.T) {
+	dest := os.Getenv("KOI_PIXEL_PROOF")
+	if dest == "" {
+		t.Skip("explicit pixel proof export only")
+	}
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range []struct {
+		name string
+		w, h int
+	}{{"pond", 40, 16}, {"mini", 24, 8}, {"site", 40, 16}} {
+		for _, scale := range []int{1, 2, 4} {
+			img := KoiSprite(0, 0, 0, part.w*scale, part.h*scale)
+			f, err := os.Create(filepath.Join(dest, fmt.Sprintf("%s-%dx.png", part.name, scale)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := png.Encode(f, img); err != nil {
+				t.Fatal(err)
+			}
+			f.Close()
+		}
+	}
 }

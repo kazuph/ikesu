@@ -8,7 +8,6 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 	"os"
 	"testing"
-	"time"
 )
 
 func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
@@ -40,7 +39,7 @@ func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer file.Close()
-		m := &machineClient{active: "local", order: []string{"local"}, out: file, size: tui.Winsize{Cols: 160, Rows: 45}, koiEpoch: time.Now(), settings: &localSettings{config: &cfg}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot, profile: machine.Profile{ID: "local", Enabled: true}}}}
+		m := &machineClient{active: "local", order: []string{"local"}, out: file, size: tui.Winsize{Cols: 160, Rows: 45}, settings: &localSettings{config: &cfg}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot, profile: machine.Profile{ID: "local", Enabled: true}}}}
 		m.blurred = condition == "blurred"
 		if err := m.paint(); err != nil {
 			t.Fatal(err)

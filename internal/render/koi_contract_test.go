@@ -2,10 +2,14 @@ package render
 
 import (
 	"bytes"
+	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/layout"
+	"image"
+	"image/color"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestKoiCapacityReservesSeparateLanes(t *testing.T) {
@@ -197,5 +201,119 @@ func TestKoiStateFramesAndOctantPositions(t *testing.T) {
 	in.Panes[1].Status.Key = "blocked"
 	if len(KoiSceneFor(f, in, nil).Mini) != 0 {
 		t.Fatal("blocked workspace has mini")
+	}
+}
+
+func TestKoiCompletionUsesProvidedFossilExpiry(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.Panes[1].Status.Key = "done"
+	now := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
+	var animation KoiAnimation
+	animation.Apply(&in, nil, now, 15*time.Second)
+	if !in.KoiGlow["local:1"] {
+		t.Fatal("completion did not glow")
+	}
+	animation.Apply(&in, nil, now.Add(15*time.Second-time.Nanosecond), 15*time.Second)
+	if !in.KoiGlow["local:1"] {
+		t.Fatal("glow ended early")
+	}
+	animation.Apply(&in, nil, now.Add(15*time.Second), 15*time.Second)
+	if in.KoiGlow["local:1"] {
+		t.Fatal("glow exceeds fossil expiry")
+	}
+	in.Panes[1].Status.Key = "working"
+	animation.Apply(&in, nil, now.Add(16*time.Second), 15*time.Second)
+	in.Panes[1].Status.Key = "done"
+	animation.Apply(&in, nil, now.Add(17*time.Second), 15*time.Second)
+	if !in.KoiGlow["local:1"] {
+		t.Fatal("second completion did not glow")
+	}
+}
+
+func TestKoiPixelPaletteAndIntegerEnlargement(t *testing.T) {
+	for variety := 0; variety < len(KoiPatterns)*3; variety++ {
+		for direction := 0; direction < 2; direction++ {
+			for wag := 0; wag < 8; wag++ {
+				for _, size := range []image.Point{{40, 16}, {24, 8}} {
+					small := KoiPixelSprite(variety, direction, wag, size.X, size.Y)
+					large := KoiSprite(variety, direction, wag, size.X*2, size.Y*2)
+					colors := map[color.RGBA]bool{}
+					for y := 0; y < size.Y; y++ {
+						for x := 0; x < size.X; x++ {
+							c := small.RGBAAt(x, y)
+							if c.A != 0 {
+								colors[c] = true
+								if c.A != 255 {
+									t.Fatal("translucent pixel")
+								}
+							}
+							for dy := 0; dy < 2; dy++ {
+								for dx := 0; dx < 2; dx++ {
+									if large.RGBAAt(x*2+dx, y*2+dy) != c {
+										t.Fatal("interpolated enlargement", variety, size, x, y)
+									}
+								}
+							}
+						}
+					}
+					if len(colors) > 8 {
+						t.Fatal("palette exceeds eight colors", len(colors))
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
+	for _, theme := range config.ThemeNames {
+		for _, server := range []bool{false, true} {
+			for _, transparent := range []bool{false, true} {
+				in := koiFixture(t, 2)
+				in.ServerUI = server
+				in.SidebarConfig.Theme.Name = theme
+				in.SidebarConfig.UI.TransparentSidebarCards = transparent
+				in.State.Workspaces[0].Name = "鯉"
+				in.Panes[1].Status.Key = "working"
+				other := in
+				machines := &MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &other}}, Active: "local"}
+				in.Koi = false
+				plain := ComposeMachines(in, machines)
+				in.Koi = true
+				scene := KoiSceneFor(plain.Frame, in, machines)
+				if len(scene.Fish) != 4 || len(scene.Mini) != 2 {
+					t.Fatalf("missing fish %s %t %t pond=%d mini=%d", theme, server, transparent, len(scene.Fish), len(scene.Mini))
+				}
+				painted := ComposeMachines(in, machines)
+				for _, mini := range scene.Mini {
+					changed := 0
+					for x := mini.Rect.X; x < mini.Rect.X+mini.Rect.W; x++ {
+						if !reflect.DeepEqual(plain.Frame.Cell(x, mini.Rect.Y), painted.Frame.Cell(x, mini.Rect.Y)) {
+							changed++
+						}
+					}
+					if changed == 0 {
+						t.Fatal("machine mini erased", theme, server, transparent)
+					}
+				}
+				pondChanged := 0
+				for y := scene.Pond.Y; y < scene.Pond.Y+scene.Pond.H; y++ {
+					for x := scene.Pond.X; x < scene.Pond.X+scene.Pond.W; x++ {
+						if !reflect.DeepEqual(plain.Frame.Cell(x, y), painted.Frame.Cell(x, y)) {
+							pondChanged++
+						}
+					}
+				}
+				if pondChanged == 0 {
+					t.Fatal("machine pond erased", theme, server, transparent)
+				}
+				in.KoiKitty = true
+				in.KoiCellW, in.KoiCellH = 8, 16
+				graphic := ComposeMachines(in, machines)
+				if len(graphic.Frame.Graphics) != 7 {
+					t.Fatal("missing final machine graphics", len(graphic.Frame.Graphics))
+				}
+			}
+		}
 	}
 }

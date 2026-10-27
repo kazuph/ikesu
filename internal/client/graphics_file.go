@@ -13,29 +13,12 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
-	"github.com/kazuph/ikesu/internal/tui"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"golang.org/x/sys/unix"
 )
 
 func graphicsFileTransport(in, out *os.File, remote bool) string {
-	if remote || in == nil || out == nil {
-		return ""
-	}
-	for _, key := range []string{"SSH_CONNECTION", "SSH_TTY", "TMUX", "STY"} {
-		if _, present := os.LookupEnv(key); present {
-			return ""
-		}
-	}
-	if _, err := tui.GetWinsize(in); err != nil {
-		return ""
-	}
-	if _, err := tui.GetWinsize(out); err != nil {
-		return ""
-	}
-	program, term := os.Getenv("TERM_PROGRAM"), os.Getenv("TERM")
-	_, kitty := os.LookupEnv("KITTY_WINDOW_ID")
-	if strings.EqualFold(program, "ghostty") || strings.EqualFold(program, "wezterm") ||
-		term == "xterm-ghostty" || term == "xterm-kitty" || term == "xterm-wezterm" || kitty {
+	if kitty.SupportsTerminal(in, out, remote) {
 		return endpoint.DirectKittyTransport
 	}
 	return ""

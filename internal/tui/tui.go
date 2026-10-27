@@ -149,6 +149,8 @@ type appJob struct {
 // through Do/PushInput/Resize so all state changes stay on the loop
 // goroutine.
 type App struct {
+	koiClock          render.KoiAnimation
+	koiLocalActive    bool
 	clientVersion     string
 	viewerOwner       *App
 	viewerContext     *Viewer

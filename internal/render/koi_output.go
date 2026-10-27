@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"math"
 	"sync"
 )
 
@@ -47,7 +48,7 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 		if len(fishList) == 0 {
 			continue
 		}
-		w, h := fishList[0].Rect.W*8, fishList[0].Rect.H*16
+		w, h := fishList[0].Rect.W*cw, fishList[0].Rect.H*ch
 		// Keep every frame as a source even while not placed. The encoder uploads
 		// each image once and retires it only when this decoration becomes hidden.
 		for v := 0; v < len(KoiPatterns)*3; v++ {
@@ -61,8 +62,9 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 		for _, fish := range fishList {
 			v := koiVariant(fish)
 			_, img := koiSpriteCached(koiSpriteKey{v, fish.Direction, fish.Wag, w, h})
-			px := int(fish.X * float64(cw))
-			py := int(fish.Y * float64(ch))
+			scale := max(1, min(w/koiPixelWidth, h/koiPixelHeight))
+			px := int(math.Round(fish.X*float64(cw)/float64(scale))) * scale
+			py := int(math.Round(fish.Y*float64(ch)/float64(scale))) * scale
 			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 1}})
 		}
 	}

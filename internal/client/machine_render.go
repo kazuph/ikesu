@@ -33,12 +33,9 @@ func (m *machineClient) paint() error {
 	if m.settings != nil && m.settings.config != nil {
 		in.Koi = m.settings.config.KoiEnabled()
 	}
-	in.KoiTime = time.Since(m.koiEpoch).Seconds()
 	in.KoiKitty = m.koiKitty
-	if m.size.Cols > 0 && m.size.Rows > 0 {
-		in.KoiCellW = m.size.Xpixel / m.size.Cols
-		in.KoiCellH = m.size.Ypixel / m.size.Rows
-	}
+	m.mouse.Geometry(m.size)
+	in.KoiCellW, in.KoiCellH = m.mouse.cellW, m.mouse.cellH
 	if in.KoiCellW <= 0 || in.KoiCellH <= 0 {
 		in.KoiKitty = false
 	}
@@ -74,29 +71,7 @@ func (m *machineClient) paint() error {
 		}
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
-	now := time.Now()
-	if m.koiDone == nil {
-		m.koiDone = map[string]time.Time{}
-	}
-	in.KoiGlow = map[string]bool{}
-	present := map[string]bool{}
-	for _, agent := range render.KoiAgentsFor(in, &m.sidebar) {
-		if agent.State != "done" {
-			continue
-		}
-		present[agent.ID] = true
-		since, ok := m.koiDone[agent.ID]
-		if !ok {
-			since = now
-			m.koiDone[agent.ID] = since
-		}
-		in.KoiGlow[agent.ID] = now.Sub(since) < tui.FossilExpiry()
-	}
-	for id := range m.koiDone {
-		if !present[id] {
-			delete(m.koiDone, id)
-		}
-	}
+	m.koiClock.Apply(&in, &m.sidebar, time.Now(), tui.FossilExpiry())
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil {
 		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
