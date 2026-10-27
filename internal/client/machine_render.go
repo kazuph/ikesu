@@ -72,7 +72,7 @@ func (m *machineClient) paint() error {
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
 	m.koiClock.Apply(&in, &m.sidebar, time.Now(), tui.FossilExpiry())
-	if m.koiInput.KoiKitty && in.KoiKitty {
+	if m.koiInput.KoiKitty && in.KoiKitty && (in.KoiRipple == nil || m.koiInput.KoiRipple != nil && in.KoiRipple.Start == m.koiInput.KoiRipple.Start) {
 		in.KoiTime = m.koiInput.KoiTime
 	}
 
@@ -89,7 +89,7 @@ func (m *machineClient) paint() error {
 	if !m.koiVisible {
 		m.koiNext = time.Time{}
 	} else if m.koiNext.IsZero() {
-		m.koiNext = time.Now().Add(render.KoiInterval)
+		m.koiNext = time.Now().Add(composed.Frame.KoiScene.UpdateInterval())
 	} // existing TUI tick interval and agreed 20fps
 	m.drawTabFeedback(composed)
 	f := composed.Frame

@@ -152,6 +152,9 @@ type App struct {
 	koiClock          render.KoiAnimation
 	koiLocalActive    bool
 	koiScene          render.KoiScene
+	koiNext           time.Time
+	koiInput          render.Input
+	koiAnchor         render.Output
 	clientVersion     string
 	viewerOwner       *App
 	viewerContext     *Viewer
@@ -536,8 +539,27 @@ func (a *App) Run() {
 		}
 	}()
 
+	var koiTimer *time.Timer
+	defer func() {
+		if koiTimer != nil {
+			koiTimer.Stop()
+		}
+	}()
 	a.dirty = true
 	for !a.quit {
+		var koiReady <-chan time.Time
+		if a.snapshotSink == nil && a.drawViewers == nil && !a.windowBlurred && !a.koiNext.IsZero() {
+			remaining := max(time.Duration(0), time.Until(a.koiNext))
+			if koiTimer == nil {
+				koiTimer = time.NewTimer(remaining)
+			} else {
+				koiTimer.Reset(remaining)
+			}
+			koiReady = koiTimer.C
+		} else if koiTimer != nil {
+			koiTimer.Stop()
+		}
+
 		select {
 		case b, ok := <-a.input:
 			if !ok {
@@ -590,6 +612,13 @@ func (a *App) Run() {
 			}
 		case <-drawReady:
 			drawReady = nil
+		case <-koiReady:
+			a.koiNext = time.Time{}
+			if a.dirty || !a.koiInput.KoiKitty {
+				a.dirty = true
+			} else {
+				a.paintKoi(time.Now())
+			}
 		case <-tick.C:
 			a.onTick()
 		case <-spin.C:

@@ -186,6 +186,9 @@ func (a *App) toggleKoi() {
 		if !c.KoiEnabled() {
 			a.koiLocalActive = false
 		}
+		if a.menu != nil && a.menu.kind == menuMain {
+			a.menu.m.Items = a.mainMenuItems()
+		}
 		a.dirty = true
 	})
 }

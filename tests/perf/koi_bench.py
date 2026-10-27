@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Real isolated CLI + ptyrun comparison. Run after building, on the bench host."""
-import argparse, json, os, pathlib, re, signal, subprocess, sys, tempfile, time, socket, select, threading
+import argparse, tomllib, json, os, pathlib, re, signal, subprocess, sys, tempfile, time, socket, select, threading
 
 root=pathlib.Path.cwd()
 binary=str(root/'koi-ikesu')
 ptyrun=str(root/'koi-ptyrun')
-parser=argparse.ArgumentParser();parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
 out=root/args.evidence;out.mkdir(exist_ok=True)
 base_env={k:v for k,v in os.environ.items() if k not in ('IKESU_SOCKET_PATH','IKESU_SOCKET_PATH_EXPLICIT','IKESU','IKESU_PANE_ID','IKESU_WORKSPACE_ID','IKESU_TAB_ID','SSH_CONNECTION','SSH_TTY','TMUX','STY')}
 results=[]
@@ -47,7 +47,16 @@ def execute(condition,enabled,repeat):
  ready=state/'ready'
  steps=state/'steps.txt'
  response_command=json.dumps(r"printf '\113\117\111\137\117\113\n'"+'\r')
- steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\nsleep 2s\nstats before\nsleep {args.seconds}s\nstats after\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
+ fence_seen=state/'fence-seen'
+ interaction=[]
+ if args.interaction=='menu':
+  interaction=['clicktext "[menu]"','waittext 5s koi: on',f'screen {out/session}-menu-on.txt','clicktext "koi: on"','clicktext "[menu]"','waittext 5s koi: off',f'screen {out/session}-menu-off.txt','mark koi-off-saved','clicktext "koi: off"','clicktext "[menu]"','waittext 5s koi: on',f'screen {out/session}-menu-on-again.txt','mark koi-on-saved','send "\\u001b"']
+ if args.interaction in ('ripple','fence'):
+  if args.interaction=='fence':interaction=[f'waitfile {fence_seen} 30s']
+  interaction+=['sendtimed "\\u001b[<0;146;24M"','send "\\u001b[<0;146;24m"','sleep 1500ms']
+ warmup='' if args.interaction=='fence' else 'sleep 2s\n'
+ steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\n'+warmup+'\n'.join(interaction)+f'\nstats before\nsleep {args.seconds}s\nstats after\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
+
  raw=out/f'{session}.ansi';logpath=out/f'{session}.log'
  server=None;traffic=None;server_samples={};traffic_samples={}
  if condition!='empty':
@@ -61,12 +70,12 @@ def execute(condition,enabled,repeat):
   queue.close();os.close(fd)
   traffic=Traffic(client_socket)
 
- command=[ptyrun,'-cols','160','-rows','45','-xpixel','1280','-ypixel','720','-timeline',str(out/f'{session}.timeline.jsonl'),'-raw-output',str(raw),'-steps',str(steps),'--',binary]
+ command=[ptyrun]+(['-status-delay','drop'] if args.interaction=='fence' else [])+['-cols','160','-rows','45','-xpixel','1280','-ypixel','720','-timeline',str(out/f'{session}.timeline.jsonl'),'-raw-output',str(raw),'-steps',str(steps),'--',binary]
  if condition=='empty':command+=['--no-session']
  else:command+=['--session',session]
  clientenv={**env,'IKESU_CPUPROFILE':str(out/f'{session}.cpu'),'IKESU_CPUPROFILE_SECS':'10'} if args.profile else env
  process=subprocess.Popen(command,env=clientenv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
- lines=[];setup=False;cleanup=[]
+ lines=[];setup=False;cleanup=[];menu_saved=[]
  def cli(*args):
   # Every command includes the exact isolated session and the scrubbed environment.
   p=subprocess.run([binary,'--session',session,*args],env=env,text=True,capture_output=True,timeout=30)
@@ -80,6 +89,12 @@ def execute(condition,enabled,repeat):
     if server:
      server_samples[label]=subprocess.check_output(['ps','-p',str(server.pid),'-o','time='],text=True).strip()
      traffic_samples[label]=traffic.snapshot()
+   if line.startswith('status-query') and setup:fence_seen.write_text('terminal fence pending')
+   if 'label="koi-off-saved"' in line or 'label="koi-on-saved"' in line:
+    enabled_value=tomllib.loads(cfg.read_text())['ui']['koi']
+    expected='koi-on-saved' in line
+    assert enabled_value==expected,'menu state and saved file differ'
+    menu_saved.append(enabled_value)
    if line.startswith('event mark label="booted"'):
     if condition!='empty':
      listing=cli('pane','list')
@@ -112,12 +127,12 @@ def execute(condition,enabled,repeat):
  def cpu(value):
   minutes,seconds=value.split(':');return int(minutes)*60+float(seconds)
  before,after=captures
- results.append({'session':session,'mode':'--no-session' if condition=='empty' else '--session','condition':condition,'enabled':enabled,'repeat':repeat,'seconds':args.seconds,'state':args.state,'cpu_seconds':round(cpu(after[3])-cpu(before[3]),3),'server_cpu_seconds':round(cpu(server_samples['after'])-cpu(server_samples['before']),3) if server else None,'server_bytes':traffic_samples['after'][0]-traffic_samples['before'][0] if traffic else None,'snapshot_messages':traffic_samples['after'][1]-traffic_samples['before'][1] if traffic else None,'terminal_bytes':int(after[4])-int(before[4]),'input_response_seconds':float(re.findall(r'onscreen ([0-9.]+)', ''.join(lines))[-1]),'server_cleanup':cleanup,'raw_output':str(raw),'log':str(logpath),'state_dir':str(state)})
+ results.append({'session':session,'mode':'--no-session' if condition=='empty' else '--session','condition':condition,'enabled':enabled,'repeat':repeat,'seconds':args.seconds,'state':args.state,'cpu_seconds':round(cpu(after[3])-cpu(before[3]),3),'server_cpu_seconds':round(cpu(server_samples['after'])-cpu(server_samples['before']),3) if server else None,'server_bytes':traffic_samples['after'][0]-traffic_samples['before'][0] if traffic else None,'snapshot_messages':traffic_samples['after'][1]-traffic_samples['before'][1] if traffic else None,'terminal_bytes':int(after[4])-int(before[4]),'input_response_seconds':float(re.findall(r'onscreen ([0-9.]+)', ''.join(lines))[-1]),'server_cleanup':cleanup,'raw_output':str(raw),'log':str(logpath),'state_dir':str(state),'menu_saved':menu_saved,'interaction':args.interaction})
 
 try:
  for repeat in range(args.repeats):
   for condition in ([args.condition] if args.condition else ('empty','pond','full')):
-   for enabled in (False,True):execute(condition,enabled,repeat)
+   for enabled in ((True,) if args.interaction else (False,True)):execute(condition,enabled,repeat)
  (out/'results.json').write_text(json.dumps(results,indent=2))
  print(json.dumps(results,indent=2))
 finally:

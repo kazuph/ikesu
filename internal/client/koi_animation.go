@@ -26,7 +26,7 @@ func (m *machineClient) paintKoi(now time.Time) error {
 	m.koiVisible = !m.blurred && frame.KoiActive
 	m.koiNext = time.Time{}
 	if m.koiVisible {
-		m.koiNext = now.Add(render.KoiInterval)
+		m.koiNext = now.Add(frame.KoiScene.UpdateInterval())
 	}
 	if len(data) == 0 {
 		return nil

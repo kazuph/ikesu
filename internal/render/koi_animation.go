@@ -6,10 +6,11 @@ import (
 
 // KoiAnimation belongs to a presenter, never to the shared server snapshot.
 type KoiAnimation struct {
-	epoch  time.Time
-	done   map[string]time.Time
-	ripple *KoiRipple
-	motion map[string]koiMotion
+	epoch       time.Time
+	done        map[string]time.Time
+	ripple      *KoiRipple
+	freshRipple bool
+	motion      map[string]koiMotion
 }
 
 func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time, expiry time.Duration) {
@@ -23,7 +24,11 @@ func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time,
 	in.KoiMotion = a.motion
 	in.KoiRipple = nil
 	if a.ripple != nil {
-		if in.KoiTime-a.ripple.Start < 2*KoiRippleLifetime {
+		if a.freshRipple {
+			a.ripple.Start = in.KoiTime
+			a.freshRipple = false
+		}
+		if in.KoiTime-a.ripple.Start < KoiAttractionLifetime {
 			r := *a.ripple
 			r.Time = in.KoiTime
 			in.KoiRipple = &r
@@ -67,6 +72,7 @@ func (a *KoiAnimation) Click(scene KoiScene, enabled bool, x, y int, now time.Ti
 	if a.epoch.IsZero() {
 		a.epoch = now
 	}
+	a.freshRipple = true
 	a.ripple = &KoiRipple{X: float64(x) + .5, Y: float64(y) + .5, Start: now.Sub(a.epoch).Seconds()}
 	return true
 }

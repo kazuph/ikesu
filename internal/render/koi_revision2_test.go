@@ -137,13 +137,18 @@ func TestKoiRevision2SmoothClickAndRelease(t *testing.T) {
 		}
 		return d
 	}
+	clock.Apply(&in, nil, now, 15*time.Second)
 	before := distance(scene)
 	for tick := 1; tick <= 120; tick++ {
 		clock.Apply(&in, nil, now.Add(time.Duration(tick)*KoiInterval), 15*time.Second)
 		next := AnimateKoi(scene, in).KoiScene
 		for i, f := range next.Fish {
 			a, b := koiPixelPosition(scene.Fish[i], 8, 16), koiPixelPosition(f, 8, 16)
-			if math.Abs(float64(a.X-b.X)) > 2 || math.Abs(float64(a.Y-b.Y)) > 2 {
+			limit := 2.0
+			if in.KoiRipple != nil {
+				limit *= KoiAttractionSpeedLimit
+			}
+			if math.Abs(float64(a.X-b.X)) > limit || math.Abs(float64(a.Y-b.Y)) > limit {
 				t.Fatalf("skipped source dot at tick=%d: %v -> %v", tick, a, b)
 			}
 			turn := (f.Direction-scene.Fish[i].Direction+24)%16 - 8
@@ -174,7 +179,7 @@ func TestKoiRevision2DemandUploadsNeverRepeat(t *testing.T) {
 	pattern := regexp.MustCompile(`a=t,t=d,[^;]*,i=(\d+),`)
 	first, uploads, total := 0, 0, 0
 	scene := Compose(in).Frame.KoiScene
-	for tick := 0; tick <= 12000; tick++ {
+	for tick := 0; tick <= int(600/KoiInterval.Seconds()); tick++ {
 		in.KoiTime = float64(tick) * KoiInterval.Seconds()
 		frame := AnimateKoi(scene, in)
 		data := enc.KoiFrame(frame, 0, 0, false)
@@ -301,7 +306,7 @@ func TestKoiRippleLifetimeMatchesBrandSite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	match := regexp.MustCompile(`clock-ripples\[0\]\.start>([0-9.]+)`).FindSubmatch(site)
+	match := regexp.MustCompile(`const rippleLifetime=([0-9.]+)`).FindSubmatch(site)
 	if len(match) != 2 {
 		t.Fatal("site ripple lifetime source not found")
 	}

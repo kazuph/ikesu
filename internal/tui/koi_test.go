@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -126,5 +127,29 @@ func TestKoiRev3StandaloneEmptyClickHasNoAnimationSideEffect(t *testing.T) {
 	a.draw()
 	if a.koiLocalActive {
 		t.Fatal("empty click started periodic repaint")
+	}
+}
+
+func TestKoiRev3MenuSaveFailureKeepsVisibleSetting(t *testing.T) {
+	teststate.Lock(t)
+	path := filepath.Join(t.TempDir(), "config-is-directory")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, config.EnvVar, path)
+	a := specRuntimeApp(t)
+	a.openMainMenu(0, 0)
+	index := -1
+	for i, item := range a.menu.m.Items {
+		if item.Label == "koi: on" {
+			index = i
+		}
+	}
+	if index < 0 {
+		t.Fatal("missing koi setting")
+	}
+	a.activateMenu(index)
+	if !a.sidebarConfig.KoiEnabled() {
+		t.Fatal("failed save changed active koi configuration")
 	}
 }

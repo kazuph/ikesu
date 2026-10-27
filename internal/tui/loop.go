@@ -241,10 +241,6 @@ func (a *App) copiedFlashAt(now time.Time) string {
 // onTick handles periodic work: spinner animation, copied-flash expiry,
 // foreground-process polling, and detection.
 func (a *App) onTick() {
-	// Standalone has no snapshot transport; its own presenter owns this clock.
-	if a.drawViewers == nil && a.snapshotSink == nil && a.koiLocalActive && !a.windowBlurred && a.sidebarConfig.KoiEnabled() {
-		a.dirty = true
-	}
 	defer benchstage.Span("ui.tick")()
 	if a.tickViewers != nil {
 		a.tickViewers()

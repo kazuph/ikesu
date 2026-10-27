@@ -247,6 +247,14 @@ func (a *App) draw() {
 	out := render.ComposeClient(in, nil, a.clientVersion, false)
 	a.koiScene = out.Frame.KoiScene
 	a.koiLocalActive = out.Frame.KoiActive && !a.windowBlurred
+	a.koiInput = in
+	a.koiAnchor = *out
+	a.koiAnchor.Frame = nil
+	if !a.koiLocalActive {
+		a.koiNext = time.Time{}
+	} else if a.koiNext.IsZero() {
+		a.koiNext = time.Now().Add(a.koiScene.UpdateInterval())
+	}
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
 		render.DrawTabDrop(out, g.drop, a.serverUI)
 	}
