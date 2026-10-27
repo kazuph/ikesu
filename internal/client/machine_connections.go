@@ -179,6 +179,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		e.processedInput = 0
 		if event.configRevision != m.configRevision {
 			if err := e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: m.settings.preferences}); err != nil {
 				m.notify(e.profile.Label + ": " + err.Error())
@@ -219,6 +220,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		e.processedInput = message.ProcessedInput
 		e.snapshotAttempt = e.attempt
 		e.boot = message.traceBoot
 		e.textOnly = message.traceTextOnly

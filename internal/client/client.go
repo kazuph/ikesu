@@ -52,6 +52,8 @@ type msg struct {
 	traceBoot             string
 	traceBytes            int
 	traceTextOnly         bool
+	InputSequence         uint64                 `json:"input_sequence,omitempty"`
+	ProcessedInput        uint64                 `json:"processed_input,omitempty"`
 	EndPrefix             bool                   `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer

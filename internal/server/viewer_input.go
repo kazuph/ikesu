@@ -1,6 +1,9 @@
 package server
 
-import "github.com/kazuph/ikesu/internal/benchstage"
+import (
+	"github.com/kazuph/ikesu/internal/benchstage"
+	"github.com/kazuph/ikesu/internal/endpoint"
+)
 
 func (s *Server) viewerInput(c *clientConn, m clientMsg) {
 	defer benchstage.Span("server.input")()
@@ -24,5 +27,8 @@ func (s *Server) viewerInput(c *clientConn, m clientMsg) {
 				c.viewer.InputWithSidebarPanel(s.app, data, m.SidebarJobs)
 			}
 		})
+	}
+	if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
+		s.app.Do(func() { c.viewer.RecordInput(s.app, m.InputSequence) })
 	}
 }

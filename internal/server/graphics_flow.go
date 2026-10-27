@@ -89,6 +89,9 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 		return err
 	}
 	message := clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender(), FocusEpoch: c.viewer.FocusEpoch()}
+	if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
+		message.ProcessedInput = c.viewer.ProcessedInput()
+	}
 	flow.writing = true
 	// GraphicsPatches is added to the wire copy by the encoder.
 	patchSent := !textOnly && flow.encoder.SentGraphicsPatch()

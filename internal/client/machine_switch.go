@@ -45,6 +45,7 @@ func (m *machineClient) requestPending() {
 		m.fail(m.pending.id, err)
 	} else {
 		m.pending.requested = true
+		m.pending.inputSequence = e.connection.lastSentInput()
 	}
 }
 
@@ -54,7 +55,7 @@ func (m *machineClient) finishSwitch() {
 		return
 	}
 	e := m.endpoints[p.id]
-	if e.connection == nil || e.snapshot == nil {
+	if e.connection == nil || e.snapshot == nil || e.processedInput < p.inputSequence {
 		return
 	}
 	s := e.snapshot.State

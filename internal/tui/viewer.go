@@ -11,6 +11,8 @@ import (
 // Viewer owns presentation and input state. The model and PTYs remain
 // session-owned; all methods run on the session's existing app loop.
 type Viewer struct {
+	receivedInput, processedInput uint64
+
 	app               *App
 	workspace         int
 	tabs              map[int]int
