@@ -24,6 +24,17 @@ try {
   const geometry=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,main:document.querySelector('main').getBoundingClientRect().toJSON(),heading:document.querySelector('h1').getBoundingClientRect().toJSON()}));
   assert.equal(geometry.scroll,geometry.width);assert.ok(geometry.heading.x>=0&&geometry.heading.right<=viewport.width);
   await page.screenshot({path:join(evidence,`site-${viewport.width}-ja.png`),fullPage:true});
+  const scattered=[];
+  for(let sample=0;sample<3;sample++){
+   if(sample)await page.waitForFunction(start=>clock>=start+2,await page.evaluate(()=>clock));
+   const state=await page.evaluate(()=>({clock,fish:fish.map(f=>({...f})),textSurfaces:[...document.querySelectorAll('.intro h1,.intro .eyebrow,.intro .lead,.intro .link')].map(el=>getComputedStyle(el).backgroundColor)}));
+   const xs=state.fish.map(f=>f.x);assert.ok(Math.max(...xs)-Math.min(...xs)>1.6,'fish collapsed into a vertical sample column');
+   for(let i=0;i<state.fish.length;i++)for(let j=i+1;j<state.fish.length;j++)assert.ok(Math.hypot(state.fish[i].x-state.fish[j].x,state.fish[i].y-state.fish[j].y)>=Math.hypot(1.6,.64)+.04,'rotated sprite bounds overlap');
+   if(viewport.width<640)assert.ok(state.textSurfaces.every(color=>color==='rgb(244, 240, 230)'),'mobile text must have an opaque surface');
+   scattered.push(state);await page.screenshot({path:join(evidence,`site-${viewport.width}-ja-time-${sample}.png`),fullPage:true});
+  }
+  await writeFile(join(evidence,`scatter-${viewport.width}-${viewport.height}.json`),JSON.stringify(scattered,null,2));
+
   const webgl=await page.evaluate(()=>({renderer:gl?'webgl2':'2d',error:gl?gl.getError():null,atlas:[atlas.naturalWidth,atlas.naturalHeight],footer:document.querySelector('footer').getBoundingClientRect().toJSON(),height:document.documentElement.scrollHeight}));
   assert.equal(webgl.renderer,'webgl2');assert.equal(webgl.error,0);assert.deepEqual(webgl.atlas,[320,160]);assert.ok(webgl.footer.bottom<=webgl.height,JSON.stringify(webgl));
 
