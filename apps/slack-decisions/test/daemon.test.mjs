@@ -1349,3 +1349,37 @@ test("body and option descriptions distinguish questions during post reuse", asy
     } finally { await daemon.stop(); await fake.stop(); }
   }
 });
+
+test("reused post history and restored state reject old replies but recover a fresh reply", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
+  const postsFilePath = path.join(tmpdir("generation-restore"), "posts.json");
+  const daemon = makeDaemon({ slack, postsFilePath });
+  let restored;
+  try {
+    const first = sampleDecision({ decision_id: "history-old", allow_text: true });
+    await daemon.onCreated("local", LOCAL, first);
+    const ts = fake.posts[0].ts;
+    fake.reactionsByTs.set(ts, [{ name: "one", users: ["UOLD"] }]);
+    const next = { ...first, decision_id: "history-new", created_unix_ms: Date.now() };
+    await Promise.all([
+      daemon.onResolved("local", { ...first, status: "cancelled" }),
+      daemon.onCreated("local", LOCAL, next),
+    ]);
+    await daemon.stop();
+    restored = makeDaemon({ slack, postsFilePath });
+    restored.loadPostsFile();
+    await restored.onCreated("local", LOCAL, next);
+    const oldTs = String(next.created_unix_ms / 1000 - 1);
+    fake.threadReplies.set(ts, [{ ts: oldTs, user: "UOLD", text: "old reply" }]);
+    await restored.pollOnce();
+    assert.equal(restored.testAnswers.length, 0);
+    const freshTs = String(Date.now() / 1000 + 1);
+    fake.threadReplies.get(ts).push({ ts: freshTs, user: "UFRESH", text: "fresh reply" });
+    await restored.pollOnce();
+    await restored.pollOnce();
+    assert.equal(restored.testAnswers.length, 1);
+    assert.ok(restored.testAnswers[0].includes("fresh reply"));
+    assert.equal(fake.posts.length, 1);
+  } finally { await daemon.stop(); if (restored) await restored.stop(); await fake.stop(); }
+});
