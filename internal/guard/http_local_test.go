@@ -65,3 +65,22 @@ func TestLocalHTTPConnectionOverrides(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalHTTPParsedShell(t *testing.T) {
+	for _, tc := range []struct{ line, want string }{
+		{`curl -s -X POST "http://localhost:3847/webhook/stop" --data '{}'`, "allow"},
+		{`curl -XPOST "$LOCAL_URL"`, "allow"},
+		{`curl -XPOST "$MISSING_URL"`, "ask"},
+		{`http_proxy=http://example.invalid curl -XPOST http://localhost`, "ask"},
+	} {
+		t.Run(tc.line, func(t *testing.T) {
+			i, err := LineInput(Input{Env: map[string]string{"LOCAL_URL": "http://localhost:3847/webhook/stop"}}, tc.line)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v := Evaluate(Config{}, i); v.Decision != tc.want {
+				t.Fatalf("%+v parsed args=%q want %s", v, i.Args, tc.want)
+			}
+		})
+	}
+}

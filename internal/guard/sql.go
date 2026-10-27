@@ -110,8 +110,12 @@ func readonlySQL(s string) bool {
 }
 func writeMethod(s string) bool { return has([]string{"POST", "PUT", "PATCH", "DELETE"}, s) }
 func httpMethod(a []string, cmd string) string {
-	if has([]string{"http", "https"}, cmd) && writeMethod(arg(a, 0)) {
-		return a[0]
+	if has([]string{"http", "https"}, cmd) {
+		for _, value := range a {
+			if writeMethod(value) {
+				return value
+			}
+		}
 	}
 	method := ""
 	body := false

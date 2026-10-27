@@ -194,7 +194,7 @@ func classify(c Config, i Input) Verdict {
 			return ask
 		}
 	case "curl", "wget", "http", "https":
-		if writeMethod(httpMethod(a, cmd)) {
+		if writeMethod(httpMethod(a, cmd)) && !localHTTPDestinations(i) {
 			return result("ask", "http-write", "HTTPの書き込みには承認が必要です。")
 		}
 	case "aws":
