@@ -100,7 +100,7 @@ func approvalTrigger(i Input, v Verdict) string {
 		i.RawLine = ""
 		command = i.Line()
 	}
-	return redact("ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command)
+	return i.redact("ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command)
 }
 
 func approvalTitle(i Input) string {
@@ -120,7 +120,7 @@ func Authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	return authorize(c, root, i, via, errOut, await, nil)
 }
 func authorize(c Config, root string, i Input, via string, errOut io.Writer, await Await, override *Verdict) bool {
-	errOut = redactedWriter{errOut}
+	errOut = redactedWriter{errOut, i}
 	m, active, e := ReadMarker(i)
 	if e != nil {
 		fmt.Fprintln(errOut, "❌ 実行を停止しました:", e)
@@ -204,8 +204,8 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	if reason != "" {
 		body += "\n\n" + strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
 	}
-	body = redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: redact(i.Cwd), Command: redact(command), Reason: redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	body = i.redact(body)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: redact(i.Cwd), Command: i.redact(command), Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()
@@ -267,7 +267,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	return true
 }
 func PrintBlock(w io.Writer, i Input, v Verdict) {
-	w = redactedWriter{w}
+	w = redactedWriter{w, i}
 	switch v.Rule {
 	case "protected":
 		fmt.Fprintf(w, "\n🚫🚫🚫 SECURITY BLOCK 🚫🚫🚫\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n❌ AIプロセスによる .allow-main 関連操作は完全に禁止されています\n\nブロックされたコマンド:\n  %s\n\n理由: .allow-main はセキュリティ上重要なファイルです。\n      AIがこのファイルを操作することは許可されていません。\n\n必要な場合は、人間が手動で操作してください。\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", i.Line())

@@ -65,7 +65,7 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	}
 	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	now := time.Now()
-	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: redact(v.Reason), Command: redactArgv(append([]string{i.Command}, i.Args...)), CommandLine: redact(i.Line()), Cwd: redact(i.Cwd), LaunchCwd: redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
+	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: i.redact(v.Reason), Command: redactArgv(append([]string{i.Command}, i.Args...)), CommandLine: i.redact(i.Line()), Cwd: redact(i.Cwd), LaunchCwd: redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
 	if e != nil {
 		return e
 	}
