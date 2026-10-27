@@ -2261,7 +2261,7 @@ async function deliverContextMain(config) {
 
 // --- entry point -----------------------------------------------------------------
 
-async function gateCheck(config) {
+export async function gateCheck(config, userInfo = os.userInfo) {
   if (!config.enabled) {
     log("設定で無効化されています (enabled=false)");
     return false;
@@ -2276,8 +2276,8 @@ async function gateCheck(config) {
   return true;
 }
 
-async function main() {
-  const mode = process.argv[2] || "run";
+export async function main({ argv = process.argv, userInfo = os.userInfo } = {}) {
+  const mode = argv[2] || "run";
   const config = loadConfig(process.env);
 
   if (mode === "check-sabera") {
@@ -2288,7 +2288,7 @@ async function main() {
     return;
   }
 
-  if (!(await gateCheck(config))) return;
+  if (!(await gateCheck(config, userInfo))) return;
 
   if (mode === "ensure") {
     await ensureDaemon(config, process.env);
@@ -2296,7 +2296,7 @@ async function main() {
   }
 
   if (mode === "deliver") {
-    const code = await deliverMain(config, process.argv.slice(3));
+    const code = await deliverMain(config, argv.slice(3));
     if (code) process.exit(code);
     return;
   }
