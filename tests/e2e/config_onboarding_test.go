@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -33,10 +34,10 @@ func TestOnboardingContinueImmediateShellInput(t *testing.T) {
 				if text := s.text(); strings.Contains(text, "NAVIGATE") || strings.Contains(text, "RESIZE") || strings.Contains(text, "continue") {
 					t.Fatal("unexpected mode after continue:", text)
 				}
-				data, err := os.ReadFile(path)
-				if err != nil || !strings.Contains(string(data), "onboarding = false") {
-					t.Fatal(string(data), err)
-				}
+				s.waitFor("onboarding configuration persisted", 10*time.Second, func(string) bool {
+					data, err := os.ReadFile(path)
+					return err == nil && strings.Contains(string(data), "onboarding = false")
+				})
 			})
 		}
 	}
@@ -51,4 +52,45 @@ func TestServerInheritsExternalOnboardingConfig(t *testing.T) {
 	if text := s.text(); strings.Contains(text, "continue") || strings.Contains(text, "RESIZE") || strings.Contains(text, "NAVIGATE") {
 		t.Fatal("external onboarding=false ignored:", text)
 	}
+}
+
+func TestOnboardingImmediateInputWhileConfigurationSaveWaits(t *testing.T) {
+	path := onboardingConfig(t, "true")
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": path})
+	s.waitFor("welcome", 10*time.Second, func(text string) bool { return strings.Contains(text, "continue") })
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	written := make(chan error, 1)
+	go func() { <-release; written <- os.WriteFile(path, original, 0600) }()
+	released := false
+	unblock := func() {
+		if !released {
+			released = true
+			close(release)
+			if err := <-written; err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	t.Cleanup(unblock)
+	s.send("\rprintf '%s_%s\\n' SAVE_WAIT INPUT_OK\r")
+	s.waitFor("shell output while configuration save waits", 10*time.Second, func(text string) bool { return strings.Contains(text, "SAVE_WAIT_INPUT_OK") })
+	unblock()
+	s.waitFor("configuration persisted after input", 10*time.Second, func(string) bool {
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
+		data, err := os.ReadFile(path)
+		return err == nil && strings.Contains(string(data), "onboarding = false")
+	})
 }
