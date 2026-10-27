@@ -317,3 +317,28 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 		}
 	}
 }
+
+func TestKoiOctantsKeepSourcePalette(t *testing.T) {
+	for variety := range KoiPatterns {
+		fish := KoiFish{Agent: KoiAgent{Seed: variety}, Rect: layout.Rect{W: 10, H: 2}}
+		source := KoiSprite(variety, 0, 0, 20, 8)
+		frame := NewFrame(10, 2)
+		colors := map[color.RGBA]bool{color.RGBAModel.Convert(frame.Palette.PanelBG).(color.RGBA): true}
+		for y := 0; y < 8; y++ {
+			for x := 0; x < 20; x++ {
+				c := source.RGBAAt(x, y)
+				if c.A != 0 {
+					colors[c] = true
+				}
+			}
+		}
+		drawKoiOctants(frame, fish)
+		for _, cell := range frame.Cells {
+			for _, c := range []color.Color{cell.Style.Fg, cell.Style.Bg} {
+				if c != nil && !colors[color.RGBAModel.Convert(c).(color.RGBA)] {
+					t.Fatal("octant introduced an interpolated color", variety, c)
+				}
+			}
+		}
+	}
+}

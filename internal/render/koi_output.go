@@ -118,25 +118,14 @@ func twoColorOctant(px [8]color.RGBA) (color.RGBA, color.RGBA, int) {
 			}
 		}
 	}
-	var sums [2][3]int
-	var counts [2]int
 	mask := 0
 	for i, c := range px {
-		k := 1
 		if dist(c, px[a]) <= dist(c, px[b]) {
-			k = 0
 			mask |= 1 << i
 		}
-		sums[k][0] += int(c.R)
-		sums[k][1] += int(c.G)
-		sums[k][2] += int(c.B)
-		counts[k]++
 	}
-	avg := func(k int) color.RGBA {
-		n := max(1, counts[k])
-		return color.RGBA{uint8(sums[k][0] / n), uint8(sums[k][1] / n), uint8(sums[k][2] / n), 255}
-	}
-	return avg(0), avg(1), mask
+
+	return px[a], px[b], mask
 }
 
 func koiVariant(f KoiFish) int {

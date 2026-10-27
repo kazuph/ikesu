@@ -8,7 +8,7 @@ const evidence=resolve(process.argv[2]);await mkdir(evidence,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const results=[];
 try {
- for(const viewport of [{width:1440,height:1000},{width:390,height:844}]) {
+ for(const viewport of [{width:1440,height:1000},{width:390,height:844},{width:390,height:620}]) {
   const page=await browser.newPage({viewport});const errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url())});
   await page.goto(pathToFileURL(resolve('site/index.html')).href);
@@ -18,13 +18,20 @@ try {
   assert.equal(geometry.scroll,geometry.width);assert.ok(geometry.heading.x>=0&&geometry.heading.right<=viewport.width);
   await page.screenshot({path:join(evidence,`site-${viewport.width}-ja.png`),fullPage:true});
   const webgl=await page.evaluate(()=>({renderer:gl?'webgl2':'2d',error:gl?gl.getError():null,atlas:[atlas.naturalWidth,atlas.naturalHeight],footer:document.querySelector('footer').getBoundingClientRect().toJSON(),height:document.documentElement.scrollHeight}));
-  assert.equal(webgl.renderer,'webgl2');assert.equal(webgl.error,0);assert.deepEqual(webgl.atlas,[320,160]);assert.ok(webgl.footer.bottom<=webgl.height);
+  assert.equal(webgl.renderer,'webgl2');assert.equal(webgl.error,0);assert.deepEqual(webgl.atlas,[320,160]);assert.ok(webgl.footer.bottom<=webgl.height,JSON.stringify(webgl));
 
   await page.getByRole('button',{name:'English',exact:true}).click();
   assert.equal(await page.locator('html').getAttribute('lang'),'en');assert.match(await page.locator('h1').innerText(),/Keep your agents/);
   await page.screenshot({path:join(evidence,`site-${viewport.width}-en.png`),fullPage:true});
+  await page.emulateMedia({reducedMotion:'reduce'});await page.waitForFunction(()=>raf===0);
+  const waterBefore=await page.evaluate(()=>{const pixels=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);window.brandProofPixels=pixels;const source=document.createElement('canvas');source.width=atlas.naturalWidth;source.height=atlas.naturalHeight;const sample=source.getContext('2d');sample.drawImage(atlas,0,0);const rgba=sample.getImageData(0,0,source.width,source.height).data,palette=new Set();for(let i=0;i<rgba.length;i+=4)if(rgba[i+3]===255)palette.add([rgba[i],rgba[i+1],rgba[i+2]].join(','));let fishPixels=0;for(let i=0;i<pixels.length;i+=4)if(palette.has([pixels[i],pixels[i+1],pixels[i+2]].join(',')))fishPixels++;return{clock,fishPixels,nearest:gl.getTexParameter(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER)===gl.NEAREST};});
+  assert.ok(waterBefore.fishPixels>0);assert.equal(waterBefore.nearest,true);
   await page.mouse.click(viewport.width*.85,viewport.height*.75);
+  const waterAfter=await page.evaluate(()=>{const pixels=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let changed=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]!==brandProofPixels[i]||pixels[i+1]!==brandProofPixels[i+1]||pixels[i+2]!==brandProofPixels[i+2])changed++;delete window.brandProofPixels;return{clock,changedPixels:changed};});
+  assert.equal(waterBefore.clock,waterAfter.clock);assert.ok(waterAfter.changedPixels>0);
+
   await page.screenshot({path:join(evidence,`site-${viewport.width}-ripple.png`),fullPage:true});
+  await page.emulateMedia({reducedMotion:'no-preference'});
   const clicked=await page.evaluate(()=>({ripples:ripples.length,target,fish:fish.map(f=>({x:f.x,y:f.y})),clock}));
   assert.equal(clicked.ripples,1);assert.ok(clicked.target);
   const initialDistance=clicked.fish.reduce((s,f)=>s+Math.hypot(f.x-clicked.target.x,f.y-clicked.target.y),0);
@@ -39,7 +46,7 @@ try {
   const later=await page.evaluate(()=>({clock,fish:JSON.stringify(fish),pixels:canvas.toDataURL()}));
   assert.deepEqual(later,frozen);
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
-  results.push({viewport,geometry,approach:{initialDistance,finalDistance},renderer:await page.evaluate(()=>gl?'webgl2':'2d'),reducedMotion:'pixels, positions and clock unchanged',errors,externalRequests:requests});
+  results.push({viewport,geometry,waterBefore,waterAfter,approach:{initialDistance,finalDistance},renderer:await page.evaluate(()=>gl?'webgl2':'2d'),reducedMotion:'pixels, positions and clock unchanged',errors,externalRequests:requests});
   await page.close();
  }
  const readme=await browser.newPage({viewport:{width:1200,height:1000}});
