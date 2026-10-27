@@ -69,7 +69,10 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 		allowed                          bool
 	}{
 		{"approve", "approve", "", "answered", "", true},
-		{"approve_comment", "approve", "ええやん", "answered", "", true},
+		{"approve_comment", "approve", "ええやん", "answered", "承認時のコメント: ええやん", true},
+		{"approve_attachment", "approve", "token=fixture-secret\n添付画像: /tmp/日本語 添付/1.png", "answered", "承認時のコメント: token=***\n添付画像: /tmp/日本語 添付/1.png", true},
+		{"day_allow_comment", "day_allow", "画像を確認して", "answered", "承認時のコメント: 画像を確認して", true},
+		{"approve_whitespace", "approve", " \t\n", "answered", "", true},
 		{"day_allow", "day_allow", "", "answered", "", true},
 		{"reject_comment", "reject", "実行しないで", "answered", "理由: 実行しないで", false},
 		{"reject_no_comment", "reject", "", "answered", "理由: 未入力", false},
@@ -144,8 +147,15 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 				t.Errorf("allowed=%v stderr=%q; want allowed=%v contains=%q", got, out.String(), tc.allowed, tc.want)
 			}
 			if tc.allowed {
-				if out.Len() != 0 {
-					t.Errorf("approval output changed: %s", out.String())
+				wantOutput := ""
+				if tc.want != "" {
+					wantOutput = tc.want + "\n"
+				}
+				if out.String() != wantOutput {
+					t.Errorf("approval output=%q want=%q", out.String(), wantOutput)
+				}
+				if strings.Contains(out.String(), "fixture-secret") {
+					t.Error("approval leaked secret")
 				}
 				key := verdict.TempKey
 				if tc.option == "day_allow" {
