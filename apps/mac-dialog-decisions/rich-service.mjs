@@ -19,9 +19,8 @@ r=json.load(sys.stdin)
 def safe(v):
  if not v or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_. ' for c in v) or v in ['.','..']: raise ValueError('invalid ID')
 def directory(parts):
- d=os.path.expanduser('~/.local/state/ikesu/plugins/kazuph.mac-dialog-decisions')
- os.makedirs(d,mode=0o700,exist_ok=True)
- for p in parts:
+ d=os.path.expanduser('~')
+ for p in ['.local','state','ikesu','plugins','kazuph.mac-dialog-decisions']+parts:
   safe(p); d=os.path.join(d,p)
   try: os.mkdir(d,0o700)
   except FileExistsError: pass
@@ -69,7 +68,14 @@ elif r['action']=='cleanup':
    except FileNotFoundError: pass
 `;
 export class RichService {
- constructor(config) {this.config=config;this.store=new AttachmentStore(config.stateDir);this.cleanupTimer=null;}
+ constructor(config) {this.config=config;this.store=new AttachmentStore(config.stateDir);this.cleanupTimer=null;this.nextCleanup=null;}
+ async start() {await this.cleanup();}
+ stop() {clearTimeout(this.cleanupTimer);}
+ scheduleCleanup(deadline) {
+  if(deadline===null||this.nextCleanup!==null&&this.nextCleanup<=deadline) return;
+  clearTimeout(this.cleanupTimer);this.nextCleanup=deadline;
+  this.cleanupTimer=setTimeout(()=>{this.nextCleanup=null;void this.cleanup().catch(error=>process.stderr.write(`添付の整理に失敗: ${error.message}\n`));},Math.max(0,deadline-Date.now()));this.cleanupTimer.unref();
+ }
  async profile(machine,signal) {
   const data=JSON.parse(String(await execute(this.config.ikesuBin,['machine','list','--json'],{signal,maxBuffer:RICH_LIMITS.pageBytes})));
   const profiles=Array.isArray(data)?data:data?.result?.machines||data?.machines||data?.result?.profiles;
@@ -123,7 +129,12 @@ export class RichService {
   await this.store.resolve(machine,id,status);
   if(machine!=='local') await this.remote(machine,{action:'resolve',machine,id,status,now:Date.now()});
   // A timer is tied to the specified retention period, rather than a new polling interval.
-  if(status==='answered') {const timer=setTimeout(()=>{void this.cleanup(machine);},RICH_LIMITS.retentionMs);timer.unref();}
+  if(status==='answered') this.scheduleCleanup(Date.now()+RICH_LIMITS.retentionMs);
  }
- async cleanup(machine='local') {await this.store.cleanup();if(machine!=='local') await this.remote(machine,{action:'cleanup',now:Date.now(),retention:RICH_LIMITS.retentionMs});}
+ async cleanup(machine='local') {if(machine!=='local') await this.remote(machine,{action:'cleanup',now:Date.now(),retention:RICH_LIMITS.retentionMs});
+  const base=path.join(this.config.stateDir,'attachments');
+  let machines=[];try{machines=(await fs.readdir(base,{withFileTypes:true})).filter(m=>m.isDirectory()&&!m.isSymbolicLink()&&m.name!=='local');}catch(error){if(error.code!=='ENOENT') throw error;}
+  for(const item of machines) {try{await this.remote(item.name,{action:'cleanup',now:Date.now(),retention:RICH_LIMITS.retentionMs});}catch{}}
+  this.scheduleCleanup(await this.store.cleanup());
+ }
 }

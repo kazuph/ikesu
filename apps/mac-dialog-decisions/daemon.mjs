@@ -41,6 +41,7 @@ export class MacDialogDecisionsDaemon {
   }
 
   async start() {
+    await this.rich?.start();
     this._watchDone = this.watchLoop();
   }
 
@@ -48,6 +49,7 @@ export class MacDialogDecisionsDaemon {
 
   async stop() {
     this.stopped = true;
+    this.rich?.stop();
     if (this._pumpTimer) clearTimeout(this._pumpTimer);
     this._watchHandle?.close?.();
     this._closeDialog();
@@ -102,6 +104,7 @@ export class MacDialogDecisionsDaemon {
 
     if (event === "machine_up") {
       this.machinesDown.delete(mid);
+      if (this.rich) void this.rich.cleanup(mid).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
       const epoch = (this.machineEpochs.get(mid) || 0) + 1;
       this.machineEpochs.set(mid, epoch);
       void this.reconcileMachine(mid, epoch);
@@ -198,6 +201,8 @@ export class MacDialogDecisionsDaemon {
     const entry = this.entries.get(key);
     if (entry) {
       entry.resolved = true;
+      entry.resolvedStatus = decision.status;
+      entry.answerAbort?.abort();
       entry.queued = false;
       clearTimeout(entry.snoozeTimer);
       clearTimeout(entry.answerRetryTimer);
@@ -219,6 +224,7 @@ export class MacDialogDecisionsDaemon {
     for (const entry of [...this.entries.values()]) {
       if (entry.machineId !== mid) continue;
       entry.machineDown = true;
+      entry.answerAbort?.abort();
       entry.queued = false;
       this.queue = this.queue.filter((k) => k !== entry.key);
       if (entry.showing) this._closeDialog(entry);
@@ -403,6 +409,7 @@ export class MacDialogDecisionsDaemon {
   async submitAnswer(entry, { optionIds = [], text = "", attachments = entry.draft?.attachments || [] }) {
     if (!this.isActive(entry) || entry.answerPending) return false;
     entry.answerPending = true;
+    entry.answerAbort = new AbortController();
     entry.draft = {option_ids: optionIds, text, ...(attachments.length ? {attachments} : {})};
     this.notify();
     const did = entry.decision.decision_id;
@@ -413,17 +420,24 @@ export class MacDialogDecisionsDaemon {
     try {
       if (attachments.length) {
         if (!this.rich || !entry.decision.allow_text) throw Error("この判断待ちは画像を添付できません");
-        const files = await this.rich.save(entry.machineId, did, attachments);
+        const files = await this.rich.save(entry.machineId, did, attachments, entry.answerAbort.signal);
         answerText = [text, ...files.map(file => `添付画像: ${file}`)].filter(Boolean).join("\n");
       }
-      if (!this.isActive(entry)) { entry.answerPending = false; return false; }
+      if (!this.isActive(entry)) {
+        entry.answerPending = false;
+        if (this.rich && entry.resolvedStatus && attachments.length) await this.rich.resolve(entry.machineId, did, entry.resolvedStatus);
+        return false;
+      }
       if (answerText) args.push("--text", answerText);
       result = await this.runAnswer(args);
     }
     catch (error) { result = {code: 1, stderr: error.message}; }
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "unknown";
     if (result.code === 0 || /decision_already_resolved/.test(detail)) { this.settleAnswer(entry); return true; }
-    if (entry.resolved || this.entries.get(entry.key) !== entry || this.stopped) return false;
+    if (entry.resolved || this.entries.get(entry.key) !== entry || this.stopped) {
+      if (this.rich && entry.resolvedStatus && attachments.length) await this.rich.resolve(entry.machineId, did, entry.resolvedStatus).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
+      return false;
+    }
     entry.answerPending = false;
     this.log(`回答の送信に失敗 (${did}): ${detail}`);
     if (/https:\/\/login\.tailscale\.com\//.test(detail)) {

@@ -9,6 +9,7 @@ export class AttachmentStore {
  async directory(kind,machine,id) {
   safeID(machine); safeID(id);
   await fs.mkdir(this.root,{recursive:true,mode:0o700});
+  if((await fs.lstat(this.root)).isSymbolicLink()) throw Error("状態フォルダにシンボリックリンクは使えません");
   let dir=this.root;
   for(const part of [kind,machine,id]) {
    dir=path.join(dir,part);
@@ -51,7 +52,8 @@ export class AttachmentStore {
  }
  async cleanup(now=Date.now()) {
   const base=path.join(this.root,'attachments');
-  let machines; try {machines=await fs.readdir(base,{withFileTypes:true});} catch(e) {if(e.code==='ENOENT') return;throw e;}
+  let next=null;
+  let machines; try {machines=await fs.readdir(base,{withFileTypes:true});} catch(e) {if(e.code==='ENOENT') return null;throw e;}
   for(const machine of machines.filter(m=>m.isDirectory()&&!m.isSymbolicLink())) {
    const dir=path.join(base,machine.name);
    for(const decision of await fs.readdir(dir,{withFileTypes:true})) {
@@ -60,9 +62,14 @@ export class AttachmentStore {
     try {
      const file=await fs.open(path.join(folder,'answered.json'),constants.O_RDONLY|constants.O_NOFOLLOW);
      let record;try {record=JSON.parse(await file.readFile('utf8'));} finally {await file.close();}
-     if(Number.isFinite(record.answered)&&now-record.answered>=RICH_LIMITS.retentionMs) await fs.rm(folder,{recursive:true,force:true});
+     if(Number.isFinite(record.answered)) {
+      const deadline=record.answered+RICH_LIMITS.retentionMs;
+      if(now>=deadline) await fs.rm(folder,{recursive:true,force:true});
+      else next=next===null?deadline:Math.min(next,deadline);
+     }
     } catch(e) {if(e.code!=='ENOENT') throw e;}
    }
   }
+  return next;
  }
 }

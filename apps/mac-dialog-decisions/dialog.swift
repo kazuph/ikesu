@@ -567,6 +567,7 @@ final class DialogController: NSObject, NSWindowDelegate {
       textView = tv
       let attachButton = FirstClickButton(title: "画像を添付", target: self, action: #selector(chooseAttachments))
       attachButton.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: "画像を添付")
+      attachButton.imagePosition = .imageLeading
       attachButton.bezelStyle = .rounded
       attachButton.toolTip = "画像は4枚・1枚20MBまで。画像の中の秘密情報は伏せ字になりません。"
       bottom.addArrangedSubview(attachButton)
@@ -711,7 +712,8 @@ extension DialogController: NSTextViewDelegate {
 func richLinkRanges(_ text: String) -> [NSTextCheckingResult] {
   guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return [] }
   return detector.matches(in: text, range: NSRange(text.startIndex..., in: text)).filter {
-    guard let url = $0.url else { return false }
+    guard let url = $0.url, let range = Range($0.range, in: text) else { return false }
+    guard text[range].hasPrefix("http://") || text[range].hasPrefix("https://") else { return false }
     return ["http", "https"].contains(url.scheme?.lowercased() ?? "") && !url.absoluteString.contains("***")
   }
 }
@@ -760,7 +762,9 @@ final class ImagePreviewButton: NSButton {
     target = self; action = #selector(previewImage)
     translatesAutoresizingMaskIntoConstraints = false
     heightAnchor.constraint(equalToConstant: min(maxHeight, CGFloat(bitmap.height))).isActive = true
-    widthAnchor.constraint(equalToConstant: min(640, maxHeight * CGFloat(bitmap.width) / CGFloat(bitmap.height))).isActive = true
+    let preferredWidth = widthAnchor.constraint(equalToConstant: min(640, maxHeight * CGFloat(bitmap.width) / CGFloat(bitmap.height)))
+    preferredWidth.priority = .defaultHigh
+    preferredWidth.isActive = true
     toolTip = "プレビューで開く"
   }
   required init?(coder: NSCoder) { fatalError() }
@@ -833,6 +837,8 @@ extension DialogController {
         DispatchQueue.main.async { if self?.closed == false { thumbnail?.image = bitmap.image } }
       }
       let remove = FirstClickButton(title: "\(index + 1) を外す", target: self, action: #selector(removeAttachment(_:)))
+      remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "外す")
+      remove.imagePosition = .imageLeading
       remove.tag = index; remove.toolTip = attachment.name; remove.bezelStyle = .rounded
       group.addArrangedSubview(remove); attachmentRow.addArrangedSubview(group)
     }
@@ -846,8 +852,11 @@ extension DialogController {
     if status == "rich_error" { statusLabel.stringValue = message["message"] as? String ?? "画像を表示できません。"; return }
     if status == "rich_card", let title = message["title"] as? String, let url = message["url"] as? String {
       let group = NSStackView(); group.orientation = .vertical; group.alignment = .leading; group.spacing = 3
-      group.addArrangedSubview(richLabel(title + "\n" + (message["site"] as? String ?? "") + "\n" + url, size: Look.small))
+      let caption = richLabel(title + "\n" + (message["site"] as? String ?? "") + "\n" + url, size: Look.small)
+      group.addArrangedSubview(caption)
       richStack.addArrangedSubview(group)
+      group.widthAnchor.constraint(equalTo: richStack.widthAnchor).isActive = true
+      caption.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
       if let path = message["path"] as? String, !path.isEmpty { loadRichImage(path, into: group, height: 80) }
     } else if status == "rich_image", let path = message["path"] as? String { loadRichImage(path, into: richStack) }
   }
@@ -858,7 +867,9 @@ extension DialogController {
         let bitmap = try richBitmap(data)
         DispatchQueue.main.async {
           guard let self, !self.closed, let stack else { return }
-          stack.addArrangedSubview(ImagePreviewButton(path: path, bitmap: bitmap, maxHeight: height))
+          let button = ImagePreviewButton(path: path, bitmap: bitmap, maxHeight: height)
+          stack.addArrangedSubview(button)
+          button.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
         }
       } catch { DispatchQueue.main.async { if self?.closed == false { self?.statusLabel.stringValue = "画像を表示できません: \(error.localizedDescription)" } } }
     }
