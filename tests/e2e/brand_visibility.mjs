@@ -6,7 +6,7 @@ import {resolve,join} from 'node:path';
 import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
 import {watch} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {spawn,execFileSync} from 'node:child_process';
+import {spawn,spawnSync,execFileSync} from 'node:child_process';
 
 const profile=await mkdtemp(join(tmpdir(),'koi-visibility-p232-'));
 const activeFile=join(profile,'DevToolsActivePort');
@@ -41,6 +41,9 @@ try {
  if(socket)socket.close();
  const uid=execFileSync('id',['-u'],{encoding:'utf8'}).trim();
  let owned=[];try{owned=execFileSync('pgrep',['-u',uid,'-f',profile],{encoding:'utf8'}).trim().split(/\s+/).filter(Boolean);}catch{}
- for(const pid of owned){let command;try{command=execFileSync('ps',['-ww','-p',pid,'-o','command='],{encoding:'utf8'});}catch(error){if(error.status===1)continue;throw error;}if(command.includes(profile)&&command.includes('/Applications/Google Chrome.app/'))execFileSync('kill',[pid]);}
+ for(const pid of owned){let command;try{command=execFileSync('ps',['-ww','-p',pid,'-o','command='],{encoding:'utf8'});}catch(error){if(error.status===1)continue;throw error;}if(command.includes(profile)&&command.includes('/Applications/Google Chrome.app/')){
+ const stopped=spawnSync('kill',[pid],{encoding:'utf8'});
+ if(stopped.status!==0){const stillRunning=spawnSync('ps',['-p',pid,'-o','pid='],{encoding:'utf8'});if(stopped.status!==1||!stopped.stderr.includes('No such process')||stillRunning.status!==1)throw Error(`owned Chrome cleanup failed: ${stopped.stderr}`);}
+ }}
  await rm(profile,{recursive:true,force:true});
 }

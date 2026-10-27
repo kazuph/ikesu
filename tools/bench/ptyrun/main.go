@@ -60,28 +60,7 @@ func main() {
 		}
 	}
 	emu := vt.NewEmulator(*cols, *rows)
-	if *statusDelay != "" {
-		delay, err := time.ParseDuration(*statusDelay)
-		if *statusDelay != "drop" && (err != nil || delay < 0) {
-			fmt.Fprintln(os.Stderr, "invalid status reply delay:", *statusDelay)
-			os.Exit(1)
-		}
-		emu.RegisterCsiHandler('n', func(params ansi.Params) bool {
-			op, _, _ := params.Param(0, 0)
-			if op != 5 {
-				return false
-			}
-			fmt.Printf("status-query at_unix_us=%d\n", time.Now().UnixMicro())
-			if *statusDelay != "drop" {
-				go func() {
-					time.Sleep(delay)
-					_, err := io.WriteString(ptmx, "\x1b[0n")
-					fmt.Printf("status-reply at_unix_us=%d error=%v\n", time.Now().UnixMicro(), err)
-				}()
-			}
-			return true
-		})
-	}
+
 	if *holdColor {
 		emu.RegisterOscHandler(11, func(data []byte) bool {
 			fmt.Printf("held-color-report %q\n", data)
@@ -148,6 +127,34 @@ func main() {
 		observer.includeBodies = *includeBodies
 	}
 	defer observer.close()
+	if *statusDelay != "" {
+		delay, err := time.ParseDuration(*statusDelay)
+		if *statusDelay != "drop" && (err != nil || delay < 0) {
+			fmt.Fprintln(os.Stderr, "invalid status reply delay:", *statusDelay)
+			os.Exit(1)
+		}
+		emu.RegisterCsiHandler('n', func(params ansi.Params) bool {
+			op, _, _ := params.Param(0, 0)
+			if op != 5 {
+				return false
+			}
+			if observer != nil {
+				if len(observer.receiver.pending) != 0 {
+					panic("status query before image payload completed")
+				}
+				observer.record(map[string]any{"type": "terminal.status_pending", "clock_ns": monotonicNS(), "policy": *statusDelay})
+			}
+			fmt.Printf("status-query at_unix_us=%d\n", time.Now().UnixMicro())
+			if *statusDelay != "drop" {
+				go func() {
+					time.Sleep(delay)
+					_, err := io.WriteString(ptmx, "\x1b[0n")
+					fmt.Printf("status-reply at_unix_us=%d error=%v\n", time.Now().UnixMicro(), err)
+				}()
+			}
+			return true
+		})
+	}
 	var mu sync.Mutex
 	go func() { _, _ = io.Copy(ptmx, emu) }() // emulator replies (DA etc.) back to the app
 	// Drain the PTY as fast as possible (like a fast real terminal) and feed the emulator
