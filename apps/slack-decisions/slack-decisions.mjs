@@ -963,6 +963,9 @@ export class SlackDecisionsDaemon {
           ts: value.ts,
           machineId: value.machine_id,
           decisionId: value.decision_id,
+          answerAfter: value.answer_after || 0,
+          answerReady: value.answer_ready !== false,
+          seenReactions: value.seen_reactions || [],
         });
       }
       if (this.posts.size > 0) {
@@ -984,6 +987,9 @@ export class SlackDecisionsDaemon {
           ts: value.ts,
           machine_id: value.machineId,
           decision_id: value.decisionId,
+          answer_after: value.answerAfter || 0,
+          answer_ready: value.answerReady !== false,
+          seen_reactions: value.seenReactions || [],
           saved_at: Date.now(),
         };
       }
