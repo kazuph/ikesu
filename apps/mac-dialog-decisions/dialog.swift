@@ -314,6 +314,7 @@ final class DialogController: NSObject, NSWindowDelegate {
   var attachmentLoading = 0
   let attachmentRow = NSStackView()
   let richStack = NSStackView()
+  var richWarningShown = false
   let imageWork = OperationQueue()
   var answerPending = false
   let statusLabel = NSTextField(wrappingLabelWithString: "")
@@ -553,8 +554,8 @@ final class DialogController: NSObject, NSWindowDelegate {
     }
     if spec.allow_text {
       let caption = label(spec.options.isEmpty
-        ? "回答（⌘↩ で送信）"
-        : "自由入力（任意。選んだ選択肢と一緒に送ります。文だけでも送れます）",
+        ? "回答（⌘↩ で送信）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。"
+        : "自由入力（任意。選んだ選択肢と一緒に送ります。文だけでも送れます）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。",
         size: Look.small, color: .secondaryLabelColor, selectable: false)
       bottom.addArrangedSubview(caption)
       let tv = FirstClickTextView()
@@ -893,6 +894,11 @@ extension DialogController {
         let bitmap = try richBitmap(data)
         DispatchQueue.main.async {
           guard let self, !self.closed, let stack else { return }
+          if !self.richWarningShown {
+            self.richWarningShown = true
+            let hint = label("画像内の秘密は伏せ字になりません。", size: Look.small, color: .secondaryLabelColor, selectable: false)
+            self.richStack.insertArrangedSubview(hint, at: 0)
+          }
           let button = ImagePreviewButton(path: path, bitmap: bitmap, maxHeight: height)
           stack.addArrangedSubview(button)
           button.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
