@@ -53,7 +53,7 @@ def execute(condition,enabled,repeat):
   interaction=['clicktext "[menu]"','waittext 5s koi: on',f'screen {out/session}-menu-on.txt','clicktext "koi: on"','clicktext "[menu]"','waittext 5s koi: off',f'screen {out/session}-menu-off.txt','mark koi-off-saved','clicktext "koi: off"','clicktext "[menu]"','waittext 5s koi: on',f'screen {out/session}-menu-on-again.txt','mark koi-on-saved','send "\\u001b"']
  if args.interaction in ('ripple','fence'):
   if args.interaction=='fence':interaction=[f'waitfile {fence_seen} 30s']
-  interaction+=['sendtimed "\\u001b[<0;146;24M"','send "\\u001b[<0;146;24m"','sleep 1500ms']
+  interaction+=['sendtimed "\\u001b[<0;1165;377M"','send "\\u001b[<0;1165;377m"','sleep 1500ms']
  warmup='' if args.interaction=='fence' else 'sleep 2s\n'
  steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\n'+warmup+'\n'.join(interaction)+f'\nstats before\nsleep {args.seconds}s\nstats after\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
 

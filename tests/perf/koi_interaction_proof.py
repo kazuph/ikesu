@@ -11,7 +11,11 @@ for result in results:
  else:
   timeline=pathlib.Path(result['raw_output']).with_suffix('.timeline.jsonl')
   records=[json.loads(line) for line in timeline.read_text().splitlines()]
-  click=next(r for r in records if r.get('type')=='capacity.input' and '[<0;146;24M' in r.get('data',''))
+  wire=pathlib.Path(result['raw_output']).read_bytes()
+  # The real client negotiates SGR-pixel input. 1165,377 is the center
+  # of cell 146,24 at the bench's measured 8x16 pixel geometry.
+  assert b'\x1b[?1016h' in wire,'fixture did not negotiate pixel mouse'
+  click=next(r for r in records if r.get('type')=='capacity.input' and '[<0;1165;377M' in r.get('data',''))
   wave=next(r for r in records if r.get('type')=='image.placed' and r['clock_ns']>=click['clock_ns'] and r['control'].get('z')=='400')
   latency=(wave['clock_ns']-click['clock_ns'])/1e9
   maximum=.05 if interaction=='ripple' else 1+.05
