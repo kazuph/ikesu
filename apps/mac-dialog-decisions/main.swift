@@ -22,7 +22,8 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
   for controller in host.windows.values where event.window === controller.panel { return controller.handleKey(event) }
   return event
 }
-if !hostMode { host.open(args[1]) }
+// Finish the accessory-app launch before showing an ordinary selectable window.
+if !hostMode { DispatchQueue.main.async { host.open(args[1]) } }
 DispatchQueue.global().async {
   while let line = readLine() {
     guard let data = line.data(using: .utf8), let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }

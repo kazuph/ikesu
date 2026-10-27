@@ -18,12 +18,27 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
     fputs("FAIL: showing a new panel stole focus or changed window level\n", stderr)
     exit(1)
   }
-  if testCase == "activate" {
+  guard panel.canBecomeMain && !panel.styleMask.contains(.nonactivatingPanel) else {
+    fputs("FAIL: system-selected panel must participate as an activating main window\n", stderr)
+    exit(1)
+  }
+  if testCase == "activate" || testCase == "selection" {
     NSApp.activate(ignoringOtherApps: true)
   } else if testCase == "reopen" {
     _ = host.applicationShouldHandleReopen(app, hasVisibleWindows: true)
   }
   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    if testCase == "selection" {
+      host.open(CommandLine.arguments[3])
+      let newer = host.windows.values.first(where: { $0.panel !== panel })!.panel!
+      guard panel.isKeyWindow && !newer.isKeyWindow else {
+        fputs("FAIL: new panel stole the selected panel's keyboard focus\n", stderr); exit(1)
+      }
+      _ = host.applicationShouldHandleReopen(app, hasVisibleWindows: true)
+      guard panel.isKeyWindow && !newer.isKeyWindow else {
+        fputs("FAIL: reopening lost the selected panel\n", stderr); exit(1)
+      }
+    }
     let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
     let pass = panel.isVisible && panel.isKeyWindow && front == ProcessInfo.processInfo.processIdentifier
     print("\(testCase) front=\(front ?? 0) self=\(ProcessInfo.processInfo.processIdentifier) visible=\(panel.isVisible) key=\(panel.isKeyWindow) pass=\(pass)")

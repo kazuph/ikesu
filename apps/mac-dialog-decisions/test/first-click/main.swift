@@ -5,15 +5,14 @@ app.setActivationPolicy(.accessory)
 app.appearance=NSAppearance(named:.darkAqua)
 let spec=try JSONDecoder().decode(DialogSpec.self,from:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[1])))
 let controller=DialogController(spec:spec,specPath:CommandLine.arguments[1])
-controller.build()
-controller.show()
-DispatchQueue.main.asyncAfter(deadline:.now()+0.5) {
+DispatchQueue.main.async {
+ controller.build()
+ controller.show()
+}
+func verifyFirstClick() {
  let panel=controller.panel!
  let root=panel.contentView!
  root.layoutSubtreeIfNeeded()
- print("before-test active=\(NSApp.isActive) key=\(panel.isKeyWindow)")
- panel.resignKey()
- NSApp.deactivate()
  print("after-deactivate active=\(NSApp.isActive) key=\(panel.isKeyWindow)")
  precondition(!panel.isKeyWindow && !NSApp.isActive,"must start with inactive app and non-key panel")
  var failure=false
@@ -61,5 +60,16 @@ DispatchQueue.main.asyncAfter(deadline:.now()+0.5) {
  print("command-number selections preserved; no automatic submit")
  panel.orderOut(nil)
  exit(0)
+}
+var deactivationObserver: NSObjectProtocol?
+DispatchQueue.main.asyncAfter(deadline:.now()+0.5) {
+ let panel=controller.panel!
+ panel.resignKey()
+ if !NSApp.isActive { verifyFirstClick(); return }
+ deactivationObserver=NotificationCenter.default.addObserver(forName:NSApplication.didResignActiveNotification,object:app,queue:.main) { _ in
+  if let observer=deactivationObserver { NotificationCenter.default.removeObserver(observer) }
+  verifyFirstClick()
+ }
+ NSApp.deactivate()
 }
 app.run()
