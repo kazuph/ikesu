@@ -79,6 +79,7 @@ type machineClient struct {
 	hostKbdFlags      int
 	inputSource       platform.InputSource
 	session           string
+	configEdits       []pendingConfigEdit
 	settings          *localSettings
 	endpoints         map[string]*managedEndpoint
 	order             []string

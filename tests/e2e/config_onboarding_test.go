@@ -34,10 +34,10 @@ func TestOnboardingContinueImmediateShellInput(t *testing.T) {
 				if text := s.text(); strings.Contains(text, "NAVIGATE") || strings.Contains(text, "RESIZE") || strings.Contains(text, "continue") {
 					t.Fatal("unexpected mode after continue:", text)
 				}
-				data, err := os.ReadFile(path)
-				if err != nil || !strings.Contains(string(data), "onboarding = false") {
-					t.Fatal(string(data), err)
-				}
+				s.waitFor("onboarding configuration persisted", 10*time.Second, func(string) bool {
+					data, err := os.ReadFile(path)
+					return err == nil && strings.Contains(string(data), "onboarding = false")
+				})
 			})
 		}
 	}
