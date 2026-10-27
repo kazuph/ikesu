@@ -187,6 +187,7 @@ final class OptionCard: NSView {
   var checked = false { didSet { refresh() } }
   var onClick: ((OptionCard) -> Void)?
   private var hovering = false { didSet { refresh() } }
+  private var descriptionField: NSTextField?
   private let mark = NSTextField(labelWithString: "")
   private let box = FirstClickImageView()
 
@@ -212,7 +213,9 @@ final class OptionCard: NSView {
     let title = label(option.label, size: Look.base + 1, weight: .semibold, selectable: false)
     stack.addArrangedSubview(title)
     if let d = option.description, !d.isEmpty {
-      stack.addArrangedSubview(richLabel(d, size: Look.small + 1, color: .secondaryLabelColor, selectable: false))
+      let field = richLabel(d, size: Look.small + 1, color: .secondaryLabelColor, selectable: false)
+      descriptionField = field
+      stack.addArrangedSubview(field)
     }
     if let p = option.preview, !p.isEmpty {
       let box = previewScroll(p)
@@ -252,6 +255,19 @@ final class OptionCard: NSView {
   override func mouseDown(with event: NSEvent) { layer?.opacity = 0.75 }
   override func mouseUp(with event: NSEvent) {
     layer?.opacity = 1
+    // AppKit bubbles the field editor's mouse-up to the card after opening a
+    // link. Test the actual glyph under that event, leaving other card clicks intact.
+    if let editor = descriptionField?.currentEditor() as? NSTextView,
+      let manager = editor.layoutManager, let container = editor.textContainer, let storage = editor.textStorage {
+      let local = editor.convert(event.locationInWindow, from: nil)
+      let textPoint = NSPoint(x: local.x - editor.textContainerOrigin.x, y: local.y - editor.textContainerOrigin.y)
+      let glyph = manager.glyphIndex(for: textPoint, in: container)
+      if editor.bounds.contains(local), glyph < manager.numberOfGlyphs,
+        manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).contains(textPoint) {
+        let character = manager.characterIndexForGlyph(at: glyph)
+        if character < storage.length, storage.attribute(.link, at: character, effectiveRange: nil) != nil { return }
+      }
+    }
     if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?(self) }
   }
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
