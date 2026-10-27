@@ -237,7 +237,9 @@ func (a *App) retainOnExit(pid int) bool {
 	}
 	agent := rp.Snapshot().AgentID
 	if agent == "" {
-		if r, ok := a.reported[pid]; ok {
+		// Unknown labels on restored/fallback shells preserve the saved
+		// conversation, but do not turn that shell into a running agent.
+		if r, ok := a.reported[pid]; ok && r.state != "" && r.state != "unknown" {
 			agent = r.agent
 		}
 	}
