@@ -753,6 +753,18 @@ struct RichBitmap {
   let height: Int
   let ext: String
 }
+func readRegularImage(_ path: String, limit: Int) throws -> Data {
+  let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+  guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
+  let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+  defer { try? handle.close() }
+  var info = stat()
+  guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { throw CocoaError(.fileReadUnsupportedScheme) }
+  guard info.st_size <= limit else { throw CocoaError(.fileReadTooLarge) }
+  let data = try handle.read(upToCount: limit + 1) ?? Data()
+  guard data.count <= limit else { throw CocoaError(.fileReadTooLarge) }
+  return data
+}
 func richBitmap(_ data: Data, attachment: Bool = false) throws -> RichBitmap {
   let limit = (attachment ? 20 : 10) * 1024 * 1024 // approved plan limits
   guard data.count <= limit, let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -817,12 +829,7 @@ extension DialogController {
       do {
         var bytes: Data
         if let data { bytes = data } else if let file {
-          let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
-          guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
-          let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-          var info = stat()
-          guard fstat(fd, &info) == 0, info.st_size <= 20 * 1024 * 1024, info.st_mode & S_IFMT == S_IFREG else { throw CocoaError(.fileReadTooLarge) }
-          bytes = try handle.read(upToCount: 20 * 1024 * 1024 + 1) ?? Data()
+          bytes = try readRegularImage(file.path, limit: 20 * 1024 * 1024)
         } else { throw CocoaError(.fileReadUnknown) }
         if clipboardTIFF {
           guard bytes.count <= 20 * 1024 * 1024,
@@ -860,7 +867,7 @@ extension DialogController {
       thumbnail.heightAnchor.constraint(equalToConstant: 48).isActive = true
       group.addArrangedSubview(thumbnail)
       imageWork.addOperation { [weak self, weak thumbnail] in
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: attachment.path)), let bitmap = try? richBitmap(data, attachment: true) else { return }
+        guard let data = try? readRegularImage(attachment.path, limit: 20 * 1024 * 1024), let bitmap = try? richBitmap(data, attachment: true) else { return }
         DispatchQueue.main.async { if self?.closed == false { thumbnail?.image = bitmap.image } }
       }
       let remove = FirstClickButton(title: "\(index + 1) を外す", target: self, action: #selector(removeAttachment(_:)))
@@ -890,7 +897,7 @@ extension DialogController {
   func loadRichImage(_ path: String, into stack: NSStackView, height: CGFloat = 160) {
     imageWork.addOperation { [weak self, weak stack] in
       do {
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let data = try readRegularImage(path, limit: 10 * 1024 * 1024)
         let bitmap = try richBitmap(data)
         DispatchQueue.main.async {
           guard let self, !self.closed, let stack else { return }

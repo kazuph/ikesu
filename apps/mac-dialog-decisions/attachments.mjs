@@ -12,6 +12,47 @@ export async function readBounded(file,limit) {
 }
 export class AttachmentStore {
  constructor(stateDir) {this.root=path.resolve(stateDir);}
+ async readResolution(file) {
+  const handle=await fs.open(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  try {
+   if(!(await handle.stat()).isFile()) throw Error('整理待ちの記録が通常ファイルではありません');
+   const record=JSON.parse(String(await readBounded(handle,RICH_LIMITS.pageBytes)));
+   safeID(record.machine);safeID(record.id);
+   if(!['answered','cancelled','expired'].includes(record.status)||!Number.isFinite(record.now)) throw Error('整理待ちの記録が不正です');
+   return record;
+  } finally {await handle.close();}
+ }
+ async queueResolution(machine,id,status,now) {
+  safeID(machine);safeID(id);
+  if(!['answered','cancelled','expired'].includes(status)||!Number.isFinite(now)) throw Error('解決状態が不正です');
+  const dir=await this.directory('resolutions',machine,id);const file=path.join(dir,'resolution.json');
+  let handle;
+  try {handle=await fs.open(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);}
+  catch(error) {if(error.code!=='EEXIST')throw error;return this.readResolution(file);}
+  const record={machine,id,status,now};
+  try {await handle.writeFile(JSON.stringify(record));await handle.sync();} finally {await handle.close();}
+  return record;
+ }
+ async pendingResolutions(machine) {
+  if(machine!==undefined)safeID(machine);
+  const base=path.join(this.root,'resolutions');let machines;
+  try {machines=await fs.readdir(base,{withFileTypes:true});}catch(error){if(error.code==='ENOENT')return [];throw error;}
+  const records=[];
+  for(const m of machines.filter(m=>m.isDirectory()&&!m.isSymbolicLink()&&(machine===undefined||m.name===machine))) {
+   const dir=path.join(base,m.name);
+   for(const d of await fs.readdir(dir,{withFileTypes:true})) {
+    if(!d.isDirectory()||d.isSymbolicLink())continue;
+    const record=await this.readResolution(path.join(dir,d.name,'resolution.json'));
+    if(record.machine!==m.name||record.id!==d.name)throw Error('整理待ちの保存先が一致しません');
+    records.push(record);
+   }
+  }
+  return records;
+ }
+ async finishResolution(machine,id) {
+  safeID(machine);safeID(id);
+  await fs.rm(path.join(this.root,'resolutions',machine,id),{recursive:true,force:true});
+ }
  async directory(kind,machine,id) {
   safeID(machine); safeID(id);
   await fs.mkdir(this.root,{recursive:true,mode:0o700});

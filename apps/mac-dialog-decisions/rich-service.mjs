@@ -55,6 +55,7 @@ elif r['action']=='resolve':
  if r['status']=='answered':
   fd=os.open(os.path.join(d,'answered.json'),os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600)
   with os.fdopen(fd,'w') as f: json.dump({'answered':r['now']},f)
+  if int(time.time()*1000)-r['now']>=r['retention']: shutil.rmtree(d)
  else: shutil.rmtree(d)
 elif r['action']=='cleanup':
  import shutil
@@ -70,9 +71,10 @@ elif r['action']=='cleanup':
    except FileNotFoundError: pass
 `;
 export class RichService {
- constructor(config) {this.config=config;this.store=new AttachmentStore(config.stateDir);this.cleanupTimer=null;this.nextCleanup=null;}
+ constructor(config) {this.config=config;this.store=new AttachmentStore(config.stateDir);this.cleanupTimer=null;this.nextCleanup=null;this.resolving=new Map();}
  async start() {await this.cleanup();}
  stop() {clearTimeout(this.cleanupTimer);}
+ async settleResolutions() {await Promise.allSettled([...this.resolving.values()]);}
  scheduleCleanup(deadline) {
   if(deadline===null||this.nextCleanup!==null&&this.nextCleanup<=deadline) return;
   clearTimeout(this.cleanupTimer);this.nextCleanup=deadline;
@@ -132,13 +134,27 @@ export class RichService {
   if(!Array.isArray(result)||result.length!==files.length||result.some(p=>typeof p!=='string'||!path.isAbsolute(p))) throw Error('別マシンへの画像保存を確認できません');
   return result;
  }
- async resolve(machine,id,status) {
-  await this.store.resolve(machine,id,status);
-  if(machine!=='local') await this.remote(machine,{action:'resolve',machine,id,status,now:Date.now()});
-  // A timer is tied to the specified retention period, rather than a new polling interval.
-  if(status==='answered') this.scheduleCleanup(Date.now()+RICH_LIMITS.retentionMs);
+ async resolve(machine,id,status,now=Date.now()) {
+  safeID(machine);safeID(id);const key=`${machine}/${id}`;
+  const pending=(this.resolving.get(key)||Promise.resolve()).catch(()=>{}).then(async()=>{
+   const record=await this.store.queueResolution(machine,id,status,now);
+   await this.store.resolve(machine,id,record.status,record.now);
+   if(machine!=='local')await this.remote(machine,{action:'resolve',machine,id,status:record.status,now:record.now,retention:RICH_LIMITS.retentionMs});
+   await this.store.finishResolution(machine,id);
+   if(record.status==='answered')this.scheduleCleanup(record.now+RICH_LIMITS.retentionMs);
+  });
+  this.resolving.set(key,pending);
+  try {await pending;}finally{if(this.resolving.get(key)===pending)this.resolving.delete(key);}
  }
- async cleanup(machine='local') {if(machine!=='local') await this.remote(machine,{action:'cleanup',now:Date.now(),retention:RICH_LIMITS.retentionMs});
+ async retryResolutions(machine) {
+  for(const record of await this.store.pendingResolutions(machine)) {
+   try {await this.resolve(record.machine,record.id,record.status,record.now);}
+   catch(error){process.stderr.write(`添付の整理待ちを保持: ${error.message}\n`);}
+  }
+ }
+ async cleanup(machine='local') {
+  await this.retryResolutions(machine==='local'?undefined:machine);
+  if(machine!=='local') await this.remote(machine,{action:'cleanup',now:Date.now(),retention:RICH_LIMITS.retentionMs});
   const base=path.join(this.config.stateDir,'attachments');
   let machines=[];try{machines=(await fs.readdir(base,{withFileTypes:true})).filter(m=>m.isDirectory()&&!m.isSymbolicLink()&&m.name!=='local');}catch(error){if(error.code!=='ENOENT') throw error;}
   for(const item of machines) {try{await this.remote(item.name,{action:'cleanup',now:Date.now(),retention:RICH_LIMITS.retentionMs});}catch{}}

@@ -25,3 +25,24 @@ for textOnly in [false, true] {
   controller.close()
 }
 print("IMPORT_SEND_PASS")
+let fifo = root + "/fifo-\(UUID().uuidString).png"
+precondition(mkfifo(fifo, S_IRUSR | S_IWUSR) == 0)
+defer { try? FileManager.default.removeItem(atPath:fifo) }
+let fifoSpecData = try JSONSerialization.data(withJSONObject:["window_title":"FIFO試験","title":"通常ファイルのみ","options":[],"allow_text":true,"multi_select":false,"draft_directory":root])
+let fifoController = DialogController(spec:try JSONDecoder().decode(DialogSpec.self,from:fifoSpecData),specPath:root+"/fifo-spec.json")
+fifoController.build()
+fifoController.attachFiles([URL(fileURLWithPath:fifo)])
+let fifoDeadline = Date(timeIntervalSinceNow:5)
+while fifoController.attachmentLoading > 0 && Date() < fifoDeadline {RunLoop.current.run(until:Date(timeIntervalSinceNow:0.01))}
+precondition(fifoController.attachmentLoading == 0 && fifoController.attachments.isEmpty,"unwritten FIFO attachment must reject without blocking")
+fifoController.loadRichImage(fifo,into:fifoController.richStack)
+let previewDeadline = Date(timeIntervalSinceNow:5)
+while fifoController.imageWork.operationCount > 0 && Date() < previewDeadline {RunLoop.current.run(until:Date(timeIntervalSinceNow:0.01))}
+precondition(fifoController.imageWork.operationCount == 0,"unwritten FIFO preview must finish")
+fifoController.stageAttachment(data:data,name:"通常画像.png")
+let normalDeadline = Date(timeIntervalSinceNow:5)
+while fifoController.attachmentLoading > 0 && Date() < normalDeadline {RunLoop.current.run(until:Date(timeIntervalSinceNow:0.01))}
+precondition(fifoController.attachments.count == 1,"normal image must still work after FIFO rejection")
+fifoController.close()
+precondition(fifoController.imageWork.operations.allSatisfy{$0.isFinished || $0.isCancelled})
+print("NATIVE_FIFO_PASS")

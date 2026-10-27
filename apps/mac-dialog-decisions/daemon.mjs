@@ -49,7 +49,6 @@ export class MacDialogDecisionsDaemon {
 
   async stop() {
     this.stopped = true;
-    this.rich?.stop();
     if (this._pumpTimer) clearTimeout(this._pumpTimer);
     this._watchHandle?.close?.();
     this._closeDialog();
@@ -57,6 +56,8 @@ export class MacDialogDecisionsDaemon {
       clearTimeout(entry.snoozeTimer); clearTimeout(entry.answerRetryTimer);
     }
     await Promise.allSettled([this._watchDone, this._dialogDone]);
+    await this.rich?.settleResolutions();
+    this.rich?.stop();
   }
 
   // A short delay before taking the screen lets a burst of simultaneous
@@ -198,11 +199,13 @@ export class MacDialogDecisionsDaemon {
     const key = decisionKey(mid, decisionIdOf(decision));
     if (this.resolvedKeys.has(key)) return;
     this.resolvedKeys.add(key);
-    if (this.rich) void this.rich.resolve(mid, decisionIdOf(decision), decision.status).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
+    const resolvedAt = decision.answer?.answered_unix_ms ?? (decision.status === 'expired' ? decision.expires_unix_ms : null) ?? Date.now();
+    if (this.rich) void this.rich.resolve(mid, decisionIdOf(decision), decision.status, resolvedAt).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
     const entry = this.entries.get(key);
     if (entry) {
       entry.resolved = true;
       entry.resolvedStatus = decision.status;
+      entry.resolvedAt = resolvedAt;
       entry.answerAbort?.abort();
       entry.queued = false;
       clearTimeout(entry.snoozeTimer);
@@ -426,7 +429,7 @@ export class MacDialogDecisionsDaemon {
       }
       if (!this.isActive(entry)) {
         entry.answerPending = false;
-        if (this.rich && entry.resolvedStatus && attachments.length) await this.rich.resolve(entry.machineId, did, entry.resolvedStatus);
+        if (this.rich && entry.resolvedStatus && attachments.length) await this.rich.resolve(entry.machineId, did, entry.resolvedStatus, entry.resolvedAt);
         return false;
       }
       if (answerText) args.push("--text", answerText);
@@ -436,7 +439,7 @@ export class MacDialogDecisionsDaemon {
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "unknown";
     if (result.code === 0 || /decision_already_resolved/.test(detail)) { this.settleAnswer(entry); return true; }
     if (entry.resolved || this.entries.get(entry.key) !== entry || this.stopped) {
-      if (this.rich && entry.resolvedStatus && attachments.length) await this.rich.resolve(entry.machineId, did, entry.resolvedStatus).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
+      if (this.rich && entry.resolvedStatus && attachments.length) await this.rich.resolve(entry.machineId, did, entry.resolvedStatus, entry.resolvedAt).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
       return false;
     }
     entry.answerPending = false;
