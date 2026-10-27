@@ -55,7 +55,7 @@ func foregroundJob(fd int) ForegroundJob {
 	if pgid <= 0 {
 		return ForegroundJob{}
 	}
-	job := ForegroundJob{ProcessGroupID: pgid}
+	job := ForegroundJob{ProcessGroupID: pgid, Sudo: foregroundSudo(pgid)}
 	ents, err := os.ReadDir("/proc")
 	if err != nil {
 		return job
@@ -72,6 +72,7 @@ func foregroundJob(fd int) ForegroundJob {
 		if name == "" {
 			continue
 		}
+		job.Sudo = job.Sudo || name == "sudo"
 		argv := procArgs(pid)
 		job.Processes = append(job.Processes, ForegroundProcess{
 			PID:     pid,
@@ -129,4 +130,34 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(b[pos:])
+}
+
+func foregroundSudo(pid int) bool {
+	seen := map[int]bool{}
+	tty := ""
+	for pid > 1 && !seen[pid] {
+		seen[pid] = true
+		if procName(pid) == "sudo" {
+			return true
+		}
+		b, err := os.ReadFile("/proc/" + itoa(pid) + "/stat")
+		if err != nil {
+			return false
+		}
+		i := strings.LastIndex(string(b), ")")
+		if i < 0 {
+			return false
+		}
+		f := strings.Fields(string(b[i+1:]))
+		if len(f) < 5 {
+			return false
+		}
+		if len(seen) == 1 {
+			tty = f[4]
+		} else if f[4] != tty {
+			return false
+		}
+		pid = atoi(f[1])
+	}
+	return false
 }

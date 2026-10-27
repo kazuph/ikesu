@@ -135,9 +135,14 @@ func drawNavigator(f *Frame, n *Navigator, spin int) {
 			stop = r.X + r.W - processMargin - 1
 		}
 		next := f.Text(r.X+1, y, prefix, prefixStyle, stop)
-		if i == n.Selected && next > r.X+1 {
+		if (i == n.Selected || row.Status == "◆") && next > r.X+1 {
 			status := prefixStyle
-			status.Attrs = uv.AttrBold
+			if row.Status == "◆" {
+				status.Fg = f.Palette.Mauve
+			}
+			if i == n.Selected {
+				status.Attrs = uv.AttrBold
+			}
 			f.Set(next-1, y, row.Status, status)
 		}
 		f.Text(next+1, y, name, nameStyle, stop)

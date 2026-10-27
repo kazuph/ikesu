@@ -612,9 +612,14 @@ func workingRune(spin int) string {
 	return frames[spin%len(frames)]
 }
 
-// glyphRank orders state keys by attention: blocked > working > done > idle
-// > unknown.
+// glyphRank orders display attention: blocked > sudo > working > done > idle > unknown.
 func glyphRank(g StatusGlyph) int {
+	if g.Key == "blocked" {
+		return 5
+	}
+	if g.Rune == "◆" {
+		return 4
+	}
 	switch g.Key {
 	case "blocked":
 		return 4
