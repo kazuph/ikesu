@@ -73,7 +73,7 @@ func TestLiveHandoffKeepsPIDInputAndExit(t *testing.T) {
 		t.Fatal("server PID did not change")
 	}
 	s.send("exit\r")
-	s.waitFor("imported process exit closes last pane", 15*time.Second, func(tx string) bool { _, err := s.cli("server", "ping"); return err != nil })
+	s.waitForHomeAfterFinalExit("p1")
 }
 
 func (s *session) onlyPTYOwner() string {

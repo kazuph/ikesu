@@ -287,7 +287,7 @@ func (a *App) exec(cmd model.Command) {
 			closingLastWorkspace = c.Index == 0
 		case model.CmdPaneExited:
 			ws := a.st.Workspaces[0]
-			closingLastWorkspace = !a.serverUI && len(ws.Tabs) == 1 && ws.Tabs[0].Layout.PaneCount() == 1 && ws.Tabs[0].Layout.HasPane(c.Pane)
+			closingLastWorkspace = len(ws.Tabs) == 1 && ws.Tabs[0].Layout.PaneCount() == 1 && ws.Tabs[0].Layout.HasPane(c.Pane)
 		}
 	}
 	if closingLastWorkspace {

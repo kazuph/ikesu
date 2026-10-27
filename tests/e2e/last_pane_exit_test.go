@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	persisted "github.com/kazuph/ikesu/internal/session"
 	"os"
@@ -121,12 +123,81 @@ func TestLastPaneExitOtherTabAndViewer(t *testing.T) {
 	})
 }
 
-func TestLastPaneExitFinalWorkspaceStopsServerWithViewer(t *testing.T) {
+func (s *session) waitForHomeAfterFinalExit(old string) api.PaneInfo {
+	s.t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	homeInfo, err := os.Stat(home)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	var next api.PaneInfo
+	s.waitFor("fresh home pane and server remain", 15*time.Second, func(text string) bool {
+		out, err := s.cli("pane", "list")
+		if err != nil {
+			return false
+		}
+		var response struct {
+			Result api.PaneListResult `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(out), &response); err != nil {
+			s.t.Fatal(err)
+		}
+		panes := response.Result.Panes
+		if len(panes) != 1 || panes[0].PaneID == old || panes[0].Cwd == nil {
+			return false
+		}
+		cwdInfo, err := os.Stat(*panes[0].Cwd)
+		if err != nil || !os.SameFile(homeInfo, cwdInfo) {
+			return false
+		}
+		next = panes[0]
+		return true
+	})
+	s.t.Logf("new home pane=%s HOME=%q pane cwd=%q (same directory)", next.PaneID, home, *next.Cwd)
+	s.send("printf 'HOME_%s\\n' CLIENT_CONTINUES\r")
+	s.waitFor("existing client displays new home shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "HOME_CLIENT_CONTINUES") })
+	if out, err := s.cli("server", "ping"); err != nil {
+		s.t.Fatal("replacement stopped server", out, err)
+	}
+	return next
+}
+
+func TestLastPaneExitFinalWorkspaceShowsHomeWithViewers(t *testing.T) {
 	s := start(t)
 	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	client, _ := sizeClient(t, s)
 	s.send("exit\r")
-	s.waitFor("server exits after final shell exit", 15*time.Second, func(text string) bool {
-		_, err := s.cli("server", "ping")
-		return err != nil
+	next := s.waitForHomeAfterFinalExit("p1")
+	marker := filepath.Join(t.TempDir(), "second-viewer")
+	if _, err := client.WriteString("printf 'HOME_OTHER_VIEWER' > '" + marker + "'\r"); err != nil {
+		t.Fatal(err)
+	}
+	s.waitFor("other viewer remains in home", 15*time.Second, func(text string) bool { data, _ := os.ReadFile(marker); return string(data) == "HOME_OTHER_VIEWER" })
+	s.waitFor("replacement saved without old workspace", 15*time.Second, func(text string) bool {
+		file, err := persisted.Load(filepath.Join(s.stateDir, s.name, "session.json"))
+		if err != nil || file == nil || len(file.Workspaces) != 1 || file.Workspaces[0].ID == 1 {
+			return false
+		}
+		found := false
+		file.EachPane(func(_ *persisted.Workspace, _ *persisted.Tab, p *persisted.Pane) {
+			found = fmt.Sprintf("p%d", p.ID) == next.PaneID
+		})
+		return found
 	})
+	for n, operation := range []string{"live-handoff", "restart"} {
+		if out, err := s.cli("server", operation); err != nil {
+			t.Fatal(out, err)
+		}
+		var panes api.PaneListResult
+		s.rpc(api.MethodPaneList, api.PaneListParams{}, &panes)
+		if len(panes.Panes) != 1 || panes.Panes[0].PaneID != next.PaneID || panes.Panes[0].WorkspaceID != next.WorkspaceID {
+			t.Fatal("replacement home changed during persistence", operation, panes)
+		}
+		marker := fmt.Sprintf("HOME_STAGE_%d_CONTINUES", n)
+		s.send(fmt.Sprintf("printf 'HOME_STAGE_%%s_CONTINUES\\n' %d\r", n))
+		s.waitFor("home remains usable after "+operation, 15*time.Second, func(text string) bool { return strings.Contains(text, marker) })
+	}
 }
