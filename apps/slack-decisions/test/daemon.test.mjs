@@ -1276,3 +1276,76 @@ test("recreation during in-flight cancellation deletion leaves one pending post"
     assert.doesNotMatch(JSON.stringify(fake.posts[0].blocks), /取り消し/);
   } finally { release(); await daemon.stop(); await fake.stop(); }
 });
+
+test("reused post rejects delayed socket replies and reactions from the old generation", async () => {
+  for (const type of ["message", "reaction_added"]) {
+    const fake = await new FakeSlack().start();
+    const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
+    const daemon = makeDaemon({ slack });
+    try {
+      const created = Date.now();
+      const first = sampleDecision({ decision_id: "old", allow_text: true });
+      await daemon.onCreated("local", LOCAL, first);
+      const ts = fake.posts[0].ts;
+      await Promise.all([
+        daemon.onResolved("local", { ...first, status: "cancelled" }),
+        daemon.onCreated("local", LOCAL, { ...first, decision_id: "new", created_unix_ms: created }),
+      ]);
+      const event = type === "message"
+        ? { type, user: "UHUMAN", thread_ts: ts, text: "old answer", ts: String(created / 1000 - 1) }
+        : { type, user: "UHUMAN", item: { type: "message", ts }, reaction: "one", event_ts: String(created / 1000 - 1) };
+      await daemon.handleSocketPayload(event);
+      assert.equal(daemon.testAnswers.length, 0, "old generation must never answer the new ID");
+      if (type === "message") event.ts = String(created / 1000 + 1);
+      else event.event_ts = String(created / 1000 + 1);
+      await daemon.handleSocketPayload(event);
+      await daemon.handleSocketPayload(event);
+      assert.equal(daemon.testAnswers.length, 1, "a new generation answer is applied once");
+      assert.ok(daemon.testAnswers[0].includes("new"));
+      assert.equal(fake.posts.length, 1);
+    } finally { await daemon.stop(); await fake.stop(); }
+  }
+});
+
+test("reused post remains unanswerable while history baseline APIs fail", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
+  const daemon = makeDaemon({ slack });
+  try {
+    const first = sampleDecision({ decision_id: "baseline-old" });
+    await daemon.onCreated("local", LOCAL, first);
+    const ts = fake.posts[0].ts;
+    const handle = fake.handle.bind(fake);
+    fake.handle = (method, params) => ["conversations.history", "conversations.replies"].includes(method)
+      ? { ok: false, error: "ratelimited" } : handle(method, params);
+    await Promise.all([
+      daemon.onResolved("local", { ...first, status: "cancelled" }),
+      daemon.onCreated("local", LOCAL, { ...first, decision_id: "baseline-new" }),
+    ]);
+    await daemon.handleSocketPayload({ type: "reaction_added", user: "UHUMAN", reaction: "one", event_ts: String(Date.now()/1000+1), item: { type: "message", ts } });
+    assert.equal(daemon.testAnswers.length, 0);
+    fake.reactionsByTs.set(ts, [{ name: "one", users: ["UHUMAN"] }]);
+    fake.handle = handle;
+    await daemon.pollOnce();
+    assert.equal(daemon.testAnswers.length, 0, "baseline recovery seeds existing reactions before enabling answers");
+    assert.equal(fake.posts.length, 1);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("body and option descriptions distinguish questions during post reuse", async () => {
+  for (const change of [{ body: "different reason" }, { options: [{ id: "opt-approve", label: "承認", description: "different consequence" }, { id: "opt-reject", label: "却下" }] }]) {
+    const fake = await new FakeSlack().start();
+    const daemon = makeDaemon({ slack: new SlackClient({ token: "t", channel: "C1", apiBase: fake.base }) });
+    try {
+      const first = sampleDecision({ decision_id: "identity-old" });
+      await daemon.onCreated("local", LOCAL, first);
+      await Promise.all([
+        daemon.onResolved("local", { ...first, status: "cancelled" }),
+        daemon.onCreated("local", LOCAL, { ...first, ...change, decision_id: "identity-new" }),
+      ]);
+      assert.equal(fake.posts.length, 1);
+      assert.equal(fake.deletes.length, 1);
+      assert.equal(fake.calls.filter(c => c.method === "chat.postMessage").length, 2, "different content must get its own post");
+    } finally { await daemon.stop(); await fake.stop(); }
+  }
+});
