@@ -44,3 +44,12 @@ test('actual save failure sends no answer and keeps text plus attachments in dra
  assert.equal((await f.rpc('decision.get',{decision_id:decision.decision_id})).decision.status,'pending');assert.deepEqual(entry.draft,{option_ids:[],text:'残す',attachments});
  clearTimeout(f.daemon._pumpTimer);
 });
+test('actual cancellation during attachment preparation cannot answer or leave cancelled images',async t=>{
+ const f=await fixture(t);const decision=(await f.rpc('decision.create',{kind:'ask',title:'cancel upload',allow_text:true,options:[{id:'yes',label:'はい',role:'approve'}]})).decision;
+ f.daemon.onCreated('local',{id:'local'},decision);clearTimeout(f.daemon._pumpTimer);
+ const dir=await f.rich.store.draftDirectory('local',decision.decision_id);const source=path.join(dir,'1.png');await fs.writeFile(source,png);
+ const entry=[...f.daemon.entries.values()][0];const sending=f.daemon.submitAnswer(entry,{attachments:[{path:source,name:'1.png'}]});
+ const cancelled=(await f.rpc('decision.cancel',{decision_id:decision.decision_id})).decision;f.daemon.onResolved('local',cancelled);
+ assert.equal(await sending,false);assert.equal((await f.rpc('decision.get',{decision_id:decision.decision_id})).decision.status,'cancelled');
+ await assert.rejects(fs.stat(path.join(f.rich.config.stateDir,'attachments','local',decision.decision_id)),{code:'ENOENT'});
+});

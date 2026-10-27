@@ -8,7 +8,9 @@ let specData = try JSONSerialization.data(withJSONObject: ["window_title":"rich 
 let spec = try JSONDecoder().decode(DialogSpec.self,from:specData)
 let controller = DialogController(spec:spec,specPath:root+"/spec.json")
 controller.build()
+controller.panel.orderFront(nil)
 precondition(richLinkRanges("https://example.com/a").count == 1)
+precondition(richLinkRanges("/Users/kazuph/src/github.com/kazuph/image.png").isEmpty, "file paths are not http links")
 let board = NSPasteboard(name:NSPasteboard.Name("dialog-rich-test-\(UUID().uuidString)"))
 board.clearContents()
 let image = NSImage(systemSymbolName:"checkmark",accessibilityDescription:nil)!
@@ -29,5 +31,16 @@ let view=controller.panel.contentView!
 precondition(view.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds,to:view)),"submit remains inside window")
 precondition(controller.checkedIds().isEmpty,"adding images must not select")
 precondition(!controller.answerPending,"adding images must not submit")
+controller.respond(["status":"rich_card", "title":"公開ページの題名", "url":"https://example.com/a", "site":"example.com", "path":source])
+controller.respond(["status":"rich_image", "path":source])
+RunLoop.current.run(until:Date(timeIntervalSinceNow:0.5))
+view.layoutSubtreeIfNeeded()
+for width in [720.0, 520.0] {
+ controller.panel.setContentSize(NSSize(width:width,height:controller.panel.contentLayoutRect.height));view.layoutSubtreeIfNeeded()
+ precondition(view.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds,to:view)),"submit visible with cards and images at width \(width)")
+ for button in controller.attachmentRow.arrangedSubviews { precondition(view.bounds.contains(button.convert(button.bounds,to:view)),"attachments remain inside window") }
+}
+controller.panel.setContentSize(NSSize(width:720,height:controller.panel.contentLayoutRect.height));view.layoutSubtreeIfNeeded()
+let capture=Process();capture.executableURL=URL(fileURLWithPath:"/usr/sbin/screencapture");capture.arguments=["-x","-l",String(controller.panel.windowNumber),root+"/rich-native.png"];try capture.run();capture.waitUntilExit();precondition(capture.terminationStatus==0)
 print("NATIVE_RICH_PASS attachments=2 namedPasteboard=1 buttonsInside=1 selected=0 sent=0")
 controller.close()
