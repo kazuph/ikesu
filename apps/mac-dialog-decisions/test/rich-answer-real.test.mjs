@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import {spawn} from 'node:child_process';
-import {MacDialogDecisionsDaemon,createRunAnswer} from '../mac-dialog-decisions.mjs';
+import {MacDialogDecisionsDaemon,createRunAnswer,spawnDecisionWatch} from '../mac-dialog-decisions.mjs';
 import {RichService} from '../rich-service.mjs';
 
 async function fixture(t){
@@ -23,7 +23,7 @@ async function fixture(t){
  const rich=new RichService(config);
  const daemon=new MacDialogDecisionsDaemon({config,rich,runAnswer:createRunAnswer(config,()=>{},env),log:()=>{}});
  t.after(async()=>{await daemon.stop();try{await rpc('server.stop')}catch{}await exited;await fs.rm(root,{recursive:true,force:true});});
- return {root,rpc,rich,daemon};
+ return {root,rpc,rich,daemon,env,config};
 }
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6ZAAAAABJRU5ErkJggg==','base64');
 test('real CLI saves image-only answer before answering and keeps its path readable',async t=>{
@@ -52,4 +52,25 @@ test('actual cancellation during attachment preparation cannot answer or leave c
  const cancelled=(await f.rpc('decision.cancel',{decision_id:decision.decision_id})).decision;f.daemon.onResolved('local',cancelled);
  assert.equal(await sending,false);assert.equal((await f.rpc('decision.get',{decision_id:decision.decision_id})).decision.status,'cancelled');
  await assert.rejects(fs.stat(path.join(f.rich.config.stateDir,'attachments','local',decision.decision_id)),{code:'ENOENT'});
+});
+
+
+test('daemon restart keeps incomplete journals visible while watching and healthy cleanup continue',async t=>{
+ const f=await fixture(t),issues=[];f.rich.store.log=message=>issues.push(message);
+ for(const [id,data] of [['directory',null],['empty',''],['partial','{"status":']]) {
+  const dir=path.join(f.config.stateDir,'resolutions/local',id);await fs.mkdir(dir,{recursive:true});if(data!==null)await fs.writeFile(path.join(dir,'resolution.json'),data);
+ }
+ const healthy=await f.rich.store.directory('attachments','local','healthy');await fs.writeFile(path.join(healthy,'1.png'),png);
+ await f.rich.store.queueResolution('local','healthy','cancelled',1000);
+ f.daemon.spawnWatch=()=>spawnDecisionWatch(f.config,()=>{},f.env);
+ await f.daemon.start();
+ await assert.rejects(fs.stat(healthy),{code:'ENOENT'});
+ const decision=(await f.rpc('decision.create',{kind:'ask',title:'watch after incomplete journal',allow_text:true,options:[{id:'yes',label:'はい',role:'approve'}]})).decision;
+ const deadline=Date.now()+10000;
+ while(![...f.daemon.entries.values()].some(e=>e.decision.decision_id===decision.decision_id)) {
+  assert.ok(Date.now()<deadline,'actual watch must deliver the unrelated decision');await new Promise(resolve=>setTimeout(resolve,10));
+ }
+ assert.equal(issues.length,3);for(const id of ['directory','empty','partial'])assert.ok(issues.some(message=>message.includes(id)),id);
+ assert.equal(await fs.readFile(path.join(f.config.stateDir,'resolutions/local/empty/resolution.json'),'utf8'),'');
+ assert.equal(await fs.readFile(path.join(f.config.stateDir,'resolutions/local/partial/resolution.json'),'utf8'),'{"status":');
 });
