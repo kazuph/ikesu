@@ -45,7 +45,7 @@ for(const fallback of [true,false]){
       return {selector,alphaLowerBound:lower,ratio,baseline,pass:Number.isFinite(ratio)&&ratio>=baseline};
      });
     });checks.push({case:'text-contrast',viewport,elapsed,contrast,pass:contrast.every(c=>c.pass)});
-    checks.push({case:'text-avoidance',viewport,elapsed,...pixels,pass:pixels.overlap===0&&pixels.fish.every(f=>f.inside)});
+    checks.push({case:'text-avoidance',viewport,elapsed,...pixels,pass:pixels.overlap===0&&pixels.fish.every(f=>f.inside&&f.safe)});
     if(viewport.width<640)checks.push({case:'soft-text-background',viewport,elapsed,pass:pixels.surfaces.every(s=>s.background==='rgba(0, 0, 0, 0)'&&s.blur.includes('blur('))});
     await page.screenshot({path:join(dest,`review-${viewport.width}x${viewport.height}-${elapsed}.png`),fullPage:true});
    }
