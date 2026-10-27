@@ -16,6 +16,7 @@ type KoiAgent struct {
 type KoiFish struct {
 	Agent          KoiAgent
 	Rect           layout.Rect
+	Lane           layout.Rect
 	X, Y           float64
 	Direction, Wag int
 }
@@ -156,7 +157,11 @@ func koiPose(agent KoiAgent, lane layout.Rect, width int, t float64) KoiFish {
 	if lane.H > 1 && (agent.State == "idle" || agent.State == "done") {
 		y += 0.5
 	}
-	return KoiFish{Agent: agent, Rect: layout.Rect{X: int(x), Y: lane.Y, W: width, H: lane.H}, X: x, Y: y, Direction: direction, Wag: wag}
+	area := lane
+	if lane.H > 1 {
+		area.H++
+	}
+	return KoiFish{Agent: agent, Rect: layout.Rect{X: int(x), Y: lane.Y, W: width, H: lane.H}, Lane: area, X: x, Y: y, Direction: direction, Wag: wag}
 }
 
 func itoa(n int) string { // IDs only, not user-facing labels.

@@ -161,3 +161,47 @@ func TestKoiBrandAtlasMatchesRendererAndEmbeddedSite(t *testing.T) {
 		t.Fatal("site artwork differs from renderer atlas")
 	}
 }
+
+func TestKoiGIFKeepsEnlargedDotGrid(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "brand", "koi.gif"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	animation, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	colors := map[color.RGBA]bool{}
+	for v := range KoiPatterns {
+		for wag := 0; wag < 8; wag++ {
+			sprite := KoiPixelSprite(v, 0, wag, 40, 16)
+			for y := 0; y < 16; y++ {
+				for x := 0; x < 40; x++ {
+					c := sprite.RGBAAt(x, y)
+					if c.A != 0 {
+						colors[c] = true
+					}
+				}
+			}
+		}
+	}
+	for index, frame := range animation.Image {
+		for y := 0; y < frame.Bounds().Dy(); y += 2 {
+			for x := 0; x < frame.Bounds().Dx(); x += 2 {
+				var samples [4]color.RGBA
+				fish := false
+				for i := range samples {
+					samples[i] = color.RGBAModel.Convert(frame.At(x+i%2, y+i/2)).(color.RGBA)
+					fish = fish || colors[samples[i]]
+				}
+				if fish {
+					for _, c := range samples[1:] {
+						if c != samples[0] {
+							t.Fatalf("GIF fish lost its doubled dot grid: frame=%d block=%d,%d", index, x, y)
+						}
+					}
+				}
+			}
+		}
+	}
+}

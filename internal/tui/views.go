@@ -236,8 +236,10 @@ func (a *App) draw() {
 		a.dirty = a.snapshotSink(in) != nil
 		return
 	}
-	in.Koi = a.sidebarConfig.KoiEnabled()
-	a.koiClock.Apply(&in, nil, time.Now(), fossilExpiry)
+	in.Koi = a.viewerOwner == nil && a.sidebarConfig.KoiEnabled()
+	if in.Koi {
+		a.koiClock.Apply(&in, nil, time.Now(), fossilExpiry)
+	}
 	if file, ok := a.out.(*os.File); ok {
 		in.KoiKitty = kitty.SupportsTerminal(os.Stdin, file, false) && a.cellW > 0 && a.cellH > 0
 	}

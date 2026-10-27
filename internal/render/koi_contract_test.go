@@ -369,3 +369,19 @@ func TestKoiMiniPlacementUsesEnlargedPixelGrid(t *testing.T) {
 		t.Fatal("mini was not rendered for every sampled frame", miniFrames)
 	}
 }
+
+func TestKoiMiniImageStaysWithinItsTextRowAtFractionalCellScale(t *testing.T) {
+	for _, cell := range []image.Point{{8, 16}, {9, 17}, {12, 25}, {16, 32}} {
+		lane := layout.Rect{X: 3, Y: 1, W: 20, H: 1}
+		fish := koiPose(KoiAgent{Seed: 1, State: "working"}, lane, 6, 0)
+		frame := NewFrame(80, 20)
+		drawKoiGraphics(frame, KoiScene{Mini: []KoiFish{fish}}, Input{KoiCellW: cell.X, KoiCellH: cell.Y})
+		if len(frame.Graphics) != 1 {
+			t.Fatal("mini missing")
+		}
+		p := frame.Graphics[0].Placement
+		if p.Y != lane.Y || p.OffsetY != 0 || p.Rows != 1 {
+			t.Fatalf("mini crosses text-row boundary: cell=%v row=%d offset=%d height=%d", cell, p.Y, p.OffsetY, p.Rows)
+		}
+	}
+}

@@ -63,8 +63,10 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 			v := koiVariant(fish)
 			_, img := koiSpriteCached(koiSpriteKey{v, fish.Direction, fish.Wag, w, h})
 			_, _, scale := koiPixelGrid(w, h)
-			px := int(math.Round(fish.X*float64(cw)/float64(scale))) * scale
-			py := int(math.Round(fish.Y*float64(ch)/float64(scale))) * scale
+			dx := int(math.Round((fish.X - float64(fish.Lane.X)) * float64(cw) / float64(scale)))
+			dy := int(math.Round((fish.Y - float64(fish.Lane.Y)) * float64(ch) / float64(scale)))
+			px := fish.Lane.X*cw + max(0, min(dx, (fish.Lane.W-fish.Rect.W)*cw/scale))*scale
+			py := fish.Lane.Y*ch + max(0, min(dy, (fish.Lane.H-fish.Rect.H)*ch/scale))*scale
 			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 1}})
 		}
 	}
