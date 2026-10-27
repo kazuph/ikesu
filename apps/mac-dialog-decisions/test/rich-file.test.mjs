@@ -15,3 +15,12 @@ for(const operation of ['preview','attachment']) test(`actual unwritten FIFO is 
   const result=await exec(process.execPath,['--input-type=module','-e',script],{timeout:2000});assert.match(result.stdout,/FIFO_REJECTED/);
  } finally {await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('native image validation rejects an unwritten FIFO without blocking',async()=>{
+ const binary=process.env.MAC_DIALOG_TEST_NATIVE_BINARY;assert.ok(binary,'actual native binary required');
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'dialog-native-fifo-'));
+ try {
+  const fifo=path.join(root,'画像.png');await exec('/usr/bin/mkfifo',[fifo]);
+  await assert.rejects(exec(binary,['--image-info',fifo],{timeout:2000}),error=>error.code===1&&!error.signal);
+ } finally {await fs.rm(root,{recursive:true,force:true});}
+});
