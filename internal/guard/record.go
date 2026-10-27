@@ -65,7 +65,7 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	}
 	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	now := time.Now()
-	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: v.Reason, Command: append([]string{i.Command}, i.Args...), CommandLine: i.Line(), Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
+	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: i.redact(v.Reason), Command: i.redactedArgv(), CommandLine: i.redact(i.Line()), Cwd: i.redact(i.Cwd), LaunchCwd: i.redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
 	if e != nil {
 		return e
 	}
@@ -74,7 +74,30 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	return e
 }
 
+// The PID distinguishes an exec loop from a real child process. The argv
+// distinguishes direct reentry from an exec into another guarded command.
+const shimExecContext = "IKESU_GUARD_EXEC_CONTEXT"
+
+func executionContext(i Input) string {
+	data, _ := json.Marshal(struct {
+		PID  int
+		Argv []string
+	}{os.Getpid(), append([]string{i.Command}, i.Args...)})
+	return string(data)
+}
+
+func CheckShimRecursion(i Input) error {
+	if i.Env[shimExecContext] == executionContext(i) {
+		return fmt.Errorf("身代わりスクリプトが自分自身を呼び直しました: %s", i.Command)
+	}
+	return nil
+}
+
 func Execute(i Input) error {
+	if err := CheckShimRecursion(i); err != nil {
+		return err
+	}
+	context := executionContext(i)
 	if e := os.Chdir(i.Cwd); e != nil {
 		return e
 	}
@@ -83,7 +106,11 @@ func Execute(i Input) error {
 	if e != nil {
 		return e
 	}
-	return syscall.Exec(path, append([]string{i.Command}, i.Args...), childenv.Scrub(inherited))
+	clean := childenv.Scrub(inherited)
+	// Preserve only the new invocation marker and request context, never approval state.
+	clean = append(clean, shimExecContext+"="+context,
+		"IKESU_GUARD_PARENT_COMMAND="+i.Line(), "IKESU_GUARD_PARENT_REASON="+requestReason(i))
+	return syscall.Exec(path, append([]string{i.Command}, i.Args...), clean)
 }
 
 // The server policy is storage-only; guard status retains its public marker shape.

@@ -97,7 +97,7 @@ func environment(m map[string]string) []string {
 func Resolve(cmd string, env []string) (string, error) {
 	m := EnvMap(env)
 	if strings.Contains(cmd, "/") {
-		if childenv.IsGuardShimDirectory(filepath.Dir(cmd), env) {
+		if childenv.IsGuardShimDirectory(filepath.Dir(cmd), env) || isForwardingShim(cmd) {
 			return "", fmt.Errorf("refusing to execute guard shim: %s", cmd)
 		}
 		if executable(cmd) {
@@ -105,6 +105,7 @@ func Resolve(cmd string, env []string) (string, error) {
 		}
 		return "", fmt.Errorf("command is not executable: %s", cmd)
 	}
+	rejectedShim := false
 	for _, d := range strings.Split(m["PATH"], string(os.PathListSeparator)) {
 		if m["IKESU_GUARD_BIN"] != "" && physical(d) == physical(m["IKESU_GUARD_BIN"]) {
 			continue
@@ -117,8 +118,15 @@ func Resolve(cmd string, env []string) (string, error) {
 		}
 		p := filepath.Join(d, cmd)
 		if executable(p) {
+			if isForwardingShim(p) {
+				rejectedShim = true
+				continue
+			}
 			return p, nil
 		}
+	}
+	if rejectedShim {
+		return "", fmt.Errorf("refusing to execute guard shim: no real command found for %s", cmd)
 	}
 	return "", fmt.Errorf("command not found: %s", cmd)
 }

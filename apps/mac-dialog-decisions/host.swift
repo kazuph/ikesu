@@ -56,12 +56,23 @@ final class DialogHost: NSObject, NSApplicationDelegate {
     }
   }
 
+  private func bringSelectedPanelForward() {
+    let panels = NSApp.orderedWindows.filter { panel in
+      windows.values.contains { $0.panel === panel }
+    }
+    let selected = panels.first(where: { $0.isKeyWindow })
+      ?? panels.first(where: { $0.isMainWindow }) ?? panels.first
+    for panel in panels.reversed() { panel.orderFront(nil) }
+    selected?.makeKeyAndOrderFront(nil)
+  }
+
   func applicationDidBecomeActive(_ notification: Notification) {
-    for window in windows.values { window.panel.orderFront(nil) }
+    bringSelectedPanelForward()
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-    for window in windows.values { window.panel.orderFront(nil) }
+    sender.activate(ignoringOtherApps: true)
+    bringSelectedPanelForward()
     return true
   }
 

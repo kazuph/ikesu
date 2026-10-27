@@ -2,6 +2,13 @@ import AppKit
 import Foundation
 
 let args = CommandLine.arguments
+if args.count == 3 && args[1] == "--image-info" {
+  do {
+    let bitmap = try richBitmap(Data(contentsOf: URL(fileURLWithPath: args[2])), attachment: true)
+    writeOutput(["width": bitmap.width, "height": bitmap.height, "extension": bitmap.ext])
+    exit(0)
+  } catch { FileHandle.standardError.write(Data(error.localizedDescription.utf8)); exit(1) }
+}
 if args.count == 3 && args[1] == "--daemon-lock" {
   let fd = open(args[2], O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
   guard fd >= 0 else { exit(1) }
@@ -22,7 +29,8 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
   for controller in host.windows.values where event.window === controller.panel { return controller.handleKey(event) }
   return event
 }
-if !hostMode { host.open(args[1]) }
+// Finish the accessory-app launch before showing an ordinary selectable window.
+if !hostMode { DispatchQueue.main.async { host.open(args[1]) } }
 DispatchQueue.global().async {
   while let line = readLine() {
     guard let data = line.data(using: .utf8), let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }

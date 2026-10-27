@@ -92,6 +92,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 	}
 	if agent == "claude" {
 		if p := parseMCP(screen); p != nil {
+			presentQuestion(p)
 			return p
 		}
 	}
@@ -139,6 +140,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		physical := line
 		line = strings.TrimSpace(line)
 		if line == "" {
+			title = append(title, "")
 			continue
 		}
 		if strings.Contains(line, "←") && strings.Contains(line, "Submit") {
@@ -152,12 +154,15 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			askUserQuestion = true
 			continue
 		}
+		if strings.Trim(line, "╌") == "" {
+			continue
+		}
 		if strings.HasPrefix(line, "⏺") {
 			continue
 		}
 		title = append(title, physical)
 	}
-	p.Params.Title = joinWrapped(title, columns)
+	p.Params.Title = questionParagraphs(title, columns)
 	if p.Params.Title == "" {
 		return nil
 	}
@@ -295,6 +300,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			}
 		}
 	}
+	presentQuestion(p)
 	return p
 }
 
@@ -351,7 +357,7 @@ func (p *Prompt) Signature() string {
 		Title                  string
 		Options                []option
 		AllowText, MultiSelect bool
-	}{p.MCPServer, label, stableText(p.Params.Title), options, p.Params.AllowText, p.Params.MultiSelect})
+	}{p.MCPServer, label, questionIdentity(p.Params), options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -362,5 +368,5 @@ func FromDecision(d api.Decision) string {
 		_, server, _ = strings.Cut(d.Origin.Agent, mcpOriginSeparator)
 		server = strings.TrimSuffix(server, "”")
 	}
-	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
+	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Body: d.Body, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
 }

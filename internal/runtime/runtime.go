@@ -80,6 +80,7 @@ type Pane struct {
 	dead              bool
 	fgPID             int
 	procName          string
+	foregroundSudo    bool
 	agentID           string
 	agentOverride     string // set by pane.report_agent; wins over agentID
 	procCwd           string
@@ -140,10 +141,8 @@ type Supervisor struct {
 	processDue      map[*Pane]time.Time
 	processNext     time.Time
 	done            chan struct{}
-	loginPathOnce   sync.Once
-	loginPathDone   chan struct{}
-	loginPath       string
-	loginPathErr    error
+	loginPathMu     sync.Mutex
+	loginPathResult *loginPathResult
 
 	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
 	// environment (the server uses it for IKESU_PANE_ID/IKESU_SOCKET_PATH).
@@ -154,10 +153,9 @@ type Supervisor struct {
 
 func NewSupervisor() *Supervisor {
 	return &Supervisor{
-		panes:         map[int]*Pane{},
-		loginPathDone: make(chan struct{}),
-		events:        make(chan Event, 256),
-		done:          make(chan struct{}),
+		panes:  map[int]*Pane{},
+		events: make(chan Event, 256),
+		done:   make(chan struct{}),
 	}
 }
 
@@ -719,6 +717,7 @@ func (p *Pane) PollProcess() {
 		p.processCache.mu.Unlock()
 	}
 	job := p.cachedForegroundJob()
+	p.setForegroundSudo(job.Sudo)
 	pids := make([]int, 0, len(job.Processes))
 	for _, pr := range job.Processes {
 		pids = append(pids, pr.PID)
@@ -908,4 +907,24 @@ func (p *Pane) markProcessChanged() {
 	p.mu.Unlock()
 	p.processChanged.Store(true)
 	p.queueProcessChange()
+}
+
+// ForegroundSudo reads the result of the existing foreground job scan.
+func (p *Pane) ForegroundSudo() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.foregroundSudo && !p.dead
+}
+
+func (p *Pane) setForegroundSudo(active bool) {
+	p.mu.Lock()
+	changed := p.foregroundSudo != active
+	p.foregroundSudo = active
+	if changed {
+		p.processRevision.Add(1)
+	}
+	p.mu.Unlock()
+	if changed {
+		p.notify(EventChanged)
+	}
 }

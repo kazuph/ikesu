@@ -43,13 +43,26 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 	if a.reportedVisibleBlocker(pid) || a.decisionAttention[pid] {
 		key = "blocked"
 	}
+	sudo := false
+	if a.sup != nil {
+		if p := a.sup.Get(pid); p != nil {
+			sudo = p.ForegroundSudo()
+		}
+	}
+	return paneStatusGlyph(key, a.spin, render.ConfigPalette(a.sidebarConfig), sudo)
+}
+
+func paneStatusGlyph(key string, spin int, palette render.Palette, sudo bool) render.StatusGlyph {
+	if key != "blocked" && sudo {
+		return render.StatusGlyph{Key: key, Rune: "◆", Color: render.Mauve}
+	}
 	switch key {
 	case "working":
-		return render.StatusGlyph{Key: "working", Rune: spinnerFrames[a.spin%len(spinnerFrames)], Color: render.Yellow}
+		return render.StatusGlyph{Key: "working", Rune: spinnerFrames[spin%len(spinnerFrames)], Color: render.Yellow}
 	case "blocked":
 		return render.StatusGlyph{Key: "blocked", Rune: "●", Color: render.Red}
 	case "done":
-		return render.StatusGlyph{Key: "done", Rune: "●", Color: render.ConfigPalette(a.sidebarConfig).NavigatorDone}
+		return render.StatusGlyph{Key: "done", Rune: "●", Color: palette.NavigatorDone}
 	case "idle":
 		return render.StatusGlyph{Key: "idle", Rune: "○", Color: render.Green}
 	}

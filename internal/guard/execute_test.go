@@ -42,7 +42,7 @@ func TestRequestReasonCancellationHint(t *testing.T) {
 				} else {
 					want += "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: " + key + "='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n"
 				}
-				want += "   判定理由: 実行前に承認が必要です。\n   承認が必要な理由: 実行前に承認が必要です。（規則: dangerous）\n   引っかかったコマンド: dd\n"
+				want += "   判定理由: 実行前に承認が必要です。\n   ブロック理由：実行前に承認が必要です。（規則: dangerous）\n   対象コマンド：dd\n"
 				if out.String() != want {
 					t.Fatalf("got:\n%swant:\n%s", &out, want)
 				}
@@ -69,7 +69,10 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 		allowed                          bool
 	}{
 		{"approve", "approve", "", "answered", "", true},
-		{"approve_comment", "approve", "ええやん", "answered", "", true},
+		{"approve_comment", "approve", "ええやん", "answered", "承認時のコメント: ええやん", true},
+		{"approve_attachment", "approve", "token=fixture-secret\n添付画像: /tmp/日本語 添付/1.png", "answered", "承認時のコメント: ***\n添付画像: /tmp/日本語 添付/1.png", true},
+		{"day_allow_comment", "day_allow", "画像を確認して", "answered", "承認時のコメント: 画像を確認して", true},
+		{"approve_whitespace", "approve", " \t\n", "answered", "", true},
 		{"day_allow", "day_allow", "", "answered", "", true},
 		{"reject_comment", "reject", "実行しないで", "answered", "理由: 実行しないで", false},
 		{"reject_no_comment", "reject", "", "answered", "理由: 未入力", false},
@@ -137,15 +140,22 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 			var out bytes.Buffer
 			got := Authorize(Config{}, root, i, "shim", &out, await)
 			t.Logf("allowed=%v stderr=%q", got, out.String())
-			if !tc.allowed && (!strings.Contains(out.String(), "承認が必要な理由: deploy/publish 系の操作は確認が必要です（規則: danger-word）") || !strings.Contains(out.String(), "引っかかったコマンド: npx wrangler deploy --env staging")) {
+			if !tc.allowed && (!strings.Contains(out.String(), "ブロック理由：deploy/publish 系の操作は確認が必要です（規則: danger-word）") || !strings.Contains(out.String(), "対象コマンド：npx wrangler deploy --env staging")) {
 				t.Errorf("missing guard diagnostics: %s", out.String())
 			}
 			if got != tc.allowed || !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), "<nil>") {
 				t.Errorf("allowed=%v stderr=%q; want allowed=%v contains=%q", got, out.String(), tc.allowed, tc.want)
 			}
 			if tc.allowed {
-				if out.Len() != 0 {
-					t.Errorf("approval output changed: %s", out.String())
+				wantOutput := ""
+				if tc.want != "" {
+					wantOutput = tc.want + "\n"
+				}
+				if out.String() != wantOutput {
+					t.Errorf("approval output=%q want=%q", out.String(), wantOutput)
+				}
+				if strings.Contains(out.String(), "fixture-secret") {
+					t.Error("approval leaked secret")
 				}
 				key := verdict.TempKey
 				if tc.option == "day_allow" {
@@ -192,16 +202,16 @@ func TestApprovalPresentation(t *testing.T) {
 			defer store.Close()
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				want := "bash /tmp/rebuild_all.sh && printf '%s' done"
-				if p.Title != "実行確認: "+want {
+				if p.Title != "実行確認: bash" {
 					t.Errorf("title=%q", p.Title)
 				}
-				body := "承認が必要な理由: 表示試験（規則: presentation-test）\n引っかかったコマンド: bash /tmp/rebuild_all.sh\n\nコマンド: " + want + "\n\n" + strings.ReplaceAll(reason, "。", "。\n") + "\n場所: " + root
+				body := "ブロック理由：表示試験（規則: presentation-test）\n対象コマンド：bash /tmp/rebuild_all.sh\n\nコマンド: " + want + "\n\n" + strings.ReplaceAll(reason, "。", "。\n")
 				// Trailing prose punctuation does not add a blank line between fields.
 				body = strings.ReplaceAll(body, "。\n\n場所:", "。\n場所:")
-				if p.Body == nil || *p.Body != body {
+				if p.Body == nil || *p.Body != strings.TrimSpace(body) {
 					t.Errorf("body=%v want=%q", p.Body, body)
 				}
-				if p.Origin.Command != line || p.Origin.Reason != reason {
+				if p.Origin.Command != want || p.Origin.Reason != reason {
 					t.Errorf("origin semantics changed: %+v", p.Origin)
 				}
 				d, err := store.CreateDecision(p, time.Now())
@@ -239,11 +249,11 @@ func TestApprovalTriggerForMultipleCommands(t *testing.T) {
 			called := false
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				called = true
-				prefix := "承認が必要な理由: 実行前に承認が必要です。（規則: dangerous）\n引っかかったコマンド: dd if=/dev/null\n\n"
+				prefix := "ブロック理由：実行前に承認が必要です。（規則: dangerous）\n対象コマンド：dd if=/dev/null\n\n"
 				if p.Body == nil || !strings.HasPrefix(*p.Body, prefix) {
 					t.Errorf("missing actual trigger: %+v", p.Body)
 				}
-				if p.Origin.Command != line {
+				if p.Origin.Command != strings.TrimPrefix(line, "AI_GUARD_REQUEST_REASON='対象プロジェクトの試験のため' ") {
 					t.Errorf("origin changed: %q", p.Origin.Command)
 				}
 				d, err := store.CreateDecision(p, time.Now())
@@ -296,7 +306,7 @@ func TestDangerWordLineTriggerUsesActualCLICommand(t *testing.T) {
 			}
 			defer store.Close()
 			called := false
-			target := "引っかかったコマンド: npx wrangler deploy\n"
+			target := "対象コマンド：npx wrangler deploy\n"
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				called = true
 				if p.Body == nil || !strings.Contains(*p.Body, target) {
@@ -326,7 +336,7 @@ func TestApprovalTriggerExplicitWholeLineFallback(t *testing.T) {
 	for _, line := range []string{"printf safe &&", "git log --grep deploy"} {
 		i := Input{Command: line, Cwd: t.TempDir(), Env: map[string]string{}}
 		selected, v, _ := lineVerdict(Config{}, i, line)
-		if v.Decision != "ask" || !strings.Contains(approvalTrigger(selected, v), "引っかかったコマンド: 入力行全体: "+line) {
+		if v.Decision != "ask" || !strings.Contains(approvalTrigger(selected, v), "対象コマンド：入力行全体: "+line) {
 			t.Fatalf("whole-line target not explicit: %+v %s", v, approvalTrigger(selected, v))
 		}
 	}

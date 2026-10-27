@@ -73,7 +73,7 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 					continue
 				}
 				status := glyph.Rune
-				if glyph.Key == "unknown" {
+				if glyph.Rune == "·" {
 					status = "○"
 				}
 				tabRows = append(tabRows, render.NavigatorRow{Workspace: wi, Tab: ti, Pane: pid, Depth: depth, TabName: tabName, Name: title, WorkspaceName: name, Agent: agent, Status: status, Current: pid == a.focusedPane()})

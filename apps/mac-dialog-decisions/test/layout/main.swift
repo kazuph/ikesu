@@ -13,9 +13,27 @@ for separator in [" ", "\t", "\n", " \t\n"] {
  }
 }
 precondition(comparableApprovalDetail("必要な理由: A B") != comparableApprovalDetail("必要な理由: AB"), "whitespace within fields must be preserved")
+// Both current and already-distributed guard messages must retain emphasis.
+for prefix in ["ブロック理由：", "承認が必要な理由:"] {
+ var fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as! [String: Any]
+ fixture["kind"] = "command_guard"
+ fixture["body"] = prefix + "表示試験（規則: presentation-test）\n対象コマンド：echo label-test\n\n対象プロジェクト: ikesu。"
+ let input = try JSONDecoder().decode(DialogSpec.self, from: JSONSerialization.data(withJSONObject: fixture))
+ let candidate = DialogController(spec: input, specPath: CommandLine.arguments[1])
+ candidate.build()
+ func emphasized(_ view: NSView) -> Bool {
+  if let field = view as? NSTextField, field.stringValue.hasPrefix(prefix), field.textColor == Look.accent { return true }
+  return view.subviews.contains(where: emphasized)
+ }
+ precondition(emphasized(candidate.panel.contentView!), "guard prefix must be emphasized: \(prefix)")
+ print("guard prefix emphasized: \(prefix)")
+ candidate.panel.orderOut(nil)
+}
 let controller = DialogController(spec: spec, specPath: CommandLine.arguments[1])
-controller.build()
-controller.show()
+DispatchQueue.main.async {
+ controller.build()
+ controller.show()
+}
 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
  let root = controller.panel.contentView!
  root.layoutSubtreeIfNeeded()
@@ -32,7 +50,7 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
  }
  collect(root)
  if !baseline {
- for field in fields where field.stringValue.contains("対象プロジェクト:") || field.stringValue.hasPrefix("承認が必要な理由:") {
+ for field in fields where field.stringValue.contains("対象プロジェクト:") || field.stringValue.hasPrefix("ブロック理由：") || field.stringValue.hasPrefix("承認が必要な理由:") {
   precondition(root.bounds.contains(field.convert(field.bounds, to: root)), "body must fit the window")
   var parent = field.superview
   while let view = parent {
@@ -52,8 +70,8 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
  }
  print("requested body labels fully inside window and scroll viewport")
  precondition(!fields.contains { field in ["コマンド：", "理由：", "場所："].contains(where: field.stringValue.hasPrefix) }, "duplicate Origin details")
- if spec.body?.hasPrefix("承認が必要な理由:") == true {
-  precondition(fields.contains { $0.stringValue.hasPrefix("承認が必要な理由:") && $0.textColor == Look.accent }, "guard trigger must be emphasized")
+ if spec.body?.hasPrefix("ブロック理由：") == true || spec.body?.hasPrefix("承認が必要な理由:") == true {
+  precondition(fields.contains { ($0.stringValue.hasPrefix("ブロック理由：") || $0.stringValue.hasPrefix("承認が必要な理由:")) && $0.textColor == Look.accent }, "guard trigger must be emphasized")
  }
  precondition(fields.contains { $0.stringValue == spec.title && $0.maximumNumberOfLines == 1 && $0.lineBreakMode == .byTruncatingTail }, "long guard title must truncate")
  }

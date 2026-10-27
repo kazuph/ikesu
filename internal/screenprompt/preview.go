@@ -20,6 +20,19 @@ func currentQuestionLines(lines []string) []string {
 	if first < 0 {
 		return lines
 	}
+	// Completed questions can remain above the ordinary agent input line.
+	for i := first + 1; i < len(lines); i++ {
+		footer := strings.ToLower(lines[i])
+		if !strings.Contains(footer, "esc to cancel") && !strings.Contains(footer, "enter to submit") {
+			continue
+		}
+		for _, line := range lines[i+1:] {
+			trim := strings.TrimSpace(line)
+			if strings.HasPrefix(trim, "⏺") || strings.HasPrefix(trim, "•") || (strings.HasPrefix(trim, "❯") || strings.HasPrefix(trim, "›")) && !numbered.MatchString(line) {
+				return nil
+			}
+		}
+	}
 	start := 0
 	for i, line := range lines[:first] {
 		if navigationFooter(line) {
