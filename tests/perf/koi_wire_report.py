@@ -26,7 +26,7 @@ for mode in ('direct','nested'):
   duration=8.5
   def center(e):return e['image_center_px']
   # Source 40-dot square is enlarged by an integer factor; use the received scale.
-  scale=free[0]['display_px'][2]/free[0]['source_px'][2]
+  scale=decoded[free[0]['id']]['width']/40*free[0]['display_px'][2]/free[0]['source_px'][2]
   distance=sum(math.dist(center(x),center(y))/scale for x,y in zip(free,free[1:]))
   start=max((e for e in points if e['clock_ns']<=click),key=lambda e:e['clock_ns'])
   end=max((e for e in points if e['clock_ns']<=click+1_500_000_000),key=lambda e:e['clock_ns'])
