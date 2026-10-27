@@ -261,6 +261,9 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 			return false
 		}
 	}
+	if d.Answer.Text != nil && strings.TrimSpace(*d.Answer.Text) != "" {
+		fmt.Fprintf(errOut, "承認時のコメント: %s\n", *d.Answer.Text)
+	}
 	return true
 }
 func PrintBlock(w io.Writer, i Input, v Verdict) {
