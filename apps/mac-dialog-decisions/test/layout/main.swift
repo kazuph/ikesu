@@ -14,8 +14,10 @@ for separator in [" ", "\t", "\n", " \t\n"] {
 }
 precondition(comparableApprovalDetail("必要な理由: A B") != comparableApprovalDetail("必要な理由: AB"), "whitespace within fields must be preserved")
 let controller = DialogController(spec: spec, specPath: CommandLine.arguments[1])
-controller.build()
-controller.show()
+DispatchQueue.main.async {
+ controller.build()
+ controller.show()
+}
 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
  let root = controller.panel.contentView!
  root.layoutSubtreeIfNeeded()

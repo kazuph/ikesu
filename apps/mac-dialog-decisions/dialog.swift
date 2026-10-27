@@ -129,11 +129,11 @@ final class FirstClickTextView: NSTextView {
 // the clicked view asks for it, so every view in the panel does: after any
 // click inside, Esc / ⌘↩ / ⌘1… reach the panel.
 //
-// The process only becomes active when the user clicks into the panel (never
-// on its own): text input — including Japanese input methods — needs an
-// active app, and a click is the user's own choice to start answering.
+// Showing a panel does not activate the process. Explicit window selection
+// (click, Dock, app switcher or Mission Control) may activate it for input.
 final class KeyPanel: NSPanel {
   override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { true }
   override func sendEvent(_ event: NSEvent) {
     if event.type == .leftMouseDown,
       NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -586,7 +586,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     panel = KeyPanel(
       contentRect: NSRect(x: 0, y: 0, width: Look.width, height: 400),
-      styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
+      styleMask: [.titled, .closable, .resizable],
       backing: .buffered, defer: false)
     panel.title = spec.window_title
     panel.contentView = root
