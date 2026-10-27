@@ -70,7 +70,7 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 	}{
 		{"approve", "approve", "", "answered", "", true},
 		{"approve_comment", "approve", "ええやん", "answered", "承認時のコメント: ええやん", true},
-		{"approve_attachment", "approve", "token=fixture-secret\n添付画像: /tmp/日本語 添付/1.png", "answered", "承認時のコメント: token=***\n添付画像: /tmp/日本語 添付/1.png", true},
+		{"approve_attachment", "approve", "token=fixture-secret\n添付画像: /tmp/日本語 添付/1.png", "answered", "承認時のコメント: ***\n添付画像: /tmp/日本語 添付/1.png", true},
 		{"day_allow_comment", "day_allow", "画像を確認して", "answered", "承認時のコメント: 画像を確認して", true},
 		{"approve_whitespace", "approve", " \t\n", "answered", "", true},
 		{"day_allow", "day_allow", "", "answered", "", true},
