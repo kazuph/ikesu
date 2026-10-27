@@ -10,7 +10,7 @@ import (
 // Only options with known destination semantics qualify for this exception.
 func localHTTPDestinations(i Input) bool {
 	cmd := filepath.Base(i.Command)
-	if i.Unresolved || cmd == "wget" {
+	if i.Unresolved || cmd == "wget" || !noHTTPDefaultConfig(i, cmd) {
 		return false
 	}
 	for key, value := range i.Env {

@@ -10,6 +10,9 @@ func TestLocalHTTPDefaultConfig(t *testing.T) {
 	for _, tc := range []struct{ name, command, key, relative, contents string }{
 		{"curl-home-connect", "curl", "HOME", ".curlrc", `connect-to = "localhost:80:example.invalid:80"`},
 		{"curl-curlhome-location", "curl", "CURL_HOME", ".curlrc", "location\n"},
+		{"curl-xdg-dot", "curl", "XDG_CONFIG_HOME", ".curlrc", `location`},
+		{"curl-home-xdg-default", "curl", "HOME", ".config/curlrc", `location`},
+		{"curl-curlhome-xdg-default", "curl", "CURL_HOME", ".config/curlrc", `location`},
 		{"curl-xdg-url", "curl", "XDG_CONFIG_HOME", "curlrc", `url = "http://example.invalid"`},
 		{"curl-proxy", "curl", "HOME", ".curlrc", `proxy = "http://example.invalid:8888"`},
 		{"httpie-default-follow", "http", "HOME", ".config/httpie/config.json", `{"default_options":["--follow"]}`},

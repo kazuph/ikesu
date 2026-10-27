@@ -16,7 +16,7 @@ func TestLocalHTTPDestinations(t *testing.T) {
 					if cmd != "curl" {
 						a = []string{"POST", u}
 					}
-					i := Input{Command: cmd, Args: a, Cwd: t.TempDir(), Env: map[string]string{}}
+					i := Input{Command: cmd, Args: a, Cwd: t.TempDir(), Env: map[string]string{"HOME": t.TempDir()}}
 					if v := Evaluate(Config{}, i); v.Decision != group.want {
 						t.Fatalf("%+v want %s", v, group.want)
 					}
@@ -58,7 +58,11 @@ func TestLocalHTTPConnectionOverrides(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			i := Input{Command: tc.cmd, Args: tc.args, Env: tc.env, Unresolved: tc.unresolved, Cwd: t.TempDir()}
+			env := map[string]string{"HOME": t.TempDir()}
+			for k, v := range tc.env {
+				env[k] = v
+			}
+			i := Input{Command: tc.cmd, Args: tc.args, Env: env, Unresolved: tc.unresolved, Cwd: t.TempDir()}
 			if v := Evaluate(Config{}, i); v.Decision != tc.want {
 				t.Fatalf("%+v want %s", v, tc.want)
 			}
@@ -74,7 +78,7 @@ func TestLocalHTTPParsedShell(t *testing.T) {
 		{`http_proxy=http://example.invalid curl -XPOST http://localhost`, "ask"},
 	} {
 		t.Run(tc.line, func(t *testing.T) {
-			i, err := LineInput(Input{Env: map[string]string{"LOCAL_URL": "http://localhost:3847/webhook/stop"}}, tc.line)
+			i, err := LineInput(Input{Env: map[string]string{"HOME": t.TempDir(), "LOCAL_URL": "http://localhost:3847/webhook/stop"}}, tc.line)
 			if err != nil {
 				t.Fatal(err)
 			}
