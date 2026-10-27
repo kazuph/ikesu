@@ -26,6 +26,8 @@ func (m *machineClient) post(ctx context.Context, event endpointEvent) bool {
 
 func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	if id == "local" {
+		m.focusKnown = false
+		m.lastClientView = nil
 		m.retirePendingGraphicsFile()
 	}
 	e := m.endpoints[id]

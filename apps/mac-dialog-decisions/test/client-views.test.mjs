@@ -139,7 +139,7 @@ os.close(fd)
 
 test('later and reconnect retain decision identity but query current display again',async t=>{
  const f=await fixture(t);
- const {decision}=await f.rpc('decision.create',{kind:'ask',title:'redisplay',origin:{pane_id:'p1'},options:[]});
+ const {decision}=await f.rpc('decision.create',{kind:'ask',title:'redisplay',origin:{pane_id:'p1'},options:[{id:'yes',label:'Yes',role:'approve'}]});
  f.daemon.onCreated('local',{id:'local'},decision);clearTimeout(f.daemon._pumpTimer);
  const e=[...f.daemon.entries.values()][0];
  await f.set(local);assert.equal(await f.daemon.presentation(e),true);
