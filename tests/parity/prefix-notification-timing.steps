@@ -18,7 +18,7 @@ send "o"
 sleep 300ms
 screen @OUT@/target.txt
 cells @OUT@/target.json
-send "printf 'NOTIFICATION_TARGET=%s\\n' \"${HERDR_PANE_ID:-$GTX_PANE_ID}\"\r"
+send "printf 'NOTIFICATION_TARGET=%s\\n' \"${HERDR_PANE_ID:-$IKESU_PANE_ID}\"\r"
 sleep 250ms
 screen @OUT@/input.txt
 cells @OUT@/input.json

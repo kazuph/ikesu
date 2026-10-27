@@ -9,7 +9,7 @@ import sys
 import tomllib
 
 p=argparse.ArgumentParser()
-p.add_argument('--ikesu','--gtx',dest='gtx',required=True)
+p.add_argument('--ikesu',dest='ikesu',required=True)
 p.add_argument('--herdr',required=True)
 p.add_argument('--ptyrun',required=True)
 p.add_argument('--config',required=True)
@@ -31,12 +31,12 @@ procedure=out/'matrix.steps';procedure.write_text('\n'.join(steps)+'\n')
 records=[]
 for mode in ['server','standalone']:
     target=out/mode
-    command=[sys.executable,str(Path(__file__).with_name('observe.py')),'--ikesu',a.gtx,'--herdr',a.herdr,'--ptyrun',a.ptyrun,'--steps',str(procedure),'--out',str(target),'--config-file',str(out/'config.toml'),'--silent','--clipboard-sandbox']
+    command=[sys.executable,str(Path(__file__).with_name('observe.py')),'--ikesu',a.ikesu,'--herdr',a.herdr,'--ptyrun',a.ptyrun,'--steps',str(procedure),'--out',str(target),'--config-file',str(out/'config.toml'),'--silent','--clipboard-sandbox']
     if mode=='server':command+=['--server','--server-reuse-initial']
     subprocess.run(command,check=True)
     for width in widths:
         entries={}
-        for product in ['herdr','gtx']:
+        for product in ['herdr','ikesu']:
             doc=json.loads((target/product/f'width-{width}.json').read_text())
             row=doc['Cells'][-1]
             text=''.join(cell['Content'] or ' ' for cell in row)
@@ -45,7 +45,7 @@ for mode in ['server','standalone']:
             if copy<0 or cycle<0:
                 assert version is None,(mode,width,product,'version without buttons',text)
                 continue
-            label=product+' v'+('0.1.0' if product=='gtx' else '0.2.61')
+            label=product+' v'+('0.1.0' if product=='ikesu' else '0.2.61')
             left,right=copy+len(' COPY '),cycle
             fits=right-left>=len(label)+2
             assert bool(version)==fits,(mode,width,product,'visibility',text)
@@ -56,15 +56,15 @@ for mode in ['server','standalone']:
             entries[product]={'copy':copy,'cycle':cycle,'rotate':text.find(' ROTATE PANES '),'equalize':text.find(' EQUALIZE '),'gap':right-left,'label_width':len(label),'version':version.start() if version else None,'style':row[version.start()]['Style'] if version else None}
         if len(entries)==2:
             for key in ['copy','cycle','rotate','equalize','gap']:
-                assert entries['herdr'][key]==entries['gtx'][key],(mode,width,key,entries)
-            if entries['herdr']['style'] is not None and entries['gtx']['style'] is not None:
-                assert entries['herdr']['style']==entries['gtx']['style'],(mode,width,'style',entries)
+                assert entries['herdr'][key]==entries['ikesu'][key],(mode,width,key,entries)
+            if entries['herdr']['style'] is not None and entries['ikesu']['style'] is not None:
+                assert entries['herdr']['style']==entries['ikesu']['style'],(mode,width,'style',entries)
         records.append({'mode':mode,'width':width,'products':entries})
-    for product in ['herdr','gtx']:
+    for product in ['herdr','ikesu']:
         doc=json.loads((target/product/'height-3.json').read_text())
         text='\n'.join(''.join(cell['Content'] or ' ' for cell in row) for row in doc['Cells'])
-        if product=='gtx':assert 'gtx v0.1.0' not in text,'version appeared without a footer'
-for product in ['herdr','gtx']:
+        if product=='ikesu':assert 'ikesu v0.1.0' not in text,'version appeared without a footer'
+for product in ['herdr','ikesu']:
     for mode in ['server','standalone']:
         candidates=[r['products'][product] for r in records if r['mode']==mode and product in r['products']]
         assert any(c['gap']==c['label_width']+2 and c['version'] is not None for c in candidates),(mode,product,'exact fit not observed')

@@ -16,7 +16,7 @@ import uuid
 import tb_pointer_probe
 
 p = argparse.ArgumentParser()
-p.add_argument('--product', choices=('herdr', 'gtx'), required=True)
+p.add_argument('--product', choices=('herdr', 'ikesu'), required=True)
 p.add_argument('--binary', type=Path, required=True)
 p.add_argument('--remote-binary', required=True)
 p.add_argument('--remote-tb', required=True)
@@ -174,8 +174,8 @@ try:
         remote_env = {'HOME': remote+'/home', 'ZDOTDIR': remote+'/home',
                       'XDG_CONFIG_HOME': remote+'/c', 'XDG_STATE_HOME': remote+'/s',
                       'XDG_DATA_HOME': remote+'/data', 'HERDR_STATE_DIR': remote+'/s',
-                      'GTX_STATE_DIR': remote+'/s', 'HERDR_CONFIG_PATH': remote+'/config.toml',
-                      'GTX_CONFIG': remote+'/config.toml', 'SHELL': '/bin/zsh'}
+                      'IKESU_STATE_DIR': remote+'/s', 'HERDR_CONFIG_PATH': remote+'/config.toml',
+                      'IKESU_CONFIG': remote+'/config.toml', 'SHELL': '/bin/zsh'}
         prefix = ''.join('export '+key+'='+shlex.quote(value)+'; ' for key, value in remote_env.items())
         prefix += 'export PATH='+shlex.quote(remote+'/bin')+':"$PATH"; '
         setup = '''import json,pathlib,sys
@@ -185,7 +185,7 @@ for d in ['home','c','s/t','data','bin']: (r/d).mkdir(parents=True,exist_ok=True
 (r/'config.toml').write_text(cfg)
 (r/'home/.zshrc').write_text("PS1='TB_REMOTE> '\\nunset HISTFILE\\n")
 (r/'page.html').write_text('<!doctype html><meta charset="utf-8"><title>TB_PARITY_PAGE</title><h1>Terminal browser parity page</h1>'+''.join('<p>Scroll row '+str(i)+' — same page for both products.</p>' for i in range(200)))
-for name in ['herdr','gtx']:
+for name in ['herdr','ikesu']:
  p=r/'bin'/name;p.write_text(wrapper);p.chmod(0o700)
 '''
         wrapper = '#!/bin/sh\n'+prefix+'exec '+shlex.quote(a.remote_binary)+' "$@"\n'
@@ -205,13 +205,13 @@ for name in ['herdr','gtx']:
                                'a[i+1:]=['+repr(prefix)+'+" ".join(a[i+1:])]\n'
                                'os.execv("/usr/bin/ssh",'+repr(ssh_args)+'+a)\n')
         ssh_wrapper.chmod(0o700)
-        env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CODEX', 'CLAUDE'))}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'IKESU', 'CODEX', 'CLAUDE'))}
         env.update(HOME=str(root/'home'), ZDOTDIR=str(root/'home'), XDG_CONFIG_HOME=str(root/'config'),
                    XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'),
-                   HERDR_STATE_DIR=str(root/'state'), GTX_STATE_DIR=str(root/'state'),
-                   HERDR_CONFIG_PATH=str(root/'config.toml'), GTX_CONFIG=str(root/'config.toml'),
+                   HERDR_STATE_DIR=str(root/'state'), IKESU_STATE_DIR=str(root/'state'),
+                   HERDR_CONFIG_PATH=str(root/'config.toml'), IKESU_CONFIG=str(root/'config.toml'),
                    SHELL='/bin/zsh', TERM='xterm-256color', PATH=str(root/'bin')+':'+os.environ['PATH'],
-                   HERDR_MACHINE_REMOTE_BINARY=remote+'/bin/herdr', GTX_MACHINE_REMOTE_BINARY=remote+'/bin/gtx')
+                   HERDR_MACHINE_REMOTE_BINARY=remote+'/bin/herdr', IKESU_MACHINE_REMOTE_BINARY=remote+'/bin/ikesu')
         if a.capture_ssh:
             ssh_wrapper.write_bytes(Path(__file__).with_name('tb_ssh_capture.py').read_bytes())
             env.update(TB_SSH_OBSERVER_PREFIX=prefix, TB_SSH_CAPTURE_ROOT=str(out/'ssh'), TB_SSH_CONFIG=str(ssh_config))

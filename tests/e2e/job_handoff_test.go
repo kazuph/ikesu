@@ -1,9 +1,7 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,96 +139,3 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 
 // Stage three intentionally replaces cross-name live upgrades with offline
 // migration. Rejection must leave the retiring server's data and PTYs usable.
-func TestLegacyLiveHandoffRefusedWithoutDamage(t *testing.T) {
-	baseline := prepareMigrationBaseline(t)
-	home, err := os.MkdirTemp("/tmp", "ih-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(home)
-	config := filepath.Join(home, ".config/gtx-2e01183")
-	if err = os.MkdirAll(config, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(config, "config.toml"), []byte("onboarding=false\n[experimental]\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	socket := filepath.Join(home, ".local/state/gtx-2e01183/stage3/gtx.sock")
-	stop := migrationServer(t, baseline, home, socket)
-	defer stop()
-	var before map[string]any
-	migrationRPC(t, socket, "pane.list", map[string]any{}, &before)
-	var originalPanes struct {
-		Panes []struct {
-			PaneID string `json:"pane_id"`
-		} `json:"panes"`
-	}
-	migrationRPC(t, socket, "pane.list", map[string]any{}, &originalPanes)
-	if len(originalPanes.Panes) == 0 {
-		t.Fatal("no panes before handoff")
-	}
-	migrationRPC(t, socket, "pane.report_agent", api.PaneReportAgentParams{PaneID: originalPanes.Panes[0].PaneID, Source: "reject", Agent: "codex", State: "idle"}, nil)
-	var originalDecision api.DecisionResult
-	migrationRPC(t, socket, "decision.create", api.DecisionCreateParams{Kind: "ask", Title: "survives-refusal", Options: []api.DecisionOption{{ID: "yes", Label: "Yes", Role: "approve"}}}, &originalDecision)
-	conn, err := net.Dial("unix", socket)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = conn.SetDeadline(time.Now().Add(45 * time.Second))
-	if err = json.NewEncoder(conn).Encode(map[string]any{"id": "reject", "method": "server.live_handoff", "params": map[string]any{"import_exe": binPath}}); err != nil {
-		t.Fatal(err)
-	}
-	var response struct {
-		Error *api.Error `json:"error"`
-	}
-	if err = json.NewDecoder(conn).Decode(&response); err != nil {
-		t.Fatal(err)
-	}
-	_ = conn.Close()
-	if response.Error == nil || !strings.Contains(response.Error.Message, "offline migration") || strings.Contains(strings.ToLower(response.Error.Message), "gtx") {
-		t.Fatalf("unclear rejection: %+v", response.Error)
-	}
-	var after map[string]any
-	migrationRPC(t, socket, "pane.list", map[string]any{}, &after)
-	oldRaw, _ := json.Marshal(before)
-	newRaw, _ := json.Marshal(after)
-	// Pane status metadata can change while shells run; stable identity and cwd must stay.
-	var panes struct {
-		Panes []struct {
-			PaneID string `json:"pane_id"`
-		} `json:"panes"`
-	}
-	migrationRPC(t, socket, "pane.list", map[string]any{}, &panes)
-	if len(panes.Panes) == 0 {
-		t.Fatal("panes lost", string(oldRaw), string(newRaw))
-	}
-	pane := panes.Panes[0].PaneID
-	if len(panes.Panes) != len(originalPanes.Panes) || pane != originalPanes.Panes[0].PaneID {
-		t.Fatal("pane identity changed")
-	}
-	var retained api.DecisionResult
-	migrationRPC(t, socket, "decision.get", api.DecisionTargetParams{DecisionID: originalDecision.Decision.DecisionID}, &retained)
-	if retained.Decision.Title != originalDecision.Decision.Title || retained.Decision.Status != "pending" {
-		t.Fatal("DB decision changed", retained)
-	}
-
-	migrationRPC(t, socket, "pane.send_text", api.PaneSendTextParams{PaneID: pane, Text: "printf handoff-rejection-survived\n"}, nil)
-	migrationRPC(t, socket, "pane.send_keys", api.PaneSendKeysParams{PaneID: pane, Keys: []string{"Enter"}}, nil)
-	deadline := time.Now().Add(15 * time.Second)
-	found := false
-	for time.Now().Before(deadline) {
-		var read map[string]any
-		migrationRPC(t, socket, "pane.read", api.PaneReadParams{PaneID: pane}, &read)
-		raw, _ := json.Marshal(read)
-		if strings.Contains(string(raw), "handoff-rejection-survived") {
-			found = true
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if !found {
-		t.Fatal("old pane stopped processing input")
-	}
-	migrationRPC(t, socket, "msg.send", api.MsgSendParams{Room: "reject", FromAgent: "proof", To: pane, Body: "after-rejection"}, nil)
-	t.Log("old server API, pane output and database remain usable after explicit refusal")
-}

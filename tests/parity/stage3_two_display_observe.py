@@ -15,7 +15,7 @@ from clipboard_guard import SANDBOX_PROFILE
 p = argparse.ArgumentParser()
 for name in ['binary', 'ptyrun', 'config', 'out']:
     p.add_argument('--'+name, type=Path, required=True)
-p.add_argument('--product', choices=['herdr', 'gtx'], required=True)
+p.add_argument('--product', choices=['herdr', 'ikesu'], required=True)
 p.add_argument('--session-id', required=True)
 p.add_argument('--only', nargs='*')
 a = p.parse_args()
@@ -49,12 +49,12 @@ for kind, position, cols in [('api', True, 160), ('api', False, 160), ('api', Fa
         (root/'config.toml').write_text(config)
         (out/'config.toml').write_text(config)
         (root/'zdot/.zshrc').write_text("PS1='PARITY> '\nRPROMPT=''\n")
-        env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CODEX', 'CLAUDE'))}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'IKESU', 'CODEX', 'CLAUDE'))}
         env.update(HOME=str(root/'home'), ZDOTDIR=str(root/'zdot'), XDG_CONFIG_HOME=str(root/'config'),
                    XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'),
-                   HERDR_STATE_DIR=str(root/'state/h'), GTX_STATE_DIR=str(root/'state/g'),
-                   HERDR_CONFIG_PATH=str(root/'config.toml'), GTX_CONFIG=str(root/'config.toml'),
-                   GTX_DISABLE_SOUND='1', SHELL='/bin/zsh', TERM='xterm-256color')
+                   HERDR_STATE_DIR=str(root/'state/h'), IKESU_STATE_DIR=str(root/'state/g'),
+                   HERDR_CONFIG_PATH=str(root/'config.toml'), IKESU_CONFIG=str(root/'config.toml'),
+                   IKESU_DISABLE_SOUND='1', SHELL='/bin/zsh', TERM='xterm-256color')
         launch = ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE, str(binary)]
         replies = []
         endpoint = None

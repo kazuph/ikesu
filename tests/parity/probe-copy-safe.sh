@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
-: "${IKESU_PARITY_BIN:=${GTX_PARITY_BIN:-}}"
-: "${IKESU_PARITY_BIN:?set IKESU_PARITY_BIN or GTX_PARITY_BIN to the binary being compared}"
+: "${IKESU_PARITY_BIN:=}"
+: "${IKESU_PARITY_BIN:?set IKESU_PARITY_BIN or IKESU_PARITY_BIN to the binary being compared}"
 : "${PARITY_FIXTURE_DIR:?set the isolated fixture script directory}"
 work="$HOME/bench-terrace.noindex/work"
 for scenario in copy-clean-cells copy-key-details copy-selection-keys copy-page-sizes copy-wheel-cursor copy-unicode copy-cycle copy-colored-selection copy-wide-motions copy-resize-top copy-resize-middle copy-resize-bottom; do

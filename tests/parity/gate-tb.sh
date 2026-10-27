@@ -17,10 +17,10 @@ test ! -s "$out/gofmt.log"
 go vet ./... > "$out/vet.log" 2>&1
 go test -count=1 ./... > "$out/test.log" 2>&1
 go test -race -count=1 ./... > "$out/race.log" 2>&1
-go build -o "$out/gtx" ./cmd/ikesu
+go build -o "$out/ikesu" ./cmd/ikesu
 for scenario in graphics reuse; do
     python3 tests/parity/observe.py \
-        --herdr "$root/work/detail/herdr-0.2.57" --ikesu "$out/gtx" \
+        --herdr "$root/work/detail/herdr-0.2.57" --ikesu "$out/ikesu" \
         --ptyrun "$root/work/detail/ptyrun" \
         --config-file "$root/work/tb-optimize/config.toml" \
         --steps "tests/parity/tb-$scenario.steps" --out "$out/$scenario" \
@@ -35,8 +35,8 @@ if [ "$phase" = validation ]; then
     printf 'PASS: gofmt, vet, test, race, T7/T10/T17 observations; P1 must be run separately\n'
     exit 0
 fi
-IKESU_PERF_BIN="$out/gtx" \
-IKESU_PERF_BASELINE_BIN="$root/work/detail/gtx-baseline-06614cc" \
+IKESU_PERF_BIN="$out/ikesu" \
+IKESU_PERF_BASELINE_BIN="$root/work/detail/ikesu-baseline-06614cc" \
 IKESU_PERF_OUT="$out/relative-perf.md" \
 go test -tags perf -count=1 -timeout=30m -run TestRelative -v ./tests/perf > "$out/perf.log" 2>&1
 printf 'PASS: gofmt, vet, test, race, T7/T10/T17 observations, P1 relative\n'

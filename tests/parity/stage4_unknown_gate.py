@@ -6,7 +6,7 @@ import sys
 
 root = Path(sys.argv[1])
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     cells = json.loads((root / product / 'unknown.json').read_text())['Cells']
     text = ''.join(cell['Content'] for cell in cells[26][:25])
     assert text.startswith(' done '), (product, text)
@@ -14,6 +14,6 @@ for product in ('herdr', 'gtx'):
     dots = [cell for cell in cells[5][:25] if cell['Content'] == '●']
     assert len(dots) == 1 and dots[0]['Style']['Fg'] == status['Fg'], (product, dots)
     proof[product] = {'status_style': status, 'workspace_dot_style': dots[0]['Style']}
-assert proof['herdr'] == proof['gtx'], proof
+assert proof['herdr'] == proof['ikesu'], proof
 proof['A25_unknown_exit'] = 'PASS'
 print(json.dumps(proof, indent=2))

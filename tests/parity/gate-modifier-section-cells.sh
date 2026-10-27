@@ -6,7 +6,7 @@ if ! test -x "$work/herdr-0.2.24"; then
  exit 0
 fi
 cd "$HOME/bench-terrace.noindex/src/look"
-: "${IKESU_PARITY_BIN:=${GTX_PARITY_BIN:-$work/gtx-parity-modifier-section}}"
+: "${IKESU_PARITY_BIN:=$work/ikesu-parity-modifier-section}"
 for mode in local server; do
  if test "$mode" = server; then
   set -- --server --server-reuse-initial

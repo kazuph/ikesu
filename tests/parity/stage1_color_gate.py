@@ -8,7 +8,7 @@ results = []
 for argument, expected, screen in [(sys.argv[1], b'END', 'complete'),
                                    (sys.argv[2], b'\x1b', 'escape')]:
     root = Path(argument)
-    for name in ['herdr', 'gtx']:
+    for name in ['herdr', 'ikesu']:
         folder = root/name
         clock = json.loads((folder/(screen+'.json')).read_text())
         records = [json.loads(line) for line in (folder/'received.jsonl').read_text().splitlines()]

@@ -8,7 +8,7 @@ from clipboard_guard import require_no_copy_write
 root = Path(sys.argv[1])
 results = []
 for who, title, edited in [('herdr', 'add machine: SSH target (e.g. mini)', 'offline.invaliZ'),
-                           ('gtx', 'ssh target', 'offline.invalZd')]:
+                           ('ikesu', 'ssh target', 'offline.invalZd')]:
     case = root / who
     screens = {name: (case / (name + '.txt')).read_text() for name in
                ('open', 'typed', 'edit', 'outside', 'resized', 'escaped',

@@ -8,14 +8,14 @@ root, clock = map(Path, sys.argv[1:])
 proof = json.loads((clock / 'agent-clock-gate.json').read_text())
 assert all(not row['differences'] for row in proof['comparisons'])
 cycles = [{t['glyph'] for row in proof['proof'][who] for t in row['transitions']}
-          for who in ('herdr', 'gtx')]
+          for who in ('herdr', 'ikesu')]
 assert cycles[0] == cycles[1] and cycles[0]
-for h, g in zip(proof['proof']['herdr'], proof['proof']['gtx']):
+for h, g in zip(proof['proof']['herdr'], proof['proof']['ikesu']):
     assert (h['x'], h['y']) == (g['x'], g['y'])
     assert min(h['intervals_ms']) <= g['median_ms'] <= max(h['intervals_ms'])
     assert min(g['intervals_ms']) <= h['median_ms'] <= max(g['intervals_ms'])
 results = []
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     runtime = json.loads((root / who / 'runtime-json.json').read_text())
     reports = [row for row in json.loads(runtime['home/parity-api-actions.json'])
                if row['method'] == 'pane.report_agent']
@@ -26,7 +26,7 @@ for mode in ('desktop', 'mobile'):
     for state in ('idle', 'blocked', 'unknown', 'working'):
         name = mode + '-' + state
         h, g = [json.loads((root / who / (name + '.json')).read_text())
-                for who in ('herdr', 'gtx')]
+                for who in ('herdr', 'ikesu')]
         assert (h['Rows'], h['Cols']) == (g['Rows'], g['Cols'])
         if state == 'working':
             positions = [{(x, y) for y, row in enumerate(frame['Cells'])
@@ -41,9 +41,9 @@ for mode in ('desktop', 'mobile'):
                     if hv == gv:
                         continue
                     if state == 'working' and field == 'Content' and hv in cycles[0] and gv in cycles[1]:
-                        phases.append({'x': x, 'y': y, 'herdr': hv, 'gtx': gv})
+                        phases.append({'x': x, 'y': y, 'herdr': hv, 'ikesu': gv})
                     else:
-                        differences.append({'x': x, 'y': y, 'field': field, 'herdr': hv, 'gtx': gv})
+                        differences.append({'x': x, 'y': y, 'field': field, 'herdr': hv, 'ikesu': gv})
         results.append({'screen': name, 'differences': differences, 'proven_phase': phases})
         print(name, 'PASS' if not differences else 'FAIL', len(differences))
 (root / 'agent-states-gate.json').write_text(json.dumps({'clock': str(clock), 'screens': results}, indent=2) + '\n')

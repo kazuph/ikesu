@@ -7,10 +7,10 @@ import sys
 root = Path(sys.argv[1])
 results = []
 messages = {who: brand + ' worktree actions require a workspace inside a Git work tree.'
-            for who, brand in (('herdr', 'Herdr'), ('gtx', 'gtx'))}
+            for who, brand in (('herdr', 'Herdr'), ('ikesu', 'ikesu'))}
 for name in sys.argv[2:] or ('rejected', 'input', 'escape', 'resize', 'settings', 'closed'):
     pair = {who: json.loads((root / who / (name + '.json')).read_text()) for who in messages}
-    h, g = pair['herdr'], pair['gtx']
+    h, g = pair['herdr'], pair['ikesu']
     assert (h['Cols'], h['Rows']) == (g['Cols'], g['Rows']), name
     starts = {who: data['Cols'] - len(messages[who]) - 2 for who, data in pair.items()}
     reference = h['Cells'][0][-1]['Style']

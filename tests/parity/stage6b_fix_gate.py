@@ -15,7 +15,7 @@ def selected(product,phase):
   ref=json.loads((root/'fix1-keys'/product/'fixture.json').read_text())['result']['root_pane']['pane_id']
   value='pane '+str(int(value.split()[1])-int(re.search(r'\d+',ref)[0])+1)
  return value
-for product in ['herdr','gtx']:
+for product in ['herdr','ikesu']:
  counts={}
  for phase,names,arrow in [('folded',[], '▸'),('search',['NEEDLE_A'],'▾'),('search-cleared',[],'▸'),('state',['NEEDLE_A'],'▾'),('state-cleared',[],'▸'),('select-target',['NEEDLE_B'],'▾')]:
   rows=body('fix1-fold',product,phase)
@@ -30,7 +30,7 @@ for product in ['herdr','gtx']:
  assert focused['pane_id']==expected,(product,focused,expected)
  proof[product]={'fold_rows':counts,'focused_pane_id':focused['pane_id'],'expected_pane_id':expected}
 phases=[x.stem for x in (root/'fix1-keys/herdr').glob('*.txt') if x.stem=='middle' or x.stem.startswith(('normal-','search-'))]
-selections={phase:[selected(p,phase) for p in ['herdr','gtx']] for phase in phases}
+selections={phase:[selected(p,phase) for p in ['herdr','ikesu']] for phase in phases}
 for phase,values in selections.items(): assert values[0]==values[1],(phase,values)
 for phase in ['normal-n','normal-p','normal-shift-d','normal-alt-d','normal-shift-u','normal-alt-u']:
  assert selections[phase]==selections['middle'],(phase,selections)

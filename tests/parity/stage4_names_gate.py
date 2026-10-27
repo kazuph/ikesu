@@ -9,7 +9,7 @@ proof = {}
 for name in ('unnamed', 'named', 'long', 'wide'):
     width = 71 if name == 'wide' else 25
     rows = [(root / product / (name + '.txt')).read_text().splitlines()[26][:width]
-            for product in ('herdr', 'gtx')]
+            for product in ('herdr', 'ikesu')]
     assert rows[0] == rows[1], (name, rows)
     if name == 'unnamed':
         assert ' · ' not in rows[0]

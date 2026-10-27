@@ -20,7 +20,7 @@ func TestStageOnePaneEnvironment(t *testing.T) {
 	sup := NewSupervisor()
 	defer sup.KillAll()
 	sup.Env = func(int) []string {
-		return []string{"IKESU_PANE_ID=p7", "IKESU_SOCKET_PATH=/fresh/ikesu.sock", "IKESU_SOCKET_PATH_EXPLICIT=1", "GTX_EXTERNAL=ignored", "GOTERRACE_EXTERNAL=ignored"}
+		return []string{"IKESU_PANE_ID=p7", "IKESU_SOCKET_PATH=/fresh/ikesu.sock", "IKESU_SOCKET_PATH_EXPLICIT=1"}
 	}
 	pane, err := sup.SpawnWith(7, dir, 80, 24, nil, []string{"/bin/sh", "-c", "/usr/bin/env > " + path})
 	if err != nil {
@@ -47,7 +47,43 @@ func TestStageOnePaneEnvironment(t *testing.T) {
 			t.Errorf("%s=%q want %q", key, env[key], want)
 		}
 	}
-	if env["GTX_EXTERNAL"] != "" || env["GOTERRACE_EXTERNAL"] != "" || env["IKESU_GUARD_MARKER"] != "" {
+	if env["IKESU_GUARD_MARKER"] != "" {
 		t.Fatal("parent guard leaked")
+	}
+}
+
+func TestStageOnePopupEnvironment(t *testing.T) {
+	teststate.Lock(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "popup-env")
+	sup := NewSupervisor()
+	defer sup.KillAll()
+	sup.Env = func(int) []string {
+		return []string{"IKESU_PANE_ID=p7", "IKESU_SOCKET_PATH=/fresh/ikesu.sock"}
+	}
+	pane, err := sup.SpawnPopup(7, dir, 80, 24, nil, []string{"/bin/sh", "-c", "/usr/bin/env > " + path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-pane.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("popup did not exit")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if key, value, ok := strings.Cut(line, "="); ok {
+			env[key] = value
+		}
+	}
+	if _, exists := env["IKESU_PANE_ID"]; exists {
+		t.Fatal("popup inherited pane identity", env)
+	}
+	if env["IKESU_SOCKET_PATH"] != "/fresh/ikesu.sock" || env["IKESU"] != "1" {
+		t.Fatal("popup lost connection settings", env)
 	}
 }

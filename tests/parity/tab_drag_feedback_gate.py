@@ -18,24 +18,24 @@ def markers(row):
 
 
 names = [f'move-{x}' for x in range(29, 50)] + ['outside', 'returned', 'reverse', 'cancelled']
-base_ref, base_gtx = cells(reference, 'before'), cells(candidate, 'before')
+base_ref, base_ikesu = cells(reference, 'before'), cells(candidate, 'before')
 report = []
 for name in names:
-    ref, gtx = cells(reference, name), cells(candidate, name)
+    ref, ikesu = cells(reference, name), cells(candidate, name)
     want = markers(ref)
     # The parent's explicit improvement over herdr's missing trailing marker.
     if trailing and '--server' not in sys.argv[3:] and name == 'move-49':
         want = [51]
-    assert markers(gtx) == want, (name, markers(gtx), want)
+    assert markers(ikesu) == want, (name, markers(ikesu), want)
     for x in want:
         if markers(ref) == want:
-            assert gtx[x] == ref[x], (name, x, 'marker cell mismatch')
+            assert ikesu[x] == ref[x], (name, x, 'marker cell mismatch')
     # Only the indicator changes the strip before release; no live reorder or
     # invented grabbed-tab styling. Existing status dots remain untouched.
     if name not in ('reverse', 'cancelled'):
-        for x in range(26, len(gtx)):
+        for x in range(26, len(ikesu)):
             if x not in want:
-                assert gtx[x] == base_gtx[x], (name, x, 'unexpected tab change')
+                assert ikesu[x] == base_ikesu[x], (name, x, 'unexpected tab change')
     report.append({'frame': name, 'marker_columns_zero_based': want, 'status': 'PASS'})
 for root in (reference, candidate):
     text = (root / 'dropped.txt').read_text().splitlines()[0][26:]

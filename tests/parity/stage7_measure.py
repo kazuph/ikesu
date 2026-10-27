@@ -16,7 +16,7 @@ for case in sorted(root.iterdir()):
     if not case.is_dir() or not (case/'herdr').is_dir():
         continue
     captures={}
-    for who in ['herdr','gtx']:
+    for who in ['herdr','ikesu']:
         rows={}
         for path in sorted((case/who).glob('*.json')):
             doc=json.loads(path.read_text())
@@ -34,7 +34,7 @@ for case in sorted(root.iterdir()):
     steps=(case/'herdr'/'steps').read_text()
     expected=re.findall(r'^cells .*/([^/]+)\.json$',steps,re.M)
     for name in expected:
-        hp,gp=[case/who/(name+'.json') for who in ['herdr','gtx']]
+        hp,gp=[case/who/(name+'.json') for who in ['herdr','ikesu']]
         if not hp.exists() or not gp.exists():
             comparisons.append({'screen':name,'status':'NOT_RUN'})
             continue
@@ -66,14 +66,14 @@ for case in sorted(root.iterdir()):
         period=int(re.search(r'selectionScrollInterval = (\d+) \* time.Millisecond',(source/'selection_scroll.go').read_text()).group(1))
         tick=int(re.search(r'tickInterval\s*= (\d+) \* time.Millisecond',(source/'tui.go').read_text()).group(1))
         samples={}
-        for who in ['herdr','gtx']:
+        for who in ['herdr','ikesu']:
             screens=captures[who]['screens']
             first,last=screens.get('tick-0'),screens.get('tick-5')
             if first and last and first['first_row'] is not None and last['first_row'] is not None:
                 samples[who]={'rows':first['first_row']-last['first_row'],
                               'elapsed_ms':last['captured_ms']-first['captured_ms']}
         if len(samples)==2:
-            h,g=samples['herdr'],samples['gtx']
+            h,g=samples['herdr'],samples['ikesu']
             residual=(g['rows']-g['elapsed_ms']/period)-(h['rows']-h['elapsed_ms']/period)
             # One reference row phase plus the candidate's 50 ms display tick.
             phase_bound=1+math.ceil(tick/period)
@@ -83,7 +83,7 @@ for case in sorted(root.iterdir()):
         else:
             timing={'status':'NOT_RUN'}
     results.append({'timing':timing,'case':case.name,'observations':captures,'comparisons':comparisons,
-                    'osc52_equal':captures['herdr']['osc52']==captures['gtx']['osc52']})
+                    'osc52_equal':captures['herdr']['osc52']==captures['ikesu']['osc52']})
 (root/'measurements.json').write_text(json.dumps(results,ensure_ascii=False,indent=2)+'\n')
 for row in results:
     print(row['case'],[(c['screen'],c['status'],c.get('difference_count')) for c in row['comparisons']], 'osc52_equal='+str(row['osc52_equal']))

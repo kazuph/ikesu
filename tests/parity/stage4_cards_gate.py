@@ -8,7 +8,7 @@ scroll, custom = map(Path, sys.argv[1:])
 proof = {}
 for name in ('overflow', 'agents-down', 'agents-up', 'short', 'short-down'):
     crops = []
-    for product in ('herdr', 'gtx'):
+    for product in ('herdr', 'ikesu'):
         lines = (scroll / product / (name + '.txt')).read_text().splitlines()
         start = 26 if len(lines) == 45 else 16
         crops.append([line[:25] for line in lines[start:-1]])
@@ -18,7 +18,7 @@ assert proof['overflow'][0].strip() == '○ overflow-10'
 assert proof['agents-down'][0].strip() == 'codex'
 assert proof['agents-up'] == proof['overflow']
 for name, expected in (('custom-pane', ['SECOND_LABEL', 'CUSTOM_LABEL']), ('custom-workspace', ['SECOND_WORKSPACE', 'parity'])):
-    for product in ('herdr', 'gtx'):
+    for product in ('herdr', 'ikesu'):
         lines = (custom / name / product / 'custom.txt').read_text().splitlines()
         got = [lines[y][:25].strip() for y in (26, 27)]
         assert got == expected, (name, product, got)

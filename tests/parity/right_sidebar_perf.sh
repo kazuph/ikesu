@@ -1,4 +1,5 @@
 #!/bin/sh
+# 比べる版は cmd/ikesu を持つ版（改名後）。
 set -eu
 candidate="$1"
 archive="$2"
@@ -8,9 +9,9 @@ tar -xf "$archive" -C "$out/baseline-source"
 {
  hostname
  go version
- printf '%s\n' 'baseline=bfdb572' 'flags=go build -trimpath -ldflags=-s -w'
+ printf '%s\n' 'baseline=70579fe' 'flags=go build -trimpath -ldflags=-s -w'
 } > "$out/build-conditions.log"
-(cd "$out/baseline-source" && go build -trimpath '-ldflags=-s -w' -o "$out/baseline" ./cmd/gtx)
+(cd "$out/baseline-source" && go build -trimpath '-ldflags=-s -w' -o "$out/baseline" ./cmd/ikesu)
 (cd "$candidate" && go build -trimpath '-ldflags=-s -w' -o "$out/candidate" ./cmd/ikesu)
 go version -m "$out/baseline" >> "$out/build-conditions.log"
 go version -m "$out/candidate" >> "$out/build-conditions.log"

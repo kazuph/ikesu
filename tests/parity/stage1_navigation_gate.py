@@ -10,16 +10,16 @@ results = []
 for mode in ['local', 'server']:
     for case in ['page-plain', 'page-cursor', 'page-alternate']:
         measured = {}
-        for name in ['herdr', 'gtx']:
+        for name in ['herdr', 'ikesu']:
             folder = root/mode/case/name
             measured[name] = {screen: re.findall(r'PROBE_LINE_\d+', (folder/(screen+'.txt')).read_text())
                               for screen in ['live', 'up', 'release', 'down', 'shift-up']}
             measured[name]['bytes'] = ''.join(json.loads(row)['hex'] for row in (folder/'received.jsonl').read_text().splitlines())
         results.append({'mode': mode, 'case': case, 'measurements': measured,
-                        'pass': measured['herdr'] == measured['gtx'] and bool(measured['herdr']['live'])})
+                        'pass': measured['herdr'] == measured['ikesu'] and bool(measured['herdr']['live'])})
     for case in ['plain', 'alternate', 'cursor', 'focus', 'mouse', 'kitty', 'alt-escape']:
         measured = {}
-        for name in ['herdr', 'gtx']:
+        for name in ['herdr', 'ikesu']:
             folder = root/mode/('popup-'+case)/name
             screen = folder/(('alt-escape' if case == 'alt-escape' else 'escape')+'.txt')
             text = screen.read_text()
@@ -30,7 +30,7 @@ for mode in ['local', 'server']:
                               'bytes': ''.join(row['hex'] for row in records if row['unix_ns'] // 1000000 <= clock)}
         expected_borders = 1 if case == 'plain' else 2
         results.append({'mode': mode, 'case': 'popup-'+case, 'measurements': measured,
-                        'pass': measured['herdr'] == measured['gtx'] and
+                        'pass': measured['herdr'] == measured['ikesu'] and
                         measured['herdr']['top_left_borders'] == expected_borders and
                         measured['herdr']['top_right_borders'] == expected_borders})
 (root/'navigation-gate.json').write_text(json.dumps(results, indent=2)+'\n')

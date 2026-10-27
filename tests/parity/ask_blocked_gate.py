@@ -9,7 +9,7 @@ root = Path(sys.argv[1])
 RED = {'R':243,'G':139,'B':168,'A':255}
 YELLOW = {'R':249,'G':226,'B':175,'A':255}
 results = {}
-for name in ['herdr','gtx']:
+for name in ['herdr','ikesu']:
     base = root/name
     summary = json.loads((base/'summary.json').read_text())
     assert summary['status']=='PASS', summary
@@ -36,7 +36,7 @@ for name in ['herdr','gtx']:
     raw=(base/'terminal.raw').read_bytes()
     notifications=raw.count(b'\x1b]9;')
     assert notifications==1, (name,'expected exactly one terminal notification',notifications)
-    if name=='gtx':
+    if name=='ikesu':
         messages=[json.loads(line) for line in (base/'client-protocol.jsonl').read_text().splitlines()]
         requests=[m['notification'] for m in messages if m.get('type')=='notify']
         assert len(requests)==1, requests
@@ -45,5 +45,5 @@ for name in ['herdr','gtx']:
     results[name]={'status':'PASS','api':'working -> blocked -> working','cells':counts,
                    'pane_border_rgb':borders[0],'terminal_notification_requests':notifications,
                    'version':summary['binary_version'],'sound':'disabled; sound demand verified by Go notification contract'}
-assert results['herdr']['pane_border_rgb']==results['gtx']['pane_border_rgb']
+assert results['herdr']['pane_border_rgb']==results['ikesu']['pane_border_rgb']
 print(json.dumps(results,ensure_ascii=False,indent=2))

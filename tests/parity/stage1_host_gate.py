@@ -12,7 +12,7 @@ for host, extra in [('plain', b''), ('ghostty', b''), ('wezterm', b'\x1b[>4;1m')
     expected = [b'\x1b[>7u'] + ([extra, b'\x1b[>4;0m'] if extra else []) + [b'\x1b[<1u']
     for mode in ['local', 'server']:
         measured = {}
-        for name in ['herdr', 'gtx']:
+        for name in ['herdr', 'ikesu']:
             raw = (root/host/mode/name/'terminal.raw').read_bytes()
             measured[name] = re.findall(rb'\x1b\[[><][0-9;]*[um]', raw)
         passed = all(value == expected for value in measured.values())

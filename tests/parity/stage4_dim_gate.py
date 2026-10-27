@@ -6,7 +6,7 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     cells = json.loads((root / product / 'custom.json').read_text())['Cells']
     styles = []
     for y in (26, 27):

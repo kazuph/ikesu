@@ -15,7 +15,7 @@ p.add_argument('--standalone-mode', action='store_true', help='full-mode hiding 
 p.add_argument('--standalone-toast', action='store_true', help='no-session reload toast keeps placements and ignores targetless prefix+o')
 a = p.parse_args()
 results = {}
-for name in ('herdr', 'gtx'):
+for name in ('herdr', 'ikesu'):
     root = a.out/name
     raw = (root/'terminal.raw').read_bytes()
     images, placements, stages, uploads = {}, {}, {}, {}
@@ -62,7 +62,7 @@ elif a.standalone_toast:
     changed = ('overlay-toast', 'overlay-restored')
     reference_valid = (len(reference['overlay-base']) == 2
                        and all(reference[stage] == reference['overlay-base'] for stage in changed))
-    for name in ('herdr', 'gtx'):
+    for name in ('herdr', 'ikesu'):
         for filename in ('overlay-toast.txt', 'overlay-after-targetless-key.txt'):
             reference_valid = reference_valid and 'reloaded config' in (a.out/name/filename).read_text()
 elif a.dialog or a.toast:
@@ -78,7 +78,7 @@ else:
                        and reference['overlay-away'] == reference['overlay-base']
                        and reference['overlay-overlap'] != reference['overlay-base']
                        and len(reference['overlay-overlap']) > 2)
-passed = reference_valid and results['gtx']['stages'] == reference
+passed = reference_valid and results['ikesu']['stages'] == reference
 no_upload = all(r['uploads'][stage] == 0 for r in results.values() for stage in changed)
 uploads_match = (all(r['uploads']['overlay-full'] == 0 and r['uploads']['overlay-restored'] == 1 for r in results.values())
                  if a.full and a.standalone_mode else no_upload)

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: runner-owned socket required')
 binary = Path(os.environ['PARITY_OBSERVE_BINARY']).resolve()

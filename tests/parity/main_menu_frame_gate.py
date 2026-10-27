@@ -5,7 +5,7 @@ import json
 import sys
 
 root = Path(sys.argv[1])
-frames = [json.loads((root / who / 'open.json').read_text()) for who in ('herdr', 'gtx')]
+frames = [json.loads((root / who / 'open.json').read_text()) for who in ('herdr', 'ikesu')]
 boxes = []
 items = []
 for frame in frames:
@@ -28,12 +28,12 @@ for y in range(frames[0]['Rows']):
             continue
         if frames[0]['Cells'][y][x] != frames[1]['Cells'][y][x]:
             diffs.append((x, y))
-result = {'boxes':boxes, 'herdr_items':items[0], 'gtx_items':items[1], 'outside_differences':diffs,
+result = {'boxes':boxes, 'herdr_items':items[0], 'ikesu_items':items[1], 'outside_differences':diffs,
           'item_contents_and_order': 'record only; excluded by the user boundary'}
 (root / 'main-menu-frame-gate.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
 assert not diffs, f'Main outside cells differ: {diffs}'
 for name in ('outside', 'input', 'escaped'):
-    h, g = [json.loads((root / who / (name+'.json')).read_text()) for who in ('herdr', 'gtx')]
+    h, g = [json.loads((root / who / (name+'.json')).read_text()) for who in ('herdr', 'ikesu')]
     assert h['Cells'] == g['Cells'], f'Main {name} did not restore the identical frame/input'
 assert (root/'herdr/input.txt').read_text().count('SERVER_MENU_INPUT') == 2, 'shell did not receive input'
 print('PASS: Main anchored menus recorded; all outside and closed frames match; shell received input')

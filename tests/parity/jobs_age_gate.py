@@ -6,7 +6,7 @@ import re
 import sys
 root = Path(sys.argv[1])
 proof = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root/who
     logs = list(json.loads((case/'job-logs.json').read_text()).values())
     assert len(logs) == 1, (who, logs)

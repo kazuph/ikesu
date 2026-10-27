@@ -36,7 +36,7 @@ def main():
     root = Path(a.directory)
     results = []
     for hp in sorted((root/'herdr').glob('*.json')):
-        gp = root/'gtx'/hp.name
+        gp = root/'ikesu'/hp.name
         h = json.loads(hp.read_text())
         if 'Cells' not in h:
             continue
@@ -45,7 +45,7 @@ def main():
             continue
         g = json.loads(gp.read_text())
         hr, gr = panel(h, a.title), panel(g, a.title)
-        result = {'screen':hp.name, 'herdr_rect':hr, 'gtx_rect':gr}
+        result = {'screen':hp.name, 'herdr_rect':hr, 'ikesu_rect':gr}
         if hr is None or gr is None:
             result['status'] = 'NOT_OBSERVED'
         elif hr != gr:
@@ -58,7 +58,7 @@ def main():
                     hc, gc = h['Cells'][yy][xx], g['Cells'][yy][xx]
                     for field in ('Content','Width','Style'):
                         if hc[field] != gc[field]:
-                            differences.append({'x':xx, 'y':yy, 'field':field, 'herdr':hc[field], 'gtx':gc[field]})
+                            differences.append({'x':xx, 'y':yy, 'field':field, 'herdr':hc[field], 'ikesu':gc[field]})
             result.update(status='PASS' if not differences else 'DIFFERENT_CELLS',
                           difference_count=len(differences), differences=differences[:100])
         results.append(result)

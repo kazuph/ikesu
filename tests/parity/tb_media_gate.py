@@ -10,7 +10,7 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 a = p.parse_args()
 results = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     root = a.out/product
     runtime = json.loads((root/'runtime-json.json').read_text())
     records = json.loads(runtime['home/tb-media.json'])
@@ -42,7 +42,7 @@ for product in ('herdr', 'gtx'):
     pixels = len(displayed) == 3 and all(row['pixels'] == 'ff000000ff00' and row['geometry'][2:] == [4, 2] for row in displayed)
     results[product] = {'passed': replies and lifetime and pixels, 'replies': replies,
                         'lifetimes': lifetime, 'displayed': displayed, 'records': records}
-equal = results['herdr']['displayed'] == results['gtx']['displayed']
+equal = results['herdr']['displayed'] == results['ikesu']['displayed']
 report = {'scope': 'actual isolated medium inputs and outer pixels; native display unverified',
           'products': results, 'equal_display': equal}
 (a.out/'media-gate.json').write_text(json.dumps(report, indent=2)+'\n')

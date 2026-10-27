@@ -8,7 +8,7 @@ for name in ['before-source','out','revision']:p.add_argument('--'+name,required
 a=p.parse_args();source=Path(__file__).resolve().parents[2];before=Path(a.before_source).resolve();out=Path(a.out).resolve();out.mkdir(parents=True,exist_ok=False)
 if not (before/'go.mod').is_file():raise FileNotFoundError(before/'go.mod')
 cache=json.loads(subprocess.check_output(['go','env','-json','GOCACHE','GOMODCACHE'],text=True))
-env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','GTX','CLAUDE','CODEX'))}
+env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','IKESU','CLAUDE','CODEX'))}
 for name in ['home','config','state','data','runtime']:(out/name).mkdir()
 env.update(HOME=str(out/'home'),XDG_CONFIG_HOME=str(out/'config'),XDG_STATE_HOME=str(out/'state'),XDG_DATA_HOME=str(out/'data'),**cache)
 baseline=out/'baseline-source'

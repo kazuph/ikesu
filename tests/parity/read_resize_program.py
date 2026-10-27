@@ -8,8 +8,8 @@ import socket
 import sys
 import time
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
-pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
+pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
 if not endpoint or not pane or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not a runner-owned pane/socket')
 

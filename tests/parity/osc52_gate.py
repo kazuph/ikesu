@@ -19,10 +19,10 @@ guard = root / 'clipboard-guard'
 probe = json.loads((guard / 'sandbox-probe.json').read_text())
 assert probe['exit_code'] == 1, 'STOP: child pbcopy was not denied'
 proof = json.loads((guard / 'proof.json').read_text())
-assert [row['process'] for row in proof] == ['herdr', 'gtx'], 'both products must finish'
+assert [row['process'] for row in proof] == ['herdr', 'ikesu'], 'both products must finish'
 require_no_copy_write([dict(probe, copy_candidate_sha256=probe.get('copy_candidate_sha256', [])), *proof])
 decoded = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root / who
     launch = json.loads((case / 'sandbox-launch.json').read_text())
     assert launch['launcher'][:3] == ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE], who
@@ -35,7 +35,7 @@ if a.expect_empty:
     assert not decoded['herdr'], 'unselected exit copied data'
 else:
     assert decoded['herdr'], 'NOT_MET: no captured OSC52 copy'
-assert decoded['herdr'] == decoded['gtx'], 'copied bytes or copy count differ'
+assert decoded['herdr'] == decoded['ikesu'], 'copied bytes or copy count differ'
 result = {'status': 'PASS', 'equal': True, 'count': len(decoded['herdr']),
           'copies': [{'bytes': len(value), 'sha256': hashlib.sha256(value).hexdigest()}
                      for value in decoded['herdr']]}

@@ -19,14 +19,14 @@ import time
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
-p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
+p.add_argument('--ikesu',dest='ikesu', required=True)
 p.add_argument('--out', required=True)
 p.add_argument('--sigterm', action='store_true', help='record the reference SIGTERM behavior instead of normal exit')
 a = p.parse_args()
 out = Path(a.out).resolve()
 out.mkdir(parents=True, exist_ok=True)
 failures = []
-for product, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
+for product, binary in [('herdr', a.herdr), ('ikesu', a.ikesu)]:
     binary = str(Path(binary).resolve())
     for mode in (['local-sigterm'] if a.sigterm else ['local-quit', 'server-detach']):
         target = out / product / mode
@@ -38,12 +38,12 @@ for product, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
             config = root / 'config.toml'
             config.write_text('onboarding = false\n[keys]\nprefix = "ctrl+t"\n[theme]\nauto_switch = false\n')
             (root / 'zdot/.zshrc').write_text("PS1='TERM_READY> '\nunset HISTFILE\n")
-            env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CODEX', 'CLAUDE'))}
+            env = {k: v for k, v in os.environ.items() if not k.startswith(('HERDR', 'IKESU', 'CODEX', 'CLAUDE'))}
             env.update(HOME=str(root/'home'), XDG_CONFIG_HOME=str(root/'config'),
                        XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'),
                        ZDOTDIR=str(root/'zdot'), HERDR_STATE_DIR=str(root/'state/h'),
-                       GTX_STATE_DIR=str(root/'state/g'), SHELL='/bin/zsh', TERM='xterm-256color',
-                       HERDR_CONFIG_PATH=str(config), GTX_CONFIG=str(config))
+                       IKESU_STATE_DIR=str(root/'state/g'), SHELL='/bin/zsh', TERM='xterm-256color',
+                       HERDR_CONFIG_PATH=str(config), IKESU_CONFIG=str(config))
             master, slave = pty.openpty()
             fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 45, 160, 0, 0))
             initial = termios.tcgetattr(slave)

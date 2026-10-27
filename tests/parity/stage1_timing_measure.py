@@ -9,7 +9,7 @@ results = []
 for mode in ['local', 'server']:
     for case in ['timing', 'escape-plain', 'escape-mouse']:
         measured = {}
-        for name in ['herdr', 'gtx']:
+        for name in ['herdr', 'ikesu']:
             folder = root/mode/case/name
             clock = json.loads((folder/'escape.json').read_text())
             capture = folder/('complete.json' if case == 'timing' else 'escape.json')
@@ -19,7 +19,7 @@ for mode in ['local', 'server']:
             measured[name] = {'hex': ''.join(row['hex'] for row in records),
                               'first_delivery_ms': records[0]['unix_ns']/1000000-clock['LastSendUnixMs'] if records else None,
                               'cutoff_ns': cutoff, 'records': records}
-        results.append({'mode': mode, 'case': case, 'same_bytes': measured['herdr']['hex'] == measured['gtx']['hex'],
+        results.append({'mode': mode, 'case': case, 'same_bytes': measured['herdr']['hex'] == measured['ikesu']['hex'],
                         'measurements': measured})
 (root/'timing-measurements.json').write_text(json.dumps(results, indent=2)+'\n')
 for row in results:

@@ -9,7 +9,7 @@ client_binary=Path(a.client_binary).resolve() if a.client_binary else binary
 if c.get('no_session') and client_binary!=binary:raise RuntimeError('mixed client/server is unsupported in no-session mode')
 for n in ['home','config','state','data','zdot']:(state/n).mkdir()
 (state/'zdot/.zshrc').write_text("PS1='LIGHT> '\nunset HISTFILE\nSAVEHIST=0\n")
-env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','GTX','CODEX','CLAUDE'))}
+env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','IKESU','CODEX','CLAUDE'))}
 env.update(HOME=str(state/'home'),XDG_CONFIG_HOME=str(state/'config'),XDG_STATE_HOME=str(state/'state'),XDG_DATA_HOME=str(state/'data'),ZDOTDIR=str(state/'zdot'),SHELL='/bin/zsh',TERM='xterm-256color')
 config=state/'config.toml';config.write_text('onboarding=false\n[ui]\nsidebar_width=26\nright_sidebar_width=26\n[ui.sound]\nenabled=false\n[experimental]\nkitty_graphics=true\n')
 env.update({f'{a.product.upper()}_STATE_DIR':str(state/'state'),('IKESU_CONFIG' if a.product=='ikesu' else 'HERDR_CONFIG_PATH'):str(config)})

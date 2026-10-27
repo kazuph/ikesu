@@ -8,7 +8,7 @@ import sys
 root = Path(sys.argv[1])
 selected = len(sys.argv) > 2 and sys.argv[2] == 'selected'
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     rows = {}
     for name in ('child-active', 'collapsed'):
         lines = (root / product / (name + '.txt')).read_text().splitlines()

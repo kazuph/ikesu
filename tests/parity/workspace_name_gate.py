@@ -12,7 +12,7 @@ expected = {
     'custom': [('automatic', 'alpha'), ('custom', 'chosen')],
     'handoff': [('name', 'alpha')],
 }[case]
-for role in ['herdr', 'gtx']:
+for role in ['herdr', 'ikesu']:
     saved = json.loads((root/role/'runtime-json.json').read_text())
     actions = json.loads(saved['home/parity-api-actions.json'])
     assert len(actions) == len(expected), (role, len(actions), len(expected))

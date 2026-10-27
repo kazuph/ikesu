@@ -1,4 +1,4 @@
-# goterrace 実装計画（MoonBit 版 moonterrace と同じ条件で Go で作る）
+# ikesu 実装計画（MoonBit 版 moonterrace と同じ条件で Go で作る）
 
 実装担当（Devin SWE-2 High）への指示書です。上から順に読んで、この順で実装してください。
 
@@ -6,19 +6,19 @@
 
 店長は、herdr（Rust 製）のビルドが遅いので、別の言語で同等のものを作って比べています。
 1つ目は MoonBit で作りました（`~/src/github.com/kazuph/moonterrace`、コマンド `mt`）。今回はそれと**同じ機能・同じ条件**で
-**Go** 版を作ります。名前は goterrace、コマンド名は **`gtx`** です（`gt` は店長の zsh で `git tag` の別名なので使わない）。
+**Go** 版を作ります。名前は ikesu、コマンド名は **`ikesu`** です（`gt` は店長の zsh で `git tag` の別名なので使わない）。
 作ったあと、親（Claude）がビルド時間・動作速度・CPU・メモリを herdr と moonterrace と比べます。
 
 ## 1. 機能の仕様 = MoonBit 版と同じ（変えない）
 
 仕様書は `docs/spec/` にコピーしてあります。**ここに書かれた機能・キー操作・マウス操作・画面の見た目・確認ダイアログ・
-検出の意味・状態遷移の数値は、すべてそのまま goterrace の仕様**です。
+検出の意味・状態遷移の数値は、すべてそのまま ikesu の仕様**です。
 
 | ファイル | 内容 |
 |---|---|
 | `docs/spec/PLAN.md` | 第1段階の本体: マルチペイン、サイドバー、エージェント進捗管理（1章の設計方針、5章の各機能、5.8 のキー、7章の確認方法） |
 | `docs/spec/PLAN-mouse.md` | マウスだけで全操作（右クリックメニュー、仕切り線ドラッグ、`[menu]` `[new]` `«` `»`、ホイール、ドラッグでコピー、ステータス行のボタン） |
-| `docs/spec/PLAN-fix-1.md` | MoonBit 版で店長が見つけた不具合6件。**goterrace では最初から起きないように作る**（下の 4章） |
+| `docs/spec/PLAN-fix-1.md` | MoonBit 版で店長が見つけた不具合6件。**ikesu では最初から起きないように作る**（下の 4章） |
 
 仕様書の中の MoonBit 固有の記述（`moon` コマンド、`moon.pkg`、MoonBit の正規表現の変換、`manifests_bundled.mbt` の生成など）は、
 この文書の 2章の対応表に置き換えて読んでください。
@@ -28,7 +28,7 @@
 
 ## 2. MoonBit 版との対応（使う部品。親が試作で動作確認済み）
 
-| 役割 | MoonBit 版 | goterrace（Go） |
+| 役割 | MoonBit 版 | ikesu（Go） |
 |---|---|---|
 | 言語・ツール | moon 0.1.20260920 | Go 1.27（`go version go1.27.0 darwin/arm64`）。**cgo は使わない**（`CGO_ENABLED=0` でビルドできること） |
 | 端末エンジン | `tonyfettes/ghostty`（Ghostty の MoonBit 移植） | `github.com/charmbracelet/x/vt`（純 Go の VT エミュレータ）。`vt.NewEmulator(w,h)`、`Write` で PTY 出力を流し込む。エミュレータからの応答（デバイス属性の問い合わせなど）は `Read` で取り出して PTY に書き戻す |
@@ -46,9 +46,9 @@
 ## 3. パッケージ構成（MoonBit 版と同じ分け方）
 
 ```
-goterrace/
+ikesu/
   go.mod
-  cmd/gtx/            main（引数解析と起動だけ。`gtx`、`gtx --version` → `goterrace 0.1.0`、`gtx detect <file>`）
+  cmd/ikesu/            main（引数解析と起動だけ。`ikesu`、`ikesu --version` → `ikesu 0.1.0`、`ikesu detect <file>`）
   internal/model/     純粋な状態（AppState, Workspace, Command, Effect）
   internal/layout/    純粋な BSP レイアウト（分割・閉じる・方向移動・仕切り線の当たり判定とドラッグ）
   internal/detect/    純粋な検出（エージェント識別・ルール読み込み・領域・ゲート判定）＋ manifests/
@@ -57,7 +57,7 @@ goterrace/
   internal/runtime/   PTY ＋ vt.Emulator ＋ 検出ループ（ペインの実体）
   internal/render/    純粋な描画（状態＋各ペインの画面 → 外側の端末へ出すバイト列。差分描画と同期出力）
   internal/tui/       外側の端末・入力・マウス・メニュー・確認ダイアログ・描画ループ
-  tests/e2e/          実 PTY で gtx を起動して画面を vt.Emulator で読む結合テスト
+  tests/e2e/          実 PTY で ikesu を起動して画面を vt.Emulator で読む結合テスト
 ```
 
 依存の向きは spec/PLAN.md 4章の図と同じ（逆向きの import は禁止）。
@@ -87,7 +87,7 @@ Go の書き方:
 
 | 順 | 内容 |
 |---|---|
-| 1 | 骨組み、`gtx --version` |
+| 1 | 骨組み、`ikesu --version` |
 | 2 | layout（spec/PLAN.md 5.1 のテスト＋仕切り線の当たり判定・ドラッグ） |
 | 3 | model（spec/PLAN.md 5.2） |
 | 4 | platform ＋ runtime（1ペインで zsh・vim・色が普通に使える） |
@@ -103,8 +103,8 @@ Go の書き方:
 
 ## 6. 動作確認（本人が必ず行う）
 
-spec/PLAN.md 7章、spec/PLAN-mouse.md 5章、spec/PLAN-fix-1.md の各「実物確認」を、`gtx` で行う。
-ビルドは `go build -o gtx ./cmd/gtx`（リポジトリ直下に `gtx` ができる。`.gitignore` 済み）。
+spec/PLAN.md 7章、spec/PLAN-mouse.md 5章、spec/PLAN-fix-1.md の各「実物確認」を、`ikesu` で行う。
+ビルドは `go build -o ikesu ./cmd/ikesu`（リポジトリ直下に `ikesu` ができる。`.gitignore` 済み）。
 証跡は `.artifacts/<マイルストーン名>/` に保存（コミットしない）。
 herdr の検証用ペインは確認後に閉じる。claude・codex・devin への入力は確認用の短いものだけ。
 

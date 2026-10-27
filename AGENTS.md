@@ -1,11 +1,11 @@
-# AGENTS.md — goterrace（gtx）で作業する AI への決まり
+# AGENTS.md — ikesu で作業する AI への決まり
 
 ## 最重要: 仕様から実装する。ほかのプロジェクトの実装を移植しない（2026-10-08 店長の決定）
 
-gtx は herdr fork（`~/src/github.com/kazuph/herdr`、AGPL-3.0）の仕様に沿って作るが、**herdr の実装を移し替えて作ることは禁止**する。
+ikesu は herdr fork（`~/src/github.com/kazuph/herdr`、AGPL-3.0）の仕様に沿って作るが、**herdr の実装を移し替えて作ることは禁止**する。
 
 - **してよいこと（仕様からの実装）**
-  - herdr の `SPEC.md`、CLI の help、API スキーマ（`docs/ref/`）、利用者向けの説明を読み、書かれた挙動を gtx 独自のコードで実装する。
+  - herdr の `SPEC.md`、CLI の help、API スキーマ（`docs/ref/`）、利用者向けの説明を読み、書かれた挙動を ikesu 独自のコードで実装する。
   - herdr の実物（配布用ビルド）を、店長が使っている稼働中の herdr とは別に動かし（例: mini の `~/bench-terrace.noindex/work/herdr-target/release/herdr --no-session` を ptyrun の中で）、入力に対する画面や出力を観察して、その挙動に合わせる。
   - API のメソッド名・項目名・CLI の引数と出力の形を herdr と同じにする（外から見える約束をそろえるのは移植ではない）。
 - **してはいけないこと（実装の移植）**
@@ -15,14 +15,14 @@ gtx は herdr fork（`~/src/github.com/kazuph/herdr`、AGPL-3.0）の仕様に�
 - 親（計画とレビューの担当）が herdr のソースで挙動を確かめた場合も、実装役へ渡すのは「入力と期待する結果」という挙動の説明だけにし、コードやその書き写しを渡さない。
 - 移植した疑いのあるコードを見つけたら、取り込まずに親へ報告する。
 
-経緯: 2026-10-08、レイアウト操作（`internal/layout/ops.go`）を実装役が herdr の `layout.rs` から関数ごとに Go へ移し替えていた。gtx は MIT で herdr は AGPL-3.0 のため、店長の判断で挙動だけを参考に書き直すことになった。
+経緯: 2026-10-08、レイアウト操作（`internal/layout/ops.go`）を実装役が herdr の `layout.rs` から関数ごとに Go へ移し替えていた。ikesu は MIT で herdr は AGPL-3.0 のため、店長の判断で挙動だけを参考に書き直すことになった。
 
 ## そのほかの決まり
 
-- 仕様の正: herdr fork の `SPEC.md`（読むだけ）と、gtx 固有の要件を書いたこのリポジトリの `SPEC.md`。
+- 仕様の正: herdr fork の `SPEC.md`（読むだけ）と、ikesu 固有の要件を書いたこのリポジトリの `SPEC.md`。
 - ビルド・計測・race・結合テストは Mac mini（`ssh mini`、`~/bench-terrace.noindex`）で行い、メインの Mac では go build と軽い go test だけにする。
 - `.artifacts/` はコミットしない。amend・reset・force push をしない。
-- 版（`cmd/gtx/main.go` の `version`）は、main へ取り込むたびに上げる（2026-10-18 店長の決定）。普段は3つ目の数字を1つ上げ（0.2.0→0.2.1）、大きな区切りでは2つ目を上げる。下部バーの「gtx v版」で、サーバーだけ引き継いだ後の古い画面を見分けるため。
+- 版（`cmd/ikesu/main.go` の `version`）は、main へ取り込むたびに上げる（2026-10-18 店長の決定）。普段は3つ目の数字を1つ上げ（0.2.0→0.2.1）、大きな区切りでは2つ目を上げる。下部バーの「ikesu v版」で、サーバーだけ引き継いだ後の古い画面を見分けるため。
 
 ## ikesu の Homebrew リリース（2026-10-27 店長承認）
 

@@ -8,7 +8,7 @@ if not source.is_relative_to(home/'.claude/projects') or not re.fullmatch(r'[0-9
 source_hash=hashlib.sha256(source.read_bytes()).hexdigest();source_stat=source.stat()
 state=Path(tempfile.mkdtemp(prefix='drag2-claude-',dir='/tmp'));(state/'home').mkdir();(state/'state').mkdir();(state/'config').mkdir()
 config=state/'config.toml';config.write_text('onboarding=false\n[ui]\nsidebar_width=26\nright_sidebar_width=26\n[ui.sound]\nenabled=false\n')
-env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','GTX','CLAUDE','CODEX'))};env.update(HOME=str(state/'home'),XDG_CONFIG_HOME=str(state/'config'),XDG_STATE_HOME=str(state/'state'),XDG_DATA_HOME=str(state/'data'),SHELL='/bin/zsh',TERM='xterm-256color');env.update({a.product.upper()+'_STATE_DIR':str(state/'state'),('IKESU_CONFIG' if a.product=='ikesu' else 'HERDR_CONFIG_PATH'):str(config)})
+env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','IKESU','CLAUDE','CODEX'))};env.update(HOME=str(state/'home'),XDG_CONFIG_HOME=str(state/'config'),XDG_STATE_HOME=str(state/'state'),XDG_DATA_HOME=str(state/'data'),SHELL='/bin/zsh',TERM='xterm-256color');env.update({a.product.upper()+'_STATE_DIR':str(state/'state'),('IKESU_CONFIG' if a.product=='ikesu' else 'HERDR_CONFIG_PATH'):str(config)})
 monitor_stop=threading.Event();monitor_thread=None
 app_offsets={};app_pending={};app_latest={};app_started={}
 server=None;display=None;endpoint=None;copies=[];workdirs=[];created_projects=[];launch_cwds=[];copied_ids=[];normal_exit=False;trust_selected=False;launched=0

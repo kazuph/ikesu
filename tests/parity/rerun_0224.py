@@ -10,7 +10,7 @@ import tomllib
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
-p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
+p.add_argument('--ikesu',dest='ikesu', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--config-file', required=True)
 p.add_argument('--out', type=Path, required=True)
@@ -55,7 +55,7 @@ for name, steps in procedures:
                                           .replace('@OUT@/slim.', '@OUT@/full.')
                                           .replace('@OUT@/full-again.', '@OUT@/slim-again.'))
             command = [sys.executable, str(fixtures/'observe.py'), '--herdr', a.herdr,
-                       '--ikesu', a.gtx, '--ptyrun', a.ptyrun, '--steps', str(selected_steps),
+                       '--ikesu', a.ikesu, '--ptyrun', a.ptyrun, '--steps', str(selected_steps),
                        '--out', str(out), '--clipboard-sandbox']
             if mode == 'server':
                 command += ['--server', '--server-reuse-initial']

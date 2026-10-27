@@ -8,7 +8,7 @@ if product=='herdr' and case=='right':
 profiling=os.environ.get('DRAG_PROFILE')=='1'
 root=base/(f'{product}-{mode}-{case}'+('-profile' if profiling else '')); root.mkdir(parents=True,exist_ok=True)
 binary=base/'ikesu' if product=='ikesu' else Path.home()/'.local/share/herdr-builds/0.2.66/herdr'
-env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','GTX','HERDR','CODEX','CLAUDE'))}
+env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','CODEX','CLAUDE'))}
 for n in ('home','config','state','data'): (root/n).mkdir(exist_ok=True)
 cfg=root/'config.toml'; cfg.write_text('onboarding=false\n[ui]\nsidebar_width=26\nright_sidebar_width=26\n[ui.sound]\nenabled=false\n')
 env.update(HOME=str(root/'home'),XDG_CONFIG_HOME=str(root/'config'),XDG_STATE_HOME=str(root/'state'),XDG_DATA_HOME=str(root/'data'),SHELL='/bin/zsh',TERM='xterm-256color')

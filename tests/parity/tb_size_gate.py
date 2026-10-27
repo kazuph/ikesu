@@ -10,7 +10,7 @@ p.add_argument('--cell-width', type=int, default=0)
 p.add_argument('--cell-height', type=int, default=0)
 a = p.parse_args()
 results = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     saved = json.loads((a.out/product/'runtime-json.json').read_text())
     phases = {}
     for phase in ('initial', 'after-resize'):
@@ -25,7 +25,7 @@ for product in ('herdr', 'gtx'):
         raise SystemExit(f'{product}: the actual pane was not resized')
     results[product] = phases
 same = all({r['query']: r['response_hex'] for r in results['herdr'][phase]['queries']}
-           == {r['query']: r['response_hex'] for r in results['gtx'][phase]['queries']}
+           == {r['query']: r['response_hex'] for r in results['ikesu'][phase]['queries']}
            for phase in ('initial', 'after-resize'))
 report = {'same_replies': same, 'products': results}
 (a.out/'size-gate.json').write_text(json.dumps(report, indent=2)+'\n')

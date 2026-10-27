@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tty
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned pane')
 tty.setraw(0)

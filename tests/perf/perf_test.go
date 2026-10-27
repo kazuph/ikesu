@@ -485,8 +485,8 @@ func (m *mux) waitText(timeout time.Duration, text string) (time.Time, bool) {
 // does not think it is nested, plus the deterministic shell setup.
 func childEnv(zdot, stateDir, configPath string) []string {
 	drop := map[string]bool{
-		"GOTERRACE": true, "GOTERRACE_PANE_ID": true,
-		"IKESU_SOCKET_PATH": true, "IKESU_PANE_ID": true, "IKESU_STATE_DIR": true, "IKESU_CONFIG": true,
+		"IKESU": true, "IKESU_PANE_ID": true,
+		"IKESU_SOCKET_PATH": true, "IKESU_STATE_DIR": true, "IKESU_CONFIG": true,
 		"TERM": true, "SHELL": true, "ZDOTDIR": true,
 	}
 	var env []string

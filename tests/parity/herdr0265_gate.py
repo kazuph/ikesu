@@ -19,7 +19,7 @@ def check(condition, mode, product, evidence, predicate):
                          evidence=evidence, status='NOT_RUN', error=str(error)))
 
 for mode in ('standalone', 'server'):
-    for product in ('herdr', 'gtx'):
+    for product in ('herdr', 'ikesu'):
         prefix = f'observe-{mode}/{product}/'
         check('rename bracketed paste', mode, product, prefix+'name-paste.txt',
               lambda b: 'new tab' in b.decode() and '日本語 alpha' in b.decode())

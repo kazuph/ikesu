@@ -7,7 +7,7 @@ import socket
 from pathlib import Path
 import tty
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned pane')
 size = os.get_terminal_size()
@@ -41,7 +41,7 @@ def api(method, params):
     with socket.socket(socket.AF_UNIX) as c:
         c.settimeout(5)
         c.connect(endpoint)
-        pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+        pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
         c.sendall(json.dumps({'id': 'clip-api', 'method': method, 'params': {'pane_id': pane, **params}}).encode()+b'\n')
         response = json.loads(c.makefile('r').readline())
         if 'error' in response:

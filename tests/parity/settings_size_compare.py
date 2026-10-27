@@ -13,7 +13,7 @@ for hp in sorted((root/'herdr').glob('*.json')):
     h = json.loads(hp.read_text())
     if 'Cells' not in h:
         continue
-    gp = root/'gtx'/hp.name
+    gp = root/'ikesu'/hp.name
     if not gp.exists():
         results.append({'screen': hp.name, 'status': 'NOT_RUN'})
         continue
@@ -38,7 +38,7 @@ for hp in sorted((root/'herdr').glob('*.json')):
                 hc, gc = h['Cells'][yy][xx][field], g['Cells'][yy][xx][field]
                 if hc != gc:
                     differences.append({'x': xx, 'y': yy, 'field': field,
-                                        'herdr': hc, 'gtx': gc})
+                                        'herdr': hc, 'ikesu': gc})
     results.append({'screen': hp.name, 'rect': [x, y, w, height],
                     'status': 'PASS' if not differences else 'DIFFERENT_CELLS',
                     'difference_count': len(differences), 'differences': differences})

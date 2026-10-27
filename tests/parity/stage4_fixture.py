@@ -8,10 +8,10 @@ import sqlite3
 import subprocess
 import sys
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned socket')
-pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
 session = os.environ.get('PARITY_CONTROLLER_SESSION_ID')
 if not pane or not session:
     raise SystemExit('NOT_RUN: actual pane/controller session missing')

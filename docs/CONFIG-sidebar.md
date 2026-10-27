@@ -1,6 +1,6 @@
 # サイドバー設定
 
-サイドバーは設定ファイル（既定 `~/.config/gtx/config.toml`、`GTX_CONFIG` で変更）を読みます。設定例の最大幅は72列です。
+サイドバーは設定ファイル（既定 `~/.config/ikesu/config.toml`、`IKESU_CONFIG` で変更）を読みます。設定例の最大幅は72列です。
 
 ```toml
 [ui]
@@ -18,11 +18,11 @@ agent_panel_scope = "all"
 
 workspaceのsectionは `favorite` / `work` / `personal` / `none`。表示順はfavorites、work、personal、spacesです。空sectionは表示せず、折りたたんだsectionのworkspaceとagentを隠します。次／前workspace移動は表示順、番号選択は元の配列順です。
 
-`gtx --default-config` は上記の既定設定例を標準出力へ出します。
+`ikesu --default-config` は上記の既定設定例を標準出力へ出します。
 
 `[ui.sidebar.agents]` / `[ui.sidebar.spaces]` の `rows` は文字列トークン、または `{ token = "workspace", fg = "#89b4fa", bold = true, dim = false }` の配列です。`fg` は `#RGB` または `#RRGGBB`、省略した属性は既定の色・太字・DIMを保持し、同じトークンを複数回出しても指定はその出現だけに適用します。`row_gap` は各項目の後の空行数です。agent別行は `rows_by_agent` へ指定できます。
 
-workspaceの独自トークンは `$名前` で表示します。`gtx workspace report-metadata s1 --source build --token phase=compile --seq 1 --ttl-ms 1000` で更新し、`--clear-token phase` で消します。未対応のトークンを指定した設定は明示的なエラーにします。
+workspaceの独自トークンは `$名前` で表示します。`ikesu workspace report-metadata s1 --source build --token phase=compile --seq 1 --ttl-ms 1000` で更新し、`--clear-token phase` で消します。未対応のトークンを指定した設定は明示的なエラーにします。
 
 `ui.mobile_width_threshold` は mobile layout に切り替わる最大の列数です。
 既定は配布用ビルドの設定例と同じ `64`。指定値以下で desktop sidebar を
@@ -38,10 +38,10 @@ global menu の `settings` または `prefix+s` で、Theme → Sound → Toasts
 Escapeは保存せず閉じます。旧pane label toggleとIntegrationsは表示しません。
 テーマは配布用ビルドと同じ13候補で、`[theme] name` へ保存します。
 手動選択は `auto_switch = false` も保存します。音の選択は `[ui.sound] enabled`、
-通知先は `[ui.toast] delivery = "off" | "gtx" | "terminal" | "system"` へ保存します。
+通知先は `[ui.toast] delivery = "off" | "ikesu" | "terminal" | "system"` へ保存します。
 
 agent側の独自トークンも `$名前` で表示できます。
-`gtx pane report-metadata p1 --source build --token phase=compile --seq 1 --ttl-ms 1000`
+`ikesu pane report-metadata p1 --source build --token phase=compile --seq 1 --ttl-ms 1000`
 は `pane.report_metadata` を呼びます。`--clear-token phase` で消去します。
 `--title`、`--display-agent`、`--state-label STATUS=TEXT` と各clearフラグも対応します。
 `--agent` / `--applies-to-source` は表示用metadataに適用し、token値はsourceによらず

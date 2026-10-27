@@ -7,7 +7,7 @@ import sys
 
 root = Path(sys.argv[1])
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     folder = root / product
     saved = json.loads((folder / 'runtime-json.json').read_text())
     log = json.loads(saved['home/parity-job-status.json'])

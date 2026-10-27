@@ -9,9 +9,9 @@ for case in sorted(root.glob('title-*')):
     if not case.is_dir():
         continue
     for width in (34, 40, 50):
-        rows = [json.loads((case / who / f'width-{width}.json').read_text())['Cells'][1][26:] for who in ('herdr', 'gtx')]
+        rows = [json.loads((case / who / f'width-{width}.json').read_text())['Cells'][1][26:] for who in ('herdr', 'ikesu')]
         checks.append({'case': f'{case.name}/{width}', 'pass': rows[0] == rows[1], 'cells': width})
-proof = json.loads((root / 'failure/gtx/close-proof.json').read_text())
+proof = json.loads((root / 'failure/ikesu/close-proof.json').read_text())
 before = proof['before']['result']['workspaces']
 after = proof['after']['result']['workspaces']
 checks.append({'case': 'failed close reports error and keeps workspace', 'pass': bool(proof['closed'].get('error', {}).get('message')) and len(before) == len(after) == 1 and before[0]['workspace_id'] == after[0]['workspace_id']})

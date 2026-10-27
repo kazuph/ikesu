@@ -8,7 +8,7 @@ root = Path(sys.argv[1])
 proof = {}
 for case in ('custom-git-local', 'git-default-local'):
     saved = {}
-    for product in ('herdr', 'gtx'):
+    for product in ('herdr', 'ikesu'):
         folder = root / case / product
         saved[product] = json.loads((folder / 'runtime-json.json').read_text())
         for phase, counts, diff in [('initial', '1\t0', '2\t1\ttracked.txt'),
@@ -17,7 +17,7 @@ for case in ('custom-git-local', 'git-default-local'):
             assert actual['status'] == counts and actual['diff'] == diff, (case, product, phase, actual)
     for phase, status, diff in [('initial', '↑1', '+2 -1'), ('updated', '↓1', '+3 -1'), ('clean', '', '')]:
         rows = [(root / case / product / (phase + '.txt')).read_text().splitlines()[4:6]
-                for product in ('herdr', 'gtx')]
+                for product in ('herdr', 'ikesu')]
         fields = [[row[:25] for row in lines] for lines in rows]
         assert fields[0] == fields[1], (case, phase, fields)
         if case == 'custom-git-local':
@@ -28,7 +28,7 @@ for case in ('custom-git-local', 'git-default-local'):
         proof[f'{case}/{phase}'] = fields[0]
 for case in ('custom-git', 'git-default'):
     rows = []
-    for product in ('herdr', 'gtx'):
+    for product in ('herdr', 'ikesu'):
         folder = root / case / product
         assert json.loads((folder / 'cleanup.json').read_text())['exit'] == 0
         actual = (folder / 'git-late.txt').read_text().splitlines()

@@ -9,7 +9,7 @@ root = Path(sys.argv[1])
 proof = {}
 frames = {}
 verified = {}
-for who in ('herdr','gtx'):
+for who in ('herdr','ikesu'):
     case = root/who
     logs = list(json.loads((case/'job-logs.json').read_text()).values())
     assert len(logs) == 1
@@ -53,9 +53,9 @@ for who in ('herdr','gtx'):
                            'painted_unix_ms':painted,'rect':[left,top,right-left+1,bottom-top+1]})
 comparisons = []
 for name in ('opened','q','typed'):
-    h,g = frames['herdr'][name],frames['gtx'][name]
+    h,g = frames['herdr'][name],frames['ikesu'][name]
     assert (h['Cols'],h['Rows']) == (g['Cols'],g['Rows'])
-    assert verified['herdr'][name] == verified['gtx'][name]
+    assert verified['herdr'][name] == verified['ikesu'][name]
     differences = []
     for y in range(h['Rows']):
         for x in range(h['Cols']):
@@ -63,7 +63,7 @@ for name in ('opened','q','typed'):
                 if key == 'Content' and (x,y) in verified['herdr'][name]:
                     continue
                 if h['Cells'][y][x][key] != g['Cells'][y][x][key]:
-                    differences.append({'x':x,'y':y,'field':key,'herdr':h['Cells'][y][x][key],'gtx':g['Cells'][y][x][key]})
+                    differences.append({'x':x,'y':y,'field':key,'herdr':h['Cells'][y][x][key],'ikesu':g['Cells'][y][x][key]})
     comparisons.append({'screen':name,'differences':differences})
     print(name,'PASS' if not differences else 'DIFFERENT',len(differences))
 (root/'log-frame-proof.json').write_text(json.dumps({'proof':proof,'comparisons':comparisons},indent=2)+'\n')

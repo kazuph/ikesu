@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-for role in ('herdr', 'gtx'):
+for role in ('herdr', 'ikesu'):
     saved = json.loads((root/role/'runtime-json.json').read_text())
     spawned = json.loads(saved['home/cwd-evidence.json'])
     for name, directory, screen in (

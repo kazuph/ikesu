@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned socket')
 root = Path.home()
@@ -32,7 +32,7 @@ def request(method, params):
     return reply
 
 def pane():
-    return os.environ.get('HERDR_PANE_ID') or os.environ['GTX_PANE_ID']
+    return os.environ.get('HERDR_PANE_ID') or os.environ['IKESU_PANE_ID']
 
 op = sys.argv[1]
 if op == 'duplicate':

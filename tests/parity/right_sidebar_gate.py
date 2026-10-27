@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the gtx-specific left/right layout in real-terminal captures."""
+"""Verify the ikesu-specific left/right layout in real-terminal captures."""
 import json
 import sys
 from pathlib import Path

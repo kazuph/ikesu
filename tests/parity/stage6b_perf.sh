@@ -1,16 +1,17 @@
 #!/bin/sh
+# 比べる版は cmd/ikesu を持つ版（改名後）。
 set -eu
 root=$1
 source=$2
 export PATH="$root/tools/go/bin:$PATH"
 out="$root/work/detail/stage6b-perf"
-base="$root/work/stage6b-baseline-4d337f7"
+base="$root/work/stage6b-baseline-70579fe"
 mkdir -p "$out" "$base"
 tar xf "$out/baseline.tar" -C "$base"
 go version > "$out/build.txt"
 go env GOOS GOARCH >> "$out/build.txt"
 cd "$base"
-go build -o "$out/baseline" ./cmd/gtx
+go build -o "$out/baseline" ./cmd/ikesu
 cd "$source"
 go build -o "$out/candidate" ./cmd/ikesu
 shasum -a 256 "$out/baseline" "$out/candidate" >> "$out/build.txt"

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-for role in ('herdr', 'gtx'):
+for role in ('herdr', 'ikesu'):
     saved = json.loads((root/role/'runtime-json.json').read_text())
     rows = json.loads(saved['home/parity-api-actions.json'])
     assert len(rows) == 2

@@ -11,7 +11,7 @@ for case in ('focus-agents', 'custom-focus'):
     snapshots = {}
     for name in ('first', 'second'):
         styles = []
-        for product in ('herdr', 'gtx'):
+        for product in ('herdr', 'ikesu'):
             rows = json.loads((root / case / product / (name + '.json')).read_text())['Cells']
             styles.append([rows[y][x]['Style'] for y in (26, 28, 30)])
         assert styles[0] == styles[1], (case, name, styles)

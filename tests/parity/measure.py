@@ -51,12 +51,12 @@ rows = []
 for hp in sorted((root/'herdr').glob('*.txt')):
     if hp.name == 'server-pid.txt':
         continue
-    gp = root/'gtx'/hp.name
+    gp = root/'ikesu'/hp.name
     if not gp.exists():
         rows.append({'screen':hp.name, 'status':'NOT_RUN'})
         continue
     h, g = measure(hp), measure(gp)
-    rows.append({'screen':hp.name, 'herdr':h, 'gtx':g,
+    rows.append({'screen':hp.name, 'herdr':h, 'ikesu':g,
                  'equal_fields':{key:h[key] == g[key] for key in h}})
 (root/'measurements.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2)+'\n')
 for row in rows:

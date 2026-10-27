@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 比べる版は cmd/ikesu を持つ版（改名後）。
 """Select the approved measurement host and run the locked relative gate."""
 from pathlib import Path
 import json
@@ -14,12 +15,12 @@ host='mini' if load < 4 else 'ubuntu-3090'
 root='bench-terrace.noindex' if host=='mini' else 'bench-terrace'
 remote_source=root+'/src/stage6b' if host=='mini' else root+'/work/stage6b-src'
 destination=root+'/work/detail/stage6b-perf'
-print(json.dumps({'mini_load':load,'host':host,'baseline':'4d337f7','source':str(source)}),flush=True)
+print(json.dumps({'mini_load':load,'host':host,'baseline':'70579fe','source':str(source)}),flush=True)
 subprocess.run(['ssh',host,f'mkdir -p "$HOME/{destination}"'],check=True)
 subprocess.run(['rsync','-az',str(archive),f'{host}:{destination}/baseline.tar'],check=True)
 subprocess.run(['rsync','-az',str(source/'tests/parity/stage6b_perf.sh'),f'{host}:{destination}/run.sh'],check=True)
 if host!='mini':
-    subprocess.run(['rsync','-az','--delete','--exclude=/.worktree','--exclude=/.artifacts','--exclude=/.git','--exclude=/gtx',str(source)+'/',f'{host}:{remote_source}/'],check=True)
+    subprocess.run(['rsync','-az','--delete','--exclude=/.worktree','--exclude=/.artifacts','--exclude=/.git','--exclude=/ikesu',str(source)+'/',f'{host}:{remote_source}/'],check=True)
 setup=f'. "$HOME/{root}/env.sh"; ' if host!='mini' else ''
 command=setup+f'"$HOME/{root}/work/perf-lock.py" sh "$HOME/{destination}/run.sh" "$HOME/{root}" "$HOME/{remote_source}"'
 result=subprocess.run(['ssh',host,command])

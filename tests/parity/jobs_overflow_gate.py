@@ -7,7 +7,7 @@ import sys
 
 root = Path(sys.argv[1])
 proof = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root / who
     runtime = json.loads((case / 'runtime-json.json').read_text())
     actions = json.loads(runtime['home/parity-api-actions.json'])
@@ -32,6 +32,6 @@ for who in ('herdr', 'gtx'):
         screens[name] = rows
     assert json.loads((case / 'cleanup.json').read_text())['exit'] == 0
     proof[who] = screens
-assert proof['herdr'] == proof['gtx'], 'job order/positions differ'
+assert proof['herdr'] == proof['ikesu'], 'job order/positions differ'
 (root / 'jobs-overflow-gate.json').write_text(json.dumps(proof, indent=2)+'\n')
 print('real job labels/wheel one row/resize persistence: PASS')

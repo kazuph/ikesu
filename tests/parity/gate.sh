@@ -8,10 +8,10 @@ if ! test -x "$work/herdr-0.2.24"; then
  exit 0
 fi
 test -z "$(gofmt -l internal/tui/menus.go internal/tui/spec_help_mouse_test.go tools/bench/ptyrun/main.go)"
-go build -o "$work/gtx-parity" ./cmd/ikesu
+go build -o "$work/ikesu-parity" ./cmd/ikesu
 go vet ./...
 go test -count=1 ./...
 (cd tools/bench/ptyrun && go build -o "$work/ptyrun-parity" .)
 for scenario in menu menu-routing overlays; do
- python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$work/gtx-parity" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-after"
+ python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$work/ikesu-parity" --ptyrun "$work/ptyrun-parity" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-after"
 done

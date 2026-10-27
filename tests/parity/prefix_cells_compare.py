@@ -12,7 +12,7 @@ root = Path(a.directory)
 results = []
 for steps in sorted(Path(a.steps_directory).glob('*.steps')):
     for name in ('pending', 'result'):
-        paths = [root / steps.stem / who / (name + '.json') for who in ('herdr', 'gtx')]
+        paths = [root / steps.stem / who / (name + '.json') for who in ('herdr', 'ikesu')]
         row = {'case': steps.stem, 'screen': name}
         if not all(path.is_file() for path in paths):
             row['status'] = 'NOT_RUN'
@@ -27,7 +27,7 @@ for steps in sorted(Path(a.steps_directory).glob('*.steps')):
                         for field in ('Content', 'Width', 'Style'):
                             hv, gv = h['Cells'][y][x][field], g['Cells'][y][x][field]
                             if hv != gv:
-                                differences.append({'x': x, 'y': y, 'field': field, 'herdr': hv, 'gtx': gv})
+                                differences.append({'x': x, 'y': y, 'field': field, 'herdr': hv, 'ikesu': gv})
                 row.update(status='PASS' if not differences else 'DIFFERENT_CELLS',
                            difference_count=len(differences), differences=differences)
         out = root / steps.stem / (name + '-full-comparison.json')

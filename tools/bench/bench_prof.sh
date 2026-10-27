@@ -1,5 +1,5 @@
 #!/bin/bash
-# CPU profile of gtx while it shows 2,000,000 lines (same 160x45 PTY as bench_rt.sh).
+# CPU profile of ikesu while it shows 2,000,000 lines (same 160x45 PTY as bench_rt.sh).
 # Usage: bench_prof.sh <label> [profile seconds]
 set -u
 . $HOME/bench-terrace.noindex/env.sh
@@ -16,5 +16,5 @@ kill
 STEPS
 echo "load=$(uptime | sed 's/.*averages: //')"
 s=$(now)
-(cd ~ && GTX_TRACE=${GTX_TRACE:-} GTX_CPUPROFILE=$R/$label.pprof GTX_CPUPROFILE_SECS=$secs $W/ptyrun -cols 160 -rows 45 -steps $R/$label.steps -- ${GTX_BIN:-$W/gtx-prof})
+(cd ~ && IKESU_TRACE=${IKESU_TRACE:-} IKESU_CPUPROFILE=$R/$label.pprof IKESU_CPUPROFILE_SECS=$secs $W/ptyrun -cols 160 -rows 45 -steps $R/$label.steps -- ${IKESU_BIN:-$W/ikesu-prof})
 echo "$label elapsed=$(cat $R/$label.elapsed 2>/dev/null) wall_total=$(python3 -c "import time;print(round(time.time()-$s,1))")"

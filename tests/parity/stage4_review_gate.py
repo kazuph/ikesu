@@ -22,7 +22,7 @@ def fixture(case, product, name):
     return json.loads(data['home/' + name + '.json'])
 
 
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     records = fixture('review-overflow', product, 'stage4-review-overflow')
     assert len(records) == 30
     by_workspace = {int(r['workspace_id'][1:]): r['pane_id'] for r in records}

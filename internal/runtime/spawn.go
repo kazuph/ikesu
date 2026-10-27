@@ -93,7 +93,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		filtered := make([]string, 0, len(cmd.Env))
 		for _, kv := range cmd.Env {
 			key, _, _ := strings.Cut(kv, "=")
-			if key != "IKESU_PANE_ID" && key != "GOTERRACE_PANE_ID" {
+			if key != "IKESU_PANE_ID" {
 				filtered = append(filtered, kv)
 			}
 		}
@@ -133,7 +133,6 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 			}
 		}
 	}
-	cmd.Env = childenv.DropLegacy(cmd.Env)
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		if p.guard != nil {
