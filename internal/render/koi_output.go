@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"math"
 	"sync"
+	"sync/atomic"
 )
 
 type koiSpriteKey struct{ Variety, Direction, Wag, W, H int }
@@ -254,15 +255,16 @@ func koiVariant(f KoiFish) int {
 }
 
 var koiRingCache sync.Map
+var koiRingID atomic.Uint32
 
-func koiRippleCached(stage int) kitty.Image {
-	if v, ok := koiRingCache.Load(stage); ok {
+func koiRippleCached(key koiRingKey) kitty.Image {
+	if v, ok := koiRingCache.Load(key); ok {
 		return v.(kitty.Image)
 	}
-	img := koiRing(40, 40, stage)
+	img := koiRing(key)
 	var b bytes.Buffer
 	_ = png.Encode(&b, img)
-	result := kitty.Image{ID: uint32(stage + 1), Format: 100, Width: 40, Height: 40, Data: b.Bytes()}
-	actual, _ := koiRingCache.LoadOrStore(stage, result)
+	result := kitty.Image{ID: koiRingID.Add(1), Format: 100, Width: key.W, Height: key.H, Data: b.Bytes()}
+	actual, _ := koiRingCache.LoadOrStore(key, result)
 	return actual.(kitty.Image)
 }

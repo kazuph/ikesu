@@ -215,12 +215,14 @@ func (k *kittyReceiver) place(id int, fields map[string]string) {
 				radius := 0.
 				bounds := []float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
 				count := 0
+				points := [][2]float64{}
 				for _, point := range image.Points {
 					if point.X < sx || point.Y < sy || point.X >= sx+sw || point.Y >= sy+sh {
 						continue
 					}
 					px := float64(x) + (float64(point.X-sx)+.5)*float64(w)/float64(sw)
 					py := float64(y) + (float64(point.Y-sy)+.5)*float64(h)/float64(sh)
+					points = append(points, [2]float64{px, py})
 					radius = math.Max(radius, math.Hypot(px-centerX, py-centerY))
 					bounds[0] = math.Min(bounds[0], px)
 					bounds[1] = math.Min(bounds[1], py)
@@ -233,6 +235,7 @@ func (k *kittyReceiver) place(id int, fields map[string]string) {
 				}
 				event["visible_radius_px"] = radius
 				event["visible_alpha_dots"] = count
+				event["visible_alpha_points_px"] = points
 			}
 		}
 	}
