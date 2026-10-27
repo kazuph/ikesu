@@ -116,6 +116,10 @@ type machineClient struct {
 	noticeUntil       time.Time
 	forms             *tui.MachineForms
 	readClipboard     func(context.Context) (clipboardContent, error)
+
+	focusKnown           bool
+	lastClientView       *api.ClientView
+	clientViewConnection *endpointConnection
 }
 
 func savedMachines(session string) []machine.Profile {

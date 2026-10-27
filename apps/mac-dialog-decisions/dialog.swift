@@ -24,6 +24,7 @@ struct DialogDetail: Decodable {
 }
 
 struct DialogSpec: Decodable {
+  let present_in_background: Bool?
   let kind: String?
   let window_title: String
   let source: String?        // 🤖 claude
@@ -679,15 +680,20 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func show() {
-    // Shown once, on top, without activating ikesu's process or taking the
-    // keyboard from whatever the user is doing.
-    panel.orderFrontRegardless()
+    // Ordering never activates the process or changes the keyboard target.
+    // An explicitly selected Dock/Mission Control window can still become key.
+    if spec.present_in_background == true { panel.orderBack(nil) }
+    else { panel.orderFrontRegardless() }
     emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier), "x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0])
   }
 
   // Close with the decision: the daemon deletes the spec when it is resolved
   // elsewhere or when the daemon stops; a dead daemon also ends the panel.
   func respond(_ message: [String: Any]) {
+    if message["status"] as? String == "front" {
+      panel.orderFrontRegardless()
+      return
+    }
     if let status = message["status"] as? String, status.hasPrefix("rich_") { receiveRich(message); return }
     if message["status"] as? String == "error" {
           self.answerPending = false

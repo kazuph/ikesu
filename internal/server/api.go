@@ -130,6 +130,8 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		return resp
 	}
 	switch req.Method {
+	case api.MethodClientViewList:
+		return api.Success(req.ID, s.clientViewList())
 	case api.MethodAgentStart:
 		var p api.AgentStartParams
 		if err := req.DecodeParams(&p); err != nil {

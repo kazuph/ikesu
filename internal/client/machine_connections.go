@@ -26,6 +26,8 @@ func (m *machineClient) post(ctx context.Context, event endpointEvent) bool {
 
 func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	if id == "local" {
+		m.focusKnown = false
+		m.lastClientView = nil
 		m.retirePendingGraphicsFile()
 	}
 	e := m.endpoints[id]
@@ -151,6 +153,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	if event.err != nil {
 		if event.id == "local" {
+			m.focusKnown = false
+			m.lastClientView = nil
 			m.retirePendingGraphicsFile()
 		}
 		if event.id == "local" && e.snapshot == nil && needsAttention(event.err.Error()) {
