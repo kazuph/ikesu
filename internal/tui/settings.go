@@ -175,10 +175,14 @@ func (a *App) toggleKoi() {
 			a.worktreeError(err)
 			return
 		}
+		panePalette := a.panePalette
 		if a.configEdit != nil {
 			a.setSidebarConfig(c, false)
 		} else {
 			a.SetSidebarConfig(c, false)
+		}
+		if a.serverUI {
+			a.panePalette = panePalette
 		}
 		if a.configChanged != nil {
 			a.configChanged(c)

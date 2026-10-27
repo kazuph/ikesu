@@ -153,3 +153,16 @@ func TestKoiRev3MenuSaveFailureKeepsVisibleSetting(t *testing.T) {
 		t.Fatal("failed save changed active koi configuration")
 	}
 }
+
+func TestKoiRev3TogglePreservesEndpointPanePalette(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, config.EnvVar, filepath.Join(t.TempDir(), "config.toml"))
+	a := specRuntimeApp(t)
+	a.serverUI = true
+	palette := render.ThemePalette("dracula")
+	a.panePalette = &palette
+	a.toggleKoi()
+	if a.panePalette != &palette {
+		t.Fatal("koi toggle replaced the endpoint's existing pane palette")
+	}
+}
