@@ -81,15 +81,28 @@ func wholeCommand(command string, i Input) bool {
 	if !ok || len(tree.Stmts[0].Redirs) != 0 {
 		return false
 	}
-	var argv []string
+	expected := append([]string{i.Command}, i.Args...)
+	var literals []string
 	for _, word := range call.Args {
 		value, err := expand.Literal(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
 		if err != nil {
 			return false
 		}
-		argv = append(argv, value)
+		literals = append(literals, value)
 	}
-	return slices.Equal(argv, append([]string{i.Command}, i.Args...))
+	if slices.Equal(literals, expected) {
+		return true
+	}
+	// A shim receives shell argv; line analysis retains its Literal form.
+	var argv []string
+	for _, word := range call.Args {
+		fields, err := expand.Fields(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+		if err != nil || len(fields) != 1 {
+			return false
+		}
+		argv = append(argv, fields[0])
+	}
+	return slices.Equal(argv, expected)
 }
 
 var approvalFields = regexp.MustCompile(`[\t \r\n]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]`)
@@ -97,8 +110,9 @@ var approvalFields = regexp.MustCompile(`[\t \r\n]*(対象プロジェクト|必
 func approvalTrigger(i Input, v Verdict) string {
 	command := i.TriggerCommand
 	if command == "" {
-		i.RawLine = ""
-		command = i.Line()
+		selected := i
+		selected.RawLine = ""
+		command = selected.Line()
 	}
 	return i.redact("ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command)
 }
@@ -191,9 +205,9 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	body := "ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）"
 	if trigger != command && !wholeCommand(command, i) {
-		body += "\n対象コマンド：" + trigger
+		body += "\n対象コマンド：" + i.redact(trigger)
 	}
-	body += "\n\nコマンド: " + command
+	body += "\n\nコマンド: " + i.redact(command)
 	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
 		if reason == "" {
 			body += "\n\n申請文なし（外側のコマンド " + parent + " にも申請文がありません）"

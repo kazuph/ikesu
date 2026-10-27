@@ -94,7 +94,7 @@ func (i Input) redactedArgv() []string {
 	argv := append([]string{i.Command}, i.Args...)
 	restored := make([]string, len(argv))
 	for n, arg := range argv {
-		restored[n] = i.restoreEnvironment(arg)
+		restored[n] = i.restoreArgumentEnvironment(arg)
 	}
 	return redactArgv(restored)
 }
@@ -137,23 +137,84 @@ func redact(text string) string {
 	return maskSpans(text, secretSpans(text))
 }
 
+type environmentWord struct {
+	start, end        int
+	literal, restored string
+}
+
+// Decode display copies only; command/process substitutions have no executor.
+func (i Input) environmentWords(text string) []environmentWord {
+	tree, _ := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(text), "environment display")
+	var words []environmentWord
+	if tree != nil {
+		syntax.Walk(tree, func(node syntax.Node) bool {
+			word, ok := node.(*syntax.Word)
+			if !ok {
+				return true
+			}
+			fields, err := expand.Fields(&expand.Config{NoUnset: true}, word)
+			if err != nil || len(fields) != 1 {
+				return true
+			}
+			restored := i.restoreEnvironment(fields[0])
+			if restored == fields[0] {
+				return true
+			}
+			literal, _ := expand.Literal(&expand.Config{NoUnset: true}, word)
+			words = append(words, environmentWord{int(word.Pos().Offset()), int(word.End().Offset()), literal, restored})
+			return false
+		})
+	}
+	return words
+}
+
+func (i Input) restoreShellEnvironment(text string) string {
+	words := i.environmentWords(text)
+	sort.Slice(words, func(a, b int) bool { return words[a].start > words[b].start })
+	for _, word := range words {
+		text = text[:word.start] + word.restored + text[word.end:]
+	}
+	return text
+}
+
+func (i Input) restoreArgumentEnvironment(text string) string {
+	// The policy parser's Literal result can retain unquoted backslashes.
+	// Match that representation to the decoded word without changing policy argv.
+	words := i.environmentWords(i.RawLine)
+	sort.Slice(words, func(a, b int) bool { return len(words[a].literal) > len(words[b].literal) })
+	var pairs []string
+	for _, word := range words {
+		if word.literal != "" {
+			pairs = append(pairs, word.literal, word.restored)
+		}
+	}
+	text = strings.NewReplacer(pairs...).Replace(text)
+	return i.restoreEnvironment(text)
+}
+
 // Argv boundaries are authoritative when shell quoting is no longer available.
 func (i Input) redact(text string) string {
-	text = i.restoreEnvironment(text)
-	for _, arg := range append([]string{i.Command}, i.Args...) {
-		arg = i.restoreEnvironment(arg)
-		safe := redactArgument(arg)
-		if safe == arg {
+	for _, raw := range []string{i.RawLine, i.TriggerCommand, i.Env["IKESU_GUARD_PARENT_COMMAND"]} {
+		if raw != "" && strings.Contains(text, raw) {
+			text = strings.ReplaceAll(text, raw, i.restoreShellEnvironment(raw))
+		}
+	}
+	text = i.restoreShellEnvironment(text)
+	text = i.restoreArgumentEnvironment(text)
+	for _, original := range append([]string{i.Command}, i.Args...) {
+		safe := redactArgument(i.restoreArgumentEnvironment(original))
+		if safe == original {
 			continue
 		}
-		quoted, err := syntax.Quote(arg, syntax.LangBash)
+		quoted, err := syntax.Quote(original, syntax.LangBash)
 		if err == nil {
 			text = strings.ReplaceAll(text, quoted, safe)
 		}
-		text = strings.ReplaceAll(text, arg, safe)
+		text = strings.ReplaceAll(text, original, safe)
 	}
 	return redact(text)
 }
+
 func redactArgv(argv []string) []string {
 	safe := make([]string, len(argv))
 	for n, arg := range argv {
