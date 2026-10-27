@@ -45,6 +45,11 @@ function candidate(raw) {
   for(const name of url.searchParams.keys()) if(/^(token|access_token|api_?key|password|secret|authorization)$/i.test(name)) throw Error('資格情報付き URL は取得しません');
   return {url,host};
 }
+async function abortable(promise,signal) {
+ let aborted;
+ const stop=new Promise((resolve,reject)=>{aborted=()=>reject(signal.reason);signal.addEventListener('abort',aborted,{once:true});if(signal.aborted)aborted();});
+ try {return await Promise.race([promise,stop]);} finally {signal.removeEventListener('abort',aborted);}
+}
 export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onConnect}={}) {
   const timeout=AbortSignal.timeout(RICH_LIMITS.timeoutMs);
   const combined=signal?AbortSignal.any([signal,timeout]):timeout;
@@ -52,7 +57,7 @@ export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onC
   for(let redirects=0;;redirects++) {
     combined.throwIfAborted();
     const {url,host}=candidate(current);
-    const addresses=net.isIP(host)?[{address:host,family:net.isIP(host)}]:await dns.lookup(host,{all:true});
+    const addresses=net.isIP(host)?[{address:host,family:net.isIP(host)}]:await abortable(dns.lookup(host,{all:true}),combined);
     combined.throwIfAborted();
     if(!addresses.length||addresses.some(a=>!publicAddress(a.address))) throw Error('非公開の宛先は自動取得しません');
     const selected=addresses[0];
@@ -74,11 +79,11 @@ export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onC
     return {data:Buffer.concat(chunks),url:url.href,type:response.headers['content-type']||''};
   }
 }
-export async function pageMetadata(data,base) {
+export async function pageMetadata(data,base,signal) {
   // libxml's HTML parser treats metadata as text. --nonet prevents external I/O;
   // entity substitution and DTD loading are deliberately not enabled.
   const parse=(expression)=>new Promise((resolve,reject)=>{
-    const child=execFile('/usr/bin/xmllint',['--html','--nonet','--nowarning','--xpath',expression,'-'],{maxBuffer:RICH_LIMITS.pageBytes,timeout:RICH_LIMITS.timeoutMs},(error,stdout)=>{if(error&&!stdout) reject(error); else resolve(stdout.trim());});
+    const child=execFile('/usr/bin/xmllint',['--html','--nonet','--nowarning','--xpath',expression,'-'],{maxBuffer:RICH_LIMITS.pageBytes,timeout:RICH_LIMITS.timeoutMs,signal},(error,stdout)=>{if(error&&!stdout) reject(error); else resolve(stdout.trim());});
     child.stdin.on('error',()=>{}); child.stdin.end(Buffer.concat([Buffer.from('<?xml encoding="UTF-8"?>'),data]));
   });
   const [title,site,image]=await Promise.all([

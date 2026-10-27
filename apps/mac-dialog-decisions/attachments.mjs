@@ -4,6 +4,12 @@ import path from 'node:path';
 import { RICH_LIMITS, imagePath } from './rich.mjs';
 
 export function safeID(value) { if(typeof value!=='string'||!value||!/^[-_a-zA-Z0-9.]+$/.test(value)||value==='.'||value==='..') throw Error('保存先の ID が不正です'); return value; }
+export async function readBounded(file,limit) {
+ const buffer=Buffer.alloc(limit+1);let used=0;
+ while(used<buffer.length) {const result=await file.read(buffer,used,buffer.length-used,null);if(!result.bytesRead)break;used+=result.bytesRead;}
+ if(used>limit) throw Error("ファイルの容量上限を超えています");
+ return buffer.subarray(0,used);
+}
 export class AttachmentStore {
  constructor(stateDir) {this.root=path.resolve(stateDir);}
  async directory(kind,machine,id) {
@@ -31,7 +37,7 @@ export class AttachmentStore {
    const input=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW);
    try {
     const stat=await input.stat(); if(!stat.isFile()||stat.size>RICH_LIMITS.attachmentBytes) throw Error('添付は1枚20MBまでです');
-    const data=await input.readFile(); if(data.length>RICH_LIMITS.attachmentBytes) throw Error('添付は1枚20MBまでです');
+    const data=await readBounded(input,RICH_LIMITS.attachmentBytes); if(data.length>RICH_LIMITS.attachmentBytes) throw Error('添付は1枚20MBまでです');
     const filename=`${i+1}${path.extname(source).toLowerCase()}`;
     const destination=path.join(dir,filename);
     const output=await fs.open(destination,constants.O_WRONLY|constants.O_CREAT|constants.O_TRUNC|constants.O_NOFOLLOW,0o600);

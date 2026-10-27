@@ -26,6 +26,20 @@ try data.write(to:URL(fileURLWithPath:source))
 controller.attachFiles([URL(fileURLWithPath:source)])
 RunLoop.current.run(until:Date(timeIntervalSinceNow:0.5))
 precondition(controller.attachments.count==2)
+let tiffBoard = NSPasteboard(name:NSPasteboard.Name("dialog-rich-tiff-\(UUID().uuidString)"))
+tiffBoard.clearContents();tiffBoard.setData(image.tiffRepresentation!,forType:.tiff)
+controller.textView!.imagePasteboard = tiffBoard
+controller.panel.makeKey();controller.panel.makeFirstResponder(controller.textView!)
+let commandV = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[.command],timestamp:0,windowNumber:controller.panel.windowNumber,context:nil,characters:"v",charactersIgnoringModifiers:"v",isARepeat:false,keyCode:9)!
+precondition(controller.handleKey(commandV) == nil,"Command-V must route through the native edit action")
+RunLoop.current.run(until:Date(timeIntervalSinceNow:0.5))
+precondition(controller.attachments.count==3,"Command-V uses the named TIFF pasteboard")
+precondition(controller.attachments.last!.path.hasSuffix(".png"),"clipboard bitmap is serialized as PNG")
+for broken in [Data(),Data("broken image".utf8),Data(count:10*1024*1024+1)] {
+ do { _ = try richBitmap(broken);fatalError("invalid or oversized image was accepted") } catch {}
+}
+let wide=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:8001,pixelsHigh:1,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+do { _ = try richBitmap(wide.representation(using:.png,properties:[:])!);fatalError("8001 pixel image was accepted") } catch {}
 controller.panel.contentView!.layoutSubtreeIfNeeded()
 let view=controller.panel.contentView!
 precondition(view.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds,to:view)),"submit remains inside window")
@@ -42,5 +56,5 @@ for width in [720.0, 520.0] {
 }
 controller.panel.setContentSize(NSSize(width:720,height:controller.panel.contentLayoutRect.height));view.layoutSubtreeIfNeeded()
 let capture=Process();capture.executableURL=URL(fileURLWithPath:"/usr/sbin/screencapture");capture.arguments=["-x","-l",String(controller.panel.windowNumber),root+"/rich-native.png"];try capture.run();capture.waitUntilExit();precondition(capture.terminationStatus==0)
-print("NATIVE_RICH_PASS attachments=2 namedPasteboard=1 buttonsInside=1 selected=0 sent=0")
+print("NATIVE_RICH_PASS attachments=3 namedPasteboard=1 commandV=1 tiff=1 invalidRejected=1 buttonsInside=1 selected=0 sent=0")
 controller.close()

@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { AttachmentStore, safeID } from './attachments.mjs';
+import { AttachmentStore, safeID, readBounded } from './attachments.mjs';
 import { RICH_LIMITS, discoverRichContent, fetchPublic, pageMetadata, imagePath } from './rich.mjs';
 
 function execute(file,args,{input,signal,maxBuffer=RICH_LIMITS.imageBytes}={}) {
@@ -92,7 +92,7 @@ export class RichService {
   if(!path.isAbsolute(source)) throw Error('画像の絶対パスが必要です');
   if(machine!=='local') return this.remote(machine,{action:'read',path:source,limit:RICH_LIMITS.imageBytes},signal,RICH_LIMITS.imageBytes);
   const file=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW);
-  try {if((await file.stat()).size>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです'); const data=await file.readFile();if(data.length>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです');return data;} finally {await file.close();}
+  try {if((await file.stat()).size>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです'); const data=await readBounded(file,RICH_LIMITS.imageBytes);if(data.length>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです');return data;} finally {await file.close();}
  }
  async cache(data,extension,signal) {
   signal?.throwIfAborted();
@@ -108,7 +108,7 @@ export class RichService {
   try {
    await Promise.allSettled([
     ...found.images.map(async(source,index)=>{try {const file=await image(source);signal.throwIfAborted();publish({status:'rich_image',index,path:file,source});}catch(error){if(!signal.aborted)publish({status:'rich_error',message:`画像を表示できません: ${error.message}`});}}),
-    ...found.links.map(async(url,index)=>{try {const response=await fetchPublic(url,{signal});if(!/html/i.test(response.type)) return; const metadata=await pageMetadata(response.data,response.url);if(!metadata.title) return;
+    ...found.links.map(async(url,index)=>{try {const response=await fetchPublic(url,{signal});if(!/html/i.test(response.type)) return; const metadata=await pageMetadata(response.data,response.url,signal);if(!metadata.title) return;
      let thumbnail='';if(metadata.image) {try{const data=(await fetchPublic(metadata.image,{signal,maxBytes:RICH_LIMITS.imageBytes})).data;thumbnail=await this.cache(data,'.image',signal);cached.push(thumbnail);}catch{}}
      signal.throwIfAborted();publish({status:'rich_card',index,url,title:metadata.title,site:metadata.site,path:thumbnail});
     }catch{}})

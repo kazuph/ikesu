@@ -196,6 +196,7 @@ export class MacDialogDecisionsDaemon {
 
   onResolved(mid, decision) {
     const key = decisionKey(mid, decisionIdOf(decision));
+    if (this.resolvedKeys.has(key)) return;
     this.resolvedKeys.add(key);
     if (this.rich) void this.rich.resolve(mid, decisionIdOf(decision), decision.status).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
     const entry = this.entries.get(key);

@@ -120,9 +120,10 @@ final class FirstClickImageView: NSImageView {
 }
 
 final class FirstClickTextView: NSTextView {
+  var imagePasteboard: NSPasteboard = .general
   var onAttachments: ((NSPasteboard) -> Bool)?
   override func paste(_ sender: Any?) {
-    if onAttachments?(NSPasteboard.general) == true { return }; super.paste(sender)
+    if onAttachments?(imagePasteboard) == true { return }; super.paste(sender)
   }
   override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
     if sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) || sender.draggingPasteboard.availableType(from: [.png, .tiff]) != nil { return .copy }; return super.draggingEntered(sender)
@@ -722,10 +723,10 @@ func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, 
   let links = richLinkRanges(text)
   if !links.isEmpty {
     let attributed = NSMutableAttributedString(string: text, attributes: [.font: field.font!, .foregroundColor: color])
-    for match in links { attributed.addAttributes([.link: match.url!, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: match.range) }
-    field.attributedStringValue = attributed
-    field.isSelectable = true
+    for match in links { attributed.addAttributes([.link: match.url!.absoluteString, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: match.range) }
     field.allowsEditingTextAttributes = true
+    field.isSelectable = true
+    field.attributedStringValue = attributed
   }
   return field
 }
@@ -783,13 +784,13 @@ extension DialogController {
     guard spec.allow_text else { return false }
     if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty { attachFiles(urls); return true }
     if let data = board.data(forType: .png) { stageAttachment(data: data, name: "貼り付け画像.png"); return true }
-    if let data = board.data(forType: .tiff), let bitmap = NSBitmapImageRep(data: data), let png = bitmap.representation(using: .png, properties: [:]) { stageAttachment(data: png, name: "貼り付け画像.png"); return true }
+    if let data = board.data(forType: .tiff) { stageAttachment(data: data, clipboardTIFF: true, name: "貼り付け画像.png"); return true }
     return false
   }
   func attachFiles(_ urls: [URL]) {
     for url in urls { stageAttachment(file: url, name: url.lastPathComponent) }
   }
-  func stageAttachment(file: URL? = nil, data: Data? = nil, name: String) {
+  func stageAttachment(file: URL? = nil, data: Data? = nil, clipboardTIFF: Bool = false, name: String) {
     guard spec.allow_text, !closed else { return }
     guard attachments.count + attachmentLoading < 4 else { statusLabel.stringValue = "添付は4枚までです。"; return }
     guard let directory = spec.draft_directory else { statusLabel.stringValue = "添付の保存先を用意できません。"; return }
@@ -797,7 +798,7 @@ extension DialogController {
     imageWork.addOperation { [weak self] in
       guard let self, !self.closed else { return }
       do {
-        let bytes: Data
+        var bytes: Data
         if let data { bytes = data } else if let file {
           let fd = open(file.path, O_RDONLY | O_NOFOLLOW)
           guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
@@ -806,6 +807,15 @@ extension DialogController {
           guard fstat(fd, &info) == 0, info.st_size <= 20 * 1024 * 1024, info.st_mode & S_IFMT == S_IFREG else { throw CocoaError(.fileReadTooLarge) }
           bytes = try handle.read(upToCount: 20 * 1024 * 1024 + 1) ?? Data()
         } else { throw CocoaError(.fileReadUnknown) }
+        if clipboardTIFF {
+          guard bytes.count <= 20 * 1024 * 1024,
+            let source = CGImageSourceCreateWithData(bytes as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width <= 8000, height <= 8000,
+            let rep = NSBitmapImageRep(data: bytes), let png = rep.representation(using: .png, properties: [:]) else { throw CocoaError(.fileReadTooLarge) }
+          bytes = png
+        }
         let bitmap = try richBitmap(bytes, attachment: true)
         let destination = URL(fileURLWithPath: directory).appendingPathComponent(UUID().uuidString + "." + bitmap.ext)
         let fd = open(destination.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
