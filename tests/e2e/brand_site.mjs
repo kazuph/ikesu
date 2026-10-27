@@ -2,9 +2,16 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve,join } from 'node:path';
-import { mkdir,writeFile } from 'node:fs/promises';
+import { mkdir,writeFile,readFile } from 'node:fs/promises';
 const { chromium }=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const evidence=resolve(process.argv[2]);await mkdir(evidence,{recursive:true});
+const markdown=await readFile(resolve('README.md'),'utf8');
+const gif=(await readFile(resolve('docs/brand/koi.gif'))).toString('base64');
+const escape=text=>text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\"','&quot;');
+const inline=text=>escape(text).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\[([^\]]+)\]\(([^)]+)\)/g,(_all,label,url)=>`<a href="${new URL(url,pathToFileURL(resolve('README.md'))).href}">${label}</a>`);
+let code=false;const rendered=[];
+for(const line of markdown.split('\n')){if(line.startsWith('```')){rendered.push(code?'</pre>':'<pre>');code=!code;}else if(code){rendered.push(escape(line)+'\n');}else if(line.startsWith('![')){rendered.push(`<img alt="${escape(line.slice(2,line.indexOf(']')))}" src="data:image/gif;base64,${gif}">`);}else if(line.startsWith('# ')){rendered.push('<h1>'+inline(line.slice(2))+'</h1>');}else if(line.startsWith('## ')){rendered.push('<h2>'+inline(line.slice(3))+'</h2>');}else if(line==='---'){rendered.push('<hr>');}else if(line){rendered.push('<p>'+inline(line)+'</p>');}}
+await writeFile(join(evidence,'README-preview.html'),'<!doctype html><html lang="ja"><meta charset="utf-8"><title>README preview</title><style>body{max-width:900px;margin:40px auto;padding:24px;color:#27332f;font:16px/1.8 system-ui}img{width:640px;max-width:100%;image-rendering:pixelated}pre{padding:16px;background:#f4f4f4;white-space:pre-wrap}h1{font-size:30px}a{color:#a32f23}hr{margin:40px 0}</style><body>'+rendered.join('')+'</body></html>');
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const results=[];
 try {

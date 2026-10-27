@@ -1,6 +1,8 @@
 package render
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/layout"
 	"image"
@@ -10,6 +12,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -106,5 +109,55 @@ func TestExportKoiPixelProof(t *testing.T) {
 			}
 			f.Close()
 		}
+	}
+}
+
+func TestKoiBrandAtlasMatchesRendererAndEmbeddedSite(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "brand", "koi-atlas.png")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	atlas, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if atlas.Bounds().Dx() != 320 || atlas.Bounds().Dy() != 160 {
+		t.Fatal("atlas grid changed", atlas.Bounds())
+	}
+	for v := range KoiPatterns {
+		for d := 0; d < 2; d++ {
+			for wag := 0; wag < 8; wag++ {
+				sprite := KoiSprite(v, d, wag, 40, 16)
+				for y := 0; y < 16; y++ {
+					for x := 0; x < 40; x++ {
+						got := color.RGBAModel.Convert(atlas.At(wag*40+x, (v*2+d)*16+y))
+						if got != sprite.RGBAAt(x, y) {
+							t.Fatal("atlas diverged from terminal renderer", v, d, wag, x, y)
+						}
+					}
+				}
+			}
+		}
+	}
+	site, err := os.ReadFile(filepath.Join("..", "..", "site", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := "atlas.src='data:image/png;base64,"
+	_, payload, ok := strings.Cut(string(site), prefix)
+	if !ok {
+		t.Fatal("site has no embedded atlas")
+	}
+	payload, _, ok = strings.Cut(payload, "'")
+	if !ok {
+		t.Fatal("unterminated atlas")
+	}
+	embedded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, embedded) {
+		t.Fatal("site artwork differs from renderer atlas")
 	}
 }
