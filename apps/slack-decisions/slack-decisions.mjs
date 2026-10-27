@@ -897,7 +897,7 @@ function decisionIdOf(decision) {
 function questionKey(machineId, decision) {
   const origin = decision?.origin || {};
   const options = (decision?.options || [])
-    .map((option) => `${option?.id ?? ""}\u0000${option?.label ?? ""}`)
+    .map((option) => `${option?.id ?? ""}\u0000${option?.label ?? ""}\u0000${option?.description ?? ""}`)
     .join("");
   return JSON.stringify([
     String(machineId),
@@ -905,6 +905,7 @@ function questionKey(machineId, decision) {
     decision?.kind || "",
     decision?.title || "",
     decision?.question_label || "",
+    decision?.body || "",
     options,
     decision?.allow_text === true,
     decision?.multi_select === true,
@@ -1108,7 +1109,10 @@ export class SlackDecisionsDaemon {
       resolved: false,
       postTimer: null,
       seenReplies: new Set(),
-      seenReactions: new Set(),
+      seenEvents: new Set(),
+      answerAfter: this.posts.get(key)?.answerAfter || 0,
+      answerReady: this.posts.get(key)?.answerReady !== false,
+      seenReactions: new Set(this.posts.get(key)?.seenReactions || []),
       // Option ids picked via number reactions on a multi_select decision;
       // submitted when a :white_check_mark: reaction confirms them.
       selection: new Set(),
@@ -1148,6 +1152,8 @@ export class SlackDecisionsDaemon {
     // decision's post instead of stacking a new one.
     const reuse = await this.takeReusablePost(entry);
     if (reuse) {
+      entry.answerReady = false;
+      entry.answerAfter = Math.max(Date.now(), Number(decision.created_unix_ms) || 0) / 1000;
       entry.post = { channel: reuse.channel, ts: reuse.ts };
       if (reuse.mapKey) this.posts.delete(reuse.mapKey);
       this.posts.set(entry.key, {
@@ -1157,26 +1163,9 @@ export class SlackDecisionsDaemon {
         decisionId: decision.decision_id,
       });
       this.savePostsFile();
-      // Reactions and thread replies left on the old post answered the
-      // cancelled decision; they must not answer the recreated one.
-      try {
-        const [message, replies] = await Promise.all([
-          this.slack.message(reuse.ts),
-          this.slack.replies(reuse.ts),
-        ]);
-        for (const reaction of message?.reactions || []) {
-          for (const user of reaction.users || []) {
-            if (user !== this.botUserId) {
-              entry.seenReactions.add(`${reaction.name}:${user}`);
-            }
-          }
-        }
-        for (const reply of replies || []) {
-          if (reply.ts && reply.ts !== reuse.ts) entry.seenReplies.add(reply.ts);
-        }
-      } catch (error) {
-        this.log(`使い回す投稿の既読化に失敗: ${error.message}`);
-      }
+      Object.assign(this.posts.get(entry.key), { answerAfter: entry.answerAfter, answerReady: false });
+      this.savePostsFile();
+      await this.establishAnswerBaseline(entry);
       if (entry.resolved) {
         await this.finishResolvedPost(entry);
         return;
@@ -1233,6 +1222,43 @@ export class SlackDecisionsDaemon {
     } finally {
       entry.posting = false;
     }
+  }
+
+  async establishAnswerBaseline(entry) {
+    if (entry.answerReady) return true;
+    if (entry.baselineRead) return entry.baselineRead;
+    entry.baselineRead = (async () => {
+      try {
+        const [message, replies] = await Promise.all([
+          this.slack.message(entry.post.ts), this.slack.replies(entry.post.ts),
+        ]);
+        if (entry.resolved || !this.ownsPost(entry.key, entry.post)) return false;
+        for (const reaction of message?.reactions || []) {
+          for (const user of reaction.users || []) {
+            if (user !== this.botUserId) entry.seenReactions.add(`${reaction.name}:${user}`);
+          }
+        }
+        for (const reply of replies || []) {
+          if (reply.ts) entry.seenReplies.add(reply.ts);
+        }
+        entry.answerReady = true;
+        Object.assign(this.posts.get(entry.key), {
+          answerAfter: entry.answerAfter, answerReady: true,
+          seenReactions: [...entry.seenReactions],
+        });
+        this.savePostsFile();
+        return true;
+      } catch (error) {
+        this.log(`使い回す投稿の既読化に失敗: ${error.message}`);
+        return false;
+      }
+    })();
+    try { return await entry.baselineRead; }
+    finally { entry.baselineRead = null; }
+  }
+
+  eventIsCurrent(entry, timestamp) {
+    return entry.answerReady && (!entry.answerAfter || Number(timestamp) > entry.answerAfter);
   }
 
   async renderPending(entry) {
@@ -1535,13 +1561,13 @@ export class SlackDecisionsDaemon {
 
   pendingEntryByTs(ts) {
     for (const entry of this.entries.values()) {
-      if (entry.post && entry.post.ts === ts && !entry.resolved) return entry;
+      if (entry.post && entry.post.ts === ts && !entry.resolved && entry.answerReady) return entry;
     }
     return null;
   }
 
   async submitAnswer(entry, { optionId = null, optionIds = null, text = null, via }) {
-    if (entry.resolved || entry.answerPending) return;
+    if (entry.resolved || entry.answerPending || !entry.answerReady) return;
     entry.answerPending = true;
     const did = entry.decision.decision_id;
     const ids = Array.isArray(optionIds) && optionIds.length
@@ -1764,6 +1790,13 @@ export class SlackDecisionsDaemon {
       if (event.item?.type !== "message" || !event.item?.ts) return;
       const entry = this.pendingEntryByTs(event.item.ts);
       if (!entry) return;
+      if (!this.eventIsCurrent(entry, event.event_ts)) return;
+      const marker = `${event.reaction}:${event.user || ""}`;
+      const eventKey = `${marker}:${event.event_ts || ""}`;
+      if (entry.seenEvents.has(eventKey)) return;
+      if (!entry.answerAfter && entry.seenReactions.has(marker)) return;
+      entry.seenEvents.add(eventKey);
+      entry.seenReactions.add(marker);
       await this.handleReaction(entry, event.reaction, event.user || "");
       return;
     }
@@ -1777,6 +1810,8 @@ export class SlackDecisionsDaemon {
       const entry = this.pendingEntryByTs(threadTs);
       if (!entry) return;
       if (event.ts && event.ts === entry.post?.ts) return;
+      if (!this.eventIsCurrent(entry, event.ts) || entry.seenReplies.has(event.ts)) return;
+      if (event.ts) entry.seenReplies.add(event.ts);
       await this.handleThreadReply(entry, event.text || "", event.user || "");
     }
   }
@@ -1802,12 +1837,14 @@ export class SlackDecisionsDaemon {
       if (!entry.post || entry.resolved || entry.answerPending || entry.machineDown) {
         continue;
       }
+      if (!entry.answerReady && !(await this.establishAnswerBaseline(entry))) continue;
       await this.pollEntryReactions(entry);
       await this.pollEntryReplies(entry);
     }
   }
 
   async pollEntryReactions(entry) {
+    if (!entry.answerReady) return;
     let message;
     try {
       message = await this.slack.message(entry.post.ts);
@@ -1846,6 +1883,7 @@ export class SlackDecisionsDaemon {
   }
 
   async pollEntryReplies(entry) {
+    if (!entry.answerReady) return;
     let messages;
     try {
       messages = await this.slack.replies(entry.post.ts);
@@ -1855,7 +1893,7 @@ export class SlackDecisionsDaemon {
     const postTs = entry.post.ts;
     const fresh = messages
       .filter((message) => message.ts && Number(message.ts) > Number(postTs))
-      .filter((message) => !entry.seenReplies.has(message.ts))
+      .filter((message) => this.eventIsCurrent(entry, message.ts) && !entry.seenReplies.has(message.ts))
       .filter(
         (message) =>
           message.user !== this.botUserId &&
