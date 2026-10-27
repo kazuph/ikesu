@@ -179,6 +179,7 @@ func (a *App) draw() {
 		Panes:         panes,
 		Scroll:        a.scroll,
 		Spin:          a.spin,
+		Koi:           koiEnabled,
 		Copied:        a.copiedFlash(),
 		Prefix:        a.prefix,
 		ModeHint:      a.modeHint(),

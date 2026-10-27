@@ -591,7 +591,7 @@ func (a *App) Run() {
 			a.onTick()
 		case <-spin.C:
 			a.spin++
-			if a.anyWorking() {
+			if koiEnabled || a.anyWorking() {
 				a.dirty = true
 			}
 		}

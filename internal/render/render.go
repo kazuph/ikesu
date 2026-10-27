@@ -155,6 +155,7 @@ type Input struct {
 	Toast               *Toast
 
 	Spin            int    // working-spinner frame
+	Koi             bool   // SPIKE: swimming koi in the sidebars
 	Copied          string // flash text, e.g. " copied 12 chars "
 	ModeHint        string
 	Prefix          bool // prefix-key pending
