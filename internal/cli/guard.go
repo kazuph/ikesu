@@ -229,6 +229,12 @@ func (r *runner) guardCLI(a []string) int {
 		}
 		return 0
 	}
+	if sub == "exec" && via == "shim" {
+		if err := guard.CheckShimRecursion(i); err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+	}
 	if !guard.Authorize(c.Guard, root, i, via, r.errOut(), await) {
 		return 1
 	}
