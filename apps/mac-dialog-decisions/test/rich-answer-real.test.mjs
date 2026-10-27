@@ -60,6 +60,10 @@ test('daemon restart keeps incomplete journals visible while watching and health
  for(const [id,data] of [['directory',null],['empty',''],['partial','{"status":']]) {
   const dir=path.join(f.config.stateDir,'resolutions/local',id);await fs.mkdir(dir,{recursive:true});if(data!==null)await fs.writeFile(path.join(dir,'resolution.json'),data);
  }
+ const {execFile}=await import('node:child_process'),{promisify}=await import('node:util');
+ const writer=path.join(f.root,'interrupted-write.mjs');
+ await fs.writeFile(writer,`import {AttachmentStore} from ${JSON.stringify(new URL('../attachments.mjs',import.meta.url).href)};await new AttachmentStore(process.argv[2]).queueResolution('local','interrupted','cancelled',1000);`);
+ await assert.rejects(promisify(execFile)('/bin/sh',['-c','ulimit -f 0; exec "$@"','journal-write',process.execPath,writer,f.config.stateDir]));
  const healthy=await f.rich.store.directory('attachments','local','healthy');await fs.writeFile(path.join(healthy,'1.png'),png);
  await f.rich.store.queueResolution('local','healthy','cancelled',1000);
  f.daemon.spawnWatch=()=>spawnDecisionWatch(f.config,()=>{},f.env);
@@ -70,7 +74,10 @@ test('daemon restart keeps incomplete journals visible while watching and health
  while(![...f.daemon.entries.values()].some(e=>e.decision.decision_id===decision.decision_id)) {
   assert.ok(Date.now()<deadline,'actual watch must deliver the unrelated decision');await new Promise(resolve=>setTimeout(resolve,10));
  }
- assert.equal(issues.length,3);for(const id of ['directory','empty','partial'])assert.ok(issues.some(message=>message.includes(id)),id);
+ const badIds=['directory','empty','partial','interrupted'];
+ for(const id of badIds)assert.ok(issues.some(message=>message.includes('/'+id+'/')),id);
+ assert.ok(issues.every(message=>badIds.some(id=>message.includes('/'+id+'/'))),'only the retained incomplete records are reported');
  assert.equal(await fs.readFile(path.join(f.config.stateDir,'resolutions/local/empty/resolution.json'),'utf8'),'');
  assert.equal(await fs.readFile(path.join(f.config.stateDir,'resolutions/local/partial/resolution.json'),'utf8'),'{"status":');
+ assert.ok((await fs.readdir(path.join(f.config.stateDir,'resolutions/local/interrupted'))).some(name=>name.endsWith('.writing')));
 });
