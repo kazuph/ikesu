@@ -22,6 +22,10 @@ func (c *endpointConnection) enqueue(message msg) error {
 		}
 		return err
 	}
+	if (message.Type == "input" || message.Type == "paste" || message.Type == "workspace_select") && endpoint.Allows(c.writer.available, endpoint.InputReceiptGeneration, c.writer.methods, "input_receipt") {
+		c.sentInput++
+		message.InputSequence = c.sentInput
+	}
 	c.queue = append(c.queue, message)
 	c.queueMu.Unlock()
 	select {
@@ -62,4 +66,10 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *endpointConnection) lastSentInput() uint64 {
+	c.queueMu.Lock()
+	defer c.queueMu.Unlock()
+	return c.sentInput
 }

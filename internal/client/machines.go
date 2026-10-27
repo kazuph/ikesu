@@ -21,6 +21,8 @@ import (
 )
 
 type managedEndpoint struct {
+	processedInput uint64
+
 	snapshotAttempt          uint64
 	boot                     string
 	textOnly                 bool
@@ -55,6 +57,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	inputSequence      uint64
 	sidebar            *machineSidebarAction
 	keys               []input.Event
 	id                 string
@@ -66,7 +69,7 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
-	workspaceKeyReleases map[workspaceCycleKey]bool
+	workspaceKeyReleases map[rune]bool
 
 	clientVersion     string
 	trace             *latency.Trace

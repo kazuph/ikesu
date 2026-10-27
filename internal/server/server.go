@@ -46,6 +46,8 @@ type clientMsg struct {
 	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
 	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
 	GraphicsResult        *endpoint.GraphicsTransmissionResult `json:"graphics_result,omitempty"`
+	InputSequence         uint64                               `json:"input_sequence,omitempty"`
+	ProcessedInput        uint64                               `json:"processed_input,omitempty"`
 	EndPrefix             bool                                 `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification               `json:"notification,omitempty"`
 	endpoint.Peer
@@ -761,6 +763,9 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() {
 				if !c.viewer.SelectWorkspace(s.app, m.Workspace) {
 					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+				}
+				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
+					c.viewer.RecordInput(s.app, m.InputSequence)
 				}
 			})
 		case "config_result":

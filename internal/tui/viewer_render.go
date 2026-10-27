@@ -49,6 +49,9 @@ func (v *Viewer) releaseKeys(ui *App) {
 		v.deliverInput(ui, event)
 	}
 	v.heldKeys = nil
+	if v.receivedInput > v.processedInput {
+		ui.dirty = true
+	}
 }
 
 // SetSnapshotSink switches only this attached viewer to client composition.
@@ -92,4 +95,17 @@ func (v *Viewer) Rendered(a *App, out render.Output, focusEpoch uint64) {
 		}
 		v.releaseKeys(ui)
 	})
+}
+
+// Input receipts advance only after framed events and focus-held keys have
+// reached the viewer, so a snapshot cannot acknowledge an unhandled prefix.
+func (v *Viewer) RecordInput(a *App, sequence uint64) {
+	v.receivedInput = sequence
+	v.Redraw(a)
+}
+func (v *Viewer) ProcessedInput() uint64 {
+	if len(v.heldKeys) == 0 && !v.app.fr.Pending() {
+		v.processedInput = v.receivedInput
+	}
+	return v.processedInput
 }

@@ -22,6 +22,7 @@ type endpointConnection struct {
 	reader    *bufio.Reader
 	writer    *writer
 	snapshots endpoint.SnapshotDecoder
+	sentInput uint64
 	queueMu   sync.Mutex
 	queue     []msg
 	writeErr  error

@@ -80,7 +80,7 @@ func TestWorkspaceCycleOrderSkipsUnavailableAndHidden(t *testing.T) {
 	}
 }
 func TestWorkspaceCyclePrecedenceAndLegacy(t *testing.T) {
-	for _, name := range []string{"dialog", "menu", "help", "navigator", "settings", "prefix", "copy", "mode", "local command", "remote command", "unbound", "one machine", "same machine", "number key", "unmatched release"} {
+	for _, name := range []string{"dialog", "menu", "help", "navigator", "settings", "prefix", "copy", "mode", "local command", "remote command", "unbound", "one machine", "number key", "unmatched release"} {
 		t.Run(name, func(t *testing.T) {
 			m := cycleFixture(t)
 			m.endpoints["local"].snapshot.State.Active = 1
@@ -139,7 +139,7 @@ func TestWorkspaceCyclePendingRepeatReleaseTimeout(t *testing.T) {
 			}
 		}
 	}
-	if m.pending != pending || len(pending.keys) != 0 {
+	if m.pending == nil || len(m.pending.keys) != 0 {
 		t.Fatal("navigation queued as pane input")
 	}
 	for _, k := range []rune{'j', 'k'} {
@@ -193,4 +193,160 @@ func TestWorkspaceCycleCollapsedWorktreeGroup(t *testing.T) {
 	if got := m.workspaceCycleTargets(); len(got) != 4 {
 		t.Fatalf("active child hidden: %+v", got)
 	}
+}
+
+func TestWorkspaceCycleReleaseTracksPhysicalKeyAndBlur(t *testing.T) {
+	for _, mod := range []uv.KeyMod{0, uv.ModSuper | uv.ModShift} {
+		m := cycleFixture(t)
+		m.endpoints["local"].snapshot.State.Active = 1
+		if !m.workspaceCycleInput(cycleKey('j')) {
+			t.Fatal("press not consumed")
+		}
+		release := cycleKey('j')
+		release.Kind = input.KindKeyRelease
+		release.Key.Mod = mod
+		if !m.workspaceCycleInput(release) {
+			t.Fatal("physical release leaked", mod)
+		}
+	}
+	m := cycleFixture(t)
+	m.endpoints["local"].snapshot.State.Active = 1
+	m.workspaceCycleInput(cycleKey('j'))
+	m.workspaceCycleInput(input.Event{Kind: input.KindBlur})
+	release := cycleKey('j')
+	release.Kind = input.KindKeyRelease
+	if m.workspaceCycleInput(release) {
+		t.Fatal("blur retained old press")
+	}
+	m.pending = nil
+	if !m.workspaceCycleInput(cycleKey('j')) || !m.workspaceCycleInput(release) {
+		t.Fatal("new press/release lost after blur")
+	}
+}
+
+func TestWorkspaceCycleBatchAndRepeatCrossBothBoundaries(t *testing.T) {
+	for _, dir := range []rune{'j', 'k'} {
+		for _, repeat := range []bool{false, true} {
+			m := cycleFixture(t)
+			start, target := 0, 0
+			if dir == 'k' {
+				start, target = 1, 1
+			}
+			m.endpoints["local"].snapshot.State.Active = start
+			first := cycleKey(dir)
+			second := first
+			second.Key.IsRepeat = repeat
+			if err := m.input(first); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.input(second); err != nil {
+				t.Fatal(err)
+			}
+			if m.pending == nil || m.pending.id != "mini" || m.pending.workspace != m.endpoints["mini"].snapshot.State.Workspaces[target].ID {
+				t.Fatalf("key=%c repeat=%t pending=%+v", dir, repeat, m.pending)
+			}
+		}
+	}
+}
+
+func TestWorkspaceCycleOutstandingInputAndPrefixPriority(t *testing.T) {
+	for _, raw := range []string{"\x02", "\x02W"} {
+		m := cycleFixture(t)
+		m.endpoints["local"].snapshot.State.Active = 1
+		if err := m.sendInput("local", []byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.input(cycleKey('j')); err != nil {
+			t.Fatal(err)
+		}
+		e := m.endpoints["local"]
+		if m.pending != nil || len(e.connection.queue) != 2 || e.connection.queue[0].InputSequence != 1 || e.connection.queue[1].InputSequence != 2 {
+			t.Fatal("stale snapshot stole ordered input", m.pending, e.connection.queue)
+		}
+		e.processedInput = 1
+		if m.workspaceCycleInput(cycleKey('j')) {
+			t.Fatal("partial receipt unlocked navigation")
+		}
+		e.processedInput = 2
+		if !m.workspaceCycleInput(cycleKey('j')) {
+			t.Fatal("fully received input kept navigation blocked")
+		}
+	}
+	m := cycleFixture(t)
+	m.endpoints["local"].snapshot.State.Active = 1
+	m.active = "mini"
+	m.endpoints["mini"].snapshot.SidebarConfig.Keys.Prefix = "cmd+j"
+	if m.workspaceCycleInput(cycleKey('j')) {
+		t.Fatal("cycle overrode prefix key")
+	}
+}
+
+func TestWorkspaceCycleOldGenerationForwardsKeys(t *testing.T) {
+	for _, active := range []string{"local", "mini"} {
+		m := cycleFixture(t)
+		m.active = active
+		e := m.endpoints[active]
+		e.snapshot.State.Active = 1
+		e.connection.writer.available = endpoint.InputReceiptGeneration - 1
+		if err := m.input(cycleKey('j')); err != nil {
+			t.Fatal(err)
+		}
+		if m.pending != nil || len(e.connection.queue) != 1 || e.connection.queue[0].Type != "input" || e.connection.queue[0].InputSequence != 0 {
+			t.Fatal("old endpoint lost ordinary navigation")
+		}
+	}
+}
+
+func TestWorkspaceCycleReceiptOrderingWithRealServers(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	cfg, err := config.Decode([]byte("onboarding=false\n[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range m.endpoints {
+		if err := e.connection.enqueue(msg{Type: "view_config", Config: &cfg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.until("navigation config", func() bool {
+		for _, e := range m.endpoints {
+			if workspaceCycleDirection(e.snapshot.SidebarConfig, cycleKey('j').Key) != 1 {
+				return false
+			}
+		}
+		return true
+	})
+	e := m.endpoints["local"]
+	if err := e.connection.enqueue(msg{Type: "workspace_select", Workspace: e.snapshot.State.Workspaces[1].ID}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("local last acknowledged", func() bool { return e.snapshot.State.Active == 1 && e.processedInput == e.connection.lastSentInput() })
+	for _, raw := range []string{"\x02", "\x02W"} {
+		if err := m.sendInput("local", []byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.input(cycleKey('j')); err != nil {
+			t.Fatal(err)
+		}
+		if m.pending != nil {
+			t.Fatal("stole key before prefix/dialog receipt")
+		}
+		h.until("ordered input receipt", func() bool { return e.processedInput == e.connection.lastSentInput() })
+		if e.snapshot.State.Active != 1 {
+			t.Fatal("prefix/dialog input moved workspace")
+		}
+		if err := m.sendInput("local", []byte("\x1b[27u")); err != nil {
+			t.Fatal(err)
+		}
+		h.until("overlay closed and acknowledged", func() bool {
+			return e.snapshot.Dialog == nil && !e.snapshot.Prefix && e.processedInput == e.connection.lastSentInput()
+		})
+	}
+	if err := m.input(cycleKey('j')); err != nil {
+		t.Fatal(err)
+	}
+	h.until("cross machine after receipt", func() bool {
+		return m.pending == nil && m.active == "remote" && m.endpoints["remote"].snapshot.State.Active == 0
+	})
 }

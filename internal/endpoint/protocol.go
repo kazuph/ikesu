@@ -4,7 +4,8 @@ package endpoint
 import "fmt"
 
 const ProtocolVersion = 1
-const Generation = 4
+const Generation = 5
+const InputReceiptGeneration = 5
 const NotificationGeneration = 4
 const MinGeneration = 1
 const MachineGeneration = 2
@@ -35,7 +36,7 @@ func HasGraphicsPatches(peer Peer) bool {
 
 func Current() Peer {
 	peer := Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous"}}
+		Methods: []string{"input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", "input_receipt"}}
 	if ExperimentalFlatDiff {
 		peer.SurfaceCodecs = []string{FlatDiffCodec}
 	}
@@ -51,6 +52,8 @@ func MachinePeer() Peer {
 
 func RequiredGeneration(method string) int {
 	switch method {
+	case "input_receipt":
+		return InputReceiptGeneration
 	case "decision_answer":
 		return DecisionGeneration
 	case "visibility", "workspace_select", "view_config", "machine_menu":
