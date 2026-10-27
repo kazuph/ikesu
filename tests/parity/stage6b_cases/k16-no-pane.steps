@@ -1,4 +1,4 @@
-send "python3 /Users/kazuph/src/github.com/kazuph/goterrace/.worktree/feat/stage6b-keys/tests/parity/stage6b_paste_recorder.py\r"
+send "python3 /Users/kazuph/src/github.com/kazuph/ikesu/.worktree/feat/stage6b-keys/tests/parity/stage6b_paste_recorder.py\r"
 sleep 200ms
 sleep 400ms
 send "\u0014["

@@ -10,7 +10,7 @@ fi
 : "${PARITY_CONTROLLER_SESSION_ID:?set the validated controller transcript session ID}"
 export PARITY_CONTROLLER_SESSION_ID
 test -z "$(gofmt -l internal cmd tests tools)"
-export IKESU_PARITY_BIN="$work/gtx-parity-final"
+export IKESU_PARITY_BIN="$work/ikesu-parity-final"
 go build -o "$IKESU_PARITY_BIN" ./cmd/ikesu
 go build -o "$work/ptyrun-jobs-final" tools/bench/ptyrun/main.go
 go vet ./...
@@ -50,5 +50,5 @@ for mode in target blocked; do
 done
 python3 tests/parity/observe.py --cell-clock --server --server-reuse-initial --in-app-toast --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$IKESU_PARITY_BIN" --ptyrun "$work/ptyrun-jobs-final" --steps tests/parity/prefix-notification-expiry.steps --out "$work/parity-notification-expiry-final-gate"
 python3 tests/parity/notification_clock_gate.py "$work/parity-notification-expiry-final-gate"
-(cd "$HOME/bench-terrace.noindex/src/look-baseline-b0a18b0" && go build -o "$work/gtx-look-baseline-b0a18b0" ./cmd/gtx)
-IKESU_PERF_BIN="$IKESU_PARITY_BIN" IKESU_PERF_BASELINE_BIN="$work/gtx-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-final-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m
+(cd "$HOME/bench-terrace.noindex/src/look-baseline-b0a18b0" && go build -o "$work/ikesu-look-baseline-b0a18b0" ./cmd/ikesu)
+IKESU_PERF_BIN="$IKESU_PARITY_BIN" IKESU_PERF_BASELINE_BIN="$work/ikesu-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-final-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m

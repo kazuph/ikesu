@@ -109,10 +109,10 @@ func TestRenderDialog(t *testing.T) {
 	out := Compose(Input{
 		State:  s,
 		Panes:  map[int]*PaneSnap{pid: blankSnap()},
-		Dialog: &Dialog{Title: "Quit goterrace?", Confirm: "quit", Cancel: "cancel"},
+		Dialog: &Dialog{Title: "Quit ikesu?", Confirm: "quit", Cancel: "cancel"},
 	})
 	text := screenText(t, out, 80, 24)
-	for _, want := range []string{"Quit goterrace?", "quit", "cancel"} {
+	for _, want := range []string{"Quit ikesu?", "quit", "cancel"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in:\n%s", want, text)
 		}
@@ -260,7 +260,7 @@ func TestDialogInteriorIsOpaque(t *testing.T) {
 	f := NewFrame(60, 20)
 	scribble(f, "@")
 	out := &Output{}
-	d := &Dialog{Title: "Quit goterrace?", Detail: "Stops all panes.", Confirm: "quit", Cancel: "cancel"}
+	d := &Dialog{Title: "Quit ikesu?", Detail: "Stops all panes.", Confirm: "quit", Cancel: "cancel"}
 	drawDialog(f, d, out, layout.Rect{W: f.W, H: f.H})
 	outer, _, _ := DialogRects(d, layout.Rect{W: 60, H: 20})
 	noMarker(t, f, outer, "@")

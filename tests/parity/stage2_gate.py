@@ -14,8 +14,8 @@ def screen(case,prod,name):
 def check(case,name,extract,expected=None):
  if args.only and case not in args.only:return
  try:
-  values={prod:extract(prod) for prod in ['herdr','gtx']}
-  passed=values['herdr']==values['gtx'] and (expected is None or values['herdr']==expected)
+  values={prod:extract(prod) for prod in ['herdr','ikesu']}
+  passed=values['herdr']==values['ikesu'] and (expected is None or values['herdr']==expected)
   results.append(dict(case=case,claim=name,values=values,expected=expected,result='PASS' if passed else 'FAIL'))
  except Exception as e:results.append(dict(case=case,claim=name,result='FAIL',error=str(e)))
 def has(case,frame,word):return lambda prod:word in screen(case,prod,frame)
@@ -107,7 +107,7 @@ for key in ('slash','digit'):
 # Every run must show real completion, a versioned reference and isolated cleanup.
 for case in sorted({r['case'] for r in results}):
  check(case,'exact reference version',lambda p:json.loads((root/case/'reference.json').read_text())['herdr_version'],'herdr 0.2.57')
- for prod in ['herdr','gtx']:
+ for prod in ['herdr','ikesu']:
   folder=root/case/prod
   try:
    if 'TIMEOUT' in (folder/'run.log').read_text():raise AssertionError('TIMEOUT')

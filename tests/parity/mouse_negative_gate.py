@@ -6,7 +6,7 @@ import sys
 
 root = Path(sys.argv[1])
 captures = {}
-for role in ('herdr', 'gtx'):
+for role in ('herdr', 'ikesu'):
     saved = json.loads((root/role/'runtime-json.json').read_text())
     captures[role] = {}
     for mode in ('off', 'on'):
@@ -21,5 +21,5 @@ for role in ('herdr', 'gtx'):
     for screen, want in (('tab-negative-release', 'AB'), ('tab-return-release', 'BA')):
         row = (root/role/(screen+'.txt')).read_text().splitlines()[0]
         assert ''.join(re.findall(r'\b[AB]\b', row)) == want, (role, screen, row)
-assert captures['gtx'] == captures['herdr'], captures
+assert captures['ikesu'] == captures['herdr'], captures
 print('PASS: no mouse tails as text, exact application reports, drag retained until valid release')

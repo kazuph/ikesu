@@ -15,7 +15,7 @@ var markers = map[string]bool{
 	"CLAUDE_CODE_SESSION_ATTENDED": true, "CLAUDE_CODE_MESSAGING_SOCKET": true,
 	"CLAUDE_CODE_MESSAGING_TOKEN": true, "CLAUDE_CODE_ENTRYPOINT": true,
 	"CLAUDE_CODE_EXECPATH": true, "CODEX_THREAD_ID": true, "HERDR_AGENT": true,
-	"IKESU_PANE_ID": true, "GOTERRACE_PANE_ID": true,
+	"IKESU_PANE_ID":      true,
 	"IKESU_TAB_ID":       true,
 	"IKESU_WORKSPACE_ID": true,
 }
@@ -24,7 +24,7 @@ var markers = map[string]bool{
 // Explicit launch extras and fresh guard injection must follow this call.
 func Scrub(env []string) []string {
 	m := map[string]string{}
-	for _, kv := range DropLegacy(env) {
+	for _, kv := range env {
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			m[k] = v
 		}
@@ -139,17 +139,4 @@ func ScrubProcess() {
 			_ = os.Unsetenv(k)
 		}
 	}
-}
-
-// DropLegacy discards obsolete external keys without interpreting their values.
-func DropLegacy(env []string) []string {
-	out := make([]string, 0, len(env))
-	for _, entry := range env {
-		key, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(key, "GTX_") || strings.HasPrefix(key, "GOTERRACE_") {
-			continue
-		}
-		out = append(out, entry)
-	}
-	return out
 }

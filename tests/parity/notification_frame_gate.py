@@ -8,10 +8,10 @@ root = Path(sys.argv[1])
 finished = sys.argv[2] == 'finished'
 frames = {who: {name: json.loads((root/who/(name+'.json')).read_text())
                 for name in ('notification','pending','target','input')}
-          for who in ('herdr','gtx')}
+          for who in ('herdr','ikesu')}
 results = []
 for name in frames['herdr']:
-    h, g = frames['herdr'][name], frames['gtx'][name]
+    h, g = frames['herdr'][name], frames['ikesu'][name]
     assert (h['Cols'], h['Rows']) == (g['Cols'], g['Rows'])
     exceptions = {}
     if finished and name in ('target', 'input'):
@@ -30,7 +30,7 @@ for name in frames['herdr']:
                 hs, gs = dict(hc['Style']), dict(gc['Style'])
                 del hs['Fg'], gs['Fg']
                 assert hs == gs and hc['Width'] == gc['Width']
-                exceptions[x,y] = 'parent decision: viewed gtx pane clears unseen completion'
+                exceptions[x,y] = 'parent decision: viewed ikesu pane clears unseen completion'
         assert len(exceptions) in (0, 2), 'only the workspace and agent seen exception is permitted'
     differences = []
     retained = []
@@ -40,7 +40,7 @@ for name in frames['herdr']:
                 hv, gv = h['Cells'][y][x][field], g['Cells'][y][x][field]
                 if hv == gv:
                     continue
-                difference = {'x':x,'y':y,'field':field,'herdr':hv,'gtx':gv}
+                difference = {'x':x,'y':y,'field':field,'herdr':hv,'ikesu':gv}
                 if (x,y) in exceptions and field in ('Content','Style'):
                     difference['reason'] = exceptions[x,y]
                     retained.append(difference)

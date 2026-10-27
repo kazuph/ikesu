@@ -13,18 +13,18 @@ def crop(frame,box):
  x,y,w,h=box
  return [row[x:x+w] for row in frame['Cells'][y:y+h]]
 def explicit(case,box,title='日本語',body='本文'):
- frames={who:load(case,who,'toast') for who in ['herdr','gtx']}
- h,g=[crop(frames[who],box) for who in ['herdr','gtx']]
+ frames={who:load(case,who,'toast') for who in ['herdr','ikesu']}
+ h,g=[crop(frames[who],box) for who in ['herdr','ikesu']]
  assert h==g,(case,'toast cells/styles differ')
  assert h[0][0]['Content']=='┌' and h[-1][-1]['Content']=='┘',(case,'missing frame')
- for who in ['herdr','gtx']:
+ for who in ['herdr','ikesu']:
   reply=entries(case,who)[0]['reply']
   assert reply.get('result')=={'type':'notification_show','shown':True,'reason':'shown'},(case,who,reply)
  proof['cases'][case]={'status':'PASS','box':box,'compared':'all toast cells, width, foreground/background, attributes'}
 for kind,height in [('empty',3),('body',4)]:explicit('toast-explicit-'+kind,(148,0,12,height))
 explicit('toast-trim',(148,0,12,4))
 for position,box in [('top-left',(0,0,12,4)),('top-right',(148,0,12,4)),('bottom-left',(0,41,12,4)),('bottom-right',(148,41,12,4))]:explicit('toast-position-'+position,box)
-for who in ['herdr','gtx']:
+for who in ['herdr','ikesu']:
  e=entries('toast-blank',who)[0]['reply']
  assert e.get('error')=={'code':'invalid_params','message':'notification title is empty'},(who,e)
  e=entries('toast-probe',who)
@@ -33,7 +33,7 @@ for who in ['herdr','gtx']:
  for i in [0,5,6,7]:assert e[i]['reply']['error']['code']=='invalid_request',(who,i,e[i])
 proof['cases']['validation_and_busy']={'status':'PASS','note':'Deserializer message text is product-specific; error code/schema rejection match. Empty-title message matches exactly.'}
 background=[]
-for who in ['herdr','gtx']:
+for who in ['herdr','ikesu']:
  e=entries('toast-japanese',who)
  pid=next(x['reply']['result']['root_pane']['pane_id'] for x in e if x['method']=='workspace.create')
  frame=load('toast-japanese',who,'toast');c=crop(frame,(144,0,16,4))
@@ -45,7 +45,7 @@ for who in ['herdr','gtx']:
  background.append(c)
 assert background[0]==background[1],'background toast cells/styles differ beyond actual target identifier'
 proof['cases']['background_japanese']={'status':'PASS','box':[144,0,16,4]}
-for who in ['herdr','gtx']:
+for who in ['herdr','ikesu']:
  for shot,visible in [('initial',True),('dismissed',True),('retry',True),('after-eight',False),('after-ten',False),('third',True)]:
   f=load('toast-lifecycle',who,shot)
   assert (f['Cells'][1][149]['Content']=='●')==visible,(who,shot)
@@ -63,13 +63,13 @@ for who in ['herdr','gtx']:
 proof['cases']['lifecycle_and_target']={'status':'PASS','checks':['targetless click retains toast','busy preserves current toast','expires','new notification after expiry','background target navigation and dismissal']}
 tick=int(re.search(r'tickInterval\s*=\s*(\d+)\s*\*\s*time.Millisecond',(Path(__file__).resolve().parents[2]/'internal/tui/tui.go').read_text())[1])
 clocks={}
-for who in ['herdr','gtx']:
+for who in ['herdr','ikesu']:
  initial=load('toast-lifecycle',who,'initial');ended=load('toast-lifecycle',who,'after-ten')
  clocks[who]=ended['CellChangedUnixMs'][1][149]-initial['CellChangedUnixMs'][1][149]
-assert abs(clocks['herdr']-clocks['gtx'])<=tick,('visible lifetime',clocks,tick)
+assert abs(clocks['herdr']-clocks['ikesu'])<=tick,('visible lifetime',clocks,tick)
 proof['cases']['explicit_lifetime']={'status':'PASS','measured_ms':clocks,'allowed_difference_ms':tick,'source':'existing renderer tickInterval'}
 for path in root.glob('*/herdr/cleanup.json'):
- for who in ['herdr','gtx']:
+ for who in ['herdr','ikesu']:
   cleanup=json.loads(path.with_name('cleanup.json').parent.parent.joinpath(who,'cleanup.json').read_text())
   assert cleanup['exit']==0,(path,who,cleanup)
 (root/'stage6a-notification-gate.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2)+'\n')

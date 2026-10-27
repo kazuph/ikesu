@@ -9,7 +9,7 @@ import tempfile
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
-p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
+p.add_argument('--ikesu',dest='ikesu', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--config-file', required=True)
 p.add_argument('--out', required=True)
@@ -25,7 +25,7 @@ for host in ['plain', 'ghostty', 'wezterm', 'wezterm-pane', 'tmux']:
         if host == 'wezterm-pane':
             env['WEZTERM_PANE'] = '0'
         command = ['python3', str(here/'observe.py'), '--herdr', a.herdr,
-                   '--ikesu', a.gtx, '--ptyrun', a.ptyrun, '--config-file', a.config_file,
+                   '--ikesu', a.ikesu, '--ptyrun', a.ptyrun, '--config-file', a.config_file,
                    '--steps', str(here/'stage1-host.steps'),
                    '--out', str(Path(a.out)/host/mode), '--clipboard-sandbox']
         if mode == 'server':

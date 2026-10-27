@@ -1,4 +1,4 @@
-# gtx を herdr 実物の細かい操作感にそろえる段階の計画（SPEC に書かれていない細部）
+# ikesu を herdr 実物の細かい操作感にそろえる段階の計画（SPEC に書かれていない細部）
 
 作成: 2026-10-09（親 Claude）。
 
@@ -6,38 +6,38 @@
 
 店長（2026-10-09）: 「一度どれでも任意のメニューを開くと他の領域をクリックしても消えないようです。細かいですが、こういう仕様に書かれなさそうな細かい既存 herdr 仕様にも追従してほしいです。」
 
-親の確認（保存画面 `.artifacts/parity/start/`。手順は `steps`（herdr）・`gsteps`（gtx））: 右クリックでペインメニューを開き、ペインの別の場所をクリックしてから `echo MARK` と打つと、
+親の確認（保存画面 `.artifacts/parity/start/`。手順は `steps`（herdr）・`gsteps`（ikesu））: 右クリックでペインメニューを開き、ペインの別の場所をクリックしてから `echo MARK` と打つと、
 
 - herdr: クリックでメニューが閉じ、続けて打った文字がシェルに届く（`h-after-click.txt`・`h-after-type.txt`）
-- gtx（main 9347b07）: メニューが開いたままで、打った文字もシェルに届かない（`g-after-click.txt`・`g-after-type.txt`）
+- ikesu（main 9347b07）: メニューが開いたままで、打った文字もシェルに届かない（`g-after-click.txt`・`g-after-type.txt`）
 
 ## 0. 作り方の決まり（最優先）
 
-- herdr のソースコード（`~/src/github.com/kazuph/herdr` の `src`・`tests` などの実装とテスト）を読まない。挙動は mini で herdr の配布用ビルド（`~/bench-terrace.noindex/work/herdr-target/release/herdr --no-session`）と gtx に同じ ptyrun の手順を流し、保存した画面を比べて決める。herdr は隔離した `HERDR_STATE_DIR`・`XDG_CONFIG_HOME`・`XDG_STATE_HOME`・`XDG_DATA_HOME` で動かす（最初の案内画面は Enter 2回で閉じる。`start/steps` を参照）。店長が使っている稼働中の herdr には触らない。
-- 細かい操作の挙動は herdr の実物を正とする。SPEC の文と実物が食い違うときも実物に合わせ、RESULT.md の表に「SPEC の文」「実物」「gtx を合わせた結果」を書く。例: SPEC G6 には「keybind help だけ popup 外 click で閉じる」とあるが、実物はペインメニューも外側クリックで閉じる → 実物に合わせる。ただし、安全のために SPEC がデグレ判定で明示している決まり（入力前の拒否、fail closed、誤配送の防止など）は変えずに親へ報告する。
+- herdr のソースコード（`~/src/github.com/kazuph/herdr` の `src`・`tests` などの実装とテスト）を読まない。挙動は mini で herdr の配布用ビルド（`~/bench-terrace.noindex/work/herdr-target/release/herdr --no-session`）と ikesu に同じ ptyrun の手順を流し、保存した画面を比べて決める。herdr は隔離した `HERDR_STATE_DIR`・`XDG_CONFIG_HOME`・`XDG_STATE_HOME`・`XDG_DATA_HOME` で動かす（最初の案内画面は Enter 2回で閉じる。`start/steps` を参照）。店長が使っている稼働中の herdr には触らない。
+- 細かい操作の挙動は herdr の実物を正とする。SPEC の文と実物が食い違うときも実物に合わせ、RESULT.md の表に「SPEC の文」「実物」「ikesu を合わせた結果」を書く。例: SPEC G6 には「keybind help だけ popup 外 click で閉じる」とあるが、実物はペインメニューも外側クリックで閉じる → 実物に合わせる。ただし、安全のために SPEC がデグレ判定で明示している決まり（入力前の拒否、fail closed、誤配送の防止など）は変えずに親へ報告する。
 
 ## 1. やること
 
 1. **外側クリックでメニューが閉じない問題を直す**（上の再現手順）。外側クリックで閉じたとき、そのクリックが下の領域にも届くのか（例: 別のペインのフォーカスが移る、サイドバーの別のワークスペースに切り替わる）、届かないのかも実物で確かめて合わせる。Esc・別のキー入力・メニューの外での右クリックで閉じるかどうかも同じように合わせる。
-2. **同じ種類の差を洗い出して直す**: 次の画面要素ごとに、開く・閉じる・選ぶ・取り消す・外側クリック・キー入力・ホイール・リサイズの操作を herdr と gtx の両方に流し、画面を比べる。
+2. **同じ種類の差を洗い出して直す**: 次の画面要素ごとに、開く・閉じる・選ぶ・取り消す・外側クリック・キー入力・ホイール・リサイズの操作を herdr と ikesu の両方に流し、画面を比べる。
    - 右クリックメニュー（ペイン・ワークスペース・タブ・サイドバーの空白・`[menu]`）
    - 確認ダイアログ、名前の入力欄（rename など）
    - キー一覧（help）、設定（Settings）、ポップアップのターミナル
    - サイドバー（クリック・ドラッグ・ホイール・幅ボタン・agents/jobs 欄）、タブバー（クリック・`+`・ホイール）
    - ペインの枠（タイトルのクリック・境界のドラッグ）、下部のバー、コピーモードとその抜け方
    - prefix キー（Ctrl-b）の後の各キーの反応と、prefix 中の画面表示
-   見つかった差は RESULT.md の表（画面要素・操作・herdr の結果・gtx の結果・直したか）に全部書き、すべて herdr に合わせる。
-3. 洗い出しに使った ptyrun の手順を、あとで繰り返せる形でリポジトリに残す（`tests/parity/` などに、herdr と gtx に同じ手順を流して差を出す仕組みとして置く。herdr が無い環境では飛ばす）。
+   見つかった差は RESULT.md の表（画面要素・操作・herdr の結果・ikesu の結果・直したか）に全部書き、すべて herdr に合わせる。
+3. 洗い出しに使った ptyrun の手順を、あとで繰り返せる形でリポジトリに残す（`tests/parity/` などに、herdr と ikesu に同じ手順を流して差を出す仕組みとして置く。herdr が無い環境では飛ばす）。
 
 ## 2. 守ること
 
 - 同じ時間帯に、別の実装役が `feat/plugins`（プラグイン、右クリックメニューに agent の項目を足している）と `feat/machines`（保存マシン、`[menu]` にマシンの項目を足している）を進めている。メニューの項目の中身は触らず、開閉と入力の扱いを直す。項目の並びの差を見つけたら RESULT.md に書くだけにする（後で親が取り込み時にそろえる）。
 - これまでの段階と同じ: 1ファイル 800 行まで、推測で埋めない、未対応は未対応と書く、依存ライブラリを足さない、計画1章に無い機能は作らない。
-- go build はメインの Mac でしてよい（店長の許可）。テスト・race・性能計測・ptyrun の観察は mini（同期先 `src/parity`）。自分で起動した gtx・herdr のサーバーは確かめが終わるたびに止める。
+- go build はメインの Mac でしてよい（店長の許可）。テスト・race・性能計測・ptyrun の観察は mini（同期先 `src/parity`）。自分で起動した ikesu・herdr のサーバーは確かめが終わるたびに止める。
 - 性能: 区切りごとに mini で `go test -tags perf ./tests/perf -run TestRelative`（基準は main 9347b07 の同条件ビルド）を全項目合格にする。
 
 ## 3. 進め方と確認
 
 - 区切り: メニューの外側クリック → 洗い出し → 直す（要素ごとに積み上げコミット）→ 繰り返せる比較の仕組み → 仕上げ。区切りごとに mini で gofmt・go build・go vet・go test（最後は -race も）。
-- `.artifacts/parity/RESULT.md` に、差の表と、直したものごとに herdr と gtx の保存画面を書く。確かめていない操作は未達と書く。
+- `.artifacts/parity/RESULT.md` に、差の表と、直したものごとに herdr と ikesu の保存画面を書く。確かめていない操作は未達と書く。
 - push・amend・reset・force push しない。`.artifacts/` は git add しない。

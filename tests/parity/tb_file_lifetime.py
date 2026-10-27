@@ -43,18 +43,18 @@ def main():
     with tempfile.TemporaryDirectory(prefix='tb-f-', dir='/tmp') as root_name:
         root = Path(root_name)
         env = {key: value for key, value in os.environ.items()
-               if not key.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CLAUDE', 'CODEX'))
+               if not key.startswith(('HERDR', 'IKESU', 'CLAUDE', 'CODEX'))
                and key not in ('SSH_CONNECTION', 'SSH_TTY', 'TMUX', 'STY')}
         for name in ('home', 'config', 'state', 'data', 'runtime', 'cwd'):
             (root / name).mkdir(mode=0o700)
         env.update(HOME=str(root/'home'), XDG_CONFIG_HOME=str(root/'config'),
                    XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'),
                    XDG_RUNTIME_DIR=str(root/'runtime'), HERDR_STATE_DIR=str(root/'state/h'),
-                   GTX_STATE_DIR=str(root/'state/g'), TERM='xterm-ghostty', TERM_PROGRAM='ghostty',
+                   IKESU_STATE_DIR=str(root/'state/g'), TERM='xterm-ghostty', TERM_PROGRAM='ghostty',
                    SHELL='/bin/zsh')
         config = root/'config.toml'
         config.write_text('onboarding=false\n[experimental]\nkitty_graphics=true\n')
-        env.update(HERDR_CONFIG_PATH=str(config), GTX_CONFIG=str(config))
+        env.update(HERDR_CONFIG_PATH=str(config), IKESU_CONFIG=str(config))
 
         def raw_request(method, params):
             with socket.socket(socket.AF_UNIX) as connection:
@@ -98,7 +98,7 @@ def main():
                 server = subprocess.Popen([binary, '--session', 'file-life', 'server'], cwd=root/'cwd',
                                           env=env, stdout=log, stderr=subprocess.STDOUT)
                 def discover():
-                    paths = [path for path in root.rglob('*.sock') if path.name in ('herdr.sock', 'gtx.sock')]
+                    paths = [path for path in root.rglob('*.sock') if path.name in ('herdr.sock', 'ikesu.sock')]
                     return paths[0] if len(paths) == 1 else None
                 endpoint = wait_for(discover, 'owned server socket')
                 created = request('workspace.create', {'cwd': str(root/'cwd'), 'focus': True})

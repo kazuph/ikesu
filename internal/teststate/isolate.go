@@ -44,7 +44,7 @@ func Run(run func() int) (code int) {
 	}()
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(key, "IKESU_") && !strings.HasPrefix(key, "IKESU_PERF_") || key == "IKESU" || key == "GOTERRACE" || key == "GOTERRACE_PANE_ID" {
+		if strings.HasPrefix(key, "IKESU_") && !strings.HasPrefix(key, "IKESU_PERF_") || key == "IKESU" {
 			if err := os.Unsetenv(key); err != nil {
 				fmt.Fprintln(os.Stderr, "ikesu test isolation:", err)
 				return 1

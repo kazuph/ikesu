@@ -9,12 +9,12 @@ import subprocess
 
 p = argparse.ArgumentParser()
 p.add_argument('--tb-dist', type=Path, required=True)
-p.add_argument('--ikesu','--gtx',dest='gtx', type=Path, required=True)
+p.add_argument('--ikesu',dest='ikesu', type=Path, required=True)
 p.add_argument('--out', type=Path, required=True)
 a = p.parse_args()
 a.out.mkdir(parents=True, exist_ok=True)
 remote = '/Users/kazuph/bench-terrace.noindex/work/tb-optimize/saved'
-for path in (a.tb_dist/'bin/terminal-browser', a.gtx):
+for path in (a.tb_dist/'bin/terminal-browser', a.ikesu):
     if not path.is_file():
         raise SystemExit(f'missing approved input: {path}')
 
@@ -34,18 +34,18 @@ with (a.out/'lock.log').open('w') as log:
         subprocess.run(['/usr/bin/ssh', 'mini', f'mkdir -p {remote}/bin {remote}/tb'], check=True)
         commands = [
             ['rsync', '-a', '--stats', str(a.tb_dist.resolve())+'/', f'mini:{remote}/tb/'],
-            ['rsync', '-a', '--stats', str(a.gtx.resolve()), f'mini:{remote}/bin/gtx'],
+            ['rsync', '-a', '--stats', str(a.ikesu.resolve()), f'mini:{remote}/bin/ikesu'],
         ]
         with (a.out/'copy.log').open('w') as copy_log:
             for command in commands:
                 subprocess.run(command, stdout=copy_log, stderr=subprocess.STDOUT, check=True)
         probe = subprocess.run(['/usr/bin/ssh', 'mini',
-                                f'uname -m; uptime; {remote}/bin/gtx --version; '
+                                f'uname -m; uptime; {remote}/bin/ikesu --version; '
                                 '~/bench-terrace.noindex/work/detail/herdr-0.2.57 --version; '
                                 f'cat {remote}/tb/VERSION'], capture_output=True, text=True, check=True)
         (a.out/'environment.log').write_text(probe.stdout+probe.stderr)
         (a.out/'inputs.json').write_text(json.dumps({
-            'gtx_sha256': hashlib.sha256(a.gtx.read_bytes()).hexdigest(),
+            'ikesu_sha256': hashlib.sha256(a.ikesu.read_bytes()).hexdigest(),
             'tb_version': (a.tb_dist/'VERSION').read_text().strip(),
             'tb_source': str(a.tb_dist.resolve()), 'remote_directory': remote,
             'lock': lock_command, 'commands': commands,
@@ -60,4 +60,4 @@ with (a.out/'lock.log').open('w') as log:
         lock.stdout.close()
     if lock.returncode != 0:
         raise SystemExit(f'lock holder exited {lock.returncode}')
-print('Prepared mini distribution and gtx; no application server was started.')
+print('Prepared mini distribution and ikesu; no application server was started.')

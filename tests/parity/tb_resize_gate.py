@@ -10,7 +10,7 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 a = p.parse_args()
 results = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     root = a.out/product
     raw = (root/'terminal.raw').read_bytes()
     log = (root/'run.log').read_text()
@@ -42,7 +42,7 @@ for product in ('herdr', 'gtx'):
     passed = (len(stages[0]) == 1 and stages[0] == stages[1]
               and stages[0][0]['pixels'] == 'ff000000ff00' and not any(counts.values()))
     results[product] = {'passed': passed, 'counts': counts, 'stages': stages}
-equal = results['herdr']['stages'] == results['gtx']['stages']
+equal = results['herdr']['stages'] == results['ikesu']['stages']
 report = {'scope': 'protocol retention only; native missing frames and saved-machine resize wait unverified',
           'products': results, 'equal': equal}
 (a.out/'resize-gate.json').write_text(json.dumps(report, indent=2)+'\n')

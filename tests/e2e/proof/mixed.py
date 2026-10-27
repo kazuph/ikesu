@@ -1,7 +1,7 @@
 import json, os, pathlib, socket, subprocess, tempfile, time, unittest
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 OUT=pathlib.Path(os.environ['NODIALOG_EVIDENCE_DIR'])
-NEW=OUT/'gtx'
+NEW=OUT/'ikesu'
 OLD=pathlib.Path(os.environ['NODIALOG_BASELINE_BIN'])
 PTY=OUT/'ptyrun'
 
@@ -14,13 +14,13 @@ def wait_for(predicate, label):
 
 class Mixed(unittest.TestCase):
     def run_pair(self, name, server_bin, client_bin, expects_dialog):
-        with tempfile.TemporaryDirectory(prefix='gtx-mix-',dir='/tmp') as d:
+        with tempfile.TemporaryDirectory(prefix='ikesu-mix-',dir='/tmp') as d:
             home=pathlib.Path(d); state=home/'state'; cfg=home/'config.toml'
             cfg.write_text('onboarding=false\n[session]\nresume_agents_on_restore=false\n')
             (home/'.zshrc').write_text("PS1='MIX_PROMPT> '\n")
-            env=dict(os.environ,HOME=d,ZDOTDIR=d,GTX_CONFIG=str(cfg),GTX_STATE_DIR=str(state),SHELL='/usr/bin/zsh',TERM='xterm-256color')
+            env=dict(os.environ,HOME=d,ZDOTDIR=d,IKESU_CONFIG=str(cfg),IKESU_STATE_DIR=str(state),SHELL='/usr/bin/zsh',TERM='xterm-256color')
             for key in list(env):
-                if key.startswith(('HERDR_','GOTERRACE')): env.pop(key)
+                if key.startswith(('HERDR_','IKESU')): env.pop(key)
             session='mixed'
             def cli(*args):
                 p=subprocess.run([str(NEW),'--session',session,*args],env=env,text=True,capture_output=True,timeout=15)
@@ -28,7 +28,7 @@ class Mixed(unittest.TestCase):
                 return p.stdout
             def rpc(method,params):
                 with socket.socket(socket.AF_UNIX) as c:
-                    c.settimeout(15); c.connect(str(state/session/'gtx.sock'))
+                    c.settimeout(15); c.connect(str(state/session/'ikesu.sock'))
                     c.sendall((json.dumps(dict(id='mixed',method=method,params=params))+'\n').encode())
                     r=json.loads(c.makefile('r').readline())
                     self.assertNotIn('error',r)
@@ -46,7 +46,7 @@ class Mixed(unittest.TestCase):
             server=subprocess.Popen([str(server_bin),'--session',session,'server'],env=env,stdout=server_log,stderr=subprocess.STDOUT)
             viewer=None
             try:
-                wait_for(lambda:(state/session/'gtx-client.sock').exists(),'server client socket')
+                wait_for(lambda:(state/session/'ikesu-client.sock').exists(),'server client socket')
                 viewer=subprocess.Popen([str(PTY),'-cols','120','-rows','40','-steps',str(steps),'-raw-output',str(OUT/(name+'.ansi')),'--',str(client_bin),'--session',session],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
                 wait_for(before.exists,'initial screen')
                 decision=rpc('decision.create',dict(kind='ask',title='MIX_PENDING_TITLE',options=[dict(id='yes',label='MIX_APPROVE',role='approve')]))['decision']
@@ -77,7 +77,7 @@ class Mixed(unittest.TestCase):
                 try: server.wait(timeout=15)
                 except subprocess.TimeoutExpired: server.kill(); server.wait(); self.fail('server cleanup timed out')
                 server_log.close()
-            self.assertFalse((state/session/'gtx.sock').exists(),'server socket left behind')
+            self.assertFalse((state/session/'ikesu.sock').exists(),'server socket left behind')
     def test_new_client_old_server(self): self.run_pair('new-client-old-server',OLD,NEW,False)
     def test_old_client_new_server(self): self.run_pair('old-client-new-server',NEW,OLD,True)
 if __name__=='__main__': unittest.main(verbosity=2)

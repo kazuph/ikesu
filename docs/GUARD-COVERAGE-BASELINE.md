@@ -6,7 +6,7 @@ mini の本物の Claude Code 2.1.296 を一時 HOME で実行し、普段の認
 | 起動順 | 観測した状態 | 結果 |
 |---|---|---|
 | guard 有効 → zsh ログイン pane → 手動 Claude → Bash | 印パスと enforcing は継承されるが shim PATH は /bin より後ろ | 判断待ちなしで隔離対象が消える。ai_guard ログ増加なし |
-| guard 無効 → pane → guard 有効・再読込 → Claude → Bash | 印と shim 環境なし | gtx 判断待ちなし、隔離 ai_guard が却下、ログ増加 |
+| guard 無効 → pane → guard 有効・再読込 → Claude → Bash | 印と shim 環境なし | ikesu 判断待ちなし、隔離 ai_guard が却下、ログ増加 |
 | zsh/bash ログイン pane → agent メタデータ → 実 shell | 印と shim あり、PATH の shim が後ろ | 判断待ちなしで隔離対象が消える |
 | 上記 → 起動環境を保存・新 shell に読み込み | 同じ PATH の順を継承 | 判断待ちなしで隔離対象が消える |
 | 同じ pane で agent メタデータを解除・再設定 | 印と shim は再作成される、PATH は後ろ | 判断待ちなしで隔離対象が消える |

@@ -7,16 +7,16 @@
 screen_prompts = true
 ```
 
-`gtx server reload-config` で false に切り替えると、画面監視を止め、画面由来の pending 判断待ちを cancelled にする。監視中または blocked な対応 agent がいる時だけ、画面監視の期限を設定する。
+`ikesu server reload-config` で false に切り替えると、画面監視を止め、画面由来の pending 判断待ちを cancelled にする。監視中または blocked な対応 agent がいる時だけ、画面監視の期限を設定する。
 
 ## 選択肢の説明と複数回答
 
 ```sh
-gtx decision ask --title '項目を選ぶ' --multi-select \
+ikesu decision ask --title '項目を選ぶ' --multi-select \
   --option 'summary:概要:other' --option 'evidence:証拠:other' \
   --option-desc 'summary:短い概要を含める' \
   --option-desc 'evidence:実行したコマンドと出力を含める'
-gtx decision answer <decision_id> summary evidence
+ikesu decision answer <decision_id> summary evidence
 ```
 
 `--option-desc id:text` は繰り返し指定でき、未知の id は作成前にエラーになる。既存の `--option id:label:role` と `--timeout` のミリ秒指定は変更しない。
@@ -27,7 +27,7 @@ gtx decision answer <decision_id> summary evidence
 - 複数回答は重複を除く。先頭を従来の `option_id`、2件以上を `option_ids` に保存する。
 - 古い JSON の追加項目が無くても読める。SQLite の表と既存の record 保存形式を使う。
 
-`decision watch` の created/resolved 行はこれらを含む判断待ち全体を配信する。`gtx status --json` の `server.capabilities.screen_prompt_decisions` と ping 応答で、この提供機能の有無を読める。
+`decision watch` の created/resolved 行はこれらを含む判断待ち全体を配信する。`ikesu status --json` の `server.capabilities.screen_prompt_decisions` と ping 応答で、この提供機能の有無を読める。
 
 ## 回答の安全確認
 

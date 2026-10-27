@@ -1,13 +1,13 @@
-# gtx サイドバーとワークスペース UI の段階の計画（SPEC G2）
+# ikesu サイドバーとワークスペース UI の段階の計画（SPEC G2）
 
 作成: 2026-10-08（親 Claude）。店長の方針「SPEC.md のとおりに全部実装する。優先順位は無い」と、リポジトリの `AGENTS.md`「仕様から実装する。移植しない」に基づく。
 
 ## 0. 作り方の決まり（最優先）
 
 - herdr のソースコード（`~/src/github.com/kazuph/herdr` の `src`・`tests` などの実装とテスト）を読まない。
-- 仕様の正は `~/src/github.com/kazuph/herdr/SPEC.md` の G2 の文章、`docs/ref/` の API スキーマと CLI help。`herdr` → `gtx`、`HERDR_*` → `GTX_*` と読み替える。
+- 仕様の正は `~/src/github.com/kazuph/herdr/SPEC.md` の G2 の文章、`docs/ref/` の API スキーマと CLI help。`herdr` → `ikesu`、`HERDR_*` → `IKESU_*` と読み替える。
 - 文章で決まらない見た目や操作の細部は、mini で herdr の配布用ビルドを別に動かして観察する（`~/bench-terrace.noindex/work/herdr-target/release/herdr --no-session` を ptyrun の中で動かす。設定は `~/bench-terrace.noindex/work/hx/` を使い回す）。店長が使っている稼働中の herdr には触らない。それでも決まらなければ親へ質問する。
-- 各節の「受け入れ条件」と「デグレ判定」を、そのまま gtx の受け入れ条件として扱う。「本家」（ogulcancelik/herdr）の機能が前提の部分も、観察した挙動に合わせて gtx 独自に作る。
+- 各節の「受け入れ条件」と「デグレ判定」を、そのまま ikesu の受け入れ条件として扱う。「本家」（ogulcancelik/herdr）の機能が前提の部分も、観察した挙動に合わせて ikesu 独自に作る。
 
 ## 1. 作る節（G2 の全節）
 
@@ -27,5 +27,5 @@
 
 - 区切りは自分で決めてよい（目安: 幅と密度・並び替え → セクション → メニュー・複製・危険操作確認 → Git 統計・worktree 名 → 微細契約・popup → 仕上げ）。区切りごとに mini で gofmt・go build・go vet・go test（最後は -race も）を通してから積み上げコミット。
 - 計測・結合テスト・race は mini（`ssh mini`、`~/bench-terrace.noindex`、自分専用の同期先フォルダ）。メインの Mac では go build と軽い go test だけ。
-- `.artifacts/sidebar/RESULT.md` に、SPEC の節ごと・受け入れ条件ごとに「確かめたテスト名、または保存した画面・出力」の表を書く。確かめていない条件は未達と書く。gtx に無い仕組みが前提の条件は、理由を書いて一覧にし、最後の報告で親に出す。
+- `.artifacts/sidebar/RESULT.md` に、SPEC の節ごと・受け入れ条件ごとに「確かめたテスト名、または保存した画面・出力」の表を書く。確かめていない条件は未達と書く。ikesu に無い仕組みが前提の条件は、理由を書いて一覧にし、最後の報告で親に出す。
 - push・amend・reset・force push しない。`.artifacts/` は git add しない。

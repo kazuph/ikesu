@@ -14,7 +14,7 @@ parser.add_argument('--small', action='store_true', help='one image completely c
 parser.add_argument('--source-crop', action='store_true', help='preserve producer crop and leading pixel offsets')
 parser.add_argument('--notification', action='store_true', help='use real background-pane status transitions for an endpoint toast')
 args = parser.parse_args()
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 owned_home = str(Path.home().resolve()).startswith('/private/tmp/parity-') and Path.home().name == 'home'
 if not owned_home or endpoint and not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not an observer-owned pane')

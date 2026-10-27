@@ -49,7 +49,7 @@ for root in map(Path, sys.argv[1:]):
     cleanup = json.loads((root/'cleanup.json').read_text())
     assert len(cleanup) == 2 and all(row['reply']['result']['type'] == 'ok' for row in cleanup)
     report['products'][inputs['product']] = phases
-assert set(report['products']) == {'herdr', 'gtx'}
+assert set(report['products']) == {'herdr', 'ikesu'}
 report['passed'] = all(phase['passed'] for phases in report['products'].values() for phase in phases.values())
 (Path(sys.argv[-1])/'repaint-gate.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps(report))

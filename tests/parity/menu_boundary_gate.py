@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 root = Path(sys.argv[1])
 selected = []
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root/'parity-menu-bottom-menu-detail'/who
     bottom = json.loads((case/'pane-bottom.json').read_text())
     next_row = json.loads((case/'pane-bottom-next.json').read_text())
@@ -33,9 +33,9 @@ def box(data):
 
 for screen in ('open', 'small', 'restored'):
     panels = [box(json.loads((root/'parity-menu-resize-menu-detail'/who/(screen+'.json')).read_text()))
-              for who in ('herdr', 'gtx')]
+              for who in ('herdr', 'ikesu')]
     assert panels[0] == panels[1], (screen, panels)
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     closed = (root/'parity-menu-resize-menu-detail'/who/'closed.txt').read_text()
     assert closed.count('MENU_RESIZE_CLOSED') == 2, (who, closed)
 print('global menu resize anchor and restored input: PASS')

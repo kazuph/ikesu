@@ -9,7 +9,7 @@ root = Path(sys.argv[1])
 checks = []
 for mode, want in [('off', 7), ('retain', 31)]:
     reference = None
-    for product in ['herdr', 'gtx']:
+    for product in ['herdr', 'ikesu']:
         target = root/('reconnect-'+mode)/product
         raw = (target/'terminal.raw').read_bytes()
         pushes = [int(value) for value in re.findall(rb'\x1b\[>(\d+)u', raw)]

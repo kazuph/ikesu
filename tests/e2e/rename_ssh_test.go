@@ -21,11 +21,8 @@ import (
 // This uses an actual unprivileged OpenSSH server, ephemeral keys and homes.
 // The SSH launcher only selects its isolated config; it executes real ssh.
 func TestStageThreeSSHVersionMatrix(t *testing.T) {
-	baseline := prepareMigrationBaseline(t)
 	for _, pair := range []struct{ name, local, remote, remoteName string }{
 		{"new-new", binPath, binPath, "ikesu"},
-		{"new-old", binPath, baseline, "gtx"},
-		{"old-new", baseline, binPath, "ikesu"},
 	} {
 		t.Run(pair.name, func(t *testing.T) {
 			root, err := os.MkdirTemp("/tmp", "is-")
@@ -57,9 +54,6 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			socketName := "ikesu.sock"
-			if pair.remoteName == "gtx" {
-				socketName = "gtx.sock"
-			}
 			remoteSocket := filepath.Join(remoteHome, ".local/state", pair.remoteName, "stage3", socketName)
 			stopRemote := migrationServer(t, remoteBin, remoteHome, remoteSocket)
 			defer stopRemote()
@@ -140,8 +134,8 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 			if err = os.WriteFile(filepath.Join(launcher, "ssh"), []byte("#!/bin/sh\nexec /usr/bin/ssh -F "+machine.Quote(sshConfig)+" \"$@\"\n"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			// Explicit paths are existing deployment settings, needed for mixed versions.
-			env := append(migrationEnv(localHome), "PATH="+launcher+":"+os.Getenv("PATH"), "IKESU_MACHINE_REMOTE_BINARY="+remoteBin, "GTX_MACHINE_REMOTE_BINARY="+remoteBin)
+			// Explicit paths select the isolated current deployment.
+			env := append(migrationEnv(localHome), "PATH="+launcher+":"+os.Getenv("PATH"), "IKESU_MACHINE_REMOTE_BINARY="+remoteBin)
 			invoke := func(args ...string) []byte {
 				t.Helper()
 				cmd := exec.Command(pair.local, append([]string{"--session", "stage3"}, args...)...)
@@ -179,9 +173,6 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 			// run --machine executes a remote command through the SSH transport; use
 			// a local session for its job ledger and caller, as the normal CLI requires.
 			localNS := "ikesu"
-			if pair.local == baseline {
-				localNS = "gtx-2e01183"
-			}
 			localConfig := filepath.Join(localHome, ".config", localNS)
 			if err = os.MkdirAll(localConfig, 0700); err != nil {
 				t.Fatal(err)
@@ -190,9 +181,6 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			localSocketName := "ikesu.sock"
-			if pair.local == baseline {
-				localSocketName = "gtx.sock"
-			}
 			localSocket := filepath.Join(localHome, ".local/state", localNS, "stage3", localSocketName)
 			// The launcher is inherited by the local server's real SSH child job.
 			originalPath := os.Getenv("PATH")

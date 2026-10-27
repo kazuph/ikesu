@@ -36,7 +36,7 @@ for steps in sorted(steps_root.glob('*.steps')):
     operation = steps.stem.rsplit('-', 1)[-1]
     names = re.findall(r'^cells @OUT@/([^\s]+)\.json$', steps.read_text(), re.M)
     for name in names:
-        paths = [root / steps.stem / who / (name+'.json') for who in ('herdr', 'gtx')]
+        paths = [root / steps.stem / who / (name+'.json') for who in ('herdr', 'ikesu')]
         result = {'case': steps.stem, 'screen': name}
         if not all(p.is_file() for p in paths):
             result['status'] = 'NOT_RUN'
@@ -55,18 +55,18 @@ for steps in sorted(steps_root.glob('*.steps')):
                 for field in ('Content', 'Width', 'Style'):
                     hv, gv = h['Cells'][y][x][field], g['Cells'][y][x][field]
                     if hv != gv:
-                        d = {'x':x, 'y':y, 'field':field, 'herdr':hv, 'gtx':gv}
+                        d = {'x':x, 'y':y, 'field':field, 'herdr':hv, 'ikesu':gv}
                         diffs.append(d)
                         if not any(left <= x <= right and top <= y <= bottom
                                    for left, top, right, bottom in excluded):
                             outside.append(d)
         result.update(status='OUTSIDE_DIFF' if outside else 'ITEM_REGION_DIFF_RECORDED' if diffs else 'PASS',
-                      herdr_menu=hs, gtx_menu=gs, differences=diffs, outside_differences=outside)
+                      herdr_menu=hs, ikesu_menu=gs, differences=diffs, outside_differences=outside)
         if steps.stem == 'main-outside-right' and name == 'after':
             # Retention is checked against each product's own pre-click menu,
             # so differing menu items cannot conceal a change of menu kind.
             retained = {}
-            for who, data in (('herdr', h), ('gtx', g)):
+            for who, data in (('herdr', h), ('ikesu', g)):
                 before = json.loads((root / steps.stem / who / 'open.json').read_text())
                 retained[who] = before['Cells'] == data['Cells']
             result['main_menu_retained'] = retained

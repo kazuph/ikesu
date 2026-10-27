@@ -7,7 +7,7 @@ import sys
 
 root = Path(sys.argv[1])
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     results = {}
     for name in ('before-click', 'first-click', 'second-click', 'missing-log', 'missing-owner'):
         text = (root / product / (name + '.txt')).read_text()

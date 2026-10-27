@@ -1,17 +1,17 @@
 # プラグインと自動化
 
-`gtx plugin help` はプラグインの登録・実行・ログ・ペイン操作を説明します。
-ローカルの `gtx-plugin.toml` は `gtx plugin link <path> [--disabled]` で
+`ikesu plugin help` はプラグインの登録・実行・ログ・ペイン操作を説明します。
+ローカルの `ikesu-plugin.toml` は `ikesu plugin link <path> [--disabled]` で
 サーバー停止中にも登録でき、登録と設定・状態フォルダは session 間で共有します。
 mailbox と job は各 session に属します。
 
-`gtx wait help` は追加の待機コマンドを説明します。
-通常のコマンドには `gtx wait output <pane_id> --match <text> --source visible`
+`ikesu wait help` は追加の待機コマンドを説明します。
+通常のコマンドには `ikesu wait output <pane_id> --match <text> --source visible`
 または `--source recent`、エージェントには
-`gtx wait agent-status <pane_id> --status blocked` を使います。
+`ikesu wait agent-status <pane_id> --status blocked` を使います。
 `--regex`、`--lines N`、`--timeout MS` も指定できます。
-既存の `gtx agent wait`、`gtx send`、`gtx msg`、`gtx run` の導線は保持します。
-長い job は `gtx run` で起動し、完了通知が来たあとに `gtx log <job_id>` を読みます。
+既存の `ikesu agent wait`、`ikesu send`、`ikesu msg`、`ikesu run` の導線は保持します。
+長い job は `ikesu run` で起動し、完了通知が来たあとに `ikesu log <job_id>` を読みます。
 
 ソケットの `events.subscribe` は状態変化の購読、`events.wait` は条件待機です。
 マニフェストの `[[events]]` はイベントを別プロセスのコマンドへ渡します。

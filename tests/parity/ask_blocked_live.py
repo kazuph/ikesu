@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Observe real Claude AskUserQuestion on disposable gtx/herdr sessions.
+"""Observe real Claude AskUserQuestion on disposable ikesu/herdr sessions.
 
 No source of the reference product is inspected. Sound stays disabled; the
 unmodified client protocol is recorded by a transparent Unix socket relay.
@@ -30,10 +30,10 @@ def until(predicate, timeout, description):
 def observe(name, binary, args):
     out = Path(args.out).resolve() / name
     out.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='ask-blocked-', dir='/private/tmp/gtx-accept') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ask-blocked-', dir='/private/tmp/ikesu-accept') as tmp:
         root = Path(tmp)
         env = {k: v for k, v in os.environ.items()
-               if not k.startswith(('GTX', 'HERDR', 'CLAUDE', 'CODEX'))}
+               if not k.startswith(('IKESU', 'HERDR', 'CLAUDE', 'CODEX'))}
         for sub in ['home', 'config', 'state', 'data', 'cwd', 'zdot']:
             (root / sub).mkdir()
         (root / 'zdot/.zshrc').write_text("PS1='ASK-PROBE> '\nunset HISTFILE\n")
@@ -41,9 +41,9 @@ def observe(name, binary, args):
         config.write_text('[ui.toast]\ndelivery="terminal"\ndelay_seconds=0\n[ui.sound]\nenabled=true\n')
         env.update(HOME=str(root/'home'), XDG_CONFIG_HOME=str(root/'config'), XDG_STATE_HOME=str(root/'state'),
                    XDG_DATA_HOME=str(root/'data'), ZDOTDIR=str(root/'zdot'),
-                   GTX_STATE_DIR=str(root/'state/g'), HERDR_STATE_DIR=str(root/'state/h'),
-                   GTX_CONFIG=str(config), HERDR_CONFIG_PATH=str(config),
-                   GTX_DISABLE_SOUND='1', HERDR_DISABLE_SOUND='1', SHELL='/bin/zsh', TERM='xterm-256color', TERM_PROGRAM='ghostty')
+                   IKESU_STATE_DIR=str(root/'state/g'), HERDR_STATE_DIR=str(root/'state/h'),
+                   IKESU_CONFIG=str(config), HERDR_CONFIG_PATH=str(config),
+                   IKESU_DISABLE_SOUND='1', HERDR_DISABLE_SOUND='1', SHELL='/bin/zsh', TERM='xterm-256color', TERM_PROGRAM='ghostty')
         log = (out/'server.log').open('w')
         server = subprocess.Popen([binary, '--session', 'ask-probe', 'server'],
                                   cwd=root/'cwd', env=env, stdout=log, stderr=log)
@@ -75,7 +75,7 @@ def observe(name, binary, args):
                         raise RuntimeError(response)
                     return response['result']
 
-            if name == "gtx":
+            if name == "ikesu":
                 # Interpose only on this disposable session's existing attach socket.
                 client_path = until(lambda: next(iter(root.rglob(name+'-client.sock')), None), 10, 'client socket')
                 upstream = client_path.with_name('observed-client.sock')
@@ -214,15 +214,15 @@ def observe(name, binary, args):
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('--ikesu','--gtx',dest='gtx',required=True)
+    parser.add_argument('--ikesu',dest='ikesu',required=True)
     parser.add_argument('--herdr',required=True)
     parser.add_argument('--claude',required=True)
     parser.add_argument('--ptyrun',required=True)
     parser.add_argument('--out',required=True)
-    parser.add_argument('--only', choices=['herdr','gtx'])
+    parser.add_argument('--only', choices=['herdr','ikesu'])
     args=parser.parse_args()
     failures=[]
-    for product,binary in [('herdr',args.herdr),('gtx',args.gtx)]:
+    for product,binary in [('herdr',args.herdr),('ikesu',args.ikesu)]:
         if args.only and args.only != product:
             continue
         try: observe(product,str(Path(binary).resolve()),args)

@@ -8,7 +8,7 @@ for name in ['before-source','out','revision']:p.add_argument('--'+name,required
 p.add_argument('--migration-baseline',required=True,help='Real binary built from the legacy migration commit')
 a=p.parse_args();source=Path(__file__).resolve().parents[2];before=Path(a.before_source).resolve();out=Path(a.out).resolve();out.mkdir(parents=True,exist_ok=False)
 cache=json.loads(subprocess.check_output(['go','env','-json','GOCACHE','GOMODCACHE'],text=True))
-env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','GTX','CLAUDE','CODEX'))}
+env={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','IKESU','CLAUDE','CODEX'))}
 for name in ['home','config','state','data']:(out/name).mkdir()
 env.update(HOME=str(out/'home'),XDG_CONFIG_HOME=str(out/'config'),XDG_STATE_HOME=str(out/'state'),XDG_DATA_HOME=str(out/'data'),**cache)
 env.update(IKESU_PERF_BIN=str(out/'candidate'),IKESU_PERF_BASELINE_BIN=str(out/'baseline-main-b83c38e'),IKESU_PERF_OUT=str(out/'relative.md'))
@@ -16,7 +16,7 @@ migration=Path(a.migration_baseline).resolve()
 if not migration.is_file():raise FileNotFoundError(migration)
 # The legacy executable selects its state namespace from argv[0]. Match the
 # existing migration fixture's executable name without modifying its bytes.
-legacy=out/'gtx-2e01183';legacy.symlink_to(migration)
+legacy=out/'ikesu-2e01183';legacy.symlink_to(migration)
 env['IKESU_MIGRATION_BASE_BIN']=str(legacy)
 (out/'migration-baseline.json').write_text(json.dumps(dict(path=str(migration),invocation_path=str(legacy),sha256=hashlib.sha256(migration.read_bytes()).hexdigest()),indent=2)+'\n')
 failed=False

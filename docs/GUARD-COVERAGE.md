@@ -10,7 +10,7 @@ PROMPT_COMMAND で PATH を戻し、その実行を確認するまで enforcing 
 
 設定再読込は、既存 pane の適用状態も再確認する。見張りが無効な間に作った
 pane には、後から起動時の環境を差し込めない。その agent pane は未適用として
-`gtx guard status` の stderr と画面の警告に pane・理由・回復方法を出す。
+`ikesu guard status` の stderr と画面の警告に pane・理由・回復方法を出す。
 status の stdout JSON は変更しない。回復には guard が有効な状態で新しい pane を開き、
 そこで agent を起動し直す。PATH を保証できない shell も印と enforcing を出さず知らせる。
 
@@ -27,8 +27,8 @@ status の stdout JSON は変更しない。回復には guard が有効な状�
 
 利用者の本物の起動ファイルが PATH を変更する条件と、agent が作る起動時環境の
 snapshot を使う条件を含める。印・shim・snapshot の PATH・判断待ち ID を保存し、
-一時 HOME の ai_guard ログが増えないことを比較する。ai_guard loader が GTX の印を
-認識しない古い環境では ai_guard の関数が優先されるため、gtx での達成と数えない。
+一時 HOME の ai_guard ログが増えないことを比較する。ai_guard loader が IKESU の印を
+認識しない古い環境では ai_guard の関数が優先されるため、ikesu での達成と数えない。
 
 本物の認証は公式の CLAUDE_CONFIG_DIR で参照し、複製しない。Slack・Mac に承認を
 送らないことを事前に確かめる。Claude の許可は default と、その回の一時フォルダ内の

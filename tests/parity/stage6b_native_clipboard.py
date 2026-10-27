@@ -34,7 +34,7 @@ for case, payload in [('plain','貼付 alpha'),('controls','al\tpha\x01\nbeta')]
         body += send("printf 'alpha beta\\n'\r")+send('\x14[')+send('/')+send(key)+save('copy-'+keyname)+send('\x1b')+send('q')
     steps.write_text(body+'kill\n')
     command = ['/usr/bin/swift',str(source/'stage6b_clipboard_session.swift'),str(out),str(data),sys.executable,
-        str(source/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--ikesu',str(work/'gtx-stage6b'),
+        str(source/'observe.py'),'--herdr',str(work/'herdr-0.2.57'),'--ikesu',str(work/'ikesu-stage6b'),
         '--ptyrun',str(work/'ptyrun'),'--config-file',str(config),'--steps',str(steps),'--out',str(out/'observation'),'--silent','--server']
     result = subprocess.run(command)
     if result.returncode:
@@ -48,7 +48,7 @@ for case in ('plain','controls'):
         assert clipboard['backup_verified'] and clipboard['restored_exactly'] and clipboard['ssh_gui_roundtrip']
         values = {}
         errors = []
-        for product in ('herdr','gtx'):
+        for product in ('herdr','ikesu'):
             for key in ('command','control'):
                 target = folder/'observation'/product
                 copy = (target/f'copy-{key}.txt').read_text().splitlines()[-1].strip()

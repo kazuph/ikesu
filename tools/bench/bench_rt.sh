@@ -36,6 +36,6 @@ for round in 1 2 3; do
   run herdr_rel_r$round env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_ACTIVE_PANE_ID -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH XDG_CONFIG_HOME=$HX/cfg XDG_STATE_HOME=$HX/state $W/herdr-target/release/herdr --no-session
   run mt_rel_r$round $MT/release/build/cmd/mt/mt.exe
   run mt_dev_r$round $MT/debug/build/cmd/mt/mt.exe
-  run gtx_rel_r$round $W/gtx-rel
+  run ikesu_rel_r$round $W/ikesu-rel
 done
-stat -f '%z %N' $W/herdr-target/release/herdr $MT/release/build/cmd/mt/mt.exe $MT/debug/build/cmd/mt/mt.exe $W/gtx-rel $W/gtx-dev
+stat -f '%z %N' $W/herdr-target/release/herdr $MT/release/build/cmd/mt/mt.exe $MT/debug/build/cmd/mt/mt.exe $W/ikesu-rel $W/ikesu-dev

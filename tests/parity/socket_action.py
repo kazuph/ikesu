@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('GTX_SOCKET_PATH')
+endpoint = os.environ.get('HERDR_SOCKET_PATH') or os.environ.get('IKESU_SOCKET_PATH')
 if not endpoint or not str(Path(endpoint).resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: socket is not in the runner-owned temporary state')
 operation = sys.argv[1]
@@ -44,31 +44,31 @@ if operation == 'workspace-list':
 elif operation == 'tab-list':
     method, params = 'tab.list', {}
 elif operation == 'pane-self':
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact pane identity absent')
     method, params = 'pane.get', {'pane_id':pane}
 elif operation == 'plugin-open':
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact pane identity absent')
-    if os.environ.get('GTX_SOCKET_PATH'):
+    if os.environ.get('IKESU_SOCKET_PATH'):
         root = Path.home()/'review-plugin'
         root.mkdir(exist_ok=True)
-        (root/'gtx-plugin.toml').write_text('id="parity.review"\nname="Parity review"\nversion="0.1.0"\nmin_gtx_version="0.1.0"\nplatforms=["macos"]\n[[panes]]\nid="shell"\ntitle="Shell"\ncommand=["/usr/bin/env", "PS1=POPUP> ", "/bin/zsh", "-f"]\n')
+        (root/'ikesu-plugin.toml').write_text('id="parity.review"\nname="Parity review"\nversion="0.1.0"\nmin_ikesu_version="0.1.0"\nplatforms=["macos"]\n[[panes]]\nid="shell"\ntitle="Shell"\ncommand=["/usr/bin/env", "PS1=POPUP> ", "/bin/zsh", "-f"]\n')
         request('plugin.link', {'path':str(root)})
         method, params = 'plugin.pane.open', {'plugin_id':'parity.review', 'entrypoint':'shell', 'placement':'popup', 'target_pane_id':pane, 'cwd':os.getcwd(), 'width':60, 'height':20}
     else:
         method, params = 'pane.command.execute', {'pane_id':pane, 'action':'popup', 'command':"env PS1='POPUP> ' /bin/zsh -f", 'width':60, 'height':20}
 elif operation == 'open':
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact pane identity absent')
     method = 'pane.command.execute'
     params = {'pane_id': pane, 'action': 'popup',
               'command': "env PS1='POPUP> ' /bin/zsh -f", 'width': 60, 'height': 20}
 elif operation in ('report-state', 'report-other-state'):
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if operation == 'report-other-state':
         owners = json.loads((Path.home()/'parity-popup-owners.json').read_text())
         panes = request('pane.list', {'workspace_id':owners['other']})['result']['panes']
@@ -84,7 +84,7 @@ elif operation in ('report-state', 'report-other-state'):
 elif operation == 'close':
     method, params = 'popup.close', {}
 elif operation == 'create-other':
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact owner pane absent')
     owner = request('pane.get', {'pane_id':pane})['result']['pane']['workspace_id']
@@ -123,7 +123,7 @@ elif operation == 'create-section-overflow':
     (Path.home()/'parity-section-overflow.json').write_text(json.dumps(workspaces)+'\n')
     raise SystemExit(0)
 elif operation == 'create-job-overflow':
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact caller pane absent')
     pane = request('pane.get', {'pane_id':pane})['result']['pane']['pane_id']
@@ -137,7 +137,7 @@ elif operation == 'create-job-overflow':
     (Path.home()/'parity-job-overflow.json').write_text(json.dumps(jobs)+'\n')
     raise SystemExit(0)
 elif operation == 'start-job':
-    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('GTX_PANE_ID')
+    pane = os.environ.get('HERDR_PANE_ID') or os.environ.get('IKESU_PANE_ID')
     if not pane:
         raise SystemExit('NOT_RUN: exact caller pane absent')
     resolved = request('pane.get', {'pane_id': pane})

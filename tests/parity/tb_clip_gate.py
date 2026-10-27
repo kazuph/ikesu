@@ -10,7 +10,7 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 a = p.parse_args()
 results = {}
-for name in ('herdr', 'gtx'):
+for name in ('herdr', 'ikesu'):
     root = a.out/name
     runtime = json.loads((root/'runtime-json.json').read_text())
     fixture = json.loads(runtime['home/tb-clip-input.json'])

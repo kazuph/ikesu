@@ -7,7 +7,7 @@ import subprocess
 
 p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
-p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
+p.add_argument('--ikesu',dest='ikesu', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--config-file', required=True)
 p.add_argument('--out', required=True)
@@ -28,14 +28,14 @@ for mode in ['local', 'server']:
         env.pop('WEZTERM_PANE', None)
         env['TERM_PROGRAM'] = 'ghostty'
         command = ['python3', str(here/'observe.py'), '--herdr', a.herdr,
-                   '--ikesu', a.gtx, '--ptyrun', a.ptyrun, '--config-file', a.config_file,
+                   '--ikesu', a.ikesu, '--ptyrun', a.ptyrun, '--config-file', a.config_file,
                    '--steps', str(procedure), '--out', str(Path(a.out)/mode/procedure.stem),
                    '--clipboard-sandbox']
         if mode == 'server':
             command.append('--server')
         print(mode, procedure.stem, flush=True)
         subprocess.run(command, env=env, check=True)
-        for name in ['herdr', 'gtx']:
+        for name in ['herdr', 'ikesu']:
             log = Path(a.out)/mode/procedure.stem/name/'run.log'
             if 'TIMEOUT' in log.read_text():
                 raise RuntimeError('procedure did not reach its required state: ' + str(log))

@@ -10,28 +10,28 @@ if len(sys.argv) > 2:
     clock = Path(sys.argv[2])
     reference = json.loads((root/'reference.json').read_text())
     clock_reference = json.loads((clock/'reference.json').read_text())
-    for field in ('herdr_sha256', 'gtx_sha256', 'config'):
+    for field in ('herdr_sha256', 'ikesu_sha256', 'config'):
         assert reference[field] == clock_reference[field], ('different animation inputs', field)
     animation = json.loads((clock/'agent-clock-gate.json').read_text())
     assert animation['comparisons'] and all(not row['differences'] for row in animation['comparisons'])
-    for h, g in zip(animation['proof']['herdr'], animation['proof']['gtx']):
+    for h, g in zip(animation['proof']['herdr'], animation['proof']['ikesu']):
         assert (h['x'], h['y']) == (g['x'], g['y'])
         assert min(h['intervals_ms']) <= g['median_ms'] <= max(h['intervals_ms'])
         assert min(g['intervals_ms']) <= h['median_ms'] <= max(g['intervals_ms'])
-    for who in ('herdr', 'gtx'):
+    for who in ('herdr', 'ikesu'):
         runtime = json.loads((root/who/'runtime-json.json').read_text())
         reports = [r for r in json.loads(runtime['home/parity-api-actions.json']) if r['method'] == 'pane.report_agent']
         assert len(reports) == 1 and reports[0]['params']['state'] == 'working' and 'error' not in reports[0]['response']
 proof = json.loads((root/'age-proof.json').read_text())
-assert proof.keys() == {'herdr', 'gtx'}
-assert [p['screen'] for p in proof['herdr']] == [p['screen'] for p in proof['gtx']]
+assert proof.keys() == {'herdr', 'ikesu'}
+assert [p['screen'] for p in proof['herdr']] == [p['screen'] for p in proof['ikesu']]
 results = []
 for index, row in enumerate(proof['herdr']):
     name = row['screen']
-    frames = [json.loads((root/who/(name+'.json')).read_text()) for who in ('herdr','gtx')]
+    frames = [json.loads((root/who/(name+'.json')).read_text()) for who in ('herdr','ikesu')]
     assert (frames[0]['Cols'], frames[0]['Rows']) == (frames[1]['Cols'], frames[1]['Rows'])
     age_cells = set()
-    for who, frame in zip(('herdr','gtx'), frames):
+    for who, frame in zip(('herdr','ikesu'), frames):
         matches = [y for y, cells in enumerate(frame['Cells'])
                    if 'PARITY_' in ''.join(c['Content'] for c in cells[:25])]
         assert len(matches) == 1, 'missing or ambiguous job row'
@@ -42,7 +42,7 @@ for index, row in enumerate(proof['herdr']):
     differences = []
     phases = []
     if animation is not None:
-        for h, g in zip(animation['proof']['herdr'], animation['proof']['gtx']):
+        for h, g in zip(animation['proof']['herdr'], animation['proof']['ikesu']):
             x, y = h['x'], h['y']
             if y >= frames[0]['Rows'] or x >= frames[0]['Cols']:
                 continue  # Resizing can remove the agents-panel row entirely.
@@ -63,7 +63,7 @@ for index, row in enumerate(proof['herdr']):
                     continue
                 if key == 'Content' and (x,y) in phases:
                     continue
-                if h[key]!=g[key]: differences.append({'x':x,'y':y,'field':key,'herdr':h[key],'gtx':g[key]})
+                if h[key]!=g[key]: differences.append({'x':x,'y':y,'field':key,'herdr':h[key],'ikesu':g[key]})
     results.append({'screen':name,'differences':differences,'timestamp_proven_age_cells':sorted(age_cells), 'cycle_proven_phase_cells': phases})
     print(name, 'PASS' if not differences else 'DIFFERENT',len(differences))
 (root/'jobs-frame-gate.json').write_text(json.dumps(results,ensure_ascii=False,indent=2)+'\n')

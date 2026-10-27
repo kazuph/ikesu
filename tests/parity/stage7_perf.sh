@@ -1,12 +1,13 @@
 #!/bin/sh
+# 比べる版は cmd/ikesu を持つ版（改名後）。
 set -eu
 root="$HOME/bench-terrace"
 . "$root/env.sh"
 out="$root/work/stage7-perf"
 mkdir -p "$out"
 go version > "$out/build.txt"
-cd "$root/work/stage7-baseline-dd2168c"
-go build -o "$out/baseline" ./cmd/gtx
+cd "$root/work/stage7-baseline-70579fe"
+go build -o "$out/baseline" ./cmd/ikesu
 cd "$root/work/stage7-src"
 go build -o "$out/candidate" ./cmd/ikesu
 sha256sum "$out/baseline" "$out/candidate" >> "$out/build.txt"

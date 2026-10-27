@@ -2,7 +2,7 @@ import json, os, shlex, socket, subprocess, sys, tempfile, time
 from pathlib import Path
 binary, ptyrun, procedure, output = map(lambda s:Path(s).resolve(),sys.argv[1:])
 output.mkdir(parents=True,exist_ok=True)
-base={k:v for k,v in os.environ.items() if not k.startswith(('GTX','HERDR','CODEX','CLAUDE'))}
+base={k:v for k,v in os.environ.items() if not k.startswith(('IKESU','HERDR','CODEX','CLAUDE'))}
 with tempfile.TemporaryDirectory(prefix='tdm-',dir='/tmp') as tmp, tempfile.TemporaryDirectory(prefix='tab-drag-keys-',dir=Path.home()/'bench-terrace.noindex/work') as keytmp:
  root=Path(tmp)
  envs={}
@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory(prefix='tdm-',dir='/tmp') as tmp, tempfile.Temp
   r=root/role
   for name in ['home','config','state','data','zdot']: (r/name).mkdir(parents=True)
   (r/'zdot/.zshrc').write_text("PS1='PARITY> '\nunset HISTFILE\nSAVEHIST=0\n")
-  env=dict(base,HOME=str(r/'home'),XDG_CONFIG_HOME=str(r/'config'),XDG_STATE_HOME=str(r/'state'),XDG_DATA_HOME=str(r/'data'),GTX_STATE_DIR=str(r/'state/g'),ZDOTDIR=str(r/'zdot'),SHELL='/bin/zsh')
+  env=dict(base,HOME=str(r/'home'),XDG_CONFIG_HOME=str(r/'config'),XDG_STATE_HOME=str(r/'state'),XDG_DATA_HOME=str(r/'data'),IKESU_STATE_DIR=str(r/'state/g'),ZDOTDIR=str(r/'zdot'),SHELL='/bin/zsh')
   envs[role]=env
  # A local SSH daemon with newly generated test keys; no owner's SSH files used.
  for name in ['host','identity']:
@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='tdm-',dir='/tmp') as tmp, tempfile.Temp
  servers=[]
  def request(role,method,params={}):
   with socket.socket(socket.AF_UNIX) as sock:
-   sock.settimeout(5);sock.connect(str(root/role/'state/g/gtx-tab-drag/parity/gtx.sock'));sock.sendall(json.dumps({'id':'drag-proof','method':method,'params':params}).encode()+b'\n')
+   sock.settimeout(5);sock.connect(str(root/role/'state/g/ikesu-tab-drag/parity/ikesu.sock'));sock.sendall(json.dumps({'id':'drag-proof','method':method,'params':params}).encode()+b'\n')
    b=b''
    while b'\n' not in b:b+=sock.recv(65536)
   result=json.loads(b.split(b'\n')[0]);assert 'error' not in result,result;return result
@@ -47,17 +47,17 @@ with tempfile.TemporaryDirectory(prefix='tdm-',dir='/tmp') as tmp, tempfile.Temp
    stream=(output/(role+'-server.log')).open('w')
    proc=subprocess.Popen([str(binary),'--session','parity','server'],env=env,cwd=root/role/'home',stdout=stream,stderr=stream);servers.append((role,proc,stream))
    deadline=time.monotonic()+10
-   while not (root/role/'state/g/gtx-tab-drag/parity/gtx.sock').exists():
-    if proc.poll() is not None or time.monotonic()>deadline:raise RuntimeError('isolated gtx server unavailable')
+   while not (root/role/'state/g/ikesu-tab-drag/parity/ikesu.sock').exists():
+    if proc.poll() is not None or time.monotonic()>deadline:raise RuntimeError('isolated ikesu server unavailable')
     time.sleep(.02)
    ws=request(role,'workspace.list')['result']['workspaces']
    if not ws:request(role,'workspace.create',{'cwd':str(root/role/'home'),'label':role,'focus':True})
    else:request(role,'workspace.rename',{'workspace_id':ws[0]['workspace_id'],'label':role})
   wrapper=root/'remote-endpoint'
-  wrapper.write_text('#!/bin/sh\n'+''.join('export '+k+'='+shlex.quote(v)+'\n' for k,v in envs['remote'].items() if k in ['HOME','XDG_CONFIG_HOME','XDG_STATE_HOME','XDG_DATA_HOME','GTX_STATE_DIR','ZDOTDIR','SHELL'])+'exec '+shlex.quote(str(binary))+' "$@"\n');wrapper.chmod(0o700)
-  catalog=root/'local/state/g/gtx-tab-drag/parity/machines.json'
+  wrapper.write_text('#!/bin/sh\n'+''.join('export '+k+'='+shlex.quote(v)+'\n' for k,v in envs['remote'].items() if k in ['HOME','XDG_CONFIG_HOME','XDG_STATE_HOME','XDG_DATA_HOME','IKESU_STATE_DIR','ZDOTDIR','SHELL'])+'exec '+shlex.quote(str(binary))+' "$@"\n');wrapper.chmod(0o700)
+  catalog=root/'local/state/g/ikesu-tab-drag/parity/machines.json'
   catalog.write_text(json.dumps([dict(id='m_drag_fixture',label='drag-fixture',target='drag-fixture',session='parity',enabled=True)]))
-  env=envs['local'];env['GTX_MACHINE_REMOTE_BINARY']=str(wrapper)
+  env=envs['local'];env['IKESU_MACHINE_REMOTE_BINARY']=str(wrapper)
   steps=output/'steps'
   steps.write_text('sleep 3s\nclicktext "remote"\nsleep 1s\nclicktext "remote"\nsleep 1s\nscreen '+str(output/'selected.txt')+'\ncells '+str(output/'selected.json')+'\n'+procedure.read_text().replace('@OUT@',str(output)))
   runlog=(output/'run.log').open('w')

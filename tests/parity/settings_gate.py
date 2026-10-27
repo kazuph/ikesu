@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require measured small Settings frames, retaining the gtx product name."""
+"""Require measured small Settings frames, retaining the ikesu product name."""
 import json
 from pathlib import Path
 import sys
@@ -18,7 +18,7 @@ for scenario, expected in [('settings-size', sizes), ('settings-height-sections'
         # Only these saved toasts frames show the project-specific product name.
         assert r['screen'] in {f's2-h{h}.json' for h in range(17, 24)}, r
         assert r['status'] == 'DIFFERENT_CELLS' and r['difference_count'] == 5, r
-        assert [(d['x'], d['y'], d['field'], d['herdr'], d['gtx'])
+        assert [(d['x'], d['y'], d['field'], d['herdr'], d['ikesu'])
                 for d in r['differences']] == [
-            (32+i, 11, 'Content', h, g) for i, (h, g) in enumerate(zip('herdr', 'gtx  '))], r
+            (32+i, 11, 'Content', h, g) for i, (h, g) in enumerate(zip('herdr', 'ikesu  '))], r
 print('PASS: all 65 Settings frames; only the exact documented product-name cells differ')

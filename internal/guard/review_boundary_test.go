@@ -29,7 +29,7 @@ func TestReviewedShellBoundaries(t *testing.T) {
 	if e = json.Unmarshal(data, &cases); e != nil {
 		t.Fatal(e)
 	}
-	replace := strings.NewReplacer("_gtx_guard_", "_ikesu_guard_", "${ROOT}", root, "${GUARD}", guard, "${TARGET}", target)
+	replace := strings.NewReplacer("${ROOT}", root, "${GUARD}", guard, "${TARGET}", target)
 
 	for _, tc := range cases {
 		t.Run(replace.Replace(tc.Line), func(t *testing.T) {

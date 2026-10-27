@@ -15,23 +15,23 @@
 
 ## 実装と確認の対応
 
-既存の gtx 保存形式へ変換し、既存の model.Restore と正確な ResumeCommand を使う。
+既存の ikesu 保存形式へ変換し、既存の model.Restore と正確な ResumeCommand を使う。
 既存の API の引数・出力は変更しない。取り込み専用の追加コマンドと追加メソッドに閉じる。
-停止中は gtx セッションのロックを保持して既存保存内容へ追加し、稼働中は app loop 内で既存 pane を保ったまま追加する。
+停止中は ikesu セッションのロックを保持して既存保存内容へ追加し、稼働中は app loop 内で既存 pane を保ったまま追加する。
 保存参照が曖昧・不正なら shell と理由を一覧に示す。壊れた構造・未知フィールド・未対応版は書き込み前に拒否する。
 
 取り込み一覧、確認キャンセル、dry-run 無変更、構造・フォーカス対応、追加時の採番、正確 ID の argv、herdr 接続/ロック時の shell、エラー時の無変更をテストする。
 
 ## zoom の追加許可
 
-親の追加指示（2026-10-14）により、gtx のタブ保存へ省略可能な `zoomed`（zoom 対象 pane ID）を追加する。
+親の追加指示（2026-10-14）により、ikesu のタブ保存へ省略可能な `zoomed`（zoom 対象 pane ID）を追加する。
 既存項目の意味・名前・版番号は変更しない。欠落・0 は zoom なし。
 herdr の `zoomed=true` は保存時に focused が指す pane を zoom 対象として変換する。
-取り込み時の採番で zoom 対象も置き換える。gtx 自身の保存・再起動復元、旧ファイル互換を確認する。
+取り込み時の採番で zoom 対象も置き換える。ikesu 自身の保存・再起動復元、旧ファイル互換を確認する。
 
 ## 証拠の再現
 
-`go build -o .artifacts/import-herdr/gtx ./cmd/gtx` の後、
-`python3 tests/import_herdr/verify_live.py --binary .artifacts/import-herdr/gtx --source .artifacts/import-herdr/source --output .artifacts/import-herdr` を使う。
+`go build -o .artifacts/import-herdr/ikesu ./cmd/ikesu` の後、
+`python3 tests/import_herdr/verify_live.py --binary .artifacts/import-herdr/ikesu --source .artifacts/import-herdr/source --output .artifacts/import-herdr` を使う。
 入力ファイルを一時フォルダへ再度写してから検証する。全 agent 起動を偽実行ファイルに限定し、元の state には書かない。
-画面は実際の gtx クライアントを PTY へ接続して ANSI を保存し、保存データの全構造・比率・cwd・focus・zoom を機械比較する。
+画面は実際の ikesu クライアントを PTY へ接続して ANSI を保存し、保存データの全構造・比率・cwd・focus・zoom を機械比較する。

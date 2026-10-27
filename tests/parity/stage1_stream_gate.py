@@ -7,7 +7,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 expected = b'\x1b[200~first\nsecond\n\x1b[201~' + '日\x1b日END'.encode()
 results = {}
-for name in ['herdr', 'gtx']:
+for name in ['herdr', 'ikesu']:
     records = [json.loads(line) for line in (root/name/'received.jsonl').read_text().splitlines()]
     received = b''.join(bytes.fromhex(record['hex']) for record in records)
     results[name] = {'received_hex': received.hex(), 'expected_hex': expected.hex(),

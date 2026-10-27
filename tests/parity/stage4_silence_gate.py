@@ -13,7 +13,7 @@ for case in sorted(root.iterdir()):
     reference = json.loads((case / 'reference.json').read_text())
     assert reference['sound_disabled'] is True, case
     checked = []
-    for product in ('herdr', 'gtx'):
+    for product in ('herdr', 'ikesu'):
         configs = json.loads((case / product / 'config-files.json').read_text())
         content = configs[f'config/{product}/config.toml']
         sound = tomllib.loads(content)['ui']['sound']

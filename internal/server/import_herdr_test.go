@@ -101,7 +101,7 @@ func TestImportHerdrRejectChangedSourceAndSpawnFailureWithoutStateChange(t *test
 	}
 }
 
-func TestGtxZoomSurvivesSavedSessionRestart(t *testing.T) {
+func TestIkesuZoomSurvivesSavedSessionRestart(t *testing.T) {
 	teststate.Lock(t)
 	base := teststate.TempDir(t)
 	teststate.Setenv(t, "IKESU_STATE_DIR", base)

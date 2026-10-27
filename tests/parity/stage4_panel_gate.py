@@ -7,7 +7,7 @@ import sys
 
 root = Path(sys.argv[1])
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     first = {}
     for name in ('agent-initial', 'agent-down', 'agent-return', 'job-initial', 'job-down', 'job-return'):
         line = (root / product / (name + '.txt')).read_text().splitlines()[26][:25]
@@ -21,6 +21,6 @@ for product in ('herdr', 'gtx'):
     assert first['job-initial'] == 'ROW_20', first
     assert first['job-down'] == first['job-return'] == 'ROW_19', first
     proof[product] = first
-assert proof['herdr'] == proof['gtx']
+assert proof['herdr'] == proof['ikesu']
 proof['A26'] = 'PASS'
 print(json.dumps(proof, ensure_ascii=False, indent=2))

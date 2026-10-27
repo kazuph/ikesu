@@ -13,7 +13,7 @@ for case in cases:
     reference = json.loads((case/'reference.json').read_text())
     assert reference['herdr_version'] == 'herdr 0.2.57', reference
     assert reference['sound_disabled'] is True, case
-    for app in ('herdr', 'gtx'):
+    for app in ('herdr', 'ikesu'):
         saved = json.loads((case/app/'config-files.json').read_text())
         assert len(saved) == 1, (case, app, saved.keys())
         config = tomllib.loads(next(iter(saved.values())))
@@ -42,7 +42,7 @@ for case in cases:
 wheel = root/'stage3-wheel'
 if wheel.is_dir():
     boxes = {}
-    for app in ('herdr', 'gtx'):
+    for app in ('herdr', 'ikesu'):
         cells = json.loads((wheel/app/'popup.json').read_text())['Cells']
         starts = [(x,y) for y,row in enumerate(cells) for x,c in enumerate(row) if c.get('Content') == '┌']
         assert len(starts) == 2, (app, starts)
@@ -55,7 +55,7 @@ if wheel.is_dir():
         outer, popup = rectangles
         assert popup[2] == outer[2]*80//100 and popup[3] == outer[3]*80//100, (app, rectangles)
         boxes[app] = popup
-    assert boxes['herdr'] == boxes['gtx'], boxes
+    assert boxes['herdr'] == boxes['ikesu'], boxes
     summary.append({'popup_dimensions': boxes, 'status':'PASS'})
 (root/'config-gate.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2)+'\n')
 print(f'PASS: {len(cases)} configurations, clipboard denial, sound, and observed popup dimensions')

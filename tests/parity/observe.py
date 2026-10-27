@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run identical ptyrun steps against isolated herdr and gtx binaries."""
+"""Run identical ptyrun steps against isolated herdr and ikesu binaries."""
 import argparse
 import os
 import json
@@ -15,7 +15,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--herdr', required=True)
 p.add_argument('--cols', type=int, default=160)
 p.add_argument('--rows', type=int, default=45)
-p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
+p.add_argument('--ikesu',dest='ikesu', required=True)
 p.add_argument('--ptyrun', required=True)
 p.add_argument('--cell-width', type=int, default=0, help='outer terminal cell width in pixels')
 p.add_argument('--cell-height', type=int, default=0, help='outer terminal cell height in pixels')
@@ -27,7 +27,7 @@ p.add_argument('--startup-input', action='store_true', help='observe startup inp
 p.add_argument('--hold-color-replies', action='store_true', help='answer background queries explicitly from the test steps')
 p.add_argument('--in-app-toast', action='store_true', help='set the documented product-specific in-app delivery before isolated startup')
 p.add_argument('--steps', required=True)
-p.add_argument('--ikesu-steps','--gtx-steps',dest='gtx_steps', help='gtx-only input for intentional layout/key-cycle differences')
+p.add_argument('--ikesu-steps',dest='ikesu_steps', help='ikesu-only input for intentional layout/key-cycle differences')
 p.add_argument('--saved-session-fixture', help='JSON mapping product names to relative runner-owned session paths and saved documents')
 p.add_argument('--config-file', help='copy a comparison-only config into each isolated product directory')
 p.add_argument('--silent', action='store_true', help='disable sound in both isolated comparison configs before startup')
@@ -65,8 +65,8 @@ out.mkdir(parents=True, exist_ok=True)
     'herdr_binary': str(Path(a.herdr).resolve()),
     'herdr_version': subprocess.check_output([a.herdr, '--version'], text=True).strip(),
     'herdr_sha256': hashlib.sha256(Path(a.herdr).read_bytes()).hexdigest(),
-    'gtx_binary': str(Path(a.gtx).resolve()),
-    'gtx_sha256': hashlib.sha256(Path(a.gtx).read_bytes()).hexdigest(),
+    'ikesu_binary': str(Path(a.ikesu).resolve()),
+    'ikesu_sha256': hashlib.sha256(Path(a.ikesu).read_bytes()).hexdigest(),
     'config': config_text if a.config_file or a.silent else None,
     'sound_disabled': a.silent,
     'status_reply_delay': a.status_delay,
@@ -84,7 +84,7 @@ if a.clipboard_guard or a.clipboard_sandbox:
     if a.clipboard_sandbox:
         guard.sandbox_probe()
 interaction = Path(a.steps).read_text()
-for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
+for name, binary in [('herdr', a.herdr), ('ikesu', a.ikesu)]:
     target = out / name
     target.mkdir(exist_ok=True)
     (target/'host-load-before.txt').write_text(subprocess.check_output(['uptime'], text=True))
@@ -101,11 +101,11 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                 with config.open('a') as stream:
                     stream.write(f'\n[ui.toast]\ndelivery = \"{name}\"\n')
         env = {k: v for k, v in os.environ.items()
-               if not k.startswith(('HERDR', 'GTX', 'GOTERRACE', 'CLAUDE', 'CODEX'))}
+               if not k.startswith(('HERDR', 'IKESU', 'CLAUDE', 'CODEX'))}
         env.update(HOME=str(root / 'home'), ZDOTDIR=str(root / 'zdot'),
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), HERDR_STATE_DIR=str(root / 'state/h'),
-                   GTX_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
+                   IKESU_STATE_DIR=str(root / 'state/g'), SHELL='/bin/zsh', TERM='xterm-256color')
         if a.saved_session_fixture:
             documents = json.loads(Path(a.saved_session_fixture).read_text())[name]
             for relative, document in documents.items():
@@ -117,15 +117,15 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
             (target/'saved-session-fixture.json').write_text(json.dumps(documents, indent=2)+'\n')
         env['PARITY_OBSERVE_BINARY'] = str(Path(binary).resolve())
         if a.silent:
-            env['GTX_DISABLE_SOUND'] = '1'
+            env['IKESU_DISABLE_SOUND'] = '1'
         if a.terminal_env is not None:
             allowed={'TERM_PROGRAM','TERM','KITTY_WINDOW_ID','TMUX'}
             if not isinstance(a.terminal_env,dict) or set(a.terminal_env)-allowed:
                 raise ValueError('terminal-env accepts only terminal identification variables')
             for key in allowed: env.pop(key,None)
             env.update(a.terminal_env)
-        if (a.config_file or a.in_app_toast or a.silent) and name == 'gtx':
-            env['GTX_CONFIG'] = str(config)
+        if (a.config_file or a.in_app_toast or a.silent) and name == 'ikesu':
+            env['IKESU_CONFIG'] = str(config)
         if (a.config_file or a.in_app_toast or a.silent) and name == 'herdr':
             env['HERDR_CONFIG_PATH'] = str(config)
         if guard is not None:
@@ -135,7 +135,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
         preamble = 'sleep 3s\nsend "\\r"\nsleep 1s\n' if name == 'herdr' and not a.server else 'sleep 3s\n'
         if a.startup_input:
             preamble = ''
-        target_interaction = Path(a.gtx_steps).read_text() if name == 'gtx' and a.gtx_steps else interaction
+        target_interaction = Path(a.ikesu_steps).read_text() if name == 'ikesu' and a.ikesu_steps else interaction
         steps.write_text(preamble + target_interaction.replace('@OUT@', str(target)).replace('@FIXTURES@', str(Path(__file__).resolve().parent)).replace('@HOME@', str(root/'home')))
         with (target / 'run.log').open('w') as log, (target / 'server.log').open('w') as server_log:
             server = None
@@ -160,7 +160,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                     deadline = time.monotonic() + 10
                     while endpoint is None:
                         endpoints = [path for path in root.rglob('*.sock')
-                                     if path.name in ('herdr.sock', 'gtx.sock')]
+                                     if path.name in ('herdr.sock', 'ikesu.sock')]
                         if len(endpoints) == 1:
                             endpoint = endpoints[0]
                         elif server.poll() is not None or time.monotonic() >= deadline:
@@ -255,7 +255,7 @@ for name, binary in [('herdr', a.herdr), ('gtx', a.gtx)]:
                         if server is not None:
                             replies = []
                             for owned in root.rglob('*.sock'):
-                                if owned.name not in ('herdr.sock', 'gtx.sock'):
+                                if owned.name not in ('herdr.sock', 'ikesu.sock'):
                                     continue
                                 try:
                                     with socket.socket(socket.AF_UNIX) as sock:

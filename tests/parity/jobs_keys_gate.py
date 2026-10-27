@@ -6,7 +6,7 @@ import sys
 
 root = Path(sys.argv[1])
 results = {}
-for runtime in ('herdr', 'gtx'):
+for runtime in ('herdr', 'ikesu'):
     case = root/runtime
     result = {}
     for screen in ('opened', 'q', 'typed', 'ctrl-c'):

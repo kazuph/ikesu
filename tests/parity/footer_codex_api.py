@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise real Codex questions through an isolated gtx server's public API."""
+"""Exercise real Codex questions through an isolated ikesu server's public API."""
 import argparse
 import json
 import os
@@ -14,7 +14,7 @@ import time
 from clipboard_guard import SANDBOX_PROFILE
 
 p = argparse.ArgumentParser()
-p.add_argument('--ikesu','--gtx',dest='gtx', required=True)
+p.add_argument('--ikesu',dest='ikesu', required=True)
 p.add_argument('--codex', required=True)
 p.add_argument('--out', required=True)
 a = p.parse_args()
@@ -28,18 +28,18 @@ with tempfile.TemporaryDirectory(prefix='footer-codex-', dir='/tmp') as director
     config = root/'config.toml'
     config.write_text('onboarding=false\n[session]\nresume_agents_on_restore=false\n[decisions]\nscreen_prompts=true\n[ui.sound]\nenabled=false\n')
     (root/'zdot/.zshrc').write_text("PS1='CODEX_TEST> '\nunset HISTFILE\nSAVEHIST=0\n")
-    env = dict(os.environ, GTX_STATE_DIR=str(root/'state'), GTX_CONFIG=str(config),
+    env = dict(os.environ, IKESU_STATE_DIR=str(root/'state'), IKESU_CONFIG=str(config),
                XDG_CONFIG_HOME=str(root/'config'), XDG_DATA_HOME=str(root/'data'),
                XDG_STATE_HOME=str(root/'state'), ZDOTDIR=str(root/'zdot'),
-               SHELL='/bin/zsh', GTX_DISABLE_SOUND='1', TERM='xterm-256color')
+               SHELL='/bin/zsh', IKESU_DISABLE_SOUND='1', TERM='xterm-256color')
     for name in list(env):
-        if name.startswith(('HERDR_', 'GTX_SOCKET_', 'GTX_PANE_', 'GTX_WORKSPACE_', 'GTX_TAB_')):
+        if name.startswith(('HERDR_', 'IKESU_SOCKET_', 'IKESU_PANE_', 'IKESU_WORKSPACE_', 'IKESU_TAB_')):
             env.pop(name)
     log = (out/'server.log').open('w')
     server = subprocess.Popen(['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE,
-                               str(Path(a.gtx).resolve()), '--session', 'codex-ui', 'server'],
+                               str(Path(a.ikesu).resolve()), '--session', 'codex-ui', 'server'],
                               env=env, stdout=log, stderr=subprocess.STDOUT)
-    endpoint = root/'state/codex-ui/gtx.sock'
+    endpoint = root/'state/codex-ui/ikesu.sock'
     def wait_for(label, condition, timeout=60):
         deadline = time.monotonic()+timeout
         while True:
@@ -137,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='footer-codex-', dir='/tmp') as director
             return None
         text = wait_for('Codex assistant answer echo', echo_ready, 120)
         (out/'echo.txt').write_text(text)
-        (out/'proof.json').write_text(json.dumps({'pass':True, 'first':first, 'second':second, 'chosen':chosen, 'custom':custom, 'codex':str(Path(a.codex).resolve()), 'gtx':str(Path(a.gtx).resolve()), 'clipboard_sandbox':True},ensure_ascii=False,indent=2)+'\n')
+        (out/'proof.json').write_text(json.dumps({'pass':True, 'first':first, 'second':second, 'chosen':chosen, 'custom':custom, 'codex':str(Path(a.codex).resolve()), 'ikesu':str(Path(a.ikesu).resolve()), 'clipboard_sandbox':True},ensure_ascii=False,indent=2)+'\n')
     finally:
         if pane is not None:
             try:

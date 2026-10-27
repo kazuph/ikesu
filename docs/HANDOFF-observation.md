@@ -1,7 +1,7 @@
 # live handoff の観察と実装契約
 
 対象: mini の配布用 herdr 0.2.30。実装・テストソースは参照しない。
-隔離した `/tmp/gtx-handoff-observe-*` の HOME、XDG_CONFIG_HOME、XDG_STATE_HOME、XDG_CACHE_HOME と名前付き `handoff-observation` session を使い、独立した ptyrun で起動した。各回の最後にその socket の server.stop を呼ぶ。
+隔離した `/tmp/ikesu-handoff-observe-*` の HOME、XDG_CONFIG_HOME、XDG_STATE_HOME、XDG_CACHE_HOME と名前付き `handoff-observation` session を使い、独立した ptyrun で起動した。各回の最後にその socket の server.stop を呼ぶ。
 
 ## 観察した外部契約
 
@@ -13,12 +13,12 @@
 - mouse を normal tracking / SGR にした実プロセスは handoff 前後とも `ESC [ <0;23;8M` と `ESC [ <0;23;8m` を受信した。
 - handoff は display client の接続を切るが client が自動で再接続する。利用者の再接続操作は不要。
 - 追加観察では probe の PID 28191 が2回の handoff 後にも `ps` に現れ、同じ probe.jsonl へ入力を記録した。ptyrun の画面プロセス PID 28151 も終了していない。
-- kitty 無効時の XTVERSION は `ESC P >|libghostty ESC \\`。実物は無効時にも画像の query / transmit へ OK を返したが、画像対応を名乗らないという SPEC の条件を優先して gtx の無効時に画像成功は返さない。
+- kitty 無効時の XTVERSION は `ESC P >|libghostty ESC \\`。実物は無効時にも画像の query / transmit へ OK を返したが、画像対応を名乗らないという SPEC の条件を優先して ikesu の無効時に画像成功は返さない。
 - kitty の直接 RGB 転送は、pane 原点 (27,2) に対して pane 内 (6,4) の画像を外側 (33,6) に c=3,r=2 で置いた（いずれも0始まり）。6回の placement の座標を生出力から数値で確認した。
-- 追加の Unicode placeholder 観察では `a=T,U=1,q=2,i=33554474,p=7,c=4,r=2` と前景色・結合文字を送ると、外側に元の4×2 RGB画像と、各行の通常配置（4列×1行、source y=0/1）が出た。handoff 前後の probe PID は72550で同じ。gtx は通常配置への変換ではなく、仕様で認められた仮想配置と正規化した文字を外側へ送る。隔離 session の生出力は unicode-observation.bin、詳細は RESULT.md。
+- 追加の Unicode placeholder 観察では `a=T,U=1,q=2,i=33554474,p=7,c=4,r=2` と前景色・結合文字を送ると、外側に元の4×2 RGB画像と、各行の通常配置（4列×1行、source y=0/1）が出た。handoff 前後の probe PID は72550で同じ。ikesu は通常配置への変換ではなく、仕様で認められた仮想配置と正規化した文字を外側へ送る。隔離 session の生出力は unicode-observation.bin、詳細は RESULT.md。
 - 終了用 pane のコマンドが戻った後は shell が残り、その shell に `exit` を送ると pane p2 は一覧から消え、p1 は同じ PID 38267 のまま残った。独立したコマンドの終了と pane の shell の終了を分けて確認した。
 
-## gtx の実装上の不変条件
+## ikesu の実装上の不変条件
 
 1. 新実行ファイルの起動と版・protocol の検証が成功するまで旧サーバーと PTY の所有権を維持する。
 2. 端末の画面、scrollback、cursor、両画面の mode、mouse の形式を直接引き継ぐ。保存履歴の再生や新しい shell の起動で代用しない。

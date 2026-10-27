@@ -20,7 +20,7 @@ test('正規の新名プラグインを登録しイベント起動・実パネ�
  assert.equal(parentInfo.result.pane.pane_id,parent);
  const root=fs.mkdtempSync('/tmp/ip-'),home=root+'/home';fs.mkdirSync(home);
  fs.mkdirSync(evidence,{recursive:true});
- const env={...process.env};for(const key of Object.keys(env))if(/^(IKESU|GTX|GOTERRACE|MAC_DIALOG)_/.test(key))delete env[key];
+ const env={...process.env};for(const key of Object.keys(env))if(/^(IKESU|MAC_DIALOG)_/.test(key))delete env[key];
  Object.assign(env,{HOME:home,SHELL:'/bin/sh',IKESU_STATE_DIR:root+'/state',IKESU_CONFIG:root+'/config.toml',IKESU_DISABLE_SOUND:'1'});
  fs.writeFileSync(env.IKESU_CONFIG,'onboarding=false\n[experimental]\nallow_nested=true\n[ui.sound]\nenabled=false\n[session]\nresume_agents_on_restore=false\n');
  const plugin=path.resolve('apps/mac-dialog-decisions'),state=env.IKESU_STATE_DIR+'/plugins/kazuph.mac-dialog-decisions';

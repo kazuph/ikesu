@@ -49,7 +49,7 @@ navigatorだけは競合する`prefix+g`を避けてgotoを`prefix+o`に置く�
 `stage6b_paste_recorder.py`は実shell-PTYへ届いた入力を記録する。
 `python3 tests/parity/stage6b_gate.py 出力先`が選択行・検索条件・保存値・背後への配送を検査する。
 `sh tests/parity/gate-stage6b.sh 出力先`は整形・vet・全test・raceのログを残す。
-性能は`stage6b_perf_launch.py 4d337f7のgit-archive.tar`でminiの負荷を確認し、
+性能は`stage6b_perf_launch.py 70579feのgit-archive.tar`でminiの負荷を確認し、
 4未満ならmini、それ以外ならubuntu-3090でperf-lock.py経由の相対検査を行う。
 実クリップボードを使用した非空テキストのCmd/Ctrl+V挿入はこのsandbox観察では証明しない。
 private-fileの依存注入テストと、sandbox下でのキー漏出検査は別の証拠として扱う。
@@ -66,7 +66,7 @@ pbcopy/pbpasteとNSPasteboardの同一文字列を照合する。両製品のCmd
 店長設定（Ctrl+T prefix、slim、priority、透過カード、タブバー）をコピーし、同じstepsを両製品へ送る。
 カスタム行だけは同じ設定へ観察用の `ui.sidebar` 行を追加する。
 段階4のrunnerは `observe.py --silent` で隔離設定だけに音の無効化を追加し、
-gtxには既存の `GTX_DISABLE_SOUND=1` も渡す。元の店長設定は変更しない。
+ikesuには既存の `IKESU_DISABLE_SOUND=1` も渡す。元の店長設定は変更しない。
 既存の音設定が有効なら起動前に拒否する。`stage4_silence_gate.py` は両製品が
 実際に使用した設定ファイルの `ui.sound.enabled=false` とagent別の有効化が無いことを検査する。
 ケースは `controls`、`collapsed-agents`、`agent-scroll`、`custom-pane`、`custom-workspace`、
@@ -96,16 +96,16 @@ popup・kittyの終了時には実物がキー解放を合成するため、操�
 `keyboard_lifecycle.py` はpane自身が要求を変更する。kitty全キー要求を出したshellへ通常文字で解除コマンドを打つ手順は使わない。
 `sh tests/parity/gate-stage1.sh 証拠ディレクトリ` はminiでgofmt・vet・通常test・raceを全実行し、失敗した検査も保存する。
 
-Mac mini の隔離領域で実行する。herdr の実装・テストは読まず、配布バイナリと gtx に同じ `*.steps` を流す。依存ライブラリを追加しない。
+Mac mini の隔離領域で実行する。herdr の実装・テストは読まず、配布バイナリと ikesu に同じ `*.steps` を流す。依存ライブラリを追加しない。
 
 ```sh
 cd ~/bench-terrace.noindex/src/look
 export PATH="$HOME/bench-terrace.noindex/tools/go/bin:$PATH"
-go build -o ../../work/gtx-parity ./cmd/gtx
+go build -o ../../work/ikesu-parity ./cmd/ikesu
 (cd tools/bench/ptyrun && go build -o "$HOME/bench-terrace.noindex/work/ptyrun-parity" .)
 python3 tests/parity/observe.py \
   --herdr ../../work/herdr-0.2.24 \
-  --gtx ../../work/gtx-parity --ptyrun ../../work/ptyrun-parity \
+  --ikesu ../../work/ikesu-parity --ptyrun ../../work/ptyrun-parity \
   --steps tests/parity/menu.steps --out ../../work/parity-menu --clipboard-sandbox
 python3 tests/parity/compare.py ../../work/parity-menu
 ```
@@ -114,7 +114,7 @@ python3 tests/parity/compare.py ../../work/parity-menu
 
 ```sh
 PARITY_CONTROLLER_SESSION_ID=<現在の検証済みsession-id> python3 tests/parity/rerun_0224.py \
-  --herdr ../../work/herdr-0.2.24 --gtx ../../work/gtx-parity \
+  --herdr ../../work/herdr-0.2.24 --ikesu ../../work/ikesu-parity \
   --ptyrun ../../work/ptyrun-jobs-final \
   --config-file ../../work/look-0224/compare-config.toml \
   --out ../../work/look-0224/all-parity
@@ -134,9 +134,9 @@ HOME、XDG、状態ディレクトリ、ZDOTDIR、作業ディレクトリは実
 
 `resize COLS ROWS` はPTYと画面エミュレーターを同時にリサイズする。画面キャプチャの寸法も変更後の値になる。`mouse` は端末が交渉したモードで送り、固定セルの `click`/`rclick` は `-pixel-mouse=false` で使う。
 
-性能比較は `perf.sh` をminiで実行する。事前に `git archive b0a18b0` のtarを `work/look-baseline-b0a18b0.tar` へ置く。同じGo、同じ `go build` 引数で基準と対象をビルドし、SPEC P1の `TestRelative` を全項目実行する。
+性能比較は `perf.sh` をminiで実行する。事前に `git archive 70579fe` のtarを `work/look-baseline-70579fe.tar` へ置く。同じGo、同じ `go build` 引数で基準と対象をビルドし、SPEC P1の `TestRelative` を全項目実行する。
 
-`--server` は同じ一時領域に専用サーバーを起動し、実APIの `workspace.create` で比較用workspaceを作る。所有領域の `herdr.sock` / `gtx.sock` だけに接続し、終了時に `server.stop`、PIDの終了と応答を `cleanup.json` へ保存する。通常の稼働中サーバーには接続しない。`socket_action.py` はその領域から継承したソケットとペインIDだけを使う。
+`--server` は同じ一時領域に専用サーバーを起動し、実APIの `workspace.create` で比較用workspaceを作る。所有領域の `herdr.sock` / `ikesu.sock` だけに接続し、終了時に `server.stop`、PIDの終了と応答を `cleanup.json` へ保存する。通常の稼働中サーバーには接続しない。`socket_action.py` はその領域から継承したソケットとペインIDだけを使う。
 
 `clicktext "表示ラベル"` は保存画面内で一意に見つかった行をクリックする。見つからない、または複数行なら失敗し、別項目で代用しない。`prefix_cases.py` / `probe-prefix.sh` はprefix後のキーを個別起動で調べる。実行していない手順は比較済みとしない。
 
@@ -160,13 +160,13 @@ click/rclick/mouseの座標は1始まり、screen/cells/measure.pyの保存座�
 
 `gate-copy-safe.sh` はクリップボードへ書き込まない12手順と、nested vt の検査・通常検査・相対性能を実行する。`copy_cells_gate.py 出力先 手順ファイル` は手順にある全保存名が双方に存在することを必須にし、タブバーと下部ステータス以外のペイン全域の文字・幅・スタイルを厳格に比較する。高さ変更、全画面コピーからの復帰、日本語の単語移動、選択の開始と解除も含む。コピーの実行自体と選択releaseは検証範囲に含めない。
 
-`gate-overlays.sh` は確認ダイアログと名前入力の通常検査・比較・相対性能を実行する。確認の detail は gtx SPEC の製品名読み替えを保持し、各製品名を含む正確な全文とスタイルを別々に検査する。それ以外のセルは一致を必須にする。Main メニューの比較結果は観察として保存し、メニュー項目の差をこのゲートの合格へ含めない。`confirm-navigation.steps` は矢印・Tab・内側クリック・右クリック・取消ボタン・再表示を追加観察する手順であり、実行と結果の検査が済むまでは未検証とする。
+`gate-overlays.sh` は確認ダイアログと名前入力の通常検査・比較・相対性能を実行する。確認の detail は ikesu SPEC の製品名読み替えを保持し、各製品名を含む正確な全文とスタイルを別々に検査する。それ以外のセルは一致を必須にする。Main メニューの比較結果は観察として保存し、メニュー項目の差をこのゲートの合格へ含めない。`confirm-navigation.steps` は矢印・Tab・内側クリック・右クリック・取消ボタン・再表示を追加観察する手順であり、実行と結果の検査が済むまでは未検証とする。
 
 agent-summary.steps は隔離サーバーへ実API `pane.report_agent` を送り、報告された状態の表示を確認する。`PARITY_CONTROLLER_SESSION_ID` に実行している制御セッションの実IDを明示する。IDが無ければ未実行として止まり、架空IDや別セッションIDで代用しない。この手順はagentの自動検出やAI起動を検証していない。終了時には専用server.stop応答とPIDの終了を保存する。
 
-`settings_size_compare.py 出力先` は settings-size.steps / settings-height-sections.steps で実測した余白と寸法から枠を指定し、4角の存在と枠内の全セルを比較する。低い画面でタイトルが無い枠も対象とする。`MISSING_EXPECTED_BOX` を合格と扱わない。toasts の製品名 herdr / gtx は差としてそのまま保存する。
+`settings_size_compare.py 出力先` は settings-size.steps / settings-height-sections.steps で実測した余白と寸法から枠を指定し、4角の存在と枠内の全セルを比較する。低い画面でタイトルが無い枠も対象とする。`MISSING_EXPECTED_BOX` を合格と扱わない。toasts の製品名 herdr / ikesu は差としてそのまま保存する。
 
-`probe-help-detail.sh`、`probe-settings-size.sh`、`probe-name-buttons.sh` は `GTX_PARITY_BIN` を指定して同じ操作を繰り返す。これらの観察だけでは通常検査や性能の合格を意味しない。名前欄のclear後は空欄になるため、タイトル検出が未観測を返した場合も、保存画面と実測領域を region_compare.py で確認する。
+`probe-help-detail.sh`、`probe-settings-size.sh`、`probe-name-buttons.sh` は `IKESU_PARITY_BIN` を指定して同じ操作を繰り返す。これらの観察だけでは通常検査や性能の合格を意味しない。名前欄のclear後は空欄になるため、タイトル検出が未観測を返した場合も、保存画面と実測領域を region_compare.py で確認する。
 
 `gate-local-restore.sh` は単独起動の復元確認、ワークスペース終了確認、名前、NAVからのprefixと直接c/v、worktree拒否の比較と通常・相対性能検査を実行する。`full_frame_gate.py 出力先 手順` は全保存名について文字・幅・スタイルの全セル一致を必須とする。復元の検査は正確なsession IDを使い、欠けたIDや`--last`を使って推測しない。
 
@@ -208,14 +208,14 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 
 `prefix_full_gate.py 比較出力先 手順の出力先` は collector の各画面の判定を必須にし、新worktree拒否だけはSPECの製品名読み替えを正確な全文と全banner属性で検査する。`gate-modifiers.sh` は修飾入力/section/メニュー修正の通常検査と相対性能を実行する。`gate-final.sh` は最終ソースでgofmt/build/vet/race-count1、狭い/広いNavigatorの背景と閉じた後の入力、新規workspace閉じる確定、共有入力・スクロールの回帰、変更されたprefix作成/終了経路と相対性能を検査する。途中で失敗したら後続は未実行として扱う。
 
-`prefix-notification-{target,blocked}-settled.steps` は隔離起動前に `--in-app-toast` を指定し、背景paneを実APIで working→idle/blocked にしてprefix+oと後続入力を比較する。`notification_target_gate.py` はAPIから得た正確なworkspace/pane ID、入力文字列、所有serverの終了を検証する。環境変数のID表記を推測で正規化しない。製品名の異なる設定値は `herdr` / `gtx` とそれぞれ正しく指定し、gtxは別名binaryでも同じ隔離configを `GTX_CONFIG` で読む。
+`prefix-notification-{target,blocked}-settled.steps` は隔離起動前に `--in-app-toast` を指定し、背景paneを実APIで working→idle/blocked にしてprefix+oと後続入力を比較する。`notification_target_gate.py` はAPIから得た正確なworkspace/pane ID、入力文字列、所有serverの終了を検証する。環境変数のID表記を推測で正規化しない。製品名の異なる設定値は `herdr` / `ikesu` とそれぞれ正しく指定し、ikesuは別名binaryでも同じ隔離configを `IKESU_CONFIG` で読む。
 
 `--cell-clock` と `prefix-notification-expiry.steps` は通知点・状態点の実PTY描画時刻を記録する。実物では開始遅延1秒（1001/1002ms）、表示期間8秒（開始999ms、終了9005ms）を観測した。時間は元のcell-clock JSONを証拠とし、検査していない時間や状態を代用しない。表示中のペインを既読にするSPEC規則は維持し、実物のdone残留は差として記録する。
 
 `original-menu-cleared.steps` と `original-menu-routing-cleared.steps` は最初の再現操作の前に双方へ同じ端末クリアを送る。初回案内を閉じるEnterのシェル表示を揃え、外クリック/Escape後のメニュー消失、実echo出力、別pane/タブ追加へのクリックが消費されることを比較する。元の準備無しの結果も保存し、準備を入れた文字比較を全スタイル一致とは扱わない。
 
 段階2（K8〜K14、0.2.57）は `stage2_matrix.py --out 出力先` をminiの
-`src/detail` から実行する。`work/detail/gtx-stage2` を事前にビルドし、
+`src/detail` から実行する。`work/detail/ikesu-stage2` を事前にビルドし、
 `work/detail/user-config.toml` を使う。`stage2_cases.py` が同じ操作と設定の組を
 出力先の `procedures/` に残す。`--only 手順名...` で修正対象だけを再実行できる。
 `stage2_gate.py 出力先` は選択名・モード継続・子への文字配送・pane追加数・
@@ -224,22 +224,22 @@ Main の項目追加・削除・並び替えはこの段階の対象外。`main_
 navigate維持という0.2.57の観察結果を固定している。
 `runtime-logs.json` は観察専用一時ディレクトリのserverログだけを保存する。
 相対性能は `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage2_perf.sh`
-で実行する。基準ソースは同じGo引数でビルドする `src/stage2-baseline-a68c878`。
+で実行する。基準ソースは同じGo引数でビルドする `src/stage2-baseline-70579fe`。
 絶対性能はこの工程の判定対象に含めない。
 
 段階2では親の追加指示により、miniの負荷が4以上ならP1相対検査を
 ubuntu-3090へ移せる。`ssh ubuntu` で `source ~/bench-terrace/env.sh` を実行し、
-`~/bench-terrace/work/sol-stage2/{baseline,candidate}` に基準a68c878のarchiveと
+`~/bench-terrace/work/sol-stage2/{baseline,candidate}` に基準70579feのarchiveと
 対象ソースを置く。両方を同じGo・同じ引数でlinux/amd64へビルドする。
 
 ```sh
 source ~/bench-terrace/env.sh
 root="$HOME/bench-terrace/work/sol-stage2"
-(cd "$root/baseline" && go build -o "$root/gtx-baseline-a68c878" ./cmd/gtx)
+(cd "$root/baseline" && go build -o "$root/ikesu-baseline-70579fe" ./cmd/ikesu)
 cd "$root/candidate"
-go build -o "$root/gtx-stage2" ./cmd/gtx
-GTX_PERF_BIN="$root/gtx-stage2" GTX_PERF_BASELINE_BIN="$root/gtx-baseline-a68c878" \
-  GTX_PERF_OUT="$root/perf-relative.md" \
+go build -o "$root/ikesu-stage2" ./cmd/ikesu
+IKESU_PERF_BIN="$root/ikesu-stage2" IKESU_PERF_BASELINE_BIN="$root/ikesu-baseline-70579fe" \
+  IKESU_PERF_OUT="$root/perf-relative.md" \
   python3 "$HOME/bench-terrace/work/perf-lock.py" \
   go test -count=1 -tags perf ./tests/perf -run '^TestRelative$' -timeout 30m
 ```
@@ -260,7 +260,7 @@ ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾
 `observe.py --pixel-mouse --cell-width 8 --cell-height 16` は実際のpixelモード交渉を可能にする。宣言だけでpixel検査済みとしない。raw出力の1016hと送信形式を確認する。
 `tab-drag-release.steps` はmotionなしreleaseと連続down/motion/up、`tab-drag-overflow.steps` は5個の長いタブの比較手順。実物の表示範囲が違えば同じ座標が同じタブを指すとは扱わない。
 `observe.py` の `saved-json.json` は所有サーバーの終了後に保存した実sessionも含む。
-`import_directory_proof.py --snapshot <herdr/saved-json.json> --binary <gtx> --ptyrun <ptyrun> --config-file <店長設定> --out <出力先>` は、実物から保存したshellだけの2スペース（自動名alpha・手動名chosen）のsessionを変更せず取り込み、cd後の自動名・手動名・新規タブのcwdを実サーバーと接続画面で検査する。保存元の一時ディレクトリが既存なら上書きせず停止する。
+`import_directory_proof.py --snapshot <herdr/saved-json.json> --binary <ikesu> --ptyrun <ptyrun> --config-file <店長設定> --out <出力先>` は、実物から保存したshellだけの2スペース（自動名alpha・手動名chosen）のsessionを変更せず取り込み、cd後の自動名・手動名・新規タブのcwdを実サーバーと接続画面で検査する。保存元の一時ディレクトリが既存なら上書きせず停止する。
 `spawn-follow-context.steps` と `spawn_follow_gate.py 出力先 context` は実Git worktree内と、別スペースをクリックした直後のタブ・分割の作成先を検査する。
 `foreground-directory.steps` と `foreground_directory_gate.py 出力先` はshellのbetaから前面の実Pythonプロセスだけをalphaへ移して新規タブを作り、そのプロセスをbetaへ移した後に分割する。継承した絶対cwdとAPI応答を検査し、スペース名は前面プロセスでなく先頭shellのbetaをsidebar・APIとも保つことを確認する。
 `tab-drag-two-four.steps` と `tab_drag_order_gate.py 出力先 server|local` は2個・4個のタブの全順序、バー外へのrelease/motion、クリックとの区別、pixel形式の挿入印を検査する。herdr 0.2.57は接続時と単独起動でバー外motionの扱いが異なるため、期待値を起動形ごとに固定する。単独起動で末尾の印を残す既存の改善は保持する。
@@ -279,8 +279,8 @@ ubuntuではP1絶対値を判定しない。失敗した計測も保存し、閾
 `k29-resize` の実物がsidebar表示中の縮小で異常終了した結果は成功へ置換せず保存し、
 `k29-folded` でsidebarを折り畳んだ同寸法の縮小、`k29-width` で幅のみの変更を追加確認する。
 `gate-stage7.sh 出力先` はminiでgofmt・vet・通常test・raceを非キャッシュで実行する。
-miniの負荷4以上で許可されたLinux比較は、dd2168cのarchiveを
-ubuntu-3090の `~/bench-terrace/work/stage7-baseline-dd2168c`、対象を
+miniの負荷4以上で許可されたLinux比較は、70579feのarchiveを
+ubuntu-3090の `~/bench-terrace/work/stage7-baseline-70579fe`、対象を
 `~/bench-terrace/work/stage7-src` に同期した上で、
 `python3 ~/bench-terrace/work/perf-lock.py sh tests/parity/stage7_perf.sh` として実行する。
 基準と対象は同じGoとビルド引数でビルドし、P1の相対値だけを判定する。
@@ -290,11 +290,11 @@ ubuntu-3090の `~/bench-terrace/work/stage7-baseline-dd2168c`、対象を
 定期スクロールが進む前の距離依存の即時移動を上下1セル/2セルで比較する。
 `k28-boundaries.steps` は120行の履歴を端まで選択してから上下の到達位置とコピー全文を比較する。
 `k28-timing.steps` の速度は保存時刻と移動行数を使って比較する。許容する行差は、
-観測した33ms/行の参照側の位相1行とgtxの既存50ms更新周期から算出し、
+観測した33ms/行の参照側の位相1行とikesuの既存50ms更新周期から算出し、
 動作中のセル差そのものは消さずに証拠に残す。
 
 段階6a（A34〜A43、0.2.57）は `stage6a_matrix.py --out <証拠先>` をminiの
-`src/stage6a`で実行する。事前に同じソースを `work/detail/gtx-stage6a` へビルドする。
+`src/stage6a`で実行する。事前に同じソースを `work/detail/ikesu-stage6a` へビルドする。
 `stage6a_cases.py` が全手順を保存し、matrixは店長のctrl+t・80% popup・tab bar・
 tokyo-night/custom設定を読む。全比較でclipboard sandboxと隔離serverを使用する。
 `stage6a_action.py` はobserve.pyが作った一時socketだけに接続し、worktreeの作成・
@@ -319,12 +319,12 @@ A40の `notification.show` は実物が12列×3行（本文なし）/4行（本�
 拒否とinvalid_requestを比較する。空タイトルのエラー文章は同一であることを検査する。
 
 `--toast-delivery off` / `--toast-delivery terminal` で通知設定を追加比較できる。
-`stage6a_headless_notification.py <binary> <herdr|gtx> <証拠先> [--delivery off|terminal|system]`
+`stage6a_headless_notification.py <binary> <herdr|ikesu> <証拠先> [--delivery off|terminal|system]`
 は新設一時HOMEの実serverにだけ接続し、表示clientなしの返り値と正常終了を保存する。
 音は再生しない。通知の明示要求ではsound=none、観察環境では既存の音抑止を維持する。
 
 `sh tests/parity/stage6a_checks.sh <証拠先>` はminiでgofmt・build・vet・通常test・raceを保存する。
-相対P1は基準dd2168cを `src/stage6a-baseline-dd2168c` に置き、
+相対P1は基準70579feを `src/stage6a-baseline-70579fe` に置き、
 `python3 ~/bench-terrace.noindex/work/perf-lock.py sh tests/parity/stage6a_perf.sh`
 で同じGo・同じ引数の2ビルドを交互に各5回検査する。絶対P1はこの段階の判定対象外。
 
@@ -335,7 +335,7 @@ A41のクリック検査は `name-click-probe.steps` に20/30/40/56列×4点を�
 
 ## 段階6aのレビュー修正4件
 
-miniで `python3 tests/parity/stage6a_fix1.py --gtx /absolute/fixed/gtx --out /absolute/evidence` を実行する。
+miniで `python3 tests/parity/stage6a_fix1.py --ikesu /absolute/fixed/ikesu --out /absolute/evidence` を実行する。
 既存observe.pyの隔離server・実接続client・clipboard sandboxを使い、herdr 0.2.57と同一入力を送る。
 端末識別10条件（kittyとtmuxの併用を含む）、OSC 9/99とtmuxパススルーの全バイト、1秒のAPI連続要求制限、制御文字と80/240文字制限を検査する。
 文字数は画面の切れではなく端末通知の完全なバイト列で比較する。候補1/2/3/13件のworktree枠は検索前後の寸法、末尾の選択と実クリック後のcheckoutを検査する。
@@ -363,7 +363,7 @@ APIと通常UIで確認する。APIの閉鎖は `--close-workspace-fixture` に�
 
 `sh tests/parity/stage5_gate.sh <ログ出力先>` はminiでgofmt・vet・通常test・raceを行う。
 miniの負荷が4以上のときに認められたubuntu-3090での相対P1は、
-`~/bench-terrace/env.sh` を読み、基準dd2168cのarchiveを `<ルート>/baseline`、
+`~/bench-terrace/env.sh` を読み、基準70579feのarchiveを `<ルート>/baseline`、
 候補ソースを `<ルート>/candidate` に置いて
 `sh tests/parity/stage5_perf.sh <ルート>` を実行する。
 両方を同じGoと引数でビルドし、固定の `perf-lock.py` 経由で既存の `TestRelative` を実行する。
@@ -380,10 +380,10 @@ miniの負荷が4以上のときに認められたubuntu-3090での相対P1は�
 既存の全形式保存・復元のラッパー内で実施する。元pasteboardのデータは回収・公開しない。
 
 
-## gtx独自の左右サイドバー（right-sidebar）
+## ikesu独自の左右サイドバー（right-sidebar）
 
-miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <ログ出力先> <bfdb572のgit-archive.tar>` を実行する。
-`GTX_PARITY_HERDR` と `GTX_PARITY_PTYRUN` で配布用herdrバイナリとptyrunの絶対パスを指定できる。
+miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <ログ出力先> <70579feのgit-archive.tar>` を実行する。
+`IKESU_PARITY_HERDR` と `IKESU_PARITY_PTYRUN` で配布用herdrバイナリとptyrunの絶対パスを指定できる。
 既定は `~/bench-terrace.noindex/work/herdr-0.2.24` と `work/ptyrun-parity-cells`。
 稼働中のherdrではなく隔離実行用バイナリを使い、音とクリップボードは隔離する。
 この入口はgofmt・build・vet・全通常テスト・race・VT検査を実行し、
@@ -395,9 +395,9 @@ miniの同期済みチェックアウトで `sh tests/parity/gate-sidebar.sh <�
 共有perf-lock経由で同じGo・`-trimpath -ldflags='-s -w'` の基準と候補を交互に各5回測る。
 相対P1の合否と全測定値は出力先のperf/に保存する。未実行を合格として扱わない。
 
-右へ移したボタンのクリック座標と左の3状態切替は、`right-sidebar-controls.steps` / `right-sidebar-width.steps` を `observe.py --gtx-steps` でgtxだけへ送る。参照側の既存入力は変更せず、両者の実際に使ったstepsを保存する。対象の操作を削除せず、新しい配置で同じ操作を観察する。
+右へ移したボタンのクリック座標と左の3状態切替は、`right-sidebar-controls.steps` / `right-sidebar-width.steps` を `observe.py --ikesu-steps` でikesuだけへ送る。参照側の既存入力は変更せず、両者の実際に使ったstepsを保存する。対象の操作を削除せず、新しい配置で同じ操作を観察する。
 
-gtx用の5つの `right-*.steps` は、初回案内を通常のEnter入力で閉じてから観察する。参照側はobserve.pyの従来の起動手順を保持する。案内を残したまま観察するとキー入力が案内へ渡るため、状態切替やクリックの成功証拠にならない。
+ikesu用の5つの `right-*.steps` は、初回案内を通常のEnter入力で閉じてから観察する。参照側はobserve.pyの従来の起動手順を保持する。案内を残したまま観察するとキー入力が案内へ渡るため、状態切替やクリックの成功証拠にならない。
 
 ## 保存済みSSH先の判断待ち取得
 

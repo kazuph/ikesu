@@ -7,7 +7,7 @@ import socket
 import subprocess
 import sys
 
-endpoint=Path(os.environ.get('GTX_SOCKET_PATH') or os.environ.get('HERDR_SOCKET_PATH','')).resolve()
+endpoint=Path(os.environ.get('IKESU_SOCKET_PATH') or os.environ.get('HERDR_SOCKET_PATH','')).resolve()
 assert str(endpoint).startswith('/private/tmp/parity-'), 'not an observer-owned socket'
 root=next(parent for parent in endpoint.parents if parent.name.startswith('parity-'))
 operation=sys.argv[1]
@@ -48,7 +48,7 @@ elif operation=='restore':
     else:
         path.write_text(saved['text'])
 elif operation=='handoff':
-    if os.environ.get('GTX_SOCKET_PATH'):
+    if os.environ.get('IKESU_SOCKET_PATH'):
         before=request('ping',{})
         result=request('server.live_handoff',{'import_exe':sys.argv[2],'expected_version':'0.1.0-footer-test'})
         after=request('ping',{})
