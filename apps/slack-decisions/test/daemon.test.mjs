@@ -844,7 +844,7 @@ test("non-kazuph user -> exits without touching Slack", async () => {
   const result = await new Promise((resolve) => {
     execFile(
       process.execPath,
-      [DAEMON_PATH, "run"],
+      ["--input-type=module", "-e", `import {main} from ${JSON.stringify(new URL("../slack-decisions.mjs", import.meta.url).href)}; await main({argv:["node","daemon","run"], userInfo:()=>({username:"someoneelse"})});`],
       {
         env: {
           ...process.env,

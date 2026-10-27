@@ -19,11 +19,11 @@ function tmpdir(name) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `slack-deliver-${name}-`));
 }
 
-function runCli(args, env) {
+function runCli(args, env, username = null) {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
-      [DAEMON_PATH, ...args],
+      username ? ["--input-type=module", "-e", `import {main} from ${JSON.stringify(new URL("../slack-decisions.mjs", import.meta.url).href)}; await main({argv:${JSON.stringify(["node", "daemon", ...args])}, userInfo:()=>({username:${JSON.stringify(username)}})});`] : [DAEMON_PATH, ...args],
       { env, encoding: "utf8", timeout: 20_000 },
       (error, stdout, stderr) => {
         resolve({
@@ -142,8 +142,9 @@ test("deliver sends nothing on a non-kazuph machine", async () => {
       ["deliver", file],
       cliEnv(tmp, {
         apiBase: fake.base,
-        SLACK_DECISIONS_OS_USER: "someoneelse",
+        SLACK_DECISIONS_OS_USER: "kazuph",
       }),
+      "someoneelse",
     );
     assert.equal(fake.calls.length, 0, "must not call Slack at all");
     assert.equal(run.stdout.trim(), "");

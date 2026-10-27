@@ -140,11 +140,6 @@ function loadConfig(env = process.env) {
     enabled:
       (env.SLACK_DECISIONS_ENABLED ?? file.enabled ?? true) !== false &&
       env.SLACK_DECISIONS_ENABLED !== "0",
-    allowedOsUser:
-      env.SLACK_DECISIONS_ALLOWED_USER ||
-      file.allowed_os_user ||
-      DEFAULT_ALLOWED_USER,
-    osUser: env.SLACK_DECISIONS_OS_USER || "",
     postDelayMs: pickNumber(
       env.SLACK_DECISIONS_POST_DELAY_MS,
       file.post_delay_ms,
@@ -2266,10 +2261,10 @@ export async function gateCheck(config, userInfo = os.userInfo) {
     log("設定で無効化されています (enabled=false)");
     return false;
   }
-  const user = config.osUser || os.userInfo().username;
-  if (user !== config.allowedOsUser) {
+  const user = userInfo().username;
+  if (user !== DEFAULT_ALLOWED_USER) {
     log(
-      `このマシンでは Slack 送信をしません (whoami=${user}; 許可: ${config.allowedOsUser})`,
+      `このマシンでは Slack 送信をしません (whoami=${user}; 許可: ${DEFAULT_ALLOWED_USER})`,
     );
     return false;
   }

@@ -37,7 +37,7 @@ node apps/slack-decisions/slack-decisions.mjs deliver <ファイル> [--title T]
 
 ## 送信は kazuph のマシンのみ
 
-`whoami`（OS ユーザー名）が `kazuph` でないマシン、または Slack 資格情報を解決できない場合は、理由をログに出して安全に終了します。Slack へは一切送信しません。`deliver` / `deliver-context` も同じゲートを通ります。
+`whoami`（OS ユーザー名）が `kazuph` でないマシン、または Slack 資格情報を解決できない場合は、理由をログに出して安全に終了します。Slack へは一切送信しません。`deliver` / `deliver-context` も同じゲートを通ります。実OSユーザーと固定の `kazuph` を比較し、環境変数・設定ファイルで送信者の制限は変更できません。
 
 ## インストール
 
@@ -72,7 +72,6 @@ ikesu plugin link <repo>/apps/slack-decisions
 | `sabera_socket` | `~/.sabera-relay.sock` | Sabera リレーのソケット |
 | `socket_mode` | `true` | Socket Mode 接続の有無 |
 | `credentials_env_files` | slack-ask と同じ3ファイル | 資格情報 env ファイル |
-| `allowed_os_user` | `kazuph` | Slack 送信を許可する OS ユーザー |
 
 環境変数 `SLACK_DECISIONS_*`（`POST_DELAY_MS`, `POLL_INTERVAL_MS`, `API_BASE`, `SABERA_SOCK`, `STATE_DIR`, `CHANNEL`, `MENTION`, `ENABLED`, `SOCKET_MODE`, `ALLOWED_USER`）でも上書きできます。
 
