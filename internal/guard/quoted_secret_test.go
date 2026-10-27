@@ -69,3 +69,11 @@ func TestSecretExecutionReceivesOriginalHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSecretShellWordRedirectionOrder(t *testing.T) {
+	line := `printf > 'PASSWORD=SECRET_HEAD_TESTONLY SECRET_TAIL_TESTONLY' '%s' 'TOKEN=SECRET_HEAD_TESTONLY SECRET_TAIL_TESTONLY'`
+	got := redact(line)
+	if strings.Contains(got, "SECRET_HEAD_TESTONLY") || strings.Contains(got, "SECRET_TAIL_TESTONLY") {
+		t.Fatal("redirection or argument retained a secret")
+	}
+}
