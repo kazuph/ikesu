@@ -121,13 +121,12 @@ func TestLastPaneExitOtherTabAndViewer(t *testing.T) {
 	})
 }
 
-func TestLastPaneExitFinalWorkspaceWithViewer(t *testing.T) {
+func TestLastPaneExitFinalWorkspaceStopsServerWithViewer(t *testing.T) {
 	s := start(t)
 	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.send("exit\r")
-	s.waitFor("new workspace after final shell exit", 15*time.Second, func(text string) bool {
-		var spaces api.WorkspaceListResult
-		s.rpc(api.MethodWorkspaceList, api.EmptyParams{}, &spaces)
-		return len(spaces.Workspaces) == 1 && spaces.Workspaces[0].WorkspaceID != "s1"
+	s.waitFor("server exits after final shell exit", 15*time.Second, func(text string) bool {
+		_, err := s.cli("server", "ping")
+		return err != nil
 	})
 }

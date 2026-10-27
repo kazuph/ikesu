@@ -26,6 +26,12 @@ type HandoffState struct {
 	AgentSequences      map[int]uint64
 	AgentCounter        uint64
 	SizeBases           map[int]sizeBasisTransfer
+	WorkspaceLabels     map[int]workspaceLabelTransfer
+	WorkspaceNames      map[int]string
+}
+
+type workspaceLabelTransfer struct {
+	Cwd, Name string
 }
 
 // Only the private live-handoff stream carries these display snapshots.
@@ -42,6 +48,14 @@ type FossilTransfer struct {
 
 func (a *App) HandoffState() HandoffState {
 	t := HandoffState{State: a.st, Counters: a.st.HandoffCounters(), Sessions: a.SessionRecords(), Reported: map[int]ReportTransfer{}, Scroll: a.scroll, BlockerObservations: a.blockerObservations}
+	t.WorkspaceLabels = map[int]workspaceLabelTransfer{}
+	for id, label := range a.workspaceLabels {
+		t.WorkspaceLabels[id] = workspaceLabelTransfer{label.cwd, label.name}
+	}
+	t.WorkspaceNames = map[int]string{}
+	for index, name := range a.workspaceNames {
+		t.WorkspaceNames[index] = name
+	}
 	t.Trackers, t.Fossils = map[int]status.Transfer{}, map[int]FossilTransfer{}
 	for id, tr := range a.trackers {
 		t.Trackers[id] = tr.Transfer()
@@ -63,6 +77,11 @@ func (a *App) HandoffState() HandoffState {
 }
 func (a *App) RestoreHandoff(t HandoffState) {
 	a.st = t.State
+	a.workspaceLabels = map[int]workspaceDirectoryLabel{}
+	for id, label := range t.WorkspaceLabels {
+		a.workspaceLabels[id] = workspaceDirectoryLabel{label.Cwd, label.Name}
+	}
+	a.workspaceNames = t.WorkspaceNames
 	a.st.RestoreHandoffCounters(t.Counters)
 	a.sizeViewer, a.sizeViewers = nil, nil
 	a.sizeOwners = map[*model.Tab]ptySizeBasis{}
