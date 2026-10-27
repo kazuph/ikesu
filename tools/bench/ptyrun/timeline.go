@@ -53,6 +53,7 @@ type timeline struct {
 	onFrame           func(int64)
 	receiver          kittyReceiver
 	reply             io.Writer
+	readAt            int64
 }
 
 var capacityReply = regexp.MustCompile(`CAPRX[0-9]{3}!`)
@@ -68,20 +69,26 @@ func newTimeline(path string, emu *vt.Emulator, cols, rows int) *timeline {
 		panic(err)
 	}
 	t := &timeline{file: file, log: json.NewEncoder(file), emu: emu, cols: cols, rows: rows}
-	t.receiver = kittyReceiver{record: t.record, clock: monotonicNS}
+	t.receiver = kittyReceiver{record: t.record, clock: func() int64 {
+		if t.readAt > 0 {
+			return t.readAt
+		}
+		return monotonicNS()
+	}, cursor: func() (int, int) { p := emu.CursorPosition(); return p.X, p.Y }}
 	emu.RegisterApcHandler(t.receiver.accept)
 	emu.RegisterCsiHandler('n', func(params ansi.Params) bool {
 		op, _, _ := params.Param(0, 0)
 		if op != 5 {
 			return false
 		}
+		t.record(map[string]any{"type": "terminal.status_query", "clock_ns": t.receiver.clock(), "parsed_ns": monotonicNS()})
 		if len(t.receiver.pending) != 0 {
 			panic("status query before image payload completed")
 		}
 		if t.reply != nil {
 			fmt.Fprint(t.reply, "\x1b[0n")
 		}
-		t.record(map[string]any{"type": "terminal.status_complete", "clock_ns": monotonicNS()})
+		t.record(map[string]any{"type": "terminal.status_complete", "clock_ns": t.receiver.clock(), "replied_ns": monotonicNS()})
 		return true
 	})
 	return t
@@ -97,6 +104,7 @@ func (t *timeline) record(v any) {
 	}
 }
 func (t *timeline) feed(data []byte, at int64) {
+	t.readAt = at
 	// The terminal parser can receive a split escape sequence. Carry only the
 	// delimiter detector across chunks; never hold terminal query bytes back.
 	end := []byte("\x1b[?2026l")

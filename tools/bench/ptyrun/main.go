@@ -124,6 +124,7 @@ func main() {
 	if observer != nil {
 		observer.reply = ptmx
 		observer.receiver.reply = ptmx
+		observer.receiver.cellW, observer.receiver.cellH = *cellWidth, *cellHeight
 		observer.includeBodies = *includeBodies
 	}
 	defer observer.close()
@@ -506,7 +507,7 @@ func main() {
 			}
 			fmt.Fprintf(ptmx, "\x1b[<0;%d;%dm", x, y)
 			cpu("after")
-		case "mouse", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
+		case "mouse", "mousetimed", "pixel": // kind, then one-based coordinates; mouse uses cells, pixel preserves subcell precision
 			var kind string
 			var x, y int
 			if _, err := fmt.Sscanf(rest, "%s %d %d", &kind, &x, &y); err != nil {
@@ -518,7 +519,7 @@ func main() {
 				m.Button = uv.MouseRight
 			}
 			mu.Lock()
-			if op == "mouse" && emu.ModeSet(ansi.ModeMouseExtSgrPixel) {
+			if (op == "mouse" || op == "mousetimed") && emu.ModeSet(ansi.ModeMouseExtSgrPixel) {
 				if *cellWidth <= 0 || *cellHeight <= 0 {
 					mu.Unlock()
 					fmt.Fprintln(os.Stderr, "pixel mouse needs cell size")
@@ -526,6 +527,18 @@ func main() {
 				}
 				m.X = m.X**cellWidth + *cellWidth/2
 				m.Y = m.Y**cellHeight + *cellHeight/2
+			}
+			if op == "mousetimed" {
+				if observer == nil {
+					panic("mousetimed requires timeline")
+				}
+				button := 0
+				if kind == "right-down" || kind == "right-up" {
+					button = 2
+				}
+				recordMouseInput(observer, ptmx, map[string]any{"type": "mouse.input", "kind": kind, "x": x, "y": y}, button, m.X+1, m.Y+1, kind == "up" || kind == "right-up")
+				mu.Unlock()
+				continue
 			}
 			switch kind {
 			case "down", "right-down":
