@@ -1,0 +1,169 @@
+name: Signed ikesu CLI release
+
+on:
+  push:
+    tags: ['ikesu-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable release tag; retry only the tap update'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ikesu-cli-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'kazuph/ikesu'
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: Validate stable main tag and release state
+        id: tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 scripts/ikesu_release.py validate "$TAG"
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          request = urllib.request.Request('https://api.github.com/repos/kazuph/ikesu/releases/tags/' + os.environ['TAG'],
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN']})
+          try:
+              release = json.load(urllib.request.urlopen(request))
+          except urllib.error.HTTPError as error:
+              if error.code != 404 or os.environ['EVENT'] != 'push': raise
+          else:
+              if os.environ['EVENT'] == 'push': raise SystemExit('existing Release must never be replaced')
+              names = {a['name'] for a in release['assets']}
+              expected = {'ikesu-' + p for p in ('darwin-arm64', 'darwin-amd64', 'linux-arm64', 'linux-amd64')}
+              if release['draft'] or release['prerelease'] or names != expected | {'SHA256SUMS'}:
+                  raise SystemExit('tap recovery requires a complete published stable Release')
+          PY
+          printf 'tag=%s\nversion=%s\n' "$TAG" "${TAG#ikesu-v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: darwin, arch: arm64, runner: macos-15}
+          - {os: darwin, arch: amd64, runner: macos-15-intel}
+          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm}
+          - {os: linux, arch: amd64, runner: ubuntu-24.04}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build native executable without cgo
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir release-assets
+          go build -trimpath -ldflags='-s -w' -o "release-assets/ikesu-$GOOS-$GOARCH" ./cmd/ikesu
+      - name: Require Developer ID signature
+        if: matrix.os == 'darwin'
+        env:
+          MACOS_DEVELOPER_ID_P12: ${{ secrets.MACOS_DEVELOPER_ID_P12 }}
+          MACOS_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
+          TARGET: release-assets/ikesu-${{ matrix.os }}-${{ matrix.arch }}
+        run: python3 scripts/sign_ikesu.py "$TARGET"
+      - name: Verify architecture, version, signature and isolated server
+        env:
+          TARGET: release-assets/ikesu-${{ matrix.os }}-${{ matrix.arch }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: python3 scripts/verify_ikesu_release.py "$TARGET" "$VERSION" "$TARGET_OS" "$TARGET_ARCH"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ikesu-${{ matrix.os }}-${{ matrix.arch }}
+          path: release-assets/ikesu-*
+          if-no-files-found: error
+
+  publish:
+    needs: [validate, build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ikesu-*
+          path: release-assets
+          merge-multiple: true
+      - name: Hash signed verified executables and publish once
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/ikesu_release.py manifest "$TAG"
+          gh release create "$TAG" --draft --verify-tag --latest=false --title "$TAG" release-assets/ikesu-* release-assets/SHA256SUMS
+          gh release download "$TAG" --repo kazuph/ikesu --dir uploaded-assets
+          (cd uploaded-assets && sha256sum --check SHA256SUMS)
+          test "$(find uploaded-assets -maxdepth 1 -type f | wc -l)" -eq 5
+          gh release edit "$TAG" --draft=false --latest=false
+
+  tap:
+    needs: [validate, publish]
+    if: >-
+      always() && needs.validate.result == 'success' &&
+      (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - name: Recover checksums from immutable published Release
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$TAG" --repo kazuph/ikesu --dir release-assets --pattern SHA256SUMS
+      - name: Update only Formula/ikesu.rb with isolated deploy key
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
+          umask 077
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$work/key"
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$work/known_hosts"
+          test -s "$work/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $work/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$work/known_hosts"
+          git clone --depth=1 git@github.com:kazuph/homebrew-tap.git "$work/tap"
+          git -C "$work/tap" pull --ff-only
+          python3 scripts/ikesu_release.py formula "$TAG" --formula "$work/tap/Formula/ikesu.rb"
+          git -C "$work/tap" add -- Formula/ikesu.rb
+          test "$(git -C "$work/tap" diff --cached --name-only)" = 'Formula/ikesu.rb' || {
+            git -C "$work/tap" diff --cached --quiet && exit 0
+            exit 1
+          }
+          git -C "$work/tap" -c user.name='ikesu-release' -c user.email='ikesu-release@users.noreply.github.com' commit -m "ikesu ${TAG#ikesu-v}"
+          # Fast-forward-only push rejects races; retry tap-only from the latest tap.
+          git -C "$work/tap" push origin HEAD
