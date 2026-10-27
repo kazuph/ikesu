@@ -255,7 +255,9 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	include(m.noticeUntil)
-	include(m.koiNext)
+	if !m.paintQueued {
+		include(m.koiNext)
+	}
 	if m.paintQueued {
 		include(m.outputFence.Deadline())
 	}

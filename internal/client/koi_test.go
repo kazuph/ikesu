@@ -8,6 +8,7 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
@@ -51,5 +52,21 @@ func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
 		if snapshot.Koi || snapshot.KoiTime != 0 {
 			t.Fatal("server snapshot mutated")
 		}
+	}
+}
+
+func TestKoiDeadlineYieldsToTerminalFence(t *testing.T) {
+	now := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
+	m := &machineClient{koiNext: now.Add(-time.Millisecond), paintQueued: true}
+	if !m.outputFence.Written([]byte("\x1b_Ga=p,i=1;\x1b\\"), now) {
+		t.Fatal("image fence missing")
+	}
+	if got := m.nextDeadline(); !got.Equal(now.Add(render.TerminalStatusWait)) {
+		t.Fatalf("expired koi clock causes a busy loop: got=%s fence=%s", got, m.outputFence.Deadline())
+	}
+	m.outputFence.Accept([]byte("\x1b[0n"))
+	m.paintQueued = false
+	if got := m.nextDeadline(); !got.Equal(m.koiNext) {
+		t.Fatal("reply did not restore decoration deadline")
 	}
 }
