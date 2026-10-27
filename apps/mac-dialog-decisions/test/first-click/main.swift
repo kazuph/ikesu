@@ -14,6 +14,10 @@ DispatchQueue.main.asyncAfter(deadline:.now()+0.5) {
  print("before-test active=\(NSApp.isActive) key=\(panel.isKeyWindow)")
  panel.resignKey()
  NSApp.deactivate()
+ let inactiveDeadline=Date(timeIntervalSinceNow:5)
+ while (panel.isKeyWindow || NSApp.isActive) && Date() < inactiveDeadline {
+  RunLoop.current.run(until:Date(timeIntervalSinceNow:0.01))
+ }
  print("after-deactivate active=\(NSApp.isActive) key=\(panel.isKeyWindow)")
  precondition(!panel.isKeyWindow && !NSApp.isActive,"must start with inactive app and non-key panel")
  var failure=false
