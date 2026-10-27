@@ -140,10 +140,8 @@ type Supervisor struct {
 	processDue      map[*Pane]time.Time
 	processNext     time.Time
 	done            chan struct{}
-	loginPathOnce   sync.Once
-	loginPathDone   chan struct{}
-	loginPath       string
-	loginPathErr    error
+	loginPathMu     sync.Mutex
+	loginPathResult *loginPathResult
 
 	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
 	// environment (the server uses it for IKESU_PANE_ID/IKESU_SOCKET_PATH).
@@ -154,10 +152,9 @@ type Supervisor struct {
 
 func NewSupervisor() *Supervisor {
 	return &Supervisor{
-		panes:         map[int]*Pane{},
-		loginPathDone: make(chan struct{}),
-		events:        make(chan Event, 256),
-		done:          make(chan struct{}),
+		panes:  map[int]*Pane{},
+		events: make(chan Event, 256),
+		done:   make(chan struct{}),
 	}
 }
 

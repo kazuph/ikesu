@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,8 +38,21 @@ func TestLoginPathRecoversAfterTimeoutAndCachesSuccess(t *testing.T) {
 	}
 	// The brief proposes five seconds of failure cooldown, without a setting.
 	time.Sleep(5*time.Second + time.Millisecond)
-	if err := s.WaitLoginPath(); err != nil {
-		t.Fatal("lookup did not recover", err)
+	var retryWorkers sync.WaitGroup
+	retryErrors := make(chan error, 8)
+	for n := 0; n < 8; n++ {
+		retryWorkers.Add(1)
+		go func() { defer retryWorkers.Done(); retryErrors <- s.WaitLoginPath() }()
+	}
+	retryWorkers.Wait()
+	close(retryErrors)
+	for err := range retryErrors {
+		if err != nil {
+			t.Fatal("lookup did not recover", err)
+		}
+	}
+	if _, err := s.SpawnAgent(1, dir, 80, 24, nil, []string{"/bin/sleep", "60"}); err != nil {
+		t.Fatal("agent could not start after recovery", err)
 	}
 	for n := 0; n < 3; n++ {
 		if path, err := s.LoginPath(); err != nil || path != "/usr/bin:/bin" {
@@ -54,6 +68,15 @@ func TestLoginPathConcurrentRequestsShareLookupAndAppLoopDoesNotWait(t *testing.
 	teststate.Lock(t)
 	shell, started, release := teststate.GatedLoginShell(t)
 	teststate.Setenv(t, "SHELL", shell)
+	count := filepath.Join(filepath.Dir(shell), "queries")
+	script, err := os.ReadFile(shell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script = []byte(strings.Replace(string(script), "#!/bin/sh\n", "#!/bin/sh\nprintf x >> '"+count+"'\n", 1))
+	if err := os.WriteFile(shell, script, 0700); err != nil {
+		t.Fatal(err)
+	}
 	s := NewSupervisor()
 	defer s.KillAll()
 	var workers sync.WaitGroup
@@ -83,6 +106,9 @@ func TestLoginPathConcurrentRequestsShareLookupAndAppLoopDoesNotWait(t *testing.
 		t.Fatal(err)
 	}
 	workers.Wait()
+	if data, _ := os.ReadFile(count); string(data) != "x" {
+		t.Fatalf("concurrent lookup count=%q", data)
+	}
 	close(failures)
 	for err := range failures {
 		if err != nil {
