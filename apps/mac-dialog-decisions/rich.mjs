@@ -16,16 +16,27 @@ export function discoverRichContent(spec) {
   const links=[...new Set(visibleURLs(text))].slice(0,RICH_LIMITS.cards);
   const images=[];
   for(const line of (spec.body||'').split('\n')) {
-    const paths=[];
-    // Delimited paths may contain spaces; bare paths stop at prose/Markdown boundaries.
-    for(const match of line.matchAll(/["'`「<](\/[^"'`」>\n]+\.(?:png|jpe?g|gif|webp))["'`」>]/gi)) paths.push(match[1]);
-    const whole=line.match(/^(?:画像|スクショ|添付画像)[:：]\s*(\/.*\.(?:png|jpe?g|gif|webp))\s*$/i)||line.match(/^\s*(\/.*\.(?:png|jpe?g|gif|webp))\s*$/i);
-    if(whole) paths.push(whole[1]);
-    for(const match of line.matchAll(/(?:^|[\s(])((?:\/)[^\s<>"'`「」()[\]]+\.(?:png|jpe?g|gif|webp))(?=$|[\s)\]、。])/gi)) paths.push(match[1]);
-    for(const raw of [...paths,...visibleURLs(line).filter(imagePath)]) {
-      let source=raw;
-      if(source.startsWith('/')) {try {source=decodeURIComponent(source);}catch {continue;}}
-      if(!source.includes('***') && (source.startsWith('/')||/^https?:/.test(source)) && !images.includes(source)) images.push(source);
+    const candidates=[];
+    // Code and ordinary file paths are literal; only Markdown destinations
+    // carry URL-encoded local paths. Mask spans to prevent a second raw match.
+    let plain=line.replace(/`([^`\n]+)`/g,(match,value,index)=>{
+      if(imagePath(value))candidates.push({value,index,encoded:false});
+      return ' '.repeat(match.length);
+    });
+    plain=plain.replace(/!?\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+["'][^"'\n]*["'])?\s*\)/g,(match,angle,bare,index)=>{
+      candidates.push({value:angle||bare,index,encoded:true});return ' '.repeat(match.length);
+    });
+    const whole=plain.match(/^(?:画像|スクショ|添付画像)[:：]\s*(\/.*\.(?:png|jpe?g|gif|webp))\s*$/i)||plain.match(/^\s*(\/.*\.(?:png|jpe?g|gif|webp))\s*$/i);
+    if(whole)candidates.push({value:whole[1],index:0,encoded:false});
+    else {
+      for(const match of plain.matchAll(/["'「<](\/[^"'」>\n]+\.(?:png|jpe?g|gif|webp))["'」>]/gi))candidates.push({value:match[1],index:match.index,encoded:false});
+      for(const match of plain.matchAll(/(?:^|[\s(])((?:\/)[^\s<>"'`「」()[\]]+\.(?:png|jpe?g|gif|webp))(?=$|[\s)\]、。])/gi))candidates.push({value:match[1],index:match.index,encoded:false});
+      for(const value of visibleURLs(plain).filter(imagePath))candidates.push({value,index:plain.indexOf(value),encoded:false});
+    }
+    for(const candidate of candidates.sort((a,b)=>a.index-b.index)) {
+      let source=candidate.value;
+      if(candidate.encoded&&source.startsWith('/')) {try {source=decodeURIComponent(source);}catch {continue;}}
+      if(imagePath(source)&&!source.includes('***')&&(source.startsWith('/')||/^https?:/.test(source))&&!images.includes(source))images.push(source);
     }
   }
   return {links,images:images.slice(0,RICH_LIMITS.images)};
