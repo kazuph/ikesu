@@ -98,18 +98,31 @@ def upgrade(args, env, home, entry):
     if not brew:
         raise RuntimeError('brew not on PATH; specify --brew /absolute/path/to/brew')
     # Keep old kegs through the entire operation, including first installation.
-    env = dict(env, HOMEBREW_NO_INSTALL_CLEANUP='1')
+    env = dict(env, HOMEBREW_NO_INSTALL_CLEANUP='1', HOMEBREW_NO_AUTO_UPDATE='1')
+    try:
+        # Also preserve first installation when the tap has not been added yet.
+        checked([brew, 'tap', 'kazuph/tap'], env)
+        repository = checked([brew, '--repository', 'kazuph/tap'], env)
+        if not repository:
+            raise RuntimeError('brew returned no repository path for kazuph/tap')
+        # Use the tap's existing URL/configuration, including local HTTPS overrides.
+        checked(['git', '-C', repository, 'pull', '--ff-only'], env)
+    except RuntimeError as error:
+        raise RuntimeError(f'cannot refresh kazuph/tap: {error}') from error
+    metadata = json.loads(checked([brew, 'info', '--json=v2', 'kazuph/tap/ikesu'], env))
+    expected = metadata['formulae'][0]['versions']['stable']
+    if not isinstance(expected, str) or not re.fullmatch(STABLE, expected):
+        raise RuntimeError('tap did not return a stable ikesu version')
+    print(f'tap latest: {expected}', flush=True)
     installed = run([brew, 'list', '--versions', 'ikesu'], env)
     checked([brew, 'upgrade', 'ikesu'] if installed.returncode == 0 and installed.stdout.strip()
             else [brew, 'install', 'kazuph/tap/ikesu'], env)
     prefix = Path(checked([brew, '--prefix', 'ikesu'], env))
-    metadata = json.loads(checked([brew, 'info', '--json=v2', 'ikesu'], env))
-    expected = metadata['formulae'][0]['versions']['stable']
     source = (prefix / 'bin/ikesu').resolve(strict=True)
-    print(f'brew: {expected} ({source})', flush=True)
     actual = binary_version(source, env)
+    print(f'installed: {actual} ({source})', flush=True)
     if actual != expected:
-        raise RuntimeError(f'brew version {expected} differs from executable {actual}')
+        raise RuntimeError(f'tap latest version {expected} differs from installed executable {actual}')
     target = retain(source, actual, home)
     if binary_version(target, env) != actual:
         raise RuntimeError('retained executable version mismatch')

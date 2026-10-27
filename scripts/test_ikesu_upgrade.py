@@ -58,12 +58,12 @@ class UpgradeTest(unittest.TestCase):
         self.git('add','stable-version',cwd=self.tap_origin)
         self.git('commit','-qm','initial tap',cwd=self.tap_origin)
         subprocess.run(['git','clone','-q',str(self.tap_origin),str(self.tap)],env=git_env,check=True)
-        self.git('config','url.https://github.com/.insteadOf','https://github.com/',cwd=self.tap)
+        self.git('config','url.https://github.com/kazuph/homebrew-tap.insteadOf','https://github.com/kazuph/homebrew-tap',cwd=self.tap)
         self.brew = self.root/'brew'
         self.brew.write_text('''#!/usr/bin/env python3
 import json,os,sys,pathlib,shutil
 root=pathlib.Path(os.environ['HOME'])
-with (root/'brew-calls.jsonl').open('a') as f:f.write(json.dumps({'args':sys.argv[1:],'cleanup':os.environ.get('HOMEBREW_NO_INSTALL_CLEANUP')})+'\\n')
+with (root/'brew-calls.jsonl').open('a') as f:f.write(json.dumps({'args':sys.argv[1:],'cleanup':os.environ.get('HOMEBREW_NO_INSTALL_CLEANUP'),'auto_update':os.environ.get('HOMEBREW_NO_AUTO_UPDATE')})+'\\n')
 if sys.argv[1:]==['tap','kazuph/tap']:pass
 elif sys.argv[1:]==['--repository','kazuph/tap']:print(root/'tap')
 elif sys.argv[1:]==['list','--versions','ikesu']:
@@ -103,12 +103,18 @@ else:raise SystemExit(2)
     def test_stale_tap_is_refreshed_before_upgrade(self):
         self.start()
         self.stale_tap()
+        self.git('config','--global','url.git@github.com:.insteadOf','https://github.com/',cwd=self.tap)
+        url='https://github.com/kazuph/homebrew-tap'
+        self.assertEqual(self.git('ls-remote','--get-url',url,cwd=self.tap),url)
         config=(self.tap/'.git/config').read_bytes()
+        global_config=(self.root/'.gitconfig').read_bytes()
         result=self.upgrade()
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual((self.tap/'stable-version').read_text(),self.new_version)
         self.assertEqual(command(self.entry,'--version',env=self.env).stdout.strip(),'ikesu '+self.new_version)
         self.assertEqual((self.tap/'.git/config').read_bytes(),config)
+        self.assertEqual((self.root/'.gitconfig').read_bytes(),global_config)
+        self.assertEqual(self.git('ls-remote','--get-url',url,cwd=self.tap),url)
         self.assertIn('tap latest: '+self.new_version,result.stdout)
         self.assertIn('installed: '+self.new_version,result.stdout)
 
@@ -220,7 +226,8 @@ else:raise SystemExit(2)
         until(child.exists)
         self.assertEqual(command(self.entry,'--version',env=self.env).stdout.strip(), 'ikesu '+self.new_version)
         calls=[json.loads(l) for l in (self.root/'brew-calls.jsonl').read_text().splitlines()]
-        self.assertTrue(all(c['cleanup']=='1' for c in calls))
+        self.assertTrue(all(c['cleanup']=='1' and c['auto_update']=='1' for c in calls))
+        self.assertFalse(any(c['args'] and c['args'][0]=='update' for c in calls))
 
     def test_failed_real_protocol_handoff_retains_old_entry_and_server(self):
         pane=self.start()[0]['pane_id']
