@@ -1,6 +1,6 @@
 id = "kazuph.mac-dialog-decisions"
 name = "Mac Dialog Decisions"
-version = "0.1.3"
+version = "0.1.4"
 min_ikesu_version = "0.2.7"
 description = "Show pending ikesu decisions as a front-most macOS dialog with the full text (origin, question label, every option's label, description and preview, deadline); answers become `ikesu decision answer --responder mac-dialog`."
 platforms = ["macos"]
