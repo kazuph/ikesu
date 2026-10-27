@@ -81,8 +81,12 @@ func koiPixelPosition(fish KoiFish, cw, ch int) image.Point {
 
 func drawKoiOctants(f *Frame, fish KoiFish) {
 	w, h := fish.Rect.W*2, fish.Rect.H*4
-	sprite, _ := koiSpriteCached(koiSpriteKey{koiVariant(fish), fish.Direction, fish.Wag, w, h})
-	for y := 0; y < fish.Rect.H; y++ {
+	source, _ := koiSpriteCached(koiSpriteKey{koiVariant(fish), fish.Direction, fish.Wag, w, h})
+	rows := fish.Lane.H
+	sprite := image.NewRGBA(image.Rect(0, 0, w, rows*4))
+	offset := min(max(0, int(math.Round((fish.Y-float64(fish.Rect.Y))*4))), rows*4-h)
+	draw.Draw(sprite, source.Bounds().Add(image.Pt(0, offset)), source, image.Point{}, draw.Src)
+	for y := 0; y < rows; y++ {
 		for x := 0; x < fish.Rect.W; x++ {
 			cell := f.Cell(fish.Rect.X+x, fish.Rect.Y+y)
 			if cell == nil || cell.Width != 1 || cell.Content != " " {

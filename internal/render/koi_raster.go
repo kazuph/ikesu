@@ -61,16 +61,16 @@ func koiSample(p KoiPattern, u, v, wag float64) (color.RGBA, float64) {
 	}
 	// Pectoral fins, both sides.
 	for _, s := range []float64{1, -1} {
-		du, dv := (u-0.66)/0.07, (v-s*0.14)/0.07
+		du, dv := (u-0.66)/0.085, (v-s*0.14)/0.085
 		rot := du*0.6 + dv*0.8*s
 		if du*du+dv*dv < 1 && rot < 0.6 {
 			return fin, 0.55
 		}
 	}
-	if u < 0.12 || u > 1 {
+	if u < 0.12 || u > 0.94 {
 		return color.RGBA{}, 0
 	}
-	// Torpedo outline, blunt head.
+	// Broad body with a short rounded face.
 	x := (u - 0.12) / 0.88
 	// Tapered tail, widest just behind the fins, then a round blunt head.
 	const peak = 0.62
@@ -78,7 +78,7 @@ func koiSample(p KoiPattern, u, v, wag float64) (color.RGBA, float64) {
 	if x < peak {
 		w = half * math.Pow(math.Sin(math.Pi/2*x/peak), 0.8)
 	} else {
-		w = half * math.Sqrt(math.Max(0, 1-math.Pow((x-peak)/(1-peak), 2.4)))
+		w = half * math.Sqrt(math.Max(0, 1-math.Pow((u-(0.12+0.88*peak))/(1-(0.12+0.88*peak)), 2)))
 	}
 	if math.Abs(v) > w {
 		return color.RGBA{}, 0

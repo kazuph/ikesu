@@ -241,7 +241,7 @@ func (a *App) draw() {
 		a.koiClock.Apply(&in, nil, time.Now(), fossilExpiry)
 	}
 	if file, ok := a.out.(*os.File); ok {
-		in.KoiKitty = kitty.SupportsTerminal(os.Stdin, file, false) && a.cellW > 0 && a.cellH > 0
+		in.KoiKitty = kitty.SupportsImages(os.Stdin, file) && a.cellW > 0 && a.cellH > 0
 	}
 	in.KoiCellW, in.KoiCellH = a.cellW, a.cellH
 	out := render.ComposeClient(in, nil, a.clientVersion, false)

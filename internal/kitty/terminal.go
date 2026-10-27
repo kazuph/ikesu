@@ -11,11 +11,26 @@ func SupportsTerminal(in, out *os.File, remote bool) bool {
 	if remote || in == nil || out == nil {
 		return false
 	}
-	for _, key := range []string{"SSH_CONNECTION", "SSH_TTY", "TMUX", "STY"} {
+	for _, key := range []string{"SSH_CONNECTION", "SSH_TTY"} {
 		if _, present := os.LookupEnv(key); present {
 			return false
 		}
 	}
+	return SupportsImages(in, out)
+}
+
+// SupportsImages identifies an image-capable outer terminal, including SSH.
+// In-band payloads do not require a shared local filesystem.
+func SupportsImages(in, out *os.File) bool {
+	if in == nil || out == nil {
+		return false
+	}
+	for _, key := range []string{"TMUX", "STY"} {
+		if _, present := os.LookupEnv(key); present {
+			return false
+		}
+	}
+
 	if _, err := unix.IoctlGetWinsize(int(in.Fd()), unix.TIOCGWINSZ); err != nil {
 		return false
 	}

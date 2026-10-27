@@ -13,6 +13,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/latency"
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/platform"
@@ -142,7 +143,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
 	defer m.trace.Close()
-	m.koiKitty = graphicsFileTransport(in, out, false) != ""
+	m.koiKitty = kitty.SupportsImages(in, out)
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
