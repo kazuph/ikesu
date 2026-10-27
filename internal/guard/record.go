@@ -65,7 +65,7 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	}
 	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	now := time.Now()
-	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: v.Reason, Command: append([]string{i.Command}, i.Args...), CommandLine: i.Line(), Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
+	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: redact(v.Reason), Command: redactArgv(append([]string{i.Command}, i.Args...)), CommandLine: redact(i.Line()), Cwd: redact(i.Cwd), LaunchCwd: redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
 	if e != nil {
 		return e
 	}
@@ -83,7 +83,10 @@ func Execute(i Input) error {
 	if e != nil {
 		return e
 	}
-	return syscall.Exec(path, append([]string{i.Command}, i.Args...), childenv.Scrub(inherited))
+	clean := childenv.Scrub(inherited)
+	// Pass the request, never an approval, across the guarded execution boundary.
+	clean = append(clean, "IKESU_GUARD_PARENT_COMMAND="+i.Line(), "IKESU_GUARD_PARENT_REASON="+requestReason(i))
+	return syscall.Exec(path, append([]string{i.Command}, i.Args...), clean)
 }
 
 // The server policy is storage-only; guard status retains its public marker shape.
