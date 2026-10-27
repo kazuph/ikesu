@@ -4,7 +4,8 @@
 //
 // -mode full:   re-encode and send the whole pond every frame (first try).
 // -mode sprite: send water and every koi frame once, then only move
-//               placements each tick.
+//
+//	placements each tick.
 package main
 
 import (
