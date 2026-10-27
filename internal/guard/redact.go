@@ -81,6 +81,7 @@ func redact(text string) string {
 		})
 	}
 	if len(spans) > 0 {
+		sort.Slice(spans, func(a, b int) bool { return spans[a].start < spans[b].start })
 		text = maskSpans(text, spans)
 	}
 	return maskSpans(text, secretSpans(text))
