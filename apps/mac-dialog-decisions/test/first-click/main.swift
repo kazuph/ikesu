@@ -13,6 +13,7 @@ func verifyFirstClick() {
  let panel=controller.panel!
  let root=panel.contentView!
  root.layoutSubtreeIfNeeded()
+
  print("after-deactivate active=\(NSApp.isActive) key=\(panel.isKeyWindow)")
  precondition(!panel.isKeyWindow && !NSApp.isActive,"must start with inactive app and non-key panel")
  var failure=false

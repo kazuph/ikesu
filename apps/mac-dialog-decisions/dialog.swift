@@ -4,6 +4,8 @@
 
 import AppKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 // MARK: - spec
 
@@ -42,9 +44,15 @@ struct DialogSpec: Decodable {
   let daemon_owner: String?
   let daemon_ownership_path: String?
   let draft: DialogDraft?
+  let draft_directory: String?
 }
 
-struct DialogDraft: Decodable { let option_ids: [String]; let text: String }
+struct DialogAttachment: Codable {
+  let path: String
+  let name: String
+  var object: [String: String] { ["path": path, "name": name] }
+}
+struct DialogDraft: Decodable { let option_ids: [String]; let text: String; let attachments: [DialogAttachment]? }
 
 // MARK: - output
 
@@ -112,6 +120,17 @@ final class FirstClickImageView: NSImageView {
 }
 
 final class FirstClickTextView: NSTextView {
+  var imagePasteboard: NSPasteboard = .general
+  var onAttachments: ((NSPasteboard) -> Bool)?
+  override func paste(_ sender: Any?) {
+    if onAttachments?(imagePasteboard) == true { return }; super.paste(sender)
+  }
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    if sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) || sender.draggingPasteboard.availableType(from: [.png, .tiff]) != nil { return .copy }; return super.draggingEntered(sender)
+  }
+  override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    if onAttachments?(sender.draggingPasteboard) == true { return true }; return super.performDragOperation(sender)
+  }
   var onCommandReturn: (() -> Void)?
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override func keyDown(with event: NSEvent) {
@@ -168,6 +187,7 @@ final class OptionCard: NSView {
   var checked = false { didSet { refresh() } }
   var onClick: ((OptionCard) -> Void)?
   private var hovering = false { didSet { refresh() } }
+  private var descriptionField: NSTextField?
   private let mark = NSTextField(labelWithString: "")
   private let box = FirstClickImageView()
 
@@ -193,7 +213,9 @@ final class OptionCard: NSView {
     let title = label(option.label, size: Look.base + 1, weight: .semibold, selectable: false)
     stack.addArrangedSubview(title)
     if let d = option.description, !d.isEmpty {
-      stack.addArrangedSubview(label(d, size: Look.small + 1, color: .secondaryLabelColor, selectable: false))
+      let field = richLabel(d, size: Look.small + 1, color: .secondaryLabelColor, selectable: false)
+      descriptionField = field
+      stack.addArrangedSubview(field)
     }
     if let p = option.preview, !p.isEmpty {
       let box = previewScroll(p)
@@ -233,6 +255,19 @@ final class OptionCard: NSView {
   override func mouseDown(with event: NSEvent) { layer?.opacity = 0.75 }
   override func mouseUp(with event: NSEvent) {
     layer?.opacity = 1
+    // AppKit bubbles the field editor's mouse-up to the card after opening a
+    // link. Test the actual glyph under that event, leaving other card clicks intact.
+    if let editor = descriptionField?.currentEditor() as? NSTextView,
+      let manager = editor.layoutManager, let container = editor.textContainer, let storage = editor.textStorage {
+      let local = editor.convert(event.locationInWindow, from: nil)
+      let textPoint = NSPoint(x: local.x - editor.textContainerOrigin.x, y: local.y - editor.textContainerOrigin.y)
+      let glyph = manager.glyphIndex(for: textPoint, in: container)
+      if editor.bounds.contains(local), glyph < manager.numberOfGlyphs,
+        manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).contains(textPoint) {
+        let character = manager.characterIndexForGlyph(at: glyph)
+        if character < storage.length, storage.attribute(.link, at: character, effectiveRange: nil) != nil { return }
+      }
+    }
     if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?(self) }
   }
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
@@ -275,6 +310,12 @@ final class DialogController: NSObject, NSWindowDelegate {
   var cards: [OptionCard] = []
   var textView: FirstClickTextView?
   var submitButton: FirstClickButton!
+  var attachments: [DialogAttachment] = []
+  var attachmentLoading = 0
+  let attachmentRow = NSStackView()
+  let richStack = NSStackView()
+  var richWarningShown = false
+  let imageWork = OperationQueue()
   var answerPending = false
   let statusLabel = NSTextField(wrappingLabelWithString: "")
   var infoLabel: NSTextField!
@@ -299,12 +340,13 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func saveDraft() {
-    emit(["event": "draft", "draft": ["option_ids": checkedIds(), "text": textView?.string ?? ""]])
+    emit(["event": "draft", "draft": ["option_ids": checkedIds(), "text": textView?.string ?? "", "attachments": attachments.map { $0.object }]])
   }
 
   func close() {
     if closed { return }
     closed = true
+    imageWork.cancelAllOperations()
     saveDraft()
     panel.orderOut(nil)
     panel.close()
@@ -313,17 +355,17 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func answer(ids: [String]) {
-    guard !answerPending else { return }
+    guard !answerPending, !closed, attachmentLoading == 0 else { return }
     answerPending = true
     statusLabel.stringValue = "回答を送信中…"
     refreshSubmit()
-    emit(["result": "answer", "option_ids": ids, "text": currentText()])
+    emit(["result": "answer", "option_ids": ids, "text": currentText(), "attachments": attachments.map { $0.object }])
   }
 
   @objc func submit() {
     let ids = checkedIds()
     let text = currentText()
-    if ids.isEmpty && text.isEmpty {
+    if ids.isEmpty && text.isEmpty && attachments.isEmpty {
       statusLabel.stringValue = "選択肢を選ぶか、回答を入力してください。"
       return
     }
@@ -353,8 +395,8 @@ final class DialogController: NSObject, NSWindowDelegate {
   }
 
   func refreshSubmit() {
-    let ready = !checkedIds().isEmpty || !currentText().isEmpty
-    submitButton.isEnabled = ready && !answerPending
+    let ready = !checkedIds().isEmpty || !currentText().isEmpty || !attachments.isEmpty
+    submitButton.isEnabled = ready && !answerPending && attachmentLoading == 0
   }
 
   func handleKey(_ event: NSEvent) -> NSEvent? {
@@ -423,7 +465,7 @@ final class DialogController: NSObject, NSWindowDelegate {
 
     var titleText = spec.title
     if let q = spec.question_label, !q.isEmpty { titleText = "［\(q)］ " + titleText }
-    let titleLabel = label(titleText, size: Look.title, weight: .bold)
+    let titleLabel = richLabel(titleText, size: Look.title, weight: .bold)
     if spec.kind == "command_guard" {
       titleLabel.maximumNumberOfLines = 1
       titleLabel.lineBreakMode = .byTruncatingTail
@@ -431,14 +473,19 @@ final class DialogController: NSObject, NSWindowDelegate {
     full(titleLabel)
 
     if let body = spec.body, !body.isEmpty {
-      if spec.kind == "command_guard", body.hasPrefix("承認が必要な理由:"),
+      if spec.kind == "command_guard", (body.hasPrefix("ブロック理由：") || body.hasPrefix("承認が必要な理由:")),
         let boundary = body.range(of: "\n\n") {
-        full(label(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent))
-        full(label(String(body[boundary.upperBound...]), size: Look.base))
+        full(richLabel(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent))
+        full(richLabel(String(body[boundary.upperBound...]), size: Look.base))
       } else {
-        full(label(body, size: Look.base))
+        full(richLabel(body, size: Look.base))
       }
     }
+
+    richStack.orientation = .vertical
+    richStack.alignment = .leading
+    richStack.spacing = 8
+    full(richStack)
 
     if let details = spec.details, !details.isEmpty {
       let grid = NSStackView()
@@ -507,8 +554,8 @@ final class DialogController: NSObject, NSWindowDelegate {
     }
     if spec.allow_text {
       let caption = label(spec.options.isEmpty
-        ? "回答（⌘↩ で送信）"
-        : "自由入力（任意。選んだ選択肢と一緒に送ります。文だけでも送れます）",
+        ? "回答（⌘↩ で送信）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。"
+        : "自由入力（任意。選んだ選択肢と一緒に送ります。文だけでも送れます）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。",
         size: Look.small, color: .secondaryLabelColor, selectable: false)
       bottom.addArrangedSubview(caption)
       let tv = FirstClickTextView()
@@ -519,6 +566,8 @@ final class DialogController: NSObject, NSWindowDelegate {
       tv.textContainerInset = NSSize(width: 6, height: 6)
       tv.onCommandReturn = { [weak self] in self?.submit() }
       tv.delegate = self
+      tv.registerForDraggedTypes([.fileURL, .png, .tiff])
+      tv.onAttachments = { [weak self] board in self?.consumeAttachments(board) ?? false }
       let tscroll = NSScrollView()
       tscroll.translatesAutoresizingMaskIntoConstraints = false
       tscroll.hasVerticalScroller = true
@@ -534,6 +583,16 @@ final class DialogController: NSObject, NSWindowDelegate {
       tscroll.heightAnchor.constraint(equalToConstant: 76).isActive = true
       tscroll.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -2 * Look.pad).isActive = true
       textView = tv
+      let attachButton = FirstClickButton(title: "画像を添付", target: self, action: #selector(chooseAttachments))
+      attachButton.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: "画像を添付")
+      attachButton.imagePosition = .imageLeading
+      attachButton.bezelStyle = .rounded
+      attachButton.toolTip = "画像は4枚・1枚20MBまで。画像の中の秘密情報は伏せ字になりません。"
+      bottom.addArrangedSubview(attachButton)
+      attachmentRow.orientation = .horizontal
+      attachmentRow.spacing = 8
+      bottom.addArrangedSubview(attachmentRow)
+      attachmentRow.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -2 * Look.pad).isActive = true
     }
 
     let laterLabel = spec.later_label ?? "10分"
@@ -602,7 +661,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     root.layoutSubtreeIfNeeded()
     let contentHeight = stack.fittingSize.height + 32
     let bottomHeight = bottom.fittingSize.height
-    if spec.kind == "command_guard" {
+    if spec.kind == "command_guard" || spec.allow_text {
       let chromeHeight = panel.frame.height - panel.contentLayoutRect.height
       panel.minSize.height = max(panel.minSize.height, bottomHeight + chromeHeight)
     }
@@ -613,6 +672,8 @@ final class DialogController: NSObject, NSWindowDelegate {
     if let draft = spec.draft {
       for card in cards { card.checked = draft.option_ids.contains(card.option.id) }
       textView?.string = draft.text
+      attachments = draft.attachments ?? []
+      refreshAttachments()
     }
     refreshSubmit()
   }
@@ -627,6 +688,7 @@ final class DialogController: NSObject, NSWindowDelegate {
   // Close with the decision: the daemon deletes the spec when it is resolved
   // elsewhere or when the daemon stops; a dead daemon also ends the panel.
   func respond(_ message: [String: Any]) {
+    if let status = message["status"] as? String, status.hasPrefix("rich_") { receiveRich(message); return }
     if message["status"] as? String == "error" {
           self.answerPending = false
           self.statusLabel.stringValue = message["message"] as? String ?? "回答の送信に失敗しました。"
@@ -662,4 +724,193 @@ final class DialogController: NSObject, NSWindowDelegate {
 
 extension DialogController: NSTextViewDelegate {
   func textDidChange(_ notification: Notification) { refreshSubmit(); saveDraft() }
+}
+
+// Rich content is constructed from the already-redacted display fields only.
+func richLinkRanges(_ text: String) -> [NSTextCheckingResult] {
+  guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return [] }
+  return detector.matches(in: text, range: NSRange(text.startIndex..., in: text)).filter {
+    guard let url = $0.url, let range = Range($0.range, in: text) else { return false }
+    guard text[range].hasPrefix("http://") || text[range].hasPrefix("https://") else { return false }
+    return ["http", "https"].contains(url.scheme?.lowercased() ?? "") && !url.absoluteString.contains("***")
+  }
+}
+func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true) -> NSTextField {
+  let field = label(text, size: size, weight: weight, color: color, selectable: selectable)
+  let links = richLinkRanges(text)
+  if !links.isEmpty {
+    let attributed = NSMutableAttributedString(string: text, attributes: [.font: field.font!, .foregroundColor: color])
+    for match in links { attributed.addAttributes([.link: match.url!.absoluteString, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: match.range) }
+    field.allowsEditingTextAttributes = true
+    field.isSelectable = true
+    field.attributedStringValue = attributed
+  }
+  return field
+}
+struct RichBitmap {
+  let image: NSImage
+  let width: Int
+  let height: Int
+  let ext: String
+}
+func readRegularImage(_ path: String, limit: Int) throws -> Data {
+  let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+  guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
+  let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+  defer { try? handle.close() }
+  var info = stat()
+  guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { throw CocoaError(.fileReadUnsupportedScheme) }
+  guard info.st_size <= limit else { throw CocoaError(.fileReadTooLarge) }
+  let data = try handle.read(upToCount: limit + 1) ?? Data()
+  guard data.count <= limit else { throw CocoaError(.fileReadTooLarge) }
+  return data
+}
+func richBitmap(_ data: Data, attachment: Bool = false) throws -> RichBitmap {
+  let limit = (attachment ? 20 : 10) * 1024 * 1024 // approved plan limits
+  guard data.count <= limit, let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+    let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+    let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+    width > 0, height > 0, width <= 8000, height <= 8000,
+    let type = CGImageSourceGetType(source), let ext = UTType(type as String)?.preferredFilenameExtension,
+    ["png", "jpg", "jpeg", "gif", "webp"].contains(ext.lowercased()),
+    let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 640, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary)
+    else { throw NSError(domain: "ikesu", code: 1, userInfo: [NSLocalizedDescriptionKey: "画像の形式・容量・縦横8000画素の上限を確認してください。"] ) }
+  return RichBitmap(image: NSImage(cgImage: image, size: .zero), width: width, height: height, ext: ext)
+}
+final class ImagePreviewButton: NSButton {
+  var imagePath = ""
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  @objc func previewImage() {
+    NSWorkspace.shared.open([URL(fileURLWithPath: imagePath)], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Preview.app"), configuration: NSWorkspace.OpenConfiguration())
+  }
+  init(path: String, bitmap: RichBitmap, maxHeight: CGFloat = 160) {
+    super.init(frame: .zero)
+    imagePath = path
+    image = bitmap.image
+    imageScaling = .scaleProportionallyDown
+    isBordered = false
+    target = self; action = #selector(previewImage)
+    translatesAutoresizingMaskIntoConstraints = false
+    heightAnchor.constraint(equalToConstant: min(maxHeight, CGFloat(bitmap.height))).isActive = true
+    let preferredWidth = widthAnchor.constraint(equalToConstant: min(640, maxHeight * CGFloat(bitmap.width) / CGFloat(bitmap.height)))
+    preferredWidth.priority = .defaultHigh
+    preferredWidth.isActive = true
+    toolTip = "プレビューで開く"
+  }
+  required init?(coder: NSCoder) { fatalError() }
+}
+extension DialogController {
+  @objc func chooseAttachments() {
+    let picker = NSOpenPanel()
+    picker.canChooseDirectories = false
+    picker.allowsMultipleSelection = true
+    picker.allowedContentTypes = [.png, .jpeg, .gif, .webP]
+    picker.beginSheetModal(for: panel) { [weak self] result in
+      if result == .OK { self?.attachFiles(picker.urls) }
+    }
+  }
+  @discardableResult func consumeAttachments(_ board: NSPasteboard) -> Bool {
+    guard spec.allow_text else { return false }
+    if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty { attachFiles(urls); return true }
+    if let data = board.data(forType: .png) { stageAttachment(data: data, name: "貼り付け画像.png"); return true }
+    if let data = board.data(forType: .tiff) { stageAttachment(data: data, clipboardTIFF: true, name: "貼り付け画像.png"); return true }
+    return false
+  }
+  func attachFiles(_ urls: [URL]) {
+    for url in urls { stageAttachment(file: url, name: url.lastPathComponent) }
+  }
+  func stageAttachment(file: URL? = nil, data: Data? = nil, clipboardTIFF: Bool = false, name: String) {
+    guard spec.allow_text, !closed else { return }
+    guard attachments.count + attachmentLoading < 4 else { statusLabel.stringValue = "添付は4枚までです。"; return }
+    guard let directory = spec.draft_directory else { statusLabel.stringValue = "添付の保存先を用意できません。"; return }
+    attachmentLoading += 1; refreshSubmit()
+    imageWork.addOperation { [weak self] in
+      guard let self, !self.closed else { return }
+      do {
+        var bytes: Data
+        if let data { bytes = data } else if let file {
+          bytes = try readRegularImage(file.path, limit: 20 * 1024 * 1024)
+        } else { throw CocoaError(.fileReadUnknown) }
+        if clipboardTIFF {
+          guard bytes.count <= 20 * 1024 * 1024,
+            let source = CGImageSourceCreateWithData(bytes as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width <= 8000, height <= 8000,
+            let rep = NSBitmapImageRep(data: bytes), let png = rep.representation(using: .png, properties: [:]) else { throw CocoaError(.fileReadTooLarge) }
+          bytes = png
+        }
+        let bitmap = try richBitmap(bytes, attachment: true)
+        let destination = URL(fileURLWithPath: directory).appendingPathComponent(UUID().uuidString + "." + bitmap.ext)
+        let fd = open(destination.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+        guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        try handle.write(contentsOf: bytes); try handle.close()
+        DispatchQueue.main.async {
+          if self.closed { try? FileManager.default.removeItem(at: destination); return }
+          self.attachmentLoading -= 1
+          self.attachments.append(DialogAttachment(path: destination.path, name: name))
+          self.refreshAttachments(); self.refreshSubmit(); self.saveDraft()
+        }
+      } catch {
+        DispatchQueue.main.async { if !self.closed { self.attachmentLoading -= 1; self.statusLabel.stringValue = "画像を添付できません: \(error.localizedDescription)"; self.refreshSubmit() } }
+      }
+    }
+  }
+  func refreshAttachments() {
+    for view in attachmentRow.arrangedSubviews { attachmentRow.removeArrangedSubview(view); view.removeFromSuperview() }
+    for (index, attachment) in attachments.enumerated() {
+      let group = NSStackView(); group.orientation = .vertical; group.spacing = 2
+      let thumbnail = FirstClickImageView(); thumbnail.imageScaling = .scaleProportionallyDown
+      thumbnail.translatesAutoresizingMaskIntoConstraints = false
+      thumbnail.widthAnchor.constraint(equalToConstant: 72).isActive = true
+      thumbnail.heightAnchor.constraint(equalToConstant: 48).isActive = true
+      group.addArrangedSubview(thumbnail)
+      imageWork.addOperation { [weak self, weak thumbnail] in
+        guard let data = try? readRegularImage(attachment.path, limit: 20 * 1024 * 1024), let bitmap = try? richBitmap(data, attachment: true) else { return }
+        DispatchQueue.main.async { if self?.closed == false { thumbnail?.image = bitmap.image } }
+      }
+      let remove = FirstClickButton(title: "\(index + 1) を外す", target: self, action: #selector(removeAttachment(_:)))
+      remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "外す")
+      remove.imagePosition = .imageLeading
+      remove.tag = index; remove.toolTip = attachment.name; remove.bezelStyle = .rounded
+      group.addArrangedSubview(remove); attachmentRow.addArrangedSubview(group)
+    }
+  }
+  @objc func removeAttachment(_ sender: NSButton) {
+    guard !answerPending, attachments.indices.contains(sender.tag) else { return }
+    attachments.remove(at: sender.tag); refreshAttachments(); refreshSubmit(); saveDraft()
+  }
+  func receiveRich(_ message: [String: Any]) {
+    guard !closed, let status = message["status"] as? String else { return }
+    if status == "rich_error" { statusLabel.stringValue = message["message"] as? String ?? "画像を表示できません。"; return }
+    if status == "rich_card", let title = message["title"] as? String, let url = message["url"] as? String {
+      let group = NSStackView(); group.orientation = .vertical; group.alignment = .leading; group.spacing = 3
+      let caption = richLabel(title + "\n" + (message["site"] as? String ?? "") + "\n" + url, size: Look.small)
+      group.addArrangedSubview(caption)
+      richStack.addArrangedSubview(group)
+      group.widthAnchor.constraint(equalTo: richStack.widthAnchor).isActive = true
+      caption.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
+      if let path = message["path"] as? String, !path.isEmpty { loadRichImage(path, into: group, height: 80) }
+    } else if status == "rich_image", let path = message["path"] as? String { loadRichImage(path, into: richStack) }
+  }
+  func loadRichImage(_ path: String, into stack: NSStackView, height: CGFloat = 160) {
+    imageWork.addOperation { [weak self, weak stack] in
+      do {
+        let data = try readRegularImage(path, limit: 10 * 1024 * 1024)
+        let bitmap = try richBitmap(data)
+        DispatchQueue.main.async {
+          guard let self, !self.closed, let stack else { return }
+          if !self.richWarningShown {
+            self.richWarningShown = true
+            let hint = label("画像内の秘密は伏せ字になりません。", size: Look.small, color: .secondaryLabelColor, selectable: false)
+            self.richStack.insertArrangedSubview(hint, at: 0)
+          }
+          let button = ImagePreviewButton(path: path, bitmap: bitmap, maxHeight: height)
+          stack.addArrangedSubview(button)
+          button.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
+        }
+      } catch { DispatchQueue.main.async { if self?.closed == false { self?.statusLabel.stringValue = "画像を表示できません: \(error.localizedDescription)" } } }
+    }
+  }
 }
