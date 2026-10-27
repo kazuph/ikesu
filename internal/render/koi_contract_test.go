@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-func TestKoiCapacityReservesSeparateLanes(t *testing.T) {
-	for _, tc := range []struct{ n, w, h, want int }{{0, 30, 3, 0}, {1, 30, 3, 1}, {4, 30, 3, 1}, {5, 30, 10, 3}, {30, 30, 10, 3}, {60, 30, 10, 3}, {30, 11, 10, 0}} {
+func TestKoiCapacityReservesRotationArea(t *testing.T) {
+	for _, tc := range []struct{ n, w, h, want int }{{0, 30, 3, 0}, {1, 30, 3, 0}, {4, 30, 3, 0}, {5, 30, 10, 1}, {30, 30, 10, 1}, {60, 30, 10, 1}, {30, 11, 10, 0}} {
 		if got := KoiCount(tc.n, tc.w, tc.h); got != tc.want {
 			t.Errorf("agents=%d pond=%dx%d count=%d want=%d", tc.n, tc.w, tc.h, got, tc.want)
 		}
@@ -165,7 +165,7 @@ func TestKoiKittyUploadsOnlyOnceAndOverlaysClear(t *testing.T) {
 			}
 		}
 		if len(out.Frame.Graphics) < 2 {
-			t.Fatal("water and fish missing")
+			t.Fatal("fish missing")
 		}
 	}
 	t.Logf("kitty first=%d bytes subsequent19=%d bytes mean=%.1f", first, subsequent, float64(subsequent)/19)
@@ -310,7 +310,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				in.KoiKitty = true
 				in.KoiCellW, in.KoiCellH = 8, 16
 				graphic := ComposeMachines(in, machines)
-				if len(graphic.Frame.Graphics) != 7 {
+				if len(graphic.Frame.Graphics) != 6 {
 					t.Fatal("missing final machine graphics", len(graphic.Frame.Graphics))
 				}
 			}

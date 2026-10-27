@@ -157,7 +157,9 @@ type Input struct {
 	Spin               int  // working-spinner frame
 	Koi                bool // Set only by the presenting client, never the server clock.
 	KoiTime            float64
-	KoiGlow            map[string]bool `json:"-"`
+	KoiMotion          map[string]koiMotion `json:"-"`
+	KoiRipple          *KoiRipple           `json:"-"`
+	KoiGlow            map[string]bool      `json:"-"`
 	KoiKitty           bool
 	KoiCellW, KoiCellH int
 	Copied             string // flash text, e.g. " copied 12 chars "

@@ -7,13 +7,13 @@ import (
 
 var waterBG = color.RGBA{0x0d, 0x2b, 0x3a, 0xff}
 
-// KoiCount derives capacity from a two-row fish plus a one-row separating lane.
+// KoiCount reserves four rotation boxes per fish (25% maximum coverage).
+// The agreed rotation box is ten columns by five rows.
 func KoiCount(agents, pondW, pondH int) int {
 	if agents <= 0 || pondW < 12 || pondH < 3 {
 		return 0
 	}
-	// The original ten-cell fish occupies two rows; one blank row separates lanes.
-	return min(agents, pondH/3)
+	return min(agents, pondW*pondH/(10*5*4))
 }
 
 func koiHash(i int) float64 {

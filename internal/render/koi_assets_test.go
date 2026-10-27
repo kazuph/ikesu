@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -45,15 +46,17 @@ func TestExportKoiBrandAssets(t *testing.T) {
 	}
 	f.Close()
 	anim := &gif.GIF{LoopCount: 0}
-	in := koiFixture(t, 5)
+	in := koiFixture(t, 4)
+	for _, p := range in.Panes {
+		p.Status.Key = "working"
+	}
 	for tick := 0; tick < 80; tick++ {
 		in.KoiTime = float64(tick) / 20
-		base := NewFrame(in.State.Cols, in.State.Rows)
-		scene := KoiSceneFor(base, in, nil)
-		img := KoiPondImage(320, min(4, len(scene.Fish))*3*16, 0, 0, 0)
-		for i, fish := range scene.Fish[:min(4, len(scene.Fish))] {
-			fish = koiPose(fish.Agent, layout.Rect{X: 0, Y: i * 3, W: 40, H: 2}, 10, in.KoiTime)
-			sprite := KoiSprite(fish.Agent.Seed%len(KoiPatterns), fish.Direction, fish.Wag, 80, 32)
+		scene := koiBrandScene(in)
+		img := image.NewRGBA(image.Rect(0, 0, 320, 320))
+		draw.Draw(img, img.Bounds(), image.NewUniform(ThemePalette("catppuccin").PanelBG), image.Point{}, draw.Src)
+		for _, fish := range scene.Fish {
+			sprite, _ := koiSpriteCached(koiSpriteKey{koiVariant(fish), fish.Direction, fish.Wag, 80, 80})
 			at := koiPixelPosition(fish, 8, 16)
 			draw.Draw(img, image.Rectangle{Min: at, Max: at.Add(sprite.Bounds().Size())}, sprite, image.Point{}, draw.Over)
 		}
@@ -204,4 +207,14 @@ func TestKoiGIFKeepsEnlargedDotGrid(t *testing.T) {
 			}
 		}
 	}
+}
+
+func koiBrandScene(in Input) KoiScene {
+	pond := layout.Rect{W: 40, H: 20}
+	scene := KoiScene{Pond: pond}
+	for _, agent := range KoiAgentsFor(in, nil) {
+		scene.Fish = append(scene.Fish, koiPondPose(agent, pond, in))
+	}
+	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
+	return scene
 }

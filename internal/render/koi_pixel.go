@@ -112,3 +112,39 @@ func KoiSprite(variety, direction, wag, w, h int) *image.RGBA {
 	}
 	return out
 }
+
+// Pond frames rotate nearest-neighbor samples of the unchanged 40x16 artwork
+// into a square source; each direction retains the original fixed palette.
+func koiPondSprite(variety, direction, wag, w, h int) *image.RGBA {
+	source := KoiPixelSprite(variety, 0, wag, 40, 16)
+	square := image.NewRGBA(image.Rect(0, 0, 40, 40))
+	angle := float64(direction) * 2 * math.Pi / 16
+	c, s := math.Cos(angle), math.Sin(angle)
+	for y := 0; y < 40; y++ {
+		for x := 0; x < 40; x++ {
+			dx, dy := float64(x)-19.5, float64(y)-19.5
+			sx, sy := int(math.Round(c*dx+s*dy+19.5)), int(math.Round(-s*dx+c*dy+7.5))
+			if sx >= 0 && sy >= 0 && sx < 40 && sy < 16 {
+				square.SetRGBA(x, y, source.RGBAAt(sx, sy))
+			}
+		}
+	}
+	if w < 40 || h < 40 {
+		out := image.NewRGBA(image.Rect(0, 0, w, h))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				out.SetRGBA(x, y, square.RGBAAt(x*40/w, y*40/h))
+			}
+		}
+		return out
+	}
+	scale := max(1, min(w/40, h/40))
+	out := image.NewRGBA(image.Rect(0, 0, w, h))
+	ox, oy := (w-40*scale)/2, (h-40*scale)/2
+	for y := 0; y < 40*scale; y++ {
+		for x := 0; x < 40*scale; x++ {
+			out.SetRGBA(x+ox, y+oy, square.RGBAAt(x/scale, y/scale))
+		}
+	}
+	return out
+}

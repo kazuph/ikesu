@@ -12,14 +12,16 @@ import (
 )
 
 func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
-	for _, condition := range []string{"visible", "off", "empty", "hidden", "full", "blurred"} {
+	for _, condition := range []string{"visible", "off", "empty", "hidden", "full", "blurred", "idle"} {
 		state := model.New(t.TempDir(), 160, 45)
 		state.SidebarVisible = true
 		state.SidebarSize = 26
 		state.RightSidebarSize = 30
-		panes := map[int]*render.PaneSnap{1: {Agent: "codex", Status: render.StatusGlyph{Key: "idle"}}}
+		panes := map[int]*render.PaneSnap{1: {Agent: "codex", Status: render.StatusGlyph{Key: "working"}}}
 		var cfg config.Config
 		switch condition {
+		case "idle":
+			panes[1].Status.Key = "idle"
 		case "off":
 			off := false
 			cfg.UI.Koi = &off
@@ -30,6 +32,7 @@ func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
 			state.SidebarVisible = false
 			state.RightSidebarMode = "hidden"
 		case "full":
+			panes[1].Status.Key = "idle"
 			for i := 0; i < 60; i++ {
 				cfg.UI.Sidebar.Agents.Rows = append(cfg.UI.Sidebar.Agents.Rows, []config.SidebarToken{{Token: "agent"}})
 			}

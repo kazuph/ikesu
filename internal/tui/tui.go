@@ -151,6 +151,7 @@ type appJob struct {
 type App struct {
 	koiClock          render.KoiAnimation
 	koiLocalActive    bool
+	koiPond           layout.Rect
 	clientVersion     string
 	viewerOwner       *App
 	viewerContext     *Viewer

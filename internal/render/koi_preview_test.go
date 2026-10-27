@@ -18,8 +18,8 @@ import (
 
 func TestKoiCountCapsDensity(t *testing.T) {
 	for _, tc := range []struct{ agents, w, h, want int }{
-		{0, 30, 10, 0}, {1, 30, 10, 1}, {4, 30, 10, 3}, {9, 30, 10, 3},
-		{40, 30, 20, 6}, {40, 30, 10, 3}, {3, 30, 2, 0},
+		{0, 30, 10, 0}, {1, 30, 10, 1}, {4, 30, 10, 1}, {9, 30, 10, 1},
+		{40, 30, 20, 3}, {40, 30, 10, 1}, {3, 30, 2, 0},
 	} {
 		if got := KoiCount(tc.agents, tc.w, tc.h); got != tc.want {
 			t.Fatalf("KoiCount(%d,%d,%d)=%d want %d", tc.agents, tc.w, tc.h, got, tc.want)

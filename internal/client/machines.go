@@ -71,6 +71,8 @@ type machineClient struct {
 	koiClock          render.KoiAnimation
 	koiVisible        bool
 	koiKitty          bool
+	koiInput          render.Input
+	koiScene          render.KoiScene
 	clientVersion     string
 	trace             *latency.Trace
 	drawSeq, probeSeq uint64
@@ -225,7 +227,14 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 				return result
 			}
 		case <-alarm:
-			m.advance(time.Now())
+			now := time.Now()
+			if m.koiVisible && !m.paintQueued && !m.koiNext.IsZero() && !now.Before(m.koiNext) && m.nextDeadline().Equal(m.koiNext) {
+				if err := m.paintKoi(now); err != nil {
+					return pumpDone
+				}
+				continue
+			}
+			m.advance(now)
 			if err := m.paint(); err != nil {
 				return pumpDone
 			}

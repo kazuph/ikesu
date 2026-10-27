@@ -79,10 +79,11 @@ func (m *machineClient) paint() error {
 	} else {
 		composed = m.composer.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
 	}
+	m.koiInput, m.koiScene = in, composed.Frame.KoiScene
 	m.koiVisible = !m.blurred && composed.Frame.KoiActive
 	m.koiNext = time.Time{}
 	if m.koiVisible {
-		m.koiNext = time.Now().Add(50 * time.Millisecond)
+		m.koiNext = time.Now().Add(render.KoiInterval)
 	} // existing TUI tick interval and agreed 20fps
 	m.drawTabFeedback(composed)
 	f := composed.Frame

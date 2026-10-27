@@ -16,7 +16,7 @@ func TestKoiStandaloneClockCannotTriggerSnapshotSink(t *testing.T) {
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
-	a.SetReported(a.focusedPane(), "codex", "idle")
+	a.SetReported(a.focusedPane(), "codex", "working")
 	a.draw()
 	if !a.koiLocalActive {
 		t.Fatal("standalone fish clock not active")

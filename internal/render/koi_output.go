@@ -20,10 +20,21 @@ func koiSpriteCached(k koiSpriteKey) (*image.RGBA, kitty.Image) {
 		p := v.(koiRaster)
 		return p.Pixels, p.Image
 	}
-	img := KoiSprite(k.Variety, k.Direction, k.Wag, k.W, k.H)
+	v := k.Variety % (3 * len(KoiPatterns))
+	img := KoiSprite(v, k.Direction, k.Wag, k.W, k.H)
+	if k.W < 2*k.H {
+		img = koiPondSprite(v, k.Direction, k.Wag, k.W, k.H)
+	}
+	if k.Variety >= 3*len(KoiPatterns) {
+		for i := 0; i < len(img.Pix); i += 4 {
+			for c := 0; c < 3; c++ {
+				img.Pix[i+c] = uint8(int(img.Pix[i+c]) * 3 / 4)
+			}
+		}
+	}
 	var b bytes.Buffer
 	_ = png.Encode(&b, img)
-	p := koiRaster{img, kitty.Image{ID: uint32(1 + (k.Variety*2+k.Direction)*8 + k.Wag), Format: 100, Width: k.W, Height: k.H, Data: b.Bytes()}}
+	p := koiRaster{img, kitty.Image{ID: uint32(1 + (k.Variety*16+k.Direction)*8 + k.Wag), Format: 100, Width: k.W, Height: k.H, Data: b.Bytes()}}
 	actual, _ := koiSpriteCache.LoadOrStore(k, p)
 	p = actual.(koiRaster)
 	return p.Pixels, p.Image
@@ -39,39 +50,28 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 	if cw <= 0 || ch <= 0 {
 		return
 	}
-	if len(scene.Fish) > 0 {
-		water := KoiPondImage(1, 1, 0, 0, 0)
-		_, img := waterKoiImage(water)
-		f.Graphics = append(f.Graphics, Graphic{Pane: -3, Placement: kitty.Placement{Image: img, X: scene.Pond.X, Y: scene.Pond.Y, Cols: scene.Pond.W, Rows: scene.Pond.H, Z: 0}})
-	}
 	for group, fishList := range [][]KoiFish{scene.Fish, scene.Mini} {
 		if len(fishList) == 0 {
 			continue
 		}
 		w, h := fishList[0].Rect.W*cw, fishList[0].Rect.H*ch
-		// Keep every frame as a source even while not placed. The encoder uploads
-		// each image once and retires it only when this decoration becomes hidden.
-		for v := 0; v < len(KoiPatterns)*3; v++ {
-			for d := 0; d < 2; d++ {
-				for wag := 0; wag < 8; wag++ {
-					_, img := koiSpriteCached(koiSpriteKey{v, d, wag, w, h})
-					f.GraphicsSources = append(f.GraphicsSources, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img}})
-				}
-			}
-		}
 		for _, fish := range fishList {
 			v := koiVariant(fish)
 			_, img := koiSpriteCached(koiSpriteKey{v, fish.Direction, fish.Wag, w, h})
 			at := koiPixelPosition(fish, cw, ch)
 			px, py := at.X, at.Y
-			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 1}})
+			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 1 + int((3-fish.Depth)*100)}, Koi: true})
 		}
 	}
+	drawKoiRippleGraphics(f, scene, in)
 }
 
 // koiPixelPosition keeps source dots aligned and the image inside its lane.
 func koiPixelPosition(fish KoiFish, cw, ch int) image.Point {
 	_, _, scale := koiPixelGrid(fish.Rect.W*cw, fish.Rect.H*ch)
+	if fish.Rect.H >= 3 {
+		scale = max(1, min(fish.Rect.W*cw/40, fish.Rect.H*ch/40))
+	}
 	dx := int(math.Round((fish.X - float64(fish.Lane.X)) * float64(cw) / float64(scale)))
 	dy := int(math.Round((fish.Y - float64(fish.Lane.Y)) * float64(ch) / float64(scale)))
 	px := fish.Lane.X*cw + max(0, min(dx, (fish.Lane.W-fish.Rect.W)*cw/scale))*scale
@@ -82,15 +82,27 @@ func koiPixelPosition(fish KoiFish, cw, ch int) image.Point {
 func drawKoiOctants(f *Frame, fish KoiFish) {
 	w, h := fish.Rect.W*2, fish.Rect.H*4
 	source, _ := koiSpriteCached(koiSpriteKey{koiVariant(fish), fish.Direction, fish.Wag, w, h})
-	rows := fish.Lane.H
+	rows := fish.Rect.H
+	if fish.Rect.H == 2 {
+		rows = max(rows, fish.Lane.H)
+	}
 	sprite := image.NewRGBA(image.Rect(0, 0, w, rows*4))
 	offset := min(max(0, int(math.Round((fish.Y-float64(fish.Rect.Y))*4))), rows*4-h)
 	draw.Draw(sprite, source.Bounds().Add(image.Pt(0, offset)), source, image.Point{}, draw.Src)
 	for y := 0; y < rows; y++ {
 		for x := 0; x < fish.Rect.W; x++ {
 			cell := f.Cell(fish.Rect.X+x, fish.Rect.Y+y)
-			if cell == nil || cell.Width != 1 || cell.Content != " " {
+			if cell == nil || cell.Width != 1 {
 				continue
+			}
+			if cell.Content != " " {
+				found := false
+				for _, r := range octantRunes {
+					found = found || cell.Content == string(r)
+				}
+				if !found {
+					continue
+				}
 			}
 			var bg color.Color = f.Palette.PanelBG
 			if bg == nil {
@@ -149,17 +161,22 @@ func koiVariant(f KoiFish) int {
 	if f.Agent.State == "blocked" && f.Wag < 4 {
 		return v + len(KoiPatterns)
 	}
+	if f.Depth >= 1 {
+		return v + 3*len(KoiPatterns)
+	}
 	return v
 }
 
-var koiWaterOnce sync.Once
-var koiWater kitty.Image
+var koiRingCache sync.Map
 
-func waterKoiImage(img *image.RGBA) (*image.RGBA, kitty.Image) {
-	koiWaterOnce.Do(func() {
-		var b bytes.Buffer
-		_ = png.Encode(&b, img)
-		koiWater = kitty.Image{ID: 1, Format: 100, Width: 1, Height: 1, Data: b.Bytes()}
-	})
-	return img, koiWater
+func koiRippleCached(stage int) kitty.Image {
+	if v, ok := koiRingCache.Load(stage); ok {
+		return v.(kitty.Image)
+	}
+	img := koiRing(40, 40, stage)
+	var b bytes.Buffer
+	_ = png.Encode(&b, img)
+	result := kitty.Image{ID: uint32(stage + 1), Format: 100, Width: 40, Height: 40, Data: b.Bytes()}
+	actual, _ := koiRingCache.LoadOrStore(stage, result)
+	return actual.(kitty.Image)
 }

@@ -14,6 +14,7 @@ import (
 // It keeps the last written frame and the currently emitted style so diffs
 // are minimal: unchanged cells are never rewritten.
 type Encoder struct {
+	koi               koiEncoder
 	nativeImages      map[uint32]bool
 	graphics          []Graphic
 	graphicsSources   []Graphic
@@ -42,6 +43,10 @@ const (
 // RestoreCursor returns the host cursor to its default after an IME override.
 func (e *Encoder) RestoreCursor() []byte {
 	var b bytes.Buffer
+	for _, id := range e.koi.images {
+		fmt.Fprintf(&b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", id)
+	}
+	e.koi = koiEncoder{}
 	e.clearGraphics(&b)
 	e.graphics = nil
 	if e.cursorShape == 0 {
@@ -58,6 +63,7 @@ func (e *Encoder) RestoreCursor() []byte {
 // and outside the sync region.
 func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shape ...int) []byte {
 	defer benchstage.Span("render.encode")()
+	f, koi := withoutKoi(f)
 	var b bytes.Buffer
 	b.WriteString(syncStart)
 	b.WriteString(hideCursor)
@@ -88,6 +94,7 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 
 	e.emitRealPlacements(f, &b, graphicsChanged)
 	e.retireGraphics(f, &b, graphicsChanged)
+	b.Write(e.encodeKoi(koi, full))
 	// Park the cursor at the anchor before ending the sync block.
 	b.WriteString(cup(anchorY, anchorX))
 	if anchorVisible {

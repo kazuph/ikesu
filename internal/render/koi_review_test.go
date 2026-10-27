@@ -27,11 +27,15 @@ func TestKoiGIFContainsEveryFish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	in := koiFixture(t, 4)
+	for _, p := range in.Panes {
+		p.Status.Key = "working"
+	}
 	for tick, frame := range animation.Image {
-		for i := 0; i < 4; i++ {
-			fish := koiPose(KoiAgent{Seed: i, State: "idle"}, layout.Rect{X: 0, Y: i * 3, W: 40, H: 2}, 10, float64(tick)/20)
+		in.KoiTime = float64(tick) / 20
+		for i, fish := range koiBrandScene(in).Fish {
 			at := koiPixelPosition(fish, 8, 16)
-			box := image.Rectangle{Min: at, Max: at.Add(image.Pt(80, 32))}
+			box := image.Rectangle{Min: at, Max: at.Add(image.Pt(80, 80))}
 			if !box.In(frame.Bounds()) {
 				t.Fatalf("frame %d fish %d clipped: %v outside %v", tick, i, box, frame.Bounds())
 			}
@@ -172,6 +176,7 @@ func TestKoiSSHUsesInlineImages(t *testing.T) {
 	t.Setenv("TERM", "xterm-ghostty")
 	t.Setenv("SSH_CONNECTION", "192.0.2.1 1 192.0.2.2 2")
 	in := koiFixture(t, 1)
+	in.Panes[1].Status.Key = "working"
 	in.KoiKitty = kitty.SupportsImages(terminal, terminal)
 	in.KoiCellW, in.KoiCellH = 8, 16
 	var enc Encoder

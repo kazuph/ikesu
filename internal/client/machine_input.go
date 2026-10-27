@@ -193,6 +193,10 @@ func (m *machineClient) input(event input.Event) error {
 			return m.sendInput(m.active, eventBytes(event))
 		}
 	}
+	if event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft && m.koiClock.Click(m.koiScene.Pond, event.Mouse.X, event.Mouse.Y, time.Now()) && m.koiInput.Koi && len(m.koiScene.Fish) > 0 {
+		m.suppressRelease = true
+		return m.paint()
+	}
 	if activeView.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 		r := render.SidebarMenuRect(activeView.snapshot.State)
 		if contains(r.X, r.Y, r.W, r.H, event.Mouse.X, event.Mouse.Y) {

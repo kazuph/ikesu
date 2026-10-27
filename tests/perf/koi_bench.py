@@ -5,7 +5,7 @@ import argparse, json, os, pathlib, re, signal, subprocess, sys, tempfile, time,
 root=pathlib.Path.cwd()
 binary=str(root/'koi-ikesu')
 ptyrun=str(root/'koi-ptyrun')
-parser=argparse.ArgumentParser();parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
 out=root/args.evidence;out.mkdir(exist_ok=True)
 base_env={k:v for k,v in os.environ.items() if k not in ('IKESU_SOCKET_PATH','IKESU_SOCKET_PATH_EXPLICIT','IKESU','IKESU_PANE_ID','IKESU_WORKSPACE_ID','IKESU_TAB_ID','SSH_CONNECTION','SSH_TTY','TMUX','STY')}
 results=[]
@@ -46,7 +46,7 @@ def execute(condition,enabled,repeat):
  ready=state/'ready'
  steps=state/'steps.txt'
  response_command=json.dumps(r"printf '\113\117\111\137\117\113\n'"+'\r')
- steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\nsleep 2s\nstats before\nsleep 10s\nstats after\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
+ steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\nsleep 2s\nstats before\nsleep {args.seconds}s\nstats after\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
  raw=out/f'{session}.ansi';logpath=out/f'{session}.log'
  server=None;traffic=None;server_samples={};traffic_samples={}
  if condition!='empty':
@@ -84,9 +84,9 @@ def execute(condition,enabled,repeat):
      listing=cli('pane','list')
      panes=listing['result']['panes']
      pane=panes[0]['pane_id']
-     cli('pane','report-agent',pane,'--source','codex','--agent','codex','--state','idle','--title','koi benchmark')
+     cli('pane','report-agent',pane,'--source','codex','--agent','codex','--state',args.state,'--title','koi benchmark')
     ready.write_text('ready');setup=True
-  code=process.wait(timeout=60)
+  code=process.wait(timeout=args.seconds+60)
   if code or not setup:raise RuntimeError(f'ptyrun exited {code}, setup={setup}: '+''.join(lines))
  finally:
   uid=subprocess.check_output(['id','-u'],text=True).strip()
@@ -110,7 +110,7 @@ def execute(condition,enabled,repeat):
  def cpu(value):
   minutes,seconds=value.split(':');return int(minutes)*60+float(seconds)
  before,after=captures
- results.append({'session':session,'mode':'--no-session' if condition=='empty' else '--session','condition':condition,'enabled':enabled,'repeat':repeat,'seconds':10,'cpu_seconds':round(cpu(after[3])-cpu(before[3]),3),'server_cpu_seconds':round(cpu(server_samples['after'])-cpu(server_samples['before']),3) if server else None,'server_bytes':traffic_samples['after'][0]-traffic_samples['before'][0] if traffic else None,'snapshot_messages':traffic_samples['after'][1]-traffic_samples['before'][1] if traffic else None,'terminal_bytes':int(after[4])-int(before[4]),'input_response_seconds':float(re.findall(r'onscreen ([0-9.]+)', ''.join(lines))[-1]),'server_cleanup':cleanup,'raw_output':str(raw),'log':str(logpath),'state_dir':str(state)})
+ results.append({'session':session,'mode':'--no-session' if condition=='empty' else '--session','condition':condition,'enabled':enabled,'repeat':repeat,'seconds':args.seconds,'state':args.state,'cpu_seconds':round(cpu(after[3])-cpu(before[3]),3),'server_cpu_seconds':round(cpu(server_samples['after'])-cpu(server_samples['before']),3) if server else None,'server_bytes':traffic_samples['after'][0]-traffic_samples['before'][0] if traffic else None,'snapshot_messages':traffic_samples['after'][1]-traffic_samples['before'][1] if traffic else None,'terminal_bytes':int(after[4])-int(before[4]),'input_response_seconds':float(re.findall(r'onscreen ([0-9.]+)', ''.join(lines))[-1]),'server_cleanup':cleanup,'raw_output':str(raw),'log':str(logpath),'state_dir':str(state)})
 
 try:
  for repeat in range(args.repeats):

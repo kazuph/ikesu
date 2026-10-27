@@ -19,11 +19,15 @@ type KoiFish struct {
 	Lane           layout.Rect
 	X, Y           float64
 	Direction, Wag int
+	Depth          float64
+	Swimming       bool
 }
 type KoiScene struct {
-	Pond layout.Rect
-	Fish []KoiFish
-	Mini []KoiFish
+	Pond   layout.Rect
+	Fish   []KoiFish
+	Mini   []KoiFish
+	Ripple *KoiRipple
+	Active bool
 }
 
 func KoiAgentsFor(in Input, machines *MachineSidebar) []KoiAgent {
@@ -87,8 +91,15 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		n = 0
 	}
 	for i := 0; i < n; i++ {
-		lane := layout.Rect{X: scene.Pond.X, Y: scene.Pond.Y + i*3, W: scene.Pond.W, H: 2}
-		scene.Fish = append(scene.Fish, koiPose(agents[i], lane, 10, in.KoiTime))
+		scene.Fish = append(scene.Fish, koiPondPose(agents[i], scene.Pond, in))
+	}
+	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
+	scene.Ripple = in.KoiRipple
+	for _, fish := range scene.Fish {
+		scene.Active = scene.Active || fish.Swimming || fish.Agent.State == "blocked" || fish.Agent.Glow
+	}
+	if in.KoiRipple != nil {
+		scene.Active = true
 	}
 	mini := func(src Input, row SidebarRow, y, x, end int) {
 		if row.Kind != RowWorkspace || row.Ws < 0 || row.Ws >= len(src.State.Workspaces) {
@@ -170,22 +181,13 @@ func itoa(n int) string { // IDs only, not user-facing labels.
 
 func drawKoiDecoration(f *Frame, in Input, machines *MachineSidebar) {
 	scene := KoiSceneFor(f, in, machines)
-	f.KoiActive = len(scene.Fish)+len(scene.Mini) > 0
+	f.KoiScene = scene
+	f.KoiActive = scene.Active || len(scene.Mini) > 0
 	if in.KoiKitty {
 		drawKoiGraphics(f, scene, in)
 		return
 	}
-	if len(scene.Fish) > 0 {
-		for y := scene.Pond.Y; y < scene.Pond.Y+scene.Pond.H; y++ {
-			for x := scene.Pond.X; x < scene.Pond.X+scene.Pond.W; x++ {
-				if c := f.Cell(x, y); c != nil {
-					style := c.Style
-					style.Bg = waterBG
-					f.Set(x, y, " ", style)
-				}
-			}
-		}
-	}
+	drawKoiRippleOctants(f, scene)
 	for _, fish := range append(scene.Fish, scene.Mini...) {
 		drawKoiOctants(f, fish)
 	}
