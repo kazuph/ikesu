@@ -54,7 +54,7 @@ func TestExportKoiBrandAssets(t *testing.T) {
 		for i, fish := range scene.Fish[:min(4, len(scene.Fish))] {
 			fish = koiPose(fish.Agent, layout.Rect{X: 0, Y: i * 3, W: 40, H: 2}, 10, in.KoiTime)
 			sprite := KoiSprite(fish.Agent.Seed%len(KoiPatterns), fish.Direction, fish.Wag, 80, 32)
-			at := image.Pt(int(fish.X*8), int(fish.Y*16))
+			at := koiPixelPosition(fish, 8, 16)
 			draw.Draw(img, image.Rectangle{Min: at, Max: at.Add(sprite.Bounds().Size())}, sprite, image.Point{}, draw.Over)
 		}
 		colors := color.Palette{}
