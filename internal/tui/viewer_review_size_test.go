@@ -56,6 +56,12 @@ func TestViewerHeldInputDeliveryDoesNotReclaimSize(t *testing.T) {
 						t.Fatal(err)
 					}
 					a.exec(model.CmdNewTab{Workspace: 0, NoFocus: true})
+					// Readline may restore the PTY size captured while preparing
+					// its first prompt. Start the ownership test after that.
+					for id := range viewerTerminalSizes(a) {
+						a.sup.Input(id, []byte("printf '\\n'; PS1='SIZE_READY> '\n"))
+						specWaitText(t, a.sup.Get(id), "\nSIZE_READY>")
+					}
 					first := a.NewViewer(io.Discard, 196, 50, nil)
 					first.Begin(a, 196*8, 50*16)
 					second := a.NewViewer(io.Discard, 82, 30, nil)
