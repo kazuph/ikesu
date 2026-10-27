@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
@@ -315,35 +316,65 @@ func TestSecondClientPreservesFirst(t *testing.T) {
 	}
 }
 
-func TestServerExitsWhenLastPaneExits(t *testing.T) {
+func TestServerRecreatesHomeWhenLastPaneExits(t *testing.T) {
 	teststate.Lock(t)
 	useTestShellPrompt(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
-
-	c := dialClient(t, dir)
-	c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
-	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-	waitRead(t, dir, firstPaneID(t, dir), "ikesu-test-ready")
-
-	// Exit the only pane's shell: the app quits, the client sees "exit".
-	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("exit\n"))})
-	msgs := c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
-	var sawExit bool
-	for _, m := range msgs {
-		if m.Type == "exit" {
-			sawExit = true
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	clients := []*testConn{dialClient(t, dir), dialClient(t, dir)}
+	for _, c := range clients {
+		defer c.conn.Close()
+		c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+		c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	}
+	old := firstPaneID(t, dir)
+	waitRead(t, dir, old, "ikesu-test-ready")
+	clients[0].send(t, clientMsg{Type: "input", Data: encode64([]byte("exit\n"))})
+	for _, c := range clients {
+		messages := c.readUntil(t, 10*time.Second, func(m clientMsg) bool {
+			in := c.lastInput
+			return m.Type == "output" && in != nil && in.State != nil && len(in.State.Workspaces) == 1 && in.State.Workspaces[0].ID != 1 && in.State.Workspaces[0].Cwd == home
+		})
+		for _, m := range messages {
+			if m.Type == "exit" {
+				t.Fatal("shell exit terminated a connected client")
+			}
+		}
+		if c.lastInput == nil || c.lastInput.State == nil || len(c.lastInput.State.Workspaces) != 1 || c.lastInput.State.Workspaces[0].ID == 1 || c.lastInput.State.Workspaces[0].Cwd != home {
+			t.Fatal("client did not display a fresh home workspace")
 		}
 	}
-	c.conn.Close()
-	if !sawExit {
-		t.Fatal("client did not receive exit message")
+	next := firstPaneID(t, dir)
+	if next == old {
+		t.Fatal("last pane identity was reused")
+	}
+	for n, c := range clients {
+		marker := fmt.Sprintf("HOME_CLIENT_%d_ALIVE", n)
+		c.send(t, clientMsg{Type: "input", Data: encode64([]byte(fmt.Sprintf("printf 'HOME_CLIENT_%%s_ALIVE\\n' %d\n", n)))})
+		waitRead(t, dir, next, marker)
 	}
 	select {
 	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("server did not exit after last pane exited")
+		t.Fatal("server exited after replacing last shell")
+	default:
 	}
+	// Explicit server.stop must still end both clients and the server.
+	apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil)
+	for _, c := range clients {
+		messages := c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
+		exited := false
+		for _, m := range messages {
+			exited = exited || m.Type == "exit"
+		}
+		if !exited {
+			t.Fatal("explicit server.stop did not send exit")
+		}
+	}
+	waitServerExit(t, done)
 }
 
 // A real login shell reads this after the system profile. macOS's /etc/bashrc
