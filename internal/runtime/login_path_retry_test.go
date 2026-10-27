@@ -33,6 +33,8 @@ func TestLoginPathRecoversAfterTimeoutAndCachesSuccess(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("first lookup did not time out", err)
 	}
+	started, startErr := os.ReadFile(count)
+	t.Logf("first timeout: shell starts=%q readError=%v", started, startErr)
 	if retry := s.WaitLoginPath(); retry != err {
 		t.Fatal("failure must be returned during cooldown")
 	}
@@ -48,7 +50,8 @@ func TestLoginPathRecoversAfterTimeoutAndCachesSuccess(t *testing.T) {
 	close(retryErrors)
 	for err := range retryErrors {
 		if err != nil {
-			t.Fatal("lookup did not recover", err)
+			started, startErr := os.ReadFile(count)
+			t.Fatalf("lookup did not recover: %v; shell starts=%q readError=%v", err, started, startErr)
 		}
 	}
 	if _, err := s.SpawnAgent(1, dir, 80, 24, nil, []string{"/bin/sleep", "60"}); err != nil {
