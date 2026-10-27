@@ -30,3 +30,10 @@ test('a real public redirect and og:image cannot connect to a private destinatio
   assert.equal(connections,0);console.log('PRIVATE_CONNECTIONS',connections);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('closing a window cancels its actual public request with the caller reason',async()=>{
+ const controller=new AbortController();
+ const pending=fetchPublic('https://httpbin.org/delay/10',{signal:controller.signal});
+ controller.abort(Error('window closed'));
+ await assert.rejects(pending,/window closed/);
+});
