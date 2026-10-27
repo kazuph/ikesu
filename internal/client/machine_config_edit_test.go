@@ -41,6 +41,7 @@ func TestConfigurationEditQueuePreservesOrderAndContinuesAfterError(t *testing.T
 			t.Fatal("configuration queue did not finish")
 		}
 	}
+	m.workers.Wait()
 	if len(m.configEdits) != 0 {
 		t.Fatal("configuration request remains queued")
 	}
@@ -48,10 +49,10 @@ func TestConfigurationEditQueuePreservesOrderAndContinuesAfterError(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Onboarding == nil || !*saved.Onboarding || saved.ThemeName() != "tokyo-night" {
+	if saved.Onboarding == nil || !*saved.Onboarding || saved.SoundEnabled() || saved.ThemeName() != "tokyo-night" {
 		t.Fatal("edit order or unrelated configuration changed")
 	}
-	if m.settings.config.Onboarding == nil || !*m.settings.config.Onboarding {
+	if m.settings.config.Onboarding == nil || !*m.settings.config.Onboarding || m.settings.config.SoundEnabled() {
 		t.Fatal("returned state differs from persisted state")
 	}
 }

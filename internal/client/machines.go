@@ -51,6 +51,7 @@ type endpointEvent struct {
 	approval       string
 	catalogChanged bool
 	formUpdate     func()
+	configRevision uint64
 }
 
 type pendingMachine struct {
@@ -80,6 +81,9 @@ type machineClient struct {
 	inputSource       platform.InputSource
 	session           string
 	configEdits       []pendingConfigEdit
+	configEditMu      sync.Mutex
+	configEditing     bool
+	configRevision    uint64
 	settings          *localSettings
 	endpoints         map[string]*managedEndpoint
 	order             []string

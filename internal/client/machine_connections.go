@@ -44,6 +44,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	e.cancel = cancel
 	e.ctx = ctx
 	settings := *m.settings
+	configRevision := m.configRevision
 	size := m.size
 	profile := e.profile
 	session := m.session
@@ -95,7 +96,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			}
 		}()
 		defer func() { cancel(); stream.Close(); <-writing }()
-		if !m.post(ctx, endpointEvent{id: id, attempt: attempt, connection: connection}) {
+		if !m.post(ctx, endpointEvent{id: id, attempt: attempt, connection: connection, configRevision: configRevision}) {
 			return
 		}
 		for {
@@ -178,6 +179,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		if event.configRevision != m.configRevision {
+			if err := e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: m.settings.preferences}); err != nil {
+				m.notify(e.profile.Label + ": " + err.Error())
+			}
+		}
 		// A new viewer starts with the base request. Its current pane may
 		// subsequently request more flags through the output channel.
 		e.hostKbdFlags = 7
