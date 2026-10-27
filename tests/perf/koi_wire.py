@@ -32,7 +32,7 @@ for mode in ('direct','nested'):
  def cli(inst,*args):
   b,s,e=inst;r=subprocess.run([b,'--session',s,*args],env=e,text=True,capture_output=True,timeout=30)
   if r.returncode:raise RuntimeError(r.stdout+r.stderr)
-  return json.loads(r.stdout)
+  return json.loads(r.stdout) if args[:2] in (('pane','list'),('pane','layout')) else r.stdout
  try:
   inner=instance(a.inner,'inner');outer=instance(a.outer,'outer') if mode=='nested' else inner
   ready=state/'ready';tail=state/'tail';steps=state/'steps'
