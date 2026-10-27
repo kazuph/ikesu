@@ -66,6 +66,8 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	workspaceKeyReleases map[workspaceCycleKey]bool
+
 	clientVersion     string
 	trace             *latency.Trace
 	drawSeq, probeSeq uint64
