@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import socket
 import time
 import unittest
 
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OLD = Path(os.environ['IKESU_UPGRADE_TEST_OLD']).resolve()
 NEW = Path(os.environ['IKESU_UPGRADE_TEST_NEW']).resolve()
 INCOMPATIBLE = Path(os.environ['IKESU_UPGRADE_TEST_INCOMPATIBLE']).resolve()
+OLD_INCOMPATIBLE = INCOMPATIBLE.with_name('old-incompatible-ikesu')
 
 
 def command(*args, env):
@@ -32,7 +34,7 @@ def until(check):
 class UpgradeTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='ik-brew-', dir='/tmp')
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(('IKESU_', 'HERDR_'))}
         self.env.update(HOME=str(self.root), SHELL='/bin/sh', IKESU_STATE_DIR=str(self.root/'state'), IKESU_CONFIG=str(self.root/'config.toml'))
         Path(self.env['IKESU_CONFIG']).write_text('onboarding=false\n[experimental]\nallow_nested=true\n[session]\nresume_agents_on_restore=false\n')
@@ -50,7 +52,9 @@ class UpgradeTest(unittest.TestCase):
 import json,os,sys,pathlib
 root=pathlib.Path(os.environ['HOME'])
 with (root/'brew-calls.jsonl').open('a') as f:f.write(json.dumps({'args':sys.argv[1:],'cleanup':os.environ.get('HOMEBREW_NO_INSTALL_CLEANUP')})+'\\n')
-if sys.argv[1:]==['list','--versions','ikesu']:print('ikesu '+os.environ['TEST_BREW_VERSION'])
+if sys.argv[1:]==['list','--versions','ikesu']:
+ if os.environ.get('TEST_BREW_INSTALLED','1')=='0':raise SystemExit(1)
+ print('ikesu '+os.environ['TEST_BREW_VERSION'])
 elif sys.argv[1:]==['--prefix','ikesu']:print(root/'Cellar/ikesu/current')
 elif sys.argv[1:]==['info','--json=v2','ikesu']:print(json.dumps({'formulae':[{'versions':{'stable':os.environ['TEST_BREW_VERSION']}}]}))
 elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:raise SystemExit(2)
@@ -65,12 +69,20 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
     def cli(self, *args, session='default'):
         return command(self.old, '--session', session, *args, env=self.env)
 
-    def start(self, session='default'):
+    def start(self, session='default', binary=None):
         log = open(self.root/(session+'.log'), 'w')
-        child = subprocess.Popen([self.old, '--session', session, 'server'], env=self.env, stdout=log, stderr=log)
+        child = subprocess.Popen([binary or self.old, '--session', session, 'server'], env=self.env, stdout=log, stderr=log)
         self.servers.append((session, child, log))
         until(lambda: self.cli('server', 'ping', session=session).returncode == 0)
         return json.loads(self.cli('pane', 'list', session=session).stdout)['result']['panes']
+
+    def rpc(self, method, params):
+        with socket.socket(socket.AF_UNIX) as client:
+            client.connect(str(self.root/'state/default/ikesu.sock'))
+            client.sendall((json.dumps({'id':'upgrade-test','method':method,'params':params})+'\n').encode())
+            reply=json.loads(client.makefile().readline())
+        self.assertNotIn('error',reply,reply)
+        return reply['result']
 
     def upgrade(self, *sessions):
         args = [ROOT/'scripts/ikesu-upgrade.sh', '--brew', self.brew]
@@ -96,6 +108,20 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         self.assertEqual(self.cli('pane', 'run', pane, 'printf "%s" $$ > '+shlex.quote(str(pidfile))).returncode, 0)
         until(pidfile.exists)
         pid = pidfile.read_bytes()
+        plugin = self.root/'plugin'
+        plugin.mkdir()
+        (plugin/'ikesu-plugin.toml').write_text('id="brew.proof"\nname="Upgrade proof"\nversion="0.1.0"\nmin_ikesu_version="0.1.0"\nplatforms=["macos","linux"]\n[[panes]]\nid="board"\ntitle="Board"\ncommand=["/bin/cat"]\n')
+        self.rpc('plugin.link',{'path':str(plugin)})
+        plugins = self.rpc('plugin.list',{})
+        fifo = self.root/'job-input'
+        os.mkfifo(fifo)
+        running,finished = self.root/'job-running',self.root/'job-finished'
+        script = 'printf ready > '+shlex.quote(str(running))+'; cat '+shlex.quote(str(fifo))+' > '+shlex.quote(str(finished))
+        registered = self.cli('pane','report-agent',pane,'--source','upgrade-proof','--agent','test-shell','--state','idle')
+        self.assertEqual(registered.returncode,0,registered.stdout+registered.stderr)
+        job = self.cli('run','--caller',pane,'--label','brew-proof','--','/bin/sh','-c',script)
+        self.assertEqual(job.returncode,0,job.stdout+job.stderr)
+        until(running.exists)
         result = self.upgrade()
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
         self.assertEqual(self.entry.resolve(), self.root/'.local/lib/ikesu/releases'/self.new_version/'ikesu')
@@ -105,6 +131,13 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
         self.cli('pane', 'run', pane, 'printf "%s" $$ > '+shlex.quote(str(pidfile)))
         until(pidfile.exists)
         self.assertEqual(pid, pidfile.read_bytes())
+        self.assertEqual(plugins,self.rpc('plugin.list',{}))
+        with fifo.open('w') as stream: stream.write('job survived handoff')
+        until(lambda: finished.exists() and finished.read_text()=='job survived handoff')
+        child = self.root/'new-child'
+        agent = self.cli('agent','start','upgrade-proof','--cwd',str(self.root),'--no-focus','--','/bin/sh','-c','printf child > '+shlex.quote(str(child)))
+        self.assertEqual(agent.returncode,0,agent.stdout+agent.stderr)
+        until(child.exists)
         shutil.rmtree(self.root/'Cellar')
         self.assertEqual(command(self.entry,'--version',env=self.env).stdout.strip(), 'ikesu '+self.new_version)
         calls=[json.loads(l) for l in (self.root/'brew-calls.jsonl').read_text().splitlines()]
@@ -128,17 +161,37 @@ elif sys.argv[1:] not in [['upgrade','ikesu'],['install','kazuph/tap/ikesu']]:ra
 
     def test_ordered_sessions_stop_before_remaining_session(self):
         self.start('first')
-        self.start('second')
+        self.start('second', OLD_INCOMPATIBLE)
         self.start('third')
-        # A successful first migration followed by a non-server socket error.
-        # Keep second's real server, but deliberately make its state path unavailable
-        # to the CLI by removing only its own API socket directory entry.
-        (self.root/'state/second/ikesu.sock').unlink()
         result = self.upgrade('first','second','third')
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(self.entry.resolve(),self.old)
         self.assertEqual(json.loads(self.cli('server','ping',session='first').stdout)['result']['version'], self.new_version)
         self.assertEqual(json.loads(self.cli('server','ping',session='third').stdout)['result']['version'], self.old_version)
+        for session,version in [('first',self.new_version),('second',self.old_version),('third',self.old_version)]:
+            self.assertIn(session+': '+version,result.stdout)
+
+    def test_first_install_does_not_start_an_unrequested_server(self):
+        self.entry.unlink()
+        self.env['TEST_BREW_INSTALLED']='0'
+        result=self.upgrade()
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(self.entry.resolve(),self.root/'.local/lib/ikesu/releases'/self.new_version/'ikesu')
+        self.assertNotEqual(self.cli('server','ping').returncode,0)
+        calls=[json.loads(l) for l in (self.root/'brew-calls.jsonl').read_text().splitlines()]
+        self.assertIn(['install','kazuph/tap/ikesu'],[c['args'] for c in calls])
+
+    def test_existing_immutable_release_is_not_replaced(self):
+        self.start()
+        target=self.root/'.local/lib/ikesu/releases'/self.new_version/'ikesu'
+        target.parent.mkdir(parents=True)
+        shutil.copy2(INCOMPATIBLE,target)
+        original=target.read_bytes()
+        result=self.upgrade()
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('refusing to overwrite immutable release',result.stderr)
+        self.assertEqual(original,target.read_bytes())
+        self.assertEqual(self.entry.resolve(),self.old)
 
 
 if __name__ == '__main__':
