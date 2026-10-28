@@ -476,10 +476,10 @@ final class DialogController: NSObject, NSWindowDelegate {
     if let body = spec.body, !body.isEmpty {
       if spec.kind == "command_guard", (body.hasPrefix("ブロック理由：") || body.hasPrefix("承認が必要な理由:")),
         let boundary = body.range(of: "\n\n") {
-        full(richLabel(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent))
-        full(richLabel(String(body[boundary.upperBound...]), size: Look.base))
+        full(richLabel(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent, commandBody: true))
+        full(richLabel(String(body[boundary.upperBound...]), size: Look.base, commandBody: true))
       } else {
-        full(richLabel(body, size: Look.base))
+        full(richLabel(body, size: Look.base, commandBody: spec.kind == "command_guard"))
       }
     }
 
@@ -741,12 +741,42 @@ func richLinkRanges(_ text: String) -> [NSTextCheckingResult] {
     return ["http", "https"].contains(url.scheme?.lowercased() ?? "") && !url.absoluteString.contains("***")
   }
 }
-func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true) -> NSTextField {
+// Work in UTF-16 ranges, as NSAttributedString does, without changing display bytes.
+func commandBodyRanges(_ text: String) -> [NSRange] {
+  let source = text as NSString
+  let headings = ["対象コマンド：", "コマンド: "]
+  let boundaries = ["ブロック理由：", "承認が必要な理由:", "対象コマンド：", "コマンド: ", "申請文", "理由:", "場所:"]
+  var ranges: [NSRange] = []
+  var start: Int? = nil
+  var offset = 0
+  for line in text.components(separatedBy: "\n") {
+    if boundaries.contains(where: { line.hasPrefix($0) }), let lower = start {
+      var upper = offset
+      while upper > lower && source.substring(with: NSRange(location: upper - 1, length: 1)) == "\n" { upper -= 1 }
+      if upper > lower { ranges.append(NSRange(location: lower, length: upper - lower)) }
+      start = nil
+    }
+    if let heading = headings.first(where: { line.hasPrefix($0) }) { start = offset + (heading as NSString).length }
+    offset += (line as NSString).length + 1
+  }
+  if let lower = start {
+    var upper = source.length
+    while upper > lower && source.substring(with: NSRange(location: upper - 1, length: 1)) == "\n" { upper -= 1 }
+    if upper > lower { ranges.append(NSRange(location: lower, length: upper - lower)) }
+  }
+  return ranges
+}
+func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true, commandBody: Bool = false) -> NSTextField {
   let field = label(text, size: size, weight: weight, color: color, selectable: selectable)
   let links = richLinkRanges(text)
-  if !links.isEmpty {
+  if !links.isEmpty || commandBody {
     let attributed = NSMutableAttributedString(string: text, attributes: [.font: field.font!, .foregroundColor: color])
     for match in links { attributed.addAttributes([.link: match.url!.absoluteString, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: match.range) }
+    if commandBody {
+      for range in commandBodyRanges(text) {
+        attributed.addAttributes([.font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular), .foregroundColor: NSColor.systemRed], range: range)
+      }
+    }
     field.allowsEditingTextAttributes = true
     field.isSelectable = true
     field.attributedStringValue = attributed
