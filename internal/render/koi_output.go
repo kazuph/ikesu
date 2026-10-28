@@ -8,36 +8,32 @@ import (
 	"image/draw"
 	"image/png"
 	"math"
-	"sync"
 	"sync/atomic"
 )
 
 type koiSpriteKey struct{ Variety, Direction, Wag, W, H int }
 
-var koiSpriteCache sync.Map
+var koiSpriteCache = koiCache[koiSpriteKey, koiRaster]{maxEntries: koiSpriteEntries, maxBytes: koiSpriteBytes}
 
 func koiSpriteCached(k koiSpriteKey) (*image.RGBA, kitty.Image) {
-	if v, ok := koiSpriteCache.Load(k); ok {
-		p := v.(koiRaster)
-		return p.Pixels, p.Image
-	}
-	v := k.Variety % (3 * len(KoiPatterns))
-	img := KoiSprite(v, k.Direction, k.Wag, k.W, k.H)
-	if k.W < 2*k.H {
-		img = koiPondSprite(v, k.Direction, k.Wag, k.W, k.H)
-	}
-	if k.Variety >= 3*len(KoiPatterns) {
-		for i := 0; i < len(img.Pix); i += 4 {
-			for c := 0; c < 3; c++ {
-				img.Pix[i+c] = uint8(int(img.Pix[i+c]) * 3 / 4)
+	p := koiSpriteCache.getOrCreate(k, func() (koiRaster, int) {
+		v := k.Variety % (3 * len(KoiPatterns))
+		img := KoiSprite(v, k.Direction, k.Wag, k.W, k.H)
+		if k.W < 2*k.H {
+			img = koiPondSprite(v, k.Direction, k.Wag, k.W, k.H)
+		}
+		if k.Variety >= 3*len(KoiPatterns) {
+			for i := 0; i < len(img.Pix); i += 4 {
+				for c := 0; c < 3; c++ {
+					img.Pix[i+c] = uint8(int(img.Pix[i+c]) * 3 / 4)
+				}
 			}
 		}
-	}
-	var b bytes.Buffer
-	_ = png.Encode(&b, img)
-	p := koiRaster{img, kitty.Image{ID: uint32(1 + (k.Variety*16+k.Direction)*8 + k.Wag), Format: 100, Width: k.W, Height: k.H, Data: b.Bytes()}}
-	actual, _ := koiSpriteCache.LoadOrStore(k, p)
-	p = actual.(koiRaster)
+		var b bytes.Buffer
+		_ = png.Encode(&b, img)
+		p := koiRaster{img, kitty.Image{ID: uint32(1 + (k.Variety*16+k.Direction)*8 + k.Wag), Format: 100, Width: k.W, Height: k.H, Data: b.Bytes()}}
+		return p, len(img.Pix) + len(p.Image.Data)
+	})
 	return p.Pixels, p.Image
 }
 
@@ -254,17 +250,15 @@ func koiVariant(f KoiFish) int {
 	return v
 }
 
-var koiRingCache sync.Map
+var koiRingCache = koiCache[koiRingKey, kitty.Image]{maxEntries: koiRingEntries, maxBytes: koiRingBytes}
 var koiRingID atomic.Uint32
 
 func koiRippleCached(key koiRingKey) kitty.Image {
-	if v, ok := koiRingCache.Load(key); ok {
-		return v.(kitty.Image)
-	}
-	img := koiRing(key)
-	var b bytes.Buffer
-	_ = png.Encode(&b, img)
-	result := kitty.Image{ID: koiRingID.Add(1), Format: 100, Width: key.W, Height: key.H, Data: b.Bytes()}
-	actual, _ := koiRingCache.LoadOrStore(key, result)
-	return actual.(kitty.Image)
+	return koiRingCache.getOrCreate(key, func() (kitty.Image, int) {
+		img := koiRing(key)
+		var b bytes.Buffer
+		_ = png.Encode(&b, img)
+		result := kitty.Image{ID: koiRingID.Add(1), Format: 100, Width: key.W, Height: key.H, Data: b.Bytes()}
+		return result, len(result.Data)
+	})
 }

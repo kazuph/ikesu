@@ -70,13 +70,13 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
-	koiNext           time.Time
-	koiClock          render.KoiAnimation
-	koiVisible        bool
-	koiKitty          bool
-	koiRetained       bool
-	koiInput          render.Input
-	koiScene          render.KoiScene
+	koiNext     time.Time
+	koiClock    render.KoiAnimation
+	koiVisible  bool
+	koiKitty    bool
+	koiRetained bool
+	koiInput    render.Input
+	koiScene    render.KoiScene
 
 	workspaceKeyReleases map[rune]bool
 

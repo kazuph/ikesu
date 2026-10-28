@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"container/list"
 	"encoding/base64"
 	"fmt"
 	"reflect"
@@ -16,9 +17,22 @@ type koiEncodedPlacement struct {
 	ID      uint32
 	Graphic Graphic
 }
+type koiImageUse struct {
+	key   koiImageKey
+	size  int
+	frame uint64
+}
+type koiImagePool struct {
+	order list.List
+	bytes int
+}
 type koiEncoder struct {
 	images     map[koiImageKey]uint32
 	placements []koiEncodedPlacement
+	used       map[koiImageKey]*list.Element
+	pools      [2]koiImagePool
+	bytes      int
+	frame      uint64
 }
 
 func withoutKoi(f *Frame) (*Frame, []Graphic) {
@@ -41,17 +55,23 @@ func withoutKoi(f *Frame) (*Frame, []Graphic) {
 	return &regular, koi
 }
 
-// Koi images belong to this presenter for its whole lifetime. A frame change,
-// resize, overlay or endpoint switch removes placements, never cached pixels.
+// Images remain reusable across frames and overlays while retained. Under
+// pressure retire least recently used images that are absent from this frame.
 func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 	var next []koiEncodedPlacement
 	var b bytes.Buffer
 	if e.koi.images == nil {
 		e.koi.images = map[koiImageKey]uint32{}
+		e.koi.used = map[koiImageKey]*list.Element{}
 	}
+	e.koi.frame++
 	for _, g := range graphics {
 		p := g.Placement
 		key := koiImageKey{g.Pane, p.Image.ID, p.Image.Width, p.Image.Height}
+		pool := &e.koi.pools[0]
+		if key.Pane == -4 {
+			pool = &e.koi.pools[1]
+		}
 		id := e.koi.images[key]
 		if id == 0 {
 			for {
@@ -62,6 +82,10 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 			}
 			id = e.nextGraphicID
 			e.koi.images[key] = id
+			size := 4*p.Image.Width*p.Image.Height + len(p.Image.Data)
+			e.koi.used[key] = pool.order.PushFront(&koiImageUse{key, size, e.koi.frame})
+			e.koi.bytes += size
+			pool.bytes += size
 			data := base64.StdEncoding.EncodeToString(p.Image.Data)
 			first := true
 			for len(data) > 0 {
@@ -79,6 +103,10 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 				data = data[n:]
 			}
 		}
+		el := e.koi.used[key]
+		use := el.Value.(*koiImageUse)
+		use.frame = e.koi.frame
+		pool.order.MoveToFront(el)
 		next = append(next, koiEncodedPlacement{id, g})
 	}
 	for i, old := range e.koi.placements {
@@ -104,6 +132,30 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 			fmt.Fprintf(&b, ",Y=%d", p.OffsetY)
 		}
 		b.WriteString(";\x1b\\")
+	}
+	// A currently visible image is pinned until the next composition. This
+	// bounds retention by the larger of the budget and one visible frame.
+	// Separate budgets stop low-reuse click history from displacing fish.
+	for index := range e.koi.pools {
+		pool := &e.koi.pools[index]
+		entries, budget := koiSpriteEntries, koiSpriteBytes
+		if index == 1 {
+			entries, budget = koiRingEntries, koiRingBytes
+		}
+		for pool.order.Len() > entries || pool.bytes > budget {
+			el := pool.order.Back()
+			use := el.Value.(*koiImageUse)
+			if use.frame == e.koi.frame {
+				break
+			}
+			oldest := use.key
+			fmt.Fprintf(&b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", e.koi.images[oldest])
+			e.koi.bytes -= use.size
+			pool.bytes -= use.size
+			pool.order.Remove(el)
+			delete(e.koi.images, oldest)
+			delete(e.koi.used, oldest)
+		}
 	}
 	e.koi.placements = next
 	return b.Bytes()
