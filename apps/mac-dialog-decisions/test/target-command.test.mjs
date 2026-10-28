@@ -14,7 +14,7 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
     });
     assert.equal(generate.status,0,generate.stdout+generate.stderr);
     const decisions=JSON.parse(fs.readFileSync(path.join(root,'decisions.json'),'utf8'));
-    assert.equal(Object.keys(decisions).length,4);
+    assert.equal(Object.keys(decisions).length,8);
     const rows=Object.entries(decisions).map(([name,decision])=>{
       const spec=buildDialogSpec(decision,{id:'local'},0);
       assert.equal(spec.body,decision.body);

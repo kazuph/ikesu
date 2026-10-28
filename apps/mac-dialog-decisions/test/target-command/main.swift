@@ -47,6 +47,10 @@ for row in rows {
     if wanted {precondition((attributed.attribute(.font,at:index,effectiveRange:nil) as! NSFont).isFixedPitch);redCharacters+=1}
    }
    precondition(label.isSelectable && !label.isEditable)
+   if let url=label.string.range(of:"https://example.test/command") {
+    let location=NSRange(url,in:label.string).location
+    precondition(attributed.attribute(.link,at:location,effectiveRange:nil) != nil)
+   }
    if let url=label.string.range(of:"https://example.test/help") {
     let location=NSRange(url,in:label.string).location
     precondition(attributed.attribute(.link,at:location,effectiveRange:nil) != nil)
@@ -54,6 +58,12 @@ for row in rows {
    }
   }
   precondition(redCharacters==expected.reduce(0){$0+$1.length})
+  if name=="quoted-command" {
+   let quote="対象コマンド：/bin/rm /outside/victim"
+   let quoted=(body as NSString).range(of:quote,options:.backwards)
+   precondition(quoted.location != NSNotFound)
+   precondition(!expected.contains {NSIntersectionRange($0,quoted).length>0},"reason quote must remain ordinary")
+  }
   let title=labels.first {$0.string==spec.title}!
   precondition(title.string==decision["title"] as! String)
   for index in 0..<(title.string as NSString).length {precondition(title.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor != .systemRed)}

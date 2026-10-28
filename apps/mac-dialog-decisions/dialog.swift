@@ -481,7 +481,7 @@ final class DialogController: NSObject, NSWindowDelegate {
         return richLabel(text, size: Look.base, weight: weight, color: color, commandRanges: local)
       }
       if spec.kind == "command_guard", (body.hasPrefix("ブロック理由：") || body.hasPrefix("承認が必要な理由:")),
-        let boundary = body.range(of: "\n\n") {
+        let boundary = bodyParagraphBoundary(body, commandRanges: ranges) {
         full(bodyLabel(String(body[..<boundary.lowerBound]), offset: 0, weight: .semibold, color: Look.accent))
         full(bodyLabel(String(body[boundary.upperBound...]), offset: (String(body[..<boundary.upperBound]) as NSString).length))
       } else {
@@ -750,22 +750,48 @@ func richLinkRanges(_ text: String) -> [NSTextCheckingResult] {
 }
 // Work in UTF-16 ranges, as NSAttributedString does, without changing display bytes.
 func commandBodyRanges(_ text: String, commands: [String]) -> [NSRange] {
-  var ranges: [NSRange] = []
-  for heading in ["対象コマンド：", "コマンド: "] {
+  func firstLabel(_ heading: String) -> Range<String.Index>? {
     var cursor = text.startIndex
     while cursor < text.endIndex, let label = text.range(of: heading, range: cursor..<text.endIndex) {
+      if label.lowerBound == text.startIndex || text[text.index(before: label.lowerBound)] == "\n" { return label }
       cursor = label.upperBound
-      guard label.lowerBound == text.startIndex || text[text.index(before: label.lowerBound)] == "\n" else { continue }
-      for command in commands where !command.isEmpty {
-        guard text[label.upperBound...].hasPrefix(command) else { continue }
-        let end = text.index(label.upperBound, offsetBy: command.count)
-        guard end == text.endIndex || text[end...].hasPrefix("\n\n") else { continue }
-        ranges.append(NSRange(label.upperBound..<end, in: text))
-        break
-      }
     }
+    return nil
   }
-  return ranges.sorted { $0.location < $1.location }
+  func exact(_ label: Range<String.Index>) -> Range<String.Index>? {
+    for command in commands where !command.isEmpty {
+      guard text[label.upperBound...].hasPrefix(command) else { continue }
+      let end = text.index(label.upperBound, offsetBy: command.count)
+      guard end == text.endIndex || text[end...].hasPrefix("\n\n") else { continue }
+      return label.upperBound..<end
+    }
+    return nil
+  }
+  var ranges: [NSRange] = []
+  var outer = firstLabel("コマンド: ")
+  if let target = firstLabel("対象コマンド："), outer == nil || target.lowerBound < outer!.lowerBound {
+    guard let value = exact(target) else { return [] }
+    ranges.append(NSRange(value, in: text))
+    // The generated outer field immediately follows the complete target,
+    // including any blank lines inside the command. Never scan the reason.
+    let separator = "\n\nコマンド: "
+    guard text[value.upperBound...].hasPrefix(separator) else { return [] }
+    let start = text.index(value.upperBound, offsetBy: 2)
+    outer = start..<text.index(value.upperBound, offsetBy: separator.count)
+  }
+  guard let outer, let value = exact(outer) else { return [] }
+  ranges.append(NSRange(value, in: text))
+  return ranges
+}
+
+func bodyParagraphBoundary(_ text: String, commandRanges: [NSRange]) -> Range<String.Index>? {
+  var cursor = text.startIndex
+  while cursor < text.endIndex, let boundary = text.range(of: "\n\n", range: cursor..<text.endIndex) {
+    let span = NSRange(boundary, in: text)
+    if !commandRanges.contains(where: { NSIntersectionRange($0, span).length > 0 }) { return boundary }
+    cursor = boundary.upperBound
+  }
+  return nil
 }
 
 // An always-present text view receives a link's first click directly, without
