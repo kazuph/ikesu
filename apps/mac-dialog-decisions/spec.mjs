@@ -64,6 +64,9 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
   if (origin.command) {
     details.push({ label: "コマンド", value: String(origin.command), monospace: true });
   }
+  if (origin.target_command && origin.target_command !== origin.command) {
+    details.push({ label: "対象コマンド", value: String(origin.target_command), monospace: true });
+  }
   if (origin.cwd) details.push({ label: "場所", value: String(origin.cwd), monospace: true });
   if (origin.branch) details.push({ label: "ブランチ", value: String(origin.branch), monospace: true });
   if (origin.reason && origin.reason !== "screen_prompt") {
