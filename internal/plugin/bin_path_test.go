@@ -8,8 +8,8 @@ import (
 
 func TestPluginBinPathHomebrewStablePrecedence(t *testing.T) {
 	root := t.TempDir()
-	original := filepath.Join(root, "Cellar", "goterrace", "1.2.3", "bin", "ikesu")
-	opt := filepath.Join(root, "opt", "goterrace", "bin", "ikesu")
+	original := filepath.Join(root, "Cellar", "ikesu", "1.2.3", "bin", "ikesu")
+	opt := filepath.Join(root, "opt", "ikesu", "bin", "ikesu")
 	bin := filepath.Join(root, "bin", "ikesu")
 	if got := stableBinPath(original); got != original {
 		t.Fatal(got)

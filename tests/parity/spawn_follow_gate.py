@@ -10,7 +10,7 @@ expected = {'keys-alpha': 'alpha', 'plus-beta': 'beta',
 if len(sys.argv) > 2:
     assert sys.argv[2] == 'context', 'unsupported directory proof case'
     expected = {'worktree-tab': 'feature', 'switched-tab': 'feature', 'switched-split': 'feature'}
-for role in ['herdr', 'gtx']:
+for role in ['herdr', 'ikesu']:
     saved = json.loads((root/role/'runtime-json.json').read_text())
     rows = json.loads(saved['home/cwd-evidence.json'])
     assert set(rows) == set(expected), (role, set(rows), set(expected))

@@ -18,7 +18,7 @@ cfg = 'onboarding=false\n[ui.sound]\nenabled=false\n[ui.toast]\ndelivery="off"\n
 (root / 'config' / binary.name).mkdir(exist_ok=True)
 (root / 'config' / binary.name / 'config.toml').write_text(cfg)
 (root / 'ikesu.toml').write_text(cfg)
-env = {k: v for k, v in os.environ.items() if not k.startswith(('IKESU', 'GTX', 'HERDR', 'TMUX', 'CODEX', 'CLAUDE'))}
+env = {k: v for k, v in os.environ.items() if not k.startswith(('IKESU', 'HERDR', 'TMUX', 'CODEX', 'CLAUDE'))}
 env.update(HOME=str(root / 'home'), XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'), ZDOTDIR=str(root / 'zdot'), SHELL='/bin/zsh', TERM='xterm-256color', IKESU_CONFIG=str(root / 'ikesu.toml'), IKESU_STATE_DIR=str(root / 'state/i'))
 launch = ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny mach-lookup (global-name "com.apple.pasteboard.1"))', str(binary), '--session', 'mcsize']
 

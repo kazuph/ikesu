@@ -6,7 +6,7 @@ import sys
 
 root = Path(sys.argv[1])
 proof = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root / who
     runtime = json.loads((case / 'runtime-json.json').read_text())
     actions = json.loads(runtime['home/parity-api-actions.json'])

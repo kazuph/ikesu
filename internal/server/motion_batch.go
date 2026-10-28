@@ -58,6 +58,7 @@ func bufferedMotions(rd *bufio.Reader, first clientMsg) (clientMsg, *clientMsg, 
 			return first, &next, nil
 		}
 		data = append(data, more...)
+		first.InputSequence = next.InputSequence
 		merged = true
 	}
 	if merged {

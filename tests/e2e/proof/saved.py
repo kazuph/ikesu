@@ -6,11 +6,11 @@ class SavedSSH(unittest.TestCase):
     def test_old_client_new_saved_server(self): self.run_pair('saved-old-client-new-server',OLD,NEW,True)
     def run_pair(self,name,client_bin,remote_bin,dialog):
         out=OUT/name; out.mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix='gtx-ssh-proof-',dir=str(ROOT)) as tmp:
+        with tempfile.TemporaryDirectory(prefix='ikesu-ssh-proof-',dir=str(ROOT)) as tmp:
             root=pathlib.Path(tmp); home=root/'home'; home.mkdir(); (home/'.ssh').mkdir()
-            env=dict(os.environ,HOME=str(home),ZDOTDIR=str(home),SHELL='/usr/bin/zsh',GTX_STATE_DIR=str(root/'state'),GTX_CONFIG=str(root/'config.toml'),TERM='xterm-256color')
+            env=dict(os.environ,HOME=str(home),ZDOTDIR=str(home),SHELL='/usr/bin/zsh',IKESU_STATE_DIR=str(root/'state'),IKESU_CONFIG=str(root/'config.toml'),TERM='xterm-256color')
             for key in list(env):
-                if key.startswith(('HERDR_','GOTERRACE')): env.pop(key)
+                if key.startswith(('HERDR_','IKESU')): env.pop(key)
             (home/'.zshrc').write_text("PS1='SSH_PROOF> '\n")
             (root/'config.toml').write_text('onboarding=false\n[session]\nresume_agents_on_restore=false\n')
             for name in ['hostkey','clientkey']:
@@ -27,17 +27,17 @@ class SavedSSH(unittest.TestCase):
             bindir=root/'bin'; bindir.mkdir()
             (bindir/'ssh').write_text(f'#!/bin/sh\nexec /usr/bin/ssh -F {shlex.quote(str(sshcfg))} "$@"\n'); (bindir/'ssh').chmod(0o700)
             env['PATH']=str(bindir)+':'+env['PATH']
-            wrapper=root/'remote-gtx'
+            wrapper=root/'remote-ikesu'
             # Genuine SSH launches the actual old server transport/CLI, with test-only state paths.
-            wrapper.write_text('#!/bin/sh\n'+''.join(f'export {k}={shlex.quote(env[k])}\n' for k in ['HOME','ZDOTDIR','SHELL','GTX_STATE_DIR','GTX_CONFIG'])+f'exec {shlex.quote(str(remote_bin))} "$@"\n')
-            wrapper.chmod(0o700); env['GTX_MACHINE_REMOTE_BINARY']=str(wrapper)
+            wrapper.write_text('#!/bin/sh\n'+''.join(f'export {k}={shlex.quote(env[k])}\n' for k in ['HOME','ZDOTDIR','SHELL','IKESU_STATE_DIR','IKESU_CONFIG'])+f'exec {shlex.quote(str(remote_bin))} "$@"\n')
+            wrapper.chmod(0o700); env['IKESU_MACHINE_REMOTE_BINARY']=str(wrapper)
             def cli(session,*args,allow_error=False):
                 r=subprocess.run([str(NEW),'--session',session,*args],env=env,capture_output=True,text=True,timeout=20)
                 if not allow_error: self.assertEqual(r.returncode,0,r.stdout+r.stderr)
                 return r
             def rpc(session,method,params):
                 with socket.socket(socket.AF_UNIX) as c:
-                    c.settimeout(15); c.connect(str(root/'state'/session/'gtx.sock'))
+                    c.settimeout(15); c.connect(str(root/'state'/session/'ikesu.sock'))
                     c.sendall((json.dumps(dict(id='saved-proof',method=method,params=params))+'\n').encode())
                     response=json.loads(c.makefile('r').readline()); self.assertNotIn('error',response)
                     return response['result']
@@ -54,7 +54,7 @@ class SavedSSH(unittest.TestCase):
                 for session,binary in [('local',NEW),('remote',remote_bin)]:
                     log=open(out/(f'saved-{session}-server.log'),'w'); logs.append(log)
                     p=subprocess.Popen([str(binary),'--session',session,'server'],env=env,stdout=log,stderr=subprocess.STDOUT); processes.append(p)
-                    wait_for(lambda:(root/'state'/session/'gtx-client.sock').exists(),session+' server')
+                    wait_for(lambda:(root/'state'/session/'ikesu-client.sock').exists(),session+' server')
                 cli('remote','workspace','rename','s1','RemoteWorkspace')
                 add=cli('local','machine','add','proof','--label','RemoteProof','--remote-session','remote')
                 (out/'saved-machine-add.json').write_text(add.stdout)
@@ -94,7 +94,7 @@ class SavedSSH(unittest.TestCase):
                         (out/'saved-pty-output.log').write_text(p.stdout.read())
                         p.stdout.close()
                 for session in ['local','remote']:
-                    if (root/'state'/session/'gtx.sock').exists():
+                    if (root/'state'/session/'ikesu.sock').exists():
                         try: cli(session,'server','stop',allow_error=True)
                         except subprocess.TimeoutExpired: cleanup_errors.append(session+' stop timed out')
                 for p in processes[1:3]:
@@ -104,5 +104,5 @@ class SavedSSH(unittest.TestCase):
                     processes[0].terminate(); processes[0].wait(timeout=15)
                 for log in logs: log.close()
                 self.assertFalse(cleanup_errors,cleanup_errors)
-            self.assertFalse(any((root/'state'/s/'gtx.sock').exists() for s in ['local','remote']))
+            self.assertFalse(any((root/'state'/s/'ikesu.sock').exists() for s in ['local','remote']))
 if __name__=='__main__': unittest.main(verbosity=2)

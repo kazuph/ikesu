@@ -22,6 +22,8 @@ import (
 )
 
 type managedEndpoint struct {
+	processedInput uint64
+
 	snapshotAttempt          uint64
 	boot                     string
 	textOnly                 bool
@@ -56,6 +58,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	inputSequence      uint64
 	sidebar            *machineSidebarAction
 	keys               []input.Event
 	id                 string
@@ -74,6 +77,9 @@ type machineClient struct {
 	koiRetained       bool
 	koiInput          render.Input
 	koiScene          render.KoiScene
+
+	workspaceKeyReleases map[rune]bool
+
 	clientVersion     string
 	trace             *latency.Trace
 	drawSeq, probeSeq uint64
@@ -119,6 +125,10 @@ type machineClient struct {
 	noticeUntil       time.Time
 	forms             *tui.MachineForms
 	readClipboard     func(context.Context) (clipboardContent, error)
+
+	focusKnown           bool
+	lastClientView       *api.ClientView
+	clientViewConnection *endpointConnection
 }
 
 func savedMachines(session string) []machine.Profile {

@@ -150,6 +150,7 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		if binary := os.Getenv("IKESU_RIGHT_TEST_SERVER_BIN"); binary != "" {
 			cmd = exec.Command(binary, "--session", session, "server")
 		}
+		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "IKESU_RIGHT_SERVER_TEST="+session, "IKESU_STATE_DIR="+root, "IKESU_CONFIG="+cfgPath, "IKESU_DISABLE_SOUND=1", "SHELL=/bin/sh")
 		cmd.Stdout = log
 		cmd.Stderr = log

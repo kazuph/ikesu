@@ -122,8 +122,15 @@ func (m *machineClient) input(event input.Event) error {
 	}
 	if event.Kind == input.KindBlur {
 		m.blurred = true
+		m.focusKnown = true
+		m.reportClientFocus()
 	} else if event.Kind == input.KindFocus {
 		m.blurred = false
+		m.focusKnown = true
+		m.reportClientFocus()
+	}
+	if m.workspaceCycleInput(event) {
+		return nil
 	}
 	if m.holdPendingInput(event, time.Now()) {
 		return nil

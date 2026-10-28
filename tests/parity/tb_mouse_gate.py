@@ -9,7 +9,7 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 a = p.parse_args()
 records = {}
-for name in ('herdr', 'gtx'):
+for name in ('herdr', 'ikesu'):
     runtime = json.loads((a.out/name/'runtime-json.json').read_text())
     records[name] = json.loads(runtime['home/tb-mouse-probe.json'])
 streams = {name: b''.join(bytes.fromhex(row['received_hex']) for row in rows) for name, rows in records.items()}
@@ -17,7 +17,7 @@ reference = streams['herdr']
 reports = re.findall(rb'\x1b\[<(\d+);\d+;\d+[Mm]', reference)
 valid = (len(records['herdr']) == 7
          and [int(code) for code in reports] == [35, 66, 67, 35, 0, 32, 0, 35, 66, 67])
-passed = valid and streams['gtx'] == reference
+passed = valid and streams['ikesu'] == reference
 result = {'reference_has_all_ten_mouse_events': valid, 'exact_bytes_equal': passed,
           'scope': 'mouse event bytes, order, and coordinates; keyboard delimiters can overtake deferred hover events',
           'stream_hex': {name: data.hex() for name, data in streams.items()}, 'records': records}

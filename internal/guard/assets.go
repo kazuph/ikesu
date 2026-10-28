@@ -45,7 +45,7 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	if !a.Config.Active() {
 		return env, nil
 	}
-	if m["IKESU_PANE_ID"] == "" && m["GOTERRACE_PANE_ID"] == "" {
+	if m["IKESU_PANE_ID"] == "" {
 		return env, nil
 	}
 	if !has([]string{"record", "enforce"}, a.Config.EffectiveMode()) || a.Config.Timeout() <= 0 {

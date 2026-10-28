@@ -120,9 +120,7 @@ func (a *App) helpRows() []render.HelpRow {
 			rows[i].Bind = a.prefixSpec()
 			continue
 		}
-		if a.sidebarConfig.Keys.Actions == nil {
-			continue
-		}
+
 		name := strings.ReplaceAll(rows[i].Cmd, " ", "_")
 		aliases := map[string]string{"keybinds": "help", "workspace navigation": "workspace_picker", "session navigator": "goto", "switch workspace 1-9": "switch_workspace", "switch tab 1-9": "switch_tab", "focus agent 1-9": "focus_agent", "zoom pane": "zoom", "delete worktree checkout": "remove_worktree"}
 		if alias, ok := aliases[rows[i].Cmd]; ok {

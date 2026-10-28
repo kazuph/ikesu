@@ -13,7 +13,7 @@ x, y, width, height = map(int, a.rect.split(','))
 root = Path(a.directory)
 results = []
 for name in a.screens:
-    pair = [root/who/(name+'.json') for who in ('herdr', 'gtx')]
+    pair = [root/who/(name+'.json') for who in ('herdr', 'ikesu')]
     if not all(path.is_file() for path in pair):
         results.append({'screen':name, 'status':'NOT_RUN'})
         continue
@@ -27,7 +27,7 @@ for name in a.screens:
             for field in ('Content','Width','Style'):
                 hc,gc=h['Cells'][yy][xx][field],g['Cells'][yy][xx][field]
                 if hc != gc:
-                    differences.append({'x':xx,'y':yy,'field':field,'herdr':hc,'gtx':gc})
+                    differences.append({'x':xx,'y':yy,'field':field,'herdr':hc,'ikesu':gc})
     results.append({'screen':name,'rect':[x,y,width,height],
                     'status':'PASS' if not differences else 'DIFFERENT_CELLS',
                     'difference_count':len(differences),'differences':differences})

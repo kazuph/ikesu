@@ -9,7 +9,7 @@ import time
 home=Path.home();root=home.parent
 if not str(root.resolve()).startswith('/private/tmp/parity-'):
     raise SystemExit('REFUSED: not observer-owned HOME')
-paths=[p for p in root.rglob('*.sock') if p.name in ('herdr.sock','gtx.sock')]
+paths=[p for p in root.rglob('*.sock') if p.name in ('herdr.sock','ikesu.sock')]
 proof={'environment':{k:os.environ[k] for k in ['TERM','TERM_PROGRAM','KITTY_WINDOW_ID','TMUX'] if k in os.environ},'sockets':[str(p) for p in paths],'replies':[]}
 if paths:
     for i in range(3):

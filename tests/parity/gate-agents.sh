@@ -10,7 +10,7 @@ fi
 : "${PARITY_CONTROLLER_SESSION_ID:?set the actual controller session ID}"
 export PARITY_CONTROLLER_SESSION_ID
 test -z "$(gofmt -l internal cmd tests tools)"
-export IKESU_PARITY_BIN="$work/gtx-parity-agent-final"
+export IKESU_PARITY_BIN="$work/ikesu-parity-agent-final"
 go build -o "$IKESU_PARITY_BIN" ./cmd/ikesu
 go vet ./...
 go test -count=1 ./...
@@ -25,4 +25,4 @@ python3 tests/parity/jobs_frame_gate.py "$work/parity-agent-jobs-fine-final"
 python3 tests/parity/jobs_keys_gate.py "$work/parity-agent-jobs-log-idle-final"
 python3 tests/parity/jobs_log_frame_gate.py "$work/parity-agent-jobs-log-idle-final"
 python3 tests/parity/jobs_cancel_gate.py "$work/parity-agent-jobs-cancelling-final"
-IKESU_PERF_BIN="$IKESU_PARITY_BIN" IKESU_PERF_BASELINE_BIN="$work/gtx-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-agent-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m
+IKESU_PERF_BIN="$IKESU_PARITY_BIN" IKESU_PERF_BASELINE_BIN="$work/ikesu-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-agent-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m

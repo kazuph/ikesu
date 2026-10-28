@@ -18,13 +18,13 @@ with tempfile.TemporaryDirectory(prefix='parity-', dir='/tmp') as directory:
     root = Path(directory)
     for name in ('home','config','state','data','zdot','cwd'):
         (root/name).mkdir()
-    env = {k:v for k,v in os.environ.items() if not k.startswith(('HERDR','GTX','GOTERRACE','CLAUDE','CODEX'))}
+    env = {k:v for k,v in os.environ.items() if not k.startswith(('HERDR','IKESU','CLAUDE','CODEX'))}
     work = Path.home()/'bench-terrace.noindex/work/detail'
     env.update(HOME=str(root/'home'), ZDOTDIR=str(root/'zdot'),
         XDG_CONFIG_HOME=str(root/'config'), XDG_STATE_HOME=str(root/'state'),
         XDG_DATA_HOME=str(root/'data'), HERDR_STATE_DIR=str(root/'state/h'),
-        GTX_STATE_DIR=str(root/'state/g'), SHELL='/bin/zsh', TERM='xterm-256color',
-        GTX_DISABLE_SOUND='1', HERDR_CONFIG_PATH=str(root/'config/herdr/config.toml'),
+        IKESU_STATE_DIR=str(root/'state/g'), SHELL='/bin/zsh', TERM='xterm-256color',
+        IKESU_DISABLE_SOUND='1', HERDR_CONFIG_PATH=str(root/'config/herdr/config.toml'),
         PARITY_OBSERVE_BINARY=str(work/'herdr-0.2.57'), PARITY_BINARY_PATH=str(work/'herdr-0.2.57'))
     config = root/'config/herdr/config.toml'
     config.parent.mkdir(parents=True)

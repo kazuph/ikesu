@@ -6,11 +6,11 @@ import sys
 
 root = Path(sys.argv[1])
 messages = {who: brand + ' worktree actions require a workspace inside a Git work tree'
-            for who, brand in (('herdr', 'Herdr'), ('gtx', 'gtx'))}
+            for who, brand in (('herdr', 'Herdr'), ('ikesu', 'ikesu'))}
 results = []
 for name in ('rejected', 'input', 'escape', 'resize', 'settings', 'closed'):
     frames = {who: json.loads((root/who/(name+'.json')).read_text()) for who in messages}
-    h, g = frames['herdr'], frames['gtx']
+    h, g = frames['herdr'], frames['ikesu']
     assert (h['Cols'], h['Rows']) == (g['Cols'], g['Rows']), name
     positions, labels = {}, {}
     for who, frame in frames.items():
@@ -27,7 +27,7 @@ for name in ('rejected', 'input', 'escape', 'resize', 'settings', 'closed'):
         assert line[start:cycle] == label.ljust(cycle-start), (who, name, line)
         positions[who] = (start, cycle)
         labels[who] = label
-    assert positions['herdr'] == positions['gtx'], name
+    assert positions['herdr'] == positions['ikesu'], name
     start, cycle = positions['herdr']
     reference = h['Cells'][-1][start]['Style']
     assert reference['Bg'] is None and reference['Underline'] == 0, reference

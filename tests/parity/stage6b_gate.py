@@ -29,16 +29,16 @@ def names():
                 'ctrl-c':'', 'default-backspace':'', 'backspace':'日本語 alpha-beta'}
     result = {}
     for phase, want in expected.items():
-        values = [name('k15-name', p, phase) for p in ('herdr','gtx')]
+        values = [name('k15-name', p, phase) for p in ('herdr','ikesu')]
         assert values == [want, want], (phase, values, want)
         result[phase] = values
     for i, want in enumerate(['', 'alpha', '日本語', 'alpha /', 'alpha']):
-        values = [name('k15-word-boundaries', p, f'word-{i}') for p in ('herdr','gtx')]
+        values = [name('k15-word-boundaries', p, f'word-{i}') for p in ('herdr','ikesu')]
         assert values == [want, want], (i, values, want)
         result[f'word-{i}'] = values
-    initial=[name('k15-multidigit',p,'initial') for p in ('herdr','gtx')]
+    initial=[name('k15-multidigit',p,'initial') for p in ('herdr','ikesu')]
     assert initial[0]==initial[1] and initial[0].isdigit() and len(initial[0])>1,initial
-    cleared=[name('k15-multidigit',p,'cleared') for p in ('herdr','gtx')]
+    cleared=[name('k15-multidigit',p,'cleared') for p in ('herdr','ikesu')]
     assert cleared==['',''],cleared
     result['multidigit']={'initial':initial,'cleared':cleared}
     return result
@@ -46,7 +46,7 @@ def names():
 def settings():
     result = {}
     for case in ('k17-settings','k17-enter','k17-space','k17-toast-enter','k17-toast-space'):
-        for p in ('herdr','gtx'):
+        for p in ('herdr','ikesu'):
             phases = ('space','enter') if case == 'k17-settings' else ('applied',) if 'toast' in case else ('first','second')
             for phase in phases:
                 assert any('│ settings' in x for x in screen(case,p,phase)), (case,p,phase,'closed')
@@ -59,7 +59,7 @@ def settings():
             else:
                 assert c['ui']['sound']['enabled'] == (case == 'k17-settings'), (case,p,c)
             result[case+'/'+p] = c['ui']
-    for p in ('herdr','gtx'):
+    for p in ('herdr','ikesu'):
         for phase,theme in [('up-edge','catppuccin'),('down-edge','catppuccin-latte'),('space','catppuccin-latte')]:
             assert any('▸ '+theme+' ✓' in x for x in screen('k17-theme-edges',p,phase)),(p,phase)
             assert any('│ settings' in x for x in screen('k17-theme-edges',p,phase)),(p,phase,'closed')
@@ -84,14 +84,14 @@ def selected(case,p,phase):
 def navigation():
     result={}
     for phase in ('open','down','up','end','home','G','space','space-again','collapsed','expanded','search-next','search-previous'):
-        values=[selected('k19-navigator',p,phase) for p in ('herdr','gtx')]
+        values=[selected('k19-navigator',p,phase) for p in ('herdr','ikesu')]
         assert values[0] == values[1], (phase,values)
         result[phase]=values
     assert 'nav-07' in result['down'][0], result['down']
     assert result['collapsed'][0].startswith('▸'),result['collapsed']
     assert result['expanded'][0].startswith('▾'),result['expanded']
     for phase in ('all','filter-search','backspace'):
-        for p in ('herdr','gtx'):
+        for p in ('herdr','ikesu'):
             lines=screen('k20-navigator',p,phase)
             assert any('pane ' in x for x in lines[7:38]), (p,phase,'empty list')
             assert 'blocked' not in lines[5] and 'bogus' not in lines[5],(p,phase,lines[5])
@@ -99,7 +99,7 @@ def navigation():
 
 def help_keys():
     result={}
-    for p in ('herdr','gtx'):
+    for p in ('herdr','ikesu'):
         for phase in ('q','home','end','page','short-page'):
             assert any('keybinds' in x for x in screen('k21-help',p,phase)),(p,phase)
         assert not any('keybinds' in x for x in screen('k21-help',p,'question')),(p,'? did not close')
@@ -108,13 +108,13 @@ def help_keys():
             title=next(i for i,x in enumerate(lines) if '│keybinds' in x)
             result[p+'/'+phase]=lines[title+4][42:116].strip().rstrip('│▐▕ ')
     for phase in ('open','home','end','page','short-page'):
-        assert result['herdr/'+phase]==result['gtx/'+phase],(phase,result)
+        assert result['herdr/'+phase]==result['ikesu/'+phase],(phase,result)
     return result
 
 def effective_keys():
     result={}
     for case in ('k22-user','k22-nav'):
-        for p in ('herdr','gtx'):
+        for p in ('herdr','ikesu'):
             lines=sum((screen(case,p,phase) for phase in ('open','page-0','page-1','page-5','page-6','page-7')),[])
             for text,want in [('session navigator','unset' if case=='k22-user' else 'prefix+o'),
                               ('workspace list','up / down' if case=='k22-user' else 'u / d'),
@@ -127,7 +127,7 @@ def effective_keys():
 
 def paste():
     result={}
-    for p in ('herdr','gtx'):
+    for p in ('herdr','ikesu'):
         assert name('k16-paste',p,'name') == '貼付 alpha',(p,'default not replaced')
         assert '/ pane' in screen('k16-paste',p,'navigator')[5],(p,'navigator paste dropped')
         for phase in ('plain','controls'):
@@ -146,7 +146,7 @@ def paste():
 
 def configured_chrome():
     result={}
-    for p in ('herdr','gtx'):
+    for p in ('herdr','ikesu'):
         folder=root/'k22-user'/p
         fixture=json.loads((folder/'fixture.json').read_text())['result']['root_pane']['pane_id']
         next_pane=int(re.search(r'\d+',fixture)[0])+1

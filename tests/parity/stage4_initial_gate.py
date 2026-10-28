@@ -7,7 +7,7 @@ from pathlib import Path
 
 controls, agents = map(Path, sys.argv[1:])
 proof = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     directory = controls / product
     initial = json.loads((directory / 'initial.json').read_text())['Cells']
     changes = {}
@@ -28,7 +28,7 @@ for product in ('herdr', 'gtx'):
 
 for name in ('collapsed', 'agent-click'):
     cells = [json.loads((agents / product / (name + '.json')).read_text())['Cells']
-             for product in ('herdr', 'gtx')]
+             for product in ('herdr', 'ikesu')]
     left = [row[:3] for row in cells[0][24:28]]
     right = [row[:3] for row in cells[1][24:28]]
     assert left == right, (name, 'collapsed card cells/styles differ')

@@ -41,11 +41,14 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	ClientView            *api.ClientView                      `json:"client_view,omitempty"`
 	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
 	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
 	GraphicsFile          *endpoint.GraphicsFile               `json:"graphics_file,omitempty"`
 	GraphicsTransmission  *endpoint.GraphicsTransmission       `json:"graphics_transmission,omitempty"`
 	GraphicsResult        *endpoint.GraphicsTransmissionResult `json:"graphics_result,omitempty"`
+	InputSequence         uint64                               `json:"input_sequence,omitempty"`
+	ProcessedInput        uint64                               `json:"processed_input,omitempty"`
 	EndPrefix             bool                                 `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification               `json:"notification,omitempty"`
 	endpoint.Peer
@@ -168,6 +171,7 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	clientView     *api.ClientView // guarded by Server.mu
 	terminal       *endpoint.Terminal
 	directGraphics bool
 	directDisabled bool
@@ -751,6 +755,8 @@ func (s *Server) attach(conn net.Conn) {
 				continue
 			}
 			s.app.Do(func() { c.viewer.UpdatePresentation(s.app, m.Config, m.Preferences) })
+		case "client_view":
+			s.app.Do(func() { s.updateClientView(c, m.ClientView) })
 		case "visibility":
 			if m.Visible == nil {
 				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_visibility_invalid: missing visible state"})
@@ -761,6 +767,9 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() {
 				if !c.viewer.SelectWorkspace(s.app, m.Workspace) {
 					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+				}
+				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
+					c.viewer.RecordInput(s.app, m.InputSequence)
 				}
 			})
 		case "config_result":

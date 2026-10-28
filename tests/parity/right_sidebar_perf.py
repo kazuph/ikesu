@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 比べる版は cmd/ikesu を持つ版（改名後）。
 """Choose the approved P1 host; retain identical builds and the shared lock."""
 from pathlib import Path
 import json
@@ -21,7 +22,7 @@ else:
     root = 'bench-terrace/work/right-sidebar-perf'
     subprocess.run(['ssh', host, f'mkdir -p "$HOME/{root}/candidate"'], check=True)
     subprocess.run(['rsync', '-az', '--delete', '--exclude=/.git', '--exclude=/.artifacts',
-                    '--exclude=/.worktree', '--exclude=/gtx', str(source)+'/', f'{host}:{root}/candidate/'], check=True)
+                    '--exclude=/.worktree', '--exclude=/ikesu', str(source)+'/', f'{host}:{root}/candidate/'], check=True)
     subprocess.run(['rsync', '-az', str(archive), f'{host}:{root}/baseline.tar'], check=True)
     command = ['ssh', host, '. "$HOME/bench-terrace/env.sh"; '
                f'python3 "$HOME/bench-terrace/work/perf-lock.py" sh '
@@ -31,5 +32,5 @@ else:
     subprocess.run(['rsync', '-az', '--include=*.log', '--include=*.json', '--include=*.md',
                     '--exclude=*', f'{host}:{root}/result/', str(out)+'/'], check=True)
 (out / 'launch.json').write_text(json.dumps({'mini_load': load, 'host': host,
-    'baseline': 'bfdb572', 'command': command, 'exit': result.returncode}, indent=2)+'\n')
+    'baseline': '70579fe', 'command': command, 'exit': result.returncode}, indent=2)+'\n')
 raise SystemExit(result.returncode)

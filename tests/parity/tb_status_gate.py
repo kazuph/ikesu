@@ -12,7 +12,7 @@ p.add_argument('--standalone', action='store_true')
 a = p.parse_args()
 reference = json.loads((a.out/'reference.json').read_text())
 results = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     root = a.out/product
     raw = (root/'terminal.raw').read_bytes()
     log = (root/'run.log').read_text()
@@ -35,7 +35,7 @@ for product in ('herdr', 'gtx'):
     results[product] = {'passed': passed and ordering, 'queries': len(queries), 'uploads': len(uploads),
                         'query_intervals_ms': intervals, 'reply_order_valid': ordering,
                         'last_pixels_hex': pixels, 'received_hex': captured['received_hex']}
-coalesced = a.standalone or results['gtx']['uploads'] <= results['herdr']['uploads']
+coalesced = a.standalone or results['ikesu']['uploads'] <= results['herdr']['uploads']
 report = {'scope': 'isolated PTY protocol; exact one-second deadline is covered by the Go boundary test; native display unverified',
           'products': results, 'coalesced_no_worse_than_reference': coalesced}
 (a.out/'status-gate.json').write_text(json.dumps(report, indent=2)+'\n')

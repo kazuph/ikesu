@@ -9,7 +9,7 @@ root, steps = map(Path, sys.argv[1:])
 names = re.findall(r'^cells @OUT@/([^/]+)\.json$', steps.read_text(), re.M)
 assert names and len(names) == len(set(names)), names
 for name in names:
-    paths = [root/runtime/(name+'.json') for runtime in ('herdr', 'gtx')]
+    paths = [root/runtime/(name+'.json') for runtime in ('herdr', 'ikesu')]
     assert all(path.is_file() for path in paths), paths
     pair = [json.loads(path.read_text()) for path in paths]
     assert [(c['Cols'], c['Rows']) for c in pair] == [(pair[0]['Cols'], pair[0]['Rows'])]*2

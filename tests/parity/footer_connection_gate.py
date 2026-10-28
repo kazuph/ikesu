@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root=Path(sys.argv[1]);proof={}
-for product,label in [('gtx','gtx v0.1.0'),('herdr','herdr v0.2.61')]:
+for product,label in [('ikesu','ikesu v0.1.0'),('herdr','herdr v0.2.61')]:
     def row(name):
         doc=json.loads((root/product/(name+'.json')).read_text())
         return ''.join(c['Content'] or ' ' for c in doc['Cells'][-1])

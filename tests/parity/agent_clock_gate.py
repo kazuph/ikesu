@@ -10,7 +10,7 @@ cycle = list('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏')
 proof = {}
 frames = {}
 animated = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root / who
     runtime = json.loads((case / 'runtime-json.json').read_text())
     actions = json.loads(runtime['home/parity-api-actions.json'])
@@ -42,11 +42,11 @@ for who in ('herdr', 'gtx'):
         observed.append({'x': x, 'y': y, 'transitions': transitions, 'intervals_ms': intervals,
                          'median_ms': statistics.median(intervals)})
     proof[who] = observed
-assert animated['herdr'] == animated['gtx'], 'working glyph positions differ'
-assert frames['herdr'].keys() == frames['gtx'].keys()
+assert animated['herdr'] == animated['ikesu'], 'working glyph positions differ'
+assert frames['herdr'].keys() == frames['ikesu'].keys()
 comparisons = []
 for name, h in frames['herdr'].items():
-    g = frames['gtx'][name]
+    g = frames['ikesu'][name]
     assert (h['Cols'], h['Rows']) == (g['Cols'], g['Rows'])
     differences = []
     for y in range(h['Rows']):
@@ -56,11 +56,11 @@ for name, h in frames['herdr'].items():
                     continue
                 if h['Cells'][y][x][field] != g['Cells'][y][x][field]:
                     differences.append({'x': x, 'y': y, 'field': field,
-                                        'herdr': h['Cells'][y][x][field], 'gtx': g['Cells'][y][x][field]})
+                                        'herdr': h['Cells'][y][x][field], 'ikesu': g['Cells'][y][x][field]})
     comparisons.append({'screen': name, 'differences': differences})
-for h, g in zip(proof['herdr'], proof['gtx']):
-    assert min(h['intervals_ms']) <= g['median_ms'] <= max(h['intervals_ms']), 'GTX median outside observed herdr intervals'
-    assert min(g['intervals_ms']) <= h['median_ms'] <= max(g['intervals_ms']), 'herdr median outside observed GTX intervals'
+for h, g in zip(proof['herdr'], proof['ikesu']):
+    assert min(h['intervals_ms']) <= g['median_ms'] <= max(h['intervals_ms']), 'IKESU median outside observed herdr intervals'
+    assert min(g['intervals_ms']) <= h['median_ms'] <= max(g['intervals_ms']), 'herdr median outside observed IKESU intervals'
 (root / 'agent-clock-gate.json').write_text(json.dumps({'proof': proof, 'comparisons': comparisons}, indent=2) + '\n')
 assert all(not c['differences'] for c in comparisons), 'frame differences outside proven animation phase'
 print('working cycles/timing/positions/styles/all other cells: PASS')

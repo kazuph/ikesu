@@ -35,15 +35,15 @@ function sectionTexts(blocks) {
 test("option descriptions render under their labels", () => {
   const decision = pendingDecision({
     options: [
-      { id: "1", label: "取り込んで入れ直す", description: "店長の Mac の gtx を入れ直す" },
-      { id: "2", label: "取り込むだけ", description: "gtx は今のままにしておく" },
+      { id: "1", label: "取り込んで入れ直す", description: "店長の Mac の ikesu を入れ直す" },
+      { id: "2", label: "取り込むだけ", description: "ikesu は今のままにしておく" },
       { id: "3", label: "まだ取り込まない" },
     ],
   });
   const blocks = buildDecisionBlocks({ decision, machine: LOCAL });
   const text = sectionTexts(blocks).join("\n");
-  assert.match(text, /:one: 取り込んで入れ直す\n> 店長の Mac の gtx を入れ直す/);
-  assert.match(text, /:two: 取り込むだけ\n> gtx は今のままにしておく/);
+  assert.match(text, /:one: 取り込んで入れ直す\n> 店長の Mac の ikesu を入れ直す/);
+  assert.match(text, /:two: 取り込むだけ\n> ikesu は今のままにしておく/);
   // Options without a description still render their label only.
   assert.match(text, /:three: まだ取り込まない/);
 });

@@ -1,65 +1,137 @@
-# ikesu — エージェントを池で飼う
+# ikesu
 
-いくつものターミナルに、ひとつの池を。ikesu はコーディングエージェントと一緒に働くためのターミナルワークスペースです。
+English | [日本語](README.ja.md)
 
-![本実装のピクセルアートで泳ぐ錦鯉](docs/brand/koi.gif)
+**Keep your agents in a pond.**
 
-スペースとタブで作業を分け、サイドバーでエージェントの状態を確認できます。右の一覧の下に余白があれば、錦鯉の池が現れます。作業中は泳ぎ、待機中は底で休み、人待ちでは浮いて口を動かします。完了すると15秒間、金色に光ります。作業中のエージェントがいるスペースには、小さな鯉も泳ぎます。
+![Pixel-art koi swimming in the ikesu sidebar](docs/brand/koi.gif)
 
-エージェントが多いときは池の大きさに合わせて間引きます。人待ちの鯉を優先し、鯉ごとに帯を分けるので重なりません。詳しい状態は、これまでどおり一覧で確認できます。
+A terminal multiplexer for watching many AI coding agents side by side. ikesu shows the workspaces, tabs and panes of your local machine and of SSH machines in one screen, and lets agents exchange messages and run long jobs without blocking.
 
-kitty 画像に対応する端末では、最初に送った画像を再利用してなめらかに泳ぎます。それ以外は Unicode 16 の八分割文字で表示するため、その文字を含むフォントが必要です。アニメーションはクライアント側で動きます。
+- One sidebar for the spaces of the local machine and SSH machines; move between them with the mouse or keys
+- Agent status (waiting for a decision, working, done) in the sidebar and the terminal title
+- Durable messages with `ikesu send` / `ikesu inbox`, background jobs with completion notices via `ikesu run`
+- Running panes keep going when the server is handed off to a new version (live handoff)
+- On macOS, a native panel for answering agents' decisions
+- Pixel-art koi swim in the sidebar, one for each agent, and show what the agents are doing
 
-## インストール
+The specification is in [SPEC.md](SPEC.md) (Japanese).
 
-```sh
-brew install kazuph/tap/ikesu
-ikesu
-```
+## Platforms
 
-[仕様](SPEC.md) · [設定の説明](docs/ref/) · [ブランドサイトのソース](site/index.html)
-
-## 鯉を非表示にする
-
-設定ファイルの既存の `[ui]` セクションに追加します。省略すると表示します。
-
-```toml
-[ui]
-koi = false
-```
-
-サイドバーが閉じているときや、池に表示できる鯉がいないときは、鯉のアニメーションによる再描画を止めます。エージェント一覧の場所は取りません。
-
----
-
-# ikesu — Keep your agents in a pond
-
-Many terminals. One quiet pond. ikesu is a terminal workspace for working alongside coding agents.
-
-Organize work into spaces and tabs, and follow your agents in the sidebar. When there is room beneath the agent list, koi swim in a small pond. Working agents swim, idle agents rest near the bottom, and blocked agents surface and open their mouths. Completed agents glow gold for 15 seconds. A small koi also swims beside each space that contains a working agent.
-
-A crowded team is represented by fewer fish, sized to the available pond. Blocked agents have priority. Separate lanes prevent fish from overlapping; the agent list keeps its detailed status display.
-
-On terminals supported by the existing kitty image capability check, ikesu uploads the artwork once and moves the cached images. Other terminals use Unicode 16 octant characters and need a font that supports them. The animation runs in the client.
+macOS (Apple Silicon and Intel) and Linux (arm64 and amd64). The decision panel is available only on Apple Silicon macOS.
 
 ## Install
 
+With Homebrew:
+
 ```sh
 brew install kazuph/tap/ikesu
-ikesu
+ikesu --version
 ```
 
-## Turn off the koi
+Binaries for each platform are also available from [GitHub Releases](https://github.com/kazuph/ikesu/releases).
 
-Add this to the existing `[ui]` section of your configuration file. Koi are enabled when the setting is omitted.
+## Usage
+
+```sh
+ikesu                      # open the default session (created if missing)
+ikesu --session work       # open a named session
+ikesu help                 # commands and usage
+```
+
+The default prefix key is `ctrl+b`. Press `prefix ?` to list key bindings.
+
+### Running agents
+
+```sh
+ikesu agent start reviewer -- claude          # start an agent in a pane
+ikesu send <pane> "please fix the tests"      # send a message to an agent
+ikesu run --label tests -- go test ./...      # run without waiting; the caller is notified on exit
+ikesu log <job_id>                            # read the job result
+```
+
+### Combining machines
+
+```sh
+ikesu machine add mini.local --label mini
+ikesu machine list
+```
+
+Spaces of added machines appear in the sidebar. `keys.next_workspace` / `keys.previous_workspace` (for example `cmd+j` / `cmd+k`) move through spaces across machines. The other machine needs the same ikesu version. SSH keys and authentication come from your OpenSSH configuration.
+
+### Decision panel (macOS)
+
+```sh
+ikesu mac-dialog install
+ikesu mac-dialog status
+```
+
+Lets you answer agents' confirmations and questions in a native window. The panel never takes the keyboard. While you are looking at the space of the pane that asked, the window is placed behind other windows.
+
+## Koi pond
+
+When there is room below the agent list in the right sidebar, koi swim there over the sidebar's own background. Each koi stands for an agent:
+
+- Working agents swim freely across the pond; koi have depth, so they may pass over one another
+- Idle agents sink deeper and swim slowly
+- Agents waiting for you come up to the surface and open their mouths
+- Agents that just finished glow gold for 15 seconds
+
+Click an empty part of the pond to send out a ripple; the koi turn and gather at that spot. A small koi also swims beside each space that has a working agent. When there are many agents, fewer koi are shown so the pond never gets crowded, and an agent waiting for you always keeps a koi.
+
+On terminals that support the kitty graphics protocol (Ghostty, kitty, WezTerm), each koi image is sent once and only its position is updated afterwards, including over SSH. Other terminals show the same koi with Unicode 16 octant characters, which need a font that includes them.
+
+Turn the koi on or off from `koi: on` / `koi: off` in the sidebar `[menu]`, or in the configuration file:
 
 ```toml
 [ui]
 koi = false
 ```
 
-The koi animation stops requesting redraws when its sidebars are hidden or no fish can be shown. The pond uses spare rows and never takes space away from the agent list.
+The koi stop redrawing when the sidebar is hidden or no koi are shown. The brand site source is [site/index.html](site/index.html).
 
-[Specification](SPEC.md) · [Configuration reference](docs/ref/) · [Brand site source](site/index.html)
+## Configuration
 
-The pixel-art animation and the site's embedded sprite atlas are exported from the terminal renderer with `KOI_BRAND_EXPORT="$PWD/docs/brand" go test ./internal/render -run TestExportKoiBrandAssets`. The site is a single self-contained HTML file with a custom WebGL2 pond, light reflections, caustics, refraction, touch ripples, and Japanese/English switching. Koi keep their fixed pixel palette and nearest-neighbor sampling. Without WebGL2, the same artwork appears in 2D. Reduced motion and hidden tabs stop the animation.
+The configuration file is `~/.config/ikesu/config.toml` (override with `IKESU_CONFIG`).
+
+```toml
+[keys]
+prefix = "ctrl+t"
+next_workspace = "cmd+j"
+previous_workspace = "cmd+k"
+switch_workspace = "cmd+1..9"
+```
+
+## Terminal setup: switch tabs with ⌃Tab / ⌃⇧Tab
+
+By default ikesu binds ⌃Tab to "next tab" and ⌃⇧Tab to "previous tab" (`prefix n` / `prefix p` also work). Many terminal apps use ⌃Tab for their own tabs, so the key does not reach ikesu as is. Configure your terminal to send ⌃Tab as a kitty keyboard protocol sequence.
+
+| Key | Sequence the terminal sends |
+|---|---|
+| ⌃Tab | `\x1b[9;5u` |
+| ⌃⇧Tab | `\x1b[9;6u` |
+
+### Ghostty
+
+Add the following to the configuration file (on macOS, `~/Library/Application Support/com.mitchellh.ghostty/config` or `~/.config/ghostty/config`) and reload it with ⌘⇧,.
+
+```
+keybind = ctrl+tab=text:\x1b[9;5u
+keybind = ctrl+shift+tab=text:\x1b[9;6u
+```
+
+- Unbinding alone (`keybind = ctrl+tab=unbind`) is not enough. With macOS native tabs (`macos-titlebar-style = tabs`), the key press is consumed by the "Show Next Tab" menu item and only the key release reaches the app.
+- After this change, use ⌘⇧[ / ⌘⇧] to switch Ghostty's own tabs.
+
+### Other terminals
+
+Configure ⌃Tab / ⌃⇧Tab to send the sequences in the table above. Examples for terminals other than Ghostty have not been verified yet.
+
+### ⌘Tab cannot be used
+
+macOS takes ⌘Tab for app switching before any terminal app sees it.
+
+## License
+
+[MIT](LICENSE)

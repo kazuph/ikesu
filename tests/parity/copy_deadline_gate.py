@@ -7,7 +7,7 @@ import sys
 root = Path(sys.argv[1])
 references = {}
 result = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     files = sorted((root / who).glob('time-*.json'), key=lambda p: int(p.stem.split('-')[-1]))
     assert files, 'NOT_RUN: no timed captures'
     frames = [json.loads(p.read_text()) for p in files]
@@ -25,6 +25,6 @@ for who in ('herdr', 'gtx'):
         assert j['Cells'] == (positive if visible else negative), 'copy display changed outside its expiry'
     references[who] = (positive, negative)
     result[who] = {'last_visible_ms': before, 'first_expired_ms': after, 'captures': len(frames)}
-assert references['herdr'] == references['gtx'], 'visible or expired states differ between products'
+assert references['herdr'] == references['ikesu'], 'visible or expired states differ between products'
 (root / 'copy-deadline-gate.json').write_text(json.dumps(result, indent=2) + '\n')
 print('PASS: identical visible/expired cells; both observed expiry intervals contain 2000 ms', result)

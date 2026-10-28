@@ -37,3 +37,23 @@ func TestGenerationExplicitRejection(t *testing.T) {
 		}
 	}
 }
+
+func TestInputReceiptRequiresNegotiatedGenerationAndMethod(t *testing.T) {
+	current := Current()
+	for _, g := range []int{InputReceiptGeneration - 1, InputReceiptGeneration} {
+		old := current
+		old.Generation = g
+		for _, peers := range [][2]Peer{{current, old}, {old, current}} {
+			available, err := Negotiate(peers[0], peers[1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := Allows(available, InputReceiptGeneration, current.Methods, "input_receipt"); got != (g == InputReceiptGeneration) {
+				t.Fatal("receipt negotiation", g, available)
+			}
+		}
+	}
+	if Allows(InputReceiptGeneration, InputReceiptGeneration, []string{"input"}, "input_receipt") {
+		t.Fatal("receipt enabled without method")
+	}
+}

@@ -11,7 +11,7 @@ match = re.search(r'tickInterval\s*=\s*(\d+)\s*\*\s*time.Millisecond', tick_sour
 assert match, 'existing render tick interval not found'
 tick_ms = int(match[1])
 proof = {'render_tick_ms':tick_ms, 'source':str(tick_source), 'measurements':{}}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     case = root / who
     before = json.loads((case/'notification-visible.json').read_text())
     ended = json.loads((case/'expiry-ten.json').read_text())
@@ -35,7 +35,7 @@ for who in ('herdr', 'gtx'):
                                  'hidden_unix_ms':hidden,'delay_ms':shown-event,'visible_ms':hidden-shown}
     cleanup = json.loads((case/'cleanup.json').read_text())
     assert cleanup['exit'] == 0
-h, g = [proof['measurements'][who] for who in ('herdr','gtx')]
+h, g = [proof['measurements'][who] for who in ('herdr','ikesu')]
 for field in ('delay_ms','visible_ms'):
     proof[field+'_difference'] = abs(h[field]-g[field])
 (root/'notification-clock-gate.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2)+'\n')

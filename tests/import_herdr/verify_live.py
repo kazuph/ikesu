@@ -21,8 +21,8 @@ config=BASE/'config.toml'
 config.write_text('onboarding=false\n[agent_start.commands]\n'+''.join(agent+'=['+json.dumps(str(BASE/'bin'/agent))+']\n' for agent in ['claude','codex','devin']))
 env=os.environ.copy()
 for k in list(env):
- if k.startswith('GTX_') or k.startswith('GOTERRACE'):env.pop(k,None)
-env.update(HOME=str(BASE/'home'),GTX_STATE_DIR=str(BASE/'state'),GTX_CONFIG=str(config),SHELL='/bin/sh',PATH='/opt/homebrew/bin:/usr/bin:/bin:'+os.environ['PATH'],TERM='xterm-256color')
+ if k.startswith('IKESU'):env.pop(k,None)
+env.update(HOME=str(BASE/'home'),IKESU_STATE_DIR=str(BASE/'state'),IKESU_CONFIG=str(config),SHELL='/bin/sh',PATH='/opt/homebrew/bin:/usr/bin:/bin:'+os.environ['PATH'],TERM='xterm-256color')
 args=[BIN,'--session','import-real']
 def cli(parts,name,input=None,expect=0):
  p=subprocess.run(args+parts,env=env,capture_output=True,text=True,input=input,timeout=30)
@@ -38,7 +38,7 @@ cli(['session','import-herdr','--source',str(SOURCE),'--yes'],'real-import')
 saved=BASE/'state/import-real/session.json'
 (ROOT/'imported-before-start.json').write_bytes(saved.read_bytes())
 
-sock=BASE/'state/import-real/gtx.sock'
+sock=BASE/'state/import-real/ikesu.sock'
 def api(method,params={}):
  c=socket.socket(socket.AF_UNIX);c.settimeout(20);c.connect(str(sock));c.sendall((json.dumps({'id':'evidence','method':method,'params':params})+'\n').encode());data=b''
  while b'\n' not in data:data+=c.recv(65536)

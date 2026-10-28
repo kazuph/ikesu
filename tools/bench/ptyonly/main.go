@@ -1,4 +1,4 @@
-// Command ptyonly isolates gtx's output path: it runs a command on a 160x45
+// Command ptyonly isolates ikesu's output path: it runs a command on a 160x45
 // PTY and drains it with no UI, optionally feeding an emulator, to measure
 // how much of the multiplexer's time each layer costs.
 package main

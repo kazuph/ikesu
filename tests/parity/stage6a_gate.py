@@ -28,7 +28,7 @@ def boxes(frame):
 
 def popup_ownership():
  for case in ['popup-duplicate','popup-cross']:
-  for product in ['herdr','gtx']:
+  for product in ['herdr','ikesu']:
    entries=actions(case,product)
    if case=='popup-duplicate':
     assert entries[1]['reply']['error']=={'code':'command_failed','message':'popup already open'}
@@ -42,17 +42,17 @@ def popup_ownership():
  return 'Both errors exact; original popup receives Esc and Z after rejected operation.'
 
 def menu():
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   frame=cells('menu-short',product,'last')
   assert (55,0,25,10) in boxes(frame),(product,boxes(frame))
   assert 'Close pane' in text('menu-short',product,'last')
- h=cells('menu-short','herdr','last');g=cells('menu-short','gtx','last')
+ h=cells('menu-short','herdr','last');g=cells('menu-short','ikesu','last')
  assert [r[55:80] for r in h['Cells']]==[r[55:80] for r in g['Cells']],'menu cells differ'
  return '80x10: complete menu box and selected tail match every cell/style.'
 
 def name():
  for shot,expected in [('normal',(52,19,56,7)),('width-56',(2,1,52,5)),('width-20',(2,1,16,5))]:
-  for product in ['herdr','gtx']:
+  for product in ['herdr','ikesu']:
    f=cells('name-narrow',product,shot)
    assert expected in boxes(f),(product,shot,boxes(f))
    if shot!='normal':
@@ -60,18 +60,18 @@ def name():
     assert 'rename workspace' not in text('name-narrow',product,shot)
  for shot in ['normal-click','click-56','click-20']:
   left=boxes(cells('name-narrow','herdr',shot))
-  right=boxes(cells('name-narrow','gtx',shot))
+  right=boxes(cells('name-narrow','ikesu',shot))
   assert left==right,(shot,left,right)
  return 'Normal/narrow frame coordinates, hidden controls and identical click outcomes match.'
 
 def sizes():
  for width in [3,5,6]:
   case=f'popup-size-{width}'
-  for product in ['herdr','gtx']:
+  for product in ['herdr','ikesu']:
    size=json.loads(runtime(case,product)[f'home/size-{width}.json'])
    assert size=={'cols':4,'rows':2},(case,product,size)
    assert any(b[2:]==(6,4) for b in boxes(cells(case,product,'open')))
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   data=runtime('popup-small-screen',product)
   entry=json.loads(data['home/stage6a-actions.json'])[0]
   assert 'error' not in entry['reply']
@@ -82,7 +82,7 @@ def sizes():
  return 'All minimum widths use 6x4/4x2; 5x3 screen keeps real PTY alive without painting popup overflow.'
 
 def worktrees():
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   for shot in ['dialog','tail','search','last']:
    assert (32,9,96,26) in boxes(cells('worktree-list',product,shot))
   initial=text('worktree-list',product,'dialog')
@@ -96,7 +96,7 @@ def worktrees():
  return 'Real paths/open state, full tail scrolling, 2/13 filtered count and selected final match.'
 
 def create():
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   assert (46,16,68,12) in boxes(cells('worktree-create',product,'failed'))
   lines=text('worktree-create',product,'failed').splitlines()
   assert 'main' in lines[19] and 'checkout' in lines[20] and '/worktrees/fixture-repo/main' in lines[21]
@@ -105,7 +105,7 @@ def create():
  return 'Branch, destination, wrapped Git error and retry/cancel controls remain together.'
 
 def delete():
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   assert (44,17,72,10) in boxes(cells('worktree-delete',product,'dialog'))
   t=text('worktree-delete',product,'dialog')
   for value in ['This removes the checkout folder:','/checkout-00','The branch is not deleted.','workspace will close.','remove','esc cancel']:
@@ -113,7 +113,7 @@ def delete():
  return 'Unconfirmed deletion explains folder removal, retained branch and workspace closure.'
 
 def group():
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   t=text('worktree-group',product,'dialog')
   assert 'Close worktree group?' in t and 'fixture-repo — 2 workspaces, 2 panes' in t
   remaining=actions('worktree-group',product)[-1]['reply']['result']['workspaces']
@@ -122,7 +122,7 @@ def group():
 
 def configured_popup():
  import re
- for product in ['herdr','gtx']:
+ for product in ['herdr','ikesu']:
   assert any(b[2:]==(107,34) for b in boxes(cells('popup-user',product,'open')))
   assert re.search(r'│32 104\s*│',text('popup-user',product,'size'))
   assert not any(b[2:]==(107,34) for b in boxes(cells('popup-user',product,'escape')))
@@ -132,7 +132,7 @@ def name_probe():
  for width in [20,30,40,56]:
   expected=(2,1,min(56,width-4),5)
   for point in ['left','center','top','outside']:
-   for product in ['herdr','gtx']:
+   for product in ['herdr','ikesu']:
     before=boxes(cells('name-click-probe',product,f'{width}-{point}-before'))
     after=boxes(cells('name-click-probe',product,f'{width}-{point}-after'))
     assert expected in before,(width,point,product,before)

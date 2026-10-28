@@ -49,12 +49,12 @@ try:
             (root/name).mkdir()
         for name, content in files.items():
             (root/'source'/name).write_text(content)
-        env = {k: v for k, v in os.environ.items() if not k.startswith(('GTX', 'HERDR', 'GOTERRACE', 'CODEX', 'CLAUDE'))}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(('IKESU', 'HERDR', 'IKESU', 'CODEX', 'CLAUDE'))}
         cfg = root/'config.toml'
         cfg.write_text(a.config_file.read_text())
         (root/'zdot/.zshrc').write_text("PS1='IMPORT> '\nunset HISTFILE\n")
         env.update(HOME=str(root/'home'), ZDOTDIR=str(root/'zdot'), SHELL='/bin/zsh',
-                   GTX_STATE_DIR=str(root/'state'), GTX_CONFIG=str(cfg), XDG_CONFIG_HOME=str(root/'config'))
+                   IKESU_STATE_DIR=str(root/'state'), IKESU_CONFIG=str(cfg), XDG_CONFIG_HOME=str(root/'config'))
         argv = ['/usr/bin/sandbox-exec', '-p', SANDBOX_PROFILE,
                 str(a.binary), '--session', 'import-directory']
         imported = subprocess.run(argv+['session', 'import-herdr', '--source', str(root/'source'), '--yes'], env=env, capture_output=True, text=True, timeout=30)
@@ -63,10 +63,10 @@ try:
         log = (a.out/'server.log').open('w')
         server = subprocess.Popen(argv+['server'], env=env, stdout=log, stderr=log)
         deadline = time.monotonic()+10
-        while not list((root/'state').rglob('gtx.sock')):
+        while not list((root/'state').rglob('ikesu.sock')):
             assert server.poll() is None and time.monotonic() < deadline, 'owned import server unavailable'
             time.sleep(.02)
-        endpoint = list((root/'state').rglob('gtx.sock'))
+        endpoint = list((root/'state').rglob('ikesu.sock'))
         assert len(endpoint) == 1
         def request(method, params={}):
             with socket.socket(socket.AF_UNIX) as s:

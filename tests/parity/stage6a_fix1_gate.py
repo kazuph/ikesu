@@ -16,7 +16,7 @@ def notification_bytes(name,title,body):
 for name in ['ghostty','iterm','wezterm','kitty','term-ghostty','term-kitty','term-wezterm','tmux','kitty-tmux','unknown']:
     case='terminal-'+name
     replies=[]
-    for who in ['herdr','gtx']:
+    for who in ['herdr','ikesu']:
         entries=actions(case,who);r=[e['reply'] for e in entries];assert len(r)==8,(case,who,len(r))
         for i in [0,2,3,4,6,7]:assert r[i]['result']=={'type':'notification_show','shown':True,'reason':'shown'},(case,who,i,r[i])
         assert r[1]['result']=={'type':'notification_show','shown':False,'reason':'rate_limited'},(case,who,r[1])
@@ -37,7 +37,7 @@ def box(frame,height):
     return x,y,w,h
 for count,height in [(1,12),(2,12),(3,13),(13,26)]:
     case=f'worktree-{count}';last='main' if count==1 else f'branch-{count-2:02}'
-    for who in ['herdr','gtx']:
+    for who in ['herdr','ikesu']:
         for shot in ['initial','last','filtered','filtered-last']:box(load(case,who,shot),height)
         for shot in ['last','filtered-last']:
             assert '› '+last in (root/case/who/(shot+'.txt')).read_text(),(case,who,shot,last)
@@ -49,7 +49,7 @@ for count,height in [(1,12),(2,12),(3,13),(13,26)]:
     proof[case]={'status':'PASS','height':height,'comparison':'initial and filtered geometry, last selection, real checkout opened by click'}
 
 for case in ['inapp-rate','inapp-escape']:
-    for who in ['herdr','gtx']:
+    for who in ['herdr','ikesu']:
         entries=actions(case,who)
         assert [e['reply']['result']['reason'] for e in entries]==['shown','busy','shown'],(case,who,entries)
         frame=load(case,who,'after-key');assert frame['Cells'][0][148]['Content']=='┌',(case,who,'key dismissed targetless toast')

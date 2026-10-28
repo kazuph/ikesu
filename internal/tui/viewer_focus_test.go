@@ -43,3 +43,27 @@ func TestViewerFocusAcknowledgmentCannotReleaseNewerKeys(t *testing.T) {
 		t.Fatal("deadline failed to release input")
 	}
 }
+
+func TestViewerInputReceiptWaitsForFramingAndFocusDelivery(t *testing.T) {
+	app := NewApp(model.New(t.TempDir(), 80, 24), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	viewer := app.NewViewer(&bytes.Buffer{}, 80, 24, nil)
+	viewer.Input(app, []byte("\x1b["))
+	viewer.RecordInput(app, 1)
+	if viewer.ProcessedInput() != 0 {
+		t.Fatal("incomplete sequence acknowledged")
+	}
+	viewer.Input(app, []byte("9u"))
+	viewer.RecordInput(app, 2)
+	if viewer.ProcessedInput() != 2 {
+		t.Fatal("complete input not acknowledged")
+	}
+	viewer.Input(app, []byte("\x1b[I\x02"))
+	viewer.RecordInput(app, 3)
+	if viewer.ProcessedInput() != 2 {
+		t.Fatal("focus-held prefix acknowledged before delivery")
+	}
+	viewer.Rendered(app, render.Output{}, viewer.FocusEpoch())
+	if viewer.ProcessedInput() != 3 || !viewer.app.prefix {
+		t.Fatal("receipt did not follow actual prefix delivery")
+	}
+}

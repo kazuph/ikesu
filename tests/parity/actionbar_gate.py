@@ -10,7 +10,7 @@ root, steps = map(Path, sys.argv[1:])
 names = re.findall(r'^cells @OUT@/([^/]+)\.json$', steps.read_text(), re.M)
 assert names and len(names) == len(set(names)), names
 for name in names:
-    pair = [json.loads((root/runtime/(name+'.json')).read_text()) for runtime in ('herdr', 'gtx')]
+    pair = [json.loads((root/runtime/(name+'.json')).read_text()) for runtime in ('herdr', 'ikesu')]
     dimensions = [(data['Cols'], data['Rows']) for data in pair]
     assert dimensions[0] == dimensions[1], (name, dimensions)
     width, height = dimensions[0]

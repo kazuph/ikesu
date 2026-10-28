@@ -116,13 +116,13 @@ def measure(app):
 
 result = {'case': a.case, 'status': 'FAIL'}
 try:
-    for app in ('herdr', 'gtx'):
+    for app in ('herdr', 'ikesu'):
         exit_info = json.loads((root/app/'ui-exit.json').read_text())
         assert exit_info['exit'] == 0
         if exit_info['server']:
             assert json.loads((root/app/'cleanup.json').read_text())['exit'] == 0
         result[app] = measure(app)
-    assert result['herdr'] == result['gtx'], result
+    assert result['herdr'] == result['ikesu'], result
     result['status'] = 'PASS'
 except (AssertionError, OSError, KeyError, ValueError, AttributeError) as error:
     result['error'] = str(error)

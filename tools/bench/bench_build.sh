@@ -1,22 +1,22 @@
 #!/bin/bash
-# Build/lint/test timing on mini for herdr (Rust), moonterrace (MoonBit), goterrace (Go). Sequential.
+# Build/lint/test timing on mini for herdr (Rust), moonterrace (MoonBit), ikesu (Go). Sequential.
 set -u
 . $HOME/bench-terrace.noindex/env.sh
 which="${1:-all}"
 echo "# host $(hostname) $(sysctl -n machdep.cpu.brand_string) cores=$(sysctl -n hw.ncpu) load=$(uptime | sed 's/.*averages: //')"
 
 if [ "$which" = all ] || [ "$which" = go ]; then
-  echo "## goterrace ($(go version | awk '{print $3}'))"
-  cd $B/src/goterrace || exit 1
+  echo "## ikesu ($(go version | awk '{print $3}'))"
+  cd $B/src/ikesu || exit 1
   export GOCACHE=$W/gocache
   rm -rf "$GOCACHE"
-  tm go_dev_clean go build -o $W/gtx-dev ./cmd/ikesu
-  touch internal/render/render.go; tm go_dev_incr go build -o $W/gtx-dev ./cmd/ikesu
-  touch internal/render/render.go; tm go_dev_incr2 go build -o $W/gtx-dev ./cmd/ikesu
+  tm go_dev_clean go build -o $W/ikesu-dev ./cmd/ikesu
+  touch internal/render/render.go; tm go_dev_incr go build -o $W/ikesu-dev ./cmd/ikesu
+  touch internal/render/render.go; tm go_dev_incr2 go build -o $W/ikesu-dev ./cmd/ikesu
   rm -rf "$GOCACHE"
-  tm go_rel_clean go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/ikesu
-  touch internal/render/render.go; tm go_rel_incr go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/ikesu
-  touch internal/render/render.go; tm go_rel_incr2 go build -trimpath -ldflags=-s\ -w -o $W/gtx-rel ./cmd/ikesu
+  tm go_rel_clean go build -trimpath -ldflags=-s\ -w -o $W/ikesu-rel ./cmd/ikesu
+  touch internal/render/render.go; tm go_rel_incr go build -trimpath -ldflags=-s\ -w -o $W/ikesu-rel ./cmd/ikesu
+  touch internal/render/render.go; tm go_rel_incr2 go build -trimpath -ldflags=-s\ -w -o $W/ikesu-rel ./cmd/ikesu
   touch internal/render/render.go; tm go_vet go vet ./...
   tm go_fmt_check gofmt -l .
   touch internal/render/render.go; tm go_test go test -count=1 ./...

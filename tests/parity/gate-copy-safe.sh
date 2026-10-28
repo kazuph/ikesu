@@ -8,12 +8,12 @@ if ! test -x "$work/herdr-0.2.24"; then
  exit 0
 fi
 test -z "$(gofmt -l third_party/vt/emulator.go third_party/vt/screen.go internal/runtime/parity_resize_test.go internal/tui/mouse.go internal/tui/spec_mouse_regions_test.go internal/copybuf/copybuf.go internal/tui/parity_copy_wide_test.go internal/render/render.go internal/tui/copy.go internal/tui/views.go internal/tui/spec_copy_navigation_test.go internal/tui/parity_copy_test.go internal/runtime/scrollback_test.go third_party/vt/scrollback.go third_party/vt/scrollback_ring_test.go internal/tui/loop.go internal/tui/spec_layout_runtime_test.go internal/render/spec_contract_test.go tests/e2e/e2e_test.go tests/e2e/parity_tabs_test.go)"
-go build -o "$work/gtx-parity-copy-safe" ./cmd/ikesu
+go build -o "$work/ikesu-parity-copy-safe" ./cmd/ikesu
 (cd third_party/vt && go vet ./... && go test -count=1 ./...)
 go vet ./...
 go test -count=1 ./...
 for scenario in copy-clean-cells copy-key-details copy-selection-keys copy-page-sizes copy-wheel-cursor copy-unicode copy-cycle copy-colored-selection copy-wide-motions copy-resize-top copy-resize-middle copy-resize-bottom; do
- python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$work/gtx-parity-copy-safe" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-final"
+ python3 tests/parity/observe.py --clipboard-sandbox --herdr "$work/herdr-0.2.24" --ikesu "$work/ikesu-parity-copy-safe" --ptyrun "$work/ptyrun-parity-cells" --steps "tests/parity/$scenario.steps" --out "$work/parity-$scenario-final"
  python3 tests/parity/copy_cells_gate.py "$work/parity-$scenario-final" "tests/parity/$scenario.steps"
 done
-IKESU_PERF_BIN="$work/gtx-parity-copy-safe" IKESU_PERF_BASELINE_BIN="$work/gtx-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-copy-safe-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m
+IKESU_PERF_BIN="$work/ikesu-parity-copy-safe" IKESU_PERF_BASELINE_BIN="$work/ikesu-look-baseline-b0a18b0" IKESU_PERF_OUT="$work/parity-copy-safe-perf.md" go test -count=1 -tags perf ./tests/perf -run TestRelative -timeout 30m

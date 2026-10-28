@@ -148,7 +148,7 @@
     "want": "ask"
   },
   {
-    "line": "_gtx_guard_debug() { :; }",
+    "line": "_ikesu_guard_debug() { :; }",
     "want": "ask"
   },
   {
@@ -156,7 +156,7 @@
     "want": "ask"
   },
   {
-    "line": "_gtx_guard_command() { /bin/rm ${TARGET}; }; _gtx_guard_command",
+    "line": "_ikesu_guard_command() { /bin/rm ${TARGET}; }; _ikesu_guard_command",
     "want": "ask"
   },
   {
@@ -288,7 +288,7 @@
     "want": "ask"
   },
   {
-    "line": "unset -f _gtx_guard_forward",
+    "line": "unset -f _ikesu_guard_forward",
     "want": "ask"
   },
   {

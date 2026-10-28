@@ -4,7 +4,7 @@
 このブランチでは、親が移植部分を削除してある（ファイル `internal/detect/identify.go`・`internal/detect/region.go`・`internal/dispatch/store.go` と、下に挙げる関数）。そのため今はビルドが通らない。
 
 **実装役の決まり（リポジトリの `AGENTS.md` と同じ）**
-- herdr のソースを読まない。削除前の gtx の実装も読まない（`git log -p`・`git show`・`git diff` で消えた行を見ない。main や他のブランチ・worktree の同じファイルを開かない）。
+- herdr のソースを読まない。削除前の ikesu の実装も読まない（`git log -p`・`git show`・`git diff` で消えた行を見ない。main や他のブランチ・worktree の同じファイルを開かない）。
 - 根拠はこの文書、`docs/ref/`（API スキーマ・CLI help・DB スキーマ）、herdr の `SPEC.md` の文章、残っているテストだけ。決まらないことは推測で埋めずに親へ質問する。
 - 下に書く**名前と形**（型・関数のシグネチャ・定数）は、呼び出し側のコードが使っているので、この形で作る。中身の書き方は自由。
 
@@ -155,15 +155,15 @@ func codexActivityFingerprint(content string) string
 
 ## D. `internal/dispatch`: メール・ジョブ・ペインの会話記録の保存（ファイル新設）
 
-SQLite（`github.com/ncruces/go-sqlite3`、既存の依存）で、表の形は `docs/ref/herdr-db-schema.sql` と同じ列名・同じ状態名にする（`gtx log --db` で中を見る人のため）。加えて `pane_sessions`（下の PaneSession）用の表を持つ。SQL は自分で書く。残っている `store_test.go` を全部満たすこと。
+SQLite（`github.com/ncruces/go-sqlite3`、既存の依存）で、表の形は `docs/ref/herdr-db-schema.sql` と同じ列名・同じ状態名にする（`ikesu log --db` で中を見る人のため）。加えて `pane_sessions`（下の PaneSession）用の表を持つ。SQL は自分で書く。残っている `store_test.go` を全部満たすこと。
 
 ### 定数・型（この形で作る）
 
 ```go
 const DefaultRoom = "default"
-const JobsRoom = "gtx-jobs"
-const RunShellActor = "gtx-run"
-const DBPathEnvVar = "GTX_DB_PATH"
+const JobsRoom = "ikesu-jobs"
+const RunShellActor = "ikesu-run"
+const DBPathEnvVar = "IKESU_DB_PATH"
 
 type Store struct{ /* 自由 */ }
 type Message struct {
@@ -188,11 +188,11 @@ type PaneSession struct {
 
 | シグネチャ | 約束 |
 |---|---|
-| `DBPath() string` | `$GTX_DB_PATH` があればそれ、無ければ `$GTX_STATE_DIR/gtx.db`（`GTX_STATE_DIR` の既定は `internal/api` の StateDir と同じ） |
+| `DBPath() string` | `$IKESU_DB_PATH` があればそれ、無ければ `$IKESU_STATE_DIR/ikesu.db`（`IKESU_STATE_DIR` の既定は `internal/api` の StateDir と同じ） |
 | `DBExists() bool` | `DBPath()` のファイルがあるか |
-| `JobLogDir() string` | `$GTX_STATE_DIR/job-logs` |
-| `JobLogPath(jobID, label string) string` | `JobLogDir()/<jobID>-<label を安全な文字にしたもの>.log`（label が空なら `<jobID>.log`）。`gtx log <job>` がこの名前でログを探す |
-| `Schema() string` | 開くときに流す DDL の文字列（`gtx log --schema` が表示する） |
+| `JobLogDir() string` | `$IKESU_STATE_DIR/job-logs` |
+| `JobLogPath(jobID, label string) string` | `JobLogDir()/<jobID>-<label を安全な文字にしたもの>.log`（label が空なら `<jobID>.log`）。`ikesu log <job>` がこの名前でログを探す |
+| `Schema() string` | 開くときに流す DDL の文字列（`ikesu log --schema` が表示する） |
 | `Open(path)` / `OpenReadOnly(path)` | 読み書きで開く（無ければ作る）／読み取り専用で開く（無ければ失敗）。WAL、待ち時間 5000ms、synchronous=NORMAL。古い DB に `read_at` 列が無ければ足す（一度だけ） |
 | `Close()` | 閉じる |
 | `UpsertActor(kind, name, source, model, sessionID, paneID *string) (int64, error)` | (kind, name) で同じ行を使い、なければ作る。source などは新しい値で上書き。行の id を返す |
@@ -233,10 +233,10 @@ type PaneSession struct {
 | `parseSplitDirection(v string) (string, error)` | `right`・`down`（と呼び出し側が使っている値）を受け付け、それ以外はエラー。受け付ける値は呼び出し側と `docs/ref/herdr-cli-pane.txt` に合わせる |
 | `parseU32Flag` / `parseU64Flag` | 呼び出し側の使い方どおり、符号なし整数として読み、範囲外・数字でなければエラー |
 | `(r *runner) resolveAgentName(target string) (string, error)` | API `agent.get` で target を引き、表示名（name）→ agent の種類 → global pane id の順に、空でない最初のものを返す。どれも無ければエラー `target has no reported agent identity` |
-| `(r *runner) resolveCurrentPaneID() (string, error)` | `GTX_PANE_ID` があればそれを呼び出し元として、既存の `r.currentPaneID` で決める |
+| `(r *runner) resolveCurrentPaneID() (string, error)` | `IKESU_PANE_ID` があればそれを呼び出し元として、既存の `r.currentPaneID` で決める |
 | `printMsgMessage(w, m api.MsgMessage)` | 1行 `#<id> [<room>] <created_at> <from> -> <to>: <body>` |
-| `printSendHelp` / `printMsgHelp` / `printLogHelp` / `printRunHelp` | 各コマンドの使い方の説明。内容は `docs/ref/herdr-cli-ai.txt` の該当コマンドと同じ引数・同じ決まり（例 run の「待つ間 sleep やポーリングをしない」「完了通知の形」）を、`herdr` を `gtx` にして gtx の言葉で書く。文章を写さない |
+| `printSendHelp` / `printMsgHelp` / `printLogHelp` / `printRunHelp` | 各コマンドの使い方の説明。内容は `docs/ref/herdr-cli-ai.txt` の該当コマンドと同じ引数・同じ決まり（例 run の「待つ間 sleep やポーリングをしない」「完了通知の形」）を、`herdr` を `ikesu` にして ikesu の言葉で書く。文章を写さない |
 | `defaultRunLabel(argv []string) string` | argv[0] の最後の部分。無ければ `run` |
 | `oneLineField(s string) string` | 前後の空白を除き、改行を空白にする |
-| `runSpawnNextHint(job, label string, pane *string, completion string) string` | `gtx run` の受付応答の `next` 欄。pane 実行なら「呼び出し元に `[gtx run] exit=<code> label=<label> pane=<pane>` が届く、sleep やポーリングをせず待ち、`gtx log <job>` を読む」。completion が none なら「終了通知は来ない、`gtx run list` か `gtx log <job>` で自分で確かめる」。それ以外は「`[gtx run] exit=<code> label=<label> job=<job>` が届く、ターンを終えて待ち、`gtx log <job>` を読む」 |
+| `runSpawnNextHint(job, label string, pane *string, completion string) string` | `ikesu run` の受付応答の `next` 欄。pane 実行なら「呼び出し元に `[ikesu run] exit=<code> label=<label> pane=<pane>` が届く、sleep やポーリングをせず待ち、`ikesu log <job>` を読む」。completion が none なら「終了通知は来ない、`ikesu run list` か `ikesu log <job>` で自分で確かめる」。それ以外は「`[ikesu run] exit=<code> label=<label> job=<job>` が届く、ターンを終えて待ち、`ikesu log <job>` を読む」 |
 | `shellCommandFromArgs(argv []string) string` / `shellQuote(s string) string` | argv の各要素を POSIX シェル用に引用して空白でつなぐ（`sh -c` に渡して元の argv に戻ること）。空文字は `''`。安全な文字だけの要素は引用しない |

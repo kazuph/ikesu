@@ -16,7 +16,7 @@ screens = {'boot', 'new-workspace', 'first-active', 'menu-closed',
            'slim', 'full-again', 'drag-preview', 'reordered'}
 for theme in sorted(themes):
     case = root/theme
-    for runtime in ('herdr', 'gtx'):
+    for runtime in ('herdr', 'ikesu'):
         configs = json.loads((case/runtime/'config-files.json').read_text())
         applied = [tomllib.loads(text).get('theme', {}).get('name')
                    for path, text in configs.items() if path.endswith('/config.toml')]

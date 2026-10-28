@@ -78,7 +78,7 @@ class ClipboardGuard:
         self.records.append(result)
         (self.root / 'proof.json').write_text(json.dumps(self.records, indent=2) + '\n')
         require_no_copy_write(([self.probe] if self.probe else []) + self.records)
-        # herdr must prove interception. gtx currently emits OSC52 into ptyrun's captured stream.
+        # herdr must prove interception. ikesu currently emits OSC52 into ptyrun's captured stream.
         if self.capture_commands and name == 'herdr' and pbcopy_calls == 0:
             raise RuntimeError('STOP: herdr did not invoke captured pbcopy; report to parent')
 

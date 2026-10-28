@@ -10,7 +10,7 @@ p.add_argument('screen')
 p.add_argument('label')
 a = p.parse_args()
 results = {}
-for app in ('herdr', 'gtx'):
+for app in ('herdr', 'ikesu'):
     path = Path(a.directory) / app / (a.screen + '.json')
     if not path.exists():
         results[app] = {'status': 'NOT_RUN'}
@@ -30,7 +30,7 @@ for app in ('herdr', 'gtx'):
                 break
             offset += len(cell.get('Content', ''))
     results[app] = {'status': 'OBSERVED' if len(hits) == 1 else 'NOT_UNIQUE', 'hits': hits}
-results['equal_style'] = (all(results[app]['status'] == 'OBSERVED' for app in ('herdr', 'gtx'))
-                          and results['herdr']['hits'][0]['style'] == results['gtx']['hits'][0]['style'])
+results['equal_style'] = (all(results[app]['status'] == 'OBSERVED' for app in ('herdr', 'ikesu'))
+                          and results['herdr']['hits'][0]['style'] == results['ikesu']['hits'][0]['style'])
 print(json.dumps(results, ensure_ascii=False, indent=2))
 raise SystemExit(0 if results['equal_style'] else 1)

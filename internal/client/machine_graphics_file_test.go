@@ -149,7 +149,7 @@ func TestGraphicsFileMachinePathUsesActualTerminalReplyAndPreservesKeys(t *testi
 		if result.Type == endpoint.GraphicsResultMessage {
 			break
 		}
-		if result.Type != "rendered" {
+		if result.Type != "rendered" && result.Type != "client_view" {
 			t.Fatal("unexpected message before placed success", result)
 		}
 	}

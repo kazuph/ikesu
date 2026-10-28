@@ -13,7 +13,7 @@ p.add_argument('--cell-height', type=int, default=16)
 p.add_argument('--reuse', action='store_true', help='check T7 with the static sibling image')
 a = p.parse_args()
 results = {}
-for name in ('herdr', 'gtx'):
+for name in ('herdr', 'ikesu'):
     target = a.out / name
     runtime = json.loads((target / 'runtime-json.json').read_text())
     probe = json.loads(runtime['home/tb-probe.json'])

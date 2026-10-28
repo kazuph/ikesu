@@ -14,7 +14,7 @@ tar -xf "$archive" -C "$out/baseline-source"
     uptime
     printf '%s\n' 'baseline=2e01183' 'build flags=-trimpath -ldflags=-s -w'
 } > "$out/conditions.log"
-(cd "$out/baseline-source" && go build -trimpath '-ldflags=-s -w' -o "$out/baseline" ./cmd/gtx)
+(cd "$out/baseline-source" && go build -trimpath '-ldflags=-s -w' -o "$out/baseline" ./cmd/ikesu)
 export IKESU_JOB_HANDOFF_OLD_BIN="$out/baseline"
 failed=0
 check() {

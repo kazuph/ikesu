@@ -15,7 +15,7 @@ red = {'default': {'R':243,'G':139,'B':168,'A':255},
        'tokyo-night': {'R':247,'G':118,'B':142,'A':255}}[a.theme]
 proof = {}
 frames = {}
-for who in ('herdr','gtx'):
+for who in ('herdr','ikesu'):
     case = root/who
     runtime = json.loads((case/'runtime-json.json').read_text())
     process = json.loads(runtime['home/parity-job-processes.json'])
@@ -46,10 +46,10 @@ for who in ('herdr','gtx'):
     proof[who] = {'process_group':process,'cancel_reply':reply,'cleanup':cleanup}
 comparisons = []
 for name in ('cancelling-later','cancelled'):
-    h,g = frames['herdr'][name],frames['gtx'][name]
+    h,g = frames['herdr'][name],frames['ikesu'][name]
     assert (h['Cols'],h['Rows']) == (g['Cols'],g['Rows'])
     width = 25 if name == 'cancelling-later' else h['Cols']
-    differences = [{'x':x,'y':y,'herdr':h['Cells'][y][x],'gtx':g['Cells'][y][x]}
+    differences = [{'x':x,'y':y,'herdr':h['Cells'][y][x],'ikesu':g['Cells'][y][x]}
                    for y in range(h['Rows']) for x in range(width)
                    if h['Cells'][y][x] != g['Cells'][y][x]]
     comparisons.append({'screen':name,'rect':[0,0,width,h['Rows']], 'differences':differences})

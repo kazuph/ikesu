@@ -19,13 +19,13 @@ expected = {
 results = []
 for screen, (height, header_y) in expected.items():
     row = {'screen': screen, 'expected_header': header_y}
-    for runtime in ('herdr', 'gtx'):
+    for runtime in ('herdr', 'ikesu'):
         frame = json.loads((a.directory/runtime/(screen+'.json')).read_text())
         assert frame['Rows'] == height and frame['Cols'] == 160, (runtime, screen)
         matches = [y for y, cells in enumerate(frame['Cells'])
                    if '[agents]' in ''.join(c['Content'] for c in cells[:25])]
         row[runtime] = matches
-    row['status'] = 'PASS' if row['herdr'] == row['gtx'] == [header_y] else 'FAIL'
+    row['status'] = 'PASS' if row['herdr'] == row['ikesu'] == [header_y] else 'FAIL'
     results.append(row)
 (a.directory/'panel-position-proof.json').write_text(json.dumps(results, indent=2)+'\n')
 assert all(row['status'] == 'PASS' for row in results), results

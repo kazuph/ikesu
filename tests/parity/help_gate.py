@@ -23,7 +23,7 @@ for scenario, filename, screens in [
 
 closed = work/'parity-help-close-help-detail'
 proof = {}
-for who in ('herdr', 'gtx'):
+for who in ('herdr', 'ikesu'):
     root = closed/who
     proof[who] = {
         'shell_marker_count': (root/'shell-input.txt').read_text().count('HELP_CLOSE_MARK'),

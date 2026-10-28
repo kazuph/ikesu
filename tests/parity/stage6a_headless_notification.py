@@ -9,14 +9,14 @@ import subprocess
 import tempfile
 import time
 
-p=argparse.ArgumentParser();p.add_argument('binary');p.add_argument('product',choices=['herdr','gtx']);p.add_argument('out',type=Path);p.add_argument('--delivery',choices=['off','terminal','system']);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('binary');p.add_argument('product',choices=['herdr','ikesu']);p.add_argument('out',type=Path);p.add_argument('--delivery',choices=['off','terminal','system']);a=p.parse_args()
 a.out.mkdir(parents=True,exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='parity-',dir='/tmp') as tmp:
     root=Path(tmp)
-    env={k:v for k,v in os.environ.items() if not k.startswith(('HERDR','GTX','CODEX','CLAUDE'))}
-    env.update(HOME=str(root),XDG_CONFIG_HOME=str(root/'config'),XDG_STATE_HOME=str(root/'state'),XDG_DATA_HOME=str(root/'data'),SHELL='/bin/sh',GTX_DISABLE_SOUND='1')
+    env={k:v for k,v in os.environ.items() if not k.startswith(('HERDR','IKESU','CODEX','CLAUDE'))}
+    env.update(HOME=str(root),XDG_CONFIG_HOME=str(root/'config'),XDG_STATE_HOME=str(root/'state'),XDG_DATA_HOME=str(root/'data'),SHELL='/bin/sh',IKESU_DISABLE_SOUND='1')
     config=root/'config.toml';config.write_text(f'[ui.toast]\ndelivery="{a.delivery or a.product}"\n[ui.sound]\nenabled=false\n')
-    env['HERDR_CONFIG_PATH' if a.product=='herdr' else 'GTX_CONFIG']=str(config)
+    env['HERDR_CONFIG_PATH' if a.product=='herdr' else 'IKESU_CONFIG']=str(config)
     with (a.out/'server.log').open('w') as log:
         child=subprocess.Popen([a.binary,'--session','parity','server'],env=env,cwd=root,stdout=log,stderr=log)
         try:

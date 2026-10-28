@@ -8,7 +8,7 @@ p = argparse.ArgumentParser()
 p.add_argument('out', type=Path)
 a = p.parse_args()
 records = {}
-for product in ('herdr', 'gtx'):
+for product in ('herdr', 'ikesu'):
     runtime = json.loads((a.out/product/'runtime-json.json').read_text())
     records[product] = json.loads(runtime['home/tb-api-probe.json'])
 differences = []
@@ -17,7 +17,7 @@ for index in range(max(len(rows) for rows in records.values())):
     for product, rows in records.items():
         pair[product] = ({k: v for k, v in rows[index].items() if k != 'elapsed_ns'}
                          if index < len(rows) else None)
-    if pair['herdr'] != pair['gtx']:
+    if pair['herdr'] != pair['ikesu']:
         differences.append({'index': index, **pair})
 result = {'status': 'FAIL' if differences else 'PASS',
           'scope': 'captured API responses only; image display and unrecorded cases are not proved',

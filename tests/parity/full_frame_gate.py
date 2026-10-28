@@ -13,7 +13,7 @@ names = re.findall(r'^cells @OUT@/([^\s]+)\.json$', a.steps.read_text(), re.M)
 assert names, 'procedure has no cell captures'
 results = []
 for name in names:
-    paths = [a.directory / who / (name + '.json') for who in ('herdr', 'gtx')]
+    paths = [a.directory / who / (name + '.json') for who in ('herdr', 'ikesu')]
     row = {'screen': name, 'differences': []}
     if not all(path.is_file() for path in paths):
         row['status'] = 'NOT_RUN'
@@ -28,7 +28,7 @@ for name in names:
                         hv, gv = h['Cells'][y][x][field], g['Cells'][y][x][field]
                         if hv != gv:
                             row['differences'].append({'x': x, 'y': y, 'field': field,
-                                                       'herdr': hv, 'gtx': gv})
+                                                       'herdr': hv, 'ikesu': gv})
             row['status'] = 'DIFFERENT_CELLS' if row['differences'] else 'PASS'
     row['difference_count'] = len(row['differences'])
     results.append(row)

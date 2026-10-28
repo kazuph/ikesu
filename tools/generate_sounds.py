@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate gtx's original MIT-licensed notification tones and MIDI using stdlib only."""
+"""Generate ikesu's original MIT-licensed notification tones and MIDI using stdlib only."""
 import hashlib
 import json
 import math
