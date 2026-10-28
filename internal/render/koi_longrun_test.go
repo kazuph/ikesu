@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/layout"
+	"image"
+	"image/png"
 	"regexp"
 	"strconv"
 	"strings"
@@ -171,4 +173,63 @@ func TestKoiLongRunMachineReconnectAndDoneState(t *testing.T) {
 		t.Fatal("removed panes retained state")
 	}
 	t.Log("10000 endpoint replacements: done=2 motion=2; disconnect=1; pane removal=0")
+}
+
+func TestKoiLongRunTerminalByteBudgetAndVisibleFrame(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 1024, 1024))); err != nil {
+		t.Fatal(err)
+	}
+	picture := kitty.Image{Format: 100, Width: 1024, Height: 1024, Data: encoded.Bytes()}
+	graphic := func(id int) Graphic {
+		picture.ID = uint32(id)
+		return Graphic{Koi: true, Pane: -4, Placement: kitty.Placement{Image: picture}}
+	}
+	var e Encoder
+	for i := 1; i <= 100; i++ {
+		e.encodeKoi([]Graphic{graphic(i)}, false)
+		if e.koi.bytes > koiTerminalBytes {
+			t.Fatal("terminal byte budget exceeded")
+		}
+	}
+	t.Logf("100 large real PNGs: retained=%d bytes=%d cap=%d", len(e.koi.images), e.koi.bytes, koiTerminalBytes)
+	var visible []Graphic
+	for i := 101; i <= 140; i++ {
+		visible = append(visible, graphic(i))
+	}
+	e.encodeKoi(visible, false)
+	// Keeping a whole frame visible takes precedence over retaining old frames.
+	if len(e.koi.images) != len(visible) {
+		t.Fatal("old frames retained beside an oversized visible frame")
+	}
+	for _, g := range visible {
+		p := g.Placement.Image
+		if e.koi.images[koiImageKey{-4, p.ID, p.Width, p.Height}] == 0 {
+			t.Fatal("visible image evicted")
+		}
+	}
+	e.encodeKoi(nil, false)
+	if e.koi.bytes > koiTerminalBytes {
+		t.Fatal("oversized frame still pinned after disappearing")
+	}
+	e.RestoreCursor()
+	if e.koi.bytes != 0 {
+		t.Fatal("disconnect retained byte accounting")
+	}
+}
+func TestKoiLongRunSidebarToggle(t *testing.T) {
+	var e Encoder
+	img := koiRippleCached(koiRingKey{8, 8, 0, 0, 1})
+	g := Graphic{Koi: true, Pane: -4, Placement: kitty.Placement{Image: img}}
+	for i := 0; i < 10000; i++ {
+		data := e.encodeKoi([]Graphic{g}, true)
+		if i > 0 && bytes.Contains(data, []byte("a=t,")) {
+			t.Fatal("sidebar toggle resent retained pixels")
+		}
+		e.encodeKoi(nil, false)
+	}
+	if len(e.koi.images) != 1 || e.koi.order.Len() != 1 || len(e.koi.placements) != 0 {
+		t.Fatal("sidebar toggles accumulated images/placements")
+	}
+	t.Log("10000 hide/show or off/on compositions: retained images=1 placements=0, no repeat upload")
 }
