@@ -23,7 +23,9 @@ func TestSecretArgvBoundariesSurviveRealShell(t *testing.T) {
 			quoted = append(quoted, q)
 		}
 		raw := strings.Join(quoted, " ")
-		output, err := exec.Command("/bin/sh", "-c", `printf '%s\0' `+raw).Output()
+		// Bash quoting can emit ANSI-C quotes, which Linux /bin/sh (dash)
+		// does not interpret. Execute with the dialect used to quote the argv.
+		output, err := exec.Command("bash", "-c", `printf '%s\0' `+raw).Output()
 		if err != nil {
 			t.Fatal(err)
 		}
