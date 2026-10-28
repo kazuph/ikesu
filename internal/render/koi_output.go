@@ -18,9 +18,11 @@ var koiSpriteCache = koiCache[koiSpriteKey, koiRaster]{maxEntries: koiSpriteEntr
 func koiSpriteCached(k koiSpriteKey) (*image.RGBA, kitty.Image) {
 	p := koiSpriteCache.getOrCreate(k, func() (koiRaster, int) {
 		v := k.Variety % (3 * len(KoiPatterns))
-		img := KoiSprite(v, k.Direction, k.Wag, k.W, k.H)
+		var img *image.RGBA
 		if k.W < 2*k.H {
 			img = koiPondSprite(v, k.Direction, k.Wag, k.W, k.H)
+		} else {
+			img = KoiSprite(v, k.Direction, k.Wag, k.W, k.H)
 		}
 		if k.Variety >= 3*len(KoiPatterns) {
 			for i := 0; i < len(img.Pix); i += 4 {
