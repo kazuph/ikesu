@@ -4,21 +4,21 @@ import argparse,json,pathlib,re
 p=argparse.ArgumentParser();p.add_argument('directory');a=p.parse_args();root=pathlib.Path(a.directory)
 results=json.loads((root/'results.json').read_text());reports=[]
 for result in results:
- live={};peak_count=peak_bytes=uploads=deletes=waves=0
+ live={};live_bytes=peak_count=peak_bytes=uploads=deletes=waves=0
  timeline=pathlib.Path(result['raw_output']).with_suffix('.timeline.jsonl')
  with timeline.open() as source:
   for line in source:
    event=json.loads(line);kind=event.get('type')
    if kind=='image.decoded':
-    live[event['id']]=event['rgba_bytes'];uploads+=1
+    live_bytes+=event['rgba_bytes']-live.get(event['id'],0);live[event['id']]=event['rgba_bytes'];uploads+=1
    elif kind=='image.deleted':
     control=event['control']
-    if control.get('d')=='A':live.clear()
-    elif control.get('d')=='I':live.pop(int(control['i']),None);deletes+=1
+    if control.get('d')=='A':live.clear();live_bytes=0
+    elif control.get('d')=='I':live_bytes-=live.pop(int(control['i']),0);deletes+=1
    elif kind=='image.placed' and event['control'].get('z')=='400':waves+=1
    # A frame can upload before retiring its predecessor; record that transient
    # separately. The post-retirement inventory is asserted by the Go wire test.
-   peak_count=max(peak_count,len(live));peak_bytes=max(peak_bytes,sum(live.values()))
+   peak_count=max(peak_count,len(live));peak_bytes=max(peak_bytes,live_bytes)
  samples=[]
  for label,pid,rss,cpu,wire in re.findall(r'stats (before|minute-\d+|after) pid=(\d+) rss_kb,cpu=(\d+)\s+([0-9:.]+) outer_bytes_so_far=(\d+)',pathlib.Path(result['log']).read_text()):
   samples.append({'label':label,'pid':int(pid),'rss_kb':int(rss),'cpu':cpu,'terminal_bytes':int(wire)})
