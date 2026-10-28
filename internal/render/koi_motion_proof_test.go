@@ -132,7 +132,7 @@ func TestExportKoiMotionSpriteManifest(t *testing.T) {
 		return
 	}
 	type sprite struct{ Variety, Direction, Wag, W, H int }
-	manifest := map[string]sprite{}
+	manifest := map[string][]sprite{}
 	for _, size := range [][2]int{{80, 80}, {48, 16}} {
 		directions := 16
 		varieties := 4 * len(KoiPatterns)
@@ -145,7 +145,8 @@ func TestExportKoiMotionSpriteManifest(t *testing.T) {
 				for wag := 0; wag < 8; wag++ {
 					img, _ := koiSpriteCached(koiSpriteKey{v, d, wag, size[0], size[1]})
 					sum := sha256.Sum256(img.Pix)
-					manifest[fmt.Sprintf("%x", sum)] = sprite{v, d, wag, size[0], size[1]}
+					key := fmt.Sprintf("%x", sum)
+					manifest[key] = append(manifest[key], sprite{v, d, wag, size[0], size[1]})
 				}
 			}
 		}
