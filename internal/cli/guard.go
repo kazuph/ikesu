@@ -80,6 +80,7 @@ func (r *runner) guardCLI(a []string) int {
 			return usageErr(r, "guard claude-prefix requires exactly one command line")
 		}
 		line := a[0]
+		i = guard.PrepareClaudeBashEnv(i)
 		i.Command, i.Args = line, nil
 		if !guard.AuthorizeLine(c.Guard, root, i, guard.ClaudePrefixLine(i, line), r.errOut(), await) {
 			return 1

@@ -21,6 +21,11 @@ func lineCommands(i Input, line string) ([]Input, error) {
 	i.GuardRoot = guardDirectory(i)
 	i.CwdUncertain = i.CwdUncertain || treeChangesDirectory(tree)
 	var commands []Input
+	setError := func(e error) {
+		if !i.scriptBody || err == nil || scriptError(e).kind > scriptError(err).kind {
+			err = e
+		}
+	}
 	redirections := map[*syntax.CallExpr][]*syntax.Redirect{}
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		if stmt, ok := node.(*syntax.Stmt); ok {
@@ -31,7 +36,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		return true
 	})
 	if e := treeBoundary(i, tree); e != nil {
-		err = e
+		setError(e)
 	}
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		call, ok := node.(*syntax.CallExpr)
@@ -39,11 +44,14 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			return true
 		}
 		next := i
+		next.scriptResult = nil
+		next.scriptLine = call.Pos().Line()
+		next.scriptKnownArgs = nil
 		next.Env = EnvMap(environment(i.Env))
 		next.RawLine = line
 		cfg := &expand.Config{Env: expand.ListEnviron(environment(next.Env)...), NoUnset: true}
 		for _, assignment := range call.Assigns {
-			if startupVariable(assignment.Name.Value) {
+			if startupVariable(assignment.Name.Value) || assignment.Name.Value == "PATH" {
 				next.ShellEnvChanged = true
 				next.ClaudePrefixChanged = next.ClaudePrefixChanged || assignment.Name.Value == "CLAUDE_CODE_SHELL_PREFIX"
 			}
@@ -51,14 +59,16 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				continue
 			}
 			cfg.Env = expand.ListEnviron(environment(next.Env)...)
-			value, e := expand.Literal(cfg, assignment.Value)
+			value, e := shellLiteral(cfg, assignment.Value)
 			if e != nil {
 				next.Unresolved = true
 				delete(next.Env, assignment.Name.Value)
 				continue
 			}
 			key := assignment.Name.Value
-			if !authorizationIdentityKey(key) {
+			if i.scriptBody {
+				delete(next.Env, key)
+			} else if !authorizationIdentityKey(key) {
 				next.Env[key] = value
 			}
 		}
@@ -67,7 +77,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		var argv []string
 		unknownCommand := false
 		for n, word := range call.Args {
-			value, e := expand.Literal(cfg, word)
+			value, e := shellLiteral(cfg, word)
 			if e != nil {
 				next.Unresolved = true
 				var printed bytes.Buffer
@@ -77,11 +87,19 @@ func lineCommands(i Input, line string) ([]Input, error) {
 					unknownCommand = true
 				}
 			}
+			if e == nil && n > 0 {
+				next.scriptKnownArgs = append(next.scriptKnownArgs, value)
+			}
 			argv = append(argv, value)
 		}
 		next.Command, next.Args = argv[0], argv[1:]
 		if unknownCommand {
-			err = fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command)
+			if i.scriptBody {
+				setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
+			} else {
+				setError(fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command))
+			}
+			next.scriptUnknownCommand = true
 		}
 		next.AuthorizationEnv = EnvMap(environment(i.AuthorizationEnv))
 		for key, value := range next.Env {
@@ -90,10 +108,10 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		unwrapped, e := unwrapCommand(next)
 		commands = append(commands, unwrapped)
 		if e != nil {
-			err = e
+			setError(e)
 		}
 		if e := commandScript(unwrapped, redirections[call], &commands); e != nil {
-			err = e
+			setError(e)
 		}
 
 		return true
@@ -197,7 +215,7 @@ func splitPrefix(text string, env map[string]string) ([]string, error) {
 	var words []string
 	var expandErr error
 	err := syntax.NewParser().Words(strings.NewReader(text), func(word *syntax.Word) bool {
-		value, e := expand.Literal(&expand.Config{Env: expand.ListEnviron(environment(env)...), NoUnset: true}, word)
+		value, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(env)...), NoUnset: true}, word)
 		if e != nil {
 			expandErr = e
 			return false
@@ -213,6 +231,7 @@ func splitPrefix(text string, env map[string]string) ([]string, error) {
 
 func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	i.GuardCommands = c.Commands()
+	i.scriptScanner = &scriptScanner{config: c}
 	commands, err := lineCommands(i, line)
 	i.RawLine = line
 	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line})
@@ -224,6 +243,14 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	}
 	for _, command := range commands {
 		v := Evaluate(c, command)
+		if command.scriptResult != nil {
+			r := command.scriptResult
+			if r.kind == scriptSafe {
+				continue
+			}
+			v = r.verdict
+			command.TriggerCommand = r.trigger
+		}
 		if command.Unresolved && v.Decision == "allow" && (has(c.Commands(), filepath.Base(command.Command)) || strings.ContainsAny(command.Command, "$`")) {
 			v = result("ask", "shell-line", "展開後のコマンドまたは引数を安全に確定できません")
 		}

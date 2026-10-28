@@ -132,7 +132,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			removeExport, prefixName := false, false
 			for _, assignment := range n.Args {
 				if assignment.Value != nil {
-					value, e := expand.Literal(cfg, assignment.Value)
+					value, e := shellLiteral(cfg, assignment.Value)
 					name, _, assigned := strings.Cut(value, "=")
 					if e != nil || assigned && startupVariable(name) {
 						failure = fmt.Errorf("子シェルの起動設定の変更内容を確認する必要があります")
@@ -158,7 +158,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 		case *syntax.Redirect:
 			switch n.Op {
 			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.RdrAll, syntax.AppAll, syntax.ClbOut, syntax.DplOut:
-				path, e := expand.Literal(cfg, n.Word)
+				path, e := shellLiteral(cfg, n.Word)
 				if e != nil {
 					failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
 				} else if i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
@@ -186,10 +186,47 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 	if i.ShellEnvChanged {
 		return fmt.Errorf("子シェル・インタプリタの起動環境が変更され、中身を保証できません")
 	}
+	if shell {
+		if path, ok := shellFileArgument(i.Args); ok {
+			if i.scriptScanner == nil {
+				i.scriptScanner = &scriptScanner{config: Config{}}
+			}
+			r := i.scriptScanner.file(i, path)
+			i.scriptResult = &r
+			*commands = append(*commands, i)
+			return nil
+		}
+		// Only a command-string option before any operand retains the legacy -c
+		// path. File arguments such as x.sh -c ls never enter it.
+		commandString := false
+		for n := 0; n < len(i.Args); n++ {
+			a := i.Args[n]
+			if a == "-o" || a == "+o" {
+				n++
+				continue
+			}
+			if !strings.HasPrefix(a, "-") || a == "--" {
+				break
+			}
+			if !strings.HasPrefix(a, "--") && strings.Contains(a, "c") {
+				commandString = true
+				break
+			}
+		}
+		if len(i.Args) > 0 && !commandString {
+			return fmt.Errorf("シェルの起動引数・標準入力を確定できません")
+		}
+	}
 	for n, option := range i.Args {
 		if strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "--") && strings.Contains(option, "c") && shell {
 			if n+1 >= len(i.Args) {
 				return prefixError(cmd)
+			}
+			if i.scriptBody && i.scriptScanner != nil {
+				r := i.scriptScanner.body(i, []byte(i.Args[n+1]), i.scriptLabel)
+				i.scriptResult = &r
+				*commands = append(*commands, i)
+				return nil
 			}
 			nested, e := lineCommands(i, i.Args[n+1])
 			*commands = append(*commands, nested...)
@@ -209,9 +246,15 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			if redir.Op == syntax.WordHdoc {
 				word = redir.Word
 			}
-			script, e := expand.Literal(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+			script, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
 			if e != nil {
 				return fmt.Errorf("標準入力のスクリプトを安全に展開できません")
+			}
+			if i.scriptBody && i.scriptScanner != nil {
+				r := i.scriptScanner.body(i, []byte(script), i.scriptLabel)
+				i.scriptResult = &r
+				*commands = append(*commands, i)
+				return nil
 			}
 			nested, e := lineCommands(i, script)
 			*commands = append(*commands, nested...)
@@ -247,4 +290,19 @@ func guardPhysical(path string) string {
 		suffix = append(suffix, filepath.Base(path))
 		path = parent
 	}
+}
+
+func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
+	unsupported := false
+	syntax.Walk(word, func(n syntax.Node) bool {
+		if _, ok := n.(*syntax.ProcSubst); ok {
+			unsupported = true
+			return false
+		}
+		return true
+	})
+	if unsupported {
+		return "", fmt.Errorf("プロセス置換は静的に展開できません")
+	}
+	return expand.Literal(cfg, word)
 }
