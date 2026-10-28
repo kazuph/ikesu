@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Real isolated CLI + ptyrun comparison. Run after building, on the bench host."""
-import argparse, tomllib, json, os, pathlib, re, signal, subprocess, sys, tempfile, time, socket, select, threading
+import argparse, shlex, tomllib, json, os, pathlib, re, signal, subprocess, sys, tempfile, time, socket, select, threading
 
 root=pathlib.Path.cwd()
 binary=str(root/'koi-ikesu')
@@ -113,20 +113,28 @@ def execute(condition,enabled,repeat):
   code=process.wait(timeout=args.seconds+60)
   if code or not setup:raise RuntimeError(f'ptyrun exited {code}, setup={setup}: '+''.join(lines))
  finally:
-  uid=subprocess.check_output(['id','-u'],text=True).strip()
-  found=subprocess.run(['pgrep','-u',uid,'-f',binary],text=True,capture_output=True)
-  for value in found.stdout.split():
-   pid=int(value)
-   cmd=subprocess.run(['ps','-ww','-p',value,'-o','command='],text=True,capture_output=True).stdout.strip()
-   if binary in cmd and f'--session {session}' in cmd and ' server' in cmd:
-    subprocess.run(['kill',value],check=True);cleanup.append({'pid':pid,'command':cmd})
+  # These direct child handles and exact launch arguments prove ownership.
+  # Reap them without forking a helper when the host is out of process slots.
   if process.poll() is None:
-   # This PID is our exact Popen child, independently validated above by command ownership.
-   cmd=subprocess.check_output(['ps','-p',str(process.pid),'-o','command='],text=True).strip()
-   assert ptyrun in cmd and binary in cmd
-   subprocess.run(['kill',str(process.pid)],check=True);process.wait(timeout=10)
+   assert process.args[0]==ptyrun and binary in process.args
+   process.terminate();process.wait(timeout=10)
+  if server:
+   assert server.args==[binary,'--session',session,'server']
+   if server.poll() is None:
+    server.terminate();cleanup.append({'pid':server.pid,'command':shlex.join(server.args)})
+   server.wait(timeout=15)
+  uid=str(os.getuid())
+  found=subprocess.run(['pgrep','-u',uid,'-f',re.escape(binary)+'|'+re.escape(ptyrun)],text=True,capture_output=True)
+  if found.returncode not in (0,1):raise RuntimeError('owned-process audit failed: '+found.stderr)
+  residual=[]
+  for value in found.stdout.split():
+   command=subprocess.run(['ps','-ww','-p',value,'-o','command='],text=True,capture_output=True).stdout.strip()
+   argv=shlex.split(command)
+   owned=argv and argv[0] in (binary,ptyrun) and any(argv[i:i+2]==['--session',session] for i in range(len(argv)-1))
+   if owned:
+    subprocess.run(['kill',value],check=True);residual.append({'pid':int(value),'command':command})
+  (out/f'{session}-process-audit.json').write_text(json.dumps({'session':session,'pgrep_exit':found.returncode,'matching_pids':found.stdout.split(),'owned_residual_signaled':residual},indent=2))
   (out/f'{session}-cleanup.json').write_text(json.dumps({'session':session,'server_signaled':cleanup},indent=2))
-  if server:server.wait(timeout=15)
   if traffic:(out/f'{session}-traffic.json').write_text(json.dumps(traffic.messages))
  logpath.write_text(''.join(lines))
  (out/f'{session}-cleanup.json').write_text(json.dumps({'session':session,'server_signaled':cleanup},indent=2))
@@ -146,7 +154,7 @@ try:
 finally:
  # Cover startup failures before a ptyrun handle existed, too. Only this
  # invocation's numeric session namespace is eligible for termination.
- uid=subprocess.check_output(['id','-u'],text=True).strip()
+ uid=str(os.getuid())
  found=subprocess.run(['pgrep','-u',uid,'-f',binary],text=True,capture_output=True)
  remaining=[]
  for value in found.stdout.split():
