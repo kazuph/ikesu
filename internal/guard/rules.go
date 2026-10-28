@@ -44,6 +44,10 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
+	runtimeLine          bool
+	shellVariables       map[string]string
+	shellArrays          map[string]map[int]string
+	probePrivate         bool
 	OpaquePrefix         bool `json:"-"`
 	scriptVariables      map[string]bool
 	claudeBashEnv        string
@@ -294,6 +298,10 @@ func wildcard(a []string) bool {
 	return false
 }
 func danger(c Config, i Input) bool {
+	if i.runtimeLine {
+		i.RawLine = ""
+		i.Args = i.scriptKnownArgs
+	}
 	if has([]string{"git", "gh", "ikesu", "herdr"}, filepath.Base(i.Command)) {
 		return false
 	}

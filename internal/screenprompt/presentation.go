@@ -2,14 +2,14 @@ package screenprompt
 
 import (
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/kazuph/ikesu/internal/api"
 )
 
-// Parent's 2026-10-27 request: about 80 characters in a long question's title.
-const questionTitleLimit = 80
+// Keep the existing threshold for also retaining a full question in body.
+// It never limits the heading: the first paragraph is always displayed in full.
+const questionBodyThreshold = 80
 
 func questionParagraphs(lines []string, columns int) string {
 	var paragraphs []string
@@ -33,24 +33,12 @@ func questionParagraphs(lines []string, columns int) string {
 
 func questionHeading(text string) string {
 	paragraph, _, _ := strings.Cut(text, "\n\n")
-	runes := []rune(paragraph)
-	if len(runes) > questionTitleLimit {
-		for i, r := range runes {
-			if strings.ContainsRune("。！？", r) || strings.ContainsRune(".!?", r) && (i+1 == len(runes) || unicode.IsSpace(runes[i+1])) {
-				runes = runes[:i+1]
-				break
-			}
-		}
-	}
-	if len(runes) > questionTitleLimit {
-		return string(runes[:questionTitleLimit-1]) + "…"
-	}
-	return string(runes)
+	return paragraph
 }
 
 func presentQuestion(p *Prompt) {
 	full := p.Params.Title
-	if len([]rune(full)) <= questionTitleLimit {
+	if len([]rune(full)) <= questionBodyThreshold {
 		return
 	}
 	body := full
@@ -65,7 +53,7 @@ func presentQuestion(p *Prompt) {
 // and frame-only rows must not change the identity used by delivery/reuse.
 func questionIdentity(params api.DecisionCreateParams) string {
 	text := params.Title
-	if params.Title != "" && params.Body != nil && questionHeading(*params.Body) == params.Title && len([]rune(*params.Body)) > questionTitleLimit {
+	if params.Title != "" && params.Body != nil && questionHeading(*params.Body) == params.Title && len([]rune(*params.Body)) > questionBodyThreshold {
 		text = *params.Body
 	}
 	lines, _ := cleanNotice(strings.Split(text, "\n"))

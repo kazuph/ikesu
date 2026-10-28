@@ -223,6 +223,9 @@ func (r *runner) guardCLI(a []string) int {
 		return writeJSON(guard.Evaluate(c.Guard, i))
 	}
 	if sub == "line" {
+		if via == "bash-debug" {
+			i = guard.WithShellVariables(i, os.Stdin)
+		}
 		if len(argv) != 1 {
 			return usageErr(r, "guard line requires one command line")
 		}

@@ -8,7 +8,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
-func TestLongQuestionKeepsParagraphsAndShortHeading(t *testing.T) {
+func TestLongQuestionKeepsParagraphsAndFullFirstParagraph(t *testing.T) {
 	screen := fixture(t, "claude-long-paragraphs")
 	data, err := os.ReadFile("testdata/claude-long-paragraphs-body.txt")
 	if err != nil {
@@ -22,8 +22,8 @@ func TestLongQuestionKeepsParagraphsAndShortHeading(t *testing.T) {
 	if p.Params.Body == nil || *p.Params.Body != full {
 		t.Errorf("paragraph body differs: got=%v want=%q", p.Params.Body, full)
 	}
-	sentence := strings.SplitN(full, "。", 2)[0] + "。"
-	if p.Params.Title != sentence || len([]rune(p.Params.Title)) > 80 {
+	sentence := strings.SplitN(full, "\n\n", 2)[0]
+	if p.Params.Title != sentence {
 		t.Errorf("heading=%q want=%q", p.Params.Title, sentence)
 	}
 	if strings.Contains(p.Params.Title, "│") || p.Params.Body != nil && strings.Contains(*p.Params.Body, "│") {
@@ -60,5 +60,18 @@ func TestShortQuestionKeepsTitleOnly(t *testing.T) {
 	p := Parse("claude", []string{"─", "│ 短い質問の", "│ 折り返しです。", "❯ 1. はい", "  2. いいえ", "Enter to select · ↑/↓ to navigate · Esc to cancel"})
 	if p == nil || p.Params.Title != "短い質問の折り返しです。" || p.Params.Body != nil {
 		t.Fatal(p)
+	}
+}
+
+func TestQuestionHeadingNeverCutsTextOrURL(t *testing.T) {
+	for _, text := range []string{strings.Repeat("長い見出しです", 30) + " https://air-3.example.test/status?full=value", "https://example.test/" + strings.Repeat("long-path/", 30), strings.Repeat("a", 150) + "。続く文も同じ段落なので残します。"} {
+		if got := questionHeading(text + "\n\n本文"); got != text {
+			t.Fatalf("heading was changed: %q", got)
+		}
+		p := &Prompt{Params: api.DecisionCreateParams{Title: text + "\n\n本文"}}
+		presentQuestion(p)
+		if p.Params.Title != text || p.Params.Body == nil || !strings.Contains(*p.Params.Body, text) {
+			t.Fatal("full heading or body lost")
+		}
 	}
 }

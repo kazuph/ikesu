@@ -22,6 +22,7 @@ for prefix in ["ブロック理由：", "承認が必要な理由:"] {
  let candidate = DialogController(spec: input, specPath: CommandLine.arguments[1])
  candidate.build()
  func emphasized(_ view: NSView) -> Bool {
+  if let field = view as? RichTextLabel, field.string.hasPrefix(prefix), field.attributedString().attribute(.foregroundColor,at:0,effectiveRange:nil) as? NSColor == Look.accent { return true }
   if let field = view as? NSTextField, field.stringValue.hasPrefix(prefix), field.textColor == Look.accent { return true }
   return view.subviews.contains(where: emphasized)
  }
@@ -43,14 +44,16 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
  do { try capture.run(); capture.waitUntilExit() } catch { fatalError("screencapture failed: \(error)") }
  precondition(capture.terminationStatus == 0, "actual window capture failed")
  print("screencapture window=\(controller.panel.windowNumber) appearance=\(controller.panel.effectiveAppearance.name.rawValue)")
- var fields: [NSTextField] = []
+ func fieldText(_ view:NSView)->String {(view as? RichTextLabel)?.string ?? (view as? NSTextField)?.stringValue ?? ""}
+ func fieldColor(_ view:NSView)->NSColor? {((view as? RichTextLabel).flatMap {$0.string.isEmpty ? nil : $0.attributedString().attribute(.foregroundColor,at:0,effectiveRange:nil) as? NSColor}) ?? (view as? NSTextField)?.textColor}
+ var fields: [NSView] = []
  func collect(_ view: NSView) {
-  if let field = view as? NSTextField { fields.append(field) }
+  if view is NSTextField || view is RichTextLabel { fields.append(view) }
   for child in view.subviews { collect(child) }
  }
  collect(root)
  if !baseline {
- for field in fields where field.stringValue.contains("対象プロジェクト:") || field.stringValue.hasPrefix("ブロック理由：") || field.stringValue.hasPrefix("承認が必要な理由:") {
+ for field in fields where fieldText(field).contains("対象プロジェクト:") || fieldText(field).hasPrefix("ブロック理由：") || fieldText(field).hasPrefix("承認が必要な理由:") {
   precondition(root.bounds.contains(field.convert(field.bounds, to: root)), "body must fit the window")
   var parent = field.superview
   while let view = parent {
@@ -61,7 +64,7 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
   }
  }
  if CommandLine.arguments.contains("--field-count") {
-  let lines=fields.map {$0.stringValue}.joined(separator:"\n").components(separatedBy:"\n")
+  let lines=fields.map {fieldText($0)}.joined(separator:"\n").components(separatedBy:"\n")
   for name in ["対象プロジェクト", "必要な理由", "実施内容", "確認済み", "戻し方"] {
    let count=lines.filter {$0.hasPrefix(name+":") || $0.hasPrefix(name+"：")}.count
    precondition(count == 1, "request field must appear exactly once: \(name)=\(count)")
@@ -69,11 +72,11 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
   print("five request fields each rendered exactly once")
  }
  print("requested body labels fully inside window and scroll viewport")
- precondition(!fields.contains { field in ["コマンド：", "理由：", "場所："].contains(where: field.stringValue.hasPrefix) }, "duplicate Origin details")
+ precondition(!fields.contains { field in ["コマンド：", "理由：", "場所："].contains(where: fieldText(field).hasPrefix) }, "duplicate Origin details")
  if spec.body?.hasPrefix("ブロック理由：") == true || spec.body?.hasPrefix("承認が必要な理由:") == true {
-  precondition(fields.contains { ($0.stringValue.hasPrefix("ブロック理由：") || $0.stringValue.hasPrefix("承認が必要な理由:")) && $0.textColor == Look.accent }, "guard trigger must be emphasized")
+  precondition(fields.contains { (fieldText($0).hasPrefix("ブロック理由：") || fieldText($0).hasPrefix("承認が必要な理由:")) && fieldColor($0) == Look.accent }, "guard trigger must be emphasized")
  }
- precondition(fields.contains { $0.stringValue == spec.title && $0.maximumNumberOfLines == 1 && $0.lineBreakMode == .byTruncatingTail }, "long guard title must truncate")
+ precondition(fields.contains { fieldText($0) == spec.title && ($0 as? RichTextLabel)?.textContainer?.widthTracksTextView == true }, "long guard title must wrap without truncation")
  }
  var results: [[String:Any]] = []
  for card in controller.cards {

@@ -151,6 +151,9 @@ func (s *scriptScanner) file(i Input, name string) scriptResult {
 }
 
 func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
+	i.shellVariables = nil
+	i.shellArrays = nil
+	i.runtimeLine = false
 	fail := func(reason string) scriptResult { return scriptIssue(scriptUnparseable, name+": "+reason) }
 	tree, e := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(string(data)), name)
 	if e != nil {

@@ -121,8 +121,14 @@ func commandBoundary(i Input) string {
 
 func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
-	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}
+	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if i.runtimeLine {
+			switch node.(type) {
+			case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.FuncDecl:
+				return false
+			}
+		}
 		previous := failure
 		defer func() {
 			if i.scriptBody && previous != nil && (failure == nil || scriptError(previous).kind > scriptError(failure).kind) {
@@ -130,6 +136,9 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			}
 		}()
 
+		if i.runtimeLine && reservedExpansionWrite(node) {
+			failure = fmt.Errorf("右辺の展開による予約変数の変更には承認が必要です")
+		}
 		switch n := node.(type) {
 		case *syntax.FuncDecl:
 			if guardFunction(i, n.Name.Value) {
@@ -141,7 +150,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 				if assignment.Value != nil {
 					value, e := shellLiteral(cfg, assignment.Value)
 					name, _, assigned := strings.Cut(value, "=")
-					if e != nil || assigned && startupVariable(name) {
+					if e != nil && !i.runtimeLine || assigned && startupVariable(name) {
 						failure = fmt.Errorf("子シェルの起動設定の変更内容を確認する必要があります")
 					}
 					removeExport = removeExport || value == "-n" || value == "+x"
@@ -165,7 +174,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 		case *syntax.Redirect:
 			switch n.Op {
 			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.RdrAll, syntax.AppAll, syntax.ClbOut, syntax.DplOut:
-				path, e := shellLiteral(cfg, n.Word)
+				path, e := i.runtimeLiteral(cfg, n.Word)
 				if scriptWordUnknown(i, n.Word) {
 					e = unresolvedScriptError{"スクリプト内で変わる変数です"}
 				}
@@ -175,7 +184,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 					} else {
 						failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
 					}
-				} else if i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
+				} else if !i.runtimeLine && i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
 					failure = fmt.Errorf("ディレクトリ変更を含む入力の書き込み先を安全に確定できません")
 				} else if guardPath(i, path) {
 					failure = fmt.Errorf("ガードの置き場所へのリダイレクトには承認が必要です")
@@ -249,7 +258,11 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 				*commands = append(*commands, i)
 				return nil
 			}
-			nested, e := lineCommands(i, i.Args[n+1])
+			child := i
+			child.shellVariables = nil
+			child.shellArrays = nil
+			child.runtimeLine = false
+			nested, e := lineCommands(child, i.Args[n+1])
 			*commands = append(*commands, nested...)
 			return e
 		}
@@ -267,7 +280,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			if redir.Op == syntax.WordHdoc {
 				word = redir.Word
 			}
-			script, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+			script, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}, word)
 			if e != nil {
 				return fmt.Errorf("標準入力のスクリプトを安全に展開できません")
 			}
@@ -277,7 +290,12 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 				*commands = append(*commands, i)
 				return nil
 			}
-			nested, e := lineCommands(i, script)
+			child := i
+			child.shellVariables = nil
+			child.shellArrays = nil
+			child.runtimeLine = false
+			child.probePrivate = child.probePrivate || i.privateExpansion(word, script)
+			nested, e := lineCommands(child, script)
 			*commands = append(*commands, nested...)
 			return e
 		case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn:
@@ -326,4 +344,27 @@ func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 		return "", fmt.Errorf("プロセス置換は静的に展開できません")
 	}
 	return expand.Literal(cfg, word)
+}
+
+// This runtime-only check inspects expansion syntax without evaluating it.
+func reservedExpansionWrite(node syntax.Node) bool {
+	var target syntax.ArithmExpr
+	switch n := node.(type) {
+	case *syntax.ParamExp:
+		return n.Exp != nil && (n.Exp.Op == syntax.AssignUnset || n.Exp.Op == syntax.AssignUnsetOrNull) && (snapshotReservedName(n.Param.Value) || startupVariable(n.Param.Value) || n.Param.Value == "PATH")
+	case *syntax.BinaryArithm:
+		switch n.Op {
+		case syntax.Assgn, syntax.AddAssgn, syntax.SubAssgn, syntax.MulAssgn, syntax.QuoAssgn, syntax.RemAssgn, syntax.AndAssgn, syntax.OrAssgn, syntax.XorAssgn, syntax.ShlAssgn, syntax.ShrAssgn:
+			target = n.X
+		}
+	case *syntax.UnaryArithm:
+		if n.Op == syntax.Inc || n.Op == syntax.Dec {
+			target = n.X
+		}
+	}
+	if word, ok := target.(*syntax.Word); ok {
+		name := word.Lit()
+		return snapshotReservedName(name) || startupVariable(name) || name == "PATH"
+	}
+	return false
 }

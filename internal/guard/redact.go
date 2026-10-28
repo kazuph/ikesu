@@ -91,6 +91,9 @@ func (i Input) restoreEnvironment(text string) string {
 }
 
 func (i Input) redactedArgv() []string {
+	if i.shellVariables != nil {
+		return []string{redact(i.RawLine)}
+	}
 	argv := append([]string{i.Command}, i.Args...)
 	restored := make([]string, len(argv))
 	for n, arg := range argv {
