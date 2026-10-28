@@ -29,12 +29,14 @@ func koiRingGeometry(scene KoiScene, cw, ch int) koiRingKey {
 	return koiRingKey{w, h, x, y, int(math.Ceil(far * float64(stage) / float64(stages)))}
 }
 
-func koiRing(k koiRingKey) *image.RGBA {
-	out := image.NewRGBA(image.Rect(0, 0, k.W, k.H))
+func koiRing(k koiRingKey) *image.Paletted {
+	// Rings have exactly two colors. Palette PNGs preserve those pixels while
+	// avoiding per-pixel RGBA conversion and five full-width filter candidates.
+	out := image.NewPaletted(image.Rect(0, 0, k.W, k.H), color.Palette{color.RGBA{}, color.RGBA{0x8a, 0xa3, 0x96, 255}})
 	for y := 0; y < k.H; y++ {
 		for x := 0; x < k.W; x++ {
 			if math.Abs(math.Hypot(float64(x-k.X), float64(y-k.Y))-float64(k.Radius)) < .5 {
-				out.SetRGBA(x, y, color.RGBA{0x8a, 0xa3, 0x96, 255})
+				out.SetColorIndex(x, y, 1)
 			}
 		}
 	}
@@ -67,7 +69,7 @@ func drawKoiRippleOctants(f *Frame, scene KoiScene) {
 			mask := 0
 			for dy := 0; dy < 4; dy++ {
 				for dx := 0; dx < 2; dx++ {
-					if img.RGBAAt(cx*2+dx, cy*4+dy).A != 0 {
+					if img.ColorIndexAt(cx*2+dx, cy*4+dy) != 0 {
 						mask |= 1 << (dy*2 + dx)
 					}
 				}
