@@ -84,7 +84,7 @@ func wholeCommand(command string, i Input) bool {
 	expected := append([]string{i.Command}, i.Args...)
 	var literals []string
 	for _, word := range call.Args {
-		value, err := expand.Literal(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+		value, err := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
 		if err != nil {
 			return false
 		}

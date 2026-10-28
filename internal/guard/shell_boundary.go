@@ -123,6 +123,10 @@ func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
 	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if _, ok := node.(*syntax.ProcSubst); ok {
+			failure = fmt.Errorf("プロセス置換が実行する内容には承認が必要です")
+			return false
+		}
 		if i.runtimeLine {
 			switch node.(type) {
 			case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.FuncDecl:
@@ -341,6 +345,9 @@ func guardPhysical(path string) string {
 }
 
 func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
+	if word == nil {
+		return "", fmt.Errorf("展開する単語がありません")
+	}
 	unsupported := false
 	syntax.Walk(word, func(n syntax.Node) bool {
 		if _, ok := n.(*syntax.ProcSubst); ok {
