@@ -414,7 +414,8 @@ func shellRuntimeArguments(args []string) bool {
 	return file || optionsOnly
 }
 
-// OS-provided bash executables are the trust anchors. Resolve the first
+// OS-provided and standard Homebrew Cellar bash executables are trust anchors.
+// Resolve the first
 // executable in the command's actual PATH; never skip a same-named wrapper.
 // Unrecognized installations fail closed instead of being run to identify them.
 func knownBashExecutable(i Input) bool {
@@ -452,6 +453,28 @@ func knownBashExecutable(i Input) bool {
 	for _, anchor := range []string{"/bin/bash", "/usr/bin/bash"} {
 		known, e := os.Stat(anchor)
 		if e == nil && os.SameFile(actual, known) {
+			return true
+		}
+	}
+	real, e := filepath.EvalSymlinks(command)
+	if e != nil || !homebrewBashPath(real) {
+		return false
+	}
+	known, e := os.Stat(real)
+	return e == nil && os.SameFile(actual, known)
+}
+
+func homebrewBashPath(real string) bool {
+	if !filepath.IsAbs(real) {
+		return false
+	}
+	for _, prefix := range []string{"/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew"} {
+		relative, e := filepath.Rel(filepath.Join(prefix, "Cellar", "bash"), real)
+		if e != nil {
+			continue
+		}
+		parts := strings.Split(relative, string(filepath.Separator))
+		if len(parts) == 3 && parts[0] != "" && parts[0] != "." && parts[0] != ".." && parts[1] == "bin" && parts[2] == "bash" {
 			return true
 		}
 	}
