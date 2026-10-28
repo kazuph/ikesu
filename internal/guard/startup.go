@@ -64,8 +64,7 @@ export IKESU_GUARD_ZDOTDIR_ORIG IKESU_GUARD_ZDOTDIR_SET
 	}
 	m["ZDOTDIR"] = dir
 	m["IKESU_GUARD_BASH_ENV_ORIG"] = m["BASH_ENV"]
-	bash := restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
-` + pinPath + wrappers + a.debugHook("bash")
+	bash := a.bashStartup(dir)
 	if e := os.WriteFile(filepath.Join(dir, "bash-env"), []byte(bash), 0600); e != nil {
 		return e
 	}
@@ -111,4 +110,12 @@ fi
 `, agent, invocation)
 	}
 	return body
+}
+
+// Use the same generator when proving a child bash will read our DEBUG hook.
+func (a *Assets) bashStartup(dir string) string {
+	restore := `if [[ "$IKESU_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$IKESU_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
+`
+	return restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
+` + pinPath + a.shellFunctions() + a.agentFunctions(dir) + a.debugHook("bash")
 }

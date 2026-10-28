@@ -87,6 +87,7 @@ func TestExportKoiBrandAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
+	exportKoiBanners(t, dest)
 }
 
 func TestExportKoiPixelProof(t *testing.T) {
