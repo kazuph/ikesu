@@ -45,7 +45,10 @@ _ikesu_guard_debug() {
     case "$_ikesu_guard_snapshot_name" in _ikesu_guard_*) continue;; esac
     builtin declare -p "$_ikesu_guard_snapshot_name"
    done
-  ) | %s guard line --via bash-debug -- "$1" || { builtin kill -s KILL "$$"; exit 1; }
+  ) | (
+   set +o functrace
+%s   %s guard line --via bash-debug -- "$1"
+  ) || { builtin kill -s KILL "$$"; exit 1; }
  fi
  return 0
 }
@@ -62,7 +65,7 @@ readonly -f _ikesu_guard_debug _ikesu_guard_dispatch _ikesu_guard_needs_check
 set -o functrace
 trap '_ikesu_guard_dispatch "$BASH_COMMAND"' DEBUG
 fi
-`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), a.invocation())
+`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), bashRequestReasonRestore, a.invocation())
 	}
 	return fmt.Sprintf(`if [[ ! -o interactive ]]; then
 if [[ %s ]] && [[ -n "${ZSH_EXECUTION_STRING:-}" ]]; then
