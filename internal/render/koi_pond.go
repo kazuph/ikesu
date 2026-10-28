@@ -18,16 +18,25 @@ const KoiAttractionLifetime = 2 * KoiGatherDuration
 const KoiAttractionSpeedLimit = 4.0
 
 type koiMotion struct {
-	X, Y, T   float64
-	Speed     float64
-	Phase     float64
-	Direction int
-	Pond      layout.Rect
+	Group        string
+	X, Y, T      float64
+	Speed        float64
+	Phase        float64
+	Direction    int
+	Pond         layout.Rect
+	Agent        KoiAgent
+	Leaving      bool
+	Entering     bool
+	ExitX, ExitY float64
 }
 
 type KoiRipple struct{ X, Y, Start, Time float64 }
 
 func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
+	return koiMotionPose(agent, pond, in, 10, min(5, pond.H))
+}
+
+func koiMotionPose(agent KoiAgent, pond layout.Rect, in Input, w, h int) KoiFish {
 	cw, ch := in.KoiCellW, in.KoiCellH
 	if cw <= 0 {
 		cw = 8
@@ -35,7 +44,6 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 	if ch <= 0 {
 		ch = 16
 	}
-	w, h := 10, min(5, pond.H)
 	scale := max(1, min(w*cw/40, h*ch/40))
 	rx, ry := float64(pond.W-w)/2, float64(pond.H-h)/2
 	// Bound the Euclidean source-dot velocity to one dot per existing tick.
@@ -78,11 +86,26 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 	motionSpeed := normalSpeed * pace
 	if in.KoiMotion != nil {
 		old, ok := in.KoiMotion[agent.ID]
+		if !ok {
+			old = koiMotion{X: float64(pond.X + pond.W), Y: y, T: in.KoiTime, Speed: normalSpeed, Direction: 8, Pond: pond, Agent: agent, Entering: true}
+			ok = true
+		}
 		if ok {
+			if old.Entering {
+				x, y = float64(pond.X+pond.W-w), old.Y
+				attracting = false
+			}
+			if old.Leaving {
+				x, y = old.ExitX, old.ExitY
+				attracting = false
+			}
 			dt := max(0, min(KoiInterval.Seconds(), in.KoiTime-old.T))
 			dx, dy = (x-old.X)*float64(cw), (y-old.Y)*float64(ch)
 			distance := math.Hypot(dx, dy)
 			desiredSpeed := normalSpeed * pace
+			if old.Entering || old.Leaving {
+				desiredSpeed = normalSpeed
+			}
 			acceleration := normalSpeed * KoiAttractionSpeedLimit / KoiGatherDuration
 			if attracting {
 				dots := distance / float64(scale)
@@ -109,7 +132,17 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 				direction = old.Direction
 			}
 		}
-		in.KoiMotion[agent.ID] = koiMotion{X: x, Y: y, T: in.KoiTime, Speed: motionSpeed, Phase: t, Direction: direction, Pond: pond}
+		next := koiMotion{Group: old.Group, X: x, Y: y, T: in.KoiTime, Speed: motionSpeed, Phase: t, Direction: direction, Pond: pond, Agent: agent, Leaving: old.Leaving, Entering: old.Entering, ExitX: old.ExitX, ExitY: old.ExitY}
+		if old.Entering && x <= float64(pond.X+pond.W-w) {
+			next.Entering = false
+		}
+		in.KoiMotion[agent.ID] = next
+	}
+	if h == 1 {
+		direction = 0
+		if dx < 0 {
+			direction = 1
+		}
 	}
 	depth := koiHash(agent.Seed + 17)
 	if agent.State == "idle" || agent.State == "done" {
@@ -128,14 +161,15 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 // AnimateKoi reuses the last composition's proven empty regions. No UI model,
 // pane grid or server snapshot is composed on a decoration tick.
 func AnimateKoi(scene KoiScene, in Input) *Frame {
-	next := KoiScene{Pond: scene.Pond, ClickPond: scene.ClickPond, Ripple: in.KoiRipple}
-	for _, old := range scene.Fish {
-		agent := old.Agent
-		agent.Glow = in.KoiGlow[agent.ID]
-		next.Fish = append(next.Fish, koiPondPose(agent, scene.Pond, in))
+	next := scene
+	next.Ripple = in.KoiRipple
+	for i := range next.Agents {
+		next.Agents[i].Glow = in.KoiGlow[next.Agents[i].ID]
 	}
-	for _, old := range scene.Mini {
-		next.Mini = append(next.Mini, koiPose(old.Agent, old.Lane, old.Rect.W, in.KoiTime))
+	next.Fish = koiResidents(next.Agents, next.Capacity, scene.Pond, in)
+	next.Mini = nil
+	for _, band := range scene.Bands {
+		next.Mini = append(next.Mini, koiResidentsFor(band.Agents, band.Capacity, band.Lane, in, band.ID, 6, 1)...)
 	}
 	f := &Frame{KoiScene: next}
 	for _, fish := range next.Fish {

@@ -101,3 +101,116 @@ func TestKoiMotionMiniOnlyOnBands(t *testing.T) {
 		}
 	}
 }
+
+func TestKoiMotionResidentsWaitEnterAndExit(t *testing.T) {
+	in := Input{KoiCellW: 8, KoiCellH: 16, KoiMotion: map[string]koiMotion{}}
+	pond := layout.Rect{X: 130, Y: 2, W: 29, H: 60}
+	first := KoiAgent{ID: "local:2", Seed: 2, State: "working"}
+	newcomer := KoiAgent{ID: "local:1", Seed: 1, State: "working"}
+	scene := koiResidents([]KoiAgent{first}, 1, pond, in)
+	if scene[0].X != float64(pond.X+pond.W) {
+		t.Fatal("new fish appeared inside pond")
+	}
+	for tick := 1; tick <= 120; tick++ {
+		in.KoiTime = float64(tick) * KoiInterval.Seconds()
+		scene = koiResidents([]KoiAgent{newcomer, first}, 1, pond, in)
+		if len(scene) != 1 || scene[0].Agent.ID != first.ID {
+			t.Fatal("newcomer replaced resident", tick)
+		}
+	}
+	if in.KoiMotion[first.ID].Entering {
+		t.Fatal("entry never completed")
+	}
+	old := scene[0]
+	in.KoiTime += KoiInterval.Seconds()
+	scene = koiResidents([]KoiAgent{newcomer}, 1, pond, in)
+	if scene[0].Agent.ID != first.ID || !in.KoiMotion[first.ID].Leaving {
+		t.Fatal("removed fish vanished instead of exiting")
+	}
+	if math.Hypot(scene[0].X-old.X, scene[0].Y-old.Y) > 1 {
+		t.Fatal("departure teleported")
+	}
+	for tick := 0; tick < 2000 && scene[0].Agent.ID == first.ID; tick++ {
+		in.KoiTime += KoiInterval.Seconds()
+		scene = koiResidents([]KoiAgent{newcomer}, 1, pond, in)
+	}
+	if scene[0].Agent.ID != newcomer.ID {
+		t.Fatal("waiting newcomer never admitted")
+	}
+	if _, ok := in.KoiMotion[first.ID]; ok {
+		t.Fatal("departed motion retained")
+	}
+}
+
+func TestKoiMotionBlockedEvictsRestingThenNearest(t *testing.T) {
+	in := Input{KoiCellW: 8, KoiCellH: 16, KoiMotion: map[string]koiMotion{}}
+	pond := layout.Rect{X: 130, Y: 2, W: 29, H: 60}
+	agents := []KoiAgent{{ID: "working", State: "working"}, {ID: "idle-far", State: "idle"}, {ID: "done-near", State: "done"}}
+	koiResidents(agents, 3, pond, in)
+	for _, agent := range agents {
+		m := in.KoiMotion[agent.ID]
+		m.Entering = false
+		m.X = 140
+		m.Y = 30
+		if agent.ID == "working" || agent.ID == "done-near" {
+			m.X = 130
+		}
+		in.KoiMotion[agent.ID] = m
+	}
+	blocked := KoiAgent{ID: "blocked", State: "blocked"}
+	in.KoiTime = KoiInterval.Seconds()
+	scene := koiResidents(append([]KoiAgent{blocked}, agents...), 3, pond, in)
+	if len(scene) != 4 || !in.KoiMotion["done-near"].Leaving || in.KoiMotion["working"].Leaving || in.KoiMotion["idle-far"].Leaving {
+		t.Fatal("wrong priority victim", in.KoiMotion)
+	}
+	if _, ok := in.KoiMotion[blocked.ID]; !ok {
+		t.Fatal("blocked fish missing")
+	}
+	for tick := 0; tick < 200; tick++ {
+		in.KoiTime += KoiInterval.Seconds()
+		scene = koiResidents(append([]KoiAgent{blocked}, agents...), 3, pond, in)
+	}
+	if len(scene) != 3 {
+		t.Fatal("temporary overflow did not drain", len(scene))
+	}
+}
+
+func TestKoiMotionMiniLifecycleAndNamespace(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.Panes[1].Status.Key = "working"
+	in.KoiCellW, in.KoiCellH = 8, 16
+	in.KoiKitty = true
+	var clock KoiAnimation
+	now := time.Unix(100, 0)
+	clock.Apply(&in, nil, now, 15*time.Second)
+	frame := Compose(in).Frame
+	if len(frame.KoiScene.Mini) != 1 {
+		t.Fatal("mini missing")
+	}
+	mini := frame.KoiScene.Mini[0]
+	if mini.X != float64(mini.Lane.X+mini.Lane.W) {
+		t.Fatal("mini did not enter at edge")
+	}
+	for tick := 1; tick <= 120; tick++ {
+		clock.Apply(&in, nil, now.Add(time.Duration(tick)*KoiInterval), 15*time.Second)
+		frame = AnimateKoi(frame.KoiScene, in)
+	}
+	if len(frame.KoiScene.Fish) != 1 || len(frame.KoiScene.Mini) != 1 {
+		t.Fatal("pond and band identities mixed")
+	}
+	if clock.motion[mini.Agent.ID].Entering {
+		t.Fatal("mini did not enter")
+	}
+	in.Panes[1].Status.Key = "idle"
+	frame = Compose(in).Frame
+	if len(frame.KoiScene.Mini) != 1 || !clock.motion[mini.Agent.ID].Leaving {
+		t.Fatal("mini vanished on idle")
+	}
+	for tick := 121; tick <= 400; tick++ {
+		clock.Apply(&in, nil, now.Add(time.Duration(tick)*KoiInterval), 15*time.Second)
+		frame = AnimateKoi(frame.KoiScene, in)
+	}
+	if len(frame.KoiScene.Mini) != 0 {
+		t.Fatal("departed mini retained")
+	}
+}

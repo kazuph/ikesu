@@ -22,7 +22,17 @@ type KoiFish struct {
 	Depth          float64
 	Swimming       bool
 }
+type koiBand struct {
+	ID       string
+	Lane     layout.Rect
+	Agents   []KoiAgent
+	Capacity int
+}
+
 type KoiScene struct {
+	Bands     []koiBand
+	Agents    []KoiAgent
+	Capacity  int
 	Pond      layout.Rect
 	ClickPond layout.Rect
 	Fish      []KoiFish
@@ -92,9 +102,8 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 	if in.JobsPanel || a.W <= 1 {
 		n = 0
 	}
-	for i := 0; i < n; i++ {
-		scene.Fish = append(scene.Fish, koiPondPose(agents[i], scene.Pond, in))
-	}
+	scene.Agents, scene.Capacity = agents, n
+	scene.Fish = koiResidents(agents, n, scene.Pond, in)
 	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
 	scene.Ripple = in.KoiRipple
 	for _, fish := range scene.Fish {
@@ -113,7 +122,7 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 			if width < 8 {
 				return
 			}
-			count := 0
+			band := koiBand{ID: key, Lane: layout.Rect{X: start, Y: y, W: width, H: 1}, Capacity: width / 8}
 			for wi, ws := range src.State.Workspaces {
 				if !header && ws.SidebarSection() != row.Section {
 					continue
@@ -132,14 +141,10 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 				if !working {
 					continue
 				}
-				if (count+1)*8 > width {
-					break
-				}
-				lane := layout.Rect{X: start + count*8, Y: y, W: 8, H: 1}
 				agent := KoiAgent{ID: key + ":" + itoa(ws.ID), State: "working", Seed: ws.ID}
-				scene.Mini = append(scene.Mini, koiPose(agent, lane, 6, in.KoiTime))
-				count++
+				band.Agents = append(band.Agents, agent)
 			}
+			scene.Bands = append(scene.Bands, band)
 		}
 		if machines != nil && len(machines.Groups) > 1 {
 			for _, hit := range machines.Hits {
@@ -159,6 +164,19 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 				}
 			}
 		}
+	}
+	seen := map[string]bool{}
+	for _, band := range scene.Bands {
+		seen[band.ID] = true
+	}
+	for _, m := range in.KoiMotion {
+		if m.Group != "" && !seen[m.Group] {
+			scene.Bands = append(scene.Bands, koiBand{ID: m.Group, Lane: m.Pond})
+			seen[m.Group] = true
+		}
+	}
+	for _, band := range scene.Bands {
+		scene.Mini = append(scene.Mini, koiResidentsFor(band.Agents, band.Capacity, band.Lane, in, band.ID, 6, 1)...)
 	}
 	return scene
 }

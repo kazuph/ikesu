@@ -58,10 +58,10 @@ func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time,
 	}
 	// Rebuild on removal so the map's buckets cannot retain a historic peak.
 	for id := range a.motion {
-		if !active[id] {
+		if !active[id] && a.motion[id].Agent.ID == "" {
 			live := make(map[string]koiMotion, len(active))
 			for id, m := range a.motion {
-				if active[id] {
+				if active[id] || m.Agent.ID != "" {
 					live[id] = m
 				}
 			}

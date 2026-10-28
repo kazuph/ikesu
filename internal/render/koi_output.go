@@ -57,7 +57,18 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 			_, img := koiSpriteCached(koiSpriteKey{v, fish.Direction, fish.Wag, w, h})
 			at := koiPixelPosition(fish, cw, ch)
 			px, py := at.X, at.Y
-			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: -1 - int(fish.Depth*100)}, Koi: true})
+			bounds := image.Rect(px, py, px+w, py+h)
+			visible := bounds.Intersect(image.Rect(fish.Lane.X*cw, fish.Lane.Y*ch, (fish.Lane.X+fish.Lane.W)*cw, (fish.Lane.Y+fish.Lane.H)*ch))
+			if visible.Empty() {
+				continue
+			}
+			g := Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: visible.Min.X / cw, Y: visible.Min.Y / ch, OffsetX: visible.Min.X % cw, OffsetY: visible.Min.Y % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: -1 - int(fish.Depth*100)}, Koi: true}
+			if visible != bounds {
+				g.Source = visible.Sub(bounds.Min)
+				// Natural-size source crops preserve the integer source-dot grid.
+				g.Placement.Cols, g.Placement.Rows = 0, 0
+			}
+			f.Graphics = append(f.Graphics, g)
 		}
 	}
 	drawKoiRippleGraphics(f, scene, in)
@@ -71,8 +82,8 @@ func koiPixelPosition(fish KoiFish, cw, ch int) image.Point {
 	}
 	dx := int(math.Round((fish.X - float64(fish.Lane.X)) * float64(cw) / float64(scale)))
 	dy := int(math.Round((fish.Y - float64(fish.Lane.Y)) * float64(ch) / float64(scale)))
-	px := fish.Lane.X*cw + max(0, min(dx, (fish.Lane.W-fish.Rect.W)*cw/scale))*scale
-	py := fish.Lane.Y*ch + max(0, min(dy, (fish.Lane.H-fish.Rect.H)*ch/scale))*scale
+	px := fish.Lane.X*cw + dx*scale
+	py := fish.Lane.Y*ch + dy*scale
 	return image.Pt(px, py)
 }
 
@@ -174,6 +185,9 @@ func drawKoiRowOctants(f *Frame, fish KoiFish) {
 	draw.Draw(sprite, source.Bounds().Add(image.Pt(0, offset)), source, image.Point{}, draw.Src)
 	for y := 0; y < rows; y++ {
 		for x := 0; x < fish.Rect.W; x++ {
+			if fish.Rect.X+x < fish.Lane.X || fish.Rect.X+x >= fish.Lane.X+fish.Lane.W || fish.Rect.Y+y < fish.Lane.Y || fish.Rect.Y+y >= fish.Lane.Y+fish.Lane.H {
+				continue
+			}
 			cell := f.Cell(fish.Rect.X+x, fish.Rect.Y+y)
 			if cell == nil || cell.Width != 1 {
 				continue
