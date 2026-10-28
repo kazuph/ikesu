@@ -90,19 +90,23 @@ func TestGuardPresentationDeduplicatesAndRedacts(t *testing.T) {
 }
 
 func TestNestedGuardRequestsMissingOrInheritedReason(t *testing.T) {
-	for _, reason := range []string{"", "外側からの試験申請文"} {
+	for _, reason := range []string{"", "English only request", "外側からの試験申請文"} {
 		p, out, _ := presentationFixture(t, "curl", []string{"-X", "POST", "https://api.example.test"}, "", map[string]string{
 			"AI_GUARD_REQUEST_REASON": "", "IKESU_GUARD_PARENT_COMMAND": "bash img.sh", "IKESU_GUARD_PARENT_REASON": reason,
 		})
+		if !ValidReason(reason) {
+			if p.Body != nil || !strings.Contains(out, "外側のコマンド: bash img.sh") {
+				t.Fatal("invalid nested reason did not stop before dialog", out)
+			}
+			continue
+		}
 		if p.Body == nil {
-			t.Fatalf("nested command cancelled without dialog: %s", out)
+			t.Fatal("valid inherited reason did not create dialog", out)
 		}
 		if reason != "" && (!strings.Contains(*p.Body, "外側のコマンド bash img.sh から引き継ぎ") || !strings.Contains(*p.Body, reason)) {
 			t.Error("inherited request was not explained")
 		}
-		if reason == "" && !strings.Contains(*p.Body, "申請文なし") {
-			t.Error("missing nested reason not disclosed")
-		}
+
 	}
 }
 

@@ -122,11 +122,6 @@ func approvalTitle(i Input) string {
 		i.Command = i.RawLine
 	}
 	title := "実行確認: " + i.redact(filepath.Base(i.Command))
-	// BRIEF-2 requests a short heading, approximately 80 characters.
-	runes := []rune(title)
-	if len(runes) > 80 {
-		return string(runes[:79]) + "…"
-	}
 	return title
 }
 
@@ -176,8 +171,11 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		return false
 	}
 	reason := requestReason(i)
-	if !ValidReason(reason) && i.Env["IKESU_GUARD_PARENT_COMMAND"] == "" {
+	if !ValidReason(reason) {
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n", i.Line())
+		if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
+			fmt.Fprintf(errOut, "   外側のコマンド: %s\n", parent)
+		}
 		if strings.TrimSpace(reason) == "" {
 			fmt.Fprintf(errOut, "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: %s='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n", requestReasonEnvName(i))
 		} else {
@@ -209,9 +207,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	body += "\n\nコマンド: " + i.redact(command)
 	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
-		if reason == "" {
-			body += "\n\n申請文なし（外側のコマンド " + parent + " にも申請文がありません）"
-		} else if reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
+		if reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
 			body += "\n\n申請文（外側のコマンド " + parent + " から引き継ぎ）"
 		}
 	}

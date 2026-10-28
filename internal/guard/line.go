@@ -29,7 +29,12 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 	}
 	i.LaunchCwd = m.Cwd
 	callerEnv := i.Env
-	i, verdict, parseErr := lineVerdict(c, i.shellExpansionInput(), line)
+	snapshot := i.shellVariables
+	runtimeLine := i.runtimeLine
+	i.AuthorizationEnv = EnvMap(environment(i.Env))
+	i, verdict, parseErr := lineVerdict(c, i, line)
+	i.shellVariables = snapshot
+	i.runtimeLine = runtimeLine
 	// Keep the caller's authorization context across env -i/-u, while retaining
 	// inline request reasons and approval-file settings from the parsed command.
 	parsedEnv := i.Env

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"mvdan.cc/sh/v3/syntax"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -41,7 +42,8 @@ func TestShellVariableSnapshot(t *testing.T) {
 func TestShellSnapshotOverridesStaleExportsAndPreservesIdentity(t *testing.T) {
 	original := Input{Env: map[string]string{"OUT": "/stale", "IKESU_PANE_ID": "p1", "AI_GUARD_DANGER_WORD_ACK": "0"}}
 	i := WithShellVariables(original, strings.NewReader("declare -- IKESU_PANE_ID=\"p2\"\ndeclare -- AI_GUARD_DANGER_WORD_ACK=\"1\"\ndeclare -- OUT\n"))
-	expanded := i.shellExpansionInput()
+	expanded := i
+	expanded.Env = i.shellExpansionValues()
 	if _, exists := expanded.Env["OUT"]; exists {
 		t.Fatal("unset reused exported value")
 	}
@@ -88,11 +90,138 @@ func TestShellSnapshotInlineReasonKeepsCallerAuthority(t *testing.T) {
 	i, _ := scriptPane(t)
 	i.Env["AI_GUARD_REQUEST_REASON"] = "元の申請文"
 	next := WithShellVariables(i, strings.NewReader("declare -- AI_GUARD_REQUEST_REASON=\"偽の申請文\"\ndeclare -- OUT=\"/outside\"\n"))
-	parsed, _, _ := lineVerdict(Config{}, next.shellExpansionInput(), `AI_GUARD_REQUEST_REASON='行の申請文' rm "$OUT"`)
+	parsed, _, _ := lineVerdict(Config{}, next, `AI_GUARD_REQUEST_REASON='行の申請文' rm "$OUT"`)
 	if parsed.AuthorizationEnv["AI_GUARD_REQUEST_REASON"] != "行の申請文" {
 		t.Fatal("inline reason lost")
 	}
 	if parsed.AuthorizationEnv["IKESU_PANE_ID"] != "p1" {
 		t.Fatal("caller identity lost")
+	}
+}
+
+func TestSnapshotReservedNamesNeverCreateAuthority(t *testing.T) {
+	for _, key := range []string{"AI_GUARD_DANGER_WORD_ACK", "AI_GUARD_TEMP_APPROVAL_FILE", "IKESU_GUARD_MARKER", "IKESU_PANE_ID", "IKESU_SOCKET_PATH", "IKESU_NEW_NAME"} {
+		for _, data := range []string{"declare -- " + key + "=\"1\"\n", "declare -- " + key + "\n", "declare -- " + key + "=\"1\"\ndeclare -- " + key + "=\"2\"\n", "declare -- " + key + "=\"broken"} {
+			i := WithShellVariables(Input{Env: map[string]string{}}, strings.NewReader(data))
+			if _, ok := i.shellExpansionValues()[key]; ok {
+				t.Fatal("snapshot created reserved value", key)
+			}
+			_, v, _ := lineVerdict(Config{}, i, `/usr/bin/curl -X POST https://example.test`)
+			if v.Decision != "ask" {
+				t.Fatalf("%s: %+v", key, v)
+			}
+			i.Env[key] = "original"
+			if i.shellExpansionValues()[key] != "original" {
+				t.Fatal("caller authority lost", key)
+			}
+		}
+	}
+}
+
+func TestSnapshotProbeUsesOnlyExportedEnvironmentAndNoPrivateArguments(t *testing.T) {
+	root := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "topic", root}, {"-C", root, "config", "alias.capture", "!env"}, {"-C", root, "remote", "add", "origin", "https://github.com/example/test.git"}} {
+		if out, err := exec.Command("/usr/bin/git", args...).CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+	}
+	trace := filepath.Join(root, "trace")
+	i := Input{Cwd: root, Env: map[string]string{"HOME": root, "PATH": "/usr/bin:/bin", "GIT_TRACE": trace, "PUBLIC_TEST_VALUE": "exported"}}
+	i = WithShellVariables(i, strings.NewReader("declare -- T=\"private-env-sentinel\"\ndeclare -- R=\"private-remote-sentinel\"\n"))
+	parsed, _, err := lineVerdict(Config{}, i, `git push "$R" topic`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.probePrivate {
+		t.Fatal("snapshot-dependent probe was not excluded")
+	}
+	before, _ := os.ReadFile(trace)
+	if strings.Contains(string(before), "private-env-sentinel") || strings.Contains(string(before), "private-remote-sentinel") {
+		t.Fatal("private bytes reached initial real probe")
+	}
+	if output := probe(parsed, "git", "remote", "get-url", parsed.Args[1]); output != "" {
+		t.Fatal("private argv launched a probe")
+	}
+	after, _ := os.ReadFile(trace)
+	if !bytes.Equal(before, after) {
+		t.Fatal("snapshot-dependent probe launched a child")
+	}
+	parsed, _, err = lineVerdict(Config{}, i, `git push origin topic`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := probe(parsed, "git", "capture")
+	if !strings.Contains(output, "PUBLIC_TEST_VALUE=exported") {
+		t.Fatal("real probe did not execute with exported state")
+	}
+	records, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{output, string(records)} {
+		if strings.Contains(text, "private-env-sentinel") || strings.Contains(text, "private-remote-sentinel") {
+			t.Fatal("snapshot leaked into real probe environment or argv")
+		}
+	}
+}
+
+func TestSnapshotChildShellUsesExportsAndRetainsAuthorization(t *testing.T) {
+	i, _ := scriptPane(t)
+	i.Env["AI_GUARD_REQUEST_REASON"] = "元の申請文"
+	i = WithShellVariables(i, strings.NewReader("declare -- T=\"private-env-sentinel\"\n"))
+	_, v, e := lineVerdict(Config{}, i, `env X=/bin/echo /bin/bash -c '$X ok'`)
+	if e != nil || v.Decision != "allow" {
+		t.Fatalf("exported child assignment lost: %+v %v", v, e)
+	}
+	script := filepath.Join(i.Cwd, "reason.sh")
+	if e := os.WriteFile(script, []byte("AI_GUARD_REQUEST_REASON='スクリプトの申請文' /bin/rm '/outside/victim'\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	var output bytes.Buffer
+	if AuthorizeLine(Config{}, i.Cwd, i, "/bin/bash "+quote(script), &output, nil) {
+		t.Fatal("dangerous script allowed")
+	}
+	if strings.Contains(output.String(), "要承認コマンドには、対象プロジェクト") {
+		t.Fatal("exported authorization context lost", output.String())
+	}
+	if !strings.Contains(output.String(), "判断待ちのサーバーに接続できません") {
+		t.Fatal("did not reach real authorization boundary", output.String())
+	}
+}
+
+func TestSnapshotLiteralInlineReasonIsNotPrivate(t *testing.T) {
+	i, _ := scriptPane(t)
+	delete(i.Env, "AI_GUARD_REQUEST_REASON")
+	i = WithShellVariables(i, strings.NewReader("declare -- IFS=$' \\t\\n'\ndeclare -- T=\"private\"\n"))
+	var out bytes.Buffer
+	if AuthorizeLine(Config{}, i.Cwd, i, `AI_GUARD_REQUEST_REASON='日本語の申請文' /bin/rm '/outside/victim'`, &out, nil) {
+		t.Fatal("dangerous line allowed")
+	}
+	if !strings.Contains(out.String(), "判断待ちのサーバーに接続できません") {
+		t.Fatal(out.String())
+	}
+}
+
+func TestRuntimeLineDefersOnlyShellWorkAndUncertainty(t *testing.T) {
+	i := WithShellVariables(Input{Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin"}}, strings.NewReader("declare -- T=\"/outside/victim\"\n"))
+	for _, tc := range []struct{ line, want string }{
+		{`eval 'rm "$T"'`, "allow"}, {`source /outside/script.sh`, "allow"},
+		{`printf '%s' "$(rm "$T")"`, "allow"}, {`printf '%s' "$UNKNOWN"`, "allow"},
+		{`rm "$T"`, "ask"}, {`git reset --hard`, "block"}, {`xargs rm`, "ask"},
+		{`find . -exec rm {} \;`, "ask"}, {`sh -c 'rm /outside/victim'`, "ask"},
+	} {
+		_, v, _ := lineVerdict(Config{}, i, tc.line)
+		if v.Decision != tc.want {
+			t.Fatalf("runtime %q: %+v", tc.line, v)
+		}
+	}
+	for _, line := range []string{`eval 'rm /outside/victim'`, `source /outside/script.sh`, `printf '%s' "$(rm /outside/victim)"`} {
+		outer := i
+		outer.runtimeLine = false
+		outer.shellVariables = nil
+		_, v, _ := lineVerdict(Config{}, outer, line)
+		if v.Decision == "allow" {
+			t.Fatalf("outer boundary weakened: %s", line)
+		}
 	}
 }

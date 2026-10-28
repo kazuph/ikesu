@@ -44,32 +44,33 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
-	shellVariables        map[string]string
-	shellAuthorizationEnv map[string]string
-	OpaquePrefix          bool `json:"-"`
-	scriptVariables       map[string]bool
-	claudeBashEnv         string
-	scriptScanner         *scriptScanner
-	scriptResult          *scriptResult
-	scriptBody            bool
-	scriptLabel           string
-	scriptLine            uint
-	scriptKnownArgs       []string
-	scriptUnknownCommand  bool
-	TriggerCommand        string            `json:"-"` // Display only; never used by policy or approval keys.
-	CwdUncertain          bool              `json:"-"`
-	AuthorizationEnv      map[string]string `json:"-"`
-	GuardCommands         []string          `json:"-"`
-	GuardRoot             string            `json:"-"`
-	ClaudePrefixChanged   bool              `json:"-"`
-	ShellEnvChanged       bool              `json:"-"`
-	Unresolved            bool              `json:"-"`
-	RawLine               string            `json:"-"`
-	Command               string            `json:"command"`
-	Args                  []string          `json:"args"`
-	Cwd                   string            `json:"cwd"`
-	LaunchCwd             string            `json:"launch_cwd"`
-	Env                   map[string]string `json:"-"`
+	runtimeLine          bool
+	shellVariables       map[string]string
+	probePrivate         bool
+	OpaquePrefix         bool `json:"-"`
+	scriptVariables      map[string]bool
+	claudeBashEnv        string
+	scriptScanner        *scriptScanner
+	scriptResult         *scriptResult
+	scriptBody           bool
+	scriptLabel          string
+	scriptLine           uint
+	scriptKnownArgs      []string
+	scriptUnknownCommand bool
+	TriggerCommand       string            `json:"-"` // Display only; never used by policy or approval keys.
+	CwdUncertain         bool              `json:"-"`
+	AuthorizationEnv     map[string]string `json:"-"`
+	GuardCommands        []string          `json:"-"`
+	GuardRoot            string            `json:"-"`
+	ClaudePrefixChanged  bool              `json:"-"`
+	ShellEnvChanged      bool              `json:"-"`
+	Unresolved           bool              `json:"-"`
+	RawLine              string            `json:"-"`
+	Command              string            `json:"command"`
+	Args                 []string          `json:"args"`
+	Cwd                  string            `json:"cwd"`
+	LaunchCwd            string            `json:"launch_cwd"`
+	Env                  map[string]string `json:"-"`
 }
 type Verdict struct {
 	Decision   string `json:"verdict"`
@@ -296,6 +297,10 @@ func wildcard(a []string) bool {
 	return false
 }
 func danger(c Config, i Input) bool {
+	if i.runtimeLine {
+		i.RawLine = ""
+		i.Args = i.scriptKnownArgs
+	}
 	if has([]string{"git", "gh", "ikesu", "herdr"}, filepath.Base(i.Command)) {
 		return false
 	}

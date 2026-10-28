@@ -10,21 +10,30 @@ if [[ %s ]] && [[ -n "${BASH_EXECUTION_STRING:-}" ]]; then
 fi
 _ikesu_guard_debug() {
  local _ikesu_guard_debug_busy=1
- case "${FUNCNAME[1]:-}" in _ikesu_guard_forward|_ikesu_guard_command) return 0;; esac
+ case "${FUNCNAME[2]:-}" in _ikesu_guard_forward|_ikesu_guard_command) return 0;; esac
  if [[ %s ]]; then
   (
    set +o functrace
-   for _ikesu_guard_snapshot_name in $(builtin compgen -v); do
-   case "$_ikesu_guard_snapshot_name" in _ikesu_guard_*) continue;; esac
-   builtin declare -p "$_ikesu_guard_snapshot_name"
+   builtin compgen -v | while IFS= builtin read -r _ikesu_guard_snapshot_name; do
+    case "$_ikesu_guard_snapshot_name" in _ikesu_guard_*) continue;; esac
+    builtin declare -p "$_ikesu_guard_snapshot_name"
    done
-  ) | %s guard line --via bash-debug -- "$1" || { builtin kill -s TERM "$$"; exit 1; }
+  ) | %s guard line --via bash-debug -- "$1" || { builtin kill -s KILL "$$"; exit 1; }
  fi
  return 0
 }
-readonly -f _ikesu_guard_debug
+_ikesu_guard_dispatch() {
+ local _ikesu_guard_frame
+ if [[ ${_ikesu_guard_debug_busy:-} == 1 ]]; then
+  for _ikesu_guard_frame in "${FUNCNAME[@]}"; do
+   [[ $_ikesu_guard_frame == _ikesu_guard_debug ]] && return 0
+  done
+ fi
+ _ikesu_guard_debug "$1"
+}
+readonly -f _ikesu_guard_debug _ikesu_guard_dispatch
 set -o functrace
-trap '[[ ${_ikesu_guard_debug_busy:-} == 1 && " ${FUNCNAME[*]} " == *" _ikesu_guard_debug "* ]] || _ikesu_guard_debug "$BASH_COMMAND"' DEBUG
+trap '_ikesu_guard_dispatch "$BASH_COMMAND"' DEBUG
 fi
 `, a.shellActive(), a.invocation(), a.shellActive(), a.invocation())
 	}

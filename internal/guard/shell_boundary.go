@@ -121,8 +121,14 @@ func commandBoundary(i Input) string {
 
 func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
-	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}
+	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if i.runtimeLine {
+			switch node.(type) {
+			case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.FuncDecl:
+				return false
+			}
+		}
 		previous := failure
 		defer func() {
 			if i.scriptBody && previous != nil && (failure == nil || scriptError(previous).kind > scriptError(failure).kind) {
@@ -141,7 +147,7 @@ func treeBoundary(i Input, tree *syntax.File) error {
 				if assignment.Value != nil {
 					value, e := shellLiteral(cfg, assignment.Value)
 					name, _, assigned := strings.Cut(value, "=")
-					if e != nil || assigned && startupVariable(name) {
+					if e != nil && !i.runtimeLine || assigned && startupVariable(name) {
 						failure = fmt.Errorf("子シェルの起動設定の変更内容を確認する必要があります")
 					}
 					removeExport = removeExport || value == "-n" || value == "+x"
@@ -170,12 +176,15 @@ func treeBoundary(i Input, tree *syntax.File) error {
 					e = unresolvedScriptError{"スクリプト内で変わる変数です"}
 				}
 				if e != nil {
+					if i.runtimeLine {
+						return true
+					}
 					if i.scriptBody {
 						failure = unresolvedScriptError{"書き込み先のパスを安全に確定できません"}
 					} else {
 						failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
 					}
-				} else if i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
+				} else if !i.runtimeLine && i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
 					failure = fmt.Errorf("ディレクトリ変更を含む入力の書き込み先を安全に確定できません")
 				} else if guardPath(i, path) {
 					failure = fmt.Errorf("ガードの置き場所へのリダイレクトには承認が必要です")
@@ -249,7 +258,10 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 				*commands = append(*commands, i)
 				return nil
 			}
-			nested, e := lineCommands(i, i.Args[n+1])
+			child := i
+			child.shellVariables = nil
+			child.runtimeLine = false
+			nested, e := lineCommands(child, i.Args[n+1])
 			*commands = append(*commands, nested...)
 			return e
 		}
@@ -267,7 +279,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			if redir.Op == syntax.WordHdoc {
 				word = redir.Word
 			}
-			script, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+			script, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}, word)
 			if e != nil {
 				return fmt.Errorf("標準入力のスクリプトを安全に展開できません")
 			}
@@ -277,7 +289,11 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 				*commands = append(*commands, i)
 				return nil
 			}
-			nested, e := lineCommands(i, script)
+			child := i
+			child.shellVariables = nil
+			child.runtimeLine = false
+			child.probePrivate = child.probePrivate || i.privateExpansion(word, script)
+			nested, e := lineCommands(child, script)
 			*commands = append(*commands, nested...)
 			return e
 		case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn:

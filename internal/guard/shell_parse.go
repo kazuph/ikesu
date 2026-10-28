@@ -16,6 +16,9 @@ import (
 func lineCommands(i Input, line string) ([]Input, error) {
 	tree, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(line), "guard line")
 	if err != nil {
+		if i.runtimeLine {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
 	}
 	i.GuardRoot = guardDirectory(i)
@@ -39,6 +42,12 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		setError(e)
 	}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if i.runtimeLine {
+			switch node.(type) {
+			case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.FuncDecl:
+				return false
+			}
+		}
 		call, ok := node.(*syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
 			return true
@@ -49,7 +58,8 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		next.scriptKnownArgs = nil
 		next.Env = EnvMap(environment(i.Env))
 		next.RawLine = line
-		cfg := &expand.Config{Env: expand.ListEnviron(environment(next.Env)...), NoUnset: true}
+		values := i.shellExpansionValues()
+		cfg := &expand.Config{NoUnset: true}
 		for _, assignment := range call.Assigns {
 			if startupVariable(assignment.Name.Value) || assignment.Name.Value == "PATH" {
 				next.ShellEnvChanged = true
@@ -58,7 +68,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			if assignment.Value == nil {
 				continue
 			}
-			cfg.Env = expand.ListEnviron(environment(next.Env)...)
+			cfg.Env = expand.ListEnviron(environment(values)...)
 			value, e := shellLiteral(cfg, assignment.Value)
 			if e != nil {
 				next.Unresolved = true
@@ -66,14 +76,18 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				continue
 			}
 			key := assignment.Name.Value
-			if i.scriptBody {
+			values[key] = value
+			if next.privateExpansion(assignment.Value, value) {
+				next.probePrivate = true
+				delete(next.Env, key)
+			} else if i.scriptBody {
 				delete(next.Env, key)
 			} else if !authorizationIdentityKey(key) {
 				next.Env[key] = value
 			}
 		}
 		// Shell words expand in the parent environment, before prefix assignments.
-		cfg.Env = expand.ListEnviron(environment(i.Env)...)
+		cfg.Env = expand.ListEnviron(environment(i.shellExpansionValues())...)
 		var argv []string
 		unknownCommand := false
 		for n, word := range call.Args {
@@ -90,13 +104,16 @@ func lineCommands(i Input, line string) ([]Input, error) {
 					unknownCommand = true
 				}
 			}
+			if e == nil && i.privateExpansion(word, value) {
+				next.probePrivate = true
+			}
 			if e == nil && n > 0 {
 				next.scriptKnownArgs = append(next.scriptKnownArgs, value)
 			}
 			argv = append(argv, value)
 		}
 		next.Command, next.Args = argv[0], argv[1:]
-		if unknownCommand {
+		if unknownCommand && !i.runtimeLine {
 			if i.scriptBody {
 				setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
 			} else {
@@ -108,15 +125,10 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		for key, value := range next.Env {
 			next.AuthorizationEnv[key] = value
 		}
-		if i.shellVariables != nil {
-			next.AuthorizationEnv = EnvMap(environment(i.shellAuthorizationEnv))
-			for _, assignment := range call.Assigns {
-				if value, ok := next.Env[assignment.Name.Value]; ok && !authorizationIdentityKey(assignment.Name.Value) {
-					next.AuthorizationEnv[assignment.Name.Value] = value
-				}
-			}
-		}
 		unwrapped, e := unwrapCommand(next)
+		if next.probePrivate {
+			unwrapped.Env = EnvMap(environment(next.Env))
+		}
 		unwrapped.scriptKnownArgs = nil
 		for _, a := range unwrapped.Args {
 			if has(next.scriptKnownArgs, a) {
@@ -251,15 +263,18 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	i.scriptScanner = &scriptScanner{config: c}
 	commands, err := lineCommands(i, line)
 	i.RawLine = line
-	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line})
+	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line, runtimeLine: i.runtimeLine})
 	if best.Decision == "block" {
 		return i, best, nil
 	}
-	if danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
+	if !i.runtimeLine && danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
 		best = result("ask", "danger-word-line", "deploy/publish を含む入力行は確認対象です")
 	}
 	for _, command := range commands {
-		v := Evaluate(c, command)
+		v := result("allow", "default", "")
+		if !(i.runtimeLine && has([]string{"eval", "source", "."}, filepath.Base(command.Command))) {
+			v = Evaluate(c, command)
+		}
 		if command.scriptResult != nil {
 			r := command.scriptResult
 			if r.kind == scriptSafe {
@@ -268,7 +283,7 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 			v = r.verdict
 			command.TriggerCommand = r.trigger
 		}
-		if command.Unresolved && v.Decision == "allow" && (has(c.Commands(), filepath.Base(command.Command)) || strings.ContainsAny(command.Command, "$`")) {
+		if !i.runtimeLine && command.Unresolved && v.Decision == "allow" && (has(c.Commands(), filepath.Base(command.Command)) || strings.ContainsAny(command.Command, "$`")) {
 			v = result("ask", "shell-line", "展開後のコマンドまたは引数を安全に確定できません")
 		}
 		if v.Decision == "block" || v.Decision == "ask" && best.Decision == "allow" {

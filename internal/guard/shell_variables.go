@@ -12,6 +12,7 @@ import (
 // WithShellVariables reads declare -p data, never shell code. A present snapshot
 // replaces expansion state so unset/unsupported values cannot reuse stale exports.
 func WithShellVariables(i Input, r io.Reader) Input {
+	i.runtimeLine = true
 	i.shellVariables = map[string]string{}
 	tree, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(r, "shell variables")
 	if err != nil {
@@ -33,7 +34,7 @@ func WithShellVariables(i Input, r io.Reader) Input {
 		duplicate := seen[name]
 		seen[name] = true
 		delete(i.shellVariables, name)
-		if duplicate || authorizationIdentityKey(name) || strings.HasPrefix(name, "_ikesu_guard_") {
+		if duplicate || snapshotReservedName(name) {
 			continue
 		}
 		flag := flags.Value.Lit()
@@ -61,20 +62,37 @@ func WithShellVariables(i Input, r io.Reader) Input {
 	return i
 }
 
-func (i Input) shellExpansionInput() Input {
+func snapshotReservedName(name string) bool {
+	return authorizationIdentityKey(name) || strings.HasPrefix(name, "IKESU_") || strings.HasPrefix(name, "AI_GUARD_") || strings.HasPrefix(name, "_ikesu_guard_")
+}
+
+// Env remains the exported caller environment. Only the expander sees snapshots.
+func (i Input) shellExpansionValues() map[string]string {
 	if i.shellVariables == nil {
-		return i
+		return EnvMap(environment(i.Env))
 	}
-	i.shellAuthorizationEnv = EnvMap(environment(i.Env))
-	env := EnvMap(environment(i.shellVariables))
-	for name, value := range i.Env {
-		// Snapshot data must never change authorization, startup or approval state.
-		if authorizationIdentityKey(name) || strings.HasPrefix(name, "IKESU_") || strings.HasPrefix(name, "AI_GUARD_") {
-			env[name] = value
+	values := map[string]string{}
+	for name, value := range i.shellVariables {
+		if !snapshotReservedName(name) {
+			values[name] = value
 		}
 	}
-	i.Env = env
-	return i
+	for name, value := range i.Env {
+		if snapshotReservedName(name) {
+			values[name] = value
+		}
+	}
+	return values
+}
+
+// Compare with expansion using only exported values. A preparatory lookup of
+// IFS by the parser must not label a literal argument as private.
+func (i Input) privateExpansion(word *syntax.Word, value string) bool {
+	if i.shellVariables == nil {
+		return false
+	}
+	exported, err := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+	return err != nil || exported != value
 }
 
 // Only diagnostics contain analyzer-expanded bytes. Command displays keep RawLine.
