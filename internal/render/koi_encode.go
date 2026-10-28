@@ -83,7 +83,7 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 			id = e.nextGraphicID
 			e.koi.images[key] = id
 			size := 4*p.Image.Width*p.Image.Height + len(p.Image.Data)
-			e.koi.used[key] = pool.order.PushFront(koiImageUse{key, size, e.koi.frame})
+			e.koi.used[key] = pool.order.PushFront(&koiImageUse{key, size, e.koi.frame})
 			e.koi.bytes += size
 			pool.bytes += size
 			data := base64.StdEncoding.EncodeToString(p.Image.Data)
@@ -104,9 +104,8 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 			}
 		}
 		el := e.koi.used[key]
-		use := el.Value.(koiImageUse)
+		use := el.Value.(*koiImageUse)
 		use.frame = e.koi.frame
-		el.Value = use
 		pool.order.MoveToFront(el)
 		next = append(next, koiEncodedPlacement{id, g})
 	}
@@ -145,7 +144,7 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 		}
 		for pool.order.Len() > entries || pool.bytes > budget {
 			el := pool.order.Back()
-			use := el.Value.(koiImageUse)
+			use := el.Value.(*koiImageUse)
 			if use.frame == e.koi.frame {
 				break
 			}
