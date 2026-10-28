@@ -74,7 +74,7 @@ Lets you answer agents' confirmations and questions in a native window. The pane
 When there is room below the agent list in the right sidebar, koi swim there over the sidebar's own background. Each koi stands for an agent:
 
 - Working agents swim freely across the pond; koi have depth, so they may pass over one another
-- Idle agents sink deeper and swim slowly
+- Idle agents sink deeper and rest
 - Agents waiting for you come up to the surface and open their mouths
 - Agents that just finished glow gold for 15 seconds
 
