@@ -10,6 +10,8 @@ import (
 
 // Frame is a grid of styled cells covering the whole screen.
 type Frame struct {
+	KoiScene          KoiScene `json:"-"`
+	KoiActive         bool     `json:"-"`
 	Graphics          []Graphic
 	GraphicsSources   []Graphic `json:"-"`
 	Placeholders      []Placeholder

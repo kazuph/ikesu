@@ -8,6 +8,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func (m *machineClient) paint() error {
@@ -28,6 +29,16 @@ func (m *machineClient) paint() error {
 		return err
 	}
 	in := *e.snapshot
+	in.Koi = true
+	if m.settings != nil && m.settings.config != nil {
+		in.Koi = m.settings.config.KoiEnabled()
+	}
+	in.KoiKitty = m.koiKitty
+	m.mouse.Geometry(m.size)
+	in.KoiCellW, in.KoiCellH = m.mouse.cellW, m.mouse.cellH
+	if in.KoiCellW <= 0 || in.KoiCellH <= 0 {
+		in.KoiKitty = false
+	}
 	in, nativePaint, err := m.nativePaintInput(in)
 	if err != nil {
 		return err
@@ -60,6 +71,11 @@ func (m *machineClient) paint() error {
 		}
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
+	m.koiClock.Apply(&in, &m.sidebar, time.Now(), tui.FossilExpiry())
+	if m.koiInput.KoiKitty && in.KoiKitty && (in.KoiRipple == nil || m.koiInput.KoiRipple != nil && in.KoiRipple.Start == m.koiInput.KoiRipple.Start) {
+		in.KoiTime = m.koiInput.KoiTime
+	}
+
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil {
 		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
@@ -67,6 +83,14 @@ func (m *machineClient) paint() error {
 	} else {
 		composed = m.composer.ComposeClient(in, &m.sidebar, m.clientVersion, m.notice != "")
 	}
+	m.koiInput, m.koiScene = in, composed.Frame.KoiScene
+	m.koiRetained = composed.Frame.W != m.size.Cols || composed.Frame.H != m.size.Rows
+	m.koiVisible = !m.koiRetained && !m.blurred && composed.Frame.KoiActive
+	if !m.koiVisible {
+		m.koiNext = time.Time{}
+	} else if m.koiNext.IsZero() {
+		m.koiNext = time.Now().Add(composed.Frame.KoiScene.UpdateInterval())
+	} // existing TUI tick interval and agreed 20fps
 	m.drawTabFeedback(composed)
 	f := composed.Frame
 	if m.notice != "" {
@@ -124,7 +148,10 @@ func (m *machineClient) paint() error {
 	if err := writeErr; err != nil {
 		return err
 	}
-	probe := m.outputFence.Written(data, time.Now())
+	probe := false
+	if m.frames.RequiresImageFence() {
+		probe = m.outputFence.Written(data, time.Now())
+	}
 	if probe {
 		if _, err := m.out.WriteString(render.TerminalStatusQuery); err != nil {
 			return err

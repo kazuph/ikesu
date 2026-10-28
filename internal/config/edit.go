@@ -15,6 +15,8 @@ func (e Edit) Apply() (Config, error) {
 	switch e.Kind {
 	case "theme":
 		err = SaveTheme(e.Value)
+	case "koi":
+		err = SaveKoi(e.Enabled)
 	case "sound":
 		err = SaveSound(e.Enabled)
 	case "toast":

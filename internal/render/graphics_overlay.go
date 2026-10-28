@@ -60,7 +60,7 @@ func coverInputGraphics(in Input, out *Output) {
 }
 
 func (f *Frame) coverGraphicsLayers(covers []image.Rectangle, popup image.Rectangle, popupPane int) {
-	f.GraphicsSources = append([]Graphic(nil), f.Graphics...)
+	f.GraphicsSources = append(f.GraphicsSources, f.Graphics...)
 	var visible, untouched []Graphic
 	extra := 0
 	for _, graphic := range f.Graphics {

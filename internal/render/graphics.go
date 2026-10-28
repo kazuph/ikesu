@@ -11,6 +11,7 @@ import (
 )
 
 type Graphic struct {
+	Koi       bool `json:"-"`
 	Pane      int
 	Placement kitty.Placement
 	Source    image.Rectangle

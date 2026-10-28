@@ -168,3 +168,31 @@ func (a *App) settingsMouse(ev input.Event) {
 	}
 }
 func (a *App) SetConfigChanged(hook func(config.Config)) { a.configChanged = hook }
+
+func (a *App) toggleKoi() {
+	a.editConfiguration(config.Edit{Kind: "koi", Enabled: !a.sidebarConfig.KoiEnabled()}, func(c config.Config, err error) {
+		if err != nil {
+			a.worktreeError(err)
+			return
+		}
+		panePalette := a.panePalette
+		if a.configEdit != nil {
+			a.setSidebarConfig(c, false)
+		} else {
+			a.SetSidebarConfig(c, false)
+		}
+		if a.serverUI {
+			a.panePalette = panePalette
+		}
+		if a.configChanged != nil {
+			a.configChanged(c)
+		}
+		if !c.KoiEnabled() {
+			a.koiLocalActive = false
+		}
+		if a.menu != nil && a.menu.kind == menuMain {
+			a.menu.m.Items = a.mainMenuItems()
+		}
+		a.dirty = true
+	})
+}

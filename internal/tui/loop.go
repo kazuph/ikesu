@@ -97,6 +97,7 @@ func (a *App) onInput(ev input.Event) {
 		}
 		a.detectAll()
 	case input.KindBlur:
+		a.koiLocalActive = false
 		a.windowBlurred = true
 	case input.KindUnknown:
 	}

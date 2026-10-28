@@ -208,6 +208,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 	if !in.ServerUI {
 		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
 	}
+
 	drop := in.DropIndex
 	if drop == nil && in.Dragging {
 		drop = sectionDropIndex(in)

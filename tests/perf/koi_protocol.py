@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Audit the real ptyrun wire: demand uploads, retained IDs and PNG byte counts."""
+import argparse,base64,json,pathlib,re,statistics
+p=argparse.ArgumentParser();p.add_argument('directory');args=p.parse_args()
+root=pathlib.Path(args.directory)
+results=json.loads((root/'results.json').read_text())
+attribution={x['file']:x for x in json.loads((root/'attribution.json').read_text())} if any(x['condition']!='empty' for x in results) else {}
+proof=[]
+for result in results:
+ wire=pathlib.Path(result['raw_output']).read_bytes()
+ uploads={};image_bytes=0;upload_wire_bytes=0;first_upload=None;initial_end=None;initial_bytes=0;packets=0
+ for match in re.finditer(rb'\x1b_G([^;]*);(.*?)\x1b\\',wire,re.S):
+  header,payload=match.groups();fields=dict(item.split(b'=',1) for item in header.split(b',') if b'=' in item)
+  if fields.get(b'a')==b't':
+   image_id=int(fields[b'i']);assert image_id not in uploads,f'image ID {image_id} uploaded twice'
+   uploads[image_id]={'png_bytes':0,'wire_bytes':0};current=image_id
+   if first_upload is None:
+    first_upload=match.start();initial_end=wire.find(b'\x1b[?2026l',match.end())
+  elif b'm' not in fields or b'a' in fields:continue
+  decoded=base64.b64decode(payload);image_bytes+=len(decoded);uploads[current]['png_bytes']+=len(decoded)
+  count=match.end()-match.start();upload_wire_bytes+=count;uploads[current]['wire_bytes']+=count;packets+=1
+  if match.start()<initial_end:initial_bytes+=count
+ proof.append({'session':result['session'],'enabled':result['enabled'],'condition':result['condition'],'state':result.get('state'),'seconds':result['seconds'],'images':len(uploads),'first_image_frame_upload_bytes':initial_bytes,'total_png_bytes':image_bytes,'total_upload_wire_bytes':upload_wire_bytes,'upload_packets':packets,'duplicates':0,'max_mean_upload_bytes_per_second':upload_wire_bytes/result['seconds'],'terminal_bytes_during_window':result['terminal_bytes']})
+summary=[]
+for condition in sorted({r['condition'] for r in results}):
+ group=[r for r in results if r['condition']==condition]
+ def median(field,on):return statistics.median(r[field] for r in group if r['enabled']==on)
+ off,on=median('cpu_seconds',False),median('cpu_seconds',True)
+ seconds=group[0]['seconds']
+ delta=(on-off)/seconds*100
+ if condition=='empty':transport={'mode':'standalone','additional_snapshots':0}
+ else:
+  off_snap,on_snap=median('snapshot_messages',False),median('snapshot_messages',True)
+  transport={'off_snapshots':off_snap,'on_snapshots':on_snap,'additional_snapshots':on_snap-off_snap,'off_raw_bytes':median('server_bytes',False),'on_raw_bytes':median('server_bytes',True),'raw_byte_difference':median('server_bytes',True)-median('server_bytes',False)}
+  assert all(attribution[r['session']+'-traffic.json']['client_animation_snapshots']==0 for r in group)
+  if group[0].get('state')=='idle':
+   assert all(r['server_bytes']==r['snapshot_messages']==0 for r in group),'stationary koi caused server traffic'
+   assert all(r['terminal_bytes']==0 for r in group),'stationary koi caused terminal output'
+   transport.update({'additional_koi_updates':0,'client_animation_snapshots':0})
+  else:
+   # Compare identical spinner progress rather than different fractions of the boundary tick.
+   values={r['session']:attribution[r['session']+'-traffic.json']['spinner_values'][r['snapshot_range'][0]:r['snapshot_range'][1]] for r in group}
+   first=max(v[0] for v in values.values())+1;last=min(v[-1] for v in values.values())-1
+   assert last>=first,'no complete common spinner range'
+   matched={key:sum(first<=spin<=last for spin in v) for key,v in values.items()}
+   normalized=[]
+   for repeat in sorted({r['repeat'] for r in group}):
+    pair={r['enabled']:matched[r['session']] for r in group if r['repeat']==repeat}
+    assert pair[True]-pair[False]==0,'koi added updates within identical spinner progress'
+    normalized.append({'repeat':repeat,'off':pair[False],'on':pair[True],'additional_updates':0})
+   assert all(attribution[r['session']+'-traffic.json']['client_animation_snapshots']==0 for r in group)
+   transport.update({'common_spinner_first':first,'common_spinner_last':last,'matched_updates':normalized,'additional_koi_updates':0,'client_animation_snapshots':0})
+ summary.append({'condition':condition,'seconds':seconds,'off_cpu_seconds':off,'on_cpu_seconds':on,'additional_one_core_percent':delta,'off_terminal_bytes':median('terminal_bytes',False),'on_terminal_bytes':median('terminal_bytes',True),'server_transport':transport,'under_one_percent':delta<1})
+
+output={'wire':proof,'summary':summary}
+(root/'protocol.json').write_text(json.dumps(output,indent=2));print(json.dumps(output,indent=2))

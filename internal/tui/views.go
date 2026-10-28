@@ -6,6 +6,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
@@ -235,7 +236,25 @@ func (a *App) draw() {
 		a.dirty = a.snapshotSink(in) != nil
 		return
 	}
+	in.Koi = a.viewerOwner == nil && a.sidebarConfig.KoiEnabled()
+	if in.Koi {
+		a.koiClock.Apply(&in, nil, time.Now(), fossilExpiry)
+	}
+	if file, ok := a.out.(*os.File); ok {
+		in.KoiKitty = kitty.SupportsImages(os.Stdin, file) && a.cellW > 0 && a.cellH > 0
+	}
+	in.KoiCellW, in.KoiCellH = a.cellW, a.cellH
 	out := render.ComposeClient(in, nil, a.clientVersion, false)
+	a.koiScene = out.Frame.KoiScene
+	a.koiLocalActive = out.Frame.KoiActive && !a.windowBlurred
+	a.koiInput = in
+	a.koiAnchor = *out
+	a.koiAnchor.Frame = nil
+	if !a.koiLocalActive {
+		a.koiNext = time.Time{}
+	} else if a.koiNext.IsZero() {
+		a.koiNext = time.Now().Add(a.koiScene.UpdateInterval())
+	}
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
 		render.DrawTabDrop(out, g.drop, a.serverUI)
 	}

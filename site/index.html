@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="ikesu — エージェントを池で飼う。A quiet home for your coding agents.">
+<title>ikesu — エージェントを池で飼う</title>
+<style>
+:root{color-scheme:light;--paper:#f4f0e6;--ink:#07100a;--red:#8d291f;--dim:#354437}*{box-sizing:border-box}body{position:relative;overflow-x:clip;margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y}main{position:relative;overflow:clip;min-height:100dvh;display:flex;flex-direction:column;pointer-events:none;background:linear-gradient(90deg,rgba(244,240,230,.94),rgba(244,240,230,.72) 35%,transparent 72%)}header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px 5%}.wordmark{font:32px Georgia,serif;text-decoration:none;color:var(--ink)}.wordmark span{color:var(--red)}nav{display:flex;align-items:center;gap:12px;pointer-events:auto;background:var(--paper);padding:2px 8px}button{font:inherit;color:var(--dim);border:0;background:transparent;padding:10px 12px;cursor:pointer}button[aria-pressed=true]{color:var(--red);border-bottom:1px solid var(--red)}button:focus-visible,a:focus-visible{outline:2px solid var(--red);outline-offset:5px}.intro{margin:auto 5%;max-width:650px;padding:48px 0 80px}.eyebrow{color:var(--red);font-size:12px;letter-spacing:.16em;margin:0 0 28px}.intro h1{font:72px/1.3 "Hiragino Mincho ProN","Yu Mincho",Georgia,serif;margin:0 0 30px;font-weight:400}.lead{font-size:16px;line-height:2;max-width:410px;margin:0 0 30px}.link{pointer-events:auto;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--red);padding:12px 0;display:inline-block}.link span{color:var(--red);margin-left:16px}footer{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;padding:24px 5% calc(24px + env(safe-area-inset-bottom));font-size:12px;color:var(--dim)}.hint{max-width:240px;line-height:1.8;color:var(--paper);text-shadow:0 1px 3px #102921}a{pointer-events:auto}html[lang=en] .intro h1{font-size:76px;line-height:1.08;max-width:580px}[hidden]{display:none!important}@media(max-width:640px){header{padding:18px 6%;gap:12px}.wordmark{font-size:27px}.intro{margin:auto 6%;padding:28px 0 110px;max-width:88%}.hint{color:var(--ink);text-shadow:none}.intro h1,html[lang=en] .intro h1{font-size:44px}.eyebrow{margin-bottom:20px;font-size:10px}.lead{font-size:14px;max-width:300px}footer{padding:20px 6%;font-size:10px;gap:20px}.hint{max-width:160px}main{background:linear-gradient(110deg,rgba(244,240,230,.96),rgba(244,240,230,.70) 55%,transparent)}}
+
+.intro>*,footer>span,.wordmark{position:relative;background:transparent}
+.intro,footer,.wordmark{isolation:isolate}
+.intro> *::before,footer>span::before,.wordmark::before{content:"";position:absolute;inset:-36px;background:rgba(244,240,230,.88);filter:blur(12px);z-index:-1;pointer-events:none}
+.intro h1,.intro .lead,.intro .eyebrow{width:fit-content;max-width:100%}
+.hint{color:var(--ink);text-shadow:none}
+</style>
+</head>
+<body>
+<canvas id="pond" aria-label="触れると波紋が広がり、鯉が寄ってくる池"></canvas>
+<main>
+<header><a class="wordmark" href="https://github.com/kazuph/ikesu" aria-label="ikesu GitHub">ikesu<span>.</span></a><nav aria-label="Language"><button type="button" data-lang="ja" aria-pressed="true">日本語</button><button type="button" data-lang="en" aria-pressed="false">English</button></nav></header>
+<section class="intro">
+<p class="eyebrow">A QUIET HOME FOR YOUR AGENTS</p>
+<h1 data-ja="エージェントを<br>池で飼う。" data-en="Keep your agents.<br>In a pond.">エージェントを<br>池で飼う。</h1>
+<p class="lead" data-ja="いくつものターミナルに、ひとつの池を。<br>働く鯉、休む鯉、あなたを待つ鯉。<br>コードが育つ時間を、穏やかに見守る。" data-en="Many terminals. One quiet pond.<br>Some koi work. Some rest. Some wait for you.<br>A calmer way to be with your coding agents.">いくつものターミナルに、ひとつの池を。<br>働く鯉、休む鯉、あなたを待つ鯉。<br>コードが育つ時間を、穏やかに見守る。</p>
+<a class="link" href="https://github.com/kazuph/ikesu"><span data-ja="GitHub で見る" data-en="Explore on GitHub" style="color:inherit;margin:0">GitHub で見る</span><span aria-hidden="true">↗</span></a>
+</section>
+<footer><span>ikesu · terminal workspace</span><span class="hint" data-ja="池に触れてみてください。<br>鯉が、そっと寄ってきます。" data-en="Touch the water.<br>The koi will come closer.">池に触れてみてください。<br>鯉が、そっと寄ってきます。</span></footer>
+</main>
+<script>
+'use strict';
+const canvas=document.getElementById('pond');
+const atlas=new Image();atlas.src='data:image/png;base64,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';
+const rippleLifetime=0.8,gatherDuration=1.5,gatherSpeedLimit=4;
+const motion=matchMedia('(prefers-reduced-motion: reduce)');
+let width=0,height=0,raf=0,last=0,clock=0,target=null;
+const ripples=[];
+const fish=Array.from({length:5},(_,i)=>({x:[-3,1,3,-1,2][i],y:[-3,-1.5,0,1.8,3.5][i],angle:i*Math.PI*2/5,phase:i*1.7,variety:i}));
+const gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:true});
+let ctx=null,program=null,texture=null,locations={};
+const vertex=`#version 300 es
+precision highp float;
+out vec2 uv;
+void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));uv=p;gl_Position=vec4(p*2.0-1.0,0.,1.);}`;
+const fragment=`#version 300 es
+precision highp float;
+in vec2 uv;out vec4 color;
+uniform vec2 resolution;uniform vec2 spriteSize;uniform float time;uniform sampler2D koi;
+uniform vec4 swimmers[5];uniform vec3 rings[8];
+vec3 ro=vec3(0.,6.8,7.8);
+vec3 ray(vec2 frag){vec3 fw=normalize(vec3(0.,-.25,0.)-ro);vec3 rt=normalize(cross(fw,vec3(0.,1.,0.)));vec3 up=cross(rt,fw);vec2 p=(frag-.5)*vec2(resolution.x/resolution.y,1.);return normalize(fw*1.35+rt*p.x+up*p.y);}
+float waves(vec2 p){float v=sin(p.x*1.6+p.y*.9+time*.65)*.04+sin(p.x*2.2-p.y*1.4-time*.45)*.025;for(int i=0;i<8;i++){float age=time-rings[i].z;if(age>=0.&&age<${rippleLifetime}){float spread=age/${rippleLifetime}*3.;float d=length(p-rings[i].xy);v+=sin(d*11.-spread*8.)*exp(-pow(d-spread*1.3,2.)*3.)*.07*(1.-age/${rippleLifetime});}}return v;}
+vec3 normalAt(vec2 p){float e=.015;return normalize(vec3(waves(p-vec2(e,0.))-waves(p+vec2(e,0.)),2.*e,waves(p-vec2(0.,e))-waves(p+vec2(0.,e))));}
+float random(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float caustic(vec2 p){vec2 q=p*2.1;float v=sin(q.x+sin(q.y*.9+time*.3))*sin(q.y+sin(q.x*.8-time*.2));return pow(1.-abs(v),16.);}
+float roundedPool(vec2 p){vec2 q=abs(p)-vec2(4.6,3.5);return length(max(q,0.))+min(max(q.x,q.y),0.)-.65;}
+void main(){
+ vec3 rd=ray(uv);vec3 surface=ro+rd*(-ro.y/rd.y);vec2 p=surface.xz;
+ float edge=roundedPool(p);vec3 result;
+ if(edge>0.){
+  vec2 tile=floor(p*1.7);float seam=min(fract(p.x*1.7),fract(p.y*1.7));float stone=random(tile);
+  result=mix(vec3(.16,.20,.19),vec3(.24,.29,.26),stone);result*=.8+.2*smoothstep(0.,.035,seam);
+  result=mix(result,vec3(.10,.15,.13),exp(-edge*2.)*.5);
+ }else{
+  vec3 n=normalAt(p);vec3 refr=refract(rd,n,1./1.333);
+  vec2 bottom=p+refr.xz*(1.25/max(.1,-refr.y));
+  float grit=random(floor(bottom*85.));float c=caustic(bottom)+caustic(bottom*1.15+2.);
+  vec3 bed=mix(vec3(.045,.18,.14),vec3(.12,.30,.23),grit*.35);bed+=vec3(.12,.23,.12)*c;
+  float rim=1.-smoothstep(-.45,-.04,edge);bed*=.62+.38*rim;
+  vec3 reflected=reflect(rd,n);float sky=smoothstep(-.1,.9,reflected.y);
+  vec3 reflection=mix(vec3(.06,.17,.17),vec3(.45,.65,.69),sky);
+  reflection+=vec3(.8,.75,.48)*pow(max(0.,dot(reflected,normalize(vec3(-.5,.8,.25)))),160.);
+  float fresnel=.035+.30*pow(1.-max(0.,dot(n,-rd)),4.);
+  result=mix(bed,reflection,fresnel)+vec3(.08,.14,.10)*pow(max(0.,n.y-.94),2.);
+  for(int i=0;i<5;i++){
+   float depth=swimmers[i].w;vec2 hit=p+refr.xz*(depth/max(.1,-refr.y));
+   vec2 q=hit-swimmers[i].xy;float a=swimmers[i].z;float direction=cos(a)<0.?1.:0.;a-=direction*3.14159265;
+   q=mat2(cos(a),-sin(a),sin(a),cos(a))*q;
+   vec2 st=q/spriteSize+.5;
+   if(all(greaterThanEqual(st,vec2(0.)))&&all(lessThan(st,vec2(1.)))){
+    int wag=int(mod((time*6.+float(i)*1.7),6.2831853)/6.2831853*8.);
+    ivec2 cell=ivec2(floor(st*vec2(40.,16.)));
+    vec4 pixel=texelFetch(koi,ivec2(wag*40+cell.x,(i*2+int(direction))*16+cell.y),0);
+    // Opaque palette texels retain their exact colors: no bilinear filtering,
+    // translucent fin blending or lighting-generated intermediate shades.
+    if(pixel.a>.5)result=pixel.rgb;
+   }
+  }
+ }
+ float vignette=smoothstep(1.1,.25,length(uv-.5));
+ color=vec4(result,1.);
+}`;
+function makeShader(type,source){const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(shader));return shader;}
+if(gl){
+ program=gl.createProgram();gl.attachShader(program,makeShader(gl.VERTEX_SHADER,vertex));gl.attachShader(program,makeShader(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
+ for(const name of ['resolution','spriteSize','time','koi','swimmers[0]','rings[0]'])locations[name]=gl.getUniformLocation(program,name);
+ texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+}else{ctx=canvas.getContext('2d');}
+function screenToPond(x,y){if(!gl)return{x:(x/width-.5)*10,y:(y/height-.5)*8};const aspect=width/height;const fw=[0,-7.05,-7.8];const norm=Math.hypot(...fw);fw.forEach((_,i)=>fw[i]/=norm);const up=[0,-fw[2],fw[1]];const sx=(x/width-.5)*aspect,sy=.5-y/height;const rd=[sx,fw[1]*1.35+up[1]*sy,fw[2]*1.35+up[2]*sy];const t=-6.8/rd[1];return{x:rd[0]*t,y:7.8+rd[2]*t};}
+let protectedText=[];
+function resize(){width=innerWidth;height=Math.max(innerHeight,Math.ceil(document.querySelector('main').getBoundingClientRect().height));canvas.style.height=height+'px';const dpr=devicePixelRatio||1;canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);if(gl)gl.viewport(0,0,canvas.width,canvas.height);else ctx.setTransform(dpr,0,0,dpr,0,0);
+ protectedText=[];for(const el of document.querySelectorAll('.wordmark,nav button,.eyebrow,h1,.lead,.link,footer>span')){const range=document.createRange();range.selectNodeContents(el);for(const r of range.getClientRects())protectedText.push({x:r.x,y:r.y+scrollY,w:r.width,h:r.height})}
+ settleFish();paint();}
+
+function koiDot(){return width<640?.02:.04}
+function pondToScreen(x,y,depth){
+ if(!gl)return{x:(x/10+.5)*width,y:(y/8+.5)*height};
+ const norm=Math.hypot(7.05,7.8),fy=-7.05/norm,fz=-7.8/norm,dy=-depth/1.333-6.8,dz=y-7.8;
+ const forward=dy*fy+dz*fz,up=dy*(-fz)+dz*fy;
+ return{x:width/2+x*1.35/forward*height,y:height/2-up*1.35/forward*height};
+}
+function fishScreenBounds(f,index){
+ if(!gl){const scale=width<640?2:4;const x=Math.round((f.x/10+.5)*width/scale)*scale,y=Math.round((f.y/8+.5)*height/scale)*scale;return{x:x-20*scale,y:y-8*scale,w:40*scale,h:16*scale}}
+ const depth=.45+index*.04;
+ // Enclose every sprite heading, source-dot rounding and the apparent-depth shift.
+ const radius=Math.hypot(40,16)*koiDot()/2+2*koiDot()+depth*(1-1/1.333);
+ const corners=[];for(const dx of [-radius,radius])for(const dy of [-radius,radius])corners.push(pondToScreen(f.x+dx,f.y+dy,depth));
+ const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y),x=Math.min(...xs),y=Math.min(...ys);return{x,y,w:Math.max(...xs)-x,h:Math.max(...ys)-y};
+}
+function insidePond(f){if(!gl)return true;const x=Math.abs(f.x)-4.6,y=Math.abs(f.y)-3.5;const edge=Math.hypot(Math.max(x,0),Math.max(y,0))+Math.min(Math.max(x,y),0)-.65;return edge+Math.hypot(40,16)*koiDot()/2+2*koiDot()<=0}
+function avoidsText(f,index){const box=fishScreenBounds(f,index);return protectedText.every(r=>box.x+box.w<=r.x||r.x+r.w<=box.x||box.y+box.h<=r.y||r.y+r.h<=box.y)}
+function separated(f,index){const scale=width<640?2:4;const distance=Math.max(Math.hypot(1.6,.64),gl?0:Math.hypot(40*scale*10/width,16*scale*8/height))+2*.04;return fish.every((other,i)=>i===index||Math.hypot(f.x-other.x,f.y-other.y)>=distance)}
+function settleFish(){
+ fish.forEach((f,index)=>{if(insidePond(f)&&avoidsText(f,index)&&separated(f,index))return;
+  const candidates=[],grid=fish.length*2;for(let row=0;row<grid;row++)for(let col=0;col<grid;col++){const p=screenToPond((col+.5)/grid*width,(row+.5)/grid*height);candidates.push({...f,...p});candidates.push({...f,x:((col+.5)/grid*2-1)*4.6,y:((row+.5)/grid*2-1)*3.5})}
+  candidates.sort((a,b)=>Math.hypot(a.x-f.x,a.y-f.y)-Math.hypot(b.x-f.x,b.y-f.y));
+  const next=candidates.find(p=>insidePond(p)&&avoidsText(p,index)&&separated(p,index));if(next){f.x=next.x;f.y=next.y}
+ });
+}
+
+function paint(){
+ if(!atlas.complete||!atlas.naturalWidth)return;
+ if(gl){
+  gl.uniform2f(locations.resolution,canvas.width,canvas.height);gl.uniform2f(locations.spriteSize,40*koiDot(),16*koiDot());gl.uniform1f(locations.time,clock);gl.uniform1i(locations.koi,0);
+  const states=[];fish.forEach((f,i)=>states.push(Math.round(f.x/koiDot())*koiDot(),Math.round(f.y/koiDot())*koiDot(),Math.round(f.angle/(Math.PI/4))*(Math.PI/4),.45+i*.04));gl.uniform4fv(locations['swimmers[0]'],states);
+  const rings=[];for(let i=0;i<8;i++){const r=ripples[ripples.length-1-i];rings.push(r?r.x:0,r?r.y:0,r?r.start:-100)}gl.uniform3fv(locations['rings[0]'],rings);gl.drawArrays(gl.TRIANGLES,0,3);
+ }else{
+  ctx.fillStyle='#173f37';ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
+  for(const f of fish){const scale=width<640?2:4;const x=Math.round((f.x/10+.5)*width/scale)*scale,y=Math.round((f.y/8+.5)*height/scale)*scale;const d=Math.cos(f.angle)<0?1:0,wag=Math.floor((clock*6+f.phase)%(Math.PI*2)/(Math.PI*2)*8);ctx.drawImage(atlas,wag*40,(f.variety*2+d)*16,40,16,x-20*scale,y-8*scale,40*scale,16*scale);}
+  for(const r of ripples){const age=clock-r.start;ctx.strokeStyle='#89b8a2';ctx.beginPath();ctx.ellipse((r.x/10+.5)*width,(r.y/8+.5)*height,12+age/rippleLifetime*3*65,6+age/rippleLifetime*3*36,0,0,Math.PI*2);ctx.stroke();}
+ }
+}
+function frame(stamp){raf=0;if(document.hidden||motion.matches)return;const dt=last?Math.min((stamp-last)/1000,.1):0;last=stamp;clock+=dt;
+ // The collision radius encloses the complete 1.6 × .64 sprite at every angle.
+ for(const [index,f] of fish.entries()){let tx,ty;if(target){tx=target.x+Math.cos(f.phase)*.6;ty=target.y+Math.sin(f.phase)*.6}else{tx=4*Math.sin(clock*.12+f.phase);ty=3.5*Math.sin(clock*.09+f.phase*2)}const dx=tx-f.x,dy=ty-f.y;const desired=Math.atan2(dy,dx);const turn=Math.atan2(Math.sin(desired-f.angle),Math.cos(desired-f.angle));f.angle=target?desired:f.angle+turn*Math.min(1,dt*1.5);const distance=Math.hypot(dx,dy),factor=1-f.variety/(fish.length*2),normal=.6*factor,acceleration=normal*gatherSpeedLimit/gatherDuration;let desiredSpeed=Math.min(normal,distance*.35*factor);if(target){const remaining=Math.max(dt,gatherDuration-(clock-target.start));desiredSpeed=Math.min(normal*gatherSpeedLimit,distance/remaining,Math.sqrt(2*acceleration*distance))}if(f.speed===undefined)f.speed=normal;f.speed=Math.max(f.speed-acceleration*dt,Math.min(desiredSpeed,f.speed+acceleration*dt));const speed=Math.min(f.speed,dt?distance/dt:0);for(const offset of [0,Math.PI/2,-Math.PI/2,Math.PI]){const angle=f.angle+offset,x=f.x+Math.cos(angle)*speed*dt,y=f.y+Math.sin(angle)*speed*dt;if(insidePond({...f,x,y})&&separated({...f,x,y},index)&&avoidsText({...f,x,y},index)){f.x=x;f.y=y;f.angle=angle;break;}}}
+
+ while(ripples.length&&clock-ripples[0].start>rippleLifetime)ripples.shift();paint();raf=requestAnimationFrame(frame);}
+function syncMotion(){cancelAnimationFrame(raf);raf=0;last=0;paint();if(!document.hidden&&!motion.matches)raf=requestAnimationFrame(frame);}
+canvas.addEventListener('pointerdown',event=>{target=screenToPond(event.clientX,event.clientY+scrollY);target.x=Math.max(-4,Math.min(4,target.x));target.y=Math.max(-3,Math.min(3,target.y));target.start=clock;ripples.push({...target,start:clock});paint();});
+new ResizeObserver(resize).observe(document.querySelector('main'));addEventListener('resize',resize);document.addEventListener('visibilitychange',syncMotion);motion.addEventListener('change',syncMotion);atlas.addEventListener('load',()=>{if(gl){gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,atlas);}resize();syncMotion();});
+document.querySelectorAll('[data-lang]').forEach(button=>button.addEventListener('click',()=>{const lang=button.dataset.lang;document.documentElement.lang=lang;document.querySelectorAll('[data-ja]').forEach(element=>element.innerHTML=element.dataset[lang]);document.querySelectorAll('[data-lang]').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));canvas.setAttribute('aria-label',lang==='ja'?'触れると波紋が広がる3Dの池とピクセルアートの鯉':'A 3D pond with pixel-art koi and touch ripples');document.title=lang==='ja'?'ikesu — エージェントを池で飼う':'ikesu — A quiet home for your agents';resize();}));
+resize();
+</script>
+</body></html>

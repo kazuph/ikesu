@@ -13,6 +13,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/latency"
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/platform"
@@ -69,6 +70,14 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	koiNext           time.Time
+	koiClock          render.KoiAnimation
+	koiVisible        bool
+	koiKitty          bool
+	koiRetained       bool
+	koiInput          render.Input
+	koiScene          render.KoiScene
+
 	workspaceKeyReleases map[rune]bool
 
 	clientVersion     string
@@ -147,6 +156,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
 	defer m.trace.Close()
+	m.koiKitty = kitty.SupportsImages(in, out)
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
@@ -228,7 +238,14 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 				return result
 			}
 		case <-alarm:
-			m.advance(time.Now())
+			now := time.Now()
+			if m.koiVisible && !m.paintQueued && !m.koiNext.IsZero() && !now.Before(m.koiNext) && m.nextDeadline().Equal(m.koiNext) {
+				if err := m.paintKoi(now); err != nil {
+					return pumpDone
+				}
+				continue
+			}
+			m.advance(now)
 			if err := m.paint(); err != nil {
 				return pumpDone
 			}
@@ -259,6 +276,9 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	include(m.noticeUntil)
+	if !m.paintQueued {
+		include(m.koiNext)
+	}
 	if m.paintQueued {
 		include(m.outputFence.Deadline())
 	}

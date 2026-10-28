@@ -2,6 +2,10 @@
 
 English | [日本語](README.ja.md)
 
+**Keep your agents in a pond.**
+
+![Pixel-art koi swimming in the ikesu sidebar](docs/brand/koi.gif)
+
 A terminal multiplexer for watching many AI coding agents side by side. ikesu shows the workspaces, tabs and panes of your local machine and of SSH machines in one screen, and lets agents exchange messages and run long jobs without blocking.
 
 - One sidebar for the spaces of the local machine and SSH machines; move between them with the mouse or keys
@@ -9,6 +13,7 @@ A terminal multiplexer for watching many AI coding agents side by side. ikesu sh
 - Durable messages with `ikesu send` / `ikesu inbox`, background jobs with completion notices via `ikesu run`
 - Running panes keep going when the server is handed off to a new version (live handoff)
 - On macOS, a native panel for answering agents' decisions
+- Pixel-art koi swim in the sidebar, one for each agent, and show what the agents are doing
 
 The specification is in [SPEC.md](SPEC.md) (Japanese).
 
@@ -63,6 +68,28 @@ ikesu mac-dialog status
 ```
 
 Lets you answer agents' confirmations and questions in a native window. The panel never takes the keyboard. While you are looking at the space of the pane that asked, the window is placed behind other windows.
+
+## Koi pond
+
+When there is room below the agent list in the right sidebar, koi swim there over the sidebar's own background. Each koi stands for an agent:
+
+- Working agents swim freely across the pond; koi have depth, so they may pass over one another
+- Idle agents sink deeper and rest
+- Agents waiting for you come up to the surface and open their mouths
+- Agents that just finished glow gold for 15 seconds
+
+Click an empty part of the pond to send out a ripple; the koi turn and gather at that spot. A small koi also swims beside each space that has a working agent. When there are many agents, fewer koi are shown so the pond never gets crowded, and an agent waiting for you always keeps a koi.
+
+On terminals that support the kitty graphics protocol (Ghostty, kitty, WezTerm), each koi image is sent once and only its position is updated afterwards, including over SSH. Other terminals show the same koi with Unicode 16 octant characters, which need a font that includes them.
+
+Turn the koi on or off from `koi: on` / `koi: off` in the sidebar `[menu]`, or in the configuration file:
+
+```toml
+[ui]
+koi = false
+```
+
+The koi stop redrawing when the sidebar is hidden or no koi are shown. The brand site source is [site/index.html](site/index.html).
 
 ## Configuration
 
