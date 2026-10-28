@@ -30,7 +30,9 @@ func koiRev3Client(t *testing.T) (*machineClient, *os.File) {
 		t.Fatal(err)
 	}
 	// Entry begins outside; the next tick delivers its first visible crop.
-	if err := m.paintKoi(time.Now().Add(render.KoiInterval)); err != nil {
+	timer := time.NewTimer(render.KoiInterval)
+	<-timer.C
+	if err := m.paintKoi(time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	return m, file

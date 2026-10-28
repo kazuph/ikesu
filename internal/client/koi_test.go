@@ -95,7 +95,9 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	}
 	// The first frame starts outside the pond; advance until its first crop
 	// uploads a real image, then exercise the unchanged completion fence.
-	if err := m.paintKoi(time.Now().Add(render.KoiInterval)); err != nil {
+	timer := time.NewTimer(render.KoiInterval)
+	<-timer.C
+	if err := m.paintKoi(time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	beforeWait, err := file.Stat()
@@ -121,7 +123,9 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	regions := m.regions
 	scene := m.koiScene
 	before := snapshot
-	if err := m.paintKoi(time.Now().Add(render.KoiInterval)); err != nil {
+	timer := time.NewTimer(render.KoiInterval)
+	<-timer.C
+	if err := m.paintKoi(time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if m.regions != regions {
