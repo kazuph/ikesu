@@ -69,7 +69,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				continue
 			}
 			cfg.Env = expand.ListEnviron(environment(values)...)
-			value, e := shellLiteral(cfg, assignment.Value)
+			value, e := i.runtimeLiteral(cfg, assignment.Value)
 			if e != nil {
 				next.Unresolved = true
 				delete(next.Env, assignment.Name.Value)
@@ -90,8 +90,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		cfg.Env = expand.ListEnviron(environment(i.shellExpansionValues())...)
 		var argv []string
 		unknownCommand := false
+		unknownWords := map[string]bool{}
 		for n, word := range call.Args {
-			value, e := shellLiteral(cfg, word)
+			value, e := i.runtimeLiteral(cfg, word)
 			if scriptWordUnknown(i, word) {
 				e = unresolvedScriptError{"スクリプト内で変わる変数です"}
 			}
@@ -100,6 +101,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				var printed bytes.Buffer
 				_ = syntax.NewPrinter().Print(&printed, word)
 				value = printed.String()
+				unknownWords[value] = true
 				if n == 0 {
 					unknownCommand = true
 				}
@@ -113,7 +115,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			argv = append(argv, value)
 		}
 		next.Command, next.Args = argv[0], argv[1:]
-		if unknownCommand && !i.runtimeLine {
+		if unknownCommand {
 			if i.scriptBody {
 				setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
 			} else {
@@ -126,6 +128,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			next.AuthorizationEnv[key] = value
 		}
 		unwrapped, e := unwrapCommand(next)
+		if i.runtimeLine && unknownWords[unwrapped.Command] {
+			setError(fmt.Errorf("実行するコマンド名を安全に確定できません"))
+		}
 		if next.probePrivate {
 			unwrapped.Env = EnvMap(environment(next.Env))
 		}

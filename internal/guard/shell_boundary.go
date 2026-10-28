@@ -174,14 +174,11 @@ func treeBoundary(i Input, tree *syntax.File) error {
 		case *syntax.Redirect:
 			switch n.Op {
 			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.RdrAll, syntax.AppAll, syntax.ClbOut, syntax.DplOut:
-				path, e := shellLiteral(cfg, n.Word)
+				path, e := i.runtimeLiteral(cfg, n.Word)
 				if scriptWordUnknown(i, n.Word) {
 					e = unresolvedScriptError{"スクリプト内で変わる変数です"}
 				}
 				if e != nil {
-					if i.runtimeLine {
-						return true
-					}
 					if i.scriptBody {
 						failure = unresolvedScriptError{"書き込み先のパスを安全に確定できません"}
 					} else {
@@ -263,6 +260,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			}
 			child := i
 			child.shellVariables = nil
+			child.shellArrays = nil
 			child.runtimeLine = false
 			nested, e := lineCommands(child, i.Args[n+1])
 			*commands = append(*commands, nested...)
@@ -294,6 +292,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			}
 			child := i
 			child.shellVariables = nil
+			child.shellArrays = nil
 			child.runtimeLine = false
 			child.probePrivate = child.probePrivate || i.privateExpansion(word, script)
 			nested, e := lineCommands(child, script)

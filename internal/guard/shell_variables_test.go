@@ -21,7 +21,7 @@ func TestShellVariableSnapshot(t *testing.T) {
 		{"newline", `declare -- OUT=$'a\nb'`, map[string]string{"OUT": "a\nb"}},
 		{"quoted", `declare -rx OUT="a\"b\$c"`, map[string]string{"OUT": "a\"b$c"}},
 		{"unset-with-good", "declare -- OUT\ndeclare -- GOOD=\"okay\"", map[string]string{"GOOD": "okay"}},
-		{"array", `declare -a OUT=([0]="safe")`, map[string]string{}},
+		{"array", `declare -a OUT=([0]="safe")`, map[string]string{"OUT": "safe"}},
 		{"associative", `declare -A OUT=([key]="safe")`, map[string]string{}},
 		{"duplicate", "declare -- OUT=\"safe\"\ndeclare -- OUT=\"safe\"", map[string]string{}},
 		{"broken", `declare -- OUT="safe`, map[string]string{}},
@@ -145,6 +145,22 @@ func TestSnapshotProbeUsesOnlyExportedEnvironmentAndNoPrivateArguments(t *testin
 	after, _ := os.ReadFile(trace)
 	if !bytes.Equal(before, after) {
 		t.Fatal("snapshot-dependent probe launched a child")
+	}
+	arrayInput := WithShellVariables(Input{Cwd: root, Env: i.Env}, strings.NewReader(`declare -a R=([0]="private-array-remote-sentinel")`))
+	arrayCommand, _, arrayErr := lineVerdict(Config{}, arrayInput, `git push "${R[0]}" topic`)
+	if arrayErr != nil || !arrayCommand.probePrivate {
+		t.Fatalf("private array probe not protected: %+v %v", arrayCommand, arrayErr)
+	}
+	arrayBefore, _ := os.ReadFile(trace)
+	if output := probe(arrayCommand, "git", "remote", "get-url", arrayCommand.Args[0]); output != "" {
+		t.Fatal("array argument launched a probe")
+	}
+	arrayAfter, _ := os.ReadFile(trace)
+	if !bytes.Equal(arrayBefore, arrayAfter) || strings.Contains(string(arrayAfter), "private-array-remote-sentinel") {
+		t.Fatal("array value reached child probe")
+	}
+	if text := arrayInput.shellDiagnostic("error private-array-remote-sentinel", `git push "${R[0]}" topic`); strings.Contains(text, "private-array-remote-sentinel") {
+		t.Fatal("array value leaked in diagnostic")
 	}
 	parsed, _, err = lineVerdict(Config{}, i, `git push origin topic`)
 	if err != nil {

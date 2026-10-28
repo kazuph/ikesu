@@ -14,6 +14,7 @@ import (
 func WithShellVariables(i Input, r io.Reader) Input {
 	i.runtimeLine = true
 	i.shellVariables = map[string]string{}
+	i.shellArrays = map[string]map[int]string{}
 	tree, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(r, "shell variables")
 	if err != nil {
 		return i
@@ -23,21 +24,33 @@ func WithShellVariables(i Input, r io.Reader) Input {
 		decl, ok := stmt.Cmd.(*syntax.DeclClause)
 		if !ok || decl.Variant.Value != "declare" || len(decl.Args) != 2 || stmt.Negated || stmt.Background || stmt.Coprocess || len(stmt.Redirs) != 0 {
 			i.shellVariables = map[string]string{}
+			i.shellArrays = map[string]map[int]string{}
 			return i
 		}
 		flags, assignment := decl.Args[0], decl.Args[1]
 		if flags.Value == nil || flags.Name != nil || assignment.Name == nil {
 			i.shellVariables = map[string]string{}
+			i.shellArrays = map[string]map[int]string{}
 			return i
 		}
 		name := assignment.Name.Value
 		duplicate := seen[name]
 		seen[name] = true
 		delete(i.shellVariables, name)
+		delete(i.shellArrays, name)
 		if duplicate || snapshotReservedName(name) {
 			continue
 		}
 		flag := flags.Value.Lit()
+		if strings.Contains(flag, "a") && strings.Trim(strings.TrimPrefix(flag, "-"), "arx") == "" && !assignment.Append && !assignment.Naked {
+			if values, ok := snapshotArray(assignment); ok {
+				i.shellArrays[name] = values
+				if value, exists := values[0]; exists {
+					i.shellVariables[name] = value
+				}
+			}
+			continue
+		}
 		supported := flag == "--" || strings.HasPrefix(flag, "-") && strings.Trim(flag[1:], "rxi") == ""
 		if !supported || assignment.Array != nil || assignment.Index != nil || assignment.Append || assignment.Naked || assignment.Value == nil {
 			continue
@@ -97,21 +110,22 @@ func (i Input) privateExpansion(word *syntax.Word, value string) bool {
 
 // Only diagnostics contain analyzer-expanded bytes. Command displays keep RawLine.
 func (i Input) shellDiagnostic(text, line string) string {
+	values := i.privateShellValues()
 	var names []string
-	for name, value := range i.shellVariables {
-		if value != "" && (strings.Contains(line, "$"+name) || strings.Contains(line, "${"+name)) {
+	for name, value := range i.privateShellValues() {
+		if value != "" && (strings.Contains(line, "$"+strings.Split(name, "[")[0]) || strings.Contains(line, "${"+strings.Split(name, "[")[0])) {
 			names = append(names, name)
 		}
 	}
 	sort.Slice(names, func(a, b int) bool {
-		if len(i.shellVariables[names[a]]) != len(i.shellVariables[names[b]]) {
-			return len(i.shellVariables[names[a]]) > len(i.shellVariables[names[b]])
+		if len(values[names[a]]) != len(values[names[b]]) {
+			return len(values[names[a]]) > len(values[names[b]])
 		}
 		return names[a] < names[b]
 	})
 	var pairs []string
 	for _, name := range names {
-		pairs = append(pairs, i.shellVariables[name], "$"+name)
+		pairs = append(pairs, values[name], "$"+name)
 	}
 	return strings.NewReplacer(pairs...).Replace(text)
 }

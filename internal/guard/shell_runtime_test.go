@@ -75,6 +75,10 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"source-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; source "$IKESU_RUNTIME_SOURCE"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"substitution-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(printf before > "$IKESU_RUNTIME_ROOT/before"; rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 
+				{"dynamic-command-substitution", "", `$(printf /bin/rm) "$IKESU_RUNTIME_ROOT/victim"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"array-command-rm", "", `C=(/bin/rm); "${C[0]}" "$IKESU_RUNTIME_ROOT/home/../victim"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"array-command-echo", "", `C=(/bin/echo); "${C[0]}" ok; printf 'safe ran\n' > "$IKESU_RUNTIME_ROOT/result"`, true},
+				{"dynamic-write-marker", "", `: > "$(printf %s "$IKESU_GUARD_MARKER")"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"rhs-arithmetic-env", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="$((BASH_ENV=0))"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"rhs-declare-internal", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; declare X="${_ikesu_guard_debug_busy:=1}"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"rhs-parameter-internal", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="${_ikesu_guard_debug_busy=1}"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
@@ -131,6 +135,10 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 					}
 					defer a.Close()
 					if err := a.Sync("codex"); err != nil {
+						t.Fatal(err)
+					}
+					markerBefore, err := os.ReadFile(a.MarkerPath)
+					if err != nil {
 						t.Fatal(err)
 					}
 					script := filepath.Join(root, "script.sh")
@@ -197,6 +205,10 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 						if data, err := os.ReadFile(filepath.Join(root, "before")); err != nil || string(data) != "before" {
 							t.Fatal("shell container stopped before inner commands", err)
 						}
+					}
+					markerAfter, markerErr := os.ReadFile(a.MarkerPath)
+					if markerErr != nil || !bytes.Equal(markerBefore, markerAfter) {
+						t.Fatalf("guard marker changed: %v", markerErr)
 					}
 					victim, err := os.ReadFile(filepath.Join(root, "victim"))
 					if err != nil || string(victim) != "unchanged" {

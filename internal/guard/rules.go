@@ -46,6 +46,7 @@ func (c Config) Commands() []string {
 type Input struct {
 	runtimeLine          bool
 	shellVariables       map[string]string
+	shellArrays          map[string]map[int]string
 	probePrivate         bool
 	OpaquePrefix         bool `json:"-"`
 	scriptVariables      map[string]bool
