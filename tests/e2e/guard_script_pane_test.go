@@ -25,12 +25,13 @@ func TestScriptFileInsideRealPane(t *testing.T) {
 				target := root + "/home/../victim"
 				os.WriteFile(target, []byte("disposable"), 0600)
 				script := filepath.Join(root, "program.sh")
+				reason := "AI_GUARD_REQUEST_REASON=" + quote("対象プロジェクト: ikesu隔離試験。必要な理由: 実ペインで方式Cを確認。実施内容: 使い捨てスクリプトの実行。") + " "
 				body := "printf before > " + quote(before) + "\n"
 				switch scenario {
 				case "danger":
-					body += "/bin/rm " + quote(target) + "\n"
+					body += reason + "/bin/rm " + quote(target) + "\n"
 				case "unresolved":
-					body += "TARGET=" + quote(target) + "\n/bin/rm \"$TARGET\"\n"
+					body += "TARGET=" + quote(target) + "\n" + reason + "/bin/rm \"$TARGET\"\n"
 				case "block":
 					body += "git reset --hard\n"
 				}
@@ -38,7 +39,7 @@ func TestScriptFileInsideRealPane(t *testing.T) {
 				if e := os.WriteFile(script, []byte(body), 0600); e != nil {
 					t.Fatal(e)
 				}
-				line := "/bin/bash " + quote(script)
+				line := reason + "/bin/bash " + quote(script)
 				runner := "/bin/bash"
 				if agent == "claude" {
 					runner = "/bin/sh"

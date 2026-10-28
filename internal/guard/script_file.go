@@ -182,6 +182,9 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 		case *syntax.CallExpr:
 			if len(n.Args) > 0 {
 				if cmd, ok := claudeLiteral(n.Args[0]); ok && (cmd == "read" || cmd == "unset") {
+					if cmd == "read" {
+						invalidate("REPLY")
+					}
 					for _, w := range n.Args[1:] {
 						if v, ok := claudeLiteral(w); ok {
 							invalidate(v)
@@ -194,7 +197,7 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 	})
 	// Positional and special parameters belong to this script, never the parent.
 	for key := range i.Env {
-		if strings.ContainsAny(key, "0123456789@*#?!-$") {
+		if scriptSpecialParameter(key) {
 			delete(i.Env, key)
 		}
 	}
@@ -349,11 +352,19 @@ func scriptWordUnknown(i Input, word *syntax.Word) bool {
 	syntax.Walk(word, func(node syntax.Node) bool {
 		if p, ok := node.(*syntax.ParamExp); ok && p.Param != nil {
 			name := p.Param.Value
-			if i.scriptVariables[name] || name != "" && strings.ContainsAny(name, "0123456789@*#?!-$") {
+			if i.scriptVariables[name] || scriptSpecialParameter(name) {
 				unknown = true
 			}
 		}
 		return true
 	})
 	return unknown
+}
+
+func scriptSpecialParameter(name string) bool {
+	if has([]string{"@", "*", "#", "?", "!", "-", "$"}, name) {
+		return true
+	}
+	_, err := strconv.ParseUint(name, 10, 64)
+	return err == nil
 }

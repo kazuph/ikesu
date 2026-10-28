@@ -279,3 +279,52 @@ func TestScriptFileWrappedUnknownCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestScriptFileWholeSyntaxAndRedaction(t *testing.T) {
+	i, _ := scriptPane(t)
+	path := filepath.Join(i.Cwd, "whole.sh")
+	body := "if true; then\ncat <<'TEXT'\ngit reset --hard\nTEXT\nprintf \\\n '%s' okay\nfi\nf() { printf okay; }\nf\n"
+	if e := os.WriteFile(path, []byte(body), 0600); e != nil {
+		t.Fatal(e)
+	}
+	_, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+	if v.Decision != "allow" {
+		t.Fatalf("whole syntax: %+v", v)
+	}
+	fakeSecret := "ghp_script_fixture_secret_not_a_credential"
+	body = "printf before\nTOKEN=" + fakeSecret + " rm /outside/victim\n"
+	if e := os.WriteFile(path, []byte(body), 0600); e != nil {
+		t.Fatal(e)
+	}
+	var out bytes.Buffer
+	if AuthorizeLine(Config{}, i.Cwd, i, "bash "+quote(path), &out, nil) {
+		t.Fatal("dangerous script authorized")
+	}
+	if strings.Contains(out.String(), fakeSecret) || !strings.Contains(out.String(), "の2行目:") {
+		t.Fatalf("source redaction failed: %s", &out)
+	}
+	log, e := os.ReadFile(filepath.Join(i.Cwd, "guard", "decisions.jsonl"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(string(log), fakeSecret) {
+		t.Fatal("secret leaked into decision record")
+	}
+}
+
+func TestScriptFileReadDefaultAndInheritedNames(t *testing.T) {
+	i, _ := scriptPane(t)
+	i.Env["REPLY"] = "/tmp/parent-value"
+	i.Env["FIXTURE2"] = "/tmp/inherited-safe-value"
+	path := filepath.Join(i.Cwd, "read.sh")
+	os.WriteFile(path, []byte("read -r\nrm \"$REPLY\"\n"), 0600)
+	_, v, _ := lineVerdict(Config{}, i, "sh "+quote(path))
+	if v.Decision != "ask" {
+		t.Fatalf("read changed REPLY but used parent value: %+v", v)
+	}
+	os.WriteFile(path, []byte("printf '%s' \"$FIXTURE2\"\n"), 0600)
+	_, v, _ = lineVerdict(Config{}, i, "sh "+quote(path))
+	if v.Decision != "allow" {
+		t.Fatalf("ordinary inherited name treated as positional: %+v", v)
+	}
+}
