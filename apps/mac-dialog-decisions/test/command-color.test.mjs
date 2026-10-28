@@ -31,7 +31,8 @@ for name in [NSAppearance.Name.aqua, .darkAqua] {
   precondition((attrs[.foregroundColor] as? NSColor == NSColor.systemRed)==inside,"red mismatch at \\(n)")
   if inside {precondition((attrs[.font] as! NSFont).isFixedPitch)}
  }
- precondition(f.attributedStringValue.attribute(.link,at:(text as NSString).range(of:"https://example.com/a").location,effectiveRange:nil) != nil)
+ precondition(f.attributedStringValue.attribute(.link,at:(text as NSString).range(of:"https://example.com/a").location,effectiveRange:nil) == nil)
+ precondition(f.attributedStringValue.attribute(.link,at:(text as NSString).range(of:"https://example.com/reason").location,effectiveRange:nil) != nil)
  let normal=richLabel(text,size:15)
  precondition(normal.stringValue==text)
  let view=NSView(frame:NSRect(x:0,y:0,width:720,height:260));view.appearance=app.appearance
@@ -45,7 +46,7 @@ for name in [NSAppearance.Name.aqua, .darkAqua] {
 }
 precondition(commandBodyRanges("理由だけ").isEmpty)
 precondition(commandBodyRanges("コマンド: ").isEmpty)
-print("PASS exact_ranges=2 text_utf16=\\((text as NSString).length) appearances=2 selectable=1 links=1")
+print("PASS exact_ranges=2 text_utf16=\\((text as NSString).length) appearances=2 selectable=1 proseLinks=1 commandLinks=0")
 `;
   fs.writeFileSync(path.join(root,'main.swift'),program);
   const compile=spawnSync('swiftc',[path.join(root,'main.swift'),'-o',path.join(root,'check')],{encoding:'utf8'});

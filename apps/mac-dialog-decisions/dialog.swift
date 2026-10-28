@@ -474,12 +474,21 @@ final class DialogController: NSObject, NSWindowDelegate {
     full(titleLabel)
 
     if let body = spec.body, !body.isEmpty {
+      let ranges = spec.kind == "command_guard" ? commandBodyRanges(body) : []
+      func bodyLabel(_ text: String, offset: Int, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> NSTextField {
+        let slice = NSRange(location: offset, length: (text as NSString).length)
+        let local = ranges.compactMap { range -> NSRange? in
+          let part = NSIntersectionRange(slice, range)
+          return part.length > 0 ? NSRange(location: part.location - offset, length: part.length) : nil
+        }
+        return richLabel(text, size: Look.base, weight: weight, color: color, commandRanges: local)
+      }
       if spec.kind == "command_guard", (body.hasPrefix("ブロック理由：") || body.hasPrefix("承認が必要な理由:")),
         let boundary = body.range(of: "\n\n") {
-        full(richLabel(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent, commandBody: true))
-        full(richLabel(String(body[boundary.upperBound...]), size: Look.base, commandBody: true))
+        full(bodyLabel(String(body[..<boundary.lowerBound]), offset: 0, weight: .semibold, color: Look.accent))
+        full(bodyLabel(String(body[boundary.upperBound...]), offset: (String(body[..<boundary.upperBound]) as NSString).length))
       } else {
-        full(richLabel(body, size: Look.base, commandBody: spec.kind == "command_guard"))
+        full(bodyLabel(body, offset: 0))
       }
     }
 
@@ -745,7 +754,7 @@ func richLinkRanges(_ text: String) -> [NSTextCheckingResult] {
 func commandBodyRanges(_ text: String) -> [NSRange] {
   let source = text as NSString
   let headings = ["対象コマンド：", "コマンド: "]
-  let boundaries = ["ブロック理由：", "承認が必要な理由:", "対象コマンド：", "コマンド: ", "申請文", "理由:", "場所:"]
+  let boundaries = ["ブロック理由：", "承認が必要な理由:", "対象コマンド：", "コマンド: ", "申請文", "理由:", "場所:", "対象プロジェクト:", "必要な理由:", "実施内容:", "確認済み:", "戻し方:"]
   var ranges: [NSRange] = []
   var start: Int? = nil
   var offset = 0
@@ -766,14 +775,17 @@ func commandBodyRanges(_ text: String) -> [NSRange] {
   }
   return ranges
 }
-func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true, commandBody: Bool = false) -> NSTextField {
+func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true, commandBody: Bool = false, commandRanges: [NSRange]? = nil) -> NSTextField {
   let field = label(text, size: size, weight: weight, color: color, selectable: selectable)
   let links = richLinkRanges(text)
-  if !links.isEmpty || commandBody {
+  if !links.isEmpty || commandBody || commandRanges?.isEmpty == false {
     let attributed = NSMutableAttributedString(string: text, attributes: [.font: field.font!, .foregroundColor: color])
     for match in links { attributed.addAttributes([.link: match.url!.absoluteString, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: match.range) }
-    if commandBody {
-      for range in commandBodyRanges(text) {
+    if commandBody || commandRanges != nil {
+      for range in commandRanges ?? commandBodyRanges(text) {
+        // AppKit forces NSLink runs blue even with a foreground color. Commands
+        // remain selectable text; prose links keep their existing behavior.
+        attributed.removeAttribute(.link, range: range)
         attributed.addAttributes([.font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular), .foregroundColor: NSColor.systemRed], range: range)
       }
     }
