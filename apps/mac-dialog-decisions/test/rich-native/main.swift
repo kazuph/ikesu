@@ -57,9 +57,8 @@ for width in [720.0, 520.0] {
 controller.panel.setContentSize(NSSize(width:720,height:controller.panel.contentLayoutRect.height));view.layoutSubtreeIfNeeded()
 let capture=Process();capture.executableURL=URL(fileURLWithPath:"/usr/sbin/screencapture");capture.arguments=["-x","-l",String(controller.panel.windowNumber),root+"/rich-native.png"];try capture.run();capture.waitUntilExit();precondition(capture.terminationStatus==0)
 let card=controller.cards[0]
-let description=card.subviews.compactMap {$0 as? NSStackView}.flatMap {$0.arrangedSubviews}.compactMap {$0 as? NSTextField}.first {$0.stringValue.contains("https://example.com/b")}!
-description.selectText(nil)
-let editor=description.currentEditor() as! NSTextView
+let description=card.subviews.compactMap {$0 as? NSStackView}.flatMap {$0.arrangedSubviews}.compactMap {$0 as? RichTextLabel}.first {$0.string.contains("https://example.com/b")}!
+let editor=description
 let manager=editor.layoutManager!,container=editor.textContainer!
 let linkRange=(editor.string as NSString).range(of:"https://example.com/b")
 let glyphs=manager.glyphRange(forCharacterRange:NSRange(location:linkRange.location+2,length:1),actualCharacterRange:nil)
