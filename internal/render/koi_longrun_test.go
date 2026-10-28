@@ -259,3 +259,16 @@ func TestKoiLongRunRippleBudgetCannotEvictFish(t *testing.T) {
 	}
 	t.Logf("10000 waves retain %d wave images; absent fish remains reusable without upload", rings)
 }
+
+func BenchmarkKoiRetainedEncoding(b *testing.B) {
+	_, img := koiSpriteCached(koiSpriteKey{0, 0, 0, 80, 80})
+	graphics := []Graphic{{Koi: true, Pane: -1, Placement: kitty.Placement{Image: img, Cols: 10, Rows: 5}}}
+	var e Encoder
+	e.encodeKoi(graphics, false)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		graphics[0].Placement.X = i % 30
+		e.encodeKoi(graphics, false)
+	}
+}
