@@ -1,10 +1,6 @@
-# ikesu
+![ikesu. — Raise your agents in a pond.](docs/brand/ikesu-banner-en.gif)
 
 English | [日本語](README.ja.md)
-
-**Keep your agents in a pond.**
-
-![Pixel-art koi swimming in the ikesu sidebar](docs/brand/koi.gif)
 
 A terminal multiplexer for watching many AI coding agents side by side. ikesu shows the workspaces, tabs and panes of your local machine and of SSH machines in one screen, and lets agents exchange messages and run long jobs without blocking.
 
