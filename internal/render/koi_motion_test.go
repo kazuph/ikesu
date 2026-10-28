@@ -284,3 +284,26 @@ func TestKoiMotionBandCountUsesWorkspacesAndFitsWidth(t *testing.T) {
 		t.Fatal("unexpected band inventory", len(frame.KoiScene.Bands))
 	}
 }
+
+func TestKoiMotionHiddenSidebarsDoNotDrawDepartingMini(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
+	in.Panes[1].Status.Key = "working"
+	in.KoiKitty = true
+	in.KoiCellW, in.KoiCellH = 8, 16
+	var clock KoiAnimation
+	now := time.Unix(100, 0)
+	clock.Apply(&in, nil, now, 15*time.Second)
+	Compose(in)
+	clock.Apply(&in, nil, now.Add(KoiInterval), 15*time.Second)
+	if len(Compose(in).Frame.KoiScene.Mini) == 0 {
+		t.Fatal("fixture lacks live mini")
+	}
+	in.State.SidebarVisible = false
+	in.State.SidebarHidden = true
+	in.State.RightSidebarMode = "hidden"
+	frame := Compose(in).Frame
+	if len(frame.Graphics) != 0 || frame.KoiActive {
+		t.Fatal("hidden sidebars retained koi output")
+	}
+}

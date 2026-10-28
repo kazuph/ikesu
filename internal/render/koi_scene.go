@@ -173,7 +173,7 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		seen[band.ID] = true
 	}
 	for _, m := range in.KoiMotion {
-		if m.Group != "" && !seen[m.Group] {
+		if left.W > 1 && !in.Dragging && in.Copied == "" && m.Group != "" && !seen[m.Group] {
 			scene.Bands = append(scene.Bands, koiBand{ID: m.Group, Lane: m.Pond})
 			seen[m.Group] = true
 		}
