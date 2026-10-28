@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-**Keep your agents in a pond.**
+**Raise your agents in a pond.**
 
 ![Pixel-art koi swimming in the ikesu sidebar](docs/brand/koi.gif)
 

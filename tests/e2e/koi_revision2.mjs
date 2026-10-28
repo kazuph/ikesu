@@ -24,7 +24,7 @@ try {
  }
  // Display the committed GIF through the actual README image reference.
  const markdown=await readFile('README.md','utf8');assert.ok(markdown.includes('docs/brand/koi.gif'));
- await page.setContent(`<meta charset=utf-8><style>body{font:18px system-ui;margin:32px;background:#fff;color:#27332f}img{width:640px;image-rendering:pixelated}</style><h1>ikesu — エージェントを池で飼う</h1><img src="data:image/gif;base64,${(await readFile('docs/brand/koi.gif')).toString('base64')}">`);
+ await page.setContent(`<meta charset=utf-8><style>body{font:18px system-ui;margin:32px;background:#fff;color:#27332f}img{width:640px;image-rendering:pixelated}</style><h1>ikesu — エージェントを池で育てる</h1><img src="data:image/gif;base64,${(await readFile('docs/brand/koi.gif')).toString('base64')}">`);
  await page.waitForFunction(()=>document.images[0].complete&&document.images[0].naturalWidth>0);
  assert.equal(await page.locator('img').evaluate(image=>image.naturalHeight),320);
  await page.screenshot({path:join(dest,'readme-gif.png')});

@@ -20,7 +20,7 @@ try {
   page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url())});
   await page.goto(pathToFileURL(resolve('site/index.html')).href);
   await page.waitForFunction(()=>document.querySelector('canvas').width>0&&atlas.complete&&atlas.naturalWidth>0&&clock>0);
-  assert.equal(await page.locator('h1').innerText(),'エージェントを\n池で飼う。');
+  assert.equal(await page.locator('h1').innerText(),'エージェントを\n池で育てる。');
   const geometry=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,main:document.querySelector('main').getBoundingClientRect().toJSON(),heading:document.querySelector('h1').getBoundingClientRect().toJSON()}));
   assert.equal(geometry.scroll,geometry.width);assert.ok(geometry.heading.x>=0&&geometry.heading.right<=viewport.width);
   await page.screenshot({path:join(evidence,`site-${viewport.width}x${viewport.height}-ja.png`),fullPage:true});
@@ -40,7 +40,7 @@ try {
   assert.equal(webgl.renderer,'webgl2');assert.equal(webgl.error,0);assert.deepEqual(webgl.atlas,[320,160]);assert.ok(webgl.footer.bottom<=webgl.height,JSON.stringify(webgl));
 
   await page.getByRole('button',{name:'English',exact:true}).click();
-  assert.equal(await page.locator('html').getAttribute('lang'),'en');assert.match(await page.locator('h1').innerText(),/Keep your agents/);
+  assert.equal(await page.locator('html').getAttribute('lang'),'en');assert.match(await page.locator('h1').innerText(),/Raise your agents/);
   await page.screenshot({path:join(evidence,`site-${viewport.width}x${viewport.height}-en.png`),fullPage:true});
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForFunction(()=>raf===0);
   const waterBefore=await page.evaluate(()=>{const pixels=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);window.brandProofPixels=pixels;const source=document.createElement('canvas');source.width=atlas.naturalWidth;source.height=atlas.naturalHeight;const sample=source.getContext('2d');sample.drawImage(atlas,0,0);const rgba=sample.getImageData(0,0,source.width,source.height).data,palette=new Set();for(let i=0;i<rgba.length;i+=4)if(rgba[i+3]===255)palette.add([rgba[i],rgba[i+1],rgba[i+2]].join(','));let fishPixels=0;for(let i=0;i<pixels.length;i+=4)if(palette.has([pixels[i],pixels[i+1],pixels[i+2]].join(',')))fishPixels++;return{clock,fishPixels,nearest:gl.getTexParameter(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER)===gl.NEAREST};});
