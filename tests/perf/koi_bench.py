@@ -83,6 +83,7 @@ def execute(condition,enabled,repeat):
  else:command+=['--session',session]
  clientenv={**env,'IKESU_CPUPROFILE':str(out/f'{session}.cpu'),'IKESU_CPUPROFILE_SECS':str(args.profile_seconds)} if args.profile else env
  process=subprocess.Popen(command,env=clientenv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+ (out/f'{session}-launch.json').write_text(json.dumps({'session':session,'server_pid':server.pid if server else None,'ptyrun_pid':process.pid,'binary':binary,'ptyrun':ptyrun},indent=2))
  lines=[];setup=False;cleanup=[];menu_saved=[]
  def cli(*args):
   # Every command includes the exact isolated session and the scrubbed environment.
