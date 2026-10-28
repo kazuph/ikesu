@@ -55,7 +55,7 @@ func TestObservedScreenContractsMatchHerdr0240(t *testing.T) {
 					}
 					return r
 				}, want.Title)), " ")
-				want.Title = string([]rune(text)[:79]) + "…"
+				want.Title = questionHeading(text)
 				want.Body = &text
 			case "codex-permission":
 				text := "+ Show details\n\nWould you like to run the following command?\n\nEnvironment: local\n\nReason: 権限ダイアログの観察のため、指定の一時ファイルへ observation を書き込むコマンドを承認しますか？\n\n$ printf observation > /tmp/gs-j0m1z8np/outside.txt"
