@@ -137,23 +137,12 @@ func treeBoundary(i Input, tree *syntax.File) error {
 		}()
 
 		if i.runtimeLine {
-			switch n := node.(type) {
-			case *syntax.Assign:
-				if n.Name != nil && runtimeReasonVariable(i, n.Name.Value) {
-					failure = fmt.Errorf("元の申請文を変更する操作には承認が必要です")
-				}
-			case *syntax.CallExpr:
-				words := make([]string, 0, len(n.Args))
-				for _, word := range n.Args {
-					value, err := shellLiteral(cfg, word)
-					if err != nil {
-						break
-					}
-					words = append(words, value)
-				}
-				if runtimeReasonCommand(i, words) {
-					failure = fmt.Errorf("元の申請文を変更する操作には承認が必要です")
-				}
+			changed, display := runtimeReasonSyntax(i, node, cfg)
+			if display {
+				return false
+			}
+			if changed {
+				failure = fmt.Errorf("申請文の名前を含む操作・動的な変数への書込みには承認が必要です")
 			}
 		}
 		if i.runtimeLine && reservedExpansionWrite(i, node) {
@@ -391,35 +380,4 @@ func reservedExpansionWrite(i Input, node syntax.Node) bool {
 
 func runtimeReasonVariable(i Input, name string) bool {
 	return has([]string{"AI_GUARD_REQUEST_REASON", "AI_GUARD_REQUEST_ENV_NAME", "IKESU_GUARD_PARENT_REASON", requestReasonEnvName(i)}, name)
-}
-
-func runtimeReasonCommand(i Input, words []string) bool {
-	if len(words) == 0 {
-		return false
-	}
-	cmd := filepath.Base(words[0])
-	if has([]string{"command", "builtin", "exec"}, cmd) {
-		args := words[1:]
-		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-			args = args[1:]
-		}
-		return runtimeReasonCommand(i, args)
-	}
-	if !has([]string{"env", "unset", "unsetenv", "setenv", "export", "typeset", "declare", "local", "readonly"}, cmd) {
-		return false
-	}
-	for _, arg := range words[1:] {
-		name, _, assigned := strings.Cut(arg, "=")
-		name = strings.TrimSuffix(name, "+")
-		if runtimeReasonVariable(i, name) {
-			return true
-		}
-		if cmd == "env" && (arg == "-i" || arg == "--ignore-environment" || arg == "-" || strings.HasPrefix(arg, "--unset=")) {
-			return true
-		}
-		if cmd == "env" && !strings.HasPrefix(arg, "-") && !assigned {
-			break
-		}
-	}
-	return false
 }

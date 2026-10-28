@@ -23,11 +23,15 @@ fi
  local _ikesu_guard_line="$1" _ikesu_guard_word
  _ikesu_guard_line="${_ikesu_guard_line#"${_ikesu_guard_line%%%%[!$' \t\r\n']*}"}"
  _ikesu_guard_line="${_ikesu_guard_line%%%%"${_ikesu_guard_line##*[!$' \t\r\n']}"}"
+ case "$_ikesu_guard_line" in *AI_GUARD_REQUEST_REASON*|*AI_GUARD_REQUEST_ENV_NAME*|*IKESU_GUARD_PARENT_REASON*) return 0;; esac
+ [[ $_ikesu_guard_line == *"${_ikesu_guard_reason_name:-AI_GUARD_REQUEST_REASON}"* ]] && return 0
  _ikesu_guard_simple_form "$_ikesu_guard_line" && return 1
  case "$_ikesu_guard_line" in *'>'*) return 0;; esac
  _ikesu_guard_word="${_ikesu_guard_line%%%%[$' \t\r\n']*}"
  case "$_ikesu_guard_word" in ''|*[!a-zA-Z0-9_./-]*) return 0;; esac
  _ikesu_guard_word="${_ikesu_guard_word##*/}"
+ case "$_ikesu_guard_word" in printf|read|readarray|mapfile|let)
+  case "$_ikesu_guard_line" in *'$'*|*'`+"`"+`'*) return 0;; esac;; esac
  case "$_ikesu_guard_word" in
  %s) return 0;;
  xargs|find|sh|bash|zsh|env|command|builtin|exec|eval|source|.|sudo|doas|timeout|stdbuf|arch|chroot|setsid|ionice) return 0;;

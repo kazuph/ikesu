@@ -28,7 +28,7 @@ func TestBashCheapSelector(t *testing.T) {
 				line  string
 				check bool
 			}{
-				{"printf '%s' hi", false}, {" /usr/bin/printf hi", false}, {"jq -r .model", false}, {"custom-target read", true}, {"/bin/rm /outside", true},
+				{`printf -v AI_GUARD_REQUEST_REASON %s forged`, true}, {`read AI_GUARD_REQUEST_REASON`, true}, {`let 'AI_GUARD_REQUEST_REASON=0'`, true}, {`printf -v "$TARGET" hi`, true}, {`read -r "$TARGET"`, true}, {`readarray "$TARGET"`, true}, {`mapfile "$TARGET"`, true}, {`declare -n ref=other`, true}, {`export 'PROJECT_REASON=forged'`, true}, {"printf '%s' hi", false}, {" /usr/bin/printf hi", false}, {"jq -r .model", false}, {"custom-target read", true}, {"/bin/rm /outside", true},
 				{"printf x > out", true}, {"printf x >> out", true}, {"printf x >| out", true}, {"printf x &> out", true},
 				{"\"rm\" /outside", true}, {"$CMD /outside", true}, {"$(printf rm) /outside", true}, {"r\\m /outside", true}, {"T=x /bin/rm /outside", true},
 				{`X="$((BASH_ENV=0))"`, true}, {`declare X="${_ikesu_guard_debug_busy:=1}"`, true}, {`X="${AI_GUARD_DANGER_WORD_ACK=1}"`, true}, {`X="$((PATH++))"`, true}, {`X="${A[BASH_ENV=0]}"`, true}, {`X='$((BASH_ENV=0))'`, false}, {`PCT=$(clamp_pct "$PCT")`, false}, {`X=$(rm "$T")`, false}, {`X=$(echo) /bin/rm $(echo)`, true}, {`X="${V:-0}"`, false},

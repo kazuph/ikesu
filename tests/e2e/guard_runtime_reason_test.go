@@ -41,7 +41,52 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 				{"approved-binary-rename", original, "", "", true},
 				{"approved-binary-overwrite", original, "", "", true},
 				{"approved-binary-symlink", original, "", "", true},
-				{"child-original", original, "", "/bin/bash child.sh\n", true},
+				{"child-review-printf", original, "", "printf -v AI_GUARD_REQUEST_REASON %s '偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-printf-missing", "", "", "printf -v AI_GUARD_REQUEST_REASON %s '偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-read", original, "", "read -r AI_GUARD_REQUEST_REASON <<< '偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-read-missing", "", "", "read -r AI_GUARD_REQUEST_REASON <<< '偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-selector-printf", original, "", "printf -v AI_GUARD_REQUEST_ENV_NAME %s FORGED_REASON\n/bin/bash child.sh\n", true},
+				{"child-review-selector-printf-missing", "", "", "printf -v AI_GUARD_REQUEST_ENV_NAME %s FORGED_REASON\n/bin/bash child.sh\n", false},
+				{"child-review-let", original, "", "let 'AI_GUARD_REQUEST_REASON=0'\n/bin/bash child.sh\n", true},
+				{"child-review-let-missing", "", "", "let 'AI_GUARD_REQUEST_REASON=0'\n/bin/bash child.sh\n", false},
+				{"child-review-builtin-printf", original, "", "builtin printf -v IKESU_GUARD_PARENT_REASON %s '偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-builtin-printf-missing", "", "", "builtin printf -v IKESU_GUARD_PARENT_REASON %s '偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-quoted-export", original, "", "export 'AI_GUARD_REQUEST_REASON=偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-quoted-export-missing", "", "", "export 'AI_GUARD_REQUEST_REASON=偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-quoted-declare", original, "", "declare -x 'AI_GUARD_REQUEST_REASON=偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-quoted-declare-missing", "", "", "declare -x 'AI_GUARD_REQUEST_REASON=偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-nameref", original, "", "declare -n ref=OTHER_VALUE\n/bin/bash child.sh\n", true},
+				{"child-review-nameref-missing", "", "", "declare -n ref=OTHER_VALUE\n/bin/bash child.sh\n", false},
+				{"child-review-local-nameref", original, "", "local -n ref=OTHER_VALUE\n/bin/bash child.sh\n", true},
+				{"child-review-local-nameref-missing", "", "", "local -n ref=OTHER_VALUE\n/bin/bash child.sh\n", false},
+				{"child-review-typeset-nameref", original, "", "typeset -n ref=OTHER_VALUE\n/bin/bash child.sh\n", true},
+				{"child-review-typeset-nameref-missing", "", "", "typeset -n ref=OTHER_VALUE\n/bin/bash child.sh\n", false},
+				{"child-review-dynamic-printf", original, "", "printf -v \"$REASON_TARGET\" %s '偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-dynamic-printf-missing", "", "", "printf -v \"$REASON_TARGET\" %s '偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-dynamic-read", original, "", "read -r \"$REASON_TARGET\" <<< '偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-dynamic-read-missing", "", "", "read -r \"$REASON_TARGET\" <<< '偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-dynamic-export", original, "", "export \"$REASON_TARGET=偽の申請文です\"\n/bin/bash child.sh\n", true},
+				{"child-review-dynamic-export-missing", "", "", "export \"$REASON_TARGET=偽の申請文です\"\n/bin/bash child.sh\n", false},
+				{"child-review-dynamic-declare", original, "", "declare -x \"$REASON_TARGET=偽の申請文です\"\n/bin/bash child.sh\n", true},
+				{"child-review-dynamic-declare-missing", "", "", "declare -x \"$REASON_TARGET=偽の申請文です\"\n/bin/bash child.sh\n", false},
+				{"child-review-readarray", original, "", "readarray AI_GUARD_REQUEST_REASON < /dev/null\n/bin/bash child.sh\n", true},
+				{"child-review-readarray-missing", "", "", "readarray AI_GUARD_REQUEST_REASON < /dev/null\n/bin/bash child.sh\n", false},
+				{"child-review-mapfile", original, "", "mapfile IKESU_GUARD_PARENT_REASON < /dev/null\n/bin/bash child.sh\n", true},
+				{"child-review-mapfile-missing", "", "", "mapfile IKESU_GUARD_PARENT_REASON < /dev/null\n/bin/bash child.sh\n", false},
+				{"child-review-custom-printf", original, "", "printf -v PROJECT_APPROVAL_REASON %s '偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-custom-printf-missing", "", "", "printf -v PROJECT_APPROVAL_REASON %s '偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-custom-quoted", original, "", "export 'PROJECT_APPROVAL_REASON=偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-custom-quoted-missing", "", "", "export 'PROJECT_APPROVAL_REASON=偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-review-custom-nameref", original, "", "declare -n ref=PROJECT_APPROVAL_REASON\n/bin/bash child.sh\n", true},
+				{"child-review-custom-nameref-missing", "", "", "declare -n ref=PROJECT_APPROVAL_REASON\n/bin/bash child.sh\n", false},
+				{"display-only", "", "", "declare -p AI_GUARD_REQUEST_REASON\nexport -p AI_GUARD_REQUEST_REASON\nprintf -v ordinary %s safe-output\nprintf '%s\\n' \"$ordinary\"\nread -r ordinary <<< safe-input\n", false},
+				{"child-review-other-env", original, "", "printf -v AI_GUARD_REQUEST_REASON %s '偽の申請文です'\n/usr/bin/env > child-started\n", true},
+				{"child-review-other-env-missing", "", "", "export 'AI_GUARD_REQUEST_REASON=偽の申請文です'\n/usr/bin/env > child-started\n", false},
+				{"approved-binary-readonly-file", original, "", "", true},
+				{"approved-binary-symlink-unchanged", original, "", "", true},
+				{"child-review-exact-nameref", original, "", "declare -n ref=AI_GUARD_REQUEST_REASON\nref='偽の申請文です'\n/bin/bash child.sh\n", true},
+				{"child-review-exact-nameref-missing", "", "", "declare -n ref=AI_GUARD_REQUEST_REASON\nref='偽の申請文です'\n/bin/bash child.sh\n", false},
+				{"child-original", original, "", "exec /bin/bash child.sh\n", true},
 				{"child-export", original, "", "export AI_GUARD_REQUEST_REASON=" + shQuote(forged) + "\n/bin/bash child.sh\n", true},
 				{"child-prefix", original, "", "AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " /bin/bash child.sh\n", true},
 				{"child-env", original, "", "env AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " /bin/bash child.sh\n", true},
@@ -96,6 +141,9 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					}
 					script := filepath.Join(root, "danger.sh")
 					command := "rm " + shQuote(victim)
+					if tc.name == "display-only" {
+						command = ":"
+					}
 					if tc.name == "forged-inline" {
 						command = "AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " " + command
 					}
@@ -114,7 +162,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 						if err := os.Mkdir(filepath.Dir(binaryPath), 0700); err != nil {
 							t.Fatal(err)
 						}
-						if tc.name == "approved-binary-symlink" {
+						if tc.name == "approved-binary-symlink" || tc.name == "approved-binary-symlink-unchanged" {
 							if err := os.Symlink("/bin/rm", binaryPath); err != nil {
 								t.Fatal(err)
 							}
@@ -134,6 +182,11 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							}
 						}
 					}
+					if tc.name == "approved-binary-readonly-file" {
+						if err := os.Chmod(binaryPath, 0555); err != nil {
+							t.Fatal(err)
+						}
+					}
 					bashEnv := filepath.Join(root, "guard", "shell", "p_1", "bash-env")
 					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 					defer cancel()
@@ -144,12 +197,12 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 					cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 					cmd.WaitDelay = time.Second
-					cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + root, "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_ENFORCING=1", "IKESU_GUARD_EXECUTABLE=" + binPath, "IKESU_GUARD_BIN=" + filepath.Join(root, "guard", "bin", "p_1"), "BASH_ENV=" + bashEnv, "IKESU_GUARD_BASH_ENV_ORIG=" + loader, "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_REASON=" + tc.parent, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh"}
+					cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "REASON_TARGET=AI_GUARD_REQUEST_REASON", "IKESU_STATE_DIR=" + root, "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_ENFORCING=1", "IKESU_GUARD_EXECUTABLE=" + binPath, "IKESU_GUARD_BIN=" + filepath.Join(root, "guard", "bin", "p_1"), "BASH_ENV=" + bashEnv, "IKESU_GUARD_BASH_ENV_ORIG=" + loader, "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_REASON=" + tc.parent, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh"}
 					if isOuterReasonCase(tc.name) {
 						cmd.Env = append(cmd.Env, "SHELL=/bin/zsh", "AI_GUARD_REQUEST_REASON=")
 					}
-					if tc.name == "custom-reason" || tc.name == "child-custom" {
-						cmd.Env = append(cmd.Env, "AI_GUARD_REQUEST_ENV_NAME=PROJECT_APPROVAL_REASON", "PROJECT_APPROVAL_REASON="+original)
+					if tc.name == "custom-reason" || tc.name == "child-custom" || strings.HasPrefix(tc.name, "child-review-custom-") {
+						cmd.Env = append(cmd.Env, "AI_GUARD_REQUEST_ENV_NAME=PROJECT_APPROVAL_REASON", "PROJECT_APPROVAL_REASON="+tc.own)
 					}
 					if binaryCase {
 						cmd.Env = append(cmd.Env, "PATH="+filepath.Dir(binaryPath)+":/usr/bin:/bin")
@@ -158,6 +211,26 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					var output bytes.Buffer
 					cmd.Stdout = &output
 					cmd.Stderr = &output
+					if tc.name == "display-only" {
+						if err := cmd.Run(); err != nil {
+							t.Fatalf("display/read regression: %v %s", err, output.String())
+						}
+						if !strings.Contains(output.String(), "safe-output") {
+							t.Fatal("printf output missing", output.String())
+						}
+						var list api.DecisionListResult
+						s.rpc(api.MethodDecisionList, api.DecisionListParams{}, &list)
+						if len(list.Decisions) != 0 {
+							t.Fatal("read-only commands asked", list)
+						}
+						if data, err := os.ReadFile(victim); err != nil || string(data) != "unchanged" {
+							t.Fatal("display victim changed", err)
+						}
+						if data, err := os.ReadFile(after); err != nil || string(data) != "after" {
+							t.Fatal("display continuation missing", err)
+						}
+						return
+					}
 					if tc.dialog {
 						if err := cmd.Start(); err != nil {
 							t.Fatal(err)
@@ -228,7 +301,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							if text, err := s.cli("decision", "answer", decision.DecisionID, "approve"); err != nil {
 								t.Fatal(text, err)
 							}
-							if tc.name == "outer-approval" || tc.name == "approved-binary-unchanged" {
+							if tc.name == "outer-approval" {
 								if err := <-done; err != nil {
 									t.Fatalf("approved exact command did not run: %v %s", err, output.String())
 								}

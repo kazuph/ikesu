@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/kazuph/ikesu/internal/api"
+	"golang.org/x/sys/unix"
 	"os"
+	"path/filepath"
 )
 
 func invocationHash(i Input) (string, error) {
@@ -33,6 +35,9 @@ func approvedInvocationClaim(i Input) *api.GuardExecutionClaim {
 	if i.scriptResult == nil || i.scriptResult.approvedCommand == nil {
 		return nil
 	}
+	if !immutableInvocation(*i.scriptResult.approvedCommand) {
+		return nil
+	}
 	digest, err := invocationHash(*i.scriptResult.approvedCommand)
 	if err != nil {
 		return nil
@@ -42,6 +47,9 @@ func approvedInvocationClaim(i Input) *api.GuardExecutionClaim {
 
 func matchesApprovedInvocation(i Input, rule string) bool {
 	if i.ApprovedInvocation == nil || i.Unresolved || i.CwdUncertain || rule == "guard-boundary" || rule == "shell-line" {
+		return false
+	}
+	if !immutableInvocation(i) {
 		return false
 	}
 	digest, err := invocationHash(i)
@@ -55,4 +63,33 @@ func ApprovalExecutable(pid int) (string, error)   { return approvalExecutable(p
 type executableIdentity struct {
 	Device, Inode                                            uint64
 	Size, ModifiedSec, ModifiedNSec, ChangedSec, ChangedNSec int64
+}
+
+func immutableInvocation(i Input) bool {
+	path, err := Resolve(i.Command, environment(i.Env))
+	if err != nil {
+		return false
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	// Check both the lookup path (including symlink containers) and resolved target.
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	for _, current := range []string{path, resolved} {
+		for {
+			if err := unix.Access(current, unix.W_OK); err != unix.EACCES && err != unix.EPERM && err != unix.EROFS {
+				return false
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	return true
 }
