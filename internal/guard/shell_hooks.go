@@ -42,7 +42,8 @@ fi
 _ikesu_guard_debug() {
  local _ikesu_guard_debug_busy=1
  case "${FUNCNAME[2]:-}" in _ikesu_guard_forward|_ikesu_guard_command) return 0;; esac
- if [[ %s ]] && _ikesu_guard_needs_check "$1"; then
+ if [[ %s ]]; then
+%s  _ikesu_guard_needs_check "$1" || return 0
   (
    set +o functrace
    builtin compgen -v | while IFS= builtin read -r _ikesu_guard_snapshot_name; do
@@ -69,7 +70,7 @@ readonly -f _ikesu_guard_debug _ikesu_guard_dispatch _ikesu_guard_needs_check
 set -o functrace
 trap '_ikesu_guard_dispatch "$BASH_COMMAND"' DEBUG
 fi
-`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), bashRequestReasonRestore, a.identity()+" builtin exec "+quote(a.Executable))
+`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), bashRequestReasonRestore, bashRequestReasonRestore, a.identity()+" builtin exec "+quote(a.Executable))
 	}
 	return fmt.Sprintf(`if [[ ! -o interactive ]]; then
 if [[ %s ]] && [[ -n "${ZSH_EXECUTION_STRING:-}" ]]; then
