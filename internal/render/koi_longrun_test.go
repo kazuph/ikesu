@@ -188,11 +188,11 @@ func TestKoiLongRunTerminalByteBudgetAndVisibleFrame(t *testing.T) {
 	var e Encoder
 	for i := 1; i <= 100; i++ {
 		e.encodeKoi([]Graphic{graphic(i)}, false)
-		if e.koi.bytes > koiTerminalBytes {
-			t.Fatal("terminal byte budget exceeded")
+		if e.koi.bytes > koiRingBytes {
+			t.Fatal("terminal ripple byte budget exceeded")
 		}
 	}
-	t.Logf("100 large real PNGs: retained=%d bytes=%d cap=%d", len(e.koi.images), e.koi.bytes, koiTerminalBytes)
+	t.Logf("100 large real PNGs: retained=%d bytes=%d cap=%d", len(e.koi.images), e.koi.bytes, koiRingBytes)
 	var visible []Graphic
 	for i := 101; i <= 140; i++ {
 		visible = append(visible, graphic(i))
@@ -209,7 +209,7 @@ func TestKoiLongRunTerminalByteBudgetAndVisibleFrame(t *testing.T) {
 		}
 	}
 	e.encodeKoi(nil, false)
-	if e.koi.bytes > koiTerminalBytes {
+	if e.koi.bytes > koiRingBytes {
 		t.Fatal("oversized frame still pinned after disappearing")
 	}
 	e.RestoreCursor()
@@ -228,8 +228,34 @@ func TestKoiLongRunSidebarToggle(t *testing.T) {
 		}
 		e.encodeKoi(nil, false)
 	}
-	if len(e.koi.images) != 1 || e.koi.order.Len() != 1 || len(e.koi.placements) != 0 {
+	if len(e.koi.images) != 1 || e.koi.pools[1].order.Len() != 1 || len(e.koi.placements) != 0 {
 		t.Fatal("sidebar toggles accumulated images/placements")
 	}
 	t.Log("10000 hide/show or off/on compositions: retained images=1 placements=0, no repeat upload")
+}
+
+func TestKoiLongRunRippleBudgetCannotEvictFish(t *testing.T) {
+	var e Encoder
+	img := koiRippleCached(koiRingKey{8, 8, 0, 0, 1})
+	fish := Graphic{Koi: true, Pane: -1, Placement: kitty.Placement{Image: img}}
+	e.encodeKoi([]Graphic{fish}, false)
+	for i := 1; i <= 10000; i++ {
+		wave := fish
+		wave.Pane = -4
+		wave.Placement.Image.ID = uint32(i)
+		e.encodeKoi([]Graphic{wave}, false)
+	}
+	rings := 0
+	for key := range e.koi.images {
+		if key.Pane == -4 {
+			rings++
+		}
+	}
+	if rings > koiRingEntries {
+		t.Fatal("wave images exceeded their independent budget", rings)
+	}
+	if bytes.Contains(e.encodeKoi([]Graphic{fish}, false), []byte("a=t,")) {
+		t.Fatal("wave churn evicted a retained fish")
+	}
+	t.Logf("10000 waves retain %d wave images; absent fish remains reusable without upload", rings)
 }

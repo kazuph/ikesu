@@ -22,11 +22,15 @@ type koiImageUse struct {
 	size  int
 	frame uint64
 }
+type koiImagePool struct {
+	order list.List
+	bytes int
+}
 type koiEncoder struct {
 	images     map[koiImageKey]uint32
 	placements []koiEncodedPlacement
 	used       map[koiImageKey]*list.Element
-	order      list.List
+	pools      [2]koiImagePool
 	bytes      int
 	frame      uint64
 }
@@ -64,6 +68,10 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 	for _, g := range graphics {
 		p := g.Placement
 		key := koiImageKey{g.Pane, p.Image.ID, p.Image.Width, p.Image.Height}
+		pool := &e.koi.pools[0]
+		if key.Pane == -4 {
+			pool = &e.koi.pools[1]
+		}
 		id := e.koi.images[key]
 		if id == 0 {
 			for {
@@ -75,8 +83,9 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 			id = e.nextGraphicID
 			e.koi.images[key] = id
 			size := 4*p.Image.Width*p.Image.Height + len(p.Image.Data)
-			e.koi.used[key] = e.koi.order.PushFront(koiImageUse{key, size, e.koi.frame})
+			e.koi.used[key] = pool.order.PushFront(koiImageUse{key, size, e.koi.frame})
 			e.koi.bytes += size
+			pool.bytes += size
 			data := base64.StdEncoding.EncodeToString(p.Image.Data)
 			first := true
 			for len(data) > 0 {
@@ -98,7 +107,7 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 		use := el.Value.(koiImageUse)
 		use.frame = e.koi.frame
 		el.Value = use
-		e.koi.order.MoveToFront(el)
+		pool.order.MoveToFront(el)
 		next = append(next, koiEncodedPlacement{id, g})
 	}
 	for i, old := range e.koi.placements {
@@ -127,18 +136,27 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 	}
 	// A currently visible image is pinned until the next composition. This
 	// bounds retention by the larger of the budget and one visible frame.
-	for len(e.koi.images) > koiTerminalEntries || e.koi.bytes > koiTerminalBytes {
-		el := e.koi.order.Back()
-		use := el.Value.(koiImageUse)
-		if use.frame == e.koi.frame {
-			break
+	// Separate budgets stop low-reuse click history from displacing fish.
+	for index := range e.koi.pools {
+		pool := &e.koi.pools[index]
+		entries, budget := koiSpriteEntries, koiSpriteBytes
+		if index == 1 {
+			entries, budget = koiRingEntries, koiRingBytes
 		}
-		oldest := use.key
-		fmt.Fprintf(&b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", e.koi.images[oldest])
-		e.koi.bytes -= use.size
-		e.koi.order.Remove(el)
-		delete(e.koi.images, oldest)
-		delete(e.koi.used, oldest)
+		for pool.order.Len() > entries || pool.bytes > budget {
+			el := pool.order.Back()
+			use := el.Value.(koiImageUse)
+			if use.frame == e.koi.frame {
+				break
+			}
+			oldest := use.key
+			fmt.Fprintf(&b, "\x1b_Ga=d,d=I,i=%d,q=2;\x1b\\", e.koi.images[oldest])
+			e.koi.bytes -= use.size
+			pool.bytes -= use.size
+			pool.order.Remove(el)
+			delete(e.koi.images, oldest)
+			delete(e.koi.used, oldest)
+		}
 	}
 	e.koi.placements = next
 	return b.Bytes()
