@@ -27,12 +27,34 @@ func validApproval(f, k string, now time.Time) bool {
 			continue
 		}
 		expiry, e := strconv.ParseInt(v[1], 10, 64)
-		if e == nil && v[0] == k && expiry > now.Unix() {
+		if e == nil && approvalKeyMatches(v[0], k) && expiry > now.Unix() {
 			return true
 		}
 	}
 	return false
 }
+
+// Day grants follow the physical directory tree, never a textual prefix or
+// repository membership. Other approval keys retain exact matching.
+func approvalKeyMatches(saved, requested string) bool {
+	if !strings.HasPrefix(requested, "day:") {
+		return saved == requested
+	}
+	if !strings.HasPrefix(saved, "day:") {
+		return false
+	}
+	root, err := filepath.EvalSymlinks(strings.TrimPrefix(saved, "day:"))
+	if err != nil || !filepath.IsAbs(root) {
+		return false
+	}
+	cwd, err := filepath.EvalSymlinks(strings.TrimPrefix(requested, "day:"))
+	if err != nil || !filepath.IsAbs(cwd) {
+		return false
+	}
+	relative, err := filepath.Rel(root, cwd)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
 func WriteApproval(f, k string, expiry time.Time) error {
 	if k == "" {
 		return nil

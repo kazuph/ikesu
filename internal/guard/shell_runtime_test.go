@@ -75,6 +75,15 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"source-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; source "$IKESU_RUNTIME_SOURCE"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"substitution-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(printf before > "$IKESU_RUNTIME_ROOT/before"; rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 
+				{"overwrite-filter", "", `eval '_ikesu_guard_needs_check() { return 1; }'; T="$IKESU_RUNTIME_ROOT/home/../victim"; /bin/rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"unset-filter", "", `unset -f _ikesu_guard_needs_check; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"spoof-filter-local", "", `_ikesu_guard_word=printf; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"eval-forward", "", `eval '_ikesu_guard_forward() { :; }'; T="$IKESU_RUNTIME_ROOT/home/../victim"; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"eval-command", "", `eval '_ikesu_guard_command() { :; }'; T="$IKESU_RUNTIME_ROOT/home/../victim"; command rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"source-forward", "", `source "$IKESU_RUNTIME_SOURCE"; T="$IKESU_RUNTIME_ROOT/home/../victim"; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"define-command", "", `_ikesu_guard_command() { :; }; T="$IKESU_RUNTIME_ROOT/home/../victim"; command rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"unset-forward", "", `unset -f _ikesu_guard_forward; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"unset-command", "", `unset -f _ikesu_guard_command; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"function", `f() { rm "$T"; };`, `T=/outside/victim; f; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"subshell", "", `T=/outside/victim; (rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"substitution", "", `T=/outside/victim; X=$(rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
@@ -88,9 +97,14 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 						t.Fatal(err)
 					}
 					sourceFile := filepath.Join(root, "source.sh")
-					if err := os.WriteFile(sourceFile, []byte("printf before > \"$IKESU_RUNTIME_ROOT/before\"\nrm \"$T\"\n"), 0600); err != nil {
+					sourceBody := "printf before > \"$IKESU_RUNTIME_ROOT/before\"\nrm \"$T\"\n"
+					if tc.name == "source-forward" {
+						sourceBody = "_ikesu_guard_forward() { :; }\n_ikesu_guard_command() { :; }\n"
+					}
+					if err := os.WriteFile(sourceFile, []byte(sourceBody), 0600); err != nil {
 						t.Fatal(err)
 					}
+
 					entry := filepath.Join(root, "entry")
 					adapter := "#!/bin/sh\nexec " + quote(os.Args[0]) + " -test.run=^TestShellRuntimeHelper$ -- \"$@\"\n"
 					if err := os.WriteFile(entry, []byte(adapter), 0700); err != nil {
