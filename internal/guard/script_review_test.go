@@ -17,6 +17,7 @@ func TestScriptFileReviewReproductions(t *testing.T) {
 		{"command-read", `command read TARGET; /bin/rm "$TARGET"`},
 		{"prefixed-unset", `command builtin unset TARGET; /bin/rm "${TARGET:-/outside/victim}"`},
 		{"cd-pwd", `cd /; /bin/rm "$PWD/victim"`},
+		{"quoted-cd-pwd", `command builtin "cd" /; /bin/rm "$PWD/victim"`},
 		{"pushd-oldpwd", `pushd /; /bin/rm "$OLDPWD/victim"`},
 		{"popd-pwd", `popd; /bin/rm "$PWD/victim"`},
 	} {
