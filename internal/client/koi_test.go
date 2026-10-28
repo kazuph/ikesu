@@ -123,7 +123,7 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	regions := m.regions
 	scene := m.koiScene
 	before := snapshot
-	timer := time.NewTimer(render.KoiInterval)
+	timer.Reset(render.KoiInterval)
 	<-timer.C
 	if err := m.paintKoi(time.Now()); err != nil {
 		t.Fatal(err)
