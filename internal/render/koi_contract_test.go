@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"image"
 	"image/color"
 	"reflect"
@@ -200,6 +201,7 @@ func TestKoiStateFramesAndOctantPositions(t *testing.T) {
 		t.Fatal("state not visible")
 	}
 	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	f := NewFrame(in.State.Cols, in.State.Rows)
 	scene := KoiSceneFor(f, in, nil)
@@ -353,6 +355,7 @@ func TestKoiOctantsKeepSourcePalette(t *testing.T) {
 
 func TestKoiMiniPlacementUsesEnlargedPixelGrid(t *testing.T) {
 	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	in.State.Workspaces[0].Name = "鯉"
 	in.KoiKitty = true

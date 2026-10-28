@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 )
 
 func TestKoiMotionIdleAndDoneKeepSwimming(t *testing.T) {
@@ -84,6 +85,7 @@ func TestKoiMotionWholeSidebarAndTextRemain(t *testing.T) {
 
 func TestKoiMotionMiniOnlyOnBands(t *testing.T) {
 	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	frame := Compose(in).Frame
 	if len(frame.KoiScene.Mini) == 0 {
@@ -177,6 +179,7 @@ func TestKoiMotionBlockedEvictsRestingThenNearest(t *testing.T) {
 
 func TestKoiMotionMiniLifecycleAndNamespace(t *testing.T) {
 	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	in.KoiCellW, in.KoiCellH = 8, 16
 	in.KoiKitty = true
