@@ -16,8 +16,8 @@ func label(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor,
 }
 ${helper}
 let app=NSApplication.shared
-let text="ブロック理由：理由\\n対象コマンド：printf '猫🐈'\\n  https://example.com/a\\n\\nコマンド: bash test.sh\\n\\n申請文（外側から）\\n理由の説明 https://example.com/reason"
-let expected=["printf '猫🐈'\\n  https://example.com/a", "bash test.sh"]
+let text="ブロック理由：理由\\n対象コマンド：printf '猫🐈'\\n\\n  https://example.com/a\\n\\nコマンド: bash test.sh\\n\\n申請文（外側から）\\n理由の説明 https://example.com/reason"
+let expected=["printf '猫🐈'\\n\\n  https://example.com/a", "bash test.sh"]
 let ranges=commandBodyRanges(text)
 precondition(ranges.count==2)
 precondition(ranges.map {(text as NSString).substring(with:$0)}==expected)
