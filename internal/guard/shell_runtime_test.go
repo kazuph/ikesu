@@ -75,6 +75,9 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"source-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; source "$IKESU_RUNTIME_SOURCE"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"substitution-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(printf before > "$IKESU_RUNTIME_ROOT/before"; rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 
+				{"assignment-substitution", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"integer-indirection", "", `declare -i N; N='_ikesu_guard_debug_busy=1'; T="$IKESU_RUNTIME_ROOT/home/../victim"; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"arithmetic-indirection", "", `N='_ikesu_guard_debug_busy=1'; (( N )); T="$IKESU_RUNTIME_ROOT/home/../victim"; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"overwrite-filter", "", `eval '_ikesu_guard_needs_check() { return 1; }'; T="$IKESU_RUNTIME_ROOT/home/../victim"; /bin/rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"unset-filter", "", `unset -f _ikesu_guard_needs_check; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"spoof-filter-local", "", `_ikesu_guard_word=printf; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},

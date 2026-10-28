@@ -19,10 +19,12 @@ func (a *Assets) debugHook(shell string) string {
 if [[ %s ]] && [[ -n "${BASH_EXECUTION_STRING:-}" ]]; then
  %s guard line -- "$BASH_EXECUTION_STRING" || exit $?
 fi
-%s_ikesu_guard_needs_check() {
+%s%s_ikesu_guard_needs_check() {
  local _ikesu_guard_line="$1" _ikesu_guard_word
- case "$_ikesu_guard_line" in *'>'*) return 0;; esac
  _ikesu_guard_line="${_ikesu_guard_line#"${_ikesu_guard_line%%%%[!$' \t\r\n']*}"}"
+ _ikesu_guard_line="${_ikesu_guard_line%%%%"${_ikesu_guard_line##*[!$' \t\r\n']}"}"
+ _ikesu_guard_simple_form "$_ikesu_guard_line" && return 1
+ case "$_ikesu_guard_line" in *'>'*) return 0;; esac
  _ikesu_guard_word="${_ikesu_guard_line%%%%[$' \t\r\n']*}"
  case "$_ikesu_guard_word" in ''|*[!a-zA-Z0-9_./-]*) return 0;; esac
  _ikesu_guard_word="${_ikesu_guard_word##*/}"
@@ -60,7 +62,7 @@ readonly -f _ikesu_guard_debug _ikesu_guard_dispatch _ikesu_guard_needs_check
 set -o functrace
 trap '_ikesu_guard_dispatch "$BASH_COMMAND"' DEBUG
 fi
-`, a.shellActive(), a.invocation(), protectForward, strings.Join(append(targets, quote("")), "|"), a.shellActive(), a.invocation())
+`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), a.invocation())
 	}
 	return fmt.Sprintf(`if [[ ! -o interactive ]]; then
 if [[ %s ]] && [[ -n "${ZSH_EXECUTION_STRING:-}" ]]; then
