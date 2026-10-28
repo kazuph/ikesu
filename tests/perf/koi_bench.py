@@ -5,7 +5,7 @@ import argparse, tomllib, json, os, pathlib, re, signal, subprocess, sys, tempfi
 root=pathlib.Path.cwd()
 binary=str(root/'koi-ikesu')
 ptyrun=str(root/'koi-ptyrun')
-parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence','longrun']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
 out=root/args.evidence;out.mkdir(exist_ok=True)
 base_env={k:v for k,v in os.environ.items() if k not in ('IKESU_SOCKET_PATH','IKESU_SOCKET_PATH_EXPLICIT','IKESU','IKESU_PANE_ID','IKESU_WORKSPACE_ID','IKESU_TAB_ID','SSH_CONNECTION','SSH_TTY','TMUX','STY')}
 results=[]
@@ -55,7 +55,15 @@ def execute(condition,enabled,repeat):
   if args.interaction=='fence':interaction=[f'waitfile {fence_seen} 30s']
   interaction+=['sendtimed "\\u001b[<0;1165;377M"','send "\\u001b[<0;1165;377m"','sleep 1500ms']
  warmup='' if args.interaction=='fence' else 'sleep 2s\n'
- steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\n'+warmup+'\n'.join(interaction)+f'\nstats before\nsleep {args.seconds}s\nstats after\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
+ measurement=f'stats before\nsleep {args.seconds}s\nstats after'
+ if args.interaction=='longrun':
+  measurement='stats before\n'
+  for second in range(0,args.seconds,5):
+   # Genuine input and terminal resizes, rather than direct state mutation.
+   measurement+=f'resize {160+(second//5)%3} {45+(second//15)%3}\nsend "\\u001b[<0;{1140+(second%20)*3};{370+(second%10)*4}M"\nsend "\\u001b[<0;1165;377m"\nsleep {min(5,args.seconds-second)}s\n'
+   if (second+5)%60==0:measurement+=f'stats minute-{(second+5)//60}\n'
+  measurement+='stats after'
+ steps.write_text(f'waittext 30s koi-ready>\nmark booted\nwaitfile {ready} 30s\n'+warmup+'\n'.join(interaction)+f'\n{measurement}\nscreen {state}/screen.txt\nsend {response_command}\nwaittext 10s KOI_OK\nsend "\\u0002q"\nsleep 100ms\n')
 
  raw=out/f'{session}.ansi';logpath=out/f'{session}.log'
  server=None;traffic=None;server_samples={};traffic_samples={}
