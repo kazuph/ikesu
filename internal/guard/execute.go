@@ -201,9 +201,11 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		selected.RawLine = ""
 		trigger = approvalCommand(selected)
 	}
+	targetCommand := ""
 	body := "ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）"
 	if trigger != command && !wholeCommand(command, i) {
-		body += "\n対象コマンド：" + i.redact(trigger)
+		targetCommand = i.redact(trigger)
+		body += "\n対象コマンド：" + targetCommand
 	}
 	body += "\n\nコマンド: " + i.redact(command)
 	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
@@ -215,7 +217,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		body += "\n\n" + strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
 	}
 	body = i.redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()

@@ -470,7 +470,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     full(titleLabel)
 
     if let body = spec.body, !body.isEmpty {
-      let commands = (spec.details ?? []).filter { $0.label == "コマンド" }.map { $0.value }
+      let commands = (spec.details ?? []).filter { ["コマンド", "対象コマンド"].contains($0.label) }.map { $0.value }
       let ranges = spec.kind == "command_guard" ? commandBodyRanges(body, commands: commands) : []
       func bodyLabel(_ text: String, offset: Int, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> RichTextLabel {
         let slice = NSRange(location: offset, length: (text as NSString).length)
@@ -504,6 +504,7 @@ final class DialogController: NSObject, NSWindowDelegate {
           let normalizedBody = comparableApprovalDetail(body)
           let normalizedValue = comparableApprovalDetail(d.value)
           if d.label == "コマンド", body.contains("コマンド: ") { continue }
+          if d.label == "対象コマンド", body.contains("対象コマンド：" + d.value) { continue }
           if ["理由", "場所"].contains(d.label), normalizedBody.contains(normalizedValue) { continue }
         }
         let row = label("\(d.label)：\(d.value)", size: Look.small, color: .secondaryLabelColor, mono: d.monospace == true)
