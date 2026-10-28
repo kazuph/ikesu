@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/kazuph/ikesu/internal/api"
+	"os"
 )
 
 func invocationHash(i Input) (string, error) {
@@ -12,10 +13,15 @@ func invocationHash(i Input) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	info, err := os.Stat(executable)
+	if err != nil {
+		return "", err
+	}
 	data, err := json.Marshal(struct {
 		Cwd, Executable string
 		Argv            []string
-	}{physical(i.Cwd), physical(executable), append([]string{i.Command}, i.Args...)})
+		Identity        executableIdentity
+	}{physical(i.Cwd), physical(executable), append([]string{i.Command}, i.Args...), executableFileIdentity(info)})
 	if err != nil {
 		return "", err
 	}
@@ -45,3 +51,8 @@ func matchesApprovedInvocation(i Input, rule string) bool {
 // The server uses kernel identities, never a caller-provided PID or marker.
 func ApprovalProcess(pid int) (int, string, error) { return approvalProcess(pid) }
 func ApprovalExecutable(pid int) (string, error)   { return approvalExecutable(pid) }
+
+type executableIdentity struct {
+	Device, Inode                                            uint64
+	Size, ModifiedSec, ModifiedNSec, ChangedSec, ChangedNSec int64
+}

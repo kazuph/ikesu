@@ -136,7 +136,27 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			}
 		}()
 
-		if i.runtimeLine && reservedExpansionWrite(node) {
+		if i.runtimeLine {
+			switch n := node.(type) {
+			case *syntax.Assign:
+				if n.Name != nil && runtimeReasonVariable(i, n.Name.Value) {
+					failure = fmt.Errorf("元の申請文を変更する操作には承認が必要です")
+				}
+			case *syntax.CallExpr:
+				words := make([]string, 0, len(n.Args))
+				for _, word := range n.Args {
+					value, err := shellLiteral(cfg, word)
+					if err != nil {
+						break
+					}
+					words = append(words, value)
+				}
+				if runtimeReasonCommand(i, words) {
+					failure = fmt.Errorf("元の申請文を変更する操作には承認が必要です")
+				}
+			}
+		}
+		if i.runtimeLine && reservedExpansionWrite(i, node) {
 			failure = fmt.Errorf("右辺の展開による予約変数の変更には承認が必要です")
 		}
 		switch n := node.(type) {
@@ -347,11 +367,11 @@ func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 }
 
 // This runtime-only check inspects expansion syntax without evaluating it.
-func reservedExpansionWrite(node syntax.Node) bool {
+func reservedExpansionWrite(i Input, node syntax.Node) bool {
 	var target syntax.ArithmExpr
 	switch n := node.(type) {
 	case *syntax.ParamExp:
-		return n.Exp != nil && (n.Exp.Op == syntax.AssignUnset || n.Exp.Op == syntax.AssignUnsetOrNull) && (snapshotReservedName(n.Param.Value) || startupVariable(n.Param.Value) || n.Param.Value == "PATH")
+		return n.Exp != nil && (n.Exp.Op == syntax.AssignUnset || n.Exp.Op == syntax.AssignUnsetOrNull) && (runtimeReasonVariable(i, n.Param.Value) || snapshotReservedName(n.Param.Value) || startupVariable(n.Param.Value) || n.Param.Value == "PATH")
 	case *syntax.BinaryArithm:
 		switch n.Op {
 		case syntax.Assgn, syntax.AddAssgn, syntax.SubAssgn, syntax.MulAssgn, syntax.QuoAssgn, syntax.RemAssgn, syntax.AndAssgn, syntax.OrAssgn, syntax.XorAssgn, syntax.ShlAssgn, syntax.ShrAssgn:
@@ -364,7 +384,42 @@ func reservedExpansionWrite(node syntax.Node) bool {
 	}
 	if word, ok := target.(*syntax.Word); ok {
 		name := word.Lit()
-		return snapshotReservedName(name) || startupVariable(name) || name == "PATH"
+		return runtimeReasonVariable(i, name) || snapshotReservedName(name) || startupVariable(name) || name == "PATH"
+	}
+	return false
+}
+
+func runtimeReasonVariable(i Input, name string) bool {
+	return has([]string{"AI_GUARD_REQUEST_REASON", "AI_GUARD_REQUEST_ENV_NAME", "IKESU_GUARD_PARENT_REASON", requestReasonEnvName(i)}, name)
+}
+
+func runtimeReasonCommand(i Input, words []string) bool {
+	if len(words) == 0 {
+		return false
+	}
+	cmd := filepath.Base(words[0])
+	if has([]string{"command", "builtin", "exec"}, cmd) {
+		args := words[1:]
+		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+			args = args[1:]
+		}
+		return runtimeReasonCommand(i, args)
+	}
+	if !has([]string{"env", "unset", "unsetenv", "setenv", "export", "typeset", "declare", "local", "readonly"}, cmd) {
+		return false
+	}
+	for _, arg := range words[1:] {
+		name, _, assigned := strings.Cut(arg, "=")
+		name = strings.TrimSuffix(name, "+")
+		if runtimeReasonVariable(i, name) {
+			return true
+		}
+		if cmd == "env" && (arg == "-i" || arg == "--ignore-environment" || arg == "-" || strings.HasPrefix(arg, "--unset=")) {
+			return true
+		}
+		if cmd == "env" && !strings.HasPrefix(arg, "-") && !assigned {
+			break
+		}
 	}
 	return false
 }

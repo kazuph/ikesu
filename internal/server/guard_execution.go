@@ -59,6 +59,7 @@ func (s *Server) bindGuardExecution(peer int, params api.DecisionCreateParams, d
 }
 
 func (s *Server) guardExecutionApproved(peer int, params api.GuardApprovedParams) bool {
+	s.pruneGuardExecutions()
 	ancestors := map[int]string{}
 	seen := map[int]bool{}
 	for pid := peer; pid > 1 && !seen[pid]; {
@@ -75,11 +76,6 @@ func (s *Server) guardExecutionApproved(peer int, params api.GuardApprovedParams
 		return false
 	}
 	for id, binding := range s.decisions.guardBindings {
-		_, current, processErr := guard.ApprovalProcess(binding.Owner)
-		if processErr != nil || current != binding.ProcessStart {
-			delete(s.decisions.guardBindings, id)
-			continue
-		}
 		if ancestors[binding.Owner] != binding.ProcessStart || params.PaneID != binding.Pane || params.GuardExecutionClaim != binding.Claim {
 			continue
 		}
@@ -89,4 +85,13 @@ func (s *Server) guardExecutionApproved(peer int, params api.GuardApprovedParams
 		}
 	}
 	return false
+}
+
+func (s *Server) pruneGuardExecutions() {
+	for id, binding := range s.decisions.guardBindings {
+		_, identity, err := guard.ApprovalProcess(binding.Owner)
+		if err != nil || identity != binding.ProcessStart {
+			delete(s.decisions.guardBindings, id)
+		}
+	}
 }

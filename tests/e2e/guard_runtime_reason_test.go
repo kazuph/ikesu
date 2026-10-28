@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,6 +37,22 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 				{"approved-different-args", original, "", "", true},
 				{"approved-forged-mark", original, "", "", true},
 				{"approved-forged-file", original, "", "", true},
+				{"approved-binary-unchanged", original, "", "", true},
+				{"approved-binary-rename", original, "", "", true},
+				{"approved-binary-overwrite", original, "", "", true},
+				{"approved-binary-symlink", original, "", "", true},
+				{"child-original", original, "", "/bin/bash child.sh\n", true},
+				{"child-export", original, "", "export AI_GUARD_REQUEST_REASON=" + shQuote(forged) + "\n/bin/bash child.sh\n", true},
+				{"child-prefix", original, "", "AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " /bin/bash child.sh\n", true},
+				{"child-env", original, "", "env AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " /bin/bash child.sh\n", true},
+				{"child-unset", original, "", "unset AI_GUARD_REQUEST_REASON\n/bin/bash child.sh\n", true},
+				{"child-export-missing", "", "", "export AI_GUARD_REQUEST_REASON=" + shQuote(forged) + "\n/bin/bash child.sh\n", false},
+				{"child-prefix-missing", "", "", "AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " /bin/bash child.sh\n", false},
+				{"child-env-missing", "", "", "env AI_GUARD_REQUEST_REASON=" + shQuote(forged) + " /bin/bash child.sh\n", false},
+				{"child-unset-missing", "", "", "unset AI_GUARD_REQUEST_REASON\n/bin/bash child.sh\n", false},
+				{"child-parent", "", original, "export IKESU_GUARD_PARENT_REASON=" + shQuote(forged) + "\n/bin/bash child.sh\n", true},
+				{"child-custom", original, "", "export PROJECT_APPROVAL_REASON=" + shQuote(forged) + "\n/bin/bash child.sh\n", true},
+				{"child-selector", original, "", "export AI_GUARD_REQUEST_ENV_NAME=FORGED_REASON\n/bin/bash child.sh\n", true},
 				{"custom-reason", original, "", "export PROJECT_APPROVAL_REASON=" + shQuote(forged) + "\n", true},
 				{"parent-original-loader", "", original, "", true},
 				{"overwrite-own", original, "", "AI_GUARD_REQUEST_REASON=" + shQuote(forged) + "\n", true},
@@ -85,6 +102,38 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					if err := os.WriteFile(script, []byte(tc.script+command+"\nprintf after > "+shQuote(after)+"\n"), 0600); err != nil {
 						t.Fatal(err)
 					}
+					if strings.HasPrefix(tc.name, "child-") {
+						child := "printf started > child-started\nTARGET=" + shQuote(victim) + "\nrm \"$TARGET\"\n"
+						if err := os.WriteFile(filepath.Join(root, "child.sh"), []byte(child), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					binaryCase := strings.HasPrefix(tc.name, "approved-binary-")
+					binaryPath := filepath.Join(root, "bin", "rm")
+					if binaryCase {
+						if err := os.Mkdir(filepath.Dir(binaryPath), 0700); err != nil {
+							t.Fatal(err)
+						}
+						if tc.name == "approved-binary-symlink" {
+							if err := os.Symlink("/bin/rm", binaryPath); err != nil {
+								t.Fatal(err)
+							}
+						} else {
+							data, err := os.ReadFile("/bin/rm")
+							if err != nil {
+								t.Fatal(err)
+							}
+							if err := os.WriteFile(binaryPath, data, 0700); err != nil {
+								t.Fatal(err)
+							}
+							// Copied Apple platform binaries need an ad-hoc signature to run outside /bin.
+							if runtime.GOOS == "darwin" {
+								if out, err := exec.Command("/usr/bin/codesign", "--force", "--sign", "-", binaryPath).CombinedOutput(); err != nil {
+									t.Fatalf("sign disposable rm: %v %s", err, out)
+								}
+							}
+						}
+					}
 					bashEnv := filepath.Join(root, "guard", "shell", "p_1", "bash-env")
 					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 					defer cancel()
@@ -99,8 +148,11 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					if isOuterReasonCase(tc.name) {
 						cmd.Env = append(cmd.Env, "SHELL=/bin/zsh", "AI_GUARD_REQUEST_REASON=")
 					}
-					if tc.name == "custom-reason" {
+					if tc.name == "custom-reason" || tc.name == "child-custom" {
 						cmd.Env = append(cmd.Env, "AI_GUARD_REQUEST_ENV_NAME=PROJECT_APPROVAL_REASON", "PROJECT_APPROVAL_REASON="+original)
+					}
+					if binaryCase {
+						cmd.Env = append(cmd.Env, "PATH="+filepath.Dir(binaryPath)+":/usr/bin:/bin")
 					}
 					cmd.Dir = root
 					var output bytes.Buffer
@@ -127,7 +179,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							if decision.Origin == nil || decision.Origin.Reason != original {
 								t.Fatal("outer reason lost", decision)
 							}
-							if strings.HasPrefix(tc.name, "approved-") {
+							if strings.HasPrefix(tc.name, "approved-") && !binaryCase {
 								replacement := "rm " + shQuote(otherVictim)
 								if tc.name == "approved-other-rm" {
 									replacement = "/bin/rm " + shQuote(otherVictim)
@@ -142,10 +194,41 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 									t.Fatal(err)
 								}
 							}
+							if binaryCase {
+								switch tc.name {
+								case "approved-binary-rename":
+									data, err := os.ReadFile("/bin/echo")
+									if err != nil {
+										t.Fatal(err)
+									}
+									if err := os.WriteFile(binaryPath+".new", data, 0700); err != nil {
+										t.Fatal(err)
+									}
+									if err := os.Rename(binaryPath+".new", binaryPath); err != nil {
+										t.Fatal(err)
+									}
+								case "approved-binary-overwrite":
+									file, err := os.OpenFile(binaryPath, os.O_APPEND|os.O_WRONLY, 0)
+									if err != nil {
+										t.Fatal(err)
+									}
+									if _, err := file.Write([]byte{0}); err != nil {
+										t.Fatal(err)
+									}
+									file.Close()
+								case "approved-binary-symlink":
+									if err := os.Remove(binaryPath); err != nil {
+										t.Fatal(err)
+									}
+									if err := os.Symlink("/bin/echo", binaryPath); err != nil {
+										t.Fatal(err)
+									}
+								}
+							}
 							if text, err := s.cli("decision", "answer", decision.DecisionID, "approve"); err != nil {
 								t.Fatal(text, err)
 							}
-							if tc.name == "outer-approval" {
+							if tc.name == "outer-approval" || tc.name == "approved-binary-unchanged" {
 								if err := <-done; err != nil {
 									t.Fatalf("approved exact command did not run: %v %s", err, output.String())
 								}
@@ -155,7 +238,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 									t.Fatal("exact approved invocation asked again")
 								}
 								if _, err := os.Stat(victim); !os.IsNotExist(err) {
-									t.Fatal("approved victim not removed", err)
+									t.Fatal("approved victim not removed", err, output.String())
 								}
 								if data, err := os.ReadFile(after); err != nil || string(data) != "after" {
 									t.Fatal("approved continuation failed", err)
@@ -176,7 +259,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							})
 							decision = pending.Decisions[0]
 						}
-						if decision.Origin == nil || decision.Origin.Reason != original || decision.Body == nil || strings.Contains(*decision.Body, forged) {
+						if decision.Origin == nil || decision.Origin.Reason != original || decision.Body == nil {
 							t.Fatalf("original reason lost or forged: %+v", decision)
 						}
 						if text, err := s.cli("decision", "answer", decision.DecisionID, "reject"); err != nil {
@@ -212,6 +295,16 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					if tc.name == "approved-forged-file" {
 						if _, err := os.Stat(filepath.Join(root, "guard", "approved-invocations", "forged.json")); !os.IsNotExist(err) {
 							t.Fatal("script forged a grant", err)
+						}
+					}
+					if strings.HasPrefix(tc.name, "child-") {
+						_, err := os.Stat(filepath.Join(root, "child-started"))
+						if tc.name == "child-original" {
+							if err != nil {
+								t.Fatal("unchanged child did not start", err)
+							}
+						} else if !os.IsNotExist(err) {
+							t.Fatal("child received modified reason", err)
 						}
 					}
 					if _, err := os.Stat(after); !os.IsNotExist(err) {

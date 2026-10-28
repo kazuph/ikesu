@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func approvalProcess(pid int) (int, string, error) {
@@ -31,4 +32,9 @@ func approvalProcess(pid int) (int, string, error) {
 
 func approvalExecutable(pid int) (string, error) {
 	return os.Readlink("/proc/" + strconv.Itoa(pid) + "/exe")
+}
+
+func executableFileIdentity(info os.FileInfo) executableIdentity {
+	st := info.Sys().(*syscall.Stat_t)
+	return executableIdentity{uint64(st.Dev), uint64(st.Ino), info.Size(), st.Mtim.Sec, st.Mtim.Nsec, st.Ctim.Sec, st.Ctim.Nsec}
 }

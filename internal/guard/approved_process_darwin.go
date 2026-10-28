@@ -5,6 +5,7 @@ package guard
 import (
 	"fmt"
 	"golang.org/x/sys/unix"
+	"os"
 	"syscall"
 )
 
@@ -33,4 +34,9 @@ func approvalExecutable(pid int) (string, error) {
 		}
 	}
 	return "", syscall.ESRCH
+}
+
+func executableFileIdentity(info os.FileInfo) executableIdentity {
+	st := info.Sys().(*syscall.Stat_t)
+	return executableIdentity{uint64(st.Dev), uint64(st.Ino), info.Size(), st.Mtimespec.Sec, st.Mtimespec.Nsec, st.Ctimespec.Sec, st.Ctimespec.Nsec}
 }

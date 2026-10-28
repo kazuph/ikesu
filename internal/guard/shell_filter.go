@@ -3,6 +3,7 @@ package guard
 // These helpers inspect syntax and variable attributes using Bash builtins.
 // They never evaluate the inspected text or change the caller's IFS/match state.
 const bashSimpleForms = `_ikesu_guard_reserved_name() {
+ [[ $1 == "${_ikesu_guard_reason_name:-AI_GUARD_REQUEST_REASON}" ]] && return 0
  case "$1" in _ikesu_guard_*|AI_GUARD_*|IKESU_*|BASH_ENV|ZDOTDIR|ENV|PATH|CLAUDE_CODE_SHELL_PREFIX) return 0;; esac
  return 1
 }
@@ -35,6 +36,7 @@ _ikesu_guard_simple_form() {
  esac
  if [[ $_ikesu_guard_text == '[[ '* && $_ikesu_guard_text == *' ]]' ]]; then
   _ikesu_guard_text="${_ikesu_guard_text:3:${#_ikesu_guard_text}-6}"
+  [[ $_ikesu_guard_text == *"${_ikesu_guard_reason_name:-AI_GUARD_REQUEST_REASON}"* ]] && return 1
   case "$_ikesu_guard_text" in *AI_GUARD_*|*IKESU_*|*_ikesu_guard_*|*BASH_ENV*|*ZDOTDIR*|*'${ENV'*|*'${PATH'*|*CLAUDE_CODE_SHELL_PREFIX*|*'['*|*'('*) return 1;; esac
   case " $_ikesu_guard_text " in *' -eq '*|*' -ne '*|*' -gt '*|*' -ge '*|*' -lt '*|*' -le '*)
    _ikesu_guard_text="${_ikesu_guard_text//\$/}"
