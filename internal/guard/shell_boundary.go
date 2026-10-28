@@ -241,6 +241,9 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 				return prefixError(cmd)
 			}
 			if i.scriptBody && i.scriptScanner != nil {
+				if !shellRuntimeArguments(i.Args) {
+					return fmt.Errorf("入れ子のシェルの起動引数を確認する必要があります")
+				}
 				r := i.scriptScanner.body(i, []byte(i.Args[n+1]), i.scriptLabel)
 				i.scriptResult = &r
 				*commands = append(*commands, i)

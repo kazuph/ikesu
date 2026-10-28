@@ -179,22 +179,40 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 				}
 				return true
 			})
+
 		case *syntax.CallExpr:
-			if len(n.Args) > 0 {
-				if cmd, ok := claudeLiteral(n.Args[0]); ok && (cmd == "read" || cmd == "unset") {
-					if cmd == "read" {
-						invalidate("REPLY")
-					}
-					for _, w := range n.Args[1:] {
-						if v, ok := claudeLiteral(w); ok {
-							invalidate(v)
-						}
+			if len(n.Args) == 0 {
+				break
+			}
+			var argv []string
+			literalArgs := true
+			for _, word := range n.Args {
+				value, ok := claudeLiteral(word)
+				literalArgs = literalArgs && ok
+				argv = append(argv, value)
+			}
+			command, err := unwrapCommand(Input{Command: argv[0], Args: argv[1:], Env: EnvMap(environment(i.Env))})
+			if err == nil && (command.Command == "read" || command.Command == "unset") {
+				if !literalArgs {
+					for name := range i.Env {
+						invalidate(name)
 					}
 				}
+				if command.Command == "read" {
+					invalidate("REPLY")
+				}
+				for _, name := range command.Args {
+					invalidate(name)
+				}
 			}
+
 		}
 		return true
 	})
+	if i.CwdUncertain || treeChangesDirectory(tree) {
+		invalidate("PWD")
+		invalidate("OLDPWD")
+	}
 	// Positional and special parameters belong to this script, never the parent.
 	for key := range i.Env {
 		if scriptSpecialParameter(key) {
@@ -300,7 +318,7 @@ func paneBashEnv(i Input) (string, bool) {
 }
 func verifiedBashEnv(i Input) bool {
 	path, ok := paneBashEnv(i)
-	return ok && i.Env["BASH_ENV"] == path
+	return ok && i.Env["BASH_ENV"] == path && shellRuntimeArguments(i.Args) && knownBashExecutable(i)
 }
 
 // PrepareClaudeBashEnv pins the generated file before both preflight and exec;
@@ -367,4 +385,75 @@ func scriptSpecialParameter(name string) bool {
 	}
 	_, err := strconv.ParseUint(name, 10, 64)
 	return err == nil
+}
+
+// The proof permits only the approved startup options before a file or -c.
+// A command string's arguments are operands, not further startup options.
+func shellRuntimeArguments(args []string) bool {
+	for n := 0; n < len(args); n++ {
+		a := args[n]
+		if a == "-o" || a == "+o" {
+			n++
+			continue
+		}
+		if a == "--" || !strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "+") {
+			break
+		}
+		if strings.HasPrefix(a, "--") || !strings.Contains(a, "c") {
+			continue
+		}
+		for _, flag := range a[1:] {
+			if !strings.ContainsRune("euxvc", flag) {
+				return false
+			}
+		}
+		_, _, prefixOK := shellFileArgument(args[:n])
+		return prefixOK && n+1 < len(args)
+	}
+	_, file, optionsOnly := shellFileArgument(args)
+	return file || optionsOnly
+}
+
+// OS-provided bash executables are the trust anchors. Resolve the first
+// executable in the command's actual PATH; never skip a same-named wrapper.
+// Unrecognized installations fail closed instead of being run to identify them.
+func knownBashExecutable(i Input) bool {
+	command := i.Command
+	if !strings.ContainsRune(command, '/') {
+		found := false
+		for _, dir := range filepath.SplitList(i.Env["PATH"]) {
+			if !filepath.IsAbs(dir) {
+				if i.CwdUncertain {
+					return false
+				}
+				dir = filepath.Join(i.Cwd, dir)
+			}
+			candidate := filepath.Join(dir, command)
+			st, e := os.Stat(candidate)
+			if e == nil && st.Mode().IsRegular() && st.Mode()&0111 != 0 {
+				command = candidate
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	} else if !filepath.IsAbs(command) {
+		if i.CwdUncertain {
+			return false
+		}
+		command = filepath.Join(i.Cwd, command)
+	}
+	actual, e := os.Stat(command)
+	if e != nil || !actual.Mode().IsRegular() || actual.Mode()&0111 == 0 {
+		return false
+	}
+	for _, anchor := range []string{"/bin/bash", "/usr/bin/bash"} {
+		known, e := os.Stat(anchor)
+		if e == nil && os.SameFile(actual, known) {
+			return true
+		}
+	}
+	return false
 }
