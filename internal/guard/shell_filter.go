@@ -47,6 +47,19 @@ _ikesu_guard_simple_form() {
   _ikesu_guard_declaration=1
   _ikesu_guard_text="${_ikesu_guard_text#* }";;
  esac
+ # A single command substitution runs in a child shell. Restrict this shortcut
+ # to one complete RHS with no nested expansion syntax; DEBUG checks its body.
+ _ikesu_guard_name="${_ikesu_guard_text%%=*}"
+ if [[ $_ikesu_guard_text == *=* ]]; then
+  local _ikesu_guard_rhs="${_ikesu_guard_text#*=}"
+  case "$_ikesu_guard_rhs" in
+   '$('*')')
+    _ikesu_guard_rhs="${_ikesu_guard_rhs:2:${#_ikesu_guard_rhs}-3}"
+    case "$_ikesu_guard_rhs" in *'('*|*')'*|*'${'*|*'$['*|*'` + "`" + `'*|*'\'*) ;;
+     *) _ikesu_guard_plain_variable "$_ikesu_guard_name"; return $?;;
+    esac;;
+  esac
+ fi
  # Split only at unquoted whitespace. Any unquoted shell operator or unfinished
  # quoting is uncertain and goes to the full parser instead.
  _ikesu_guard_text+=' '
@@ -55,6 +68,17 @@ _ikesu_guard_simple_form() {
   _ikesu_guard_text="${_ikesu_guard_text:1}"
   if [[ $_ikesu_guard_escape == 1 ]]; then
    _ikesu_guard_token+="$_ikesu_guard_char"; _ikesu_guard_escape=0; continue
+  fi
+  if [[ $_ikesu_guard_quote != "'" ]]; then
+   if [[ $_ikesu_guard_char == '$' ]]; then
+    case "$_ikesu_guard_text" in
+     '(('*|'['*) return 1;;
+     '{'*)
+      local _ikesu_guard_parameter="${_ikesu_guard_text#\{}"
+      _ikesu_guard_parameter="${_ikesu_guard_parameter%%\}*}"
+      case "$_ikesu_guard_parameter" in *'='*|*'['*|*'!'*|*'$'*|*'` + "`" + `'*|*'('*|*'}'*) return 1;; esac;;
+    esac
+   elif [[ $_ikesu_guard_char == '` + "`" + `' ]]; then return 1; fi
   fi
   if [[ -n $_ikesu_guard_quote ]]; then
    _ikesu_guard_token+="$_ikesu_guard_char"

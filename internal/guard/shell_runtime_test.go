@@ -75,6 +75,13 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"source-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; source "$IKESU_RUNTIME_SOURCE"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"substitution-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(printf before > "$IKESU_RUNTIME_ROOT/before"; rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 
+				{"rhs-arithmetic-env", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="$((BASH_ENV=0))"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"rhs-declare-internal", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; declare X="${_ikesu_guard_debug_busy:=1}"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"rhs-parameter-internal", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="${_ikesu_guard_debug_busy=1}"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"rhs-arithmetic-path", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="$((PATH=0))"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"rhs-arithmetic-ai", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="$((AI_GUARD_DANGER_WORD_ACK=1))"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"rhs-arithmetic-ikesu", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="$((IKESU_GUARD_ENFORCING=0))"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"rhs-parameter-ai", "", `printf 'state BASH_ENV=%s internal=%s\n' "$BASH_ENV" "${_ikesu_guard_debug_busy-unset}"; X="${AI_GUARD_DANGER_WORD_ACK:=1}"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"assignment-substitution", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"integer-indirection", "", `declare -i N; N='_ikesu_guard_debug_busy=1'; T="$IKESU_RUNTIME_ROOT/home/../victim"; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"arithmetic-indirection", "", `N='_ikesu_guard_debug_busy=1'; (( N )); T="$IKESU_RUNTIME_ROOT/home/../victim"; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
@@ -176,6 +183,15 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 						}
 					} else if _, err := os.Stat(filepath.Join(root, "after")); !os.IsNotExist(err) {
 						t.Fatal("post-failure line ran", err)
+					}
+					if strings.HasPrefix(tc.name, "rhs-") {
+						expected := "state BASH_ENV=" + bashEnv + " internal=unset\n"
+						if out.String() != expected {
+							t.Fatalf("reserved state before rejected expansion: got %q want %q", out.String(), expected)
+						}
+						if err == nil || ctx.Err() != nil {
+							t.Fatalf("expansion was not synchronously rejected: %v", err)
+						}
 					}
 					if strings.HasSuffix(tc.name, "-inner") {
 						if data, err := os.ReadFile(filepath.Join(root, "before")); err != nil || string(data) != "before" {

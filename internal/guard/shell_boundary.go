@@ -136,6 +136,9 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			}
 		}()
 
+		if i.runtimeLine && reservedExpansionWrite(node) {
+			failure = fmt.Errorf("右辺の展開による予約変数の変更には承認が必要です")
+		}
 		switch n := node.(type) {
 		case *syntax.FuncDecl:
 			if guardFunction(i, n.Name.Value) {
@@ -342,4 +345,27 @@ func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 		return "", fmt.Errorf("プロセス置換は静的に展開できません")
 	}
 	return expand.Literal(cfg, word)
+}
+
+// This runtime-only check inspects expansion syntax without evaluating it.
+func reservedExpansionWrite(node syntax.Node) bool {
+	var target syntax.ArithmExpr
+	switch n := node.(type) {
+	case *syntax.ParamExp:
+		return n.Exp != nil && (n.Exp.Op == syntax.AssignUnset || n.Exp.Op == syntax.AssignUnsetOrNull) && (snapshotReservedName(n.Param.Value) || startupVariable(n.Param.Value) || n.Param.Value == "PATH")
+	case *syntax.BinaryArithm:
+		switch n.Op {
+		case syntax.Assgn, syntax.AddAssgn, syntax.SubAssgn, syntax.MulAssgn, syntax.QuoAssgn, syntax.RemAssgn, syntax.AndAssgn, syntax.OrAssgn, syntax.XorAssgn, syntax.ShlAssgn, syntax.ShrAssgn:
+			target = n.X
+		}
+	case *syntax.UnaryArithm:
+		if n.Op == syntax.Inc || n.Op == syntax.Dec {
+			target = n.X
+		}
+	}
+	if word, ok := target.(*syntax.Word); ok {
+		name := word.Lit()
+		return snapshotReservedName(name) || startupVariable(name) || name == "PATH"
+	}
+	return false
 }
