@@ -90,6 +90,10 @@ for repeat in range(3):
                     if process.poll() is None:
                         process.send_signal(signal.SIGINT)
                         process.wait()
+            if not detected:
+                detected = foreign_tests()
+                if detected:
+                    event('tainted-at-end', attempt=attempt, name=name, pids=detected)
             load(label + '-after')
             if detected:
                 continue
