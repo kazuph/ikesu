@@ -217,3 +217,70 @@ func TestKoiMotionMiniLifecycleAndNamespace(t *testing.T) {
 		t.Fatal("departed mini retained")
 	}
 }
+
+func TestKoiMotionMachineHeaderAndSectionBandCounts(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
+	in.Panes[1].Status.Key = "working"
+	remote := in
+	machines := MachineSidebar{Groups: []MachineGroup{{ID: "local", Label: "local", Input: &in}, {ID: "remote", Label: "mini", Input: &remote}}, Active: "local"}
+	frame := ComposeMachines(in, &machines).Frame
+	headerFish, sectionFish := 0, 0
+	for _, fish := range frame.KoiScene.Mini {
+		found := false
+		for _, hit := range machines.Hits {
+			if hit.Right || hit.New || hit.Rect.Y != fish.Rect.Y {
+				continue
+			}
+			if hit.Header {
+				headerFish++
+				found = true
+				break
+			}
+			if hit.Row.Kind == RowSection && hit.Row.Section != model.SectionNone {
+				sectionFish++
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("mini outside machine or colored section band", fish)
+		}
+	}
+	if headerFish != 1 || sectionFish != 2 {
+		t.Fatal("wrong number of working-workspace fish per band", headerFish, sectionFish)
+	}
+}
+
+func TestKoiMotionBandCountUsesWorkspacesAndFitsWidth(t *testing.T) {
+	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionFavorite
+	for i := 0; i < 4; i++ {
+		in.State.Apply(model.CmdNewWorkspace{Section: model.SectionFavorite, NoFocus: true})
+	}
+	for _, ws := range in.State.Workspaces {
+		if ws.SidebarSection() != model.SectionFavorite {
+			continue
+		}
+		for _, tab := range ws.Tabs {
+			for _, pid := range tab.Layout.PaneIDs() {
+				in.Panes[pid] = &PaneSnap{Agent: "codex", Status: StatusGlyph{Key: "working"}}
+			}
+		}
+	}
+	frame := Compose(in).Frame
+	for _, band := range frame.KoiScene.Bands {
+		if len(band.Agents) != 5 {
+			t.Fatal("agents rather than working workspaces counted", len(band.Agents))
+		}
+		if band.Capacity != (in.State.SidebarArea().W-2)/8 {
+			t.Fatal("band capacity not derived from width")
+		}
+		if len(frame.KoiScene.Mini) != min(5, band.Capacity) {
+			t.Fatal("band overfilled", len(frame.KoiScene.Mini), band.Capacity)
+		}
+	}
+	if len(frame.KoiScene.Bands) != 1 {
+		t.Fatal("unexpected band inventory", len(frame.KoiScene.Bands))
+	}
+}
