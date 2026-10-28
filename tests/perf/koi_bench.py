@@ -5,7 +5,7 @@ import argparse, tomllib, json, os, pathlib, re, signal, subprocess, sys, tempfi
 root=pathlib.Path.cwd()
 binary=str(root/'koi-ikesu')
 ptyrun=str(root/'koi-ptyrun')
-parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence','longrun']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence','longrun']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--profile-seconds',type=int,default=10);parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
 out=root/args.evidence;out.mkdir(exist_ok=True)
 base_env={k:v for k,v in os.environ.items() if k not in ('IKESU_SOCKET_PATH','IKESU_SOCKET_PATH_EXPLICIT','IKESU','IKESU_PANE_ID','IKESU_WORKSPACE_ID','IKESU_TAB_ID','SSH_CONNECTION','SSH_TTY','TMUX','STY')}
 results=[]
@@ -81,7 +81,7 @@ def execute(condition,enabled,repeat):
  command=[ptyrun]+(['-status-delay','drop'] if args.interaction=='fence' else [])+['-cols','160','-rows','45','-xpixel','1280','-ypixel','720','-timeline',str(out/f'{session}.timeline.jsonl'),'-raw-output',str(raw),'-steps',str(steps),'--',binary]
  if condition=='empty':command+=['--no-session']
  else:command+=['--session',session]
- clientenv={**env,'IKESU_CPUPROFILE':str(out/f'{session}.cpu'),'IKESU_CPUPROFILE_SECS':'10'} if args.profile else env
+ clientenv={**env,'IKESU_CPUPROFILE':str(out/f'{session}.cpu'),'IKESU_CPUPROFILE_SECS':str(args.profile_seconds)} if args.profile else env
  process=subprocess.Popen(command,env=clientenv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
  lines=[];setup=False;cleanup=[];menu_saved=[]
  def cli(*args):
