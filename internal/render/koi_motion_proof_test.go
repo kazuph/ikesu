@@ -1,7 +1,9 @@
 package render
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html"
 	"os"
@@ -122,4 +124,38 @@ func TestKoiMotionCrowdedSidebarProof(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func TestExportKoiMotionSpriteManifest(t *testing.T) {
+	dest := os.Getenv("KOI_MOTION_MANIFEST")
+	if dest == "" {
+		return
+	}
+	type sprite struct{ Variety, Direction, Wag, W, H int }
+	manifest := map[string]sprite{}
+	for _, size := range [][2]int{{80, 80}, {48, 16}} {
+		directions := 16
+		varieties := 4 * len(KoiPatterns)
+		if size[1] == 16 {
+			directions = 2
+			varieties = len(KoiPatterns)
+		}
+		for v := 0; v < varieties; v++ {
+			for d := 0; d < directions; d++ {
+				for wag := 0; wag < 8; wag++ {
+					img, _ := koiSpriteCached(koiSpriteKey{v, d, wag, size[0], size[1]})
+					sum := sha256.Sum256(img.Pix)
+					manifest[fmt.Sprintf("%x", sum)] = sprite{v, d, wag, size[0], size[1]}
+				}
+			}
+		}
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(dest, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("unique source sprites=%d", len(manifest))
 }
