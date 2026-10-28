@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -362,18 +363,28 @@ func TestServerRecreatesHomeWhenLastPaneExits(t *testing.T) {
 		t.Fatal("server exited after replacing last shell")
 	default:
 	}
-	// Explicit server.stop must still end both clients and the server.
-	apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil)
+	// Real clients drain independently. Start both readers before stopping so
+	// one unread snapshot cannot block the other client's exit notification.
+	var ready, readers sync.WaitGroup
+	ready.Add(len(clients))
+	readers.Add(len(clients))
 	for _, c := range clients {
-		messages := c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
-		exited := false
-		for _, m := range messages {
-			exited = exited || m.Type == "exit"
-		}
-		if !exited {
-			t.Fatal("explicit server.stop did not send exit")
-		}
+		go func(c *testConn) {
+			defer readers.Done()
+			ready.Done()
+			messages := c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
+			exited := false
+			for _, m := range messages {
+				exited = exited || m.Type == "exit"
+			}
+			if !exited {
+				t.Error("explicit server.stop did not send exit")
+			}
+		}(c)
 	}
+	ready.Wait()
+	apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil)
+	readers.Wait()
 	waitServerExit(t, done)
 }
 
