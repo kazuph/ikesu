@@ -284,6 +284,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				in.SidebarConfig.Theme.Name = theme
 				in.SidebarConfig.UI.TransparentSidebarCards = transparent
 				in.State.Workspaces[0].Name = "鯉"
+				in.State.Workspaces[0].Section = model.SectionWork
 				in.Panes[1].Status.Key = "working"
 				other := in
 				machines := &MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &other}}, Active: "local"}
@@ -291,7 +292,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				plain := ComposeMachines(in, machines)
 				in.Koi = true
 				scene := KoiSceneFor(plain.Frame, in, machines)
-				if len(scene.Fish) != 4 || len(scene.Mini) != 2 {
+				if len(scene.Fish) != 4 || len(scene.Mini) != 3 {
 					t.Fatalf("missing fish %s %t %t pond=%d mini=%d", theme, server, transparent, len(scene.Fish), len(scene.Mini))
 				}
 				painted := ComposeMachines(in, machines)
@@ -320,7 +321,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				in.KoiKitty = true
 				in.KoiCellW, in.KoiCellH = 8, 16
 				graphic := ComposeMachines(in, machines)
-				if len(graphic.Frame.Graphics) != 6 {
+				if len(graphic.Frame.Graphics) != 7 {
 					t.Fatal("missing final machine graphics", len(graphic.Frame.Graphics))
 				}
 			}
@@ -358,6 +359,7 @@ func TestKoiMiniPlacementUsesEnlargedPixelGrid(t *testing.T) {
 	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	in.State.Workspaces[0].Name = "鯉"
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.KoiKitty = true
 	in.KoiCellW, in.KoiCellH = 8, 16
 	miniFrames := 0
