@@ -128,7 +128,7 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 // AnimateKoi reuses the last composition's proven empty regions. No UI model,
 // pane grid or server snapshot is composed on a decoration tick.
 func AnimateKoi(scene KoiScene, in Input) *Frame {
-	next := KoiScene{Pond: scene.Pond, Ripple: in.KoiRipple}
+	next := KoiScene{Pond: scene.Pond, ClickPond: scene.ClickPond, Ripple: in.KoiRipple}
 	for _, old := range scene.Fish {
 		agent := old.Agent
 		agent.Glow = in.KoiGlow[agent.ID]

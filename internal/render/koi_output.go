@@ -57,7 +57,7 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 			_, img := koiSpriteCached(koiSpriteKey{v, fish.Direction, fish.Wag, w, h})
 			at := koiPixelPosition(fish, cw, ch)
 			px, py := at.X, at.Y
-			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 1 + int((3-fish.Depth)*100)}, Koi: true})
+			f.Graphics = append(f.Graphics, Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: px / cw, Y: py / ch, OffsetX: px % cw, OffsetY: py % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: -1 - int(fish.Depth*100)}, Koi: true})
 		}
 	}
 	drawKoiRippleGraphics(f, scene, in)

@@ -23,11 +23,12 @@ type KoiFish struct {
 	Swimming       bool
 }
 type KoiScene struct {
-	Pond   layout.Rect
-	Fish   []KoiFish
-	Mini   []KoiFish
-	Ripple *KoiRipple
-	Active bool
+	Pond      layout.Rect
+	ClickPond layout.Rect
+	Fish      []KoiFish
+	Mini      []KoiFish
+	Ripple    *KoiRipple
+	Active    bool
 }
 
 func KoiAgentsFor(in Input, machines *MachineSidebar) []KoiAgent {
@@ -81,7 +82,8 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		}
 	}
 	a := s.RightSidebarArea()
-	scene.Pond = layout.Rect{X: a.X + 1, Y: last, W: max(0, a.W-1), H: max(0, a.Y+a.H-last)}
+	scene.ClickPond = layout.Rect{X: a.X + 1, Y: last, W: max(0, a.W-1), H: max(0, a.Y+a.H-last)}
+	scene.Pond = layout.Rect{X: a.X + 1, Y: a.Y, W: max(0, a.W-1), H: a.H}
 	agents := KoiAgentsFor(in, machines)
 	for i := range agents {
 		agents[i].Glow = in.KoiGlow[agents[i].ID]
@@ -101,45 +103,59 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 	if in.KoiRipple != nil {
 		scene.Active = true
 	}
-	mini := func(src Input, row SidebarRow, y, x, end int) {
-		if row.Kind != RowWorkspace || row.Ws < 0 || row.Ws >= len(src.State.Workspaces) {
-			return
-		}
-		var working bool
-		ws := src.State.Workspaces[row.Ws]
-		for _, tab := range ws.Tabs {
-			for _, pid := range tab.Layout.PaneIDs() {
-				if p := src.Panes[pid]; p != nil && p.Agent != "" && p.Status.Key == "working" {
-					working = true
-				}
-			}
-		}
-		if !working {
-			return
-		}
-		start, w := blankRun(f, y, x, end)
-		if w < 8 {
-			return
-		}
-		scene.Mini = append(scene.Mini, koiPose(KoiAgent{ID: itoa(ws.ID), State: "working", Seed: ws.ID}, layout.Rect{X: start, Y: y, W: w, H: 1}, 6, in.KoiTime))
-	}
 	left := s.SidebarArea()
 	if left.W > 1 && !in.Dragging && in.Copied == "" {
+		band := func(src Input, key string, row SidebarRow, header bool, y int) {
+			if !header && row.Kind != RowSection {
+				return
+			}
+			start, width := left.X+1, left.W-2
+			if width < 8 {
+				return
+			}
+			count := 0
+			for wi, ws := range src.State.Workspaces {
+				if !header && ws.SidebarSection() != row.Section {
+					continue
+				}
+				if src.State.WorktreeHidden(wi) {
+					continue
+				}
+				working := false
+				for _, tab := range ws.Tabs {
+					for _, pid := range tab.Layout.PaneIDs() {
+						if p := src.Panes[pid]; p != nil && p.Agent != "" && p.Status.Key == "working" {
+							working = true
+						}
+					}
+				}
+				if !working {
+					continue
+				}
+				if (count+1)*8 > width {
+					break
+				}
+				lane := layout.Rect{X: start + count*8, Y: y, W: 8, H: 1}
+				agent := KoiAgent{ID: key + ":" + itoa(ws.ID), State: "working", Seed: ws.ID}
+				scene.Mini = append(scene.Mini, koiPose(agent, lane, 6, in.KoiTime))
+				count++
+			}
+		}
 		if machines != nil && len(machines.Groups) > 1 {
 			for _, hit := range machines.Hits {
-				if hit.Right || hit.Header || hit.New {
+				if hit.Right || hit.New {
 					continue
 				}
 				for _, g := range machines.Groups {
 					if g.ID == hit.Machine && g.Input != nil {
-						mini(*g.Input, hit.Row, hit.Rect.Y, left.X, left.X+left.W-2)
+						band(*g.Input, "mini:"+g.ID+":"+string(hit.Row.Section), hit.Row, hit.Header, hit.Rect.Y)
 					}
 				}
 			}
 		} else {
 			for _, p := range view.Rows {
 				if !p.Right {
-					mini(in, p.Row, p.Y, left.X, left.X+left.W-2)
+					band(in, "mini:local:"+string(p.Row.Section), p.Row, false, p.Y)
 				}
 			}
 		}
