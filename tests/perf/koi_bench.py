@@ -37,6 +37,30 @@ class Traffic:
  def snapshot(self):
   with self.lock:return self.bytes,self.snapshots
 
+class SocketWatch:
+ def __init__(self,path):
+  self.queue=None
+  if sys.platform=='darwin':
+   self.fd=os.open(path,os.O_RDONLY);self.queue=select.kqueue()
+   self.queue.control([select.kevent(self.fd,filter=select.KQ_FILTER_VNODE,flags=select.KQ_EV_ADD,fflags=select.KQ_NOTE_WRITE)],0)
+  elif sys.platform=='linux':
+   import ctypes
+   libc=ctypes.CDLL(None,use_errno=True)
+   self.fd=libc.inotify_init1(os.O_CLOEXEC)
+   if self.fd<0:raise OSError(ctypes.get_errno(),'inotify_init1')
+   # IN_CREATE | IN_MOVED_TO, from linux/inotify.h.
+   if libc.inotify_add_watch(self.fd,ctypes.c_char_p(os.fsencode(path)),0x100|0x80)<0:
+    error=ctypes.get_errno();os.close(self.fd);raise OSError(error,'inotify_add_watch')
+  else:raise RuntimeError('unsupported socket watch platform: '+sys.platform)
+ def wait(self):
+  if self.queue is not None:return bool(self.queue.control(None,1,60))
+  readable,_,_=select.select([self.fd],[],[],60)
+  if readable:os.read(self.fd,65536)
+  return bool(readable)
+ def close(self):
+  if self.queue is not None:self.queue.close()
+  os.close(self.fd)
+
 def execute(condition,enabled,repeat):
  session=f'koi-bench-{os.getpid()}{repeat}{int(enabled)}{["empty","pond","full"].index(condition)}'
  state=pathlib.Path(tempfile.mkdtemp(prefix='kp232-',dir='/tmp'))
@@ -69,13 +93,13 @@ def execute(condition,enabled,repeat):
  server=None;traffic=None;server_samples={};traffic_samples={}
  if condition!='empty':
   sessiondir=state/session;sessiondir.mkdir()
-  fd=os.open(sessiondir,os.O_RDONLY);queue=select.kqueue();queue.control([select.kevent(fd,filter=select.KQ_FILTER_VNODE,flags=select.KQ_EV_ADD,fflags=select.KQ_NOTE_WRITE)],0)
+  watch=SocketWatch(sessiondir)
   server=subprocess.Popen([binary,'--session',session,'server'],env=env,stdout=open(out/f'{session}-server.log','w'),stderr=subprocess.STDOUT)
   client_socket=sessiondir/'ikesu-client.sock'
   while not client_socket.exists():
    if server.poll() is not None:raise RuntimeError('isolated server exited during startup')
-   if not queue.control(None,1,60):raise RuntimeError('isolated server socket timeout')
-  queue.close();os.close(fd)
+   if not watch.wait():raise RuntimeError('isolated server socket timeout')
+  watch.close()
   traffic=Traffic(client_socket)
 
  command=[ptyrun]+(['-status-delay','drop'] if args.interaction=='fence' else [])+['-cols','160','-rows','45','-xpixel','1280','-ypixel','720','-timeline',str(out/f'{session}.timeline.jsonl'),'-raw-output',str(raw),'-steps',str(steps),'--',binary]
@@ -142,7 +166,9 @@ def execute(condition,enabled,repeat):
  captures=re.findall(r'stats (before|after) pid=(\d+) rss_kb,cpu=(\d+)\s+([0-9:.]+) outer_bytes_so_far=(\d+)',''.join(lines))
  if len(captures)!=2:raise RuntimeError('missing CPU/output stats: '+''.join(lines))
  def cpu(value):
-  minutes,seconds=value.split(':');return int(minutes)*60+float(seconds)
+  seconds=0.
+  for part in value.split(':'):seconds=seconds*60+float(part)
+  return seconds
  before,after=captures
  results.append({'session':session,'mode':'--no-session' if condition=='empty' else '--session','condition':condition,'enabled':enabled,'repeat':repeat,'seconds':args.seconds,'state':args.state,'cpu_seconds':round(cpu(after[3])-cpu(before[3]),3),'server_cpu_seconds':round(cpu(server_samples['after'])-cpu(server_samples['before']),3) if server else None,'server_bytes':traffic_samples['after'][0]-traffic_samples['before'][0] if traffic else None,'snapshot_messages':traffic_samples['after'][1]-traffic_samples['before'][1] if traffic else None,'snapshot_range':[traffic_samples['before'][1],traffic_samples['after'][1]] if traffic else None,'terminal_bytes':int(after[4])-int(before[4]),'input_response_seconds':float(re.findall(r'onscreen ([0-9.]+)', ''.join(lines))[-1]),'server_cleanup':cleanup,'raw_output':str(raw),'log':str(logpath),'state_dir':str(state),'menu_saved':menu_saved,'interaction':args.interaction})
 
