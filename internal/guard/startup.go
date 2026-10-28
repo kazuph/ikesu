@@ -116,6 +116,6 @@ fi
 func (a *Assets) bashStartup(dir string) string {
 	restore := `if [[ "$IKESU_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$IKESU_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
 `
-	return fmt.Sprintf("if [[ %s ]]; then\n", a.shellActive()) + bashRequestReasonCapture + "fi\n" + restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
-` + "if [[ $- != *i* && ${_ikesu_guard_reason_name+x} ]]; then\n" + bashRequestReasonRestore + "fi\n" + pinPath + a.shellFunctions() + a.agentFunctions(dir) + a.debugHook("bash")
+	return bashRequestReasonCapture + restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
+` + fmt.Sprintf("if [[ $- != *i* && ${_ikesu_guard_reason_name+x} ]] && [[ %s ]]; then\n", a.shellActive()) + bashRequestReasonRestore + "fi\n" + pinPath + a.shellFunctions() + a.agentFunctions(dir) + a.debugHook("bash")
 }
