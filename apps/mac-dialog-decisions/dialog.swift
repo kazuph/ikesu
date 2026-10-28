@@ -188,7 +188,7 @@ final class OptionCard: NSView {
   var checked = false { didSet { refresh() } }
   var onClick: ((OptionCard) -> Void)?
   private var hovering = false { didSet { refresh() } }
-  private var descriptionField: NSTextField?
+  private var descriptionField: RichTextLabel?
   private let mark = NSTextField(labelWithString: "")
   private let box = FirstClickImageView()
 
@@ -258,7 +258,7 @@ final class OptionCard: NSView {
     layer?.opacity = 1
     // AppKit bubbles the field editor's mouse-up to the card after opening a
     // link. Test the actual glyph under that event, leaving other card clicks intact.
-    if let editor = descriptionField?.currentEditor() as? NSTextView,
+    if let editor = descriptionField,
       let manager = editor.layoutManager, let container = editor.textContainer, let storage = editor.textStorage {
       let local = editor.convert(event.locationInWindow, from: nil)
       let textPoint = NSPoint(x: local.x - editor.textContainerOrigin.x, y: local.y - editor.textContainerOrigin.y)
@@ -414,7 +414,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     // field only through the Edit menu's key equivalents. Send the same
     // standard edit actions to the focused field directly.
     if cmd, let action = editAction(event) {
-      if NSApp.sendAction(action, to: nil, from: panel) { return nil }
+      if NSApp.sendAction(action, to: panel.firstResponder, from: panel) { return nil }
     }
     return event
   }
@@ -467,19 +467,25 @@ final class DialogController: NSObject, NSWindowDelegate {
     var titleText = spec.title
     if let q = spec.question_label, !q.isEmpty { titleText = "［\(q)］ " + titleText }
     let titleLabel = richLabel(titleText, size: Look.title, weight: .bold)
-    if spec.kind == "command_guard" {
-      titleLabel.maximumNumberOfLines = 1
-      titleLabel.lineBreakMode = .byTruncatingTail
-    }
     full(titleLabel)
 
     if let body = spec.body, !body.isEmpty {
+      let commands = (spec.details ?? []).filter { $0.label == "コマンド" }.map { $0.value }
+      let ranges = spec.kind == "command_guard" ? commandBodyRanges(body, commands: commands) : []
+      func bodyLabel(_ text: String, offset: Int, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> RichTextLabel {
+        let slice = NSRange(location: offset, length: (text as NSString).length)
+        let local = ranges.compactMap { range -> NSRange? in
+          let part = NSIntersectionRange(slice, range)
+          return part.length > 0 ? NSRange(location: part.location - offset, length: part.length) : nil
+        }
+        return richLabel(text, size: Look.base, weight: weight, color: color, commandRanges: local)
+      }
       if spec.kind == "command_guard", (body.hasPrefix("ブロック理由：") || body.hasPrefix("承認が必要な理由:")),
         let boundary = body.range(of: "\n\n") {
-        full(richLabel(String(body[..<boundary.lowerBound]), size: Look.base, weight: .semibold, color: Look.accent))
-        full(richLabel(String(body[boundary.upperBound...]), size: Look.base))
+        full(bodyLabel(String(body[..<boundary.lowerBound]), offset: 0, weight: .semibold, color: Look.accent))
+        full(bodyLabel(String(body[boundary.upperBound...]), offset: (String(body[..<boundary.upperBound]) as NSString).length))
       } else {
-        full(richLabel(body, size: Look.base))
+        full(bodyLabel(body, offset: 0))
       }
     }
 
@@ -741,16 +747,68 @@ func richLinkRanges(_ text: String) -> [NSTextCheckingResult] {
     return ["http", "https"].contains(url.scheme?.lowercased() ?? "") && !url.absoluteString.contains("***")
   }
 }
-func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true) -> NSTextField {
-  let field = label(text, size: size, weight: weight, color: color, selectable: selectable)
-  let links = richLinkRanges(text)
-  if !links.isEmpty {
-    let attributed = NSMutableAttributedString(string: text, attributes: [.font: field.font!, .foregroundColor: color])
-    for match in links { attributed.addAttributes([.link: match.url!.absoluteString, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: match.range) }
-    field.allowsEditingTextAttributes = true
-    field.isSelectable = true
-    field.attributedStringValue = attributed
+// Work in UTF-16 ranges, as NSAttributedString does, without changing display bytes.
+func commandBodyRanges(_ text: String, commands: [String]) -> [NSRange] {
+  var ranges: [NSRange] = []
+  for heading in ["対象コマンド：", "コマンド: "] {
+    var cursor = text.startIndex
+    while cursor < text.endIndex, let label = text.range(of: heading, range: cursor..<text.endIndex) {
+      cursor = label.upperBound
+      guard label.lowerBound == text.startIndex || text[text.index(before: label.lowerBound)] == "\n" else { continue }
+      for command in commands where !command.isEmpty {
+        guard text[label.upperBound...].hasPrefix(command) else { continue }
+        let end = text.index(label.upperBound, offsetBy: command.count)
+        guard end == text.endIndex || text[end...].hasPrefix("\n\n") else { continue }
+        ranges.append(NSRange(label.upperBound..<end, in: text))
+        break
+      }
+    }
   }
+  return ranges.sorted { $0.location < $1.location }
+}
+
+// An always-present text view receives a link's first click directly, without
+// NSTextField first switching to its field editor.
+final class RichTextLabel: NSTextView {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  override var needsPanelToBecomeKey: Bool { true }
+  override func setFrameSize(_ size: NSSize) {
+    let changed = frame.width != size.width
+    super.setFrameSize(size)
+    if changed { invalidateIntrinsicContentSize() }
+  }
+  override var intrinsicContentSize: NSSize {
+    guard let container=textContainer, let manager=layoutManager else { return super.intrinsicContentSize }
+    container.containerSize=NSSize(width:bounds.width > 0 ? bounds.width : Look.width - 2 * Look.pad,height:CGFloat.greatestFiniteMagnitude)
+    manager.ensureLayout(for:container)
+    return NSSize(width:NSView.noIntrinsicMetric,height:ceil(manager.usedRect(for:container).height))
+  }
+}
+func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true, commandRanges: [NSRange] = []) -> RichTextLabel {
+  let field=RichTextLabel(frame:.zero)
+  field.isEditable=false
+  field.isSelectable=selectable
+  field.isRichText=true
+  field.drawsBackground=false
+  field.textContainerInset = .zero
+  field.textContainer?.lineFragmentPadding=0
+  field.textContainer?.widthTracksTextView=true
+  field.isHorizontallyResizable=false
+  field.isVerticallyResizable=true
+  field.translatesAutoresizingMaskIntoConstraints=false
+  field.setContentCompressionResistancePriority(.required,for:.vertical)
+  field.linkTextAttributes=[:]
+  let font=NSFont.systemFont(ofSize:size,weight:weight)
+  field.font=font;field.textColor=color
+  let attributed=NSMutableAttributedString(string:text,attributes:[.font:font,.foregroundColor:color])
+  for match in richLinkRanges(text) {
+    attributed.addAttributes([.link:match.url!.absoluteString,.foregroundColor:NSColor.linkColor,.underlineStyle:NSUnderlineStyle.single.rawValue],range:match.range)
+    field.isSelectable=true
+  }
+  for range in commandRanges {
+    attributed.addAttributes([.font:NSFont.monospacedSystemFont(ofSize:size,weight:.regular),.foregroundColor:NSColor.systemRed,.underlineColor:NSColor.systemRed],range:range)
+  }
+  field.textStorage!.setAttributedString(attributed)
   return field
 }
 struct RichBitmap {

@@ -10,6 +10,9 @@ import (
 
 // Probes are read-only, use the caller's environment, and remove our own shim.
 func probe(i Input, cmd string, a ...string) string {
+	if i.probePrivate {
+		return ""
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	env := environment(i.Env)

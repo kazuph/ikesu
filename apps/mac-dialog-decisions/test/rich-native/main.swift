@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+app.finishLaunching()
 app.appearance = NSAppearance(named: .darkAqua)
 let root = CommandLine.arguments[1]
 let specData = try JSONSerialization.data(withJSONObject: ["window_title":"rich test", "title":"公開リンク https://example.com/a", "body":String(repeating:"長い本文です。",count:500), "options":[["id":"yes","label":"選ぶ","description":"https://example.com/b"]], "allow_text":true,"multi_select":false,"draft_directory":root])
@@ -57,9 +58,8 @@ for width in [720.0, 520.0] {
 controller.panel.setContentSize(NSSize(width:720,height:controller.panel.contentLayoutRect.height));view.layoutSubtreeIfNeeded()
 let capture=Process();capture.executableURL=URL(fileURLWithPath:"/usr/sbin/screencapture");capture.arguments=["-x","-l",String(controller.panel.windowNumber),root+"/rich-native.png"];try capture.run();capture.waitUntilExit();precondition(capture.terminationStatus==0)
 let card=controller.cards[0]
-let description=card.subviews.compactMap {$0 as? NSStackView}.flatMap {$0.arrangedSubviews}.compactMap {$0 as? NSTextField}.first {$0.stringValue.contains("https://example.com/b")}!
-description.selectText(nil)
-let editor=description.currentEditor() as! NSTextView
+let description=card.subviews.compactMap {$0 as? NSStackView}.flatMap {$0.arrangedSubviews}.compactMap {$0 as? RichTextLabel}.first {$0.string.contains("https://example.com/b")}!
+let editor=description
 let manager=editor.layoutManager!,container=editor.textContainer!
 let linkRange=(editor.string as NSString).range(of:"https://example.com/b")
 let glyphs=manager.glyphRange(forCharacterRange:NSRange(location:linkRange.location+2,length:1),actualCharacterRange:nil)
