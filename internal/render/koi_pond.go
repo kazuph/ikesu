@@ -20,6 +20,7 @@ const KoiAttractionSpeedLimit = 4.0
 type koiMotion struct {
 	X, Y, T   float64
 	Speed     float64
+	Phase     float64
 	Direction int
 	Pond      layout.Rect
 }
@@ -41,9 +42,15 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 	speed := 1 / (KoiFreeDotInterval.Seconds() * math.Max(1, math.Hypot(rx*float64(cw), ry*float64(ch))/float64(scale)))
 	phase := koiHash(agent.Seed+29) * 2 * math.Pi
 	t := in.KoiTime
-	swimming := agent.State == "working" || agent.State == "blocked"
-	if !swimming {
-		t = 0
+	swimming := true
+	// Match the established resting pace of the sidebar fish.
+	pace := 1.0
+	if agent.State == "idle" || agent.State == "done" {
+		pace = 0.18
+	}
+	t *= pace
+	if old, ok := in.KoiMotion[agent.ID]; ok {
+		t = old.Phase + max(0, min(KoiInterval.Seconds(), in.KoiTime-old.T))*pace
 	}
 	u, v := t*speed+phase, t*speed+2*math.Pi*koiHash(agent.Seed+71)
 	x := float64(pond.X) + rx*(1+math.Sin(u))
@@ -68,20 +75,14 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 	angle := math.Atan2(dy, dx)
 	direction := int(math.Round(angle*16/(2*math.Pi))+16) % 16
 	normalSpeed := 1 / KoiFreeDotInterval.Seconds()
-	motionSpeed := normalSpeed
-	if !swimming {
-		motionSpeed = 0
-	}
+	motionSpeed := normalSpeed * pace
 	if in.KoiMotion != nil {
 		old, ok := in.KoiMotion[agent.ID]
-		if ok && old.Pond == pond {
+		if ok {
 			dt := max(0, min(KoiInterval.Seconds(), in.KoiTime-old.T))
 			dx, dy = (x-old.X)*float64(cw), (y-old.Y)*float64(ch)
 			distance := math.Hypot(dx, dy)
-			desiredSpeed := normalSpeed
-			if !swimming {
-				desiredSpeed = 0
-			}
+			desiredSpeed := normalSpeed * pace
 			acceleration := normalSpeed * KoiAttractionSpeedLimit / KoiGatherDuration
 			if attracting {
 				dots := distance / float64(scale)
@@ -108,7 +109,7 @@ func koiPondPose(agent KoiAgent, pond layout.Rect, in Input) KoiFish {
 				direction = old.Direction
 			}
 		}
-		in.KoiMotion[agent.ID] = koiMotion{X: x, Y: y, T: in.KoiTime, Speed: motionSpeed, Direction: direction, Pond: pond}
+		in.KoiMotion[agent.ID] = koiMotion{X: x, Y: y, T: in.KoiTime, Speed: motionSpeed, Phase: t, Direction: direction, Pond: pond}
 	}
 	depth := koiHash(agent.Seed + 17)
 	if agent.State == "idle" || agent.State == "done" {
