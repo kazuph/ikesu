@@ -204,7 +204,8 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 		if i.OpaquePrefix {
 			return fmt.Errorf("既存のClaude実行prefixが読み込むプログラムには承認が必要です")
 		}
-		if path, ok := shellFileArgument(i.Args); ok {
+		path, isFile, optionsOnly := shellFileArgument(i.Args)
+		if isFile {
 			if i.scriptScanner == nil {
 				i.scriptScanner = &scriptScanner{config: Config{}}
 			}
@@ -230,7 +231,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 				break
 			}
 		}
-		if len(i.Args) > 0 && !commandString {
+		if len(i.Args) > 0 && !commandString && !optionsOnly {
 			return fmt.Errorf("シェルの起動引数・標準入力を確定できません")
 		}
 	}

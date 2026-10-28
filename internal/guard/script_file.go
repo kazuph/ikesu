@@ -62,22 +62,22 @@ func scriptError(e error) scriptResult {
 }
 
 // Read options only before the program operand. The remainder belongs to it.
-func shellFileArgument(args []string) (string, bool) {
+func shellFileArgument(args []string) (string, bool, bool) {
 	for n := 0; n < len(args); n++ {
 		a := args[n]
 		if a == "--" {
 			if n+1 < len(args) {
-				return args[n+1], true
+				return args[n+1], true, false
 			}
-			return "", false
+			return "", false, true
 		}
 		if a == "-" {
-			return "", false
+			return "", false, false
 		}
 		if a == "-o" || a == "+o" {
 			n++
 			if n >= len(args) || !has([]string{"pipefail", "errexit", "nounset", "xtrace"}, args[n]) {
-				return "", false
+				return "", false, false
 			}
 			continue
 		}
@@ -86,18 +86,18 @@ func shellFileArgument(args []string) (string, bool) {
 		}
 		if strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+") {
 			if !strings.HasPrefix(a, "-") || len(a) == 1 {
-				return "", false
+				return "", false, false
 			}
 			for _, c := range a[1:] {
 				if !strings.ContainsRune("euxv", c) {
-					return "", false
+					return "", false, false
 				}
 			}
 			continue
 		}
-		return a, true
+		return a, true, false
 	}
-	return "", false
+	return "", false, true
 }
 
 func (s *scriptScanner) file(i Input, name string) scriptResult {

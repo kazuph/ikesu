@@ -11,8 +11,8 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Shell analysis never evaluates substitutions, reads files, or invokes a
-// shell. Walk also visits commands in substitutions and function bodies.
+// Shell analysis never executes substitutions or invokes a shell. Script
+// operands use the bounded file reader; Walk visits function bodies as well.
 func lineCommands(i Input, line string) ([]Input, error) {
 	tree, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(line), "guard line")
 	if err != nil {
