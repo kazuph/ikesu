@@ -5,7 +5,7 @@ import argparse, tomllib, json, os, pathlib, re, signal, subprocess, sys, tempfi
 root=pathlib.Path.cwd()
 binary=str(root/'koi-ikesu')
 ptyrun=str(root/'koi-ptyrun')
-parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence','longrun']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--profile',action='store_true');parser.add_argument('--profile-seconds',type=int,default=10);parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--interaction',choices=['menu','ripple','fence','longrun']);parser.add_argument('--seconds',type=int,default=10);parser.add_argument('--state',choices=['idle','working','blocked'],default='working');parser.add_argument('--compare-off',action='store_true');parser.add_argument('--profile',action='store_true');parser.add_argument('--profile-seconds',type=int,default=10);parser.add_argument('--repeats',type=int,default=3);parser.add_argument('--condition',choices=['empty','pond','full']);parser.add_argument('--evidence',default='koi-bench-results');args=parser.parse_args()
 out=root/args.evidence;out.mkdir(exist_ok=True)
 base_env={k:v for k,v in os.environ.items() if k not in ('IKESU_SOCKET_PATH','IKESU_SOCKET_PATH_EXPLICIT','IKESU','IKESU_PANE_ID','IKESU_WORKSPACE_ID','IKESU_TAB_ID','SSH_CONNECTION','SSH_TTY','TMUX','STY')}
 results=[]
@@ -140,7 +140,7 @@ def execute(condition,enabled,repeat):
 try:
  for repeat in range(args.repeats):
   for condition in ([args.condition] if args.condition else ('empty','pond','full')):
-   for enabled in ((True,) if args.interaction else (False,True)):execute(condition,enabled,repeat)
+   for enabled in ((True,) if args.interaction and not args.compare_off else (False,True)):execute(condition,enabled,repeat)
  (out/'results.json').write_text(json.dumps(results,indent=2))
  print(json.dumps(results,indent=2))
 finally:
