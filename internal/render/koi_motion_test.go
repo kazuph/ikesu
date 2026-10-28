@@ -269,7 +269,15 @@ func TestKoiMotionBandCountUsesWorkspacesAndFitsWidth(t *testing.T) {
 		}
 	}
 	frame := Compose(in).Frame
+	favoriteBands := 0
 	for _, band := range frame.KoiScene.Bands {
+		if band.ID != "mini:local:favorite" {
+			if len(band.Agents) != 0 {
+				t.Fatal("idle default band unexpectedly contains working spaces")
+			}
+			continue
+		}
+		favoriteBands++
 		if len(band.Agents) != 5 {
 			t.Fatal("agents rather than working workspaces counted", len(band.Agents))
 		}
@@ -280,8 +288,8 @@ func TestKoiMotionBandCountUsesWorkspacesAndFitsWidth(t *testing.T) {
 			t.Fatal("band overfilled", len(frame.KoiScene.Mini), band.Capacity)
 		}
 	}
-	if len(frame.KoiScene.Bands) != 1 {
-		t.Fatal("unexpected band inventory", len(frame.KoiScene.Bands))
+	if favoriteBands != 1 {
+		t.Fatal("favorite band missing or duplicated", favoriteBands)
 	}
 }
 
@@ -306,4 +314,41 @@ func TestKoiMotionHiddenSidebarsDoNotDrawDepartingMini(t *testing.T) {
 	if len(frame.Graphics) != 0 || frame.KoiActive {
 		t.Fatal("hidden sidebars retained koi output")
 	}
+}
+
+func TestKoiMotionDefaultSpacesBandCountsWorkingWorkspaces(t *testing.T) {
+	in := koiFixture(t, 1)
+	// The default unclassified band is a real section, just like Work.
+	for i := 0; i < 2; i++ {
+		in.State.Apply(model.CmdNewWorkspace{Section: model.SectionNone, NoFocus: true})
+	}
+	working := 0
+	for _, ws := range in.State.Workspaces {
+		if ws.SidebarSection() != model.SectionNone {
+			continue
+		}
+		if working == 2 {
+			break
+		}
+		working++
+		for _, tab := range ws.Tabs {
+			for _, pid := range tab.Layout.PaneIDs() {
+				in.Panes[pid] = &PaneSnap{Agent: "codex", Status: StatusGlyph{Key: "working"}}
+			}
+		}
+	}
+	frame := Compose(in).Frame
+	for _, band := range frame.KoiScene.Bands {
+		if band.ID != "mini:local:none" {
+			continue
+		}
+		if len(band.Agents) != 2 {
+			t.Fatal("default spaces band lost working workspaces", len(band.Agents))
+		}
+		if len(frame.KoiScene.Mini) != min(2, band.Capacity) {
+			t.Fatal("default spaces band has no fish", len(frame.KoiScene.Mini))
+		}
+		return
+	}
+	t.Fatal("default spaces band excluded")
 }

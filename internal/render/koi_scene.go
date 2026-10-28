@@ -2,7 +2,6 @@ package render
 
 import (
 	"github.com/kazuph/ikesu/internal/layout"
-	"github.com/kazuph/ikesu/internal/model"
 	"math"
 	"sort"
 	"strconv"
@@ -118,7 +117,7 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 	left := s.SidebarArea()
 	if left.W > 1 && !in.Dragging && in.Copied == "" {
 		band := func(src Input, key string, row SidebarRow, header bool, y int) {
-			if !header && (row.Kind != RowSection || row.Section == model.SectionNone) {
+			if !header && row.Kind != RowSection {
 				return
 			}
 			start, width := left.X+1, left.W-2
