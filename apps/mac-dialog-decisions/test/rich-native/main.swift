@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+app.finishLaunching()
 app.appearance = NSAppearance(named: .darkAqua)
 let root = CommandLine.arguments[1]
 let specData = try JSONSerialization.data(withJSONObject: ["window_title":"rich test", "title":"公開リンク https://example.com/a", "body":String(repeating:"長い本文です。",count:500), "options":[["id":"yes","label":"選ぶ","description":"https://example.com/b"]], "allow_text":true,"multi_select":false,"draft_directory":root])

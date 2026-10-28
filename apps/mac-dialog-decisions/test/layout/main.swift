@@ -22,7 +22,7 @@ for prefix in ["ブロック理由：", "承認が必要な理由:"] {
  let candidate = DialogController(spec: input, specPath: CommandLine.arguments[1])
  candidate.build()
  func emphasized(_ view: NSView) -> Bool {
-  if let field = view as? RichTextLabel, field.string.hasPrefix(prefix), field.textColor == Look.accent { return true }
+  if let field = view as? RichTextLabel, field.string.hasPrefix(prefix), field.attributedString().attribute(.foregroundColor,at:0,effectiveRange:nil) as? NSColor == Look.accent { return true }
   if let field = view as? NSTextField, field.stringValue.hasPrefix(prefix), field.textColor == Look.accent { return true }
   return view.subviews.contains(where: emphasized)
  }
@@ -45,7 +45,7 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
  precondition(capture.terminationStatus == 0, "actual window capture failed")
  print("screencapture window=\(controller.panel.windowNumber) appearance=\(controller.panel.effectiveAppearance.name.rawValue)")
  func fieldText(_ view:NSView)->String {(view as? RichTextLabel)?.string ?? (view as? NSTextField)?.stringValue ?? ""}
- func fieldColor(_ view:NSView)->NSColor? {(view as? RichTextLabel)?.textColor ?? (view as? NSTextField)?.textColor}
+ func fieldColor(_ view:NSView)->NSColor? {((view as? RichTextLabel).flatMap {$0.string.isEmpty ? nil : $0.attributedString().attribute(.foregroundColor,at:0,effectiveRange:nil) as? NSColor}) ?? (view as? NSTextField)?.textColor}
  var fields: [NSView] = []
  func collect(_ view: NSView) {
   if view is NSTextField || view is RichTextLabel { fields.append(view) }

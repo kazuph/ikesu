@@ -414,7 +414,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     // field only through the Edit menu's key equivalents. Send the same
     // standard edit actions to the focused field directly.
     if cmd, let action = editAction(event) {
-      if NSApp.sendAction(action, to: nil, from: panel) { return nil }
+      if NSApp.sendAction(action, to: panel.firstResponder, from: panel) { return nil }
     }
     return event
   }
