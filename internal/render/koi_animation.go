@@ -41,7 +41,9 @@ func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time,
 	}
 	in.KoiGlow = map[string]bool{}
 	present := map[string]bool{}
+	active := map[string]bool{}
 	for _, agent := range KoiAgentsFor(*in, machines) {
+		active[agent.ID] = true
 		if agent.State != "done" {
 			continue
 		}
@@ -53,9 +55,30 @@ func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time,
 		}
 		in.KoiGlow[agent.ID] = now.Sub(since) < expiry
 	}
+	// Rebuild on removal so the map's buckets cannot retain a historic peak.
+	for id := range a.motion {
+		if !active[id] {
+			live := make(map[string]koiMotion, len(active))
+			for id, m := range a.motion {
+				if active[id] {
+					live[id] = m
+				}
+			}
+			a.motion = live
+			in.KoiMotion = live
+			break
+		}
+	}
 	for id := range a.done {
 		if !present[id] {
-			delete(a.done, id)
+			live := make(map[string]time.Time, len(present))
+			for id, since := range a.done {
+				if present[id] {
+					live[id] = since
+				}
+			}
+			a.done = live
+			break
 		}
 	}
 }
