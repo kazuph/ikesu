@@ -12,6 +12,7 @@ func (m *machineClient) paintKoi(now time.Time) error {
 		return nil
 	}
 	if !m.koiInput.KoiKitty {
+		m.koiNext = time.Time{}
 		return m.paint()
 	}
 	if m.outputFence.Waiting(now) {

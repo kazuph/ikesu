@@ -265,3 +265,19 @@ func TestKoiRev3EmptyClicksNeverStartAnimation(t *testing.T) {
 		})
 	}
 }
+
+func TestKoiOctantTickSchedulesFutureDeadline(t *testing.T) {
+	m, _ := koiRev3Client(t)
+	m.outputFence.Accept([]byte("\x1b[0n"))
+	m.paintQueued = false
+	m.koiKitty = false
+	m.koiInput.KoiKitty = false
+	now := time.Now()
+	m.koiNext = now.Add(-time.Millisecond)
+	if err := m.paintKoi(now); err != nil {
+		t.Fatal(err)
+	}
+	if !m.koiNext.After(now) {
+		t.Fatal("expired koi deadline starves reconnect timers", m.koiNext, now)
+	}
+}
