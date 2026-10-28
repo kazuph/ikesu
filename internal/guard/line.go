@@ -55,6 +55,16 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 			i.Env[key] = value
 		}
 	}
+	if runtimeLine {
+		// Runtime assignments belong to the script, not the original request.
+		for _, key := range []string{requestReasonEnvName(Input{Env: callerEnv}), "AI_GUARD_REQUEST_REASON", "AI_GUARD_REQUEST_ENV_NAME", "IKESU_GUARD_PARENT_REASON"} {
+			if value, exists := callerEnv[key]; exists {
+				i.Env[key] = value
+			} else {
+				delete(i.Env, key)
+			}
+		}
+	}
 	if i.shellVariables != nil {
 		i.TriggerCommand = line
 		verdict.Reason = i.shellDiagnostic(verdict.Reason, line)

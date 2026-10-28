@@ -123,6 +123,10 @@ func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
 	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if _, ok := node.(*syntax.ProcSubst); ok {
+			failure = fmt.Errorf("プロセス置換が実行する内容には承認が必要です")
+			return false
+		}
 		if i.runtimeLine {
 			switch node.(type) {
 			case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.FuncDecl:
@@ -136,7 +140,16 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			}
 		}()
 
-		if i.runtimeLine && reservedExpansionWrite(node) {
+		if i.runtimeLine {
+			changed, display := runtimeReasonSyntax(i, node, cfg)
+			if display {
+				return false
+			}
+			if changed {
+				failure = fmt.Errorf("申請文の名前を含む操作・動的な変数への書込みには承認が必要です")
+			}
+		}
+		if i.runtimeLine && reservedExpansionWrite(i, node) {
 			failure = fmt.Errorf("右辺の展開による予約変数の変更には承認が必要です")
 		}
 		switch n := node.(type) {
@@ -332,6 +345,9 @@ func guardPhysical(path string) string {
 }
 
 func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
+	if word == nil {
+		return "", fmt.Errorf("展開する単語がありません")
+	}
 	unsupported := false
 	syntax.Walk(word, func(n syntax.Node) bool {
 		if _, ok := n.(*syntax.ProcSubst); ok {
@@ -347,11 +363,11 @@ func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 }
 
 // This runtime-only check inspects expansion syntax without evaluating it.
-func reservedExpansionWrite(node syntax.Node) bool {
+func reservedExpansionWrite(i Input, node syntax.Node) bool {
 	var target syntax.ArithmExpr
 	switch n := node.(type) {
 	case *syntax.ParamExp:
-		return n.Exp != nil && (n.Exp.Op == syntax.AssignUnset || n.Exp.Op == syntax.AssignUnsetOrNull) && (snapshotReservedName(n.Param.Value) || startupVariable(n.Param.Value) || n.Param.Value == "PATH")
+		return n.Exp != nil && (n.Exp.Op == syntax.AssignUnset || n.Exp.Op == syntax.AssignUnsetOrNull) && (runtimeReasonVariable(i, n.Param.Value) || snapshotReservedName(n.Param.Value) || startupVariable(n.Param.Value) || n.Param.Value == "PATH")
 	case *syntax.BinaryArithm:
 		switch n.Op {
 		case syntax.Assgn, syntax.AddAssgn, syntax.SubAssgn, syntax.MulAssgn, syntax.QuoAssgn, syntax.RemAssgn, syntax.AndAssgn, syntax.OrAssgn, syntax.XorAssgn, syntax.ShlAssgn, syntax.ShrAssgn:
@@ -364,7 +380,11 @@ func reservedExpansionWrite(node syntax.Node) bool {
 	}
 	if word, ok := target.(*syntax.Word); ok {
 		name := word.Lit()
-		return snapshotReservedName(name) || startupVariable(name) || name == "PATH"
+		return runtimeReasonVariable(i, name) || snapshotReservedName(name) || startupVariable(name) || name == "PATH"
 	}
 	return false
+}
+
+func runtimeReasonVariable(i Input, name string) bool {
+	return has([]string{"AI_GUARD_REQUEST_REASON", "AI_GUARD_REQUEST_ENV_NAME", "IKESU_GUARD_PARENT_REASON", requestReasonEnvName(i)}, name)
 }

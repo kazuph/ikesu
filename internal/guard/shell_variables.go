@@ -67,7 +67,7 @@ func WithShellVariables(i Input, r io.Reader) Input {
 		if !literal {
 			continue
 		}
-		value, err := expand.Literal(&expand.Config{NoUnset: true}, assignment.Value)
+		value, err := shellLiteral(&expand.Config{NoUnset: true}, assignment.Value)
 		if err == nil {
 			i.shellVariables[name] = value
 		}

@@ -207,7 +207,7 @@ func TestSnapshotChildShellUsesExportsAndRetainsAuthorization(t *testing.T) {
 
 func TestSnapshotLiteralInlineReasonIsNotPrivate(t *testing.T) {
 	i, _ := scriptPane(t)
-	delete(i.Env, "AI_GUARD_REQUEST_REASON")
+	i.Env["AI_GUARD_REQUEST_REASON"] = "日本語の申請文"
 	i = WithShellVariables(i, strings.NewReader("declare -- IFS=$' \\t\\n'\ndeclare -- T=\"private\"\n"))
 	var out bytes.Buffer
 	if AuthorizeLine(Config{}, i.Cwd, i, `AI_GUARD_REQUEST_REASON='日本語の申請文' /bin/rm '/outside/victim'`, &out, nil) {

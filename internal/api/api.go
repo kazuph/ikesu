@@ -133,9 +133,10 @@ func (e *Error) Error() string {
 //
 //	{"id": "...", "method": "...", "params": {...}}
 type Request struct {
-	ID     string          `json:"id"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
+	PeerPID int             `json:"-"`
+	ID      string          `json:"id"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params"`
 }
 
 // MarshalParams encodes params for a request; nil becomes {}.

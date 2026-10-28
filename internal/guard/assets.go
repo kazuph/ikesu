@@ -109,7 +109,14 @@ func (a *Assets) shellFunctions() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, `_ikesu_guard_forward() {
- if [[ %s ]]; then %s guard exec --via shell-func -- "$@"; else builtin command "$@"; fi
+ if [[ %s ]]; then
+  if [[ -n "${BASH_VERSION:-}" && ${_ikesu_guard_reason_name+x} ]]; then
+   (
+    set +o functrace
+%s    %s guard exec --via shell-func -- "$@"
+   )
+  else %s guard exec --via shell-func -- "$@"; fi
+ else builtin command "$@"; fi
 }
 _ikesu_guard_command() {
  if [[ "${1:-}" != -* ]]; then
@@ -117,7 +124,7 @@ _ikesu_guard_command() {
  fi
  builtin command "$@"
 }
-`, a.shellActive(), a.invocation(), strings.Join(a.Config.Commands(), "|"))
+`, a.shellActive(), bashRequestReasonRestore, a.invocation(), a.invocation(), strings.Join(a.Config.Commands(), "|"))
 	for _, cmd := range a.Config.Commands() {
 		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
 %s() { _ikesu_guard_forward %s "$@"; }

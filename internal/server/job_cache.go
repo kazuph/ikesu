@@ -132,6 +132,7 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 		case <-stop:
 			return
 		case <-tick.C:
+			s.app.Do(s.pruneGuardExecutions)
 			refresh(false)
 		case <-s.jobCache.wake:
 			refresh(true)

@@ -62,6 +62,9 @@ func snapshotArray(assignment *syntax.Assign) (map[int]string, bool) {
 }
 
 func snapshotLiteral(word *syntax.Word) (string, error) {
+	if word == nil {
+		return "", fmt.Errorf("snapshot contains no word")
+	}
 	literal := true
 	syntax.Walk(word, func(n syntax.Node) bool {
 		switch n.(type) {
@@ -74,7 +77,7 @@ func snapshotLiteral(word *syntax.Word) (string, error) {
 	if !literal {
 		return "", fmt.Errorf("snapshot contains nonliteral data")
 	}
-	return expand.Literal(&expand.Config{NoUnset: true}, word)
+	return shellLiteral(&expand.Config{NoUnset: true}, word)
 }
 
 // Sparse indexed arrays remain maps, avoiding allocation based on an untrusted

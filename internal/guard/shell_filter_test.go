@@ -23,16 +23,16 @@ func TestBashCheapSelector(t *testing.T) {
 			hook := a.debugHook("bash")
 			start := strings.Index(hook, "_ikesu_guard_needs_check() {")
 			end := strings.Index(hook, "_ikesu_guard_debug() {")
-			selector := bashSimpleForms + hook[start:end]
+			selector := "_ikesu_guard_reason_name=PROJECT_REASON\n" + bashSimpleForms + hook[start:end]
 			for _, tc := range []struct {
 				line  string
 				check bool
 			}{
-				{"printf '%s' hi", false}, {" /usr/bin/printf hi", false}, {"jq -r .model", false}, {"custom-target read", true}, {"/bin/rm /outside", true},
+				{`printf -v AI_GUARD_REQUEST_REASON %s forged`, true}, {`read AI_GUARD_REQUEST_REASON`, true}, {`let 'AI_GUARD_REQUEST_REASON=0'`, true}, {`printf -v "$TARGET" hi`, true}, {`read -r "$TARGET"`, true}, {`readarray "$TARGET"`, true}, {`mapfile "$TARGET"`, true}, {`declare -n ref=other`, true}, {`export 'PROJECT_REASON=forged'`, true}, {"printf '%s' hi", false}, {" /usr/bin/printf hi", false}, {"jq -r .model", false}, {"custom-target read", true}, {"/bin/rm /outside", true},
 				{"printf x > out", true}, {"printf x >> out", true}, {"printf x >| out", true}, {"printf x &> out", true},
 				{"\"rm\" /outside", true}, {"$CMD /outside", true}, {"$(printf rm) /outside", true}, {"r\\m /outside", true}, {"T=x /bin/rm /outside", true},
 				{`X="$((BASH_ENV=0))"`, true}, {`declare X="${_ikesu_guard_debug_busy:=1}"`, true}, {`X="${AI_GUARD_DANGER_WORD_ACK=1}"`, true}, {`X="$((PATH++))"`, true}, {`X="${A[BASH_ENV=0]}"`, true}, {`X='$((BASH_ENV=0))'`, false}, {`PCT=$(clamp_pct "$PCT")`, false}, {`X=$(rm "$T")`, false}, {`X=$(echo) /bin/rm $(echo)`, true}, {`X="${V:-0}"`, false},
-				{"X=1", false}, {`X="a > b"`, false}, {"X=1 Y=2", false}, {"local v=1 width=2", false}, {"declare X=1", false}, {"declare -- X=1", false}, {"[[ $i -eq 0 ]]", false}, {`[[ -z "$TERM_WIDTH" || "$TERM_WIDTH" -le 0 ]]`, false}, {"(( i++ ))", false}, {"(( i < 12 ))", false}, {"[[ $v == x ]]", false}, {"[[ x > y ]]", false},
+				{`PROJECT_REASON=forged`, true}, {`local PROJECT_REASON=forged`, true}, {`X="${PROJECT_REASON:=forged}"`, true}, {`[[ ${PROJECT_REASON:=forged} == x ]]`, true}, {"X=1", false}, {`X="a > b"`, false}, {"X=1 Y=2", false}, {"local v=1 width=2", false}, {"declare X=1", false}, {"declare -- X=1", false}, {"[[ $i -eq 0 ]]", false}, {`[[ -z "$TERM_WIDTH" || "$TERM_WIDTH" -le 0 ]]`, false}, {"(( i++ ))", false}, {"(( i < 12 ))", false}, {"[[ $v == x ]]", false}, {"[[ x > y ]]", false},
 				{"X=1 > out", true}, {"[[ x == y ]] > out", true}, {"(( i++ )) > out", true}, {"local -n X=PATH", true}, {"declare -i X=1", true}, {"PATH=x", true}, {"local AI_GUARD_DANGER_WORD_ACK=1", true}, {"declare IKESU_PANE_ID=other", true}, {"BASH_ENV=x", true}, {"ENV=x", true}, {"CLAUDE_CODE_SHELL_PREFIX=x", true}, {"(( PATH=1 ))", true},
 				{"eval ':'", true}, {"source path", true}, {". path", true}, {"xargs rm", true}, {"find . -exec rm {} \\;", true}, {"bash -c ':'", true}, {"command rm", true}, {"builtin eval ':'", true}, {"exec rm", true},
 				{"unset _ikesu_guard_word", true}, {"declare _ikesu_guard_word=x", true}, {"set +T", true}, {"trap ':' DEBUG", true}, {"_ikesu_guard_needs_check() { :; }", true},

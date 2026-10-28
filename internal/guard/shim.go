@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -37,13 +36,13 @@ func isForwardingShim(path string) bool {
 		if !ok || len(call.Args) < 2+len(strings.Fields(shimForward))+1 {
 			continue
 		}
-		first, err := expand.Literal(nil, call.Args[0])
+		first, err := shellLiteral(nil, call.Args[0])
 		if err != nil || first != "exec" {
 			continue
 		}
 		matches := true
 		for n, want := range strings.Fields(shimForward) {
-			got, err := expand.Literal(nil, call.Args[n+2])
+			got, err := shellLiteral(nil, call.Args[n+2])
 			if err != nil || got != want {
 				matches = false
 				break

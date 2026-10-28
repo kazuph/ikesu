@@ -29,9 +29,9 @@ func TestScriptFileInsideRealPane(t *testing.T) {
 				body := "printf before > " + quote(before) + "\n"
 				switch scenario {
 				case "danger":
-					body += reason + "/bin/rm " + quote(target) + "\n"
+					body += "/bin/rm " + quote(target) + "\n"
 				case "unresolved":
-					body += "TARGET=" + quote(target) + "\n" + reason + "/bin/rm \"$TARGET\"\n"
+					body += "TARGET=" + quote(target) + "\n/bin/rm \"$TARGET\"\n"
 				case "block":
 					body += "git reset --hard\n"
 				}
@@ -39,11 +39,11 @@ func TestScriptFileInsideRealPane(t *testing.T) {
 				if e := os.WriteFile(script, []byte(body), 0600); e != nil {
 					t.Fatal(e)
 				}
-				line := reason + "/bin/bash " + quote(script)
+				line := "/bin/bash " + quote(script)
 				runner := "/bin/bash"
 				if agent == "claude" {
 					runner = "/bin/sh"
-					line = quote(binPath) + " guard claude-prefix -- " + quote(line)
+					line = quote(binPath) + " guard claude-prefix -- " + quote(reason+line)
 				}
 				// Enter a real pane shell before reporting the agent. Its read waits for
 				// activation, so no real AI runtime or user's running server is touched.

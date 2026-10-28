@@ -23,11 +23,15 @@ fi
  local _ikesu_guard_line="$1" _ikesu_guard_word
  _ikesu_guard_line="${_ikesu_guard_line#"${_ikesu_guard_line%%%%[!$' \t\r\n']*}"}"
  _ikesu_guard_line="${_ikesu_guard_line%%%%"${_ikesu_guard_line##*[!$' \t\r\n']}"}"
+ case "$_ikesu_guard_line" in *AI_GUARD_REQUEST_REASON*|*AI_GUARD_REQUEST_ENV_NAME*|*IKESU_GUARD_PARENT_REASON*) return 0;; esac
+ [[ $_ikesu_guard_line == *"${_ikesu_guard_reason_name:-AI_GUARD_REQUEST_REASON}"* ]] && return 0
  _ikesu_guard_simple_form "$_ikesu_guard_line" && return 1
  case "$_ikesu_guard_line" in *'>'*) return 0;; esac
  _ikesu_guard_word="${_ikesu_guard_line%%%%[$' \t\r\n']*}"
  case "$_ikesu_guard_word" in ''|*[!a-zA-Z0-9_./-]*) return 0;; esac
  _ikesu_guard_word="${_ikesu_guard_word##*/}"
+ case "$_ikesu_guard_word" in printf|read|readarray|mapfile|let)
+  case "$_ikesu_guard_line" in *'$'*|*'`+"`"+`'*) return 0;; esac;; esac
  case "$_ikesu_guard_word" in
  %s) return 0;;
  xargs|find|sh|bash|zsh|env|command|builtin|exec|eval|source|.|sudo|doas|timeout|stdbuf|arch|chroot|setsid|ionice) return 0;;
@@ -38,14 +42,18 @@ fi
 _ikesu_guard_debug() {
  local _ikesu_guard_debug_busy=1
  case "${FUNCNAME[2]:-}" in _ikesu_guard_forward|_ikesu_guard_command) return 0;; esac
- if [[ %s ]] && _ikesu_guard_needs_check "$1"; then
+ if [[ %s ]]; then
+%s  _ikesu_guard_needs_check "$1" || return 0
   (
    set +o functrace
    builtin compgen -v | while IFS= builtin read -r _ikesu_guard_snapshot_name; do
     case "$_ikesu_guard_snapshot_name" in _ikesu_guard_*) continue;; esac
     builtin declare -p "$_ikesu_guard_snapshot_name"
    done
-  ) | %s guard line --via bash-debug -- "$1" || { builtin kill -s KILL "$$"; exit 1; }
+  ) | (
+   set +o functrace
+%s   %s guard line --via bash-debug -- "$1"
+  ) || { builtin kill -s KILL "$$"; exit 1; }
  fi
  return 0
 }
@@ -62,7 +70,7 @@ readonly -f _ikesu_guard_debug _ikesu_guard_dispatch _ikesu_guard_needs_check
 set -o functrace
 trap '_ikesu_guard_dispatch "$BASH_COMMAND"' DEBUG
 fi
-`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), a.invocation())
+`, a.shellActive(), a.invocation(), protectForward, bashSimpleForms, strings.Join(append(targets, quote("")), "|"), a.shellActive(), bashRequestReasonRestore, bashRequestReasonRestore, a.identity()+" builtin exec "+quote(a.Executable))
 	}
 	return fmt.Sprintf(`if [[ ! -o interactive ]]; then
 if [[ %s ]] && [[ -n "${ZSH_EXECUTION_STRING:-}" ]]; then

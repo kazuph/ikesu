@@ -61,6 +61,35 @@ func (r *runner) guardCLI(a []string) int {
 		return next.guardAwait(p, timeout)
 	}
 
+	i.ApprovedInvocation = func(hash, rule string) bool {
+		marker, active, err := guard.ReadMarker(i)
+		if err != nil || !active {
+			return false
+		}
+		next := *r
+		getenv := next.o.getenv
+		next.o.Explicit = false
+		next.o.Getenv = func(key string) string {
+			if key == "IKESU_SOCKET_PATH_EXPLICIT" {
+				return "1"
+			}
+			if key == "IKESU_SOCKET_PATH" {
+				return marker.Socket
+			}
+			return getenv(key)
+		}
+		data, err := next.request("cli:guard:approved", api.MethodDecisionGuardApproved, api.GuardApprovedParams{GuardExecutionClaim: api.GuardExecutionClaim{CommandHash: hash, Rule: rule}, PaneID: marker.Pane})
+		if err != nil {
+			return false
+		}
+		var response api.Response
+		if json.Unmarshal(data, &response) != nil || response.Err != nil {
+			return false
+		}
+		var result api.GuardApprovedResult
+		return json.Unmarshal(response.Result, &result) == nil && result.Approved
+	}
+
 	writeJSON := func(v any) int {
 		enc := json.NewEncoder(r.out())
 		enc.SetIndent("", "  ")

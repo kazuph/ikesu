@@ -125,7 +125,7 @@ func redact(text string) string {
 			if !ok {
 				return true
 			}
-			value, err := expand.Literal(&expand.Config{NoUnset: true}, word)
+			value, err := shellLiteral(&expand.Config{NoUnset: true}, word)
 			if err == nil && redactArgument(value) != value {
 				spans = append(spans, secretSpan{int(word.Pos().Offset()), int(word.End().Offset())})
 				return false
@@ -155,6 +155,10 @@ func (i Input) environmentWords(text string) []environmentWord {
 			if !ok {
 				return true
 			}
+			literal, err := shellLiteral(&expand.Config{NoUnset: true}, word)
+			if err != nil {
+				return true
+			}
 			fields, err := expand.Fields(&expand.Config{NoUnset: true}, word)
 			if err != nil || len(fields) != 1 {
 				return true
@@ -163,7 +167,6 @@ func (i Input) environmentWords(text string) []environmentWord {
 			if restored == fields[0] {
 				return true
 			}
-			literal, _ := expand.Literal(&expand.Config{NoUnset: true}, word)
 			words = append(words, environmentWord{int(word.Pos().Offset()), int(word.End().Offset()), literal, restored})
 			return false
 		})
