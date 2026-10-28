@@ -44,20 +44,30 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
-	TriggerCommand      string            `json:"-"` // Display only; never used by policy or approval keys.
-	CwdUncertain        bool              `json:"-"`
-	AuthorizationEnv    map[string]string `json:"-"`
-	GuardCommands       []string          `json:"-"`
-	GuardRoot           string            `json:"-"`
-	ClaudePrefixChanged bool              `json:"-"`
-	ShellEnvChanged     bool              `json:"-"`
-	Unresolved          bool              `json:"-"`
-	RawLine             string            `json:"-"`
-	Command             string            `json:"command"`
-	Args                []string          `json:"args"`
-	Cwd                 string            `json:"cwd"`
-	LaunchCwd           string            `json:"launch_cwd"`
-	Env                 map[string]string `json:"-"`
+	OpaquePrefix         bool `json:"-"`
+	scriptVariables      map[string]bool
+	claudeBashEnv        string
+	scriptScanner        *scriptScanner
+	scriptResult         *scriptResult
+	scriptBody           bool
+	scriptLabel          string
+	scriptLine           uint
+	scriptKnownArgs      []string
+	scriptUnknownCommand bool
+	TriggerCommand       string            `json:"-"` // Display only; never used by policy or approval keys.
+	CwdUncertain         bool              `json:"-"`
+	AuthorizationEnv     map[string]string `json:"-"`
+	GuardCommands        []string          `json:"-"`
+	GuardRoot            string            `json:"-"`
+	ClaudePrefixChanged  bool              `json:"-"`
+	ShellEnvChanged      bool              `json:"-"`
+	Unresolved           bool              `json:"-"`
+	RawLine              string            `json:"-"`
+	Command              string            `json:"command"`
+	Args                 []string          `json:"args"`
+	Cwd                  string            `json:"cwd"`
+	LaunchCwd            string            `json:"launch_cwd"`
+	Env                  map[string]string `json:"-"`
 }
 type Verdict struct {
 	Decision   string `json:"verdict"`
@@ -110,7 +120,9 @@ func arg(a []string, n int) string {
 func result(d, r, s string) Verdict { return Verdict{Decision: d, Rule: r, Reason: s} }
 func Evaluate(c Config, i Input) Verdict {
 	i.GuardCommands = c.Commands()
-	v := classify(c, i)
+	return evaluateVerdict(c, i, classify(c, i))
+}
+func evaluateVerdict(c Config, i Input, v Verdict) Verdict {
 	v.DayKey = "day:" + physical(i.Cwd)
 	v.TempKey = temporaryKey(c, i)
 	if v.Decision == "ask" && v.TempKey != "" {

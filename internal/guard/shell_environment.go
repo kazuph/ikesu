@@ -28,7 +28,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 			}
 			key := args[1]
 			delete(i.Env, key)
-			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key)
+			i.ShellEnvChanged = true
 			i.ClaudePrefixChanged = i.ClaudePrefixChanged || key == "CLAUDE_CODE_SHELL_PREFIX"
 			args = args[2:]
 		case strings.HasPrefix(option, "--unset=") || strings.HasPrefix(option, "-u") && len(option) > 2:
@@ -37,7 +37,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 				key = option[2:]
 			}
 			delete(i.Env, key)
-			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key)
+			i.ShellEnvChanged = true
 			i.ClaudePrefixChanged = i.ClaudePrefixChanged || key == "CLAUDE_CODE_SHELL_PREFIX"
 			args = args[1:]
 		case option == "-S" || option == "--split-string" || strings.HasPrefix(option, "--split-string=") || strings.HasPrefix(option, "-S") && len(option) > 2:
@@ -65,7 +65,7 @@ func envArguments(i *Input, args []string) ([]string, error) {
 		case strings.Contains(option, "=") && !strings.HasPrefix(option, "-"):
 			key, value, _ := strings.Cut(option, "=")
 			i.Env[key] = value
-			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key)
+			i.ShellEnvChanged = i.ShellEnvChanged || startupVariable(key) || key == "PATH"
 			i.ClaudePrefixChanged = i.ClaudePrefixChanged || key == "CLAUDE_CODE_SHELL_PREFIX"
 			args = args[1:]
 		case strings.HasPrefix(option, "-"):

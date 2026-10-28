@@ -45,7 +45,10 @@ func treeChangesDirectory(tree *syntax.File) bool {
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		if call, ok := node.(*syntax.CallExpr); ok {
 			for _, word := range call.Args {
-				name := word.Lit()
+				name, ok := claudeLiteral(word)
+				if !ok {
+					break
+				}
 				if has([]string{"command", "builtin", "-p", "--"}, name) {
 					continue
 				}
