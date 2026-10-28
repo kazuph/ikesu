@@ -44,6 +44,9 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
+	OpaquePrefix         bool `json:"-"`
+	scriptVariables      map[string]bool
+	claudeBashEnv        string
 	scriptScanner        *scriptScanner
 	scriptResult         *scriptResult
 	scriptBody           bool
@@ -117,7 +120,9 @@ func arg(a []string, n int) string {
 func result(d, r, s string) Verdict { return Verdict{Decision: d, Rule: r, Reason: s} }
 func Evaluate(c Config, i Input) Verdict {
 	i.GuardCommands = c.Commands()
-	v := classify(c, i)
+	return evaluateVerdict(c, i, classify(c, i))
+}
+func evaluateVerdict(c Config, i Input, v Verdict) Verdict {
 	v.DayKey = "day:" + physical(i.Cwd)
 	v.TempKey = temporaryKey(c, i)
 	if v.Decision == "ask" && v.TempKey != "" {

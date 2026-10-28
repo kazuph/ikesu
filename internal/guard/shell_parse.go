@@ -78,6 +78,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		unknownCommand := false
 		for n, word := range call.Args {
 			value, e := shellLiteral(cfg, word)
+			if scriptWordUnknown(i, word) {
+				e = unresolvedScriptError{"スクリプト内で変わる変数です"}
+			}
 			if e != nil {
 				next.Unresolved = true
 				var printed bytes.Buffer
@@ -106,6 +109,12 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			next.AuthorizationEnv[key] = value
 		}
 		unwrapped, e := unwrapCommand(next)
+		unwrapped.scriptKnownArgs = nil
+		for _, a := range unwrapped.Args {
+			if has(next.scriptKnownArgs, a) {
+				unwrapped.scriptKnownArgs = append(unwrapped.scriptKnownArgs, a)
+			}
+		}
 		commands = append(commands, unwrapped)
 		if e != nil {
 			setError(e)

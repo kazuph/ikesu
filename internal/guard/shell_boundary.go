@@ -123,6 +123,13 @@ func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
 	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		previous := failure
+		defer func() {
+			if i.scriptBody && previous != nil && (failure == nil || scriptError(previous).kind > scriptError(failure).kind) {
+				failure = previous
+			}
+		}()
+
 		switch n := node.(type) {
 		case *syntax.FuncDecl:
 			if guardFunction(i, n.Name.Value) {
@@ -159,8 +166,15 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			switch n.Op {
 			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.RdrAll, syntax.AppAll, syntax.ClbOut, syntax.DplOut:
 				path, e := shellLiteral(cfg, n.Word)
+				if scriptWordUnknown(i, n.Word) {
+					e = unresolvedScriptError{"スクリプト内で変わる変数です"}
+				}
 				if e != nil {
-					failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
+					if i.scriptBody {
+						failure = unresolvedScriptError{"書き込み先のパスを安全に確定できません"}
+					} else {
+						failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
+					}
 				} else if i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
 					failure = fmt.Errorf("ディレクトリ変更を含む入力の書き込み先を安全に確定できません")
 				} else if guardPath(i, path) {
@@ -187,6 +201,9 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 		return fmt.Errorf("子シェル・インタプリタの起動環境が変更され、中身を保証できません")
 	}
 	if shell {
+		if i.OpaquePrefix {
+			return fmt.Errorf("既存のClaude実行prefixが読み込むプログラムには承認が必要です")
+		}
 		if path, ok := shellFileArgument(i.Args); ok {
 			if i.scriptScanner == nil {
 				i.scriptScanner = &scriptScanner{config: Config{}}

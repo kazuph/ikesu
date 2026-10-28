@@ -87,6 +87,7 @@ func (r *runner) guardCLI(a []string) int {
 		}
 		if prefix := i.Env["IKESU_GUARD_CLAUDE_PREFIX_ORIG"]; prefix != "" {
 			i.Command, i.Args = prefix, []string{line}
+			i.OpaquePrefix = true
 			if !guard.AuthorizeLine(c.Guard, root, i, shellQuote(prefix)+" "+shellQuote(line), r.errOut(), await) {
 				return 1
 			}
@@ -95,7 +96,7 @@ func (r *runner) guardCLI(a []string) int {
 			if i.Command == "" {
 				i.Command = "/bin/sh"
 			}
-			i.Args = []string{"-c", line}
+			i.Args = []string{"-c", guard.ClaudeExecutionLine(i, line)}
 		}
 		if err := guard.Execute(i); err != nil {
 			fmt.Fprintln(r.errOut(), err)

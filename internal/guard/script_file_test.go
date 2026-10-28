@@ -1,11 +1,13 @@
 package guard
 
 import (
+	"bytes"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestScriptFileStaticBranches(t *testing.T) {
@@ -41,8 +43,8 @@ func scriptPane(t *testing.T) (Input, *Assets) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	a := NewAssets(d, "p-test", exe, Config{})
-	env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p-test", "IKESU_SOCKET_PATH=" + filepath.Join(d, "socket")}, d)
+	a := NewAssets(d, "p_1", exe, Config{})
+	env, e := a.Prepare([]string{"HOME=" + d, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + filepath.Join(d, "socket")}, d)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -189,5 +191,91 @@ func TestScriptFileBoundsAndFailures(t *testing.T) {
 	_, v, _ = lineVerdict(Config{}, i, "bash inline.sh")
 	if v.Decision != "ask" {
 		t.Fatalf("inner sh: %+v", v)
+	}
+}
+
+func TestScriptFileAssignedDefaultsAreNotParentValues(t *testing.T) {
+	i, _ := scriptPane(t)
+	i.Env["TARGET"] = "/tmp/safe"
+	for _, body := range []string{`TARGET=/outside/victim; rm "${TARGET:-/tmp/safe}"`, `read TARGET; rm "${TARGET-/tmp/safe}"`, `rm "${1:-/tmp/safe}"`} {
+		path := filepath.Join(i.Cwd, "defaults.sh")
+		os.WriteFile(path, []byte(body), 0600)
+		_, v, _ := lineVerdict(Config{}, i, "sh "+quote(path))
+		if v.Decision != "ask" {
+			t.Fatalf("%s got %+v", body, v)
+		}
+	}
+}
+func TestScriptFileDoesNotUseInnerApprovalKeys(t *testing.T) {
+	i, _ := scriptPane(t)
+	path := filepath.Join(i.Cwd, "danger.sh")
+	os.WriteFile(path, []byte("rm /outside/victim\n"), 0600)
+	inner := Evaluate(Config{}, Input{Command: "rm", Args: []string{"/outside/victim"}, Cwd: i.Cwd, Env: i.Env})
+	grants := filepath.Join(i.Cwd, "grants")
+	if e := WriteApproval(grants, inner.TempKey, time.Now().Add(time.Hour)); e != nil {
+		t.Fatal(e)
+	}
+	i.Env["AI_GUARD_TEMP_APPROVAL_FILE"] = grants
+	selected, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+	if v.Decision != "ask" || selected.Command != "bash" {
+		t.Fatalf("inner grant suppressed file: %+v %+v", selected, v)
+	}
+	var out bytes.Buffer
+	if AuthorizeLine(Config{}, i.Cwd, i, "bash "+quote(path), &out, nil) {
+		t.Fatal("inner grant authorized outer bash")
+	}
+	// A grant for the outer invocation cannot override a hard block either.
+	os.WriteFile(path, []byte("git reset\n"), 0600)
+	outer := Evaluate(Config{}, Input{Command: "bash", Args: []string{path}, Cwd: i.Cwd, Env: i.Env})
+	if e := WriteApproval(grants, outer.TempKey, time.Now().Add(time.Hour)); e != nil {
+		t.Fatal(e)
+	}
+	if AuthorizeLine(Config{}, i.Cwd, i, "bash "+quote(path), &out, nil) {
+		t.Fatal("outer grant authorized blocked script")
+	}
+}
+
+func TestScriptFileAggregateOrder(t *testing.T) {
+	i, _ := scriptPane(t)
+	// Permutations exercise actual parsing/policy, including unknown expansion
+	// and an opaque delegated program. Hard blocks must always win.
+	pieces := []string{"git reset\n", "rm /outside/victim\n", "source unparsed\n", "read CMD; \"$CMD\"\n", "printf okay\n"}
+	var permutations func([]string, int)
+	permutations = func(parts []string, n int) {
+		if n == len(parts) {
+			path := filepath.Join(i.Cwd, "order.sh")
+			os.WriteFile(path, []byte(strings.Join(parts, "")), 0600)
+			_, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+			if v.Decision != "block" {
+				t.Fatalf("%q: %+v", parts, v)
+			}
+			return
+		}
+		for k := n; k < len(parts); k++ {
+			parts[n], parts[k] = parts[k], parts[n]
+			permutations(parts, n+1)
+			parts[n], parts[k] = parts[k], parts[n]
+		}
+	}
+	permutations(pieces, 0)
+	for _, body := range []string{"source opaque\nrm /outside/victim\nread CMD; \"$CMD\"", "read CMD; \"$CMD\"\nrm /outside/victim\nsource opaque"} {
+		path := filepath.Join(i.Cwd, "order.sh")
+		os.WriteFile(path, []byte(body), 0600)
+		_, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+		if v.Decision != "ask" || v.Rule != "rm-paths" {
+			t.Fatalf("%q: %+v", body, v)
+		}
+	}
+}
+
+func TestScriptFileWrappedUnknownCommands(t *testing.T) {
+	i, _ := scriptPane(t)
+	for _, body := range []string{`read TARGET; command rm "$TARGET"`, `read TARGET; env X=x rm "$TARGET"`} {
+		path := filepath.Join(i.Cwd, "wrapped.sh")
+		os.WriteFile(path, []byte(body), 0600)
+		_, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+		if v.Decision != "allow" {
+			t.Fatalf("%s: %+v", body, v)
+		}
 	}
 }

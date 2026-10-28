@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -156,22 +157,34 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 		return fail("スクリプト全体の構文を解析できません: " + e.Error())
 	}
 	i.Env = EnvMap(environment(i.Env))
+	vars := map[string]bool{}
+	for key, value := range i.scriptVariables {
+		vars[key] = value
+	}
+	invalidate := func(name string) { vars[name] = true; delete(i.Env, name) }
 	// A value assigned anywhere in the program is not the caller's value. This
 	// deliberately includes function bodies and conditional branches.
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		switch n := node.(type) {
 		case *syntax.Assign:
 			if n.Name != nil {
-				delete(i.Env, n.Name.Value)
+				invalidate(n.Name.Value)
 			}
 		case *syntax.WordIter:
-			delete(i.Env, n.Name.Value)
+			invalidate(n.Name.Value)
+		case *syntax.ArithmCmd, *syntax.ArithmExp:
+			syntax.Walk(node, func(child syntax.Node) bool {
+				if lit, ok := child.(*syntax.Lit); ok {
+					invalidate(lit.Value)
+				}
+				return true
+			})
 		case *syntax.CallExpr:
 			if len(n.Args) > 0 {
 				if cmd, ok := claudeLiteral(n.Args[0]); ok && (cmd == "read" || cmd == "unset") {
 					for _, w := range n.Args[1:] {
 						if v, ok := claudeLiteral(w); ok {
-							delete(i.Env, v)
+							invalidate(v)
 						}
 					}
 				}
@@ -185,6 +198,7 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 			delete(i.Env, key)
 		}
 	}
+	i.scriptVariables = vars
 	i.scriptBody = true
 	i.scriptLabel = name
 	commands, e := lineCommands(i, string(data))
@@ -208,6 +222,9 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 				r = scriptResult{kind: scriptBlocked, verdict: v}
 			case "ask":
 				r = scriptResult{kind: scriptDanger, verdict: v}
+				if v.Rule == "guard-boundary" && has([]string{"eval", "source", ".", "xargs", "sudo", "doas", "timeout", "stdbuf", "arch", "chroot", "setsid", "ionice", "find"}, filepath.Base(cmd.Command)) {
+					r.kind = scriptUnparseable
+				}
 			}
 			if cmd.Unresolved && r.kind != scriptBlocked {
 				known := cmd
@@ -242,7 +259,12 @@ func paneBashEnv(i Input) (string, bool) {
 		return "", false
 	}
 	root := filepath.Dir(filepath.Dir(filepath.Dir(i.Env["IKESU_GUARD_MARKER"])))
-	a := NewAssets(root, m.Pane, "", *m.Policy)
+	paneNumber, e := strconv.Atoi(strings.TrimPrefix(m.Pane, "p"))
+	if e != nil || paneNumber <= 0 || m.Pane != "p"+strconv.Itoa(paneNumber) {
+		return "", false
+	}
+	paneDir := "p_" + strconv.Itoa(paneNumber)
+	a := NewAssets(root, paneDir, "", *m.Policy)
 	a.meta = m
 	if filepath.Clean(i.Env["IKESU_GUARD_MARKER"]) != a.MarkerPath {
 		return "", false
@@ -251,8 +273,17 @@ func paneBashEnv(i Input) (string, bool) {
 	if e != nil {
 		return "", false
 	}
-	a.Executable = exe
-	dir := filepath.Join(root, "guard", "shell", m.Pane)
+	actual, e := os.Stat(exe)
+	if e != nil {
+		return "", false
+	}
+	generatedExe := i.Env["IKESU_GUARD_EXECUTABLE"]
+	generated, e := os.Stat(generatedExe)
+	if e != nil || !os.SameFile(actual, generated) {
+		return "", false
+	}
+	a.Executable = generatedExe
+	dir := filepath.Join(root, "guard", "shell", paneDir)
 	path := filepath.Join(dir, "bash-env")
 	st, e := os.Lstat(path)
 	if e != nil || !st.Mode().IsRegular() || st.Mode().Perm()&0400 == 0 || st.Size() > scriptFileLimit {
@@ -273,8 +304,56 @@ func verifiedBashEnv(i Input) bool {
 // the generated startup chain still sources IKESU_GUARD_BASH_ENV_ORIG first.
 func PrepareClaudeBashEnv(i Input) Input {
 	i.Env = EnvMap(environment(i.Env))
-	if path, ok := paneBashEnv(i); ok {
+	if path, ok := paneBashEnv(i); ok && i.Env["IKESU_GUARD_CLAUDE_PREFIX_ORIG"] == "" {
+		i.claudeBashEnv = path
 		i.Env["BASH_ENV"] = path
 	}
 	return i
+}
+
+// Reapply after Claude's snapshot has restored its exported environment. The
+// user's zsh startup files and bootstrap structure keep their original order.
+func ClaudeExecutionLine(i Input, line string) string {
+	if i.claudeBashEnv == "" {
+		return line
+	}
+	prefix := "export BASH_ENV=" + quote(i.claudeBashEnv) + "; "
+	payload := ClaudePrefixLine(i, line)
+	if payload == line {
+		return prefix + line
+	}
+	tree, e := syntax.NewParser().Parse(strings.NewReader(line), "Claude execution")
+	if e != nil {
+		return line
+	}
+	syntax.Walk(tree, func(node syntax.Node) bool {
+		call, ok := node.(*syntax.CallExpr)
+		if !ok || len(call.Args) != 2 {
+			return true
+		}
+		if name, ok := claudeLiteral(call.Args[0]); ok && name == "eval" {
+			w := call.Args[1]
+			line = line[:w.Pos().Offset()] + quote(prefix+payload) + line[w.End().Offset():]
+			return false
+		}
+		return true
+	})
+	return line
+}
+
+func scriptWordUnknown(i Input, word *syntax.Word) bool {
+	if !i.scriptBody {
+		return false
+	}
+	unknown := false
+	syntax.Walk(word, func(node syntax.Node) bool {
+		if p, ok := node.(*syntax.ParamExp); ok && p.Param != nil {
+			name := p.Param.Value
+			if i.scriptVariables[name] || name != "" && strings.ContainsAny(name, "0123456789@*#?!-$") {
+				unknown = true
+			}
+		}
+		return true
+	})
+	return unknown
 }

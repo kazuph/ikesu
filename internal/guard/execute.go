@@ -153,10 +153,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	i.LaunchCwd = m.Cwd
 	v := Evaluate(c, i)
 	if override != nil {
-		if v.Suppressed == "" || override.Decision == "block" {
-			v.Decision = override.Decision
-		}
-		v.Rule, v.Reason = override.Rule, override.Reason
+		v = evaluateVerdict(c, i, *override)
 	}
 	if e = Log(root, i, m, v, via); e != nil {
 		fmt.Fprintln(errOut, "guard log:", e)

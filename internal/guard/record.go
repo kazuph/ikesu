@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -107,6 +108,23 @@ func Execute(i Input) error {
 		return e
 	}
 	clean := childenv.Scrub(inherited)
+	if i.claudeBashEnv != "" {
+		// A command shell belongs to the same pane. Keep its guard identity, while
+		// Scrub still restores the user's ZDOTDIR and removes agent-session state.
+		m := EnvMap(clean)
+		for key, value := range i.Env {
+			if strings.HasPrefix(key, "IKESU_GUARD_") || has([]string{"IKESU_PANE_ID", "IKESU_TAB_ID", "IKESU_WORKSPACE_ID"}, key) {
+				m[key] = value
+			}
+		}
+		if i.Env["IKESU_GUARD_ZDOTDIR_SET"] == "1" {
+			m["ZDOTDIR"] = i.Env["IKESU_GUARD_ZDOTDIR_ORIG"]
+		} else {
+			delete(m, "ZDOTDIR")
+		}
+		m["BASH_ENV"] = i.claudeBashEnv
+		clean = environment(m)
+	}
 	// Preserve only the new invocation marker and request context, never approval state.
 	clean = append(clean, shimExecContext+"="+context,
 		"IKESU_GUARD_PARENT_COMMAND="+i.Line(), "IKESU_GUARD_PARENT_REASON="+requestReason(i))
