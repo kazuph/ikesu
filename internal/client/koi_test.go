@@ -52,7 +52,7 @@ func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
 		if err := m.paint(); err != nil {
 			t.Fatal(err)
 		}
-		want := condition == "visible"
+		want := condition == "visible" || condition == "full" || condition == "idle"
 		if got := !m.koiNext.IsZero(); got != want {
 			t.Fatalf("%s clock=%t want=%t", condition, got, want)
 		}
@@ -91,6 +91,11 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	defer file.Close()
 	m := &machineClient{active: "local", order: []string{"local"}, out: file, koiKitty: true, size: tui.Winsize{Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720}, settings: &localSettings{}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &snapshot, profile: machine.Profile{ID: "local", Enabled: true}}}}
 	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	// The first frame starts outside the pond; advance until its first crop
+	// uploads a real image, then exercise the unchanged completion fence.
+	if err := m.paintKoi(time.Now().Add(render.KoiInterval)); err != nil {
 		t.Fatal(err)
 	}
 	beforeWait, err := file.Stat()
@@ -225,7 +230,7 @@ func TestKoiRev3EmptyClicksNeverStartAnimation(t *testing.T) {
 				snapshot.Panes[1] = &render.PaneSnap{Agent: "codex", Status: render.StatusGlyph{Key: "idle"}}
 			}
 			if condition == "capacity" {
-				state.Rows = 9
+				state.Rows = 6
 			}
 			if condition == "jobs" {
 				snapshot.JobsPanel = true

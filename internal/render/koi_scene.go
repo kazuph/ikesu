@@ -103,7 +103,9 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		n = 0
 	}
 	scene.Agents, scene.Capacity = agents, n
-	scene.Fish = koiResidents(agents, n, scene.Pond, in)
+	if !in.JobsPanel && a.W > 1 {
+		scene.Fish = koiResidents(agents, n, scene.Pond, in)
+	}
 	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
 	scene.Ripple = in.KoiRipple
 	for _, fish := range scene.Fish {

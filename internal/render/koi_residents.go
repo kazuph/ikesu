@@ -23,6 +23,7 @@ func koiResidentsFor(agents []KoiAgent, capacity int, pond layout.Rect, in Input
 	}
 	present := make(map[string]KoiAgent, len(agents))
 	for _, agent := range agents {
+		agent.Glow = in.KoiGlow[agent.ID]
 		present[agent.ID] = agent
 	}
 	ids := make([]string, 0, len(in.KoiMotion))
@@ -92,6 +93,7 @@ func koiResidentsFor(agents []KoiAgent, capacity int, pond layout.Rect, in Input
 		if _, ok := present[agent.ID]; !ok {
 			continue
 		}
+		agent.Glow = in.KoiGlow[agent.ID]
 		fish = append(fish, koiMotionPose(agent, pond, in, w, h))
 		m := in.KoiMotion[agent.ID]
 		m.Group = group

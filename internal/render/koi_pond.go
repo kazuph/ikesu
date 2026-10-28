@@ -3,6 +3,7 @@ package render
 import (
 	"github.com/kazuph/ikesu/internal/layout"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -163,10 +164,8 @@ func koiMotionPose(agent KoiAgent, pond layout.Rect, in Input, w, h int) KoiFish
 func AnimateKoi(scene KoiScene, in Input) *Frame {
 	next := scene
 	next.Ripple = in.KoiRipple
-	for i := range next.Agents {
-		next.Agents[i].Glow = in.KoiGlow[next.Agents[i].ID]
-	}
 	next.Fish = koiResidents(next.Agents, next.Capacity, scene.Pond, in)
+	sort.SliceStable(next.Fish, func(i, j int) bool { return next.Fish[i].Depth > next.Fish[j].Depth })
 	next.Mini = nil
 	for _, band := range scene.Bands {
 		next.Mini = append(next.Mini, koiResidentsFor(band.Agents, band.Capacity, band.Lane, in, band.ID, 6, 1)...)

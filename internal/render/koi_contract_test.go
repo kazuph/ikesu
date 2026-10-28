@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +150,8 @@ func TestKoiKittyUploadsOnlyOnceAndOverlaysClear(t *testing.T) {
 	in.KoiCellW, in.KoiCellH = 8, 16
 	var encoder Encoder
 	var first, subsequent int
+	uploaded := map[string]bool{}
+	uploadIDs := regexp.MustCompile(`_Ga=t,[^;]*,i=([0-9]+),`)
 	for tick := 0; tick < 20; tick++ {
 		in.KoiTime = float64(tick) / 20
 		out := Compose(in)
@@ -160,9 +163,14 @@ func TestKoiKittyUploadsOnlyOnceAndOverlaysClear(t *testing.T) {
 			}
 		} else {
 			subsequent += len(bytes)
-			if strings.Contains(string(bytes), "a=t,") {
-				t.Fatal("repeated upload", tick)
+
+		}
+		for _, match := range uploadIDs.FindAllSubmatch(bytes, -1) {
+			id := string(match[1])
+			if uploaded[id] {
+				t.Fatal("retained image uploaded twice", id)
 			}
+			uploaded[id] = true
 		}
 		if len(out.Frame.Graphics) < 2 {
 			t.Fatal("fish missing")

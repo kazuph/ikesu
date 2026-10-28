@@ -29,6 +29,10 @@ func koiRev3Client(t *testing.T) (*machineClient, *os.File) {
 	if err := m.paint(); err != nil {
 		t.Fatal(err)
 	}
+	// Entry begins outside; the next tick delivers its first visible crop.
+	if err := m.paintKoi(time.Now().Add(render.KoiInterval)); err != nil {
+		t.Fatal(err)
+	}
 	return m, file
 }
 func TestKoiRev3FirstRippleLatencyAndFenceDeferral(t *testing.T) {

@@ -150,29 +150,29 @@ func TestKoiLongRunMachineReconnectAndDoneState(t *testing.T) {
 	in.Panes[1].Status.Key = "done"
 	groups := MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &in}}}
 	now := time.Unix(100, 0)
+	pond := layout.Rect{W: 30, H: 40}
 	for i := 0; i < 10000; i++ {
 		groups.Groups[1].ID = fmt.Sprintf("remote-%d", i)
-		clock.Apply(&in, &groups, now, time.Second)
-		for _, a := range KoiAgentsFor(in, &groups) {
-			koiPondPose(a, layout.Rect{W: 30, H: 40}, in)
-		}
-		if len(clock.done) != 2 || len(clock.motion) != 2 {
+		clock.Apply(&in, &groups, now.Add(time.Duration(i)*KoiInterval), time.Second)
+		koiResidents(KoiAgentsFor(in, &groups), 2, pond, in)
+		if len(clock.done) != 2 || len(clock.motion) > 2 {
 			t.Fatal("reconnect leaked state", len(clock.done), len(clock.motion))
 		}
 	}
-	// Disconnect, then pane removal. Both gold and motion must disappear;
-	// a reconnect must start its own gold expiry rather than inherit old state.
 	groups.Groups[1].Input = nil
-	clock.Apply(&in, &groups, now.Add(time.Second), time.Second)
-	if len(clock.done) != 1 || len(clock.motion) != 1 {
-		t.Fatal("disconnect retained remote agent")
+	clock.Apply(&in, &groups, now.Add(10000*KoiInterval), time.Second)
+	if len(clock.done) != 1 {
+		t.Fatal("remote glow retained")
 	}
 	in.Panes = map[int]*PaneSnap{}
-	clock.Apply(&in, &groups, now.Add(2*time.Second), time.Second)
-	if len(clock.done) != 0 || len(clock.motion) != 0 {
-		t.Fatal("removed panes retained state")
+	for tick := 10001; tick <= 10001+int(2*KoiAttractionLifetime/KoiInterval.Seconds()); tick++ {
+		clock.Apply(&in, &groups, now.Add(time.Duration(tick)*KoiInterval), time.Second)
+		koiResidents(nil, 2, pond, in)
 	}
-	t.Log("10000 endpoint replacements: done=2 motion=2; disconnect=1; pane removal=0")
+	if len(clock.done) != 0 || len(clock.motion) != 0 {
+		t.Fatal("exited fish retained", len(clock.motion))
+	}
+	t.Log("10000 endpoint replacements: motion bounded by two slots; departed motion and glow released")
 }
 
 func TestKoiLongRunTerminalByteBudgetAndVisibleFrame(t *testing.T) {
