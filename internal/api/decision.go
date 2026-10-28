@@ -1,15 +1,16 @@
 package api
 
 const (
-	MethodDecisionCreate = "decision.create"
-	MethodDecisionGet    = "decision.get"
-	MethodDecisionList   = "decision.list"
-	MethodDecisionWait   = "decision.wait"
-	MethodDecisionAnswer = "decision.answer"
-	MethodDecisionCancel = "decision.cancel"
-	ErrDecisionResolved  = "decision_already_resolved"
-	ErrDecisionNotFound  = "decision_not_found"
-	ErrDecisionStale     = "decision_stale"
+	MethodDecisionCreate        = "decision.create"
+	MethodDecisionGuardApproved = "decision.guard-approved"
+	MethodDecisionGet           = "decision.get"
+	MethodDecisionList          = "decision.list"
+	MethodDecisionWait          = "decision.wait"
+	MethodDecisionAnswer        = "decision.answer"
+	MethodDecisionCancel        = "decision.cancel"
+	ErrDecisionResolved         = "decision_already_resolved"
+	ErrDecisionNotFound         = "decision_not_found"
+	ErrDecisionStale            = "decision_stale"
 )
 
 type DecisionOption struct {
@@ -55,16 +56,29 @@ type Decision struct {
 	Status        string           `json:"status"`
 	Answer        *DecisionAnswer  `json:"answer"`
 }
+type GuardExecutionClaim struct {
+	CommandHash string `json:"command_hash"`
+	Rule        string `json:"rule"`
+}
+type GuardApprovedParams struct {
+	GuardExecutionClaim
+	PaneID string `json:"pane_id"`
+}
+type GuardApprovedResult struct {
+	Approved bool `json:"approved"`
+}
+
 type DecisionCreateParams struct {
-	Kind          string           `json:"kind"`
-	Title         string           `json:"title"`
-	Body          *string          `json:"body,omitempty"`
-	Options       []DecisionOption `json:"options"`
-	AllowText     bool             `json:"allow_text"`
-	MultiSelect   bool             `json:"multi_select"`
-	QuestionLabel *string          `json:"-"`
-	Origin        *DecisionOrigin  `json:"origin,omitempty"`
-	TimeoutMS     *uint64          `json:"timeout_ms,omitempty"`
+	GuardExecution *GuardExecutionClaim `json:"guard_execution,omitempty"`
+	Kind           string               `json:"kind"`
+	Title          string               `json:"title"`
+	Body           *string              `json:"body,omitempty"`
+	Options        []DecisionOption     `json:"options"`
+	AllowText      bool                 `json:"allow_text"`
+	MultiSelect    bool                 `json:"multi_select"`
+	QuestionLabel  *string              `json:"-"`
+	Origin         *DecisionOrigin      `json:"origin,omitempty"`
+	TimeoutMS      *uint64              `json:"timeout_ms,omitempty"`
 }
 type DecisionTargetParams struct {
 	DecisionID string `json:"decision_id"`

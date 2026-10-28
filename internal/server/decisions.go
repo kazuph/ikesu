@@ -16,12 +16,13 @@ import (
 // The app loop owns records, expiry scheduling and notification order.
 // Waiters observe a replace-on-change channel, without polling SQLite.
 type decisionHub struct {
-	boot     string
-	revision uint64
-	changed  chan struct{}
-	timer    *time.Timer
-	close    sync.Once
-	stopped  chan struct{}
+	guardBindings map[string]guardExecutionBinding
+	boot          string
+	revision      uint64
+	changed       chan struct{}
+	timer         *time.Timer
+	close         sync.Once
+	stopped       chan struct{}
 }
 
 func (s *Server) initDecisionHub() {
@@ -115,6 +116,12 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		return decisionFailure(req.ID, err)
 	}
 	switch req.Method {
+	case api.MethodDecisionGuardApproved:
+		var params api.GuardApprovedParams
+		if err := req.DecodeParams(&params); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return api.Success(req.ID, api.GuardApprovedResult{Approved: s.guardExecutionApproved(req.PeerPID, params)})
 	case api.MethodDecisionCreate:
 		var p api.DecisionCreateParams
 		if err := req.DecodeParams(&p); err != nil {
@@ -125,6 +132,7 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		if err != nil {
 			return decisionFailure(req.ID, err)
 		}
+		s.bindGuardExecution(req.PeerPID, p, d)
 		s.decisionChanged("decision_created", d)
 		if err := s.expireDecisions(store); err != nil {
 			return decisionFailure(req.ID, err)

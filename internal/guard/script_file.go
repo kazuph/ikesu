@@ -29,9 +29,10 @@ const (
 )
 
 type scriptResult struct {
-	kind    scriptKind
-	verdict Verdict
-	trigger string
+	kind            scriptKind
+	verdict         Verdict
+	trigger         string
+	approvedCommand *Input
 }
 
 func (r scriptResult) merge(other scriptResult) scriptResult {
@@ -246,6 +247,11 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 				r = scriptResult{kind: scriptBlocked, verdict: v}
 			case "ask":
 				r = scriptResult{kind: scriptDanger, verdict: v}
+				if !cmd.Unresolved && !cmd.CwdUncertain {
+					selected := cmd
+					selected.scriptResult = nil
+					r.approvedCommand = &selected
+				}
 				if v.Rule == "guard-boundary" && has([]string{"eval", "source", ".", "xargs", "sudo", "doas", "timeout", "stdbuf", "arch", "chroot", "setsid", "ionice", "find"}, filepath.Base(cmd.Command)) {
 					r.kind = scriptUnparseable
 				}

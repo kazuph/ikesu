@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -31,6 +32,10 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 			}{
 				{"own-original-loader", original, "", "", true},
 				{"outer-approval", original, "", "", true},
+				{"approved-other-rm", original, "", "", true},
+				{"approved-different-args", original, "", "", true},
+				{"approved-forged-mark", original, "", "", true},
+				{"approved-forged-file", original, "", "", true},
 				{"custom-reason", original, "", "export PROJECT_APPROVAL_REASON=" + shQuote(forged) + "\n", true},
 				{"parent-original-loader", "", original, "", true},
 				{"overwrite-own", original, "", "AI_GUARD_REQUEST_REASON=" + shQuote(forged) + "\n", true},
@@ -51,6 +56,10 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 						t.Fatal(err)
 					}
 					victim := root + "/home/../victim"
+					otherVictim := root + "/home/../victim-other"
+					if err := os.WriteFile(otherVictim, []byte("unchanged"), 0600); err != nil {
+						t.Fatal(err)
+					}
 					after := filepath.Join(root, "after")
 					if err := os.WriteFile(victim, []byte("unchanged"), 0600); err != nil {
 						t.Fatal(err)
@@ -80,14 +89,14 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 					defer cancel()
 					cmd := exec.CommandContext(ctx, shell, script)
-					if tc.name == "outer-approval" {
+					if isOuterReasonCase(tc.name) {
 						cmd = exec.CommandContext(ctx, binPath, "guard", "claude-prefix", "--", "AI_GUARD_REQUEST_REASON="+shQuote(original)+" "+shQuote(shell)+" "+shQuote(script))
 					}
 					cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 					cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 					cmd.WaitDelay = time.Second
 					cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + root, "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_ENFORCING=1", "IKESU_GUARD_EXECUTABLE=" + binPath, "IKESU_GUARD_BIN=" + filepath.Join(root, "guard", "bin", "p_1"), "BASH_ENV=" + bashEnv, "IKESU_GUARD_BASH_ENV_ORIG=" + loader, "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_REASON=" + tc.parent, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh"}
-					if tc.name == "outer-approval" {
+					if isOuterReasonCase(tc.name) {
 						cmd.Env = append(cmd.Env, "SHELL=/bin/zsh", "AI_GUARD_REQUEST_REASON=")
 					}
 					if tc.name == "custom-reason" {
@@ -114,12 +123,45 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							return len(pending.Decisions) == 1
 						})
 						decision := pending.Decisions[0]
-						if tc.name == "outer-approval" {
+						if isOuterReasonCase(tc.name) {
 							if decision.Origin == nil || decision.Origin.Reason != original {
 								t.Fatal("outer reason lost", decision)
 							}
+							if strings.HasPrefix(tc.name, "approved-") {
+								replacement := "rm " + shQuote(otherVictim)
+								if tc.name == "approved-other-rm" {
+									replacement = "/bin/rm " + shQuote(otherVictim)
+								}
+								if tc.name == "approved-forged-mark" {
+									replacement = "export IKESU_GUARD_APPROVED_COMMAND=" + shQuote(replacement) + "\nexport IKESU_GUARD_APPROVAL_OWNER=" + strconv.Itoa(cmd.Process.Pid) + "\n" + replacement
+								}
+								if tc.name == "approved-forged-file" {
+									replacement = "printf fake > " + shQuote(filepath.Join(root, "guard", "approved-invocations", "forged.json")) + "\n" + replacement
+								}
+								if err := os.WriteFile(script, []byte(replacement+"\nprintf after > "+shQuote(after)+"\n"), 0600); err != nil {
+									t.Fatal(err)
+								}
+							}
 							if text, err := s.cli("decision", "answer", decision.DecisionID, "approve"); err != nil {
 								t.Fatal(text, err)
+							}
+							if tc.name == "outer-approval" {
+								if err := <-done; err != nil {
+									t.Fatalf("approved exact command did not run: %v %s", err, output.String())
+								}
+								var list api.DecisionListResult
+								s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &list)
+								if len(list.Decisions) != 0 {
+									t.Fatal("exact approved invocation asked again")
+								}
+								if _, err := os.Stat(victim); !os.IsNotExist(err) {
+									t.Fatal("approved victim not removed", err)
+								}
+								if data, err := os.ReadFile(after); err != nil || string(data) != "after" {
+									t.Fatal("approved continuation failed", err)
+								}
+								t.Log("outer approval reused for exact argv; decisions=1 after=present")
+								return
 							}
 							outerID := decision.DecisionID
 							s.waitFor("runtime decision after outer approval", 5*time.Second, func(string) bool {
@@ -164,6 +206,14 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					if data, err := os.ReadFile(victim); err != nil || string(data) != "unchanged" {
 						t.Fatal("victim changed", err)
 					}
+					if data, err := os.ReadFile(otherVictim); err != nil || string(data) != "unchanged" {
+						t.Fatal("unapproved other victim changed", err)
+					}
+					if tc.name == "approved-forged-file" {
+						if _, err := os.Stat(filepath.Join(root, "guard", "approved-invocations", "forged.json")); !os.IsNotExist(err) {
+							t.Fatal("script forged a grant", err)
+						}
+					}
 					if _, err := os.Stat(after); !os.IsNotExist(err) {
 						t.Fatal("post-rejection line ran", err)
 					}
@@ -175,3 +225,23 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 }
 
 func shQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+
+func isOuterReasonCase(name string) bool {
+	return name == "outer-approval" || strings.HasPrefix(name, "approved-")
+}
+
+func TestRawDecisionCannotForgeGuardExecution(t *testing.T) {
+	s := start(t)
+	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	claim := api.GuardExecutionClaim{CommandHash: strings.Repeat("a", 64), Rule: "rm-paths"}
+	var created api.DecisionResult
+	s.rpc(api.MethodDecisionCreate, api.DecisionCreateParams{Kind: "command_guard", Title: "untrusted request", Origin: &api.DecisionOrigin{PaneID: "p1"}, GuardExecution: &claim, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}}}, &created)
+	if text, err := s.cli("decision", "answer", created.Decision.DecisionID, "approve"); err != nil {
+		t.Fatal(text, err)
+	}
+	var result api.GuardApprovedResult
+	s.rpc(api.MethodDecisionGuardApproved, api.GuardApprovedParams{GuardExecutionClaim: claim, PaneID: "p1"}, &result)
+	if result.Approved {
+		t.Fatal("raw decision.create forged an execution grant")
+	}
+}

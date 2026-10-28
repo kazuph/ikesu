@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/latency"
 )
 
 // apiLoop accepts API connections until the listener closes.
@@ -31,6 +32,7 @@ func (s *Server) serveAPI(conn net.Conn) {
 		if err != nil {
 			return
 		}
+		req.PeerPID = latency.PeerPID(conn)
 		if s.closing.Load() != 0 {
 			// Pending waits reconnect to the successor with the same decision ID.
 			if req.Method == api.MethodDecisionWait {
