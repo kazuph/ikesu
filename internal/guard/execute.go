@@ -118,6 +118,9 @@ func approvalTrigger(i Input, v Verdict) string {
 }
 
 func approvalTitle(i Input) string {
+	if i.shellVariables != nil {
+		i.Command = i.RawLine
+	}
 	title := "実行確認: " + i.redact(filepath.Base(i.Command))
 	// BRIEF-2 requests a short heading, approximately 80 characters.
 	runes := []rune(title)

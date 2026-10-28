@@ -108,6 +108,14 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		for key, value := range next.Env {
 			next.AuthorizationEnv[key] = value
 		}
+		if i.shellVariables != nil {
+			next.AuthorizationEnv = EnvMap(environment(i.shellAuthorizationEnv))
+			for _, assignment := range call.Assigns {
+				if value, ok := next.Env[assignment.Name.Value]; ok && !authorizationIdentityKey(assignment.Name.Value) {
+					next.AuthorizationEnv[assignment.Name.Value] = value
+				}
+			}
+		}
 		unwrapped, e := unwrapCommand(next)
 		unwrapped.scriptKnownArgs = nil
 		for _, a := range unwrapped.Args {

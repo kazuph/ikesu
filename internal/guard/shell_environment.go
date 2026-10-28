@@ -6,7 +6,7 @@ import (
 )
 
 func startupVariable(name string) bool {
-	return has([]string{"BASH_ENV", "ZDOTDIR", "ENV", "CLAUDE_CODE_SHELL_PREFIX"}, name)
+	return strings.HasPrefix(name, "_ikesu_guard_") || has([]string{"BASH_ENV", "ZDOTDIR", "ENV", "CLAUDE_CODE_SHELL_PREFIX"}, name)
 }
 
 // Prefix options change the child environment, not the environment used by

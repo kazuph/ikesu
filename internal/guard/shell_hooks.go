@@ -9,15 +9,22 @@ if [[ %s ]] && [[ -n "${BASH_EXECUTION_STRING:-}" ]]; then
  %s guard line -- "$BASH_EXECUTION_STRING" || exit $?
 fi
 _ikesu_guard_debug() {
+ local _ikesu_guard_debug_busy=1
  case "${FUNCNAME[1]:-}" in _ikesu_guard_forward|_ikesu_guard_command) return 0;; esac
  if [[ %s ]]; then
-  %s guard line -- "$1" || exit $?
+  (
+   set +o functrace
+   for _ikesu_guard_snapshot_name in $(builtin compgen -v); do
+   case "$_ikesu_guard_snapshot_name" in _ikesu_guard_*) continue;; esac
+   builtin declare -p "$_ikesu_guard_snapshot_name"
+   done
+  ) | %s guard line --via bash-debug -- "$1" || { builtin kill -s TERM "$$"; exit 1; }
  fi
  return 0
 }
-shopt -s extdebug
+readonly -f _ikesu_guard_debug
 set -o functrace
-trap '_ikesu_guard_debug "$BASH_COMMAND"' DEBUG
+trap '[[ ${_ikesu_guard_debug_busy:-} == 1 && " ${FUNCNAME[*]} " == *" _ikesu_guard_debug "* ]] || _ikesu_guard_debug "$BASH_COMMAND"' DEBUG
 fi
 `, a.shellActive(), a.invocation(), a.shellActive(), a.invocation())
 	}

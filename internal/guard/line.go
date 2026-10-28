@@ -29,7 +29,7 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 	}
 	i.LaunchCwd = m.Cwd
 	callerEnv := i.Env
-	i, verdict, parseErr := lineVerdict(c, i, line)
+	i, verdict, parseErr := lineVerdict(c, i.shellExpansionInput(), line)
 	// Keep the caller's authorization context across env -i/-u, while retaining
 	// inline request reasons and approval-file settings from the parsed command.
 	parsedEnv := i.Env
@@ -41,12 +41,19 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 		}
 	}
 	for key, value := range parsedEnv {
+		if i.shellVariables != nil {
+			continue
+		}
 		if !authorizationIdentityKey(key) {
 			i.Env[key] = value
 		}
 	}
+	if i.shellVariables != nil {
+		i.TriggerCommand = line
+		verdict.Reason = i.shellDiagnostic(verdict.Reason, line)
+	}
 	if parseErr != nil {
-		fmt.Fprintln(errOut, parseErr)
+		fmt.Fprintln(errOut, i.shellDiagnostic(parseErr.Error(), line))
 	}
 	if verdict.Decision == "allow" {
 		return true
