@@ -71,7 +71,7 @@ func TestKoiRevision2TraversesPond(t *testing.T) {
 	}
 }
 
-func TestKoiRevision2DepthAndStationaryIdle(t *testing.T) {
+func TestKoiRevision2DepthAndSwimmingIdle(t *testing.T) {
 	in := koiFixture(t, 5)
 	in.Panes[1].Status.Key = "blocked"
 	in.Panes[2].Status.Key = "working"
@@ -102,11 +102,11 @@ func TestKoiRevision2DepthAndStationaryIdle(t *testing.T) {
 	a := Compose(in)
 	in.KoiTime = 100
 	b := Compose(in)
-	if a.Frame.KoiActive || b.Frame.KoiActive {
-		t.Fatal("idle keeps clock active")
+	if !a.Frame.KoiActive || !b.Frame.KoiActive {
+		t.Fatal("idle lost animation clock")
 	}
-	if !reflect.DeepEqual(a.Frame.Graphics, b.Frame.Graphics) {
-		t.Fatal("settled idle moves")
+	if reflect.DeepEqual(a.Frame.Graphics, b.Frame.Graphics) {
+		t.Fatal("idle stopped swimming")
 	}
 }
 

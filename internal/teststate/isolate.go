@@ -69,6 +69,12 @@ func Run(run func() int) (code int) {
 			return 1
 		}
 	}
+	// Go may otherwise leave a telemetry sidecar writing into HOME after tests
+	// finish. Keep HOME isolated and disable telemetry there before any fixture.
+	if output, err := exec.Command("go", "telemetry", "off").CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "ikesu test telemetry setup: %v: %s\n", err, output)
+		return 1
+	}
 	return run()
 }
 

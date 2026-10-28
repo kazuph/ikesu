@@ -22,12 +22,23 @@ type KoiFish struct {
 	Depth          float64
 	Swimming       bool
 }
+type koiBand struct {
+	ID       string
+	Lane     layout.Rect
+	Agents   []KoiAgent
+	Capacity int
+}
+
 type KoiScene struct {
-	Pond   layout.Rect
-	Fish   []KoiFish
-	Mini   []KoiFish
-	Ripple *KoiRipple
-	Active bool
+	Bands     []koiBand
+	Agents    []KoiAgent
+	Capacity  int
+	Pond      layout.Rect
+	ClickPond layout.Rect
+	Fish      []KoiFish
+	Mini      []KoiFish
+	Ripple    *KoiRipple
+	Active    bool
 }
 
 func KoiAgentsFor(in Input, machines *MachineSidebar) []KoiAgent {
@@ -81,7 +92,8 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		}
 	}
 	a := s.RightSidebarArea()
-	scene.Pond = layout.Rect{X: a.X + 1, Y: last, W: max(0, a.W-1), H: max(0, a.Y+a.H-last)}
+	scene.ClickPond = layout.Rect{X: a.X + 1, Y: last, W: max(0, a.W-1), H: max(0, a.Y+a.H-last)}
+	scene.Pond = layout.Rect{X: a.X + 1, Y: a.Y, W: max(0, a.W-1), H: a.H}
 	agents := KoiAgentsFor(in, machines)
 	for i := range agents {
 		agents[i].Glow = in.KoiGlow[agents[i].ID]
@@ -90,8 +102,9 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 	if in.JobsPanel || a.W <= 1 {
 		n = 0
 	}
-	for i := 0; i < n; i++ {
-		scene.Fish = append(scene.Fish, koiPondPose(agents[i], scene.Pond, in))
+	scene.Agents, scene.Capacity = agents, n
+	if !in.JobsPanel && a.W > 1 {
+		scene.Fish = koiResidents(agents, n, scene.Pond, in)
 	}
 	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
 	scene.Ripple = in.KoiRipple
@@ -101,48 +114,71 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 	if in.KoiRipple != nil {
 		scene.Active = true
 	}
-	mini := func(src Input, row SidebarRow, y, x, end int) {
-		if row.Kind != RowWorkspace || row.Ws < 0 || row.Ws >= len(src.State.Workspaces) {
-			return
-		}
-		var working bool
-		ws := src.State.Workspaces[row.Ws]
-		for _, tab := range ws.Tabs {
-			for _, pid := range tab.Layout.PaneIDs() {
-				if p := src.Panes[pid]; p != nil && p.Agent != "" && p.Status.Key == "working" {
-					working = true
-				}
-			}
-		}
-		if !working {
-			return
-		}
-		start, w := blankRun(f, y, x, end)
-		if w < 8 {
-			return
-		}
-		scene.Mini = append(scene.Mini, koiPose(KoiAgent{ID: itoa(ws.ID), State: "working", Seed: ws.ID}, layout.Rect{X: start, Y: y, W: w, H: 1}, 6, in.KoiTime))
-	}
 	left := s.SidebarArea()
 	if left.W > 1 && !in.Dragging && in.Copied == "" {
+		band := func(src Input, key string, row SidebarRow, header bool, y int) {
+			if !header && row.Kind != RowSection {
+				return
+			}
+			start, width := left.X+1, left.W-2
+			if width < 8 {
+				return
+			}
+			band := koiBand{ID: key, Lane: layout.Rect{X: start, Y: y, W: width, H: 1}, Capacity: width / 8}
+			for wi, ws := range src.State.Workspaces {
+				if !header && ws.SidebarSection() != row.Section {
+					continue
+				}
+				if src.State.WorktreeHidden(wi) {
+					continue
+				}
+				working := false
+				for _, tab := range ws.Tabs {
+					for _, pid := range tab.Layout.PaneIDs() {
+						if p := src.Panes[pid]; p != nil && p.Agent != "" && p.Status.Key == "working" {
+							working = true
+						}
+					}
+				}
+				if !working {
+					continue
+				}
+				agent := KoiAgent{ID: key + ":" + itoa(ws.ID), State: "working", Seed: ws.ID}
+				band.Agents = append(band.Agents, agent)
+			}
+			scene.Bands = append(scene.Bands, band)
+		}
 		if machines != nil && len(machines.Groups) > 1 {
 			for _, hit := range machines.Hits {
-				if hit.Right || hit.Header || hit.New {
+				if hit.Right || hit.New {
 					continue
 				}
 				for _, g := range machines.Groups {
 					if g.ID == hit.Machine && g.Input != nil {
-						mini(*g.Input, hit.Row, hit.Rect.Y, left.X, left.X+left.W-2)
+						band(*g.Input, "mini:"+g.ID+":"+string(hit.Row.Section), hit.Row, hit.Header, hit.Rect.Y)
 					}
 				}
 			}
 		} else {
 			for _, p := range view.Rows {
 				if !p.Right {
-					mini(in, p.Row, p.Y, left.X, left.X+left.W-2)
+					band(in, "mini:local:"+string(p.Row.Section), p.Row, false, p.Y)
 				}
 			}
 		}
+	}
+	seen := map[string]bool{}
+	for _, band := range scene.Bands {
+		seen[band.ID] = true
+	}
+	for _, m := range in.KoiMotion {
+		if left.W > 1 && !in.Dragging && in.Copied == "" && m.Group != "" && !seen[m.Group] {
+			scene.Bands = append(scene.Bands, koiBand{ID: m.Group, Lane: m.Pond})
+			seen[m.Group] = true
+		}
+	}
+	for _, band := range scene.Bands {
+		scene.Mini = append(scene.Mini, koiResidentsFor(band.Agents, band.Capacity, band.Lane, in, band.ID, 6, 1)...)
 	}
 	return scene
 }

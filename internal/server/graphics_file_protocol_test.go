@@ -37,9 +37,21 @@ func directGraphicsFixture(t *testing.T) (string, *testConn, string, map[string]
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		var info map[string]any
-		apiOK(t, dir, api.MethodPaneGraphicsInfo, map[string]any{"pane_id": pane}, &info)
-		if info["file_frame_transport"] == endpoint.DirectKittyTransport {
-			return dir, viewer, pane, info
+		response := apiReq(t, dir, api.MethodPaneGraphicsInfo, map[string]any{"pane_id": pane})
+		if response.Err != nil {
+			if response.Err.Code != "cell_size_unavailable" {
+				t.Fatalf("graphics fixture readiness: %+v", response.Err)
+			}
+		} else {
+			if err := json.Unmarshal(response.Result, &info); err != nil {
+				t.Fatal(err)
+			}
+			if info["file_frame_transport"] == endpoint.DirectKittyTransport {
+				if info["cell_width_px"] != float64(8) || info["cell_height_px"] != float64(16) {
+					t.Fatal("negotiated cell pixels differ from hello", info)
+				}
+				return dir, viewer, pane, info
+			}
 		}
 		if time.Now().After(deadline) {
 			var panes api.PaneListResult

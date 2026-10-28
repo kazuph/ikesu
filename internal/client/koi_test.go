@@ -52,7 +52,7 @@ func TestKoiClockStopsWhenOffEmptyHiddenOrFull(t *testing.T) {
 		if err := m.paint(); err != nil {
 			t.Fatal(err)
 		}
-		want := condition == "visible"
+		want := condition == "visible" || condition == "full" || condition == "idle"
 		if got := !m.koiNext.IsZero(); got != want {
 			t.Fatalf("%s clock=%t want=%t", condition, got, want)
 		}
@@ -93,6 +93,13 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	if err := m.paint(); err != nil {
 		t.Fatal(err)
 	}
+	// The first frame starts outside the pond; advance until its first crop
+	// uploads a real image, then exercise the unchanged completion fence.
+	timer := time.NewTimer(render.KoiInterval)
+	<-timer.C
+	if err := m.paintKoi(time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	beforeWait, err := file.Stat()
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +123,9 @@ func TestKoiDecorationTickDoesNotComposeOrAcknowledge(t *testing.T) {
 	regions := m.regions
 	scene := m.koiScene
 	before := snapshot
-	if err := m.paintKoi(time.Now().Add(render.KoiInterval)); err != nil {
+	timer.Reset(render.KoiInterval)
+	<-timer.C
+	if err := m.paintKoi(time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if m.regions != regions {
@@ -225,7 +234,7 @@ func TestKoiRev3EmptyClicksNeverStartAnimation(t *testing.T) {
 				snapshot.Panes[1] = &render.PaneSnap{Agent: "codex", Status: render.StatusGlyph{Key: "idle"}}
 			}
 			if condition == "capacity" {
-				state.Rows = 9
+				state.Rows = 6
 			}
 			if condition == "jobs" {
 				snapshot.JobsPanel = true
@@ -258,5 +267,21 @@ func TestKoiRev3EmptyClicksNeverStartAnimation(t *testing.T) {
 				t.Fatalf("ineligible click started ripple/deadline %s ripple=%+v deadline=%v scene=%+v", condition, check.KoiRipple, m.koiNext, m.koiScene)
 			}
 		})
+	}
+}
+
+func TestKoiOctantTickSchedulesFutureDeadline(t *testing.T) {
+	m, _ := koiRev3Client(t)
+	m.outputFence.Accept([]byte("\x1b[0n"))
+	m.paintQueued = false
+	m.koiKitty = false
+	m.koiInput.KoiKitty = false
+	now := time.Now()
+	m.koiNext = now.Add(-time.Millisecond)
+	if err := m.paintKoi(now); err != nil {
+		t.Fatal(err)
+	}
+	if !m.koiNext.After(now) {
+		t.Fatal("expired koi deadline starves reconnect timers", m.koiNext, now)
 	}
 }

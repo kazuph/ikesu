@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"image"
 	"image/color"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +151,8 @@ func TestKoiKittyUploadsOnlyOnceAndOverlaysClear(t *testing.T) {
 	in.KoiCellW, in.KoiCellH = 8, 16
 	var encoder Encoder
 	var first, subsequent int
+	uploaded := map[string]bool{}
+	uploadIDs := regexp.MustCompile(`_Ga=t,[^;]*,i=([0-9]+),`)
 	for tick := 0; tick < 20; tick++ {
 		in.KoiTime = float64(tick) / 20
 		out := Compose(in)
@@ -160,9 +164,14 @@ func TestKoiKittyUploadsOnlyOnceAndOverlaysClear(t *testing.T) {
 			}
 		} else {
 			subsequent += len(bytes)
-			if strings.Contains(string(bytes), "a=t,") {
-				t.Fatal("repeated upload", tick)
+
+		}
+		for _, match := range uploadIDs.FindAllSubmatch(bytes, -1) {
+			id := string(match[1])
+			if uploaded[id] {
+				t.Fatal("retained image uploaded twice", id)
 			}
+			uploaded[id] = true
 		}
 		if len(out.Frame.Graphics) < 2 {
 			t.Fatal("fish missing")
@@ -192,6 +201,7 @@ func TestKoiStateFramesAndOctantPositions(t *testing.T) {
 		t.Fatal("state not visible")
 	}
 	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	f := NewFrame(in.State.Cols, in.State.Rows)
 	scene := KoiSceneFor(f, in, nil)
@@ -274,6 +284,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				in.SidebarConfig.Theme.Name = theme
 				in.SidebarConfig.UI.TransparentSidebarCards = transparent
 				in.State.Workspaces[0].Name = "鯉"
+				in.State.Workspaces[0].Section = model.SectionWork
 				in.Panes[1].Status.Key = "working"
 				other := in
 				machines := &MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &other}}, Active: "local"}
@@ -281,7 +292,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				plain := ComposeMachines(in, machines)
 				in.Koi = true
 				scene := KoiSceneFor(plain.Frame, in, machines)
-				if len(scene.Fish) != 4 || len(scene.Mini) != 2 {
+				if len(scene.Fish) != 4 || len(scene.Mini) != 3 {
 					t.Fatalf("missing fish %s %t %t pond=%d mini=%d", theme, server, transparent, len(scene.Fish), len(scene.Mini))
 				}
 				painted := ComposeMachines(in, machines)
@@ -310,7 +321,7 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				in.KoiKitty = true
 				in.KoiCellW, in.KoiCellH = 8, 16
 				graphic := ComposeMachines(in, machines)
-				if len(graphic.Frame.Graphics) != 6 {
+				if len(graphic.Frame.Graphics) != 7 {
 					t.Fatal("missing final machine graphics", len(graphic.Frame.Graphics))
 				}
 			}
@@ -345,8 +356,10 @@ func TestKoiOctantsKeepSourcePalette(t *testing.T) {
 
 func TestKoiMiniPlacementUsesEnlargedPixelGrid(t *testing.T) {
 	in := koiFixture(t, 1)
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"
 	in.State.Workspaces[0].Name = "鯉"
+	in.State.Workspaces[0].Section = model.SectionWork
 	in.KoiKitty = true
 	in.KoiCellW, in.KoiCellH = 8, 16
 	miniFrames := 0
