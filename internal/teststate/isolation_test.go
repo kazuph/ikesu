@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -30,4 +32,44 @@ func TestHomeIsolationPreservesGoToolCaches(t *testing.T) {
 			t.Errorf("HOME isolation redirected %s into an empty cache: %q, want %q", key, after[key], want)
 		}
 	}
+}
+
+func TestIsolatedGoTelemetryOffDoesNotCreateLateFiles(t *testing.T) {
+	output, err := exec.Command("go", "env", "-json", "GOTELEMETRY", "GOTELEMETRYDIR").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]string
+	if err = json.Unmarshal(output, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings["GOTELEMETRY"] != "off" {
+		t.Fatal("isolated Go telemetry remains enabled", settings)
+	}
+	local := filepath.Join(settings["GOTELEMETRYDIR"], "local")
+	files := func() []string {
+		entries, err := os.ReadDir(local)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		return names
+	}
+	before := files()
+	for i := 0; i < 10; i++ {
+		// Keep the isolated HOME: every query exercises the actual test environment.
+		if _, err := readGoEnvironment(); err != nil {
+			t.Fatal(err)
+		}
+		if got := files(); !reflect.DeepEqual(before, got) {
+			t.Fatal("go env created telemetry files after off", before, got)
+		}
+	}
+	t.Logf("telemetry=off isolated HOME=%s directory=%s go env calls=10 local files unchanged=%v", os.Getenv("HOME"), local, before)
 }
