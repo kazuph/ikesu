@@ -6,6 +6,7 @@ During edits: python3 scripts/test-go.py --changed origin/main
 Repeat changed tests: add --mode race --run REGEXP --repeat 10.
 """
 import argparse
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -20,56 +21,112 @@ import sys
 import time
 
 
-class OwnedProcesses:
-    """Identify the run before parents exit; retain identities across reparenting."""
+class ProcessEnvironment:
     def __init__(self):
-        self.root = Path(tempfile.mkdtemp(prefix='ikesu-test-run-', dir='/tmp'))
+        if sys.platform == 'darwin':
+            self.libc = ctypes.CDLL(None, use_errno=True)
+            self.libc.sysctl.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_uint,
+                                        ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t),
+                                        ctypes.c_void_p, ctypes.c_size_t]
+            self.buffer = ctypes.create_string_buffer(os.sysconf('SC_ARG_MAX'))
+        elif not sys.platform.startswith('linux'):
+            raise RuntimeError('process environment inspection requires macOS or Linux')
+
+    def read(self, pid):
+        if sys.platform.startswith('linux'):
+            data = Path(f'/proc/{pid}/environ').read_bytes()
+        else:
+            # CTL_KERN / KERN_PROCARGS2 from the Darwin sys/sysctl.h ABI.
+            mib = (ctypes.c_int * 3)(1, 49, pid)
+            size = ctypes.c_size_t(len(self.buffer))
+            if self.libc.sysctl(mib, 3, self.buffer, ctypes.byref(size), None, 0) != 0:
+                code = ctypes.get_errno()
+                raise OSError(code, os.strerror(code))
+            data = self.buffer.raw[:size.value]
+            argc = int.from_bytes(data[:4], sys.byteorder)
+            position = data.index(b'\0', 4) + 1  # executable path, then padding
+            while position < len(data) and data[position] == 0:
+                position += 1
+            for _ in range(argc):
+                position = data.index(b'\0', position) + 1
+            data = data[position:]
+        return dict(entry.split(b'=', 1) for entry in data.split(b'\0') if b'=' in entry)
+
+
+class OwnedProcesses:
+    """Track observed descendants and environment tokens without argv matching."""
+    def __init__(self):
+        self.root = Path(tempfile.mkdtemp(prefix='ikesu-test-run-', dir='/tmp')).resolve()
         self.token = uuid.uuid4().hex
-        self.identities = {}
-        self.seen = {}
-        for name in ('tmp', 'build'):
-            (self.root / name).mkdir()
+        self.environment_reader = ProcessEnvironment()
+        self.identities, self.seen, self.candidates, self.unverified = {}, {}, {}, {}
+        (self.root / 'tmp').mkdir()
 
     def environment(self):
         return dict(os.environ, GO_TEST_RUN_OWNER=self.token,
-                    TMPDIR=str(self.root / 'tmp'), GOTMPDIR=str(self.root / 'build'))
+                    TMPDIR=str(self.root / 'tmp'), GOTMPDIR=str(self.root / 'tmp'))
+
+    def can_stop(self, pid, identity):
+        current = subprocess.run(['ps', '-p', str(pid), '-o', 'lstart='],
+                                 capture_output=True, text=True).stdout.split()
+        if tuple(current) != identity:
+            return False
+        try:
+            token = self.environment_reader.read(pid).get(b'GO_TEST_RUN_OWNER')
+        except (OSError, ValueError):
+            token = None
+        if token is not None and token != self.token.encode():
+            return False
+        return token == self.token.encode() or self.candidates.get(pid) == identity
 
     def scan(self, roots=()):
         output = subprocess.check_output(
-            ['ps', 'eww', '-U', str(os.getuid()), '-o', 'pid=,ppid=,stat=,lstart=,command='], text=True)
-        rows = {}
+            ['ps', '-U', str(os.getuid()), '-o', 'pid=,ppid=,stat=,lstart='], text=True)
+        rows, environments = {}, {}
         for line in output.splitlines():
-            parts = line.split(None, 8)
-            if len(parts) != 9:
+            parts = line.split()
+            if len(parts) != 8:
                 continue
             pid, parent = map(int, parts[:2])
-            rows[pid] = (parent, parts[2], tuple(parts[3:8]), parts[8])
-        owned = {pid for pid, row in rows.items()
-                 if ('GO_TEST_RUN_OWNER=' + self.token) in row[3].split()
-                 or str(self.root) + '/' in row[3]}
-        owned.update(pid for pid in roots if pid in rows)
-        owned.update(pid for pid, identity in self.identities.items()
-                     if pid in rows and rows[pid][2] == identity)
+            rows[pid] = (parent, parts[2], tuple(parts[3:8]))
+            try:
+                environments[pid] = self.environment_reader.read(pid)
+            except (OSError, ValueError):
+                pass
+        owned = {pid for pid, env in environments.items()
+                 if env.get(b'GO_TEST_RUN_OWNER') == self.token.encode()}
+        # Retain observed PID/start-time pairs across parent exit. A different
+        # readable token excludes a process even when ancestry was observed.
+        candidates = set(owned) | {pid for pid in roots if pid in rows}
+        candidates.update(pid for pid, identity in self.candidates.items()
+                          if pid in rows and rows[pid][2] == identity)
+        different = {pid for pid, env in environments.items()
+                     if env.get(b'GO_TEST_RUN_OWNER') not in (None, self.token.encode())}
         while True:
-            children = {pid for pid, row in rows.items() if row[0] in owned}
-            if children <= owned:
+            children = {pid for pid, row in rows.items() if row[0] in candidates - different}
+            if children <= candidates:
                 break
-            owned |= children
+            candidates |= children
+        owned |= candidates - different
+        self.unverified = {}
+        for pid in candidates:
+            self.candidates[pid] = rows[pid][2]
+            if pid not in owned and not rows[pid][1].startswith('Z'):
+                self.unverified[pid] = dict(pid=pid, started=list(rows[pid][2]),
+                                             reason='ownership environment token not verified')
         for pid in owned:
             row = rows[pid]
             self.identities[pid] = row[2]
-            if pid not in self.seen:
+            key = (pid, row[2])
+            if key not in self.seen:
                 executable = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='],
                                             capture_output=True, text=True).stdout.strip()
-                state = next((word.split('=', 1)[1] for word in row[3].split()
-                              if word.startswith('IKESU_STATE_DIR=')), None)
-                self.seen[pid] = dict(pid=pid, started=list(row[2]), executable=executable,
-                                      state_dir=state)
+                state = environments.get(pid, {}).get(b'IKESU_STATE_DIR')
+                self.seen[key] = dict(pid=pid, started=list(row[2]), executable=executable,
+                                      state_dir=os.fsdecode(state) if state else None)
         return {pid: rows[pid] for pid in owned}
 
     def cleanup(self, processes):
-        # Re-scan after each kill: detached servers keep the inherited token or
-        # run-specific executable path even after their original parent exits.
         deadline = time.monotonic() + 10  # Existing server fixture shutdown limit.
         while True:
             live = self.scan([p.pid for p in processes if p.poll() is None])
@@ -77,14 +134,18 @@ class OwnedProcesses:
                 if row[1].startswith('Z'):
                     continue
                 try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
+                    # Recheck PID/start time and any readable token before kill.
+                    if self.can_stop(pid, row[2]):
+                        os.kill(pid, signal.SIGKILL)
+                except (OSError, ValueError):
                     pass
             for process in processes:
                 if process.poll() is not None:
                     process.wait()
             remaining = self.scan()
             if not remaining:
+                if self.unverified:
+                    raise RuntimeError('unverified descendants were not stopped: ' + str(sorted(self.unverified)))
                 shutil.rmtree(self.root)
                 return []
             if time.monotonic() >= deadline:
@@ -147,6 +208,7 @@ def main():
     print(f'packages={packages} process_baseline={baseline} process_limit={cap}', flush=True)
     owner = OwnedProcesses()
     processes, results, timings, errors = [], [], [], []
+    print("OWNERSHIP_ROOT=" + str(owner.root), flush=True)
     started = time.monotonic()
     def interrupted(signum, frame):
         raise InterruptedError(f'signal {signum}')
@@ -173,7 +235,7 @@ def main():
                 owner.scan([process.pid])
             while any(process.poll() is None for process in active):
                 owner.scan([process.pid for process in active if process.poll() is None])
-                (args.output / 'processes.json').write_text(json.dumps(list(owner.seen.values()), indent=2) + '\n')
+                (args.output / 'processes.json').write_text(json.dumps(dict(ownership_root=str(owner.root), owned_processes=list(owner.seen.values())), indent=2) + '\n')
                 if any(process.poll() not in (None, 0) for process in active):
                     raise RuntimeError('go test failed: ' + str([p.returncode for p in active]))
                 if time.monotonic() - started >= args.total_timeout:
@@ -189,8 +251,11 @@ def main():
         errors.append(dict(type=type(error).__name__, message=str(error), traceback=traceback.format_exc()))
     finally:
         remaining = None
+        def interrupted_during_cleanup(signum, frame):
+            errors.append(dict(type='InterruptedError', message=f'signal {signum} during cleanup',
+                               traceback=f'InterruptedError: signal {signum} during cleanup'))
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-            signal.signal(sig, signal.SIG_IGN)
+            signal.signal(sig, interrupted_during_cleanup)
         try:
             remaining = owner.cleanup(processes)
         except BaseException as error:
@@ -198,7 +263,7 @@ def main():
     elapsed = time.monotonic() - started
     summary = dict(elapsed_seconds=elapsed, process_baseline=baseline, process_limit=cap,
                    results=results, packages=timings, errors=errors,
-                   owned_processes=list(owner.seen.values()), remaining_processes=remaining,
+                   owned_processes=list(owner.seen.values()), remaining_processes=remaining, unverified_processes=list(owner.unverified.values()),
                    ownership_root=str(owner.root))
     try:
         (args.output / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
