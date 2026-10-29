@@ -49,6 +49,22 @@ func applyPersistentBackground(f *Frame, in Input) {
 			content = append(content, inner)
 		}
 	}
+	area := s.PanesArea()
+	var statusRows []layout.Rect
+	if in.ModeHint != "" && !(in.ServerUI && in.Prefix) {
+		statusRows = append(statusRows, layout.Rect{X: area.X, Y: area.Y + area.H - 1, W: area.W, H: 1})
+	}
+	if in.Copy != nil && !in.ServerUI && in.CopyHint != "" {
+		if in.Copy.Fullscreen {
+			statusRows = append(statusRows, layout.Rect{X: area.X, Y: area.Y + area.H - 1, W: area.W, H: 1})
+		} else {
+			for _, pane := range s.DisplayPaneRects() {
+				if pane.ID == in.Copy.Pane {
+					statusRows = append(statusRows, layout.Rect{X: pane.Rect.X, Y: pane.Rect.Y + pane.Rect.H - 1, W: pane.Rect.W, H: 1})
+				}
+			}
+		}
+	}
 	_, customSurface := in.SidebarConfig.Theme.Custom["surface0"]
 	for y := 0; y < f.H; y++ {
 		for x := 0; x < f.W; x++ {
@@ -64,9 +80,11 @@ func applyPersistentBackground(f *Frame, in Input) {
 					break
 				}
 			}
-			area := s.PanesArea()
-			if y == area.Y+area.H-1 && (in.ModeHint != "" && !(in.ServerUI && in.Prefix) || in.Copy != nil && in.Copy.Fullscreen && !in.ServerUI && in.CopyHint != "") {
-				application = false
+			for _, row := range statusRows {
+				if x >= row.X && x < row.X+row.W && y == row.Y {
+					application = false
+					break
+				}
 			}
 			if application {
 				if cell.Style.Bg == nil {
