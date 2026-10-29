@@ -46,7 +46,7 @@ func TestTextSendFailureDoesNotCommitRevisionOrBaseline(t *testing.T) {
 	pid := state.FocusedPane()
 	app := tui.NewApp(state, runtime.NewSupervisor(), out, ".")
 	c := &clientConn{conn: conn, viewer: app.NewViewer(out, 80, 24, func(string) {})}
-	s := &Server{app: app, endpointPeer: endpoint.GraphicsPeer()}
+	s := &Server{receiptClock: wallReceiptClock{}, app: app, endpointPeer: endpoint.GraphicsPeer()}
 	s.installGraphicsSnapshotSink(c, endpoint.GraphicsPeer())
 	in := render.Input{State: state, Panes: map[int]*render.PaneSnap{pid: {Grid: [][]uv.Cell{{{Content: "a", Width: 1}}}, Graphics: []kitty.Placement{{Image: kitty.Image{ID: 1, Format: 32, Width: 1, Height: 1, Data: []byte{1, 2, 3, 255}}}}}}}
 	if _, err := c.graphics.encoder.Encode(in); err != nil {

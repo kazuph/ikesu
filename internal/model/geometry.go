@@ -92,25 +92,31 @@ const (
 // Rect re-exports the layout rect for convenience.
 type Rect = layout.Rect
 
+const paneScrollbarMinWidth = 5
+
+// PaneScrollbarAvailable is shared by rendering and mouse hit testing.
+func PaneScrollbarAvailable(inner Rect, scrollback int) bool {
+	return inner.W >= paneScrollbarMinWidth && inner.H > 0 && scrollback > 0
+}
+
 // PaneContentRect resolves a pane rect to its terminal-content rect and
-// gutter column count per SPEC G1: a frame eats one cell on each side but
+// scrollbar overlay column count: a frame eats one cell on each side but
 // only when borders are on and the pane is wider and taller than 2; the
-// rightmost inner column is a scrollbar gutter whenever the inner
+// rightmost inner column can carry a scrollbar overlay whenever the inner
 // width is at least 5.
 func PaneContentRect(r Rect, borders bool) (inner Rect, gutter int) {
 	inner = r
 	if borders && r.W > 2 && r.H > 2 {
 		inner = Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}
 	}
-	if inner.W >= 5 {
+	if inner.W >= paneScrollbarMinWidth {
 		gutter = 1
 	}
 	return inner, gutter
 }
 
-// PaneTermSize is the PTY cell size inside a pane rect: the content rect
-// minus its gutter column.
+// PaneTermSize includes the scrollbar overlay column, even while it is visible.
 func PaneTermSize(r Rect, borders bool) (w, h int) {
-	inner, gutter := PaneContentRect(r, borders)
-	return max(1, inner.W-gutter), max(1, inner.H)
+	inner, _ := PaneContentRect(r, borders)
+	return max(1, inner.W), max(1, inner.H)
 }

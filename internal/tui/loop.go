@@ -247,6 +247,7 @@ func (a *App) onTick() {
 	}
 	now := time.Now()
 	a.flushSidebarDividerClicks(now)
+	a.expirePaneScrollbars(now)
 	for _, ev := range a.sup.TakePendingChanges() {
 		a.onRuntimeEvent(ev)
 	}
@@ -492,8 +493,8 @@ func (a *App) rectForPane(pid int) layout.Rect {
 	defer a.selectView(previous)
 	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
 		if r, ok := a.st.OverlayRect(); ok {
-			inner, gutter := model.PaneContentRect(r, a.st.PaneBorders)
-			inner.W = max(inner.W-gutter, 1)
+			inner, _ := model.PaneContentRect(r, a.st.PaneBorders)
+			inner.W = max(inner.W, 1)
 			return inner
 		}
 	}
@@ -505,8 +506,8 @@ func (a *App) rectForPane(pid int) layout.Rect {
 		for _, t := range ws.Tabs {
 			for _, pr := range a.ptyPaneRects(t, a.st.PanesArea()) {
 				if pr.ID == pid {
-					inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
-					inner.W = max(inner.W-gutter, 1)
+					inner, _ := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+					inner.W = max(inner.W, 1)
 					return inner
 				}
 			}
@@ -520,8 +521,8 @@ func (a *App) rectForPane(pid int) layout.Rect {
 func (a *App) innerRect(pid int) layout.Rect {
 	if a.st.Overlay != nil && pid == a.st.Overlay.PaneID {
 		if r, ok := a.st.OverlayRect(); ok {
-			inner, gutter := model.PaneContentRect(r, a.st.PaneBorders)
-			inner.W = max(inner.W-gutter, 1)
+			inner, _ := model.PaneContentRect(r, a.st.PaneBorders)
+			inner.W = max(inner.W, 1)
 			return inner
 		}
 	}
@@ -538,8 +539,8 @@ func (a *App) innerRect(pid int) layout.Rect {
 	}
 	for _, pr := range a.st.PaneRectsForDisplay(t, a.st.PanesArea()) {
 		if pr.ID == pid {
-			inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
-			inner.W = max(inner.W-gutter, 1)
+			inner, _ := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+			inner.W = max(inner.W, 1)
 			return inner
 		}
 	}

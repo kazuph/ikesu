@@ -66,6 +66,7 @@ func TestStage3ViewerNotificationSurvivesRightClickAndExpires(t *testing.T) {
 func TestStage3TrackJumpThenDragUsesThumbTop(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.sidebarConfig.UI.PaneScrollbars = "always"
 	a.SetServerUI()
 	pid := a.focusedPane()
 	inner, _ := model.PaneContentRect(a.st.DisplayPaneRects()[0].Rect, a.st.PaneBorders)

@@ -13,6 +13,8 @@ name = "catppuccin"
 # surface_dim is the background fallback when panel_bg is not set.
 # surface0 keeps its explicit card/control color override.
 # accent = "#89b4fa"
+# sidebar_border = "#a6adc8"
+# sidebar_border_hover = "#89b4fa"
 # Colors accept hex, names, rgb(r,g,b), reset/default/none/transparent.
 
 [ui.sound]
@@ -22,6 +24,8 @@ enabled = true
 delivery = "off"
 
 [ui]
+pane_scrollbars = "auto" # auto / always / off; legacy true / false also accepted
+pane_scrollbar_hide_delay_ms = 1500
 window_title = "summary"
 mobile_width_threshold = 64
 sidebar_min_width = 18

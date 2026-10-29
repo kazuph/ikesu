@@ -122,15 +122,17 @@ type JobDot struct {
 }
 
 type Input struct {
-	GraphicsPatches []PaneGraphicsPatch
-	SurfaceRevision uint64
-	PanePalette     *Palette
-	ServerUI        bool
-	State           *model.AppState
-	SidebarConfig   config.Config
-	WorkspaceTokens map[int]map[string]string
-	Panes           map[int]*PaneSnap
-	Scroll          map[int]int
+	GraphicsPatches   []PaneGraphicsPatch
+	SurfaceRevision   uint64
+	PanePalette       *Palette
+	ServerUI          bool
+	State             *model.AppState
+	SidebarConfig     config.Config
+	WorkspaceTokens   map[int]map[string]string
+	Panes             map[int]*PaneSnap
+	Scroll            map[int]int
+	SidebarHover      bool
+	RightSidebarHover bool
 	// JobDots maps workspace index → job dots drawn on its sidebar row.
 	JobDots           map[int][]JobDot
 	Jobs              []JobRow
@@ -311,6 +313,7 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	}
 	drawPanes(f, s, in, out)
 	f.Palette = previewPalette
+	drawSidebarBoundaries(f, s, in)
 	if machines != nil {
 		machines.drawPaneStatus(f, in, out)
 	}
@@ -453,6 +456,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	if t == nil {
 		return
 	}
+	leftSidebar, rightSidebar := s.SidebarArea(), s.RightSidebarArea()
 	for _, pr := range s.DisplayPaneRects() {
 		snap := in.Panes[pr.ID]
 		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
@@ -466,6 +470,14 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				borderSty = uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrFaint}
 			}
 			f.Box(pr.Rect.X, pr.Rect.Y, pr.Rect.W, pr.Rect.H, borderSty)
+			// Omit only the frame just drawn, before any terminal content.
+			// Fullscreen copy returns above and never has an adjacent frame.
+			if leftSidebar.W > 0 && pr.Rect.X == leftSidebar.X+leftSidebar.W {
+				f.Fill(pr.Rect.X, pr.Rect.Y+1, 1, pr.Rect.H-2, " ", uv.Style{})
+			}
+			if rightSidebar.W > 0 && pr.Rect.X+pr.Rect.W-1 == rightSidebar.X-1 {
+				f.Fill(pr.Rect.X+pr.Rect.W-1, pr.Rect.Y+1, 1, pr.Rect.H-2, " ", uv.Style{})
+			}
 
 			// Title: " ZOOM? %<id> <label> <terminal title> " — hidden
 			// below width 4, truncated to pane width-4 with '…'
@@ -516,15 +528,6 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			}
 
 		}
-		if gutter > 0 {
-			off := in.Scroll[pr.ID]
-			if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
-				off = snap.ScrollOff
-			}
-			drawGutter(f, inner, snap, off, pr.IsFocused)
-			iw -= gutter
-		}
-
 		// Content.
 		if snap != nil {
 			f.CopyGrid(ix, iy, clipGrid(snap.Grid, iw, ih))
@@ -554,6 +557,15 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			if !in.ServerUI {
 				drawCopyStatus(f, pr.Rect.X, pr.Rect.Y+pr.Rect.H-1, pr.Rect.W, in.CopyHint, in.ServerUI)
 			}
+		}
+
+		// Draw after the content/selection so visibility never changes PTY width.
+		if gutter > 0 && in.SidebarConfig.PaneScrollbarMode() != "off" {
+			off := in.Scroll[pr.ID]
+			if in.Copy != nil && in.Copy.Pane == pr.ID && snap != nil {
+				off = snap.ScrollOff
+			}
+			drawGutter(f, inner, snap, off, pr.IsFocused)
 		}
 
 		// IME cursor anchor for the focused pane.

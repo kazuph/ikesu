@@ -36,6 +36,19 @@ func TestG9ForegroundCacheReusesScanAndInvalidatesCwdAndProgram(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
+	// Startup can still fork/exec after cwd is visible. Such a notification
+	// legitimately invalidates a scan even when the final cache key is equal.
+	if _, err := p.WriteToPTY([]byte("printf '\\nCACHE_READY_%s\\n' DONE\n")); err != nil {
+		t.Fatal(err)
+	}
+	waitReadMarker(t, p, "CACHE_READY_DONE")
+	wait(func() bool {
+		p.PollProcessChanged()
+		p.mu.Lock()
+		settled := p.processSettlingUntil.IsZero()
+		p.mu.Unlock()
+		return settled && !p.processIdentityChanged.Load()
+	})
 	wait(func() bool { p.PollProcess(); return p.Snapshot().Cwd == dir && len(p.processCache.job.Processes) > 0 })
 	readAt := p.processCache.readAt
 	keyBefore := p.processCache.key

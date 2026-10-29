@@ -142,7 +142,7 @@ func TestMultiClientFrozenHiddenPTYAcrossDetachAndLiveHandoff(t *testing.T) {
 				t.Fatal("hidden T changed without selection", before, after)
 			}
 			split := s.observedPTYGeometry(target)
-			if split.Cols != (small.Cols-3)/2 || split.Rows != small.Rows || split.PID != small.PID {
+			if split.Cols != (small.Cols-1)/2 || split.Rows != small.Rows || split.PID != small.PID {
 				t.Fatal("U split geometry or process changed", small, split)
 			}
 			if _, err := client.WriteString("\x021"); err != nil {

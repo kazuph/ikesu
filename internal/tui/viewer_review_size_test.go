@@ -85,7 +85,7 @@ func TestViewerHeldInputDeliveryDoesNotReclaimSize(t *testing.T) {
 						t.Fatal("input was not held")
 					}
 					second.Input(a, []byte("\x1b[<35;40;10M"))
-					reviewPTYSize(t, a, old, 53, 26, 10, 20)
+					reviewPTYSize(t, a, old, 54, 26, 10, 20)
 					if expiry {
 						first.focusUntil = time.Now().Add(-time.Nanosecond)
 						first.Tick(a)
@@ -93,9 +93,9 @@ func TestViewerHeldInputDeliveryDoesNotReclaimSize(t *testing.T) {
 						first.Rendered(a, render.Output{}, first.FocusEpoch())
 					}
 					reviewWaitFile(t, file, strconv.Itoa(a.sup.Get(target).ShellPID()))
-					reviewPTYSize(t, a, old, 53, 26, 10, 20)
+					reviewPTYSize(t, a, old, 54, 26, 10, 20)
 					if selectTab {
-						reviewPTYSize(t, a, target, 167, 46, 8, 16)
+						reviewPTYSize(t, a, target, 168, 46, 8, 16)
 					}
 				})
 			}
@@ -154,9 +154,9 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 				if !out.Changed || a.sup.Get(moving).ShellPID() != shell {
 					t.Fatal("move changed process", out)
 				}
-				w := 167
+				w := 168
 				if kind == "existing-tab" || kind == "leave-sibling" || kind == "remove-workspace" {
-					w = 82
+					w = 83
 				}
 				reviewPTYSize(t, a, moving, w, 46, 8, 16)
 				for _, id := range a.st.Workspaces[out.TgtWsIdx].Tabs[out.TgtTabIdx].Layout.PaneIDs() {
@@ -164,7 +164,7 @@ func TestViewerSizeBasisLifetimeAfterPaneMove(t *testing.T) {
 				}
 				if kind == "leave-sibling" {
 					for _, id := range source.Layout.PaneIDs() {
-						reviewPTYSize(t, a, id, 167, 46, 8, 16)
+						reviewPTYSize(t, a, id, 168, 46, 8, 16)
 					}
 				}
 				for id, pid := range pids {
@@ -228,12 +228,12 @@ func TestViewerFrozenSizeAfterDisconnectAndHandoff(t *testing.T) {
 			small.Begin(a, 82*10, 30*20)
 			target := a.st.Workspaces[0].Tabs[1].Layout.Focused()
 			a.exec(model.CmdSplitPane{Pane: target, Dir: layout.Vertical, Ratio: .5})
-			reviewPTYSize(t, a, hidden, 167, 46, 8, 16)
+			reviewPTYSize(t, a, hidden, 168, 46, 8, 16)
 			if a.sup.Get(hidden).ShellPID() != shell {
 				t.Fatal("hidden process changed")
 			}
 			small.Input(a, []byte{2, '1'})
-			reviewPTYSize(t, a, hidden, 53, 26, 10, 20)
+			reviewPTYSize(t, a, hidden, 54, 26, 10, 20)
 		})
 	}
 }

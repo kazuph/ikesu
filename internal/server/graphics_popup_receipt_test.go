@@ -26,7 +26,8 @@ func TestReceiptPopupHistoryTextAndScrollOnRealSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "IKESU_CONFIG", config)
-	dir, done := startTestEndpoint(t, endpoint.GraphicsPeer())
+	clock := &controlledReceiptClock{now: time.Now()}
+	dir, done := startTestEndpointWithClock(t, endpoint.GraphicsPeer(), clock)
 	defer stopServer(t, dir, done)
 	c := dialClient(t, dir)
 	defer c.conn.Close()
@@ -124,7 +125,7 @@ func TestReceiptPopupHistoryTextAndScrollOnRealSocket(t *testing.T) {
 	pixels[4]++
 	set()
 	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'POPUP_TEXT_OK\\n'\r"))})
-	text := read(graphicsReceiptWait/2, func(in render.Input) bool {
+	text := read(5*time.Second, func(in render.Input) bool {
 		return in.SurfaceRevision > first.SurfaceRevision && popupText(in, "POPUP_TEXT_OK")
 	})
 	if len(text.GraphicsPatches) != 0 {

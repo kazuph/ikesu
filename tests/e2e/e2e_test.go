@@ -473,7 +473,7 @@ func TestWheelScrollback(t *testing.T) {
 	// command itself contains "200", so match a row that is only "200".
 	s.waitFor("seq output", 10*time.Second, func(tx string) bool {
 		for _, l := range strings.Split(tx, "\n") {
-			if strings.Contains(l, "│200") {
+			if strings.Trim(l, " │") == "200" {
 				return true
 			}
 		}

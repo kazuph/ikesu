@@ -12,6 +12,13 @@ ikesu の機能仕様の正は herdr fork の `~/src/github.com/kazuph/herdr/SPE
 
 ## P1. 性能要件
 
+### ペインのスクロールバーとサイドバー境界（2026-10-29 店長承認）
+
+- `ui.pane_scrollbars` は `auto`（既定）・`always`・`off`。旧形式の `true` は `always`、`false` は `off` として読む。
+- `auto` はホイール、スクロールバーのドラッグ、コピーモードの上下移動で表示し、最後の操作から1.5秒で消す。`ui.pane_scrollbar_hide_delay_ms` で正のミリ秒数を指定できる。ドラッグ中は表示を保ち、離した時点から消えるまでの時間を数える。
+- スクロールバーは最終列へ重ねて描く。表示状態によらずペインの端末幅と折り返し位置を固定し、非表示中は最終列も内容・選択・アプリへのマウス入力に使える。
+- 左右サイドバーの境界線を各1本にし、通常はテーマの `subtext0` の実線（`│`）、ホバー・幅変更中は `accent` の太実線（`┃`）で描く。色と太さの両方でホバーを示す。`theme.custom.sidebar_border` と `theme.custom.sidebar_border_hover` で個別に色を指定できる。ドラッグ・クリック・ダブルクリックの既存の判定と保存動作は保持する。
+
 ### 計測の基準
 
 - **計測機**: Mac mini（`ssh mini`、Apple M2・8コア）。計測用の環境は mini の `~/bench-terrace.noindex/`。メインの Mac では計測しない。

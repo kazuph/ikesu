@@ -13,6 +13,16 @@ import (
 // P4b bounds image receipt waits independently for every viewer.
 const graphicsReceiptWait = 500 * time.Millisecond
 
+type graphicsReceiptClock interface {
+	Now() time.Time
+	AfterFunc(time.Duration, func())
+}
+
+type wallReceiptClock struct{}
+
+func (wallReceiptClock) Now() time.Time                       { return time.Now() }
+func (wallReceiptClock) AfterFunc(d time.Duration, fn func()) { time.AfterFunc(d, fn) }
+
 type graphicsFlow struct {
 	published          *graphicsPublishedSurface
 	textSurface        *graphicsTextSurface
@@ -43,7 +53,7 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 		flow.redraw = true
 		return nil
 	}
-	waiting := flow.awaiting != 0 && time.Now().Before(flow.until)
+	waiting := flow.awaiting != 0 && s.receiptClock.Now().Before(flow.until)
 	textOnly := false
 	relayout := false
 	var candidate *graphicsTextSurface
@@ -130,7 +140,7 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 			}
 			if flow.awaiting == revision {
 				s.armGraphicsReceipt(c, revision)
-			} else if flow.pending && (!textOnly || flow.awaiting == 0 || !time.Now().Before(flow.until)) {
+			} else if flow.pending && (!textOnly || flow.awaiting == 0 || !s.receiptClock.Now().Before(flow.until)) {
 				flow.pending = false
 				c.viewer.Redraw(s.app)
 			}
@@ -149,12 +159,12 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 
 func (s *Server) armGraphicsReceipt(c *clientConn, revision uint64) {
 	flow := c.graphics
-	flow.until = time.Now().Add(graphicsReceiptWait)
+	flow.until = s.receiptClock.Now().Add(graphicsReceiptWait)
 	if s.trace != nil {
 		flow.traceAwaiting = revision
 		flow.traceStarted = flow.until.Add(-graphicsReceiptWait)
 	}
-	time.AfterFunc(graphicsReceiptWait, func() {
+	s.receiptClock.AfterFunc(graphicsReceiptWait, func() {
 		s.app.Do(func() {
 			s.mu.Lock()
 			live := s.clients[c]

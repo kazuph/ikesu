@@ -82,9 +82,9 @@ func TestViewerResizeClaimsPTYAndDrawsStayLocal(t *testing.T) {
 			}
 		}
 	}
-	check(71, 26)
+	check(72, 26)
 	first.Resize(a, 220, 55, 0, 0)
-	check(191, 51)
+	check(192, 51)
 	for _, tc := range []struct {
 		v    *Viewer
 		w, h int
@@ -96,9 +96,9 @@ func TestViewerResizeClaimsPTYAndDrawsStayLocal(t *testing.T) {
 			t.Fatal("render viewport followed another client", got)
 		}
 	}
-	check(191, 51)
+	check(192, 51)
 	second.Resize(a, 101, 31, 0, 0)
-	check(72, 27)
+	check(73, 27)
 	if a.st.Cols != 101 || a.st.Rows != 31 {
 		t.Fatal("session dimensions did not follow latest resize", a.st.Cols, a.st.Rows)
 	}
@@ -116,13 +116,13 @@ func TestViewerExplicitSplitFromNonOwnerUsesSizeOwner(t *testing.T) {
 	owner.Begin(a, 0, 0)
 	first.with(a, func(ui *App) { ui.exec(model.CmdSplitFocused{Dir: layout.Vertical}) })
 	for id, size := range viewerTerminalSizes(a) {
-		if size != [2]int{34, 26} {
+		if size != [2]int{35, 26} {
 			t.Fatalf("split pane%d used caller viewport: %v", id, size)
 		}
 	}
 	owner.with(a, func(ui *App) { ui.exec(model.CmdZoomPane{Pane: ui.focusedPane(), Mode: "toggle"}) })
 	focused := a.st.Workspaces[0].Tabs[0].Layout.Focused()
-	if got := viewerTerminalSizes(a)[focused]; got != [2]int{71, 26} {
+	if got := viewerTerminalSizes(a)[focused]; got != [2]int{72, 26} {
 		t.Fatal("zoom did not use size owner", got)
 	}
 	owner.with(a, func(ui *App) {
@@ -130,7 +130,7 @@ func TestViewerExplicitSplitFromNonOwnerUsesSizeOwner(t *testing.T) {
 		ui.exec(model.CmdToggleSidebar{})
 	})
 	for id, size := range viewerTerminalSizes(a) {
-		if size != [2]int{46, 26} {
+		if size != [2]int{47, 26} {
 			t.Fatalf("sidebar did not change pane%d: %v", id, size)
 		}
 	}
@@ -152,20 +152,20 @@ func TestSingleViewerResizeSidebarSplitAndZoomKeepExistingGeometry(t *testing.T)
 			}
 		}
 	}
-	checkAll(91, 31)
+	checkAll(92, 31)
 	v.Resize(a, 140, 40, 0, 0)
-	checkAll(111, 36)
+	checkAll(112, 36)
 	v.with(a, func(ui *App) { ui.exec(model.CmdToggleSidebar{}) })
-	checkAll(135, 36)
+	checkAll(136, 36)
 	v.with(a, func(ui *App) { ui.exec(model.CmdSplitFocused{Dir: layout.Vertical}) })
-	checkAll(66, 36)
+	checkAll(67, 36)
 	v.with(a, func(ui *App) { ui.exec(model.CmdZoomPane{Pane: ui.focusedPane(), Mode: "on"}) })
 	focused := a.st.FocusedPane()
-	if got := viewerTerminalSizes(a)[focused]; got != [2]int{135, 36} {
+	if got := viewerTerminalSizes(a)[focused]; got != [2]int{136, 36} {
 		t.Fatal("single viewer zoom no longer updates PTY", got)
 	}
 	v.with(a, func(ui *App) { ui.exec(model.CmdZoomPane{Pane: ui.focusedPane(), Mode: "off"}) })
-	checkAll(66, 36)
+	checkAll(67, 36)
 }
 
 func TestViewerDisconnectKeepsFrozenBasisUntilOneRemains(t *testing.T) {
@@ -197,30 +197,30 @@ func TestViewerDisconnectKeepsFrozenBasisUntilOneRemains(t *testing.T) {
 				viewers[2].Detach(a)
 				viewers[0].Resize(a, 220, 55, 0, 0)
 				viewers[1].Resize(a, 110, 35, 0, 0)
-				check(81, 31)
+				check(82, 31)
 				viewers[1].Detach(a)
 			} else {
 				viewers[1].Detach(a)
 				viewers[0].Resize(a, 220, 55, 0, 0)
-				check(191, 51)
+				check(192, 51)
 				viewers[2].Resize(a, 190, 45, 0, 0)
-				check(161, 41)
+				check(162, 41)
 				viewers[2].Detach(a)
 			}
-			check(191, 51)
+			check(192, 51)
 			if a.sizeViewer != viewers[0] || len(a.sizeViewers) != 1 {
 				t.Fatal("remaining viewer did not become size basis")
 			}
 			viewers[2].Detach(a)
-			check(191, 51)
+			check(192, 51)
 			viewers[0].Detach(a)
 			if len(a.sizeViewers) != 0 {
 				t.Fatal("disconnected viewer retained in attachment list")
 			}
-			check(191, 51)
+			check(192, 51)
 			fresh := a.NewViewer(io.Discard, 100, 30, nil)
 			fresh.Begin(a, 0, 0)
-			check(71, 26)
+			check(72, 26)
 		})
 	}
 }

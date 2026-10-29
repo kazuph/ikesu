@@ -402,7 +402,7 @@ func TestPaneBordersOff(t *testing.T) {
 	if c := out.Frame.Cell(pa.X, pa.Y); c != nil && c.Content == "┌" {
 		t.Fatal("pane frame drawn with pane_borders=false")
 	}
-	// Borders do not consume cells; the scrollbar still reserves one column.
+	// Borders do not consume cells; the scrollbar overlays the last column.
 	inner, gutter := model.PaneContentRect(s.PanesArea(), false)
 	if inner != s.PanesArea() || gutter != 1 {
 		t.Fatalf("borders-off content = %+v/%d, want full rect", inner, gutter)

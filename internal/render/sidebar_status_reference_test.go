@@ -69,7 +69,14 @@ func TestSidebarStatusReferenceCells(t *testing.T) {
 								var cells []uv.Cell
 								for y := 0; y < s.Rows; y++ {
 									for dx := 0; dx < width; dx++ {
-										cells = append(cells, *f.Cell(x+dx, y))
+										cell := *f.Cell(x+dx, y)
+										// Only the requested boundary color changed. Keep the
+										// reference's color here; sidebar_boundary_test checks
+										// the new color and every other cell still matches exactly.
+										if !right && dx == width-1 || right && dx == 0 {
+											cell.Style.Fg = f.Palette.Dim
+										}
+										cells = append(cells, cell)
 									}
 								}
 								data, err := json.Marshal(cells)

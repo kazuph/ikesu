@@ -46,7 +46,7 @@ func TestStage5BorderlessSplitReservesGapAndPTYWidths(t *testing.T) {
 	if len(panes) != 2 {
 		t.Fatal(panes)
 	}
-	for i, want := range []int{35, 36} {
+	for i, want := range []int{36, 37} {
 		w, h := model.PaneTermSize(panes[i].Rect, false)
 		if w != want || h != 28 {
 			t.Fatalf("pane=%d PTY=%dx%d want=%dx28", i, w, h, want)

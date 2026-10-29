@@ -50,6 +50,7 @@ func TestStage3RightGestureInterruptionPreservesModifiersInRealPTY(t *testing.T)
 func TestStage3LocalTrackOnlyJumpsAndThumbRetainsGrab(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.sidebarConfig.UI.PaneScrollbars = "always"
 	pid := a.focusedPane()
 	inner, _ := model.PaneContentRect(a.st.DisplayPaneRects()[0].Rect, a.st.PaneBorders)
 	p, err := a.sup.SpawnWith(pid, a.cwd, inner.W, inner.H, nil, []string{"/bin/sh", "-c", "i=0; while [ $i -lt 200 ]; do echo LINE-$i; i=$((i+1)); done; printf READY; exec sleep 60"})

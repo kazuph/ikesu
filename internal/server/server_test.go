@@ -152,6 +152,10 @@ func startTestServer(t *testing.T) (dir string, done chan int) {
 }
 
 func startTestEndpoint(t *testing.T, peer endpoint.Peer) (dir string, done chan int) {
+	return startTestEndpointWithClock(t, peer, wallReceiptClock{})
+}
+
+func startTestEndpointWithClock(t *testing.T, peer endpoint.Peer, clock graphicsReceiptClock) (dir string, done chan int) {
 	t.Helper()
 	pinTestConfig(t)
 	// unix sockets cap sun_path around 104 bytes; t.TempDir() paths on
@@ -166,7 +170,7 @@ func startTestEndpoint(t *testing.T, peer endpoint.Peer) (dir string, done chan 
 	dir = api.SessionDir("test")
 	done = make(chan int, 1)
 	go func() {
-		code, err := runEndpoint("test", "test-version", peer)
+		code, err := runEndpointWithClock("test", "test-version", peer, clock)
 		if err != nil {
 			t.Errorf("server.Run: %v", err)
 		}

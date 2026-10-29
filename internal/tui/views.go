@@ -128,6 +128,9 @@ func (a *App) draw() {
 			panes[p.ID] = &render.PaneSnap{Graphics: p.Graphics(), Grid: a.paneGrid(p, a.scroll[p.ID], r.H, r.W), Label: "terminal", Title: sn.OSCTitle, Cursor: render.CursorInfo{X: sn.Cursor.X, Y: sn.Cursor.Y, Visible: sn.Cursor.Visible}, ScrollOff: a.scroll[p.ID], ScrollN: sn.ScrollbackLen, SuppressScrollbar: !sn.ScrollbarVisible}
 		}
 	}
+	for pid, snap := range panes {
+		snap.SuppressScrollbar = !a.paneScrollbarActive(pid, time.Now())
+	}
 	tokens := map[int]map[string]string{}
 	if a.workspaceTokenSource != nil {
 		for i, w := range a.st.Workspaces {
@@ -177,16 +180,18 @@ func (a *App) draw() {
 		Settings:            a.settings,
 		MobileSwitcher:      a.mobileSwitcher, MobileScroll: a.mobileScroll,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
-		Panes:         panes,
-		Scroll:        a.scroll,
-		Spin:          a.spin,
-		Copied:        a.copiedFlash(),
-		Prefix:        a.prefix,
-		ModeHint:      a.modeHint(),
-		SidebarScroll: a.sidebarScroll,
-		AgentScroll:   a.agentScroll,
-		JobDots:       a.jobDots,
-		Jobs:          a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll,
+		Panes:             panes,
+		Scroll:            a.scroll,
+		SidebarHover:      a.sidebarHover || a.sidebarGesture != nil && a.sidebarGesture.divider && !a.sidebarGesture.right,
+		RightSidebarHover: a.rightSidebarHover || a.sidebarGesture != nil && a.sidebarGesture.divider && a.sidebarGesture.right,
+		Spin:              a.spin,
+		Copied:            a.copiedFlash(),
+		Prefix:            a.prefix,
+		ModeHint:          a.modeHint(),
+		SidebarScroll:     a.sidebarScroll,
+		AgentScroll:       a.agentScroll,
+		JobDots:           a.jobDots,
+		Jobs:              a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll,
 		Git: a.workspaceGit, WorkspaceNames: a.workspaceNames,
 		CopyLabel: a.copyLabel(),
 		Copy:      a.copyMark(),
