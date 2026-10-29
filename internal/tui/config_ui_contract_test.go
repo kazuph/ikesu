@@ -35,6 +35,9 @@ func TestConfigUIChangesActualStateAndRenderedCells(t *testing.T) {
 		t.Run(tc.key, func(t *testing.T) {
 			a := specRuntimeApp(t)
 			a.SetServerUI()
+			if tc.key == "transparent_sidebar_cards" {
+				a.st.Apply(model.CmdNewWorkspace{NoFocus: true})
+			}
 			for i := 0; i < 3; i++ {
 				if i > 0 {
 					a.exec(model.CmdNewWorkspace{Name: fmt.Sprintf("workspace%d", i), Cwd: a.cwd})
@@ -52,6 +55,9 @@ func TestConfigUIChangesActualStateAndRenderedCells(t *testing.T) {
 			a.SetReported(a.focusedPane(), "claude", "idle")
 			var frames []*render.Frame
 			for _, source := range []string{tc.first, tc.second} {
+				if tc.key == "transparent_sidebar_cards" {
+					source += "\n[theme.custom]\nsurface0='#123456'"
+				}
 				c, err := config.Decode([]byte("[ui]\n" + source + "\n"))
 				if err != nil || len(c.Warnings) > 0 {
 					t.Fatal(c.Warnings, err)

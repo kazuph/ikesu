@@ -315,6 +315,23 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	}
 	drawActionBar(f, s, in, out)
 	drawClientVersion(f, version, notice, out)
+	if s.Mobile() {
+		drawMobile(f, in, out)
+	}
+	applyPersistentBackground(f, in)
+	if in.ModeHint != "" && !(in.ServerUI && in.Prefix) {
+		area := s.PanesArea()
+		drawModeHint(f, area.X, area.Y+area.H-1, area.W, in.ModeHint)
+	}
+	// Floating surfaces erase underlying terminal text to stay readable.
+	palette := f.Palette
+	if f.Palette.PopupBG == nil {
+		f.Palette.PopupBG = ThemePalette(in.SidebarConfig.ThemeName()).PopupBG
+		if f.Palette.PopupBG == nil {
+			f.Palette.PopupBG = f.Palette.PanelBG
+		}
+	}
+	defer func() { f.Palette = palette }()
 	if in.ServerUI && in.Copy != nil {
 		x := 0
 		if in.Copied != "" {
@@ -327,9 +344,6 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 		drawSidebarCopyFeedback(f, in)
 	}
 	drawPopup(f, in, out)
-	if s.Mobile() {
-		drawMobile(f, in, out)
-	}
 	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 		for i := range f.Cells {
 			if in.Dialog != nil && (in.Dialog.DimPanesOnly || !in.Dialog.InputEdit && !in.Dialog.CenterTerminal) {

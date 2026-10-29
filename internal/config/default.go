@@ -8,7 +8,10 @@ screen_prompts = true
 name = "catppuccin"
 
 # [theme.custom]
-# panel_bg = "transparent"
+# panel_bg = "transparent" # applies to panes, sidebars, tabs and the bottom bar
+# panel_bg = "#181825" # explicit background color overrides opaque_background
+# surface_dim is the background fallback when panel_bg is not set.
+# surface0 keeps its explicit card/control color override.
 # accent = "#89b4fa"
 # Colors accept hex, names, rgb(r,g,b), reset/default/none/transparent.
 
@@ -25,6 +28,9 @@ sidebar_min_width = 18
 sidebar_max_width = 72
 sidebar_width = 26
 sidebar_start_collapsed = false
+# Transparent terminal background is the default in every theme.
+# Set true to fill panes and UI with the selected theme's background:
+opaque_background = false
 transparent_sidebar_cards = false
 workspace_panel_density = "full"
 agent_panel_scope = "all"

@@ -31,20 +31,14 @@ func TestEndpointActiveTabUsesPanelColorWithTransparentFallback(t *testing.T) {
 			in := Input{State: s, ServerUI: serverUI}
 			in.SidebarConfig.Theme.Custom = custom
 			out := Compose(in)
-			want := out.Frame.Palette.SurfDim
-			if serverUI {
-				want = out.Frame.Palette.PopupBG
-				if want == nil {
-					want = out.Frame.Palette.PanelBG
-				}
-			}
+			want := out.Frame.Palette.Accent
 			for x := out.TabHits[0].X; x < out.TabHits[0].X+out.TabHits[0].W; x++ {
 				cell := out.Frame.Cell(x, s.TabBarArea().Y)
 				fg := want
 				if x == out.TabHits[0].X+1 {
 					fg = out.Frame.ThemeColor(Dim)
 				}
-				if cell.Style.Fg != fg || cell.Style.Bg != out.Frame.Palette.Accent {
+				if cell.Style.Fg != fg || cell.Style.Bg != persistentBackground(in.SidebarConfig) {
 					t.Fatalf("server=%v custom=%v cell=%d: %#v", serverUI, custom, x, cell.Style)
 				}
 			}
@@ -54,7 +48,9 @@ func TestEndpointActiveTabUsesPanelColorWithTransparentFallback(t *testing.T) {
 
 func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 	s := model.New(t.TempDir(), 160, 45)
+	s.Apply(model.CmdNewWorkspace{NoFocus: true})
 	in := Input{State: s, ServerUI: true}
+	in.SidebarConfig.Theme.Custom = map[string]string{"surface0": "#123456"}
 	painted := Compose(in).Frame
 	in.SidebarConfig.UI.TransparentSidebarCards = true
 	clear := Compose(in).Frame
@@ -69,8 +65,11 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 					t.Fatalf("card bg at %d,%d", x, pos.Y)
 				}
 			}
-			if painted.Cell(3, pos.Y).Style.Bg == nil || clear.Cell(0, pos.Y).Content != "▌" {
-				t.Fatal("painted default or active indicator lost")
+			if pos.Row.Ws != s.Active && painted.Cell(3, pos.Y).Style.Bg == nil {
+				t.Fatal("explicit component background was lost")
+			}
+			if pos.Row.Ws == s.Active && pos.Row.Kind == RowWorkspace && clear.Cell(0, pos.Y).Content != "▌" {
+				t.Fatal("active indicator lost")
 			}
 		case RowTitle:
 			if clear.Cell(3, pos.Y).Style != painted.Cell(3, pos.Y).Style {
@@ -93,7 +92,7 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 	}
 }
 
-func TestCollapsedEndpointStatusKeepsActiveBackground(t *testing.T) {
+func TestCollapsedEndpointStatusKeepsActiveIndicator(t *testing.T) {
 	s := model.New(t.TempDir(), 160, 45)
 	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir()})
 	s.Apply(model.CmdNewWorkspace{Cwd: t.TempDir()})
@@ -107,11 +106,11 @@ func TestCollapsedEndpointStatusKeepsActiveBackground(t *testing.T) {
 			if c.Content != "·" || c.Style.Fg != f.Palette.Dim {
 				t.Fatal("status cell missing", c)
 			}
-			if y == s.Active && c.Style.Bg != f.Palette.PanelBG {
-				t.Fatal("active workspace must retain a background even in transparent mode", c)
+			if c.Style.Bg != nil {
+				t.Fatal("collapsed status must use terminal background", c)
 			}
-			if y != s.Active && c.Style.Bg == f.Palette.PanelBG {
-				t.Fatal("inactive workspace has selected background", c)
+			if (c.Style.Underline != uv.UnderlineNone) != (y == s.Active) {
+				t.Fatal("collapsed active indicator lost", c)
 			}
 			if f.Cell(1, 4+y*3).Content != "│" {
 				t.Fatal("status divider missing")

@@ -49,7 +49,7 @@ func TestG2DraggedWorkspaceBothRowsHighlight(t *testing.T) {
 			}
 			for x := 1; x < w; x++ {
 				c := out.Frame.Cell(x, y+i)
-				if c.Width > 0 && !reflect.DeepEqual(c.Style.Bg, out.Frame.Palette.NavigatorDivider) {
+				if c.Width > 0 && c.Style.Bg != nil {
 					t.Fatal("dragged background", x)
 				}
 			}
@@ -72,7 +72,7 @@ func TestG2SelectedWorkspaceBothRowsHighlight(t *testing.T) {
 			}
 			for x := 1; x < w; x++ {
 				c := out.Frame.Cell(x, y+i)
-				if c.Width > 0 && !reflect.DeepEqual(c.Style.Bg, Surface) {
+				if c.Width > 0 && c.Style.Bg != nil {
 					t.Fatal("selected background", x)
 				}
 			}

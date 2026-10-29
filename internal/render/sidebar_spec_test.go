@@ -133,7 +133,7 @@ func TestG2DropTargetWholeHeaderAndBottomIndicator(t *testing.T) {
 	for i, r := range rows {
 		if r.Kind == RowSection && r.Section == model.SectionWork {
 			for x := ix; x < ix+w; x++ {
-				if out.Frame.Cell(x, y+i).Width > 0 && !reflect.DeepEqual(out.Frame.Cell(x, y+i).Style.Bg, Accent) {
+				if out.Frame.Cell(x, y+i).Width > 0 && out.Frame.Cell(x, y+i).Style.Bg != nil {
 					t.Fatal("header background", x)
 				}
 			}

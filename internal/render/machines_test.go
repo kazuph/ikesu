@@ -1,6 +1,7 @@
 package render
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"reflect"
 	"strings"
 	"testing"
@@ -209,6 +210,7 @@ func TestPendingMachineSectionHighlightsOnlyItsTargetWithoutSelectingRemote(t *t
 	for _, hit := range machines.Hits {
 		if hit.Machine == "remote" && hit.Row.Kind == RowSection && hit.Row.Section == model.SectionWork {
 			found = true
+			marked := false
 			for x := hit.Rect.X; x < hit.Rect.X+hit.Rect.W; x++ {
 				cell := out.Frame.Cell(x, hit.Rect.Y)
 				if cell.Width == 0 {
@@ -218,9 +220,15 @@ func TestPendingMachineSectionHighlightsOnlyItsTargetWithoutSelectingRemote(t *t
 					}
 					cell = previous
 				}
-				if !reflect.DeepEqual(cell.Style.Bg, out.Frame.Palette.Accent) {
+				if reflect.DeepEqual(cell.Style.Fg, out.Frame.Palette.Accent) && cell.Style.Underline != uv.UnderlineNone {
+					marked = true
+				}
+				if cell.Style.Bg != nil {
 					t.Fatal("pending section target is not highlighted across its header", x)
 				}
+			}
+			if !marked {
+				t.Fatal("pending section label lost its accent underline")
 			}
 		}
 		if hit.Machine == "remote" && hit.Workspace != 0 && out.Frame.Cell(hit.Rect.X, hit.Rect.Y).Content == "▌" {
