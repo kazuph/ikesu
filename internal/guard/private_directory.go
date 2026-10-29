@@ -30,9 +30,22 @@ func privateStat(fd int, mask uint32) error {
 	}
 	return nil
 }
+
+func isolatesDescendants(path string, s *unix.Stat_t) bool {
+	// ACLs can grant traversal beyond the POSIX mode. Failure to read ACL
+	// metadata must never establish that another user cannot reach descendants.
+	const otherWriteOrSearch = unix.S_IWGRP | unix.S_IXGRP | unix.S_IWOTH | unix.S_IXOTH
+	return s.Mode&unix.S_IFMT == unix.S_IFDIR && int(s.Uid) == os.Geteuid() &&
+		s.Mode&otherWriteOrSearch == 0 && ancestorHasNoACL(path)
+}
+
 func trustedAncestors(path string) error {
 	// Check lexical links as well as their resolved targets. Otherwise a foreign
 	// owner could retarget an ancestor after its target had passed validation.
+	var writable error
+	// Excusing a writable descendant requires ACL-free ancestors all the way
+	// out to root; otherwise the proposed private parent could be replaced.
+	needsACLProof := false
 	for current := path; ; current = filepath.Dir(current) {
 		var st unix.Stat_t
 		if err := unix.Lstat(current, &st); err != nil {
@@ -41,13 +54,28 @@ func trustedAncestors(path string) error {
 		if st.Uid != 0 && int(st.Uid) != os.Geteuid() {
 			return fmt.Errorf("foreign guard ancestor: %s", current)
 		}
+		if needsACLProof && !ancestorHasNoACL(current) {
+			writable = fmt.Errorf("guard ancestor ACL cannot establish protection: %s", current)
+			needsACLProof = false
+		}
+		// Only an ACL-free directory that excludes other users protects descendants.
+		// Still inspect its parents: an exposed writable parent could replace it.
+		if isolatesDescendants(current, &st) {
+			needsACLProof = needsACLProof || writable != nil
+			writable = nil
+		}
 		if st.Mode&unix.S_IFMT != unix.S_IFLNK && st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) {
-			return fmt.Errorf("writable guard ancestor: %s", current)
+			writable = fmt.Errorf("writable guard ancestor: %s", current)
+			needsACLProof = false
 		}
 		if filepath.Dir(current) == current {
 			break
 		}
 	}
+	if writable != nil {
+		return writable
+	}
+	needsACLProof = false
 	for {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -57,12 +85,24 @@ func trustedAncestors(path string) error {
 		if err = unix.Stat(path, &s); err != nil {
 			return err
 		}
-		if !info.IsDir() || (int(s.Uid) != os.Geteuid() && s.Uid != 0) || (s.Mode&0022 != 0 && !(s.Uid == 0 && s.Mode&unix.S_ISVTX != 0)) {
+		if !info.IsDir() || (int(s.Uid) != os.Geteuid() && s.Uid != 0) {
 			return fmt.Errorf("untrusted guard ancestor: %s", path)
+		}
+		if needsACLProof && !ancestorHasNoACL(path) {
+			writable = fmt.Errorf("guard ancestor ACL cannot establish protection: %s", path)
+			needsACLProof = false
+		}
+		if isolatesDescendants(path, &s) {
+			needsACLProof = needsACLProof || writable != nil
+			writable = nil
+		}
+		if s.Mode&0022 != 0 && !(s.Uid == 0 && s.Mode&unix.S_ISVTX != 0) {
+			writable = fmt.Errorf("untrusted guard ancestor: %s", path)
+			needsACLProof = false
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
-			return nil
+			return writable
 		}
 		path = parent
 	}
