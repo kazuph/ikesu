@@ -34,8 +34,9 @@ func TestTransparentPanelKeepsBrightControlTextAndConfirmationBackdrop(t *testin
 	in.Dialog = nil
 	in.ModeHint = " NAVIGATE "
 	navigation := Compose(in).Frame
-	if navigation.Cell(area.X, area.Y+area.H-1).Style.Fg != contrast {
-		t.Fatal("navigation label text used the terminal default")
+	label := navigation.Cell(area.X+1, area.Y+area.H-1)
+	if label.Style.Fg != navigation.Palette.Accent || label.Style.Bg != nil || label.Style.Attrs&uv.AttrBold == 0 || label.Style.Underline != uv.UnderlineSingle {
+		t.Fatal("navigation label lost its accent, bold underline or transparent background")
 	}
 	in.ModeHint = ""
 	in.Menu = &Menu{Global: true, Items: []MenuItem{{Label: "new workspace"}}, Sel: 0, Hover: -1}

@@ -66,8 +66,13 @@ func TestModeAndCopyStatusUseCommonBackground(t *testing.T) {
 					if !strings.Contains(text, label) {
 						t.Fatalf("mode label lost: %q", text)
 					}
-					if cell := f.Cell(startX+1, y); cell.Style.Attrs&uv.AttrBold == 0 {
-						t.Fatal("mode label lost its bold selection ink")
+					labelColor := f.Palette.Accent
+					if view == "resize" {
+						labelColor = f.Palette.Mauve
+					}
+					cell := f.Cell(startX+1, y)
+					if cell.Style.Attrs&uv.AttrBold == 0 || cell.Style.Underline != uv.UnderlineSingle || cell.Style.Fg != labelColor {
+						t.Fatal("mode label lost its color or bold underline")
 					}
 				})
 			}
