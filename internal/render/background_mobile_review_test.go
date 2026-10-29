@@ -10,8 +10,8 @@ import (
 )
 
 func TestMobileSwitcherUsesCommonBackgroundAndSelectionInk(t *testing.T) {
-	for _, theme := range []string{"catppuccin", "catppuccin-latte"} {
-		for _, mode := range []string{"default", "opaque", "panel", "surface_dim"} {
+	for _, theme := range config.ThemeNames {
+		for _, mode := range []string{"default", "opaque", "panel", "surface_dim", "matching-colors"} {
 			t.Run(fmt.Sprint(theme, "/", mode), func(t *testing.T) {
 				s := model.New(t.TempDir(), 60, 40)
 				s.MobileWidthThreshold = 64
@@ -25,12 +25,18 @@ func TestMobileSwitcherUsesCommonBackgroundAndSelectionInk(t *testing.T) {
 				case "opaque":
 					c.UI.OpaqueBackground = true
 					want = ThemePalette(theme).PopupBG
-				case "panel", "surface_dim":
+					if want == nil {
+						want = ThemePalette(theme).PanelBG
+					}
+				case "panel", "surface_dim", "matching-colors":
 					key := "panel_bg"
 					if mode == "surface_dim" {
 						key = mode
 					}
 					c.Theme.Custom = map[string]string{key: "#234567"}
+					if mode == "matching-colors" {
+						c.Theme.Custom["surface_dim"] = "#234567"
+					}
 					want = color.RGBA{35, 69, 103, 255}
 				}
 				in := Input{State: s, SidebarConfig: c, ServerUI: true, MobileSwitcher: true}

@@ -80,7 +80,7 @@ func applyPersistentBackground(f *Frame, in Input) {
 				continue
 			}
 			cell.Style.Bg = bg
-			if old != nil && old == f.Palette.PanelBG && cell.Content != " " && cell.Content != "" {
+			if !(s.Mobile() && in.MobileSwitcher) && old != nil && old == f.Palette.PanelBG && cell.Content != " " && cell.Content != "" {
 				cell.Style.Underline = uv.UnderlineSingle
 			}
 			if old != nil && (old == f.Palette.Accent || old == f.Palette.Mauve) && cell.Style.Fg != nil && (cell.Style.Fg == f.Palette.PanelBG || cell.Style.Fg == f.Palette.PopupBG || cell.Style.Fg == f.Palette.SurfDim) {
