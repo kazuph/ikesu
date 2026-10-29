@@ -14,10 +14,14 @@ func koiResidents(agents []KoiAgent, capacity int, pond layout.Rect, in Input) [
 }
 
 func koiResidentsFor(agents []KoiAgent, capacity int, pond layout.Rect, in Input, group string, w, h int) []KoiFish {
+	pose := koiMotionPose
+	if w == 6 && h == 1 {
+		pose = koiBandPose
+	}
 	if in.KoiMotion == nil {
 		var fish []KoiFish
 		for _, agent := range agents[:min(capacity, len(agents))] {
-			fish = append(fish, koiMotionPose(agent, pond, in, w, h))
+			fish = append(fish, pose(agent, pond, in, w, h))
 		}
 		return fish
 	}
@@ -46,7 +50,7 @@ func koiResidentsFor(agents []KoiAgent, capacity int, pond layout.Rect, in Input
 			m.ExitX, m.ExitY = koiExit(m.X, m.Y, w, h, pond, in)
 			in.KoiMotion[id] = m
 		}
-		next := koiMotionPose(agent, pond, in, w, h)
+		next := pose(agent, pond, in, w, h)
 		if m.Leaving && math.Hypot(next.X-m.ExitX, next.Y-m.ExitY) < 1e-8 {
 			delete(in.KoiMotion, id)
 			continue
@@ -94,7 +98,7 @@ func koiResidentsFor(agents []KoiAgent, capacity int, pond layout.Rect, in Input
 			continue
 		}
 		agent.Glow = in.KoiGlow[agent.ID]
-		fish = append(fish, koiMotionPose(agent, pond, in, w, h))
+		fish = append(fish, pose(agent, pond, in, w, h))
 		m := in.KoiMotion[agent.ID]
 		m.Group = group
 		in.KoiMotion[agent.ID] = m
