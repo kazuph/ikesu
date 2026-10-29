@@ -192,3 +192,14 @@ test('actual native host creates zero windows and Slack posts zero until focused
  await f.set({...local,focused:false});await slack.refreshVisibleDecisions();await f.daemon.refreshBackgroundWindows();
  assert.equal(f.daemon.children.size,0);assert.equal(host.windows.size,0);assert.equal(service.posts.length,0);
 });
+
+
+test('initial visibility query waits for the real event subscription before deciding to notify',async t=>{
+ const f=await fixture(t);await f.set(local);
+ const connecting=new ClientViews(f.env);t.after(()=>connecting.stop());
+ connecting.start(()=>{});
+ assert.equal(connecting.ready,false);
+ const views=await connecting.list();
+ assert.equal(views.find(view=>view.workspace_id==='s1').focused,true);
+ assert.equal(f.daemon.displayedByFocusedClient(f.entry(),views),true);
+});

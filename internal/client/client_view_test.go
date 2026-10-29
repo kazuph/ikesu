@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
@@ -79,7 +80,7 @@ func TestClientViewFocusKeepsLastPaintedWorkspaceWhileNextPaintIsFenced(t *testi
 	if len(c.queue) != 1 || c.queue[0].ClientView.WorkspaceID != "s1" || !*c.queue[0].ClientView.Focused {
 		t.Fatalf("focus used an unpainted snapshot: %+v", c.queue)
 	}
-	m.reportClientView()
+	m.reportClientView(*e.snapshot)
 	if len(c.queue) != 2 || c.queue[1].ClientView.WorkspaceID != "s2" {
 		t.Fatalf("paint did not publish the new workspace: %+v", c.queue)
 	}
@@ -106,5 +107,30 @@ func TestClientViewUsesZoomOverlayAndPopupProjection(t *testing.T) {
 	state.Apply(model.CmdOpenPopup{WorkspaceID: state.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 80}, Height: api.PopupSize{Cells: 20}})
 	if got := m.currentClientView(); !reflect.DeepEqual(got.PaneIDs, []string{fmt.Sprintf("p%d", state.Popup.PaneID)}) {
 		t.Fatalf("popup: %+v", got)
+	}
+}
+
+func TestClientViewOnlyExcludesPaneCoveredByPaintedDialog(t *testing.T) {
+	state := model.New(t.TempDir(), 160, 40)
+	state.Apply(model.CmdSplitPane{Pane: 1, Dir: layout.Vertical})
+	peer := endpoint.Current()
+	c := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	in := render.Input{State: state, Dialog: &render.Dialog{Title: "covered", Width: 20}}
+	e := &managedEndpoint{connection: c, snapshot: &in}
+	m := &machineClient{session: "isolated", active: "local", endpoints: map[string]*managedEndpoint{"local": e}, regions: render.ComposeClient(in, nil, "test", false)}
+	// Put the real rendered dialog into the left pane's rectangle. The right
+	// pane remains visible and must still suppress its own notifications.
+	left := state.DisplayPaneRects()[0].Rect
+	m.regions.DialogRect = layout.Rect{X: left.X + 1, Y: left.Y + 1, W: 1, H: 1}
+	m.reportClientView(in)
+	if len(c.queue) != 1 || !reflect.DeepEqual(c.queue[0].ClientView.PaneIDs, []string{"p2"}) {
+		t.Fatalf("uncovered pane: %+v", m.lastClientView)
+	}
+	in.Dialog = nil
+	m.regions = render.ComposeClient(in, nil, "test", false)
+	in.Copy = &render.CopyMark{Pane: 1, Fullscreen: true}
+	m.reportClientView(in)
+	if !reflect.DeepEqual(m.lastClientView.PaneIDs, []string{"p1"}) {
+		t.Fatalf("fullscreen copy: %+v", m.lastClientView)
 	}
 }

@@ -13,6 +13,7 @@ export class ClientViews {
     this.directory = path.dirname(this.socketPath);
     this.requests = new Set();
     this.ready = false;
+    this.revision = 0;
     this.stopped = false;
   }
   sessionFor(machine) {
@@ -26,6 +27,9 @@ export class ClientViews {
   start(changed) { this.changed = changed; this.connect(); }
   connect() {
     if (this.stopped) return;
+    this.connecting = true;
+    let finishConnection;
+    this.connectionReady = new Promise(resolve => { finishConnection = resolve; });
     const socket = net.createConnection(this.socketPath);
     this.watch = socket;
     const lines = readline.createInterface({input: socket});
@@ -34,17 +38,23 @@ export class ClientViews {
       try {
         const message = JSON.parse(line);
         if (message.error) { socket.destroy(); return; }
-        if (message.result?.type === 'subscription_started') { this.ready = true; this.changed?.(); }
-        if (message.event === 'client_view_changed') this.changed?.();
+        if (message.result?.type === 'subscription_started') { this.ready = true; this.connecting = false; finishConnection(); this.revision++; this.changed?.(); }
+        if (message.event === 'client_view_changed') { this.revision++; this.changed?.(); }
       } catch { socket.destroy(); }
     });
     socket.on('error', () => {});
     socket.on('close', () => {
-      lines.close(); this.ready = false; this.changed?.();
+      lines.close(); this.ready = false; this.connecting = false; finishConnection(); this.revision++; this.changed?.();
       if (!this.stopped) this.retry = setTimeout(() => this.connect(), WATCH_RETRY_MS);
     });
   }
-  list() {
+  async list() {
+    if (this.connecting) await this.connectionReady;
+    const revision = this.revision;
+    const views = await this.query();
+    return revision === this.revision ? views : this.list();
+  }
+  query() {
     if (!this.ready || this.stopped) return Promise.reject(Error('client view subscription unavailable'));
     return new Promise((resolve, reject) => {
       const socket = net.createConnection(this.socketPath);
