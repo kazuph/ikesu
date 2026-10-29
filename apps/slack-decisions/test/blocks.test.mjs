@@ -1,13 +1,15 @@
 // Unit tests for buildDecisionBlocks option descriptions and block splitting.
 // No network: the block builders are pure functions.
 
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDecisionBlocks,
   fallbackText,
 } from "../slack-decisions.mjs";
 
+for (const kind of [undefined, "agent_prompt"]) {
+const test = (name, run) => nodeTest(`${name} (${kind || "legacy kind"})`, run);
 const LOCAL = { id: "local", label: "Local" };
 
 const SLACK_HARD_LIMIT = 3000;
@@ -15,6 +17,7 @@ const SLACK_HARD_LIMIT = 3000;
 function pendingDecision(overrides = {}) {
   return {
     decision_id: "dec-desc",
+    kind,
     title: "どう進める？",
     body: "",
     allow_text: false,
@@ -165,3 +168,5 @@ test("option previews render in code blocks and unavailable is explicit", () => 
   assert.match(text, /:one: A\n```\n\+---\+\n\| A \|\n\+---\+\n```/);
   assert.match(text, /:two: B\n> プレビューあり（画面で確認）/);
 });
+
+}

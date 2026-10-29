@@ -475,8 +475,9 @@ final class DialogController: NSObject, NSWindowDelegate {
 
     var titleText = spec.title
     if let q = spec.question_label, !q.isEmpty { titleText = "［\(q)］ " + titleText }
-    let titleLabel = richLabel(titleText, size: Look.title, weight: .bold)
-    full(titleLabel)
+    if !titleText.isEmpty {
+      full(richLabel(titleText, size: Look.title, weight: .bold))
+    }
 
     if let body = spec.body, !body.isEmpty {
       let commands = (spec.details ?? []).filter { ["コマンド", "対象コマンド"].contains($0.label) }.map { $0.value }

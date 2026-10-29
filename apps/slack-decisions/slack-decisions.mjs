@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { ClientViews, displayedByFocusedClient } from "../mac-dialog-decisions/client-views.mjs";
-import { locationLabel, approvalCommand } from "../mac-dialog-decisions/spec.mjs";
+import { locationLabel, approvalCommand, decisionText } from "../mac-dialog-decisions/spec.mjs";
 // ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
@@ -771,23 +771,17 @@ function buildDecisionBlocks({
   const statusText = STATUS_TEXT[status] || status;
   const machineLabel = locationLabel(decision, machine);
   const headParts = [machineLabel, `【${statusText}】判断待ち`];
-  if (decision.question_label) headParts.push(decision.question_label);
+  if (decision.kind !== "agent_prompt" && decision.question_label) headParts.push(decision.question_label);
   if (mention) headParts.push(mention);
   const head = headParts.join(" | ");
-  const blocks = [
-    { type: "context", elements: [{ type: "mrkdwn", text: head }] },
-    {
-      type: "section",
-      text: { type: "mrkdwn", text: approvalCommand(decision) ? "*実行するコマンド*\n```\n" + approvalCommand(decision).replaceAll("```", "'`'`'") + "\n```" : `*${decision.title || decision.decision_id}*` },
-    },
-  ];
-  if (approvalCommand(decision)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${decision.title || decision.decision_id}*`}});
-  if (decision.body) {
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: decision.body },
-    });
+  const presentation = decisionText(decision);
+  const blocks = [{ type: "context", elements: [{ type: "mrkdwn", text: head }] }];
+  if (approvalCommand(decision)) {
+    blocks.push({type: "section", text: {type: "mrkdwn", text: "*実行するコマンド*\n```\n" + approvalCommand(decision).replaceAll("```", "'`'`'") + "\n```"}});
   }
+  if (presentation.title) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${presentation.title}*`}});
+  const body = decision.kind === "agent_prompt" ? presentation.body : decision.body;
+  if (body) blocks.push({type: "section", text: {type: "mrkdwn", text: body}});
   const origins = originLines(decision);
   if (origins.length > 0) {
     blocks.push({
@@ -875,9 +869,10 @@ function fallbackText({ decision, machine }) {
       return description ? `${line}\n   ${description}` : line;
     })
     .join("\n");
+  const presentation = decisionText(decision);
   return [
-    `${locationLabel(decision, machine)}\n${approvalCommand(decision) || decision.title || decision.decision_id}`,
-    decision.body || "",
+    [locationLabel(decision, machine), approvalCommand(decision) || presentation.title].filter(Boolean).join("\n"),
+    decision.kind === "agent_prompt" ? presentation.body : decision.body || "",
     options,
   ]
     .filter(Boolean)

@@ -56,6 +56,33 @@ export function approvalCommand(decision) {
   return decision.kind === "command_guard" ? String(decision.origin?.target_command || decision.origin?.command || "") : "";
 }
 
+// Screen prompts can store the whole question in title, with either a copy
+// or the question-progress label in body. Keep that question once and use a
+// separate, non-repeated header only when the source actually supplies one.
+export function decisionText(decision) {
+  const title = String(decision.title || "");
+  const body = String(decision.body || "");
+  const questionLabel = String(decision.question_label || "");
+  if (decision.kind !== "agent_prompt") {
+    return {
+      title: title || String(decision.decision_id || ""),
+      body: body.trim() !== questionLabel.trim() ? body : "",
+      question_label: questionLabel,
+    };
+  }
+  const normalize = text => text.replace(/\s+/gu, " ").trim();
+  const separateBody = body.trim() && normalize(body) !== normalize(questionLabel);
+  let question = separateBody ? body : title || body;
+  // A question number is a heading, not the question itself. A separate
+  // supplement (for example Codex's countdown) must follow the full question.
+  if (questionLabel.trim() && title.trim() && separateBody && !normalize(body).includes(normalize(title))) {
+    question = title + "\n\n" + body;
+  }
+  const heading = questionLabel.trim() ? questionLabel : title;
+  const repeated = normalize(question).startsWith(normalize(heading));
+  return {title: heading.trim() && !repeated ? heading : "", body: question, question_label: ""};
+}
+
 export function projectName(decision) {
   const origin = decision.origin || {};
   if (origin.workspace_label) return origin.workspace_label;
@@ -91,9 +118,7 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
     location: locationLabel(decision, machine),
     approval_command: approvalCommand(decision),
     machine: remote ? String(machine?.label || machineId) : "",
-    question_label: decision.question_label || "",
-    title: String(decision.title || decision.decision_id || ""),
-    body: decision.body && String(decision.body).trim() !== String(decision.question_label || "").trim() ? String(decision.body) : "",
+    ...decisionText(decision),
     details,
     options: (Array.isArray(decision.options) ? decision.options : []).map(
       (option) => ({
