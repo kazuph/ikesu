@@ -121,6 +121,35 @@ for ext in ["mp4", "mov", "m4v", "webm"] {
  }
  controller.close();print("VIDEO_PLAY_PAUSE_PASS format=\(ext) initialMuted=1 initialPaused=1 decoded=1 advanced=1")
 }
+// Exercise NSTextView's actual link-click path for every occurrence, including
+// percent-encoded Japanese/space/percent filenames, without opening a browser.
+let source=root+"/日本語 空白%clip.mp4"
+let encoded=URL(fileURLWithPath:source).path(percentEncoded:true)
+let linkBody="[動画](<"+encoded+">)\n同じリンク: "+encoded+"\n通常パス: "+source
+let preceding=(0..<7).map {"https://example.com/"+String(repeating:"long-path-",count:15)+"/\($0)"}
+let linkInput:[String:Any] = ["window_title":"ローカルリンク試験","title":"本文から右のカードへ移動","body":linkBody,"options":[],"allow_text":false,"multi_select":false,"media_sources":preceding+[source]]
+let links=DialogController(spec:try JSONDecoder().decode(DialogSpec.self,from:JSONSerialization.data(withJSONObject:linkInput)),specPath:root+"/links.json")
+links.build();links.panel.orderBack(nil);links.panel.setContentSize(NSSize(width:1080,height:350));await drain()
+let text=labels(links.panel.contentView!).first {$0.string==linkBody}!
+let destination=links.mediaCards[source]!
+let value=text.string as NSString
+var clicks=0
+for candidate in [encoded,source] {
+ var offset=0
+ while offset<value.length {
+  let range=value.range(of:candidate,options:[],range:NSRange(location:offset,length:value.length-offset))
+  if range.location==NSNotFound {break}
+  let attribute=text.attributedString().attribute(.link,at:range.location,effectiveRange:nil) as! String
+  precondition(attribute==source,"every link maps to the original unencoded source")
+  links.richScroll.contentView.scroll(to:.zero);links.richScroll.reflectScrolledClipView(links.richScroll.contentView)
+  text.clicked(onLink:attribute,at:range.location)
+  precondition(links.richScroll.contentView.bounds.contains(destination.convert(destination.bounds,to:links.richScroll.contentView)),"native click must reveal the corresponding card")
+  precondition(text.string==linkBody,"click must not rewrite visible text")
+  clicks+=1;offset=NSMaxRange(range)
+ }
+}
+precondition(clicks==3,"both encoded occurrences and the literal path must work")
+links.close();print("LOCAL_MEDIA_LINKS_PASS actualTextViewClicks=\(clicks) encodedJapaneseSpacePercent=1 textPreserved=1 cardVisible=1")
 // One native host must preserve window order and keyboard focus for new requests.
 let host=DialogHost(directory:root)
 app.delegate=host

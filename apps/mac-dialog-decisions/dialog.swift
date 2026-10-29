@@ -698,7 +698,7 @@ final class DialogController: NSObject, NSWindowDelegate {
       let chromeHeight = panel.frame.height - panel.contentLayoutRect.height
       panel.minSize.height = max(panel.minSize.height, bottomHeight + chromeHeight)
     }
-    let height = min(max(contentHeight + bottomHeight + 2, Look.width * 0.6), screen.height * 0.85)
+    let height = min(max(contentHeight + bottomHeight + 2, Look.width * 0.6), screen.height * 0.85, Look.width * 0.85)
     panel.setContentSize(NSSize(width: Look.width, height: height))
     panel.center()
     panel.setFrameTopLeftPoint(NSPoint(x: panel.frame.minX, y: screen.maxY - 60))
@@ -1025,9 +1025,19 @@ extension DialogController {
   func connectMediaLinks(_ view: NSView) {
     if let field = view as? RichTextLabel {
       field.delegate = self
+      let text=field.string as NSString
       for source in spec.media_sources ?? [] {
-        let range = (field.string as NSString).range(of: source)
-        if range.location != NSNotFound { field.textStorage?.addAttribute(.link, value: source, range: range) }
+        var candidates=[source]
+        if source.hasPrefix("/") {let encoded=URL(fileURLWithPath:source).path(percentEncoded:true);if encoded != source {candidates.append(encoded)}}
+        for candidate in candidates {
+          var offset=0
+          while offset<text.length {
+            let range=text.range(of:candidate,options:[],range:NSRange(location:offset,length:text.length-offset))
+            if range.location==NSNotFound {break}
+            field.textStorage?.addAttribute(.link,value:source,range:range)
+            offset=NSMaxRange(range)
+          }
+        }
       }
     }
     for child in view.subviews { connectMediaLinks(child) }
