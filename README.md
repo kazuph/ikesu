@@ -133,3 +133,13 @@ macOS takes ⌘Tab for app switching before any terminal app sees it.
 [MIT](LICENSE)
 
 `ikesu agent start` keeps the current view by default, unlike herdr. Use `--focus` to switch to the new agent; `--no-focus` is still accepted. Explicit focus APIs and notification clicks keep their existing behavior.
+
+
+The default background is transparent in every theme, including panes, sidebars, tabs and the bottom bar. To fill the whole interface with the selected theme's background:
+
+```toml
+[ui]
+opaque_background = true
+```
+
+Explicit `[theme.custom] panel_bg` colors override this switch for the common background, with `surface_dim` as the fallback. Explicit `surface0` component colors retain priority for cards and controls. Application-drawn terminal colors remain intact. Floating menus, dialogs and popups keep a background to hide underlying text.

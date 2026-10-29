@@ -86,6 +86,7 @@ type Config struct {
 		SidebarMinWidth               *int          `toml:"sidebar_min_width"`
 		SidebarMaxWidth               *int          `toml:"sidebar_max_width"`
 		SidebarStartCollapsed         bool          `toml:"sidebar_start_collapsed"`
+		OpaqueBackground              bool          `toml:"opaque_background"`
 		TransparentSidebarCards       bool          `toml:"transparent_sidebar_cards"`
 		WorkspacePanelDensity         string        `toml:"workspace_panel_density"`
 		AgentPanelScope               string        `toml:"agent_panel_scope"`

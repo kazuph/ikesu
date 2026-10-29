@@ -13,9 +13,10 @@ import (
 	"testing"
 )
 
-// Both versions run this fixture; the runner compares every cell, color and attribute.
+// The transparent fixture preserves v0.2.5 geometry, text and colors while
+// changing permanent backgrounds and the active selection underline.
 func TestSidebarStatusReferenceCells(t *testing.T) {
-	goldenData, err := os.ReadFile("testdata/sidebar_status_v025_sha256.json")
+	goldenData, err := os.ReadFile("testdata/sidebar_status_transparent_sha256.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestSidebarStatusReferenceCells(t *testing.T) {
 								}
 								name := fmt.Sprintf("%s_right-%t.json", key, right)
 								if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != golden[name] {
-									t.Errorf("v0.2.5 cells differ: %s got=%s want=%s", name, got, golden[name])
+									t.Errorf("transparent reference cells differ: %s got=%s want=%s", name, got, golden[name])
 								}
 								checked++
 								if dir := os.Getenv("SIDEBAR_REFERENCE_OUT"); dir != "" {

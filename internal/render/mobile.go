@@ -257,6 +257,14 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			}
 			f.Text(1, y, "  "+truncate(label, max(0, s.Cols-3)), style, s.Cols)
 		}
+		if row.Kind == RowWorkspace && row.Ws == s.Active || row.Kind == RowMobileTab && row.Line == s.ActiveWorkspace().ActiveTab {
+			for x := 3; x < s.Cols; x++ {
+				cell := f.Cell(x, y)
+				if cell.Content != " " && cell.Content != "" {
+					cell.Style.Underline = uv.UnderlineSingle
+				}
+			}
+		}
 	}
 	if len(rows) > viewport.H && viewport.H > 0 {
 		// Cell coverage is rounded upward, with the start at the proportional row.

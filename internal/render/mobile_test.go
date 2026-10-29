@@ -83,7 +83,7 @@ func TestG2MobileSectionRowsNumberNameGitPriorityAndStyles(t *testing.T) {
 		x, y   int
 		fg, bg any
 		bold   bool
-	}{{3, 6, Dim, Surface, false}, {5, 6, Text, Surface, true}, {2, 5, out.Frame.Palette.Overlay1, SurfDim, true}} {
+	}{{3, 6, Dim, nil, false}, {5, 6, Text, nil, true}, {2, 5, out.Frame.Palette.Overlay1, nil, true}} {
 		c := out.Frame.Cell(cell.x, cell.y)
 		if !reflect.DeepEqual(c.Style.Fg, cell.fg) || (c.Style.Attrs&uv.AttrBold != 0) != cell.bold || !reflect.DeepEqual(c.Style.Bg, cell.bg) {
 			t.Fatalf("cell %d/%d %+v", cell.x, cell.y, c)

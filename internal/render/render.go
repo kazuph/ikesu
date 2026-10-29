@@ -288,6 +288,11 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	if in.Settings != nil {
 		f.Palette = CustomPalette(in.Settings.Theme, in.SidebarConfig.Theme.Custom)
 	}
+	if value, explicit := in.SidebarConfig.Theme.Custom["surface0"]; explicit {
+		if parsed, err := config.ParseThemeColor(value); err == nil && parsed == nil {
+			f.Palette.Surface = transparentSurfaceBackground{}
+		}
+	}
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
@@ -315,6 +320,9 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	}
 	drawActionBar(f, s, in, out)
 	drawClientVersion(f, version, notice, out)
+	if s.Mobile() {
+		drawMobile(f, in, out)
+	}
 	if in.ServerUI && in.Copy != nil {
 		x := 0
 		if in.Copied != "" {
@@ -326,10 +334,21 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	if in.ServerUI {
 		drawSidebarCopyFeedback(f, in)
 	}
-	drawPopup(f, in, out)
-	if s.Mobile() {
-		drawMobile(f, in, out)
+	applyPersistentBackground(f, in)
+	if _, tagged := f.Palette.Surface.(transparentSurfaceBackground); tagged {
+		f.Palette.Surface = nil
 	}
+	// Floating surfaces erase underlying terminal text to stay readable.
+	palette := f.Palette
+	if f.Palette.PopupBG == nil {
+		f.Palette.PopupBG = ThemePalette(in.SidebarConfig.ThemeName()).PopupBG
+		if f.Palette.PopupBG == nil {
+			f.Palette.PopupBG = f.Palette.PanelBG
+		}
+	}
+	defer func() { f.Palette = palette }()
+
+	drawPopup(f, in, out)
 	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 		for i := range f.Cells {
 			if in.Dialog != nil && (in.Dialog.DimPanesOnly || !in.Dialog.InputEdit && !in.Dialog.CenterTerminal) {
