@@ -650,6 +650,10 @@ function saberaNotify(sockPath, { text, from }, timeoutMs = SABERA_TIMEOUT_MS) {
   });
 }
 
+// Approved by the user: number reactions stay editable for fifteen seconds.
+export const REACTION_GRACE_MS = 15_000;
+const reactionClock = {now: () => Date.now(), setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: timer => clearTimeout(timer)};
+
 // --- Slack message rendering -------------------------------------------------
 
 function fmtDeadline(decision, now = Date.now()) {
@@ -809,6 +813,7 @@ function buildDecisionBlocks({
       if (decision.allow_text) {
         hints.push("自由記述はスレッドに文で返信");
       }
+      hints.push(`番号を押してから${REACTION_GRACE_MS/1000}秒は書き足せる（最後の番号操作から数え直し）`);
       const hint = hints.join(" / ");
       blocks.push({
         type: "context",
@@ -919,12 +924,14 @@ export class SlackDecisionsDaemon {
     runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
     getDecision, // (machineId, decisionId) => Promise<decision|null>
     clientViews,
+    clock = reactionClock,
     glassesState, // () => Promise<string|null>
     log: logFn = log,
     postsFilePath = null,
   }) {
     this.config = config;
     this.clientViews = clientViews;
+    this.clock = clock;
     this.slack = slack;
     this.botUserId = botUserId;
     this.spawnWatch = spawnWatch;
@@ -1026,6 +1033,7 @@ export class SlackDecisionsDaemon {
     if (this.pollTimer) clearTimeout(this.pollTimer);
     for (const entry of this.entries.values()) {
       if (entry.postTimer) clearTimeout(entry.postTimer);
+      this.clearReaction(entry);
     }
     for (const record of this.reusablePosts.values()) {
       if (record.timer) clearTimeout(record.timer);
@@ -1099,6 +1107,7 @@ export class SlackDecisionsDaemon {
         } else {
           await this.postDecision(existing);
         }
+        if (existing.reactionDraft) this.armReaction(existing);
       }
       return;
     }
@@ -1344,6 +1353,7 @@ export class SlackDecisionsDaemon {
         postTimer: null,
       };
     entry.resolved = true;
+    this.clearReaction(entry);
     entry.decision = decision;
     clearTimeout(entry.answerRetryTimer);
     if (entry.postTimer) clearTimeout(entry.postTimer);
@@ -1507,6 +1517,7 @@ export class SlackDecisionsDaemon {
         continue; // unposted items of a down machine are never posted
       }
       entry.machineDown = true;
+      this.clock.clearTimeout(entry.reactionTimer);
       handled.add(entry.key);
       // Deleted, not marked: a down machine's question cannot be answered.
       // A still-pending decision is re-posted on machine_up.
@@ -1581,6 +1592,7 @@ export class SlackDecisionsDaemon {
             // Its post was deleted while the machine was down.
             await this.postDecision(entry);
           }
+          if (entry.reactionDraft) this.armReaction(entry);
         }
       } catch (error) {
         this.log(`decision get に失敗 (${mid}/${did}): ${error.message}`);
@@ -1599,6 +1611,7 @@ export class SlackDecisionsDaemon {
 
   async submitAnswer(entry, { optionId = null, optionIds = null, text = null, via }) {
     if (entry.resolved || entry.answerPending || !entry.answerReady) return;
+    this.clearReaction(entry);
     entry.answerPending = true;
     const did = entry.decision.decision_id;
     const ids = Array.isArray(optionIds) && optionIds.length
@@ -1665,9 +1678,62 @@ export class SlackDecisionsDaemon {
     }
   }
 
+  clearReaction(entry) {
+    this.clock.clearTimeout(entry.reactionTimer);
+    entry.reactionTimer = null;
+    entry.reactionDraft = null;
+  }
+
+  armReaction(entry) {
+    this.clock.clearTimeout(entry.reactionTimer);
+    const draft = entry.reactionDraft;
+    if (!draft || entry.resolved || entry.machineDown || this.stopped) return;
+    entry.reactionTimer = this.clock.setTimeout(() => this.finishReaction(entry, draft).catch(error => this.log(`番号の確定に失敗: ${error.message}`)), Math.max(0, draft.deadline - this.clock.now()));
+    entry.reactionTimer?.unref?.();
+  }
+
+  stageReaction(entry, {optionIds, text = entry.reactionDraft?.text || "", via, deadline, after = 0, confirmed = true}) {
+    if (entry.resolved || entry.answerPending || entry.reactionDraft?.closing) return;
+    entry.reactionDraft = {optionIds, text, via, deadline, after, confirmed};
+    this.armReaction(entry);
+  }
+
+  async finishReaction(entry, draft) {
+    if (entry.reactionDraft !== draft || draft.closing || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
+    draft.closing = true;
+    // A missed Socket Mode reply can still arrive through history. Its Slack
+    // timestamp must fall inside this grace window; later replies cannot win.
+    await this.pollEntryReplies(entry, draft.after, draft.deadline);
+    if (entry.reactionDraft !== draft || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
+    this.clearReaction(entry);
+    if (draft.optionIds.length || draft.text) await this.submitAnswer(entry, {optionId:draft.optionIds[0],optionIds:draft.optionIds,text:draft.text,via:draft.via});
+  }
+
+  removeNumberReaction(entry, reactionName, user) {
+    entry.seenReactions.delete(`${reactionName}:${user}`);
+    if (reactionName === "white_check_mark" && entry.decision.multi_select) {
+      const draft=entry.reactionDraft;
+      if (draft?.confirmed && !draft.closing) {
+        if (draft.text) this.stageReaction(entry,{...draft,optionIds:[],confirmed:false});
+        else this.clearReaction(entry);
+      }
+      return;
+    }
+    const index = NUMBER_EMOJIS.indexOf(reactionName);
+    const id = entry.decision.options?.[index]?.id;
+    if (!id || entry.reactionDraft?.closing || entry.answerPending || entry.resolved) return;
+    entry.selection.delete(index);
+    entry.lastNumberAt = this.clock.now();
+    const draft = entry.reactionDraft;
+    if (!draft) return;
+    const optionIds = draft.optionIds.filter(value => value !== id);
+    if (!optionIds.length && !draft.text) { this.clearReaction(entry); return; }
+    this.stageReaction(entry, {...draft,optionIds,deadline:entry.lastNumberAt+REACTION_GRACE_MS});
+  }
+
   // A human reply in the decision thread: a bare number picks that option;
   // anything else is free text (only valid for allow_text decisions).
-  async handleThreadReply(entry, text, user = "") {
+  async handleThreadReply(entry, text, user = "", timestamp = this.clock.now()) {
     const trimmed = (text || "").normalize("NFKC").trim();
     if (!trimmed) return;
     const options = entry.decision.options || [];
@@ -1686,6 +1752,10 @@ export class SlackDecisionsDaemon {
       const acceptsMany = entry.decision.multi_select === true;
       const ids = acceptsMany ? picked : picked.slice(0, 1);
       if (ids.length > 0) {
+        if (entry.reactionDraft) {
+          this.stageReaction(entry,{optionIds:ids,via:`slack reply by ${user || "?"}`,deadline:this.clock.now()+REACTION_GRACE_MS});
+          return;
+        }
         await this.submitAnswer(entry, {
           optionId: ids[0],
           optionIds: ids,
@@ -1695,6 +1765,15 @@ export class SlackDecisionsDaemon {
       }
     }
     if (entry.decision.allow_text) {
+      const draft = entry.reactionDraft;
+      const deadline = draft?.deadline ?? (entry.lastNumberAt === undefined ? 0 : entry.lastNumberAt + REACTION_GRACE_MS);
+      if (draft || this.clock.now() < deadline) {
+        if (timestamp > deadline) return;
+        entry.selection.clear();
+        if (draft?.closing) {draft.optionIds=[];draft.text=trimmed;draft.via=`slack reply by ${user || "?"}`;draft.confirmed=false;}
+        else this.stageReaction(entry,{optionIds:[],text:trimmed,via:`slack reply by ${user || "?"}`,deadline,after:draft?.after||0,confirmed:false});
+        return;
+      }
       await this.submitAnswer(entry, {
         text: trimmed,
         via: `slack reply by ${user || "?"}`,
@@ -1707,7 +1786,8 @@ export class SlackDecisionsDaemon {
     );
   }
 
-  async handleReaction(entry, reactionName, user = "") {
+  async handleReaction(entry, reactionName, user = "", timestamp = 0) {
+    if (entry.resolved || entry.answerPending || entry.reactionDraft?.closing) return;
     const options = entry.decision.options || [];
     const multiSelect = entry.decision.multi_select === true;
     if (multiSelect && reactionName === "white_check_mark") {
@@ -1721,18 +1801,19 @@ export class SlackDecisionsDaemon {
       const ids = [...entry.selection]
         .map((index) => options[index]?.id)
         .filter(Boolean);
-      await this.submitAnswer(entry, {
-        optionId: ids[0],
-        optionIds: ids,
-        via: `slack confirm :white_check_mark: by ${user || "?"}`,
-      });
+      const deadline = entry.lastNumberAt === undefined ? this.clock.now() : Math.max(this.clock.now(),entry.lastNumberAt+REACTION_GRACE_MS);
+      this.stageReaction(entry,{optionIds:ids,via:`slack confirm :white_check_mark: by ${user || "?"}`,deadline,after:entry.lastNumberEventTs||0});
+      if (deadline <= this.clock.now()) await this.finishReaction(entry,entry.reactionDraft);
       return;
     }
     const index = NUMBER_EMOJIS.indexOf(reactionName);
     if (index === -1) return;
     if (index >= options.length) return;
+    entry.lastNumberAt = this.clock.now();
+    entry.lastNumberEventTs = timestamp;
     if (multiSelect) {
       entry.selection.add(index);
+      if (entry.reactionDraft) this.stageReaction(entry,{...entry.reactionDraft,optionIds:entry.reactionDraft.confirmed?[...entry.selection].map(index=>options[index].id):[],deadline:entry.lastNumberAt+REACTION_GRACE_MS});
       const picked = [...entry.selection]
         .sort((a, b) => a - b)
         .map((pickedIndex) => `:${NUMBER_EMOJIS[pickedIndex]}:`)
@@ -1743,10 +1824,7 @@ export class SlackDecisionsDaemon {
       );
       return;
     }
-    await this.submitAnswer(entry, {
-      optionId: options[index].id,
-      via: `slack reaction :${reactionName}: by ${user || "?"}`,
-    });
+    this.stageReaction(entry,{optionIds:[options[index].id],via:`slack reaction :${reactionName}: by ${user || "?"}`,deadline:entry.lastNumberAt+REACTION_GRACE_MS,after:timestamp});
   }
 
   // ---- Socket Mode ------------------------------------------------------------
@@ -1816,6 +1894,11 @@ export class SlackDecisionsDaemon {
 
   async handleSocketPayload(payload) {
     const event = payload?.type === "event_callback" ? payload.event : payload;
+    if (event?.type === "reaction_removed") {
+      const entry=this.pendingEntryByTs(event.item?.ts);
+      if (entry && this.eventIsCurrent(entry,event.event_ts)) this.removeNumberReaction(entry,event.reaction,event.user||"");
+      return;
+    }
     if (event?.type === "reaction_added") {
       if (this.botUserId && event.user === this.botUserId) return;
       if (event.item?.type !== "message" || !event.item?.ts) return;
@@ -1830,8 +1913,8 @@ export class SlackDecisionsDaemon {
       entry.seenReactions.add(marker);
       // A reply already present after the reaction wins even when Socket
       // Mode delivered the reaction first. Saved decisions stay first-answer-wins.
-      await this.pollEntryReplies(entry);
-      if (!entry.resolved && !entry.answerPending) await this.handleReaction(entry, event.reaction, event.user || "");
+      await this.handleReaction(entry,event.reaction,event.user||"",Number(event.event_ts)||0);
+      if (!entry.resolved && !entry.answerPending) await this.pollEntryReplies(entry, Number(event.event_ts)||0);
       return;
     }
     if (event?.type === "message") {
@@ -1846,7 +1929,7 @@ export class SlackDecisionsDaemon {
       if (event.ts && event.ts === entry.post?.ts) return;
       if (!this.eventIsCurrent(entry, event.ts) || entry.seenReplies.has(event.ts)) return;
       if (event.ts) entry.seenReplies.add(event.ts);
-      await this.handleThreadReply(entry, event.text || "", event.user || "");
+      await this.handleThreadReply(entry, event.text || "", event.user || "", Number(event.ts)*1000);
     }
   }
 
@@ -1872,8 +1955,8 @@ export class SlackDecisionsDaemon {
         continue;
       }
       if (!entry.answerReady && !(await this.establishAnswerBaseline(entry))) continue;
-      await this.pollEntryReplies(entry);
-      if (!entry.resolved && !entry.answerPending) await this.pollEntryReactions(entry);
+      await this.pollEntryReactions(entry);
+      if (!entry.resolved && !entry.answerPending) await this.pollEntryReplies(entry);
     }
   }
 
@@ -1884,6 +1967,10 @@ export class SlackDecisionsDaemon {
       message = await this.slack.message(entry.post.ts);
     } catch {
       return;
+    }
+    const present=new Set((message?.reactions||[]).flatMap(reaction=>(reaction.users||[]).filter(user=>user!==this.botUserId).map(user=>`${reaction.name}:${user}`)));
+    for (const marker of [...entry.seenReactions]) if (!present.has(marker)) {
+      const split=marker.indexOf(":");this.removeNumberReaction(entry,marker.slice(0,split),marker.slice(split+1));
     }
     const multiSelect = entry.decision.multi_select === true;
     const options = entry.decision.options || [];
@@ -1901,22 +1988,15 @@ export class SlackDecisionsDaemon {
       const index = NUMBER_EMOJIS.indexOf(reaction.name);
       if (index === -1 || index >= options.length) continue;
       entry.seenReactions.add(marker);
-      if (multiSelect) {
-        entry.selection.add(index);
-      } else {
-        await this.submitAnswer(entry, {
-          optionId: options[index].id,
-          via: `slack reaction :${reaction.name}: (history)`,
-        });
-        return;
-      }
+      await this.handleReaction(entry,reaction.name,users[0]);
+      if (!multiSelect) return;
     }
     if (confirmUser) {
       await this.handleReaction(entry, "white_check_mark", confirmUser);
     }
   }
 
-  async pollEntryReplies(entry) {
+  async pollEntryReplies(entry, after = 0, before = Infinity) {
     if (!entry.answerReady) return;
     let messages;
     try {
@@ -1926,7 +2006,7 @@ export class SlackDecisionsDaemon {
     }
     const postTs = entry.post.ts;
     const fresh = messages
-      .filter((message) => message.ts && Number(message.ts) > Number(postTs))
+      .filter((message) => message.ts && Number(message.ts) > Math.max(Number(postTs), after) && Number(message.ts)*1000 <= before)
       .filter((message) => this.eventIsCurrent(entry, message.ts) && !entry.seenReplies.has(message.ts))
       .filter(
         (message) =>
@@ -1938,7 +2018,7 @@ export class SlackDecisionsDaemon {
       .sort((a, b) => Number(b.ts) - Number(a.ts));
     for (const message of fresh) {
       entry.seenReplies.add(message.ts);
-      await this.handleThreadReply(entry, message.text || "", message.user || "");
+      await this.handleThreadReply(entry, message.text || "", message.user || "", Number(message.ts)*1000);
       if (entry.answerPending || entry.resolved) return;
     }
   }
