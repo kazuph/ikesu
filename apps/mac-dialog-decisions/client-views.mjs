@@ -33,6 +33,7 @@ export class ClientViews {
     const socket = net.createConnection(this.socketPath);
     this.watch = socket;
     const lines = readline.createInterface({input: socket});
+    lines.on('error', () => socket.destroy());
     socket.on('connect', () => socket.write(JSON.stringify({id:'client-views-watch', method:'events.subscribe', params:{subscriptions:[{type:'client.view_changed'}]}})+'\n'));
     lines.on('line', line => {
       try {
@@ -66,6 +67,9 @@ export class ClientViews {
         settled = true; this.requests.delete(socket); lines.close(); socket.destroy();
         error ? reject(error) : resolve(views);
       };
+      // readline forwards input errors independently of the socket listener.
+      // Settle the query instead of leaving it pending after an uncaught error.
+      lines.on('error', error => finish(error));
       // Socket operations use the existing CLI request deadline.
       socket.setTimeout(15_000, () => finish(Error('client view query timed out')));
       socket.on('error', error => finish(error));

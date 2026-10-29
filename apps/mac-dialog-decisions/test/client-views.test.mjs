@@ -12,27 +12,52 @@ import {SlackClient,SlackDecisionsDaemon} from '../../slack-decisions/slack-deci
 import {FakeSlack} from '../../slack-decisions/test/fakes.mjs';
 import {createGetDecision} from '../mac-dialog-decisions.mjs';
 
+const SERVER_DEADLINE_MS=10000;
 async function until(predicate) {
-  const end=Date.now()+10000;
+  const end=Date.now()+SERVER_DEADLINE_MS;
   while(!await predicate()) { if(Date.now()>end) throw Error('real server deadline'); await new Promise(r=>setTimeout(r,5)); }
 }
-async function fixture(t) {
+async function fixture(t,{root=fs.mkdtempSync('/tmp/dialog-view-'),clientSocketPath}={}) {
   const binary=process.env.MAC_DIALOG_TEST_IKESU; assert.ok(binary,'actual ikesu required');
-  const root=fs.mkdtempSync('/tmp/dialog-view-'),dir=path.join(root,'isolated'); fs.mkdirSync(dir);
+  const dir=path.join(root,'isolated'); fs.mkdirSync(dir);
   const config=path.join(root,'config.toml');fs.writeFileSync(config,'[experimental]\nallow_nested=true\n');
   const env={...process.env,HOME:root,IKESU_CONFIG:config,IKESU_STATE_DIR:root,IKESU_SOCKET_PATH:path.join(dir,'ikesu.sock'),IKESU_SOCKET_PATH_EXPLICIT:'1',SHELL:'/bin/sh'};
   const server=spawn(binary,['--session','isolated','server'],{env,stdio:['ignore','ignore','pipe']});
+  fs.writeFileSync(path.join(root,'server.pid'),String(server.pid));
   const exited=new Promise(resolve=>server.once('close',resolve));let stderr='';server.stderr.on('data',b=>stderr+=b);
+  server.on('error',error=>{stderr+=String(error);});
   const sockets=[];
   const rpc=(method,params={})=>new Promise((resolve,reject)=>{
     const socket=net.createConnection(env.IKESU_SOCKET_PATH);let data='';
-    socket.on('error',reject);socket.on('connect',()=>socket.write(JSON.stringify({id:'test',method,params})+'\n'));
-    socket.on('data',b=>{data+=b;if(!data.includes('\n'))return;socket.end();const r=JSON.parse(data.split('\n')[0]);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});
+    sockets.push(socket);
+    let settled=false;
+    const finish=(error,result)=>{if(settled)return;settled=true;socket.destroy();error?reject(error):resolve(result);};
+    socket.setTimeout(SERVER_DEADLINE_MS,()=>finish(Error(`RPC deadline: ${method}`)));
+    socket.on('error',error=>finish(error));socket.on('close',()=>finish(Error(`RPC disconnected: ${method}`)));
+    socket.on('connect',()=>socket.write(JSON.stringify({id:'test',method,params})+'\n'));
+    socket.on('data',b=>{data+=b;if(!data.includes('\n'))return;try{const r=JSON.parse(data.split('\n')[0]);finish(r.error?Error(JSON.stringify(r.error)):null,r.result);}catch(error){finish(error);}});
   });
-  await until(()=>{if(server.exitCode!==null)throw Error(stderr);return fs.existsSync(env.IKESU_SOCKET_PATH)});
-  let daemon;let changes=0;const views=new ClientViews(env);views.start(()=>{changes++;void daemon?.refreshBackgroundWindows();});await until(()=>views.ready);
+  let daemon;let changes=0;const views=new ClientViews(env);
+  const abort=()=>{views.stop();for(const socket of sockets)socket.destroy();server.kill('SIGTERM');};
+  t.signal.addEventListener('abort',abort,{once:true});
+  // Initialization failures must also stop the server and reconnect timer.
+  t.after(async()=>{
+    views.stop();await daemon?.stop();for(const socket of sockets)socket.destroy();
+    try{await rpc('server.stop')}catch{server.kill('SIGTERM');}
+    let timer;
+    try{
+      await Promise.race([exited,new Promise((_,reject)=>{timer=setTimeout(()=>{server.kill('SIGKILL');reject(Error('fixture server did not stop'));},SERVER_DEADLINE_MS);})]);
+    }finally{clearTimeout(timer);t.signal.removeEventListener('abort',abort);fs.rmSync(root,{recursive:true,force:true});}
+  });
+  // A pathname alone does not prove the server is accepting requests.
+  await until(async()=>{
+    if(server.exitCode!==null)throw Error(stderr);
+    try{return (await rpc('ping')).type==='pong';}
+    catch(error){if(['ENOENT','ECONNREFUSED'].includes(error.code))return false;throw error;}
+  });
+  views.start(()=>{changes++;void daemon?.refreshBackgroundWindows();});await until(()=>views.ready);
   fs.writeFileSync(path.join(dir,'machines.json'),JSON.stringify([{id:'mini',session:'remote',enabled:true}]));
-  const client=net.createConnection(path.join(dir,'ikesu-client.sock'));sockets.push(client);let incoming='';client.on('data',b=>incoming+=b);
+  const client=net.createConnection(clientSocketPath||path.join(dir,'ikesu-client.sock'));sockets.push(client);let incoming='';client.on('data',b=>incoming+=b);
   await new Promise((resolve,reject)=>{client.once('connect',resolve);client.once('error',reject)});
   client.write(JSON.stringify({type:'hello',protocol:1,generation:4,min_generation:1,cols:80,rows:24})+'\n');
   await until(()=>incoming.includes('welcome'));
@@ -43,10 +68,59 @@ async function fixture(t) {
     daemon.onCreated(machineId,{id:machineId},{decision_id:id,title:'view',options:[],origin});
     clearTimeout(daemon._pumpTimer);return [...daemon.entries.values()].find(e=>e.decision.decision_id===id);
   };
-  t.after(async()=>{await daemon.stop();for(const s of sockets)s.destroy();try{await rpc('server.stop')}catch{}await exited;fs.rmSync(root,{recursive:true,force:true});});
-  return {daemon,views,set,entry,rpc,client,env,get changes(){return changes}};
+  return {daemon,views,set,entry,rpc,client,server,env,get changes(){return changes}};
 }
 const local={machine_id:'local',session:'isolated',workspace_id:'s1',pane_ids:['p1','p2'],focused:true};
+
+async function refusedSocket(t,socketPath) {
+ // Bind a real Unix socket without listening, rather than fabricating an
+ // error or using a regular file (which returns ENOTSOCK on macOS).
+ const child=spawn('python3',['-c','import socket,sys\ns=socket.socket(socket.AF_UNIX)\ns.bind(sys.argv[1])\nprint("bound",flush=True)\nsys.stdin.read()\ns.close()',socketPath],{stdio:['pipe','pipe','pipe']});
+ const exited=new Promise(resolve=>child.once('close',resolve));
+ t.after(async()=>{child.stdin.end();await exited;});
+ await new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.once('error',reject);child.once('exit',code=>reject(Error(`refused socket helper exited: ${code}`)));});
+}
+
+test('a real subscription refusal settles the pending query and stop clears reconnect',async t=>{
+ const root=fs.mkdtempSync('/tmp/dialog-view-'),socketPath=path.join(root,'refused.sock');
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ await refusedSocket(t,socketPath);
+ const views=new ClientViews({IKESU_SOCKET_PATH:socketPath});t.after(()=>views.stop());
+ let changed=0;views.start(()=>changed++);
+ await assert.rejects(views.list(),/subscription unavailable/);
+ assert.ok(changed>0);assert.equal(views.ready,false);assert.equal(views.connecting,false);
+ views.stop();assert.equal(views.stopped,true);
+});
+
+test('a real refused connection during fixture setup leaves no server or reconnect timer',async t=>{
+ const root=fs.mkdtempSync('/tmp/dialog-view-'),refused=path.join(root,'refused.sock');
+ await refusedSocket(t,refused);
+ let pid;
+ await t.test('setup rejects the actual refused connection',async child=>{
+  await assert.rejects(fixture(child,{root,clientSocketPath:refused}),{code:'ECONNREFUSED'});
+  pid=Number(fs.readFileSync(path.join(root,'server.pid'),'utf8'));
+ });
+ assert.equal(fs.existsSync(root),false);
+ assert.throws(()=>process.kill(pid,0),{code:'ESRCH'});
+});
+
+test('a real API refusal falls back foreground and teardown exits even when server.stop cannot connect',async t=>{
+ let f;
+ await t.test('refuse new API connections while the server is alive',async child=>{
+  f=await fixture(child);child.diagnostic('fixture ready');const e=f.entry();await f.set(local);child.diagnostic('view set');
+  // Preserve the real listener but make its advertised pathname unconnectable.
+  fs.renameSync(f.env.IKESU_SOCKET_PATH,f.env.IKESU_SOCKET_PATH+'.held');
+  await refusedSocket(child,f.env.IKESU_SOCKET_PATH);
+  child.diagnostic('API pathname bound without listen');
+  await assert.rejects(f.views.list(),{code:'ECONNREFUSED'});
+  child.diagnostic('query refused');
+  assert.equal(await f.daemon.presentation(e),false);
+  child.diagnostic('foreground fallback confirmed');
+ });
+ assert.equal(f.views.stopped,true);
+ assert.ok(f.server.exitCode!==null||f.server.signalCode!==null);
+ assert.equal(fs.existsSync(path.dirname(f.views.directory)),false);
+});
 
 test('real API: focused same workspace suppresses, unknown/other space/session/machine/origin do not',async t=>{
  const f=await fixture(t),e=f.entry();
