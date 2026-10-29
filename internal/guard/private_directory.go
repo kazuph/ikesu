@@ -30,6 +30,15 @@ func privateStat(fd int, mask uint32) error {
 	}
 	return nil
 }
+
+func isolatesDescendants(path string, s *unix.Stat_t) bool {
+	// ACLs can grant traversal beyond the POSIX mode. Failure to read ACL
+	// metadata must never establish that another user cannot reach descendants.
+	const otherWriteOrSearch = unix.S_IWGRP | unix.S_IXGRP | unix.S_IWOTH | unix.S_IXOTH
+	return s.Mode&unix.S_IFMT == unix.S_IFDIR && int(s.Uid) == os.Geteuid() &&
+		s.Mode&otherWriteOrSearch == 0 && ancestorHasNoACL(path)
+}
+
 func trustedAncestors(path string) error {
 	// Check lexical links as well as their resolved targets. Otherwise a foreign
 	// owner could retarget an ancestor after its target had passed validation.
@@ -42,9 +51,9 @@ func trustedAncestors(path string) error {
 		if st.Uid != 0 && int(st.Uid) != os.Geteuid() {
 			return fmt.Errorf("foreign guard ancestor: %s", current)
 		}
-		// Other users cannot reach descendants through an owner-only directory.
+		// Only an ACL-free directory that excludes other users protects descendants.
 		// Still inspect its parents: an exposed writable parent could replace it.
-		if st.Mode&unix.S_IFMT == unix.S_IFDIR && int(st.Uid) == os.Geteuid() && st.Mode&0077 == 0 {
+		if isolatesDescendants(current, &st) {
 			writable = nil
 		}
 		if st.Mode&unix.S_IFMT != unix.S_IFLNK && st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) {
@@ -69,7 +78,7 @@ func trustedAncestors(path string) error {
 		if !info.IsDir() || (int(s.Uid) != os.Geteuid() && s.Uid != 0) {
 			return fmt.Errorf("untrusted guard ancestor: %s", path)
 		}
-		if int(s.Uid) == os.Geteuid() && s.Mode&0077 == 0 {
+		if isolatesDescendants(path, &s) {
 			writable = nil
 		}
 		if s.Mode&0022 != 0 && !(s.Uid == 0 && s.Mode&unix.S_ISVTX != 0) {
