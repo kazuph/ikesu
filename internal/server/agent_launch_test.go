@@ -1,7 +1,10 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -11,6 +14,25 @@ import (
 
 func TestG9AgentStartupWrapperSettlesBlockedAndDeadline(t *testing.T) {
 	t.Parallel()
+	// The real SPEC deadline exceeds five seconds. A separate process keeps its
+	// environment lock and 30-second observation independent of other fixtures.
+	const child = "GO_TEST_AGENT_STARTUP_DEADLINE"
+	if os.Getenv(child) != "1" {
+		ctx := t.Context()
+		if deadline, ok := t.Deadline(); ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, deadline)
+			defer cancel()
+		}
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
+		cmd.Env = append(os.Environ(), child+"=1")
+		output, err := cmd.CombinedOutput()
+		t.Logf("isolated real-clock startup test:\n%s", output)
+		if err != nil {
+			t.Fatalf("isolated startup deadline: %v", err)
+		}
+		return
+	}
 	teststate.Lock(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "startup")
