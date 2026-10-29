@@ -33,7 +33,9 @@ func applyPersistentBackground(f *Frame, in Input) {
 	bg := persistentBackground(in.SidebarConfig)
 	s := in.State
 	var content []layout.Rect
-	if in.Copy != nil && in.Copy.Fullscreen {
+	if s.Mobile() && in.MobileSwitcher {
+		// The switcher replaces the application area with ikesu-owned rows.
+	} else if in.Copy != nil && in.Copy.Fullscreen {
 		content = []layout.Rect{s.PanesArea()}
 	} else {
 		for _, pane := range s.DisplayPaneRects() {
