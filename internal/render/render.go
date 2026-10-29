@@ -456,7 +456,8 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	if t == nil {
 		return
 	}
-	for _, pr := range s.DisplayPaneRects() {
+	panes := s.DisplayPaneRects()
+	for _, pr := range panes {
 		snap := in.Panes[pr.ID]
 		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
 		ix, iy, iw, ih := inner.X, inner.Y, inner.W, inner.H
@@ -487,6 +488,21 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 					restoreStyle.Attrs |= uv.AttrBold
 				}
 				f.Text(titleStop, pr.Rect.Y, rl, restoreStyle, pr.Rect.X+pr.Rect.W-1)
+			}
+			// A gapless row can be both this header and the upper pane's bottom.
+			// Leave the incoming divider visible instead of painting title text over it.
+			if !s.PaneGaps {
+				for _, above := range panes {
+					if above.Rect.W <= 2 || above.Rect.H <= 2 || above.Rect.Y+above.Rect.H-1 != pr.Rect.Y {
+						continue
+					}
+					border := paneFrameRect(s, above.Rect)
+					for _, x := range []int{border.X, border.X + border.W - 1} {
+						if x > pr.Rect.X && x < titleStop {
+							titleStop = x
+						}
+					}
+				}
 			}
 			if pr.Rect.W > 4 {
 				title := paneTitle(pr, snap, t)

@@ -54,58 +54,149 @@ func TestPaneFramesJoinSingleSidebarBoundaryOnEveryRow(t *testing.T) {
 	for _, theme := range []string{"tokyo-night", "tokyo-night-day", "catppuccin", "catppuccin-latte"} {
 		for _, server := range []bool{false, true} {
 			for _, gaps := range []bool{false, true} {
-				for _, sidebars := range []bool{false, true} {
-					t.Run(fmt.Sprint(theme, "/server=", server, "/sidebars=", sidebars, "/gaps=", gaps), func(t *testing.T) {
-						s := testState(160, 40)
-						s.PaneGaps = gaps
-						s.SidebarVisible = sidebars
-						if !sidebars {
-							s.SidebarHidden = true
-							s.RightSidebarMode = "hidden"
-						}
-						s.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
-						s.Apply(model.CmdSplitFocused{Dir: layout.Horizontal})
-						s.Apply(model.CmdFocusPane{Pane: 1})
-						s.Apply(model.CmdSplitFocused{Dir: layout.Horizontal})
-						c := config.Config{}
-						c.Theme.Name = theme
-						out := Compose(Input{State: s, SidebarConfig: c, ServerUI: server})
-						area := s.PanesArea()
-						for _, pane := range s.DisplayPaneRects() {
-							r := pane.Rect
-							left, right := r.X, r.X+r.W-1
-							if sidebars && left == area.X {
-								left--
+				for _, view := range []string{"normal", "narrow", "zoom"} {
+					for _, sidebars := range []bool{false, true} {
+						t.Run(fmt.Sprint(theme, "/server=", server, "/sidebars=", sidebars, "/gaps=", gaps, "/view=", view), func(t *testing.T) {
+							s := testState(160, 40)
+							s.PaneGaps = gaps
+							if view == "narrow" {
+								s.Cols = 64
+								s.Rows = 20
 							}
-							if sidebars && right == area.X+area.W-1 {
-								right++
+							s.SidebarVisible = sidebars
+							if !sidebars {
+								s.SidebarHidden = true
+								s.RightSidebarMode = "hidden"
 							}
-							for _, x := range []int{left, right} {
-								for y := r.Y + 1; y < r.Y+r.H-1; y++ {
-									if got := out.Frame.Cell(x, y).Content; got != "│" {
-										t.Fatalf("pane=%d edge=%d row=%d glyph=%q", pane.ID, x, y, got)
+							s.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+							s.Apply(model.CmdSplitFocused{Dir: layout.Horizontal})
+							s.Apply(model.CmdFocusPane{Pane: 1})
+							s.Apply(model.CmdSplitFocused{Dir: layout.Horizontal})
+							if view == "narrow" {
+								for {
+									narrowWidth := 0
+									for _, pane := range s.DisplayPaneRects() {
+										if pane.ID == 1 {
+											narrowWidth = pane.Rect.W
+										}
+									}
+									if narrowWidth <= 6 {
+										break
+									}
+									s.Apply(model.CmdFocusPane{Pane: 1})
+									s.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+								}
+							}
+							if view == "zoom" {
+								s.Apply(model.CmdZoomPane{Pane: s.FocusedPane(), Mode: "on"})
+							}
+							c := config.Config{}
+							c.Theme.Name = theme
+							out := Compose(Input{State: s, SidebarConfig: c, ServerUI: server})
+							area := s.PanesArea()
+							for _, pane := range s.DisplayPaneRects() {
+								r := pane.Rect
+								if r.W <= 2 || r.H <= 2 {
+									continue
+								}
+								left, right := r.X, r.X+r.W-1
+								if s.SidebarArea().W > 0 && left == area.X {
+									left--
+								}
+								if s.RightSidebarArea().W > 0 && right == area.X+area.W-1 {
+									right++
+								}
+								for _, x := range []int{left, right} {
+									for y := r.Y + 1; y < r.Y+r.H-1; y++ {
+										if got := out.Frame.Cell(x, y).Content; got != "│" {
+											t.Fatalf("pane=%d edge=%d row=%d glyph=%q", pane.ID, x, y, got)
+										}
+									}
+								}
+								// Every visible side reaches its top and bottom junction, including
+								// shared rows containing a neighboring pane's title.
+								vertical := map[string]int{"│": 12, "┌": 8, "┐": 8, "└": 4, "┘": 4, "├": 12, "┤": 12, "┬": 8, "┴": 4, "┼": 12}
+								for _, x := range []int{left, right} {
+									if vertical[out.Frame.Cell(x, r.Y).Content]&8 == 0 || vertical[out.Frame.Cell(x, r.Y+r.H-1).Content]&4 == 0 {
+										t.Fatalf("pane=%d side=%d disconnected endpoint: %q/%q", pane.ID, x, out.Frame.Cell(x, r.Y).Content, out.Frame.Cell(x, r.Y+r.H-1).Content)
+									}
+								}
+								// The top and bottom strokes must reach the same column as the vertical edge.
+								// A corner left behind at the old pane column is a visible broken frame.
+								if left != r.X {
+									for _, y := range []int{r.Y, r.Y + r.H - 1} {
+										if got := out.Frame.Cell(r.X, y).Content; got != "─" {
+											t.Fatalf("pane=%d left join row=%d glyph=%q", pane.ID, y, got)
+										}
+									}
+								}
+								if right != r.X+r.W-1 {
+									for _, y := range []int{r.Y, r.Y + r.H - 1} {
+										if got := out.Frame.Cell(r.X+r.W-1, y).Content; got != "─" {
+											t.Fatalf("pane=%d right join row=%d glyph=%q", pane.ID, y, got)
+										}
 									}
 								}
 							}
-							// The top and bottom strokes must reach the same column as the vertical edge.
-							// A corner left behind at the old pane column is a visible broken frame.
-							if left != r.X {
-								for _, y := range []int{r.Y, r.Y + r.H - 1} {
-									if got := out.Frame.Cell(r.X, y).Content; got != "─" {
-										t.Fatalf("pane=%d left join row=%d glyph=%q", pane.ID, y, got)
-									}
-								}
-							}
-							if right != r.X+r.W-1 {
-								for _, y := range []int{r.Y, r.Y + r.H - 1} {
-									if got := out.Frame.Cell(r.X+r.W-1, y).Content; got != "─" {
-										t.Fatalf("pane=%d right join row=%d glyph=%q", pane.ID, y, got)
-									}
-								}
-							}
-						}
-					})
+						})
+					}
 				}
+			}
+		}
+	}
+}
+
+func TestPaneFrameAndScrollbarWidthBoundaries(t *testing.T) {
+	for _, gaps := range []bool{false, true} {
+		for _, width := range []int{2, 3, 6, 7} {
+			for _, height := range []int{2, 3} {
+				t.Run(fmt.Sprintf("gaps=%v/%dx%d", gaps, width, height), func(t *testing.T) {
+					s := testState(width, height+2)
+					s.SidebarVisible = false
+					s.SidebarHidden = true
+					s.RightSidebarMode = "hidden"
+					s.PaneGaps = gaps
+					r := s.DisplayPaneRects()[0].Rect
+					inner, gutter := model.PaneContentRect(r, true)
+					grid := make([][]uv.Cell, inner.H)
+					for y := range grid {
+						grid[y] = make([]uv.Cell, inner.W)
+						for x := range grid[y] {
+							grid[y][x] = uv.Cell{Content: "a", Width: 1}
+						}
+					}
+					out := Compose(Input{State: s, Panes: map[int]*PaneSnap{1: {Grid: grid}}, ServerUI: true})
+					framed := width > 2 && height > 2
+					for y := r.Y; y < r.Y+r.H; y++ {
+						for x := r.X; x < r.X+r.W; x++ {
+							cell := out.Frame.Cell(x, y)
+							if !framed {
+								if cell.Content != "a" {
+									t.Fatalf("unframed cell %d,%d=%q", x, y, cell.Content)
+								}
+								continue
+							}
+							if x == r.X || x == r.X+r.W-1 {
+								if y > r.Y && y < r.Y+r.H-1 && cell.Content != "│" {
+									t.Fatalf("frame side %d,%d=%q", x, y, cell.Content)
+								}
+							}
+						}
+					}
+					if framed {
+						for _, corner := range []struct {
+							x, y  int
+							glyph string
+						}{{r.X, r.Y, "┌"}, {r.X + r.W - 1, r.Y, "┐"}, {r.X, r.Y + r.H - 1, "└"}, {r.X + r.W - 1, r.Y + r.H - 1, "┘"}} {
+							if out.Frame.Cell(corner.x, corner.y).Content != corner.glyph {
+								t.Fatal("corner", corner)
+							}
+						}
+					}
+					if framed && width < 7 && gutter != 0 {
+						t.Fatal("scrollbar column in a pane narrower than its minimum", width, gutter)
+					}
+				})
 			}
 		}
 	}
