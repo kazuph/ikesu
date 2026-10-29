@@ -24,7 +24,8 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	teststate.Setenv(t, "IKESU_CONFIG", config)
-	dir, done := startTestEndpoint(t, endpoint.GraphicsPeer())
+	clock := &controlledReceiptClock{now: time.Now()}
+	dir, done := startTestEndpointWithClock(t, endpoint.GraphicsPeer(), clock)
 	client := dialClient(t, dir)
 	defer client.conn.Close()
 	defer stopServer(t, dir, done)
@@ -129,6 +130,7 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 		t.Fatal("another viewer's input was blocked by image receipt")
 	}
 	// Text frames can pass, but neither payload nor patch may advance.
+	held := first
 	assertNoImage := func() {
 		t.Helper()
 		deadline := time.Now().Add(graphicsReceiptWait / 4)
@@ -164,7 +166,7 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 					if n, _ := client.snapshots.GraphicsPayloadSize(id, i); n != 0 {
 						t.Fatal("text frame carried pixels", n)
 					}
-					if old := first.Panes[id]; old != nil && len(old.Graphics) > i && !bytes.Equal(p.Graphics[i].Image.Data, old.Graphics[i].Image.Data) {
+					if old := held.Panes[id]; old != nil && len(old.Graphics) > i && !bytes.Equal(p.Graphics[i].Image.Data, old.Graphics[i].Image.Data) {
 						t.Fatal("text changed pixels")
 					}
 				}
@@ -199,16 +201,19 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 	ack(resumed.SurfaceRevision)
 	pixels[12] ^= 255
 	set()
-	read(func(in render.Input) bool {
+	held = read(func(in render.Input) bool {
 		return len(in.GraphicsPatches) > 0 && len(in.GraphicsPatches[0].Patch.Rects) > 0
 	})
 	pixels[16] ^= 255
 	set()
 	started := time.Now()
+	clock.Advance(graphicsReceiptWait - time.Nanosecond)
+	assertNoImage()
+	clock.Advance(time.Nanosecond)
 	read(func(in render.Input) bool {
 		return len(in.GraphicsPatches) > 0 && len(in.GraphicsPatches[0].Patch.Rects) > 0
 	})
-	t.Logf("unacknowledged image released after %s (configured wait %s)", time.Since(started), graphicsReceiptWait)
+	t.Logf("unacknowledged image released after advancing receipt clock by %s (socket observation %s)", graphicsReceiptWait, time.Since(started))
 	// A real large socket write must also stay off the session loop. Consume
 	// just its first byte and leave the rest unread while the other viewer types.
 	rand.New(rand.NewSource(7)).Read(pixels)

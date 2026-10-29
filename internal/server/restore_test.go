@@ -53,10 +53,11 @@ func newTestServer(t *testing.T, session string) *Server {
 	sup := runtime.NewSupervisor()
 	app := tui.NewApp(st, sup, io.Discard, cwd)
 	return &Server{
-		session: session,
-		dir:     filepath.Join(base, session),
-		app:     app,
-		sup:     sup,
+		receiptClock: wallReceiptClock{},
+		session:      session,
+		dir:          filepath.Join(base, session),
+		app:          app,
+		sup:          sup,
 	}
 }
 

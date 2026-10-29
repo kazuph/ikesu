@@ -80,6 +80,7 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	receiptClock        graphicsReceiptClock
 	trace               *latency.Trace
 	graphicsFiles       graphicsFileHub
 	graphicsStreamOwner atomic.Uint64
@@ -255,6 +256,10 @@ func Run(session, version string) (int, error) {
 }
 
 func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handoffImport) (int, error) {
+	return runEndpointWithClock(session, version, peer, wallReceiptClock{}, imports...)
+}
+
+func runEndpointWithClock(session, version string, peer endpoint.Peer, clock graphicsReceiptClock, imports ...*handoffImport) (int, error) {
 	childenv.ScrubProcess()
 	var imported *handoffImport
 	if len(imports) > 0 {
@@ -297,7 +302,8 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 	}
 
 	s := &Server{session: session, dir: dir, version: version, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
-		mailCh: make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
+		receiptClock: clock,
+		mailCh:       make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
 	s.configPath = configPath
 	if latency.Enabled {
