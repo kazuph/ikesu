@@ -10,6 +10,7 @@ import re
 import secrets
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 import tarfile
@@ -18,6 +19,41 @@ import tempfile
 IDENTITY = "Developer ID Application: KAZUHIRO HOMMA (67M8FDFZ28)"
 REQUIREMENT = ('=anchor apple generic and certificate leaf[subject.OU] = "67M8FDFZ28" '
                'and certificate leaf[subject.CN] = "' + IDENTITY + '"')
+ICON_NAME = "IkesuDecisionDialog.icns"
+
+
+def stage_app_bundle(sources, app, version):
+    resources = app / "Contents/Resources"
+    resources.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sources / "resources" / ICON_NAME, resources / ICON_NAME)
+    with (app / "Contents/Info.plist").open("wb") as stream:
+        plistlib.dump({
+            "CFBundleIdentifier": "com.kazuph.ikesu.decisions",
+            "CFBundleName": "Ikesu Decisions", "CFBundleExecutable": "ikesu-decision-dialog",
+            "CFBundlePackageType": "APPL", "CFBundleVersion": version,
+            "CFBundleShortVersionString": version, "LSUIElement": True,
+            "CFBundleIconFile": ICON_NAME,
+        }, stream)
+
+
+def validate_app_icon(app):
+    with (app / "Contents/Info.plist").open("rb") as stream:
+        info = plistlib.load(stream)
+    if info.get("CFBundleIconFile") != ICON_NAME:
+        raise RuntimeError("app must reference its packaged icon")
+    icon = app / "Contents/Resources" / ICON_NAME
+    # Decode with macOS's own tool before signing; check both 1x and 2x.
+    with tempfile.TemporaryDirectory(prefix="ikesu-icon-check-") as temp:
+        iconset = Path(temp) / "check.iconset"
+        subprocess.run(["iconutil", "-c", "iconset", str(icon), "-o", str(iconset)],
+                       check=True, capture_output=True)
+        for points in (16, 32, 128, 256, 512):
+            for scale in (1, 2):
+                suffix = "@2x" if scale == 2 else ""
+                data = (iconset / f"icon_{points}x{points}{suffix}.png").read_bytes()
+                expected = points * scale
+                if data[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack_from(">II", data, 16) != (expected, expected):
+                    raise RuntimeError("app icon representation has incorrect dimensions")
 
 
 def stage_release_files(repository, package):
@@ -74,15 +110,10 @@ def main():
             executable = package / "IkesuDecisionDialog.app/Contents/MacOS/ikesu-decision-dialog"
             executable.parent.mkdir(parents=True)
             app = executable.parents[2]
-            with (app / "Contents/Info.plist").open("wb") as stream:
-                plistlib.dump({
-                    "CFBundleIdentifier": "com.kazuph.ikesu.decisions",
-                    "CFBundleName": "Ikesu Decisions", "CFBundleExecutable": executable.name,
-                    "CFBundlePackageType": "APPL", "CFBundleVersion": version,
-                    "CFBundleShortVersionString": version, "LSUIElement": True,
-                }, stream)
+            stage_app_bundle(sources, app, version)
             run("swiftc", "-O", *(str(sources / name) for name in
                 ("dialog.swift", "main.swift", "host.swift", "preview.swift", "unicode-width.swift")), "-o", str(executable))
+            validate_app_icon(app)
             run("codesign", "--force", "--options", "runtime", "--timestamp", "--sign", IDENTITY,
                 "--keychain", str(keychain), str(app))
             run("codesign", "--verify", "--deep", "--strict", "-R", REQUIREMENT, str(app))
