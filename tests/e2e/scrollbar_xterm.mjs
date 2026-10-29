@@ -34,10 +34,15 @@ try{
   });
   fs.writeFileSync(path.join(evidence,`${r.theme}-${r.state}-cells.json`),JSON.stringify(state));
   assert(state.rows.some(row=>row.includes('LINE-100')),`${r.theme}/${r.state}: real output absent`);
-  const border=r.state==='dragged'||r.state==='copy'?33:25;
-  const hovered=['hover','dragged','copy'].includes(r.state);
+  const border=['dragged','copy','fullscreen'].includes(r.state)?33:25;
+  const hovered=['hover','dragged','copy','fullscreen'].includes(r.state);
   for(let y=0;y<state.height;y++)assert.equal(state.cells[y][border].text,hovered?'┃':'│',`${r.theme}/${r.state} sidebar row ${y}`);
-  for(let y=2;y<state.height-2;y++)assert.notEqual(state.cells[y][border+1].text,'│','second sidebar line');
+  if(r.state!=='fullscreen')for(let y=2;y<state.height-2;y++)assert.notEqual(state.cells[y][border+1].text,'│','second sidebar line');
+  if(r.state==='fullscreen'){
+   const y=state.rows.findIndex(row=>row.includes('│LINE-100'));
+   assert(y>=0,'real Unicode output absent');
+   assert.equal(state.cells[y][border+1].text,'│','fullscreen body vertical line erased');
+  }
   const bar=state.cells.flat().filter(c=>c.text==='▕'||c.text==='▐').length;
   assert.equal(bar>0,r.state==='scrolling'||r.state==='copy',`${r.state}: scrollbar cells ${bar}`);
   const expected=hovered? (r.theme==='catppuccin'?0x89b4fa:0x1e66f5):(r.theme==='catppuccin'?0xa6adc8:0x6c6f85);

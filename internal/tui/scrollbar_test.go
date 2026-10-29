@@ -16,25 +16,25 @@ import (
 func TestPaneScrollbarExpiryDragAndViewerIsolation(t *testing.T) {
 	a := NewApp(model.New(t.TempDir(), 160, 30), runtime.NewSupervisor(), io.Discard, "")
 	pid, now := a.focusedPane(), time.Now()
-	if a.paneScrollbarVisible(pid, now) {
+	if a.paneScrollbarActive(pid, now) {
 		t.Fatal("auto visible without interaction")
 	}
 	a.SetScrollOffset(pid, 3)
 	until := a.scrollbarUntil[pid]
-	if !a.paneScrollbarVisible(pid, until.Add(-time.Nanosecond)) || a.paneScrollbarVisible(pid, until) {
+	if !a.paneScrollbarActive(pid, until.Add(-time.Nanosecond)) || a.paneScrollbarActive(pid, until) {
 		t.Fatal("expiry boundary")
 	}
 	a.sb = &sbDrag{pane: pid}
 	a.expirePaneScrollbars(until)
-	if !a.paneScrollbarVisible(pid, until) {
+	if !a.paneScrollbarActive(pid, until) {
 		t.Fatal("active drag expired")
 	}
 	a.sbMouse(input.Event{Kind: input.KindMouseRelease})
-	if !a.paneScrollbarVisible(pid, time.Now()) {
+	if !a.paneScrollbarActive(pid, time.Now()) {
 		t.Fatal("release did not restart interval")
 	}
 	v := a.NewViewer(io.Discard, 160, 30, nil)
-	if v.app.paneScrollbarVisible(pid, time.Now()) {
+	if v.app.paneScrollbarActive(pid, time.Now()) {
 		t.Fatal("viewer inherited interaction")
 	}
 	a.dirty = false
@@ -43,12 +43,12 @@ func TestPaneScrollbarExpiryDragAndViewerIsolation(t *testing.T) {
 		t.Fatal("expiry did not repaint")
 	}
 	a.sidebarConfig.UI.PaneScrollbars = "always"
-	if !a.paneScrollbarVisible(pid, now) {
+	if !a.paneScrollbarActive(pid, now) {
 		t.Fatal("always hidden")
 	}
 	a.sidebarConfig.UI.PaneScrollbars = "off"
 	a.showPaneScrollbar(pid)
-	if a.paneScrollbarVisible(pid, now) {
+	if a.paneScrollbarActive(pid, now) {
 		t.Fatal("off visible")
 	}
 }
@@ -63,17 +63,17 @@ func TestPaneScrollbarRealPTYWheelCopyAndWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	specWaitText(t, p, "READY")
-	if a.paneScrollbarVisible(pid, time.Now()) {
+	if a.paneScrollbarVisible(pid, r, p.Snapshot().ScrollbackLen, time.Now()) {
 		t.Fatal("output exposed auto scrollbar")
 	}
 	a.onMouse(input.Event{Kind: input.KindMouseWheel, Mouse: uv.Mouse{X: r.X + 2, Y: r.Y + 2, Button: uv.MouseWheelUp}})
-	if a.scroll[pid] != 3 || !a.paneScrollbarVisible(pid, time.Now()) {
+	if a.scroll[pid] != 3 || !a.paneScrollbarVisible(pid, r, p.Snapshot().ScrollbackLen, time.Now()) {
 		t.Fatal("wheel did not show scrollbar")
 	}
 	a.expirePaneScrollbars(a.scrollbarUntil[pid])
 	a.enterCopy(false)
 	a.copyKey(uv.Key{Code: uv.KeyUp}, nil)
-	if !a.paneScrollbarVisible(pid, time.Now()) {
+	if !a.paneScrollbarVisible(pid, r, p.Snapshot().ScrollbackLen, time.Now()) {
 		t.Fatal("copy movement did not show scrollbar")
 	}
 	a.draw()

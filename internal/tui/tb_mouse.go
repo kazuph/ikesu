@@ -14,14 +14,18 @@ func (a *App) forwardTrackingBody(m uv.Mouse, event uv.MouseEvent) {
 		return
 	}
 	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
-	if gutter > 0 && a.paneScrollbarVisible(pr.ID, time.Now()) {
+	p := a.sup.Get(pr.ID)
+	if p == nil {
+		return
+	}
+	snapshot := p.Snapshot()
+	if gutter > 0 && a.paneScrollbarVisible(pr.ID, inner, snapshot.ScrollbackLen, time.Now()) {
 		inner.W--
 	}
 	if !pointIn(m.X, m.Y, inner) {
 		return
 	}
-	p := a.sup.Get(pr.ID)
-	if p != nil && p.Snapshot().MouseTracking {
+	if snapshot.MouseTracking {
 		a.forwardTo(pr.ID, event)
 	}
 }

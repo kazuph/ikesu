@@ -129,7 +129,7 @@ func (a *App) draw() {
 		}
 	}
 	for pid, snap := range panes {
-		snap.SuppressScrollbar = !a.paneScrollbarVisible(pid, time.Now())
+		snap.SuppressScrollbar = !a.paneScrollbarActive(pid, time.Now())
 	}
 	tokens := map[int]map[string]string{}
 	if a.workspaceTokenSource != nil {

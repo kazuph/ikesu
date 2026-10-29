@@ -456,6 +456,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	if t == nil {
 		return
 	}
+	leftSidebar, rightSidebar := s.SidebarArea(), s.RightSidebarArea()
 	for _, pr := range s.DisplayPaneRects() {
 		snap := in.Panes[pr.ID]
 		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
@@ -469,6 +470,14 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				borderSty = uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrFaint}
 			}
 			f.Box(pr.Rect.X, pr.Rect.Y, pr.Rect.W, pr.Rect.H, borderSty)
+			// Omit only the frame just drawn, before any terminal content.
+			// Fullscreen copy returns above and never has an adjacent frame.
+			if leftSidebar.W > 0 && pr.Rect.X == leftSidebar.X+leftSidebar.W {
+				f.Fill(pr.Rect.X, pr.Rect.Y+1, 1, pr.Rect.H-2, " ", uv.Style{})
+			}
+			if rightSidebar.W > 0 && pr.Rect.X+pr.Rect.W-1 == rightSidebar.X-1 {
+				f.Fill(pr.Rect.X+pr.Rect.W-1, pr.Rect.Y+1, 1, pr.Rect.H-2, " ", uv.Style{})
+			}
 
 			// Title: " ZOOM? %<id> <label> <terminal title> " — hidden
 			// below width 4, truncated to pane width-4 with '…'

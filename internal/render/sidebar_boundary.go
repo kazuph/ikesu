@@ -29,10 +29,10 @@ func sidebarBoundaryStyle(f *Frame, in Input, hover bool) uv.Style {
 func drawSidebarBoundaries(f *Frame, s *model.AppState, in Input) {
 	for _, right := range []bool{false, true} {
 		area, hover := s.SidebarArea(), in.SidebarHover
-		x, adjacent := area.X+area.W-1, area.X+area.W
+		x := area.X + area.W - 1
 		if right {
 			area, hover = s.RightSidebarArea(), in.RightSidebarHover
-			x, adjacent = area.X, area.X-1
+			x = area.X
 		}
 		if area.W == 0 {
 			continue
@@ -44,27 +44,6 @@ func drawSidebarBoundaries(f *Frame, s *model.AppState, in Input) {
 		}
 		for y := area.Y; y < area.Y+area.H; y++ {
 			f.Set(x, y, glyph, style)
-			if !s.PaneBorders {
-				continue
-			}
-			for _, pr := range s.DisplayPaneRects() {
-				if pr.Rect.W <= 2 || pr.Rect.H <= 2 || y < pr.Rect.Y || y >= pr.Rect.Y+pr.Rect.H {
-					continue
-				}
-				edge := pr.Rect.X
-				if right {
-					edge = pr.Rect.X + pr.Rect.W - 1
-				}
-				if edge != adjacent {
-					continue
-				}
-				if cell := f.Cell(adjacent, y); cell != nil {
-					switch cell.Content {
-					case "│":
-						f.Set(adjacent, y, " ", uv.Style{})
-					}
-				}
-			}
 		}
 	}
 }

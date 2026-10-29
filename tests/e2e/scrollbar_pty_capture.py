@@ -55,7 +55,7 @@ enabled=false
         records.append(dict(theme=theme,state=state,path=str(path),cols=140,rows=40,recorded_at=time.monotonic()))
     try:
         pump(.5)
-        send(b"i=0; while [ $i -lt 120 ]; do printf 'LINE-%03d  0123456789 abcdefghijklmnopqrstuvwxyz\\n' $i; i=$((i+1)); done; printf 'PTY-READY\\n'\n")
+        send("i=0; while [ $i -lt 120 ]; do printf '│LINE-%03d  0123456789 abcdefghijklmnopqrstuvwxyz\\n' $i; i=$((i+1)); done; printf 'PTY-READY\\n'\n".encode())
         pump(.5)
         if b"LINE-119" not in transcript:raise RuntimeError("real output did not finish")
         capture("idle")
@@ -77,9 +77,12 @@ enabled=false
         send(b"\x02[k")
         pump(.1)
         capture("copy")
+        send(b"\x1b[<0;35;40M\x1b[<0;35;40m")
+        pump(.1)
+        capture("fullscreen")
     finally:
         os.kill(pid,signal.SIGTERM)
         os.waitpid(pid,0)
         os.close(master)
 (output/"pty-captures.json").write_text(json.dumps(records,indent=2))
-print("RECORDED=14")
+print(f"RECORDED={len(records)}")

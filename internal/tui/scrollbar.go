@@ -1,6 +1,9 @@
 package tui
 
-import "time"
+import (
+	"github.com/kazuph/ikesu/internal/model"
+	"time"
+)
 
 // Interaction state belongs to each viewer, not the PTY/output snapshot.
 func (a *App) showPaneScrollbar(pid int) {
@@ -11,7 +14,11 @@ func (a *App) showPaneScrollbar(pid int) {
 	a.dirty = true
 }
 
-func (a *App) paneScrollbarVisible(pid int, now time.Time) bool {
+func (a *App) paneScrollbarVisible(pid int, inner model.Rect, scrollback int, now time.Time) bool {
+	return model.PaneScrollbarAvailable(inner, scrollback) && a.paneScrollbarActive(pid, now)
+}
+
+func (a *App) paneScrollbarActive(pid int, now time.Time) bool {
 	switch a.sidebarConfig.PaneScrollbarMode() {
 	case "off":
 		return false

@@ -2,6 +2,7 @@ package tui
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
@@ -53,6 +54,12 @@ func TestSPECLeftDownPriorityAndActionOverlapOrder(t *testing.T) {
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
+	// Scrollbar precedence requires a scrollbar that can actually be drawn.
+	p := a.sup.Get(a.focusedPane())
+	p.WithEmu(func(e *vt.Emulator) {
+		e.SendText("i=0; while [ $i -lt 100 ]; do echo ROW-$i; i=$((i+1)); done; echo SCROLL_READY\n")
+	})
+	specWaitText(t, p, "ROW-99")
 	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
 	a.draw()
 	l := a.st.ActiveWorkspace().TabRef().Layout
@@ -66,7 +73,7 @@ func TestSPECLeftDownPriorityAndActionOverlapOrder(t *testing.T) {
 	}
 	a.sep = nil
 	inner, _ := model.PaneContentRect(first.Rect, a.st.PaneBorders)
-	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: inner.X + inner.W - 1, Y: inner.Y, Button: uv.MouseLeft}})
+	a.onMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: inner.X + inner.W - 1, Y: inner.Y + inner.H - 1, Button: uv.MouseLeft}})
 	if a.sb == nil || a.sel != nil || a.st.ActiveWorkspace().TabRef().Zoomed != 0 {
 		t.Fatal("scrollbar precedence")
 	}

@@ -183,11 +183,15 @@ func (a *App) click(m uv.Mouse) {
 	}
 	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
 	framed := a.st.PaneBorders && pr.Rect.W > 2 && pr.Rect.H > 2
+	scrollback := 0
+	if p := a.sup.Get(pr.ID); p != nil {
+		scrollback = p.Snapshot().ScrollbackLen
+	}
 
 	// Pane scrollbar: a press on the thumb starts a drag that keeps the
 	// grab offset; a press on the track jumps the thumb to the press
 	// point. Only server displays continue a track press as a drag.
-	if gutter > 0 && a.paneScrollbarVisible(pr.ID, time.Now()) && m.X == inner.X+inner.W-1 &&
+	if gutter > 0 && a.paneScrollbarVisible(pr.ID, inner, scrollback, time.Now()) && m.X == inner.X+inner.W-1 &&
 		m.Y >= inner.Y && m.Y < inner.Y+inner.H {
 		a.showPaneScrollbar(pr.ID)
 		a.exec(model.CmdFocusPane{Pane: pr.ID})
@@ -516,7 +520,7 @@ func (a *App) wheel(m uv.Mouse) {
 	// The scrollbar gutter is chrome: wheel there always scrolls the
 	// host scrollback, never the pane (SPEC G6).
 	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
-	if gutter > 0 && a.paneScrollbarVisible(pr.ID, time.Now()) && m.X == inner.X+inner.W-1 && m.Y >= inner.Y && m.Y < inner.Y+inner.H {
+	if gutter > 0 && a.paneScrollbarVisible(pr.ID, inner, sn.ScrollbackLen, time.Now()) && m.X == inner.X+inner.W-1 && m.Y >= inner.Y && m.Y < inner.Y+inner.H {
 		a.hostScroll(pr.ID, sn.ScrollbackLen, up)
 		return
 	}

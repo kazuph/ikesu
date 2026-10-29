@@ -3,11 +3,12 @@ package render
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"math"
 )
 
 func drawGutter(f *Frame, inner layout.Rect, snap *PaneSnap, off int, focused bool) {
-	if snap == nil || snap.ScrollN <= 0 || inner.H <= 0 || snap.SuppressScrollbar {
+	if snap == nil || !model.PaneScrollbarAvailable(inner, snap.ScrollN) || snap.SuppressScrollbar {
 		return
 	}
 	trackColor, thumbColor, thumb := f.Palette.SurfDim, f.Palette.Dim, "▕"
