@@ -36,6 +36,7 @@ func signalLossProcess(t *testing.T, pid int, signal syscall.Signal, scope strin
 }
 
 func TestLostMonitorPreservesLiveChildAndNotifiesOnce(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	data, err := os.ReadFile(j.job.LogPath + ".runner")
 	if err != nil {
@@ -206,6 +207,7 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 }
 
 func TestCancelWaitsForStoppedMonitorAndPreservesHandoff(t *testing.T) {
+	t.Parallel()
 	for _, handoff := range []bool{false, true} {
 		t.Run(fmt.Sprint(handoff), func(t *testing.T) {
 			j := startFaultJob(t)
@@ -249,6 +251,7 @@ func TestCancelWaitsForStoppedMonitorAndPreservesHandoff(t *testing.T) {
 }
 
 func TestLostJobAfterAllOwnerProcessesDisappearAndRestart(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	data, err := os.ReadFile(j.job.LogPath + ".runner")
 	if err != nil {
@@ -316,6 +319,7 @@ func TestLostJobAfterAllOwnerProcessesDisappearAndRestart(t *testing.T) {
 }
 
 func TestSSHFailureStillHasActualExitCode(t *testing.T) {
+	t.Parallel()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +339,7 @@ func TestSSHFailureStillHasActualExitCode(t *testing.T) {
 }
 
 func TestMonitorNormalExitEvidenceIsSeparateFromCommandExit(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	if _, err := j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
@@ -360,6 +365,7 @@ func TestMonitorNormalExitEvidenceIsSeparateFromCommandExit(t *testing.T) {
 }
 
 func TestLateMonitorEvidenceDoesNotAttachToReusedLogPath(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	data, err := os.ReadFile(j.job.LogPath + ".runner")
 	if err != nil {
