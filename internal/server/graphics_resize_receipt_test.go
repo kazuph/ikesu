@@ -26,7 +26,8 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 				t.Fatal(err)
 			}
 			teststate.Setenv(t, "IKESU_CONFIG", config)
-			dir, done := startTestEndpoint(t, endpoint.GraphicsPeer())
+			clock := &controlledReceiptClock{now: time.Now()}
+			dir, done := startTestEndpointWithClock(t, endpoint.GraphicsPeer(), clock)
 			defer stopServer(t, dir, done)
 			connect := func() *testConn {
 				c := dialClient(t, dir)
@@ -120,7 +121,7 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 			// The released coordinate differs from both motion coordinates.
 			drag := fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x+1, y+1, x+5, y+1, x+7, y+1, x+9, y+1)
 			c.send(t, clientMsg{Type: "input", Data: encode64([]byte(drag))})
-			tracked := read(c, graphicsReceiptWait/2, func(in render.Input) bool {
+			tracked := read(c, 5*time.Second, func(in render.Input) bool {
 				return in.State.Cols == 160 && in.State.Rows == 45 && in.State.SidebarArea().W == x+9
 			})
 			if len(tracked.GraphicsPatches) != 0 || !bytes.Equal(imagePixels(tracked), held) {
@@ -140,7 +141,7 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 			case "stale-ack":
 				ack(pending.SurfaceRevision - 1)
 				c.send(t, clientMsg{Type: "resize", Cols: 250, Rows: 70, Xpixel: 250 * 8, Ypixel: 70 * 16})
-				stale := read(c, graphicsReceiptWait/2, func(in render.Input) bool { return in.State.Cols == 250 && in.State.Rows == 70 })
+				stale := read(c, 5*time.Second, func(in render.Input) bool { return in.State.Cols == 250 && in.State.Rows == 70 })
 				if len(stale.GraphicsPatches) != 0 || !bytes.Equal(imagePixels(stale), held) {
 					t.Fatal("stale ACK advanced image pixels")
 				}
@@ -149,14 +150,15 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 				// The protocol accepts a negative receipt independently of payload.
 				c.send(t, clientMsg{Type: "control", Kind: endpoint.GraphicsPatchMiss, Data: "ignored"})
 			case "expiry":
-				// Drop the real receipt and observe the existing deadline unchanged.
+				// Real socket/image delivery is independent of advancing the deadline.
+				clock.Advance(graphicsReceiptWait)
 			case "reconnect":
 				c.conn.Close()
 				c = connect()
 			case "other-view":
 				other := connect()
 				other.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'OTHER_RECEIPT_%s\\n' VIEW\r"))})
-				read(other, graphicsReceiptWait/2, func(in render.Input) bool {
+				read(other, 5*time.Second, func(in render.Input) bool {
 					for _, p := range in.Panes {
 						var text strings.Builder
 						for _, row := range p.Grid {
@@ -174,12 +176,12 @@ func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
 			default:
 				ack(pending.SurfaceRevision)
 			}
-			recovered := read(c, 3*graphicsReceiptWait, func(in render.Input) bool { return bytes.Equal(imagePixels(in), pixels) })
+			recovered := read(c, 5*time.Second, func(in render.Input) bool { return bytes.Equal(imagePixels(in), pixels) })
 			if len(recovered.GraphicsPatches) != 0 {
 				t.Fatal("a relayout recovered from a possibly invalid image base")
 			}
 			if completion == "expiry" {
-				t.Logf("real dropped-receipt expiry: %s; configured wait: %s", time.Since(started), graphicsReceiptWait)
+				t.Logf("dropped receipt: advanced clock by %s; real observation: %s", graphicsReceiptWait, time.Since(started))
 			}
 		})
 	}
