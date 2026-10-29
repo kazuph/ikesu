@@ -356,7 +356,8 @@ class SlackClient {
       inclusive: true,
       limit: 100,
     });
-    return result.messages || [];
+    if (!Array.isArray(result.messages)) throw Error("Slack の返信履歴が不正です");
+    return result.messages;
   }
 
   async openSocketUrl() {
@@ -1698,15 +1699,39 @@ export class SlackDecisionsDaemon {
     this.armReaction(entry);
   }
 
-  async finishReaction(entry, draft) {
-    if (entry.reactionDraft !== draft || draft.closing || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
-    draft.closing = true;
-    // A missed Socket Mode reply can still arrive through history. Its Slack
-    // timestamp must fall inside this grace window; later replies cannot win.
-    await this.pollEntryReplies(entry, draft.after, draft.deadline);
-    if (entry.reactionDraft !== draft || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
-    this.clearReaction(entry);
-    if (draft.optionIds.length || draft.text) await this.submitAnswer(entry, {optionId:draft.optionIds[0],optionIds:draft.optionIds,text:draft.text,via:draft.via});
+  async readEntryHistory(entry) {
+    const [message, replies] = await Promise.all([
+      this.slack.message(entry.post.ts), this.slack.replies(entry.post.ts),
+    ]);
+    if (message?.ts !== entry.post.ts || !Array.isArray(replies)) throw Error("Slack の最新の番号・返信を確認できません");
+    return {message, replies};
+  }
+
+  async applyEntryHistory(entry, history, before = Infinity) {
+    await this.pollEntryReactions(entry, history.message);
+    if (!entry.resolved && !entry.answerPending) await this.pollEntryReplies(entry, entry.reactionDraft?.after || 0, before, history.replies);
+  }
+
+  async finishReaction(entry, draft, history = null) {
+    if (entry.reactionDraft !== draft || draft.checking || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
+    draft.checking = true;
+    try {
+      const latest = history || await this.readEntryHistory(entry);
+      if (entry.reactionDraft !== draft || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
+      // Apply cancellation, reselection, and replies before locking the draft.
+      // A changed draft/deadline must receive its own full grace period.
+      await this.applyEntryHistory(entry, latest, draft.deadline);
+      if (entry.reactionDraft !== draft || draft.deadline > this.clock.now() || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) return;
+      draft.closing = true;
+      this.clearReaction(entry);
+      if (draft.optionIds.length || draft.text) await this.submitAnswer(entry, {optionId:draft.optionIds[0],optionIds:draft.optionIds,text:draft.text,via:draft.via});
+    } catch (error) {
+      // Leave the decision pending. The normal history poll retries once the
+      // API recovers; an error is never evidence that the selection is intact.
+      this.log(`番号の確定を保留（最新履歴を確認できません）: ${error.message}`);
+    } finally {
+      draft.checking = false;
+    }
   }
 
   removeNumberReaction(entry, reactionName, user) {
@@ -1803,7 +1828,7 @@ export class SlackDecisionsDaemon {
         .filter(Boolean);
       const deadline = entry.lastNumberAt === undefined ? this.clock.now() : Math.max(this.clock.now(),entry.lastNumberAt+REACTION_GRACE_MS);
       this.stageReaction(entry,{optionIds:ids,via:`slack confirm :white_check_mark: by ${user || "?"}`,deadline,after:entry.lastNumberEventTs||0});
-      if (deadline <= this.clock.now()) await this.finishReaction(entry,entry.reactionDraft);
+
       return;
     }
     const index = NUMBER_EMOJIS.indexOf(reactionName);
@@ -1955,18 +1980,24 @@ export class SlackDecisionsDaemon {
         continue;
       }
       if (!entry.answerReady && !(await this.establishAnswerBaseline(entry))) continue;
-      await this.pollEntryReactions(entry);
-      if (!entry.resolved && !entry.answerPending) await this.pollEntryReplies(entry);
+      try {
+        const draft = entry.reactionDraft;
+        const history = await this.readEntryHistory(entry);
+        if (entry.reactionDraft !== draft || entry.resolved || entry.answerPending || entry.machineDown || this.stopped) continue;
+        await this.applyEntryHistory(entry, history);
+        const pending = entry.reactionDraft;
+        if (pending && pending.deadline <= this.clock.now()) await this.finishReaction(entry, pending, history);
+      } catch (error) {
+        this.log(`履歴の確認を保留: ${error.message}`);
+      }
     }
   }
 
-  async pollEntryReactions(entry) {
+  async pollEntryReactions(entry, message) {
     if (!entry.answerReady) return;
-    let message;
-    try {
-      message = await this.slack.message(entry.post.ts);
-    } catch {
-      return;
+    if (message === undefined) {
+      try { message = await this.slack.message(entry.post.ts); }
+      catch { return false; }
     }
     const present=new Set((message?.reactions||[]).flatMap(reaction=>(reaction.users||[]).filter(user=>user!==this.botUserId).map(user=>`${reaction.name}:${user}`)));
     for (const marker of [...entry.seenReactions]) if (!present.has(marker)) {
@@ -1996,13 +2027,11 @@ export class SlackDecisionsDaemon {
     }
   }
 
-  async pollEntryReplies(entry, after = 0, before = Infinity) {
+  async pollEntryReplies(entry, after = 0, before = Infinity, messages) {
     if (!entry.answerReady) return;
-    let messages;
-    try {
-      messages = await this.slack.replies(entry.post.ts);
-    } catch {
-      return;
+    if (messages === undefined) {
+      try { messages = await this.slack.replies(entry.post.ts); }
+      catch { return false; }
     }
     const postTs = entry.post.ts;
     const fresh = messages

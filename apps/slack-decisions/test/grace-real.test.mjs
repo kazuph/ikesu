@@ -79,3 +79,37 @@ test('cancellation inside grace cancels the timer and never sends a saved approv
  const f=await fixture(t);await f.react('one');const cancelled=(await f.rpc('decision.cancel',{decision_id:f.decision.decision_id})).decision;
  await f.daemon.onResolved('local',cancelled);await f.clock.advance(REACTION_GRACE_MS);assert.equal((await f.saved()).status,'cancelled');assert.equal(f.clock.timers.size,0);
 });
+
+
+test('undelivered number removal at fourteen seconds is reconciled before expiry; no approval is saved',async t=>{
+ const f=await fixture(t);await f.react('one',{deliver:false});await f.daemon.pollOnce();
+ await f.clock.advance(REACTION_GRACE_MS-1000);await f.react('one',{removed:true,deliver:false});await f.clock.advance(1000);
+ assert.equal((await f.saved()).status,'pending');assert.equal(f.entry.reactionDraft,null);
+});
+
+test('undelivered multi-select check removal before expiry cancels confirmation',async t=>{
+ const f=await fixture(t,{multi:true});await f.react('one',{deliver:false});await f.react('white_check_mark',{deliver:false});await f.daemon.pollOnce();
+ await f.clock.advance(REACTION_GRACE_MS-1000);await f.react('white_check_mark',{removed:true,deliver:false});await f.clock.advance(1000);
+ assert.equal((await f.saved()).status,'pending');assert.equal(f.entry.reactionDraft,null);
+});
+
+test('undelivered removal with a remaining multi-selection restarts grace before confirming the remaining number',async t=>{
+ const f=await fixture(t,{multi:true});for(const name of ['one','two','white_check_mark'])await f.react(name,{deliver:false});await f.daemon.pollOnce();
+ await f.clock.advance(REACTION_GRACE_MS-1000);await f.react('one',{removed:true,deliver:false});await f.clock.advance(1000);
+ assert.equal((await f.saved()).status,'pending');await f.clock.advance(REACTION_GRACE_MS-1);assert.equal((await f.saved()).status,'pending');await f.clock.advance(1);
+ assert.deepEqual(ids(await f.saved()),['reject']);
+});
+
+for(const method of ['conversations.history','conversations.replies'])test(`expiry fails closed when ${method} fails and resumes only after fresh history succeeds`,async t=>{
+ const f=await fixture(t);await f.react('one',{deliver:false});await f.daemon.pollOnce();f.api.failMethods.add(method);
+ await f.clock.advance(REACTION_GRACE_MS);assert.equal((await f.saved()).status,'pending');assert.ok(f.entry.reactionDraft);assert.equal(f.entry.answerPending,false);
+ await f.daemon.pollOnce();assert.equal((await f.saved()).status,'pending');f.api.failMethods.delete(method);await f.daemon.pollOnce();assert.deepEqual(ids(await f.saved()),['approve']);
+});
+
+
+test('a number first discovered at expiry gets a new full grace period and includes its pending comment',async t=>{
+ const f=await fixture(t);await f.react('one',{deliver:false});await f.daemon.pollOnce();await f.clock.advance(REACTION_GRACE_MS-1000);
+ await f.react('two',{deliver:false});await f.reply('追加条件',{deliver:false});await f.clock.advance(1000);
+ assert.equal((await f.saved()).status,'pending');assert.equal(f.entry.reactionDraft.text,'追加条件');assert.deepEqual(f.entry.reactionDraft.optionIds,[]);
+ await f.clock.advance(REACTION_GRACE_MS);assert.equal((await f.saved()).answer.text,'追加条件');assert.deepEqual(ids(await f.saved()),[]);
+});
