@@ -479,6 +479,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			// (SPEC G1 pane contract). The agent restore label wins the
 			// right edge; the left title yields to it.
 			titleStop := pr.Rect.X + pr.Rect.W - 1
+			titleAtJunction := false
 			if snap != nil && snap.Restore != "" && snap.Agent != "" && pr.Rect.W >= 34 {
 				rl := " " + snap.Restore + " "
 				rw := len([]rune(rl))
@@ -500,6 +501,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 					for _, x := range []int{border.X, border.X + border.W - 1} {
 						if x > pr.Rect.X && x < titleStop {
 							titleStop = x
+							titleAtJunction = true
 						}
 					}
 				}
@@ -513,18 +515,20 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 				// The reference admits a wide glyph whose head fits before the
 				// restore slot, allowing its tail to occupy the leading space.
 				x := pr.Rect.X + 1
-				for _, r := range " " + title + " " {
+				for text := " " + title + " "; text != ""; {
 					if x >= titleStop {
 						break
 					}
-					width := ansi.StringWidth(string(r))
+					glyph, width := ansi.FirstGraphemeCluster(text, ansi.GraphemeWidth)
+					text = text[len(glyph):]
 					if width < 1 {
 						width = 1
 					}
-					if x+width > titleStop && titleStop == pr.Rect.X+pr.Rect.W-1 {
+					if x+width > titleStop && (titleAtJunction || titleStop == pr.Rect.X+pr.Rect.W-1) {
+						f.Set(x, pr.Rect.Y, "…", titleSty)
 						break
 					}
-					f.Set(x, pr.Rect.Y, string(r), titleSty)
+					f.Set(x, pr.Rect.Y, glyph, titleSty)
 					x += width
 				}
 			}

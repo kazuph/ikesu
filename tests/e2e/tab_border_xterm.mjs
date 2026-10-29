@@ -4,9 +4,9 @@
 import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const root=path.resolve(process.argv[2]),modules=path.resolve(process.argv[3]),strict=process.argv.includes('--strict');
-const xterm=fs.readFileSync(path.join(modules,'@xterm/xterm/lib/xterm.js'),'utf8'),addon=fs.readFileSync(path.join(modules,'@xterm/addon-canvas/lib/addon-canvas.js'),'utf8'),css=fs.readFileSync(path.join(modules,'@xterm/xterm/css/xterm.css'),'utf8');
+const xterm=fs.readFileSync(path.join(modules,'@xterm/xterm/lib/xterm.js'),'utf8'),addon=fs.readFileSync(path.join(modules,'@xterm/addon-canvas/lib/addon-canvas.js'),'utf8'),unicode=fs.readFileSync(path.join(modules,'@xterm/addon-unicode11/lib/addon-unicode11.js'),'utf8'),css=fs.readFileSync(path.join(modules,'@xterm/xterm/css/xterm.css'),'utf8');
 const themes={'catppuccin':['#1e1e2e','#cdd6f4',0x89b4fa],'catppuccin-latte':['#eff1f5','#4c4f69',0x1e66f5],'tokyo-night':['#1a1b26','#c0caf5',0x7aa2f7],'tokyo-night-day':['#e1e2e7','#3760bf',0x2e7de9]};
-const html=`<!doctype html><meta charset="utf-8"><style>${css}body{margin:0}#terminal{display:inline-block}</style><div id="terminal"></div><script>${xterm}</script><script>${addon}</script>`;
+const html=`<!doctype html><meta charset="utf-8"><style>${css}body{margin:0}#terminal{display:inline-block}</style><div id="terminal"></div><script>${xterm}</script><script>${addon}</script><script>${unicode}</script>`;
 fs.writeFileSync(path.join(root,'replay.html'),html);
 const browser=await chromium.launch({headless:true}),results=[];
 try{for(const dir of fs.readdirSync(root).sort()){
@@ -16,7 +16,7 @@ try{for(const dir of fs.readdirSync(root).sort()){
   if(r.view==='zoom'){assert.equal(r.layout.zoomed,true,'zoom was not applied');}
   if(r.view==='narrow')assert(r.layout.panes.some(p=>p.rect.width<=6),'no pane below scrollbar width');
   const page=await browser.newPage({viewport:{width:1800,height:1000},deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+path.join(root,'replay.html'));
-  await page.evaluate(({r,theme})=>{window.term=new Terminal({cols:r.cols,rows:r.rows,fontSize:14,fontFamily:'Menlo, monospace',lineHeight:1,customGlyphs:true,allowProposedApi:true,theme:{background:theme[0],foreground:theme[1]}});term.open(document.querySelector('#terminal'));term.loadAddon(new CanvasAddon.CanvasAddon());},{r,theme:themes[r.theme]});
+  await page.evaluate(({r,theme})=>{window.term=new Terminal({cols:r.cols,rows:r.rows,fontSize:14,fontFamily:'Menlo, monospace',lineHeight:1,customGlyphs:true,allowProposedApi:true,theme:{background:theme[0],foreground:theme[1]}});term.open(document.querySelector('#terminal'));term.loadAddon(new CanvasAddon.CanvasAddon());term.loadAddon(new Unicode11Addon.Unicode11Addon());term.unicode.activeVersion='11';},{r,theme:themes[r.theme]});
   await page.evaluate(data=>new Promise(resolve=>term.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)),()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))),fs.readFileSync(path.join(folder,path.basename(r.path))).toString('base64'));
   const state=await page.evaluate(()=>{const cells=[];for(let y=0;y<term.rows;y++){const row=[];for(let x=0;x<term.cols;x++){const c=term.buffer.active.getLine(y).getCell(x);row.push({text:c.getChars(),fg:c.getFgColor(),bg:c.getBgColor(),bgDefault:c.isBgDefault(),underline:c.isUnderline()});}cells.push(row);}return{cells,rows:cells.map(row=>row.map(c=>c.text||' ').join('')),cw:term._core._renderService.dimensions.device.cell.width,ch:term._core._renderService.dimensions.device.cell.height};});
   fs.writeFileSync(path.join(folder,r.active+'-cells.json'),JSON.stringify(state));
@@ -38,7 +38,13 @@ try{for(const dir of fs.readdirSync(root).sort()){
   const titleCells=new Map();
   const frameBounds=b=>({left:b.x===r.layout.area.x&&b.x>0?b.x-1:b.x,right:b.x+b.width===r.layout.area.x+r.layout.area.width&&b.x+b.width<r.cols?b.x+b.width:b.x+b.width-1});
   for(const pane of displayPanes){const b=pane.rect;if(b.width<=4||b.height<=2)continue;let stop=b.x+b.width-1;if(r.pane_gaps===false)for(const above of displayPanes){const q=above.rect;if(q.width<=2||q.height<=2||q.y+q.height-1!==b.y)continue;const f=frameBounds(q);for(const x of [f.left,f.right])if(x>b.x&&x<stop)stop=x;}
-   let text=(r.layout.zoomed?'ZOOM ':'')+'%'+pane.pane_id.replace(/^p/,'')+' terminal';const max=b.width-4;if(text.length>max)text=text.slice(0,max-1)+'…';text=' '+text+' ';for(let n=0;n<text.length&&b.x+1+n<stop;n++)titleCells.set((b.x+1+n)+','+b.y,text[n]);
+   // Fixture widths are independent of Go's clipping implementation: ASCII and
+   // ellipsis use one cell; the Japanese/emoji fixture characters use two.
+   const clusters=text=>[...new Intl.Segmenter('ja',{granularity:'grapheme'}).segment(text)].map(s=>s.segment);
+   const width=g=>/^[\x20-\x7e…]+$/.test(g)?1:2;
+   let text=(r.layout.zoomed?'ZOOM ':'')+'%'+pane.pane_id.replace(/^p/,'')+' '+(r.title||'terminal');const max=b.width-4;
+   if(clusters(text).reduce((n,g)=>n+width(g),0)>max){let used=0,short='';for(const g of clusters(text)){if(used+width(g)>max-1)break;short+=g;used+=width(g);}text=short+'…';}
+   let x=b.x+1;for(const g of clusters(' '+text+' ')){if(x>=stop)break;const w=width(g);if(x+w>stop){titleCells.set(x+','+b.y,'…');break;}titleCells.set(x+','+b.y,g);if(w===2)titleCells.set((x+1)+','+b.y,'');x+=w;}
   }
   const unexpectedFrameCells=[];
   const edges=[],horizontals=[],unframed=[];for(const pane of displayPanes){const b=pane.rect;if(b.width<=2||b.height<=2){unframed.push(pane.pane_id);continue;}

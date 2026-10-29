@@ -201,3 +201,60 @@ func TestPaneFrameAndScrollbarWidthBoundaries(t *testing.T) {
 		}
 	}
 }
+
+// A six-cell upper split meets the lower header immediately after its prefix.
+// The next wide character must yield to that structural cell.
+func TestWidePaneTitlesPreserveFrameJunctions(t *testing.T) {
+	for _, title := range []string{"日本語の作業タイトル", "🐱☕作業中", "日A🐱本B語", "👩‍💻日本語"} {
+		for _, theme := range []string{"tokyo-night", "tokyo-night-day", "catppuccin", "catppuccin-latte"} {
+			for _, gaps := range []bool{false, true} {
+				for _, view := range []string{"split", "narrow", "zoom"} {
+					t.Run(fmt.Sprintf("%s/%s/gaps=%v/%s", title, theme, gaps, view), func(t *testing.T) {
+						s := testState(60, 22)
+						s.SidebarVisible = false
+						s.SidebarHidden = true
+						s.RightSidebarMode = "hidden"
+						s.PaneGaps = gaps
+						l := s.ActiveWorkspace().ActiveLayout()
+						l.SplitAt(1, layout.Horizontal, 2, .5, false)
+						l.SplitAt(1, layout.Vertical, 3, .1, false)
+						if view == "narrow" {
+							l.SplitAt(2, layout.Vertical, 4, .2, false)
+						}
+						if view == "zoom" {
+							s.Apply(model.CmdZoomPane{Pane: 2, Mode: "on"})
+						}
+						c := config.Config{}
+						c.Theme.Name = theme
+						base := Compose(Input{State: s, SidebarConfig: c, ServerUI: true}).Frame
+						snaps := map[int]*PaneSnap{}
+						for _, p := range s.DisplayPaneRects() {
+							snaps[p.ID] = &PaneSnap{Label: title}
+						}
+						got := Compose(Input{State: s, SidebarConfig: c, ServerUI: true, Panes: snaps}).Frame
+						masks := map[string]int{"│": 12, "┌": 10, "┐": 9, "└": 6, "┘": 5, "├": 14, "┤": 13, "┬": 11, "┴": 7, "┼": 15}
+						for y := 0; y < base.H; y++ {
+							for x := 0; x < base.W; x++ {
+								want := masks[base.Cell(x, y).Content]
+								if want&12 != 0 && masks[got.Cell(x, y).Content]&want != want {
+									t.Errorf("title=%q structural cell %d,%d got=%q width=%d want=%q", title, x, y, got.Cell(x, y).Content, got.Cell(x, y).Width, base.Cell(x, y).Content)
+								}
+							}
+						}
+						if !gaps && view == "split" {
+							var lower model.Rect
+							for _, p := range s.DisplayPaneRects() {
+								if p.ID == 2 {
+									lower = p.Rect
+								}
+							}
+							if got.Cell(lower.X+5, lower.Y).Content != "…" {
+								t.Errorf("wide character at junction must become ellipsis: %q", got.Cell(lower.X+5, lower.Y).Content)
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
