@@ -113,3 +113,22 @@ test('a number first discovered at expiry gets a new full grace period and inclu
  assert.equal((await f.saved()).status,'pending');assert.equal(f.entry.reactionDraft.text,'追加条件');assert.deepEqual(f.entry.reactionDraft.optionIds,[]);
  await f.clock.advance(REACTION_GRACE_MS);assert.equal((await f.saved()).answer.text,'追加条件');assert.deepEqual(ids(await f.saved()),[]);
 });
+
+
+for(const mode of ['poll','expiry'])test(`undelivered comments replay oldest first and retain the latest correction through ${mode}`,async t=>{
+ const f=await fixture(t);await f.react('one',{deliver:false});await f.daemon.pollOnce();await f.clock.advance(REACTION_GRACE_MS/3);
+ await f.reply('対象はA',{deliver:false});await f.clock.advance(1);await f.reply('訂正、対象はB',{deliver:false});
+ if(mode==='poll'){await f.daemon.pollOnce();assert.equal(f.entry.reactionDraft.text,'訂正、対象はB');}
+ await f.clock.advance(REACTION_GRACE_MS);const saved=await f.saved();assert.equal(saved.answer.text,'訂正、対象はB');assert.deepEqual(ids(saved),[]);
+});
+
+for(const mode of ['poll','expiry'])test(`undelivered comment, numeric reselection, and later correction preserve chronological state through ${mode}`,async t=>{
+ const f=await fixture(t);await f.react('one',{deliver:false});await f.daemon.pollOnce();await f.clock.advance(REACTION_GRACE_MS/3);
+ await f.reply('対象はA',{deliver:false});await f.clock.advance(1);await f.reply('2',{deliver:false});await f.clock.advance(1);await f.reply('訂正、対象はB',{deliver:false});
+ if(mode==='poll'){await f.daemon.pollOnce();assert.equal(f.entry.reactionDraft.text,'訂正、対象はB');assert.deepEqual(f.entry.reactionDraft.optionIds,[]);}
+ await f.clock.advance(REACTION_GRACE_MS*2);const saved=await f.saved();assert.equal(saved.answer.text,'訂正、対象はB');assert.deepEqual(ids(saved),[]);
+});
+
+test('outside a number grace period, simultaneous free-text replies retain the existing latest-reply behavior',async t=>{
+ const f=await fixture(t);await f.reply('以前の回答',{deliver:false});await f.clock.advance(1);await f.reply('最新の回答',{deliver:false});await f.daemon.pollOnce();assert.equal((await f.saved()).answer.text,'最新の回答');
+});

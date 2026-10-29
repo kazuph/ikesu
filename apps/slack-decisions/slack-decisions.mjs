@@ -2034,6 +2034,7 @@ export class SlackDecisionsDaemon {
       catch { return false; }
     }
     const postTs = entry.post.ts;
+    const editing = !!entry.reactionDraft || (entry.lastNumberAt !== undefined && this.clock.now() < entry.lastNumberAt + REACTION_GRACE_MS);
     const fresh = messages
       .filter((message) => message.ts && Number(message.ts) > Math.max(Number(postTs), after) && Number(message.ts)*1000 <= before)
       .filter((message) => this.eventIsCurrent(entry, message.ts) && !entry.seenReplies.has(message.ts))
@@ -2044,7 +2045,7 @@ export class SlackDecisionsDaemon {
           message.subtype !== "bot_message" &&
           (!message.subtype || message.subtype === "file_share"),
       )
-      .sort((a, b) => Number(b.ts) - Number(a.ts));
+      .sort((a, b) => (Number(a.ts) - Number(b.ts)) * (editing ? 1 : -1));
     for (const message of fresh) {
       entry.seenReplies.add(message.ts);
       await this.handleThreadReply(entry, message.text || "", message.user || "", Number(message.ts)*1000);
