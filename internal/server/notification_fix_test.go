@@ -47,11 +47,10 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 			c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
 			// Keep draining real display frames while the independent API waits.
 			notifications := make(chan string, 1)
-			readDone := make(chan struct{})
+			readDone := make(chan error, 1)
 			notificationCount := 0
 			go func() {
-				defer close(readDone)
-				c.readUntil(t, 5*time.Second, func(m clientMsg) bool {
+				_, err := c.readUntilResult(5*time.Second, func(m clientMsg) bool {
 					b, _ := base64.StdEncoding.DecodeString(m.Data)
 					if strings.Contains(string(b), "\x1b]9;") || strings.Contains(string(b), "\x1b]99;") {
 						notificationCount++
@@ -60,8 +59,9 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 						default:
 						}
 					}
-					return false
+					return m.Type == "exit"
 				})
+				readDone <- err
 			}()
 			r := apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "body": "本文", "sound": "none"})
 			want := `{"type":"notification_show","shown":true,"reason":"shown"}`
@@ -84,7 +84,10 @@ func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
 					t.Fatal(r.Err, string(r.Result))
 				}
 			}
-			<-readDone
+			stopServer(t, dir, done)
+			if err := <-readDone; err != nil {
+				t.Fatal(err)
+			}
 			c.conn.Close()
 			wantCount := 1
 			if tt.want == "" {

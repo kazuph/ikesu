@@ -12,6 +12,7 @@ import (
 )
 
 func TestScriptFileInsideRealPane(t *testing.T) {
+	t.Parallel()
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 	for _, agent := range []string{"codex", "claude"} {
 		for _, scenario := range []string{"safe", "danger", "unresolved", "block"} {

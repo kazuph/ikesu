@@ -15,6 +15,7 @@ import (
 )
 
 func TestScriptFileDecisionWithRealSession(t *testing.T) {
+	t.Parallel()
 	for _, agent := range []string{"codex", "claude"} {
 		for _, choice := range []string{"approve", "reject", "expired"} {
 			t.Run(agent+"/"+choice, func(t *testing.T) {

@@ -30,6 +30,7 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 	for _, shell := range []string{"/bin/bash", "/bin/zsh"} {
 		for _, tc := range cases {
 			t.Run(filepath.Base(shell)+"/"+tc.Line, func(t *testing.T) {
+				t.Parallel()
 				a, env, target := newEntry(t, binary)
 				if e := a.Sync("codex"); e != nil {
 					t.Fatal(e)

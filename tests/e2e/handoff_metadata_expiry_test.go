@@ -11,6 +11,7 @@ import (
 )
 
 func TestLiveHandoffQuietMetadataKeepsMultipleExpiries(t *testing.T) {
+	t.Parallel()
 	config := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(config, []byte("onboarding=false\n[ui.sidebar.agents]\nrows=[[\"$custom\"],[\"$keep\"],[\"state_text\"]]\n"), 0600); err != nil {
 		t.Fatal(err)

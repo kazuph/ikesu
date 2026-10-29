@@ -91,6 +91,7 @@ func TestLostMonitorPreservesLiveChildAndNotifiesOnce(t *testing.T) {
 }
 
 func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []string{"before-handoff", "after-handoff", "stopped-supervisor", "unwritable-diagnostic", "busy-diagnostic-lock", "full", "none"} {
 		t.Run(tc, func(t *testing.T) {
 			completion := "summary"

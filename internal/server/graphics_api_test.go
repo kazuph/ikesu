@@ -23,7 +23,7 @@ func TestPaneGraphicsSetClearAndLayerBoundary(t *testing.T) {
 	defer client.conn.Close()
 	defer stopServer(t, dir, done)
 	client.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720})
-	client.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "snapshot" })
+	client.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" && client.lastInput != nil })
 	pane := firstPaneID(t, dir)
 	var info map[string]any
 	apiOK(t, dir, "pane.graphics.info", map[string]any{"pane_id": pane}, &info)
@@ -77,7 +77,7 @@ func TestGraphicsInfoRequiresExactCellsAndPreservesDamageCapability(t *testing.T
 		t.Fatalf("unknown real cell geometry was approximated: %+v", response)
 	}
 	client.send(t, clientMsg{Type: "hello", Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720})
-	client.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "snapshot" })
+	client.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" && client.lastInput != nil })
 	var info map[string]any
 	apiOK(t, dir, api.MethodPaneGraphicsInfo, map[string]any{"pane_id": pane}, &info)
 	if info["cell_width_px"] != float64(8) || info["cell_height_px"] != float64(16) || info["file_frame_damage"] != true {

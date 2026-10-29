@@ -10,6 +10,7 @@ import (
 )
 
 func TestG9AgentStartupWrapperSettlesBlockedAndDeadline(t *testing.T) {
+	t.Parallel()
 	teststate.Lock(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "startup")

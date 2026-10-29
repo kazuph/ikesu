@@ -2,9 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/plugin"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +37,38 @@ func startPluginServer(t *testing.T) (string, chan int) {
 	c := dialClient(t, dir)
 	c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
 	c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-	t.Cleanup(func() { c.conn.Close() })
+	// The readiness client remains attached, so it must drain and acknowledge
+	// frames just like a real display until server shutdown.
+	stopReading := make(chan struct{})
+	readDone := make(chan error, 1)
+	go func() {
+		for {
+			messages, err := c.readUntilResult(10*time.Second, func(m clientMsg) bool { return m.Type == "exit" || m.Type == "restart" })
+			if err != nil {
+				readDone <- err
+				return
+			}
+			for _, message := range messages {
+				if message.Type == "exit" || message.Type == "restart" {
+					readDone <- nil
+					return
+				}
+			}
+			select {
+			case <-stopReading:
+				readDone <- nil
+				return
+			default:
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		close(stopReading)
+		c.conn.Close()
+		if err := <-readDone; err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Error(err)
+		}
+	})
 	return dir, done
 }
 func TestPluginSocketActionAndEvent(t *testing.T) {

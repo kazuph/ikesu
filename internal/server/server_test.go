@@ -28,6 +28,7 @@ import (
 type testConn struct {
 	conn        net.Conn
 	rd          *bufio.Reader
+	pending     []byte
 	snapshots   endpoint.SnapshotDecoder
 	frames      render.Encoder
 	lastRegions *render.Output
@@ -76,7 +77,8 @@ func (c *testConn) readUntilResult(timeout time.Duration, pred func(clientMsg) b
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		line, err := c.rd.ReadBytes('\n')
+		part, err := c.rd.ReadBytes('\n')
+		c.pending = append(c.pending, part...)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
@@ -86,6 +88,8 @@ func (c *testConn) readUntilResult(timeout time.Duration, pred func(clientMsg) b
 			}
 			return got, nil // EOF
 		}
+		line := c.pending
+		c.pending = nil
 		var m clientMsg
 		if json.Unmarshal(line, &m) == nil {
 			if m.Type == "snapshot" {

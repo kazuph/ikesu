@@ -36,6 +36,7 @@ func graphicsReaderSocket(t *testing.T) (net.Conn, net.Conn, *graphicsFrameReade
 }
 
 func TestGraphicsFrameReaderPreservesCoalescedBodyAndNextHeader(t *testing.T) {
+	t.Parallel()
 	_, peer, reader := graphicsReaderSocket(t)
 	if _, err := peer.Write([]byte("{\"data_length\":3}\nabc{\"sequence\":7,\"revision\":8}\n")); err != nil {
 		t.Fatal(err)
@@ -55,6 +56,7 @@ func TestGraphicsFrameReaderPreservesCoalescedBodyAndNextHeader(t *testing.T) {
 }
 
 func TestGraphicsFrameReaderAllowsUnstartedIdle(t *testing.T) {
+	t.Parallel()
 	conn, peer, reader := graphicsReaderSocket(t)
 	// A previous frame's deadline must not leak into the idle phase.
 	conn.SetReadDeadline(time.Now())
@@ -85,6 +87,7 @@ func TestGraphicsFrameReaderAllowsUnstartedIdle(t *testing.T) {
 }
 
 func TestGraphicsFrameReaderRejectsStalledHeaderAndBody(t *testing.T) {
+	t.Parallel()
 	for _, body := range []bool{false, true} {
 		name := "header"
 		if body {
@@ -117,6 +120,7 @@ func TestGraphicsFrameReaderRejectsStalledHeaderAndBody(t *testing.T) {
 }
 
 func TestGraphicsFrameReaderTotalDeadlineDespiteProgress(t *testing.T) {
+	t.Parallel()
 	_, peer, reader := graphicsReaderSocket(t)
 	if _, err := peer.Write([]byte("{")); err != nil {
 		t.Fatal(err)

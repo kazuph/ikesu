@@ -59,7 +59,8 @@ func directGraphicsFixture(t *testing.T) (string, *testConn, string, map[string]
 			t.Logf("actual panes at advertisement failure: %+v", panes)
 			t.Fatal("no direct transport on actual negotiated Unix viewer", info)
 		}
-		time.Sleep(20 * time.Millisecond)
+		// Keep acknowledging real snapshots while exact cell geometry settles.
+		viewer.readUntil(t, 20*time.Millisecond, func(message clientMsg) bool { return message.Type == "output" })
 	}
 }
 

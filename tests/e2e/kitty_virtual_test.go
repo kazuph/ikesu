@@ -20,6 +20,7 @@ import (
 type visibleImageCell struct{ X, Y, Row, Col int }
 
 func TestKittyVirtualActualPTYCellsAndHandoff(t *testing.T) {
+	t.Parallel()
 	for _, format := range []int{24, 100} {
 		t.Run(fmt.Sprintf("format%d", format), func(t *testing.T) { testKittyVirtual(t, format) })
 	}

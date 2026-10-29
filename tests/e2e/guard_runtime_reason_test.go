@@ -17,6 +17,7 @@ import (
 )
 
 func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
+	t.Parallel()
 	const original = "対象プロジェクト: ikesu。必要な理由: 元の申請文を実行中の判断へ引き継ぐ試験。実施内容: 実行前に却下します。"
 	const forged = "スクリプトが後から作った偽の申請文です。"
 	for name, shell := range map[string]string{"system": "/bin/bash", "homebrew": "/opt/homebrew/bin/bash"} {
@@ -110,6 +111,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 				{"english", "Please approve this command", "", "", false},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
 					s := start(t)
 					s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 					s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "runtime-reason-test", Agent: "claude", State: "idle"}, nil)
