@@ -6,6 +6,7 @@ During edits: python3 scripts/test-go.py --changed origin/main
 Repeat changed tests: add --mode race --run REGEXP --repeat 10.
 Unfiltered/full runs share ~/bench-terrace.noindex/.locks/test-go.lock.
 Use --label TASK to identify the lock owner; --changed/--run selections stay light.
+A host without ~/bench-terrace.noindex reports TEST_QUEUE no-lock-dir and stays unlocked.
 """
 import argparse
 import ctypes
@@ -218,6 +219,11 @@ def heavy_test_slot(path, worktree, label):
             yield waited
         finally:
             temporary.unlink(missing_ok=True)
+            try:
+                if json.loads(owner_path.read_text()).get('pid') == os.getpid():
+                    owner_path.unlink()
+            except (FileNotFoundError, ValueError):
+                pass
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
@@ -245,8 +251,13 @@ def main():
         print('No changed Go packages.')
         return 0
     label = args.label or str(args.output)
-    slot = (heavy_test_slot(Path.home() / 'bench-terrace.noindex/.locks/test-go.lock', Path.cwd(), label)
-            if is_heavy_run(packages, args.changed, args.run) else nullcontext(0.0))
+    lock_root = Path.home() / 'bench-terrace.noindex'
+    slot = nullcontext(0.0)
+    if is_heavy_run(packages, args.changed, args.run):
+        if lock_root.is_dir():
+            slot = heavy_test_slot(lock_root / '.locks/test-go.lock', Path.cwd(), label)
+        else:
+            print('TEST_QUEUE no-lock-dir ' + str(lock_root), flush=True)
     with slot as queue_wait:
         return run_tests(args, packages, queue_wait)
 

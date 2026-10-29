@@ -91,6 +91,15 @@ class QueueLockTests(QueueCase):
             with self.subTest(packages=packages, changed=changed, selected=selected):
                 self.assertEqual(runner.is_heavy_run(packages, changed, selected), heavy)
 
+    def test_owner_record_removed_on_release(self):
+        owner_path = self.lock.with_name(self.lock.name + '.owner.json')
+        with runner.heavy_test_slot(self.lock, self.root, 'owner-cleanup'):
+            self.assertEqual(json.loads(owner_path.read_text())['pid'], os.getpid())
+        self.assertFalse(owner_path.exists())
+        with runner.heavy_test_slot(self.lock, self.root, 'next-owner'):
+            self.assertEqual(json.loads(owner_path.read_text())['label'], 'next-owner')
+        self.assertFalse(owner_path.exists())
+
     def test_distinct_worktrees_wait_for_same_owner(self):
         holder = self.start('holder')
         read_line(holder, 'ENTERED')
@@ -128,6 +137,30 @@ class QueueLockTests(QueueCase):
 
 
 class QueueRunnerTests(QueueCase):
+    @classmethod
+    def setUpClass(cls):
+        # Compile the real package before measuring queue behavior; a cold Go
+        # cache must not turn a lock-routing assertion into a compiler deadline.
+        cls.build = tempfile.TemporaryDirectory(prefix='ikesu-queue-model-build-')
+        cls.addClassCleanup(cls.build.cleanup)
+        subprocess.run(['go', 'test', '-c', '-o', str(Path(cls.build.name) / 'model.test'),
+                        './internal/model'], cwd=ROOT, check=True)
+
+    def test_host_without_lock_root_does_not_create_it(self):
+        go_env = json.loads(subprocess.check_output(['go', 'env', '-json', 'GOCACHE', 'GOPATH'], text=True))
+        env = dict(os.environ, HOME=str(self.root), GOCACHE=go_env['GOCACHE'], GOPATH=go_env['GOPATH'])
+        output = self.root / 'unlocked-result'
+        result = subprocess.Popen([sys.executable, str(ROOT / 'scripts/test-go.py'), './internal/model', '--mode', 'normal',
+                                   '--output', str(output)], cwd=ROOT, env=env, stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.addCleanup(stop_owned, result)
+        stdout, _ = result.communicate(timeout=30)
+        self.assertEqual(result.returncode, 0, stdout.decode())
+        self.assertIn('TEST_QUEUE no-lock-dir ' + str(self.root / 'bench-terrace.noindex'), stdout.decode())
+        self.assertNotIn('TEST_QUEUE acquired', stdout.decode())
+        self.assertFalse((self.root / 'bench-terrace.noindex').exists())
+        self.assertEqual(json.loads((output / 'summary.json').read_text())['queue_wait_seconds'], 0)
+
     def test_unfiltered_real_go_waits_for_shared_lock(self):
         self.lock = self.root / 'bench-terrace.noindex/.locks/test-go.lock'
         holder = self.start('holder')
@@ -135,7 +168,7 @@ class QueueRunnerTests(QueueCase):
         go_env = json.loads(subprocess.check_output(['go', 'env', '-json', 'GOCACHE', 'GOPATH'], text=True))
         env = dict(os.environ, HOME=str(self.root), GOCACHE=go_env['GOCACHE'], GOPATH=go_env['GOPATH'])
         output = self.root / 'heavy-result'
-        process = subprocess.Popen([sys.executable, 'scripts/test-go.py', './internal/model', '--mode', 'normal',
+        process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/test-go.py'), './internal/model', '--mode', 'normal',
                                     '--label', 'heavy-proof', '--output', str(output)], cwd=ROOT, env=env,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
         self.addCleanup(stop_owned, process)
@@ -161,11 +194,13 @@ class QueueRunnerTests(QueueCase):
         go_env = json.loads(subprocess.check_output(['go', 'env', '-json', 'GOCACHE', 'GOPATH'], text=True))
         env = dict(os.environ, HOME=str(self.root), GOCACHE=go_env['GOCACHE'], GOPATH=go_env['GOPATH'])
         output = self.root / 'light-result'
-        result = subprocess.run([sys.executable, 'scripts/test-go.py', './internal/model', '--mode', 'normal',
-                                 '--run', '^Test', '--output', str(output)], cwd=ROOT, env=env,
-                                capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn('TEST_QUEUE waiting', result.stdout)
+        result = subprocess.Popen([sys.executable, str(ROOT / 'scripts/test-go.py'), './internal/model', '--mode', 'normal',
+                                   '--run', '^Test', '--output', str(output)], cwd=ROOT, env=env, stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.addCleanup(stop_owned, result)
+        stdout, _ = result.communicate(timeout=30)
+        self.assertEqual(result.returncode, 0, stdout.decode())
+        self.assertNotIn('TEST_QUEUE waiting', stdout.decode())
         summary = json.loads((output / 'summary.json').read_text())
         self.assertEqual(summary['queue_wait_seconds'], 0)
         self.assertTrue(summary['results'])
