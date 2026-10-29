@@ -43,6 +43,19 @@ func executableAncestorFixture(t *testing.T) (base, private, native string) {
 func TestExecutableAncestorsRespectPrivateParent(t *testing.T) {
 	base, private, native := executableAncestorFixture(t)
 	lib := filepath.Dir(native)
+	t.Run("installed-native-chain", func(t *testing.T) {
+		installed := os.Getenv("GUARD_ENTRY_BASELINE_BINARY")
+		if installed == "" {
+			var err error
+			installed, err = os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, _, err := trustedExecutable(installed); err != nil {
+			t.Fatalf("installed executable ancestors: %s: %v", installed, err)
+		}
+	})
 	t.Run("owner-only-parent", func(t *testing.T) {
 		if _, _, err := trustedExecutable(native); err != nil {
 			t.Fatal("private parent prevents other users reaching writable lib:", err)
