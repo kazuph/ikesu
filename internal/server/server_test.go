@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -27,6 +28,8 @@ import (
 type testConn struct {
 	conn        net.Conn
 	rd          *bufio.Reader
+	pending     []byte
+	readClosed  bool
 	snapshots   endpoint.SnapshotDecoder
 	frames      render.Encoder
 	lastRegions *render.Output
@@ -62,31 +65,43 @@ func (c *testConn) send(t *testing.T, m clientMsg) {
 // readUntil returns all messages until pred matches or the deadline hits.
 func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clientMsg) bool) []clientMsg {
 	t.Helper()
+	got, err := c.readUntilResult(timeout, pred)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func (c *testConn) readUntilResult(timeout time.Duration, pred func(clientMsg) bool) ([]clientMsg, error) {
 	var got []clientMsg
 	var ackErr error
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		line, err := c.rd.ReadBytes('\n')
+		part, err := c.rd.ReadBytes('\n')
+		c.pending = append(c.pending, part...)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
+			c.readClosed = true
 			if ackErr != nil {
-				t.Fatalf("render acknowledgement failed before terminal message: %v", ackErr)
+				return got, fmt.Errorf("render acknowledgement failed before terminal message: %w", ackErr)
 			}
-			return got // EOF
+			return got, nil // EOF
 		}
+		line := c.pending
+		c.pending = nil
 		var m clientMsg
 		if json.Unmarshal(line, &m) == nil {
 			if m.Type == "snapshot" {
 				data, err := decode64(m.Data)
 				if err != nil {
-					t.Fatal(err)
+					return got, err
 				}
 				in, err := c.snapshots.Decode(data)
 				if err != nil {
-					t.Fatal(err)
+					return got, err
 				}
 				c.lastInput = &in
 				out := render.Compose(in)
@@ -98,7 +113,7 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 				if ackErr == nil && (m.RequestAck || c.lastRegions == nil || !reflect.DeepEqual(c.lastRegions, out)) {
 					ackErr = json.NewEncoder(c.conn).Encode(clientMsg{Type: "rendered", Rendered: out, FocusEpoch: m.FocusEpoch})
 					if ackErr != nil && !errors.Is(ackErr, syscall.EPIPE) {
-						t.Fatalf("render acknowledgement: %v", ackErr)
+						return got, fmt.Errorf("render acknowledgement: %w", ackErr)
 					}
 					c.lastRegions = out
 				}
@@ -108,16 +123,16 @@ func (c *testConn) readUntil(t *testing.T, timeout time.Duration, pred func(clie
 				// A closed write half can coexist with a queued restart/exit message.
 				// Require that real terminal message; never hide ACK errors on live reads.
 				if ackErr != nil && m.Type != "restart" && m.Type != "exit" && m.Type != "detached" {
-					t.Fatalf("render acknowledgement failed on live read: %v", ackErr)
+					return got, fmt.Errorf("render acknowledgement failed on live read: %w", ackErr)
 				}
-				return got
+				return got, nil
 			}
 		}
 	}
 	if ackErr != nil {
-		t.Fatalf("render acknowledgement failed without terminal message: %v", ackErr)
+		return got, fmt.Errorf("render acknowledgement failed without terminal message: %w", ackErr)
 	}
-	return got
+	return got, nil
 }
 
 func outputs(msgs []clientMsg) string {
@@ -362,12 +377,34 @@ func TestServerRecreatesHomeWhenLastPaneExits(t *testing.T) {
 		t.Fatal("server exited after replacing last shell")
 	default:
 	}
-	// Explicit server.stop must still end both clients and the server.
-	apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil)
+	// Real clients drain independently. Start both readers before stopping so
+	// one unread snapshot cannot block the other client's exit notification.
+	var ready sync.WaitGroup
+	ready.Add(len(clients))
+	type readResult struct {
+		messages []clientMsg
+		err      error
+	}
+	results := make(chan readResult, len(clients))
 	for _, c := range clients {
-		messages := c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
+		go func(c *testConn) {
+			ready.Done()
+			messages, err := c.readUntilResult(10*time.Second, func(m clientMsg) bool { return m.Type == "exit" })
+			results <- readResult{messages, err}
+		}(c)
+	}
+	ready.Wait()
+	apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil)
+	completed := make([]readResult, 0, len(clients))
+	for range clients {
+		completed = append(completed, <-results)
+	}
+	for _, result := range completed {
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
 		exited := false
-		for _, m := range messages {
+		for _, m := range result.messages {
 			exited = exited || m.Type == "exit"
 		}
 		if !exited {

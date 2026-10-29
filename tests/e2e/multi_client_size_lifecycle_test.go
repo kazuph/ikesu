@@ -91,6 +91,7 @@ func sizeClient(t *testing.T, s *session) (*os.File, func()) {
 }
 
 func TestMultiClientFrozenHiddenPTYAcrossDetachAndLiveHandoff(t *testing.T) {
+	t.Parallel()
 	for _, handoff := range []bool{false, true} {
 		t.Run(fmt.Sprint(handoff), func(t *testing.T) {
 			s := start(t)

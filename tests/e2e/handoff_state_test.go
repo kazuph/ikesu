@@ -46,6 +46,7 @@ func (s *session) rpc(method string, params, result any) {
 }
 
 func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
+	t.Parallel()
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=true\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -142,6 +143,7 @@ func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
 }
 
 func TestLiveHandoffUnresponsiveImporterRetainsPane(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	root := t.TempDir()

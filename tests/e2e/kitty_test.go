@@ -16,6 +16,7 @@ import (
 )
 
 func TestKittyActualPTYPlacementAndHandoff(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	cfg := filepath.Join(root, "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n[ui]\nmouse_scroll_lines=1\n"), 0600); err != nil {

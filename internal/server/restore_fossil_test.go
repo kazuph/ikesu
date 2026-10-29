@@ -9,6 +9,7 @@ import (
 )
 
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
+	t.Parallel()
 	teststate.Lock(t)
 	teststate.Setenv(t, "IKESU_STATE_DIR", teststate.TempDir(t))
 	teststate.Setenv(t, "SHELL", "/bin/sh")
