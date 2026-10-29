@@ -333,10 +333,10 @@ func TestBootShowsSidebarAndPane(t *testing.T) {
 			strings.Contains(tx, " spaces") &&
 			countPanes(tx) == 1 &&
 			strings.Contains(tx, " NORMAL ") &&
-			!strings.Contains(tx, "[full]")
+			strings.Contains(tx, "[full]")
 	})
-	if !strings.Contains(s.text(), " NORMAL ") || strings.Contains(s.text(), "[full]") {
-		t.Fatalf("server must show the 0.2.24 width button and plain header:\n%s", s.text())
+	if !strings.Contains(s.text(), " NORMAL ") || !strings.Contains(s.text(), "[full]") {
+		t.Fatalf("server must show the width and workspace density buttons:\n%s", s.text())
 	}
 }
 
