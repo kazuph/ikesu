@@ -27,12 +27,14 @@ func TestSidebarSingleBoundaryHoverAndThemeColors(t *testing.T) {
 					continue
 				}
 				want := out.Frame.Palette.Subtle
+				glyph := "│"
 				if hover {
 					want = out.Frame.Palette.Accent
+					glyph = "┃"
 				}
 				for y := 2; y < s.Rows-2; y++ {
 					cell := out.Frame.Cell(x, y)
-					if cell.Content != "│" || !reflect.DeepEqual(cell.Style.Fg, want) {
+					if cell.Content != glyph || !reflect.DeepEqual(cell.Style.Fg, want) {
 						t.Fatal(theme, right, hover, y, cell, want)
 					}
 					if cell := out.Frame.Cell(adj, y); cell.Content == "│" {

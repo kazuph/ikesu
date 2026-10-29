@@ -38,8 +38,12 @@ func drawSidebarBoundaries(f *Frame, s *model.AppState, in Input) {
 			continue
 		}
 		style := sidebarBoundaryStyle(f, in, hover)
+		glyph := "│"
+		if hover {
+			glyph = "┃"
+		}
 		for y := area.Y; y < area.Y+area.H; y++ {
-			f.Set(x, y, "│", style)
+			f.Set(x, y, glyph, style)
 			if !s.PaneBorders {
 				continue
 			}

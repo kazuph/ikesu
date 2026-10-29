@@ -35,11 +35,11 @@ try{
   fs.writeFileSync(path.join(evidence,`${r.theme}-${r.state}-cells.json`),JSON.stringify(state));
   assert(state.rows.some(row=>row.includes('LINE-100')),`${r.theme}/${r.state}: real output absent`);
   const border=r.state==='dragged'||r.state==='copy'?33:25;
-  for(let y=0;y<state.height;y++)assert.equal(state.cells[y][border].text,'│',`${r.theme}/${r.state} sidebar row ${y}`);
+  const hovered=['hover','dragged','copy'].includes(r.state);
+  for(let y=0;y<state.height;y++)assert.equal(state.cells[y][border].text,hovered?'┃':'│',`${r.theme}/${r.state} sidebar row ${y}`);
   for(let y=2;y<state.height-2;y++)assert.notEqual(state.cells[y][border+1].text,'│','second sidebar line');
   const bar=state.cells.flat().filter(c=>c.text==='▕'||c.text==='▐').length;
   assert.equal(bar>0,r.state==='scrolling'||r.state==='copy',`${r.state}: scrollbar cells ${bar}`);
-  const hovered=['hover','dragged','copy'].includes(r.state);
   const expected=hovered? (r.theme==='catppuccin'?0x89b4fa:0x1e66f5):(r.theme==='catppuccin'?0xa6adc8:0x6c6f85);
   assert.equal(state.cells[10][border].fg,expected,`${r.state}: border color`);
   const solid=await page.evaluate(({border,expected})=>{
