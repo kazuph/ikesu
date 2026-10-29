@@ -118,6 +118,9 @@ func openRuntimeGeneration(i Input) (_ *generationLease, failure error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := a.validateManaged(false); err != nil {
+		return nil, err
+	}
 	shell, err := a.privateShell(false)
 	if err != nil {
 		return nil, err
@@ -149,7 +152,16 @@ func openRuntimeGeneration(i Input) (_ *generationLease, failure error) {
 	if !ready && !a.generationMatches(dir, g, false) {
 		return nil, fmt.Errorf("guard runtime mismatch")
 	}
-	if _, err := os.Lstat(a.MarkerPath); err == nil {
+	markers, err := a.markerDirectory()
+	if err != nil {
+		return nil, err
+	}
+	_, markerError := markers.read(filepath.Base(a.MarkerPath))
+	markers.close()
+	if markerError != nil && !os.IsNotExist(markerError) {
+		return nil, markerError
+	}
+	if markerError == nil {
 		m, _, err := ReadMarker(i)
 		if err != nil {
 			return nil, err
