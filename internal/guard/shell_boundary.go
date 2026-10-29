@@ -34,6 +34,15 @@ func guardPath(i Input, path string) bool {
 			return true
 		}
 	}
+	// The fixed entry is a symlink to the server's native executable. Protect
+	// writes to that real target too, including replacement via its parent.
+	entry := filepath.Join(root, "shell", strings.TrimSuffix(filepath.Base(i.Env["IKESU_GUARD_MARKER"]), ".json"), "ikesu")
+	if target, err := filepath.EvalSymlinks(entry); err == nil {
+		physical := guardPhysical(path)
+		if physical == target || strings.HasPrefix(target, physical+string(filepath.Separator)) {
+			return true
+		}
+	}
 	return false
 }
 func commandBoundary(i Input) string {

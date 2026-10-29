@@ -63,6 +63,19 @@ func TestAssetChangesRepairAndRearm(t *testing.T) {
 		mutate func() error
 		intact func() bool
 	}{
+		{"runtime-delete", func() error { return os.Remove(a.RuntimePath()) }, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.runtimeIntact() }},
+		{"runtime-corrupt", func() error {
+			if err := os.Remove(a.RuntimePath()); err != nil {
+				return err
+			}
+			return os.WriteFile(a.RuntimePath(), []byte("#!/bin/sh\nexit 0\n"), 0700)
+		}, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.runtimeIntact() }},
+		{"runtime-other-native", func() error {
+			if err := os.Remove(a.RuntimePath()); err != nil {
+				return err
+			}
+			return os.Symlink("/usr/bin/false", a.RuntimePath())
+		}, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.runtimeIntact() }},
 		{"marker-delete", func() error { return os.Remove(a.MarkerPath) }, func() bool { return exists(a.MarkerPath) }},
 		{"shim-delete", func() error { return os.Remove(shim) }, func() bool { return exists(shim) }},
 		{"marker-replace", func() error {

@@ -31,7 +31,7 @@ func (a *Assets) refreshChanges() {
 }
 
 func (a *Assets) assetPaths() []string {
-	paths := []string{a.MarkerPath, a.issuePath(), filepath.Join(a.Root, "guard", "shell", a.Pane, "ready")}
+	paths := []string{a.RuntimePath(), filepath.Join(filepath.Dir(a.RuntimePath()), "current"), a.MarkerPath, a.issuePath(), filepath.Join(a.Root, "guard", "shell", a.Pane, "ready")}
 	for _, cmd := range a.Config.Commands() {
 		paths = append(paths, filepath.Join(a.Bin, cmd))
 	}

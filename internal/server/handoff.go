@@ -170,14 +170,22 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return err
 	}
 	transferred := false
+	var guardState []runtime.GuardCheckpoint
 	defer func() {
 		for _, f := range files {
 			f.Close()
 		}
 		if !transferred {
+			if restore := s.sup.RestoreGuardState(guardState); restore != nil {
+				err = fmt.Errorf("%w; guard rollback failed: %v", err, restore)
+			}
 			s.sup.ResumeHandoff()
 		}
 	}()
+	guardState, err = s.sup.CaptureGuardState()
+	if err != nil {
+		return err
+	}
 	syscall.ForkLock.RLock()
 	pairs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 
 func TestFlatDiffRealSocketReconnectReseedsAndNegotiatesLegacy(t *testing.T) {
 	teststate.Lock(t)
+	useTestShellPrompt(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
 	content := func(in render.Input) string {
@@ -75,12 +76,17 @@ func TestFlatDiffRealSocketReconnectReseedsAndNegotiatesLegacy(t *testing.T) {
 			}
 		}
 	}
-	first, _ := connect(false, "")
+	first, _ := connect(false, "ikesu-test-ready")
+	pid := firstPaneID(t, dir)
 	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'RESEED_%s\\n' FIRST\n"))})
+	// Reconnect after the real shell has produced the content to reseed.
+	// Closing immediately also races delivery of the preceding input message.
+	waitRead(t, dir, pid, "RESEED_FIRST")
 	first.conn.Close()
 	second, saved := connect(false, "RESEED_FIRST")
 	before := content(saved)
 	second.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'RESEED_%s\\n' SECOND\n"))})
+	waitRead(t, dir, pid, "RESEED_SECOND")
 	second.conn.Close()
 	third, _ := connect(false, "RESEED_SECOND")
 	third.conn.Close()

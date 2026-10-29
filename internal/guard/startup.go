@@ -22,52 +22,16 @@ const pinPath = `case "$PATH" in "$IKESU_GUARD_BIN"|"$IKESU_GUARD_BIN":*) ;; *) 
 `
 
 func (a *Assets) prepareStartup(m map[string]string, dir string) error {
-	prefix := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard claude-prefix -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "claude-prefix"), []byte(prefix), 0700); err != nil {
+	if err := a.publishRuntime(); err != nil {
 		return err
 	}
-	wrappers := a.shellFunctions() + a.agentFunctions(dir)
 	m["IKESU_GUARD_ZDOTDIR_ORIG"], m["IKESU_GUARD_ZDOTDIR_SET"] = m["ZDOTDIR"], "0"
 	if _, ok := m["ZDOTDIR"]; ok {
 		m["IKESU_GUARD_ZDOTDIR_SET"] = "1"
 	}
 	m["IKESU_GUARD_SHELL_DIR"] = dir
-	restore := `if [[ "$IKESU_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$IKESU_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
-`
-	capture := `IKESU_GUARD_ZDOTDIR_ORIG="${ZDOTDIR:-}"; IKESU_GUARD_ZDOTDIR_SET=${+ZDOTDIR}
-export IKESU_GUARD_ZDOTDIR_ORIG IKESU_GUARD_ZDOTDIR_SET
-`
-	// Each original file sees the user's ZDOTDIR. Only the intervals between
-	// startup files use our directory; the final phase restores it permanently.
-	phases := []struct{ name, next string }{
-		{".zshenv", "[[ -o login || -o interactive ]]"},
-		{".zprofile", "true"},
-		{".zshrc", "[[ -o login ]]"},
-		{".zlogin", "false"},
-	}
-	for _, phase := range phases {
-		body := restore + fmt.Sprintf("if [[ -f \"${ZDOTDIR:-$HOME}/%s\" ]]; then source \"${ZDOTDIR:-$HOME}/%s\"; fi\n", phase.name, phase.name) + capture + pinPath
-		if phase.name == ".zshenv" {
-			body += wrappers + a.lineHook()
-		}
-		body += "if " + phase.next + "; then export ZDOTDIR=\"$IKESU_GUARD_SHELL_DIR\"; fi\n"
-		if phase.name == ".zshenv" {
-			body += "if [[ ! -o login && ! -o interactive ]]; then\n" + a.debugHook("zsh") + "fi\n"
-		}
-		if phase.name == ".zlogin" {
-			body += a.debugHook("zsh")
-		}
-
-		if e := os.WriteFile(filepath.Join(dir, phase.name), []byte(body), 0600); e != nil {
-			return e
-		}
-	}
 	m["ZDOTDIR"] = dir
 	m["IKESU_GUARD_BASH_ENV_ORIG"] = m["BASH_ENV"]
-	bash := a.bashStartup(dir)
-	if e := os.WriteFile(filepath.Join(dir, "bash-env"), []byte(bash), 0600); e != nil {
-		return e
-	}
 	m["BASH_ENV"] = filepath.Join(dir, "bash-env")
 	if a.prompt {
 		// Interactive bash ignores BASH_ENV. Its first prompt runs after both the
@@ -105,7 +69,7 @@ func (a *Assets) agentFunctions(dir string) string {
  IKESU_GUARD_CLAUDE_PREFIX_ORIG="${CLAUDE_CODE_SHELL_PREFIX:-}" IKESU_GUARD_CLAUDE_PREFIX_SET="${CLAUDE_CODE_SHELL_PREFIX+x}" IKESU_GUARD_CLAUDE_PREFIX="$_ikesu_claude_prefix" CLAUDE_CODE_SHELL_PREFIX="$_ikesu_claude_prefix" ` + invocation
 		}
 		body += fmt.Sprintf(`if ! typeset -f %[1]s >/dev/null 2>&1 && ! alias %[1]s >/dev/null 2>&1; then
-%[1]s() { %[2]s; }
+function %[1]s { %[2]s; }
 fi
 `, agent, invocation)
 	}
@@ -116,6 +80,55 @@ fi
 func (a *Assets) bashStartup(dir string) string {
 	restore := `if [[ "$IKESU_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$IKESU_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
 `
-	return bashRequestReasonCapture + restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
+	return a.generationHeader() + bashRequestReasonCapture + restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
 ` + fmt.Sprintf("if [[ $- != *i* && ${_ikesu_guard_reason_name+x} ]] && [[ %s ]]; then\n", a.shellActive()) + bashRequestReasonRestore + "fi\n" + pinPath + a.shellFunctions() + a.agentFunctions(dir) + a.debugHook("bash")
+}
+
+// A stable loader asks the currently published native binary to refresh its
+// payload before sourcing it. Neither eval nor PATH participates in lookup.
+func (a *Assets) startupLoader(payload string) string {
+	return "if [[ " + a.shellActive() + " ]]; then\n_ikesu_guard_generation=$(" + a.invocation() + " guard refresh) || exit $?\nsource \"$_ikesu_guard_generation/" + filepath.Base(payload) + "\" || exit $?\nelse\nsource " + quote(filepath.Join(filepath.Dir(a.RuntimePath()), "current", filepath.Base(payload))) + " || exit $?\nfi\n"
+}
+
+func (a *Assets) generationHeader() string {
+	info, err := os.Stat(a.Executable)
+	if err != nil {
+		return "# guard generator unavailable\n"
+	}
+	return fmt.Sprintf("# guard generator %q size=%d mtime=%d\n", a.Executable, info.Size(), info.ModTime().UnixNano())
+}
+
+func (a *Assets) startupPayloads(dir string) map[string][]byte {
+	files := map[string][]byte{}
+	wrappers := a.shellFunctions() + a.agentFunctions(dir)
+	restore := `if [[ "$IKESU_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$IKESU_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
+`
+	capture := `IKESU_GUARD_ZDOTDIR_ORIG="${ZDOTDIR:-}"; IKESU_GUARD_ZDOTDIR_SET=${+ZDOTDIR}
+export IKESU_GUARD_ZDOTDIR_ORIG IKESU_GUARD_ZDOTDIR_SET
+`
+	// Each original file sees the user's ZDOTDIR. Only the intervals between
+	// startup files use our directory; the final phase restores it permanently.
+	phases := []struct{ name, next string }{
+		{".zshenv", "[[ -o login || -o interactive ]]"},
+		{".zprofile", "true"},
+		{".zshrc", "[[ -o login ]]"},
+		{".zlogin", "false"},
+	}
+	for _, phase := range phases {
+		body := a.generationHeader() + restore + fmt.Sprintf("if [[ -f \"${ZDOTDIR:-$HOME}/%s\" ]]; then source \"${ZDOTDIR:-$HOME}/%s\"; fi\n", phase.name, phase.name) + capture + pinPath
+		if phase.name == ".zshenv" {
+			body += wrappers + a.lineHook()
+		}
+		body += "if " + phase.next + "; then export ZDOTDIR=\"$IKESU_GUARD_SHELL_DIR\"; fi\n"
+		if phase.name == ".zshenv" {
+			body += "if [[ ! -o login && ! -o interactive ]]; then\n" + a.debugHook("zsh") + "fi\n"
+		}
+		if phase.name == ".zlogin" {
+			body += a.debugHook("zsh")
+		}
+
+		files[phase.name+".current"] = []byte(body)
+	}
+	files["bash-env.current"] = []byte(a.bashStartup(dir))
+	return files
 }
