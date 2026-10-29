@@ -302,9 +302,11 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 	case RowTitle:
 		border.Attrs = uv.AttrBold
 		if in.ServerUI {
+			f.Text(ix, y, " spaces", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}, ix+iw)
 			border.Fg, border.Bg = f.Palette.Text, f.Palette.PopupBG
+		} else {
+			f.Text(ix, y, " spaces", border, ix+iw)
 		}
-		f.Text(ix, y, " spaces", border, ix+iw)
 		v := s.WorkspaceDensity
 		if v != "slim" {
 			v = "full"
