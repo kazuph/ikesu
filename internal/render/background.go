@@ -35,7 +35,7 @@ func persistentBackground(c config.Config) color.Color {
 // Apply the same terminal-default background policy to permanent chrome and
 // unpainted pane cells. Application-supplied colors and floating layers retain
 // their own backgrounds; floating layers are drawn after this pass.
-func applyPersistentBackground(f *Frame, in Input) {
+func applyPersistentBackground(f *Frame, in Input, tabs []layout.Rect) {
 	bg := persistentBackground(in.SidebarConfig)
 	s := in.State
 	var content []layout.Rect
@@ -71,6 +71,20 @@ func applyPersistentBackground(f *Frame, in Input) {
 			cell := f.Cell(x, y)
 			if _, explicit := cell.Style.Bg.(transparentSurfaceBackground); explicit {
 				cell.Style.Bg = nil
+				continue
+			}
+			// Tab chips keep their semantic fill, including the selected accent.
+			// The rest of the strip still uses the common background.
+			tab := false
+			if len(tabs) > 0 && y == tabs[0].Y {
+				for _, r := range tabs {
+					if x >= r.X && x < r.X+r.W {
+						tab = true
+						break
+					}
+				}
+			}
+			if tab {
 				continue
 			}
 			application := false

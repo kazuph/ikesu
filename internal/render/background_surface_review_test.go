@@ -24,7 +24,8 @@ func TestExplicitSurfaceTransparencyOverridesCommonBackground(t *testing.T) {
 						base = color.RGBA{35, 69, 103, 255}
 					}
 					in := Input{State: s, SidebarConfig: c, ServerUI: true}
-					reference := Compose(in).Frame
+					referenceOut := Compose(in)
+					reference := referenceOut.Frame
 					c.Theme.Custom["surface0"] = value
 					in.SidebarConfig = c
 					f := Compose(in).Frame
@@ -38,6 +39,9 @@ func TestExplicitSurfaceTransparencyOverridesCommonBackground(t *testing.T) {
 						if cell.Style.Bg == (color.RGBA{171, 205, 239, 255}) {
 							expected = want
 							count++
+						}
+						if tab, ok := tabBackgroundExpectation(referenceOut, s, i%f.W, i/f.W); ok && tab == f.Palette.Accent {
+							expected = tab
 						}
 						if f.Cells[i].Style.Bg != expected {
 							t.Fatalf("cell %d,%d bg=%v want=%v surface=%s", i%f.W, i/f.W, f.Cells[i].Style.Bg, expected, value)

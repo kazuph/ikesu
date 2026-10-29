@@ -337,7 +337,7 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	if in.ServerUI {
 		drawSidebarCopyFeedback(f, in)
 	}
-	applyPersistentBackground(f, in)
+	applyPersistentBackground(f, in, out.TabHits)
 	if _, tagged := f.Palette.Surface.(transparentSurfaceBackground); tagged {
 		f.Palette.Surface = nil
 	}
@@ -469,15 +469,17 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			if snap != nil && snap.Dead {
 				borderSty = uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrFaint}
 			}
-			f.Box(pr.Rect.X, pr.Rect.Y, pr.Rect.W, pr.Rect.H, borderSty)
-			// Omit only the frame just drawn, before any terminal content.
-			// Fullscreen copy returns above and never has an adjacent frame.
+			// Share the sidebar's existing line without leaving detached corners
+			// at the old pane edge. Content and PTY geometry remain unchanged.
+			frame := pr.Rect
 			if leftSidebar.W > 0 && pr.Rect.X == leftSidebar.X+leftSidebar.W {
-				f.Fill(pr.Rect.X, pr.Rect.Y+1, 1, pr.Rect.H-2, " ", uv.Style{})
+				frame.X--
+				frame.W++
 			}
-			if rightSidebar.W > 0 && pr.Rect.X+pr.Rect.W-1 == rightSidebar.X-1 {
-				f.Fill(pr.Rect.X+pr.Rect.W-1, pr.Rect.Y+1, 1, pr.Rect.H-2, " ", uv.Style{})
+			if rightSidebar.W > 0 && pr.Rect.X+pr.Rect.W == rightSidebar.X {
+				frame.W++
 			}
+			f.Box(frame.X, frame.Y, frame.W, frame.H, borderSty)
 
 			// Title: " ZOOM? %<id> <label> <terminal title> " — hidden
 			// below width 4, truncated to pane width-4 with '…'

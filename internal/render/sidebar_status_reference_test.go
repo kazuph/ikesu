@@ -75,6 +75,11 @@ func TestSidebarStatusReferenceCells(t *testing.T) {
 										// the new color and every other cell still matches exactly.
 										if !right && dx == width-1 || right && dx == 0 {
 											cell.Style.Fg = f.Palette.Dim
+											// Junctions intentionally join the pane frame to this line.
+											// The dedicated frame regression checks their geometry.
+											if cell.Content == "├" || cell.Content == "┤" {
+												cell.Content = "│"
+											}
 										}
 										cells = append(cells, cell)
 									}

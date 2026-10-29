@@ -6,25 +6,26 @@ import (
 	"testing"
 )
 
-// Expected cells were observed on isolated herdr 0.2.57 with mobile mode disabled.
+// Title text and truncation retain the observed contract; the left stroke now
+// reaches the shared sidebar boundary, one column before this title slice.
 func TestStage5RestoreTitleObservedRows(t *testing.T) {
 	cases := []struct {
 		title, restore string
 		width          int
 		want           string
 	}{
-		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "saved session", 34, "┌ %1 ABCDEFGHIJKLM saved session ┐"},
-		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "saved session", 40, "┌ %1 ABCDEFGHIJKLMNOPQRS saved session ┐"},
-		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "saved session", 50, "┌ %1 ABCDEFGHIJKLMNOPQRSTUVWXYZ012 saved session ┐"},
-		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "no saved session", 34, "┌ %1 ABCDEFGHIJ no saved session ┐"},
-		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "no saved session", 40, "┌ %1 ABCDEFGHIJKLMNOP no saved session ┐"},
-		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "no saved session", 50, "┌ %1 ABCDEFGHIJKLMNOPQRSTUVWXYZ no saved session ┐"},
-		{"日本語の長いペインタイトルを表示して省略記号を確認する", "saved session", 34, "┌ %1 日本語の長いペsaved session ┐"},
-		{"日本語の長いペインタイトルを表示して省略記号を確認する", "saved session", 40, "┌ %1 日本語の長いペインタsaved session ┐"},
-		{"日本語の長いペインタイトルを表示して省略記号を確認する", "saved session", 50, "┌ %1 日本語の長いペインタイトルを表saved session ┐"},
-		{"日本語の長いペインタイトルを表示して省略記号を確認する", "no saved session", 34, "┌ %1 日本語の長 no saved session ┐"},
-		{"日本語の長いペインタイトルを表示して省略記号を確認する", "no saved session", 40, "┌ %1 日本語の長いペイ no saved session ┐"},
-		{"日本語の長いペインタイトルを表示して省略記号を確認する", "no saved session", 50, "┌ %1 日本語の長いペインタイトル no saved session ┐"},
+		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "saved session", 34, "─ %1 ABCDEFGHIJKLM saved session ┐"},
+		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "saved session", 40, "─ %1 ABCDEFGHIJKLMNOPQRS saved session ┐"},
+		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "saved session", 50, "─ %1 ABCDEFGHIJKLMNOPQRSTUVWXYZ012 saved session ┐"},
+		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "no saved session", 34, "─ %1 ABCDEFGHIJ no saved session ┐"},
+		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "no saved session", 40, "─ %1 ABCDEFGHIJKLMNOP no saved session ┐"},
+		{"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "no saved session", 50, "─ %1 ABCDEFGHIJKLMNOPQRSTUVWXYZ no saved session ┐"},
+		{"日本語の長いペインタイトルを表示して省略記号を確認する", "saved session", 34, "─ %1 日本語の長いペsaved session ┐"},
+		{"日本語の長いペインタイトルを表示して省略記号を確認する", "saved session", 40, "─ %1 日本語の長いペインタsaved session ┐"},
+		{"日本語の長いペインタイトルを表示して省略記号を確認する", "saved session", 50, "─ %1 日本語の長いペインタイトルを表saved session ┐"},
+		{"日本語の長いペインタイトルを表示して省略記号を確認する", "no saved session", 34, "─ %1 日本語の長 no saved session ┐"},
+		{"日本語の長いペインタイトルを表示して省略記号を確認する", "no saved session", 40, "─ %1 日本語の長いペイ no saved session ┐"},
+		{"日本語の長いペインタイトルを表示して省略記号を確認する", "no saved session", 50, "─ %1 日本語の長いペインタイトル no saved session ┐"},
 	}
 	for _, c := range cases {
 		st := testState(model.SidebarWidth+c.width, 30)

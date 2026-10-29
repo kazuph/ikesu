@@ -27,6 +27,7 @@ func sidebarBoundaryStyle(f *Frame, in Input, hover bool) uv.Style {
 // The pane's adjacent outside edge and sidebar boundary share one visible line.
 // Hit areas stay unchanged, including both columns of the left drag handle.
 func drawSidebarBoundaries(f *Frame, s *model.AppState, in Input) {
+	panes := s.DisplayPaneRects()
 	for _, right := range []bool{false, true} {
 		area, hover := s.SidebarArea(), in.SidebarHover
 		x := area.X + area.W - 1
@@ -42,8 +43,30 @@ func drawSidebarBoundaries(f *Frame, s *model.AppState, in Input) {
 		if hover {
 			glyph = "┃"
 		}
+		joins := map[int]bool{}
+		if s.PaneBorders && (in.Copy == nil || !in.Copy.Fullscreen) {
+			for _, pane := range panes {
+				r := pane.Rect
+				if r.W > 2 && r.H > 2 && (!right && r.X == x+1 || right && r.X+r.W == x) {
+					joins[r.Y], joins[r.Y+r.H-1] = true, true
+				}
+			}
+		}
 		for y := area.Y; y < area.Y+area.H; y++ {
-			f.Set(x, y, glyph, style)
+			line := glyph
+			if joins[y] {
+				line = "├"
+				if right {
+					line = "┤"
+				}
+				if hover {
+					line = "┣"
+					if right {
+						line = "┫"
+					}
+				}
+			}
+			f.Set(x, y, line, style)
 		}
 	}
 }

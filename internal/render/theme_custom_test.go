@@ -34,11 +34,17 @@ func TestEndpointActiveTabUsesPanelColorWithTransparentFallback(t *testing.T) {
 			want := out.Frame.Palette.Accent
 			for x := out.TabHits[0].X; x < out.TabHits[0].X+out.TabHits[0].W; x++ {
 				cell := out.Frame.Cell(x, s.TabBarArea().Y)
-				fg := want
+				fg := out.Frame.Palette.SurfDim
+				if serverUI {
+					fg = out.Frame.Palette.PopupBG
+					if fg == nil {
+						fg = out.Frame.Palette.PanelBG
+					}
+				}
 				if x == out.TabHits[0].X+1 {
 					fg = out.Frame.ThemeColor(Dim)
 				}
-				if cell.Style.Fg != fg || cell.Style.Bg != persistentBackground(in.SidebarConfig) {
+				if cell.Style.Fg != fg || cell.Style.Bg != want {
 					t.Fatalf("server=%v custom=%v cell=%d: %#v", serverUI, custom, x, cell.Style)
 				}
 			}
