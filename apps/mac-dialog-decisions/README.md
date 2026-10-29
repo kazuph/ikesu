@@ -54,6 +54,18 @@ ikesu plugin link <repo>/apps/mac-dialog-decisions
 
 開発リンクの前提: macOS のみ（`platforms = ["macos"]`）。Node.js 18 以上と Xcode（`swiftc`）。パネルは初回起動時に `swiftc` でプラグインの状態ディレクトリへビルドし、`dialog.swift` が変わったときだけ作り直します（`DEVELOPER_DIR` が CommandLineTools を指していると SDK と合わずに失敗するため、ビルド時は外します）。
 
+## アプリアイコン
+
+元画像は `docs/brand/mac-dialog-icon.png` です。READMEの鯉をそのまま使う、店長が選んだ候補です。`koi-atlas.png` の紅白と金のコマを最近傍で拡大しています。
+
+元画像を更新した後は、macOSで次を実行します。ImageMagickの `magick` とmacOSの `iconutil` を使います。
+
+```bash
+python3 scripts/generate_mac_dialog_icon.py
+```
+
+16〜1024pxを最近傍で作り、標準の1x/2x表現をICNSへまとめます。64pxは32ptの2x表現です。配布アプリの `Contents/Resources` に入れ、署名前に全サイズを検査します。署名・配信・版を決める手順は従来どおりです。
+
 ## ネットワークの試験
 
 パネルとSlackの全試験は、試験用バイナリ・署名済みアプリ等の環境を設定してから `scripts/test-panels.sh` で実行します。各試験と試験ファイルに `--test-timeout=60000` を付けます。既存のネイティブ処理の上限60秒を使い、実測で最長35.6秒の試験も含めて検査内容を保持します。miniへは `ssh -tt` で起動し、取消時にも遠隔の試験を終了させます。
