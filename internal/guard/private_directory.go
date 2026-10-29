@@ -33,6 +33,7 @@ func privateStat(fd int, mask uint32) error {
 func trustedAncestors(path string) error {
 	// Check lexical links as well as their resolved targets. Otherwise a foreign
 	// owner could retarget an ancestor after its target had passed validation.
+	var writable error
 	for current := path; ; current = filepath.Dir(current) {
 		var st unix.Stat_t
 		if err := unix.Lstat(current, &st); err != nil {
@@ -41,12 +42,20 @@ func trustedAncestors(path string) error {
 		if st.Uid != 0 && int(st.Uid) != os.Geteuid() {
 			return fmt.Errorf("foreign guard ancestor: %s", current)
 		}
+		// Other users cannot reach descendants through an owner-only directory.
+		// Still inspect its parents: an exposed writable parent could replace it.
+		if st.Mode&unix.S_IFMT == unix.S_IFDIR && int(st.Uid) == os.Geteuid() && st.Mode&0077 == 0 {
+			writable = nil
+		}
 		if st.Mode&unix.S_IFMT != unix.S_IFLNK && st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) {
-			return fmt.Errorf("writable guard ancestor: %s", current)
+			writable = fmt.Errorf("writable guard ancestor: %s", current)
 		}
 		if filepath.Dir(current) == current {
 			break
 		}
+	}
+	if writable != nil {
+		return writable
 	}
 	for {
 		info, err := os.Stat(path)
@@ -57,12 +66,18 @@ func trustedAncestors(path string) error {
 		if err = unix.Stat(path, &s); err != nil {
 			return err
 		}
-		if !info.IsDir() || (int(s.Uid) != os.Geteuid() && s.Uid != 0) || (s.Mode&0022 != 0 && !(s.Uid == 0 && s.Mode&unix.S_ISVTX != 0)) {
+		if !info.IsDir() || (int(s.Uid) != os.Geteuid() && s.Uid != 0) {
 			return fmt.Errorf("untrusted guard ancestor: %s", path)
+		}
+		if int(s.Uid) == os.Geteuid() && s.Mode&0077 == 0 {
+			writable = nil
+		}
+		if s.Mode&0022 != 0 && !(s.Uid == 0 && s.Mode&unix.S_ISVTX != 0) {
+			writable = fmt.Errorf("untrusted guard ancestor: %s", path)
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
-			return nil
+			return writable
 		}
 		path = parent
 	}
