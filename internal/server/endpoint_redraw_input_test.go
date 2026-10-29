@@ -3,6 +3,9 @@ package server
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,11 +15,20 @@ import (
 
 func TestEndpointBothViewersRetainInputDuringSharedTabRedraw(t *testing.T) {
 	teststate.Lock(t)
+	useTestShellPrompt(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)
 	ready := dialClient(t, dir)
 	ready.conn.Close()
 	pid := firstPaneID(t, dir)
+	waitRead(t, dir, pid, "ikesu-test-ready")
+	ledger := filepath.Join(t.TempDir(), "input-ledger")
+	t.Cleanup(func() {
+		if t.Failed() {
+			data, err := os.ReadFile(ledger)
+			t.Logf("execution ledger: %q error=%v", data, err)
+		}
+	})
 	first, second := dialClient(t, dir), dialClient(t, dir)
 	drained := make(chan struct{}, 2)
 	for _, c := range []*testConn{first, second} {
@@ -38,6 +50,11 @@ func TestEndpointBothViewersRetainInputDuringSharedTabRedraw(t *testing.T) {
 		}(c)
 	}
 	defer func() { first.conn.Close(); second.conn.Close(); <-drained; <-drained }()
+	// The real tee process records exactly the bytes delivered by both viewers.
+	// Canonical input and readline repainting belong to the shell, so disable
+	// those before testing transport retention under unacknowledged redraws.
+	first.send(t, clientMsg{Type: "input", Data: encode64([]byte(fmt.Sprintf("/bin/stty -echo -icanon min 1 time 0; printf 'INPUT_%%s\\n' READY; exec /usr/bin/tee %q\n", ledger)))})
+	waitRead(t, dir, pid, "INPUT_READY")
 	// Neither viewer acknowledges subsequent redraws. Resize and shell input
 	// alternate between them after each has received its first real snapshot.
 	for index := 0; index < 10; index++ {
@@ -47,9 +64,31 @@ func TestEndpointBothViewersRetainInputDuringSharedTabRedraw(t *testing.T) {
 			cols   int
 		}{{first, "FIRST", 80}, {second, "SECOND", 160}} {
 			row.client.send(t, clientMsg{Type: "resize", Cols: row.cols, Rows: 45})
-			command := fmt.Sprintf("printf '%s_%%s\\n' %02d\n", row.name, index)
+			command := fmt.Sprintf("%s_%02d\n", row.name, index)
 			row.client.send(t, clientMsg{Type: "input", Data: encode64([]byte(command))})
 		}
+	}
+	// Keep all screen assertions, and independently verify exact receipt and
+	// each viewer's ordering from the real PTY process's durable byte stream.
+	waitPromptCondition(t, func() bool {
+		data, _ := os.ReadFile(ledger)
+		return strings.Count(string(data), "\n") == 20
+	})
+	data, err := os.ReadFile(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := map[string]int{"FIRST": 0, "SECOND": 0}
+	for _, marker := range strings.Fields(string(data)) {
+		name, _, found := strings.Cut(marker, "_")
+		index, known := next[name]
+		if !found || !known || marker != fmt.Sprintf("%s_%02d", name, index) {
+			t.Fatalf("lost, duplicated or reordered input: %q", data)
+		}
+		next[name]++
+	}
+	if next["FIRST"] != 10 || next["SECOND"] != 10 {
+		t.Fatalf("incomplete input: %q", data)
 	}
 	for index := 0; index < 10; index++ {
 		for _, name := range []string{"FIRST", "SECOND"} {
