@@ -44,6 +44,9 @@ func drawRightSidebarHeader(f *Frame, s *model.AppState, in Input, y int) {
 	}{
 		{h.Agents, "[agents]", !in.JobsPanel}, {h.Jobs, "[jobs]", in.JobsPanel}, {h.Sort, SidebarAgentSortLabel(s), false},
 	} {
+		if in.JobsPanel && button.r == h.Sort {
+			continue
+		}
 		style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
 		if button.selected {
 			style.Fg = f.Palette.Accent

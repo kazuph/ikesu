@@ -180,15 +180,18 @@ func (a *App) toggleSidebarSetting(density bool) {
 		}
 		edit = config.Edit{Kind: "agent_sort", Value: sort}
 	}
-	a.editConfiguration(edit, func(_ config.Config, err error) {
+	a.editConfiguration(edit, func(c config.Config, err error) {
 		if err != nil {
 			a.worktreeError(err)
 			return
 		}
 		if density {
-			a.st.WorkspaceDensity = value
+			a.sidebarConfig.UI.WorkspacePanelDensity = c.UI.WorkspacePanelDensity
+			a.st.WorkspaceDensity = c.WorkspaceDensity()
 		} else {
-			a.st.AgentScope = value
+			a.sidebarConfig.UI.AgentPanelSort = c.UI.AgentPanelSort
+			a.sidebarConfig.UI.AgentPanelScope = c.UI.AgentPanelScope
+			a.st.AgentScope = c.AgentScope()
 			a.agentScroll = 0
 		}
 		a.sidebarScroll = 0

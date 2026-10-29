@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/teststate"
+	"io"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -30,12 +33,20 @@ func TestServerSlimCardGitLineSelectsItsWorkspace(t *testing.T) {
 	t.Fatal("second workspace git line not found")
 }
 
-func TestServerHiddenSidebarControlsIgnoreClicks(t *testing.T) {
+func TestServerDensityButtonAndHiddenSidebarControls(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "IKESU_CONFIG", t.TempDir()+"/config.toml")
 	s := model.New("/tmp", 160, 45)
-	a := NewApp(s, runtime.NewSupervisor(), nil, "/tmp")
+	a := NewApp(s, runtime.NewSupervisor(), io.Discard, "/tmp")
 	a.SetServerUI()
+	a.setSidebarConfig(config.Config{}, true)
+	a.sidebarClick(uv.Mouse{X: 20, Y: 0, Button: uv.MouseLeft})
+	cfg, err := config.Load()
+	if err != nil || s.WorkspaceDensity != "slim" || cfg.WorkspaceDensity() != "slim" {
+		t.Fatal("restored density button did not persist", s.WorkspaceDensity, cfg.WorkspaceDensity(), err)
+	}
 	width, density, scope := s.SidebarArea().W, s.WorkspaceDensity, s.AgentScope
-	for _, pos := range [][2]int{{20, 0}, {20, render.SidebarSplitY(s) + 1}, {24, 44}} {
+	for _, pos := range [][2]int{{20, render.SidebarSplitY(s) + 1}, {24, 44}} {
 		a.sidebarClick(uv.Mouse{X: pos[0], Y: pos[1], Button: uv.MouseLeft})
 		if !s.SidebarVisible || s.SidebarArea().W != width || s.WorkspaceDensity != density || s.AgentScope != scope {
 			t.Fatalf("hidden control acted at %v", pos)

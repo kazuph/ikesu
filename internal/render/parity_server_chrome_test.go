@@ -13,10 +13,13 @@ func TestServerChromeRecordedControlsAndCopyStatus(t *testing.T) {
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	out := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 	text := screenText(t, out, s.Cols, s.Rows)
-	for _, hidden := range []string{"[full]", "«"} {
+	for _, hidden := range []string{"«"} {
 		if strings.Contains(text, hidden) {
 			t.Fatalf("server shows an unobserved control %q", hidden)
 		}
+	}
+	if !strings.Contains(strings.Split(text, "\n")[0], "[full]") {
+		t.Fatal("server density button missing")
 	}
 	if out.NewTabRect.W != 3 || !strings.Contains(text, " NORMAL ") || out.Frame.Cell(s.SidebarArea().W-1, 10).Content != "│" {
 		t.Fatal("server lost tab-add target or sidebar boundary")

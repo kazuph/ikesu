@@ -29,7 +29,7 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 	}
 	if m.Button == uv.MouseLeft {
 		h := render.RightSidebarHeaderFor(a.st, 0)
-		if pointIn(m.X, m.Y, h.Sort) {
+		if !a.jobsPanel && pointIn(m.X, m.Y, h.Sort) {
 			a.toggleSidebarSetting(false)
 			return
 		}
