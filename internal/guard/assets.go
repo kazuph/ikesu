@@ -70,7 +70,7 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	m["IKESU_GUARD_BIN"] = a.Bin
 	m["IKESU_GUARD_MARKER"] = a.MarkerPath
 	m["IKESU_GUARD_LAUNCH_CWD"] = cwd
-	m["IKESU_GUARD_EXECUTABLE"] = a.Executable
+	m["IKESU_GUARD_EXECUTABLE"] = a.RuntimePath()
 	if a.Config.EffectiveMode() == "enforce" {
 		m["IKESU_GUARD_ENFORCING"] = "1"
 	} else {
@@ -79,6 +79,9 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	m["PATH"] = a.Bin + string(os.PathListSeparator) + m["PATH"]
 	shellDir := filepath.Join(a.Root, "guard", "shell", a.Pane)
 	if e := os.MkdirAll(shellDir, 0700); e != nil {
+		return nil, e
+	}
+	if e := a.publishRuntime(); e != nil {
 		return nil, e
 	}
 	if e := a.prepareStartup(m, shellDir); e != nil {
@@ -95,7 +98,7 @@ func (a *Assets) identity() string {
 	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane)
 }
 func (a *Assets) invocation() string {
-	return a.identity() + " " + quote(a.Executable)
+	return a.identity() + " " + quote(a.RuntimePath())
 }
 func (a *Assets) shellActive() string {
 	if len(a.Config.Commands()) == 0 {
@@ -185,9 +188,9 @@ func (a *Assets) sync(agent string) error {
 	// Publish only after all forwarding entries exist. Repair deleted assets
 	// even when the detected agent has not changed.
 	for _, cmd := range a.Config.Commands() {
-		s := shimScript(a.identity(), a.Executable, cmd)
+		s := shimScript(a.identity(), a.RuntimePath(), cmd)
 		path := filepath.Join(a.Bin, cmd)
-		if e := os.WriteFile(path, []byte(s), 0700); e != nil {
+		if e := writeGenerated(path, []byte(s), 0700); e != nil {
 			_ = a.remove()
 			return a.setIssue(e.Error())
 		}

@@ -18,6 +18,19 @@ func (r *runner) guardCLI(a []string) int {
 		return 0
 	}
 	sub := a[0]
+	if sub == "refresh" {
+		if err := guard.RefreshStartup(guard.Input{Env: guard.EnvMap(os.Environ())}); err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+		return 0
+	}
+	if sub == "exec" || sub == "line" || sub == "claude-prefix" {
+		if err := guard.RefreshStartup(guard.Input{Env: guard.EnvMap(os.Environ())}); err != nil {
+			fmt.Fprintln(r.errOut(), err)
+			return 1
+		}
+	}
 	a = a[1:]
 	var c config.Config
 	var e error

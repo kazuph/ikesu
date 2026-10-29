@@ -1,6 +1,9 @@
 package guard
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
 
 type Transfer struct {
 	Root, Pane, Bin, MarkerPath, Executable, Active string
@@ -30,6 +33,17 @@ func (a *Assets) RebindSocket(socket string) error {
 	}
 	old := a.meta.Socket
 	agent := a.active
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	a.Executable = exe
+	if err = a.publishRuntime(); err != nil {
+		return err
+	}
+	if err = a.prepareStartup(map[string]string{}, filepath.Dir(a.RuntimePath())); err != nil {
+		return err
+	}
 	a.meta.Socket, a.active = socket, ""
 	if agent == "" {
 		return nil

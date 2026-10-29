@@ -22,8 +22,8 @@ const pinPath = `case "$PATH" in "$IKESU_GUARD_BIN"|"$IKESU_GUARD_BIN":*) ;; *) 
 `
 
 func (a *Assets) prepareStartup(m map[string]string, dir string) error {
-	prefix := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.Executable) + " guard claude-prefix -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "claude-prefix"), []byte(prefix), 0700); err != nil {
+	prefix := "#!/bin/sh\n" + a.identity() + " exec " + quote(a.RuntimePath()) + " guard claude-prefix -- \"$@\"\n"
+	if err := writeGenerated(filepath.Join(dir, "claude-prefix"), []byte(prefix), 0700); err != nil {
 		return err
 	}
 	wrappers := a.shellFunctions() + a.agentFunctions(dir)
@@ -46,7 +46,7 @@ export IKESU_GUARD_ZDOTDIR_ORIG IKESU_GUARD_ZDOTDIR_SET
 		{".zlogin", "false"},
 	}
 	for _, phase := range phases {
-		body := restore + fmt.Sprintf("if [[ -f \"${ZDOTDIR:-$HOME}/%s\" ]]; then source \"${ZDOTDIR:-$HOME}/%s\"; fi\n", phase.name, phase.name) + capture + pinPath
+		body := a.generationHeader() + restore + fmt.Sprintf("if [[ -f \"${ZDOTDIR:-$HOME}/%s\" ]]; then source \"${ZDOTDIR:-$HOME}/%s\"; fi\n", phase.name, phase.name) + capture + pinPath
 		if phase.name == ".zshenv" {
 			body += wrappers + a.lineHook()
 		}
@@ -58,14 +58,21 @@ export IKESU_GUARD_ZDOTDIR_ORIG IKESU_GUARD_ZDOTDIR_SET
 			body += a.debugHook("zsh")
 		}
 
-		if e := os.WriteFile(filepath.Join(dir, phase.name), []byte(body), 0600); e != nil {
+		if e := writeGenerated(filepath.Join(dir, phase.name+".current"), []byte(body), 0600); e != nil {
+			return e
+		}
+		loader := a.startupLoader(filepath.Join(dir, phase.name+".current"))
+		if e := writeGenerated(filepath.Join(dir, phase.name), []byte(loader), 0600); e != nil {
 			return e
 		}
 	}
 	m["ZDOTDIR"] = dir
 	m["IKESU_GUARD_BASH_ENV_ORIG"] = m["BASH_ENV"]
 	bash := a.bashStartup(dir)
-	if e := os.WriteFile(filepath.Join(dir, "bash-env"), []byte(bash), 0600); e != nil {
+	if e := writeGenerated(filepath.Join(dir, "bash-env.current"), []byte(bash), 0600); e != nil {
+		return e
+	}
+	if e := writeGenerated(filepath.Join(dir, "bash-env"), []byte(a.startupLoader(filepath.Join(dir, "bash-env.current"))), 0600); e != nil {
 		return e
 	}
 	m["BASH_ENV"] = filepath.Join(dir, "bash-env")
@@ -116,6 +123,20 @@ fi
 func (a *Assets) bashStartup(dir string) string {
 	restore := `if [[ "$IKESU_GUARD_ZDOTDIR_SET" == 1 ]]; then export ZDOTDIR="$IKESU_GUARD_ZDOTDIR_ORIG"; else unset ZDOTDIR; fi
 `
-	return bashRequestReasonCapture + restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
+	return a.generationHeader() + bashRequestReasonCapture + restore + `if [[ -n "$IKESU_GUARD_BASH_ENV_ORIG" && -f "$IKESU_GUARD_BASH_ENV_ORIG" ]]; then source "$IKESU_GUARD_BASH_ENV_ORIG"; fi
 ` + fmt.Sprintf("if [[ $- != *i* && ${_ikesu_guard_reason_name+x} ]] && [[ %s ]]; then\n", a.shellActive()) + bashRequestReasonRestore + "fi\n" + pinPath + a.shellFunctions() + a.agentFunctions(dir) + a.debugHook("bash")
+}
+
+// A stable loader asks the currently published native binary to refresh its
+// payload before sourcing it. Neither eval nor PATH participates in lookup.
+func (a *Assets) startupLoader(payload string) string {
+	return "if [[ -e " + quote(a.MarkerPath) + " ]]; then\n" + a.invocation() + " guard refresh || exit $?\nfi\n" + "source " + quote(payload) + " || exit $?\n"
+}
+
+func (a *Assets) generationHeader() string {
+	info, err := os.Stat(a.Executable)
+	if err != nil {
+		return "# guard generator unavailable\n"
+	}
+	return fmt.Sprintf("# guard generator %q size=%d mtime=%d\n", a.Executable, info.Size(), info.ModTime().UnixNano())
 }

@@ -288,31 +288,11 @@ func paneBashEnv(i Input) (string, bool) {
 	if e != nil || !active || m.Mode != "enforce" || !m.Policy.Active() || m.Policy.EffectiveMode() != "enforce" {
 		return "", false
 	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(i.Env["IKESU_GUARD_MARKER"])))
-	paneNumber, e := strconv.Atoi(strings.TrimPrefix(m.Pane, "p"))
-	if e != nil || paneNumber <= 0 || m.Pane != "p"+strconv.Itoa(paneNumber) {
-		return "", false
-	}
-	paneDir := "p_" + strconv.Itoa(paneNumber)
-	a := NewAssets(root, paneDir, "", *m.Policy)
-	a.meta = m
-	if filepath.Clean(i.Env["IKESU_GUARD_MARKER"]) != a.MarkerPath {
-		return "", false
-	}
-	exe, e := os.Executable()
+	a, e := markerAssets(i, m)
 	if e != nil {
 		return "", false
 	}
-	actual, e := os.Stat(exe)
-	if e != nil {
-		return "", false
-	}
-	generatedExe := i.Env["IKESU_GUARD_EXECUTABLE"]
-	generated, e := os.Stat(generatedExe)
-	if e != nil || !os.SameFile(actual, generated) {
-		return "", false
-	}
-	a.Executable = generatedExe
+	root, paneDir := a.Root, a.Pane
 	dir := filepath.Join(root, "guard", "shell", paneDir)
 	path := filepath.Join(dir, "bash-env")
 	st, e := os.Lstat(path)
@@ -320,7 +300,11 @@ func paneBashEnv(i Input) (string, bool) {
 		return "", false
 	}
 	data, e := os.ReadFile(path)
-	if e != nil || string(data) != a.bashStartup(dir) {
+	if e != nil || string(data) != a.startupLoader(filepath.Join(dir, "bash-env.current")) {
+		return "", false
+	}
+	payload, e := os.ReadFile(path + ".current")
+	if e != nil || string(payload) != a.bashStartup(dir) {
 		return "", false
 	}
 	return path, true
