@@ -37,6 +37,9 @@ func TestSidebarSingleBoundaryHoverAndThemeColors(t *testing.T) {
 					if cell.Content != glyph || !reflect.DeepEqual(cell.Style.Fg, want) {
 						t.Fatal(theme, right, hover, y, cell, want)
 					}
+					if cell.Style.Bg != nil {
+						t.Fatal("sidebar boundary must retain the default transparent background", theme, right, hover, y, cell.Style.Bg)
+					}
 					if cell := out.Frame.Cell(adj, y); cell.Content == "│" {
 						t.Fatal("duplicate boundary", right, y)
 					}

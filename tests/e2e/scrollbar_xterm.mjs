@@ -28,7 +28,7 @@ try{
   await page.evaluate(data=>new Promise(resolve=>term.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)),()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))),data);
   const state=await page.evaluate(()=>{
    const rows=Array.from({length:term.rows},(_,y)=>term.buffer.active.getLine(y)?.translateToString(false)||'');
-   const cells=[];for(let y=0;y<term.rows;y++){const row=[];for(let x=0;x<term.cols;x++){const c=term.buffer.active.getLine(y)?.getCell(x);row.push({text:c?.getChars(),fg:c?.getFgColor(),bold:c?.isBold()});}cells.push(row);}
+   const cells=[];for(let y=0;y<term.rows;y++){const row=[];for(let x=0;x<term.cols;x++){const c=term.buffer.active.getLine(y)?.getCell(x);row.push({text:c?.getChars(),fg:c?.getFgColor(),bold:c?.isBold(),bgDefault:c?.isBgDefault()});}cells.push(row);}
    const size=term._core._renderService.dimensions.css.cell;
    return {rows,cells,cellWidth:size.width,cellHeight:size.height,cols:term.cols,height:term.rows};
   });
@@ -36,6 +36,8 @@ try{
   assert(state.rows.some(row=>row.includes('LINE-100')),`${r.theme}/${r.state}: real output absent`);
   const border=['dragged','copy','fullscreen'].includes(r.state)?33:25;
   const hovered=['hover','dragged','copy','fullscreen'].includes(r.state);
+  assert(state.rows[0].slice(0,border).includes('[full]'),`${r.state}: workspace density button lost after integration`);
+  for(let y=0;y<state.height;y++)assert.equal(state.cells[y][border].bgDefault,true,`${r.theme}/${r.state}: boundary background became opaque at row ${y}`);
   for(let y=0;y<state.height;y++)assert.equal(state.cells[y][border].text,hovered?'┃':'│',`${r.theme}/${r.state} sidebar row ${y}`);
   if(r.state!=='fullscreen')for(let y=2;y<state.height-2;y++)assert.notEqual(state.cells[y][border+1].text,'│','second sidebar line');
   if(r.state==='fullscreen'){
