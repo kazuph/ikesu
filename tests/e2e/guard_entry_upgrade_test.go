@@ -88,3 +88,32 @@ func TestGuardEntryUpgradeKeepsClaudePane(t *testing.T) {
 	}
 	t.Logf("persistent Claude-like pane used native %s; source=%s; missing/corrupt entry stopped execution", next, old)
 }
+
+func TestGuardDisabledPaneSurvivesHandoffWithoutAssets(t *testing.T) {
+	t.Parallel()
+	cfg := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[guard]\nenabled=false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := startEnv(t, map[string]string{"IKESU_CONFIG": cfg})
+	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	pidfile := filepath.Join(s.stateDir, "shell-pid")
+	s.send("printf '%s' $$ > '" + pidfile + "'\r")
+	s.waitFor("pid saved", 5*time.Second, func(string) bool { _, err := os.Stat(pidfile); return err == nil })
+	before, err := os.ReadFile(pidfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
+		t.Fatal(out, err)
+	}
+	s.send("printf '%s' $$ > '" + pidfile + "'; printf 'DISABLED_%s\\n' ALIVE\r")
+	s.waitFor("same pane accepts input", 5*time.Second, func(text string) bool { return strings.Contains(text, "DISABLED_ALIVE") })
+	after, err := os.ReadFile(pidfile)
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("shell changed: %s -> %s: %v", before, after, err)
+	}
+	if _, err := os.Lstat(filepath.Join(s.stateDir, "guard", "shell")); !os.IsNotExist(err) {
+		t.Fatalf("disabled pane gained startup files: %v", err)
+	}
+}

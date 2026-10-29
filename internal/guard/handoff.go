@@ -31,6 +31,11 @@ func (a *Assets) RebindSocket(socket string) error {
 	if !filepath.IsAbs(socket) {
 		return a.setIssue("引き継ぎ先のソケットは絶対パスで指定してください")
 	}
+	// Disabled and never-injected panes must remain free of guard assets.
+	if !a.injected || !a.Config.Active() {
+		a.meta.Socket = socket
+		return nil
+	}
 	old := a.meta.Socket
 	agent := a.active
 	exe, err := os.Executable()

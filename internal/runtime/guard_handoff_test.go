@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -31,5 +32,22 @@ func TestHandoffRebindsEveryGuardMarker(t *testing.T) {
 		if e != nil || !active || meta.Socket != socket {
 			t.Fatal(meta, active, e)
 		}
+	}
+}
+
+func TestHandoffDoesNotInjectDisabledGuard(t *testing.T) {
+	s := NewSupervisor()
+	root := t.TempDir()
+	disabled := false
+	a := guard.NewAssets(root, "p_1", "/usr/bin/true", guard.Config{Enabled: &disabled})
+	if _, err := a.Prepare([]string{"IKESU_PANE_ID=p1", "PATH=/bin"}, root); err != nil {
+		t.Fatal(err)
+	}
+	s.panes[1] = &Pane{ID: 1, guard: guard.Import(a.Transfer())}
+	if err := s.RebindGuardSocket(filepath.Join(root, "next.sock")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "guard")); !os.IsNotExist(err) {
+		t.Fatalf("disabled pane gained assets: %v", err)
 	}
 }
