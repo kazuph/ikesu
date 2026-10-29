@@ -10,7 +10,7 @@ import (
 )
 
 // CustomColorKeys follows the published configuration reference.
-var CustomColorKeys = []string{"accent", "panel_bg", "surface0", "surface1", "surface_dim", "overlay0", "overlay1", "text", "subtext0", "mauve", "green", "yellow", "red", "blue", "teal", "peach"}
+var CustomColorKeys = []string{"accent", "panel_bg", "surface0", "surface1", "surface_dim", "overlay0", "overlay1", "text", "subtext0", "mauve", "green", "yellow", "red", "blue", "teal", "peach", "sidebar_border", "sidebar_border_hover"}
 
 func (c Config) ValidateCustomColors() error {
 	for key, value := range c.Theme.Custom {

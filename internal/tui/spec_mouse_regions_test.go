@@ -49,6 +49,7 @@ func TestSPECRightClickWorkspaceTabFrameAndTabWheel(t *testing.T) {
 func TestSPECLeftDownPriorityAndActionOverlapOrder(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
+	a.sidebarConfig.UI.PaneScrollbars = "always"
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}

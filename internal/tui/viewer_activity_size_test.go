@@ -160,7 +160,7 @@ func TestViewerAPIHiddenSplitKeepsItsOwnGeometry(t *testing.T) {
 	a.exec(model.CmdSplitPane{Pane: pid, Dir: layout.Vertical, Ratio: .5})
 	after := viewerTerminalSizes(a)
 	for _, id := range tab.Layout.PaneIDs() {
-		if after[id][1] != before[1] || after[id][0] != (before[0]-3)/2 {
+		if after[id][1] != before[1] || after[id][0] != (before[0]-1)/2 {
 			t.Fatal("hidden API split used another tab's viewport", before, after[id])
 		}
 	}

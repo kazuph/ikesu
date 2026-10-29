@@ -271,6 +271,9 @@ type App struct {
 	fwd                                      int         // pane receiving forwarded mouse events during a drag
 	fwdStrip                                 uv.KeyMod
 	scroll                                   map[int]int
+	scrollbarUntil                           map[int]time.Time
+	sidebarHover                             bool
+	rightSidebarHover                        bool
 	trackers                                 map[int]*status.Tracker
 	activity                                 *paneActivity
 	blockerObservations                      map[int]blockerObservation
@@ -438,6 +441,7 @@ func (a *App) SetClipboardHook(f func(pid int, data string)) { a.clipboardHook =
 // SetScrollOffset pins a pane's display to offset_from_bottom lines into
 // its scrollback (pane.scroll; 0 follows the live bottom). App loop only.
 func (a *App) SetScrollOffset(pid, off int) {
+	a.showPaneScrollbar(pid)
 	if p := a.sup.Get(pid); p != nil {
 		if mx := p.Snapshot().ScrollbackLen; off > mx {
 			off = mx

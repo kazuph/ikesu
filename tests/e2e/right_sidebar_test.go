@@ -28,7 +28,7 @@ func TestRightSidebarNineStatesRealTerminal(t *testing.T) {
 			widths := []int{26, 2, 0}
 			for left := 0; left < 3; left++ {
 				for right := 0; right < 3; right++ {
-					cols, rows := termW-widths[left]-widths[right]-3, termH-4
+					cols, rows := termW-widths[left]-widths[right]-2, termH-4
 					marker := fmt.Sprintf("SIZE_%d%d_%d_%d", left, right, rows, cols)
 					s.send(fmt.Sprintf("set -- $(stty size); printf '\\nSIZE_%d%d_%%s_%%s\\n' \"$1\" \"$2\"\r", left, right))
 					s.waitFor("kernel PTY size "+marker, 5*time.Second, func(tx string) bool { return strings.Contains(tx, marker) })
@@ -89,7 +89,7 @@ func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
 	second := startEnv(t, map[string]string{"IKESU_STATE_DIR": first.stateDir})
 	second.waitFor("reattached shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "SAVE_READY") })
 	second.send("set -- $(stty size); printf '\\nRESTORED_%s_%s\\n' \"$1\" \"$2\"\r")
-	second.waitFor("restored geometry", 5*time.Second, func(tx string) bool { return strings.Contains(tx, fmt.Sprintf("RESTORED_%d_%d", termH-4, termW-2-3)) })
+	second.waitFor("restored geometry", 5*time.Second, func(tx string) bool { return strings.Contains(tx, fmt.Sprintf("RESTORED_%d_%d", termH-4, termW-2-2)) })
 	if second.emu.CellAt(termW-2, 5).Content != "│" || second.emu.CellAt(0, 0).Content == "│" {
 		t.Fatal("reattach lost right compact / left hidden modes")
 	}
@@ -116,7 +116,7 @@ func TestRightSidebarNarrowTerminalAdaptsWithoutSaving(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, tc := range []struct{ cols, right, pty int }{{80, 2, 49}, {67, 0, 38}, {64, 0, 61}, {120, 26, 65}} {
+			for _, tc := range []struct{ cols, right, pty int }{{80, 2, 50}, {67, 0, 39}, {64, 0, 62}, {120, 26, 66}} {
 				if err := pty.Setsize(s.pt, &pty.Winsize{Cols: uint16(tc.cols), Rows: termH}); err != nil {
 					t.Fatal(err)
 				}

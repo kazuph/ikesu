@@ -82,6 +82,8 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 	ui.fr, ui.enc = &input.Framer{}, &render.Encoder{}
 	ui.drawViewers, ui.tickViewers, ui.visiblePane = nil, nil, nil
 	ui.scroll = map[int]int{}
+	ui.scrollbarUntil = nil
+	ui.sidebarHover, ui.rightSidebarHover = false, false
 	ui.focusHistory = nil
 	ui.focusHistoryAt = 0
 	ui.cm, ui.sel, ui.sep, ui.sb = nil, nil, nil, nil
@@ -182,6 +184,7 @@ func (v *Viewer) Begin(a *App, xp, yp int) {
 }
 
 func (v *Viewer) Tick(a *App) {
+	v.with(a, func(ui *App) { ui.expirePaneScrollbars(time.Now()) })
 	v.with(a, func(ui *App) { ui.expireToast(); ui.expireCopied(time.Now()); ui.flushSidebarDividerClicks(time.Now()) })
 	if v.app.sel != nil && v.app.sel.autoDir != 0 {
 		v.with(a, func(ui *App) { ui.selectionAutoScroll(time.Now()) })

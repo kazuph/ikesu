@@ -3,6 +3,7 @@ package tui
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/model"
+	"time"
 )
 
 // Hover and horizontal wheel belong to the application body, not the pane
@@ -12,8 +13,10 @@ func (a *App) forwardTrackingBody(m uv.Mouse, event uv.MouseEvent) {
 	if !ok {
 		return
 	}
-	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
-	inner.W -= gutter
+	inner, _ := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+	if a.paneScrollbarVisible(pr.ID, time.Now()) {
+		inner.W--
+	}
 	if !pointIn(m.X, m.Y, inner) {
 		return
 	}

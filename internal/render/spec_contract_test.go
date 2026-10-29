@@ -111,8 +111,8 @@ func TestSPECCopyCursorStyleAndOutOfRange(t *testing.T) {
 	s := testState(90, 30)
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	r := s.ActiveWorkspace().TabRef().PaneRects(s.PanesArea())[0].Rect
-	inner, g := model.PaneContentRect(r, true)
-	for _, pos := range [][2]int{{0, 0}, {inner.W - g - 1, inner.H - 1}, {-1, 0}, {inner.W - g, 0}, {0, -1}, {0, inner.H}} {
+	inner, _ := model.PaneContentRect(r, true)
+	for _, pos := range [][2]int{{0, 0}, {inner.W - 1, inner.H - 1}, {-1, 0}, {inner.W, 0}, {0, -1}, {0, inner.H}} {
 		base := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}})
 		out := Compose(Input{State: s, Panes: map[int]*PaneSnap{pid: blankSnap()}, Copy: &CopyMark{Pane: pid, X: pos[0], Y: pos[1]}})
 		count := 0
@@ -125,7 +125,7 @@ func TestSPECCopyCursorStyleAndOutOfRange(t *testing.T) {
 			}
 		}
 		want := 0
-		if pos[0] >= 0 && pos[0] < inner.W-g && pos[1] >= 0 && pos[1] < inner.H {
+		if pos[0] >= 0 && pos[0] < inner.W && pos[1] >= 0 && pos[1] < inner.H {
 			want = 1
 		}
 		if count != want {

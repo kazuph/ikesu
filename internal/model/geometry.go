@@ -93,9 +93,9 @@ const (
 type Rect = layout.Rect
 
 // PaneContentRect resolves a pane rect to its terminal-content rect and
-// gutter column count per SPEC G1: a frame eats one cell on each side but
+// scrollbar overlay column count: a frame eats one cell on each side but
 // only when borders are on and the pane is wider and taller than 2; the
-// rightmost inner column is a scrollbar gutter whenever the inner
+// rightmost inner column can carry a scrollbar overlay whenever the inner
 // width is at least 5.
 func PaneContentRect(r Rect, borders bool) (inner Rect, gutter int) {
 	inner = r
@@ -108,9 +108,8 @@ func PaneContentRect(r Rect, borders bool) (inner Rect, gutter int) {
 	return inner, gutter
 }
 
-// PaneTermSize is the PTY cell size inside a pane rect: the content rect
-// minus its gutter column.
+// PaneTermSize includes the scrollbar overlay column, even while it is visible.
 func PaneTermSize(r Rect, borders bool) (w, h int) {
-	inner, gutter := PaneContentRect(r, borders)
-	return max(1, inner.W-gutter), max(1, inner.H)
+	inner, _ := PaneContentRect(r, borders)
+	return max(1, inner.W), max(1, inner.H)
 }

@@ -32,12 +32,6 @@ func TestSPECFrameAllFourEdgesAndTinyContent(t *testing.T) {
 					for x := area.X; x < area.X+w; x++ {
 						c := f.Cell(x, y)
 						edge := x == area.X || x == area.X+w-1 || y == area.Y || y == area.Y+h-1
-						if !framed && w >= 5 && x == area.X+w-1 {
-							if c.Content == "T" {
-								t.Fatal("reserved gutter contains terminal content")
-							}
-							continue
-						}
 						if !framed && c.Content != "T" {
 							t.Fatalf("tiny/unframed %v %dx%d at %d,%d: %q", borders, w, h, x, y, c.Content)
 						}

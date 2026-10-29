@@ -39,7 +39,7 @@ func TestOverlayRealInputAndRestoredLayout(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	rect, _ := st.OverlayRect()
-	if got := a.rectForPane(id); got.W != func() int { r, g := model.PaneContentRect(rect, st.PaneBorders); return max(r.W-g, 1) }() || got.H != func() int { r, _ := model.PaneContentRect(rect, st.PaneBorders); return r.H }() {
+	if got := a.rectForPane(id); got.W != func() int { r, _ := model.PaneContentRect(rect, st.PaneBorders); return max(r.W, 1) }() || got.H != func() int { r, _ := model.PaneContentRect(rect, st.PaneBorders); return r.H }() {
 		t.Fatal("overlay term geometry", got, rect)
 	}
 	if !a.popupMouse(input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: st.PanesArea().X, Y: st.PanesArea().Y, Button: uv.MouseLeft}}) {

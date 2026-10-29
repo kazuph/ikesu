@@ -147,6 +147,12 @@ func (a *App) copyReveal() {
 // q/Esc exit; the configured prefix stays available.
 func (a *App) copyKey(k uv.Key, raw []byte) {
 	cm := a.cm
+	beforeY, beforeTop := cm.cy, cm.top
+	defer func() {
+		if cm.cy != beforeY || cm.top != beforeTop {
+			a.showPaneScrollbar(cm.pane)
+		}
+	}()
 	p := a.sup.Get(cm.pane)
 	if p == nil {
 		a.cm = nil
@@ -503,6 +509,12 @@ func (a *App) copyMouse(ev input.Event) {
 	if cm == nil || a.sup.Get(cm.pane) == nil {
 		return
 	}
+	beforeY, beforeTop := cm.cy, cm.top
+	defer func() {
+		if cm.cy != beforeY || cm.top != beforeTop {
+			a.showPaneScrollbar(cm.pane)
+		}
+	}()
 	inner := a.copyViewRect()
 	switch ev.Kind {
 	case input.KindMouseWheel:
