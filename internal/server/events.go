@@ -141,8 +141,10 @@ func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 		follow = c.Focus
 	case model.CmdApplyLayout:
 		follow = c.Focus
-	case model.CmdSplitFocused, model.CmdFocusDir, model.CmdCyclePane, model.CmdFocusPaneDir, model.CmdZoomPane, model.CmdArrange:
+	case model.CmdSplitFocused, model.CmdFocusDir, model.CmdCyclePane, model.CmdFocusPaneDir, model.CmdArrange:
 		follow = changed
+	case model.CmdZoomPane:
+		follow = !c.NoFollow && changed
 	case model.CmdMovePane:
 		follow = c.Focus && c.Out != nil && c.Out.Changed
 	}

@@ -59,8 +59,8 @@ func (a *App) OpenPluginPane(workspace, target int, placement, direction, cwd st
 	if focus {
 		a.exec(model.CmdFocusPane{Pane: pid})
 	}
-	if placement == "zoomed" && focus {
-		a.exec(model.CmdZoomPane{Pane: pid, Mode: "on"})
+	if placement == "zoomed" {
+		a.exec(model.CmdZoomPane{Pane: pid, Mode: "on", NoFollow: !focus})
 	}
 	return pid, nil
 }
