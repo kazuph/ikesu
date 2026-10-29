@@ -103,3 +103,51 @@ func TestPluginZoomedFocuslessDoesNotBroadcast(t *testing.T) {
 	apiOK(t, dir, "plugin.pane.focus", map[string]any{"pane_id": opened.PluginPane.Pane.PaneID}, nil)
 	b.readUntil(t, 5*time.Second, func(m clientMsg) bool { return b.lastInput != nil && b.lastInput.State.ActiveWorkspace().ID == 1 })
 }
+
+func TestFocuslessMoveDissolvesSourceWithTwoViews(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	ready := dialClient(t, dir)
+	ready.conn.Close()
+	for range 2 {
+		apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: true}, nil)
+	}
+	a, b := dialClient(t, dir), dialClient(t, dir)
+	defer a.conn.Close()
+	defer b.conn.Close()
+	for i, c := range []*testConn{a, b} {
+		id := i + 2
+		c.send(t, clientMsg{Type: "hello", Cols: 120, Rows: 40, Selection: &endpoint.ViewSelection{Workspace: id, Tabs: map[int]int{id: id}, Pane: id}})
+		c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return c.lastInput != nil })
+	}
+	// Removing s1 shifts canonical s3's index; destination retains p2 focus.
+	split := "right"
+	apiOK(t, dir, api.MethodPaneMove, api.PaneMoveParams{PaneID: "p1", Destination: api.PaneMoveDestination{Type: "tab", TabID: "s2:t2", Split: &split}}, nil)
+	for i, c := range []*testConn{a, b} {
+		c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return c.lastInput != nil && len(c.lastInput.State.Workspaces) == 2 })
+		got := endpoint.CaptureSelection(c.lastInput.State)
+		if got.Workspace != i+2 || got.Tabs[i+2] != i+2 || got.Pane != i+2 {
+			t.Fatalf("move dissolved source and shifted viewer %d: %+v", i, got)
+		}
+		t.Logf("focusless source-space removal viewer%d=%+v", i, got)
+	}
+	// A source tab preceding a selected tab dissolves inside s2.
+	var newTab api.TabCreatedResult
+	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{WorkspaceID: strptr("s2")}, &newTab)
+	a.conn.Close()
+	a = dialClient(t, dir)
+	defer a.conn.Close()
+	a.send(t, clientMsg{Type: "hello", Cols: 120, Rows: 40, Selection: &endpoint.ViewSelection{Workspace: 2, Tabs: map[int]int{2: 4}, Pane: 4}})
+	a.readUntil(t, 5*time.Second, func(m clientMsg) bool { return a.lastInput != nil })
+	// First remove p1 from tab2, then move its last p2 so tab2 dissolves.
+	for _, pane := range []string{"p1", "p2"} {
+		apiOK(t, dir, api.MethodPaneMove, api.PaneMoveParams{PaneID: pane, Destination: api.PaneMoveDestination{Type: "tab", TabID: "s3:t3", Split: &split}}, nil)
+	}
+	a.readUntil(t, 5*time.Second, func(m clientMsg) bool { return a.lastInput != nil && len(a.lastInput.State.Workspaces[0].Tabs) == 1 })
+	got := endpoint.CaptureSelection(a.lastInput.State)
+	if got.Workspace != 2 || got.Tabs[2] != 4 || got.Pane != 4 {
+		t.Fatalf("source tab removal changed viewer=%+v", got)
+	}
+	t.Logf("focusless source-tab removal viewer=%+v", got)
+}
