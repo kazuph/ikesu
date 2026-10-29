@@ -48,10 +48,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	settings := *m.settings
 	configRevision := m.configRevision
 	size := m.size
-	var selection *endpoint.ViewSelection
-	if e.snapshot != nil {
-		selection = endpoint.CaptureSelection(e.snapshot.State)
-	}
+	selection := m.reconnectSelection(id)
 	profile := e.profile
 	session := m.session
 	// Background Local reconnects also require hidden-viewer admission.

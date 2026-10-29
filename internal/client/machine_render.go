@@ -161,6 +161,7 @@ func (m *machineClient) paint() error {
 	if err := m.title.painted(m.out, in); err != nil {
 		return err
 	}
+	m.rememberSelection(m.active, in)
 	graphicsRetained := composed.Frame.RetainGraphics
 	composed.Frame = nil
 	if e.connection != nil && (e.requestAck || m.regions == nil || !reflect.DeepEqual(m.regions, composed)) {
