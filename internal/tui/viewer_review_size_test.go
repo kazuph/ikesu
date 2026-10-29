@@ -196,11 +196,19 @@ func TestViewerFrozenSizeAfterDisconnectAndHandoff(t *testing.T) {
 			if err := a.StartInitialPane(); err != nil {
 				t.Fatal(err)
 			}
+			// Readline can restore the kernel size captured during its first
+			// prompt setup, after the emulator has already accepted a resize.
+			// Begin ownership transitions only once that prompt is ready.
+			a.sup.Input(a.focusedPane(), []byte("printf '\\n'; PS1='SIZE_READY> '\n"))
+			specWaitText(t, a.sup.Get(a.focusedPane()), "\nSIZE_READY>")
 			v := a.NewViewer(io.Discard, 196, 50, nil)
 			v.Begin(a, 196*8, 50*16)
 			hidden := a.st.FocusedPane()
 			shell := a.sup.Get(hidden).ShellPID()
 			a.exec(model.CmdNewTab{Workspace: 0, NoFocus: true})
+			newPane := a.st.Workspaces[0].Tabs[1].Layout.Focused()
+			a.sup.Input(newPane, []byte("printf '\\n'; PS1='SIZE_READY> '\n"))
+			specWaitText(t, a.sup.Get(newPane), "\nSIZE_READY>")
 			v.Input(a, []byte{2, '2'})
 			v.Detach(a)
 			if handoff {
