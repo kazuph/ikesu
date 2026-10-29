@@ -58,6 +58,7 @@ func (a *App) selectView(s viewSelection) {
 		if ws.ID == s.workspace {
 			a.st.Active = i
 		}
+		ws.ActiveTab = 0
 		for j, t := range ws.Tabs {
 			if t.ID == s.tabs[ws.ID] {
 				ws.ActiveTab = j

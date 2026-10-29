@@ -48,6 +48,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	settings := *m.settings
 	configRevision := m.configRevision
 	size := m.size
+	selection := m.reconnectSelection(id)
 	profile := e.profile
 	session := m.session
 	// Background Local reconnects also require hidden-viewer admission.
@@ -79,7 +80,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			}
 		}()
 		defer func() { stream.Close(); close(closed) }()
-		connection, err := connectEndpoint(stream, hidden, size, &settings, fileTransport)
+		connection, err := connectEndpoint(stream, hidden, size, &settings, fileTransport, selection)
 		if err != nil {
 			m.post(ctx, endpointEvent{id: id, attempt: attempt, err: err})
 			return

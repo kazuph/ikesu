@@ -23,6 +23,7 @@ import (
 
 type managedEndpoint struct {
 	processedInput uint64
+	selection      *paintedSelection
 
 	snapshotAttempt          uint64
 	boot                     string

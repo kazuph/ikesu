@@ -42,6 +42,9 @@ func (m *machineClient) refreshMachineCatalog() error {
 			continue
 		}
 		profile, exists := next[id]
+		if !exists || profile.Target != e.profile.Target || profile.Session != e.profile.Session {
+			e.selection = nil
+		}
 		if !exists || !profile.Enabled || profile.Target != e.profile.Target || profile.Session != e.profile.Session {
 			if m.pending != nil && m.pending.id == id {
 				m.pending = nil

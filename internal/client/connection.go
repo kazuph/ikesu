@@ -30,7 +30,7 @@ type endpointConnection struct {
 	boot      string
 }
 
-func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings, fileTransport string) (*endpointConnection, error) {
+func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings, fileTransport string, selection *endpoint.ViewSelection) (*endpointConnection, error) {
 	peer := endpoint.Current()
 	var visible *bool
 	if remote {
@@ -47,6 +47,7 @@ func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, s
 	hello := msg{Terminal: endpoint.LocalTerminal(), Peer: peer, Type: "hello", Cols: size.Cols, Rows: size.Rows, Xpixel: size.Xpixel, Ypixel: size.Ypixel, Visible: visible,
 		GraphicsFileTransport: fileTransport,
 		Config:                settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}
+	hello.Selection = selection
 	if err := c.writer.send(hello); err != nil {
 		return nil, err
 	}

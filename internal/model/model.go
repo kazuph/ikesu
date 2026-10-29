@@ -274,9 +274,11 @@ type (
 	// CmdZoomPane applies pane zoom mode ("toggle"|"on"|"off") in Pane's
 	// own tab. Out carries the outcome when non-nil.
 	CmdZoomPane struct {
-		Pane PaneID
-		Mode string
-		Out  *ZoomOutcome
+		// NoFollow suppresses viewer navigation; zoom and tab-local focus still apply.
+		NoFollow bool
+		Pane     PaneID
+		Mode     string
+		Out      *ZoomOutcome
 	}
 	// CmdResizePane adjusts the nearest same-axis split of Pane by Amount
 	// (ratio delta, sign resolved from Dir); Amount<=0 means the 0.05 step.

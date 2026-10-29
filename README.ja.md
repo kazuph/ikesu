@@ -133,3 +133,5 @@ keybind = ctrl+shift+tab=text:\x1b[9;6u
 ## ライセンス
 
 [MIT](LICENSE)
+
+`ikesu agent start` は herdr と異なり、既定で現在の画面を切り替えません。新しいエージェントへ移るときは `--focus` を付けます。既存の `--no-focus` も使えます。明示的な focus API と通知クリックの動作は変わりません。

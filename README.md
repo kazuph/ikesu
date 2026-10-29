@@ -131,3 +131,5 @@ macOS takes ⌘Tab for app switching before any terminal app sees it.
 ## License
 
 [MIT](LICENSE)
+
+`ikesu agent start` keeps the current view by default, unlike herdr. Use `--focus` to switch to the new agent; `--no-focus` is still accepted. Explicit focus APIs and notification clicks keep their existing behavior.

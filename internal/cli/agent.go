@@ -279,12 +279,13 @@ func (r *runner) agentWaitCLI(args []string) int {
 func (r *runner) agentStartCLI(args []string) int {
 	if len(args) < 1 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprintln(r.errOut(), "usage: ikesu agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>")
+		fmt.Fprintln(r.errOut(), "Default: keep the current view (unlike herdr). Use --focus to switch; --no-focus remains accepted.")
 		if len(args) < 1 {
 			return 2
 		}
 		return 0
 	}
-	p := api.AgentStartParams{Name: args[0], Focus: true, Env: map[string]string{}}
+	p := api.AgentStartParams{Name: args[0], Env: map[string]string{}}
 	i := 1
 	for i < len(args) && p.Argv == nil {
 		switch args[i] {

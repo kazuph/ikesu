@@ -174,6 +174,33 @@ func (s *AppState) zoomPane(t *Tab, pane PaneID, mode string, out *ZoomOutcome) 
 // movePane implements CmdMovePane: the pane keeps its id and process while
 // its leaf slot migrates to another tab/workspace.
 func (s *AppState) movePane(c CmdMovePane) []Effect {
+	// Structural removals change indices, so retain selection by identity.
+	selected := map[int]int{}
+	active := 0
+	if ws := s.ActiveWorkspace(); ws != nil {
+		active = ws.ID
+	}
+	for _, ws := range s.Workspaces {
+		if tab := ws.TabRef(); tab != nil {
+			selected[ws.ID] = tab.ID
+		}
+	}
+	defer func() {
+		if c.Focus {
+			return
+		}
+		for i, ws := range s.Workspaces {
+			if ws.ID == active {
+				s.Active = i
+			}
+			for j, tab := range ws.Tabs {
+				if tab.ID == selected[ws.ID] {
+					ws.ActiveTab = j
+					break
+				}
+			}
+		}
+	}()
 	wi, ti := s.FindPane(c.Pane)
 	if wi < 0 {
 		return nil

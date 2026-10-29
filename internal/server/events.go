@@ -115,8 +115,11 @@ func ev(kind string, kv ...any) map[string]any {
 // afterExec derives domain events from the pre/post command diff. It runs
 // on the app loop after effects are applied.
 func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
-	follow := prev.Active != s.app.State().Active || prev.FocusedPane != s.app.State().FocusedPane()
-	resize := false
+	// Only commands expressing focus intent broadcast navigation. Structural
+	// changes are reconciled by each viewer's saved workspace/tab IDs.
+	follow := false
+	changed := prev.FocusedPane != s.app.State().FocusedPane()
+	resize := prev.Active != s.app.State().Active || changed
 	switch cmd.(type) {
 	case model.CmdSplitPane, model.CmdSplitImplicit, model.CmdZoomPane:
 		resize = true
@@ -126,6 +129,22 @@ func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 		// An explicit focus also applies when the canonical selection was
 		// already there but an attached viewer navigated elsewhere.
 		follow = true
+	case model.CmdNewWorkspace:
+		follow = !c.NoFocus
+	case model.CmdNewTab:
+		follow = !c.NoFocus
+	case model.CmdSplitPane:
+		follow = c.Focus && changed
+	case model.CmdSplitImplicit:
+		follow = c.Focus && changed
+	case model.CmdDuplicateWorkspace:
+		follow = c.Focus
+	case model.CmdApplyLayout:
+		follow = c.Focus
+	case model.CmdSplitFocused, model.CmdFocusDir, model.CmdCyclePane, model.CmdFocusPaneDir, model.CmdArrange:
+		follow = changed
+	case model.CmdZoomPane:
+		follow = !c.NoFollow && changed
 	case model.CmdMovePane:
 		follow = c.Focus && c.Out != nil && c.Out.Changed
 	}
