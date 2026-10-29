@@ -1,3 +1,4 @@
+import { discoverRichContent } from "./rich.mjs";
 import path from "node:path";
 import { DEFAULT_LATER_MS } from "./common.mjs";
 
@@ -40,15 +41,19 @@ export function sourceLabel(decision) {
   return kinds[decision.kind] || "";
 }
 
-// プロジェクト（スペース） › タブ › ペイン — what the user scans first.
-export function locationLabel(decision) {
+// All four fields are explicit, even when origin metadata is missing.
+export function locationLabel(decision, machine) {
   const origin = decision.origin || {};
-  const parts = [];
-  if (origin.workspace_label) parts.push(origin.workspace_label);
-  else if (origin.cwd) parts.push(path.basename(origin.cwd));
-  if (origin.tab_label) parts.push(origin.tab_label);
-  if (origin.pane_label) parts.push(origin.pane_label);
-  return parts.join(" › ");
+  const id = machine?.id || origin.machine || "local";
+  const host = id === "local" ? "ローカル" : machine?.label || id;
+  const project = origin.cwd ? path.basename(origin.cwd) : "不明";
+  const space = origin.workspace_label || "不明";
+  const pane = [origin.pane_label || origin.pane_id, origin.agent].filter(Boolean).join(" / ") || "不明";
+  return [host, project, space, pane].join("｜");
+}
+
+export function approvalCommand(decision) {
+  return decision.kind === "command_guard" ? String(decision.origin?.target_command || decision.origin?.command || "") : "";
 }
 
 export function projectName(decision) {
@@ -78,11 +83,13 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
   const remote = machineId !== "local";
   const project = projectName(decision);
   return {
+    media_sources: (() => { const media = discoverRichContent(decision); return [...new Set([...media.links, ...media.images, ...(media.videos || [])])]; })(),
     kind: decision.kind || "",
     machine_id: machineId,
     window_title: project ? `ikesu 判断待ち — ${project}` : "ikesu 判断待ち",
     source: sourceLabel(decision),
-    location: locationLabel(decision),
+    location: locationLabel(decision, machine),
+    approval_command: approvalCommand(decision),
     machine: remote ? String(machine?.label || machineId) : "",
     question_label: decision.question_label || "",
     title: String(decision.title || decision.decision_id || ""),

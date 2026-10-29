@@ -77,3 +77,12 @@ export class ClientViews {
     for (const socket of this.requests) socket.destroy();
   }
 }
+
+export function displayedByFocusedClient(entry, clientViews, views) {
+  const pane = entry.decision.origin?.pane_id;
+  const session = clientViews?.sessionFor(entry.machineId);
+  if (!pane || !session || !Array.isArray(views)) return false;
+  return views.some(view => view.focused === true && view.machine_id === entry.machineId &&
+    view.session === session && typeof view.workspace_id === "string" && view.workspace_id &&
+    Array.isArray(view.pane_ids) && view.pane_ids.includes(pane));
+}

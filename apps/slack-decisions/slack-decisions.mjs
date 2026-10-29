@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { ClientViews, displayedByFocusedClient } from "../mac-dialog-decisions/client-views.mjs";
+import { locationLabel, approvalCommand } from "../mac-dialog-decisions/spec.mjs";
 // ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
@@ -762,8 +764,8 @@ function buildDecisionBlocks({
   now = Date.now(),
 }) {
   const statusText = STATUS_TEXT[status] || status;
-  const machineLabel = machine?.label || machine?.id || "local";
-  const headParts = [`【${statusText}】判断待ち`, machineLabel];
+  const machineLabel = locationLabel(decision, machine);
+  const headParts = [machineLabel, `【${statusText}】判断待ち`];
   if (decision.question_label) headParts.push(decision.question_label);
   if (mention) headParts.push(mention);
   const head = headParts.join(" | ");
@@ -771,9 +773,10 @@ function buildDecisionBlocks({
     { type: "context", elements: [{ type: "mrkdwn", text: head }] },
     {
       type: "section",
-      text: { type: "mrkdwn", text: `*${decision.title || decision.decision_id}*` },
+      text: { type: "mrkdwn", text: approvalCommand(decision) ? "*実行するコマンド*\n```\n" + approvalCommand(decision).replaceAll("```", "'`'`'") + "\n```" : `*${decision.title || decision.decision_id}*` },
     },
   ];
+  if (approvalCommand(decision)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${decision.title || decision.decision_id}*`}});
   if (decision.body) {
     blocks.push({
       type: "section",
@@ -867,7 +870,7 @@ function fallbackText({ decision, machine }) {
     })
     .join("\n");
   return [
-    `[${machine?.label || "local"}] ${decision.title || decision.decision_id}`,
+    `${locationLabel(decision, machine)}\n${approvalCommand(decision) || decision.title || decision.decision_id}`,
     decision.body || "",
     options,
   ]
@@ -915,11 +918,13 @@ export class SlackDecisionsDaemon {
     spawnWatch, // () => {lines: AsyncIterable<object>, close()}
     runAnswer, // (argv: string[]) => Promise<{code, stdout, stderr}>
     getDecision, // (machineId, decisionId) => Promise<decision|null>
+    clientViews,
     glassesState, // () => Promise<string|null>
     log: logFn = log,
     postsFilePath = null,
   }) {
     this.config = config;
+    this.clientViews = clientViews;
     this.slack = slack;
     this.botUserId = botUserId;
     this.spawnWatch = spawnWatch;
@@ -1002,6 +1007,7 @@ export class SlackDecisionsDaemon {
   }
 
   async start() {
+    this.clientViews?.start(() => this.refreshVisibleDecisions());
     this.loadPostsFile();
     this._watchDone = this.watchLoop();
     this._schedulePoll();
@@ -1016,6 +1022,7 @@ export class SlackDecisionsDaemon {
 
   async stop() {
     this.stopped = true;
+    this.clientViews?.stop();
     if (this.pollTimer) clearTimeout(this.pollTimer);
     for (const entry of this.entries.values()) {
       if (entry.postTimer) clearTimeout(entry.postTimer);
@@ -1143,9 +1150,32 @@ export class SlackDecisionsDaemon {
     }
   }
 
+  refreshVisibleDecisions() {
+    this.visibilityDone = (this.visibilityDone ?? Promise.resolve()).then(async () => {
+      if (this.stopped) return;
+      for (const entry of this.entries.values()) {
+        if (entry.waitingForView) await this.postDecision(entry);
+      }
+    }).catch(error => this.log(`表示待ちの確認に失敗: ${error.message}`));
+    return this.visibilityDone;
+  }
+
   async postDecision(entry) {
     if (entry.resolved || entry.post || entry.posting || this.stopped) return;
-    if (this.machinesDown.has(entry.machineId)) return;
+    entry.posting = true;
+    try {
+      if (this.clientViews) {
+        let views;
+        try { views = await this.clientViews.list(); } catch { views = []; }
+        entry.waitingForView = displayedByFocusedClient(entry, this.clientViews, views);
+        if (entry.waitingForView) return;
+      }
+      if (entry.resolved || this.stopped || this.machinesDown.has(entry.machineId)) return;
+      await this.postUnseenDecision(entry);
+    } finally { entry.posting = false; }
+  }
+
+  async postUnseenDecision(entry) {
     if (entry.decision.status && entry.decision.status !== "pending") return;
     const { decision, machine } = entry;
     // The same question recreated right after a cancel — the
@@ -1798,7 +1828,10 @@ export class SlackDecisionsDaemon {
       if (!entry.answerAfter && entry.seenReactions.has(marker)) return;
       entry.seenEvents.add(eventKey);
       entry.seenReactions.add(marker);
-      await this.handleReaction(entry, event.reaction, event.user || "");
+      // A reply already present after the reaction wins even when Socket
+      // Mode delivered the reaction first. Saved decisions stay first-answer-wins.
+      await this.pollEntryReplies(entry);
+      if (!entry.resolved && !entry.answerPending) await this.handleReaction(entry, event.reaction, event.user || "");
       return;
     }
     if (event?.type === "message") {
@@ -1839,8 +1872,8 @@ export class SlackDecisionsDaemon {
         continue;
       }
       if (!entry.answerReady && !(await this.establishAnswerBaseline(entry))) continue;
-      await this.pollEntryReactions(entry);
       await this.pollEntryReplies(entry);
+      if (!entry.resolved && !entry.answerPending) await this.pollEntryReactions(entry);
     }
   }
 
@@ -1902,7 +1935,7 @@ export class SlackDecisionsDaemon {
           message.subtype !== "bot_message" &&
           (!message.subtype || message.subtype === "file_share"),
       )
-      .sort((a, b) => Number(a.ts) - Number(b.ts));
+      .sort((a, b) => Number(b.ts) - Number(a.ts));
     for (const message of fresh) {
       entry.seenReplies.add(message.ts);
       await this.handleThreadReply(entry, message.text || "", message.user || "");
@@ -2348,6 +2381,7 @@ export async function main({ argv = process.argv, userInfo = os.userInfo } = {})
     config,
     slack,
     botUserId,
+    clientViews: new ClientViews(),
     spawnWatch: () => Promise.resolve(spawnDecisionWatch(config, log)),
     runAnswer: createRunAnswer(config, log),
     getDecision: createGetDecision(config, log),

@@ -31,7 +31,9 @@ final class DialogHost: NSObject, NSApplicationDelegate {
     cascadePoint = controller.panel.cascadeTopLeft(from: cascadePoint)
     windows[key] = controller
     refresh()
-    controller.show()
+    let numbers = NSWindow.windowNumbers(options: [.allSpaces]) ?? []
+    let behind = numbers.reversed().compactMap { number in windows.values.first { $0 !== controller && $0.panel.windowNumber == number.intValue }?.panel }.first
+    controller.show(behind: behind)
     controller.startWatchdog()
   }
 

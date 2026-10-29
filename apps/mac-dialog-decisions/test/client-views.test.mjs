@@ -6,6 +6,9 @@ import net from 'node:net';
 import {spawn} from 'node:child_process';
 import {ClientViews} from '../client-views.mjs';
 import {MacDialogDecisionsDaemon} from '../daemon.mjs';
+import {NativeDialogHost} from '../native-host.mjs';
+import {SlackClient,SlackDecisionsDaemon} from '../../slack-decisions/slack-decisions.mjs';
+import {FakeSlack} from '../../slack-decisions/test/fakes.mjs';
 import {createGetDecision} from '../mac-dialog-decisions.mjs';
 
 async function until(predicate) {
@@ -26,7 +29,7 @@ async function fixture(t) {
     socket.on('data',b=>{data+=b;if(!data.includes('\n'))return;socket.end();const r=JSON.parse(data.split('\n')[0]);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});
   });
   await until(()=>{if(server.exitCode!==null)throw Error(stderr);return fs.existsSync(env.IKESU_SOCKET_PATH)});
-  let changes=0;const views=new ClientViews(env);views.start(()=>changes++);await until(()=>views.ready);
+  let daemon;let changes=0;const views=new ClientViews(env);views.start(()=>{changes++;void daemon?.refreshBackgroundWindows();});await until(()=>views.ready);
   fs.writeFileSync(path.join(dir,'machines.json'),JSON.stringify([{id:'mini',session:'remote',enabled:true}]));
   const client=net.createConnection(path.join(dir,'ikesu-client.sock'));sockets.push(client);let incoming='';client.on('data',b=>incoming+=b);
   await new Promise((resolve,reject)=>{client.once('connect',resolve);client.once('error',reject)});
@@ -34,7 +37,7 @@ async function fixture(t) {
   await until(()=>incoming.includes('welcome'));
   const send=view=>client.write(JSON.stringify({type:'client_view',client_view:view})+'\n');
   const set=async view=>{const before=changes;send(view);await until(()=>changes>before);return views.list();};
-  const daemon=new MacDialogDecisionsDaemon({config:{stateDir:root,presentDelayMs:60000},clientViews:views,log:()=>{}});
+  daemon=new MacDialogDecisionsDaemon({config:{stateDir:root,presentDelayMs:60000},clientViews:views,log:()=>{}});
   const entry=(id='dec-view',machineId='local',origin={pane_id:'p1'})=>{
     daemon.onCreated(machineId,{id:machineId},{decision_id:id,title:'view',options:[],origin});
     clearTimeout(daemon._pumpTimer);return [...daemon.entries.values()].find(e=>e.decision.decision_id===id);
@@ -51,7 +54,7 @@ test('real API: focused same workspace suppresses, unknown/other space/session/m
  }
  await f.set(local);assert.equal(await f.daemon.presentation(f.entry('no-origin','local',null)),false);
  assert.equal(await f.daemon.presentation(f.entry('no-pane','local',{})),false);
- assert.equal(await f.daemon.presentation(f.entry('same-space-other-tab','local',{pane_id:'p2'})),true);
+ assert.equal(await f.daemon.presentation(f.entry('same-tab-visible-pane','local',{pane_id:'p2'})),true);
 });
 
 test('real API: saved remote ID/session and updated pane membership determine presentation',async t=>{
@@ -60,15 +63,6 @@ test('real API: saved remote ID/session and updated pane membership determine pr
  await f.set({...local,machine_id:'mini',session:'other'});assert.equal(await f.daemon.presentation(e),false);
  await f.set({...local,machine_id:'mini',session:'remote',pane_ids:['p2']});assert.equal(await f.daemon.presentation(e),false);
  await f.set(local);assert.equal(await f.daemon.presentation(e),false);
-});
-
-test('real change notifications: leave emits front once; returning, leaving again and redisplay cannot emit twice',async t=>{
- const f=await fixture(t),e=f.entry();let current=await f.set(local);
- assert.equal(f.daemon.takeFrontCommand(e,true,current),null);
- current=await f.set({...local,workspace_id:'s2',pane_ids:['p3']});assert.deepEqual(f.daemon.takeFrontCommand(e,true,current),{status:'front'});
- current=await f.set(local);assert.equal(f.daemon.takeFrontCommand(e,true,current),null);
- current=await f.set({...local,machine_id:'mini',session:'remote'});assert.equal(f.daemon.takeFrontCommand(e,true,current),null);
- assert.equal(f.daemon.takeFrontCommand(e,false,[]),null);
 });
 
 test('real query: resolving/cancelling/disconnecting while awaiting response never presents',async t=>{
@@ -131,7 +125,8 @@ os.close(fd)
  await until(async()=>{actual=(await f.views.list()).find(view=>view.client_id===actual.client_id);return actual?.focused===true});
  const space=await f.rpc('workspace.create',{label:'actual-client-space',focus:true});
  await until(async()=>{actual=(await f.views.list()).find(view=>view.client_id===actual.client_id);return actual?.workspace_id===space.workspace.workspace_id});
- assert.deepEqual(actual.pane_ids,[space.root_pane.pane_id]);
+ // The fresh HOME opens a setup dialog; a covered pane must not suppress notifications.
+ assert.deepEqual(actual.pane_ids,[]);
  terminal.stdin.write('\x1b[O');
  await until(async()=>{actual=(await f.views.list()).find(view=>view.client_id===actual.client_id);return actual?.focused===false});
  assert.equal(actual.machine_id,'local');
@@ -165,4 +160,35 @@ test('any matching focused client suppresses; removing that client immediately c
  const before=f.changes;other.write(JSON.stringify({type:'client_view',client_view:local})+'\n');await until(()=>f.changes>before);
  assert.equal((await f.views.list()).length,2);assert.equal(await f.daemon.presentation(e),true);
  const count=f.changes;other.end();await until(()=>f.changes>count);assert.equal(await f.daemon.presentation(e),false);
+});
+
+
+test('actual native host creates zero windows and Slack posts zero until focused pane is no longer visible',async t=>{
+ const f=await fixture(t);await f.set(local);
+ const service=await new FakeSlack().start();t.after(()=>service.stop());
+ const slackViews=new ClientViews(f.env);
+ const slack=new SlackDecisionsDaemon({config:{socketMode:false,stateDir:f.views.directory},slack:new SlackClient({token:'local-emulator',channel:'CLOCAL',apiBase:service.base}),clientViews:slackViews,glassesState:async()=>null,log:()=>{}});
+ slackViews.start(()=>void slack.refreshVisibleDecisions());await until(()=>slackViews.ready);t.after(()=>slack.stop());
+ const host=new NativeDialogHost(process.env.MAC_DIALOG_TEST_NATIVE_BINARY,f.views.directory);t.after(()=>host.stop());
+ f.daemon.spawnDialog=file=>host.open(file);f.daemon.specFilePath=key=>path.join(f.views.directory,encodeURIComponent(key)+'.json');
+ f.daemon.config.presentDelayMs=0;
+ const d={decision_id:'dec-no-window',kind:'ask',status:'pending',origin:{pane_id:'p1'},title:'表示抑制試験',options:[{id:'yes',label:'はい'}],allow_text:true};
+ f.daemon.onCreated('local',{id:'local'},d);await slack.onCreated('local',{id:'local'},d);
+ await until(()=>[...f.daemon.entries.values()][0]?.waitingForView);
+ assert.equal(f.daemon.children.size,0);assert.equal(host.windows.size,0);assert.equal(host.child,null);assert.equal(service.posts.length,0);
+ await f.set({...local,pane_ids:['p2']});
+ await until(()=>host.windows.size===1&&service.posts.length===1&&[...f.daemon.children.values()][0]?.shown);
+ assert.equal(f.daemon.children.size,1);
+ await f.set(local);await f.set({...local,focused:false});
+ await slack.refreshVisibleDecisions();await f.daemon.refreshBackgroundWindows();
+ assert.equal(service.posts.length,1);assert.equal(host.windows.size,1);
+ await slack.onResolved('local',{...d,status:'answered'});f.daemon.onResolved('local',{...d,status:'answered'});
+ await until(()=>host.windows.size===0);
+ // A decision resolved while watched never creates either output afterwards.
+ await f.set(local);const done={...d,decision_id:'dec-answered-while-watched'};
+ f.daemon.onCreated('local',{id:'local'},done);await slack.onCreated('local',{id:'local'},done);
+ await until(()=>[...f.daemon.entries.values()][0]?.waitingForView);
+ await slack.onResolved('local',{...done,status:'answered'});f.daemon.onResolved('local',{...done,status:'answered'});
+ await f.set({...local,focused:false});await slack.refreshVisibleDecisions();await f.daemon.refreshBackgroundWindows();
+ assert.equal(f.daemon.children.size,0);assert.equal(host.windows.size,0);assert.equal(service.posts.length,0);
 });

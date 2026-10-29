@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
@@ -40,8 +41,8 @@ func TestClientViewRebuildsMembershipAcrossTabsAndWorkspaceMoves(t *testing.T) {
 	state.Apply(model.CmdNewTab{Workspace: 0})
 	e := &managedEndpoint{connection: &endpointConnection{}, snapshot: &render.Input{State: state}}
 	m := &machineClient{session: "isolated", active: "local", endpoints: map[string]*managedEndpoint{"local": e}}
-	if got := m.currentClientView(); !reflect.DeepEqual(got.PaneIDs, []string{"p1", "p2"}) {
-		t.Fatalf("all tabs: %+v", got)
+	if got := m.currentClientView(); !reflect.DeepEqual(got.PaneIDs, []string{"p2"}) {
+		t.Fatalf("selected tab: %+v", got)
 	}
 	state.Apply(model.CmdNewWorkspace{})
 	if got := m.currentClientView(); got.WorkspaceID != "s2" || !reflect.DeepEqual(got.PaneIDs, []string{"p3"}) {
@@ -81,5 +82,29 @@ func TestClientViewFocusKeepsLastPaintedWorkspaceWhileNextPaintIsFenced(t *testi
 	m.reportClientView()
 	if len(c.queue) != 2 || c.queue[1].ClientView.WorkspaceID != "s2" {
 		t.Fatalf("paint did not publish the new workspace: %+v", c.queue)
+	}
+}
+
+func TestClientViewUsesZoomOverlayAndPopupProjection(t *testing.T) {
+	state := model.New(t.TempDir(), 100, 40)
+	state.Apply(model.CmdSplitPane{Pane: 1})
+	e := &managedEndpoint{connection: &endpointConnection{}, snapshot: &render.Input{State: state}}
+	m := &machineClient{session: "isolated", active: "local", endpoints: map[string]*managedEndpoint{"local": e}}
+	if got := m.currentClientView(); !reflect.DeepEqual(got.PaneIDs, []string{"p1", "p2"}) {
+		t.Fatalf("split: %+v", got)
+	}
+	state.ActiveWorkspace().TabRef().Zoomed = 2
+	if got := m.currentClientView(); !reflect.DeepEqual(got.PaneIDs, []string{"p2"}) {
+		t.Fatalf("zoom: %+v", got)
+	}
+	state.ActiveWorkspace().TabRef().Zoomed = 0
+	state.Apply(model.CmdOpenOverlay{TargetPaneID: 1})
+	if got := m.currentClientView(); len(got.PaneIDs) != 2 || got.PaneIDs[0] == "p1" {
+		t.Fatalf("covered target: %+v", got)
+	}
+	state.Apply(model.CmdCloseOverlay{})
+	state.Apply(model.CmdOpenPopup{WorkspaceID: state.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 80}, Height: api.PopupSize{Cells: 20}})
+	if got := m.currentClientView(); !reflect.DeepEqual(got.PaneIDs, []string{fmt.Sprintf("p%d", state.Popup.PaneID)}) {
+		t.Fatalf("popup: %+v", got)
 	}
 }

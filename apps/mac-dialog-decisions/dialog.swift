@@ -3,6 +3,8 @@
 // Draft, result, shown and closed events carry the window key.
 
 import AppKit
+import AVKit
+import WebKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -25,6 +27,8 @@ struct DialogDetail: Decodable {
 
 struct DialogSpec: Decodable {
   let present_in_background: Bool?
+  let approval_command: String?
+  let media_sources: [String]?
   let kind: String?
   let window_title: String
   let source: String?        // 🤖 claude
@@ -80,7 +84,7 @@ enum Look {
   static let base: CGFloat = 15
   static let small: CGFloat = 13
   static let title: CGFloat = 19
-  static let width: CGFloat = 720
+  static let width: CGFloat = 1080
   static let pad: CGFloat = 22
   static let accent = NSColor.controlAccentColor
 }
@@ -315,6 +319,11 @@ final class DialogController: NSObject, NSWindowDelegate {
   var attachmentLoading = 0
   let attachmentRow = NSStackView()
   let richStack = NSStackView()
+  let richScroll = NSScrollView()
+  var mediaCards: [String: NSStackView] = [:]
+  var players: [AVPlayer] = []
+  var webVideos: [WKWebView] = []
+  var videoDocuments: [URL] = []
   var richWarningShown = false
   let imageWork = OperationQueue()
   var answerPending = false
@@ -348,6 +357,9 @@ final class DialogController: NSObject, NSWindowDelegate {
     if closed { return }
     closed = true
     imageWork.cancelAllOperations()
+    for player in players { player.pause(); player.replaceCurrentItem(with: nil) }
+    for video in webVideos { video.stopLoading(); video.loadHTMLString("", baseURL: nil) }
+    for document in videoDocuments { try? FileManager.default.removeItem(at: document) }
     saveDraft()
     panel.orderOut(nil)
     panel.close()
@@ -453,15 +465,12 @@ final class DialogController: NSObject, NSWindowDelegate {
       v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
-    // Where it comes from — the first thing the eye lands on.
-    var whereParts: [String] = []
-    if let s = spec.source, !s.isEmpty { whereParts.append(s) }
-    if let m = spec.machine, !m.isEmpty { whereParts.append("🖥 \(m)") }
-    if !whereParts.isEmpty {
-      full(label(whereParts.joined(separator: "   "), size: Look.small + 1, weight: .medium, color: .secondaryLabelColor))
-    }
     if let loc = spec.location, !loc.isEmpty {
       full(label(loc, size: Look.base, weight: .semibold, color: Look.accent))
+    }
+    if let command = spec.approval_command, !command.isEmpty {
+      full(label("実行するコマンド", size: Look.small, color: .secondaryLabelColor))
+      full(richLabel(command, size: Look.base, commandRanges: [NSRange(location: 0, length: (command as NSString).length)]))
     }
 
     var titleText = spec.title
@@ -492,7 +501,22 @@ final class DialogController: NSObject, NSWindowDelegate {
     richStack.orientation = .vertical
     richStack.alignment = .leading
     richStack.spacing = 8
-    full(richStack)
+    richScroll.translatesAutoresizingMaskIntoConstraints = false
+    richScroll.hasVerticalScroller = true
+    richScroll.drawsBackground = false
+    let mediaDocument = FlippedView()
+    mediaDocument.translatesAutoresizingMaskIntoConstraints = false
+    mediaDocument.addSubview(richStack)
+    richStack.translatesAutoresizingMaskIntoConstraints = false
+    richScroll.documentView = mediaDocument
+    NSLayoutConstraint.activate([
+      mediaDocument.widthAnchor.constraint(equalTo: richScroll.contentView.widthAnchor),
+      richStack.leadingAnchor.constraint(equalTo: mediaDocument.leadingAnchor, constant: 12),
+      richStack.trailingAnchor.constraint(equalTo: mediaDocument.trailingAnchor, constant: -12),
+      richStack.topAnchor.constraint(equalTo: mediaDocument.topAnchor, constant: 18),
+      richStack.bottomAnchor.constraint(equalTo: mediaDocument.bottomAnchor, constant: -14),
+    ])
+    for source in spec.media_sources ?? [] { _ = mediaCard(source) }
 
     if let details = spec.details, !details.isEmpty {
       let grid = NSStackView()
@@ -528,11 +552,7 @@ final class DialogController: NSObject, NSWindowDelegate {
         let card = OptionCard(option: option, index: i, multi: spec.multi_select)
         card.onClick = { [weak self] c in self?.cardClicked(c) }
         cards.append(card)
-        if spec.kind == "command_guard" {
-          fixedChoices.addArrangedSubview(card)
-        } else {
-          full(card)
-        }
+        fixedChoices.addArrangedSubview(card)
       }
     }
 
@@ -556,14 +576,14 @@ final class DialogController: NSObject, NSWindowDelegate {
     bottom.translatesAutoresizingMaskIntoConstraints = false
     bottom.edgeInsets = NSEdgeInsets(top: 12, left: Look.pad, bottom: 16, right: Look.pad)
 
-    if spec.kind == "command_guard", !cards.isEmpty {
+    if !cards.isEmpty {
       bottom.addArrangedSubview(fixedChoices)
       fixedChoices.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -2 * Look.pad).isActive = true
     }
     if spec.allow_text {
       let caption = label(spec.options.isEmpty
         ? "回答（⌘↩ で送信）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。"
-        : "自由入力（任意。選んだ選択肢と一緒に送ります。文だけでも送れます）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。",
+        : "自由入力（入力すると選択が外れます。その後に選び直すと選択と文を一緒に送ります）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。",
         size: Look.small, color: .secondaryLabelColor, selectable: false)
       bottom.addArrangedSubview(caption)
       let tv = FirstClickTextView()
@@ -635,11 +655,16 @@ final class DialogController: NSObject, NSWindowDelegate {
 
     let root = KeyRootView()
     root.addSubview(scroll)
+    root.addSubview(richScroll)
     root.addSubview(separator)
     root.addSubview(bottom)
     NSLayoutConstraint.activate([
       scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-      scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+      scroll.trailingAnchor.constraint(equalTo: richScroll.leadingAnchor),
+      richScroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+      richScroll.topAnchor.constraint(equalTo: root.topAnchor),
+      richScroll.bottomAnchor.constraint(equalTo: scroll.bottomAnchor),
+      richScroll.widthAnchor.constraint(equalTo: root.widthAnchor, multiplier: 0.32),
       scroll.topAnchor.constraint(equalTo: root.topAnchor),
       separator.leadingAnchor.constraint(equalTo: root.leadingAnchor),
       separator.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -663,17 +688,17 @@ final class DialogController: NSObject, NSWindowDelegate {
     panel.isFloatingPanel = false
     panel.becomesKeyOnlyIfNeeded = false
     panel.collectionBehavior = [.moveToActiveSpace]
-    panel.minSize = NSSize(width: 520, height: 260)
+    panel.minSize = NSSize(width: 720, height: 260)
     // Size: as tall as the content needs at the real width, capped to 85% of
     // the screen (the premise scrolls; the buttons never leave the window).
     root.layoutSubtreeIfNeeded()
     let contentHeight = stack.fittingSize.height + 32
     let bottomHeight = bottom.fittingSize.height
-    if spec.kind == "command_guard" || spec.allow_text {
+    if !cards.isEmpty || spec.allow_text {
       let chromeHeight = panel.frame.height - panel.contentLayoutRect.height
       panel.minSize.height = max(panel.minSize.height, bottomHeight + chromeHeight)
     }
-    let height = min(contentHeight + bottomHeight + 2, screen.height * 0.85)
+    let height = min(max(contentHeight + bottomHeight + 2, Look.width * 0.6), screen.height * 0.85)
     panel.setContentSize(NSSize(width: Look.width, height: height))
     panel.center()
     panel.setFrameTopLeftPoint(NSPoint(x: panel.frame.minX, y: screen.maxY - 60))
@@ -683,13 +708,16 @@ final class DialogController: NSObject, NSWindowDelegate {
       attachments = draft.attachments ?? []
       refreshAttachments()
     }
+    connectMediaLinks(content)
+    connectMediaLinks(bottom)
     refreshSubmit()
   }
 
-  func show() {
+  func show(behind: NSWindow? = nil) {
     // Ordering never activates the process or changes the keyboard target.
     // An explicitly selected Dock/Mission Control window can still become key.
-    if spec.present_in_background == true { panel.orderBack(nil) }
+    if let behind { panel.order(.below, relativeTo: behind.windowNumber) }
+    else if spec.present_in_background == true { panel.orderBack(nil) }
     else { panel.orderFrontRegardless() }
     emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier), "x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0])
   }
@@ -736,7 +764,16 @@ final class DialogController: NSObject, NSWindowDelegate {
 }
 
 extension DialogController: NSTextViewDelegate {
-  func textDidChange(_ notification: Notification) { refreshSubmit(); saveDraft() }
+  func textDidChange(_ notification: Notification) {
+    if !(textView?.string ?? "").isEmpty { for card in cards { card.checked = false } }
+    refreshSubmit(); saveDraft()
+  }
+  func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+    let source = (link as? URL)?.absoluteString ?? (link as? String ?? "")
+    guard let card = mediaCards[source] ?? mediaCards[(link as? URL)?.path ?? ""] else { return false }
+    card.scrollToVisible(card.bounds)
+    return true
+  }
 }
 
 // Rich content is constructed from the already-redacted display fields only.
@@ -972,18 +1009,67 @@ extension DialogController {
     guard !answerPending, attachments.indices.contains(sender.tag) else { return }
     attachments.remove(at: sender.tag); refreshAttachments(); refreshSubmit(); saveDraft()
   }
+  @discardableResult func mediaCard(_ source: String) -> NSStackView {
+    if let card = mediaCards[source] { return card }
+    let card = NSStackView()
+    card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
+    let caption = richLabel(source, size: Look.small)
+    card.addArrangedSubview(caption)
+    richStack.addArrangedSubview(card)
+    card.widthAnchor.constraint(equalTo: richStack.widthAnchor).isActive = true
+    caption.widthAnchor.constraint(equalTo: card.widthAnchor).isActive = true
+    mediaCards[source] = card
+    return card
+  }
+
+  func connectMediaLinks(_ view: NSView) {
+    if let field = view as? RichTextLabel {
+      field.delegate = self
+      for source in spec.media_sources ?? [] {
+        let range = (field.string as NSString).range(of: source)
+        if range.location != NSNotFound { field.textStorage?.addAttribute(.link, value: source, range: range) }
+      }
+    }
+    for child in view.subviews { connectMediaLinks(child) }
+  }
+
   func receiveRich(_ message: [String: Any]) {
     guard !closed, let status = message["status"] as? String else { return }
-    if status == "rich_error" { statusLabel.stringValue = message["message"] as? String ?? "画像を表示できません。"; return }
-    if status == "rich_card", let title = message["title"] as? String, let url = message["url"] as? String {
-      let group = NSStackView(); group.orientation = .vertical; group.alignment = .leading; group.spacing = 3
-      let caption = richLabel(title + "\n" + (message["site"] as? String ?? "") + "\n" + url, size: Look.small)
+    if status == "rich_error" { statusLabel.stringValue = message["message"] as? String ?? "メディアを表示できません。"; return }
+    let source = message["source"] as? String ?? message["url"] as? String ?? ""
+    let group = mediaCard(source)
+    if status == "rich_card", let title = message["title"] as? String {
+      let caption = richLabel(title + "\n" + (message["site"] as? String ?? ""), size: Look.small)
       group.addArrangedSubview(caption)
-      richStack.addArrangedSubview(group)
-      group.widthAnchor.constraint(equalTo: richStack.widthAnchor).isActive = true
       caption.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
       if let path = message["path"] as? String, !path.isEmpty { loadRichImage(path, into: group, height: 80) }
-    } else if status == "rich_image", let path = message["path"] as? String { loadRichImage(path, into: richStack) }
+    } else if status == "rich_image", let path = message["path"] as? String {
+      loadRichImage(path, into: group)
+    } else if status == "rich_video", let path = message["path"] as? String {
+      let url = URL(fileURLWithPath: path)
+      let video: NSView
+      if ["webm", "ogv", "ogg"].contains(url.pathExtension.lowercased()) {
+        let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let document = url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".player.html")
+        let html = "<html><head><meta name=\"viewport\" content=\"width=device-width\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; media-src file:;\"></head><body style=\"margin:0;background:black\"><video controls muted playsinline preload=\"metadata\" style=\"width:100%;height:100%\" src=\"" + url.absoluteString + "\"></video></body></html>"
+        do {
+          try html.write(to: document, atomically: true, encoding: .utf8)
+          try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: document.path)
+          web.loadFileURL(document, allowingReadAccessTo: url.deletingLastPathComponent())
+          videoDocuments.append(document); webVideos.append(web)
+        } catch { statusLabel.stringValue = "動画を表示できません: " + error.localizedDescription; return }
+        video = web
+      } else {
+        let player = AVPlayer(url: url)
+        player.isMuted = true
+        let native = AVPlayerView()
+        native.player = player; native.controlsStyle = .inline
+        players.append(player); video = native
+      }
+      video.translatesAutoresizingMaskIntoConstraints = false
+      group.addArrangedSubview(video)
+      NSLayoutConstraint.activate([video.widthAnchor.constraint(equalTo: group.widthAnchor), video.heightAnchor.constraint(equalTo: video.widthAnchor, multiplier: 9.0 / 16.0)])
+    }
   }
   func loadRichImage(_ path: String, into stack: NSStackView, height: CGFloat = 160) {
     imageWork.addOperation { [weak self, weak stack] in

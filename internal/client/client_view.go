@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/render"
+	"image"
 	"reflect"
 	"sort"
 )
@@ -24,17 +26,34 @@ func (m *machineClient) currentClientView() api.ClientView {
 	}
 	if ws := e.snapshot.State.ActiveWorkspace(); ws != nil {
 		view.WorkspaceID = fmt.Sprintf("s%d", ws.ID)
-		for _, tab := range ws.Tabs {
-			for _, pid := range tab.Layout.PaneIDs() {
-				view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", pid))
+		state := e.snapshot.State
+		for _, pane := range state.DisplayPaneRects() {
+			if state.PopupVisible() {
+				p, r := state.PopupRect(), pane.Rect
+				if !image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H).Intersect(image.Rect(p.X, p.Y, p.X+p.W, p.Y+p.H)).Empty() {
+					continue
+				}
 			}
+			if pane.Rect.W > 0 && pane.Rect.H > 0 {
+				view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", pane.ID))
+			}
+		}
+		if state.PopupVisible() {
+			view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", state.Popup.PaneID))
 		}
 		sort.Strings(view.PaneIDs)
 	}
 	return view
 }
-func (m *machineClient) reportClientView() {
-	m.publishClientView(m.currentClientView())
+func (m *machineClient) reportClientView(painted ...render.Input) {
+	view := m.currentClientView()
+	if len(painted) > 0 {
+		in := painted[0]
+		if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil {
+			view.PaneIDs = []string{}
+		}
+	}
+	m.publishClientView(view)
 }
 
 func (m *machineClient) reportClientFocus() {

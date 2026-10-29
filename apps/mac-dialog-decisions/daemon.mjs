@@ -1,3 +1,4 @@
+import { displayedByFocusedClient } from "./client-views.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_LATER_MS, WATCH_RETRY_MS, RESPONDER, log, sleep, daemonPidPath, removeDialogFiles } from "./common.mjs";
@@ -279,7 +280,14 @@ export class MacDialogDecisionsDaemon {
       }
       return;
     }
-    spec.present_in_background = presentation;
+    if (presentation) {
+      entry.showing = false;
+      entry.waitingForView = true;
+      this.notify();
+      return;
+    }
+    entry.waitingForView = false;
+    spec.present_in_background = this.children.size > 0;
     let specPath = "";
     try {
       specPath = this.specFilePath(entry.key);
@@ -314,43 +322,29 @@ export class MacDialogDecisionsDaemon {
     let background = false;
     if (this.clientViews) {
       try { background = this.displayedByFocusedClient(entry, await this.clientViews.list()); }
-      catch (error) { this.log(`表示状態を照会できないため前面に表示: ${error.message}`); }
+      catch (error) { this.log(`表示状態を照会できないため通知します: ${error.message}`); }
     }
     return this.isActive(entry) && this.machineEpochs.get(entry.machineId) === epoch ? background : null;
   }
 
-  takeFrontCommand(entry, inBackground, views) {
-    if (!inBackground || entry.refronted || !this.isActive(entry) || this.displayedByFocusedClient(entry, views)) return null;
-    entry.refronted = true;
-    return {status: "front"};
-  }
-
   displayedByFocusedClient(entry, views) {
-    const pane = entry.decision.origin?.pane_id;
-    const session = this.clientViews.sessionFor(entry.machineId);
-    if (!pane || !session || !Array.isArray(views)) return false;
-    return views.some(view => view.focused === true && view.machine_id === entry.machineId &&
-      view.session === session && typeof view.workspace_id === "string" && view.workspace_id &&
-      Array.isArray(view.pane_ids) && view.pane_ids.includes(pane));
+    return displayedByFocusedClient(entry, this.clientViews, views);
   }
 
   refreshBackgroundWindows() {
-    // Serialize queries: an older reply must never undo a newer change.
     this._visibilityDone = (this._visibilityDone ?? Promise.resolve()).then(async () => {
-      const children = [...this.children.values()].filter(child => child.inBackground && !child.entry.refronted);
-      if (this.stopped || !children.length) return;
+      if (this.stopped) return;
       let views;
       try { views = await this.clientViews.list(); } catch { views = []; }
-      for (const child of children) {
-        const entry = child.entry;
-        if (this.stopped || !this.isActive(entry) || this.children.get(entry.key) !== child || child.handled) continue;
-        const command = this.takeFrontCommand(entry, child.inBackground, views);
-        if (command) {
-          child.inBackground = false;
-          child.respond?.(command);
-        }
+      for (const entry of this.entries.values()) {
+        if (!entry.waitingForView || !this.isActive(entry) || entry.showing || entry.queued ||
+            entry.dismissed || entry.answerPending || entry.retry || this.displayedByFocusedClient(entry, views)) continue;
+        entry.waitingForView = false;
+        entry.queued = true;
+        this.queue.push(entry.key);
+        this.schedulePump();
       }
-    }).catch(error => this.log(`背面窓の表示確認に失敗: ${error.message}`));
+    }).catch(error => this.log(`表示待ちの確認に失敗: ${error.message}`));
     return this._visibilityDone;
   }
 
@@ -365,7 +359,7 @@ export class MacDialogDecisionsDaemon {
           this.log(`ダイアログの JSON でない行を捨てました: ${String(line).slice(0, 120)}`);
           continue;
         }
-        if (message?.event === "shown") continue;
+        if (message?.event === "shown") { child.shown = true; continue; }
         if (message?.event === "draft") { child.entry.draft = message.draft; continue; }
         if (typeof message?.result !== "string") continue;
         child.handled = true;

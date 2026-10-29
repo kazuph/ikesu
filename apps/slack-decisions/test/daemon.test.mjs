@@ -124,7 +124,7 @@ test("created + glasses absent -> posts immediately with full context", async ()
     assert.equal(post.channel, "C1");
     const text = JSON.stringify(post.blocks);
     assert.match(text, /pane p1136 を終了してよい/);
-    assert.match(text, /Local/);
+    assert.match(text, /ローカル/);
     assert.match(text, /p1136/); // pane
     assert.match(text, /claude/); // agent
     assert.match(text, /\/tmp\/repo/); // cwd
@@ -1382,4 +1382,25 @@ test("reused post history and restored state reject old replies but recover a fr
     assert.ok(restored.testAnswers[0].includes("fresh reply"));
     assert.equal(fake.posts.length, 1);
   } finally { await daemon.stop(); if (restored) await restored.stop(); await fake.stop(); }
+});
+
+
+test('local Slack history prioritizes a later comment over numbered reactions; reaction-only mapping stays intact', async t => {
+ const service=await new FakeSlack().start();t.after(()=>service.stop());
+ const slack=new SlackClient({token:'local-emulator',channel:'CLOCAL',apiBase:service.base});
+ const daemon=makeDaemon({slack});t.after(()=>daemon.stop());
+ for(const socket of [false,true]) {
+  const decision=sampleDecision({decision_id:'comment-'+socket,allow_text:true});
+  await daemon.onCreated('local',{id:'local'},decision);
+  const entry=[...daemon.entries.values()].find(e=>e.decision.decision_id===decision.decision_id);
+  service.userReact(entry.post.ts,'one');const ts=service.userReply(entry.post.ts,'待って、削除しないで');
+  if(socket) await daemon.handleSocketPayload({type:'reaction_added',user:'UHUMAN',reaction:'one',event_ts:String(Number(ts)-0.00001),item:{type:'message',ts:entry.post.ts}});
+  else await daemon.pollOnce();
+  const answer=daemon.testAnswers.at(-1);
+  assert.ok(answer.includes('--text'));assert.equal(answer[answer.indexOf('--text')+1],'待って、削除しないで');assert.ok(!answer.includes('opt-approve'));
+  entry.resolved=true;
+ }
+ const d=sampleDecision({decision_id:'reaction-only'});await daemon.onCreated('local',{id:'local'},d);
+ const e=[...daemon.entries.values()].find(e=>e.decision.decision_id===d.decision_id);service.userReact(e.post.ts,'two');await daemon.pollOnce();
+ assert.ok(daemon.testAnswers.at(-1).includes('opt-reject'));assert.ok(!daemon.testAnswers.at(-1).includes('--text'));
 });
