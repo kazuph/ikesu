@@ -13,8 +13,8 @@ func (a *App) forwardTrackingBody(m uv.Mouse, event uv.MouseEvent) {
 	if !ok {
 		return
 	}
-	inner, _ := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
-	if a.paneScrollbarVisible(pr.ID, time.Now()) {
+	inner, gutter := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+	if gutter > 0 && a.paneScrollbarVisible(pr.ID, time.Now()) {
 		inner.W--
 	}
 	if !pointIn(m.X, m.Y, inner) {
