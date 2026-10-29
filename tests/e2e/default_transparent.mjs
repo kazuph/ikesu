@@ -40,7 +40,7 @@ try{
   assert(measurements.before.nonDefaultBackground>0,'before did not exercise painted chrome');
   if(background==='default')assert.equal(measurements.after.nonDefaultBackground,0,`${theme}: default background remained painted`);
   else {assert.equal(measurements.after.nonDefaultBackground,4800,`${theme}/${background}: some regions were not filled`);const expected=background==='custom'?0x2a4639:theme==='default'?0x181825:0xeff1f5;assert(measurements.after.cells.every(c=>c.background===expected),`${theme}/${background}: backgrounds differ by region`);}
-  const geometry=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,rects:[...document.querySelectorAll('.terminal')].map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}})}));
+  const geometry=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,rects:[...document.querySelectorAll('section > .terminal')].map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}})}));
   assert(geometry.scrollWidth<=geometry.width,'comparison layout overflowed');
   assert(geometry.rects[0].right<=geometry.rects[1].x,'terminal comparisons overlap');
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
