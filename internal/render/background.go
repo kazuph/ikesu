@@ -54,6 +54,10 @@ func applyPersistentBackground(f *Frame, in Input) {
 					break
 				}
 			}
+			area := s.PanesArea()
+			if y == area.Y+area.H-1 && (in.ModeHint != "" && !(in.ServerUI && in.Prefix) || in.Copy != nil && in.Copy.Fullscreen && !in.ServerUI && in.CopyHint != "") {
+				application = false
+			}
 			if application {
 				if cell.Style.Bg == nil {
 					cell.Style.Bg = bg
@@ -69,8 +73,8 @@ func applyPersistentBackground(f *Frame, in Input) {
 			if old != nil && old == f.Palette.PanelBG && cell.Content != " " && cell.Content != "" {
 				cell.Style.Underline = uv.UnderlineSingle
 			}
-			if old != nil && old == f.Palette.Accent && cell.Style.Fg != nil && (cell.Style.Fg == f.Palette.PanelBG || cell.Style.Fg == f.Palette.PopupBG || cell.Style.Fg == f.Palette.SurfDim) {
-				cell.Style.Fg = f.Palette.Accent
+			if old != nil && (old == f.Palette.Accent || old == f.Palette.Mauve) && cell.Style.Fg != nil && (cell.Style.Fg == f.Palette.PanelBG || cell.Style.Fg == f.Palette.PopupBG || cell.Style.Fg == f.Palette.SurfDim) {
+				cell.Style.Fg = old
 				cell.Style.Attrs |= uv.AttrBold
 				cell.Style.Underline = uv.UnderlineSingle
 			}
