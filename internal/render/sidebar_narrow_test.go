@@ -23,7 +23,18 @@ func TestNarrowSidebarNamesStayWithinDividers(t *testing.T) {
 		f := Compose(in).Frame
 		left, right := s.SidebarArea(), s.RightSidebarArea()
 		for y := 0; y < 30; y++ {
-			if f.Cell(left.W-1, y).Content != "│" || f.Cell(right.X, y).Content != "│" {
+			leftWant, rightWant := "│", "│"
+			for _, pane := range s.DisplayPaneRects() {
+				if y == pane.Rect.Y || y == pane.Rect.Y+pane.Rect.H-1 {
+					if pane.Rect.X == left.X+left.W {
+						leftWant = "├"
+					}
+					if pane.Rect.X+pane.Rect.W == right.X {
+						rightWant = "┤"
+					}
+				}
+			}
+			if f.Cell(left.W-1, y).Content != leftWant || f.Cell(right.X, y).Content != rightWant {
 				t.Fatalf("width=%d row=%d divider overwritten", width, y)
 			}
 		}

@@ -49,16 +49,17 @@ func testKittyVirtual(t *testing.T, format int) {
 		return handled
 	})
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	borderX, borderY := -1, -1
-	for y := 0; y < termH && borderX < 0; y++ {
+	// The shared frame junction is two columns before terminal content.
+	contentX, contentY := -1, -1
+	for y := 0; y < termH && contentX < 0; y++ {
 		for x := 1; x < termW; x++ {
-			if s.emu.CellAt(x, y).Content == "┌" {
-				borderX, borderY = x, y
+			if s.emu.CellAt(x, y).Content == "├" && s.emu.CellAt(x+1, y).Content == "─" {
+				contentX, contentY = x+2, y+1
 				break
 			}
 		}
 	}
-	if borderX < 0 {
+	if contentX < 0 {
 		t.Fatal("no pane border")
 	}
 	probe, pids := filepath.Join(root, "virtual.py"), filepath.Join(root, "pids")
@@ -112,7 +113,7 @@ while True:
 	initial := cells()
 	for i, c := range initial {
 		row, col := i/4, i%4
-		if c != (visibleImageCell{X: borderX + 1 + 6 + col, Y: borderY + 1 + row, Row: row, Col: col}) {
+		if c != (visibleImageCell{X: contentX + 6 + col, Y: contentY + row, Row: row, Col: col}) {
 			t.Fatalf("wrong initial image part/position: %+v", initial)
 		}
 	}

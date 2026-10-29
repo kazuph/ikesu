@@ -5,6 +5,20 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 )
 
+// paneFrameRect joins the outside frame to the sidebar line without changing
+// the terminal content rectangle. Both box drawing and divider joins use it.
+func paneFrameRect(s *model.AppState, r model.Rect) model.Rect {
+	left, right := s.SidebarArea(), s.RightSidebarArea()
+	if left.W > 0 && r.X == left.X+left.W {
+		r.X--
+		r.W++
+	}
+	if right.W > 0 && r.X+r.W == right.X {
+		r.W++
+	}
+	return r
+}
+
 // Shared borders combine the incident edges at each split intersection.
 func joinPaneDividers(f *Frame, s *model.AppState) {
 	if s.PaneGaps || !s.PaneBorders {
@@ -27,6 +41,7 @@ func joinPaneDividers(f *Frame, s *model.AppState) {
 		if r.W <= 2 || r.H <= 2 {
 			continue
 		}
+		r = paneFrameRect(s, r)
 		x2, y2 := r.X+r.W-1, r.Y+r.H-1
 		for x := r.X + 1; x < x2; x++ {
 			add(x, r.Y, 3, p.IsFocused)

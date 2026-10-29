@@ -18,9 +18,11 @@ func TestDefaultBackgroundTransparentAcrossThemes(t *testing.T) {
 			for _, width := range []int{120, 60} {
 				s.Cols = width
 				s.MobileWidthThreshold = (config.Config{}).MobileWidthThreshold()
-				f := ComposeClient(in, nil, "test", false).Frame
+				out := ComposeClient(in, nil, "test", false)
+				f := out.Frame
 				for i, c := range f.Cells {
-					if c.Style.Bg != nil {
+					want, _ := tabBackgroundExpectation(out, s, i%f.W, i/f.W)
+					if c.Style.Bg != want {
 						t.Fatalf("theme=%s width=%d cell=%d,%d background=%v", theme, width, i%f.W, i/f.W, c.Style.Bg)
 					}
 				}
@@ -49,8 +51,12 @@ func TestBackgroundSettingAppliesToAllPermanentRegions(t *testing.T) {
 			}
 			out := ComposeClient(in, nil, "test", false)
 			for i, c := range out.Frame.Cells {
-				if c.Style.Bg != want {
-					t.Fatalf("%s x=%d y=%d bg=%v want=%v", mode, i%s.Cols, i/s.Cols, c.Style.Bg, want)
+				expected := want
+				if tab, ok := tabBackgroundExpectation(out, s, i%s.Cols, i/s.Cols); ok {
+					expected = tab
+				}
+				if c.Style.Bg != expected {
+					t.Fatalf("%s x=%d y=%d bg=%v want=%v", mode, i%s.Cols, i/s.Cols, c.Style.Bg, expected)
 				}
 			}
 		})
@@ -83,4 +89,17 @@ func TestDefaultBackgroundKeepsApplicationColorsAndFloatingReadability(t *testin
 			}
 		}
 	}
+}
+
+// Tab fills are the explicit exception to permanent-chrome transparency.
+func tabBackgroundExpectation(out *Output, s *model.AppState, x, y int) (color.Color, bool) {
+	for i, r := range out.TabHits {
+		if y == r.Y && x >= r.X && x < r.X+r.W {
+			if i == s.ActiveWorkspace().ActiveTab {
+				return out.Frame.Palette.Accent, true
+			}
+			return out.Frame.Palette.Surface, true
+		}
+	}
+	return nil, false
 }
