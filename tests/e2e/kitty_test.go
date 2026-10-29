@@ -34,21 +34,21 @@ func TestKittyActualPTYPlacementAndHandoff(t *testing.T) {
 		return handled
 	})
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	// Derive the pane origin from the actual rendered border, independently
-	// of the graphics encoder and its pane rectangle calculation.
-	borderX, borderY := -1, -1
+	// Derive the content origin from the actual shared frame, independently
+	// of the graphics encoder. One blank column follows the sidebar junction.
+	contentX, contentY := -1, -1
 	for y := 0; y < termH; y++ {
 		for x := 1; x < termW; x++ {
-			if s.emu.CellAt(x, y).Content == "┌" {
-				borderX, borderY = x, y
+			if s.emu.CellAt(x, y).Content == "├" && s.emu.CellAt(x+1, y).Content == "─" {
+				contentX, contentY = x+2, y+1
 				break
 			}
 		}
-		if borderX >= 0 {
+		if contentX >= 0 {
 			break
 		}
 	}
-	if borderX < 0 {
+	if contentX < 0 {
 		t.Fatalf("pane border not found:\n%s", s.text())
 	}
 	probe := filepath.Join(root, "probe.py")
@@ -75,8 +75,8 @@ while True:
 	s.send(fmt.Sprintf("/usr/bin/python3 %q %q\r", probe, answers))
 	s.waitFor("actual outer placement", 10*time.Second, func(tx string) bool { return len(placed) > 0 })
 	p := placed[len(placed)-1]
-	if p.X != borderX+1+6 || p.Y != borderY+1+4 || p.Cols != 3 || p.Rows != 2 || !bytes.Equal(p.Image.Data, []byte{0, 255, 0}) {
-		t.Fatalf("actual outer placement=%+v; pane border=%d,%d", p, borderX, borderY)
+	if p.X != contentX+6 || p.Y != contentY+4 || p.Cols != 3 || p.Rows != 2 || !bytes.Equal(p.Image.Data, []byte{0, 255, 0}) {
+		t.Fatalf("actual outer placement=%+v; pane content=%d,%d", p, contentX, contentY)
 	}
 	b, err := os.ReadFile(answers)
 	if err != nil {
@@ -137,5 +137,5 @@ while True:
 	s.waitFor("pane close deletes image", 5*time.Second, func(string) bool { return len(outer.Placements) == 0 })
 	t.Logf("tab/workspace switch removed and restored image; split and swap moved x=%d to x=%d; pane close removed image", p.X, moved.X)
 	t.Logf("resize moved x=%d to x=%d; PTY scroll moved y=%d to y=%d; scrollback returned to y=%d", moved.X, resized.X, resized.Y, resized.Y-1, resized.Y)
-	t.Logf("actual outer kitty placement x=%d y=%d c=%d r=%d; pane border x=%d y=%d; source pixels=%s; responses=%s", p.X, p.Y, p.Cols, p.Rows, borderX, borderY, hex.EncodeToString(p.Image.Data), hex.EncodeToString(b))
+	t.Logf("actual outer kitty placement x=%d y=%d c=%d r=%d; pane content x=%d y=%d; source pixels=%s; responses=%s", p.X, p.Y, p.Cols, p.Rows, contentX, contentY, hex.EncodeToString(p.Image.Data), hex.EncodeToString(b))
 }
