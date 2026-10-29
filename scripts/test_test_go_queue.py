@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Queue verification with real flock holders, processes, and Go tests."""
+import fcntl
+from datetime import datetime, timezone
 import importlib.util
 import json
 import os
@@ -46,6 +48,19 @@ def stop_owned(process):
 
 
 def helper(path, label, events, child):
+    if child == 'late-owner':
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            print('LOCKED_BEFORE_RECORD', flush=True)
+            sys.stdin.buffer.readline()
+            owner = dict(pid=os.getpid(), worktree=str(Path.cwd()), label=label,
+                         started_at=datetime.now(timezone.utc).isoformat(timespec='seconds'))
+            path.with_name(path.name + '.owner.json').write_text(json.dumps(owner))
+            print('RECORDED', flush=True)
+            sys.stdin.buffer.readline()
+        return
     with runner.heavy_test_slot(path, Path.cwd(), label):
         if child == 'child':
             command = "import sys; sys.stdin.buffer.read(); print('CHILD_DONE',flush=True)"
@@ -83,6 +98,11 @@ class QueueLockTests(QueueCase):
             (['./...'], None, None, True),
             (['all'], 'origin/main', '^TestOne$', True),
             (['./internal/...'], 'origin/main', 'TestOne', True),
+            (['./.../server'], None, '^Test', True),
+            (['./.../server'], 'origin/main', None, True),
+            *[([word], changed, selected, True)
+              for word in ('all', 'work', 'std', 'cmd')
+              for changed, selected in [('origin/main', None), (None, '^Test')]],
             (['./internal/server'], None, None, True),
             (['./internal/model', './internal/render'], None, None, True),
             (['./internal/model', './internal/render'], 'origin/main', None, False),
@@ -90,6 +110,33 @@ class QueueLockTests(QueueCase):
         ]:
             with self.subTest(packages=packages, changed=changed, selected=selected):
                 self.assertEqual(runner.is_heavy_run(packages, changed, selected), heavy)
+
+    def test_waiting_owner_refreshes_after_publication(self):
+        # Also reproduce an obsolete record left by a previously killed owner.
+        for stale in (False, True):
+            with self.subTest(stale=stale):
+                owner_path = self.lock.with_name(self.lock.name + '.owner.json')
+                if stale:
+                    owner_path.write_text(json.dumps(dict(pid=-1, label='old-owner')))
+                holder = self.start('late-holder-' + str(stale), 'late-owner')
+                read_line(holder, 'LOCKED_BEFORE_RECORD')
+                waiter = self.start('late-waiter-' + str(stale))
+                initial = json.loads(read_line(waiter, 'TEST_QUEUE waiting ').removeprefix('TEST_QUEUE waiting '))
+                self.assertEqual(initial['label'], 'old-owner' if stale else 'initializing')
+                holder.stdin.write(b'\n')
+                read_line(holder, 'RECORDED')
+                owner = json.loads(read_line(waiter, 'TEST_QUEUE waiting ').removeprefix('TEST_QUEUE waiting '))
+                self.assertEqual(owner['pid'], holder.pid)
+                self.assertEqual(owner['label'], 'late-holder-' + str(stale))
+                self.assertEqual(owner['worktree'], str(self.root / owner['label']))
+                self.assertTrue(owner['started_at'].endswith('+00:00'))
+                self.assertIsNone(holder.poll())
+                holder.stdin.write(b'\n')
+                read_line(waiter, 'ENTERED')
+                waiter.stdin.write(b'\n')
+                self.assertEqual(holder.wait(timeout=5), 0)
+                self.assertEqual(waiter.wait(timeout=5), 0)
+                print('QUEUE_OWNER_REFRESH=' + json.dumps(owner), flush=True)
 
     def test_owner_record_removed_on_release(self):
         owner_path = self.lock.with_name(self.lock.name + '.owner.json')
@@ -161,15 +208,21 @@ class QueueRunnerTests(QueueCase):
         self.assertFalse((self.root / 'bench-terrace.noindex').exists())
         self.assertEqual(json.loads((output / 'summary.json').read_text())['queue_wait_seconds'], 0)
 
+    def test_recursive_filtered_real_go_waits_for_shared_lock(self):
+        self.assert_real_go_waits('./.../model', ['--run', '^Test'])
+
     def test_unfiltered_real_go_waits_for_shared_lock(self):
+        self.assert_real_go_waits('./internal/model', [])
+
+    def assert_real_go_waits(self, package, selection):
         self.lock = self.root / 'bench-terrace.noindex/.locks/test-go.lock'
         holder = self.start('holder')
         read_line(holder, 'ENTERED')
         go_env = json.loads(subprocess.check_output(['go', 'env', '-json', 'GOCACHE', 'GOPATH'], text=True))
         env = dict(os.environ, HOME=str(self.root), GOCACHE=go_env['GOCACHE'], GOPATH=go_env['GOPATH'])
         output = self.root / 'heavy-result'
-        process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/test-go.py'), './internal/model', '--mode', 'normal',
-                                    '--label', 'heavy-proof', '--output', str(output)], cwd=ROOT, env=env,
+        process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/test-go.py'), package, '--mode', 'normal',
+                                    '--label', 'heavy-proof', '--output', str(output), *selection], cwd=ROOT, env=env,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
         self.addCleanup(stop_owned, process)
         owner = json.loads(read_line(process, 'TEST_QUEUE waiting ').removeprefix('TEST_QUEUE waiting '))

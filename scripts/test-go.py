@@ -27,6 +27,9 @@ import sys
 import time
 
 
+POLL_INTERVAL_SECONDS = 0.1
+
+
 class ProcessEnvironment:
     def __init__(self):
         if sys.platform == 'darwin':
@@ -161,7 +164,7 @@ class OwnedProcesses:
                 return []
             if time.monotonic() >= deadline:
                 raise RuntimeError('owned processes remain: ' + str(sorted(remaining)))
-            time.sleep(0.1)
+            time.sleep(POLL_INTERVAL_SECONDS)
 
 
 def changed_packages(base):
@@ -187,7 +190,7 @@ def summarize(path, mode, iteration):
 
 
 def is_heavy_run(packages, changed=None, selected_test=None):
-    return any(package in ('...', 'all') or package.endswith('/...') for package in packages) or not (changed or selected_test)
+    return any('...' in package or package in ('all', 'work', 'std', 'cmd') for package in packages) or not (changed or selected_test)
 
 
 @contextmanager
@@ -198,15 +201,20 @@ def heavy_test_slot(path, worktree, label):
     owner_path = path.with_name(path.name + '.owner.json')
     started = time.monotonic()
     with path.open('a+') as lock:
-        try:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        previous_owner = None
+        while True:
             try:
-                owner = json.loads(owner_path.read_text())
-            except (FileNotFoundError, ValueError):
-                owner = dict(worktree='initializing', label='initializing', started_at='initializing')
-            print('TEST_QUEUE waiting ' + json.dumps(owner, ensure_ascii=False), flush=True)
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                try:
+                    owner = json.loads(owner_path.read_text())
+                except (FileNotFoundError, ValueError):
+                    owner = dict(worktree='initializing', label='initializing', started_at='initializing')
+                if owner != previous_owner:
+                    print('TEST_QUEUE waiting ' + json.dumps(owner, ensure_ascii=False), flush=True)
+                    previous_owner = owner
+                time.sleep(POLL_INTERVAL_SECONDS)
         owner = dict(pid=os.getpid(), worktree=str(worktree), label=label,
                      started_at=datetime.now(timezone.utc).isoformat(timespec='seconds'))
         # Atomic publication keeps waiters from reading a half-written record.
@@ -311,7 +319,7 @@ def run_tests(args, packages, queue_wait):
                         print('MODE_EXIT=' + json.dumps(dict(mode=mode, exit=code)), flush=True)
                 if time.monotonic() - started >= args.total_timeout:
                     raise TimeoutError(f'total timeout {args.total_timeout}s')
-                time.sleep(0.1)
+                time.sleep(POLL_INTERVAL_SECONDS)
             for process, (mode, path) in zip(active, logs):
                 code = process.wait()
                 results.append(dict(mode=mode, iteration=iteration, exit=code, log=str(path)))
