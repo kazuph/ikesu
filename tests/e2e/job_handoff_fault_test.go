@@ -88,6 +88,7 @@ func startFaultJobScriptCompletion(t *testing.T, script func(string) string, com
 }
 
 func TestCancelReapedLeaderWithSurvivingChild(t *testing.T) {
+	t.Parallel()
 	for _, handoff := range []bool{false, true} {
 		t.Run(fmt.Sprintf("handoff=%t", handoff), func(t *testing.T) {
 			childFile := filepath.Join(t.TempDir(), "child-pid")
@@ -142,6 +143,7 @@ func (j *faultJob) notices() int {
 }
 
 func TestJobNoticeAcknowledgementFailureHandoff(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	faultSQL(t, j.dbPath, `CREATE TRIGGER reject_delivery BEFORE UPDATE OF delivered_at ON dispatches WHEN OLD.kind='message' BEGIN SELECT RAISE(ABORT,'delivery rejected'); END`)
 	if _, err := j.release.WriteString("go\n"); err != nil {
@@ -169,6 +171,7 @@ func TestJobNoticeAcknowledgementFailureHandoff(t *testing.T) {
 }
 
 func TestManagedJobResultSurvivesRetentionAndDBFailure(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	faultSQL(t, j.dbPath, fmt.Sprintf("UPDATE dispatches SET created_at='%s' WHERE kind='command' AND external_id='%s'; CREATE TRIGGER reject_finish BEFORE UPDATE OF status ON dispatches WHEN OLD.kind='command' AND NEW.status='exited' BEGIN SELECT RAISE(ABORT,'finish rejected'); END", time.Now().Add(-dispatch.JobRetention-time.Hour).UTC().Format("2006-01-02T15:04:05.000Z"), j.job.ID))
 	if _, err := j.release.WriteString("go\n"); err != nil {
@@ -212,6 +215,7 @@ func TestManagedJobResultSurvivesRetentionAndDBFailure(t *testing.T) {
 }
 
 func TestCancelFileFailureKeepsRunningAndRecovers(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	path := j.job.LogPath + ".cancel"
 	if err := os.Mkdir(path, 0700); err != nil {
@@ -238,6 +242,7 @@ func TestCancelFileFailureKeepsRunningAndRecovers(t *testing.T) {
 }
 
 func TestCancellingJobWithoutMonitorTerminatesWithReason(t *testing.T) {
+	t.Parallel()
 	j := startFaultJob(t)
 	data, err := os.ReadFile(j.job.LogPath + ".runner")
 	if err != nil {
