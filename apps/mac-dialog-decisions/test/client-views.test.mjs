@@ -1,3 +1,4 @@
+import {ViewDeliveryProxy} from './view-delivery-proxy.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -127,6 +128,10 @@ os.close(fd)
  await until(async()=>{actual=(await f.views.list()).find(view=>view.client_id===actual.client_id);return actual?.workspace_id===space.workspace.workspace_id});
  // The fresh HOME opens a setup dialog; a covered pane must not suppress notifications.
  assert.deepEqual(actual.pane_ids,[]);
+ // Continue the actual onboarding dialog, then prove the painted pane returns.
+ terminal.stdin.write('\r');
+ await until(async()=>{actual=(await f.views.list()).find(view=>view.client_id===actual.client_id);return actual?.pane_ids.includes(space.root_pane.pane_id)});
+ assert.deepEqual(actual.pane_ids,[space.root_pane.pane_id]);
  terminal.stdin.write('\x1b[O');
  await until(async()=>{actual=(await f.views.list()).find(view=>view.client_id===actual.client_id);return actual?.focused===false});
  assert.equal(actual.machine_id,'local');
@@ -202,4 +207,42 @@ test('initial visibility query waits for the real event subscription before deci
  const views=await connecting.list();
  assert.equal(views.find(view=>view.workspace_id==='s1').focused,true);
  assert.equal(f.daemon.displayedByFocusedClient(f.entry(),views),true);
+});
+
+
+test('pending replay before subscription and reversed view replies keep both real outputs consistent with the latest view',async t=>{
+ const f=await fixture(t);await f.set(local);
+ const proxy=await new ViewDeliveryProxy(f.env.IKESU_SOCKET_PATH,path.join(f.views.directory,'proxy.sock')).start();t.after(()=>proxy.stop());
+ t.after(()=>f.views.stop());
+ const macViews=new ClientViews({...f.env,IKESU_SOCKET_PATH:proxy.socketPath});
+ const slackViews=new ClientViews({...f.env,IKESU_SOCKET_PATH:proxy.socketPath});
+ f.daemon.clientViews=macViews;macViews.start(()=>void f.daemon.refreshBackgroundWindows());
+ const service=await new FakeSlack().start();t.after(()=>service.stop());
+ const slack=new SlackDecisionsDaemon({config:{socketMode:false,stateDir:f.views.directory},slack:new SlackClient({token:'local-emulator',channel:'CLOCAL',apiBase:service.base}),clientViews:slackViews,glassesState:async()=>null,log:()=>{}});
+ slackViews.start(()=>void slack.refreshVisibleDecisions());t.after(()=>slack.stop());
+ const host=new NativeDialogHost(process.env.MAC_DIALOG_TEST_NATIVE_BINARY,f.views.directory);t.after(()=>host.stop());
+ f.daemon.spawnDialog=file=>host.open(file);f.daemon.specFilePath=key=>path.join(f.views.directory,encodeURIComponent(key)+'.json');f.daemon.config.presentDelayMs=0;
+ const d={decision_id:'startup-held',kind:'ask',status:'pending',origin:{pane_id:'p1'},title:'起動順序試験',options:[{id:'yes',label:'はい'}],allow_text:true};
+ f.daemon.onCreated('local',{id:'local'},d);const posting=slack.onCreated('local',{id:'local'},d);
+ await until(()=>proxy.subscriptions.length===2&&[...f.daemon.entries.values()][0]?.showing);
+ assert.equal(host.child,null);assert.equal(service.posts.length,0);
+ proxy.releaseSubscriptions();await posting;await until(()=>[...f.daemon.entries.values()][0]?.waitingForView);
+ assert.equal(host.windows.size,0);assert.equal(service.posts.length,0);
+ // The old "visible" list reply arrives AFTER the leave event.
+ proxy.holdLists=true;
+ const entry=[...f.daemon.entries.values()][0],slackEntry=[...slack.entries.values()][0];
+ const showing=f.daemon._present(entry),post=slack.postDecision(slackEntry);
+ await until(()=>proxy.lists.length>=2);const revision=macViews.revision,slackRevision=slackViews.revision;
+ await f.set({...local,focused:false});await until(()=>macViews.revision>revision&&slackViews.revision>slackRevision);
+ proxy.releaseLists();await Promise.all([showing,post]);await until(()=>[...f.daemon.children.values()][0]?.shown);
+ assert.equal(host.windows.size,1);assert.equal(service.posts.length,1);
+ // Reverse direction: an old "not visible" reply must not notify after enter.
+ proxy.holdLists=true;const other={...d,decision_id:'enter-held'};
+ f.daemon.onCreated('local',{id:'local'},other);const otherPost=slack.onCreated('local',{id:'local'},other);
+ await until(()=>proxy.lists.length>=2);const entered=macViews.revision,slackEntered=slackViews.revision;
+ await f.set(local);await until(()=>macViews.revision>entered&&slackViews.revision>slackEntered);
+ proxy.releaseLists();await otherPost;await until(()=>[...f.daemon.entries.values()].find(e=>e.decision.decision_id===other.decision_id)?.waitingForView);
+ assert.equal(host.windows.size,1);assert.equal(service.posts.length,1);assert.ok(proxy.listCount>=6,'both consumers must re-query stale replies');
+ f.daemon.onResolved('local',{...other,status:'answered'});await slack.onResolved('local',{...other,status:'answered'});
+ console.log('REAL_VISIBILITY_ORDER_PASS startupWindows=0 startupPosts=0 leaveWindows=1 leavePosts=1 staleEnterAdditionalWindows=0 staleEnterAdditionalPosts=0');
 });
