@@ -171,7 +171,7 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 			t.Fatal(err)
 		}
 		stream.SetDeadline(time.Now().Add(10 * time.Second))
-		connection, err := connectEndpoint(stream, id != "local", m.size, m.settings, "")
+		connection, err := connectEndpoint(stream, id != "local", m.size, m.settings, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}

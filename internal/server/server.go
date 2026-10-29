@@ -41,6 +41,7 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	Selection             *endpoint.ViewSelection              `json:"selection,omitempty"`
 	ClientView            *api.ClientView                      `json:"client_view,omitempty"`
 	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
 	GraphicsFileTransport string                               `json:"graphics_file_transport,omitempty"`
@@ -681,6 +682,7 @@ func (s *Server) attach(conn net.Conn) {
 		}
 		s.sendDecisionProjection(c)
 		c.viewer = s.app.NewViewer(&viewerSink{s: s, c: c}, hello.Cols, hello.Rows, func(reason string) { s.detachClient(c, reason) })
+		c.viewer.RestoreSelection(s.app, hello.Selection)
 		c.viewer.SetContinuousSidebarRows(endpoint.Allows(available, 1, hello.Methods, "sidebar_continuous"))
 		if hello.Visible != nil && !*hello.Visible {
 			c.viewer.SetVisible(s.app, false)

@@ -34,7 +34,7 @@ func (a *App) OpenPluginPane(workspace, target int, placement, direction, cwd st
 		default:
 			return 0, fmt.Errorf("invalid split direction %q", direction)
 		}
-		a.exec(model.CmdSplitPane{Workspace: workspace, Pane: target, Dir: dir, Ratio: 0.5, Focus: focus || placement == "zoomed", Cwd: cwd, Argv: argv, Env: env})
+		a.exec(model.CmdSplitPane{Workspace: workspace, Pane: target, Dir: dir, Ratio: 0.5, Focus: focus, Cwd: cwd, Argv: argv, Env: env})
 	default:
 		return 0, fmt.Errorf("unsupported pane placement: %s", placement)
 	}
@@ -56,10 +56,10 @@ func (a *App) OpenPluginPane(workspace, target int, placement, direction, cwd st
 		a.exec(model.CmdClosePane{Pane: pid})
 		return 0, err
 	}
-	if focus || placement == "zoomed" {
+	if focus {
 		a.exec(model.CmdFocusPane{Pane: pid})
 	}
-	if placement == "zoomed" {
+	if placement == "zoomed" && focus {
 		a.exec(model.CmdZoomPane{Pane: pid, Mode: "on"})
 	}
 	return pid, nil
