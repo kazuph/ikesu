@@ -112,7 +112,7 @@ func (a *Assets) agentFunctions(dir string) string {
  IKESU_GUARD_CLAUDE_PREFIX_ORIG="${CLAUDE_CODE_SHELL_PREFIX:-}" IKESU_GUARD_CLAUDE_PREFIX_SET="${CLAUDE_CODE_SHELL_PREFIX+x}" IKESU_GUARD_CLAUDE_PREFIX="$_ikesu_claude_prefix" CLAUDE_CODE_SHELL_PREFIX="$_ikesu_claude_prefix" ` + invocation
 		}
 		body += fmt.Sprintf(`if ! typeset -f %[1]s >/dev/null 2>&1 && ! alias %[1]s >/dev/null 2>&1; then
-%[1]s() { %[2]s; }
+function %[1]s { %[2]s; }
 fi
 `, agent, invocation)
 	}

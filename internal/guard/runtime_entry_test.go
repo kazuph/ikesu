@@ -23,7 +23,7 @@ func TestRuntimeEntryGenerationAndProtection(t *testing.T) {
 	}
 	for _, line := range []string{
 		"printf replacement > " + quote(path), "tee " + quote(path), "chmod u+w " + quote(path),
-		"ln -sf /bin/true " + quote(path), "mv /tmp/replacement " + quote(filepath.Dir(path)),
+		"ln -sf /bin/true " + quote(path), "tee " + quote(exe), "chmod u+w " + quote(exe), "mv /tmp/replacement " + quote(filepath.Dir(path)),
 	} {
 		_, v, _ := lineVerdict(Config{}, i, line)
 		if v.Decision == "allow" {

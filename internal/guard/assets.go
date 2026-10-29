@@ -130,7 +130,7 @@ _ikesu_guard_command() {
 `, a.shellActive(), bashRequestReasonRestore, a.invocation(), a.invocation(), strings.Join(a.Config.Commands(), "|"))
 	for _, cmd := range a.Config.Commands() {
 		fmt.Fprintf(&b, `if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then
-%s() { _ikesu_guard_forward %s "$@"; }
+function %s { _ikesu_guard_forward %s "$@"; }
 fi
 `, quote(cmd), quote(cmd), cmd, quote(cmd))
 	}
@@ -184,6 +184,15 @@ func (a *Assets) sync(agent string) error {
 	}
 	if e := os.MkdirAll(filepath.Dir(a.MarkerPath), 0700); e != nil {
 		return a.setIssue(e.Error())
+	}
+	if err := os.MkdirAll(filepath.Dir(a.RuntimePath()), 0700); err != nil {
+		return a.setIssue(err.Error())
+	}
+	if err := a.publishRuntime(); err != nil {
+		return a.setIssue(err.Error())
+	}
+	if err := a.refreshStartupFiles(); err != nil {
+		return a.setIssue(err.Error())
 	}
 	// Publish only after all forwarding entries exist. Repair deleted assets
 	// even when the detected agent has not changed.

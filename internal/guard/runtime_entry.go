@@ -92,7 +92,7 @@ func RefreshStartup(i Input) error {
 	if err != nil {
 		return err
 	}
-	return a.prepareStartup(map[string]string{}, filepath.Dir(a.RuntimePath()))
+	return a.refreshStartupFiles()
 }
 
 func markerAssets(i Input, m Marker) (*Assets, error) {
@@ -101,7 +101,10 @@ func markerAssets(i Input, m Marker) (*Assets, error) {
 	if err != nil || number <= 0 || m.Pane != "p"+strconv.Itoa(number) || m.Policy == nil {
 		return nil, fmt.Errorf("invalid guard pane")
 	}
-	pane := "p_" + strconv.Itoa(number)
+	pane := strings.TrimSuffix(filepath.Base(i.Env["IKESU_GUARD_MARKER"]), ".json")
+	if pane != "p_"+strconv.Itoa(number) && pane != m.Pane {
+		return nil, fmt.Errorf("invalid guard marker name")
+	}
 	a := NewAssets(root, pane, "", *m.Policy)
 	a.meta = m
 	if filepath.Clean(i.Env["IKESU_GUARD_MARKER"]) != a.MarkerPath {
@@ -121,4 +124,10 @@ func markerAssets(i Input, m Marker) (*Assets, error) {
 	}
 	a.Executable = exe
 	return a, nil
+}
+
+func (a *Assets) refreshStartupFiles() error {
+	generator := NewAssets(a.Root, a.Pane, a.Executable, a.Config)
+	generator.meta = a.meta
+	return generator.prepareStartup(map[string]string{}, filepath.Dir(a.RuntimePath()))
 }

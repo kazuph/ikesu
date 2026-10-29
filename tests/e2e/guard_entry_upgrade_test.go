@@ -15,7 +15,7 @@ func TestGuardEntryUpgradeKeepsClaudePane(t *testing.T) {
 	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
 	// The optional baseline is built from origin/main on mini. Without it this
 	// also proves the normal same-version handoff path in the complete suite.
-	old := os.Getenv("IKESU_GUARD_BASELINE_BINARY")
+	old := os.Getenv("GUARD_ENTRY_BASELINE_BINARY")
 	if old == "" {
 		old = binPath
 	}
@@ -67,7 +67,7 @@ func TestGuardEntryUpgradeKeepsClaudePane(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := os.Remove(result); err != nil {
+		if err := os.Remove(result); err != nil && !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
 		gate := "missing"

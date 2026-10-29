@@ -41,7 +41,7 @@ func (a *Assets) RebindSocket(socket string) error {
 	if err = a.publishRuntime(); err != nil {
 		return err
 	}
-	if err = a.prepareStartup(map[string]string{}, filepath.Dir(a.RuntimePath())); err != nil {
+	if err = a.refreshStartupFiles(); err != nil {
 		return err
 	}
 	a.meta.Socket, a.active = socket, ""
