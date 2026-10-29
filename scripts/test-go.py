@@ -4,9 +4,14 @@
 On mini: python3 scripts/test-go.py --output /tmp/ikesu-test-results
 During edits: python3 scripts/test-go.py --changed origin/main
 Repeat changed tests: add --mode race --run REGEXP --repeat 10.
+Unfiltered/full runs share ~/bench-terrace.noindex/.locks/test-go.lock.
+Use --label TASK to identify the lock owner; --changed/--run selections stay light.
 """
 import argparse
 import ctypes
+import fcntl
+from contextlib import contextmanager, nullcontext
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -180,10 +185,47 @@ def summarize(path, mode, iteration):
     return rows
 
 
+def is_heavy_run(packages, changed=None, selected_test=None):
+    return any(package in ('...', 'all') or package.endswith('/...') for package in packages) or not (changed or selected_test)
+
+
+@contextmanager
+def heavy_test_slot(path, worktree, label):
+    """One host-wide flock; descriptors are never inherited by Go children."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    owner_path = path.with_name(path.name + '.owner.json')
+    started = time.monotonic()
+    with path.open('a+') as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                owner = json.loads(owner_path.read_text())
+            except (FileNotFoundError, ValueError):
+                owner = dict(worktree='initializing', label='initializing', started_at='initializing')
+            print('TEST_QUEUE waiting ' + json.dumps(owner, ensure_ascii=False), flush=True)
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        owner = dict(pid=os.getpid(), worktree=str(worktree), label=label,
+                     started_at=datetime.now(timezone.utc).isoformat(timespec='seconds'))
+        # Atomic publication keeps waiters from reading a half-written record.
+        temporary = owner_path.with_name(owner_path.name + '.' + str(os.getpid()))
+        try:
+            temporary.write_text(json.dumps(owner, ensure_ascii=False) + '\n')
+            temporary.replace(owner_path)
+            waited = time.monotonic() - started
+            print('TEST_QUEUE acquired ' + json.dumps(dict(owner, waited_seconds=waited), ensure_ascii=False), flush=True)
+            yield waited
+        finally:
+            temporary.unlink(missing_ok=True)
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('packages', nargs='*')
     parser.add_argument('--changed', metavar='BASE')
+    parser.add_argument('--label', help='label shown to other worktrees waiting for heavy tests')
     parser.add_argument('--mode', choices=['both', 'normal', 'race'], default='both')
     parser.add_argument('-p', '--packages-at-once', type=int, default=4)
     parser.add_argument('--parallel', type=int, default=4)
@@ -202,6 +244,14 @@ def main():
     if not packages:
         print('No changed Go packages.')
         return 0
+    label = args.label or str(args.output)
+    slot = (heavy_test_slot(Path.home() / 'bench-terrace.noindex/.locks/test-go.lock', Path.cwd(), label)
+            if is_heavy_run(packages, args.changed, args.run) else nullcontext(0.0))
+    with slot as queue_wait:
+        return run_tests(args, packages, queue_wait)
+
+
+def run_tests(args, packages, queue_wait):
     args.output.mkdir(parents=True, exist_ok=True)
     modes = ['normal', 'race'] if args.mode == 'both' else [args.mode]
     baseline = len(subprocess.check_output(['ps', '-U', str(os.getuid()), '-o', 'pid='], text=True).splitlines())
@@ -271,7 +321,7 @@ def main():
         except BaseException as error:
             errors.append(dict(type=type(error).__name__, message=str(error), traceback=traceback.format_exc()))
     elapsed = time.monotonic() - started
-    summary = dict(elapsed_seconds=elapsed, process_baseline=baseline, process_limit=cap,
+    summary = dict(elapsed_seconds=elapsed, queue_wait_seconds=queue_wait, process_baseline=baseline, process_limit=cap,
                    configuration=dict(modes=modes, packages_at_once=args.packages_at_once,
                                       tests_at_once=args.parallel, gomaxprocs=args.gomaxprocs,
                                       package_timeout=args.package_timeout, total_timeout=args.total_timeout),
