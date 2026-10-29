@@ -16,6 +16,8 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
+// This aggregate exceeds five seconds because all 154 scenarios retain a real
+// isolated server and Bash. Both shell families share Go's parallel bound.
 func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 	t.Parallel()
 	const original = "対象プロジェクト: ikesu。必要な理由: 元の申請文を実行中の判断へ引き継ぐ試験。実施内容: 実行前に却下します。"
@@ -28,6 +30,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 				}
 				t.Fatal(err)
 			}
+			t.Parallel()
 			for _, tc := range []struct {
 				name, own, parent, script string
 				dialog                    bool
@@ -112,8 +115,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-					s := start(t)
-					s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+					s := startRuntimeReasonSession(t)
 					s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "runtime-reason-test", Agent: "claude", State: "idle"}, nil)
 					root := s.stateDir
 					if err := os.Mkdir(filepath.Join(root, "home"), 0700); err != nil {
@@ -240,7 +242,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 						done := make(chan error, 1)
 						go func() { done <- cmd.Wait() }()
 						var pending api.DecisionListResult
-						s.waitFor("runtime original reason approval", 5*time.Second, func(string) bool {
+						s.waitRuntimeReasonState("runtime original reason approval", 5*time.Second, func(string) bool {
 							s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
 							select {
 							case err := <-done:
@@ -322,7 +324,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 								return
 							}
 							outerID := decision.DecisionID
-							s.waitFor("runtime decision after outer approval", 5*time.Second, func(string) bool {
+							s.waitRuntimeReasonState("runtime decision after outer approval", 5*time.Second, func(string) bool {
 								select {
 								case err := <-done:
 									approval, _ := os.ReadFile(filepath.Join(root, ".ai_guard_temp_approval"))
