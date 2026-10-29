@@ -58,30 +58,42 @@ func (m *machineClient) reportClientView(in render.Input) {
 	if in.Navigator != nil {
 		covers = append(covers, render.NavigatorRect(in.State.Cols, in.State.Rows))
 	}
-	visible := map[string]bool{}
-	for _, id := range view.PaneIDs {
-		visible[id] = true
+	// Project exactly the panes drawn by drawPanes, then the popup drawn
+	// above them. Fullscreen copy replaces even a zoom/overlay projection.
+	panes := in.State.DisplayPaneRects()
+	if in.Copy != nil && in.Copy.Fullscreen {
+		panes = nil
+		if in.Panes[in.Copy.Pane] != nil {
+			panes = []layout.PaneRect{{ID: in.Copy.Pane, Rect: in.State.PanesArea()}}
+		}
 	}
-	for _, pane := range in.State.DisplayPaneRects() {
-		id := fmt.Sprintf("p%d", pane.ID)
-		r := pane.Rect
-		if in.Copy != nil && in.Copy.Fullscreen {
-			if pane.ID != in.Copy.Pane {
-				delete(visible, id)
+	popup := in.State.PopupRect()
+	popupVisible := in.State.PopupVisible() && popup.W > 0 && popup.H > 0 && popup.W <= in.State.Cols && popup.H <= in.State.Rows
+	if popupVisible {
+		panes = append(panes, layout.PaneRect{ID: in.State.Popup.PaneID, Rect: popup})
+	}
+	view.PaneIDs = []string{}
+	if view.WorkspaceID != "" {
+		for _, pane := range panes {
+			r := pane.Rect
+			if r.W <= 0 || r.H <= 0 {
 				continue
 			}
-			r = in.State.PanesArea()
-		}
-		for _, cover := range covers {
-			if !image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H).Intersect(image.Rect(cover.X, cover.Y, cover.X+cover.W, cover.Y+cover.H)).Empty() {
-				delete(visible, id)
-				break
+			covered := false
+			layers := covers
+			if popupVisible && pane.ID != in.State.Popup.PaneID {
+				layers = append(append([]layout.Rect{}, covers...), popup)
+			}
+			for _, cover := range layers {
+				if !image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H).Intersect(image.Rect(cover.X, cover.Y, cover.X+cover.W, cover.Y+cover.H)).Empty() {
+					covered = true
+					break
+				}
+			}
+			if !covered {
+				view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", pane.ID))
 			}
 		}
-	}
-	view.PaneIDs = view.PaneIDs[:0]
-	for id := range visible {
-		view.PaneIDs = append(view.PaneIDs, id)
 	}
 	sort.Strings(view.PaneIDs)
 	m.publishClientView(view)

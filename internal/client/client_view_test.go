@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
@@ -10,6 +11,7 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -112,25 +114,55 @@ func TestClientViewUsesZoomOverlayAndPopupProjection(t *testing.T) {
 
 func TestClientViewOnlyExcludesPaneCoveredByPaintedDialog(t *testing.T) {
 	state := model.New(t.TempDir(), 160, 40)
-	state.Apply(model.CmdSplitPane{Pane: 1, Dir: layout.Vertical})
+	state.Apply(model.CmdSplitPane{Pane: 1, Dir: layout.Vertical, Ratio: 0.5})
 	peer := endpoint.Current()
 	c := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
-	in := render.Input{State: state, Dialog: &render.Dialog{Title: "covered", Width: 20}}
+	in := render.Input{State: state, Panes: map[int]*render.PaneSnap{1: {Grid: [][]uv.Cell{{{Content: "A", Width: 1}}}}, 2: {Grid: [][]uv.Cell{{{Content: "B", Width: 1}}}}}}
+	left := state.DisplayPaneRects()[0].Rect
+	in.Menu = &render.Menu{X: left.X + 1, Y: left.Y + 1, Items: []render.MenuItem{{Label: "visible menu"}}}
 	e := &managedEndpoint{connection: c, snapshot: &in}
 	m := &machineClient{session: "isolated", active: "local", endpoints: map[string]*managedEndpoint{"local": e}, regions: render.ComposeClient(in, nil, "test", false)}
-	// Put the real rendered dialog into the left pane's rectangle. The right
-	// pane remains visible and must still suppress its own notifications.
-	left := state.DisplayPaneRects()[0].Rect
-	m.regions.DialogRect = layout.Rect{X: left.X + 1, Y: left.Y + 1, W: 1, H: 1}
+	if m.regions.MenuRect.X+m.regions.MenuRect.W > state.DisplayPaneRects()[1].Rect.X {
+		t.Fatalf("menu must cover only left pane: %+v", m.regions.MenuRect)
+	}
 	m.reportClientView(in)
 	if len(c.queue) != 1 || !reflect.DeepEqual(c.queue[0].ClientView.PaneIDs, []string{"p2"}) {
 		t.Fatalf("uncovered pane: %+v", m.lastClientView)
 	}
-	in.Dialog = nil
+	in.Menu = nil
 	m.regions = render.ComposeClient(in, nil, "test", false)
 	in.Copy = &render.CopyMark{Pane: 1, Fullscreen: true}
+	m.regions = render.ComposeClient(in, nil, "test", false)
 	m.reportClientView(in)
 	if !reflect.DeepEqual(m.lastClientView.PaneIDs, []string{"p1"}) {
 		t.Fatalf("fullscreen copy: %+v", m.lastClientView)
 	}
+	var frame string
+	for _, cell := range m.regions.Frame.Cells {
+		frame += cell.Content
+	}
+	if !strings.Contains(frame, "A") || strings.Contains(frame, "B") {
+		t.Fatalf("fullscreen rendered different membership: %s", frame)
+	}
+	state.Apply(model.CmdOpenPopup{WorkspaceID: state.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 20}, Height: api.PopupSize{Cells: 10}})
+	m.regions = render.ComposeClient(in, nil, "test", false)
+	m.reportClientView(in)
+	popupID := fmt.Sprintf("p%d", state.Popup.PaneID)
+	if !reflect.DeepEqual(m.lastClientView.PaneIDs, []string{popupID}) {
+		t.Fatalf("popup must cover fullscreen copy: %+v", m.lastClientView)
+	}
+	in.Dialog = &render.Dialog{Title: "over popup", Width: 40, CenterTerminal: true}
+	m.regions = render.ComposeClient(in, nil, "test", false)
+	m.reportClientView(in)
+	if len(m.lastClientView.PaneIDs) != 0 {
+		t.Fatalf("dialog must cover popup too: %+v", m.lastClientView)
+	}
+	in.Dialog = nil
+	state.Apply(model.CmdClosePopup{})
+	m.regions = render.ComposeClient(in, nil, "test", false)
+	m.reportClientView(in)
+	if !reflect.DeepEqual(m.lastClientView.PaneIDs, []string{"p1"}) {
+		t.Fatalf("closing layers must restore copy pane: %+v", m.lastClientView)
+	}
+
 }
