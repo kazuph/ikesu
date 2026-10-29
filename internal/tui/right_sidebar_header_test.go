@@ -28,6 +28,14 @@ func TestRightSidebarHeaderButtonsNeverOverlapAndBothEdgesClick(t *testing.T) {
 				frame := render.Compose(render.Input{State: a.st, JobsPanel: jobs}).Frame
 				for i, label := range []string{"[agents]", "[jobs]", render.SidebarAgentSortLabel(a.st)} {
 					r := rects[i]
+					if jobs && i == 2 {
+						for x := r.X; x < r.X+r.W; x++ {
+							if frame.Cell(x, r.Y).Content != " " {
+								t.Fatal("jobs header contains agent sort", width, scope, x)
+							}
+						}
+						continue
+					}
 					for offset, ch := range label[:r.W] {
 						if frame.Cell(r.X+offset, r.Y).Content != string(ch) {
 							t.Fatal("drawn header differs from hit rectangle", width, scope, jobs, label, offset)
@@ -51,7 +59,11 @@ func TestRightSidebarHeaderButtonsNeverOverlapAndBothEdgesClick(t *testing.T) {
 					for _, x := range []int{r.X, r.X + r.W - 1} {
 						a := newApp()
 						a.rightSidebarClick(uv.Mouse{X: x, Y: r.Y, Button: uv.MouseLeft})
-						if i == 2 {
+						if jobs && i == 2 {
+							if a.st.AgentScope != scope || !a.jobsPanel {
+								t.Fatal("hidden sort changed jobs", width, scope, x)
+							}
+						} else if i == 2 {
 							if a.st.AgentScope == scope || a.jobsPanel != jobs {
 								t.Fatal("sort edge misrouted", width, scope, jobs, x)
 							}

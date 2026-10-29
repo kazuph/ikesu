@@ -56,9 +56,6 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	}
 	switch r.Kind {
 	case render.RowTitle:
-		if a.serverUI {
-			return true
-		}
 		_, _, w, _ := render.SidebarContent(s.SidebarArea())
 		if m.X >= s.SidebarArea().X+w-6 {
 			a.toggleSidebarSetting(true)
