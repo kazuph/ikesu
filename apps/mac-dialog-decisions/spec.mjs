@@ -71,7 +71,13 @@ export function decisionText(decision) {
     };
   }
   const normalize = text => text.replace(/\s+/gu, " ").trim();
-  const question = body.trim() && normalize(body) !== normalize(questionLabel) ? body : title || body;
+  const separateBody = body.trim() && normalize(body) !== normalize(questionLabel);
+  let question = separateBody ? body : title || body;
+  // A question number is a heading, not the question itself. A separate
+  // supplement (for example Codex's countdown) must follow the full question.
+  if (questionLabel.trim() && title.trim() && separateBody && !normalize(body).includes(normalize(title))) {
+    question = title + "\n\n" + body;
+  }
   const heading = questionLabel.trim() ? questionLabel : title;
   const repeated = normalize(question).startsWith(normalize(heading));
   return {title: heading.trim() && !repeated ? heading : "", body: question, question_label: ""};

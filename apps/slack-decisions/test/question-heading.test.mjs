@@ -19,12 +19,15 @@ test('real Slack daemon posts each question once to a loopback API, preserving d
    const sections=post.blocks.filter(b=>b.type==='section').map(b=>b.text.text);
    const bodyCopies=sections.reduce((n,s)=>n+s.split(row.body).length-1,0);
    const bold=sections.filter(s=>s==='*'+row.body+'*').length;
-   metrics.push({case:row.name,bodyCopies,boldQuestionCopies:bold,heading:row.heading,post});
+   const parts=row.parts||[row.body];const blockText=post.blocks.map(b=>b.text?.text||b.elements?.map(e=>e.text).join("\n")||"").join("\n");
+   const partCounts=Object.fromEntries(parts.map(part=>[part,{blocks:blockText.split(part).length-1,fallback:post.text.split(part).length-1}]));
+   metrics.push({case:row.name,bodyCopies,boldQuestionCopies:bold,heading:row.heading,partCounts,post});
   }
   const out=process.env.IKESU_HEADING_SLACK_EVIDENCE;
   if(out){fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'requests.json'),JSON.stringify(requests,null,2));fs.writeFileSync(path.join(out,'metrics.json'),JSON.stringify(metrics,null,2));fs.copyFileSync(path.join(root,'posts.json'),path.join(out,'posts.json'));}
   for(const [i,row] of rows.entries()){
    const m=metrics[i];assert.equal(m.bodyCopies,1,row.name+' duplicate body');assert.equal(m.boldQuestionCopies,0,row.name+' question as heading');
+   for(const [part,counts] of Object.entries(m.partCounts)){assert.equal(counts.blocks,1,row.name+' blocks component '+part);assert.equal(counts.fallback,1,row.name+' fallback component '+part);}
    const sections=m.post.blocks.filter(b=>b.type==='section').map(b=>b.text.text);
    if(row.heading)assert.ok(sections.includes('*'+row.heading+'*'),row.name);
    assert.equal(m.post.text.split(row.body).length-1,1,row.name+' fallback duplicates');

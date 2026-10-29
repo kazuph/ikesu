@@ -5,10 +5,13 @@ import {buildDialogSpec} from '../spec.mjs';
 import {headingCases} from './question-heading/cases.mjs';
 
 test('agent questions keep a distinct heading and exactly one unabridged question body',()=>{
+ const fixture=fs.readFileSync(new URL('../../../internal/screenprompt/testdata/codex-timed-first.txt',import.meta.url),'utf8');
+ assert.ok(fixture.includes('Which report format should be used?'));assert.ok(fixture.includes('Question 1/2 (2 unanswered)'));assert.ok(fixture.includes('auto-resolves in 1m 00s'));
  for(const row of headingCases()){
   const spec=buildDialogSpec(row.decision,{id:'local'});
   assert.equal(spec.title,row.heading,row.name);assert.equal(spec.body,row.body,row.name);
   if(row.decision.kind==='agent_prompt')assert.equal(spec.question_label,'',row.name);
+  for(const part of row.parts||[row.body])assert.equal([spec.title,spec.body].join('\n').split(part).length-1,1,row.name+' component '+part);
  }
 });
 

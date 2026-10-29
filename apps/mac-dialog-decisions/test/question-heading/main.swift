@@ -23,6 +23,12 @@ for row in rows {
   let rendered=labels(content)
   let count=rendered.filter {$0.string==body}.count
   let titles=rendered.filter {($0.attributedString().attribute(.font,at:0,effectiveRange:nil) as? NSFont)?.pointSize==Look.title}
+  var partCounts:[String:Int]=[:]
+  let text=rendered.map {$0.string}.joined(separator:"\n")
+  for part in (row["parts"] as? [String] ?? [body]) {
+    let copies=text.components(separatedBy:part).count-1;partCounts[part]=copies
+    if copies != 1 {failures.append("\(name)/\(theme.rawValue): component \(part) copies=\(copies)")}
+  }
   let wanted=heading.isEmpty ? 0:1
   if count != 1 || titles.count != wanted || (!heading.isEmpty && titles.first?.string != heading) {failures.append("\(name)/\(theme.rawValue): body copies=\(count), headings=\(titles.map {$0.string})")}
   for card in controller.cards {precondition(content.bounds.contains(card.convert(card.bounds,to:content)))}
@@ -33,7 +39,7 @@ for row in rows {
   content.cacheDisplay(in:content.bounds,to:bitmap)
   let file=name+"-"+theme.rawValue+".png"
   try bitmap.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:root+"/"+file))
-  metrics.append(["case":name,"theme":theme.rawValue,"questionCopies":count,"headings":titles.map {$0.string},"image":file,"window":controller.panel.windowNumber,"choicesVisible":true])
+  metrics.append(["case":name,"theme":theme.rawValue,"questionCopies":count,"headings":titles.map {$0.string},"image":file,"window":controller.panel.windowNumber,"choicesVisible":true,"partCounts":partCounts])
   controller.close()
  }
 }
