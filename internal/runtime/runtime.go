@@ -185,12 +185,12 @@ func (p *Pane) onOSCTitle(t string) { p.oscTitle = t }
 // treat output as still streaming: only then may a read pause briefly to
 // gather more. The first chunk after an idle gap — a key echo, say — is
 // written to the emulator without waiting.
-var pumpStreamGap = 5 * time.Millisecond
+const pumpStreamGap = 5 * time.Millisecond
 
 // pumpBatchWait bounds how long the writer side keeps gathering queued
 // output before one emu.Write plus notification, applied only while output
 // is streaming. The cap bounds added latency to about this much.
-var pumpBatchWait = time.Millisecond
+const pumpBatchWait = time.Millisecond
 
 // pumpBatchCap bounds how much a single gathered batch may hold; beyond it
 // the writer flushes early and the queue back-pressures the reader.
@@ -278,7 +278,7 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 // never wait on emulator work; this loop flushes each chunk immediately
 // after an idle gap, and while output streams it gathers for up to
 // pumpBatchWait before one emu.Write plus change notification per burst.
-func (p *Pane) pumpPTYToEmu() {
+func (p *Pane) pumpPTYToEmu(batchWait, streamGap time.Duration) {
 	chunks := make(chan []byte, pumpQueueLen)
 	pool := make(chan []byte, pumpPoolLen)
 	sem := semaphore.NewWeighted(pumpQueueBytes)
@@ -301,10 +301,10 @@ func (p *Pane) pumpPTYToEmu() {
 		batch = append(batch[:0], c...)
 		recycle(c)
 
-		if !lastFlush.IsZero() && time.Since(lastFlush) < pumpStreamGap {
+		if !lastFlush.IsZero() && time.Since(lastFlush) < streamGap {
 			// Output is still streaming: gather whatever else arrives within
 			// the window, then flush once.
-			timer := time.NewTimer(pumpBatchWait)
+			timer := time.NewTimer(batchWait)
 		gather:
 			for len(batch) < pumpBatchCap {
 				select {

@@ -76,10 +76,17 @@ for row in rows {
   let bitmap=content.bitmapImageRepForCachingDisplay(in:content.bounds)!
   content.cacheDisplay(in:content.bounds,to:bitmap)
   try bitmap.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:file))
-  var redPixels=0
-  for x in 0..<bitmap.pixelsWide {for y in 0..<bitmap.pixelsHigh {
-   if let color=bitmap.colorAt(x:x,y:y)?.usingColorSpace(.deviceRGB),color.redComponent>color.greenComponent && color.redComponent>color.blueComponent {redPixels+=1}
-  }}
+  // Count the same red pixels in a known RGBA buffer. Per-pixel NSColor
+  // allocation made the expanded landscape test exceed its runtime bound.
+  let width=bitmap.pixelsWide,height=bitmap.pixelsHigh
+  var pixels=[UInt8](repeating:0,count:width*height*4)
+  let redPixels=pixels.withUnsafeMutableBytes { bytes -> Int in
+   let context=CGContext(data:bytes.baseAddress,width:width,height:height,bitsPerComponent:8,bytesPerRow:width*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)!
+   context.draw(bitmap.cgImage!,in:CGRect(x:0,y:0,width:width,height:height))
+   var count=0
+   for offset in stride(from:0,to:bytes.count,by:4) {if bytes[offset]>bytes[offset+1] && bytes[offset]>bytes[offset+2] {count+=1}}
+   return count
+  }
   precondition(redPixels>0)
   print("PASS case=\(name) theme=\(theme.rawValue) commandRanges=\(expected.count) exactRedUTF16=\(redCharacters) redPixels=\(redPixels) selectable=1 links=preserved")
   controller.close()

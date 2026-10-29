@@ -1,3 +1,4 @@
+import {TestClock} from './clock.mjs';
 // Fake-Slack tests for the slack-decisions daemon. No real Slack requests are
 // made here: SlackClient.apiBase is pointed at a local http server, Socket
 // Mode is pointed at a local ws server, and the Sabera check is either a stub
@@ -14,6 +15,7 @@ import {
   saberaGlassesState,
   SlackClient,
   SlackDecisionsDaemon,
+  REACTION_GRACE_MS,
 } from "../slack-decisions.mjs";
 import {
   FakeSlack,
@@ -26,6 +28,22 @@ const PLUGIN_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.dirname(PLUGIN_ROOT);
 const DAEMON_PATH = path.join(APP_ROOT, "slack-decisions.mjs");
 
+
+// A Slack Socket event describes a mutation already stored by Slack. Keep
+// the local API emulator coherent so expiry can verify the actual history.
+async function deliver(daemon, api, payload) {
+ const event=payload?.type==='event_callback'?payload.event:payload;
+ if(event?.type==='reaction_added')api.userReact(event.item.ts,event.reaction,event.user);
+ if(event?.type==='reaction_removed') {
+  api.reactionsByTs.set(event.item.ts,(api.reactionsByTs.get(event.item.ts)||[]).map(reaction=>reaction.name===event.reaction?{...reaction,users:reaction.users.filter(user=>user!==event.user)}:reaction));
+ }
+ if(event?.type==='message'&&event.thread_ts&&event.ts) {
+  const rows=api.threadReplies.get(event.thread_ts)||[];
+  if(!rows.some(row=>row.ts===event.ts))rows.push(event);
+  api.threadReplies.set(event.thread_ts,rows);
+ }
+ return daemon.handleSocketPayload(payload);
+}
 
 function tmpdir(name) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `slack-decisions-${name}-`));
@@ -65,7 +83,9 @@ function makeDaemon({
   postsFilePath = null,
 } = {}) {
   const answers = [];
+  const clock=new TestClock();
   const daemon = new SlackDecisionsDaemon({
+    clock,
     config: {
       postDelayMs: 80,
       pollIntervalMs: 40,
@@ -89,6 +109,7 @@ function makeDaemon({
     postsFilePath,
   });
   daemon.testAnswers = answers;
+  daemon.testClock=clock;
   return daemon;
 }
 
@@ -124,7 +145,7 @@ test("created + glasses absent -> posts immediately with full context", async ()
     assert.equal(post.channel, "C1");
     const text = JSON.stringify(post.blocks);
     assert.match(text, /pane p1136 を終了してよい/);
-    assert.match(text, /Local/);
+    assert.match(text, /ローカル/);
     assert.match(text, /p1136/); // pane
     assert.match(text, /claude/); // agent
     assert.match(text, /\/tmp\/repo/); // cwd
@@ -134,6 +155,7 @@ test("created + glasses absent -> posts immediately with full context", async ()
     assert.match(text, /:two: 却下/);
     assert.match(text, /期限/);
     // number reactions were added for each option
+    await waitUntil(()=>fake.reactionAddCalls.length===2);
     const names = fake.reactionAddCalls.map((c) => c.name);
     assert.deepEqual(names, ["one", "two"]);
   } finally {
@@ -206,7 +228,7 @@ test("number reaction -> ikesu decision answer <id> <option> --machine --respond
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "reaction_added",
@@ -215,6 +237,7 @@ test("number reaction -> ikesu decision answer <id> <option> --machine --respond
         item: { type: "message", channel: "C1", ts },
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     assert.deepEqual(daemon.testAnswers[0], [
       "decision",
@@ -243,7 +266,7 @@ test("thread reply '2' answers with option 2", async () => {
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "message",
@@ -254,6 +277,7 @@ test("thread reply '2' answers with option 2", async () => {
         channel: "C1",
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     assert.equal(daemon.testAnswers[0][3], "opt-reject");
   } finally {
@@ -277,7 +301,7 @@ test("allow_text thread reply forwards --text", async () => {
       }),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "message",
@@ -288,6 +312,7 @@ test("allow_text thread reply forwards --text", async () => {
         channel: "C1",
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     const argv = daemon.testAnswers[0];
     assert.ok(!argv.includes(""), "text-only answer must omit the option argument");
@@ -316,7 +341,7 @@ test("free text on a non-allow_text decision is refused in thread", async () => 
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "message",
@@ -327,6 +352,7 @@ test("free text on a non-allow_text decision is refused in thread", async () => 
         channel: "C1",
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 0);
     const notes = (fake.threadReplies.get(ts) || []).filter((m) => m.bot_id);
     assert.equal(notes.length, 1);
@@ -395,7 +421,7 @@ test("answered via a Slack reply -> resolved event deletes the post", async () =
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "message",
@@ -407,6 +433,7 @@ test("answered via a Slack reply -> resolved event deletes the post", async () =
         thread_ts: ts,
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     await waitUntil(() => daemon.testAnswers.length === 1);
     await feedAndSettle(daemon, {
       event: "resolved",
@@ -631,7 +658,7 @@ test("decision_already_resolved -> thread note, no retry loop", async () => {
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "reaction_added",
@@ -640,6 +667,7 @@ test("decision_already_resolved -> thread note, no retry loop", async () => {
         item: { type: "message", ts },
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     const notes = (fake.threadReplies.get(ts) || []).filter((m) => m.bot_id);
     assert.equal(notes.length, 1);
@@ -677,10 +705,11 @@ test("answer blocked by Tailscale re-approval -> link in thread, resent until it
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: { type: "reaction_added", user: "UHUMAN", reaction: "one", item: { type: "message", ts } },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     await new Promise((r) => setTimeout(r, 400));
     assert.equal(calls, 3, "resent until the machine took it");
     const sent = daemon.testAnswers;
@@ -709,6 +738,7 @@ test("history poll recovers a reaction that Socket Mode missed", async () => {
     const ts = fake.posts[0].ts;
     fake.userReact(ts, "one");
     await daemon.pollOnce();
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     assert.equal(daemon.testAnswers[0][3], "opt-approve");
   } finally {
@@ -730,6 +760,7 @@ test("history poll recovers a thread reply that Socket Mode missed", async () =>
     const ts = fake.posts[0].ts;
     fake.userReply(ts, "ポーリング経由の回答");
     await daemon.pollOnce();
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     const argv = daemon.testAnswers[0];
     assert.equal(argv.at(-2), "--text");
@@ -761,6 +792,7 @@ test("socket mode end-to-end: envelope over real ws drives an answer", async () 
       decision: sampleDecision(),
     });
     const ts = fake.posts[0].ts;
+    fake.userReact(ts,"one");
     ws.send({
       envelope_id: "env-1",
       type: "events_api",
@@ -774,6 +806,8 @@ test("socket mode end-to-end: envelope over real ws drives an answer", async () 
         },
       },
     });
+    await waitUntil(() => [...daemon.entries.values()].some(entry=>entry.reactionDraft));
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     await waitUntil(() => daemon.testAnswers.length > 0);
     assert.equal(daemon.testAnswers[0][3], "opt-approve");
     await waitUntil(() =>
@@ -810,7 +844,7 @@ test("posts file restore -> restart resumes answering without reposting", async 
     });
     assert.equal(fake.posts.length, 1, "no duplicate post after restart");
     const ts = fake.posts[0].ts;
-    await second.handleSocketPayload({
+    await deliver(second,fake,{
       type: "event_callback",
       event: {
         type: "reaction_added",
@@ -819,6 +853,7 @@ test("posts file restore -> restart resumes answering without reposting", async 
         item: { type: "message", ts },
       },
     });
+    await second.testClock.advance(REACTION_GRACE_MS);
     assert.equal(second.testAnswers.length, 1);
     await second.stop();
   } finally {
@@ -914,7 +949,7 @@ test("multi_select reactions accumulate then white_check_mark submits option_ids
     });
     const ts = fake.posts[0].ts;
     const react = async (reaction) =>
-      daemon.handleSocketPayload({
+      deliver(daemon,fake,{
         type: "event_callback",
         event: {
           type: "reaction_added",
@@ -928,6 +963,7 @@ test("multi_select reactions accumulate then white_check_mark submits option_ids
     // Number reactions only stage the selection; nothing is answered yet.
     assert.equal(daemon.testAnswers.length, 0);
     await react("white_check_mark");
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     assert.deepEqual(daemon.testAnswers[0], [
       "decision",
@@ -957,7 +993,7 @@ test("multi_select white_check_mark without picks posts a note instead of answer
       decision: sampleDecision({ multi_select: true }),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "reaction_added",
@@ -966,6 +1002,7 @@ test("multi_select white_check_mark without picks posts a note instead of answer
         item: { type: "message", channel: "C1", ts },
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 0);
     const notes = [...fake.threadReplies.values()]
       .flat()
@@ -996,7 +1033,7 @@ test("multi_select thread reply '1,3' submits option_ids", async () => {
       }),
     });
     const ts = fake.posts[0].ts;
-    await daemon.handleSocketPayload({
+    await deliver(daemon,fake,{
       type: "event_callback",
       event: {
         type: "message",
@@ -1007,6 +1044,7 @@ test("multi_select thread reply '1,3' submits option_ids", async () => {
         channel: "C1",
       },
     });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 1);
     assert.deepEqual(daemon.testAnswers[0].slice(3, 5), ["opt-a", "opt-c"]);
   } finally {
@@ -1141,7 +1179,7 @@ test("exhausted cancelled cleanup keeps posts for the next decision reconciliati
 test("late reuse read cannot resolve or delete a post adopted by the next decision", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
-  const daemon = makeDaemon({ slack, config: { recreatePostReuseMs: 60 } });
+  const daemon = makeDaemon({ slack });
   let release;
   const blocked = new Promise((resolve) => { release = resolve; });
   let started;
@@ -1294,12 +1332,15 @@ test("reused post rejects delayed socket replies and reactions from the old gene
       const event = type === "message"
         ? { type, user: "UHUMAN", thread_ts: ts, text: "old answer", ts: String(created / 1000 - 1) }
         : { type, user: "UHUMAN", item: { type: "message", ts }, reaction: "one", event_ts: String(created / 1000 - 1) };
-      await daemon.handleSocketPayload(event);
+      await deliver(daemon,fake,event);
+      await daemon.testClock.advance(REACTION_GRACE_MS);
       assert.equal(daemon.testAnswers.length, 0, "old generation must never answer the new ID");
       if (type === "message") event.ts = String(created / 1000 + 1);
       else event.event_ts = String(created / 1000 + 1);
-      await daemon.handleSocketPayload(event);
-      await daemon.handleSocketPayload(event);
+      await deliver(daemon,fake,event);
+      await daemon.testClock.advance(REACTION_GRACE_MS);
+      await deliver(daemon,fake,event);
+      await daemon.testClock.advance(REACTION_GRACE_MS);
       assert.equal(daemon.testAnswers.length, 1, "a new generation answer is applied once");
       assert.ok(daemon.testAnswers[0].includes("new"));
       assert.equal(fake.posts.length, 1);
@@ -1322,11 +1363,13 @@ test("reused post remains unanswerable while history baseline APIs fail", async 
       daemon.onResolved("local", { ...first, status: "cancelled" }),
       daemon.onCreated("local", LOCAL, { ...first, decision_id: "baseline-new" }),
     ]);
-    await daemon.handleSocketPayload({ type: "reaction_added", user: "UHUMAN", reaction: "one", event_ts: String(Date.now()/1000+1), item: { type: "message", ts } });
+    await deliver(daemon,fake,{ type: "reaction_added", user: "UHUMAN", reaction: "one", event_ts: String(Date.now()/1000+1), item: { type: "message", ts } });
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 0);
     fake.reactionsByTs.set(ts, [{ name: "one", users: ["UHUMAN"] }]);
     fake.handle = handle;
     await daemon.pollOnce();
+    await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 0, "baseline recovery seeds existing reactions before enabling answers");
     assert.equal(fake.posts.length, 1);
   } finally { await daemon.stop(); await fake.stop(); }
@@ -1373,13 +1416,51 @@ test("reused post history and restored state reject old replies but recover a fr
     const oldTs = String(next.created_unix_ms / 1000 - 1);
     fake.threadReplies.set(ts, [{ ts: oldTs, user: "UOLD", text: "old reply" }]);
     await restored.pollOnce();
+    await restored.testClock.advance(REACTION_GRACE_MS);
     assert.equal(restored.testAnswers.length, 0);
     const freshTs = String(Date.now() / 1000 + 1);
     fake.threadReplies.get(ts).push({ ts: freshTs, user: "UFRESH", text: "fresh reply" });
     await restored.pollOnce();
+    await restored.testClock.advance(REACTION_GRACE_MS);
     await restored.pollOnce();
+    await restored.testClock.advance(REACTION_GRACE_MS);
     assert.equal(restored.testAnswers.length, 1);
     assert.ok(restored.testAnswers[0].includes("fresh reply"));
     assert.equal(fake.posts.length, 1);
   } finally { await daemon.stop(); if (restored) await restored.stop(); await fake.stop(); }
+});
+
+
+test('local Slack history prioritizes a later comment over numbered reactions; reaction-only mapping stays intact', async t => {
+ const service=await new FakeSlack().start();t.after(()=>service.stop());
+ const slack=new SlackClient({token:'local-emulator',channel:'CLOCAL',apiBase:service.base});
+ const daemon=makeDaemon({slack});t.after(()=>daemon.stop());
+ for(const socket of [false,true]) {
+  const decision=sampleDecision({decision_id:'comment-'+socket,allow_text:true});
+  await daemon.onCreated('local',{id:'local'},decision);
+  const entry=[...daemon.entries.values()].find(e=>e.decision.decision_id===decision.decision_id);
+  service.userReact(entry.post.ts,'one');const ts=service.userReply(entry.post.ts,'待って、削除しないで');
+  if(socket) {await deliver(daemon,service,{type:'reaction_added',user:'UHUMAN',reaction:'one',event_ts:String(Number(ts)-0.00001),item:{type:'message',ts:entry.post.ts}});}
+  else await daemon.pollOnce();
+    await daemon.testClock.advance(REACTION_GRACE_MS);
+  await daemon.testClock.advance(REACTION_GRACE_MS);
+  const answer=daemon.testAnswers.at(-1);
+  assert.ok(answer.includes('--text'));assert.equal(answer[answer.indexOf('--text')+1],'待って、削除しないで');assert.ok(!answer.includes('opt-approve'));
+  entry.resolved=true;
+ }
+ const d=sampleDecision({decision_id:'reaction-only'});await daemon.onCreated('local',{id:'local'},d);
+ const e=[...daemon.entries.values()].find(e=>e.decision.decision_id===d.decision_id);service.userReact(e.post.ts,'two');await daemon.pollOnce();
+    await daemon.testClock.advance(REACTION_GRACE_MS);
+ assert.ok(daemon.testAnswers.at(-1).includes('opt-reject'));assert.ok(!daemon.testAnswers.at(-1).includes('--text'));
+});
+
+
+test('a newer socket reaction keeps its mapped option when the only fresh reply predates it',async t=>{
+ const service=await new FakeSlack().start();t.after(()=>service.stop());
+ const daemon=makeDaemon({slack:new SlackClient({token:'local-emulator',channel:'CLOCAL',apiBase:service.base})});t.after(()=>daemon.stop());
+ await daemon.onCreated('local',{id:'local'},sampleDecision({allow_text:true}));
+ const entry=[...daemon.entries.values()][0],ts=service.userReply(entry.post.ts,'以前のコメント');
+ await deliver(daemon,service,{type:'reaction_added',user:'UHUMAN',reaction:'two',event_ts:String(Number(ts)+0.00001),item:{type:'message',ts:entry.post.ts}});
+ await daemon.testClock.advance(REACTION_GRACE_MS);
+ assert.ok(daemon.testAnswers.at(-1).includes('opt-reject'));assert.ok(!daemon.testAnswers.at(-1).includes('--text'));
 });

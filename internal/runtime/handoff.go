@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"sort"
+	"time"
 )
 
 type PaneTransfer struct {
@@ -29,10 +30,16 @@ type PaneTransfer struct {
 }
 
 func (p *Pane) startPump() {
+	p.startPumpWithTiming(pumpBatchWait, pumpStreamGap)
+}
+
+// Timing belongs to this pump: a terminated supervisor's reader may still
+// be draining while another pane starts with different test timings.
+func (p *Pane) startPumpWithTiming(batchWait, streamGap time.Duration) {
 	p.pumpDone = make(chan struct{})
 	go func() {
 		defer close(p.pumpDone)
-		p.pumpPTYToEmu()
+		p.pumpPTYToEmu(batchWait, streamGap)
 		if p.importedPID != 0 && !p.pausing.Load() && !p.retired.Load() {
 			p.endProcessWatch()
 			p.importedExited.Store(true)

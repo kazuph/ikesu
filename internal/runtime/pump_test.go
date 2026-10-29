@@ -48,13 +48,10 @@ func screenText(p *Pane) string {
 // have delayed it — the batching wait must not apply to the first read.
 func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 	teststate.Lock(t)
-	oldWait, oldGap := pumpBatchWait, pumpStreamGap
-	pumpBatchWait = 200 * time.Millisecond // large: a wrongly-always-batched impl is obvious
-	pumpStreamGap = 5 * time.Millisecond
-	defer func() { pumpBatchWait, pumpStreamGap = oldWait, oldGap }()
+	const batchWait = 200 * time.Millisecond // large: a wrongly-always-batched impl is obvious
 
 	p, w, _ := newPumpPane(t)
-	p.startPump()
+	p.startPumpWithTiming(batchWait, 5*time.Millisecond)
 	want := ""
 	for _, letter := range []string{"x", "y"} {
 		time.Sleep(50 * time.Millisecond) // idle, including after an earlier burst
@@ -73,9 +70,34 @@ func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 			time.Sleep(200 * time.Microsecond)
 		}
 		if !seen {
-			t.Fatalf("first byte after idle did not reach emulator within %v (batch wait %v)", time.Since(t0), pumpBatchWait)
+			t.Fatalf("first byte after idle did not reach emulator within %v (batch wait %v)", time.Since(t0), batchWait)
 		}
 	}
+}
+
+// A previous pane can still drain output after its supervisor is killed.
+// Starting a pump with test timings must not race with that live reader.
+func TestPumpTimingsAreIndependentOfLivePane(t *testing.T) {
+	p, w, _ := newPumpPane(t)
+	p.startPump()
+	started, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(time.Millisecond)
+		defer tick.Stop()
+		_, err := w.WriteString("x")
+		close(started)
+		for err == nil {
+			<-tick.C
+			_, err = w.WriteString("x")
+		}
+	}()
+	t.Cleanup(func() {
+		_ = w.Close()
+		<-done
+	})
+	<-started
+	t.Run("idle-pane", TestPumpFirstOutputAfterIdleIsImmediate)
 }
 
 // TestPumpStreamingCoalesces verifies reads are gathered while output keeps
@@ -84,13 +106,9 @@ func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 // byte — including the last — still reaches the screen.
 func TestPumpStreamingCoalesces(t *testing.T) {
 	teststate.Lock(t)
-	oldWait, oldGap := pumpBatchWait, pumpStreamGap
-	pumpBatchWait = 40 * time.Millisecond
-	pumpStreamGap = 200 * time.Millisecond
-	defer func() { pumpBatchWait, pumpStreamGap = oldWait, oldGap }()
 
 	p, w, evCh := newPumpPane(t)
-	p.startPump()
+	p.startPumpWithTiming(40*time.Millisecond, 200*time.Millisecond)
 
 	var events atomic.Int32
 	stop := make(chan struct{})
@@ -143,13 +161,9 @@ func TestPumpStreamingCoalesces(t *testing.T) {
 // follows them.
 func TestPumpDeliversTrailingOutputAfterQuiet(t *testing.T) {
 	teststate.Lock(t)
-	oldWait, oldGap := pumpBatchWait, pumpStreamGap
-	pumpBatchWait = 40 * time.Millisecond
-	pumpStreamGap = 200 * time.Millisecond
-	defer func() { pumpBatchWait, pumpStreamGap = oldWait, oldGap }()
 
 	p, w, evCh := newPumpPane(t)
-	p.startPump()
+	p.startPumpWithTiming(40*time.Millisecond, 200*time.Millisecond)
 	go func() {
 		for range evCh {
 			p.MarkChangedRead()

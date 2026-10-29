@@ -10,6 +10,7 @@ import net from "node:net";
 export class FakeSlack {
   constructor() {
     this.posts = [];
+    this.failMethods = new Set();
     this.threadReplies = new Map(); // thread ts -> [message]
     this.updates = [];
     this.reactionsByTs = new Map(); // injected human reactions
@@ -65,6 +66,7 @@ export class FakeSlack {
   }
 
   handle(method, params) {
+    if (this.failMethods.has(method)) return {ok:false,error:"service_unavailable"};
     switch (method) {
       case "auth.test":
         return { ok: true, user_id: this.botId };
@@ -178,7 +180,9 @@ export class FakeSlack {
 
   userReact(ts, name, user = "UHUMAN") {
     const list = this.reactionsByTs.get(ts) || [];
-    list.push({ name, users: [user], count: 1 });
+    const existing=list.find(reaction=>reaction.name===name);
+    if(existing){if(!existing.users.includes(user))existing.users.push(user);existing.count=existing.users.length;}
+    else list.push({ name, users: [user], count: 1 });
     this.reactionsByTs.set(ts, list);
   }
 

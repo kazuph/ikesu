@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/render"
+	"image"
 	"reflect"
 	"sort"
 )
@@ -24,17 +27,76 @@ func (m *machineClient) currentClientView() api.ClientView {
 	}
 	if ws := e.snapshot.State.ActiveWorkspace(); ws != nil {
 		view.WorkspaceID = fmt.Sprintf("s%d", ws.ID)
-		for _, tab := range ws.Tabs {
-			for _, pid := range tab.Layout.PaneIDs() {
-				view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", pid))
+		state := e.snapshot.State
+		for _, pane := range state.DisplayPaneRects() {
+			if state.PopupVisible() {
+				p, r := state.PopupRect(), pane.Rect
+				if !image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H).Intersect(image.Rect(p.X, p.Y, p.X+p.W, p.Y+p.H)).Empty() {
+					continue
+				}
 			}
+			if pane.Rect.W > 0 && pane.Rect.H > 0 {
+				view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", pane.ID))
+			}
+		}
+		if state.PopupVisible() {
+			view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", state.Popup.PaneID))
 		}
 		sort.Strings(view.PaneIDs)
 	}
 	return view
 }
-func (m *machineClient) reportClientView() {
-	m.publishClientView(m.currentClientView())
+func (m *machineClient) reportClientView(in render.Input) {
+	view := m.currentClientView()
+	covers := []layout.Rect{}
+	if m.regions != nil {
+		covers = append(covers, m.regions.MenuRect, m.regions.DialogRect, m.regions.HelpRect)
+	}
+	if in.Settings != nil {
+		covers = append(covers, render.SettingsRect(in.State.Cols, in.State.Rows))
+	}
+	if in.Navigator != nil {
+		covers = append(covers, render.NavigatorRect(in.State.Cols, in.State.Rows))
+	}
+	// Project exactly the panes drawn by drawPanes, then the popup drawn
+	// above them. Fullscreen copy replaces even a zoom/overlay projection.
+	panes := in.State.DisplayPaneRects()
+	if in.Copy != nil && in.Copy.Fullscreen {
+		panes = nil
+		if in.Panes[in.Copy.Pane] != nil {
+			panes = []layout.PaneRect{{ID: in.Copy.Pane, Rect: in.State.PanesArea()}}
+		}
+	}
+	popup := in.State.PopupRect()
+	popupVisible := in.State.PopupVisible() && popup.W > 0 && popup.H > 0 && popup.W <= in.State.Cols && popup.H <= in.State.Rows
+	if popupVisible {
+		panes = append(panes, layout.PaneRect{ID: in.State.Popup.PaneID, Rect: popup})
+	}
+	view.PaneIDs = []string{}
+	if view.WorkspaceID != "" {
+		for _, pane := range panes {
+			r := pane.Rect
+			if r.W <= 0 || r.H <= 0 {
+				continue
+			}
+			covered := false
+			layers := covers
+			if popupVisible && pane.ID != in.State.Popup.PaneID {
+				layers = append(append([]layout.Rect{}, covers...), popup)
+			}
+			for _, cover := range layers {
+				if !image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H).Intersect(image.Rect(cover.X, cover.Y, cover.X+cover.W, cover.Y+cover.H)).Empty() {
+					covered = true
+					break
+				}
+			}
+			if !covered {
+				view.PaneIDs = append(view.PaneIDs, fmt.Sprintf("p%d", pane.ID))
+			}
+		}
+	}
+	sort.Strings(view.PaneIDs)
+	m.publishClientView(view)
 }
 
 func (m *machineClient) reportClientFocus() {

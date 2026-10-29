@@ -6,6 +6,8 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {buildDialogSpec} from '../spec.mjs';
 
+// Generates actual guard decisions, compiles AppKit, and renders 16 themed cases.
+// Compiler startup makes this integration test longer than five seconds.
 test('actual guard Decision flows through buildDialogSpec into exact native red ranges', () => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'ikesu-target-command-'));
   try {

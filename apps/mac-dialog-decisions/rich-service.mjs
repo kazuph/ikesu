@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, createWriteStream } from 'node:fs';
+import {pipeline} from 'node:stream/promises';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { AttachmentStore, safeID, readBounded } from './attachments.mjs';
-import { RICH_LIMITS, discoverRichContent, fetchPublic, pageMetadata, imagePath } from './rich.mjs';
+import { RICH_LIMITS, discoverRichContent, fetchPublic, pageMetadata, imagePath, videoPath } from './rich.mjs';
 
 function execute(file,args,{input,signal,maxBuffer=RICH_LIMITS.imageBytes}={}) {
  return new Promise((resolve,reject)=>{
@@ -27,12 +28,15 @@ def directory(parts):
   if not stat.S_ISDIR(os.lstat(d).st_mode): raise ValueError('symlink directory')
   os.chmod(d,0o700)
  return d
-if r['action']=='read':
+if r['action'] in ['read','video']:
  if not os.path.isabs(r['path']): raise ValueError('absolute path required')
  fd=os.open(r['path'],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
  with os.fdopen(fd,'rb') as f:
   info=os.fstat(f.fileno())
   if not stat.S_ISREG(info.st_mode): raise ValueError('regular image file required')
+  if r['action']=='video':
+   import shutil
+   shutil.copyfileobj(f,sys.stdout.buffer); sys.exit(0)
   if info.st_size>r['limit']: raise ValueError('image exceeds 10MB')
   data=f.read(r['limit']+1)
   if len(data)>r['limit']: raise ValueError('image exceeds 10MB')
@@ -91,16 +95,16 @@ export class RichService {
   const profile=await this.profile(machine,signal);
   return execute('/usr/bin/ssh',['-o','BatchMode=yes','-o','ConnectTimeout=15','--',profile.target,...['python3','-c',remoteScript].map(quote)],{input:JSON.stringify(request),signal,maxBuffer});
  }
- async readImage(machine,source,signal) {
-  if(/^https?:/.test(source)) return (await fetchPublic(source,{signal,maxBytes:RICH_LIMITS.imageBytes})).data;
+ async readImage(machine,source,signal,limit=RICH_LIMITS.imageBytes) {
+  if(/^https?:/.test(source)) return (await fetchPublic(source,{signal,maxBytes:limit})).data;
   if(!path.isAbsolute(source)) throw Error('画像の絶対パスが必要です');
-  if(machine!=='local') return this.remote(machine,{action:'read',path:source,limit:RICH_LIMITS.imageBytes},signal,RICH_LIMITS.imageBytes);
+  if(machine!=='local') return this.remote(machine,{action:'read',path:source,limit:limit},signal,limit);
   signal?.throwIfAborted();
   const file=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   try {
    const stat=await file.stat();if(!stat.isFile()) throw Error('通常ファイルの画像だけを表示できます');
-   if(stat.size>RICH_LIMITS.imageBytes) throw Error('画像は10MBまでです');
-   signal?.throwIfAborted();const data=await readBounded(file,RICH_LIMITS.imageBytes);signal?.throwIfAborted();return data;
+   if(stat.size>limit) throw Error(`メディアは${limit}バイトまでです`);
+   signal?.throwIfAborted();const data=await readBounded(file,limit);signal?.throwIfAborted();return data;
   } finally {await file.close();}
  }
  async cache(data,extension,signal) {
@@ -111,13 +115,38 @@ export class RichService {
   await fs.writeFile(filename,data,{flag:'wx',mode:0o600});
   return filename;
  }
+ async cacheVideo(machine,source,signal) {
+  const extension=path.extname(source.startsWith('/')?source:new URL(source).pathname);
+  const filename=await this.cache(Buffer.alloc(0),extension,signal);
+  const output=createWriteStream(filename,{flags:'w',mode:0o600});
+  try {
+   if(/^https?:/.test(source)) await fetchPublic(source,{signal,maxBytes:Infinity,destination:output});
+   else if(machine==='local') {
+    const file=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+    try {if(!(await file.stat()).isFile())throw Error('通常ファイルの動画だけを表示できます');await pipeline(file.createReadStream({autoClose:false}),output,{signal});}
+    finally {await file.close();}
+   } else {
+    const profile=await this.profile(machine,signal);
+    const child=spawn('/usr/bin/ssh',['-o','BatchMode=yes','-o','ConnectTimeout=15','--',profile.target,...['python3','-c',remoteScript].map(quote)],{signal,stdio:['pipe','pipe','pipe']});
+    let errorText='';child.stderr.on('data',bytes=>{errorText+=bytes});child.stdin.on('error',()=>{});
+    const exited=new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',code=>code===0?resolve():reject(Error(errorText||`SSH exit ${code}`)));});
+    child.stdin.end(JSON.stringify({action:'video',path:source}));
+    await Promise.all([exited,pipeline(child.stdout,output,{signal})]);
+   }
+   signal?.throwIfAborted();return filename;
+  } catch(error) {output.destroy();await fs.rm(filename,{force:true});throw error;}
+ }
  async load(spec,machine,signal,publish) {
   const found=discoverRichContent(spec); const cached=[];
   const image=async(source)=>{const data=await this.readImage(machine,source,signal); const file=await this.cache(data,'.image',signal);cached.push(file);return file;};
   try {
    await Promise.allSettled([
+    ...(found.videos || []).map(async(source,index)=>{try {
+      const file=await this.cacheVideo(machine,source,signal);cached.push(file);signal.throwIfAborted();
+      publish({status:'rich_video',index,path:file,source});
+    }catch(error){if(!signal.aborted)publish({status:'rich_error',source,message:`動画を表示できません: ${error.message}`});}}),
     ...found.images.map(async(source,index)=>{try {const file=await image(source);signal.throwIfAborted();publish({status:'rich_image',index,path:file,source});}catch(error){if(!signal.aborted)publish({status:'rich_error',message:`画像を表示できません: ${error.message}`});}}),
-    ...found.links.map(async(url,index)=>{try {const response=await fetchPublic(url,{signal});if(!/html/i.test(response.type)) return; const metadata=await pageMetadata(response.data,response.url,signal);if(!metadata.title) return;
+    ...found.links.filter(url=>!videoPath(url)&&!imagePath(url)).map(async(url,index)=>{try {const response=await fetchPublic(url,{signal});if(!/html/i.test(response.type)) return; const metadata=await pageMetadata(response.data,response.url,signal);if(!metadata.title) return;
      let thumbnail='';if(metadata.image) {try{const data=(await fetchPublic(metadata.image,{signal,maxBytes:RICH_LIMITS.imageBytes})).data;thumbnail=await this.cache(data,'.image',signal);cached.push(thumbnail);}catch{}}
      signal.throwIfAborted();publish({status:'rich_card',index,url,title:metadata.title,site:metadata.site,path:thumbnail});
     }catch{}})

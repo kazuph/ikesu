@@ -3,6 +3,7 @@ package api
 const MethodClientViewList = "client.view.list"
 
 // ClientView describes a terminal's last painted workspace, never session focus.
+// PaneIDs contains only displayed panes in the selected tab, excluding covered panes.
 // Focused is nil until the terminal explicitly reports focus or blur.
 type ClientView struct {
 	ClientID    int      `json:"client_id"`
