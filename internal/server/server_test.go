@@ -29,6 +29,7 @@ type testConn struct {
 	conn        net.Conn
 	rd          *bufio.Reader
 	pending     []byte
+	readClosed  bool
 	snapshots   endpoint.SnapshotDecoder
 	frames      render.Encoder
 	lastRegions *render.Output
@@ -83,6 +84,7 @@ func (c *testConn) readUntilResult(timeout time.Duration, pred func(clientMsg) b
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
+			c.readClosed = true
 			if ackErr != nil {
 				return got, fmt.Errorf("render acknowledgement failed before terminal message: %w", ackErr)
 			}

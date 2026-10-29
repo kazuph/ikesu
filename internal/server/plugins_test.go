@@ -39,31 +39,9 @@ func startPluginServer(t *testing.T) (string, chan int) {
 	c.readUntil(t, 10*time.Second, func(m clientMsg) bool { return m.Type == "output" })
 	// The readiness client remains attached, so it must drain and acknowledge
 	// frames just like a real display until server shutdown.
-	stopReading := make(chan struct{})
 	readDone := make(chan error, 1)
-	go func() {
-		for {
-			messages, err := c.readUntilResult(10*time.Second, func(m clientMsg) bool { return m.Type == "exit" || m.Type == "restart" })
-			if err != nil {
-				readDone <- err
-				return
-			}
-			for _, message := range messages {
-				if message.Type == "exit" || message.Type == "restart" {
-					readDone <- nil
-					return
-				}
-			}
-			select {
-			case <-stopReading:
-				readDone <- nil
-				return
-			default:
-			}
-		}
-	}()
+	go func() { readDone <- drainPluginClient(c) }()
 	t.Cleanup(func() {
-		close(stopReading)
 		c.conn.Close()
 		if err := <-readDone; err != nil && !errors.Is(err, net.ErrClosed) {
 			t.Error(err)
@@ -71,6 +49,20 @@ func startPluginServer(t *testing.T) (string, chan int) {
 	})
 	return dir, done
 }
+func drainPluginClient(c *testConn) error {
+	for {
+		messages, err := c.readUntilResult(10*time.Second, func(m clientMsg) bool { return m.Type == "exit" || m.Type == "restart" })
+		if err != nil || c.readClosed {
+			return err
+		}
+		for _, message := range messages {
+			if message.Type == "exit" || message.Type == "restart" {
+				return nil
+			}
+		}
+	}
+}
+
 func TestPluginSocketActionAndEvent(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startPluginServer(t)

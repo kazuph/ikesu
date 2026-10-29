@@ -55,3 +55,42 @@ func TestClientReadUntilPreservesSplitMessageAcrossDeadlines(t *testing.T) {
 		t.Fatalf("split message lost across read calls: %+v %v", messages, err)
 	}
 }
+
+func TestPluginClientDrainStopsOnSocketEOF(t *testing.T) {
+	root, err := os.MkdirTemp("/tmp", "ikesu-eof-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	listener, err := net.Listen("unix", filepath.Join(root, "client.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	conn, err := net.Dial("unix", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	peer, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer.Close()
+	client := &testConn{conn: conn, rd: bufio.NewReader(conn)}
+	done := make(chan error, 1)
+	go func() { done <- drainPluginClient(client) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("EOF did not finish the readiness reader")
+	}
+	// Existing callers still receive their historical empty-result/nil EOF.
+	messages, err := client.readUntilResult(time.Second, func(clientMsg) bool { return false })
+	if err != nil || len(messages) != 0 {
+		t.Fatal(messages, err)
+	}
+}
