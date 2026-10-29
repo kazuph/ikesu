@@ -54,6 +54,16 @@ ikesu plugin link <repo>/apps/mac-dialog-decisions
 
 開発リンクの前提: macOS のみ（`platforms = ["macos"]`）。Node.js 18 以上と Xcode（`swiftc`）。パネルは初回起動時に `swiftc` でプラグインの状態ディレクトリへビルドし、`dialog.swift` が変わったときだけ作り直します（`DEVELOPER_DIR` が CommandLineTools を指していると SDK と合わずに失敗するため、ビルド時は外します）。
 
+## ネットワークの試験
+
+通常の `test/rich-network.test.mjs` は外部サービスに接続しません。試験内のHTTPサーバーを公開サービスに見立て、名前解決と接続だけを注入します。公開/内部の判定は製品と同じ処理を使い、内部IPへの転送・内部IPを返すDNS・公開/内部混在のDNS・ページ画像を拒否し、内部サーバーへの接続が0件であることを確かめます。5秒の取得期限も実接続で確認するため、その試験は5秒かかります。
+
+実際の公開DNS・TLS・接続先の確認は、外部ネットワーク前提の独立した試験です。インターネットと example.com / httpbin.org の正常応答が必要なので、通常のローカル全試験には含めず、必要時に次で実行します。内部宛て転送の拒否は外部サイトの転送方針に依存しない通常試験で確認します。
+
+```bash
+node --test apps/mac-dialog-decisions/test/rich-network.external.mjs
+```
+
 ## 設定
 
 プラグイン設定は `<config dir>/config.json`（`ikesu plugin config-dir kazuph.mac-dialog-decisions` で確認可）:

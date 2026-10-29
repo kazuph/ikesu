@@ -71,7 +71,10 @@ async function abortable(promise,signal) {
  const stop=new Promise((resolve,reject)=>{aborted=()=>reject(signal.reason);signal.addEventListener('abort',aborted,{once:true});if(signal.aborted)aborted();});
  try {return await Promise.race([promise,stop]);} finally {signal.removeEventListener('abort',aborted);}
 }
-export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onConnect,destination}={}) {
+function publicRequest(url,options,onResponse) {
+  return (url.protocol==='https:'?https:http).get(url,options,onResponse);
+}
+export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onConnect,destination,lookup=dns.lookup,request=publicRequest}={}) {
   const timeout=AbortSignal.timeout(RICH_LIMITS.timeoutMs);
   const controller=new AbortController();
   const sources=[signal,timeout].filter(Boolean);
@@ -86,14 +89,14 @@ export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onC
   for(let redirects=0;;redirects++) {
     combined.throwIfAborted();
     const {url,host}=candidate(current);
-    const addresses=net.isIP(host)?[{address:host,family:net.isIP(host)}]:await abortable(dns.lookup(host,{all:true}),combined);
+    const addresses=net.isIP(host)?[{address:host,family:net.isIP(host)}]:await abortable(lookup(host,{all:true}),combined);
     combined.throwIfAborted();
     if(!addresses.length||addresses.some(a=>!publicAddress(a.address))) throw Error('非公開の宛先は自動取得しません');
     const selected=addresses[0];
     const response=await new Promise((resolve,reject)=>{
-      const request=(url.protocol==='https:'?https:http).get(url,{agent:false,signal:combined,headers:{Accept:'text/html,image/*', 'Accept-Encoding':'identity'},lookup:(_host,options,callback)=>{if(options.all) callback(null,[selected]); else callback(null,selected.address,selected.family);}},resolve);
-      request.on('socket',socket=>socket.once('connect',()=>onConnect?.({address:socket.remoteAddress,port:socket.remotePort,url:url.href})));
-      request.on('error',reject);
+      const pending=request(url,{agent:false,signal:combined,headers:{Accept:'text/html,image/*', 'Accept-Encoding':'identity'},lookup:(_host,options,callback)=>{if(options.all) callback(null,[selected]); else callback(null,selected.address,selected.family);}},resolve);
+      pending.on('socket',socket=>socket.once('connect',()=>onConnect?.({address:socket.remoteAddress,port:socket.remotePort,url:url.href})));
+      pending.on('error',reject);
     });
     if([301,302,303,307,308].includes(response.statusCode)) {
       response.destroy();
