@@ -119,7 +119,7 @@ func (s *Server) afterExec(cmd model.Command, prev *model.StateSnap) {
 	// changes are reconciled by each viewer's saved workspace/tab IDs.
 	follow := false
 	changed := prev.FocusedPane != s.app.State().FocusedPane()
-	resize := false
+	resize := prev.Active != s.app.State().Active || changed
 	switch cmd.(type) {
 	case model.CmdSplitPane, model.CmdSplitImplicit, model.CmdZoomPane:
 		resize = true

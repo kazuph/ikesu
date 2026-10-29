@@ -20,4 +20,11 @@ func TestPluginZoomedNoFocusKeepsCurrentPane(t *testing.T) {
 	if pid == before || st.FocusedPane() != before || st.ActiveWorkspace().TabRef().Zoomed != 0 {
 		t.Fatalf("no-focus moved view: pane=%d zoom=%d", st.FocusedPane(), st.ActiveWorkspace().TabRef().Zoomed)
 	}
+	focused, err := app.OpenPluginPane(0, before, "zoomed", "right", t.TempDir(), []string{"/bin/cat"}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.FocusedPane() != focused || st.ActiveWorkspace().TabRef().Zoomed != focused {
+		t.Fatal("explicit plugin focus lost zoom")
+	}
 }
