@@ -42,6 +42,11 @@ func TestShellRuntimeHelper(t *testing.T) {
 }
 
 func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "ikesu")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build real guard CLI: %v: %s", err, output)
+	}
 	for name, shell := range map[string]string{"system": "/bin/bash", "homebrew": "/opt/homebrew/bin/bash"} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := os.Stat(shell); err != nil {
@@ -120,17 +125,13 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					entry := filepath.Join(root, "entry")
-					adapter := "#!/bin/sh\nexec " + quote(os.Args[0]) + " -test.run=^TestShellRuntimeHelper$ -- \"$@\"\n"
-					if err := os.WriteFile(entry, []byte(adapter), 0700); err != nil {
-						t.Fatal(err)
-					}
+					entry := binary
 					orig := filepath.Join(root, "original")
 					if err := os.WriteFile(orig, []byte("export ORIGINAL_LOADER_SEEN=1\n"+tc.original+"\n"), 0600); err != nil {
 						t.Fatal(err)
 					}
-					a := NewAssets(root, "p_test", entry, Config{})
-					env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p_test", "IKESU_SOCKET_PATH=" + root + "/no-server", "BASH_ENV=" + orig, "IKESU_RUNTIME_ROOT=" + root, "IKESU_SHELL_RUNTIME_HELPER=1", "IKESU_RUNTIME_SOURCE=" + sourceFile}, root)
+					a := NewAssets(root, "p_1", entry, Config{})
+					env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/no-server", "BASH_ENV=" + orig, "IKESU_RUNTIME_ROOT=" + root, "IKESU_SHELL_RUNTIME_HELPER=1", "IKESU_RUNTIME_SOURCE=" + sourceFile}, root)
 					if err != nil {
 						t.Fatal(err)
 					}

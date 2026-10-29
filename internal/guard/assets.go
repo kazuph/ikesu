@@ -28,6 +28,7 @@ type Assets struct {
 	pathWatch                               *filewatch.Watcher
 	watchChanges                            func()
 	watchInstalled                          bool
+	native                                  executableIdentity
 	meta                                    Marker
 	active                                  string
 	closed                                  bool
@@ -37,7 +38,11 @@ type Assets struct {
 
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 func NewAssets(root, pane, exe string, c Config) *Assets {
-	return &Assets{Root: root, Pane: pane, Bin: filepath.Join(root, "guard", "bin", pane), MarkerPath: filepath.Join(root, "guard", "agent-panes", pane+".json"), Executable: exe, Config: c}
+	a := &Assets{Root: root, Pane: pane, Bin: filepath.Join(root, "guard", "bin", pane), MarkerPath: filepath.Join(root, "guard", "agent-panes", pane+".json"), Executable: exe, Config: c}
+	if info, err := os.Stat(exe); err == nil {
+		a.native = executableFileIdentity(info)
+	}
+	return a
 }
 func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	m := EnvMap(env)
@@ -55,6 +60,9 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 		if cmd == "" || filepath.Base(cmd) != cmd || strings.ContainsAny(cmd, "\n\r\t '$;(){}") {
 			return nil, fmt.Errorf("invalid guard target: %q", cmd)
 		}
+	}
+	if err := a.validateManaged(true); err != nil {
+		return nil, err
 	}
 	if e := os.MkdirAll(a.Bin, 0700); e != nil {
 		return nil, e
@@ -79,9 +87,6 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 	m["PATH"] = a.Bin + string(os.PathListSeparator) + m["PATH"]
 	shellDir := filepath.Join(a.Root, "guard", "shell", a.Pane)
 	if e := os.MkdirAll(shellDir, 0700); e != nil {
-		return nil, e
-	}
-	if e := a.publishRuntime(); e != nil {
 		return nil, e
 	}
 	if e := a.prepareStartup(m, shellDir); e != nil {
@@ -171,6 +176,9 @@ func (a *Assets) sync(agent string) error {
 		a.active = ""
 		return a.clearCoverage()
 	}
+	if err := a.validateManaged(true); err != nil {
+		return a.setIssue(err.Error())
+	}
 	reason := a.coverageReason()
 	if reason != "" {
 		_ = a.remove()
@@ -189,9 +197,6 @@ func (a *Assets) sync(agent string) error {
 		return a.setIssue(err.Error())
 	}
 	if err := a.publishRuntime(); err != nil {
-		return a.setIssue(err.Error())
-	}
-	if err := a.refreshStartupFiles(); err != nil {
 		return a.setIssue(err.Error())
 	}
 	// Publish only after all forwarding entries exist. Repair deleted assets
@@ -238,6 +243,12 @@ func (a *Assets) sync(agent string) error {
 }
 
 func (a *Assets) remove() error {
+	if err := a.validateManaged(false); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
 	if e := os.Remove(a.MarkerPath); e != nil && !os.IsNotExist(e) {
 		return e
 	}

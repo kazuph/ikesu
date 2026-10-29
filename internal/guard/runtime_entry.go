@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -17,41 +18,18 @@ func (a *Assets) RuntimePath() string {
 }
 
 func (a *Assets) publishRuntime() error {
-	if !filepath.IsAbs(a.Executable) {
-		return fmt.Errorf("guard executable must be absolute")
-	}
-	info, err := os.Stat(a.Executable)
+	shell, err := a.privateShell(true)
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
-		return fmt.Errorf("guard executable is not executable")
-	}
-	target, err := filepath.EvalSymlinks(a.Executable)
+	defer shell.close()
+	unlock, err := shell.lock(true)
 	if err != nil {
 		return err
 	}
-	path := a.RuntimePath()
-	if old, err := os.Readlink(path); err == nil && old == target {
-		return nil
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".runtime-")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	if err = f.Close(); err != nil {
-		os.Remove(name)
-		return err
-	}
-	defer os.Remove(name)
-	if err = os.Remove(name); err != nil {
-		return err
-	}
-	if err = os.Symlink(target, name); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
+	defer unlock()
+	_, err = a.ensureGeneration(shell, true)
+	return err
 }
 
 // Never truncate an inode another shell is currently reading. Identical
@@ -82,55 +60,146 @@ func writeGenerated(path string, data []byte, mode os.FileMode) error {
 // RefreshStartup is run by the binary reached through the fixed native entry.
 // It does not republish that entry: callers cannot nominate an executable.
 func RefreshStartup(i Input) error {
-	m, active, err := ReadMarker(i)
+	_, active, err := ReadMarker(i)
 	if err != nil {
 		return err
 	}
 	if !active {
 		return nil
 	}
-	a, err := markerAssets(i, m)
-	if err != nil {
-		return err
+	_, err = StartupGeneration(i)
+	return err
+}
+
+func entryAssets(i Input) (*Assets, error) {
+	marker := i.Env["IKESU_GUARD_MARKER"]
+	if !filepath.IsAbs(marker) {
+		return nil, fmt.Errorf("guard marker must be absolute")
 	}
-	return a.refreshStartupFiles()
+	number, err := strconv.Atoi(strings.TrimPrefix(i.Env["IKESU_PANE_ID"], "p"))
+	if err != nil || number <= 0 || i.Env["IKESU_PANE_ID"] != "p"+strconv.Itoa(number) {
+		return nil, fmt.Errorf("invalid guard pane")
+	}
+	pane := strings.TrimSuffix(filepath.Base(marker), ".json")
+	if pane != "p_"+strconv.Itoa(number) && pane != i.Env["IKESU_PANE_ID"] {
+		return nil, fmt.Errorf("invalid guard marker name")
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(marker)))
+	a := NewAssets(root, pane, "", Config{})
+	if marker != a.MarkerPath {
+		return nil, fmt.Errorf("guard marker path mismatch")
+	}
+	a.meta.Pane = i.Env["IKESU_PANE_ID"]
+	a.Executable, err = os.Executable()
+	return a, err
+}
+
+// The returned path names an immutable generation, not a mutable current link.
+// The same inter-process lock covers identity validation, optional repair and
+// publication. A previous binary can neither validate nor publish after a swap.
+type generationLease struct {
+	path   string
+	shell  *privateDirectory
+	unlock func()
+}
+
+func (l *generationLease) close() { l.unlock(); l.shell.close() }
+func StartupGeneration(i Input) (string, error) {
+	lease, err := openRuntimeGeneration(i)
+	if err != nil {
+		return "", err
+	}
+	defer lease.close()
+	return lease.path, nil
+}
+
+func openRuntimeGeneration(i Input) (_ *generationLease, failure error) {
+	a, err := entryAssets(i)
+	if err != nil {
+		return nil, err
+	}
+	shell, err := a.privateShell(false)
+	if err != nil {
+		return nil, err
+	}
+
+	unlock, err := shell.lock(true)
+	if err != nil {
+		shell.close()
+		return nil, err
+	}
+	defer func() {
+		if failure != nil {
+			unlock()
+			shell.close()
+		}
+	}()
+	_, dir, g, err := loadGeneration(shell)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.close()
+	a.Config = g.Policy
+	a.native = g.Native
+	link, err := shell.readlink("ikesu")
+	if err != nil || link != filepath.Join("current", "ikesu") {
+		return nil, fmt.Errorf("guard runtime mismatch")
+	}
+	ready := a.generationMatches(dir, g, true)
+	if !ready && !a.generationMatches(dir, g, false) {
+		return nil, fmt.Errorf("guard runtime mismatch")
+	}
+	if _, err := os.Lstat(a.MarkerPath); err == nil {
+		m, _, err := ReadMarker(i)
+		if err != nil {
+			return nil, err
+		}
+		if !reflect.DeepEqual(m.Policy, &a.Config) {
+			return nil, fmt.Errorf("guard generation policy mismatch")
+		}
+	}
+	a.Executable = g.Executable
+	if ready {
+		return &generationLease{dir.path, shell, unlock}, nil
+	}
+	path, err := a.ensureGeneration(shell, false)
+	if err != nil {
+		return nil, err
+	}
+	return &generationLease{path, shell, unlock}, nil
 }
 
 func markerAssets(i Input, m Marker) (*Assets, error) {
-	root := filepath.Dir(filepath.Dir(filepath.Dir(i.Env["IKESU_GUARD_MARKER"])))
-	number, err := strconv.Atoi(strings.TrimPrefix(m.Pane, "p"))
-	if err != nil || number <= 0 || m.Pane != "p"+strconv.Itoa(number) || m.Policy == nil {
-		return nil, fmt.Errorf("invalid guard pane")
+	a, err := entryAssets(i)
+	if err != nil {
+		return nil, err
 	}
-	pane := strings.TrimSuffix(filepath.Base(i.Env["IKESU_GUARD_MARKER"]), ".json")
-	if pane != "p_"+strconv.Itoa(number) && pane != m.Pane {
-		return nil, fmt.Errorf("invalid guard marker name")
+	if m.Policy == nil {
+		return nil, fmt.Errorf("missing guard policy")
 	}
-	a := NewAssets(root, pane, "", *m.Policy)
+	a.Config = *m.Policy
 	a.meta = m
-	if filepath.Clean(i.Env["IKESU_GUARD_MARKER"]) != a.MarkerPath {
-		return nil, fmt.Errorf("guard marker path mismatch")
-	}
-	exe, err := os.Executable()
+	shell, err := a.privateShell(false)
 	if err != nil {
 		return nil, err
 	}
-	current, err := os.Stat(a.RuntimePath())
+	defer shell.close()
+	unlock, err := shell.lock(false)
 	if err != nil {
 		return nil, err
 	}
-	own, err := os.Stat(exe)
-	if err != nil || !os.SameFile(current, own) {
+	defer unlock()
+	_, dir, g, err := loadGeneration(shell)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.close()
+	a.native = g.Native
+	if !a.generationMatches(dir, g, true) {
 		return nil, fmt.Errorf("guard runtime mismatch")
 	}
-	a.Executable = exe
+	a.Executable = g.Executable
 	return a, nil
-}
-
-func (a *Assets) refreshStartupFiles() error {
-	generator := NewAssets(a.Root, a.Pane, a.Executable, a.Config)
-	generator.meta = a.meta
-	return generator.prepareStartup(map[string]string{}, filepath.Dir(a.RuntimePath()))
 }
 
 // Startup failures retain the existing fail-closed diagnostic and audit trail.
@@ -142,6 +211,15 @@ func RejectStartup(i Input, failure error, output io.Writer) {
 		rule = "guard-marker"
 	}
 	fmt.Fprintln(output, "❌ 実行を停止しました:", failure)
+	a, err := entryAssets(i)
+	if err != nil {
+		fmt.Fprintln(output, "guard log: untrusted storage:", err)
+		return
+	}
+	if err = a.validateManaged(false); err != nil {
+		fmt.Fprintln(output, "guard log: untrusted storage:", err)
+		return
+	}
 	root := filepath.Dir(guardDirectory(i))
 	if err := Log(root, i, marker, result("block", rule, failure.Error()), "startup"); err != nil {
 		fmt.Fprintln(output, "guard log:", err)

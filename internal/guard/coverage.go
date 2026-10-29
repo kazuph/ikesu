@@ -3,6 +3,7 @@ package guard
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -37,6 +38,9 @@ func (a *Assets) coverageReason() string {
 	return ""
 }
 func (a *Assets) intact() bool {
+	if !a.runtimeIntact() {
+		return false
+	}
 	b, e := os.ReadFile(a.MarkerPath)
 	marker, decodeErr := decodeMarker(b)
 	if e != nil || decodeErr != nil || !reflect.DeepEqual(marker, a.meta) || !reflect.DeepEqual(marker.Policy, &a.Config) || marker.Agent != a.active || marker.Mode != a.Config.EffectiveMode() {
@@ -51,43 +55,38 @@ func (a *Assets) intact() bool {
 	return true
 }
 func (a *Assets) setIssue(reason string) error {
-	if reason == "" {
-		a.issue = ""
-		e := os.Remove(a.issuePath())
-		if os.IsNotExist(e) {
-			return nil
+	if err := a.validateManaged(false); err != nil {
+		if reason != "" {
+			a.issue = reason
+			return err
 		}
-		return e
-	}
-	if a.issue == reason && regularFile(a.issuePath()) {
-		return nil
+		if !os.IsNotExist(err) {
+			a.issue = err.Error()
+			return err
+		}
 	}
 	a.issue = reason
-	i := CoverageIssue{Pane: a.meta.Pane, Reason: reason, Recovery: "guard が有効な状態で新しい pane を開き、agent を起動し直してください"}
-	b, e := json.Marshal(i)
-	if e != nil {
-		return e
+	dir, err := a.privateIssue(reason != "")
+	if err != nil {
+		if reason == "" && os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
-	if e = os.MkdirAll(filepath.Dir(a.issuePath()), 0700); e != nil {
-		return e
+	defer dir.close()
+	if reason == "" {
+		err := unix.Unlinkat(dir.fd(), filepath.Base(a.issuePath()), 0)
+		if err == unix.ENOENT {
+			return nil
+		}
+		return err
 	}
-	f, e := os.CreateTemp(filepath.Dir(a.issuePath()), ".issue-")
-	if e != nil {
-		return e
+	issue := CoverageIssue{Pane: a.meta.Pane, Reason: reason, Recovery: "guard が有効な状態で新しい pane を開き、agent を起動し直してください"}
+	data, err := json.Marshal(issue)
+	if err != nil {
+		return err
 	}
-	defer os.Remove(f.Name())
-	_, e = f.Write(b)
-	ce := f.Close()
-	if e != nil {
-		return e
-	}
-	if ce != nil {
-		return ce
-	}
-	if e = os.Rename(f.Name(), a.issuePath()); e == nil {
-		a.issue = reason
-	}
-	return e
+	return dir.write(filepath.Base(a.issuePath()), data, 0600)
 }
 func (a *Assets) clearCoverage() error {
 	if e := a.remove(); e != nil {

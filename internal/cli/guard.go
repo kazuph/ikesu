@@ -20,12 +20,18 @@ func (r *runner) guardCLI(a []string) int {
 	sub := a[0]
 	if sub == "refresh" || sub == "exec" || sub == "line" || sub == "claude-prefix" {
 		input := guard.Input{Command: "ikesu", Args: append([]string{"guard"}, a...), Env: guard.EnvMap(os.Environ())}
+		if sub == "refresh" {
+			generation, err := guard.StartupGeneration(input)
+			if err != nil {
+				guard.RejectStartup(input, err, r.errOut())
+				return 1
+			}
+			fmt.Fprint(r.out(), generation)
+			return 0
+		}
 		if err := guard.RefreshStartup(input); err != nil {
 			guard.RejectStartup(input, err, r.errOut())
 			return 1
-		}
-		if sub == "refresh" {
-			return 0
 		}
 	}
 	a = a[1:]

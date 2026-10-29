@@ -93,25 +93,61 @@ func cleanEnv(env []string) []string {
 func (s *Supervisor) RebindGuardSocket(socket string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	type changed struct {
-		assets *guard.Assets
-		socket string
-	}
-	var done []changed
+	var changed []GuardCheckpoint
+	panes := make([]*Pane, 0, len(s.panes))
 	for _, p := range s.panes {
+		panes = append(panes, p)
+	}
+	sort.Slice(panes, func(i, j int) bool { return panes[i].ID < panes[j].ID })
+	for _, p := range panes {
 		if p.guard == nil {
 			continue
 		}
-		old := p.guard.Transfer().Meta.Socket
-		if err := p.guard.RebindSocket(socket); err != nil {
-			for _, change := range done {
-				if rollback := change.assets.RebindSocket(change.socket); rollback != nil {
-					err = fmt.Errorf("%w; 目印の復元失敗: %v", err, rollback)
-				}
-			}
-			return err
+		checkpoint, err := p.guard.Checkpoint()
+		if err != nil {
+			return rollbackGuardCheckpoints(changed, err)
 		}
-		done = append(done, changed{p.guard, old})
+		if err = p.guard.RebindSocket(socket); err != nil {
+			return rollbackGuardCheckpoints(changed, err)
+		}
+		changed = append(changed, GuardCheckpoint{p.guard, checkpoint})
 	}
 	return nil
+}
+
+type GuardCheckpoint struct {
+	assets *guard.Assets
+	state  *guard.RuntimeCheckpoint
+}
+
+func rollbackGuardCheckpoints(checkpoints []GuardCheckpoint, failure error) error {
+	for n := len(checkpoints) - 1; n >= 0; n-- {
+		c := checkpoints[n]
+		if err := c.assets.RestoreCheckpoint(c.state); err != nil {
+			if failure == nil {
+				failure = fmt.Errorf("guard restore failed: %w", err)
+			} else {
+				failure = fmt.Errorf("%w; guard restore failed: %v", failure, err)
+			}
+		}
+	}
+	return failure
+}
+func (s *Supervisor) CaptureGuardState() ([]GuardCheckpoint, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var result []GuardCheckpoint
+	for _, p := range s.panes {
+		if p.guard != nil {
+			state, err := p.guard.Checkpoint()
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, GuardCheckpoint{p.guard, state})
+		}
+	}
+	return result, nil
+}
+func (s *Supervisor) RestoreGuardState(checkpoints []GuardCheckpoint) error {
+	return rollbackGuardCheckpoints(checkpoints, nil)
 }
