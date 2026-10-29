@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -178,6 +179,59 @@ class RunnerCleanup(unittest.TestCase):
 
     def test_second_log_open_exception(self):
         self.exercise('log-directory', [], log_directory=True)
+
+
+class RunnerModeIsolation(unittest.TestCase):
+    def test_failed_normal_mode_does_not_kill_race_mode(self):
+        with tempfile.TemporaryDirectory(prefix='ikesu-mode-proof-', dir='/tmp') as temporary:
+            root = Path(temporary)
+            (root / 'scripts').mkdir()
+            shutil.copy2(ROOT / 'scripts/test-go.py', root / 'scripts/test-go.py')
+            (root / 'go.mod').write_text('module runnerproof\n\ngo 1.25\n')
+            (root / 'race.go').write_text('//go:build race\n\npackage proof\nconst raceMode = true\n')
+            (root / 'normal.go').write_text('//go:build !race\n\npackage proof\nconst raceMode = false\n')
+            (root / 'proof_test.go').write_text(r'''package proof
+import ("os"; "path/filepath"; "testing"; "time")
+func wait(t *testing.T, name string) {
+ t.Helper()
+ deadline := time.Now().Add(20*time.Second)
+ for { if _,err := os.Stat(name); err == nil { return }
+  if time.Now().After(deadline) { t.Fatal("gate not released", name) }
+  time.Sleep(time.Millisecond)
+ }
+}
+func TestModes(t *testing.T) {
+ root := os.Getenv("RUNNER_PROOF_GATE")
+ if !raceMode { wait(t, filepath.Join(root,"race-started")); t.Fatal("intentional normal-mode failure") }
+ if err := os.WriteFile(filepath.Join(root,"race-started"),[]byte("started"),0600); err != nil { t.Fatal(err) }
+ wait(t, filepath.Join(root,"release"))
+}
+''')
+            output = root / 'results'
+            command = [sys.executable, str(root / 'scripts/test-go.py'), '--mode', 'both',
+                       '--package-timeout', '30s', '--total-timeout', '60', '--output', str(output)]
+            process = subprocess.Popen(command, cwd=root, env=dict(os.environ, RUNNER_PROOF_GATE=str(root)),
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                transcript = []
+                for line in process.stdout:
+                    transcript.append(line)
+                    if line.startswith('MODE_EXIT='):
+                        mode = json.loads(line.split('=',1)[1])
+                        if mode == dict(mode='normal', exit=1):
+                            (root / 'release').write_text('normal exit observed by runner')
+                code = process.wait(timeout=60)
+                summary = json.loads((output / 'summary.json').read_text())
+                self.assertEqual(code, 1, ''.join(transcript))
+                self.assertEqual([(row['mode'], row['exit']) for row in summary['results']],
+                                 [('normal',1),('race',0)], ''.join(transcript))
+                self.assertEqual(summary['remaining_processes'], [])
+                print('MODE_ISOLATION_RESULT=normal_failed_race_completed', flush=True)
+            finally:
+                process.stdout.close()
+                if process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=15)
 
 
 if __name__ == '__main__':

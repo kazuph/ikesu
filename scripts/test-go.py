@@ -58,6 +58,7 @@ class OwnedProcesses:
     def __init__(self):
         self.root = Path(tempfile.mkdtemp(prefix='ikesu-test-run-', dir='/tmp')).resolve()
         self.token = uuid.uuid4().hex
+        self.stopped = []
         self.environment_reader = ProcessEnvironment()
         self.identities, self.seen, self.candidates, self.unverified = {}, {}, {}, {}
         (self.root / 'tmp').mkdir()
@@ -137,6 +138,10 @@ class OwnedProcesses:
                     # Recheck PID/start time and any readable token before kill.
                     if self.can_stop(pid, row[2]):
                         os.kill(pid, signal.SIGKILL)
+                        event = dict(pid=pid, started=list(row[2]), signal='SIGKILL',
+                                     reason='owned-process cleanup', at=time.time())
+                        self.stopped.append(event)
+                        print('PROCESS_STOP=' + json.dumps(event), flush=True)
                 except (OSError, ValueError):
                     pass
             for process in processes:
@@ -216,7 +221,7 @@ def main():
         signal.signal(sig, interrupted)
     try:
         for iteration in range(1, args.repeat + 1):
-            active, logs = [], []
+            active, logs, reported = [], [], set()
             for mode in modes:
                 path = args.output / f'{iteration:02}-{mode}.jsonl'
                 command = ['go', 'test', '-json', '-count=1', '-p', str(args.packages_at_once),
@@ -236,8 +241,13 @@ def main():
             while any(process.poll() is None for process in active):
                 owner.scan([process.pid for process in active if process.poll() is None])
                 (args.output / 'processes.json').write_text(json.dumps(dict(ownership_root=str(owner.root), owned_processes=list(owner.seen.values())), indent=2) + '\n')
-                if any(process.poll() not in (None, 0) for process in active):
-                    raise RuntimeError('go test failed: ' + str([p.returncode for p in active]))
+                # A failing mode must not kill a still-running sibling. Both
+                # results remain independently observable until their own caps.
+                for process, (mode, _) in zip(active, logs):
+                    code = process.poll()
+                    if code is not None and mode not in reported:
+                        reported.add(mode)
+                        print('MODE_EXIT=' + json.dumps(dict(mode=mode, exit=code)), flush=True)
                 if time.monotonic() - started >= args.total_timeout:
                     raise TimeoutError(f'total timeout {args.total_timeout}s')
                 time.sleep(0.1)
@@ -262,8 +272,11 @@ def main():
             errors.append(dict(type=type(error).__name__, message=str(error), traceback=traceback.format_exc()))
     elapsed = time.monotonic() - started
     summary = dict(elapsed_seconds=elapsed, process_baseline=baseline, process_limit=cap,
+                   configuration=dict(modes=modes, packages_at_once=args.packages_at_once,
+                                      tests_at_once=args.parallel, gomaxprocs=args.gomaxprocs,
+                                      package_timeout=args.package_timeout, total_timeout=args.total_timeout),
                    results=results, packages=timings, errors=errors,
-                   owned_processes=list(owner.seen.values()), remaining_processes=remaining, unverified_processes=list(owner.unverified.values()),
+                   owned_processes=list(owner.seen.values()), stopped_processes=owner.stopped, remaining_processes=remaining, unverified_processes=list(owner.unverified.values()),
                    ownership_root=str(owner.root))
     try:
         (args.output / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
