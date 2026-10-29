@@ -456,7 +456,6 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 	if t == nil {
 		return
 	}
-	leftSidebar, rightSidebar := s.SidebarArea(), s.RightSidebarArea()
 	for _, pr := range s.DisplayPaneRects() {
 		snap := in.Panes[pr.ID]
 		inner, gutter := model.PaneContentRect(pr.Rect, s.PaneBorders)
@@ -471,14 +470,7 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			}
 			// Share the sidebar's existing line without leaving detached corners
 			// at the old pane edge. Content and PTY geometry remain unchanged.
-			frame := pr.Rect
-			if leftSidebar.W > 0 && pr.Rect.X == leftSidebar.X+leftSidebar.W {
-				frame.X--
-				frame.W++
-			}
-			if rightSidebar.W > 0 && pr.Rect.X+pr.Rect.W == rightSidebar.X {
-				frame.W++
-			}
+			frame := paneFrameRect(s, pr.Rect)
 			f.Box(frame.X, frame.Y, frame.W, frame.H, borderSty)
 
 			// Title: " ZOOM? %<id> <label> <terminal title> " — hidden
