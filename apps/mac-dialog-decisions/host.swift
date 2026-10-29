@@ -84,7 +84,8 @@ final class DialogHost: NSObject, NSApplicationDelegate {
       guard let controller = windows[key] else { continue }
       let spec = controller.spec
       let source = [spec.machine, spec.location, spec.source].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " › ")
-      let item = NSMenuItem(title: source + " — " + spec.title, action: #selector(chooseWindow(_:)), keyEquivalent: "")
+      let question = spec.title.isEmpty ? (spec.body ?? "") : spec.title
+      let item = NSMenuItem(title: source + " — " + question, action: #selector(chooseWindow(_:)), keyEquivalent: "")
       item.representedObject = key
       item.target = self
       menu.addItem(item)
