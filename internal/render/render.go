@@ -288,6 +288,11 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	if in.Settings != nil {
 		f.Palette = CustomPalette(in.Settings.Theme, in.SidebarConfig.Theme.Custom)
 	}
+	if value, explicit := in.SidebarConfig.Theme.Custom["surface0"]; explicit {
+		if parsed, err := config.ParseThemeColor(value); err == nil && parsed == nil {
+			f.Palette.Surface = transparentSurfaceBackground{}
+		}
+	}
 	out := &Output{Frame: f, AnchorX: s.Cols - 1, AnchorY: s.Rows - 1}
 
 	drawSidebar(f, s, in)
@@ -330,6 +335,9 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 		drawSidebarCopyFeedback(f, in)
 	}
 	applyPersistentBackground(f, in)
+	if _, tagged := f.Palette.Surface.(transparentSurfaceBackground); tagged {
+		f.Palette.Surface = nil
+	}
 	// Floating surfaces erase underlying terminal text to stay readable.
 	palette := f.Palette
 	if f.Palette.PopupBG == nil {

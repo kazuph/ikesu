@@ -8,6 +8,12 @@ import (
 	"image/color"
 )
 
+// Retain the surface role until the common-background pass, including when
+// its explicit color is transparent. The marker never reaches terminal output.
+type transparentSurfaceBackground struct{}
+
+func (transparentSurfaceBackground) RGBA() (r, g, b, a uint32) { return }
+
 func persistentBackground(c config.Config) color.Color {
 	for _, key := range []string{"panel_bg", "surface_dim"} {
 		if value, ok := c.Theme.Custom[key]; ok {
@@ -47,6 +53,10 @@ func applyPersistentBackground(f *Frame, in Input) {
 	for y := 0; y < f.H; y++ {
 		for x := 0; x < f.W; x++ {
 			cell := f.Cell(x, y)
+			if _, explicit := cell.Style.Bg.(transparentSurfaceBackground); explicit {
+				cell.Style.Bg = nil
+				continue
+			}
 			application := false
 			for _, r := range content {
 				if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
