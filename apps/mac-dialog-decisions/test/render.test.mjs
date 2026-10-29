@@ -111,8 +111,8 @@ test("queue count, flags and later minutes reach the spec", () => {
 
 test("location falls back to the directory name when there is no space label", () => {
   assert.equal(locationLabel(decision()), "macbook｜repo｜work｜deploy / claude");
-  assert.equal(locationLabel(decision({ origin: { cwd: "/src/ikesu" } })), "ローカル｜ikesu｜不明｜不明");
-  assert.equal(locationLabel(decision({ origin: {} })), "ローカル｜不明｜不明｜不明");
+  assert.equal(locationLabel(decision({ origin: { cwd: "/src/ikesu" } })), "不明｜ikesu｜不明｜不明");
+  assert.equal(locationLabel(decision({ origin: {} })), "不明｜不明｜不明｜不明");
   const bare = buildDialogSpec(decision({ origin: { cwd: "/src/ikesu" } }), machine);
   assert.equal(bare.window_title, "ikesu 判断待ち — ikesu");
   assert.equal(bare.source, "🛡 危険コマンドの承認");

@@ -17,7 +17,7 @@ test('Mac and Slack lead with the same four complete location fields and exact a
   assert.ok(fallbackText({decision:d,machine}).startsWith(spec.location));
   assert.deepEqual(spec.options.map(x=>x.id),['approve','reject']);
  }
- assert.equal(locationLabel({}), 'ローカル｜不明｜不明｜不明');
+ assert.equal(locationLabel({}), '不明｜不明｜不明｜不明');
  const long='名前'.repeat(2000);assert.ok(locationLabel({origin:{workspace_label:long}}).includes(long));
 });
 

@@ -44,8 +44,8 @@ export function sourceLabel(decision) {
 // All four fields are explicit, even when origin metadata is missing.
 export function locationLabel(decision, machine) {
   const origin = decision.origin || {};
-  const id = machine?.id || origin.machine || "local";
-  const host = id === "local" ? "ローカル" : machine?.label || id;
+  const id = machine?.id || origin.machine;
+  const host = id === "local" ? "ローカル" : machine?.label || id || "不明";
   const project = origin.cwd ? path.basename(origin.cwd) : "不明";
   const space = origin.workspace_label || "不明";
   const pane = [origin.pane_label || origin.pane_id, origin.agent].filter(Boolean).join(" / ") || "不明";
