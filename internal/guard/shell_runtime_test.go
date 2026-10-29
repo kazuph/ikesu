@@ -103,6 +103,7 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"substitution", "", `T=/outside/victim; X=$(rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
 					root := t.TempDir()
 					if err := os.Mkdir(filepath.Join(root, "home"), 0700); err != nil {
 						t.Fatal(err)

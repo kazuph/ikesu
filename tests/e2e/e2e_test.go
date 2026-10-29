@@ -325,6 +325,7 @@ func countPanes(screen string) int {
 }
 
 func TestBootShowsSidebarAndPane(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
 		return strings.Contains(tx, "[menu]") &&
@@ -340,6 +341,7 @@ func TestBootShowsSidebarAndPane(t *testing.T) {
 }
 
 func TestPrefixSplitVertical(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.send("\x02v") // C-b v
@@ -349,6 +351,7 @@ func TestPrefixSplitVertical(t *testing.T) {
 }
 
 func TestMouseFullFlow(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 
@@ -411,6 +414,7 @@ func TestMouseFullFlow(t *testing.T) {
 }
 
 func TestSplitMouseReportProducesNoText(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	// A mouse press sequence split across two writes must not leak
@@ -426,6 +430,7 @@ func TestSplitMouseReportProducesNoText(t *testing.T) {
 }
 
 func TestDividerDrag(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.send("\x02v")
@@ -457,6 +462,7 @@ func TestDividerDrag(t *testing.T) {
 }
 
 func TestWheelScrollback(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	// Wait for the shell prompt inside the pane before typing; under -race
@@ -484,6 +490,7 @@ func TestWheelScrollback(t *testing.T) {
 }
 
 func TestDragSelectCopy(t *testing.T) {
+	t.Parallel()
 	s := startLocal(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
@@ -507,6 +514,7 @@ func TestDragSelectCopy(t *testing.T) {
 // SPEC G6: prefix+[ enters copy mode; / searches, Space anchors,
 // Enter yanks and exits with a "Copied N lines" sidebar flash.
 func TestCopyModeSelectYank(t *testing.T) {
+	t.Parallel()
 	s := startLocal(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
@@ -532,6 +540,7 @@ func TestCopyModeSelectYank(t *testing.T) {
 
 // The observed default right-bracket prefix is ignored; configured entry is tested separately.
 func TestCopyModeRightBracket(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.send("\x02]")
@@ -544,6 +553,7 @@ func TestCopyModeRightBracket(t *testing.T) {
 // SPEC G1/G6: the action bar COPY button cycles normal → copy →
 // fullscreen copy → normal.
 func TestActionBarCopyCycle(t *testing.T) {
+	t.Parallel()
 	s := startLocal(t)
 	s.waitFor("COPY button", 10*time.Second, func(tx string) bool { return strings.Contains(tx, " COPY ") })
 	x, y := s.find(" COPY ")
@@ -568,6 +578,7 @@ func TestActionBarCopyCycle(t *testing.T) {
 
 // Default split keys follow the observed distribution bindings.
 func TestTmuxSplitKeys(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.send("\x02v") // observed vertical binding
@@ -583,6 +594,7 @@ func TestTmuxSplitKeys(t *testing.T) {
 // G3/G5: ikesu server restart saves the session, respawns the server, and
 // the attached client reconnects to restored panes with stable ids.
 func TestServerRestartKeepsPanes(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(tx string) bool {
 		return strings.Contains(tx, "[new]")
@@ -620,6 +632,7 @@ func TestServerRestartKeepsPanes(t *testing.T) {
 // od -tx1 gives byte-level proof: typing "A" then a bare LF yields
 // "41 0a" with no 0d anywhere on the wire.
 func TestRawLFToPane(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	prepareByteReader(s, 2)
@@ -635,6 +648,7 @@ func TestRawLFToPane(t *testing.T) {
 // Herdr 0.2.56 preserves the FixTerm form for an ordinary pane, drops
 // releases there, and converts the same press to CSI u for a kitty pane.
 func TestShiftEnterToPane(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	prepareByteReader(s, 10)
@@ -646,6 +660,7 @@ func TestShiftEnterToPane(t *testing.T) {
 }
 
 func TestKittyExplicitShiftEnter(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.send("printf '\\033[>1u'\r")
@@ -660,6 +675,7 @@ func TestKittyExplicitShiftEnter(t *testing.T) {
 // SPEC G6: a FixTerm keyboard query (CSI ? u) from the pane is answered
 // with CSI ? 0 u — the response bytes land in the pane's input stream.
 func TestFixTermQueryResponse(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	// The response is queued on the tty input buffer and read by od.
@@ -672,6 +688,7 @@ func TestFixTermQueryResponse(t *testing.T) {
 // SPEC G6: NO_COLOR is stripped from pane environments while COLORTERM
 // and TERM survive.
 func TestPaneEnvNoColor(t *testing.T) {
+	t.Parallel()
 	s := startEnv(t, map[string]string{"NO_COLOR": "1"})
 	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.send("env | grep -E 'NO_COLOR|COLORTERM|^TERM='\r")
@@ -692,6 +709,7 @@ func TestPaneEnvNoColor(t *testing.T) {
 // SPEC G6: prefix+? opens the keybind help overlay; wheel scrolls it; a
 // click outside closes it.
 func TestKeybindHelp(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("boot", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
 	s.send("\x02?")
@@ -713,6 +731,7 @@ func TestKeybindHelp(t *testing.T) {
 }
 
 func TestBootWithoutTerminalQueryRepliesAllowsInputAndLateReplies(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	var raw strings.Builder
 	s.observeOutput = func(b []byte) { raw.Write(b) }

@@ -142,6 +142,7 @@ func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
 	t.Logf("pending %s retained and answered; %s expired; plugins first+second; guard marker unchanged=%s", pending.Decision.DecisionID, expiry.Decision.DecisionID, after)
 }
 
+// This negative path must wait for the specified 30-second handoff deadline.
 func TestLiveHandoffUnresponsiveImporterRetainsPane(t *testing.T) {
 	t.Parallel()
 	s := start(t)
