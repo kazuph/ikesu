@@ -3,6 +3,7 @@ package guard
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -130,4 +131,19 @@ func (a *Assets) refreshStartupFiles() error {
 	generator := NewAssets(a.Root, a.Pane, a.Executable, a.Config)
 	generator.meta = a.meta
 	return generator.prepareStartup(map[string]string{}, filepath.Dir(a.RuntimePath()))
+}
+
+// Startup failures retain the existing fail-closed diagnostic and audit trail.
+func RejectStartup(i Input, failure error, output io.Writer) {
+	output = redactedWriter{output, i}
+	marker, _, markerError := ReadMarker(i)
+	rule := "guard-runtime"
+	if markerError != nil {
+		rule = "guard-marker"
+	}
+	fmt.Fprintln(output, "❌ 実行を停止しました:", failure)
+	root := filepath.Dir(guardDirectory(i))
+	if err := Log(root, i, marker, result("block", rule, failure.Error()), "startup"); err != nil {
+		fmt.Fprintln(output, "guard log:", err)
+	}
 }
