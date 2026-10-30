@@ -60,6 +60,49 @@ func TestAssetSyncAvoidsUnchangedChecks(t *testing.T) {
 	}
 }
 
+func TestAssetSyncChecksUnwatchedAncestorACLAtDeadline(t *testing.T) {
+	base := t.TempDir()
+	parent := filepath.Join(base, "parent")
+	root := filepath.Join(parent, "state")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(parent, 0777); err != nil {
+		t.Fatal(err)
+	}
+	a := NewAssets(root, "p_1", "/usr/bin/true", Config{Targets: []string{"git"}})
+	if _, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, root); err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.ObserveChanges(func() {}) {
+		t.Fatal("native watch unavailable")
+	}
+	for _, path := range a.assetPaths() {
+		if path == base {
+			t.Fatal("test ancestor unexpectedly watched")
+		}
+	}
+	if out, err := exec.Command("/bin/chmod", "+a", "user:nobody allow search,list,add_file,add_subdirectory,delete_child", base).CombinedOutput(); err != nil {
+		t.Fatalf("ACL: %v %s", err, out)
+	}
+	t.Cleanup(func() { exec.Command("/bin/chmod", "-N", base).Run() })
+	if ancestorHasNoACL(base) {
+		t.Fatal("ACL was not installed")
+	}
+	a.checkedAt = time.Now().Add(-guardAncestorCheckInterval)
+	before := a.checkedAt
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.checkedAt.After(before) {
+		t.Fatal("unwatched ancestor was not rechecked at deadline")
+	}
+}
+
 func TestAssetChangesRepairAndRearm(t *testing.T) {
 	root := t.TempDir()
 	a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
