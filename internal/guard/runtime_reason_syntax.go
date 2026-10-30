@@ -43,6 +43,11 @@ func runtimeReasonSyntax(i Input, node syntax.Node, cfg *expand.Config) (bool, b
 		var raw strings.Builder
 		_ = syntax.NewPrinter().Print(&raw, n)
 		return containsReasonName(i, raw.String()) || strings.ContainsAny(raw.String(), "$`"), false
+	case *syntax.Word:
+		var raw strings.Builder
+		_ = syntax.NewPrinter().Print(&raw, n)
+		value, _ := shellLiteral(cfg, n)
+		return containsReasonName(i, raw.String()) || containsReasonName(i, value), false
 	case *syntax.Assign:
 		return n.Name != nil && containsReasonName(i, n.Name.Value), false
 	case *syntax.DeclClause:
@@ -95,6 +100,11 @@ func runtimeReasonSyntax(i Input, node syntax.Node, cfg *expand.Config) (bool, b
 	if displaySafe && !uncertain && displayDeclaration(expanded) {
 		return false, true
 	}
+	for _, word := range append(raw, expanded...) {
+		if containsReasonName(i, word) {
+			return true, false
+		}
+	}
 	for len(expanded) > 0 && has([]string{"command", "builtin", "exec"}, expanded[0]) {
 		expanded = expanded[1:]
 		for len(expanded) > 0 && strings.HasPrefix(expanded[0], "-") {
@@ -112,7 +122,7 @@ func runtimeReasonSyntax(i Input, node syntax.Node, cfg *expand.Config) (bool, b
 			}
 		}
 	}
-	dynamicWrite := has([]string{"read", "readarray", "mapfile", "let", "export", "declare", "local", "typeset", "unset", "unsetenv", "setenv"}, cmd)
+	dynamicWrite := has([]string{"read", "readarray", "mapfile", "let", "export", "declare", "local", "typeset"}, cmd)
 	if cmd == "printf" {
 		if len(raw) > 1 && len(expanded) > 1 && expanded[1] == "" && strings.ContainsAny(raw[1], "$`") {
 			dynamicWrite = true
@@ -121,13 +131,6 @@ func runtimeReasonSyntax(i Input, node syntax.Node, cfg *expand.Config) (bool, b
 			if flag == "-v" {
 				dynamicWrite = true
 				break
-			}
-		}
-	}
-	if dynamicWrite || cmd == "env" {
-		for _, word := range append(raw, expanded...) {
-			if containsReasonName(i, word) {
-				return true, false
 			}
 		}
 	}
