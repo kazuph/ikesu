@@ -17,7 +17,7 @@ func (a *Assets) ObserveChanges(changed func()) bool {
 		}
 		a.refreshChanges()
 		// A change between the preceding Sync and registration must be observed.
-		changed()
+		a.watchChanges()
 	}
 	return a.watchInstalled
 }

@@ -3,12 +3,61 @@
 package guard
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestAssetObserveRepairsChangesBeforeRegistration(t *testing.T) {
+	for _, reobserve := range []bool{false, true} {
+		t.Run(fmt.Sprint("reobserve=", reobserve), func(t *testing.T) {
+			root := t.TempDir()
+			a := NewAssets(root, "p_1", "/usr/bin/true", Config{Targets: []string{"git"}})
+			if _, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, root); err != nil {
+				t.Fatal(err)
+			}
+			defer a.Close()
+			if err := a.Sync("codex"); err != nil {
+				t.Fatal(err)
+			}
+			if reobserve {
+				if !a.ObserveChanges(func() {}) {
+					t.Fatal("initial watch unavailable")
+				}
+				if err := a.Sync("codex"); err != nil {
+					t.Fatal(err)
+				}
+				a.StopObserving()
+			}
+			if err := os.Remove(a.MarkerPath); err != nil {
+				t.Fatal(err)
+			}
+			changes := make(chan struct{}, 1)
+			if !a.ObserveChanges(func() {
+				select {
+				case changes <- struct{}{}:
+				default:
+				}
+			}) {
+				t.Fatal("watch unavailable")
+			}
+			select {
+			case <-changes:
+			default:
+				t.Fatal("registration confirmation missing")
+			}
+			if err := a.Sync("codex"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(a.MarkerPath); err != nil {
+				t.Fatalf("one Sync did not repair marker: %v", err)
+			}
+		})
+	}
+}
 
 func TestAssetSyncAvoidsUnchangedChecks(t *testing.T) {
 	root := t.TempDir()

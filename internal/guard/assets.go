@@ -25,6 +25,8 @@ type Marker struct {
 	Policy    *Config `json:"-"`
 }
 
+// A quiet pane is polled on its existing cwd cadence, so the effective upper
+// bound is this interval plus one foreground-process check interval (1.5s).
 const guardAncestorCheckInterval = 5 * time.Second
 
 type Assets struct {
