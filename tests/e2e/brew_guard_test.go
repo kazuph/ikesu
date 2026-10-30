@@ -43,6 +43,11 @@ func TestWritableInstallStartsRetainedServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := append(os.Environ(), "HOME="+home, "IKESU_STATE_DIR="+state, "IKESU_CONFIG="+config, "SHELL=/bin/sh")
+	loop := exec.Command(binary, "--session", "brew-test", "server")
+	loop.Env = append(env, "IKESU_RETAINED_REEXEC=1")
+	if out, err := loop.CombinedOutput(); err == nil || !strings.Contains(string(out), "not trusted") || !strings.Contains(string(out), binary) {
+		t.Fatalf("untrusted re-execution was not stopped: %v %s", err, out)
+	}
 	server := exec.Command(binary, "--session", "brew-test", "server")
 	server.Env = env
 	log, err := os.Create(filepath.Join(home, "server-output"))
