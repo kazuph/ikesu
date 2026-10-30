@@ -57,7 +57,23 @@ func TestBranchCacheExternalGitDirAncestorRecovery(t *testing.T) {
 				if err := os.Rename(parent, parent+".saved"); err != nil {
 					t.Fatal(err)
 				}
+				// Force the intermediate empty cache even on the old implementation.
+				gitfile := filepath.Join(cwd, ".git")
+				if err := os.Chtimes(gitfile, time.Now(), time.Now()); err != nil {
+					t.Fatal(err)
+				}
 				wait("")
+				// Drain the removal notifications before testing restoration.
+				entry := a.branchCache[filepath.Clean(cwd)]
+				last := entry.watch.Revision()
+				stableSince := time.Now()
+				for time.Since(stableSince) < 50*time.Millisecond {
+					time.Sleep(time.Millisecond)
+					if revision := entry.watch.Revision(); revision != last {
+						last, stableSince = revision, time.Now()
+						_ = a.cachedGitBranch(cwd)
+					}
+				}
 				if err := os.Rename(parent+".saved", parent); err != nil {
 					t.Fatal(err)
 				}
