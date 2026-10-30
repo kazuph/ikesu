@@ -85,14 +85,14 @@ node --test apps/mac-dialog-decisions/test/rich-network.external.mjs
 | キー | 既定 | 意味 |
 | --- | --- | --- |
 | `enabled` | `true` | `false` でプラグイン無効（デーモンを起動しません） |
-| `ikesu_bin` | `ikesu` / `IKESU_BIN_PATH` | CLIのパス。旧 `ikesu_bin` / `IKESU_BIN_PATH` も使用可 |
+| `ikesu_bin` | 固定入口 / `IKESU_BIN_PATH` | CLIのパス。設定ファイルの指定を優先し、版付きパスは使いません |
 | `helper_command` | なし | パネル表示プロセスの差し替え（テスト用。argv の配列。引数に spec JSON のパスが渡り、結果を stdout に JSON 行で返します） |
 | `later_minutes` | `10` | 「あとで」で閉じた判断待ちをもう一度出すまでの分数 |
 | `present_delay_ms` | `250` | キューの先頭を画面に出すまでの待ち。同時に届いた複数の判断待ちを束ねて、最初のダイアログの「ほかN件」を正確にします |
 
 環境変数でも上書きできます: `MAC_DIALOG_ENABLED`（`0`/`false` で無効）、`MAC_DIALOG_PRESENT_DELAY_MS`、`MAC_DIALOG_LATER_MS`、`MAC_DIALOG_HELPER_CMD`（JSON の argv）、`MAC_DIALOG_STATE_DIR`、`MAC_DIALOG_CONFIG`（設定ファイルのパス）。
 
-`IKESU_PLUGIN_CONFIG_DIR`、`IKESU_PLUGIN_STATE_DIR`、`IKESU_BIN_PATH`、`IKESU_SOCKET_PATH`、`IKESU_PANE_ID` を読みます。対応する `IKESU_*` も使用でき、両方あるときは `IKESU_*` が優先です。
+`IKESU_PLUGIN_CONFIG_DIR`、`IKESU_PLUGIN_STATE_DIR`、`IKESU_BIN_PATH`、`IKESU_SOCKET_PATH`、`IKESU_PANE_ID` を読みます。実行ファイルは設定ファイルの `ikesu_bin` を優先し、指定がなければ版付きでない `IKESU_BIN_PATH` を使います。
 
 ## オフにする方法
 

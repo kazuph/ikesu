@@ -64,6 +64,7 @@ test('版付きの環境変数を継承しても固定入口を選び、明示�
  fs.writeFileSync(path.join(configDir,'config.json'),JSON.stringify({ikesu_bin:custom}));
  const env={HOME:root,PATH:'',IKESU_PLUGIN_CONFIG_DIR:configDir,IKESU_BIN_PATH:old};
  assert.equal(plugin.resolveIkesuBin(plugin.loadConfig(env),()=>{},env),custom);
+ assert.equal(plugin.resolveIkesuBin(plugin.loadConfig({...env,IKESU_BIN_PATH:entry}),()=>{},env),custom);
  fs.writeFileSync(path.join(configDir,'config.json'),'{}');
  const first=plugin.resolveIkesuBin(plugin.loadConfig(env),()=>{},env);
  assert.equal(first,entry);

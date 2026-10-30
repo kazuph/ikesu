@@ -71,7 +71,8 @@ function loadConfig(env = process.env) {
     enabled:
       (env.MAC_DIALOG_ENABLED ?? file.enabled ?? true) !== false &&
       env.MAC_DIALOG_ENABLED !== "0",
-    ikesuBin: (!versionedIkesuPath(env.IKESU_BIN_PATH) && env.IKESU_BIN_PATH) || file.ikesu_bin || "ikesu",
+    ikesuBin: (!versionedIkesuPath(file.ikesu_bin) && file.ikesu_bin) ||
+      (!versionedIkesuPath(env.IKESU_BIN_PATH) && env.IKESU_BIN_PATH) || "ikesu",
     helperCmd, // null = built-in osascript dialog.js
     // Brief delay before a queued decision takes the screen, so a burst of
     // simultaneous decisions reports the true queue size on the first dialog.
