@@ -67,6 +67,9 @@ test('実デーモンの起動と版切替後のwatchは古い版ではなく固
     return owner.pid;
   });
   const first = await watch(old);
+  // The real startup guard lasts 30 seconds; wait for it to expire before upgrading.
+  const started=JSON.parse(fs.readFileSync(path.join(state,'starting.json'),'utf8')).started;
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,started+30001-Date.now())));
   await cli(['plugin','unlink','kazuph.mac-dialog-decisions']);
   await cli(['plugin','link',next]);
   await exec(process.execPath,[path.join(next,'mac-dialog-decisions.mjs'),'ensure'],{env,timeout:15000});
