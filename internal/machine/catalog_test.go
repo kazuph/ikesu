@@ -3,8 +3,10 @@ package machine
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -107,5 +109,33 @@ func TestSSHArguments(t *testing.T) {
 	args := ForwardArgs(p, "/tmp/my ikesu", []string{"pane", "send-text", "p1", "a'b;$HOME"})
 	if !reflect.DeepEqual(args[:6], want[:6]) || args[6] != Quote("/tmp/my ikesu") || args[len(args)-1] != Quote("a'b;$HOME") {
 		t.Fatal(args)
+	}
+}
+
+func TestForwardDefaultBinaryUsesRemoteHome(t *testing.T) {
+	home := t.TempDir()
+	entry := filepath.Join(home, ".local", "bin", "ikesu")
+	if err := os.MkdirAll(filepath.Dir(entry), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/bin/echo", entry); err != nil {
+		t.Fatal(err)
+	}
+	p := Profile{Target: "remote-test", Session: "work"}
+	args := ForwardArgs(p, "ikesu", []string{"decision", "watch"})
+	command := exec.Command("/bin/sh", "-c", strings.Join(args[6:], " "))
+	command.Env = []string{"HOME=" + home, "PATH=/nonexistent"}
+	out, err := command.CombinedOutput()
+	if err != nil || string(out) != "--session work decision watch\n" {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if err := os.Remove(entry); err != nil {
+		t.Fatal(err)
+	}
+	command = exec.Command("/bin/sh", "-c", strings.Join(args[6:], " "))
+	command.Env = []string{"HOME=" + home, "PATH=/nonexistent"}
+	out, err = command.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "remote-test") || !strings.Contains(string(out), entry) {
+		t.Fatalf("output %q: %v", out, err)
 	}
 }
