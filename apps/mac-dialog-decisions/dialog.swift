@@ -242,8 +242,12 @@ final class OptionCard: NSView {
       stack.leadingAnchor.constraint(equalTo: mark.trailingAnchor, constant: 8),
       stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
       stack.topAnchor.constraint(equalTo: topAnchor, constant: 11),
-      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -11),
+      stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -11),
     ])
+    // Prefer the content height; shorter cards leave their extra space below.
+    let snugBottom = stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -11)
+    snugBottom.priority = .defaultLow
+    snugBottom.isActive = true
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     toolTip = multi
       ? "クリックで選ぶ／外す（⌘\(index + 1)）"
@@ -541,6 +545,7 @@ final class DialogController: NSObject, NSWindowDelegate {
 
     let fixedChoices = NSStackView()
     fixedChoices.orientation = .horizontal
+    fixedChoices.alignment = .top
     fixedChoices.distribution = .fillEqually
     fixedChoices.spacing = 8
     fixedChoices.translatesAutoresizingMaskIntoConstraints = false
@@ -554,6 +559,9 @@ final class DialogController: NSObject, NSWindowDelegate {
         card.onClick = { [weak self] c in self?.cardClicked(c) }
         cards.append(card)
         fixedChoices.addArrangedSubview(card)
+        if let first = cards.first, first !== card {
+          card.heightAnchor.constraint(equalTo: first.heightAnchor).isActive = true
+        }
       }
     }
 
