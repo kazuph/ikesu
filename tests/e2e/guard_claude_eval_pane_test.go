@@ -22,9 +22,12 @@ func TestClaudeEvalInsideRealPane(t *testing.T) {
 					payload = "AI_GUARD_REQUEST_REASON=" + q(reason) + " ikesu send p1 'isolated test' --room eval-test"
 				}
 				wrapper := "{ shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \\builtin unalias -- 'which'; \\builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval " + q(payload) + " < /dev/null && pwd -P >| " + q(s.stateDir+"/claude-test-cwd")
-				s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "eval-pane-test", Agent: "claude", State: "idle"}, nil)
 				startup := s.stateDir + "/guard/shell/p_1"
-				s.send("BASH_ENV=" + q(startup+"/bash-env") + " ZDOTDIR=" + q(startup) + " /bin/" + shell + " -c " + q(wrapper) + "; printf 'FINISHED_%s\\n' done\r")
+				launcher := "printf 'READY_%s\\n' WAIT; read GATE; exec /bin/" + shell + " -c " + q(wrapper)
+				s.send("BASH_ENV=" + q(startup+"/bash-env") + " ZDOTDIR=" + q(startup) + " /bin/sh -c " + q(launcher) + "; printf 'FINISHED_%s\\n' done\r")
+				s.waitFor("runner ready", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "READY_WAIT") })
+				s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "eval-pane-test", Agent: "claude", State: "idle"}, nil)
+				s.send("go\r")
 				if scenario == "ask" {
 					var pending api.DecisionListResult
 					s.waitFor("one decision", 10*time.Second, func(string) bool {
