@@ -47,6 +47,20 @@ func TestSessionMarkersAndGuardStateAreRemoved(t *testing.T) {
 		t.Fatal(string(data))
 	}
 }
+func TestLegacyGuardMarkersRemovedButSettingsPreserved(t *testing.T) {
+	env := []string{"AI_GUARD_SESSION=1", "AI_GUARD_FORCE_AI=1", "AI_GUARD_DISABLED=1", "AI_GUARD_REQUEST_REASON=reason", "AI_GUARD_REQUEST_ENV_NAME=name"}
+	clean := envMap(Scrub(env))
+	for _, key := range []string{"AI_GUARD_SESSION", "AI_GUARD_FORCE_AI"} {
+		if _, ok := clean[key]; ok {
+			t.Errorf("%s remained in child environment", key)
+		}
+	}
+	for key, value := range envMap(env[2:]) {
+		if clean[key] != value {
+			t.Errorf("%s = %q, want %q", key, clean[key], value)
+		}
+	}
+}
 func TestGuardShellValuesRequireProof(t *testing.T) {
 	for _, path := range []string{"/user/zsh", "/tmp/guard/shell-other/user", "/tmp/guard/shell/user"} {
 		m := envMap(Scrub([]string{"ZDOTDIR=" + path, "IKESU_GUARD_BIN=/tmp/guard/bin/p1", "IKESU_GUARD_ZDOTDIR_ORIG=/old", "IKESU_GUARD_ZDOTDIR_SET=1"}))
@@ -63,9 +77,16 @@ func TestProcessScrubBeforeChildren(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_CHILD_SESSION", "1")
 	t.Setenv("IKESU_GUARD_ENFORCING", "1")
 	t.Setenv("CLAUDE_EFFORT", "high")
+	t.Setenv("AI_GUARD_SESSION", "1")
+	t.Setenv("AI_GUARD_FORCE_AI", "1")
 	ScrubProcess()
 	if os.Getenv("CLAUDE_CODE_CHILD_SESSION") != "" || os.Getenv("IKESU_GUARD_ENFORCING") != "" || os.Getenv("CLAUDE_EFFORT") != "high" {
 		t.Fatal("process environment")
+	}
+	for _, key := range []string{"AI_GUARD_SESSION", "AI_GUARD_FORCE_AI"} {
+		if _, ok := os.LookupEnv(key); ok {
+			t.Errorf("%s remained in process environment", key)
+		}
 	}
 }
 
