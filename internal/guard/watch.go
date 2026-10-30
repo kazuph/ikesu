@@ -11,7 +11,10 @@ func (a *Assets) ObserveChanges(changed func()) bool {
 		return false
 	}
 	if a.watchChanges == nil {
-		a.watchChanges = changed
+		a.watchChanges = func() {
+			a.watchGeneration.Add(1)
+			changed()
+		}
 		a.refreshChanges()
 		// A change between the preceding Sync and registration must be observed.
 		changed()

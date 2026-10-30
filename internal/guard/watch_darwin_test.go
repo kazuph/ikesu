@@ -10,6 +10,56 @@ import (
 	"time"
 )
 
+func TestAssetSyncAvoidsUnchangedChecks(t *testing.T) {
+	root := t.TempDir()
+	a := NewAssets(root, "p_1", "/usr/bin/true", Config{Targets: []string{"git"}})
+	if _, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, root); err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.ObserveChanges(func() {}) {
+		t.Fatal("native watch unavailable")
+	}
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	checked := a.checkedAt
+	for n := 0; n < 100; n++ {
+		if err := a.Sync("codex"); err != nil {
+			t.Fatal(err)
+		}
+		if !a.checkedAt.Equal(checked) {
+			t.Fatal("unchanged Sync repeated full inspection")
+		}
+	}
+	a.checkedAt = time.Now().Add(-guardAncestorCheckInterval)
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.checkedAt.After(checked) {
+		t.Fatal("periodic inspection did not run")
+	}
+	checked = a.checkedAt
+	a.Config.Targets[0] = "gh"
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.checkedAt.After(checked) {
+		t.Fatal("configuration change was not inspected")
+	}
+	a.StopObserving()
+	checked = a.checkedAt
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.checkedAt.After(checked) {
+		t.Fatal("unwatched assets skipped inspection")
+	}
+}
+
 func TestAssetChangesRepairAndRearm(t *testing.T) {
 	root := t.TempDir()
 	a := NewAssets(root, "p_1", "/usr/bin/true", Config{})
