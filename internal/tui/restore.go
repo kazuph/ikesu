@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"image/color"
 	"os"
@@ -102,6 +101,7 @@ func (a *App) SessionRecords() map[int]AgentRecord {
 // StartInitialPane would have run. It returns the ids of panes carrying
 // an agent record so the caller can schedule exact session resume.
 func (a *App) RestoreSession(f *session.File) []int {
+	a.restoreWarnings = make(map[int]string)
 	cols, rows := a.st.Cols, a.st.Rows // terminal size is runtime, not saved
 	a.st = model.Restore(f)
 	a.st.Cols, a.st.Rows = cols, rows
@@ -148,11 +148,7 @@ func (a *App) RestoreSession(f *session.File) []int {
 					_, err = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
 				}
 				if err != nil {
-					cause := err
-					for errors.Unwrap(cause) != nil {
-						cause = errors.Unwrap(cause)
-					}
-					a.restoreWarnings = append(a.restoreWarnings, fmt.Sprintf("pane p%d: %v (%v)", pid, cause, err))
+					a.restoreWarnings[pid] = err.Error()
 				}
 			}
 		}

@@ -230,7 +230,7 @@ type App struct {
 	worktreeHook        func(string, WorktreeOutcome, bool)
 	configWarning       string
 	configWarningBanner bool
-	restoreWarnings     []string
+	restoreWarnings     map[int]string
 	warningsHook        func() []api.AgentSessionWarningInfo // restart confirm lists missing ids
 
 	prefix                                   bool

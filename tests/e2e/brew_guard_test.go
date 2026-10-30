@@ -2,15 +2,18 @@ package e2e
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
+// The second build is needed to verify a real version change through the symlink.
 func TestWritableInstallStartsRetainedServer(t *testing.T) {
 	install, err := os.MkdirTemp("/tmp", "ikesu-brew-install-")
 	if err != nil {
@@ -35,7 +38,11 @@ func TestWritableInstallStartsRetainedServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(install, "ikesu")
-	if err = os.WriteFile(binary, data, 0755); err != nil {
+	oldBinary := filepath.Join(install, "ikesu-old")
+	if err = os.WriteFile(oldBinary, data, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(oldBinary, binary); err != nil {
 		t.Fatal(err)
 	}
 	config := filepath.Join(home, "config.toml")
@@ -107,7 +114,11 @@ func TestWritableInstallStartsRetainedServer(t *testing.T) {
 	if err := os.WriteFile(newBinary, updated, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(newBinary, binary); err != nil {
+	newLink := filepath.Join(install, "new-link")
+	if err := os.Symlink(newBinary, newLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(newLink, binary); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := cli("server", "restart"); err != nil {
@@ -124,6 +135,58 @@ func TestWritableInstallStartsRetainedServer(t *testing.T) {
 	if original, err := os.ReadFile(matches[0]); err != nil || string(original) != string(data) {
 		t.Fatalf("original retained build changed: %v", err)
 	}
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		t.Fatalf("unexpected version: %s", version)
+	}
+	patchVersion, err := strconv.Atoi(parts[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	newVersion := parts[0] + "." + parts[1] + "." + strconv.Itoa(patchVersion+1)
+	mainPath := filepath.Join(repoRoot(), "cmd/ikesu/main.go")
+	mainData, err := os.ReadFile(mainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldConst := "const version = \"" + version + "\""
+	if !strings.Contains(string(mainData), oldConst) {
+		t.Fatalf("version declaration missing: %s", oldConst)
+	}
+	newSource := filepath.Join(home, "main-next.go")
+	if err := os.WriteFile(newSource, []byte(strings.Replace(string(mainData), oldConst, "const version = \""+newVersion+"\"", 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	overlay, err := json.Marshal(map[string]map[string]string{"Replace": {mainPath: newSource}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayPath := filepath.Join(home, "overlay.json")
+	if err := os.WriteFile(overlayPath, overlay, 0600); err != nil {
+		t.Fatal(err)
+	}
+	newVersionBinary := filepath.Join(install, "ikesu-next-version")
+	build := exec.Command("go", "build", "-overlay", overlayPath, "-o", newVersionBinary, "./cmd/ikesu")
+	build.Dir = repoRoot()
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build next version: %v %s", err, output)
+	}
+	if err := os.Symlink(newVersionBinary, newLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(newLink, binary); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := cli("server", "restart"); err != nil {
+		t.Fatalf("restart with next version: %v %s", err, out)
+	}
+	if out, err := cli("server", "ping"); err != nil || !strings.Contains(out, "\"version\":\""+newVersion+"\"") {
+		t.Fatalf("next version did not start: %v %s", err, out)
+	}
+	newRetained := filepath.Join(home, ".local/lib/ikesu/releases", newVersion, "ikesu")
+	if _, err := os.Stat(newRetained); err != nil {
+		t.Fatalf("next version not retained: %v", err)
+	}
 	if err := os.Remove(binary); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +194,7 @@ func TestWritableInstallStartsRetainedServer(t *testing.T) {
 		t.Fatalf("restart without original executable: %v %s", err, out)
 	}
 	logData, err := os.ReadFile(filepath.Join(state, "brew-test", "server.log"))
-	if err != nil || !strings.Contains(string(logData), "restart executable: "+binary) || !strings.Contains(string(logData), "restart executable: "+hashed) {
+	if err != nil || !strings.Contains(string(logData), "restart executable: "+binary) || !strings.Contains(string(logData), "restart executable: "+newRetained) {
 		t.Fatalf("restart executable choices absent: %s %v", logData, err)
 	}
 }

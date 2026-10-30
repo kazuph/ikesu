@@ -122,6 +122,7 @@ type JobDot struct {
 }
 
 type Input struct {
+	RestoreFailures   map[int]string
 	GraphicsPatches   []PaneGraphicsPatch
 	SurfaceRevision   uint64
 	PanePalette       *Palette
@@ -323,6 +324,13 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	}
 	drawActionBar(f, s, in, out)
 	drawClientVersion(f, version, notice, out)
+	if len(in.RestoreFailures) > 0 {
+		area := s.ActionBarArea()
+		if area.W > 0 && area.Y > 0 {
+			message := fmt.Sprintf("%d 個のペインでシェルを起動できません（各ペインに理由・スクロール可）", len(in.RestoreFailures))
+			f.Text(area.X, area.Y-1, message, uv.Style{Fg: f.Palette.Yellow}, area.X+area.W)
+		}
+	}
 	if s.Mobile() {
 		drawMobile(f, in, out)
 	}
@@ -547,6 +555,13 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 			f.CopyGrid(ix, iy, clipGrid(snap.Grid, iw, ih))
 			paneGraphics(f, pr.ID, snap, ix, iy, iw, ih)
 		}
+		if reason, ok := in.RestoreFailures[pr.ID]; ok && iw > 0 && ih > 0 {
+			lines := RestoreFailureLines(reason, iw)
+			offset := min(max(in.Scroll[pr.ID], 0), max(len(lines)-ih, 0))
+			for y := 0; y < ih && offset+y < len(lines); y++ {
+				f.Text(ix, iy+y, lines[offset+y], uv.Style{Fg: f.Palette.Yellow}, ix+iw)
+			}
+		}
 		if !in.ServerUI && (in.SelectedWorkspace != nil || in.Navigator != nil || in.Menu != nil) && !pr.IsFocused {
 			for y := iy; y < iy+ih; y++ {
 				for x := ix; x < ix+iw; x++ {
@@ -606,6 +621,11 @@ func drawPanes(f *Frame, s *model.AppState, in Input, out *Output) {
 		}
 	}
 	joinPaneDividers(f, s)
+}
+
+// RestoreFailureLines wraps the full error to the pane's cell width.
+func RestoreFailureLines(reason string, width int) []string {
+	return strings.Split(ansi.Hardwrap("シェルを起動できません: "+reason, max(width, 1), true), "\n")
 }
 
 // paneTitle builds the border title: "ZOOM %<id> <label> <title>" for the
