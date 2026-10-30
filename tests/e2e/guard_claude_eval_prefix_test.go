@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,51 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 )
+
+func TestClaudeGitWrapperRealSession(t *testing.T) {
+	data, err := os.ReadFile("../../internal/guard/testdata/claude-git-wrapper.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		FullLine string `json:"full_line"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	payload := `git -C /Users/kazuph/src/github.com/kazuph/ikesu grep -n "func claudeLiteral" -A22 -- internal/guard | head -30`
+	line := strings.Replace(fixture.FullLine, payload, "git --version", 1)
+	if line == fixture.FullLine {
+		t.Fatal("observed payload missing")
+	}
+	f, err := os.CreateTemp("/tmp", "claude-*-cwd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(f.Name()) })
+	line = strings.Replace(line, "/tmp/claude-c2be-cwd", f.Name(), 1)
+	s := start(t)
+	s.waitFor("prompt", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "git-prefix-test", Agent: "claude", State: "idle"}, nil)
+	root := s.stateDir
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binPath, "--session", s.name, "guard", "claude-prefix", "--", line)
+	cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "SHELL=/bin/zsh", "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_STATE_DIR=" + root, "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "BASH_ENV=" + filepath.Join(root, "guard", "shell", "p_1", "bash-env")}
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "git version") {
+		t.Fatalf("git --version: %v %s", err, out)
+	}
+	var decisions api.DecisionListResult
+	s.rpc(api.MethodDecisionList, api.DecisionListParams{}, &decisions)
+	if len(decisions.Decisions) != 0 {
+		t.Fatalf("unexpected decisions: %+v", decisions.Decisions)
+	}
+}
 
 func TestClaudeEvalPrefixRealSession(t *testing.T) {
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

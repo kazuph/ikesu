@@ -340,18 +340,20 @@ func ClaudeExecutionLine(i Input, line string) string {
 	if e != nil {
 		return line
 	}
+	var payloadWord *syntax.Word
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		call, ok := node.(*syntax.CallExpr)
 		if !ok || len(call.Args) != 2 {
 			return true
 		}
 		if name, ok := claudeLiteral(call.Args[0]); ok && name == "eval" {
-			w := call.Args[1]
-			line = line[:w.Pos().Offset()] + quote(prefix+payload) + line[w.End().Offset():]
-			return false
+			payloadWord = call.Args[1]
 		}
 		return true
 	})
+	if payloadWord != nil {
+		line = line[:payloadWord.Pos().Offset()] + quote(prefix+payload) + line[payloadWord.End().Offset():]
+	}
 	return line
 }
 

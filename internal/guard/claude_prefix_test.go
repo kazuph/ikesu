@@ -2,6 +2,7 @@ package guard
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,81 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 )
+
+func observedGitWrapper(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile("testdata/claude-git-wrapper.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		FullLine string `json:"full_line"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	return fixture.FullLine
+}
+
+func TestClaudeObservedGitWrapper(t *testing.T) {
+	line := observedGitWrapper(t)
+	payload := `git -C /Users/kazuph/src/github.com/kazuph/ikesu grep -n "func claudeLiteral" -A22 -- internal/guard | head -30`
+	i := Input{Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin"}}
+	_, before, err := lineVerdict(Config{}, i, line)
+	if before.Decision != "ask" {
+		t.Fatalf("whole line: %+v %v", before, err)
+	}
+	if got := ClaudePrefixLine(i, line); got != payload {
+		t.Fatalf("payload: %q", got)
+	}
+	_, got, err := lineVerdict(Config{}, i, ClaudePrefixLine(i, line))
+	_, want, wantErr := lineVerdict(Config{}, i, payload)
+	if err != nil || wantErr != nil || got.Decision != want.Decision || got.Rule != want.Rule {
+		t.Fatalf("got %+v want %+v errors %v/%v", got, want, err, wantErr)
+	}
+	reasonPayload := "AI_GUARD_REQUEST_REASON='対象プロジェクト: ikesu。必要な理由: 試験。実施内容: 試験。確認済み: 隔離。戻し方: 変更なし。' dd if=/dev/null of=/dev/null"
+	reasonLine := strings.Replace(line, quote(payload), quote(reasonPayload), 1)
+	if normalized := ClaudePrefixLine(i, reasonLine); normalized != reasonPayload {
+		t.Fatalf("request payload not extracted: %q", normalized)
+	}
+	_, reasonGot, reasonErr := lineVerdict(Config{}, i, ClaudePrefixLine(i, reasonLine))
+	_, reasonWant, directErr := lineVerdict(Config{}, i, reasonPayload)
+	if reasonGot.Decision != reasonWant.Decision || reasonGot.Rule != reasonWant.Rule || fmt.Sprint(reasonErr) != fmt.Sprint(directErr) {
+		t.Fatalf("request got %+v want %+v errors %v/%v", reasonGot, reasonWant, reasonErr, directErr)
+	}
+	withoutWhich := strings.Replace(line, claudeWhich, "", 1)
+	if withoutWhich == line || ClaudePrefixLine(i, withoutWhich) != payload {
+		t.Fatal("git block without which rejected")
+	}
+	for name, altered := range map[string]string{
+		"body":          strings.Replace(line, "_cc_skip=1", "_cc_skip=2", 1),
+		"function name": strings.Replace(line, "function git", "function evil", 1),
+		"duplicate":     strings.Replace(line, claudeGitBlock, claudeGitBlock+claudeGitBlock, 1),
+		"extra command": line + "; /bin/rm /tmp/victim",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if altered == line || ClaudePrefixLine(i, altered) != altered {
+				t.Fatal("changed wrapper accepted")
+			}
+			_, verdict, _ := lineVerdict(Config{}, i, altered)
+			if verdict.Decision == "allow" {
+				t.Fatalf("changed wrapper allowed: %+v", verdict)
+			}
+		})
+	}
+}
+
+func TestClaudeGitExecutionLineReappliesBashEnvToPayload(t *testing.T) {
+	line := observedGitWrapper(t)
+	i := Input{Env: map[string]string{"PATH": "/usr/bin:/bin"}, claudeBashEnv: "/tmp/guard-bash-env"}
+	executed := ClaudeExecutionLine(i, line)
+	if !strings.Contains(executed, claudeGitBlock) || !strings.Contains(executed, "export BASH_ENV=") {
+		t.Fatalf("execution changed wrapper or omitted guard: %s", executed)
+	}
+	if ClaudePrefixLine(i, executed) != "export BASH_ENV='/tmp/guard-bash-env'; git -C /Users/kazuph/src/github.com/kazuph/ikesu grep -n \"func claudeLiteral\" -A22 -- internal/guard | head -30" {
+		t.Fatalf("guard not in payload: %s", executed)
+	}
+}
 
 func bootstrapForTest(snapshot, payload, cwd string) string {
 	s := strings.Replace(claudeBootstrap, "IKESU_SNAPSHOT", quote(snapshot), 1)
