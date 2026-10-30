@@ -11,12 +11,12 @@ func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + de
 var metrics: [[String: Any]] = []
 var failures: [String] = []
 // The minimum supported width exercises real text wrapping without adding rows.
-for width in [Look.width, CGFloat(720)] {
- for count in [2, 3, 4] {
+for descriptionMode in ["mixed", "none"] {
+ for count in [1, 2, 3, 4] {
   for theme in [NSAppearance.Name.aqua, .darkAqua] {
    app.appearance = NSAppearance(named: theme)
    let descriptions = ["変更する範囲と実行前に必要な手順をすべて確認します。\n実行する内容を確認します。\n結果を保存します。\n確認してから回答します。", "", "今回だけ許可", "説明が長くても全文を表示し、カードの外にはみ出さずに読めることを確認します。"]
-   let options = (0..<count).map { ["id": "choice-\($0)", "label": "選択肢 \($0 + 1)", "description": descriptions[$0]] }
+   let options = (0..<count).map { ["id": "choice-\($0)", "label": "選択肢 \($0 + 1)", "description": descriptionMode == "none" ? "" : descriptions[$0]] }
    let input: [String: Any] = ["window_title": "選択肢の高さ・隔離試験", "title": "説明の行数が違う選択肢", "body": "横に並ぶカードの高さと文字の表示を確認します。", "location": "試験用Mac｜ikesu｜隔離試験｜自前パネル", "options": options, "allow_text": true, "multi_select": false]
    let spec = try JSONDecoder().decode(DialogSpec.self, from: JSONSerialization.data(withJSONObject: input))
    let controller = DialogController(spec: spec, specPath: root + "/spec.json")
@@ -24,11 +24,13 @@ for width in [Look.width, CGFloat(720)] {
    let panel = controller.panel!
    panel.appearance = app.appearance
    panel.animationBehavior = .none
-   panel.setContentSize(NSSize(width: width, height: panel.contentView!.bounds.height))
+   panel.setContentSize(NSSize(width: Look.width, height: panel.contentView!.bounds.height))
    panel.orderBack(nil)
    let content = panel.contentView!
+   func measure(_ stage: String) throws -> [String: Any] {
    content.layoutSubtreeIfNeeded()
    panel.display()
+   let width = content.bounds.width
    let name = "choices-\(count)-width-\(Int(width))-\(theme.rawValue)"
    let frames = controller.cards.map { $0.convert($0.bounds, to: content) }
    let heights = frames.map { $0.height }
@@ -47,6 +49,7 @@ for width in [Look.width, CGFloat(720)] {
    }
    let tallestContent = naturalHeights.max()!
    if heights.contains(where: { abs($0 - tallestContent) > 0.5 }) { failures.append("\(name): row should fit tallest content \(tallestContent), got \(heights)") }
+   var textRegions: [[String: Any]] = []
    var clipped: [String] = []
    var titles: [CGFloat] = []
    var lineCounts: [Int] = []
@@ -56,6 +59,7 @@ for width in [Look.width, CGFloat(720)] {
      if let text = view as? RichTextLabel, let manager = text.layoutManager, let container = text.textContainer {
       manager.ensureLayout(for: container)
       let used = manager.usedRect(for: container)
+      textRegions.append(["text": text.string, "used": [used.width, used.height], "bounds": [text.bounds.width, text.bounds.height]])
       if used.height > text.bounds.height + 0.5 || used.width > text.bounds.width + 0.5 { clipped.append("description: \(text.string)") }
       var lines = 0
       manager.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: manager.numberOfGlyphs)) { _, _, _, _, _ in lines += 1 }
@@ -72,17 +76,59 @@ for width in [Look.width, CGFloat(720)] {
    if !clipped.isEmpty { failures.append("\(name): clipped \(clipped)") }
    if Set(frames.map { $0.midY }).count != 1 { failures.append("\(name): cards left the horizontal row") }
    if !content.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds, to: content)) { failures.append("\(name): submit outside window") }
-   // Exercise the real click transition after changing layout.
-   controller.cardClicked(controller.cards[count - 1])
-   if controller.checkedIds() != ["choice-\(count - 1)"] { failures.append("\(name): selection changed") }
-   if capture {
+   if capture && descriptionMode == "mixed" && ["initial", "narrow"].contains(stage) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
     process.arguments = ["-x", "-o", "-l", String(panel.windowNumber), root + "/" + name + ".png"]
     try process.run(); process.waitUntilExit()
     if process.terminationStatus != 0 { failures.append("\(name): screencapture failed") }
    }
-   metrics.append(["case": name, "width": width, "count": count, "theme": theme.rawValue, "heights": heights, "heightSpread": spread, "naturalHeights": naturalHeights, "tallestContent": tallestContent, "titleTopInsets": titles, "descriptionLines": lineCounts, "clipped": clipped, "windowNumber": panel.windowNumber, "frames": frames.map { ["x": $0.minX, "y": $0.minY, "width": $0.width, "height": $0.height] }])
+   let result: [String: Any] = ["case": name, "stage": stage, "descriptionMode": descriptionMode,
+     "windowFrame": ["x": panel.frame.minX, "y": panel.frame.minY, "width": panel.frame.width, "height": panel.frame.height],
+     "windowMinSize": ["width": panel.minSize.width, "height": panel.minSize.height],
+     "textRegions": textRegions, "selected": controller.checkedIds(), "width": width, "count": count, "theme": theme.rawValue, "heights": heights, "heightSpread": spread, "naturalHeights": naturalHeights, "tallestContent": tallestContent, "titleTopInsets": titles, "descriptionLines": lineCounts, "clipped": clipped, "windowNumber": panel.windowNumber, "frames": frames.map { ["x": $0.minX, "y": $0.minY, "width": $0.width, "height": $0.height] }]
+   metrics.append(result)
+   return result
+   }
+   let initial = try measure("initial")
+   func selectAndClear(_ suffix: String) throws {
+    controller.cardClicked(controller.cards[count - 1])
+    if controller.checkedIds() != ["choice-\(count - 1)"] { failures.append("last selection failed") }
+    _ = try measure("select-last" + suffix)
+    if count > 1 { controller.cardClicked(controller.cards[0]) }
+    let expected = count > 1 ? "choice-0" : "choice-\(count - 1)"
+    if controller.checkedIds() != [expected] { failures.append("selection switch failed") }
+    _ = try measure("select-first" + suffix)
+    controller.cardClicked(controller.cards[0])
+    if !controller.checkedIds().isEmpty { failures.append("selection clear failed") }
+    _ = try measure("clear" + suffix)
+   }
+   func dimensions(_ row: [String: Any]) -> [CGFloat] {
+    let frame = row["windowFrame"] as! [String: CGFloat]
+    let minimum = row["windowMinSize"] as! [String: CGFloat]
+    let cards = row["frames"] as! [[String: CGFloat]]
+    return [frame["width"]!, frame["height"]!, minimum["width"]!, minimum["height"]!] + cards.flatMap { [$0["width"]!, $0["height"]!] }
+   }
+   func unchanged(_ before: [String: Any], _ after: [String: Any], _ reason: String) {
+    if zip(dimensions(before), dimensions(after)).contains(where: { abs($0 - $1) > 0.5 }) { failures.append("\(reason): dimensions changed") }
+   }
+   func move(_ stage: String) throws {
+    let before = try measure("before-" + stage)
+    let origin = panel.frame.origin
+    panel.setFrameOrigin(NSPoint(x: origin.x + Look.pad, y: origin.y - Look.pad))
+    let after = try measure(stage)
+    unchanged(before, after, "moving window")
+    if panel.frame.origin == origin { failures.append("window did not move") }
+   }
+   try selectAndClear("-wide")
+   try move("move-wide")
+   panel.setContentSize(NSSize(width: 720, height: content.bounds.height))
+   _ = try measure("narrow")
+   try selectAndClear("-narrow")
+   try move("move-narrow")
+   panel.setContentSize(NSSize(width: Look.width, height: content.bounds.height))
+   let restored = try measure("restored")
+   unchanged(initial, restored, "restoring original width")
    controller.close()
   }
  }
