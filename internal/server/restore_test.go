@@ -211,6 +211,22 @@ func TestAgentRestoreSkipsUnsafeID(t *testing.T) {
 	}
 }
 
+func TestAgentRestoreSkipsPaneWithoutProcess(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "missing-process")
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	rec := tui.AgentRecord{Agent: "claude", Kind: "id", Value: "sess-missing", Source: "restore"}
+	s.app.RecordSession(pid, rec)
+	s.ledgerPut(pid, rec)
+	result := s.runAgentRestore(false)
+	if len(result.Actions) != 1 || result.Actions[0].Status != "skipped" || result.Actions[0].Reason == nil || *result.Actions[0].Reason != "pane process not running" || result.Actions[0].Command != nil {
+		t.Fatalf("missing process action = %+v", result.Actions)
+	}
+	if entry, ok := s.ledgerEntry(pid); !ok || entry.SessionID != rec.Value {
+		t.Fatalf("ledger lost: %+v, %v", entry, ok)
+	}
+}
+
 // A real (non-dry-run) restore types the resume command into the pane.
 func TestAgentRestoreLaunchesCommand(t *testing.T) {
 	teststate.Lock(t)
