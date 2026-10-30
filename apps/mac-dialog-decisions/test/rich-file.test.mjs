@@ -30,7 +30,7 @@ for(const operation of ['preview','attachment']) test(`actual unwritten FIFO is 
  try {
   const draft=path.join(root,'drafts/local/fifo');await fs.mkdir(draft,{recursive:true});const fifo=path.join(draft,'画像.png');await exec('/usr/bin/mkfifo',[fifo]);
   const service=new URL('../rich-service.mjs',import.meta.url).href;
-  const script=`const {RichService}=await import(${JSON.stringify(service)}); const s=new RichService({stateDir:${JSON.stringify(root)}});console.log('FIFO_READY',Date.now());const began=performance.now();try {${operation==='preview'?`await s.readImage('local',${JSON.stringify(fifo)},new AbortController().signal)`:`await s.store.save('local','fifo',[{path:${JSON.stringify(fifo)}}])`};process.exitCode=1;}catch(error){if(!/通常|regular/.test(error.message))throw error;console.log('FIFO_REJECTED',performance.now()-began);}`;
+  const script=`const {RichService}=await import(${JSON.stringify(service)}); const s=new RichService({stateDir:${JSON.stringify(root)}});console.log('FIFO_READY '+Date.now());const began=performance.now();try {${operation==='preview'?`await s.readImage('local',${JSON.stringify(fifo)},new AbortController().signal)`:`await s.store.save('local','fifo',[{path:${JSON.stringify(fifo)}}])`};process.exitCode=1;}catch(error){if(!/通常|regular/.test(error.message))throw error;console.log('FIFO_REJECTED '+(performance.now()-began));}`;
   const result=await runFIFOProbe(script);assert.match(result.stdout,/FIFO_REJECTED/);
   const elapsed=Number(result.stdout.match(/FIFO_REJECTED ([\d.]+)/)[1]);assert.ok(elapsed<fifoDeadlineMs,`FIFO rejection took ${elapsed}ms`);t.diagnostic(`startup=${result.startupMs}ms FIFO=${elapsed}ms`);
  } finally {await fs.rm(root,{recursive:true,force:true});}
@@ -40,7 +40,7 @@ test('FIFO probe still terminates an actual blocking open after readiness',async
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'dialog-blocking-fifo-'));
  try {
   const fifo=path.join(root,'unwritten');await exec('/usr/bin/mkfifo',[fifo]);
-  await assert.rejects(runFIFOProbe(`import fs from 'node:fs';console.log('FIFO_READY',Date.now());fs.openSync(${JSON.stringify(fifo)},fs.constants.O_RDONLY);`),error=>error.signal==='SIGTERM'&&error.stdout.includes('FIFO_READY')&&!error.stdout.includes('FIFO_REJECTED'));
+  await assert.rejects(runFIFOProbe(`import fs from 'node:fs';console.log('FIFO_READY '+Date.now());fs.openSync(${JSON.stringify(fifo)},fs.constants.O_RDONLY);`),error=>error.signal==='SIGTERM'&&error.stdout.includes('FIFO_READY')&&!error.stdout.includes('FIFO_REJECTED'));
  } finally {await fs.rm(root,{recursive:true,force:true});}
 });
 

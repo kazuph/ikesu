@@ -375,6 +375,7 @@ type fossilWatch struct {
 // paneSnaps builds render snapshots for every live pane.
 func (a *App) paneSnaps() map[int]*render.PaneSnap {
 	out := map[int]*render.PaneSnap{}
+	branchCwds := map[string]bool{}
 	a.sessionCwds = make(map[int]string, len(a.st.Workspaces))
 	active := map[int]bool{}
 	if ws := a.st.ActiveWorkspace(); ws != nil {
@@ -441,12 +442,20 @@ func (a *App) paneSnaps() map[int]*render.PaneSnap {
 						snap.TaskTitle = m.Title
 					}
 				}
-				snap.Branch = gitBranch(sn.Cwd, ws.Cwd)
+				cwd := sn.Cwd
+				if cwd == "" {
+					cwd = ws.Cwd
+				}
+				if cwd != "" {
+					branchCwds[filepath.Clean(cwd)] = true
+				}
+				snap.Branch = a.cachedGitBranch(cwd)
 				snap.Agent, snap.Restore = a.paneRestoreLabel(pid, snap.Agent)
 				out[pid] = snap
 			}
 		}
 	}
+	a.pruneBranchCache(branchCwds)
 	return out
 }
 

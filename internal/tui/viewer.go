@@ -73,6 +73,7 @@ func (a *App) selectView(s viewSelection) {
 
 func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Viewer {
 	ui := *a
+	ui.branchCache = nil
 	ui.sizeViewer, ui.sizeViewers, ui.sizeOwners = nil, nil, nil
 	if a.toast != nil {
 		toast := *a.toast
