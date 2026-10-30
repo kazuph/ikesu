@@ -142,8 +142,12 @@ func (a *App) RestoreSession(f *session.File) []int {
 					cwd = a.cwd
 				}
 				r := a.rectForPane(pid)
-				if _, err := a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1)); err != nil && cwd != a.cwd {
-					_, _ = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
+				_, err := a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1))
+				if err != nil && cwd != a.cwd {
+					_, err = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
+				}
+				if err != nil {
+					a.restoreWarnings = append(a.restoreWarnings, fmt.Sprintf("pane p%d: %v", pid, err))
 				}
 			}
 		}

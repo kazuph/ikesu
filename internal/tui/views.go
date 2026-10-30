@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -161,6 +162,13 @@ func (a *App) draw() {
 		}
 	}
 	warning, banner := a.configWarning, a.configWarningBanner
+	if len(a.restoreWarnings) > 0 {
+		if warning != "" {
+			warning += "; "
+		}
+		warning += strings.Join(a.restoreWarnings, "; ")
+		banner = true
+	}
 	if guardWarning := a.sup.GuardWarnings(); guardWarning != "" {
 		if warning != "" {
 			warning += "; "
