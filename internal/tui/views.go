@@ -3,6 +3,7 @@ package tui
 import "github.com/kazuph/ikesu/internal/benchstage"
 
 import (
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/detect"
@@ -167,6 +168,12 @@ func (a *App) draw() {
 		}
 		warning += guardWarning
 		banner = true
+	}
+	if len(a.restoreWarnings) > 0 {
+		if warning != "" {
+			warning += "; "
+		}
+		warning += fmt.Sprintf("%d 個のペインでシェルを起動できません（理由は各ペインに表示）", len(a.restoreWarnings))
 	}
 	in := render.Input{
 		RestoreFailures:     a.restoreWarnings,

@@ -324,13 +324,6 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	}
 	drawActionBar(f, s, in, out)
 	drawClientVersion(f, version, notice, out)
-	if len(in.RestoreFailures) > 0 {
-		area := s.ActionBarArea()
-		if area.W > 0 && area.Y > 0 {
-			message := fmt.Sprintf("%d 個のペインでシェルを起動できません（各ペインに理由・スクロール可）", len(in.RestoreFailures))
-			f.Text(area.X, area.Y-1, message, uv.Style{Fg: f.Palette.Yellow}, area.X+area.W)
-		}
-	}
 	if s.Mobile() {
 		drawMobile(f, in, out)
 	}

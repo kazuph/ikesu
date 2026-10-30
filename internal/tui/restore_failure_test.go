@@ -56,7 +56,7 @@ func TestRestoreShowsShellSpawnFailure(t *testing.T) {
 func TestRestoreFailuresStayInTheirPanesWithExistingWarnings(t *testing.T) {
 	teststate.Lock(t)
 	dir := t.TempDir()
-	st := model.New(dir, 200, 42)
+	st := model.New(dir, 500, 42)
 	st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
 	st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
 	sup := runtime.NewSupervisor()
@@ -91,24 +91,19 @@ func TestRestoreFailuresStayInTheirPanesWithExistingWarnings(t *testing.T) {
 	a.draw()
 	a.restoreWarnings = map[int]string{1: e1.Error(), 2: e2.Error()}
 	a.snapshotSink = func(in render.Input) error {
-		if in.ConfigWarning != before.ConfigWarning || in.ConfigWarningBanner != before.ConfigWarningBanner {
+		summary := "2 個のペインでシェルを起動できません（理由は各ペインに表示）"
+		if in.ConfigWarning != before.ConfigWarning+"; "+summary || in.ConfigWarningBanner != before.ConfigWarningBanner {
 			t.Errorf("existing warning changed: %q %v; want %q %v", in.ConfigWarning, in.ConfigWarningBanner, before.ConfigWarning, before.ConfigWarningBanner)
 		}
-		beforeFrame := render.Compose(before).Frame
 		frame := render.Compose(in).Frame
+		var warningRow strings.Builder
 		for x := 0; x < frame.W; x++ {
-			if *frame.Cell(x, 0) != *beforeFrame.Cell(x, 0) {
-				t.Fatalf("existing warning row changed at column %d", x)
+			if cell := frame.Cell(x, 0); cell != nil && cell.Width > 0 {
+				warningRow.WriteString(cell.Content)
 			}
 		}
-		var bottom strings.Builder
-		for x := 0; x < frame.W; x++ {
-			if cell := frame.Cell(x, st.ActionBarArea().Y-1); cell != nil && cell.Width > 0 {
-				bottom.WriteString(cell.Content)
-			}
-		}
-		if !strings.Contains(bottom.String(), "2 個のペインでシェルを起動できません") {
-			t.Errorf("missing restore summary: %s", bottom.String())
+		if !strings.Contains(warningRow.String(), before.ConfigWarning+"; "+summary) {
+			t.Errorf("warnings missing or reordered: %s", warningRow.String())
 		}
 		for _, pr := range st.DisplayPaneRects() {
 			if pr.ID != 1 && pr.ID != 2 {
