@@ -16,7 +16,7 @@ import (
 func lineCommands(i Input, line string) ([]Input, error) {
 	tree, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(line), "guard line")
 	if err != nil {
-		if i.runtimeLine {
+		if i.runtimeLine && i.evalDepth == 0 {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
@@ -138,6 +138,27 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		for _, a := range unwrapped.Args {
 			if has(next.scriptKnownArgs, a) {
 				unwrapped.scriptKnownArgs = append(unwrapped.scriptKnownArgs, a)
+			}
+		}
+		if filepath.Base(unwrapped.Command) == "eval" && len(call.Args)-1 == len(unwrapped.Args) && len(unwrapped.Args) > 0 && i.evalDepth < scriptDepthLimit {
+			var words []string
+			for _, word := range call.Args[1:] {
+				value, ok := claudeLiteral(word)
+				if !ok {
+					words = nil
+					break
+				}
+				words = append(words, value)
+			}
+			if len(words) > 0 {
+				child := unwrapped
+				child.evalDepth++
+				nested, nestedErr := lineCommands(child, strings.Join(words, " "))
+				commands = append(commands, nested...)
+				if nestedErr != nil {
+					setError(nestedErr)
+				}
+				return true
 			}
 		}
 		commands = append(commands, unwrapped)
@@ -277,7 +298,7 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	}
 	for _, command := range commands {
 		v := result("allow", "default", "")
-		if !(i.runtimeLine && has([]string{"eval", "source", "."}, filepath.Base(command.Command))) {
+		if !(i.runtimeLine && has([]string{"source", "."}, filepath.Base(command.Command))) {
 			v = Evaluate(c, command)
 		}
 		if command.scriptResult != nil {
