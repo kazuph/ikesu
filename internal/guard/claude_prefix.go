@@ -10,6 +10,7 @@ import (
 )
 
 const claudeBootstrap = `source IKESU_SNAPSHOT 2>/dev/null || true && { shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval IKESU_PAYLOAD < /dev/null && pwd -P >| IKESU_CWD`
+const claudeWhich = `{ \builtin unalias -- 'which'; \builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && `
 
 // ClaudePrefixLine recognizes only the observed Claude bootstrap. Everything
 // else retains the ordinary whole-line policy, including unknown source/eval.
@@ -88,7 +89,8 @@ func ClaudePrefixLine(i Input, line string) string {
 	if printer.Print(&got, tree) != nil {
 		return line
 	}
-	for _, candidate := range []string{template, strings.Replace(template, " < /dev/null", "", 1)} {
+	withWhich := strings.Replace(template, `{ \builtin unalias -- 'unsetenv'`, claudeWhich+`{ \builtin unalias -- 'unsetenv'`, 1)
+	for _, candidate := range []string{template, strings.Replace(template, " < /dev/null", "", 1), withWhich, strings.Replace(withWhich, " < /dev/null", "", 1)} {
 		expected, err := syntax.NewParser().Parse(strings.NewReader(candidate), "expected")
 		if err != nil {
 			return line

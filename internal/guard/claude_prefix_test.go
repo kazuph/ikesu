@@ -104,6 +104,31 @@ func TestClaudePrefixWithoutDevNull(t *testing.T) {
 	}
 }
 
+func TestClaudePrefixWhichBootstrap(t *testing.T) {
+	i := Input{Env: map[string]string{"HOME": "/tmp/test-user"}}
+	snapshot := "/tmp/test-user/.claude/shell-snapshots/snapshot-zsh-123-x.sh"
+	base := bootstrapForTest(snapshot, "pwd", "/tmp/claude-123-cwd")
+	base = strings.Replace(base, `{ \builtin unalias -- 'unsetenv'`, claudeWhich+`{ \builtin unalias -- 'unsetenv'`, 1)
+	for _, source := range []bool{true, false} {
+		for _, devnull := range []bool{true, false} {
+			line := base
+			if !source {
+				line = strings.TrimPrefix(line, "source "+quote(snapshot)+" 2>/dev/null || true && ")
+			}
+			if !devnull {
+				line = strings.Replace(line, " < /dev/null", "", 1)
+			}
+			if got := ClaudePrefixLine(i, line); got != "pwd" {
+				t.Fatalf("source=%v devnull=%v: %q", source, devnull, got)
+			}
+			changed := strings.Replace(line, "unalias -- 'which'", "unalias -- 'other'", 1)
+			if got := ClaudePrefixLine(i, changed); got != changed {
+				t.Fatalf("changed which block accepted: %q", got)
+			}
+		}
+	}
+}
+
 func TestClaudePrefixMultiline(t *testing.T) {
 	i := Input{Env: map[string]string{"HOME": "/tmp/test-user"}}
 	snapshot := "/tmp/test-user/.claude/shell-snapshots/snapshot-zsh-123-x.sh"
