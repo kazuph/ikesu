@@ -95,6 +95,9 @@ type branchCacheEntry struct {
 }
 
 func (a *App) cachedGitBranch(cwd string) string {
+	if a.viewerOwner != nil {
+		return a.viewerOwner.cachedGitBranch(cwd)
+	}
 	if cwd == "" {
 		return ""
 	}
@@ -115,6 +118,10 @@ func (a *App) cachedGitBranch(cwd string) string {
 }
 
 func (a *App) pruneBranchCache(active map[string]bool) {
+	if a.viewerOwner != nil {
+		a.viewerOwner.pruneBranchCache(active)
+		return
+	}
 	for cwd, entry := range a.branchCache {
 		if !active[cwd] {
 			entry.watch.Close()
