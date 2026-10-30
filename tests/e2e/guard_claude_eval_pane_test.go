@@ -35,8 +35,8 @@ func TestClaudeEvalInsideRealPane(t *testing.T) {
 						return len(pending.Decisions) == 1
 					})
 					d := pending.Decisions[0]
-					if d.Body == nil || !strings.Contains(*d.Body, reason) {
-						t.Fatalf("request reason missing: %+v", d)
+					if d.Origin == nil || d.Origin.Reason != reason {
+						t.Fatalf("request reason missing: %+v", d.Origin)
 					}
 					t.Logf("isolated panel record: %s %s", d.DecisionID, *d.Body)
 					if raw, err := s.cli("decision", "answer", d.DecisionID, "reject"); err != nil {
