@@ -458,6 +458,7 @@ async function ensureDaemon(config, env) {
     const pluginRoot = pluginRootDir();
     const exportsList = [
       ["IKESU_PLUGIN_CONFIG_DIR", config.configDir],
+      ["MAC_DIALOG_CONFIG", config.configPath],
       ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
       ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || ""],
       ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
