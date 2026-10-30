@@ -26,6 +26,13 @@ function homePath(...parts) {
   return path.join(os.homedir(), ...parts);
 }
 
+function versionedIkesuPath(value) {
+  if (!value) return false;
+  const parts = path.resolve(value).split(path.sep);
+  return parts.includes('Cellar') || parts.some((part, i) =>
+    part === 'releases' && parts[i - 1] === 'ikesu' && parts[i - 2] === 'lib' && parts[i - 3] === '.local');
+}
+
 function loadConfig(env = process.env) {
   const configDir =
     env.IKESU_PLUGIN_CONFIG_DIR ||
@@ -64,7 +71,9 @@ function loadConfig(env = process.env) {
     enabled:
       (env.MAC_DIALOG_ENABLED ?? file.enabled ?? true) !== false &&
       env.MAC_DIALOG_ENABLED !== "0",
-    ikesuBin: env.IKESU_BIN_PATH || file.ikesu_bin || "ikesu",
+    ikesuBin: (!versionedIkesuPath(file.ikesu_bin) && file.ikesu_bin) ||
+      (!versionedIkesuPath(env.IKESU_BIN_PATH) && env.IKESU_BIN_PATH) || "ikesu",
+    ikesuBinFromEnv: !file.ikesu_bin || versionedIkesuPath(file.ikesu_bin),
     helperCmd, // null = built-in osascript dialog.js
     // Brief delay before a queued decision takes the screen, so a burst of
     // simultaneous decisions reports the true queue size on the first dialog.
@@ -85,17 +94,19 @@ function loadConfig(env = process.env) {
   };
 }
 
-// The daemon outlives the server that launched it: a Homebrew install records
-// IKESU_BIN_PATH as a versioned Cellar path that `brew upgrade` deletes, so
-// every ikesu invocation resolves the binary afresh — the configured path
-// while it exists, then PATH, then the usual prefixes.
+// The daemon can outlive the binary that launched it; never retain versioned paths.
 function resolveIkesuBin(config, logFn = () => {}, env = process.env) {
   const configured = config.ikesuBin;
-  if (configured && configured !== "ikesu" && fs.existsSync(configured)) return configured;
+  const fixed = path.join(env.HOME || os.homedir(), ".local", "bin", "ikesu");
+  if (config.ikesuBinFromEnv) {
+    try { fs.accessSync(fixed, fs.constants.X_OK); return fixed; } catch {}
+  }
+  if (configured && configured !== "ikesu" && !versionedIkesuPath(configured) && fs.existsSync(configured)) return configured;
   for (const name of ["ikesu"]) {
-    const candidates = [...(env.PATH || "").split(path.delimiter).filter(Boolean),
-      "/opt/homebrew/bin", path.join(os.homedir(), ".local", "bin")].map(dir => path.join(dir, name));
+    const candidates = [path.join(env.HOME || os.homedir(), ".local", "bin"),
+      ...(env.PATH || "").split(path.delimiter).filter(Boolean), "/opt/homebrew/bin"].map(dir => path.join(dir, name));
     for (const candidate of candidates) {
+      if (versionedIkesuPath(candidate)) continue;
       try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch {}
     }
   }
@@ -130,7 +141,7 @@ function pluginRootDir() {
 }
 
 function spawnDecisionWatch(config, logFn, env = process.env) {
-  const bin = resolveIkesuBin(config, logFn);
+  const bin = resolveIkesuBin(config, logFn, env);
   if (!bin) {
     return {
       lines: (async function* () {
@@ -320,7 +331,7 @@ async function acquireDaemonLock(binary, stateDir) {
 
 function createRunAnswer(config, logFn = () => {}, env = process.env) {
   return (args) => {
-    const bin = resolveIkesuBin(config, logFn);
+    const bin = resolveIkesuBin(config, logFn, env);
     if (!bin) {
       return Promise.resolve({
         code: 127,
@@ -447,19 +458,20 @@ async function ensureDaemon(config, env) {
     const pluginRoot = pluginRootDir();
     const exportsList = [
       ["IKESU_PLUGIN_CONFIG_DIR", config.configDir],
+      ["MAC_DIALOG_CONFIG", config.configPath],
       ["IKESU_PLUGIN_STATE_DIR", config.stateDir],
       ["IKESU_SOCKET_PATH", env.IKESU_SOCKET_PATH || ""],
       ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
       ["IKESU_SOCKET_PATH_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
       ["IKESU_CONFIG_PATH", env.IKESU_CONFIG_PATH || ""],
-      ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.ikesuBin],
+      ["IKESU_BIN_PATH", resolveIkesuBin(config, log, env) || config.ikesuBin],
       ["PATH", env.PATH || ""],
     ]
       .filter(([, value]) => value)
       .map(([key, value]) => `${key}=${shellQuote(value)}`)
       .join(" ");
     const inner = `export ${exportsList}; exec ${shellQuote(process.execPath)} ${shellQuote(path.join(pluginRoot, "mac-dialog-decisions.mjs"))} run`;
-    const daemonBin = resolveIkesuBin(config, log);
+    const daemonBin = resolveIkesuBin(config, log, env);
     if (!daemonBin) {
       throw Error(
         `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +

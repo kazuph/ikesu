@@ -129,9 +129,10 @@ let linkBody="[動画](<"+encoded+">)\n同じリンク: "+encoded+"\n通常パ�
 let preceding=(0..<7).map {"https://example.com/"+String(repeating:"long-path-",count:15)+"/\($0)"}
 let linkInput:[String:Any] = ["window_title":"ローカルリンク試験","title":"本文から右のカードへ移動","body":linkBody,"options":[],"allow_text":false,"multi_select":false,"media_sources":preceding+[source]]
 let links=DialogController(spec:try JSONDecoder().decode(DialogSpec.self,from:JSONSerialization.data(withJSONObject:linkInput)),specPath:root+"/links.json")
+var openedLinks:[URL]=[]
+links.openLink={openedLinks.append($0);return true}
 links.build();links.panel.orderBack(nil);links.panel.setContentSize(NSSize(width:1080,height:350));await drain()
 let text=labels(links.panel.contentView!).first {$0.string==linkBody}!
-let destination=links.mediaCards[source]!
 let value=text.string as NSString
 var clicks=0
 for candidate in [encoded,source] {
@@ -143,13 +144,13 @@ for candidate in [encoded,source] {
   precondition(attribute==source,"every link maps to the original unencoded source")
   links.richScroll.contentView.scroll(to:.zero);links.richScroll.reflectScrolledClipView(links.richScroll.contentView)
   text.clicked(onLink:attribute,at:range.location)
-  precondition(links.richScroll.contentView.bounds.contains(destination.convert(destination.bounds,to:links.richScroll.contentView)),"native click must reveal the corresponding card")
+  precondition(openedLinks.last==URL(fileURLWithPath:source) && openedLinks.count==clicks+1,"native click must open the corresponding file")
   precondition(text.string==linkBody,"click must not rewrite visible text")
   clicks+=1;offset=NSMaxRange(range)
  }
 }
 precondition(clicks==3,"both encoded occurrences and the literal path must work")
-links.close();print("LOCAL_MEDIA_LINKS_PASS actualTextViewClicks=\(clicks) encodedJapaneseSpacePercent=1 textPreserved=1 cardVisible=1")
+links.close();print("LOCAL_MEDIA_LINKS_PASS actualTextViewClicks=\(clicks) encodedJapaneseSpacePercent=1 textPreserved=1 fileOpened=1")
 // One native host must preserve window order and keyboard focus for new requests.
 let host=DialogHost(directory:root)
 app.delegate=host

@@ -325,6 +325,7 @@ final class DialogController: NSObject, NSWindowDelegate {
   let richStack = NSStackView()
   let richScroll = NSScrollView()
   var mediaCards: [String: NSStackView] = [:]
+  var openLink: (URL) -> Bool = { NSWorkspace.shared.open($0) }
   var players: [AVPlayer] = []
   var webVideos: [WKWebView] = []
   var videoDocuments: [URL] = []
@@ -778,9 +779,12 @@ extension DialogController: NSTextViewDelegate {
     refreshSubmit(); saveDraft()
   }
   func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-    let source = (link as? URL)?.absoluteString ?? (link as? String ?? "")
-    guard let card = mediaCards[source] ?? mediaCards[(link as? URL)?.path ?? ""] else { return false }
-    card.scrollToVisible(card.bounds)
+    let url: URL?
+    if let value = link as? URL { url = value }
+    else if let value = link as? String { url = value.hasPrefix("/") ? URL(fileURLWithPath: value) : URL(string: value) }
+    else { url = nil }
+    guard let url, ["http", "https", "file"].contains(url.scheme?.lowercased() ?? "") else { return false }
+    _ = openLink(url)
     return true
   }
 }
@@ -1023,6 +1027,7 @@ extension DialogController {
     let card = NSStackView()
     card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
     let caption = richLabel(source, size: Look.small)
+    caption.delegate = self
     card.addArrangedSubview(caption)
     richStack.addArrangedSubview(card)
     card.widthAnchor.constraint(equalTo: richStack.widthAnchor).isActive = true
