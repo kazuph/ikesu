@@ -5,8 +5,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/kazuph/ikesu/internal/guard"
 )
+
+func TestTrustedExecutableDoesNotCopy(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := guard.CheckExecutable(exe); err != nil {
+		t.Fatalf("test executable must be trusted: %v", err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := Ensure("1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local")); !os.IsNotExist(err) {
+		t.Fatalf("trusted executable unexpectedly created release directory: %v", err)
+	}
+}
 
 func TestRetainReusesAndPreservesDifferentRelease(t *testing.T) {
 	home := t.TempDir()
@@ -61,7 +82,7 @@ func TestRetainRejectsWritableDestination(t *testing.T) {
 	if err := os.Chmod(filepath.Join(home, ".local"), 0775); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Retain(source, "1.2.3", home); err == nil {
-		t.Fatal("accepted writable destination")
+	if _, err := Retain(source, "1.2.3", home); err == nil || !strings.Contains(err.Error(), filepath.Join(home, ".local")) || !strings.Contains(err.Error(), filepath.Join(home, ".local/lib/ikesu/releases/1.2.3/ikesu")) {
+		t.Fatalf("writable destination error omitted path or reason: %v", err)
 	}
 }
