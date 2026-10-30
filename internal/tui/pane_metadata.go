@@ -53,8 +53,21 @@ func readGitBranch(cwd string, watch *filewatch.Watcher) (string, bool, uint64) 
 				}
 			}
 			if watch != nil {
-				paths[gitDir] = true
-				paths[filepath.Dir(gitDir)] = true
+				gitAncestors(gitDir, paths)
+				for dir := filepath.Clean(gitDir); ; dir = filepath.Dir(dir) {
+					if target, err := os.Readlink(dir); err == nil {
+						if !filepath.IsAbs(target) {
+							target = filepath.Join(filepath.Dir(dir), target)
+						}
+						gitAncestors(target, paths)
+					}
+					if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+						gitAncestors(resolved, paths)
+					}
+					if filepath.Dir(dir) == dir {
+						break
+					}
+				}
 				paths[filepath.Join(gitDir, "HEAD")] = true
 				ready = watch.Update(gitPathList(paths)) && ready
 			}
