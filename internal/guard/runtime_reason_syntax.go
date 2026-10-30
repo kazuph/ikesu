@@ -118,26 +118,15 @@ func runtimeReasonSyntax(i Input, node syntax.Node, cfg *expand.Config) (bool, b
 			dynamicWrite = true
 		}
 		for _, flag := range expanded[1:] {
-			if flag == "-v" {
+			if strings.HasPrefix(flag, "-v") {
 				dynamicWrite = true
 				break
 			}
 		}
 	}
 	if dynamicWrite || cmd == "env" {
-		targets := expanded[1:]
-		if cmd == "printf" {
-			targets = nil
-			for n, word := range expanded[1:] {
-				if word == "-v" && n+2 < len(expanded) {
-					targets = []string{expanded[n+2]}
-					break
-				}
-			}
-		}
-		for _, word := range targets {
-			name, _, _ := strings.Cut(word, "=")
-			if runtimeReasonVariable(i, name) {
+		for _, word := range expanded[1:] {
+			if containsReasonName(i, word) {
 				return true, false
 			}
 		}

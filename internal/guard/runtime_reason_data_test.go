@@ -31,13 +31,13 @@ func TestRuntimeReasonNameInCurlData(t *testing.T) {
 
 func TestRuntimeReasonTargetsAndData(t *testing.T) {
 	i := WithShellVariables(Input{Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin"}}, strings.NewReader("declare -- X='AI_GUARD_REQUEST_REASON=y'\n"))
-	for _, line := range []string{`AI_GUARD_REQUEST_REASON=x cmd`, `export AI_GUARD_REQUEST_REASON=x`, `X=AI_GUARD_REQUEST_REASON=y; export "$X"`, `read AI_GUARD_REQUEST_REASON`, `unset AI_GUARD_REQUEST_REASON`, `printf -v AI_GUARD_REQUEST_REASON x`, `declare -n r=AI_GUARD_REQUEST_REASON`, `env AI_GUARD_REQUEST_REASON=x cmd`} {
+	for _, line := range []string{`AI_GUARD_REQUEST_REASON=x cmd`, `export AI_GUARD_REQUEST_REASON=x`, `X=AI_GUARD_REQUEST_REASON=y; export "$X"`, `read AI_GUARD_REQUEST_REASON`, `unset AI_GUARD_REQUEST_REASON`, `printf -v AI_GUARD_REQUEST_REASON x`, `printf -v ordinary '%s' AI_GUARD_REQUEST_REASON`, `declare -n r=AI_GUARD_REQUEST_REASON`, `env AI_GUARD_REQUEST_REASON=x cmd`} {
 		_, v, _ := lineVerdict(Config{}, i, line)
 		if v.Decision == "allow" {
 			t.Errorf("mutation allowed: %s: %+v", line, v)
 		}
 	}
-	for _, line := range []string{`echo AI_GUARD_REQUEST_REASON`, `printf '%s' AI_GUARD_REQUEST_REASON`, `grep AI_GUARD_REQUEST_REASON file`, `printf -v ordinary '%s' AI_GUARD_REQUEST_REASON`} {
+	for _, line := range []string{`echo AI_GUARD_REQUEST_REASON`, `printf '%s' AI_GUARD_REQUEST_REASON`, `grep AI_GUARD_REQUEST_REASON file`} {
 		_, v, _ := lineVerdict(Config{}, i, line)
 		if v.Rule == "shell-line" && strings.Contains(v.Reason, "申請文の名前を含む操作") {
 			t.Errorf("data treated as mutation: %s: %+v", line, v)
