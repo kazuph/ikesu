@@ -79,6 +79,21 @@ func snapshotReservedName(name string) bool {
 	return authorizationIdentityKey(name) || strings.HasPrefix(name, "IKESU_") || strings.HasPrefix(name, "AI_GUARD_") || strings.HasPrefix(name, "_ikesu_guard_")
 }
 
+// WithShellPID supplies Bash's immutable $$ value for runtime expansion.
+func WithShellPID(i Input, pid string) Input {
+	i.shellPID = ""
+	if pid == "" {
+		return i
+	}
+	for _, c := range pid {
+		if c < '0' || c > '9' {
+			return i
+		}
+	}
+	i.shellPID = pid
+	return i
+}
+
 // Env remains the exported caller environment. Only the expander sees snapshots.
 func (i Input) shellExpansionValues() map[string]string {
 	if i.shellVariables == nil {
@@ -94,6 +109,9 @@ func (i Input) shellExpansionValues() map[string]string {
 		if snapshotReservedName(name) {
 			values[name] = value
 		}
+	}
+	if i.shellPID != "" {
+		values["$"] = i.shellPID
 	}
 	return values
 }
