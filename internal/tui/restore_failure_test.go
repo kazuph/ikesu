@@ -21,8 +21,20 @@ func TestRestoreShowsShellSpawnFailure(t *testing.T) {
 	a := NewApp(st, sup, io.Discard, dir)
 	a.RestoreSession(st.Snapshot())
 	a.snapshotSink = func(in render.Input) error {
-		if !in.ConfigWarningBanner || !strings.Contains(in.ConfigWarning, "p1") || !strings.Contains(in.ConfigWarning, "missing-shell") {
+		if in.ConfigWarningBanner || !strings.Contains(in.ConfigWarning, "p1") || !strings.Contains(in.ConfigWarning, "missing-shell") {
 			t.Fatalf("spawn failure not visible: %q", in.ConfigWarning)
+		}
+		frame := render.Compose(in).Frame
+		var screen strings.Builder
+		for y := 0; y < frame.H; y++ {
+			for x := 0; x < frame.W; x++ {
+				if cell := frame.Cell(x, y); cell != nil {
+					screen.WriteString(cell.Content)
+				}
+			}
+		}
+		if !strings.Contains(screen.String(), "pane p1: no such file or directory") {
+			t.Fatalf("spawn failure missing from screen: %s", screen.String())
 		}
 		return nil
 	}

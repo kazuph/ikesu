@@ -164,10 +164,10 @@ func (a *App) draw() {
 	warning, banner := a.configWarning, a.configWarningBanner
 	if len(a.restoreWarnings) > 0 {
 		if warning != "" {
-			warning += "; "
+			warning = "; " + warning
 		}
-		warning += strings.Join(a.restoreWarnings, "; ")
-		banner = true
+		warning = strings.Join(a.restoreWarnings, "; ") + warning
+		banner = false
 	}
 	if guardWarning := a.sup.GuardWarnings(); guardWarning != "" {
 		if warning != "" {
@@ -175,6 +175,9 @@ func (a *App) draw() {
 		}
 		warning += guardWarning
 		banner = true
+	}
+	if len(a.restoreWarnings) > 0 {
+		banner = false
 	}
 	in := render.Input{
 		ServerUI:            a.serverUI,

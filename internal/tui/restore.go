@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"os"
@@ -147,7 +148,11 @@ func (a *App) RestoreSession(f *session.File) []int {
 					_, err = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
 				}
 				if err != nil {
-					a.restoreWarnings = append(a.restoreWarnings, fmt.Sprintf("pane p%d: %v", pid, err))
+					cause := err
+					for errors.Unwrap(cause) != nil {
+						cause = errors.Unwrap(cause)
+					}
+					a.restoreWarnings = append(a.restoreWarnings, fmt.Sprintf("pane p%d: %v (%v)", pid, cause, err))
 				}
 			}
 		}
