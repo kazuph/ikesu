@@ -84,3 +84,49 @@ func TestBranchCacheExternalGitDirAncestorRecovery(t *testing.T) {
 		})
 	}
 }
+
+func TestBranchCacheExternalSymlinkTargetRecovery(t *testing.T) {
+	root := t.TempDir()
+	cwd := filepath.Join(root, "checkout")
+	parent := filepath.Join(root, "storage", "main")
+	link := filepath.Join(root, "link")
+	gitdir := filepath.Join(parent, "git", "topic")
+	for _, dir := range []string{cwd, gitdir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(parent, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".git"), []byte("gitdir: "+filepath.Join(link, "git", "topic")+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitdir, "HEAD"), []byte("ref: refs/heads/topic\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{}
+	t.Cleanup(func() { a.pruneBranchCache(nil) })
+	if a.cachedGitBranch(cwd) != "topic" {
+		t.Fatal("initial branch missing")
+	}
+	wait := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			if a.cachedGitBranch(cwd) == want {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("branch did not become %q", want)
+	}
+	if err := os.Rename(parent, parent+".saved"); err != nil {
+		t.Fatal(err)
+	}
+	wait("")
+	if err := os.Rename(parent+".saved", parent); err != nil {
+		t.Fatal(err)
+	}
+	wait("topic")
+}
