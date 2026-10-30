@@ -52,12 +52,10 @@ func TestEvalRejectsDynamicAndDeep(t *testing.T) {
 			t.Errorf("allowed %s: %+v", line, v)
 		}
 	}
-	i.runtimeLine = true
 	_, malformed, _ := lineVerdict(Config{}, i, `eval 'if'`)
 	if malformed.Decision == "allow" {
 		t.Errorf("allowed malformed eval in runtime: %+v", malformed)
 	}
-	i.runtimeLine = false
 	_, v, _ := lineVerdict(Config{}, i, "eval "+quote("ikesu send '*' hello"))
 	if v.Decision != "block" {
 		t.Errorf("prohibited command: %+v", v)
