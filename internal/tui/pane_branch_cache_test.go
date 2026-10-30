@@ -49,6 +49,19 @@ func TestBranchCacheRealGitChanges(t *testing.T) {
 	check(repo, "")
 	waitChange(repo, func() { git(repo, "switch", "-q", "first") })
 	check(repo, "first")
+	head := filepath.Join(repo, ".git", "HEAD")
+	waitChange(repo, func() {
+		if err := os.Rename(head, head+".saved"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	check(repo, "")
+	waitChange(repo, func() {
+		if err := os.Rename(head+".saved", head); err != nil {
+			t.Fatal(err)
+		}
+	})
+	check(repo, "first")
 	linked := filepath.Join(t.TempDir(), "linked")
 	check(linked, "")
 	waitChange(linked, func() { git(repo, "worktree", "add", "-qb", "linked", linked) })
