@@ -7,8 +7,11 @@ import (
 	"github.com/kazuph/ikesu/internal/filewatch"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type Marker struct {
@@ -21,6 +24,11 @@ type Marker struct {
 	Mode      string  `json:"mode"`
 	Policy    *Config `json:"-"`
 }
+
+// A quiet pane is polled on its existing cwd cadence, so the effective upper
+// bound is this interval plus one foreground-process check interval (1.5s).
+const guardAncestorCheckInterval = 5 * time.Second
+
 type Assets struct {
 	mu                                      sync.Mutex
 	Root, Pane, Bin, MarkerPath, Executable string
@@ -28,6 +36,10 @@ type Assets struct {
 	pathWatch                               *filewatch.Watcher
 	watchChanges                            func()
 	watchInstalled                          bool
+	watchGeneration                         atomic.Uint64
+	checkedGeneration                       uint64
+	checkedAt                               time.Time
+	checkedConfig                           Config
 	native                                  executableIdentity
 	meta                                    Marker
 	active                                  string
@@ -165,8 +177,49 @@ fi
 func (a *Assets) Sync(agent string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	defer a.refreshChanges()
-	return a.sync(agent)
+	generation := a.watchGeneration.Load()
+	configChanged := !reflect.DeepEqual(a.Config, a.checkedConfig)
+	changed := generation != a.checkedGeneration
+	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && !changed && !configChanged && time.Since(a.checkedAt) < guardAncestorCheckInterval {
+		return nil
+	}
+	oldAgent := a.active
+	err := a.sync(agent)
+	if changed || configChanged || oldAgent != a.active || !a.watchInstalled {
+		a.refreshChanges()
+	}
+	if err == nil && a.issue == "" {
+		a.checkedAt = time.Now()
+		a.checkedGeneration = generation
+		a.checkedConfig = cloneConfig(a.Config)
+	} else {
+		a.checkedAt = time.Time{}
+	}
+	return err
+}
+
+func cloneConfig(c Config) Config {
+	if c.Enabled != nil {
+		v := *c.Enabled
+		c.Enabled = &v
+	}
+	if c.AskTimeoutSeconds != nil {
+		v := *c.AskTimeoutSeconds
+		c.AskTimeoutSeconds = &v
+	}
+	if c.Targets != nil {
+		c.Targets = append([]string{}, c.Targets...)
+	}
+	if c.DangerWords != nil {
+		c.DangerWords = append([]string{}, c.DangerWords...)
+	}
+	if c.ProtectedPatterns != nil {
+		c.ProtectedPatterns = append([]string{}, c.ProtectedPatterns...)
+	}
+	if c.WranglerAllow != nil {
+		c.WranglerAllow = append([]string{}, c.WranglerAllow...)
+	}
+	return c
 }
 func (a *Assets) sync(agent string) error {
 	if a.closed {
