@@ -48,6 +48,7 @@ type Input struct {
 	runtimeLine          bool
 	evalDepth            int
 	shellVariables       map[string]string
+	shellPID             string
 	shellArrays          map[string]map[int]string
 	probePrivate         bool
 	OpaquePrefix         bool `json:"-"`

@@ -232,6 +232,7 @@ func (r *runner) guardCLI(a []string) int {
 		return usageErr(r, "unsupported guard operation: "+sub)
 	}
 	var argv []string
+	var shellPID string
 	after := false
 	for len(a) > 0 {
 		flag := a[0]
@@ -240,7 +241,7 @@ func (r *runner) guardCLI(a []string) int {
 			a = a[1:]
 			continue
 		}
-		option := flag == "--cwd" || flag == "--launch-dir" || flag == "--launch-cwd" || flag == "--via"
+		option := flag == "--cwd" || flag == "--launch-dir" || flag == "--launch-cwd" || flag == "--via" || flag == "--shell-pid" && sub == "line"
 		if option && (sub == "check" || !after) {
 			if len(a) < 2 {
 				return usageErr(r, "guard option requires a value")
@@ -252,6 +253,8 @@ func (r *runner) guardCLI(a []string) int {
 				i.LaunchCwd = a[1]
 			case "--via":
 				via = a[1]
+			case "--shell-pid":
+				shellPID = a[1]
 			}
 			a = a[2:]
 			continue
@@ -270,6 +273,7 @@ func (r *runner) guardCLI(a []string) int {
 	if sub == "line" {
 		if via == "bash-debug" {
 			i = guard.WithShellVariables(i, os.Stdin)
+			i = guard.WithShellPID(i, shellPID)
 		}
 		if len(argv) != 1 {
 			return usageErr(r, "guard line requires one command line")

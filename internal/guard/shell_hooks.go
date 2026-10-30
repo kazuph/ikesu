@@ -52,7 +52,7 @@ _ikesu_guard_debug() {
    done
   ) | (
    set +o functrace
-%s   %s guard line --via bash-debug -- "$1"
+%s   %s guard line --via bash-debug --shell-pid "$$" -- "$1"
   ) || { builtin kill -s KILL "$$"; exit 1; }
  fi
  return 0
