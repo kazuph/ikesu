@@ -136,7 +136,7 @@ function pluginRootDir() {
 }
 
 function spawnDecisionWatch(config, logFn, env = process.env) {
-  const bin = resolveIkesuBin(config, logFn);
+  const bin = resolveIkesuBin(config, logFn, env);
   if (!bin) {
     return {
       lines: (async function* () {
@@ -326,7 +326,7 @@ async function acquireDaemonLock(binary, stateDir) {
 
 function createRunAnswer(config, logFn = () => {}, env = process.env) {
   return (args) => {
-    const bin = resolveIkesuBin(config, logFn);
+    const bin = resolveIkesuBin(config, logFn, env);
     if (!bin) {
       return Promise.resolve({
         code: 127,
@@ -458,14 +458,14 @@ async function ensureDaemon(config, env) {
       ["IKESU_SOCKET_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
       ["IKESU_SOCKET_PATH_EXPLICIT", (env.IKESU_SOCKET_PATH) ? "1" : ""],
       ["IKESU_CONFIG_PATH", env.IKESU_CONFIG_PATH || ""],
-      ["IKESU_BIN_PATH", resolveIkesuBin(config, log) || config.ikesuBin],
+      ["IKESU_BIN_PATH", resolveIkesuBin(config, log, env) || config.ikesuBin],
       ["PATH", env.PATH || ""],
     ]
       .filter(([, value]) => value)
       .map(([key, value]) => `${key}=${shellQuote(value)}`)
       .join(" ");
     const inner = `export ${exportsList}; exec ${shellQuote(process.execPath)} ${shellQuote(path.join(pluginRoot, "mac-dialog-decisions.mjs"))} run`;
-    const daemonBin = resolveIkesuBin(config, log);
+    const daemonBin = resolveIkesuBin(config, log, env);
     if (!daemonBin) {
       throw Error(
         `ikesu 実行ファイルが見つかりません (IKESU_BIN_PATH=${config.ikesuBin})。` +
