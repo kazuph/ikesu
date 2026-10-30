@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/session"
 )
 
@@ -18,35 +19,93 @@ func gitBranch(runtimeCwd, savedCwd string) string {
 	if cwd == "" {
 		return ""
 	}
+	branch, _, _ := readGitBranch(cwd, nil)
+	return branch
+}
+
+func readGitBranch(cwd string, watch *filewatch.Watcher) (string, bool, uint64) {
+	paths := map[string]bool{}
+	gitAncestors(cwd, paths)
+	ready := watch != nil && watch.Update(gitPathList(paths))
+	var revision uint64
+	if watch != nil {
+		revision = watch.Revision()
+	}
 	for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
 		gitDir := filepath.Join(dir, ".git")
 		if info, err := os.Stat(gitDir); err == nil {
+			if watch != nil {
+				paths[gitDir] = true
+				ready = watch.Update(gitPathList(paths)) && ready
+			}
 			if !info.IsDir() {
 				b, err := os.ReadFile(gitDir)
 				if err != nil {
-					return ""
+					return "", ready, revision
 				}
 				path, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
 				if !ok {
-					return ""
+					return "", ready, revision
 				}
 				gitDir = path
 				if !filepath.IsAbs(gitDir) {
 					gitDir = filepath.Join(dir, gitDir)
 				}
 			}
+			if watch != nil {
+				paths[gitDir] = true
+				paths[filepath.Dir(gitDir)] = true
+				paths[filepath.Join(gitDir, "HEAD")] = true
+				ready = watch.Update(gitPathList(paths)) && ready
+			}
 			b, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
 			if err != nil {
-				return ""
+				return "", ready, revision
 			}
 			branch, _ := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: refs/heads/")
 			if strings.HasPrefix(string(b), "ref: refs/heads/") {
-				return branch
+				return branch, ready, revision
 			}
-			return ""
+			return "", ready, revision
 		}
 		if filepath.Dir(dir) == dir {
-			return ""
+			return "", ready, revision
+		}
+	}
+}
+
+type branchCacheEntry struct {
+	watch    *filewatch.Watcher
+	branch   string
+	revision uint64
+	ready    bool
+}
+
+func (a *App) cachedGitBranch(cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	cwd = filepath.Clean(cwd)
+	if a.branchCache == nil {
+		a.branchCache = make(map[string]*branchCacheEntry)
+	}
+	entry := a.branchCache[cwd]
+	if entry == nil {
+		entry = &branchCacheEntry{watch: filewatch.New(nil)}
+		a.branchCache[cwd] = entry
+	}
+	if entry.ready && entry.watch.Revision() == entry.revision {
+		return entry.branch
+	}
+	entry.branch, entry.ready, entry.revision = readGitBranch(cwd, entry.watch)
+	return entry.branch
+}
+
+func (a *App) pruneBranchCache(active map[string]bool) {
+	for cwd, entry := range a.branchCache {
+		if !active[cwd] {
+			entry.watch.Close()
+			delete(a.branchCache, cwd)
 		}
 	}
 }

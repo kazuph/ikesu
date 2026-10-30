@@ -294,6 +294,7 @@ type App struct {
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
 	gitActivity                              *gitActivityState
+	branchCache                              map[string]*branchCacheEntry
 	gitAt                                    time.Time
 	gitPending                               bool
 	jobsAt                                   time.Time             // last job snapshot
@@ -524,6 +525,7 @@ func (a *App) Run() {
 	defer a.removeEditorFiles()
 	defer close(a.doneCh)
 	defer a.closeGitActivity()
+	defer a.pruneBranchCache(nil)
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 	spin := time.NewTicker(spinInterval)
