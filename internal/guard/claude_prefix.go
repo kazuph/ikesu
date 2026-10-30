@@ -10,6 +10,10 @@ import (
 )
 
 const claudeBootstrap = `source IKESU_SNAPSHOT 2>/dev/null || true && { shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval IKESU_PAYLOAD < /dev/null && pwd -P >| IKESU_CWD`
+const claudeGitBody = "if ! 'typeset' -f 'git' >/dev/null 2>&1 && ! 'alias' 'git' >/dev/null 2>&1 && ( 'eval' 'function git { '\\''local'\\'' _cc_skip= _cc_word; for _cc_word in ${1+\"$@\"}; do if [ -n \"$_cc_skip\" ]; then _cc_skip=; continue; fi; case \"$_cc_word\" in -C|-c|--attr-source|--shallow-file|--git-dir|--separate-git-dir|--work-tree|--namespace|--super-prefix|--config-env) _cc_skip=1 ;; -*) ;; grep) '\\''/usr/bin/env'\\'' LC_ALL=C '\\''git'\\'' ${1+\"$@\"}; '\\''return'\\'' ;; *) break ;; esac; done; '\\''command'\\'' '\\''git'\\'' ${1+\"$@\"}; }' ) >/dev/null 2>&1; then 'eval' 'function git { '\\''local'\\'' _cc_skip= _cc_word; for _cc_word in ${1+\"$@\"}; do if [ -n \"$_cc_skip\" ]; then _cc_skip=; continue; fi; case \"$_cc_word\" in -C|-c|--attr-source|--shallow-file|--git-dir|--separate-git-dir|--work-tree|--namespace|--super-prefix|--config-env) _cc_skip=1 ;; -*) ;; grep) '\\''/usr/bin/env'\\'' LC_ALL=C '\\''git'\\'' ${1+\"$@\"}; '\\''return'\\'' ;; *) break ;; esac; done; '\\''command'\\'' '\\''git'\\'' ${1+\"$@\"}; }'; fi"
+const claudeGitBlock = `{ 'eval' 'if ! '\''typeset'\'' -f '\''git'\'' >/dev/null 2>&1 && ! '\''alias'\'' '\''git'\'' >/dev/null 2>&1 && ( '\''eval'\'' '\''function git { '\''\'\'''\''local'\''\'\'''\'' _cc_skip= _cc_word; for _cc_word in ${1+"$@"}; do if [ -n "$_cc_skip" ]; then _cc_skip=; continue; fi; case "$_cc_word" in -C|-c|--attr-source|--shallow-file|--git-dir|--separate-git-dir|--work-tree|--namespace|--super-prefix|--config-env) _cc_skip=1 ;; -*) ;; grep) '\''\'\'''\''/usr/bin/env'\''\'\'''\'' LC_ALL=C '\''\'\'''\''git'\''\'\'''\'' ${1+"$@"}; '\''\'\'''\''return'\''\'\'''\'' ;; *) break ;; esac; done; '\''\'\'''\''command'\''\'\'''\'' '\''\'\'''\''git'\''\'\'''\'' ${1+"$@"}; }'\'' ) >/dev/null 2>&1; then '\''eval'\'' '\''function git { '\''\'\'''\''local'\''\'\'''\'' _cc_skip= _cc_word; for _cc_word in ${1+"$@"}; do if [ -n "$_cc_skip" ]; then _cc_skip=; continue; fi; case "$_cc_word" in -C|-c|--attr-source|--shallow-file|--git-dir|--separate-git-dir|--work-tree|--namespace|--super-prefix|--config-env) _cc_skip=1 ;; -*) ;; grep) '\''\'\'''\''/usr/bin/env'\''\'\'''\'' LC_ALL=C '\''\'\'''\''git'\''\'\'''\'' ${1+"$@"}; '\''\'\'''\''return'\''\'\'''\'' ;; *) break ;; esac; done; '\''\'\'''\''command'\''\'\'''\'' '\''\'\'''\''git'\''\'\'''\'' ${1+"$@"}; }'\''; fi' 2>/dev/null || 'true'; } && `
+
+const claudeWhich = `{ \builtin unalias -- 'which'; \builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && `
 
 // ClaudePrefixLine recognizes only the observed Claude bootstrap. Everything
 // else retains the ordinary whole-line policy, including unknown source/eval.
@@ -35,7 +39,6 @@ func ClaudePrefixLine(i Input, line string) string {
 		}
 		switch name {
 		case "source", "eval":
-			counts[name]++
 			if len(call.Args) != 2 {
 				return true
 			}
@@ -43,6 +46,10 @@ func ClaudePrefixLine(i Input, line string) string {
 			if !ok {
 				return true
 			}
+			if name == "eval" && value == claudeGitBody {
+				return true
+			}
+			counts[name]++
 			if name == "source" {
 				snapshot = value
 				call.Args[1] = claudeWord("IKESU_SNAPSHOT")
@@ -88,14 +95,27 @@ func ClaudePrefixLine(i Input, line string) string {
 	if printer.Print(&got, tree) != nil {
 		return line
 	}
-	for _, candidate := range []string{template, strings.Replace(template, " < /dev/null", "", 1)} {
-		expected, err := syntax.NewParser().Parse(strings.NewReader(candidate), "expected")
-		if err != nil {
-			return line
-		}
-		var want bytes.Buffer
-		if printer.Print(&want, expected) == nil && got.String() == want.String() {
-			return payload
+	withWhich := strings.Replace(template, `{ \builtin unalias -- 'unsetenv'`, claudeWhich+`{ \builtin unalias -- 'unsetenv'`, 1)
+	for _, base := range []string{template, withWhich} {
+		for _, git := range []bool{false, true} {
+			candidate := base
+			if git {
+				candidate = strings.Replace(candidate, "eval IKESU_PAYLOAD", claudeGitBlock+"eval IKESU_PAYLOAD", 1)
+			}
+			for _, devnull := range []bool{true, false} {
+				variant := candidate
+				if !devnull {
+					variant = strings.Replace(variant, " < /dev/null", "", 1)
+				}
+				expected, err := syntax.NewParser().Parse(strings.NewReader(variant), "expected")
+				if err != nil {
+					return line
+				}
+				var want bytes.Buffer
+				if printer.Print(&want, expected) == nil && got.String() == want.String() {
+					return payload
+				}
+			}
 		}
 	}
 	return line

@@ -72,6 +72,12 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"ignore-term", "", `trap '' TERM; T="$IKESU_RUNTIME_ROOT/home/../victim"; (rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"handle-term", "", `trap ':' TERM; T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"unset", "", `OUT="$IKESU_RUNTIME_ROOT"; unset OUT; [[ ! ${OUT+x} ]]; OUT="$IKESU_RUNTIME_ROOT"; printf 'safe ran\n' > "$OUT/result"`, true},
+				{"reason-array-printf", "", `printf -v 'AI_GUARD_REQUEST_REASON[0]' '%s' forged; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"reason-joined-printf", "", `printf -vAI_GUARD_REQUEST_REASON '%s' forged; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"reason-env-name-array", "", `printf -v 'AI_GUARD_REQUEST_ENV_NAME[0]' x; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"reason-custom-array", "", `printf -v 'PROJECT_REASON[0]' x; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"reason-array-read", "", `read 'AI_GUARD_REQUEST_REASON[0]' <<< forged; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"reason-joined-read", "", `read -aAI_GUARD_REQUEST_REASON <<< forged; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"spoof-mark", "", `_ikesu_guard_debug_busy=1; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"overwrite-function", "", `_ikesu_guard_debug() { :; }; T=/outside/victim; rm "$T"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"unset-mark", "", `unset _ikesu_guard_debug_busy; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
@@ -135,6 +141,9 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					if tc.name == "reason-custom-array" {
+						env = append(env, "AI_GUARD_REQUEST_ENV_NAME=PROJECT_REASON")
+					}
 					defer a.Close()
 					if err := a.Sync("codex"); err != nil {
 						t.Fatal(err)
@@ -182,6 +191,9 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 					err = cmd.Run()
 					if (err == nil) != tc.allow {
 						t.Fatalf("allow=%v err=%v stderr=%s stdout=%s", tc.allow, err, stderr.String(), out.String())
+					}
+					if strings.HasPrefix(tc.name, "reason-") && (ctx.Err() != nil || !strings.Contains(stderr.String(), "申請文")) {
+						t.Fatalf("reason write was not rejected by the guard: err=%v stderr=%s", err, stderr.String())
 					}
 					if strings.Contains(stderr.String(), "bashdb") || strings.Contains(stderr.String(), "cannot start debugger") {
 						t.Fatal(stderr.String())

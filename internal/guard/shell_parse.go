@@ -22,7 +22,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
 	}
 	i.GuardRoot = guardDirectory(i)
-	i.CwdUncertain = i.CwdUncertain || treeChangesDirectory(tree)
+	i.CwdUncertain = i.CwdUncertain || evalTreeChangesDirectory(i, tree)
 	var commands []Input
 	setError := func(e error) {
 		if !i.scriptBody || err == nil || scriptError(e).kind > scriptError(err).kind {
@@ -172,6 +172,50 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		return true
 	})
 	return commands, err
+}
+
+func evalTreeChangesDirectory(i Input, tree *syntax.File) bool {
+	if treeChangesDirectory(tree) {
+		return true
+	}
+	if i.runtimeLine || i.evalDepth >= scriptDepthLimit {
+		return false
+	}
+	changed := false
+	cfg := &expand.Config{NoUnset: true, Env: expand.ListEnviron(environment(i.shellExpansionValues())...)}
+	syntax.Walk(tree, func(node syntax.Node) bool {
+		if changed {
+			return false
+		}
+		call, ok := node.(*syntax.CallExpr)
+		if !ok || len(call.Args) < 2 {
+			return true
+		}
+		command, err := i.runtimeLiteral(cfg, call.Args[0])
+		if err != nil {
+			return true
+		}
+		words := make([]string, 0, len(call.Args)-1)
+		for _, word := range call.Args[1:] {
+			value, literal := claudeLiteral(word)
+			if !literal {
+				return true
+			}
+			words = append(words, value)
+		}
+		unwrapped, err := unwrapCommand(Input{Command: command, Args: words, Env: EnvMap(environment(i.Env))})
+		if err != nil || filepath.Base(unwrapped.Command) != "eval" || len(words) != len(unwrapped.Args) {
+			return true
+		}
+		nested, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(strings.Join(words, " ")), "guard eval")
+		if err == nil {
+			child := i
+			child.evalDepth++
+			changed = evalTreeChangesDirectory(child, nested)
+		}
+		return true
+	})
+	return changed
 }
 
 func unwrapCommand(i Input) (Input, error) {
