@@ -171,6 +171,15 @@ func TestAssetChangesRepairAndRearm(t *testing.T) {
 		}, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.runtimeIntact() }},
 		{"marker-delete", func() error { return os.Remove(a.MarkerPath) }, func() bool { return exists(a.MarkerPath) }},
 		{"shim-delete", func() error { return os.Remove(shim) }, func() bool { return exists(shim) }},
+		{"shim-dangling-link", func() error {
+			if err := os.Remove(shim); err != nil {
+				return err
+			}
+			return os.Symlink(filepath.Join(root, "missing"), shim)
+		}, func() bool {
+			info, err := os.Lstat(shim)
+			return err == nil && info.Mode().IsRegular() && info.Mode().Perm() == 0700
+		}},
 		{"marker-replace", func() error {
 			path := a.MarkerPath + ".replacement"
 			if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
@@ -265,5 +274,48 @@ func TestAssetChangesShareReplacedDirectories(t *testing.T) {
 				t.Fatal("shared replacement lost a subscriber", i, repeat)
 			}
 		}
+	}
+}
+
+func TestAssetShimContentUnchanged(t *testing.T) {
+	root := t.TempDir()
+	a := NewAssets(root, "p_1", "/usr/bin/true", Config{Targets: []string{"git"}})
+	if _, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, root); err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	changes := make(chan struct{}, 10)
+	if !a.ObserveChanges(func() {
+		select {
+		case changes <- struct{}{}:
+		default:
+		}
+	}) {
+		t.Fatal("native watch unavailable")
+	}
+	for len(changes) > 0 {
+		<-changes
+	}
+	shim := filepath.Join(a.Bin, "git")
+	if err := os.WriteFile(shim, []byte("corrupted\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changes:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no change notification")
+	}
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(shim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "corrupted\n" {
+		t.Fatal("executable shim content changed")
 	}
 }
