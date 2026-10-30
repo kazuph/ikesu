@@ -72,7 +72,7 @@ func TestScriptFileInvocationTable(t *testing.T) {
 		{"BASH_ENV=x bash safe.sh", "ask"}, {"ZDOTDIR=x bash safe.sh", "ask"}, {"ENV=x bash safe.sh", "ask"}, {"PATH=x bash safe.sh", "ask"},
 		{"env -i bash safe.sh", "ask"}, {"env -u FOO bash safe.sh", "ask"}, {"env PATH=x bash safe.sh", "ask"},
 		{"bash -c 'printf ok'", "allow"}, {"bash <<EOF\nprintf ok\nEOF", "allow"}, {"bash -e <<EOF\nprintf ok\nEOF", "allow"}, {"bash -o pipefail <<EOF\nprintf ok\nEOF", "allow"},
-		{"source safe.sh", "ask"}, {". safe.sh", "ask"}, {"eval 'printf ok'", "ask"},
+		{"source safe.sh", "ask"}, {". safe.sh", "ask"}, {"eval 'printf ok'", "allow"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.line, func(t *testing.T) {

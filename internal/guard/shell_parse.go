@@ -140,6 +140,27 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				unwrapped.scriptKnownArgs = append(unwrapped.scriptKnownArgs, a)
 			}
 		}
+		if !i.runtimeLine && filepath.Base(unwrapped.Command) == "eval" && len(call.Args)-1 == len(unwrapped.Args) && len(unwrapped.Args) > 0 && i.evalDepth < scriptDepthLimit {
+			var words []string
+			for _, word := range call.Args[1:] {
+				value, ok := claudeLiteral(word)
+				if !ok {
+					words = nil
+					break
+				}
+				words = append(words, value)
+			}
+			if len(words) > 0 {
+				child := unwrapped
+				child.evalDepth++
+				nested, nestedErr := lineCommands(child, strings.Join(words, " "))
+				commands = append(commands, nested...)
+				if nestedErr != nil {
+					setError(nestedErr)
+				}
+				return true
+			}
+		}
 		commands = append(commands, unwrapped)
 		if e != nil {
 			setError(e)

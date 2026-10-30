@@ -46,6 +46,7 @@ func (c Config) Commands() []string {
 type Input struct {
 	ApprovedInvocation   func(string, string) bool `json:"-"`
 	runtimeLine          bool
+	evalDepth            int
 	shellVariables       map[string]string
 	shellArrays          map[string]map[int]string
 	probePrivate         bool
