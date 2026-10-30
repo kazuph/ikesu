@@ -26,6 +26,13 @@ function homePath(...parts) {
   return path.join(os.homedir(), ...parts);
 }
 
+function versionedIkesuPath(value) {
+  if (!value) return false;
+  const parts = path.resolve(value).split(path.sep);
+  return parts.includes('Cellar') || parts.some((part, i) =>
+    part === 'releases' && parts[i - 1] === 'ikesu' && parts[i - 2] === 'lib' && parts[i - 3] === '.local');
+}
+
 function loadConfig(env = process.env) {
   const configDir =
     env.IKESU_PLUGIN_CONFIG_DIR ||
@@ -64,7 +71,7 @@ function loadConfig(env = process.env) {
     enabled:
       (env.MAC_DIALOG_ENABLED ?? file.enabled ?? true) !== false &&
       env.MAC_DIALOG_ENABLED !== "0",
-    ikesuBin: env.IKESU_BIN_PATH || file.ikesu_bin || "ikesu",
+    ikesuBin: (!versionedIkesuPath(env.IKESU_BIN_PATH) && env.IKESU_BIN_PATH) || file.ikesu_bin || "ikesu",
     helperCmd, // null = built-in osascript dialog.js
     // Brief delay before a queued decision takes the screen, so a burst of
     // simultaneous decisions reports the true queue size on the first dialog.
@@ -85,17 +92,15 @@ function loadConfig(env = process.env) {
   };
 }
 
-// The daemon outlives the server that launched it: a Homebrew install records
-// IKESU_BIN_PATH as a versioned Cellar path that `brew upgrade` deletes, so
-// every ikesu invocation resolves the binary afresh — the configured path
-// while it exists, then PATH, then the usual prefixes.
+// The daemon can outlive the binary that launched it; never retain versioned paths.
 function resolveIkesuBin(config, logFn = () => {}, env = process.env) {
   const configured = config.ikesuBin;
-  if (configured && configured !== "ikesu" && fs.existsSync(configured)) return configured;
+  if (configured && configured !== "ikesu" && !versionedIkesuPath(configured) && fs.existsSync(configured)) return configured;
   for (const name of ["ikesu"]) {
-    const candidates = [...(env.PATH || "").split(path.delimiter).filter(Boolean),
-      "/opt/homebrew/bin", path.join(os.homedir(), ".local", "bin")].map(dir => path.join(dir, name));
+    const candidates = [path.join(env.HOME || os.homedir(), ".local", "bin"),
+      ...(env.PATH || "").split(path.delimiter).filter(Boolean), "/opt/homebrew/bin"].map(dir => path.join(dir, name));
     for (const candidate of candidates) {
+      if (versionedIkesuPath(candidate)) continue;
       try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch {}
     }
   }

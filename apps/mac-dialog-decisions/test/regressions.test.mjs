@@ -52,7 +52,22 @@ test('IKESU環境を読み、消えた旧CLIの代わりにikesuを先に探す'
  const root=temporary(t);fs.symlinkSync(process.execPath,path.join(root,'ikesu'));
  const config=plugin.loadConfig({IKESU_PLUGIN_CONFIG_DIR:root+'/config',IKESU_PLUGIN_STATE_DIR:root+'/state',IKESU_BIN_PATH:root+'/removed'});
  assert.equal(config.configDir,root+'/config');assert.equal(config.stateDir,root+'/state');
- assert.equal(plugin.resolveIkesuBin(config,()=>{}, {PATH:root}),root+'/ikesu');
+ assert.equal(plugin.resolveIkesuBin(config,()=>{}, {HOME:root,PATH:root}),root+'/ikesu');
+});
+
+test('版付きの環境変数を継承しても固定入口を選び、明示設定は尊重する',t=>{
+ const root=temporary(t), old=path.join(root,'.local/lib/ikesu/releases/0.4.10/ikesu');
+ const entry=path.join(root,'.local/bin/ikesu'), custom=path.join(root,'custom-ikesu');
+ fs.mkdirSync(path.dirname(old),{recursive:true});fs.mkdirSync(path.dirname(entry),{recursive:true});
+ for(const file of [old,entry,custom]) fs.symlinkSync(process.execPath,file);
+ const configDir=path.join(root,'config');fs.mkdirSync(configDir);
+ fs.writeFileSync(path.join(configDir,'config.json'),JSON.stringify({ikesu_bin:custom}));
+ const env={HOME:root,PATH:'',IKESU_PLUGIN_CONFIG_DIR:configDir,IKESU_BIN_PATH:old};
+ assert.equal(plugin.resolveIkesuBin(plugin.loadConfig(env),()=>{},env),custom);
+ fs.writeFileSync(path.join(configDir,'config.json'),'{}');
+ const first=plugin.resolveIkesuBin(plugin.loadConfig(env),()=>{},env);
+ assert.equal(first,entry);
+ assert.equal(plugin.resolveIkesuBin(plugin.loadConfig({...env,IKESU_BIN_PATH:first}),()=>{},env),entry);
 });
 
 test('後片付けは先行する失敗後も自分の資源だけを削除する',async t=>{
