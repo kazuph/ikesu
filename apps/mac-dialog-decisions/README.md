@@ -92,7 +92,7 @@ node --test apps/mac-dialog-decisions/test/rich-network.external.mjs
 
 環境変数でも上書きできます: `MAC_DIALOG_ENABLED`（`0`/`false` で無効）、`MAC_DIALOG_PRESENT_DELAY_MS`、`MAC_DIALOG_LATER_MS`、`MAC_DIALOG_HELPER_CMD`（JSON の argv）、`MAC_DIALOG_STATE_DIR`、`MAC_DIALOG_CONFIG`（設定ファイルのパス）。
 
-`IKESU_PLUGIN_CONFIG_DIR`、`IKESU_PLUGIN_STATE_DIR`、`IKESU_BIN_PATH`、`IKESU_SOCKET_PATH`、`IKESU_PANE_ID` を読みます。実行ファイルは設定ファイルの `ikesu_bin` を優先し、指定がなければ版付きでない `IKESU_BIN_PATH` を使います。
+`IKESU_PLUGIN_CONFIG_DIR`、`IKESU_PLUGIN_STATE_DIR`、`IKESU_BIN_PATH`、`IKESU_SOCKET_PATH`、`IKESU_PANE_ID` を読みます。実行ファイルは設定ファイルの `ikesu_bin`、固定入口、版付きでない `IKESU_BIN_PATH` の順に探します。
 
 ## オフにする方法
 

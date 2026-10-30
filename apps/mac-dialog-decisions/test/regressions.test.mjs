@@ -69,6 +69,7 @@ test('版付きの環境変数を継承しても固定入口を選び、明示�
  const first=plugin.resolveIkesuBin(plugin.loadConfig(env),()=>{},env);
  assert.equal(first,entry);
  assert.equal(plugin.resolveIkesuBin(plugin.loadConfig({...env,IKESU_BIN_PATH:first}),()=>{},env),entry);
+ assert.equal(plugin.resolveIkesuBin(plugin.loadConfig({...env,IKESU_BIN_PATH:custom}),()=>{},env),entry);
 });
 
 test('後片付けは先行する失敗後も自分の資源だけを削除する',async t=>{

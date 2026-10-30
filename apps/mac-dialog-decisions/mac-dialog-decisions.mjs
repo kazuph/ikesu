@@ -73,6 +73,7 @@ function loadConfig(env = process.env) {
       env.MAC_DIALOG_ENABLED !== "0",
     ikesuBin: (!versionedIkesuPath(file.ikesu_bin) && file.ikesu_bin) ||
       (!versionedIkesuPath(env.IKESU_BIN_PATH) && env.IKESU_BIN_PATH) || "ikesu",
+    ikesuBinFromEnv: !file.ikesu_bin || versionedIkesuPath(file.ikesu_bin),
     helperCmd, // null = built-in osascript dialog.js
     // Brief delay before a queued decision takes the screen, so a burst of
     // simultaneous decisions reports the true queue size on the first dialog.
@@ -96,6 +97,10 @@ function loadConfig(env = process.env) {
 // The daemon can outlive the binary that launched it; never retain versioned paths.
 function resolveIkesuBin(config, logFn = () => {}, env = process.env) {
   const configured = config.ikesuBin;
+  const fixed = path.join(env.HOME || os.homedir(), ".local", "bin", "ikesu");
+  if (config.ikesuBinFromEnv) {
+    try { fs.accessSync(fixed, fs.constants.X_OK); return fixed; } catch {}
+  }
   if (configured && configured !== "ikesu" && !versionedIkesuPath(configured) && fs.existsSync(configured)) return configured;
   for (const name of ["ikesu"]) {
     const candidates = [path.join(env.HOME || os.homedir(), ".local", "bin"),
