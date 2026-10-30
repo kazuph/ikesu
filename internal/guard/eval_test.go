@@ -28,6 +28,7 @@ func TestObservedClaudeEvalMatchesDirect(t *testing.T) {
 		i := Input{Cwd: entry.Cwd, LaunchCwd: entry.Cwd, Env: map[string]string{"PATH": "/usr/bin:/bin"}}
 		gotInput, got, err := lineVerdict(Config{}, i, entry.Line)
 		wantInput, want, wantErr := lineVerdict(Config{}, i, entry.Cmd[1])
+		t.Logf("record %d direct=%s/%s wrapped=%s/%s", count, want.Decision, want.Rule, got.Decision, got.Rule)
 		if err != nil || wantErr != nil || got.Decision != want.Decision || got.Rule != want.Rule || gotInput.AuthorizationEnv["AI_GUARD_REQUEST_REASON"] != wantInput.AuthorizationEnv["AI_GUARD_REQUEST_REASON"] {
 			t.Errorf("case %d: got %+v reason %q err %v; want %+v reason %q err %v", count, got, gotInput.AuthorizationEnv["AI_GUARD_REQUEST_REASON"], err, want, wantInput.AuthorizationEnv["AI_GUARD_REQUEST_REASON"], wantErr)
 		}

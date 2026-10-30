@@ -19,7 +19,7 @@ func TestClaudeEvalInsideRealPane(t *testing.T) {
 				s.waitFor("prompt", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 				payload := "pwd"
 				if scenario == "ask" {
-					payload = "AI_GUARD_REQUEST_REASON=" + q(reason) + " ikesu send p1 'isolated test' --room eval-test"
+					payload = "AI_GUARD_REQUEST_REASON=" + q(reason) + " dd if=/dev/null of=/dev/null"
 				}
 				wrapper := "{ shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \\builtin unalias -- 'which'; \\builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval " + q(payload) + " < /dev/null && pwd -P >| " + q(s.stateDir+"/claude-test-cwd")
 				startup := s.stateDir + "/guard/shell/p_1"
