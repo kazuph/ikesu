@@ -49,6 +49,15 @@ func trustedExecutable(path string) (string, os.FileInfo, error) {
 	}
 	return target, info, nil
 }
+
+// CheckExecutable applies the same trust checks used for guard assets.
+func CheckExecutable(path string) error {
+	_, _, err := trustedExecutable(path)
+	return err
+}
+
+// CheckDirectory applies the guard's ancestor checks to a destination directory.
+func CheckDirectory(path string) error { return trustedAncestors(path) }
 func loadGeneration(shell *privateDirectory) (string, *privateDirectory, runtimeGeneration, error) {
 	name, err := shell.readlink("current")
 	if err != nil {

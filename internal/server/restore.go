@@ -291,6 +291,14 @@ func (s *Server) runAgentRestore(dryRun bool) api.AgentRestoreResult {
 					})
 					continue
 				}
+				if s.sup.Get(pid) == nil {
+					reason := "pane process not running"
+					actions = append(actions, api.AgentRestoreActionInfo{
+						PaneID: fmtPaneID(pid), Agent: v.agent,
+						Status: "skipped", Reason: &reason,
+					})
+					continue
+				}
 				cmd, ok := s.buildResumeCommand(v.agent, v.kind, v.value)
 				if !ok {
 					reason := "no resumable session found"

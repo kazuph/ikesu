@@ -15,6 +15,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/retained"
 	"github.com/kazuph/ikesu/internal/session"
 )
 
@@ -181,8 +182,17 @@ func (s *Server) spawnSuccessor() {
 		return
 	}
 	defer logf.Close()
+	if original := s.originalExecutable; original != "" {
+		if _, statErr := os.Stat(original); statErr == nil {
+			exe = original
+		}
+	}
+	fmt.Fprintf(logf, "ikesu: restart executable: %s\n", exe)
 
 	cmd := childenv.Command(exe, "--session", s.session, "server")
+	if original := s.originalExecutable; original != "" {
+		cmd.Env = append(cmd.Env, retained.OriginalPathEnv+"="+original)
+	}
 	cmd.Args[0] = os.Args[0]
 	cmd.Dir = s.cwd
 	cmd.Stdin = devNull

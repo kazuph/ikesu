@@ -424,6 +424,7 @@ func (a *App) effect(e model.Effect) {
 		a.clearPopupInteraction(e.Pane)
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
+		delete(a.restoreWarnings, e.Pane)
 		delete(a.reported, e.Pane)
 		delete(a.metadataViews, e.Pane)
 		delete(a.metadataPending, e.Pane)

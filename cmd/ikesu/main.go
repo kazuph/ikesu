@@ -15,11 +15,12 @@ import (
 	"github.com/kazuph/ikesu/internal/client"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/detect"
+	"github.com/kazuph/ikesu/internal/retained"
 	"github.com/kazuph/ikesu/internal/server"
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-const version = "0.4.49"
+const version = "0.4.50"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "__job-runner" {
@@ -134,6 +135,10 @@ dispatch:
 					fmt.Fprintln(os.Stderr, "ikesu: refusing to start a nested ikesu server (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit)")
 					os.Exit(1)
 				}
+				if err := retained.Ensure(version); err != nil {
+					fmt.Fprintln(os.Stderr, "ikesu server:", err)
+					os.Exit(1)
+				}
 				code, err := server.Run(session, version)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "ikesu server:", err)
@@ -152,6 +157,12 @@ dispatch:
 		}
 	}
 
+	if noSession {
+		if err := retained.Ensure(version); err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu:", err)
+			os.Exit(1)
+		}
+	}
 	code, err := run(noSession, session)
 	if errors.Is(err, tui.ErrStandaloneRestart) {
 		exe, e := os.Executable()

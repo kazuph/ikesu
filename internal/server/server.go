@@ -27,6 +27,7 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/plugin"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/retained"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/tui"
 )
@@ -99,6 +100,7 @@ type Server struct {
 	session             string
 	dir                 string
 	version             string
+	originalExecutable  string
 	endpointPeer        endpoint.Peer
 	cwd                 string // cwd the session was started from
 	configPath          string // absolute path read when this server started
@@ -260,6 +262,7 @@ func runEndpoint(session, version string, peer endpoint.Peer, imports ...*handof
 }
 
 func runEndpointWithClock(session, version string, peer endpoint.Peer, clock graphicsReceiptClock, imports ...*handoffImport) (int, error) {
+	originalExecutable := os.Getenv(retained.OriginalPathEnv)
 	childenv.ScrubProcess()
 	var imported *handoffImport
 	if len(imports) > 0 {
@@ -301,7 +304,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		cwd = os.Getenv("HOME")
 	}
 
-	s := &Server{session: session, dir: dir, version: version, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
+	s := &Server{session: session, dir: dir, version: version, originalExecutable: originalExecutable, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
 		receiptClock: clock,
 		mailCh:       make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}

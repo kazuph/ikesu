@@ -626,6 +626,23 @@ func TestServerRestartKeepsPanes(t *testing.T) {
 	if !strings.Contains(listOut, `"pane_id":"p1"`) || !strings.Contains(listOut, `"pane_id":"p2"`) {
 		t.Fatalf("pane ids not stable across restart:\n%s", listOut)
 	}
+	for _, pane := range []string{"p1", "p2"} {
+		marker := "restart_shell_alive_" + pane
+		if out, err := s.cli("pane", "run", pane, "echo "+marker); err != nil {
+			t.Fatalf("pane run %s: %v %s", pane, err, out)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			out, err := s.cli("pane", "read", pane)
+			if err == nil && strings.Count(out, marker) >= 2 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("pane %s shell did not respond: %v %s", pane, err, out)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
 }
 
 // SPEC G6: a raw LF byte reaches the pane as LF, not normalized to CR.

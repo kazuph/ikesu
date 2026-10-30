@@ -514,6 +514,18 @@ func (a *App) wheel(m uv.Mouse) {
 	}
 	p := a.sup.Get(pr.ID)
 	if p == nil {
+		if reason, exists := a.restoreWarnings[pr.ID]; exists {
+			inner, _ := model.PaneContentRect(pr.Rect, a.st.PaneBorders)
+			limit := max(len(render.RestoreFailureLines(reason, inner.W))-inner.H, 0)
+			off := a.scroll[pr.ID]
+			if up {
+				off -= a.sidebarConfig.MouseScrollLines()
+			} else {
+				off += a.sidebarConfig.MouseScrollLines()
+			}
+			a.scroll[pr.ID] = min(max(off, 0), limit)
+			a.dirty = true
+		}
 		return
 	}
 	sn := p.Snapshot()

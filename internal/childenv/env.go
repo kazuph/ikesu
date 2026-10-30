@@ -15,9 +15,11 @@ var markers = map[string]bool{
 	"CLAUDE_CODE_SESSION_ATTENDED": true, "CLAUDE_CODE_MESSAGING_SOCKET": true,
 	"CLAUDE_CODE_MESSAGING_TOKEN": true, "CLAUDE_CODE_ENTRYPOINT": true,
 	"CLAUDE_CODE_EXECPATH": true, "CODEX_THREAD_ID": true, "HERDR_AGENT": true,
-	"IKESU_PANE_ID":      true,
-	"IKESU_TAB_ID":       true,
-	"IKESU_WORKSPACE_ID": true,
+	"IKESU_PANE_ID":             true,
+	"IKESU_TAB_ID":              true,
+	"IKESU_WORKSPACE_ID":        true,
+	"IKESU_ORIGINAL_EXECUTABLE": true,
+	"IKESU_RETAINED_REEXEC":     true,
 }
 
 // Scrub restores proven generated shell settings before dropping pane state.

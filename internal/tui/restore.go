@@ -101,6 +101,7 @@ func (a *App) SessionRecords() map[int]AgentRecord {
 // StartInitialPane would have run. It returns the ids of panes carrying
 // an agent record so the caller can schedule exact session resume.
 func (a *App) RestoreSession(f *session.File) []int {
+	a.restoreWarnings = make(map[int]string)
 	cols, rows := a.st.Cols, a.st.Rows // terminal size is runtime, not saved
 	a.st = model.Restore(f)
 	a.st.Cols, a.st.Rows = cols, rows
@@ -142,8 +143,12 @@ func (a *App) RestoreSession(f *session.File) []int {
 					cwd = a.cwd
 				}
 				r := a.rectForPane(pid)
-				if _, err := a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1)); err != nil && cwd != a.cwd {
-					_, _ = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
+				_, err := a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1))
+				if err != nil && cwd != a.cwd {
+					_, err = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
+				}
+				if err != nil {
+					a.restoreWarnings[pid] = err.Error()
 				}
 			}
 		}
