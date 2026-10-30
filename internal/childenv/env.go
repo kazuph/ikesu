@@ -10,6 +10,7 @@ import (
 )
 
 var markers = map[string]bool{
+	"AI_GUARD_SESSION": true, "AI_GUARD_FORCE_AI": true,
 	"AI_AGENT": true, "CLAUDECODE": true, "CLAUDE_PID": true,
 	"CLAUDE_CODE_CHILD_SESSION": true, "CLAUDE_CODE_SESSION_ID": true,
 	"CLAUDE_CODE_SESSION_ATTENDED": true, "CLAUDE_CODE_MESSAGING_SOCKET": true,
