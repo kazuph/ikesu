@@ -203,7 +203,7 @@ func evalTreeChangesDirectory(i Input, tree *syntax.File) bool {
 			}
 			words = append(words, value)
 		}
-		unwrapped, err := unwrapCommand(Input{Command: command, Args: words, Env: i.Env})
+		unwrapped, err := unwrapCommand(Input{Command: command, Args: words, Env: EnvMap(environment(i.Env))})
 		if err != nil || filepath.Base(unwrapped.Command) != "eval" || len(words) != len(unwrapped.Args) {
 			return true
 		}
