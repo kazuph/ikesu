@@ -3,8 +3,10 @@ package runtime
 import (
 	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -60,10 +62,36 @@ func TestIntegratedLoginRecoveryThenSudoOverlayClears(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.WriteToPTY([]byte("/usr/bin/sudo -n -u " + current.Username + " /bin/sleep 60\n")); err != nil {
+	duration := "60." + strconv.FormatInt(time.Now().UnixNano(), 10)
+	pattern := "^/bin/sleep 60\\." + strings.TrimPrefix(duration, "60.") + "$"
+	findSleep := func() []string {
+		t.Helper()
+		out, err := exec.Command("pgrep", "-f", pattern).Output()
+		if err != nil {
+			if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+				return nil
+			}
+			t.Fatal("find sudo child", err)
+		}
+		return strings.Fields(string(out))
+	}
+	t.Cleanup(func() {
+		for _, id := range findSleep() {
+			pid, err := strconv.Atoi(id)
+			if err != nil {
+				t.Error(err)
+				continue
+			}
+			if process, err := os.FindProcess(pid); err == nil {
+				_ = process.Kill()
+			}
+		}
+	})
+	if _, err = p.WriteToPTY([]byte("/usr/bin/sudo -n -u " + current.Username + " /bin/sleep " + duration + "\n")); err != nil {
 		t.Fatal(err)
 	}
 	wait("foreground sudo", p.ForegroundSudo)
+	wait("sudo sleep child started", func() bool { return len(findSleep()) != 0 })
 	if _, err = p.WriteToPTY([]byte{3}); err != nil {
 		t.Fatal(err)
 	}
