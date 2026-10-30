@@ -41,6 +41,20 @@ func TestObservedClaudeEvalMatchesDirect(t *testing.T) {
 	}
 }
 
+func TestClaudeActualEvalPwd(t *testing.T) {
+	i := Input{Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin"}}
+	line := `{ shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; } >/dev/null 2>&1 || true && { \builtin unalias -- 'which'; \builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval pwd < /dev/null && pwd -P >| /tmp/claude-23b6-cwd`
+	_, got, err := lineVerdict(Config{}, i, ClaudePrefixLine(i, line))
+	if err != nil || got.Decision != "allow" {
+		t.Fatalf("claude-prefix: %+v %v", got, err)
+	}
+	i.runtimeLine = true
+	_, runtime, err := lineVerdict(Config{}, i, line)
+	if err != nil || runtime.Decision != "allow" {
+		t.Fatalf("runtime: %+v %v", runtime, err)
+	}
+}
+
 func TestEvalRejectsDynamicAndDeep(t *testing.T) {
 	i := Input{Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin", "x": "pwd", "b": "pwd"}}
 	deep := "pwd"
