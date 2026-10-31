@@ -25,13 +25,23 @@ func envDropsGuard(i Input, args []string) string {
 	if child.ClaudePrefixChanged {
 		return reason
 	}
+	// Command lookup is ordered. The child PATH must begin with the original
+	// entries up to the last shim directory, so nothing can resolve ahead of
+	// a shim; entries after that prefix may change freely.
 	original := environment(i.Env)
-	kept := map[string]bool{}
-	for _, dir := range filepath.SplitList(child.Env["PATH"]) {
-		kept[filepath.Clean(dir)] = true
+	before := filepath.SplitList(i.Env["PATH"])
+	guarded := 0
+	for n, dir := range before {
+		if childenv.IsGuardShimDirectory(dir, original) {
+			guarded = n + 1
+		}
 	}
-	for _, dir := range filepath.SplitList(i.Env["PATH"]) {
-		if childenv.IsGuardShimDirectory(dir, original) && !kept[filepath.Clean(dir)] {
+	after := filepath.SplitList(child.Env["PATH"])
+	if len(after) < guarded {
+		return reason
+	}
+	for n := 0; n < guarded; n++ {
+		if filepath.Clean(after[n]) != filepath.Clean(before[n]) {
 			return reason
 		}
 	}

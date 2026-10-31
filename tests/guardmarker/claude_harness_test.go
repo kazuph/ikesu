@@ -76,14 +76,15 @@ func TestClaudeHarnessCommandsRunOutsideGuard(t *testing.T) {
 	writeJSON(filepath.Join(config, "plugins", "installed_plugins.json"), map[string]any{"version": 2, "plugins": map[string]any{"demo@market": []any{map[string]any{"installPath": plugin}}}})
 
 	logPath := filepath.Join(a.Root, "guard", "decisions.jsonl")
-	run := func(line, stdin string, extra ...string) (string, error) {
+	runIn := func(dir, line, stdin string, extra ...string) (string, error) {
 		c := exec.Command(filepath.Join(a.Root, "guard", "shell", a.Pane, "claude-prefix"), line)
 		c.Env = append(a.PrepareClaude(env), extra...)
-		c.Dir = home
+		c.Dir = dir
 		c.Stdin = strings.NewReader(stdin)
 		b, e := c.CombinedOutput()
 		return string(b), e
 	}
+	run := func(line, stdin string, extra ...string) (string, error) { return runIn(home, line, stdin, extra...) }
 	ask := func() int {
 		b, _ := os.ReadFile(logPath)
 		return strings.Count(string(b), `"verdict":"ask"`)
@@ -117,6 +118,35 @@ func TestClaudeHarnessCommandsRunOutsideGuard(t *testing.T) {
 		b, e := os.ReadFile(logPath)
 		if e != nil || strings.Count(string(b), `"rule":"claude-harness"`) != 3 || ask() != 0 {
 			t.Fatal(e, string(b))
+		}
+	})
+	// A project's .claude/settings*.json is in the tree the agent edits. Its
+	// hooks keep the ordinary guard even when they match the line exactly.
+	t.Run("guarded project settings hook", func(t *testing.T) {
+		project := filepath.Join(home, "project")
+		if e := os.MkdirAll(filepath.Join(project, ".claude"), 0700); e != nil {
+			t.Fatal(e)
+		}
+		projectHook := "./project-hook.sh"
+		if e := os.WriteFile(filepath.Join(project, "project-hook.sh"), []byte("#!/bin/bash\nINPUT=$(cat)\nprintf '%s' \"$INPUT\"\n"), 0700); e != nil {
+			t.Fatal(e)
+		}
+		for _, name := range []string{"settings.json", "settings.local.json"} {
+			writeJSON(filepath.Join(project, ".claude", name), map[string]any{
+				"statusLine": map[string]any{"type": "command", "command": projectHook},
+				"hooks": map[string]any{"UserPromptSubmit": []any{map[string]any{"hooks": []any{
+					map[string]any{"type": "command", "command": projectHook},
+				}}}},
+			})
+		}
+		before := ask()
+		out, e := runIn(project, projectHook, `{"prompt":"github-actions-deploy"}`)
+		if e == nil || !strings.Contains(out, "Command cancelled") || ask() <= before {
+			t.Fatal("project settings hook ran outside the guard", e, out)
+		}
+		b, _ := os.ReadFile(logPath)
+		if strings.Contains(string(b), `"cmd_line":"./project-hook.sh"`) && strings.Contains(string(b), `"rule":"claude-harness","reason":"Claude Code の設定にあるフック・ステータスライン","cmd":["./project-hook.sh"]`) {
+			t.Fatal("project hook was recorded as a harness command", string(b))
 		}
 	})
 	// The same scripts reached through any other line stay guarded line by line.

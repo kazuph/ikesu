@@ -34,10 +34,9 @@ func claudeHarnessCommands(i Input) []string {
 	if !filepath.IsAbs(config) {
 		return nil
 	}
+	// Only the user's own settings qualify. A project's .claude/settings*.json
+	// lives in the working tree the agent edits, so its hooks stay guarded.
 	files := []string{filepath.Join(config, "settings.json"), filepath.Join(config, "settings.local.json")}
-	if filepath.IsAbs(i.Cwd) {
-		files = append(files, filepath.Join(i.Cwd, ".claude", "settings.json"), filepath.Join(i.Cwd, ".claude", "settings.local.json"))
-	}
 	switch runtime.GOOS {
 	case "darwin":
 		files = append(files, "/Library/Application Support/ClaudeCode/managed-settings.json")
