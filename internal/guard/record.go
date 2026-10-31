@@ -108,6 +108,17 @@ func Execute(i Input) error {
 		return e
 	}
 	clean := childenv.Scrub(inherited)
+	if i.claudeHarness {
+		// Claude Code's own hooks and status line run outside the guard, as
+		// with the former PreToolUse-only guard; pane identity stays available.
+		m := EnvMap(clean)
+		for _, key := range []string{"IKESU_PANE_ID", "IKESU_TAB_ID", "IKESU_WORKSPACE_ID"} {
+			if value, exists := i.Env[key]; exists {
+				m[key] = value
+			}
+		}
+		return syscall.Exec(path, append([]string{i.Command}, i.Args...), environment(m))
+	}
 	if i.claudeBashEnv != "" {
 		// A command shell belongs to the same pane. Keep its guard identity, while
 		// Scrub still restores the user's ZDOTDIR and removes agent-session state.

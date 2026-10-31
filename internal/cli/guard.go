@@ -125,6 +125,22 @@ func (r *runner) guardCLI(a []string) int {
 			return usageErr(r, "guard claude-prefix requires exactly one command line")
 		}
 		line := a[0]
+		if harness, ok := guard.PrepareClaudeHarness(root, i, line); ok {
+			if prefix := harness.Env["IKESU_GUARD_CLAUDE_PREFIX_ORIG"]; prefix != "" {
+				harness.Command, harness.Args = prefix, []string{line}
+			} else {
+				harness.Command = harness.Env["SHELL"]
+				if harness.Command == "" {
+					harness.Command = "/bin/sh"
+				}
+				harness.Args = []string{"-c", line}
+			}
+			if err := guard.Execute(harness); err != nil {
+				fmt.Fprintln(r.errOut(), err)
+				return 1
+			}
+			return 0
+		}
 		i = guard.PrepareClaudeBashEnv(i)
 		i.Command, i.Args = line, nil
 		if !guard.AuthorizeLine(c.Guard, root, i, guard.ClaudePrefixLine(i, line), r.errOut(), await) {

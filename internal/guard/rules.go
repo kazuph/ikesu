@@ -54,6 +54,7 @@ type Input struct {
 	OpaquePrefix         bool `json:"-"`
 	scriptVariables      map[string]bool
 	claudeBashEnv        string
+	claudeHarness        bool
 	scriptScanner        *scriptScanner
 	scriptResult         *scriptResult
 	scriptBody           bool
