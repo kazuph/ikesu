@@ -38,17 +38,7 @@ func TestEnsureRunFailureRollsBackActivation(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(work, "ikesu")
-	buildEnv := fixtureEnvironment(os.Getenv("HOME"), "TMPDIR="+work)
-	for _, key := range []string{"GOTOOLCHAIN", "GOMODCACHE", "GOPATH", "GOCACHE", "GOROOT", "CGO_ENABLED"} {
-		if value, ok := os.LookupEnv(key); ok {
-			buildEnv = append(buildEnv, key+"="+value)
-		}
-	}
-	build := fixtureCommand(t, buildEnv, "go", "build", "-o", binary, "./cmd/ikesu")
-	build.Dir = repository
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v: %s", err, out)
-	}
+	builtIkesu(t, binary)
 	for _, concurrent := range []string{"none", "link", "disable", "unlink"} {
 		t.Run(concurrent, func(t *testing.T) {
 			home := filepath.Join(work, concurrent)
