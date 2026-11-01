@@ -17,13 +17,14 @@ for (const scenario of ['empty-stop', 'window-stop', 'pending-stop', 'eof', 'sin
     const spec = path.join(root, 'one.json');
     await fs.writeFile(spec, JSON.stringify({window_title:'exit', title:'exit', options:[], multi_select:false, allow_text:false}));
     const child = spawn(binary, scenario === 'single-close' ? [spec] : ['--host', root], {stdio:['pipe','pipe','pipe']});
+    const exited = once(child, 'exit');
+    const closed = once(child, 'close');
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); });
     let stderr = ''; child.stderr.on('data', chunk => { stderr += chunk; });
     const events = []; const listeners = new Set();
     readline.createInterface({input:child.stdout}).on('line', line => {
       try { events.push(JSON.parse(line)); for (const listener of listeners) listener(); } catch {}
     });
-    const exited = once(child, 'exit');
     const wait = predicate => new Promise((resolve, reject) => {
       const timer = setTimeout(() => { listeners.delete(check); reject(Error(`event timeout: ${JSON.stringify(events)} ${stderr}`)); }, 5000);
       const check = () => { if (predicate()) { clearTimeout(timer); listeners.delete(check); resolve(); } };
@@ -42,6 +43,7 @@ for (const scenario of ['empty-stop', 'window-stop', 'pending-stop', 'eof', 'sin
     else send({op:'stop'});
     const [code, signal] = await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(Error('process exit timeout')), 3000))]);
     const elapsed = performance.now() - start;
+    await closed;
     assert.equal(signal, null); assert.equal(code, 0, stderr);
     if (['window-stop','pending-stop','eof','single-close'].includes(scenario)) assert.equal(events.filter(e => e.event === 'closed').length, 1);
     assert.ok(elapsed < 1000, `exit must not wait for Dock timer: ${elapsed.toFixed(1)}ms`);
