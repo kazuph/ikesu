@@ -2,6 +2,9 @@ import AppKit
 import Foundation
 
 final class DialogHost: NSObject, NSApplicationDelegate {
+  // Rapid activation-policy changes can leave stale Dock tiles; allow the Dock to settle.
+  private let dockRemovalDelay: TimeInterval = 1
+  private var dockGeneration = 0
   var windows: [String: DialogController] = [:]
   var cascadePoint = NSPoint.zero
   let directory: String?
@@ -38,7 +41,16 @@ final class DialogHost: NSObject, NSApplicationDelegate {
   }
 
   func refresh() {
-    NSApp.setActivationPolicy(windows.isEmpty ? .accessory : .regular)
+    dockGeneration += 1
+    if windows.isEmpty {
+      let generation = dockGeneration
+      DispatchQueue.main.asyncAfter(deadline: .now() + dockRemovalDelay) { [weak self] in
+        guard let self, self.dockGeneration == generation, self.windows.isEmpty else { return }
+        NSApp.setActivationPolicy(.accessory)
+      }
+    } else {
+      NSApp.setActivationPolicy(.regular)
+    }
     NSApp.dockTile.badgeLabel = windows.isEmpty ? nil : String(windows.count)
     for controller in windows.values { controller.respond(["status": "windows", "queue_remaining": windows.count - 1]) }
     writeOutput(["event": "windows", "count": windows.count, "pid": ProcessInfo.processInfo.processIdentifier])
