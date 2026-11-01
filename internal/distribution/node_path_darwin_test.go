@@ -40,11 +40,7 @@ func TestEnsureActionReportsOwnedRunningVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(work, "ikesu")
-	build := fixtureCommand(t, os.Environ(), "go", "build", "-o", binary, "./cmd/ikesu")
-	build.Dir = repository
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v: %s", err, out)
-	}
+	builtIkesu(t, binary)
 	root := filepath.Join(work, "release")
 	if err := os.CopyFS(root, os.DirFS(filepath.Join(repository, "apps/mac-dialog-decisions"))); err != nil {
 		t.Fatal(err)
