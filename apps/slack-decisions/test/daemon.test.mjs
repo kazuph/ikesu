@@ -130,13 +130,14 @@ test("machine_down logs only transitions while retrying failed post deletion", a
   const daemon = makeDaemon({slack, config: {postMutationAttempts: 1}});
   const logs = [];
   daemon.log = msg => logs.push(msg);
-  const remove = slack.deleteMessage.bind(slack);
-  let attempts = 0;
   try {
     await daemon.onCreated("local", LOCAL, sampleDecision());
-    slack.deleteMessage = async (...args) => { attempts++; if (attempts < 3) throw Error("offline"); return remove(...args); };
-    for (let i = 0; i < 3; i++) await daemon.onMachineDown("local", "lost");
-    assert.equal(attempts, 3);
+    fake.failMethods.add("chat.delete");
+    for (let i = 0; i < 2; i++) await daemon.onMachineDown("local", "lost");
+    assert.equal(fake.posts.length, 1);
+    fake.failMethods.delete("chat.delete");
+    await daemon.onMachineDown("local", "lost");
+    assert.equal(fake.calls.filter(call => call.method === "chat.delete").length, 3);
     assert.equal(fake.posts.length, 0);
     assert.deepEqual(logs.filter(x => x.startsWith("マシン切断:")), ["マシン切断: local (lost)"]);
     await daemon.onMachineDown("local", "timeout");

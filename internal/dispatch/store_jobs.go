@@ -54,9 +54,13 @@ func (s *Store) MaxJobSeq() (int64, error) {
 
 // jobCond matches an external ID or a complete log basename.
 func jobCond(id string) (string, []any) {
-	name := strings.TrimSuffix(id, ".log") + ".log"
-	return `d.kind='command' AND (d.external_id=? OR d.log_path=? OR substr(d.log_path, -length(?))=?)`,
-		[]any{id, name, "/" + name, "/" + name, id}
+	name := id + ".log"
+	withExt := name
+	if strings.HasSuffix(id, ".log") {
+		withExt = id
+	}
+	return `d.kind='command' AND (d.external_id=? OR d.log_path IN (?,?) OR substr(d.log_path, -length(?))=? OR substr(d.log_path, -length(?))=?)`,
+		[]any{id, name, withExt, "/" + name, "/" + name, "/" + withExt, "/" + withExt, id}
 }
 
 const jobCols = `d.id, COALESCE(d.external_id,''), COALESCE(d.label,''), d.body,

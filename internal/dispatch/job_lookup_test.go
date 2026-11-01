@@ -8,6 +8,7 @@ func TestCommandLookupExactIDAndBasename(t *testing.T) {
 		{"j1", "/logs/j1-first.log"}, {"j10", "/logs/j10-wait-j1.log"},
 		{"j20", "/logs/j20-wait-j999.log"}, {"j30", `/logs/j30-a%_\b.log`},
 		{"j40", "/logs/j1.log"},
+		{"j50", "/logs/j50-build.log.log"},
 	} {
 		if err := s.InsertCommand(job.id, "label", "cmd", "/", "", "agent", "", job.path); err != nil {
 			t.Fatal(err)
@@ -17,6 +18,7 @@ func TestCommandLookupExactIDAndBasename(t *testing.T) {
 		{"j1", "j1"}, {"j10", "j10"}, {"j999", ""}, {"j1-first", "j1"},
 		{"j1-first.log", "j1"}, {"first", ""}, {"j1-fir", ""},
 		{`j30-a%_\b`, "j30"}, {`j30-a%_\b.log`, "j30"}, {`j30-aXX\b`, ""},
+		{"j50-build.log", "j50"}, {"j50-build.log.log", "j50"},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			row, err := s.CommandRow(tc.query)

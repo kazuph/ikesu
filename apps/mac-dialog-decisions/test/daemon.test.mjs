@@ -46,10 +46,11 @@ test("切断ログは理由の変化と復帰後の再切断だけ出し、処�
   const logs = [];
   const d = new MacDialogDecisionsDaemon({config: {}, log: msg => logs.push(msg)});
   const entry = pending(d);
-  let aborts = 0;
-  entry.answerAbort = {abort: () => aborts++};
-  for (let i = 0; i < 3; i++) d.onMachineDown("mini", "lost");
-  assert.equal(aborts, 3);
+  for (let i = 0; i < 3; i++) {
+    entry.answerAbort = new AbortController();
+    d.onMachineDown("mini", "lost");
+    assert.equal(entry.answerAbort.signal.aborted, true);
+  }
   assert.equal(d.machineEpochs.get("mini"), 3);
   assert.deepEqual(logs.filter(x => x.startsWith("マシン切断:")), ["マシン切断: mini (lost)"]);
   d.onMachineDown("mini", "timeout");
