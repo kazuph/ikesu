@@ -24,9 +24,10 @@ DispatchQueue.main.async {
   let text=labels(content).first {$0.string==body}!
   func click(_ index:Int) {
     if index==sources.count+1 { controller.close();exit(0) }
-    // Deactivation is asynchronous; check its state before each inactive click.
+    // Deactivation is asynchronous; repeated requests slow its completion.
+    // Check every 50 ms and retry the request only once per second.
     func waitUntilInactive(_ attempts:Int) {
-      panel.resignKey(); NSApp.deactivate()
+      if attempts % 20 == 0 { panel.resignKey(); NSApp.deactivate() }
       if panel.isKeyWindow || NSApp.isActive {
         precondition(attempts > 0,"click must start with panel behind")
         DispatchQueue.main.asyncAfter(deadline:.now()+0.05) { waitUntilInactive(attempts-1) }
@@ -59,7 +60,7 @@ DispatchQueue.main.async {
       click(index+1)
     }
     }
-    waitUntilInactive(100)
+    waitUntilInactive(200)
   }
   click(0)
 }
