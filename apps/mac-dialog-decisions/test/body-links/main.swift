@@ -24,9 +24,19 @@ DispatchQueue.main.async {
   let text=labels(content).first {$0.string==body}!
   func click(_ index:Int) {
     if index==sources.count+1 { controller.close();exit(0) }
+    panel.resignKey(); NSApp.deactivate()
+    // Deactivation is asynchronous; check its state before each inactive click.
+    func waitUntilInactive(_ attempts:Int) {
+      if panel.isKeyWindow || NSApp.isActive {
+        precondition(attempts > 0,"click must start with panel behind")
+        DispatchQueue.main.asyncAfter(deadline:.now()+0.05) { waitUntilInactive(attempts-1) }
+        return
+      }
+      performClick()
+    }
+    func performClick() {
     let source=index<sources.count ? sources[index] : website
     let target=index<sources.count ? text : labels(controller.mediaCards[website]!).first {$0.string==website}!
-    panel.resignKey(); NSApp.deactivate()
     precondition(!panel.isKeyWindow && !NSApp.isActive,"click must start with panel behind")
     let range=(target.string as NSString).range(of:source)
     let manager=target.layoutManager!, container=target.textContainer!
@@ -38,7 +48,8 @@ DispatchQueue.main.async {
     precondition(hit===target && hit.acceptsFirstMouse(for:nil),"link must accept first mouse")
     let down=NSEvent.mouseEvent(with:.leftMouseDown,location:point,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:panel.windowNumber,context:nil,eventNumber:index*2+1,clickCount:1,pressure:1)!
     let up=NSEvent.mouseEvent(with:.leftMouseUp,location:point,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:panel.windowNumber,context:nil,eventNumber:index*2+2,clickCount:1,pressure:0)!
-    NSApp.postEvent(down,atStart:false);NSApp.postEvent(up,atStart:false)
+    // Posting mouse-down can replace its position with the current cursor position.
+    NSApp.postEvent(up,atStart:false);panel.sendEvent(down)
     DispatchQueue.main.asyncAfter(deadline:.now()+0.2) {
       let expected=source.hasPrefix("/") ? URL(fileURLWithPath:source) : URL(string:source)!
       guard opened.last==expected && opened.count==index+1 else {
@@ -47,6 +58,8 @@ DispatchQueue.main.async {
       print("BODY_LINK_CLICK_PASS source=\(source)")
       click(index+1)
     }
+    }
+    waitUntilInactive(100)
   }
   click(0)
 }
