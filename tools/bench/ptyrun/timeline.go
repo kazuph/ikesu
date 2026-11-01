@@ -50,6 +50,9 @@ type timeline struct {
 	closed            bool
 	synchronizedFrame bool
 	includeBodies     bool
+	screenTokens      bool
+	screenText        string
+	tokens            sync.Map
 	onFrame           func(int64)
 	receiver          kittyReceiver
 	reply             io.Writer
@@ -150,6 +153,23 @@ func (t *timeline) capture(at int64) {
 			lines[y][x] = c.Content
 			if strings.Contains("┌┐└┘", c.Content) && c.Content != "" {
 				frame.Corners = append(frame.Corners, trialCorner{x + 1, y + 1, c.Content})
+			}
+		}
+	}
+	if t.screenTokens || t.screenText != "" {
+		for _, line := range lines {
+			row := strings.Join(line, "")
+			if t.screenTokens {
+				for _, token := range capacityReply.FindAllString(row, -1) {
+					if _, loaded := t.tokens.LoadOrStore(token, at); !loaded {
+						t.record(map[string]any{"type": "capacity.screen", "clock_ns": at, "token": token})
+					}
+				}
+			}
+			if t.screenText != "" && strings.Contains(row, t.screenText) {
+				if _, loaded := t.tokens.LoadOrStore(t.screenText, at); !loaded {
+					t.record(map[string]any{"type": "screen.text", "clock_ns": at, "text": t.screenText})
+				}
 			}
 		}
 	}
