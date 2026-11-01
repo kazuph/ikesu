@@ -52,13 +52,15 @@ func (s *Store) MaxJobSeq() (int64, error) {
 	return max, st.Err()
 }
 
-// jobCond is the external_id-or-log-name lookup shared by CommandRow and
-// CommandDispatchID: a job whose log file name ends in "<id>.log" is found
-// too, which covers pane-mode jobs named only by their log file.
+// jobCond matches an external ID or a complete log basename.
 func jobCond(id string) (string, []any) {
-	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(id)
-	return `d.kind='command' AND (d.external_id=? OR d.log_path LIKE ? ESCAPE '\')`,
-		[]any{id, "%" + esc + ".log"}
+	name := id + ".log"
+	withExt := name
+	if strings.HasSuffix(id, ".log") {
+		withExt = id
+	}
+	return `d.kind='command' AND (d.external_id=? OR d.log_path IN (?,?) OR substr(d.log_path, -length(?))=? OR substr(d.log_path, -length(?))=?)`,
+		[]any{id, name, withExt, "/" + name, "/" + name, "/" + withExt, "/" + withExt, id}
 }
 
 const jobCols = `d.id, COALESCE(d.external_id,''), COALESCE(d.label,''), d.body,
@@ -123,7 +125,7 @@ func (s *Store) CommandRow(id string) (*Job, error) {
 	cond, args := jobCond(id)
 	st, err := s.queryLocked(`SELECT `+jobCols+` FROM dispatches d
 		LEFT JOIN actors ta ON ta.id = d.to_actor
-		WHERE `+cond+` ORDER BY d.id DESC LIMIT 1`, args...)
+		WHERE `+cond+` ORDER BY (d.external_id=?) DESC, d.id DESC LIMIT 1`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +143,7 @@ func (s *Store) CommandDispatchID(id string) (*int64, error) {
 	defer s.mu.Unlock()
 	cond, args := jobCond(id)
 	st, err := s.queryLocked(`SELECT d.id FROM dispatches d WHERE `+cond+
-		` ORDER BY d.id DESC LIMIT 1`, args...)
+		` ORDER BY (d.external_id=?) DESC, d.id DESC LIMIT 1`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -938,6 +938,7 @@ export class SlackDecisionsDaemon {
     this.postsFilePath = postsFilePath;
     this.entries = new Map(); // key -> entry
     this.machinesDown = new Set();
+    this.machineDownReasons = new Map();
     this.posts = new Map(); // key -> {channel, ts, machineId, decisionId}
     // questionKey -> {channel, ts, at, mapKey, timer}: posts of decisions
     // cancelled moments ago, adoptable by a recreated copy of the same
@@ -1503,7 +1504,9 @@ export class SlackDecisionsDaemon {
   }
 
   async onMachineDown(mid, reason) {
+    const logDown = !this.machinesDown.has(mid) || this.machineDownReasons.get(mid) !== reason;
     this.machinesDown.add(mid);
+    this.machineDownReasons.set(mid, reason);
     const handled = new Set();
     for (const entry of [...this.entries.values()]) {
       if (entry.machineId !== mid) continue;
@@ -1532,11 +1535,12 @@ export class SlackDecisionsDaemon {
       }
     }
     if (removedOrphans) this.savePostsFile();
-    this.log(`マシン切断: ${mid} (${reason})`);
+    if (logDown) this.log(`マシン切断: ${mid} (${reason})`);
   }
 
   async onMachineUp(mid) {
     const wasDown = this.machinesDown.delete(mid);
+    this.machineDownReasons.delete(mid);
     if (wasDown) this.log(`マシン復帰: ${mid}`);
     // Decisions resolved while the machine was down (or while this daemon was
     // down) are reconciled once the created replay has had a moment to arrive.

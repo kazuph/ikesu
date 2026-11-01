@@ -124,6 +124,29 @@ async function feedAndSettle(daemon, event, ms = 300) {
 
 const LOCAL = { id: "local", label: "Local" };
 
+test("machine_down logs only transitions while retrying failed post deletion", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
+  const daemon = makeDaemon({slack, config: {postMutationAttempts: 1}});
+  const logs = [];
+  daemon.log = msg => logs.push(msg);
+  try {
+    await daemon.onCreated("local", LOCAL, sampleDecision());
+    fake.failMethods.add("chat.delete");
+    for (let i = 0; i < 2; i++) await daemon.onMachineDown("local", "lost");
+    assert.equal(fake.posts.length, 1);
+    fake.failMethods.delete("chat.delete");
+    await daemon.onMachineDown("local", "lost");
+    assert.equal(fake.calls.filter(call => call.method === "chat.delete").length, 3);
+    assert.equal(fake.posts.length, 0);
+    assert.deepEqual(logs.filter(x => x.startsWith("マシン切断:")), ["マシン切断: local (lost)"]);
+    await daemon.onMachineDown("local", "timeout");
+    await daemon.onMachineUp("local");
+    await daemon.onMachineDown("local", "timeout");
+    assert.deepEqual(logs.filter(x => x.startsWith("マシン切断:")), ["マシン切断: local (lost)", "マシン切断: local (timeout)", "マシン切断: local (timeout)"]);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 // --- tests -------------------------------------------------------------------
 
 test("created + glasses absent -> posts immediately with full context", async () => {

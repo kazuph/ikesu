@@ -42,6 +42,23 @@ async function until(predicate) {
   }
 }
 
+test("切断ログは理由の変化と復帰後の再切断だけ出し、処理は毎回行う", () => {
+  const logs = [];
+  const d = new MacDialogDecisionsDaemon({config: {}, log: msg => logs.push(msg)});
+  const entry = pending(d);
+  for (let i = 0; i < 3; i++) {
+    entry.answerAbort = new AbortController();
+    d.onMachineDown("mini", "lost");
+    assert.equal(entry.answerAbort.signal.aborted, true);
+  }
+  assert.equal(d.machineEpochs.get("mini"), 3);
+  assert.deepEqual(logs.filter(x => x.startsWith("マシン切断:")), ["マシン切断: mini (lost)"]);
+  d.onMachineDown("mini", "timeout");
+  d.onWatchLine({event: "machine_up", machine: {id: "mini"}});
+  d.onMachineDown("mini", "timeout");
+  assert.deepEqual(logs.filter(x => x.startsWith("マシン切断:")), ["マシン切断: mini (lost)", "マシン切断: mini (timeout)", "マシン切断: mini (timeout)"]);
+});
+
 test("切断中に回答と再承認待ちを保持し、再通知で二重送信しない", async t => {
   const {state, runAnswer} = await answerService(t);
   const d = new MacDialogDecisionsDaemon({config: {answerRetryMs: 5}, runAnswer, log: () => {}});

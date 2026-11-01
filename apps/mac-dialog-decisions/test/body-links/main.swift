@@ -11,6 +11,7 @@ let body=sources.joined(separator:"\n")
 let input:[String:Any]=["window_title":"本文リンク試験", "title":"リンク", "body":body,
   "options":[],"allow_text":false,"multi_select":false,"media_sources":sources]
 let spec=try JSONDecoder().decode(DialogSpec.self,from:JSONSerialization.data(withJSONObject:input))
+let previousApp=NSWorkspace.shared.frontmostApplication
 let controller=DialogController(spec:spec,specPath:root+"/spec.json")
 var opened:[URL]=[]
 controller.openLink={ opened.append($0); return true }
@@ -24,9 +25,10 @@ DispatchQueue.main.async {
   let text=labels(content).first {$0.string==body}!
   func click(_ index:Int) {
     if index==sources.count+1 { controller.close();exit(0) }
-    // Deactivation is asynchronous; check its state before each inactive click.
+    // Restore the previous frontmost app so deactivation can complete.
+    // Check every 50 ms and retry activation once per second.
     func waitUntilInactive(_ attempts:Int) {
-      panel.resignKey(); NSApp.deactivate()
+      if attempts % 20 == 0 { panel.resignKey(); NSApp.deactivate(); _ = previousApp?.activate() }
       if panel.isKeyWindow || NSApp.isActive {
         precondition(attempts > 0,"click must start with panel behind")
         DispatchQueue.main.asyncAfter(deadline:.now()+0.05) { waitUntilInactive(attempts-1) }
@@ -59,7 +61,7 @@ DispatchQueue.main.async {
       click(index+1)
     }
     }
-    waitUntilInactive(100)
+    waitUntilInactive(200)
   }
   click(0)
 }
