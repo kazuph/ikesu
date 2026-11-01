@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import {spawn} from 'node:child_process';
-import {ClientViews} from '../client-views.mjs';
+import {ClientViews,displayedByFocusedClient} from '../client-views.mjs';
 import {MacDialogDecisionsDaemon} from '../daemon.mjs';
 import {NativeDialogHost} from '../native-host.mjs';
 import {SlackClient,SlackDecisionsDaemon} from '../../slack-decisions/slack-decisions.mjs';
@@ -64,8 +64,9 @@ async function fixture(t,{root=fs.mkdtempSync('/tmp/dialog-view-'),clientSocketP
   const send=view=>client.write(JSON.stringify({type:'client_view',client_view:view})+'\n');
   const set=async view=>{const before=changes;send(view);await until(()=>changes>before);return views.list();};
   daemon=new MacDialogDecisionsDaemon({config:{stateDir:root,presentDelayMs:60000},clientViews:views,log:()=>{}});
-  const entry=(id='dec-view',machineId='local',origin={pane_id:'p1'})=>{
-    daemon.onCreated(machineId,{id:machineId},{decision_id:id,title:'view',options:[],origin});
+  const entry=(id='dec-view',machineId='local',origin={pane_id:'p1',reason:'screen_prompt'})=>{
+    if (origin && !origin.reason) origin={...origin,reason:'screen_prompt'};
+    daemon.onCreated(machineId,{id:machineId},{decision_id:id,kind:'agent_prompt',title:'view',options:[],origin});
     clearTimeout(daemon._pumpTimer);return [...daemon.entries.values()].find(e=>e.decision.decision_id===id);
   };
   return {daemon,views,set,entry,rpc,client,server,env,get changes(){return changes}};
@@ -213,7 +214,7 @@ os.close(fd)
 
 test('later and reconnect retain decision identity but query current display again',async t=>{
  const f=await fixture(t);
- const {decision}=await f.rpc('decision.create',{kind:'ask',title:'redisplay',origin:{pane_id:'p1'},options:[{id:'yes',label:'Yes',role:'approve'}]});
+ const {decision}=await f.rpc('decision.create',{kind:'agent_prompt',title:'redisplay',origin:{pane_id:'p1',reason:'screen_prompt'},options:[{id:'yes',label:'Yes',role:'approve'}]});
  f.daemon.onCreated('local',{id:'local'},decision);clearTimeout(f.daemon._pumpTimer);
  const e=[...f.daemon.entries.values()][0];
  await f.set(local);assert.equal(await f.daemon.presentation(e),true);
@@ -251,7 +252,7 @@ test('actual native host creates zero windows and Slack posts zero until focused
  const host=new NativeDialogHost(process.env.MAC_DIALOG_TEST_NATIVE_BINARY,f.views.directory);t.after(()=>host.stop());
  f.daemon.spawnDialog=file=>host.open(file);f.daemon.specFilePath=key=>path.join(f.views.directory,encodeURIComponent(key)+'.json');
  f.daemon.config.presentDelayMs=0;
- const d={decision_id:'dec-no-window',kind:'ask',status:'pending',origin:{pane_id:'p1'},title:'表示抑制試験',options:[{id:'yes',label:'はい'}],allow_text:true};
+ const d={decision_id:'dec-no-window',kind:'agent_prompt',status:'pending',origin:{pane_id:'p1',reason:'screen_prompt'},title:'表示抑制試験',options:[{id:'yes',label:'はい'}],allow_text:true};
  f.daemon.onCreated('local',{id:'local'},d);await slack.onCreated('local',{id:'local'},d);
  await until(()=>[...f.daemon.entries.values()][0]?.waitingForView);
  assert.equal(f.daemon.children.size,0);assert.equal(host.windows.size,0);assert.equal(host.child,null);assert.equal(service.posts.length,0);
@@ -296,7 +297,7 @@ test('pending replay before subscription and reversed view replies keep both rea
  slackViews.start(()=>void slack.refreshVisibleDecisions());t.after(()=>slack.stop());
  const host=new NativeDialogHost(process.env.MAC_DIALOG_TEST_NATIVE_BINARY,f.views.directory);t.after(()=>host.stop());
  f.daemon.spawnDialog=file=>host.open(file);f.daemon.specFilePath=key=>path.join(f.views.directory,encodeURIComponent(key)+'.json');f.daemon.config.presentDelayMs=0;
- const d={decision_id:'startup-held',kind:'ask',status:'pending',origin:{pane_id:'p1'},title:'起動順序試験',options:[{id:'yes',label:'はい'}],allow_text:true};
+ const d={decision_id:'startup-held',kind:'agent_prompt',status:'pending',origin:{pane_id:'p1',reason:'screen_prompt'},title:'起動順序試験',options:[{id:'yes',label:'はい'}],allow_text:true};
  f.daemon.onCreated('local',{id:'local'},d);const posting=slack.onCreated('local',{id:'local'},d);
  await until(()=>proxy.subscriptions.length===2&&[...f.daemon.entries.values()][0]?.showing);
  assert.equal(host.child,null);assert.equal(service.posts.length,0);
@@ -319,4 +320,39 @@ test('pending replay before subscription and reversed view replies keep both rea
  assert.equal(host.windows.size,1);assert.equal(service.posts.length,1);assert.ok(proxy.listCount>=6,'both consumers must re-query stale replies');
  f.daemon.onResolved('local',{...other,status:'answered'});await slack.onResolved('local',{...other,status:'answered'});
  console.log('REAL_VISIBILITY_ORDER_PASS startupWindows=0 startupPosts=0 leaveWindows=1 leavePosts=1 staleEnterAdditionalWindows=0 staleEnterAdditionalPosts=0');
+});
+
+const notificationCases = [
+ ['command_guard', {kind:'command_guard',origin:{pane_id:'p1',reason:'screen_prompt'}}],
+ ['ask', {kind:'ask',origin:{pane_id:'p1',reason:'screen_prompt'}}],
+ ['missing kind', {origin:{pane_id:'p1'}}],
+ ['unknown kind', {kind:'unknown',origin:{pane_id:'p1',reason:'screen_prompt'}}],
+ ['agent_prompt without reason', {kind:'agent_prompt',origin:{pane_id:'p1'}}],
+ ['tool_permission without reason', {kind:'tool_permission',origin:{pane_id:'p1'}}],
+ ['agent_prompt other reason', {kind:'agent_prompt',origin:{pane_id:'p1',reason:'other'}}],
+ ['tool_permission other reason', {kind:'tool_permission',origin:{pane_id:'p1',reason:'other'}}],
+];
+
+test('focused notification eligibility requires screen prompt kind and reason',()=>{
+ const clientViews={sessionFor:()=> 'isolated'};
+ for(const [name,decision] of notificationCases) assert.equal(displayedByFocusedClient({machineId:'local',decision},clientViews,[local]),false,name);
+ for(const kind of ['agent_prompt','tool_permission']) assert.equal(displayedByFocusedClient({machineId:'local',decision:{kind,origin:{pane_id:'p1',reason:'screen_prompt'}}},clientViews,[local]),true,kind);
+});
+
+test('focused non-screen decisions create actual native windows and Slack posts',async t=>{
+ const f=await fixture(t);await f.set(local);
+ const service=await new FakeSlack().start();t.after(()=>service.stop());
+ const slackViews=new ClientViews(f.env);
+ const slack=new SlackDecisionsDaemon({config:{socketMode:false,stateDir:f.views.directory},slack:new SlackClient({token:'local-emulator',channel:'CLOCAL',apiBase:service.base}),clientViews:slackViews,glassesState:async()=>null,log:()=>{}});
+ slackViews.start(()=>void slack.refreshVisibleDecisions());await until(()=>slackViews.ready);t.after(()=>slack.stop());
+ const host=new NativeDialogHost(process.env.MAC_DIALOG_TEST_NATIVE_BINARY,f.views.directory);t.after(()=>host.stop());
+ f.daemon.spawnDialog=file=>host.open(file);f.daemon.specFilePath=key=>path.join(f.views.directory,encodeURIComponent(key)+'.json');f.daemon.config.presentDelayMs=0;
+ for(const [index,[name,fields]] of notificationCases.entries()){
+  const d={decision_id:`notify-${index}`,status:'pending',title:name,options:[{id:'yes',label:'はい'}],allow_text:true,...fields};
+  f.daemon.onCreated('local',{id:'local'},d);await slack.onCreated('local',{id:'local'},d);
+  await until(()=>host.windows.size===1&&service.posts.length===1&&[...f.daemon.children.values()][0]?.shown);
+  assert.equal(host.windows.size,1,name);assert.equal(service.posts.length,1,name);
+  await slack.onResolved('local',{...d,status:'answered'});f.daemon.onResolved('local',{...d,status:'answered'});
+  await until(()=>host.windows.size===0&&service.posts.length===0);
+ }
 });
