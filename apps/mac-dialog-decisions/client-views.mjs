@@ -93,6 +93,8 @@ export class ClientViews {
 }
 
 export function displayedByFocusedClient(entry, clientViews, views) {
+  const {kind, origin} = entry.decision;
+  if ((kind !== 'agent_prompt' && kind !== 'tool_permission') || origin?.reason !== 'screen_prompt') return false;
   const pane = entry.decision.origin?.pane_id;
   const session = clientViews?.sessionFor(entry.machineId);
   if (!pane || !session || !Array.isArray(views)) return false;
