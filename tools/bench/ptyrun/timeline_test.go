@@ -80,3 +80,41 @@ func TestCapacityReplyWaitsForCompletedOuterFrame(t *testing.T) {
 		t.Fatal("completed reply was not recorded")
 	}
 }
+
+func TestScreenTokenDoesNotRequireBoxDrawingCorners(t *testing.T) {
+	emu := vt.NewEmulator(30, 4)
+	path := filepath.Join(t.TempDir(), "frames.jsonl")
+	observer := newTimeline(path, emu, 30, 4)
+	observer.screenTokens = true
+	defer observer.close()
+	observer.feed([]byte("\x1b[?2026h\x1b[2;2HCAPRX007!"), 100)
+	if _, ok := observer.tokens.Load("CAPRX007!"); ok {
+		t.Fatal("incomplete frame must not count")
+	}
+	observer.feed([]byte("\x1b[?2026l"), 200)
+	stamp, ok := observer.tokens.Load("CAPRX007!")
+	if !ok || stamp != int64(200) {
+		t.Fatalf("missing completed frame timestamp: %v %v", stamp, ok)
+	}
+	observer.feed([]byte(" "), 300)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Count(data, []byte(`"type":"capacity.screen"`)) != 1 {
+		t.Fatalf("expected one token event: %s", data)
+	}
+}
+
+func TestScreenTextIsObservedOnCompletedFrame(t *testing.T) {
+	emu := vt.NewEmulator(60, 4)
+	path := filepath.Join(t.TempDir(), "frames.jsonl")
+	observer := newTimeline(path, emu, 60, 4)
+	observer.screenText = "1999999 line of throughput test"
+	defer observer.close()
+	observer.feed([]byte("\x1b[2;2H1999999 line of throughput test"), 123)
+	stamp, ok := observer.tokens.Load(observer.screenText)
+	if !ok || stamp != int64(123) {
+		t.Fatalf("missing screen text timestamp: %v %v", stamp, ok)
+	}
+}
