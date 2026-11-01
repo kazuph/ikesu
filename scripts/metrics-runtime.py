@@ -50,6 +50,7 @@ def new_ledger(metadata):
                 for role in roles:
                     add(mode, f'rss_slope.{state}.{low}.{high}.{role}',
                         f'{label}・{low}→{high}ペイン・{role} RSS の増分', 'KiB/ペイン')
+    add('no-session', 'rss.styled.increment', '色付き出力64MiB・1ペイン RSS の増分', 'KiB')
     for key, title, unit in (
         ('startup', '起動からプロンプト表示', '秒'),
         ('idle_cpu', '20ペイン待機中の CPU（1コアを100%）', '%'),
@@ -552,6 +553,62 @@ class MonolithMemorySession:
                 self.log.close()
 
 
+class StyledMemorySession(MonolithMemorySession):
+    """The original six-stage coloured Japanese output on one pane."""
+
+    def __init__(self, binary, ptyrun, product, work):
+        super().__init__(binary, ptyrun, product, 1, work)
+        emitter = self.root / 'styled-emit.py'
+        emitter.write_text('''import sys
+mb=int(sys.argv[1]); tag=sys.argv[2]
+words=["ペイン", "\\x1b[1mbold\\x1b[22m", "メモリ", "\\x1b[4munder\\x1b[24m", "計測", "value"]
+def line(i):
+    parts=[f"\\x1b[38;5;{(i*7+j)%256}m{words[(i+j)%len(words)]}\\x1b[39m" for j in range(14)]
+    return f"\\x1b[48;5;{i%256}m"+" ".join(parts)+"\\x1b[0m\\n"
+out=0; i=0; w=sys.stdout.write
+while out < mb*1024*1024:
+    s=line(i); w(s); out+=len(s.encode()); i+=1
+sys.stdout.flush(); print("DONE_"+tag)
+''')
+        steps = ['waittext 60s DXp1>', 'sleep 3s', f'screen {self.root}/idle-screen',
+                 f'notifyfile {self.idle}', f'waitfile {self.release_idle} 3600s']
+        for index, size in enumerate((2, 2, 4, 8, 16, 32)):
+            tag = f'm{size}_{index}'
+            command = ' '.join(map(shlex.quote, ['python3', str(emitter), str(size), tag])) + '\r'
+            steps.extend([f'send {json.dumps(command)}', f'waittext 180s DONE_{tag}', 'sleep 2s'])
+        steps.extend([f'screen {self.root}/output-screen', f'notifyfile {self.output}',
+                      f'waitfile {self.release_output} 3600s', 'kill'])
+        self.steps.write_text('\n'.join(steps) + '\n')
+
+    def emit_lines(self):
+        self.release_idle.write_text('done')
+        wait_until(self.output.exists, 6 * 180 + 30, 'styled output', self.proc)
+        if 'DONE_m32_5' not in (self.root / 'output-screen').read_text():
+            raise RuntimeError('styled output marker missing on screen')
+        if 'TIMEOUT' in (self.root / 'ptyrun.log').read_text():
+            raise RuntimeError('ptyrun reported a timeout')
+
+
+def measure_styled_memory(binary, ptyrun, product, work):
+    session = StyledMemorySession(binary, ptyrun, product, work)
+    result = {'product': product, 'metric': 'styled-memory', 'panes': 1,
+              'root': str(session.root), 'status': 'running'}
+    try:
+        session.start()
+        result['idle'] = process_snapshot(session.pid, binary, 'no-session')
+        session.emit_lines()
+        result['output'] = process_snapshot(session.pid, binary, 'no-session')
+        result['status'] = 'ok'
+    except Exception as exc:
+        result.update(status='failed', error=f'{type(exc).__name__}: {exc}')
+    finally:
+        try:
+            session.close()
+        except Exception as exc:
+            result.update(status='failed', cleanup_error=f'{type(exc).__name__}: {exc}')
+    return result
+
+
 def terminate_ptyrun(session):
     """Stop only the runner proven to contain this session's unique root."""
     matches = subprocess.run(['pgrep', '-u', str(os.getuid()), '-f', str(session.root)],
@@ -900,6 +957,18 @@ def store_memory_result(ledger, index, result):
         record_sample(ledger, mode, 'idle_cpu', product, index, sample)
 
 
+def store_styled_memory_result(ledger, index, result):
+    result['round'] = index + 1
+    ledger['runs'].append(result)
+    if result['status'] == 'ok' and 'evidence_error' not in result:
+        value = result['output']['rss_kib']['total'] - result['idle']['rss_kib']['total']
+        sample = {'status': 'ok', 'value': value}
+    else:
+        sample = {'status': 'failed', 'error': result.get('error', result.get('cleanup_error',
+                                                   result.get('evidence_error', 'measurement failed')))}
+    record_sample(ledger, 'no-session', 'rss.styled.increment', result['product'], index, sample)
+
+
 def calculate_memory_increments(ledger):
     lookup = {(m['mode'], m['key']): m for m in ledger['metrics']}
     for state in ('idle', 'output'):
@@ -981,7 +1050,7 @@ def preserve_evidence(result, index, destination):
     directory = destination / f'{index + 1}-{result["product"]}-{kind}{count}{suffix}'
     directory.mkdir(parents=True, exist_ok=False)
     source = Path(result['root'])
-    for name in ('steps.txt', 'ptyrun.log', 'screen.txt', 'idle-screen', 'output-screen',
+    for name in ('steps.txt', 'ptyrun.log', 'screen.txt', 'idle-screen', 'output-screen', 'styled-emit.py',
                  'process.json', 'timeline.jsonl', 'producer.json', 'flood-start.json', 'flood-end.json'):
         path = source / name
         if path.is_file():
@@ -1042,6 +1111,7 @@ def main():
                                   {**binaries, 'ikesu_pprof': args.ikesu_pprof, 'ptyrun': args.ptyrun}.items()},
                 'go_build_info': command_output('go', 'version', '-m', str(binaries['ikesu'])),
                 'terminal': '160列 × 45行、既存 ptyrun の端末エミュレーター',
+                'styled_output': '色付き・日本語出力を2, 2, 4, 8, 16, 32MiBの順に流し、1ペインの出力前後のRSS差を計測。各段階の出力完了後に2秒置く。',
                 'shell': '/bin/zsh、隔離した HOME・設定・状態',
                 'layout': '各ペインを別タブに配置、表示1ペイン・非表示は残り',
                 'scrollback_limit_bytes': SCROLLBACK_BYTES,
@@ -1092,6 +1162,11 @@ def main():
                                          mode, count, '/tmp', mode == 'server' and count == 20)
                             store_memory_result(ledger, index, result)
                             checkpoint()
+                for product in order:
+                    print(f'RUN round={index + 1} styled memory {product}', flush=True)
+                    result = run(index, measure_styled_memory, binaries[product], args.ptyrun, product, '/tmp')
+                    store_styled_memory_result(ledger, index, result)
+                    checkpoint()
                 for metric in ('startup', 'flood', 'latency.idle', 'latency.flood'):
                     for product in order:
                         print(f'RUN round={index + 1} {metric} {product}', flush=True)
