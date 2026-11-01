@@ -1,13 +1,15 @@
 package vt
 
 import (
-	uv "github.com/charmbracelet/ultraviolet"
+	"strings"
 	"unsafe"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 type savedGlyph struct {
-	content string
-	width   int
+	end   int
+	width int
 }
 type savedStyle struct {
 	style uv.Style
@@ -17,6 +19,7 @@ type savedStyle struct {
 type styledRow struct {
 	glyphs []savedGlyph
 	runs   []savedStyle
+	text   string
 }
 
 // Runs retain the original grapheme/column sequence and share only equal
@@ -35,12 +38,20 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 	}
 	oldRuns := len(reuse.runs)
 	reuse.runs = reuse.runs[:0]
+	var text strings.Builder
+	size := 0
+	for i := range line {
+		size += len(line[i].Content)
+	}
+	text.Grow(size)
 	reuse.runs = append(reuse.runs, savedStyle{style: line[0].Style, link: line[0].Link})
 	run := &reuse.runs[0]
-	reuse.glyphs[0] = savedGlyph{line[0].Content, line[0].Width}
+	text.WriteString(line[0].Content)
+	reuse.glyphs[0] = savedGlyph{text.Len(), line[0].Width}
 	for x := 1; x < len(line); x++ {
 		c := &line[x]
-		reuse.glyphs[x] = savedGlyph{c.Content, c.Width}
+		text.WriteString(c.Content)
+		reuse.glyphs[x] = savedGlyph{text.Len(), c.Width}
 		if !sameSavedStyle(run, c) {
 			run.end = x
 			reuse.runs = append(reuse.runs, savedStyle{style: c.Style, link: c.Link})
@@ -48,15 +59,25 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 		}
 	}
 	run.end = len(line)
+	reuse.text = text.String()
 	if oldRuns > len(reuse.runs) {
 		clear(reuse.runs[len(reuse.runs):oldRuns])
 	}
-	cost := int(unsafe.Sizeof(styledRow{})) + cap(reuse.glyphs)*int(unsafe.Sizeof(savedGlyph{})) + cap(reuse.runs)*int(unsafe.Sizeof(savedStyle{}))
+	cost := int(unsafe.Sizeof(styledRow{})) + cap(reuse.glyphs)*int(unsafe.Sizeof(savedGlyph{})) + cap(reuse.runs)*int(unsafe.Sizeof(savedStyle{})) + len(reuse.text)
 	if cost > len(line)*scrollbackCellBytes {
 		return nil
 	}
 	return reuse
 }
+
+func (r *styledRow) contentAt(x int) string {
+	start := 0
+	if x > 0 {
+		start = r.glyphs[x-1].end
+	}
+	return r.text[start:r.glyphs[x].end]
+}
+
 func (r *styledRow) cellAt(x int) *uv.Cell {
 	if x < 0 || x >= len(r.glyphs) {
 		return nil
@@ -64,7 +85,7 @@ func (r *styledRow) cellAt(x int) *uv.Cell {
 	for i := range r.runs {
 		if x < r.runs[i].end {
 			g := r.glyphs[x]
-			return &uv.Cell{Content: g.content, Width: g.width, Style: r.runs[i].style, Link: r.runs[i].link}
+			return &uv.Cell{Content: r.contentAt(x), Width: g.width, Style: r.runs[i].style, Link: r.runs[i].link}
 		}
 	}
 	return nil
@@ -75,7 +96,7 @@ func (r *styledRow) line() uv.Line {
 	for _, run := range r.runs {
 		for x := start; x < run.end; x++ {
 			g := r.glyphs[x]
-			row[x] = uv.Cell{Content: g.content, Width: g.width, Style: run.style, Link: run.link}
+			row[x] = uv.Cell{Content: r.contentAt(x), Width: g.width, Style: run.style, Link: run.link}
 		}
 		start = run.end
 	}

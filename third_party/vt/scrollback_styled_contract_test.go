@@ -58,3 +58,34 @@ func TestStyledHistoryMatchesExpandedCells(t *testing.T) {
 		}
 	}
 }
+
+func TestStyledHistoryPackedTextPreservesCellsOnReuse(t *testing.T) {
+	style := uv.Style{Fg: ansi.IndexedColor(23), UnderlineColor: color.RGBA{R: 31, A: 255},
+		Underline: uv.UnderlineCurly, Attrs: uv.AttrBold}
+	row := make(uv.Line, 32)
+	for i := range row {
+		row[i] = uv.Cell{Content: "色", Width: 2, Style: style, Link: uv.Link{URL: "https://example.test/界", Params: "id=1"}}
+	}
+	row[0].Content = ""
+	row[1].Content = "e\u0301"
+	row[2].Content = "\xff"
+	row[3].Width = 0
+	saved := packStyled(row, nil)
+	if saved == nil {
+		t.Fatal("fixture must use packed styled history")
+	}
+	before := saved.line()
+	if !reflect.DeepEqual(before, row) {
+		t.Fatal("packed history changed cell values")
+	}
+	row[1].Content = "new"
+	if packStyled(row, saved) == nil {
+		t.Fatal("reused row unexpectedly unpacked")
+	}
+	if before[1].Content != "e\u0301" || before[2].Content != "\xff" {
+		t.Fatal("reusing stored history changed a previously read row")
+	}
+	if got := saved.line(); !reflect.DeepEqual(got, row) {
+		t.Fatal("reused packed history changed cell values")
+	}
+}

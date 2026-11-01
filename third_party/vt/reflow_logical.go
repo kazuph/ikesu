@@ -176,7 +176,7 @@ func (l *reflowLogicalLine) copyRange(dst uv.Line, start, end int) {
 				run++
 			}
 			g, appearance := l.styled.glyphs[x], l.styled.runs[run]
-			dst[x-start] = uv.Cell{Content: g.content, Width: g.width, Style: appearance.style, Link: appearance.link}
+			dst[x-start] = uv.Cell{Content: l.styled.contentAt(x), Width: g.width, Style: appearance.style, Link: appearance.link}
 		}
 	default:
 		if start < len(l.dense) {
