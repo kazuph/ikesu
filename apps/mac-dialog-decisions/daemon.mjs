@@ -35,6 +35,7 @@ export class MacDialogDecisionsDaemon {
     this.children = new Map(); // machine + decision -> displayed window
     this.resolvedKeys = new Set();
     this.machinesDown = new Set();
+    this.machineDownReasons = new Map();
     this.machineEpochs = new Map();
     this.stopped = false;
     this._pumpTimer = null;
@@ -110,6 +111,7 @@ export class MacDialogDecisionsDaemon {
 
     if (event === "machine_up") {
       this.machinesDown.delete(mid);
+      this.machineDownReasons.delete(mid);
       if (this.rich) void this.rich.cleanup(mid).catch(error => this.log(`添付の整理に失敗: ${error.message}`));
       const epoch = (this.machineEpochs.get(mid) || 0) + 1;
       this.machineEpochs.set(mid, epoch);
@@ -228,7 +230,9 @@ export class MacDialogDecisionsDaemon {
   }
 
   onMachineDown(mid, reason) {
+    const logDown = !this.machinesDown.has(mid) || this.machineDownReasons.get(mid) !== reason;
     this.machinesDown.add(mid);
+    this.machineDownReasons.set(mid, reason);
     this.machineEpochs.set(mid, (this.machineEpochs.get(mid) || 0) + 1);
     for (const entry of [...this.entries.values()]) {
       if (entry.machineId !== mid) continue;
@@ -238,7 +242,7 @@ export class MacDialogDecisionsDaemon {
       this.queue = this.queue.filter((k) => k !== entry.key);
       if (entry.showing) this._closeDialog(entry);
     }
-    this.log(`マシン切断: ${mid} (${reason})`);
+    if (logDown) this.log(`マシン切断: ${mid} (${reason})`);
     this.notify();
   }
 
