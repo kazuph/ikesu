@@ -162,22 +162,24 @@ func TestEndpointIndependentTabsAndSizeOwnerLifecycle(t *testing.T) {
 		width, height := model.PaneTermSize(state.PanesArea(), true)
 		return fmt.Sprintf("%d %d", height, width)
 	}
+	// Print each marker and its size in one write: the shell can report a
+	// job-control error between a separate printf and stty.
 	for _, test := range []struct {
 		client     *testConn
 		marker     string
 		cols, rows int
 	}{{first, "FIRSTSIZE", 80, 24}, {second, "SECONDSIZE", 160, 45}, {first, "RESTOREDSIZE", 80, 24}} {
-		test.client.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf '" + test.marker + " '; stty size\n"))})
+		test.client.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf '" + test.marker + " %s\\n' \"$(stty size)\"\n"))})
 		waitRead(t, dir, firstPane, test.marker+" "+expected(test.cols, test.rows))
 	}
 	first.send(t, clientMsg{Type: "resize", Cols: 90, Rows: 26})
-	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'RESIZECLAIMSIZE '; stty size\n"))})
+	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'RESIZECLAIMSIZE %s\\n' \"$(stty size)\"\n"))})
 	waitRead(t, dir, firstPane, "RESIZECLAIMSIZE "+expected(90, 26))
 	second.send(t, clientMsg{Type: "resize", Cols: 150, Rows: 44})
-	second.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'OWNERSIZE '; stty size\n"))})
+	second.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'OWNERSIZE %s\\n' \"$(stty size)\"\n"))})
 	waitRead(t, dir, firstPane, "OWNERSIZE "+expected(150, 44))
 	second.conn.Close()
-	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("while :; do printf 'ONLYSIZE '; stty size; sleep 0.1; done\n"))})
+	first.send(t, clientMsg{Type: "input", Data: encode64([]byte("while :; do printf 'ONLYSIZE %s\\n' \"$(stty size)\"; sleep 0.1; done\n"))})
 	waitRead(t, dir, firstPane, "ONLYSIZE "+expected(90, 26))
 	first.send(t, clientMsg{Type: "input", Data: encode64([]byte{3})})
 }
