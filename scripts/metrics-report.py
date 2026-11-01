@@ -50,10 +50,14 @@ def render_row(metric):
     scale = max(successful, default=0)
     cells = []
     for product in ('ikesu', 'herdr'):
+        if product not in groups:
+            cells.append('<td>対象外</td>')
+            continue
         samples = groups.get(product, [])
         median = summarize(samples)
         raw = ', '.join(str(s['value']) if s['status'] == 'ok'
-                        else '失敗: ' + s.get('error', '理由未記録')
+                        else ('未実行' if s['status'] == 'not_started'
+                              else '失敗: ' + s.get('error', '理由未記録'))
                         for s in samples) or '未計測'
         width = 0 if median is None or scale == 0 else 100 * abs(median) / scale
         cells.append('<td><strong>{}</strong><div class="bar"><i style="width:{:.4f}%"></i></div>'
