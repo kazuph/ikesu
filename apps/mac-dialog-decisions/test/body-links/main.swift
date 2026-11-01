@@ -24,9 +24,9 @@ DispatchQueue.main.async {
   let text=labels(content).first {$0.string==body}!
   func click(_ index:Int) {
     if index==sources.count+1 { controller.close();exit(0) }
-    panel.resignKey(); NSApp.deactivate()
     // Deactivation is asynchronous; check its state before each inactive click.
     func waitUntilInactive(_ attempts:Int) {
+      panel.resignKey(); NSApp.deactivate()
       if panel.isKeyWindow || NSApp.isActive {
         precondition(attempts > 0,"click must start with panel behind")
         DispatchQueue.main.asyncAfter(deadline:.now()+0.05) { waitUntilInactive(attempts-1) }
