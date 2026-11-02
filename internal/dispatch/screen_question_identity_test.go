@@ -58,7 +58,14 @@ func TestScreenQuestionIdentitySurvivesRestartAndRejectsDuplicates(t *testing.T)
 	if _, found, err := store.ScreenQuestionDecision("p1", identity); err != nil || found {
 		t.Fatalf("resolved identity: %v %v", found, err)
 	}
+	recreated, err := store.CreateScreenDecision(params, time.Now(), "p1", identity)
+	if err != nil {
+		t.Fatalf("locally cancelled question did not return: %v", err)
+	}
+	if _, err := store.AnswerDecision(api.DecisionAnswerParams{DecisionID: recreated.DecisionID, OptionIDs: []string{"1"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.CreateScreenDecision(params, time.Now(), "p1", identity); err == nil {
-		t.Fatal("resolved question recreated")
+		t.Fatal("answered question recreated")
 	}
 }

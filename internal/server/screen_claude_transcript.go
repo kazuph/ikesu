@@ -41,10 +41,22 @@ func matchClaudeQuestion(p *screenprompt.Prompt, q session.ClaudeQuestion) bool 
 	if screenTitle == "" || !strings.Contains(compactQuestion(q.Question), screenTitle) {
 		return false
 	}
+	if p.Params.Body != nil && (p.Params.QuestionLabel == nil || *p.Params.Body != *p.Params.QuestionLabel) {
+		body := compactQuestion(*p.Params.Body)
+		if body != "" && !strings.Contains(compactQuestion(q.Question), body) {
+			return false
+		}
+	}
 	for i, option := range p.Params.Options {
 		label := compactQuestion(option.Label)
 		if label == "" || compactQuestion(q.Options[i].Label) != label {
 			return false
+		}
+		if option.Description != nil {
+			description := compactQuestion(*option.Description)
+			if description != "" && !strings.Contains(compactQuestion(q.Options[i].Description), description) {
+				return false
+			}
 		}
 	}
 	return true
@@ -53,7 +65,11 @@ func matchClaudeQuestion(p *screenprompt.Prompt, q session.ClaudeQuestion) bool 
 func matchesClaudeDisplay(previous, current *screenprompt.Prompt, display api.DecisionCreateParams) bool {
 	q := session.ClaudeQuestion{Question: display.Title, Multi: display.MultiSelect, Index: current.Question}
 	for _, option := range display.Options {
-		q.Options = append(q.Options, session.ClaudeQuestionOption{Label: option.Label})
+		description := ""
+		if option.Description != nil {
+			description = *option.Description
+		}
+		q.Options = append(q.Options, session.ClaudeQuestionOption{Label: option.Label, Description: description})
 	}
 	return matchClaudeQuestion(previous, q)
 }
