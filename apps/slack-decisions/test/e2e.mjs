@@ -48,7 +48,7 @@ const ikesuEnv = {
   XDG_RUNTIME_DIR: runtimeDir,
   IKESU_SOCKET_PATH: socketPath,
   IKESU_SOCKET_PATH_EXPLICIT: "1",
-  SHELL: "/bin/sh",
+  SHELL: "/bin/zsh",
 };
 
 const serverLog = fs.createWriteStream(path.join(OUT, "server.log"));
