@@ -16,12 +16,13 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
     });
     assert.equal(generate.status,0,generate.stdout+generate.stderr);
     const decisions=JSON.parse(fs.readFileSync(path.join(root,'decisions.json'),'utf8'));
-    assert.equal(Object.keys(decisions).length,8);
+    assert.equal(Object.keys(decisions).length,9);
     const rows=Object.entries(decisions).map(([name,decision])=>{
       const spec=buildDialogSpec(decision,{id:'local'},0);
       assert.equal(spec.body,decision.body);
       assert.equal(spec.title,decision.title);
       assert.equal(spec.approval_command,decision.origin.command);
+      if (name==='requested-example') assert.deepEqual(spec.approval_target_range,{start:0,length:decision.origin.target_command.length});
       assert.equal(spec.details.some(detail=>['コマンド','対象コマンド','理由'].includes(detail.label)),false);
       return {name,decision,spec};
     });
