@@ -24,6 +24,9 @@ func compactQuestion(s string) string {
 
 func claudeQuestionPresentation(p api.DecisionCreateParams, q session.ClaudeQuestion) api.DecisionCreateParams {
 	p.Title = q.Question
+	if p.Body != nil && (p.QuestionLabel == nil || *p.Body != *p.QuestionLabel) {
+		p.Body = nil
+	}
 	return p
 }
 
@@ -145,8 +148,7 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 	if match == nil {
 		return "", api.DecisionCreateParams{}, false, unverified, resolvedMatch
 	}
-	params := p.Params
-	params.Title = match.Question
+	params := claudeQuestionPresentation(p.Params, *match)
 	params.Options = append([]api.DecisionOption(nil), p.Params.Options...)
 	for i := range params.Options {
 		params.Options[i].Label = match.Options[i].Label
