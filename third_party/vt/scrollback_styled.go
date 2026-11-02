@@ -67,15 +67,32 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 		reuse.zero[x] = c.Width == 0 && c.Content == "" && blankCell(c)
 		if !reuse.zero[x] && !sameSavedStyle(&reuse.styles[run.style], c) {
 			run.end = x
-			if styleIndex == nil {
-				styleIndex = map[appearanceKey]int{savedAppearanceKey(&reuse.styles[0]): 0}
+			// Keep two common alternating appearances on the allocation-free path.
+			style, found := 0, false
+			for style < len(reuse.styles) && style < 2 {
+				if sameSavedStyle(&reuse.styles[style], c) {
+					found = true
+					break
+				}
+				style++
 			}
-			key := cellAppearanceKey(c)
-			style, found := styleIndex[key]
+			if !found && styleIndex == nil && len(reuse.styles) >= 2 {
+				styleIndex = make(map[appearanceKey]int)
+				for i := range reuse.styles {
+					styleIndex[savedAppearanceKey(&reuse.styles[i])] = i
+				}
+			}
+			var key appearanceKey
+			if !found && styleIndex != nil {
+				key = cellAppearanceKey(c)
+				style, found = styleIndex[key]
+			}
 			if !found {
 				style = len(reuse.styles)
 				reuse.styles = append(reuse.styles, savedStyle{style: c.Style, link: c.Link})
-				styleIndex[key] = style
+				if styleIndex != nil {
+					styleIndex[key] = style
+				}
 			}
 			reuse.runs = append(reuse.runs, savedRun{style: style})
 			run = &reuse.runs[len(reuse.runs)-1]
