@@ -210,10 +210,11 @@ func TestStyledHistoryIndexesThreeOrMoreRecurringAppearances(t *testing.T) {
 		}
 		// Reuse with fewer kinds: the index is rebuilt for the new row.
 		short := row[:12]
-		if packStyled(short, saved) == nil || len(saved.styles) != min(kinds, 6) {
-			t.Fatalf("kinds=%d: reuse not packed (styles=%d)", kinds, len(saved.styles))
+		repacked := packStyled(short, saved)
+		if repacked == nil || len(repacked.styles) != min(kinds, 6) {
+			t.Fatalf("kinds=%d: reuse not packed", kinds)
 		}
-		if got := saved.line(); !reflect.DeepEqual(got, short) {
+		if got := repacked.line(); !reflect.DeepEqual(got, short) {
 			for x := range short {
 				if !reflect.DeepEqual(got[x], short[x]) {
 					t.Fatalf("kinds=%d x=%d: got %#v want %#v", kinds, x, got[x], short[x])
