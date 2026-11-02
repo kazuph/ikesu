@@ -145,6 +145,69 @@ test("pending body updates reuse the post and a resolved decision cannot be revi
   } finally { await daemon.stop(); await fake.stop(); }
 });
 
+test("identical pending guard requests transfer one post without reusing old reactions", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
+  const postsFilePath = path.join(tmpdir("guard-restart"), "posts.json");
+  const daemon = makeDaemon({slack, postsFilePath});
+  let restarted;
+  try {
+    const first = sampleDecision({kind: "command_guard", decision_id: "guard-first", origin: {pane_id:"p1", cwd:"/repo", command:"rm a", target_command:"", reason:"申請理由"}});
+    await daemon.onCreated("local", LOCAL, first);
+    const ts = fake.posts[0].ts;
+    fake.userReact(ts, "one", "UOLD");
+    const second = {...first, decision_id:"guard-second", created_unix_ms:Date.now()};
+    await daemon.onCreated("local", LOCAL, second);
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 1);
+    assert.equal(fake.posts[0].ts, ts);
+    assert.ok(JSON.stringify(fake.posts[0].blocks).includes("同じ申請 2回目"));
+    const entry = daemon.entries.get("local\u0000guard-second");
+    assert.ok(entry.seenReactions.has("one:UOLD"));
+    await daemon.handleSocketPayload({type:"reaction_added", user:"UOLD", reaction:"one", item:{type:"message", ts}, event_ts:String(entry.answerAfter - 1)});
+    await daemon.pollEntryReactions(entry);
+    assert.equal(daemon.testAnswers.length, 0);
+    await daemon.stop();
+    restarted = makeDaemon({slack, postsFilePath});
+    restarted.loadPostsFile();
+    await restarted.onCreated("local", LOCAL, first);
+    await restarted.onCreated("local", LOCAL, second);
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 1);
+    await restarted.onResolved("local", {...first, status:"cancelled"});
+    assert.equal(fake.posts.length, 1);
+    await restarted.onResolved("local", {...second, status:"answered"});
+    assert.equal(fake.posts.length, 0);
+  } finally { await daemon.stop(); await restarted?.stop(); await fake.stop(); }
+});
+
+test("long body and command survive Slack message and thread block limits", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const body = "本文😀\n".repeat(30000);
+    const command = "printf '```😀'\n".repeat(1000);
+    const decision = sampleDecision({kind:"command_guard", title:"実行確認", body, origin:{pane_id:"p1", cwd:"/repo", reason:"理由", command}});
+    await daemon.onCreated("local", LOCAL, decision);
+    const root = fake.posts[0];
+    const replies = fake.threadReplies.get(root.ts) || [];
+    const all = [...root.blocks, ...replies.flatMap(reply => reply.blocks || [])];
+    assert.ok(replies.length > 0);
+    assert.ok([root, ...replies].every(message => message.blocks.length <= 50));
+    const actualCommand = all.filter(block => block.type === "rich_text").map(block => block.elements[0].elements[0].text).join("");
+    assert.equal(actualCommand, command);
+    const start = all.findIndex(block => block.type === "section" && block.text?.text.startsWith("本文"));
+    let actualBody = "";
+    for (let i = start; i < all.length && actualBody.length < body.length; i++) actualBody += all[i].text?.text || "";
+    assert.equal(actualBody, body);
+    assert.ok(all.filter(block => block.type === "section").every(block => block.text.text.length <= 3000));
+    await daemon.onUpdated("local", LOCAL, {...decision, body:"短い本文", origin:{...decision.origin, command:"true"}});
+    assert.equal((fake.threadReplies.get(root.ts) || []).length, 0);
+    assert.equal(fake.posts.length, 1);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 test("machine_down logs only transitions while retrying failed post deletion", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});

@@ -78,7 +78,7 @@ export class FakeSlack {
         const ts = `1000.${String((this._postSeq += 1)).padStart(4, "0")}`;
         if (params.thread_ts) {
           const list = this.threadReplies.get(params.thread_ts) || [];
-          list.push({ ts, user: this.botId, text: params.text, bot_id: "B1" });
+          list.push({ ts, user: this.botId, text: params.text, blocks: params.blocks, bot_id: "B1" });
           this.threadReplies.set(params.thread_ts, list);
           return { ok: true, ts };
         }
@@ -94,7 +94,7 @@ export class FakeSlack {
         return { ok: true, ts };
       }
       case "chat.update": {
-        const post = this.posts.find((p) => p.ts === params.ts);
+        const post = this.posts.find((p) => p.ts === params.ts) || [...this.threadReplies.values()].flat().find((p) => p.ts === params.ts);
         if (post) {
           post.blocks = params.blocks;
           post.text = params.text;

@@ -13,7 +13,7 @@ test('Mac and Slack lead with the same four complete location fields and exact a
   assert.equal(spec.approval_command,'bash delete.sh');
   assert.equal(spec.approval_target_range,null);
   assert.equal(blocks[1].text.text,'*削除操作は確認が必要です*');
-  assert.match(blocks[2].text.text,/```\nbash delete\.sh\n```/);
+  assert.equal(blocks[2].elements[0].elements[0].text,'bash delete.sh');
   assert.equal(blocks[3].text.text,d.body);
   assert.ok(fallbackText({decision:d,machine}).startsWith(spec.location));
   assert.deepEqual(spec.options.map(x=>x.id),['approve','reject']);
