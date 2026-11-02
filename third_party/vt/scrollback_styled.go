@@ -34,7 +34,8 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 	if len(line) == 0 {
 		return nil
 	}
-	if reuse == nil {
+	reused := reuse != nil
+	if !reused {
 		reuse = &styledRow{}
 	}
 	if cap(reuse.glyphs) < len(line) {
@@ -105,6 +106,11 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 	}
 	cost := int(unsafe.Sizeof(styledRow{})) + cap(reuse.glyphs)*int(unsafe.Sizeof(savedGlyph{})) + cap(reuse.runs)*int(unsafe.Sizeof(savedRun{})) + cap(reuse.styles)*int(unsafe.Sizeof(savedStyle{})) + len(reuse.text) + cap(reuse.zero)
 	if cost > len(line)*scrollbackCellBytes {
+		if reused {
+			// Storage kept from a wider evicted row can exceed a short row's
+			// budget on its own; retry with exact-size storage.
+			return packStyled(line, nil)
+		}
 		return nil
 	}
 	return reuse

@@ -181,6 +181,49 @@ func TestStyledHistoryReusesAppearancesWithoutLosingLinksOrColors(t *testing.T) 
 	}
 }
 
+// Three or more recurring appearances go through the per-row index; each
+// recurrence must map back to its first slot, also when the row is reused.
+func TestStyledHistoryIndexesThreeOrMoreRecurringAppearances(t *testing.T) {
+	for _, kinds := range []int{3, 4, 7} {
+		styles := make([]uv.Style, kinds)
+		links := make([]uv.Link, kinds)
+		for k := range styles {
+			styles[k] = uv.Style{Fg: historySliceColor{uint8(10 + k)}, Attrs: uv.AttrBold}
+			links[k] = uv.Link{URL: "https://example.test/" + string(rune('a'+k))}
+		}
+		row := make(uv.Line, 84)
+		for x := range row {
+			k := (x / 2) % kinds
+			row[x] = uv.Cell{Content: string(rune('a' + k)), Width: 1, Style: styles[k], Link: links[k]}
+		}
+		saved := packStyled(row, nil)
+		if saved == nil || len(saved.styles) != kinds || len(saved.runs) != len(row)/2 {
+			t.Fatalf("kinds=%d: styles=%d runs=%d", kinds, len(saved.styles), len(saved.runs))
+		}
+		for i, run := range saved.runs {
+			if run.style != i%kinds {
+				t.Fatalf("kinds=%d: run %d uses slot %d", kinds, i, run.style)
+			}
+		}
+		if !reflect.DeepEqual(saved.line(), row) {
+			t.Fatalf("kinds=%d: cells changed", kinds)
+		}
+		// Reuse with fewer kinds: the index is rebuilt for the new row.
+		short := row[:12]
+		if packStyled(short, saved) == nil || len(saved.styles) != min(kinds, 6) {
+			t.Fatalf("kinds=%d: reuse not packed (styles=%d)", kinds, len(saved.styles))
+		}
+		if got := saved.line(); !reflect.DeepEqual(got, short) {
+			for x := range short {
+				if !reflect.DeepEqual(got[x], short[x]) {
+					t.Fatalf("kinds=%d x=%d: got %#v want %#v", kinds, x, got[x], short[x])
+				}
+			}
+			t.Fatalf("kinds=%d: length %d want %d", kinds, len(got), len(short))
+		}
+	}
+}
+
 func TestStyledHistoryLongAppearancesAndRetention(t *testing.T) {
 	for _, unique := range []bool{false, true} {
 		row := longAppearanceRow(unique)
@@ -291,5 +334,34 @@ func BenchmarkPackStyledLongAppearances(b *testing.B) {
 				_ = packStyled(row, nil)
 			}
 		})
+	}
+}
+
+// When the ring evicts a wide styled row and reuses its slot for a short one,
+// the short row must still be stored compactly rather than as expanded cells.
+func TestStyledHistoryShortRowReusingWideSlotStaysCompact(t *testing.T) {
+	styles := []uv.Style{{Fg: historySliceColor{1}}, {Fg: historySliceColor{2}}, {Fg: historySliceColor{3}}}
+	styledRow := func(width int) uv.Line {
+		row := make(uv.Line, width)
+		for x := range row {
+			row[x] = uv.Cell{Content: "w", Width: 1, Style: styles[(x/3)%len(styles)]}
+		}
+		return row
+	}
+	wide, short := styledRow(200), styledRow(12)
+	sb := NewScrollback(4)
+	sb.SetMaxBytes(4 * (scrollbackRowBytes + len(wide)*scrollbackCellBytes))
+	for i := 0; i < 4; i++ {
+		sb.Push(wide)
+	}
+	for i := 0; i < 8; i++ {
+		sb.Push(short)
+		idx := sb.wrap(sb.start + sb.count - 1)
+		if sb.styled[idx] == nil {
+			t.Fatalf("push %d: short row stored as expanded cells", i)
+		}
+		if got := sb.Line(sb.Len() - 1); !reflect.DeepEqual(got, short) {
+			t.Fatalf("push %d: short row cells changed", i)
+		}
 	}
 }
