@@ -37,7 +37,7 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 	if reuse == nil {
 		reuse = &styledRow{}
 	}
-	if cap(reuse.glyphs) != len(line) {
+	if cap(reuse.glyphs) < len(line) {
 		reuse.glyphs = make([]savedGlyph, len(line))
 		reuse.zero = make([]bool, len(line))
 	} else {

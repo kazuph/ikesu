@@ -94,6 +94,10 @@ func TestStyledHistoryPackedTextPreservesCellsOnReuse(t *testing.T) {
 	if got := saved.line(); !reflect.DeepEqual(got, row) {
 		t.Fatal("reused packed history changed cell values")
 	}
+	short := row[:len(row)/2]
+	if packStyled(short, saved) == nil || !reflect.DeepEqual(saved.line(), short) {
+		t.Fatal("shrinking a reused row changed cell values")
+	}
 }
 
 func TestStyledWideContinuationsRemainZeroAcrossReadsAndReflow(t *testing.T) {
