@@ -223,8 +223,11 @@ const (
 )
 
 // pumpSmallRead is the largest read copied into an exact-size chunk instead
-// of handing over the read buffer, so queued small reads stay small.
-const pumpSmallRead = 4 << 10
+// of handing over the read buffer. At half a read buffer, the one-read queue
+// budget fits at most one handed-over buffer, so only the reader's, the
+// queued, and the writer's read buffers are ever in flight and pumpPoolLen
+// spares cover them; queued small reads stay small.
+const pumpSmallRead = pumpReadBytes / 2
 
 // ptyReadyNow reports whether fd has data (or an event worth a read attempt)
 // available without waiting.

@@ -84,8 +84,16 @@ func TestReadPTYCopiesSmallReadsAndHandsOverLargeOnes(t *testing.T) {
 	if _, err := w.WriteString("small"); err != nil {
 		t.Fatal(err)
 	}
-	if c := next(); string(c) != "small" || cap(c) > pumpSmallRead {
-		t.Fatalf("small read: %q cap %d", c, cap(c))
+	first := next()
+	if string(first) != "small" || cap(first) > pumpSmallRead {
+		t.Fatalf("small read: %q cap %d", first, cap(first))
+	}
+	// The reader keeps its buffer after copying; a kept chunk must not change.
+	if _, err := w.WriteString("other"); err != nil {
+		t.Fatal(err)
+	}
+	if c := next(); string(c) != "other" || string(first) != "small" {
+		t.Fatalf("second read %q changed the kept chunk to %q", c, first)
 	}
 	big := strings.Repeat("b", pumpSmallRead*2)
 	if _, err := w.WriteString(big); err != nil {
