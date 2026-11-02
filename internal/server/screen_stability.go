@@ -46,7 +46,11 @@ func (s *Server) updateScreenPrompt(w *screenPromptWatch) {
 		s.app.SetConfigWarning(err.Error())
 		return
 	}
-	d, changed, err := store.UpdatePendingScreenDecision(w.decisionID, w.prompt.Params)
+	params := w.prompt.Params
+	if w.displayParams != nil {
+		params = *w.displayParams
+	}
+	d, changed, err := store.UpdatePendingScreenDecision(w.decisionID, params)
 	if err != nil {
 		s.app.SetConfigWarning("screen prompt refresh: " + err.Error())
 		return

@@ -28,6 +28,16 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if ok && w != nil && w.prompt != nil && w.prompt.MCPServer != "" && current == nil {
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify current MCP confirmation"}
 	}
+	if ok && w != nil && w.transcriptID != "" {
+		if current == nil {
+			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
+		}
+		id, _, matched := s.claudeTranscriptPrompt(pid, current)
+		if !matched || id != w.transcriptID {
+			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
+		}
+		w.signature = current.Signature()
+	}
 	damaged := false
 	if pane := s.sup.Get(pid); pane != nil {
 		visible, _ := pane.ReadLines("visible", true)

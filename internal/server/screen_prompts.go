@@ -10,11 +10,12 @@ import (
 )
 
 type screenPromptHub struct {
-	seen     map[int]map[string]bool
-	rebuilds map[int][]time.Time
-	flows    map[int]*screenAnswerFlow
-	watches  map[int]*screenPromptWatch
-	timer    *time.Timer
+	seen        map[int]map[string]bool
+	rebuilds    map[int][]time.Time
+	flows       map[int]*screenAnswerFlow
+	watches     map[int]*screenPromptWatch
+	transcripts map[int]*claudeTranscriptScan
+	timer       *time.Timer
 }
 
 // Waiting screens use the review's one-second bound; preview navigation keeps
@@ -23,6 +24,8 @@ const screenPromptWaitPoll = time.Second
 
 type screenPromptWatch struct {
 	signature           string
+	transcriptID        string
+	displayParams       *api.DecisionCreateParams
 	decisionID          string
 	prompt              *screenprompt.Prompt
 	mismatches          int
@@ -231,6 +234,7 @@ func (s *Server) scanScreenPrompts() {
 			s.submitScreenFlow(pid, p)
 			p = nil
 		}
+		transcriptID, display, transcriptOK, transcriptPending := s.pollClaudeTranscript(pid, p)
 		if w != nil {
 			if p == nil && w.prompt != nil && w.prompt.CodexQuestion && (!w.resolved || w.editingText) {
 				if pane := s.sup.Get(pid); pane != nil && !pane.Snapshot().Dead {
@@ -239,13 +243,29 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 			}
-			if p != nil && !w.resolved && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
+			if p != nil && !w.resolved && transcriptOK {
+				same := w.transcriptID == transcriptID
+				if w.transcriptID == "" {
+					same = matchesClaudeDisplay(w.prompt, p, display)
+				}
+				if same {
+					w.signature = p.Signature()
+					w.transcriptID = transcriptID
+					w.displayParams = &display
+				}
+			}
+			changedIdentity := transcriptOK && w.transcriptID != "" && transcriptID != w.transcriptID
+			if transcriptPending && w.transcriptID != "" && p != nil && p.Signature() != w.signature {
+				w.lastMatched = false
+				continue
+			}
+			if p != nil && !w.resolved && w.transcriptID == "" && !transcriptOK && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
 				w.signature = p.Signature()
 				w.prompt = p
 				s.updateScreenPrompt(w)
 			}
 
-			if p == nil || p.Signature() != w.signature {
+			if p == nil || changedIdentity || p.Signature() != w.signature {
 				w.lastMatched = false
 				w.mismatches++
 				if w.preview != nil {
@@ -287,6 +307,9 @@ func (s *Server) scanScreenPrompts() {
 		}
 		if w == nil && p != nil && s.app.PaneStatusKey(pid) == "blocked" {
 			w = &screenPromptWatch{signature: p.Signature(), prompt: p, lastMatched: true}
+			if transcriptOK {
+				w.transcriptID, w.displayParams = transcriptID, &display
+			}
 			s.screenPrompts.watches[pid] = w
 			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
 				s.markPreviewSeen(pid, p)
@@ -336,6 +359,9 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 		}
 	}
 	p := w.prompt.Params
+	if w.displayParams != nil {
+		p = *w.displayParams
+	}
 	pane := s.sup.Get(pid)
 	if pane == nil {
 		return
