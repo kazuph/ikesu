@@ -22,6 +22,11 @@ func compactQuestion(s string) string {
 	}, s)
 }
 
+func claudeQuestionPresentation(p api.DecisionCreateParams, q session.ClaudeQuestion) api.DecisionCreateParams {
+	p.Title = q.Question
+	return p
+}
+
 func matchClaudeQuestion(p *screenprompt.Prompt, q session.ClaudeQuestion) bool {
 	if p == nil || p.CodexQuestion || p.MCPServer != "" || p.Params.Kind != "agent_prompt" || p.Params.MultiSelect != q.Multi || len(p.Params.Options) != len(q.Options) || q.Question == "" {
 		return false

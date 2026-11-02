@@ -66,6 +66,15 @@ func TestClaudeDisplayRetainsScreenPreview(t *testing.T) {
 	}
 }
 
+func TestClaudeTranscriptPresentationRemovesPartialScreenBody(t *testing.T) {
+	partial, heading := "全文の後半", "質問 1/2"
+	p := api.DecisionCreateParams{Title: "先頭", Body: &partial, QuestionLabel: &heading}
+	got := claudeQuestionPresentation(p, session.ClaudeQuestion{Question: "質問の全文。\n\n全文の後半"})
+	if got.Title != "質問の全文。\n\n全文の後半" || got.Body != nil || got.QuestionLabel == nil || *got.QuestionLabel != heading {
+		t.Fatalf("old partial body remained: %+v", got)
+	}
+}
+
 func TestClaudeCompletedAndAmbiguousQuestionsAreNotPresented(t *testing.T) {
 	p := &screenprompt.Prompt{Params: api.DecisionCreateParams{Kind: "agent_prompt", Title: "質問", Options: []api.DecisionOption{{ID: "1", Label: "はい"}}}}
 	q := session.ClaudeQuestion{ToolID: "old", Question: "質問", Options: []session.ClaudeQuestionOption{{Label: "はい"}}, Answered: true}
