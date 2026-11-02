@@ -95,7 +95,13 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 			s.writeScreenLine(y, line)
 		}
 		s.cur, s.saved, s.scroll = v.Cursor, v.Saved, v.Scroll
-		s.scrollback = NewScrollback(v.HistoryLimit)
+		ring := v.HistoryLimit
+		if v.ByteLimited {
+			// A byte budget allows limit/24 rows; start at the imported size and
+			// let pushes double the ring as a freshly spawned pane does.
+			ring = max(1, min(ring, len(v.History)))
+		}
+		s.scrollback = NewScrollback(ring)
 		if v.ByteLimited {
 			s.scrollback.SetMaxBytes(v.ByteLimit)
 		}
