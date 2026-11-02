@@ -115,10 +115,14 @@ func approvalTrigger(i Input, v Verdict) string {
 }
 
 func approvalTitle(i Input, v Verdict) string {
-	if i.shellVariables != nil {
-		i.Command = i.RawLine
+	name := i.Command
+	if strings.ContainsAny(name, " \t\r\n") && len(i.Args) == 0 {
+		if parsed, err := LineInput(i, approvalCommand(i)); err == nil && parsed.Command != "" {
+			name = parsed.Command
+		}
 	}
-	title := "実行確認: " + i.redact(filepath.Base(i.Command)) + " — " + i.redact(v.Reason) + "（規則: " + i.redact(v.Rule) + "）"
+	reason := strings.NewReplacer("\r", " ", "\n", " ").Replace(v.Reason)
+	title := "実行確認: " + i.redact(filepath.Base(name)) + " — " + i.redact(reason) + "（規則: " + i.redact(v.Rule) + "）"
 	return title
 }
 
@@ -207,8 +211,12 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		targetCommand = i.redact(trigger)
 	}
 	body := ""
-	if i.Env["IKESU_GUARD_PARENT_COMMAND"] != "" && reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
-		body = "申請文（外側から引き継ぎ）\n"
+	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" && reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
+		if strings.Contains(parent, command) || strings.Contains(command, parent) {
+			body = "申請文（外側から引き継ぎ）\n"
+		} else {
+			body = "申請文（外側のコマンド " + parent + " から引き継ぎ）\n"
+		}
 	}
 	if reason != "" {
 		body += reason

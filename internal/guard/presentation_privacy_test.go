@@ -103,7 +103,7 @@ func TestNestedGuardRequestsMissingOrInheritedReason(t *testing.T) {
 		if p.Body == nil {
 			t.Fatal("valid inherited reason did not create dialog", out)
 		}
-		if reason != "" && (!strings.Contains(*p.Body, "外側から引き継ぎ") || !strings.Contains(*p.Body, reason)) {
+		if reason != "" && (!strings.Contains(*p.Body, "外側のコマンド bash img.sh から引き継ぎ") || !strings.Contains(*p.Body, reason)) {
 			t.Error("inherited request was not explained")
 		}
 
