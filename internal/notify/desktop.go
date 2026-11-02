@@ -23,8 +23,10 @@ type Desktop struct {
 	TerminalBundleID string
 	ConfigPath       string
 	CacheDir         func() (string, error)
-	Warn             func(error)
-	soundWarning     *sync.Once
+	SystemSoundDir   string // macOS sounds folder; empty means /System/Library/Sounds
+
+	Warn         func(error)
+	soundWarning *sync.Once
 }
 
 func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, machineID string) error {

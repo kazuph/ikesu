@@ -18,6 +18,62 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
+// noMacSounds is a folder that never exists, so tests of the embedded sounds
+// behave the same on macOS and Linux.
+const noMacSounds = "/nonexistent/ikesu-test-no-mac-sounds"
+
+func TestMacSystemSoundsWhenPresentElseEmbedded(t *testing.T) {
+	t.Setenv("IKESU_DISABLE_SOUND", "")
+	dir := t.TempDir()
+	for _, name := range []string{"Blow.aiff", "Hero.aiff"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("FORM"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cache := t.TempDir()
+	for _, tc := range []struct {
+		kind, mac string
+		embedded  []byte
+	}{{"finished", "Blow.aiff", doneSound}, {"needs_attention", "Hero.aiff", requestSound}} {
+		var calls [][]string
+		d := Desktop{SystemSoundDir: dir, CacheDir: func() (string, error) { return cache, nil }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
+			calls = append(calls, append([]string{name}, args...))
+			return nil
+		}}
+		if err := d.Deliver(endpoint.Notification{Kind: tc.kind, Agent: "codex"}, config.Config{}, "local", ""); err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(cache, api.ExecutableNamespace(d.Executable), "sounds", fmt.Sprintf("%x.wav", sha256.Sum256(tc.embedded)))
+		if runtime.GOOS == "darwin" {
+			want = filepath.Join(dir, tc.mac)
+		}
+		if len(calls) != 1 || calls[0][0] != testPlaybackCommand() || calls[0][len(calls[0])-1] != want {
+			t.Fatal(tc.kind, calls, want)
+		}
+		// A configured sound still wins over the macOS sound.
+		calls = nil
+		c, err := config.Decode([]byte("[ui.sound]\npath='/tmp/custom.wav'\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Deliver(endpoint.Notification{Kind: tc.kind, Agent: "codex"}, c, "local", ""); err != nil || len(calls) != 1 || calls[0][len(calls[0])-1] != "/tmp/custom.wav" {
+			t.Fatal("custom path lost priority", calls, err)
+		}
+	}
+	// Without the macOS file (or on Linux) the embedded sound plays.
+	if err := os.Remove(filepath.Join(dir, "Hero.aiff")); err != nil {
+		t.Fatal(err)
+	}
+	d := Desktop{SystemSoundDir: dir, CacheDir: func() (string, error) { return cache, nil }}
+	got, err := d.defaultSound("needs_attention")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(got); err != nil || !bytes.Equal(b, requestSound) {
+		t.Fatal("missing Hero.aiff did not fall back to the embedded sound", got, err)
+	}
+}
+
 func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 	t.Setenv("IKESU_DISABLE_SOUND", "")
 	cache := t.TempDir()
@@ -47,7 +103,7 @@ func TestBundledSoundsNumericWAVAndPlaybackPaths(t *testing.T) {
 		}
 		t.Logf("%s: %d Hz, %.9f seconds, RMS %.3f dBFS, peak %.3f dBFS", tc.kind, rate, float64(frames)/float64(rate), 20*math.Log10(math.Sqrt(squares/float64(frames))), 20*math.Log10(peak))
 		var calls [][]string
-		d := Desktop{Executable: "/tmp/ikesu-next", CacheDir: func() (string, error) { return cache, nil }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
+		d := Desktop{Executable: "/tmp/ikesu-next", SystemSoundDir: noMacSounds, CacheDir: func() (string, error) { return cache, nil }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
 			calls = append(calls, append([]string{name}, args...))
 			return nil
 		}}
@@ -102,7 +158,7 @@ func TestDefaultSoundCacheFailureKeepsNotificationAndWarnsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings, calls int
-	d := Desktop{CacheDir: func() (string, error) { return base, nil }, soundWarning: &sync.Once{}, Warn: func(error) { warnings++ }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
+	d := Desktop{SystemSoundDir: noMacSounds, CacheDir: func() (string, error) { return base, nil }, soundWarning: &sync.Once{}, Warn: func(error) { warnings++ }, LookPath: func(name string) (string, error) { return "/test/" + name, nil }, Run: func(name string, args ...string) error {
 		expected := "/test/terminal-notifier"
 		if runtime.GOOS == "linux" {
 			expected = "/test/notify-send"
@@ -125,7 +181,7 @@ func TestDefaultSoundCacheFailureKeepsNotificationAndWarnsOnce(t *testing.T) {
 
 func TestDefaultSoundConcurrentCachePublication(t *testing.T) {
 	base := t.TempDir()
-	d := Desktop{CacheDir: func() (string, error) { return base, nil }}
+	d := Desktop{SystemSoundDir: noMacSounds, CacheDir: func() (string, error) { return base, nil }}
 	var wg sync.WaitGroup
 	for range 2 {
 		wg.Add(1)

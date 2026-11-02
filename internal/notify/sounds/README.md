@@ -33,6 +33,13 @@ Only the reference files' sample rate and mean dBFS are kept as level
 guidelines: done 48000 Hz, -23.9 dBFS; request 44100 Hz, -23.2 dBFS. ikesu's
 files are mono PCM16. Peak levels follow from these waveforms.
 
+macOS (店長's choice on 2026-11-02): when no custom path is configured, the
+finished sound plays `/System/Library/Sounds/Blow.aiff` and the asking sound
+plays `/System/Library/Sounds/Hero.aiff`. These files ship with macOS and are
+read from there at run time; they are never copied into ikesu, because no
+permission to redistribute them was found. If a file is missing, and on Linux,
+the embedded WAV files below are played as before.
+
 The binary embeds both WAV files. Default playback materializes a content-hash
 filename under the OS cache directory's binary namespace `sounds` directory,
 with directories 0700 and files 0600. Existing hashes are reused. Custom paths
