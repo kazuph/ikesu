@@ -328,3 +328,24 @@ func TestScriptFileReadDefaultAndInheritedNames(t *testing.T) {
 		t.Fatalf("ordinary inherited name treated as positional: %+v", v)
 	}
 }
+
+// The title must not repeat the script line that the panel already shows as
+// the command (店長 2026-11-03: "x.sh の11行目: bash …" appeared twice).
+func TestApprovalTitleDropsRepeatedScriptLine(t *testing.T) {
+	i, _ := scriptPane(t)
+	path := filepath.Join(i.Cwd, "render.sh")
+	if e := os.WriteFile(path, []byte("printf before\nrm /outside/script-title-test\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	got, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+	if v.Decision != "ask" || !strings.Contains(v.Reason, "の2行目:") || got.TriggerCommand == "" {
+		t.Fatalf("fixture did not produce a script-line reason: %+v trigger=%q", v, got.TriggerCommand)
+	}
+	title := approvalTitle(got, v)
+	if strings.Contains(title, "の2行目:") || strings.Contains(title, "/outside/script-title-test") {
+		t.Fatalf("title repeats the script line: %q", title)
+	}
+	if !strings.HasPrefix(title, "実行確認: ") || !strings.Contains(title, "（規則: "+v.Rule+"）") {
+		t.Fatalf("title lost the reason or rule: %q", title)
+	}
+}
