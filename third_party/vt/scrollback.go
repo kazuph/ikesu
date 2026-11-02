@@ -298,12 +298,12 @@ func (s *Scrollback) lineInto(index int, dst uv.Line) uv.Line {
 		for _, run := range styled.runs {
 			appearance := styled.styles[run.style]
 			for x := start; x < run.end; x++ {
-				if styled.zero[x] {
+				if styled.glyphs[x].zero() {
 					dst[x] = uv.Cell{}
 					continue
 				}
 				g := styled.glyphs[x]
-				dst[x] = uv.Cell{Content: styled.contentAt(x), Width: g.width, Style: appearance.style, Link: appearance.link}
+				dst[x] = uv.Cell{Content: styled.contentAt(x), Width: g.width(), Style: appearance.style, Link: appearance.link}
 			}
 			start = run.end
 		}
