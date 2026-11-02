@@ -329,10 +329,7 @@ func decodeSequence[T string | []byte](m Method, b T, state State, p *Parser) (s
 				return b[:i], 0, i, NormalState
 			}
 
-			if p != nil && p.dataLen < len(p.data) {
-				p.data[p.dataLen] = c
-				p.dataLen++
-
+			if p != nil && p.dataLen >= 0 && p.putData(c) {
 				// Parse the OSC command number
 				if c == ';' && HasOscPrefix(b) {
 					parseOscCmd(p)

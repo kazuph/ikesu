@@ -29,8 +29,13 @@ type Parser struct {
 
 	// dataLen keeps track of the length of the data buffer.
 	// If dataLen is -1, the data buffer is unlimited and will grow as needed.
-	// Otherwise, dataLen is limited by the size of the data buffer.
+	// Otherwise, dataLen is limited by dataMax.
 	dataLen int
+
+	// dataMax is the size limit of a bounded data buffer. The buffer itself
+	// grows on demand up to this limit, so an idle parser holds no large
+	// buffer.
+	dataMax int
 
 	// paramsLen keeps track of the number of parameters.
 	// This is limited by the size of the params buffer.
@@ -75,10 +80,39 @@ func (p *Parser) SetParamsSize(size int) {
 // grow as needed.
 func (p *Parser) SetDataSize(size int) {
 	if size <= 0 {
-		size = 0
 		p.dataLen = -1
+		p.dataMax = 0
+		p.data = make([]byte, 0)
+		return
 	}
-	p.data = make([]byte, size)
+	if p.dataLen < 0 {
+		p.dataLen = 0
+	}
+	p.dataMax = size
+	p.data = nil
+}
+
+// dataShrinkSize is the largest bounded buffer kept between sequences; a
+// larger one (from a big OSC or DCS payload) is released when the next
+// sequence starts.
+const dataShrinkSize = 64 * 1024
+
+// putData appends b to a bounded data buffer, growing it up to dataMax and
+// dropping bytes beyond the limit as before.
+func (p *Parser) putData(b byte) bool {
+	// A buffer installed directly (without SetDataSize) bounds itself.
+	limit := max(p.dataMax, len(p.data))
+	if p.dataLen < 0 || p.dataLen >= limit {
+		return false
+	}
+	if p.dataLen == len(p.data) {
+		grown := make([]byte, min(limit, max(256, 2*len(p.data))))
+		copy(grown, p.data[:p.dataLen])
+		p.data = grown
+	}
+	p.data[p.dataLen] = b
+	p.dataLen++
+	return true
 }
 
 // Params returns the list of parsed packed parameters.
@@ -327,6 +361,9 @@ func (p *Parser) performAction(action parser.Action, state parser.State, b byte)
 			p.data = p.data[:0]
 		} else {
 			p.dataLen = 0
+			if p.dataMax > 0 && len(p.data) > dataShrinkSize {
+				p.data = nil
+			}
 		}
 		if p.state >= parser.DcsEntryState && p.state <= parser.DcsStringState {
 			// Collect the command byte for DCS
@@ -346,10 +383,7 @@ func (p *Parser) performAction(action parser.Action, state parser.State, b byte)
 		if p.dataLen < 0 {
 			p.data = append(p.data, b)
 		} else {
-			if p.dataLen < len(p.data) {
-				p.data[p.dataLen] = b
-				p.dataLen++
-			}
+			p.putData(b)
 		}
 
 	case parser.DispatchAction:
