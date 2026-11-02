@@ -22,7 +22,10 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
       assert.equal(spec.body,decision.body);
       assert.equal(spec.title,decision.title);
       assert.equal(spec.approval_command,decision.origin.command);
-      if (name==='requested-example') assert.deepEqual(spec.approval_target_range,{start:0,length:decision.origin.target_command.length});
+      if (name==='requested-example') {
+        assert.deepEqual(spec.approval_target_range,{start:0,length:decision.origin.target_command.length});
+        assert.deepEqual(spec.approval_fields.map(field=>field.label),['対象','理由','内容','確認済み','戻し方']);
+      }
       assert.equal(spec.details.some(detail=>['コマンド','対象コマンド','理由'].includes(detail.label)),false);
       return {name,decision,spec};
     });

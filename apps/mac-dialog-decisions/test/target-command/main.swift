@@ -6,6 +6,7 @@ app.finishLaunching()
 let rows=try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[1]))) as! [[String:Any]]
 let root=CommandLine.arguments[2]
 func fields(_ view:NSView)->[RichTextLabel] {view.subviews.flatMap {($0 as? RichTextLabel).map {[$0]} ?? fields($0)}}
+func textFields(_ view:NSView)->[NSTextField] {view.subviews.flatMap {($0 as? NSTextField).map {[$0]} ?? textFields($0)}}
 for row in rows {
  let name=row["name"] as! String
  let decision=row["decision"] as! [String:Any]
@@ -51,6 +52,15 @@ for row in rows {
   let title=labels.first {$0.string==spec.title}!
   precondition(title.string==decision["title"] as! String)
   for index in 0..<(title.string as NSString).length {precondition(title.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor != .systemRed)}
+  if name == "requested-example" {
+   let commandLabel=bodyLabels[0]
+   let firstField=labels.first {$0.string.contains("TenkaiHifumi のメモリー")}!
+   precondition(title.convert(title.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY)
+   precondition(commandLabel.convert(commandLabel.bounds,to:content).midY > firstField.convert(firstField.bounds,to:content).midY)
+   let names=textFields(content).map(\.stringValue)
+   for required in ["対象","理由","内容","確認済み","戻し方","承認  ⌘1","1日許可  ⌘2","却下  ⌘3"] { precondition(names.contains(required),"missing \(required)") }
+   print("ORDER title>command>request optionShortcuts=3 requestFields=5")
+  }
   for card in controller.cards {precondition(content.bounds.contains(card.convert(card.bounds,to:content)))}
   precondition(content.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds,to:content)))
   print("WINDOW case=\(name) number=\(controller.panel.windowNumber) visible=\(controller.panel.isVisible) frame=\(controller.panel.frame)")
