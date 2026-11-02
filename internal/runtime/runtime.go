@@ -222,6 +222,10 @@ const (
 	pumpPoolLen  = 4
 )
 
+// pumpSmallRead is the largest read copied into an exact-size chunk instead
+// of handing over the read buffer, so queued small reads stay small.
+const pumpSmallRead = 4 << 10
+
 // ptyReadyNow reports whether fd has data (or an event worth a read attempt)
 // available without waiting.
 func ptyReadyNow(fd int) bool {
@@ -248,13 +252,15 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 	}
 	defer writeStats()
 	fd := p.ptyFD
+	var buf []byte
 	for {
-		var buf []byte
-		select {
-		case buf = <-pool:
-			buf = buf[:cap(buf)]
-		default:
-			buf = make([]byte, pumpReadBytes)
+		if buf == nil {
+			select {
+			case buf = <-pool:
+				buf = buf[:cap(buf)]
+			default:
+				buf = make([]byte, pumpReadBytes)
+			}
 		}
 		n, err := p.readPTYReady(buf)
 		reads++
@@ -273,8 +279,16 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 		if n > 0 {
 			chunksSent++
 			bytes += int64(n)
+			chunk := buf[:n]
+			if n <= pumpSmallRead {
+				// Keep the read buffer: up to pumpQueueLen small chunks may wait,
+				// and each would otherwise pin a full read-sized buffer.
+				chunk = append([]byte(nil), chunk...)
+			} else {
+				buf = nil // handed to the writer, which recycles it
+			}
 			_ = sem.Acquire(context.Background(), int64(n))
-			out <- buf[:n]
+			out <- chunk
 			if chunksSent%32 == 0 {
 				writeStats()
 			}
@@ -298,6 +312,9 @@ func (p *Pane) pumpPTYToEmu(batchWait, streamGap time.Duration) {
 
 	recycle := func(c []byte) {
 		sem.Release(int64(len(c)))
+		if cap(c) != pumpReadBytes {
+			return // an exact-size copy of a small read
+		}
 		select {
 		case pool <- c[:cap(c)]:
 		default:
