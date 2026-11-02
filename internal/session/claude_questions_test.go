@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -23,6 +24,17 @@ func TestPendingClaudeQuestions(t *testing.T) {
 	got, ok := PendingClaudeQuestions(root, id)
 	if !ok || len(got) != 2 || got[0].ToolID != "new" || got[0].Question != "long question" || got[0].Options[0].Description != "full description" || got[1].Index != 1 || !got[1].Multi {
 		t.Fatalf("questions=%+v ok=%v", got, ok)
+	}
+	var cache ClaudeQuestionCache
+	if got, ok := cache.Read(root, id); !ok || len(got) != 2 {
+		t.Fatal("initial cached read", got, ok)
+	}
+	resolved := strings.TrimSuffix(content, `{"sessionId":`) + `{"sessionId":"` + id + `","message":{"content":[{"type":"tool_result","tool_use_id":"new"}]}}` + "\n"
+	if err := os.WriteFile(path, []byte(resolved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := cache.Read(root, id); !ok || len(got) != 0 {
+		t.Fatal("resolved tool appeared", got, ok)
 	}
 	other := filepath.Join(root, "projects", "other")
 	if err := os.MkdirAll(other, 0700); err != nil {

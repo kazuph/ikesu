@@ -32,11 +32,17 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		if current == nil {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
-		id, _, matched := s.claudeTranscriptPrompt(pid, current)
+		id, _, matched, _ := s.claudeTranscriptPrompt(pid, current)
 		if !matched || id != w.transcriptID {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
 		w.signature = current.Signature()
+	}
+	if ok && w != nil && w.transcriptID == "" && current != nil {
+		_, _, _, unverified := s.claudeTranscriptPrompt(pid, current)
+		if unverified {
+			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
+		}
 	}
 	damaged := false
 	if pane := s.sup.Get(pid); pane != nil {
@@ -78,9 +84,11 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 	w.resolved = true
 	s.beginScreenFlowAnswer(pid, w.prompt)
 	prompt := w.prompt
+	signature := w.signature
+	recorded := w.transcriptID != ""
 	w.editingText = (prompt.Params.MultiSelect || prompt.CodexQuestion) && answer.Text != nil
 	go func() {
-		err := s.deliverScreenAnswer(pid, w.signature, prompt, answer)
+		err := s.deliverScreenAnswer(pid, signature, prompt, answer, recorded)
 		s.app.Do(func() { w.editingText = false; s.finishScreenFlowAnswer(pid, prompt, err) })
 		if err != nil {
 			message := fmt.Sprintf("screen prompt input failed: decision=%s pane=%s: %v", w.decisionID, fmtPaneID(pid), err)
@@ -117,6 +125,13 @@ func (s *Server) screenInputChecked(pid int, signature, data string, verify bool
 				err = fmt.Errorf("question changed during input delivery")
 				return
 			}
+			if w := s.screenPrompts.watches[pid]; w != nil && w.transcriptID != "" {
+				id, _, ok, _ := s.claudeTranscriptPrompt(pid, p)
+				if !ok || id != w.transcriptID {
+					err = fmt.Errorf("recorded question changed during input delivery")
+					return
+				}
+			}
 			if cursor != nil && p.Cursor != *cursor {
 				err = fmt.Errorf("selected option changed before input delivery")
 				return
@@ -146,7 +161,7 @@ func (s *Server) screenInputDelay() error {
 	}
 }
 
-func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer) error {
+func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer, recorded bool) error {
 	if prompt.MCPServer != "" {
 		return s.deliverMCPAnswer(pid, signature, prompt, answer)
 	}
@@ -158,7 +173,7 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			if answer.OptionID == nil {
 				return fmt.Errorf("missing option")
 			}
-			if err := s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], false, nil); err != nil {
+			if err := s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], recorded, nil); err != nil {
 				return err
 			}
 			if prompt.HasPreview {
@@ -166,8 +181,8 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			}
 			return nil
 		}
-		for _, data := range []string{prompt.TextID, *answer.Text, "\r"} {
-			if err := s.screenInput(pid, signature, data, false, nil); err != nil {
+		for index, data := range []string{prompt.TextID, *answer.Text, "\r"} {
+			if err := s.screenInput(pid, signature, data, recorded && index == 0, nil); err != nil {
 				return err
 			}
 			if err := s.screenInputDelay(); err != nil {

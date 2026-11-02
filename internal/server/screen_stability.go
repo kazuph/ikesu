@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/screenprompt"
 	"time"
 )
@@ -37,6 +38,22 @@ func (s *Server) noteScreenRebuild(pid int) {
 	}
 	s.screenPrompts.rebuilds[pid] = append(s.recentScreenRebuilds(pid), time.Now())
 }
+func screenDisplayParams(w *screenPromptWatch) api.DecisionCreateParams {
+	params := w.prompt.Params
+	if w.displayParams != nil {
+		params.Title = w.displayParams.Title
+		params.Body = w.displayParams.Body
+		params.Options = append([]api.DecisionOption(nil), w.prompt.Params.Options...)
+		for i := range params.Options {
+			if i < len(w.displayParams.Options) {
+				params.Options[i].Label = w.displayParams.Options[i].Label
+				params.Options[i].Description = w.displayParams.Options[i].Description
+			}
+		}
+	}
+	return params
+}
+
 func (s *Server) updateScreenPrompt(w *screenPromptWatch) {
 	if w.decisionID == "" {
 		return
@@ -46,10 +63,7 @@ func (s *Server) updateScreenPrompt(w *screenPromptWatch) {
 		s.app.SetConfigWarning(err.Error())
 		return
 	}
-	params := w.prompt.Params
-	if w.displayParams != nil {
-		params = *w.displayParams
-	}
+	params := screenDisplayParams(w)
 	_, changed, err := store.UpdatePendingScreenDecision(w.decisionID, params)
 	if err != nil {
 		s.app.SetConfigWarning("screen prompt refresh: " + err.Error())

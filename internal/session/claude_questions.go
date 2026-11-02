@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type ClaudeQuestion struct {
@@ -23,6 +24,20 @@ type ClaudeQuestionOption struct{ Label, Description string }
 
 // PendingClaudeQuestions refuses ambiguous files and incomplete records.
 func PendingClaudeQuestions(root, sessionID string) ([]ClaudeQuestion, bool) {
+	return new(ClaudeQuestionCache).Read(root, sessionID)
+}
+
+// ClaudeQuestionCache is owned by one scanner; callers must not share it across goroutines.
+type ClaudeQuestionCache struct {
+	path      string
+	sessionID string
+	size      int64
+	modified  time.Time
+	questions []ClaudeQuestion
+	valid     bool
+}
+
+func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion, bool) {
 	if !SafeSessionID(sessionID) {
 		return nil, false
 	}
@@ -38,6 +53,13 @@ func PendingClaudeQuestions(root, sessionID string) ([]ClaudeQuestion, bool) {
 	})
 	if err != nil || len(paths) != 1 {
 		return nil, false
+	}
+	info, err := os.Stat(paths[0])
+	if err != nil {
+		return nil, false
+	}
+	if cache.valid && cache.path == paths[0] && cache.sessionID == sessionID && cache.size == info.Size() && cache.modified.Equal(info.ModTime()) {
+		return cache.questions, true
 	}
 	f, err := os.Open(paths[0])
 	if err != nil {
@@ -122,6 +144,9 @@ func PendingClaudeQuestions(root, sessionID string) ([]ClaudeQuestion, bool) {
 	var out []ClaudeQuestion
 	for _, questions := range pending {
 		out = append(out, questions...)
+	}
+	if matched {
+		cache.path, cache.sessionID, cache.size, cache.modified, cache.questions, cache.valid = paths[0], sessionID, info.Size(), info.ModTime(), out, true
 	}
 	return out, matched
 }

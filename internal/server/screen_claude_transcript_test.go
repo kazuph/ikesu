@@ -28,3 +28,12 @@ func TestClaudeTranscriptScreenMatching(t *testing.T) {
 		t.Fatal("different question positions must not match")
 	}
 }
+
+func TestClaudeDisplayRetainsScreenPreview(t *testing.T) {
+	preview, short, full := "実際のプレビュー", "短い説明", "記録から得た全文"
+	w := &screenPromptWatch{prompt: &screenprompt.Prompt{Params: api.DecisionCreateParams{Title: "画面の一部", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &short, Preview: &preview}}}}, displayParams: &api.DecisionCreateParams{Title: "質問全文", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &full}}}}
+	got := screenDisplayParams(w)
+	if got.Title != "質問全文" || got.Options[0].Preview == nil || *got.Options[0].Preview != preview || *got.Options[0].Description != full {
+		t.Fatal(got)
+	}
+}

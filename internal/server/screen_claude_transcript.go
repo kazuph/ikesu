@@ -50,33 +50,33 @@ func matchesClaudeDisplay(previous, current *screenprompt.Prompt, display api.De
 	return matchClaudeQuestion(previous, q)
 }
 
-func (s *Server) claudeTranscriptPrompt(pid int, p *screenprompt.Prompt) (string, api.DecisionCreateParams, bool) {
+func (s *Server) claudeTranscriptPrompt(pid int, p *screenprompt.Prompt) (string, api.DecisionCreateParams, bool, bool) {
 	pane := s.sup.Get(pid)
 	if pane == nil || p == nil || p.Params.Kind != "agent_prompt" || p.MCPServer != "" || p.CodexQuestion || pane.Snapshot().Dead {
-		return "", api.DecisionCreateParams{}, false
+		return "", api.DecisionCreateParams{}, false, false
 	}
 	snapshot := pane.Snapshot()
 	agent := snapshot.AgentID
 	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
 		agent = reported
 	}
-	return readClaudeTranscript(pane, p, agent)
+	return readClaudeTranscript(pane, p, agent, nil)
 }
 
-func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent string) (string, api.DecisionCreateParams, bool) {
+func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent string, cache *session.ClaudeQuestionCache) (string, api.DecisionCreateParams, bool, bool) {
 	snapshot := pane.Snapshot()
 	if agent != "claude" {
-		return "", api.DecisionCreateParams{}, false
+		return "", api.DecisionCreateParams{}, false, false
 	}
 	job := pane.ForegroundJob()
 	start, ok := session.ProcessStart(job)
 	if !ok {
-		return "", api.DecisionCreateParams{}, false
+		return "", api.DecisionCreateParams{}, false, false
 	}
 	env := pane.SessionEnvironment()
 	id, ok := session.ObserveProcessSession("claude", snapshot.Cwd, start, job, env)
 	if !ok {
-		return "", api.DecisionCreateParams{}, false
+		return "", api.DecisionCreateParams{}, false, false
 	}
 	home, root := "", ""
 	for _, item := range env {
@@ -94,9 +94,12 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 		}
 		root = filepath.Join(home, ".claude")
 	}
-	questions, ok := session.PendingClaudeQuestions(root, id)
+	if cache == nil {
+		cache = new(session.ClaudeQuestionCache)
+	}
+	questions, ok := cache.Read(root, id)
 	if !ok {
-		return "", api.DecisionCreateParams{}, false
+		return "", api.DecisionCreateParams{}, false, false
 	}
 	var match *session.ClaudeQuestion
 	for i := range questions {
@@ -104,12 +107,12 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 			continue
 		}
 		if match != nil {
-			return "", api.DecisionCreateParams{}, false
+			return "", api.DecisionCreateParams{}, false, true
 		}
 		match = &questions[i]
 	}
 	if match == nil {
-		return "", api.DecisionCreateParams{}, false
+		return "", api.DecisionCreateParams{}, false, len(questions) > 0
 	}
 	params := p.Params
 	params.Title = match.Question
@@ -119,7 +122,7 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 		description := match.Options[i].Description
 		params.Options[i].Description = &description
 	}
-	return id + "\x00" + match.ToolID + "\x00" + strconv.Itoa(match.Index), params, true
+	return id + "\x00" + match.ToolID + "\x00" + strconv.Itoa(match.Index), params, true, false
 }
 
 type claudeTranscriptResult struct {
@@ -131,6 +134,7 @@ type claudeTranscriptResult struct {
 type claudeTranscriptScan struct {
 	result chan claudeTranscriptResult
 	latest claudeTranscriptResult
+	cache  session.ClaudeQuestionCache
 }
 
 // Transcript discovery and reading can be slow on large histories, so the app
@@ -172,7 +176,7 @@ func (s *Server) pollClaudeTranscript(pid int, p *screenprompt.Prompt) (string, 
 		copy := *p
 		copy.Params.Options = append([]api.DecisionOption(nil), p.Params.Options...)
 		go func() {
-			id, params, ok := readClaudeTranscript(pane, &copy, agent)
+			id, params, ok, _ := readClaudeTranscript(pane, &copy, agent, &scan.cache)
 			result <- claudeTranscriptResult{signature: signature, id: id, params: params, ok: ok}
 		}()
 	}

@@ -358,10 +358,7 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 			return
 		}
 	}
-	p := w.prompt.Params
-	if w.displayParams != nil {
-		p = *w.displayParams
-	}
+	p := screenDisplayParams(w)
 	pane := s.sup.Get(pid)
 	if pane == nil {
 		return

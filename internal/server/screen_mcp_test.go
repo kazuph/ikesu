@@ -41,7 +41,7 @@ func TestMCPRealPTYArrowThenVerifiedEnter(t *testing.T) {
 			id := "2"
 			done := make(chan error, 1)
 			go func() {
-				done <- s.deliverScreenAnswer(1, prompt.Signature(), prompt, api.DecisionAnswer{OptionID: &id})
+				done <- s.deliverScreenAnswer(1, prompt.Signature(), prompt, api.DecisionAnswer{OptionID: &id}, false)
 			}()
 			waitPromptCondition(t, func() bool { data, _ := os.ReadFile(input); return string(data) == "\x1b[B" })
 			after := mcpScreen("first", "May we continue?", true)
@@ -130,7 +130,7 @@ func TestPreviewAnswerReadsFiveTimesBeforeGivingUp(t *testing.T) {
 			start := time.Now()
 			done := make(chan error, 1)
 			go func() {
-				done <- s.deliverScreenAnswer(1, prompt.Signature(), prompt, api.DecisionAnswer{OptionID: &target})
+				done <- s.deliverScreenAnswer(1, prompt.Signature(), prompt, api.DecisionAnswer{OptionID: &target}, false)
 			}()
 			waitPromptCondition(t, func() bool { data, _ := os.ReadFile(input); return string(data) == "2" })
 			if mode == "late" {
