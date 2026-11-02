@@ -35,6 +35,8 @@ func main() {
 	relayLog := flag.String("claude-relay-log", "", "observe unmodified Claude Code without forwarding conversation input")
 	relayExit := flag.String("claude-relay-exit", "", "owned controller file requesting ordinary Ctrl-C exit")
 	includeBodies := flag.Bool("body-grids", false, "record real pane text for copied Claude conversations")
+	screenTokens := flag.Bool("screen-tokens", false, "record unique CAPRX tokens on completed screen frames")
+	screenText := flag.String("screen-text", "", "record the first completed screen frame containing text")
 	processPath := flag.String("process-file", "", "save the measured product PID")
 	timelinePath := flag.String("timeline", "", "monotonic synchronized-frame and workload-marker records")
 	cellClock := flag.Bool("cell-clock", false, "record the PTY read time when each cell content changes")
@@ -121,7 +123,13 @@ func main() {
 		})
 	}
 	observer := newTimeline(*timelinePath, emu, *cols, *rows)
+	if (*screenTokens || *screenText != "") && observer == nil {
+		fmt.Fprintln(os.Stderr, "screen observation requires timeline")
+		os.Exit(1)
+	}
 	if observer != nil {
+		observer.screenTokens = *screenTokens
+		observer.screenText = *screenText
 		observer.reply = ptmx
 		observer.receiver.reply = ptmx
 		observer.receiver.cellW, observer.receiver.cellH = *cellWidth, *cellHeight
@@ -562,6 +570,28 @@ func main() {
 				os.Exit(1)
 			}
 			mu.Unlock()
+		case "waittoken":
+			if observer == nil || (!observer.screenTokens && observer.screenText == "") {
+				panic("waittoken requires screen observation and timeline")
+			}
+			ts, token, _ := strings.Cut(rest, " ")
+			d, err := time.ParseDuration(ts)
+			if err != nil || d <= 0 || token == "" {
+				panic("invalid waittoken")
+			}
+			deadline := time.Now().Add(d)
+			for {
+				if _, ok := observer.tokens.Load(token); ok {
+					break
+				}
+				if time.Now().After(deadline) {
+					fmt.Println("TIMEOUT waiting token", token)
+					_ = cmd.Process.Kill()
+					_, _ = cmd.Process.Wait()
+					os.Exit(1)
+				}
+				time.Sleep(time.Millisecond)
+			}
 		case "waittext": // waittext TIMEOUT TEXT: report time since the last send until TEXT is on screen
 			ts, text, _ := strings.Cut(rest, " ")
 			d, _ := time.ParseDuration(ts)
