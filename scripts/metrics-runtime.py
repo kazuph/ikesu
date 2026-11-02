@@ -329,6 +329,15 @@ def wait_until(predicate, timeout, description, process=None):
     raise TimeoutError(description)
 
 
+def inherited_runtime_environment():
+    return {name: os.environ.get(name) for name in ('GOGC', 'GOMEMLIMIT', 'GOMAXPROCS')}
+
+
+def default_measurement_environment():
+    return {k: v for k, v in os.environ.items()
+            if not k.startswith(('IKESU_', 'HERDR_')) and k not in ('GOGC', 'GOMEMLIMIT')}
+
+
 class MeasurementSession:
     """One isolated application instance, controlled through its real CLI."""
 
@@ -339,8 +348,7 @@ class MeasurementSession:
         self.mode = mode
         self.root = Path(tempfile.mkdtemp(prefix='dx-', dir=work))
         self.session = 'dx-' + self.root.name
-        self.env = {k: v for k, v in os.environ.items()
-                    if not k.startswith(('IKESU_', 'HERDR_'))}
+        self.env = default_measurement_environment()
         zdot = self.root / 'z'
         zdot.mkdir()
         (zdot / '.zshrc').write_text("PS1='DXPROBEREADY> '\n")
@@ -470,8 +478,7 @@ class MonolithMemorySession:
         self.ptyrun = Path(ptyrun).resolve()
         self.root = Path(tempfile.mkdtemp(prefix='dx-', dir=work))
         self.count = count
-        self.env = {k: v for k, v in os.environ.items()
-                    if not k.startswith(('IKESU_', 'HERDR_'))}
+        self.env = default_measurement_environment()
         zdot = self.root / 'z'
         zdot.mkdir()
         (zdot / '.zshrc').write_text('id="${IKESU_PANE_ID:-$HERDR_PANE_ID}"\n'
@@ -1103,6 +1110,7 @@ def main():
     if output.exists():
         parser.error(f'output already exists: {output}')
     metadata = {'commit': args.commit, 'created_utc': stamp, 'host': command_output('hostname'),
+                'inherited_runtime_environment': inherited_runtime_environment(),
                 'os': command_output('uname', '-a'), 'go': command_output('go', 'version'),
                 'rustc_detected': command_output('rustc', '--version'),
                 'herdr_build_toolchain': '配布バイナリのビルド時の Rust 版は未確認',

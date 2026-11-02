@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,32 @@ spec.loader.exec_module(runtime)
 
 
 class StyledMetricsTest(unittest.TestCase):
+    def test_gc_environment_is_recorded_and_excluded_from_both_sessions(self):
+        names = ('GOGC', 'GOMEMLIMIT', 'GOMAXPROCS')
+        original = {name: os.environ.get(name) for name in names}
+        try:
+            for value in (None, '', '200', 'off'):
+                for name in names:
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+                recorded = runtime.new_ledger({'inherited_runtime_environment': runtime.inherited_runtime_environment()})
+                self.assertEqual(recorded['metadata']['inherited_runtime_environment'], dict.fromkeys(names, value))
+                with tempfile.TemporaryDirectory() as root:
+                    server = runtime.MeasurementSession('/bin/true', '/bin/true', 'ikesu', 'server', root)
+                    standalone = runtime.MonolithMemorySession('/bin/true', '/bin/true', 'ikesu', 1, root)
+                    for session in (server, standalone):
+                        self.assertNotIn('GOGC', session.env)
+                        self.assertNotIn('GOMEMLIMIT', session.env)
+                        self.assertEqual(session.env.get('GOMAXPROCS'), value)
+        finally:
+            for name, value in original.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_six_stages_and_evidence(self):
         with tempfile.TemporaryDirectory() as root:
             session = runtime.StyledMemorySession('/bin/true', '/bin/true', 'ikesu', root)
