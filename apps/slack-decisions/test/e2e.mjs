@@ -8,7 +8,7 @@
 // the socket-mode websocket, and asserts the decision resolves with the
 // picked option and the resolved Slack post is removed.
 
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -199,12 +199,11 @@ async function main() {
 
   // Exercise the actual guard process and its feedback, using the real isolated
   // server. echo is harmless; the default policy asks for the word "deploy".
-  const marker = path.join(tmp, "guard", "agent-panes", "proof.json");
-  fs.mkdirSync(path.dirname(marker), { recursive: true });
-  fs.writeFileSync(marker, JSON.stringify({
-    pane_id: "proof", agent: "codex", launch_cwd: tmp,
-    socket: socketPath, mode: "enforce", guard_config: {},
-  }));
+  execFileSync(IKESU, ["pane", "report-agent", "p1", "--source", "slack-e2e", "--agent", "codex", "--state", "idle"], {
+    env: { ...process.env, ...ikesuEnv },
+  });
+  const marker = path.join(ikesuEnv.IKESU_STATE_DIR, "guard", "agent-panes", "p_1.json");
+  if (!fs.existsSync(marker)) throw new Error(`guard marker missing: ${marker}`);
   for (const scenario of [
     { name: "guard-approve", reaction: "one", code: 0, expected: "deploy" },
     { name: "guard-reject", reaction: "three", code: 1, expected: "理由: 未入力" },
@@ -214,7 +213,7 @@ async function main() {
     const priorTs = new Set(fake.posts.map(p => p.ts));
     const guard = execFile(IKESU, ["guard", "exec", "--", "/bin/echo", "deploy"], {
       cwd: tmp, encoding: "utf8", env: { ...process.env, ...ikesuEnv,
-        HOME: tmp, IKESU_GUARD_MARKER: marker, IKESU_PANE_ID: "proof",
+        HOME: tmp, IKESU_GUARD_MARKER: marker, IKESU_PANE_ID: "p1",
         AI_GUARD_REQUEST_REASON: "対象プロジェクトのSlack承認試験。無害なechoだけを実行するため。",
         AI_GUARD_TEMP_APPROVAL_FILE: path.join(tmp, scenario.name + "-approval"),
       },
