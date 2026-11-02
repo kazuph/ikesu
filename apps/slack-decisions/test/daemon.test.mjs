@@ -221,7 +221,7 @@ test("long pending message restores all continuation posts after machine reconne
     let actual = "";
     for (let i = start; i < blocks.length && actual.length < body.length; i++) actual += blocks[i].text?.text || "";
     assert.equal(actual, body);
-    assert.ok(!fake.calls.some(call => call.method === "chat.update" && oldReplies.includes(call.body.ts)));
+    assert.ok(!fake.calls.some(call => call.method === "chat.update" && oldReplies.includes(call.params.ts)));
   } finally { await daemon.stop(); await fake.stop(); }
 });
 

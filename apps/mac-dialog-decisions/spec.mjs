@@ -141,7 +141,7 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
   if (origin.reason && origin.reason !== "screen_prompt" && decision.kind !== "command_guard") {
     details.push({ label: "理由", value: String(origin.reason) });
   }
-  if (origin.pane_id) details.push({ label: "ペイン", value: String(origin.pane_id), monospace: true });
+  if (origin.pane_id && origin.pane_label && origin.pane_label !== origin.pane_id) details.push({ label: "ペイン", value: String(origin.pane_id), monospace: true });
 
   const machineId = machine?.id || origin.machine || "local";
   const remote = machineId !== "local";

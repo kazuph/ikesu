@@ -1359,6 +1359,7 @@ export class SlackDecisionsDaemon {
         blocks: pages[0],
       });
       entry.post = { channel: this.slack.channel, ts: posted.ts };
+      entry.continuations = [];
       this.posts.set(entry.key, {
         channel: this.slack.channel,
         ts: posted.ts,
