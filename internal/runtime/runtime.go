@@ -214,9 +214,12 @@ const _ = uint(pumpQueueBytes - pumpReadBytes)
 // pumpQueueLen bounds outstanding chunks so many small reads cannot hold
 // more buffers than the byte budget implies. pumpPoolLen bounds recycled
 // buffers kept for reuse; both trade a little allocation for bounded RSS.
+// With a one-read queue only the reader's, the queued, and the writer's
+// buffers are in flight, so a few spares avoid steady allocation without
+// pinning 1MB of read buffers in every pane that once streamed output.
 const (
 	pumpQueueLen = 32
-	pumpPoolLen  = 16
+	pumpPoolLen  = 4
 )
 
 // ptyReadyNow reports whether fd has data (or an event worth a read attempt)
