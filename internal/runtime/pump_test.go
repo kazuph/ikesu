@@ -30,7 +30,11 @@ func newPumpPane(t *testing.T) (*Pane, *os.File, chan Event) {
 	t.Cleanup(func() {
 		_ = w.Close()
 		if p.pumpDone != nil {
-			<-p.pumpDone
+			select {
+			case <-p.pumpDone:
+			case <-time.After(5 * time.Second):
+				t.Errorf("pump did not stop after its writer closed")
+			}
 		}
 		p.closePTY()
 	})

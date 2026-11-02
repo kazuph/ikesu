@@ -9,9 +9,10 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
-// The queue holds exactly one full read. Back-to-back full 64KB chunks must
-// each be released before the next is queued, and EOF must still end the
-// pump after the last byte reaches the emulator.
+// The queue holds exactly one full read. Output written in read-sized pieces
+// (reads may still split them) must keep flowing through the one-chunk
+// budget, and EOF must still end the pump after the last byte reaches the
+// emulator.
 func TestPumpFullChunksThenEOFDeliverEverything(t *testing.T) {
 	teststate.Lock(t)
 
@@ -31,7 +32,7 @@ func TestPumpFullChunksThenEOFDeliverEverything(t *testing.T) {
 	payload := b.String()
 	writeErr := make(chan error, 1)
 	go func() {
-		// Writes in full read-sized pieces so the reader sees full chunks.
+		// Read-sized writes; the kernel may split them into smaller reads.
 		for off := 0; off < len(payload); off += pumpReadBytes {
 			if _, err := w.WriteString(payload[off:min(len(payload), off+pumpReadBytes)]); err != nil {
 				writeErr <- err
