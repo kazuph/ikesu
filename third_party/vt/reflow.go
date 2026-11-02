@@ -36,7 +36,10 @@ func (e *Emulator) resizeWithReflowView(width, height int, continued func(int) R
 	main := &e.scrs[0]
 	oldWidth := main.Width()
 	snapshot := main.reflowIndexed(width, height, continued, e.scr == main && e.atPhantom, stableHistory)
-	pushed, pulled := e.scrs[1].resizeWithoutRestore(width, height)
+	var pushed, pulled int
+	if e.scrs[1].buf != nil {
+		pushed, pulled = e.scrs[1].resizeWithoutRestore(width, height)
+	}
 	if e.cb.Resize != nil {
 		e.cb.Resize(true, oldWidth, height, pushed, pulled)
 	}

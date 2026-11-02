@@ -7,6 +7,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"image/color"
+	"reflect"
 )
 
 func init() {
@@ -64,18 +65,25 @@ func (e *Emulator) MarshalHandoff() ([]byte, error) {
 	}
 	for i := range e.scrs {
 		s := &e.scrs[i]
-		v := screenTransfer{Width: s.Width(), Height: s.Height(), Cursor: s.cur, Saved: s.saved, Scroll: s.scroll, HistoryLimit: s.scrollback.maxLines, ByteLimited: s.scrollback.byteLimited, ByteLimit: s.scrollback.maxBytes}
-		for y := 0; y < s.Height(); y++ {
-			v.Cells = append(v.Cells, append(uv.Line(nil), s.buf.Line(y)...))
+		if i == 1 && s.buf == nil {
+			s = NewScreen(e.scrs[0].Width(), e.scrs[0].Height())
 		}
-		for _, line := range s.scrollback.Lines() {
-			v.History = append(v.History, append(uv.Line(nil), line...))
-		}
-		t.Screens[i] = v
+		t.Screens[i] = transferScreen(s)
 	}
 	var b bytes.Buffer
 	err := gob.NewEncoder(&b).Encode(t)
 	return b.Bytes(), err
+}
+
+func transferScreen(s *Screen) screenTransfer {
+	v := screenTransfer{Width: s.Width(), Height: s.Height(), Cursor: s.cur, Saved: s.saved, Scroll: s.scroll, HistoryLimit: s.scrollback.maxLines, ByteLimited: s.scrollback.byteLimited, ByteLimit: s.scrollback.maxBytes}
+	for y := 0; y < s.Height(); y++ {
+		v.Cells = append(v.Cells, append(uv.Line(nil), s.buf.Line(y)...))
+	}
+	for _, line := range s.scrollback.Lines() {
+		v.History = append(v.History, append(uv.Line(nil), line...))
+	}
+	return v
 }
 
 func (e *Emulator) UnmarshalHandoff(data []byte) error {
@@ -86,6 +94,10 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 	for i, v := range t.Screens {
 		if v.Width <= 0 || v.Height <= 0 || len(v.Cells) != v.Height {
 			return fmt.Errorf("invalid terminal handoff dimensions")
+		}
+		if i == 1 && !t.Alternate && v.Width == t.Screens[0].Width && v.Height == t.Screens[0].Height && reflect.DeepEqual(v, transferScreen(NewScreen(v.Width, v.Height))) {
+			e.scrs[i] = Screen{cb: &e.cb}
+			continue
 		}
 		s := NewScreen(v.Width, v.Height)
 		for y, line := range v.Cells {

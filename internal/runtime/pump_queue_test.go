@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/teststate"
+	"golang.org/x/sync/semaphore"
 )
 
 // The queue holds exactly one full read. Output written in read-sized pieces
@@ -57,5 +58,57 @@ func TestPumpFullChunksThenEOFDeliverEverything(t *testing.T) {
 	}
 	if s := screenText(p); !strings.Contains(s, "TAIL-MARK") {
 		t.Fatalf("last bytes missing after EOF: %q", s[max(0, len(s)-200):])
+	}
+}
+
+// Small reads are copied into exact-size chunks so many queued small chunks
+// do not each pin a full read buffer; large reads hand the buffer over.
+func TestReadPTYCopiesSmallReadsAndHandsOverLargeOnes(t *testing.T) {
+	p, w, _ := newPumpPane(t)
+	out := make(chan []byte, pumpQueueLen)
+	pool := make(chan []byte, pumpPoolLen)
+	sem := semaphore.NewWeighted(pumpQueueBytes)
+	go p.readPTY(out, pool, sem)
+
+	next := func() []byte {
+		t.Helper()
+		select {
+		case c := <-out:
+			sem.Release(int64(len(c)))
+			return c
+		case <-time.After(5 * time.Second):
+			t.Fatal("no chunk from the reader")
+			return nil
+		}
+	}
+	if _, err := w.WriteString("small"); err != nil {
+		t.Fatal(err)
+	}
+	first := next()
+	if string(first) != "small" || cap(first) > pumpSmallRead {
+		t.Fatalf("small read: %q cap %d", first, cap(first))
+	}
+	// The reader keeps its buffer after copying; a kept chunk must not change.
+	if _, err := w.WriteString("other"); err != nil {
+		t.Fatal(err)
+	}
+	if c := next(); string(c) != "other" || string(first) != "small" {
+		t.Fatalf("second read %q changed the kept chunk to %q", c, first)
+	}
+	big := strings.Repeat("b", pumpSmallRead*2)
+	if _, err := w.WriteString(big); err != nil {
+		t.Fatal(err)
+	}
+	var got strings.Builder
+	sawFull := false
+	for got.Len() < len(big) {
+		c := next()
+		got.Write(c)
+		if len(c) > pumpSmallRead && cap(c) == pumpReadBytes {
+			sawFull = true
+		}
+	}
+	if got.String() != big || !sawFull {
+		t.Fatalf("large read: %d bytes, full buffer handed over=%v", got.Len(), sawFull)
 	}
 }
