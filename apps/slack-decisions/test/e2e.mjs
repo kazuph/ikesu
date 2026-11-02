@@ -38,7 +38,7 @@ const socketPath = path.join(tmp, "ikesu-state", "default", "ikesu.sock");
 fs.mkdirSync(path.join(configHome, "ikesu"), { recursive: true });
 fs.mkdirSync(runtimeDir, { recursive: true });
 fs.mkdirSync(stateDir, { recursive: true });
-fs.writeFileSync(path.join(configHome, "ikesu", "config.toml"), "[experimental]\nallow_nested = true\n");
+fs.writeFileSync(path.join(configHome, "ikesu", "config.toml"), "[experimental]\nallow_nested = true\n[ui.sound]\nenabled = false\n");
 
 const ikesuEnv = {
   XDG_CONFIG_HOME: configHome,
