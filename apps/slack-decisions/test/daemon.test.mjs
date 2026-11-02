@@ -198,6 +198,33 @@ test("redacted guard fields always create separate Slack posts", async () => {
   }
 });
 
+test("long pending message restores all continuation posts after machine reconnect", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const body = "本文😀\n".repeat(30000);
+    const decision = sampleDecision({decision_id:"long-reconnect", body});
+    await daemon.onCreated("local", LOCAL, decision);
+    const old = fake.posts[0].ts;
+    const oldReplies = (fake.threadReplies.get(old) || []).map(reply => reply.ts);
+    assert.ok(oldReplies.length > 0);
+    await daemon.onMachineDown("local", "disconnect");
+    await daemon.onMachineUp("local");
+    await daemon.onCreated("local", LOCAL, decision);
+    const root = fake.posts[0];
+    assert.notEqual(root.ts, old);
+    const replies = fake.threadReplies.get(root.ts) || [];
+    assert.ok(replies.length > 0);
+    const blocks = [...root.blocks, ...replies.flatMap(reply => reply.blocks || [])];
+    const start = blocks.findIndex(block => block.type === "section" && block.text?.text.startsWith("本文"));
+    let actual = "";
+    for (let i = start; i < blocks.length && actual.length < body.length; i++) actual += blocks[i].text?.text || "";
+    assert.equal(actual, body);
+    assert.ok(!fake.calls.some(call => call.method === "chat.update" && oldReplies.includes(call.body.ts)));
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 test("long body and command survive Slack message and thread block limits", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});

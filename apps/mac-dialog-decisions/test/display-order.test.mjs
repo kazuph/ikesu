@@ -30,6 +30,15 @@ test('guard target is highlighted only when its location is unambiguous',()=>{
  for(const [command,target] of [['rm a && rm a','rm a'],['echo rm a','rm a'],['rm "$X" && echo x','rm "$X"'],['rm *** && echo x','rm ***']]) assert.equal(approvalTargetRange(guard(command,target)),null);
 });
 
+test('guard pane details do not repeat the pane shown in the location',()=>{
+ const d={kind:'command_guard',origin:{cwd:'/repo',pane_id:'p_color',agent:'claude',command:'rm a'},options:[]};
+ const spec=buildDialogSpec(d,{id:'local'});
+ assert.ok(spec.location.includes('p_color'));
+ assert.equal(spec.details.some(detail=>detail.label==='ペイン'),false);
+ const blocks=buildDecisionBlocks({decision:d,machine:{id:'local'}});
+ assert.equal(JSON.stringify(blocks).includes('*ペイン*'),false);
+});
+
 test('request fields retain commands quoted by the requester',()=>{
  const command = "printf '対象コマンド: rm /tmp/a'";
  const body = `対象プロジェクト: ikesu。必要な理由: 表示確認。実施内容: ${command}。確認済み: 内容を確認。戻し方: 中止。`;
