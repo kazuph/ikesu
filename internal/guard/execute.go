@@ -7,7 +7,6 @@ import (
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -104,8 +103,6 @@ func wholeCommand(command string, i Input) bool {
 	}
 	return slices.Equal(argv, expected)
 }
-
-var approvalFields = regexp.MustCompile(`[\t \r\n]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]`)
 
 func approvalTrigger(i Input, v Verdict) string {
 	command := i.TriggerCommand
@@ -214,7 +211,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		body = "申請文（外側から引き継ぎ）\n"
 	}
 	if reason != "" {
-		body += strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
+		body += reason
 	}
 	body = i.redact(body)
 	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)

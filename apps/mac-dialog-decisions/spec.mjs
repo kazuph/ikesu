@@ -68,11 +68,16 @@ export function approvalTargetRange(decision) {
 }
 
 export function approvalFields(body) {
-  const text = String(body || "");
+  const original = String(body || "");
+  const inherited = original.startsWith("申請文（外側から引き継ぎ）\n");
+  const text = inherited ? original.slice("申請文（外側から引き継ぎ）\n".length) : original;
   const labels = {"対象プロジェクト": "対象", "必要な理由": "理由", "実施内容": "内容", "確認済み": "確認済み", "戻し方": "戻し方"};
-  const matches = [...text.matchAll(/(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]/g)];
+  const matches = [...text.matchAll(/(?:^|(?<=。)|(?<=\n))[\t ]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]/gu)];
   if (!matches.length || text.slice(0, matches[0].index).trim()) return null;
-  return matches.map((match, i) => ({label: labels[match[1]], value: text.slice(match.index + match[0].length, matches[i + 1]?.index ?? text.length).trim()}));
+  const order = Object.keys(labels);
+  if (matches.some((match, i) => i > 0 && order.indexOf(match[1]) <= order.indexOf(matches[i - 1][1]))) return null;
+  const fields = matches.map((match, i) => ({label: labels[match[1]], value: text.slice(match.index + match[0].length, matches[i + 1]?.index ?? text.length).trim()}));
+  return inherited ? [{label: "申請文", value: "外側から引き継ぎ"}, ...fields] : fields;
 }
 
 // Screen prompts can store the whole question in title, with either a copy

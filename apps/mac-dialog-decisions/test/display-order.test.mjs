@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDialogSpec,locationLabel,approvalTargetRange} from '../spec.mjs';
+import {buildDialogSpec,locationLabel,approvalTargetRange,approvalFields} from '../spec.mjs';
 import {buildDecisionBlocks,fallbackText} from '../../slack-decisions/slack-decisions.mjs';
 import {discoverRichContent} from '../rich.mjs';
 
@@ -28,6 +28,15 @@ test('guard target is highlighted only when its location is unambiguous',()=>{
  assert.deepEqual(approvalTargetRange(guard('rm a && grep x','rm a')),{start:0,length:4});
  assert.deepEqual(approvalTargetRange(guard('rm a','')),{start:0,length:4});
  for(const [command,target] of [['rm a && rm a','rm a'],['echo rm a','rm a'],['rm "$X" && echo x','rm "$X"'],['rm *** && echo x','rm ***']]) assert.equal(approvalTargetRange(guard(command,target)),null);
+});
+
+test('request fields retain commands quoted by the requester',()=>{
+ const command = "printf '対象コマンド: rm /tmp/a'";
+ const body = `対象プロジェクト: ikesu。必要な理由: 表示確認。実施内容: ${command}。確認済み: 内容を確認。戻し方: 中止。`;
+ const fields = approvalFields(body);
+ assert.deepEqual(fields.map(f=>f.label),['対象','理由','内容','確認済み','戻し方']);
+ assert.ok(fields.find(f=>f.label==='内容').value.includes(command));
+ assert.equal(approvalFields('対象プロジェクト: x。必要な理由: x。必要な理由: y'),null);
 });
 
 test('video discovery retains file/URL destinations and encoded paths without redacted data',()=>{

@@ -205,9 +205,7 @@ func TestApprovalPresentation(t *testing.T) {
 				if p.Title != "実行確認: bash — 表示試験（規則: presentation-test）" {
 					t.Errorf("title=%q", p.Title)
 				}
-				body := strings.ReplaceAll(reason, "。", "。\n")
-				// Trailing prose punctuation does not add a blank line between fields.
-				body = strings.ReplaceAll(body, "。\n\n場所:", "。\n場所:")
+				body := reason
 				if p.Body == nil || *p.Body != strings.TrimSpace(body) {
 					t.Errorf("body=%v want=%q", p.Body, body)
 				}
