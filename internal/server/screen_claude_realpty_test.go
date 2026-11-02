@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/screenprompt"
@@ -81,7 +82,8 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen := filepath.Join(root, "screen.txt")
-	if err := os.WriteFile(screen, []byte(screenDialog(t, "claude-single")), 0600); err != nil {
+	picture := strings.ReplaceAll(screenDialog(t, "claude-single"), " ☐ Format", "←  ☐ Sections  ☐ Language  ✔ Submit  →")
+	if err := os.WriteFile(screen, []byte(picture), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ids := []string{"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}
@@ -122,7 +124,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	original := screenRecord(t, s)
 	question := "画面に収まらない前提を含む全文。Which output format should the temporary report use?"
 	writeQuestion := func(index int, text string) {
-		record := map[string]any{"sessionId": ids[index], "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-" + ids[index], "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "全文の説明"}, map[string]any{"label": "Markdown", "description": "もう一つの説明"}}}}}}}}}
+		record := map[string]any{"sessionId": ids[index], "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-" + ids[index], "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Sections", "options": []any{map[string]any{"label": "Plain", "description": "全文の説明"}, map[string]any{"label": "Markdown", "description": "もう一つの説明"}}}, map[string]any{"question": "全文。Which language should the report use?", "header": "Language", "options": []any{map[string]any{"label": "Japanese", "description": "日本語の説明"}, map[string]any{"label": "English", "description": "英語の説明"}}}}}}}}}
 		data, err := json.Marshal(record)
 		if err != nil {
 			t.Fatal(err)
@@ -143,7 +145,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	if !ok || !strings.HasPrefix(other.Title, "別の会話の全文") {
 		t.Fatalf("wrong session: %+v", other)
 	}
-	paintScreen(p1, strings.ReplaceAll(screenDialog(t, "claude-single"), "Which output format should the temporary report use?", "Unrelated question?"))
+	paintScreen(p1, strings.ReplaceAll(picture, "Which output format should the temporary report use?", "Unrelated question?"))
 	refused := answerScreen(s, updated, "1", nil)
 	if refused.Err == nil {
 		t.Fatal("unmatched screen accepted an answer")
@@ -151,7 +153,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	if keys, _ := os.ReadFile(input); len(keys) != 0 {
 		t.Fatalf("unmatched screen received input: %q", keys)
 	}
-	paintScreen(p1, strings.ReplaceAll(screenDialog(t, "claude-single"), "Which output format should the temporary report use?", "the temporary report use?"))
+	paintScreen(p1, strings.ReplaceAll(picture, "Which output format should the temporary report use?", "the temporary report use?"))
 	waitPromptCondition(t, func() bool {
 		scanScreen(s)
 		var matched bool
@@ -170,6 +172,27 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 		t.Fatal(response.Err)
 	}
 	waitPromptCondition(t, func() bool { data, _ := os.ReadFile(input); return string(data) == "1" })
+	paintScreen(p1, screenDialog(t, "claude-second-tab"))
+	var second api.Decision
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() {
+			w := s.screenPrompts.watches[1]
+			if w != nil && w.decisionID != "" && w.decisionID != original.DecisionID {
+				second, _ = s.store.Decision(w.decisionID)
+				ready = second.Title == "全文。Which language should the report use?"
+			}
+		})
+		return ready
+	})
+	if second.Options[0].Description == nil || *second.Options[0].Description != "日本語の説明" {
+		t.Fatalf("second question lost its own description: %+v", second)
+	}
+	if response := answerScreen(s, second, "1", nil); response.Err != nil {
+		t.Fatal(response.Err)
+	}
+	waitPromptCondition(t, func() bool { data, _ := os.ReadFile(input); return string(data) == "11" })
 	result := map[string]any{"sessionId": ids[0], "message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "tool_use_id": "tool-" + ids[0]}}}}
 	data, _ := json.Marshal(result)
 	f, err := os.OpenFile(filepath.Join(projects, ids[0]+".jsonl"), os.O_APPEND|os.O_WRONLY, 0600)
