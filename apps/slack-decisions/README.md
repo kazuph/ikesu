@@ -18,7 +18,7 @@ Ikesu の判断待ち（`ikesu decision ask` など）を Slack へ転送し、S
   - 猶予の15秒は `REACTION_GRACE_MS` 1か所で定義する。試験では時計を注入して進め、実時間の待機はしない。
   - いずれも `ikesu decision answer <id> <option> --machine <machine.id> --responder slack [--text ...]` を実行
 - 回答済み・期限切れの Slack 投稿は削除して閉じます。取消も即座に削除します。同じ質問の作り直しが削除開始前に来たときは既存投稿を引き継ぎ、削除中なら完了を待って1投稿だけ再表示します。取り消し表示の投稿は残しません。
-- `machine_down` 中のマシンの pending は投稿せず、投稿済みのものは「マシン切断」表示に更新します。
+- `machine_down` 中のマシンの pending は投稿しません。投稿済みのものは、切断中は回答できないので削除します（前回から保存していた投稿も同じ）。再接続（`machine_up`）のあとにまだ回答待ちのものは、投稿し直します。
 - Socket Mode のイベントは1接続のみ。別のコンシューマ（ai_guard など）にイベントが流れた場合に備え、チャンネル履歴のポーリングでも回答を回収します。
 
 ## 成果物を Slack に送る（deliver）
