@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';
 import {buildDialogSpec} from '../spec.mjs';
+import {buildDecisionBlocks} from '../../slack-decisions/slack-decisions.mjs';
 import {headingCases} from './question-heading/cases.mjs';
 
 test('agent questions keep a distinct heading and exactly one unabridged question body',()=>{
@@ -12,6 +13,10 @@ test('agent questions keep a distinct heading and exactly one unabridged questio
   assert.equal(spec.title,row.heading,row.name);assert.equal(spec.body,row.body,row.name);
   if(row.decision.kind==='agent_prompt')assert.equal(spec.question_label,'',row.name);
   for(const part of row.parts||[row.body])assert.equal([spec.title,spec.body].join('\n').split(part).length-1,1,row.name+' component '+part);
+  if(row.name==='claude-long-completed') {
+   const blocks=buildDecisionBlocks({decision:row.decision,machine:{id:'local'}});
+   assert.equal(JSON.stringify(blocks).split('最後の段落は一度だけ表示します。').length-1,1);
+  }
  }
 });
 

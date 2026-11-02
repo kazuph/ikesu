@@ -84,6 +84,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	}
 	screen := filepath.Join(root, "screen.txt")
 	picture := strings.ReplaceAll(screenDialog(t, "claude-single"), " ☐ Format", "←  ☐ Sections  ☐ Language  ✔ Submit  →")
+	picture = strings.Replace(picture, "Which output format should the temporary report use?\n", "Which output format should the temporary report use?\n\nUse only the safe destination.\n", 1)
 	if err := os.WriteFile(screen, []byte(picture), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 		return ready
 	})
 	original := screenRecord(t, s)
-	question := "画面に収まらない前提を含む全文。Which output format should the temporary report use?"
+	question := "画面に収まらない前提を含む全文。Which output format should the temporary report use?\n\nUse only the safe destination."
 	writeQuestion := func(index int, text string) {
 		record := map[string]any{"sessionId": ids[index], "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-" + ids[index], "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Sections", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals. 全文の説明"}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links. もう一つの説明"}}}, map[string]any{"question": "全文。Which language should the report use?", "header": "Language", "options": []any{map[string]any{"label": "Japanese", "description": "For the local team. 日本語の説明"}, map[string]any{"label": "English", "description": "For wider sharing. 英語の説明"}}}}}}}}}
 		data, err := json.Marshal(record)
@@ -135,7 +136,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 		}
 	}
 	writeQuestion(0, question)
-	writeQuestion(1, "別の会話の全文。Which output format should the temporary report use?")
+	writeQuestion(1, "別の会話の全文。Which output format should the temporary report use?\n\nUse only the safe destination.")
 	waitPromptCondition(t, func() bool { scanScreen(s); d := screenRecord(t, s); return d.Title == question })
 	updated := screenRecord(t, s)
 	if updated.DecisionID != original.DecisionID || updated.Options[0].Description == nil || *updated.Options[0].Description != "A compact plain text report, easy to paste into terminals. 全文の説明" {
@@ -163,6 +164,13 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	_, other, ok, _, _ := readClaudeTranscript(p2, p2screen, "claude", nil)
 	if !ok || !strings.HasPrefix(other.Title, "別の会話の全文") {
 		t.Fatalf("wrong session: %+v", other)
+	}
+	paintScreen(p1, strings.ReplaceAll(picture, "Use only the safe destination.", "Use the dangerous destination."))
+	if refused := answerScreen(s, updated, "1", nil); refused.Err == nil {
+		t.Fatal("conflicting second paragraph accepted an answer")
+	}
+	if keys, _ := os.ReadFile(input); len(keys) != 0 {
+		t.Fatalf("conflicting paragraph received input: %q", keys)
 	}
 	paintScreen(p1, strings.ReplaceAll(picture, "A compact plain text report, easy to paste into", "A dangerous alternative instead of the original"))
 	if refused := answerScreen(s, updated, "1", nil); refused.Err == nil {

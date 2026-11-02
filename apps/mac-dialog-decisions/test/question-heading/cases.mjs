@@ -4,12 +4,14 @@ export function headingCases() {
  const question='Which report format should be used?';
  const number='Question 1/2 (2 unanswered)';
  const remaining='auto-resolves in m s';
+ const longQuestion='最初の段落です。'.repeat(12)+'\n\n最後の段落は一度だけ表示します。';
  return [
   {name:'short',decision:{...base,title:'取り込み確認',body},heading:'取り込み確認',body},
   {name:'absent',decision:{...base,title:'',body},heading:'',body},
   {name:'same',decision:{...base,title:body,body},heading:'',body},
   {name:'prefix',decision:{...base,title:'この変更を取り込んでよいですか？',body},heading:'',body},
   {name:'claude-header',decision:{...base,title:body,body:'質問 1/2 取り込み',question_label:'質問 1/2 取り込み'},heading:'質問 1/2 取り込み',body},
+  {name:'claude-long-completed',decision:{...base,title:longQuestion,body:null,question_label:'質問 1/2 確認'},heading:'質問 1/2 確認',body:longQuestion,parts:['最後の段落は一度だけ表示します。']},
   {name:'label-same',decision:{...base,title:body,body,question_label:body},heading:'',body},
   {name:'label-prefix',decision:{...base,title:body,body,question_label:'この変更を取り込んでよいですか？'},heading:'',body},
   {name:'title-only',decision:{...base,title:body,body:null},heading:'',body},
