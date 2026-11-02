@@ -149,6 +149,10 @@ func (r *runner) runCLI(args []string) int {
 		cwd = wd
 	}
 	if machineRef == "" && cwd != "" {
+		// A relative --cwd is relative to where the command was run, as in herdr.
+		if abs, err := filepath.Abs(cwd); err == nil {
+			cwd = abs
+		}
 		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
 			fmt.Fprintf(r.errOut(), "working directory %s is not available; pass --cwd\n", cwd)
 			return 2

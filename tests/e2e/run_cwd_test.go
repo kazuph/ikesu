@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 )
 
 // A pane-less `ikesu run` without --cwd runs in the directory it was invoked
@@ -56,12 +58,37 @@ func TestRunWithoutCwdUsesCallerDirectory(t *testing.T) {
 		t.Fatalf("explicit cwd: want %s\n%s", explicit, text)
 	}
 
+	// A relative --cwd is relative to the caller's directory.
+	if err := os.Mkdir(filepath.Join(caller, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	relative := run(caller, "--label", "relative", "--cwd", "sub", "--", "pwd")
+	if text := logOf(relative.Job, "relative"); !strings.Contains(text, "[stdout] "+filepath.Join(caller, "sub")+"\n") {
+		t.Fatalf("relative cwd: want %s/sub\n%s", caller, text)
+	}
+
+	// An unavailable directory is refused with exit 2 and creates no job.
+	store, err := dispatch.OpenReadOnly(filepath.Join(s.stateDir, "sessions", s.name, "ikesu.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	before, err := store.CommandRows(100)
+	if err != nil {
+		t.Fatal(err)
+	}
 	missing := exec.Command(binPath, "--session", s.name, "run", "--caller", "p1", "--label", "missing", "--cwd", filepath.Join(explicit, "gone"), "--", "pwd")
 	missing.Env = append(os.Environ(), "IKESU_STATE_DIR="+s.stateDir)
-	if out, err := missing.CombinedOutput(); err == nil || !strings.Contains(string(out), "is not available") {
+	out, err := missing.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 2 || !strings.Contains(string(out), "is not available") {
 		t.Fatalf("missing cwd: err=%v out=%s", err, out)
 	}
-	if matches, _ := filepath.Glob(filepath.Join(s.stateDir, "sessions", s.name, "job-logs", "*-missing.log")); len(matches) != 0 {
-		t.Fatalf("a job was created for a missing cwd: %v", matches)
+	after, err := store.CommandRows(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("a job row was created for a missing cwd: %d -> %d", len(before), len(after))
 	}
 }
