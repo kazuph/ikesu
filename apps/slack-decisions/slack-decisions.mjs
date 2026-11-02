@@ -987,8 +987,10 @@ export class SlackDecisionsDaemon {
     if (!this.postsFilePath) return;
     try {
       const raw = JSON.parse(fs.readFileSync(this.postsFilePath, "utf8"));
-      for (const [key, value] of Object.entries(raw?.__guard_last__ || {})) this.lastGuardByPane.set(key, value);
       const now = Date.now();
+      for (const [key, value] of Object.entries(raw?.__guard_last__ || {})) {
+        if (Array.isArray(value?.order) && now - value.order[0] <= STALE_POST_MAX_AGE_MS) this.lastGuardByPane.set(key, value);
+      }
       for (const [key, value] of Object.entries(raw || {})) {
         if (!value || typeof value.ts !== "string" || !value.ts) continue;
         if (now - (value.saved_at || 0) > STALE_POST_MAX_AGE_MS) continue;
@@ -1019,7 +1021,7 @@ export class SlackDecisionsDaemon {
     try {
       fs.mkdirSync(path.dirname(this.postsFilePath), { recursive: true });
       const out = {};
-      out.__guard_last__ = Object.fromEntries(this.lastGuardByPane);
+      if (this.lastGuardByPane.size) out.__guard_last__ = Object.fromEntries(this.lastGuardByPane);
       for (const [key, value] of this.posts) {
         out[key] = {
           channel: value.channel,

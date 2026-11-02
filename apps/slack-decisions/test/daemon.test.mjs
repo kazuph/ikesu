@@ -234,6 +234,19 @@ test("guard reactions cannot answer the new request until the rewritten post is 
   } finally { await daemon.stop(); await fake.stop(); }
 });
 
+test("a different intervening guard request prevents grouping", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const first = sampleDecision({kind:"command_guard", decision_id:"z-first", origin:{pane_id:"p1", cwd:"/repo", command:"rm a", reason:"理由"}});
+    await daemon.onCreated("local", LOCAL, first);
+    await daemon.onCreated("local", LOCAL, {...first, decision_id:"m-middle", origin:{...first.origin, reason:"別の理由"}});
+    await daemon.onCreated("local", LOCAL, {...first, decision_id:"a-last"});
+    assert.equal(fake.posts.length, 3);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 test("machine_down logs only transitions while retrying failed post deletion", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
