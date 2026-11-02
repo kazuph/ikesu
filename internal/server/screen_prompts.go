@@ -234,8 +234,22 @@ func (s *Server) scanScreenPrompts() {
 			s.submitScreenFlow(pid, p)
 			p = nil
 		}
-		transcriptID, display, transcriptOK, transcriptPending := s.pollClaudeTranscript(pid, p)
+		transcriptScreen := p
+		if transcriptScreen == nil && w != nil && w.transcriptID != "" {
+			transcriptScreen = w.prompt
+		}
+		transcriptID, display, transcriptOK, transcriptPending, transcriptUnverified := s.pollClaudeTranscript(pid, transcriptScreen)
 		if w != nil {
+			if p == nil && !w.resolved && w.transcriptID != "" && (transcriptPending || transcriptOK && transcriptID == w.transcriptID) {
+				w.lastMatched = false
+				w.mismatches = 0
+				continue
+			}
+			if !w.resolved && w.transcriptID != "" && transcriptUnverified {
+				w.lastMatched = false
+				w.mismatches = 0
+				continue
+			}
 			if p == nil && w.prompt != nil && w.prompt.CodexQuestion && (!w.resolved || w.editingText) {
 				if pane := s.sup.Get(pid); pane != nil && !pane.Snapshot().Dead {
 					w.lastMatched = false
