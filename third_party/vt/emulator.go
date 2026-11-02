@@ -94,7 +94,6 @@ var _ Terminal = (*Emulator)(nil)
 func NewEmulator(w, h int) *Emulator {
 	t := new(Emulator)
 	t.scrs[0] = *NewScreen(w, h)
-	t.scrs[1] = *NewScreen(w, h)
 	t.scr = &t.scrs[0]
 	t.scrs[0].cb = &t.cb
 	t.scrs[1].cb = &t.cb
@@ -245,7 +244,14 @@ func (e *Emulator) Resize(width int, height int) {
 		x = width - 1
 	}
 
+	previousWidth := e.scrs[0].Width()
 	for i := range e.scrs {
+		if i == 1 && e.scrs[i].buf == nil {
+			if e.cb.Resize != nil {
+				e.cb.Resize(true, previousWidth, height, 0, 0)
+			}
+			continue
+		}
 		oldWidth := e.scrs[i].Width()
 		var pushed, pulled int
 		if i == 0 {
