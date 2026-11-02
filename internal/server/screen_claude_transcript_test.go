@@ -34,6 +34,20 @@ func TestClaudeTranscriptScreenMatching(t *testing.T) {
 	}
 }
 
+func TestClaudeTranscriptRejectsConflictingVisibleBodyAndDescription(t *testing.T) {
+	body, description := "同じ先頭\n\n別の操作を実行", "別の説明"
+	p := &screenprompt.Prompt{Params: api.DecisionCreateParams{Kind: "agent_prompt", Title: "同じ先頭", Body: &body, Options: []api.DecisionOption{{Label: "はい"}}}}
+	q := session.ClaudeQuestion{Question: "同じ先頭\n\n安全な操作を実行", Options: []session.ClaudeQuestionOption{{Label: "はい", Description: "正しい説明"}}}
+	if matchClaudeQuestion(p, q) {
+		t.Fatal("conflicting second paragraph matched")
+	}
+	body = q.Question
+	p.Params.Options[0].Description = &description
+	if matchClaudeQuestion(p, q) {
+		t.Fatal("conflicting option description matched")
+	}
+}
+
 func TestScreenQuestionIdentityReusesPendingDecision(t *testing.T) {
 	teststate.Lock(t)
 	s, _, _ := screenTerminal(t, "claude-single", "claude")
