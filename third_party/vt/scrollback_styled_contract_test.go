@@ -17,51 +17,66 @@ func (c historySliceColor) RGBA() (uint32, uint32, uint32, uint32) {
 
 // Compare byte-limited storage with the original expanded-cell representation.
 func TestStyledHistoryMatchesExpandedCells(t *testing.T) {
-	row := make(uv.Line, 80)
-	for x := range row {
-		row[x] = uv.Cell{Content: "x", Width: 1, Style: uv.Style{
-			Fg: ansi.IndexedColor(x % 256), Bg: color.RGBA{R: 4, G: 9, B: 12, A: 255},
-			UnderlineColor: ansi.TrueColor(0x123456), Underline: uv.UnderlineCurly,
-			Attrs: uv.AttrBold | uv.AttrItalic,
-		}, Link: uv.Link{URL: "https://example.test/色", Params: "id=1"}}
-	}
-	row[0].Content, row[0].Width = "界", 2
-	row[1] = uv.Cell{}
-	row[2].Content = "e\u0301"
-	row[3].Content, row[3].Width = "👩‍💻", 2
-	row[4] = uv.Cell{}
-	const retained = 3
-	charge := scrollbackRowBytes + len(row)*scrollbackCellBytes
-	packed := NewScrollback(1)
-	packed.SetMaxBytes(retained * charge)
-	expanded := NewScrollback(retained)
-	for n := 0; n < retained*3; n++ {
-		row[5].Content = string(rune('a' + n))
-		packed.Push(row)
-		expanded.Push(row)
-		if packed.Len() != expanded.Len() || packed.Bytes() != packed.Len()*charge {
-			t.Fatalf("push %d: retained=%d/%d bytes=%d", n, packed.Len(), expanded.Len(), packed.Bytes())
+	for _, compressed := range []bool{true, false} {
+		name := "expanded"
+		if compressed {
+			name = "compressed"
 		}
-		for y := 0; y < packed.Len(); y++ {
-			want := expanded.Line(y)
-			if got := packed.Line(y); !reflect.DeepEqual(got, want) {
-				t.Fatalf("push %d row %d differs", n, y)
+		t.Run(name, func(t *testing.T) {
+			row := make(uv.Line, 80)
+			for x := range row {
+				index := x
+				if compressed {
+					index = (x / 8) % 2
+				}
+				row[x] = uv.Cell{Content: "x", Width: 1, Style: uv.Style{
+					Fg: ansi.IndexedColor(index), Bg: color.RGBA{R: 4, G: 9, B: 12, A: 255},
+					UnderlineColor: ansi.TrueColor(0x123456), Underline: uv.UnderlineCurly,
+					Attrs: uv.AttrBold | uv.AttrItalic,
+				}, Link: uv.Link{URL: "https://example.test/色", Params: "id=1"}}
 			}
-			if got := packed.lineInto(y, nil); !reflect.DeepEqual(got, want) {
-				t.Fatalf("push %d row %d: lineInto differs", n, y)
-			}
-			for x := range want {
-				if got := packed.CellAt(x, y); got == nil || !reflect.DeepEqual(*got, want[x]) {
-					t.Fatalf("push %d row %d cell %d differs", n, y, x)
+			row[0].Content, row[0].Width = "界", 2
+			row[1] = uv.Cell{}
+			row[2].Content = "e\u0301"
+			row[3].Content, row[3].Width = "👩‍💻", 2
+			row[4] = uv.Cell{}
+			const retained = 3
+			charge := scrollbackRowBytes + len(row)*scrollbackCellBytes
+			packed := NewScrollback(1)
+			packed.SetMaxBytes(retained * charge)
+			expanded := NewScrollback(retained)
+			for n := 0; n < retained*3; n++ {
+				row[5].Content = string(rune('a' + n))
+				packed.Push(row)
+				expanded.Push(row)
+				idx := packed.wrap(packed.start + packed.count - 1)
+				if (packed.styled[idx] != nil) != compressed {
+					t.Fatalf("push %d: wrong storage", n)
+				}
+				if packed.Len() != expanded.Len() || packed.Bytes() != packed.Len()*charge {
+					t.Fatalf("push %d: retained=%d/%d bytes=%d", n, packed.Len(), expanded.Len(), packed.Bytes())
+				}
+				for y := 0; y < packed.Len(); y++ {
+					want := expanded.Line(y)
+					if got := packed.Line(y); !reflect.DeepEqual(got, want) {
+						t.Fatalf("push %d row %d differs", n, y)
+					}
+					if got := packed.lineInto(y, nil); !reflect.DeepEqual(got, want) {
+						t.Fatalf("push %d row %d: lineInto differs", n, y)
+					}
+					for x := range want {
+						if got := packed.CellAt(x, y); got == nil || !reflect.DeepEqual(*got, want[x]) {
+							t.Fatalf("push %d row %d cell %d differs", n, y, x)
+						}
+					}
 				}
 			}
-		}
-	}
-	packed.SetMaxBytes(retained * charge)
-	for packed.Len() > 0 {
-		if got, want := packed.popLast(), expanded.popLast(); !reflect.DeepEqual(got, want) {
-			t.Fatal("restored row differs")
-		}
+			for packed.Len() > 0 {
+				if got, want := packed.popLast(), expanded.popLast(); !reflect.DeepEqual(got, want) {
+					t.Fatal("restored row differs")
+				}
+			}
+		})
 	}
 }
 
@@ -163,5 +178,118 @@ func TestStyledHistoryReusesAppearancesWithoutLosingLinksOrColors(t *testing.T) 
 	}
 	if saved.styles[:cap(saved.styles)][1].style.Fg != nil || saved.styles[:cap(saved.styles)][1].link.URL != "" {
 		t.Fatal("unused appearances retain references")
+	}
+}
+
+func TestStyledHistoryLongAppearancesAndRetention(t *testing.T) {
+	for _, unique := range []bool{false, true} {
+		row := longAppearanceRow(unique)
+		charge := scrollbackRowBytes + len(row)*scrollbackCellBytes
+		sb := NewScrollback(1)
+		sb.SetMaxBytes(2 * charge)
+		for n := 0; n < 3; n++ {
+			row[0].Content = string(rune('a' + n))
+			sb.Push(row)
+			if sb.Len() != min(n+1, 2) || sb.Bytes() != sb.Len()*charge {
+				t.Fatalf("unique=%v push=%d len=%d bytes=%d", unique, n, sb.Len(), sb.Bytes())
+			}
+			idx := sb.wrap(sb.start + sb.count - 1)
+			if (sb.styled[idx] == nil) != unique {
+				t.Fatalf("unique=%v: unexpected representation", unique)
+			}
+			if got := sb.Line(sb.Len() - 1); !reflect.DeepEqual(got, row) {
+				t.Fatalf("unique=%v: cells differ", unique)
+			}
+		}
+	}
+}
+
+func TestStyledHistoryRingResizeAndHandoff(t *testing.T) {
+	packed, expanded := NewEmulator(80, 4), NewEmulator(80, 4)
+	defer packed.Close()
+	defer expanded.Close()
+	packed.Scrollback().SetMaxBytes(3 * (scrollbackRowBytes + 80*scrollbackCellBytes))
+	expanded.SetScrollbackSize(100)
+	compare := func(stage string, a, b *Emulator) {
+		t.Helper()
+		if a.Scrollback().Len() != b.Scrollback().Len() || !reflect.DeepEqual(a.Scrollback().Lines(), b.Scrollback().Lines()) || a.Render() != b.Render() {
+			t.Fatalf("%s: history or screen differs", stage)
+		}
+	}
+	for n := 0; n < 12; n++ {
+		width := 80
+		if n%2 == 0 {
+			width = 40
+		}
+		row := longAppearanceRow(false)[:width]
+		for i := range row {
+			if _, ok := row[i].Style.Fg.(historySliceColor); ok {
+				row[i].Style.Fg = color.RGBA{R: 23, A: 255}
+			}
+		}
+		row[0].Content, row[0].Width = "界", 2
+		row[1] = uv.Cell{}
+		row[2].Content = string(rune('a' + n))
+		packed.Scrollback().Push(row)
+		expanded.Scrollback().Push(row)
+		for expanded.Scrollback().Len() > packed.Scrollback().Len() {
+			expanded.Scrollback().dropOldest()
+		}
+		idx := packed.Scrollback().wrap(packed.Scrollback().start + packed.Scrollback().count - 1)
+		if packed.Scrollback().styled[idx] == nil {
+			t.Fatalf("push %d was not compressed", n)
+		}
+		compare("push", packed, expanded)
+	}
+	data, err := packed.MarshalHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := NewEmulator(1, 1)
+	defer restored.Close()
+	if err := restored.UnmarshalHandoff(data); err != nil {
+		t.Fatal(err)
+	}
+	compare("handoff", packed, restored)
+	if packed.Scrollback().Bytes() != restored.Scrollback().Bytes() {
+		t.Fatal("handoff changed byte charge")
+	}
+	packed.ResizeWithReflow(40, 4, nil)
+	restored.ResizeWithReflow(40, 4, nil)
+	expanded.ResizeWithReflow(40, 4, nil)
+	compare("resize", packed, restored)
+	compare("resize expanded", packed, expanded)
+	if packed.Scrollback().Bytes() != restored.Scrollback().Bytes() {
+		t.Fatal("resize changed byte charge after handoff")
+	}
+}
+
+func longAppearanceRow(unique bool) uv.Line {
+	row := make(uv.Line, 10000)
+	styles := []uv.Style{{Fg: historySliceColor{23}, Attrs: uv.AttrBold}, {Fg: ansi.IndexedColor(9)}}
+	for i := range row {
+		style := styles[(i/4)%len(styles)]
+		if unique {
+			style.Fg = ansi.TrueColor(i)
+		}
+		row[i] = uv.Cell{Content: "x", Width: 1, Style: style, Link: uv.Link{URL: "https://example.test/色", Params: "id=1"}}
+	}
+	return row
+}
+
+func BenchmarkPackStyledLongAppearances(b *testing.B) {
+	for _, unique := range []bool{false, true} {
+		name := "repeated"
+		if unique {
+			name = "unique"
+		}
+		b.Run(name, func(b *testing.B) {
+			row := longAppearanceRow(unique)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = packStyled(row, nil)
+			}
+		})
 	}
 }

@@ -55,6 +55,7 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 	text.Grow(size)
 	reuse.styles = append(reuse.styles, savedStyle{style: line[0].Style, link: line[0].Link})
 	reuse.runs = append(reuse.runs, savedRun{})
+	var styleIndex map[appearanceKey]int
 	run := &reuse.runs[0]
 	text.WriteString(line[0].Content)
 	reuse.glyphs[0] = savedGlyph{text.Len(), line[0].Width}
@@ -66,12 +67,15 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 		reuse.zero[x] = c.Width == 0 && c.Content == "" && blankCell(c)
 		if !reuse.zero[x] && !sameSavedStyle(&reuse.styles[run.style], c) {
 			run.end = x
-			style := 0
-			for style < len(reuse.styles) && !sameSavedStyle(&reuse.styles[style], c) {
-				style++
+			if styleIndex == nil {
+				styleIndex = map[appearanceKey]int{savedAppearanceKey(&reuse.styles[0]): 0}
 			}
-			if style == len(reuse.styles) {
+			key := cellAppearanceKey(c)
+			style, found := styleIndex[key]
+			if !found {
+				style = len(reuse.styles)
 				reuse.styles = append(reuse.styles, savedStyle{style: c.Style, link: c.Link})
+				styleIndex[key] = style
 			}
 			reuse.runs = append(reuse.runs, savedRun{style: style})
 			run = &reuse.runs[len(reuse.runs)-1]
@@ -136,6 +140,16 @@ func (r *styledRow) line() uv.Line {
 // simply start another lossless run. Read-only byte comparison avoids calling
 // color methods for every cell. The layout is checked by the contract test.
 const appearanceBytes = unsafe.Sizeof(uv.Style{}) + unsafe.Sizeof(uv.Link{})
+
+type appearanceKey [appearanceBytes / unsafe.Sizeof(uintptr(0))]uintptr
+
+func savedAppearanceKey(r *savedStyle) appearanceKey {
+	return *(*appearanceKey)(unsafe.Pointer(&r.style))
+}
+
+func cellAppearanceKey(c *uv.Cell) appearanceKey {
+	return *(*appearanceKey)(unsafe.Pointer(&c.Style))
+}
 
 func sameSavedStyle(r *savedStyle, c *uv.Cell) bool {
 	a := (*[appearanceBytes / unsafe.Sizeof(uintptr(0))]uintptr)(unsafe.Pointer(&r.style))
