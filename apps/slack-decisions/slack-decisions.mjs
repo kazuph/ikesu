@@ -1003,6 +1003,7 @@ export class SlackDecisionsDaemon {
           repeatCount: value.repeat_count || 1,
           superseded: value.superseded === true,
           continuations: value.continuations || [],
+          waitingGuardRefresh: value.waiting_guard_refresh === true,
         });
       }
       if (this.posts.size > 0) {
@@ -1031,6 +1032,7 @@ export class SlackDecisionsDaemon {
           repeat_count: value.repeatCount || 1,
           superseded: value.superseded === true,
           continuations: value.continuations || [],
+          waiting_guard_refresh: value.waitingGuardRefresh === true,
           saved_at: Date.now(),
         };
       }
@@ -1169,6 +1171,7 @@ export class SlackDecisionsDaemon {
       repeatCount: this.posts.get(key)?.repeatCount || 1,
       superseded: this.posts.get(key)?.superseded === true,
       continuations: [...(this.posts.get(key)?.continuations || [])],
+      waitingGuardRefresh: this.posts.get(key)?.waitingGuardRefresh === true,
       // Option ids picked via number reactions on a multi_select decision;
       // submitted when a :white_check_mark: reaction confirms them.
       selection: new Set(),
@@ -1177,7 +1180,7 @@ export class SlackDecisionsDaemon {
       const scope = JSON.stringify([mid, decision.origin.pane_id]);
       const last = this.lastGuardByPane.get(scope);
       const order = [Number(decision.created_unix_ms) || 0, decisionIdOf(decision)];
-      if (!last || order[0] > last.order[0] || (order[0] === last.order[0] && order[1] > last.order[1])) {
+      if (!last || order[0] > last.order[0] || (order[0] === last.order[0] && !this.posts.has(key) && key !== last.key)) {
         entry.previousGuardKey = last?.key || "";
         this.lastGuardByPane.set(scope, {key, order});
         this.savePostsFile();
@@ -1264,13 +1267,13 @@ export class SlackDecisionsDaemon {
       entry.continuations = prior.continuations;
       entry.repeatCount = prior.repeatCount + 1;
       entry.answerReady = false;
-      entry.answerAfter = Math.max(Date.now(), Number(decision.created_unix_ms) || 0) / 1000;
+      entry.waitingGuardRefresh = true;
+      entry.answerAfter = 0;
       this.posts.set(prior.key, {channel: post.channel, ts: post.ts, machineId: prior.machineId, decisionId: prior.decision.decision_id, superseded: true});
-      this.posts.set(entry.key, {channel: post.channel, ts: post.ts, machineId: entry.machineId, decisionId: decision.decision_id, repeatCount: entry.repeatCount, answerAfter: entry.answerAfter, answerReady: false, continuations: entry.continuations});
+      this.posts.set(entry.key, {channel: post.channel, ts: post.ts, machineId: entry.machineId, decisionId: decision.decision_id, repeatCount: entry.repeatCount, answerAfter: entry.answerAfter, answerReady: false, waitingGuardRefresh: true, continuations: entry.continuations});
       this.savePostsFile();
-      await this.establishAnswerBaseline(entry);
-      if (entry.resolved) { await this.finishResolvedPost(entry); return; }
       await this.renderPending(entry);
+      if (entry.resolved) await this.finishResolvedPost(entry);
       return;
     }
     // The same question recreated right after a cancel — the
@@ -1356,6 +1359,7 @@ export class SlackDecisionsDaemon {
   }
 
   async establishAnswerBaseline(entry) {
+    if (entry.waitingGuardRefresh) return false;
     if (entry.answerReady) return true;
     if (entry.baselineRead) return entry.baselineRead;
     entry.baselineRead = (async () => {
@@ -1397,7 +1401,16 @@ export class SlackDecisionsDaemon {
     const previous = entry.renderWork || Promise.resolve();
     const work = previous.then(() => this.renderPendingNow(entry));
     entry.renderWork = work;
-    try { await work; } finally { if (entry.renderWork === work) entry.renderWork = null; }
+    try {
+      const rendered = await work;
+      if (rendered && entry.waitingGuardRefresh && !entry.resolved && this.ownsPost(entry.key, entry.post)) {
+        entry.answerAfter = Date.now() / 1000;
+        entry.waitingGuardRefresh = false;
+        Object.assign(this.posts.get(entry.key), {answerAfter: entry.answerAfter, waitingGuardRefresh: false});
+        this.savePostsFile();
+        await this.establishAnswerBaseline(entry);
+      }
+    } finally { if (entry.renderWork === work) entry.renderWork = null; }
   }
 
   async renderPendingNow(entry) {
@@ -1413,6 +1426,7 @@ export class SlackDecisionsDaemon {
         });
       }, () => !entry.resolved && this.ownsPost(entry.key, post));
       await this.renderContinuations(entry, post, blocks.slice(SLACK_MESSAGE_BLOCK_LIMIT));
+      return true;
     } catch (error) {
       this.log(`投稿の再表示に失敗 (${entry.decision.decision_id}): ${error.message}`);
       if (!entry.resolved && !this.stopped && !entry.postTimer) {

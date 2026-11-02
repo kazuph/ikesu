@@ -208,6 +208,32 @@ test("long body and command survive Slack message and thread block limits", asyn
   } finally { await daemon.stop(); await fake.stop(); }
 });
 
+test("guard reactions cannot answer the new request until the rewritten post is visible", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack, config:{postMutationAttempts:1}});
+  try {
+    const first = sampleDecision({kind:"command_guard", decision_id:"before", origin:{pane_id:"p1", cwd:"/repo", command:"rm a", reason:"理由"}});
+    await daemon.onCreated("local", LOCAL, first);
+    const ts = fake.posts[0].ts;
+    fake.failMethods.add("chat.update");
+    const next = {...first, decision_id:"next", created_unix_ms:first.created_unix_ms+1};
+    await daemon.onCreated("local", LOCAL, next);
+    const entry = daemon.entries.get("local\u0000next");
+    assert.equal(entry.waitingGuardRefresh, true);
+    assert.equal(entry.answerReady, false);
+    fake.userReact(ts, "one", "UBEFORE");
+    await daemon.handleSocketPayload({type:"reaction_added", user:"UBEFORE", reaction:"one", item:{type:"message",ts}, event_ts:String(Date.now()/1000)});
+    assert.equal(daemon.testAnswers.length, 0);
+    fake.failMethods.delete("chat.update");
+    await daemon.renderPending(entry);
+    assert.equal(entry.answerReady, true);
+    assert.ok(entry.seenReactions.has("one:UBEFORE"));
+    await daemon.pollEntryReactions(entry);
+    assert.equal(daemon.testAnswers.length, 0);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 test("machine_down logs only transitions while retrying failed post deletion", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
