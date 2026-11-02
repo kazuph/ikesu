@@ -6,14 +6,66 @@ import (
 	"encoding/json"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/cli"
+	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/plugin"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestDecisionWatchForwardsPendingBodyUpdate(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	d := createDecision(t, dir, nil)
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer write.Close()
+	read.SetReadDeadline(time.Now().Add(5 * time.Second))
+	exit := make(chan int, 1)
+	go func() {
+		exit <- cli.Run([]string{"decision", "watch"}, cli.Options{Session: "test", Explicit: true, Stdout: write, Stderr: io.Discard})
+	}()
+	decoder := json.NewDecoder(read)
+	var row struct {
+		Event    string       `json:"event"`
+		Decision api.Decision `json:"decision"`
+	}
+	for _, event := range []string{"machine_up", "created"} {
+		if err := decoder.Decode(&row); err != nil || row.Event != event {
+			t.Fatalf("initial %s: %+v %v", event, row, err)
+		}
+	}
+	store, err := dispatch.Open(dispatch.DBPath("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	body := "全文の更新"
+	params := api.DecisionCreateParams{Kind: d.Kind, Title: d.Title, Body: &body, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect}
+	if _, changed, err := store.UpdatePendingScreenDecision(d.DecisionID, params); err != nil || !changed {
+		t.Fatalf("update=%v %v", changed, err)
+	}
+	if err := decoder.Decode(&row); err != nil || row.Event != "updated" || row.Decision.Body == nil || *row.Decision.Body != body {
+		t.Fatalf("updated: %+v %v", row, err)
+	}
+	apiOK(t, dir, api.MethodDecisionCancel, api.DecisionTargetParams{DecisionID: d.DecisionID}, nil)
+	if err := decoder.Decode(&row); err != nil || row.Event != "resolved" {
+		t.Fatalf("resolved: %+v %v", row, err)
+	}
+	read.Close()
+	select {
+	case <-exit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch did not stop")
+	}
+}
 
 func createDecision(t *testing.T, dir string, timeout *uint64) api.Decision {
 	t.Helper()

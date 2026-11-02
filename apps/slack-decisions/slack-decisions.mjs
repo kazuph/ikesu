@@ -967,6 +967,7 @@ export class SlackDecisionsDaemon {
     // question, deleted when the window ends.
     this.reusablePosts = new Map();
     this.guardPostTails = new Map();
+    this.lastGuardByPane = new Map();
     this.recreateReuseMs =
       config.recreatePostReuseMs ??
       Math.max(
@@ -986,6 +987,7 @@ export class SlackDecisionsDaemon {
     if (!this.postsFilePath) return;
     try {
       const raw = JSON.parse(fs.readFileSync(this.postsFilePath, "utf8"));
+      for (const [key, value] of Object.entries(raw?.__guard_last__ || {})) this.lastGuardByPane.set(key, value);
       const now = Date.now();
       for (const [key, value] of Object.entries(raw || {})) {
         if (!value || typeof value.ts !== "string" || !value.ts) continue;
@@ -1016,6 +1018,7 @@ export class SlackDecisionsDaemon {
     try {
       fs.mkdirSync(path.dirname(this.postsFilePath), { recursive: true });
       const out = {};
+      out.__guard_last__ = Object.fromEntries(this.lastGuardByPane);
       for (const [key, value] of this.posts) {
         out[key] = {
           channel: value.channel,
@@ -1170,6 +1173,16 @@ export class SlackDecisionsDaemon {
       // submitted when a :white_check_mark: reaction confirms them.
       selection: new Set(),
     };
+    if (decision.kind === "command_guard" && decision.origin?.pane_id) {
+      const scope = JSON.stringify([mid, decision.origin.pane_id]);
+      const last = this.lastGuardByPane.get(scope);
+      const order = [Number(decision.created_unix_ms) || 0, decisionIdOf(decision)];
+      if (!last || order[0] > last.order[0] || (order[0] === last.order[0] && order[1] > last.order[1])) {
+        entry.previousGuardKey = last?.key || "";
+        this.lastGuardByPane.set(scope, {key, order});
+        this.savePostsFile();
+      }
+    }
     this.entries.set(key, entry);
     if (entry.superseded) return;
     if (entry.post) {
@@ -1239,8 +1252,8 @@ export class SlackDecisionsDaemon {
     if (entry.resolved || entry.superseded || this.stopped || this.machinesDown.has(entry.machineId) || (entry.decision.status && entry.decision.status !== "pending")) return;
     const { decision, machine } = entry;
     const guardKey = guardRequestKey(entry.machineId, decision);
-    const prior = guardKey && [...this.entries.values()].find(other => other !== entry && !other.resolved && !other.superseded && other.post && this.ownsPost(other.key, other.post) && guardRequestKey(other.machineId, other.decision) === guardKey);
-    if (prior) {
+    const prior = guardKey && this.entries.get(entry.previousGuardKey);
+    if (prior && !prior.resolved && !prior.superseded && prior.post && this.ownsPost(prior.key, prior.post) && guardRequestKey(prior.machineId, prior.decision) === guardKey) {
       if (prior.renderWork) await prior.renderWork;
       if (entry.resolved || prior.resolved || !this.ownsPost(prior.key, prior.post)) return this.postUnseenDecision(entry);
       const post = prior.post;
