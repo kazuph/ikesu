@@ -57,12 +57,17 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 		return nil
 	}
 	// Unrepresentable input remains in the existing expanded representation.
-	size := 0
+	size, widths := 0, 0
 	for i := range line {
-		if !canSaveGlyph(size, len(line[i].Content), line[i].Width) {
+		n := len(line[i].Content)
+		if n > glyphEndMask-size {
 			return nil
 		}
-		size += len(line[i].Content)
+		size += n
+		widths |= line[i].Width
+	}
+	if !canSaveGlyph(size, 0, widths) {
+		return nil
 	}
 	reused := reuse != nil
 	if !reused {
