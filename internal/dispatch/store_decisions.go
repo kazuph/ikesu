@@ -147,12 +147,28 @@ func (s *Store) BindScreenQuestion(decisionID, paneID, identity string) error {
 	if d.Status != "pending" || d.Origin == nil || d.Origin.PaneID != paneID {
 		return decisionError(api.ErrDecisionStale, "screen decision is no longer pending for this pane")
 	}
+	if err = s.execLocked("BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = s.execLocked("ROLLBACK")
+		}
+	}()
+	if err = s.execLocked(`DELETE FROM screen_question_identities WHERE pane_id=? AND identity=? AND decision_id IN (SELECT decision_id FROM decisions WHERE status='cancelled')`, paneID, identity); err != nil {
+		return err
+	}
 	if err = s.execLocked(`INSERT INTO screen_question_identities(decision_id,pane_id,identity) VALUES(?,?,?) ON CONFLICT(decision_id) DO UPDATE SET identity=excluded.identity WHERE pane_id=excluded.pane_id AND identity=excluded.identity`, decisionID, paneID, identity); err != nil {
 		return err
 	}
 	if s.db.Changes() == 0 {
 		return decisionError(api.ErrDecisionStale, "screen decision belongs to another question")
 	}
+	if err = s.execLocked("COMMIT"); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 
