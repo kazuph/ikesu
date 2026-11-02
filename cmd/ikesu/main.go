@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -123,6 +124,7 @@ dispatch:
 			os.Exit(runDetect(args[1:]))
 		case "server":
 			if len(args) == 2 && args[1] == "--handoff-import" {
+				configureServerGC()
 				code, err := server.RunHandoffImport(session, version)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "ikesu handoff import:", err)
@@ -131,6 +133,7 @@ dispatch:
 			}
 			// `ikesu server` runs the server; `ikesu server <sub>` is the CLI.
 			if len(args) == 1 {
+				configureServerGC()
 				if client.NestedBlocked() {
 					fmt.Fprintln(os.Stderr, "ikesu: refusing to start a nested ikesu server (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit)")
 					os.Exit(1)
@@ -158,6 +161,7 @@ dispatch:
 	}
 
 	if noSession {
+		configureServerGC()
 		if err := retained.Ensure(version); err != nil {
 			fmt.Fprintln(os.Stderr, "ikesu:", err)
 			os.Exit(1)
@@ -176,6 +180,14 @@ dispatch:
 		fmt.Fprintln(os.Stderr, "ikesu:", err)
 	}
 	os.Exit(code)
+}
+
+// Long-lived server and standalone processes trade more GC work for lower memory.
+// An explicit GOGC always belongs to the user, including an empty value.
+func configureServerGC() {
+	if _, exists := os.LookupEnv("GOGC"); !exists {
+		debug.SetGCPercent(50)
+	}
 }
 
 func run(noSession bool, session string) (int, error) {
