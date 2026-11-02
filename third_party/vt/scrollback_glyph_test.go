@@ -2,6 +2,7 @@ package vt
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -53,5 +54,44 @@ func TestStyledGlyphUnrepresentableWidthRetainsExpandedCells(t *testing.T) {
 		if sb.styled[sb.start] != nil || !reflect.DeepEqual(sb.Line(0), line) || sb.Bytes() != scrollbackRowBytes+len(line)*scrollbackCellBytes {
 			t.Fatalf("width %d changed expanded row or charge", width)
 		}
+	}
+}
+
+// A row whose total text exceeds what a compact glyph can address must be
+// rejected by packStyled and kept as expanded cells by Push, for fresh and
+// reused storage alike. The text is shared, so the test allocates little.
+func TestStyledHistoryRowBeyondTextLimitStaysExpanded(t *testing.T) {
+	chunk := strings.Repeat("z", 64<<10)
+	cells := (glyphEndMask + 1) / len(chunk) // total text is exactly 2^29 bytes
+	row := make(uv.Line, cells)
+	styles := []uv.Style{{Fg: historySliceColor{1}}, {Fg: historySliceColor{2}}}
+	for x := range row {
+		row[x] = uv.Cell{Content: chunk, Width: 1, Style: styles[x%2]}
+	}
+	if packStyled(row, nil) != nil {
+		t.Fatal("fresh pack accepted text beyond the glyph offset limit")
+	}
+	small := make(uv.Line, cells)
+	for x := range small {
+		small[x] = uv.Cell{Content: "s", Width: 1, Style: styles[x%2]}
+	}
+	reuse := packStyled(small, nil)
+	if reuse == nil {
+		t.Fatal("small styled row was not packed")
+	}
+	if packStyled(row, reuse) != nil {
+		t.Fatal("reused pack accepted text beyond the glyph offset limit")
+	}
+
+	sb := NewScrollback(4)
+	sb.SetMaxBytes(4 * (scrollbackRowBytes + cells*scrollbackCellBytes))
+	sb.Push(row)
+	idx := sb.wrap(sb.start + sb.count - 1)
+	if sb.Len() != 1 || sb.styled[idx] != nil || sb.Bytes() != scrollbackRowBytes+cells*scrollbackCellBytes {
+		t.Fatalf("pushed row: len %d styled %v bytes %d", sb.Len(), sb.styled[idx] != nil, sb.Bytes())
+	}
+	got := sb.Line(0)
+	if len(got) != cells || got[0].Content != chunk || !reflect.DeepEqual(got[cells-1].Style, styles[(cells-1)%2]) {
+		t.Fatal("expanded row content changed")
 	}
 }
