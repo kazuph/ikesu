@@ -138,6 +138,26 @@ func (r *runner) runCLI(args []string) int {
 	if paneMode {
 		return r.runPaneCLI(argv, label, cwd, split, closeOnSuccess, caller)
 	}
+	if cwd == "" && machineRef == "" {
+		// Like herdr, a background job without --cwd runs where it was
+		// requested, not in the server's directory.
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(r.errOut(), "cannot determine the current directory (%v); pass --cwd\n", err)
+			return 2
+		}
+		cwd = wd
+	}
+	if machineRef == "" && cwd != "" {
+		// A relative --cwd is relative to where the command was run, as in herdr.
+		if abs, err := filepath.Abs(cwd); err == nil {
+			cwd = abs
+		}
+		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+			fmt.Fprintf(r.errOut(), "working directory %s is not available; pass --cwd\n", cwd)
+			return 2
+		}
+	}
 	return r.runBackgroundCLI(argv, label, cwd, caller, completion)
 }
 
