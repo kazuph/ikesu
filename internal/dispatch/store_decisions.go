@@ -19,7 +19,13 @@ const decisionSchema = `CREATE TABLE IF NOT EXISTS decisions (
  expires_unix_ms INTEGER,
  record TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_decisions_pending_deadline ON decisions(status, expires_unix_ms);`
+CREATE INDEX IF NOT EXISTS idx_decisions_pending_deadline ON decisions(status, expires_unix_ms);
+CREATE TABLE IF NOT EXISTS screen_question_identities (
+ decision_id TEXT PRIMARY KEY,
+ pane_id TEXT NOT NULL,
+ identity TEXT NOT NULL,
+ UNIQUE(pane_id, identity)
+);`
 
 func decisionError(code, message string) error { return &api.Error{Code: code, Message: message} }
 func ValidDecisionStatus(status string) bool {
@@ -30,6 +36,17 @@ func ValidDecisionStatus(status string) bool {
 	return false
 }
 func (s *Store) CreateDecision(p api.DecisionCreateParams, now time.Time) (api.Decision, error) {
+	return s.createDecision(p, now, "", "")
+}
+
+func (s *Store) CreateScreenDecision(p api.DecisionCreateParams, now time.Time, paneID, identity string) (api.Decision, error) {
+	if paneID == "" || identity == "" || p.Origin == nil || p.Origin.PaneID != paneID {
+		return api.Decision{}, decisionError(api.ErrInvalidRequest, "screen identity requires its pane")
+	}
+	return s.createDecision(p, now, paneID, identity)
+}
+
+func (s *Store) createDecision(p api.DecisionCreateParams, now time.Time, paneID, identity string) (api.Decision, error) {
 	var d api.Decision
 	switch p.Kind {
 	case "command_guard", "tool_permission", "agent_prompt", "ask":
@@ -68,9 +85,74 @@ func (s *Store) CreateDecision(p api.DecisionCreateParams, now time.Time) (api.D
 	if err != nil {
 		return d, err
 	}
-	err = s.exec(`INSERT INTO decisions(decision_id,status,created_unix_ms,expires_unix_ms,record) VALUES(?,?,?,?,?)`, d.DecisionID, d.Status, ms, d.ExpiresUnixMS, string(raw))
+	insert := `INSERT INTO decisions(decision_id,status,created_unix_ms,expires_unix_ms,record) VALUES(?,?,?,?,?)`
+	if identity == "" {
+		err = s.exec(insert, d.DecisionID, d.Status, ms, d.ExpiresUnixMS, string(raw))
+		return d, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err = s.execLocked("BEGIN IMMEDIATE"); err != nil {
+		return d, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = s.execLocked("ROLLBACK")
+		}
+	}()
+	if err = s.execLocked(insert, d.DecisionID, d.Status, ms, d.ExpiresUnixMS, string(raw)); err != nil {
+		return d, err
+	}
+	if err = s.execLocked(`INSERT INTO screen_question_identities(decision_id,pane_id,identity) VALUES(?,?,?)`, d.DecisionID, paneID, identity); err != nil {
+		return d, err
+	}
+	if err = s.execLocked("COMMIT"); err != nil {
+		return d, err
+	}
+	committed = true
 	return d, err
 }
+
+// ScreenQuestionDecision finds the pending decision for a verified transcript identity.
+func (s *Store) ScreenQuestionDecision(paneID, identity string) (api.Decision, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(`SELECT d.record FROM decisions d JOIN screen_question_identities i ON i.decision_id=d.decision_id WHERE i.pane_id=? AND i.identity=? AND d.status='pending'`, paneID, identity)
+	if err != nil {
+		return api.Decision{}, false, err
+	}
+	defer st.Close()
+	if !st.Step() {
+		return api.Decision{}, false, st.Err()
+	}
+	var d api.Decision
+	err = json.Unmarshal([]byte(st.ColumnText(0)), &d)
+	return d, err == nil, err
+}
+
+func (s *Store) BindScreenQuestion(decisionID, paneID, identity string) error {
+	if decisionID == "" || paneID == "" || identity == "" {
+		return decisionError(api.ErrInvalidRequest, "screen identity is incomplete")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.decisionLocked(decisionID)
+	if err != nil {
+		return err
+	}
+	if d.Status != "pending" || d.Origin == nil || d.Origin.PaneID != paneID {
+		return decisionError(api.ErrDecisionStale, "screen decision is no longer pending for this pane")
+	}
+	if err = s.execLocked(`INSERT INTO screen_question_identities(decision_id,pane_id,identity) VALUES(?,?,?) ON CONFLICT(decision_id) DO UPDATE SET identity=excluded.identity WHERE pane_id=excluded.pane_id AND identity=excluded.identity`, decisionID, paneID, identity); err != nil {
+		return err
+	}
+	if s.db.Changes() == 0 {
+		return decisionError(api.ErrDecisionStale, "screen decision belongs to another question")
+	}
+	return nil
+}
+
 func (s *Store) decisionLocked(id string) (api.Decision, error) {
 	var d api.Decision
 	st, err := s.queryLocked(`SELECT record FROM decisions WHERE decision_id=?`, id)

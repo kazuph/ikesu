@@ -17,6 +17,7 @@ type ClaudeQuestion struct {
 	Header    string
 	Question  string
 	Multi     bool
+	Answered  bool
 	Options   []ClaudeQuestionOption
 }
 
@@ -38,6 +39,20 @@ type ClaudeQuestionCache struct {
 }
 
 func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion, bool) {
+	all, ok := cache.ReadAll(root, sessionID)
+	if !ok {
+		return nil, false
+	}
+	var pending []ClaudeQuestion
+	for _, q := range all {
+		if !q.Answered {
+			pending = append(pending, q)
+		}
+	}
+	return pending, true
+}
+
+func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuestion, bool) {
 	if !SafeSessionID(sessionID) {
 		return nil, false
 	}
@@ -90,6 +105,7 @@ func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion
 		} `json:"message"`
 	}
 	pending := map[string][]ClaudeQuestion{}
+	answered := map[string]bool{}
 	matched := false
 	reader := bufio.NewReader(f)
 	for {
@@ -119,7 +135,7 @@ func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion
 		}
 		for _, b := range blocks {
 			if b.Type == "tool_result" && b.ToolUseID != "" {
-				delete(pending, b.ToolUseID)
+				answered[b.ToolUseID] = true
 			}
 			if b.Type != "tool_use" || b.Name != "AskUserQuestion" || b.ID == "" {
 				continue
@@ -142,8 +158,11 @@ func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion
 		}
 	}
 	var out []ClaudeQuestion
-	for _, questions := range pending {
-		out = append(out, questions...)
+	for id, questions := range pending {
+		for _, q := range questions {
+			q.Answered = answered[id]
+			out = append(out, q)
+		}
 	}
 	if matched {
 		cache.path, cache.sessionID, cache.size, cache.modified, cache.questions, cache.valid = paths[0], sessionID, info.Size(), info.ModTime(), out, true

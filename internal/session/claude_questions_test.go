@@ -50,3 +50,24 @@ func TestPendingClaudeQuestions(t *testing.T) {
 		t.Fatal("missing session accepted")
 	}
 }
+
+func TestClaudeQuestionsDoNotMixSessionsInSameDirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "same-cwd")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{"11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"}
+	for _, id := range ids {
+		line := `{"sessionId":"` + id + `","cwd":"/same","message":{"content":[{"type":"tool_use","id":"tool-` + id + `","name":"AskUserQuestion","input":{"questions":[{"question":"question-` + id + `","options":[{"label":"yes"}]}]}}]}}` + "\n"
+		if err := os.WriteFile(filepath.Join(dir, id+".jsonl"), []byte(line), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range ids {
+		got, ok := PendingClaudeQuestions(root, id)
+		if !ok || len(got) != 1 || got[0].SessionID != id || got[0].ToolID != "tool-"+id || got[0].Question != "question-"+id {
+			t.Fatalf("%s: %+v ok=%v", id, got, ok)
+		}
+	}
+}

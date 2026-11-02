@@ -238,7 +238,14 @@ func (s *Server) scanScreenPrompts() {
 		if transcriptScreen == nil && w != nil && w.transcriptID != "" {
 			transcriptScreen = w.prompt
 		}
-		transcriptID, display, transcriptOK, transcriptPending, transcriptUnverified := s.pollClaudeTranscript(pid, transcriptScreen)
+		transcriptID, display, transcriptOK, transcriptPending, transcriptUnverified, transcriptResolved := s.pollClaudeTranscript(pid, transcriptScreen)
+		if transcriptResolved {
+			if w != nil {
+				s.cancelScreenPrompt(w)
+				delete(s.screenPrompts.watches, pid)
+			}
+			continue
+		}
 		if w != nil {
 			if p == nil && !w.resolved && w.transcriptID != "" && (transcriptPending || transcriptOK && transcriptID == w.transcriptID) {
 				w.lastMatched = false
@@ -261,6 +268,16 @@ func (s *Server) scanScreenPrompts() {
 				same := w.transcriptID == transcriptID
 				if w.transcriptID == "" {
 					same = matchesClaudeDisplay(w.prompt, p, display)
+				}
+				if same && w.transcriptID == "" && w.decisionID != "" {
+					store, err := s.db()
+					if err == nil {
+						err = store.BindScreenQuestion(w.decisionID, fmtPaneID(pid), transcriptID)
+					}
+					if err != nil {
+						s.app.SetConfigWarning("screen question identity: " + err.Error())
+						same = false
+					}
 				}
 				if same {
 					w.signature = p.Signature()
@@ -304,6 +321,9 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if w.decisionID == "" {
+					if transcriptPending || transcriptUnverified {
+						continue
+					}
 					s.createScreenPrompt(pid, w)
 					continue
 				}
@@ -325,6 +345,9 @@ func (s *Server) scanScreenPrompts() {
 				w.transcriptID, w.displayParams = transcriptID, &display
 			}
 			s.screenPrompts.watches[pid] = w
+			if transcriptPending || transcriptUnverified {
+				continue
+			}
 			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
 				s.markPreviewSeen(pid, p)
 				s.startPreviewScan(pid, w)
@@ -338,6 +361,19 @@ func (s *Server) scanScreenPrompts() {
 func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 	store, err := s.db()
 	if err != nil {
+		return false
+	}
+	if w.transcriptID != "" {
+		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID)
+		if err != nil {
+			s.app.SetConfigWarning("screen question lookup: " + err.Error())
+			return false
+		}
+		if found {
+			w.decisionID = d.DecisionID
+			s.updateScreenPrompt(w)
+			return true
+		}
 		return false
 	}
 	pending, err := store.Decisions("pending")
@@ -360,17 +396,8 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 		s.app.SetConfigWarning(err.Error())
 		return
 	}
-	// Read persisted pending records only on first discovery, including restart/handoff.
-	pending, err := store.Decisions("pending")
-	if err != nil {
-		s.app.SetConfigWarning(err.Error())
+	if s.reuseScreenPrompt(pid, w) {
 		return
-	}
-	for _, d := range pending {
-		if d.Origin != nil && d.Origin.Reason == "screen_prompt" && d.Origin.PaneID == fmtPaneID(pid) && screenprompt.FromDecision(d) == w.signature {
-			w.decisionID = d.DecisionID
-			return
-		}
 	}
 	p := screenDisplayParams(w)
 	pane := s.sup.Get(pid)
@@ -384,7 +411,12 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	}
 	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: w.prompt.OriginAgent(agent), Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
 	s.completeDecisionOrigin(p.Origin)
-	d, err := store.CreateDecision(p, time.Now())
+	var d api.Decision
+	if w.transcriptID != "" {
+		d, err = store.CreateScreenDecision(p, time.Now(), fmtPaneID(pid), w.transcriptID)
+	} else {
+		d, err = store.CreateDecision(p, time.Now())
+	}
 	if err != nil {
 		s.app.SetConfigWarning("screen prompt creation: " + err.Error())
 		return

@@ -32,16 +32,26 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		if current == nil {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
-		id, _, matched, _ := s.claudeTranscriptPrompt(pid, current)
+		id, _, matched, _, _ := s.claudeTranscriptPrompt(pid, current)
 		if !matched || id != w.transcriptID {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
 		w.signature = current.Signature()
 	}
 	if ok && w != nil && w.transcriptID == "" && current != nil {
-		_, _, _, unverified := s.claudeTranscriptPrompt(pid, current)
-		if unverified {
+		id, params, matched, unverified, resolved := s.claudeTranscriptPrompt(pid, current)
+		if unverified || resolved {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
+		}
+		if matched {
+			store, err := s.db()
+			if err == nil {
+				err = store.BindScreenQuestion(d.DecisionID, fmtPaneID(pid), id)
+			}
+			if err != nil {
+				return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot bind recorded question to this decision"}
+			}
+			w.transcriptID, w.displayParams = id, &params
 		}
 	}
 	damaged := false
@@ -126,7 +136,7 @@ func (s *Server) screenInputChecked(pid int, signature, data string, verify bool
 				return
 			}
 			if w := s.screenPrompts.watches[pid]; w != nil && w.transcriptID != "" {
-				id, _, ok, _ := s.claudeTranscriptPrompt(pid, p)
+				id, _, ok, _, _ := s.claudeTranscriptPrompt(pid, p)
 				if !ok || id != w.transcriptID {
 					err = fmt.Errorf("recorded question changed during input delivery")
 					return
