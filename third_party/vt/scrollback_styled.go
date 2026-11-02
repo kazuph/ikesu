@@ -16,9 +16,14 @@ type savedStyle struct {
 	link  uv.Link
 	end   int
 }
+type savedRun struct {
+	end   int
+	style int
+}
 type styledRow struct {
 	glyphs []savedGlyph
-	runs   []savedStyle
+	runs   []savedRun
+	styles []savedStyle
 	text   string
 	zero   []bool
 }
@@ -39,15 +44,17 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 		reuse.glyphs = reuse.glyphs[:len(line)]
 		reuse.zero = reuse.zero[:len(line)]
 	}
-	oldRuns := len(reuse.runs)
+	oldStyles := len(reuse.styles)
 	reuse.runs = reuse.runs[:0]
+	reuse.styles = reuse.styles[:0]
 	var text strings.Builder
 	size := 0
 	for i := range line {
 		size += len(line[i].Content)
 	}
 	text.Grow(size)
-	reuse.runs = append(reuse.runs, savedStyle{style: line[0].Style, link: line[0].Link})
+	reuse.styles = append(reuse.styles, savedStyle{style: line[0].Style, link: line[0].Link})
+	reuse.runs = append(reuse.runs, savedRun{})
 	run := &reuse.runs[0]
 	text.WriteString(line[0].Content)
 	reuse.glyphs[0] = savedGlyph{text.Len(), line[0].Width}
@@ -57,18 +64,25 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 		text.WriteString(c.Content)
 		reuse.glyphs[x] = savedGlyph{text.Len(), c.Width}
 		reuse.zero[x] = c.Width == 0 && c.Content == "" && blankCell(c)
-		if !reuse.zero[x] && !sameSavedStyle(run, c) {
+		if !reuse.zero[x] && !sameSavedStyle(&reuse.styles[run.style], c) {
 			run.end = x
-			reuse.runs = append(reuse.runs, savedStyle{style: c.Style, link: c.Link})
+			style := 0
+			for style < len(reuse.styles) && !sameSavedStyle(&reuse.styles[style], c) {
+				style++
+			}
+			if style == len(reuse.styles) {
+				reuse.styles = append(reuse.styles, savedStyle{style: c.Style, link: c.Link})
+			}
+			reuse.runs = append(reuse.runs, savedRun{style: style})
 			run = &reuse.runs[len(reuse.runs)-1]
 		}
 	}
 	run.end = len(line)
 	reuse.text = text.String()
-	if oldRuns > len(reuse.runs) {
-		clear(reuse.runs[len(reuse.runs):oldRuns])
+	if oldStyles > len(reuse.styles) {
+		clear(reuse.styles[len(reuse.styles):oldStyles])
 	}
-	cost := int(unsafe.Sizeof(styledRow{})) + cap(reuse.glyphs)*int(unsafe.Sizeof(savedGlyph{})) + cap(reuse.runs)*int(unsafe.Sizeof(savedStyle{})) + len(reuse.text) + cap(reuse.zero)
+	cost := int(unsafe.Sizeof(styledRow{})) + cap(reuse.glyphs)*int(unsafe.Sizeof(savedGlyph{})) + cap(reuse.runs)*int(unsafe.Sizeof(savedRun{})) + cap(reuse.styles)*int(unsafe.Sizeof(savedStyle{})) + len(reuse.text) + cap(reuse.zero)
 	if cost > len(line)*scrollbackCellBytes {
 		return nil
 	}
@@ -93,7 +107,8 @@ func (r *styledRow) cellAt(x int) *uv.Cell {
 	for i := range r.runs {
 		if x < r.runs[i].end {
 			g := r.glyphs[x]
-			return &uv.Cell{Content: r.contentAt(x), Width: g.width, Style: r.runs[i].style, Link: r.runs[i].link}
+			appearance := r.styles[r.runs[i].style]
+			return &uv.Cell{Content: r.contentAt(x), Width: g.width, Style: appearance.style, Link: appearance.link}
 		}
 	}
 	return nil
@@ -102,12 +117,13 @@ func (r *styledRow) line() uv.Line {
 	row := make(uv.Line, len(r.glyphs))
 	start := 0
 	for _, run := range r.runs {
+		appearance := r.styles[run.style]
 		for x := start; x < run.end; x++ {
 			if r.zero[x] {
 				continue
 			}
 			g := r.glyphs[x]
-			row[x] = uv.Cell{Content: r.contentAt(x), Width: g.width, Style: run.style, Link: run.link}
+			row[x] = uv.Cell{Content: r.contentAt(x), Width: g.width, Style: appearance.style, Link: appearance.link}
 		}
 		start = run.end
 	}

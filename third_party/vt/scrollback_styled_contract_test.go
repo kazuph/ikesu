@@ -9,6 +9,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type historySliceColor []uint8
+
+func (c historySliceColor) RGBA() (uint32, uint32, uint32, uint32) {
+	return uint32(c[0]) * 257, 0, 0, 65535
+}
+
 // Compare byte-limited storage with the original expanded-cell representation.
 func TestStyledHistoryMatchesExpandedCells(t *testing.T) {
 	row := make(uv.Line, 80)
@@ -126,5 +132,32 @@ func TestStyledWideContinuationsRemainZeroAcrossReadsAndReflow(t *testing.T) {
 		if !reflect.DeepEqual(got, row[start:]) {
 			t.Fatalf("reflow slice starting at %d changed", start)
 		}
+	}
+}
+
+func TestStyledHistoryReusesAppearancesWithoutLosingLinksOrColors(t *testing.T) {
+	styles := []uv.Style{{Fg: historySliceColor{23}, Attrs: uv.AttrBold},
+		{Fg: ansi.IndexedColor(9), UnderlineColor: color.RGBA{B: 12, A: 255}}}
+	links := []uv.Link{{URL: "https://example.test/色", Params: "id=a"}, {URL: "https://example.test/other", Params: "id=b"}}
+	row := make(uv.Line, 80)
+	for x := range row {
+		choice := (x / 4) % 2
+		row[x] = uv.Cell{Content: "x", Width: 1, Style: styles[choice], Link: links[choice]}
+	}
+	saved := packStyled(row, nil)
+	if saved == nil || len(saved.styles) != 2 || len(saved.runs) != 20 {
+		t.Fatal("repeated appearances were not shared")
+	}
+	if got := saved.line(); !reflect.DeepEqual(got, row) {
+		t.Fatal("repeated colors or links changed")
+	}
+	for x := range row {
+		row[x].Style, row[x].Link = styles[0], links[0]
+	}
+	if packStyled(row, saved) == nil || len(saved.styles) != 1 || !reflect.DeepEqual(saved.line(), row) {
+		t.Fatal("reused appearances changed")
+	}
+	if saved.styles[:cap(saved.styles)][1].style.Fg != nil || saved.styles[:cap(saved.styles)][1].link.URL != "" {
+		t.Fatal("unused appearances retain references")
 	}
 }
