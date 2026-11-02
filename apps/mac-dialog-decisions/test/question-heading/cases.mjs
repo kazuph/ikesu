@@ -17,6 +17,6 @@ export function headingCases() {
   {name:'codex-untimed-first',decision:{...base,title:question,question_label:number,body:null},heading:number,body:question,parts:[question,number]},
   {name:'codex-untimed-last',decision:{...base,title:'Scope?',question_label:'Question 2/2 (1 unanswered)',body:null},heading:'Question 2/2 (1 unanswered)',body:'Scope?',parts:['Scope?','Question 2/2 (1 unanswered)']},
   {name:'codex-full-body',decision:{...base,title:question,question_label:number,body:question+'\n\n'+remaining},heading:number,body:question+'\n\n'+remaining,parts:[question,number,remaining]},
-  {name:'guard',decision:{...base,kind:'command_guard',title:'実行確認',body:'対象コマンド：rm /tmp/isolated-example',origin:{...base.origin,target_command:'rm /tmp/isolated-example'}},heading:'実行確認',body:'対象コマンド：rm /tmp/isolated-example'},
+  {name:'guard',decision:{...base,kind:'command_guard',title:'実行確認',body:'申請理由の本文',origin:{...base.origin,command:'rm /tmp/isolated-example',target_command:''}},heading:'実行確認',body:'申請理由の本文'},
  ];
 }

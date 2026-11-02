@@ -31,7 +31,11 @@ test('real Slack daemon posts each question once to a loopback API, preserving d
    const sections=m.post.blocks.filter(b=>b.type==='section').map(b=>b.text.text);
    if(row.heading)assert.ok(sections.includes('*'+row.heading+'*'),row.name);
    assert.equal(m.post.text.split(row.body).length-1,1,row.name+' fallback duplicates');
-   if(row.name==='guard')assert.ok(sections.includes('*実行するコマンド*\n```\nrm /tmp/isolated-example\n```'));
+   if(row.name==='guard') {
+    const commands=m.post.blocks.filter(b=>b.type==='rich_text').flatMap(b=>b.elements.flatMap(e=>e.elements||[])).map(e=>e.text);
+    assert.deepEqual(commands,['rm /tmp/isolated-example']);
+    assert.ok(!sections.some(s=>s.includes('実行するコマンド')));
+   }
   }
  }finally{await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});}
 });
