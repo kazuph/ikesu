@@ -95,7 +95,7 @@ func (e *Emulator) UnmarshalHandoff(data []byte) error {
 		if v.Width <= 0 || v.Height <= 0 || len(v.Cells) != v.Height {
 			return fmt.Errorf("invalid terminal handoff dimensions")
 		}
-		if i == 1 && !t.Alternate && reflect.DeepEqual(v, transferScreen(NewScreen(v.Width, v.Height))) {
+		if i == 1 && !t.Alternate && v.Width == t.Screens[0].Width && v.Height == t.Screens[0].Height && reflect.DeepEqual(v, transferScreen(NewScreen(v.Width, v.Height))) {
 			e.scrs[i] = Screen{cb: &e.cb}
 			continue
 		}
