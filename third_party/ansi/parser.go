@@ -89,7 +89,20 @@ func (p *Parser) SetDataSize(size int) {
 		p.dataLen = 0
 	}
 	p.dataMax = size
-	p.data = nil
+	// Keep any bytes already collected (up to the new limit) so a sequence in
+	// progress and Data() stay consistent with the buffer.
+	kept := min(p.dataLen, size, len(p.data))
+	p.data = append([]byte(nil), p.data[:kept]...)
+	p.dataLen = kept
+}
+
+// resetData starts a new bounded sequence, releasing a buffer that grew past
+// dataShrinkSize for an earlier large payload.
+func (p *Parser) resetData() {
+	p.dataLen = 0
+	if p.dataMax > 0 && len(p.data) > dataShrinkSize {
+		p.data = nil
+	}
 }
 
 // dataShrinkSize is the largest bounded buffer kept between sequences; a
@@ -360,10 +373,7 @@ func (p *Parser) performAction(action parser.Action, state parser.State, b byte)
 		if p.dataLen < 0 && p.data != nil {
 			p.data = p.data[:0]
 		} else {
-			p.dataLen = 0
-			if p.dataMax > 0 && len(p.data) > dataShrinkSize {
-				p.data = nil
-			}
+			p.resetData()
 		}
 		if p.state >= parser.DcsEntryState && p.state <= parser.DcsStringState {
 			// Collect the command byte for DCS
