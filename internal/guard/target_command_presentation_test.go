@@ -17,7 +17,7 @@ import (
 // The panel test reads these actual persisted decisions through buildDialogSpec.
 func TestTargetCommandDecisionFixtures(t *testing.T) {
 	cases := []struct{ name, outer, reason string }{
-		{"requested-example", `rm /tmp/every-line-pays-off.md /tmp/no-local-context-in-scripts.md /tmp/no-wow-ai-can-do-it.md /tmp/topic-vs-character-trait.md && grep -rl -E 'example' /tmp/memory/`, "対象プロジェクト: TenkaiHifumi のメモリー。必要な理由: 統合したため。実施内容: 古い4ファイルを削除。確認済み: 内容を移した。戻し方: 会話の記録から戻す。"},
+		{"requested-example", `rm /outside/every-line-pays-off.md /outside/no-local-context-in-scripts.md /outside/no-wow-ai-can-do-it.md /outside/topic-vs-character-trait.md && grep -rl -E 'example' /outside/memory/`, "対象プロジェクト: TenkaiHifumi のメモリー。必要な理由: 統合したため。実施内容: 古い4ファイルを削除。確認済み: 内容を移した。戻し方: 会話の記録から戻す。"},
 		{"different", `printf ok; /bin/rm /outside/victim`, "対象プロジェクト: ikesu。必要な理由: 表示確認。実施内容: 実行せず却下。"},
 		{"same", `/bin/rm /outside/victim`, "対象プロジェクト: ikesu。必要な理由: 表示確認。実施内容: 実行せず却下。"},
 		{"free-prose", `printf ok; /bin/rm /outside/victim`, "検証用の申請です。外側と対象の表示を確かめます。"},
