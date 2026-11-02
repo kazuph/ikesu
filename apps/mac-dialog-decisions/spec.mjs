@@ -72,8 +72,21 @@ export function approvalFields(body) {
   const inherited = original.match(/^申請文（(外側(?:から引き継ぎ|のコマンド [^\n]* から引き継ぎ))）\n/u);
   const text = inherited ? original.slice(inherited[0].length) : original;
   const labels = {"対象プロジェクト": "対象", "必要な理由": "理由", "実施内容": "内容", "確認済み": "確認済み", "戻し方": "戻し方"};
-  const matches = [...text.matchAll(/(?:^|(?<=。)|(?<=\n))[\t ]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]/gu)];
-  if (!matches.length || text.slice(0, matches[0].index).trim()) return null;
+  const matches = [];
+  const candidates = text.matchAll(/(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]/gu);
+  const quotes = {"'":"'", '"':'"', '`':'`', '「':'」', '『':'』'};
+  let cursor = 0, closing = "", escaped = false;
+  for (const match of candidates) {
+    for (; cursor < match.index; cursor++) {
+      const char = text[cursor];
+      if (escaped) { escaped = false; continue; }
+      if (char === "\\") { escaped = true; continue; }
+      if (closing && char === closing) closing = "";
+      else if (!closing && quotes[char]) closing = quotes[char];
+    }
+    if (!closing) matches.push(match);
+  }
+  if (matches.length < 3 || text.slice(0, matches[0].index).trim()) return null;
   const order = Object.keys(labels);
   if (matches.some((match, i) => i > 0 && order.indexOf(match[1]) <= order.indexOf(matches[i - 1][1]))) return null;
   const fields = matches.map((match, i) => ({label: labels[match[1]], value: text.slice(match.index + match[0].length, matches[i + 1]?.index ?? text.length).trim()}));

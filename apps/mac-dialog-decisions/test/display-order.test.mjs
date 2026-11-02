@@ -37,6 +37,11 @@ test('request fields retain commands quoted by the requester',()=>{
  assert.deepEqual(fields.map(f=>f.label),['対象','理由','内容','確認済み','戻し方']);
  assert.ok(fields.find(f=>f.label==='内容').value.includes(command));
  assert.equal(approvalFields('対象プロジェクト: x。必要な理由: x。必要な理由: y'),null);
+ const commandWithLabel = "printf '戻し方: 元のまま'";
+ const spaced = `対象プロジェクト: ikesu 必要な理由: 検証 実施内容: ${commandWithLabel} 確認済み: 内容 戻し方: 中止`;
+ const spacedFields = approvalFields(spaced);
+ assert.deepEqual(spacedFields.map(f=>f.label),['対象','理由','内容','確認済み','戻し方']);
+ assert.ok(spacedFields.find(f=>f.label==='内容').value.includes(commandWithLabel));
 });
 
 test('video discovery retains file/URL destinations and encoded paths without redacted data',()=>{
