@@ -143,6 +143,14 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	if !ok || !strings.HasPrefix(other.Title, "別の会話の全文") {
 		t.Fatalf("wrong session: %+v", other)
 	}
+	paintScreen(p1, strings.ReplaceAll(screenDialog(t, "claude-single"), "Which output format should the temporary report use?", "Unrelated question?"))
+	refused := answerScreen(s, updated, "1", nil)
+	if refused.Err == nil {
+		t.Fatal("unmatched screen accepted an answer")
+	}
+	if keys, _ := os.ReadFile(input); len(keys) != 0 {
+		t.Fatalf("unmatched screen received input: %q", keys)
+	}
 	paintScreen(p1, strings.ReplaceAll(screenDialog(t, "claude-single"), "Which output format should the temporary report use?", "the temporary report use?"))
 	waitPromptCondition(t, func() bool {
 		scanScreen(s)
