@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeSlack, FakeWsServer, waitUntil as waitUntilBase } from "./fakes.mjs";
+import { REACTION_GRACE_MS } from "../slack-decisions.mjs";
 
 const waitUntil = (fn, options = {}) => waitUntilBase(fn, { timeout: 15_000, ...options });
 
@@ -168,6 +169,7 @@ async function main() {
   step("decision posted to fake slack", true, `ts=${post.ts}`);
 
   // 6. human reacts with :one: over the socket-mode websocket
+  fake.userReact(post.ts, "one", "UHUMAN");
   ws.send({
     envelope_id: "e2e-env-1",
     type: "events_api",
@@ -183,7 +185,8 @@ async function main() {
   });
 
   // 7. decision ask resolves with the picked option
-  await waitUntil(() => askCode !== null, { timeout: 15_000 });
+  // The real 15-second reaction grace must elapse before the real server answers.
+  await waitUntil(() => askCode !== null, { timeout: 2 * REACTION_GRACE_MS });
   fs.writeFileSync(path.join(OUT, "ask-output.txt"), askOut);
   const saved = JSON.parse(askOut.trim()).result.decision;
   const answered = saved.answer.option_id === "approve" && saved.status === "answered";
@@ -219,12 +222,17 @@ async function main() {
     cleanup.push(() => guard.kill("SIGTERM"));
     await waitUntil(() => { if (code !== null) throw Error(scenario.name + " ended before Slack post: " + output); return fake.posts.some(p => !priorTs.has(p.ts)); });
     const guardPost = fake.posts.find(p => !priorTs.has(p.ts));
+    if (scenario.text) {
+      fake.threadReplies.set(guardPost.ts, [{ts:String(Number(guardPost.ts)+1), user:"UHUMAN", text:scenario.text}]);
+    } else {
+      fake.userReact(guardPost.ts, scenario.reaction, "UHUMAN");
+    }
     ws.send({ envelope_id: scenario.name, type: "events_api", payload: {
       type: "event_callback", event: scenario.text
         ? { type: "message", user: "UHUMAN", thread_ts: guardPost.ts, ts: String(Number(guardPost.ts)+1), text: scenario.text }
         : { type: "reaction_added", user: "UHUMAN", reaction: scenario.reaction, item: { type: "message", channel: "C-e2e", ts: guardPost.ts } },
     }});
-    await waitUntil(() => code !== null, { timeout: 15_000 });
+    await waitUntil(() => code !== null, { timeout: 2 * REACTION_GRACE_MS });
     fs.writeFileSync(path.join(OUT, scenario.name + ".txt"), output);
     step(scenario.name + " feedback", code === scenario.code && output.includes(scenario.expected), output.trim());
     await waitUntil(() => fake.deletes.some(p => p.ts === guardPost.ts));
