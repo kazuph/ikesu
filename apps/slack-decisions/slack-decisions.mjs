@@ -1084,6 +1084,10 @@ export class SlackDecisionsDaemon {
       void this.onCreated(mid, machine, decision);
       return;
     }
+    if (event === "updated" && did) {
+      void this.onUpdated(mid, machine, decision);
+      return;
+    }
     if (event === "resolved" && did) {
       void this.onResolved(mid, decision);
     }
@@ -1093,6 +1097,9 @@ export class SlackDecisionsDaemon {
     const key = decisionKey(mid, decisionIdOf(decision));
     const existing = this.entries.get(key);
     if (existing) {
+      if (existing.resolved || (decision.status && decision.status !== "pending")) return;
+      existing.decision = decision;
+      existing.machine = machine;
       // Reconnect replay. If it was marked machine-down, re-arm it now.
       // Its post was deleted on machine_down, so a still-pending one is
       // posted again.
@@ -1105,7 +1112,7 @@ export class SlackDecisionsDaemon {
           await this.postDecision(existing);
         }
         if (existing.reactionDraft) this.armReaction(existing);
-      }
+      } else if (existing.post) await this.renderPending(existing);
       return;
     }
     if (decision.status && decision.status !== "pending") return;
@@ -1134,6 +1141,7 @@ export class SlackDecisionsDaemon {
     this.entries.set(key, entry);
     if (entry.post) {
       this.log(`再起動後に追跡を再開: ${decision.decision_id}`);
+      await this.renderPending(entry);
       return;
     }
     if (this.machinesDown.has(mid)) {
@@ -1154,6 +1162,14 @@ export class SlackDecisionsDaemon {
       this.log(`グラス未接続: ${decision.decision_id} をすぐ投稿します`);
       await this.postDecision(entry);
     }
+  }
+
+  async onUpdated(mid, machine, decision) {
+    const entry = this.entries.get(decisionKey(mid, decisionIdOf(decision)));
+    if (!entry || entry.resolved || (decision.status && decision.status !== "pending")) return;
+    entry.decision = decision;
+    entry.machine = machine;
+    if (entry.post) await this.renderPending(entry);
   }
 
   refreshVisibleDecisions() {
@@ -1212,6 +1228,7 @@ export class SlackDecisionsDaemon {
         await this.finishResolvedPost(entry);
         return;
       }
+      if (entry.decision !== decision) await this.renderPending(entry);
       const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
       if (emojis.length > 0 && this.ownsPost(entry.key, entry.post)) {
         await this.slack.addReactions(reuse.ts, emojis);
@@ -1243,6 +1260,7 @@ export class SlackDecisionsDaemon {
         await this.finishResolvedPost(entry);
         return;
       }
+      if (entry.decision !== decision) await this.renderPending(entry);
       const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
       if (emojis.length > 0) {
         await this.slack.addReactions(posted.ts, emojis);
@@ -1300,6 +1318,14 @@ export class SlackDecisionsDaemon {
 
   async renderPending(entry) {
     if (!entry.post || entry.resolved) return;
+    const previous = entry.renderWork || Promise.resolve();
+    const work = previous.then(() => this.renderPendingNow(entry));
+    entry.renderWork = work;
+    try { await work; } finally { if (entry.renderWork === work) entry.renderWork = null; }
+  }
+
+  async renderPendingNow(entry) {
+    if (!entry.post || entry.resolved) return;
     const post = entry.post;
     try {
       await this.retryPostMutation(() => {
@@ -1354,6 +1380,7 @@ export class SlackDecisionsDaemon {
     entry.decision = decision;
     clearTimeout(entry.answerRetryTimer);
     if (entry.postTimer) clearTimeout(entry.postTimer);
+    if (entry.renderWork) await entry.renderWork;
     await this.finishResolvedPost(entry);
     this.entries.delete(key);
     this.log(`決定済み: ${decision.decision_id} (${decision.status})`);

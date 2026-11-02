@@ -185,7 +185,7 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 		case <-finished:
 		}
 	}()
-	if err := api.WriteRequest(conn, api.Request{ID: "cli:decision:watch", Method: api.MethodEventsSubscribe, Params: api.MarshalParams(api.EventsSubscribeParams{Subscriptions: []api.Subscription{{Type: "decision.created"}, {Type: "decision.resolved"}}})}); err != nil {
+	if err := api.WriteRequest(conn, api.Request{ID: "cli:decision:watch", Method: api.MethodEventsSubscribe, Params: api.MarshalParams(api.EventsSubscribeParams{Subscriptions: []api.Subscription{{Type: "decision.created"}, {Type: "decision.updated"}, {Type: "decision.resolved"}}})}); err != nil {
 		return err
 	}
 	reader := bufio.NewReader(conn)
@@ -258,6 +258,32 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 				return fmt.Errorf("resolved decision is still pending")
 			}
 			event = "resolved"
+		case "decision_updated":
+			if seen[d.DecisionID] != "pending" {
+				continue
+			}
+			// Journal replay may contain an older body than the snapshot.
+			// Read the current record before forwarding an update.
+			current, err := r.request("cli:decision:watch:get", api.MethodDecisionGet, api.DecisionTargetParams{DecisionID: d.DecisionID})
+			if err != nil {
+				return err
+			}
+			var response api.Response
+			if err := json.Unmarshal(current, &response); err != nil {
+				return err
+			}
+			if response.Err != nil {
+				return response.Err
+			}
+			var result api.DecisionResult
+			if err := json.Unmarshal(response.Result, &result); err != nil {
+				return err
+			}
+			if result.Decision.Status != "pending" {
+				continue
+			}
+			d = result.Decision
+			event = "updated"
 		default:
 			continue
 		}

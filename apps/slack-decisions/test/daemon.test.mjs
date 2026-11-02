@@ -124,6 +124,27 @@ async function feedAndSettle(daemon, event, ms = 300) {
 
 const LOCAL = { id: "local", label: "Local" };
 
+test("pending body updates reuse the post and a resolved decision cannot be revived", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const initial = sampleDecision();
+    await daemon.onCreated("local", LOCAL, initial);
+    const updated = {...initial, body: "全文に差し替え"};
+    await daemon.onUpdated("local", LOCAL, updated);
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 1);
+    assert.equal(fake.updates.length, 1);
+    assert.ok(JSON.stringify(fake.posts[0].blocks).includes(updated.body));
+    await daemon.onCreated("local", LOCAL, {...updated, body: "再接続後の全文"});
+    assert.ok(JSON.stringify(fake.posts[0].blocks).includes("再接続後の全文"));
+    await daemon.onResolved("local", {...updated, status: "answered"});
+    await daemon.onUpdated("local", LOCAL, updated);
+    assert.equal(fake.posts.length, 0);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 test("machine_down logs only transitions while retrying failed post deletion", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});

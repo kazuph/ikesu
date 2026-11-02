@@ -84,7 +84,7 @@ func TestScreenVolatileUpdateAndRebuildFlood(t *testing.T) {
 	paintScreen(p, strings.ReplaceAll(picture, "A compact plain text report", "A compact plain text report (13s) ⠙"))
 	scanScreen(s)
 	changed := screenRecord(t, s)
-	if changed.DecisionID != original.DecisionID || changed.CreatedUnixMS != original.CreatedUnixMS || changed.Options[0].Description == nil || !strings.Contains(*changed.Options[0].Description, "13s") || len(s.journal) != events {
+	if changed.DecisionID != original.DecisionID || changed.CreatedUnixMS != original.CreatedUnixMS || changed.Options[0].Description == nil || !strings.Contains(*changed.Options[0].Description, "13s") || len(s.journal) != events+1 || s.journal[events].Event != "decision_updated" {
 		t.Fatal(changed)
 	}
 	for i := 0; i < 4; i++ {
