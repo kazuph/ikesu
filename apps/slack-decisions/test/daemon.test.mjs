@@ -181,6 +181,23 @@ test("identical pending guard requests transfer one post without reusing old rea
   } finally { await daemon.stop(); await restarted?.stop(); await fake.stop(); }
 });
 
+test("redacted guard fields always create separate Slack posts", async () => {
+  for (const field of ["command", "target_command", "reason"]) {
+    const fake = await new FakeSlack().start();
+    const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+    const daemon = makeDaemon({slack});
+    try {
+      const first = sampleDecision({kind:"command_guard", decision_id:`${field}-first`, origin:{pane_id:"p1", cwd:"/repo", command:"rm a", target_command:"rm a", reason:"理由", [field]:"before***after"}});
+      await daemon.onCreated("local", LOCAL, first);
+      await daemon.onCreated("local", LOCAL, {...first, decision_id:`${field}-second`});
+      assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 2, field);
+      assert.equal(fake.calls.filter(call => call.method === "chat.update").length, 0, field);
+      assert.equal(fake.posts.length, 2, field);
+      assert.notEqual(fake.posts[0].ts, fake.posts[1].ts, field);
+    } finally { await daemon.stop(); await fake.stop(); }
+  }
+});
+
 test("long body and command survive Slack message and thread block limits", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});

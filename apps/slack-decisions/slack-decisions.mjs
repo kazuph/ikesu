@@ -958,6 +958,7 @@ function guardRequestKey(machineId, decision) {
   if (decision?.kind !== "command_guard") return "";
   const origin = decision.origin || {};
   if (!origin.pane_id || !origin.cwd || !origin.command || !origin.reason) return "";
+  if ([origin.command, origin.target_command, origin.reason].some(value => String(value || "").includes("***"))) return "";
   return JSON.stringify([machineId, origin.pane_id || "", origin.cwd || "", origin.command || "", origin.target_command || "", origin.reason || "", (decision.options || []).map(o => [o.id, o.label, o.role, o.description, o.preview, o.preview_unavailable])]);
 }
 
