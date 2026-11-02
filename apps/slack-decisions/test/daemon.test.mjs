@@ -195,6 +195,8 @@ test("long body and command survive Slack message and thread block limits", asyn
     const all = [...root.blocks, ...replies.flatMap(reply => reply.blocks || [])];
     assert.ok(replies.length > 0);
     assert.ok([root, ...replies].every(message => message.blocks.length <= 50));
+    assert.ok([root, ...replies].every(message => message.text.length <= 40000));
+    assert.ok(replies.every(message => message.text !== "判断待ちの続き"));
     const actualCommand = all.filter(block => block.type === "rich_text").map(block => block.elements[0].elements[0].text).join("");
     assert.equal(actualCommand, command);
     const start = all.findIndex(block => block.type === "section" && block.text?.text.startsWith("本文"));

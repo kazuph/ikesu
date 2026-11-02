@@ -704,6 +704,34 @@ const STATUS_TEXT = {
 // Slack caps a section's mrkdwn text around 3000 characters; keep a margin.
 const SLACK_SECTION_TEXT_LIMIT = 2800;
 const SLACK_MESSAGE_BLOCK_LIMIT = 50;
+// Slack truncates a message's top-level text above 40,000 characters.
+const SLACK_MESSAGE_TEXT_LIMIT = 40000;
+
+function blockPlainText(block) {
+  if (block.type === "section") return block.text?.text || "";
+  if (block.type === "context") return (block.elements || []).map(element => element.text || "").join(" ");
+  if (block.type === "rich_text") return (block.elements || []).flatMap(element => element.elements || []).map(element => element.text || "").join("");
+  return "";
+}
+
+function blockPages(blocks) {
+  const pages = [];
+  let page = [], length = 0;
+  for (const block of blocks) {
+    const size = blockPlainText(block).length + (page.length ? 1 : 0);
+    if (page.length && (page.length >= SLACK_MESSAGE_BLOCK_LIMIT || length + size > SLACK_MESSAGE_TEXT_LIMIT)) {
+      pages.push(page); page = []; length = 0;
+    }
+    length += blockPlainText(block).length + (page.length ? 1 : 0);
+    page.push(block);
+  }
+  if (page.length) pages.push(page);
+  return pages;
+}
+
+function pageFallback(blocks) {
+  return blocks.map(blockPlainText).filter(Boolean).join("\n");
+}
 
 function splitExactText(text, limit = SLACK_SECTION_TEXT_LIMIT) {
   const parts = [];
@@ -1322,11 +1350,12 @@ export class SlackDecisionsDaemon {
       status: "pending",
       mention: this.slack.mention || "",
     });
+    const pages = blockPages(blocks);
     entry.posting = true;
     try {
       const posted = await this.slack.postMessage({
-        text: fallbackText({ decision, machine }),
-        blocks: blocks.slice(0, SLACK_MESSAGE_BLOCK_LIMIT),
+        text: pages.length > 1 ? pageFallback(pages[0]) : fallbackText({ decision, machine }),
+        blocks: pages[0],
       });
       entry.post = { channel: this.slack.channel, ts: posted.ts };
       this.posts.set(entry.key, {
@@ -1341,7 +1370,7 @@ export class SlackDecisionsDaemon {
         await this.finishResolvedPost(entry);
         return;
       }
-      if (entry.decision !== decision || blocks.length > SLACK_MESSAGE_BLOCK_LIMIT) await this.renderPending(entry);
+      if (entry.decision !== decision || pages.length > 1) await this.renderPending(entry);
       const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
       if (emojis.length > 0) {
         await this.slack.addReactions(posted.ts, emojis);
@@ -1420,14 +1449,15 @@ export class SlackDecisionsDaemon {
     const post = entry.post;
     try {
       const blocks = buildDecisionBlocks({decision: entry.decision, machine: entry.machine, status: "pending", mention: this.slack.mention || "", repeatCount: entry.repeatCount});
+      const pages = blockPages(blocks);
       await this.retryPostMutation(() => {
         if (entry.resolved || !this.ownsPost(entry.key, post)) return;
         return this.slack.updateMessage(post.ts, {
-          text: fallbackText(entry),
-          blocks: blocks.slice(0, SLACK_MESSAGE_BLOCK_LIMIT),
+          text: pages.length > 1 ? pageFallback(pages[0]) : fallbackText(entry),
+          blocks: pages[0],
         });
       }, () => !entry.resolved && this.ownsPost(entry.key, post));
-      await this.renderContinuations(entry, post, blocks.slice(SLACK_MESSAGE_BLOCK_LIMIT));
+      await this.renderContinuations(entry, post, pages.slice(1));
       return true;
     } catch (error) {
       this.log(`投稿の再表示に失敗 (${entry.decision.decision_id}): ${error.message}`);
@@ -1437,15 +1467,13 @@ export class SlackDecisionsDaemon {
     }
   }
 
-  async renderContinuations(entry, post, blocks) {
-    const chunks = [];
-    for (let i = 0; i < blocks.length; i += SLACK_MESSAGE_BLOCK_LIMIT) chunks.push(blocks.slice(i, i + SLACK_MESSAGE_BLOCK_LIMIT));
+  async renderContinuations(entry, post, chunks) {
     const owned = () => !entry.resolved && this.ownsPost(entry.key, post);
     for (let i = 0; i < chunks.length && owned(); i++) {
       if (entry.continuations[i]) {
-        await this.retryPostMutation(() => this.slack.updateMessage(entry.continuations[i], {text: "判断待ちの続き", blocks: chunks[i]}), owned);
+        await this.retryPostMutation(() => this.slack.updateMessage(entry.continuations[i], {text: pageFallback(chunks[i]), blocks: chunks[i]}), owned);
       } else {
-        const result = await this.retryPostMutation(() => this.slack.postThreadBlocks(post.ts, "判断待ちの続き", chunks[i]), owned);
+        const result = await this.retryPostMutation(() => this.slack.postThreadBlocks(post.ts, pageFallback(chunks[i]), chunks[i]), owned);
         if (!result?.ts) return;
         entry.continuations.push(result.ts);
         const record = this.posts.get(entry.key);
