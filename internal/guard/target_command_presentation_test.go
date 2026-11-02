@@ -83,7 +83,7 @@ func TestTargetCommandDecisionFixtures(t *testing.T) {
 					t.Fatal("same command duplicated")
 				}
 			} else {
-				if decision.Origin.TargetCommand == "" || !strings.Contains(*decision.Body, "対象コマンド："+decision.Origin.TargetCommand) {
+				if decision.Origin.TargetCommand == "" {
 					t.Fatalf("target lost: %+v body=%s", decision.Origin, *decision.Body)
 				}
 			}

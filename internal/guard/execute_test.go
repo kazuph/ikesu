@@ -202,10 +202,10 @@ func TestApprovalPresentation(t *testing.T) {
 			defer store.Close()
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				want := "bash /tmp/rebuild_all.sh && printf '%s' done"
-				if p.Title != "実行確認: bash" {
+				if p.Title != "実行確認: bash — 表示試験（規則: presentation-test）" {
 					t.Errorf("title=%q", p.Title)
 				}
-				body := "ブロック理由：表示試験（規則: presentation-test）\n対象コマンド：bash /tmp/rebuild_all.sh\n\nコマンド: " + want + "\n\n" + strings.ReplaceAll(reason, "。", "。\n")
+				body := strings.ReplaceAll(reason, "。", "。\n")
 				// Trailing prose punctuation does not add a blank line between fields.
 				body = strings.ReplaceAll(body, "。\n\n場所:", "。\n場所:")
 				if p.Body == nil || *p.Body != strings.TrimSpace(body) {
@@ -249,8 +249,7 @@ func TestApprovalTriggerForMultipleCommands(t *testing.T) {
 			called := false
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				called = true
-				prefix := "ブロック理由：実行前に承認が必要です。（規則: dangerous）\n対象コマンド：dd if=/dev/null\n\n"
-				if p.Body == nil || !strings.HasPrefix(*p.Body, prefix) {
+				if p.Origin.TargetCommand != "dd if=/dev/null" || p.Body == nil || strings.Contains(*p.Body, "dd if=/dev/null") {
 					t.Errorf("missing actual trigger: %+v", p.Body)
 				}
 				if p.Origin.Command != strings.TrimPrefix(line, "AI_GUARD_REQUEST_REASON='対象プロジェクトの試験のため' ") {
@@ -306,10 +305,9 @@ func TestDangerWordLineTriggerUsesActualCLICommand(t *testing.T) {
 			}
 			defer store.Close()
 			called := false
-			target := "対象コマンド：npx wrangler deploy\n"
 			await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 				called = true
-				if p.Body == nil || !strings.Contains(*p.Body, target) {
+				if p.Body == nil || p.Origin.TargetCommand != "npx wrangler deploy" {
 					t.Errorf("body target incorrect: %v", p.Body)
 				}
 				if p.Origin.Command != payload {
@@ -325,7 +323,7 @@ func TestDangerWordLineTriggerUsesActualCLICommand(t *testing.T) {
 			if AuthorizeLine(Config{}, root, i, line, &out, await) || !called {
 				t.Fatalf("ask changed: %s", out.String())
 			}
-			if !strings.Contains(out.String(), target) {
+			if !strings.Contains(out.String(), "対象コマンド：npx wrangler deploy\n") {
 				t.Errorf("stderr target incorrect: %s", out.String())
 			}
 		})

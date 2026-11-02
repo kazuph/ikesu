@@ -24,10 +24,14 @@ struct DialogDetail: Decodable {
   let value: String
   let monospace: Bool?
 }
+struct ApprovalRange: Decodable { let start: Int; let length: Int }
+struct ApprovalField: Decodable { let label: String; let value: String }
 
 struct DialogSpec: Decodable {
   let present_in_background: Bool?
   let approval_command: String?
+  let approval_target_range: ApprovalRange?
+  let approval_fields: [ApprovalField]?
   let media_sources: [String]?
   let kind: String?
   let window_title: String
@@ -474,18 +478,30 @@ final class DialogController: NSObject, NSWindowDelegate {
     if let loc = spec.location, !loc.isEmpty {
       full(label(loc, size: Look.base, weight: .semibold, color: Look.accent))
     }
-    if let command = spec.approval_command, !command.isEmpty {
-      full(label("実行するコマンド", size: Look.small, color: .secondaryLabelColor))
-      full(richLabel(command, size: Look.base, commandRanges: [NSRange(location: 0, length: (command as NSString).length)]))
-    }
-
     var titleText = spec.title
     if let q = spec.question_label, !q.isEmpty { titleText = "［\(q)］ " + titleText }
     if !titleText.isEmpty {
       full(richLabel(titleText, size: Look.title, weight: .bold))
     }
 
-    if let body = spec.body, !body.isEmpty {
+    if let command = spec.approval_command, !command.isEmpty {
+      let range = spec.approval_target_range.map { NSRange(location: $0.start, length: $0.length) }
+      full(richLabel(command, size: Look.base, mono: true, commandRanges: range.map { [$0] } ?? []))
+    }
+
+    if let fields = spec.approval_fields, !fields.isEmpty {
+      for field in fields {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.spacing = 8
+        let name = label(field.label, size: Look.small, color: .secondaryLabelColor, selectable: false)
+        name.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        row.addArrangedSubview(name)
+        row.addArrangedSubview(richLabel(field.value, size: Look.base))
+        full(row)
+      }
+    } else if let body = spec.body, !body.isEmpty {
       let commands = (spec.details ?? []).filter { ["コマンド", "対象コマンド"].contains($0.label) }.map { $0.value }
       let ranges = spec.kind == "command_guard" ? commandBodyRanges(body, commands: commands) : []
       func bodyLabel(_ text: String, offset: Int, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> RichTextLabel {
@@ -865,7 +881,7 @@ final class RichTextLabel: NSTextView {
     return NSSize(width:NSView.noIntrinsicMetric,height:ceil(manager.usedRect(for:container).height))
   }
 }
-func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true, commandRanges: [NSRange] = []) -> RichTextLabel {
+func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, selectable: Bool = true, mono: Bool = false, commandRanges: [NSRange] = []) -> RichTextLabel {
   let field=RichTextLabel(frame:.zero)
   field.isEditable=false
   field.isSelectable=selectable
@@ -879,7 +895,7 @@ func richLabel(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, 
   field.translatesAutoresizingMaskIntoConstraints=false
   field.setContentCompressionResistancePriority(.required,for:.vertical)
   field.linkTextAttributes=[:]
-  let font=NSFont.systemFont(ofSize:size,weight:weight)
+  let font=mono ? NSFont.monospacedSystemFont(ofSize:size,weight:weight) : NSFont.systemFont(ofSize:size,weight:weight)
   field.font=font;field.textColor=color
   let attributed=NSMutableAttributedString(string:text,attributes:[.font:font,.foregroundColor:color])
   for match in richLinkRanges(text) {

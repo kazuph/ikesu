@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { ClientViews, displayedByFocusedClient } from "../mac-dialog-decisions/client-views.mjs";
-import { locationLabel, approvalCommand, decisionText } from "../mac-dialog-decisions/spec.mjs";
+import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, decisionText } from "../mac-dialog-decisions/spec.mjs";
 // ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
@@ -673,6 +673,7 @@ function fmtDeadline(decision, now = Date.now()) {
 
 function originLines(decision) {
   const origin = decision.origin || {};
+  if (decision.kind === "command_guard") return origin.cwd ? [`*場所* \`${origin.cwd}\``] : [];
   const lines = [];
   if (origin.machine) lines.push(`*出どころマシン* ${origin.machine}`);
   if (origin.workspace_label)
@@ -776,12 +777,19 @@ function buildDecisionBlocks({
   const head = headParts.join(" | ");
   const presentation = decisionText(decision);
   const blocks = [{ type: "context", elements: [{ type: "mrkdwn", text: head }] }];
-  if (approvalCommand(decision)) {
-    blocks.push({type: "section", text: {type: "mrkdwn", text: "*実行するコマンド*\n```\n" + approvalCommand(decision).replaceAll("```", "'`'`'") + "\n```"}});
-  }
   if (presentation.title) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${presentation.title}*`}});
+  if (approvalCommand(decision)) {
+    blocks.push({type: "section", text: {type: "mrkdwn", text: "```\n" + approvalCommand(decision).replaceAll("```", "'`'`'") + "\n```"}});
+    const range = approvalTargetRange(decision);
+    if (range && range.length !== approvalCommand(decision).length) {
+      const before = Array.from(approvalCommand(decision).slice(0, range.start)).length;
+      const length = Array.from(approvalCommand(decision).slice(range.start, range.start + range.length)).length;
+      blocks.push({type: "context", elements: [{type: "mrkdwn", text: `止めた部分：${before + 1}文字目から${length}文字`} ]});
+    }
+  }
   const body = decision.kind === "agent_prompt" ? presentation.body : decision.body;
-  if (body) blocks.push({type: "section", text: {type: "mrkdwn", text: body}});
+  const fields = decision.kind === "command_guard" ? approvalFields(body) : null;
+  if (body) blocks.push({type: "section", text: {type: "mrkdwn", text: fields ? fields.map(field => `*${field.label}* ${field.value}`).join("\n") : body}});
   const origins = originLines(decision);
   if (origins.length > 0) {
     blocks.push({

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDialogSpec,locationLabel} from '../spec.mjs';
+import {buildDialogSpec,locationLabel,approvalTargetRange} from '../spec.mjs';
 import {buildDecisionBlocks,fallbackText} from '../../slack-decisions/slack-decisions.mjs';
 import {discoverRichContent} from '../rich.mjs';
 
@@ -10,9 +10,10 @@ test('Mac and Slack lead with the same four complete location fields and exact a
   const spec=buildDialogSpec(d,machine),blocks=buildDecisionBlocks({decision:d,machine});
   assert.ok(blocks[0].elements[0].text.startsWith(spec.location));
   assert.equal(spec.location.split('｜').length,4);
-  assert.equal(spec.approval_command,'rm /tmp/target');
-  assert.match(blocks[1].text.text,/実行するコマンド\*\n```\nrm \/tmp\/target\n```/);
-  assert.equal(blocks[2].text.text,'*削除操作は確認が必要です*');
+  assert.equal(spec.approval_command,'bash delete.sh');
+  assert.equal(spec.approval_target_range,null);
+  assert.equal(blocks[1].text.text,'*削除操作は確認が必要です*');
+  assert.match(blocks[2].text.text,/```\nbash delete\.sh\n```/);
   assert.equal(blocks[3].text.text,d.body);
   assert.ok(fallbackText({decision:d,machine}).startsWith(spec.location));
   assert.deepEqual(spec.options.map(x=>x.id),['approve','reject']);
@@ -20,6 +21,13 @@ test('Mac and Slack lead with the same four complete location fields and exact a
  assert.equal(locationLabel({}), '不明｜不明｜不明｜不明');
  assert.equal(locationLabel({origin:{cwd:'/repo/ikesu',workspace_label:'ikesu',pane_label:'作業'}},{id:'local'}), 'ローカル｜ikesu｜作業');
  const long='名前'.repeat(2000);assert.ok(locationLabel({origin:{workspace_label:long}}).includes(long));
+});
+
+test('guard target is highlighted only when its location is unambiguous',()=>{
+ const guard=(command,target)=>({kind:'command_guard',origin:{command,target_command:target}});
+ assert.deepEqual(approvalTargetRange(guard('rm a && grep x','rm a')),{start:0,length:4});
+ assert.deepEqual(approvalTargetRange(guard('rm a','')),{start:0,length:4});
+ for(const [command,target] of [['rm a && rm a','rm a'],['echo rm a','rm a'],['rm "$X" && echo x','rm "$X"'],['rm *** && echo x','rm ***']]) assert.equal(approvalTargetRange(guard(command,target)),null);
 });
 
 test('video discovery retains file/URL destinations and encoded paths without redacted data',()=>{

@@ -68,13 +68,13 @@ func TestGuardPresentationDeduplicatesAndRedacts(t *testing.T) {
 		if p.Body == nil {
 			t.Fatal("missing decision")
 		}
-		if !pipeline && strings.Count(*p.Body, "curl -X POST") != 1 {
+		if strings.Contains(*p.Body, "curl -X POST") {
 			t.Errorf("command repeated: %s", *p.Body)
 		}
 		if !pipeline && strings.Contains(*p.Body, "対象コマンド：") {
 			t.Error("whole command repeated as target")
 		}
-		if pipeline && !strings.Contains(*p.Body, "対象コマンド：") {
+		if pipeline && p.Origin.TargetCommand == "" {
 			t.Error("distinct pipeline trigger omitted")
 		}
 		if strings.Contains(p.Title, "-X POST") {
@@ -103,7 +103,7 @@ func TestNestedGuardRequestsMissingOrInheritedReason(t *testing.T) {
 		if p.Body == nil {
 			t.Fatal("valid inherited reason did not create dialog", out)
 		}
-		if reason != "" && (!strings.Contains(*p.Body, "外側のコマンド bash img.sh から引き継ぎ") || !strings.Contains(*p.Body, reason)) {
+		if reason != "" && (!strings.Contains(*p.Body, "外側から引き継ぎ") || !strings.Contains(*p.Body, reason)) {
 			t.Error("inherited request was not explained")
 		}
 
