@@ -104,6 +104,9 @@ func (s *Store) createDecision(p api.DecisionCreateParams, now time.Time, paneID
 	if err = s.execLocked(insert, d.DecisionID, d.Status, ms, d.ExpiresUnixMS, string(raw)); err != nil {
 		return d, err
 	}
+	if err = s.execLocked(`DELETE FROM screen_question_identities WHERE pane_id=? AND identity=? AND decision_id IN (SELECT decision_id FROM decisions WHERE status='cancelled')`, paneID, identity); err != nil {
+		return d, err
+	}
 	if err = s.execLocked(`INSERT INTO screen_question_identities(decision_id,pane_id,identity) VALUES(?,?,?)`, d.DecisionID, paneID, identity); err != nil {
 		return d, err
 	}

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/screenprompt"
@@ -140,6 +141,24 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	if updated.DecisionID != original.DecisionID || updated.Options[0].Description == nil || *updated.Options[0].Description != "A compact plain text report, easy to paste into terminals. 全文の説明" {
 		t.Fatalf("late update changed identity or lost description: %+v", updated)
 	}
+	s.app.Do(func() {
+		disabled := false
+		c := config.Config{}
+		c.Decisions.ScreenPrompts = &disabled
+		s.screenPromptConfig(c)
+		s.screenPromptConfig(config.Config{})
+	})
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() {
+			w := s.screenPrompts.watches[1]
+			ready = w != nil && w.decisionID != "" && w.decisionID != original.DecisionID && w.transcriptID != ""
+		})
+		return ready
+	})
+	original = screenRecord(t, s)
+	updated = original
 	p2screen := screenprompt.Parse("claude", p2.DetectionScreenLines())
 	_, other, ok, _, _ := readClaudeTranscript(p2, p2screen, "claude", nil)
 	if !ok || !strings.HasPrefix(other.Title, "別の会話の全文") {

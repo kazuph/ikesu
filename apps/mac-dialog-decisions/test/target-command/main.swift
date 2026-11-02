@@ -14,7 +14,9 @@ for row in rows {
  let body=decision["body"] as! String
  let spec=try JSONDecoder().decode(DialogSpec.self,from:JSONSerialization.data(withJSONObject:row["spec"]!))
  let command=origin["command"] as! String
- let expected = spec.approval_target_range.map { NSRange(location:$0.start,length:$0.length) }
+ let expected: NSRange? = name == "requested-example" ? NSRange(location:0,length:143) : name == "same" ? NSRange(location:0,length:23) : nil
+ let actual = spec.approval_target_range.map { NSRange(location:$0.start,length:$0.length) }
+ precondition(actual == expected,"independent expected range mismatch for \(name)")
  for theme in [NSAppearance.Name.aqua,.darkAqua] {
   app.appearance=NSAppearance(named:theme)
   let controller=DialogController(spec:spec,specPath:root+"/"+name+".json")
@@ -59,6 +61,8 @@ for row in rows {
    precondition(commandLabel.convert(commandLabel.bounds,to:content).midY > firstField.convert(firstField.bounds,to:content).midY)
    let names=textFields(content).map(\.stringValue)
    for required in ["対象","理由","内容","確認済み","戻し方","承認  ⌘1","1日許可  ⌘2","却下  ⌘3"] { precondition(names.contains(required),"missing \(required)") }
+   let hints=names.filter {$0.contains("⌘") && $0.contains("送信") && $0.contains("選ん")}
+   precondition(hints.count == 1 && hints[0].contains("⌘1〜⌘3"),"guard instruction must be one line")
    print("ORDER title>command>request optionShortcuts=3 requestFields=5")
   }
   for card in controller.cards {precondition(content.bounds.contains(card.convert(card.bounds,to:content)))}
@@ -81,6 +85,7 @@ for row in rows {
    for offset in stride(from:0,to:bytes.count,by:4) {if bytes[offset]>bytes[offset+1] && bytes[offset]>bytes[offset+2] {count+=1}}
    return count
   }
+  if expected != nil { precondition(redPixels > 0,"expected visible red pixels for \(name)") }
   print("PASS case=\(name) theme=\(theme.rawValue) commandRanges=\(expected == nil ? 0 : 1) exactRedUTF16=\(redCharacters) redPixels=\(redPixels) selectable=1 links=preserved")
   controller.close()
  }
