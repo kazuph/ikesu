@@ -86,7 +86,8 @@ func (p *Parser) SetDataSize(size int) {
 		return
 	}
 	if p.dataLen < 0 {
-		p.dataLen = 0
+		// Unlimited mode tracks the collected bytes as len(data).
+		p.dataLen = len(p.data)
 	}
 	p.dataMax = size
 	// Keep any bytes already collected (up to the new limit) so a sequence in

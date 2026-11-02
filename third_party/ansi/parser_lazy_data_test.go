@@ -159,3 +159,19 @@ func TestParserBoundedDataReleaseThreshold(t *testing.T) {
 		}
 	}
 }
+
+// Switching from unlimited to a positive limit mid-sequence keeps the bytes
+// already collected, up to the new limit.
+func TestParserUnlimitedToBoundedMidSequence(t *testing.T) {
+	var got []string
+	p := NewParser()
+	p.SetDataSize(0)
+	p.SetHandler(Handler{HandleOsc: func(cmd int, data []byte) { got = append(got, string(data)) }})
+	p.Parse([]byte("\x1b]2;abc"))
+	p.SetDataSize(6)
+	p.Parse([]byte("defgh\x07"))
+	p.Parse([]byte("\x1b]2;long-title\x07"))
+	if strings.Join(got, "|") != "2;abcd|2;long" {
+		t.Fatalf("got %q", got)
+	}
+}
