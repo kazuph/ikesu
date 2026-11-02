@@ -138,6 +138,13 @@ func (r *runner) runCLI(args []string) int {
 	if paneMode {
 		return r.runPaneCLI(argv, label, cwd, split, closeOnSuccess, caller)
 	}
+	if cwd == "" && machineRef == "" {
+		// Like herdr, a background job without --cwd runs where it was
+		// requested, not in the server's directory.
+		if wd, err := os.Getwd(); err == nil {
+			cwd = wd
+		}
+	}
 	return r.runBackgroundCLI(argv, label, cwd, caller, completion)
 }
 
