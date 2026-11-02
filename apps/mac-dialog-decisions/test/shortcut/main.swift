@@ -9,9 +9,10 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 app.finishLaunching()
 let controller = DialogController(spec:spec, specPath:root + "/spec.json")
+NSEvent.addLocalMonitorForEvents(matching:.keyDown) { controller.handleKey($0) }
+DispatchQueue.main.asyncAfter(deadline:.now()+0.5) {
 controller.build()
 controller.show()
-NSEvent.addLocalMonitorForEvents(matching:.keyDown) { controller.handleKey($0) }
 let panel = controller.panel!
 let mouse = NSEvent.mouseEvent(with:.leftMouseDown, location:NSPoint(x:2,y:2), modifierFlags:[], timestamp:ProcessInfo.processInfo.systemUptime, windowNumber:panel.windowNumber, context:nil, eventNumber:1, clickCount:1, pressure:1)!
 panel.sendEvent(mouse)
@@ -35,3 +36,6 @@ let sent=answers()
 precondition(sent.count==1 && sent[0]["option_ids"] as? [String] == ["approve"], "⌘↩ sends the selected ID once")
 print("SHORTCUT_AFTER_CMD_RETURN option=approve sends=\(sent.count)")
 controller.close()
+exit(0)
+}
+app.run()
