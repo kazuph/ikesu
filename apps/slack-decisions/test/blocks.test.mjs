@@ -51,6 +51,11 @@ test("option descriptions render under their labels", () => {
   assert.match(text, /:three: まだ取り込まない/);
 });
 
+test("option descriptions preserve blank lines", () => {
+  const decision = pendingDecision({options:[{id:"1", label:"選択", description:"前半\n\n後半"}]});
+  assert.ok(sectionTexts(buildDecisionBlocks({decision, machine:LOCAL})).join("\n").includes("前半\n> \n> 後半"));
+});
+
 test("long option descriptions split across blocks without losing text", () => {
   // A multi-paragraph description that cannot fit a single section.
   const parts = Array.from(

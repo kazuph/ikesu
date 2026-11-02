@@ -17,7 +17,7 @@ export function fmtDeadline(decision, now = Date.now()) {
 }
 
 export function optionDescription(option) {
-  return typeof option?.description === "string" ? option.description.trim() : "";
+  return typeof option?.description === "string" ? option.description : "";
 }
 
 export function optionPreview(option) {

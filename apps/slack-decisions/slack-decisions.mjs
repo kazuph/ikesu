@@ -717,7 +717,7 @@ function splitExactText(text, limit = SLACK_SECTION_TEXT_LIMIT) {
 }
 
 function optionDescription(option) {
-  return typeof option?.description === "string" ? option.description.trim() : "";
+  return typeof option?.description === "string" ? option.description : "";
 }
 
 function optionPreview(option) {
@@ -730,7 +730,7 @@ function optionEntryText(option, index, multiSelect = false) {
   const label = `:${emoji}: ${box}${option.label || option.id}`;
   const description = optionDescription(option);
   let entry = description
-    ? `${label}\n> ${description.replace(/\n+/g, "\n> ")}`
+    ? `${label}\n> ${description.replace(/\n/g, "\n> ")}`
     : label;
   const preview = optionPreview(option);
   if (preview) {
