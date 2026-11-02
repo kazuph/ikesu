@@ -89,3 +89,42 @@ func TestStyledHistoryPackedTextPreservesCellsOnReuse(t *testing.T) {
 		t.Fatal("reused packed history changed cell values")
 	}
 }
+
+func TestStyledWideContinuationsRemainZeroAcrossReadsAndReflow(t *testing.T) {
+	row := make(uv.Line, 80)
+	for x := 0; x < len(row); x += 2 {
+		row[x] = uv.Cell{Content: "界", Width: 2, Style: uv.Style{Fg: ansi.IndexedColor(x / 8)}}
+	}
+	sb := NewScrollback(1)
+	sb.SetMaxBytes(scrollbackRowBytes + len(row)*scrollbackCellBytes)
+	sb.Push(row)
+	if sb.styled[sb.start] == nil {
+		t.Fatal("wide continuation cells must not force expanded storage")
+	}
+	if got := sb.Line(0); !reflect.DeepEqual(got, row) {
+		t.Fatal("line changed")
+	}
+	scratch := make(uv.Line, len(row))
+	for i := range scratch {
+		scratch[i] = uv.Cell{Content: "stale", Width: 1}
+	}
+	if got := sb.lineInto(0, scratch[:0]); !reflect.DeepEqual(got, row) {
+		t.Fatal("reused line buffer retained stale cells")
+	}
+	for x := range row {
+		if got := sb.CellAt(x, 0); got == nil || !reflect.DeepEqual(*got, row[x]) {
+			t.Fatalf("cell %d changed", x)
+		}
+	}
+	logical := newReflowLogicalLine(row, &reflowShapePool{})
+	for start := range row {
+		got := make(uv.Line, len(row)-start)
+		for i := range got {
+			got[i] = uv.Cell{Content: "stale", Width: 1}
+		}
+		logical.copyRange(got, start, len(row))
+		if !reflect.DeepEqual(got, row[start:]) {
+			t.Fatalf("reflow slice starting at %d changed", start)
+		}
+	}
+}
