@@ -118,7 +118,14 @@ func packStyled(line uv.Line, reuse *styledRow) *styledRow {
 			}
 			if !found {
 				style = len(reuse.styles)
+				oldCapacity := cap(reuse.styles)
 				reuse.styles = append(reuse.styles, savedStyle{style: c.Style, link: c.Link})
+				if !reused && cap(reuse.styles) != oldCapacity {
+					cost := int(unsafe.Sizeof(styledRow{})) + cap(reuse.glyphs)*int(unsafe.Sizeof(savedGlyph(0))) + cap(reuse.runs)*int(unsafe.Sizeof(savedRun{})) + cap(reuse.styles)*int(unsafe.Sizeof(savedStyle{})) + size
+					if cost > len(line)*scrollbackCellBytes {
+						return nil
+					}
+				}
 				if styleIndex != nil {
 					styleIndex[key] = style
 				}
