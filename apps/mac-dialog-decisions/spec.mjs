@@ -49,7 +49,7 @@ export function locationLabel(decision, machine) {
   const project = origin.cwd ? path.basename(origin.cwd) : "不明";
   const space = origin.workspace_label || "不明";
   const pane = [origin.pane_label || origin.pane_id, origin.agent].filter(Boolean).join(" / ") || "不明";
-  return [host, project, space, pane].join("｜");
+  return [host, project, space, pane].filter((part, index, parts) => part === "不明" || index === 0 || part !== parts[index - 1]).join("｜");
 }
 
 export function approvalCommand(decision) {

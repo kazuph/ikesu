@@ -215,7 +215,8 @@ final class OptionCard: NSView {
     stack.alignment = .leading
     stack.spacing = 4
     stack.translatesAutoresizingMaskIntoConstraints = false
-    let title = label(option.label, size: Look.base + 1, weight: .semibold, selectable: false)
+    let shortcut = index < 9 ? "  ⌘\(index + 1)" : ""
+    let title = label(option.label + shortcut, size: Look.base + 1, weight: .semibold, selectable: false)
     stack.addArrangedSubview(title)
     if let d = option.description, !d.isEmpty {
       let field = richLabel(d, size: Look.small + 1, color: .secondaryLabelColor, selectable: false)
@@ -555,6 +556,9 @@ final class DialogController: NSObject, NSWindowDelegate {
         ? "当てはまるものを選んで（複数可・⌘1〜⌘\(min(spec.options.count, 9)) でも可）、右下の「回答する」か ⌘↩ で送ります。"
         : "1つ選んで（⌘1〜⌘\(min(spec.options.count, 9)) でも可）、右下の「回答する」か ⌘↩ で送ります。選んだだけでは送りません。もう一度押すと選択を外せます。"
       full(label(hint, size: Look.small, color: .secondaryLabelColor, selectable: false))
+      if spec.kind == "command_guard" {
+        full(label("⌘1 → ⌘↩ で承認して送信", size: Look.small, color: .secondaryLabelColor, selectable: false))
+      }
       for (i, option) in spec.options.enumerated() {
         let card = OptionCard(option: option, index: i, multi: spec.multi_select)
         card.onClick = { [weak self] c in self?.cardClicked(c) }
