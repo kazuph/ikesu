@@ -55,4 +55,13 @@ func TestRunWithoutCwdUsesCallerDirectory(t *testing.T) {
 	if text := logOf(override.Job, "explicit"); !strings.Contains(text, "[stdout] "+explicit+"\n") {
 		t.Fatalf("explicit cwd: want %s\n%s", explicit, text)
 	}
+
+	missing := exec.Command(binPath, "--session", s.name, "run", "--caller", "p1", "--label", "missing", "--cwd", filepath.Join(explicit, "gone"), "--", "pwd")
+	missing.Env = append(os.Environ(), "IKESU_STATE_DIR="+s.stateDir)
+	if out, err := missing.CombinedOutput(); err == nil || !strings.Contains(string(out), "is not available") {
+		t.Fatalf("missing cwd: err=%v out=%s", err, out)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(s.stateDir, "sessions", s.name, "job-logs", "*-missing.log")); len(matches) != 0 {
+		t.Fatalf("a job was created for a missing cwd: %v", matches)
+	}
 }

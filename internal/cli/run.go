@@ -141,8 +141,17 @@ func (r *runner) runCLI(args []string) int {
 	if cwd == "" && machineRef == "" {
 		// Like herdr, a background job without --cwd runs where it was
 		// requested, not in the server's directory.
-		if wd, err := os.Getwd(); err == nil {
-			cwd = wd
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(r.errOut(), "cannot determine the current directory (%v); pass --cwd\n", err)
+			return 2
+		}
+		cwd = wd
+	}
+	if machineRef == "" && cwd != "" {
+		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+			fmt.Fprintf(r.errOut(), "working directory %s is not available; pass --cwd\n", cwd)
+			return 2
 		}
 	}
 	return r.runBackgroundCLI(argv, label, cwd, caller, completion)
