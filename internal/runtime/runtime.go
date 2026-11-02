@@ -196,11 +196,20 @@ const pumpBatchWait = time.Millisecond
 // the writer flushes early and the queue back-pressures the reader.
 const pumpBatchCap = 256 * 1024
 
+// pumpReadBytes is the largest single PTY read handed to the writer.
+const pumpReadBytes = 64 << 10
+
 // pumpQueueBytes bounds how much output may sit unprocessed between the
-// reader and the writer. It caps how far the emulator can trail the child
-// process — the screen lag after a flood ends and the output replayed
-// after an interrupt — and, with pumpQueueLen, the queued memory.
-const pumpQueueBytes = 256 << 10
+// reader and the writer. Everything queued must be parsed before a later
+// byte — a key echo during a flood, say — reaches the screen, so this is
+// also the input lag under heavy output: on mini, 256KB gave a flood input
+// p50 of 35-179ms and 64KB gave 15ms, the same as an idle pane. It caps how
+// far the emulator can trail the child process and, with pumpQueueLen, the
+// queued memory.
+const pumpQueueBytes = pumpReadBytes
+
+// A read chunk must fit the queue budget, or acquiring it would block forever.
+const _ = uint(pumpQueueBytes - pumpReadBytes)
 
 // pumpQueueLen bounds outstanding chunks so many small reads cannot hold
 // more buffers than the byte budget implies. pumpPoolLen bounds recycled
@@ -242,7 +251,7 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 		case buf = <-pool:
 			buf = buf[:cap(buf)]
 		default:
-			buf = make([]byte, 64*1024)
+			buf = make([]byte, pumpReadBytes)
 		}
 		n, err := p.readPTYReady(buf)
 		reads++
