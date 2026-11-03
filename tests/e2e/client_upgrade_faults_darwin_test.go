@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/tui"
 )
@@ -351,5 +352,75 @@ func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
 			}
 			return
 		}
+	}
+}
+
+// Closing the real PTY master produces a terminal cleanup error after normal EOF.
+func TestClientNormalDetachIgnoresTerminalCleanupError(t *testing.T) {
+	s := start(t)
+	s.waitFor("server ready", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	if err := pty.Setsize(slave, &pty.Winsize{Rows: 24, Cols: 80}); err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	errorOutput, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer errorOutput.Close()
+	cmd := exec.Command(binPath, "--session", s.name)
+	cmd.Env = s.cmd.Env
+	cmd.Stdin = slave
+	cmd.Stdout = output
+	cmd.Stderr = errorOutput
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		data, err := os.ReadFile(output.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte("ikesu v")) {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("client exited before attach: %v", err)
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatal("client did not attach")
+		}
+	}
+	if err := master.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		data, readErr := os.ReadFile(errorOutput.Name())
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if err != nil || len(data) != 0 {
+			t.Fatalf("normal detach reported cleanup error: exit=%v stderr=%q", err, data)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("client did not detach after PTY closed")
 	}
 }
