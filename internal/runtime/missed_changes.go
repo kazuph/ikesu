@@ -42,7 +42,7 @@ func (s *Supervisor) TakePendingChanges() []Event {
 	var out []Event
 	for pane, kind := range pending {
 		if s.Get(pane.ID) == pane {
-			out = append(out, Event{Pane: pane.ID, Kind: kind})
+			out = append(out, Event{Pane: pane.ID, Kind: kind, Source: pane})
 		}
 	}
 	return out
