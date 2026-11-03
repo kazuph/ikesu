@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/layout"
 )
@@ -28,6 +29,31 @@ func TestPaneAllocationUsesLedgerAndFailsClosed(t *testing.T) {
 	s.Apply(CmdSplitFocused{Dir: layout.Vertical})
 	if id := s.FocusedPane(); id != 4 {
 		t.Fatalf("unreadable database: got %d, want high water + 1", id)
+	}
+}
+
+func TestPaneAllocationAvoidsAllTemporaryPanes(t *testing.T) {
+	s := New("/tmp", 80, 24)
+	firstWorkspace := s.ActiveWorkspace().ID
+	s.Apply(CmdOpenPopup{WorkspaceID: firstWorkspace, Width: api.PopupSize{Cells: 20}, Height: api.PopupSize{Cells: 10}})
+	if s.Popup.PaneID != 2 {
+		t.Fatalf("first popup=%d", s.Popup.PaneID)
+	}
+	s.Apply(CmdNewWorkspace{Cwd: "/tmp"})
+	if s.FocusedPane() != 3 {
+		t.Fatalf("workspace pane=%d", s.FocusedPane())
+	}
+	s.Apply(CmdOpenPopup{WorkspaceID: s.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 20}, Height: api.PopupSize{Cells: 10}})
+	if s.Popup.PaneID != 4 {
+		t.Fatalf("second popup=%d", s.Popup.PaneID)
+	}
+	s.Apply(CmdOpenOverlay{TargetPaneID: 3})
+	if s.Overlay == nil || s.Overlay.PaneID != 5 {
+		t.Fatalf("overlay=%v", s.Overlay)
+	}
+	s.Apply(CmdSplitFocused{Dir: layout.Vertical})
+	if s.FocusedPane() != 6 {
+		t.Fatalf("new pane=%d", s.FocusedPane())
 	}
 }
 

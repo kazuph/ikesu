@@ -2,9 +2,8 @@ package session
 
 import "crypto/rand"
 
-// Append adds a validated import to a validated snapshot, assigning all
-// imported ids from the target's existing allocation counters. The target
-// is not mutated, and existing workspace/pane ids are preserved; imported focus becomes active.
+// Append adds a validated import without changing existing IDs. Imported
+// panes use the smallest unreserved IDs, or the high-water mark on DB failure.
 func Append(target, imported *File, reserved map[int]bool, dbUnavailable bool) (*File, *File) {
 	if target == nil {
 		target = &File{Version: CurrentVersion, SidebarVisible: true}
