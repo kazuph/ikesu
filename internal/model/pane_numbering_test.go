@@ -84,6 +84,27 @@ func TestPaneAllocationAvoidsAllTemporaryPanes(t *testing.T) {
 	}
 }
 
+func TestPaneAllocationReusesLowestForTemporaryPanes(t *testing.T) {
+	for _, kind := range []string{"popup", "overlay"} {
+		t.Run(kind, func(t *testing.T) {
+			s := New("/tmp", 80, 24)
+			s.Apply(CmdSplitFocused{Dir: layout.Vertical})
+			s.Apply(CmdClosePane{Pane: 2})
+			if kind == "popup" {
+				s.Apply(CmdOpenPopup{WorkspaceID: s.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 20}, Height: api.PopupSize{Cells: 10}})
+				if s.Popup.PaneID != 2 {
+					t.Fatalf("popup got %d, want lowest free id 2", s.Popup.PaneID)
+				}
+			} else {
+				s.Apply(CmdOpenOverlay{TargetPaneID: 1})
+				if s.Overlay.PaneID != 2 {
+					t.Fatalf("overlay got %d, want lowest free id 2", s.Overlay.PaneID)
+				}
+			}
+		})
+	}
+}
+
 func TestPaneGenerationAndHighWaterSurviveHandoff(t *testing.T) {
 	s := New("/tmp", 80, 24)
 	s.Apply(CmdSplitFocused{Dir: layout.Vertical})
