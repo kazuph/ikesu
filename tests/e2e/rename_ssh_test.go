@@ -23,7 +23,8 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-// This uses an actual unprivileged OpenSSH server, ephemeral keys and homes.
+// This uses an actual unprivileged OpenSSH server, ephemeral keys and homes;
+// the two real binary builds and SSH handoffs can take more than five seconds.
 // The SSH launcher only selects its isolated config; it executes real ssh.
 func TestStageThreeSSHVersionMatrix(t *testing.T) {
 	for _, pair := range []struct{ name, local, remote, remoteName string }{

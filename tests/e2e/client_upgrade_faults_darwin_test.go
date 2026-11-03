@@ -41,7 +41,7 @@ func signalUpgradeTestProcess(t *testing.T, pid int, executable, signal string) 
 	}
 }
 
-// Real exec reaches the OS argument limit; no exec function is replaced.
+// Real exec reaches the OS argument limit; binary builds and boundary probes can take more than five seconds.
 func TestClientRestoresTerminalAndInputAfterExecFailure(t *testing.T) {
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
 	resolvedOld, err := filepath.EvalSymlinks(oldBinary)
