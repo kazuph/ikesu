@@ -32,7 +32,10 @@ func graphicsReaderSocket(t *testing.T) (net.Conn, net.Conn, *graphicsFrameReade
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	return conn, peer, newGraphicsFrameReader(conn, bufio.NewReader(conn))
+	reader := newGraphicsFrameReader(conn, bufio.NewReader(conn))
+	reader.progress.idle = 200 * time.Millisecond
+	reader.progress.total = time.Second
+	return conn, peer, reader
 }
 
 func TestGraphicsFrameReaderPreservesCoalescedBodyAndNextHeader(t *testing.T) {
@@ -71,7 +74,7 @@ func TestGraphicsFrameReaderAllowsUnstartedIdle(t *testing.T) {
 	select {
 	case err := <-done:
 		t.Fatalf("unstarted frame was closed: %v", err)
-	case <-time.After(graphicsFrameIdle + time.Second):
+	case <-time.After(reader.progress.idle + 100*time.Millisecond):
 	}
 	if _, err := peer.Write([]byte("{\"sequence\":7}\n")); err != nil {
 		t.Fatal(err)
@@ -81,7 +84,7 @@ func TestGraphicsFrameReaderAllowsUnstartedIdle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(graphicsFrameIdle):
+	case <-time.After(reader.progress.idle):
 		t.Fatal("idle frame could not resume")
 	}
 }
@@ -112,7 +115,7 @@ func TestGraphicsFrameReaderRejectsStalledHeaderAndBody(t *testing.T) {
 				}
 			}
 			var timeout net.Error
-			if !errors.As(err, &timeout) || !timeout.Timeout() || time.Since(start) < graphicsFrameIdle || time.Since(start) > graphicsFrameIdle*2 {
+			if !errors.As(err, &timeout) || !timeout.Timeout() || time.Since(start) < reader.progress.idle || time.Since(start) > reader.progress.idle*2 {
 				t.Fatalf("stalled %s error=%v elapsed=%v", name, err, time.Since(start))
 			}
 		})
@@ -128,7 +131,7 @@ func TestGraphicsFrameReaderTotalDeadlineDespiteProgress(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
 	go func() {
-		ticker := time.NewTicker(graphicsFrameIdle / 2)
+		ticker := time.NewTicker(reader.progress.idle / 2)
 		defer ticker.Stop()
 		for {
 			select {
@@ -144,7 +147,7 @@ func TestGraphicsFrameReaderTotalDeadlineDespiteProgress(t *testing.T) {
 	start := time.Now()
 	_, err := reader.header()
 	var timeout net.Error
-	if !errors.As(err, &timeout) || !timeout.Timeout() || time.Since(start) < graphicsFrameTotal || time.Since(start) > graphicsFrameTotal+graphicsFrameIdle {
+	if !errors.As(err, &timeout) || !timeout.Timeout() || time.Since(start) < reader.progress.total || time.Since(start) > reader.progress.total+reader.progress.idle {
 		t.Fatalf("progress bypassed total deadline: error=%v elapsed=%v", err, time.Since(start))
 	}
 }
