@@ -2,16 +2,17 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/cli"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
-	// The real servers, plugin, mailbox and job operations took over five seconds on mini.
 	if runIsolatedParallel(t) {
 		return
 	}
@@ -29,7 +30,14 @@ func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
 	}()
 	client := dialClient(t, other)
 	client.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
-	defer client.conn.Close()
+	readDone := make(chan error, 1)
+	go func() { readDone <- drainPluginClient(client) }()
+	defer func() {
+		client.conn.Close()
+		if err := <-readDone; err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Error(err)
+		}
+	}()
 	defer stopServer(t, other, otherDone)
 	root := t.TempDir()
 	manifest := "id=\"isolation.test\"\nname=\"Isolation\"\nversion=\"0.1.0\"\nmin_ikesu_version=\"0.1.0\"\n"
