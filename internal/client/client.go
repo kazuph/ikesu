@@ -114,13 +114,17 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		if upgradeState != nil && !upgradeState.Rollback {
 			return failStartup(fmt.Errorf("connect to upgraded server: %w", err))
 		}
-		if upgradeState == nil || !upgradeState.Rollback {
+		_, lockErr := os.Stat(api.LockPath(dir))
+		if upgradeState == nil || !upgradeState.Rollback || errors.Is(lockErr, os.ErrNotExist) {
 			if err := spawnServer(session, dir); err != nil {
-				return 1, err
-			}
-			conn, err = waitDial(dir, attachTimeout)
-			if err != nil {
-				return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+				if upgradeState == nil || !upgradeState.Rollback {
+					return 1, err
+				}
+			} else {
+				conn, err = waitDial(dir, attachTimeout)
+				if err != nil && (upgradeState == nil || !upgradeState.Rollback) {
+					return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+				}
 			}
 		}
 	}
