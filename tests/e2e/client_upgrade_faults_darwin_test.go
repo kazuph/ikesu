@@ -397,7 +397,7 @@ func TestClientNormalDetachIgnoresTerminalCleanupError(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(data, []byte("ikesu v")) {
+		if bytes.Contains(data, []byte(tui.EnterSeq)) {
 			break
 		}
 		select {
