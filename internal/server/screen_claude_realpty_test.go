@@ -272,7 +272,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 
 func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 	teststate.Lock(t)
-	for _, scenario := range []string{"record", "timeout", "changed", "disappeared"} {
+	for _, scenario := range []string{"record", "timeout", "no_header", "mismatch", "ambiguous", "changed", "disappeared"} {
 		t.Run(scenario, func(t *testing.T) {
 			s := newTestServer(t, "claude-long-"+scenario)
 			root, cwd := t.TempDir(), t.TempDir()
@@ -294,6 +294,9 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 			}
 			fixture := screenDialog(t, "claude-single")
 			picture := strings.Replace(fixture, "Which output format should the temporary report use?", question, 1)
+			if scenario == "no_header" {
+				picture = strings.Replace(picture, " ☐ Format\n", "", 1)
+			}
 			screen := filepath.Join(root, "screen")
 			if err := os.WriteFile(screen, []byte(picture), 0600); err != nil {
 				t.Fatal(err)
@@ -335,37 +338,71 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 					t.Errorf("expected waiting watch, got %+v", w)
 				}
 			})
-			writeRecord := func() {
-				record := map[string]any{"sessionId": id, "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-long", "input": map[string]any{"questions": []any{map[string]any{"question": question, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals."}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links."}}}}}}}}}
+			writeRecord := func(mode string) {
+				text := question
+				if mode == "mismatch" {
+					text = "An unrelated recorded question"
+				}
+				record := map[string]any{"sessionId": id, "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-long", "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals."}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links."}}}}}}}}}
 				data, e := json.Marshal(record)
 				if e != nil {
 					t.Fatal(e)
 				}
-				if e = os.WriteFile(filepath.Join(projects, id+".jsonl"), append(data, '\n'), 0600); e != nil {
+				data = append(data, '\n')
+				if mode == "ambiguous" {
+					data = append(data, []byte(strings.Replace(string(data), "tool-long", "tool-other", 1))...)
+				}
+				if e = os.WriteFile(filepath.Join(projects, id+".jsonl"), data, 0600); e != nil {
 					t.Fatal(e)
 				}
 			}
 			switch scenario {
+			case "mismatch", "ambiguous":
+				writeRecord(scenario)
+				waitPromptCondition(t, func() bool {
+					scanScreen(s)
+					var unverified bool
+					s.app.Do(func() { x := s.screenPrompts.transcripts[1]; unverified = x != nil && x.latest.unverified })
+					return unverified
+				})
+				s.app.Do(func() { s.screenPrompts.watches[1].transcriptDeadline = time.Now().Add(-time.Second) })
+				for range 3 {
+					scanScreen(s)
+				}
+				s.app.Do(func() {
+					if w := s.screenPrompts.watches[1]; w == nil || w.decisionID != "" {
+						t.Errorf("unverified decision created: %+v", w)
+					}
+				})
 			case "changed", "disappeared":
+				var oldWatch *screenPromptWatch
+				s.app.Do(func() { oldWatch = s.screenPrompts.watches[1] })
 				if scenario == "changed" {
 					paintScreen(pane, strings.ReplaceAll(fixture, "Which output format should the temporary report use?", "A completely different question?"))
 				} else {
 					paintScreen(pane, "ordinary idle screen")
 				}
 				scanScreen(s)
+				if scenario == "changed" {
+					scanScreen(s)
+				}
 				s.app.Do(func() {
-					if w := s.screenPrompts.watches[1]; w != nil {
-						w.transcriptDeadline = time.Now().Add(-time.Second)
+					if oldWatch != nil {
+						oldWatch.transcriptDeadline = time.Now().Add(-time.Second)
 					}
 				})
 				scanScreen(s)
 				s.app.Do(func() {
-					if w := s.screenPrompts.watches[1]; w != nil && w.decisionID != "" {
+					w := s.screenPrompts.watches[1]
+					if w != nil && w.decisionID != "" {
 						t.Errorf("old question created: %+v", w)
+					}
+					if scenario == "changed" && (w == nil || w == oldWatch || !w.transcriptDeadline.After(time.Now())) {
+						t.Errorf("new question lost its wait: %+v", w)
 					}
 				})
 				return
-			case "timeout":
+			case "timeout", "no_header":
 				s.app.Do(func() { s.screenPrompts.watches[1].transcriptDeadline = time.Now().Add(-time.Second) })
 				waitPromptCondition(t, func() bool {
 					scanScreen(s)
@@ -378,7 +415,7 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 					t.Fatalf("scrollback title: %+v", got)
 				}
 			}
-			writeRecord()
+			writeRecord("match")
 			waitPromptCondition(t, func() bool {
 				scanScreen(s)
 				var ready bool

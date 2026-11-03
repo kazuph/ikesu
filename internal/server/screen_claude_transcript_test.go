@@ -2,6 +2,7 @@ package server
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/screenprompt"
@@ -106,4 +107,30 @@ func TestClaudeCompletedAndAmbiguousQuestionsAreNotPresented(t *testing.T) {
 	if match, unsafe, _ := chooseClaudeQuestion(p, []session.ClaudeQuestion{newQuestion, other}); match != nil || !unsafe {
 		t.Fatal("ambiguous calls accepted")
 	}
+}
+
+func TestClaudeUnverifiedDoesNotExpire(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		w := &screenPromptWatch{prompt: p, transcriptDeadline: time.Now().Add(-time.Second)}
+		if !s.waitClaudeQuestion(1, w, false, false, true) {
+			t.Error("unverified question escaped after deadline")
+		}
+	})
+}
+
+func TestWaitingWatchCollectsPreview(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-preview", "claude")
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		s.screenPrompts.watches = map[int]*screenPromptWatch{1: {signature: p.Signature(), prompt: p, lastMatched: true}}
+		s.scanScreenPrompts()
+		w := s.screenPrompts.watches[1]
+		if w.preview == nil || w.decisionID != "" {
+			t.Errorf("preview skipped: %+v", w)
+		}
+	})
 }
