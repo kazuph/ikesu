@@ -25,6 +25,7 @@ func (s *AppState) allocatePane(transient bool) PaneID {
 			if s.allocatingPanes != nil {
 				s.allocatingPanes[id] = true
 			}
+			delete(s.PaneLabels, id)
 			s.assignPaneGeneration(id)
 			return id
 		}
@@ -64,6 +65,7 @@ func (s *AppState) allocatePane(transient bool) PaneID {
 	if s.allocatingPanes != nil {
 		s.allocatingPanes[id] = true
 	}
+	delete(s.PaneLabels, id)
 	s.assignPaneGeneration(id)
 	return id
 }

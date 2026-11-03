@@ -13,6 +13,11 @@ func (a *App) SetPaneKeybinds(c config.Config) {
 }
 
 func (a *App) recordFocus(before, after int) {
+	if before >= 0 {
+		if wi, _ := a.st.FindPane(before); wi < 0 {
+			before = -1
+		}
+	}
 	if before != after && after >= 0 {
 		a.invalidateDetection(after)
 	}
@@ -30,6 +35,26 @@ func (a *App) recordFocus(before, after int) {
 	}
 	a.focusHistory = append(a.focusHistory, after)
 	a.focusHistoryAt = len(a.focusHistory) - 1
+}
+
+func (a *App) forgetPaneFocus(pid int) {
+	if a.lastPane == pid {
+		a.lastPane = 0
+	}
+	oldAt := a.focusHistoryAt
+	kept := a.focusHistory[:0]
+	newAt := -1
+	for i, id := range a.focusHistory {
+		if id == pid {
+			continue
+		}
+		kept = append(kept, id)
+		if i <= oldAt {
+			newAt = len(kept) - 1
+		}
+	}
+	a.focusHistory = kept
+	a.focusHistoryAt = max(0, newAt)
 }
 
 func (a *App) focusHistoryStep(forward bool) {

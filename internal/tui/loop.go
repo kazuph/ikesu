@@ -427,11 +427,22 @@ func (a *App) effect(e model.Effect) {
 			a.lastSpawnError = err
 		}
 	case model.EffKillPane:
+		a.forgetPaneFocus(e.Pane)
 		a.forgetClosedSizeTabs()
 		a.removeEditorFile(e.Pane)
 		a.clearPopupInteraction(e.Pane)
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
+		delete(a.scrollbarUntil, e.Pane)
+		delete(a.trackers, e.Pane)
+		delete(a.blockerObservations, e.Pane)
+		delete(a.fossils, e.Pane)
+		delete(a.visibleIdle, e.Pane)
+		activity := a.paneActivity()
+		delete(activity.pending, e.Pane)
+		delete(activity.confirming, e.Pane)
+		delete(activity.deadlines, e.Pane)
+		a.nextDetectionDeadline()
 		delete(a.restoreWarnings, e.Pane)
 		delete(a.reported, e.Pane)
 		delete(a.metadataViews, e.Pane)
