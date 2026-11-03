@@ -24,7 +24,6 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/sys/unix"
-	"golang.org/x/term"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
@@ -126,8 +125,9 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		}
 	}
 
+	var terminal attachTerminal
 	for {
-		old, err := term.MakeRaw(int(in.Fd()))
+		err := terminal.enter(int(in.Fd()))
 		if err != nil {
 			if conn != nil {
 				conn.Close()
@@ -138,7 +138,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 			if conn != nil {
 				conn.Close()
 			}
-			_ = term.Restore(int(in.Fd()), old)
+			_ = terminal.restore(int(in.Fd()))
 			return failStartup(err)
 		}
 		result := pumpMachines(session, conn, in, out, settings, savedMachines(session))
@@ -158,7 +158,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 			drainErr = tui.DrainInput(in, drainMs)
 		}
 		_, leaveErr := out.WriteString(tui.KbdLeaveSeq() + tui.LeaveSeq)
-		restoreErr := term.Restore(int(in.Fd()), old)
+		restoreErr := terminal.restore(int(in.Fd()))
 		terminalErr := errors.Join(mouseErr, flushErr, drainErr, leaveErr, restoreErr)
 		if result == pumpRollback {
 			if terminalErr != nil {
