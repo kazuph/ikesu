@@ -203,23 +203,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		}
 		m.workers.Wait()
 		if settings.upgrade != nil {
-			settings.retryQueued = make(map[string]queuedUpgradeInput)
-			for id, e := range m.endpoints {
-				if e.connection == nil {
-					continue
-				}
-				e.connection.queueMu.Lock()
-				var pending []msg
-				for _, message := range e.connection.queue {
-					if message.Type == "input" || message.Type == "paste" || message.Type == "workspace_select" {
-						pending = append(pending, message)
-					}
-				}
-				e.connection.queueMu.Unlock()
-				if len(pending) != 0 {
-					settings.retryQueued[id] = queuedUpgradeInput{target: e.profile.Target, session: m.selectionSession(id), messages: pending}
-				}
-			}
+			m.saveUpgradeQueues()
 		}
 	}()
 	m.start("local", local)

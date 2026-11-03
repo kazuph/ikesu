@@ -83,3 +83,44 @@ func (c *endpointConnection) lastSentInput() uint64 {
 	defer c.queueMu.Unlock()
 	return c.sentInput
 }
+
+// saveUpgradeQueues runs after all connection writers have stopped.
+func (m *machineClient) saveUpgradeQueues() {
+	m.settings.retryQueued = make(map[string]queuedUpgradeInput)
+	for id, e := range m.endpoints {
+		if e.connection == nil {
+			continue
+		}
+		e.connection.queueMu.Lock()
+		var pending []msg
+		for _, message := range e.connection.queue {
+			if message.Type == "input" || message.Type == "paste" || message.Type == "workspace_select" {
+				pending = append(pending, message)
+			}
+		}
+		e.connection.queueMu.Unlock()
+		if len(pending) != 0 {
+			m.settings.retryQueued[id] = queuedUpgradeInput{target: e.profile.Target, session: m.selectionSession(id), messages: pending}
+		}
+	}
+}
+
+func (m *machineClient) replayUpgradeQueue(id string) error {
+	pending, ok := m.settings.retryQueued[id]
+	if !ok {
+		return nil
+	}
+	e := m.endpoints[id]
+	if pending.target != e.profile.Target || pending.session != m.selectionSession(id) {
+		return nil
+	}
+	for len(pending.messages) != 0 {
+		if err := e.connection.enqueue(pending.messages[0]); err != nil {
+			return err
+		}
+		pending.messages = pending.messages[1:]
+		m.settings.retryQueued[id] = pending
+	}
+	delete(m.settings.retryQueued, id)
+	return nil
+}

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/machine"
 	"golang.org/x/sys/unix"
 )
 
@@ -317,4 +319,111 @@ func TestMachineWriterRetainsUnsentInputAfterSocketCloses(t *testing.T) {
 	if len(c.queue) != 2 || c.queue[0].Data != large || c.queue[1].Data != "dGFpbA==" {
 		t.Fatalf("unsent input lost or duplicated: queued=%d", len(c.queue))
 	}
+}
+
+// Real sockets block an in-flight message, then the verified executable is actually replaced before recovery.
+func TestUpgradeFailureReplaysUnsentSocketInputOnce(t *testing.T) {
+	server, stream := shutdownSocketPair(t)
+	peer := endpoint.Current()
+	original := &endpointConnection{writer: &writer{conn: stream, available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- original.writeQueued(ctx) }()
+	if err := original.enqueue(msg{Type: "input", Data: "Zmlyc3Q="}); err != nil {
+		t.Fatal(err)
+	}
+	var first msg
+	if err := json.NewDecoder(server).Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Data != "Zmlyc3Q=" {
+		t.Fatal("first input was not delivered")
+	}
+	large := strings.Repeat("e", 1<<20)
+	if err := original.enqueue(msg{Type: "input", Data: large}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(server, make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := original.enqueue(msg{Type: "input", Data: "dGFpbA=="}); err != nil {
+		t.Fatal(err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp(home, ".ikesu-upgrade-queue-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "client")
+	if err := os.WriteFile(path, data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	info, sum, err := executableIdentity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := checkedExecutable{path: path, info: info, sum: sum}
+	cancel()
+	stream.Close()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("writer did not stop")
+	}
+	m := &machineClient{session: "local", settings: &localSettings{}, endpoints: map[string]*managedEndpoint{"remote": {profile: machine.Profile{ID: "remote", Target: "host", Session: "other"}, connection: original}}}
+	m.saveUpgradeQueues()
+	replacement := filepath.Join(dir, "replacement")
+	if err := os.WriteFile(replacement, data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := checked.recheck(); err == nil {
+		t.Fatal("replaced executable was not rejected")
+	}
+	nextServer, nextStream := shutdownSocketPair(t)
+	next := &endpointConnection{writer: &writer{conn: nextStream, available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m.endpoints["remote"].connection = next
+	if err := m.replayUpgradeQueue("remote"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.replayUpgradeQueue("remote"); err != nil {
+		t.Fatal(err)
+	}
+	nextCtx, nextCancel := context.WithCancel(context.Background())
+	nextDone := make(chan error, 1)
+	go func() { nextDone <- next.writeQueued(nextCtx) }()
+	decoder := json.NewDecoder(nextServer)
+	for _, want := range []string{large, "dGFpbA=="} {
+		var got msg
+		if err := decoder.Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Data != want {
+			t.Fatal("unsent input was lost, reordered, or duplicated")
+		}
+	}
+	if err := nextServer.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	var duplicate msg
+	if err := decoder.Decode(&duplicate); err == nil {
+		t.Fatalf("duplicate input: %+v", duplicate)
+	}
+	nextCancel()
+	nextStream.Close()
+	<-nextDone
 }
