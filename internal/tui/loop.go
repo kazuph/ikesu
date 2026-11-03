@@ -105,6 +105,9 @@ func (a *App) onInput(ev input.Event) {
 
 // onRuntimeEvent handles supervisor notifications.
 func (a *App) onRuntimeEvent(ev runtime.Event) {
+	if ev.Source != a.sup.Get(ev.Pane) || ev.Source == nil {
+		return
+	}
 	switch ev.Kind {
 	case runtime.EventClipboard:
 		if a.clipboardHook != nil {
@@ -345,11 +348,15 @@ func (a *App) exec(cmd model.Command) {
 	}
 	popupWasVisible := a.st.PopupVisible()
 	previousPopup := a.st.Popup
+	previousRuntimePane := a.st.HandoffCounters().RuntimePane
 	var prev *model.StateSnap
 	if a.postExecHook != nil {
 		prev = a.st.Capture()
 	}
 	for _, e := range a.st.Apply(cmd) {
+		if killed, ok := e.(model.EffKillPane); ok && killed.Pane == beforeFocus {
+			beforeFocus = -1
+		}
 		if spawn, ok := e.(model.EffSpawnPane); ok && policyCwd {
 			if spawnCwd != "" {
 				spawn.Cwd = spawnCwd
@@ -388,9 +395,13 @@ func (a *App) exec(cmd model.Command) {
 	// Keystrokes and resizes never change persisted state; everything else
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
 	switch cmd.(type) {
-	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
+	case model.CmdInput, model.CmdResize, model.CmdCloseOverlay, model.CmdClosePopup, model.CmdPopupResizeLock:
 		if _, resized := cmd.(model.CmdResize); resized {
 			a.copyResizeAll(copySizes)
+		}
+	case model.CmdOpenOverlay, model.CmdOpenPopup:
+		if a.st.HandoffCounters().RuntimePane != previousRuntimePane {
+			a.changed()
 		}
 	default:
 		a.changed()
@@ -419,11 +430,22 @@ func (a *App) effect(e model.Effect) {
 			a.lastSpawnError = err
 		}
 	case model.EffKillPane:
+		a.forgetPaneFocus(e.Pane)
 		a.forgetClosedSizeTabs()
 		a.removeEditorFile(e.Pane)
 		a.clearPopupInteraction(e.Pane)
 		a.sup.Kill(e.Pane)
 		delete(a.scroll, e.Pane)
+		delete(a.scrollbarUntil, e.Pane)
+		delete(a.trackers, e.Pane)
+		delete(a.blockerObservations, e.Pane)
+		delete(a.fossils, e.Pane)
+		delete(a.visibleIdle, e.Pane)
+		activity := a.paneActivity()
+		delete(activity.pending, e.Pane)
+		delete(activity.confirming, e.Pane)
+		delete(activity.deadlines, e.Pane)
+		a.nextDetectionDeadline()
 		delete(a.restoreWarnings, e.Pane)
 		delete(a.reported, e.Pane)
 		delete(a.metadataViews, e.Pane)

@@ -19,8 +19,16 @@ func (s *AppState) AppendSession(merged, added *session.File) {
 	if s.PaneLabels == nil {
 		s.PaneLabels = map[int]string{}
 	}
-	for id, label := range restored.PaneLabels {
-		s.PaneLabels[id] = label
+	if s.PaneGenerations == nil {
+		s.PaneGenerations = map[int]string{}
+	}
+	for id, generation := range restored.PaneGenerations {
+		delete(s.PaneLabels, id)
+		if label := restored.PaneLabels[id]; label != "" {
+			s.PaneLabels[id] = label
+		}
+		s.PaneGenerations[id] = generation
+		delete(s.LegacyPaneGenerations, id)
 	}
 	s.nextPaneID = merged.NextPaneID
 	s.nextTabID = merged.NextTabID

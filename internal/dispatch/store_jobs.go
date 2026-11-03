@@ -13,6 +13,14 @@ import (
 // InsertCommand records a `ikesu run` job: a 'command' dispatch in the jobs
 // room from ikesu-run to the caller's mailbox, queued until the runner starts.
 func (s *Store) InsertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath string) error {
+	return s.insertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath, "")
+}
+
+func (s *Store) InsertPaneCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath, generation string) error {
+	return s.insertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath, generation)
+}
+
+func (s *Store) insertCommand(id, label, command, cwd, callerPane, callerAgent, completion, logPath, generation string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	fa, err := s.agentActorLocked(RunShellActor)
@@ -24,9 +32,9 @@ func (s *Store) InsertCommand(id, label, command, cwd, callerPane, callerAgent, 
 		return err
 	}
 	return s.execLocked(
-		`INSERT INTO dispatches(external_id,kind,room,project,from_actor,to_actor,body,label,created_at,status,completion,runner_pid,log_path,caller_pane)
-		 VALUES(?,'command',?,?,?,?,?,?,?,'queued',?,NULL,?,?)`,
-		id, JobsRoom, cwd, fa, ta, command, label, nowTS(), completion, logPath, callerPane)
+		`INSERT INTO dispatches(external_id,kind,room,project,from_actor,to_actor,body,label,created_at,status,completion,runner_pid,log_path,caller_pane,pane_generation)
+		 VALUES(?,'command',?,?,?,?,?,?,?,'queued',?,NULL,?,?,?)`,
+		id, JobsRoom, cwd, fa, ta, command, label, nowTS(), completion, logPath, callerPane, generation)
 }
 
 var jobIDRe = regexp.MustCompile(`^j(\d+)$`)

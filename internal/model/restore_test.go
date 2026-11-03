@@ -91,8 +91,7 @@ func TestSnapshotRestoreRoundTrip(t *testing.T) {
 	}
 }
 
-// G5: after restore the allocation counters are beyond every restored id,
-// so new panes never collide with restored ones.
+// G5: restored ids remain stable and new panes use the smallest free id.
 func TestRestoreAdvancesCounters(t *testing.T) {
 	f := &session.File{
 		Active: 0,
@@ -107,13 +106,16 @@ func TestRestoreAdvancesCounters(t *testing.T) {
 	}
 	f.Validate()
 	r := Restore(f)
+	if got := r.ActiveWorkspace().ActiveLayout().Focused(); got != 9 {
+		t.Fatalf("restored pane = %d, want 9", got)
+	}
 	effs := r.Apply(CmdSplitFocused{Dir: layout.Horizontal})
 	spawn, ok := findEffect[EffSpawnPane](effs)
 	if !ok {
 		t.Fatal("no spawn effect")
 	}
-	if spawn.Pane <= 9 {
-		t.Fatalf("new pane id %d collides with restored ids", spawn.Pane)
+	if spawn.Pane != 1 {
+		t.Fatalf("new pane id = %d, want smallest free id 1", spawn.Pane)
 	}
 	effs = r.Apply(CmdNewWorkspace{Cwd: "/y"})
 	ws := r.Workspaces[1]

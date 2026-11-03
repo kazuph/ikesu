@@ -1,6 +1,7 @@
 package model
 
 import (
+	"crypto/rand"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/layout"
 )
@@ -8,9 +9,73 @@ import (
 // --- internals ---
 
 func (s *AppState) allocPane() PaneID {
-	s.nextPaneID = max(s.nextPaneID, s.nextRuntimePaneID) + 1
-	s.nextRuntimePaneID = s.nextPaneID
-	return s.nextPaneID
+	return s.allocatePane(false)
+}
+
+func (s *AppState) allocatePane(transient bool) PaneID {
+	used := map[PaneID]bool{}
+	if s.reservedPanes != nil {
+		reserved, err := s.reservedPanes()
+		if err != nil {
+			id := max(s.nextPaneID, s.nextRuntimePaneID) + 1
+			if !transient {
+				s.nextPaneID = id
+			}
+			s.nextRuntimePaneID = id
+			if s.allocatingPanes != nil {
+				s.allocatingPanes[id] = true
+			}
+			delete(s.PaneLabels, id)
+			s.assignPaneGeneration(id)
+			return id
+		}
+		for id := range reserved {
+			used[id] = true
+		}
+	}
+	for _, ws := range s.Workspaces {
+		for _, tab := range ws.Tabs {
+			for _, id := range tab.Layout.PaneIDs() {
+				used[id] = true
+			}
+		}
+	}
+	for _, popup := range s.Popups {
+		if popup != nil {
+			used[popup.PaneID] = true
+		}
+	}
+	if s.Popup != nil {
+		used[s.Popup.PaneID] = true
+	}
+	if s.Overlay != nil {
+		used[s.Overlay.PaneID] = true
+	}
+	for id := range s.allocatingPanes {
+		used[id] = true
+	}
+	id := 1
+	for used[id] {
+		id++
+	}
+	if !transient {
+		s.nextPaneID = max(s.nextPaneID, id)
+	}
+	s.nextRuntimePaneID = max(s.nextRuntimePaneID, id)
+	if s.allocatingPanes != nil {
+		s.allocatingPanes[id] = true
+	}
+	delete(s.PaneLabels, id)
+	s.assignPaneGeneration(id)
+	return id
+}
+
+func (s *AppState) assignPaneGeneration(id PaneID) {
+	delete(s.LegacyPaneGenerations, id)
+	if s.PaneGenerations == nil {
+		s.PaneGenerations = map[PaneID]string{}
+	}
+	s.PaneGenerations[id] = rand.Text()
 }
 
 func (s *AppState) allocTab() *Tab {

@@ -72,8 +72,7 @@ func (s *AppState) openOverlay(c CmdOpenOverlay) []Effect {
 		return nil
 	}
 	effects := s.closeOverlay()
-	s.nextRuntimePaneID = max(s.nextRuntimePaneID, s.nextPaneID) + 1
-	id := s.nextRuntimePaneID
+	id := s.allocatePane(true)
 	ws := s.Workspaces[wi]
 	s.Overlay = &OverlayPaneState{WorkspaceID: ws.ID, TabID: ws.Tabs[ti].ID, PaneID: id, TargetPaneID: c.TargetPaneID}
 	return append(effects, EffSpawnPane{Pane: id, Cwd: c.Cwd, Argv: c.Argv, Env: c.Env}, EffSyncLayout{})

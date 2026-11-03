@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,6 +62,9 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	if len(p.Argv) == 0 || strings.TrimSpace(p.Argv[0]) == "" {
 		return api.Failure(id, api.ErrInvalidRequest, "argv must not be empty")
 	}
+	if p.Pane != nil {
+		return s.runStartPane(id, p)
+	}
 	completion := p.Completion
 	if completion == "" {
 		completion = "summary"
@@ -73,6 +77,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	// Nonempty callers are validated even when notifications are disabled.
 	callerAgent := ""
 	callerPane := ""
+	callerGeneration := ""
 	if p.CallerPane == "" && completion != "none" {
 		return api.Failure(id, api.ErrInvalidRequest, "caller pane is required; specify --caller <pane>")
 	}
@@ -82,6 +87,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 			return api.Failure(id, err.Code, err.Message)
 		}
 		callerPane = fmtPaneID(t.pid)
+		callerGeneration = s.app.State().PaneGeneration(t.pid)
 		callerAgent, _ = s.mailboxName(t.pid)
 		if completion != "none" && (!s.isAgentPane(t.pid) || callerAgent == "") {
 			return api.Failure(id, api.ErrAgentNotFound, "caller pane has no agent mailbox")
@@ -98,8 +104,8 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	cmdText := strings.Join(p.Argv, " ")
 	jobID := s.jobProcs.nextID()
 	logPath := s.jobLogPath(jobID, label)
-	if err := store.InsertCommand(jobID, label, cmdText, cwd,
-		callerPane, callerAgent, completion, logPath); err != nil {
+	if err := store.InsertPaneCommand(jobID, label, cmdText, cwd,
+		callerPane, callerAgent, completion, logPath, callerGeneration); err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 
@@ -112,6 +118,44 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	return api.Success(id, api.RunStartedResult{
 		Type: "run_started", Job: jobID, Label: label, Mode: "background",
 	})
+}
+
+func (s *Server) runStartPane(id string, p api.RunStartParams) api.Response {
+	if p.CallerPane == "" || p.Pane.JobID == "" || len(p.Pane.JobID) > 200 || strings.Trim(p.Pane.JobID, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != "" {
+		return api.Failure(id, api.ErrInvalidRequest, "caller pane and valid job id are required")
+	}
+	target, apiErr := s.resolveTarget(p.CallerPane, false)
+	if apiErr != nil {
+		return api.Failure(id, apiErr.Code, apiErr.Message)
+	}
+	caller := fmtPaneID(target.pid)
+	generation := s.app.State().PaneGeneration(target.pid)
+	store, err := s.db()
+	if err != nil {
+		return api.Failure(id, api.ErrJobStore, err.Error())
+	}
+	var cwd *string
+	if p.Cwd != "" {
+		cwd = &p.Cwd
+	}
+	split := s.paneSplit(id, api.PaneSplitParams{TargetPaneID: &caller, Direction: p.Pane.Direction, Cwd: cwd, Env: map[string]string{}})
+	if split.Err != nil {
+		return split
+	}
+	var pane api.PaneInfoResult
+	if err := json.Unmarshal(split.Result, &pane); err != nil {
+		return api.Failure(id, api.ErrJobStore, err.Error())
+	}
+	jobCwd := p.Cwd
+	if jobCwd == "" && pane.Pane.Cwd != nil {
+		jobCwd = *pane.Pane.Cwd
+	}
+	if err := store.InsertPaneCommand(p.Pane.JobID, p.Label, p.Argv[0], jobCwd, caller, caller, "summary", s.jobLogPath(p.Pane.JobID, p.Label), generation); err != nil {
+		s.paneClose(id, pane.Pane.PaneID)
+		return api.Failure(id, api.ErrJobStore, err.Error())
+	}
+	s.invalidateJobCache()
+	return api.Success(id, api.RunStartedResult{Type: "run_started", Job: p.Pane.JobID, Label: p.Label, Mode: "pane", Pane: &pane.Pane.PaneID, CallerPane: caller})
 }
 
 // finishJob records the terminal state for a job that never ran; the

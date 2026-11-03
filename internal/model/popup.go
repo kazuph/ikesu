@@ -75,8 +75,7 @@ func (s *AppState) openPopup(c CmdOpenPopup) []Effect {
 		return nil
 	}
 	var effects []Effect
-	s.nextRuntimePaneID = max(s.nextRuntimePaneID, s.nextPaneID) + 1
-	id := s.nextRuntimePaneID
+	id := s.allocatePane(true)
 	s.Popup = &PopupPaneState{WorkspaceID: c.WorkspaceID, PaneID: id, TerminalID: fmt.Sprintf("p%d", id), Width: c.Width, Height: c.Height, Title: c.Title}
 	s.Popups[c.WorkspaceID] = s.Popup
 	return append(effects, EffSpawnPane{Pane: id, Cwd: c.Cwd, Argv: c.Argv, Env: c.Env}, EffSyncLayout{})

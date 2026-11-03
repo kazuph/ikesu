@@ -220,18 +220,6 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 		fmt.Fprintln(r.errOut(), err.Error())
 		return 1
 	}
-	rawCaller, e := r.request("cli:run:caller", api.MethodPaneGet, api.PaneTarget{PaneID: caller})
-	var callerResponse api.Response
-	if e != nil || json.Unmarshal(rawCaller, &callerResponse) != nil || callerResponse.Err != nil {
-		fmt.Fprintln(r.errOut(), "ikesu run --pane: caller pane could not be resolved")
-		return 1
-	}
-	var callerInfo api.PaneInfoResult
-	if json.Unmarshal(callerResponse.Result, &callerInfo) != nil || !dispatch.IsGlobalPaneID(callerInfo.Pane.PaneID) {
-		return usageErr(r, "invalid caller pane response")
-	}
-	caller = callerInfo.Pane.PaneID
-	callerAgent := caller
 	if label == "" {
 		label = defaultRunLabel(argv)
 	}
@@ -239,39 +227,25 @@ func (r *runner) runPaneCLI(argv []string, label, cwd, split string, closeOnSucc
 	if split == "" {
 		split = "right"
 	}
-	raw, err := r.request("cli:run:split", api.MethodPaneSplit, api.PaneSplitParams{
-		TargetPaneID: &caller, Direction: split, Cwd: optPtr(cwd), Focus: false,
-		Env: map[string]string{},
+	raw, err := r.request("cli:run:start", api.MethodRunStart, api.RunStartParams{
+		CallerPane: caller, Label: label, Cwd: cwd, Argv: []string{shellCommandFromArgs(argv)},
+		Pane: &api.RunPaneParams{JobID: job, Direction: split},
 	})
 	if err != nil {
-		raw = r.serverNotRunning("cli:run:split")
+		raw = r.serverNotRunning("cli:run:start")
 	}
 	var resp api.Response
 	if err := json.Unmarshal(raw, &resp); err != nil || resp.Err != nil {
 		fmt.Fprintln(r.errOut(), string(raw))
 		return 1
 	}
-	var res api.PaneInfoResult
-	if err := json.Unmarshal(resp.Result, &res); err != nil {
-		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
+	var res api.RunStartedResult
+	if err := json.Unmarshal(resp.Result, &res); err != nil || res.Pane == nil || !dispatch.IsGlobalPaneID(res.CallerPane) {
+		fmt.Fprintln(r.errOut(), "ikesu: invalid server response")
 		return 1
 	}
-	paneID := res.Pane.PaneID
-	store, e := dispatch.Open(dispatch.DBPath(r.o.Session))
-	if e != nil {
-		fmt.Fprintln(r.errOut(), e)
-		return 1
-	}
-	jobCwd := cwd
-	if jobCwd == "" && res.Pane.Cwd != nil {
-		jobCwd = *res.Pane.Cwd
-	}
-	e = store.InsertCommand(job, label, shellCommandFromArgs(argv), jobCwd, caller, caller, "summary", dispatch.JobLogPath(job, label, r.o.Session))
-	store.Close()
-	if e != nil {
-		fmt.Fprintln(r.errOut(), e)
-		return 1
-	}
+	paneID := *res.Pane
+	callerAgent := res.CallerPane
 
 	_, _ = r.request("cli:run:rename", api.MethodPaneRename,
 		api.PaneRenameParams{PaneID: paneID, Label: &label})
@@ -642,16 +616,17 @@ func (r *runner) paneRunWrapper(args []string) int {
 	{
 		line := fmt.Sprintf("[ikesu run] exit=%d label=%s pane=%s details: ikesu log %s",
 			code, oneLineField(label), target, jobID)
-		caller := ""
 		if store, err := dispatch.Open(dispatch.DBPath(r.o.Session)); err == nil {
 			if job, e := store.CommandRow(jobID); e == nil && job != nil {
-				caller = job.CallerPane
 				exit := int64(code)
-				_, _ = store.MarkCommandFinished(jobID, &exit)
+				if _, err := store.CompleteJob(jobID, "running", "exited", &exit, time.Now().UnixMilli(), job.CallerPane, line); err != nil {
+					fmt.Fprintln(r.errOut(), err)
+				}
 			}
 			store.Close()
+		} else {
+			fmt.Fprintln(r.errOut(), err)
 		}
-		r.notifyPaneJob(caller, line)
 	}
 	if closeOnExit || (closeOnSuccess && code == 0) {
 		if paneID, err := r.resolveCurrentPaneID(); err == nil {

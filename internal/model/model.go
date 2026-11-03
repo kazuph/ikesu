@@ -90,19 +90,69 @@ type AppState struct {
 	PaneBorders             bool
 	PaneGaps                bool
 	// PaneLabels holds optional API-assigned pane names (pane.rename).
-	PaneLabels map[PaneID]string
+	PaneLabels            map[PaneID]string
+	PaneGenerations       map[PaneID]string `json:"-"`
+	LegacyPaneGenerations map[PaneID]bool   `json:"-"`
 
 	nextPaneID        PaneID
 	nextRuntimePaneID PaneID
 	nextWorkspaceID   WorkspaceID
 	nextTabID         int
+	reservedPanes     func() (map[PaneID]bool, error)
+	allocatingPanes   map[PaneID]bool
+}
+
+// SetPaneReservations supplies durable references that prevent ID reuse.
+func (s *AppState) SetPaneReservations(f func() (map[PaneID]bool, error)) {
+	s.reservedPanes = f
+}
+
+func (s *AppState) PaneGeneration(id PaneID) string { return s.PaneGenerations[id] }
+
+// EnsurePaneGenerations upgrades panes restored from older handoffs.
+func (s *AppState) EnsurePaneGenerations() bool {
+	changed := false
+	ensure := func(id PaneID) {
+		if s.PaneGeneration(id) == "" {
+			s.assignPaneGeneration(id)
+			if s.LegacyPaneGenerations == nil {
+				s.LegacyPaneGenerations = map[PaneID]bool{}
+			}
+			s.LegacyPaneGenerations[id] = true
+			changed = true
+		}
+	}
+	for _, ws := range s.Workspaces {
+		for _, tab := range ws.Tabs {
+			for _, id := range tab.Layout.PaneIDs() {
+				ensure(id)
+			}
+		}
+	}
+	for _, pop := range s.Popups {
+		if pop != nil {
+			ensure(pop.PaneID)
+		}
+	}
+	if s.Popup != nil {
+		ensure(s.Popup.PaneID)
+	}
+	if s.Overlay != nil {
+		ensure(s.Overlay.PaneID)
+	}
+	return changed
 }
 
 // New returns an AppState with one workspace containing one pane.
 func New(cwd string, cols, rows int) *AppState {
+	return NewWithPaneReservations(cwd, cols, rows, nil)
+}
+
+func NewWithPaneReservations(cwd string, cols, rows int, reservations func() (map[PaneID]bool, error)) *AppState {
 	s := &AppState{
 		SidebarVisible: true, Cols: cols, Rows: rows,
 		ShowTabBar: true, PaneBorders: true, PaneGaps: true,
+		reservedPanes: reservations,
 	}
 	s.newWorkspace(cwd)
 	return s
