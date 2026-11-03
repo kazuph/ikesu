@@ -170,9 +170,9 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		}
 		if result != pumpUpgrade {
 			if result == pumpRejected {
-				return 1, terminalErr
+				return 1, nil
 			}
-			return 0, terminalErr
+			return 0, nil
 		}
 		candidate := settings.upgrade
 		err = terminalErr
