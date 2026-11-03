@@ -274,3 +274,47 @@ func TestMachineSwitchTimeoutLeavesCurrentViewAndInputUntouched(t *testing.T) {
 		t.Fatal("timeout changed current view or emitted connection progress notification")
 	}
 }
+
+// A real Unix socket is filled with a message larger than its buffer so cancellation interrupts an active write.
+func TestMachineWriterRetainsUnsentInputAfterSocketCloses(t *testing.T) {
+	server, client := shutdownSocketPair(t)
+	peer := endpoint.Current()
+	c := &endpointConnection{writer: &writer{conn: client, available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.writeQueued(ctx) }()
+	if err := c.enqueue(msg{Type: "input", Data: "Zmlyc3Q="}); err != nil {
+		t.Fatal(err)
+	}
+	var first msg
+	if err := json.NewDecoder(server).Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Data != "Zmlyc3Q=" {
+		t.Fatalf("first delivery: %q", first.Data)
+	}
+	large := strings.Repeat("e", 1<<20)
+	if err := c.enqueue(msg{Type: "input", Data: large}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(server, make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.enqueue(msg{Type: "input", Data: "dGFpbA=="}); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("writer did not stop")
+	}
+	c.queueMu.Lock()
+	defer c.queueMu.Unlock()
+	if len(c.queue) != 2 || c.queue[0].Data != large || c.queue[1].Data != "dGFpbA==" {
+		t.Fatalf("unsent input lost or duplicated: queued=%d", len(c.queue))
+	}
+}

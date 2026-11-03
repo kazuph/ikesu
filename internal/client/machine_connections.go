@@ -300,6 +300,17 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				m.requestPending()
 			}
 		}
+		if pending, ok := m.settings.retryQueued[event.id]; ok {
+			if pending.target == e.profile.Target && pending.session == m.selectionSession(event.id) {
+				for _, queued := range pending.messages {
+					if err := e.connection.enqueue(queued); err != nil {
+						m.fail(event.id, err)
+						return 0, false
+					}
+				}
+				delete(m.settings.retryQueued, event.id)
+			}
+		}
 		if err := m.paint(); err != nil {
 			return pumpDone, true
 		}

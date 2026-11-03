@@ -49,8 +49,6 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 				break
 			}
 			message := c.queue[0]
-			c.queue[0] = msg{}
-			c.queue = c.queue[1:]
 			c.queueMu.Unlock()
 			select {
 			case <-ctx.Done():
@@ -60,10 +58,22 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 			if err := c.writer.send(message); err != nil {
 				c.queueMu.Lock()
 				c.writeErr = err
-				c.queue = nil
+				if isClosedRenderAck(err) {
+					kept := c.queue[:0]
+					for _, queued := range c.queue[1:] {
+						if queued.Type == "input" || queued.Type == "paste" || queued.Type == "workspace_select" {
+							kept = append(kept, queued)
+						}
+					}
+					c.queue = kept
+				}
 				c.queueMu.Unlock()
 				return err
 			}
+			c.queueMu.Lock()
+			c.queue[0] = msg{}
+			c.queue = c.queue[1:]
+			c.queueMu.Unlock()
 		}
 	}
 }
