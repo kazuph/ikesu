@@ -11,6 +11,9 @@ import (
 )
 
 func TestParityJobLogRealStreamsAndMetadata(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	dir, _ := startTestServer(t)
 	dialClient(t, dir)

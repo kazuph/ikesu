@@ -18,6 +18,9 @@ import (
 )
 
 func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	config := filepath.Join(t.TempDir(), "graphics.toml")
 	if err := os.WriteFile(config, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {

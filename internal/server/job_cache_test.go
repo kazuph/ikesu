@@ -9,6 +9,9 @@ import (
 )
 
 func TestG9JobSnapshotAdaptiveIntervalAndExternalWrite(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	now := time.Now()
 	old := now.Add(-2 * time.Minute).UnixMilli()
