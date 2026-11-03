@@ -186,7 +186,10 @@ func executableIdentity(path string) (os.FileInfo, [sha256.Size]byte, error) {
 				return nil, sum, err
 			}
 			if info.Mode()&os.ModeSymlink == 0 && info.Mode().Perm()&0022 != 0 {
-				return nil, sum, fmt.Errorf("writable executable parent: %s", parent)
+				stat, ok := info.Sys().(*syscall.Stat_t)
+				if !ok || stat.Uid != 0 || info.Mode()&os.ModeSticky == 0 {
+					return nil, sum, fmt.Errorf("writable executable parent: %s", parent)
+				}
 			}
 			next := filepath.Dir(parent)
 			if next == parent {
