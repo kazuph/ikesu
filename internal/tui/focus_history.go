@@ -13,11 +13,6 @@ func (a *App) SetPaneKeybinds(c config.Config) {
 }
 
 func (a *App) recordFocus(before, after int) {
-	if before >= 0 {
-		if wi, _ := a.st.FindPane(before); wi < 0 {
-			before = -1
-		}
-	}
 	if before != after && after >= 0 {
 		a.invalidateDetection(after)
 	}

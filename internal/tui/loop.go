@@ -354,6 +354,9 @@ func (a *App) exec(cmd model.Command) {
 		prev = a.st.Capture()
 	}
 	for _, e := range a.st.Apply(cmd) {
+		if killed, ok := e.(model.EffKillPane); ok && killed.Pane == beforeFocus {
+			beforeFocus = -1
+		}
 		if spawn, ok := e.(model.EffSpawnPane); ok && policyCwd {
 			if spawnCwd != "" {
 				spawn.Cwd = spawnCwd
