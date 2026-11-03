@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -232,6 +233,9 @@ func checkUpgradeExecutable(ctx context.Context, path, version string) (*checked
 	}
 	info, sum, err := executableIdentity(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("candidate not found: %w", err)
+		}
 		return nil, err
 	}
 	checked := &checkedExecutable{path: path, info: info, sum: sum}
@@ -244,7 +248,10 @@ func checkUpgradeExecutable(ctx context.Context, path, version string) (*checked
 	cmd.WaitDelay = attachTimeout
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("checking executable version: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("version check timed out: %w", ctx.Err())
+		}
+		return nil, fmt.Errorf("version check failed: %w", err)
 	}
 	if strings.TrimSpace(string(out)) != "ikesu "+version {
 		return nil, fmt.Errorf("executable version does not match server version %s", version)

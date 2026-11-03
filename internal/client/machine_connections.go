@@ -148,11 +148,17 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			if result.identity.Generation != "" {
 				m.failedUpgrades[result.identity] = true
 			}
-			m.notify("client upgrade: " + result.err.Error())
+			m.notify("upgrade: " + result.err.Error())
 			_ = m.paint()
 			return 0, false
 		}
 		if result.candidate == nil || m.failedUpgrades[result.identity] {
+			return 0, false
+		}
+		if err := result.candidate.executable.recheck(); err != nil {
+			m.failedUpgrades[result.identity] = true
+			m.notify("upgrade: " + err.Error())
+			_ = m.paint()
 			return 0, false
 		}
 		result.candidate.state.Active = m.active

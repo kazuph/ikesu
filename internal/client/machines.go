@@ -182,7 +182,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		}
 		if state.Rollback {
 			m.failedUpgrades[state.Attempt] = true
-			m.notify("client upgrade: " + state.Reason)
+			m.notify("upgrade: " + state.Reason)
 		}
 	}
 	defer func() {

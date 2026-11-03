@@ -105,7 +105,7 @@ func TestClientUpgradePreservesTwoSelections(t *testing.T) {
 	}
 	for _, s := range []*session{first, second} {
 		s.waitFor("new client", 15*time.Second, func(text string) bool {
-			if strings.Contains(text, "client upgrade:") {
+			if strings.Contains(text, "upgrade:") {
 				t.Fatalf("client upgrade failed:\n%s", text)
 			}
 			return strings.Contains(text, "ikesu v"+newVersion)
@@ -134,7 +134,7 @@ func TestClientFollowsLiveHandoffAndRollback(t *testing.T) {
 		t.Fatalf("upgrade server: %v %s", err, out)
 	}
 	s.waitFor("new client", 15*time.Second, func(text string) bool {
-		if strings.Contains(text, "client upgrade:") {
+		if strings.Contains(text, "upgrade:") {
 			t.Fatalf("client upgrade failed:\n%s", text)
 		}
 		return strings.Contains(text, "ikesu v"+newVersion)
@@ -176,7 +176,7 @@ func TestClientKeepsRunningWhenUpgradeDirectoryWritable(t *testing.T) {
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
 		t.Fatalf("handoff to server in writable directory: %v %s", err, out)
 	}
-	s.waitFor("upgrade rejection", 15*time.Second, func(text string) bool { return strings.Contains(text, "client upgrade:") })
+	s.waitFor("upgrade rejection", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: writable executable") })
 	if bytes.Contains(output.Bytes(), []byte(tui.LeaveSeq)) {
 		t.Fatal("client left its terminal after executable verification failed")
 	}
