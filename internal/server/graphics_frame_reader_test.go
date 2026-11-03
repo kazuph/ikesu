@@ -33,6 +33,9 @@ func graphicsReaderSocket(t *testing.T) (net.Conn, net.Conn, *graphicsFrameReade
 	}
 	t.Cleanup(func() { conn.Close() })
 	reader := newGraphicsFrameReader(conn, bufio.NewReader(conn))
+	if reader.progress.idle != graphicsFrameIdle || reader.progress.total != graphicsFrameTotal {
+		t.Fatalf("production deadlines: idle=%v total=%v", reader.progress.idle, reader.progress.total)
+	}
 	reader.progress.idle = 200 * time.Millisecond
 	reader.progress.total = time.Second
 	return conn, peer, reader
