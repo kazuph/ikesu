@@ -168,6 +168,8 @@ func TestGraphicsFileClientRejectionCopiesBeforeAcknowledgementAndDisablesOnlyDi
 }
 
 func TestGraphicsFileReceiptDeadlinesNeverBecomeInlineSuccess(t *testing.T) {
+	// Both real receipt deadlines are exercised: five seconds for delivery and
+	// three seconds after the terminal starts processing the file.
 	for _, started := range []bool{false, true} {
 		t.Run(map[bool]string{false: "delivery", true: "terminal"}[started], func(t *testing.T) {
 			dir, viewer, pane, info := directGraphicsFixture(t)

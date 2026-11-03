@@ -11,6 +11,7 @@ import (
 )
 
 func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
+	// The real servers, plugin, mailbox and job operations took over five seconds on mini.
 	if runIsolatedParallel(t) {
 		return
 	}

@@ -15,6 +15,7 @@ import (
 )
 
 func TestPaneReceivesActualConfigurationPath(t *testing.T) {
+	// This real server, shell, CLI and plugin action took over five seconds on mini.
 	if runIsolatedParallel(t) {
 		return
 	}
