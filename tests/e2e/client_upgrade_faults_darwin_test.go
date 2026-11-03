@@ -406,22 +406,15 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					data, err := os.ReadFile("/usr/bin/yes")
-					if err != nil {
+					if err := os.WriteFile(newBinary, []byte("#!/bin/sh\nkill -STOP $$\nexit 1\n"), 0700); err != nil {
 						t.Fatal(err)
-					}
-					if err := os.WriteFile(newBinary, data, 0700); err != nil {
-						t.Fatal(err)
-					}
-					if out, err := exec.Command("codesign", "--force", "--sign", "-", newBinary).CombinedOutput(); err != nil {
-						t.Fatalf("sign system executable copy: %v %s", err, out)
 					}
 				}
 			}
 			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
 			stopped = false
 			if fault == "version-timeout" {
-				// Wait for the real --version child and stop only that verified PID.
+				// Verify that the real --version child stopped itself.
 				deadline := time.NewTimer(5 * time.Second)
 				ticker := time.NewTicker(10 * time.Millisecond)
 				defer deadline.Stop()
@@ -441,14 +434,14 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 							}
 							info, _ := exec.Command("ps", "-ww", "-p", field, "-o", "ppid=", "-o", "command=").Output()
 							fields := strings.Fields(string(info))
-							if len(fields) >= 3 && fields[0] == strconv.Itoa(pid) && fields[1] == resolvedBinary && fields[2] == "--version" {
+							if len(fields) >= 4 && fields[0] == strconv.Itoa(pid) && fields[1] == "/bin/sh" && fields[2] == resolvedBinary && fields[3] == "--version" {
 								child = candidate
 								break
 							}
 						}
 					}
 				}
-				signalUpgradeTestProcess(t, child, resolvedBinary, "STOP")
+				waitForUpgradeTestStop(t, child, deadline.C)
 				s.send("printf 'INPUT_DURING_VERSION_CHECK\\n'\r")
 				s.waitFor("input during version check", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_DURING_VERSION_CHECK") })
 			}
