@@ -72,3 +72,27 @@ func TestUpgradeExecutableTrustAndReplacement(t *testing.T) {
 		t.Fatal("broken link was accepted")
 	}
 }
+
+func TestUpgradeAttemptIsScopedToServerGeneration(t *testing.T) {
+	failed := upgradeIdentity{Session: "session", Generation: "server-1", Executable: "/release/ikesu", Version: "new"}
+	seen := map[upgradeIdentity]bool{failed: true}
+	if shouldCheckUpgrade(failed, "old", seen) {
+		t.Fatal("the same failed update was retried")
+	}
+	next := failed
+	next.Generation = "server-2"
+	if !shouldCheckUpgrade(next, "old", seen) {
+		t.Fatal("a new server generation was suppressed")
+	}
+	rollback := upgradeIdentity{Session: "session", Generation: "server-3", Executable: "/release/old", Version: "old"}
+	if !shouldCheckUpgrade(rollback, "new", seen) {
+		t.Fatal("a later rollback was suppressed")
+	}
+	if shouldCheckUpgrade(rollback, "old", seen) {
+		t.Fatal("same-version server triggered an upgrade")
+	}
+	rollback.Executable = ""
+	if shouldCheckUpgrade(rollback, "new", seen) {
+		t.Fatal("a baseline server without an executable triggered an upgrade")
+	}
+}

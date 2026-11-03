@@ -97,6 +97,10 @@ type upgradeCheckResult struct {
 	err       error
 }
 
+func shouldCheckUpgrade(id upgradeIdentity, currentVersion string, failed map[upgradeIdentity]bool) bool {
+	return id.Version != "" && id.Version != currentVersion && id.Executable != "" && id.Generation != "" && !failed[id]
+}
+
 func (m *machineClient) checkUpgrade(attempt uint64) {
 	failed := make(map[upgradeIdentity]bool, len(m.failedUpgrades))
 	for id := range m.failedUpgrades {
@@ -107,7 +111,7 @@ func (m *machineClient) checkUpgrade(attempt uint64) {
 		defer m.workers.Done()
 		id, err := queryUpgradeIdentity(m.ctx, m.session)
 		result := &upgradeCheckResult{identity: id, err: err}
-		if err == nil && id.Version != "" && id.Version != m.clientVersion && id.Executable != "" && id.Generation != "" && !failed[id] {
+		if err == nil && shouldCheckUpgrade(id, m.clientVersion, failed) {
 			var checked *checkedExecutable
 			checked, result.err = checkUpgradeExecutable(m.ctx, id.Executable, id.Version)
 			if result.err == nil {

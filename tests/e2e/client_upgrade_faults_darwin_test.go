@@ -41,6 +41,10 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	for _, fault := range []string{"not-executable", "broken-link", "version-timeout"} {
 		t.Run(fault, func(t *testing.T) {
 			dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
+			resolvedBinary, err := filepath.EvalSymlinks(newBinary)
+			if err != nil {
+				t.Fatal(err)
+			}
 			s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 			s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 			var output bytes.Buffer
@@ -97,7 +101,7 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 						s.pump(time.Now().Add(100 * time.Millisecond))
 						t.Fatalf("version process did not start; screen:\n%s", s.text())
 					case <-ticker.C:
-						out, _ := exec.Command("pgrep", "-u", strconv.Itoa(os.Getuid()), "-f", newBinary).Output()
+						out, _ := exec.Command("pgrep", "-u", strconv.Itoa(os.Getuid()), "-f", resolvedBinary).Output()
 						for _, field := range strings.Fields(string(out)) {
 							candidate, err := strconv.Atoi(field)
 							if err != nil {
@@ -105,14 +109,14 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 							}
 							info, _ := exec.Command("ps", "-ww", "-p", field, "-o", "ppid=", "-o", "command=").Output()
 							fields := strings.Fields(string(info))
-							if len(fields) >= 3 && fields[0] == strconv.Itoa(pid) && fields[1] == newBinary && fields[2] == "--version" {
+							if len(fields) >= 3 && fields[0] == strconv.Itoa(pid) && fields[1] == resolvedBinary && fields[2] == "--version" {
 								child = candidate
 								break
 							}
 						}
 					}
 				}
-				signalUpgradeTestProcess(t, child, newBinary, "STOP")
+				signalUpgradeTestProcess(t, child, resolvedBinary, "STOP")
 				s.send("printf 'INPUT_DURING_VERSION_CHECK\\n'\r")
 				s.waitFor("input during version check", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_DURING_VERSION_CHECK") })
 			}
