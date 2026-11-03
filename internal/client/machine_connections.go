@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/machine"
 	"io"
+	"net"
 	"strings"
 	"time"
 
@@ -80,10 +81,26 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			}
 		}()
 		defer func() { stream.Close(); close(closed) }()
+		var firstUpgradeConn net.Conn
+		if id == "local" && settings.upgradeState != nil && !settings.upgradeState.Rollback {
+			firstUpgradeConn, _ = stream.(net.Conn)
+			if firstUpgradeConn != nil {
+				if err := firstUpgradeConn.SetDeadline(time.Now().Add(attachTimeout)); err != nil {
+					m.post(ctx, endpointEvent{id: id, attempt: attempt, err: err})
+					return
+				}
+			}
+		}
 		connection, err := connectEndpoint(stream, hidden, size, &settings, fileTransport, selection)
 		if err != nil {
 			m.post(ctx, endpointEvent{id: id, attempt: attempt, err: err})
 			return
+		}
+		if firstUpgradeConn != nil {
+			if err := firstUpgradeConn.SetDeadline(time.Time{}); err != nil {
+				m.post(ctx, endpointEvent{id: id, attempt: attempt, err: err})
+				return
+			}
 		}
 		writing := make(chan struct{})
 		go func() {
