@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -38,8 +39,8 @@ func TestUpgradeWelcomeTimeoutRequestsRollback(t *testing.T) {
 	}
 	select {
 	case event := <-m.events:
-		if event.err == nil {
-			t.Fatal("welcome timeout did not report an error")
+		if !errors.Is(event.err, os.ErrDeadlineExceeded) {
+			t.Fatalf("welcome did not report deadline expiry: %v", event.err)
 		}
 		result, done := m.event(event)
 		if !done || result != pumpRollback {
