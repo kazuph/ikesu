@@ -4,14 +4,19 @@ package e2e
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
@@ -33,6 +38,84 @@ func signalUpgradeTestProcess(t *testing.T, pid int, executable, signal string) 
 	}
 	if out, err := exec.Command("kill", "-"+signal, strconv.Itoa(pid)).CombinedOutput(); err != nil {
 		t.Fatalf("signal test process: %v %s", err, out)
+	}
+}
+
+// Real exec reaches the OS argument limit; no exec function is replaced.
+func TestClientRestoresTerminalAndInputAfterExecFailure(t *testing.T) {
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	resolvedOld, err := filepath.EvalSymlinks(oldBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedNew, err := filepath.EvalSymlinks(newBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := json.Marshal(map[string]any{
+		"old_executable": resolvedOld, "old_version": oldVersion, "session": "e2e", "active": "local",
+		"attempt": map[string]any{"session": "e2e", "generation": rand.Text(), "executable": resolvedNew, "version": newVersion},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepare := func(cmd *exec.Cmd) {
+		t.Helper()
+		out, err := exec.Command("sysctl", "-n", "kern.argmax").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		maximum, err := strconv.Atoi(strings.TrimSpace(string(out)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		probe := func(n int, upgrade bool) error {
+			probeCmd := exec.Command(oldBinary, "--session", "e2e", "--version")
+			probeCmd.Env = append(append([]string(nil), cmd.Env...), "CLIENT_UPGRADE_PADDING="+strings.Repeat("x", n))
+			if upgrade {
+				probeCmd.Env = append(probeCmd.Env, "IKESU_CLIENT_UPGRADE="+string(state))
+			}
+			return probeCmd.Run()
+		}
+		low, high := 0, maximum
+		for low < high {
+			middle := low + (high-low+1)/2
+			err := probe(middle, false)
+			if err == nil {
+				low = middle
+			} else if errors.Is(err, syscall.E2BIG) {
+				high = middle - 1
+			} else {
+				t.Fatalf("calibrate argument limit: %v", err)
+			}
+		}
+		// The probe has an extra --version argument; leave room for the
+		// resolved executable path while keeping less than one state payload.
+		padding := low - (len(resolvedOld) - len(oldBinary)) - len("--version")
+		if padding < 0 || probe(padding, false) != nil || !errors.Is(probe(padding, true), syscall.E2BIG) {
+			t.Fatal("could not create a real exec limit boundary")
+		}
+		cmd.Env = append(cmd.Env, "CLIENT_UPGRADE_PADDING="+strings.Repeat("x", padding))
+	}
+	s := startVersionModePrepared(t, nil, false, oldBinary, oldBinary, prepare)
+	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	var output bytes.Buffer
+	s.observeOutput = func(data []byte) { _, _ = output.Write(data) }
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	s.send("printf 'BUFFERED_BEFORE_EXEC_FAILURE\\n'\r")
+	s.waitFor("exec failure reason", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: argument") })
+	s.waitFor("buffered input after failed exec", 10*time.Second, func(text string) bool { return strings.Contains(text, "BUFFERED_BEFORE_EXEC_FAILURE") })
+	if !bytes.Contains(output.Bytes(), []byte(tui.LeaveSeq)) || !bytes.Contains(output.Bytes(), []byte(tui.EnterSeq)) {
+		t.Fatal("terminal was not restored and entered again after exec failure")
+	}
+	s.send("printf 'INPUT_AFTER_EXEC_FAILURE\\n'\r")
+	s.waitFor("input after failed exec", 10*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_AFTER_EXEC_FAILURE") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if !strings.Contains(read.Read.Text, "BUFFERED_BEFORE_EXEC_FAILURE") || !strings.Contains(read.Read.Text, "INPUT_AFTER_EXEC_FAILURE") {
+		t.Fatalf("input did not reach the original pane: %s", read.Read.Text)
 	}
 }
 

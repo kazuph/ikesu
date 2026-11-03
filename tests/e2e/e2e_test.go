@@ -85,6 +85,10 @@ func startMode(t *testing.T, extra map[string]string, local bool) *session {
 }
 
 func startVersionMode(t *testing.T, extra map[string]string, local bool, clientBinary, serverBinary string) *session {
+	return startVersionModePrepared(t, extra, local, clientBinary, serverBinary, nil)
+}
+
+func startVersionModePrepared(t *testing.T, extra map[string]string, local bool, clientBinary, serverBinary string, prepare func(*exec.Cmd)) *session {
 	t.Helper()
 	// Deterministic shell inside panes: a bare ZDOTDIR with a fixed PS1 so
 	// prompt waits do not depend on the host's zshrc/direnv.
@@ -150,6 +154,9 @@ func startVersionMode(t *testing.T, extra map[string]string, local bool, clientB
 			}
 			time.Sleep(time.Millisecond)
 		}
+	}
+	if prepare != nil {
+		prepare(cmd)
 	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
 	if err != nil {
