@@ -60,8 +60,12 @@ func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	client.waitFor("welcome timeout rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: read unix") })
-	process, err := exec.Command("ps", "-p", fmt.Sprint(client.cmd.Process.Pid), "-o", "comm=").Output()
-	if err != nil || strings.TrimSpace(string(process)) != oldBinary {
+	resolvedOld, err := filepath.EvalSymlinks(oldBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	process, err := exec.Command("lsof", "-a", "-p", fmt.Sprint(client.cmd.Process.Pid), "-d", "txt", "-Fn").Output()
+	if err != nil || (!strings.Contains(string(process), "n"+oldBinary+"\n") && !strings.Contains(string(process), "n"+resolvedOld+"\n")) {
 		t.Fatalf("old executable was not restored: %q %v", process, err)
 	}
 	client.send("printf 'ROLLBACK_AFTER_STALLED_WELCOME\\n'\r")
