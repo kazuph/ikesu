@@ -44,12 +44,27 @@ func TestJobCompletionCarriesCallerGeneration(t *testing.T) {
 	if err := s.MarkCommandRunning("j1", 1); err != nil {
 		t.Fatal(err)
 	}
+	reserved, err := s.ReservedPaneIDs("test")
+	if err != nil || !reserved[3] {
+		t.Fatalf("running job reservation %v, %v", reserved, err)
+	}
 	if ok, err := s.CompleteJob("j1", "running", "exited", nil, 1, "p3", "done"); !ok || err != nil {
 		t.Fatalf("complete: %v %v", ok, err)
 	}
 	rows, err := s.PendingMessagesForAgent(JobsRoom, "p3")
 	if err != nil || len(rows) != 1 || rows[0].PaneGeneration != "old-generation" {
 		t.Fatalf("notices %v, err %v", rows, err)
+	}
+	reserved, err = s.ReservedPaneIDs("test")
+	if err != nil || !reserved[3] {
+		t.Fatalf("completion notice reservation %v, %v", reserved, err)
+	}
+	if _, err := s.MarkMessageDelivered(rows[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	reserved, err = s.ReservedPaneIDs("test")
+	if err != nil || reserved[3] {
+		t.Fatalf("delivered notice still reserves pane: %v, %v", reserved, err)
 	}
 }
 
