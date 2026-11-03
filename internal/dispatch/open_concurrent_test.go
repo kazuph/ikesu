@@ -5,13 +5,11 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 )
 
-// A CLI process opens the server's live store while the server holds write
-// transactions. Open must wait for the writer instead of failing with
-// "database is locked". The writer keeps each transaction open for a short
-// while so the openers really contend for the write lock.
+// A CLI process opens the server's live store while the server holds a write
+// transaction. Open on an existing WAL database must not need the write lock,
+// so every Open finishes while the transaction is still held.
 func TestOpenDuringConcurrentWrites(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ikesu.db")
 	writer, err := Open(path)
@@ -19,24 +17,17 @@ func TestOpenDuringConcurrentWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer writer.Close()
-	kind := "agent"
-	stop := make(chan struct{})
-	writes := make(chan error, 1)
-	go func() {
-		for i := 0; ; i++ {
-			select {
-			case <-stop:
-				writes <- nil
-				return
-			default:
-			}
-			name := fmt.Sprintf("server-%d", i)
-			if err := holdWrite(writer, &kind, &name); err != nil {
-				writes <- err
-				return
-			}
-		}
-	}()
+	kind, name := "agent", "server"
+	writer.mu.Lock()
+	if err := writer.execLocked("BEGIN IMMEDIATE"); err != nil {
+		writer.mu.Unlock()
+		t.Fatal(err)
+	}
+	if _, err := writer.upsertActorLocked(&kind, &name, nil, nil, nil, nil); err != nil {
+		writer.execLocked("ROLLBACK")
+		writer.mu.Unlock()
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	failures := make(chan error, 4)
 	for worker := 0; worker < 4; worker++ {
@@ -57,43 +48,35 @@ func TestOpenDuringConcurrentWrites(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	close(stop)
-	if err := <-writes; err != nil {
+	// The transaction is released only after every Open returned, so each
+	// Open ran while the write lock was held.
+	if err := writer.execLocked("COMMIT"); err != nil {
 		t.Error(err)
 	}
+	writer.mu.Unlock()
 	close(failures)
 	for err := range failures {
 		t.Error(err)
 	}
 }
 
-// holdWrite inserts one actor inside a write transaction held for 10 ms.
-func holdWrite(s *Store, kind, name *string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.execLocked("BEGIN IMMEDIATE"); err != nil {
-		return err
-	}
-	if _, err := s.upsertActorLocked(kind, name, nil, nil, nil, nil); err != nil {
-		s.execLocked("ROLLBACK")
-		return err
-	}
-	time.Sleep(10 * time.Millisecond)
-	return s.execLocked("COMMIT")
-}
-
 // A server and CLI processes create a new session's database at the same
 // time. Every Open must succeed even though only one of them can switch the
-// new file to WAL mode at a time.
+// new file to WAL mode at a time. All openers are released together so they
+// race for the switch.
 func TestOpenFreshDatabaseConcurrently(t *testing.T) {
 	for round := 0; round < 20; round++ {
 		path := filepath.Join(t.TempDir(), fmt.Sprintf("r%d", round), "ikesu.db")
-		var wg sync.WaitGroup
+		var ready, wg sync.WaitGroup
+		start := make(chan struct{})
 		errs := make(chan error, 8)
 		for i := 0; i < 8; i++ {
+			ready.Add(1)
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				ready.Done()
+				<-start
 				s, err := Open(path)
 				if err != nil {
 					errs <- err
@@ -102,6 +85,8 @@ func TestOpenFreshDatabaseConcurrently(t *testing.T) {
 				errs <- s.Close()
 			}()
 		}
+		ready.Wait()
+		close(start)
 		wg.Wait()
 		close(errs)
 		for err := range errs {

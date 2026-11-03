@@ -294,13 +294,18 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// walBusyWait matches the busy_timeout set in Open.
+// walBusyWait is how long enableWAL keeps retrying; it matches the
+// busy_timeout set in Open.
 const walBusyWait = 5 * time.Second
 
 // enableWAL switches the database to WAL mode. When several processes
 // create the same new database at once (a server and a CLI starting a new
 // session), SQLite reports "database is locked" for the switch without
-// waiting for busy_timeout, so the switch is retried for up to walBusyWait.
+// waiting for busy_timeout. The switch is therefore retried every 5 ms; no
+// new attempt starts once walBusyWait has passed since the first one. An
+// attempt already running may still wait inside SQLite, so walBusyWait is
+// the retry window, not a hard limit on the whole call. Any other error is
+// returned at once.
 func enableWAL(conn *sqlite3.Conn) error {
 	deadline := time.Now().Add(walBusyWait)
 	for {

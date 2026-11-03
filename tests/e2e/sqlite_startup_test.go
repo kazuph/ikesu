@@ -66,10 +66,14 @@ func TestCLIStartupDuringServerWrites(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("server writer did not start")
 	}
+	before := writes.Load()
 	for attempt := 0; attempt < 20; attempt++ {
 		raw, err := s.cli("run", "--pane", "--caller", "p1", "--label", "concurrent-start", "--", "/bin/sh", "-c", "exit 7")
 		if err != nil {
 			t.Fatalf("CLI startup attempt %d: %s %v", attempt, raw, err)
 		}
+	}
+	if writes.Load() == before {
+		t.Fatal("server wrote nothing while the CLI started; the startups did not overlap any write")
 	}
 }
