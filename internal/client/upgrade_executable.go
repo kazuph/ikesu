@@ -171,6 +171,23 @@ type checkedExecutable struct {
 	sum  [sha256.Size]byte
 }
 
+type versionOutput struct {
+	data     []byte
+	limit    int
+	overflow bool
+}
+
+func (v *versionOutput) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := v.limit - len(v.data)
+	if len(p) > remaining {
+		v.overflow = true
+		p = p[:remaining]
+	}
+	v.data = append(v.data, p...)
+	return n, nil
+}
+
 func executableIdentity(path string) (os.FileInfo, [sha256.Size]byte, error) {
 	var sum [sha256.Size]byte
 	if err := guard.CheckExecutable(path); err != nil {
@@ -246,14 +263,17 @@ func checkUpgradeExecutable(ctx context.Context, path, version string) (*checked
 	defer cancel()
 	cmd := childenv.CommandContext(ctx, path, "--version")
 	cmd.WaitDelay = attachTimeout
-	out, err := cmd.Output()
+	expected := "ikesu " + version
+	out := &versionOutput{limit: len(expected) + len("\r\n")}
+	cmd.Stdout = out
+	err = cmd.Run()
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("version check timed out: %w", ctx.Err())
 		}
 		return nil, fmt.Errorf("version check failed: %w", err)
 	}
-	if strings.TrimSpace(string(out)) != "ikesu "+version {
+	if out.overflow || strings.TrimSpace(string(out.data)) != expected {
 		return nil, fmt.Errorf("executable version does not match server version %s", version)
 	}
 	if err := checked.recheck(); err != nil {

@@ -186,3 +186,28 @@ func TestClientKeepsRunningWhenUpgradeDirectoryWritable(t *testing.T) {
 	s.send("printf 'REJECTED_UPGRADE_INPUT_OK\\n'\r")
 	s.waitFor("input after rejected upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "REJECTED_UPGRADE_INPUT_OK") })
 }
+
+// The existing notice duration is ten seconds, so checking the restored version takes longer than five seconds.
+func TestClientRollsBackWhenNewConnectionFails(t *testing.T) {
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	state := map[string]any{
+		"old_executable": oldBinary,
+		"old_version":    oldVersion,
+		"session":        "e2e",
+		"attempt": map[string]any{
+			"session": "e2e", "generation": "connection-failure-test", "executable": newBinary, "version": newVersion,
+		},
+		"active": "local",
+	}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No server is started: the new client must exec the old binary, which
+	// starts its own isolated session using the normal attach path.
+	s := startVersionMode(t, map[string]string{"IKESU_CLIENT_UPGRADE": string(raw)}, false, newBinary, "")
+	s.waitFor("connection failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: connect") })
+	s.send("printf 'ROLLBACK_AFTER_CONNECT_FAIL\\n'\r")
+	s.waitFor("input after connection rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_CONNECT_FAIL") })
+	s.waitFor("old client version", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+}
