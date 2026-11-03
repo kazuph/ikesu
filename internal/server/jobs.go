@@ -73,6 +73,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	// Nonempty callers are validated even when notifications are disabled.
 	callerAgent := ""
 	callerPane := ""
+	callerGeneration := ""
 	if p.CallerPane == "" && completion != "none" {
 		return api.Failure(id, api.ErrInvalidRequest, "caller pane is required; specify --caller <pane>")
 	}
@@ -82,6 +83,7 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 			return api.Failure(id, err.Code, err.Message)
 		}
 		callerPane = fmtPaneID(t.pid)
+		callerGeneration = s.app.State().PaneGeneration(t.pid)
 		callerAgent, _ = s.mailboxName(t.pid)
 		if completion != "none" && (!s.isAgentPane(t.pid) || callerAgent == "") {
 			return api.Failure(id, api.ErrAgentNotFound, "caller pane has no agent mailbox")
@@ -98,8 +100,8 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	cmdText := strings.Join(p.Argv, " ")
 	jobID := s.jobProcs.nextID()
 	logPath := s.jobLogPath(jobID, label)
-	if err := store.InsertCommand(jobID, label, cmdText, cwd,
-		callerPane, callerAgent, completion, logPath); err != nil {
+	if err := store.InsertPaneCommand(jobID, label, cmdText, cwd,
+		callerPane, callerAgent, completion, logPath, callerGeneration); err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())
 	}
 

@@ -361,7 +361,14 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	}
 	s.sup = sup
 
-	st := model.New(cwd, 120, 40)
+	reservations := func() (map[int]bool, error) {
+		store, err := s.db()
+		if err != nil {
+			return nil, err
+		}
+		return store.ReservedPaneIDs(s.session)
+	}
+	st := model.NewWithPaneReservations(cwd, 120, 40, reservations)
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
 	s.app.SetServerUI()
 	s.app.SetMachineCatalog(filepath.Join(api.SessionDir(s.session), "machines.json"))
@@ -444,6 +451,15 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	} else if err := s.app.StartInitialPane(); err != nil {
 		s.cleanup()
 		return 1, fmt.Errorf("spawn pane: %w", err)
+	}
+	s.app.State().SetPaneReservations(reservations)
+	s.app.State().EnsurePaneGenerations()
+	if store, err := s.db(); err == nil {
+		for id, generation := range s.app.State().PaneGenerations {
+			if s.sup.Get(id) != nil {
+				_ = store.BindLegacyPane(fmtPaneID(id), generation)
+			}
+		}
 	}
 
 	if imported == nil {

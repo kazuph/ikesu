@@ -72,6 +72,7 @@ type Node struct {
 
 // Pane is the persisted record of one pane.
 type Pane struct {
+	Generation         string `json:"generation,omitempty"`
 	SessionStartSource string `json:"session_start_source,omitempty"`
 	ID                 int    `json:"id"`
 	Cwd                string `json:"cwd"`

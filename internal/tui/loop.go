@@ -348,6 +348,7 @@ func (a *App) exec(cmd model.Command) {
 	}
 	popupWasVisible := a.st.PopupVisible()
 	previousPopup := a.st.Popup
+	previousRuntimePane := a.st.HandoffCounters().RuntimePane
 	var prev *model.StateSnap
 	if a.postExecHook != nil {
 		prev = a.st.Capture()
@@ -391,9 +392,13 @@ func (a *App) exec(cmd model.Command) {
 	// Keystrokes and resizes never change persisted state; everything else
 	// (splits, closes, focus, renames, tabs, workspaces) schedules a save.
 	switch cmd.(type) {
-	case model.CmdInput, model.CmdResize, model.CmdOpenOverlay, model.CmdCloseOverlay, model.CmdOpenPopup, model.CmdClosePopup, model.CmdPopupResizeLock:
+	case model.CmdInput, model.CmdResize, model.CmdCloseOverlay, model.CmdClosePopup, model.CmdPopupResizeLock:
 		if _, resized := cmd.(model.CmdResize); resized {
 			a.copyResizeAll(copySizes)
+		}
+	case model.CmdOpenOverlay, model.CmdOpenPopup:
+		if a.st.HandoffCounters().RuntimePane != previousRuntimePane {
+			a.changed()
 		}
 	default:
 		a.changed()

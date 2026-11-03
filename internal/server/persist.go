@@ -58,6 +58,7 @@ func (s *Server) captureSession() *sessionSnapshot {
 	}
 	s.observeAgentSessions()
 	f := s.app.State().Snapshot()
+	f.NextPaneID = max(f.NextPaneID, s.app.State().HandoffCounters().RuntimePane)
 	if len(f.Workspaces) == 0 {
 		return nil
 	}

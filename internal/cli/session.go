@@ -11,6 +11,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/herdrimport"
 	"github.com/kazuph/ikesu/internal/session"
 	"golang.org/x/sys/unix"
@@ -109,7 +110,13 @@ func (r *runner) sessionCLI(args []string) int {
 			return r.importError(fmt.Errorf("target session requires repair: %v", warnings))
 		}
 	}
-	merged, _ := session.Append(target, latest.File)
+	var reserved map[int]bool
+	store, dbErr := dispatch.Open(dispatch.DBPath(r.o.Session))
+	if dbErr == nil {
+		reserved, dbErr = store.ReservedPaneIDs(r.o.Session)
+		store.Close()
+	}
+	merged, _ := session.Append(target, latest.File, reserved, dbErr != nil)
 	if err := session.Save(session.Path(dir), merged); err != nil {
 		return r.importError(err)
 	}

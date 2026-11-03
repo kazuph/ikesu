@@ -33,7 +33,7 @@ func (s *Store) CompleteJob(id, expected, status string, exit *int64, finishedMs
 		if !IsGlobalPaneID(caller) {
 			noticeStatus, reason = "failed", "job notification has no immutable caller pane"
 		}
-		if err = s.execLocked(`INSERT INTO dispatches(kind,room,project,from_actor,to_actor,body,created_at,status,completion) VALUES('message',?,'',?,?,?,?,?,?)`, JobsRoom, fa, ta, body, nowTS(), noticeStatus, reason); err != nil {
+		if err = s.execLocked(`INSERT INTO dispatches(kind,room,project,from_actor,to_actor,body,created_at,status,completion,pane_generation) SELECT 'message',?,'',?,?,?,?,?,?,pane_generation FROM dispatches WHERE kind='command' AND external_id=?`, JobsRoom, fa, ta, body, nowTS(), noticeStatus, reason, id); err != nil {
 			return false, err
 		}
 	}

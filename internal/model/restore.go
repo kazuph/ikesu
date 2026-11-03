@@ -40,9 +40,10 @@ func (s *AppState) Snapshot() *session.File {
 			}
 			for _, pid := range st.Order {
 				st.Panes = append(st.Panes, session.Pane{
-					ID:    pid,
-					Cwd:   ws.Cwd, // caller overwrites with the pane's real cwd
-					Label: s.PaneLabels[pid],
+					ID:         pid,
+					Generation: s.PaneGeneration(pid),
+					Cwd:        ws.Cwd, // caller overwrites with the pane's real cwd
+					Label:      s.PaneLabels[pid],
 				})
 			}
 			sw.Tabs = append(sw.Tabs, st)
@@ -76,6 +77,14 @@ func Restore(f *session.File) *AppState {
 			l := layout.Restore(session.ToLayoutNode(st.Layout), st.Focused, st.Order)
 			ws.Tabs = append(ws.Tabs, &Tab{ID: st.ID, Name: st.Name, Layout: l, Zoomed: st.Zoomed})
 			for _, p := range st.Panes {
+				if s.PaneGenerations == nil {
+					s.PaneGenerations = map[PaneID]string{}
+				}
+				if p.Generation == "" {
+					s.assignPaneGeneration(p.ID)
+				} else {
+					s.PaneGenerations[p.ID] = p.Generation
+				}
 				if p.Label != "" {
 					s.PaneLabels[p.ID] = p.Label
 				}

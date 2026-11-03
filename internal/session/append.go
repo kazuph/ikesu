@@ -1,13 +1,20 @@
 package session
 
+import "crypto/rand"
+
 // Append adds a validated import to a validated snapshot, assigning all
 // imported ids from the target's existing allocation counters. The target
 // is not mutated, and existing workspace/pane ids are preserved; imported focus becomes active.
-func Append(target, imported *File) (*File, *File) {
+func Append(target, imported *File, reserved map[int]bool, dbUnavailable bool) (*File, *File) {
 	if target == nil {
 		target = &File{Version: CurrentVersion, SidebarVisible: true}
 	}
 	out := *target
+	used := map[int]bool{}
+	for id := range reserved {
+		used[id] = true
+	}
+	target.EachPane(func(_ *Workspace, _ *Tab, pane *Pane) { used[pane.ID] = true })
 	out.Workspaces = append([]Workspace(nil), target.Workspaces...)
 	added := *imported
 	added.Workspaces = nil
@@ -23,9 +30,19 @@ func Append(target, imported *File) (*File, *File) {
 			t.Panes = append([]Pane(nil), t.Panes...)
 			for pi := range t.Panes {
 				p := &t.Panes[pi]
-				out.NextPaneID++
-				ids[p.ID] = out.NextPaneID
-				p.ID = out.NextPaneID
+				id := 1
+				if dbUnavailable {
+					id = out.NextPaneID + 1
+				} else {
+					for used[id] {
+						id++
+					}
+				}
+				used[id] = true
+				out.NextPaneID = max(out.NextPaneID, id)
+				ids[p.ID] = id
+				p.ID = id
+				p.Generation = rand.Text()
 			}
 			t.Focused = ids[t.Focused]
 			if t.Zoomed != 0 {

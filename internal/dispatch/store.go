@@ -128,7 +128,8 @@ CREATE TABLE IF NOT EXISTS dispatches (
   runner_pid    INTEGER,
   log_path      TEXT,
   read_at       TEXT,
-  caller_pane   TEXT
+  caller_pane   TEXT,
+  pane_generation TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON dispatches(to_actor, status);
 CREATE INDEX IF NOT EXISTS idx_dispatch_room_time ON dispatches(room, created_at);
@@ -190,15 +191,16 @@ func Schema() string { return schemaSQL + "\n" }
 
 // Message is one dispatch row of kind 'message' as callers see it.
 type Message struct {
-	ID          int64   `json:"id"`
-	Room        string  `json:"room"`
-	Project     string  `json:"project"`
-	FromAgent   string  `json:"from_agent"`
-	ToAgent     string  `json:"to_agent"`
-	Body        string  `json:"body"`
-	CreatedAt   string  `json:"created_at"`
-	DeliveredAt *string `json:"delivered_at"`
-	ReadAt      *string `json:"read_at"`
+	PaneGeneration string  `json:"-"`
+	ID             int64   `json:"id"`
+	Room           string  `json:"room"`
+	Project        string  `json:"project"`
+	FromAgent      string  `json:"from_agent"`
+	ToAgent        string  `json:"to_agent"`
+	Body           string  `json:"body"`
+	CreatedAt      string  `json:"created_at"`
+	DeliveredAt    *string `json:"delivered_at"`
+	ReadAt         *string `json:"read_at"`
 }
 
 // Job is one dispatch row of kind 'command'.
@@ -283,6 +285,9 @@ func Open(path string) (*Store, error) {
 		return fail(err)
 	}
 	if err := s.ensureColumn("dispatches", "caller_pane", "caller_pane TEXT"); err != nil {
+		return fail(err)
+	}
+	if err := s.ensureColumn("dispatches", "pane_generation", "pane_generation TEXT"); err != nil {
 		return fail(err)
 	}
 	if err := s.ensureColumn("pane_sessions", "session_start_source", "session_start_source TEXT"); err != nil {
@@ -436,20 +441,21 @@ func (s *Store) exec(sql string, args ...any) error {
 }
 
 const msgCols = `d.id, d.room, d.project, fa.name, ta.name, d.body,
-	d.created_at, d.delivered_at, d.read_at`
+	d.created_at, d.delivered_at, d.read_at, COALESCE(d.pane_generation,'')`
 const msgJoin = `dispatches d
 	JOIN actors fa ON fa.id = d.from_actor
 	JOIN actors ta ON ta.id = d.to_actor`
 
 func scanMessage(st *sqlite3.Stmt) Message {
 	m := Message{
-		ID:        st.ColumnInt64(0),
-		Room:      st.ColumnText(1),
-		Project:   st.ColumnText(2),
-		FromAgent: st.ColumnText(3),
-		ToAgent:   st.ColumnText(4),
-		Body:      st.ColumnText(5),
-		CreatedAt: st.ColumnText(6),
+		ID:             st.ColumnInt64(0),
+		Room:           st.ColumnText(1),
+		Project:        st.ColumnText(2),
+		FromAgent:      st.ColumnText(3),
+		ToAgent:        st.ColumnText(4),
+		Body:           st.ColumnText(5),
+		CreatedAt:      st.ColumnText(6),
+		PaneGeneration: st.ColumnText(9),
 	}
 	if st.ColumnType(7) != sqlite3.NULL {
 		if t := st.ColumnText(7); t != "" {
@@ -514,7 +520,7 @@ func (s *Store) agentActorLocked(name string) (int64, error) {
 // MessagesForInboxRecipients fetches queued messages to any of the
 // recipients (oldest first) and marks them delivered in the same
 // transaction. In-flight ids are neither returned nor marked.
-func (s *Store) MessagesForInboxRecipients(room string, recipients []string, inFlight map[int64]bool) ([]Message, error) {
+func (s *Store) MessagesForInboxRecipients(room string, recipients []string, inFlight map[int64]bool, generation *string) ([]Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(recipients) == 0 {
@@ -553,7 +559,7 @@ func (s *Store) MessagesForInboxRecipients(room string, recipients []string, inF
 	var msgs []Message
 	for st.Step() {
 		m := scanMessage(st)
-		if inFlight[m.ID] {
+		if inFlight[m.ID] || (generation != nil && (*generation == "" || m.PaneGeneration != *generation)) {
 			continue
 		}
 		msgs = append(msgs, m)
