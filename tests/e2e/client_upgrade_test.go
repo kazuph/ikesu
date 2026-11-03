@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,58 @@ import (
 
 func buildClientUpgradeVersions(t *testing.T) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
 	return buildClientUpgradeVersionsWithShortVersionTimeout(t, false)
+}
+
+// The real ten-second attach deadline is needed to exercise the complete rollback path.
+func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old server", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	socket := filepath.Join(s.stateDir, s.name, "ikesu-client.sock")
+	held := socket + ".held"
+	if err := os.Rename(socket, held); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Rename(held, socket) }()
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	state, err := json.Marshal(map[string]any{
+		"old_executable": oldBinary, "old_version": oldVersion, "session": "e2e", "active": "local",
+		"attempt": map[string]any{"session": "e2e", "generation": "stalled-welcome", "executable": newBinary, "version": newVersion},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := startVersionMode(t, map[string]string{"IKESU_STATE_DIR": s.stateDir, "IKESU_CLIENT_UPGRADE": string(state)}, false, newBinary, "")
+	if err := listener.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := listener.AcceptUnix()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer accepted.Close()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(held, socket); err != nil {
+		t.Fatal(err)
+	}
+	client.waitFor("welcome timeout rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") && strings.Contains(text, "timeout") })
+	process, err := exec.Command("ps", "-p", fmt.Sprint(client.cmd.Process.Pid), "-o", "comm=").Output()
+	if err != nil || strings.TrimSpace(string(process)) != oldBinary {
+		t.Fatalf("old executable was not restored: %q %v", process, err)
+	}
+	client.send("printf 'ROLLBACK_AFTER_STALLED_WELCOME\\n'\r")
+	client.waitFor("input after stalled welcome", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_STALLED_WELCOME") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if !strings.Contains(read.Read.Text, "ROLLBACK_AFTER_STALLED_WELCOME") {
+		t.Fatalf("input did not reach the original pane: %s", read.Read.Text)
+	}
 }
 
 func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeout bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
