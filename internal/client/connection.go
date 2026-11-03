@@ -27,6 +27,7 @@ type endpointConnection struct {
 	queue     []msg
 	writeErr  error
 	wake      chan struct{}
+	changed   chan struct{}
 	boot      string
 }
 

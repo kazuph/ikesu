@@ -114,8 +114,8 @@ func atoi(s string) int {
 	return n
 }
 
-func flushInput(fd int) {
-	_ = unix.IoctlSetPointerInt(fd, unix.TCFLSH, unix.TCIFLUSH)
+func flushInput(fd int) error {
+	return unix.IoctlSetPointerInt(fd, unix.TCFLSH, unix.TCIFLUSH)
 }
 
 func itoa(i int) string {

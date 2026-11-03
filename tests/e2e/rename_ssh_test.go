@@ -3,8 +3,10 @@
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,18 +16,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
+	"github.com/creack/pty"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
-// This uses an actual unprivileged OpenSSH server, ephemeral keys and homes.
+// This uses an actual unprivileged OpenSSH server, ephemeral keys and homes;
+// the two real binary builds and SSH handoffs can take more than five seconds.
 // The SSH launcher only selects its isolated config; it executes real ssh.
 func TestStageThreeSSHVersionMatrix(t *testing.T) {
 	for _, pair := range []struct{ name, local, remote, remoteName string }{
 		{"new-new", binPath, binPath, "ikesu"},
 	} {
 		t.Run(pair.name, func(t *testing.T) {
-			root, err := os.MkdirTemp("/tmp", "is-")
+			current, err := user.Current()
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.MkdirTemp(current.HomeDir, ".ikesu-ssh-")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -69,16 +79,12 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 			}
 			port := listener.Addr().(*net.TCPAddr).Port
 			_ = listener.Close()
-			current, err := user.Current()
-			if err != nil {
-				t.Fatal(err)
-			}
 			force := filepath.Join(root, "remote-command")
 			script := fmt.Sprintf("#!/bin/sh\nexport HOME=%s XDG_CONFIG_HOME=%s SHELL=/bin/sh PATH=%s:/usr/bin:/bin\nexec /bin/sh -c \"$SSH_ORIGINAL_COMMAND\"\n", machine.Quote(remoteHome), machine.Quote(filepath.Join(remoteHome, ".config")), machine.Quote(binDir))
 			if err = os.WriteFile(force, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
-			sshdConfig := fmt.Sprintf("Port %d\nListenAddress 127.0.0.1\nHostKey %s/host\nPidFile %s/sshd.pid\nAuthorizedKeysFile %s/client.pub\nStrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nAllowUsers %s\nForceCommand %s\nLogLevel ERROR\n", port, root, root, root, current.Username, force)
+			sshdConfig := fmt.Sprintf("Port %d\nListenAddress 127.0.0.1\nHostKey %s/host\nPidFile %s/sshd.pid\nAuthorizedKeysFile %s/client.pub\nStrictModes yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nAllowUsers %s\nForceCommand %s\nLogLevel ERROR\n", port, root, root, root, current.Username, force)
 			configPath := filepath.Join(root, "sshd.conf")
 			if err = os.WriteFile(configPath, []byte(sshdConfig), 0600); err != nil {
 				t.Fatal(err)
@@ -213,6 +219,64 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 			if !found {
 				t.Fatal("remote run did not complete")
 			}
+			t.Run("client-follow-upgrade-over-ssh", func(t *testing.T) {
+				_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+				migrationRPC(t, remoteSocket, api.MethodWorkspaceRename, api.WorkspaceRenameParams{WorkspaceID: "s1", Label: "RemoteUpgrade"}, nil)
+				cmd := exec.Command(oldBinary, "--session", "stage3")
+				cmd.Env = env
+				terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
+				if err != nil {
+					t.Fatal(err)
+				}
+				viewer := &session{t: t, pt: terminal, cmd: cmd, emu: vt.NewEmulator(termW, termH), buf: &lockedBuf{ch: make(chan []byte, 4096)}, name: "stage3", stateDir: filepath.Dir(localSocket)}
+				go func() { _, _ = io.Copy(io.Discard, viewer.emu) }()
+				go func() {
+					buf := make([]byte, 64*1024)
+					for {
+						n, err := terminal.Read(buf)
+						if n > 0 {
+							viewer.buf.ch <- append([]byte(nil), buf[:n]...)
+						}
+						if err != nil {
+							close(viewer.buf.ch)
+							return
+						}
+					}
+				}()
+				t.Cleanup(func() {
+					_, _ = terminal.WriteString("\x02q")
+					_ = terminal.Close()
+					_ = cmd.Wait()
+					_ = viewer.emu.Close()
+				})
+				viewer.waitFor("remote workspace", 15*time.Second, func(text string) bool {
+					return strings.Contains(text, "RemoteUpgrade") && strings.Contains(text, "ikesu v"+oldVersion)
+				})
+				x, y := viewer.find("RemoteUpgrade")
+				viewer.click(x, y)
+				viewer.waitFor("selected remote workspace", 15*time.Second, func(text string) bool { return strings.Contains(text, "▌· 1 RemoteUpgrade") })
+				var controls bytes.Buffer
+				viewer.observeOutput = func(data []byte) { _, _ = controls.Write(data) }
+				migrationRPC(t, remoteSocket, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{ImportExe: &newBinary}, nil)
+				migrationRPC(t, remoteSocket, api.MethodWorkspaceRename, api.WorkspaceRenameParams{WorkspaceID: "s1", Label: "RemoteReady"}, nil)
+				viewer.waitFor("remote snapshot after handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "▌· 1 RemoteReady") })
+				viewer.send("printf 'REMOTE_RESTART_INPUT_OK\\n'\r")
+				viewer.waitFor("remote input after remote handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "REMOTE_RESTART_INPUT_OK") })
+				if bytes.Contains(controls.Bytes(), []byte(tui.LeaveSeq)) || !strings.Contains(viewer.text(), "ikesu v"+oldVersion) {
+					t.Fatal("remote restart restarted the local client")
+				}
+				migrationRPC(t, localSocket, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{ImportExe: &newBinary}, nil)
+				viewer.waitFor("upgraded local client", 15*time.Second, func(text string) bool {
+					return strings.Contains(text, "ikesu v"+newVersion) && strings.Contains(text, "▌· 1 RemoteReady")
+				})
+				viewer.send("printf 'REMOTE_SELECTION_AFTER_UPGRADE\\n'\r")
+				viewer.waitFor("remote input after local handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "REMOTE_SELECTION_AFTER_UPGRADE") })
+				var read api.PaneReadResultEnvelope
+				migrationRPC(t, remoteSocket, api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+				if !strings.Contains(read.Read.Text, "REMOTE_SELECTION_AFTER_UPGRADE") {
+					t.Fatal("input after local upgrade did not reach remote pane")
+				}
+			})
 			t.Logf("PASS %s: real SSH connection, remote run, decision answer; remote binary=%s", pair.name, remoteBin)
 		})
 	}

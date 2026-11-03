@@ -5,6 +5,7 @@ package client
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,7 +24,6 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/sys/unix"
-	"golang.org/x/term"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
@@ -85,68 +85,117 @@ type msg struct {
 // Attach connects the local terminal to the session's server, spawning it
 // if needed. It blocks until the client detaches or the server exits.
 func Attach(session string, in *os.File, out *os.File, version string) (int, error) {
+	upgradeState := loadUpgradeState(session, version)
+	failStartup := func(err error) (int, error) {
+		if upgradeState != nil && !upgradeState.Rollback {
+			return 1, rollbackUpgrade(upgradeState, err)
+		}
+		return 1, err
+	}
 	if NestedBlocked() {
-		return 1, errors.New("refusing to start a nested ikesu session (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)")
+		return failStartup(errors.New("refusing to start a nested ikesu session (a ikesu server is an ancestor; set [experimental] allow_nested = true to permit, or use --no-session)"))
 	}
 	settings, err := loadLocalSettings(session)
 	if err != nil {
-		return 1, err
+		return failStartup(err)
 	}
+	if upgradeState != nil && !upgradeState.Rollback && settings.warning != "" {
+		return failStartup(errors.New(settings.warning))
+	}
+	settings.upgradeState = upgradeState
 	settings.clientVersion = version
 	if err := (machine.Catalog{Path: filepath.Join(api.SessionDir(session), "machines.json")}).Ensure(); err != nil {
-		return 1, fmt.Errorf("machine catalog: %w", err)
+		return failStartup(fmt.Errorf("machine catalog: %w", err))
 	}
 
 	dir := api.SessionDir(session)
 	conn, err := dialClient(dir)
 	if err != nil {
-		if err := spawnServer(session, dir); err != nil {
-			return 1, err
+		if upgradeState != nil && !upgradeState.Rollback {
+			return failStartup(fmt.Errorf("connect to upgraded server: %w", err))
 		}
-		conn, err = waitDial(dir, attachTimeout)
+		_, lockErr := os.Stat(api.LockPath(dir))
+		if upgradeState == nil || !upgradeState.Rollback || errors.Is(lockErr, os.ErrNotExist) {
+			if err := spawnServer(session, dir); err != nil {
+				if upgradeState == nil || !upgradeState.Rollback {
+					return 1, err
+				}
+			} else {
+				conn, err = waitDial(dir, attachTimeout)
+				if err != nil && (upgradeState == nil || !upgradeState.Rollback) {
+					return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+				}
+			}
+		}
+	}
+
+	var terminal attachTerminal
+	for {
+		err := terminal.enter(int(in.Fd()))
 		if err != nil {
-			return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+			if conn != nil {
+				conn.Close()
+			}
+			return failStartup(fmt.Errorf("raw mode: %w", err))
 		}
-	}
-
-	// Terminal setup mirrors tui.Run.
-	old, err := term.MakeRaw(int(in.Fd()))
-	if err != nil {
-		conn.Close()
-		return 1, fmt.Errorf("raw mode: %w", err)
-	}
-	restored := false
-	restore := func() {
-		if !restored {
-			_ = term.Restore(int(in.Fd()), old)
-			restored = true
+		if _, err := out.WriteString(tui.EnterSeq + tui.KbdEnterSeq()); err != nil {
+			if conn != nil {
+				conn.Close()
+			}
+			_ = terminal.restore(int(in.Fd()))
+			return failStartup(err)
 		}
-	}
-	left := false
-	leave := func() {
-		if left {
-			return
+		result := pumpMachines(session, conn, in, out, settings, savedMachines(session))
+		if conn != nil {
+			conn.Close()
 		}
-		left = true
-		_, _ = out.WriteString(tui.MouseOffSeq)
-		platform.FlushInput(int(in.Fd()))
-		tui.DrainInput(in, drainMs)
-		_, _ = out.WriteString(tui.KbdLeaveSeq() + tui.LeaveSeq)
-		restore()
+		_, mouseErr := out.WriteString(tui.MouseOffSeq)
+		var flushErr, drainErr error
+		if result != pumpUpgrade && result != pumpRollback {
+			flushErr = platform.FlushInput(int(in.Fd()))
+			drainErr = tui.DrainInput(in, drainMs)
+		}
+		_, leaveErr := out.WriteString(tui.KbdLeaveSeq() + tui.LeaveSeq)
+		restoreErr := terminal.restore(int(in.Fd()))
+		terminalErr := errors.Join(mouseErr, flushErr, drainErr, leaveErr, restoreErr)
+		if result == pumpRollback {
+			if terminalErr != nil {
+				settings.upgradeState.Reason = errors.Join(errors.New(settings.upgradeState.Reason), terminalErr).Error()
+				conn = nil
+				continue
+			}
+			return 1, rollbackUpgrade(settings.upgradeState, errors.New(settings.upgradeState.Reason))
+		}
+		if result != pumpUpgrade {
+			if result == pumpRejected {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		candidate := settings.upgrade
+		err = terminalErr
+		if err == nil {
+			err = candidate.executable.recheck()
+		}
+		if err == nil {
+			var current upgradeIdentity
+			current, err = queryUpgradeIdentity(context.Background(), session)
+			if err == nil && current != candidate.identity {
+				err = errors.New("server changed during client upgrade")
+			}
+		}
+		if err == nil {
+			err = candidate.executable.recheck()
+		}
+		if err == nil {
+			err = execUpgrade(candidate.identity.Executable, &candidate.state)
+		}
+		candidate.state.Rollback = true
+		candidate.state.Reason = err.Error()
+		settings.upgradeState = &candidate.state
+		settings.upgrade = nil
+		conn = nil
 	}
-	defer leave()
-	defer restore()
-
-	if _, err := out.WriteString(tui.EnterSeq + tui.KbdEnterSeq()); err != nil {
-		conn.Close()
-		return 1, err
-	}
-	result := pumpMachines(session, conn, in, out, settings, savedMachines(session))
-	conn.Close()
-	if result == pumpRejected {
-		return 1, nil
-	}
-	return 0, nil
 }
 
 // pumpResult is how a single attach session ended.
@@ -157,6 +206,8 @@ const (
 	pumpRestart                    // server asked for a reconnect
 	pumpClosed                     // conn dropped without a close message
 	pumpRejected                   // explicit handshake or protocol refusal
+	pumpUpgrade                    // checked local server executable is ready
+	pumpRollback                   // new client could not connect
 )
 
 // pump runs one attach session over conn: hello → input/resize forwarding

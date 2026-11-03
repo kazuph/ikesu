@@ -43,6 +43,7 @@ type managedEndpoint struct {
 	removed                  bool
 	paste                    *clipboardPaste
 	restarting               bool
+	resumeInput              bool
 	restartInput             []byte
 }
 
@@ -56,6 +57,7 @@ type endpointEvent struct {
 	catalogChanged bool
 	formUpdate     func()
 	configRevision uint64
+	upgrade        *upgradeCheckResult
 }
 
 type pendingMachine struct {
@@ -82,6 +84,7 @@ type machineClient struct {
 	workspaceKeyReleases map[rune]bool
 
 	clientVersion     string
+	failedUpgrades    map[upgradeIdentity]bool
 	trace             *latency.Trace
 	drawSeq, probeSeq uint64
 	probeUntil        time.Time
@@ -152,13 +155,21 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		return pumpDone
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
+	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, failedUpgrades: map[upgradeIdentity]bool{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
 	if latency.Enabled {
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
 	defer m.trace.Close()
 	m.koiKitty = kitty.SupportsImages(in, out)
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
+	if len(settings.retryLocal) != 0 {
+		m.endpoints["local"].restarting = true
+		m.endpoints["local"].resumeInput = true
+		m.endpoints["local"].restartInput = settings.retryLocal
+		settings.retryLocal = nil
+	}
+	m.held = settings.retryHeld
+	settings.retryHeld = nil
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
 	defer func() { _, _ = out.Write(m.frames.RestoreCursor()) }()
@@ -169,6 +180,20 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			m.order = append(m.order, p.ID)
 		}
 	}
+	if state := settings.upgradeState; state != nil {
+		for id, saved := range state.Selections {
+			if e := m.endpoints[id]; e != nil && saved.Target == e.profile.Target && saved.Session == m.selectionSession(id) {
+				e.selection = &paintedSelection{target: saved.Target, session: saved.Session, value: saved.Value}
+			}
+		}
+		if e := m.endpoints[state.Active]; e != nil && e.profile.Enabled {
+			m.active = state.Active
+		}
+		if state.Rollback {
+			m.failedUpgrades[state.Attempt] = true
+			m.notify("upgrade: " + state.Reason)
+		}
+	}
 	defer func() {
 		cancel()
 		for _, e := range m.endpoints {
@@ -177,6 +202,9 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			}
 		}
 		m.workers.Wait()
+		if settings.upgrade != nil {
+			m.saveUpgradeQueues()
+		}
 	}()
 	m.start("local", local)
 	for _, id := range m.order[1:] {
@@ -193,12 +221,40 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	if err := m.refreshMachineCatalog(); err != nil {
 		m.notify(err.Error())
 	}
-	input, stopInput, err := readMachineInput(in, ctx, true)
-	if err != nil {
-		fmt.Fprintln(out, "ikesu:", err)
-		return pumpDone
+	readerState := settings.retryReader
+	if readerState == nil {
+		readerState = &machineInputState{framer: input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: true}}
+		if state := settings.upgradeState; state != nil && len(state.PendingInput) != 0 {
+			m.held = append(m.held, normalizeMachineInput(readerState.framer.Push(state.PendingInput))...)
+		}
 	}
-	defer stopInput()
+	settings.retryReader = nil
+	var inputEvents <-chan input.Event
+	stopInput := func() {}
+	startInput := func() error {
+		var err error
+		inputEvents, stopInput, err = readMachineInputWithState(in, ctx, readerState)
+		return err
+	}
+	if settings.upgradeState == nil || settings.upgradeState.Rollback {
+		if err := startInput(); err != nil {
+			fmt.Fprintln(out, "ikesu:", err)
+			return pumpDone
+		}
+	}
+	defer func() {
+		stopInput()
+		if settings.upgrade != nil {
+			settings.retryReader = readerState
+			settings.retryHeld = append(settings.retryHeld, m.held...)
+			for event := range inputEvents {
+				settings.retryHeld = append(settings.retryHeld, event)
+			}
+			settings.retryHeld = append(settings.retryHeld, readerState.unsent...)
+			readerState.unsent = nil
+			settings.retryLocal = append(settings.retryLocal, m.endpoints["local"].restartInput...)
+		}
+	}()
 	winch := make(chan os.Signal, 4)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
@@ -215,11 +271,11 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			alarm = timer.C
 		}
 		select {
-		case event, ok := <-input:
+		case event, ok := <-inputEvents:
 			if !ok {
 				return pumpDone
 			}
-			if _, err := m.drainInput(event, input); err != nil {
+			if _, err := m.drainInput(event, inputEvents); err != nil {
 				m.notify(err.Error())
 				_ = m.paint()
 			}
@@ -236,7 +292,32 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			}
 		case event := <-m.events:
 			if result, done := m.event(event); done {
+				if result == pumpUpgrade {
+					stopInput()
+					ctx, cancel := context.WithTimeout(m.ctx, attachTimeout)
+					err := m.prepareUpgrade(ctx, readerState, inputEvents)
+					cancel()
+					if err != nil {
+						candidate := m.settings.upgrade
+						m.failedUpgrades[candidate.identity] = true
+						m.settings.upgrade = nil
+						m.notify("upgrade: " + err.Error())
+						if err := startInput(); err != nil {
+							fmt.Fprintln(out, "ikesu:", err)
+							return pumpDone
+						}
+						_ = m.paint()
+						continue
+					}
+					m.settings.upgrade.state.PendingInput = readerState.framer.PendingBytes()
+				}
 				return result
+			}
+			if inputEvents == nil && event.id == "local" && event.connection != nil {
+				if err := startInput(); err != nil {
+					fmt.Fprintln(out, "ikesu:", err)
+					return pumpDone
+				}
 			}
 		case <-alarm:
 			now := time.Now()

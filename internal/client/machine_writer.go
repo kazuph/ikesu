@@ -49,8 +49,6 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 				break
 			}
 			message := c.queue[0]
-			c.queue[0] = msg{}
-			c.queue = c.queue[1:]
 			c.queueMu.Unlock()
 			select {
 			case <-ctx.Done():
@@ -60,10 +58,59 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 			if err := c.writer.send(message); err != nil {
 				c.queueMu.Lock()
 				c.writeErr = err
-				c.queue = nil
+				if isClosedRenderAck(err) {
+					kept := c.queue[:0]
+					for _, queued := range c.queue[1:] {
+						if queued.Type == "input" || queued.Type == "paste" || queued.Type == "workspace_select" {
+							kept = append(kept, queued)
+						}
+					}
+					c.queue = kept
+				}
+				if c.changed != nil {
+					select {
+					case c.changed <- struct{}{}:
+					default:
+					}
+				}
 				c.queueMu.Unlock()
 				return err
 			}
+			c.queueMu.Lock()
+			c.queue[0] = msg{}
+			c.queue = c.queue[1:]
+			if c.changed != nil {
+				select {
+				case c.changed <- struct{}{}:
+				default:
+				}
+			}
+			c.queueMu.Unlock()
+		}
+	}
+}
+
+func (c *endpointConnection) waitEmpty(ctx context.Context) error {
+	for {
+		c.queueMu.Lock()
+		if c.writeErr != nil {
+			err := c.writeErr
+			c.queueMu.Unlock()
+			return err
+		}
+		if len(c.queue) == 0 {
+			c.queueMu.Unlock()
+			return nil
+		}
+		if c.changed == nil {
+			c.changed = make(chan struct{}, 1)
+		}
+		changed := c.changed
+		c.queueMu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
@@ -72,4 +119,45 @@ func (c *endpointConnection) lastSentInput() uint64 {
 	c.queueMu.Lock()
 	defer c.queueMu.Unlock()
 	return c.sentInput
+}
+
+// saveUpgradeQueues runs after all connection writers have stopped.
+func (m *machineClient) saveUpgradeQueues() {
+	m.settings.retryQueued = make(map[string]queuedUpgradeInput)
+	for id, e := range m.endpoints {
+		if e.connection == nil {
+			continue
+		}
+		e.connection.queueMu.Lock()
+		var pending []msg
+		for _, message := range e.connection.queue {
+			if message.Type == "input" || message.Type == "paste" || message.Type == "workspace_select" {
+				pending = append(pending, message)
+			}
+		}
+		e.connection.queueMu.Unlock()
+		if len(pending) != 0 {
+			m.settings.retryQueued[id] = queuedUpgradeInput{target: e.profile.Target, session: m.selectionSession(id), messages: pending}
+		}
+	}
+}
+
+func (m *machineClient) replayUpgradeQueue(id string) error {
+	pending, ok := m.settings.retryQueued[id]
+	if !ok {
+		return nil
+	}
+	e := m.endpoints[id]
+	if pending.target != e.profile.Target || pending.session != m.selectionSession(id) {
+		return nil
+	}
+	for len(pending.messages) != 0 {
+		if err := e.connection.enqueue(pending.messages[0]); err != nil {
+			return err
+		}
+		pending.messages = pending.messages[1:]
+		m.settings.retryQueued[id] = pending
+	}
+	delete(m.settings.retryQueued, id)
+	return nil
 }

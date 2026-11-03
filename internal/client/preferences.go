@@ -6,15 +6,27 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 type localSettings struct {
 	clientVersion string
+	upgrade       *upgradeCandidate
+	upgradeState  *upgradeState
+	retryReader   *machineInputState
+	retryHeld     []input.Event
+	retryLocal    []byte
+	retryQueued   map[string]queuedUpgradeInput
 	session       string
 	config        *config.Config
 	warning       string
 	preferences   *endpoint.ViewPreferences
 	path          string
+}
+
+type queuedUpgradeInput struct {
+	target, session string
+	messages        []msg
 }
 
 func (s *localSettings) apply(edit config.Edit) (config.Config, error) {

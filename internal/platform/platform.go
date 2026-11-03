@@ -26,7 +26,7 @@ func ProcArgs(pid int) []string { return procArgs(pid) }
 func ProcCwd(pid int) string { return procCwd(pid) }
 
 // FlushInput discards pending terminal input on fd.
-func FlushInput(fd int) { flushInput(fd) }
+func FlushInput(fd int) error { return flushInput(fd) }
 
 // ForegroundProcess describes one member of a foreground process group.
 type ForegroundProcess struct {

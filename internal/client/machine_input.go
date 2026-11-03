@@ -19,7 +19,31 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type machineInputState struct {
+	framer input.Framer
+	unsent []input.Event
+}
+
+func normalizeMachineInput(decoded []input.Event) []input.Event {
+	filtered := decoded[:0]
+	for _, event := range decoded {
+		if event.Kind == input.KindUnknown && string(event.Raw) == "\x1b[200~" {
+			continue
+		}
+		if event.Kind == input.KindKey && event.Key.Code == uv.KeyEscape && event.Key.Mod == 0 {
+			// Forward an unambiguous Escape to avoid a second framing wait.
+			event.Raw = []byte("\x1b[27u")
+		}
+		filtered = append(filtered, event)
+	}
+	return filtered
+}
+
 func readMachineInput(in *os.File, ctx context.Context, colorPending bool) (<-chan input.Event, func(), error) {
+	return readMachineInputWithState(in, ctx, &machineInputState{framer: input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: colorPending}})
+}
+
+func readMachineInputWithState(in *os.File, ctx context.Context, state *machineInputState) (<-chan input.Event, func(), error) {
 	fd, err := unix.Dup(int(in.Fd()))
 	if err != nil {
 		return nil, nil, err
@@ -43,7 +67,7 @@ func readMachineInput(in *os.File, ctx context.Context, colorPending bool) (<-ch
 	go func() {
 		defer close(done)
 		defer close(events)
-		framer := input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: colorPending}
+		framer := &state.framer
 		buf := make([]byte, 64*1024)
 		for {
 			timeout := -1
@@ -71,20 +95,14 @@ func readMachineInput(in *os.File, ctx context.Context, colorPending bool) (<-ch
 				}
 				decoded = framer.Push(buf[:n])
 			}
-			for _, event := range decoded {
-				if event.Kind == input.KindUnknown && string(event.Raw) == "\x1b[200~" {
-					continue
-				}
-				if event.Kind == input.KindKey && event.Key.Code == uv.KeyEscape && event.Key.Mod == 0 {
-					// Escape is complete here; encode it unambiguously so the server
-					// does not start a second sequence-framing wait.
-					event.Raw = []byte("\x1b[27u")
-				}
+			filtered := normalizeMachineInput(decoded)
+			for index, event := range filtered {
 				select {
 				case events <- event:
 				case <-ctx.Done():
 					return
 				case <-stopped:
+					state.unsent = append(state.unsent, filtered[index:]...)
 					return
 				}
 			}

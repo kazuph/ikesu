@@ -132,6 +132,8 @@ type ServerLiveHandoffParams struct {
 
 type PongResult struct {
 	Capabilities map[string]any `json:"capabilities,omitempty"`
+	Executable   string         `json:"executable,omitempty"`
+	Generation   string         `json:"generation,omitempty"`
 	Type         string         `json:"type"` // "pong"
 	Version      string         `json:"version"`
 	Protocol     int            `json:"protocol"`

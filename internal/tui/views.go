@@ -519,26 +519,43 @@ func readInput(f *os.File, ch chan<- []byte) {
 
 // DrainInput reads and discards leftover input (e.g. mouse reports already
 // in flight) for up to d, so the outer shell never sees them.
-func DrainInput(f *os.File, d time.Duration) {
+func DrainInput(f *os.File, d time.Duration) error {
+	_, err := CollectInput(f, d)
+	return err
+}
+
+// CollectInput drains in-flight terminal input while retaining bytes for recovery.
+func CollectInput(f *os.File, d time.Duration) ([]byte, error) {
 	deadline := time.Now().Add(d)
 	fd := int(f.Fd())
 	pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 	buf := make([]byte, 64*1024)
+	var collected []byte
 	for {
 		remain := time.Until(deadline)
 		if remain <= 0 {
-			return
+			return collected, nil
 		}
 		ms := int(remain / time.Millisecond)
 		if ms < 1 {
 			ms = 1
 		}
 		n, err := unix.Poll(pfd, ms)
-		if err != nil || n == 0 {
-			return
+		if err != nil {
+			if err == unix.EINTR {
+				continue
+			}
+			return collected, err
 		}
-		if _, err := f.Read(buf); err != nil {
-			return
+		if n == 0 {
+			return collected, nil
+		}
+		n, err = f.Read(buf)
+		if n > 0 {
+			collected = append(collected, buf[:n]...)
+		}
+		if err != nil {
+			return collected, err
 		}
 	}
 }
