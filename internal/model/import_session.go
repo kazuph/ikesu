@@ -27,6 +27,7 @@ func (s *AppState) AppendSession(merged, added *session.File) {
 	}
 	for id, generation := range restored.PaneGenerations {
 		s.PaneGenerations[id] = generation
+		delete(s.LegacyPaneGenerations, id)
 	}
 	s.nextPaneID = merged.NextPaneID
 	s.nextTabID = merged.NextTabID

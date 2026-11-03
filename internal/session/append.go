@@ -42,6 +42,7 @@ func Append(target, imported *File, reserved map[int]bool, dbUnavailable bool) (
 				ids[p.ID] = id
 				p.ID = id
 				p.Generation = rand.Text()
+				p.LegacyGeneration = false
 			}
 			t.Focused = ids[t.Focused]
 			if t.Zoomed != 0 {

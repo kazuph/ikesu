@@ -69,6 +69,7 @@ func (s *AppState) allocatePane(transient bool) PaneID {
 }
 
 func (s *AppState) assignPaneGeneration(id PaneID) {
+	delete(s.LegacyPaneGenerations, id)
 	if s.PaneGenerations == nil {
 		s.PaneGenerations = map[PaneID]string{}
 	}

@@ -90,8 +90,9 @@ type AppState struct {
 	PaneBorders             bool
 	PaneGaps                bool
 	// PaneLabels holds optional API-assigned pane names (pane.rename).
-	PaneLabels      map[PaneID]string
-	PaneGenerations map[PaneID]string `json:"-"`
+	PaneLabels            map[PaneID]string
+	PaneGenerations       map[PaneID]string `json:"-"`
+	LegacyPaneGenerations map[PaneID]bool   `json:"-"`
 
 	nextPaneID        PaneID
 	nextRuntimePaneID PaneID
@@ -114,6 +115,10 @@ func (s *AppState) EnsurePaneGenerations() bool {
 	ensure := func(id PaneID) {
 		if s.PaneGeneration(id) == "" {
 			s.assignPaneGeneration(id)
+			if s.LegacyPaneGenerations == nil {
+				s.LegacyPaneGenerations = map[PaneID]bool{}
+			}
+			s.LegacyPaneGenerations[id] = true
 			changed = true
 		}
 	}

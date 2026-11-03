@@ -48,8 +48,8 @@ func (s *Server) saveScheduledSession() {
 
 // saveSession writes session.json atomically. It must run on the app loop
 // because it reads model state and session records.
-func (s *Server) saveSession() {
-	s.writeSession(s.captureSession())
+func (s *Server) saveSession() bool {
+	return s.writeSession(s.captureSession())
 }
 
 func (s *Server) captureSession() *sessionSnapshot {
@@ -99,20 +99,20 @@ func (s *Server) captureSession() *sessionSnapshot {
 	return &sessionSnapshot{sequence: s.saveSequence, file: f, history: s.capturePaneHistory(f)}
 }
 
-func (s *Server) writeSession(snapshot *sessionSnapshot) {
+func (s *Server) writeSession(snapshot *sessionSnapshot) bool {
 	if snapshot == nil {
-		return
+		return false
 	}
 	s.saveWriteMu.Lock()
 	defer s.saveWriteMu.Unlock()
 	// Shutdown/restart saves synchronously. A delayed older timer must never
 	// overwrite that final state, or another newer captured generation.
 	if s.saveClosed || snapshot.sequence <= s.savedSequence {
-		return
+		return false
 	}
 	if err := session.Save(session.Path(s.dir), snapshot.file); err != nil {
 		fmt.Fprintf(os.Stderr, "ikesu: save session: %v\n", err)
-		return
+		return false
 	}
 	if snapshot.history != nil {
 		if err := session.SaveHistory(s.dir, *snapshot.history); err != nil {
@@ -120,6 +120,7 @@ func (s *Server) writeSession(snapshot *sessionSnapshot) {
 		}
 	}
 	s.savedSequence = snapshot.sequence
+	return true
 }
 
 func (s *Server) closeSessionWrites() {

@@ -454,13 +454,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	}
 	s.app.State().SetPaneReservations(reservations)
 	s.app.State().EnsurePaneGenerations()
-	if store, err := s.db(); err == nil {
-		for id, generation := range s.app.State().PaneGenerations {
-			if s.sup.Get(id) != nil {
-				_ = store.BindLegacyPane(fmtPaneID(id), generation)
-			}
-		}
-	}
+	s.migrateLegacyPaneGenerations()
 
 	if imported == nil {
 		s.app.StartOnboarding()

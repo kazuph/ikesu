@@ -3,6 +3,7 @@ package model
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -29,6 +30,32 @@ func TestPaneAllocationUsesLedgerAndFailsClosed(t *testing.T) {
 	s.Apply(CmdSplitFocused{Dir: layout.Vertical})
 	if id := s.FocusedPane(); id != 4 {
 		t.Fatalf("unreadable database: got %d, want high water + 1", id)
+	}
+}
+
+func TestLegacyGenerationMarkerSurvivesRestoreButNotReuse(t *testing.T) {
+	legacy := New("/tmp", 80, 24).Snapshot()
+	legacy.Workspaces[0].Tabs[0].Panes[0].Generation = ""
+	r := Restore(legacy)
+	data, err := json.Marshal(r.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte(`"legacy_generation":true`)) {
+		t.Fatalf("legacy marker missing: %s", data)
+	}
+	r.Apply(CmdSplitFocused{Dir: layout.Vertical})
+	r.Apply(CmdClosePane{Pane: 1})
+	r.Apply(CmdSplitFocused{Dir: layout.Vertical})
+	if r.FocusedPane() != 1 {
+		t.Fatal("expected reused pane")
+	}
+	data, err = json.Marshal(r.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte(`"legacy_generation":true`)) {
+		t.Fatalf("replacement inherited legacy marker: %s", data)
 	}
 }
 
