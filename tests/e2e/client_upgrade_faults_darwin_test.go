@@ -94,7 +94,8 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 				for child == 0 {
 					select {
 					case <-deadline.C:
-						t.Fatal("version process did not start")
+						s.pump(time.Now().Add(100 * time.Millisecond))
+						t.Fatalf("version process did not start; screen:\n%s", s.text())
 					case <-ticker.C:
 						out, _ := exec.Command("pgrep", "-u", strconv.Itoa(os.Getuid()), "-f", newBinary).Output()
 						for _, field := range strings.Fields(string(out)) {
@@ -102,7 +103,7 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 							if err != nil {
 								continue
 							}
-							info, _ := exec.Command("ps", "-p", field, "-o", "ppid=", "-o", "command=").Output()
+							info, _ := exec.Command("ps", "-ww", "-p", field, "-o", "ppid=", "-o", "command=").Output()
 							fields := strings.Fields(string(info))
 							if len(fields) >= 3 && fields[0] == strconv.Itoa(pid) && fields[1] == newBinary && fields[2] == "--version" {
 								child = candidate
