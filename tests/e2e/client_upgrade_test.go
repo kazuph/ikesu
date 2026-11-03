@@ -444,17 +444,19 @@ func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := filepath.Join(t.TempDir(), "invalid.toml")
-	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
+	if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	prepare := func(cmd *exec.Cmd) {
-		if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
 		cmd.Env = append(cmd.Env, "IKESU_CLIENT_UPGRADE="+string(raw))
 	}
 	s := startVersionModePrepared(t, map[string]string{"IKESU_CONFIG": cfg}, false, newBinary, oldBinary, prepare)
 	s.waitFor("configuration failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
+	// Invalid configuration falls back to onboarding defaults; dismiss the real
+	// dialog before sending shell input so it cannot consume the command.
+	s.waitFor("onboarding after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "terminal workspace manager for coding agents") })
+	s.send("\r")
+	s.waitFor("onboarding dismissed", 15*time.Second, func(text string) bool { return !strings.Contains(text, "terminal workspace manager for coding agents") })
 	s.waitFor("old shell after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.waitFor("old client version after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	s.send("printf 'ROLLBACK_AFTER_CONFIG_FAIL\\n'\r")
