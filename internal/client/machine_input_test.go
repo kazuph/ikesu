@@ -161,6 +161,43 @@ func TestMachineInputRetainsPartialPasteAcrossReaderRestart(t *testing.T) {
 	}
 }
 
+func TestMachineInputStopRetainsQueuedEvents(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	state := &machineInputState{framer: input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs}}
+	events, stop, err := readMachineInputWithState(r, ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("z", queuedInputBatchLimit+10)
+	if _, err := w.WriteString(want); err != nil {
+		t.Fatal(err)
+	}
+	var got strings.Builder
+	select {
+	case event := <-events:
+		got.Write(event.Raw)
+	case <-time.After(5 * time.Second):
+		t.Fatal("input reader did not start")
+	}
+	stop()
+	for event := range events {
+		got.Write(event.Raw)
+	}
+	for _, event := range state.unsent {
+		got.Write(event.Raw)
+	}
+	if got.String() != want {
+		t.Fatalf("input changed on stop: got %d bytes, want %d", got.Len(), len(want))
+	}
+}
+
 func TestMachineWriterPreservesOrderWithoutBlockingOtherEndpoint(t *testing.T) {
 	blockedRead, blockedWrite, err := os.Pipe()
 	if err != nil {
