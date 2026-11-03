@@ -211,3 +211,34 @@ func TestClientRollsBackWhenNewConnectionFails(t *testing.T) {
 	s.waitFor("input after connection rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_CONNECT_FAIL") })
 	s.waitFor("old client version", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 }
+
+// A malformed configuration makes the new client roll back before connecting.
+func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	state := map[string]any{
+		"old_executable": oldBinary,
+		"old_version":    oldVersion,
+		"session":        "e2e",
+		"attempt": map[string]any{
+			"session": "e2e", "generation": "configuration-failure-test", "executable": newBinary, "version": newVersion,
+		},
+		"active": "local",
+	}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(t.TempDir(), "invalid.toml")
+	if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, map[string]string{"IKESU_CLIENT_UPGRADE": string(raw), "IKESU_CONFIG": cfg}, false, newBinary, "")
+	s.waitFor("configuration failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
+	s.send("printf 'ROLLBACK_AFTER_CONFIG_FAIL\\n'\r")
+	s.waitFor("input after configuration rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_CONFIG_FAIL") })
+	var pong api.PongResult
+	s.rpc(api.MethodPing, api.EmptyParams{}, &pong)
+	if pong.Version != oldVersion {
+		t.Fatalf("old client did not start the old server: %+v", pong)
+	}
+}
