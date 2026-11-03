@@ -1,6 +1,11 @@
 package client
 
 import (
+	"net"
+	"time"
+
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,5 +99,54 @@ func TestUpgradeAttemptIsScopedToServerGeneration(t *testing.T) {
 	rollback.Executable = ""
 	if shouldCheckUpgrade(rollback, "new", seen) {
 		t.Fatal("a baseline server without an executable triggered an upgrade")
+	}
+}
+
+// Two isolated real servers provide actual ping identity and a socket reconnect.
+func TestUpgradeFailureIsNotRetriedAfterReconnect(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))
+	m.failedUpgrades = make(map[upgradeIdentity]bool)
+	m.clientVersion = "older-client"
+	e := m.endpoints["local"]
+	receiveUpgrade := func() endpointEvent {
+		t.Helper()
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case event := <-m.events:
+				if event.upgrade != nil {
+					return event
+				}
+				m.event(event)
+			case <-timer.C:
+				t.Fatal("upgrade check did not return")
+				return endpointEvent{}
+			}
+		}
+	}
+	m.checkUpgrade(e.attempt)
+	failure := receiveUpgrade()
+	if failure.upgrade.err == nil || failure.upgrade.identity.Generation == "" {
+		t.Fatalf("first check did not fail with server identity: %+v", failure.upgrade)
+	}
+	m.event(failure)
+	if !m.failedUpgrades[failure.upgrade.identity] {
+		t.Fatal("real check failure was not recorded")
+	}
+	e.connection.Close()
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["local"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.start("local", stream)
+	attempt := e.attempt
+	h.until("reconnected after failed upgrade", func() bool { return e.connection != nil && e.snapshotAttempt == attempt })
+	m.checkUpgrade(attempt)
+	repeated := receiveUpgrade()
+	if repeated.upgrade.err != nil || repeated.upgrade.candidate != nil || repeated.upgrade.identity != failure.upgrade.identity {
+		t.Fatalf("same failed upgrade was checked or executed again: %+v", repeated.upgrade)
 	}
 }
