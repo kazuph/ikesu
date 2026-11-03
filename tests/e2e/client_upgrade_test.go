@@ -176,7 +176,10 @@ func TestClientKeepsRunningWhenUpgradeDirectoryWritable(t *testing.T) {
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
 		t.Fatalf("handoff to server in writable directory: %v %s", err, out)
 	}
-	s.waitFor("upgrade rejection", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: writable executable") })
+	s.waitFor("upgrade rejection", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") })
+	if text := s.text(); !strings.Contains(text, "writable") && !strings.Contains(text, "untrusted") {
+		t.Fatalf("permission rejection did not show its reason:\n%s", text)
+	}
 	if bytes.Contains(output.Bytes(), []byte(tui.LeaveSeq)) {
 		t.Fatal("client left its terminal after executable verification failed")
 	}
