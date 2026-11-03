@@ -181,6 +181,56 @@ func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
 	}
 }
 
+func TestClientPreservesInputAcrossConfigFailureRollback(t *testing.T) {
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	cfg := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, map[string]string{"IKESU_CONFIG": cfg}, false, oldBinary, oldBinary)
+	s.waitFor("old client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	var output bytes.Buffer
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for !bytes.Contains(output.Bytes(), []byte(tui.MouseOffSeq)) {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client exited before upgrade")
+			}
+			output.Write(data)
+			_, _ = s.emu.Write(data)
+		case <-timer.C:
+			t.Fatal("client did not reach upgrade drain")
+		}
+	}
+	pid := s.cmd.Process.Pid
+	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	stopped := true
+	defer func() {
+		if stopped {
+			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+		}
+	}()
+	s.send("printf 'BUFFERED_BEFORE_CONFIG_ROLLBACK\\n'\r")
+	if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+	stopped = false
+	s.waitFor("configuration failure after actual upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
+	s.waitFor("buffered input after configuration rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "BUFFERED_BEFORE_CONFIG_ROLLBACK") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if !strings.Contains(read.Read.Text, "BUFFERED_BEFORE_CONFIG_ROLLBACK") {
+		t.Fatalf("input missing from original pane: %s", read.Read.Text)
+	}
+}
+
 // The timeout case uses a test build with a shorter version deadline.
 func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	for _, fault := range []string{"not-executable", "broken-link", "version-timeout"} {
