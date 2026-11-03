@@ -67,7 +67,7 @@ func TestScriptFileDecisionWithRealSession(t *testing.T) {
 					return len(pending.Decisions) == 1
 				})
 				d := pending.Decisions[0]
-				if d.Body == nil || !strings.Contains(*d.Body, "の2行目:") {
+				if d.Body == nil || !strings.Contains(d.Title, "の2行目:") || !strings.Contains(d.Title, "削除操作は確認が必要") || strings.ContainsAny(d.Title, "\r\n") {
 					t.Fatalf("source missing: %+v", d)
 				}
 				if _, e := os.Stat(before); !os.IsNotExist(e) {

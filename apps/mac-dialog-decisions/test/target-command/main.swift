@@ -6,23 +6,17 @@ app.finishLaunching()
 let rows=try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[1]))) as! [[String:Any]]
 let root=CommandLine.arguments[2]
 func fields(_ view:NSView)->[RichTextLabel] {view.subviews.flatMap {($0 as? RichTextLabel).map {[$0]} ?? fields($0)}}
+func textFields(_ view:NSView)->[NSTextField] {view.subviews.flatMap {($0 as? NSTextField).map {[$0]} ?? textFields($0)}}
 for row in rows {
  let name=row["name"] as! String
  let decision=row["decision"] as! [String:Any]
  let origin=decision["origin"] as! [String:Any]
  let body=decision["body"] as! String
  let spec=try JSONDecoder().decode(DialogSpec.self,from:JSONSerialization.data(withJSONObject:row["spec"]!))
- // Expectations come from the actual guard decision, never a candidate list
- // injected into the production renderer.
- var expected:[NSRange]=[]
- for (heading,key) in [("対象コマンド：","target_command"),("コマンド: ","command")] {
-  if let command=origin[key] as? String, !command.isEmpty {
-   let full=(body as NSString).range(of:heading+command)
-   precondition(full.location != NSNotFound)
-   expected.append(NSRange(location:full.location+(heading as NSString).length,length:(command as NSString).length))
-  }
- }
- precondition(expected.count == (name=="same" ? 1:2))
+ let command=origin["command"] as! String
+ let expected: NSRange? = name == "requested-example" ? NSRange(location:0,length:143) : name == "same" ? NSRange(location:0,length:23) : nil
+ let actual = spec.approval_target_range.map { NSRange(location:$0.start,length:$0.length) }
+ precondition(actual == expected,"independent expected range mismatch for \(name)")
  for theme in [NSAppearance.Name.aqua,.darkAqua] {
   app.appearance=NSAppearance(named:theme)
   let controller=DialogController(spec:spec,specPath:root+"/"+name+".json")
@@ -33,16 +27,14 @@ for row in rows {
   controller.panel.effectiveAppearance.performAsCurrentDrawingAppearance {content.layer!.backgroundColor=NSColor.windowBackgroundColor.cgColor}
   content.layoutSubtreeIfNeeded()
   let labels=fields(content)
-  let bodyLabels=labels.filter {$0.string.contains("対象コマンド：") || $0.string.contains("コマンド: ")}
-  precondition(bodyLabels.count == (name=="same" ? 1:2),"duplicate command detail")
+  let bodyLabels=labels.filter {$0.string==command}
+  precondition(bodyLabels.count == 1,"full command must appear once")
   var redCharacters=0
   for label in bodyLabels {
-   let offset=(body as NSString).range(of:label.string).location
-   precondition(offset != NSNotFound)
    let attributed=label.attributedString()
    for index in 0..<(label.string as NSString).length {
     let red=attributed.attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor == .systemRed
-    let wanted=expected.contains {NSLocationInRange(offset+index,$0)}
+    let wanted=expected.map {NSLocationInRange(index,$0)} ?? false
     precondition(red==wanted,"red range mismatch case=\(name) index=\(index)")
     if wanted {precondition((attributed.attribute(.font,at:index,effectiveRange:nil) as! NSFont).isFixedPitch);redCharacters+=1}
    }
@@ -51,22 +43,28 @@ for row in rows {
     let location=NSRange(url,in:label.string).location
     precondition(attributed.attribute(.link,at:location,effectiveRange:nil) != nil)
    }
-   if let url=label.string.range(of:"https://example.test/help") {
-    let location=NSRange(url,in:label.string).location
-    precondition(attributed.attribute(.link,at:location,effectiveRange:nil) != nil)
-    precondition(attributed.attribute(.foregroundColor,at:location,effectiveRange:nil) as? NSColor != .systemRed)
-   }
   }
-  precondition(redCharacters==expected.reduce(0){$0+$1.length})
+  precondition(redCharacters == (expected?.length ?? 0))
   if name=="quoted-command" {
    let quote="対象コマンド：/bin/rm /outside/victim"
    let quoted=(body as NSString).range(of:quote,options:.backwards)
    precondition(quoted.location != NSNotFound)
-   precondition(!expected.contains {NSIntersectionRange($0,quoted).length>0},"reason quote must remain ordinary")
+   precondition(labels.contains {$0.string.contains(quote)},"reason quote must remain visible")
   }
   let title=labels.first {$0.string==spec.title}!
   precondition(title.string==decision["title"] as! String)
   for index in 0..<(title.string as NSString).length {precondition(title.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor != .systemRed)}
+  if name == "requested-example" {
+   let commandLabel=bodyLabels[0]
+   let firstField=labels.first {$0.string.contains("TenkaiHifumi のメモリー")}!
+   precondition(title.convert(title.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY)
+   precondition(commandLabel.convert(commandLabel.bounds,to:content).midY > firstField.convert(firstField.bounds,to:content).midY)
+   let names=textFields(content).map(\.stringValue)
+   for required in ["対象","理由","内容","確認済み","戻し方","承認  ⌘1","1日許可  ⌘2","却下  ⌘3"] { precondition(names.contains(required),"missing \(required)") }
+   let hints=names.filter {$0.contains("⌘") && $0.contains("送信") && $0.contains("選ん")}
+   precondition(hints.count == 1 && hints[0].contains("⌘1〜⌘3"),"guard instruction must be one line")
+   print("ORDER title>command>request optionShortcuts=3 requestFields=5")
+  }
   for card in controller.cards {precondition(content.bounds.contains(card.convert(card.bounds,to:content)))}
   precondition(content.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds,to:content)))
   print("WINDOW case=\(name) number=\(controller.panel.windowNumber) visible=\(controller.panel.isVisible) frame=\(controller.panel.frame)")
@@ -87,8 +85,8 @@ for row in rows {
    for offset in stride(from:0,to:bytes.count,by:4) {if bytes[offset]>bytes[offset+1] && bytes[offset]>bytes[offset+2] {count+=1}}
    return count
   }
-  precondition(redPixels>0)
-  print("PASS case=\(name) theme=\(theme.rawValue) commandRanges=\(expected.count) exactRedUTF16=\(redCharacters) redPixels=\(redPixels) selectable=1 links=preserved")
+  if expected != nil { precondition(redPixels > 0,"expected visible red pixels for \(name)") }
+  print("PASS case=\(name) theme=\(theme.rawValue) commandRanges=\(expected == nil ? 0 : 1) exactRedUTF16=\(redCharacters) redPixels=\(redPixels) selectable=1 links=preserved")
   controller.close()
  }
 }

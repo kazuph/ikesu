@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDialogSpec,locationLabel} from '../spec.mjs';
+import {buildDialogSpec,locationLabel,approvalTargetRange,approvalFields} from '../spec.mjs';
 import {buildDecisionBlocks,fallbackText} from '../../slack-decisions/slack-decisions.mjs';
 import {discoverRichContent} from '../rich.mjs';
 
@@ -10,15 +10,47 @@ test('Mac and Slack lead with the same four complete location fields and exact a
   const spec=buildDialogSpec(d,machine),blocks=buildDecisionBlocks({decision:d,machine});
   assert.ok(blocks[0].elements[0].text.startsWith(spec.location));
   assert.equal(spec.location.split('｜').length,4);
-  assert.equal(spec.approval_command,'rm /tmp/target');
-  assert.match(blocks[1].text.text,/実行するコマンド\*\n```\nrm \/tmp\/target\n```/);
-  assert.equal(blocks[2].text.text,'*削除操作は確認が必要です*');
+  assert.equal(spec.approval_command,'bash delete.sh');
+  assert.equal(spec.approval_target_range,null);
+  assert.equal(blocks[1].text.text,'*削除操作は確認が必要です*');
+  assert.equal(blocks[2].elements[0].elements[0].text,'bash delete.sh');
   assert.equal(blocks[3].text.text,d.body);
   assert.ok(fallbackText({decision:d,machine}).startsWith(spec.location));
   assert.deepEqual(spec.options.map(x=>x.id),['approve','reject']);
  }
- assert.equal(locationLabel({}), '不明｜不明｜不明｜不明');
+ assert.equal(locationLabel({}), '不明');
+ assert.equal(locationLabel({origin:{cwd:'/repo/ikesu',workspace_label:'ikesu',pane_label:'作業'}},{id:'local'}), 'ローカル｜ikesu｜作業');
  const long='名前'.repeat(2000);assert.ok(locationLabel({origin:{workspace_label:long}}).includes(long));
+});
+
+test('guard target is highlighted only when its location is unambiguous',()=>{
+ const guard=(command,target)=>({kind:'command_guard',origin:{command,target_command:target}});
+ assert.deepEqual(approvalTargetRange(guard('rm a && grep x','rm a')),{start:0,length:4});
+ assert.deepEqual(approvalTargetRange(guard('rm a','')),{start:0,length:4});
+ for(const [command,target] of [['rm a && rm a','rm a'],['echo rm a','rm a'],['rm "$X" && echo x','rm "$X"'],['rm *** && echo x','rm ***']]) assert.equal(approvalTargetRange(guard(command,target)),null);
+});
+
+test('guard pane details do not repeat the pane shown in the location',()=>{
+ const d={kind:'command_guard',origin:{cwd:'/repo',pane_id:'p_color',agent:'claude',command:'rm a'},options:[]};
+ const spec=buildDialogSpec(d,{id:'local'});
+ assert.ok(spec.location.includes('p_color'));
+ assert.equal(spec.details.some(detail=>detail.label==='ペイン'),false);
+ const blocks=buildDecisionBlocks({decision:d,machine:{id:'local'}});
+ assert.equal(JSON.stringify(blocks).includes('*ペイン*'),false);
+});
+
+test('request fields retain commands quoted by the requester',()=>{
+ const command = "printf '対象コマンド: rm /tmp/a'";
+ const body = `対象プロジェクト: ikesu。必要な理由: 表示確認。実施内容: ${command}。確認済み: 内容を確認。戻し方: 中止。`;
+ const fields = approvalFields(body);
+ assert.deepEqual(fields.map(f=>f.label),['対象','理由','内容','確認済み','戻し方']);
+ assert.ok(fields.find(f=>f.label==='内容').value.includes(command));
+ assert.equal(approvalFields('対象プロジェクト: x。必要な理由: x。必要な理由: y'),null);
+ const commandWithLabel = "printf '戻し方: 元のまま'";
+ const spaced = `対象プロジェクト: ikesu 必要な理由: 検証 実施内容: ${commandWithLabel} 確認済み: 内容 戻し方: 中止`;
+ const spacedFields = approvalFields(spaced);
+ assert.deepEqual(spacedFields.map(f=>f.label),['対象','理由','内容','確認済み','戻し方']);
+ assert.ok(spacedFields.find(f=>f.label==='内容').value.includes(commandWithLabel));
 });
 
 test('video discovery retains file/URL destinations and encoded paths without redacted data',()=>{

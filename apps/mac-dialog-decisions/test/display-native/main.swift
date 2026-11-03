@@ -26,7 +26,7 @@ for theme in [NSAppearance.Name.aqua, .darkAqua] {
  app.appearance = NSAppearance(named: theme)
  for kind in ["command_guard", "agent_prompt"] {
   let source = root + "/sample.mp4"
-  let input: [String: Any] = ["kind":kind,"window_title":"判断待ちの表示試験", "location":"ローカル｜ikesu｜開発｜実装 / codex", "approval_command":kind == "command_guard" ? "rm /tmp/example" : "", "title":"削除操作の確認・質問見出しの全文", "body":String(repeating:"主要な説明と細かい該当理由です。\n",count:200) + source, "options":[["id":"approve","label":"承認","description":"この実行を許可"],["id":"day","label":"1日許可"],["id":"reject","label":"却下"]],"allow_text":true,"multi_select":false,"media_sources":[source,"https://example.com"],"draft_directory":root]
+  let input: [String: Any] = ["kind":kind,"window_title":"判断待ちの表示試験", "location":"ローカル｜ikesu｜開発｜実装 / codex", "approval_command":kind == "command_guard" ? "rm /tmp/example" : "", "approval_target_range":["start":0,"length":15], "title":"削除操作の確認・質問見出しの全文", "body":String(repeating:"主要な説明と細かい該当理由です。\n",count:200) + source, "options":[["id":"approve","label":"承認","description":"この実行を許可"],["id":"day","label":"1日許可"],["id":"reject","label":"却下"]],"allow_text":true,"multi_select":false,"media_sources":[source,"https://example.com"],"draft_directory":root]
   let file = root + "/" + kind + ".json"
   let data = try JSONSerialization.data(withJSONObject:input)
   try data.write(to:URL(fileURLWithPath:file))
@@ -54,7 +54,7 @@ for theme in [NSAppearance.Name.aqua, .darkAqua] {
   let title=labels(content).first {$0.string==input["title"] as? String}!
   if kind=="command_guard" {
    let command=labels(content).first {$0.string=="rm /tmp/example"}!
-   precondition(command.convert(command.bounds,to:content).minY > title.convert(title.bounds,to:content).minY,"command precedes reason")
+   precondition(command.convert(command.bounds,to:content).minY < title.convert(title.bounds,to:content).minY,"title precedes command")
    for index in 0..<(command.string as NSString).length {
     precondition(command.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor == .systemRed)
     precondition((command.attributedString().attribute(.font,at:index,effectiveRange:nil) as! NSFont).isFixedPitch)

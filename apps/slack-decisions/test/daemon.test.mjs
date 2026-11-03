@@ -124,6 +124,175 @@ async function feedAndSettle(daemon, event, ms = 300) {
 
 const LOCAL = { id: "local", label: "Local" };
 
+test("pending body updates reuse the post and a resolved decision cannot be revived", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const initial = sampleDecision();
+    await daemon.onCreated("local", LOCAL, initial);
+    const updated = {...initial, body: "全文に差し替え"};
+    await daemon.onUpdated("local", LOCAL, updated);
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 1);
+    assert.equal(fake.updates.length, 1);
+    assert.ok(JSON.stringify(fake.posts[0].blocks).includes(updated.body));
+    await daemon.onCreated("local", LOCAL, {...updated, body: "再接続後の全文"});
+    assert.ok(JSON.stringify(fake.posts[0].blocks).includes("再接続後の全文"));
+    await daemon.onResolved("local", {...updated, status: "answered"});
+    await daemon.onUpdated("local", LOCAL, updated);
+    assert.equal(fake.posts.length, 0);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("identical pending guard requests transfer one post without reusing old reactions", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});
+  const postsFilePath = path.join(tmpdir("guard-restart"), "posts.json");
+  const daemon = makeDaemon({slack, postsFilePath});
+  let restarted;
+  try {
+    const first = sampleDecision({kind: "command_guard", decision_id: "guard-first", origin: {pane_id:"p1", cwd:"/repo", command:"rm a", target_command:"", reason:"申請理由"}});
+    await daemon.onCreated("local", LOCAL, first);
+    const ts = fake.posts[0].ts;
+    fake.userReact(ts, "one", "UOLD");
+    const second = {...first, decision_id:"guard-second", created_unix_ms:Date.now()};
+    await daemon.onCreated("local", LOCAL, second);
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 1);
+    assert.equal(fake.posts[0].ts, ts);
+    assert.ok(JSON.stringify(fake.posts[0].blocks).includes("同じ申請 2回目"));
+    const entry = daemon.entries.get("local\u0000guard-second");
+    assert.ok(entry.seenReactions.has("one:UOLD"));
+    await daemon.handleSocketPayload({type:"reaction_added", user:"UOLD", reaction:"one", item:{type:"message", ts}, event_ts:String(entry.answerAfter - 1)});
+    await daemon.pollEntryReactions(entry);
+    assert.equal(daemon.testAnswers.length, 0);
+    await daemon.stop();
+    restarted = makeDaemon({slack, postsFilePath});
+    restarted.loadPostsFile();
+    await restarted.onCreated("local", LOCAL, first);
+    await restarted.onCreated("local", LOCAL, second);
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 1);
+    await restarted.onResolved("local", {...first, status:"cancelled"});
+    assert.equal(fake.posts.length, 1);
+    await restarted.onResolved("local", {...second, status:"answered"});
+    assert.equal(fake.posts.length, 0);
+  } finally { await daemon.stop(); await restarted?.stop(); await fake.stop(); }
+});
+
+test("redacted guard fields always create separate Slack posts", async () => {
+  for (const field of ["command", "target_command", "reason"]) {
+    const fake = await new FakeSlack().start();
+    const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+    const daemon = makeDaemon({slack});
+    try {
+      const first = sampleDecision({kind:"command_guard", decision_id:`${field}-first`, origin:{pane_id:"p1", cwd:"/repo", command:"rm a", target_command:"rm a", reason:"理由", [field]:"before***after"}});
+      await daemon.onCreated("local", LOCAL, first);
+      await daemon.onCreated("local", LOCAL, {...first, decision_id:`${field}-second`});
+      assert.equal(fake.calls.filter(call => call.method === "chat.postMessage").length, 2, field);
+      assert.equal(fake.calls.filter(call => call.method === "chat.update").length, 0, field);
+      assert.equal(fake.posts.length, 2, field);
+      assert.notEqual(fake.posts[0].ts, fake.posts[1].ts, field);
+    } finally { await daemon.stop(); await fake.stop(); }
+  }
+});
+
+test("long pending message restores all continuation posts after machine reconnect", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const body = "本文😀\n".repeat(30000);
+    const decision = sampleDecision({decision_id:"long-reconnect", body});
+    await daemon.onCreated("local", LOCAL, decision);
+    const old = fake.posts[0].ts;
+    const oldReplies = (fake.threadReplies.get(old) || []).map(reply => reply.ts);
+    assert.ok(oldReplies.length > 0);
+    await daemon.onMachineDown("local", "disconnect");
+    await daemon.onMachineUp("local");
+    await daemon.onCreated("local", LOCAL, decision);
+    const root = fake.posts[0];
+    assert.notEqual(root.ts, old);
+    const replies = fake.threadReplies.get(root.ts) || [];
+    assert.ok(replies.length > 0);
+    const blocks = [...root.blocks, ...replies.flatMap(reply => reply.blocks || [])];
+    const start = blocks.findIndex(block => block.type === "section" && block.text?.text.startsWith("本文"));
+    let actual = "";
+    for (let i = start; i < blocks.length && actual.length < body.length; i++) actual += blocks[i].text?.text || "";
+    assert.equal(actual, body);
+    assert.ok(!fake.calls.some(call => call.method === "chat.update" && oldReplies.includes(call.params.ts)));
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("long body and command survive Slack message and thread block limits", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const body = "本文😀\n".repeat(30000);
+    const command = "printf '```😀'\n".repeat(1000);
+    const decision = sampleDecision({kind:"command_guard", title:"実行確認", body, origin:{pane_id:"p1", cwd:"/repo", reason:"理由", command}});
+    await daemon.onCreated("local", LOCAL, decision);
+    const root = fake.posts[0];
+    const replies = fake.threadReplies.get(root.ts) || [];
+    const all = [...root.blocks, ...replies.flatMap(reply => reply.blocks || [])];
+    assert.ok(replies.length > 0);
+    assert.ok([root, ...replies].every(message => message.blocks.length <= 50));
+    assert.ok([root, ...replies].every(message => message.text.length <= 40000));
+    assert.ok(replies.every(message => message.text !== "判断待ちの続き"));
+    const actualCommand = all.filter(block => block.type === "rich_text").map(block => block.elements[0].elements[0].text).join("");
+    assert.equal(actualCommand, command);
+    const start = all.findIndex(block => block.type === "section" && block.text?.text.startsWith("本文"));
+    let actualBody = "";
+    for (let i = start; i < all.length && actualBody.length < body.length; i++) actualBody += all[i].text?.text || "";
+    assert.equal(actualBody, body);
+    assert.ok(all.filter(block => block.type === "section").every(block => block.text.text.length <= 3000));
+    await daemon.onUpdated("local", LOCAL, {...decision, body:"短い本文", origin:{...decision.origin, command:"true"}});
+    assert.equal((fake.threadReplies.get(root.ts) || []).length, 0);
+    assert.equal(fake.posts.length, 1);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("guard reactions cannot answer the new request until the rewritten post is visible", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack, config:{postMutationAttempts:1}});
+  try {
+    const first = sampleDecision({kind:"command_guard", decision_id:"before", origin:{pane_id:"p1", cwd:"/repo", command:"rm a", reason:"理由"}});
+    await daemon.onCreated("local", LOCAL, first);
+    const ts = fake.posts[0].ts;
+    fake.failMethods.add("chat.update");
+    const next = {...first, decision_id:"next", created_unix_ms:first.created_unix_ms+1};
+    await daemon.onCreated("local", LOCAL, next);
+    const entry = daemon.entries.get("local\u0000next");
+    assert.equal(entry.waitingGuardRefresh, true);
+    assert.equal(entry.answerReady, false);
+    fake.userReact(ts, "one", "UBEFORE");
+    await daemon.handleSocketPayload({type:"reaction_added", user:"UBEFORE", reaction:"one", item:{type:"message",ts}, event_ts:String(Date.now()/1000)});
+    assert.equal(daemon.testAnswers.length, 0);
+    fake.failMethods.delete("chat.update");
+    await daemon.renderPending(entry);
+    assert.equal(entry.answerReady, true);
+    assert.ok(entry.seenReactions.has("one:UBEFORE"));
+    await daemon.pollEntryReactions(entry);
+    assert.equal(daemon.testAnswers.length, 0);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
+test("a different intervening guard request prevents grouping", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({token:"t", channel:"C1", apiBase:fake.base});
+  const daemon = makeDaemon({slack});
+  try {
+    const first = sampleDecision({kind:"command_guard", decision_id:"z-first", origin:{pane_id:"p1", cwd:"/repo", command:"rm a", reason:"理由"}});
+    await daemon.onCreated("local", LOCAL, first);
+    await daemon.onCreated("local", LOCAL, {...first, decision_id:"m-middle", origin:{...first.origin, reason:"別の理由"}});
+    await daemon.onCreated("local", LOCAL, {...first, decision_id:"a-last"});
+    assert.equal(fake.posts.length, 3);
+  } finally { await daemon.stop(); await fake.stop(); }
+});
+
 test("machine_down logs only transitions while retrying failed post deletion", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({token: "t", channel: "C1", apiBase: fake.base});

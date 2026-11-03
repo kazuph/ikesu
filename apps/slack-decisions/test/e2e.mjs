@@ -8,13 +8,14 @@
 // the socket-mode websocket, and asserts the decision resolves with the
 // picked option and the resolved Slack post is removed.
 
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeSlack, FakeWsServer, waitUntil as waitUntilBase } from "./fakes.mjs";
+import { REACTION_GRACE_MS } from "../slack-decisions.mjs";
 
 const waitUntil = (fn, options = {}) => waitUntilBase(fn, { timeout: 15_000, ...options });
 
@@ -38,7 +39,7 @@ const socketPath = path.join(tmp, "ikesu-state", "default", "ikesu.sock");
 fs.mkdirSync(path.join(configHome, "ikesu"), { recursive: true });
 fs.mkdirSync(runtimeDir, { recursive: true });
 fs.mkdirSync(stateDir, { recursive: true });
-fs.writeFileSync(path.join(configHome, "ikesu", "config.toml"), "[experimental]\nallow_nested = true\n");
+fs.writeFileSync(path.join(configHome, "ikesu", "config.toml"), "[experimental]\nallow_nested = true\n[ui.sound]\nenabled = false\n");
 
 const ikesuEnv = {
   XDG_CONFIG_HOME: configHome,
@@ -47,7 +48,7 @@ const ikesuEnv = {
   XDG_RUNTIME_DIR: runtimeDir,
   IKESU_SOCKET_PATH: socketPath,
   IKESU_SOCKET_PATH_EXPLICIT: "1",
-  SHELL: "/bin/sh",
+  SHELL: "/bin/zsh",
 };
 
 const serverLog = fs.createWriteStream(path.join(OUT, "server.log"));
@@ -168,6 +169,7 @@ async function main() {
   step("decision posted to fake slack", true, `ts=${post.ts}`);
 
   // 6. human reacts with :one: over the socket-mode websocket
+  fake.userReact(post.ts, "one", "UHUMAN");
   ws.send({
     envelope_id: "e2e-env-1",
     type: "events_api",
@@ -183,7 +185,8 @@ async function main() {
   });
 
   // 7. decision ask resolves with the picked option
-  await waitUntil(() => askCode !== null, { timeout: 15_000 });
+  // The real 15-second reaction grace must elapse before the real server answers.
+  await waitUntil(() => askCode !== null, { timeout: 2 * REACTION_GRACE_MS });
   fs.writeFileSync(path.join(OUT, "ask-output.txt"), askOut);
   const saved = JSON.parse(askOut.trim()).result.decision;
   const answered = saved.answer.option_id === "approve" && saved.status === "answered";
@@ -196,12 +199,11 @@ async function main() {
 
   // Exercise the actual guard process and its feedback, using the real isolated
   // server. echo is harmless; the default policy asks for the word "deploy".
-  const marker = path.join(tmp, "guard", "agent-panes", "proof.json");
-  fs.mkdirSync(path.dirname(marker), { recursive: true });
-  fs.writeFileSync(marker, JSON.stringify({
-    pane_id: "proof", agent: "codex", launch_cwd: tmp,
-    socket: socketPath, mode: "enforce", guard_config: {},
-  }));
+  execFileSync(IKESU, ["pane", "report-agent", "p1", "--source", "slack-e2e", "--agent", "codex", "--state", "idle"], {
+    env: { ...process.env, ...ikesuEnv },
+  });
+  const marker = path.join(ikesuEnv.IKESU_STATE_DIR, "guard", "agent-panes", "p_1.json");
+  if (!fs.existsSync(marker)) throw new Error(`guard marker missing: ${marker}`);
   for (const scenario of [
     { name: "guard-approve", reaction: "one", code: 0, expected: "deploy" },
     { name: "guard-reject", reaction: "three", code: 1, expected: "理由: 未入力" },
@@ -211,7 +213,7 @@ async function main() {
     const priorTs = new Set(fake.posts.map(p => p.ts));
     const guard = execFile(IKESU, ["guard", "exec", "--", "/bin/echo", "deploy"], {
       cwd: tmp, encoding: "utf8", env: { ...process.env, ...ikesuEnv,
-        HOME: tmp, IKESU_GUARD_MARKER: marker, IKESU_PANE_ID: "proof",
+        HOME: tmp, IKESU_GUARD_MARKER: marker, IKESU_PANE_ID: "p1",
         AI_GUARD_REQUEST_REASON: "対象プロジェクトのSlack承認試験。無害なechoだけを実行するため。",
         AI_GUARD_TEMP_APPROVAL_FILE: path.join(tmp, scenario.name + "-approval"),
       },
@@ -219,12 +221,17 @@ async function main() {
     cleanup.push(() => guard.kill("SIGTERM"));
     await waitUntil(() => { if (code !== null) throw Error(scenario.name + " ended before Slack post: " + output); return fake.posts.some(p => !priorTs.has(p.ts)); });
     const guardPost = fake.posts.find(p => !priorTs.has(p.ts));
+    if (scenario.text) {
+      fake.threadReplies.set(guardPost.ts, [{ts:String(Number(guardPost.ts)+1), user:"UHUMAN", text:scenario.text}]);
+    } else {
+      fake.userReact(guardPost.ts, scenario.reaction, "UHUMAN");
+    }
     ws.send({ envelope_id: scenario.name, type: "events_api", payload: {
       type: "event_callback", event: scenario.text
         ? { type: "message", user: "UHUMAN", thread_ts: guardPost.ts, ts: String(Number(guardPost.ts)+1), text: scenario.text }
         : { type: "reaction_added", user: "UHUMAN", reaction: scenario.reaction, item: { type: "message", channel: "C-e2e", ts: guardPost.ts } },
     }});
-    await waitUntil(() => code !== null, { timeout: 15_000 });
+    await waitUntil(() => code !== null, { timeout: 2 * REACTION_GRACE_MS });
     fs.writeFileSync(path.join(OUT, scenario.name + ".txt"), output);
     step(scenario.name + " feedback", code === scenario.code && output.includes(scenario.expected), output.trim());
     await waitUntil(() => fake.deletes.some(p => p.ts === guardPost.ts));

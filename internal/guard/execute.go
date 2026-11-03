@@ -7,7 +7,6 @@ import (
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -105,8 +104,6 @@ func wholeCommand(command string, i Input) bool {
 	return slices.Equal(argv, expected)
 }
 
-var approvalFields = regexp.MustCompile(`[\t \r\n]*(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]`)
-
 func approvalTrigger(i Input, v Verdict) string {
 	command := i.TriggerCommand
 	if command == "" {
@@ -117,11 +114,15 @@ func approvalTrigger(i Input, v Verdict) string {
 	return i.redact("ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）\n対象コマンド：" + command)
 }
 
-func approvalTitle(i Input) string {
-	if i.shellVariables != nil {
-		i.Command = i.RawLine
+func approvalTitle(i Input, v Verdict) string {
+	name := i.Command
+	if strings.ContainsAny(name, " \t\r\n") && len(i.Args) == 0 {
+		if parsed, err := LineInput(i, approvalCommand(i)); err == nil && parsed.Command != "" {
+			name = parsed.Command
+		}
 	}
-	title := "実行確認: " + i.redact(filepath.Base(i.Command))
+	reason := strings.NewReplacer("\r", " ", "\n", " ").Replace(v.Reason)
+	title := "実行確認: " + i.redact(filepath.Base(name)) + " — " + i.redact(reason) + "（規則: " + i.redact(v.Rule) + "）"
 	return title
 }
 
@@ -206,22 +207,22 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		trigger = approvalCommand(selected)
 	}
 	targetCommand := ""
-	body := "ブロック理由：" + v.Reason + "（規則: " + v.Rule + "）"
 	if trigger != command && !wholeCommand(command, i) {
 		targetCommand = i.redact(trigger)
-		body += "\n対象コマンド：" + targetCommand
 	}
-	body += "\n\nコマンド: " + i.redact(command)
-	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
-		if reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
-			body += "\n\n申請文（外側のコマンド " + parent + " から引き継ぎ）"
+	body := ""
+	if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" && reason == i.Env["IKESU_GUARD_PARENT_REASON"] {
+		if strings.Contains(parent, command) || strings.Contains(command, parent) {
+			body = "申請文（外側から引き継ぎ）\n"
+		} else {
+			body = "申請文（外側のコマンド " + parent + " から引き継ぎ）\n"
 		}
 	}
 	if reason != "" {
-		body += "\n\n" + strings.TrimSpace(approvalFields.ReplaceAllString(reason, "\n$1:"))
+		body += reason
 	}
 	body = i.redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()

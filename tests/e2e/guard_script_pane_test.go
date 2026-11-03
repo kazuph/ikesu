@@ -65,7 +65,7 @@ func TestScriptFileInsideRealPane(t *testing.T) {
 						if !os.IsNotExist(e) {
 							t.Fatal("preflight executed first line")
 						}
-						if d.Body == nil || !strings.Contains(*d.Body, "の2行目:") {
+						if d.Body == nil || !strings.Contains(d.Title, "の2行目:") || !strings.Contains(d.Title, "削除操作は確認が必要") || strings.ContainsAny(d.Title, "\r\n") {
 							t.Fatalf("source missing: %+v", d)
 						}
 					} else if e != nil {

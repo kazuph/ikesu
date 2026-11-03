@@ -213,22 +213,98 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 		return err
 	}
 	seen := map[string]string{}
+	content := map[string]string{}
 	if !sendWatch(ctx, lines, decisionWatchLine{Event: "machine_up", Machine: owner}) {
 		return ctx.Err()
 	}
 	for i := range list.Decisions {
 		d := list.Decisions[i]
 		seen[d.DecisionID] = d.Status
+		encoded, _ := json.Marshal(d)
+		content[d.DecisionID] = string(encoded)
 		if d.Status == "pending" {
 			if !sendWatch(ctx, lines, decisionWatchLine{Event: "created", Machine: owner, Decision: &d}) {
 				return ctx.Err()
 			}
 		}
 	}
+	type eventRead struct {
+		raw []byte
+		err error
+	}
+	events := make(chan eventRead, 1)
+	go func() {
+		for {
+			raw, err := reader.ReadBytes('\n')
+			select {
+			case events <- eventRead{raw, err}:
+			case <-finished:
+				return
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	// The screen-prompt scanner also uses a one-second refresh interval.
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
-		raw, err := reader.ReadBytes('\n')
-		if err != nil {
-			return err
+		var raw []byte
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			hasPending := false
+			for _, status := range seen {
+				if status == "pending" {
+					hasPending = true
+					break
+				}
+			}
+			if !hasPending {
+				continue
+			}
+			current, err := r.request("cli:decision:watch:refresh", api.MethodDecisionList, api.DecisionListParams{Status: "pending"})
+			if err != nil {
+				return err
+			}
+			var response api.Response
+			if err := json.Unmarshal(current, &response); err != nil {
+				return err
+			}
+			if response.Err != nil {
+				return response.Err
+			}
+			var pending api.DecisionListResult
+			if err := json.Unmarshal(response.Result, &pending); err != nil {
+				return err
+			}
+			for i := range pending.Decisions {
+				d := pending.Decisions[i]
+				if seen[d.DecisionID] != "pending" {
+					continue
+				}
+				encoded, err := json.Marshal(d)
+				if err != nil {
+					return err
+				}
+				if content[d.DecisionID] == string(encoded) {
+					continue
+				}
+				content[d.DecisionID] = string(encoded)
+				if !sendWatch(ctx, lines, decisionWatchLine{Event: "updated", Machine: owner, Decision: &d}) {
+					return ctx.Err()
+				}
+			}
+			continue
+		case result := <-events:
+			if result.err != nil {
+				return result.err
+			}
+			raw = result.raw
 		}
 		var env api.EventEnvelope
 		if err := json.Unmarshal(raw, &env); err != nil {
@@ -262,6 +338,8 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 			continue
 		}
 		seen[d.DecisionID] = d.Status
+		encoded, _ := json.Marshal(d)
+		content[d.DecisionID] = string(encoded)
 		if !sendWatch(ctx, lines, decisionWatchLine{Event: event, Machine: owner, Decision: &d}) {
 			return ctx.Err()
 		}

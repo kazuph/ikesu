@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { ClientViews, displayedByFocusedClient } from "../mac-dialog-decisions/client-views.mjs";
-import { locationLabel, approvalCommand, decisionText } from "../mac-dialog-decisions/spec.mjs";
+import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, decisionText } from "../mac-dialog-decisions/spec.mjs";
 // ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
@@ -323,6 +323,10 @@ class SlackClient {
       thread_ts: threadTs,
       text,
     });
+  }
+
+  postThreadBlocks(threadTs, text, blocks) {
+    return this.api("chat.postMessage", {channel: this.channel, thread_ts: threadTs, text, blocks});
   }
 
   async addReactions(ts, names) {
@@ -673,6 +677,7 @@ function fmtDeadline(decision, now = Date.now()) {
 
 function originLines(decision) {
   const origin = decision.origin || {};
+  if (decision.kind === "command_guard") return origin.cwd ? [`*場所* \`${origin.cwd}\``] : [];
   const lines = [];
   if (origin.machine) lines.push(`*出どころマシン* ${origin.machine}`);
   if (origin.workspace_label)
@@ -698,9 +703,49 @@ const STATUS_TEXT = {
 
 // Slack caps a section's mrkdwn text around 3000 characters; keep a margin.
 const SLACK_SECTION_TEXT_LIMIT = 2800;
+const SLACK_MESSAGE_BLOCK_LIMIT = 50;
+// Slack truncates a message's top-level text above 40,000 characters.
+const SLACK_MESSAGE_TEXT_LIMIT = 40000;
+
+function blockPlainText(block) {
+  if (block.type === "section") return block.text?.text || "";
+  if (block.type === "context") return (block.elements || []).map(element => element.text || "").join(" ");
+  if (block.type === "rich_text") return (block.elements || []).flatMap(element => element.elements || []).map(element => element.text || "").join("");
+  return "";
+}
+
+function blockPages(blocks) {
+  const pages = [];
+  let page = [], length = 0;
+  for (const block of blocks) {
+    const size = blockPlainText(block).length + (page.length ? 1 : 0);
+    if (page.length && (page.length >= SLACK_MESSAGE_BLOCK_LIMIT || length + size > SLACK_MESSAGE_TEXT_LIMIT)) {
+      pages.push(page); page = []; length = 0;
+    }
+    length += blockPlainText(block).length + (page.length ? 1 : 0);
+    page.push(block);
+  }
+  if (page.length) pages.push(page);
+  return pages;
+}
+
+function pageFallback(blocks) {
+  return blocks.map(blockPlainText).filter(Boolean).join("\n");
+}
+
+function splitExactText(text, limit = SLACK_SECTION_TEXT_LIMIT) {
+  const parts = [];
+  for (let start = 0; start < text.length;) {
+    let end = Math.min(start + limit, text.length);
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+    parts.push(text.slice(start, end));
+    start = end;
+  }
+  return parts;
+}
 
 function optionDescription(option) {
-  return typeof option?.description === "string" ? option.description.trim() : "";
+  return typeof option?.description === "string" ? option.description : "";
 }
 
 function optionPreview(option) {
@@ -713,7 +758,7 @@ function optionEntryText(option, index, multiSelect = false) {
   const label = `:${emoji}: ${box}${option.label || option.id}`;
   const description = optionDescription(option);
   let entry = description
-    ? `${label}\n> ${description.replace(/\n+/g, "\n> ")}`
+    ? `${label}\n> ${description.replace(/\n/g, "\n> ")}`
     : label;
   const preview = optionPreview(option);
   if (preview) {
@@ -727,18 +772,7 @@ function optionEntryText(option, index, multiSelect = false) {
 // Split text into pieces that each fit the section limit — newline cut when
 // possible, code-point-safe hard cut otherwise. Nothing is ever truncated.
 function splitOptionText(text, limit) {
-  const parts = [];
-  let rest = text;
-  while (rest.length > limit) {
-    let cut = rest.lastIndexOf("\n", limit);
-    if (cut <= 0) {
-      cut = Array.from(rest).slice(0, limit).join("").length;
-    }
-    parts.push(rest.slice(0, cut));
-    rest = rest.slice(cut).replace(/^\n/, "");
-  }
-  parts.push(rest);
-  return parts;
+  return splitExactText(text, limit);
 }
 
 function optionBlockChunks(options, multiSelect = false) {
@@ -767,6 +801,7 @@ function buildDecisionBlocks({
   status = "pending",
   mention = "",
   now = Date.now(),
+  repeatCount = 1,
 }) {
   const statusText = STATUS_TEXT[status] || status;
   const machineLabel = locationLabel(decision, machine);
@@ -776,12 +811,20 @@ function buildDecisionBlocks({
   const head = headParts.join(" | ");
   const presentation = decisionText(decision);
   const blocks = [{ type: "context", elements: [{ type: "mrkdwn", text: head }] }];
+  if (repeatCount > 1) blocks.push({type: "context", elements: [{type: "mrkdwn", text: `同じ申請 ${repeatCount}回目`}]});
+  if (presentation.title) for (const chunk of splitExactText(presentation.title, SLACK_SECTION_TEXT_LIMIT - 2)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${chunk}*`}});
   if (approvalCommand(decision)) {
-    blocks.push({type: "section", text: {type: "mrkdwn", text: "*実行するコマンド*\n```\n" + approvalCommand(decision).replaceAll("```", "'`'`'") + "\n```"}});
+    for (const chunk of splitExactText(approvalCommand(decision))) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
+    const range = approvalTargetRange(decision);
+    if (range && range.length !== approvalCommand(decision).length) {
+      const before = Array.from(approvalCommand(decision).slice(0, range.start)).length;
+      const length = Array.from(approvalCommand(decision).slice(range.start, range.start + range.length)).length;
+      blocks.push({type: "context", elements: [{type: "mrkdwn", text: `止めた部分：${before + 1}文字目から${length}文字`} ]});
+    }
   }
-  if (presentation.title) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${presentation.title}*`}});
   const body = decision.kind === "agent_prompt" ? presentation.body : decision.body;
-  if (body) blocks.push({type: "section", text: {type: "mrkdwn", text: body}});
+  const fields = decision.kind === "command_guard" ? approvalFields(body) : null;
+  if (body) for (const chunk of splitExactText(fields ? fields.map(field => `*${field.label}* ${field.value}`).join("\n") : body)) blocks.push({type: "section", text: {type: "mrkdwn", text: chunk}});
   const origins = originLines(decision);
   if (origins.length > 0) {
     blocks.push({
@@ -911,6 +954,14 @@ function questionKey(machineId, decision) {
   ]);
 }
 
+function guardRequestKey(machineId, decision) {
+  if (decision?.kind !== "command_guard") return "";
+  const origin = decision.origin || {};
+  if (!origin.pane_id || !origin.cwd || !origin.command || !origin.reason) return "";
+  if ([origin.command, origin.target_command, origin.reason].some(value => String(value || "").includes("***"))) return "";
+  return JSON.stringify([machineId, origin.pane_id || "", origin.cwd || "", origin.command || "", origin.target_command || "", origin.reason || "", (decision.options || []).map(o => [o.id, o.label, o.role, o.description, o.preview, o.preview_unavailable])]);
+}
+
 export class SlackDecisionsDaemon {
   constructor({
     config,
@@ -944,6 +995,8 @@ export class SlackDecisionsDaemon {
     // cancelled moments ago, adoptable by a recreated copy of the same
     // question, deleted when the window ends.
     this.reusablePosts = new Map();
+    this.guardPostTails = new Map();
+    this.lastGuardByPane = new Map();
     this.recreateReuseMs =
       config.recreatePostReuseMs ??
       Math.max(
@@ -964,6 +1017,9 @@ export class SlackDecisionsDaemon {
     try {
       const raw = JSON.parse(fs.readFileSync(this.postsFilePath, "utf8"));
       const now = Date.now();
+      for (const [key, value] of Object.entries(raw?.__guard_last__ || {})) {
+        if (Array.isArray(value?.order) && now - value.order[0] <= STALE_POST_MAX_AGE_MS) this.lastGuardByPane.set(key, value);
+      }
       for (const [key, value] of Object.entries(raw || {})) {
         if (!value || typeof value.ts !== "string" || !value.ts) continue;
         if (now - (value.saved_at || 0) > STALE_POST_MAX_AGE_MS) continue;
@@ -975,6 +1031,10 @@ export class SlackDecisionsDaemon {
           answerAfter: value.answer_after || 0,
           answerReady: value.answer_ready !== false,
           seenReactions: value.seen_reactions || [],
+          repeatCount: value.repeat_count || 1,
+          superseded: value.superseded === true,
+          continuations: value.continuations || [],
+          waitingGuardRefresh: value.waiting_guard_refresh === true,
         });
       }
       if (this.posts.size > 0) {
@@ -990,6 +1050,7 @@ export class SlackDecisionsDaemon {
     try {
       fs.mkdirSync(path.dirname(this.postsFilePath), { recursive: true });
       const out = {};
+      if (this.lastGuardByPane.size) out.__guard_last__ = Object.fromEntries(this.lastGuardByPane);
       for (const [key, value] of this.posts) {
         out[key] = {
           channel: value.channel,
@@ -999,6 +1060,10 @@ export class SlackDecisionsDaemon {
           answer_after: value.answerAfter || 0,
           answer_ready: value.answerReady !== false,
           seen_reactions: value.seenReactions || [],
+          repeat_count: value.repeatCount || 1,
+          superseded: value.superseded === true,
+          continuations: value.continuations || [],
+          waiting_guard_refresh: value.waitingGuardRefresh === true,
           saved_at: Date.now(),
         };
       }
@@ -1084,6 +1149,10 @@ export class SlackDecisionsDaemon {
       void this.onCreated(mid, machine, decision);
       return;
     }
+    if (event === "updated" && did) {
+      void this.onUpdated(mid, machine, decision);
+      return;
+    }
     if (event === "resolved" && did) {
       void this.onResolved(mid, decision);
     }
@@ -1093,6 +1162,9 @@ export class SlackDecisionsDaemon {
     const key = decisionKey(mid, decisionIdOf(decision));
     const existing = this.entries.get(key);
     if (existing) {
+      if (existing.resolved || (decision.status && decision.status !== "pending")) return;
+      existing.decision = decision;
+      existing.machine = machine;
       // Reconnect replay. If it was marked machine-down, re-arm it now.
       // Its post was deleted on machine_down, so a still-pending one is
       // posted again.
@@ -1105,7 +1177,7 @@ export class SlackDecisionsDaemon {
           await this.postDecision(existing);
         }
         if (existing.reactionDraft) this.armReaction(existing);
-      }
+      } else if (existing.post) await this.renderPending(existing);
       return;
     }
     if (decision.status && decision.status !== "pending") return;
@@ -1115,7 +1187,7 @@ export class SlackDecisionsDaemon {
       machineId: mid,
       machine,
       decision,
-      post: this.posts.get(key)
+      post: this.posts.get(key) && !this.posts.get(key).superseded
         ? { channel: this.posts.get(key).channel, ts: this.posts.get(key).ts }
         : null,
       machineDown: false,
@@ -1127,13 +1199,29 @@ export class SlackDecisionsDaemon {
       answerAfter: this.posts.get(key)?.answerAfter || 0,
       answerReady: this.posts.get(key)?.answerReady !== false,
       seenReactions: new Set(this.posts.get(key)?.seenReactions || []),
+      repeatCount: this.posts.get(key)?.repeatCount || 1,
+      superseded: this.posts.get(key)?.superseded === true,
+      continuations: [...(this.posts.get(key)?.continuations || [])],
+      waitingGuardRefresh: this.posts.get(key)?.waitingGuardRefresh === true,
       // Option ids picked via number reactions on a multi_select decision;
       // submitted when a :white_check_mark: reaction confirms them.
       selection: new Set(),
     };
+    if (decision.kind === "command_guard" && decision.origin?.pane_id) {
+      const scope = JSON.stringify([mid, decision.origin.pane_id]);
+      const last = this.lastGuardByPane.get(scope);
+      const order = [Number(decision.created_unix_ms) || 0, decisionIdOf(decision)];
+      if (!last || order[0] > last.order[0] || (order[0] === last.order[0] && !this.posts.has(key) && key !== last.key)) {
+        entry.previousGuardKey = last?.key || "";
+        this.lastGuardByPane.set(scope, {key, order});
+        this.savePostsFile();
+      }
+    }
     this.entries.set(key, entry);
+    if (entry.superseded) return;
     if (entry.post) {
       this.log(`再起動後に追跡を再開: ${decision.decision_id}`);
+      await this.renderPending(entry);
       return;
     }
     if (this.machinesDown.has(mid)) {
@@ -1156,6 +1244,14 @@ export class SlackDecisionsDaemon {
     }
   }
 
+  async onUpdated(mid, machine, decision) {
+    const entry = this.entries.get(decisionKey(mid, decisionIdOf(decision)));
+    if (!entry || entry.resolved || (decision.status && decision.status !== "pending")) return;
+    entry.decision = decision;
+    entry.machine = machine;
+    if (entry.post) await this.renderPending(entry);
+  }
+
   refreshVisibleDecisions() {
     this.visibilityDone = (this.visibilityDone ?? Promise.resolve()).then(async () => {
       if (this.stopped) return;
@@ -1167,7 +1263,7 @@ export class SlackDecisionsDaemon {
   }
 
   async postDecision(entry) {
-    if (entry.resolved || entry.post || entry.posting || this.stopped) return;
+    if (entry.resolved || entry.superseded || entry.post || entry.posting || this.stopped) return;
     entry.posting = true;
     try {
       if (this.clientViews) {
@@ -1177,13 +1273,40 @@ export class SlackDecisionsDaemon {
         if (entry.waitingForView) return;
       }
       if (entry.resolved || this.stopped || this.machinesDown.has(entry.machineId)) return;
-      await this.postUnseenDecision(entry);
+      const guardKey = guardRequestKey(entry.machineId, entry.decision);
+      if (!guardKey) { await this.postUnseenDecision(entry); return; }
+      const previous = this.guardPostTails.get(guardKey) || Promise.resolve();
+      const work = previous.catch(() => {}).then(() => this.postUnseenDecision(entry));
+      this.guardPostTails.set(guardKey, work);
+      try { await work; } finally { if (this.guardPostTails.get(guardKey) === work) this.guardPostTails.delete(guardKey); }
     } finally { entry.posting = false; }
   }
 
   async postUnseenDecision(entry) {
-    if (entry.decision.status && entry.decision.status !== "pending") return;
+    if (entry.resolved || entry.superseded || this.stopped || this.machinesDown.has(entry.machineId) || (entry.decision.status && entry.decision.status !== "pending")) return;
     const { decision, machine } = entry;
+    const guardKey = guardRequestKey(entry.machineId, decision);
+    const prior = guardKey && this.entries.get(entry.previousGuardKey);
+    if (prior && !prior.resolved && !prior.superseded && prior.post && this.ownsPost(prior.key, prior.post) && guardRequestKey(prior.machineId, prior.decision) === guardKey) {
+      if (prior.renderWork) await prior.renderWork;
+      if (entry.resolved || prior.resolved || !this.ownsPost(prior.key, prior.post)) return this.postUnseenDecision(entry);
+      const post = prior.post;
+      prior.superseded = true;
+      prior.post = null;
+      this.clearReaction(prior);
+      entry.post = post;
+      entry.continuations = prior.continuations;
+      entry.repeatCount = prior.repeatCount + 1;
+      entry.answerReady = false;
+      entry.waitingGuardRefresh = true;
+      entry.answerAfter = 0;
+      this.posts.set(prior.key, {channel: post.channel, ts: post.ts, machineId: prior.machineId, decisionId: prior.decision.decision_id, superseded: true});
+      this.posts.set(entry.key, {channel: post.channel, ts: post.ts, machineId: entry.machineId, decisionId: decision.decision_id, repeatCount: entry.repeatCount, answerAfter: entry.answerAfter, answerReady: false, waitingGuardRefresh: true, continuations: entry.continuations});
+      this.savePostsFile();
+      await this.renderPending(entry);
+      if (entry.resolved) await this.finishResolvedPost(entry);
+      return;
+    }
     // The same question recreated right after a cancel — the
     // screen-prompt churn this guards against — reuses the cancelled
     // decision's post instead of stacking a new one.
@@ -1192,12 +1315,14 @@ export class SlackDecisionsDaemon {
       entry.answerReady = false;
       entry.answerAfter = Math.max(Date.now(), Number(decision.created_unix_ms) || 0) / 1000;
       entry.post = { channel: reuse.channel, ts: reuse.ts };
+      entry.continuations = [...(this.posts.get(reuse.mapKey)?.continuations || [])];
       if (reuse.mapKey) this.posts.delete(reuse.mapKey);
       this.posts.set(entry.key, {
         channel: reuse.channel,
         ts: reuse.ts,
         machineId: entry.machineId,
         decisionId: decision.decision_id,
+        continuations: entry.continuations,
       });
       this.savePostsFile();
       Object.assign(this.posts.get(entry.key), { answerAfter: entry.answerAfter, answerReady: false });
@@ -1212,6 +1337,7 @@ export class SlackDecisionsDaemon {
         await this.finishResolvedPost(entry);
         return;
       }
+      if (entry.decision !== decision) await this.renderPending(entry);
       const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
       if (emojis.length > 0 && this.ownsPost(entry.key, entry.post)) {
         await this.slack.addReactions(reuse.ts, emojis);
@@ -1225,24 +1351,28 @@ export class SlackDecisionsDaemon {
       status: "pending",
       mention: this.slack.mention || "",
     });
+    const pages = blockPages(blocks);
     entry.posting = true;
     try {
       const posted = await this.slack.postMessage({
-        text: fallbackText({ decision, machine }),
-        blocks,
+        text: pages.length > 1 ? pageFallback(pages[0]) : fallbackText({ decision, machine }),
+        blocks: pages[0],
       });
       entry.post = { channel: this.slack.channel, ts: posted.ts };
+      entry.continuations = [];
       this.posts.set(entry.key, {
         channel: this.slack.channel,
         ts: posted.ts,
         machineId: entry.machineId,
         decisionId: decision.decision_id,
+        continuations: [],
       });
       this.savePostsFile();
       if (entry.resolved) {
         await this.finishResolvedPost(entry);
         return;
       }
+      if (entry.decision !== decision || pages.length > 1) await this.renderPending(entry);
       const emojis = NUMBER_EMOJIS.slice(0, (decision.options || []).length);
       if (emojis.length > 0) {
         await this.slack.addReactions(posted.ts, emojis);
@@ -1262,6 +1392,7 @@ export class SlackDecisionsDaemon {
   }
 
   async establishAnswerBaseline(entry) {
+    if (entry.waitingGuardRefresh) return false;
     if (entry.answerReady) return true;
     if (entry.baselineRead) return entry.baselineRead;
     entry.baselineRead = (async () => {
@@ -1300,22 +1431,63 @@ export class SlackDecisionsDaemon {
 
   async renderPending(entry) {
     if (!entry.post || entry.resolved) return;
+    const previous = entry.renderWork || Promise.resolve();
+    const work = previous.then(() => this.renderPendingNow(entry));
+    entry.renderWork = work;
+    try {
+      const rendered = await work;
+      if (rendered && entry.waitingGuardRefresh && !entry.resolved && this.ownsPost(entry.key, entry.post)) {
+        entry.answerAfter = Date.now() / 1000;
+        entry.waitingGuardRefresh = false;
+        Object.assign(this.posts.get(entry.key), {answerAfter: entry.answerAfter, waitingGuardRefresh: false});
+        this.savePostsFile();
+        await this.establishAnswerBaseline(entry);
+      }
+    } finally { if (entry.renderWork === work) entry.renderWork = null; }
+  }
+
+  async renderPendingNow(entry) {
+    if (!entry.post || entry.resolved) return;
     const post = entry.post;
     try {
+      const blocks = buildDecisionBlocks({decision: entry.decision, machine: entry.machine, status: "pending", mention: this.slack.mention || "", repeatCount: entry.repeatCount});
+      const pages = blockPages(blocks);
       await this.retryPostMutation(() => {
         if (entry.resolved || !this.ownsPost(entry.key, post)) return;
         return this.slack.updateMessage(post.ts, {
-          text: fallbackText(entry),
-          blocks: buildDecisionBlocks({
-            decision: entry.decision,
-            machine: entry.machine,
-            status: "pending",
-            mention: this.slack.mention || "",
-          }),
+          text: pages.length > 1 ? pageFallback(pages[0]) : fallbackText(entry),
+          blocks: pages[0],
         });
       }, () => !entry.resolved && this.ownsPost(entry.key, post));
+      await this.renderContinuations(entry, post, pages.slice(1));
+      return true;
     } catch (error) {
       this.log(`投稿の再表示に失敗 (${entry.decision.decision_id}): ${error.message}`);
+      if (!entry.resolved && !this.stopped && !entry.postTimer) {
+        entry.postTimer = setTimeout(() => { entry.postTimer = null; void this.renderPending(entry); }, POST_RETRY_MS);
+      }
+    }
+  }
+
+  async renderContinuations(entry, post, chunks) {
+    const owned = () => !entry.resolved && this.ownsPost(entry.key, post);
+    for (let i = 0; i < chunks.length && owned(); i++) {
+      if (entry.continuations[i]) {
+        await this.retryPostMutation(() => this.slack.updateMessage(entry.continuations[i], {text: pageFallback(chunks[i]), blocks: chunks[i]}), owned);
+      } else {
+        const result = await this.retryPostMutation(() => this.slack.postThreadBlocks(post.ts, pageFallback(chunks[i]), chunks[i]), owned);
+        if (!result?.ts) return;
+        entry.continuations.push(result.ts);
+        const record = this.posts.get(entry.key);
+        if (record) { record.continuations = [...entry.continuations]; this.savePostsFile(); }
+      }
+    }
+    while (entry.continuations.length > chunks.length && owned()) {
+      const ts = entry.continuations.at(-1);
+      await this.retryPostMutation(() => this.slack.deleteMessage(ts), owned);
+      entry.continuations.pop();
+      const record = this.posts.get(entry.key);
+      if (record) { record.continuations = [...entry.continuations]; this.savePostsFile(); }
     }
   }
 
@@ -1354,6 +1526,8 @@ export class SlackDecisionsDaemon {
     entry.decision = decision;
     clearTimeout(entry.answerRetryTimer);
     if (entry.postTimer) clearTimeout(entry.postTimer);
+    if (entry.superseded) { this.posts.delete(key); this.savePostsFile(); }
+    if (entry.renderWork) await entry.renderWork;
     await this.finishResolvedPost(entry);
     this.entries.delete(key);
     this.log(`決定済み: ${decision.decision_id} (${decision.status})`);
@@ -1361,7 +1535,7 @@ export class SlackDecisionsDaemon {
 
   ownsPost(key, post) {
     const owner = this.posts.get(key);
-    return !!post && owner?.ts === post.ts && owner.channel === post.channel;
+    return !!post && !owner?.superseded && owner?.ts === post.ts && owner.channel === post.channel;
   }
 
   finishResolvedPost(entry) {
@@ -1562,6 +1736,7 @@ export class SlackDecisionsDaemon {
           machine: { id: mid, label: mid },
           decision: { decision_id: post.decisionId },
           post: { channel: post.channel, ts: post.ts },
+          superseded: post.superseded === true,
           resolved: false,
           postTimer: null,
         });

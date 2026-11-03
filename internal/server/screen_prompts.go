@@ -10,11 +10,12 @@ import (
 )
 
 type screenPromptHub struct {
-	seen     map[int]map[string]bool
-	rebuilds map[int][]time.Time
-	flows    map[int]*screenAnswerFlow
-	watches  map[int]*screenPromptWatch
-	timer    *time.Timer
+	seen        map[int]map[string]bool
+	rebuilds    map[int][]time.Time
+	flows       map[int]*screenAnswerFlow
+	watches     map[int]*screenPromptWatch
+	transcripts map[int]*claudeTranscriptScan
+	timer       *time.Timer
 }
 
 // Waiting screens use the review's one-second bound; preview navigation keeps
@@ -23,6 +24,8 @@ const screenPromptWaitPoll = time.Second
 
 type screenPromptWatch struct {
 	signature           string
+	transcriptID        string
+	displayParams       *api.DecisionCreateParams
 	decisionID          string
 	prompt              *screenprompt.Prompt
 	mismatches          int
@@ -231,7 +234,29 @@ func (s *Server) scanScreenPrompts() {
 			s.submitScreenFlow(pid, p)
 			p = nil
 		}
+		transcriptScreen := p
+		if transcriptScreen == nil && w != nil && w.transcriptID != "" {
+			transcriptScreen = w.prompt
+		}
+		transcriptID, display, transcriptOK, transcriptPending, transcriptUnverified, transcriptResolved := s.pollClaudeTranscript(pid, transcriptScreen)
+		if transcriptResolved {
+			if w != nil {
+				s.cancelScreenPrompt(w)
+				delete(s.screenPrompts.watches, pid)
+			}
+			continue
+		}
 		if w != nil {
+			if p == nil && !w.resolved && w.transcriptID != "" && (transcriptPending || transcriptOK && transcriptID == w.transcriptID) {
+				w.lastMatched = false
+				w.mismatches = 0
+				continue
+			}
+			if !w.resolved && w.transcriptID != "" && transcriptUnverified {
+				w.lastMatched = false
+				w.mismatches = 0
+				continue
+			}
 			if p == nil && w.prompt != nil && w.prompt.CodexQuestion && (!w.resolved || w.editingText) {
 				if pane := s.sup.Get(pid); pane != nil && !pane.Snapshot().Dead {
 					w.lastMatched = false
@@ -239,13 +264,39 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 			}
-			if p != nil && !w.resolved && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
+			if p != nil && !w.resolved && transcriptOK {
+				same := w.transcriptID == transcriptID
+				if w.transcriptID == "" {
+					same = matchesClaudeDisplay(w.prompt, p, display)
+				}
+				if same && w.transcriptID == "" && w.decisionID != "" {
+					store, err := s.db()
+					if err == nil {
+						err = store.BindScreenQuestion(w.decisionID, fmtPaneID(pid), transcriptID)
+					}
+					if err != nil {
+						s.app.SetConfigWarning("screen question identity: " + err.Error())
+						same = false
+					}
+				}
+				if same {
+					w.signature = p.Signature()
+					w.transcriptID = transcriptID
+					w.displayParams = &display
+				}
+			}
+			changedIdentity := transcriptOK && w.transcriptID != "" && transcriptID != w.transcriptID
+			if transcriptPending && w.transcriptID != "" && p != nil && p.Signature() != w.signature {
+				w.lastMatched = false
+				continue
+			}
+			if p != nil && !w.resolved && w.transcriptID == "" && !transcriptOK && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
 				w.signature = p.Signature()
 				w.prompt = p
 				s.updateScreenPrompt(w)
 			}
 
-			if p == nil || p.Signature() != w.signature {
+			if p == nil || changedIdentity || p.Signature() != w.signature {
 				w.lastMatched = false
 				w.mismatches++
 				if w.preview != nil {
@@ -270,6 +321,9 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if w.decisionID == "" {
+					if transcriptPending || transcriptUnverified {
+						continue
+					}
 					s.createScreenPrompt(pid, w)
 					continue
 				}
@@ -287,7 +341,13 @@ func (s *Server) scanScreenPrompts() {
 		}
 		if w == nil && p != nil && s.app.PaneStatusKey(pid) == "blocked" {
 			w = &screenPromptWatch{signature: p.Signature(), prompt: p, lastMatched: true}
+			if transcriptOK {
+				w.transcriptID, w.displayParams = transcriptID, &display
+			}
 			s.screenPrompts.watches[pid] = w
+			if transcriptPending || transcriptUnverified {
+				continue
+			}
 			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
 				s.markPreviewSeen(pid, p)
 				s.startPreviewScan(pid, w)
@@ -301,6 +361,19 @@ func (s *Server) scanScreenPrompts() {
 func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 	store, err := s.db()
 	if err != nil {
+		return false
+	}
+	if w.transcriptID != "" {
+		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID)
+		if err != nil {
+			s.app.SetConfigWarning("screen question lookup: " + err.Error())
+			return false
+		}
+		if found {
+			w.decisionID = d.DecisionID
+			s.updateScreenPrompt(w)
+			return true
+		}
 		return false
 	}
 	pending, err := store.Decisions("pending")
@@ -323,19 +396,10 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 		s.app.SetConfigWarning(err.Error())
 		return
 	}
-	// Read persisted pending records only on first discovery, including restart/handoff.
-	pending, err := store.Decisions("pending")
-	if err != nil {
-		s.app.SetConfigWarning(err.Error())
+	if s.reuseScreenPrompt(pid, w) {
 		return
 	}
-	for _, d := range pending {
-		if d.Origin != nil && d.Origin.Reason == "screen_prompt" && d.Origin.PaneID == fmtPaneID(pid) && screenprompt.FromDecision(d) == w.signature {
-			w.decisionID = d.DecisionID
-			return
-		}
-	}
-	p := w.prompt.Params
+	p := screenDisplayParams(w)
 	pane := s.sup.Get(pid)
 	if pane == nil {
 		return
@@ -347,7 +411,12 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	}
 	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: w.prompt.OriginAgent(agent), Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
 	s.completeDecisionOrigin(p.Origin)
-	d, err := store.CreateDecision(p, time.Now())
+	var d api.Decision
+	if w.transcriptID != "" {
+		d, err = store.CreateScreenDecision(p, time.Now(), fmtPaneID(pid), w.transcriptID)
+	} else {
+		d, err = store.CreateDecision(p, time.Now())
+	}
 	if err != nil {
 		s.app.SetConfigWarning("screen prompt creation: " + err.Error())
 		return

@@ -58,10 +58,8 @@ test("spec carries origin, question and every option field without truncation", 
   assert.equal(spec.body, "guard が danger_words に一致しました");
   const details = Object.fromEntries(spec.details.map((d) => [d.label, d.value]));
   assert.deepEqual(details, {
-    コマンド: "rm -rf ./dist",
     場所: "/repo",
     ブランチ: "main",
-    理由: "danger_words",
     ペイン: "p1",
   });
   assert.deepEqual(spec.options[0], {
@@ -111,8 +109,8 @@ test("queue count, flags and later minutes reach the spec", () => {
 
 test("location falls back to the directory name when there is no space label", () => {
   assert.equal(locationLabel(decision()), "macbook｜repo｜work｜deploy / claude");
-  assert.equal(locationLabel(decision({ origin: { cwd: "/src/ikesu" } })), "不明｜ikesu｜不明｜不明");
-  assert.equal(locationLabel(decision({ origin: {} })), "不明｜不明｜不明｜不明");
+  assert.equal(locationLabel(decision({ origin: { cwd: "/src/ikesu" } })), "不明｜ikesu｜不明");
+  assert.equal(locationLabel(decision({ origin: {} })), "不明");
   const bare = buildDialogSpec(decision({ origin: { cwd: "/src/ikesu" } }), machine);
   assert.equal(bare.window_title, "ikesu 判断待ち — ikesu");
   assert.equal(bare.source, "🛡 危険コマンドの承認");
@@ -129,7 +127,8 @@ test("native panel can identify guard decisions without changing origin details 
  const input=decision();
  const spec=buildDialogSpec(input,machine);
  assert.equal(spec.kind,"command_guard");
- assert.equal(spec.details.find(d=>d.label==="理由").value,input.origin.reason);
+ assert.equal(spec.approval_command,input.origin.command);
+ assert.equal(spec.details.some(d=>d.label==="理由"),false);
  assert.deepEqual(spec.options.map(o=>o.id),input.options.map(o=>o.id));
  assert.equal(buildDialogSpec(decision({kind:"agent_prompt"}),machine).kind,"agent_prompt");
 });

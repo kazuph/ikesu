@@ -17,7 +17,7 @@ export function fmtDeadline(decision, now = Date.now()) {
 }
 
 export function optionDescription(option) {
-  return typeof option?.description === "string" ? option.description.trim() : "";
+  return typeof option?.description === "string" ? option.description : "";
 }
 
 export function optionPreview(option) {
@@ -49,11 +49,48 @@ export function locationLabel(decision, machine) {
   const project = origin.cwd ? path.basename(origin.cwd) : "不明";
   const space = origin.workspace_label || "不明";
   const pane = [origin.pane_label || origin.pane_id, origin.agent].filter(Boolean).join(" / ") || "不明";
-  return [host, project, space, pane].join("｜");
+  return [host, project, space, pane].filter((part, index, parts) => index === 0 || part !== parts[index - 1]).join("｜");
 }
 
 export function approvalCommand(decision) {
-  return decision.kind === "command_guard" ? String(decision.origin?.target_command || decision.origin?.command || "") : "";
+  return decision.kind === "command_guard" ? String(decision.origin?.command || "") : "";
+}
+
+export function approvalTargetRange(decision) {
+  const command = approvalCommand(decision);
+  const target = String(decision.origin?.target_command || "");
+  if (!command) return null;
+  if (!target || target === command) return {start: 0, length: command.length};
+  if (command.includes("***") || /['"`$\\\n]/.test(target)) return null;
+  if (!command.startsWith(target) || command.indexOf(target, 1) >= 0) return null;
+  return /^(?:\s*&&|\s*\|\||\s*\|(?!\|)|\s*;|\n)/.test(command.slice(target.length))
+    ? {start: 0, length: target.length} : null;
+}
+
+export function approvalFields(body) {
+  const original = String(body || "");
+  const inherited = original.match(/^申請文（(外側(?:から引き継ぎ|のコマンド [^\n]* から引き継ぎ))）\n/u);
+  const text = inherited ? original.slice(inherited[0].length) : original;
+  const labels = {"対象プロジェクト": "対象", "必要な理由": "理由", "実施内容": "内容", "確認済み": "確認済み", "戻し方": "戻し方"};
+  const matches = [];
+  const candidates = text.matchAll(/(対象プロジェクト|必要な理由|実施内容|確認済み|戻し方)[:：]/gu);
+  const quotes = {"'":"'", '"':'"', '`':'`', '「':'」', '『':'』'};
+  let cursor = 0, closing = "", escaped = false;
+  for (const match of candidates) {
+    for (; cursor < match.index; cursor++) {
+      const char = text[cursor];
+      if (escaped) { escaped = false; continue; }
+      if (char === "\\") { escaped = true; continue; }
+      if (closing && char === closing) closing = "";
+      else if (!closing && quotes[char]) closing = quotes[char];
+    }
+    if (!closing) matches.push(match);
+  }
+  if (matches.length < 3 || text.slice(0, matches[0].index).trim()) return null;
+  const order = Object.keys(labels);
+  if (matches.some((match, i) => i > 0 && order.indexOf(match[1]) <= order.indexOf(matches[i - 1][1]))) return null;
+  const fields = matches.map((match, i) => ({label: labels[match[1]], value: text.slice(match.index + match[0].length, matches[i + 1]?.index ?? text.length).trim()}));
+  return inherited ? [{label: "申請文", value: inherited[1]}, ...fields] : fields;
 }
 
 // Screen prompts can store the whole question in title, with either a copy
@@ -93,18 +130,18 @@ export function projectName(decision) {
 export function buildDialogSpec(decision, machine, queueRemaining = 0, options = {}) {
   const origin = decision.origin || {};
   const details = [];
-  if (origin.command) {
+  if (origin.command && decision.kind !== "command_guard") {
     details.push({ label: "コマンド", value: String(origin.command), monospace: true });
   }
-  if (origin.target_command && origin.target_command !== origin.command) {
+  if (origin.target_command && origin.target_command !== origin.command && decision.kind !== "command_guard") {
     details.push({ label: "対象コマンド", value: String(origin.target_command), monospace: true });
   }
   if (origin.cwd) details.push({ label: "場所", value: String(origin.cwd), monospace: true });
   if (origin.branch) details.push({ label: "ブランチ", value: String(origin.branch), monospace: true });
-  if (origin.reason && origin.reason !== "screen_prompt") {
+  if (origin.reason && origin.reason !== "screen_prompt" && decision.kind !== "command_guard") {
     details.push({ label: "理由", value: String(origin.reason) });
   }
-  if (origin.pane_id) details.push({ label: "ペイン", value: String(origin.pane_id), monospace: true });
+  if (origin.pane_id && origin.pane_label && origin.pane_label !== origin.pane_id) details.push({ label: "ペイン", value: String(origin.pane_id), monospace: true });
 
   const machineId = machine?.id || origin.machine || "local";
   const remote = machineId !== "local";
@@ -117,6 +154,8 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
     source: sourceLabel(decision),
     location: locationLabel(decision, machine),
     approval_command: approvalCommand(decision),
+    approval_target_range: approvalTargetRange(decision),
+    approval_fields: decision.kind === "command_guard" ? approvalFields(decision.body) : null,
     machine: remote ? String(machine?.label || machineId) : "",
     ...decisionText(decision),
     details,
