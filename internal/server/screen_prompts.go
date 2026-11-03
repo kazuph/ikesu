@@ -21,8 +21,10 @@ type screenPromptHub struct {
 // Waiting screens use the review's one-second bound; preview navigation keeps
 // the established short poll while arrow keys are advancing the screen.
 const screenPromptWaitPoll = time.Second
+const claudeTranscriptWait = 60 * time.Second
 
 type screenPromptWatch struct {
+	transcriptDeadline  time.Time
 	signature           string
 	transcriptID        string
 	displayParams       *api.DecisionCreateParams
@@ -321,7 +323,7 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if w.decisionID == "" {
-					if transcriptPending || transcriptUnverified {
+					if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 						continue
 					}
 					s.createScreenPrompt(pid, w)
@@ -341,11 +343,14 @@ func (s *Server) scanScreenPrompts() {
 		}
 		if w == nil && p != nil && s.app.PaneStatusKey(pid) == "blocked" {
 			w = &screenPromptWatch{signature: p.Signature(), prompt: p, lastMatched: true}
+			if s.isClaudeQuestion(pid, p) {
+				w.transcriptDeadline = time.Now().Add(claudeTranscriptWait)
+			}
 			if transcriptOK {
 				w.transcriptID, w.displayParams = transcriptID, &display
 			}
 			s.screenPrompts.watches[pid] = w
-			if transcriptPending || transcriptUnverified {
+			if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 				continue
 			}
 			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
