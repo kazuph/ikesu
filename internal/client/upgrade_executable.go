@@ -98,6 +98,22 @@ type upgradeCheckResult struct {
 	err       error
 }
 
+// startupExecutable is the file this process was started from, resolved
+// once when the program starts. A client is usually started through the
+// entry symlink (~/.local/bin/ikesu), which the upgrade script repoints to the
+// new release right after the server handoff. Resolving the symlink again at
+// upgrade time would mistake the new release for this client and reject the
+// upgrade as a version mismatch.
+var startupExecutable, startupExecutableErr = resolveStartupExecutable()
+
+func resolveStartupExecutable() (string, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(path)
+}
+
 func shouldCheckUpgrade(id upgradeIdentity, currentVersion string, failed map[upgradeIdentity]bool) bool {
 	return id.Version != "" && id.Version != currentVersion && id.Executable != "" && id.Generation != "" && !failed[id]
 }
@@ -116,10 +132,7 @@ func (m *machineClient) checkUpgrade(attempt uint64) {
 			var checked *checkedExecutable
 			checked, result.err = checkUpgradeExecutable(m.ctx, id.Executable, id.Version)
 			if result.err == nil {
-				oldPath, oldErr := os.Executable()
-				if oldErr == nil {
-					oldPath, oldErr = filepath.EvalSymlinks(oldPath)
-				}
+				oldPath, oldErr := startupExecutable, startupExecutableErr
 				if oldErr == nil {
 					_, oldErr = checkUpgradeExecutable(m.ctx, oldPath, m.clientVersion)
 				}
