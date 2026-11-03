@@ -93,3 +93,47 @@ func TestScreenMultiInputFailureDoesNotSendSubmit(t *testing.T) {
 		t.Fatalf("unexpected submit or retry: %q", got)
 	}
 }
+
+// A slow terminal may still be drawing the last toggle when the fixed input
+// delay ends. The answer must wait for the drawn marks instead of refusing.
+func TestScreenMultiAnswerWaitsForSlowCheckMarks(t *testing.T) {
+	teststate.Lock(t)
+	s, p, input := screenTerminal(t, "claude-multi-wide", "claude")
+	picture := screenDialog(t, "claude-multi-wide")
+	scanScreen(s)
+	d := screenRecord(t, s)
+	done := make(chan api.Response, 1)
+	go func() {
+		done <- s.dispatch(&api.Request{ID: "multi", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionIDs: []string{"1", "2"}})})
+	}()
+	waitBytes := func(want string) {
+		t.Helper()
+		waitPromptCondition(t, func() bool { got, _ := os.ReadFile(input); return string(got) == want })
+	}
+	waitBytes("1")
+	picture = strings.Replace(picture, "[ ] Summary", "[✔] Summary", 1)
+	paintScreen(p, picture)
+	waitBytes("12")
+	// The terminal draws the second mark well after the fixed input delay.
+	time.Sleep(3 * agentPromptSubmitDelay)
+	picture = strings.Replace(picture, "[ ] Evidence", "[✔] Evidence", 1)
+	picture = strings.Replace(picture, "❯ 1.", "  1.", 1)
+	picture = strings.Replace(picture, "  2.", "❯ 2.", 1)
+	paintScreen(p, picture)
+	waitBytes("12\x1b[B")
+	picture = strings.Replace(picture, "❯ 2.", "  2.", 1)
+	picture = strings.Replace(picture, "  3.", "❯ 3.", 1)
+	paintScreen(p, picture)
+	waitBytes("12\x1b[B\x1b[B")
+	picture = strings.Replace(picture, "❯ 3.", "  3.", 1)
+	picture = strings.Replace(picture, "     Next", "❯    Next", 1)
+	paintScreen(p, picture)
+	select {
+	case resp := <-done:
+		if resp.Err != nil {
+			t.Fatal(resp.Err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("multi answer did not finish")
+	}
+}
