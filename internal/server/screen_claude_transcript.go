@@ -177,6 +177,7 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 }
 
 type claudeTranscriptResult struct {
+	started    time.Time
 	signature  string
 	id         string
 	params     api.DecisionCreateParams
@@ -228,9 +229,10 @@ func (s *Server) pollClaudeTranscript(pid int, p *screenprompt.Prompt) (string, 
 		result := scan.result
 		copy := *p
 		copy.Params.Options = append([]api.DecisionOption(nil), p.Params.Options...)
+		started := time.Now()
 		go func() {
 			id, params, ok, unverified, resolved := readClaudeTranscript(pane, &copy, agent, &scan.cache)
-			result <- claudeTranscriptResult{signature: signature, id: id, params: params, ok: ok, unverified: unverified, resolved: resolved}
+			result <- claudeTranscriptResult{started: started, signature: signature, id: id, params: params, ok: ok, unverified: unverified, resolved: resolved}
 		}()
 	}
 	if scan.latest.signature == signature {
@@ -253,13 +255,19 @@ func (s *Server) isClaudeQuestion(pid int, p *screenprompt.Prompt) bool {
 }
 
 func (s *Server) waitClaudeQuestion(pid int, w *screenPromptWatch, matched, pending, unverified bool) bool {
+	if pending || unverified {
+		return true
+	}
 	if w.transcriptDeadline.IsZero() {
-		return pending || unverified
+		return false
 	}
 	if matched {
 		return false
 	}
 	if time.Now().Before(w.transcriptDeadline) {
+		return true
+	}
+	if scan := s.screenPrompts.transcripts[pid]; scan != nil && scan.latest.started.Before(w.transcriptDeadline) {
 		return true
 	}
 	if w.displayParams == nil {
@@ -278,7 +286,8 @@ func (s *Server) waitClaudeQuestion(pid int, w *screenPromptWatch, matched, pend
 				if strings.Contains(strings.ToLower(line), "esc to cancel") {
 					break
 				}
-				if !strings.HasPrefix(line, "☐ ") && !(strings.Contains(line, "☐ ") && strings.Contains(line, "Submit")) {
+				rule := strings.HasPrefix(line, "─") && strings.Trim(line, "─") == ""
+				if !rule && !strings.HasPrefix(line, "☐ ") && !(strings.Contains(line, "☐ ") && strings.Contains(line, "Submit")) {
 					continue
 				}
 				expanded := screenprompt.Parse("claude", lines[i:])

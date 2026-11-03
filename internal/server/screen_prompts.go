@@ -326,7 +326,7 @@ func (s *Server) scanScreenPrompts() {
 					if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 						continue
 					}
-					s.createScreenPrompt(pid, w)
+					s.beginScreenPrompt(pid, w)
 					continue
 				}
 				if !w.resolved {
@@ -353,14 +353,21 @@ func (s *Server) scanScreenPrompts() {
 			if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 				continue
 			}
-			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
-				s.markPreviewSeen(pid, p)
-				s.startPreviewScan(pid, w)
-			} else {
-				s.createScreenPrompt(pid, w)
-			}
+			s.beginScreenPrompt(pid, w)
 		}
 	}
+}
+
+func (s *Server) beginScreenPrompt(pid int, w *screenPromptWatch) {
+	if s.reuseScreenPrompt(pid, w) {
+		return
+	}
+	if w.prompt.HasPreview && !s.previewSeen(pid, w.prompt) {
+		s.markPreviewSeen(pid, w.prompt)
+		s.startPreviewScan(pid, w)
+		return
+	}
+	s.createScreenPrompt(pid, w)
 }
 
 func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
