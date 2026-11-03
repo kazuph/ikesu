@@ -37,7 +37,7 @@ func TestClientFollowsLiveHandoffAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldVersion := strings.TrimPrefix(strings.TrimSpace(string(versionOutput)), "ikesu ")
-	newVersion := oldVersion + "-client-upgrade-test"
+	newVersion := oldVersion + "x"
 	mainPath := filepath.Join(repoRoot(), "cmd/ikesu/main.go")
 	source, err := os.ReadFile(mainPath)
 	if err != nil {
