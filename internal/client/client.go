@@ -173,6 +173,9 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 			}
 		}
 		if err == nil {
+			err = candidate.executable.recheck()
+		}
+		if err == nil {
 			err = execUpgrade(candidate.identity.Executable, &candidate.state)
 		}
 		candidate.state.Rollback = true

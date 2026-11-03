@@ -188,6 +188,13 @@ func executableIdentity(path string) (os.FileInfo, [sha256.Size]byte, error) {
 	if !ok || int(stat.Uid) != os.Geteuid() {
 		return nil, sum, fmt.Errorf("executable is not owned by the current user")
 	}
+	pathInfo, err := os.Stat(path)
+	if err != nil || !os.SameFile(info, pathInfo) {
+		return nil, sum, fmt.Errorf("executable changed while opening")
+	}
+	if err := guard.CheckExecutable(path); err != nil {
+		return nil, sum, err
+	}
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return nil, sum, err
@@ -205,9 +212,14 @@ func checkUpgradeExecutable(ctx context.Context, path, version string) (*checked
 		return nil, err
 	}
 	checked := &checkedExecutable{path: path, info: info, sum: sum}
+	if err := checked.recheck(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, attachTimeout)
 	defer cancel()
-	out, err := childenv.CommandContext(ctx, path, "--version").Output()
+	cmd := childenv.CommandContext(ctx, path, "--version")
+	cmd.WaitDelay = attachTimeout
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("checking executable version: %w", err)
 	}
