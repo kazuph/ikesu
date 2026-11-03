@@ -153,6 +153,8 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		return api.Success(req.ID, api.PongResult{
 			Type:         "pong",
 			Version:      s.version,
+			Executable:   s.executable,
+			Generation:   s.generation,
 			Protocol:     api.Protocol,
 			Capabilities: map[string]any{"live_handoff": true, "screen_prompt_decisions": true},
 		})

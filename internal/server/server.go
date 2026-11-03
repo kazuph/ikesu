@@ -6,6 +6,7 @@ package server
 
 import (
 	"bufio"
+	"crypto/rand"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/benchstage"
 	"github.com/kazuph/ikesu/internal/childenv"
@@ -100,6 +101,8 @@ type Server struct {
 	session             string
 	dir                 string
 	version             string
+	executable          string
+	generation          string
 	originalExecutable  string
 	endpointPeer        endpoint.Peer
 	cwd                 string // cwd the session was started from
@@ -304,7 +307,14 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		cwd = os.Getenv("HOME")
 	}
 
-	s := &Server{session: session, dir: dir, version: version, originalExecutable: originalExecutable, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
+	executable, err := os.Executable()
+	if err == nil {
+		executable, err = filepath.EvalSymlinks(executable)
+	}
+	if err != nil || !filepath.IsAbs(executable) {
+		executable = ""
+	}
+	s := &Server{session: session, dir: dir, version: version, executable: executable, generation: rand.Text(), originalExecutable: originalExecutable, endpointPeer: peer, cwd: cwd, lock: lock, apiLn: apiLn, clientLn: clientLn,
 		receiptClock: clock,
 		mailCh:       make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
