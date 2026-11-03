@@ -264,21 +264,6 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach,
 			t.Fatalf("build old test client: %v %s", err, out)
 		}
 	}
-	if shortTimeout && !shortAttach && !stopBeforePing {
-		_, _, sharedNewBinary, _, sharedNewVersion := buildClientUpgradeVersions(t)
-		if sharedNewVersion != newVersion {
-			t.Fatalf("shared server version = %q, want %q", sharedNewVersion, newVersion)
-		}
-		shared, err := os.ReadFile(sharedNewBinary)
-		if err != nil {
-			t.Fatal(err)
-		}
-		newBinary = filepath.Join(dir, "new-ikesu")
-		if err := os.WriteFile(newBinary, shared, 0700); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
 	overlay, err := json.Marshal(map[string]map[string]string{"Replace": replacements})
 	if err != nil {
 		t.Fatal(err)
