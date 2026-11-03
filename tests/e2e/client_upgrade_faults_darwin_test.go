@@ -166,7 +166,7 @@ func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
 	stopped = false
 	s.observeOutput = func(data []byte) { _, _ = output.Write(data) }
 	s.waitFor("replacement rejection", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") })
-	if text := s.text(); !strings.Contains(text, "chang") {
+	if text := s.text(); !strings.Contains(text, "file changed") {
 		t.Fatalf("replacement reason is missing:\n%s", text)
 	}
 	s.waitFor("buffered input after replacement", 10*time.Second, func(text string) bool { return strings.Contains(text, "BUFFERED_DURING_REPLACEMENT") })

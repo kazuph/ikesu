@@ -292,7 +292,7 @@ func (c *checkedExecutable) recheck() error {
 		return err
 	}
 	if !os.SameFile(c.info, info) || c.sum != sum {
-		return fmt.Errorf("executable changed after verification")
+		return fmt.Errorf("file changed after verification")
 	}
 	return nil
 }

@@ -213,7 +213,7 @@ func TestClientRollsBackWhenNewConnectionFails(t *testing.T) {
 	s.waitFor("old client version", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 }
 
-// A malformed configuration makes the new client roll back before connecting.
+// The ten-second notice must clear before testing normal input after rollback.
 func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
 	state := map[string]any{
@@ -236,6 +236,7 @@ func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
 	s := startVersionMode(t, map[string]string{"IKESU_CLIENT_UPGRADE": string(raw), "IKESU_CONFIG": cfg}, false, newBinary, "")
 	s.waitFor("configuration failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
 	s.waitFor("old shell after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	s.waitFor("old client version after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	s.send("printf 'ROLLBACK_AFTER_CONFIG_FAIL\\n'\r")
 	s.waitFor("input after configuration rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_CONFIG_FAIL") })
 	var pong api.PongResult
