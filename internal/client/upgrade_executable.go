@@ -175,6 +175,26 @@ func executableIdentity(path string) (os.FileInfo, [sha256.Size]byte, error) {
 	if err := guard.CheckExecutable(path); err != nil {
 		return nil, sum, err
 	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, sum, err
+	}
+	for _, parent := range []string{filepath.Dir(path), filepath.Dir(resolved)} {
+		for {
+			info, err := os.Lstat(parent)
+			if err != nil {
+				return nil, sum, err
+			}
+			if info.Mode()&os.ModeSymlink == 0 && info.Mode().Perm()&0022 != 0 {
+				return nil, sum, fmt.Errorf("writable executable parent: %s", parent)
+			}
+			next := filepath.Dir(parent)
+			if next == parent {
+				break
+			}
+			parent = next
+		}
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, sum, err

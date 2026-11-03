@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
@@ -66,6 +68,46 @@ func buildClientUpgradeVersions(t *testing.T) (dir, oldBinary, newBinary, oldVer
 		t.Fatalf("build new version: %v %s", err, out)
 	}
 	return
+}
+
+// Two real clients and two builds are needed to test per-terminal selection across exec.
+func TestClientUpgradePreservesTwoSelections(t *testing.T) {
+	_, oldBinary, newBinary, _, newVersion := buildClientUpgradeVersions(t)
+	cfg := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[keys]\nswitch_workspace='cmd+1..9'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first := startVersionMode(t, map[string]string{"IKESU_CONFIG": cfg}, false, oldBinary, oldBinary)
+	first.waitFor("first shell", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	second := startVersionMode(t, map[string]string{"IKESU_STATE_DIR": first.stateDir, "IKESU_CONFIG": cfg}, false, oldBinary, "")
+	second.waitFor("second shell", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	second.send("\x02c\r")
+	second.waitFor("second tab", 10*time.Second, func(text string) bool { return strings.Contains(text, "%2 terminal") && strings.Contains(text, "❯") })
+	var space api.WorkspaceCreatedResult
+	first.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{}, &space)
+	first.send("\x1b[50;9u")
+	first.waitFor("first workspace", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") && !strings.Contains(text, "%2 terminal") })
+	proof := func(s *session, pane, label string) {
+		t.Helper()
+		marker := "CLIENT_UPGRADE_" + label
+		s.send(fmt.Sprintf("printf 'CLIENT_UPGRADE_%%s\\n' '%s'\r", label))
+		s.waitFor(label, 10*time.Second, func(text string) bool { return strings.Contains(text, marker) })
+		var read api.PaneReadResultEnvelope
+		first.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: pane, StripANSI: true, Source: "recent", Format: "text"}, &read)
+		if !strings.Contains(read.Read.Text, marker) {
+			t.Fatalf("%s input did not reach %s: %s", label, pane, read.Read.Text)
+		}
+	}
+	proof(first, space.RootPane.PaneID, "FIRST_BEFORE")
+	proof(second, "p2", "SECOND_BEFORE")
+	if out, err := first.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	for _, s := range []*session{first, second} {
+		s.waitFor("new client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	}
+	proof(first, space.RootPane.PaneID, "FIRST_AFTER")
+	proof(second, "p2", "SECOND_AFTER")
 }
 
 // The second build exercises actual client exec across two server versions.
