@@ -282,9 +282,9 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	}
 }
 
-// The real attach deadline is ten seconds; the unavailable socket must outlast it.
 func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
-	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
+	t.Parallel()
+	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
@@ -331,7 +331,22 @@ func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
 	defer func() { _ = os.Rename(held, socket) }()
 	signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
 	stopped = false
-	deadline := time.NewTimer(12 * time.Second)
+	restored := time.NewTimer(5 * time.Second)
+	defer restored.Stop()
+	for !bytes.Contains(output.Bytes(), []byte(tui.EnterSeq)) {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client exited before screen was restored")
+			}
+			output.Write(data)
+			_, _ = s.emu.Write(data)
+		case <-restored.C:
+			t.Fatal("client did not restore the screen")
+		}
+	}
+	// Keep the socket unavailable beyond the test binary's 250 ms attach timeout.
+	deadline := time.NewTimer(300 * time.Millisecond)
 	defer deadline.Stop()
 	for {
 		select {

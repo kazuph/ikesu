@@ -21,9 +21,9 @@ func buildClientUpgradeVersions(t *testing.T) (dir, oldBinary, newBinary, oldVer
 	return buildClientUpgradeVersionsWithShortVersionTimeout(t, false)
 }
 
-// The real ten-second attach deadline is needed to exercise the complete rollback path.
 func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
-	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old server", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	socket := filepath.Join(s.stateDir, s.name, "ikesu-client.sock")
@@ -78,6 +78,14 @@ func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 }
 
 func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeout bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+	return buildClientUpgradeVersionsWithTimeouts(t, shortTimeout, false)
+}
+
+func buildClientUpgradeVersionsWithShortAttachTimeout(t *testing.T) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+	return buildClientUpgradeVersionsWithTimeouts(t, false, true)
+}
+
+func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAttach bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -116,6 +124,29 @@ func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeou
 		t.Fatal(err)
 	}
 	replacements := map[string]string{mainPath: newSource}
+	oldReplacements := map[string]string{}
+	if shortAttach {
+		for _, replacement := range []struct{ file, original, shortened string }{
+			{"client.go", "waitDial(dir, attachTimeout)", "waitDial(dir, 250 * time.Millisecond)"},
+			{"machine_connections.go", "SetDeadline(time.Now().Add(attachTimeout))", "SetDeadline(time.Now().Add(250 * time.Millisecond))"},
+			{"retry.go", "connectionNotice  = 10 * time.Second", "connectionNotice  = time.Second"},
+		} {
+			path := filepath.Join(repoRoot(), "internal/client", replacement.file)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(data), replacement.original) {
+				t.Fatalf("missing timeout declaration in %s", path)
+			}
+			shortSource := filepath.Join(dir, replacement.file)
+			if err := os.WriteFile(shortSource, []byte(strings.Replace(string(data), replacement.original, replacement.shortened, 1)), 0600); err != nil {
+				t.Fatal(err)
+			}
+			replacements[path] = shortSource
+			oldReplacements[path] = shortSource
+		}
+	}
 	if shortTimeout {
 		upgradePath := filepath.Join(repoRoot(), "internal/client/upgrade_executable.go")
 		upgradeSource, err := os.ReadFile(upgradePath)
@@ -133,7 +164,11 @@ func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeou
 		if err := os.WriteFile(shortSource, []byte(text), 0600); err != nil {
 			t.Fatal(err)
 		}
-		oldOverlay, err := json.Marshal(map[string]map[string]string{"Replace": {upgradePath: shortSource}})
+		oldReplacements[upgradePath] = shortSource
+		replacements[upgradePath] = shortSource
+	}
+	if len(oldReplacements) != 0 {
+		oldOverlay, err := json.Marshal(map[string]map[string]string{"Replace": oldReplacements})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -146,7 +181,6 @@ func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeou
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build old test client: %v %s", err, out)
 		}
-		replacements[upgradePath] = shortSource
 	}
 	overlay, err := json.Marshal(map[string]map[string]string{"Replace": replacements})
 	if err != nil {
@@ -212,6 +246,7 @@ func TestClientUpgradePreservesTwoSelections(t *testing.T) {
 
 // The second build exercises actual client exec across two server versions.
 func TestClientFollowsLiveHandoffAndRollback(t *testing.T) {
+	t.Parallel()
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
@@ -282,9 +317,11 @@ func TestClientKeepsRunningWhenUpgradeDirectoryWritable(t *testing.T) {
 	s.waitFor("input after rejected upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "REJECTED_UPGRADE_INPUT_OK") })
 }
 
-// The existing notice duration is ten seconds, so checking the restored version takes longer than five seconds.
+// Building two real client versions and running an isolated server and client
+// measured over five seconds when the tests ran concurrently.
 func TestClientRollsBackWhenNewConnectionFails(t *testing.T) {
-	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
 	state := map[string]any{
 		"old_executable": oldBinary,
 		"old_version":    oldVersion,
@@ -307,9 +344,9 @@ func TestClientRollsBackWhenNewConnectionFails(t *testing.T) {
 	s.waitFor("old client version", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 }
 
-// The ten-second notice must clear before testing normal input after rollback.
 func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
-	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
 	state := map[string]any{
 		"old_executable": oldBinary,
 		"old_version":    oldVersion,
