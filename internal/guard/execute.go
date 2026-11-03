@@ -121,23 +121,7 @@ func approvalTitle(i Input, v Verdict) string {
 			name = parsed.Command
 		}
 	}
-	// A reason can start with the triggering line (for example "x.sh の11行目:
-	// bash …"). The command is shown once below the title, so the title keeps
-	// only the reason lines that do not repeat the trigger or the command.
-	command := strings.TrimSpace(approvalCommand(i))
-	trigger := strings.TrimSpace(i.TriggerCommand)
-	var kept []string
-	for _, line := range strings.Split(strings.ReplaceAll(v.Reason, "\r", ""), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || line == trigger || line == command {
-			continue
-		}
-		kept = append(kept, line)
-	}
-	if len(kept) == 0 {
-		kept = []string{strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(v.Reason))}
-	}
-	reason := strings.Join(kept, " ")
+	reason := strings.NewReplacer("\r", " ", "\n", " ").Replace(v.Reason)
 	title := "実行確認: " + i.redact(filepath.Base(name)) + " — " + i.redact(reason) + "（規則: " + i.redact(v.Rule) + "）"
 	return title
 }
