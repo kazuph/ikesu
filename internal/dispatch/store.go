@@ -6,6 +6,7 @@
 package dispatch
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -272,7 +273,7 @@ func Open(path string) (*Store, error) {
 	if err := conn.Exec("PRAGMA synchronous=NORMAL"); err != nil {
 		return fail(err)
 	}
-	if err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
+	if err := enableWAL(conn); err != nil {
 		return fail(err)
 	}
 	if err := conn.Exec(schemaSQL); err != nil {
@@ -291,6 +292,24 @@ func Open(path string) (*Store, error) {
 		return fail(err)
 	}
 	return s, nil
+}
+
+// walBusyWait matches the busy_timeout set in Open.
+const walBusyWait = 5 * time.Second
+
+// enableWAL switches the database to WAL mode. When several processes
+// create the same new database at once (a server and a CLI starting a new
+// session), SQLite reports "database is locked" for the switch without
+// waiting for busy_timeout, so the switch is retried for up to walBusyWait.
+func enableWAL(conn *sqlite3.Conn) error {
+	deadline := time.Now().Add(walBusyWait)
+	for {
+		err := conn.Exec("PRAGMA journal_mode=WAL")
+		if err == nil || !errors.Is(err, sqlite3.BUSY) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // OpenReadOnly opens an existing database without creating or migrating
