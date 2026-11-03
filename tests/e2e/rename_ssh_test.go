@@ -30,7 +30,11 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 		{"new-new", binPath, binPath, "ikesu"},
 	} {
 		t.Run(pair.name, func(t *testing.T) {
-			root, err := os.MkdirTemp("/tmp", "is-")
+			current, err := user.Current()
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.MkdirTemp(current.HomeDir, ".ikesu-ssh-")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,16 +78,12 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 			}
 			port := listener.Addr().(*net.TCPAddr).Port
 			_ = listener.Close()
-			current, err := user.Current()
-			if err != nil {
-				t.Fatal(err)
-			}
 			force := filepath.Join(root, "remote-command")
 			script := fmt.Sprintf("#!/bin/sh\nexport HOME=%s XDG_CONFIG_HOME=%s SHELL=/bin/sh PATH=%s:/usr/bin:/bin\nexec /bin/sh -c \"$SSH_ORIGINAL_COMMAND\"\n", machine.Quote(remoteHome), machine.Quote(filepath.Join(remoteHome, ".config")), machine.Quote(binDir))
 			if err = os.WriteFile(force, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
-			sshdConfig := fmt.Sprintf("Port %d\nListenAddress 127.0.0.1\nHostKey %s/host\nPidFile %s/sshd.pid\nAuthorizedKeysFile %s/client.pub\nStrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nAllowUsers %s\nForceCommand %s\nLogLevel ERROR\n", port, root, root, root, current.Username, force)
+			sshdConfig := fmt.Sprintf("Port %d\nListenAddress 127.0.0.1\nHostKey %s/host\nPidFile %s/sshd.pid\nAuthorizedKeysFile %s/client.pub\nStrictModes yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nAllowUsers %s\nForceCommand %s\nLogLevel ERROR\n", port, root, root, root, current.Username, force)
 			configPath := filepath.Join(root, "sshd.conf")
 			if err = os.WriteFile(configPath, []byte(sshdConfig), 0600); err != nil {
 				t.Fatal(err)
