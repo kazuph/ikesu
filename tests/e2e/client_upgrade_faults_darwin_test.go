@@ -122,37 +122,7 @@ func TestClientRestoresTerminalAndInputAfterExecFailure(t *testing.T) {
 
 // Building the instrumented old client and performing a real handoff can exceed five seconds.
 func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
-	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
-	// Stop only this test build before the final identity ping. The real
-	// executable rechecks and exec still run after the file is replaced.
-	clientPath := filepath.Join(repoRoot(), "internal/client/client.go")
-	source, err := os.ReadFile(clientPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	boundary := "\t\t\tcurrent, err = queryUpgradeIdentity(context.Background(), session)"
-	if strings.Count(string(source), boundary) != 1 {
-		t.Fatal("upgrade identity boundary changed")
-	}
-	instrumented := filepath.Join(dir, "client-stop.go")
-	modified := strings.Replace(string(source), boundary, "\t\t\t_ = syscall.Kill(syscall.Getpid(), syscall.SIGSTOP)\n"+boundary, 1)
-	if err := os.WriteFile(instrumented, []byte(modified), 0600); err != nil {
-		t.Fatal(err)
-	}
-	overlay, err := json.Marshal(map[string]map[string]string{"Replace": {clientPath: instrumented}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	overlayPath := filepath.Join(dir, "stop-overlay.json")
-	if err := os.WriteFile(overlayPath, overlay, 0600); err != nil {
-		t.Fatal(err)
-	}
-	oldBinary = filepath.Join(dir, "old-stop-ikesu")
-	build := exec.Command("go", "build", "-overlay", overlayPath, "-o", oldBinary, "./cmd/ikesu")
-	build.Dir = repoRoot()
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build stopped client: %v %s", err, output)
-	}
+	dir, oldBinary, newBinary, oldVersion, _ := buildStoppedClientUpgradeVersions(t, false)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
@@ -174,21 +144,7 @@ func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
 		}
 	}
 	pid := s.cmd.Process.Pid
-	for {
-		state, err := exec.Command("ps", "-o", "state=", "-p", strconv.Itoa(pid)).Output()
-		if err != nil {
-			t.Fatalf("read client state: %v", err)
-		}
-		if strings.HasPrefix(strings.TrimSpace(string(state)), "T") {
-			break
-		}
-		select {
-		case <-deadline.C:
-			t.Fatal("client did not stop at final ping")
-		default:
-			time.Sleep(time.Millisecond)
-		}
-	}
+	waitForUpgradeTestStop(t, pid, deadline.C)
 	stopped := true
 	defer func() {
 		if stopped {
@@ -225,10 +181,29 @@ func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
 	}
 }
 
+func waitForUpgradeTestStop(t *testing.T, pid int, deadline <-chan time.Time) {
+	t.Helper()
+	for {
+		state, err := exec.Command("ps", "-o", "state=", "-p", strconv.Itoa(pid)).Output()
+		if err != nil {
+			t.Fatalf("read client state: %v", err)
+		}
+		if strings.HasPrefix(strings.TrimSpace(string(state)), "T") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("client did not stop at final ping")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
 // Real client builds, a live handoff, and rollback can exceed five seconds under concurrent load.
 func TestClientPreservesInputAcrossConfigFailureRollback(t *testing.T) {
 	t.Parallel()
-	_, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	_, oldBinary, newBinary, oldVersion, _ := buildStoppedClientUpgradeVersions(t, true)
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -254,7 +229,7 @@ func TestClientPreservesInputAcrossConfigFailureRollback(t *testing.T) {
 		}
 	}
 	pid := s.cmd.Process.Pid
-	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	waitForUpgradeTestStop(t, pid, timer.C)
 	stopped := true
 	defer func() {
 		if stopped {
@@ -279,7 +254,7 @@ func TestClientPreservesInputAcrossConfigFailureRollback(t *testing.T) {
 // Real client builds and a live handoff can exceed five seconds under concurrent load.
 func TestClientPreservesInputAcrossSuccessfulUpgrade(t *testing.T) {
 	t.Parallel()
-	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	_, oldBinary, newBinary, oldVersion, newVersion := buildStoppedClientUpgradeVersions(t, true)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
@@ -301,7 +276,7 @@ func TestClientPreservesInputAcrossSuccessfulUpgrade(t *testing.T) {
 		}
 	}
 	pid := s.cmd.Process.Pid
-	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	waitForUpgradeTestStop(t, pid, timer.C)
 	stopped := true
 	defer func() {
 		if stopped {
@@ -343,7 +318,7 @@ func TestClientPreservesPartialPasteAcrossUpgrade(t *testing.T) {
 // Real client builds, a handoff, and a rollback can exceed five seconds.
 func TestClientPreservesPartialPasteAcrossRollback(t *testing.T) {
 	t.Parallel()
-	_, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	_, oldBinary, newBinary, oldVersion, _ := buildStoppedClientUpgradeVersions(t, true)
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -370,7 +345,7 @@ func TestClientPreservesPartialPasteAcrossRollback(t *testing.T) {
 		}
 	}
 	pid := s.cmd.Process.Pid
-	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	waitForUpgradeTestStop(t, pid, timer.C)
 	stopped := true
 	defer func() {
 		if stopped {
@@ -496,7 +471,7 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 // Real client builds and an unavailable server can exceed five seconds under load.
 func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
 	t.Parallel()
-	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	dir, oldBinary, newBinary, oldVersion, _ := buildStoppedClientUpgradeVersions(t, true)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
@@ -518,7 +493,7 @@ func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
 		}
 	}
 	pid := s.cmd.Process.Pid
-	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	waitForUpgradeTestStop(t, pid, timer.C)
 	stopped := true
 	defer func() {
 		if stopped {

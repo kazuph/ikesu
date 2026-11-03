@@ -82,11 +82,15 @@ func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 }
 
 func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeout bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
-	return buildClientUpgradeVersionsWithTimeouts(t, shortTimeout, false)
+	return buildClientUpgradeVersionsWithTimeouts(t, shortTimeout, false, false)
 }
 
 func buildClientUpgradeVersionsWithShortAttachTimeout(t *testing.T) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
-	return buildClientUpgradeVersionsWithTimeouts(t, false, true)
+	return buildClientUpgradeVersionsWithTimeouts(t, false, true, false)
+}
+
+func buildStoppedClientUpgradeVersions(t *testing.T, shortAttach bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+	return buildClientUpgradeVersionsWithTimeouts(t, false, shortAttach, true)
 }
 
 type upgradeVersionBuild struct {
@@ -98,14 +102,14 @@ type upgradeVersionBuild struct {
 
 var upgradeVersionBuilds sync.Map
 
-func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAttach bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAttach, stopBeforePing bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
 	t.Helper()
-	key := [2]bool{shortTimeout, shortAttach}
+	key := [3]bool{shortTimeout, shortAttach, stopBeforePing}
 	value, _ := upgradeVersionBuilds.LoadOrStore(key, &upgradeVersionBuild{})
 	build := value.(*upgradeVersionBuild)
 	build.once.Do(func() {
 		build.err = fmt.Errorf("test version build did not finish")
-		_, oldPath, newPath, oldVersion, newVersion := buildClientUpgradeVersionsUncached(t, shortTimeout, shortAttach)
+		_, oldPath, newPath, oldVersion, newVersion := buildClientUpgradeVersionsUncached(t, shortTimeout, shortAttach, stopBeforePing)
 		oldData, err := os.ReadFile(oldPath)
 		if err != nil {
 			build.err = err
@@ -142,7 +146,7 @@ func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAtt
 	return dir, oldBinary, newBinary, build.oldVersion, build.newVersion
 }
 
-func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach, stopBeforePing bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -223,6 +227,27 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach 
 		}
 		oldReplacements[upgradePath] = shortSource
 		replacements[upgradePath] = shortSource
+	}
+	if stopBeforePing {
+		clientPath := filepath.Join(repoRoot(), "internal/client/client.go")
+		sourcePath := clientPath
+		if path, ok := oldReplacements[clientPath]; ok {
+			sourcePath = path
+		}
+		source, err := os.ReadFile(sourcePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		boundary := "\t\t\tcurrent, err = queryUpgradeIdentity(context.Background(), session)"
+		if strings.Count(string(source), boundary) != 1 {
+			t.Fatal("upgrade identity boundary changed")
+		}
+		instrumented := filepath.Join(dir, "client-stop.go")
+		text := strings.Replace(string(source), boundary, "\t\t\t_ = syscall.Kill(syscall.Getpid(), syscall.SIGSTOP)\n"+boundary, 1)
+		if err := os.WriteFile(instrumented, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		oldReplacements[clientPath] = instrumented
 	}
 	if len(oldReplacements) != 0 {
 		oldOverlay, err := json.Marshal(map[string]map[string]string{"Replace": oldReplacements})
