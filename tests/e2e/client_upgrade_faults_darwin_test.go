@@ -279,3 +279,77 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 		})
 	}
 }
+
+// The real attach deadline is ten seconds; the unavailable socket must outlast it.
+func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
+	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	var output bytes.Buffer
+	timer := time.NewTimer(15 * time.Second)
+	defer timer.Stop()
+	for !bytes.Contains(output.Bytes(), []byte(tui.MouseOffSeq)) {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client exited before upgrade rejection")
+			}
+			output.Write(data)
+			_, _ = s.emu.Write(data)
+		case <-timer.C:
+			t.Fatal("client did not reach terminal drain")
+		}
+	}
+	pid := s.cmd.Process.Pid
+	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	stopped := true
+	defer func() {
+		if stopped {
+			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+		}
+	}()
+	if err := os.Rename(newBinary, filepath.Join(dir, "running-server")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(oldBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newBinary, data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(s.stateDir, s.name, "ikesu-client.sock")
+	held := socket + ".held"
+	if err := os.Rename(socket, held); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Rename(held, socket) }()
+	signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+	stopped = false
+	deadline := time.NewTimer(12 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client exited while server was unavailable")
+			}
+			_, _ = s.emu.Write(data)
+		case <-deadline.C:
+			if err := os.Rename(held, socket); err != nil {
+				t.Fatal(err)
+			}
+			s.send("printf 'RECOVERED_AFTER_UNAVAILABLE\\n'\r")
+			s.waitFor("recovered input", 15*time.Second, func(text string) bool { return strings.Contains(text, "RECOVERED_AFTER_UNAVAILABLE") })
+			var read api.PaneReadResultEnvelope
+			s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+			if !strings.Contains(read.Read.Text, "RECOVERED_AFTER_UNAVAILABLE") {
+				t.Fatalf("input missing from pane: %s", read.Read.Text)
+			}
+			return
+		}
+	}
+}
