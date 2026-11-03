@@ -257,6 +257,8 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 				var controls bytes.Buffer
 				viewer.observeOutput = func(data []byte) { _, _ = controls.Write(data) }
 				migrationRPC(t, remoteSocket, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{ImportExe: &newBinary}, nil)
+				migrationRPC(t, remoteSocket, api.MethodWorkspaceRename, api.WorkspaceRenameParams{WorkspaceID: "s1", Label: "RemoteReady"}, nil)
+				viewer.waitFor("remote snapshot after handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "▌· 1 RemoteReady") })
 				viewer.send("printf 'REMOTE_RESTART_INPUT_OK\\n'\r")
 				viewer.waitFor("remote input after remote handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "REMOTE_RESTART_INPUT_OK") })
 				if bytes.Contains(controls.Bytes(), []byte(tui.LeaveSeq)) || !strings.Contains(viewer.text(), "ikesu v"+oldVersion) {
@@ -264,7 +266,7 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 				}
 				migrationRPC(t, localSocket, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{ImportExe: &newBinary}, nil)
 				viewer.waitFor("upgraded local client", 15*time.Second, func(text string) bool {
-					return strings.Contains(text, "ikesu v"+newVersion) && strings.Contains(text, "▌· 1 RemoteUpgrade")
+					return strings.Contains(text, "ikesu v"+newVersion) && strings.Contains(text, "▌· 1 RemoteReady")
 				})
 				viewer.send("printf 'REMOTE_SELECTION_AFTER_UPGRADE\\n'\r")
 				viewer.waitFor("remote input after local handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "REMOTE_SELECTION_AFTER_UPGRADE") })
