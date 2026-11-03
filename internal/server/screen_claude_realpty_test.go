@@ -403,11 +403,18 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 				})
 				return
 			case "timeout", "no_header":
-				s.app.Do(func() { s.screenPrompts.watches[1].transcriptDeadline = time.Now().Add(-time.Second) })
+				var signature string
+				s.app.Do(func() { signature = s.screenPrompts.watches[1].signature })
 				waitPromptCondition(t, func() bool {
-					scanScreen(s)
 					var ready bool
-					s.app.Do(func() { w := s.screenPrompts.watches[1]; ready = w != nil && w.decisionID != "" })
+					s.app.Do(func() {
+						if w := s.screenPrompts.watches[1]; w != nil && w.signature == signature {
+							w.transcriptDeadline = time.Now().Add(-time.Second)
+						}
+						s.scanScreenPrompts()
+						w := s.screenPrompts.watches[1]
+						ready = w != nil && w.signature == signature && w.decisionID != ""
+					})
 					return ready
 				})
 				got := screenRecord(t, s)
