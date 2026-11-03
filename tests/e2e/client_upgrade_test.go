@@ -375,6 +375,39 @@ func TestClientFollowsLiveHandoffAndRollback(t *testing.T) {
 	}
 }
 
+// A client started through the entry symlink must follow the server even
+// when the upgrade script has already repointed that symlink to the new
+// release. The symlink is moved before the handoff so the client always
+// checks its own executable after the move.
+func TestClientFollowsWhenEntrySymlinkMovedFirst(t *testing.T) {
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	entry := filepath.Join(t.TempDir(), "ikesu")
+	if err := os.Symlink(oldBinary, entry); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, nil, false, entry, oldBinary)
+	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	next := entry + ".next"
+	if err := os.Symlink(newBinary, next); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, entry); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("upgrade server: %v %s", err, out)
+	}
+	s.waitFor("new client", 15*time.Second, func(text string) bool {
+		if strings.Contains(text, "upgrade:") {
+			t.Fatalf("client upgrade failed:\n%s", text)
+		}
+		return strings.Contains(text, "ikesu v"+newVersion)
+	})
+	s.send("printf 'SYMLINK_UPGRADE_INPUT_OK\\n'\r")
+	s.waitFor("input after upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "SYMLINK_UPGRADE_INPUT_OK") })
+}
+
 // Building the second version and completing the live handoff takes over five seconds.
 func TestClientKeepsRunningWhenUpgradeDirectoryWritable(t *testing.T) {
 	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
