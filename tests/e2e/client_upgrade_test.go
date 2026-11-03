@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ func buildClientUpgradeVersions(t *testing.T) (dir, oldBinary, newBinary, oldVer
 	return buildClientUpgradeVersionsWithShortVersionTimeout(t, false)
 }
 
+// Real client builds and the stalled welcome rollback can exceed five seconds under load.
 func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 	t.Parallel()
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
@@ -53,6 +55,7 @@ func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer accepted.Close()
+	client.send("printf 'BUFFERED_DURING_STALLED_WELCOME\\n'\r")
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +63,7 @@ func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	client.waitFor("welcome timeout rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: read unix") })
+	client.waitFor("input during stalled welcome", 10*time.Second, func(text string) bool { return strings.Contains(text, "BUFFERED_DURING_STALLED_WELCOME") })
 	resolvedOld, err := filepath.EvalSymlinks(oldBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +76,7 @@ func TestClientRollsBackWhenWelcomeStalls(t *testing.T) {
 	client.waitFor("input after stalled welcome", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_STALLED_WELCOME") })
 	var read api.PaneReadResultEnvelope
 	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
-	if !strings.Contains(read.Read.Text, "ROLLBACK_AFTER_STALLED_WELCOME") {
+	if !strings.Contains(read.Read.Text, "ROLLBACK_AFTER_STALLED_WELCOME") || !strings.Contains(read.Read.Text, "BUFFERED_DURING_STALLED_WELCOME") {
 		t.Fatalf("input did not reach the original pane: %s", read.Read.Text)
 	}
 }
@@ -85,7 +89,60 @@ func buildClientUpgradeVersionsWithShortAttachTimeout(t *testing.T) (dir, oldBin
 	return buildClientUpgradeVersionsWithTimeouts(t, false, true)
 }
 
+type upgradeVersionBuild struct {
+	once                   sync.Once
+	old, new               []byte
+	oldVersion, newVersion string
+	err                    error
+}
+
+var upgradeVersionBuilds sync.Map
+
 func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAttach bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+	t.Helper()
+	key := [2]bool{shortTimeout, shortAttach}
+	value, _ := upgradeVersionBuilds.LoadOrStore(key, &upgradeVersionBuild{})
+	build := value.(*upgradeVersionBuild)
+	build.once.Do(func() {
+		build.err = fmt.Errorf("test version build did not finish")
+		_, oldPath, newPath, oldVersion, newVersion := buildClientUpgradeVersionsUncached(t, shortTimeout, shortAttach)
+		oldData, err := os.ReadFile(oldPath)
+		if err != nil {
+			build.err = err
+			return
+		}
+		newData, err := os.ReadFile(newPath)
+		if err != nil {
+			build.err = err
+			return
+		}
+		build.old, build.new = oldData, newData
+		build.oldVersion, build.newVersion = oldVersion, newVersion
+		build.err = nil
+	})
+	if build.err != nil {
+		t.Fatal(build.err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err = os.MkdirTemp(home, ".ikesu-client-upgrade-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	oldBinary, newBinary = filepath.Join(dir, "old-ikesu"), filepath.Join(dir, "new-ikesu")
+	if err := os.WriteFile(oldBinary, build.old, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newBinary, build.new, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return dir, oldBinary, newBinary, build.oldVersion, build.newVersion
+}
+
+func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -120,7 +177,7 @@ func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAtt
 		t.Fatalf("version declaration %q missing", oldDecl)
 	}
 	newSource := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(newSource, []byte(strings.Replace(string(source), oldDecl, "const version = \""+newVersion+"\"", 1)), 0600); err != nil {
+	if err := os.WriteFile(newSource, []byte(strings.Replace(string(source), oldDecl, "var version = \""+oldVersion+"\"", 1)), 0600); err != nil {
 		t.Fatal(err)
 	}
 	replacements := map[string]string{mainPath: newSource}
@@ -191,7 +248,7 @@ func buildClientUpgradeVersionsWithTimeouts(t *testing.T, shortTimeout, shortAtt
 		t.Fatal(err)
 	}
 	newBinary = filepath.Join(dir, "new-ikesu")
-	build := exec.Command("go", "build", "-overlay", overlayPath, "-o", newBinary, "./cmd/ikesu")
+	build := exec.Command("go", "build", "-overlay", overlayPath, "-ldflags", "-X main.version="+newVersion, "-o", newBinary, "./cmd/ikesu")
 	build.Dir = repoRoot()
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build new version: %v %s", err, out)
@@ -344,6 +401,7 @@ func TestClientRollsBackWhenNewConnectionFails(t *testing.T) {
 	s.waitFor("old client version", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 }
 
+// Real client builds and a configuration rollback can exceed five seconds under load.
 func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
 	t.Parallel()
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)

@@ -224,12 +224,23 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	readerState := settings.retryReader
 	if readerState == nil {
 		readerState = &machineInputState{framer: input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: true}}
+		if state := settings.upgradeState; state != nil && len(state.PendingInput) != 0 {
+			m.held = append(m.held, normalizeMachineInput(readerState.framer.Push(state.PendingInput))...)
+		}
 	}
 	settings.retryReader = nil
-	inputEvents, stopInput, err := readMachineInputWithState(in, ctx, readerState)
-	if err != nil {
-		fmt.Fprintln(out, "ikesu:", err)
-		return pumpDone
+	var inputEvents <-chan input.Event
+	stopInput := func() {}
+	startInput := func() error {
+		var err error
+		inputEvents, stopInput, err = readMachineInputWithState(in, ctx, readerState)
+		return err
+	}
+	if settings.upgradeState == nil || settings.upgradeState.Rollback {
+		if err := startInput(); err != nil {
+			fmt.Fprintln(out, "ikesu:", err)
+			return pumpDone
+		}
 	}
 	defer func() {
 		stopInput()
@@ -281,7 +292,32 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			}
 		case event := <-m.events:
 			if result, done := m.event(event); done {
+				if result == pumpUpgrade {
+					stopInput()
+					ctx, cancel := context.WithTimeout(m.ctx, attachTimeout)
+					err := m.prepareUpgrade(ctx, readerState, inputEvents)
+					cancel()
+					if err != nil {
+						candidate := m.settings.upgrade
+						m.failedUpgrades[candidate.identity] = true
+						m.settings.upgrade = nil
+						m.notify("upgrade: " + err.Error())
+						if err := startInput(); err != nil {
+							fmt.Fprintln(out, "ikesu:", err)
+							return pumpDone
+						}
+						_ = m.paint()
+						continue
+					}
+					m.settings.upgrade.state.PendingInput = readerState.framer.PendingBytes()
+				}
 				return result
+			}
+			if inputEvents == nil && event.id == "local" && event.connection != nil {
+				if err := startInput(); err != nil {
+					fmt.Fprintln(out, "ikesu:", err)
+					return pumpDone
+				}
 			}
 		case <-alarm:
 			now := time.Now()

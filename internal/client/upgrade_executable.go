@@ -37,6 +37,7 @@ type upgradeState struct {
 	Selections    map[string]upgradeSelection `json:"selections"`
 	Rollback      bool                        `json:"rollback,omitempty"`
 	Reason        string                      `json:"reason,omitempty"`
+	PendingInput  []byte                      `json:"pending_input,omitempty"`
 }
 
 func loadUpgradeState(session, version string) *upgradeState {

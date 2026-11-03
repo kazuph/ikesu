@@ -181,6 +181,7 @@ func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
 	}
 }
 
+// Real client builds, a live handoff, and rollback can exceed five seconds under concurrent load.
 func TestClientPreservesInputAcrossConfigFailureRollback(t *testing.T) {
 	t.Parallel()
 	_, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
@@ -228,6 +229,122 @@ func TestClientPreservesInputAcrossConfigFailureRollback(t *testing.T) {
 	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
 	if !strings.Contains(read.Read.Text, "BUFFERED_BEFORE_CONFIG_ROLLBACK") {
 		t.Fatalf("input missing from original pane: %s", read.Read.Text)
+	}
+}
+
+// Real client builds and a live handoff can exceed five seconds under concurrent load.
+func TestClientPreservesInputAcrossSuccessfulUpgrade(t *testing.T) {
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	var output bytes.Buffer
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for !bytes.Contains(output.Bytes(), []byte(tui.MouseOffSeq)) {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client exited before upgrade")
+			}
+			output.Write(data)
+			_, _ = s.emu.Write(data)
+		case <-timer.C:
+			t.Fatal("client did not reach upgrade drain")
+		}
+	}
+	pid := s.cmd.Process.Pid
+	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	stopped := true
+	defer func() {
+		if stopped {
+			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+		}
+	}()
+	s.send("printf 'BUFFERED_BEFORE_SUCCESSFUL_UPGRADE\\n'\r")
+	signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+	stopped = false
+	s.waitFor("new client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	s.waitFor("buffered input after successful upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "BUFFERED_BEFORE_SUCCESSFUL_UPGRADE") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if !strings.Contains(read.Read.Text, "BUFFERED_BEFORE_SUCCESSFUL_UPGRADE") {
+		t.Fatalf("input missing from original pane: %s", read.Read.Text)
+	}
+}
+
+// A real live handoff and a paste split across two processes can exceed five seconds.
+func TestClientPreservesPartialPasteAcrossUpgrade(t *testing.T) {
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	s.send("\x1b[200~printf 'PASTE_%s\\n' '")
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	s.waitFor("new client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	s.send("ONCE'\x1b[201~\r")
+	s.waitFor("completed paste", 10*time.Second, func(text string) bool { return strings.Contains(text, "PASTE_ONCE") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if count := strings.Count(read.Read.Text, "PASTE_ONCE"); count != 1 {
+		t.Fatalf("paste delivered %d times: %s", count, read.Read.Text)
+	}
+}
+
+// Real client builds, a handoff, and a rollback can exceed five seconds.
+func TestClientPreservesPartialPasteAcrossRollback(t *testing.T) {
+	t.Parallel()
+	_, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)
+	cfg := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, map[string]string{"IKESU_CONFIG": cfg}, false, oldBinary, oldBinary)
+	s.waitFor("old client", 10*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	s.send("\x1b[200~printf 'ROLLBACK_PASTE_%s\\n' '")
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	var output bytes.Buffer
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for !bytes.Contains(output.Bytes(), []byte(tui.MouseOffSeq)) {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client exited before upgrade")
+			}
+			output.Write(data)
+			_, _ = s.emu.Write(data)
+		case <-timer.C:
+			t.Fatal("client did not reach upgrade drain")
+		}
+	}
+	pid := s.cmd.Process.Pid
+	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	stopped := true
+	defer func() {
+		if stopped {
+			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+		}
+	}()
+	if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+	stopped = false
+	s.waitFor("configuration failure after actual upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
+	s.send("ONCE'\x1b[201~\r")
+	s.waitFor("completed paste after rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_PASTE_ONCE") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if count := strings.Count(read.Read.Text, "ROLLBACK_PASTE_ONCE"); count != 1 {
+		t.Fatalf("paste delivered %d times: %s", count, read.Read.Text)
 	}
 }
 
@@ -332,6 +449,7 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	}
 }
 
+// Real client builds and an unavailable server can exceed five seconds under load.
 func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
 	t.Parallel()
 	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortAttachTimeout(t)

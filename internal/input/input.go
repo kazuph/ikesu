@@ -71,6 +71,16 @@ type Framer struct {
 	pasteBuf []byte
 }
 
+// PendingBytes returns incomplete input for a newly started framer.
+func (f *Framer) PendingBytes() []byte {
+	var pending []byte
+	if f.paste {
+		pending = append(pending, "\x1b[200~"...)
+		pending = append(pending, f.pasteBuf...)
+	}
+	return append(pending, f.buf...)
+}
+
 // Push feeds freshly read bytes and returns every complete event. When the
 // returned Pending is true the caller must arm an idle timer (TimeoutMs)
 // and call FlushTimeout if no further input arrives.

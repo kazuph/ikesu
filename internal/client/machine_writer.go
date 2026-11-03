@@ -67,13 +67,50 @@ func (c *endpointConnection) writeQueued(ctx context.Context) error {
 					}
 					c.queue = kept
 				}
+				if c.changed != nil {
+					select {
+					case c.changed <- struct{}{}:
+					default:
+					}
+				}
 				c.queueMu.Unlock()
 				return err
 			}
 			c.queueMu.Lock()
 			c.queue[0] = msg{}
 			c.queue = c.queue[1:]
+			if c.changed != nil {
+				select {
+				case c.changed <- struct{}{}:
+				default:
+				}
+			}
 			c.queueMu.Unlock()
+		}
+	}
+}
+
+func (c *endpointConnection) waitEmpty(ctx context.Context) error {
+	for {
+		c.queueMu.Lock()
+		if c.writeErr != nil {
+			err := c.writeErr
+			c.queueMu.Unlock()
+			return err
+		}
+		if len(c.queue) == 0 {
+			c.queueMu.Unlock()
+			return nil
+		}
+		if c.changed == nil {
+			c.changed = make(chan struct{}, 1)
+		}
+		changed := c.changed
+		c.queueMu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
