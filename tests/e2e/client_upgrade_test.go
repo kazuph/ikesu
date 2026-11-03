@@ -404,7 +404,7 @@ func TestClientFollowsWhenEntrySymlinkMovedFirst(t *testing.T) {
 		}
 		return strings.Contains(text, "ikesu v"+newVersion)
 	})
-	s.send("printf 'SYMLINK_UPGRADE_INPUT_OK\\n'\r")
+	s.send("printf 'SYMLINK_%s\\n' 'UPGRADE_INPUT_OK'\r")
 	s.waitFor("input after upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "SYMLINK_UPGRADE_INPUT_OK") })
 }
 
