@@ -104,7 +104,12 @@ func TestClientUpgradePreservesTwoSelections(t *testing.T) {
 		t.Fatalf("handoff: %v %s", err, out)
 	}
 	for _, s := range []*session{first, second} {
-		s.waitFor("new client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+		s.waitFor("new client", 15*time.Second, func(text string) bool {
+			if strings.Contains(text, "client upgrade:") {
+				t.Fatalf("client upgrade failed:\n%s", text)
+			}
+			return strings.Contains(text, "ikesu v"+newVersion)
+		})
 	}
 	proof(first, space.RootPane.PaneID, "FIRST_AFTER")
 	proof(second, "p2", "SECOND_AFTER")
@@ -128,7 +133,12 @@ func TestClientFollowsLiveHandoffAndRollback(t *testing.T) {
 	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
 		t.Fatalf("upgrade server: %v %s", err, out)
 	}
-	s.waitFor("new client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	s.waitFor("new client", 15*time.Second, func(text string) bool {
+		if strings.Contains(text, "client upgrade:") {
+			t.Fatalf("client upgrade failed:\n%s", text)
+		}
+		return strings.Contains(text, "ikesu v"+newVersion)
+	})
 	s.send("printf 'UPGRADE_CLIENT_INPUT_OK\\n'\r")
 	s.waitFor("input after upgrade", 10*time.Second, func(text string) bool { return strings.Contains(text, "UPGRADE_CLIENT_INPUT_OK") })
 	if !bytes.Contains(output.Bytes(), []byte(tui.MouseOffSeq)) || !bytes.Contains(output.Bytes(), []byte(tui.KbdLeaveSeq()+tui.LeaveSeq)) || !bytes.Contains(output.Bytes(), []byte(tui.EnterSeq+tui.KbdEnterSeq())) {
