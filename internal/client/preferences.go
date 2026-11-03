@@ -10,6 +10,8 @@ import (
 
 type localSettings struct {
 	clientVersion string
+	upgrade       *upgradeCandidate
+	upgradeState  *upgradeState
 	session       string
 	config        *config.Config
 	warning       string

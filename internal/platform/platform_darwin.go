@@ -149,8 +149,8 @@ func groupPids(pgid int) []int {
 	return nil
 }
 
-func flushInput(fd int) {
-	_ = unix.IoctlSetPointerInt(fd, unix.TIOCFLUSH, unix.TCIFLUSH)
+func flushInput(fd int) error {
+	return unix.IoctlSetPointerInt(fd, unix.TIOCFLUSH, unix.TCIFLUSH)
 }
 
 // A sudo monitor can remain outside the child's foreground group. Follow

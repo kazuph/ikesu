@@ -1,0 +1,232 @@
+package client
+
+import (
+	"bufio"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/guard"
+)
+
+const upgradeEnv = "IKESU_CLIENT_UPGRADE"
+
+type upgradeSelection struct {
+	Target  string                  `json:"target"`
+	Session string                  `json:"session"`
+	Value   *endpoint.ViewSelection `json:"value"`
+}
+
+type upgradeState struct {
+	OldExecutable string                      `json:"old_executable"`
+	OldVersion    string                      `json:"old_version"`
+	Session       string                      `json:"session"`
+	Attempt       upgradeIdentity             `json:"attempt"`
+	Active        string                      `json:"active"`
+	Selections    map[string]upgradeSelection `json:"selections"`
+	Rollback      bool                        `json:"rollback,omitempty"`
+	Reason        string                      `json:"reason,omitempty"`
+}
+
+func loadUpgradeState(session, version string) *upgradeState {
+	raw := os.Getenv(upgradeEnv)
+	_ = os.Unsetenv(upgradeEnv)
+	if raw == "" {
+		return nil
+	}
+	var state upgradeState
+	if json.Unmarshal([]byte(raw), &state) != nil || state.Session != session || state.Attempt.Session != session {
+		return nil
+	}
+	if (!state.Rollback && state.Attempt.Version != version) || (state.Rollback && state.OldVersion != version) {
+		return nil
+	}
+	return &state
+}
+
+func execUpgrade(path string, state *upgradeState) error {
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	env := append(os.Environ(), upgradeEnv+"="+string(data))
+	return syscall.Exec(path, os.Args, env)
+}
+
+func rollbackUpgrade(state *upgradeState, reason error) error {
+	checked, err := checkUpgradeExecutable(context.Background(), state.OldExecutable, state.OldVersion)
+	if err != nil {
+		return fmt.Errorf("cannot restore previous client after %v: %w", reason, err)
+	}
+	if err := checked.recheck(); err != nil {
+		return err
+	}
+	state.Rollback = true
+	state.Reason = reason.Error()
+	return execUpgrade(state.OldExecutable, state)
+}
+
+// upgradeIdentity identifies a server transition independently of its version.
+type upgradeIdentity struct {
+	Session    string `json:"session"`
+	Generation string `json:"generation"`
+	Executable string `json:"executable"`
+	Version    string `json:"version"`
+}
+
+type upgradeCandidate struct {
+	identity   upgradeIdentity
+	executable *checkedExecutable
+	state      upgradeState
+}
+
+type upgradeCheckResult struct {
+	identity  upgradeIdentity
+	candidate *upgradeCandidate
+	err       error
+}
+
+func (m *machineClient) checkUpgrade(attempt uint64) {
+	failed := make(map[upgradeIdentity]bool, len(m.failedUpgrades))
+	for id := range m.failedUpgrades {
+		failed[id] = true
+	}
+	m.workers.Add(1)
+	go func() {
+		defer m.workers.Done()
+		id, err := queryUpgradeIdentity(m.ctx, m.session)
+		result := &upgradeCheckResult{identity: id, err: err}
+		if err == nil && id.Version != "" && id.Version != m.clientVersion && id.Executable != "" && id.Generation != "" && !failed[id] {
+			var checked *checkedExecutable
+			checked, result.err = checkUpgradeExecutable(m.ctx, id.Executable, id.Version)
+			if result.err == nil {
+				oldPath, oldErr := os.Executable()
+				if oldErr == nil {
+					oldPath, oldErr = filepath.EvalSymlinks(oldPath)
+				}
+				if oldErr == nil {
+					_, oldErr = checkUpgradeExecutable(m.ctx, oldPath, m.clientVersion)
+				}
+				if oldErr != nil {
+					result.err = fmt.Errorf("current executable: %w", oldErr)
+				} else {
+					result.candidate = &upgradeCandidate{identity: id, executable: checked, state: upgradeState{OldExecutable: oldPath, OldVersion: m.clientVersion, Session: m.session, Attempt: id}}
+				}
+			}
+		}
+		m.post(m.ctx, endpointEvent{id: "local", attempt: attempt, upgrade: result})
+	}()
+}
+
+func queryUpgradeIdentity(ctx context.Context, session string) (upgradeIdentity, error) {
+	var id upgradeIdentity
+	ctx, cancel := context.WithTimeout(ctx, attachTimeout)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", api.APISocketPath(api.SessionDir(session)))
+	if err != nil {
+		return id, err
+	}
+	defer conn.Close()
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			return id, err
+		}
+	}
+	if err := api.WriteRequest(conn, api.Request{ID: "client:upgrade", Method: api.MethodPing}); err != nil {
+		return id, err
+	}
+	response, err := api.ReadResponse(bufio.NewReader(conn))
+	if err != nil {
+		return id, err
+	}
+	if response.Err != nil {
+		return id, response.Err
+	}
+	var pong api.PongResult
+	if err := json.Unmarshal(response.Result, &pong); err != nil {
+		return id, err
+	}
+	if pong.Type != "pong" {
+		return id, fmt.Errorf("invalid ping response")
+	}
+	return upgradeIdentity{Session: session, Generation: pong.Generation, Executable: pong.Executable, Version: pong.Version}, nil
+}
+
+type checkedExecutable struct {
+	path string
+	info os.FileInfo
+	sum  [sha256.Size]byte
+}
+
+func executableIdentity(path string) (os.FileInfo, [sha256.Size]byte, error) {
+	var sum [sha256.Size]byte
+	if err := guard.CheckExecutable(path); err != nil {
+		return nil, sum, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, sum, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, sum, err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Geteuid() {
+		return nil, sum, fmt.Errorf("executable is not owned by the current user")
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, sum, err
+	}
+	copy(sum[:], h.Sum(nil))
+	return info, sum, nil
+}
+
+func checkUpgradeExecutable(ctx context.Context, path, version string) (*checkedExecutable, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("executable path is not absolute")
+	}
+	info, sum, err := executableIdentity(path)
+	if err != nil {
+		return nil, err
+	}
+	checked := &checkedExecutable{path: path, info: info, sum: sum}
+	ctx, cancel := context.WithTimeout(ctx, attachTimeout)
+	defer cancel()
+	out, err := childenv.CommandContext(ctx, path, "--version").Output()
+	if err != nil {
+		return nil, fmt.Errorf("checking executable version: %w", err)
+	}
+	if strings.TrimSpace(string(out)) != "ikesu "+version {
+		return nil, fmt.Errorf("executable version does not match server version %s", version)
+	}
+	if err := checked.recheck(); err != nil {
+		return nil, err
+	}
+	return checked, nil
+}
+
+func (c *checkedExecutable) recheck() error {
+	info, sum, err := executableIdentity(c.path)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(c.info, info) || c.sum != sum {
+		return fmt.Errorf("executable changed after verification")
+	}
+	return nil
+}

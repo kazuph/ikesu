@@ -142,6 +142,29 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	if e == nil || e.attempt != event.attempt {
 		return 0, false
 	}
+	if event.upgrade != nil {
+		result := event.upgrade
+		if result.err != nil {
+			if result.identity.Generation != "" {
+				m.failedUpgrades[result.identity] = true
+			}
+			m.notify("client upgrade: " + result.err.Error())
+			_ = m.paint()
+			return 0, false
+		}
+		if result.candidate == nil || m.failedUpgrades[result.identity] {
+			return 0, false
+		}
+		result.candidate.state.Active = m.active
+		result.candidate.state.Selections = make(map[string]upgradeSelection)
+		for id, endpoint := range m.endpoints {
+			if saved := endpoint.selection; saved != nil {
+				result.candidate.state.Selections[id] = upgradeSelection{Target: saved.target, Session: saved.session, Value: saved.value}
+			}
+		}
+		m.settings.upgrade = result.candidate
+		return pumpUpgrade, true
+	}
 	if event.approval != "" {
 		e.status = "awaiting approval"
 		e.approval = event.approval
@@ -153,6 +176,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.err != nil {
+		if event.id == "local" && m.settings.upgradeState != nil && !m.settings.upgradeState.Rollback && e.connection == nil {
+			m.settings.upgradeState.Reason = event.err.Error()
+			return pumpRollback, true
+		}
 		if event.id == "local" {
 			m.focusKnown = false
 			m.lastClientView = nil
@@ -178,12 +205,22 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.connection != nil {
+		if event.id == "local" && m.settings.upgradeState != nil && !m.settings.upgradeState.Rollback {
+			m.settings.upgradeState = nil
+		}
 		if event.id != "local" {
 			if err := machine.ClearApproval(e.profile.ID); err != nil {
 				m.notify(err.Error())
 			}
 		}
 		e.connection = event.connection
+		if event.id != "local" && event.id == m.active {
+			visible := !m.blurred
+			if err := e.connection.enqueue(msg{Type: "visibility", Visible: &visible}); err != nil {
+				m.fail(event.id, err)
+				return 0, false
+			}
+		}
 		e.processedInput = 0
 		if event.configRevision != m.configRevision {
 			if err := e.connection.enqueue(msg{Type: "view_config", Config: m.settings.config, Preferences: m.settings.preferences}); err != nil {
@@ -204,6 +241,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.retry.connected(time.Now())
 		if event.id == "local" {
 			m.configureMachineDisplay()
+			if e.restarting {
+				m.checkUpgrade(event.attempt)
+			}
 		}
 		if m.pending != nil && m.pending.id == event.id {
 			m.requestPending()

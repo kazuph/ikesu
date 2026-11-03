@@ -56,6 +56,7 @@ type endpointEvent struct {
 	catalogChanged bool
 	formUpdate     func()
 	configRevision uint64
+	upgrade        *upgradeCheckResult
 }
 
 type pendingMachine struct {
@@ -82,6 +83,7 @@ type machineClient struct {
 	workspaceKeyReleases map[rune]bool
 
 	clientVersion     string
+	failedUpgrades    map[upgradeIdentity]bool
 	trace             *latency.Trace
 	drawSeq, probeSeq uint64
 	probeUntil        time.Time
@@ -152,7 +154,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		return pumpDone
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
+	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, failedUpgrades: map[upgradeIdentity]bool{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
 	if latency.Enabled {
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
@@ -167,6 +169,20 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		if p.Enabled {
 			m.endpoints[p.ID] = &managedEndpoint{profile: p}
 			m.order = append(m.order, p.ID)
+		}
+	}
+	if state := settings.upgradeState; state != nil {
+		for id, saved := range state.Selections {
+			if e := m.endpoints[id]; e != nil && saved.Target == e.profile.Target && saved.Session == m.selectionSession(id) {
+				e.selection = &paintedSelection{target: saved.Target, session: saved.Session, value: saved.Value}
+			}
+		}
+		if e := m.endpoints[state.Active]; e != nil && e.profile.Enabled {
+			m.active = state.Active
+		}
+		if state.Rollback {
+			m.failedUpgrades[state.Attempt] = true
+			m.notify("client upgrade: " + state.Reason)
 		}
 	}
 	defer func() {
