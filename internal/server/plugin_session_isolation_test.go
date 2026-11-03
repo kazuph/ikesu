@@ -11,6 +11,9 @@ import (
 )
 
 func TestPluginSharedStateRequiresMailboxJobSessionIsolation(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	first, done := startPluginServer(t)
 	defer stopServer(t, first, done)

@@ -11,6 +11,9 @@ import (
 )
 
 func TestScreenExternalInputFreezesDecisionAndRejectsAnswer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-single", "claude")
 	scanScreen(s)
@@ -40,6 +43,9 @@ func TestScreenExternalInputFreezesDecisionAndRejectsAnswer(t *testing.T) {
 }
 
 func TestScreenExternalInputPreventsCreateAndPreviewRestoration(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-preview", "claude")
 	p.RecordExternalInput()

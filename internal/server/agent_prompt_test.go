@@ -198,6 +198,9 @@ func TestG9PromptWaitRequiresStartStalledTimeoutAndClose(t *testing.T) {
 }
 
 func TestG9CopilotPromptFocusBytesWithoutChangingUIFocus(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, _, record := promptFixtureAgent(t, "copilot")
 	var before int

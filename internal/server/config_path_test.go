@@ -15,6 +15,9 @@ import (
 )
 
 func TestPaneReceivesActualConfigurationPath(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	custom := filepath.Join(t.TempDir(), "server-read.toml")
 	if err := os.WriteFile(custom, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
