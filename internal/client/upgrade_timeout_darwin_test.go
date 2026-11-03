@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -28,6 +29,9 @@ func TestUpgradeVersionCheckStopsHungExecutable(t *testing.T) {
 	path := filepath.Join(dir, "yes")
 	if err := os.WriteFile(path, data, 0700); err != nil {
 		t.Fatal(err)
+	}
+	if out, err := exec.Command("codesign", "--force", "--sign", "-", path).CombinedOutput(); err != nil {
+		t.Fatalf("sign isolated executable copy: %v %s", err, out)
 	}
 	_, err = checkUpgradeExecutable(context.Background(), path, "timeout-test")
 	if !errors.Is(err, context.DeadlineExceeded) {
