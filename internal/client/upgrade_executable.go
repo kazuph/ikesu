@@ -255,7 +255,7 @@ func checkUpgradeExecutable(ctx context.Context, path, version string) (*checked
 	info, sum, err := executableIdentity(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("candidate not found: %w", err)
+			return nil, fmt.Errorf("file missing: %w", err)
 		}
 		return nil, err
 	}
@@ -273,12 +273,12 @@ func checkUpgradeExecutable(ctx context.Context, path, version string) (*checked
 	err = cmd.Run()
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("version check timed out: %w", ctx.Err())
+			return nil, fmt.Errorf("version timeout: %w", ctx.Err())
 		}
 		return nil, fmt.Errorf("version check failed: %w", err)
 	}
 	if out.overflow || strings.TrimSpace(string(out.data)) != expected {
-		return nil, fmt.Errorf("executable version does not match server version %s", version)
+		return nil, fmt.Errorf("version mismatch: server %s", version)
 	}
 	if err := checked.recheck(); err != nil {
 		return nil, err

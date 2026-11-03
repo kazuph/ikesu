@@ -265,6 +265,12 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 				s.waitFor("input during version check", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_DURING_VERSION_CHECK") })
 			}
 			s.waitFor("upgrade failure reason", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") })
+			if fault == "version-timeout" && !strings.Contains(s.text(), "upgrade: version timeout") {
+				t.Fatalf("timeout reason was not visible:\n%s", s.text())
+			}
+			if fault == "broken-link" && !strings.Contains(s.text(), "upgrade: file missing") {
+				t.Fatalf("missing file reason was not visible:\n%s", s.text())
+			}
 			if bytes.Contains(output.Bytes(), []byte(tui.LeaveSeq)) {
 				t.Fatal("rejected candidate closed the old terminal")
 			}

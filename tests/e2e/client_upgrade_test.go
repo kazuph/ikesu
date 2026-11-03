@@ -230,10 +230,16 @@ func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := filepath.Join(t.TempDir(), "invalid.toml")
-	if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
+	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s := startVersionMode(t, map[string]string{"IKESU_CLIENT_UPGRADE": string(raw), "IKESU_CONFIG": cfg}, false, newBinary, "")
+	prepare := func(cmd *exec.Cmd) {
+		if err := os.WriteFile(cfg, []byte("invalid = [\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cmd.Env = append(cmd.Env, "IKESU_CLIENT_UPGRADE="+string(raw))
+	}
+	s := startVersionModePrepared(t, map[string]string{"IKESU_CONFIG": cfg}, false, newBinary, oldBinary, prepare)
 	s.waitFor("configuration failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
 	s.waitFor("old shell after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.waitFor("old client version after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
