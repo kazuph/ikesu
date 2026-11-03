@@ -36,7 +36,14 @@ func (m *machineClient) prepareUpgrade(ctx context.Context, reader *machineInput
 			return errors.New("input destination is changing during client upgrade")
 		}
 	}
+	local := m.endpoints["local"]
+	if local.restarting || len(local.restartInput) != 0 {
+		return errors.New("local input is waiting for reconnection before client upgrade")
+	}
 	for id, endpoint := range m.endpoints {
+		if endpoint.paste != nil {
+			return fmt.Errorf("clipboard input is pending on %s before client upgrade", id)
+		}
 		if endpoint.connection != nil {
 			if err := endpoint.connection.waitEmpty(ctx); err != nil {
 				return fmt.Errorf("drain %s input before client upgrade: %w", id, err)
