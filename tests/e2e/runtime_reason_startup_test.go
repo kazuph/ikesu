@@ -29,7 +29,20 @@ func startRuntimeReasonSession(t *testing.T) *session {
 		}
 	})
 	began := time.Now()
-	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for !strings.Contains(s.text(), "❯") {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("terminal closed before prompt")
+			}
+			s.observeOutput(data)
+			_, _ = s.emu.Write(data)
+		case <-timer.C:
+			t.Fatalf("timed out waiting for prompt; screen:\n%s", s.text())
+		}
+	}
 	ready = true
 	s.observeOutput = nil
 	t.Logf("startup prompt seconds=%.6f terminal_bytes=%d", time.Since(began).Seconds(), startup.Len())

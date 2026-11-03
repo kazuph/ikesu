@@ -115,6 +115,8 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
+					began := time.Now()
+					t.Cleanup(func() { t.Logf("case total seconds=%.6f", time.Since(began).Seconds()) })
 					s := startRuntimeReasonSession(t)
 					s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "runtime-reason-test", Agent: "claude", State: "idle"}, nil)
 					root := s.stateDir
@@ -212,6 +214,8 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 						cmd.Env = append(cmd.Env, "PATH="+filepath.Dir(binaryPath)+":/usr/bin:/bin")
 					}
 					cmd.Dir = root
+					commandStarted := time.Now()
+					defer func() { t.Logf("case command seconds=%.6f", time.Since(commandStarted).Seconds()) }()
 					var output bytes.Buffer
 					cmd.Stdout = &output
 					cmd.Stderr = &output
