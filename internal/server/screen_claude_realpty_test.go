@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
@@ -117,6 +118,19 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 			s.store.Close()
 		}
 	})
+	// Let transcript discovery complete before asserting the question is held.
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var scanned bool
+		s.app.Do(func() { scan := s.screenPrompts.transcripts[1]; scanned = scan != nil && scan.latest.signature != "" })
+		return scanned
+	})
+	s.app.Do(func() {
+		if w := s.screenPrompts.watches[1]; w != nil && w.decisionID != "" {
+			t.Errorf("question created before transcript: %s", w.decisionID)
+		}
+	})
+	s.app.Do(func() { s.screenPrompts.watches[1].transcriptDeadline = time.Now().Add(-time.Second) })
 	waitPromptCondition(t, func() bool {
 		scanScreen(s)
 		var ready bool
@@ -254,4 +268,129 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	_, _ = p1.WriteToPTY([]byte{4})
 	_, _ = p2.WriteToPTY([]byte{4})
 	waitPromptCondition(t, func() bool { return p1.Snapshot().Dead && p2.Snapshot().Dead })
+}
+
+func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
+	teststate.Lock(t)
+	for _, scenario := range []string{"record", "timeout", "changed", "disappeared"} {
+		t.Run(scenario, func(t *testing.T) {
+			s := newTestServer(t, "claude-long-"+scenario)
+			root, cwd := t.TempDir(), t.TempDir()
+			projects := filepath.Join(root, "projects", "test")
+			if err := os.MkdirAll(projects, 0700); err != nil {
+				t.Fatal(err)
+			}
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			link := filepath.Join(t.TempDir(), "claude")
+			if err := os.Symlink(executable, link); err != nil {
+				t.Fatal(err)
+			}
+			question := "Beginning of the long question."
+			for i := 0; i < 12; i++ {
+				question += fmt.Sprintf("\n\nDetail paragraph number %02d.", i)
+			}
+			fixture := screenDialog(t, "claude-single")
+			picture := strings.Replace(fixture, "Which output format should the temporary report use?", question, 1)
+			screen := filepath.Join(root, "screen")
+			if err := os.WriteFile(screen, []byte(picture), 0600); err != nil {
+				t.Fatal(err)
+			}
+			id := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+			env := []string{"CLAUDE_PTY_EMULATOR=1", "CLAUDE_CONFIG_DIR=" + root, "EMULATOR_SESSION=" + id, "EMULATOR_SCREEN=" + screen, "EMULATOR_INPUT=" + filepath.Join(root, "input")}
+			pane, err := s.sup.SpawnWith(1, cwd, 160, 17, env, []string{link, "-test.run=^TestClaudeTranscriptPTYEmulator$"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pane.SetAgent("claude")
+			s.app.SetReported(1, "claude", "blocked")
+			s.initDecisionHub()
+			s.app.SetQuitHook(s.stopDecisions)
+			done := make(chan struct{})
+			go func() { s.app.Run(); close(done) }()
+			t.Cleanup(func() {
+				s.app.Stop()
+				<-done
+				s.sup.KillAll()
+				if s.store != nil {
+					s.store.Close()
+				}
+			})
+			waitPromptCondition(t, func() bool {
+				return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
+			})
+			if strings.Contains(pane.ScreenText(), "Beginning of the long question") {
+				t.Fatal("fixture did not scroll")
+			}
+			waitPromptCondition(t, func() bool {
+				scanScreen(s)
+				var ready bool
+				s.app.Do(func() { x := s.screenPrompts.transcripts[1]; ready = x != nil && x.latest.signature != "" })
+				return ready
+			})
+			s.app.Do(func() {
+				if w := s.screenPrompts.watches[1]; w == nil || w.decisionID != "" {
+					t.Errorf("expected waiting watch, got %+v", w)
+				}
+			})
+			writeRecord := func() {
+				record := map[string]any{"sessionId": id, "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-long", "input": map[string]any{"questions": []any{map[string]any{"question": question, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals."}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links."}}}}}}}}}
+				data, e := json.Marshal(record)
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = os.WriteFile(filepath.Join(projects, id+".jsonl"), append(data, '\n'), 0600); e != nil {
+					t.Fatal(e)
+				}
+			}
+			switch scenario {
+			case "changed", "disappeared":
+				if scenario == "changed" {
+					paintScreen(pane, strings.ReplaceAll(fixture, "Which output format should the temporary report use?", "A completely different question?"))
+				} else {
+					paintScreen(pane, "ordinary idle screen")
+				}
+				scanScreen(s)
+				s.app.Do(func() {
+					if w := s.screenPrompts.watches[1]; w != nil {
+						w.transcriptDeadline = time.Now().Add(-time.Second)
+					}
+				})
+				scanScreen(s)
+				s.app.Do(func() {
+					if w := s.screenPrompts.watches[1]; w != nil && w.decisionID != "" {
+						t.Errorf("old question created: %+v", w)
+					}
+				})
+				return
+			case "timeout":
+				s.app.Do(func() { s.screenPrompts.watches[1].transcriptDeadline = time.Now().Add(-time.Second) })
+				waitPromptCondition(t, func() bool {
+					scanScreen(s)
+					var ready bool
+					s.app.Do(func() { w := s.screenPrompts.watches[1]; ready = w != nil && w.decisionID != "" })
+					return ready
+				})
+				got := screenRecord(t, s)
+				if !strings.HasPrefix(got.Title, "Beginning of the long question.") || got.Body == nil || *got.Body != question {
+					t.Fatalf("scrollback title: %+v", got)
+				}
+			}
+			writeRecord()
+			waitPromptCondition(t, func() bool {
+				scanScreen(s)
+				var ready bool
+				s.app.Do(func() {
+					w := s.screenPrompts.watches[1]
+					if w != nil && w.decisionID != "" {
+						d, e := s.store.Decision(w.decisionID)
+						ready = e == nil && d.Title == question
+					}
+				})
+				return ready
+			})
+		})
+	}
 }
