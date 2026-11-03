@@ -111,6 +111,56 @@ func TestMachineInputWaitsForMouseAndFramesEscapeOnce(t *testing.T) {
 	}
 }
 
+func TestMachineInputRetainsPartialPasteAcrossReaderRestart(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	state := &machineInputState{framer: input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs}}
+	events, stop, err := readMachineInputWithState(r, ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("x\x1b[200~before")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if string(event.Raw) != "x" {
+			t.Fatalf("first input: %+v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("input reader did not receive the first byte")
+	}
+	stop()
+	for range events {
+		t.Fatal("partial paste was emitted before its end marker")
+	}
+	if !state.framer.Pending() {
+		t.Fatal("partial paste was discarded")
+	}
+	events, stop, err = readMachineInputWithState(r, ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if _, err := w.Write([]byte("after\x1b[201~")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if event.Kind != input.KindPaste || event.Text != "beforeafter" {
+			t.Fatalf("resumed paste: %+v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("resumed paste was not delivered")
+	}
+}
+
 func TestMachineWriterPreservesOrderWithoutBlockingOtherEndpoint(t *testing.T) {
 	blockedRead, blockedWrite, err := os.Pipe()
 	if err != nil {

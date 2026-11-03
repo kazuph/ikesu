@@ -43,6 +43,7 @@ type managedEndpoint struct {
 	removed                  bool
 	paste                    *clipboardPaste
 	restarting               bool
+	resumeInput              bool
 	restartInput             []byte
 }
 
@@ -161,6 +162,14 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	defer m.trace.Close()
 	m.koiKitty = kitty.SupportsImages(in, out)
 	m.endpoints["local"] = &managedEndpoint{profile: machine.Profile{ID: "local", Label: "Local", Session: session, Enabled: true}}
+	if len(settings.retryLocal) != 0 {
+		m.endpoints["local"].restarting = true
+		m.endpoints["local"].resumeInput = true
+		m.endpoints["local"].restartInput = settings.retryLocal
+		settings.retryLocal = nil
+	}
+	m.held = settings.retryHeld
+	settings.retryHeld = nil
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
 	defer m.forms.Close()
 	defer func() { _, _ = out.Write(m.frames.RestoreCursor()) }()
@@ -209,12 +218,29 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	if err := m.refreshMachineCatalog(); err != nil {
 		m.notify(err.Error())
 	}
-	input, stopInput, err := readMachineInput(in, ctx, true)
+	readerState := settings.retryReader
+	if readerState == nil {
+		readerState = &machineInputState{framer: input.Framer{EscapeWaitMs: input.EndpointEscapeFlushMs, ColorReportPending: true}}
+	}
+	settings.retryReader = nil
+	inputEvents, stopInput, err := readMachineInputWithState(in, ctx, readerState)
 	if err != nil {
 		fmt.Fprintln(out, "ikesu:", err)
 		return pumpDone
 	}
-	defer stopInput()
+	defer func() {
+		stopInput()
+		if settings.upgrade != nil {
+			settings.retryReader = readerState
+			settings.retryHeld = append(settings.retryHeld, m.held...)
+			for event := range inputEvents {
+				settings.retryHeld = append(settings.retryHeld, event)
+			}
+			settings.retryHeld = append(settings.retryHeld, readerState.unsent...)
+			readerState.unsent = nil
+			settings.retryLocal = append(settings.retryLocal, m.endpoints["local"].restartInput...)
+		}
+	}()
 	winch := make(chan os.Signal, 4)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
@@ -231,11 +257,11 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 			alarm = timer.C
 		}
 		select {
-		case event, ok := <-input:
+		case event, ok := <-inputEvents:
 			if !ok {
 				return pumpDone
 			}
-			if _, err := m.drainInput(event, input); err != nil {
+			if _, err := m.drainInput(event, inputEvents); err != nil {
 				m.notify(err.Error())
 				_ = m.paint()
 			}

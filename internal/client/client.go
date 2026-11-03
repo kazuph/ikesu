@@ -138,8 +138,17 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		result := pumpMachines(session, conn, in, out, settings, savedMachines(session))
 		conn.Close()
 		_, mouseErr := out.WriteString(tui.MouseOffSeq)
-		flushErr := platform.FlushInput(int(in.Fd()))
-		drainErr := tui.DrainInput(in, drainMs)
+		var flushErr, drainErr error
+		if result == pumpUpgrade {
+			var drained []byte
+			drained, drainErr = tui.CollectInput(in, drainMs)
+			if settings.retryReader != nil {
+				settings.retryHeld = append(settings.retryHeld, normalizeMachineInput(settings.retryReader.framer.Push(drained))...)
+			}
+		} else {
+			flushErr = platform.FlushInput(int(in.Fd()))
+			drainErr = tui.DrainInput(in, drainMs)
+		}
 		_, leaveErr := out.WriteString(tui.KbdLeaveSeq() + tui.LeaveSeq)
 		restoreErr := term.Restore(int(in.Fd()), old)
 		terminalErr := errors.Join(mouseErr, flushErr, drainErr, leaveErr, restoreErr)

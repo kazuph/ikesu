@@ -6,12 +6,16 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/input"
 )
 
 type localSettings struct {
 	clientVersion string
 	upgrade       *upgradeCandidate
 	upgradeState  *upgradeState
+	retryReader   *machineInputState
+	retryHeld     []input.Event
+	retryLocal    []byte
 	session       string
 	config        *config.Config
 	warning       string

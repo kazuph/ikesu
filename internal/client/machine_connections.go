@@ -247,7 +247,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.retry.connected(time.Now())
 		if event.id == "local" {
 			m.configureMachineDisplay()
-			if e.restarting {
+			if e.restarting && !e.resumeInput {
 				m.checkUpgrade(event.attempt)
 			}
 		}
@@ -294,6 +294,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		if event.id == "local" && e.restarting {
 			e.restarting = false
+			e.resumeInput = false
 			pending := e.restartInput
 			e.restartInput = nil
 			if len(pending) > 0 {
