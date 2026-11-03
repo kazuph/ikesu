@@ -72,6 +72,7 @@ func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeou
 		}
 		shortSource := filepath.Join(dir, "upgrade_executable.go")
 		text := string(upgradeSource[:index]) + "context.WithTimeout(ctx, 250*time.Millisecond)" + string(upgradeSource[index+len(original):])
+		text = strings.Replace(text, "import (", "import (\n\"time\"", 1)
 		if err := os.WriteFile(shortSource, []byte(text), 0600); err != nil {
 			t.Fatal(err)
 		}
