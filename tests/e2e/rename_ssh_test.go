@@ -3,8 +3,10 @@
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,8 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
+	"github.com/creack/pty"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/tui"
 )
 
 // This uses an actual unprivileged OpenSSH server, ephemeral keys and homes.
@@ -213,6 +218,62 @@ func TestStageThreeSSHVersionMatrix(t *testing.T) {
 			if !found {
 				t.Fatal("remote run did not complete")
 			}
+			t.Run("client-follow-upgrade-over-ssh", func(t *testing.T) {
+				_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+				migrationRPC(t, remoteSocket, api.MethodWorkspaceRename, api.WorkspaceRenameParams{WorkspaceID: "s1", Label: "RemoteUpgrade"}, nil)
+				cmd := exec.Command(oldBinary, "--session", "stage3")
+				cmd.Env = env
+				terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: termH, Cols: termW})
+				if err != nil {
+					t.Fatal(err)
+				}
+				viewer := &session{t: t, pt: terminal, cmd: cmd, emu: vt.NewEmulator(termW, termH), buf: &lockedBuf{ch: make(chan []byte, 4096)}, name: "stage3", stateDir: filepath.Dir(localSocket)}
+				go func() { _, _ = io.Copy(io.Discard, viewer.emu) }()
+				go func() {
+					buf := make([]byte, 64*1024)
+					for {
+						n, err := terminal.Read(buf)
+						if n > 0 {
+							viewer.buf.ch <- append([]byte(nil), buf[:n]...)
+						}
+						if err != nil {
+							close(viewer.buf.ch)
+							return
+						}
+					}
+				}()
+				t.Cleanup(func() {
+					_, _ = terminal.WriteString("\x02q")
+					_ = terminal.Close()
+					_ = cmd.Wait()
+					_ = viewer.emu.Close()
+				})
+				viewer.waitFor("remote workspace", 15*time.Second, func(text string) bool {
+					return strings.Contains(text, "RemoteUpgrade") && strings.Contains(text, "ikesu v"+oldVersion)
+				})
+				x, y := viewer.find("RemoteUpgrade")
+				viewer.click(x, y)
+				viewer.waitFor("selected remote workspace", 15*time.Second, func(text string) bool { return strings.Contains(text, "▌· 1 RemoteUpgrade") })
+				var controls bytes.Buffer
+				viewer.observeOutput = func(data []byte) { _, _ = controls.Write(data) }
+				migrationRPC(t, remoteSocket, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{ImportExe: &newBinary}, nil)
+				viewer.send("printf 'REMOTE_RESTART_INPUT_OK\\n'\r")
+				viewer.waitFor("remote input after remote handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "REMOTE_RESTART_INPUT_OK") })
+				if bytes.Contains(controls.Bytes(), []byte(tui.LeaveSeq)) || !strings.Contains(viewer.text(), "ikesu v"+oldVersion) {
+					t.Fatal("remote restart restarted the local client")
+				}
+				migrationRPC(t, localSocket, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{ImportExe: &newBinary}, nil)
+				viewer.waitFor("upgraded local client", 15*time.Second, func(text string) bool {
+					return strings.Contains(text, "ikesu v"+newVersion) && strings.Contains(text, "▌· 1 RemoteUpgrade")
+				})
+				viewer.send("printf 'REMOTE_SELECTION_AFTER_UPGRADE\\n'\r")
+				viewer.waitFor("remote input after local handoff", 15*time.Second, func(text string) bool { return strings.Contains(text, "REMOTE_SELECTION_AFTER_UPGRADE") })
+				var read api.PaneReadResultEnvelope
+				migrationRPC(t, remoteSocket, api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+				if !strings.Contains(read.Read.Text, "REMOTE_SELECTION_AFTER_UPGRADE") {
+					t.Fatal("input after local upgrade did not reach remote pane")
+				}
+			})
 			t.Logf("PASS %s: real SSH connection, remote run, decision answer; remote binary=%s", pair.name, remoteBin)
 		})
 	}
