@@ -52,3 +52,35 @@ func TestWorkspaceNumberFollowsVisibleOrder(t *testing.T) {
 	s.Active = 0
 	check()
 }
+
+func TestWorkspaceNumberDoesNotChangeWhenScrolled(t *testing.T) {
+	s := model.New("/tmp", 100, 24)
+	for i := 0; i < 11; i++ {
+		s.Apply(model.CmdNewWorkspace{Cwd: "/tmp", NoFocus: true})
+	}
+	names := map[int]string{}
+	for i := range s.Workspaces {
+		names[i] = fmt.Sprintf("name%d", i)
+	}
+	cfg := config.Config{}
+	cfg.UI.Sidebar.Spaces.Rows = [][]config.SidebarToken{{{Token: "workspace"}}}
+	seen := map[int]bool{}
+	for _, offset := range []int{0, 3, 8, 100} {
+		in := Input{State: s, WorkspaceNames: names, SidebarConfig: cfg, SidebarScroll: offset}
+		frame := Compose(in).Frame
+		for _, row := range SidebarViewForInput(in).Rows {
+			if row.Right || row.Row.Kind != RowWorkspace {
+				continue
+			}
+			index := row.Row.Ws
+			want := fmt.Sprintf("%d name%d", index+1, index)
+			if line := frameLine(frame, row.Y); !strings.Contains(line, want) {
+				t.Fatalf("offset %d row %d: %q, want %q", offset, index, line, want)
+			}
+			seen[index] = true
+		}
+	}
+	if len(seen) < 4 {
+		t.Fatalf("scroll did not expose enough workspace rows: %v", seen)
+	}
+}
