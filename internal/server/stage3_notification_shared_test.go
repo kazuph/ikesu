@@ -14,6 +14,10 @@ import (
 )
 
 func TestStage3AgentToastDismissalIsLocalToEachRealDisplay(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	// The real notification expires on its eight-second clock.
 	teststate.Lock(t)
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.toast]\ndelivery='ikesu'\ndelay_seconds=0\n[ui.sound]\nenabled=false\n"), 0600); err != nil {

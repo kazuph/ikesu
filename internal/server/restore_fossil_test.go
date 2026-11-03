@@ -9,7 +9,10 @@ import (
 )
 
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
-	t.Parallel()
+	if runIsolatedParallel(t) {
+		return
+	}
+	// The SPEC fossil and stale-authority deadline is 15 seconds.
 	teststate.Lock(t)
 	teststate.Setenv(t, "IKESU_STATE_DIR", teststate.TempDir(t))
 	teststate.Setenv(t, "SHELL", "/bin/sh")
