@@ -28,6 +28,9 @@ var binPath string
 var keepFailedE2EState = os.Getenv("IKESU_E2E_KEEP_FAILED") == "1"
 
 func TestMain(m *testing.M) {
+	if os.Getenv("CLIENT_UPGRADE_RAW_HELPER") == "1" {
+		os.Exit(m.Run())
+	}
 	dir, err := os.MkdirTemp("", "ikesu-e2e")
 	if err != nil {
 		panic(err)

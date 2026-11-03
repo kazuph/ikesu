@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/client"
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
@@ -234,11 +235,61 @@ func TestClientRollsBackWhenNewConfigFails(t *testing.T) {
 	}
 	s := startVersionMode(t, map[string]string{"IKESU_CLIENT_UPGRADE": string(raw), "IKESU_CONFIG": cfg}, false, newBinary, "")
 	s.waitFor("configuration failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: client config") })
+	s.waitFor("old shell after configuration rollback", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.send("printf 'ROLLBACK_AFTER_CONFIG_FAIL\\n'\r")
 	s.waitFor("input after configuration rollback", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_CONFIG_FAIL") })
 	var pong api.PongResult
 	s.rpc(api.MethodPing, api.EmptyParams{}, &pong)
 	if pong.Version != oldVersion {
 		t.Fatalf("old client did not start the old server: %+v", pong)
+	}
+}
+
+func TestClientRawModeFailureHelper(t *testing.T) {
+	if os.Getenv("CLIENT_UPGRADE_RAW_HELPER") != "1" {
+		return
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	old := os.Getenv("CLIENT_UPGRADE_RAW_OLD")
+	version := os.Getenv("CLIENT_UPGRADE_RAW_VERSION")
+	os.Args = []string{old, "--session", "e2e"}
+	if _, err := client.Attach("e2e", r, os.Stdout, version); err != nil {
+		t.Fatalf("raw failure did not exec the old client: %v", err)
+	}
+	t.Fatal("raw failure returned without restoring the old client")
+}
+
+// A real pipe makes MakeRaw fail while stdin remains a usable PTY for rollback.
+func TestClientRollsBackWhenRawModeFails(t *testing.T) {
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	state, err := json.Marshal(map[string]any{
+		"old_executable": oldBinary, "old_version": oldVersion, "session": "e2e", "active": "local",
+		"attempt": map[string]any{"session": "e2e", "generation": "raw-failure-test", "executable": newBinary, "version": newVersion},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepare := func(cmd *exec.Cmd) {
+		cmd.Args = []string{helper, "-test.run=^TestClientRawModeFailureHelper$"}
+		cmd.Env = append(cmd.Env, "CLIENT_UPGRADE_RAW_HELPER=1", "CLIENT_UPGRADE_RAW_OLD="+oldBinary, "CLIENT_UPGRADE_RAW_VERSION="+newVersion, "IKESU_CLIENT_UPGRADE="+string(state))
+	}
+	s := startVersionModePrepared(t, nil, false, helper, oldBinary, prepare)
+	s.waitFor("raw failure notice", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: raw mode") })
+	s.waitFor("old shell after raw failure", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	s.send("printf 'ROLLBACK_AFTER_RAW_FAIL\\n'\r")
+	s.waitFor("input after raw failure", 10*time.Second, func(text string) bool { return strings.Contains(text, "ROLLBACK_AFTER_RAW_FAIL") })
+	var pong api.PongResult
+	s.rpc(api.MethodPing, api.EmptyParams{}, &pong)
+	if pong.Version != oldVersion {
+		t.Fatalf("unexpected server after raw rollback: %+v", pong)
 	}
 }
