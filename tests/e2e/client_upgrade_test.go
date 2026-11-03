@@ -17,6 +17,10 @@ import (
 )
 
 func buildClientUpgradeVersions(t *testing.T) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
+	return buildClientUpgradeVersionsWithShortVersionTimeout(t, false)
+}
+
+func buildClientUpgradeVersionsWithShortVersionTimeout(t *testing.T, shortTimeout bool) (dir, oldBinary, newBinary, oldVersion, newVersion string) {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -54,7 +58,39 @@ func buildClientUpgradeVersions(t *testing.T) (dir, oldBinary, newBinary, oldVer
 	if err := os.WriteFile(newSource, []byte(strings.Replace(string(source), oldDecl, "const version = \""+newVersion+"\"", 1)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	overlay, err := json.Marshal(map[string]map[string]string{"Replace": {mainPath: newSource}})
+	replacements := map[string]string{mainPath: newSource}
+	if shortTimeout {
+		upgradePath := filepath.Join(repoRoot(), "internal/client/upgrade_executable.go")
+		upgradeSource, err := os.ReadFile(upgradePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		original := "context.WithTimeout(ctx, attachTimeout)"
+		index := strings.LastIndex(string(upgradeSource), original)
+		if index < 0 {
+			t.Fatal("version timeout call missing")
+		}
+		shortSource := filepath.Join(dir, "upgrade_executable.go")
+		text := string(upgradeSource[:index]) + "context.WithTimeout(ctx, 250*time.Millisecond)" + string(upgradeSource[index+len(original):])
+		if err := os.WriteFile(shortSource, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		oldOverlay, err := json.Marshal(map[string]map[string]string{"Replace": {upgradePath: shortSource}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldOverlayPath := filepath.Join(dir, "old-overlay.json")
+		if err := os.WriteFile(oldOverlayPath, oldOverlay, 0600); err != nil {
+			t.Fatal(err)
+		}
+		build := exec.Command("go", "build", "-overlay", oldOverlayPath, "-o", oldBinary, "./cmd/ikesu")
+		build.Dir = repoRoot()
+		if out, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build old test client: %v %s", err, out)
+		}
+		replacements[upgradePath] = shortSource
+	}
+	overlay, err := json.Marshal(map[string]map[string]string{"Replace": replacements})
 	if err != nil {
 		t.Fatal(err)
 	}

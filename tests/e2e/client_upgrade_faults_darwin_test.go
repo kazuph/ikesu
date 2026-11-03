@@ -181,11 +181,12 @@ func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
 	}
 }
 
-// The timeout case must wait for the real client's ten-second version deadline.
+// The timeout case uses a test build with a shorter version deadline.
 func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	for _, fault := range []string{"not-executable", "broken-link", "version-timeout"} {
 		t.Run(fault, func(t *testing.T) {
-			dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
+			t.Parallel()
+			dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersionsWithShortVersionTimeout(t, fault == "version-timeout")
 			resolvedBinary, err := filepath.EvalSymlinks(newBinary)
 			if err != nil {
 				t.Fatal(err)
