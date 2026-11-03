@@ -401,7 +401,7 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	p.notifyChanged()
 	for _, data := range clipboard {
 		select {
-		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data}:
+		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data, Source: p}:
 		case <-p.done:
 			return
 		}
@@ -442,7 +442,7 @@ func (p *Pane) waitExit() {
 
 func (p *Pane) notify(k EventKind) {
 	select {
-	case p.ev <- Event{Pane: p.ID, Kind: k}:
+	case p.ev <- Event{Pane: p.ID, Kind: k, Source: p}:
 	default:
 		if k == EventChanged || k == EventExited {
 			p.keepMissedChange(k)
@@ -459,7 +459,7 @@ func (p *Pane) notifyChanged() {
 		return
 	}
 	select {
-	case p.ev <- Event{Pane: p.ID, Kind: EventChanged}:
+	case p.ev <- Event{Pane: p.ID, Kind: EventChanged, Source: p}:
 	default:
 		p.keepMissedChange(EventChanged)
 		p.changedPending.Store(false)

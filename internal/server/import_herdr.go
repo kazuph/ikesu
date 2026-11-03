@@ -22,7 +22,29 @@ func (s *Server) importHerdr(req *api.Request) api.Response {
 	// No session observation is needed for the existing panes: app records
 	// remain in place, and their live PTYs must not be restarted.
 	prev := s.app.State().Capture()
-	merged, added := session.Append(s.app.State().Snapshot(), p.File)
+	state := s.app.State()
+	reserved := map[int]bool{}
+	store, dbErr := s.db()
+	if dbErr == nil {
+		reserved, dbErr = store.ReservedPaneIDs(s.session)
+	}
+	if reserved == nil {
+		reserved = map[int]bool{}
+	}
+	for _, popup := range state.Popups {
+		if popup != nil {
+			reserved[popup.PaneID] = true
+		}
+	}
+	if state.Popup != nil {
+		reserved[state.Popup.PaneID] = true
+	}
+	if state.Overlay != nil {
+		reserved[state.Overlay.PaneID] = true
+	}
+	target := state.Snapshot()
+	target.NextPaneID = max(target.NextPaneID, state.HandoffCounters().RuntimePane)
+	merged, added := session.Append(target, p.File, reserved, dbErr != nil)
 	if err := s.app.AppendSession(merged, added); err != nil {
 		return api.Failure(req.ID, "import_failed", err.Error())
 	}

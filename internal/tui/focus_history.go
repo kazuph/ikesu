@@ -32,6 +32,26 @@ func (a *App) recordFocus(before, after int) {
 	a.focusHistoryAt = len(a.focusHistory) - 1
 }
 
+func (a *App) forgetPaneFocus(pid int) {
+	if a.lastPane == pid {
+		a.lastPane = 0
+	}
+	oldAt := a.focusHistoryAt
+	kept := a.focusHistory[:0]
+	newAt := -1
+	for i, id := range a.focusHistory {
+		if id == pid {
+			continue
+		}
+		kept = append(kept, id)
+		if i <= oldAt {
+			newAt = len(kept) - 1
+		}
+	}
+	a.focusHistory = kept
+	a.focusHistoryAt = max(0, newAt)
+}
+
 func (a *App) focusHistoryStep(forward bool) {
 	delta := -1
 	if forward {

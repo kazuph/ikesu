@@ -26,7 +26,7 @@ func TestInsertUnreadAndDeliverMarksInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unread, err := s.MessagesForInboxRecipients(DefaultRoom, []string{"bob"}, nil)
+	unread, err := s.MessagesForInboxRecipients(DefaultRoom, []string{"bob"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestInsertUnreadAndDeliverMarksInOrder(t *testing.T) {
 			t.Fatalf("inbox message should be delivered+read: %+v", m)
 		}
 	}
-	after, err := s.MessagesForInboxRecipients(DefaultRoom, []string{"bob"}, nil)
+	after, err := s.MessagesForInboxRecipients(DefaultRoom, []string{"bob"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestInsertUnreadAndDeliverMarksInOrder(t *testing.T) {
 func TestInFlightMessagesStayQueued(t *testing.T) {
 	s := testStore(t)
 	m, _ := s.InsertMessage(DefaultRoom, "", "alice", "bob", "pending", nil, false)
-	got, err := s.MessagesForInboxRecipients(DefaultRoom, []string{"bob"}, map[int64]bool{m.ID: true})
+	got, err := s.MessagesForInboxRecipients(DefaultRoom, []string{"bob"}, map[int64]bool{m.ID: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

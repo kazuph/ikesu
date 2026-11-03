@@ -12,6 +12,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/runtime"
 )
 
 // Durable mail is persisted by global pane ID and acknowledged after PTY writes.
@@ -20,6 +21,7 @@ import (
 // mailWrite is one unit of work for the serialized delivery worker.
 type mailWrite struct {
 	pane    int
+	owner   *runtime.Pane
 	payload []byte
 	// regular mail: mark this dispatch delivered on write completion.
 	msgID int64
@@ -77,7 +79,7 @@ func (s *Server) deliverMailWrite(w mailWrite) (bool, error) {
 		return false, nil
 	} // importer owns the still-queued notice
 	p := s.sup.Get(w.pane)
-	if p == nil {
+	if p == nil || p != w.owner {
 		return false, fmt.Errorf("mail destination missing")
 	}
 	p.RecordExternalInput()
@@ -314,7 +316,8 @@ func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
 		}
 		return api.Failure(id, err.Code, err.Message)
 	}
-	m, derr := store.InsertMessage(room, p.Project, from, recipient, p.Body, p.ReplyTo, false)
+	pid, _ := parsePaneID(recipient)
+	m, derr := store.InsertPaneMessage(room, p.Project, from, recipient, p.Body, p.ReplyTo, false, s.app.State().PaneGeneration(pid))
 	if derr != nil {
 		return api.Failure(id, api.ErrMsgStore, derr.Error())
 	}
@@ -372,8 +375,16 @@ func (s *Server) msgInbox(id string, p api.MsgInboxParams) api.Response {
 	if err != nil {
 		return api.Failure(id, api.ErrMsgStore, err.Error())
 	}
+	var generation *string
+	if target, resolveErr := s.resolveTarget(toAgent, false); resolveErr == nil {
+		value := s.app.State().PaneGeneration(target.pid)
+		generation = &value
+	} else if dispatch.IsGlobalPaneID(toAgent) {
+		value := ""
+		generation = &value
+	}
 	msgs, err := store.MessagesForInboxRecipients(room,
-		s.recipientAliases(room, toAgent), s.mailInFlightSet())
+		s.recipientAliases(room, toAgent), s.mailInFlightSet(), generation)
 	if err != nil {
 		return api.Failure(id, api.ErrMsgStore, err.Error())
 	}
@@ -464,8 +475,11 @@ func (s *Server) flushRegularForPane(pid int) bool {
 	}
 	delivered := false
 	for _, m := range msgs {
+		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(pid) {
+			continue
+		}
 		payload := s.encodeMailFor(pid, m.Body)
-		if !s.enqueueMail(mailWrite{pane: pid, payload: payload, msgID: m.ID}) {
+		if !s.enqueueMail(mailWrite{pane: pid, owner: s.sup.Get(pid), payload: payload, msgID: m.ID}) {
 			return delivered
 		}
 		delivered = true
@@ -540,11 +554,17 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 	var bodies []string
 	var ids []int64
 	for _, m := range msgs {
+		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(t.pid) {
+			continue
+		}
 		bodies = append(bodies, m.Body)
 		ids = append(ids, m.ID)
 	}
+	if len(ids) == 0 {
+		return false
+	}
 	return s.enqueueMail(mailWrite{
-		pane: t.pid, payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
+		pane: t.pid, owner: s.sup.Get(t.pid), payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
 		msgIDs: ids, room: n.Room, toAgent: n.ToAgent,
 	})
 }

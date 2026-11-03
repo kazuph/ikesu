@@ -261,7 +261,12 @@ func drawConfiguredSpace(f *Frame, s *model.AppState, in Input, r SidebarRow, co
 			if v.text == "" || ws.CustomName {
 				v.text = WorkspaceDisplayName(ws, in.Panes)
 			}
-			tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(ws.ID), style: tokenStyle(t, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
+			for rank, index := range s.VisibleWorkspaceOrder() {
+				if index == r.Ws {
+					tokens = append(tokens, styledToken{name: "workspace_number", text: fmt.Sprint(rank + 1), style: tokenStyle(t, uv.Style{Fg: f.Palette.Dim, Bg: base.Bg, Attrs: uv.AttrBold}), fixed: true})
+					break
+				}
+			}
 		case "branch":
 			v.text = in.Git[r.Ws].Branch
 			if v.text == "" {

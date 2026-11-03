@@ -60,18 +60,26 @@ type MsgRoomsResult struct {
 // --- run ---
 
 type RunStartParams struct {
-	CallerPane string   `json:"caller_pane"`
-	Label      string   `json:"label"`
-	Cwd        string   `json:"cwd"`
-	Argv       []string `json:"argv"`
-	Completion string   `json:"completion"`
+	CallerPane string         `json:"caller_pane"`
+	Label      string         `json:"label"`
+	Cwd        string         `json:"cwd"`
+	Argv       []string       `json:"argv"`
+	Completion string         `json:"completion"`
+	Pane       *RunPaneParams `json:"pane,omitempty"`
+}
+
+type RunPaneParams struct {
+	JobID     string `json:"job_id"`
+	Direction string `json:"direction"`
 }
 
 type RunStartedResult struct {
-	Type  string `json:"type"` // "run_started"
-	Job   string `json:"job"`
-	Label string `json:"label"`
-	Mode  string `json:"mode"` // "background"
+	Type       string  `json:"type"` // "run_started"
+	Job        string  `json:"job"`
+	Label      string  `json:"label"`
+	Mode       string  `json:"mode"` // "background"
+	Pane       *string `json:"pane,omitempty"`
+	CallerPane string  `json:"caller_pane,omitempty"`
 }
 
 type RunCancelParams struct {

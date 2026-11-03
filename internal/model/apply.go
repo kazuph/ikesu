@@ -7,6 +7,8 @@ import (
 // Apply mutates the state for cmd and returns the effects the runtime must
 // perform, in order.
 func (s *AppState) Apply(cmd Command) (effects []Effect) {
+	s.allocatingPanes = map[PaneID]bool{}
+	defer func() { s.allocatingPanes = nil }()
 	if s.overlayLayoutMutation(cmd) {
 		return nil
 	}

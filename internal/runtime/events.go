@@ -15,7 +15,8 @@ const (
 
 // Event is a runtime→TUI notification.
 type Event struct {
-	Pane int
-	Kind EventKind
-	Data string
+	Pane   int
+	Kind   EventKind
+	Data   string
+	Source *Pane
 }

@@ -79,6 +79,7 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 	refresh := func(force bool) {
 		now := time.Now()
 		stamp := jobDatabaseStamp(s.session)
+		changed := stamp != previous
 		if !force && stamp == previous && now.Sub(lastRead) < interval {
 			return
 		}
@@ -124,7 +125,12 @@ func (s *Server) jobCacheLoop(stop <-chan struct{}, done chan<- struct{}) {
 		s.jobCache.mu.Lock()
 		s.jobCache.jobs, s.jobCache.alive, s.jobCache.readAt, s.jobCache.err = jobs, alive, now, nil
 		s.jobCache.mu.Unlock()
-		s.app.Do(s.app.RefreshJobs)
+		s.app.Do(func() {
+			s.app.RefreshJobs()
+			if changed {
+				s.flushAllMail()
+			}
+		})
 	}
 	refresh(true)
 	for {

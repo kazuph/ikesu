@@ -54,8 +54,8 @@ func TestOverlayProjectionAndSnapshotInvariant(t *testing.T) {
 		t.Fatalf("snapshot changed after close: %s -> %s", before, after)
 	}
 	s.Apply(CmdSplitFocused{Dir: layout.Horizontal})
-	if s.FocusedPane() <= overlayID {
-		t.Fatal("runtime pane ID reused", s.FocusedPane(), overlayID)
+	if s.FocusedPane() != overlayID {
+		t.Fatal("free runtime pane ID was not reused", s.FocusedPane(), overlayID)
 	}
 }
 func TestOverlayRequiresActiveTabAndTarget(t *testing.T) {

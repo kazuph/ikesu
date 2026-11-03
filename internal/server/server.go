@@ -361,7 +361,14 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	}
 	s.sup = sup
 
-	st := model.New(cwd, 120, 40)
+	reservations := func() (map[int]bool, error) {
+		store, err := s.db()
+		if err != nil {
+			return nil, err
+		}
+		return store.ReservedPaneIDs(s.session)
+	}
+	st := model.NewWithPaneReservations(cwd, 120, 40, reservations)
 	s.app = tui.NewApp(st, sup, &clientSink{s: s}, cwd)
 	s.app.SetServerUI()
 	s.app.SetMachineCatalog(filepath.Join(api.SessionDir(s.session), "machines.json"))
@@ -388,7 +395,16 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetChangeHook(s.markSessionDirty)
 	s.app.SetRestartHook(s.requestRestart)
 	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
-	s.app.SetPaneClosedHook(func(pid int) { s.ledgerDel(pid); delete(s.pluginPanes, pid) })
+	s.app.SetPaneClosedHook(func(pid int) {
+		s.ledgerDel(pid)
+		delete(s.pluginPanes, pid)
+		delete(s.agentLaunches, pid)
+		delete(s.paneMetadata, pid)
+		delete(s.reportSources, pid)
+		delete(s.lastStatus, pid)
+		delete(s.lastAgent, pid)
+		delete(s.notifyLast, pid)
+	})
 	s.app.SetWarningsHook(s.agentSessionWarnings)
 	s.jobCache.wake = make(chan struct{}, 1)
 	s.app.SetJobSource(s.cachedJobSnapshot)
@@ -445,6 +461,9 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		s.cleanup()
 		return 1, fmt.Errorf("spawn pane: %w", err)
 	}
+	s.app.State().SetPaneReservations(reservations)
+	s.app.State().EnsurePaneGenerations()
+	s.migrateLegacyPaneGenerations()
 
 	if imported == nil {
 		s.app.StartOnboarding()
