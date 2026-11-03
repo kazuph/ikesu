@@ -119,6 +119,64 @@ func TestClientRestoresTerminalAndInputAfterExecFailure(t *testing.T) {
 	}
 }
 
+// This waits for the terminal drain boundary before replacing the verified file.
+func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
+	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	var output bytes.Buffer
+	deadline := time.NewTimer(15 * time.Second)
+	defer deadline.Stop()
+	for !bytes.Contains(output.Bytes(), []byte(tui.MouseOffSeq)) {
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				t.Fatal("client closed before terminal drain")
+			}
+			_, _ = output.Write(data)
+			_, _ = s.emu.Write(data)
+		case <-deadline.C:
+			t.Fatal("client did not reach terminal drain")
+		}
+	}
+	pid := s.cmd.Process.Pid
+	signalUpgradeTestProcess(t, pid, oldBinary, "STOP")
+	stopped := true
+	defer func() {
+		if stopped {
+			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+		}
+	}()
+	// This input arrives after the reader stopped and must survive rejection.
+	s.send("printf 'BUFFERED_DURING_REPLACEMENT\\n'\r")
+	if err := os.Rename(newBinary, filepath.Join(dir, "running-server")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(oldBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newBinary, data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
+	stopped = false
+	s.observeOutput = func(data []byte) { _, _ = output.Write(data) }
+	s.waitFor("replacement rejection", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade: executable changed") })
+	s.waitFor("buffered input after replacement", 10*time.Second, func(text string) bool { return strings.Contains(text, "BUFFERED_DURING_REPLACEMENT") })
+	var read api.PaneReadResultEnvelope
+	s.rpc(api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true, Source: "recent", Format: "text"}, &read)
+	if !strings.Contains(read.Read.Text, "BUFFERED_DURING_REPLACEMENT") {
+		t.Fatalf("buffered input did not reach original pane: %s", read.Read.Text)
+	}
+	if !bytes.Contains(output.Bytes(), []byte(tui.LeaveSeq)) || !bytes.Contains(output.Bytes(), []byte(tui.EnterSeq)) {
+		t.Fatal("terminal did not leave and re-enter after rejection")
+	}
+}
+
 // The timeout case must wait for the real client's ten-second version deadline.
 func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	for _, fault := range []string{"not-executable", "broken-link", "version-timeout"} {
