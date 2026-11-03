@@ -115,28 +115,36 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		if upgradeState != nil && !upgradeState.Rollback {
 			return failStartup(fmt.Errorf("connect to upgraded server: %w", err))
 		}
-		if err := spawnServer(session, dir); err != nil {
-			return 1, err
-		}
-		conn, err = waitDial(dir, attachTimeout)
-		if err != nil {
-			return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+		if upgradeState == nil || !upgradeState.Rollback {
+			if err := spawnServer(session, dir); err != nil {
+				return 1, err
+			}
+			conn, err = waitDial(dir, attachTimeout)
+			if err != nil {
+				return 1, fmt.Errorf("could not reach the ikesu server for session %q: %w\nSee %s", session, err, api.LogPath(dir))
+			}
 		}
 	}
 
 	for {
 		old, err := term.MakeRaw(int(in.Fd()))
 		if err != nil {
-			conn.Close()
+			if conn != nil {
+				conn.Close()
+			}
 			return failStartup(fmt.Errorf("raw mode: %w", err))
 		}
 		if _, err := out.WriteString(tui.EnterSeq + tui.KbdEnterSeq()); err != nil {
-			conn.Close()
+			if conn != nil {
+				conn.Close()
+			}
 			_ = term.Restore(int(in.Fd()), old)
 			return failStartup(err)
 		}
 		result := pumpMachines(session, conn, in, out, settings, savedMachines(session))
-		conn.Close()
+		if conn != nil {
+			conn.Close()
+		}
 		_, mouseErr := out.WriteString(tui.MouseOffSeq)
 		var flushErr, drainErr error
 		if result == pumpUpgrade {
@@ -155,10 +163,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		if result == pumpRollback {
 			if terminalErr != nil {
 				settings.upgradeState.Reason = errors.Join(errors.New(settings.upgradeState.Reason), terminalErr).Error()
-				conn, err = waitDial(dir, attachTimeout)
-				if err != nil {
-					return 1, errors.Join(terminalErr, err)
-				}
+				conn = nil
 				continue
 			}
 			return 1, rollbackUpgrade(settings.upgradeState, errors.New(settings.upgradeState.Reason))
@@ -191,10 +196,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		candidate.state.Reason = err.Error()
 		settings.upgradeState = &candidate.state
 		settings.upgrade = nil
-		conn, err = waitDial(dir, attachTimeout)
-		if err != nil {
-			return 1, fmt.Errorf("client upgrade recovery: %w", err)
-		}
+		conn = nil
 	}
 }
 
