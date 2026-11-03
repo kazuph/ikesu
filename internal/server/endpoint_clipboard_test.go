@@ -13,6 +13,9 @@ import (
 )
 
 func TestEndpointProgramClipboardUsesLastVisibleViewerWithoutTruncation(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, processed := startClipboardEndpoint(t)
 	dir := s.dir

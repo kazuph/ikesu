@@ -93,6 +93,10 @@ func waitPromptCondition(t *testing.T, condition func() bool) {
 }
 
 func TestG9PromptRefusesBeforeInputAndWritesEnterBeforeSuccess(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	// The real startup settling window and each prompt submission take time.
 	teststate.Lock(t)
 	s, pane, record := promptFixture(t)
 	for _, tc := range []struct{ status, text, code string }{{"idle", "", "empty_agent_prompt"}, {"idle", " \n", "empty_agent_prompt"}, {"blocked", "blocked", "agent_blocked"}, {"unknown", "unknown", "agent_not_ready"}} {
@@ -144,6 +148,10 @@ func TestG9PromptRefusesBeforeInputAndWritesEnterBeforeSuccess(t *testing.T) {
 }
 
 func TestG9PromptWaitRequiresStartStalledTimeoutAndClose(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	// A real unresponsive agent must reach the five-second start deadline.
 	teststate.Lock(t)
 	s, _, _ := promptFixture(t)
 	transition := make(chan struct{})
@@ -190,6 +198,9 @@ func TestG9PromptWaitRequiresStartStalledTimeoutAndClose(t *testing.T) {
 }
 
 func TestG9CopilotPromptFocusBytesWithoutChangingUIFocus(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, _, record := promptFixtureAgent(t, "copilot")
 	var before int

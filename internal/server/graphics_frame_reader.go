@@ -17,13 +17,15 @@ type graphicsProgressReader struct {
 	conn    net.Conn
 	reader  io.Reader
 	started time.Time
+	idle    time.Duration
+	total   time.Duration
 }
 
 func (r *graphicsProgressReader) Read(data []byte) (int, error) {
 	deadline := time.Time{}
 	if !r.started.IsZero() {
-		deadline = time.Now().Add(graphicsFrameIdle)
-		if total := r.started.Add(graphicsFrameTotal); total.Before(deadline) {
+		deadline = time.Now().Add(r.idle)
+		if total := r.started.Add(r.total); total.Before(deadline) {
 			deadline = total
 		}
 	}
@@ -39,7 +41,7 @@ type graphicsFrameReader struct {
 }
 
 func newGraphicsFrameReader(conn net.Conn, reader *bufio.Reader) *graphicsFrameReader {
-	progress := &graphicsProgressReader{conn: conn, reader: reader}
+	progress := &graphicsProgressReader{conn: conn, reader: reader, idle: graphicsFrameIdle, total: graphicsFrameTotal}
 	return &graphicsFrameReader{progress: progress, buffer: bufio.NewReader(progress)}
 }
 

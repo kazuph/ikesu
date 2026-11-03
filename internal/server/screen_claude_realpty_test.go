@@ -67,6 +67,9 @@ func TestClaudeTranscriptPTYEmulator(t *testing.T) {
 }
 
 func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s := newTestServer(t, "claude-transcript-pty")
 	root, cwd := t.TempDir(), t.TempDir()

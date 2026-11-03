@@ -9,6 +9,9 @@ import (
 )
 
 func TestRunCallerCompletionAdmission(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir)

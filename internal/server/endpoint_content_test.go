@@ -14,6 +14,10 @@ import (
 
 // B sends no input after its marker, so shell redraw cannot hide a loss.
 func TestEndpointOtherViewerOperationsRetainQuietPaneContent(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	// Keep observing the quiet viewer for five seconds and through every operation.
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)

@@ -13,6 +13,9 @@ import (
 )
 
 func TestConfigRestoreEnabledAndCanonicalCommandActualPTY(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
 	s := newTestServer(t, "config-auto")

@@ -3,11 +3,13 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/cli"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/plugin"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,6 +17,9 @@ import (
 )
 
 func TestPaneReceivesActualConfigurationPath(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	custom := filepath.Join(t.TempDir(), "server-read.toml")
 	if err := os.WriteFile(custom, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n"), 0600); err != nil {
@@ -25,8 +30,15 @@ func TestPaneReceivesActualConfigurationPath(t *testing.T) {
 	dir, done := startPluginServer(t)
 	defer stopServer(t, dir, done)
 	client := dialClient(t, dir)
-	defer client.conn.Close()
 	client.send(t, clientMsg{Type: "hello", Cols: 100, Rows: 30})
+	readDone := make(chan error, 1)
+	go func() { readDone <- drainPluginClient(client) }()
+	defer func() {
+		client.conn.Close()
+		if err := <-readDone; err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Error(err)
+		}
+	}()
 	pid := firstPaneID(t, dir)
 	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: pid, Text: "printf 'CONFIG_READ_PATH=%s\\n' \"$IKESU_CONFIG_PATH\"", Keys: []string{"Enter"}}, nil)
 	waitRead(t, dir, pid, "CONFIG_READ_PATH="+config.Path())

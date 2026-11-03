@@ -27,6 +27,9 @@ func gitRepo(t *testing.T) string {
 	return r
 }
 func TestWorktreeSocketCLIAndEvents(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	r := gitRepo(t)
 	teststate.Setenv(t, "HOME", t.TempDir())
@@ -142,6 +145,9 @@ func subscribe(t *testing.T, dir string, kinds []string) (net.Conn, *bufio.Reade
 }
 
 func TestWorktreeCLIAllOperationsAndBareSocket(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	r := gitRepo(t)
 	teststate.Setenv(t, "HOME", t.TempDir())

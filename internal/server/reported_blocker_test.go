@@ -19,6 +19,9 @@ import (
 )
 
 func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, _ := screenTerminal(t, "claude-single", "claude")
 	dir, err := os.MkdirTemp("/tmp", "ikesu-question-")

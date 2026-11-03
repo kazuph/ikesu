@@ -38,6 +38,9 @@ func jobStatus(t *testing.T, st *dispatch.Store, id string) string {
 // only report 'cancelled' once the whole group is gone. A runner whose
 // leader ignores TERM must still be fully reaped.
 func TestRunCancelEscalatesAndConfirmsGroupGone(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	dialClient(t, dir) // keep the server alive while jobs run

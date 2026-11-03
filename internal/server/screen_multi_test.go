@@ -13,6 +13,9 @@ import (
 // Feed the local VT emulator observed dialog states after actual PTY events.
 // This proves the input protocol independently of a real Claude acceptance run.
 func TestScreenMultiAnswerEventsToggleAndSubmitInLocalTerminal(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, initiallyChecked := range []bool{false, true} {
 		s, p, input := screenTerminal(t, "claude-multi-wide", "claude")

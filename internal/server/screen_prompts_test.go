@@ -398,6 +398,9 @@ func TestScreenPromptCapabilitiesAndStatusJSON(t *testing.T) {
 }
 
 func TestScreenPromptNarrowRealQuestionUsesDetectedBlockedState(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, _ := screenTerminal(t, "claude-multi-narrow", "claude")
 	if got := detect.Detect("claude", detect.Input{Screen: p.ScreenText()}); got.State != detect.Blocked || got.RuleID != "live_blocked_form" {
