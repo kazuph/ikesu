@@ -249,6 +249,7 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach,
 		}
 		oldReplacements[clientPath] = instrumented
 	}
+	var concurrentOldBuild *exec.Cmd
 	if len(oldReplacements) != 0 {
 		oldOverlay, err := json.Marshal(map[string]map[string]string{"Replace": oldReplacements})
 		if err != nil {
@@ -260,7 +261,9 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach,
 		}
 		build := exec.Command("go", "build", "-overlay", oldOverlayPath, "-o", oldBinary, "./cmd/ikesu")
 		build.Dir = repoRoot()
-		if out, err := build.CombinedOutput(); err != nil {
+		if shortTimeout && !shortAttach && !stopBeforePing {
+			concurrentOldBuild = build
+		} else if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build old test client: %v %s", err, out)
 		}
 	}
@@ -275,8 +278,22 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach,
 	newBinary = filepath.Join(dir, "new-ikesu")
 	build := exec.Command("go", "build", "-overlay", overlayPath, "-ldflags", "-X main.version="+newVersion, "-o", newBinary, "./cmd/ikesu")
 	build.Dir = repoRoot()
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build new version: %v %s", err, out)
+	var oldOutput bytes.Buffer
+	if concurrentOldBuild != nil {
+		concurrentOldBuild.Stdout = &oldOutput
+		concurrentOldBuild.Stderr = &oldOutput
+		if err := concurrentOldBuild.Start(); err != nil {
+			t.Fatalf("start old test client build: %v", err)
+		}
+	}
+	out, buildErr := build.CombinedOutput()
+	if concurrentOldBuild != nil {
+		if err := concurrentOldBuild.Wait(); err != nil {
+			t.Fatalf("build old test client: %v %s", err, oldOutput.String())
+		}
+	}
+	if buildErr != nil {
+		t.Fatalf("build new version: %v %s", buildErr, out)
 	}
 	return
 }

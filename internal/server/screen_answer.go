@@ -171,6 +171,45 @@ func (s *Server) screenInputDelay() error {
 	}
 }
 
+// multiSelectSettle bounds how long a slow terminal may take to show the
+// toggled check marks before the answer is refused.
+const multiSelectSettle = 3 * time.Second
+
+// waitMultiSelectState waits until the screen shows exactly the desired
+// check marks. A slow terminal can still be drawing the last toggle after the
+// fixed input delay, so the state is watched instead of read once. A changed
+// question fails at once; marks that never match fail after multiSelectSettle.
+func (s *Server) waitMultiSelectState(pid int, signature string, desired map[string]bool) (*screenprompt.Prompt, error) {
+	deadline := time.Now().Add(multiSelectSettle)
+	for {
+		var current *screenprompt.Prompt
+		s.app.Do(func() { current = s.readScreenPrompt(pid) })
+		if current == nil || current.Signature() != signature {
+			return nil, fmt.Errorf("question changed after multi-select input")
+		}
+		matched := true
+		for _, o := range current.Params.Options {
+			if current.Checked[o.ID] != desired[o.ID] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return current, nil
+		}
+		if !time.Now().Before(deadline) {
+			return nil, fmt.Errorf("multi-select check state did not match the answer")
+		}
+		timer := time.NewTimer(eventWaitPoll)
+		select {
+		case <-timer.C:
+		case <-s.decisions.stopped:
+			timer.Stop()
+			return nil, fmt.Errorf("server stopped during input delivery")
+		}
+	}
+}
+
 func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer, recorded bool) error {
 	if prompt.MCPServer != "" {
 		return s.deliverMCPAnswer(pid, signature, prompt, answer)
@@ -233,15 +272,9 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			}
 		}
 	}
-	var current *screenprompt.Prompt
-	s.app.Do(func() { current = s.readScreenPrompt(pid) })
-	if current == nil || current.Signature() != signature {
-		return fmt.Errorf("question changed after multi-select input")
-	}
-	for _, o := range current.Params.Options {
-		if current.Checked[o.ID] != desired[o.ID] {
-			return fmt.Errorf("multi-select check state did not match the answer")
-		}
+	current, err := s.waitMultiSelectState(pid, signature, desired)
+	if err != nil {
+		return err
 	}
 	if answer.Text != nil && !current.Checked[prompt.TextID] {
 		// Committing edited text leaves the row unchecked. Enter on its

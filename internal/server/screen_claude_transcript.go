@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/kazuph/ikesu/internal/api"
@@ -176,6 +177,7 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 }
 
 type claudeTranscriptResult struct {
+	started    time.Time
 	signature  string
 	id         string
 	params     api.DecisionCreateParams
@@ -227,13 +229,90 @@ func (s *Server) pollClaudeTranscript(pid int, p *screenprompt.Prompt) (string, 
 		result := scan.result
 		copy := *p
 		copy.Params.Options = append([]api.DecisionOption(nil), p.Params.Options...)
+		started := time.Now()
 		go func() {
 			id, params, ok, unverified, resolved := readClaudeTranscript(pane, &copy, agent, &scan.cache)
-			result <- claudeTranscriptResult{signature: signature, id: id, params: params, ok: ok, unverified: unverified, resolved: resolved}
+			result <- claudeTranscriptResult{started: started, signature: signature, id: id, params: params, ok: ok, unverified: unverified, resolved: resolved}
 		}()
 	}
 	if scan.latest.signature == signature {
 		return scan.latest.id, scan.latest.params, scan.latest.ok, false, scan.latest.unverified, scan.latest.resolved
 	}
 	return "", api.DecisionCreateParams{}, false, true, false, false
+}
+
+// Only a foreground Claude question is delayed; other prompt types retain their timing.
+func (s *Server) isClaudeQuestion(pid int, p *screenprompt.Prompt) bool {
+	pane := s.sup.Get(pid)
+	if pane == nil || p == nil || p.Params.Kind != "agent_prompt" || p.MCPServer != "" || p.CodexQuestion {
+		return false
+	}
+	agent := pane.Snapshot().AgentID
+	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
+		agent = reported
+	}
+	return agent == "claude" && foregroundAgent(pane) == "claude"
+}
+
+func (s *Server) waitClaudeQuestion(pid int, w *screenPromptWatch, matched, pending, unverified bool) bool {
+	if pending || unverified {
+		return true
+	}
+	if w.transcriptDeadline.IsZero() {
+		return false
+	}
+	if matched {
+		return false
+	}
+	if time.Now().Before(w.transcriptDeadline) {
+		return true
+	}
+	if scan := s.screenPrompts.transcripts[pid]; scan != nil && scan.latest.started.Before(w.transcriptDeadline) {
+		return true
+	}
+	if w.displayParams == nil {
+		if pane := s.sup.Get(pid); pane != nil {
+			lines, _ := pane.ReadLines("recent_unwrapped", true)
+			firstOption := -1
+			for i := len(lines) - 1; i >= 0; i-- {
+				line := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(lines[i]), "❯›> "))
+				if strings.HasPrefix(line, "1. ") || strings.HasPrefix(line, "1) ") {
+					firstOption = i
+					break
+				}
+			}
+			for i := firstOption - 1; i >= 0; i-- {
+				line := strings.TrimSpace(lines[i])
+				if strings.Contains(strings.ToLower(line), "esc to cancel") {
+					break
+				}
+				rule := strings.HasPrefix(line, "─") && strings.Trim(line, "─") == ""
+				if !rule && !strings.HasPrefix(line, "☐ ") && !(strings.Contains(line, "☐ ") && strings.Contains(line, "Submit")) {
+					continue
+				}
+				expanded := screenprompt.Parse("claude", lines[i:])
+				if expanded != nil {
+					params := expanded.Params
+					full := params.Title
+					if params.Body != nil && strings.HasPrefix(*params.Body, params.Title) {
+						full = *params.Body
+					}
+					q := session.ClaudeQuestion{Question: full, Multi: params.MultiSelect, Index: expanded.Question}
+					for _, option := range params.Options {
+						description := ""
+						if option.Description != nil {
+							description = *option.Description
+						}
+						q.Options = append(q.Options, session.ClaudeQuestionOption{Label: option.Label, Description: description})
+					}
+					if !matchClaudeQuestion(w.prompt, q) {
+						break
+					}
+					w.displayParams = &params
+				}
+				break
+			}
+		}
+	}
+	return false
 }

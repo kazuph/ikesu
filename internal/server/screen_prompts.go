@@ -21,8 +21,10 @@ type screenPromptHub struct {
 // Waiting screens use the review's one-second bound; preview navigation keeps
 // the established short poll while arrow keys are advancing the screen.
 const screenPromptWaitPoll = time.Second
+const claudeTranscriptWait = 60 * time.Second
 
 type screenPromptWatch struct {
+	transcriptDeadline  time.Time
 	signature           string
 	transcriptID        string
 	displayParams       *api.DecisionCreateParams
@@ -290,7 +292,7 @@ func (s *Server) scanScreenPrompts() {
 				w.lastMatched = false
 				continue
 			}
-			if p != nil && !w.resolved && w.transcriptID == "" && !transcriptOK && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
+			if p != nil && !w.resolved && w.decisionID != "" && w.transcriptID == "" && !transcriptOK && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
 				w.signature = p.Signature()
 				w.prompt = p
 				s.updateScreenPrompt(w)
@@ -321,10 +323,10 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if w.decisionID == "" {
-					if transcriptPending || transcriptUnverified {
+					if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 						continue
 					}
-					s.createScreenPrompt(pid, w)
+					s.beginScreenPrompt(pid, w)
 					continue
 				}
 				if !w.resolved {
@@ -341,21 +343,31 @@ func (s *Server) scanScreenPrompts() {
 		}
 		if w == nil && p != nil && s.app.PaneStatusKey(pid) == "blocked" {
 			w = &screenPromptWatch{signature: p.Signature(), prompt: p, lastMatched: true}
+			if s.isClaudeQuestion(pid, p) {
+				w.transcriptDeadline = time.Now().Add(claudeTranscriptWait)
+			}
 			if transcriptOK {
 				w.transcriptID, w.displayParams = transcriptID, &display
 			}
 			s.screenPrompts.watches[pid] = w
-			if transcriptPending || transcriptUnverified {
+			if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 				continue
 			}
-			if p.HasPreview && !s.reuseScreenPrompt(pid, w) && !s.previewSeen(pid, p) {
-				s.markPreviewSeen(pid, p)
-				s.startPreviewScan(pid, w)
-			} else {
-				s.createScreenPrompt(pid, w)
-			}
+			s.beginScreenPrompt(pid, w)
 		}
 	}
+}
+
+func (s *Server) beginScreenPrompt(pid int, w *screenPromptWatch) {
+	if s.reuseScreenPrompt(pid, w) {
+		return
+	}
+	if w.prompt.HasPreview && !s.previewSeen(pid, w.prompt) {
+		s.markPreviewSeen(pid, w.prompt)
+		s.startPreviewScan(pid, w)
+		return
+	}
+	s.createScreenPrompt(pid, w)
 }
 
 func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {

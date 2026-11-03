@@ -367,6 +367,30 @@ func TestClientPreservesPartialPasteAcrossRollback(t *testing.T) {
 	}
 }
 
+// Check each received PTY update as soon as it arrives.
+func waitForUpgradeScreen(s *session, what string, timeout time.Duration, pred func(string) bool) {
+	s.t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		if pred(s.text()) {
+			return
+		}
+		select {
+		case data, ok := <-s.buf.ch:
+			if !ok {
+				s.t.Fatalf("client exited while waiting for %s; screen:\n%s", what, s.text())
+			}
+			if s.observeOutput != nil {
+				s.observeOutput(data)
+			}
+			_, _ = s.emu.Write(data)
+		case <-timer.C:
+			s.t.Fatalf("timed out waiting for %s; screen:\n%s", what, s.text())
+		}
+	}
+}
+
 // The timeout case uses a test build with a shorter version deadline.
 func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 	for _, fault := range []string{"not-executable", "broken-link", "version-timeout"} {
@@ -378,7 +402,7 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 				t.Fatal(err)
 			}
 			s := startVersionMode(t, nil, false, oldBinary, oldBinary)
-			s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+			waitForUpgradeScreen(s, "old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 			var output bytes.Buffer
 			s.observeOutput = func(data []byte) { _, _ = output.Write(data) }
 			pid := s.cmd.Process.Pid
@@ -406,22 +430,15 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					data, err := os.ReadFile("/usr/bin/yes")
-					if err != nil {
+					if err := os.WriteFile(newBinary, []byte("#!/bin/sh\nkill -STOP $$\nexit 1\n"), 0700); err != nil {
 						t.Fatal(err)
-					}
-					if err := os.WriteFile(newBinary, data, 0700); err != nil {
-						t.Fatal(err)
-					}
-					if out, err := exec.Command("codesign", "--force", "--sign", "-", newBinary).CombinedOutput(); err != nil {
-						t.Fatalf("sign system executable copy: %v %s", err, out)
 					}
 				}
 			}
 			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
 			stopped = false
 			if fault == "version-timeout" {
-				// Wait for the real --version child and stop only that verified PID.
+				// Verify that the real --version child stopped itself.
 				deadline := time.NewTimer(5 * time.Second)
 				ticker := time.NewTicker(10 * time.Millisecond)
 				defer deadline.Stop()
@@ -441,18 +458,18 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 							}
 							info, _ := exec.Command("ps", "-ww", "-p", field, "-o", "ppid=", "-o", "command=").Output()
 							fields := strings.Fields(string(info))
-							if len(fields) >= 3 && fields[0] == strconv.Itoa(pid) && fields[1] == resolvedBinary && fields[2] == "--version" {
+							if len(fields) >= 4 && fields[0] == strconv.Itoa(pid) && fields[1] == "/bin/sh" && fields[2] == resolvedBinary && fields[3] == "--version" {
 								child = candidate
 								break
 							}
 						}
 					}
 				}
-				signalUpgradeTestProcess(t, child, resolvedBinary, "STOP")
+				waitForUpgradeTestStop(t, child, deadline.C)
 				s.send("printf 'INPUT_DURING_VERSION_CHECK\\n'\r")
-				s.waitFor("input during version check", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_DURING_VERSION_CHECK") })
+				waitForUpgradeScreen(s, "input during version check", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_DURING_VERSION_CHECK") })
 			}
-			s.waitFor("upgrade failure reason", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") })
+			waitForUpgradeScreen(s, "upgrade failure reason", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") })
 			if fault == "version-timeout" && !strings.Contains(s.text(), "upgrade: version timeout") {
 				t.Fatalf("timeout reason was not visible:\n%s", s.text())
 			}
@@ -463,7 +480,7 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 				t.Fatal("rejected candidate closed the old terminal")
 			}
 			s.send("printf 'INPUT_AFTER_UPGRADE_REJECTION\\n'\r")
-			s.waitFor("input after rejection", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_AFTER_UPGRADE_REJECTION") })
+			waitForUpgradeScreen(s, "input after rejection", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_AFTER_UPGRADE_REJECTION") })
 		})
 	}
 }
