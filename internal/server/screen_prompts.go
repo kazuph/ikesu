@@ -292,7 +292,7 @@ func (s *Server) scanScreenPrompts() {
 				w.lastMatched = false
 				continue
 			}
-			if p != nil && !w.resolved && w.transcriptID == "" && !transcriptOK && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
+			if p != nil && !w.resolved && w.decisionID != "" && w.transcriptID == "" && !transcriptOK && p.MCPServer == w.prompt.MCPServer && p.Signature() != w.signature && s.screenRebuildFlood(pid) && p.ChoiceSignature() == w.prompt.ChoiceSignature() {
 				w.signature = p.Signature()
 				w.prompt = p
 				s.updateScreenPrompt(w)
