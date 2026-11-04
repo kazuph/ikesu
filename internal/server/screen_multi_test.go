@@ -112,6 +112,47 @@ func TestScreenMultiInputFailureDoesNotSendSubmit(t *testing.T) {
 	}
 }
 
+func TestScreenMultiNavigationAbortsOnChangedQuestionOrStop(t *testing.T) {
+	for _, reason := range []string{"question changed", "server stopped"} {
+		t.Run(reason, func(t *testing.T) {
+			teststate.Lock(t)
+			s, p, input := screenTerminal(t, "claude-multi-wide", "claude")
+			scanScreen(s)
+			var signature string
+			s.app.Do(func() {
+				if prompt := s.readScreenPrompt(1); prompt != nil {
+					signature = prompt.Signature()
+				}
+			})
+			if signature == "" {
+				t.Fatal("missing prompt")
+			}
+			done := make(chan error, 1)
+			go func() { done <- s.navigateScreenRow(1, signature, "progress") }()
+			waitPromptCondition(t, func() bool {
+				got, _ := os.ReadFile(input)
+				return string(got) == "\x1b[B"
+			})
+			if reason == "question changed" {
+				paintScreen(p, "Different question")
+			} else {
+				s.app.Do(s.stopDecisions)
+			}
+			select {
+			case err := <-done:
+				if err == nil || reason == "server stopped" && !strings.Contains(err.Error(), "server stopped") {
+					t.Fatalf("%s: error=%v", reason, err)
+				}
+			case <-time.After(multiSelectSettle):
+				t.Fatalf("%s did not abort navigation", reason)
+			}
+			if got, _ := os.ReadFile(input); string(got) != "\x1b[B" {
+				t.Fatalf("unexpected input after %s: %q", reason, got)
+			}
+		})
+	}
+}
+
 // A slow terminal may still be drawing the last toggle when the fixed input
 // delay ends. The answer must wait for the drawn marks instead of refusing.
 func TestScreenMultiAnswerWaitsForSlowCheckMarks(t *testing.T) {
