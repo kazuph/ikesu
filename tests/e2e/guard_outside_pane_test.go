@@ -1215,3 +1215,65 @@ func TestGuardOutsideAllCommandEntriesWaitForApproval(t *testing.T) {
 		})
 	}
 }
+
+// Six real entry processes check the same prohibited operation; on a shared
+// mini the combined setup and checks can exceed five seconds.
+func TestGuardOutsideAllCommandEntriesBlockProtectedFile(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	first := "p1"
+	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right", Focus: false}, nil)
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "outside-block-entries", Agent: "claude", State: "idle"}, nil)
+	s.rpc(api.MethodPaneClose, api.PaneTarget{PaneID: first}, nil)
+	root := s.stateDir
+	marker := filepath.Join(root, "guard", "agent-panes", "p_1.json")
+	s.waitFor("closed marker", 3*time.Second, func(string) bool { _, err := os.Stat(marker); return os.IsNotExist(err) })
+	dir, bin := filepath.Join(root, "guard", "shell", "p_1"), filepath.Join(root, "guard", "bin", "p_1")
+	entry := filepath.Join(dir, "ikesu")
+	for _, name := range []string{"exec", "line", "claude-prefix", "shim", "bash-env", "zdotdir"} {
+		t.Run(name, func(t *testing.T) {
+			target := filepath.Join(root, name+"-allow-main")
+			line := "/usr/bin/touch '" + strings.ReplaceAll(target, "'", "'\\''") + "'"
+			command, args, extra := entry, []string{"guard", "exec", "--", "/usr/bin/touch", target}, ""
+			switch name {
+			case "line":
+				args = []string{"guard", "line", "--", line}
+			case "claude-prefix":
+				command = filepath.Join(dir, "claude-prefix")
+				args = []string{line}
+			case "shim":
+				command = filepath.Join(bin, "touch")
+				args = []string{target}
+			case "bash-env":
+				command = "/bin/bash"
+				args = []string{"-c", line}
+				extra = "BASH_ENV=" + filepath.Join(dir, "bash-env")
+			case "zdotdir":
+				command = "/bin/zsh"
+				args = []string{"-c", line}
+				extra = "ZDOTDIR=" + dir
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, command, args...)
+			cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "SHELL=/bin/zsh", "IKESU_STATE_DIR=" + root,
+				"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + marker, "IKESU_GUARD_BIN=" + bin, "IKESU_GUARD_SHELL_DIR=" + dir,
+				"IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(root, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1"}
+			if extra != "" {
+				cmd.Env = append(cmd.Env, extra)
+			}
+			out, err := cmd.CombinedOutput()
+			if err == nil || !strings.Contains(string(out), "完全に禁止") {
+				t.Fatalf("prohibited operation was not blocked: %v %s", err, out)
+			}
+			if _, err := os.Stat(target); !os.IsNotExist(err) {
+				t.Fatalf("prohibited operation created file: %v", err)
+			}
+			var pending api.DecisionListResult
+			s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
+			if len(pending.Decisions) != 0 {
+				t.Fatalf("prohibited operation requested approval: %+v", pending.Decisions)
+			}
+		})
+	}
+}
