@@ -1,30 +1,40 @@
 import AppKit
 import Foundation
 
-// `screen` is CGWindowListCopyWindowInfo's front-to-back order. Own windows
+// `screen` is CGWindowListCopyWindowInfo's front-to-back order. `panels` are
+// this process's open panels on the active space, front to back. Own windows
 // that are not panels (previews) neither count as panels nor cover them.
-func panelPlacement(screen: [[String: Any]], panels: Set<Int>, peers: Set<Int>, own: Int) -> PanelPlacement {
+// A panel ordered moments ago may not be in `screen` yet; it was placed in
+// front or behind an uncovered panel, so it counts as uncovered.
+func panelPlacement(screen: [[String: Any]], panels: [Int], peers: Set<Int>, own: Int) -> PanelPlacement {
   var others: [CGRect] = []
-  var behind: Int?
+  var peerBehind: Int?
   var seen = 0, covered = 0
+  var listed = Set<Int>(), hiddenPanels = Set<Int>()
   for window in screen {
     guard (window[kCGWindowLayer as String] as? Int) == 0,
       let number = window[kCGWindowNumber as String] as? Int,
       let rect = window[kCGWindowBounds as String] as? NSDictionary,
       let bounds = CGRect(dictionaryRepresentation: rect as CFDictionary) else { continue }
     let pid = window[kCGWindowOwnerPID as String] as? Int ?? 0
-    if panels.contains(number) || peers.contains(pid) {
+    let ownPanel = panels.contains(number)
+    if ownPanel || peers.contains(pid) {
       seen += 1
+      listed.insert(number)
       let hidden = others.contains { other in
         let overlap = other.intersection(bounds)
         return !overlap.isNull && overlap.width > 0 && overlap.height > 0
       }
-      if hidden { covered += 1 } else { behind = number }
+      if hidden { covered += 1; hiddenPanels.insert(number) } else if !ownPanel { peerBehind = number }
     } else if pid != own && (window[kCGWindowAlpha as String] as? Double ?? 1) > 0 {
       others.append(bounds)
     }
   }
-  if behind != nil { return PanelPlacement(behind: behind, reason: "panel_in_front", openPanels: seen, coveredPanels: covered) }
+  let unlisted = panels.filter { !listed.contains($0) }.count
+  // Prefer this process's lowest uncovered panel (its own order is current).
+  if let behind = panels.last(where: { !hiddenPanels.contains($0) }) ?? peerBehind {
+    return PanelPlacement(behind: behind, reason: "panel_in_front", openPanels: seen + unlisted, coveredPanels: covered)
+  }
   let reason = seen > 0 ? "all_panels_covered" : panels.isEmpty && peers.isEmpty ? "no_open_panel" : "panel_not_on_screen"
   return PanelPlacement(behind: nil, reason: reason, openPanels: seen, coveredPanels: covered)
 }
@@ -71,7 +81,8 @@ final class DialogHost: NSObject, NSApplicationDelegate {
     windows[key] = controller
     refresh()
     let own = Int(ProcessInfo.processInfo.processIdentifier)
-    let panels = Set(windows.values.filter { $0 !== controller }.map { $0.panel.windowNumber })
+    let open = Set(windows.values.filter { $0 !== controller && $0.panel.isVisible && $0.panel.isOnActiveSpace }.map { $0.panel.windowNumber })
+    let panels = (NSWindow.windowNumbers(options: []) ?? []).map { $0.intValue }.filter { open.contains($0) }
     // A one-dialog helper shares the screen with sibling helper processes.
     let peers = directory == nil && controller.spec.present_in_background == true ? peerPanelPIDs(own: own) : []
     let screen = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
