@@ -267,19 +267,21 @@ func TestPortraitMobileThresholdAndPreset(t *testing.T) {
 func TestPortraitRemoteSnapshotCarriesServerJudgment(t *testing.T) {
 	a := portraitApp(t)
 	v := a.NewViewer(io.Discard, 100, 30, nil)
-	var last render.Input
-	v.SetSnapshotSink(func(in render.Input) error { last = in; return nil })
+	// サーバーと同じく、描画中（この画面の状態が当たっている間）に encode する。
+	var enc endpoint.SnapshotEncoder
+	var dec endpoint.SnapshotDecoder
+	var wire []byte
+	v.SetSnapshotSink(func(in render.Input) error {
+		data, err := enc.Encode(in)
+		wire = append([]byte(nil), data...)
+		return err
+	})
 	v.Begin(a, 1000, 1001)
 	decode := func() render.Input {
 		t.Helper()
+		wire = nil
 		v.Draw(a, a.SessionPaneSnaps())
-		var enc endpoint.SnapshotEncoder
-		var dec endpoint.SnapshotDecoder
-		data, err := enc.Encode(last)
-		if err != nil {
-			t.Fatal(err)
-		}
-		in, err := dec.Decode(data)
+		in, err := dec.Decode(wire)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -300,13 +302,13 @@ func TestPortraitRemoteSnapshotCarriesServerJudgment(t *testing.T) {
 
 	// 古い版のサーバーは判定を送らない。クライアントは自分で縦長と決めず右を出す。
 	old := render.Input{State: model.New(t.TempDir(), 100, 60)}
-	var enc endpoint.SnapshotEncoder
-	var dec endpoint.SnapshotDecoder
-	data, err := enc.Encode(old)
+	var oldEnc endpoint.SnapshotEncoder
+	var oldDec endpoint.SnapshotDecoder
+	data, err := oldEnc.Encode(old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := dec.Decode(data)
+	got, err := oldDec.Decode(data)
 	if err != nil {
 		t.Fatal(err)
 	}

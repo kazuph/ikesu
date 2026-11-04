@@ -169,6 +169,7 @@ func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
 	v.with(a, func(ui *App) {
 		ui.enc.Reset()
 		ui.SetCellPixels(xp, yp)
+		ui.setScreenPixels(xp, yp)
 		v.takeSize(a)
 		ui.syncLayout()
 		ui.copyResizeAll(copySizes)
@@ -180,7 +181,7 @@ func (v *Viewer) Resize(a *App, cols, rows, xp, yp int) {
 }
 
 func (v *Viewer) Begin(a *App, xp, yp int) {
-	v.with(a, func(ui *App) { v.takeSize(a); ui.BeginHostMouse(xp, yp); ui.dirty = true })
+	v.with(a, func(ui *App) { ui.setScreenPixels(xp, yp); v.takeSize(a); ui.BeginHostMouse(xp, yp); ui.dirty = true })
 	a.st.Cols, a.st.Rows = v.cols, v.rows
 }
 

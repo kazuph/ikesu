@@ -52,3 +52,35 @@ func TestLeftSidebarHiddenModeRemainsTwoStates(t *testing.T) {
 		}
 	}
 }
+
+func TestPortraitHidesOnlyTheRightSidebar(t *testing.T) {
+	for _, tc := range []struct {
+		cols, rows, xp, yp int
+		want               bool
+	}{{100, 30, 1000, 1000, false}, {100, 30, 1000, 1001, true}, {100, 50, 0, 0, false}, {100, 51, 0, 0, true}, {100, 51, 2000, 0, true}, {100, 51, 2000, 1000, false}} {
+		if got := PortraitScreen(tc.cols, tc.rows, tc.xp, tc.yp); got != tc.want {
+			t.Fatalf("%+v got=%t", tc, got)
+		}
+	}
+	for _, mode := range []string{"", "compact", "hidden"} {
+		s := New("/tmp", 160, 30)
+		s.RightSidebarMode, s.RightSidebarSize = mode, 30
+		landscape := s.RightSidebarArea().W
+		left := s.SidebarArea().W
+		s.Portrait = true
+		s.Apply(CmdToggleRightSidebar{})
+		if s.RightSidebarArea().W != 0 || s.SidebarArea().W != left || s.PanesArea().W != 160-left || s.RightSidebarMode != mode || s.RightSidebarSize != 30 {
+			t.Fatalf("mode=%q portrait right=%+v panes=%+v", mode, s.RightSidebarArea(), s.PanesArea())
+		}
+		if s.TabBarArea().W != s.PanesArea().W || s.ActionBarArea().W != s.PanesArea().W {
+			t.Fatal("bars must share pane width")
+		}
+		if s.LandscapeRightSidebarWidth() != landscape {
+			t.Fatalf("landscape width=%d want %d", s.LandscapeRightSidebarWidth(), landscape)
+		}
+		s.Portrait = false
+		if s.RightSidebarArea().W != landscape {
+			t.Fatal("landscape not restored")
+		}
+	}
+}
