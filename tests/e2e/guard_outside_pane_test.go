@@ -30,7 +30,13 @@ func TestGuardIdentityExitedWriterFailsClosed(t *testing.T) {
 	if os.Getenv("IKESU_EXITED_PEER_HELPER") == "1" {
 		file := os.NewFile(3, "inherited-server-connection")
 		defer file.Close()
-		if err := api.WriteRequest(file, api.Request{ID: "exited-peer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1"})}); err != nil {
+		req := api.Request{ID: "exited-peer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1"})}
+		if raw := os.Getenv("IKESU_EXITED_PEER_REQUEST"); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &req); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := api.WriteRequest(file, req); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -1029,7 +1035,31 @@ func TestGuardMatchingCorruptMarkerAllEntryPoints(t *testing.T) {
 // seven real entry processes and the server can take over five seconds.
 func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 	t.Parallel()
-	s := start(t)
+	runGuardWireFailure(t, false)
+}
+
+// The request is written by a real process that exits while the isolated server
+// is suspended. All seven entry points must reject the server's unknown result.
+func TestGuardAllEntryPointsRejectExitedSocketWriter(t *testing.T) {
+	t.Parallel()
+	runGuardWireFailure(t, true)
+}
+
+func runGuardWireFailure(t *testing.T, exitedWriter bool) {
+	pidfile := filepath.Join(t.TempDir(), "server-pid")
+	wrapper := filepath.Join(t.TempDir(), "server-wrapper")
+	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\necho $$ > %q\nexec %q \"$@\"\n", pidfile, binPath)), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, nil, false, binPath, wrapper)
+	data, err := os.ReadFile(pidfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
 	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right", Focus: false}, nil)
@@ -1050,6 +1080,7 @@ func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 	}
 	var workers sync.WaitGroup
 	var corrupted atomic.Int32
+	var suspension sync.Mutex
 	acceptDone := make(chan struct{})
 	go func() {
 		defer close(acceptDone)
@@ -1073,7 +1104,33 @@ func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 				}
 				defer server.Close()
 				_ = server.SetDeadline(time.Now().Add(5 * time.Second))
-				if api.WriteRequest(server, *req) != nil {
+				if exitedWriter && req.Method == api.MethodGuardIdentity {
+					suspension.Lock()
+					signalLossProcess(t, pid, syscall.SIGSTOP, binPath)
+					fd, err := server.(*net.UnixConn).File()
+					if err != nil {
+						signalLossProcess(t, pid, syscall.SIGCONT, binPath)
+						suspension.Unlock()
+						return
+					}
+					raw, err := json.Marshal(req)
+					if err != nil {
+						_ = fd.Close()
+						signalLossProcess(t, pid, syscall.SIGCONT, binPath)
+						suspension.Unlock()
+						return
+					}
+					child := exec.Command(os.Args[0], "-test.run=^TestGuardIdentityExitedWriterFailsClosed$")
+					child.Env = append(os.Environ(), "CLIENT_UPGRADE_RAW_HELPER=1", "IKESU_EXITED_PEER_HELPER=1", "IKESU_EXITED_PEER_REQUEST="+string(raw))
+					child.ExtraFiles = []*os.File{fd}
+					err = child.Run()
+					_ = fd.Close()
+					signalLossProcess(t, pid, syscall.SIGCONT, binPath)
+					suspension.Unlock()
+					if err != nil {
+						return
+					}
+				} else if api.WriteRequest(server, *req) != nil {
 					return
 				}
 				line, err := bufio.NewReader(server).ReadBytes('\n')
@@ -1082,11 +1139,20 @@ func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 				}
 				if req.Method == api.MethodGuardIdentity {
 					var response api.Response
-					if json.Unmarshal(line, &response) != nil || response.Err != nil || len(response.Result) == 0 {
+					if json.Unmarshal(line, &response) != nil {
 						return
 					}
+					if exitedWriter {
+						if response.Err == nil || response.Err.Code != "guard_identity_unknown" {
+							return
+						}
+					} else {
+						if response.Err != nil || len(response.Result) == 0 {
+							return
+						}
+						line = append(line[:len(line)/2], '\n')
+					}
 					corrupted.Add(1)
-					line = append(line[:len(line)/2], '\n')
 				}
 				_, _ = client.Write(line)
 			}()
@@ -1134,7 +1200,7 @@ func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 		})
 	}
 	if got := corrupted.Load(); got != int32(len(cases)) {
-		t.Errorf("corrupted %d actual identity responses, want %d", got, len(cases))
+		t.Errorf("verified %d actual failure responses, want %d", got, len(cases))
 	}
 }
 
