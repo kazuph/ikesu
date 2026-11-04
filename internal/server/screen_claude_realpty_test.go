@@ -415,13 +415,14 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 				return
 			case "timeout", "no_header":
 				var signature string
-				s.app.Do(func() { signature = s.screenPrompts.watches[1].signature })
+				s.app.Do(func() {
+					w := s.screenPrompts.watches[1]
+					signature = w.signature
+					w.transcriptDeadline = time.Now().Add(-time.Second)
+				})
 				waitPromptCondition(t, func() bool {
 					var ready bool
 					s.app.Do(func() {
-						if w := s.screenPrompts.watches[1]; w != nil && w.signature == signature {
-							w.transcriptDeadline = time.Now().Add(-time.Second)
-						}
 						s.scanScreenPrompts()
 						w := s.screenPrompts.watches[1]
 						ready = w != nil && w.signature == signature && w.decisionID != ""

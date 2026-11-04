@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/guard"
@@ -38,19 +39,33 @@ func decodeGuardPolicy(data []byte) (guard.Config, error) {
 // A nil marker means the server proved that this process belongs to its pane.
 // A non-nil marker carries the server's policy without the inherited origin.
 func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentityContext, error) {
-	data, err := r.request("cli:guard:identity", api.MethodGuardIdentity, api.GuardIdentityParams{PaneID: i.Env["IKESU_PANE_ID"]})
-	if err != nil {
-		return nil, nil, err
+	pid := os.Getpid()
+	_, start, err := guard.ApprovalProcess(pid)
+	if err != nil || start == "" {
+		return nil, nil, fmt.Errorf("cannot inspect guard process identity")
 	}
+	deadline := time.Now().Add(requestTimeout)
 	var response api.Response
-	if err = json.Unmarshal(data, &response); err != nil {
-		return nil, nil, err
-	}
-	if response.ID != "cli:guard:identity" {
-		return nil, nil, fmt.Errorf("invalid guard response id")
-	}
-	if response.Err != nil {
-		return nil, nil, fmt.Errorf("%s: %s", response.Err.Code, response.Err.Message)
+	for {
+		data, err := r.requestBefore("cli:guard:identity", api.MethodGuardIdentity, api.GuardIdentityParams{PaneID: i.Env["IKESU_PANE_ID"], PID: pid, StartTime: start}, deadline)
+		if err != nil {
+			return nil, nil, err
+		}
+		response = api.Response{}
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, nil, err
+		}
+		if response.ID != "cli:guard:identity" {
+			return nil, nil, fmt.Errorf("invalid guard response id")
+		}
+		if response.Err == nil {
+			break
+		}
+		if response.Err.Code != "server_stopping" {
+			return nil, nil, fmt.Errorf("%s: %s", response.Err.Code, response.Err.Message)
+		}
+		// During handoff the retiring server can return this response.
+		// Reconnect only for this response and within the original deadline.
 	}
 	var wire struct {
 		Type         string          `json:"type"`
@@ -58,7 +73,7 @@ func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentity
 		Policy       json.RawMessage `json:"policy"`
 		PolicyDigest string          `json:"policy_digest"`
 	}
-	if err = json.Unmarshal(response.Result, &wire); err != nil {
+	if err := json.Unmarshal(response.Result, &wire); err != nil {
 		return nil, nil, err
 	}
 	if wire.Type != "guard_identity" || wire.Match == nil || len(wire.Policy) == 0 || string(wire.Policy) == "null" {
@@ -72,7 +87,7 @@ func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentity
 	if err != nil {
 		return nil, nil, err
 	}
-	context := &api.GuardIdentityContext{PaneID: i.Env["IKESU_PANE_ID"], Match: *wire.Match, PolicyDigest: wire.PolicyDigest}
+	context := &api.GuardIdentityContext{PaneID: i.Env["IKESU_PANE_ID"], Match: *wire.Match, PolicyDigest: wire.PolicyDigest, PID: pid, StartTime: start}
 	if *wire.Match {
 		marker, active, err := guard.ReadMarker(i)
 		if err != nil {

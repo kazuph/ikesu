@@ -146,16 +146,35 @@ func (r *runner) socketPath() string {
 	return api.APISocket(r.o.Session, r.o.Explicit, r.o.getenv)
 }
 
+const requestTimeout = 15 * time.Second
+
 // request sends one API request and returns the raw response line. Any
 // transport failure is converted into a server_not_running error response,
 // matching herdr's CLI behavior.
 func (r *runner) request(id, method string, params any) ([]byte, error) {
-	conn, err := net.DialTimeout("unix", r.socketPath(), 3*time.Second)
+	return r.requestBefore(id, method, params, time.Time{})
+}
+
+func (r *runner) requestBefore(id, method string, params any, deadline time.Time) ([]byte, error) {
+	dialTimeout := 3 * time.Second
+	if !deadline.IsZero() {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, os.ErrDeadlineExceeded
+		}
+		if remaining < dialTimeout {
+			dialTimeout = remaining
+		}
+	}
+	conn, err := net.DialTimeout("unix", r.socketPath(), dialTimeout)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	if deadline.IsZero() {
+		deadline = time.Now().Add(requestTimeout)
+	}
+	_ = conn.SetDeadline(deadline)
 	if method == api.MethodPaneWaitForOutput || method == api.MethodDecisionWait || method == api.MethodServerLiveHandoff {
 		_ = conn.SetDeadline(time.Time{})
 	}

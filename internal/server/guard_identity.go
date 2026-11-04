@@ -87,6 +87,13 @@ func (s *Server) guardIdentity(req *api.Request) api.Response {
 	if err := req.DecodeParams(&p); err != nil {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 	}
+	if p.PID <= 1 || p.PID != req.PeerPID || p.StartTime == "" {
+		return api.Failure(req.ID, "guard_identity_unknown", "guard process identity does not match peer")
+	}
+	_, start, err := guard.ApprovalProcess(p.PID)
+	if err != nil || start != p.StartTime {
+		return api.Failure(req.ID, "guard_identity_unknown", "guard process generation is unavailable or changed")
+	}
 	n, err := strconv.Atoi(strings.TrimPrefix(p.PaneID, "p"))
 	if err != nil || n <= 0 || p.PaneID != "p"+strconv.Itoa(n) {
 		return api.Failure(req.ID, api.ErrInvalidRequest, "invalid guard pane")

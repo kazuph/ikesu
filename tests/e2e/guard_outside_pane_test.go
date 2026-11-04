@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,26 +21,118 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/guard"
+	"github.com/kazuph/ikesu/internal/latency"
 	"golang.org/x/sys/unix"
 )
+
+func serveProcessStarts(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "test-process-start.sock")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_, start, err := guard.ApprovalProcess(latency.PeerPID(conn))
+			if err == nil {
+				_, _ = fmt.Fprintln(conn, start)
+			}
+			_ = conn.Close()
+		}
+	}()
+	t.Cleanup(func() { _ = listener.Close(); <-done })
+	return path
+}
+
+func TestGuardIdentityRejectsMissingOrFalseClaim(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	_, start, err := guard.ApprovalProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		params map[string]any
+	}{
+		{"missing", map[string]any{"pane_id": "p1"}},
+		{"false-pid", map[string]any{"pane_id": "p1", "pid": os.Getppid(), "start_time": start}},
+		{"false-start", map[string]any{"pane_id": "p1", "pid": os.Getpid(), "start_time": start + "-changed"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, err := net.Dial("unix", api.APISocketPath(filepath.Join(s.stateDir, s.name)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if err := api.WriteRequest(conn, api.Request{ID: tc.name, Method: api.MethodGuardIdentity, Params: api.MarshalParams(tc.params)}); err != nil {
+				t.Fatal(err)
+			}
+			resp, err := api.ReadResponse(bufio.NewReader(conn))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.Err == nil || resp.Err.Code != "guard_identity_unknown" {
+				t.Fatalf("unverified claim accepted: %+v", resp)
+			}
+		})
+	}
+}
+
+func writeExitedGuardRequest(fd *os.File, req api.Request) error {
+	return writeExitedGuardRequestAs(fd, req, false)
+}
+
+func writeExitedGuardRequestAs(fd *os.File, req api.Request, claimParent bool) error {
+	cmd := exec.Command("/bin/sh", "-c", `IFS= read -r request; printf '%s\n' "$request" >&3`)
+	cmd.ExtraFiles = []*os.File{fd}
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	claimPID := cmd.Process.Pid
+	if claimParent {
+		claimPID = os.Getpid()
+	}
+	_, start, err := guard.ApprovalProcess(claimPID)
+	if err == nil {
+		var params map[string]any
+		err = json.Unmarshal(req.Params, &params)
+		if err == nil {
+			params["pid"], params["start_time"] = claimPID, start
+			req.Params = api.MarshalParams(params)
+			err = json.NewEncoder(in).Encode(req)
+		}
+	}
+	_ = in.Close()
+	waitErr := cmd.Wait()
+	if err != nil {
+		return err
+	}
+	return waitErr
+}
 
 // A real isolated server is briefly suspended so its socket receives a request
 // after the writing process has exited; process setup can exceed five seconds.
 func TestGuardIdentityExitedWriterFailsClosed(t *testing.T) {
-	if os.Getenv("IKESU_EXITED_PEER_HELPER") == "1" {
-		file := os.NewFile(3, "inherited-server-connection")
-		defer file.Close()
-		req := api.Request{ID: "exited-peer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1"})}
-		if raw := os.Getenv("IKESU_EXITED_PEER_REQUEST"); raw != "" {
-			if err := json.Unmarshal([]byte(raw), &req); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := api.WriteRequest(file, req); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
+	testGuardExitedWriter(t, false)
+}
+
+func TestGuardSharedConnectionUsesClaimedParentPolicy(t *testing.T) {
+	testGuardExitedWriter(t, true)
+}
+
+func testGuardExitedWriter(t *testing.T, claimParent bool) {
 	pidfile := filepath.Join(t.TempDir(), "server-pid")
 	wrapper := filepath.Join(t.TempDir(), "server-wrapper")
 	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\necho $$ > %q\nexec %q \"$@\"\n", pidfile, binPath)), 0700); err != nil {
@@ -83,16 +175,23 @@ func TestGuardIdentityExitedWriterFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestGuardIdentityExitedWriterFailsClosed$")
-	cmd.ExtraFiles = []*os.File{childFD}
-	cmd.Env = append(os.Environ(), "CLIENT_UPGRADE_RAW_HELPER=1", "IKESU_EXITED_PEER_HELPER=1")
-	if err := cmd.Start(); err != nil {
-		childFD.Close()
+	err = writeExitedGuardRequestAs(childFD, api.Request{ID: "exited-peer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1"})}, claimParent)
+	childFD.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
-	childFD.Close()
-	if err := cmd.Wait(); err != nil {
+	rawConn, err := conn.(*net.UnixConn).SyscallConn()
+	if err != nil {
 		t.Fatal(err)
+	}
+	var readErr error
+	if err := rawConn.Control(func(fd uintptr) {
+		_, _, readErr = unix.Recvfrom(int(fd), make([]byte, 1), unix.MSG_PEEK|unix.MSG_DONTWAIT)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if readErr != unix.EAGAIN {
+		t.Fatalf("pre-accept read: %v", readErr)
 	}
 	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatal(err)
@@ -102,6 +201,26 @@ func TestGuardIdentityExitedWriterFailsClosed(t *testing.T) {
 	resp, err := api.ReadResponse(bufio.NewReader(conn))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if claimParent {
+		var identity api.GuardIdentityResult
+		if resp.Err != nil || json.Unmarshal(resp.Result, &identity) != nil || identity.Match {
+			t.Fatalf("shared connection was not classified as its outside parent: %+v", resp)
+		}
+		var policy guard.Config
+		if err := json.Unmarshal(identity.Policy, &policy); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(s.stateDir, ".allow-main")
+		input := guard.Input{Command: "/usr/bin/touch", Args: []string{target}, Cwd: s.stateDir, Env: map[string]string{"HOME": s.stateDir, "PATH": "/usr/bin:/bin"}, VerifiedOutside: &guard.Marker{OutsidePane: true, Cwd: s.stateDir, Policy: &policy}}
+		var diagnostic bytes.Buffer
+		if guard.Authorize(policy, s.stateDir, input, "exec", &diagnostic, nil) || !strings.Contains(diagnostic.String(), "完全に禁止") {
+			t.Fatalf("parent policy did not block protected command: %s", diagnostic.String())
+		}
+		if _, err := os.Stat(target); !os.IsNotExist(err) {
+			t.Fatalf("protected file exists: %v", err)
+		}
+		return
 	}
 	if resp.Err == nil || resp.Err.Code != "guard_identity_unknown" {
 		t.Fatalf("exited peer was not rejected as unknown: %+v", resp)
@@ -114,6 +233,17 @@ func TestGuardIdentityPassedSocketUsesKernelPeer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		_, start, err := guard.ApprovalProcess(os.Getpid())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := api.WriteRequest(conn, api.Request{ID: "before-transfer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1", PID: os.Getpid(), StartTime: start})}); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := api.ReadResponse(bufio.NewReader(conn))
+		if err != nil || resp.Err != nil {
+			t.Fatalf("before transfer: %+v %v", resp, err)
+		}
 		file, err := conn.(*net.UnixConn).File()
 		if err != nil {
 			t.Fatal(err)
@@ -122,6 +252,11 @@ func TestGuardIdentityPassedSocketUsesKernelPeer(t *testing.T) {
 		defer conn.Close()
 		if err := unix.Sendmsg(3, []byte{1}, unix.UnixRights(int(file.Fd())), nil, 0); err != nil {
 			t.Fatal(err)
+		}
+		// Keep the original connection alive until the receiver has installed
+		// its duplicate, then exit before the request tests peer identity.
+		if n, err := unix.Read(3, make([]byte, 1)); err != nil || n != 1 {
+			t.Fatalf("socket transfer acknowledgement: %d %v", n, err)
 		}
 		return
 	}
@@ -151,9 +286,6 @@ func TestGuardIdentityPassedSocketUsesKernelPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
-	}
 	messages, err := unix.ParseSocketControlMessage(oob[:n])
 	if err != nil || len(messages) != 1 {
 		t.Fatalf("socket rights: %v", err)
@@ -169,28 +301,28 @@ func TestGuardIdentityPassedSocketUsesKernelPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	if _, err := unix.Write(pair[0], []byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
 	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := api.WriteRequest(conn, api.Request{ID: "dead-peer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1"})}); err != nil {
+	_, start, err := guard.ApprovalProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.WriteRequest(conn, api.Request{ID: "dead-peer", Method: api.MethodGuardIdentity, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: "p1", PID: os.Getpid(), StartTime: start})}); err != nil {
 		t.Fatal(err)
 	}
 	resp, err := api.ReadResponse(bufio.NewReader(conn))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// macOS LOCAL_PEERPID identifies the last writer after SCM_RIGHTS transfer;
-	// Linux SO_PEERCRED retains the dead connector's identity.
-	if runtime.GOOS == "darwin" {
-		if resp.Err != nil {
-			t.Fatal(resp.Err)
-		}
-		var result api.GuardIdentityResult
-		if err := json.Unmarshal(resp.Result, &result); err != nil || result.Match {
-			t.Fatalf("transferred socket misattributed to pane: %+v %v", result, err)
-		}
-	} else if resp.Err == nil {
-		t.Fatal("dead connector was classified instead of failing closed")
+	if resp.Err == nil || resp.Err.Code != "guard_identity_unknown" {
+		t.Fatalf("transferred socket was not rejected as unknown: %+v", resp)
 	}
 }
 
@@ -304,11 +436,14 @@ func TestGuardOutsidePaneDoesNotUseInheritedOrigin(t *testing.T) {
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "outside-test", Agent: "claude", State: "idle"}, nil)
+	label := "INHERITED_PANE_LABEL"
+	s.rpc(api.MethodPaneRename, api.PaneRenameParams{PaneID: "p1", Label: &label}, nil)
 	marker := filepath.Join(s.stateDir, "guard", "agent-panes", "p_1.json")
 	entry := filepath.Join(s.stateDir, "guard", "shell", "p_1", "ikesu")
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, entry, "guard", "exec", "--", "dd", "if=/dev/null", "of=/dev/null")
+	cmd.Dir = s.stateDir
 	cmd.Env = []string{"HOME=" + s.stateDir, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + s.stateDir,
 		"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + marker,
 		"IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(s.stateDir, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1",
@@ -338,6 +473,24 @@ func TestGuardOutsidePaneDoesNotUseInheritedOrigin(t *testing.T) {
 	}
 	if err := <-done; err == nil {
 		t.Fatal("rejected command succeeded")
+	}
+	decisionJSON, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := `import {buildDialogSpec} from './apps/mac-dialog-decisions/spec.mjs';
+import {buildDecisionBlocks,fallbackText} from './apps/slack-decisions/slack-decisions.mjs';
+let text=''; for await (const chunk of process.stdin) text+=chunk;
+const decision=JSON.parse(text), machine={id:'local'};
+const views=[JSON.stringify(buildDialogSpec(decision,machine)),JSON.stringify(buildDecisionBlocks({decision,machine})),fallbackText({decision,machine})];
+for (const view of views) {
+ if (!view.includes('ペインの外') || view.includes('INHERITED_PANE_LABEL') || view.includes('claude') || view.includes('p1')) throw new Error(view);
+}`
+	renderer := exec.Command("node", "--input-type=module", "-e", render)
+	renderer.Dir = repoRoot()
+	renderer.Stdin = strings.NewReader(string(decisionJSON))
+	if output, err := renderer.CombinedOutput(); err != nil {
+		t.Fatalf("panel/Slack leaked inherited origin: %v %s", err, output)
 	}
 	data, err := os.ReadFile(filepath.Join(s.stateDir, "guard", "decisions.jsonl"))
 	if err != nil {
@@ -629,7 +782,7 @@ func TestGuardDecisionFailsIfPaneClosesAfterIdentity(t *testing.T) {
 	script := filepath.Join(root, "identity-transition.py")
 	body := `import json, os, signal, socket, sys
 signal.signal(signal.SIGHUP, signal.SIG_IGN)
-sock, g1, g2, ready, result1, result2 = sys.argv[1:]
+sock, g1, g2, ready, result1, result2, start_sock = sys.argv[1:]
 def wait(p):
     with open(p) as f: return f.readline().strip()
 def rpc(method, params):
@@ -643,11 +796,13 @@ def rpc(method, params):
     s.close(); return json.loads(data)
 with open(ready,'w') as f: f.write(str(os.getpid()))
 if wait(g1) != 'go': sys.exit(1)
-identity=rpc('guard.identity',{'pane_id':'p1'})
+st=socket.socket(socket.AF_UNIX); st.connect(start_sock); start=st.makefile().readline().strip(); st.close()
+claim={'pid':os.getpid(),'start_time':start}
+identity=rpc('guard.identity',dict({'pane_id':'p1'},**claim))
 with open(result1+'.tmp','w') as f: json.dump(identity,f)
 os.replace(result1+'.tmp',result1)
 if wait(g2) != 'go': sys.exit(1)
-ctx={'pane_id':'p1','match':True,'policy_digest':identity['result']['policy_digest']}
+ctx=dict({'pane_id':'p1','match':True,'policy_digest':identity['result']['policy_digest']},**claim)
 params={'kind':'command_guard','title':'isolated transition','options':[{'id':'reject','label':'no','role':'reject'}],'origin':{'pane_id':'p1'},'guard_context':ctx}
 result=rpc('decision.create',params)
 with open(result2+'.tmp','w') as f: json.dump(result,f)
@@ -662,7 +817,7 @@ os.replace(result2+'.tmp',result2)
 	}
 	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
 	socket := api.APISocketPath(filepath.Join(root, s.name))
-	args := []string{python, script, socket, gate1, gate2, ready, firstResult, secondResult}
+	args := []string{python, script, socket, gate1, gate2, ready, firstResult, secondResult, serveProcessStarts(t, root)}
 	line := "nohup"
 	for _, arg := range args {
 		line += " " + quote(arg)
@@ -796,12 +951,15 @@ func TestGuardMatchingPaneAllEntryPoints(t *testing.T) {
 	dir := filepath.Join(root, "guard", "shell", "p_1")
 	bin := filepath.Join(root, "guard", "bin", "p_1")
 	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
-	python := `import json,socket,sys
+	python := `import json,os,socket,sys
+st=socket.socket(socket.AF_UNIX); st.connect(sys.argv[3]); start=st.makefile().readline().strip(); st.close()
 s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1])
-s.sendall((json.dumps({'id':'match','method':'guard.identity','params':{'pane_id':'p1'}})+'\n').encode())
+s.sendall((json.dumps({'id':'match','method':'guard.identity','params':{'pane_id':'p1','pid':os.getpid(),'start_time':start}})+'\n').encode())
 f=s.makefile(); r=json.loads(f.readline()); assert r['result']['match'] == (sys.argv[2] == 'true'), r
 `
 	probe := filepath.Join(root, "match-probe.py")
+	probeCommand := "python3 " + quote(probe)
+	startSock := serveProcessStarts(t, root)
 	if err := os.WriteFile(probe, []byte(python), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -820,7 +978,7 @@ f=s.makefile(); r=json.loads(f.readline()); assert r['result']['match'] == (sys.
 	}
 	var script strings.Builder
 	script.WriteString("#!/bin/sh\nprintf ready > " + quote(filepath.Join(root, "match-started")) + "\nread go < " + quote(boot) + " || exit 2\n")
-	script.WriteString("python3 " + quote(probe) + " " + quote(api.APISocketPath(filepath.Join(root, s.name))) + " true > " + quote(filepath.Join(root, "match-probe-output")) + " 2>&1\n")
+	script.WriteString(probeCommand + " " + quote(api.APISocketPath(filepath.Join(root, s.name))) + " true " + quote(startSock) + " > " + quote(filepath.Join(root, "match-probe-output")) + " 2>&1\n")
 	script.WriteString("printf '%s' $? > " + quote(filepath.Join(root, "match-probe-status")) + "\n")
 	for _, tc := range commands {
 		script.WriteString(tc.command + " > " + quote(filepath.Join(root, tc.name+"-output")) + " 2>&1\n")
@@ -832,7 +990,7 @@ f=s.makefile(); r=json.loads(f.readline()); assert r['result']['match'] == (sys.
 	}
 	script.WriteString("printf ready > " + quote(filepath.Join(root, "missing-marker-ready")) + "\n")
 	script.WriteString("read go < " + quote(gate) + " || exit 2\n")
-	script.WriteString("python3 " + quote(probe) + " " + quote(api.APISocketPath(filepath.Join(root, s.name))) + " false > " + quote(filepath.Join(root, "missing-probe-output")) + " 2>&1\n")
+	script.WriteString(probeCommand + " " + quote(api.APISocketPath(filepath.Join(root, s.name))) + " false " + quote(startSock) + " > " + quote(filepath.Join(root, "missing-probe-output")) + " 2>&1\n")
 	script.WriteString("printf '%s' $? > " + quote(filepath.Join(root, "missing-probe-status")) + "\n")
 	for _, tc := range commands {
 		script.WriteString(tc.command + " > " + quote(filepath.Join(root, "missing-"+tc.name+"-output")) + " 2>&1\n")
@@ -1145,25 +1303,29 @@ func runGuardWireFailure(t *testing.T, exitedWriter bool) {
 						suspension.Unlock()
 						return
 					}
-					raw, err := json.Marshal(req)
-					if err != nil {
-						_ = fd.Close()
-						signalLossProcess(t, pid, syscall.SIGCONT, binPath)
-						suspension.Unlock()
-						return
-					}
-					child := exec.Command(os.Args[0], "-test.run=^TestGuardIdentityExitedWriterFailsClosed$")
-					child.Env = append(os.Environ(), "CLIENT_UPGRADE_RAW_HELPER=1", "IKESU_EXITED_PEER_HELPER=1", "IKESU_EXITED_PEER_REQUEST="+string(raw))
-					child.ExtraFiles = []*os.File{fd}
-					err = child.Run()
+					err = writeExitedGuardRequest(fd, *req)
 					_ = fd.Close()
 					signalLossProcess(t, pid, syscall.SIGCONT, binPath)
 					suspension.Unlock()
 					if err != nil {
 						return
 					}
-				} else if api.WriteRequest(server, *req) != nil {
-					return
+				} else {
+					if req.Method == api.MethodGuardIdentity {
+						var p api.GuardIdentityParams
+						if json.Unmarshal(req.Params, &p) != nil {
+							return
+						}
+						_, p.StartTime, err = guard.ApprovalProcess(os.Getpid())
+						if err != nil {
+							return
+						}
+						p.PID = os.Getpid()
+						req.Params = api.MarshalParams(p)
+					}
+					if api.WriteRequest(server, *req) != nil {
+						return
+					}
 				}
 				line, err := bufio.NewReader(server).ReadBytes('\n')
 				if err != nil {
@@ -1408,7 +1570,8 @@ func TestGuardAllEntriesStopWhenMatchedPaneCloses(t *testing.T) {
 	script := filepath.Join(root, "close-entries.py")
 	body := `import json, os, signal, socket, subprocess, sys, threading
 signal.signal(signal.SIGHUP, signal.SIG_IGN)
-root, sock, start, release, ready, matched, result = sys.argv[1:]
+root, sock, start, release, ready, matched, result, start_sock = sys.argv[1:]
+st=socket.socket(socket.AF_UNIX); st.connect(start_sock); self_start=st.makefile().readline().strip(); st.close()
 real = sock + '.real'
 os.rename(sock, real)
 listener = socket.socket(socket.AF_UNIX)
@@ -1431,6 +1594,10 @@ def handle(client):
         server = socket.socket(socket.AF_UNIX)
         server.settimeout(20)
         server.connect(real)
+        decoded_request = json.loads(request)
+        if decoded_request.get('method') == 'guard.identity':
+            decoded_request['params'].update({'pid':os.getpid(),'start_time':self_start})
+            request = (json.dumps(decoded_request)+'\n').encode()
         server.sendall(request)
         response = receive(server)
         server.close()
@@ -1502,7 +1669,7 @@ os.replace(result+'.tmp', result)
 	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
 	socket := api.APISocketPath(filepath.Join(root, s.name))
 	line := "nohup"
-	for _, arg := range []string{python, script, root, socket, startGate, releaseGate, ready, matched, result} {
+	for _, arg := range []string{python, script, root, socket, startGate, releaseGate, ready, matched, result, serveProcessStarts(t, root)} {
 		line += " " + quote(arg)
 	}
 	line += " > /dev/null 2>&1 < /dev/null &\r"

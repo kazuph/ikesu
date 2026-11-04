@@ -134,7 +134,7 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 			if p.Kind != "command_guard" || p.Origin == nil {
 				return api.Failure(req.ID, api.ErrInvalidRequest, "invalid guard decision context")
 			}
-			identityReq := &api.Request{ID: req.ID, PeerPID: req.PeerPID, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: p.GuardContext.PaneID})}
+			identityReq := &api.Request{ID: req.ID, PeerPID: req.PeerPID, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: p.GuardContext.PaneID, PID: p.GuardContext.PID, StartTime: p.GuardContext.StartTime})}
 			identityResp := s.guardIdentity(identityReq)
 			if identityResp.Err != nil {
 				return identityResp

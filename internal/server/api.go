@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/guard"
 	"github.com/kazuph/ikesu/internal/latency"
 )
 
@@ -17,13 +18,27 @@ func (s *Server) apiLoop() {
 			return
 		}
 		s.apiWG.Add(1)
-		go s.serveAPI(conn)
+		peer := latency.PeerIdentityOf(conn)
+		_, start, err := guard.ApprovalProcess(peer.PID)
+		if err != nil {
+			peer = latency.PeerIdentity{}
+		}
+		go s.serveAPIWithPeer(conn, peer, start)
 	}
 }
 
 // serveAPI reads newline-delimited requests and writes one response per
 // request until the connection closes.
 func (s *Server) serveAPI(conn net.Conn) {
+	peer := latency.PeerIdentityOf(conn)
+	_, start, err := guard.ApprovalProcess(peer.PID)
+	if err != nil {
+		peer = latency.PeerIdentity{}
+	}
+	s.serveAPIWithPeer(conn, peer, start)
+}
+
+func (s *Server) serveAPIWithPeer(conn net.Conn, accepted latency.PeerIdentity, acceptedStart string) {
 	defer s.apiWG.Done()
 	defer conn.Close()
 	rd := bufio.NewReader(conn)
@@ -32,7 +47,11 @@ func (s *Server) serveAPI(conn net.Conn) {
 		if err != nil {
 			return
 		}
-		req.PeerPID = latency.PeerPID(conn)
+		current := latency.PeerIdentityOf(conn)
+		_, start, peerErr := guard.ApprovalProcess(accepted.PID)
+		if accepted.PID > 1 && accepted == current && peerErr == nil && start == acceptedStart {
+			req.PeerPID = accepted.PID
+		}
 		if s.closing.Load() != 0 {
 			// Pending waits reconnect to the successor with the same decision ID.
 			if req.Method == api.MethodDecisionWait {
