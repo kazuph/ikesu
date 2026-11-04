@@ -58,7 +58,7 @@ func TestPinnedServerPolicyAgainstCallerConfig(t *testing.T) {
 					cmd := exec.Command(binary, args...)
 					cmd.Env = actual
 					b, e := cmd.CombinedOutput()
-					if e == nil || !strings.Contains(string(b), map[bool]string{true: "目印", false: "なぜ実行したいかを書いた申請文が必要"}[missing]) {
+					if e == nil || !strings.Contains(string(b), "なぜ実行したいかを書いた申請文が必要") {
 						t.Fatalf("%s %s missing=%v: %v %s", sub, via, missing, e, b)
 					}
 					if _, e = os.Stat(target); e != nil {

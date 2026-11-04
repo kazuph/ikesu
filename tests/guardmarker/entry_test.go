@@ -11,8 +11,8 @@ import (
 	"github.com/kazuph/ikesu/internal/guard"
 )
 
-// Exercise the actual CLI and generated shell entries, with no replacement
-// authorization server. These commands require a reason before any RPC.
+// Exercise the actual CLI and generated shell entries against an isolated
+// server. The many real Bash/Zsh invocations can exceed five seconds.
 func TestPinnedGuardEntryPoints(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "ikesu")
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
@@ -101,11 +101,13 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 					}
 					return
 				}
-				if e == nil || fileErr != nil || !strings.Contains(string(b), "停止") {
+				// These fixture processes are outside the server's pane. Even a
+				// malformed inherited marker must use the server's rules.
+				if e == nil || fileErr != nil || !strings.Contains(string(b), "Command cancelled") {
 					t.Fatal(e, fileErr, string(b))
 				}
 				records, e := os.ReadFile(filepath.Join(a.Root, "guard", "decisions.jsonl"))
-				if e != nil || !strings.Contains(string(records), `"rule":"guard-marker"`) {
+				if e != nil || !strings.Contains(string(records), `"rule":"rm-paths"`) || !strings.Contains(string(records), `"outside_pane":true`) {
 					t.Fatal(e, string(records))
 				}
 			})
@@ -130,7 +132,7 @@ func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 		t.Fatal(e)
 	}
 	a := guard.NewAssets(root, "p_1", binary, guard.Config{})
-	env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket", "IKESU_CONFIG=" + root + "/missing.toml", "IKESU_STATE_DIR=" + root}, home)
+	env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + realGuardSocket, "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_CONFIG=" + root + "/missing.toml", "IKESU_STATE_DIR=" + root}, home)
 	if e != nil {
 		t.Fatal(e)
 	}

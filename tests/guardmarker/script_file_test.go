@@ -35,7 +35,7 @@ func TestScriptFileRealEntries(t *testing.T) {
 				if e := os.WriteFile(loader, []byte("printf original >> "+shellQuote(originalSeen)+"\n"), 0600); e != nil {
 					t.Fatal(e)
 				}
-				env, e := a.Prepare([]string{"BASH_ENV=" + loader, "HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/socket", "IKESU_CONFIG=" + root + "/missing.toml", "IKESU_STATE_DIR=" + root}, home)
+				env, e := a.Prepare([]string{"BASH_ENV=" + loader, "HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + realGuardSocket, "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_CONFIG=" + root + "/missing.toml", "IKESU_STATE_DIR=" + root}, home)
 				if e != nil {
 					t.Fatal(e)
 				}

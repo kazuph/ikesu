@@ -73,7 +73,7 @@ func TestScriptReviewRealPreflight(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, binPath, "--session", s.name, "guard", "claude-prefix", "--", command+" "+quote(script))
 			cmd.Dir = root
-			cmd.Env = []string{"HOME=" + root, "PATH=" + path, "SHELL=/bin/sh", "TARGET=/tmp/safe", "PWD=/tmp/safe", "OLDPWD=/tmp/safe", "IKESU_STATE_DIR=" + s.stateDir, "IKESU_PANE_ID=p1", "IKESU_CONFIG=" + filepath.Join(s.stateDir, "missing.toml"), "IKESU_GUARD_MARKER=" + filepath.Join(s.stateDir, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_EXECUTABLE=" + binPath, "BASH_ENV=" + filepath.Join(s.stateDir, "guard", "shell", "p_1", "bash-env"), "AI_GUARD_REQUEST_REASON=対象プロジェクト: ikesuレビュー修正。必要な理由: 抜け道が実行前に承認になることを検証。実施内容: 隔離した使い捨てファイルを対象にし却下する。"}
+			cmd.Env = []string{"HOME=" + root, "PATH=" + path, "SHELL=/bin/sh", "TARGET=/tmp/safe", "PWD=/tmp/safe", "OLDPWD=/tmp/safe", "IKESU_STATE_DIR=" + s.stateDir, "IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(s.stateDir, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_PANE_ID=p1", "IKESU_CONFIG=" + filepath.Join(s.stateDir, "missing.toml"), "IKESU_GUARD_MARKER=" + filepath.Join(s.stateDir, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_EXECUTABLE=" + binPath, "BASH_ENV=" + filepath.Join(s.stateDir, "guard", "shell", "p_1", "bash-env"), "AI_GUARD_REQUEST_REASON=対象プロジェクト: ikesuレビュー修正。必要な理由: 抜け道が実行前に承認になることを検証。実施内容: 隔離した使い捨てファイルを対象にし却下する。"}
 			cmd.Stdin = strings.NewReader(target + "\n")
 			var output bytes.Buffer
 			cmd.Stdout = &output

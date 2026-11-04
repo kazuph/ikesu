@@ -18,8 +18,19 @@ func (r *runner) guardCLI(a []string) int {
 		return 0
 	}
 	sub := a[0]
+	var outside *guard.Marker
+	var identity *api.GuardIdentityContext
 	if sub == "refresh" || sub == "exec" || sub == "line" || sub == "claude-prefix" {
 		input := guard.Input{Command: "ikesu", Args: append([]string{"guard"}, a...), Env: guard.EnvMap(os.Environ())}
+		if input.Env["IKESU_GUARD_MARKER"] != "" {
+			var err error
+			outside, identity, err = r.guardIdentity(input)
+			if err != nil {
+				fmt.Fprintln(r.errOut(), "❌ 実行を停止しました: guard の本人確認に失敗しました:", err)
+				return 1
+			}
+			input.VerifiedOutside = outside
+		}
 		if sub == "refresh" {
 			generation, err := guard.StartupGeneration(input)
 			if err != nil {
@@ -48,13 +59,14 @@ func (r *runner) guardCLI(a []string) int {
 	cwd, _ := os.Getwd()
 	launch := r.o.getenv("IKESU_GUARD_LAUNCH_CWD")
 	via := "shim"
-	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ())}
+	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ()), VerifiedOutside: outside}
 	// Generated entries pin the marker path. Keep diagnostics with that pane's
 	// assets even when its shell still carries the pre-handoff state directory.
 	if marker := i.Env["IKESU_GUARD_MARKER"]; marker != "" && (sub == "exec" || sub == "line" || sub == "claude-prefix") {
 		root = filepath.Dir(filepath.Dir(filepath.Dir(marker)))
 	}
 	await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+		p.GuardContext = identity
 		marker, active, err := guard.ReadMarker(i)
 		if err != nil {
 			return api.Decision{}, err
@@ -74,7 +86,18 @@ func (r *runner) guardCLI(a []string) int {
 			}
 			return getenv(key)
 		}
-		return next.guardAwait(p, timeout)
+		decision, err := next.guardAwait(p, timeout)
+		if err != nil || identity == nil {
+			return decision, err
+		}
+		_, current, err := r.guardIdentity(guard.Input{Env: guard.EnvMap(os.Environ())})
+		if err != nil {
+			return api.Decision{}, err
+		}
+		if *current != *identity {
+			return api.Decision{}, fmt.Errorf("guard identity changed while waiting")
+		}
+		return decision, nil
 	}
 
 	i.ApprovedInvocation = func(hash, rule string) bool {

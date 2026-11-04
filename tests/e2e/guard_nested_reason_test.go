@@ -41,7 +41,7 @@ func TestNestedGuardReasonRequiredBeforeRealDecision(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, binPath, "guard", "exec", "--", "/bin/rm", victim)
-			cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + root, "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh", "IKESU_GUARD_PARENT_REASON=" + tc.parent}
+			cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + root, "IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(s.stateDir, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh", "IKESU_GUARD_PARENT_REASON=" + tc.parent}
 			cmd.Dir = root
 			var output bytes.Buffer
 			cmd.Stdout = &output

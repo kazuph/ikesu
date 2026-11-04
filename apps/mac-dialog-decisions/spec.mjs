@@ -48,7 +48,7 @@ export function locationLabel(decision, machine) {
   const host = id === "local" ? "ローカル" : machine?.label || id || "不明";
   const project = origin.cwd ? path.basename(origin.cwd) : "不明";
   const space = origin.workspace_label || "不明";
-  const pane = [origin.pane_label || origin.pane_id, origin.agent].filter(Boolean).join(" / ") || "不明";
+  const pane = origin.outside_pane ? "ペインの外" : [origin.pane_label || origin.pane_id, origin.agent].filter(Boolean).join(" / ") || "不明";
   return [host, project, space, pane].filter((part, index, parts) => index === 0 || part !== parts[index - 1]).join("｜");
 }
 

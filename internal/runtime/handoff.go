@@ -16,6 +16,7 @@ type PaneTransfer struct {
 	GraphicsEnabled             bool
 	CellWidth, CellHeight       int
 	ID, PID                     int
+	ShellStart                  string
 	Cwd                         string
 	Argv                        []string
 	Terminal                    []byte
@@ -84,6 +85,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			return fail(err)
 		}
 		v := PaneTransfer{ID: id, PID: p.ShellPID(), Cwd: p.cwd, Argv: p.spawnArgv, Terminal: terminal, AgentOverride: p.agentOverride, GuardStarted: p.guardStarted, Modes: p.modes, Read: p.read.transfer()}
+		v.ShellStart = p.shellStart
 		v.Graphics, v.GraphicsEnabled, v.CellWidth, v.CellHeight = p.graphics, p.graphicsEnabled, p.cellWidth, p.cellHeight
 		v.TapState, v.TapBody, v.Clipboard = int(p.tap.state), p.tap.body, p.clipboard
 		if p.guard != nil {
@@ -129,6 +131,12 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 			return err
 		}
 		p.importedPID = v.PID
+		p.shellStart = v.ShellStart
+		if p.shellStart == "" && v.PID > 1 {
+			// Older handoff payloads did not include a process generation.
+			// Establish it only when the live process owns this transferred PTY.
+			p.shellStart, _ = legacyShellStart(p.ptyFD, v.PID)
+		}
 		p.spawnArgv = v.Argv
 		p.agentOverride, p.guardStarted, p.modes = v.AgentOverride, v.GuardStarted, v.Modes
 		p.graphics, p.graphicsEnabled, p.cellWidth, p.cellHeight = v.Graphics, v.GraphicsEnabled, v.CellWidth, v.CellHeight
@@ -185,6 +193,9 @@ func (p *Pane) ShellPID() int {
 	}
 	return p.cmd.Process.Pid
 }
+
+// ShellIdentity is recorded when the pane is spawned and retained on handoff.
+func (p *Pane) ShellIdentity() (int, string) { return p.ShellPID(), p.shellStart }
 
 func (p *Pane) killProcess() {
 	if p.cmd != nil && p.cmd.Process != nil {

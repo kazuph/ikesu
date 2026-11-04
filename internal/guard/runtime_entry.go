@@ -161,7 +161,7 @@ func openRuntimeGeneration(i Input) (_ *generationLease, failure error) {
 	if markerError != nil && !os.IsNotExist(markerError) {
 		return nil, markerError
 	}
-	if markerError == nil {
+	if markerError == nil && i.VerifiedOutside == nil {
 		m, _, err := ReadMarker(i)
 		if err != nil {
 			return nil, err
@@ -171,6 +171,16 @@ func openRuntimeGeneration(i Input) (_ *generationLease, failure error) {
 		}
 	}
 	a.Executable = g.Executable
+	if i.VerifiedOutside != nil && !reflect.DeepEqual(i.VerifiedOutside.Policy, &g.Policy) {
+		// An orphaned shell may retain an older generation after config reload.
+		// Verify that generation first, then publish the server's current rules.
+		a.Config = *i.VerifiedOutside.Policy
+		path, err := a.ensureGeneration(shell, true)
+		if err != nil {
+			return nil, err
+		}
+		return &generationLease{path, shell, unlock}, nil
+	}
 	if ready {
 		return &generationLease{dir.path, shell, unlock}, nil
 	}
@@ -191,6 +201,11 @@ func markerAssets(i Input, m Marker) (*Assets, error) {
 	}
 	a.Config = *m.Policy
 	a.meta = m
+	if m.OutsidePane {
+		// The generated loader is pinned to its original asset name, while
+		// decision and audit origin remain outside the pane.
+		a.meta.Pane = i.Env["IKESU_PANE_ID"]
+	}
 	shell, err := a.privateShell(false)
 	if err != nil {
 		return nil, err

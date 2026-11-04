@@ -13,6 +13,7 @@ import (
 )
 
 type Record struct {
+	OutsidePane bool     `json:"outside_pane,omitempty"`
 	Epoch       int64    `json:"ts_epoch"`
 	Timestamp   string   `json:"ts"`
 	Decision    string   `json:"verdict"`
@@ -31,6 +32,9 @@ type Record struct {
 }
 
 func ReadMarker(i Input) (Marker, bool, error) {
+	if i.VerifiedOutside != nil {
+		return *i.VerifiedOutside, true, nil
+	}
 	p := i.Env["IKESU_GUARD_MARKER"]
 	if p == "" {
 		return Marker{}, false, nil
@@ -66,7 +70,7 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	}
 	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	now := time.Now()
-	b, e := json.Marshal(Record{Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: i.redact(v.Reason), Command: i.redactedArgv(), CommandLine: i.redact(i.Line()), Cwd: i.redact(i.Cwd), LaunchCwd: i.redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
+	b, e := json.Marshal(Record{OutsidePane: m.OutsidePane, Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: i.redact(v.Reason), Command: i.redactedArgv(), CommandLine: i.redact(i.Line()), Cwd: i.redact(i.Cwd), LaunchCwd: i.redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
 	if e != nil {
 		return e
 	}

@@ -203,7 +203,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 					cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 					cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 					cmd.WaitDelay = time.Second
-					cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "REASON_TARGET=AI_GUARD_REQUEST_REASON", "IKESU_STATE_DIR=" + root, "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_ENFORCING=1", "IKESU_GUARD_EXECUTABLE=" + binPath, "IKESU_GUARD_BIN=" + filepath.Join(root, "guard", "bin", "p_1"), "BASH_ENV=" + bashEnv, "IKESU_GUARD_BASH_ENV_ORIG=" + loader, "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_REASON=" + tc.parent, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh"}
+					cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "REASON_TARGET=AI_GUARD_REQUEST_REASON", "IKESU_STATE_DIR=" + root, "IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(s.stateDir, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "IKESU_GUARD_ENFORCING=1", "IKESU_GUARD_EXECUTABLE=" + binPath, "IKESU_GUARD_BIN=" + filepath.Join(root, "guard", "bin", "p_1"), "BASH_ENV=" + bashEnv, "IKESU_GUARD_BASH_ENV_ORIG=" + loader, "AI_GUARD_REQUEST_REASON=" + tc.own, "IKESU_GUARD_PARENT_REASON=" + tc.parent, "IKESU_GUARD_PARENT_COMMAND=bash outer-request.sh"}
 					if isOuterReasonCase(tc.name) {
 						cmd.Env = append(cmd.Env, "SHELL=/bin/zsh", "AI_GUARD_REQUEST_REASON=")
 					}

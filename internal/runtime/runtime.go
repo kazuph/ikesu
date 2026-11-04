@@ -67,6 +67,7 @@ type Pane struct {
 	done                chan struct{}
 	pumpDone            chan struct{}
 	importedPID         int
+	shellStart          string
 	pausing             atomic.Bool
 	retired             atomic.Bool
 	importedExited      atomic.Bool

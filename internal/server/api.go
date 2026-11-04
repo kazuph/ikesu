@@ -90,6 +90,11 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	if s.closing.Load() != 0 {
 		return stopping
 	}
+	if req.Method == api.MethodGuardIdentity {
+		var resp api.Response
+		s.app.Do(func() { resp = s.guardIdentity(req) })
+		return resp
+	}
 	if response, blocked := s.rejectOverlayLayoutRequest(req); blocked {
 		return response
 	}

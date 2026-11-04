@@ -44,6 +44,7 @@ func (c Config) Commands() []string {
 }
 
 type Input struct {
+	VerifiedOutside      *Marker                   `json:"-"`
 	ApprovedInvocation   func(string, string) bool `json:"-"`
 	runtimeLine          bool
 	evalDepth            int
