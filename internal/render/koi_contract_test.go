@@ -10,6 +10,7 @@ import (
 	"image/color"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -81,71 +82,74 @@ func TestKoiNonDecorationCellsAndHitsRemainIdentical(t *testing.T) {
 		return
 	}
 	for width := 2; width <= 30; width++ {
-		for _, server := range []bool{false, true} {
-			for _, transparent := range []bool{false, true} {
-				for _, multi := range []bool{false, true} {
-					in := koiFixture(t, 2)
-					in.ServerUI = server
-					in.SidebarConfig.UI.TransparentSidebarCards = transparent
-					in.State.SidebarMin = 1
-					in.State.SidebarVisible = true
-					in.State.SidebarSize = width
-					in.State.RightSidebarSize = width
-					in.State.Workspaces[0].Name = "鯉🐈é"
-					in.Panes[1].Status.Key = "working"
-					selected := 0
-					in.SelectedWorkspace = &selected
-					var groups *MachineSidebar
-					if multi {
-						remote := in
-						groups = &MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &remote}}, Active: "local"}
-					}
-					in.Koi = false
-					plain := ComposeMachines(in, groups)
-					var hits []MachineHit
-					if groups != nil {
-						hits = append(hits, groups.Hits...)
-					}
-					in.Koi = true
-					out := ComposeMachines(in, groups)
-					if groups != nil && !reflect.DeepEqual(hits, groups.Hits) {
-						t.Fatal("hit targets changed")
-					}
-					scene := KoiSceneFor(plain.Frame, in, groups)
-					decorated := func(x, y int) bool {
-						if len(scene.Fish) > 0 && x >= scene.Pond.X && x < scene.Pond.X+scene.Pond.W && y >= scene.Pond.Y && y < scene.Pond.Y+scene.Pond.H {
-							return true
+		t.Run("width="+strconv.Itoa(width), func(t *testing.T) {
+			t.Parallel()
+			for _, server := range []bool{false, true} {
+				for _, transparent := range []bool{false, true} {
+					for _, multi := range []bool{false, true} {
+						in := koiFixture(t, 2)
+						in.ServerUI = server
+						in.SidebarConfig.UI.TransparentSidebarCards = transparent
+						in.State.SidebarMin = 1
+						in.State.SidebarVisible = true
+						in.State.SidebarSize = width
+						in.State.RightSidebarSize = width
+						in.State.Workspaces[0].Name = "鯉🐈é"
+						in.Panes[1].Status.Key = "working"
+						selected := 0
+						in.SelectedWorkspace = &selected
+						var groups *MachineSidebar
+						if multi {
+							remote := in
+							groups = &MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &remote}}, Active: "local"}
 						}
-						for _, fish := range scene.Mini {
-							r := fish.Rect
-							if x >= r.X && x < r.X+r.W && y == r.Y {
+						in.Koi = false
+						plain := ComposeMachines(in, groups)
+						var hits []MachineHit
+						if groups != nil {
+							hits = append(hits, groups.Hits...)
+						}
+						in.Koi = true
+						out := ComposeMachines(in, groups)
+						if groups != nil && !reflect.DeepEqual(hits, groups.Hits) {
+							t.Fatal("hit targets changed")
+						}
+						scene := KoiSceneFor(plain.Frame, in, groups)
+						decorated := func(x, y int) bool {
+							if len(scene.Fish) > 0 && x >= scene.Pond.X && x < scene.Pond.X+scene.Pond.W && y >= scene.Pond.Y && y < scene.Pond.Y+scene.Pond.H {
 								return true
 							}
-						}
-						return false
-					}
-					for y := 0; y < out.Frame.H; y++ {
-						for x := 0; x < out.Frame.W; x++ {
-							if !decorated(x, y) && !reflect.DeepEqual(out.Frame.Cell(x, y), plain.Frame.Cell(x, y)) {
-								t.Fatalf("cell changed width=%d server=%t transparent=%t multi=%t at %d,%d", width, server, transparent, multi, x, y)
+							for _, fish := range scene.Mini {
+								r := fish.Rect
+								if x >= r.X && x < r.X+r.W && y == r.Y {
+									return true
+								}
 							}
-							before := plain.Frame.Cell(x, y)
-							if before.Content != " " || before.Width != 1 {
-								if !reflect.DeepEqual(before, out.Frame.Cell(x, y)) {
-									t.Fatal("text or wide cell overwritten", x, y)
+							return false
+						}
+						for y := 0; y < out.Frame.H; y++ {
+							for x := 0; x < out.Frame.W; x++ {
+								if !decorated(x, y) && !reflect.DeepEqual(out.Frame.Cell(x, y), plain.Frame.Cell(x, y)) {
+									t.Fatalf("cell changed width=%d server=%t transparent=%t multi=%t at %d,%d", width, server, transparent, multi, x, y)
+								}
+								before := plain.Frame.Cell(x, y)
+								if before.Content != " " || before.Width != 1 {
+									if !reflect.DeepEqual(before, out.Frame.Cell(x, y)) {
+										t.Fatal("text or wide cell overwritten", x, y)
+									}
 								}
 							}
 						}
-					}
-					off := false
-					in.SidebarConfig.UI.Koi = &off
-					disabled := ComposeMachines(in, groups)
-					if !reflect.DeepEqual(disabled.Frame.Cells, plain.Frame.Cells) || len(disabled.Frame.Graphics) != 0 || disabled.Frame.KoiActive {
-						t.Fatal("off differs from plain")
+						off := false
+						in.SidebarConfig.UI.Koi = &off
+						disabled := ComposeMachines(in, groups)
+						if !reflect.DeepEqual(disabled.Frame.Cells, plain.Frame.Cells) || len(disabled.Frame.Graphics) != 0 || disabled.Frame.KoiActive {
+							t.Fatal("off differs from plain")
+						}
 					}
 				}
 			}
-		}
+		})
 	}
 }
 
