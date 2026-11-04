@@ -228,6 +228,7 @@ func TestGuardOutsidePaneDebugLatency(t *testing.T) {
 }
 
 func TestGuardDecisionRejectsWrongPaneAtCreation(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "outside-test", Agent: "claude", State: "idle"}, nil)
@@ -251,6 +252,7 @@ func TestGuardDecisionRejectsWrongPaneAtCreation(t *testing.T) {
 }
 
 func TestGuardOutsidePaneMissingMarkerSafeLine(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -273,6 +275,7 @@ func TestGuardOutsidePaneMissingMarkerSafeLine(t *testing.T) {
 }
 
 func TestGuardOutsidePaneUnreachableServerStopsSafeCommand(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "outside-test", Agent: "claude", State: "idle"}, nil)
@@ -291,6 +294,7 @@ func TestGuardOutsidePaneUnreachableServerStopsSafeCommand(t *testing.T) {
 }
 
 func TestGuardOutsidePaneDoesNotUseInheritedOrigin(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "outside-test", Agent: "claude", State: "idle"}, nil)
@@ -352,6 +356,7 @@ func TestGuardOutsidePaneDoesNotUseInheritedOrigin(t *testing.T) {
 }
 
 func TestGuardOutsidePaneShellRetainsProtectionAfterCleanup(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -399,6 +404,7 @@ func TestGuardOutsidePaneShellRetainsProtectionAfterCleanup(t *testing.T) {
 }
 
 func TestGuardUninjectedOutsideDoesNotRequireServer(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	cmd := exec.Command(binPath, "guard", "exec", "--", "/usr/bin/true")
 	cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + root, "IKESU_CONFIG=" + filepath.Join(root, "none")}
@@ -409,6 +415,7 @@ func TestGuardUninjectedOutsideDoesNotRequireServer(t *testing.T) {
 }
 
 func TestGuardOutsideBlockedLineHasNoSideEffect(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -434,11 +441,12 @@ func TestGuardOutsideBlockedLineHasNoSideEffect(t *testing.T) {
 	}
 }
 
-// One isolated server is reused by fourteen real process invocations, so this
-// matrix can exceed five seconds on the shared mini.
+// One isolated server is reused across the real-process matrix, so it can
+// exceed five seconds on the shared mini.
 // Each entry starts a real process for several identity states, so the whole
 // matrix can exceed five seconds on a shared mini.
 func TestGuardOutsidePaneAllEntryPoints(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -506,6 +514,7 @@ func TestGuardOutsidePaneAllEntryPoints(t *testing.T) {
 }
 
 func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	root := s.stateDir
@@ -523,15 +532,11 @@ func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
 	s.send("/bin/sh " + quote(script) + " " + quote(entry) + " " + quote(gate) + " " + quote(ready) + " " + quote(out) + " " + quote(status) + "\r")
 	s.waitFor("worker started", 5*time.Second, func(string) bool { _, err := os.Stat(ready); return err == nil })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "corrupt-test", Agent: "claude", State: "idle"}, nil)
-	lock, err := os.OpenFile(filepath.Join(root, "guard", "shell", "p_1", "generation.lock"), os.O_RDWR, 0)
-	if err != nil {
+	markerDir := filepath.Join(root, "guard", "agent-panes")
+	if err := os.Chmod(markerDir, 0500); err != nil {
 		t.Fatal(err)
 	}
-	defer lock.Close()
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
-		t.Fatal(err)
-	}
-	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
+	t.Cleanup(func() { _ = os.Chmod(markerDir, 0700) })
 	marker := filepath.Join(root, "guard", "agent-panes", "p_1.json")
 	if err := os.WriteFile(marker, []byte("{"), 0600); err != nil {
 		t.Fatal(err)
@@ -570,6 +575,7 @@ func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
 // The detached child and actual pane closure establish the identity transition;
 // waiting for both real RPCs can exceed five seconds on a busy mini.
 func TestGuardDecisionFailsIfPaneClosesAfterIdentity(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -690,6 +696,7 @@ os.replace(result2+'.tmp',result2)
 // Two independent processes each need a real decision and can take over five
 // seconds on the shared mini.
 func TestGuardOutsideApprovalDoesNotTransferToAnotherProcess(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "outside-approval", Agent: "claude", State: "idle"}, nil)
@@ -744,6 +751,7 @@ func TestGuardOutsideApprovalDoesNotTransferToAnotherProcess(t *testing.T) {
 // Each entry runs under the actual pane shell and involves real processes;
 // establishing and checking the identity can exceed five seconds on mini.
 func TestGuardMatchingPaneAllEntryPoints(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	root := s.stateDir
@@ -874,6 +882,7 @@ f=s.makefile(); r=json.loads(f.readline()); assert r['result']['match'] == (sys.
 // The real RPC deadline is 15 seconds; all entry points are exercised in
 // parallel while the isolated server is suspended.
 func TestGuardAllEntryPointsFailClosedOnIdentityTimeout(t *testing.T) {
+	t.Parallel()
 	pidfile := filepath.Join(t.TempDir(), "server-pid")
 	wrapper := filepath.Join(t.TempDir(), "server-wrapper")
 	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\necho $$ > %q\nexec %q \"$@\"\n", pidfile, binPath)), 0700); err != nil {
@@ -941,6 +950,7 @@ func TestGuardAllEntryPointsFailClosedOnIdentityTimeout(t *testing.T) {
 // Each guarded process runs beneath a real pane shell while the marker stays
 // corrupt; the complete set can exceed five seconds on the shared mini.
 func TestGuardMatchingCorruptMarkerAllEntryPoints(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	root := s.stateDir
@@ -1018,6 +1028,7 @@ func TestGuardMatchingCorruptMarkerAllEntryPoints(t *testing.T) {
 // A local transport relay truncates actual responses from the isolated server;
 // seven real entry processes and the server can take over five seconds.
 func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -1130,6 +1141,7 @@ func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 // Six real guarded processes each wait for a decision; the complete set can
 // exceed five seconds when the shared mini is busy.
 func TestGuardOutsideAllCommandEntriesWaitForApproval(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
@@ -1219,6 +1231,7 @@ func TestGuardOutsideAllCommandEntriesWaitForApproval(t *testing.T) {
 // Six real entry processes check the same prohibited operation; on a shared
 // mini the combined setup and checks can exceed five seconds.
 func TestGuardOutsideAllCommandEntriesBlockProtectedFile(t *testing.T) {
+	t.Parallel()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
