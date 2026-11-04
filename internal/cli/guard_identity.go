@@ -39,6 +39,8 @@ func decodeGuardPolicy(data []byte) (guard.Config, error) {
 // A nil marker means the server proved that this process belongs to its pane.
 // A non-nil marker carries the server's policy without the inherited origin.
 func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentityContext, error) {
+	const maxAttempts = 40
+	const retryInterval = 25 * time.Millisecond
 	pid := os.Getpid()
 	_, start, err := guard.ApprovalProcess(pid)
 	if err != nil || start == "" {
@@ -46,7 +48,7 @@ func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentity
 	}
 	deadline := time.Now().Add(requestTimeout)
 	var response api.Response
-	for {
+	for attempt := 1; ; attempt++ {
 		data, err := r.requestBefore("cli:guard:identity", api.MethodGuardIdentity, api.GuardIdentityParams{PaneID: i.Env["IKESU_PANE_ID"], PID: pid, StartTime: start}, deadline)
 		if err != nil {
 			return nil, nil, err
@@ -64,8 +66,15 @@ func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentity
 		if response.Err.Code != "server_stopping" {
 			return nil, nil, fmt.Errorf("%s: %s", response.Err.Code, response.Err.Message)
 		}
+		if attempt >= maxAttempts {
+			return nil, nil, fmt.Errorf("%s: retry limit reached", response.Err.Code)
+		}
 		// During handoff the retiring server can return this response.
 		// Reconnect only for this response and within the original deadline.
+		if time.Until(deadline) <= retryInterval {
+			return nil, nil, os.ErrDeadlineExceeded
+		}
+		time.Sleep(retryInterval)
 	}
 	var wire struct {
 		Type         string          `json:"type"`

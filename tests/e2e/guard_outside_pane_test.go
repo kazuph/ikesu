@@ -573,6 +573,23 @@ func TestGuardUninjectedOutsideDoesNotRequireServer(t *testing.T) {
 	}
 }
 
+func TestGuardExecAfterLiveHandoff(t *testing.T) {
+	t.Parallel()
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	cmd := exec.Command(binPath, "guard", "exec", "--", "/usr/bin/printf", "AFTER_HANDOFF")
+	cmd.Env = []string{"HOME=" + s.stateDir, "PATH=/usr/bin:/bin", "SHELL=/bin/sh", "IKESU_STATE_DIR=" + s.stateDir,
+		"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(s.stateDir, "guard", "agent-panes", "p_1.json"),
+		"IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(s.stateDir, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1"}
+	out, err := cmd.CombinedOutput()
+	if err != nil || string(out) != "AFTER_HANDOFF" {
+		t.Fatalf("guard after handoff: %v %s", err, out)
+	}
+}
+
 func TestGuardOutsideBlockedLineHasNoSideEffect(t *testing.T) {
 	t.Parallel()
 	s := start(t)
