@@ -182,9 +182,9 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 			fmt.Fprintf(errOut, "   外側のコマンド: %s\n", parent)
 		}
 		if strings.TrimSpace(reason) == "" {
-			fmt.Fprintf(errOut, "   理由: 要承認コマンドには、対象プロジェクト・必要な理由・実施内容を説明する申請文が必要です。\n   例: %s='対象プロジェクト: <名称>。必要な理由: <解決したい課題>。実施内容: <行う変更や操作>。確認済み: <確認内容>。戻し方: <戻す手順>。' <command>\n   英語の申請文は禁止です。\n", requestReasonEnvName(i))
+			fmt.Fprintf(errOut, "   理由: 要承認コマンドには、なぜ実行したいかを書いた申請文が必要です。\n   例: %s='<なぜ実行したいかを日本語で1文>' <command>\n   英語の申請文は禁止です。\n", requestReasonEnvName(i))
 		} else {
-			fmt.Fprintf(errOut, "   理由: 要承認コマンドの申請文は日本語で書いてください。英語の申請文は禁止です。\n   例: %s='なぜ必要か、何を確認済みか、戻し方は何かを日本語で書く' <command>\n", requestReasonEnvName(i))
+			fmt.Fprintf(errOut, "   理由: 要承認コマンドの申請文は日本語で書いてください。英語の申請文は禁止です。\n   例: %s='<なぜ実行したいかを日本語で1文>' <command>\n", requestReasonEnvName(i))
 		}
 		fmt.Fprintf(errOut, "   判定理由: %s\n", v.Reason)
 		return deny()
