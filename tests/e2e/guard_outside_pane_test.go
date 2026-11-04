@@ -521,6 +521,16 @@ func TestGuardOutsidePaneAllEntryPoints(t *testing.T) {
 
 func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
 	t.Parallel()
+	runGuardMatchingInvalidMarker(t, false)
+}
+
+func TestGuardMatchingPanePolicyMismatchFailsClosed(t *testing.T) {
+	t.Parallel()
+	runGuardMatchingInvalidMarker(t, true)
+}
+
+func runGuardMatchingInvalidMarker(t *testing.T, mismatch bool) {
+	t.Helper()
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	root := s.stateDir
@@ -544,7 +554,29 @@ func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(markerDir, 0700) })
 	marker := filepath.Join(root, "guard", "agent-panes", "p_1.json")
-	if err := os.WriteFile(marker, []byte("{"), 0600); err != nil {
+	content := []byte("{")
+	want := "目印ファイルが壊れています"
+	if mismatch {
+		original, err := os.ReadFile(marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stored map[string]any
+		if err := json.Unmarshal(original, &stored); err != nil {
+			t.Fatal(err)
+		}
+		policy, ok := stored["guard_config"].(map[string]any)
+		if !ok {
+			t.Fatal("missing stored policy")
+		}
+		policy["Mode"] = "record"
+		content, err = json.Marshal(stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want = "guard marker policy mismatch"
+	}
+	if err := os.WriteFile(marker, content, 0600); err != nil {
 		t.Fatal(err)
 	}
 	sent := make(chan error, 1)
@@ -573,7 +605,7 @@ func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(code)) == "0" || !strings.Contains(string(output), "目印ファイルが壊れています") || strings.Contains(string(output), "NEVER_RAN") {
+	if strings.TrimSpace(string(code)) == "0" || !strings.Contains(string(output), want) || strings.Contains(string(output), "NEVER_RAN") {
 		t.Fatalf("corrupt matched marker did not fail closed: status=%s output=%s", code, output)
 	}
 }
