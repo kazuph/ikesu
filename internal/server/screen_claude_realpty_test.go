@@ -316,6 +316,7 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 			s.app.SetQuitHook(s.stopDecisions)
 			done := make(chan struct{})
 			go func() { s.app.Run(); close(done) }()
+			var forcedWatch *screenPromptWatch
 			t.Cleanup(func() {
 				s.app.Stop()
 				<-done
@@ -323,6 +324,31 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 				if s.store != nil {
 					s.store.Close()
 				}
+			})
+			t.Cleanup(func() {
+				if !t.Failed() {
+					return
+				}
+				screen := pane.ScreenText()
+				var state string
+				s.app.Do(func() {
+					w := s.screenPrompts.watches[1]
+					scan := s.screenPrompts.transcripts[1]
+					state = fmt.Sprintf("watch=%+v", w)
+					if forcedWatch != nil {
+						state += fmt.Sprintf(" forced_params=%+v", forcedWatch.prompt.Params)
+					}
+					if w != nil {
+						state += fmt.Sprintf(" current_params=%+v", w.prompt.Params)
+					}
+					if w != nil {
+						state += fmt.Sprintf(" deadline=%s replaced=%t", w.transcriptDeadline.Format(time.RFC3339Nano), forcedWatch != nil && forcedWatch != w)
+					}
+					if scan != nil {
+						state += fmt.Sprintf(" scan_started=%s scan_signature=%q scan_pending=%t unverified=%t resolved=%t", scan.latest.started.Format(time.RFC3339Nano), scan.latest.signature, scan.result != nil, scan.latest.unverified, scan.latest.resolved)
+					}
+				})
+				t.Logf("PTY screen:\n%s\n%s", screen, state)
 			})
 			waitPromptCondition(t, func() bool {
 				return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
@@ -414,18 +440,24 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 				})
 				return
 			case "timeout", "no_header":
-				var signature string
+				var deadline time.Time
 				s.app.Do(func() {
 					w := s.screenPrompts.watches[1]
-					signature = w.signature
-					w.transcriptDeadline = time.Now().Add(-time.Second)
+					forcedWatch = w
+					deadline = time.Now().Add(-time.Second)
+					w.transcriptDeadline = deadline
 				})
 				waitPromptCondition(t, func() bool {
 					var ready bool
 					s.app.Do(func() {
 						s.scanScreenPrompts()
 						w := s.screenPrompts.watches[1]
-						ready = w != nil && w.signature == signature && w.decisionID != ""
+						if w != nil && w != forcedWatch {
+							w.transcriptDeadline = deadline
+							forcedWatch = w
+						}
+						scan := s.screenPrompts.transcripts[1]
+						ready = w != nil && scan != nil && w.signature == scan.latest.signature && w.decisionID != ""
 					})
 					return ready
 				})
