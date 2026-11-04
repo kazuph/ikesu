@@ -329,13 +329,34 @@ func (s *Server) navigateScreenRow(pid int, signature, row string) error {
 		if err := s.screenInput(pid, signature, arrow, true, nil); err != nil {
 			return err
 		}
-		if err := s.screenInputDelay(); err != nil {
-			return err
-		}
-		var after *screenprompt.Prompt
-		s.app.Do(func() { after = s.readScreenPrompt(pid) })
-		if after == nil || after.Signature() != signature || after.Cursor != next {
-			return fmt.Errorf("progress navigation did not advance")
+		sentAt := time.Now()
+		deadline := sentAt.Add(multiSelectSettle)
+		nextInput := sentAt.Add(agentPromptSubmitDelay)
+		for {
+			select {
+			case <-s.decisions.stopped:
+				return fmt.Errorf("server stopped during input delivery")
+			default:
+			}
+			var after *screenprompt.Prompt
+			s.app.Do(func() { after = s.readScreenPrompt(pid) })
+			if after == nil || after.Signature() != signature {
+				return fmt.Errorf("progress navigation did not advance")
+			}
+			now := time.Now()
+			if after.Cursor == next && !now.Before(nextInput) {
+				break
+			}
+			if !now.Before(deadline) {
+				return fmt.Errorf("progress navigation did not advance")
+			}
+			timer := time.NewTimer(eventWaitPoll)
+			select {
+			case <-timer.C:
+			case <-s.decisions.stopped:
+				timer.Stop()
+				return fmt.Errorf("server stopped during input delivery")
+			}
 		}
 	}
 }

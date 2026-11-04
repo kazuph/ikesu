@@ -124,6 +124,8 @@ func TestScreenMultiAnswerWaitsForSlowCheckMarks(t *testing.T) {
 	picture = strings.Replace(picture, "  2.", "❯ 2.", 1)
 	paintScreen(p, picture)
 	waitBytes("12\x1b[B")
+	// The first arrow's redraw can arrive after the fixed input interval.
+	time.Sleep(3 * agentPromptSubmitDelay)
 	picture = strings.Replace(picture, "❯ 2.", "  2.", 1)
 	picture = strings.Replace(picture, "  3.", "❯ 3.", 1)
 	paintScreen(p, picture)
