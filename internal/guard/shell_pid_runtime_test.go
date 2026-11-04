@@ -26,7 +26,7 @@ func TestBashRuntimePIDStatusline(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := NewAssets(root, "p_1", binary, Config{})
-	env, err := a.Prepare([]string{"HOME=" + root, "PATH=" + filepath.Dir(jq) + ":/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/no-server"}, root)
+	env, err := a.Prepare([]string{"HOME=" + root, "PATH=" + filepath.Dir(jq) + ":/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + realGuardFixture(t), "IKESU_SOCKET_PATH_EXPLICIT=1"}, root)
 	if err != nil {
 		t.Fatal(err)
 	}

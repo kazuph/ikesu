@@ -5,6 +5,15 @@ import (
 	"net"
 )
 
+type PeerIdentity struct {
+	PID     int
+	Version uint32
+}
+
+func PeerIdentityOf(conn net.Conn) PeerIdentity {
+	return PeerIdentity{PID: PeerPID(conn)}
+}
+
 func PeerPID(conn net.Conn) int {
 	c, ok := conn.(*net.UnixConn)
 	if !ok {

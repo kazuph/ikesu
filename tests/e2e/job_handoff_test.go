@@ -131,8 +131,9 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 					count++
 				}
 			}
-			if count != 1 || strings.Count(s.text(), notice) != 1 {
-				t.Fatalf("not exactly once: ledger=%d screen=%d", count, strings.Count(s.text(), notice))
+			screen := s.text()
+			if count != 1 || strings.Count(screen, notice) != 1 {
+				t.Fatalf("not exactly once: ledger=%d screen=%d\n%s", count, strings.Count(screen, notice), screen)
 			}
 			t.Logf("PID=%d retained across %d handoffs; status=%s; complete log; ledger notices=%d screen notices=1", pid, tc.handoffs, row.Status, count)
 		})

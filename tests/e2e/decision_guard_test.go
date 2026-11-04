@@ -53,7 +53,7 @@ func TestDecisionGuardInvisibleCLIApproveAndReject(t *testing.T) {
 				return len(pending.Decisions) == 1
 			})
 			d := pending.Decisions[0]
-			if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.PaneID != "p1" {
+			if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || !d.Origin.OutsidePane || d.Origin.PaneID != "" {
 				t.Fatal(d)
 			}
 			select {

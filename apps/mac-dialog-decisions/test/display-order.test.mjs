@@ -62,3 +62,11 @@ test('video discovery retains file/URL destinations and encoded paths without re
  assert.ok(sources.every(source=>spec.media_sources.includes(source)));
  assert.ok(!JSON.stringify(found).includes('***'));
 });
+
+test('outside guard is shown as outside on Mac and Slack',()=>{
+ const d={kind:'command_guard',title:'実行確認',origin:{outside_pane:true,cwd:'/repo',command:'dd'},options:[]};
+ const machine={id:'local'};
+ assert.ok(buildDialogSpec(d,machine).location.includes('ペインの外'));
+ assert.ok(JSON.stringify(buildDecisionBlocks({decision:d,machine})).includes('ペインの外'));
+ assert.ok(fallbackText({decision:d,machine}).includes('ペインの外'));
+});

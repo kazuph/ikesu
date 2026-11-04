@@ -334,7 +334,7 @@ func ClaudeExecutionLine(i Input, line string) string {
 	prefix := "export BASH_ENV=" + quote(i.claudeBashEnv) + "; "
 	payload := ClaudePrefixLine(i, line)
 	if payload == line {
-		return prefix + line
+		return line
 	}
 	tree, e := syntax.NewParser().Parse(strings.NewReader(line), "Claude execution")
 	if e != nil {

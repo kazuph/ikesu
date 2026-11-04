@@ -36,6 +36,10 @@ func TestPeerPIDRealSockets(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer server.Close()
+			identity := PeerIdentityOf(server)
+			if identity.PID != want {
+				t.Fatalf("peer identity=%+v want PID=%d", identity, want)
+			}
 			for _, conn := range []net.Conn{client, server} {
 				if got := PeerPID(conn); got != want {
 					t.Fatalf("peer PID=%d want=%d", got, want)

@@ -22,6 +22,7 @@ type DecisionOption struct {
 	PreviewUnavailable bool    `json:"preview_unavailable,omitempty"`
 }
 type DecisionOrigin struct {
+	OutsidePane    bool   `json:"outside_pane,omitempty"`
 	WorkspaceLabel string `json:"workspace_label,omitempty"`
 	TabLabel       string `json:"tab_label,omitempty"`
 	PaneLabel      string `json:"pane_label,omitempty"`
@@ -69,16 +70,17 @@ type GuardApprovedResult struct {
 }
 
 type DecisionCreateParams struct {
-	GuardExecution *GuardExecutionClaim `json:"guard_execution,omitempty"`
-	Kind           string               `json:"kind"`
-	Title          string               `json:"title"`
-	Body           *string              `json:"body,omitempty"`
-	Options        []DecisionOption     `json:"options"`
-	AllowText      bool                 `json:"allow_text"`
-	MultiSelect    bool                 `json:"multi_select"`
-	QuestionLabel  *string              `json:"-"`
-	Origin         *DecisionOrigin      `json:"origin,omitempty"`
-	TimeoutMS      *uint64              `json:"timeout_ms,omitempty"`
+	GuardContext   *GuardIdentityContext `json:"guard_context,omitempty"`
+	GuardExecution *GuardExecutionClaim  `json:"guard_execution,omitempty"`
+	Kind           string                `json:"kind"`
+	Title          string                `json:"title"`
+	Body           *string               `json:"body,omitempty"`
+	Options        []DecisionOption      `json:"options"`
+	AllowText      bool                  `json:"allow_text"`
+	MultiSelect    bool                  `json:"multi_select"`
+	QuestionLabel  *string               `json:"-"`
+	Origin         *DecisionOrigin       `json:"origin,omitempty"`
+	TimeoutMS      *uint64               `json:"timeout_ms,omitempty"`
 }
 type DecisionTargetParams struct {
 	DecisionID string `json:"decision_id"`

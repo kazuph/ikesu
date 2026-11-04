@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kazuph/ikesu/internal/guard"
 )
 
 // Claude Code passes configured hook and status line commands to the shell
@@ -173,4 +175,21 @@ func TestClaudeHarnessCommandsRunOutsideGuard(t *testing.T) {
 			}
 		})
 	}
+	t.Run("outside uses current server policy after old asset policy changes", func(t *testing.T) {
+		if err := a.Reconfigure(guard.Config{Targets: []string{"rm"}}); err != nil {
+			t.Fatal(err)
+		}
+		project := filepath.Join(home, "other-project")
+		if err := os.MkdirAll(project, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(project, "project-hook.sh"), []byte("#!/bin/bash\nINPUT=$(cat)\nprintf '%s' \"$INPUT\"\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		before := ask()
+		out, err := runIn(project, "./project-hook.sh", `{"prompt":"github-actions-deploy"}`)
+		if err == nil || ask() <= before {
+			t.Fatalf("project hook bypassed current server policy: %v %s", err, out)
+		}
+	})
 }

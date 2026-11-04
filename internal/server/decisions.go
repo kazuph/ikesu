@@ -130,6 +130,28 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return decisionFailure(req.ID, &api.Error{Code: api.ErrInvalidRequest, Message: err.Error()})
 		}
+		if p.GuardContext != nil {
+			if p.Kind != "command_guard" || p.Origin == nil {
+				return api.Failure(req.ID, api.ErrInvalidRequest, "invalid guard decision context")
+			}
+			identityReq := &api.Request{ID: req.ID, PeerPID: req.PeerPID, Params: api.MarshalParams(api.GuardIdentityParams{PaneID: p.GuardContext.PaneID, PID: p.GuardContext.PID, StartTime: p.GuardContext.StartTime})}
+			identityResp := s.guardIdentity(identityReq)
+			if identityResp.Err != nil {
+				return identityResp
+			}
+			var current api.GuardIdentityResult
+			if json.Unmarshal(identityResp.Result, &current) != nil || current.Match != p.GuardContext.Match || current.PolicyDigest == "" || current.PolicyDigest != p.GuardContext.PolicyDigest {
+				return api.Failure(req.ID, "guard_identity_changed", "guard identity or policy changed")
+			}
+			if current.Match {
+				if p.Origin.PaneID != p.GuardContext.PaneID || p.Origin.OutsidePane {
+					return api.Failure(req.ID, "guard_identity_changed", "guard origin does not match")
+				}
+			} else {
+				p.Origin.PaneID, p.Origin.PaneLabel, p.Origin.TabLabel, p.Origin.WorkspaceLabel, p.Origin.Agent = "", "", "", "", ""
+				p.Origin.OutsidePane = true
+			}
+		}
 		s.completeDecisionOrigin(p.Origin)
 		d, err := store.CreateDecision(p, time.Now())
 		if err != nil {

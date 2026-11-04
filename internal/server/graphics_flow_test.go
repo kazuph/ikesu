@@ -106,7 +106,7 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 		defer close(otherDone)
 		seen := false
 		seenStalled := false
-		other.readUntil(t, 5*time.Second, func(message clientMsg) bool {
+		observe := func(message clientMsg) bool {
 			if !seen && bytes.Contains([]byte(outputs([]clientMsg{message})), []byte("TB_OTHER_VIEWER")) {
 				seen = true
 				close(otherInputSeen)
@@ -116,7 +116,13 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 				close(stalledReaderInputSeen)
 			}
 			return false
-		})
+		}
+		for !other.readClosed {
+			if _, err := other.readUntilResult(5*time.Second, observe); err != nil {
+				t.Errorf("other viewer read: %v", err)
+				return
+			}
+		}
 	}()
 	defer func() { other.conn.Close(); <-otherDone }()
 	pixels[0] ^= 255

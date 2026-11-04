@@ -53,7 +53,9 @@ func promptFixtureAgent(t *testing.T, kind string) (*Server, *runtime.Pane, stri
 			t.Logf("pane=%+v job=%+v", pane.Snapshot(), pane.ForegroundJob())
 		}
 	})
-	waitPromptCondition(t, func() bool { return pane.BracketedPasteMode() && foregroundAgent(pane) == kind })
+	waitPromptCondition(t, func() bool {
+		return pane.BracketedPasteMode() && foregroundAgent(pane) == kind && pane.Snapshot().AgentID == kind
+	})
 	starting := promptRequest(s, api.AgentPromptParams{Target: started.Agent.PaneID, Text: "starting must not write"})
 	if starting.Err == nil || starting.Err.Code != "agent_not_ready" {
 		t.Fatal(starting)

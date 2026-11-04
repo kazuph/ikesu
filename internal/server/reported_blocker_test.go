@@ -5,25 +5,72 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/notify"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"golang.org/x/sys/unix"
 )
+
+// reportedQuestionTerminal writes fixture updates through the real PTY so the
+// supervisor delivers the same screen-change events as a running agent.
+func reportedQuestionTerminal(t *testing.T) (*Server, *os.File) {
+	t.Helper()
+	s := newTestServer(t, "reported-question")
+	teststate.Setenv(t, "SHELL", "/bin/sh")
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "output")
+	if err := unix.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(fifo, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.sup.SpawnWith(1, dir, 160, 60, nil, []string{"/bin/sh", "-c", `stty raw -echo; exec cat "$1"`, "screen", fifo})
+	if err != nil {
+		output.Close()
+		t.Fatal(err)
+	}
+	p.SetAgent("claude")
+	s.initDecisionHub()
+	s.app.SetQuitHook(s.stopDecisions)
+	done := make(chan struct{})
+	go func() { s.app.Run(); close(done) }()
+	t.Cleanup(func() {
+		s.app.Stop()
+		<-done
+		output.Close()
+		s.sup.KillAll()
+		if s.store != nil {
+			s.store.Close()
+		}
+	})
+	return s, output
+}
 
 func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
 	if runIsolatedParallel(t) {
 		return
 	}
 	teststate.Lock(t)
-	s, p, _ := screenTerminal(t, "claude-single", "claude")
+	s, output := reportedQuestionTerminal(t)
+	p := s.sup.Get(1)
+	paint := func(text string) {
+		t.Helper()
+		if _, err := output.Write([]byte("\x1b[2J\x1b[H" + text)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paint("Ready")
+	waitPromptCondition(t, func() bool { return strings.Contains(p.ScreenText(), "Ready") })
 	dir, err := os.MkdirTemp("/tmp", "ikesu-question-")
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +112,6 @@ func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
 		s.notifyLast = map[int]map[string]time.Time{}
 		// The target is genuinely in a background workspace, as required by G4.
 		s.app.State().Apply(model.CmdNewWorkspace{Cwd: dir, Name: "foreground"})
-		p.WithEmu(func(e *vt.Emulator) { e.Write([]byte("\x1b[2J\x1b[HReady")) })
 		if resp := s.paneReportAgent("report", api.PaneReportAgentParams{PaneID: "p1", Source: "claude", Agent: "claude", State: "working"}); resp.Err != nil {
 			t.Errorf("report: %v", resp.Err)
 		}
@@ -73,14 +119,14 @@ func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
 		s.app.SetAvailHook(s.onPaneStatus)
 	})
 	t.Cleanup(func() { s.app.Do(func() { s.app.SetAvailHook(nil); s.client = nil }); local.Close() })
-	p.WithEmu(func(e *vt.Emulator) {
-		e.Write([]byte("\x1b[2J\x1b[HQuestion?\r\n1. First\r\n2. Second\r\nEnter to select · Tab/Arrow keys to navigate · Esc to cancel"))
-	})
+	paint("Question?\r\n1. First\r\n2. Second\r\nEnter to select · Tab/Arrow keys to navigate · Esc to cancel")
+	t.Logf("question painted at %s revision=%d", time.Now().Format(time.RFC3339Nano), p.Snapshot().Revision)
 	waitPromptCondition(t, func() bool {
 		var blocked bool
 		s.app.Do(func() { info, _ := s.paneInfo(1); blocked = info.AgentStatus == api.AgentStatus("blocked") })
 		return blocked
 	})
+	t.Logf("blocked observed at %s revision=%d", time.Now().Format(time.RFC3339Nano), p.Snapshot().Revision)
 	waitPromptCondition(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(messages) > 0 })
 	s.app.Do(func() {
 		var result api.PaneInfoResult
@@ -94,10 +140,19 @@ func TestReportedQuestionAPIAndSingleNotificationRequest(t *testing.T) {
 			s.onPaneStatus(1)
 		}
 	})
-	p.WithEmu(func(e *vt.Emulator) { e.Write([]byte("\x1b[2J\x1b[HReady")) })
+	paint("Ready")
+	t.Logf("ready painted at %s revision=%d", time.Now().Format(time.RFC3339Nano), p.Snapshot().Revision)
+	var last string
 	waitPromptCondition(t, func() bool {
 		var restored bool
-		s.app.Do(func() { restored = s.app.PaneStatusKey(1) == "working" })
+		s.app.Do(func() {
+			status := s.app.PaneStatusKey(1)
+			restored = status == "working"
+			if status != last {
+				t.Logf("status=%s at %s revision=%d", status, time.Now().Format(time.RFC3339Nano), p.Snapshot().Revision)
+				last = status
+			}
+		})
 		return restored
 	})
 	mu.Lock()

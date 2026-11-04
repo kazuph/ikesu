@@ -142,6 +142,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 		return nil, err
 	}
 	p.cmd = cmd
+	_, p.shellStart, _ = guard.ApprovalProcess(cmd.Process.Pid)
 	err = p.installPTY(f)
 	if err != nil {
 		_ = cmd.Process.Kill()

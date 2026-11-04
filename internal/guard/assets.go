@@ -15,14 +15,15 @@ import (
 )
 
 type Marker struct {
-	Pane      string  `json:"pane_id"`
-	Agent     string  `json:"agent"`
-	Cwd       string  `json:"launch_cwd"`
-	Workspace string  `json:"workspace_id"`
-	Tab       string  `json:"tab_id"`
-	Socket    string  `json:"socket"`
-	Mode      string  `json:"mode"`
-	Policy    *Config `json:"-"`
+	OutsidePane bool    `json:"-"`
+	Pane        string  `json:"pane_id"`
+	Agent       string  `json:"agent"`
+	Cwd         string  `json:"launch_cwd"`
+	Workspace   string  `json:"workspace_id"`
+	Tab         string  `json:"tab_id"`
+	Socket      string  `json:"socket"`
+	Mode        string  `json:"mode"`
+	Policy      *Config `json:"-"`
 }
 
 // A quiet pane is polled on its existing cwd cadence, so the effective upper
@@ -110,9 +111,9 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 }
 
 // Pin identity at the generated entry point, before the CLI sees the caller's
-// environment. The socket remains in the marker so handoff can replace it.
+// environment, including the server socket captured when the assets are published.
 func (a *Assets) identity() string {
-	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane)
+	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane) + " IKESU_SOCKET_PATH=" + quote(a.meta.Socket) + " IKESU_SOCKET_PATH_EXPLICIT=1"
 }
 func (a *Assets) invocation() string {
 	return a.identity() + " " + quote(a.RuntimePath())
@@ -325,7 +326,18 @@ func (a *Assets) Close() error {
 	a.stopChanges()
 	a.active = ""
 	a.closed = true
-	return a.clearCoverage()
+	// Descendants can outlive the pane and still carry its generated PATH.
+	// Keep the forwarding entries so those descendants continue to reach guard.
+	if err := a.validateManaged(false); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.Remove(a.MarkerPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return a.setIssue("")
 }
 
 // RestoreInherited removes a previous pane's generated shell chain before

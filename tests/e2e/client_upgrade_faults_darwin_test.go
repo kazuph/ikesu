@@ -439,7 +439,10 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					if err := os.WriteFile(newBinary, []byte("#!/bin/sh\nkill -STOP $$\nexit 1\n"), 0700); err != nil {
+					// The child records itself before stopping, so the check does not
+					// depend on catching it inside the short version deadline.
+					script := "#!/bin/sh\necho \"$$ $PPID $0 $1\" > " + strconv.Quote(filepath.Join(dir, "version-child")) + "\nkill -STOP $$\nexit 1\n"
+					if err := os.WriteFile(newBinary, []byte(script), 0700); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -447,40 +450,61 @@ func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
 			signalUpgradeTestProcess(t, pid, oldBinary, "CONT")
 			stopped = false
 			if fault == "version-timeout" {
-				// Verify that the real --version child stopped itself.
-				deadline := time.NewTimer(5 * time.Second)
-				ticker := time.NewTicker(10 * time.Millisecond)
-				defer deadline.Stop()
-				defer ticker.Stop()
-				child := 0
-				for child == 0 {
-					select {
-					case <-deadline.C:
+				// Verify that the real --version child started from the client and
+				// reached its self-stop. The child's own record is read instead of
+				// polling the process table: the shortened version deadline can kill
+				// the child before a loaded machine finishes one pgrep/ps round.
+				deadline := time.Now().Add(5 * time.Second)
+				var record []string
+				for {
+					data, err := os.ReadFile(filepath.Join(dir, "version-child"))
+					if err == nil && strings.HasSuffix(string(data), "\n") {
+						record = strings.Fields(string(data))
+						break
+					}
+					if time.Now().After(deadline) {
 						s.pump(time.Now().Add(100 * time.Millisecond))
 						t.Fatalf("version process did not start; screen:\n%s", s.text())
-					case <-ticker.C:
-						out, _ := exec.Command("pgrep", "-u", strconv.Itoa(os.Getuid()), "-f", resolvedBinary).Output()
-						for _, field := range strings.Fields(string(out)) {
-							candidate, err := strconv.Atoi(field)
-							if err != nil {
-								continue
-							}
-							info, _ := exec.Command("ps", "-ww", "-p", field, "-o", "ppid=", "-o", "command=").Output()
-							fields := strings.Fields(string(info))
-							if len(fields) >= 4 && fields[0] == strconv.Itoa(pid) && fields[1] == "/bin/sh" && fields[2] == resolvedBinary && fields[3] == "--version" {
-								child = candidate
-								break
-							}
-						}
 					}
+					time.Sleep(10 * time.Millisecond)
 				}
-				waitForUpgradeTestStop(t, child, deadline.C)
+				if len(record) != 4 || record[1] != strconv.Itoa(pid) || record[2] != resolvedBinary || record[3] != "--version" {
+					t.Fatalf("version child record = %q, want parent %d running %s --version", record, pid, resolvedBinary)
+				}
+				child := record[0]
+				// While the child exists it must be stopped, not running; the
+				// deadline then kills it.
+				for {
+					state, err := exec.Command("ps", "-o", "state=", "-p", child).Output()
+					if err != nil || strings.HasPrefix(strings.TrimSpace(string(state)), "T") {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("version child %s kept running in state %q", child, strings.TrimSpace(string(state)))
+					}
+					time.Sleep(time.Millisecond)
+				}
 				s.send("printf 'INPUT_DURING_VERSION_CHECK\\n'\r")
 				waitForUpgradeScreen(s, "input during version check", 5*time.Second, func(text string) bool { return strings.Contains(text, "INPUT_DURING_VERSION_CHECK") })
 			}
 			waitForUpgradeScreen(s, "upgrade failure reason", 15*time.Second, func(text string) bool { return strings.Contains(text, "upgrade:") })
 			if fault == "version-timeout" && !strings.Contains(s.text(), "upgrade: version timeout") {
 				t.Fatalf("timeout reason was not visible:\n%s", s.text())
+			}
+			if fault == "version-timeout" {
+				// The timed-out version child must not be left behind.
+				data, err := os.ReadFile(filepath.Join(dir, "version-child"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				child := strings.Fields(string(data))[0]
+				gone := time.Now().Add(5 * time.Second)
+				for exec.Command("kill", "-0", child).Run() == nil {
+					if time.Now().After(gone) {
+						t.Fatalf("timed-out version child %s is still alive", child)
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
 			}
 			if fault == "broken-link" && !strings.Contains(s.text(), "upgrade: file missing") {
 				t.Fatalf("missing file reason was not visible:\n%s", s.text())
