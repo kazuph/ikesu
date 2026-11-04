@@ -3,10 +3,13 @@ package tui
 import (
 	"fmt"
 	"io"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
@@ -324,6 +327,13 @@ func TestPortraitStandaloneRunLoopPixelOnlyResizeAndCopy(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
 	a.st.Cols, a.st.Rows = 160, 45
+	screen := newScreenTerminal(t, 160, 45)
+	a.out = screen
+	// 鯉のアニメーションは一定の間隔で描き直すので止める。描き直しは向きの変更だけが要求する。
+	var cfg config.Config
+	koi := false
+	cfg.UI.Koi = &koi
+	a.SetSidebarConfig(cfg, false)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
 	}
@@ -331,45 +341,59 @@ func TestPortraitStandaloneRunLoopPixelOnlyResizeAndCopy(t *testing.T) {
 	go func() { a.Run(); close(done) }()
 	defer func() { a.Stop(); <-done; a.sup.KillAll() }()
 	a.Do(func() { a.BeginHostMouse(1600, 900) })
-	state := func() (right, inner int, pty [2]int, drawn time.Time) {
+	type view struct {
+		portrait     bool
+		right, inner int
+		pty          [2]int
+	}
+	// state reads only; the test never writes dirty or other product state.
+	state := func() (v view) {
 		a.Do(func() {
-			right = a.st.RightSidebarArea().W
-			inner = a.innerRect(1).W
-			pty = viewerTerminalSizes(a)[1]
-			drawn = a.lastDraw
+			v = view{a.st.Portrait, a.st.RightSidebarArea().W, a.innerRect(1).W, viewerTerminalSizes(a)[1]}
 		})
 		return
 	}
-	waitDrawAfter := func(after time.Time) {
+	// Resize and Do use different channels, so repeat the read-only checks
+	// until they hold, within the existing 3 second limit.
+	waitFor := func(label string, ok func() bool, detail func() string) {
 		t.Helper()
 		deadline := time.Now().Add(3 * time.Second)
-		for {
-			if _, _, _, drawn := state(); drawn.After(after) {
-				return
-			}
+		for !ok() {
 			if time.Now().After(deadline) {
-				t.Fatal("orientation change was not drawn")
+				t.Fatalf("%s: %s", label, detail())
 			}
-			a.Do(func() { a.dirty = true })
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
-	right, wideInner, pty, drawn := state()
-	if right == 0 || pty[0] != wideInner {
-		t.Fatalf("landscape right=%d inner=%d pty=%v", right, wideInner, pty)
+	// 製品が出力した画面で描画を確かめる。横長：1行目の右に見出し、ペインの上枠は境目で終わる。
+	drawnLandscape := func() bool {
+		return strings.Contains(string(screen.row(0)[134:]), "[agents]") && screen.row(1)[159] != '┐'
 	}
-	landscapeInner := wideInner
+	// 縦長：見出しが無く、ペインの上枠の右上の角が最後の列にある。
+	drawnPortrait := func() bool {
+		return !strings.Contains(string(screen.row(0)), "[agents]") && screen.row(1)[159] == '┐'
+	}
+	rows := func() string { return fmt.Sprintf("row0=%q row1=%q", string(screen.row(0)), string(screen.row(1))) }
+
+	var landscape view
+	waitFor("landscape drawn", func() bool {
+		landscape = state()
+		return !landscape.portrait && landscape.right > 0 && landscape.pty[0] == landscape.inner && drawnLandscape()
+	}, func() string { return fmt.Sprintf("%+v %s", landscape, rows()) })
+	landscapeInner := landscape.inner
 
 	a.Resize(160, 45, 1600, 1801)
-	right, wideInner, pty, _ = state()
-	if right != 0 || wideInner <= landscapeInner || pty[0] != wideInner {
-		t.Fatalf("pixel-only portrait right=%d inner=%d (landscape %d) pty=%v", right, wideInner, landscapeInner, pty)
-	}
-	waitDrawAfter(drawn)
+	var portrait view
+	waitFor("pixel-only portrait state", func() bool {
+		portrait = state()
+		return portrait.portrait && portrait.right == 0 && portrait.inner > landscapeInner && portrait.pty[0] == portrait.inner
+	}, func() string { return fmt.Sprintf("%+v (landscape inner %d)", portrait, landscapeInner) })
+	waitFor("pixel-only portrait drawn by the product", drawnPortrait, rows)
 	p := a.sup.Get(1)
 	if _, err := p.WriteToPTY([]byte("set -- $(stty size); printf '\\nRUNLOOP_%s_%s\\n' \"$1\" \"$2\"\r")); err != nil {
 		t.Fatal(err)
 	}
-	specWaitText(t, p, fmt.Sprintf("RUNLOOP_%d_%d", pty[1], wideInner))
+	specWaitText(t, p, fmt.Sprintf("RUNLOOP_%d_%d", portrait.pty[1], portrait.inner))
 
 	// 縦長（広い）でコピー表示を開き、カーソルと選択の端を右端へ置く。
 	a.Do(func() {
@@ -377,13 +401,13 @@ func TestPortraitStandaloneRunLoopPixelOnlyResizeAndCopy(t *testing.T) {
 		a.cm.cx = a.copyInnerW() - 1
 		a.cm.anchor = &copyPoint{x: a.copyInnerW() - 1, y: a.cm.cy}
 	})
-	_, _, _, drawn = state()
 	a.Resize(160, 45, 1600, 900) // ピクセルだけ横長へ戻す：ペインが狭くなる
-	right, inner, pty, _ := state()
-	if right == 0 || inner != landscapeInner || pty[0] != landscapeInner {
-		t.Fatalf("pixel-only landscape right=%d inner=%d pty=%v want %d", right, inner, pty, landscapeInner)
-	}
-	waitDrawAfter(drawn)
+	var back view
+	waitFor("pixel-only landscape state", func() bool {
+		back = state()
+		return !back.portrait && back.right > 0 && back.inner == landscapeInner && back.pty[0] == landscapeInner
+	}, func() string { return fmt.Sprintf("%+v want inner %d", back, landscapeInner) })
+	waitFor("pixel-only landscape drawn by the product", drawnLandscape, rows)
 	var cx, ax, ay, cy, top, h int
 	var open bool
 	a.Do(func() {
@@ -400,17 +424,43 @@ func TestPortraitStandaloneRunLoopPixelOnlyResizeAndCopy(t *testing.T) {
 		t.Fatalf("copy cursor/selection outside the narrowed pane: cx=%d anchor=(%d,%d) cy=%d top=%d h=%d inner=%d", cx, ax, ay, cy, top, h, landscapeInner)
 	}
 	a.PushInput([]byte("h")) // 操作を続けられる
-	deadline := time.Now().Add(3 * time.Second)
-	for {
+	waitFor("copy cursor moves after the orientation change", func() bool {
 		a.Do(func() { cx = a.cm.cx })
-		if cx == landscapeInner-2 {
-			break
+		return cx == landscapeInner-2
+	}, func() string { return fmt.Sprintf("cx=%d", cx) })
+}
+
+// screenTerminal feeds the app's real output into a terminal emulator, so a
+// test reads what the product itself drew.
+type screenTerminal struct {
+	mu  sync.Mutex
+	emu *vt.Emulator
+}
+
+func newScreenTerminal(t *testing.T, cols, rows int) *screenTerminal {
+	s := &screenTerminal{emu: vt.NewEmulator(cols, rows)}
+	go func() { _, _ = io.Copy(io.Discard, s.emu) }() // drain the emulator's replies
+	t.Cleanup(func() { _ = s.emu.Close() })
+	return s
+}
+
+func (s *screenTerminal) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.emu.Write(p)
+}
+
+func (s *screenTerminal) row(y int) []rune {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row := make([]rune, s.emu.Width())
+	for x := range row {
+		row[x] = ' '
+		if c := s.emu.CellAt(x, y); c != nil && c.Content != "" {
+			row[x] = []rune(c.Content)[0]
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("copy cursor did not move after the orientation change: cx=%d", cx)
-		}
-		a.Do(func() {})
 	}
+	return row
 }
 
 // 2つのタブに、縦長と横長の別々の大きさの持ち主を残す。もう一方の画面の描画・入力・
