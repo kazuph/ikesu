@@ -31,6 +31,12 @@ func faultSQL(t *testing.T, path, sql string) {
 		t.Fatal(err)
 	}
 	defer c.Close()
+	// The running server writes the same database. Like the server's own
+	// connections, wait for its write lock instead of failing at once with
+	// "database is locked" when a fault change lands during one of its writes.
+	if err = c.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		t.Fatal(err)
+	}
 	if err = c.Exec(sql); err != nil {
 		t.Fatal(err)
 	}
