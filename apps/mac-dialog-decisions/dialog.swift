@@ -742,13 +742,21 @@ final class DialogController: NSObject, NSWindowDelegate {
     refreshSubmit()
   }
 
-  func show(behind: NSWindow? = nil) {
+  func show(placement: PanelPlacement? = nil) {
     // Ordering never activates the process or changes the keyboard target.
     // An explicitly selected Dock/Mission Control window can still become key.
-    if let behind { panel.order(.below, relativeTo: behind.windowNumber) }
-    else if spec.present_in_background == true { panel.orderBack(nil) }
+    var event: [String: Any] = ["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier)]
+    if let placement {
+      if let behind = placement.behind { panel.order(.below, relativeTo: behind) }
+      else { panel.orderFrontRegardless() }
+      event["placement"] = placement.behind == nil ? "front" : "behind"
+      event["placement_reason"] = placement.reason
+      event["open_panels"] = placement.openPanels
+      event["covered_panels"] = placement.coveredPanels
+    } else if spec.present_in_background == true { panel.orderBack(nil) }
     else { panel.orderFrontRegardless() }
-    emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier), "x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0])
+    event.merge(["x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0]) { current, _ in current }
+    emit(event)
   }
 
   // Close with the decision: the daemon deletes the spec when it is resolved

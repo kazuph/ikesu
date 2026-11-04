@@ -1,6 +1,52 @@
 import AppKit
 import Foundation
 
+// Where a new panel is ordered. `behind` is the lowest open panel that no
+// other app's window overlaps; nil brings the new panel to the front (every
+// open panel is covered, off screen, or the order could not be read).
+struct PanelPlacement {
+  let behind: Int?
+  let reason: String
+  let openPanels: Int
+  let coveredPanels: Int
+}
+
+// `screen` is CGWindowListCopyWindowInfo's front-to-back order. Own windows
+// that are not panels (previews) neither count as panels nor cover them.
+func panelPlacement(screen: [[String: Any]], panels: Set<Int>, peers: Set<Int>, own: Int) -> PanelPlacement {
+  var others: [CGRect] = []
+  var behind: Int?
+  var seen = 0, covered = 0
+  for window in screen {
+    guard (window[kCGWindowLayer as String] as? Int) == 0,
+      let number = window[kCGWindowNumber as String] as? Int,
+      let rect = window[kCGWindowBounds as String] as? NSDictionary,
+      let bounds = CGRect(dictionaryRepresentation: rect as CFDictionary) else { continue }
+    let pid = window[kCGWindowOwnerPID as String] as? Int ?? 0
+    if panels.contains(number) || peers.contains(pid) {
+      seen += 1
+      let hidden = others.contains { other in
+        let overlap = other.intersection(bounds)
+        return !overlap.isNull && overlap.width > 0 && overlap.height > 0
+      }
+      if hidden { covered += 1 } else { behind = number }
+    } else if pid != own && (window[kCGWindowAlpha as String] as? Double ?? 1) > 0 {
+      others.append(bounds)
+    }
+  }
+  if behind != nil { return PanelPlacement(behind: behind, reason: "panel_in_front", openPanels: seen, coveredPanels: covered) }
+  let reason = seen > 0 ? "all_panels_covered" : panels.isEmpty && peers.isEmpty ? "no_open_panel" : "panel_not_on_screen"
+  return PanelPlacement(behind: nil, reason: reason, openPanels: seen, coveredPanels: covered)
+}
+
+// Other processes running this same dialog executable (one-dialog helpers).
+func peerPanelPIDs(own: Int) -> Set<Int> {
+  guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return [] }
+  return Set(NSWorkspace.shared.runningApplications.compactMap { app in
+    Int(app.processIdentifier) != own && app.executableURL?.resolvingSymlinksInPath() == executable ? Int(app.processIdentifier) : nil
+  })
+}
+
 final class DialogHost: NSObject, NSApplicationDelegate {
   // Rapid activation-policy changes can leave stale Dock tiles; allow the Dock to settle.
   private let dockRemovalDelay: TimeInterval = 1
@@ -34,9 +80,12 @@ final class DialogHost: NSObject, NSApplicationDelegate {
     cascadePoint = controller.panel.cascadeTopLeft(from: cascadePoint)
     windows[key] = controller
     refresh()
-    let numbers = NSWindow.windowNumbers(options: [.allSpaces]) ?? []
-    let behind = numbers.reversed().compactMap { number in windows.values.first { $0 !== controller && $0.panel.windowNumber == number.intValue }?.panel }.first
-    controller.show(behind: behind)
+    let own = Int(ProcessInfo.processInfo.processIdentifier)
+    let panels = Set(windows.values.filter { $0 !== controller }.map { $0.panel.windowNumber })
+    // A one-dialog helper shares the screen with sibling helper processes.
+    let peers = directory == nil && controller.spec.present_in_background == true ? peerPanelPIDs(own: own) : []
+    let screen = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    controller.show(placement: panelPlacement(screen: screen, panels: panels, peers: peers, own: own))
     controller.startWatchdog()
   }
 
