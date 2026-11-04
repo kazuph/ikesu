@@ -14,6 +14,9 @@ import (
 )
 
 func TestNestedGuardReasonRequiredBeforeRealDecision(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, tc := range []struct {
 		name, own, parent string
 		dialog            bool

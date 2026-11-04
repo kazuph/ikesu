@@ -1,7 +1,7 @@
 package e2e
 
 import (
-	"io"
+	"bufio"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,7 +18,11 @@ func (s *session) stopServer() {
 	if c, err := net.Dial("unix", api.APISocketPath(dir)); err == nil {
 		_ = c.SetDeadline(time.Now().Add(10 * time.Second))
 		_, _ = c.Write([]byte(`{"id":"e2e","method":"server.stop","params":{}}` + "\n"))
-		_, _ = io.Copy(io.Discard, c)
+		// Read the one response line, then close. The exiting server waits
+		// up to 500ms for open API connections, so waiting here for it to
+		// close this connection first would stall every teardown. The lock
+		// wait below still proves the server finished.
+		_, _ = bufio.NewReader(c).ReadString('\n')
 		c.Close()
 	}
 	lock, err := os.OpenFile(api.LockPath(dir), os.O_RDWR, 0600)

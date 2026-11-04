@@ -1,6 +1,7 @@
 package render
 
 import (
+	"github.com/kazuph/ikesu/internal/teststate"
 	"reflect"
 	"testing"
 
@@ -33,6 +34,9 @@ func continuousWidth(in Input, w int) {
 	}
 }
 func TestSidebarContinuousRowsAndStatusAtEveryWidth(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, server := range []bool{false, true} {
 		for _, jobs := range []bool{false, true} {
 			for _, custom := range []bool{false, true} {

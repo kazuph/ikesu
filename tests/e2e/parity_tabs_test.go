@@ -22,6 +22,9 @@ func (s *session) findTab(label string) (int, int) {
 }
 
 func TestTabBar(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := startLocal(t)
 
 	s.waitFor("boot", 10*time.Second, func(scr string) bool {
@@ -97,6 +100,9 @@ func TestTabBar(t *testing.T) {
 }
 
 func TestTabRenameDialog(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("boot", 10*time.Second, func(scr string) bool {
 		return hasTabLabel(scr, "1")
@@ -123,6 +129,9 @@ func TestTabRenameDialog(t *testing.T) {
 }
 
 func TestTabRightClickPreservesSelection(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("boot", 15*time.Second, func(tx string) bool {
 		return hasTabLabel(tx, "1") && strings.Contains(tx, "❯")

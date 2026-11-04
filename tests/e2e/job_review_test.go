@@ -14,6 +14,9 @@ import (
 )
 
 func TestShortCommandKeepsActualExitAndNotice(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	j := startFaultJob(t)
 	var result api.RunStartedResult
 	j.s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "short-command", Completion: "summary", Argv: []string{"/usr/bin/true"}}, &result)
@@ -25,6 +28,9 @@ func TestShortCommandKeepsActualExitAndNotice(t *testing.T) {
 }
 
 func TestExpiredDiagnosticLockDoesNotBlockCollectionOrStop(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	j := startFaultJob(t)
 	log := filepath.Join(filepath.Dir(j.job.LogPath), "expired-review.log")
 	for _, suffix := range []string{"", ".monitor-stderr.log", ".monitor-exit.json"} {

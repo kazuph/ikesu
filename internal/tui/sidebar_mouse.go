@@ -104,12 +104,13 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 			g.moved = true
 		}
 		if g.divider {
-			if !g.moved || a.st.Mobile() {
+			if !g.moved || a.st.Mobile() || g.right && a.st.Portrait {
 				return
 			}
 			s := a.st
 			if s.SidebarPresetActive {
-				left, right := s.SidebarArea().W, s.RightSidebarArea().W
+				// The landscape width keeps a hidden portrait right sidebar intact.
+				left, right := s.SidebarArea().W, s.LandscapeRightSidebarWidth()
 				s.SidebarPresetActive = false
 				if left > 0 && (!g.right || s.SidebarVisible) {
 					s.SidebarSize = left

@@ -315,6 +315,7 @@ type App struct {
 	sidebarBar                               *sidebarScrollDrag
 	cellW                                    int // host cell width in pixels (0 = unknown)
 	cellH                                    int // host cell height in pixels (0 = unknown)
+	screenXpixel, screenYpixel               int // host screen size in pixels (0 = unknown)
 	hostPixelSupported                       bool
 	hostPixelMouse                           bool
 	mousePixel                               *uv.Mouse // original coordinates for the current host event
@@ -332,6 +333,31 @@ type App struct {
 
 	windowTitle        render.WindowTitleState
 	windowTitleSession string
+}
+
+// setScreenPixels records this screen's latest pixel size (0 = unknown,
+// never the previous value) and re-judges its orientation. It reports
+// whether the orientation changed.
+func (a *App) setScreenPixels(xp, yp int) bool {
+	a.screenXpixel, a.screenYpixel = max(0, xp), max(0, yp)
+	return a.judgeOrientation()
+}
+
+// turnScreen handles a pixel-only change: the cell grid is unchanged, but
+// the orientation (and so the pane width and copy views) may flip.
+func (a *App) turnScreen(xp, yp int) {
+	sizes := a.copySizes()
+	if a.setScreenPixels(xp, yp) {
+		a.syncLayout()
+		a.copyResizeAll(sizes)
+		a.dirty = true
+	}
+}
+
+func (a *App) judgeOrientation() bool {
+	before := a.st.Portrait
+	a.st.Portrait = model.PortraitScreen(a.st.Cols, a.st.Rows, a.screenXpixel, a.screenYpixel)
+	return a.st.Portrait != before
 }
 
 // SetCellPixels records the host terminal's pixel geometry so SGR 1016
@@ -609,8 +635,13 @@ func (a *App) Run() {
 			a.onRuntimeEvent(ev)
 		case sz := <-a.resizeCh:
 			if sz.Cols != a.st.Cols || sz.Rows != a.st.Rows {
+				// Judge the new size first so the single resize lays out once.
+				a.screenXpixel, a.screenYpixel = max(0, sz.Xpixel), max(0, sz.Ypixel)
+				a.st.Portrait = model.PortraitScreen(sz.Cols, sz.Rows, a.screenXpixel, a.screenYpixel)
 				a.exec(model.CmdResize{Cols: sz.Cols, Rows: sz.Rows})
 				a.enc.Reset()
+			} else {
+				a.turnScreen(sz.Xpixel, sz.Ypixel)
 			}
 			beforeW, beforeH := a.cellW, a.cellH
 			a.SetCellPixels(sz.Xpixel, sz.Ypixel)

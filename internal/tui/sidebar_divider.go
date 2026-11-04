@@ -35,6 +35,9 @@ func (a *App) finishSidebarDivider(g *sidebarGesture, now time.Time) {
 		a.dividerClicks[side] = &sidebarDividerClick{at: now}
 		return
 	}
+	if g.right && a.st.Portrait {
+		return
+	}
 	if g.right {
 		a.st.RightSidebarMode = ""
 		a.st.RightSidebarManual = false
@@ -60,6 +63,9 @@ func (a *App) flushSidebarDividerClicks(now time.Time) {
 			continue
 		}
 		a.dividerClicks[side] = nil
+		if side == 1 && a.st.Portrait {
+			continue
+		}
 		if side == 1 {
 			if a.st.RightSidebarMode == "" {
 				a.st.RightSidebarMode = "compact"

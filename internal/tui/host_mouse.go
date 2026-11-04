@@ -15,6 +15,7 @@ func (a *App) BeginHostMouse(xp, yp int) {
 	a.cellW = 0
 	a.cellH = 0
 	a.SetCellPixels(xp, yp)
+	a.setScreenPixels(xp, yp)
 	a.syncLayout()
 	if a.sidebarConfig.UI.MouseCapture != nil && !*a.sidebarConfig.UI.MouseCapture {
 		_, _ = io.WriteString(a.out, MouseOffSeq)
@@ -44,6 +45,7 @@ func (a *App) hostMouseReport(report uv.Event) {
 		}
 	case uv.PixelSizeEvent:
 		a.SetCellPixels(r.Width, r.Height)
+		a.turnScreen(r.Width, r.Height)
 	}
 	if a.cellW != beforeW || a.cellH != beforeH {
 		a.syncLayout()

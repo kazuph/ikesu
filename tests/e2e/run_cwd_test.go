@@ -17,6 +17,9 @@ import (
 // A pane-less `ikesu run` without --cwd runs in the directory it was invoked
 // from (as herdr does), not in the server's directory; --cwd still wins.
 func TestRunWithoutCwdUsesCallerDirectory(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "run-cwd", Agent: "codex", State: "idle"}, nil)

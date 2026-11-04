@@ -333,7 +333,15 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 			waitPromptCondition(t, func() bool {
 				scanScreen(s)
 				var ready bool
-				s.app.Do(func() { x := s.screenPrompts.transcripts[1]; ready = x != nil && x.latest.signature != "" })
+				// The PTY delivers the picture in pieces, so a scan can catch the
+				// screen mid-draw and start a watch for that partial question; it
+				// is replaced after two mismatching scans. Wait until the scan just
+				// made matched the watch, i.e. the watch is for the question now on
+				// screen.
+				s.app.Do(func() {
+					x, w := s.screenPrompts.transcripts[1], s.screenPrompts.watches[1]
+					ready = x != nil && x.latest.signature != "" && w != nil && w.lastMatched && w.mismatches == 0 && w.signature == x.latest.signature
+				})
 				return ready
 			})
 			s.app.Do(func() {

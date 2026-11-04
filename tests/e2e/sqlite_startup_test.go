@@ -12,6 +12,9 @@ import (
 
 // Exercise real CLI processes while the server updates its pane/session ledger.
 func TestCLIStartupDuringServerWrites(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	stop := make(chan struct{})

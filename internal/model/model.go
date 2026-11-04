@@ -89,6 +89,10 @@ type AppState struct {
 	HideTabBarWhenSingleTab bool
 	PaneBorders             bool
 	PaneGaps                bool
+	// Portrait is the attached screen's orientation, judged by the server
+	// from that screen's size. It hides the right sidebar without touching
+	// its saved mode or width. Older servers never set it.
+	Portrait bool `json:"-"`
 	// PaneLabels holds optional API-assigned pane names (pane.rename).
 	PaneLabels            map[PaneID]string
 	PaneGenerations       map[PaneID]string `json:"-"`

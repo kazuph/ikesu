@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"reflect"
 	"testing"
 	"time"
@@ -299,6 +300,9 @@ func TestWorkspaceCycleOldGenerationForwardsKeys(t *testing.T) {
 }
 
 func TestWorkspaceCycleReceiptOrderingWithRealServers(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	cfg, err := config.Decode([]byte("onboarding=false\n[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))
@@ -353,6 +357,9 @@ func TestWorkspaceCycleReceiptOrderingWithRealServers(t *testing.T) {
 }
 
 func TestWorkspaceCycleQueuedPrefixCannotBeOvertaken(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	cfg, err := config.Decode([]byte("onboarding=false\n[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))

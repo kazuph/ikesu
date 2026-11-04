@@ -17,6 +17,9 @@ import (
 )
 
 func TestRuntimeSnapshotRealDecisionDoesNotExposeValues(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, action := range []string{"reject", "interrupt"} {
 		t.Run(action, func(t *testing.T) {
 			s := start(t)

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"image"
 	"image/color"
 	"image/draw"
@@ -167,6 +168,9 @@ func TestKoiBrandAtlasMatchesRendererAndEmbeddedSite(t *testing.T) {
 }
 
 func TestKoiGIFKeepsEnlargedDotGrid(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "brand", "koi.gif"))
 	if err != nil {
 		t.Fatal(err)

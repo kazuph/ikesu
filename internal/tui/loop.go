@@ -370,8 +370,12 @@ func (a *App) exec(cmd model.Command) {
 		a.reindexWorkspaceMetadata(metadataOrder)
 	}
 	switch cmd.(type) {
-	case model.CmdToggleSidebar, model.CmdToggleRightSidebar:
+	case model.CmdToggleSidebar:
 		a.saveViewPreferences()
+	case model.CmdToggleRightSidebar:
+		if !a.st.Portrait { // a portrait screen ignores the key
+			a.saveViewPreferences()
+		}
 	}
 	a.popupVisibilityChanged(popupWasVisible, previousPopup)
 	a.recordFocus(beforeFocus, a.focusedPane())

@@ -14,6 +14,9 @@ import (
 )
 
 func TestConfigAllowNestedWithRealServerAncestor(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, allow := range []bool{false, true} {
 		t.Run(fmt.Sprint(allow), func(t *testing.T) {

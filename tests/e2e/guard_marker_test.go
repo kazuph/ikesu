@@ -16,6 +16,9 @@ import (
 )
 
 func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if e := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[guard]\nask_timeout_seconds=1\n"), 0600); e != nil {
 		t.Fatal(e)

@@ -2,12 +2,16 @@ package client
 
 import (
 	"fmt"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestSidebarContinuousDifferentEndpointPanels(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	h.modes(0, 0, 240, 60)

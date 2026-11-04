@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"image"
 	"image/png"
 	"regexp"
@@ -15,6 +16,9 @@ import (
 )
 
 func TestKoiLongRunRippleCache(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for i := 0; i < 10000; i++ {
 		koiRippleCached(koiRingKey{8, 8, i, i, 1})
 	}
@@ -26,6 +30,9 @@ func TestKoiLongRunRippleCache(t *testing.T) {
 	}
 }
 func TestKoiLongRunSpriteCache(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for i := 1; i <= 10000; i++ {
 		koiSpriteCached(koiSpriteKey{i % 10, 0, 0, (i-1)/10 + 1, 1})
 	}
@@ -91,6 +98,9 @@ func TestKoiLongRunByteBudgetAndLRU(t *testing.T) {
 }
 
 func TestKoiLongRunTerminalDeletesAndReuploads(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	var e Encoder
 	retained := map[int]bool{}
 	commands := regexp.MustCompile(`_G([^;]*);[^]*\\`)

@@ -22,7 +22,20 @@ func (s *AppState) ToggleSidebar() {
 		s.SidebarHidden = true
 	}
 }
+
+// PortraitScreen judges a screen taller than wide. Pixel geometry wins when
+// both sides are known; otherwise two rows count as one column's height.
+func PortraitScreen(cols, rows, xpixel, ypixel int) bool {
+	if xpixel > 0 && ypixel > 0 {
+		return ypixel > xpixel
+	}
+	return rows*2 > cols
+}
+
 func (s *AppState) ToggleRightSidebar() {
+	if s.Portrait {
+		return
+	}
 	switch s.RightSidebarMode {
 	case "":
 		s.RightSidebarMode = "compact"
@@ -60,8 +73,17 @@ func (s *AppState) leftSidebarWidth() int {
 	}
 	return SidebarCollapsedWidth
 }
+
+// LandscapeRightSidebarWidth is the width the right sidebar takes once the
+// screen returns to landscape.
+func (s *AppState) LandscapeRightSidebarWidth() int {
+	landscape := *s
+	landscape.Portrait = false
+	return landscape.rightSidebarWidth()
+}
+
 func (s *AppState) rightSidebarWidth() int {
-	if s.Mobile() || s.RightSidebarMode == "hidden" {
+	if s.Mobile() || s.Portrait || s.RightSidebarMode == "hidden" {
 		return 0
 	}
 	w := s.ExpandedRightSidebarWidth()

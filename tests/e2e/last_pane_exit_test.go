@@ -15,6 +15,9 @@ import (
 )
 
 func TestLastShellExitClosesWorkspaceWithViewer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	var survivor api.WorkspaceCreatedResult
@@ -37,6 +40,9 @@ func TestLastShellExitClosesWorkspaceWithViewer(t *testing.T) {
 }
 
 func TestFallbackShellExitClosesWorkspaceWithViewer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	var survivor api.WorkspaceCreatedResult
@@ -102,6 +108,9 @@ func TestFallbackShellExitClosesWorkspaceWithViewer(t *testing.T) {
 }
 
 func TestLastPaneExitOtherTabAndViewer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	var tab api.TabCreatedResult
@@ -166,6 +175,9 @@ func (s *session) waitForHomeAfterFinalExit(old string) api.PaneInfo {
 }
 
 func TestLastPaneExitFinalWorkspaceShowsHomeWithViewers(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	client, _ := sizeClient(t, s)

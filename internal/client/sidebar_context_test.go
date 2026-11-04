@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +11,9 @@ import (
 )
 
 func TestSidebarContinuousTwoServersRightClicks(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	menus := map[string][]render.MenuItem{}

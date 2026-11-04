@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,6 +18,9 @@ import (
 )
 
 func TestPrepareUpgradeDefersHeldInputUntilClipboardCompletes(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	m.active = "remote"
@@ -64,6 +68,9 @@ func paneText(m *machineClient, id string) string {
 }
 
 func TestPrepareUpgradeDefersInputUntilLocalSnapshot(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	if err := m.paint(); err != nil {
@@ -123,6 +130,9 @@ func TestUpgradeWaitEmptyPreservesBlockedSocketQueue(t *testing.T) {
 
 // Two real servers and their pane PTYs are needed to verify the original destination.
 func TestPrepareUpgradeDeliversAlreadyReadInputToOriginalEndpoint(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	m.active = "remote"

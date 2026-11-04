@@ -13,6 +13,9 @@ import (
 )
 
 func TestRestartWaitsForOriginalServerConnectionToClose(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	pidfile := filepath.Join(t.TempDir(), "original-pid")
 	wrapper := filepath.Join(t.TempDir(), "original-server")
 	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\necho $$ > %q\nexec %q \"$@\"\n", pidfile, binPath)), 0700); err != nil {

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"github.com/kazuph/ikesu/internal/teststate"
 	"math/rand"
 	"testing"
 
@@ -12,6 +13,9 @@ import (
 )
 
 func TestGroupedStylesPreserveTerminalCellsAcrossWideOverwrites(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	modern, legacy := &Encoder{}, &legacyTextEncoder{}
 	a, b := vt.NewEmulator(32, 6), vt.NewEmulator(32, 6)
 	defer a.Close()

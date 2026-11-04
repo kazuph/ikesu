@@ -15,6 +15,9 @@ import (
 var titleEvidenceDir = os.Getenv("IKESU_TITLE_EVIDENCE")
 
 func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	var raw strings.Builder
 	s.observeOutput = func(b []byte) { raw.Write(b) }
@@ -46,6 +49,9 @@ func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
 }
 
 func TestWindowTitleStandaloneBinaryActualPTYStartup(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	wrapper := filepath.Join(t.TempDir(), "named-standalone")
 	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\nexec %q --session title-demo \"$@\"\n", binPath)), 0700); err != nil {
 		t.Fatal(err)

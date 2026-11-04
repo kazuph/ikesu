@@ -30,6 +30,9 @@ func reloadCellColor(s *session, want uint32) bool {
 }
 
 func TestReloadConfigAllTerminalsAndEntryPointsKeepPane(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	path := filepath.Join(t.TempDir(), "config.toml")
 	writeReloadConfig(t, path, "#123456", "ctrl+b", 26, true)
 	first := startEnv(t, map[string]string{"IKESU_CONFIG": path})
@@ -130,6 +133,9 @@ func TestReloadConfigAllTerminalsAndEntryPointsKeepPane(t *testing.T) {
 }
 
 func TestReloadConfigKeepsEachClientConfigurationOwner(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	firstPath := filepath.Join(t.TempDir(), "first.toml")
 	secondPath := filepath.Join(t.TempDir(), "second.toml")
 	writeReloadConfig(t, firstPath, "#123456", "ctrl+b", 26, true)

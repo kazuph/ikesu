@@ -259,6 +259,9 @@ func (h *rightMachineHarness) modes(left, right, cols, rows int) {
 	}
 }
 func TestRightSidebarTwoMachinesActualPTYMatrixAndWheel(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	for left := 0; left < 3; left++ {
@@ -332,6 +335,9 @@ func TestRightSidebarTwoMachinesActualPTYMatrixAndWheel(t *testing.T) {
 }
 
 func TestNarrowRightSidebarTwoMachinesEveryRowAndIndependentModes(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	t.Cleanup(func() {
