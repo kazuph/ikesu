@@ -24,7 +24,7 @@ func TestLoginStartupAndSnapshotKeepShimFirst(t *testing.T) {
 	}
 	a := NewAssets(d, "p_1", binary, Config{})
 	a.ConfigureShell("/bin/zsh")
-	env, e := a.Prepare([]string{"HOME=" + home, "ZDOTDIR=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + filepath.Join(d, "no-server.sock")}, d)
+	env, e := a.Prepare([]string{"HOME=" + home, "ZDOTDIR=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + realGuardFixture(t), "IKESU_SOCKET_PATH_EXPLICIT=1"}, d)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -434,16 +434,16 @@ func TestGuardOutsideBlockedLineHasNoSideEffect(t *testing.T) {
 
 // One isolated server is reused by fourteen real process invocations, so this
 // matrix can exceed five seconds on the shared mini.
+// Each entry starts a real process for several identity states, so the whole
+// matrix can exceed five seconds on a shared mini.
 func TestGuardOutsidePaneAllEntryPoints(t *testing.T) {
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	first := "p1"
 	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right", Focus: false}, nil)
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "outside-entries", Agent: "claude", State: "idle"}, nil)
-	s.rpc(api.MethodPaneClose, api.PaneTarget{PaneID: first}, nil)
 	root := s.stateDir
 	marker := filepath.Join(root, "guard", "agent-panes", "p_1.json")
-	s.waitFor("closed marker", 3*time.Second, func(string) bool { _, err := os.Stat(marker); return os.IsNotExist(err) })
 	dir, bin := filepath.Join(root, "guard", "shell", "p_1"), filepath.Join(root, "guard", "bin", "p_1")
 	entry := filepath.Join(dir, "ikesu")
 	tests := []struct {
@@ -459,13 +459,9 @@ func TestGuardOutsidePaneAllEntryPoints(t *testing.T) {
 		{"bash-env", "/bin/bash", "SAFE_ENTRY", []string{"-c", "printf SAFE_ENTRY"}, true, false},
 		{"zdotdir", "/bin/zsh", "SAFE_ENTRY", []string{"-c", "printf SAFE_ENTRY"}, false, true},
 	}
-	for _, tc := range tests {
-		for _, available := range []bool{true, false} {
-			name := tc.name + "/server"
-			if !available {
-				name = tc.name + "/unavailable"
-			}
-			t.Run(name, func(t *testing.T) {
+	run := func(state string, available bool) {
+		for _, tc := range tests {
+			t.Run(state+"/"+tc.name, func(t *testing.T) {
 				socket := api.APISocketPath(filepath.Join(root, s.name))
 				if !available {
 					socket = filepath.Join(root, "missing.sock")
@@ -492,6 +488,19 @@ func TestGuardOutsidePaneAllEntryPoints(t *testing.T) {
 			})
 		}
 	}
+	// The test process is unrelated to the live shell whose marker it inherits.
+	run("other-live-pane", true)
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	run("missing-marker-live-pane", true)
+	s.rpc(api.MethodPaneClose, api.PaneTarget{PaneID: first}, nil)
+	s.waitFor("closed marker", 3*time.Second, func(string) bool { _, err := os.Stat(marker); return os.IsNotExist(err) })
+	run("closed-pane", true)
+	if output, err := s.cli("server", "stop"); err != nil {
+		t.Fatalf("stop isolated server: %v %s", err, output)
+	}
+	run("unavailable", false)
 }
 
 func TestGuardMatchingPaneCorruptMarkerFailsClosed(t *testing.T) {
@@ -673,5 +682,333 @@ os.replace(result2+'.tmp',result2)
 	s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
 	if len(pending.Decisions) != 0 {
 		t.Fatalf("stale decision was created: %+v", pending.Decisions)
+	}
+}
+
+// Two independent processes each need a real decision and can take over five
+// seconds on the shared mini.
+func TestGuardOutsideApprovalDoesNotTransferToAnotherProcess(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "outside-approval", Agent: "claude", State: "idle"}, nil)
+	root := s.stateDir
+	entry := filepath.Join(root, "guard", "shell", "p_1", "ikesu")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	startCommand := func() <-chan error {
+		cmd := exec.CommandContext(ctx, entry, "guard", "exec", "--", "dd", "if=/dev/null", "of=/dev/null")
+		cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_STATE_DIR=" + root,
+			"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"),
+			"IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(root, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1",
+			"AI_GUARD_REQUEST_REASON=隔離した試験で承認の範囲を確認します。"}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		return done
+	}
+	pendingDecision := func(label string, done <-chan error) api.Decision {
+		var pending api.DecisionListResult
+		s.waitFor(label, 5*time.Second, func(string) bool {
+			select {
+			case err := <-done:
+				t.Fatalf("%s exited before decision: %v", label, err)
+			default:
+			}
+			s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
+			return len(pending.Decisions) == 1
+		})
+		return pending.Decisions[0]
+	}
+	first := startCommand()
+	decision := pendingDecision("first process", first)
+	if _, err := s.cli("decision", "answer", decision.DecisionID, "approve"); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-first; err != nil {
+		t.Fatalf("approved process failed: %v", err)
+	}
+	second := startCommand()
+	decision = pendingDecision("second process", second)
+	if _, err := s.cli("decision", "answer", decision.DecisionID, "reject"); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err == nil {
+		t.Fatal("rejected second process succeeded")
+	}
+}
+
+// Each entry runs under the actual pane shell and involves real processes;
+// establishing and checking the identity can exceed five seconds on mini.
+func TestGuardMatchingPaneAllEntryPoints(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	root := s.stateDir
+	dir := filepath.Join(root, "guard", "shell", "p_1")
+	bin := filepath.Join(root, "guard", "bin", "p_1")
+	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
+	python := `import json,socket,sys
+s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1])
+s.sendall((json.dumps({'id':'match','method':'guard.identity','params':{'pane_id':'p1'}})+'\n').encode())
+f=s.makefile(); r=json.loads(f.readline()); assert r['result']['match'] == (sys.argv[2] == 'true'), r
+`
+	probe := filepath.Join(root, "match-probe.py")
+	if err := os.WriteFile(probe, []byte(python), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commands := []struct{ name, command, want string }{
+		{"refresh", quote(filepath.Join(dir, "ikesu")) + " guard refresh", "generation-"},
+		{"exec", quote(filepath.Join(dir, "ikesu")) + " guard exec -- /usr/bin/printf SAFE_ENTRY", "SAFE_ENTRY"},
+		{"line", quote(filepath.Join(dir, "ikesu")) + " guard line -- true", ""},
+		{"claude-prefix", quote(filepath.Join(dir, "claude-prefix")) + " 'printf SAFE_ENTRY'", "SAFE_ENTRY"},
+		{"shim", quote(filepath.Join(bin, "git")) + " --version", "git version"},
+		{"bash-env", "BASH_ENV=" + quote(filepath.Join(dir, "bash-env")) + " /bin/bash -c 'printf SAFE_ENTRY'", "SAFE_ENTRY"},
+		{"zdotdir", "ZDOTDIR=" + quote(dir) + " /bin/zsh -c 'printf SAFE_ENTRY'", "SAFE_ENTRY"},
+	}
+	boot := filepath.Join(root, "match-start-gate")
+	if err := unix.Mkfifo(boot, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var script strings.Builder
+	script.WriteString("#!/bin/sh\nprintf ready > " + quote(filepath.Join(root, "match-started")) + "\nread go < " + quote(boot) + " || exit 2\n")
+	script.WriteString("python3 " + quote(probe) + " " + quote(api.APISocketPath(filepath.Join(root, s.name))) + " true > " + quote(filepath.Join(root, "match-probe-output")) + " 2>&1\n")
+	script.WriteString("printf '%s' $? > " + quote(filepath.Join(root, "match-probe-status")) + "\n")
+	for _, tc := range commands {
+		script.WriteString(tc.command + " > " + quote(filepath.Join(root, tc.name+"-output")) + " 2>&1\n")
+		script.WriteString("printf '%s' $? > " + quote(filepath.Join(root, tc.name+"-status")) + "\n")
+	}
+	gate := filepath.Join(root, "missing-marker-gate")
+	if err := unix.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	script.WriteString("printf ready > " + quote(filepath.Join(root, "missing-marker-ready")) + "\n")
+	script.WriteString("read go < " + quote(gate) + " || exit 2\n")
+	script.WriteString("python3 " + quote(probe) + " " + quote(api.APISocketPath(filepath.Join(root, s.name))) + " false > " + quote(filepath.Join(root, "missing-probe-output")) + " 2>&1\n")
+	script.WriteString("printf '%s' $? > " + quote(filepath.Join(root, "missing-probe-status")) + "\n")
+	for _, tc := range commands {
+		script.WriteString(tc.command + " > " + quote(filepath.Join(root, "missing-"+tc.name+"-output")) + " 2>&1\n")
+		script.WriteString("printf '%s' $? > " + quote(filepath.Join(root, "missing-"+tc.name+"-status")) + "\n")
+	}
+	script.WriteString("printf done > " + quote(filepath.Join(root, "match-done")) + "\n")
+	path := filepath.Join(root, "match-entries.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s.send("/bin/sh " + quote(path) + "\r")
+	s.waitFor("matching worker started", 5*time.Second, func(string) bool { _, err := os.Stat(filepath.Join(root, "match-started")); return err == nil })
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "matching-entries", Agent: "claude", State: "idle"}, nil)
+	bootSent := make(chan error, 1)
+	go func() {
+		f, err := os.OpenFile(boot, os.O_WRONLY, 0)
+		if err == nil {
+			_, err = f.WriteString("go\n")
+			_ = f.Close()
+		}
+		bootSent <- err
+	}()
+	select {
+	case err := <-bootSent:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not start")
+	}
+	s.waitFor("matching entries ready", 15*time.Second, func(string) bool { _, err := os.Stat(filepath.Join(root, "missing-marker-ready")); return err == nil })
+	markerDir := filepath.Join(root, "guard", "agent-panes")
+	if err := os.Remove(filepath.Join(markerDir, "p_1.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(markerDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(markerDir, 0700) })
+	gateResult := make(chan error, 1)
+	go func() {
+		f, err := os.OpenFile(gate, os.O_WRONLY, 0)
+		if err == nil {
+			_, err = f.WriteString("go\n")
+			_ = f.Close()
+		}
+		gateResult <- err
+	}()
+	select {
+	case err := <-gateResult:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("pane process did not receive gate")
+	}
+	s.waitFor("matching and missing-marker entries", 15*time.Second, func(string) bool { _, err := os.Stat(filepath.Join(root, "match-done")); return err == nil })
+	status, err := os.ReadFile(filepath.Join(root, "match-probe-status"))
+	if err != nil || string(status) != "0" {
+		output, _ := os.ReadFile(filepath.Join(root, "match-probe-output"))
+		t.Fatalf("pane process did not match: status=%s output=%s err=%v", status, output, err)
+	}
+	missingStatus, err := os.ReadFile(filepath.Join(root, "missing-probe-status"))
+	if err != nil || string(missingStatus) != "0" {
+		output, _ := os.ReadFile(filepath.Join(root, "missing-probe-output"))
+		t.Fatalf("missing marker was not classified outside: status=%s output=%s err=%v", missingStatus, output, err)
+	}
+	for _, prefix := range []string{"", "missing-"} {
+		for _, tc := range commands {
+			status, err := os.ReadFile(filepath.Join(root, prefix+tc.name+"-status"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err := os.ReadFile(filepath.Join(root, prefix+tc.name+"-output"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(status) != "0" || !strings.Contains(string(output), tc.want) {
+				t.Errorf("%s%s: status=%s output=%s", prefix, tc.name, status, output)
+			}
+		}
+	}
+}
+
+// The real RPC deadline is 15 seconds; all entry points are exercised in
+// parallel while the isolated server is suspended.
+func TestGuardAllEntryPointsFailClosedOnIdentityTimeout(t *testing.T) {
+	pidfile := filepath.Join(t.TempDir(), "server-pid")
+	wrapper := filepath.Join(t.TempDir(), "server-wrapper")
+	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\necho $$ > %q\nexec %q \"$@\"\n", pidfile, binPath)), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := startVersionMode(t, nil, false, binPath, wrapper)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "timeout-entries", Agent: "claude", State: "idle"}, nil)
+	data, err := os.ReadFile(pidfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := s.stateDir
+	dir, bin := filepath.Join(root, "guard", "shell", "p_1"), filepath.Join(root, "guard", "bin", "p_1")
+	entry := filepath.Join(dir, "ikesu")
+	cases := []struct {
+		name, command string
+		args          []string
+		extra         string
+	}{
+		{"refresh", entry, []string{"guard", "refresh"}, ""},
+		{"exec", entry, []string{"guard", "exec", "--", "/usr/bin/printf", "SAFE_ENTRY"}, ""},
+		{"line", entry, []string{"guard", "line", "--", "true"}, ""},
+		{"claude-prefix", filepath.Join(dir, "claude-prefix"), []string{"/usr/bin/printf SAFE_ENTRY"}, ""},
+		{"shim", filepath.Join(bin, "git"), []string{"--version"}, ""},
+		{"bash-env", "/bin/bash", []string{"-c", "printf SAFE_ENTRY"}, "BASH_ENV=" + filepath.Join(dir, "bash-env")},
+		{"zdotdir", "/bin/zsh", []string{"-c", "printf SAFE_ENTRY"}, "ZDOTDIR=" + dir},
+	}
+	signalLossProcess(t, pid, syscall.SIGSTOP, binPath)
+	defer signalLossProcess(t, pid, syscall.SIGCONT, binPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	type result struct {
+		name   string
+		output []byte
+		err    error
+	}
+	results := make(chan result, len(cases))
+	for _, tc := range cases {
+		go func() {
+			cmd := exec.CommandContext(ctx, tc.command, tc.args...)
+			cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "SHELL=/bin/bash", "IKESU_STATE_DIR=" + root,
+				"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + filepath.Join(root, "guard", "agent-panes", "p_1.json"),
+				"IKESU_GUARD_BIN=" + bin, "IKESU_GUARD_SHELL_DIR=" + dir,
+				"IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(root, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1"}
+			if tc.extra != "" {
+				cmd.Env = append(cmd.Env, tc.extra)
+			}
+			out, err := cmd.CombinedOutput()
+			results <- result{tc.name, out, err}
+		}()
+	}
+	for range cases {
+		r := <-results
+		if r.err == nil || !strings.Contains(string(r.output), "i/o timeout") || strings.Contains(string(r.output), "SAFE_ENTRY") || strings.Contains(string(r.output), "git version") {
+			t.Errorf("%s did not stop on identity timeout: %v %s", r.name, r.err, r.output)
+		}
+	}
+}
+
+// Each guarded process runs beneath a real pane shell while the marker stays
+// corrupt; the complete set can exceed five seconds on the shared mini.
+func TestGuardMatchingCorruptMarkerAllEntryPoints(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	root := s.stateDir
+	dir, bin := filepath.Join(root, "guard", "shell", "p_1"), filepath.Join(root, "guard", "bin", "p_1")
+	entry := filepath.Join(dir, "ikesu")
+	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
+	gate, ready, done := filepath.Join(root, "corrupt-all-gate"), filepath.Join(root, "corrupt-all-ready"), filepath.Join(root, "corrupt-all-done")
+	if err := unix.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, command string }{
+		{"refresh", quote(entry) + " guard refresh"},
+		{"exec", quote(entry) + " guard exec -- /usr/bin/printf NEVER_RAN"},
+		{"line", quote(entry) + " guard line -- true"},
+		{"claude-prefix", quote(filepath.Join(dir, "claude-prefix")) + " '/usr/bin/printf NEVER_RAN'"},
+		{"shim", quote(filepath.Join(bin, "git")) + " --version"},
+		{"bash-env", "BASH_ENV=" + quote(filepath.Join(dir, "bash-env")) + " /bin/bash -c 'printf NEVER_RAN'"},
+		{"zdotdir", "ZDOTDIR=" + quote(dir) + " /bin/zsh -c 'printf NEVER_RAN'"},
+	}
+	var body strings.Builder
+	body.WriteString("#!/bin/sh\nprintf ready > " + quote(ready) + "\nread go < " + quote(gate) + " || exit 2\n")
+	for _, tc := range cases {
+		body.WriteString(tc.command + " > " + quote(filepath.Join(root, "corrupt-"+tc.name+"-output")) + " 2>&1\n")
+		body.WriteString("printf '%s' $? > " + quote(filepath.Join(root, "corrupt-"+tc.name+"-status")) + "\n")
+	}
+	body.WriteString("printf done > " + quote(done) + "\n")
+	script := filepath.Join(root, "corrupt-all.sh")
+	if err := os.WriteFile(script, []byte(body.String()), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s.send("/bin/sh " + quote(script) + "\r")
+	s.waitFor("corrupt worker ready", 5*time.Second, func(string) bool { _, err := os.Stat(ready); return err == nil })
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "corrupt-all", Agent: "claude", State: "idle"}, nil)
+	markerDir := filepath.Join(root, "guard", "agent-panes")
+	if err := os.Chmod(markerDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(markerDir, 0700) })
+	if err := os.WriteFile(filepath.Join(root, "guard", "agent-panes", "p_1.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sent := make(chan error, 1)
+	go func() {
+		f, err := os.OpenFile(gate, os.O_WRONLY, 0)
+		if err == nil {
+			_, err = f.WriteString("go\n")
+			_ = f.Close()
+		}
+		sent <- err
+	}()
+	select {
+	case err := <-sent:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not receive signal")
+	}
+	s.waitFor("all corrupt markers rejected", 15*time.Second, func(string) bool { _, err := os.Stat(done); return err == nil })
+	for _, tc := range cases {
+		status, err := os.ReadFile(filepath.Join(root, "corrupt-"+tc.name+"-status"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := os.ReadFile(filepath.Join(root, "corrupt-"+tc.name+"-output"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(status) == "0" || !strings.Contains(string(out), "目印ファイルが壊れています") || strings.Contains(string(out), "NEVER_RAN") || strings.Contains(string(out), "git version") {
+			t.Errorf("%s: status=%s output=%s", tc.name, status, out)
+		}
 	}
 }

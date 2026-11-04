@@ -41,6 +41,7 @@ func TestShellRuntimeHelper(t *testing.T) {
 	os.Exit(0)
 }
 
+// This covers many real shell processes on both installed Bash versions.
 func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "ikesu")
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
@@ -137,7 +138,7 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 						t.Fatal(err)
 					}
 					a := NewAssets(root, "p_1", entry, Config{})
-					env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + root + "/no-server", "BASH_ENV=" + orig, "IKESU_RUNTIME_ROOT=" + root, "IKESU_SHELL_RUNTIME_HELPER=1", "IKESU_RUNTIME_SOURCE=" + sourceFile}, root)
+					env, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + realGuardFixture(t), "IKESU_SOCKET_PATH_EXPLICIT=1", "BASH_ENV=" + orig, "IKESU_RUNTIME_ROOT=" + root, "IKESU_SHELL_RUNTIME_HELPER=1", "IKESU_RUNTIME_SOURCE=" + sourceFile}, root)
 					if err != nil {
 						t.Fatal(err)
 					}

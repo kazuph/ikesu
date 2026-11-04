@@ -157,7 +157,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 				return len(pending.Decisions) == 1
 			})
 			d := pending.Decisions[0]
-			if d.Origin == nil || d.Origin.PaneID != "p1" || d.Kind != "command_guard" {
+			if d.Origin == nil || !d.Origin.OutsidePane || d.Origin.PaneID != "" || d.Kind != "command_guard" {
 				t.Fatal(d)
 			}
 			if _, e := os.Stat(target); e != nil {

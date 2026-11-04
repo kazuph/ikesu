@@ -90,6 +90,7 @@ func entryAssets(i Input) (*Assets, error) {
 		return nil, fmt.Errorf("guard marker path mismatch")
 	}
 	a.meta.Pane = i.Env["IKESU_PANE_ID"]
+	a.meta.Socket = i.Env["IKESU_SOCKET_PATH"]
 	a.Executable, err = os.Executable()
 	return a, err
 }

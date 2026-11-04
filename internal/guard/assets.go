@@ -111,9 +111,9 @@ func (a *Assets) Prepare(env []string, cwd string) ([]string, error) {
 }
 
 // Pin identity at the generated entry point, before the CLI sees the caller's
-// environment. The socket remains in the marker so handoff can replace it.
+// environment, including the server socket captured when the assets are published.
 func (a *Assets) identity() string {
-	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane)
+	return "IKESU_GUARD_MARKER=" + quote(a.MarkerPath) + " IKESU_PANE_ID=" + quote(a.meta.Pane) + " IKESU_SOCKET_PATH=" + quote(a.meta.Socket) + " IKESU_SOCKET_PATH_EXPLICIT=1"
 }
 func (a *Assets) invocation() string {
 	return a.identity() + " " + quote(a.RuntimePath())
