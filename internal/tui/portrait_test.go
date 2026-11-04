@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/config"
@@ -315,4 +316,165 @@ func TestPortraitRemoteSnapshotCarriesServerJudgment(t *testing.T) {
 	if got.State.RightSidebarArea().W == 0 {
 		t.Fatal("old server snapshot lost the right sidebar")
 	}
+}
+
+// 単独起動のイベントループ（App.Run の resizeCh）で、行と列はそのままピクセルだけ変わる。
+// 右の幅・ペインの PTY の大きさ・描画の更新・コピー表示の再配置を確かめる。
+func TestPortraitStandaloneRunLoopPixelOnlyResizeAndCopy(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.st.Cols, a.st.Rows = 160, 45
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { a.Run(); close(done) }()
+	defer func() { a.Stop(); <-done; a.sup.KillAll() }()
+	a.Do(func() { a.BeginHostMouse(1600, 900) })
+	state := func() (right, inner int, pty [2]int, drawn time.Time) {
+		a.Do(func() {
+			right = a.st.RightSidebarArea().W
+			inner = a.innerRect(1).W
+			pty = viewerTerminalSizes(a)[1]
+			drawn = a.lastDraw
+		})
+		return
+	}
+	waitDrawAfter := func(after time.Time) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			if _, _, _, drawn := state(); drawn.After(after) {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("orientation change was not drawn")
+			}
+			a.Do(func() { a.dirty = true })
+		}
+	}
+	right, wideInner, pty, drawn := state()
+	if right == 0 || pty[0] != wideInner {
+		t.Fatalf("landscape right=%d inner=%d pty=%v", right, wideInner, pty)
+	}
+	landscapeInner := wideInner
+
+	a.Resize(160, 45, 1600, 1801)
+	right, wideInner, pty, _ = state()
+	if right != 0 || wideInner <= landscapeInner || pty[0] != wideInner {
+		t.Fatalf("pixel-only portrait right=%d inner=%d (landscape %d) pty=%v", right, wideInner, landscapeInner, pty)
+	}
+	waitDrawAfter(drawn)
+	p := a.sup.Get(1)
+	if _, err := p.WriteToPTY([]byte("set -- $(stty size); printf '\\nRUNLOOP_%s_%s\\n' \"$1\" \"$2\"\r")); err != nil {
+		t.Fatal(err)
+	}
+	specWaitText(t, p, fmt.Sprintf("RUNLOOP_%d_%d", pty[1], wideInner))
+
+	// 縦長（広い）でコピー表示を開き、カーソルと選択の端を右端へ置く。
+	a.Do(func() {
+		a.enterCopy(false)
+		a.cm.cx = a.copyInnerW() - 1
+		a.cm.anchor = &copyPoint{x: a.copyInnerW() - 1, y: a.cm.cy}
+	})
+	_, _, _, drawn = state()
+	a.Resize(160, 45, 1600, 900) // ピクセルだけ横長へ戻す：ペインが狭くなる
+	right, inner, pty, _ := state()
+	if right == 0 || inner != landscapeInner || pty[0] != landscapeInner {
+		t.Fatalf("pixel-only landscape right=%d inner=%d pty=%v want %d", right, inner, pty, landscapeInner)
+	}
+	waitDrawAfter(drawn)
+	var cx, ax, ay, cy, top, h int
+	var open bool
+	a.Do(func() {
+		open = a.cm != nil
+		if open {
+			cx, cy, top, h = a.cm.cx, a.cm.cy, a.cm.top, a.copyInnerH()
+			ax, ay = a.cm.anchor.x, a.cm.anchor.y
+		}
+	})
+	if !open {
+		t.Fatal("copy view closed by the orientation change")
+	}
+	if cx != landscapeInner-1 || ax != landscapeInner-1 || cy < top || cy >= top+h || ay < top || ay >= top+h {
+		t.Fatalf("copy cursor/selection outside the narrowed pane: cx=%d anchor=(%d,%d) cy=%d top=%d h=%d inner=%d", cx, ax, ay, cy, top, h, landscapeInner)
+	}
+	a.PushInput([]byte("h")) // 操作を続けられる
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		a.Do(func() { cx = a.cm.cx })
+		if cx == landscapeInner-2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("copy cursor did not move after the orientation change: cx=%d", cx)
+		}
+		a.Do(func() {})
+	}
+}
+
+// 2つのタブに、縦長と横長の別々の大きさの持ち主を残す。もう一方の画面の描画・入力・
+// 切断の後も、各タブの PTY の列数がそれぞれの持ち主の判定のまま保たれる。
+func TestPortraitInactiveTabOwnersKeepTheirOrientation(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	wide := a.NewViewer(io.Discard, 160, 45, nil)
+	wide.Begin(a, 1600, 900)
+	tall := a.NewViewer(io.Discard, 160, 45, nil)
+	tall.Begin(a, 1600, 1801)
+	tall.with(a, func(ui *App) { ui.exec(model.CmdNewTab{}) })
+	tallTab := a.st.Workspaces[0].Tabs[1]
+	wideTab := a.st.Workspaces[0].Tabs[0]
+	if tall.tabs[a.st.Workspaces[0].ID] != tallTab.ID || wide.tabs[a.st.Workspaces[0].ID] != wideTab.ID {
+		t.Fatal("viewers are not on separate tabs")
+	}
+	widths := func(tab *model.Tab, portrait bool) map[int]int {
+		state := *a.st
+		state.Cols, state.Rows = 160, 45
+		if portrait {
+			state.RightSidebarMode = "hidden"
+		} else {
+			state.RightSidebarMode = ""
+		}
+		want := map[int]int{}
+		for _, pr := range state.PaneRectsForDisplay(tab, state.PanesArea()) {
+			w, _ := model.PaneTermSize(pr.Rect, state.PaneBorders)
+			want[pr.ID] = w
+		}
+		return want
+	}
+	attached := true
+	check := func(label string) {
+		t.Helper()
+		checkPortrait(t, a, wide, false)
+		if attached {
+			checkPortrait(t, a, tall, true)
+		}
+		sizes := viewerTerminalSizes(a)
+		for tab, portrait := range map[*model.Tab]bool{wideTab: false, tallTab: true} {
+			for id, w := range widths(tab, portrait) {
+				if sizes[id][0] != w {
+					t.Fatalf("%s: pane %d (portrait owner %t) pty cols=%d want %d", label, id, portrait, sizes[id][0], w)
+				}
+			}
+		}
+	}
+	tall.Input(a, []byte("x"))
+	wide.Input(a, []byte("x"))
+	check("both typed")
+	wide.Draw(a, a.SessionPaneSnaps())
+	tall.Draw(a, a.SessionPaneSnaps())
+	wide.Resize(a, 160, 45, 1600, 900)
+	check("after draws and a landscape resize")
+	tall.Resize(a, 160, 45, 1600, 1801)
+	wide.Input(a, []byte("y"))
+	check("after a portrait resize")
+	tall.Detach(a)
+	attached = false
+	wide.Input(a, []byte("z"))
+	wide.Draw(a, a.SessionPaneSnaps())
+	check("after the portrait viewer detached")
 }
