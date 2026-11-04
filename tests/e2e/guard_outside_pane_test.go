@@ -1126,3 +1126,92 @@ func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
 		t.Errorf("corrupted %d actual identity responses, want %d", got, len(cases))
 	}
 }
+
+// Six real guarded processes each wait for a decision; the complete set can
+// exceed five seconds when the shared mini is busy.
+func TestGuardOutsideAllCommandEntriesWaitForApproval(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	first := "p1"
+	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right", Focus: false}, nil)
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "outside-approval-entries", Agent: "claude", State: "idle"}, nil)
+	s.rpc(api.MethodPaneClose, api.PaneTarget{PaneID: first}, nil)
+	root := s.stateDir
+	marker := filepath.Join(root, "guard", "agent-panes", "p_1.json")
+	s.waitFor("closed marker", 3*time.Second, func(string) bool { _, err := os.Stat(marker); return os.IsNotExist(err) })
+	if err := os.Mkdir(filepath.Join(root, "home"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	dir, bin := filepath.Join(root, "guard", "shell", "p_1"), filepath.Join(root, "guard", "bin", "p_1")
+	entry := filepath.Join(dir, "ikesu")
+	for _, name := range []string{"exec", "line", "claude-prefix", "shim", "bash-env", "zdotdir"} {
+		t.Run(name, func(t *testing.T) {
+			victim := filepath.Join(root, "victim-"+name)
+			if err := os.WriteFile(victim, []byte("unchanged"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(root, "home") + "/../victim-" + name
+			line := "/bin/rm '" + strings.ReplaceAll(target, "'", "'\\''") + "'"
+			command, args, extra := entry, []string{"guard", "exec", "--", "/bin/rm", target}, ""
+			switch name {
+			case "line":
+				args = []string{"guard", "line", "--", line}
+			case "claude-prefix":
+				command = filepath.Join(dir, "claude-prefix")
+				args = []string{line}
+			case "shim":
+				command = filepath.Join(bin, "rm")
+				args = []string{target}
+			case "bash-env":
+				command = "/bin/bash"
+				args = []string{"-c", line}
+				extra = "BASH_ENV=" + filepath.Join(dir, "bash-env")
+			case "zdotdir":
+				command = "/bin/zsh"
+				args = []string{"-c", line}
+				extra = "ZDOTDIR=" + dir
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, command, args...)
+			cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "SHELL=/bin/zsh", "IKESU_STATE_DIR=" + root,
+				"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + marker, "IKESU_GUARD_BIN=" + bin, "IKESU_GUARD_SHELL_DIR=" + dir,
+				"IKESU_SOCKET_PATH=" + api.APISocketPath(filepath.Join(root, s.name)), "IKESU_SOCKET_PATH_EXPLICIT=1",
+				"AI_GUARD_REQUEST_REASON=隔離した試験で承認待ちと削除の停止を確認します。"}
+			if extra != "" {
+				cmd.Env = append(cmd.Env, extra)
+			}
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
+			var pending api.DecisionListResult
+			s.waitFor("outside approval "+name, 5*time.Second, func(string) bool {
+				select {
+				case err := <-done:
+					t.Fatalf("entry exited before decision: %v", err)
+				default:
+				}
+				s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
+				return len(pending.Decisions) == 1
+			})
+			d := pending.Decisions[0]
+			if d.Origin == nil || !d.Origin.OutsidePane || d.Origin.PaneID != "" || d.Origin.Agent != "" {
+				t.Fatalf("inherited origin: %+v", d.Origin)
+			}
+			if got, err := os.ReadFile(victim); err != nil || string(got) != "unchanged" {
+				t.Fatalf("executed before approval: %q %v", got, err)
+			}
+			if out, err := s.cli("decision", "answer", d.DecisionID, "reject"); err != nil {
+				t.Fatal(err, out)
+			}
+			if err := <-done; err == nil {
+				t.Fatal("rejected entry succeeded")
+			}
+			if got, err := os.ReadFile(victim); err != nil || string(got) != "unchanged" {
+				t.Fatalf("executed after rejection: %q %v", got, err)
+			}
+		})
+	}
+}
