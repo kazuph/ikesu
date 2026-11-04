@@ -198,3 +198,44 @@ func TestMachineHeaderCollapseClampsScrolledSidebar(t *testing.T) {
 		}
 	}
 }
+
+// A one-column sidebar keeps the header target and draws its ▾/▸, so the
+// clickable header stays visible and toggles like the wide one.
+func TestMachineHeaderInOneColumnSidebarShowsToggle(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	h.modes(1, 0, 160, 35)
+	header := func() (render.MachineHit, string, int) {
+		t.Helper()
+		frame := render.ComposeClient(*m.endpoints[m.active].snapshot, &m.sidebar, "test", false).Frame
+		var found *render.MachineHit
+		rows := 0
+		for i, hit := range m.sidebar.Hits {
+			if hit.Right || hit.Machine != "remote" {
+				continue
+			}
+			if hit.Header {
+				found = &m.sidebar.Hits[i]
+			} else if hit.Row.Kind != render.RowRule {
+				rows++
+			}
+		}
+		if found == nil {
+			t.Fatal("one-column remote header target missing")
+		}
+		return *found, frame.Cell(found.Rect.X, found.Rect.Y).Content, rows
+	}
+	hit, glyph, rows := header()
+	if hit.Rect.W != 1 || glyph != "▾" || rows == 0 {
+		t.Fatalf("one-column header width=%d glyph=%q rows=%d", hit.Rect.W, glyph, rows)
+	}
+	clickCell(t, h, hit.Rect.X, hit.Rect.Y)
+	collapsed, glyph, rows := header()
+	if glyph != "▸" || rows != 0 || collapsed.Rect != hit.Rect {
+		t.Fatalf("collapsed one-column header glyph=%q rows=%d rect=%+v", glyph, rows, collapsed.Rect)
+	}
+	clickCell(t, h, hit.Rect.X, hit.Rect.Y)
+	if _, glyph, rows := header(); glyph != "▾" || rows == 0 {
+		t.Fatalf("expanded one-column header glyph=%q rows=%d", glyph, rows)
+	}
+}
