@@ -33,6 +33,8 @@ type MachineSidebar struct {
 	DropMachine string
 	DropIndex   *int
 	DropSection model.Section
+	// Collapsed hides a machine's space rows; only the client remembers it.
+	Collapsed map[string]bool
 }
 
 type machineRow struct {
@@ -58,7 +60,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 		if gi > 0 {
 			rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowRule}}, machineRow{group: gi, header: true}, machineRow{group: gi, row: SidebarRow{Kind: RowRule}})
 		}
-		if group.Input == nil {
+		if group.Input == nil || gi > 0 && m.Collapsed[group.ID] {
 			continue
 		}
 		source := SidebarRows(group.Input.State, group.Input.Panes, group.Input.SidebarConfig)
@@ -120,7 +122,11 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 				continue
 			}
 			style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
-			f.Text(area.X, y, "▾", uv.Style{Fg: f.Palette.Accent}, area.X+width)
+			glyph := "▾"
+			if m.Collapsed[group.ID] {
+				glyph = "▸"
+			}
+			f.Text(area.X, y, glyph, uv.Style{Fg: f.Palette.Accent}, area.X+width)
 			newRect := SectionNewRect(area.X, y, width)
 			labelEnd := area.X + width
 			if newRect.W > 0 {
