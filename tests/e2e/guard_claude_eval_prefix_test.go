@@ -15,6 +15,9 @@ import (
 )
 
 func TestClaudeGitWrapperRealSession(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	data, err := os.ReadFile("../../internal/guard/testdata/claude-git-wrapper.json")
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +63,9 @@ func TestClaudeGitWrapperRealSession(t *testing.T) {
 }
 
 func TestClaudeEvalPrefixRealSession(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 	reason := "対象プロジェクト: ikesu隔離試験。必要な理由: 判断待ちを確認する。実施内容: 試験操作を却下する。確認済み: 隔離サーバー。戻し方: 変更なし。"
 	for _, scenario := range []string{"safe", "ask"} {

@@ -300,6 +300,9 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach,
 
 // Two real clients and two builds are needed to test per-terminal selection across exec.
 func TestClientUpgradePreservesTwoSelections(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	_, oldBinary, newBinary, _, newVersion := buildClientUpgradeVersions(t)
 	cfg := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[keys]\nswitch_workspace='cmd+1..9'\n"), 0600); err != nil {
@@ -427,6 +430,9 @@ func TestClientFollowsWhenEntrySymlinkMovedFirst(t *testing.T) {
 
 // Building the second version and completing the live handoff takes over five seconds.
 func TestClientKeepsRunningWhenUpgradeDirectoryWritable(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	dir, oldBinary, newBinary, oldVersion, _ := buildClientUpgradeVersions(t)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
@@ -539,6 +545,9 @@ func TestClientRawModeFailureHelper(t *testing.T) {
 
 // A real pipe makes MakeRaw fail while stdin remains a usable PTY for rollback.
 func TestClientRollsBackWhenRawModeFails(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
 	state, err := json.Marshal(map[string]any{
 		"old_executable": oldBinary, "old_version": oldVersion, "session": "e2e", "active": "local",

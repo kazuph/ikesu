@@ -23,6 +23,7 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 		{"once", 1, false}, {"repeated", 3, false}, {"cancel", 1, true}, {"cancel-term", 1, true}, {"rollback", 1, false}, {"full", 1, false}, {"boundary", 3, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			s := start(t)
 			s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 			s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "job-handoff", Agent: "codex", State: "idle"}, nil)

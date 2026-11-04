@@ -13,6 +13,9 @@ import (
 )
 
 func TestResultLossAndCancelArbitrateInRealSQLite(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, first := range []string{"recovery", "cancel"} {
 		t.Run(first, func(t *testing.T) {
 			j := startFaultJob(t)

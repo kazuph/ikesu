@@ -17,6 +17,9 @@ var rightSidebarEvidenceDir = os.Getenv("IKESU_SIDEBAR_EVIDENCE")
 
 // This drives the real binary and asks the shell for the kernel's PTY size.
 func TestRightSidebarNineStatesRealTerminal(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, local := range []bool{false, true} {
 		mode := "server"
 		if local {
@@ -80,6 +83,9 @@ func saveRightSidebarScreen(t *testing.T, s *session, name string) {
 }
 
 func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	first := start(t)
 	first.waitFor("first shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	first.send("\x02b\x02b\x02B")
@@ -96,6 +102,9 @@ func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
 }
 
 func TestRightSidebarNarrowTerminalAdaptsWithoutSaving(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, local := range []bool{false, true} {
 		mode := "server"
 		if local {
@@ -142,6 +151,9 @@ func TestRightSidebarNarrowTerminalAdaptsWithoutSaving(t *testing.T) {
 }
 
 func TestRightSidebarWidthFooterPresetsRealTerminal(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, local := range []bool{false, true} {
 		t.Run(fmt.Sprint("no-session=", local), func(t *testing.T) {
 			s := startMode(t, nil, local)

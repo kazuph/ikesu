@@ -19,6 +19,9 @@ func onboardingConfig(t *testing.T, value string) string {
 }
 
 func TestOnboardingContinueImmediateShellInput(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, local := range []bool{true, false} {
 		mode := "session"
 		if local {
@@ -44,6 +47,9 @@ func TestOnboardingContinueImmediateShellInput(t *testing.T) {
 }
 
 func TestServerInheritsExternalOnboardingConfig(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	path := onboardingConfig(t, "false")
 	s := startEnv(t, map[string]string{"IKESU_CONFIG": path})
 	s.waitFor("shell prompt", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
@@ -55,6 +61,9 @@ func TestServerInheritsExternalOnboardingConfig(t *testing.T) {
 }
 
 func TestOnboardingImmediateInputWhileConfigurationSaveWaits(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	path := onboardingConfig(t, "true")
 	s := startEnv(t, map[string]string{"IKESU_CONFIG": path})
 	s.waitFor("welcome", 10*time.Second, func(text string) bool { return strings.Contains(text, "continue") })

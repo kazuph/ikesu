@@ -11,8 +11,19 @@ import (
 	saved "github.com/kazuph/ikesu/internal/session"
 )
 
-func TestStage5LastWorkspaceCloseSaveRestore(t *testing.T) { stage5CloseLifecycle(t, false) }
-func TestStage5LastWorkspaceCloseLiveHandoff(t *testing.T) { stage5CloseLifecycle(t, true) }
+func TestStage5LastWorkspaceCloseSaveRestore(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	stage5CloseLifecycle(t, false)
+}
+
+func TestStage5LastWorkspaceCloseLiveHandoff(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	stage5CloseLifecycle(t, true)
+}
 
 func stage5CloseLifecycle(t *testing.T, handoff bool) {
 	home, err := filepath.EvalSymlinks(t.TempDir())

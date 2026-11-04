@@ -12,6 +12,9 @@ import (
 )
 
 func TestLiveHandoffPreservesKeyboardModes(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	liveKeyboardHandoff(t, "")
 }
 

@@ -11,6 +11,9 @@ import (
 )
 
 func TestEndpointSettingsWriteClientConfigurationAndKeepShellInput(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	path := filepath.Join(t.TempDir(), "client-config.toml")
 	if err := os.WriteFile(path, []byte("onboarding=false\n[extra]\nkeep='endpoint-value'\n"), 0600); err != nil {
 		t.Fatal(err)

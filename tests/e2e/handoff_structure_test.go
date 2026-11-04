@@ -13,6 +13,9 @@ import (
 )
 
 func TestLiveHandoffStructureCountersAndSiblingExit(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	repo := filepath.Join(t.TempDir(), "handoff-checkout")
 	child := filepath.Join(repo, "shell-directory")
 	if err := os.MkdirAll(child, 0700); err != nil {

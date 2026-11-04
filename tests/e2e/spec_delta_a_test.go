@@ -10,6 +10,9 @@ import (
 )
 
 func TestPaneRunPersistsExactCallerAndFailureCompletion(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	if raw, err := s.cli("pane", "report-agent", "p1", "--source", "test", "--agent", "codex", "--state", "blocked"); err != nil {

@@ -17,6 +17,9 @@ import (
 )
 
 func TestRuntimeCurlReasonNameInData(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	received := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

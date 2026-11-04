@@ -15,6 +15,9 @@ import (
 )
 
 func TestScriptReviewRealPreflight(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "script-review-test", Agent: "claude", State: "idle"}, nil)

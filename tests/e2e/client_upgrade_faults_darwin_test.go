@@ -44,6 +44,9 @@ func signalUpgradeTestProcess(t *testing.T, pid int, executable, signal string) 
 
 // Real exec reaches the OS argument limit; binary builds and boundary probes can take more than five seconds.
 func TestClientRestoresTerminalAndInputAfterExecFailure(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
 	resolvedOld, err := filepath.EvalSymlinks(oldBinary)
 	if err != nil {
@@ -122,6 +125,9 @@ func TestClientRestoresTerminalAndInputAfterExecFailure(t *testing.T) {
 
 // Building the instrumented old client and performing a real handoff can exceed five seconds.
 func TestClientRejectsExecutableReplacedAfterVersionCheck(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	dir, oldBinary, newBinary, oldVersion, _ := buildStoppedClientUpgradeVersions(t, false)
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
@@ -393,6 +399,9 @@ func waitForUpgradeScreen(s *session, what string, timeout time.Duration, pred f
 
 // The timeout case uses a test build with a shorter version deadline.
 func TestClientKeepsRunningOnRejectedUpgradeExecutables(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, fault := range []string{"not-executable", "broken-link", "version-timeout"} {
 		t.Run(fault, func(t *testing.T) {
 			t.Parallel()
@@ -577,6 +586,9 @@ func TestClientSurvivesUnavailableServerAfterUpgradeRejection(t *testing.T) {
 
 // Closing the real PTY master produces a terminal cleanup error after normal EOF.
 func TestClientNormalDetachIgnoresTerminalCleanupError(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("server ready", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	master, slave, err := pty.Open()

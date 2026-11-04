@@ -10,6 +10,9 @@ import (
 )
 
 func TestClaudeEvalInsideRealPane(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 	reason := "対象プロジェクト: ikesu隔離試験。必要な理由: 判断待ちの件数を確認する。実施内容: 送信を却下する。確認済み: 隔離サーバー。戻し方: 変更なし。"
 	for _, shell := range []string{"bash", "zsh"} {

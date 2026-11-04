@@ -16,6 +16,9 @@ import (
 )
 
 func TestPaneRunStoresCallerGeneration(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	if raw, err := s.cli("pane", "report-agent", "p1", "--source", "test", "--agent", "codex", "--state", "blocked"); err != nil {
@@ -89,6 +92,9 @@ func TestPaneRunStoresCallerGeneration(t *testing.T) {
 }
 
 func TestPaneRunRollsBackCompletionWhenNoticeInsertFails(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	fifo := filepath.Join(t.TempDir(), "release")
@@ -152,6 +158,9 @@ func TestPaneRunRollsBackCompletionWhenNoticeInsertFails(t *testing.T) {
 }
 
 func TestPaneRunCompletionWhileServerStopped(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	stateDir := t.TempDir()
 	dbPath := filepath.Join(stateDir, "sessions", "offline", "ikesu.db")
 	store, err := dispatch.Open(dbPath)

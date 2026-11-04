@@ -405,6 +405,9 @@ func isOuterReasonCase(name string) bool {
 }
 
 func TestRawDecisionCannotForgeGuardExecution(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	claim := api.GuardExecutionClaim{CommandHash: strings.Repeat("a", 64), Rule: "rm-paths"}

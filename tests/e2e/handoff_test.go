@@ -13,6 +13,9 @@ import (
 )
 
 func TestLiveHandoffKeepsPIDInputAndExit(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	var pong api.PongResult

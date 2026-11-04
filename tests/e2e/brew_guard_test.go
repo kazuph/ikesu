@@ -15,6 +15,9 @@ import (
 
 // The second build is needed to verify a real version change through the symlink.
 func TestWritableInstallStartsRetainedServer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	install, err := os.MkdirTemp("/tmp", "ikesu-brew-install-")
 	if err != nil {
 		t.Fatal(err)
@@ -200,6 +203,9 @@ func TestWritableInstallStartsRetainedServer(t *testing.T) {
 }
 
 func TestWritableInstallStandalone(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	install, err := os.MkdirTemp("/tmp", "ikesu-brew-standalone-")
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,9 @@ import (
 )
 
 func TestEndpointWindowTitleBelongsToEachAttachedTerminal(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	first := start(t)
 	var firstRaw strings.Builder
 	first.observeOutput = func(bytes []byte) { firstRaw.Write(bytes) }

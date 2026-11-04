@@ -7,6 +7,9 @@ import (
 )
 
 func TestServerCopyStatusConsumesButtonAndYanksOSC52(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("server boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	var raw strings.Builder
@@ -49,6 +52,9 @@ func TestServerCopyStatusConsumesButtonAndYanksOSC52(t *testing.T) {
 }
 
 func TestServerTabStripHasNoAddControl(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("server tab", 10*time.Second, func(tx string) bool { return hasTabLabel(tx, "1") && strings.Contains(tx, "❯") })
 	// Preserve the original pane width for this tab-strip regression.

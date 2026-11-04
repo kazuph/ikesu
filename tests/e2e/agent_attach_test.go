@@ -14,6 +14,9 @@ import (
 )
 
 func TestAgentAttachActualTerminal(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	s := start(t)
 	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	var listed api.PaneListResult

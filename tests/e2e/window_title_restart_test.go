@@ -11,6 +11,9 @@ import (
 )
 
 func TestWindowTitleStandaloneRestartKeepsSessionActualPTY(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	for _, name := range []string{"default", "title-demo"} {
 		t.Run(name, func(t *testing.T) {
 			wrapper := filepath.Join(t.TempDir(), "named-standalone")

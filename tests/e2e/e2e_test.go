@@ -31,6 +31,12 @@ func TestMain(m *testing.M) {
 	if os.Getenv("CLIENT_UPGRADE_RAW_HELPER") == "1" {
 		os.Exit(m.Run())
 	}
+	if path := os.Getenv(isolatedBinary); path != "" {
+		// An isolated child of runIsolatedParallel reuses the parent's build,
+		// which the parent removes after every test has finished.
+		binPath = path
+		os.Exit(teststate.Run(m.Run))
+	}
 	dir, err := os.MkdirTemp("", "ikesu-e2e")
 	if err != nil {
 		panic(err)
