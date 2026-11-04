@@ -275,8 +275,19 @@ func (m *machineClient) input(event input.Event) error {
 					return m.createWorkspace(hit.Machine)
 				}
 				if hit.Header && event.Kind == input.KindMouseClick {
+					// The left list's ▾/▸ header folds that machine's space rows.
+					toggled := !hit.Right && event.Mouse.Button == uv.MouseLeft
+					if toggled {
+						if m.sidebar.Collapsed == nil {
+							m.sidebar.Collapsed = map[string]bool{}
+						}
+						m.sidebar.Collapsed[hit.Machine] = !m.sidebar.Collapsed[hit.Machine]
+					}
 					if !m.endpoints[hit.Machine].profile.Enabled {
 						m.suppressRelease = true
+						if toggled {
+							return m.paint()
+						}
 						return nil
 					}
 					if e := m.endpoints[hit.Machine]; e.connection == nil {

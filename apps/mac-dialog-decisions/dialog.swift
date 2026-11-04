@@ -65,6 +65,16 @@ struct DialogDraft: Decodable { let option_ids: [String]; let text: String; let 
 
 // MARK: - output
 
+// Where a new panel is ordered (host.swift decides). `behind` is the lowest
+// open panel that no other app's window overlaps; nil brings the new panel to
+// the front (every open panel is covered, off screen, or unreadable).
+struct PanelPlacement {
+  let behind: Int?
+  let reason: String
+  let openPanels: Int
+  let coveredPanels: Int
+}
+
 func writeOutput(_ object: [String: Any], resultPath: String? = nil) {
   guard let data = try? JSONSerialization.data(withJSONObject: object),
     var line = String(data: data, encoding: .utf8)
@@ -742,13 +752,21 @@ final class DialogController: NSObject, NSWindowDelegate {
     refreshSubmit()
   }
 
-  func show(behind: NSWindow? = nil) {
+  func show(placement: PanelPlacement? = nil) {
     // Ordering never activates the process or changes the keyboard target.
     // An explicitly selected Dock/Mission Control window can still become key.
-    if let behind { panel.order(.below, relativeTo: behind.windowNumber) }
-    else if spec.present_in_background == true { panel.orderBack(nil) }
+    var event: [String: Any] = ["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier)]
+    if let placement {
+      if let behind = placement.behind { panel.order(.below, relativeTo: behind) }
+      else { panel.orderFrontRegardless() }
+      event["placement"] = placement.behind == nil ? "front" : "behind"
+      event["placement_reason"] = placement.reason
+      event["open_panels"] = placement.openPanels
+      event["covered_panels"] = placement.coveredPanels
+    } else if spec.present_in_background == true { panel.orderBack(nil) }
     else { panel.orderFrontRegardless() }
-    emit(["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier), "x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0])
+    event.merge(["x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0]) { current, _ in current }
+    emit(event)
   }
 
   // Close with the decision: the daemon deletes the spec when it is resolved
