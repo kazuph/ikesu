@@ -7,14 +7,32 @@ import {execFile,spawn} from 'node:child_process';
 import readline from 'node:readline';
 import {promisify} from 'node:util';
 const exec = promisify(execFile);
+const dir = path.resolve('apps/mac-dialog-decisions');
+
+// Both tests share one compile of the probe and the product binary (the
+// product binary is reused from MAC_DIALOG_TEST_NATIVE_BINARY when given).
+let built;
+function binaries() {
+  built ??= (async () => {
+    const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'dialog-front-bin-')));
+    const sources = main => [...['dialog.swift','host.swift','preview.swift','unicode-width.swift',main].map(f=>path.join(dir,f))];
+    const probe = path.join(root, 'panel-front'), dialog = process.env.MAC_DIALOG_TEST_NATIVE_BINARY || path.join(root, 'dialog');
+    await Promise.all([
+      exec('swiftc', [...sources('test/panel-front/main.swift'), '-o', probe], {timeout:60000}),
+      process.env.MAC_DIALOG_TEST_NATIVE_BINARY ? null : exec('swiftc', [...sources('main.swift'), '-o', dialog], {timeout:60000}),
+    ]);
+    return {root, probe, dialog};
+  })();
+  return built;
+}
+test.after(async () => { if (built) await fs.rm((await built).root, {recursive:true, force:true}); });
 
 // A new panel stays behind an uncovered open panel, comes to the front when
 // every open panel is covered by another app, and never takes the keyboard.
 test('native panel ordering follows whether an open panel is in front', async t => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'dialog-panel-front-')));
   t.after(() => fs.rm(root, {recursive:true, force:true}));
-  const dir = path.resolve('apps/mac-dialog-decisions'), helper = path.join(root, 'panel-front');
-  await exec('swiftc', [...['dialog.swift','host.swift','preview.swift','unicode-width.swift','test/panel-front/main.swift'].map(f=>path.join(dir,f)), '-o',helper], {timeout:60000});
+  const helper = (await binaries()).probe;
   const {stdout} = await exec(helper, [root], {timeout:30000});
   console.log(stdout.split('\n').filter(line => /^(PANEL_FRONT|KEYBOARD)/.test(line)).join('\n'));
   assert.match(stdout, /PANEL_FRONT_PASS/);
@@ -34,11 +52,7 @@ test('one-dialog helper processes follow the same front rule', async t => {
     await Promise.all(children.map(child => child.exitCode === null ? new Promise(resolve => child.once('close', resolve)) : null));
     await fs.rm(root, {recursive:true, force:true});
   });
-  const dir = path.resolve('apps/mac-dialog-decisions'), dialog = path.join(root, 'dialog'), probe = path.join(root, 'panel-front');
-  await Promise.all([
-    exec('swiftc', [...['dialog.swift','host.swift','preview.swift','unicode-width.swift','main.swift'].map(f=>path.join(dir,f)), '-o',dialog], {timeout:60000}),
-    exec('swiftc', [...['dialog.swift','host.swift','preview.swift','unicode-width.swift','test/panel-front/main.swift'].map(f=>path.join(dir,f)), '-o',probe], {timeout:60000}),
-  ]);
+  const {dialog, probe} = await binaries();
   const start = (command, argv, ready) => new Promise((resolve, reject) => {
     const child = spawn(command, argv, {stdio:['pipe','pipe','inherit']});
     children.push(child);
@@ -70,10 +84,12 @@ test('one-dialog helper processes follow the same front rule', async t => {
   assert.deepEqual([c.row.placement, c.row.placement_reason], ['front', 'all_panels_covered']);
   const orderB = await until('third helper in front of the cover', rows => position(rows, c.child.pid) >= 0 && position(rows, c.child.pid) < position(rows, cover.child.pid));
   console.log('HELPER_FRONT_B', JSON.stringify(orderB.slice(0, 4)));
+  // Other concurrently running tests may change the frontmost app; a panel
+  // takes the keyboard only if one of these helper processes becomes it.
+  const helpers = [a.child.pid, b.child.pid, c.child.pid];
   for (const row of [a.row, b.row, c.row]) {
     assert.equal(row.key_window, false);
     assert.equal(row.app_active, false);
-    assert.equal(row.frontmost_pid, a.row.frontmost_pid);
+    assert.ok(!helpers.includes(row.frontmost_pid), `helper became frontmost: ${row.frontmost_pid} in ${helpers}`);
   }
-  assert.notEqual(a.row.frontmost_pid, a.child.pid);
 });

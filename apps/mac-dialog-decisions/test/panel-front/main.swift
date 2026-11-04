@@ -73,7 +73,8 @@ func checkKeyboard(_ label: String) {
   let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
   let keyPanels = host.windows.values.filter { $0.panel.isKeyWindow }.count
   print("KEYBOARD \(label) frontBefore=\(frontBefore ?? 0) front=\(front ?? 0) app_active=\(NSApp.isActive) key_panels=\(keyPanels)")
-  if front != frontBefore || NSApp.isActive || keyPanels != 0 { fail("\(label): a new panel took the keyboard") }
+  // Concurrent tests may change the frontmost app; only this process counts.
+  if front.map(Int.init) == selfPID || NSApp.isActive || keyPanels != 0 { fail("\(label): a new panel took the keyboard") }
 }
 
 var cover: Process?
