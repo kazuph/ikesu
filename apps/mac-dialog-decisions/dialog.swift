@@ -65,6 +65,16 @@ struct DialogDraft: Decodable { let option_ids: [String]; let text: String; let 
 
 // MARK: - output
 
+// Where a new panel is ordered (host.swift decides). `behind` is the lowest
+// open panel that no other app's window overlaps; nil brings the new panel to
+// the front (every open panel is covered, off screen, or unreadable).
+struct PanelPlacement {
+  let behind: Int?
+  let reason: String
+  let openPanels: Int
+  let coveredPanels: Int
+}
+
 func writeOutput(_ object: [String: Any], resultPath: String? = nil) {
   guard let data = try? JSONSerialization.data(withJSONObject: object),
     var line = String(data: data, encoding: .utf8)

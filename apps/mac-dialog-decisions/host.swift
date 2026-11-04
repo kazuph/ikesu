@@ -1,16 +1,6 @@
 import AppKit
 import Foundation
 
-// Where a new panel is ordered. `behind` is the lowest open panel that no
-// other app's window overlaps; nil brings the new panel to the front (every
-// open panel is covered, off screen, or the order could not be read).
-struct PanelPlacement {
-  let behind: Int?
-  let reason: String
-  let openPanels: Int
-  let coveredPanels: Int
-}
-
 // `screen` is CGWindowListCopyWindowInfo's front-to-back order. Own windows
 // that are not panels (previews) neither count as panels nor cover them.
 func panelPlacement(screen: [[String: Any]], panels: Set<Int>, peers: Set<Int>, own: Int) -> PanelPlacement {
