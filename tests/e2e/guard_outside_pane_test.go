@@ -1356,3 +1356,188 @@ func TestGuardOutsideAllCommandEntriesBlockProtectedFile(t *testing.T) {
 		})
 	}
 }
+
+// Seven processes from the same real pane wait at the socket response while
+// that pane closes. The synchronization can exceed five seconds on mini.
+func TestGuardAllEntriesStopWhenMatchedPaneCloses(t *testing.T) {
+	t.Parallel()
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	first := "p1"
+	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right", Focus: false}, nil)
+	root := s.stateDir
+	startGate, releaseGate := filepath.Join(root, "close-start"), filepath.Join(root, "close-release")
+	for _, path := range []string{startGate, releaseGate} {
+		if err := unix.Mkfifo(path, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ready, matched, result := filepath.Join(root, "close-ready"), filepath.Join(root, "close-matched"), filepath.Join(root, "close-result")
+	script := filepath.Join(root, "close-entries.py")
+	body := `import json, os, signal, socket, subprocess, sys, threading
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+root, sock, start, release, ready, matched, result = sys.argv[1:]
+real = sock + '.real'
+os.rename(sock, real)
+listener = socket.socket(socket.AF_UNIX)
+listener.bind(sock)
+listener.listen(32)
+release_event = threading.Event()
+lock = threading.Lock()
+responses = []
+handlers = []
+def receive(conn):
+    data = b''
+    while not data.endswith(b'\n'):
+        part = conn.recv(65536)
+        if not part: raise RuntimeError('socket closed')
+        data += part
+    return data
+def handle(client):
+    try:
+        request = receive(client)
+        server = socket.socket(socket.AF_UNIX)
+        server.settimeout(20)
+        server.connect(real)
+        server.sendall(request)
+        response = receive(server)
+        server.close()
+        if json.loads(request).get('method') == 'guard.identity':
+            decoded = json.loads(response)
+            with lock:
+                responses.append(decoded.get('result', {}).get('match') is True)
+                if len(responses) == 7:
+                    with open(matched, 'w') as f: json.dump(responses, f)
+            release_event.wait(20)
+        client.sendall(response)
+    finally:
+        client.close()
+def accept():
+    while True:
+        try: client, _ = listener.accept()
+        except OSError: return
+        thread = threading.Thread(target=handle, args=(client,), daemon=True)
+        handlers.append(thread)
+        thread.start()
+threading.Thread(target=accept, daemon=True).start()
+with open(ready, 'w') as f: f.write(str(os.getpid()))
+def gate(path):
+    with open(path) as f: return f.readline().strip()
+try:
+    if gate(start) != 'go': sys.exit(1)
+    directory = os.path.join(root, 'guard', 'shell', 'p_1')
+    bindir = os.path.join(root, 'guard', 'bin', 'p_1')
+    entry = os.path.join(directory, 'ikesu')
+    cases = [
+      ('refresh', [entry,'guard','refresh'], None),
+      ('exec', [entry,'guard','exec','--','/usr/bin/printf','NEVER_RAN'], None),
+      ('line', [entry,'guard','line','--','true'], None),
+      ('claude-prefix', [os.path.join(directory,'claude-prefix'),'/usr/bin/printf NEVER_RAN'], None),
+      ('shim', [os.path.join(bindir,'git'),'--version'], None),
+      ('bash-env', ['/bin/bash','-c','printf NEVER_RAN'], ('BASH_ENV',os.path.join(directory,'bash-env'))),
+      ('zdotdir', ['/bin/zsh','-c','printf NEVER_RAN'], ('ZDOTDIR',directory)),
+    ]
+    processes = []
+    for name, args, extra in cases:
+        env = dict(os.environ)
+        env.update({'HOME':root,'PATH':'/usr/bin:/bin','SHELL':'/bin/zsh','IKESU_STATE_DIR':root,
+          'IKESU_PANE_ID':'p1','IKESU_GUARD_MARKER':os.path.join(root,'guard','agent-panes','p_1.json'),
+          'IKESU_GUARD_BIN':bindir,'IKESU_GUARD_SHELL_DIR':directory,'IKESU_SOCKET_PATH':sock,'IKESU_SOCKET_PATH_EXPLICIT':'1'})
+        if extra: env[extra[0]] = extra[1]
+        processes.append((name, subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)))
+    if gate(release) != 'go': sys.exit(1)
+    release_event.set()
+    results = []
+    for name, process in processes:
+        output, _ = process.communicate(timeout=10)
+        results.append({'name':name,'status':process.returncode,'output':output.decode(errors='replace')})
+finally:
+    release_event.set()
+    listener.close()
+    try: os.unlink(sock)
+    except FileNotFoundError: pass
+    os.rename(real, sock)
+with open(result+'.tmp','w') as f: json.dump(results, f)
+os.replace(result+'.tmp', result)
+`
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
+	socket := api.APISocketPath(filepath.Join(root, s.name))
+	line := "nohup"
+	for _, arg := range []string{python, script, root, socket, startGate, releaseGate, ready, matched, result} {
+		line += " " + quote(arg)
+	}
+	line += " > /dev/null 2>&1 < /dev/null &\r"
+	s.send(line)
+	s.waitFor("pane relay ready", 5*time.Second, func(string) bool { _, err := os.Stat(ready); return err == nil })
+	send := func(path, message string) error {
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			fd, err := unix.Open(path, unix.O_WRONLY|unix.O_NONBLOCK, 0)
+			if err == nil {
+				_, err = unix.Write(fd, []byte(message+"\n"))
+				_ = unix.Close(fd)
+				return err
+			}
+			if err != unix.ENXIO {
+				return err
+			}
+			time.Sleep(time.Millisecond)
+		}
+		return fmt.Errorf("fifo reader unavailable")
+	}
+	t.Cleanup(func() {
+		for _, path := range []string{startGate, releaseGate} {
+			if fd, err := unix.Open(path, unix.O_WRONLY|unix.O_NONBLOCK, 0); err == nil {
+				_, _ = unix.Write(fd, []byte("abort\n"))
+				_ = unix.Close(fd)
+			}
+		}
+	})
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "close-all-entries", Agent: "claude", State: "idle"}, nil)
+	if err := send(startGate, "go"); err != nil {
+		t.Fatal(err)
+	}
+	s.waitFor("all matched identity responses", 15*time.Second, func(string) bool { _, err := os.Stat(matched); return err == nil })
+	data, err := os.ReadFile(matched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matches []bool
+	if err := json.Unmarshal(data, &matches); err != nil || len(matches) != 7 {
+		t.Fatalf("matching responses: %s %v", data, err)
+	}
+	for _, match := range matches {
+		if !match {
+			t.Fatalf("not all processes matched their live pane: %s", data)
+		}
+	}
+	s.rpc(api.MethodPaneClose, api.PaneTarget{PaneID: first}, nil)
+	if err := send(releaseGate, "go"); err != nil {
+		t.Fatal(err)
+	}
+	s.waitFor("closed pane entry results", 15*time.Second, func(string) bool { _, err := os.Stat(result); return err == nil })
+	data, err = os.ReadFile(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var results []struct {
+		Name   string `json:"name"`
+		Status int    `json:"status"`
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(data, &results); err != nil || len(results) != 7 {
+		t.Fatalf("entry results: %s %v", data, err)
+	}
+	for _, r := range results {
+		if r.Status == 0 || strings.Contains(r.Output, "NEVER_RAN") || strings.Contains(r.Output, "git version") {
+			t.Errorf("%s ran after pane closed: %+v", r.Name, r)
+		}
+	}
+}
