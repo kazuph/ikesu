@@ -38,8 +38,19 @@ func TestScreenMultiAnswerEventsToggleAndSubmitInLocalTerminal(t *testing.T) {
 			t.Helper()
 			waitPromptCondition(t, func() bool { got, _ := os.ReadFile(input); return string(got) == want })
 		}
-		waitBytes("1")
-		first := time.Now()
+		var first time.Time
+		waitPromptCondition(t, func() bool {
+			info, err := os.Stat(input)
+			if err != nil || info.Size() != 1 {
+				return false
+			}
+			got, err := os.ReadFile(input)
+			if err != nil || string(got) != "1" {
+				return false
+			}
+			first = info.ModTime()
+			return true
+		})
 		if initiallyChecked {
 			picture = strings.Replace(picture, "[✔] Summary", "[ ] Summary", 1)
 		} else {
@@ -47,7 +58,11 @@ func TestScreenMultiAnswerEventsToggleAndSubmitInLocalTerminal(t *testing.T) {
 		}
 		paintScreen(p, picture)
 		waitBytes("12")
-		if time.Since(first) < agentPromptSubmitDelay-eventWaitPoll {
+		info, err := os.Stat(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.ModTime().Sub(first) < agentPromptSubmitDelay-eventWaitPoll {
 			t.Fatal("number keys were not separate delayed events")
 		}
 		picture = strings.Replace(picture, "[ ] Evidence", "[✔] Evidence", 1)
