@@ -34,11 +34,11 @@ test('native panel ordering follows whether an open panel is in front', async t 
   t.after(() => fs.rm(root, {recursive:true, force:true}));
   const helper = (await binaries()).probe;
   const {stdout} = await exec(helper, [root], {timeout:30000});
-  console.log(stdout.split('\n').filter(line => /^(PANEL_FRONT|KEYBOARD)/.test(line)).join('\n'));
+  console.log(stdout.split('\n').filter(line => /^(PANEL_FRONT|KEYBOARD|FAIL)/.test(line)).join('\n'));
   assert.match(stdout, /PANEL_FRONT_PASS/);
   const shown = stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line)).filter(row => row.event === 'shown');
-  assert.deepEqual(shown.map(row => [row.key, row.placement]), [['first.json','front'],['second.json','behind'],['third.json','front']]);
-  assert.deepEqual(shown.map(row => row.placement_reason), ['no_open_panel','panel_in_front','all_panels_covered']);
+  assert.deepEqual(shown.map(row => [row.key, row.placement]), [['burst1.json','front'],['burst2.json','behind'],['first.json','front'],['second.json','behind'],['third.json','front']]);
+  assert.deepEqual(shown.map(row => row.placement_reason), ['no_open_panel','panel_in_front','no_open_panel','panel_in_front','all_panels_covered']);
   for (const row of shown) assert.equal(row.key_window, false);
 });
 

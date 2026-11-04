@@ -87,6 +87,22 @@ func stopCover() {
 
 func runTest() {
   if frontBefore.map(Int.init) == selfPID { fail("another app must be frontmost before the test") }
+  // (a0) Two decisions arrive together: the second opens before the window
+  // server lists the first, and still sits behind it.
+  host.open(writeSpec("burst1"))
+  host.open(writeSpec("burst2"))
+  let burst1 = host.windows["burst1.json"]!.panel!, burst2 = host.windows["burst2.json"]!.panel!
+  let burstOK = waitFor({
+    let order = screenOrder()
+    let one = index(burst1.windowNumber, order), two = index(burst2.windowNumber, order)
+    return one == 0 && two == 1
+  })
+  let orderBurst = screenOrder()
+  print("PANEL_FRONT_BURST first=\(index(burst1.windowNumber, orderBurst)) second=\(index(burst2.windowNumber, orderBurst))")
+  if !burstOK { host.closeAll(); fail("(a0) burst: second panel was not directly behind the first") }
+  checkKeyboard("a0")
+  host.closeAll()
+  if !waitFor({ index(burst1.windowNumber, screenOrder()) < 0 && index(burst2.windowNumber, screenOrder()) < 0 }) { fail("burst panels did not close") }
   // (a) First panel alone comes to the front; the second sits behind it.
   host.open(writeSpec("first"))
   let first = host.windows["first.json"]!.panel!
