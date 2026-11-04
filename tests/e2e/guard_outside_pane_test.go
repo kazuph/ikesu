@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -1010,5 +1012,117 @@ func TestGuardMatchingCorruptMarkerAllEntryPoints(t *testing.T) {
 		if string(status) == "0" || !strings.Contains(string(out), "目印ファイルが壊れています") || strings.Contains(string(out), "NEVER_RAN") || strings.Contains(string(out), "git version") {
 			t.Errorf("%s: status=%s output=%s", tc.name, status, out)
 		}
+	}
+}
+
+// A local transport relay truncates actual responses from the isolated server;
+// seven real entry processes and the server can take over five seconds.
+func TestGuardAllEntryPointsRejectCorruptServerResponse(t *testing.T) {
+	s := start(t)
+	s.waitFor("shell", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
+	first := "p1"
+	s.rpc(api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right", Focus: false}, nil)
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "corrupt-response", Agent: "claude", State: "idle"}, nil)
+	s.rpc(api.MethodPaneClose, api.PaneTarget{PaneID: first}, nil)
+	root := s.stateDir
+	marker := filepath.Join(root, "guard", "agent-panes", "p_1.json")
+	s.waitFor("closed marker", 3*time.Second, func(string) bool { _, err := os.Stat(marker); return os.IsNotExist(err) })
+	socket := api.APISocketPath(filepath.Join(root, s.name))
+	realSocket := socket + ".real"
+	if err := os.Rename(socket, realSocket); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		_ = os.Rename(realSocket, socket)
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	var corrupted atomic.Int32
+	acceptDone := make(chan struct{})
+	go func() {
+		defer close(acceptDone)
+		for {
+			client, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				defer client.Close()
+				_ = client.SetDeadline(time.Now().Add(5 * time.Second))
+				req, err := api.ReadRequest(bufio.NewReader(client))
+				if err != nil {
+					return
+				}
+				server, err := net.DialTimeout("unix", realSocket, time.Second)
+				if err != nil {
+					return
+				}
+				defer server.Close()
+				_ = server.SetDeadline(time.Now().Add(5 * time.Second))
+				if api.WriteRequest(server, *req) != nil {
+					return
+				}
+				line, err := bufio.NewReader(server).ReadBytes('\n')
+				if err != nil {
+					return
+				}
+				if req.Method == api.MethodGuardIdentity {
+					var response api.Response
+					if json.Unmarshal(line, &response) != nil || response.Err != nil || len(response.Result) == 0 {
+						return
+					}
+					corrupted.Add(1)
+					line = append(line[:len(line)/2], '\n')
+				}
+				_, _ = client.Write(line)
+			}()
+		}
+	}()
+	defer func() {
+		_ = listener.Close()
+		<-acceptDone
+		workers.Wait()
+		_ = os.Remove(socket)
+		if err := os.Rename(realSocket, socket); err != nil {
+			t.Errorf("restore isolated socket: %v", err)
+		}
+	}()
+	dir, bin := filepath.Join(root, "guard", "shell", "p_1"), filepath.Join(root, "guard", "bin", "p_1")
+	entry := filepath.Join(dir, "ikesu")
+	cases := []struct {
+		name, command string
+		args          []string
+		extra         string
+	}{
+		{"refresh", entry, []string{"guard", "refresh"}, ""},
+		{"exec", entry, []string{"guard", "exec", "--", "/usr/bin/printf", "NEVER_RAN"}, ""},
+		{"line", entry, []string{"guard", "line", "--", "true"}, ""},
+		{"claude-prefix", filepath.Join(dir, "claude-prefix"), []string{"/usr/bin/printf NEVER_RAN"}, ""},
+		{"shim", filepath.Join(bin, "git"), []string{"--version"}, ""},
+		{"bash-env", "/bin/bash", []string{"-c", "printf NEVER_RAN"}, "BASH_ENV=" + filepath.Join(dir, "bash-env")},
+		{"zdotdir", "/bin/zsh", []string{"-c", "printf NEVER_RAN"}, "ZDOTDIR=" + dir},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, tc.command, tc.args...)
+			cmd.Env = []string{"HOME=" + root, "PATH=/usr/bin:/bin", "SHELL=/bin/bash", "IKESU_STATE_DIR=" + root,
+				"IKESU_PANE_ID=p1", "IKESU_GUARD_MARKER=" + marker, "IKESU_GUARD_BIN=" + bin, "IKESU_GUARD_SHELL_DIR=" + dir,
+				"IKESU_SOCKET_PATH=" + socket, "IKESU_SOCKET_PATH_EXPLICIT=1"}
+			if tc.extra != "" {
+				cmd.Env = append(cmd.Env, tc.extra)
+			}
+			out, err := cmd.CombinedOutput()
+			if err == nil || strings.Contains(string(out), "NEVER_RAN") || strings.Contains(string(out), "git version") {
+				t.Fatalf("corrupt response permitted execution: %v %s", err, out)
+			}
+		})
+	}
+	if got := corrupted.Load(); got != int32(len(cases)) {
+		t.Errorf("corrupted %d actual identity responses, want %d", got, len(cases))
 	}
 }
