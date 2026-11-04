@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"html"
 	"math"
 	"os"
@@ -167,6 +168,9 @@ func TestKoiRevision2SmoothClickAndRelease(t *testing.T) {
 }
 
 func TestKoiRevision2DemandUploadsNeverRepeat(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	in := koiFixture(t, 5)
 	for _, p := range in.Panes {
 		p.Status.Key = "working"

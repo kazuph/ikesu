@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"reflect"
 	"testing"
 
@@ -13,6 +14,9 @@ import (
 )
 
 func TestComposerReuseMatchesIndependentFramesAndTerminalBytes(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	state := model.New(".", 106, 38)
 	first := state.FocusedPane()
 	state.ActiveWorkspace().ActiveLayout().SplitFocused(layout.Vertical, 2)

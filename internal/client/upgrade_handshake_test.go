@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"testing"
 	"time"
@@ -15,6 +16,9 @@ import (
 
 // The real first-attach deadline is ten seconds; the peer accepts hello but never sends welcome.
 func TestUpgradeWelcomeTimeoutRequestsRollback(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	server, client := shutdownSocketPair(t)
 	// Override the pair helper's short deadline: the production handshake must impose its own.
 	if err := client.SetDeadline(time.Time{}); err != nil {

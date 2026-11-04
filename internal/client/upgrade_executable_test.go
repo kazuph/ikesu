@@ -104,6 +104,9 @@ func TestUpgradeAttemptIsScopedToServerGeneration(t *testing.T) {
 
 // Two isolated real servers provide actual ping identity and a socket reconnect.
 func TestUpgradeFailureIsNotRetriedAfterReconnect(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))

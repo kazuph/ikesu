@@ -65,6 +65,9 @@ func TestPaintedSelectionIgnoresFencedHiddenAndFailedPaint(t *testing.T) {
 }
 
 func TestPaintedSelectionReconnectBeforeFencedSnapshot(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	e := m.endpoints["local"]
@@ -102,6 +105,9 @@ func TestPaintedSelectionReconnectBeforeFencedSnapshot(t *testing.T) {
 }
 
 func TestPaintedSelectionStaysWithinTargetSession(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	e := m.endpoints["remote"]

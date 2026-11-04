@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/tui"
 	"os"
 	"testing"
@@ -38,6 +39,9 @@ func koiRev3Client(t *testing.T) (*machineClient, *os.File) {
 	return m, file
 }
 func TestKoiRev3FirstRippleLatencyAndFenceDeferral(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, waiting := range []bool{false, true} {
 		t.Run(map[bool]string{false: "ready", true: "existing-fence-timeout"}[waiting], func(t *testing.T) {
 			m, file := koiRev3Client(t)

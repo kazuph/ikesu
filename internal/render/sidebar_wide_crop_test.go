@@ -5,10 +5,14 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"testing"
 )
 
 func TestNarrowSidebarJapaneseEncoderMatchesEveryCell(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, server := range []bool{false, true} {
 		for _, custom := range []bool{false, true} {
 			for _, machine := range []bool{false, true} {

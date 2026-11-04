@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"testing"
 )
 
@@ -20,6 +21,9 @@ func sidebarDragSettled(m *machineClient, right bool, width int) bool {
 }
 
 func TestSidebarMotionSnapshotDoesNotCompleteRelease(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	h.modes(0, 0, 240, 60)
 	m := h.m

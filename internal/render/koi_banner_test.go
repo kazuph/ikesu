@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"image"
 	"image/color"
 	"image/draw"
@@ -145,6 +146,9 @@ func exportKoiBanners(t *testing.T, dest string) {
 }
 
 func TestKoiBannersMatchRendererAndStayInsidePond(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, lang := range []string{"en", "ja"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "docs", "brand", "ikesu-banner-"+lang+".gif"))
 		if err != nil {
@@ -181,12 +185,8 @@ func TestKoiBannersMatchRendererAndStayInsidePond(t *testing.T) {
 					}
 				}
 			}
-			for y := 0; y < frame.Bounds().Dy(); y++ {
-				for x := 0; x < frame.Bounds().Dx(); x++ {
-					if color.RGBAModel.Convert(frame.At(x, y)) != expected.RGBAAt(x, y) {
-						t.Fatal("GIF differs from actual renderer or dot grid", lang, tick, x, y)
-					}
-				}
+			if x, y, ok := bannerPixelsMatch(frame, expected); !ok {
+				t.Fatal("GIF differs from actual renderer or dot grid", lang, tick, x, y)
 			}
 			if dest := os.Getenv("KOI_BANNER_PROOF"); dest != "" && (tick == 0 || tick == bannerFrames/2) {
 				if err := os.MkdirAll(dest, 0755); err != nil {
@@ -213,5 +213,74 @@ func TestKoiBannersMatchRendererAndStayInsidePond(t *testing.T) {
 			}
 		}
 		t.Logf("%s: %d bytes, %dx%d, %d frames, 8 second loop; all pixels equal renderer; koi top-left y spans %v", lang, len(data), bannerWidth*bannerScale, bannerHeight*bannerScale, bannerFrames, ys)
+	}
+}
+
+// bannerPixelsMatch checks every pixel: color.RGBAModel.Convert(frame.At(x, y))
+// must equal expected.RGBAAt(x, y). Each palette entry is converted once per
+// frame instead of once per pixel; the comparison itself is unchanged.
+func bannerPixelsMatch(frame *image.Paletted, expected *image.RGBA) (int, int, bool) {
+	slow := func(x, y int) bool { return color.RGBAModel.Convert(frame.At(x, y)) == expected.RGBAAt(x, y) }
+	w, h := frame.Bounds().Dx(), frame.Bounds().Dy()
+	if frame.Rect.Min != (image.Point{}) || expected.Rect.Min != (image.Point{}) || len(frame.Palette) == 0 {
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				if !slow(x, y) {
+					return x, y, false
+				}
+			}
+		}
+		return 0, 0, true
+	}
+	converted := make([]color.RGBA, len(frame.Palette))
+	for i, c := range frame.Palette {
+		converted[i] = color.RGBAModel.Convert(c).(color.RGBA)
+	}
+	for y := 0; y < h; y++ {
+		row := frame.Pix[y*frame.Stride : y*frame.Stride+w]
+		want := expected.Pix[y*expected.Stride : y*expected.Stride+4*w]
+		for x, index := range row {
+			if int(index) >= len(converted) {
+				if !slow(x, y) {
+					return x, y, false
+				}
+				continue
+			}
+			c, e := converted[index], want[4*x:4*x+4]
+			if c.R != e[0] || c.G != e[1] || c.B != e[2] || c.A != e[3] {
+				return x, y, false
+			}
+		}
+	}
+	return 0, 0, true
+}
+
+func TestBannerPixelsMatchAgreesWithPerPixelCompare(t *testing.T) {
+	palette := color.Palette{color.RGBA{0, 0, 0, 255}, color.NRGBA{200, 100, 50, 128}, color.RGBA{1, 2, 3, 4}}
+	frame := image.NewPaletted(image.Rect(0, 0, 5, 3), palette)
+	expected := image.NewRGBA(frame.Rect)
+	for i := range frame.Pix {
+		frame.Pix[i] = uint8(i % len(palette))
+	}
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 5; x++ {
+			expected.SetRGBA(x, y, color.RGBAModel.Convert(frame.At(x, y)).(color.RGBA))
+		}
+	}
+	if _, _, ok := bannerPixelsMatch(frame, expected); !ok {
+		t.Fatal("identical pixels rejected")
+	}
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 5; x++ {
+			for channel := 0; channel < 4; channel++ {
+				off := expected.PixOffset(x, y) + channel
+				expected.Pix[off]++
+				gotX, gotY, ok := bannerPixelsMatch(frame, expected)
+				if ok || gotX != x || gotY != y {
+					t.Fatalf("changed channel %d at %d,%d: got %d,%d ok=%t", channel, x, y, gotX, gotY, ok)
+				}
+				expected.Pix[off]--
+			}
+		}
 	}
 }

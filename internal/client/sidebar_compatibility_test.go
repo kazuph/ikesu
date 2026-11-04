@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"strings"
 	"testing"
 
@@ -10,6 +11,9 @@ import (
 )
 
 func TestSidebarPanelJobsDisplayCompatibility(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, compact := range []bool{false} {
 		t.Run(fmt.Sprint(compact), func(t *testing.T) {
 			h := newRightMachineHarness(t)
@@ -52,6 +56,9 @@ func TestSidebarPanelJobsDisplayCompatibility(t *testing.T) {
 }
 
 func TestSidebarPanelDisplayCompatibility(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, width := range []int{2, 3, 5, 10, 17, 26} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			h := newRightMachineHarness(t)

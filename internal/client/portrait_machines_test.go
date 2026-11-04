@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"regexp"
 	"strings"
 	"testing"
@@ -87,6 +88,9 @@ func portraitPaneText(in *render.Input, pid int) string {
 }
 
 func TestPortraitTwoMachinesRightHiddenClicksAndPTY(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	h := newRightMachineHarness(t)
 	m := h.m
 	landscape := tui.Winsize{Cols: 160, Rows: 35, Xpixel: 1600, Ypixel: 900}

@@ -7,6 +7,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -16,6 +17,9 @@ import (
 // The transparent fixture preserves v0.2.5 geometry, text and colors while
 // changing permanent backgrounds and the active selection underline.
 func TestSidebarStatusReferenceCells(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	goldenData, err := os.ReadFile("testdata/sidebar_status_transparent_sha256.json")
 	if err != nil {
 		t.Fatal(err)

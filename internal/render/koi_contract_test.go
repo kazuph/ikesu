@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 	"image"
 	"image/color"
 	"reflect"
@@ -76,6 +77,9 @@ func TestKoiTotalsPriorityAndNonIntersection(t *testing.T) {
 }
 
 func TestKoiNonDecorationCellsAndHitsRemainIdentical(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for width := 2; width <= 30; width++ {
 		for _, server := range []bool{false, true} {
 			for _, transparent := range []bool{false, true} {
@@ -146,6 +150,9 @@ func TestKoiNonDecorationCellsAndHitsRemainIdentical(t *testing.T) {
 }
 
 func TestKoiKittyUploadsOnlyOnceAndOverlaysClear(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	in := koiFixture(t, 4)
 	in.KoiKitty = true
 	in.KoiCellW, in.KoiCellH = 8, 16
@@ -241,6 +248,9 @@ func TestKoiCompletionUsesProvidedFossilExpiry(t *testing.T) {
 }
 
 func TestKoiPixelPaletteAndIntegerEnlargement(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for variety := 0; variety < len(KoiPatterns)*3; variety++ {
 		for direction := 0; direction < 2; direction++ {
 			for wag := 0; wag < 8; wag++ {
@@ -276,6 +286,9 @@ func TestKoiPixelPaletteAndIntegerEnlargement(t *testing.T) {
 }
 
 func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for _, theme := range config.ThemeNames {
 		for _, server := range []bool{false, true} {
 			for _, transparent := range []bool{false, true} {
@@ -355,6 +368,9 @@ func TestKoiOctantsKeepSourcePalette(t *testing.T) {
 }
 
 func TestKoiMiniPlacementUsesEnlargedPixelGrid(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	in := koiFixture(t, 1)
 	in.State.Workspaces[0].Section = model.SectionWork
 	in.Panes[1].Status.Key = "working"

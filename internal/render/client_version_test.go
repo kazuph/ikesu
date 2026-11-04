@@ -1,11 +1,15 @@
 package render
 
 import (
+	"github.com/kazuph/ikesu/internal/teststate"
 	"strings"
 	"testing"
 )
 
 func TestClientVersionGapAndButtons(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
 	for cols := 40; cols <= 160; cols++ {
 		for _, notice := range []bool{false, true} {
 			base := Compose(Input{State: testState(cols, 24)})
