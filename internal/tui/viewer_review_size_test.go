@@ -38,7 +38,7 @@ func reviewPTYSize(t *testing.T, a *App, pid int, w, h, cw, ch int) {
 		t.Fatalf("pane %d emulator size: got %v want %dx%d", pid, size, w, h)
 	}
 	file := filepath.Join(t.TempDir(), "size")
-	a.sup.Input(pid, []byte(fmt.Sprintf("stty size > '%s'\n", file)))
+	a.sup.Input(pid, []byte(fmt.Sprintf("while :; do size=$(stty size); printf '%%s\\n' \"$size\" > '%s'; [ \"$size\" = '%d %d' ] && break; done\n", file, h, w)))
 	reviewWaitFile(t, file, fmt.Sprintf("%d %d", h, w))
 	if gotW, gotH := a.sup.Get(pid).CellPixels(); gotW != cw || gotH != ch {
 		t.Fatalf("pane %d pixels=%dx%d want %dx%d", pid, gotW, gotH, cw, ch)
