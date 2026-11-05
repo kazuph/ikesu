@@ -6,25 +6,34 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/latency"
 )
+
+const upgradeLogFieldLimit = 512
+
+var upgradeLogVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 const upgradeLogLimit = int64(latency.Limit)
 const upgradeLogLimitMessage = "上限に達したので以後は記録しない\n"
 
 func logUpgradeFailure(session, currentVersion string, target upgradeIdentity, reason error) {
 	row := struct {
-		Time           string `json:"time"`
+		Time string `json:"time"
+	"unicode"
+	"unicode/utf8"`
 		CurrentVersion string `json:"current_version"`
 		TargetVersion  string `json:"target_version"`
 		Executable     string `json:"executable"`
 		Reason         string `json:"reason"`
-	}{time.Now().Format(time.RFC3339Nano), currentVersion, target.Version, target.Executable, upgradeFailureReason(reason)}
+	}{time.Now().Format(time.RFC3339Nano), upgradeLogVersion(currentVersion), upgradeLogVersion(target.Version), upgradeLogPath(target.Executable), upgradeFailureReason(reason)}
 	line, err := json.Marshal(row)
 	if err != nil {
 		return
@@ -96,4 +105,25 @@ func upgradeFailureReason(err error) string {
 		}
 	}
 	return "client upgrade failed; details omitted"
+}
+
+func upgradeLogVersion(value string) string {
+	if len(value) > upgradeLogFieldLimit || !upgradeLogVersionPattern.MatchString(value) {
+		return "invalid"
+	}
+	return value
+}
+
+func upgradeLogPath(value string) string {
+	var result strings.Builder
+	for _, r := range value {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			continue
+		}
+		if result.Len()+utf8.RuneLen(r) > upgradeLogFieldLimit {
+			break
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
 }
