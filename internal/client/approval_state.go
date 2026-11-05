@@ -36,7 +36,10 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	s.boot, s.revision = p.BootID, p.Revision
 	s.pending = nil
 	for _, d := range p.Pending {
-		if d.Kind == "command_guard" && d.Status == "pending" && d.Origin != nil && !d.Origin.OutsidePane && d.Origin.PaneID != "" {
+		if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane {
+			continue
+		}
+		if _, ok := approvalPaneID(d.Origin.PaneID); ok {
 			s.pending = append(s.pending, d)
 		}
 	}

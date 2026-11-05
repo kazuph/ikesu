@@ -2,7 +2,9 @@ package client
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/render"
@@ -22,8 +24,7 @@ func (m *machineClient) approvalCanOpen(e *managedEndpoint) bool {
 func (s *approvalState) overlay(in *render.Input) {
 	in.ApprovalCounts = make(map[int]int)
 	for _, d := range s.pending {
-		var pane int
-		if _, err := fmt.Sscanf(d.Origin.PaneID, "p%d", &pane); err == nil {
+		if pane, ok := approvalPaneID(d.Origin.PaneID); ok {
 			in.ApprovalCounts[pane]++
 		}
 	}
@@ -31,8 +32,8 @@ func (s *approvalState) overlay(in *render.Input) {
 	if d == nil {
 		return
 	}
-	var pane int
-	if _, err := fmt.Sscanf(d.Origin.PaneID, "p%d", &pane); err != nil {
+	pane, ok := approvalPaneID(d.Origin.PaneID)
+	if !ok {
 		return
 	}
 	width := 1
@@ -46,7 +47,7 @@ func (s *approvalState) overlay(in *render.Input) {
 	add := func(value string) {
 		for _, paragraph := range strings.Split(value, "\n") {
 			current, cells := "", 0
-			for _, r := range paragraph {
+			for _, r := range safeApprovalText(paragraph) {
 				w := max(1, ansi.StringWidth(string(r)))
 				if cells+w > width && current != "" {
 					lines = append(lines, current)
@@ -81,5 +82,22 @@ func (s *approvalState) overlay(in *render.Input) {
 	} else {
 		add("数字: 選択  Enter: 確定  Esc: 閉じる  ↑↓: スクロール")
 	}
-	in.Approval = &render.Approval{Pane: pane, Title: d.Title, Lines: lines, Scroll: s.scroll}
+	in.Approval = &render.Approval{Pane: pane, Title: safeApprovalText(d.Title), Lines: lines, Scroll: s.scroll}
+}
+
+func approvalPaneID(value string) (int, bool) {
+	if !strings.HasPrefix(value, "p") {
+		return 0, false
+	}
+	pane, err := strconv.Atoi(strings.TrimPrefix(value, "p"))
+	return pane, err == nil && pane > 0 && value == fmt.Sprintf("p%d", pane)
+}
+
+func safeApprovalText(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '�'
+		}
+		return r
+	}, value)
 }

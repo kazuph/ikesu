@@ -1,8 +1,10 @@
 package client
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
@@ -102,5 +104,22 @@ func TestGuardApprovalMayOpenWhilePrefixSnapshotIsPending(t *testing.T) {
 	e.snapshot.Prefix = false
 	if m.approvalCanOpen(e) {
 		t.Fatal("other modes must keep their input")
+	}
+}
+
+func TestGuardApprovalRendersControlCharactersSafely(t *testing.T) {
+	state := model.New(t.TempDir(), 120, 40)
+	body := "request\x1b]52;c;bad\a"
+	var approval approvalState
+	approval.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{{DecisionID: "d1", Kind: "command_guard", Status: "pending", Title: "title\x1b", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1", Command: "echo\rX"}}}}, "p1", time.Unix(100, 0), time.Time{})
+	in := render.Input{State: state}
+	approval.overlay(&in)
+	if in.Approval == nil {
+		t.Fatal("missing overlay")
+	}
+	for _, line := range append(in.Approval.Lines, in.Approval.Title) {
+		if strings.ContainsFunc(line, unicode.IsControl) {
+			t.Fatalf("control character in display: %q", line)
+		}
 	}
 }

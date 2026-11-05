@@ -62,6 +62,14 @@ func TestGuardApprovalTypingClickAndExternalResolution(t *testing.T) {
 	if e.guardApproval.open != "" {
 		t.Fatal("approval took focus during typing")
 	}
+	for _, event := range []input.Event{{Kind: input.KindKey, Key: uv.Key{Code: '1'}, Raw: []byte("1")}, {Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEnter}, Raw: []byte("\r")}} {
+		if err := m.input(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.guardApproval.pending) != 1 || e.guardApproval.open != "" {
+		t.Fatal("typed number and Enter acted on approval")
+	}
 	r := m.regions.AnswerRects[1]
 	click := input.Event{Kind: input.KindMouseClick, Mouse: uv.Mouse{X: r.X, Y: r.Y, Button: uv.MouseLeft}}
 	if err := m.input(click); err != nil {
