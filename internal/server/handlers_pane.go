@@ -302,7 +302,7 @@ func (s *Server) paneSendText(id string, p api.PaneSendTextParams) api.Response 
 		return s.paneNotFound(id, p.PaneID)
 	}
 	// Literal text; bracketed-paste markers when the pane asked for them.
-	pane.RecordExternalInput()
+	pane.RecordKeyInput()
 	pane.WithEmu(func(e *vt.Emulator) { e.Paste(p.Text) })
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
@@ -320,7 +320,7 @@ func (s *Server) paneSendKeys(id string, p api.PaneSendKeysParams) api.Response 
 	if bad != "" {
 		return api.Failure(id, api.ErrInvalidKey, fmt.Sprintf("unsupported key %s", bad))
 	}
-	pane.RecordExternalInput()
+	pane.RecordKeyInput()
 	pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) })
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
@@ -338,7 +338,7 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 	if bad != "" {
 		return api.Failure(id, api.ErrInvalidKey, fmt.Sprintf("unsupported key %s", bad))
 	}
-	pane.RecordExternalInput()
+	pane.RecordKeyInput()
 	s.sendInputToPane(pane, p.Text, keys)
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
@@ -348,11 +348,17 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 // have consumed the prompt before Enter arrives. Runs asynchronously so
 // the app loop never blocks.
 func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyEvent) {
-	pane.RecordExternalInput()
+	pane.RecordKeyInput()
 	go func() {
 		if text != "" {
-			pane.RecordExternalInput()
+			s.mu.Lock()
+			if s.closing.Load() != 0 {
+				s.mu.Unlock()
+				return
+			}
+			pane.RecordKeyInput()
 			pane.WithEmu(func(e *vt.Emulator) { e.Paste(text) })
+			s.mu.Unlock()
 		}
 		if len(keys) == 0 {
 			return
@@ -360,7 +366,12 @@ func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyE
 		if text != "" {
 			time.Sleep(500 * time.Millisecond)
 		}
-		pane.RecordExternalInput()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.closing.Load() != 0 {
+			return
+		}
+		pane.RecordKeyInput()
 		pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) })
 	}()
 }

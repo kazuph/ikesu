@@ -124,7 +124,7 @@ func (s *Server) attachAgent(c *clientConn, rd *bufio.Reader, hello clientMsg) {
 			}
 		case m := <-input:
 			s.mu.Lock()
-			if s.agentControllers[pid] != c {
+			if s.agentControllers[pid] != c || s.closing.Load() != 0 {
 				s.mu.Unlock()
 				return
 			}
@@ -140,7 +140,7 @@ func (s *Server) attachAgent(c *clientConn, rd *bufio.Reader, hello clientMsg) {
 				}
 				offset = 0
 				dirty = true
-				pane.RecordExternalInput()
+				pane.RecordKeyInput()
 				if _, err = pane.WriteToPTY(data); err != nil {
 					s.mu.Unlock()
 					return

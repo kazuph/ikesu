@@ -14,6 +14,16 @@ func (p *Pane) RecordExternalInput() {
 	p.lastExternalInput.Store(time.Now().UnixNano())
 	p.externalInputSeq.Add(1)
 }
+
+// RecordKeyInput tracks externally supplied keys separately from screen automation.
+func (p *Pane) RecordKeyInput() {
+	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	now := time.Now().UnixNano()
+	p.lastExternalInput.Store(now)
+	p.lastMailExternalInput.Store(now)
+	p.externalInputSeq.Add(1)
+}
 func (p *Pane) ExternalInputSequence() uint64 { return p.externalInputSeq.Load() }
 func (p *Pane) UserActive() bool {
 	last := p.lastExternalInput.Load()

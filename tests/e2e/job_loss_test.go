@@ -75,7 +75,7 @@ func TestLostMonitorPreservesLiveChildAndNotifiesOnce(t *testing.T) {
 	if _, err := j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
 	}
-	j.s.waitFor("lost completion recorded and delivered", 10*time.Second, func(string) bool {
+	j.s.waitFor("lost completion recorded and delivered", noticeWait, func(string) bool {
 		r, _ := j.store.CommandRow(j.job.ID)
 		return r != nil && r.Status == "exited" && r.ExitCode == nil && j.notices() == 1
 	})
@@ -159,7 +159,7 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 			if completion == "none" {
 				wantNotices = 0
 			}
-			j.s.waitFor("lost result without waiting for diagnostics", 10*time.Second, func(string) bool {
+			j.s.waitFor("lost result without waiting for diagnostics", noticeWait, func(string) bool {
 				r, _ := j.store.CommandRow(j.job.ID)
 				return r != nil && r.Status == "exited" && r.ExitCode == nil && j.notices() == wantNotices
 			})
@@ -307,7 +307,7 @@ func TestLostJobAfterAllOwnerProcessesDisappearAndRestart(t *testing.T) {
 		}
 		return n
 	}
-	j.s.waitFor("startup recovers result loss once", 10*time.Second, func(string) bool {
+	j.s.waitFor("startup recovers result loss once", noticeWait, func(string) bool {
 		r, _ := j.store.CommandRow(j.job.ID)
 		return r != nil && r.Status == "exited" && r.ExitCode == nil && notices() == 1
 	})
@@ -333,7 +333,7 @@ func TestSSHFailureStillHasActualExitCode(t *testing.T) {
 	if _, err := j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
 	}
-	j.s.waitFor("actual SSH error is collected", 10*time.Second, func(string) bool {
+	j.s.waitFor("actual SSH error is collected", noticeWait, func(string) bool {
 		r, _ := j.store.CommandRow(j.job.ID)
 		return r != nil && r.Status == "exited" && r.ExitCode != nil && *r.ExitCode == 255 && j.notices() == 1
 	})
@@ -345,7 +345,7 @@ func TestMonitorNormalExitEvidenceIsSeparateFromCommandExit(t *testing.T) {
 	if _, err := j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
 	}
-	j.s.waitFor("command and monitor finish with different actual codes", 10*time.Second, func(string) bool {
+	j.s.waitFor("command and monitor finish with different actual codes", noticeWait, func(string) bool {
 		row, _ := j.store.CommandRow(j.job.ID)
 		if row == nil || row.Status != "exited" || row.ExitCode == nil || *row.ExitCode != 7 {
 			return false
@@ -386,7 +386,7 @@ func TestLateMonitorEvidenceDoesNotAttachToReusedLogPath(t *testing.T) {
 	if _, err = j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
 	}
-	j.s.waitFor("normal result collected while reaper is paused", 10*time.Second, func(string) bool {
+	j.s.waitFor("normal result collected while reaper is paused", noticeWait, func(string) bool {
 		r, _ := j.store.CommandRow(j.job.ID)
 		return r != nil && r.Status == "exited" && r.ExitCode != nil && *r.ExitCode == 7 && j.notices() == 1
 	})

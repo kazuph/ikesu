@@ -136,6 +136,8 @@ type Server struct {
 	mailAwaitingAck []mailWrite     // written to PTY; retry only these exact IDs
 	mailInFlight    map[int64]bool  // regular message ids staged for PTY write
 	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
+	mailDeferred    map[int]mailDeferredPane
+	mailDeferredSeq uint64
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
@@ -479,6 +481,11 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 			s.sup.ReleaseHandoff()
 			s.app.Do(s.app.RetireHandoff)
 		}
+		var final handoffResult
+		if err := imported.Decoder.Decode(&final); err != nil || final.State != "mail_input_times" {
+			final.MailInputTimes = nil
+		}
+		s.sup.RestoreMailInputTimes(final.MailInputTimes)
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
 	s.mailWG.Add(1)

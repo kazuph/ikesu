@@ -72,6 +72,8 @@ type Pane struct {
 	retired             atomic.Bool
 	importedExited      atomic.Bool
 
+	lastMailExternalInput atomic.Int64
+
 	inputMu           sync.Mutex
 	lastExternalInput atomic.Int64
 	externalInputSeq  atomic.Uint64
@@ -502,7 +504,7 @@ func (s *Supervisor) Kill(id int) {
 // Input writes raw key/paste bytes to the pane's PTY.
 func (s *Supervisor) Input(id int, b []byte) {
 	if p := s.Get(id); p != nil {
-		p.RecordExternalInput()
+		p.RecordKeyInput()
 		_, _ = p.WriteToPTY(b)
 	}
 }

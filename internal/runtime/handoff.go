@@ -28,6 +28,7 @@ type PaneTransfer struct {
 	TapState                    int
 	TapBody                     []byte
 	Clipboard                   []string
+	LastMailExternalInput       int64
 }
 
 func (p *Pane) startPump() {
@@ -93,6 +94,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			v.Guard = &g
 		}
 		p.mu.Unlock()
+		v.LastMailExternalInput = p.lastMailExternalInput.Load()
 		v.Snapshot = p.Snapshot()
 		fd, err := unix.FcntlInt(uintptr(p.ptyFD), unix.F_DUPFD_CLOEXEC, 0)
 		if err != nil {
@@ -130,6 +132,7 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		if err := p.emu.UnmarshalHandoff(v.Terminal); err != nil {
 			return err
 		}
+		p.lastMailExternalInput.Store(v.LastMailExternalInput)
 		p.importedPID = v.PID
 		p.shellStart = v.ShellStart
 		if p.shellStart == "" && v.PID > 1 {
@@ -204,5 +207,30 @@ func (p *Pane) killProcess() {
 	} else if p.importedPID != 0 && !p.importedExited.Load() {
 		_ = unix.Kill(-p.importedPID, unix.SIGHUP)
 		_ = unix.Kill(p.importedPID, unix.SIGKILL)
+	}
+}
+
+// MailInputTimes captures admitted keys after the terminal snapshot.
+func (s *Supervisor) MailInputTimes() map[int]int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	times := make(map[int]int64, len(s.panes))
+	for id, pane := range s.panes {
+		times[id] = pane.lastMailExternalInput.Load()
+	}
+	return times
+}
+
+// RestoreMailInputTimes conservatively starts the quiet period when a time is missing.
+func (s *Supervisor) RestoreMailInputTimes(times map[int]int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UnixNano()
+	for id, pane := range s.panes {
+		at := times[id]
+		if at == 0 {
+			at = now
+		}
+		pane.lastMailExternalInput.Store(at)
 	}
 }

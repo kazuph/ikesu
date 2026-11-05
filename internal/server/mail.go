@@ -34,27 +34,85 @@ type mailWrite struct {
 	toAgent string
 }
 
+type mailDeferredPane struct {
+	owner    *runtime.Pane
+	sequence uint64
+}
+
+// deferMailForPane records work that must be retried without sweeping other panes.
+func (s *Server) deferMailForPane(pid int, pane *runtime.Pane) {
+	if pane == nil {
+		return
+	}
+	s.mailMu.Lock()
+	defer s.mailMu.Unlock()
+	if s.mailDeferred == nil {
+		s.mailDeferred = make(map[int]mailDeferredPane)
+	}
+	s.mailDeferredSeq++
+	s.mailDeferred[pid] = mailDeferredPane{owner: pane, sequence: s.mailDeferredSeq}
+}
+
+func (s *Server) readyDeferredMailPanes() []int {
+	s.mailMu.Lock()
+	snapshot := make(map[int]mailDeferredPane, len(s.mailDeferred))
+	for pid, entry := range s.mailDeferred {
+		snapshot[pid] = entry
+	}
+	s.mailMu.Unlock()
+	var ready []int
+	for pid, entry := range snapshot {
+		current := s.sup.Get(pid)
+		if current == entry.owner && current.MailInputActive() {
+			continue
+		}
+		s.mailMu.Lock()
+		if s.mailDeferred[pid] == entry {
+			delete(s.mailDeferred, pid)
+			if current == entry.owner {
+				ready = append(ready, pid)
+			}
+		}
+		s.mailMu.Unlock()
+	}
+	return ready
+}
+
 // mailWorker serializes all mailbox PTY writes so message order and
 // write-completion tracking stay consistent even when several API
 // requests flush the same pane concurrently.
 func (s *Server) mailWorker() {
 	tick := time.NewTicker(jobActiveRefresh)
 	defer tick.Stop()
+	pending := make(map[int][]mailWrite)
+	finish := func(w mailWrite, written bool, err error) bool {
+		if errors.Is(err, runtime.ErrMailInputActive) {
+			s.deferMailForPane(w.pane, w.owner)
+			return false
+		}
+		if written && err != nil {
+			fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
+			return true
+		}
+		if err != nil {
+			s.failMissingJobWrite(w)
+		}
+		s.mailDone(w)
+		return true
+	}
+	deliver := func(w mailWrite) bool {
+		written, err := s.deliverMailWrite(w)
+		return finish(w, written, err)
+	}
 	for {
 		select {
 		case w, ok := <-s.mailCh:
 			if !ok {
 				return
 			}
-			written, err := s.deliverMailWrite(w)
-			if written && err != nil {
-				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
-				continue
+			if len(pending[w.pane]) > 0 || !deliver(w) {
+				pending[w.pane] = append(pending[w.pane], w)
 			}
-			if err != nil {
-				s.failMissingJobWrite(w)
-			}
-			s.mailDone(w)
 		case <-tick.C:
 			s.mailDelivery.Lock()
 			hadPending := len(s.mailAwaitingAck) > 0
@@ -63,8 +121,39 @@ func (s *Server) mailWorker() {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
 			}
+			for pane, writes := range pending {
+				if len(writes) > 0 && s.sup.Get(pane) == writes[0].owner && writes[0].owner.MailInputActive() {
+					continue
+				}
+				for len(writes) > 0 {
+					w := writes[0]
+					var allowed bool
+					s.app.Do(func() {
+						if s.sup.Get(pane) == w.owner {
+							status := s.app.PaneStatusKey(pane)
+							if w.msgID != 0 && !regularMailCanSubmit(status) || w.msgID == 0 && status == "blocked" {
+								return
+							}
+						}
+						allowed = true
+					})
+					if !allowed || !deliver(w) {
+						break
+					}
+					writes = writes[1:]
+				}
+				if len(writes) == 0 {
+					delete(pending, pane)
+				} else {
+					pending[pane] = writes
+				}
+			}
 			if hadPending && err == nil {
 				s.app.Do(s.flushAllMail)
+			} else {
+				for _, pid := range s.readyDeferredMailPanes() {
+					s.app.Do(func() { s.flushMailForPane(pid) })
+				}
 			}
 		}
 	}
@@ -82,8 +171,7 @@ func (s *Server) deliverMailWrite(w mailWrite) (bool, error) {
 	if p == nil || p != w.owner {
 		return false, fmt.Errorf("mail destination missing")
 	}
-	p.RecordExternalInput()
-	if _, err := p.WriteToPTY(w.payload); err != nil {
+	if _, err := p.WriteMail(w.payload); err != nil {
 		return false, err
 	}
 	if err := s.acknowledgeMailWrite(w); err != nil {
@@ -153,6 +241,7 @@ func (s *Server) enqueueMail(w mailWrite) bool {
 		k := jobKey(w.room, w.toAgent)
 		if s.jobInFlight[k] {
 			s.mailMu.Unlock()
+			s.deferMailForPane(w.pane, w.owner)
 			return true // batch for this recipient already staged
 		}
 		s.jobInFlight[k] = true
@@ -163,6 +252,7 @@ func (s *Server) enqueueMail(w mailWrite) bool {
 		return true
 	default:
 		s.mailDone(w)
+		s.deferMailForPane(w.pane, w.owner)
 		return false
 	}
 }
@@ -478,8 +568,13 @@ func (s *Server) flushRegularForPane(pid int) bool {
 		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(pid) {
 			continue
 		}
+		pane := s.sup.Get(pid)
+		if pane != nil && pane.MailInputActive() {
+			s.deferMailForPane(pid, pane)
+			return delivered
+		}
 		payload := s.encodeMailFor(pid, m.Body)
-		if !s.enqueueMail(mailWrite{pane: pid, owner: s.sup.Get(pid), payload: payload, msgID: m.ID}) {
+		if !s.enqueueMail(mailWrite{pane: pid, owner: pane, payload: payload, msgID: m.ID}) {
 			return delivered
 		}
 		delivered = true
@@ -537,7 +632,8 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 		s.failJobQueue(n, err.Message)
 		return false
 	}
-	if s.sup.Get(t.pid) == nil {
+	pane := s.sup.Get(t.pid)
+	if pane == nil {
 		return false
 	}
 	if s.app.PaneStatusKey(t.pid) == "blocked" {
@@ -563,8 +659,12 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 	if len(ids) == 0 {
 		return false
 	}
+	if pane.MailInputActive() {
+		s.deferMailForPane(t.pid, pane)
+		return false
+	}
 	return s.enqueueMail(mailWrite{
-		pane: t.pid, owner: s.sup.Get(t.pid), payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
+		pane: t.pid, owner: pane, payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
 		msgIDs: ids, room: n.Room, toAgent: n.ToAgent,
 	})
 }
