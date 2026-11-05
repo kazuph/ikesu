@@ -207,3 +207,27 @@ func TestGuardApprovalUpdatesBothDisplayClients(t *testing.T) {
 		t.Fatal("other display retained answered decision")
 	}
 }
+
+func TestGuardApprovalFollowsRemoteMachineSelection(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	remote := m.endpoints["remote"]
+	h.api("remote", api.MethodDecisionCreate, api.DecisionCreateParams{Kind: "command_guard", Title: "remote guard", Origin: &api.DecisionOrigin{PaneID: "p1", Command: "true"}, Options: []api.DecisionOption{{ID: "approve", Label: "approve", Role: "approve"}}})
+	h.until("remote pending", func() bool { return len(remote.guardApproval.pending) == 1 })
+	if remote.guardApproval.open != "" || len(m.endpoints["local"].guardApproval.pending) != 0 {
+		t.Fatal("remote request leaked into local display")
+	}
+	m.pending = &pendingMachine{id: "remote", workspace: remote.snapshot.State.ActiveWorkspace().ID, deadline: time.Now().Add(machineSwitchWait)}
+	m.requestPending()
+	h.until("remote selected", func() bool { return m.active == "remote" && m.pending == nil && remote.guardApproval.open != "" })
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: '1'}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEnter}}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("remote answered", func() bool { return len(remote.guardApproval.pending) == 0 })
+	if len(m.endpoints["local"].guardApproval.pending) != 0 {
+		t.Fatal("remote answer changed local decisions")
+	}
+}
