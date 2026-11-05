@@ -30,7 +30,7 @@ func runIsolatedParallel(t *testing.T) bool {
 func runIsolatedParallelEarly(t *testing.T) bool {
 	// Filtered or shuffled runs do not guarantee that the final barrier runs.
 	// Use the ordinary Go parallel slot for those runs.
-	if flag.Lookup("test.run").Value.String() != "" || flag.Lookup("test.shuffle").Value.String() != "off" || flag.Lookup("test.parallel").Value.String() == "1" {
+	if flag.Lookup("test.run").Value.String() != "" || flag.Lookup("test.skip").Value.String() != "" || flag.Lookup("test.shuffle").Value.String() != "off" || flag.Lookup("test.parallel").Value.String() == "1" {
 		return runIsolatedParallel(t)
 	}
 	return runIsolatedParallelMode(t, t.Name(), true)
@@ -68,7 +68,7 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 		earlyIsolatedWait.Add(1)
 	}
 	ctx := t.Context()
-	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$", "-test.v"}
+	args := []string{"-test.run=" + isolatedRunPattern(flag.Lookup("test.run").Value.String(), t.Name(), name), "-test.skip=" + flag.Lookup("test.skip").Value.String(), "-test.v"}
 	if deadline, ok := t.Deadline(); ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, deadline)
@@ -98,9 +98,7 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	}
 	got := <-finished
 	output, err := got.output, got.err
-	if early {
-		t.Logf("isolated child window: %s %s", got.start.Format(time.RFC3339Nano), got.end.Format(time.RFC3339Nano))
-	}
+	t.Logf("isolated child window: %s %s early=%t", got.start.Format(time.RFC3339Nano), got.end.Format(time.RFC3339Nano), early)
 	t.Logf("isolated test:\n%s", output)
 	if err != nil {
 		t.Fatalf("isolated test failed: %v", err)
@@ -111,6 +109,57 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 		t.Fatalf("isolated test did not report PASS: %s", t.Name())
 	}
 	return true
+}
+
+// Preserve the selected subtest paths while restricting each alternative to
+// the top-level test that launched this child.
+func isolatedRunPattern(pattern, parent, child string) string {
+	anchored := "^" + regexp.QuoteMeta(child) + "$"
+	if pattern == "" {
+		return anchored
+	}
+	var alternatives []string
+	start, slash, brackets, parens := 0, -1, 0, 0
+	for i := 0; i <= len(pattern); i++ {
+		if i == len(pattern) || (pattern[i] == '|' && brackets == 0 && parens == 0) {
+			end := i
+			if slash >= 0 {
+				end = slash
+			}
+			if matched, _ := regexp.MatchString(pattern[start:end], parent); matched {
+				suffix := ""
+				if slash >= 0 {
+					suffix = pattern[slash:i]
+				}
+				alternatives = append(alternatives, anchored+suffix)
+			}
+			start, slash = i+1, -1
+			continue
+		}
+		switch pattern[i] {
+		case '\\':
+			i++
+		case '[':
+			brackets++
+		case ']':
+			if brackets > 0 {
+				brackets--
+			}
+		case '(':
+			if brackets == 0 {
+				parens++
+			}
+		case ')':
+			if brackets == 0 {
+				parens--
+			}
+		case '/':
+			if brackets == 0 && parens == 0 && slash < 0 {
+				slash = i
+			}
+		}
+	}
+	return strings.Join(alternatives, "|")
 }
 
 func TestIsolatedParallelRejectsMissingTest(t *testing.T) {
