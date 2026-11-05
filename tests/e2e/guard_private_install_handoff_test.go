@@ -21,11 +21,17 @@ func TestGuardHandoffThroughPrivateInstallTree(t *testing.T) {
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "private-install-handoff", Agent: "codex", State: "idle"}, nil)
 	pidfile := filepath.Join(s.stateDir, "shell-pid")
 	s.send("printf '%s' $$ > '" + pidfile + "'\r")
-	s.waitFor("old shell pid", 5*time.Second, func(string) bool { _, err := os.Stat(pidfile); return err == nil })
-	before, err := os.ReadFile(pidfile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The shell creates the file before it writes the pid, so wait for the
+	// content rather than the file: reading in between saw an empty pid.
+	var before []byte
+	s.waitFor("old shell pid", 5*time.Second, func(string) bool {
+		data, err := os.ReadFile(pidfile)
+		if err != nil || len(data) == 0 {
+			return false
+		}
+		before = data
+		return true
+	})
 	lib := filepath.Join(t.TempDir(), ".local", "lib")
 	if err := os.MkdirAll(lib, 0700); err != nil {
 		t.Fatal(err)
