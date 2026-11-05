@@ -309,6 +309,14 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 					}
 				default:
 				}
+				if readerState.pending.Load() {
+					if e := m.endpoints[m.active]; e != nil && e.snapshot != nil && e.snapshot.State != nil {
+						if e.approvalInput == nil {
+							e.approvalInput = make(map[string]time.Time)
+						}
+						e.approvalInput[fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())] = time.Now()
+					}
+				}
 			}
 			if result, done := m.event(event); done {
 				if result == pumpUpgrade {

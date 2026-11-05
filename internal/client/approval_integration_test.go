@@ -1,7 +1,11 @@
 package client
 
 import (
+	"context"
+	"os"
+	"runtime"
 	"testing"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
@@ -108,5 +112,43 @@ func TestGuardApprovalKeepsScratchPopupOpen(t *testing.T) {
 	}
 	if e.guardApproval.open != "" || !e.snapshot.State.PopupVisible() || e.snapshot.State.Popup.PaneID != scratch {
 		t.Fatal("escape closed scratch popup")
+	}
+}
+
+func TestGuardApprovalTracksIncompletePaste(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var state machineInputState
+	events, stop, err := readMachineInputWithState(reader, ctx, &state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if _, err := writer.WriteString("\x1b[200~hello"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for !state.pending.Load() && time.Now().Before(deadline) {
+		runtime.Gosched()
+	}
+	if !state.pending.Load() {
+		t.Fatal("partial paste was not marked as active input")
+	}
+	if _, err := writer.WriteString("\x1b[201~"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if event.Kind != input.KindPaste || event.Text != "hello" {
+			t.Fatalf("paste = %+v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("paste was not delivered")
 	}
 }

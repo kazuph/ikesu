@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/ikesu/internal/machine"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -20,8 +21,9 @@ import (
 )
 
 type machineInputState struct {
-	framer input.Framer
-	unsent []input.Event
+	framer  input.Framer
+	unsent  []input.Event
+	pending atomic.Bool
 }
 
 func normalizeMachineInput(decoded []input.Event) []input.Event {
@@ -93,6 +95,7 @@ func readMachineInputWithState(in *os.File, ctx context.Context, state *machineI
 				if err != nil || n == 0 {
 					return
 				}
+				state.pending.Store(true)
 				decoded = framer.Push(buf[:n])
 			}
 			filtered := normalizeMachineInput(decoded)
@@ -106,6 +109,7 @@ func readMachineInputWithState(in *os.File, ctx context.Context, state *machineI
 					return
 				}
 			}
+			state.pending.Store(framer.Pending())
 		}
 	}()
 	return events, stop, nil
