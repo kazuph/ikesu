@@ -44,6 +44,22 @@ func TestUpgradeFailureLog(t *testing.T) {
 	}
 }
 
+func TestUpgradeWaitLogReasonsAreFixed(t *testing.T) {
+	for _, reason := range []upgradeWait{
+		"cannot send pending input before client upgrade",
+		"input destination is changing during client upgrade",
+		"local input is waiting for reconnection before client upgrade",
+		"clipboard input is pending before client upgrade",
+	} {
+		if got := upgradeFailureReason(reason); got != "waiting to retry client upgrade: "+string(reason) {
+			t.Fatalf("wait reason %q: %q", reason, got)
+		}
+	}
+	if got := upgradeFailureReason(upgradeWait("untrusted secret")); got != "client upgrade failed; details omitted" {
+		t.Fatalf("unexpected wait reason: %q", got)
+	}
+}
+
 func TestUpgradeFailureLogStopsAtLimit(t *testing.T) {
 	root := t.TempDir()
 	teststate.Setenv(t, "IKESU_STATE_DIR", root)

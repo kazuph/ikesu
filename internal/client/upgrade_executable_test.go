@@ -227,6 +227,105 @@ func TestUpgradeCheckSurvivesReconnectBeforeResult(t *testing.T) {
 }
 
 // Building both real versions ensures the retry yields an executable candidate.
+// A real server may answer the check before its first snapshot is delivered.
+func TestUpgradeCheckBeforeFirstSnapshotRetries(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
+	oldBinary, serverBinary, oldVersion := buildReconnectUpgradeBinaries(t)
+	teststate.Setenv(t, "IKESU_RIGHT_TEST_SERVER_BIN", serverBinary)
+	oldStartup, oldStartupErr := startupExecutable, startupExecutableErr
+	startupExecutable, startupExecutableErr = oldBinary, nil
+	t.Cleanup(func() { startupExecutable, startupExecutableErr = oldStartup, oldStartupErr })
+	h := newRightMachineHarness(t)
+	m := h.m
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))
+	m.clientVersion = oldVersion
+	m.failedUpgrades = make(map[upgradeIdentity]bool)
+	e := m.endpoints["local"]
+	e.restarting = true
+	e.connection.Close()
+	m.start("local", nil)
+	attempt := e.attempt
+	var snapshot endpointEvent
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	checked := false
+	for !checked || snapshot.message.Type == "" {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == attempt && ev.message.Type == "snapshot" {
+				snapshot = ev
+				continue
+			}
+			if ev.id == "local" && ev.attempt == attempt && ev.upgrade != nil {
+				if ev.upgrade.err != nil || ev.upgrade.candidate == nil {
+					t.Fatalf("upgrade check: %+v", ev.upgrade)
+				}
+				if _, done := m.event(ev); done || !e.upgradePending || m.failedUpgrades[ev.upgrade.identity] {
+					t.Fatal("upgrade was not deferred until the first snapshot")
+				}
+				checked = true
+				continue
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("waiting for upgrade check and first snapshot")
+		}
+	}
+	m.event(snapshot)
+	for {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == attempt && ev.upgrade != nil {
+				result, done := m.event(ev)
+				if !done || result != pumpUpgrade || m.settings.upgrade == nil {
+					t.Fatal("upgrade did not resume after the first snapshot")
+				}
+				return
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("upgrade did not retry after the first snapshot")
+		}
+	}
+}
+
+// A deferred check also resumes without another snapshot or input event.
+func TestDeferredUpgradeRetryDeadline(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
+	h := newRightMachineHarness(t)
+	m := h.m
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))
+	m.clientVersion = "older-client"
+	m.failedUpgrades = make(map[upgradeIdentity]bool)
+	e := m.endpoints["local"]
+	m.deferUpgrade()
+	deadline := e.upgradeRetryAt
+	if !e.upgradePending || deadline.IsZero() || m.nextDeadline().After(deadline) {
+		t.Fatal("deferred upgrade has no wakeup")
+	}
+	m.advance(deadline)
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == e.attempt && ev.upgrade != nil {
+				if ev.upgrade.identity.Generation == "" {
+					t.Fatalf("retry did not query the server: %+v", ev.upgrade)
+				}
+				return
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("deferred check did not resume at its deadline")
+		}
+	}
+}
+
 func buildReconnectUpgradeBinaries(t *testing.T) (string, string, string) {
 	t.Helper()
 	repo, err := filepath.Abs(filepath.Join("..", ".."))

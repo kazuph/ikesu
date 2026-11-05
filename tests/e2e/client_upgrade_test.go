@@ -221,7 +221,6 @@ func buildClientUpgradeVersionsUncached(t *testing.T, shortTimeout, shortAttach,
 		}
 		shortSource := filepath.Join(dir, "upgrade_executable.go")
 		text := string(upgradeSource[:index]) + "context.WithTimeout(ctx, 250*time.Millisecond)" + string(upgradeSource[index+len(original):])
-		text = strings.Replace(text, "import (", "import (\n\"time\"", 1)
 		if err := os.WriteFile(shortSource, []byte(text), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -344,6 +343,43 @@ func TestClientUpgradePreservesTwoSelections(t *testing.T) {
 	}
 	proof(first, space.RootPane.PaneID, "FIRST_AFTER")
 	proof(second, "p2", "SECOND_AFTER")
+}
+
+// Many panes and their output make the real handoff carry a substantial state.
+func TestClientUpgradeWithLoadedServer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	const paneCount = 12
+	for i := 0; i < paneCount; i++ {
+		var workspace api.WorkspaceCreatedResult
+		s.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: false}, &workspace)
+		pane := workspace.RootPane.PaneID
+		s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: pane, Text: "yes 'handoff-load-output-0123456789' | head -n 2000; printf 'LOAD_%s\\n' COMPLETE", Keys: []string{"enter"}}, nil)
+		ms := uint64(15000)
+		s.rpc(api.MethodPaneWaitForOutput, api.PaneWaitForOutputParams{PaneID: pane, Source: "recent", Match: api.OutputMatch{Type: "substring", Value: "LOAD_COMPLETE"}, TimeoutMs: &ms}, nil)
+	}
+	var panes api.PaneListResult
+	s.rpc(api.MethodPaneList, api.PaneListParams{}, &panes)
+	if len(panes.Panes) < paneCount+1 {
+		t.Fatalf("prepared only %d panes", len(panes.Panes))
+	}
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	s.waitFor("new client", 30*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	resolvedNew, err := filepath.EvalSymlinks(newBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	process, err := exec.Command("lsof", "-a", "-p", fmt.Sprint(s.cmd.Process.Pid), "-d", "txt", "-Fn").Output()
+	if err != nil || (!strings.Contains(string(process), "n"+newBinary+"\n") && !strings.Contains(string(process), "n"+resolvedNew+"\n")) {
+		t.Fatalf("new executable not mapped: %q %v", process, err)
+	}
+	t.Logf("%d panes generated 2000 lines each; client pid=%d lsof=%s", len(panes.Panes), s.cmd.Process.Pid, strings.TrimSpace(string(process)))
 }
 
 // The second build exercises actual client exec across two server versions.

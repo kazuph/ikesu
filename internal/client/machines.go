@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -44,6 +45,7 @@ type managedEndpoint struct {
 	paste                    *clipboardPaste
 	restarting               bool
 	upgradePending           bool
+	upgradeRetryAt           time.Time
 	resumeInput              bool
 	restartInput             []byte
 }
@@ -301,7 +303,12 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 					if err != nil {
 						candidate := m.settings.upgrade
 						logUpgradeFailure(m.session, m.clientVersion, candidate.identity, err)
-						m.failedUpgrades[candidate.identity] = true
+						var wait upgradeWait
+						if errors.As(err, &wait) {
+							m.deferUpgrade()
+						} else {
+							m.failedUpgrades[candidate.identity] = true
+						}
 						m.settings.upgrade = nil
 						m.notify("upgrade: " + err.Error())
 						if err := startInput(); err != nil {
@@ -374,11 +381,25 @@ func (m *machineClient) nextDeadline() time.Time {
 	}
 	for _, e := range m.endpoints {
 		include(e.retry.next)
+		include(e.upgradeRetryAt)
 	}
 	return next
 }
 
+func (m *machineClient) deferUpgrade() {
+	e := m.endpoints["local"]
+	e.upgradePending = true
+	e.upgradeRetryAt = time.Now().Add(initialRetryDelay)
+}
+
 func (m *machineClient) advance(now time.Time) {
+	local := m.endpoints["local"]
+	if local != nil && !local.upgradeRetryAt.IsZero() && !now.Before(local.upgradeRetryAt) {
+		local.upgradeRetryAt = time.Time{}
+		if local.connection != nil {
+			m.checkUpgrade(local.attempt)
+		}
+	}
 	m.traceProbeTimeout(now)
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""

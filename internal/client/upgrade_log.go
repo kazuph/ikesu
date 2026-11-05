@@ -71,6 +71,13 @@ func logUpgradeFailure(session, currentVersion string, target upgradeIdentity, r
 
 // Error text can contain configuration values or remote server input.
 func upgradeFailureReason(err error) string {
+	var wait upgradeWait
+	if errors.As(err, &wait) {
+		switch wait {
+		case "cannot send pending input before client upgrade", "input destination is changing during client upgrade", "local input is waiting for reconnection before client upgrade", "clipboard input is pending before client upgrade":
+			return "waiting to retry client upgrade: " + string(wait)
+		}
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "upgrade operation timed out"
 	}

@@ -174,6 +174,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if result.candidate == nil || m.failedUpgrades[result.identity] {
 			return 0, false
 		}
+		if e.restarting {
+			logUpgradeFailure(m.session, m.clientVersion, result.identity, upgradeWait("local input is waiting for reconnection before client upgrade"))
+			m.deferUpgrade()
+			return 0, false
+		}
 		if err := result.candidate.executable.recheck(); err != nil {
 			logUpgradeFailure(m.session, m.clientVersion, result.identity, err)
 			m.failedUpgrades[result.identity] = true
@@ -325,6 +330,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				if err := m.sendInput(event.id, pending); err != nil {
 					m.fail(event.id, err)
 				}
+			}
+			if e.upgradePending && !e.upgradeRetryAt.IsZero() && e.connection != nil {
+				m.checkUpgrade(e.attempt)
 			}
 		}
 	case endpoint.GraphicsFileMessage, endpoint.GraphicsRetiredMessage:
