@@ -44,7 +44,10 @@ func TestPaneGuardApprovalExecutesRealCommand(t *testing.T) {
 		t.Fatal("number answered without Enter")
 	}
 	s.send("\r")
-	s.waitFor("command finished", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "GUARD_FINISHED") })
+	s.waitFor("command finished", 5*time.Second, func(string) bool {
+		b, err := os.ReadFile(result)
+		return err == nil && string(b) == "success"
+	})
 	b, err := os.ReadFile(result)
 	if err != nil || string(b) != "success" {
 		t.Fatalf("guard command result %q: %v", b, err)
