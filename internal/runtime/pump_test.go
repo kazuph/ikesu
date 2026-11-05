@@ -50,9 +50,12 @@ func screenText(p *Pane) string {
 // TestPumpFirstOutputAfterIdleIsImmediate writes a single byte after an idle
 // gap and checks it lands in the emulator long before pumpBatchWait could
 // have delayed it — the batching wait must not apply to the first read.
+// The batch wait is set far above any scheduling delay of a loaded race run,
+// so a wrongly batched first read is still caught while a correct one never
+// depends on finishing within a few tens of milliseconds.
 func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 	teststate.Lock(t)
-	const batchWait = 200 * time.Millisecond // large: a wrongly-always-batched impl is obvious
+	const batchWait = 5 * time.Second // large: a wrongly-always-batched impl is obvious
 
 	p, w, _ := newPumpPane(t)
 	p.startPumpWithTiming(batchWait, 5*time.Millisecond)
@@ -64,7 +67,7 @@ func TestPumpFirstOutputAfterIdleIsImmediate(t *testing.T) {
 		if _, err := w.WriteString(letter); err != nil {
 			t.Fatal(err)
 		}
-		deadline := t0.Add(50 * time.Millisecond) // far below pumpBatchWait
+		deadline := t0.Add(batchWait / 5) // far below pumpBatchWait
 		seen := false
 		for time.Now().Before(deadline) {
 			if s := screenText(p); len(s) >= len(want) && s[:len(want)] == want {

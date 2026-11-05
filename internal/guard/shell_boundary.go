@@ -136,8 +136,16 @@ func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
 	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if p, ok := node.(*syntax.ParamExp); ok && (unsupportedParamOp(p) || unquotableParamValue(cfg, p)) {
+			failure = fmt.Errorf("未対応の変数展開には承認が必要です")
+			return false
+		}
 		if _, ok := node.(*syntax.ProcSubst); ok {
 			failure = fmt.Errorf("プロセス置換が実行する内容には承認が必要です")
+			return false
+		}
+		if _, ok := node.(*syntax.ExtGlob); ok {
+			failure = fmt.Errorf("拡張グロブの展開には承認が必要です")
 			return false
 		}
 		if i.runtimeLine {
@@ -357,20 +365,61 @@ func guardPhysical(path string) string {
 	}
 }
 
+func unsupportedParamOp(p *syntax.ParamExp) bool {
+	if p.Exp == nil || p.Exp.Op != syntax.OtherParamOps {
+		return false
+	}
+	parts := p.Exp.Word.Parts
+	if len(parts) != 1 {
+		return true
+	}
+	lit, ok := parts[0].(*syntax.Lit)
+	return !ok || (lit.Value != "Q" && lit.Value != "E")
+}
+
+func unquotableParamValue(cfg *expand.Config, p *syntax.ParamExp) bool {
+	if cfg == nil || cfg.Env == nil || p.Exp == nil || p.Exp.Op != syntax.OtherParamOps || p.Exp.Word.Lit() != "Q" {
+		return false
+	}
+	// Quote rejects NUL. Check all values because indirect expansions and array
+	// indexes can select a different variable from the one named in the AST.
+	invalid := false
+	cfg.Env.Each(func(name string, v expand.Variable) bool {
+		invalid = strings.ContainsRune(name, 0) || strings.ContainsRune(v.Str, 0)
+		for _, value := range v.List {
+			invalid = invalid || strings.ContainsRune(value, 0)
+		}
+		for key, value := range v.Map {
+			invalid = invalid || strings.ContainsRune(key, 0) || strings.ContainsRune(value, 0)
+		}
+		return !invalid
+	})
+	return invalid
+}
+
 func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 	if word == nil {
 		return "", fmt.Errorf("展開する単語がありません")
 	}
-	unsupported := false
+	var unsupported error
 	syntax.Walk(word, func(n syntax.Node) bool {
-		if _, ok := n.(*syntax.ProcSubst); ok {
-			unsupported = true
+		switch p := n.(type) {
+		case *syntax.ParamExp:
+			if unsupportedParamOp(p) || unquotableParamValue(cfg, p) {
+				unsupported = fmt.Errorf("未対応の変数展開は静的に展開できません")
+				return false
+			}
+		case *syntax.ProcSubst:
+			unsupported = fmt.Errorf("プロセス置換は静的に展開できません")
+			return false
+		case *syntax.ExtGlob:
+			unsupported = fmt.Errorf("拡張グロブは静的に展開できません")
 			return false
 		}
 		return true
 	})
-	if unsupported {
-		return "", fmt.Errorf("プロセス置換は静的に展開できません")
+	if unsupported != nil {
+		return "", unsupported
 	}
 	return expand.Literal(cfg, word)
 }

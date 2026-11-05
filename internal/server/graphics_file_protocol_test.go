@@ -20,6 +20,7 @@ import (
 func directGraphicsFixture(t *testing.T) (string, *testConn, string, map[string]any) {
 	t.Helper()
 	teststate.Lock(t)
+	useTestShellPrompt(t)
 	config := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(config, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -28,13 +29,19 @@ func directGraphicsFixture(t *testing.T) (string, *testConn, string, map[string]
 	teststate.Setenv(t, "XDG_RUNTIME_DIR", t.TempDir())
 	dir, done := startTestEndpoint(t, endpoint.GraphicsPeer())
 	t.Cleanup(func() { stopServer(t, dir, done) })
+	pane := firstPaneID(t, dir)
+	// Readline can write back a stale PTY size while starting the shell.
+	deadline := time.Now().Add(5 * time.Second)
+	timeout := uint64(time.Until(deadline).Milliseconds())
+	apiOK(t, dir, api.MethodPaneWaitForOutput, api.PaneWaitForOutputParams{
+		PaneID: pane, Match: api.OutputMatch{Type: "substring", Value: "ikesu-test-ready"}, TimeoutMs: &timeout,
+	}, nil)
 	viewer := dialClient(t, dir)
 	t.Cleanup(func() { viewer.conn.Close() })
 	viewer.send(t, clientMsg{Type: "hello", Peer: endpoint.GraphicsPeer(), GraphicsFileTransport: endpoint.DirectKittyTransport,
 		Cols: 80, Rows: 24, Xpixel: 640, Ypixel: 384})
-	viewer.readUntil(t, 5*time.Second, func(clientMsg) bool { return viewer.lastRegions != nil })
-	pane := firstPaneID(t, dir)
-	deadline := time.Now().Add(5 * time.Second)
+	viewer.readUntil(t, time.Until(deadline), func(clientMsg) bool { return viewer.lastRegions != nil })
+	deadline = time.Now().Add(5 * time.Second)
 	for {
 		var info map[string]any
 		response := apiReq(t, dir, api.MethodPaneGraphicsInfo, map[string]any{"pane_id": pane})
