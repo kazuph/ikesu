@@ -14,7 +14,7 @@ import (
 )
 
 func TestEndpointBothViewersRetainInputDuringSharedTabRedraw(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	for _, shell := range []bool{true, false} {
@@ -121,7 +121,7 @@ func endpointBothViewersRetainInput(t *testing.T, shell bool) {
 }
 
 func TestEndpointOnlyFocusedVisibleTabsBecomeRead(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)

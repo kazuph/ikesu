@@ -175,7 +175,7 @@ func TestGraphicsFileClientRejectionCopiesBeforeAcknowledgementAndDisablesOnlyDi
 }
 
 func TestGraphicsFileReceiptDeadlinesNeverBecomeInlineSuccess(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	// Both real receipt deadlines are exercised: five seconds for delivery and

@@ -25,7 +25,7 @@ func mcpScreen(server, question string, decline bool) string {
 }
 
 func TestMCPRealPTYArrowThenVerifiedEnter(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	for _, change := range []string{"correct", "server", "question", "disappeared", "unreadable", "external-input", "cursor"} {
@@ -111,7 +111,7 @@ func TestMCPServerChangeDoesNotReuseOrFloodUpdateOldDecision(t *testing.T) {
 }
 
 func TestPreviewAnswerReadsFiveTimesBeforeGivingUp(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	for _, mode := range []string{"immediate", "late", "never", "question-changed"} {

@@ -274,7 +274,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 }
 
 func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)

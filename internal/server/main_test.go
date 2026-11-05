@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"net"
@@ -11,9 +12,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+var earlyIsolatedOnce sync.Once
+var earlyIsolatedSlots chan struct{}
 
 // runIsolatedParallel gives slow real-server tests their own process-wide
 // environment while retaining the original test and its real timeouts.
@@ -37,6 +42,19 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	}
 	if !early {
 		t.Parallel()
+	} else {
+		earlyIsolatedOnce.Do(func() {
+			parallel := flag.Lookup("test.parallel")
+			if parallel == nil {
+				t.Fatal("test.parallel is unavailable")
+			}
+			limit, err := strconv.Atoi(parallel.Value.String())
+			if err != nil || limit < 1 {
+				t.Fatalf("invalid test.parallel: %q", parallel.Value.String())
+			}
+			earlyIsolatedSlots = make(chan struct{}, limit)
+		})
+		earlyIsolatedSlots <- struct{}{}
 	}
 	ctx := t.Context()
 	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$", "-test.v"}
@@ -54,6 +72,9 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	}
 	finished := make(chan result, 1)
 	go func() {
+		if early {
+			defer func() { <-earlyIsolatedSlots }()
+		}
 		output, err := cmd.CombinedOutput()
 		finished <- result{output: output, err: err}
 	}()

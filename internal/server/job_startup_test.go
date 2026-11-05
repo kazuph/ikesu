@@ -18,7 +18,7 @@ import (
 )
 
 func TestSupervisorStartupDisconnectAbortsRealChild(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	for _, phase := range []string{"before-request", "before-commit", "before-release", "monitor-killed-before-commit"} {

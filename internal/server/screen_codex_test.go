@@ -82,7 +82,7 @@ func TestCodexQuestionUnreadableRetainsPending(t *testing.T) {
 // The saved screens come from a real Codex session. A raw PTY records the
 // delivery bytes while its emulator advances through those observed states.
 func TestCodexQuestionDelayedWritesStopAtChangedScreen(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)
@@ -134,7 +134,7 @@ func TestCodexQuestionDelayedWritesStopAtChangedScreen(t *testing.T) {
 }
 
 func TestCodexQuestionFreeInputNavigationAndExistingNotes(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)

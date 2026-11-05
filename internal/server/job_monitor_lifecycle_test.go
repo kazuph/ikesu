@@ -121,7 +121,7 @@ func TestManagedSignalRejectsMismatchAndUnavailableStart(t *testing.T) {
 }
 
 func TestLegacyCancelReapedLeaderWithSurvivingChild(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)

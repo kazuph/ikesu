@@ -111,7 +111,7 @@ func TestEndpointRejectsGenerationBeforeAttach(t *testing.T) {
 }
 
 func TestEndpointIndependentTabsAndSizeOwnerLifecycle(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)

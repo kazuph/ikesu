@@ -16,7 +16,7 @@ import (
 )
 
 func TestCancelZombieLeaderWithStoppedParentKillsSurvivingGrandchild(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	teststate.Lock(t)
