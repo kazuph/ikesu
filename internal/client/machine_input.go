@@ -9,6 +9,7 @@ import (
 	"github.com/kazuph/ikesu/internal/machine"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -20,8 +21,9 @@ import (
 )
 
 type machineInputState struct {
-	framer input.Framer
-	unsent []input.Event
+	framer  input.Framer
+	unsent  []input.Event
+	pending atomic.Bool
 }
 
 func normalizeMachineInput(decoded []input.Event) []input.Event {
@@ -93,6 +95,7 @@ func readMachineInputWithState(in *os.File, ctx context.Context, state *machineI
 				if err != nil || n == 0 {
 					return
 				}
+				state.pending.Store(true)
 				decoded = framer.Push(buf[:n])
 			}
 			filtered := normalizeMachineInput(decoded)
@@ -106,6 +109,7 @@ func readMachineInputWithState(in *os.File, ctx context.Context, state *machineI
 					return
 				}
 			}
+			state.pending.Store(framer.Pending())
 		}
 	}()
 	return events, stop, nil
@@ -131,6 +135,12 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return nil
 	}
+	if e := m.endpoints[m.active]; e != nil && e.snapshot != nil && e.snapshot.State != nil && (event.Kind == input.KindKey || event.Kind == input.KindPaste) {
+		if e.approvalInput == nil {
+			e.approvalInput = make(map[string]time.Time)
+		}
+		e.approvalInput[fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())] = time.Now()
+	}
 	switch event.Kind {
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseMotion, input.KindMouseWheel:
 		cell := m.mouse.CellEvent(event, m.size).Mouse
@@ -146,6 +156,9 @@ func (m *machineClient) input(event input.Event) error {
 		m.blurred = false
 		m.focusKnown = true
 		m.reportClientFocus()
+	}
+	if handled, err := m.approvalInputEvent(m.mouse.CellEvent(event, m.size)); handled || err != nil {
+		return err
 	}
 	if m.workspaceCycleInput(event) {
 		return nil

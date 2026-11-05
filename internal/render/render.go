@@ -122,6 +122,8 @@ type JobDot struct {
 }
 
 type Input struct {
+	ApprovalCounts    map[int]int
+	Approval          *Approval
 	RestoreFailures   map[int]string
 	GraphicsPatches   []PaneGraphicsPatch
 	SurfaceRevision   uint64
@@ -200,6 +202,8 @@ type CopyMark struct {
 
 // Output is a composed frame plus the cursor anchor for IME positioning.
 type Output struct {
+	ApprovalRect  layout.Rect
+	AnswerRects   map[int]layout.Rect
 	Frame         *Frame
 	AnchorX       int
 	AnchorY       int
@@ -353,6 +357,10 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	defer func() { f.Palette = palette }()
 
 	drawPopup(f, in, out)
+	drawApprovalIndicators(f, in, out)
+	if in.Approval != nil {
+		drawApproval(f, in, out)
+	}
 	if in.Dialog != nil || in.Help != nil || in.Settings != nil {
 		for i := range f.Cells {
 			if in.Dialog != nil && (in.Dialog.DimPanesOnly || !in.Dialog.InputEdit && !in.Dialog.CenterTerminal) {

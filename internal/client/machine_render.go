@@ -3,6 +3,7 @@ package client
 import "github.com/kazuph/ikesu/internal/benchstage"
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -49,6 +50,15 @@ func (m *machineClient) paint() error {
 	if m.forms != nil {
 		m.forms.Overlay(&in)
 	}
+	if m.approvalCanOpen(e) {
+		e.guardApproval.focus(fmt.Sprintf("p%d", e.snapshot.State.FocusedPane()))
+	} else {
+		e.guardApproval.dismiss()
+		if e.snapshot.State != nil {
+			e.guardApproval.pane = fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())
+		}
+	}
+	e.guardApproval.overlay(&in)
 	m.sidebar.PaneStatus = nil
 	if e.connection == nil {
 		m.sidebar.PaneStatus = []string{e.profile.Label + ": " + e.status, e.reason, "手元のspaceは使える"}
@@ -147,6 +157,11 @@ func (m *machineClient) paint() error {
 	benchstage.Values("outer.bytes", len(data), 0)
 	if err := writeErr; err != nil {
 		return err
+	}
+	e.guardApproval.painted = ""
+	r := composed.ApprovalRect
+	if in.Approval != nil && r.W > 0 && r.H > 0 && r.X >= 0 && r.Y >= 0 && r.X+r.W <= m.size.Cols && r.Y+r.H <= m.size.Rows {
+		e.guardApproval.painted = e.guardApproval.open
 	}
 	probe := false
 	if m.frames.RequiresImageFence() {

@@ -23,6 +23,9 @@ import (
 )
 
 type managedEndpoint struct {
+	guardApproval  approvalState
+	approvalInput  map[string]time.Time
+	approvalPrefix bool
 	processedInput uint64
 	selection      *paintedSelection
 
@@ -294,6 +297,27 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 				}
 			}
 		case event := <-m.events:
+			// Consume keys already read from the terminal before deciding whether a
+			// newly arrived approval may take input focus.
+			if event.message.Type == "decisions" {
+				select {
+				case first, ok := <-inputEvents:
+					if ok {
+						if _, err := m.drainInput(first, inputEvents); err != nil {
+							m.notify(err.Error())
+						}
+					}
+				default:
+				}
+				if readerState.pending.Load() {
+					if e := m.endpoints[m.active]; e != nil && e.snapshot != nil && e.snapshot.State != nil {
+						if e.approvalInput == nil {
+							e.approvalInput = make(map[string]time.Time)
+						}
+						e.approvalInput[fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())] = time.Now()
+					}
+				}
+			}
 			if result, done := m.event(event); done {
 				if result == pumpUpgrade {
 					stopInput()
