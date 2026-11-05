@@ -386,6 +386,12 @@ func (m *machineClient) nextDeadline() time.Time {
 	return next
 }
 
+func (m *machineClient) deferUpgrade() {
+	e := m.endpoints["local"]
+	e.upgradePending = true
+	e.upgradeRetryAt = time.Now().Add(initialRetryDelay)
+}
+
 func (m *machineClient) advance(now time.Time) {
 	local := m.endpoints["local"]
 	if local != nil && !local.upgradeRetryAt.IsZero() && !now.Before(local.upgradeRetryAt) {

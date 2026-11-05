@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
@@ -149,12 +148,6 @@ func (m *machineClient) checkUpgrade(attempt uint64) {
 		}
 		m.post(m.ctx, endpointEvent{id: "local", attempt: attempt, upgrade: result})
 	}()
-}
-
-func (m *machineClient) deferUpgrade() {
-	e := m.endpoints["local"]
-	e.upgradePending = true
-	e.upgradeRetryAt = time.Now().Add(initialRetryDelay)
 }
 
 func queryUpgradeIdentity(ctx context.Context, session string) (upgradeIdentity, error) {
