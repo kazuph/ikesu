@@ -131,6 +131,12 @@ func (m *machineClient) input(event input.Event) error {
 		}
 		return nil
 	}
+	if e := m.endpoints[m.active]; e != nil && e.snapshot != nil && e.snapshot.State != nil && (event.Kind == input.KindKey || event.Kind == input.KindPaste) {
+		if e.approvalInput == nil {
+			e.approvalInput = make(map[string]time.Time)
+		}
+		e.approvalInput[fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())] = time.Now()
+	}
 	switch event.Kind {
 	case input.KindMouseClick, input.KindMouseRelease, input.KindMouseMotion, input.KindMouseWheel:
 		cell := m.mouse.CellEvent(event, m.size).Mouse

@@ -23,6 +23,8 @@ import (
 )
 
 type managedEndpoint struct {
+	guardApproval  approvalState
+	approvalInput  map[string]time.Time
 	processedInput uint64
 	selection      *paintedSelection
 

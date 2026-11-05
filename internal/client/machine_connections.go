@@ -283,8 +283,18 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	message := event.message
 	switch message.Type {
-	case "decisions", "decision_answer_result":
-		// Older servers still send these controls; decisions are answered outside the display.
+	case "decisions":
+		focused := ""
+		if event.id == m.active && e.snapshot != nil && e.snapshot.State != nil && !m.blurred && e.snapshot.Dialog == nil && e.snapshot.Menu == nil && e.snapshot.Help == nil && e.snapshot.Settings == nil && e.snapshot.Navigator == nil {
+			focused = fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())
+		}
+		e.guardApproval.update(message.Decisions, focused, time.Now(), e.approvalInput[focused])
+		_ = m.paint()
+	case "decision_answer_result":
+		if message.Reason != "" {
+			m.notify(message.Reason)
+			_ = m.paint()
+		}
 	case "snapshot":
 		if message.snapshot == nil {
 			m.fail(event.id, errors.New("snapshot was not decoded by endpoint reader"))
@@ -296,6 +306,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		if event.id == m.active && message.snapshot.State != nil {
+			e.guardApproval.focus(fmt.Sprintf("p%d", message.snapshot.State.FocusedPane()))
+		}
 		e.processedInput = message.ProcessedInput
 		e.snapshotAttempt = e.attempt
 		e.boot = message.traceBoot

@@ -51,3 +51,22 @@ func TestGuardApprovalWaitsForPaneActivationAfterInput(t *testing.T) {
 		t.Fatal("returning to pane did not open approval")
 	}
 }
+
+func TestGuardApprovalFiltersAndOrdersPendingDecisions(t *testing.T) {
+	now := time.Unix(100, 0)
+	pane := &api.DecisionOrigin{PaneID: "p1"}
+	var state approvalState
+	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 2, Pending: []api.Decision{
+		{DecisionID: "new", Kind: "command_guard", Status: "pending", Origin: pane, CreatedUnixMS: 2},
+		{DecisionID: "old", Kind: "command_guard", Status: "pending", Origin: pane, CreatedUnixMS: 1},
+		{DecisionID: "ask", Kind: "ask", Status: "pending", Origin: pane},
+		{DecisionID: "outside", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1", OutsidePane: true}},
+	}}, "p1", now, time.Time{})
+	if len(state.pending) != 2 || state.open != "old" {
+		t.Fatalf("pending=%v open=%s", state.pending, state.open)
+	}
+	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1}, "p1", now, time.Time{})
+	if state.open != "old" || len(state.pending) != 2 {
+		t.Fatal("stale projection replaced pending state")
+	}
+}
