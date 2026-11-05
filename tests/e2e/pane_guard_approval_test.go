@@ -40,6 +40,7 @@ func TestPaneGuardApprovalExecutesRealCommand(t *testing.T) {
 	s.send("\x02a")
 	s.waitFor("approval visible", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "申請文") && strings.Contains(tx, "1: 承認") })
 	s.send("1")
+	s.waitFor("selection", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "● 1: 承認") })
 	if _, err := os.Stat(result); !os.IsNotExist(err) {
 		t.Fatal("number answered without Enter")
 	}
