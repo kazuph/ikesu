@@ -121,6 +121,9 @@ func TestManagedSignalRejectsMismatchAndUnavailableStart(t *testing.T) {
 }
 
 func TestLegacyCancelReapedLeaderWithSurvivingChild(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s := newTestServer(t, "legacy-reaped-leader")
 	defer s.stopJobMonitors()

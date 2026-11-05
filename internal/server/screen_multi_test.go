@@ -94,6 +94,9 @@ func TestScreenMultiAnswerEventsToggleAndSubmitInLocalTerminal(t *testing.T) {
 }
 
 func TestScreenMultiInputFailureDoesNotSendSubmit(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-multi-wide", "claude")
 	picture := screenDialog(t, "claude-multi-wide")
@@ -156,6 +159,9 @@ func TestScreenMultiNavigationAbortsOnChangedQuestionOrStop(t *testing.T) {
 // A slow terminal may still be drawing the last toggle when the fixed input
 // delay ends. The answer must wait for the drawn marks instead of refusing.
 func TestScreenMultiAnswerWaitsForSlowCheckMarks(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-multi-wide", "claude")
 	picture := screenDialog(t, "claude-multi-wide")

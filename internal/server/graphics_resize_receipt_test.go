@@ -18,6 +18,9 @@ import (
 )
 
 func TestGraphicsReceiptWaitTracksResizeAndDragOnRealSocket(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
 	// Six cases each transfer and verify real image data on a real socket;
 	// race instrumentation can make their combined runtime exceed five seconds.
 	teststate.Lock(t)
