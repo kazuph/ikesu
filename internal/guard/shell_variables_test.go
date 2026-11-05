@@ -71,6 +71,14 @@ func TestShellSnapshotLinePolicyAndPrivatePresentation(t *testing.T) {
 			t.Fatal(err)
 		}
 		for surface, text := range map[string]string{"feedback": feedback.String(), "record": string(record)} {
+			// Paths under the random test directories can contain a short value
+			// by chance (for example "qz" in a temporary directory name), so
+			// they are removed before looking for the snapshot value.
+			for _, path := range []string{i.Cwd, filepath.Dir(i.Cwd), os.TempDir()} {
+				if path != "" && path != "/" {
+					text = strings.ReplaceAll(text, path, "<path>")
+				}
+			}
 			if strings.Contains(text, value) {
 				t.Fatalf("%s exposed snapshot value %q", surface, value)
 			}
