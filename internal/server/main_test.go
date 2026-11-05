@@ -19,6 +19,7 @@ import (
 
 var earlyIsolatedOnce sync.Once
 var earlyIsolatedSlots chan struct{}
+var earlyIsolatedWait sync.WaitGroup
 
 // runIsolatedParallel gives slow real-server tests their own process-wide
 // environment while retaining the original test and its real timeouts.
@@ -27,6 +28,11 @@ func runIsolatedParallel(t *testing.T) bool {
 }
 
 func runIsolatedParallelEarly(t *testing.T) bool {
+	// Filtered or shuffled runs do not guarantee that the final barrier runs.
+	// Use the ordinary Go parallel slot for those runs.
+	if flag.Lookup("test.run").Value.String() != "" || flag.Lookup("test.shuffle").Value.String() != "off" || flag.Lookup("test.parallel").Value.String() == "1" {
+		return runIsolatedParallel(t)
+	}
 	return runIsolatedParallelMode(t, t.Name(), true)
 }
 
@@ -40,6 +46,9 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	if os.Getenv(marker) == t.Name() {
 		return false
 	}
+	if early && flag.Lookup("test.parallel").Value.String() == "1" {
+		early = false
+	}
 	if !early {
 		t.Parallel()
 	} else {
@@ -52,9 +61,11 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 			if err != nil || limit < 1 {
 				t.Fatalf("invalid test.parallel: %q", parallel.Value.String())
 			}
-			earlyIsolatedSlots = make(chan struct{}, limit)
+			// One Go test is executing serially while these children run.
+			earlyIsolatedSlots = make(chan struct{}, limit-1)
 		})
 		earlyIsolatedSlots <- struct{}{}
+		earlyIsolatedWait.Add(1)
 	}
 	ctx := t.Context()
 	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$", "-test.v"}
@@ -69,14 +80,17 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	type result struct {
 		output []byte
 		err    error
+		start  time.Time
+		end    time.Time
 	}
 	finished := make(chan result, 1)
 	go func() {
 		if early {
-			defer func() { <-earlyIsolatedSlots }()
+			defer func() { <-earlyIsolatedSlots; earlyIsolatedWait.Done() }()
 		}
+		start := time.Now()
 		output, err := cmd.CombinedOutput()
-		finished <- result{output: output, err: err}
+		finished <- result{output: output, err: err, start: start, end: time.Now()}
 	}()
 	if early {
 		// Keep real deadlines while the independent child overlaps serial tests.
@@ -84,6 +98,9 @@ func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	}
 	got := <-finished
 	output, err := got.output, got.err
+	if early {
+		t.Logf("isolated child window: %s %s", got.start.Format(time.RFC3339Nano), got.end.Format(time.RFC3339Nano))
+	}
 	t.Logf("isolated test:\n%s", output)
 	if err != nil {
 		t.Fatalf("isolated test failed: %v", err)
