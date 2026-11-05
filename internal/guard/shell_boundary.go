@@ -136,6 +136,10 @@ func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
 	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
 	syntax.Walk(tree, func(node syntax.Node) bool {
+		if p, ok := node.(*syntax.ParamExp); ok && unsupportedParamOp(p) {
+			failure = fmt.Errorf("未対応の変数展開には承認が必要です")
+			return false
+		}
 		if _, ok := node.(*syntax.ProcSubst); ok {
 			failure = fmt.Errorf("プロセス置換が実行する内容には承認が必要です")
 			return false
@@ -361,13 +365,30 @@ func guardPhysical(path string) string {
 	}
 }
 
+func unsupportedParamOp(p *syntax.ParamExp) bool {
+	if p.Exp == nil || p.Exp.Op != syntax.OtherParamOps {
+		return false
+	}
+	parts := p.Exp.Word.Parts
+	if len(parts) != 1 {
+		return true
+	}
+	lit, ok := parts[0].(*syntax.Lit)
+	return !ok || (lit.Value != "Q" && lit.Value != "E")
+}
+
 func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 	if word == nil {
 		return "", fmt.Errorf("展開する単語がありません")
 	}
 	var unsupported error
 	syntax.Walk(word, func(n syntax.Node) bool {
-		switch n.(type) {
+		switch p := n.(type) {
+		case *syntax.ParamExp:
+			if unsupportedParamOp(p) {
+				unsupported = fmt.Errorf("未対応の変数展開は静的に展開できません")
+				return false
+			}
 		case *syntax.ProcSubst:
 			unsupported = fmt.Errorf("プロセス置換は静的に展開できません")
 			return false

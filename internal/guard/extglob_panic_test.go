@@ -43,9 +43,16 @@ func TestExtGlobExpansionPaths(t *testing.T) {
 			}
 			for _, runtime := range []bool{false, true} {
 				i.runtimeLine = runtime
-				_, verdict, _ := lineVerdict(Config{}, i, line)
-				if verdict.Decision == "allow" {
-					t.Fatalf("runtime=%v: %+v", runtime, verdict)
+				_, verdict, err := lineVerdict(Config{}, i, line)
+				if verdict.Decision != "ask" || verdict.Rule != "shell-line" || err == nil || !strings.Contains(err.Error(), "拡張グロブ") || !strings.Contains(verdict.Reason, "拡張グロブ") {
+					t.Fatalf("runtime=%v: %+v %v", runtime, verdict, err)
+				}
+			}
+			for _, literal := range []string{`"` + op + `(foo|bar)"`, `\` + op + `\(foo\|bar\)`} {
+				quoted := "echo " + literal
+				_, verdict, err := lineVerdict(Config{}, Input{Cwd: t.TempDir(), Env: i.Env}, quoted)
+				if err != nil || verdict.Decision != "allow" {
+					t.Fatalf("quoted %q: %+v %v", quoted, verdict, err)
 				}
 			}
 		})
