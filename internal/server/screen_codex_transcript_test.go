@@ -215,6 +215,28 @@ func TestLateQuestionReplacesExpiredCountdown(t *testing.T) {
 	}
 }
 
+func TestCodexQuestionAnsweredElsewhereClosesWithReason(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "answered-elsewhere")
+	s.initDecisionHub()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	params := api.DecisionCreateParams{Kind: "agent_prompt", Title: "色は？", Origin: &api.DecisionOrigin{PaneID: "p1", Reason: "screen_prompt"}, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
+	d, err := store.CreateDecision(params, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &screenPromptWatch{decisionID: d.DecisionID, prompt: &screenprompt.Prompt{Params: params}}
+	s.closeCodexAnsweredElsewhere(w)
+	got, err := store.Decision(d.DecisionID)
+	if err != nil || got.Status != "cancelled" || got.Body == nil || *got.Body != "ほかで回答済み" {
+		t.Fatal(got, err)
+	}
+}
+
 func TestLateDeliveryIgnoresSiblingLateQuestionsButWaitsForOtherDecision(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "late-blocker")
@@ -239,6 +261,25 @@ func TestLateDeliveryIgnoresSiblingLateQuestionsButWaitsForOtherDecision(t *test
 	s.screenPrompts.late[second.DecisionID] = &lateCodexQuestion{}
 	if s.lateDeliveryHasOtherDecision(1) {
 		t.Fatal("other late questions blocked delivery")
+	}
+}
+
+func TestLateDeliveryWaitsForReceiptOfPriorAnswerInSamePane(t *testing.T) {
+	s := &Server{}
+	s.screenPrompts.late = map[string]*lateCodexQuestion{
+		"a": {pid: 1, sent: true, delivery: &api.DecisionDelivery{Status: "pending"}},
+		"b": {pid: 1, delivery: &api.DecisionDelivery{Status: "pending"}},
+		"c": {pid: 2, delivery: &api.DecisionDelivery{Status: "pending"}},
+	}
+	if !s.lateDeliveryInFlight(1, "b") {
+		t.Fatal("second answer could overtake first")
+	}
+	if s.lateDeliveryInFlight(2, "c") {
+		t.Fatal("unrelated pane blocked")
+	}
+	s.screenPrompts.late["a"].delivery.Status = "delivered"
+	if s.lateDeliveryInFlight(1, "b") {
+		t.Fatal("delivered answer still blocks")
 	}
 }
 

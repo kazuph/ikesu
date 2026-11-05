@@ -116,6 +116,21 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 	return true
 }
 
+func (s *Server) closeCodexAnsweredElsewhere(w *screenPromptWatch) {
+	store, err := s.db()
+	if err == nil {
+		params := screenDisplayParams(w)
+		body := "ほかで回答済み"
+		params.Body = &body
+		_, _, err = store.UpdatePendingScreenDecision(w.decisionID, params)
+	}
+	if err != nil {
+		s.app.SetConfigWarning("screen question: " + err.Error())
+		return
+	}
+	s.cancelScreenPrompt(w)
+}
+
 // A single call can contain several questions, including ones the terminal
 // never displayed before the empty result. Retain each independently.
 func (s *Server) retainOtherEmptyCodexQuestions(pid int, w *screenPromptWatch, questions []session.CodexQuestion) {
@@ -231,7 +246,7 @@ func (s *Server) scanVerifyingCodexQuestions() {
 				delete(s.screenPrompts.verifying, id)
 			}
 		case session.CodexAnswered:
-			s.cancelScreenPrompt(old.w)
+			s.closeCodexAnsweredElsewhere(old.w)
 			delete(s.screenPrompts.verifying, id)
 		}
 	}

@@ -295,7 +295,7 @@ func (s *Server) scanScreenPrompts() {
 						w = nil
 					}
 				case session.CodexAnswered:
-					s.cancelScreenPrompt(w)
+					s.closeCodexAnsweredElsewhere(w)
 					delete(s.screenPrompts.watches, pid)
 					w = nil
 				}

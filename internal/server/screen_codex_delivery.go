@@ -40,6 +40,15 @@ func (s *Server) lateDeliveryHasOtherDecision(pid int) bool {
 	return false
 }
 
+func (s *Server) lateDeliveryInFlight(pid int, currentID string) bool {
+	for id, other := range s.screenPrompts.late {
+		if id != currentID && other.pid == pid && other.sent && other.delivery != nil && other.delivery.Status == "pending" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) scanLateCodexDeliveries() {
 	for id, late := range s.screenPrompts.late {
 		if late.delivery == nil || late.delivery.Status != "pending" || late.checking {
@@ -109,9 +118,10 @@ func (s *Server) scanLateCodexDeliveries() {
 				if status != string(api.AgentIdle) && status != string(api.AgentDone) {
 					return
 				}
-				_, ready := s.agentReadiness(current.pid, "codex", api.AgentStatus(status), false)
 				visible, _ := pane.ReadLines("visible", true)
-				if !ready || s.lateDeliveryHasOtherDecision(current.pid) || s.screenUserActive(current.pid) || s.readScreenPrompt(current.pid) != nil || screenprompt.HasOptionRows(visible) {
+				// The launch-readiness deadline can expire while a real question is open.
+				// A live Codex process, idle status, and the current screen decide delivery.
+				if s.lateDeliveryInFlight(current.pid, id) || s.lateDeliveryHasOtherDecision(current.pid) || s.screenUserActive(current.pid) || s.readScreenPrompt(current.pid) != nil || screenprompt.HasOptionRows(visible) {
 					return
 				}
 				// Repeat process/session and terminal-state checks immediately before the single write.
@@ -122,7 +132,7 @@ func (s *Server) scanLateCodexDeliveries() {
 				}
 				status = s.app.PaneAgentStatusKey(current.pid)
 				visible, _ = pane.ReadLines("visible", true)
-				if (status != string(api.AgentIdle) && status != string(api.AgentDone)) || s.lateDeliveryHasOtherDecision(current.pid) || s.readScreenPrompt(current.pid) != nil || screenprompt.HasOptionRows(visible) || s.screenUserActive(current.pid) {
+				if (status != string(api.AgentIdle) && status != string(api.AgentDone)) || s.lateDeliveryInFlight(current.pid, id) || s.lateDeliveryHasOtherDecision(current.pid) || s.readScreenPrompt(current.pid) != nil || screenprompt.HasOptionRows(visible) || s.screenUserActive(current.pid) {
 					return
 				}
 				fresh, err := os.Stat(path)
