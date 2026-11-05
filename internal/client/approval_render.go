@@ -76,6 +76,7 @@ func (s *approvalState) overlay(in *render.Input) {
 	}
 	if s.selected == "reject" && d.AllowText {
 		add("却下理由: " + s.reason)
+		add("Ctrl+U: 選択に戻る")
 	}
 	if s.waiting {
 		add("回答を送信中")

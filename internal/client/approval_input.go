@@ -16,6 +16,12 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 	}
 	state := &e.guardApproval
 	if state.current() != nil {
+		if state.painted != state.open {
+			if event.Kind == input.KindKey || event.Kind == input.KindPaste {
+				state.dismiss()
+			}
+			return false, nil
+		}
 		switch event.Kind {
 		case input.KindPaste:
 			if state.selected == "reject" && !state.waiting {
@@ -35,8 +41,8 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 				state.dismiss()
 			case state.waiting:
 				return true, nil
-			case key.Code >= '1' && key.Code <= '9' && key.Mod == 0:
-				state.selectOption(int(key.Code - '0'))
+			case state.selected == "reject" && key.Code == 'u' && key.Mod == uv.ModCtrl:
+				state.selected, state.reason = "", ""
 			case key.Code == uv.KeyEnter && key.Mod == 0:
 				if answer := state.answer(); answer != nil && e.connection != nil {
 					if err := e.connection.enqueue(msg{Type: "decision_answer", DecisionAnswer: answer}); err != nil {
@@ -55,6 +61,8 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 				}
 			case state.selected == "reject" && key.Mod == 0 && key.Text != "":
 				state.reason += key.Text
+			case key.Code >= '1' && key.Code <= '9' && key.Mod == 0:
+				state.selectOption(int(key.Code - '0'))
 			}
 			return true, m.paint()
 		}

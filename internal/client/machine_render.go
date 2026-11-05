@@ -158,6 +158,11 @@ func (m *machineClient) paint() error {
 	if err := writeErr; err != nil {
 		return err
 	}
+	e.guardApproval.painted = ""
+	r := composed.ApprovalRect
+	if in.Approval != nil && r.W > 0 && r.H > 0 && r.X >= 0 && r.Y >= 0 && r.X+r.W <= m.size.Cols && r.Y+r.H <= m.size.Rows {
+		e.guardApproval.painted = e.guardApproval.open
+	}
 	probe := false
 	if m.frames.RequiresImageFence() {
 		probe = m.outputFence.Written(data, time.Now())

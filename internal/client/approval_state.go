@@ -23,6 +23,7 @@ type approvalState struct {
 	reason    string
 	scroll    int
 	waiting   bool
+	painted   string
 }
 
 func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, now, lastInput time.Time) {
@@ -36,7 +37,7 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	s.boot, s.revision = p.BootID, p.Revision
 	s.pending = nil
 	for _, d := range p.Pending {
-		if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane {
+		if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
 			continue
 		}
 		if _, ok := approvalPaneID(d.Origin.PaneID); ok {
@@ -54,6 +55,7 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	}
 	if oldOpen != "" && !exists {
 		s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+		s.painted = ""
 	}
 	for _, d := range s.pending {
 		if !s.seen[d.DecisionID] || oldOpen != "" && !exists {
@@ -71,10 +73,12 @@ func (s *approvalState) dismiss() {
 		s.dismissed[s.open] = true
 	}
 	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+	s.painted = ""
 }
 func (s *approvalState) openPane(pane string) {
 	for _, d := range s.pending {
 		if d.Origin.PaneID == pane {
+			s.painted = ""
 			s.open, s.selected, s.reason, s.scroll, s.waiting = d.DecisionID, "", "", 0, false
 			return
 		}
@@ -85,6 +89,7 @@ func (s *approvalState) focus(pane string) {
 		return
 	}
 	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+	s.painted = ""
 	s.pane = pane
 	for _, d := range s.pending {
 		if d.Origin.PaneID == pane && !s.dismissed[d.DecisionID] {
