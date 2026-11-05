@@ -876,6 +876,16 @@ function buildDecisionBlocks({
     return blocks;
   }
 
+  if (decision.delivery?.status === "pending" || decision.delivery?.status === "failed") {
+    const message = decision.delivery.status === "pending"
+      ? "配達待ち：Codex が入力を待つ状態になったら、会話で届けます"
+      : `届けられなかった：${decision.delivery.reason || "理由不明"}`;
+    blocks.push({ type: "divider" });
+    for (const chunk of splitExactText([message, decision.delivery.text].filter(Boolean).join("\n"))) {
+      blocks.push({ type: "section", text: { type: "mrkdwn", text: chunk } });
+    }
+    return blocks;
+  }
   const answer = decision.answer || {};
   const answerIds = Array.isArray(answer.option_ids) && answer.option_ids.length
     ? answer.option_ids
