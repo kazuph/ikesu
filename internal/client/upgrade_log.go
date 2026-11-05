@@ -26,9 +26,7 @@ const upgradeLogLimitMessage = "上限に達したので以後は記録しない
 
 func logUpgradeFailure(session, currentVersion string, target upgradeIdentity, reason error) {
 	row := struct {
-		Time string `json:"time"
-	"unicode"
-	"unicode/utf8"`
+		Time           string `json:"time"`
 		CurrentVersion string `json:"current_version"`
 		TargetVersion  string `json:"target_version"`
 		Executable     string `json:"executable"`
