@@ -20,7 +20,7 @@ func TestShortCommandKeepsActualExitAndNotice(t *testing.T) {
 	j := startFaultJob(t)
 	var result api.RunStartedResult
 	j.s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "short-command", Completion: "summary", Argv: []string{"/usr/bin/true"}}, &result)
-	j.s.waitFor("short command real zero and notice", 10*time.Second, func(string) bool {
+	j.s.waitFor("short command real zero and notice", noticeWait, func(string) bool {
 		row, _ := j.store.CommandRow(result.Job)
 		b, _ := os.ReadFile(j.sink)
 		return row != nil && row.Status == "exited" && row.ExitCode != nil && *row.ExitCode == 0 && strings.Count(string(b), "job="+result.Job+" ") == 1
@@ -98,7 +98,7 @@ func TestExpiredDiagnosticLockDoesNotBlockCollectionOrStop(t *testing.T) {
 	if _, err = j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
 	}
-	j.s.waitFor("normal and lost jobs collected despite expired locked log", 10*time.Second, func(string) bool {
+	j.s.waitFor("normal and lost jobs collected despite expired locked log", noticeWait, func(string) bool {
 		lost, _ := j.store.CommandRow(j.job.ID)
 		ok, _ := j.store.CommandRow(normal.Job)
 		b, _ := os.ReadFile(j.sink)

@@ -68,7 +68,7 @@ func TestResultLossAndCancelArbitrateInRealSQLite(t *testing.T) {
 			if first == "cancel" {
 				want = "cancelled"
 			}
-			j.s.waitFor("one terminal state and real PTY notice after contention", 10*time.Second, func(string) bool {
+			j.s.waitFor("one terminal state and real PTY notice after contention", noticeWait, func(string) bool {
 				r, _ := j.store.CommandRow(j.job.ID)
 				return r != nil && r.Status == want && r.ExitCode == nil && j.notices() == 1
 			})

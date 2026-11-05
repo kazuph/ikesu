@@ -124,7 +124,7 @@ func TestCancelReapedLeaderWithSurvivingChild(t *testing.T) {
 					t.Fatal(out, err)
 				}
 			}
-			j.s.waitFor("remaining child killed and cancellation delivered once", 10*time.Second, func(string) bool {
+			j.s.waitFor("remaining child killed and cancellation delivered once", noticeWait, func(string) bool {
 				row, _ := j.store.CommandRow(j.job.ID)
 				return row != nil && row.Status == "cancelled" && row.ExitCode == nil && j.notices() == 1
 			})
@@ -155,7 +155,7 @@ func TestJobNoticeAcknowledgementFailureHandoff(t *testing.T) {
 	if _, err := j.release.WriteString("go\n"); err != nil {
 		t.Fatal(err)
 	}
-	j.s.waitFor("notice written before acknowledgement", 10*time.Second, func(string) bool { return j.notices() == 1 })
+	j.s.waitFor("notice written before acknowledgement", noticeWait, func(string) bool { return j.notices() == 1 })
 	if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err == nil || !strings.Contains(out, "acknowledgement") {
 		t.Fatal("handoff committed with an unacknowledged PTY write", out, err)
 	}
@@ -197,7 +197,7 @@ func TestManagedJobResultSurvivesRetentionAndDBFailure(t *testing.T) {
 		}
 	}
 	faultSQL(t, j.dbPath, `DROP TRIGGER reject_finish`)
-	j.s.waitFor("retained result collected", 10*time.Second, func(string) bool {
+	j.s.waitFor("retained result collected", noticeWait, func(string) bool {
 		row, _ := j.store.CommandRow(j.job.ID)
 		return row != nil && row.Status == "exited" && row.ExitCode != nil && *row.ExitCode == 7 && j.notices() == 1
 	})
@@ -240,7 +240,7 @@ func TestCancelFileFailureKeepsRunningAndRecovers(t *testing.T) {
 	if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil {
 		t.Fatal(out, err)
 	}
-	j.s.waitFor("cancellation after filesystem recovery", 10*time.Second, func(string) bool {
+	j.s.waitFor("cancellation after filesystem recovery", noticeWait, func(string) bool {
 		row, _ := j.store.CommandRow(j.job.ID)
 		return row != nil && row.Status == "cancelled" && row.ExitCode == nil && j.notices() == 1
 	})
@@ -265,7 +265,7 @@ func TestCancellingJobWithoutMonitorTerminatesWithReason(t *testing.T) {
 	if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil {
 		t.Fatal(out, err)
 	}
-	j.s.waitFor("group gone without invented exit", 10*time.Second, func(string) bool {
+	j.s.waitFor("group gone without invented exit", noticeWait, func(string) bool {
 		row, _ := j.store.CommandRow(j.job.ID)
 		return row != nil && row.Status == "cancelled" && row.ExitCode == nil && j.notices() == 1
 	})
