@@ -92,3 +92,37 @@ func TestDecisionProjectionHiddenClientAnswerAndExternalResolve(t *testing.T) {
 	readProjection(t, ach, 0)
 	readProjection(t, bch, 0)
 }
+
+func TestGuardProjectionReconcilesTwoClientsAfterReconnect(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	a, b := dialClient(t, dir), dialClient(t, dir)
+	defer a.conn.Close()
+	ach, bch := projectionReader(a), projectionReader(b)
+	a.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	b.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	readProjection(t, ach, 0)
+	readProjection(t, bch, 0)
+	var result api.DecisionResult
+	apiOK(t, dir, api.MethodDecisionCreate, api.DecisionCreateParams{Kind: "command_guard", Title: "guard", Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "approve", Label: "approve", Role: "approve"}}}, &result)
+	readProjection(t, ach, 1)
+	readProjection(t, bch, 1)
+	b.conn.Close()
+	option := "approve"
+	a.send(t, clientMsg{Type: "decision_answer", DecisionAnswer: &api.DecisionAnswerParams{DecisionID: result.Decision.DecisionID, OptionID: &option}})
+	readProjection(t, ach, 0)
+	c := dialClient(t, dir)
+	defer c.conn.Close()
+	cch := projectionReader(c)
+	c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	reconnected := readProjection(t, cch, 0)
+	if reconnected.BootID == "" {
+		t.Fatal("missing server identity on reconnect")
+	}
+	var saved api.DecisionResult
+	apiOK(t, dir, api.MethodDecisionGet, api.DecisionTargetParams{DecisionID: result.Decision.DecisionID}, &saved)
+	if saved.Decision.Status != "answered" || saved.Decision.Answer == nil || saved.Decision.Answer.OptionID == nil || *saved.Decision.Answer.OptionID != "approve" {
+		t.Fatalf("saved decision: %+v", saved.Decision)
+	}
+}
