@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"net"
 	"os"
 	"runtime"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/machine"
 )
 
 func TestGuardApprovalThroughDisplayConnection(t *testing.T) {
@@ -158,5 +160,50 @@ func TestGuardApprovalTracksIncompletePaste(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("paste was not delivered")
+	}
+}
+
+func TestGuardApprovalUpdatesBothDisplayClients(t *testing.T) {
+	h := newRightMachineHarness(t)
+	first := h.m
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["local"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "second-display-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	second := &machineClient{ctx: ctx, session: first.session, active: "local", order: []string{"local"}, out: out, settings: first.settings, size: first.size, events: make(chan endpointEvent, 128), endpoints: map[string]*managedEndpoint{"local": {profile: machine.Profile{ID: "local", Enabled: true, Session: first.session}}}}
+	second.start("local", stream)
+	defer func() {
+		cancel()
+		for _, e := range second.endpoints {
+			if e.cancel != nil {
+				e.cancel()
+			}
+		}
+		second.workers.Wait()
+	}()
+	h2 := &rightMachineHarness{m: second, t: t, dirs: h.dirs}
+	h2.until("second display", func() bool { return second.endpoints["local"].snapshot != nil })
+	h.api("local", api.MethodDecisionCreate, api.DecisionCreateParams{Kind: "command_guard", Title: "two displays", Origin: &api.DecisionOrigin{PaneID: "p1", Command: "true"}, Options: []api.DecisionOption{{ID: "approve", Label: "approve", Role: "approve"}}})
+	h.until("first pending", func() bool { return len(first.endpoints["local"].guardApproval.pending) == 1 })
+	h2.until("second pending", func() bool { return len(second.endpoints["local"].guardApproval.pending) == 1 })
+	if first.endpoints["local"].guardApproval.open == "" || second.endpoints["local"].guardApproval.open == "" {
+		t.Fatal("both displays must show active guard")
+	}
+	if err := first.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: '1'}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEnter}}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("first resolved", func() bool { return len(first.endpoints["local"].guardApproval.pending) == 0 })
+	h2.until("second resolved", func() bool { return len(second.endpoints["local"].guardApproval.pending) == 0 })
+	if second.endpoints["local"].guardApproval.open != "" {
+		t.Fatal("other display retained answered decision")
 	}
 }
