@@ -20,8 +20,8 @@ func TestPaneGuardApprovalExecutesRealCommand(t *testing.T) {
 	startup := filepath.Join(s.stateDir, "guard", "shell", "p_1", "bash-env")
 	result := filepath.Join(s.stateDir, "approved-result")
 	reason := "対象プロジェクト: ikesu隔離試験。必要な理由: ペインの承認を検証。実施内容: 無害なコマンドを実行。"
-	command := fmt.Sprintf("printf 'READY_GUARD\\n'; read gate; AI_GUARD_REQUEST_REASON=%s dd if=/dev/null of=/dev/null && printf success > %s; printf 'GUARD_FINISHED\\n'", shQuote(reason), shQuote(result))
-	s.send(fmt.Sprintf("BASH_ENV=%s /bin/bash -c %s\r", shQuote(startup), shQuote(command)))
+	command := fmt.Sprintf("printf 'READY_GUARD\\n'; read gate; dd if=/dev/null of=/dev/null && printf success > %s; printf 'GUARD_FINISHED\\n'", shQuote(result))
+	s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=%s BASH_ENV=%s /bin/bash -c %s\r", shQuote(reason), shQuote(startup), shQuote(command)))
 	s.waitFor("ready", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "READY_GUARD") })
 	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "approval-test", Agent: "claude", State: "idle"}, nil)
 	s.send("go\r")
