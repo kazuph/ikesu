@@ -21,7 +21,8 @@ func TestConfigEveryActionRemapThroughRealInput(t *testing.T) {
 	teststate.Lock(t)
 	names := make([]string, 0, len(config.ActionDefaults))
 	for name := range config.ActionDefaults {
-		if name != "remote_image_paste" {
+		// These actions are owned and tested by the display client.
+		if name != "remote_image_paste" && name != "open_guard_approval" {
 			names = append(names, name)
 		}
 	}

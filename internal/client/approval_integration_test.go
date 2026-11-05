@@ -231,3 +231,41 @@ func TestGuardApprovalFollowsRemoteMachineSelection(t *testing.T) {
 		t.Fatal("remote answer changed local decisions")
 	}
 }
+
+func TestGuardApprovalRemappedKeyThroughRealInput(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m, e := h.m, h.m.endpoints["local"]
+	cfg, err := config.Decode([]byte("onboarding=false\n[keys]\nopen_guard_approval='cmd+y'\n"))
+	if err != nil || len(cfg.Warnings) != 0 {
+		t.Fatal(cfg.Warnings, err)
+	}
+	if err := e.connection.enqueue(msg{Type: "view_config", Config: &cfg}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("remapped config", func() bool {
+		v := e.snapshot.SidebarConfig.ActionBindings("open_guard_approval")
+		return len(v) == 1 && v[0] == "cmd+y"
+	})
+	h.api("local", api.MethodDecisionCreate, api.DecisionCreateParams{Kind: "command_guard", Title: "guard", Origin: &api.DecisionOrigin{PaneID: "p1", Command: "true"}, Options: []api.DecisionOption{{ID: "approve", Label: "approve", Role: "approve"}}})
+	h.until("guard open", func() bool { return e.guardApproval.open != "" })
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEscape}}); err != nil {
+		t.Fatal(err)
+	}
+	framer := &input.Framer{}
+	feed := func(bytes string) {
+		t.Helper()
+		for _, event := range framer.Push([]byte(bytes)) {
+			if err := m.input(event); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	feed("\x02a")
+	if e.guardApproval.open != "" {
+		t.Fatal("old binding reopened approval")
+	}
+	feed("\x1b[121;9u")
+	if e.guardApproval.open == "" {
+		t.Fatal("remapped key did not open approval")
+	}
+}
