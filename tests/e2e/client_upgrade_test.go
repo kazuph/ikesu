@@ -346,6 +346,39 @@ func TestClientUpgradePreservesTwoSelections(t *testing.T) {
 	proof(second, "p2", "SECOND_AFTER")
 }
 
+// Many panes and their output make the real handoff carry a substantial state.
+func TestClientUpgradeWithLoadedServer(t *testing.T) {
+	if runIsolatedParallel(t) {
+		return
+	}
+	_, oldBinary, newBinary, oldVersion, newVersion := buildClientUpgradeVersions(t)
+	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
+	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
+	const paneCount = 12
+	for i := 0; i < paneCount; i++ {
+		var workspace api.WorkspaceCreatedResult
+		s.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: false}, &workspace)
+		pane := workspace.RootPane.PaneID
+		s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: pane, Text: "yes 'handoff-load-output-0123456789' | head -n 2000; printf 'LOAD_%s\\n' COMPLETE", Keys: []string{"enter"}}, nil)
+		ms := uint64(15000)
+		s.rpc(api.MethodPaneWaitForOutput, api.PaneWaitForOutputParams{PaneID: pane, Source: "recent", Match: api.OutputMatch{Type: "substring", Value: "LOAD_COMPLETE"}, TimeoutMs: &ms}, nil)
+	}
+	var panes api.PaneListResult
+	s.rpc(api.MethodPaneList, api.PaneListParams{}, &panes)
+	if len(panes.Panes) < paneCount+1 {
+		t.Fatalf("prepared only %d panes", len(panes.Panes))
+	}
+	if out, err := s.cli("server", "live-handoff", "--import-exe", newBinary); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	s.waitFor("new client", 30*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	process, err := exec.Command("lsof", "-a", "-p", fmt.Sprint(s.cmd.Process.Pid), "-d", "txt", "-Fn").Output()
+	if err != nil || !strings.Contains(string(process), "n"+newBinary+"\n") {
+		t.Fatalf("new executable not mapped: %q %v", process, err)
+	}
+	t.Logf("%d panes generated 2000 lines each; client pid=%d lsof=%s", len(panes.Panes), s.cmd.Process.Pid, strings.TrimSpace(string(process)))
+}
+
 // The second build exercises actual client exec across two server versions.
 func TestClientFollowsLiveHandoffAndRollback(t *testing.T) {
 	t.Parallel()
