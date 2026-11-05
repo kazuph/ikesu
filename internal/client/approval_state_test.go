@@ -6,6 +6,8 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 )
 
 func TestGuardApprovalVisibilityAndDismissal(t *testing.T) {
@@ -87,5 +89,18 @@ func TestGuardApprovalRequiresSelectionBeforeAnswer(t *testing.T) {
 	answer := state.answer()
 	if answer == nil || answer.DecisionID != "d1" || answer.OptionID == nil || *answer.OptionID != "day_allow" {
 		t.Fatalf("answer=%+v", answer)
+	}
+}
+
+func TestGuardApprovalMayOpenWhilePrefixSnapshotIsPending(t *testing.T) {
+	state := model.New(t.TempDir(), 120, 40)
+	e := &managedEndpoint{snapshot: &render.Input{State: state, Prefix: true, ModeHint: " PREFIX "}}
+	m := &machineClient{}
+	if !m.approvalCanOpen(e) {
+		t.Fatal("prefix snapshot hid the newly opened approval")
+	}
+	e.snapshot.Prefix = false
+	if m.approvalCanOpen(e) {
+		t.Fatal("other modes must keep their input")
 	}
 }

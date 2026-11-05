@@ -16,7 +16,7 @@ func (m *machineClient) approvalCanOpen(e *managedEndpoint) bool {
 	if m.forms != nil {
 		m.forms.Overlay(&view)
 	}
-	return view.Dialog == nil && view.Menu == nil && view.Help == nil && view.Settings == nil && view.Navigator == nil && view.Copy == nil && view.ModeHint == ""
+	return view.Dialog == nil && view.Menu == nil && view.Help == nil && view.Settings == nil && view.Navigator == nil && view.Copy == nil && (view.ModeHint == "" || view.Prefix)
 }
 
 func (s *approvalState) overlay(in *render.Input) {
