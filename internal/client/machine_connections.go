@@ -285,13 +285,18 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	switch message.Type {
 	case "decisions":
 		focused := ""
-		if event.id == m.active && e.snapshot != nil && e.snapshot.State != nil && !m.blurred && e.snapshot.Dialog == nil && e.snapshot.Menu == nil && e.snapshot.Help == nil && e.snapshot.Settings == nil && e.snapshot.Navigator == nil {
+		lastInput := time.Now()
+		if event.id == m.active && e.snapshot != nil && e.snapshot.State != nil {
 			focused = fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())
+			if m.approvalCanOpen(e) {
+				lastInput = e.approvalInput[focused]
+			}
 		}
-		e.guardApproval.update(message.Decisions, focused, time.Now(), e.approvalInput[focused])
+		e.guardApproval.update(message.Decisions, focused, time.Now(), lastInput)
 		_ = m.paint()
 	case "decision_answer_result":
 		if message.Reason != "" {
+			e.guardApproval.waiting = false
 			m.notify(message.Reason)
 			_ = m.paint()
 		}
@@ -306,7 +311,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
-		if event.id == m.active && message.snapshot.State != nil {
+		if message.snapshot.Dialog != nil || message.snapshot.Menu != nil || message.snapshot.Help != nil || message.snapshot.Settings != nil || message.snapshot.Navigator != nil {
+			e.guardApproval.dismiss()
+		}
+		if event.id == m.active && m.approvalCanOpen(e) {
 			e.guardApproval.focus(fmt.Sprintf("p%d", message.snapshot.State.FocusedPane()))
 		}
 		e.processedInput = message.ProcessedInput

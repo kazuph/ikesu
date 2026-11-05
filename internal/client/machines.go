@@ -25,6 +25,7 @@ import (
 type managedEndpoint struct {
 	guardApproval  approvalState
 	approvalInput  map[string]time.Time
+	approvalPrefix bool
 	processedInput uint64
 	selection      *paintedSelection
 
@@ -296,6 +297,19 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 				}
 			}
 		case event := <-m.events:
+			// Consume keys already read from the terminal before deciding whether a
+			// newly arrived approval may take input focus.
+			if event.message.Type == "decisions" {
+				select {
+				case first, ok := <-inputEvents:
+					if ok {
+						if _, err := m.drainInput(first, inputEvents); err != nil {
+							m.notify(err.Error())
+						}
+					}
+				default:
+				}
+			}
 			if result, done := m.event(event); done {
 				if result == pumpUpgrade {
 					stopInput()

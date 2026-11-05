@@ -73,6 +73,7 @@ func (a *App) helpRows() []render.HelpRow {
 		{Bind: "prefix+shift+x", Cmd: "close tab"},
 		{},
 		{Group: true, Cmd: "panes"},
+		{Bind: "prefix+a", Cmd: "open guard approval"},
 		{Bind: bindKeys(a.splitVKeys, 'v'), Cmd: "split vertical"},
 		{Bind: bindKeys(a.splitHKeys, '-'), Cmd: "split horizontal"},
 		{Bind: "prefix+x", Cmd: "close pane"},

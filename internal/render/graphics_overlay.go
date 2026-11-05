@@ -10,7 +10,7 @@ const maxOverlayGraphicsPieces = 32
 
 func graphicsCovers(in Input, out *Output) []image.Rectangle {
 	f := out.Frame
-	rects := []layout.Rect{out.MenuRect, out.DialogRect, out.HelpRect}
+	rects := []layout.Rect{out.MenuRect, out.DialogRect, out.HelpRect, out.ApprovalRect}
 	if in.ServerUI {
 		rects = append(rects, out.ToastRect, out.ConfigWarningRect, out.ActionBar.Area)
 		if in.ModeHint != "" && !in.Prefix {
@@ -40,7 +40,7 @@ func (f *Frame) coverGraphicsRects(covers []image.Rectangle) {
 
 func coverInputGraphics(in Input, out *Output) {
 	if !in.ServerUI {
-		if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil {
+		if in.Menu != nil || in.Dialog != nil || in.Help != nil || in.Settings != nil || in.Navigator != nil || in.Approval != nil {
 			for _, g := range out.Frame.Graphics {
 				if g.Placement.APILayer {
 					out.Frame.GraphicsSources = append(out.Frame.GraphicsSources, g)

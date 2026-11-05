@@ -3,6 +3,7 @@ package client
 import "github.com/kazuph/ikesu/internal/benchstage"
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -49,6 +50,15 @@ func (m *machineClient) paint() error {
 	if m.forms != nil {
 		m.forms.Overlay(&in)
 	}
+	if m.approvalCanOpen(e) {
+		e.guardApproval.focus(fmt.Sprintf("p%d", e.snapshot.State.FocusedPane()))
+	} else {
+		e.guardApproval.dismiss()
+		if e.snapshot.State != nil {
+			e.guardApproval.pane = fmt.Sprintf("p%d", e.snapshot.State.FocusedPane())
+		}
+	}
+	e.guardApproval.overlay(&in)
 	m.sidebar.PaneStatus = nil
 	if e.connection == nil {
 		m.sidebar.PaneStatus = []string{e.profile.Label + ": " + e.status, e.reason, "手元のspaceは使える"}

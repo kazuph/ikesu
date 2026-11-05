@@ -20,6 +20,9 @@ type approvalState struct {
 	pane      string
 	open      string
 	selected  string
+	reason    string
+	scroll    int
+	waiting   bool
 }
 
 func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, now, lastInput time.Time) {
@@ -41,18 +44,21 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	oldOpen := s.open
 	exists := false
 	for _, d := range s.pending {
-		if d.DecisionID == s.open {
+		if d.DecisionID == oldOpen {
 			exists = true
+			break
 		}
-		if !s.seen[d.DecisionID] {
+	}
+	if oldOpen != "" && !exists {
+		s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+	}
+	for _, d := range s.pending {
+		if !s.seen[d.DecisionID] || oldOpen != "" && !exists {
 			s.seen[d.DecisionID] = true
 			if s.open == "" && d.Origin.PaneID == focused && (lastInput.IsZero() || now.Sub(lastInput) >= approvalTypingWindow) && !s.dismissed[d.DecisionID] {
 				s.open = d.DecisionID
 			}
 		}
-	}
-	if oldOpen != "" && !exists {
-		s.open, s.selected = "", ""
 	}
 	s.pane = focused
 }
@@ -61,12 +67,12 @@ func (s *approvalState) dismiss() {
 	if s.open != "" {
 		s.dismissed[s.open] = true
 	}
-	s.open, s.selected = "", ""
+	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
 }
 func (s *approvalState) openPane(pane string) {
 	for _, d := range s.pending {
 		if d.Origin.PaneID == pane {
-			s.open, s.selected = d.DecisionID, ""
+			s.open, s.selected, s.reason, s.scroll, s.waiting = d.DecisionID, "", "", 0, false
 			return
 		}
 	}
@@ -75,7 +81,7 @@ func (s *approvalState) focus(pane string) {
 	if s.pane == pane {
 		return
 	}
-	s.open, s.selected = "", ""
+	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
 	s.pane = pane
 	for _, d := range s.pending {
 		if d.Origin.PaneID == pane && !s.dismissed[d.DecisionID] {
@@ -103,13 +109,18 @@ func (s *approvalState) selectOption(number int) {
 
 func (s *approvalState) answer() *api.DecisionAnswerParams {
 	d := s.current()
-	if d == nil || s.selected == "" {
+	if d == nil || s.selected == "" || s.waiting {
 		return nil
 	}
 	for _, option := range d.Options {
 		if option.ID == s.selected {
 			id := s.selected
-			return &api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionID: &id}
+			answer := &api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionID: &id}
+			if d.AllowText && s.reason != "" {
+				text := s.reason
+				answer.Text = &text
+			}
+			return answer
 		}
 	}
 	return nil

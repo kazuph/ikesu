@@ -153,6 +153,9 @@ func (m *machineClient) input(event input.Event) error {
 		m.focusKnown = true
 		m.reportClientFocus()
 	}
+	if handled, err := m.approvalInputEvent(m.mouse.CellEvent(event, m.size)); handled || err != nil {
+		return err
+	}
 	if m.workspaceCycleInput(event) {
 		return nil
 	}
