@@ -44,3 +44,11 @@ func TestSupportedParamExpansionsRemainUsable(t *testing.T) {
 		})
 	}
 }
+
+func TestParamQuoteWithNULRequiresApproval(t *testing.T) {
+	i := Input{Cwd: t.TempDir(), Env: map[string]string{"HOME": "bad\x00value", "PATH": "/usr/bin:/bin"}}
+	_, v, err := lineVerdict(Config{}, i, `echo "${HOME@Q}"`)
+	if err == nil || v.Decision != "ask" || v.Rule != "shell-line" {
+		t.Fatalf("verdict=%+v err=%v", v, err)
+	}
+}
