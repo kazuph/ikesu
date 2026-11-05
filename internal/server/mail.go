@@ -85,8 +85,7 @@ func (s *Server) mailWorker() {
 	tick := time.NewTicker(jobActiveRefresh)
 	defer tick.Stop()
 	pending := make(map[int][]mailWrite)
-	deliver := func(w mailWrite) bool {
-		written, err := s.deliverMailWrite(w)
+	finish := func(w mailWrite, written bool, err error) bool {
 		if errors.Is(err, runtime.ErrMailInputActive) {
 			s.deferMailForPane(w.pane, w.owner)
 			return false
@@ -100,6 +99,10 @@ func (s *Server) mailWorker() {
 		}
 		s.mailDone(w)
 		return true
+	}
+	deliver := func(w mailWrite) bool {
+		written, err := s.deliverMailWrite(w)
+		return finish(w, written, err)
 	}
 	for {
 		select {
@@ -122,7 +125,23 @@ func (s *Server) mailWorker() {
 				if len(writes) > 0 && s.sup.Get(pane) == writes[0].owner && writes[0].owner.MailInputActive() {
 					continue
 				}
-				for len(writes) > 0 && deliver(writes[0]) {
+				for len(writes) > 0 {
+					w := writes[0]
+					var allowed, written bool
+					var writeErr error
+					s.app.Do(func() {
+						if s.sup.Get(pane) == w.owner {
+							status := s.app.PaneStatusKey(pane)
+							if w.msgID != 0 && !regularMailCanSubmit(status) || w.msgID == 0 && status == "blocked" {
+								return
+							}
+						}
+						allowed = true
+						written, writeErr = s.deliverMailWrite(w)
+					})
+					if !allowed || !finish(w, written, writeErr) {
+						break
+					}
 					writes = writes[1:]
 				}
 				if len(writes) == 0 {
