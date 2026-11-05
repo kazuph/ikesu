@@ -18,7 +18,7 @@ import (
 )
 
 func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
+	if runIsolatedParallel(t) {
 		return
 	}
 	teststate.Lock(t)

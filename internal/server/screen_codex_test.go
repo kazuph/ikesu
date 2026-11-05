@@ -44,6 +44,9 @@ func TestCodexQuestionObservedCountdownKeepsDecisionID(t *testing.T) {
 }
 
 func TestCodexQuestionUnreadableRetainsPending(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, fixture := range []string{"codex-question", "codex-question-notes"} {
 		t.Run(fixture, func(t *testing.T) {

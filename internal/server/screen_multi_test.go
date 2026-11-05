@@ -116,6 +116,9 @@ func TestScreenMultiInputFailureDoesNotSendSubmit(t *testing.T) {
 }
 
 func TestScreenMultiNavigationAbortsOnChangedQuestionOrStop(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	for _, reason := range []string{"question changed", "server stopped"} {
 		t.Run(reason, func(t *testing.T) {
 			teststate.Lock(t)

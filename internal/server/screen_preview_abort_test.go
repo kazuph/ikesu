@@ -9,6 +9,9 @@ import (
 )
 
 func TestPreviewAbortNeverWritesRestorationToRealPTY(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	for _, reason := range []string{"disappeared", "question-changed", "unreadable", "cursor-mismatch", "external-input"} {
 		t.Run(reason, func(t *testing.T) {
 			teststate.Lock(t)

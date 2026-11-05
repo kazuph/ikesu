@@ -200,6 +200,9 @@ func TestScreenPromptDisappearedAndMissingWatchAreStale(t *testing.T) {
 }
 
 func TestScreenPromptShortcutsTextAndInvalidAnswers(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "codex-permission", "codex")
 	scanScreen(s)
