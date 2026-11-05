@@ -140,6 +140,10 @@ func treeBoundary(i Input, tree *syntax.File) error {
 			failure = fmt.Errorf("プロセス置換が実行する内容には承認が必要です")
 			return false
 		}
+		if _, ok := node.(*syntax.ExtGlob); ok {
+			failure = fmt.Errorf("拡張グロブの展開には承認が必要です")
+			return false
+		}
 		if i.runtimeLine {
 			switch node.(type) {
 			case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.FuncDecl:
@@ -361,16 +365,20 @@ func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 	if word == nil {
 		return "", fmt.Errorf("展開する単語がありません")
 	}
-	unsupported := false
+	var unsupported error
 	syntax.Walk(word, func(n syntax.Node) bool {
-		if _, ok := n.(*syntax.ProcSubst); ok {
-			unsupported = true
+		switch n.(type) {
+		case *syntax.ProcSubst:
+			unsupported = fmt.Errorf("プロセス置換は静的に展開できません")
+			return false
+		case *syntax.ExtGlob:
+			unsupported = fmt.Errorf("拡張グロブは静的に展開できません")
 			return false
 		}
 		return true
 	})
-	if unsupported {
-		return "", fmt.Errorf("プロセス置換は静的に展開できません")
+	if unsupported != nil {
+		return "", unsupported
 	}
 	return expand.Literal(cfg, word)
 }
