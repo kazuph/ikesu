@@ -28,6 +28,7 @@ type PaneTransfer struct {
 	TapState                    int
 	TapBody                     []byte
 	Clipboard                   []string
+	LastMailExternalInput       int64
 }
 
 func (p *Pane) startPump() {
@@ -93,6 +94,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			v.Guard = &g
 		}
 		p.mu.Unlock()
+		v.LastMailExternalInput = p.lastMailExternalInput.Load()
 		v.Snapshot = p.Snapshot()
 		fd, err := unix.FcntlInt(uintptr(p.ptyFD), unix.F_DUPFD_CLOEXEC, 0)
 		if err != nil {
@@ -130,6 +132,7 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		if err := p.emu.UnmarshalHandoff(v.Terminal); err != nil {
 			return err
 		}
+		p.lastMailExternalInput.Store(v.LastMailExternalInput)
 		p.importedPID = v.PID
 		p.shellStart = v.ShellStart
 		if p.shellStart == "" && v.PID > 1 {

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"image/color"
 	"strings"
 	"time"
 	"unicode"
@@ -74,6 +75,7 @@ func (p *Pane) visibleAgentInputLocked() bool {
 	if row < 0 {
 		return false
 	}
+	background := p.emu.CellAt(col, row).Style.Bg
 	var nonFaint, faint, reverse int
 	for y := row; y < height; y++ {
 		start := 0
@@ -88,7 +90,22 @@ func (p *Pane) visibleAgentInputLocked() bool {
 		}
 		if y > row {
 			trimmed := strings.TrimSpace(line.String())
-			if trimmed == "" || strings.HasPrefix(trimmed, "───") {
+			if strings.HasPrefix(trimmed, "───") {
+				break
+			}
+			if agent == "codex" && background != nil && trimmed != "" {
+				var first *uv.Cell
+				for x := start; x < width; x++ {
+					c := p.emu.CellAt(x, y)
+					if c != nil && strings.TrimFunc(c.Content, unicode.IsSpace) != "" {
+						first = c
+						break
+					}
+				}
+				if first != nil && !sameMailBackground(background, first.Style.Bg) {
+					break
+				}
+			} else if agent == "codex" && background == nil && trimmed == "" && y > p.cursor.Y {
 				break
 			}
 		}
@@ -108,4 +125,13 @@ func (p *Pane) visibleAgentInputLocked() bool {
 	}
 	// Claude renders the cursor over the first character of its faint placeholder.
 	return nonFaint > 0 || faint == 0 && (reverse > 0 || p.cursor.Visible && (p.cursor.Y > row || p.cursor.Y == row && p.cursor.X > col+2))
+}
+
+func sameMailBackground(a, b color.Color) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ar, ag, ab, aa := a.RGBA()
+	br, bg, bb, ba := b.RGBA()
+	return ar == br && ag == bg && ab == bb && aa == ba
 }
