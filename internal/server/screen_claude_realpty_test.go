@@ -274,6 +274,9 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 }
 
 func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, scenario := range []string{"record", "timeout", "no_header", "mismatch", "ambiguous", "changed", "disappeared"} {
 		t.Run(scenario, func(t *testing.T) {

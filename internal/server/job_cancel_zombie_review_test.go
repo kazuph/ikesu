@@ -16,6 +16,9 @@ import (
 )
 
 func TestCancelZombieLeaderWithStoppedParentKillsSurvivingGrandchild(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	s := newTestServer(t, "zombie-cancel")
 	store, err := s.db()

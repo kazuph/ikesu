@@ -12,6 +12,9 @@ import (
 )
 
 func TestAnonymousRunAdmissionCLIAndRPC(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
 	defer stopServer(t, dir, done)

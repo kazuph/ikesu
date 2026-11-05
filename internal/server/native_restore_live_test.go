@@ -10,6 +10,9 @@ import (
 )
 
 func TestNativeAgentsRestoreExactPaneIDsAfterRealServerRestart(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	dir, done := startPluginServer(t)
 	for i := 0; i < len(nativeResumeAgents); i++ {

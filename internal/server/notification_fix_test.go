@@ -17,6 +17,9 @@ import (
 )
 
 func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, tt := range []struct {
 		name     string

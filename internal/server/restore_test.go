@@ -761,6 +761,9 @@ func TestRestorablePaneRetainedOnExit(t *testing.T) {
 // row/record — no effective agent label — closes normally on exit, and
 // its ledger row goes with it.
 func TestInactiveShellPaneClosesOnExit(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	base, err := os.MkdirTemp("/tmp", "ikesutest-")
 	if err != nil {

@@ -32,6 +32,9 @@ func TestScreenPromptMissingPaneCancelsBeforeAnswer(t *testing.T) {
 }
 
 func TestScreenPromptDamagedReadRequiresLastMatchedScan(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, previousMatched := range []bool{true, false} {
 		s, p, input := screenTerminal(t, "claude-single", "claude")

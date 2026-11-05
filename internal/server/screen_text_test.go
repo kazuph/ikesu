@@ -11,10 +11,16 @@ import (
 )
 
 func TestScreenMultiTextNavigatesFreeRowAndPreservesChecks(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	testScreenMultiText(t, true)
 }
 
 func TestScreenMultiTextSelectsCommittedFreeRow(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	testScreenMultiText(t, false)
 }
 

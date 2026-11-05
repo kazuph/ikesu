@@ -12,6 +12,9 @@ import (
 // Replay observed screens after a question is answered in the terminal or
 // auto-resolves. No decision API answer is issued for the old question.
 func TestCodexQuestionTransitionsToPermission(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, fixture := range []string{"codex-question", "codex-question-notes"} {
 		t.Run(fixture, func(t *testing.T) {
@@ -69,6 +72,9 @@ func TestCodexQuestionTransitionsToPermission(t *testing.T) {
 }
 
 func TestCodexQuestionChangedScreenRejectsOldAnswer(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	teststate.Lock(t)
 	for _, target := range []string{"permission", "next-question"} {
 		t.Run(target, func(t *testing.T) {

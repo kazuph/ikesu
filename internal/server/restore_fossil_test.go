@@ -9,7 +9,7 @@ import (
 )
 
 func TestFossilExpiryAndAuthorityClearing(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	// The SPEC fossil and stale-authority deadline is 15 seconds.

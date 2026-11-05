@@ -175,6 +175,9 @@ func TestGraphicsFileClientRejectionCopiesBeforeAcknowledgementAndDisablesOnlyDi
 }
 
 func TestGraphicsFileReceiptDeadlinesNeverBecomeInlineSuccess(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	// Both real receipt deadlines are exercised: five seconds for delivery and
 	// three seconds after the terminal starts processing the file.
 	for _, started := range []bool{false, true} {

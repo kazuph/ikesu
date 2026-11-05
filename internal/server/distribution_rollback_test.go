@@ -100,6 +100,9 @@ func rollbackDistribution(t *testing.T, store *plugin.Store) (*distribution.Inst
 }
 
 func TestDistributionResponseLossRollback(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
 	for _, operation := range []string{"saved-response-lost", "link", "disable", "unlink"} {
 		t.Run(operation, func(t *testing.T) {
 			teststate.Lock(t)
