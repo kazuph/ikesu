@@ -13,6 +13,6 @@ func (p *Pane) KeyboardModes() (flags, mok int, explicit, legacy, cursor bool) {
 func (p *Pane) OwnsEscape() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.altScreen || p.appCursorKeys || p.mouseTracking ||
+	return p.altScreen || p.mouseTracking ||
 		p.emu.ModeSet(ansi.ModeFocusEvent) || p.emu.KbdExplicit()
 }

@@ -28,7 +28,7 @@ func TestPopupEscapeRespectsChildModes(t *testing.T) {
 				t.Fatal("Alt+Escape closed popup")
 			}
 			a.handleKey(uv.Key{Code: uv.KeyEscape}, []byte("\x1b"))
-			if a.st.PopupVisible() != (tc.mode != "") {
+			if a.st.PopupVisible() != (tc.mode != "" && tc.name != "cursor") {
 				t.Fatal("Escape ownership disagrees with child modes")
 			}
 		})
