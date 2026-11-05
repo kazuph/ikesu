@@ -2,11 +2,14 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/kazuph/ikesu/internal/input"
 )
+
+type upgradeWait string
+
+func (w upgradeWait) Error() string { return string(w) }
 
 // prepareUpgrade runs after the terminal reader has stopped, while writers
 // and the selected endpoints are still alive.
@@ -20,7 +23,7 @@ func (m *machineClient) prepareUpgrade(ctx context.Context, reader *machineInput
 	reader.unsent = nil
 	if m.pending != nil || len(m.settings.retryQueued) != 0 || len(m.endpoints["local"].restartInput) != 0 || (len(pending) != 0 && (m.regions == nil || m.endpoints[m.active].connection == nil)) {
 		m.held = pending
-		return errors.New("cannot send pending input before client upgrade")
+		return upgradeWait("cannot send pending input before client upgrade")
 	}
 	for i, event := range pending {
 		if err := ctx.Err(); err != nil {
@@ -33,16 +36,16 @@ func (m *machineClient) prepareUpgrade(ctx context.Context, reader *machineInput
 		}
 		if m.pending != nil {
 			m.held = append(m.held, pending[i+1:]...)
-			return errors.New("input destination is changing during client upgrade")
+			return upgradeWait("input destination is changing during client upgrade")
 		}
 	}
 	local := m.endpoints["local"]
 	if local.restarting || len(local.restartInput) != 0 {
-		return errors.New("local input is waiting for reconnection before client upgrade")
+		return upgradeWait("local input is waiting for reconnection before client upgrade")
 	}
 	for id, endpoint := range m.endpoints {
 		if endpoint.paste != nil {
-			return fmt.Errorf("clipboard input is pending on %s before client upgrade", id)
+			return upgradeWait("clipboard input is pending before client upgrade")
 		}
 		if endpoint.connection != nil {
 			if err := endpoint.connection.waitEmpty(ctx); err != nil {

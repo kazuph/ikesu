@@ -291,6 +291,41 @@ func TestUpgradeCheckBeforeFirstSnapshotRetries(t *testing.T) {
 	}
 }
 
+// A deferred check also resumes without another snapshot or input event.
+func TestDeferredUpgradeRetryDeadline(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
+	h := newRightMachineHarness(t)
+	m := h.m
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))
+	m.clientVersion = "older-client"
+	m.failedUpgrades = make(map[upgradeIdentity]bool)
+	e := m.endpoints["local"]
+	m.deferUpgrade()
+	deadline := e.upgradeRetryAt
+	if !e.upgradePending || deadline.IsZero() || m.nextDeadline().After(deadline) {
+		t.Fatal("deferred upgrade has no wakeup")
+	}
+	m.advance(deadline)
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == e.attempt && ev.upgrade != nil {
+				if ev.upgrade.identity.Generation == "" {
+					t.Fatalf("retry did not query the server: %+v", ev.upgrade)
+				}
+				return
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("deferred check did not resume at its deadline")
+		}
+	}
+}
+
 func buildReconnectUpgradeBinaries(t *testing.T) (string, string, string) {
 	t.Helper()
 	repo, err := filepath.Abs(filepath.Join("..", ".."))

@@ -46,6 +46,8 @@ func TestPrepareUpgradeDefersHeldInputUntilClipboardCompletes(t *testing.T) {
 	close(incoming)
 	if err := m.prepareUpgrade(m.ctx, &machineInputState{}, incoming); err == nil {
 		t.Error("upgrade succeeded with clipboard input held")
+	} else if varWait := upgradeWait(""); !errors.As(err, &varWait) {
+		t.Fatalf("clipboard wait was treated as a failure: %v", err)
 	}
 	close(ready)
 	h.until("clipboard input", func() bool { data, _ := os.ReadFile(result); return len(data) > 0 })
@@ -85,6 +87,8 @@ func TestPrepareUpgradeDefersInputUntilLocalSnapshot(t *testing.T) {
 	close(incoming)
 	if err := m.prepareUpgrade(m.ctx, &machineInputState{}, incoming); err == nil {
 		t.Error("upgrade succeeded before local snapshot")
+	} else if varWait := upgradeWait(""); !errors.As(err, &varWait) {
+		t.Fatalf("reconnection wait was treated as a failure: %v", err)
 	}
 	m.event(endpointEvent{id: "local", message: msg{Type: "snapshot", snapshot: e.snapshot}})
 	h.until("restart input", func() bool { data, _ := os.ReadFile(result); return len(data) > 0 })

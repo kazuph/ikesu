@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
@@ -121,6 +122,7 @@ func shouldCheckUpgrade(id upgradeIdentity, currentVersion string, failed map[up
 
 func (m *machineClient) checkUpgrade(attempt uint64) {
 	m.endpoints["local"].upgradePending = true
+	m.endpoints["local"].upgradeRetryAt = time.Time{}
 	failed := make(map[upgradeIdentity]bool, len(m.failedUpgrades))
 	for id := range m.failedUpgrades {
 		failed[id] = true
@@ -147,6 +149,12 @@ func (m *machineClient) checkUpgrade(attempt uint64) {
 		}
 		m.post(m.ctx, endpointEvent{id: "local", attempt: attempt, upgrade: result})
 	}()
+}
+
+func (m *machineClient) deferUpgrade() {
+	e := m.endpoints["local"]
+	e.upgradePending = true
+	e.upgradeRetryAt = time.Now().Add(initialRetryDelay)
 }
 
 func queryUpgradeIdentity(ctx context.Context, session string) (upgradeIdentity, error) {
