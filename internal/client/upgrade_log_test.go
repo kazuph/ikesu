@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
@@ -71,5 +72,33 @@ func TestUpgradeFailureLogStopsAtLimit(t *testing.T) {
 	info, err := os.Stat(path)
 	if err != nil || info.Size() != int64(len(first)) {
 		t.Fatalf("log grew after limit: %v %v", info, err)
+	}
+}
+
+func TestUpgradeFailureLogOmitsUntrustedErrorContents(t *testing.T) {
+	root := t.TempDir()
+	teststate.Setenv(t, "IKESU_STATE_DIR", root)
+	dir := filepath.Join(root, "isolated")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	logUpgradeFailure("isolated", "old", upgradeIdentity{Version: "new"}, errors.New("client configuration: invalid color: SECRET_VALUE"))
+	data, err := os.ReadFile(filepath.Join(dir, "client-upgrade.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "SECRET_VALUE") {
+		t.Fatalf("configuration value leaked: %s", data)
+	}
+	if !strings.Contains(string(data), "client configuration") {
+		t.Fatalf("failure type absent: %s", data)
+	}
+}
+
+func TestUpgradeFailureReasonDoesNotCopyUnknownText(t *testing.T) {
+	for _, err := range []error{errors.New("untrusted SECRET_INPUT"), &api.Error{Message: "SECRET_INPUT"}} {
+		if got := upgradeFailureReason(err); strings.Contains(got, "SECRET_INPUT") {
+			t.Fatalf("untrusted content leaked: %q", got)
+		}
 	}
 }

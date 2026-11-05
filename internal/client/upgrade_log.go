@@ -1,9 +1,12 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,7 +24,7 @@ func logUpgradeFailure(session, currentVersion string, target upgradeIdentity, r
 		TargetVersion  string `json:"target_version"`
 		Executable     string `json:"executable"`
 		Reason         string `json:"reason"`
-	}{time.Now().Format(time.RFC3339Nano), currentVersion, target.Version, target.Executable, reason.Error()}
+	}{time.Now().Format(time.RFC3339Nano), currentVersion, target.Version, target.Executable, upgradeFailureReason(reason)}
 	line, err := json.Marshal(row)
 	if err != nil {
 		return
@@ -57,4 +60,40 @@ func logUpgradeFailure(session, currentVersion string, target upgradeIdentity, r
 		return
 	}
 	_, _ = f.Write(line)
+}
+
+// Error text can contain configuration values or remote server input.
+func upgradeFailureReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "upgrade operation timed out"
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return "executable or connection file missing"
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return "permission denied"
+	}
+	text := err.Error()
+	for _, entry := range []struct{ prefix, reason string }{
+		{"client configuration:", "client configuration invalid"},
+		{"version mismatch:", "version mismatch"},
+		{"version check failed:", "version check failed"},
+		{"current executable:", "current executable verification failed"},
+		{"writable executable parent:", "writable executable parent"},
+		{"send input before client upgrade:", "send pending input failed"},
+		{"drain ", "drain endpoint input failed"},
+		{"clipboard input is pending", "clipboard input pending"},
+		{"connect to upgraded server:", "connect to upgraded server failed"},
+		{"raw mode:", "terminal raw mode failed"},
+	} {
+		if strings.HasPrefix(text, entry.prefix) {
+			return entry.reason
+		}
+	}
+	for _, known := range []string{"version mismatch", "invalid ping response", "executable path is not absolute", "executable is not owned by the current user", "executable changed while opening", "file changed after verification", "server changed during client upgrade", "cannot send pending input before client upgrade", "input destination is changing during client upgrade", "local input is waiting for reconnection before client upgrade"} {
+		if text == known {
+			return known
+		}
+	}
+	return "client upgrade failed; details omitted"
 }
