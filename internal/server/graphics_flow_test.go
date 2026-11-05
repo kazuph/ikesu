@@ -7,7 +7,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +18,28 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
+
+func graphicsWriterStack() string {
+	stack := make([]byte, 64*1024)
+	for {
+		n := runtime.Stack(stack, true)
+		if n < len(stack) {
+			return string(stack[:n])
+		}
+		stack = make([]byte, len(stack)*2)
+	}
+}
+
+func graphicsFrameWriter(stack, id string, blocked bool) bool {
+	for _, goroutine := range strings.Split(stack, "\n\n") {
+		if strings.HasPrefix(goroutine, "goroutine "+id+" ") &&
+			strings.Contains(goroutine, "clientFrameWriter.write") &&
+			(!blocked || strings.Contains(goroutine, "[IO wait]")) {
+			return true
+		}
+	}
+	return false
+}
 
 func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 	if runIsolatedParallel(t) {
@@ -223,6 +247,9 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 		return len(in.GraphicsPatches) > 0 && len(in.GraphicsPatches[0].Patch.Rects) > 0
 	})
 	t.Logf("unacknowledged image released after advancing receipt clock by %s (socket observation %s)", graphicsReceiptWait, time.Since(started))
+	// Retire the just-released patch before testing a new large socket write.
+	client.send(t, clientMsg{Type: "control", Kind: endpoint.GraphicsPatchMiss, Data: "ignored"})
+	read(func(in render.Input) bool { return hasImage(in) && len(in.GraphicsPatches) == 0 })
 	// A real large socket write must also stay off the session loop. Consume
 	// just its first byte and leave the rest unread while the other viewer types.
 	rand.New(rand.NewSource(7)).Read(pixels)
@@ -233,10 +260,54 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 	if _, err := client.rd.ReadByte(); err != nil {
 		t.Fatal(err)
 	}
+	var writerID string
+	waitPromptCondition(t, func() bool {
+		var ids []string
+		for _, goroutine := range strings.Split(graphicsWriterStack(), "\n\n") {
+			if strings.Contains(goroutine, "clientFrameWriter.write") && strings.Contains(goroutine, "[IO wait]") {
+				fields := strings.Fields(goroutine)
+				if len(fields) >= 2 && fields[0] == "goroutine" {
+					ids = append(ids, fields[1])
+				}
+			}
+		}
+		if len(ids) != 1 {
+			return false
+		}
+		writerID = ids[0]
+		return true
+	})
+	writerFinished := make(chan struct{})
+	stopMonitor := make(chan struct{})
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopMonitor:
+				return
+			case <-ticker.C:
+				if !graphicsFrameWriter(graphicsWriterStack(), writerID, false) {
+					close(writerFinished)
+					return
+				}
+			}
+		}
+	}()
+	defer func() { close(stopMonitor); <-monitorDone }()
 	other.send(t, clientMsg{Type: "input", Data: base64.StdEncoding.EncodeToString([]byte("printf TB_STALLED_READER\\n\r"))})
 	select {
 	case <-stalledReaderInputSeen:
-	case <-time.After(time.Second):
-		t.Fatal("an unread image socket blocked another viewer's input")
+		if !graphicsFrameWriter(graphicsWriterStack(), writerID, false) {
+			t.Fatal("image write finished before the other viewer's input reached the pane")
+		}
+	case <-writerFinished:
+		t.Fatal("image write finished before the other viewer's input reached the pane")
+	case <-otherDone:
+		t.Fatal("other viewer closed before its input reached the pane")
+	case <-t.Context().Done():
+		t.Fatal("test ended before the other viewer's input reached the pane")
 	}
 }
