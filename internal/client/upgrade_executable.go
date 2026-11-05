@@ -66,6 +66,7 @@ func execUpgrade(path string, state *upgradeState) error {
 }
 
 func rollbackUpgrade(state *upgradeState, reason error) error {
+	logUpgradeFailure(state.Session, state.OldVersion, state.Attempt, reason)
 	checked, err := checkUpgradeExecutable(context.Background(), state.OldExecutable, state.OldVersion)
 	if err != nil {
 		return fmt.Errorf("cannot restore previous client after %v: %w", reason, err)

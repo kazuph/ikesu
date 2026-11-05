@@ -190,6 +190,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		if err == nil {
 			err = execUpgrade(candidate.identity.Executable, &candidate.state)
 		}
+		logUpgradeFailure(session, version, candidate.identity, err)
 		candidate.state.Rollback = true
 		candidate.state.Reason = err.Error()
 		settings.upgradeState = &candidate.state

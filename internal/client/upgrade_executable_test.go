@@ -136,6 +136,9 @@ func TestUpgradeFailureIsNotRetriedAfterReconnect(t *testing.T) {
 		t.Fatalf("first check did not fail with server identity: %+v", failure.upgrade)
 	}
 	m.event(failure)
+	if _, err := os.Stat(filepath.Join(h.dirs["local"], "client-upgrade.log")); err != nil {
+		t.Fatalf("upgrade failure was not persisted: %v", err)
+	}
 	if !m.failedUpgrades[failure.upgrade.identity] {
 		t.Fatal("real check failure was not recorded")
 	}

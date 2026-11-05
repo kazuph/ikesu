@@ -162,6 +162,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	if event.upgrade != nil {
 		result := event.upgrade
 		if result.err != nil {
+			logUpgradeFailure(m.session, m.clientVersion, result.identity, result.err)
 			if result.identity.Generation != "" {
 				m.failedUpgrades[result.identity] = true
 			}
@@ -173,6 +174,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			return 0, false
 		}
 		if err := result.candidate.executable.recheck(); err != nil {
+			logUpgradeFailure(m.session, m.clientVersion, result.identity, err)
 			m.failedUpgrades[result.identity] = true
 			m.notify("upgrade: " + err.Error())
 			_ = m.paint()
