@@ -25,6 +25,17 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := start(t)
+			var timeline strings.Builder
+			if tc.name == "boundary" {
+				s.observeOutput = func(data []byte) {
+					fmt.Fprintf(&timeline, "%s terminal %q\n", time.Now().Format(time.RFC3339Nano), data)
+				}
+			}
+			mark := func(phase string) {
+				if tc.name == "boundary" {
+					fmt.Fprintf(&timeline, "%s %s\n", time.Now().Format(time.RFC3339Nano), phase)
+				}
+			}
 			s.waitFor("shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 			s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Source: "job-handoff", Agent: "codex", State: "idle"}, nil)
 			fifo := filepath.Join(t.TempDir(), "release")
@@ -75,10 +86,13 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 					if _, err := release.WriteString("go\n"); err != nil {
 						t.Fatal(err)
 					}
+					mark("released job")
 				}
+				mark(fmt.Sprintf("handoff %d start", i+1))
 				if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
 					t.Fatal(out, err)
 				}
+				mark(fmt.Sprintf("handoff %d complete", i+1))
 				row, err := store.CommandRow(started.Job)
 				if err != nil || row == nil || row.RunnerPID == nil || *row.RunnerPID != int64(pid) || tc.name != "boundary" && syscall.Kill(pid, 0) != nil {
 					t.Fatal("job identity lost", row, err)
@@ -106,6 +120,7 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 				row, _ := store.CommandRow(started.Job)
 				return row != nil && row.Status == status && row.FinishedMs != nil && strings.Contains(text, notice)
 			})
+			mark("terminal job and notice observed")
 			row, _ := store.CommandRow(started.Job)
 			data, err := os.ReadFile(row.LogPath)
 			if err != nil {
@@ -117,10 +132,13 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 			if tc.cancel && syscall.Kill(pid, 0) == nil {
 				t.Fatal("cancelled runner still alive")
 			}
+			mark("final handoff start")
 			if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
 				t.Fatal(out, err)
 			}
+			mark("final handoff complete")
 			s.waitFor("client reattached", 5*time.Second, func(text string) bool { return strings.Contains(text, notice) })
+			mark("client reattached")
 			messages, err := store.History(dispatch.JobsRoom, nil, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -133,6 +151,9 @@ func TestJobsAcrossLiveHandoff(t *testing.T) {
 			}
 			screen := s.text()
 			if count != 1 || strings.Count(screen, notice) != 1 {
+				if tc.name == "boundary" {
+					t.Logf("handoff timeline (terminal timestamps are observed on PTY read):\n%s\njob row: %+v\njob ledger: %+v", timeline.String(), row, messages)
+				}
 				t.Fatalf("not exactly once: ledger=%d screen=%d\n%s", count, strings.Count(screen, notice), screen)
 			}
 			t.Logf("PID=%d retained across %d handoffs; status=%s; complete log; ledger notices=%d screen notices=1", pid, tc.handoffs, row.Status, count)
