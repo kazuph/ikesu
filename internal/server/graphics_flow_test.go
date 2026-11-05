@@ -280,6 +280,8 @@ func TestGraphicsReceiptAndMissRecoveryOnRealSocket(t *testing.T) {
 	// mistaken for the write being tested; leave the rest unread.
 	rand.New(rand.NewSource(7)).Read(pixels)
 	set()
+	// Force a fresh frame even if an earlier patch is still unacknowledged.
+	client.send(t, clientMsg{Type: "control", Kind: endpoint.GraphicsPatchMiss, Data: "ignored"})
 	if err := client.conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
