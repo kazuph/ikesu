@@ -372,8 +372,12 @@ func TestClientUpgradeWithLoadedServer(t *testing.T) {
 		t.Fatalf("handoff: %v %s", err, out)
 	}
 	s.waitFor("new client", 30*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+newVersion) })
+	resolvedNew, err := filepath.EvalSymlinks(newBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
 	process, err := exec.Command("lsof", "-a", "-p", fmt.Sprint(s.cmd.Process.Pid), "-d", "txt", "-Fn").Output()
-	if err != nil || !strings.Contains(string(process), "n"+newBinary+"\n") {
+	if err != nil || (!strings.Contains(string(process), "n"+newBinary+"\n") && !strings.Contains(string(process), "n"+resolvedNew+"\n")) {
 		t.Fatalf("new executable not mapped: %q %v", process, err)
 	}
 	t.Logf("%d panes generated 2000 lines each; client pid=%d lsof=%s", len(panes.Panes), s.cmd.Process.Pid, strings.TrimSpace(string(process)))
