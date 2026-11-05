@@ -40,32 +40,49 @@ type mailWrite struct {
 func (s *Server) mailWorker() {
 	tick := time.NewTicker(jobActiveRefresh)
 	defer tick.Stop()
+	pending := make(map[int][]mailWrite)
+	deliver := func(w mailWrite) bool {
+		written, err := s.deliverMailWrite(w)
+		if errors.Is(err, runtime.ErrMailInputActive) {
+			return false
+		}
+		if written && err != nil {
+			fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
+			return true
+		}
+		if err != nil {
+			s.failMissingJobWrite(w)
+		}
+		s.mailDone(w)
+		return true
+	}
 	for {
 		select {
 		case w, ok := <-s.mailCh:
 			if !ok {
 				return
 			}
-			written, err := s.deliverMailWrite(w)
-			if written && err != nil {
-				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
-				continue
+			if len(pending[w.pane]) > 0 || !deliver(w) {
+				pending[w.pane] = append(pending[w.pane], w)
 			}
-			if err != nil {
-				s.failMissingJobWrite(w)
-			}
-			s.mailDone(w)
 		case <-tick.C:
 			s.mailDelivery.Lock()
-			hadPending := len(s.mailAwaitingAck) > 0
 			err := s.retryMailAcknowledgementsLocked()
 			s.mailDelivery.Unlock()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
 			}
-			if hadPending && err == nil {
-				s.app.Do(s.flushAllMail)
+			for pane, writes := range pending {
+				for len(writes) > 0 && deliver(writes[0]) {
+					writes = writes[1:]
+				}
+				if len(writes) == 0 {
+					delete(pending, pane)
+				} else {
+					pending[pane] = writes
+				}
 			}
+			s.app.Do(s.flushAllMail)
 		}
 	}
 }
@@ -82,8 +99,7 @@ func (s *Server) deliverMailWrite(w mailWrite) (bool, error) {
 	if p == nil || p != w.owner {
 		return false, fmt.Errorf("mail destination missing")
 	}
-	p.RecordExternalInput()
-	if _, err := p.WriteToPTY(w.payload); err != nil {
+	if _, err := p.WriteMail(w.payload); err != nil {
 		return false, err
 	}
 	if err := s.acknowledgeMailWrite(w); err != nil {
@@ -462,6 +478,9 @@ func (s *Server) flushRegularForRecipient(recipient string) bool {
 // to the pane id, oldest first. No DB file means nothing is queued; skip
 // opening the store so status-transition flushes do not load the engine.
 func (s *Server) flushRegularForPane(pid int) bool {
+	if p := s.sup.Get(pid); p != nil && p.MailInputActive() {
+		return false
+	}
 	if !dispatch.DBExists(s.session) {
 		return false
 	}
@@ -537,10 +556,11 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 		s.failJobQueue(n, err.Message)
 		return false
 	}
-	if s.sup.Get(t.pid) == nil {
+	pane := s.sup.Get(t.pid)
+	if pane == nil {
 		return false
 	}
-	if s.app.PaneStatusKey(t.pid) == "blocked" {
+	if s.app.PaneStatusKey(t.pid) == "blocked" || pane.MailInputActive() {
 		return false
 	}
 	store, derr := s.db()
@@ -564,7 +584,7 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 		return false
 	}
 	return s.enqueueMail(mailWrite{
-		pane: t.pid, owner: s.sup.Get(t.pid), payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
+		pane: t.pid, owner: pane, payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
 		msgIDs: ids, room: n.Room, toAgent: n.ToAgent,
 	})
 }

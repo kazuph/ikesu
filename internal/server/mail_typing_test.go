@@ -1,7 +1,12 @@
 package server
 
 import (
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/teststate"
 
 	"github.com/kazuph/ikesu/internal/runtime"
 )
@@ -14,9 +19,72 @@ func TestMailWriteWaitsForRecentExternalInput(t *testing.T) {
 	}
 	defer sup.Kill(1)
 	s := &Server{sup: sup}
-	pane.RecordExternalInput()
+	pane.RecordKeyInput()
 	written, _ := s.deliverMailWrite(mailWrite{pane: 1, owner: pane, payload: []byte("interrupted message\n")})
 	if written {
 		t.Fatal("mail was written to the PTY while external input was recent")
+	}
+}
+
+// This test must wait for the agreed ten-second quiet interval using a real PTY.
+func TestMailAndJobResumeAfterTypingWithoutStatusChange(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	dialClient(t, dir)
+	defer stopServer(t, dir, done)
+	pane := firstPaneID(t, dir)
+	reportAgent(t, dir, pane, "codex", "")
+	apiOK(t, dir, api.MethodPaneSendText, api.PaneSendTextParams{PaneID: pane, Text: "# human draft "}, nil)
+	apiOK(t, dir, api.MethodMsgSend, api.MsgSendParams{Room: "typing", FromAgent: "sender", To: pane, Body: "# first-notice"}, nil)
+	apiOK(t, dir, api.MethodMsgSend, api.MsgSendParams{Room: "typing", FromAgent: "sender", To: pane, Body: "# second-notice"}, nil)
+	var started api.RunStartedResult
+	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: pane, Label: "typing-job", Argv: []string{"/usr/bin/true"}}, &started)
+	store := openStore(t)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		jobs, err := store.PendingJobMessages()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(jobs) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("job completion did not queue")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	regular, err := store.PendingForAgentCreationOrder(pane)
+	if err != nil || len(regular) != 2 {
+		t.Fatalf("regular pending=%v err=%v", regular, err)
+	}
+	deadline = time.Now().Add(15 * time.Second)
+	for {
+		regular, err = store.PendingForAgentCreationOrder(pane)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobs, err := store.PendingJobMessages()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(regular) == 0 && len(jobs) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("not resumed: regular=%v jobs=%v", regular, jobs)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	history, err := store.History("typing", nil, 10)
+	if err != nil || len(history) != 2 || history[0].Body != "# first-notice" || history[1].Body != "# second-notice" || history[0].DeliveredAt == nil || history[1].DeliveredAt == nil {
+		t.Fatalf("history=%v err=%v", history, err)
+	}
+	waitRead(t, dir, pane, "second-notice")
+	var read api.PaneReadResultEnvelope
+	apiOK(t, dir, api.MethodPaneRead, api.PaneReadParams{PaneID: pane, Source: "recent", Format: "text", StripANSI: true}, &read)
+	first, second := strings.Index(read.Read.Text, "first-notice"), strings.Index(read.Read.Text, "second-notice")
+	if strings.Count(read.Read.Text, "first-notice") != 1 || strings.Count(read.Read.Text, "second-notice") != 1 || first >= second {
+		t.Fatalf("mail repeated or out of order: %q", read.Read.Text)
 	}
 }
