@@ -160,8 +160,10 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.upgrade != nil {
+		e.upgradePending = false
 		result := event.upgrade
 		if result.err != nil {
+			logUpgradeFailure(m.session, m.clientVersion, result.identity, result.err)
 			if result.identity.Generation != "" {
 				m.failedUpgrades[result.identity] = true
 			}
@@ -173,6 +175,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			return 0, false
 		}
 		if err := result.candidate.executable.recheck(); err != nil {
+			logUpgradeFailure(m.session, m.clientVersion, result.identity, err)
 			m.failedUpgrades[result.identity] = true
 			m.notify("upgrade: " + err.Error())
 			_ = m.paint()
@@ -264,7 +267,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.retry.connected(time.Now())
 		if event.id == "local" {
 			m.configureMachineDisplay()
-			if e.restarting && !e.resumeInput {
+			if (e.restarting && !e.resumeInput) || e.upgradePending {
 				m.checkUpgrade(event.attempt)
 			}
 		}
@@ -330,7 +333,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 	case "notify":
 		if message.Notification != nil && m.settings.config != nil {
-			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id)
+			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id, func(err error) {
+				// The notice is drawn on the client's own status line instead of
+				// being written into the terminal over the panes.
+				go m.post(m.ctx, endpointEvent{formUpdate: func() { m.notify("notification: " + err.Error()) }})
+			})
 		}
 	case "output":
 		if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {

@@ -37,9 +37,15 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 			if err := cmd.Start(); err != nil {
 				return err
 			}
+			warn := d.Warn
 			go func() {
 				if err := cmd.Wait(); err != nil {
-					fmt.Fprintln(os.Stderr, "ikesu: notification command:", err)
+					err = fmt.Errorf("notification command %s: %w", filepath.Base(name), err)
+					if warn != nil {
+						warn(err)
+						return
+					}
+					fmt.Fprintln(os.Stderr, "ikesu:", err)
 				}
 			}()
 			return nil
@@ -60,7 +66,7 @@ func (d Desktop) Deliver(n endpoint.Notification, c config.Config, session, mach
 				words = append(words, "--machine", machineID)
 			}
 			words = append(words, "pane", "focus", n.TargetPaneID)
-			args := []string{"-title", n.Title, "-message", n.Body, "-execute", machine.Command(words) + " >/dev/null 2>&1"}
+			args := []string{"-title", notifierText(n.Title), "-message", notifierText(n.Body), "-execute", machine.Command(words) + " >/dev/null 2>&1"}
 			bundle := d.TerminalBundleID
 			if bundle == "" {
 				bundle = terminalBundle()
@@ -167,4 +173,14 @@ func terminalBundle() string {
 		return "com.github.wez.wezterm"
 	}
 	return ""
+}
+
+// terminal-notifier rejects a title or message that begins with "[" as an
+// invalid argument (exit status 2) unless the bracket is escaped. Job notices
+// such as "[ikesu run] ..." start that way.
+func notifierText(s string) string {
+	if strings.HasPrefix(s, "[") {
+		return `\` + s
+	}
+	return s
 }

@@ -43,6 +43,7 @@ type managedEndpoint struct {
 	removed                  bool
 	paste                    *clipboardPaste
 	restarting               bool
+	upgradePending           bool
 	resumeInput              bool
 	restartInput             []byte
 }
@@ -299,6 +300,7 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 					cancel()
 					if err != nil {
 						candidate := m.settings.upgrade
+						logUpgradeFailure(m.session, m.clientVersion, candidate.identity, err)
 						m.failedUpgrades[candidate.identity] = true
 						m.settings.upgrade = nil
 						m.notify("upgrade: " + err.Error())

@@ -1,7 +1,11 @@
 package client
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
@@ -136,6 +140,9 @@ func TestUpgradeFailureIsNotRetriedAfterReconnect(t *testing.T) {
 		t.Fatalf("first check did not fail with server identity: %+v", failure.upgrade)
 	}
 	m.event(failure)
+	if _, err := os.Stat(filepath.Join(h.dirs["local"], "client-upgrade.log")); err != nil {
+		t.Fatalf("upgrade failure was not persisted: %v", err)
+	}
 	if !m.failedUpgrades[failure.upgrade.identity] {
 		t.Fatal("real check failure was not recorded")
 	}
@@ -147,9 +154,123 @@ func TestUpgradeFailureIsNotRetriedAfterReconnect(t *testing.T) {
 	m.start("local", stream)
 	attempt := e.attempt
 	h.until("reconnected after failed upgrade", func() bool { return e.connection != nil && e.snapshotAttempt == attempt })
+	if e.upgradePending {
+		t.Fatal("ordinary reconnect started an upgrade check")
+	}
 	m.checkUpgrade(attempt)
 	repeated := receiveUpgrade()
 	if repeated.upgrade.err != nil || repeated.upgrade.candidate != nil || repeated.upgrade.identity != failure.upgrade.identity {
 		t.Fatalf("same failed upgrade was checked or executed again: %+v", repeated.upgrade)
 	}
+}
+
+// Two real servers and reconnects exercise a delayed result from the previous connection.
+func TestUpgradeCheckSurvivesReconnectBeforeResult(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
+	oldBinary, serverBinary, oldVersion := buildReconnectUpgradeBinaries(t)
+	teststate.Setenv(t, "IKESU_RIGHT_TEST_SERVER_BIN", serverBinary)
+	oldStartup, oldStartupErr := startupExecutable, startupExecutableErr
+	startupExecutable, startupExecutableErr = oldBinary, nil
+	t.Cleanup(func() { startupExecutable, startupExecutableErr = oldStartup, oldStartupErr })
+	h := newRightMachineHarness(t)
+	m := h.m
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))
+	m.clientVersion = oldVersion
+	m.failedUpgrades = make(map[upgradeIdentity]bool)
+	e := m.endpoints["local"]
+	e.restarting = true
+	e.connection.Close()
+	m.start("local", nil)
+	first := e.attempt
+	var held endpointEvent
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for held.upgrade == nil || e.snapshotAttempt != first || e.restarting {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == first && ev.upgrade != nil {
+				held = ev
+				continue
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("first connection did not deliver snapshot and upgrade check")
+		}
+	}
+	if held.upgrade.err != nil || held.upgrade.candidate == nil {
+		t.Fatalf("initial check did not yield candidate: %+v", held.upgrade)
+	}
+	e.connection.Close()
+	m.start("local", nil)
+	second := e.attempt
+	m.event(held)
+	for {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == second && ev.upgrade != nil {
+				if ev.upgrade.err != nil || ev.upgrade.candidate == nil {
+					t.Fatalf("retry did not yield candidate: %+v", ev.upgrade)
+				}
+				result, done := m.event(ev)
+				if !done || result != pumpUpgrade || m.settings.upgrade != ev.upgrade.candidate || e.upgradePending {
+					t.Fatalf("candidate not accepted: result=%v done=%v pending=%v", result, done, e.upgradePending)
+				}
+				return
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("reconnected client did not retry the pending upgrade check")
+		}
+	}
+}
+
+// Building both real versions ensures the retry yields an executable candidate.
+func buildReconnectUpgradeBinaries(t *testing.T) (string, string, string) {
+	t.Helper()
+	repo, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	old := filepath.Join(dir, "old")
+	server := filepath.Join(dir, "server")
+	build := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("go", append([]string{"build"}, args...)...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("build: %v %s", err, out)
+		}
+	}
+	build("-o", old, "./cmd/ikesu")
+	out, err := exec.Command(old, "--version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := strings.TrimPrefix(strings.TrimSpace(string(out)), "ikesu ")
+	path := filepath.Join(repo, "cmd/ikesu/main.go")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl := fmt.Sprintf("const version = %q", version)
+	if strings.Count(string(src), decl) != 1 {
+		t.Fatal("version declaration not found")
+	}
+	replacement := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(replacement, []byte(strings.Replace(string(src), decl, fmt.Sprintf("const version = %q", version+"-test"), 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(map[string]any{"Replace": map[string]string{path: replacement}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlay := filepath.Join(dir, "overlay.json")
+	if err := os.WriteFile(overlay, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	build("-overlay", overlay, "-o", server, "./cmd/ikesu")
+	return old, server, version
 }

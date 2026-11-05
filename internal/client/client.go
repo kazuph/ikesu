@@ -190,6 +190,7 @@ func Attach(session string, in *os.File, out *os.File, version string) (int, err
 		if err == nil {
 			err = execUpgrade(candidate.identity.Executable, &candidate.state)
 		}
+		logUpgradeFailure(session, version, candidate.identity, err)
 		candidate.state.Rollback = true
 		candidate.state.Reason = err.Error()
 		settings.upgradeState = &candidate.state
@@ -407,7 +408,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			return pumpDone
 		case "notify":
 			if m.Notification != nil && settings.config != nil {
-				deliverDesktop(*m.Notification, *settings.config, settings.session, "")
+				deliverDesktop(*m.Notification, *settings.config, settings.session, "", nil)
 			}
 		case "output":
 			if data, err := base64.StdEncoding.DecodeString(m.Data); err == nil {

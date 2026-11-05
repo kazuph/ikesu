@@ -66,6 +66,7 @@ func execUpgrade(path string, state *upgradeState) error {
 }
 
 func rollbackUpgrade(state *upgradeState, reason error) error {
+	logUpgradeFailure(state.Session, state.OldVersion, state.Attempt, reason)
 	checked, err := checkUpgradeExecutable(context.Background(), state.OldExecutable, state.OldVersion)
 	if err != nil {
 		return fmt.Errorf("cannot restore previous client after %v: %w", reason, err)
@@ -119,6 +120,7 @@ func shouldCheckUpgrade(id upgradeIdentity, currentVersion string, failed map[up
 }
 
 func (m *machineClient) checkUpgrade(attempt uint64) {
+	m.endpoints["local"].upgradePending = true
 	failed := make(map[upgradeIdentity]bool, len(m.failedUpgrades))
 	for id := range m.failedUpgrades {
 		failed[id] = true
