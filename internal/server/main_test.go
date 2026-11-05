@@ -21,13 +21,23 @@ func runIsolatedParallel(t *testing.T) bool {
 	return runIsolatedParallelNamed(t, t.Name())
 }
 
+func runIsolatedParallelEarly(t *testing.T) bool {
+	return runIsolatedParallelMode(t, t.Name(), true)
+}
+
 func runIsolatedParallelNamed(t *testing.T, name string) bool {
+	return runIsolatedParallelMode(t, name, false)
+}
+
+func runIsolatedParallelMode(t *testing.T, name string, early bool) bool {
 	t.Helper()
 	const marker = "GO_TEST_SERVER_ISOLATED"
 	if os.Getenv(marker) == t.Name() {
 		return false
 	}
-	t.Parallel()
+	if !early {
+		t.Parallel()
+	}
 	ctx := t.Context()
 	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$", "-test.v"}
 	if deadline, ok := t.Deadline(); ok {
@@ -38,7 +48,21 @@ func runIsolatedParallelNamed(t *testing.T, name string) bool {
 	}
 	cmd := exec.CommandContext(ctx, os.Args[0], args...)
 	cmd.Env = append(os.Environ(), marker+"="+t.Name())
-	output, err := cmd.CombinedOutput()
+	type result struct {
+		output []byte
+		err    error
+	}
+	finished := make(chan result, 1)
+	go func() {
+		output, err := cmd.CombinedOutput()
+		finished <- result{output: output, err: err}
+	}()
+	if early {
+		// Keep real deadlines while the independent child overlaps serial tests.
+		t.Parallel()
+	}
+	got := <-finished
+	output, err := got.output, got.err
 	t.Logf("isolated test:\n%s", output)
 	if err != nil {
 		t.Fatalf("isolated test failed: %v", err)
@@ -62,6 +86,20 @@ func TestIsolatedParallelRejectsMissingTest(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(output), "isolated test did not report PASS") {
 		t.Fatalf("missing test was not rejected for missing PASS: error=%v output=%s", err, output)
+	}
+}
+
+func TestIsolatedParallelEarlyRejectsMissingTest(t *testing.T) {
+	const probe = "GO_TEST_MISSING_EARLY_ISOLATED_PROBE"
+	if os.Getenv(probe) == "1" {
+		runIsolatedParallelMode(t, t.Name()+"_missing", true)
+		return
+	}
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.v")
+	cmd.Env = append(os.Environ(), probe+"=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "isolated test did not report PASS") {
+		t.Fatalf("missing early test was not rejected: error=%v output=%s", err, output)
 	}
 }
 

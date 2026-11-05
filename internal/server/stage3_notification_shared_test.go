@@ -14,7 +14,7 @@ import (
 )
 
 func TestStage3AgentToastDismissalIsLocalToEachRealDisplay(t *testing.T) {
-	if runIsolatedParallel(t) {
+	if runIsolatedParallelEarly(t) {
 		return
 	}
 	// The real notification expires on its eight-second clock.
