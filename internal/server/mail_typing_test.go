@@ -1,6 +1,9 @@
 package server
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +36,10 @@ func TestMailAndJobResumeAfterTypingWithoutStatusChange(t *testing.T) {
 	dialClient(t, dir)
 	defer stopServer(t, dir, done)
 	pane := firstPaneID(t, dir)
+	capture := filepath.Join(t.TempDir(), "pty-input")
+	command := fmt.Sprintf("stty raw -echo; printf 'CAPTURE_%%s\\n' READY; exec cat > %q", capture)
+	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: pane, Text: command, Keys: []string{"Enter"}}, nil)
+	waitRead(t, dir, pane, "CAPTURE_READY")
 	reportAgent(t, dir, pane, "codex", "")
 	apiOK(t, dir, api.MethodPaneSendText, api.PaneSendTextParams{PaneID: pane, Text: "# human draft "}, nil)
 	apiOK(t, dir, api.MethodMsgSend, api.MsgSendParams{Room: "typing", FromAgent: "sender", To: pane, Body: "# first-notice"}, nil)
@@ -80,11 +87,23 @@ func TestMailAndJobResumeAfterTypingWithoutStatusChange(t *testing.T) {
 	if err != nil || len(history) != 2 || history[0].Body != "# first-notice" || history[1].Body != "# second-notice" || history[0].DeliveredAt == nil || history[1].DeliveredAt == nil {
 		t.Fatalf("history=%v err=%v", history, err)
 	}
-	waitRead(t, dir, pane, "second-notice")
-	var read api.PaneReadResultEnvelope
-	apiOK(t, dir, api.MethodPaneRead, api.PaneReadParams{PaneID: pane, Source: "recent", Format: "text", StripANSI: true}, &read)
-	first, second := strings.Index(read.Read.Text, "first-notice"), strings.Index(read.Read.Text, "second-notice")
-	if strings.Count(read.Read.Text, "first-notice") != 1 || strings.Count(read.Read.Text, "second-notice") != 1 || first >= second {
-		t.Fatalf("mail repeated or out of order: %q", read.Read.Text)
+	deadline = time.Now().Add(5 * time.Second)
+	var text string
+	for {
+		data, err := os.ReadFile(capture)
+		if err == nil {
+			text = string(data)
+		}
+		if strings.Contains(text, "typing-job") && strings.Contains(text, "second-notice") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("PTY capture incomplete: %q", text)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	first, second := strings.Index(text, "first-notice"), strings.Index(text, "second-notice")
+	if strings.Count(text, "first-notice") != 1 || strings.Count(text, "second-notice") != 1 || strings.Count(text, "typing-job") != 1 || first >= second {
+		t.Fatalf("mail repeated or out of order: %q", text)
 	}
 }
