@@ -146,7 +146,100 @@ func TestLateDeliveryClosedPaneFailsWithoutSending(t *testing.T) {
 	late := &lateCodexQuestion{pid: 999, delivery: &api.DecisionDelivery{Status: "pending", Text: "回答文"}}
 	s.screenPrompts.late = map[string]*lateCodexQuestion{"dec-closed": late}
 	s.scanLateCodexDeliveries()
-	if late.sent || late.delivery.Status != "failed" || late.delivery.Reason != "ペインが閉じました" { t.Fatal(late) }
+	if late.sent || late.delivery.Status != "failed" || late.delivery.Reason != "ペインが閉じました" {
+		t.Fatal(late)
+	}
+}
+
+func TestEmptyQuestionsFromSameCallGetIndependentDecisions(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "late-group")
+	s.initDecisionHub()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	origin := &api.DecisionOrigin{PaneID: "p1", Reason: "screen_prompt", Agent: "codex"}
+	params := api.DecisionCreateParams{Kind: "agent_prompt", Title: "色は？", AllowText: true, Origin: origin, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
+	identity := `["session","call","color"]`
+	d, err := store.CreateScreenDecision(params, time.Now(), "p1", identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &screenPromptWatch{decisionID: d.DecisionID, codex: &codexBinding{path: "/tmp/rollout", identity: identity, question: session.CodexQuestion{SessionID: "session", CallID: "call", ID: "color"}}}
+	questions := []session.CodexQuestion{
+		{SessionID: "session", CallID: "call", ID: "color", Index: 0, Total: 3, Question: "色は？", State: session.CodexEmpty, Options: []session.CodexQuestionOption{{Label: "青"}}},
+		{SessionID: "session", CallID: "call", ID: "shape", Index: 1, Total: 3, Question: "形は？", State: session.CodexEmpty, Options: []session.CodexQuestionOption{{Label: "丸"}}},
+		{SessionID: "session", CallID: "call", ID: "size", Index: 2, Total: 3, Question: "大きさは？", State: session.CodexAnswered, Options: []session.CodexQuestionOption{{Label: "大"}}},
+	}
+	s.retainOtherEmptyCodexQuestions(1, w, questions)
+	s.retainOtherEmptyCodexQuestions(1, w, questions)
+	pending, err := store.Decisions("pending")
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("decisions: %+v %v", pending, err)
+	}
+	var shape api.Decision
+	for _, item := range pending {
+		if item.Title == "形は？" {
+			shape = item
+		}
+	}
+	if shape.DecisionID == "" || s.screenPrompts.late[shape.DecisionID] == nil {
+		t.Fatal("empty question not retained", pending)
+	}
+}
+
+func TestLateQuestionReplacesExpiredCountdown(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "late-countdown")
+	s.initDecisionHub()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	body := "auto-resolves in s"
+	params := api.DecisionCreateParams{Kind: "agent_prompt", Title: "色は？", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1", Reason: "screen_prompt"}, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
+	d, err := store.CreateDecision(params, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &screenPromptWatch{decisionID: d.DecisionID, prompt: &screenprompt.Prompt{Params: params}}
+	if !s.retainLateCodexQuestion(1, w) {
+		t.Fatal("late question was not retained")
+	}
+	got, err := store.Decision(d.DecisionID)
+	if err != nil || got.Body == nil || *got.Body != "Codex は空の答えで先に進みました。答えると会話で届けます" {
+		t.Fatal(got, err)
+	}
+}
+
+func TestLateDeliveryIgnoresSiblingLateQuestionsButWaitsForOtherDecision(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "late-blocker")
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	params := api.DecisionCreateParams{Kind: "agent_prompt", Title: "質問", Origin: &api.DecisionOrigin{PaneID: "p1", Reason: "screen_prompt"}, Options: []api.DecisionOption{{ID: "1", Label: "はい", Role: "other"}}}
+	first, err := store.CreateDecision(params, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.CreateDecision(params, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.screenPrompts.late = map[string]*lateCodexQuestion{first.DecisionID: {}}
+	if !s.lateDeliveryHasOtherDecision(1) {
+		t.Fatal("active confirmation was ignored")
+	}
+	s.screenPrompts.late[second.DecisionID] = &lateCodexQuestion{}
+	if s.lateDeliveryHasOtherDecision(1) {
+		t.Fatal("other late questions blocked delivery")
+	}
 }
 
 func TestLateCodexAnswerTextPreservesSelectionAndNote(t *testing.T) {

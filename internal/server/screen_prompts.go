@@ -280,11 +280,14 @@ func (s *Server) scanScreenPrompts() {
 			w = nil
 		}
 		if w != nil && w.codex != nil && w.decisionID != "" && !w.resolved {
-			state, ready, nextCall := pollBoundCodexState(w)
+			state, ready, nextCall, questions := pollBoundCodexState(w)
 			if !ready && p == nil {
 				continue
 			}
 			if ready && (p == nil || nextCall) {
+				if state == session.CodexEmpty || state == session.CodexAnswered {
+					s.retainOtherEmptyCodexQuestions(pid, w, questions)
+				}
 				switch state {
 				case session.CodexEmpty:
 					if s.retainLateCodexQuestion(pid, w) {

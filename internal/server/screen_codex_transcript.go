@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/runtime"
@@ -33,13 +34,14 @@ type lateCodexQuestion struct {
 }
 
 type codexStateResult struct {
-	state    session.CodexAnswerState
-	nextCall bool
+	state     session.CodexAnswerState
+	nextCall  bool
+	questions []session.CodexQuestion
 }
 
 func codexQuestionScan(binding codexBinding, prompt *screenprompt.Prompt, questions []session.CodexQuestion) codexStateResult {
 	next, ok := chooseCodexQuestion(prompt, questions)
-	return codexStateResult{state: boundCodexState(binding.question, questions), nextCall: ok && next.CallID != binding.question.CallID}
+	return codexStateResult{state: boundCodexState(binding.question, questions), nextCall: ok && next.CallID != binding.question.CallID, questions: questions}
 }
 
 func (s *Server) withLateDelivery(d api.Decision) api.Decision {
@@ -91,7 +93,7 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 	}
 	p := screenDisplayParams(w)
 	body := "Codex は空の答えで先に進みました。答えると会話で届けます"
-	if p.Body != nil && *p.Body != "" {
+	if p.Body != nil && *p.Body != "" && !strings.HasPrefix(*p.Body, "auto-resolves in ") {
 		body = *p.Body + "\n\n" + body
 	}
 	p.Body = &body
@@ -100,7 +102,10 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 		s.app.SetConfigWarning("late question: " + err.Error())
 		return false
 	}
-	if d.Status != "pending" { w.resolved = true; return true }
+	if d.Status != "pending" {
+		w.resolved = true
+		return true
+	}
 	if s.screenPrompts.late == nil {
 		s.screenPrompts.late = map[string]*lateCodexQuestion{}
 	}
@@ -109,6 +114,57 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 		s.pushDecisionProjection()
 	}
 	return true
+}
+
+// A single call can contain several questions, including ones the terminal
+// never displayed before the empty result. Retain each independently.
+func (s *Server) retainOtherEmptyCodexQuestions(pid int, w *screenPromptWatch, questions []session.CodexQuestion) {
+	store, err := s.db()
+	if err != nil {
+		s.app.SetConfigWarning("late question: " + err.Error())
+		return
+	}
+	original, err := store.Decision(w.decisionID)
+	if err != nil || original.Origin == nil {
+		return
+	}
+	for _, q := range questions {
+		if q.SessionID != w.codex.question.SessionID || q.CallID != w.codex.question.CallID || q.ID == w.codex.question.ID || q.State != session.CodexEmpty {
+			continue
+		}
+		raw, err := json.Marshal([]string{q.SessionID, q.CallID, q.ID})
+		if err != nil {
+			continue
+		}
+		identity := string(raw)
+		_, found, err := store.ScreenQuestionDecisionAny(fmtPaneID(pid), identity)
+		if err != nil {
+			s.app.SetConfigWarning("late question: " + err.Error())
+			continue
+		}
+		if found {
+			continue
+		}
+		body := "Codex は空の答えで先に進みました。答えると会話で届けます"
+		label := fmt.Sprintf("Question %d/%d", q.Index+1, q.Total)
+		params := api.DecisionCreateParams{Kind: "agent_prompt", Title: q.Question, Body: &body, QuestionLabel: &label, AllowText: true, Origin: original.Origin}
+		for i, option := range q.Options {
+			description := option.Description
+			params.Options = append(params.Options, api.DecisionOption{ID: strconv.Itoa(i + 1), Label: option.Label, Role: "other", Description: &description})
+		}
+		d, err := store.CreateScreenDecision(params, time.Now(), fmtPaneID(pid), identity)
+		if err != nil {
+			s.app.SetConfigWarning("late question: " + err.Error())
+			continue
+		}
+		binding := *w.codex
+		binding.question, binding.identity = q, identity
+		if s.screenPrompts.late == nil {
+			s.screenPrompts.late = map[string]*lateCodexQuestion{}
+		}
+		s.screenPrompts.late[d.DecisionID] = &lateCodexQuestion{pid: pid, w: &screenPromptWatch{decisionID: d.DecisionID, codex: &binding}}
+		s.decisionChanged("decision_created", d)
+	}
 }
 
 func boundCodexState(bound session.CodexQuestion, questions []session.CodexQuestion) session.CodexAnswerState {
@@ -125,9 +181,9 @@ func boundCodexState(bound session.CodexQuestion, questions []session.CodexQuest
 	return state
 }
 
-func pollBoundCodexState(w *screenPromptWatch) (session.CodexAnswerState, bool, bool) {
+func pollBoundCodexState(w *screenPromptWatch) (session.CodexAnswerState, bool, bool, []session.CodexQuestion) {
 	if w.codex == nil {
-		return "", true, false
+		return "", true, false, nil
 	}
 	if w.codexStateResult == nil {
 		result := make(chan codexStateResult, 1)
@@ -143,14 +199,14 @@ func pollBoundCodexState(w *screenPromptWatch) (session.CodexAnswerState, bool, 
 			}
 			result <- codexQuestionScan(binding, &prompt, questions)
 		}()
-		return "", false, false
+		return "", false, false, nil
 	}
 	select {
 	case result := <-w.codexStateResult:
 		w.codexStateResult = nil
-		return result.state, true, result.nextCall
+		return result.state, true, result.nextCall, result.questions
 	default:
-		return "", false, false
+		return "", false, false, nil
 	}
 }
 
@@ -162,9 +218,12 @@ func (s *Server) scanVerifyingCodexQuestions() {
 			delete(s.screenPrompts.verifying, id)
 			continue
 		}
-		state, ready, _ := pollBoundCodexState(old.w)
+		state, ready, _, questions := pollBoundCodexState(old.w)
 		if !ready {
 			continue
+		}
+		if state == session.CodexEmpty || state == session.CodexAnswered {
+			s.retainOtherEmptyCodexQuestions(old.pid, old.w, questions)
 		}
 		switch state {
 		case session.CodexEmpty:
