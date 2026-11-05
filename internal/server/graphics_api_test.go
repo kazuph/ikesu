@@ -12,9 +12,6 @@ import (
 )
 
 func TestPaneGraphicsSetClearAndLayerBoundary(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
 	teststate.Lock(t)
 	config := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(config, []byte("onboarding=false\n[experimental]\nkitty_graphics=true\n"), 0600); err != nil {
