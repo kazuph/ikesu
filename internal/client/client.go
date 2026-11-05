@@ -408,7 +408,7 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 			return pumpDone
 		case "notify":
 			if m.Notification != nil && settings.config != nil {
-				deliverDesktop(*m.Notification, *settings.config, settings.session, "")
+				deliverDesktop(*m.Notification, *settings.config, settings.session, "", nil)
 			}
 		case "output":
 			if data, err := base64.StdEncoding.DecodeString(m.Data); err == nil {

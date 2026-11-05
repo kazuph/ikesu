@@ -333,7 +333,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 	case "notify":
 		if message.Notification != nil && m.settings.config != nil {
-			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id)
+			deliverDesktop(*message.Notification, *m.settings.config, m.session, event.id, func(err error) {
+				// The notice is drawn on the client's own status line instead of
+				// being written into the terminal over the panes.
+				go m.post(m.ctx, endpointEvent{formUpdate: func() { m.notify("notification: " + err.Error()) }})
+			})
 		}
 	case "output":
 		if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {
