@@ -127,8 +127,7 @@ func (s *Server) mailWorker() {
 				}
 				for len(writes) > 0 {
 					w := writes[0]
-					var allowed, written bool
-					var writeErr error
+					var allowed bool
 					s.app.Do(func() {
 						if s.sup.Get(pane) == w.owner {
 							status := s.app.PaneStatusKey(pane)
@@ -137,9 +136,8 @@ func (s *Server) mailWorker() {
 							}
 						}
 						allowed = true
-						written, writeErr = s.deliverMailWrite(w)
 					})
-					if !allowed || !finish(w, written, writeErr) {
+					if !allowed || !deliver(w) {
 						break
 					}
 					writes = writes[1:]
