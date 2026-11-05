@@ -43,6 +43,7 @@ type managedEndpoint struct {
 	removed                  bool
 	paste                    *clipboardPaste
 	restarting               bool
+	upgradePending           bool
 	resumeInput              bool
 	restartInput             []byte
 }

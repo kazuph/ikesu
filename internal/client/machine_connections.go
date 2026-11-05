@@ -160,6 +160,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		return 0, false
 	}
 	if event.upgrade != nil {
+		e.upgradePending = false
 		result := event.upgrade
 		if result.err != nil {
 			logUpgradeFailure(m.session, m.clientVersion, result.identity, result.err)
@@ -266,7 +267,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.retry.connected(time.Now())
 		if event.id == "local" {
 			m.configureMachineDisplay()
-			if e.restarting && !e.resumeInput {
+			if (e.restarting && !e.resumeInput) || e.upgradePending {
 				m.checkUpgrade(event.attempt)
 			}
 		}

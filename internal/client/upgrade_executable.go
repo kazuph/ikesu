@@ -120,6 +120,7 @@ func shouldCheckUpgrade(id upgradeIdentity, currentVersion string, failed map[up
 }
 
 func (m *machineClient) checkUpgrade(attempt uint64) {
+	m.endpoints["local"].upgradePending = true
 	failed := make(map[upgradeIdentity]bool, len(m.failedUpgrades))
 	for id := range m.failedUpgrades {
 		failed[id] = true

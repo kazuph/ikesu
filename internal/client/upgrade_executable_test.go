@@ -150,9 +150,59 @@ func TestUpgradeFailureIsNotRetriedAfterReconnect(t *testing.T) {
 	m.start("local", stream)
 	attempt := e.attempt
 	h.until("reconnected after failed upgrade", func() bool { return e.connection != nil && e.snapshotAttempt == attempt })
+	if e.upgradePending {
+		t.Fatal("ordinary reconnect started an upgrade check")
+	}
 	m.checkUpgrade(attempt)
 	repeated := receiveUpgrade()
 	if repeated.upgrade.err != nil || repeated.upgrade.candidate != nil || repeated.upgrade.identity != failure.upgrade.identity {
 		t.Fatalf("same failed upgrade was checked or executed again: %+v", repeated.upgrade)
+	}
+}
+
+// Two real servers and reconnects exercise a delayed result from the previous connection.
+func TestUpgradeCheckSurvivesReconnectBeforeResult(t *testing.T) {
+	if teststate.RunIsolatedParallel(t) {
+		return
+	}
+	h := newRightMachineHarness(t)
+	m := h.m
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(h.dirs["local"]))
+	m.clientVersion = "older-client"
+	m.failedUpgrades = make(map[upgradeIdentity]bool)
+	e := m.endpoints["local"]
+	e.restarting = true
+	e.connection.Close()
+	m.start("local", nil)
+	first := e.attempt
+	var held endpointEvent
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for held.upgrade == nil || e.snapshotAttempt != first || e.restarting {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == first && ev.upgrade != nil {
+				held = ev
+				continue
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("first connection did not deliver snapshot and upgrade check")
+		}
+	}
+	e.connection.Close()
+	m.start("local", nil)
+	second := e.attempt
+	m.event(held)
+	for {
+		select {
+		case ev := <-m.events:
+			if ev.id == "local" && ev.attempt == second && ev.upgrade != nil {
+				return
+			}
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("reconnected client did not retry the pending upgrade check")
+		}
 	}
 }
