@@ -70,3 +70,22 @@ func TestGuardApprovalFiltersAndOrdersPendingDecisions(t *testing.T) {
 		t.Fatal("stale projection replaced pending state")
 	}
 }
+
+func TestGuardApprovalRequiresSelectionBeforeAnswer(t *testing.T) {
+	var state approvalState
+	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{{
+		DecisionID: "d1", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"},
+		Options: []api.DecisionOption{{ID: "approve"}, {ID: "day_allow"}, {ID: "reject"}},
+	}}}, "p1", time.Unix(100, 0), time.Time{})
+	if state.answer() != nil {
+		t.Fatal("Enter without a selection must not answer")
+	}
+	state.selectOption(2)
+	if state.open != "d1" || state.selected != "day_allow" {
+		t.Fatal("number must select without answering")
+	}
+	answer := state.answer()
+	if answer == nil || answer.DecisionID != "d1" || answer.OptionID == nil || *answer.OptionID != "day_allow" {
+		t.Fatalf("answer=%+v", answer)
+	}
+}

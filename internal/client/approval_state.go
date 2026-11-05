@@ -84,3 +84,33 @@ func (s *approvalState) focus(pane string) {
 		}
 	}
 }
+
+func (s *approvalState) current() *api.Decision {
+	for i := range s.pending {
+		if s.pending[i].DecisionID == s.open {
+			return &s.pending[i]
+		}
+	}
+	return nil
+}
+
+func (s *approvalState) selectOption(number int) {
+	d := s.current()
+	if d != nil && number > 0 && number <= len(d.Options) {
+		s.selected = d.Options[number-1].ID
+	}
+}
+
+func (s *approvalState) answer() *api.DecisionAnswerParams {
+	d := s.current()
+	if d == nil || s.selected == "" {
+		return nil
+	}
+	for _, option := range d.Options {
+		if option.ID == s.selected {
+			id := s.selected
+			return &api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionID: &id}
+		}
+	}
+	return nil
+}
