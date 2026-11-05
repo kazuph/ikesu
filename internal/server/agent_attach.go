@@ -124,7 +124,7 @@ func (s *Server) attachAgent(c *clientConn, rd *bufio.Reader, hello clientMsg) {
 			}
 		case m := <-input:
 			s.mu.Lock()
-			if s.agentControllers[pid] != c {
+			if s.agentControllers[pid] != c || s.closing.Load() != 0 {
 				s.mu.Unlock()
 				return
 			}

@@ -479,6 +479,11 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 			s.sup.ReleaseHandoff()
 			s.app.Do(s.app.RetireHandoff)
 		}
+		var final handoffResult
+		if err := imported.Decoder.Decode(&final); err != nil || final.State != "mail_input_times" {
+			final.MailInputTimes = nil
+		}
+		s.sup.RestoreMailInputTimes(final.MailInputTimes)
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
 	s.mailWG.Add(1)

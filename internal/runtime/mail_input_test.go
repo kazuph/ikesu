@@ -79,3 +79,49 @@ func TestMailQuietIntervalSurvivesLiveHandoff(t *testing.T) {
 		t.Fatal("recent input was lost during live handoff")
 	}
 }
+
+func TestMailHandoffRetainsInputAfterSnapshot(t *testing.T) {
+	old := NewSupervisor()
+	pane, err := old.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		old.KillAll()
+		t.Fatal(err)
+	}
+	// An attached client can supply input after PauseHandoff captured the pane.
+	pane.RecordKeyInput()
+	if _, err := pane.WriteToPTY([]byte("x")); err != nil {
+		old.ResumeHandoff()
+		old.KillAll()
+		t.Fatal(err)
+	}
+	next := NewSupervisor()
+	if err := next.ImportHandoff(states, files); err != nil {
+		old.ResumeHandoff()
+		old.KillAll()
+		t.Fatal(err)
+	}
+	next.RestoreMailInputTimes(old.MailInputTimes())
+	old.ReleaseHandoff()
+	next.StartImported()
+	defer next.KillAll()
+	if !next.Get(1).MailInputActive() {
+		t.Fatal("input after handoff snapshot was lost to the mail guard")
+	}
+}
+
+func TestMailHandoffMissingTimesStartsQuietPeriod(t *testing.T) {
+	sup := NewSupervisor()
+	_, err := sup.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sup.KillAll()
+	sup.RestoreMailInputTimes(nil)
+	if !sup.Get(1).MailInputActive() {
+		t.Fatal("missing handoff time did not start quiet period")
+	}
+}

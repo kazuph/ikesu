@@ -209,3 +209,28 @@ func (p *Pane) killProcess() {
 		_ = unix.Kill(p.importedPID, unix.SIGKILL)
 	}
 }
+
+// MailInputTimes captures admitted keys after the terminal snapshot.
+func (s *Supervisor) MailInputTimes() map[int]int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	times := make(map[int]int64, len(s.panes))
+	for id, pane := range s.panes {
+		times[id] = pane.lastMailExternalInput.Load()
+	}
+	return times
+}
+
+// RestoreMailInputTimes conservatively starts the quiet period when a time is missing.
+func (s *Supervisor) RestoreMailInputTimes(times map[int]int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UnixNano()
+	for id, pane := range s.panes {
+		at := times[id]
+		if at == 0 {
+			at = now
+		}
+		pane.lastMailExternalInput.Store(at)
+	}
+}

@@ -351,14 +351,25 @@ func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyE
 	pane.RecordKeyInput()
 	go func() {
 		if text != "" {
+			s.mu.Lock()
+			if s.closing.Load() != 0 {
+				s.mu.Unlock()
+				return
+			}
 			pane.RecordKeyInput()
 			pane.WithEmu(func(e *vt.Emulator) { e.Paste(text) })
+			s.mu.Unlock()
 		}
 		if len(keys) == 0 {
 			return
 		}
 		if text != "" {
 			time.Sleep(500 * time.Millisecond)
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.closing.Load() != 0 {
+			return
 		}
 		pane.RecordKeyInput()
 		pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) })

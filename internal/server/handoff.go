@@ -49,8 +49,9 @@ type handoffImport struct {
 	Files   []*os.File
 }
 type handoffResult struct {
-	State string
-	Error string
+	State          string
+	Error          string
+	MailInputTimes map[int]int64
 }
 
 func exportListener(ln net.Listener) (*os.File, error) {
@@ -291,7 +292,12 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 	transferred = true
 	s.saveClosed = true
 	s.handedOff = true
+	// Direct attachments and delayed pane input use s.mu while admitting keys.
+	s.mu.Lock()
 	s.closing.Store(2)
+	inputTimes := s.sup.MailInputTimes()
+	s.mu.Unlock()
+	_ = enc.Encode(handoffResult{State: "mail_input_times", MailInputTimes: inputTimes})
 	s.stopDecisions()
 	s.notifyRestart()
 	s.sup.ReleaseHandoff()
