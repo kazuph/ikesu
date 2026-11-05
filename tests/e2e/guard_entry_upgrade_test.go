@@ -88,10 +88,13 @@ func TestGuardEntryUpgradeKeepsClaudePane(t *testing.T) {
 		} else if !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
-		if err := os.Remove(filepath.Join(dir, "ikesu")); err != nil && !os.IsNotExist(err) {
+		// The server can recreate the entry at any moment, so the symlink is
+		// made under a temporary name and renamed over whatever is there.
+		staged := filepath.Join(dir, "ikesu.restore-"+gate)
+		if err := os.Symlink(next, staged); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(next, filepath.Join(dir, "ikesu")); err != nil {
+		if err := os.Rename(staged, filepath.Join(dir, "ikesu")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -108,11 +111,16 @@ func TestGuardDisabledPaneSurvivesHandoffWithoutAssets(t *testing.T) {
 	s.waitFor("prompt", 5*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	pidfile := filepath.Join(s.stateDir, "shell-pid")
 	s.send("printf '%s' $$ > '" + pidfile + "'\r")
-	s.waitFor("pid saved", 5*time.Second, func(string) bool { _, err := os.Stat(pidfile); return err == nil })
-	before, err := os.ReadFile(pidfile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The shell creates the file before it writes the pid; wait for the content.
+	var before []byte
+	s.waitFor("pid saved", 5*time.Second, func(string) bool {
+		data, err := os.ReadFile(pidfile)
+		if err != nil || len(data) == 0 {
+			return false
+		}
+		before = data
+		return true
+	})
 	if out, err := s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
 		t.Fatal(out, err)
 	}
