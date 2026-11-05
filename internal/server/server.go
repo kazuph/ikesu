@@ -136,6 +136,8 @@ type Server struct {
 	mailAwaitingAck []mailWrite     // written to PTY; retry only these exact IDs
 	mailInFlight    map[int64]bool  // regular message ids staged for PTY write
 	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
+	mailDeferred    map[int]mailDeferredPane
+	mailDeferredSeq uint64
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache

@@ -34,6 +34,50 @@ type mailWrite struct {
 	toAgent string
 }
 
+type mailDeferredPane struct {
+	owner    *runtime.Pane
+	sequence uint64
+}
+
+// deferMailForPane records work that must be retried without sweeping other panes.
+func (s *Server) deferMailForPane(pid int, pane *runtime.Pane) {
+	if pane == nil {
+		return
+	}
+	s.mailMu.Lock()
+	defer s.mailMu.Unlock()
+	if s.mailDeferred == nil {
+		s.mailDeferred = make(map[int]mailDeferredPane)
+	}
+	s.mailDeferredSeq++
+	s.mailDeferred[pid] = mailDeferredPane{owner: pane, sequence: s.mailDeferredSeq}
+}
+
+func (s *Server) readyDeferredMailPanes() []int {
+	s.mailMu.Lock()
+	snapshot := make(map[int]mailDeferredPane, len(s.mailDeferred))
+	for pid, entry := range s.mailDeferred {
+		snapshot[pid] = entry
+	}
+	s.mailMu.Unlock()
+	var ready []int
+	for pid, entry := range snapshot {
+		current := s.sup.Get(pid)
+		if current == entry.owner && current.MailInputActive() {
+			continue
+		}
+		s.mailMu.Lock()
+		if s.mailDeferred[pid] == entry {
+			delete(s.mailDeferred, pid)
+			if current == entry.owner {
+				ready = append(ready, pid)
+			}
+		}
+		s.mailMu.Unlock()
+	}
+	return ready
+}
+
 // mailWorker serializes all mailbox PTY writes so message order and
 // write-completion tracking stay consistent even when several API
 // requests flush the same pane concurrently.
@@ -44,6 +88,7 @@ func (s *Server) mailWorker() {
 	deliver := func(w mailWrite) bool {
 		written, err := s.deliverMailWrite(w)
 		if errors.Is(err, runtime.ErrMailInputActive) {
+			s.deferMailForPane(w.pane, w.owner)
 			return false
 		}
 		if written && err != nil {
@@ -67,12 +112,16 @@ func (s *Server) mailWorker() {
 			}
 		case <-tick.C:
 			s.mailDelivery.Lock()
+			hadPending := len(s.mailAwaitingAck) > 0
 			err := s.retryMailAcknowledgementsLocked()
 			s.mailDelivery.Unlock()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
 			}
 			for pane, writes := range pending {
+				if len(writes) > 0 && s.sup.Get(pane) == writes[0].owner && writes[0].owner.MailInputActive() {
+					continue
+				}
 				for len(writes) > 0 && deliver(writes[0]) {
 					writes = writes[1:]
 				}
@@ -82,7 +131,13 @@ func (s *Server) mailWorker() {
 					pending[pane] = writes
 				}
 			}
-			s.app.Do(s.flushAllMail)
+			if hadPending && err == nil {
+				s.app.Do(s.flushAllMail)
+			} else {
+				for _, pid := range s.readyDeferredMailPanes() {
+					s.app.Do(func() { s.flushMailForPane(pid) })
+				}
+			}
 		}
 	}
 }
@@ -169,6 +224,7 @@ func (s *Server) enqueueMail(w mailWrite) bool {
 		k := jobKey(w.room, w.toAgent)
 		if s.jobInFlight[k] {
 			s.mailMu.Unlock()
+			s.deferMailForPane(w.pane, w.owner)
 			return true // batch for this recipient already staged
 		}
 		s.jobInFlight[k] = true
@@ -179,6 +235,7 @@ func (s *Server) enqueueMail(w mailWrite) bool {
 		return true
 	default:
 		s.mailDone(w)
+		s.deferMailForPane(w.pane, w.owner)
 		return false
 	}
 }
@@ -478,9 +535,6 @@ func (s *Server) flushRegularForRecipient(recipient string) bool {
 // to the pane id, oldest first. No DB file means nothing is queued; skip
 // opening the store so status-transition flushes do not load the engine.
 func (s *Server) flushRegularForPane(pid int) bool {
-	if p := s.sup.Get(pid); p != nil && p.MailInputActive() {
-		return false
-	}
 	if !dispatch.DBExists(s.session) {
 		return false
 	}
@@ -497,8 +551,13 @@ func (s *Server) flushRegularForPane(pid int) bool {
 		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(pid) {
 			continue
 		}
+		pane := s.sup.Get(pid)
+		if pane != nil && pane.MailInputActive() {
+			s.deferMailForPane(pid, pane)
+			return delivered
+		}
 		payload := s.encodeMailFor(pid, m.Body)
-		if !s.enqueueMail(mailWrite{pane: pid, owner: s.sup.Get(pid), payload: payload, msgID: m.ID}) {
+		if !s.enqueueMail(mailWrite{pane: pid, owner: pane, payload: payload, msgID: m.ID}) {
 			return delivered
 		}
 		delivered = true
@@ -560,7 +619,7 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 	if pane == nil {
 		return false
 	}
-	if s.app.PaneStatusKey(t.pid) == "blocked" || pane.MailInputActive() {
+	if s.app.PaneStatusKey(t.pid) == "blocked" {
 		return false
 	}
 	store, derr := s.db()
@@ -581,6 +640,10 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 		ids = append(ids, m.ID)
 	}
 	if len(ids) == 0 {
+		return false
+	}
+	if pane.MailInputActive() {
+		s.deferMailForPane(t.pid, pane)
 		return false
 	}
 	return s.enqueueMail(mailWrite{
