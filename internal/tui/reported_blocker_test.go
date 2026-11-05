@@ -52,6 +52,23 @@ func TestReportedWorkingVisibleQuestionAndRecovery(t *testing.T) {
 	}
 }
 
+func TestPaneAgentStatusExcludesDecisionAttention(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	a.SetReported(1, "codex", "idle")
+	a.SetDecisionAttention(map[int]bool{1: true})
+	if got := a.PaneStatusKey(1); got != "blocked" {
+		t.Fatal(got)
+	}
+	if got := a.PaneAgentStatusKey(1); got != "idle" {
+		t.Fatal(got)
+	}
+	a.SetReported(1, "codex", "working")
+	if got := a.PaneAgentStatusKey(1); got != "working" {
+		t.Fatal(got)
+	}
+}
+
 func assertReportedBlockerRender(t *testing.T, a *App, key string) {
 	t.Helper()
 	snaps := a.paneSnaps()

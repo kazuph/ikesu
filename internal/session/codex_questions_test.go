@@ -63,3 +63,52 @@ func TestCodexQuestionsRejectsIncompleteAndForeignSession(t *testing.T) {
 		t.Fatal("incomplete record accepted")
 	}
 }
+
+func TestCodexQuestionsRejectsMalformedAnswer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout.jsonl")
+	data := `{"type":"session_meta","payload":{"id":"session-1"}}
+{"type":"response_item","payload":{"type":"function_call","name":"request_user_input","call_id":"call-1","arguments":"{\"questions\":[{\"id\":\"a\",\"question\":\"色は？\"}]}"}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"call-1","output":"{\"answers\":{\"a\":{}}}"}}
+`
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadCodexQuestions(path, "session-1"); err == nil {
+		t.Fatal("malformed answer accepted as empty")
+	}
+}
+
+func TestCodexUserInputReceiptRequiresNewCompleteRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout.jsonl")
+	prefix := "{\"type\":\"session_meta\",\"payload\":{\"id\":\"session-1\"}}\n"
+	old := "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"答え\"}]}}\n"
+	if err := os.WriteFile(path, []byte(prefix+old), 0600); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := int64(len(prefix + old))
+	if got, err := HasCodexUserInput(path, checkpoint, "答え"); err != nil || got {
+		t.Fatal(got, err)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.WriteString(old[:len(old)-1]); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if got, err := HasCodexUserInput(path, checkpoint, "答え"); err != nil || got {
+		t.Fatal("incomplete input accepted", got, err)
+	}
+	f, err = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.WriteString("\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if got, err := HasCodexUserInput(path, checkpoint, "答え"); err != nil || !got {
+		t.Fatal(got, err)
+	}
+}

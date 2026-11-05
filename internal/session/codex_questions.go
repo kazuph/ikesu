@@ -29,6 +29,7 @@ type CodexQuestion struct {
 	CallID    string
 	ID        string
 	Index     int
+	Total     int
 	Header    string
 	Question  string
 	Options   []CodexQuestionOption
@@ -74,6 +75,84 @@ func OpenCodexRollout(job platform.ForegroundJob) (string, string, error) {
 		return path, id, nil
 	}
 	return "", "", errors.New("foreground rollout missing")
+}
+
+// HasCodexUserInput only accepts complete user-message records appended after offset.
+func HasCodexUserInput(path string, offset int64, text string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if offset < 0 || info.Size() < offset {
+		return false, errors.New("rollout was truncated")
+	}
+	if offset > 0 {
+		if _, err = f.Seek(offset-1, io.SeekStart); err != nil {
+			return false, err
+		}
+		var last [1]byte
+		if _, err = io.ReadFull(f, last[:]); err != nil || last[0] != '\n' {
+			return false, errors.New("rollout checkpoint is incomplete")
+		}
+	}
+	if _, err = f.Seek(offset, io.SeekStart); err != nil {
+		return false, err
+	}
+	reader := bufio.NewReader(f)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err == io.EOF {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		var r struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Type    string `json:"type"`
+				Role    string `json:"role"`
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"payload"`
+		}
+		// Ignore unrelated record payload shapes, but never accept malformed JSON.
+		var envelope struct {
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if json.Unmarshal(line, &envelope) != nil {
+			return false, errors.New("invalid rollout record")
+		}
+		if envelope.Type != "response_item" {
+			continue
+		}
+		var kind struct {
+			Type string `json:"type"`
+			Role string `json:"role"`
+		}
+		if json.Unmarshal(envelope.Payload, &kind) != nil {
+			return false, errors.New("invalid response item")
+		}
+		if kind.Type != "message" || kind.Role != "user" {
+			continue
+		}
+		if json.Unmarshal(line, &r) != nil {
+			return false, errors.New("invalid user message")
+		}
+		for _, content := range r.Payload.Content {
+			if content.Type == "input_text" && content.Text == text {
+				return true, nil
+			}
+		}
+	}
 }
 
 // ReadCodexQuestions only accepts complete records from the specified session.
@@ -147,7 +226,7 @@ func ReadCodexQuestions(path, sessionID string) ([]CodexQuestion, error) {
 				}
 				ids[q.ID] = true
 				calls[p.CallID] = append(calls[p.CallID], len(questions))
-				questions = append(questions, CodexQuestion{SessionID: sessionID, CallID: p.CallID, ID: q.ID, Index: i, Header: q.Header, Question: q.Question, Options: q.Options, State: CodexPending})
+				questions = append(questions, CodexQuestion{SessionID: sessionID, CallID: p.CallID, ID: q.ID, Index: i, Total: len(args.Questions), Header: q.Header, Question: q.Question, Options: q.Options, State: CodexPending})
 			}
 		} else if p.Type == "function_call_output" && calls[p.CallID] != nil {
 			if outputs[p.CallID] {
@@ -155,18 +234,34 @@ func ReadCodexQuestions(path, sessionID string) ([]CodexQuestion, error) {
 			}
 			outputs[p.CallID] = true
 			var result struct {
-				Answers map[string]struct {
-					Answers []string `json:"answers"`
-				} `json:"answers"`
+				Answers map[string]json.RawMessage `json:"answers"`
 			}
 			var output string
 			if json.Unmarshal(p.Output, &output) != nil || json.Unmarshal([]byte(output), &result) != nil || result.Answers == nil {
 				return nil, fmt.Errorf("invalid output for %s", p.CallID)
 			}
+			known := map[string]bool{}
 			for _, i := range calls[p.CallID] {
-				answers := result.Answers[questions[i].ID].Answers
+				known[questions[i].ID] = true
+			}
+			for id := range result.Answers {
+				if !known[id] {
+					return nil, fmt.Errorf("unknown answer id %s", id)
+				}
+			}
+			for _, i := range calls[p.CallID] {
 				questions[i].State = CodexEmpty
-				for _, answer := range answers {
+				raw, exists := result.Answers[questions[i].ID]
+				if !exists {
+					continue
+				}
+				var entry struct {
+					Answers *[]string `json:"answers"`
+				}
+				if json.Unmarshal(raw, &entry) != nil || entry.Answers == nil {
+					return nil, fmt.Errorf("invalid answer for %s", questions[i].ID)
+				}
+				for _, answer := range *entry.Answers {
 					if answer != "" {
 						questions[i].State = CodexAnswered
 						break

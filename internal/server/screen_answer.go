@@ -16,6 +16,9 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if !screenOrigin(d) || d.Status != "pending" {
 		return nil, 0, nil
 	}
+	if s.screenPrompts.verifying[d.DecisionID] != nil {
+		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "waiting for recorded Codex question result"}
+	}
 	pid, _, _, ok := s.findPane(d.Origin.PaneID)
 	if ok && s.screenUserActive(pid) {
 		return nil, 0, &api.Error{Code: "pane_user_active", Message: "pane received external input within the last three seconds"}

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/machine"
 )
 
@@ -98,9 +99,10 @@ func (r *runner) watchRemote(ctx context.Context, p machine.Profile, lines chan<
 	owner := decisionMachine{ID: p.ID, Label: p.Label}
 	delay := time.Duration(0)
 	unsupported := false
+	deliveries := map[string]api.Decision{}
 	for ctx.Err() == nil {
 		start := time.Now()
-		result := r.watchRemoteConnection(ctx, p, owner, lines)
+		result := r.watchRemoteConnection(ctx, p, owner, lines, deliveries)
 		reason, auth := result.reason, result.auth
 		if result.observed {
 			unsupported = false
@@ -126,7 +128,7 @@ func (r *runner) watchRemote(ctx context.Context, p machine.Profile, lines chan<
 		}
 	}
 }
-func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, owner decisionMachine, lines chan<- decisionWatchLine) remoteWatchResult {
+func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, owner decisionMachine, lines chan<- decisionWatchLine, deliveries map[string]api.Decision) remoteWatchResult {
 	child, stop := context.WithCancel(ctx)
 	defer stop()
 	cmd := childenv.CommandContext(child, "ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), []string{"decision", "watch"})...)
@@ -196,7 +198,7 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 		}
 		switch line.Event {
 		case "machine_up", "machine_down":
-		case "created", "resolved":
+		case "created", "resolved", "updated":
 			if line.Decision == nil {
 				note("remote decision stream missing record")
 				stop()
@@ -217,6 +219,35 @@ func (r *runner) watchRemoteConnection(ctx context.Context, p machine.Profile, o
 		line.Machine = owner
 		if !sendWatch(ctx, lines, line) {
 			break
+		}
+		if line.Decision != nil && line.Decision.Delivery != nil {
+			if line.Decision.Delivery.Status == "pending" {
+				deliveries[line.Decision.DecisionID] = *line.Decision
+			} else {
+				delete(deliveries, line.Decision.DecisionID)
+			}
+		}
+		if line.Event == "machine_up" {
+			for id, previous := range deliveries {
+				get := childenv.CommandContext(child, "ssh", machine.ForwardArgs(p, r.remoteDecisionBinary(), []string{"decision", "get", id})...)
+				raw, err := get.Output()
+				var response api.Response
+				var result api.DecisionResult
+				if err != nil || json.Unmarshal(raw, &response) != nil || response.Err != nil || json.Unmarshal(response.Result, &result) != nil || result.Decision.DecisionID != id {
+					note("remote delivery state unavailable")
+					stop()
+					break
+				}
+				d := recoverDelivery(previous, result.Decision)
+				if !sendWatch(ctx, lines, decisionWatchLine{Event: "updated", Machine: owner, Decision: &d}) {
+					break
+				}
+				if d.Delivery.Status != "pending" {
+					delete(deliveries, id)
+				} else {
+					deliveries[id] = d
+				}
+			}
 		}
 	}
 	stop()

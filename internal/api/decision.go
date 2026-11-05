@@ -42,20 +42,26 @@ type DecisionAnswer struct {
 	Responder      string   `json:"responder"`
 	AnsweredUnixMS int64    `json:"answered_unix_ms"`
 }
+type DecisionDelivery struct {
+	Status string `json:"status"`
+	Text   string `json:"text"`
+	Reason string `json:"reason,omitempty"`
+}
 type Decision struct {
-	DecisionID    string           `json:"decision_id"`
-	Kind          string           `json:"kind"`
-	Title         string           `json:"title"`
-	Body          *string          `json:"body"`
-	Options       []DecisionOption `json:"options"`
-	AllowText     bool             `json:"allow_text"`
-	MultiSelect   bool             `json:"multi_select"`
-	QuestionLabel *string          `json:"question_label,omitempty"`
-	Origin        *DecisionOrigin  `json:"origin"`
-	CreatedUnixMS int64            `json:"created_unix_ms"`
-	ExpiresUnixMS *int64           `json:"expires_unix_ms"`
-	Status        string           `json:"status"`
-	Answer        *DecisionAnswer  `json:"answer"`
+	DecisionID    string            `json:"decision_id"`
+	Kind          string            `json:"kind"`
+	Title         string            `json:"title"`
+	Body          *string           `json:"body"`
+	Options       []DecisionOption  `json:"options"`
+	AllowText     bool              `json:"allow_text"`
+	MultiSelect   bool              `json:"multi_select"`
+	QuestionLabel *string           `json:"question_label,omitempty"`
+	Origin        *DecisionOrigin   `json:"origin"`
+	CreatedUnixMS int64             `json:"created_unix_ms"`
+	ExpiresUnixMS *int64            `json:"expires_unix_ms"`
+	Status        string            `json:"status"`
+	Answer        *DecisionAnswer   `json:"answer"`
+	Delivery      *DecisionDelivery `json:"delivery,omitempty"`
 }
 type GuardExecutionClaim struct {
 	CommandHash string `json:"command_hash"`

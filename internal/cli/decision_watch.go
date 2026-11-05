@@ -35,6 +35,45 @@ type decisionWatchLine struct {
 	Reason   string          `json:"reason,omitempty"`
 }
 
+func recoverDelivery(previous, current api.Decision) api.Decision {
+	if current.Delivery != nil {
+		switch current.Delivery.Status {
+		case "pending", "delivered", "failed":
+			return current
+		}
+	}
+	if previous.Delivery != nil {
+		copy := *previous.Delivery
+		copy.Status, copy.Reason = "failed", "サーバーの再起動"
+		current.Delivery = &copy
+	}
+	return current
+}
+
+func decisionWatchEvent(kind string, d api.Decision, seen map[string]string) (string, error) {
+	switch kind {
+	case "decision_created":
+		if _, known := seen[d.DecisionID]; known {
+			return "", nil
+		}
+		if d.Status != "pending" {
+			return "", fmt.Errorf("created decision is not pending")
+		}
+		return "created", nil
+	case "decision_resolved":
+		if seen[d.DecisionID] == d.Status {
+			return "", nil
+		}
+		switch d.Status {
+		case "answered", "expired", "cancelled":
+		default:
+			return "", fmt.Errorf("resolved decision is still pending")
+		}
+		return "resolved", nil
+	}
+	return "", nil
+}
+
 func watchRetry(previous time.Duration, auth bool) time.Duration {
 	if auth {
 		return decisionAuthRetry
@@ -147,9 +186,10 @@ func watchOutputClosed(out io.Writer, cancel context.CancelFunc) func() {
 func (r *runner) watchLocal(ctx context.Context, lines chan<- decisionWatchLine) {
 	owner := decisionMachine{ID: "local", Label: "Local"}
 	delay := time.Duration(0)
+	deliveries := map[string]api.Decision{}
 	for ctx.Err() == nil {
 		started := time.Now()
-		err := r.watchLocalConnection(ctx, owner, lines)
+		err := r.watchLocalConnection(ctx, owner, lines, deliveries)
 		if ctx.Err() != nil {
 			return
 		}
@@ -169,7 +209,7 @@ func (r *runner) watchLocal(ctx context.Context, lines chan<- decisionWatchLine)
 		}
 	}
 }
-func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine, lines chan<- decisionWatchLine) error {
+func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine, lines chan<- decisionWatchLine, deliveries map[string]api.Decision) error {
 	dialer := net.Dialer{Timeout: 3 * time.Second}
 	conn, err := dialer.DialContext(ctx, "unix", r.socketPath())
 	if err != nil {
@@ -226,6 +266,13 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 			if !sendWatch(ctx, lines, decisionWatchLine{Event: "created", Machine: owner, Decision: &d}) {
 				return ctx.Err()
 			}
+		} else if d.Delivery != nil {
+			if d.Delivery.Status == "pending" {
+				deliveries[d.DecisionID] = d
+			}
+			if !sendWatch(ctx, lines, decisionWatchLine{Event: "resolved", Machine: owner, Decision: &d}) {
+				return ctx.Err()
+			}
 		}
 	}
 	type eventRead struct {
@@ -257,6 +304,39 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			for id, previous := range deliveries {
+				raw, err := r.request("cli:decision:watch:delivery", api.MethodDecisionGet, api.DecisionTargetParams{DecisionID: id})
+				if err != nil {
+					return err
+				}
+				var response api.Response
+				if err := json.Unmarshal(raw, &response); err != nil {
+					return err
+				}
+				if response.Err != nil {
+					return response.Err
+				}
+				var result api.DecisionResult
+				if err := json.Unmarshal(response.Result, &result); err != nil {
+					return err
+				}
+				d := recoverDelivery(previous, result.Decision)
+				encoded, err := json.Marshal(d)
+				if err != nil {
+					return err
+				}
+				if content[id] != string(encoded) {
+					content[id] = string(encoded)
+					if !sendWatch(ctx, lines, decisionWatchLine{Event: "updated", Machine: owner, Decision: &d}) {
+						return ctx.Err()
+					}
+				}
+				if d.Delivery.Status != "pending" {
+					delete(deliveries, id)
+				} else {
+					deliveries[id] = d
+				}
+			}
 			hasPending := false
 			for _, status := range seen {
 				if status == "pending" {
@@ -314,30 +394,17 @@ func (r *runner) watchLocalConnection(ctx context.Context, owner decisionMachine
 		if err := json.Unmarshal(env.Data, &d); err != nil {
 			return err
 		}
-		event := ""
-		switch env.Event {
-		case "decision_created":
-			if _, known := seen[d.DecisionID]; known {
-				continue
-			}
-			if d.Status != "pending" {
-				return fmt.Errorf("created decision is not pending")
-			}
-			event = "created"
-		case "decision_resolved":
-			if seen[d.DecisionID] == d.Status {
-				continue
-			}
-			switch d.Status {
-			case "answered", "expired", "cancelled":
-			default:
-				return fmt.Errorf("resolved decision is still pending")
-			}
-			event = "resolved"
-		default:
+		event, err := decisionWatchEvent(env.Event, d, seen)
+		if err != nil {
+			return err
+		}
+		if event == "" {
 			continue
 		}
 		seen[d.DecisionID] = d.Status
+		if d.Delivery != nil && d.Delivery.Status == "pending" {
+			deliveries[d.DecisionID] = d
+		}
 		encoded, _ := json.Marshal(d)
 		content[d.DecisionID] = string(encoded)
 		if !sendWatch(ctx, lines, decisionWatchLine{Event: event, Machine: owner, Decision: &d}) {
