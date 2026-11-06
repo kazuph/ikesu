@@ -507,3 +507,48 @@ func TestLegacyRestoreMatchesOnlyQuestionNearDecisionCreation(t *testing.T) {
 		t.Fatal("ambiguous candidates accepted")
 	}
 }
+
+func TestLegacyRestoreRejectsProcessStartedAfterDecision(t *testing.T) {
+	created := time.Date(2026, 11, 6, 2, 0, 30, 0, time.UTC)
+	label := "Question 1/1"
+	d := api.Decision{Title: "色は？", CreatedUnixMS: created.UnixMilli(), QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
+	q := session.CodexQuestion{Timestamp: created.Add(-time.Second), SessionID: "resumed-other", CallID: "call", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
+	if _, ok := restoredCodexMatchAtProcessStart(d, []session.CodexQuestion{q}, "", created.Add(time.Second)); ok {
+		t.Fatal("resumed session bound to a process started after the decision")
+	}
+	if _, ok := restoredCodexMatchAtProcessStart(d, []session.CodexQuestion{q}, "", created); ok {
+		t.Fatal("process with an equal start time was accepted")
+	}
+	if _, ok := restoredCodexMatchAtProcessStart(d, []session.CodexQuestion{q}, "", time.Time{}); ok {
+		t.Fatal("unknown process start was accepted")
+	}
+	if _, ok := restoredCodexMatchAtProcessStart(d, []session.CodexQuestion{q}, `["resumed-other","call","q"]`, created.Add(time.Second)); !ok {
+		t.Fatal("recorded question identity should retain existing behavior")
+	}
+	q.SessionID = "original"
+	if _, ok := restoredCodexMatchAtProcessStart(d, []session.CodexQuestion{q}, "", created.Add(-time.Minute)); !ok {
+		t.Fatal("original session did not restore")
+	}
+
+	teststate.Lock(t)
+	s, _, input := screenTerminal(t, "codex-question", "codex")
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := store.CreateDecision(api.DecisionCreateParams{Kind: "agent_prompt", Title: d.Title, QuestionLabel: &label, Options: d.Options, Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "codex", Reason: "screen_prompt"}}, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response api.Response
+	choice := "1"
+	s.app.Do(func() {
+		response = s.decisionRequest(&api.Request{ID: "answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(api.DecisionAnswerParams{DecisionID: decision.DecisionID, OptionID: &choice})})
+	})
+	if response.Err == nil || response.Err.Code != api.ErrDecisionStale {
+		t.Fatalf("unbound decision accepted: %+v", response.Err)
+	}
+	if keys, err := os.ReadFile(input); err != nil || len(keys) != 0 {
+		t.Fatalf("input reached terminal: %q, %v", keys, err)
+	}
+}

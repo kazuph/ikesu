@@ -78,6 +78,13 @@ func restoredCodexMatch(d api.Decision, questions []session.CodexQuestion, ident
 	return matches[0], true
 }
 
+func restoredCodexMatchAtProcessStart(d api.Decision, questions []session.CodexQuestion, identity string, start time.Time) (session.CodexQuestion, bool) {
+	if identity == "" && (d.CreatedUnixMS <= 0 || start.IsZero() || !start.Before(time.UnixMilli(d.CreatedUnixMS))) {
+		return session.CodexQuestion{}, false
+	}
+	return restoredCodexMatch(d, questions, identity)
+}
+
 func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.Decision, identity string, pending []api.Decision) {
 	fail := func(reason string) {
 		fmt.Fprintf(os.Stderr, "ikesu: late question restore %s: %s\n", d.DecisionID, reason)
@@ -102,9 +109,13 @@ func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.De
 		fail("rollout unreadable")
 		return
 	}
-	q, ok := restoredCodexMatch(d, questions, identity)
+	q, ok := restoredCodexMatchAtProcessStart(d, questions, identity, start)
 	if !ok {
-		fail("question or empty result not uniquely verified")
+		if identity == "" && (d.CreatedUnixMS <= 0 || start.IsZero() || !start.Before(time.UnixMilli(d.CreatedUnixMS))) {
+			fail("foreground process did not start before decision creation")
+		} else {
+			fail("question or empty result not uniquely verified")
+		}
 		return
 	}
 
