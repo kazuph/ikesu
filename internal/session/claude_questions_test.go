@@ -5,7 +5,28 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestClaudeQuestionRecordsQuestionAndAnswerTimes(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "project")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id := "12345678-1234-1234-1234-123456789abc"
+	rows := `{"timestamp":"2026-11-06T14:33:01Z","sessionId":"` + id + `","message":{"content":[{"type":"tool_use","name":"AskUserQuestion","id":"q","input":{"questions":[{"question":"質問","options":[{"label":"はい"}]}]}}]}}` + "\n" +
+		`{"timestamp":"2026-11-06T14:34:01Z","sessionId":"` + id + `","message":{"content":[{"type":"tool_result","tool_use_id":"q"}]}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, id+".jsonl"), []byte(rows), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := new(ClaudeQuestionCache).ReadAll(root, id)
+	start, _ := time.Parse(time.RFC3339, "2026-11-06T14:33:01Z")
+	end, _ := time.Parse(time.RFC3339, "2026-11-06T14:34:01Z")
+	if !ok || len(got) != 1 || !got[0].Answered || !got[0].StartedAt.Equal(start) || !got[0].AnsweredAt.Equal(end) {
+		t.Fatalf("question times: %+v %v", got, ok)
+	}
+}
 
 func TestPendingClaudeQuestions(t *testing.T) {
 	root := t.TempDir()

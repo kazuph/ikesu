@@ -65,10 +65,10 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		damaged = screenprompt.HasOptionRows(visible)
 	}
 	if !ok || w == nil || w.decisionID != d.DecisionID || !s.cfg.ScreenPrompts() || current != nil && current.Signature() != w.signature || current == nil && (!w.lastMatched || !damaged) || s.sup.Get(pid) == nil || s.sup.Get(pid).Snapshot().Dead {
-		if w == nil {
-			w = &screenPromptWatch{decisionID: d.DecisionID}
+		stale := &screenPromptWatch{decisionID: d.DecisionID}
+		if !s.unidentifiedClaudeDecision(stale) {
+			s.cancelScreenPrompt(stale)
 		}
-		s.cancelScreenPrompt(w)
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "screen prompt no longer matches this decision"}
 	}
 	if current != nil {

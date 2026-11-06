@@ -5,10 +5,148 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/screenprompt"
 	"github.com/kazuph/ikesu/internal/session"
 )
+
+func (s *Server) unidentifiedClaudeDecision(w *screenPromptWatch) bool {
+	if w == nil || w.decisionID == "" || s.store == nil {
+		return false
+	}
+	d, err := s.store.Decision(w.decisionID)
+	if err != nil || d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.Agent != "claude" || d.Origin.Reason != "screen_prompt" || d.Origin.Tool != "" {
+		return false
+	}
+	identity, err := s.store.ScreenQuestionIdentity(d.DecisionID)
+	return err != nil || identity == ""
+}
+
+func (s *Server) captureClaudeQuestionContext(pid int, decisionID string) {
+	pane := s.sup.Get(pid)
+	if pane == nil || s.screenPrompts.claudeCapturing[decisionID] {
+		return
+	}
+	if s.screenPrompts.claudeRestore == nil {
+		s.screenPrompts.claudeRestore = map[string]int{}
+	}
+	if s.screenPrompts.claudeCapturing == nil {
+		s.screenPrompts.claudeCapturing = map[string]bool{}
+	}
+	s.screenPrompts.claudeRestore[decisionID] = pid
+	s.screenPrompts.claudeCapturing[decisionID] = true
+	s.scheduleScreenPrompts()
+	go func() {
+		group := pane.ForegroundJob().ProcessGroupID
+		id, start, ok := observedClaudeSession(pane)
+		s.app.Do(func() {
+			delete(s.screenPrompts.claudeCapturing, decisionID)
+			if !s.cfg.ScreenPrompts() || s.sup.Get(pid) != pane || pane.Snapshot().Dead {
+				return
+			}
+			if !ok {
+				return
+			}
+			current := pane.ForegroundJob()
+			currentStart, live := session.ProcessStart(current)
+			if !live || group <= 0 || current.ProcessGroupID != group || !currentStart.Equal(start) || foregroundAgent(pane) != "claude" {
+				return
+			}
+			d, err := s.store.Decision(decisionID)
+			if err != nil || d.Status != "pending" || start.UnixMilli() > d.CreatedUnixMS {
+				delete(s.screenPrompts.claudeRestore, decisionID)
+				return
+			}
+			if err := s.store.BindClaudeScreenContext(decisionID, fmtPaneID(pid), id, start); err != nil {
+				return
+			}
+			s.screenPrompts.claudeRestore[decisionID] = pid
+			s.scheduleScreenPrompts()
+		})
+	}()
+}
+
+func observedClaudeSession(pane *runtime.Pane) (string, time.Time, bool) {
+	if pane.Snapshot().Dead || foregroundAgent(pane) != "claude" {
+		return "", time.Time{}, false
+	}
+	job := pane.ForegroundJob()
+	start, ok := session.ProcessStart(job)
+	if !ok {
+		return "", time.Time{}, false
+	}
+	snapshot := pane.Snapshot()
+	id, ok := session.ObserveProcessSession("claude", snapshot.Cwd, start, job, pane.SessionEnvironment())
+	if !ok {
+		return "", time.Time{}, false
+	}
+	current := pane.ForegroundJob()
+	currentStart, ok := session.ProcessStart(current)
+	if !ok || current.ProcessGroupID != job.ProcessGroupID || !currentStart.Equal(start) || pane.Snapshot().Cwd != snapshot.Cwd || foregroundAgent(pane) != "claude" {
+		return "", time.Time{}, false
+	}
+	return id, start, true
+}
+
+func restoredUnidentifiedClaudeQuestion(pane *runtime.Pane, expected string, processStart time.Time, d api.Decision) (string, bool) {
+	id, start, ok := observedClaudeSession(pane)
+	if !ok || id != expected || start.UnixMilli() != processStart.UnixMilli() || start.UnixMilli() > d.CreatedUnixMS {
+		return "", false
+	}
+	home, root := "", ""
+	for _, item := range pane.SessionEnvironment() {
+		key, value, found := strings.Cut(item, "=")
+		if found && key == "HOME" {
+			home = value
+		}
+		if found && key == "CLAUDE_CONFIG_DIR" {
+			root = value
+		}
+	}
+	if root == "" {
+		if home == "" {
+			home, _ = os.UserHomeDir()
+		}
+		root = filepath.Join(home, ".claude")
+	}
+	questions, ok := new(session.ClaudeQuestionCache).ReadAll(root, id)
+	if !ok {
+		return "", false
+	}
+	currentID, currentStart, ok := observedClaudeSession(pane)
+	if !ok || currentID != id || currentStart.UnixMilli() != start.UnixMilli() {
+		return "", false
+	}
+	p := &screenprompt.Prompt{Params: api.DecisionCreateParams{Kind: d.Kind, Title: d.Title, Body: d.Body, Options: d.Options, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}
+	var found *session.ClaudeQuestion
+	for i := range questions {
+		q := &questions[i]
+		if q.StartedAt.IsZero() || q.StartedAt.Before(start) || q.StartedAt.UnixMilli() >= d.CreatedUnixMS || (q.Answered && (q.AnsweredAt.IsZero() || q.AnsweredAt.UnixMilli() <= d.CreatedUnixMS)) || !matchClaudeQuestion(p, *q) {
+			continue
+		}
+		if found != nil {
+			return "", false
+		}
+		found = q
+	}
+	if found == nil {
+		return "", false
+	}
+	identity, _ := json.Marshal([]any{id, found.ToolID, found.Index})
+	if found.Answered {
+		return string(identity), true
+	}
+	visible := screenprompt.Parse("claude", pane.DetectionScreenLines())
+	for _, next := range questions {
+		if next.ToolID != found.ToolID && !next.StartedAt.IsZero() && next.StartedAt.UnixMilli() > d.CreatedUnixMS && matchClaudeQuestion(visible, next) {
+			return string(identity), true
+		}
+	}
+	return string(identity), false
+}
 
 // Only identified records can be associated safely with an answered call.
 func (s *Server) prepareClaudeQuestionRestore() {
@@ -36,6 +174,13 @@ func (s *Server) prepareClaudeQuestionRestore() {
 			s.app.SetConfigWarning("Claude question restore: " + err.Error())
 			continue
 		}
+		if identity == "" {
+			contextPane, _, _, found, err := s.store.ClaudeScreenContext(d.DecisionID)
+			if err == nil && (!found || contextPane == d.Origin.PaneID) {
+				s.screenPrompts.claudeRestore[d.DecisionID] = pid
+			}
+			continue
+		}
 		var parts []json.RawMessage
 		if json.Unmarshal([]byte(identity), &parts) != nil || len(parts) != 3 {
 			continue
@@ -57,6 +202,9 @@ func (s *Server) scanRestoredClaudeQuestions() {
 		id, identity string
 		pid          int
 		pane         *runtime.Pane
+		decision     api.Decision
+		sessionID    string
+		processStart time.Time
 	}
 	var records []record
 	for id, pid := range s.screenPrompts.claudeRestore {
@@ -72,7 +220,22 @@ func (s *Server) scanRestoredClaudeQuestions() {
 		}
 		identity, err := s.store.ScreenQuestionIdentity(id)
 		if err == nil {
-			records = append(records, record{id, identity, pid, pane})
+			r := record{id: id, identity: identity, pid: pid, pane: pane, decision: d}
+			if identity == "" {
+				contextPane, sessionID, start, found, e := s.store.ClaudeScreenContext(id)
+				if e != nil {
+					continue
+				}
+				if !found {
+					s.captureClaudeQuestionContext(pid, id)
+					continue
+				}
+				if contextPane != fmtPaneID(pid) {
+					continue
+				}
+				r.sessionID, r.processStart = sessionID, start
+			}
+			records = append(records, r)
 		}
 	}
 	if len(records) == 0 {
@@ -81,7 +244,15 @@ func (s *Server) scanRestoredClaudeQuestions() {
 	s.screenPrompts.claudeRestoring = true
 	go func() {
 		answered := map[string]bool{}
+		identified := map[string]string{}
 		for _, r := range records {
+			if r.identity == "" {
+				identity, done := restoredUnidentifiedClaudeQuestion(r.pane, r.sessionID, r.processStart, r.decision)
+				if identity != "" {
+					identified[r.id], answered[r.id] = identity, done
+				}
+				continue
+			}
 			var identity struct {
 				session, tool string
 				index         int
@@ -97,11 +268,22 @@ func (s *Server) scanRestoredClaudeQuestions() {
 		s.app.Do(func() {
 			s.screenPrompts.claudeRestoring = false
 			for _, r := range records {
-				if !answered[r.id] || s.screenPrompts.claudeRestore[r.id] != r.pid || s.sup.Get(r.pid) != r.pane {
+				if s.screenPrompts.claudeRestore[r.id] != r.pid || s.sup.Get(r.pid) != r.pane {
 					continue
 				}
 				identity, err := s.store.ScreenQuestionIdentity(r.id)
 				if err != nil || identity != r.identity {
+					continue
+				}
+				if identity == "" {
+					if identified[r.id] == "" {
+						continue
+					}
+					if err := s.store.BindScreenQuestion(r.id, fmtPaneID(r.pid), identified[r.id]); err != nil {
+						continue
+					}
+				}
+				if !answered[r.id] {
 					continue
 				}
 				w := &screenPromptWatch{decisionID: r.id}

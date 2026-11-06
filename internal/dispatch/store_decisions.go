@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS screen_question_identities (
  pane_id TEXT NOT NULL,
  identity TEXT NOT NULL,
  UNIQUE(pane_id, identity)
+);
+CREATE TABLE IF NOT EXISTS claude_screen_contexts (
+ decision_id TEXT PRIMARY KEY,
+ pane_id TEXT NOT NULL,
+ session_id TEXT NOT NULL,
+ process_start_ms INTEGER NOT NULL
 );`
 
 func decisionError(code, message string) error { return &api.Error{Code: code, Message: message} }
@@ -140,6 +146,42 @@ func (s *Store) ScreenQuestionIdentity(decisionID string) (string, error) {
 		return "", st.Err()
 	}
 	return st.ColumnText(0), nil
+}
+
+func (s *Store) BindClaudeScreenContext(decisionID, paneID, sessionID string, processStart time.Time) error {
+	if decisionID == "" || paneID == "" || sessionID == "" || processStart.IsZero() {
+		return decisionError(api.ErrInvalidRequest, "Claude screen context is incomplete")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.decisionLocked(decisionID)
+	if err != nil {
+		return err
+	}
+	if d.Status != "pending" || d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.PaneID != paneID || d.Origin.Agent != "claude" || d.Origin.Reason != "screen_prompt" || d.Origin.Tool != "" || processStart.UnixMilli() > d.CreatedUnixMS {
+		return decisionError(api.ErrDecisionStale, "Claude screen context no longer matches")
+	}
+	if err := s.execLocked(`INSERT INTO claude_screen_contexts(decision_id,pane_id,session_id,process_start_ms) VALUES(?,?,?,?) ON CONFLICT(decision_id) DO UPDATE SET session_id=excluded.session_id WHERE pane_id=excluded.pane_id AND session_id=excluded.session_id AND process_start_ms=excluded.process_start_ms`, decisionID, paneID, sessionID, processStart.UnixMilli()); err != nil {
+		return err
+	}
+	if s.db.Changes() == 0 {
+		return decisionError(api.ErrDecisionStale, "Claude screen context belongs to another session")
+	}
+	return nil
+}
+
+func (s *Store) ClaudeScreenContext(decisionID string) (string, string, time.Time, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(`SELECT pane_id,session_id,process_start_ms FROM claude_screen_contexts WHERE decision_id=?`, decisionID)
+	if err != nil {
+		return "", "", time.Time{}, false, err
+	}
+	defer st.Close()
+	if !st.Step() {
+		return "", "", time.Time{}, false, st.Err()
+	}
+	return st.ColumnText(0), st.ColumnText(1), time.UnixMilli(st.ColumnInt64(2)), true, nil
 }
 
 func (s *Store) screenQuestionDecision(paneID, identity string, pendingOnly bool) (api.Decision, bool, error) {

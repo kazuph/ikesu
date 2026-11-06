@@ -22,6 +22,7 @@ type screenPromptHub struct {
 	verifying       map[string]*lateCodexQuestion
 	claudeRestore   map[string]int
 	claudeRestoring bool
+	claudeCapturing map[string]bool
 	timer           *time.Timer
 }
 
@@ -395,7 +396,7 @@ func (s *Server) scanScreenPrompts() {
 				if p != nil && !w.resolved {
 					s.noteScreenRebuild(pid)
 				}
-				if !changedIdentity {
+				if !changedIdentity && !s.unidentifiedClaudeDecision(w) {
 					s.cancelScreenPrompt(w)
 				}
 				delete(s.screenPrompts.watches, pid)
@@ -644,4 +645,7 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	}
 	w.decisionID = d.DecisionID
 	s.decisionChanged("decision_created", d)
+	if d.Kind == "agent_prompt" && d.Origin != nil && d.Origin.Agent == "claude" && d.Origin.Reason == "screen_prompt" && d.Origin.Tool == "" && w.transcriptID == "" && w.prompt.MCPServer == "" {
+		s.captureClaudeQuestionContext(pid, d.DecisionID)
+	}
 }

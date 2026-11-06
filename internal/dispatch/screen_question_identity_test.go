@@ -106,3 +106,36 @@ func TestBindScreenQuestionAfterLocalCancellation(t *testing.T) {
 		t.Fatal("answered question rebound")
 	}
 }
+
+func TestClaudeScreenContextSurvivesRestartAndRejectsNewerProcess(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ledger.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	params := api.DecisionCreateParams{Kind: "agent_prompt", Title: "質問", Options: []api.DecisionOption{{ID: "1", Label: "選択", Role: "other"}}, Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Reason: "screen_prompt"}}
+	d, err := store.CreateDecision(params, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BindClaudeScreenContext(d.DecisionID, "p1", "session", now.Add(time.Second)); err == nil {
+		t.Fatal("newer process accepted")
+	}
+	start := now.Add(-time.Second)
+	if err := store.BindClaudeScreenContext(d.DecisionID, "p1", "session", start); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	pane, id, got, found, err := store.ClaudeScreenContext(d.DecisionID)
+	if err != nil || !found || pane != "p1" || id != "session" || !got.Equal(start) {
+		t.Fatalf("restored context: %q %q %v %v %v", pane, id, got, found, err)
+	}
+}

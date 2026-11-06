@@ -11,14 +11,16 @@ import (
 )
 
 type ClaudeQuestion struct {
-	SessionID string
-	ToolID    string
-	Index     int
-	Header    string
-	Question  string
-	Multi     bool
-	Answered  bool
-	Options   []ClaudeQuestionOption
+	SessionID  string
+	ToolID     string
+	Index      int
+	Header     string
+	Question   string
+	Multi      bool
+	Answered   bool
+	StartedAt  time.Time
+	AnsweredAt time.Time
+	Options    []ClaudeQuestionOption
 }
 
 type ClaudeQuestionOption struct{ Label, Description string }
@@ -100,12 +102,14 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 	}
 	type row struct {
 		SessionID string `json:"sessionId"`
+		Timestamp string `json:"timestamp"`
 		Message   struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
 	}
 	pending := map[string][]ClaudeQuestion{}
-	answered := map[string]bool{}
+	answered := map[string]time.Time{}
+	answeredSeen := map[string]bool{}
 	matched := false
 	reader := bufio.NewReader(f)
 	for {
@@ -134,8 +138,10 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 			return nil, false
 		}
 		for _, b := range blocks {
+			at, _ := time.Parse(time.RFC3339Nano, record.Timestamp)
 			if b.Type == "tool_result" && b.ToolUseID != "" {
-				answered[b.ToolUseID] = true
+				answeredSeen[b.ToolUseID] = true
+				answered[b.ToolUseID] = at
 			}
 			if b.Type != "tool_use" || b.Name != "AskUserQuestion" || b.ID == "" {
 				continue
@@ -148,7 +154,7 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 			}
 			qs := make([]ClaudeQuestion, 0, len(input.Questions))
 			for index, q := range input.Questions {
-				item := ClaudeQuestion{SessionID: sessionID, ToolID: b.ID, Index: index, Header: q.Header, Question: q.Question, Multi: q.Multi}
+				item := ClaudeQuestion{SessionID: sessionID, ToolID: b.ID, Index: index, Header: q.Header, Question: q.Question, Multi: q.Multi, StartedAt: at}
 				for _, o := range q.Options {
 					item.Options = append(item.Options, ClaudeQuestionOption{Label: o.Label, Description: o.Description})
 				}
@@ -160,7 +166,8 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 	var out []ClaudeQuestion
 	for id, questions := range pending {
 		for _, q := range questions {
-			q.Answered = answered[id]
+			q.Answered = answeredSeen[id]
+			q.AnsweredAt = answered[id]
 			out = append(out, q)
 		}
 	}
