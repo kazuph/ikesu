@@ -273,3 +273,18 @@ func TestLateApprovalOmitsTerminalTitleAndAbsentPreview(t *testing.T) {
 		t.Fatalf("wrong preview fallback: %q", text)
 	}
 }
+
+func TestLateApprovalTextModeShowsInputInstructions(t *testing.T) {
+	app := model.New(t.TempDir(), 120, 40)
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青"}}}
+	state := approvalState{pending: []api.Decision{d}, open: "late", textMode: true, reason: "自由入力"}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	text := strings.Join(in.Approval.Lines, "\n")
+	if !strings.Contains(text, "text 自由入力") || !strings.Contains(text, "confirm ↵  ·  back ctrl+u  ·  close esc") {
+		t.Fatalf("missing input or guidance: %q", text)
+	}
+	if strings.Contains(text, "select 1-2") || strings.Contains(text, "input · back ctrl+u") {
+		t.Fatalf("text mode shows selection or redundant guidance: %q", text)
+	}
+}

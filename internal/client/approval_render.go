@@ -169,9 +169,6 @@ func (s *approvalState) overlay(in *render.Input) {
 	if d.LateAnswer && d.AllowText {
 		blank()
 		add(" text "+s.reason, "input", 0, false)
-		if s.textMode {
-			add(" input · back ctrl+u", "dim", 0, false)
-		}
 	} else if s.selected == "reject" && d.AllowText {
 		blank()
 		add(" reject note "+s.reason, "input", 0, false)
@@ -179,7 +176,7 @@ func (s *approvalState) overlay(in *render.Input) {
 	blank()
 	if s.waiting {
 		add(" sending", "dim", 0, false)
-	} else if !d.LateAnswer && s.selected == "reject" && d.AllowText {
+	} else if d.AllowText && (d.LateAnswer && s.textMode || !d.LateAnswer && s.selected == "reject") {
 		footer("confirm ↵", "back ctrl+u", "close esc")
 	} else {
 		parts := []string{fmt.Sprintf("select 1-%d", len(d.Options))}
