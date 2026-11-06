@@ -159,3 +159,15 @@ func TestApprovalSurfaceAndFooterUseThemeColors(t *testing.T) {
 		t.Errorf("label=%+v key=%+v", label, key)
 	}
 }
+
+func TestApprovalWarningUsesYellow(t *testing.T) {
+	s := model.New(t.TempDir(), 120, 40)
+	f := NewFrame(120, 40)
+	f.Palette = ThemePalette("tokyo-night")
+	in := Input{State: s, Approval: &Approval{Pane: s.FocusedPane(), Title: " title", Lines: []string{" warning 注意"}, Kinds: []ApprovalLineKind{{Role: "warning"}}}}
+	var out Output
+	drawApproval(f, in, &out)
+	if got := f.Cell(out.ApprovalRect.X+2, out.ApprovalRect.Y+2).Style.Fg; got != f.Palette.Yellow {
+		t.Errorf("warning color=%v want %v", got, f.Palette.Yellow)
+	}
+}

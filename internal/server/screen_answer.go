@@ -3,7 +3,9 @@ package server
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
@@ -72,6 +74,9 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if current != nil {
 		w.prompt = current
 	}
+	if d.ExpiresUnixMS != nil && w.prompt.Params.Origin != nil && w.prompt.Params.Origin.Tool != "" {
+		w.permissionDeadline = time.UnixMilli(*d.ExpiresUnixMS)
+	}
 	if w.prompt.CodexQuestion && w.prompt.TextOpen && p.Text == nil {
 		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "close Codex notes before choosing a numbered option"}
 	}
@@ -85,8 +90,19 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if !d.MultiSelect && len(answer.OptionIDs) > 1 {
 		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "single-choice screen cannot submit multiple options"}
 	}
-	if p.Text != nil && w.prompt.TextID == "" {
+	if p.Text != nil && w.prompt.TextID == "" && !(w.prompt.Params.Origin != nil && w.prompt.Params.Origin.Tool != "") {
 		return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "free input row is unavailable"}
+	}
+	if p.Text != nil && w.prompt.Params.Origin != nil && w.prompt.Params.Origin.Tool != "" {
+		rejected := false
+		for _, option := range d.Options {
+			if answer.OptionID != nil && option.ID == *answer.OptionID && option.Role == "reject" {
+				rejected = true
+			}
+		}
+		if !rejected || *p.Text == "" || strings.IndexFunc(*p.Text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' }) >= 0 {
+			return nil, 0, &api.Error{Code: "screen_prompt_unsupported", Message: "feedback requires No and safe text"}
+		}
 	}
 	return w, pid, nil
 }
@@ -99,7 +115,7 @@ func (s *Server) startScreenAnswer(pid int, w *screenPromptWatch, answer api.Dec
 	prompt := w.prompt
 	signature := w.signature
 	recorded := w.transcriptID != ""
-	w.editingText = (prompt.Params.MultiSelect || prompt.CodexQuestion) && answer.Text != nil
+	w.editingText = (prompt.Params.MultiSelect || prompt.CodexQuestion || prompt.Params.Origin != nil && prompt.Params.Origin.Tool != "") && answer.Text != nil
 	go func() {
 		err := s.deliverScreenAnswer(pid, signature, prompt, answer, recorded)
 		s.app.Do(func() { w.editingText = false; s.finishScreenFlowAnswer(pid, prompt, err) })
@@ -130,6 +146,10 @@ func (s *Server) screenInputChecked(pid int, signature, data string, verify bool
 		}
 		if s.screenUserActive(pid) || s.screenAnswerInterrupted(pid) {
 			err = fmt.Errorf("pane_user_active: external input interrupted delivery")
+			return
+		}
+		if w := s.screenPrompts.watches[pid]; w != nil && !w.permissionDeadline.IsZero() && !time.Now().Before(w.permissionDeadline) {
+			err = fmt.Errorf("permission expired during input delivery")
 			return
 		}
 		if verify {
@@ -214,6 +234,9 @@ func (s *Server) waitMultiSelectState(pid int, signature string, desired map[str
 }
 
 func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenprompt.Prompt, answer api.DecisionAnswer, recorded bool) error {
+	if prompt.Params.Origin != nil && prompt.Params.Origin.Tool != "" && answer.Text != nil {
+		return s.deliverClaudePermissionText(pid, signature, prompt, answer)
+	}
 	if prompt.MCPServer != "" {
 		return s.deliverMCPAnswer(pid, signature, prompt, answer)
 	}
@@ -225,7 +248,8 @@ func (s *Server) deliverScreenAnswer(pid int, signature string, prompt *screenpr
 			if answer.OptionID == nil {
 				return fmt.Errorf("missing option")
 			}
-			if err := s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], recorded, nil); err != nil {
+			verify := recorded || prompt.Params.Origin != nil && prompt.Params.Origin.Tool != ""
+			if err := s.screenInput(pid, signature, prompt.Keys[*answer.OptionID], verify, nil); err != nil {
 				return err
 			}
 			if prompt.HasPreview {
@@ -308,7 +332,7 @@ func (s *Server) navigateScreenRow(pid int, signature, row string) error {
 	for {
 		var current *screenprompt.Prompt
 		s.app.Do(func() { current = s.readScreenPrompt(pid) })
-		if current == nil || current.Signature() != signature || (!current.CodexQuestion && current.Progress < 0) || current.Cursor < 0 {
+		if current == nil || current.Signature() != signature || (!current.CodexQuestion && current.Progress < 0 && (current.Params.Origin == nil || current.Params.Origin.Tool == "")) || current.Cursor < 0 {
 			return fmt.Errorf("cannot locate multi-select row")
 		}
 		target := -1

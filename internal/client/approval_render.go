@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
@@ -27,7 +28,7 @@ func (s *approvalState) overlay(in *render.Input) {
 	for _, d := range s.pending {
 		if pane, ok := approvalPaneID(d.Origin.PaneID); ok {
 			in.ApprovalCounts[pane]++
-			if d.Kind == "command_guard" {
+			if d.Kind == "command_guard" || d.Kind == "tool_permission" {
 				in.ApprovalGuardPanes[pane] = true
 			}
 		}
@@ -135,6 +136,17 @@ func (s *approvalState) overlay(in *render.Input) {
 		if d.Body != nil {
 			add(" "+*d.Body, "dim", 0, false)
 		}
+	} else if d.Kind == "tool_permission" && d.Origin.Tool != "" {
+		add(" tool "+d.Origin.Tool, "subtitle", 0, false)
+		add(" reason "+d.Origin.Explanation, "reason", 8, false)
+		add(" 画面の表示どおり（折り返しを含む）", "dim", 0, false)
+		add(" $ "+d.Origin.Command, "surface", 0, false)
+		if d.Origin.Warning != "" {
+			add(ansi.Truncate(" warning "+safeApprovalText(d.Origin.Warning), width, "…"), "warning", 0, false)
+		}
+		if d.ExpiresUnixMS != nil {
+			add(" expires "+time.UnixMilli(*d.ExpiresUnixMS).Local().Format("15:04:05"), "subtitle", 0, false)
+		}
 	} else {
 		add(" $ "+d.Origin.Command, "surface", 0, false)
 		if d.Origin.TargetCommand != "" {
@@ -156,7 +168,7 @@ func (s *approvalState) overlay(in *render.Input) {
 		}
 		prefix := fmt.Sprintf(" %s%d  ", mark, i+1)
 		add(prefix+option.Label, "", ansi.StringWidth(prefix), s.selected == option.ID)
-		if d.LateAnswer {
+		if d.LateAnswer || d.Kind == "tool_permission" {
 			if option.Description != nil && *option.Description != "" {
 				add("    "+*option.Description, "dim", 0, false)
 			}
@@ -170,14 +182,14 @@ func (s *approvalState) overlay(in *render.Input) {
 	if d.LateAnswer && d.AllowText {
 		blank()
 		add(" text "+s.reason, "input", 0, false)
-	} else if s.selected == "reject" && d.AllowText {
+	} else if s.selectedReject() && d.AllowText {
 		blank()
 		add(" reject note "+s.reason, "input", 0, false)
 	}
 	blank()
 	if s.waiting {
 		add(" sending", "dim", 0, false)
-	} else if d.AllowText && (d.LateAnswer && s.textMode || !d.LateAnswer && s.selected == "reject") {
+	} else if d.AllowText && (d.LateAnswer && s.textMode || !d.LateAnswer && s.selectedReject()) {
 		footer("confirm ↵", "back ctrl+u", "close esc")
 	} else {
 		parts := []string{fmt.Sprintf("select 1-%d", len(d.Options))}

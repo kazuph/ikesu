@@ -163,6 +163,8 @@ func drawApproval(f *Frame, in Input, out *Output) {
 			style.Fg = f.Palette.Overlay1
 		case "dim", "footer":
 			style.Fg = f.Palette.Dim
+		case "warning":
+			style.Fg = f.Palette.Yellow
 		case "surface":
 			style.Bg, style.Attrs = f.Palette.Surface, uv.AttrBold
 		case "input":

@@ -4,6 +4,14 @@ import {buildDialogSpec,locationLabel,approvalTargetRange,approvalFields} from '
 import {buildDecisionBlocks,fallbackText} from '../../slack-decisions/slack-decisions.mjs';
 import {discoverRichContent} from '../rich.mjs';
 
+test('Claude command fields have the same order on Mac and Slack',()=>{
+ const d={kind:'tool_permission',title:'Bash command',body:'Bash command\n説明\necho hi\n警告',origin:{agent:'claude',tool:'Bash command',explanation:'説明',command:'echo hi',warning:'警告'},options:[{id:'1',label:'Yes'},{id:'4',label:'No'}]};
+ const spec=buildDialogSpec(d,{id:'local'}), blocks=buildDecisionBlocks({decision:d,machine:{id:'local'}});
+ assert.deepEqual([spec.title,spec.permission_explanation,spec.permission_command_note,spec.approval_command,spec.permission_warning],['Bash command','説明','画面の表示どおり（折り返しを含む）','echo hi','警告']);
+ assert.equal(spec.body,'');
+ assert.deepEqual([blocks[1].text.text,blocks[2].text.text,blocks[3].text.text,blocks[4].elements[0].elements[0].text,blocks[5].text.text],['*Bash command*','説明','画面の表示どおり（折り返しを含む）','echo hi','警告']);
+});
+
 test('Mac and Slack lead with the same four complete location fields and exact approval command',()=>{
  const d={decision_id:'dec-display',kind:'command_guard',title:'削除操作は確認が必要です',body:'規則: delete\n申請文: 必要な削除',origin:{cwd:'/repo/ikesu',workspace_label:'開発',pane_label:'実装',agent:'codex',command:'bash delete.sh',target_command:'rm /tmp/target'},options:[{id:'approve',label:'承認'},{id:'reject',label:'却下'}]};
  for (const machine of [{id:'local'},{id:'mini',label:'Mac mini'}]) {
