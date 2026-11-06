@@ -87,7 +87,7 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
       if (previous.fingerprint !== fingerprint) throw Error('送信番号が別の回答に使われています');
       const prior = await previous.result;
       if (prior.status === 'unknown' && previous.output) {
-        previous.result = this.checkOutcome(previous.entry, previous.output);
+        previous.result = this.checkSubmission(previous);
       }
       return previous.result;
     }
@@ -103,29 +103,31 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     if (!entry.decision.allow_text && (message.text || message.images.length)) throw Error('文と画像を添付できません');
     if (!message.options.length && !message.text && !message.images.length) throw Error('回答が空です');
     entry.answerPending = true;
-    const submission = { fingerprint, entry, message, output: null, savedText: null };
-    submission.result = this.submit(entry, message, submission).finally(() => { entry.answerPending = false; this.notify(); });
+    const submission = { fingerprint, machineId: entry.machineId, decisionId: entry.decision.decision_id, output: null };
+    const work = { message, hasImages: message.images.length > 0, savedText: null };
+    submission.result = this.submit(entry, work, submission).finally(() => { entry.answerPending = false; this.notify(); });
     this.submissions.set(message.sequence, submission);
     return submission.result;
   }
-  async submit(entry, message, submission) {
-    try { return await this.submitSteps(entry, message, submission); }
+  async submit(entry, work, submission) {
+    try { return await this.submitSteps(entry, work, submission); }
     catch (error) {
       const authorization = String(error.message).match(/https:\/\/login\.tailscale\.com\/[^\s]+/);
       if (!authorization) throw error;
       const firstRetry = !entry.retry;
-      entry.retry ??= { submission, url: authorization[0], attempts: 0, deadline: Date.now() + 15_000 * 120 };
+      entry.retry ??= { submission, work, url: authorization[0], attempts: 0, deadline: Date.now() + 15_000 * 120 };
       entry.retry.url = authorization[0];
       if (firstRetry) this.scheduleSSHRetry(entry);
       this.notify();
       return { status: 'reauth', message: 'SSH の再承認が必要です', url: authorization[0] };
     }
   }
-  async submitSteps(entry, message, submission) {
+  async submitSteps(entry, work, submission) {
+    const message = work.message;
     const id = entry.decision.decision_id;
     const args = ['decision', 'answer', id, ...message.options, '--machine', entry.machineId, '--responder', 'android'];
-    let text = submission.savedText ?? message.text;
-    if (message.images.length && submission.savedText === null) {
+    let text = work.savedText ?? message.text;
+    if (work.hasImages && work.savedText === null) {
       if (!this.rich) throw Error('画像の保存先を利用できません');
       const draft = await this.rich.store.draftDirectory(entry.machineId, id);
       const files = [];
@@ -144,13 +146,14 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
         }
         const saved = await this.rich.save(entry.machineId, id, files, new AbortController().signal);
         text = [text, ...saved.map(file => `添付画像: ${file}`)].filter(Boolean).join('\n');
-        submission.savedText = text;
+        work.savedText = text;
+        work.message = { ...message, images: [] };
       } finally { await Promise.allSettled(files.map(file => fs.rm(file.path, { force: true }))); }
     }
     if (text) args.push('--text', text);
     const before = await this.getDecision(entry.machineId, id);
     if (before.status !== 'pending') {
-      if (message.images.length && ['answered', 'cancelled', 'expired'].includes(before.status))
+      if (work.hasImages && ['answered', 'cancelled', 'expired'].includes(before.status))
         await this.rich.resolve(entry.machineId, id, before.status);
       if (before.status === 'answered') return { status: 'answered_elsewhere' };
       return { status: before.status, message: '判断待ちは既に終了しています' };
@@ -161,20 +164,27 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     if (output.code !== 0 && authorization) {
       throw Error(authorization[0]);
     }
-    submission.output = output;
-    return this.checkOutcome(entry, output);
+    const detail = `${output.stderr || ''}\n${output.stdout || ''}`;
+    submission.output = { code: output.code, alreadyResolved: /decision_already_resolved/.test(detail),
+      failure: output.code === 0 ? '' : String(output.stderr || output.stdout || '回答を保存できませんでした') };
+    return this.checkSubmission(submission);
   }
-  async checkOutcome(entry, output) {
+  async checkSubmission(submission) {
+    const result = await this.checkOutcome(submission.machineId, submission.decisionId, submission.output);
+    if (result.status !== 'unknown') delete submission.output;
+    return result;
+  }
+  async checkOutcome(machineId, decisionId, output) {
     let saved;
-    try { saved = await this.getDecision(entry.machineId, entry.decision.decision_id); }
+    try { saved = await this.getDecision(machineId, decisionId); }
     catch (error) { return { status: 'unknown', message: `保存結果を確認できません: ${error.message}` }; }
     if (saved.status === 'answered') {
       if (output.code === 0) return { status: 'answered' };
-      if (saved.answer?.responder !== 'android' || /decision_already_resolved/.test(`${output.stderr || ''}\n${output.stdout || ''}`)) return { status: 'answered_elsewhere' };
+      if (saved.answer?.responder !== 'android' || output.alreadyResolved) return { status: 'answered_elsewhere' };
       return { status: 'unknown', message: '保存済みの回答は確認できましたが、今回の送信かを特定できません' };
     }
     if (saved.status === 'cancelled' || saved.status === 'expired') return { status: saved.status };
-    return { status: 'failed', message: String(output.stderr || output.stdout || '回答を保存できませんでした') };
+    return { status: 'failed', message: output.failure || '回答を保存できませんでした' };
   }
   scheduleSSHRetry(entry) {
     const retry = entry.retry;
@@ -192,7 +202,7 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
       if (!entry.machineDown) {
         try {
           const submission = retry.submission;
-          const result = await (submission.result = this.submit(entry, submission.message, submission));
+          const result = await (submission.result = this.submit(entry, retry.work, submission));
           if (result.status !== 'reauth') {
             entry.retry = null;
             if (result.status === 'failed' || result.status === 'unknown') entry.retryError = result.message;
