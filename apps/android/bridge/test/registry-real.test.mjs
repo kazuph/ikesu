@@ -41,12 +41,21 @@ test('隔離 ikesu の保存済み回答と送信番号の重複を照合する'
   t.after(async () => { try { await rpc('server.stop'); } catch {} await exited; fs.rmSync(home, { recursive: true, force: true }); });
   await until(() => { if (server.exitCode !== null) throw Error(stderr); return fs.existsSync(env.IKESU_SOCKET_PATH); });
   let sent = 0;
+  let disruptAfterAnswer = false;
+  let failLookups = false;
   const runAnswer = async args => {
     sent++;
-    try { const result = await exec(binary, ['--session', session, ...args], { env }); return { code: 0, ...result }; }
+    try {
+      const result = await exec(binary, ['--session', session, ...args], { env });
+      if (disruptAfterAnswer) { disruptAfterAnswer = false; failLookups = true; }
+      return { code: 0, ...result };
+    }
     catch (error) { return { code: error.code, stdout: error.stdout, stderr: error.stderr }; }
   };
-  const getDecision = async (machine, id) => JSON.parse((await exec(binary, ['--session', session, 'decision', 'get', id, '--machine', machine], { env })).stdout).result.decision;
+  const getDecision = async (machine, id) => {
+    const lookupEnv = failLookups ? { ...env, IKESU_STATE_DIR: path.join(home, 'offline'), IKESU_SOCKET_PATH: path.join(home, 'offline', 'ikesu.sock') } : env;
+    return JSON.parse((await exec(binary, ['--session', session, 'decision', 'get', id, '--machine', machine], { env: lookupEnv })).stdout).result.decision;
+  };
   const views = new ClientViews(env);
   const registry = new DecisionRegistry({ config: { ikesuBin: binary }, runAnswer, getDecision, clientViews: views,
     spawnWatch: () => spawnDecisionWatch({ ikesuBin: binary }, () => {}, env), log: () => {} });
@@ -190,6 +199,14 @@ test('隔離 ikesu の保存済み回答と送信番号の重複を照合する'
     await until(() => [...registry.entries.values()].some(entry => entry.decision.decision_id === decision.decision_id));
     return (await registry.snapshot()).find(row => row.decision_id === decision.decision_id).id;
   };
+  const uncertain = await create('保存後の照会切断');
+  const uncertainMessage = { type: 'answer', id: await publicId(uncertain), options: ['yes'], text: '', images: [], sequence: 'uncertain' };
+  const sentBeforeUncertain = sent;
+  disruptAfterAnswer = true;
+  assert.equal((await registry.answer(uncertainMessage)).status, 'unknown');
+  failLookups = false;
+  assert.equal((await registry.answer(uncertainMessage)).status, 'answered');
+  assert.equal(sent - sentBeforeUncertain, 1);
   const multi = await create('複数選択', { multi_select: true, options: [
     { id: 'a', label: '一つ目', role: 'approve' }, { id: 'b', label: '二つ目', role: 'approve' }] });
   assert.equal((await registry.answer({ type: 'answer', id: await publicId(multi), options: ['a', 'b'], text: '', images: [], sequence: 'multi' })).status, 'answered');

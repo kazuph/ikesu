@@ -85,6 +85,10 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     const previous = this.submissions.get(message.sequence);
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw Error('送信番号が別の回答に使われています');
+      const prior = await previous.result;
+      if (prior.status === 'unknown' && previous.output) {
+        previous.result = this.checkOutcome(previous.entry, previous.output);
+      }
       return previous.result;
     }
     const entry = this.find(message.id);
@@ -99,15 +103,29 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     if (!entry.decision.allow_text && (message.text || message.images.length)) throw Error('文と画像を添付できません');
     if (!message.options.length && !message.text && !message.images.length) throw Error('回答が空です');
     entry.answerPending = true;
-    const result = this.submit(entry, message).finally(() => { entry.answerPending = false; this.notify(); });
-    this.submissions.set(message.sequence, { fingerprint, result });
-    return result;
+    const submission = { fingerprint, entry, message, output: null, savedText: null };
+    submission.result = this.submit(entry, message, submission).finally(() => { entry.answerPending = false; this.notify(); });
+    this.submissions.set(message.sequence, submission);
+    return submission.result;
   }
-  async submit(entry, message) {
+  async submit(entry, message, submission) {
+    try { return await this.submitSteps(entry, message, submission); }
+    catch (error) {
+      const authorization = String(error.message).match(/https:\/\/login\.tailscale\.com\/[^\s]+/);
+      if (!authorization) throw error;
+      const firstRetry = !entry.retry;
+      entry.retry ??= { submission, url: authorization[0], attempts: 0, deadline: Date.now() + 15_000 * 120 };
+      entry.retry.url = authorization[0];
+      if (firstRetry) this.scheduleSSHRetry(entry);
+      this.notify();
+      return { status: 'reauth', message: 'SSH の再承認が必要です', url: authorization[0] };
+    }
+  }
+  async submitSteps(entry, message, submission) {
     const id = entry.decision.decision_id;
     const args = ['decision', 'answer', id, ...message.options, '--machine', entry.machineId, '--responder', 'android'];
-    let text = message.text;
-    if (message.images.length) {
+    let text = submission.savedText ?? message.text;
+    if (message.images.length && submission.savedText === null) {
       if (!this.rich) throw Error('画像の保存先を利用できません');
       const draft = await this.rich.store.draftDirectory(entry.machineId, id);
       const files = [];
@@ -126,6 +144,7 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
         }
         const saved = await this.rich.save(entry.machineId, id, files, new AbortController().signal);
         text = [text, ...saved.map(file => `添付画像: ${file}`)].filter(Boolean).join('\n');
+        submission.savedText = text;
       } finally { await Promise.allSettled(files.map(file => fs.rm(file.path, { force: true }))); }
     }
     if (text) args.push('--text', text);
@@ -140,13 +159,14 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     try { output = await this.runAnswer(args); } catch (error) { output = { code: 1, stderr: error.message }; }
     const authorization = `${output.stderr || ''}\n${output.stdout || ''}`.match(/https:\/\/login\.tailscale\.com\/[^\s]+/);
     if (output.code !== 0 && authorization) {
-      entry.retry = { args, url: authorization[0], attempts: 0, deadline: Date.now() + 15_000 * 120 };
-      this.scheduleSSHRetry(entry);
-      this.notify();
-      return { status: 'reauth', message: 'SSH の再承認が必要です', url: authorization[0] };
+      throw Error(authorization[0]);
     }
+    submission.output = output;
+    return this.checkOutcome(entry, output);
+  }
+  async checkOutcome(entry, output) {
     let saved;
-    try { saved = await this.getDecision(entry.machineId, id); }
+    try { saved = await this.getDecision(entry.machineId, entry.decision.decision_id); }
     catch (error) { return { status: 'unknown', message: `保存結果を確認できません: ${error.message}` }; }
     if (saved.status === 'answered') {
       if (output.code === 0) return { status: 'answered' };
@@ -171,16 +191,20 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
       retry.attempts++;
       if (!entry.machineDown) {
         try {
-          const saved = await this.getDecision(entry.machineId, entry.decision.decision_id);
-          if (saved.status !== 'pending') { this.onResolved(entry.machineId, saved); return; }
-          const result = await this.runAnswer(retry.args);
-          if (result.code !== 0 && !/https:\/\/login\.tailscale\.com\//.test(`${result.stderr || ''}\n${result.stdout || ''}`)) {
+          const submission = retry.submission;
+          const result = await (submission.result = this.submit(entry, submission.message, submission));
+          if (result.status !== 'reauth') {
             entry.retry = null;
-            entry.retryError = String(result.stderr || result.stdout || '回答を送信できませんでした');
+            if (result.status === 'failed' || result.status === 'unknown') entry.retryError = result.message;
             this.notify();
             return;
           }
-        } catch (error) { this.log(`SSH 再承認後の確認に失敗: ${error.message}`); }
+        } catch (error) {
+          entry.retry = null;
+          entry.retryError = `回答を送信できませんでした: ${error.message}`;
+          this.notify();
+          return;
+        }
       }
       this.scheduleSSHRetry(entry);
     }, 15_000);
