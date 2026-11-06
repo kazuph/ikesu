@@ -53,7 +53,11 @@ export function locationLabel(decision, machine) {
 }
 
 export function approvalCommand(decision) {
-  return decision.kind === "command_guard" || (decision.kind === "tool_permission" && decision.origin?.agent === "claude" && decision.origin?.tool) ? String(decision.origin?.command || "") : "";
+  return decision.kind === "command_guard" || isClaudeCommandPermission(decision) ? String(decision.origin?.command || "") : "";
+}
+
+export function isClaudeCommandPermission(decision) {
+  return decision.kind === "tool_permission" && decision.origin?.agent === "claude" && Boolean(decision.origin?.tool && decision.origin?.command);
 }
 
 export function approvalTargetRange(decision) {
@@ -100,7 +104,7 @@ export function decisionText(decision) {
   const title = String(decision.title || "");
   const body = String(decision.body || "");
   const questionLabel = String(decision.question_label || "");
-  if (decision.kind === "tool_permission" && decision.origin?.tool && decision.origin?.agent === "claude") {
+  if (isClaudeCommandPermission(decision)) {
     return {title, body: "", question_label: questionLabel};
   }
   if (decision.kind !== "agent_prompt") {
@@ -157,8 +161,8 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
     source: sourceLabel(decision),
     location: locationLabel(decision, machine),
     approval_command: approvalCommand(decision),
-    permission_explanation: origin.tool ? String(origin.explanation || "") : "",
-    permission_warning: origin.tool ? String(origin.warning || "") : "",
+    permission_explanation: isClaudeCommandPermission(decision) ? String(origin.explanation || "") : "",
+    permission_warning: isClaudeCommandPermission(decision) ? String(origin.warning || "") : "",
     approval_target_range: approvalTargetRange(decision),
     approval_fields: decision.kind === "command_guard" ? approvalFields(decision.body) : null,
     machine: remote ? String(machine?.label || machineId) : "",
