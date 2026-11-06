@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/screenprompt"
@@ -52,6 +53,10 @@ func (s *Server) lateDeliveryInFlight(pid int, currentID string) bool {
 func (s *Server) scanLateCodexDeliveries() {
 	for id, late := range s.screenPrompts.late {
 		if late.delivery == nil || late.delivery.Status != "pending" || late.checking {
+			continue
+		}
+		if strings.IndexFunc(late.delivery.Text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) >= 0 {
+			s.setLateDelivery(id, "failed", "回答に送信できない制御文字が含まれています")
 			continue
 		}
 		pane := s.sup.Get(late.pid)
