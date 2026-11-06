@@ -86,9 +86,15 @@ test('隔離 ikesu の保存済み回答と送信番号の重複を照合する'
   const initial = once(phone, 'message');
   phone.send(JSON.stringify({ type: 'auth', token }));
   assert.equal(JSON.parse((await initial)[0]).decisions[0].id, id);
-  const rejected = once(phone, 'message');
-  phone.send(JSON.stringify({ type: 'answer', id, options: ['yes'], text: '', images: [], sequence: 'path', path: '/tmp/forbidden' }));
-  assert.equal(JSON.parse((await rejected)[0]).type, 'error');
+  for (const extra of [{ path: '/tmp/forbidden' }, { machine: 'other-machine' },
+                       { url: 'https://example.test/' }, { command: 'true' }, { responder: 'other' }]) {
+    const rejected = once(phone, 'message');
+    phone.send(JSON.stringify({ type: 'answer', id, options: ['yes'], text: '', images: [], sequence: 'forbidden', ...extra }));
+    assert.equal(JSON.parse((await rejected)[0]).type, 'error');
+  }
+  const unknown = once(phone, 'message');
+  phone.send(JSON.stringify({ type: 'answer', id: 'unknown-id', options: ['yes'], text: '', images: [], sequence: 'unknown' }));
+  assert.equal(JSON.parse((await unknown)[0]).type, 'error');
   const rotated = '02'.repeat(32);
   const phoneClosed = once(phone, 'close');
   bridge.setToken(rotated);
