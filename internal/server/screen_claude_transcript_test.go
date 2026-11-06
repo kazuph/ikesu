@@ -2,6 +2,7 @@ package server
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,6 +185,44 @@ func TestScreenQuestionDuplicateClosedBeforeAnswer(t *testing.T) {
 		if err != nil || d.Status == "pending" {
 			t.Fatalf("pending after answer: %+v %v", d, err)
 		}
+	}
+}
+
+func TestScreenQuestionReconcilesSummarizedLegacyRecord(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	first := screenRecord(t, s)
+	var legacy, current api.Decision
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		full := p.Params.Title + "\n\n" + strings.Repeat("Long question details. ", 20)
+		params := p.Params
+		params.Origin = first.Origin
+		params.Body = &full
+		var err error
+		legacy, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		display := p.Params
+		display.Title = full
+		display.Origin = first.Origin
+		current, err = s.store.CreateScreenDecision(display, time.Now(), "p1", `["session","call",0]`)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["session","call",0]`, displayParams: &display}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID != current.DecisionID {
+			t.Errorf("selected %s, want %s", w.decisionID, current.DecisionID)
+		}
+	})
+	got, err := s.store.Decision(legacy.DecisionID)
+	if err != nil || got.Status != "cancelled" {
+		t.Fatalf("summarized duplicate: %+v %v", got, err)
 	}
 }
 
