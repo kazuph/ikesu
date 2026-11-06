@@ -30,6 +30,27 @@ func TestClaudePermissionPopupRejectUsesRole(t *testing.T) {
 	}
 }
 
+func TestClaudePermissionPopupFieldOrder(t *testing.T) {
+	d := api.Decision{DecisionID: "claude", Kind: "tool_permission", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Tool: "Bash command", Explanation: "why", Command: "echo safe", Warning: "warning"}, Options: []api.DecisionOption{{ID: "1", Label: "Yes"}, {ID: "4", Label: "No"}}}
+	var state approvalState
+	state.update(&endpoint.DecisionProjection{BootID: "x", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
+	state.openPane("p1")
+	in := render.Input{State: model.New(t.TempDir(), 120, 40)}
+	state.overlay(&in)
+	if in.Approval == nil {
+		t.Fatal("missing popup")
+	}
+	text := strings.Join(in.Approval.Lines, "\n")
+	last := -1
+	for _, value := range []string{"Bash command", "why", "echo safe", "warning", "Yes", "No"} {
+		next := strings.Index(text, value)
+		if next <= last {
+			t.Fatalf("missing or out of order %q in %q", value, text)
+		}
+		last = next
+	}
+}
+
 func TestGuardApprovalVisibilityAndDismissal(t *testing.T) {
 	now := time.Unix(100, 0)
 	guard := api.Decision{DecisionID: "d1", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"}}
