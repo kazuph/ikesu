@@ -367,10 +367,22 @@ func (s *Server) waitCodexBinding(pid int, w *screenPromptWatch) bool {
 				return false
 			}
 			if err := store.BindScreenQuestion(d.DecisionID, fmtPaneID(pid), result.binding.identity); err != nil {
-				return false
+				existing, found, lookupErr := store.ScreenQuestionDecision(fmtPaneID(pid), result.binding.identity)
+				if lookupErr != nil || !found {
+					return false
+				}
+				old := &screenPromptWatch{decisionID: d.DecisionID}
+				s.cancelScreenPrompt(old)
+				if !old.resolved {
+					return false
+				}
+				w.decisionID = existing.DecisionID
 			}
 		}
 		w.codex, w.codexChecked = result.binding, true
+		if w.decisionID != "" {
+			s.reconcileCodexScreenPrompt(pid, w, true)
+		}
 		return false
 	default:
 		return w.decisionID == ""
