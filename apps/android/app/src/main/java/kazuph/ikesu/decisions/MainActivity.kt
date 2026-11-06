@@ -211,7 +211,7 @@ class MainActivity : Activity() {
         for (i in 0 until options.length()) {
             val option = options.optJSONObject(i) ?: continue
             val optionId = option.optString("id")
-            val description = listOf(option.optString("description"), option.optString("preview").ifEmpty { "画面で確認" }).filter { it.isNotEmpty() }.joinToString("\n")
+            val description = optionSupplement(option.optString("description"), option.optString("preview"), option.optBoolean("preview_unavailable"))
             block(optionRow(i, option.optString("label"), description, draft.cursor == i, optionId in draft.selected) {
                 if (draft.sequence == null) {
                     draft.cursor = i
@@ -235,8 +235,7 @@ class MainActivity : Activity() {
                  button("カメラで撮る") { pendingAttachmentId = id; openCamera(draft) }.apply { isEnabled = draft.sequence == null }, attachments)
             block(attachments)
         }
-        if (item.optString("deadline").isNotEmpty()) block(text(item.optString("deadline"), 18f))
-        block(text("ほか ${item.optInt("queue_remaining")} 件", 18f))
+        block(text(deadlineAndCount(item.optString("deadline"), item.optInt("queue_remaining")), 18f))
         footer.setPadding(0, dp(8), 0, dp(8))
         pair(button("あとで") { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
              button(if (draft.sequence == null) "回答する" else "送信中", true) { send(item, draft) }.apply { isEnabled = draft.sequence == null }, footer)
