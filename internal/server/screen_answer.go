@@ -33,7 +33,7 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if ok && w != nil && w.prompt != nil && w.prompt.MCPServer != "" && current == nil {
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify current MCP confirmation"}
 	}
-	if ok && w != nil && w.transcriptID != "" {
+	if ok && w != nil && w.decisionID == d.DecisionID && w.transcriptID != "" {
 		if current == nil {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
@@ -43,7 +43,7 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		}
 		w.signature = current.Signature()
 	}
-	if ok && w != nil && w.transcriptID == "" && current != nil {
+	if ok && w != nil && w.decisionID == d.DecisionID && w.transcriptID == "" && current != nil {
 		id, params, matched, unverified, resolved := s.claudeTranscriptPrompt(pid, current)
 		if unverified || resolved {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
@@ -65,9 +65,11 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		damaged = screenprompt.HasOptionRows(visible)
 	}
 	if !ok || w == nil || w.decisionID != d.DecisionID || !s.cfg.ScreenPrompts() || current != nil && current.Signature() != w.signature || current == nil && (!w.lastMatched || !damaged) || s.sup.Get(pid) == nil || s.sup.Get(pid).Snapshot().Dead {
-		stale := &screenPromptWatch{decisionID: d.DecisionID}
-		if !s.unidentifiedClaudeDecision(stale) {
-			s.cancelScreenPrompt(stale)
+		if w == nil {
+			w = &screenPromptWatch{decisionID: d.DecisionID}
+		}
+		if w.decisionID == d.DecisionID {
+			s.cancelScreenPrompt(w)
 		}
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "screen prompt no longer matches this decision"}
 	}

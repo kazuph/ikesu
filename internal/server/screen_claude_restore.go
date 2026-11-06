@@ -13,18 +13,6 @@ import (
 	"github.com/kazuph/ikesu/internal/session"
 )
 
-func (s *Server) unidentifiedClaudeDecision(w *screenPromptWatch) bool {
-	if w == nil || w.decisionID == "" || s.store == nil {
-		return false
-	}
-	d, err := s.store.Decision(w.decisionID)
-	if err != nil || d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.Agent != "claude" || d.Origin.Reason != "screen_prompt" || d.Origin.Tool != "" {
-		return false
-	}
-	identity, err := s.store.ScreenQuestionIdentity(d.DecisionID)
-	return err != nil || identity == ""
-}
-
 func (s *Server) captureClaudeQuestionContext(pid int, decisionID string) {
 	pane := s.sup.Get(pid)
 	if pane == nil || s.screenPrompts.claudeCapturing[decisionID] {

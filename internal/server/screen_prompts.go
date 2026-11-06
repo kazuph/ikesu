@@ -396,7 +396,7 @@ func (s *Server) scanScreenPrompts() {
 				if p != nil && !w.resolved {
 					s.noteScreenRebuild(pid)
 				}
-				if !changedIdentity && !s.unidentifiedClaudeDecision(w) {
+				if !changedIdentity {
 					s.cancelScreenPrompt(w)
 				}
 				delete(s.screenPrompts.watches, pid)

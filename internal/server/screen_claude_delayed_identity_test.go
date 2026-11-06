@@ -72,7 +72,7 @@ func TestClaudeDelayedTranscriptAfterScreenTransition(t *testing.T) {
 					t.Error(e)
 				}
 			})
-			if transition == "handoff" {
+			if transition != "visible" {
 				waitPromptCondition(t, func() bool { _, _, _, found, _ := s.store.ClaudeScreenContext(old.DecisionID); return found })
 				s.app.Do(func() {
 					s.screenPrompts.watches = nil

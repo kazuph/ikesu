@@ -126,6 +126,9 @@ func TestClaudeScreenContextSurvivesRestartAndRejectsNewerProcess(t *testing.T) 
 	if err := store.BindClaudeScreenContext(d.DecisionID, "p1", "session", start); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.BindClaudeScreenContext(d.DecisionID, "p1", "other-session", start); err == nil {
+		t.Fatal("context was reassigned to another session")
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
