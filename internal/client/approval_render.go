@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
@@ -67,6 +68,16 @@ func (s *approvalState) overlay(in *render.Input) {
 		if d.Body != nil {
 			add(*d.Body)
 		}
+	} else if d.Kind == "tool_permission" && d.Origin.Tool != "" {
+		add("道具: " + d.Origin.Tool)
+		add("理由: " + d.Origin.Explanation)
+		add("コマンド: " + d.Origin.Command)
+		if d.Origin.Warning != "" {
+			add("警告: " + d.Origin.Warning)
+		}
+		if d.ExpiresUnixMS != nil {
+			add("期限: " + time.UnixMilli(*d.ExpiresUnixMS).Local().Format("15:04:05"))
+		}
 	} else {
 		add("コマンド: " + d.Origin.Command)
 		if d.Origin.TargetCommand != "" {
@@ -91,7 +102,7 @@ func (s *approvalState) overlay(in *render.Input) {
 			}
 		}
 		add(fmt.Sprintf("%s %d: %s", mark, i+1, option.Label))
-		if d.LateAnswer {
+		if d.LateAnswer || d.Kind == "tool_permission" {
 			if option.Description != nil && *option.Description != "" {
 				add(*option.Description)
 			}
@@ -107,7 +118,7 @@ func (s *approvalState) overlay(in *render.Input) {
 		if s.textMode {
 			add("入力中（Ctrl+U: 選択に戻る）")
 		}
-	} else if s.selected == "reject" && d.AllowText {
+	} else if s.selectedReject() && d.AllowText {
 		add("却下理由: " + s.reason)
 		add("Ctrl+U: 選択に戻る")
 	}

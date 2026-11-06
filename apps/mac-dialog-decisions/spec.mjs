@@ -53,7 +53,7 @@ export function locationLabel(decision, machine) {
 }
 
 export function approvalCommand(decision) {
-  return decision.kind === "command_guard" ? String(decision.origin?.command || "") : "";
+  return decision.kind === "command_guard" || (decision.kind === "tool_permission" && decision.origin?.agent === "claude" && decision.origin?.tool) ? String(decision.origin?.command || "") : "";
 }
 
 export function approvalTargetRange(decision) {
@@ -100,6 +100,9 @@ export function decisionText(decision) {
   const title = String(decision.title || "");
   const body = String(decision.body || "");
   const questionLabel = String(decision.question_label || "");
+  if (decision.kind === "tool_permission" && decision.origin?.tool && decision.origin?.agent === "claude") {
+    return {title, body: "", question_label: questionLabel};
+  }
   if (decision.kind !== "agent_prompt") {
     return {
       title: title || String(decision.decision_id || ""),
@@ -130,7 +133,7 @@ export function projectName(decision) {
 export function buildDialogSpec(decision, machine, queueRemaining = 0, options = {}) {
   const origin = decision.origin || {};
   const details = [];
-  if (origin.command && decision.kind !== "command_guard") {
+  if (origin.command && decision.kind !== "command_guard" && !approvalCommand(decision)) {
     details.push({ label: "コマンド", value: String(origin.command), monospace: true });
   }
   if (origin.target_command && origin.target_command !== origin.command && decision.kind !== "command_guard") {
@@ -154,6 +157,8 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
     source: sourceLabel(decision),
     location: locationLabel(decision, machine),
     approval_command: approvalCommand(decision),
+    permission_explanation: origin.tool ? String(origin.explanation || "") : "",
+    permission_warning: origin.tool ? String(origin.warning || "") : "",
     approval_target_range: approvalTargetRange(decision),
     approval_fields: decision.kind === "command_guard" ? approvalFields(decision.body) : null,
     machine: remote ? String(machine?.label || machineId) : "",

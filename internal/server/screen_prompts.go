@@ -36,6 +36,7 @@ type screenPromptWatch struct {
 	codexChecked        bool
 	codexStateResult    <-chan codexStateResult
 	transcriptDeadline  time.Time
+	permissionDeadline  time.Time
 	signature           string
 	transcriptID        string
 	displayParams       *api.DecisionCreateParams
@@ -246,6 +247,9 @@ func (s *Server) scanScreenPrompts() {
 	}
 	for pid := range panes {
 		w := s.screenPrompts.watches[pid]
+		if w != nil && w.editingText && w.prompt != nil && w.prompt.Params.Origin != nil && w.prompt.Params.Origin.Tool != "" {
+			continue
+		}
 		if w == nil && s.app.PaneStatusKey(pid) != "blocked" {
 			continue
 		}
@@ -409,6 +413,9 @@ func (s *Server) scanScreenPrompts() {
 		}
 		if w == nil && p != nil && s.app.PaneStatusKey(pid) == "blocked" {
 			w = &screenPromptWatch{signature: p.Signature(), prompt: p, lastMatched: true}
+			if p.Params.Origin != nil && p.Params.Origin.Tool != "" && p.Params.TimeoutMS != nil {
+				w.permissionDeadline = time.Now().Add(time.Duration(*p.Params.TimeoutMS) * time.Millisecond)
+			}
 			if s.isClaudeQuestion(pid, p) {
 				w.transcriptDeadline = time.Now().Add(claudeTranscriptWait)
 			}
@@ -492,6 +499,11 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 		return
 	}
 	p := screenDisplayParams(w)
+	if !w.permissionDeadline.IsZero() {
+		remaining := time.Until(w.permissionDeadline)
+		ms := uint64(max(0, remaining.Milliseconds()))
+		p.TimeoutMS = &ms
+	}
 	pane := s.sup.Get(pid)
 	if pane == nil {
 		return
@@ -501,7 +513,10 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
 		agent = reported
 	}
-	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: w.prompt.OriginAgent(agent), Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
+	if p.Origin == nil {
+		p.Origin = &api.DecisionOrigin{}
+	}
+	p.Origin.PaneID, p.Origin.Agent, p.Origin.Cwd, p.Origin.Machine, p.Origin.Reason = fmtPaneID(pid), w.prompt.OriginAgent(agent), sn.Cwd, "local", "screen_prompt"
 	s.completeDecisionOrigin(p.Origin)
 	var d api.Decision
 	if w.codex != nil {

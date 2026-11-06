@@ -12,6 +12,24 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 )
 
+func TestClaudePermissionPopupRejectUsesRole(t *testing.T) {
+	for _, id := range []string{"2", "4"} {
+		d := api.Decision{DecisionID: id, Kind: "tool_permission", Status: "pending", AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Tool: "Bash command"}, Options: []api.DecisionOption{{ID: "1", Label: "Yes", Role: "approve"}, {ID: id, Label: "No", Role: "reject"}}}
+		var state approvalState
+		state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
+		state.openPane("p1")
+		state.selected = "1"
+		if state.selectedReject() {
+			t.Fatal("Yes is reject")
+		}
+		state.selected, state.reason = id, "理由"
+		answer := state.answer()
+		if !state.selectedReject() || answer == nil || answer.OptionID == nil || *answer.OptionID != id || answer.Text == nil || *answer.Text != "理由" {
+			t.Fatalf("No %s: %+v", id, answer)
+		}
+	}
+}
+
 func TestGuardApprovalVisibilityAndDismissal(t *testing.T) {
 	now := time.Unix(100, 0)
 	guard := api.Decision{DecisionID: "d1", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"}}

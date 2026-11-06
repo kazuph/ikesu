@@ -17,3 +17,6 @@ fun optionSupplement(description: String, preview: String, previewUnavailable: B
 
 fun deadlineAndCount(deadline: String, remaining: Int): String =
     "${deadline.ifEmpty { "期限なし" }}　｜　ほか ${remaining} 件"
+
+fun permissionDetails(explanation: String, command: String, warning: String): List<Pair<String, String>> =
+    listOf("理由" to explanation, "コマンド" to command, "警告" to warning).filter { it.second.isNotEmpty() }

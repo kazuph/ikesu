@@ -813,6 +813,7 @@ function buildDecisionBlocks({
   const blocks = [{ type: "context", elements: [{ type: "mrkdwn", text: head }] }];
   if (repeatCount > 1) blocks.push({type: "context", elements: [{type: "mrkdwn", text: `同じ申請 ${repeatCount}回目`}]});
   if (presentation.title) for (const chunk of splitExactText(presentation.title, SLACK_SECTION_TEXT_LIMIT - 2)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${chunk}*`}});
+  if (decision.kind === "tool_permission" && decision.origin?.tool && decision.origin?.explanation) for (const chunk of splitExactText(decision.origin.explanation)) blocks.push({type: "section", text: {type: "plain_text", text: chunk}});
   if (approvalCommand(decision)) {
     for (const chunk of splitExactText(approvalCommand(decision))) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
     const range = approvalTargetRange(decision);
@@ -822,7 +823,8 @@ function buildDecisionBlocks({
       blocks.push({type: "context", elements: [{type: "mrkdwn", text: `止めた部分：${before + 1}文字目から${length}文字`} ]});
     }
   }
-  const body = decision.kind === "agent_prompt" ? presentation.body : decision.body;
+  if (decision.kind === "tool_permission" && decision.origin?.tool && decision.origin?.warning) for (const chunk of splitExactText(decision.origin.warning)) blocks.push({type: "section", text: {type: "plain_text", text: chunk}});
+  const body = decision.kind === "agent_prompt" || (decision.kind === "tool_permission" && decision.origin?.tool) ? presentation.body : decision.body;
   const fields = decision.kind === "command_guard" ? approvalFields(body) : null;
   if (body) for (const chunk of splitExactText(fields ? fields.map(field => `*${field.label}* ${field.value}`).join("\n") : body)) blocks.push({type: "section", text: {type: "mrkdwn", text: chunk}});
   const origins = originLines(decision);

@@ -31,6 +31,9 @@ type DecisionOrigin struct {
 	Cwd            string `json:"cwd,omitempty"`
 	Branch         string `json:"branch,omitempty"`
 	Command        string `json:"command,omitempty"`
+	Tool           string `json:"tool,omitempty"`
+	Explanation    string `json:"explanation,omitempty"`
+	Warning        string `json:"warning,omitempty"`
 	TargetCommand  string `json:"target_command,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 	Machine        string `json:"machine,omitempty"`

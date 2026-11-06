@@ -101,6 +101,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 		screen, codexLabel, codexBody = codexQuestionScreen(screen)
 	}
 	screen = currentQuestionLines(screen)
+	originalScreen := screen
 	screen, notice := cleanNotice(screen)
 	columns := screenColumns(screen)
 	plain, preview, hasPreview := extractPreview(screen)
@@ -300,6 +301,15 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			}
 		}
 	}
+	if agent == "claude" && p.Params.Kind == "tool_permission" {
+		if origin, timeout := claudeCommand(originalScreen); origin != nil {
+			p.Params.Origin, p.Params.TimeoutMS = origin, timeout
+			p.Params.AllowText = true
+			p.Params.Title = origin.Tool
+			body := strings.Join([]string{origin.Tool, origin.Explanation, origin.Command, origin.Warning}, "\n")
+			p.Params.Body = &body
+		}
+	}
 	presentQuestion(p)
 	return p
 }
@@ -351,13 +361,20 @@ func (p *Prompt) Signature() string {
 	if p.Params.QuestionLabel != nil && codexQuestionHeader.MatchString(*p.Params.QuestionLabel) {
 		label = p.Params.QuestionLabel
 	}
+	command, tool, warning := "", "", ""
+	if p.Params.Origin != nil && p.Params.Origin.Tool != "" {
+		tool, command, warning = p.Params.Origin.Tool, p.Params.Origin.Command, p.Params.Origin.Warning
+	}
 	data, _ := json.Marshal(struct {
 		MCPServer              string  `json:",omitempty"`
 		QuestionLabel          *string `json:",omitempty"`
 		Title                  string
+		Tool                   string `json:",omitempty"`
+		Command                string `json:",omitempty"`
+		Warning                string `json:",omitempty"`
 		Options                []option
 		AllowText, MultiSelect bool
-	}{p.MCPServer, label, questionIdentity(p.Params), options, p.Params.AllowText, p.Params.MultiSelect})
+	}{p.MCPServer, label, questionIdentity(p.Params), tool, command, warning, options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -368,5 +385,5 @@ func FromDecision(d api.Decision) string {
 		_, server, _ = strings.Cut(d.Origin.Agent, mcpOriginSeparator)
 		server = strings.TrimSuffix(server, "”")
 	}
-	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Body: d.Body, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
+	return (&Prompt{MCPServer: server, Params: api.DecisionCreateParams{Title: d.Title, Body: d.Body, Origin: d.Origin, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}).Signature()
 }

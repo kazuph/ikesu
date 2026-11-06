@@ -39,7 +39,7 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	s.boot, s.revision = p.BootID, p.Revision
 	s.pending = nil
 	for _, d := range p.Pending {
-		if (d.Kind != "command_guard" && !(d.Kind == "agent_prompt" && d.LateAnswer)) || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
+		if (d.Kind != "command_guard" && !(d.Kind == "agent_prompt" && d.LateAnswer) && !(d.Kind == "tool_permission" && d.Origin != nil && d.Origin.Tool != "" && d.Origin.Agent == "claude")) || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
 			continue
 		}
 		if _, ok := approvalPaneID(d.Origin.PaneID); ok {
@@ -119,6 +119,19 @@ func (s *approvalState) selectOption(number int) {
 	if d != nil && number > 0 && number <= len(d.Options) {
 		s.selected = d.Options[number-1].ID
 	}
+}
+
+func (s *approvalState) selectedReject() bool {
+	d := s.current()
+	if d == nil {
+		return false
+	}
+	for _, option := range d.Options {
+		if option.ID == s.selected {
+			return option.Role == "reject"
+		}
+	}
+	return false
 }
 
 func (s *approvalState) answer() *api.DecisionAnswerParams {
