@@ -14,7 +14,7 @@ for row in rows {
  let body=decision["body"] as! String
  let spec=try JSONDecoder().decode(DialogSpec.self,from:JSONSerialization.data(withJSONObject:row["spec"]!))
  let command=origin["command"] as! String
- let expected: NSRange? = name == "requested-example" ? NSRange(location:0,length:143) : name == "same" ? NSRange(location:0,length:23) : nil
+ let expected: NSRange? = name == "requested-example" ? NSRange(location:0,length:143) : name == "same" ? NSRange(location:0,length:23) : name == "claude-permission" ? NSRange(location:0,length:(command as NSString).length) : nil
  let actual = spec.approval_target_range.map { NSRange(location:$0.start,length:$0.length) }
  precondition(actual == expected,"independent expected range mismatch for \(name)")
  for theme in [NSAppearance.Name.aqua,.darkAqua] {
@@ -52,6 +52,10 @@ for row in rows {
    precondition(labels.contains {$0.string.contains(quote)},"reason quote must remain visible")
   }
   let title=labels.first {$0.string==spec.title}!
+  if name == "claude-permission" {
+   let reason=labels.first {$0.string=="確認理由"}!, commandLabel=bodyLabels[0], warning=labels.first {$0.string=="警告文"}!
+   precondition(title.convert(title.bounds,to:content).midY > reason.convert(reason.bounds,to:content).midY && reason.convert(reason.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY && commandLabel.convert(commandLabel.bounds,to:content).midY > warning.convert(warning.bounds,to:content).midY, "permission field order")
+  }
   precondition(title.string==decision["title"] as! String)
   for index in 0..<(title.string as NSString).length {precondition(title.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor != .systemRed)}
   if name == "requested-example" {

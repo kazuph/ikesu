@@ -503,6 +503,8 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 		remaining := time.Until(w.permissionDeadline)
 		ms := uint64(max(0, remaining.Milliseconds()))
 		p.TimeoutMS = &ms
+	} else if p.Origin != nil && p.Origin.Tool != "" {
+		p.TimeoutMS = nil
 	}
 	pane := s.sup.Get(pid)
 	if pane == nil {
