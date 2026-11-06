@@ -91,7 +91,7 @@ func (s *approvalState) overlay(in *render.Input) {
 		}
 	}
 	paneName := d.Origin.PaneID
-	if d.Origin.PaneLabel != "" {
+	if !d.LateAnswer && d.Origin.PaneLabel != "" {
 		paneName += " " + d.Origin.PaneLabel
 	}
 	workspaceName := d.Origin.WorkspaceLabel
@@ -99,12 +99,18 @@ func (s *approvalState) overlay(in *render.Input) {
 		for _, tab := range ws.Tabs {
 			for _, id := range tab.Layout.PaneIDs() {
 				if id == pane {
-					workspaceName = render.WorkspaceDisplayName(ws, in.Panes)
+					if d.LateAnswer {
+						if workspaceName == "" {
+							workspaceName = render.WorkspaceDisplayName(ws, nil)
+						}
+					} else {
+						workspaceName = render.WorkspaceDisplayName(ws, in.Panes)
+					}
 				}
 			}
 		}
 	}
-	if d.Origin.TabLabel != "" {
+	if !d.LateAnswer && d.Origin.TabLabel != "" {
 		workspaceName += "/" + d.Origin.TabLabel
 	}
 	parts := []string{paneName}
@@ -155,7 +161,7 @@ func (s *approvalState) overlay(in *render.Input) {
 			}
 			if option.Preview != nil && *option.Preview != "" {
 				add("    preview: "+*option.Preview, "dim", 0, false)
-			} else {
+			} else if option.PreviewUnavailable {
 				add("    preview: 画面で確認", "dim", 0, false)
 			}
 		}

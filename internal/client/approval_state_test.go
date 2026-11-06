@@ -181,7 +181,7 @@ func TestLateAnswerSingleAndTextOnly(t *testing.T) {
 
 func TestLateAnswerRendersDetailsAndPreviewFallback(t *testing.T) {
 	heading, body, description, preview := "Question 1/1", "Which color?", "warm tone", "example red"
-	d := api.Decision{DecisionID: "d", Kind: "agent_prompt", Status: "pending", LateAnswer: true, QuestionLabel: &heading, Title: "Choose", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red", Description: &description, Preview: &preview}, {ID: "2", Label: "Blue"}}}
+	d := api.Decision{DecisionID: "d", Kind: "agent_prompt", Status: "pending", LateAnswer: true, QuestionLabel: &heading, Title: "Choose", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red", Description: &description, Preview: &preview}, {ID: "2", Label: "Blue", PreviewUnavailable: true}}}
 	var state approvalState
 	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
 	state.openPane("p1")
@@ -239,7 +239,7 @@ func TestApprovalFooterWrapsOnlyBetweenInstructions(t *testing.T) {
 func TestLateApprovalPresentationIncludesCheckedOptions(t *testing.T) {
 	app := model.New(t.TempDir(), 120, 40)
 	heading, notice, desc, preview := "Question 1/1", "Codex は空の答えで先に進みました。答えると会話で届けます", "明るい色", "赤い見本"
-	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, MultiSelect: true, AllowText: true, Title: "色を選ぶ", QuestionLabel: &heading, Body: &notice, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "red", Label: "赤", Description: &desc, Preview: &preview}, {ID: "blue", Label: "青"}}}
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, MultiSelect: true, AllowText: true, Title: "色を選ぶ", QuestionLabel: &heading, Body: &notice, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "red", Label: "赤", Description: &desc, Preview: &preview}, {ID: "blue", Label: "青", PreviewUnavailable: true}}}
 	state := approvalState{pending: []api.Decision{d}, open: "late", selected: "blue", checked: map[string]bool{"red": true, "blue": true}}
 	in := render.Input{State: app}
 	state.overlay(&in)
@@ -256,5 +256,20 @@ func TestLateApprovalPresentationIncludesCheckedOptions(t *testing.T) {
 		if strings.Contains(line, "✓ 2  青") && !in.Approval.Kinds[i].Selected {
 			t.Error("current option must be highlighted")
 		}
+	}
+}
+
+func TestLateApprovalOmitsTerminalTitleAndAbsentPreview(t *testing.T) {
+	app := model.New(t.TempDir(), 120, 40)
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, Title: "質問", Origin: &api.DecisionOrigin{PaneID: "p1", PaneLabel: "terminal title", TabLabel: "terminal tab", WorkspaceLabel: "サイドバーの名前"}, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青", PreviewUnavailable: true}}}
+	state := approvalState{pending: []api.Decision{d}, open: "late"}
+	in := render.Input{State: app, WorkspaceNames: map[int]string{0: "サイドバーの名前-terminal title"}}
+	state.overlay(&in)
+	text := strings.Join(in.Approval.Lines, "\n")
+	if !strings.Contains(text, "p1 · サイドバーの名前") || strings.Contains(text, "terminal title") || strings.Contains(text, "terminal tab") {
+		t.Fatalf("wrong origin: %q", text)
+	}
+	if strings.Count(text, "preview: 画面で確認") != 1 {
+		t.Fatalf("wrong preview fallback: %q", text)
 	}
 }
