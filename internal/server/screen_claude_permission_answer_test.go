@@ -107,6 +107,21 @@ func TestClaudePermissionVisibleFeedback(t *testing.T) {
 	}
 }
 
+func TestClaudePermissionEditNumberedFeedback(t *testing.T) {
+	screen := screenDialog(t, "claude-permission")
+	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))
+	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
+	selected = strings.Replace(selected, "   4. No", " ❯ 4. No, Please do not write the file.\n          1. Explain the reason.", 1)
+	rows := strings.Split(selected, "\n")
+	current := screenprompt.Parse("claude", claudePermissionEditScreen(rows, "4"))
+	if !claudePermissionEditMatches(original, current, "4", "Please do not write the file.\n1. Explain the reason.", rows) {
+		t.Fatal("numbered feedback was mistaken for another option")
+	}
+	if claudePermissionEditMatches(original, current, "4", "Please do not write the file.\n1. Different reason.", rows) {
+		t.Fatal("changed feedback accepted")
+	}
+}
+
 func TestClaudePermissionEditRequiresSelectedNo(t *testing.T) {
 	screen := screenDialog(t, "claude-permission")
 	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))

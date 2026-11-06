@@ -210,6 +210,47 @@ func claudePermissionVisibleFeedback(screen []string, selected, text string) boo
 	return false
 }
 
+// A numbered feedback line is not a new option. Inspect the selected text
+// separately while retaining the surrounding permission screen for parsing.
+func claudePermissionEditScreen(screen []string, selected string) []string {
+	row := regexp.MustCompile(`^\s*[❯›>]\s*` + regexp.QuoteMeta(selected) + `[.)]\s+No, ?`)
+	index, end := -1, 0
+	for i, line := range screen {
+		if where := row.FindStringIndex(line); where != nil {
+			index, end = i, where[1]
+		}
+	}
+	if index < 0 {
+		return screen
+	}
+	indent := cellwidth.String(screen[index][:end])
+	out := append([]string(nil), screen[:index]...)
+	out = append(out, screen[index][:end]+"and tell Claude what to do differently")
+	inFeedback := true
+	for _, line := range screen[index+1:] {
+		trim := strings.TrimLeft(line, " ")
+		lineIndent := cellwidth.String(line) - cellwidth.String(trim)
+		if lineIndent < indent && strings.HasPrefix(trim, "Esc to cancel") {
+			inFeedback = false
+		}
+		if inFeedback && trim != "" && lineIndent >= indent {
+			continue
+		}
+		out = append(out, line)
+	}
+	if inFeedback {
+		return nil
+	}
+	return out
+}
+
+func claudePermissionEditPrompt(pane *runtime.Pane, selected string) *screenprompt.Prompt {
+	if foregroundAgent(pane) != "claude" {
+		return nil
+	}
+	return screenprompt.Parse("claude", claudePermissionEditScreen(pane.DetectionLines(), selected))
+}
+
 func (s *Server) claudePermissionEditInput(pid int, original *screenprompt.Prompt, selected, expected, data string) error {
 	err := fmt.Errorf("server stopped before permission input")
 	s.app.Do(func() {
@@ -219,7 +260,7 @@ func (s *Server) claudePermissionEditInput(pid int, original *screenprompt.Promp
 			return
 		}
 		visible, _ := pane.ReadLines("visible", true)
-		if !claudePermissionEditMatches(original, s.readScreenPrompt(pid), selected, expected, visible) {
+		if !claudePermissionEditMatches(original, claudePermissionEditPrompt(pane, selected), selected, expected, visible) {
 			err = fmt.Errorf("permission editor changed")
 			return
 		}
@@ -236,7 +277,7 @@ func (s *Server) waitClaudePermissionEdit(pid int, original *screenprompt.Prompt
 		s.app.Do(func() {
 			if pane := s.sup.Get(pid); pane != nil {
 				visible, _ := pane.ReadLines("visible", true)
-				matches = claudePermissionEditMatches(original, s.readScreenPrompt(pid), selected, text, visible)
+				matches = claudePermissionEditMatches(original, claudePermissionEditPrompt(pane, selected), selected, text, visible)
 			}
 		})
 		if matches {
