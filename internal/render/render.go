@@ -122,20 +122,21 @@ type JobDot struct {
 }
 
 type Input struct {
-	ApprovalCounts    map[int]int
-	Approval          *Approval
-	RestoreFailures   map[int]string
-	GraphicsPatches   []PaneGraphicsPatch
-	SurfaceRevision   uint64
-	PanePalette       *Palette
-	ServerUI          bool
-	State             *model.AppState
-	SidebarConfig     config.Config
-	WorkspaceTokens   map[int]map[string]string
-	Panes             map[int]*PaneSnap
-	Scroll            map[int]int
-	SidebarHover      bool
-	RightSidebarHover bool
+	ApprovalCounts     map[int]int
+	ApprovalGuardPanes map[int]bool
+	Approval           *Approval
+	RestoreFailures    map[int]string
+	GraphicsPatches    []PaneGraphicsPatch
+	SurfaceRevision    uint64
+	PanePalette        *Palette
+	ServerUI           bool
+	State              *model.AppState
+	SidebarConfig      config.Config
+	WorkspaceTokens    map[int]map[string]string
+	Panes              map[int]*PaneSnap
+	Scroll             map[int]int
+	SidebarHover       bool
+	RightSidebarHover  bool
 	// JobDots maps workspace index → job dots drawn on its sidebar row.
 	JobDots           map[int][]JobDot
 	Jobs              []JobRow

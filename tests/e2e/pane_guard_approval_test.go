@@ -44,15 +44,22 @@ func TestPaneGuardApprovalExecutesRealCommand(t *testing.T) {
 		t.Fatal("command ran before approval")
 	}
 	s.send("\x02a")
-	s.waitFor("approval visible", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "申請文") && strings.Contains(tx, "1: 承認") })
+	s.waitFor("approval visible", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "reason") && strings.Contains(tx, "1  承認") })
 	save("open")
 	s.send("\x1b")
-	s.waitFor("closed without answer", 5*time.Second, func(tx string) bool { return !strings.Contains(tx, "1: 承認") && strings.Contains(tx, "Answer (1)") })
+	s.waitFor("closed without answer", 5*time.Second, func(tx string) bool { return !strings.Contains(tx, "1  承認") && strings.Contains(tx, "Answer (1)") })
 	save("escape")
 	s.send("\x02a")
-	s.waitFor("reopened", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "1: 承認") })
+	s.waitFor("reopened", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "1  承認") })
+	x, y := s.find("1  承認")
+	if x < 0 || y < 0 {
+		t.Fatal("approval option missing")
+	}
+	unselectedBG := s.emu.CellAt(x, y).Style.Bg
 	s.send("1")
-	s.waitFor("selection", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "● 1: 承認") })
+	s.waitFor("selection", 5*time.Second, func(tx string) bool {
+		return strings.Contains(tx, "1  承認") && s.emu.CellAt(x, y).Style.Bg != unselectedBG
+	})
 	save("selected")
 	if _, err := os.Stat(result); !os.IsNotExist(err) {
 		t.Fatal("number answered without Enter")
@@ -110,10 +117,10 @@ func TestReviewGuardRejectReasonWithDigits(t *testing.T) {
 	}
 	id := pending.Decisions[0].DecisionID
 	s.send("\x02a")
-	s.waitFor("approval", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "1: 承認") })
+	s.waitFor("approval", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "1  承認") })
 	s.send("312")
 	s.waitFor("reject reason", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "却下理由: 12") && strings.Contains(tx, "● 3:")
+		return strings.Contains(tx, "reject note 12") && strings.Contains(tx, "3  却下")
 	})
 	if dir := os.Getenv("PANE_REVIEW_EVIDENCE"); dir != "" {
 		if err := os.WriteFile(filepath.Join(dir, "reject-reason.txt"), []byte(s.text()), 0600); err != nil {

@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/model"
@@ -42,12 +44,49 @@ func TestClaudePermissionPopupFieldOrder(t *testing.T) {
 	}
 	text := strings.Join(in.Approval.Lines, "\n")
 	last := -1
-	for _, value := range []string{"Bash command", "why", "画面の表示どおり（折り返しを含む）", "echo safe", "warning", "Yes", "No"} {
+	for _, value := range []string{"Bash command", "echo safe", "画面の表示どおり（折り返しを含む）", "warning", "why", "Yes", "No"} {
 		next := strings.Index(text, value)
 		if next <= last {
 			t.Fatalf("missing or out of order %q in %q", value, text)
 		}
 		last = next
+	}
+}
+
+func TestClaudePermissionPopupStylesAndRejectInstructions(t *testing.T) {
+	description := "許可の説明"
+	expires := int64(1700000000000)
+	d := api.Decision{DecisionID: "claude", Kind: "tool_permission", Status: "pending", AllowText: true, ExpiresUnixMS: &expires, Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Tool: "Bash", Explanation: "理由", Command: "echo safe", Warning: "注意"}, Options: []api.DecisionOption{{ID: "1", Label: "Yes", Role: "approve", Description: &description}, {ID: "4", Label: "No", Role: "reject"}}}
+	var state approvalState
+	state.update(&endpoint.DecisionProjection{BootID: "x", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
+	state.openPane("p1")
+	state.selected = "4"
+	in := render.Input{State: model.New(t.TempDir(), 120, 40)}
+	state.overlay(&in)
+	if in.Approval.Title != " approve command?" || !in.ApprovalGuardPanes[1] {
+		t.Fatal("missing guard presentation")
+	}
+	want := map[string]string{" reason 理由": "reason", " $ echo safe": "surface", " warning 注意": "warning", " reject note ": "input", "    許可の説明": "dim"}
+	for text, role := range want {
+		found := false
+		for i, line := range in.Approval.Lines {
+			if strings.HasPrefix(line, text) && in.Approval.Kinds[i].Role == role {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing %q role %q: %+v", text, role, in.Approval)
+		}
+	}
+	if !strings.Contains(in.Approval.Lines[0], " · Bash · expires "+time.UnixMilli(expires).Local().Format("15:04")) {
+		t.Fatalf("incorrect subtitle: %q", in.Approval.Lines[0])
+	}
+	text := strings.Join(in.Approval.Lines, "\n")
+	if !strings.Contains(text, "\n\n $ echo safe\n 画面の表示どおり（折り返しを含む）\n warning 注意\n\n reason 理由\n\n") {
+		t.Fatalf("incorrect field order or spacing: %q", text)
+	}
+	if !strings.Contains(text, "confirm ↵") || !strings.Contains(text, "back ctrl+u") || strings.Contains(text, "select 1-") {
+		t.Fatalf("reject footer: %s", text)
 	}
 }
 
@@ -220,7 +259,7 @@ func TestLateAnswerSingleAndTextOnly(t *testing.T) {
 
 func TestLateAnswerRendersDetailsAndPreviewFallback(t *testing.T) {
 	heading, body, description, preview := "Question 1/1", "Which color?", "warm tone", "example red"
-	d := api.Decision{DecisionID: "d", Kind: "agent_prompt", Status: "pending", LateAnswer: true, QuestionLabel: &heading, Title: "Choose", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red", Description: &description, Preview: &preview}, {ID: "2", Label: "Blue"}}}
+	d := api.Decision{DecisionID: "d", Kind: "agent_prompt", Status: "pending", LateAnswer: true, QuestionLabel: &heading, Title: "Choose", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red", Description: &description, Preview: &preview}, {ID: "2", Label: "Blue", PreviewUnavailable: true}}}
 	var state approvalState
 	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
 	state.openPane("p1")
@@ -234,5 +273,123 @@ func TestLateAnswerRendersDetailsAndPreviewFallback(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in %q", want, text)
 		}
+	}
+}
+
+func TestApprovalPresentationOriginAndRejectInstructions(t *testing.T) {
+	app := model.New(t.TempDir(), 120, 40)
+	ws := app.ActiveWorkspace()
+	ws.Name, ws.CustomName = "作業場", true
+	body := "申請の理由"
+	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Title: "実行確認（規則: rm-paths）", Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1", WorkspaceLabel: "古い名前", Command: "echo test"}, Options: []api.DecisionOption{{ID: "approve", Label: "承認"}, {ID: "day_allow", Label: "1日許可"}, {ID: "reject", Label: "却下", Role: "reject"}}}
+	state := approvalState{pending: []api.Decision{d}, open: "guard", selected: "reject", reason: "却下します"}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	text := strings.Join(in.Approval.Lines, "\n")
+	for _, want := range []string{"p1 · 作業場 · rule rm-paths", " reason 申請の理由", " reject note 却下します", "confirm ↵  ·  back ctrl+u  ·  close esc"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in %q", want, text)
+		}
+	}
+	if strings.Contains(text, "select 1-3") || strings.Contains(text, "\n back ctrl+u") {
+		t.Fatalf("reject input shows selection guidance: %q", text)
+	}
+}
+
+func TestApprovalFooterWrapsOnlyBetweenInstructions(t *testing.T) {
+	app := model.New(t.TempDir(), 102, 40)
+	app.ActiveWorkspace().Name, app.ActiveWorkspace().CustomName = "作業場", true
+	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1"}, {ID: "2"}, {ID: "3"}}}
+	state := approvalState{pending: []api.Decision{d}, open: "guard"}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	var footer []string
+	for i, kind := range in.Approval.Kinds {
+		if kind.Role == "footer" {
+			footer = append(footer, strings.TrimSpace(in.Approval.Lines[i]))
+		}
+	}
+	if got := strings.Join(footer, " | "); got != "select 1-3  ·  confirm ↵  ·  scroll ↑↓ | close esc" {
+		t.Fatalf("footer split inside instruction: %q", got)
+	}
+}
+
+func TestLateApprovalPresentationIncludesCheckedOptions(t *testing.T) {
+	app := model.New(t.TempDir(), 120, 40)
+	heading, notice, desc, preview := "Question 1/1", "Codex は空の答えで先に進みました。答えると会話で届けます", "明るい色", "赤い見本"
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, MultiSelect: true, AllowText: true, Title: "色を選ぶ", QuestionLabel: &heading, Body: &notice, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "red", Label: "赤", Description: &desc, Preview: &preview}, {ID: "blue", Label: "青", PreviewUnavailable: true}}}
+	state := approvalState{pending: []api.Decision{d}, open: "late", selected: "blue", checked: map[string]bool{"red": true, "blue": true}}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	if !in.Approval.Late || in.Approval.Title != " answer question" {
+		t.Fatalf("unexpected question header: %+v", in.Approval)
+	}
+	text := strings.Join(in.Approval.Lines, "\n")
+	for _, want := range []string{heading, "色を選ぶ", notice, "✓ 1  赤", "✓ 2  青", desc, preview, "画面で確認", "check space"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in %q", want, text)
+		}
+	}
+	for i, line := range in.Approval.Lines {
+		if strings.Contains(line, "✓ 2  青") && !in.Approval.Kinds[i].Selected {
+			t.Error("current option must be highlighted")
+		}
+	}
+}
+
+func TestLateApprovalOmitsTerminalTitleAndAbsentPreview(t *testing.T) {
+	app := model.New(t.TempDir(), 120, 40)
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, Title: "質問", Origin: &api.DecisionOrigin{PaneID: "p1", PaneLabel: "terminal title", TabLabel: "terminal tab", WorkspaceLabel: "サイドバーの名前"}, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青", PreviewUnavailable: true}}}
+	state := approvalState{pending: []api.Decision{d}, open: "late"}
+	in := render.Input{State: app, WorkspaceNames: map[int]string{0: "サイドバーの名前-terminal title"}}
+	state.overlay(&in)
+	text := strings.Join(in.Approval.Lines, "\n")
+	if !strings.Contains(text, "p1 · サイドバーの名前") || strings.Contains(text, "terminal title") || strings.Contains(text, "terminal tab") {
+		t.Fatalf("wrong origin: %q", text)
+	}
+	if strings.Count(text, "preview: 画面で確認") != 1 {
+		t.Fatalf("wrong preview fallback: %q", text)
+	}
+}
+
+func TestLateApprovalTextModeShowsInputInstructions(t *testing.T) {
+	app := model.New(t.TempDir(), 120, 40)
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青"}}}
+	state := approvalState{pending: []api.Decision{d}, open: "late", textMode: true, reason: "自由入力"}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	text := strings.Join(in.Approval.Lines, "\n")
+	if !strings.Contains(text, "text 自由入力") || !strings.Contains(text, "confirm ↵  ·  back ctrl+u  ·  close esc") {
+		t.Fatalf("missing input or guidance: %q", text)
+	}
+	if strings.Contains(text, "select 1-2") || strings.Contains(text, "input · back ctrl+u") {
+		t.Fatalf("text mode shows selection or redundant guidance: %q", text)
+	}
+}
+
+func TestApprovalReasonWrapKeepsWideCharactersInElevenCellPane(t *testing.T) {
+	app := model.New(t.TempDir(), 11, 40)
+	app.SidebarVisible, app.SidebarHidden, app.RightSidebarMode = false, true, "hidden"
+	body := "日本語の理由"
+	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}}
+	state := approvalState{pending: []api.Decision{d}, open: "guard"}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	pane := app.DisplayPaneRects()[0].Rect
+	if pane.W != 11 {
+		t.Fatalf("expected 11-cell pane, got %d", pane.W)
+	}
+	var reason strings.Builder
+	for i, kind := range in.Approval.Kinds {
+		if kind.Role == "reason" {
+			line := in.Approval.Lines[i]
+			if width := ansi.StringWidth(line); width > pane.W-2 {
+				t.Errorf("reason line width %d exceeds %d: %q", width, pane.W-2, line)
+			}
+			reason.WriteString(strings.TrimSpace(strings.TrimPrefix(line, " reason ")))
+		}
+	}
+	if reason.String() != body {
+		t.Errorf("reason content = %q, want %q", reason.String(), body)
 	}
 }
