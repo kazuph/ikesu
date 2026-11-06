@@ -149,15 +149,15 @@ func claudePermissionEditMatches(original, current *screenprompt.Prompt, selecte
 				return false
 			}
 		} else {
-			lines := strings.Split(text, "\n")
-			if label != "No, "+lines[0] {
-				return false
+			// The parser presents continuation rows as a description. Compare
+			// their visible text; the pasted bytes and transcript check retain
+			// the original newlines.
+			expected := "No, " + strings.ReplaceAll(text, "\n", " ")
+			visible := label
+			if other.Description != nil {
+				visible += " " + *other.Description
 			}
-			if len(lines) == 1 {
-				if other.Description != nil {
-					return false
-				}
-			} else if other.Description == nil || *other.Description != strings.Join(lines[1:], " ") {
+			if visible != expected {
 				return false
 			}
 		}

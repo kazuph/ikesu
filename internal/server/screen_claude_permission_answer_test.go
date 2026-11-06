@@ -79,6 +79,12 @@ func TestClaudePermissionEditMultiline(t *testing.T) {
 	if claudePermissionEditMatches(original, current, "1", "Do not write the file.\nPlease explain the decision.") {
 		t.Fatal("approval accepted as rejection")
 	}
+	wrapped := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
+	wrapped = strings.Replace(wrapped, "  2. No", "❯ 2. No, Please do not run this command because this explanation is deliberately longer than a single\n          line on the current terminal screen.\n          Please explain the decision.", 1)
+	want := "Please do not run this command because this explanation is deliberately longer than a single line on the current terminal screen.\nPlease explain the decision."
+	if !claudePermissionEditMatches(original, screenprompt.Parse("claude", strings.Split(wrapped, "\n")), "2", want) {
+		t.Fatal("wrapped multiline feedback not recognized")
+	}
 }
 
 func TestClaudePermissionEditRequiresSelectedNo(t *testing.T) {
