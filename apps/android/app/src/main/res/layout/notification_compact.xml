@@ -1,5 +1,5 @@
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/notification_compact" android:layout_width="match_parent"
     android:layout_height="match_parent" android:background="#000000"
-    android:textColor="#33FF66" android:textSize="14sp" android:gravity="center_vertical"
+    android:textColor="#33FF66" android:textSize="18sp" android:gravity="center_vertical"
     android:ellipsize="end" android:maxLines="1" android:padding="6dp" />

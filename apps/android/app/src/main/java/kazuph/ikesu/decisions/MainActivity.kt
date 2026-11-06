@@ -7,9 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +18,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.text.util.Linkify
 import android.view.KeyEvent
+import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -46,18 +47,24 @@ class MainActivity : Activity() {
     private var settingsVisible = false
     private var showList = true
     private var listCursor = 0
-    private val layout by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK); setPadding(24, 24, 24, 24) } }
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + .5f).toInt()
+    private val root by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) } }
+    private val header by lazy { LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL } }
+    private val layout by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL } }
+    private val footer by lazy { LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL } }
     private val nav = VolumeNav({ move(-1) }, { move(1) }, { confirm() })
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { handleUpdate() }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(ScrollView(this).apply {
-            addView(layout)
+        root.addView(header)
+        root.addView(ScrollView(this).apply { addView(layout) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(footer)
+        setContentView(root.apply {
             setOnApplyWindowInsetsListener { view, insets ->
                 val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                view.setPadding(bars.left + dp(20), bars.top, bars.right + dp(20), bars.bottom)
                 insets
             }
         })
@@ -119,96 +126,131 @@ class MainActivity : Activity() {
         for (i in 0 until items.length()) items.optJSONObject(i)?.let { if (it.optString("id") == selectedId) return it }
         return null
     }
-    private fun text(value: String, size: Float = 16f): TextView = TextView(this).apply {
-        text = value; textSize = size; setTextColor(green); setLinkTextColor(green); setPadding(0, 10, 0, 10)
+    private fun frame(fill: Int = Color.BLACK): GradientDrawable = GradientDrawable().apply {
+        setColor(fill); setStroke(dp(2), green); cornerRadius = dp(8).toFloat()
+    }
+    private fun text(value: String, size: Float = 22f): TextView = TextView(this).apply {
+        text = value; textSize = size; setTextColor(green); setLinkTextColor(green)
+        gravity = Gravity.START; if (size == 28f) setTypeface(typeface, Typeface.BOLD)
         autoLinkMask = Linkify.WEB_URLS; linksClickable = true; setTextIsSelectable(true)
         movementMethod = android.text.method.LinkMovementMethod.getInstance()
     }
-    private fun button(label: String, action: () -> Unit): Button = Button(this).apply {
-        text = label; isAllCaps = false; setTextColor(green); backgroundTintList = ColorStateList.valueOf(Color.BLACK); setOnClickListener { action() }
+    private fun button(label: String, filled: Boolean = false, action: () -> Unit): Button = Button(this).apply {
+        text = label; textSize = 22f; isAllCaps = false; gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        setTextColor(if (filled) Color.BLACK else green); background = frame(if (filled) green else Color.BLACK)
+        if (filled) setTypeface(typeface, Typeface.BOLD)
+        minHeight = dp(64); setPadding(dp(16), 0, dp(16), 0); setOnClickListener { action() }
+    }
+    private fun block(view: View, margin: Int = 12) {
+        layout.addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(margin) })
+    }
+    private fun pair(left: View, right: View, target: LinearLayout) {
+        target.addView(left, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
+        target.addView(right, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(6) })
+    }
+    private fun input(hintText: String, lines: Int = 1): EditText = EditText(this).apply {
+        textSize = 22f; setTextColor(green); setHintTextColor(dim); hint = hintText
+        background = frame(); gravity = Gravity.TOP or Gravity.START; minLines = lines
+        setPadding(dp(16), dp(16), dp(16), dp(16))
     }
     private fun render() {
-        layout.removeAllViews()
-        layout.addView(text("ikesu · ${if (DecisionState.connected) "接続中" else "未接続"}", 20f))
-        layout.addView(button(if (settingsVisible) "設定を閉じる" else "接続設定") { settingsVisible = !settingsVisible; render() })
+        header.removeAllViews(); layout.removeAllViews(); footer.removeAllViews()
+        header.addView(text("ikesu · ${if (DecisionState.connected) "接続中" else "未接続"}", 18f), LinearLayout.LayoutParams(0, -2, 1f))
+        val headerAction = text(if (settingsVisible || !showList) "一覧へ" else "設定", 18f).apply {
+            setTextIsSelectable(false); movementMethod = null
+            gravity = Gravity.END; setPadding(dp(8), dp(12), 0, dp(12)); setOnClickListener {
+                if (settingsVisible) settingsVisible = false else if (!showList) showList = true else settingsVisible = true
+                render()
+            }
+        }
+        header.addView(headerAction)
         if (settingsVisible) { renderSettings(); return }
         val items = DecisionState.decisions
         if (showList) {
-            layout.addView(text("判断待ち ${items.length()} 件"))
+            block(text("判断待ち", 28f))
+            block(text("${items.length()} 件", 18f))
             for (i in 0 until items.length()) items.optJSONObject(i)?.let { entry ->
                 val id = entry.optString("id")
-                layout.addView(button("${if (i == listCursor) "▶ " else ""}${entry.optString("title")}\n${entry.optString("location")}") { selectedId = id; showList = false; render() }.apply { setTextColor(if (i == listCursor) green else dim) })
+                val row = optionRow(i, entry.optString("title"), entry.optString("location"), i == listCursor, false) {
+                    selectedId = id; showList = false; render()
+                }
+                block(row)
             }
             return
         }
-        layout.addView(button("一覧へ戻る") { showList = true; render() })
         val item = current()
-        if (item == null) { layout.addView(text("判断待ちはありません")); return }
+        if (item == null) { block(text("判断待ちはありません")); return }
         val id = item.optString("id")
         val draft = drafts.getOrPut(id) { Draft() }
-        layout.addView(text(item.optString("location")))
-        if (item.optBoolean("machine_down")) layout.addView(text("出どころのマシンに接続できないため送れません").apply { setTextColor(warn) })
-        if (item.optString("reauth_url").isNotEmpty()) layout.addView(text("SSH の再承認が必要です\n${item.optString("reauth_url")}").apply { setTextColor(warn) })
-        if (item.optString("retry_error").isNotEmpty()) layout.addView(text(item.optString("retry_error")).apply { setTextColor(warn) })
+        block(text(item.optString("location"), 18f))
+        block(text(item.optString("title"), 28f))
         val command = item.optString("approval_command")
-        if (command.isNotEmpty()) layout.addView(text(command).apply { setTextColor(Color.RED); typeface = Typeface.MONOSPACE })
+        if (command.isNotEmpty()) block(text(command, 20f).apply { setTextColor(Color.RED); typeface = Typeface.MONOSPACE })
         val details = item.optJSONArray("details") ?: JSONArray()
-        for (i in 0 until details.length()) details.optJSONObject(i)?.let { layout.addView(text("${it.optString("label")}：${it.optString("value")}")) }
-        layout.addView(text(item.optString("title"), 20f))
-        layout.addView(text(item.optString("body")))
+        for (i in 0 until details.length()) details.optJSONObject(i)?.let { block(text("${it.optString("label")}：${it.optString("value")}", 18f)) }
+        if (item.optBoolean("machine_down")) block(text("出どころのマシンに接続できないため送れません", 18f).apply { setTextColor(warn) })
+        if (item.optString("reauth_url").isNotEmpty()) block(text("SSH の再承認が必要です\n${item.optString("reauth_url")}", 18f).apply { setTextColor(warn) })
+        if (item.optString("retry_error").isNotEmpty()) block(text(item.optString("retry_error"), 18f).apply { setTextColor(warn) })
+        if (item.optString("body").isNotEmpty()) block(text(item.optString("body")))
         val images = item.optJSONArray("images") ?: JSONArray()
         for (i in 0 until images.length()) addImage(images.optString(i, ""))
         val cards = item.optJSONArray("cards") ?: JSONArray()
         for (i in 0 until cards.length()) cards.optJSONObject(i)?.let { card ->
-            addImage(card.optString("image"))
-            layout.addView(text("${card.optString("title")}\n${card.optString("url")}"))
+            addImage(card.optString("image")); block(text("${card.optString("title")}\n${card.optString("url")}"))
         }
         val videos = item.optJSONArray("videos") ?: JSONArray()
         for (i in 0 until videos.length()) videos.optJSONObject(i)?.let { video ->
             DecisionState.videos[video.optString("key")]?.let { file ->
                 val player = VideoView(this)
-                val controller = MediaController(this).apply { setAnchorView(player) }
-                player.setMediaController(controller)
-                player.setOnPreparedListener { it.setVolume(0f, 0f) }
-                player.setVideoPath(file.absolutePath)
-                layout.addView(player, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 480))
+                player.setMediaController(MediaController(this).apply { setAnchorView(player) })
+                player.setOnPreparedListener { it.setVolume(0f, 0f) }; player.setVideoPath(file.absolutePath)
+                layout.addView(player, LinearLayout.LayoutParams(-1, dp(200)))
             }
         }
         val options = item.optJSONArray("options") ?: JSONArray()
         for (i in 0 until options.length()) {
             val option = options.optJSONObject(i) ?: continue
             val optionId = option.optString("id")
-            val checked = if (optionId in draft.selected) "☑" else "□"
-            val cursor = if (draft.cursor == i) "▶ " else ""
-            val description = option.optString("description")
-            val preview = option.optString("preview").ifEmpty { "画面で確認" }
-            layout.addView(button("$cursor$checked ${option.optString("label")}\n$description\n$preview") {
-                draft.cursor = i
-                if (item.optBoolean("multi_select")) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
-                render()
-            }.apply { isEnabled = draft.sequence == null; setTextColor(if (draft.cursor == i) green else dim) })
+            val description = listOf(option.optString("description"), option.optString("preview").ifEmpty { "画面で確認" }).filter { it.isNotEmpty() }.joinToString("\n")
+            block(optionRow(i, option.optString("label"), description, draft.cursor == i, optionId in draft.selected) {
+                if (draft.sequence == null) {
+                    draft.cursor = i
+                    if (item.optBoolean("multi_select")) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
+                    render()
+                }
+            })
         }
         if (item.optBoolean("allow_text")) {
-            val comment = EditText(this).apply { hint = "コメント（音声入力できます）"; setTextColor(green); setHintTextColor(dim); setText(draft.text); minLines = 2 }
-            comment.isEnabled = draft.sequence == null
+            block(text("コメント（任意）", 18f), 4)
+            val comment = input("コメントを入力", 3).apply { setText(draft.text); isEnabled = draft.sequence == null }
             comment.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { draft.text = s.toString() }
                 override fun afterTextChanged(s: Editable?) {}
             })
-            layout.addView(comment)
-            draft.images.forEachIndexed { index, _ -> layout.addView(button("添付画像 ${index + 1} ×") { draft.images.removeAt(index); render() }.apply { isEnabled = draft.sequence == null }) }
-            layout.addView(button("写真を選ぶ") { if (draft.images.size < 4) { pendingAttachmentId = id; startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), 2) } }.apply { isEnabled = draft.sequence == null })
-            layout.addView(button("カメラで撮る") { pendingAttachmentId = id; openCamera(draft) }.apply { isEnabled = draft.sequence == null })
+            block(comment)
+            draft.images.forEachIndexed { index, _ -> block(button("添付画像 ${index + 1} ×") { draft.images.removeAt(index); render() }.apply { isEnabled = draft.sequence == null }) }
+            val attachments = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair(button("写真を選ぶ") { if (draft.images.size < 4) { pendingAttachmentId = id; startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), 2) } }.apply { isEnabled = draft.sequence == null },
+                 button("カメラで撮る") { pendingAttachmentId = id; openCamera(draft) }.apply { isEnabled = draft.sequence == null }, attachments)
+            block(attachments)
         }
-        layout.addView(text(item.optString("deadline")))
-        layout.addView(text("ほか ${item.optInt("queue_remaining")} 件"))
-        layout.addView(button("あとで") { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } })
-        layout.addView(button(if (draft.sequence == null) "回答する" else "送信中") { send(item, draft) }.apply { isEnabled = draft.sequence == null; setTextColor(if (draft.cursor == options.length()) green else dim) })
-        if (items.length() > 1) layout.addView(button("次の判断待ち") {
-            val ids = (0 until items.length()).mapNotNull { items.optJSONObject(it)?.optString("id") }
-            selectedId = ids[(ids.indexOf(id) + 1) % ids.size]; render()
-        })
+        if (item.optString("deadline").isNotEmpty()) block(text(item.optString("deadline"), 18f))
+        block(text("ほか ${item.optInt("queue_remaining")} 件", 18f))
+        footer.setPadding(0, dp(8), 0, dp(8))
+        pair(button("あとで") { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
+             button(if (draft.sequence == null) "回答する" else "送信中", true) { send(item, draft) }.apply { isEnabled = draft.sequence == null }, footer)
+    }
+    private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, action: () -> Unit): View {
+        val color = if (focused) Color.BLACK else green
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(64)
+            background = frame(if (focused) green else Color.BLACK); setPadding(dp(16), dp(12), dp(16), dp(12))
+            val heading = text("${if (checked) "✓ " else ""}${index + 1}. $label").apply { setTextIsSelectable(false); movementMethod = null; setTextColor(color) }
+            addView(heading)
+            if (description.isNotEmpty()) addView(text(description, 18f).apply { setTextIsSelectable(false); movementMethod = null; setTextColor(if (focused) Color.BLACK else dim) })
+            setOnClickListener { action() }
+        }
     }
     private fun addImage(encoded: String) {
         if (encoded.isEmpty()) return
@@ -224,10 +266,14 @@ class MainActivity : Activity() {
     }
     private fun renderSettings() {
         val current = try { ConnectionSettings(this).load() } catch (_: Exception) { null }
-        val url = EditText(this).apply { hint = "ws://接続先:8776"; setTextColor(green); setHintTextColor(dim); setText(current?.first ?: "") }
-        val token = EditText(this).apply { hint = "合言葉"; setTextColor(green); setHintTextColor(dim); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
-        layout.addView(url); layout.addView(token)
-        layout.addView(button("保存して接続") {
+        block(text("接続設定", 28f))
+        block(text("接続先", 18f), 4)
+        val url = input("ws://接続先:8776").apply { setText(current?.first ?: "") }
+        block(url)
+        block(text("合言葉", 18f), 4)
+        val token = input("合言葉を入力").apply { inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        block(token)
+        block(button("保存して接続", true) {
             try { ConnectionSettings(this).save(url.text.toString().trim(), token.text.toString().trim()); settingsVisible = false; startService(Intent(this, DecisionService::class.java)); render() }
             catch (error: Exception) { Toast.makeText(this, error.message, Toast.LENGTH_LONG).show() }
         })

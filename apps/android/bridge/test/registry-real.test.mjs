@@ -12,6 +12,7 @@ import { WebSocket } from 'ws';
 import { once } from 'node:events';
 import { spawnDecisionWatch } from '../../../mac-dialog-decisions/mac-dialog-decisions.mjs';
 import { ClientViews } from '../../../mac-dialog-decisions/client-views.mjs';
+import { RichService } from '../../../mac-dialog-decisions/rich-service.mjs';
 
 const exec = promisify(execFile);
 const binary = process.env.IKESU_TEST_BIN || path.join(os.homedir(), '.local/bin/ikesu');
@@ -169,4 +170,38 @@ test('隔離 ikesu の保存済み回答と送信番号の重複を照合する'
   views.stop();
   const unavailable = await registry.snapshot();
   assert.equal(unavailable.find(item => item.decision_id === byKind.agent_prompt.decision_id).notify, true);
+
+  let nativeDialog = process.env.ANDROID_TEST_NATIVE_BINARY;
+  if (!nativeDialog) {
+    const version = fs.readFileSync(path.join(os.homedir(), '.local/share/ikesu/mac-dialog-decisions/current-version'), 'utf8').trim();
+    nativeDialog = path.join(os.homedir(), '.local/share/ikesu/mac-dialog-decisions', version, 'IkesuDecisionDialog.app/Contents/MacOS/ikesu-decision-dialog');
+  }
+  assert.ok(fs.existsSync(nativeDialog), '画像検査に実際の Mac パネルが必要です');
+  const rich = new RichService({ stateDir: path.join(home, 'android-state'), nativeDialog, ikesuBin: binary, pluginId: 'kazuph.android' });
+  registry.rich = rich;
+  await rich.start();
+  const publicId = async decision => {
+    await until(() => [...registry.entries.values()].some(entry => entry.decision.decision_id === decision.decision_id));
+    return (await registry.snapshot()).find(row => row.decision_id === decision.decision_id).id;
+  };
+  const multi = await create('複数選択', { multi_select: true, options: [
+    { id: 'a', label: '一つ目', role: 'approve' }, { id: 'b', label: '二つ目', role: 'approve' }] });
+  assert.equal((await registry.answer({ type: 'answer', id: await publicId(multi), options: ['a', 'b'], text: '', images: [], sequence: 'multi' })).status, 'answered');
+  assert.deepEqual((await getDecision('local', multi.decision_id)).answer.option_ids, ['a', 'b']);
+  const textOnly = await create('文だけ', { allow_text: true });
+  assert.equal((await registry.answer({ type: 'answer', id: await publicId(textOnly), options: [], text: '文だけの回答', images: [], sequence: 'text' })).status, 'answered');
+  assert.equal((await getDecision('local', textOnly.decision_id)).answer.text, '文だけの回答');
+  const noText = await create('文を許可しない');
+  const noTextId = await publicId(noText);
+  await assert.rejects(registry.answer({ type: 'answer', id: noTextId, options: ['yes'], text: '不可', images: [], sequence: 'no-text-invalid' }), /添付できません/);
+  assert.equal((await registry.answer({ type: 'answer', id: noTextId, options: ['yes'], text: '', images: [], sequence: 'no-text-valid' })).status, 'answered');
+  const image = await create('画像添付', { allow_text: true });
+  const bytes = fs.readFileSync(new URL('../../../../docs/brand/mac-dialog-icon.png', import.meta.url));
+  assert.equal((await registry.answer({ type: 'answer', id: await publicId(image), options: ['yes'], text: '画像です', images: [bytes.toString('base64')], sequence: 'image' })).status, 'answered');
+  const imageAnswer = (await getDecision('local', image.decision_id)).answer.text;
+  assert.match(imageAnswer, /^画像です\n添付画像: /);
+  assert.deepEqual(fs.readFileSync(imageAnswer.split('添付画像: ')[1]), bytes);
+  const invalidImage = await create('不正な画像', { allow_text: true });
+  await assert.rejects(registry.answer({ type: 'answer', id: await publicId(invalidImage), options: ['yes'], text: '', images: [Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')], sequence: 'bad-image' }));
+  assert.equal((await getDecision('local', invalidImage.decision_id)).status, 'pending');
 });
