@@ -167,3 +167,40 @@ func TestReviewFenceBeforeApprovalPaintThroughServer(t *testing.T) {
 	}
 	h.until("answer after paint", func() bool { return len(e.guardApproval.pending) == 0 })
 }
+
+func TestLateAnswerInputSelectionAndText(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m, e := h.m, h.m.endpoints["local"]
+	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, AllowText: true, MultiSelect: true, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red"}, {ID: "2", Label: "Blue"}}}
+	e.guardApproval.update(&endpoint.DecisionProjection{BootID: "late", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
+	e.guardApproval.openPane("p1")
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	key := func(r rune) {
+		t.Helper()
+		if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: r, Text: string(r)}, Raw: []byte(string(r))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key('1')
+	key(' ')
+	key('2')
+	key(' ')
+	key('t')
+	key('1')
+	key('2')
+	s := &e.guardApproval
+	if !s.checked["1"] || !s.checked["2"] || s.selected != "2" || s.reason != "12" {
+		t.Fatalf("selection=%q checked=%v text=%q", s.selected, s.checked, s.reason)
+	}
+	if s.waiting {
+		t.Fatal("selection sent before Enter")
+	}
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEscape}, Raw: []byte("\x1b")}); err != nil {
+		t.Fatal(err)
+	}
+	if s.open != "" || len(s.pending) != 1 {
+		t.Fatal("escape removed pending question")
+	}
+}

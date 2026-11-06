@@ -119,9 +119,37 @@ func (s *Store) createDecision(p api.DecisionCreateParams, now time.Time, paneID
 
 // ScreenQuestionDecision finds the pending decision for a verified transcript identity.
 func (s *Store) ScreenQuestionDecision(paneID, identity string) (api.Decision, bool, error) {
+	return s.screenQuestionDecision(paneID, identity, true)
+}
+
+// ScreenQuestionDecisionAny also finds resolved identities to prevent recreating them.
+func (s *Store) ScreenQuestionDecisionAny(paneID, identity string) (api.Decision, bool, error) {
+	return s.screenQuestionDecision(paneID, identity, false)
+}
+
+// ScreenQuestionIdentity returns the recorded identity for a decision, if any.
+func (s *Store) ScreenQuestionIdentity(decisionID string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st, err := s.queryLocked(`SELECT d.record FROM decisions d JOIN screen_question_identities i ON i.decision_id=d.decision_id WHERE i.pane_id=? AND i.identity=? AND d.status='pending'`, paneID, identity)
+	st, err := s.queryLocked(`SELECT identity FROM screen_question_identities WHERE decision_id=?`, decisionID)
+	if err != nil {
+		return "", err
+	}
+	defer st.Close()
+	if !st.Step() {
+		return "", st.Err()
+	}
+	return st.ColumnText(0), nil
+}
+
+func (s *Store) screenQuestionDecision(paneID, identity string, pendingOnly bool) (api.Decision, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT d.record FROM decisions d JOIN screen_question_identities i ON i.decision_id=d.decision_id WHERE i.pane_id=? AND i.identity=?`
+	if pendingOnly {
+		query += ` AND d.status='pending'`
+	}
+	st, err := s.queryLocked(query, paneID, identity)
 	if err != nil {
 		return api.Decision{}, false, err
 	}

@@ -876,6 +876,16 @@ function buildDecisionBlocks({
     return blocks;
   }
 
+  if (decision.delivery?.status === "pending" || decision.delivery?.status === "failed") {
+    const message = decision.delivery.status === "pending"
+      ? "配達待ち：Codex が入力を待つ状態になったら、会話で届けます"
+      : `届けられなかった：${decision.delivery.reason || "理由不明"}`;
+    blocks.push({ type: "divider" });
+    for (const chunk of splitExactText([message, decision.delivery.text].filter(Boolean).join("\n"))) {
+      blocks.push({ type: "section", text: { type: "mrkdwn", text: chunk } });
+    }
+    return blocks;
+  }
   const answer = decision.answer || {};
   const answerIds = Array.isArray(answer.option_ids) && answer.option_ids.length
     ? answer.option_ids
@@ -1246,6 +1256,25 @@ export class SlackDecisionsDaemon {
 
   async onUpdated(mid, machine, decision) {
     const entry = this.entries.get(decisionKey(mid, decisionIdOf(decision)));
+    if (entry?.resolved && decision.delivery) {
+      if (entry.deliveryWork) await entry.deliveryWork;
+      entry.decision = decision;
+      entry.machine = machine;
+      if (decision.delivery.status === "delivered") {
+        entry.resolutionWork = null;
+        await this.finishResolvedPost(entry);
+        this.entries.delete(entry.key);
+      } else if (decision.delivery.status === "failed") {
+        if (await this.updatePostStatus(entry, "answered", decision)) {
+          this.posts.delete(entry.key);
+          this.savePostsFile();
+          this.entries.delete(entry.key);
+        }
+      } else if (decision.delivery.status === "pending") {
+        await this.updatePostStatus(entry, "answered", decision);
+      }
+      return;
+    }
     if (!entry || entry.resolved || (decision.status && decision.status !== "pending")) return;
     entry.decision = decision;
     entry.machine = machine;
@@ -1493,10 +1522,14 @@ export class SlackDecisionsDaemon {
 
   async updatePostStatus(entry, status, decision) {
     const post = entry.post;
-    if (!this.ownsPost(entry.key, post)) return;
+    if (!this.ownsPost(entry.key, post)) return false;
     try {
       await this.retryPostMutation(() => this.slack.updateMessage(post.ts, {
-        text: `${(STATUS_TEXT[status] || status).replace(/:[a-z_0-9]+:/g, "").trim()}: ${decision.title || decision.decision_id}`,
+        text: decision.delivery?.status === "pending"
+          ? `配達待ち：Codex が入力を待つ状態になったら、会話で届けます\n${decision.delivery.text || ""}`
+          : decision.delivery?.status === "failed"
+            ? `届けられなかった：${decision.delivery.reason || "理由不明"}\n${decision.delivery.text || ""}`
+            : `${(STATUS_TEXT[status] || status).replace(/:[a-z_0-9]+:/g, "").trim()}: ${decision.title || decision.decision_id}`,
         blocks: buildDecisionBlocks({
           decision,
           machine: entry.machine,
@@ -1504,8 +1537,10 @@ export class SlackDecisionsDaemon {
           mention: this.slack.mention || "",
         }),
       }), () => this.ownsPost(entry.key, post));
+      return true;
     } catch (error) {
       this.log(`投稿の更新に失敗 (${decision.decision_id}): ${error.message}`);
+      return false;
     }
   }
 
@@ -1527,8 +1562,17 @@ export class SlackDecisionsDaemon {
     clearTimeout(entry.answerRetryTimer);
     if (entry.postTimer) clearTimeout(entry.postTimer);
     if (entry.superseded) { this.posts.delete(key); this.savePostsFile(); }
-    if (entry.renderWork) await entry.renderWork;
-    await this.finishResolvedPost(entry);
+    entry.deliveryWork = (async () => {
+      if (entry.renderWork) await entry.renderWork;
+      return this.finishResolvedPost(entry);
+    })();
+    const finished = await entry.deliveryWork;
+    if (decision.delivery?.status === "pending") return;
+    if (decision.delivery?.status === "failed") {
+      if (!finished) return;
+      this.posts.delete(entry.key);
+      this.savePostsFile();
+    }
     this.entries.delete(key);
     this.log(`決定済み: ${decision.decision_id} (${decision.status})`);
   }
@@ -1540,6 +1584,9 @@ export class SlackDecisionsDaemon {
 
   finishResolvedPost(entry) {
     if (!this.ownsPost(entry.key, entry.post)) return;
+    if (entry.decision.delivery?.status === "pending" || entry.decision.delivery?.status === "failed") {
+      return this.updatePostStatus(entry, "answered", entry.decision);
+    }
     if (entry.resolutionWork) return entry.resolutionWork;
     entry.resolutionWork = (async () => {
       const decision = entry.decision;
@@ -1692,6 +1739,7 @@ export class SlackDecisionsDaemon {
       entry.machineDown = true;
       this.clock.clearTimeout(entry.reactionTimer);
       handled.add(entry.key);
+      if (entry.decision.delivery?.status === "pending") continue;
       // Deleted, not marked: a down machine's question cannot be answered.
       // A still-pending decision is re-posted on machine_up.
       await this.deletePost(entry);
@@ -1747,6 +1795,14 @@ export class SlackDecisionsDaemon {
       if (!did) continue;
       try {
         const current = await this.getDecision(mid, did);
+        if (entry.decision?.delivery?.status === "pending") {
+          const delivery = current?.delivery && ["pending", "delivered", "failed"].includes(current.delivery.status)
+            ? current.delivery
+            : { ...entry.decision.delivery, status: "failed", reason: "サーバーの再起動" };
+          entry.machineDown = false;
+          await this.onUpdated(mid, entry.machine, { ...(current || entry.decision), delivery });
+          continue;
+        }
         if (!current || current.status !== "pending") {
           await this.onResolved(
             mid,

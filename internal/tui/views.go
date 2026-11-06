@@ -31,6 +31,22 @@ func (a *App) focusedPane() int {
 
 // glyph returns the pane's display status glyph.
 func (a *App) glyph(pid int) render.StatusGlyph {
+	key := a.PaneAgentStatusKey(pid)
+	if a.decisionAttention[pid] {
+		key = "blocked"
+	}
+	sudo := false
+	if a.sup != nil {
+		if p := a.sup.Get(pid); p != nil {
+			sudo = p.ForegroundSudo()
+		}
+	}
+	return paneStatusGlyph(key, a.spin, render.ConfigPalette(a.sidebarConfig), sudo)
+}
+
+// PaneAgentStatusKey omits the decision-attention overlay while retaining
+// visible prompt blockers and the actual detected or reported agent state.
+func (a *App) PaneAgentStatusKey(pid int) string {
 	tr := a.trackers[pid]
 	key := "unknown"
 	if tr != nil {
@@ -42,16 +58,10 @@ func (a *App) glyph(pid int) render.StatusGlyph {
 			key = "done"
 		}
 	}
-	if a.reportedVisibleBlocker(pid) || a.decisionAttention[pid] {
+	if a.reportedVisibleBlocker(pid) {
 		key = "blocked"
 	}
-	sudo := false
-	if a.sup != nil {
-		if p := a.sup.Get(pid); p != nil {
-			sudo = p.ForegroundSudo()
-		}
-	}
-	return paneStatusGlyph(key, a.spin, render.ConfigPalette(a.sidebarConfig), sudo)
+	return key
 }
 
 func paneStatusGlyph(key string, spin int, palette render.Palette, sudo bool) render.StatusGlyph {

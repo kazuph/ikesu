@@ -65,6 +65,9 @@ func TestScreenQuestionIdentitySurvivesRestartAndRejectsDuplicates(t *testing.T)
 	if _, err := store.AnswerDecision(api.DecisionAnswerParams{DecisionID: recreated.DecisionID, OptionIDs: []string{"1"}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if got, found, err := store.ScreenQuestionDecisionAny("p1", identity); err != nil || !found || got.DecisionID != recreated.DecisionID || got.Status != "answered" {
+		t.Fatalf("answered identity lookup: %+v %v %v", got, found, err)
+	}
 	if _, err := store.CreateScreenDecision(params, time.Now(), "p1", identity); err == nil {
 		t.Fatal("answered question recreated")
 	}

@@ -136,3 +136,42 @@ func TestDecisionRemoteOriginDoesNotNameOrBlockLocalPane(t *testing.T) {
 		}
 	})
 }
+
+func TestLateCodexDecisionDoesNotBlockAttention(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	s.app.Do(func() {
+		s.app.SetReported(1, "codex", "working")
+		resp := s.decisionRequest(&api.Request{ID: "late", Method: api.MethodDecisionCreate, Params: api.MarshalParams(api.DecisionCreateParams{Kind: "agent_prompt", Title: "Question?", Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "codex", Reason: "screen_prompt"}, Options: []api.DecisionOption{{ID: "1", Label: "Yes", Role: "other"}}})})
+		if resp.Err != nil {
+			t.Error(resp.Err)
+			return
+		}
+		var result api.DecisionResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			t.Error(err)
+			return
+		}
+		s.screenPrompts.late = map[string]*lateCodexQuestion{result.Decision.DecisionID: {pid: 1}}
+		s.syncDecisionAttention()
+		if got := s.app.PaneStatusKey(1); got != "working" {
+			t.Errorf("verified late question blocked pane: %s", got)
+		}
+		for _, kind := range []string{"command_guard", "tool_permission", "agent_prompt"} {
+			other, err := s.store.CreateDecision(api.DecisionCreateParams{Kind: kind, Title: "Waiting", Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Yes", Role: "other"}}}, time.Now())
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			s.syncDecisionAttention()
+			if got := s.app.PaneStatusKey(1); got != "blocked" {
+				t.Errorf("%s did not block alongside late question: %s", kind, got)
+			}
+			if _, err := s.store.CancelDecision(other.DecisionID, time.Now()); err != nil {
+				t.Error(err)
+				return
+			}
+			s.syncDecisionAttention()
+		}
+	})
+}

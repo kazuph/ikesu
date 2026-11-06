@@ -172,6 +172,9 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		if err != nil {
 			return decisionFailure(req.ID, err)
 		}
+		for i := range ds {
+			ds[i] = s.withLateDelivery(ds[i])
+		}
 		return api.Success(req.ID, api.DecisionListResult{Type: "decision_list", Decisions: ds})
 	case api.MethodDecisionAnswer:
 		var p api.DecisionAnswerParams
@@ -182,13 +185,33 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		if err != nil {
 			return decisionFailure(req.ID, err)
 		}
-		watch, pid, err := s.validateScreenAnswer(before, p)
+		var watch *screenPromptWatch
+		var pid int
+		var lateText string
+		late := s.screenPrompts.late[p.DecisionID]
+		if late != nil && before.Status == "pending" {
+			answer, validateErr := dispatch.ValidateDecisionAnswer(before, p)
+			if validateErr != nil {
+				return decisionFailure(req.ID, validateErr)
+			}
+			if !before.MultiSelect && len(answer.OptionIDs) > 1 {
+				return decisionFailure(req.ID, &api.Error{Code: "screen_prompt_unsupported", Message: "single-choice screen cannot submit multiple options"})
+			}
+			lateText, err = lateCodexAnswerText(before, answer)
+		} else {
+			watch, pid, err = s.validateScreenAnswer(before, p)
+		}
 		if err != nil {
 			return decisionFailure(req.ID, err)
 		}
 		d, err := store.AnswerDecision(p, time.Now())
 		if err != nil {
 			return decisionFailure(req.ID, err)
+		}
+		if lateText != "" {
+			late.delivery = &api.DecisionDelivery{Status: "pending", Text: lateText}
+			d = s.withLateDelivery(d)
+			s.scheduleScreenPrompts()
 		}
 		s.decisionChanged("decision_resolved", d)
 		if watch != nil {
@@ -214,6 +237,7 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 			s.decisionChanged("decision_resolved", d)
 			_ = s.expireDecisions(store)
 		}
+		d = s.withLateDelivery(d)
 		return decisionResult(req.ID, d)
 	}
 	return api.Failure(req.ID, api.ErrUnknownMethod, "unknown decision method")

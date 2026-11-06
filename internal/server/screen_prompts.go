@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/session"
 )
 
 type screenPromptHub struct {
@@ -15,6 +16,8 @@ type screenPromptHub struct {
 	flows       map[int]*screenAnswerFlow
 	watches     map[int]*screenPromptWatch
 	transcripts map[int]*claudeTranscriptScan
+	late        map[string]*lateCodexQuestion
+	verifying   map[string]*lateCodexQuestion
 	timer       *time.Timer
 }
 
@@ -24,6 +27,14 @@ const screenPromptWaitPoll = time.Second
 const claudeTranscriptWait = 60 * time.Second
 
 type screenPromptWatch struct {
+	codex               *codexBinding
+	codexResult         <-chan codexBindingResult
+	codexAnchorPath     string
+	codexAnchorSession  string
+	codexAnchorStart    time.Time
+	codexAnchorGroup    int
+	codexChecked        bool
+	codexStateResult    <-chan codexStateResult
 	transcriptDeadline  time.Time
 	signature           string
 	transcriptID        string
@@ -81,6 +92,14 @@ func (s *Server) screenPromptsActive() bool {
 	}
 	if len(s.screenPrompts.watches) > 0 {
 		return true
+	}
+	if len(s.screenPrompts.verifying) > 0 {
+		return true
+	}
+	for _, late := range s.screenPrompts.late {
+		if late.delivery != nil && late.delivery.Status == "pending" {
+			return true
+		}
 	}
 	active := false
 	s.eachPane(func(pid, _, _ int) {
@@ -164,6 +183,12 @@ func (s *Server) screenPromptConfig(c config.Config) {
 		return
 	}
 	s.stopScreenPromptTimer()
+	s.screenPrompts.verifying = nil
+	for id, late := range s.screenPrompts.late {
+		if late.delivery != nil && late.delivery.Status == "pending" {
+			s.setLateDelivery(id, "failed", "画面の質問の検出が無効になりました")
+		}
+	}
 	for _, w := range s.screenPrompts.watches {
 		s.cancelScreenPrompt(w)
 	}
@@ -209,6 +234,8 @@ func (s *Server) scanScreenPrompts() {
 	if !s.cfg.ScreenPrompts() {
 		return
 	}
+	s.scanLateCodexDeliveries()
+	s.scanVerifyingCodexQuestions()
 	if s.screenPrompts.watches == nil {
 		s.screenPrompts.watches = map[int]*screenPromptWatch{}
 	}
@@ -248,6 +275,36 @@ func (s *Server) scanScreenPrompts() {
 			}
 			continue
 		}
+		if w != nil && w.codex != nil && w.decisionID != "" && !w.resolved && p != nil && p.Signature() != w.signature {
+			if s.screenPrompts.verifying == nil {
+				s.screenPrompts.verifying = map[string]*lateCodexQuestion{}
+			}
+			s.screenPrompts.verifying[w.decisionID] = &lateCodexQuestion{pid: pid, w: w}
+			delete(s.screenPrompts.watches, pid)
+			w = nil
+		}
+		if w != nil && w.codex != nil && w.decisionID != "" && !w.resolved {
+			state, ready, nextCall, questions := pollBoundCodexState(w)
+			if !ready && p == nil {
+				continue
+			}
+			if ready && (p == nil || nextCall) {
+				if state == session.CodexEmpty || state == session.CodexAnswered {
+					s.retainOtherEmptyCodexQuestions(pid, w, questions)
+				}
+				switch state {
+				case session.CodexEmpty:
+					if s.retainLateCodexQuestion(pid, w) {
+						delete(s.screenPrompts.watches, pid)
+						w = nil
+					}
+				case session.CodexAnswered:
+					s.closeCodexAnsweredElsewhere(w)
+					delete(s.screenPrompts.watches, pid)
+					w = nil
+				}
+			}
+		}
 		if w != nil {
 			if p == nil && !w.resolved && w.transcriptID != "" && (transcriptPending || transcriptOK && transcriptID == w.transcriptID) {
 				w.lastMatched = false
@@ -260,6 +317,9 @@ func (s *Server) scanScreenPrompts() {
 				continue
 			}
 			if p == nil && w.prompt != nil && w.prompt.CodexQuestion && (!w.resolved || w.editingText) {
+				if w.decisionID != "" && !w.codexChecked {
+					s.waitCodexBinding(pid, w)
+				}
 				if pane := s.sup.Get(pid); pane != nil && !pane.Snapshot().Dead {
 					w.lastMatched = false
 					w.mismatches = 0
@@ -323,6 +383,9 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if w.decisionID == "" {
+					if s.waitCodexBinding(pid, w) {
+						continue
+					}
 					if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 						continue
 					}
@@ -330,6 +393,9 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if !w.resolved {
+					if w.prompt.CodexQuestion && !w.codexChecked {
+						s.waitCodexBinding(pid, w)
+					}
 					s.updateScreenPrompt(w)
 					store, err := s.db()
 					if err == nil {
@@ -350,6 +416,9 @@ func (s *Server) scanScreenPrompts() {
 				w.transcriptID, w.displayParams = transcriptID, &display
 			}
 			s.screenPrompts.watches[pid] = w
+			if s.waitCodexBinding(pid, w) {
+				continue
+			}
 			if s.waitClaudeQuestion(pid, w, transcriptOK, transcriptPending, transcriptUnverified) {
 				continue
 			}
@@ -374,6 +443,17 @@ func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 	store, err := s.db()
 	if err != nil {
 		return false
+	}
+	if w.codex != nil {
+		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.codex.identity)
+		if err != nil {
+			s.app.SetConfigWarning("screen question lookup: " + err.Error())
+			return false
+		}
+		if found {
+			w.decisionID = d.DecisionID
+		}
+		return found
 	}
 	if w.transcriptID != "" {
 		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID)
@@ -424,7 +504,9 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	p.Origin = &api.DecisionOrigin{PaneID: fmtPaneID(pid), Agent: w.prompt.OriginAgent(agent), Cwd: sn.Cwd, Machine: "local", Reason: "screen_prompt"}
 	s.completeDecisionOrigin(p.Origin)
 	var d api.Decision
-	if w.transcriptID != "" {
+	if w.codex != nil {
+		d, err = store.CreateScreenDecision(p, time.Now(), fmtPaneID(pid), w.codex.identity)
+	} else if w.transcriptID != "" {
 		d, err = store.CreateScreenDecision(p, time.Now(), fmtPaneID(pid), w.transcriptID)
 	} else {
 		d, err = store.CreateDecision(p, time.Now())

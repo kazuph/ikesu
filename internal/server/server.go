@@ -513,7 +513,10 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	go s.apiLoop()
 	go s.clientLoop()
 	jobsDone := make(chan struct{})
-	s.app.Do(func() { s.screenPromptConfig(s.cfg) })
+	s.app.Do(func() {
+		s.screenPromptConfig(s.cfg)
+		s.restoreLateCodexQuestions()
+	})
 	go s.jobCacheLoop(appDone, jobsDone)
 	<-appDone
 	<-jobsDone

@@ -69,3 +69,25 @@ func TestDecisionWatchIdlePipeClose(t *testing.T) {
 		t.Fatal("idle pipe close did not cancel")
 	}
 }
+
+func TestDeliveryRecoveryUsesExistingWatchUpdatedLine(t *testing.T) {
+	previous := api.Decision{DecisionID: "dec-test", Status: "answered", Delivery: &api.DecisionDelivery{Status: "pending", Text: "回答文"}}
+	d := recoverDelivery(previous, api.Decision{DecisionID: "dec-test", Status: "answered"})
+	if d.Delivery == nil || d.Delivery.Status != "failed" || d.Delivery.Text != "回答文" || d.Delivery.Reason != "サーバーの再起動" {
+		t.Fatal(d)
+	}
+	row := decisionWatchLine{Event: "updated", Machine: decisionMachine{ID: "local"}, Decision: &d}
+	raw, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy struct {
+		Event    string `json:"event"`
+		Decision struct {
+			Status string `json:"status"`
+		} `json:"decision"`
+	}
+	if err := json.Unmarshal(raw, &legacy); err != nil || legacy.Event != "updated" || legacy.Decision.Status != "answered" {
+		t.Fatal(string(raw), err)
+	}
+}

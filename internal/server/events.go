@@ -70,7 +70,12 @@ func (s *Server) emitEvent(kind string, data any) {
 	s.pluginEvent(kind, raw)
 	env := api.EventEnvelope{Event: kind, Data: raw}
 	s.evMu.Lock()
-	s.journal = append(s.journal, env)
+	journalEvent := env
+	if d, ok := data.(api.Decision); ok && d.Delivery != nil {
+		d.Delivery = nil
+		journalEvent.Data, _ = json.Marshal(d)
+	}
+	s.journal = append(s.journal, journalEvent)
 	if len(s.journal) > eventJournalCap {
 		s.journal = append([]api.EventEnvelope(nil), s.journal[len(s.journal)-eventJournalCap:]...)
 	}
