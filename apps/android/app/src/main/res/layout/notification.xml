@@ -1,0 +1,8 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:background="#000000" android:padding="8dp">
+    <TextView android:id="@+id/notification_title" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:textColor="#33FF66" android:textSize="16sp" />
+    <TextView android:id="@+id/notification_text" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:textColor="#1E9948" android:textSize="14sp" />
+</LinearLayout>
