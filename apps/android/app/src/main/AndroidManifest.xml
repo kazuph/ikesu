@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:label="ikesu" android:theme="@style/IkesuTheme" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:usesCleartextTraffic="true">
-        <activity android:name=".decisions.MainActivity" android:exported="true">
+        <activity android:name=".decisions.MainActivity" android:launchMode="singleTop" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <service android:name=".decisions.DecisionService" android:exported="false" android:foregroundServiceType="specialUse">

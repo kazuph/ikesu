@@ -75,7 +75,7 @@ class MainActivity : Activity() {
         startForegroundService(Intent(this, DecisionService::class.java))
         render()
     }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveIntent(intent); render() }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveIntent(intent); render() }
     override fun onDestroy() { unregisterReceiver(receiver); super.onDestroy() }
     private fun receiveIntent(intent: Intent) {
         val url = intent.getStringExtra("url")
