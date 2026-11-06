@@ -24,7 +24,7 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 		}
 		switch event.Kind {
 		case input.KindPaste:
-			if (state.selected == "reject" && !decision.LateAnswer || decision.LateAnswer && state.textMode && decision.AllowText) && !state.waiting {
+			if (state.selectedReject() && decision.AllowText && !decision.LateAnswer || decision.LateAnswer && state.textMode && decision.AllowText) && !state.waiting {
 				state.reason += event.Text
 				return true, m.paint()
 			}
@@ -57,7 +57,7 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 					state.checked = make(map[string]bool)
 				}
 				state.checked[state.selected] = !state.checked[state.selected]
-			case !decision.LateAnswer && state.selected == "reject" && key.Code == 'u' && key.Mod == uv.ModCtrl:
+			case !decision.LateAnswer && state.selectedReject() && decision.AllowText && key.Code == 'u' && key.Mod == uv.ModCtrl:
 				state.selected, state.reason = "", ""
 			case key.Code == uv.KeyEnter && key.Mod == 0:
 				if answer := state.answer(); answer != nil && e.connection != nil {
@@ -70,12 +70,12 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 				state.scroll = max(0, state.scroll-1)
 			case key.Code == uv.KeyDown:
 				state.scroll++
-			case !decision.LateAnswer && state.selected == "reject" && key.Code == uv.KeyBackspace:
+			case !decision.LateAnswer && state.selectedReject() && decision.AllowText && key.Code == uv.KeyBackspace:
 				_, n := utf8.DecodeLastRuneInString(state.reason)
 				if n > 0 {
 					state.reason = state.reason[:len(state.reason)-n]
 				}
-			case !decision.LateAnswer && state.selected == "reject" && key.Mod == 0 && key.Text != "":
+			case !decision.LateAnswer && state.selectedReject() && decision.AllowText && key.Mod == 0 && key.Text != "":
 				state.reason += key.Text
 			case key.Code >= '1' && key.Code <= '9' && key.Mod == 0:
 				state.selectOption(int(key.Code - '0'))

@@ -29,6 +29,8 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
       assert.equal(spec.details.some(detail=>['コマンド','対象コマンド','理由'].includes(detail.label)),false);
       return {name,decision,spec};
     });
+    const claude={kind:'tool_permission',title:'Bash command',body:'Bash command\n確認理由\necho safe\n警告文',origin:{agent:'claude',tool:'Bash command',explanation:'確認理由',command:'echo safe',warning:'警告文'},options:[{id:'1',label:'Yes'},{id:'4',label:'No'}]};
+    rows.push({name:'claude-permission',decision:claude,spec:buildDialogSpec(claude,{id:'local'},0)});
     fs.writeFileSync(path.join(root,'cases.json'),JSON.stringify(rows));
     const dir=path.resolve('apps/mac-dialog-decisions');
     fs.copyFileSync(path.join(dir,'test/target-command/main.swift'),path.join(root,'main.swift'));

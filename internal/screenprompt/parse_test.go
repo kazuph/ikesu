@@ -49,13 +49,9 @@ func TestObservedScreenContractsMatchHerdr0240(t *testing.T) {
 			// presentation now separates the heading and paragraph body.
 			switch name {
 			case "claude-permission":
-				text := strings.Join(strings.Fields(strings.Map(func(r rune) rune {
-					if r == '╌' {
-						return -1
-					}
-					return r
-				}, want.Title)), " ")
-				want.Title = questionHeading(text)
+				want.AllowText = true
+				text := "Bash command\nWrite observation text to file\n画面の表示どおり（折り返しを含む）\nprintf observation >\n/tmp/gs-j0m1z8np/work/permission-observation.txt\n"
+				want.Title = "Bash command"
 				want.Body = &text
 			case "codex-permission":
 				text := "+ Show details\n\nWould you like to run the following command?\n\nEnvironment: local\n\nReason: 権限ダイアログの観察のため、指定の一時ファイルへ observation を書き込むコマンドを承認しますか？\n\n$ printf observation > /tmp/gs-j0m1z8np/outside.txt"
