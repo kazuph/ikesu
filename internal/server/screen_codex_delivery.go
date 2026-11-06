@@ -55,7 +55,7 @@ func (s *Server) scanLateCodexDeliveries() {
 		if late.delivery == nil || late.delivery.Status != "pending" || late.checking {
 			continue
 		}
-		if strings.IndexFunc(late.delivery.Text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) >= 0 {
+		if !safeLateAnswer(late.delivery.Text) {
 			s.setLateDelivery(id, "failed", "回答に送信できない制御文字が含まれています")
 			continue
 		}
@@ -165,4 +165,8 @@ func (s *Server) scanLateCodexDeliveries() {
 			})
 		}(id)
 	}
+}
+
+func safeLateAnswer(text string) bool {
+	return strings.IndexFunc(text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) < 0
 }
