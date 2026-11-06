@@ -56,26 +56,18 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	}
 	state := a.gitActivity
 	pending := map[string]gitCwdActivity{}
+	removed := map[string]gitCwdActivity{}
 	for cwd := range wanted {
 		entry, ok := state.entries[cwd]
 		if !ok {
 			entry.watch = filewatch.New(nil)
 			state.entries[cwd] = entry
 		}
-		if entry.loaded && entry.ready {
-			updated, unchanged := unchangedGitActivity(entry)
-			if unchanged {
-				state.entries[cwd] = updated
-				continue
-			}
-		}
-		if !entry.loaded || !entry.ready || entry.watch.Revision() != entry.revision {
-			pending[cwd] = entry
-		}
+		pending[cwd] = entry
 	}
 	for cwd, entry := range state.entries {
 		if !wanted[cwd] {
-			entry.watch.Close()
+			removed[cwd] = entry
 			delete(state.entries, cwd)
 		}
 	}
@@ -130,15 +122,35 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			a.dirty = true
 		}
 	}
-	if len(pending) == 0 {
+	if len(pending) == 0 && len(removed) == 0 {
 		apply(nil)
 		return
 	}
 	a.gitPending = true
 	go func() {
-		updated := map[string]gitCwdActivity{}
+		for _, entry := range removed {
+			entry.watch.Close()
+		}
+		type result struct {
+			cwd   string
+			entry gitCwdActivity
+		}
+		results := make(chan result, len(pending))
 		for cwd, entry := range pending {
-			updated[cwd] = readGitActivity(cwd, entry)
+			go func(cwd string, entry gitCwdActivity) {
+				if entry.loaded && entry.ready {
+					if unchanged, ok := unchangedGitActivity(entry); ok {
+						results <- result{cwd, unchanged}
+						return
+					}
+				}
+				results <- result{cwd, readGitActivity(cwd, entry)}
+			}(cwd, entry)
+		}
+		updated := map[string]gitCwdActivity{}
+		for range pending {
+			r := <-results
+			updated[r.cwd] = r.entry
 		}
 		a.Do(func() { apply(updated) })
 	}()
