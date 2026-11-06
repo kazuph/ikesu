@@ -475,7 +475,7 @@ func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 		if found {
 			w.decisionID = d.DecisionID
 		}
-		return found
+		return s.reconcileCodexScreenPrompt(pid, w, found)
 	}
 	if w.transcriptID != "" {
 		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID)
@@ -503,6 +503,41 @@ func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 	return false
 }
 
+func (s *Server) reconcileCodexScreenPrompt(pid int, w *screenPromptWatch, found bool) bool {
+	q := w.codex.question
+	if q.State != session.CodexPending || q.Timestamp.IsZero() {
+		return found
+	}
+	pending, err := s.store.Decisions("pending")
+	if err != nil {
+		s.app.SetConfigWarning("screen question lookup: " + err.Error())
+		return true
+	}
+	for _, d := range pending {
+		if d.DecisionID == w.decisionID || d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.PaneID != fmtPaneID(pid) || d.Origin.Reason != "screen_prompt" || d.Origin.Agent != "codex" || (d.Origin.Machine != "" && d.Origin.Machine != "local") || d.CreatedUnixMS <= q.Timestamp.UnixMilli() || s.screenPrompts.late[d.DecisionID] != nil || s.screenPrompts.verifying[d.DecisionID] != nil || (d.Body != nil && strings.Contains(*d.Body, lateCodexQuestionBody)) || screenprompt.FromDecision(d) != w.signature {
+			continue
+		}
+		identity, err := s.store.ScreenQuestionIdentity(d.DecisionID)
+		if err != nil {
+			s.app.SetConfigWarning("screen question lookup: " + err.Error())
+			return true
+		}
+		if identity != "" {
+			continue
+		}
+		if !found {
+			if err := s.store.BindScreenQuestion(d.DecisionID, fmtPaneID(pid), w.codex.identity); err != nil {
+				s.app.SetConfigWarning("screen question identity: " + err.Error())
+				return true
+			}
+			w.decisionID, found = d.DecisionID, true
+		} else {
+			s.cancelScreenPrompt(&screenPromptWatch{decisionID: d.DecisionID})
+		}
+	}
+	return found
+}
+
 // Reuse an unbound legacy record or the transcript-bound record, then close
 // other records proven to describe the same visible Claude question.
 func (s *Server) reconcileClaudeScreenPrompt(pid int, w *screenPromptWatch) (bool, bool) {
@@ -526,7 +561,7 @@ func (s *Server) reconcileClaudeScreenPrompt(pid int, w *screenPromptWatch) (boo
 	var selected *api.Decision
 	identities := map[string]string{}
 	for _, d := range pending {
-		if d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.PaneID != fmtPaneID(pid) || d.Origin.Reason != "screen_prompt" || d.Origin.Agent != "claude" || d.Origin.Tool != "" || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
+		if d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.PaneID != fmtPaneID(pid) || d.Origin.Reason != "screen_prompt" || (d.Origin.Agent != "" && d.Origin.Agent != "claude") || d.Origin.Tool != "" || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
 			continue
 		}
 		identity, err := s.store.ScreenQuestionIdentity(d.DecisionID)

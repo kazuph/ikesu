@@ -17,6 +17,8 @@ import (
 
 var codexQuestionPosition = regexp.MustCompile(`Question\s+(\d+)/(\d+)`)
 
+const lateCodexQuestionBody = "Codex は空の答えで先に進みました。答えると会話で届けます"
+
 type codexBinding struct {
 	path     string
 	question session.CodexQuestion
@@ -92,7 +94,7 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 		return false
 	}
 	p := screenDisplayParams(w)
-	body := "Codex は空の答えで先に進みました。答えると会話で届けます"
+	body := lateCodexQuestionBody
 	if p.Body != nil && *p.Body != "" && *p.Body != body && !strings.HasPrefix(*p.Body, "auto-resolves in ") {
 		original := strings.TrimSuffix(*p.Body, "\n\n"+body)
 		body = original + "\n\n" + body
@@ -160,7 +162,7 @@ func (s *Server) retainOtherEmptyCodexQuestions(pid int, w *screenPromptWatch, q
 		if found {
 			continue
 		}
-		body := "Codex は空の答えで先に進みました。答えると会話で届けます"
+		body := lateCodexQuestionBody
 		label := fmt.Sprintf("Question %d/%d", q.Index+1, q.Total)
 		params := api.DecisionCreateParams{Kind: "agent_prompt", Title: q.Question, Body: &body, QuestionLabel: &label, AllowText: true, Origin: original.Origin}
 		for i, option := range q.Options {
