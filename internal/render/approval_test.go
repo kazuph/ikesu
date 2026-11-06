@@ -93,3 +93,69 @@ func TestReviewBorderlessIndicatorFitsNarrowWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalColorsSelectionAndHeight(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		s := model.New(t.TempDir(), 120, 40)
+		pane := s.FocusedPane()
+		f := NewFrame(120, 40)
+		f.Palette = ThemePalette("tokyo-night")
+		in := Input{State: s, Approval: &Approval{Pane: pane, Title: " title", Late: late, Lines: []string{" details", " 1  option", " confirm ↵"}, Kinds: []ApprovalLineKind{{Role: "subtitle"}, {Selected: true}, {Role: "footer"}}}}
+		var out Output
+		drawApproval(f, in, &out)
+		r := out.ApprovalRect
+		want := f.Palette.Red
+		if late {
+			want = f.Palette.Accent
+		}
+		if got := f.Cell(r.X, r.Y).Style.Fg; got != want {
+			t.Errorf("late=%t border=%v want %v", late, got, want)
+		}
+		if r.H != len(in.Approval.Lines)+4 {
+			t.Errorf("late=%t height=%d", late, r.H)
+		}
+		selected := f.Cell(r.X+2, r.Y+3)
+		if selected.Style.Bg != f.Palette.Accent || selected.Style.Fg != f.Palette.SurfDim {
+			t.Errorf("late=%t selected style=%+v", late, selected.Style)
+		}
+	}
+}
+
+func TestApprovalIndicatorColorPrefersGuard(t *testing.T) {
+	s := model.New(t.TempDir(), 120, 40)
+	pane := s.FocusedPane()
+	for _, guard := range []bool{false, true} {
+		f := NewFrame(120, 40)
+		f.Palette = ThemePalette("tokyo-night")
+		in := Input{State: s, ApprovalCounts: map[int]int{pane: 2}, ApprovalGuardPanes: map[int]bool{pane: guard}}
+		var out Output
+		drawApprovalIndicators(f, in, &out)
+		r := out.AnswerRects[pane]
+		want := f.Palette.Accent
+		if guard {
+			want = f.Palette.Red
+		}
+		if got := f.Cell(r.X, r.Y).Style.Bg; got != want {
+			t.Errorf("guard=%t background=%v want %v", guard, got, want)
+		}
+	}
+}
+
+func TestApprovalSurfaceAndFooterUseThemeColors(t *testing.T) {
+	s := model.New(t.TempDir(), 120, 40)
+	f := NewFrame(120, 40)
+	f.Palette = ThemePalette("tokyo-night")
+	in := Input{State: s, Approval: &Approval{Pane: s.FocusedPane(), Title: " title", Lines: []string{" $ echo", " text t  ·  confirm ↵"}, Kinds: []ApprovalLineKind{{Role: "surface"}, {Role: "footer"}}}}
+	var out Output
+	drawApproval(f, in, &out)
+	r := out.ApprovalRect
+	command := f.Cell(r.X+2, r.Y+2)
+	if command.Style.Bg != f.Palette.Surface || command.Style.Attrs&uv.AttrBold == 0 {
+		t.Errorf("command style=%+v", command.Style)
+	}
+	label := f.Cell(r.X+2, r.Y+3)
+	key := f.Cell(r.X+7, r.Y+3)
+	if label.Style.Fg != f.Palette.Dim || key.Content != "t" || key.Style.Fg != f.Palette.Text {
+		t.Errorf("label=%+v key=%+v", label, key)
+	}
+}

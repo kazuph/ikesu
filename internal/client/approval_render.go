@@ -23,9 +23,13 @@ func (m *machineClient) approvalCanOpen(e *managedEndpoint) bool {
 
 func (s *approvalState) overlay(in *render.Input) {
 	in.ApprovalCounts = make(map[int]int)
+	in.ApprovalGuardPanes = make(map[int]bool)
 	for _, d := range s.pending {
 		if pane, ok := approvalPaneID(d.Origin.PaneID); ok {
 			in.ApprovalCounts[pane]++
+			if d.Kind == "command_guard" {
+				in.ApprovalGuardPanes[pane] = true
+			}
 		}
 	}
 	d := s.current()
@@ -43,89 +47,145 @@ func (s *approvalState) overlay(in *render.Input) {
 			break
 		}
 	}
-	lines := []string{}
-	add := func(value string) {
+	var lines []string
+	var kinds []render.ApprovalLineKind
+	add := func(value, role string, prefix int, selected bool) {
 		for _, paragraph := range strings.Split(value, "\n") {
 			current, cells := "", 0
 			for _, r := range safeApprovalText(paragraph) {
 				w := max(1, ansi.StringWidth(string(r)))
 				if cells+w > width && current != "" {
 					lines = append(lines, current)
-					current, cells = "", 0
+					kinds = append(kinds, render.ApprovalLineKind{Role: role, Prefix: prefix, Selected: selected})
+					current, cells, prefix = "", 0, 0
+					if role == "reason" && width > 8 {
+						current, cells = "        ", 8
+					}
 				}
 				current += string(r)
 				cells += w
 			}
 			lines = append(lines, current)
+			kinds = append(kinds, render.ApprovalLineKind{Role: role, Prefix: prefix, Selected: selected})
 		}
 	}
-	add("出どころ: " + d.Origin.PaneID + " " + d.Origin.PaneLabel)
+	blank := func() { add("", "", 0, false) }
+	footer := func(parts ...string) {
+		line := " "
+		for _, part := range parts {
+			if ansi.StringWidth(" "+part) > width {
+				break
+			}
+			separator := "  ·  "
+			if line == " " {
+				separator = ""
+			}
+			if ansi.StringWidth(line+separator+part) > width {
+				add(line, "footer", 0, false)
+				line, separator = " ", ""
+			}
+			line += separator + part
+		}
+		if line != " " {
+			add(line, "footer", 0, false)
+		}
+	}
+	paneName := d.Origin.PaneID
+	if d.Origin.PaneLabel != "" {
+		paneName += " " + d.Origin.PaneLabel
+	}
+	workspaceName := d.Origin.WorkspaceLabel
+	for _, ws := range in.State.Workspaces {
+		for _, tab := range ws.Tabs {
+			for _, id := range tab.Layout.PaneIDs() {
+				if id == pane {
+					workspaceName = render.WorkspaceDisplayName(ws, in.Panes)
+				}
+			}
+		}
+	}
+	if d.Origin.TabLabel != "" {
+		workspaceName += "/" + d.Origin.TabLabel
+	}
+	parts := []string{paneName}
+	if workspaceName != "" {
+		parts = append(parts, workspaceName)
+	}
+	origin := strings.Join(parts, " · ")
+	title := " approve command?"
+	if d.LateAnswer {
+		title = " answer question"
+	} else if _, rule, ok := strings.Cut(d.Title, "（規則: "); ok {
+		origin += " · rule " + strings.TrimSuffix(rule, "）")
+	}
+	add(" "+origin, "subtitle", 0, false)
+	blank()
 	if d.LateAnswer {
 		if d.QuestionLabel != nil {
-			add(*d.QuestionLabel)
+			add(" "+*d.QuestionLabel, "subtitle", 0, false)
 		}
+		add(" "+d.Title, "", 0, false)
 		if d.Body != nil {
-			add(*d.Body)
+			add(" "+*d.Body, "dim", 0, false)
 		}
 	} else {
-		add("コマンド: " + d.Origin.Command)
+		add(" $ "+d.Origin.Command, "surface", 0, false)
 		if d.Origin.TargetCommand != "" {
-			add("対象: " + d.Origin.TargetCommand)
+			add(" target "+d.Origin.TargetCommand, "surface", 0, false)
 		}
+		blank()
 		if d.Body != nil {
-			add("申請文: " + *d.Body)
+			add(" reason "+*d.Body, "reason", 8, false)
 		}
 	}
+	blank()
 	for i, option := range d.Options {
-		mark := " "
-		if s.selected == option.ID {
-			mark = "●"
-		}
+		mark := ""
 		if d.LateAnswer && d.MultiSelect {
-			mark = "  [ ]"
+			mark = "  "
 			if s.checked[option.ID] {
-				mark = "  [✓]"
-			}
-			if s.selected == option.ID {
-				mark = ">" + mark[1:]
+				mark = "✓ "
 			}
 		}
-		add(fmt.Sprintf("%s %d: %s", mark, i+1, option.Label))
+		prefix := fmt.Sprintf(" %s%d  ", mark, i+1)
+		add(prefix+option.Label, "", ansi.StringWidth(prefix), s.selected == option.ID)
 		if d.LateAnswer {
 			if option.Description != nil && *option.Description != "" {
-				add(*option.Description)
+				add("    "+*option.Description, "dim", 0, false)
 			}
 			if option.Preview != nil && *option.Preview != "" {
-				add("プレビュー: " + *option.Preview)
+				add("    preview: "+*option.Preview, "dim", 0, false)
 			} else {
-				add("プレビュー: 画面で確認")
+				add("    preview: 画面で確認", "dim", 0, false)
 			}
 		}
 	}
 	if d.LateAnswer && d.AllowText {
-		add("自由入力: " + s.reason)
+		blank()
+		add(" text "+s.reason, "input", 0, false)
 		if s.textMode {
-			add("入力中（Ctrl+U: 選択に戻る）")
+			add(" input · back ctrl+u", "dim", 0, false)
 		}
 	} else if s.selected == "reject" && d.AllowText {
-		add("却下理由: " + s.reason)
-		add("Ctrl+U: 選択に戻る")
+		blank()
+		add(" reject note "+s.reason, "input", 0, false)
 	}
+	blank()
 	if s.waiting {
-		add("回答を送信中")
-	} else if d.LateAnswer {
-		instructions := "数字: 選択"
-		if d.MultiSelect {
-			instructions += "  Space: チェック"
-		}
-		if d.AllowText {
-			instructions += "  t: 自由入力"
-		}
-		add(instructions + "  Enter: 確定  Esc: 閉じる")
+		add(" sending", "dim", 0, false)
+	} else if !d.LateAnswer && s.selected == "reject" && d.AllowText {
+		footer("confirm ↵", "back ctrl+u", "close esc")
 	} else {
-		add("数字: 選択  Enter: 確定  Esc: 閉じる  ↑↓: スクロール")
+		parts := []string{fmt.Sprintf("select 1-%d", len(d.Options))}
+		if d.LateAnswer && d.MultiSelect {
+			parts = append(parts, "check space")
+		}
+		if d.LateAnswer && d.AllowText {
+			parts = append(parts, "text t")
+		}
+		footer(append(parts, "confirm ↵", "scroll ↑↓", "close esc")...)
 	}
-	in.Approval = &render.Approval{Pane: pane, Title: safeApprovalText(d.Title), Lines: lines, Scroll: s.scroll}
+	in.Approval = &render.Approval{Pane: pane, Title: title, Lines: lines, Kinds: kinds, Scroll: s.scroll, Late: d.LateAnswer}
 }
 
 func approvalPaneID(value string) (int, bool) {

@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -14,6 +15,14 @@ type Approval struct {
 	Title  string
 	Lines  []string
 	Scroll int
+	Late   bool
+	Kinds  []ApprovalLineKind
+}
+
+type ApprovalLineKind struct {
+	Role     string
+	Prefix   int
+	Selected bool
 }
 
 func drawApprovalIndicators(f *Frame, in Input, out *Output) {
@@ -43,7 +52,11 @@ func drawApprovalIndicators(f *Frame, in Input, out *Output) {
 		if width <= 0 {
 			continue
 		}
-		style := uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Yellow, Attrs: uv.AttrBold}
+		bg := f.Palette.Accent
+		if in.ApprovalGuardPanes[pane.ID] {
+			bg = f.Palette.Red
+		}
+		style := uv.Style{Fg: f.Palette.SurfDim, Bg: bg, Attrs: uv.AttrBold}
 		f.Text(x, y, label, style, x+width)
 		out.AnswerRects[pane.ID] = layout.Rect{X: x, Y: y, W: width, H: 1}
 	}
@@ -119,21 +132,71 @@ func drawApproval(f *Frame, in Input, out *Output) {
 			return
 		}
 	}
-	w, h := min(area.W, 72), min(area.H, len(in.Approval.Lines)+5)
+	w, h := min(area.W, 72), min(area.H, len(in.Approval.Lines)+4)
 	if h < 4 {
 		h = 4
 	}
 	r := layout.Rect{X: area.X + (area.W-w)/2, Y: area.Y + (area.H-h)/2, W: w, H: h}
-	border := uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.PopupBG}
+	color := f.Palette.Red
+	if in.Approval.Late {
+		color = f.Palette.Accent
+	}
+	border := uv.Style{Fg: color, Bg: f.Palette.PopupBG}
 	x, y, width, height := f.Box(r.X, r.Y, r.W, r.H, border)
 	f.Fill(x, y, width, height, " ", uv.Style{Bg: f.Palette.PopupBG})
-	f.Text(x, y, in.Approval.Title, uv.Style{Fg: f.Palette.Yellow, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, x+width)
+	f.Text(x, y, in.Approval.Title, uv.Style{Fg: color, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, max(x, x+width-11))
+	if width >= 11 {
+		f.Text(x+width-11, y, " esc close ", uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+width)
+	}
 	start := max(0, min(in.Approval.Scroll, max(0, len(in.Approval.Lines)-(height-1))))
 	for i, line := range in.Approval.Lines[start:] {
 		if i >= height-1 {
 			break
 		}
-		f.Text(x, y+1+i, line, uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}, x+width)
+		kind := ApprovalLineKind{}
+		if start+i < len(in.Approval.Kinds) {
+			kind = in.Approval.Kinds[start+i]
+		}
+		style := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}
+		switch kind.Role {
+		case "subtitle":
+			style.Fg = f.Palette.Overlay1
+		case "dim", "footer":
+			style.Fg = f.Palette.Dim
+		case "surface":
+			style.Bg, style.Attrs = f.Palette.Surface, uv.AttrBold
+		case "input":
+			style.Bg = f.Palette.Surface
+		}
+		if kind.Selected {
+			style.Fg, style.Bg, style.Attrs = f.Palette.SurfDim, f.Palette.Accent, uv.AttrBold
+		}
+		if kind.Role == "surface" || kind.Role == "input" || kind.Selected {
+			f.Fill(x+1, y+1+i, max(0, width-2), 1, " ", style)
+		}
+		f.Text(x, y+1+i, line, style, x+width)
+		if kind.Role == "footer" {
+			if at := strings.Index(line, "text t"); at >= 0 {
+				pos := x + ansi.StringWidth(line[:at+len("text ")])
+				f.Text(pos, y+1+i, "t", uv.Style{Fg: f.Palette.Text, Bg: style.Bg}, x+width)
+			}
+			for _, key := range []string{"1-", "space", "ctrl+u", "↵", "↑↓", "esc"} {
+				if at := strings.Index(line, key); at >= 0 {
+					end := at + len(key)
+					if key == "1-" {
+						for end < len(line) && line[end] >= '0' && line[end] <= '9' {
+							end++
+						}
+					}
+					pos := x + ansi.StringWidth(line[:at])
+					f.Text(pos, y+1+i, line[at:end], uv.Style{Fg: f.Palette.Text, Bg: style.Bg}, x+width)
+				}
+			}
+		}
+		if kind.Prefix > 0 && !kind.Selected {
+			prefix := uv.Style{Fg: f.Palette.Dim, Bg: style.Bg}
+			f.Text(x, y+1+i, ansi.Truncate(line, kind.Prefix, ""), prefix, x+width)
+		}
 	}
 	out.ApprovalRect = r
 	out.AnchorVisible = false
