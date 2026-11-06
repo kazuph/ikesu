@@ -40,7 +40,8 @@ class MainActivity : Activity() {
     private data class Draft(var text: String = "", val selected: MutableSet<String> = mutableSetOf(),
                              val images: MutableList<ByteArray> = mutableListOf(), var cursor: Int = 0,
                              var sequence: String? = null, var waitingReconnect: Boolean = false,
-                             var uncertain: Boolean = false, var submittedItem: JSONObject? = null)
+                             var uncertain: Boolean = false, var submittedItem: JSONObject? = null,
+                             var cursorNavigated: Boolean = false)
     private val drafts = mutableMapOf<String, Draft>()
     private var selectedId: String? = null
     private var pendingCamera: Uri? = null
@@ -59,8 +60,10 @@ class MainActivity : Activity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.isNavigationBarContrastEnforced = false
+        window.isStatusBarContrastEnforced = false
         root.addView(header)
-        root.addView(ScrollView(this).apply { addView(layout) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(layout) }, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(footer)
         setContentView(root.apply {
             setOnApplyWindowInsetsListener { view, insets ->
@@ -157,7 +160,7 @@ class MainActivity : Activity() {
         background = frame(); gravity = Gravity.TOP or Gravity.START; minLines = lines
         setPadding(dp(16), dp(16), dp(16), dp(16))
     }
-    private fun render() {
+    private fun render(scrollToCursor: Boolean = false) {
         header.removeAllViews(); layout.removeAllViews(); footer.removeAllViews()
         header.addView(text("ikesu · ${if (DecisionState.connected) "接続中" else "未接続"}", 18f), LinearLayout.LayoutParams(0, -2, 1f))
         val headerAction = text(if (settingsVisible || !showList) "一覧へ" else "設定", 18f).apply {
@@ -175,10 +178,11 @@ class MainActivity : Activity() {
             block(text("${items.length()} 件", 18f))
             for (i in 0 until items.length()) items.optJSONObject(i)?.let { entry ->
                 val id = entry.optString("id")
-                val row = optionRow(i, entry.optString("title"), entry.optString("location"), i == listCursor, false) {
+                val row = optionRow(i, decisionHeading(entry.optString("raw_title"), entry.optString("raw_body"), entry.optString("kind")), entry.optString("location"), i == listCursor, false, entry.optString("question_label")) {
                     selectedId = id; showList = false; render()
                 }
                 block(row)
+                if (scrollToCursor && i == listCursor) row.post { row.requestRectangleOnScreen(android.graphics.Rect(0, 0, row.width, row.height), true) }
             }
             return
         }
@@ -187,7 +191,8 @@ class MainActivity : Activity() {
         val id = item.optString("id")
         val draft = drafts.getOrPut(id) { Draft() }
         block(text(item.optString("location"), 18f))
-        block(text(item.optString("title"), 28f))
+        if (item.optString("question_label").isNotBlank()) block(text(item.optString("question_label"), 18f))
+        block(text(decisionHeading(item.optString("raw_title"), item.optString("raw_body"), item.optString("kind")), 28f))
         val command = item.optString("approval_command")
         if (command.isNotEmpty()) block(text(command, 20f).apply { setTextColor(Color.RED); typeface = Typeface.MONOSPACE })
         val details = item.optJSONArray("details") ?: JSONArray()
@@ -216,13 +221,15 @@ class MainActivity : Activity() {
             val option = options.optJSONObject(i) ?: continue
             val optionId = option.optString("id")
             val description = optionSupplement(option.optString("description"), option.optString("preview"), option.optBoolean("preview_unavailable"))
-            block(optionRow(i, option.optString("label"), description, draft.cursor == i, optionId in draft.selected) {
+            val row = optionRow(i, option.optString("label"), description, draft.cursor == i, optionId in draft.selected) {
                 if (draft.sequence == null) {
                     draft.cursor = i
                     if (item.optBoolean("multi_select")) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
                     render()
                 }
-            })
+            }
+            block(row)
+            if (scrollToCursor && i == draft.cursor) row.post { row.requestRectangleOnScreen(android.graphics.Rect(0, 0, row.width, row.height), true) }
         }
         if (item.optBoolean("allow_text")) {
             block(text("コメント（任意）", 18f), 4)
@@ -244,11 +251,12 @@ class MainActivity : Activity() {
         pair(button("あとで") { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
              button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) "回答する" else "送信中", true) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
     }
-    private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, action: () -> Unit): View {
+    private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, supplement: String = "", action: () -> Unit): View {
         val color = if (focused) Color.BLACK else green
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(64)
             background = frame(if (focused) green else Color.BLACK); setPadding(dp(16), dp(12), dp(16), dp(12))
+            if (supplement.isNotBlank()) addView(text(supplement, 18f).apply { setTextIsSelectable(false); movementMethod = null; setTextColor(color) })
             val heading = text("${if (checked) "✓ " else ""}${index + 1}. $label").apply { setTextIsSelectable(false); movementMethod = null; setTextColor(color) }
             addView(heading)
             if (description.isNotEmpty()) addView(text(description, 18f).apply { setTextIsSelectable(false); movementMethod = null; setTextColor(if (focused) Color.BLACK else dim) })
@@ -285,14 +293,15 @@ class MainActivity : Activity() {
     private fun move(delta: Int) {
         if (showList) {
             val count = DecisionState.decisions.length()
-            if (count > 0) { listCursor = (listCursor + delta + count) % count; render() }
+            if (count > 0) { listCursor = (listCursor + delta + count) % count; render(scrollToCursor = true) }
             return
         }
         val item = current() ?: return
         val count = (item.optJSONArray("options")?.length() ?: 0) + 1
         val draft = drafts.getOrPut(item.optString("id")) { Draft() }
-        draft.cursor = (draft.cursor + delta + count) % count
-        render()
+        if (draft.cursorNavigated || delta < 0) draft.cursor = (draft.cursor + delta + count) % count
+        draft.cursorNavigated = true
+        render(scrollToCursor = true)
     }
     private fun confirm() {
         if (showList) {

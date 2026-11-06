@@ -4,6 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DecisionPresentationTest {
+    @Test fun headingUsesOriginalTitleThenBodyThenKind() {
+        assertEquals("題名", decisionHeading("題名", "本文\n続き", "agent_prompt"))
+        assertEquals("本文", decisionHeading("", "本文\n続き", "ask"))
+        assertEquals("コマンドの承認", decisionHeading("", "", "command_guard"))
+        assertEquals("判断待ち", decisionHeading(" ", "", "other"))
+    }
     @Test fun onlyUnavailablePreviewsShowTheFallback() {
         assertEquals("", optionSupplement("", "", false))
         assertEquals("説明", optionSupplement("説明", "", false))

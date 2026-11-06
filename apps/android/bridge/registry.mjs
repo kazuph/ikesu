@@ -60,6 +60,9 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     const entries = [...this.entries.values()];
     return entries.map(entry => ({
       ...buildDialogSpec(entry.decision, entry.machine, entries.length - 1, { laterMs: this.config.laterMs }),
+      raw_title: String(entry.decision.title || ''),
+      raw_body: String(entry.decision.body || ''),
+      question_label: String(entry.decision.question_label || ''),
       id: this.publicIds.get(entry.key),
       machine_down: entry.machineDown,
       reauth_url: entry.retry?.url || '',

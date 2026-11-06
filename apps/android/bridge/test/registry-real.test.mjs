@@ -63,7 +63,11 @@ test('隔離 ikesu の保存済み回答と送信番号の重複を照合する'
   await registry.start();
   const decision = (await rpc('decision.create', { kind: 'ask', title: '隔離試験', allow_text: true, options: [{ id: 'yes', label: 'はい', role: 'approve' }] })).decision;
   await until(() => [...registry.entries.values()].some(entry => entry.decision.decision_id === decision.decision_id));
-  const id = (await registry.snapshot())[0].id;
+  const firstSnapshot = (await registry.snapshot())[0];
+  assert.equal(firstSnapshot.raw_title, decision.title);
+  assert.equal(firstSnapshot.raw_body, decision.body || '');
+  assert.equal(firstSnapshot.question_label, decision.question_label || '');
+  const id = firstSnapshot.id;
   const token = '01'.repeat(32);
   const bridge = await listen({ address: '127.0.0.1', port: 0, token,
     snapshot: () => registry.snapshot(), answer: value => registry.answer(value), later: value => registry.later(value) });
