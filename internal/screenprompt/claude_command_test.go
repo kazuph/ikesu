@@ -35,3 +35,17 @@ func TestClaudeCommandCountdown(t *testing.T) {
 		t.Fatal("countdown parsing or identity")
 	}
 }
+
+func TestClaudePermissionWarningsAndCountdownVariants(t *testing.T) {
+	for _, verb := range []string{"deny", "block"} {
+		screen := "Bash command\nTip: auto mode handles these prompts for you — choose \"switch to auto mode\"\nbelow\nCheck credentials\n╌╌╌╌╌╌\n│ echo Tip: keep\n╌╌╌╌╌╌\n│ Dangerous operation not ruled out\n⚠ Claude Code will automatically " + verb + "\n this request in 0:38, to avoid blocking progress\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel · Tab to amend"
+		p := Parse("claude", strings.Split(screen, "\n"))
+		if p == nil || p.Params.Origin == nil {
+			t.Fatalf("%s: no structured command", verb)
+		}
+		o := p.Params.Origin
+		if o.Explanation != "Check credentials" || o.Command != "echo Tip: keep" || o.Warning != "Dangerous operation not ruled out" || p.Params.TimeoutMS == nil || *p.Params.TimeoutMS != 38000 {
+			t.Fatalf("%s: origin=%+v timeout=%v", verb, o, p.Params.TimeoutMS)
+		}
+	}
+}
