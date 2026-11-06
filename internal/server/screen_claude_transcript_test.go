@@ -1,6 +1,7 @@
 package server
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -106,6 +107,83 @@ func TestScreenQuestionRecreationClosesUntrackedDuplicate(t *testing.T) {
 	got, err := s.store.Decision(old.DecisionID)
 	if err != nil || got.Status != "cancelled" {
 		t.Fatalf("old decision remained: %+v %v", got, err)
+	}
+}
+
+func TestScreenQuestionReconciliationPreservesOtherDecisions(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	var other, permission, differentPane api.Decision
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		params := p.Params
+		origin := *old.Origin
+		params.Origin = &origin
+		var err error
+		other, err = s.store.CreateScreenDecision(params, time.Now(), "p1", ` ["other"]`)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		params.Kind = "tool_permission"
+		permission, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		params.Kind = "agent_prompt"
+		origin.PaneID = "p2"
+		differentPane, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["current"]`}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID != old.DecisionID {
+			t.Errorf("selected %s, want %s", w.decisionID, old.DecisionID)
+		}
+	})
+	for _, d := range []api.Decision{other, permission, differentPane} {
+		got, err := s.store.Decision(d.DecisionID)
+		if err != nil || got.Status != "pending" {
+			t.Fatalf("unrelated decision changed: %+v %v", got, err)
+		}
+	}
+}
+
+func TestScreenQuestionDuplicateClosedBeforeAnswer(t *testing.T) {
+	teststate.Lock(t)
+	s, p, input := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	var duplicate api.Decision
+	s.app.Do(func() {
+		params := s.readScreenPrompt(1).Params
+		params.Origin = old.Origin
+		var err error
+		duplicate, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+		}
+		s.screenPrompts.watches = nil
+	})
+	scanScreen(s)
+	current := screenRecord(t, s)
+	if response := answerScreen(s, current, "1", nil); response.Err != nil {
+		t.Fatal(response.Err)
+	}
+	waitPromptCondition(t, func() bool { b, _ := os.ReadFile(input); return len(b) > 0 })
+	paintScreen(p, "")
+	scanScreen(s)
+	scanScreen(s)
+	for _, id := range []string{old.DecisionID, duplicate.DecisionID} {
+		d, err := s.store.Decision(id)
+		if err != nil || d.Status == "pending" {
+			t.Fatalf("pending after answer: %+v %v", d, err)
+		}
 	}
 }
 
