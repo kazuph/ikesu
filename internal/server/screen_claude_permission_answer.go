@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/cellwidth"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/screenprompt"
 	"github.com/kazuph/ikesu/internal/session"
@@ -122,7 +124,7 @@ func claudePermissionReceipt(path, toolID, text string, previous os.FileInfo) (b
 	return false, nil
 }
 
-func claudePermissionEditMatches(original, current *screenprompt.Prompt, selected, text string) bool {
+func claudePermissionEditMatches(original, current *screenprompt.Prompt, selected, text string, screen []string) bool {
 	if original == nil || current == nil || original.Params.Origin == nil || current.Params.Origin == nil || current.Cursor < 0 || current.Cursor >= len(current.Items) || current.Items[current.Cursor] != selected {
 		return false
 	}
@@ -149,20 +151,63 @@ func claudePermissionEditMatches(original, current *screenprompt.Prompt, selecte
 				return false
 			}
 		} else {
-			// The parser presents continuation rows as a description. Compare
-			// their visible text; the pasted bytes and transcript check retain
-			// the original newlines.
-			expected := "No, " + strings.ReplaceAll(text, "\n", " ")
-			visible := label
-			if other.Description != nil {
-				visible += " " + *other.Description
-			}
-			if visible != expected {
+			if !claudePermissionVisibleFeedback(screen, selected, text) {
 				return false
 			}
 		}
 	}
 	return found
+}
+
+// Physical rows retain blank lines; a row boundary can also be a wrap. The
+// transcript check confirms the actual newlines after the unchanged paste.
+func claudePermissionVisibleFeedback(screen []string, selected, text string) bool {
+	row := regexp.MustCompile(`^\s*[❯›>]\s*` + regexp.QuoteMeta(selected) + `[.)]\s+No, ?`)
+	for i, line := range screen {
+		where := row.FindStringIndex(line)
+		if where == nil {
+			continue
+		}
+		padding := strings.Repeat(" ", cellwidth.String(line[:where[1]]))
+		rows := []string{line[where[1]:]}
+		footer := false
+		for _, next := range screen[i+1:] {
+			if strings.HasPrefix(strings.TrimSpace(next), "Esc to cancel") {
+				footer = true
+				break
+			}
+			if next == "" {
+				rows = append(rows, "")
+			} else if strings.HasPrefix(next, padding) {
+				rows = append(rows, next[len(padding):])
+			} else {
+				return false
+			}
+		}
+		if !footer {
+			return false
+		}
+		if len(rows) > 1 && rows[len(rows)-1] == "" {
+			rows = rows[:len(rows)-1]
+		}
+		offsets := map[int]bool{0: true}
+		for n, value := range rows {
+			nextOffsets := make(map[int]bool)
+			for offset := range offsets {
+				if !strings.HasPrefix(text[offset:], value) {
+					continue
+				}
+				offset += len(value)
+				nextOffsets[offset] = true
+				if n < len(rows)-1 && offset < len(text) && (text[offset] == '\n' || text[offset] == ' ') {
+					nextOffsets[offset+1] = true
+				}
+			}
+			offsets = nextOffsets
+		}
+		return offsets[len(text)]
+	}
+	return false
 }
 
 func (s *Server) claudePermissionEditInput(pid int, original *screenprompt.Prompt, selected, expected, data string) error {
@@ -173,7 +218,8 @@ func (s *Server) claudePermissionEditInput(pid int, original *screenprompt.Promp
 			err = fmt.Errorf("permission expired or interrupted")
 			return
 		}
-		if !claudePermissionEditMatches(original, s.readScreenPrompt(pid), selected, expected) {
+		visible, _ := pane.ReadLines("visible", true)
+		if !claudePermissionEditMatches(original, s.readScreenPrompt(pid), selected, expected, visible) {
 			err = fmt.Errorf("permission editor changed")
 			return
 		}
@@ -187,7 +233,12 @@ func (s *Server) waitClaudePermissionEdit(pid int, original *screenprompt.Prompt
 	deadline := time.Now().Add(multiSelectSettle)
 	for {
 		var matches bool
-		s.app.Do(func() { matches = claudePermissionEditMatches(original, s.readScreenPrompt(pid), selected, text) })
+		s.app.Do(func() {
+			if pane := s.sup.Get(pid); pane != nil {
+				visible, _ := pane.ReadLines("visible", true)
+				matches = claudePermissionEditMatches(original, s.readScreenPrompt(pid), selected, text, visible)
+			}
+		})
 		if matches {
 			return nil
 		}

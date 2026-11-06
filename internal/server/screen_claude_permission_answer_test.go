@@ -56,10 +56,10 @@ func TestClaudePermissionEditNoSecondOption(t *testing.T) {
 	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
 	selected = strings.Replace(selected, "  2. No", "❯ 2. No, feedback", 1)
 	current := screenprompt.Parse("claude", strings.Split(selected, "\n"))
-	if !claudePermissionEditMatches(original, current, "2", "feedback") {
+	if !claudePermissionEditMatches(original, current, "2", "feedback", strings.Split(selected, "\n")) {
 		t.Fatal("second option rejection not recognized")
 	}
-	if claudePermissionEditMatches(original, current, "1", "feedback") {
+	if claudePermissionEditMatches(original, current, "1", "feedback", strings.Split(selected, "\n")) {
 		t.Fatal("approval accepted as rejection")
 	}
 }
@@ -68,22 +68,42 @@ func TestClaudePermissionEditMultiline(t *testing.T) {
 	screen := "Bash command\nExplain\n╌╌╌╌\necho safe\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel · Tab to amend"
 	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))
 	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
-	selected = strings.Replace(selected, "  2. No", "❯ 2. No, Do not write the file.\n          Please explain the decision.", 1)
+	selected = strings.Replace(selected, "  2. No", " ❯ 2. No, Do not write the file.\n          Please explain the decision.", 1)
 	current := screenprompt.Parse("claude", strings.Split(selected, "\n"))
-	if !claudePermissionEditMatches(original, current, "2", "Do not write the file.\nPlease explain the decision.") {
+	if !claudePermissionEditMatches(original, current, "2", "Do not write the file.\nPlease explain the decision.", strings.Split(selected, "\n")) {
 		t.Fatal("multiline feedback not recognized")
 	}
-	if claudePermissionEditMatches(original, current, "2", "Do not write the file.\nDifferent text.") {
+	if claudePermissionEditMatches(original, current, "2", "Do not write the file.\nDifferent text.", strings.Split(selected, "\n")) {
 		t.Fatal("changed feedback accepted")
 	}
-	if claudePermissionEditMatches(original, current, "1", "Do not write the file.\nPlease explain the decision.") {
+	if claudePermissionEditMatches(original, current, "1", "Do not write the file.\nPlease explain the decision.", strings.Split(selected, "\n")) {
 		t.Fatal("approval accepted as rejection")
 	}
 	wrapped := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
-	wrapped = strings.Replace(wrapped, "  2. No", "❯ 2. No, Please do not run this command because this explanation is deliberately longer than a single\n          line on the current terminal screen.\n          Please explain the decision.", 1)
+	wrapped = strings.Replace(wrapped, "  2. No", " ❯ 2. No, Please do not run this command because this explanation is deliberately longer than a single\n          line on the current terminal screen.\n          Please explain the decision.", 1)
 	want := "Please do not run this command because this explanation is deliberately longer than a single line on the current terminal screen.\nPlease explain the decision."
-	if !claudePermissionEditMatches(original, screenprompt.Parse("claude", strings.Split(wrapped, "\n")), "2", want) {
+	if !claudePermissionEditMatches(original, screenprompt.Parse("claude", strings.Split(wrapped, "\n")), "2", want, strings.Split(wrapped, "\n")) {
 		t.Fatal("wrapped multiline feedback not recognized")
+	}
+}
+
+func TestClaudePermissionVisibleFeedback(t *testing.T) {
+	tests := []struct {
+		rows []string
+		text string
+		want bool
+	}{
+		{[]string{" ❯ 4. No, First line.", "          Second line.", "", " Esc to cancel"}, "First line.\nSecond line.", true},
+		{[]string{" ❯ 4. No, First line.", "", "          Third line.", "", " Esc to cancel"}, "First line.\n\nThird line.", true},
+		{[]string{" ❯ 4. No, 長い文章", "          続きます", "          次の行", "", " Esc to cancel"}, "長い文章続きます\n次の行", true},
+		{[]string{" ❯ 4. No, First line.", "          Changed.", "", " Esc to cancel"}, "First line.\nSecond line.", false},
+		{[]string{"   4. No, First line.", "          Second line.", "", " Esc to cancel"}, "First line.\nSecond line.", false},
+		{[]string{" ❯ 4. No, First line.", "          Second line."}, "First line.\nSecond line.", false},
+	}
+	for _, tt := range tests {
+		if got := claudePermissionVisibleFeedback(tt.rows, "4", tt.text); got != tt.want {
+			t.Errorf("rows=%q text=%q: got %v want %v", tt.rows, tt.text, got, tt.want)
+		}
 	}
 }
 
@@ -96,22 +116,22 @@ func TestClaudePermissionEditRequiresSelectedNo(t *testing.T) {
 	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
 	selected = strings.Replace(selected, "  4. No", "❯ 4. No, and tell Claude what to do differently", 1)
 	edit := screenprompt.Parse("claude", strings.Split(selected, "\n"))
-	if !claudePermissionEditMatches(original, edit, "4", "") {
+	if !claudePermissionEditMatches(original, edit, "4", "", strings.Split(selected, "\n")) {
 		t.Fatal("No editor not recognized")
 	}
-	if claudePermissionEditMatches(original, edit, "1", "") {
+	if claudePermissionEditMatches(original, edit, "1", "", strings.Split(selected, "\n")) {
 		t.Fatal("Yes editor accepted")
 	}
 	typed := strings.Replace(selected, "and tell Claude what to do differently", "Do not write files", 1)
 	edit = screenprompt.Parse("claude", strings.Split(typed, "\n"))
-	if !claudePermissionEditMatches(original, edit, "4", "Do not write files") {
+	if !claudePermissionEditMatches(original, edit, "4", "Do not write files", strings.Split(typed, "\n")) {
 		t.Fatal("feedback not recognized")
 	}
-	if claudePermissionEditMatches(original, edit, "4", "different text") {
+	if claudePermissionEditMatches(original, edit, "4", "different text", strings.Split(typed, "\n")) {
 		t.Fatal("changed feedback accepted")
 	}
 	changed := strings.Replace(typed, "printf observation", "printf different", 1)
-	if claudePermissionEditMatches(original, screenprompt.Parse("claude", strings.Split(changed, "\n")), "4", "Do not write files") {
+	if claudePermissionEditMatches(original, screenprompt.Parse("claude", strings.Split(changed, "\n")), "4", "Do not write files", strings.Split(changed, "\n")) {
 		t.Fatal("changed command accepted")
 	}
 }
