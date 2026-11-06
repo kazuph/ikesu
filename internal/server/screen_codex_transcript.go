@@ -93,8 +93,9 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 	}
 	p := screenDisplayParams(w)
 	body := "Codex は空の答えで先に進みました。答えると会話で届けます"
-	if p.Body != nil && *p.Body != "" && !strings.HasPrefix(*p.Body, "auto-resolves in ") {
-		body = *p.Body + "\n\n" + body
+	if p.Body != nil && *p.Body != "" && *p.Body != body && !strings.HasPrefix(*p.Body, "auto-resolves in ") {
+		original := strings.TrimSuffix(*p.Body, "\n\n"+body)
+		body = original + "\n\n" + body
 	}
 	p.Body = &body
 	d, changed, err := store.UpdatePendingScreenDecision(w.decisionID, p)

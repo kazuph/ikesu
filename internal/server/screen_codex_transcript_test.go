@@ -310,3 +310,30 @@ func TestCodexBoundQuestionDoesNotFollowLaterCall(t *testing.T) {
 		t.Fatalf("duplicate accepted: %s", got)
 	}
 }
+
+func TestRestoredCodexMatchRequiresUniqueEmptyResult(t *testing.T) {
+	label := "Question 1/1"
+	d := api.Decision{Title: "色は？", QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
+	q := session.CodexQuestion{SessionID: "s", CallID: "c", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, ""); !ok {
+		t.Fatal("unique empty result not restored")
+	}
+	for _, state := range []session.CodexAnswerState{session.CodexPending, session.CodexAnswered} {
+		other := q
+		other.State = state
+		if _, ok := restoredCodexMatch(d, []session.CodexQuestion{other}, ""); ok {
+			t.Fatalf("accepted %s", state)
+		}
+	}
+	other := q
+	other.CallID = "another"
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q, other}, ""); ok {
+		t.Fatal("ambiguous calls accepted")
+	}
+	if got, ok := restoredCodexMatch(d, []session.CodexQuestion{q, other}, `["s","c","q"]`); !ok || got.CallID != "c" {
+		t.Fatal("recorded identity did not disambiguate")
+	}
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, `["s","other","q"]`); ok {
+		t.Fatal("foreign identity accepted")
+	}
+}

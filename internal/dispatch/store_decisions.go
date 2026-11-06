@@ -127,6 +127,21 @@ func (s *Store) ScreenQuestionDecisionAny(paneID, identity string) (api.Decision
 	return s.screenQuestionDecision(paneID, identity, false)
 }
 
+// ScreenQuestionIdentity returns the recorded identity for a decision, if any.
+func (s *Store) ScreenQuestionIdentity(decisionID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(`SELECT identity FROM screen_question_identities WHERE decision_id=?`, decisionID)
+	if err != nil {
+		return "", err
+	}
+	defer st.Close()
+	if !st.Step() {
+		return "", st.Err()
+	}
+	return st.ColumnText(0), nil
+}
+
 func (s *Store) screenQuestionDecision(paneID, identity string, pendingOnly bool) (api.Decision, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
