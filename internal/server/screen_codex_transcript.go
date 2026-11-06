@@ -110,6 +110,7 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 		s.screenPrompts.late = map[string]*lateCodexQuestion{}
 	}
 	s.screenPrompts.late[w.decisionID] = &lateCodexQuestion{pid: pid, w: w}
+	s.syncDecisionAttention()
 	if changed {
 		s.pushDecisionProjection()
 	}

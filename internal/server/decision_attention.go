@@ -37,6 +37,9 @@ func (s *Server) syncDecisionAttention() {
 	}
 	panes := map[int]bool{}
 	for _, d := range pending {
+		if s.screenPrompts.late[d.DecisionID] != nil {
+			continue
+		}
 		if d.Origin == nil || d.Origin.Machine != "" && d.Origin.Machine != "local" {
 			continue
 		}
