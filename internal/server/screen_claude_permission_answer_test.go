@@ -64,6 +64,23 @@ func TestClaudePermissionEditNoSecondOption(t *testing.T) {
 	}
 }
 
+func TestClaudePermissionEditMultiline(t *testing.T) {
+	screen := "Bash command\nExplain\n╌╌╌╌\necho safe\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel · Tab to amend"
+	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))
+	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
+	selected = strings.Replace(selected, "  2. No", "❯ 2. No, Do not write the file.\n          Please explain the decision.", 1)
+	current := screenprompt.Parse("claude", strings.Split(selected, "\n"))
+	if !claudePermissionEditMatches(original, current, "2", "Do not write the file.\nPlease explain the decision.") {
+		t.Fatal("multiline feedback not recognized")
+	}
+	if claudePermissionEditMatches(original, current, "2", "Do not write the file.\nDifferent text.") {
+		t.Fatal("changed feedback accepted")
+	}
+	if claudePermissionEditMatches(original, current, "1", "Do not write the file.\nPlease explain the decision.") {
+		t.Fatal("approval accepted as rejection")
+	}
+}
+
 func TestClaudePermissionEditRequiresSelectedNo(t *testing.T) {
 	screen := screenDialog(t, "claude-permission")
 	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))

@@ -148,8 +148,18 @@ func claudePermissionEditMatches(original, current *screenprompt.Prompt, selecte
 			if label != "No, and tell Claude what to do differently" {
 				return false
 			}
-		} else if label != "No, "+text {
-			return false
+		} else {
+			lines := strings.Split(text, "\n")
+			if label != "No, "+lines[0] {
+				return false
+			}
+			if len(lines) == 1 {
+				if other.Description != nil {
+					return false
+				}
+			} else if other.Description == nil || *other.Description != strings.Join(lines[1:], " ") {
+				return false
+			}
 		}
 	}
 	return found
