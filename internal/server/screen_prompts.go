@@ -347,12 +347,11 @@ func (s *Server) scanScreenPrompts() {
 					same = matchesClaudeDisplay(w.prompt, p, display)
 				}
 				if same && w.transcriptID == "" && w.decisionID != "" {
-					store, err := s.db()
-					if err == nil {
-						err = store.BindScreenQuestion(w.decisionID, fmtPaneID(pid), transcriptID)
-					}
-					if err != nil {
-						s.app.SetConfigWarning("screen question identity: " + err.Error())
+					w.transcriptID, w.displayParams = transcriptID, &display
+					handled, found := s.reconcileClaudeScreenPrompt(pid, w)
+					identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
+					if !handled || !found || err != nil || identity != transcriptID {
+						w.transcriptID, w.displayParams = "", nil
 						same = false
 					}
 				}

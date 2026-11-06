@@ -67,6 +67,94 @@ func TestClaudeTranscriptPTYEmulator(t *testing.T) {
 	}
 }
 
+func TestClaudeTranscriptLateIdentityReconcilesDuplicate(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "claude-late-duplicate")
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	projects := filepath.Join(root, "projects", "same-cwd")
+	if err := os.MkdirAll(projects, 0700); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "claude")
+	if err := os.Symlink(executable, link); err != nil {
+		t.Fatal(err)
+	}
+	screen := filepath.Join(root, "screen.txt")
+	if err := os.WriteFile(screen, []byte(screenDialog(t, "claude-single")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"CLAUDE_PTY_EMULATOR=1", "CLAUDE_CONFIG_DIR=" + root, "EMULATOR_SESSION=" + id, "EMULATOR_SCREEN=" + screen, "EMULATOR_INPUT=" + filepath.Join(root, "input")}
+	pane, err := s.sup.SpawnWith(1, cwd, 160, 60, env, []string{link, "-test.run=^TestClaudeTranscriptPTYEmulator$"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pane.SetAgent("claude")
+	s.app.SetReported(1, "claude", "blocked")
+	s.initDecisionHub()
+	s.app.SetQuitHook(s.stopDecisions)
+	done := make(chan struct{})
+	go func() { s.app.Run(); close(done) }()
+	t.Cleanup(func() {
+		s.app.Stop()
+		<-done
+		s.sup.KillAll()
+		if s.store != nil {
+			s.store.Close()
+		}
+	})
+	waitPromptCondition(t, func() bool {
+		return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
+	})
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() { x := s.screenPrompts.transcripts[1]; ready = x != nil && x.latest.signature != "" })
+		return ready
+	})
+	s.app.Do(func() { s.screenPrompts.watches[1].transcriptDeadline = time.Now().Add(-time.Second) })
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() { w := s.screenPrompts.watches[1]; ready = w != nil && w.decisionID != "" })
+		return ready
+	})
+	old := screenRecord(t, s)
+	identityBytes, _ := json.Marshal([]any{id, "tool-late", 0})
+	var bound api.Decision
+	s.app.Do(func() {
+		params := s.readScreenPrompt(1).Params
+		params.Origin = old.Origin
+		var e error
+		bound, e = s.store.CreateScreenDecision(params, time.Now(), "p1", string(identityBytes))
+		if e != nil {
+			t.Error(e)
+		}
+	})
+	record := map[string]any{"sessionId": id, "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-late", "input": map[string]any{"questions": []any{map[string]any{"question": old.Title, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals."}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links."}}}}}}}}}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projects, id+".jsonl"), append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() { w := s.screenPrompts.watches[1]; ready = w != nil && w.decisionID == bound.DecisionID })
+		return ready
+	})
+	got, err := s.store.Decision(old.DecisionID)
+	if err != nil || got.Status != "cancelled" {
+		t.Fatalf("old pending after transcript appeared: %+v %v", got, err)
+	}
+}
+
 func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	if runIsolatedParallel(t) {
 		return
