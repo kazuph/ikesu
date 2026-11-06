@@ -226,6 +226,39 @@ func TestScreenQuestionReconcilesSummarizedLegacyRecord(t *testing.T) {
 	}
 }
 
+func TestClaudeUnknownIdentityDoesNotReuseOrCancelSameText(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	s.app.Do(func() {
+		if err := s.store.BindScreenQuestion(old.DecisionID, "p1", `["session","old",0]`); err != nil {
+			t.Error(err)
+			return
+		}
+		p := s.readScreenPrompt(1)
+		params := p.Params
+		params.Origin = old.Origin
+		current, err := s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature()}
+		s.screenPrompts.watches[1] = w
+		s.beginScreenPrompt(1, w)
+		if w.decisionID == old.DecisionID || w.decisionID == current.DecisionID {
+			t.Errorf("unverified decision reused: %s", w.decisionID)
+		}
+		for _, d := range []api.Decision{old, current} {
+			got, e := s.store.Decision(d.DecisionID)
+			if e != nil || got.Status != "pending" {
+				t.Errorf("unverified decision changed: %+v %v", got, e)
+			}
+		}
+	})
+}
+
 func TestClaudeDisplayRetainsScreenPreview(t *testing.T) {
 	preview, short, full := "実際のプレビュー", "短い説明", "記録から得た全文"
 	w := &screenPromptWatch{prompt: &screenprompt.Prompt{Params: api.DecisionCreateParams{Title: "画面の一部", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &short, Preview: &preview}}}}, displayParams: &api.DecisionCreateParams{Title: "質問全文", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &full}}}}

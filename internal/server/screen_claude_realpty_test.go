@@ -67,6 +67,91 @@ func TestClaudeTranscriptPTYEmulator(t *testing.T) {
 	}
 }
 
+func TestClaudeRestoreAnsweredWithoutVisibleScreen(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "claude-restore-answered")
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	projects := filepath.Join(root, "projects", "same-cwd")
+	if err := os.MkdirAll(projects, 0700); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "claude")
+	if err = os.Symlink(exe, link); err != nil {
+		t.Fatal(err)
+	}
+	screen := filepath.Join(root, "screen.txt")
+	if err = os.WriteFile(screen, []byte(screenDialog(t, "claude-single")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"CLAUDE_PTY_EMULATOR=1", "CLAUDE_CONFIG_DIR=" + root, "EMULATOR_SESSION=" + id, "EMULATOR_SCREEN=" + screen, "EMULATOR_INPUT=" + filepath.Join(root, "input")}
+	pane, err := s.sup.SpawnWith(1, cwd, 160, 60, env, []string{link, "-test.run=^TestClaudeTranscriptPTYEmulator$"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pane.SetAgent("claude")
+	s.app.SetReported(1, "claude", "blocked")
+	s.initDecisionHub()
+	s.app.SetQuitHook(s.stopDecisions)
+	done := make(chan struct{})
+	go func() { s.app.Run(); close(done) }()
+	t.Cleanup(func() {
+		s.app.Stop()
+		<-done
+		s.sup.KillAll()
+		if s.store != nil {
+			s.store.Close()
+		}
+	})
+	waitPromptCondition(t, func() bool {
+		return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
+	})
+	var answered, unknown api.Decision
+	s.app.Do(func() {
+		if _, err := s.db(); err != nil {
+			t.Error(err)
+			return
+		}
+		params := s.readScreenPrompt(1).Params
+		params.Origin = &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Reason: "screen_prompt", Machine: "local"}
+		var e error
+		answered, e = s.store.CreateScreenDecision(params, time.Now(), "p1", `["`+id+`","answered",0]`)
+		if e != nil {
+			t.Error(e)
+			return
+		}
+		unknown, e = s.store.CreateDecision(params, time.Now())
+		if e != nil {
+			t.Error(e)
+		}
+		s.screenPrompts.watches = nil
+	})
+	question := map[string]any{"sessionId": id, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "answered", "input": map[string]any{"questions": []any{map[string]any{"question": answered.Title, "options": []any{map[string]any{"label": "Plain"}, map[string]any{"label": "Markdown"}}}}}}}}}
+	response := map[string]any{"sessionId": id, "message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "tool_use_id": "answered"}}}}
+	a, _ := json.Marshal(question)
+	b, _ := json.Marshal(response)
+	data := append(append(a, '\n'), b...)
+	data = append(data, '\n')
+	if err := os.WriteFile(filepath.Join(projects, id+".jsonl"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	paintScreen(pane, "ordinary idle screen")
+	s.app.Do(func() { s.app.SetReported(1, "claude", "idle"); s.screenPromptConfig(config.Config{}) })
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		d, e := s.store.Decision(answered.DecisionID)
+		return e == nil && d.Status == "cancelled"
+	})
+	got, err := s.store.Decision(unknown.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unidentified question changed: %+v %v", got, err)
+	}
+}
+
 func TestClaudeTranscriptLateIdentityReconcilesDuplicate(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "claude-late-duplicate")
