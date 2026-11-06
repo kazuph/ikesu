@@ -110,7 +110,7 @@ func TestClaudeRestoreAnsweredWithoutVisibleScreen(t *testing.T) {
 	waitPromptCondition(t, func() bool {
 		return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
 	})
-	var answered, unknown api.Decision
+	var answered, unknown, different api.Decision
 	s.app.Do(func() {
 		if _, err := s.db(); err != nil {
 			t.Error(err)
@@ -125,6 +125,10 @@ func TestClaudeRestoreAnsweredWithoutVisibleScreen(t *testing.T) {
 			return
 		}
 		unknown, e = s.store.CreateDecision(params, time.Now())
+		if e != nil {
+			t.Error(e)
+		}
+		different, e = s.store.CreateScreenDecision(params, time.Now(), "p1", `["`+id+`","different",0]`)
 		if e != nil {
 			t.Error(e)
 		}
@@ -149,6 +153,10 @@ func TestClaudeRestoreAnsweredWithoutVisibleScreen(t *testing.T) {
 	got, err := s.store.Decision(unknown.DecisionID)
 	if err != nil || got.Status != "pending" {
 		t.Fatalf("unidentified question changed: %+v %v", got, err)
+	}
+	got, err = s.store.Decision(different.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("different identity changed: %+v %v", got, err)
 	}
 }
 
@@ -215,6 +223,10 @@ func TestClaudeTranscriptLateIdentityReconcilesDuplicate(t *testing.T) {
 		params := s.readScreenPrompt(1).Params
 		params.Origin = old.Origin
 		var e error
+		if e = s.store.BindScreenQuestion(old.DecisionID, "p1", `["`+id+`","other",0]`); e != nil {
+			t.Error(e)
+			return
+		}
 		bound, e = s.store.CreateScreenDecision(params, time.Now(), "p1", string(identityBytes))
 		if e != nil {
 			t.Error(e)
@@ -235,8 +247,22 @@ func TestClaudeTranscriptLateIdentityReconcilesDuplicate(t *testing.T) {
 		return ready
 	})
 	got, err := s.store.Decision(old.DecisionID)
-	if err != nil || got.Status != "cancelled" {
-		t.Fatalf("old pending after transcript appeared: %+v %v", got, err)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("different question changed after transcript appeared: %+v %v", got, err)
+	}
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		s.screenPrompts.watches[1] = &screenPromptWatch{prompt: p, signature: p.Signature(), decisionID: old.DecisionID, transcriptID: `["` + id + `","other",0]`, lastMatched: true}
+	})
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() { w := s.screenPrompts.watches[1]; ready = w != nil && w.decisionID == bound.DecisionID })
+		return ready
+	})
+	got, err = s.store.Decision(old.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("previous identified question changed: %+v %v", got, err)
 	}
 }
 

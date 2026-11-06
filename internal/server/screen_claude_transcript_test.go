@@ -74,7 +74,7 @@ func TestScreenQuestionIdentityReusesPendingDecision(t *testing.T) {
 	}
 }
 
-func TestScreenQuestionRecreationClosesUntrackedDuplicate(t *testing.T) {
+func TestScreenQuestionRecreationKeepsUnidentifiedRecord(t *testing.T) {
 	teststate.Lock(t)
 	s, p, _ := screenTerminal(t, "claude-single", "claude")
 	scanScreen(s)
@@ -106,8 +106,8 @@ func TestScreenQuestionRecreationClosesUntrackedDuplicate(t *testing.T) {
 	scanScreen(s)
 	scanScreen(s)
 	got, err := s.store.Decision(old.DecisionID)
-	if err != nil || got.Status != "cancelled" {
-		t.Fatalf("old decision remained: %+v %v", got, err)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unidentified decision changed: %+v %v", got, err)
 	}
 }
 
@@ -143,8 +143,8 @@ func TestScreenQuestionReconciliationPreservesOtherDecisions(t *testing.T) {
 		}
 		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["current"]`}
 		s.beginScreenPrompt(1, w)
-		if w.decisionID != old.DecisionID {
-			t.Errorf("selected %s, want %s", w.decisionID, old.DecisionID)
+		if w.decisionID == "" || w.decisionID == old.DecisionID || w.decisionID == other.DecisionID {
+			t.Errorf("unverified record reused: %s", w.decisionID)
 		}
 	})
 	for _, d := range []api.Decision{other, permission, differentPane} {
@@ -155,7 +155,7 @@ func TestScreenQuestionReconciliationPreservesOtherDecisions(t *testing.T) {
 	}
 }
 
-func TestScreenQuestionDuplicateClosedBeforeAnswer(t *testing.T) {
+func TestScreenQuestionAnswerKeepsUnidentifiedRecords(t *testing.T) {
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-single", "claude")
 	scanScreen(s)
@@ -182,13 +182,13 @@ func TestScreenQuestionDuplicateClosedBeforeAnswer(t *testing.T) {
 	scanScreen(s)
 	for _, id := range []string{old.DecisionID, duplicate.DecisionID} {
 		d, err := s.store.Decision(id)
-		if err != nil || d.Status == "pending" {
-			t.Fatalf("pending after answer: %+v %v", d, err)
+		if err != nil || d.Status != "pending" {
+			t.Fatalf("unidentified decision changed: %+v %v", d, err)
 		}
 	}
 }
 
-func TestScreenQuestionReconcilesSummarizedLegacyRecord(t *testing.T) {
+func TestScreenQuestionKeepsSummarizedUnidentifiedRecord(t *testing.T) {
 	teststate.Lock(t)
 	s, _, _ := screenTerminal(t, "claude-single", "claude")
 	scanScreen(s)
@@ -221,8 +221,8 @@ func TestScreenQuestionReconcilesSummarizedLegacyRecord(t *testing.T) {
 		}
 	})
 	got, err := s.store.Decision(legacy.DecisionID)
-	if err != nil || got.Status != "cancelled" {
-		t.Fatalf("summarized duplicate: %+v %v", got, err)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unidentified summarized record changed: %+v %v", got, err)
 	}
 }
 

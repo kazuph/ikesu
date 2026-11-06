@@ -239,8 +239,8 @@ func TestScreenPromptPendingReuseAndDisable(t *testing.T) {
 	d := screenRecord(t, s)
 	s.app.Do(func() { s.screenPrompts.watches = nil })
 	scanScreen(s)
-	if screenRecord(t, s).DecisionID != d.DecisionID {
-		t.Fatal("pending not reused")
+	if screenRecord(t, s).DecisionID == d.DecisionID {
+		t.Fatal("unidentified pending was reused")
 	}
 	s.app.Do(func() {
 		s.scheduleScreenPrompts()
@@ -300,6 +300,8 @@ func TestScreenPromptExternallyExpiredDoesNotReappear(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
+		prompt := s.readScreenPrompt(1)
+		s.screenPrompts.watches = map[int]*screenPromptWatch{1: {prompt: prompt, signature: prompt.Signature(), decisionID: old.DecisionID, lastMatched: true}}
 	})
 	scanScreen(s)
 	if screenRecord(t, s).DecisionID != old.DecisionID {
@@ -318,7 +320,7 @@ func TestScreenPromptExternallyExpiredDoesNotReappear(t *testing.T) {
 	}
 }
 
-func TestScreenPreviewUnavailableAndReuseDoNotRescan(t *testing.T) {
+func TestScreenPreviewUnavailableAndUnidentifiedRestartDoNotRescan(t *testing.T) {
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-preview", "claude")
 	scanScreen(s)
@@ -336,8 +338,8 @@ func TestScreenPreviewUnavailableAndReuseDoNotRescan(t *testing.T) {
 	waitPromptCondition(t, func() bool { before, _ = os.ReadFile(input); return len(before) > 0 })
 	s.app.Do(func() { s.screenPrompts.watches = nil })
 	scanScreen(s)
-	if screenRecord(t, s).DecisionID != d.DecisionID {
-		t.Fatal("preview pending not reused")
+	if screenRecord(t, s).DecisionID == d.DecisionID {
+		t.Fatal("unidentified preview decision was reused")
 	}
 	if keys, _ := os.ReadFile(input); string(keys) != string(before) {
 		t.Fatalf("re-scanned pending: %q -> %q", before, keys)

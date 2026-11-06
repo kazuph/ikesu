@@ -13,14 +13,16 @@ import (
 )
 
 type screenPromptHub struct {
-	seen        map[int]map[string]bool
-	rebuilds    map[int][]time.Time
-	flows       map[int]*screenAnswerFlow
-	watches     map[int]*screenPromptWatch
-	transcripts map[int]*claudeTranscriptScan
-	late        map[string]*lateCodexQuestion
-	verifying   map[string]*lateCodexQuestion
-	timer       *time.Timer
+	seen            map[int]map[string]bool
+	rebuilds        map[int][]time.Time
+	flows           map[int]*screenAnswerFlow
+	watches         map[int]*screenPromptWatch
+	transcripts     map[int]*claudeTranscriptScan
+	late            map[string]*lateCodexQuestion
+	verifying       map[string]*lateCodexQuestion
+	claudeRestore   map[string]int
+	claudeRestoring bool
+	timer           *time.Timer
 }
 
 // Waiting screens use the review's one-second bound; preview navigation keeps
@@ -108,6 +110,9 @@ func (s *Server) screenPromptsActive() bool {
 	if len(s.screenPrompts.verifying) > 0 {
 		return true
 	}
+	if len(s.screenPrompts.claudeRestore) > 0 {
+		return true
+	}
 	for _, late := range s.screenPrompts.late {
 		if late.delivery != nil && late.delivery.Status == "pending" {
 			return true
@@ -191,11 +196,13 @@ func (s *Server) stopScreenPromptTimer() {
 func (s *Server) screenPromptConfig(c config.Config) {
 	s.cfg = c
 	if c.ScreenPrompts() {
+		s.prepareClaudeQuestionRestore()
 		s.scheduleScreenPrompts()
 		return
 	}
 	s.stopScreenPromptTimer()
 	s.screenPrompts.verifying = nil
+	s.screenPrompts.claudeRestore = nil
 	for id, late := range s.screenPrompts.late {
 		if late.delivery != nil && late.delivery.Status == "pending" {
 			s.setLateDelivery(id, "failed", "画面の質問の検出が無効になりました")
@@ -246,6 +253,7 @@ func (s *Server) scanScreenPrompts() {
 	if !s.cfg.ScreenPrompts() {
 		return
 	}
+	s.scanRestoredClaudeQuestions()
 	s.scanLateCodexDeliveries()
 	s.scanVerifyingCodexQuestions()
 	if s.screenPrompts.watches == nil {
@@ -285,7 +293,9 @@ func (s *Server) scanScreenPrompts() {
 		transcriptID, display, transcriptOK, transcriptPending, transcriptUnverified, transcriptResolved := s.pollClaudeTranscript(pid, transcriptScreen)
 		if transcriptResolved {
 			if w != nil {
-				s.cancelScreenPrompt(w)
+				if w.transcriptID != "" && w.transcriptID == transcriptID {
+					s.cancelScreenPrompt(w)
+				}
 				delete(s.screenPrompts.watches, pid)
 			}
 			continue
@@ -351,8 +361,9 @@ func (s *Server) scanScreenPrompts() {
 					handled, found := s.reconcileClaudeScreenPrompt(pid, w)
 					identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
 					if !handled || !found || err != nil || identity != transcriptID {
-						w.transcriptID, w.displayParams = "", nil
-						same = false
+						w.decisionID = ""
+						s.beginScreenPrompt(pid, w)
+						same = w.decisionID != ""
 					}
 				}
 				if same {
@@ -384,7 +395,9 @@ func (s *Server) scanScreenPrompts() {
 				if p != nil && !w.resolved {
 					s.noteScreenRebuild(pid)
 				}
-				s.cancelScreenPrompt(w)
+				if !changedIdentity {
+					s.cancelScreenPrompt(w)
+				}
 				delete(s.screenPrompts.watches, pid)
 				w = nil
 			} else {
@@ -552,63 +565,37 @@ func (s *Server) reconcileClaudeScreenPrompt(pid int, w *screenPromptWatch) (boo
 	if agent != "claude" {
 		return false, false
 	}
-	pending, err := s.store.Decisions("pending")
-	if err != nil {
+	if w.transcriptID == "" {
+		return true, false
+	}
+	if d, found, err := s.store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID); err != nil {
 		s.app.SetConfigWarning("screen question lookup: " + err.Error())
 		return true, true
-	}
-	var candidates []api.Decision
-	var selected *api.Decision
-	identities := map[string]string{}
-	for _, d := range pending {
-		if d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.PaneID != fmtPaneID(pid) || d.Origin.Reason != "screen_prompt" || (d.Origin.Agent != "" && d.Origin.Agent != "claude") || d.Origin.Tool != "" || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
-			continue
+	} else if found {
+		w.decisionID = d.DecisionID
+		if w.displayParams != nil {
+			s.updateScreenPrompt(w)
 		}
-		identity, err := s.store.ScreenQuestionIdentity(d.DecisionID)
+		return true, true
+	}
+	if w.decisionID != "" {
+		identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
 		if err != nil {
 			s.app.SetConfigWarning("screen question lookup: " + err.Error())
 			return true, true
 		}
-		if identity != "" && w.transcriptID != "" && identity != w.transcriptID {
-			continue
-		}
-		previous := &screenprompt.Prompt{Params: api.DecisionCreateParams{Kind: d.Kind, Title: d.Title, Body: d.Body, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}
-		match := screenprompt.FromDecision(d) == w.signature
-		if !match && w.displayParams != nil {
-			match = matchesClaudeDisplay(previous, w.prompt, *w.displayParams)
-		}
-		if !match && identity != "" && identity == w.transcriptID {
-			match = true
-		}
-		if !match {
-			continue
-		}
-		candidates = append(candidates, d)
-		identities[d.DecisionID] = identity
-		if selected == nil || identity != "" && (w.transcriptID != "" || identities[selected.DecisionID] == "") {
-			copy := d
-			selected = &copy
-		}
-	}
-	if selected == nil {
-		return true, false
-	}
-	if w.transcriptID != "" {
-		if err := s.store.BindScreenQuestion(selected.DecisionID, fmtPaneID(pid), w.transcriptID); err != nil {
-			s.app.SetConfigWarning("screen question identity: " + err.Error())
+		if identity == "" {
+			if err := s.store.BindScreenQuestion(w.decisionID, fmtPaneID(pid), w.transcriptID); err != nil {
+				s.app.SetConfigWarning("screen question identity: " + err.Error())
+				return true, true
+			}
+			if w.displayParams != nil {
+				s.updateScreenPrompt(w)
+			}
 			return true, true
 		}
 	}
-	w.decisionID = selected.DecisionID
-	for _, d := range candidates {
-		if d.DecisionID != selected.DecisionID && (w.transcriptID != "" || identities[d.DecisionID] == "") {
-			s.cancelScreenPrompt(&screenPromptWatch{decisionID: d.DecisionID})
-		}
-	}
-	if w.displayParams != nil {
-		s.updateScreenPrompt(w)
-	}
-	return true, true
+	return true, false
 }
 
 func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
