@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/model"
@@ -286,5 +288,32 @@ func TestLateApprovalTextModeShowsInputInstructions(t *testing.T) {
 	}
 	if strings.Contains(text, "select 1-2") || strings.Contains(text, "input · back ctrl+u") {
 		t.Fatalf("text mode shows selection or redundant guidance: %q", text)
+	}
+}
+
+func TestApprovalReasonWrapKeepsWideCharactersInElevenCellPane(t *testing.T) {
+	app := model.New(t.TempDir(), 11, 40)
+	app.SidebarVisible, app.SidebarHidden, app.RightSidebarMode = false, true, "hidden"
+	body := "日本語の理由"
+	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}}
+	state := approvalState{pending: []api.Decision{d}, open: "guard"}
+	in := render.Input{State: app}
+	state.overlay(&in)
+	pane := app.DisplayPaneRects()[0].Rect
+	if pane.W != 11 {
+		t.Fatalf("expected 11-cell pane, got %d", pane.W)
+	}
+	var reason strings.Builder
+	for i, kind := range in.Approval.Kinds {
+		if kind.Role == "reason" {
+			line := in.Approval.Lines[i]
+			if width := ansi.StringWidth(line); width > pane.W-2 {
+				t.Errorf("reason line width %d exceeds %d: %q", width, pane.W-2, line)
+			}
+			reason.WriteString(strings.TrimSpace(strings.TrimPrefix(line, " reason ")))
+		}
+	}
+	if reason.String() != body {
+		t.Errorf("reason content = %q, want %q", reason.String(), body)
 	}
 }

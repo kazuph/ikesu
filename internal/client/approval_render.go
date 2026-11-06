@@ -49,6 +49,7 @@ func (s *approvalState) overlay(in *render.Input) {
 	}
 	var lines []string
 	var kinds []render.ApprovalLineKind
+	const reasonIndent = "        "
 	add := func(value, role string, prefix int, selected bool) {
 		for _, paragraph := range strings.Split(value, "\n") {
 			current, cells := "", 0
@@ -58,8 +59,8 @@ func (s *approvalState) overlay(in *render.Input) {
 					lines = append(lines, current)
 					kinds = append(kinds, render.ApprovalLineKind{Role: role, Prefix: prefix, Selected: selected})
 					current, cells, prefix = "", 0, 0
-					if role == "reason" && width > 8 {
-						current, cells = "        ", 8
+					if role == "reason" && width >= ansi.StringWidth(reasonIndent)+2 {
+						current, cells = reasonIndent, ansi.StringWidth(reasonIndent)
 					}
 				}
 				current += string(r)
