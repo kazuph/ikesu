@@ -39,8 +39,18 @@ func claudeCommand(screen []string) (*api.DecisionOrigin, *uint64) {
 	for i := header + 1; i < rules[0]; i++ {
 		t := strings.TrimSpace(screen[i])
 		if strings.HasPrefix(t, "Tip:") {
-			for i+1 < rules[0] && (strings.HasPrefix(strings.TrimSpace(screen[i+1]), "choose ") || strings.TrimSpace(screen[i+1]) == "below") {
-				i++
+			if strings.Contains(strings.ToLower(t), "auto mode") && !strings.Contains(strings.ToLower(t), "below") {
+				found := false
+				for i+1 < rules[0] {
+					i++
+					if strings.Contains(strings.ToLower(screen[i]), "below") {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, nil
+				}
 			}
 			continue
 		}
