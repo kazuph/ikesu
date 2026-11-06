@@ -81,6 +81,38 @@ func TestCodexReconciliationKeepsLateAnswer(t *testing.T) {
 	}
 }
 
+func TestCodexReconciliationKeepsLateAnswerBeforeRestore(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := codexQuestionTerminal(t, "codex-question")
+	scanScreen(s)
+	late := screenRecord(t, s)
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		params := p.Params
+		body := lateCodexQuestionBody
+		params.Body = &body
+		updated, _, err := s.store.UpdatePendingScreenDecision(late.DecisionID, params)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if screenprompt.FromDecision(updated) != p.Signature() {
+			t.Error("fixture must match the currently visible question")
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), codex: &codexBinding{identity: `["session","next-call","question"]`, question: session.CodexQuestion{Timestamp: time.UnixMilli(late.CreatedUnixMS - 1), State: session.CodexPending}}}
+		s.screenPrompts.watches = map[int]*screenPromptWatch{1: w}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID == "" || w.decisionID == late.DecisionID {
+			t.Errorf("unrestored late decision reused: %s", w.decisionID)
+		}
+	})
+	got, err := s.store.Decision(late.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unrestored late answer lost: %+v %v", got, err)
+	}
+}
+
 func TestCodexQuestionUnreadableRetainsPending(t *testing.T) {
 	if runIsolatedParallelEarly(t) {
 		return
