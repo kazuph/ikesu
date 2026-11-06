@@ -31,6 +31,7 @@ struct DialogSpec: Decodable {
   let present_in_background: Bool?
   let approval_command: String?
   let permission_explanation: String?
+  let permission_command_note: String?
   let permission_warning: String?
   let approval_target_range: ApprovalRange?
   let approval_fields: [ApprovalField]?
@@ -500,6 +501,7 @@ final class DialogController: NSObject, NSWindowDelegate {
       full(richLabel(explanation, size: Look.base))
     }
     if let command = spec.approval_command, !command.isEmpty {
+      if let note = spec.permission_command_note, !note.isEmpty { full(label(note, size: Look.small, color: .secondaryLabelColor)) }
       let range = spec.approval_target_range.map { NSRange(location: $0.start, length: $0.length) }
       full(richLabel(command, size: Look.base, mono: true, commandRanges: range.map { [$0] } ?? []))
     }

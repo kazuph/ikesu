@@ -306,7 +306,7 @@ func ParseWithTextID(agent string, screen []string, textID string) *Prompt {
 			p.Params.Origin, p.Params.TimeoutMS = origin, timeout
 			p.Params.AllowText = true
 			p.Params.Title = origin.Tool
-			body := strings.Join([]string{origin.Tool, origin.Explanation, origin.Command, origin.Warning}, "\n")
+			body := strings.Join([]string{origin.Tool, origin.Explanation, "画面の表示どおり（折り返しを含む）", origin.Command, origin.Warning}, "\n")
 			p.Params.Body = &body
 		}
 	}
@@ -361,9 +361,10 @@ func (p *Prompt) Signature() string {
 	if p.Params.QuestionLabel != nil && codexQuestionHeader.MatchString(*p.Params.QuestionLabel) {
 		label = p.Params.QuestionLabel
 	}
-	command, tool, warning := "", "", ""
+	command, tool, warning, columns := "", "", "", 0
 	if p.Params.Origin != nil && p.Params.Origin.Tool != "" {
 		tool, command, warning = p.Params.Origin.Tool, p.Params.Origin.Command, p.Params.Origin.Warning
+		columns = p.Params.Origin.ScreenColumns
 	}
 	data, _ := json.Marshal(struct {
 		MCPServer              string  `json:",omitempty"`
@@ -372,9 +373,10 @@ func (p *Prompt) Signature() string {
 		Tool                   string `json:",omitempty"`
 		Command                string `json:",omitempty"`
 		Warning                string `json:",omitempty"`
+		ScreenColumns          int    `json:",omitempty"`
 		Options                []option
 		AllowText, MultiSelect bool
-	}{p.MCPServer, label, questionIdentity(p.Params), tool, command, warning, options, p.Params.AllowText, p.Params.MultiSelect})
+	}{p.MCPServer, label, questionIdentity(p.Params), tool, command, warning, columns, options, p.Params.AllowText, p.Params.MultiSelect})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }

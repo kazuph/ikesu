@@ -7,9 +7,9 @@ import {discoverRichContent} from '../rich.mjs';
 test('Claude command fields have the same order on Mac and Slack',()=>{
  const d={kind:'tool_permission',title:'Bash command',body:'Bash command\n説明\necho hi\n警告',origin:{agent:'claude',tool:'Bash command',explanation:'説明',command:'echo hi',warning:'警告'},options:[{id:'1',label:'Yes'},{id:'4',label:'No'}]};
  const spec=buildDialogSpec(d,{id:'local'}), blocks=buildDecisionBlocks({decision:d,machine:{id:'local'}});
- assert.deepEqual([spec.title,spec.permission_explanation,spec.approval_command,spec.permission_warning],['Bash command','説明','echo hi','警告']);
+ assert.deepEqual([spec.title,spec.permission_explanation,spec.permission_command_note,spec.approval_command,spec.permission_warning],['Bash command','説明','画面の表示どおり（折り返しを含む）','echo hi','警告']);
  assert.equal(spec.body,'');
- assert.deepEqual([blocks[1].text.text,blocks[2].text.text,blocks[3].elements[0].elements[0].text,blocks[4].text.text],['*Bash command*','説明','echo hi','警告']);
+ assert.deepEqual([blocks[1].text.text,blocks[2].text.text,blocks[3].text.text,blocks[4].elements[0].elements[0].text,blocks[5].text.text],['*Bash command*','説明','画面の表示どおり（折り返しを含む）','echo hi','警告']);
 });
 
 test('Mac and Slack lead with the same four complete location fields and exact approval command',()=>{

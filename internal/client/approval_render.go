@@ -71,6 +71,7 @@ func (s *approvalState) overlay(in *render.Input) {
 	} else if d.Kind == "tool_permission" && d.Origin.Tool != "" {
 		add("道具: " + d.Origin.Tool)
 		add("理由: " + d.Origin.Explanation)
+		add("画面の表示どおり（折り返しを含む）")
 		add("コマンド: " + d.Origin.Command)
 		if d.Origin.Warning != "" {
 			add("警告: " + d.Origin.Warning)

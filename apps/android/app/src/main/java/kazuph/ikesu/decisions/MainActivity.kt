@@ -193,8 +193,10 @@ class MainActivity : Activity() {
         block(text(item.optString("location"), 18f))
         if (item.optString("question_label").isNotBlank()) block(text(item.optString("question_label"), 18f))
         block(text(decisionHeading(item.optString("raw_title"), item.optString("raw_body"), item.optString("kind")), 28f))
-        for ((kind, value) in permissionDetails(item.optString("permission_explanation"), item.optString("approval_command"), item.optString("permission_warning"))) {
-            if (kind == "コマンド") block(text(value, 20f).apply { setTextColor(Color.RED); typeface = Typeface.MONOSPACE })
+        for ((kind, value) in permissionDetails(item.optString("permission_explanation"), item.optString("approval_command"), item.optString("permission_warning"), item.optString("permission_command_note"))) {
+            if (kind == "コマンド") {
+                block(text(value, 20f).apply { setTextColor(Color.RED); typeface = Typeface.MONOSPACE })
+            }
             else block(text(value))
         }
         val details = item.optJSONArray("details") ?: JSONArray()

@@ -5,6 +5,41 @@ import (
 	"testing"
 )
 
+func TestClaudeCommandVisibleRowsDetermineIdentity(t *testing.T) {
+	screen := "Bash command\nReason\n╌╌╌╌\n│ echo one\n│ echo two\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel"
+	a := Parse("claude", strings.Split(screen, "\n"))
+	b := Parse("claude", strings.Split(strings.Replace(screen, "│ echo one\n│ echo two", "│ echo one echo two", 1), "\n"))
+	if a.Params.Origin == nil || a.Params.Origin.Command != "echo one\necho two" || b.Params.Origin == nil || a.Signature() == b.Signature() {
+		t.Fatal("different visible rows must have different identities")
+	}
+	a.Params.Origin.ScreenColumns = 80
+	b = Parse("claude", strings.Split(screen, "\n"))
+	b.Params.Origin.ScreenColumns = 81
+	if a.Signature() == b.Signature() {
+		t.Fatal("terminal width must be part of the identity")
+	}
+}
+func TestClaudeCommandQuotedBlankLine(t *testing.T) {
+	screen := "Bash command\nReason\n╌╌╌╌\n│ printf 'one\n│\n│ two'\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel"
+	p := Parse("claude", strings.Split(screen, "\n"))
+	if p.Params.Origin == nil || p.Params.Origin.Command != "printf 'one\n\ntwo'" {
+		t.Fatalf("quoted command changed: %+v", p.Params.Origin)
+	}
+}
+
+func TestClaudeCommandDeadlineIgnoresCommandText(t *testing.T) {
+	screen := "Bash command\nReason\n╌╌╌╌\n│ echo \"automatically deny this request in 0:01\"\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel"
+	_, timeout := claudeCommand(strings.Split(screen, "\n"))
+	if timeout != nil {
+		t.Fatalf("command created a deadline: %d", *timeout)
+	}
+	screen = strings.Replace(screen, "Do you want to proceed?", "⚠ Claude Code will automatically block this request in 0:38, to avoid blocking progress\nDo you want to proceed?", 1)
+	_, timeout = claudeCommand(strings.Split(screen, "\n"))
+	if timeout == nil || *timeout != 38000 {
+		t.Fatalf("wrong actual deadline: %v", timeout)
+	}
+}
+
 func TestClaudeCommandDetailsAndIdentity(t *testing.T) {
 	lines := fixture(t, "claude-permission")
 	p := Parse("claude", lines)
@@ -12,7 +47,7 @@ func TestClaudeCommandDetailsAndIdentity(t *testing.T) {
 		t.Fatal("command not parsed")
 	}
 	o := p.Params.Origin
-	if o.Tool != "Bash command" || o.Explanation != "Write observation text to file" || o.Command != "printf observation > /tmp/gs-j0m1z8np/work/permission-observation.txt" {
+	if o.Tool != "Bash command" || o.Explanation != "Write observation text to file" || o.Command != "printf observation >\n/tmp/gs-j0m1z8np/work/permission-observation.txt" {
 		t.Fatalf("details: %+v", o)
 	}
 	changed := Parse("claude", strings.Split(strings.ReplaceAll(strings.Join(lines, "\n"), "printf observation", "printf replacement"), "\n"))

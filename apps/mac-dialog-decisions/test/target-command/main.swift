@@ -53,8 +53,8 @@ for row in rows {
   }
   let title=labels.first {$0.string==spec.title}!
   if name == "claude-permission" {
-   let reason=labels.first {$0.string=="確認理由"}!, commandLabel=bodyLabels[0], warning=labels.first {$0.string=="警告文"}!
-   precondition(title.convert(title.bounds,to:content).midY > reason.convert(reason.bounds,to:content).midY && reason.convert(reason.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY && commandLabel.convert(commandLabel.bounds,to:content).midY > warning.convert(warning.bounds,to:content).midY, "permission field order")
+   let reason=labels.first {$0.string=="確認理由"}!, note=textFields(content).first {$0.stringValue=="画面の表示どおり（折り返しを含む）"}!, commandLabel=bodyLabels[0], warning=labels.first {$0.string=="警告文"}!
+   precondition(title.convert(title.bounds,to:content).midY > reason.convert(reason.bounds,to:content).midY && reason.convert(reason.bounds,to:content).midY > note.convert(note.bounds,to:content).midY && note.convert(note.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY && commandLabel.convert(commandLabel.bounds,to:content).midY > warning.convert(warning.bounds,to:content).midY, "permission field order")
   }
   precondition(title.string==decision["title"] as! String)
   for index in 0..<(title.string as NSString).length {precondition(title.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor != .systemRed)}

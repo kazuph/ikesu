@@ -815,6 +815,7 @@ function buildDecisionBlocks({
   if (presentation.title) for (const chunk of splitExactText(presentation.title, SLACK_SECTION_TEXT_LIMIT - 2)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${chunk}*`}});
   if (isClaudeCommandPermission(decision) && decision.origin?.explanation) for (const chunk of splitExactText(decision.origin.explanation)) blocks.push({type: "section", text: {type: "plain_text", text: chunk}});
   if (approvalCommand(decision)) {
+    if (isClaudeCommandPermission(decision)) blocks.push({type: "section", text: {type: "plain_text", text: "画面の表示どおり（折り返しを含む）"}});
     for (const chunk of splitExactText(approvalCommand(decision))) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
     const range = approvalTargetRange(decision);
     if (range && range.length !== approvalCommand(decision).length) {

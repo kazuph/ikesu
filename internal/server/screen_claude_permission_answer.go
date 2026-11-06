@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/charmbracelet/x/vt"
+
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/cellwidth"
 	"github.com/kazuph/ikesu/internal/runtime"
@@ -30,15 +32,15 @@ type claudePermissionRecord struct {
 	} `json:"message"`
 }
 
-func claudePermissionLog(pane *runtime.Pane, command string) (string, string, os.FileInfo, error) {
+func claudePermissionPath(pane *runtime.Pane) (string, os.FileInfo, error) {
 	snapshot, job := pane.Snapshot(), pane.ForegroundJob()
 	start, ok := session.ProcessStart(job)
 	if !ok || foregroundAgent(pane) != "claude" {
-		return "", "", nil, fmt.Errorf("Claude process unavailable")
+		return "", nil, fmt.Errorf("Claude process unavailable")
 	}
 	id, ok := session.ObserveProcessSession("claude", snapshot.Cwd, start, job, pane.SessionEnvironment())
 	if !ok || !session.SafeSessionID(id) {
-		return "", "", nil, fmt.Errorf("Claude session unavailable")
+		return "", nil, fmt.Errorf("Claude session unavailable")
 	}
 	root, home := "", ""
 	for _, item := range pane.SessionEnvironment() {
@@ -58,39 +60,13 @@ func claudePermissionLog(pane *runtime.Pane, command string) (string, string, os
 	}
 	paths, err := filepath.Glob(filepath.Join(root, "projects", "*", id+".jsonl"))
 	if err != nil || len(paths) != 1 {
-		return "", "", nil, fmt.Errorf("Claude transcript is not unique")
+		return "", nil, fmt.Errorf("Claude transcript is not unique")
 	}
 	info, err := os.Stat(paths[0])
 	if err != nil {
-		return "", "", nil, err
+		return "", nil, err
 	}
-	data, err := os.ReadFile(paths[0])
-	if err != nil {
-		return "", "", nil, err
-	}
-	toolID, lastCommand := "", ""
-	for _, line := range strings.Split(string(data), "\n") {
-		var row claudePermissionRecord
-		if json.Unmarshal([]byte(line), &row) != nil || row.Type != "assistant" {
-			continue
-		}
-		var blocks []struct {
-			Type, ID, Name string
-			Input          struct{ Command string }
-		}
-		if json.Unmarshal(row.Message.Content, &blocks) != nil {
-			continue
-		}
-		for _, block := range blocks {
-			if block.Type == "tool_use" && block.Name == "Bash" {
-				toolID, lastCommand = block.ID, block.Input.Command
-			}
-		}
-	}
-	if toolID == "" || lastCommand != command {
-		return "", "", nil, fmt.Errorf("Claude transcript command does not match")
-	}
-	return paths[0], toolID, info, nil
+	return paths[0], info, nil
 }
 
 func claudePermissionReceipt(path, toolID, text string, previous os.FileInfo) (bool, error) {
@@ -124,12 +100,43 @@ func claudePermissionReceipt(path, toolID, text string, previous os.FileInfo) (b
 	return false, nil
 }
 
+func claudePermissionReceiptAny(path, text string, previous os.FileInfo) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil || previous == nil || !os.SameFile(info, previous) || info.Size() < previous.Size() {
+		return false, fmt.Errorf("Claude transcript changed")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(string(data[previous.Size():]), "\n") {
+		var row claudePermissionRecord
+		if json.Unmarshal([]byte(line), &row) != nil || row.Type != "user" || row.ToolDenialKind != "user-rejected" || row.UserFeedback != text || row.PermissionDecision != nil && row.PermissionDecision.Decision != "reject" {
+			continue
+		}
+		var results []struct {
+			Type      string `json:"type"`
+			ToolUseID string `json:"tool_use_id"`
+			IsError   bool   `json:"is_error"`
+		}
+		if json.Unmarshal(row.Message.Content, &results) != nil {
+			continue
+		}
+		for _, result := range results {
+			if result.Type == "tool_result" && result.ToolUseID != "" && result.IsError {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func claudePermissionEditMatches(original, current *screenprompt.Prompt, selected, text string, screen []string) bool {
 	if original == nil || current == nil || original.Params.Origin == nil || current.Params.Origin == nil || current.Cursor < 0 || current.Cursor >= len(current.Items) || current.Items[current.Cursor] != selected {
 		return false
 	}
 	a, b := original.Params.Origin, current.Params.Origin
-	if a.Tool == "" || a.Tool != b.Tool || a.Command != b.Command || a.Warning != b.Warning || a.Explanation != b.Explanation || len(original.Params.Options) != len(current.Params.Options) {
+	if a.Tool == "" || a.Tool != b.Tool || a.Command != b.Command || a.ScreenColumns != b.ScreenColumns || a.Warning != b.Warning || a.Explanation != b.Explanation || len(original.Params.Options) != len(current.Params.Options) {
 		return false
 	}
 	found := false
@@ -225,7 +232,7 @@ func claudePermissionEditScreen(screen []string, selected string) []string {
 	}
 	indent := cellwidth.String(screen[index][:end])
 	out := append([]string(nil), screen[:index]...)
-	out = append(out, screen[index][:end]+"and tell Claude what to do differently")
+	out = append(out, strings.TrimRight(screen[index][:end], " ")+" and tell Claude what to do differently")
 	inFeedback := true
 	for _, line := range screen[index+1:] {
 		trim := strings.TrimLeft(line, " ")
@@ -248,7 +255,11 @@ func claudePermissionEditPrompt(pane *runtime.Pane, selected string) *screenprom
 	if foregroundAgent(pane) != "claude" {
 		return nil
 	}
-	return screenprompt.Parse("claude", claudePermissionEditScreen(pane.DetectionLines(), selected))
+	prompt := screenprompt.Parse("claude", claudePermissionEditScreen(pane.DetectionLines(), selected))
+	if prompt != nil && prompt.Params.Origin != nil && prompt.Params.Origin.Tool != "" {
+		pane.WithEmu(func(e *vt.Emulator) { prompt.Params.Origin.ScreenColumns = e.Width() })
+	}
+	return prompt
 }
 
 func (s *Server) claudePermissionEditInput(pid int, original *screenprompt.Prompt, selected, expected, data string) error {
@@ -315,7 +326,7 @@ func (s *Server) deliverClaudePermissionText(pid int, signature string, prompt *
 	if pane == nil {
 		return fmt.Errorf("pane closed")
 	}
-	path, toolID, previous, err := claudePermissionLog(pane, prompt.Params.Origin.Command)
+	path, previous, err := claudePermissionPath(pane)
 	if err != nil {
 		return err
 	}
@@ -360,7 +371,7 @@ func (s *Server) deliverClaudePermissionText(pid int, signature string, prompt *
 	}
 	deadline := time.Now().Add(claudeTranscriptWait)
 	for {
-		received, err := claudePermissionReceipt(path, toolID, *answer.Text, previous)
+		received, err := claudePermissionReceiptAny(path, *answer.Text, previous)
 		if err != nil {
 			return err
 		}

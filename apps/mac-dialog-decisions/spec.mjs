@@ -162,6 +162,7 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
     location: locationLabel(decision, machine),
     approval_command: approvalCommand(decision),
     permission_explanation: isClaudeCommandPermission(decision) ? String(origin.explanation || "") : "",
+    permission_command_note: isClaudeCommandPermission(decision) ? "画面の表示どおり（折り返しを含む）" : "",
     permission_warning: isClaudeCommandPermission(decision) ? String(origin.warning || "") : "",
     approval_target_range: approvalTargetRange(decision),
     approval_fields: decision.kind === "command_guard" ? approvalFields(decision.body) : null,

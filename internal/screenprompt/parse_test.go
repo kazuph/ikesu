@@ -50,7 +50,7 @@ func TestObservedScreenContractsMatchHerdr0240(t *testing.T) {
 			switch name {
 			case "claude-permission":
 				want.AllowText = true
-				text := "Bash command\nWrite observation text to file\nprintf observation > /tmp/gs-j0m1z8np/work/permission-observation.txt\n"
+				text := "Bash command\nWrite observation text to file\n画面の表示どおり（折り返しを含む）\nprintf observation >\n/tmp/gs-j0m1z8np/work/permission-observation.txt\n"
 				want.Title = "Bash command"
 				want.Body = &text
 			case "codex-permission":

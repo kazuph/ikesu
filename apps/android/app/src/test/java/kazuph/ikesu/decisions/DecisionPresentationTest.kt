@@ -7,6 +7,7 @@ class DecisionPresentationTest {
     @Test fun permissionDetailsKeepFullValuesAndOrder() {
         assertEquals(listOf("理由" to "説明", "コマンド" to "printf 'long command'", "警告" to "危険"), permissionDetails("説明", "printf 'long command'", "危険"))
         assertEquals(listOf("コマンド" to "echo x"), permissionDetails("", "echo x", ""))
+        assertEquals(listOf("理由" to "説明", "注記" to "画面の表示どおり（折り返しを含む）", "コマンド" to "echo one\necho two", "警告" to "危険"), permissionDetails("説明", "echo one\necho two", "危険", "画面の表示どおり（折り返しを含む）"))
     }
     @Test fun headingUsesOriginalTitleThenBodyThenKind() {
         assertEquals("題名", decisionHeading("題名", "本文\n続き", "agent_prompt"))

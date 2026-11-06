@@ -42,7 +42,7 @@ func TestClaudePermissionPopupFieldOrder(t *testing.T) {
 	}
 	text := strings.Join(in.Approval.Lines, "\n")
 	last := -1
-	for _, value := range []string{"Bash command", "why", "echo safe", "warning", "Yes", "No"} {
+	for _, value := range []string{"Bash command", "why", "画面の表示どおり（折り返しを含む）", "echo safe", "warning", "Yes", "No"} {
 		next := strings.Index(text, value)
 		if next <= last {
 			t.Fatalf("missing or out of order %q in %q", value, text)

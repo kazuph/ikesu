@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
+
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/screenprompt"
@@ -74,6 +76,15 @@ func (s *Server) readScreenPrompt(pid int) *screenprompt.Prompt {
 		return nil
 	}
 	expanded := screenprompt.ParseWithTextID(agent, p.DetectionLines(), textID)
+	if agent == "claude" {
+		width := 0
+		p.WithEmu(func(e *vt.Emulator) { width = e.Width() })
+		for _, prompt := range []*screenprompt.Prompt{current, expanded} {
+			if prompt != nil && prompt.Params.Origin != nil && prompt.Params.Origin.Tool != "" {
+				prompt.Params.Origin.ScreenColumns = width
+			}
+		}
+	}
 	if current != nil && current.MCPServer != "" {
 		return current
 	}

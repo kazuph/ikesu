@@ -9,7 +9,7 @@ import (
 )
 
 var claudeCommandHeader = regexp.MustCompile(`^([[:alnum:]_]+) command$`)
-var claudeDeadline = regexp.MustCompile(`(?i)automatically\s+(?:deny|block)\s+this\s+request\s+in\s+(\d+):(\d{2})`)
+var claudeDeadline = regexp.MustCompile(`(?i)⚠\s*Claude Code will automatically\s+(?:deny|block)\s+this\s+request\s+in\s+(\d+):(\d{2})`)
 
 // Only expose structured commands when both frame boundaries are visible.
 func claudeCommand(screen []string) (*api.DecisionOrigin, *uint64) {
@@ -63,13 +63,13 @@ func claudeCommand(screen []string) (*api.DecisionOrigin, *uint64) {
 	}
 	var command []string
 	for _, row := range screen[rules[0]+1 : rules[1]] {
-		t := strings.TrimSpace(row)
-		t = strings.TrimSpace(strings.TrimPrefix(t, "│"))
-		if t != "" {
-			command = append(command, t)
+		t := strings.TrimPrefix(row, " ")
+		if strings.HasPrefix(t, "│") {
+			t = strings.TrimPrefix(strings.TrimPrefix(t, "│"), " ")
 		}
+		command = append(command, strings.TrimRight(t, " "))
 	}
-	if len(command) == 0 {
+	if strings.TrimSpace(strings.Join(command, "")) == "" {
 		return nil, nil
 	}
 	var warnings []string
@@ -82,9 +82,18 @@ func claudeCommand(screen []string) (*api.DecisionOrigin, *uint64) {
 			break
 		}
 	}
-	o := &api.DecisionOrigin{Tool: strings.TrimSpace(screen[header]), Explanation: joinWrapped(reasons, screenColumns(screen)), Command: joinWrapped(command, screenColumns(screen)), Warning: joinWrapped(warnings, screenColumns(screen))}
+	o := &api.DecisionOrigin{Tool: strings.TrimSpace(screen[header]), Explanation: joinWrapped(reasons, screenColumns(screen)), Command: strings.Join(command, "\n"), Warning: joinWrapped(warnings, screenColumns(screen))}
 	var timeout *uint64
-	joined := strings.Join(strings.Fields(strings.Join(screen, " ")), " ")
+	var notice []string
+	for _, row := range screen[rules[1]+1:] {
+		if numbered.MatchString(row) {
+			break
+		}
+		if !strings.HasPrefix(strings.TrimSpace(row), "│") {
+			notice = append(notice, row)
+		}
+	}
+	joined := strings.Join(strings.Fields(strings.Join(notice, " ")), " ")
 	if m := claudeDeadline.FindStringSubmatch(joined); m != nil {
 		min, e1 := strconv.ParseUint(m[1], 10, 32)
 		sec, e2 := strconv.ParseUint(m[2], 10, 8)
