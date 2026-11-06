@@ -28,7 +28,11 @@ const claudeTranscriptWait = 60 * time.Second
 
 type screenPromptWatch struct {
 	codex               *codexBinding
-	codexResult         <-chan *codexBinding
+	codexResult         <-chan codexBindingResult
+	codexAnchorPath     string
+	codexAnchorSession  string
+	codexAnchorStart    time.Time
+	codexAnchorGroup    int
 	codexChecked        bool
 	codexStateResult    <-chan codexStateResult
 	transcriptDeadline  time.Time
@@ -313,6 +317,9 @@ func (s *Server) scanScreenPrompts() {
 				continue
 			}
 			if p == nil && w.prompt != nil && w.prompt.CodexQuestion && (!w.resolved || w.editingText) {
+				if w.decisionID != "" && !w.codexChecked {
+					s.waitCodexBinding(pid, w)
+				}
 				if pane := s.sup.Get(pid); pane != nil && !pane.Snapshot().Dead {
 					w.lastMatched = false
 					w.mismatches = 0
@@ -386,6 +393,9 @@ func (s *Server) scanScreenPrompts() {
 					continue
 				}
 				if !w.resolved {
+					if w.prompt.CodexQuestion && !w.codexChecked {
+						s.waitCodexBinding(pid, w)
+					}
 					s.updateScreenPrompt(w)
 					store, err := s.db()
 					if err == nil {

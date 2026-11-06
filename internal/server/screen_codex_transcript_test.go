@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -315,8 +317,8 @@ func TestRestoredCodexMatchRequiresUniqueEmptyResult(t *testing.T) {
 	label := "Question 1/1"
 	d := api.Decision{Title: "色は？", QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
 	q := session.CodexQuestion{SessionID: "s", CallID: "c", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
-	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, ""); !ok {
-		t.Fatal("unique empty result not restored")
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, `["s","c","q"]`); !ok {
+		t.Fatal("recorded empty question not restored")
 	}
 	for _, state := range []session.CodexAnswerState{session.CodexPending, session.CodexAnswered} {
 		other := q
@@ -388,5 +390,94 @@ func TestLateAnswerStoresSingleMultipleAndText(t *testing.T) {
 				t.Fatal(again)
 			}
 		})
+	}
+}
+
+func TestLegacyRestoreRejectsUnverifiedQuestionTime(t *testing.T) {
+	label := "Question 1/1"
+	d := api.Decision{Title: "色は？", CreatedUnixMS: time.Now().UnixMilli(), QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青"}}}
+	q := session.CodexQuestion{SessionID: "other", CallID: "call", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, ""); ok {
+		t.Fatal("legacy decision was bound without a verified question time")
+	}
+}
+
+func TestCodexBindingReadFailureRemainsRetryable(t *testing.T) {
+	s := &Server{}
+	result := make(chan codexBindingResult, 1)
+	result <- codexBindingResult{}
+	w := &screenPromptWatch{prompt: &screenprompt.Prompt{CodexQuestion: true}, codexResult: result}
+	s.waitCodexBinding(1, w)
+	if w.codexChecked || w.codexResult != nil {
+		t.Fatal("temporary read failure was marked checked")
+	}
+}
+
+func TestCodexRetryBindsOriginalQuestionAfterIncompleteRecord(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "late-retry-record")
+	s.initDecisionHub()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	path := filepath.Join(t.TempDir(), "rollout.jsonl")
+	raw := `{"type":"session_meta","payload":{"id":"s"}}` + "\n" +
+		`{"timestamp":"` + now.Add(-time.Second).Format(time.RFC3339Nano) + `","type":"response_item","payload":{"type":"function_call","name":"request_user_input","call_id":"original","arguments":"{\"questions\":[{\"id\":\"q\",\"question\":\"色は？\",\"options\":[{\"label\":\"青\"}]}]}"}}` + "\n"
+	if err := os.WriteFile(path, []byte(raw+"{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.ReadCodexQuestions(path, "s"); err == nil {
+		t.Fatal("incomplete record accepted")
+	}
+	ch := make(chan codexBindingResult, 1)
+	ch <- codexBindingResult{path: path, sessionID: "s", start: now.Add(-time.Minute), group: 1}
+	label := "Question 1/1"
+	prompt := &screenprompt.Prompt{CodexQuestion: true, Params: api.DecisionCreateParams{Title: "色は？", QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青"}}}}
+	w := &screenPromptWatch{prompt: prompt, codexResult: ch}
+	s.waitCodexBinding(1, w)
+	if w.codexChecked || w.codexAnchorSession != "s" {
+		t.Fatalf("retry anchor %+v", w)
+	}
+	d, err := store.CreateDecision(api.DecisionCreateParams{Kind: "agent_prompt", Title: "色は？", Origin: &api.DecisionOrigin{PaneID: fmtPaneID(1)}, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.decisionID = d.DecisionID
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	qs, err := session.ReadCodexQuestions(path, "s")
+	if err != nil || len(qs) != 1 {
+		t.Fatalf("questions=%+v err=%v", qs, err)
+	}
+	identity := `["s","original","q"]`
+	newer := qs[0]
+	newer.CallID = "newer"
+	newer.Timestamp = now.Add(time.Second)
+	for _, bad := range []codexBindingResult{
+		{path: path, sessionID: "foreign", start: now.Add(-time.Minute), group: 1, binding: &codexBinding{path: path, question: qs[0], identity: identity}},
+		{path: path, sessionID: "s", start: now.Add(-time.Minute), group: 1, binding: &codexBinding{path: path, question: newer, identity: `["s","newer","q"]`}},
+	} {
+		wrong := make(chan codexBindingResult, 1)
+		wrong <- bad
+		w.codexResult = wrong
+		s.waitCodexBinding(1, w)
+		if w.codexChecked || w.codex != nil {
+			t.Fatalf("incorrect call bound: %+v", bad)
+		}
+	}
+	ch2 := make(chan codexBindingResult, 1)
+	ch2 <- codexBindingResult{path: path, sessionID: "s", start: now.Add(-time.Minute), group: 1, binding: &codexBinding{path: path, question: qs[0], identity: identity}}
+	w.codexResult = ch2
+	s.waitCodexBinding(1, w)
+	if !w.codexChecked || w.codex == nil || w.codex.question.CallID != "original" {
+		t.Fatalf("binding=%+v", w.codex)
+	}
+	saved, err := store.ScreenQuestionIdentity(d.DecisionID)
+	if err != nil || saved != identity {
+		t.Fatalf("identity=%q err=%v", saved, err)
 	}
 }

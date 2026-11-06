@@ -252,38 +252,67 @@ func (s *Server) scanVerifyingCodexQuestions() {
 	}
 }
 
-func readCodexBinding(pane *runtime.Pane, prompt *screenprompt.Prompt) *codexBinding {
+type codexBindingResult struct {
+	binding         *codexBinding
+	path, sessionID string
+	start           time.Time
+	group           int
+}
+
+func readCodexBinding(pane *runtime.Pane, prompt *screenprompt.Prompt, cutoff int64) codexBindingResult {
 	if pane == nil || pane.Snapshot().Dead || foregroundAgent(pane) != "codex" {
-		return nil
+		return codexBindingResult{}
 	}
 	job := pane.ForegroundJob()
 	start, ok := session.ProcessStart(job)
 	if !ok {
-		return nil
+		return codexBindingResult{}
 	}
 	path, id, err := session.OpenCodexRollout(job)
 	if err != nil {
-		return nil
+		return codexBindingResult{}
 	}
-	questions, err := session.ReadCodexQuestions(path, id)
-	if err != nil {
-		return nil
-	}
-	q, ok := chooseCodexQuestion(prompt, questions)
-	if !ok {
-		return nil
-	}
+	questions, readErr := session.ReadCodexQuestions(path, id)
 	current := pane.ForegroundJob()
 	currentStart, ok := session.ProcessStart(current)
 	if !ok || current.ProcessGroupID != job.ProcessGroupID || !currentStart.Equal(start) || foregroundAgent(pane) != "codex" {
-		return nil
+		return codexBindingResult{}
 	}
 	currentPath, currentID, err := session.OpenCodexRollout(current)
 	if err != nil || currentPath != path || currentID != id {
-		return nil
+		return codexBindingResult{}
+	}
+	result := codexBindingResult{path: path, sessionID: id, start: start, group: job.ProcessGroupID}
+	if readErr != nil {
+		return result
+	}
+	var q session.CodexQuestion
+	if cutoff == 0 {
+		var ok bool
+		q, ok = chooseCodexQuestion(prompt, questions)
+		if !ok {
+			return result
+		}
+	} else {
+		count := 0
+		for _, candidate := range questions {
+			if candidate.Timestamp.IsZero() || candidate.Timestamp.UnixMilli() > cutoff {
+				continue
+			}
+			match := candidate
+			match.State = session.CodexPending
+			if _, ok := chooseCodexQuestion(prompt, []session.CodexQuestion{match}); ok {
+				q = candidate
+				count++
+			}
+		}
+		if count != 1 {
+			return result
+		}
 	}
 	identity, _ := json.Marshal([]string{id, q.CallID, q.ID})
-	return &codexBinding{path: path, question: q, identity: string(identity)}
+	result.binding = &codexBinding{path: path, question: q, identity: string(identity)}
+	return result
 }
 
 func (s *Server) waitCodexBinding(pid int, w *screenPromptWatch) bool {
@@ -293,22 +322,56 @@ func (s *Server) waitCodexBinding(pid int, w *screenPromptWatch) bool {
 	if w.codexResult == nil {
 		pane := s.sup.Get(pid)
 		if pane == nil || foregroundAgent(pane) != "codex" {
-			w.codexChecked = true
 			return false
 		}
 		prompt := *w.prompt
 		prompt.Params.Options = append(prompt.Params.Options[:0:0], w.prompt.Params.Options...)
-		result := make(chan *codexBinding, 1)
+		var cutoff int64
+		if w.decisionID != "" {
+			store, err := s.db()
+			if err != nil {
+				return false
+			}
+			d, err := store.Decision(w.decisionID)
+			if err != nil || d.Status != "pending" {
+				return false
+			}
+			cutoff = d.CreatedUnixMS
+		}
+		result := make(chan codexBindingResult, 1)
 		w.codexResult = result
-		go func() { result <- readCodexBinding(pane, &prompt) }()
-		return true
+		go func() { result <- readCodexBinding(pane, &prompt, cutoff) }()
+		return w.decisionID == ""
 	}
 	select {
-	case w.codex = <-w.codexResult:
-		w.codexChecked = true
+	case result := <-w.codexResult:
+		w.codexResult = nil
+		if w.codexAnchorPath == "" && result.path != "" && w.decisionID == "" {
+			w.codexAnchorPath, w.codexAnchorSession, w.codexAnchorStart, w.codexAnchorGroup = result.path, result.sessionID, result.start, result.group
+		}
+		if result.binding == nil {
+			return false
+		}
+		if w.decisionID != "" {
+			if w.codexAnchorPath == "" || result.path != w.codexAnchorPath || result.sessionID != w.codexAnchorSession || result.group != w.codexAnchorGroup || !result.start.Equal(w.codexAnchorStart) {
+				return false
+			}
+			store, err := s.db()
+			if err != nil {
+				return false
+			}
+			d, err := store.Decision(w.decisionID)
+			if err != nil || d.Status != "pending" || result.binding.question.Timestamp.IsZero() || result.binding.question.Timestamp.UnixMilli() > d.CreatedUnixMS {
+				return false
+			}
+			if err := store.BindScreenQuestion(d.DecisionID, fmtPaneID(pid), result.binding.identity); err != nil {
+				return false
+			}
+		}
+		w.codex, w.codexChecked = result.binding, true
 		return false
 	default:
-		return true
+		return w.decisionID == ""
 	}
 }
 

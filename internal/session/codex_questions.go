@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/platform"
 )
@@ -25,6 +26,7 @@ type CodexQuestionOption struct {
 }
 
 type CodexQuestion struct {
+	Timestamp time.Time
 	SessionID string
 	CallID    string
 	ID        string
@@ -169,8 +171,9 @@ func ReadCodexQuestions(path, sessionID string) ([]CodexQuestion, error) {
 		Options  []CodexQuestionOption `json:"options"`
 	}
 	type row struct {
-		Type    string `json:"type"`
-		Payload struct {
+		Timestamp time.Time `json:"timestamp"`
+		Type      string    `json:"type"`
+		Payload   struct {
 			Type      string          `json:"type"`
 			ID        string          `json:"id"`
 			SessionID string          `json:"session_id"`
@@ -226,7 +229,7 @@ func ReadCodexQuestions(path, sessionID string) ([]CodexQuestion, error) {
 				}
 				ids[q.ID] = true
 				calls[p.CallID] = append(calls[p.CallID], len(questions))
-				questions = append(questions, CodexQuestion{SessionID: sessionID, CallID: p.CallID, ID: q.ID, Index: i, Total: len(args.Questions), Header: q.Header, Question: q.Question, Options: q.Options, State: CodexPending})
+				questions = append(questions, CodexQuestion{Timestamp: record.Timestamp, SessionID: sessionID, CallID: p.CallID, ID: q.ID, Index: i, Total: len(args.Questions), Header: q.Header, Question: q.Question, Options: q.Options, State: CodexPending})
 			}
 		} else if p.Type == "function_call_output" && calls[p.CallID] != nil {
 			if outputs[p.CallID] {

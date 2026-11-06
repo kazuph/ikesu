@@ -40,11 +40,14 @@ func (s *Server) restoreLateCodexQuestions() {
 			s.app.SetConfigWarning("late question restore: " + err.Error())
 			continue
 		}
-		go s.readRestoredCodexQuestion(pid, pane, d, identity, pending)
+		go s.readRestoredCodexQuestion(pid, pane, d, identity)
 	}
 }
 
 func restoredCodexMatch(d api.Decision, questions []session.CodexQuestion, identity string) (session.CodexQuestion, bool) {
+	if identity == "" {
+		return session.CodexQuestion{}, false
+	}
 	prompt := &screenprompt.Prompt{CodexQuestion: true, Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, QuestionLabel: d.QuestionLabel}}
 	matches := []session.CodexQuestion{}
 	for _, q := range questions {
@@ -64,7 +67,7 @@ func restoredCodexMatch(d api.Decision, questions []session.CodexQuestion, ident
 	return matches[0], true
 }
 
-func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.Decision, identity string, pending []api.Decision) {
+func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.Decision, identity string) {
 	fail := func(reason string) {
 		fmt.Fprintf(os.Stderr, "ikesu: late question restore %s: %s\n", d.DecisionID, reason)
 	}
@@ -88,22 +91,16 @@ func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.De
 		fail("rollout unreadable")
 		return
 	}
+	if identity == "" {
+		fail("legacy decision has no recorded session identity")
+		return
+	}
 	q, ok := restoredCodexMatch(d, questions, identity)
 	if !ok {
 		fail("question or empty result not uniquely verified")
 		return
 	}
-	if identity == "" {
-		for _, other := range pending {
-			if other.DecisionID == d.DecisionID || other.Origin == nil || other.Origin.PaneID != d.Origin.PaneID || other.Origin.Reason != "screen_prompt" {
-				continue
-			}
-			if _, matched := restoredCodexMatch(other, []session.CodexQuestion{q}, ""); matched {
-				fail("multiple pending decisions match question")
-				return
-			}
-		}
-	}
+
 	current := pane.ForegroundJob()
 	currentStart, ok := session.ProcessStart(current)
 	if !ok || current.ProcessGroupID != job.ProcessGroupID || !currentStart.Equal(start) || foregroundAgent(pane) != "codex" {
