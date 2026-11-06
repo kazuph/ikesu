@@ -4,10 +4,50 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func trackGitCalls(t *testing.T) string {
+	t.Helper()
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\nexec '" + realGit + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+func finishGitRefresh(t *testing.T, a *App) {
+	t.Helper()
+	if !a.gitPending {
+		return
+	}
+	select {
+	case job := <-a.jobs:
+		job.fn()
+		close(job.done)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Git refresh did not finish")
+	}
+}
+func assertNoGitCalls(t *testing.T, log string) {
+	t.Helper()
+	b, err := os.ReadFile(log)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if len(b) > 0 {
+		t.Fatalf("unchanged workspace ran git: %s", b)
+	}
+}
 
 func TestWorkspaceGitQuietDoesNotStartAnotherQuery(t *testing.T) {
 	teststate.Lock(t)
@@ -27,14 +67,10 @@ func TestWorkspaceGitQuietDoesNotStartAnotherQuery(t *testing.T) {
 		}
 	}
 	finish()
+	log := trackGitCalls(t)
 	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
-	if a.gitPending {
-		for cwd, entry := range a.gitActivity.entries {
-			t.Logf("Git activity cwd=%q ready=%t loaded=%t saved=%d current=%d", cwd, entry.ready, entry.loaded, entry.revision, entry.watch.Revision())
-		}
-		finish()
-		t.Fatal("unchanged workspace started another Git query")
-	}
+	finishGitRefresh(t, a)
+	assertNoGitCalls(t, log)
 }
 
 func TestWorkspaceGitQuietIgnoresUnrelatedSiblingActivity(t *testing.T) {
@@ -63,17 +99,10 @@ func TestWorkspaceGitQuietIgnoresUnrelatedSiblingActivity(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
+	log := trackGitCalls(t)
 	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
-	if a.gitPending {
-		select {
-		case job := <-a.jobs:
-			job.fn()
-			close(job.done)
-		case <-time.After(5 * time.Second):
-			t.Fatal("unexpected Git query did not finish")
-		}
-		t.Fatal("unrelated sibling activity restarted unchanged workspace Git query")
-	}
+	finishGitRefresh(t, a)
+	assertNoGitCalls(t, log)
 }
 
 func waitWorkspaceGitActivity(t *testing.T, a *App, check func() bool) {
@@ -100,6 +129,7 @@ func waitWorkspaceGitActivity(t *testing.T, a *App, check func() bool) {
 	}
 }
 
+// Multiple real Git changes must each pass the existing 1.5-second refresh cadence.
 func TestWorkspaceGitActivityPreservesTrackedChangesAndLinkedHead(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
@@ -193,6 +223,7 @@ func TestWorkspaceGitActivityFindsInitAndCwdChange(t *testing.T) {
 	})
 }
 
+// Each real attributes change must pass the existing 1.5-second refresh cadence.
 func TestWorkspaceGitActivityTracksAttributesOutsideIndex(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)

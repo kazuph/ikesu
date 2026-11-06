@@ -29,9 +29,6 @@ type gitPathState struct {
 // watches, but only Git metadata directories need content-change invalidation.
 func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
 	revision := entry.watch.Revision()
-	if revision == entry.revision {
-		return entry, true
-	}
 	for path, previous := range entry.paths {
 		info, err := os.Stat(path)
 		if err != nil && !os.IsNotExist(err) {
@@ -105,8 +102,12 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		}
 	}
 	var metadataDirs []string
-	// Install the directory discovery watch before querying Git. After discovering
-	// tracked files, install their watches before reading the values we cache.
+	watches := make(map[string]bool, len(paths))
+	for path := range paths {
+		watches[path] = true
+	}
+	// Watch only discovery and key metadata paths. File state is checked by
+	// the metadata worker without opening a descriptor per tracked file.
 	ready := entry.watch.Update(gitPathList(paths))
 	revision := entry.watch.Revision()
 	if !ready {
@@ -122,6 +123,10 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 			}
 			gitAncestors(dir, paths)
 			metadataDirs = append(metadataDirs, dir)
+			watches[dir] = true
+			for _, name := range []string{"HEAD", "index", "packed-refs", "config"} {
+				watches[filepath.Join(dir, name)] = true
+			}
 			walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 				if os.IsNotExist(err) {
 					return nil
@@ -155,7 +160,7 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	if err == nil {
 		ready = gitConfigurationPaths(cwd, paths) && ready
 	}
-	covered := entry.watch.Update(gitPathList(paths))
+	covered := entry.watch.Update(gitPathList(watches))
 	entry.paths = make(map[string]gitPathState, len(paths))
 	for path := range paths {
 		info, statErr := os.Stat(path)

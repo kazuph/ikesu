@@ -19,6 +19,8 @@ const Protocol = 1
 // Method names implemented by the server.
 const (
 	MethodPing                    = "ping"
+	MethodServerProfile           = "server.profile"
+	MethodServerStacks            = "server.stacks"
 	MethodNotificationShow        = "notification.show"
 	MethodServerStop              = "server.stop"
 	MethodServerRestart           = "server.restart"

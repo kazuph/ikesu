@@ -63,6 +63,15 @@ func (s *Server) serveAPIWithPeer(conn net.Conn, accepted latency.PeerIdentity, 
 		// events.subscribe turns this connection into an event stream;
 		// events.wait may block for the timeout, off the app loop.
 		switch req.Method {
+		case api.MethodServerProfile, api.MethodServerStacks:
+			if !sameUserPeer(conn) {
+				_ = api.WriteResponse(conn, api.Failure(req.ID, "permission_denied", "diagnostics require a same-user Unix socket peer"))
+				continue
+			}
+			if err := api.WriteResponse(conn, s.diagnostics(req)); err != nil {
+				return
+			}
+			continue
 		case api.MethodPaneGraphicsStream:
 			s.serveGraphicsStream(conn, rd, req)
 			return
@@ -174,8 +183,14 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	case api.MethodServerLiveHandoff:
 		return s.liveHandoff(req)
 	case api.MethodPing:
+		var stall *api.LoopStallStatus
+		if s.app != nil {
+			value := s.stallStatus()
+			stall = &value
+		}
 		return api.Success(req.ID, api.PongResult{
 			Type:         "pong",
+			LoopStall:    stall,
 			Version:      s.version,
 			Executable:   s.executable,
 			Generation:   s.generation,
