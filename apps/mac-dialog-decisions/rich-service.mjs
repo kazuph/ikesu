@@ -21,7 +21,7 @@ def safe(v):
  if not v or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_. ' for c in v) or v in ['.','..']: raise ValueError('invalid ID')
 def directory(parts):
  d=os.path.expanduser('~')
- for p in ['.local','state','ikesu','plugins','kazuph.mac-dialog-decisions']+parts:
+ for p in ['.local','state','ikesu','plugins',r.get('pluginId','kazuph.mac-dialog-decisions')]+parts:
   safe(p); d=os.path.join(d,p)
   try: os.mkdir(d,0o700)
   except FileExistsError: pass
@@ -93,7 +93,7 @@ export class RichService {
  }
  async remote(machine,request,signal,maxBuffer) {
   const profile=await this.profile(machine,signal);
-  return execute('/usr/bin/ssh',['-o','BatchMode=yes','-o','ConnectTimeout=15','--',profile.target,...['python3','-c',remoteScript].map(quote)],{input:JSON.stringify(request),signal,maxBuffer});
+  return execute('/usr/bin/ssh',['-o','BatchMode=yes','-o','ConnectTimeout=15','--',profile.target,...['python3','-c',remoteScript].map(quote)],{input:JSON.stringify({...request,pluginId:this.config.pluginId||'kazuph.mac-dialog-decisions'}),signal,maxBuffer});
  }
  async readImage(machine,source,signal,limit=RICH_LIMITS.imageBytes) {
   if(/^https?:/.test(source)) return (await fetchPublic(source,{signal,maxBytes:limit})).data;

@@ -1,0 +1,7 @@
+{
+  "name": "ikesu-android-decisions-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node --test test/*.test.mjs"},
+  "dependencies": {"ws": "8.18.3"}
+}

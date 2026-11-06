@@ -1,0 +1,22 @@
+id = "kazuph.android"
+name = "Android Decisions"
+version = "0.1.0"
+min_ikesu_version = "0.2.7"
+description = "Send pending decisions to the owner's Android device."
+platforms = ["macos"]
+
+[[events]]
+on = "decision.created"
+command = ["./ensure-daemon"]
+
+[[actions]]
+id = "start"
+title = "Start Android decisions bridge"
+contexts = ["global"]
+command = ["./ensure-daemon"]
+
+[[actions]]
+id = "rotate-token"
+title = "Rotate Android decisions token"
+contexts = ["global"]
+command = ["./rotate-token"]
