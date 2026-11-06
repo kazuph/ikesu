@@ -72,6 +72,43 @@ func TestScreenQuestionIdentityReusesPendingDecision(t *testing.T) {
 	}
 }
 
+func TestScreenQuestionRecreationClosesUntrackedDuplicate(t *testing.T) {
+	teststate.Lock(t)
+	s, p, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	identity := `["session","tool",0]`
+	var current api.Decision
+	s.app.Do(func() {
+		prompt := s.readScreenPrompt(1)
+		params := prompt.Params
+		params.Origin = old.Origin
+		var err error
+		current, err = s.store.CreateScreenDecision(params, time.Now(), "p1", identity)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		s.screenPrompts.watches = map[int]*screenPromptWatch{}
+		w := &screenPromptWatch{prompt: prompt, signature: prompt.Signature(), transcriptID: identity}
+		s.screenPrompts.watches[1] = w
+		s.beginScreenPrompt(1, w)
+	})
+	if current.DecisionID == "" {
+		t.Fatal("missing recreated decision")
+	}
+	if got := screenRecord(t, s); got.DecisionID != current.DecisionID {
+		t.Fatalf("reused %s, want %s", got.DecisionID, current.DecisionID)
+	}
+	paintScreen(p, "")
+	scanScreen(s)
+	scanScreen(s)
+	got, err := s.store.Decision(old.DecisionID)
+	if err != nil || got.Status != "cancelled" {
+		t.Fatalf("old decision remained: %+v %v", got, err)
+	}
+}
+
 func TestClaudeDisplayRetainsScreenPreview(t *testing.T) {
 	preview, short, full := "実際のプレビュー", "短い説明", "記録から得た全文"
 	w := &screenPromptWatch{prompt: &screenprompt.Prompt{Params: api.DecisionCreateParams{Title: "画面の一部", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &short, Preview: &preview}}}}, displayParams: &api.DecisionCreateParams{Title: "質問全文", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &full}}}}
