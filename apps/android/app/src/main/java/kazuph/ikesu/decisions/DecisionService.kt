@@ -11,7 +11,6 @@ import android.content.Intent
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.widget.RemoteViews
 import android.net.ConnectivityManager
 import android.net.Network
 import okhttp3.OkHttpClient
@@ -77,17 +76,8 @@ class DecisionService : Service() {
     private fun connectionNotification(): Notification = Notification.Builder(this, CONNECTION)
         .setSmallIcon(R.drawable.ic_notification).setContentTitle("ikesu")
         .setContentText("${if (DecisionState.connected) "接続中" else "未接続"} · 未回答 ${DecisionState.decisions.length()}件")
-        .setColor(0xFF33FF66.toInt()).setCustomContentView(compactNotification("ikesu · ${if (DecisionState.connected) "接続中" else "未接続"} · 未回答 ${DecisionState.decisions.length()}件"))
-        .setCustomBigContentView(notificationView("ikesu", "${if (DecisionState.connected) "接続中" else "未接続"} · 未回答 ${DecisionState.decisions.length()}件"))
-        .setStyle(Notification.DecoratedCustomViewStyle())
+        .setColor(0xFF33FF66.toInt())
         .setOngoing(true).setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build()
-    private fun notificationView(title: String, detail: String): RemoteViews = RemoteViews(packageName, R.layout.notification).apply {
-        setTextViewText(R.id.notification_title, title)
-        setTextViewText(R.id.notification_text, detail)
-    }
-    private fun compactNotification(text: String): RemoteViews = RemoteViews(packageName, R.layout.notification_compact).apply {
-        setTextViewText(R.id.notification_compact, text)
-    }
     private fun connect() {
         val thisGeneration = ++generation
         DecisionState.socket?.cancel()
@@ -165,9 +155,8 @@ class DecisionService : Service() {
             manager.notify(number, Notification.Builder(this, QUESTIONS).setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(item.optString("title", "判断待ち"))
                 .setContentText(item.optString("location", "判断を待っています"))
-                .setColor(0xFF33FF66.toInt()).setCustomContentView(compactNotification(item.optString("title", "判断待ち")))
-                .setCustomBigContentView(notificationView(item.optString("title", "判断待ち"), item.optString("location", "判断を待っています")))
-                .setStyle(Notification.DecoratedCustomViewStyle())
+                .setColor(0xFF33FF66.toInt())
+                .setStyle(Notification.BigTextStyle().bigText(item.optString("location", "判断を待っています")))
                 .setContentIntent(pending).setAutoCancel(true).build())
         }
         changed()
