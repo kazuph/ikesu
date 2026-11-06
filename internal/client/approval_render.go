@@ -93,7 +93,7 @@ func (s *approvalState) overlay(in *render.Input) {
 		}
 	}
 	paneName := d.Origin.PaneID
-	if !d.LateAnswer && d.Origin.PaneLabel != "" {
+	if !d.LateAnswer && d.Kind != "tool_permission" && d.Origin.PaneLabel != "" {
 		paneName += " " + d.Origin.PaneLabel
 	}
 	workspaceName := d.Origin.WorkspaceLabel
@@ -101,7 +101,7 @@ func (s *approvalState) overlay(in *render.Input) {
 		for _, tab := range ws.Tabs {
 			for _, id := range tab.Layout.PaneIDs() {
 				if id == pane {
-					if d.LateAnswer {
+					if d.LateAnswer || d.Kind == "tool_permission" {
 						if workspaceName == "" {
 							workspaceName = render.WorkspaceDisplayName(ws, nil)
 						}
@@ -112,12 +112,18 @@ func (s *approvalState) overlay(in *render.Input) {
 			}
 		}
 	}
-	if !d.LateAnswer && d.Origin.TabLabel != "" {
+	if !d.LateAnswer && d.Kind != "tool_permission" && d.Origin.TabLabel != "" {
 		workspaceName += "/" + d.Origin.TabLabel
 	}
 	parts := []string{paneName}
 	if workspaceName != "" {
 		parts = append(parts, workspaceName)
+	}
+	if d.Kind == "tool_permission" && !d.LateAnswer {
+		parts = append(parts, d.Origin.Tool)
+		if d.ExpiresUnixMS != nil {
+			parts = append(parts, "expires "+time.UnixMilli(*d.ExpiresUnixMS).Local().Format("15:04"))
+		}
 	}
 	origin := strings.Join(parts, " · ")
 	title := " approve command?"
@@ -137,16 +143,13 @@ func (s *approvalState) overlay(in *render.Input) {
 			add(" "+*d.Body, "dim", 0, false)
 		}
 	} else if d.Kind == "tool_permission" && d.Origin.Tool != "" {
-		add(" tool "+d.Origin.Tool, "subtitle", 0, false)
-		add(" reason "+d.Origin.Explanation, "reason", 8, false)
-		add(" 画面の表示どおり（折り返しを含む）", "dim", 0, false)
 		add(" $ "+d.Origin.Command, "surface", 0, false)
+		add(" 画面の表示どおり（折り返しを含む）", "dim", 0, false)
 		if d.Origin.Warning != "" {
 			add(ansi.Truncate(" warning "+safeApprovalText(d.Origin.Warning), width, "…"), "warning", 0, false)
 		}
-		if d.ExpiresUnixMS != nil {
-			add(" expires "+time.UnixMilli(*d.ExpiresUnixMS).Local().Format("15:04:05"), "subtitle", 0, false)
-		}
+		blank()
+		add(" reason "+d.Origin.Explanation, "reason", 8, false)
 	} else {
 		add(" $ "+d.Origin.Command, "surface", 0, false)
 		if d.Origin.TargetCommand != "" {

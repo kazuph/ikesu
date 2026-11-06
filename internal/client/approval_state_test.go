@@ -44,7 +44,7 @@ func TestClaudePermissionPopupFieldOrder(t *testing.T) {
 	}
 	text := strings.Join(in.Approval.Lines, "\n")
 	last := -1
-	for _, value := range []string{"Bash command", "why", "画面の表示どおり（折り返しを含む）", "echo safe", "warning", "Yes", "No"} {
+	for _, value := range []string{"Bash command", "echo safe", "画面の表示どおり（折り返しを含む）", "warning", "why", "Yes", "No"} {
 		next := strings.Index(text, value)
 		if next <= last {
 			t.Fatalf("missing or out of order %q in %q", value, text)
@@ -66,7 +66,7 @@ func TestClaudePermissionPopupStylesAndRejectInstructions(t *testing.T) {
 	if in.Approval.Title != " approve command?" || !in.ApprovalGuardPanes[1] {
 		t.Fatal("missing guard presentation")
 	}
-	want := map[string]string{" reason 理由": "reason", " $ echo safe": "surface", " warning 注意": "warning", " expires ": "subtitle", " reject note ": "input", "    許可の説明": "dim"}
+	want := map[string]string{" reason 理由": "reason", " $ echo safe": "surface", " warning 注意": "warning", " reject note ": "input", "    許可の説明": "dim"}
 	for text, role := range want {
 		found := false
 		for i, line := range in.Approval.Lines {
@@ -78,7 +78,13 @@ func TestClaudePermissionPopupStylesAndRejectInstructions(t *testing.T) {
 			t.Errorf("missing %q role %q: %+v", text, role, in.Approval)
 		}
 	}
+	if !strings.Contains(in.Approval.Lines[0], " · Bash · expires "+time.UnixMilli(expires).Local().Format("15:04")) {
+		t.Fatalf("incorrect subtitle: %q", in.Approval.Lines[0])
+	}
 	text := strings.Join(in.Approval.Lines, "\n")
+	if !strings.Contains(text, "\n\n $ echo safe\n 画面の表示どおり（折り返しを含む）\n warning 注意\n\n reason 理由\n\n") {
+		t.Fatalf("incorrect field order or spacing: %q", text)
+	}
 	if !strings.Contains(text, "confirm ↵") || !strings.Contains(text, "back ctrl+u") || strings.Contains(text, "select 1-") {
 		t.Fatalf("reject footer: %s", text)
 	}
