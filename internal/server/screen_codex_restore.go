@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/screenprompt"
 	"github.com/kazuph/ikesu/internal/session"
 )
+
+// The observed screen-to-decision delay was 7.731s and the rollout-call-to-decision
+// delay was 11.029s; 15s leaves 3.971s beyond the latter measurement.
+const legacyCodexQuestionWindow = 15 * time.Second
 
 // restoreLateCodexQuestions only examines decisions that existed at startup.
 // An uncertain match remains pending and keeps its attention indicator.
@@ -40,17 +45,23 @@ func (s *Server) restoreLateCodexQuestions() {
 			s.app.SetConfigWarning("late question restore: " + err.Error())
 			continue
 		}
-		go s.readRestoredCodexQuestion(pid, pane, d, identity)
+		go s.readRestoredCodexQuestion(pid, pane, d, identity, pending)
 	}
 }
 
 func restoredCodexMatch(d api.Decision, questions []session.CodexQuestion, identity string) (session.CodexQuestion, bool) {
-	if identity == "" {
-		return session.CodexQuestion{}, false
-	}
 	prompt := &screenprompt.Prompt{CodexQuestion: true, Params: api.DecisionCreateParams{Title: d.Title, Options: d.Options, QuestionLabel: d.QuestionLabel}}
 	matches := []session.CodexQuestion{}
 	for _, q := range questions {
+		if identity == "" {
+			if q.Timestamp.IsZero() || d.CreatedUnixMS <= 0 {
+				continue
+			}
+			elapsed := time.UnixMilli(d.CreatedUnixMS).Sub(q.Timestamp)
+			if elapsed < 0 || elapsed > legacyCodexQuestionWindow {
+				continue
+			}
+		}
 		raw, _ := json.Marshal([]string{q.SessionID, q.CallID, q.ID})
 		if identity != "" && identity != string(raw) {
 			continue
@@ -67,7 +78,7 @@ func restoredCodexMatch(d api.Decision, questions []session.CodexQuestion, ident
 	return matches[0], true
 }
 
-func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.Decision, identity string) {
+func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.Decision, identity string, pending []api.Decision) {
 	fail := func(reason string) {
 		fmt.Fprintf(os.Stderr, "ikesu: late question restore %s: %s\n", d.DecisionID, reason)
 	}
@@ -91,16 +102,23 @@ func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.De
 		fail("rollout unreadable")
 		return
 	}
-	if identity == "" {
-		fail("legacy decision has no recorded session identity")
-		return
-	}
 	q, ok := restoredCodexMatch(d, questions, identity)
 	if !ok {
 		fail("question or empty result not uniquely verified")
 		return
 	}
 
+	if identity == "" {
+		for _, other := range pending {
+			if other.DecisionID == d.DecisionID || other.Origin == nil || other.Origin.PaneID != d.Origin.PaneID || other.Origin.Reason != "screen_prompt" {
+				continue
+			}
+			if _, matched := restoredCodexMatch(other, []session.CodexQuestion{q}, ""); matched {
+				fail("multiple pending decisions match question")
+				return
+			}
+		}
+	}
 	current := pane.ForegroundJob()
 	currentStart, ok := session.ProcessStart(current)
 	if !ok || current.ProcessGroupID != job.ProcessGroupID || !currentStart.Equal(start) || foregroundAgent(pane) != "codex" {

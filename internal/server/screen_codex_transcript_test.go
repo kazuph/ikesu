@@ -481,3 +481,29 @@ func TestCodexRetryBindsOriginalQuestionAfterIncompleteRecord(t *testing.T) {
 		t.Fatalf("identity=%q err=%v", saved, err)
 	}
 }
+
+func TestLegacyRestoreMatchesOnlyQuestionNearDecisionCreation(t *testing.T) {
+	label := "Question 1/1"
+	created := time.Date(2026, 11, 6, 2, 0, 30, 0, time.UTC)
+	d := api.Decision{Title: "色は？", CreatedUnixMS: created.UnixMilli(), QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青"}}}
+	q := session.CodexQuestion{Timestamp: created.Add(-11 * time.Second), SessionID: "original", CallID: "call", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
+	if got, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, ""); !ok || got.SessionID != "original" {
+		t.Fatal("original session question should be restored")
+	}
+	later := q
+	later.SessionID = "other"
+	later.Timestamp = created.Add(time.Second)
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{later}, ""); ok {
+		t.Fatal("later session accepted")
+	}
+	old := q
+	old.Timestamp = created.Add(-16 * time.Second)
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{old}, ""); ok {
+		t.Fatal("old question accepted")
+	}
+	duplicate := q
+	duplicate.CallID = "another"
+	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q, duplicate}, ""); ok {
+		t.Fatal("ambiguous candidates accepted")
+	}
+}
