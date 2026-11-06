@@ -49,3 +49,11 @@ func TestClaudePermissionWarningsAndCountdownVariants(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudePermissionTipWrappedInsideOptionName(t *testing.T) {
+	screen := "Bash command\nTip: auto mode handles these prompts for you — choose \"switch to\n auto mode\" below\nActual reason\n╌╌╌╌\necho safe\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel"
+	p := Parse("claude", strings.Split(screen, "\n"))
+	if p == nil || p.Params.Origin == nil || p.Params.Origin.Explanation != "Actual reason" {
+		t.Fatalf("wrapped tip leaked into reason: %+v", p)
+	}
+}
