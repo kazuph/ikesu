@@ -1,7 +1,8 @@
 package kazuph.ikesu.decisions
 
 /** Move on release, so a long press can consume the down key without also moving. */
-class VolumeNav(private val up: () -> Unit, private val down: () -> Unit, private val confirm: () -> Unit) {
+class VolumeNav(private val up: () -> Unit, private val down: () -> Unit, private val confirm: () -> Unit,
+                private val enabled: () -> Boolean = { true }) {
     private var downLongFired = false
 
     fun keyDown(key: Int, first: Boolean): Boolean {
@@ -10,15 +11,15 @@ class VolumeNav(private val up: () -> Unit, private val down: () -> Unit, privat
     }
 
     fun keyUp(key: Int): Boolean = when (key) {
-        UP -> { up(); true }
-        DOWN -> { if (!downLongFired) down(); true }
+        UP -> { if (enabled()) up(); true }
+        DOWN -> { if (!downLongFired && enabled()) down(); true }
         else -> false
     }
 
     fun keyLongPress(key: Int): Boolean {
         if (key != DOWN || downLongFired) return false
         downLongFired = true
-        confirm()
+        if (enabled()) confirm()
         return true
     }
 

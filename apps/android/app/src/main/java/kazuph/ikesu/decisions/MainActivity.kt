@@ -53,7 +53,7 @@ class MainActivity : Activity() {
     private val header by lazy { LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL } }
     private val layout by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL } }
     private val footer by lazy { LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL } }
-    private val nav = VolumeNav({ move(-1) }, { move(1) }, { confirm() })
+    private val nav = VolumeNav({ move(-1) }, { move(1) }, { confirm() }, { !settingsVisible })
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { handleUpdate() }
     }
@@ -283,7 +283,6 @@ class MainActivity : Activity() {
     }
     private fun toggle(draft: Draft, id: String) { if (!draft.selected.add(id)) draft.selected.remove(id) }
     private fun move(delta: Int) {
-        if (settingsVisible) return
         if (showList) {
             val count = DecisionState.decisions.length()
             if (count > 0) { listCursor = (listCursor + delta + count) % count; render() }
@@ -296,7 +295,6 @@ class MainActivity : Activity() {
         render()
     }
     private fun confirm() {
-        if (settingsVisible) return
         if (showList) {
             DecisionState.decisions.optJSONObject(listCursor)?.let { selectedId = it.optString("id"); showList = false; render() }
             return
