@@ -72,7 +72,7 @@ func restoredCodexMatch(d api.Decision, questions []session.CodexQuestion, ident
 			matches = append(matches, q)
 		}
 	}
-	if len(matches) != 1 || matches[0].State != session.CodexEmpty {
+	if len(matches) != 1 || (matches[0].State != session.CodexEmpty && !(identity == "" && matches[0].State == session.CodexAnswered)) {
 		return session.CodexQuestion{}, false
 	}
 	return matches[0], true
@@ -164,6 +164,14 @@ func (s *Server) readRestoredCodexQuestion(pid int, pane *runtime.Pane, d api.De
 		}
 		prompt := &screenprompt.Prompt{CodexQuestion: true, Params: api.DecisionCreateParams{Kind: d.Kind, Title: d.Title, Body: d.Body, Options: d.Options, AllowText: d.AllowText, MultiSelect: d.MultiSelect, QuestionLabel: d.QuestionLabel}}
 		w := &screenPromptWatch{decisionID: d.DecisionID, prompt: prompt, codex: &codexBinding{path: path, question: q, identity: string(raw)}}
-		s.retainLateCodexQuestion(pid, w)
+		s.finishRestoredCodexQuestion(pid, w)
 	})
+}
+
+func (s *Server) finishRestoredCodexQuestion(pid int, w *screenPromptWatch) {
+	if w.codex.question.State == session.CodexAnswered {
+		s.closeCodexAnsweredElsewhere(w)
+		return
+	}
+	s.retainLateCodexQuestion(pid, w)
 }
