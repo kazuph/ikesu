@@ -60,26 +60,68 @@ func (s *approvalState) overlay(in *render.Input) {
 		}
 	}
 	add("出どころ: " + d.Origin.PaneID + " " + d.Origin.PaneLabel)
-	add("コマンド: " + d.Origin.Command)
-	if d.Origin.TargetCommand != "" {
-		add("対象: " + d.Origin.TargetCommand)
-	}
-	if d.Body != nil {
-		add("申請文: " + *d.Body)
+	if d.LateAnswer {
+		if d.QuestionLabel != nil {
+			add(*d.QuestionLabel)
+		}
+		if d.Body != nil {
+			add(*d.Body)
+		}
+	} else {
+		add("コマンド: " + d.Origin.Command)
+		if d.Origin.TargetCommand != "" {
+			add("対象: " + d.Origin.TargetCommand)
+		}
+		if d.Body != nil {
+			add("申請文: " + *d.Body)
+		}
 	}
 	for i, option := range d.Options {
 		mark := " "
 		if s.selected == option.ID {
 			mark = "●"
 		}
+		if d.LateAnswer && d.MultiSelect {
+			mark = "  [ ]"
+			if s.checked[option.ID] {
+				mark = "  [✓]"
+			}
+			if s.selected == option.ID {
+				mark = ">" + mark[1:]
+			}
+		}
 		add(fmt.Sprintf("%s %d: %s", mark, i+1, option.Label))
+		if d.LateAnswer {
+			if option.Description != nil && *option.Description != "" {
+				add(*option.Description)
+			}
+			if option.Preview != nil && *option.Preview != "" {
+				add("プレビュー: " + *option.Preview)
+			} else {
+				add("プレビュー: 画面で確認")
+			}
+		}
 	}
-	if s.selected == "reject" && d.AllowText {
+	if d.LateAnswer && d.AllowText {
+		add("自由入力: " + s.reason)
+		if s.textMode {
+			add("入力中（Ctrl+U: 選択に戻る）")
+		}
+	} else if s.selected == "reject" && d.AllowText {
 		add("却下理由: " + s.reason)
 		add("Ctrl+U: 選択に戻る")
 	}
 	if s.waiting {
 		add("回答を送信中")
+	} else if d.LateAnswer {
+		instructions := "数字: 選択"
+		if d.MultiSelect {
+			instructions += "  Space: チェック"
+		}
+		if d.AllowText {
+			instructions += "  t: 自由入力"
+		}
+		add(instructions + "  Enter: 確定  Esc: 閉じる")
 	} else {
 		add("数字: 選択  Enter: 確定  Esc: 閉じる  ↑↓: スクロール")
 	}

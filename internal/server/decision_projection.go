@@ -35,6 +35,9 @@ func (s *Server) decisionProjection() (*endpoint.DecisionProjection, error) {
 		if err != nil {
 			return nil, err
 		}
+		for i := range pending {
+			pending[i].LateAnswer = s.screenPrompts.late[pending[i].DecisionID] != nil
+		}
 	}
 	return &endpoint.DecisionProjection{BootID: s.decisions.boot, Revision: s.decisions.revision, Pending: pending}, nil
 }

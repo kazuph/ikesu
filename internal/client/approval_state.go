@@ -20,6 +20,8 @@ type approvalState struct {
 	pane      string
 	open      string
 	selected  string
+	checked   map[string]bool
+	textMode  bool
 	reason    string
 	scroll    int
 	waiting   bool
@@ -37,7 +39,7 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	s.boot, s.revision = p.BootID, p.Revision
 	s.pending = nil
 	for _, d := range p.Pending {
-		if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
+		if (d.Kind != "command_guard" && !(d.Kind == "agent_prompt" && d.LateAnswer)) || d.Status != "pending" || d.Origin == nil || d.Origin.OutsidePane || (d.Origin.Machine != "" && d.Origin.Machine != "local") {
 			continue
 		}
 		if _, ok := approvalPaneID(d.Origin.PaneID); ok {
@@ -55,12 +57,13 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 	}
 	if oldOpen != "" && !exists {
 		s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+		s.checked, s.textMode = nil, false
 		s.painted = ""
 	}
 	for _, d := range s.pending {
 		if !s.seen[d.DecisionID] || oldOpen != "" && !exists {
 			s.seen[d.DecisionID] = true
-			if s.open == "" && d.Origin.PaneID == focused && (lastInput.IsZero() || now.Sub(lastInput) >= approvalTypingWindow) && !s.dismissed[d.DecisionID] {
+			if d.Kind == "command_guard" && s.open == "" && d.Origin.PaneID == focused && (lastInput.IsZero() || now.Sub(lastInput) >= approvalTypingWindow) && !s.dismissed[d.DecisionID] {
 				s.open = d.DecisionID
 			}
 		}
@@ -73,12 +76,14 @@ func (s *approvalState) dismiss() {
 		s.dismissed[s.open] = true
 	}
 	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+	s.checked, s.textMode = nil, false
 	s.painted = ""
 }
 func (s *approvalState) openPane(pane string) {
 	for _, d := range s.pending {
 		if d.Origin.PaneID == pane {
 			s.painted = ""
+			s.checked, s.textMode = nil, false
 			s.open, s.selected, s.reason, s.scroll, s.waiting = d.DecisionID, "", "", 0, false
 			return
 		}
@@ -89,10 +94,11 @@ func (s *approvalState) focus(pane string) {
 		return
 	}
 	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
+	s.checked, s.textMode = nil, false
 	s.painted = ""
 	s.pane = pane
 	for _, d := range s.pending {
-		if d.Origin.PaneID == pane && !s.dismissed[d.DecisionID] {
+		if d.Kind == "command_guard" && d.Origin.PaneID == pane && !s.dismissed[d.DecisionID] {
 			s.open = d.DecisionID
 			return
 		}
@@ -117,7 +123,26 @@ func (s *approvalState) selectOption(number int) {
 
 func (s *approvalState) answer() *api.DecisionAnswerParams {
 	d := s.current()
-	if d == nil || s.selected == "" || s.waiting {
+	if d == nil || s.waiting {
+		return nil
+	}
+	if d.LateAnswer {
+		answer := &api.DecisionAnswerParams{DecisionID: d.DecisionID}
+		for _, option := range d.Options {
+			if d.MultiSelect && s.checked[option.ID] || !d.MultiSelect && s.selected == option.ID {
+				answer.OptionIDs = append(answer.OptionIDs, option.ID)
+			}
+		}
+		if d.AllowText && s.reason != "" {
+			text := s.reason
+			answer.Text = &text
+		}
+		if len(answer.OptionIDs) == 0 && answer.Text == nil {
+			return nil
+		}
+		return answer
+	}
+	if s.selected == "" {
 		return nil
 	}
 	for _, option := range d.Options {

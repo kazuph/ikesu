@@ -62,6 +62,7 @@ type Decision struct {
 	Status        string            `json:"status"`
 	Answer        *DecisionAnswer   `json:"answer"`
 	Delivery      *DecisionDelivery `json:"delivery,omitempty"`
+	LateAnswer    bool              `json:"late_answer,omitempty"`
 }
 type GuardExecutionClaim struct {
 	CommandHash string `json:"command_hash"`

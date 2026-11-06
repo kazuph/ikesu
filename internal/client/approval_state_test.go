@@ -123,3 +123,77 @@ func TestGuardApprovalRendersControlCharactersSafely(t *testing.T) {
 		}
 	}
 }
+
+func TestLateAnswerManualOpenAndSelection(t *testing.T) {
+	pane := &api.DecisionOrigin{PaneID: "p1", Agent: "codex", Reason: "screen_prompt"}
+	late := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", Origin: pane, LateAnswer: true, MultiSelect: true, AllowText: true, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青"}}}
+	visible := late
+	visible.DecisionID = "visible"
+	visible.LateAnswer = false
+	guard := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Origin: pane, CreatedUnixMS: 2}
+	var state approvalState
+	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{late, visible}}, "p1", time.Unix(100, 0), time.Time{})
+	if len(state.pending) != 1 || state.open != "" {
+		t.Fatalf("late auto-opened or visible question included: %+v", state)
+	}
+	state.focus("p2")
+	state.focus("p1")
+	if state.open != "" {
+		t.Fatal("late question auto-opened on focus")
+	}
+	state.openPane("p1")
+	state.selectOption(1)
+	state.checked = map[string]bool{"1": true, "2": true}
+	state.reason = "補足 12"
+	answer := state.answer()
+	if answer == nil || len(answer.OptionIDs) != 2 || answer.OptionIDs[0] != "1" || answer.OptionIDs[1] != "2" || answer.Text == nil || *answer.Text != state.reason {
+		t.Fatalf("multi answer: %+v", answer)
+	}
+	state.dismiss()
+	if state.answer() != nil || len(state.pending) != 1 {
+		t.Fatal("escape lost pending decision")
+	}
+	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 2, Pending: []api.Decision{late, guard}}, "p1", time.Unix(101, 0), time.Time{})
+	if len(state.pending) != 2 || state.open != "guard" {
+		t.Fatal("guard no longer auto-opens", state.open)
+	}
+}
+
+func TestLateAnswerSingleAndTextOnly(t *testing.T) {
+	for _, tc := range []struct {
+		selectOption bool
+		text         string
+	}{{true, ""}, {false, "12"}} {
+		var state approvalState
+		d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "A"}}}
+		state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
+		state.openPane("p1")
+		if tc.selectOption {
+			state.selectOption(1)
+		}
+		state.reason = tc.text
+		answer := state.answer()
+		if answer == nil || tc.selectOption && (len(answer.OptionIDs) != 1 || answer.OptionIDs[0] != "1") || tc.text != "" && (answer.Text == nil || *answer.Text != tc.text) {
+			t.Fatalf("unexpected answer: %+v", answer)
+		}
+	}
+}
+
+func TestLateAnswerRendersDetailsAndPreviewFallback(t *testing.T) {
+	heading, body, description, preview := "Question 1/1", "Which color?", "warm tone", "example red"
+	d := api.Decision{DecisionID: "d", Kind: "agent_prompt", Status: "pending", LateAnswer: true, QuestionLabel: &heading, Title: "Choose", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red", Description: &description, Preview: &preview}, {ID: "2", Label: "Blue"}}}
+	var state approvalState
+	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
+	state.openPane("p1")
+	in := render.Input{State: model.New(t.TempDir(), 120, 40)}
+	state.overlay(&in)
+	if in.Approval == nil {
+		t.Fatal("missing question")
+	}
+	text := in.Approval.Title + "\n" + strings.Join(in.Approval.Lines, "\n")
+	for _, want := range []string{heading, body, "Red", description, preview, "Blue", "画面で確認"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in %q", want, text)
+		}
+	}
+}

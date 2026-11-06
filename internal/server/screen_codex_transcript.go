@@ -98,7 +98,7 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 		body = original + "\n\n" + body
 	}
 	p.Body = &body
-	d, changed, err := store.UpdatePendingScreenDecision(w.decisionID, p)
+	d, _, err := store.UpdatePendingScreenDecision(w.decisionID, p)
 	if err != nil {
 		s.app.SetConfigWarning("late question: " + err.Error())
 		return false
@@ -112,9 +112,7 @@ func (s *Server) retainLateCodexQuestion(pid int, w *screenPromptWatch) bool {
 	}
 	s.screenPrompts.late[w.decisionID] = &lateCodexQuestion{pid: pid, w: w}
 	s.syncDecisionAttention()
-	if changed {
-		s.pushDecisionProjection()
-	}
+	s.pushDecisionProjection()
 	return true
 }
 
