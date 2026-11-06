@@ -281,7 +281,7 @@ func TestApprovalPresentationOriginAndRejectInstructions(t *testing.T) {
 	ws := app.ActiveWorkspace()
 	ws.Name, ws.CustomName = "作業場", true
 	body := "申請の理由"
-	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Title: "実行確認（規則: rm-paths）", Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1", WorkspaceLabel: "古い名前", Command: "echo test"}, Options: []api.DecisionOption{{ID: "approve", Label: "承認"}, {ID: "day_allow", Label: "1日許可"}, {ID: "reject", Label: "却下"}}}
+	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Title: "実行確認（規則: rm-paths）", Body: &body, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1", WorkspaceLabel: "古い名前", Command: "echo test"}, Options: []api.DecisionOption{{ID: "approve", Label: "承認"}, {ID: "day_allow", Label: "1日許可"}, {ID: "reject", Label: "却下", Role: "reject"}}}
 	state := approvalState{pending: []api.Decision{d}, open: "guard", selected: "reject", reason: "却下します"}
 	in := render.Input{State: app}
 	state.overlay(&in)
