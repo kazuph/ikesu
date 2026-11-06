@@ -6,7 +6,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / 'docs/brand/mac-dialog-icon.png'
-RES = ROOT / 'apps/android-decisions/android/app/src/main/res'
+RES = ROOT / 'apps/android/app/src/main/res'
 DENSITIES = {'mdpi': 1, 'hdpi': 1.5, 'xhdpi': 2, 'xxhdpi': 3, 'xxxhdpi': 4}
 
 
