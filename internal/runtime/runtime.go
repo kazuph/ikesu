@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -962,4 +963,24 @@ func (p *Pane) setForegroundSudo(active bool) {
 	if changed {
 		p.notify(EventChanged)
 	}
+}
+
+// LockedPanes reports pane state locks that are held at this instant without
+// waiting for the supervisor or any pane. They are diagnostic candidates,
+// not proof that a particular lock is blocking the app loop.
+func (s *Supervisor) LockedPanes() ([]int, bool) {
+	if !s.mu.TryLock() {
+		return nil, false
+	}
+	defer s.mu.Unlock()
+	ids := make([]int, 0)
+	for id, p := range s.panes {
+		if p.mu.TryLock() {
+			p.mu.Unlock()
+		} else {
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	return ids, true
 }

@@ -7,6 +7,11 @@ import "encoding/json"
 
 type EmptyParams struct{}
 
+type DiagnosticsParams struct {
+	Name string `json:"name"`
+	CPU  string `json:"cpu,omitempty"`
+}
+
 type WorkspaceCreateParams struct {
 	Section *string           `json:"section,omitempty"`
 	Cwd     *string           `json:"cwd,omitempty"`
@@ -130,13 +135,22 @@ type ServerLiveHandoffParams struct {
 	ImportExe        *string `json:"import_exe,omitempty"`
 }
 
+type LoopStallStatus struct {
+	Count          uint64   `json:"count"`
+	LongestMillis  int64    `json:"longest_ms"`
+	CurrentMillis  int64    `json:"current_ms"`
+	LockedPanes    []string `json:"locked_panes"`
+	PaneLocksKnown bool     `json:"pane_locks_known"`
+}
+
 type PongResult struct {
-	Capabilities map[string]any `json:"capabilities,omitempty"`
-	Executable   string         `json:"executable,omitempty"`
-	Generation   string         `json:"generation,omitempty"`
-	Type         string         `json:"type"` // "pong"
-	Version      string         `json:"version"`
-	Protocol     int            `json:"protocol"`
+	LoopStall    *LoopStallStatus `json:"app_loop_stall,omitempty"`
+	Capabilities map[string]any   `json:"capabilities,omitempty"`
+	Executable   string           `json:"executable,omitempty"`
+	Generation   string           `json:"generation,omitempty"`
+	Type         string           `json:"type"` // "pong"
+	Version      string           `json:"version"`
+	Protocol     int              `json:"protocol"`
 }
 
 type OkResult struct {

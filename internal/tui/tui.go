@@ -25,6 +25,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -149,6 +150,7 @@ type appJob struct {
 // through Do/PushInput/Resize so all state changes stay on the loop
 // goroutine.
 type App struct {
+	loopTiming        *loopTiming
 	koiClock          render.KoiAnimation
 	koiLocalActive    bool
 	koiScene          render.KoiScene
@@ -379,6 +381,7 @@ func (a *App) SetCellPixels(xp, yp int) {
 // display sink: the local terminal, or the server's attached client.
 func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd string) *App {
 	a := &App{
+		loopTiming:    &loopTiming{},
 		st:            st,
 		sup:           sup,
 		out:           out,
@@ -483,6 +486,9 @@ func (a *App) SetScrollOffset(pid, off int) {
 	a.dirty = true
 }
 
+// Done closes when the app loop has stopped.
+func (a *App) Done() <-chan struct{} { return a.doneCh }
+
 // Do runs fn on the app loop goroutine and blocks until it completes. It
 // returns without running fn if the app has already stopped.
 func (a *App) Do(fn func()) {
@@ -545,9 +551,34 @@ func (a *App) StartInitialPane() error {
 	return err
 }
 
+// loopTiming is shared by viewer copies; only the app loop records completions.
+type loopTiming struct {
+	heartbeat atomic.Int64
+	completed atomic.Uint64
+	longest   atomic.Int64
+}
+
+// LoopStallThreshold is the duration chosen for reporting a stalled app loop.
+const LoopStallThreshold = 2 * time.Second
+
+// LoopHeartbeatInterval is the existing event-loop tick cadence.
+const LoopHeartbeatInterval = tickInterval
+
+// LoopTiming reports the last loop start and completed stalls without waiting
+// for the app loop. Current stalls can be calculated from the returned start.
+func (a *App) LoopTiming() (time.Time, uint64, time.Duration) {
+	if a.loopTiming == nil {
+		return time.Time{}, 0, 0
+	}
+	return time.Unix(0, a.loopTiming.heartbeat.Load()), a.loopTiming.completed.Load(), time.Duration(a.loopTiming.longest.Load())
+}
+
 // Run executes the event loop until quit. It returns after the model
 // signals EffQuit (last pane closed, quit dialog, or API stop).
 func (a *App) Run() {
+	if a.loopTiming == nil {
+		a.loopTiming = &loopTiming{}
+	}
 	defer a.inputSource.Prefix(false, false)
 	defer a.removeEditorFiles()
 	defer close(a.doneCh)
@@ -580,6 +611,17 @@ func (a *App) Run() {
 	}()
 	a.dirty = true
 	for !a.quit {
+		now := time.Now().UnixNano()
+		previous := a.loopTiming.heartbeat.Swap(now)
+		if previous != 0 {
+			elapsed := time.Duration(now - previous)
+			if elapsed >= LoopStallThreshold {
+				a.loopTiming.completed.Add(1)
+				if elapsed > time.Duration(a.loopTiming.longest.Load()) {
+					a.loopTiming.longest.Store(int64(elapsed))
+				}
+			}
+		}
 		var koiReady <-chan time.Time
 		if a.snapshotSink == nil && a.drawViewers == nil && !a.windowBlurred && !a.koiNext.IsZero() {
 			remaining := max(time.Duration(0), time.Until(a.koiNext))

@@ -175,7 +175,7 @@ func (r *runner) requestBefore(id, method string, params any, deadline time.Time
 		deadline = time.Now().Add(requestTimeout)
 	}
 	_ = conn.SetDeadline(deadline)
-	if method == api.MethodPaneWaitForOutput || method == api.MethodDecisionWait || method == api.MethodServerLiveHandoff {
+	if method == api.MethodServerProfile || method == api.MethodPaneWaitForOutput || method == api.MethodDecisionWait || method == api.MethodServerLiveHandoff {
 		_ = conn.SetDeadline(time.Time{})
 	}
 	if method == api.MethodAgentPrompt {

@@ -14,12 +14,35 @@ import (
 
 func (r *runner) server(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: ikesu server <stop|restart|reload-config|ping>")
+		return usageErr(r, "usage: ikesu server <stop|restart|reload-config|ping|profile|stacks>")
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		fmt.Fprintln(r.out(), "ikesu server commands:\n  ikesu server                run as headless server\n  ikesu server stop           stop the running server via the API socket\n  ikesu server restart        restart the running server and restore its saved session\n  ikesu server reload-config  reload config.toml in the running server\n  ikesu server ping           query the running server\n  ikesu server live-handoff   hand off live panes to a new local server")
+		fmt.Fprintln(r.out(), "ikesu server commands:\n  ikesu server                run as headless server\n  ikesu server stop           stop the running server via the API socket\n  ikesu server restart        restart the running server and restore its saved session\n  ikesu server reload-config  reload config.toml in the running server\n  ikesu server ping           query the running server\n  ikesu server profile --cpu <duration> --out <filename>  save a CPU profile in the session state directory\n  ikesu server stacks --out <filename>  save goroutine stacks in the session state directory\n  ikesu server live-handoff   hand off live panes to a new local server")
 		return 0
+	case "profile", "stacks":
+		var p api.DiagnosticsParams
+		for i := 1; i < len(args); i += 2 {
+			if i+1 >= len(args) {
+				return usageErr(r, "usage: ikesu server <profile --cpu duration|stacks> --out filename")
+			}
+			switch args[i] {
+			case "--out":
+				p.Name = args[i+1]
+			case "--cpu":
+				p.CPU = args[i+1]
+			default:
+				return usageErr(r, "unknown diagnostics option: "+args[i])
+			}
+		}
+		if p.Name == "" || (args[0] == "profile" && p.CPU == "") || (args[0] == "stacks" && p.CPU != "") {
+			return usageErr(r, "usage: ikesu server <profile --cpu duration|stacks> --out filename")
+		}
+		method := api.MethodServerStacks
+		if args[0] == "profile" {
+			method = api.MethodServerProfile
+		}
+		return r.printResult("cli:server:"+args[0], method, p)
 	case "live-handoff":
 		var p api.ServerLiveHandoffParams
 		for i := 1; i < len(args); i++ {

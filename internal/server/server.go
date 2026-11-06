@@ -82,6 +82,7 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	stall               stallMonitor
 	receiptClock        graphicsReceiptClock
 	trace               *latency.Trace
 	graphicsFiles       graphicsFileHub
@@ -510,6 +511,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		})
 	}
 
+	go s.watchAppLoop(appDone)
 	go s.apiLoop()
 	go s.clientLoop()
 	jobsDone := make(chan struct{})
