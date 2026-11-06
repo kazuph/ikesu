@@ -25,7 +25,6 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -553,9 +552,25 @@ func (a *App) StartInitialPane() error {
 
 // loopTiming is shared by viewer copies; only the app loop records completions.
 type loopTiming struct {
-	heartbeat atomic.Int64
-	completed atomic.Uint64
-	longest   atomic.Int64
+	mu        sync.Mutex
+	heartbeat time.Time
+	completed uint64
+	longest   time.Duration
+}
+
+func (t *loopTiming) advance(now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.heartbeat.IsZero() {
+		elapsed := now.Sub(t.heartbeat)
+		if elapsed >= LoopStallThreshold {
+			t.completed++
+			if elapsed > t.longest {
+				t.longest = elapsed
+			}
+		}
+	}
+	t.heartbeat = now
 }
 
 // LoopStallThreshold is the duration chosen for reporting a stalled app loop.
@@ -570,7 +585,9 @@ func (a *App) LoopTiming() (time.Time, uint64, time.Duration) {
 	if a.loopTiming == nil {
 		return time.Time{}, 0, 0
 	}
-	return time.Unix(0, a.loopTiming.heartbeat.Load()), a.loopTiming.completed.Load(), time.Duration(a.loopTiming.longest.Load())
+	a.loopTiming.mu.Lock()
+	defer a.loopTiming.mu.Unlock()
+	return a.loopTiming.heartbeat, a.loopTiming.completed, a.loopTiming.longest
 }
 
 // Run executes the event loop until quit. It returns after the model
@@ -611,17 +628,7 @@ func (a *App) Run() {
 	}()
 	a.dirty = true
 	for !a.quit {
-		now := time.Now().UnixNano()
-		previous := a.loopTiming.heartbeat.Swap(now)
-		if previous != 0 {
-			elapsed := time.Duration(now - previous)
-			if elapsed >= LoopStallThreshold {
-				a.loopTiming.completed.Add(1)
-				if elapsed > time.Duration(a.loopTiming.longest.Load()) {
-					a.loopTiming.longest.Store(int64(elapsed))
-				}
-			}
-		}
+		a.loopTiming.advance(time.Now())
 		var koiReady <-chan time.Time
 		if a.snapshotSink == nil && a.drawViewers == nil && !a.windowBlurred && !a.koiNext.IsZero() {
 			remaining := max(time.Duration(0), time.Until(a.koiNext))

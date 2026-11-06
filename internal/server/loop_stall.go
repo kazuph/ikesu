@@ -3,12 +3,12 @@ package server
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/tui"
+	"golang.org/x/sys/unix"
 )
 
 const stallThreshold = tui.LoopStallThreshold
@@ -73,40 +73,59 @@ func (s *Server) watchAppLoop(done <-chan struct{}) {
 }
 
 func (s *Server) saveStallStack(now time.Time) {
-	dir := filepath.Join(s.dir, "app-loop-stalls")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
-		return
-	}
-	path := filepath.Join(dir, now.UTC().Format("20060102T150405.000000000Z")+".stack")
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	root, err := unix.Open(s.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
 		return
 	}
+	defer unix.Close(root)
+	if err := unix.Mkdirat(root, "app-loop-stalls", 0700); err != nil && err != unix.EEXIST {
+		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
+		return
+	}
+	fd, err := unix.Openat(root, "app-loop-stalls", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
+		return
+	}
+	dir := os.NewFile(uintptr(fd), "app-loop-stalls")
+	defer dir.Close()
+	name := now.UTC().Format("20060102T150405.000000000Z") + ".stack"
+	fileFD, err := unix.Openat(fd, name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
+		return
+	}
+	f := os.NewFile(uintptr(fileFD), name)
 	err = writeStacks(f)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		_ = os.Remove(path)
+		_ = unix.Unlinkat(fd, name, 0)
 		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
 		return
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := dir.ReadDir(-1)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
 		return
 	}
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".stack" {
-			names = append(names, entry.Name())
+		name := entry.Name()
+		const format = "20060102T150405.000000000Z"
+		if len(name) != len(format)+len(".stack") || name[len(format):] != ".stack" || !entry.Type().IsRegular() {
+			continue
+		}
+		stamp, err := time.Parse(format, name[:len(format)])
+		if err == nil && stamp.UTC().Format(format) == name[:len(format)] {
+			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
 	for len(names) > stallStackLimit {
-		if err := os.Remove(filepath.Join(dir, names[0])); err != nil {
+		if err := unix.Unlinkat(fd, names[0], 0); err != nil {
 			fmt.Fprintln(os.Stderr, "ikesu stall diagnostics:", err)
 			break
 		}

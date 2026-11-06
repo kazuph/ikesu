@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -176,6 +178,54 @@ func TestRecoveredLoopRetainsStallStatistics(t *testing.T) {
 	}
 }
 
+// The real stall duration is required to exercise status during recovery.
+func TestStallCountDoesNotDecreaseDuringRecovery(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "diagnostics-recovery-concurrent")
+	done := make(chan struct{})
+	go func() { s.app.Run(); close(done) }()
+	defer func() { s.app.Stop(); <-done; s.sup.KillAll() }()
+	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() { s.app.Do(func() { close(entered); <-release }); close(finished) }()
+	<-entered
+	time.Sleep(stallThreshold + 20*time.Millisecond)
+	stop := make(chan struct{})
+	results := make(chan string, 16)
+	var readers sync.WaitGroup
+	for i := 0; i < cap(results); i++ {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			var previous uint64
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				count := s.stallStatus().Count
+				if count > 1 || count < previous {
+					results <- fmt.Sprintf("count changed from %d to %d", previous, count)
+					return
+				}
+				previous = count
+			}
+		}()
+	}
+	close(release)
+	<-finished
+	s.app.Do(func() {})
+	close(stop)
+	readers.Wait()
+	close(results)
+	for result := range results {
+		t.Error(result)
+	}
+	if got := s.stallStatus().Count; got != 1 {
+		t.Fatalf("final count=%d", got)
+	}
+}
+
 // Two real two-second stalls are needed to exercise the one-minute cooldown.
 func TestStallStackCooldown(t *testing.T) {
 	teststate.Lock(t)
@@ -237,6 +287,56 @@ func TestStallStackRetention(t *testing.T) {
 	old := filepath.Join(s.dir, "app-loop-stalls", start.Format("20060102T150405.000000000Z")+".stack")
 	if _, err := os.Stat(old); !os.IsNotExist(err) {
 		t.Fatalf("oldest stack remains: %v", err)
+	}
+	s.sup.KillAll()
+}
+
+func TestStallStackRejectsSymlinkDirectory(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "diagnostics-symlink")
+	s.dir = teststate.TempDir(t)
+	outside := t.TempDir()
+	for i := 0; i <= stallStackLimit; i++ {
+		name := time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC).Format("20060102T150405.000000000Z") + ".stack"
+		if err := os.WriteFile(filepath.Join(outside, name), []byte("keep"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(s.dir, "app-loop-stalls")); err != nil {
+		t.Fatal(err)
+	}
+	s.saveStallStack(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != stallStackLimit+1 {
+		t.Fatalf("outside directory changed: entries=%d err=%v", len(entries), err)
+	}
+	for _, entry := range entries {
+		data, err := os.ReadFile(filepath.Join(outside, entry.Name()))
+		if err != nil || string(data) != "keep" {
+			t.Fatalf("outside file %s changed: %v", entry.Name(), err)
+		}
+	}
+	s.sup.KillAll()
+}
+
+func TestStallRetentionPreservesUnrelatedStack(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "diagnostics-unrelated")
+	s.dir = teststate.TempDir(t)
+	dir := filepath.Join(s.dir, "app-loop-stalls")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(dir, "0000-unrelated.stack")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i <= stallStackLimit; i++ {
+		s.saveStallStack(start.Add(time.Duration(i) * time.Minute))
+	}
+	if data, err := os.ReadFile(unrelated); err != nil || string(data) != "keep" {
+		t.Fatalf("unrelated stack changed: %v", err)
 	}
 	s.sup.KillAll()
 }
