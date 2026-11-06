@@ -39,7 +39,8 @@ class MainActivity : Activity() {
     private val warn = 0xFFFFCC33.toInt()
     private data class Draft(var text: String = "", val selected: MutableSet<String> = mutableSetOf(),
                              val images: MutableList<ByteArray> = mutableListOf(), var cursor: Int = 0,
-                             var sequence: String? = null, var waitingReconnect: Boolean = false)
+                             var sequence: String? = null, var waitingReconnect: Boolean = false,
+                             var uncertain: Boolean = false, var submittedItem: JSONObject? = null)
     private val drafts = mutableMapOf<String, Draft>()
     private var selectedId: String? = null
     private var pendingCamera: Uri? = null
@@ -96,9 +97,10 @@ class MainActivity : Activity() {
             val sequence = result.optString("sequence")
             val draft = drafts.values.firstOrNull { it.sequence == sequence }
             if (draft != null) {
-                draft.sequence = null
-                draft.waitingReconnect = false
                 val status = result.optString("status")
+                draft.uncertain = status == "unknown"
+                if (!draft.uncertain) draft.sequence = null
+                draft.waitingReconnect = false
                 val message = when (status) {
                     "answered" -> "回答しました"
                     "answered_elsewhere" -> "ほかの窓口で回答されました"
@@ -118,13 +120,15 @@ class MainActivity : Activity() {
             }
         }
         drafts.entries.removeAll { it.key !in ids && it.value.sequence == null }
-        if (selectedId !in ids) { selectedId = null; showList = true }
-        render()
+        if (selectedId !in ids && drafts[selectedId]?.sequence == null) { selectedId = null; showList = true }
+        if (settingsVisible) {
+            (header.getChildAt(0) as? TextView)?.text = "ikesu · ${if (DecisionState.connected) "接続中" else "未接続"}"
+        } else render()
     }
     private fun current(): JSONObject? {
         val items = DecisionState.decisions
         for (i in 0 until items.length()) items.optJSONObject(i)?.let { if (it.optString("id") == selectedId) return it }
-        return null
+        return drafts[selectedId]?.takeIf { it.sequence != null }?.submittedItem
     }
     private fun frame(fill: Int = Color.BLACK): GradientDrawable = GradientDrawable().apply {
         setColor(fill); setStroke(dp(2), green); cornerRadius = dp(8).toFloat()
@@ -238,7 +242,7 @@ class MainActivity : Activity() {
         block(text(deadlineAndCount(item.optString("deadline"), item.optInt("queue_remaining")), 18f))
         footer.setPadding(0, dp(8), 0, dp(8))
         pair(button("あとで") { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
-             button(if (draft.sequence == null) "回答する" else "送信中", true) { send(item, draft) }.apply { isEnabled = draft.sequence == null }, footer)
+             button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) "回答する" else "送信中", true) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
     }
     private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, action: () -> Unit): View {
         val color = if (focused) Color.BLACK else green
@@ -279,6 +283,7 @@ class MainActivity : Activity() {
     }
     private fun toggle(draft: Draft, id: String) { if (!draft.selected.add(id)) draft.selected.remove(id) }
     private fun move(delta: Int) {
+        if (settingsVisible) return
         if (showList) {
             val count = DecisionState.decisions.length()
             if (count > 0) { listCursor = (listCursor + delta + count) % count; render() }
@@ -291,6 +296,7 @@ class MainActivity : Activity() {
         render()
     }
     private fun confirm() {
+        if (settingsVisible) return
         if (showList) {
             DecisionState.decisions.optJSONObject(listCursor)?.let { selectedId = it.optString("id"); showList = false; render() }
             return
@@ -305,10 +311,12 @@ class MainActivity : Activity() {
         else { draft.selected.clear(); draft.selected.add(id); send(item, draft) }
     }
     private fun send(item: JSONObject, draft: Draft) {
-        if (draft.sequence != null) return
-        val sequence = UUID.randomUUID().toString()
+        if (draft.sequence != null && !draft.uncertain) return
+        val sequence = draft.sequence ?: UUID.randomUUID().toString()
         if (!DecisionState.answer(item.optString("id"), draft.selected.toList(), draft.text, draft.images, sequence)) { Toast.makeText(this, "接続されていません", Toast.LENGTH_LONG).show(); return }
         draft.sequence = sequence
+        draft.uncertain = false
+        draft.submittedItem = item
         render()
     }
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
