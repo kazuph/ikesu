@@ -337,3 +337,56 @@ func TestRestoredCodexMatchRequiresUniqueEmptyResult(t *testing.T) {
 		t.Fatal("foreign identity accepted")
 	}
 }
+
+func TestLateAnswerStoresSingleMultipleAndText(t *testing.T) {
+	teststate.Lock(t)
+	for _, tc := range []struct {
+		name string
+		ids  []string
+		text string
+	}{
+		{"single", []string{"1"}, ""}, {"multiple", []string{"1", "2"}, ""}, {"text", nil, "数字123"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestServer(t, "late-forms")
+			s.initDecisionHub()
+			store, err := s.db()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			d, err := store.CreateDecision(api.DecisionCreateParams{Kind: "agent_prompt", Title: "質問", MultiSelect: tc.name == "multiple", AllowText: true, Options: []api.DecisionOption{{ID: "1", Label: "赤", Role: "other"}, {ID: "2", Label: "青", Role: "other"}}}, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.screenPrompts.late = map[string]*lateCodexQuestion{d.DecisionID: {}}
+			params := api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionIDs: tc.ids, Responder: "test"}
+			if tc.text != "" {
+				params.Text = &tc.text
+			}
+			resp := s.decisionRequest(&api.Request{ID: "answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(params)})
+			if resp.Err != nil {
+				t.Fatal(resp.Err)
+			}
+			saved, err := store.Decision(d.DecisionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.Status != "answered" || saved.Answer == nil {
+				t.Fatal(saved)
+			}
+			if len(tc.ids) > 0 && (saved.Answer.OptionID == nil || *saved.Answer.OptionID != tc.ids[0]) {
+				t.Fatal(saved.Answer)
+			}
+			if len(tc.ids) > 1 && (len(saved.Answer.OptionIDs) != 2 || saved.Answer.OptionIDs[1] != tc.ids[1]) {
+				t.Fatal(saved.Answer)
+			}
+			if tc.text != "" && (saved.Answer.Text == nil || *saved.Answer.Text != tc.text) {
+				t.Fatal(saved.Answer)
+			}
+			if again := s.decisionRequest(&api.Request{ID: "again", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(params)}); again.Err == nil || again.Err.Code != api.ErrDecisionResolved {
+				t.Fatal(again)
+			}
+		})
+	}
+}
