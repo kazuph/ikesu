@@ -77,6 +77,9 @@ func (m *machineClient) syncOyagoi(id string) error {
 	if e == nil || e.connection == nil {
 		return nil
 	}
+	if m.oyagoi == nil && e.oyagoiProjection == nil {
+		return nil
+	}
 	selected := m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Session == m.selectionSession(id)
 	if !endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "oyagoi_view") {
 		if selected {
