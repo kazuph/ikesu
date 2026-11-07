@@ -254,6 +254,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		if err := m.syncOyagoi(event.id); err != nil {
+			m.notify(err.Error())
+		}
 		if event.id != "local" && event.id == m.active {
 			visible := !m.blurred
 			if err := e.connection.enqueue(msg{Type: "visibility", Visible: &visible}); err != nil {

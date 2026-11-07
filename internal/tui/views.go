@@ -196,7 +196,7 @@ func (a *App) draw() {
 		ConfigWarning:       warning,
 		ConfigWarningBanner: banner,
 		Settings:            a.settings,
-		MobileSwitcher:      a.mobileSwitcher, MobileScroll: a.mobileScroll,
+		MobileSwitcher:      a.mobileSwitcher, MobileScroll: a.mobileScroll, MobileOyagoi: a.oyagoiWorkspace,
 		SidebarConfig: a.sidebarConfig, WorkspaceTokens: tokens,
 		Panes:             panes,
 		Scroll:            a.scroll,

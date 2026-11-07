@@ -215,6 +215,7 @@ type App struct {
 	jobRows             []render.JobRow
 	mobileSwitcher      bool
 	mobileScroll        int
+	oyagoiWorkspace     int
 	popupSel            *selState
 	popupSelections     map[int]*selState
 	popupCopies         map[int]*copyMode

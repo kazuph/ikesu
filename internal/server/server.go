@@ -833,6 +833,8 @@ func (s *Server) attach(conn net.Conn) {
 					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 			})
+		case "oyagoi_view":
+			s.app.Do(func() { c.viewer.SetOyagoi(s.app, m.Workspace, m.WorkspaceGeneration) })
 		case "config_result":
 			s.app.Do(func() {
 				done := pendingConfig[m.ConfigID]

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/render"
 )
 
@@ -39,6 +40,25 @@ func (m *machineClient) openOyagoiMenu(id string, x, y int) error {
 		return fmt.Errorf("HQ workspace is offline")
 	}
 	return e.connection.enqueue(msg{Type: "workspace_menu", Workspace: m.oyagoi.Workspace, WorkspaceGeneration: m.oyagoi.Generation, MenuX: x, MenuY: y})
+}
+
+func (m *machineClient) syncOyagoi(id string) error {
+	e := m.endpoints[id]
+	if e == nil || e.connection == nil {
+		return nil
+	}
+	selected := m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Session == m.selectionSession(id)
+	if !endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "oyagoi_view") {
+		if selected {
+			return fmt.Errorf("endpoint_action_unsupported: oyagoi_view")
+		}
+		return nil
+	}
+	message := msg{Type: "oyagoi_view"}
+	if selected {
+		message.Workspace, message.WorkspaceGeneration = m.oyagoi.Workspace, m.oyagoi.Generation
+	}
+	return e.connection.enqueue(message)
 }
 
 func (m *machineClient) oyagoiAction(id, action string) error {
@@ -82,6 +102,11 @@ func (m *machineClient) refreshOyagoi() error {
 		return fmt.Errorf("HQ settings: %w", err)
 	}
 	m.oyagoi = selection
+	for id := range m.endpoints {
+		if err := m.syncOyagoi(id); err != nil {
+			m.notify(err.Error())
+		}
+	}
 	return nil
 }
 

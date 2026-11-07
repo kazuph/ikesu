@@ -27,3 +27,19 @@ func TestOyagoiWorkspaceMenuUsesIdentityWhenSectionCollapsed(t *testing.T) {
 		t.Fatal("stale identity opened menu")
 	}
 }
+
+func TestOyagoiViewerProjectionIsPrivateAndChecksIdentity(t *testing.T) {
+	state := model.New(t.TempDir(), 120, 40)
+	ws := state.Workspaces[0]
+	app := NewApp(state, runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	first := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	second := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	first.SetOyagoi(app, ws.ID, ws.Generation)
+	if first.app.oyagoiWorkspace != ws.ID || second.app.oyagoiWorkspace != 0 {
+		t.Fatal("HQ projection was not viewer scoped")
+	}
+	first.SetOyagoi(app, ws.ID, "wrong")
+	if first.app.oyagoiWorkspace != 0 {
+		t.Fatal("wrong generation accepted")
+	}
+}

@@ -36,10 +36,25 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 	n := a.navigator
 	var rows []render.NavigatorRow
 	count := 0
-	for wi, ws := range a.st.Workspaces {
+	order := make([]int, 0, len(a.st.Workspaces))
+	for i, ws := range a.st.Workspaces {
+		if a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace {
+			order = append(order, i)
+		}
+	}
+	for i, ws := range a.st.Workspaces {
+		if ws.ID != a.oyagoiWorkspace {
+			order = append(order, i)
+		}
+	}
+	for _, wi := range order {
+		ws := a.st.Workspaces[wi]
 		name := ws.Name
 		if display := a.workspaceNames[wi]; display != "" {
 			name = display
+		}
+		if ws.ID == a.oyagoiWorkspace && a.oyagoiWorkspace != 0 {
+			name = "🎏 oyagoi · " + name
 		}
 		var children []render.NavigatorRow
 		for ti, tab := range ws.Tabs {

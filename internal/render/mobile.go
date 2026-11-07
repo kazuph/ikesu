@@ -9,12 +9,23 @@ import (
 )
 
 // Rows are shared by drawing and tapping; list headings have no hit action.
-func MobileRows(s *model.AppState, menu []MenuItem) []SidebarRow {
-	rows := []SidebarRow{{Kind: RowMobileSpaces}, {Kind: RowMobileNewWorkspace}}
+func MobileRows(s *model.AppState, menu []MenuItem, oyagoi ...int) []SidebarRow {
+	rows := []SidebarRow{}
+	hq := 0
+	if len(oyagoi) > 0 {
+		hq = oyagoi[0]
+	}
+	for i, ws := range s.Workspaces {
+		if hq != 0 && ws.ID == hq {
+			rows = append(rows, SidebarRow{Kind: RowMobileOyagoi}, SidebarRow{Kind: RowWorkspace, Ws: i}, SidebarRow{Kind: RowGit, Ws: i})
+			break
+		}
+	}
+	rows = append(rows, SidebarRow{Kind: RowMobileSpaces}, SidebarRow{Kind: RowMobileNewWorkspace})
 	for _, sec := range model.SectionOrder {
 		found := false
 		for i, w := range s.Workspaces {
-			if w.SidebarSection() == sec && !s.WorktreeHidden(i) {
+			if w.ID != hq && w.SidebarSection() == sec && !s.WorktreeHidden(i) {
 				found = true
 				break
 			}
@@ -27,7 +38,7 @@ func MobileRows(s *model.AppState, menu []MenuItem) []SidebarRow {
 			continue
 		}
 		for i, w := range s.Workspaces {
-			if w.SidebarSection() == sec && !s.WorktreeHidden(i) {
+			if w.ID != hq && w.SidebarSection() == sec && !s.WorktreeHidden(i) {
 				rows = append(rows, SidebarRow{Kind: RowWorkspace, Ws: i}, SidebarRow{Kind: RowGit, Ws: i})
 			}
 		}
@@ -54,8 +65,8 @@ func MobileViewport(s *model.AppState) layout.Rect {
 	return layout.Rect{X: 0, Y: 3, W: s.Cols, H: max(0, s.Rows-3)}
 }
 
-func MobileOffset(s *model.AppState, menu []MenuItem, offset int) int {
-	return max(0, min(offset, max(0, len(MobileRows(s, menu))-MobileViewport(s).H)))
+func MobileOffset(s *model.AppState, menu []MenuItem, offset int, oyagoi ...int) int {
+	return max(0, min(offset, max(0, len(MobileRows(s, menu, oyagoi...))-MobileViewport(s).H)))
 }
 
 func drawMobile(f *Frame, in Input, out *Output) {
@@ -167,8 +178,8 @@ func drawMobile(f *Frame, in Input, out *Output) {
 	viewport := MobileViewport(s)
 	f.Fill(0, 2, s.Cols, max(0, s.Rows-2), " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Text(0, 2, stringRule(s.Cols), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG}, s.Cols)
-	rows := MobileRows(s, in.MobileMenu)
-	off := MobileOffset(s, in.MobileMenu, in.MobileScroll)
+	rows := MobileRows(s, in.MobileMenu, in.MobileOyagoi)
+	off := MobileOffset(s, in.MobileMenu, in.MobileScroll, in.MobileOyagoi)
 	for n := 0; n < viewport.H && n+off < len(rows); n++ {
 		row, y := rows[n+off], viewport.Y+n
 		bg := f.Palette.PopupBG
@@ -180,13 +191,15 @@ func drawMobile(f *Frame, in Input, out *Output) {
 		}
 		f.Fill(1, y, max(0, s.Cols-1), 1, " ", uv.Style{Bg: bg})
 		switch row.Kind {
-		case RowMobileSpaces, RowMobileTabs, RowMobileMenu, RowSection:
+		case RowMobileSpaces, RowMobileTabs, RowMobileMenu, RowSection, RowMobileOyagoi:
 			label := " spaces"
 			switch row.Kind {
 			case RowMobileTabs:
 				label = " tabs"
 			case RowMobileMenu:
 				label = " menu"
+			case RowMobileOyagoi:
+				label = " 🎏 oyagoi"
 			case RowSection:
 				arrow := "▾"
 				if s.CollapsedSections[row.Section] {

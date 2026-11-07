@@ -54,6 +54,22 @@ func TestOyagoiMenuRequestCarriesWorkspaceIdentity(t *testing.T) {
 	}
 }
 
+func TestOyagoiProjectionTargetsOnlyMatchingSession(t *testing.T) {
+	peer := endpoint.Current()
+	local := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	remote := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{session: "one", oyagoi: &oyagoiSelection{Machine: "remote", Session: "two", Workspace: 4, Generation: "gen"}, endpoints: map[string]*managedEndpoint{"local": {connection: local}, "remote": {connection: remote, profile: machine.Profile{Session: "two"}}}}
+	if err := m.syncOyagoi("local"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.syncOyagoi("remote"); err != nil {
+		t.Fatal(err)
+	}
+	if len(local.queue) != 1 || local.queue[0].Workspace != 0 || len(remote.queue) != 1 || remote.queue[0].Type != "oyagoi_view" || remote.queue[0].Workspace != 4 || remote.queue[0].WorkspaceGeneration != "gen" {
+		t.Fatalf("local=%+v remote=%+v", local.queue, remote.queue)
+	}
+}
+
 func TestOyagoiDeletedWorkspaceDoesNotFollowReusedNumber(t *testing.T) {
 	s := model.New(t.TempDir(), 80, 24)
 	ws := s.Workspaces[0]

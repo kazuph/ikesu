@@ -178,6 +178,7 @@ type Input struct {
 	TabScroll          int
 	TabScrollManual    bool
 	MobileScroll       int
+	MobileOyagoi       int
 	// CopyLabel is the action bar's left button text: " COPY ",
 	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
 	CopyLabel string

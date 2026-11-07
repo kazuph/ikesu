@@ -37,3 +37,14 @@ func (v *Viewer) OpenWorkspaceMenu(a *App, id int, generation string, x, y int) 
 	}
 	return false
 }
+
+func (v *Viewer) SetOyagoi(a *App, id int, generation string) {
+	chosen := 0
+	for _, ws := range a.st.Workspaces {
+		if id != 0 && ws.ID == id && generation != "" && ws.Generation == generation {
+			chosen = id
+			break
+		}
+	}
+	v.with(a, func(ui *App) { ui.oyagoiWorkspace = chosen; ui.dirty = true })
+}
