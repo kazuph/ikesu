@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,68 @@ import (
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/tui"
 )
+
+// Starts two real servers and verifies the destination PTY after reconnection.
+func TestOyagoiPendingInputNeverReachesReusedWorkspaceActualPTYReview(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	e := m.endpoints["remote"]
+	old := e.snapshot.State.Workspaces[0]
+	replacement := m.endpoints["local"].snapshot.State.Workspaces[0]
+	if old.ID != replacement.ID || old.Generation == replacement.Generation {
+		t.Fatal("fixture must reuse number with different generation")
+	}
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", old.ID, old.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.selectOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	if !m.holdPendingInput(input.Event{Kind: input.KindKey, Raw: []byte("printf HQ_FORBIDDEN_INPUT\\n\n")}, time.Now()) {
+		t.Fatal("input was not held")
+	}
+	if err := e.connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["local"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.start("remote", stream)
+	attempt := e.attempt
+	h.until("replacement server snapshot", func() bool { return e.connection != nil && e.snapshotAttempt == attempt })
+	if m.active != "local" {
+		t.Fatal("viewer switched to replacement")
+	}
+	if err := m.sendInput("remote", []byte("printf HQ_BARRIER_OK\\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	var text string
+	h.until("replacement PTY barrier", func() bool {
+		conn, err := net.DialTimeout("unix", api.APISocketPath(h.dirs["local"]), time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		if err := api.WriteRequest(conn, api.Request{ID: "read", Method: api.MethodPaneRead, Params: api.MarshalParams(api.PaneReadParams{PaneID: "p1", Source: "recent", StripANSI: true})}); err != nil {
+			t.Fatal(err)
+		}
+		response, err := api.ReadResponse(bufio.NewReader(conn))
+		if err != nil || response.Err != nil {
+			t.Fatalf("read: %+v %v", response, err)
+		}
+		var result api.PaneReadResultEnvelope
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			t.Fatal(err)
+		}
+		text = result.Read.Text
+		return strings.Contains(text, "HQ_BARRIER_OK")
+	})
+	if strings.Contains(text, "HQ_FORBIDDEN_INPUT") {
+		t.Fatalf("held input reached replacement PTY: %s", text)
+	}
+}
 
 // Starts two real servers and waits for a reconnected endpoint, which can exceed five seconds.
 func TestOyagoiRejectsReusedNumberBeforeNewSnapshotActualPTYReview(t *testing.T) {
