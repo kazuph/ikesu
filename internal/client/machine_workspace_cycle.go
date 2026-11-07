@@ -44,13 +44,21 @@ func workspaceCycleDirection(c config.Config, key uv.Key) int {
 
 func (m *machineClient) workspaceCycleTargets() []workspaceCycleTarget {
 	var targets []workspaceCycleTarget
+	hq := m.oyagoiForSidebar()
+	if hq.Machine != "" && !hq.Offline && hq.HideOriginal {
+		targets = append(targets, workspaceCycleTarget{hq.Machine, hq.Workspace})
+	}
 	for _, id := range m.order {
 		e := m.endpoints[id]
 		if e == nil || !e.profile.Enabled || e.connection == nil || e.snapshot == nil || e.snapshot.State == nil {
 			continue
 		}
 		for _, index := range e.snapshot.State.VisibleWorkspaceOrder() {
-			targets = append(targets, workspaceCycleTarget{id, e.snapshot.State.Workspaces[index].ID})
+			target := workspaceCycleTarget{id, e.snapshot.State.Workspaces[index].ID}
+			if hq.Machine == target.machine && hq.Workspace == target.workspace && hq.HideOriginal {
+				continue
+			}
+			targets = append(targets, target)
 		}
 	}
 	return targets

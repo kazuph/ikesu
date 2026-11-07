@@ -40,6 +40,18 @@ func TestOyagoiMobileTapSelectsOtherMachine(t *testing.T) {
 	}
 }
 
+func TestOyagoiWorkspaceCycleIncludesCollapsedOriginalSection(t *testing.T) {
+	a, _ := worktreeApp(t)
+	a.st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	a.st.Workspaces[1].Section = model.SectionFavorite
+	a.st.CollapsedSections = map[model.Section]bool{model.SectionFavorite: true}
+	a.oyagoiWorkspace = a.st.Workspaces[1].ID
+	a.cycleWorkspace(-1)
+	if a.st.ActiveWorkspace().ID != a.oyagoiWorkspace {
+		t.Fatal("HQ omitted from previous workspace")
+	}
+}
+
 func TestOyagoiNavigatorSelectsOtherMachine(t *testing.T) {
 	a, _ := worktreeApp(t)
 	var action string

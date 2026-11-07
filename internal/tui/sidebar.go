@@ -95,7 +95,7 @@ func (a *App) sidebarPreset(p string) {
 	a.saveViewPreferences()
 }
 func (a *App) cycleWorkspace(dir int) {
-	order := a.st.VisibleWorkspaceOrder()
+	order := a.visibleWorkspaceOrder()
 	if len(order) == 0 {
 		return
 	}
@@ -114,6 +114,24 @@ func (a *App) cycleWorkspace(dir int) {
 		}
 	}
 	a.exec(model.CmdSelectWorkspace{Index: order[(at+dir+len(order))%len(order)]})
+}
+
+func (a *App) visibleWorkspaceOrder() []int {
+	order := make([]int, 0, len(a.st.Workspaces))
+	hq := -1
+	for i, ws := range a.st.Workspaces {
+		if a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace {
+			hq = i
+			order = append(order, i)
+			break
+		}
+	}
+	for _, i := range a.st.VisibleWorkspaceOrder() {
+		if i != hq {
+			order = append(order, i)
+		}
+	}
+	return order
 }
 func (a *App) DuplicateWorkspace(index int, focus bool) (int, error) {
 	if index < 0 || index >= len(a.st.Workspaces) {

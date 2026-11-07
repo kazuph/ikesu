@@ -60,6 +60,20 @@ func TestWorkspaceCycleBoundariesAndWrap(t *testing.T) {
 		})
 	}
 }
+
+func TestOyagoiWorkspaceCycleStartsWithRemoteHQEvenWhenSectionCollapsed(t *testing.T) {
+	m := cycleFixture(t)
+	m.session = "local-session"
+	m.endpoints["mini"].profile.Session = "remote-session"
+	s := m.endpoints["mini"].snapshot.State
+	s.Workspaces[1].Section = model.SectionFavorite
+	s.CollapsedSections = map[model.Section]bool{model.SectionFavorite: true}
+	m.oyagoi = &oyagoiSelection{Machine: "mini", Session: "remote-session", Workspace: s.Workspaces[1].ID, Generation: s.Workspaces[1].Generation}
+	got := m.workspaceCycleTargets()
+	if len(got) != 4 || got[0] != (workspaceCycleTarget{"mini", s.Workspaces[1].ID}) {
+		t.Fatalf("HQ order = %+v", got)
+	}
+}
 func TestWorkspaceCycleOrderSkipsUnavailableAndHidden(t *testing.T) {
 	m := cycleFixture(t)
 	s := m.endpoints["local"].snapshot.State
