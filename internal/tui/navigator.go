@@ -36,6 +36,9 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 	n := a.navigator
 	var rows []render.NavigatorRow
 	count := 0
+	if a.oyagoiForeignName != "" && n.filter == "" && (n.query == "" || strings.Contains(strings.ToLower(a.oyagoiForeignName), strings.ToLower(n.query))) {
+		rows = append(rows, render.NavigatorRow{Workspace: -1, Pane: -3, Name: "🎏 oyagoi · " + a.oyagoiForeignName, Status: "○"})
+	}
 	order := make([]int, 0, len(a.st.Workspaces))
 	for i, ws := range a.st.Workspaces {
 		if a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace {
@@ -133,6 +136,17 @@ func (a *App) navigatorSelect() {
 		return
 	}
 	row := rows[min(n.selected, len(rows)-1)]
+	if row.Pane == -3 {
+		if a.oyagoiForeignOnline && a.machineRequest != nil {
+			if err := a.machineRequest("oyagoi:select"); err != nil {
+				a.worktreeError(err)
+				return
+			}
+			a.navigator = nil
+			a.dirty = true
+		}
+		return
+	}
 	if row.Pane == -1 {
 		a.exec(model.CmdSelectWorkspace{Index: row.Workspace})
 	} else {

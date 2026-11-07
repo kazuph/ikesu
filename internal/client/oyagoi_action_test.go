@@ -65,8 +65,22 @@ func TestOyagoiProjectionTargetsOnlyMatchingSession(t *testing.T) {
 	if err := m.syncOyagoi("remote"); err != nil {
 		t.Fatal(err)
 	}
-	if len(local.queue) != 1 || local.queue[0].Workspace != 0 || len(remote.queue) != 1 || remote.queue[0].Type != "oyagoi_view" || remote.queue[0].Workspace != 4 || remote.queue[0].WorkspaceGeneration != "gen" {
+	if len(local.queue) != 1 || local.queue[0].Workspace != 0 || local.queue[0].OyagoiLabel == "" || len(remote.queue) != 1 || remote.queue[0].Type != "oyagoi_view" || remote.queue[0].Workspace != 4 || remote.queue[0].WorkspaceGeneration != "gen" {
 		t.Fatalf("local=%+v remote=%+v", local.queue, remote.queue)
+	}
+}
+
+func TestOyagoiSelectOtherMachineRequestsWorkspace(t *testing.T) {
+	state := model.New(t.TempDir(), 80, 24)
+	ws := state.Workspaces[0]
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{session: "one", oyagoi: &oyagoiSelection{Machine: "remote", Session: "two", Workspace: ws.ID, Generation: ws.Generation}, endpoints: map[string]*managedEndpoint{"remote": {connection: conn, profile: machine.Profile{Session: "two"}, snapshot: &render.Input{State: state}}}}
+	if err := m.selectOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	if m.pending == nil || m.pending.id != "remote" || m.pending.workspace != ws.ID {
+		t.Fatalf("pending = %+v", m.pending)
 	}
 }
 

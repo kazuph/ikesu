@@ -23,11 +23,12 @@ import (
 )
 
 type managedEndpoint struct {
-	guardApproval  approvalState
-	approvalInput  map[string]time.Time
-	approvalPrefix bool
-	processedInput uint64
-	selection      *paintedSelection
+	oyagoiProjection *oyagoiProjection
+	guardApproval    approvalState
+	approvalInput    map[string]time.Time
+	approvalPrefix   bool
+	processedInput   uint64
+	selection        *paintedSelection
 
 	snapshotAttempt          uint64
 	boot                     string

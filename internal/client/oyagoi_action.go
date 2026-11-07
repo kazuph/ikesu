@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/render"
@@ -42,6 +43,35 @@ func (m *machineClient) openOyagoiMenu(id string, x, y int) error {
 	return e.connection.enqueue(msg{Type: "workspace_menu", Workspace: m.oyagoi.Workspace, WorkspaceGeneration: m.oyagoi.Generation, MenuX: x, MenuY: y})
 }
 
+type oyagoiProjection struct {
+	workspace         int
+	generation, label string
+	online            bool
+}
+
+func (m *machineClient) selectOyagoi() error {
+	if m.oyagoi == nil {
+		return fmt.Errorf("HQ selection changed")
+	}
+	e := m.endpoints[m.oyagoi.Machine]
+	if e == nil || e.connection == nil || e.snapshot == nil || e.snapshot.State == nil || m.selectionSession(m.oyagoi.Machine) != m.oyagoi.Session {
+		return fmt.Errorf("HQ workspace is offline")
+	}
+	valid := false
+	for _, ws := range e.snapshot.State.Workspaces {
+		if ws.ID == m.oyagoi.Workspace && ws.Generation == m.oyagoi.Generation {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return fmt.Errorf("HQ workspace changed")
+	}
+	m.pending = &pendingMachine{id: m.oyagoi.Machine, workspace: m.oyagoi.Workspace, deadline: time.Now().Add(machineSwitchWait)}
+	m.requestPending()
+	return nil
+}
+
 func (m *machineClient) syncOyagoi(id string) error {
 	e := m.endpoints[id]
 	if e == nil || e.connection == nil {
@@ -57,8 +87,39 @@ func (m *machineClient) syncOyagoi(id string) error {
 	message := msg{Type: "oyagoi_view"}
 	if selected {
 		message.Workspace, message.WorkspaceGeneration = m.oyagoi.Workspace, m.oyagoi.Generation
+	} else if m.oyagoi != nil {
+		owner := m.endpoints[m.oyagoi.Machine]
+		label := m.oyagoi.Machine
+		if owner != nil && owner.profile.Label != "" {
+			label = owner.profile.Label
+		}
+		name := fmt.Sprintf("s%d", m.oyagoi.Workspace)
+		if owner != nil && owner.snapshot != nil && owner.snapshot.State != nil && m.selectionSession(m.oyagoi.Machine) == m.oyagoi.Session {
+			for i, ws := range owner.snapshot.State.Workspaces {
+				if ws.ID == m.oyagoi.Workspace && ws.Generation == m.oyagoi.Generation {
+					name = owner.snapshot.WorkspaceNames[i]
+					if name == "" || ws.CustomName {
+						name = render.WorkspaceDisplayName(ws, owner.snapshot.Panes)
+					}
+					message.OyagoiOnline = owner.connection != nil
+					break
+				}
+			}
+		}
+		message.OyagoiLabel = name + " · " + label
+		if !message.OyagoiOnline {
+			message.OyagoiLabel += " (offline)"
+		}
 	}
-	return e.connection.enqueue(message)
+	projection := oyagoiProjection{message.Workspace, message.WorkspaceGeneration, message.OyagoiLabel, message.OyagoiOnline}
+	if e.oyagoiProjection != nil && *e.oyagoiProjection == projection {
+		return nil
+	}
+	if err := e.connection.enqueue(message); err != nil {
+		return err
+	}
+	e.oyagoiProjection = &projection
+	return nil
 }
 
 func (m *machineClient) oyagoiAction(id, action string) error {

@@ -24,3 +24,11 @@ func TestOyagoiMobileMovesWorkspaceAheadOfFavorites(t *testing.T) {
 		t.Fatalf("HQ must follow the first heading once: first=%d count=%d rows=%+v", first, count, rows)
 	}
 }
+
+func TestOyagoiMobileShowsForeignWorkspaceFirst(t *testing.T) {
+	s := testState(40, 35)
+	rows := MobileRowsWithForeignOyagoi(s, nil, 0, "remote · mini")
+	if len(rows) < 2 || rows[0].Kind != RowMobileOyagoi || rows[1].Kind != RowMobileForeignOyagoi {
+		t.Fatalf("foreign HQ missing: %+v", rows)
+	}
+}

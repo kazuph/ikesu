@@ -231,6 +231,13 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		e.connection = nil
 		e.status = "reconnecting"
+		if m.oyagoi != nil && m.oyagoi.Machine == event.id {
+			for id := range m.endpoints {
+				if err := m.syncOyagoi(id); err != nil {
+					m.notify(err.Error())
+				}
+			}
+		}
 		e.reason = event.err.Error()
 		if strings.HasPrefix(e.reason, "SSH approval expired:") {
 			e.status = machine.ApprovalStopped
@@ -254,6 +261,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		e.oyagoiProjection = nil
 		if err := m.syncOyagoi(event.id); err != nil {
 			m.notify(err.Error())
 		}
@@ -325,6 +333,13 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		e.snapshot = message.snapshot
 		if err := m.validateOyagoiSnapshot(event.id); err != nil {
 			m.notify(err.Error())
+		}
+		if m.oyagoi != nil && m.oyagoi.Machine == event.id {
+			for id := range m.endpoints {
+				if err := m.syncOyagoi(id); err != nil {
+					m.notify(err.Error())
+				}
+			}
 		}
 		if message.snapshot.Dialog != nil || message.snapshot.Menu != nil || message.snapshot.Help != nil || message.snapshot.Settings != nil || message.snapshot.Navigator != nil {
 			e.guardApproval.dismiss()
@@ -410,7 +425,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if event.id != m.active {
 			break
 		}
-		if strings.HasPrefix(message.MachineAction, "oyagoi:") {
+		if message.MachineAction == "oyagoi:select" {
+			if err := m.selectOyagoi(); err != nil {
+				m.notify(err.Error())
+			}
+		} else if strings.HasPrefix(message.MachineAction, "oyagoi:") {
 			if err := m.oyagoiAction(event.id, message.MachineAction); err != nil {
 				m.notify(err.Error())
 			}
@@ -464,6 +483,13 @@ func (m *machineClient) fail(id string, err error) {
 		e.cancel()
 	}
 	e.connection = nil
+	if m.oyagoi != nil && m.oyagoi.Machine == id {
+		for target := range m.endpoints {
+			if syncErr := m.syncOyagoi(target); syncErr != nil {
+				m.notify(syncErr.Error())
+			}
+		}
+	}
 	e.status = "reconnecting"
 	e.reason = err.Error()
 	e.retry.failed(time.Now(), id == "local", needsAttention(e.reason))

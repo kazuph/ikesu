@@ -216,6 +216,8 @@ type App struct {
 	mobileSwitcher      bool
 	mobileScroll        int
 	oyagoiWorkspace     int
+	oyagoiForeignName   string
+	oyagoiForeignOnline bool
 	popupSel            *selState
 	popupSelections     map[int]*selState
 	popupCopies         map[int]*copyMode

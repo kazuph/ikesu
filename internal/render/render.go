@@ -160,25 +160,26 @@ type Input struct {
 	ConfigWarningBanner bool
 	Toast               *Toast
 
-	Spin               int  // working-spinner frame
-	Koi                bool // Set only by the presenting client, never the server clock.
-	KoiTime            float64
-	KoiMotion          map[string]koiMotion `json:"-"`
-	KoiRipple          *KoiRipple           `json:"-"`
-	KoiGlow            map[string]bool      `json:"-"`
-	KoiKitty           bool
-	KoiCellW, KoiCellH int
-	Copied             string // flash text, e.g. " copied 12 chars "
-	ModeHint           string
-	Prefix             bool // prefix-key pending
-	SidebarScroll      int  // workspace rows scrolled off the top
-	AgentScroll        int
-	MobileSwitcher     bool
-	MobileMenu         []MenuItem
-	TabScroll          int
-	TabScrollManual    bool
-	MobileScroll       int
-	MobileOyagoi       int
+	Spin                int  // working-spinner frame
+	Koi                 bool // Set only by the presenting client, never the server clock.
+	KoiTime             float64
+	KoiMotion           map[string]koiMotion `json:"-"`
+	KoiRipple           *KoiRipple           `json:"-"`
+	KoiGlow             map[string]bool      `json:"-"`
+	KoiKitty            bool
+	KoiCellW, KoiCellH  int
+	Copied              string // flash text, e.g. " copied 12 chars "
+	ModeHint            string
+	Prefix              bool // prefix-key pending
+	SidebarScroll       int  // workspace rows scrolled off the top
+	AgentScroll         int
+	MobileSwitcher      bool
+	MobileMenu          []MenuItem
+	TabScroll           int
+	TabScrollManual     bool
+	MobileScroll        int
+	MobileOyagoi        int
+	MobileForeignOyagoi string
 	// CopyLabel is the action bar's left button text: " COPY ",
 	// " PHONE COPY " or " EXIT COPY " (SPEC G1).
 	CopyLabel string

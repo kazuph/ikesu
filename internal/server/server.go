@@ -76,6 +76,8 @@ type clientMsg struct {
 	Visible             *bool                        `json:"visible,omitempty"`
 	Workspace           int                          `json:"workspace,omitempty"`
 	WorkspaceGeneration string                       `json:"workspace_generation,omitempty"`
+	OyagoiLabel         string                       `json:"oyagoi_label,omitempty"`
+	OyagoiOnline        bool                         `json:"oyagoi_online,omitempty"`
 	MenuX               int                          `json:"menu_x,omitempty"`
 	MenuY               int                          `json:"menu_y,omitempty"`
 	Decisions           *endpoint.DecisionProjection `json:"decisions,omitempty"`
@@ -834,7 +836,10 @@ func (s *Server) attach(conn net.Conn) {
 				}
 			})
 		case "oyagoi_view":
-			s.app.Do(func() { c.viewer.SetOyagoi(s.app, m.Workspace, m.WorkspaceGeneration) })
+			s.app.Do(func() {
+				c.viewer.SetOyagoi(s.app, m.Workspace, m.WorkspaceGeneration)
+				c.viewer.SetForeignOyagoi(s.app, m.OyagoiLabel, m.OyagoiOnline)
+			})
 		case "config_result":
 			s.app.Do(func() {
 				done := pendingConfig[m.ConfigID]

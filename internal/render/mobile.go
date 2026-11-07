@@ -56,6 +56,18 @@ func MobileRows(s *model.AppState, menu []MenuItem, oyagoi ...int) []SidebarRow 
 	return rows
 }
 
+func MobileRowsWithForeignOyagoi(s *model.AppState, menu []MenuItem, oyagoi int, foreign string) []SidebarRow {
+	rows := MobileRows(s, menu, oyagoi)
+	if foreign != "" && oyagoi == 0 {
+		rows = append([]SidebarRow{{Kind: RowMobileOyagoi}, {Kind: RowMobileForeignOyagoi}}, rows...)
+	}
+	return rows
+}
+
+func MobileOffsetWithForeignOyagoi(s *model.AppState, menu []MenuItem, offset, oyagoi int, foreign string) int {
+	return max(0, min(offset, max(0, len(MobileRowsWithForeignOyagoi(s, menu, oyagoi, foreign))-MobileViewport(s).H)))
+}
+
 func MobileSwitchRect(s *model.AppState) layout.Rect {
 	// Observed distribution header reserves its rightmost ten columns for switch.
 	return layout.Rect{X: max(0, s.Cols-10), Y: 0, W: min(10, s.Cols), H: min(2, s.Rows)}
@@ -178,8 +190,8 @@ func drawMobile(f *Frame, in Input, out *Output) {
 	viewport := MobileViewport(s)
 	f.Fill(0, 2, s.Cols, max(0, s.Rows-2), " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Text(0, 2, stringRule(s.Cols), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG}, s.Cols)
-	rows := MobileRows(s, in.MobileMenu, in.MobileOyagoi)
-	off := MobileOffset(s, in.MobileMenu, in.MobileScroll, in.MobileOyagoi)
+	rows := MobileRowsWithForeignOyagoi(s, in.MobileMenu, in.MobileOyagoi, in.MobileForeignOyagoi)
+	off := MobileOffsetWithForeignOyagoi(s, in.MobileMenu, in.MobileScroll, in.MobileOyagoi, in.MobileForeignOyagoi)
 	for n := 0; n < viewport.H && n+off < len(rows); n++ {
 		row, y := rows[n+off], viewport.Y+n
 		bg := f.Palette.PopupBG
@@ -235,6 +247,8 @@ func drawMobile(f *Frame, in Input, out *Output) {
 				name = "Local · " + name
 			}
 			f.Text(5, y, truncate(name, max(0, s.Cols-5)), uv.Style{Fg: f.Palette.Text, Bg: bg, Attrs: uv.AttrBold}, s.Cols)
+		case RowMobileForeignOyagoi:
+			f.Text(3, y, truncate(in.MobileForeignOyagoi, max(0, s.Cols-3)), uv.Style{Fg: f.Palette.Text, Bg: bg, Attrs: uv.AttrBold}, s.Cols)
 		case RowGit:
 			ws := s.Workspaces[row.Ws]
 			branch := in.Git[row.Ws].Branch

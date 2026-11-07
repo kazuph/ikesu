@@ -48,3 +48,7 @@ func (v *Viewer) SetOyagoi(a *App, id int, generation string) {
 	}
 	v.with(a, func(ui *App) { ui.oyagoiWorkspace = chosen; ui.dirty = true })
 }
+
+func (v *Viewer) SetForeignOyagoi(a *App, label string, online bool) {
+	v.with(a, func(ui *App) { ui.oyagoiForeignName, ui.oyagoiForeignOnline = label, online; ui.dirty = true })
+}

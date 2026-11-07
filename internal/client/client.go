@@ -82,6 +82,8 @@ type msg struct {
 	Visible             *bool                     `json:"visible,omitempty"`
 	Workspace           int                       `json:"workspace,omitempty"`
 	WorkspaceGeneration string                    `json:"workspace_generation,omitempty"`
+	OyagoiLabel         string                    `json:"oyagoi_label,omitempty"`
+	OyagoiOnline        bool                      `json:"oyagoi_online,omitempty"`
 	MenuX               int                       `json:"menu_x,omitempty"`
 	MenuY               int                       `json:"menu_y,omitempty"`
 	MachineAction       string                    `json:"machine_action,omitempty"`
