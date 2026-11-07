@@ -88,6 +88,16 @@ func (s *Supervisor) PollPendingProcesses(now time.Time) []int {
 			guarded = false
 		}
 		s.processMu.Lock()
+		p.mu.Lock()
+		dead = p.dead || p.retired.Load()
+		p.mu.Unlock()
+		if dead {
+			delete(s.processWork, p)
+			delete(s.processTicks, p)
+			delete(s.processDue, p)
+			s.processMu.Unlock()
+			continue
+		}
 		// Keep the original integrity-check cadence if native asset watches
 		// cannot cover this pane. Successful watches queue only changed assets.
 		if settling || output || guarded || !processEventQueue() {

@@ -43,11 +43,11 @@ func (p *Pane) startPumpWithTiming(batchWait, streamGap time.Duration) {
 		defer close(p.pumpDone)
 		p.pumpPTYToEmu(batchWait, streamGap)
 		if p.importedPID != 0 && !p.pausing.Load() && !p.retired.Load() {
-			p.endProcessWatch()
 			p.importedExited.Store(true)
 			p.mu.Lock()
 			p.dead = true
 			p.mu.Unlock()
+			p.endProcessWatch()
 			if p.guard != nil {
 				_ = p.guard.Close()
 			}

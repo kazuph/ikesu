@@ -147,7 +147,7 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 		return api.Failure(req.ID, "handoff_failed", err.Error())
 	}
 	var handoffErr error
-	s.app.Do(func() { handoffErr = s.transferHandoff(exe, p) })
+	s.app.DoWithProcessPollingPaused(func() { handoffErr = s.transferHandoff(exe, p) })
 	if handoffErr != nil {
 		return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
 	}
