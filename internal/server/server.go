@@ -154,6 +154,8 @@ type Server struct {
 	// session persistence & restart (SPEC G3/G5)
 	saveMu        sync.Mutex
 	saveTimer     *time.Timer // pending coalesced session.json write
+	saveRunning   bool        // guarded by saveMu
+	savePending   bool        // guarded by saveMu
 	saveWriteMu   sync.Mutex
 	saveSequence  uint64 // assigned only on the app loop
 	savedSequence uint64 // guarded by saveWriteMu
