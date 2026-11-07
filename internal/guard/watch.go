@@ -6,6 +6,21 @@ import (
 	"reflect"
 )
 
+func (a *Assets) unchangedCheckedAssets(generation uint64) bool {
+	shell, err := a.privateShell(false)
+	if err != nil {
+		return false
+	}
+	defer shell.close()
+	unlock, err := shell.lock(false)
+	if err != nil {
+		return false
+	}
+	defer unlock()
+	snapshot, ok := a.assetSnapshot()
+	return ok && sameAssetSnapshot(a.checkedAssets, snapshot) && a.watchGeneration.Load() == generation
+}
+
 // assetSnapshot covers the concrete paths checked by intact. Ancestor trust
 // and executable trust are checked separately before reusing this snapshot.
 func (a *Assets) assetSnapshot() (map[string]os.FileInfo, bool) {
@@ -19,7 +34,7 @@ func (a *Assets) assetSnapshot() (map[string]os.FileInfo, bool) {
 		return nil, false
 	}
 	paths := []string{shell, filepath.Join(shell, "current"), a.RuntimePath(), filepath.Join(shell, "current", "manifest.json"), filepath.Join(shell, "current", "ikesu"), a.MarkerPath, a.Bin, a.issuePath()}
-	paths = append(paths, filepath.Join(shell, generation), filepath.Dir(a.issuePath()), a.Executable, executable)
+	paths = append(paths, filepath.Join(shell, generation), filepath.Join(shell, "generation.lock"), filepath.Dir(a.issuePath()), a.Executable, executable)
 	for _, name := range []string{"bash-env", ".zshenv", ".zprofile", ".zshrc", ".zlogin"} {
 		paths = append(paths, filepath.Join(shell, name), filepath.Join(shell, name+".current"), filepath.Join(shell, "current", name+".current"))
 	}
