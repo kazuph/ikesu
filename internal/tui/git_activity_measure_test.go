@@ -150,3 +150,44 @@ func TestGitActivityBaselineReloadFrequency(t *testing.T) {
 	}
 	t.Logf("40 simulated 1.5s passes, writes=%d, full_reads=%d, probe_stats=%d, snapshot_stats=%d", writes, full, stats, full*len(e.paths))
 }
+
+func TestGitActivityContinuousWritesDoNotStarveLaterBatches(t *testing.T) {
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	for i := 0; i < 80; i++ {
+		p := filepath.Join(repo, fmt.Sprintf("file-%03d", i))
+		if err := os.WriteFile(p, []byte("before\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "initial")
+	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	defer e.watch.Close()
+	if !e.ready {
+		t.Fatal("watch unavailable")
+	}
+	// Write the last batch before a stream of edits in the current batch.
+	if err := os.WriteFile(e.tracked[7], []byte("after\nextra\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for pass := 0; pass < 8; pass++ {
+		phase := (e.trackedNext&1)<<2 | e.trackedNext&2 | (e.trackedNext&4)>>2
+		if phase != 7 {
+			if err := os.WriteFile(e.tracked[phase], []byte("after\nextra\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var ok bool
+		e, ok = unchangedGitActivity(e)
+		if ok {
+			t.Fatalf("pass %d missed its changed batch", pass)
+		}
+		e = readGitActivity(repo, e)
+	}
+	if e.git.Added != 16 || e.git.Deleted != 8 {
+		t.Fatalf("continuous edits missed last batch: %+v", e.git)
+	}
+}
