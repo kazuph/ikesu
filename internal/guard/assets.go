@@ -43,6 +43,8 @@ type Assets struct {
 	checkedConfig                           Config
 	intactChecks                            uint64
 	checkedAssets                           map[string]os.FileInfo
+	checkedMeta                             Marker
+	checkedNative                           executableIdentity
 	native                                  executableIdentity
 	meta                                    Marker
 	active                                  string
@@ -182,19 +184,25 @@ func (a *Assets) Sync(agent string) error {
 	defer a.mu.Unlock()
 	generation := a.watchGeneration.Load()
 	configChanged := !reflect.DeepEqual(a.Config, a.checkedConfig)
+	identityChanged := !reflect.DeepEqual(a.meta, a.checkedMeta) || a.native != a.checkedNative
 	changed := generation != a.checkedGeneration
-	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && !changed && !configChanged && time.Since(a.checkedAt) < guardAncestorCheckInterval {
+	due := time.Since(a.checkedAt) >= guardAncestorCheckInterval
+	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && !changed && !configChanged && !identityChanged && !due {
 		return nil
 	}
-	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && changed && !configChanged && time.Since(a.checkedAt) < guardAncestorCheckInterval && a.checkedAssets != nil {
+	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && !configChanged && !identityChanged && a.checkedAssets != nil {
 		// Ancestor notifications include changes belonging to other panes.
-		// Keep the security checks and the periodic full inspection even when
-		// all paths used by the last integrity check are unchanged.
+		// Keep ancestor and executable trust checks at their existing deadline.
 		if a.validateManaged(true) == nil && a.coverageReason() == "" {
-			if snapshot, ok := a.assetSnapshot(); ok && sameAssetSnapshot(a.checkedAssets, snapshot) && a.watchGeneration.Load() == generation {
-				a.refreshChanges()
+			if a.unchangedCheckedAssets(generation) {
+				if changed {
+					a.refreshChanges()
+				}
 				if a.watchInstalled {
 					a.checkedGeneration = generation
+					if due {
+						a.checkedAt = time.Now()
+					}
 					return nil
 				}
 			}
@@ -210,6 +218,7 @@ func (a *Assets) Sync(agent string) error {
 		a.checkedAt = time.Now()
 		a.checkedGeneration = generation
 		a.checkedConfig = cloneConfig(a.Config)
+		a.checkedMeta, a.checkedNative = a.meta, a.native
 		a.checkedAssets = nil
 		if after, ok := a.assetSnapshot(); snapshotOK && ok && sameAssetSnapshot(before, after) && a.watchGeneration.Load() == generation {
 			a.checkedAssets = after
