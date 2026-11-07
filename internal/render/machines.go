@@ -214,7 +214,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 				hit.Workspace = state.Workspaces[entry.row.Ws].ID
 			}
 		}
-		m.Hits = append(m.Hits, hit)
+		if !entry.oyagoi && !entry.offline {
+			m.Hits = append(m.Hits, hit)
+		}
 		var dropIndex *int
 		if group.ID == m.Active && group.Input != nil && group.Input.Dragging {
 			dropIndex = sectionDropIndex(*group.Input)

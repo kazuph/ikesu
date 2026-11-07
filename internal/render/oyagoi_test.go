@@ -48,3 +48,22 @@ func TestOyagoiOfflineDoesNotHideSameNumberFromAnotherSession(t *testing.T) {
 		t.Fatal("unrelated workspace hidden")
 	}
 }
+
+func TestOyagoiHeadingAndOfflineLabelAreNotWorkspaceTargets(t *testing.T) {
+	local := Input{ServerUI: true, State: testState(160, 45)}
+	m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Label: "Local", Input: &local}}, Oyagoi: &Oyagoi{Machine: "remote", Workspace: 9, Offline: true}}
+	out := ComposeMachines(local, &m)
+	area := SidebarViewForInput(local).Workspace.Rect
+	for _, hit := range m.Hits {
+		if hit.Right {
+			continue
+		}
+		line := ""
+		for x := area.X; x < area.X+area.W; x++ {
+			line += out.Frame.Cell(x, hit.Rect.Y).Content
+		}
+		if strings.Contains(line, "oyagoi") || strings.Contains(line, "(offline)") {
+			t.Fatalf("heading or offline label was clickable: %+v", hit)
+		}
+	}
+}
