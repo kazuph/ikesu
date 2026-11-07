@@ -109,6 +109,13 @@ func TestMsgSendReadFinishesBeforeStoreClose(t *testing.T) {
 	}
 	s.app.Stop()
 	<-appDone
+	readersDone := make(chan struct{})
+	go func() { s.mailQueryWG.Wait(); close(readersDone) }()
+	select {
+	case <-readersDone:
+		t.Error("mail read was not registered in the shutdown wait")
+	case <-time.After(100 * time.Millisecond):
+	}
 	cleanupDone := make(chan any, 1)
 	go func() { defer func() { cleanupDone <- recover() }(); s.cleanup() }()
 	// cleanup historically waits 500ms for API requests before closing Store.
@@ -122,6 +129,7 @@ func TestMsgSendReadFinishesBeforeStoreClose(t *testing.T) {
 	if result := <-lockDone; result != nil {
 		t.Errorf("database operation: %v", result)
 	}
+	<-readersDone
 	if cleanupDone != nil {
 		if p := <-cleanupDone; p != nil {
 			t.Errorf("cleanup panic: %v", p)
