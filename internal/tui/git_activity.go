@@ -138,7 +138,8 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	if entry.trackedDirty {
 		entry.trackedDirty = false
 		entry.readChecks = 0
-		return values(entry.ready, entry.revision)
+		entry.git.Added, entry.git.Deleted = readWorkspaceGitDiff(cwd)
+		return entry
 	}
 	if entry.loaded && !entry.ready && entry.watch.Revision() == entry.revision {
 		return values(false, entry.revision)
