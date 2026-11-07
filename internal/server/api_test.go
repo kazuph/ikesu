@@ -341,6 +341,28 @@ func TestPaneReadNoClient(t *testing.T) {
 	waitRead(t, dir, p1, "NOCLIENT-MARKER")
 }
 
+func TestWorkspaceAPIStatusUsesFirstTab(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	dialClient(t, dir)
+	defer stopServer(t, dir, done)
+	first := firstPaneID(t, dir)
+	var created api.TabCreatedResult
+	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{}, &created)
+	apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "test", Agent: "codex", State: "idle"}, nil)
+	apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: created.RootPane.PaneID, Source: "test", Agent: "codex", State: "blocked"}, nil)
+	var workspaces api.WorkspaceListResult
+	apiOK(t, dir, api.MethodWorkspaceList, api.EmptyParams{}, &workspaces)
+	if len(workspaces.Workspaces) != 1 || workspaces.Workspaces[0].AgentStatus != api.AgentIdle {
+		t.Fatalf("workspaces=%+v", workspaces.Workspaces)
+	}
+	var tabs api.TabListResult
+	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tabs)
+	if len(tabs.Tabs) != 2 || tabs.Tabs[0].AgentStatus != api.AgentIdle || tabs.Tabs[1].AgentStatus != api.AgentBlocked {
+		t.Fatalf("tabs=%+v", tabs.Tabs)
+	}
+}
+
 func TestTabAPI(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startTestServer(t)

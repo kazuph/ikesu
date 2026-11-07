@@ -71,6 +71,17 @@ func TestConfigNotificationDeliveryChangesRealOutput(t *testing.T) {
 			done := make(chan struct{})
 			go func() { s.app.Run(); close(done) }()
 			s.app.Do(func() { s.deliverNotification(1, "info") })
+			if delivery == "off" {
+				s.app.Do(func() { s.deliverNotification(1, "needs_attention") })
+				select {
+				case m := <-messages:
+					if m.Type != "notify" || m.Notification == nil || m.Notification.Kind != "needs_attention" || m.Notification.SystemToast || m.Notification.TargetPaneID != "p1" {
+						t.Fatal(m)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("toast off did not send needs_attention to the endpoint")
+				}
+			}
 			if delivery == "terminal" || delivery == "system" {
 				select {
 				case m := <-messages:

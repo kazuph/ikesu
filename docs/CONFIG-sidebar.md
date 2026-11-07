@@ -22,6 +22,8 @@ workspaceのsectionは `favorite` / `work` / `personal` / `none`。表示順はf
 
 `[ui.sidebar.agents]` / `[ui.sidebar.spaces]` の `rows` は文字列トークン、または `{ token = "workspace", fg = "#89b4fa", bold = true, dim = false }` の配列です。`fg` は `#RGB` または `#RRGGBB`、省略した属性は既定の色・太字・DIMを保持し、同じトークンを複数回出しても指定はその出現だけに適用します。`row_gap` は各項目の後の空行数です。agent別行は `rows_by_agent` へ指定できます。
 
+スペースの `state_icon` と `state_text` は左端のタブの状態を表示します。左端のタブ内に複数ペインがあるときは、従来の優先順で集計します。左端が空・不明でも、後ろのタブは参照しません。承認待ちの判断と既存の通知は残ります。判断を伴わない blocked は左端以外のタブではスペースの印に出ません。
+
 workspaceの独自トークンは `$名前` で表示します。`ikesu workspace report-metadata s1 --source build --token phase=compile --seq 1 --ttl-ms 1000` で更新し、`--clear-token phase` で消します。未対応のトークンを指定した設定は明示的なエラーにします。
 
 `ui.mobile_width_threshold` は mobile layout に切り替わる最大の列数です。
