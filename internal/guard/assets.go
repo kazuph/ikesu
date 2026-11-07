@@ -41,6 +41,8 @@ type Assets struct {
 	checkedGeneration                       uint64
 	checkedAt                               time.Time
 	checkedConfig                           Config
+	intactChecks                            uint64
+	checkedAssets                           map[string]os.FileInfo
 	native                                  executableIdentity
 	meta                                    Marker
 	active                                  string
@@ -184,6 +186,23 @@ func (a *Assets) Sync(agent string) error {
 	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && !changed && !configChanged && time.Since(a.checkedAt) < guardAncestorCheckInterval {
 		return nil
 	}
+	if agent != "" && a.active == agent && a.issue == "" && a.watchInstalled && changed && !configChanged && time.Since(a.checkedAt) < guardAncestorCheckInterval && a.checkedAssets != nil {
+		// Ancestor notifications include changes belonging to other panes.
+		// Keep the security checks and the periodic full inspection even when
+		// all paths used by the last integrity check are unchanged.
+		if a.validateManaged(true) == nil && a.coverageReason() == "" {
+			if _, _, err := a.trustedSource(); err == nil {
+				if snapshot, ok := a.assetSnapshot(); ok && sameAssetSnapshot(a.checkedAssets, snapshot) && a.watchGeneration.Load() == generation {
+					a.refreshChanges()
+					if a.watchInstalled {
+						a.checkedGeneration = generation
+						return nil
+					}
+				}
+			}
+		}
+	}
+	before, snapshotOK := a.assetSnapshot()
 	oldAgent := a.active
 	err := a.sync(agent)
 	if changed || configChanged || oldAgent != a.active || !a.watchInstalled {
@@ -193,8 +212,13 @@ func (a *Assets) Sync(agent string) error {
 		a.checkedAt = time.Now()
 		a.checkedGeneration = generation
 		a.checkedConfig = cloneConfig(a.Config)
+		a.checkedAssets = nil
+		if after, ok := a.assetSnapshot(); snapshotOK && ok && sameAssetSnapshot(before, after) && a.watchGeneration.Load() == generation {
+			a.checkedAssets = after
+		}
 	} else {
 		a.checkedAt = time.Time{}
+		a.checkedAssets = nil
 	}
 	return err
 }
