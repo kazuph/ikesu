@@ -45,6 +45,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 				}
 				c := exec.Command(shell, "-c", tc.code, "test", target)
 				c.Env = env
+				c.Dir = a.Root
 				b, e := c.CombinedOutput()
 				if e == nil || !strings.Contains(string(b), "なぜ実行したいかを書いた申請文が必要") {
 					t.Fatal(e, string(b))
@@ -93,6 +94,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 				}
 				c := exec.Command(shell, "-c", `IKESU_GUARD_MARKER= rm "$1"`, "test", target)
 				c.Env = env
+				c.Dir = a.Root
 				b, e := c.CombinedOutput()
 				_, fileErr := os.Stat(target)
 				if state == "ordinary" {
@@ -179,6 +181,7 @@ func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
 				code = strings.ReplaceAll(code, "TARGET", target)
 				command := exec.Command(shell, "-lc", code)
 				command.Env = env
+				command.Dir = a.Root
 				b, e := command.CombinedOutput()
 				if e == nil || !strings.Contains(string(b), "なぜ実行したいかを書いた申請文が必要") {
 					t.Fatal("pre-execution guard did not reject", e, string(b))
