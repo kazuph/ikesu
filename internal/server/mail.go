@@ -677,6 +677,21 @@ func (s *Server) stopMailQueries() {
 	s.mailQueryMu.Unlock()
 }
 
+func (s *Server) mailQueriesStopped() bool {
+	s.mailQueryMu.Lock()
+	stopped := s.mailQueryClosed
+	s.mailQueryMu.Unlock()
+	if stopped {
+		return true
+	}
+	select {
+	case <-s.app.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) readPendingPaneMail() {
 	defer s.mailQueryWG.Done()
 	lastWasSweep := false
@@ -741,9 +756,12 @@ func (s *Server) readPendingPaneMail() {
 }
 
 func (s *Server) readMailSweep() {
+	if s.mailQueriesStopped() {
+		return
+	}
 	var messages []dispatch.Message
 	if dispatch.DBExists(s.session) {
-		if store, err := s.db(); err == nil {
+		if store, err := s.db(); err == nil && !s.mailQueriesStopped() {
 			messages, _ = store.PendingJobMessages()
 		}
 	}
@@ -823,6 +841,9 @@ func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot
 // readPaneMail performs database reads without requiring app state.
 func (s *Server) readPaneMail(pid int) paneMailSnapshot {
 	var snapshot paneMailSnapshot
+	if s.mailQueriesStopped() {
+		return snapshot
+	}
 	s.mailMu.Lock()
 	snapshot.epoch = s.mailEpoch[pid]
 	s.mailMu.Unlock()
@@ -830,12 +851,15 @@ func (s *Server) readPaneMail(pid int) paneMailSnapshot {
 		return snapshot
 	}
 	store, err := s.db()
-	if err != nil {
+	if err != nil || s.mailQueriesStopped() {
 		return snapshot
 	}
 	recipient := fmtPaneID(pid)
 	if messages, err := store.PendingForAgentCreationOrder(recipient); err == nil {
 		snapshot.regular = messages
+	}
+	if s.mailQueriesStopped() {
+		return snapshot
 	}
 	if messages, err := store.PendingMessagesForAgent(dispatch.JobsRoom, recipient); err == nil {
 		snapshot.jobs = messages
@@ -882,7 +906,10 @@ func (s *Server) encodeMailFor(pid int, body string) []byte {
 }
 
 func (s *Server) failJobQueue(n dispatch.PendingNudge, reason string) {
-	if store, err := s.db(); err == nil {
+	if s.mailQueriesStopped() {
+		return
+	}
+	if store, err := s.db(); err == nil && !s.mailQueriesStopped() {
 		if msgs, err := store.PendingMessagesForAgent(n.Room, n.ToAgent); err == nil {
 			for _, m := range msgs {
 				_ = store.FailMessage(m.ID, reason)

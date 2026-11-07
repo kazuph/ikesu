@@ -144,3 +144,65 @@ func TestMsgSendReadFinishesBeforeStoreClose(t *testing.T) {
 		t.Errorf("API panic: %v", p)
 	}
 }
+
+func TestMailReadDoesNotStartNextQueryAfterStop(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
+	s := newTestServer(t, "mail-stop-between-queries")
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, room := range []string{"room", dispatch.JobsRoom} {
+		if _, err := store.InsertPaneMessage(room, "", "sender", "p1", "body", nil, false, s.app.State().PaneGeneration(1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.InsertCommand("lock", "lock", "true", t.TempDir(), "p1", "p1", "none", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkCommandRunning("lock", int64(os.Getpid())); err != nil {
+		t.Fatal(err)
+	}
+	locked, release := make(chan struct{}), make(chan struct{})
+	operationDone := make(chan error, 1)
+	logDir := t.TempDir()
+	go func() {
+		operationDone <- store.CleanupJobs(time.Now(), logDir, func(pid int) bool {
+			close(locked)
+			<-release
+			return processGroupAlive(pid)
+		})
+	}()
+	<-locked
+	if !s.beginMailQuery() {
+		close(release)
+		<-operationDone
+		t.Fatal("read was not accepted before stop")
+	}
+	result := make(chan paneMailSnapshot, 1)
+	go func() { defer s.mailQueryWG.Done(); result <- s.readPaneMail(1) }()
+	deadline := time.Now().Add(5 * time.Second)
+	stack := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(stack, true)
+		if bytes.Contains(stack[:n], []byte("internal/dispatch.(*Store).PendingForAgentCreationOrder")) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Error("first query did not reach held store lock")
+			break
+		}
+		runtime.Gosched()
+	}
+	s.stopMailQueries()
+	close(release)
+	if err := <-operationDone; err != nil {
+		t.Error(err)
+	}
+	snapshot := <-result
+	if len(snapshot.regular) != 1 || len(snapshot.jobs) != 0 {
+		t.Fatalf("read after stop: regular=%d jobs=%d", len(snapshot.regular), len(snapshot.jobs))
+	}
+}
