@@ -18,18 +18,18 @@ func TestOyagoiSurvivesLiveHandoff(t *testing.T) {
 	s.waitFor("renamed workspace", 15*time.Second, func(text string) bool { return strings.Contains(text, "HQ-handoff") })
 	x, y := s.find("HQ-handoff")
 	s.click(x, y)
-	s.waitFor("HQ menu", 15*time.Second, func(text string) bool { return strings.Contains(text, "set as HQ") })
-	x, y = s.find("set as HQ")
+	s.waitFor("HQ menu", 15*time.Second, func(text string) bool { return strings.Contains(text, "🎏 HQ") })
+	x, y = s.find("🎏 HQ")
 	s.click(x, y)
 	s.waitFor("HQ selected", 15*time.Second, func(text string) bool {
-		return strings.Contains(text, "🎏 oyagoi") && strings.Contains(text, "HQ-handoff")
+		return strings.Contains(text, "🎏 HQ") && strings.Contains(text, "HQ-handoff")
 	})
 	if out, err := s.cli("server", "live-handoff"); err != nil {
 		t.Fatalf("live handoff: %s %v", out, err)
 	}
 	s.send("printf 'HQ_HANDOFF_READY\\n'\r")
 	s.waitFor("HQ after handoff", 15*time.Second, func(text string) bool {
-		return strings.Contains(text, "HQ_HANDOFF_READY") && strings.Contains(text, "🎏 oyagoi") && strings.Count(text, "HQ-handoff") == 1
+		return strings.Contains(text, "HQ_HANDOFF_READY") && strings.Contains(text, "🎏 HQ") && strings.Count(text, "HQ-handoff") == 1
 	})
 }
 
@@ -43,11 +43,11 @@ func TestOyagoiRemainsSingleAfterDuplicate(t *testing.T) {
 	s.waitFor("renamed workspace", 15*time.Second, func(text string) bool { return strings.Contains(text, "HQ-original") })
 	x, y := s.find("HQ-original")
 	s.click(x, y)
-	s.waitFor("HQ menu", 15*time.Second, func(text string) bool { return strings.Contains(text, "set as HQ") })
-	x, y = s.find("set as HQ")
+	s.waitFor("HQ menu", 15*time.Second, func(text string) bool { return strings.Contains(text, "🎏 HQ") })
+	x, y = s.find("🎏 HQ")
 	s.click(x, y)
 	s.waitFor("HQ selected", 15*time.Second, func(text string) bool {
-		return strings.Contains(text, "🎏 oyagoi") && strings.Contains(text, "HQ-original")
+		return strings.Contains(text, "🎏 HQ") && strings.Contains(text, "HQ-original")
 	})
 	var duplicate api.WorkspaceCreatedResult
 	s.rpc(api.MethodWorkspaceDuplicate, map[string]any{"workspace_id": "s1", "focus": false}, &duplicate)
@@ -58,9 +58,9 @@ func TestOyagoiRemainsSingleAfterDuplicate(t *testing.T) {
 		t.Fatalf("rename duplicate: %s %v", out, err)
 	}
 	s.waitFor("duplicate and single HQ", 15*time.Second, func(text string) bool {
-		return strings.Count(text, "🎏 oyagoi") == 1 && strings.Count(text, "HQ-original") == 1 && strings.Count(text, "HQ-copy") == 1
+		return strings.Count(text, "🎏 HQ") == 1 && strings.Count(text, "HQ-original") == 1 && strings.Count(text, "HQ-copy") == 1
 	})
-	_, headingY := s.find("🎏 oyagoi")
+	_, headingY := s.find("🎏 HQ")
 	_, originalY := s.find("HQ-original")
 	_, copyY := s.find("HQ-copy")
 	if !(headingY < originalY && originalY < copyY) {

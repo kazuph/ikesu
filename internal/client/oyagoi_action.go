@@ -131,7 +131,7 @@ func (m *machineClient) syncOyagoi(id string) error {
 	selected := m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Session == m.selectionSession(id)
 	if !endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "oyagoi_view") {
 		if selected {
-			return fmt.Errorf("endpoint_action_unsupported: oyagoi_view")
+			return fmt.Errorf("endpoint_action_unsupported: HQ view")
 		}
 		return nil
 	}

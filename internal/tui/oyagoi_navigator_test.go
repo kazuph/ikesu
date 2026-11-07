@@ -46,7 +46,7 @@ func TestOyagoiReusedNumberIsNotProjectedInMobileOrNavigator(t *testing.T) {
 	a.navigator = &navigatorView{}
 	rows, _ := a.navigatorRows()
 	for _, row := range rows {
-		if strings.Contains(row.Name, "oyagoi") {
+		if strings.Contains(row.Name, "🎏 HQ") {
 			t.Fatal("reused number displayed as HQ in navigator")
 		}
 	}
@@ -60,7 +60,7 @@ func TestOyagoiNavigatorMovesWorkspaceAndKeepsSelectionTarget(t *testing.T) {
 	a.oyagoiGeneration = a.st.Workspaces[1].Generation
 	a.navigator = &navigatorView{}
 	rows, _ := a.navigatorRows()
-	if len(rows) == 0 || rows[0].Workspace != 1 || !strings.Contains(rows[0].Name, "oyagoi") {
+	if len(rows) == 0 || rows[0].Workspace != 1 || !strings.Contains(rows[0].Name, "🎏 HQ") {
 		t.Fatalf("HQ not first: %+v", rows)
 	}
 	a.navigator.selected = 0

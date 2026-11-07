@@ -31,7 +31,7 @@ func (s oyagoiStore) load() (*oyagoiSelection, error) {
 		return nil, err
 	}
 	if selected != nil && (selected.Machine == "" || selected.Session == "" || selected.Workspace <= 0 || selected.Generation == "") {
-		return nil, fmt.Errorf("invalid oyagoi selection")
+		return nil, fmt.Errorf("invalid HQ selection")
 	}
 	return selected, nil
 }
@@ -80,7 +80,7 @@ func (s oyagoiStore) write(selection *oyagoiSelection) error {
 
 func (s oyagoiStore) set(selection *oyagoiSelection) error {
 	if selection != nil && (selection.Machine == "" || selection.Session == "" || selection.Workspace <= 0 || selection.Generation == "") {
-		return fmt.Errorf("invalid oyagoi selection")
+		return fmt.Errorf("invalid HQ selection")
 	}
 	return s.locked(func() error {
 		if selection != nil {

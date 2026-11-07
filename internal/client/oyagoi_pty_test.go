@@ -15,6 +15,8 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
@@ -280,6 +282,125 @@ func TestOyagoiTwoServersActualPTYProjectionAndReplacement(t *testing.T) {
 	})
 }
 
+func TestOyagoiCollapseTwoServersActualPTY(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	remote := m.endpoints["remote"].snapshot.State.Workspaces[0]
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", remote.ID, remote.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	h.until("HQ projected", func() bool { return m.endpoints["remote"].snapshot.MobileOyagoi == remote.ID })
+	for _, collapsed := range []bool{true, false} {
+		if err := m.paint(); err != nil {
+			t.Fatal(err)
+		}
+		var heading *render.MachineHit
+		for i := range m.sidebar.Hits {
+			if m.sidebar.Hits[i].OyagoiHeading {
+				heading = &m.sidebar.Hits[i]
+				break
+			}
+		}
+		if heading == nil {
+			t.Fatal("HQ heading missing")
+		}
+		if err := m.input(mouseEvent(t, fmt.Sprintf("\x1b[<0;%d;%dM", heading.Rect.X+1, heading.Rect.Y+1))); err != nil {
+			t.Fatal(err)
+		}
+		m.suppressRelease = false
+		h.until("collapse projected", func() bool {
+			return m.oyagoi != nil && m.oyagoi.Collapsed == collapsed && m.endpoints["local"].snapshot.MobileOyagoiCollapsed == collapsed && m.endpoints["remote"].snapshot.MobileOyagoiCollapsed == collapsed
+		})
+		other, err := (oyagoiStore{m.oyagoiStore.path}).load()
+		if err != nil || other == nil || other.Collapsed != collapsed {
+			t.Fatalf("shared state: %+v %v", other, err)
+		}
+	}
+}
+
+func TestOyagoiSectionMenuTwoServersActualPTY(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	for _, id := range []string{"local", "remote"} {
+		if id == "local" {
+			m.order = []string{"local"}
+		} else {
+			m.order = []string{"local", "remote"}
+		}
+		e := m.endpoints[id]
+		ws := e.snapshot.State.Workspaces[0]
+		if id != m.active {
+			m.pending = &pendingMachine{id: id, workspace: ws.ID, deadline: time.Now().Add(machineSwitchWait)}
+			m.requestPending()
+			h.until("switch machine", func() bool { return m.pending == nil && m.active == id })
+		}
+		choose := func(target *model.Workspace, label string) {
+			t.Helper()
+			if err := e.connection.enqueue(msg{Type: "workspace_menu", Workspace: target.ID, WorkspaceGeneration: target.Generation, MenuX: 5, MenuY: 5}); err != nil {
+				t.Fatal(err)
+			}
+			h.until("workspace menu", func() bool { return e.snapshot.Menu != nil })
+			steps, found := 0, false
+			for _, item := range e.snapshot.Menu.Items {
+				if item.Label == label {
+					found = true
+					break
+				}
+				if !item.Separator && !item.Disabled {
+					steps++
+				}
+			}
+			if !found {
+				t.Fatalf("menu missing %q", label)
+			}
+			if err := m.sendInput(id, []byte(strings.Repeat("\x1b[B", steps)+"\r")); err != nil {
+				t.Fatal(err)
+			}
+			h.until("menu closed", func() bool { return e.snapshot.Menu == nil })
+		}
+		for _, tc := range []struct {
+			label   string
+			section model.Section
+		}{{"⭐ favorite", model.SectionFavorite}, {"💼 work", model.SectionWork}, {"🏠 personal", model.SectionPersonal}, {"No section", model.SectionNone}} {
+			choose(ws, "🎏 HQ")
+			h.until("HQ selected", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Workspace == ws.ID })
+			choose(ws, tc.label)
+			h.until("section selected and HQ cleared", func() bool { return m.oyagoi == nil && e.snapshot.State.Workspaces[0].Section == tc.section })
+			choose(ws, "🎏 HQ")
+			h.until("HQ reselected", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id })
+			choose(ws, tc.label)
+			h.until("same section clears HQ", func() bool { return m.oyagoi == nil && e.snapshot.State.Workspaces[0].Section == tc.section })
+		}
+		if id == "local" {
+			choose(ws, "🎏 HQ")
+			h.until("HQ before failed unset", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Workspace == ws.ID })
+			path := m.oyagoiStore.path
+			m.oyagoiStore.path = filepath.Join(path, "unwritable")
+			m.notice = ""
+			choose(ws, "💼 work")
+			h.until("unset error displayed", func() bool { return m.notice != "" })
+			m.oyagoiStore.path = path
+			got, err := m.oyagoiStore.load()
+			if err != nil || got == nil || got.Workspace != ws.ID {
+				t.Fatalf("failed unset lost HQ: %+v %v", got, err)
+			}
+			choose(ws, "💼 work")
+			h.until("retry clears HQ", func() bool { return m.oyagoi == nil && e.snapshot.State.Workspaces[0].Section == model.SectionWork })
+		}
+		choose(ws, "🎏 HQ")
+		h.until("first selected", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Workspace == ws.ID })
+		other := e.snapshot.State.Workspaces[1]
+		before := ws.Section
+		choose(other, "🎏 HQ")
+		h.until("replacement selected", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Workspace == other.ID })
+		if e.snapshot.State.Workspaces[0].Section != before {
+			t.Fatal("old HQ section changed")
+		}
+	}
+}
+
 func TestOyagoiDisconnectAndReconnectActualPTY(t *testing.T) {
 	h := newRightMachineHarness(t)
 	m := h.m
@@ -483,6 +604,24 @@ func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 	if err != nil || got == nil || got.Workspace != ws2.ID || got.Generation != ws2.Generation {
 		t.Fatalf("shared HQ = %+v, %v", got, err)
 	}
+	if err := first.oyagoiStore.toggleCollapsed(); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	until("collapse shared with second viewer", func() bool {
+		return first.oyagoi != nil && first.oyagoi.Collapsed && second.oyagoi != nil && second.oyagoi.Collapsed && second.endpoints["local"].snapshot.MobileOyagoiCollapsed
+	})
+	if err := second.oyagoiStore.toggleCollapsed(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	until("expansion shared with first viewer", func() bool {
+		return first.oyagoi != nil && !first.oyagoi.Collapsed && second.oyagoi != nil && !second.oyagoi.Collapsed && !first.endpoints["local"].snapshot.MobileOyagoiCollapsed
+	})
 }
 
 // Uses two real server viewers and a shared on-disk store.
