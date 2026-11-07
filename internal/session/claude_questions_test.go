@@ -144,6 +144,7 @@ func TestClaudeQuestionCacheReadsOnlyAppendedBytes(t *testing.T) {
 	if _, ok := cache.ReadAll(root, id); !ok {
 		t.Fatal("appended scan failed")
 	}
+	t.Logf("read %d bytes for %d appended bytes", cache.bytesRead, len(added))
 	if cache.bytesRead > 8192+int64(len(added)) {
 		t.Fatalf("read %d bytes for %d appended bytes", cache.bytesRead, len(added))
 	}
