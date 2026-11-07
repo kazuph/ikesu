@@ -10,16 +10,25 @@ import (
 
 // Rows are shared by drawing and tapping; list headings have no hit action.
 func MobileRows(s *model.AppState, menu []MenuItem, oyagoi ...int) []SidebarRow {
-	rows := []SidebarRow{}
 	hq := 0
 	if len(oyagoi) > 0 {
 		hq = oyagoi[0]
 	}
+	return mobileRows(s, menu, hq, nil)
+}
+
+func mobileRows(s *model.AppState, menu []MenuItem, hq int, generation *string) []SidebarRow {
+	rows := []SidebarRow{}
+	matched := false
 	for i, ws := range s.Workspaces {
-		if hq != 0 && ws.ID == hq {
+		if hq > 0 && ws.ID == hq && (generation == nil || *generation != "" && ws.Generation == *generation) {
 			rows = append(rows, SidebarRow{Kind: RowMobileOyagoi}, SidebarRow{Kind: RowWorkspace, Ws: i}, SidebarRow{Kind: RowGit, Ws: i})
+			matched = true
 			break
 		}
+	}
+	if hq > 0 && !matched {
+		hq = 0
 	}
 	if hq == 0 {
 		rows = append(rows, SidebarRow{Kind: RowMobileSpaces}, SidebarRow{Kind: RowMobileNewWorkspace})
@@ -61,16 +70,19 @@ func MobileRows(s *model.AppState, menu []MenuItem, oyagoi ...int) []SidebarRow 
 	return rows
 }
 
-func MobileRowsWithForeignOyagoi(s *model.AppState, menu []MenuItem, oyagoi int, foreign string) []SidebarRow {
+func MobileRowsWithForeignOyagoi(s *model.AppState, menu []MenuItem, oyagoi int, foreign string, generation ...string) []SidebarRow {
 	if foreign != "" && oyagoi == 0 {
 		rows := MobileRows(s, menu, -1)
 		return append([]SidebarRow{{Kind: RowMobileOyagoi}, {Kind: RowMobileForeignOyagoi}}, rows...)
 	}
+	if len(generation) != 0 {
+		return mobileRows(s, menu, oyagoi, &generation[0])
+	}
 	return MobileRows(s, menu, oyagoi)
 }
 
-func MobileOffsetWithForeignOyagoi(s *model.AppState, menu []MenuItem, offset, oyagoi int, foreign string) int {
-	return max(0, min(offset, max(0, len(MobileRowsWithForeignOyagoi(s, menu, oyagoi, foreign))-MobileViewport(s).H)))
+func MobileOffsetWithForeignOyagoi(s *model.AppState, menu []MenuItem, offset, oyagoi int, foreign string, generation ...string) int {
+	return max(0, min(offset, max(0, len(MobileRowsWithForeignOyagoi(s, menu, oyagoi, foreign, generation...))-MobileViewport(s).H)))
 }
 
 func MobileSwitchRect(s *model.AppState) layout.Rect {
@@ -195,8 +207,8 @@ func drawMobile(f *Frame, in Input, out *Output) {
 	viewport := MobileViewport(s)
 	f.Fill(0, 2, s.Cols, max(0, s.Rows-2), " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Text(0, 2, stringRule(s.Cols), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG}, s.Cols)
-	rows := MobileRowsWithForeignOyagoi(s, in.MobileMenu, in.MobileOyagoi, in.MobileForeignOyagoi)
-	off := MobileOffsetWithForeignOyagoi(s, in.MobileMenu, in.MobileScroll, in.MobileOyagoi, in.MobileForeignOyagoi)
+	rows := MobileRowsWithForeignOyagoi(s, in.MobileMenu, in.MobileOyagoi, in.MobileForeignOyagoi, in.MobileOyagoiGeneration)
+	off := max(0, min(in.MobileScroll, max(0, len(rows)-MobileViewport(s).H)))
 	for n := 0; n < viewport.H && n+off < len(rows); n++ {
 		row, y := rows[n+off], viewport.Y+n
 		bg := f.Palette.PopupBG

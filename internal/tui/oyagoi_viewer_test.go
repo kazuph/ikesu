@@ -2,11 +2,28 @@ package tui
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/runtime"
 )
+
+func TestOyagoiViewerReusedNumberIsNotNavigatorHQ(t *testing.T) {
+	state := model.New(t.TempDir(), 120, 40)
+	ws := state.Workspaces[0]
+	app := NewApp(state, runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	viewer := app.NewViewer(&bytes.Buffer{}, 120, 40, nil)
+	viewer.SetOyagoi(app, ws.ID, ws.Generation)
+	ws.Generation = "replacement-generation"
+	viewer.app.navigator = &navigatorView{}
+	rows, _ := viewer.app.navigatorRows()
+	for _, row := range rows {
+		if strings.Contains(row.Name, "oyagoi") {
+			t.Fatal("replacement is displayed as HQ")
+		}
+	}
+}
 
 func TestOyagoiWorkspaceMenuUsesIdentityWhenSectionCollapsed(t *testing.T) {
 	state := model.New(t.TempDir(), 120, 40)

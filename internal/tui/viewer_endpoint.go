@@ -37,6 +37,10 @@ func (v *Viewer) HasWorkspace(a *App, id int, generation string) bool {
 	return false
 }
 
+func (a *App) isOyagoiWorkspace(ws *model.Workspace) bool {
+	return a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace && a.oyagoiGeneration != "" && ws.Generation == a.oyagoiGeneration
+}
+
 func (v *Viewer) OpenWorkspaceMenu(a *App, id int, generation string, x, y int) bool {
 	for index, ws := range a.st.Workspaces {
 		if ws.ID == id && generation != "" && ws.Generation == generation {
@@ -55,7 +59,7 @@ func (v *Viewer) SetOyagoi(a *App, id int, generation string) {
 			break
 		}
 	}
-	v.with(a, func(ui *App) { ui.oyagoiWorkspace = chosen; ui.dirty = true })
+	v.with(a, func(ui *App) { ui.oyagoiWorkspace = chosen; ui.oyagoiGeneration = generation; ui.dirty = true })
 }
 
 func (v *Viewer) SetForeignOyagoi(a *App, label string, online bool) {

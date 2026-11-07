@@ -221,6 +221,7 @@ type App struct {
 	mobileSwitcher      bool
 	mobileScroll        int
 	oyagoiWorkspace     int
+	oyagoiGeneration    string
 	oyagoiForeignName   string
 	oyagoiForeignOnline bool
 	popupSel            *selState

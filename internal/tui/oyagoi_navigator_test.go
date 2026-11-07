@@ -18,6 +18,7 @@ func TestOyagoiNavigatorSectionOrderReview(t *testing.T) {
 	a.st.Workspaces[2].Section = model.SectionWork
 	a.st.Workspaces[3].Section = model.SectionFavorite
 	a.oyagoiWorkspace = a.st.Workspaces[1].ID
+	a.oyagoiGeneration = a.st.Workspaces[1].Generation
 	a.navigator = &navigatorView{}
 	rows, _ := a.navigatorRows()
 	var order []int
@@ -31,11 +32,32 @@ func TestOyagoiNavigatorSectionOrderReview(t *testing.T) {
 	}
 }
 
+func TestOyagoiReusedNumberIsNotProjectedInMobileOrNavigator(t *testing.T) {
+	a, _ := worktreeApp(t)
+	a.st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	ws := a.st.Workspaces[1]
+	a.oyagoiWorkspace, a.oyagoiGeneration = ws.ID, ws.Generation
+	ws.Generation = "different-generation"
+	for _, row := range render.MobileRowsWithForeignOyagoi(a.st, nil, a.oyagoiWorkspace, "", a.oyagoiGeneration) {
+		if row.Kind == render.RowMobileOyagoi {
+			t.Fatal("reused number displayed as HQ in mobile")
+		}
+	}
+	a.navigator = &navigatorView{}
+	rows, _ := a.navigatorRows()
+	for _, row := range rows {
+		if strings.Contains(row.Name, "oyagoi") {
+			t.Fatal("reused number displayed as HQ in navigator")
+		}
+	}
+}
+
 func TestOyagoiNavigatorMovesWorkspaceAndKeepsSelectionTarget(t *testing.T) {
 	a, _ := worktreeApp(t)
 	a.st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
 	want := a.st.Workspaces[1].ID
 	a.oyagoiWorkspace = want
+	a.oyagoiGeneration = a.st.Workspaces[1].Generation
 	a.navigator = &navigatorView{}
 	rows, _ := a.navigatorRows()
 	if len(rows) == 0 || rows[0].Workspace != 1 || !strings.Contains(rows[0].Name, "oyagoi") {
@@ -68,6 +90,7 @@ func TestOyagoiWorkspaceCycleIncludesCollapsedOriginalSection(t *testing.T) {
 	a.st.Workspaces[1].Section = model.SectionFavorite
 	a.st.CollapsedSections = map[model.Section]bool{model.SectionFavorite: true}
 	a.oyagoiWorkspace = a.st.Workspaces[1].ID
+	a.oyagoiGeneration = a.st.Workspaces[1].Generation
 	a.cycleWorkspace(-1)
 	if a.st.ActiveWorkspace().ID != a.oyagoiWorkspace {
 		t.Fatal("HQ omitted from previous workspace")

@@ -41,13 +41,13 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 	}
 	order := make([]int, 0, len(a.st.Workspaces))
 	for i, ws := range a.st.Workspaces {
-		if a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace {
+		if a.isOyagoiWorkspace(ws) {
 			order = append(order, i)
 		}
 	}
 	for _, section := range model.SectionOrder {
 		for i, ws := range a.st.Workspaces {
-			if ws.ID != a.oyagoiWorkspace && ws.SidebarSection() == section {
+			if !a.isOyagoiWorkspace(ws) && ws.SidebarSection() == section {
 				order = append(order, i)
 			}
 		}
@@ -58,7 +58,7 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 		if display := a.workspaceNames[wi]; display != "" {
 			name = display
 		}
-		if ws.ID == a.oyagoiWorkspace && a.oyagoiWorkspace != 0 {
+		if a.isOyagoiWorkspace(ws) {
 			name = "🎏 oyagoi · " + name
 		}
 		var children []render.NavigatorRow

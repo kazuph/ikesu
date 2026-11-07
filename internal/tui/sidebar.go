@@ -120,7 +120,7 @@ func (a *App) visibleWorkspaceOrder() []int {
 	order := make([]int, 0, len(a.st.Workspaces))
 	hq := -1
 	for i, ws := range a.st.Workspaces {
-		if a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace {
+		if a.isOyagoiWorkspace(ws) {
 			hq = i
 			order = append(order, i)
 			break
