@@ -23,6 +23,7 @@ type gitCwdActivity struct {
 	trackedNext   int
 	statChecks    int
 	trackedChecks int
+	readChecks    int
 }
 
 type gitPathState struct {
@@ -205,7 +206,9 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	entry.paths = make(map[string]gitPathState, len(paths))
 	entry.tracked = entry.tracked[:0]
 	entry.trackedNext = 0
+	entry.readChecks = 0
 	for path := range paths {
+		entry.readChecks++
 		info, statErr := os.Stat(path)
 		if statErr != nil && !os.IsNotExist(statErr) {
 			covered = false
