@@ -45,7 +45,7 @@ type ClaudeQuestionCache struct {
 	anchor    [sha256.Size]byte
 	fullAt    time.Time
 	pending   map[string][]ClaudeQuestion
-	answered  map[string]bool
+	answered  map[string]time.Time
 	matched   bool
 }
 
@@ -163,7 +163,6 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 	}
 	pending := map[string][]ClaudeQuestion{}
 	answered := map[string]time.Time{}
-	answeredSeen := map[string]bool{}
 	matched := false
 	if incremental {
 		for id, questions := range cache.pending {
@@ -205,7 +204,6 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 		for _, b := range blocks {
 			at, _ := time.Parse(time.RFC3339Nano, record.Timestamp)
 			if b.Type == "tool_result" && b.ToolUseID != "" {
-				answeredSeen[b.ToolUseID] = true
 				answered[b.ToolUseID] = at
 			}
 			if b.Type != "tool_use" || b.Name != "AskUserQuestion" || b.ID == "" {
@@ -231,8 +229,7 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 	var out []ClaudeQuestion
 	for id, questions := range pending {
 		for _, q := range questions {
-			q.Answered = answeredSeen[id]
-			q.AnsweredAt = answered[id]
+			q.AnsweredAt, q.Answered = answered[id]
 			out = append(out, q)
 		}
 	}
