@@ -163,6 +163,22 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 	}
 	match, unverified, resolvedMatch := chooseClaudeQuestion(p, questions)
 	if match == nil {
+		if resolvedMatch {
+			var resolved *session.ClaudeQuestion
+			for i := range questions {
+				if !questions[i].Answered || !matchClaudeQuestion(p, questions[i]) {
+					continue
+				}
+				if resolved != nil {
+					return "", api.DecisionCreateParams{}, false, true, false
+				}
+				resolved = &questions[i]
+			}
+			if resolved != nil {
+				identity, _ := json.Marshal([]any{id, resolved.ToolID, resolved.Index})
+				return string(identity), api.DecisionCreateParams{}, false, false, true
+			}
+		}
 		return "", api.DecisionCreateParams{}, false, unverified, resolvedMatch
 	}
 	params := claudeQuestionPresentation(p.Params, *match)

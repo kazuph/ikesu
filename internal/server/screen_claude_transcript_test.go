@@ -1,6 +1,8 @@
 package server
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +72,191 @@ func TestScreenQuestionIdentityReusesPendingDecision(t *testing.T) {
 	if !reused || reusedID != original.DecisionID {
 		t.Fatalf("reused=%v id=%s original=%s", reused, reusedID, original.DecisionID)
 	}
+}
+
+func TestScreenQuestionRecreationKeepsUnidentifiedRecord(t *testing.T) {
+	teststate.Lock(t)
+	s, p, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	identity := `["session","tool",0]`
+	var current api.Decision
+	s.app.Do(func() {
+		prompt := s.readScreenPrompt(1)
+		params := prompt.Params
+		params.Origin = old.Origin
+		var err error
+		current, err = s.store.CreateScreenDecision(params, time.Now(), "p1", identity)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		s.screenPrompts.watches = map[int]*screenPromptWatch{}
+		w := &screenPromptWatch{prompt: prompt, signature: prompt.Signature(), transcriptID: identity}
+		s.screenPrompts.watches[1] = w
+		s.beginScreenPrompt(1, w)
+	})
+	if current.DecisionID == "" {
+		t.Fatal("missing recreated decision")
+	}
+	if got := screenRecord(t, s); got.DecisionID != current.DecisionID {
+		t.Fatalf("reused %s, want %s", got.DecisionID, current.DecisionID)
+	}
+	paintScreen(p, "")
+	scanScreen(s)
+	scanScreen(s)
+	got, err := s.store.Decision(old.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unidentified decision changed: %+v %v", got, err)
+	}
+}
+
+func TestScreenQuestionReconciliationPreservesOtherDecisions(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	var other, permission, differentPane api.Decision
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		params := p.Params
+		origin := *old.Origin
+		params.Origin = &origin
+		var err error
+		other, err = s.store.CreateScreenDecision(params, time.Now(), "p1", ` ["other"]`)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		params.Kind = "tool_permission"
+		permission, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		params.Kind = "agent_prompt"
+		origin.PaneID = "p2"
+		differentPane, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["current"]`}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID == "" || w.decisionID == old.DecisionID || w.decisionID == other.DecisionID {
+			t.Errorf("unverified record reused: %s", w.decisionID)
+		}
+	})
+	for _, d := range []api.Decision{other, permission, differentPane} {
+		got, err := s.store.Decision(d.DecisionID)
+		if err != nil || got.Status != "pending" {
+			t.Fatalf("unrelated decision changed: %+v %v", got, err)
+		}
+	}
+}
+
+func TestScreenQuestionAnswerKeepsUnidentifiedRecords(t *testing.T) {
+	teststate.Lock(t)
+	s, p, input := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	var duplicate api.Decision
+	s.app.Do(func() {
+		params := s.readScreenPrompt(1).Params
+		params.Origin = old.Origin
+		var err error
+		duplicate, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+		}
+		s.screenPrompts.watches = nil
+	})
+	scanScreen(s)
+	current := screenRecord(t, s)
+	if response := answerScreen(s, current, "1", nil); response.Err != nil {
+		t.Fatal(response.Err)
+	}
+	waitPromptCondition(t, func() bool { b, _ := os.ReadFile(input); return len(b) > 0 })
+	paintScreen(p, "")
+	scanScreen(s)
+	scanScreen(s)
+	for _, id := range []string{old.DecisionID, duplicate.DecisionID} {
+		d, err := s.store.Decision(id)
+		if err != nil || d.Status != "pending" {
+			t.Fatalf("unidentified decision changed: %+v %v", d, err)
+		}
+	}
+}
+
+func TestScreenQuestionKeepsSummarizedUnidentifiedRecord(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	first := screenRecord(t, s)
+	var legacy, current api.Decision
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		full := p.Params.Title + "\n\n" + strings.Repeat("Long question details. ", 20)
+		params := p.Params
+		params.Origin = first.Origin
+		params.Body = &full
+		var err error
+		legacy, err = s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		display := p.Params
+		display.Title = full
+		display.Origin = first.Origin
+		current, err = s.store.CreateScreenDecision(display, time.Now(), "p1", `["session","call",0]`)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["session","call",0]`, displayParams: &display}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID != current.DecisionID {
+			t.Errorf("selected %s, want %s", w.decisionID, current.DecisionID)
+		}
+	})
+	got, err := s.store.Decision(legacy.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unidentified summarized record changed: %+v %v", got, err)
+	}
+}
+
+func TestClaudeUnknownIdentityDoesNotReuseOrCancelSameText(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := screenTerminal(t, "claude-single", "claude")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	s.app.Do(func() {
+		if err := s.store.BindScreenQuestion(old.DecisionID, "p1", `["session","old",0]`); err != nil {
+			t.Error(err)
+			return
+		}
+		p := s.readScreenPrompt(1)
+		params := p.Params
+		params.Origin = old.Origin
+		current, err := s.store.CreateDecision(params, time.Now())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature()}
+		s.screenPrompts.watches[1] = w
+		s.beginScreenPrompt(1, w)
+		if w.decisionID == old.DecisionID || w.decisionID == current.DecisionID {
+			t.Errorf("unverified decision reused: %s", w.decisionID)
+		}
+		for _, d := range []api.Decision{old, current} {
+			got, e := s.store.Decision(d.DecisionID)
+			if e != nil || got.Status != "pending" {
+				t.Errorf("unverified decision changed: %+v %v", got, e)
+			}
+		}
+	})
 }
 
 func TestClaudeDisplayRetainsScreenPreview(t *testing.T) {

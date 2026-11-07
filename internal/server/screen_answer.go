@@ -33,7 +33,7 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 	if ok && w != nil && w.prompt != nil && w.prompt.MCPServer != "" && current == nil {
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify current MCP confirmation"}
 	}
-	if ok && w != nil && w.transcriptID != "" {
+	if ok && w != nil && w.decisionID == d.DecisionID && w.transcriptID != "" {
 		if current == nil {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
@@ -43,12 +43,31 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		}
 		w.signature = current.Signature()
 	}
-	if ok && w != nil && w.transcriptID == "" && current != nil {
+	if ok && w != nil && w.decisionID == d.DecisionID && w.transcriptID == "" && current != nil {
+		if s.store != nil {
+			paneID, expected, start, found, err := s.store.ClaudeScreenContext(d.DecisionID)
+			if err != nil {
+				return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify recorded question context"}
+			}
+			if found {
+				pane := s.sup.Get(pid)
+				if pane == nil {
+					return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify recorded question context"}
+				}
+				sessionID, currentStart, valid := observedClaudeSession(pane)
+				if !valid || paneID != fmtPaneID(pid) || sessionID != expected || currentStart.UnixMilli() != start.UnixMilli() {
+					return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "recorded question context changed"}
+				}
+			}
+		}
 		id, params, matched, unverified, resolved := s.claudeTranscriptPrompt(pid, current)
 		if unverified || resolved {
 			return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "cannot verify the recorded question against the current screen"}
 		}
 		if matched {
+			if !s.claudeDecisionMatchesIdentity(pid, d.DecisionID, id) {
+				return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "recorded question does not match this decision"}
+			}
 			store, err := s.db()
 			if err == nil {
 				err = store.BindScreenQuestion(d.DecisionID, fmtPaneID(pid), id)
@@ -68,7 +87,9 @@ func (s *Server) validateScreenAnswer(d api.Decision, p api.DecisionAnswerParams
 		if w == nil {
 			w = &screenPromptWatch{decisionID: d.DecisionID}
 		}
-		s.cancelScreenPrompt(w)
+		if w.decisionID == d.DecisionID {
+			s.cancelScreenPrompt(w)
+		}
 		return nil, 0, &api.Error{Code: api.ErrDecisionStale, Message: "screen prompt no longer matches this decision"}
 	}
 	if current != nil {

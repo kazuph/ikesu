@@ -10,6 +10,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/screenprompt"
+	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
@@ -40,6 +41,75 @@ func TestCodexQuestionObservedCountdownKeepsDecisionID(t *testing.T) {
 	}
 	if keys, err := os.ReadFile(input); err != nil || len(keys) != 0 {
 		t.Fatalf("observation wrote PTY input: %q %v", keys, err)
+	}
+}
+
+func TestCodexReusesLegacyPendingForSameRecordedQuestion(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := codexQuestionTerminal(t, "codex-question")
+	scanScreen(s)
+	old := screenRecord(t, s)
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), codex: &codexBinding{identity: `["session","call","question"]`, question: session.CodexQuestion{Timestamp: time.UnixMilli(old.CreatedUnixMS - 1), State: session.CodexPending}}}
+		s.screenPrompts.watches = map[int]*screenPromptWatch{1: w}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID != old.DecisionID {
+			t.Errorf("created %s instead of reusing %s", w.decisionID, old.DecisionID)
+		}
+	})
+}
+
+func TestCodexReconciliationKeepsLateAnswer(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := codexQuestionTerminal(t, "codex-question")
+	scanScreen(s)
+	late := screenRecord(t, s)
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		s.screenPrompts.late = map[string]*lateCodexQuestion{late.DecisionID: {pid: 1}}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), codex: &codexBinding{identity: `["session","next-call","question"]`, question: session.CodexQuestion{Timestamp: time.UnixMilli(late.CreatedUnixMS - 1), State: session.CodexPending}}}
+		s.screenPrompts.watches = map[int]*screenPromptWatch{1: w}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID == "" || w.decisionID == late.DecisionID {
+			t.Errorf("late decision reused for new question: %s", w.decisionID)
+		}
+	})
+	got, err := s.store.Decision(late.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("late answer lost: %+v %v", got, err)
+	}
+}
+
+func TestCodexReconciliationKeepsLateAnswerBeforeRestore(t *testing.T) {
+	teststate.Lock(t)
+	s, _, _ := codexQuestionTerminal(t, "codex-question")
+	scanScreen(s)
+	late := screenRecord(t, s)
+	s.app.Do(func() {
+		p := s.readScreenPrompt(1)
+		params := p.Params
+		body := lateCodexQuestionBody
+		params.Body = &body
+		updated, _, err := s.store.UpdatePendingScreenDecision(late.DecisionID, params)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if screenprompt.FromDecision(updated) != p.Signature() {
+			t.Error("fixture must match the currently visible question")
+			return
+		}
+		w := &screenPromptWatch{prompt: p, signature: p.Signature(), codex: &codexBinding{identity: `["session","next-call","question"]`, question: session.CodexQuestion{Timestamp: time.UnixMilli(late.CreatedUnixMS - 1), State: session.CodexPending}}}
+		s.screenPrompts.watches = map[int]*screenPromptWatch{1: w}
+		s.beginScreenPrompt(1, w)
+		if w.decisionID == "" || w.decisionID == late.DecisionID {
+			t.Errorf("unrestored late decision reused: %s", w.decisionID)
+		}
+	})
+	got, err := s.store.Decision(late.DecisionID)
+	if err != nil || got.Status != "pending" {
+		t.Fatalf("unrestored late answer lost: %+v %v", got, err)
 	}
 }
 

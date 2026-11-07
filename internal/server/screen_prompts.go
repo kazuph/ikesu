@@ -13,14 +13,17 @@ import (
 )
 
 type screenPromptHub struct {
-	seen        map[int]map[string]bool
-	rebuilds    map[int][]time.Time
-	flows       map[int]*screenAnswerFlow
-	watches     map[int]*screenPromptWatch
-	transcripts map[int]*claudeTranscriptScan
-	late        map[string]*lateCodexQuestion
-	verifying   map[string]*lateCodexQuestion
-	timer       *time.Timer
+	seen            map[int]map[string]bool
+	rebuilds        map[int][]time.Time
+	flows           map[int]*screenAnswerFlow
+	watches         map[int]*screenPromptWatch
+	transcripts     map[int]*claudeTranscriptScan
+	late            map[string]*lateCodexQuestion
+	verifying       map[string]*lateCodexQuestion
+	claudeRestore   map[string]int
+	claudeRestoring bool
+	claudeCapturing map[string]bool
+	timer           *time.Timer
 }
 
 // Waiting screens use the review's one-second bound; preview navigation keeps
@@ -108,6 +111,9 @@ func (s *Server) screenPromptsActive() bool {
 	if len(s.screenPrompts.verifying) > 0 {
 		return true
 	}
+	if len(s.screenPrompts.claudeRestore) > 0 {
+		return true
+	}
 	for _, late := range s.screenPrompts.late {
 		if late.delivery != nil && late.delivery.Status == "pending" {
 			return true
@@ -191,11 +197,13 @@ func (s *Server) stopScreenPromptTimer() {
 func (s *Server) screenPromptConfig(c config.Config) {
 	s.cfg = c
 	if c.ScreenPrompts() {
+		s.prepareClaudeQuestionRestore()
 		s.scheduleScreenPrompts()
 		return
 	}
 	s.stopScreenPromptTimer()
 	s.screenPrompts.verifying = nil
+	s.screenPrompts.claudeRestore = nil
 	for id, late := range s.screenPrompts.late {
 		if late.delivery != nil && late.delivery.Status == "pending" {
 			s.setLateDelivery(id, "failed", "画面の質問の検出が無効になりました")
@@ -246,6 +254,7 @@ func (s *Server) scanScreenPrompts() {
 	if !s.cfg.ScreenPrompts() {
 		return
 	}
+	s.scanRestoredClaudeQuestions()
 	s.scanLateCodexDeliveries()
 	s.scanVerifyingCodexQuestions()
 	if s.screenPrompts.watches == nil {
@@ -285,7 +294,9 @@ func (s *Server) scanScreenPrompts() {
 		transcriptID, display, transcriptOK, transcriptPending, transcriptUnverified, transcriptResolved := s.pollClaudeTranscript(pid, transcriptScreen)
 		if transcriptResolved {
 			if w != nil {
-				s.cancelScreenPrompt(w)
+				if w.transcriptID != "" && w.transcriptID == transcriptID {
+					s.cancelScreenPrompt(w)
+				}
 				delete(s.screenPrompts.watches, pid)
 			}
 			continue
@@ -342,18 +353,31 @@ func (s *Server) scanScreenPrompts() {
 				}
 			}
 			if p != nil && !w.resolved && transcriptOK {
+				if w.transcriptID == "" && w.decisionID != "" {
+					identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
+					if err == nil && identity != "" {
+						w.transcriptID = identity
+					}
+				}
 				same := w.transcriptID == transcriptID
 				if w.transcriptID == "" {
 					same = matchesClaudeDisplay(w.prompt, p, display)
 				}
 				if same && w.transcriptID == "" && w.decisionID != "" {
-					store, err := s.db()
-					if err == nil {
-						err = store.BindScreenQuestion(w.decisionID, fmtPaneID(pid), transcriptID)
+					if !s.claudeDecisionMatchesIdentity(pid, w.decisionID, transcriptID) {
+						if s.screenPrompts.claudeRestore == nil {
+							s.screenPrompts.claudeRestore = map[string]int{}
+						}
+						s.screenPrompts.claudeRestore[w.decisionID] = pid
+						continue
 					}
-					if err != nil {
-						s.app.SetConfigWarning("screen question identity: " + err.Error())
-						same = false
+					w.transcriptID, w.displayParams = transcriptID, &display
+					handled, found := s.reconcileClaudeScreenPrompt(pid, w)
+					identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
+					if !handled || !found || err != nil || identity != transcriptID {
+						w.decisionID = ""
+						s.beginScreenPrompt(pid, w)
+						same = w.decisionID != ""
 					}
 				}
 				if same {
@@ -385,7 +409,14 @@ func (s *Server) scanScreenPrompts() {
 				if p != nil && !w.resolved {
 					s.noteScreenRebuild(pid)
 				}
-				s.cancelScreenPrompt(w)
+				if !changedIdentity {
+					s.cancelScreenPrompt(w)
+				} else if w.decisionID != "" {
+					if s.screenPrompts.claudeRestore == nil {
+						s.screenPrompts.claudeRestore = map[string]int{}
+					}
+					s.screenPrompts.claudeRestore[w.decisionID] = pid
+				}
 				delete(s.screenPrompts.watches, pid)
 				w = nil
 			} else {
@@ -462,6 +493,11 @@ func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 	if err != nil {
 		return false
 	}
+	if w.prompt != nil && w.prompt.Params.Kind == "agent_prompt" && !w.prompt.CodexQuestion && w.prompt.MCPServer == "" && (w.prompt.Params.Origin == nil || w.prompt.Params.Origin.Tool == "") {
+		if handled, found := s.reconcileClaudeScreenPrompt(pid, w); handled {
+			return found
+		}
+	}
 	if w.codex != nil {
 		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.codex.identity)
 		if err != nil {
@@ -471,7 +507,7 @@ func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 		if found {
 			w.decisionID = d.DecisionID
 		}
-		return found
+		return s.reconcileCodexScreenPrompt(pid, w, found)
 	}
 	if w.transcriptID != "" {
 		d, found, err := store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID)
@@ -497,6 +533,88 @@ func (s *Server) reuseScreenPrompt(pid int, w *screenPromptWatch) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) reconcileCodexScreenPrompt(pid int, w *screenPromptWatch, found bool) bool {
+	q := w.codex.question
+	if q.State != session.CodexPending || q.Timestamp.IsZero() {
+		return found
+	}
+	pending, err := s.store.Decisions("pending")
+	if err != nil {
+		s.app.SetConfigWarning("screen question lookup: " + err.Error())
+		return true
+	}
+	for _, d := range pending {
+		if d.DecisionID == w.decisionID || d.Kind != "agent_prompt" || d.Origin == nil || d.Origin.PaneID != fmtPaneID(pid) || d.Origin.Reason != "screen_prompt" || d.Origin.Agent != "codex" || (d.Origin.Machine != "" && d.Origin.Machine != "local") || d.CreatedUnixMS <= q.Timestamp.UnixMilli() || s.screenPrompts.late[d.DecisionID] != nil || s.screenPrompts.verifying[d.DecisionID] != nil || (d.Body != nil && strings.Contains(*d.Body, lateCodexQuestionBody)) || screenprompt.FromDecision(d) != w.signature {
+			continue
+		}
+		identity, err := s.store.ScreenQuestionIdentity(d.DecisionID)
+		if err != nil {
+			s.app.SetConfigWarning("screen question lookup: " + err.Error())
+			return true
+		}
+		if identity != "" {
+			continue
+		}
+		if !found {
+			if err := s.store.BindScreenQuestion(d.DecisionID, fmtPaneID(pid), w.codex.identity); err != nil {
+				s.app.SetConfigWarning("screen question identity: " + err.Error())
+				return true
+			}
+			w.decisionID, found = d.DecisionID, true
+		} else {
+			s.cancelScreenPrompt(&screenPromptWatch{decisionID: d.DecisionID})
+		}
+	}
+	return found
+}
+
+// Reuse an unbound legacy record or the transcript-bound record, then close
+// other records proven to describe the same visible Claude question.
+func (s *Server) reconcileClaudeScreenPrompt(pid int, w *screenPromptWatch) (bool, bool) {
+	pane := s.sup.Get(pid)
+	if pane == nil {
+		return false, false
+	}
+	agent := pane.Snapshot().AgentID
+	if reported, _, ok := s.app.Reported(pid); ok && reported != "" {
+		agent = reported
+	}
+	if agent != "claude" {
+		return false, false
+	}
+	if w.transcriptID == "" {
+		return true, false
+	}
+	if d, found, err := s.store.ScreenQuestionDecision(fmtPaneID(pid), w.transcriptID); err != nil {
+		s.app.SetConfigWarning("screen question lookup: " + err.Error())
+		return true, true
+	} else if found {
+		w.decisionID = d.DecisionID
+		if w.displayParams != nil {
+			s.updateScreenPrompt(w)
+		}
+		return true, true
+	}
+	if w.decisionID != "" {
+		identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
+		if err != nil {
+			s.app.SetConfigWarning("screen question lookup: " + err.Error())
+			return true, true
+		}
+		if identity == "" {
+			if err := s.store.BindScreenQuestion(w.decisionID, fmtPaneID(pid), w.transcriptID); err != nil {
+				s.app.SetConfigWarning("screen question identity: " + err.Error())
+				return true, true
+			}
+			if w.displayParams != nil {
+				s.updateScreenPrompt(w)
+			}
+			return true, true
+		}
+	}
+	return true, false
 }
 
 func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
@@ -545,4 +663,7 @@ func (s *Server) createScreenPrompt(pid int, w *screenPromptWatch) {
 	}
 	w.decisionID = d.DecisionID
 	s.decisionChanged("decision_created", d)
+	if d.Kind == "agent_prompt" && d.Origin != nil && d.Origin.Agent == "claude" && d.Origin.Reason == "screen_prompt" && d.Origin.Tool == "" && w.transcriptID == "" && w.prompt.MCPServer == "" {
+		s.captureClaudeQuestionContext(pid, d.DecisionID)
+	}
 }
