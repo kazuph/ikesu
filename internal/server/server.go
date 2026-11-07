@@ -134,6 +134,7 @@ type Server struct {
 	mailQueryMu        sync.Mutex
 	mailQueryWG        sync.WaitGroup
 	mailQueryPending   map[int]mailQueryTarget
+	mailQueryOrder     []mailQueryRequest
 	mailInvalidPending map[string]struct{}
 	mailSweepPending   bool
 	mailQueryRunning   bool

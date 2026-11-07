@@ -192,6 +192,9 @@ func TestSendKeepsNudgedWhenAnotherFlushQueuesFirst(t *testing.T) {
 				t.Fatal(err)
 			}
 			s.mailDone(write)
+			if !s.applyPaneMailSnapshot(1, query.target, snapshot, nil) || len(s.mailCh) != 0 {
+				t.Fatal("snapshot queued a message already delivered by another flush")
+			}
 			if !query.nudged || len(s.readPaneMail(1).regular) != 0 || len(s.readPaneMail(1).jobs) != 0 {
 				t.Fatal("concurrent flush lost send's nudged result")
 			}

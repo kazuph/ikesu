@@ -581,6 +581,12 @@ type mailQueryTarget struct {
 	generation string
 }
 
+type mailQueryRequest struct {
+	pid       int
+	recipient string
+	invalid   bool
+}
+
 func (s *Server) requestJobMail(recipient string) {
 	if pid, ok := parsePaneID(recipient); ok && dispatch.IsGlobalPaneID(recipient) {
 		s.requestPaneMail(pid)
@@ -594,7 +600,10 @@ func (s *Server) requestJobMail(recipient string) {
 	if s.mailInvalidPending == nil {
 		s.mailInvalidPending = make(map[string]struct{})
 	}
-	s.mailInvalidPending[recipient] = struct{}{}
+	if _, exists := s.mailInvalidPending[recipient]; !exists {
+		s.mailQueryOrder = append(s.mailQueryOrder, mailQueryRequest{recipient: recipient, invalid: true})
+		s.mailInvalidPending[recipient] = struct{}{}
+	}
 	s.startMailQueryLocked()
 }
 
@@ -620,6 +629,9 @@ func (s *Server) requestPaneMail(pid int) {
 	if s.mailQueryPending == nil {
 		s.mailQueryPending = make(map[int]mailQueryTarget)
 	}
+	if _, exists := s.mailQueryPending[pid]; !exists {
+		s.mailQueryOrder = append(s.mailQueryOrder, mailQueryRequest{pid: pid})
+	}
 	s.mailQueryPending[pid] = target
 	s.startMailQueryLocked()
 }
@@ -634,6 +646,7 @@ func (s *Server) startMailQueryLocked() {
 
 func (s *Server) readPendingPaneMail() {
 	defer s.mailQueryWG.Done()
+	lastWasSweep := false
 	for {
 		s.mailQueryMu.Lock()
 		if len(s.mailQueryPending) == 0 && len(s.mailInvalidPending) == 0 && !s.mailSweepPending || s.mailQueryClosed {
@@ -641,29 +654,27 @@ func (s *Server) readPendingPaneMail() {
 			s.mailQueryMu.Unlock()
 			return
 		}
-		if s.mailSweepPending {
+		if s.mailSweepPending && (!lastWasSweep || len(s.mailQueryOrder) == 0) {
 			s.mailSweepPending = false
 			s.mailQueryMu.Unlock()
 			s.readMailSweep()
+			lastWasSweep = true
 			continue
 		}
-		if len(s.mailInvalidPending) != 0 {
-			var recipient string
-			for recipient = range s.mailInvalidPending {
-				delete(s.mailInvalidPending, recipient)
-				break
-			}
+		request := s.mailQueryOrder[0]
+		s.mailQueryOrder = s.mailQueryOrder[1:]
+		if request.invalid {
+			delete(s.mailInvalidPending, request.recipient)
 			s.mailQueryMu.Unlock()
-			s.failJobQueue(dispatch.PendingNudge{Room: dispatch.JobsRoom, ToAgent: recipient}, "job notification requires immutable global caller pane ID")
+			s.failJobQueue(dispatch.PendingNudge{Room: dispatch.JobsRoom, ToAgent: request.recipient}, "job notification requires immutable global caller pane ID")
+			lastWasSweep = false
 			continue
 		}
-		var pid int
-		var target mailQueryTarget
-		for pid, target = range s.mailQueryPending {
-			delete(s.mailQueryPending, pid)
-			break
-		}
+		pid := request.pid
+		target := s.mailQueryPending[pid]
+		delete(s.mailQueryPending, pid)
 		s.mailQueryMu.Unlock()
+		lastWasSweep = false
 		snapshot := s.readPaneMail(pid)
 		var failed []int64
 		var failureReason string
