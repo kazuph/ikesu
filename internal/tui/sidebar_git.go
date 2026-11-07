@@ -139,8 +139,10 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 		for cwd, entry := range pending {
 			go func(cwd string, entry gitCwdActivity) {
 				if entry.loaded && entry.ready {
-					if unchanged, ok := unchangedGitActivity(entry); ok {
-						results <- result{cwd, unchanged}
+					var ok bool
+					entry, ok = unchangedGitActivity(entry)
+					if ok {
+						results <- result{cwd, entry}
 						return
 					}
 				}
