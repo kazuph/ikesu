@@ -97,6 +97,29 @@ func TestOyagoiWorkspaceCycleIncludesCollapsedOriginalSection(t *testing.T) {
 	}
 }
 
+func TestCollapsedOyagoiExcludedFromVisibleWorkspaceOrder(t *testing.T) {
+	a, _ := worktreeApp(t)
+	for i := 0; i < 2; i++ {
+		a.st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	}
+	a.st.Workspaces[1].Section = model.SectionFavorite
+	a.oyagoiWorkspace, a.oyagoiGeneration = a.st.Workspaces[1].ID, a.st.Workspaces[1].Generation
+	for _, sectionCollapsed := range []bool{false, true} {
+		a.st.CollapsedSections = map[model.Section]bool{model.SectionFavorite: sectionCollapsed}
+		for _, collapsed := range []bool{false, true, false} {
+			a.oyagoiCollapsed = collapsed
+			order := a.visibleWorkspaceOrder()
+			want := "[1 0 2]"
+			if collapsed {
+				want = "[0 2]"
+			}
+			if fmt.Sprint(order) != want {
+				t.Fatalf("section collapsed=%v HQ collapsed=%v: got %v want %s", sectionCollapsed, collapsed, order, want)
+			}
+		}
+	}
+}
+
 func TestOyagoiNavigatorSelectsOtherMachine(t *testing.T) {
 	a, _ := worktreeApp(t)
 	var action string

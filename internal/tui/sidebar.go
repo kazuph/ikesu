@@ -122,7 +122,9 @@ func (a *App) visibleWorkspaceOrder() []int {
 	for i, ws := range a.st.Workspaces {
 		if a.isOyagoiWorkspace(ws) {
 			hq = i
-			order = append(order, i)
+			if !a.oyagoiCollapsed {
+				order = append(order, i)
+			}
 			break
 		}
 	}
