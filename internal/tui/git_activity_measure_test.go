@@ -98,6 +98,7 @@ func TestGitActivityOneContentChangeAvoidsFullSnapshot(t *testing.T) {
 	if !e.ready {
 		t.Fatal("watch unavailable")
 	}
+	name := e.name
 	if err := os.WriteFile(e.tracked[0], []byte("after\nextra\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +110,9 @@ func TestGitActivityOneContentChangeAvoidsFullSnapshot(t *testing.T) {
 	t.Logf("one change: snapshot stat=%d of %d paths, git +%d -%d", e.readChecks, len(e.paths), e.git.Added, e.git.Deleted)
 	if e.git.Added != 2 || e.git.Deleted != 1 {
 		t.Fatalf("wrong Git display: %+v", e.git)
+	}
+	if e.git.Branch != "main" || e.name != name {
+		t.Fatalf("content edit changed branch or workspace name: %+v, %q", e.git, e.name)
 	}
 	if e.readChecks >= len(e.paths) {
 		t.Fatalf("one change caused full snapshot of %d paths", e.readChecks)
