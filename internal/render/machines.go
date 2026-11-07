@@ -171,6 +171,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header, Oyagoi: entry.hqWorkspace}
 		if entry.oyagoi {
 			hit.OyagoiHeading = true
+			hit.Row.Kind = RowMobileOyagoi
 			drawSectionHeading(f, area.X, y, width, "🎏 HQ", m.Oyagoi.Collapsed, false, false)
 			machineRowBackground(f, area.X, y, width)
 		} else if entry.offline {
