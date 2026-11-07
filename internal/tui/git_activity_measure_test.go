@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestGitActivityBaselineMeasurement(t *testing.T) {
@@ -196,5 +197,76 @@ func TestGitActivityContinuousWritesDoNotStarveLaterBatches(t *testing.T) {
 	}
 	if e.git.Added != 16 || e.git.Deleted != 8 {
 		t.Fatalf("continuous edits missed last batch: %+v", e.git)
+	}
+}
+
+// The real 1.5-second cadence is needed to verify the 15-second deadline.
+func TestGitActivityDirectoryFallbackWithinFifteenSeconds(t *testing.T) {
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	dir := filepath.Join(repo, "nested")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 16; i++ {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("file-%02d", i)), []byte("before\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "initial")
+	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	if !e.ready {
+		e.watch.Close()
+		t.Fatal("watch unavailable")
+	}
+	e.watch.Close()
+	e.revision = e.watch.Revision()
+	var ok bool
+	e, ok = unchangedGitActivity(e)
+	if !ok {
+		t.Fatal("initial repository was not quiet")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "new-untracked"), []byte("new\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(e.tracked[0], []byte("after\nextra\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	revision := e.watch.Revision()
+	started := time.Now()
+	ticker := time.NewTicker(1500 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.NewTimer(15 * time.Second)
+	defer deadline.Stop()
+	for pass := 1; pass <= 7; pass++ {
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatal("directory fallback exceeded 15 seconds")
+		}
+		if e.watch.Revision() != revision {
+			t.Fatal("closed watcher delivered a notification")
+		}
+		e, ok = unchangedGitActivity(e)
+		if pass < 7 && !ok {
+			t.Fatalf("directory change detected before fallback at pass %d", pass)
+		}
+		if pass == 7 {
+			if ok {
+				t.Fatal("eighth directory check missed change")
+			}
+			e = readGitActivity(repo, e)
+			if e.git.Added != 2 || e.git.Deleted != 1 {
+				t.Fatalf("directory fallback did not update Git display: %+v", e.git)
+			}
+			if elapsed := time.Since(started); elapsed > 15*time.Second {
+				t.Fatalf("directory fallback took %s", elapsed)
+			} else {
+				t.Logf("eighth check updated Git display after %s", elapsed)
+			}
+		}
 	}
 }
