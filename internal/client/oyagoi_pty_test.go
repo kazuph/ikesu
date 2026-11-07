@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 func TestOyagoiTwoServersActualPTYProjectionAndReplacement(t *testing.T) {
@@ -34,4 +36,9 @@ func TestOyagoiTwoServersActualPTYProjectionAndReplacement(t *testing.T) {
 	if err != nil || got == nil || got.Machine != "local" || got.Generation != local.Generation {
 		t.Fatalf("selected HQ = %+v, %v", got, err)
 	}
+	h.api("local", api.MethodWorkspaceClose, map[string]any{"workspace_id": fmt.Sprintf("s%d", local.ID)})
+	h.until("deleted HQ confirmed by its server", func() bool {
+		got, err := m.oyagoiStore.load()
+		return err == nil && got == nil && m.oyagoi == nil
+	})
 }
