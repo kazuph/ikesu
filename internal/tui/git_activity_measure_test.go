@@ -47,7 +47,7 @@ func TestGitActivityBaselineMeasurement(t *testing.T) {
 		t.Fatal("change was not detected")
 	}
 	e = readGitActivity(repo, e)
-	t.Logf("after one change full read paths=%d tracked=%d other=%d", len(e.paths), len(e.tracked), len(e.paths)-len(e.tracked))
+	t.Logf("after one change cached paths=%d tracked=%d other=%d", len(e.paths), len(e.tracked), len(e.paths)-len(e.tracked))
 }
 
 func TestGitActivityQuietPassAvoidsRepeatingAllOtherStats(t *testing.T) {
@@ -131,7 +131,7 @@ func TestGitActivityBaselineReloadFrequency(t *testing.T) {
 	if !e.ready {
 		t.Fatal("watch unavailable")
 	}
-	full, writes, stats := 0, 0, 0
+	full, writes, stats, snapshotStats := 0, 0, 0, 0
 	for pass := 0; pass < 40; pass++ {
 		if pass%2 == 0 {
 			p := e.tracked[(pass*17/2)%len(e.tracked)]
@@ -145,10 +145,13 @@ func TestGitActivityBaselineReloadFrequency(t *testing.T) {
 		stats += e.statChecks
 		if !ok {
 			e = readGitActivity(repo, e)
-			full++
+			snapshotStats += e.readChecks
+			if e.readChecks >= len(e.paths) {
+				full++
+			}
 		}
 	}
-	t.Logf("40 simulated 1.5s passes, writes=%d, full_reads=%d, probe_stats=%d, snapshot_stats=%d", writes, full, stats, full*len(e.paths))
+	t.Logf("40 simulated 1.5s passes, writes=%d, full_reads=%d, probe_stats=%d, snapshot_stats=%d", writes, full, stats, snapshotStats)
 }
 
 func TestGitActivityContinuousWritesDoNotStarveLaterBatches(t *testing.T) {
