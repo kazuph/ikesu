@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/childenv"
@@ -18,6 +19,10 @@ type gitCwdActivity struct {
 	git           render.GitStatus
 	name          string
 	paths         map[string]gitPathState
+	tracked       []string
+	trackedNext   int
+	statChecks    int
+	trackedChecks int
 }
 
 type gitPathState struct {
@@ -29,21 +34,48 @@ type gitPathState struct {
 // watches, but only Git metadata directories need content-change invalidation.
 func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
 	revision := entry.watch.Revision()
-	for path, previous := range entry.paths {
+	entry.statChecks = 0
+	entry.trackedChecks = 0
+	probe := func(path string, previous gitPathState) bool {
+		entry.statChecks++
 		info, err := os.Stat(path)
 		if err != nil && !os.IsNotExist(err) {
-			return entry, false
+			return false
 		}
 		if previous.info == nil || info == nil {
 			if previous.info != nil || info != nil {
-				return entry, false
+				return false
 			}
-			continue
+			return true
 		}
 		if !os.SameFile(previous.info, info) || previous.info.Mode() != info.Mode() ||
 			(previous.contents && !sameGitFileState(previous.info, info)) {
+			return false
+		}
+		return true
+	}
+	tracked := make(map[string]bool, len(entry.tracked))
+	for _, path := range entry.tracked {
+		tracked[path] = true
+	}
+	for path, previous := range entry.paths {
+		if !tracked[path] && !probe(path, previous) {
 			return entry, false
 		}
+	}
+	// Three refreshes retain the existing five-second large-repository test
+	// deadline while avoiding a full tracked-file scan on each refresh.
+	batch := (len(entry.tracked) + 2) / 3
+	end := min(entry.trackedNext+batch, len(entry.tracked))
+	for _, path := range entry.tracked[entry.trackedNext:end] {
+		entry.trackedChecks++
+		if !probe(path, entry.paths[path]) {
+			return entry, false
+		}
+	}
+	entry.trackedNext = end
+	if entry.trackedNext == len(entry.tracked) {
+		entry.trackedNext = 0
 	}
 	// A notification arriving during the probes must remain pending.
 	entry.revision = revision
@@ -102,6 +134,8 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		}
 	}
 	var metadataDirs []string
+	trackedPaths := map[string]bool{}
+	trackedDirs := map[string]bool{}
 	watches := make(map[string]bool, len(paths))
 	for path := range paths {
 		watches[path] = true
@@ -146,8 +180,13 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 			for _, name := range strings.Split(string(tracked), "\x00") {
 				if name != "" {
 					path := filepath.Join(strings.TrimSpace(string(root)), name)
+					if filepath.Base(path) != ".gitattributes" {
+						trackedPaths[path] = true
+					}
 					gitAncestors(path, paths)
 					for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+						trackedDirs[dir] = true
+						watches[dir] = true
 						paths[filepath.Join(dir, ".gitattributes")] = true
 						if dir == strings.TrimSpace(string(root)) || filepath.Dir(dir) == dir {
 							break
@@ -158,23 +197,34 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		}
 	}
 	if err == nil {
-		ready = gitConfigurationPaths(cwd, paths) && ready
+		configPaths := map[string]bool{}
+		ready = gitConfigurationPaths(cwd, configPaths) && ready
+		for path := range configPaths {
+			paths[path] = true
+			delete(trackedPaths, path)
+		}
 	}
 	covered := entry.watch.Update(gitPathList(watches))
 	entry.paths = make(map[string]gitPathState, len(paths))
+	entry.tracked = entry.tracked[:0]
+	entry.trackedNext = 0
 	for path := range paths {
 		info, statErr := os.Stat(path)
 		if statErr != nil && !os.IsNotExist(statErr) {
 			covered = false
 		}
-		contents := info != nil && !info.IsDir()
+		contents := info != nil && (!info.IsDir() || trackedDirs[path])
 		for _, dir := range metadataDirs {
 			if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
 				contents = true
 			}
 		}
 		entry.paths[path] = gitPathState{info: info, contents: contents}
+		if trackedPaths[path] && !trackedDirs[path] {
+			entry.tracked = append(entry.tracked, path)
+		}
 	}
+	sort.Strings(entry.tracked)
 	return values(ready && covered, revision)
 }
 

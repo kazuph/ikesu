@@ -368,3 +368,73 @@ func TestAssetShimContentUnchanged(t *testing.T) {
 		t.Fatal("executable shim content changed")
 	}
 }
+
+func TestAssetUnrelatedDirectoryEventsAvoidRepeatedIntegrityChecks(t *testing.T) {
+	root := t.TempDir()
+	a := NewAssets(root, "p_1", "/usr/bin/true", Config{Targets: []string{"git"}})
+	if _, err := a.Prepare([]string{"HOME=" + root, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1"}, root); err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	changes := make(chan struct{}, 1)
+	if !a.ObserveChanges(func() {
+		select {
+		case changes <- struct{}{}:
+		default:
+		}
+	}) {
+		t.Fatal("watch unavailable")
+	}
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changes:
+	default:
+	}
+	change := func(name string) {
+		t.Helper()
+		select {
+		case <-changes:
+		default:
+		}
+		if err := os.WriteFile(filepath.Join(root, "guard", name), []byte("unrelated"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-changes:
+		case <-time.After(2 * time.Second):
+			t.Fatal("directory event not observed")
+		}
+		if err := a.Sync("codex"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	change("warmup")
+	before := a.intactChecks
+	change("unrelated")
+	if a.intactChecks != before {
+		t.Fatalf("unchanged assets: %d integrity checks, want 0", a.intactChecks-before)
+	}
+	select {
+	case <-changes:
+	default:
+	}
+	if err := os.WriteFile(a.MarkerPath, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changes:
+	case <-time.After(2 * time.Second):
+		t.Fatal("marker change not observed")
+	}
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if a.intactChecks == before || !a.intact() {
+		t.Fatal("changed marker did not trigger full inspection and repair")
+	}
+}
