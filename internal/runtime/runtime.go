@@ -57,8 +57,11 @@ type Pane struct {
 	processRevision        atomic.Uint64
 	// processPollSeq orders observations taken outside the app loop; the
 	// apply step drops an observation older than one already applied.
-	processPollSeq       atomic.Uint64
-	processApplyMu       sync.Mutex
+	processPollSeq atomic.Uint64
+	processApplyMu sync.Mutex
+	// guardSyncMu orders guard updates from the process worker, explicit
+	// agent reports and config reloads; each reads the latest agent under it.
+	guardSyncMu          sync.Mutex
 	processApplied       uint64
 	processSettlingUntil time.Time
 	processOutputUntil   time.Time
@@ -757,8 +760,9 @@ func (p *Pane) PollProcess() {
 		p.processCache.readAt = time.Time{}
 		p.processCache.mu.Unlock()
 	}
-	seq := p.processPollSeq.Add(1)
-	obs := processObservation{seq: seq, job: p.cachedForegroundJob()}
+	var obs processObservation
+	var cwd string
+	obs.job, cwd, obs.seq = p.cachedForegroundScan()
 	if len(obs.job.Processes) > 0 {
 		dj := detect.Job{ProcessGroupID: obs.job.ProcessGroupID}
 		for _, pr := range obs.job.Processes {
@@ -770,7 +774,7 @@ func (p *Pane) PollProcess() {
 			})
 		}
 		obs.agentID, obs.name = detect.IdentifyJob(dj)
-		obs.cwd = platform.ProcCwd(obs.job.ProcessGroupID)
+		obs.cwd = cwd
 	}
 	p.applyProcessObservation(obs)
 }
@@ -822,13 +826,12 @@ func (p *Pane) applyProcessObservation(obs processObservation) {
 	if effective == "" && p.guardStarted != "" {
 		effective = p.guardStarted
 	}
-	dead := p.dead
 	if agentChanged || cwdChanged {
 		p.processRevision.Add(1)
 	}
 	p.mu.Unlock()
-	if p.guard != nil && !dead && (agentChanged || effective != "") {
-		_ = p.guard.Sync(effective)
+	if agentChanged || effective != "" {
+		p.syncGuardLatest(true)
 	}
 	if agentChanged {
 		p.notify(EventChanged)
@@ -934,7 +937,7 @@ func (p *Pane) PollProcessChanged() {
 		return
 	}
 	if guarded && !dead {
-		_ = p.guard.Sync(effective)
+		p.syncGuardLatest(true)
 	}
 	// kqueue has no chdir/tcsetpgrp event. Silent programs keep the existing
 	// cwd-observation cadence. Output keeps the same per-tick observation
