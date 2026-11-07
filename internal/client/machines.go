@@ -175,15 +175,12 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		fmt.Fprintln(out, "ikesu: HQ settings:", err)
 		return pumpRejected
 	}
-	stopOyagoi, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
+	stopOyagoi, err := m.watchOyagoi(ctx)
 	if err != nil {
 		fmt.Fprintln(out, "ikesu: HQ settings watch:", err)
 		return pumpRejected
 	}
 	defer stopOyagoi()
-	if err := m.refreshOyagoi(); err != nil {
-		m.notify(err.Error())
-	}
 	if latency.Enabled {
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}

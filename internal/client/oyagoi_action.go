@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,6 +10,17 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/render"
 )
+
+func (m *machineClient) watchOyagoi(ctx context.Context) (func(), error) {
+	stop, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
+	if err != nil {
+		return nil, err
+	}
+	if err := m.refreshOyagoi(); err != nil {
+		m.notify(err.Error())
+	}
+	return stop, nil
+}
 
 type oyagoiCacheKey struct {
 	selection                oyagoiSelection

@@ -393,3 +393,31 @@ func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 		t.Fatalf("shared HQ = %+v, %v", got, err)
 	}
 }
+
+// Uses two real server viewers and a shared on-disk store.
+func TestOyagoiRefreshAfterWatchRegistrationActualPTYReview(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	path := filepath.Join(t.TempDir(), "oyagoi.json")
+	m.oyagoiStore.path = path
+	first, second := m.endpoints["local"].snapshot.State.Workspaces[0], m.endpoints["local"].snapshot.State.Workspaces[1]
+	old := oyagoiSelection{Machine: "local", Session: m.session, Workspace: first.ID, Generation: first.Generation}
+	newer := oyagoiSelection{Machine: "local", Session: m.session, Workspace: second.ID, Generation: second.Generation}
+	if err := m.oyagoiStore.set(&old); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (oyagoiStore{path}).set(&newer); err != nil {
+		t.Fatal(err)
+	}
+	stop, err := m.watchOyagoi(m.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	h.until("newer HQ after watcher registration", func() bool {
+		return m.oyagoi != nil && *m.oyagoi == newer && m.endpoints["local"].snapshot.MobileOyagoi == second.ID && m.endpoints["remote"].snapshot.MobileForeignOyagoi != ""
+	})
+}
