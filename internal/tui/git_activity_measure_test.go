@@ -114,3 +114,39 @@ func TestGitActivityOneContentChangeAvoidsFullSnapshot(t *testing.T) {
 		t.Fatalf("one change caused full snapshot of %d paths", e.readChecks)
 	}
 }
+
+// A 1.5-second cadence with an edit every two passes represents 60 seconds.
+func TestGitActivityBaselineReloadFrequency(t *testing.T) {
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	for i := 0; i < 80; i++ {
+		p := filepath.Join(repo, fmt.Sprintf("file-%03d", i))
+		if err := os.WriteFile(p, []byte("before\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sidebarGit(t, repo, "add", ".")
+	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	defer e.watch.Close()
+	if !e.ready {
+		t.Fatal("watch unavailable")
+	}
+	full, writes, stats := 0, 0, 0
+	for pass := 0; pass < 40; pass++ {
+		if pass%2 == 0 {
+			p := e.tracked[(pass*17/2)%len(e.tracked)]
+			if err := os.WriteFile(p, []byte(fmt.Sprintf("change-%d\n", pass)), 0600); err != nil {
+				t.Fatal(err)
+			}
+			writes++
+		}
+		var ok bool
+		e, ok = unchangedGitActivity(e)
+		stats += e.statChecks
+		if !ok {
+			e = readGitActivity(repo, e)
+			full++
+		}
+	}
+	t.Logf("40 simulated 1.5s passes, writes=%d, full_reads=%d, probe_stats=%d, snapshot_stats=%d", writes, full, stats, full*len(e.paths))
+}
