@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func atimeOf(t *testing.T, path string) time.Time {
@@ -66,6 +68,57 @@ func TestExecutingWatchedFileDoesNotNotify(t *testing.T) {
 	for w.Revision() == before {
 		if time.Now().After(deadline) {
 			t.Fatal("permission change was not notified")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestAccessOnlyChangeRequiresSubSecondStatusTime(t *testing.T) {
+	base := unix.Stat_t{Mode: 0o100700, Size: 10}
+	base.Ctim = unix.Timespec{Sec: 100, Nsec: 5}
+	base.Atim = unix.Timespec{Sec: 100}
+	moved := base
+	moved.Atim = unix.Timespec{Sec: 200}
+	if !accessOnlyChange(base, moved) {
+		t.Fatal("access-time-only change with sub-second ctime was not recognised")
+	}
+	if accessOnlyChange(base, base) {
+		t.Fatal("an attribute event without an access-time change was dropped")
+	}
+	chmod := moved
+	chmod.Mode = 0o100500
+	if accessOnlyChange(base, chmod) {
+		t.Fatal("mode change was treated as access-time-only")
+	}
+	whole := base
+	whole.Ctim.Nsec = 0
+	wholeMoved := whole
+	wholeMoved.Atim = unix.Timespec{Sec: 200}
+	if accessOnlyChange(whole, wholeMoved) {
+		t.Fatal("whole-second ctime cannot rule out an ACL or xattr change; the event must be delivered")
+	}
+}
+
+// An extended attribute change is reported as an attribute event and must
+// still reach the listeners.
+func TestExtendedAttributeChangeNotifies(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := New(nil)
+	defer w.Close()
+	if !w.Update([]string{path}) {
+		t.Fatal("watch unavailable")
+	}
+	before := w.Revision()
+	if err := unix.Setxattr(path, "com.example.ikesu-test", []byte("v"), 0); err != nil {
+		t.Skip("extended attributes unavailable:", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for w.Revision() == before {
+		if time.Now().After(deadline) {
+			t.Fatal("extended attribute change was not notified")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
