@@ -16,6 +16,17 @@ import (
 )
 
 func TestMailQueryDoesNotBlockAppLoop(t *testing.T) {
+	for _, sweep := range []bool{false, true} {
+		name := "pane"
+		if sweep {
+			name = "sweep"
+		}
+		t.Run(name, func(t *testing.T) { checkMailQueryDoesNotBlockAppLoop(t, sweep) })
+	}
+}
+
+func checkMailQueryDoesNotBlockAppLoop(t *testing.T, sweep bool) {
+	t.Helper()
 	teststate.Lock(t)
 	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
 	s := newTestServer(t, "mail-offload")
@@ -44,7 +55,14 @@ func TestMailQueryDoesNotBlockAppLoop(t *testing.T) {
 	go func() { s.app.Run(); close(appDone) }()
 	flushStarted, flushDone := make(chan struct{}), make(chan struct{})
 	go func() {
-		s.app.Do(func() { close(flushStarted); s.flushMailForPane(1) })
+		s.app.Do(func() {
+			close(flushStarted)
+			if sweep {
+				s.flushAllMail()
+			} else {
+				s.flushMailForPane(1)
+			}
+		})
 		close(flushDone)
 	}()
 	<-flushStarted
