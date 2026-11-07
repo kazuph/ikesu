@@ -98,6 +98,8 @@ type uiMenu struct {
 	kind          menuKind
 	pane          int // target pane (menuPane)
 	ws            int // target workspace (menuWorkspace, menuTab)
+	wsID          int
+	wsGeneration  string
 	tab           int // target tab (menuTab)
 	// justOpened suppresses the release event from the same click that
 	// opened the menu (the menu may clamp onto the pointer).
@@ -221,6 +223,7 @@ type App struct {
 	mobileSwitcher      bool
 	mobileScroll        int
 	oyagoiWorkspace     int
+	oyagoiCollapsed     bool
 	oyagoiGeneration    string
 	oyagoiForeignName   string
 	oyagoiForeignOnline bool

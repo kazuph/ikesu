@@ -45,6 +45,34 @@ type SidebarRow struct {
 	Line     int
 }
 
+func drawSectionHeading(f *Frame, x, y, width int, label string, collapsed, dragging, showNew bool) {
+	style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
+	arrow := "▾"
+	if collapsed {
+		arrow = "▸"
+	}
+	if dragging {
+		style = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
+		f.Fill(x, y, width, 1, " ", style)
+	}
+	limit := width
+	if showNew && width >= 6 {
+		limit -= 6
+	}
+	if dragging {
+		f.Text(x, y, truncate(arrow+" "+label, limit), style, x+limit)
+	} else {
+		f.Text(x, y, arrow, uv.Style{Fg: f.Palette.Accent}, x+limit)
+		f.Text(x+2, y, truncate(label, max(0, limit-2)), style, x+limit)
+	}
+	if showNew {
+		nr := SectionNewRect(x, y, width)
+		if nr.W > 0 {
+			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Text, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, x+width)
+		}
+	}
+}
+
 func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.Config) []SidebarRow {
 	var cfg config.Config
 	if len(configs) > 0 {
@@ -320,29 +348,7 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 			f.Set(x, y, "─", border)
 		}
 	case RowSection:
-		style := uv.Style{Fg: f.Palette.Dim, Attrs: uv.AttrBold}
-		arrow := "▾"
-		if s.CollapsedSections[r.Section] {
-			arrow = "▸"
-		}
-		if in.DragSection == r.Section {
-			style = uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}
-			f.Fill(ix, y, iw, 1, " ", style)
-		}
-		limit := iw
-		if iw >= 6 {
-			limit -= 6
-		}
-		if in.DragSection == r.Section {
-			f.Text(ix, y, truncate(arrow+" "+r.Section.Label(), limit), style, ix+limit)
-		} else {
-			f.Text(ix, y, arrow, uv.Style{Fg: f.Palette.Accent}, ix+limit)
-			f.Text(ix+2, y, truncate(r.Section.Label(), max(0, limit-2)), style, ix+limit)
-		}
-		nr := SectionNewRect(ix, y, iw)
-		if nr.W > 0 {
-			f.Text(nr.X, y, "[new]", uv.Style{Fg: f.Palette.Text, Bg: style.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}, ix+iw)
-		}
+		drawSectionHeading(f, ix, y, iw, r.Section.Label(), s.CollapsedSections[r.Section], in.DragSection == r.Section, true)
 	case RowSep:
 		drawRightSidebarHeader(f, s, in, y)
 	case RowJob:

@@ -431,7 +431,13 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if event.id != m.active {
 			break
 		}
-		if message.MachineAction == "oyagoi:select" {
+		if message.MachineAction == "oyagoi:toggle" {
+			if err := m.oyagoiStore.toggleCollapsed(); err != nil {
+				m.notify(err.Error())
+			} else if err := m.refreshOyagoi(); err != nil {
+				m.notify(err.Error())
+			}
+		} else if message.MachineAction == "oyagoi:select" {
 			if err := m.selectOyagoi(); err != nil {
 				m.notify(err.Error())
 			}

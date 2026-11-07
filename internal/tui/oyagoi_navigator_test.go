@@ -46,7 +46,7 @@ func TestOyagoiReusedNumberIsNotProjectedInMobileOrNavigator(t *testing.T) {
 	a.navigator = &navigatorView{}
 	rows, _ := a.navigatorRows()
 	for _, row := range rows {
-		if strings.Contains(row.Name, "oyagoi") {
+		if strings.Contains(row.Name, "🎏 HQ") {
 			t.Fatal("reused number displayed as HQ in navigator")
 		}
 	}
@@ -60,7 +60,7 @@ func TestOyagoiNavigatorMovesWorkspaceAndKeepsSelectionTarget(t *testing.T) {
 	a.oyagoiGeneration = a.st.Workspaces[1].Generation
 	a.navigator = &navigatorView{}
 	rows, _ := a.navigatorRows()
-	if len(rows) == 0 || rows[0].Workspace != 1 || !strings.Contains(rows[0].Name, "oyagoi") {
+	if len(rows) == 0 || rows[0].Workspace != 1 || !strings.Contains(rows[0].Name, "🎏 HQ") {
 		t.Fatalf("HQ not first: %+v", rows)
 	}
 	a.navigator.selected = 0
@@ -94,6 +94,29 @@ func TestOyagoiWorkspaceCycleIncludesCollapsedOriginalSection(t *testing.T) {
 	a.cycleWorkspace(-1)
 	if a.st.ActiveWorkspace().ID != a.oyagoiWorkspace {
 		t.Fatal("HQ omitted from previous workspace")
+	}
+}
+
+func TestCollapsedOyagoiExcludedFromVisibleWorkspaceOrder(t *testing.T) {
+	a, _ := worktreeApp(t)
+	for i := 0; i < 2; i++ {
+		a.st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	}
+	a.st.Workspaces[1].Section = model.SectionFavorite
+	a.oyagoiWorkspace, a.oyagoiGeneration = a.st.Workspaces[1].ID, a.st.Workspaces[1].Generation
+	for _, sectionCollapsed := range []bool{false, true} {
+		a.st.CollapsedSections = map[model.Section]bool{model.SectionFavorite: sectionCollapsed}
+		for _, collapsed := range []bool{false, true, false} {
+			a.oyagoiCollapsed = collapsed
+			order := a.visibleWorkspaceOrder()
+			want := "[1 0 2]"
+			if collapsed {
+				want = "[0 2]"
+			}
+			if fmt.Sprint(order) != want {
+				t.Fatalf("section collapsed=%v HQ collapsed=%v: got %v want %s", sectionCollapsed, collapsed, order, want)
+			}
+		}
 	}
 }
 

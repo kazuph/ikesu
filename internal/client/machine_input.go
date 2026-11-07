@@ -332,6 +332,16 @@ func (m *machineClient) input(event input.Event) error {
 					m.suppressRelease = true
 					return m.paint()
 				}
+				if hit.OyagoiHeading && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
+					m.suppressRelease = true
+					if err := m.oyagoiStore.toggleCollapsed(); err != nil {
+						return err
+					}
+					if err := m.refreshOyagoi(); err != nil {
+						return err
+					}
+					return m.paint()
+				}
 				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
 					e := m.endpoints[hit.Machine]
 					if e.connection == nil || e.snapshot == nil {

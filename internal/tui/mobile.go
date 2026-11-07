@@ -30,16 +30,23 @@ func (a *App) mobileMouse(ev input.Event) bool {
 		} else if m.Button == uv.MouseWheelDown {
 			a.mobileScroll += 2
 		}
-		a.mobileScroll = render.MobileOffsetWithForeignOyagoi(a.st, a.mainMenuItems(), a.mobileScroll, a.oyagoiWorkspace, a.oyagoiForeignName, a.oyagoiGeneration)
+		rows := render.MobileRowsWithCollapsedOyagoi(a.st, a.mainMenuItems(), a.oyagoiWorkspace, a.oyagoiForeignName, a.oyagoiCollapsed, a.oyagoiGeneration)
+		a.mobileScroll = max(0, min(a.mobileScroll, max(0, len(rows)-render.MobileViewport(a.st).H)))
 	}
 	if ev.Kind == input.KindMouseClick && m.Button == uv.MouseLeft {
 		viewport := render.MobileViewport(a.st)
 		if pointIn(m.X, m.Y, viewport) {
-			rows := render.MobileRowsWithForeignOyagoi(a.st, a.mainMenuItems(), a.oyagoiWorkspace, a.oyagoiForeignName, a.oyagoiGeneration)
+			rows := render.MobileRowsWithCollapsedOyagoi(a.st, a.mainMenuItems(), a.oyagoiWorkspace, a.oyagoiForeignName, a.oyagoiCollapsed, a.oyagoiGeneration)
 			index := m.Y - viewport.Y + max(0, min(a.mobileScroll, max(0, len(rows)-viewport.H)))
 			if index < len(rows) {
 				row := rows[index]
 				switch row.Kind {
+				case render.RowMobileOyagoi:
+					if a.machineRequest != nil {
+						if err := a.machineRequest("oyagoi:toggle"); err != nil {
+							a.worktreeError(err)
+						}
+					}
 				case render.RowMobileForeignOyagoi:
 					if a.oyagoiForeignOnline && a.machineRequest != nil {
 						if err := a.machineRequest("oyagoi:select"); err != nil {

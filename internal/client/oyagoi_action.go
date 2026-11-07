@@ -12,7 +12,7 @@ import (
 )
 
 func (m *machineClient) watchOyagoi(ctx context.Context) (func(), error) {
-	stop, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
+	stop, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) }, true)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +51,7 @@ func (m *machineClient) resolveOyagoi() *oyagoiCache {
 	}
 	result := &oyagoiCache{key: key}
 	result.sidebar.Machine, result.sidebar.Workspace, result.sidebar.Offline = m.oyagoi.Machine, m.oyagoi.Workspace, true
+	result.sidebar.Collapsed = m.oyagoi.Collapsed
 	name, label := fmt.Sprintf("s%d", m.oyagoi.Workspace), m.oyagoi.Machine
 	if key.label != "" {
 		label = key.label
@@ -93,6 +94,7 @@ type oyagoiProjection struct {
 	workspace         int
 	generation, label string
 	online            bool
+	collapsed         bool
 }
 
 func (m *machineClient) selectOyagoi() error {
@@ -129,11 +131,14 @@ func (m *machineClient) syncOyagoi(id string) error {
 	selected := m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Session == m.selectionSession(id)
 	if !endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "oyagoi_view") {
 		if selected {
-			return fmt.Errorf("endpoint_action_unsupported: oyagoi_view")
+			return fmt.Errorf("endpoint_action_unsupported: HQ view")
 		}
 		return nil
 	}
 	message := msg{Type: "oyagoi_view"}
+	if m.oyagoi != nil {
+		message.OyagoiCollapsed = m.oyagoi.Collapsed
+	}
 	if selected {
 		message.Workspace, message.WorkspaceGeneration = m.oyagoi.Workspace, m.oyagoi.Generation
 	} else if m.oyagoi != nil {
@@ -141,7 +146,7 @@ func (m *machineClient) syncOyagoi(id string) error {
 		message.OyagoiLabel = projection.label
 		message.OyagoiOnline = !projection.sidebar.Offline
 	}
-	projection := oyagoiProjection{message.Workspace, message.WorkspaceGeneration, message.OyagoiLabel, message.OyagoiOnline}
+	projection := oyagoiProjection{message.Workspace, message.WorkspaceGeneration, message.OyagoiLabel, message.OyagoiOnline, message.OyagoiCollapsed}
 	if e.oyagoiProjection != nil && *e.oyagoiProjection == projection {
 		return nil
 	}

@@ -19,11 +19,11 @@ func TestOyagoiRemainsSingleAfterImport(t *testing.T) {
 	s.waitFor("renamed workspace", 15*time.Second, func(text string) bool { return strings.Contains(text, "HQ-original") })
 	x, y := s.find("HQ-original")
 	s.click(x, y)
-	s.waitFor("HQ menu", 15*time.Second, func(text string) bool { return strings.Contains(text, "set as HQ") })
-	x, y = s.find("set as HQ")
+	s.waitFor("HQ menu", 15*time.Second, func(text string) bool { return strings.Contains(text, "🎏 HQ") })
+	x, y = s.find("🎏 HQ")
 	s.click(x, y)
 	s.waitFor("HQ selected", 15*time.Second, func(text string) bool {
-		return strings.Contains(text, "🎏 oyagoi") && strings.Contains(text, "HQ-original")
+		return strings.Contains(text, "🎏 HQ") && strings.Contains(text, "HQ-original")
 	})
 	source := t.TempDir()
 	data := fmt.Sprintf(`{"version":5,"active":0,"selected":0,"sidebar_width":27,"workspaces":[{"id":"s1","custom_name":"Imported-room","section":"work","identity_cwd":%q,"active_tab":0,"public_tab_numbers":[1],"next_public_tab_number":2,"tabs":[{"custom_name":"shell","layout":{"Pane":1},"pane_order":[1],"focused":1,"root_pane":1,"panes":{"1":{"global_pane_number":1,"cwd":%q}}}]}]}`, source, source)
@@ -34,9 +34,9 @@ func TestOyagoiRemainsSingleAfterImport(t *testing.T) {
 		t.Fatalf("import: %s %v", out, err)
 	}
 	s.waitFor("imported workspace and single HQ", 15*time.Second, func(text string) bool {
-		return strings.Count(text, "🎏 oyagoi") == 1 && strings.Count(text, "HQ-original") == 1 && strings.Count(text, "Imported-room") == 1
+		return strings.Count(text, "🎏 HQ") == 1 && strings.Count(text, "HQ-original") == 1 && strings.Count(text, "Imported-room") == 1
 	})
-	_, headingY := s.find("🎏 oyagoi")
+	_, headingY := s.find("🎏 HQ")
 	_, originalY := s.find("HQ-original")
 	_, importedY := s.find("Imported-room")
 	if !(headingY < originalY && originalY < importedY) {

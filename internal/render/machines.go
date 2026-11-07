@@ -24,6 +24,7 @@ type MachineHit struct {
 	Right         bool
 	Oyagoi        bool
 	OfflineOyagoi bool
+	OyagoiHeading bool
 }
 
 type MachineSidebar struct {
@@ -47,6 +48,7 @@ type Oyagoi struct {
 	WorkspaceIndex *int
 	Offline        bool
 	HideOriginal   bool
+	Collapsed      bool
 }
 
 type machineRow struct {
@@ -75,8 +77,8 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	area := view.Workspace.Rect
 	rows := []machineRow{}
 	if m.Oyagoi != nil {
-		rows = append(rows, machineRow{oyagoi: true})
-		if m.Oyagoi.Machine != "" {
+		rows = append(rows, machineRow{oyagoi: true}, machineRow{row: SidebarRow{Kind: RowRule}})
+		if m.Oyagoi.Machine != "" && !m.Oyagoi.Collapsed {
 			if m.Oyagoi.Offline {
 				label := m.Oyagoi.Machine
 				for _, group := range m.Groups {
@@ -103,6 +105,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 					}
 				}
 			}
+		}
+		if rows[len(rows)-1].row.Kind != RowRule {
+			rows = append(rows, machineRow{row: SidebarRow{Kind: RowRule}})
 		}
 	}
 	for gi, group := range m.Groups {
@@ -168,7 +173,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 		group := m.Groups[entry.group]
 		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header, Oyagoi: entry.hqWorkspace}
 		if entry.oyagoi {
-			f.Text(area.X, y, "🎏 oyagoi", uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, area.X+width)
+			hit.OyagoiHeading = true
+			hit.Row.Kind = RowMobileOyagoi
+			drawSectionHeading(f, area.X, y, width, "🎏 HQ", m.Oyagoi.Collapsed, false, false)
 			machineRowBackground(f, area.X, y, width)
 		} else if entry.offline {
 			hit.Machine, hit.Workspace, hit.Oyagoi, hit.OfflineOyagoi = m.Oyagoi.Machine, m.Oyagoi.Workspace, true, true
@@ -225,9 +232,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 				hit.Workspace = state.Workspaces[entry.row.Ws].ID
 			}
 		}
-		if !entry.oyagoi {
-			m.Hits = append(m.Hits, hit)
-		}
+		m.Hits = append(m.Hits, hit)
 		var dropIndex *int
 		if group.ID == m.Active && group.Input != nil && group.Input.Dragging {
 			dropIndex = sectionDropIndex(*group.Input)

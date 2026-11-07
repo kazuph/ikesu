@@ -58,3 +58,37 @@ func TestOyagoiStoreLastExplicitSelectionAndConditionalClear(t *testing.T) {
 		t.Fatalf("empty: %v, %v", got, err)
 	}
 }
+
+func TestOyagoiCollapsedSharedAcrossReplacementAndConditionalClear(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oyagoi.json")
+	if err := os.WriteFile(path, []byte(`{"machine":"local","session":"one","workspace":1,"generation":"g"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a, b := oyagoiStore{path}, oyagoiStore{path}
+	old, err := a.load()
+	if err != nil || old.Collapsed {
+		t.Fatalf("legacy: %+v %v", old, err)
+	}
+	if err := a.toggleCollapsed(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.load()
+	if err != nil || !got.Collapsed {
+		t.Fatalf("shared: %+v %v", got, err)
+	}
+	next := oyagoiSelection{Machine: "remote", Session: "two", Workspace: 2, Generation: "h"}
+	if err := b.set(&next); err != nil {
+		t.Fatal(err)
+	}
+	got, err = a.load()
+	if err != nil || !got.Collapsed {
+		t.Fatalf("replacement: %+v %v", got, err)
+	}
+	if cleared, err := a.clearIf(*old); err != nil || cleared {
+		t.Fatalf("stale clear: %v %v", cleared, err)
+	}
+	next.Collapsed = false
+	if cleared, err := a.clearIf(next); err != nil || !cleared {
+		t.Fatalf("identity clear: %v %v", cleared, err)
+	}
+}

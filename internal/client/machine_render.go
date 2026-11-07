@@ -65,7 +65,10 @@ func (m *machineClient) paint() error {
 	}
 	m.sidebar.Groups = m.sidebar.Groups[:0]
 	m.sidebar.Active = m.active
-	m.sidebar.Oyagoi = m.oyagoiForSidebar()
+	m.sidebar.Oyagoi = nil
+	if m.oyagoi != nil {
+		m.sidebar.Oyagoi = m.oyagoiForSidebar()
+	}
 	m.sidebar.DropMachine, m.sidebar.DropIndex = "", nil
 	m.sidebar.DropSection = ""
 	if m.drag != nil && m.drag.started {

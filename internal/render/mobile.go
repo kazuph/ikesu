@@ -81,6 +81,24 @@ func MobileRowsWithForeignOyagoi(s *model.AppState, menu []MenuItem, oyagoi int,
 	return MobileRows(s, menu, oyagoi)
 }
 
+func MobileRowsWithCollapsedOyagoi(s *model.AppState, menu []MenuItem, oyagoi int, foreign string, collapsed bool, generation string) []SidebarRow {
+	rows := MobileRowsWithForeignOyagoi(s, menu, oyagoi, foreign, generation)
+	if !collapsed {
+		return rows
+	}
+	for i, row := range rows {
+		if row.Kind != RowMobileOyagoi {
+			continue
+		}
+		end := i + 1
+		for end < len(rows) && (rows[end].Kind == RowWorkspace || rows[end].Kind == RowGit || rows[end].Kind == RowMobileForeignOyagoi) {
+			end++
+		}
+		return append(rows[:i+1], rows[end:]...)
+	}
+	return rows
+}
+
 func MobileOffsetWithForeignOyagoi(s *model.AppState, menu []MenuItem, offset, oyagoi int, foreign string, generation ...string) int {
 	return max(0, min(offset, max(0, len(MobileRowsWithForeignOyagoi(s, menu, oyagoi, foreign, generation...))-MobileViewport(s).H)))
 }
@@ -207,7 +225,7 @@ func drawMobile(f *Frame, in Input, out *Output) {
 	viewport := MobileViewport(s)
 	f.Fill(0, 2, s.Cols, max(0, s.Rows-2), " ", uv.Style{Bg: f.Palette.PopupBG})
 	f.Text(0, 2, stringRule(s.Cols), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG}, s.Cols)
-	rows := MobileRowsWithForeignOyagoi(s, in.MobileMenu, in.MobileOyagoi, in.MobileForeignOyagoi, in.MobileOyagoiGeneration)
+	rows := MobileRowsWithCollapsedOyagoi(s, in.MobileMenu, in.MobileOyagoi, in.MobileForeignOyagoi, in.MobileOyagoiCollapsed, in.MobileOyagoiGeneration)
 	off := max(0, min(in.MobileScroll, max(0, len(rows)-MobileViewport(s).H)))
 	for n := 0; n < viewport.H && n+off < len(rows); n++ {
 		row, y := rows[n+off], viewport.Y+n
@@ -228,7 +246,11 @@ func drawMobile(f *Frame, in Input, out *Output) {
 			case RowMobileMenu:
 				label = " menu"
 			case RowMobileOyagoi:
-				label = " 🎏 oyagoi"
+				arrow := "▾"
+				if in.MobileOyagoiCollapsed {
+					arrow = "▸"
+				}
+				label = " " + arrow + " 🎏 HQ"
 			case RowSection:
 				arrow := "▾"
 				if s.CollapsedSections[row.Section] {

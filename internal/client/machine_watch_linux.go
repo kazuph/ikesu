@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func watchMachineCatalog(parent context.Context, path string, changed func(context.Context, error)) (func(), error) {
+func watchMachineCatalog(parent context.Context, path string, changed func(context.Context, error), watchParent ...bool) (func(), error) {
 	fd, err := unix.InotifyInit1(unix.IN_NONBLOCK | unix.IN_CLOEXEC)
 	if err != nil {
 		return nil, err

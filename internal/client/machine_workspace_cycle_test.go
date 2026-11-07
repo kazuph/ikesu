@@ -96,6 +96,27 @@ func TestOyagoiCycleHQCarriesGenerationAndRejectsReplacementReview(t *testing.T)
 	}
 }
 
+func TestOyagoiCollapsedExcludedFromWorkspaceCycle(t *testing.T) {
+	m := cycleFixture(t)
+	m.session = "local"
+	remote := m.endpoints["mini"]
+	remote.profile.Session = "session-A"
+	ws := remote.snapshot.State.Workspaces[0]
+	m.oyagoi = &oyagoiSelection{Machine: "mini", Session: "session-A", Workspace: ws.ID, Generation: ws.Generation, Collapsed: true}
+	for _, target := range m.workspaceCycleTargets() {
+		if target.machine == "mini" && target.workspace == ws.ID {
+			t.Fatalf("collapsed HQ in cycle: %+v", target)
+		}
+	}
+	m.oyagoi.Collapsed = false
+	for _, target := range m.workspaceCycleTargets() {
+		if target.machine == "mini" && target.workspace == ws.ID && target.generation == ws.Generation {
+			return
+		}
+	}
+	t.Fatal("expanded HQ missing from cycle")
+}
+
 // Uses two live servers and their shell PTYs for the HQ selection.
 func TestOyagoiCycleSameHQActualPTYReview(t *testing.T) {
 	h := newRightMachineHarness(t)
