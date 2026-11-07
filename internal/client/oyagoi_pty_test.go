@@ -2,7 +2,6 @@ package client
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -425,9 +424,25 @@ func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 			}
 		}
 	}()
+	initial := first.endpoints["local"].snapshot.State.Workspaces[0]
+	replacement := first.endpoints["local"].snapshot.State.Workspaces[1]
+	old := oyagoiSelection{Machine: "local", Session: first.session, Workspace: initial.ID, Generation: initial.Generation}
+	newer := oyagoiSelection{Machine: "local", Session: first.session, Workspace: replacement.ID, Generation: replacement.Generation}
+	if err := first.oyagoiStore.set(&old); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.oyagoiStore.set(&newer); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
 	for _, client := range []*machineClient{first, second} {
 		client := client
-		stop, err := watchMachineCatalog(first.ctx, path, func(ctx context.Context, err error) { client.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
+		stop, err := client.watchOyagoi(first.ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -451,6 +466,9 @@ func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 		}
 	}
 	until("second viewer connected", func() bool { return second.endpoints["local"].snapshot != nil })
+	until("both viewers show selection written before watch", func() bool {
+		return first.oyagoi != nil && *first.oyagoi == newer && second.oyagoi != nil && *second.oyagoi == newer && first.endpoints["local"].snapshot.MobileOyagoi == replacement.ID && second.endpoints["local"].snapshot.MobileOyagoi == replacement.ID
+	})
 	ws1 := first.endpoints["local"].snapshot.State.Workspaces[0]
 	ws2 := second.endpoints["local"].snapshot.State.Workspaces[1]
 	if err := first.oyagoiAction("local", fmt.Sprintf("oyagoi:set:%d:%s", ws1.ID, ws1.Generation)); err != nil {
