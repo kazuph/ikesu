@@ -12,7 +12,7 @@ import (
 )
 
 func (m *machineClient) watchOyagoi(ctx context.Context) (func(), error) {
-	stop, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
+	stop, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) }, true)
 	if err != nil {
 		return nil, err
 	}

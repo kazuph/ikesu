@@ -11,7 +11,8 @@ import (
 
 // Watch the catalog inode, not session directory writes during pane output.
 // Atomic catalog replacement rearms the watch on the replacement inode.
-func watchMachineCatalog(parent context.Context, path string, changed func(context.Context, error)) (func(), error) {
+func watchMachineCatalog(parent context.Context, path string, changed func(context.Context, error), watchParent ...bool) (func(), error) {
+	parentOnly := len(watchParent) > 0 && watchParent[0]
 	kq, err := unix.Kqueue()
 	if err != nil {
 		return nil, err
@@ -25,7 +26,11 @@ func watchMachineCatalog(parent context.Context, path string, changed func(conte
 			fd = -1
 		}
 		directory = false
-		fd, err = unix.Open(path, unix.O_EVTONLY|unix.O_CLOEXEC, 0)
+		watchPath := path
+		if parentOnly {
+			watchPath = filepath.Dir(path)
+		}
+		fd, err = unix.Open(watchPath, unix.O_EVTONLY|unix.O_CLOEXEC, 0)
 		if os.IsNotExist(err) {
 			directory = true
 			fd, err = unix.Open(filepath.Dir(path), unix.O_EVTONLY|unix.O_CLOEXEC, 0)
@@ -82,7 +87,7 @@ func watchMachineCatalog(parent context.Context, path string, changed func(conte
 					continue
 				}
 			}
-			if directory || event.Fflags&(unix.NOTE_DELETE|unix.NOTE_RENAME) != 0 {
+			if !parentOnly && (directory || event.Fflags&(unix.NOTE_DELETE|unix.NOTE_RENAME) != 0) {
 				if err := install(); err != nil {
 					changed(ctx, err)
 					return
