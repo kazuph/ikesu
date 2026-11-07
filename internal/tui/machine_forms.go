@@ -78,6 +78,12 @@ func (f *MachineForms) OpenMachine(profile machine.Profile, state *model.AppStat
 	f.app.menu = &uiMenu{kind: menuMachineManage, machines: []machine.Profile{profile}, justOpened: true, m: render.Menu{X: x, Y: y, Global: true, Hover: -1, Sel: 0, Items: []render.MenuItem{{Label: "add machine..."}, {Label: "remove machine..."}}}}
 }
 
+func (f *MachineForms) OpenOyagoiUnset(state *model.AppState, x, y int, unset func()) {
+	f.CloseDialog()
+	f.app.st = state
+	f.app.menu = &uiMenu{kind: menuOyagoiUnset, unsetOyagoi: unset, justOpened: true, m: render.Menu{X: x, Y: y, Global: true, Hover: -1, Sel: 0, Items: []render.MenuItem{{Label: "unset HQ"}}}}
+}
+
 func (f *MachineForms) CloseDialog() {
 	if f.app.dialog != nil {
 		f.app.cancelDialog()

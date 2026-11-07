@@ -264,6 +264,22 @@ func (m *machineClient) input(event input.Event) error {
 				if !contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
 					continue
 				}
+				if hit.OfflineOyagoi {
+					if event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight && m.oyagoi != nil && m.oyagoi.Machine == hit.Machine && m.oyagoi.Workspace == hit.Workspace {
+						selected := *m.oyagoi
+						m.forms.OpenOyagoiUnset(active.snapshot.State, event.Mouse.X, event.Mouse.Y, func() {
+							if _, err := m.oyagoiStore.clearIf(selected); err != nil {
+								m.notify("HQ settings: " + err.Error())
+								return
+							}
+							if err := m.refreshOyagoi(); err != nil {
+								m.notify(err.Error())
+							}
+						})
+						return m.paint()
+					}
+					return nil
+				}
 				if hit.Right && !hit.Header {
 					return m.rightMachineInput(hit, event)
 				}
@@ -330,6 +346,12 @@ func (m *machineClient) input(event input.Event) error {
 					m.suppressRelease = true
 					e := m.endpoints[hit.Machine]
 					selected := hit.Machine == m.active && e.snapshot.State.ActiveWorkspace().ID == hit.Workspace
+					if hit.Oyagoi {
+						if selected {
+							return m.openOyagoiMenu(hit.Machine, event.Mouse.X, event.Mouse.Y)
+						}
+						return m.selectOyagoi()
+					}
 					m.drag = &machineDrag{id: hit.Machine, workspace: hit.Workspace, source: hit.Row.Ws, pressHit: hit, pressEvent: event, selected: selected, x: event.Mouse.X, y: event.Mouse.Y, drop: -1, section: e.snapshot.State.Workspaces[hit.Row.Ws].SidebarSection()}
 					if !selected {
 						m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
@@ -386,6 +408,9 @@ func (m *machineClient) sendInput(id string, data []byte) error {
 }
 
 func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) error {
+	if hit.Oyagoi && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
+		return m.openOyagoiMenu(hit.Machine, event.Mouse.X, event.Mouse.Y)
+	}
 	data, err := m.sidebarBytes(hit, event)
 	if err != nil {
 		return err

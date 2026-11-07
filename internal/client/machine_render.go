@@ -65,6 +65,7 @@ func (m *machineClient) paint() error {
 	}
 	m.sidebar.Groups = m.sidebar.Groups[:0]
 	m.sidebar.Active = m.active
+	m.sidebar.Oyagoi = m.oyagoiForSidebar()
 	m.sidebar.DropMachine, m.sidebar.DropIndex = "", nil
 	m.sidebar.DropSection = ""
 	if m.drag != nil && m.drag.started {
@@ -87,7 +88,7 @@ func (m *machineClient) paint() error {
 	}
 
 	var composed *render.Output
-	if len(m.sidebar.Groups) == 1 && e.connection != nil {
+	if len(m.sidebar.Groups) == 1 && e.connection != nil && m.sidebar.Oyagoi == nil {
 		composed = m.composer.ComposeClient(in, nil, m.clientVersion, m.notice != "")
 		m.sidebar.Hits = m.sidebar.Hits[:0]
 	} else {

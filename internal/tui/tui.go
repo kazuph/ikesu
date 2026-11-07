@@ -85,10 +85,12 @@ const (
 	menuWorktree
 	menuMachineRemove
 	menuMachineManage
+	menuOyagoiUnset
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
 type uiMenu struct {
+	unsetOyagoi   func()
 	machines      []machine.Profile
 	worktreePaths []string
 	worktreeItems []api.WorktreeInfo
@@ -218,6 +220,10 @@ type App struct {
 	jobRows             []render.JobRow
 	mobileSwitcher      bool
 	mobileScroll        int
+	oyagoiWorkspace     int
+	oyagoiGeneration    string
+	oyagoiForeignName   string
+	oyagoiForeignOnline bool
 	popupSel            *selState
 	popupSelections     map[int]*selState
 	popupCopies         map[int]*copyMode

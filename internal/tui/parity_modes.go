@@ -70,7 +70,7 @@ mapped:
 	case k.Code == 'h' || k.Code == 'j' || k.Code == 'k' || k.Code == 'l':
 		a.prefixKey(k)
 	case k.Code == uv.KeyUp || k.Code == uv.KeyDown:
-		order := a.st.VisibleWorkspaceOrder()
+		order := a.visibleWorkspaceOrder()
 		if len(order) == 0 {
 			return
 		}
@@ -91,7 +91,7 @@ mapped:
 		a.workspaceNavigate = false
 	case k.Code >= '1' && k.Code <= '9':
 		index := int(k.Code - '1')
-		order := a.st.VisibleWorkspaceOrder()
+		order := a.visibleWorkspaceOrder()
 		if index < len(order) {
 			a.exec(model.CmdSelectWorkspace{Index: order[index]})
 			a.workspaceNavigate = false

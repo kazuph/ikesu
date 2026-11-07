@@ -91,5 +91,10 @@ func (m *machineClient) refreshMachineCatalog() error {
 			e.status = "disabled"
 		}
 	}
+	for id := range m.endpoints {
+		if err := m.syncOyagoi(id); err != nil {
+			m.notify(err.Error())
+		}
+	}
 	return m.paint()
 }

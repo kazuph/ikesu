@@ -10,8 +10,9 @@ import (
 )
 
 type workspaceCycleTarget struct {
-	machine   string
-	workspace int
+	machine    string
+	workspace  int
+	generation string
 }
 
 func workspaceCycleCommand(c config.Config, key uv.Key) bool {
@@ -44,13 +45,21 @@ func workspaceCycleDirection(c config.Config, key uv.Key) int {
 
 func (m *machineClient) workspaceCycleTargets() []workspaceCycleTarget {
 	var targets []workspaceCycleTarget
+	hq := m.oyagoiForSidebar()
+	if hq.Machine != "" && !hq.Offline && hq.HideOriginal {
+		targets = append(targets, workspaceCycleTarget{machine: hq.Machine, workspace: hq.Workspace, generation: m.oyagoi.Generation})
+	}
 	for _, id := range m.order {
 		e := m.endpoints[id]
 		if e == nil || !e.profile.Enabled || e.connection == nil || e.snapshot == nil || e.snapshot.State == nil {
 			continue
 		}
 		for _, index := range e.snapshot.State.VisibleWorkspaceOrder() {
-			targets = append(targets, workspaceCycleTarget{id, e.snapshot.State.Workspaces[index].ID})
+			target := workspaceCycleTarget{machine: id, workspace: e.snapshot.State.Workspaces[index].ID}
+			if hq.Machine == target.machine && hq.Workspace == target.workspace && hq.HideOriginal {
+				continue
+			}
+			targets = append(targets, target)
 		}
 	}
 	return targets
@@ -118,10 +127,10 @@ func (m *machineClient) workspaceCycleInput(event input.Event) bool {
 		current.workspace = ws.ID
 	}
 	if m.pending != nil {
-		current = workspaceCycleTarget{m.pending.id, m.pending.workspace}
+		current = workspaceCycleTarget{machine: m.pending.id, workspace: m.pending.workspace}
 	}
 	for i, target := range targets {
-		if target == current {
+		if target.machine == current.machine && target.workspace == current.workspace {
 			at = i
 			break
 		}
@@ -131,7 +140,7 @@ func (m *machineClient) workspaceCycleInput(event input.Event) bool {
 	}
 	target := targets[(at+dir+len(targets))%len(targets)]
 	m.consumeWorkspaceKey(key)
-	pending := &pendingMachine{id: target.machine, workspace: target.workspace, deadline: time.Now().Add(machineSwitchWait)}
+	pending := &pendingMachine{id: target.machine, workspace: target.workspace, generation: target.generation, deadline: time.Now().Add(machineSwitchWait)}
 	if m.pending != nil {
 		pending.deadline = m.pending.deadline
 		pending.keys = m.pending.keys

@@ -168,6 +168,9 @@ func (a *App) openWorkspaceMenu(x, y, ws int) {
 		}
 	}
 	items = append(items, render.MenuItem{Label: "Duplicate"}, render.MenuItem{Separator: true}, render.MenuItem{Label: "Rename"}, render.MenuItem{Label: "Close"})
+	if a.machineRequest != nil {
+		items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "set as HQ"}, render.MenuItem{Label: "unset HQ"})
+	}
 	items = append(items, group...)
 	items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "⭐ favorite"}, render.MenuItem{Label: "💼 work"}, render.MenuItem{Label: "🏠 personal"}, render.MenuItem{Label: "No section"})
 	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: items}}
@@ -225,6 +228,8 @@ func (a *App) activateMenu(i int) {
 		return
 	}
 	switch m.kind {
+	case menuOyagoiUnset:
+		m.unsetOyagoi()
 	case menuMachineManage:
 		if m.m.Items[i].Label == "add machine..." {
 			a.addMachineDialog()
@@ -291,6 +296,17 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuWorkspace:
 		switch m.m.Items[i].Label {
+		case "set as HQ", "unset HQ":
+			if a.machineRequest != nil && m.ws >= 0 && m.ws < len(a.st.Workspaces) {
+				ws := a.st.Workspaces[m.ws]
+				action := "set"
+				if m.m.Items[i].Label == "unset HQ" {
+					action = "unset"
+				}
+				if err := a.machineRequest(fmt.Sprintf("oyagoi:%s:%d:%s", action, ws.ID, ws.Generation)); err != nil {
+					a.worktreeError(err)
+				}
+			}
 		case "New Claude Code agent", "New Codex agent", "New agy agent", "New grok agent", "New letta agent", "New qwen agent":
 			a.exec(model.CmdSelectWorkspace{Index: m.ws})
 			agent := "claude"
