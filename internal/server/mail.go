@@ -562,6 +562,33 @@ type mailQueryTarget struct {
 	generation string
 }
 
+func (s *Server) requestJobMail(recipient string) {
+	if pid, ok := parsePaneID(recipient); ok {
+		s.requestPaneMail(pid)
+		return
+	}
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
+		return
+	}
+	if s.mailInvalidPending == nil {
+		s.mailInvalidPending = make(map[string]struct{})
+	}
+	s.mailInvalidPending[recipient] = struct{}{}
+	s.startMailQueryLocked()
+}
+
+func (s *Server) requestMailSweep() {
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
+		return
+	}
+	s.mailSweepPending = true
+	s.startMailQueryLocked()
+}
+
 // requestPaneMail coalesces repeated availability changes while a read runs.
 // It is called on the app loop and never waits for SQLite.
 func (s *Server) requestPaneMail(pid int) {
@@ -575,6 +602,10 @@ func (s *Server) requestPaneMail(pid int) {
 		s.mailQueryPending = make(map[int]mailQueryTarget)
 	}
 	s.mailQueryPending[pid] = target
+	s.startMailQueryLocked()
+}
+
+func (s *Server) startMailQueryLocked() {
 	if !s.mailQueryRunning {
 		s.mailQueryRunning = true
 		s.mailQueryWG.Add(1)
@@ -586,10 +617,26 @@ func (s *Server) readPendingPaneMail() {
 	defer s.mailQueryWG.Done()
 	for {
 		s.mailQueryMu.Lock()
-		if len(s.mailQueryPending) == 0 || s.mailQueryClosed {
+		if len(s.mailQueryPending) == 0 && len(s.mailInvalidPending) == 0 && !s.mailSweepPending || s.mailQueryClosed {
 			s.mailQueryRunning = false
 			s.mailQueryMu.Unlock()
 			return
+		}
+		if s.mailSweepPending {
+			s.mailSweepPending = false
+			s.mailQueryMu.Unlock()
+			s.readMailSweep()
+			continue
+		}
+		if len(s.mailInvalidPending) != 0 {
+			var recipient string
+			for recipient = range s.mailInvalidPending {
+				delete(s.mailInvalidPending, recipient)
+				break
+			}
+			s.mailQueryMu.Unlock()
+			s.failJobQueue(dispatch.PendingNudge{Room: dispatch.JobsRoom, ToAgent: recipient}, "job notification requires immutable global caller pane ID")
+			continue
 		}
 		var pid int
 		var target mailQueryTarget
@@ -599,17 +646,62 @@ func (s *Server) readPendingPaneMail() {
 		}
 		s.mailQueryMu.Unlock()
 		snapshot := s.readPaneMail(pid)
+		var failed []int64
+		var failureReason string
 		s.app.Do(func() {
-			if s.applyPaneMailSnapshot(pid, target, snapshot) {
+			if _, err := s.resolveTarget(fmtPaneID(pid), false); err != nil {
+				failureReason = err.Message
+				for _, m := range snapshot.jobs {
+					failed = append(failed, m.ID)
+				}
+				return
+			}
+			if s.applyPaneMailSnapshot(pid, target, snapshot, nil) {
 				s.requestPaneMail(pid)
 			}
 		})
+		if len(failed) != 0 {
+			if store, err := s.db(); err == nil {
+				for _, id := range failed {
+					_ = store.FailMessage(id, failureReason)
+				}
+			}
+		}
+	}
+}
+
+func (s *Server) readMailSweep() {
+	var messages []dispatch.Message
+	if dispatch.DBExists(s.session) {
+		if store, err := s.db(); err == nil {
+			messages, _ = store.PendingJobMessages()
+		}
+	}
+	failed := make(map[int64]string)
+	s.app.Do(func() {
+		for _, m := range messages {
+			if _, err := s.resolveTarget(m.ToAgent, false); err != nil {
+				failed[m.ID] = err.Message
+			}
+		}
+		s.eachPane(func(pid, _, _ int) {
+			if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
+				s.requestPaneMail(pid)
+			}
+		})
+	})
+	if len(failed) != 0 {
+		if store, err := s.db(); err == nil {
+			for id, reason := range failed {
+				_ = store.FailMessage(id, reason)
+			}
+		}
 	}
 }
 
 // applyPaneMailSnapshot returns true when a delivery or inbox read made the
 // snapshot stale and the pane needs a fresh read.
-func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot paneMailSnapshot) bool {
+func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot paneMailSnapshot, delivered *bool) bool {
 	if ws, _ := s.app.State().FindPane(pid); ws < 0 || target.owner == nil || s.sup.Get(pid) != target.owner || s.app.State().PaneGeneration(pid) != target.generation {
 		return false
 	}
@@ -626,6 +718,9 @@ func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot
 			ok, stale := s.enqueueMailAtEpoch(mailWrite{pane: pid, owner: target.owner, payload: s.encodeMailFor(pid, m.Body), msgID: m.ID}, &snapshot.epoch)
 			if !ok {
 				return stale
+			}
+			if delivered != nil {
+				*delivered = true
 			}
 		}
 	}
@@ -648,7 +743,10 @@ func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot
 		s.deferMailForPane(pid, target.owner)
 		return false
 	}
-	_, stale := s.enqueueMailAtEpoch(mailWrite{pane: pid, owner: target.owner, payload: s.encodeMailFor(pid, strings.Join(bodies, "\n")), msgIDs: ids, room: dispatch.JobsRoom, toAgent: fmtPaneID(pid)}, &snapshot.epoch)
+	ok, stale := s.enqueueMailAtEpoch(mailWrite{pane: pid, owner: target.owner, payload: s.encodeMailFor(pid, strings.Join(bodies, "\n")), msgIDs: ids, room: dispatch.JobsRoom, toAgent: fmtPaneID(pid)}, &snapshot.epoch)
+	if ok && delivered != nil {
+		*delivered = true
+	}
 	return stale
 }
 
@@ -831,23 +929,7 @@ func (s *Server) flushMailForPane(pid int) {
 
 // flushAllMail runs once at server start.
 func (s *Server) flushAllMail() {
-	if dispatch.DBExists(s.session) {
-		if store, err := s.db(); err == nil {
-			if msgs, err := store.PendingJobMessages(); err == nil {
-				for _, m := range msgs {
-					if _, e := s.resolveTarget(m.ToAgent, false); e != nil {
-						_ = store.FailMessage(m.ID, e.Message)
-					}
-				}
-			}
-		}
-	}
-
-	s.eachPane(func(pid, _, _ int) {
-		if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
-			s.flushMailForPane(pid)
-		}
-	})
+	s.requestMailSweep()
 }
 
 // encodeMailBody renders a message body plus a submit Enter as PTY bytes,

@@ -58,7 +58,7 @@ func (s *Server) recoverLostJob(store *dispatch.Store, job dispatch.Job, m jobRu
 		// loop while still owning the mutex it needs.
 		s.jobProcs.cancelMu.Unlock()
 		if shouldNudge {
-			s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, job.CallerPane) })
+			s.app.Do(func() { s.requestJobMail(job.CallerPane) })
 		}
 	}()
 	current, err := store.CommandRow(job.ID)

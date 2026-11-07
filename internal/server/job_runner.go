@@ -393,7 +393,7 @@ func (s *Server) reconcileJobResults(store *dispatch.Store, jobs []dispatch.Job)
 			continue
 		}
 		if changed && body != "" {
-			s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, job.CallerPane) })
+			s.app.Do(func() { s.requestJobMail(job.CallerPane) })
 		}
 	}
 	return errors.Join(failures...)

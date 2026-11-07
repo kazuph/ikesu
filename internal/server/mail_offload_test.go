@@ -8,6 +8,8 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
@@ -70,6 +72,12 @@ func TestInboxInvalidatesMailSnapshot(t *testing.T) {
 	s.mailCh = make(chan mailWrite, 1)
 	s.mailInFlight = map[int64]bool{}
 	s.jobInFlight = map[string]bool{}
+	pane, err := s.sup.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	s.app.SetReported(1, "codex", "working")
 	store, err := s.db()
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +97,52 @@ func TestInboxInvalidatesMailSnapshot(t *testing.T) {
 	}
 	if ok, stale := s.enqueueMailAtEpoch(mailWrite{pane: 1, msgID: message.ID}, &snapshot.epoch); ok || !stale || len(s.mailCh) != 0 {
 		t.Fatalf("stale snapshot was queued: ok=%v stale=%v", ok, stale)
+	}
+	if !s.applyPaneMailSnapshot(1, mailQueryTarget{owner: pane, generation: s.app.State().PaneGeneration(1)}, snapshot, nil) || len(s.mailCh) != 0 {
+		t.Fatal("snapshot consumed by inbox was applied")
+	}
+}
+
+func TestPaneMailSnapshotRejectsReplacement(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
+	s := newTestServer(t, "mail-snapshot-replacement")
+	s.mailCh = make(chan mailWrite, 4)
+	s.mailInFlight = map[int64]bool{}
+	s.jobInFlight = map[string]bool{}
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	pid := s.app.State().FocusedPane()
+	pane, err := s.sup.SpawnWith(pid, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	generation := s.app.State().PaneGeneration(pid)
+	for _, room := range []string{"room", dispatch.JobsRoom} {
+		if _, err := store.InsertPaneMessage(room, "", "sender", fmtPaneID(pid), "body", nil, false, generation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := s.readPaneMail(pid)
+	s.app.State().Apply(model.CmdClosePane{Pane: pid})
+	if s.applyPaneMailSnapshot(pid, mailQueryTarget{owner: pane, generation: generation}, snapshot, nil) || len(s.mailCh) != 0 {
+		t.Fatal("closed pane received stale snapshot")
+	}
+	s.sup.Kill(pid)
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	if s.app.State().FocusedPane() != pid || s.app.State().PaneGeneration(pid) == generation {
+		t.Fatal("pane was not replaced")
+	}
+	if _, err := s.sup.SpawnWith(pid, t.TempDir(), 80, 24, nil, []string{"/bin/cat"}); err != nil {
+		t.Fatal(err)
+	}
+	if s.applyPaneMailSnapshot(pid, mailQueryTarget{owner: pane, generation: generation}, snapshot, nil) || len(s.mailCh) != 0 {
+		t.Fatal("replacement pane received stale snapshot")
 	}
 }
 

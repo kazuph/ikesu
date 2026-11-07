@@ -126,16 +126,18 @@ type Server struct {
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
 	// durable mailbox / jobs
-	dbOnce           sync.Once
-	store            *dispatch.Store
-	dbErr            error
-	mailCh           chan mailWrite
-	mailWG           sync.WaitGroup
-	mailQueryMu      sync.Mutex
-	mailQueryWG      sync.WaitGroup
-	mailQueryPending map[int]mailQueryTarget
-	mailQueryRunning bool
-	mailQueryClosed  bool
+	dbOnce             sync.Once
+	store              *dispatch.Store
+	dbErr              error
+	mailCh             chan mailWrite
+	mailWG             sync.WaitGroup
+	mailQueryMu        sync.Mutex
+	mailQueryWG        sync.WaitGroup
+	mailQueryPending   map[int]mailQueryTarget
+	mailInvalidPending map[string]struct{}
+	mailSweepPending   bool
+	mailQueryRunning   bool
+	mailQueryClosed    bool
 
 	mailMu          sync.Mutex
 	mailDelivery    sync.RWMutex    // fence PTY write + acknowledgement before handoff
