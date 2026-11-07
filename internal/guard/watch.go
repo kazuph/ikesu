@@ -35,16 +35,24 @@ func (a *Assets) assetSnapshot() (map[string]os.FileInfo, bool) {
 	}
 	paths := []string{shell, filepath.Join(shell, "current"), a.RuntimePath(), filepath.Join(shell, "current", "manifest.json"), filepath.Join(shell, "current", "ikesu"), a.MarkerPath, a.Bin, a.issuePath()}
 	paths = append(paths, filepath.Join(shell, generation), filepath.Join(shell, "generation.lock"), filepath.Dir(a.issuePath()), a.Executable, executable)
+	followedPaths := map[string]bool{a.MarkerPath: true}
 	for _, name := range []string{"bash-env", ".zshenv", ".zprofile", ".zshrc", ".zlogin"} {
 		paths = append(paths, filepath.Join(shell, name), filepath.Join(shell, name+".current"), filepath.Join(shell, "current", name+".current"))
 	}
 	for _, cmd := range a.Config.Commands() {
-		paths = append(paths, filepath.Join(a.Bin, cmd))
+		path := filepath.Join(a.Bin, cmd)
+		paths = append(paths, path)
+		followedPaths[path] = true
 	}
 	result := make(map[string]os.FileInfo, len(paths))
 	for _, path := range paths {
 		info, err := os.Lstat(path)
 		if err != nil && !os.IsNotExist(err) {
+			return nil, false
+		}
+		// The full check follows these links; Lstat alone cannot establish
+		// that their targets still contain the same data or permissions.
+		if info != nil && info.Mode()&os.ModeSymlink != 0 && followedPaths[path] {
 			return nil, false
 		}
 		result[path] = info
