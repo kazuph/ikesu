@@ -23,6 +23,7 @@ type Tab struct {
 
 // Workspace is a named set of tabs, each holding its own pane layout.
 type Workspace struct {
+	Generation     string
 	Worktree       *api.WorkspaceWorktreeInfo
 	GroupCollapsed bool
 	Section        Section
