@@ -353,11 +353,24 @@ func (s *Server) scanScreenPrompts() {
 				}
 			}
 			if p != nil && !w.resolved && transcriptOK {
+				if w.transcriptID == "" && w.decisionID != "" {
+					identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
+					if err == nil && identity != "" {
+						w.transcriptID = identity
+					}
+				}
 				same := w.transcriptID == transcriptID
 				if w.transcriptID == "" {
 					same = matchesClaudeDisplay(w.prompt, p, display)
 				}
 				if same && w.transcriptID == "" && w.decisionID != "" {
+					if !s.claudeDecisionMatchesIdentity(pid, w.decisionID, transcriptID) {
+						if s.screenPrompts.claudeRestore == nil {
+							s.screenPrompts.claudeRestore = map[string]int{}
+						}
+						s.screenPrompts.claudeRestore[w.decisionID] = pid
+						continue
+					}
 					w.transcriptID, w.displayParams = transcriptID, &display
 					handled, found := s.reconcileClaudeScreenPrompt(pid, w)
 					identity, err := s.store.ScreenQuestionIdentity(w.decisionID)
@@ -398,6 +411,11 @@ func (s *Server) scanScreenPrompts() {
 				}
 				if !changedIdentity {
 					s.cancelScreenPrompt(w)
+				} else if w.decisionID != "" {
+					if s.screenPrompts.claudeRestore == nil {
+						s.screenPrompts.claudeRestore = map[string]int{}
+					}
+					s.screenPrompts.claudeRestore[w.decisionID] = pid
 				}
 				delete(s.screenPrompts.watches, pid)
 				w = nil

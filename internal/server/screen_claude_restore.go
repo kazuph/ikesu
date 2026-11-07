@@ -136,6 +136,24 @@ func restoredUnidentifiedClaudeQuestion(pane *runtime.Pane, expected string, pro
 	return string(identity), false
 }
 
+// A visible match alone cannot identify a decision created before a later call.
+func (s *Server) claudeDecisionMatchesIdentity(pid int, decisionID, identity string) bool {
+	pane := s.sup.Get(pid)
+	if pane == nil || s.store == nil {
+		return false
+	}
+	paneID, sessionID, start, found, err := s.store.ClaudeScreenContext(decisionID)
+	if err != nil || !found || paneID != fmtPaneID(pid) {
+		return false
+	}
+	d, err := s.store.Decision(decisionID)
+	if err != nil || d.Status != "pending" {
+		return false
+	}
+	identified, done := restoredUnidentifiedClaudeQuestion(pane, sessionID, start, d)
+	return !done && identified == identity
+}
+
 // Only identified records can be associated safely with an answered call.
 func (s *Server) prepareClaudeQuestionRestore() {
 	if s.store == nil {
@@ -268,7 +286,10 @@ func (s *Server) scanRestoredClaudeQuestions() {
 						continue
 					}
 					if err := s.store.BindScreenQuestion(r.id, fmtPaneID(r.pid), identified[r.id]); err != nil {
-						continue
+						owner, found, lookupErr := s.store.ScreenQuestionDecisionAny(fmtPaneID(r.pid), identified[r.id])
+						if lookupErr != nil || !found || owner.DecisionID == r.id || !answered[r.id] {
+							continue
+						}
 					}
 				}
 				if !answered[r.id] {
@@ -328,8 +349,23 @@ func restoredClaudeAnswered(pane *runtime.Pane, expected, tool string, index int
 	if !ok || currentID != id {
 		return false
 	}
-	for _, q := range questions {
-		if q.ToolID == tool && q.Index == index && q.Answered {
+	var previous *session.ClaudeQuestion
+	for i := range questions {
+		q := &questions[i]
+		if q.ToolID == tool && q.Index == index {
+			if q.Answered {
+				return true
+			}
+			previous = q
+			break
+		}
+	}
+	if previous == nil || previous.StartedAt.IsZero() {
+		return false
+	}
+	visible := screenprompt.Parse("claude", pane.DetectionScreenLines())
+	for _, next := range questions {
+		if next.ToolID != tool && next.StartedAt.After(previous.StartedAt) && matchClaudeQuestion(visible, next) {
 			return true
 		}
 	}

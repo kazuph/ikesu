@@ -10,6 +10,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
@@ -186,17 +187,28 @@ func TestClaudeAnsweredOwnerClosesIdenticalUnboundPending(t *testing.T) {
 }
 func TestClaudeIdentifiedOldQuestionClosesOnNextQuestion(t *testing.T) {
 	teststate.Lock(t)
-	for _, result := range []bool{true, false} {
-		t.Run(map[bool]string{true: "answered", false: "next_without_result"}[result], func(t *testing.T) {
+	for _, result := range []string{"answered", "next_without_result", "late_identity"} {
+		t.Run(result, func(t *testing.T) {
 			f := newReview2Fixture(t)
 			before := time.Now()
 			review2After(t, before.UnixMilli())
 			identity := `["` + f.id + `","old",0]`
-			old := f.create(t, identity)
+			var old api.Decision
+			if result == "late_identity" {
+				old = f.create(t, "")
+				f.s.app.Do(func() {
+					if err := f.s.store.BindScreenQuestion(old.DecisionID, "p1", identity); err != nil {
+						t.Error(err)
+					}
+					f.s.screenPrompts.watches[1].transcriptID = identity
+				})
+			} else {
+				old = f.create(t, identity)
+			}
 			after := review2After(t, old.CreatedUnixMS)
 			nextTitle := "A completely different question?"
 			records := []any{f.question(old, "old", before, old.Title)}
-			if result {
+			if result == "answered" {
 				records = append(records, f.result("old", after))
 			}
 			records = append(records, f.question(old, "next", after, nextTitle))
@@ -207,6 +219,58 @@ func TestClaudeIdentifiedOldQuestionClosesOnNextQuestion(t *testing.T) {
 				d, _ := f.s.store.Decision(old.DecisionID)
 				return d.Status == "cancelled"
 			})
+		})
+	}
+}
+
+func TestClaudeDifferentSessionOrProcessCannotBindOldDecision(t *testing.T) {
+	teststate.Lock(t)
+	for _, mismatch := range []string{"session", "process"} {
+		t.Run(mismatch, func(t *testing.T) {
+			f := newReview2Fixture(t)
+			start, ok := session.ProcessStart(f.pane.ForegroundJob())
+			if !ok {
+				t.Fatal("missing process start")
+			}
+			var old api.Decision
+			f.s.app.Do(func() {
+				if _, err := f.s.db(); err != nil {
+					t.Error(err)
+					return
+				}
+				p := f.s.readScreenPrompt(1)
+				params := p.Params
+				params.Origin = &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Reason: "screen_prompt", Machine: "local"}
+				var err error
+				old, err = f.s.store.CreateDecision(params, time.Now())
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				expected := f.id
+				if mismatch == "session" {
+					expected = "other-session"
+				} else {
+					start = start.Add(-time.Second)
+				}
+				if err = f.s.store.BindClaudeScreenContext(old.DecisionID, "p1", expected, start); err != nil {
+					t.Error(err)
+				}
+				f.s.screenPrompts.watches = map[int]*screenPromptWatch{1: {prompt: p, signature: p.Signature(), decisionID: old.DecisionID, lastMatched: true}}
+			})
+			after := review2After(t, old.CreatedUnixMS)
+			f.transcript(t, f.question(old, "next", after, old.Title))
+			if r := answerScreen(f.s, old, "1", nil); r.Err == nil {
+				t.Error("answer accepted with mismatched context")
+			}
+			identity, err := f.s.store.ScreenQuestionIdentity(old.DecisionID)
+			if err != nil || identity != "" {
+				t.Errorf("identity changed: %q %v", identity, err)
+			}
+			data, _ := os.ReadFile(f.input)
+			if len(data) > 0 {
+				t.Errorf("input sent: %q", data)
+			}
 		})
 	}
 }
