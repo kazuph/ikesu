@@ -15,10 +15,8 @@ import (
 // prefix verbatim. Those run as the user's own scripts; any other line,
 // including a changed copy of the same command, keeps the guarded path.
 func TestClaudeHarnessCommandsRunOutsideGuard(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	a, env, _ := newEntry(t, binary)
 	defer a.Close()
 	if e := a.Sync("claude"); e != nil {

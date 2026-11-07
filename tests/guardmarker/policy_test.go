@@ -9,10 +9,8 @@ import (
 )
 
 func TestPinnedServerPolicyAgainstCallerConfig(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	for _, mode := range []string{"enabled=false", "mode=\"record\""} {
 		for _, missing := range []bool{false, true} {
 			for _, sub := range []string{"exec", "line"} {

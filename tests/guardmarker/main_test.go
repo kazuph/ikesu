@@ -17,6 +17,9 @@ import (
 
 var realGuardSocket string
 
+// fixtureBinary is built once in TestMain; tests only execute it.
+var fixtureBinary string
+
 // The guard now requires identity from a real server even for safe commands.
 // This isolated server is shared by the package's independent asset fixtures.
 func TestMain(m *testing.M) {
@@ -26,6 +29,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	binary := filepath.Join(root, "ikesu")
+	fixtureBinary = binary
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintln(os.Stderr, err, string(out))
