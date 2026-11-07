@@ -23,6 +23,9 @@ type gitCwdActivity struct {
 	trackedNext   int
 	statChecks    int
 	trackedChecks int
+	readChecks    int
+	quietDirs     map[string]bool
+	trackedDirty  bool
 }
 
 type gitPathState struct {
@@ -59,24 +62,37 @@ func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
 		tracked[path] = true
 	}
 	for path, previous := range entry.paths {
-		if !tracked[path] && !probe(path, previous) {
+		// Recheck watched worktree directories at least once per tracked-file
+		// cycle even if the native watcher stops delivering notifications.
+		skipDir := entry.quietDirs[path] && revision == entry.revision && entry.trackedNext != 7
+		if !tracked[path] && !skipDir && !probe(path, previous) {
 			return entry, false
 		}
 	}
 	// Visit evenly spaced files in each pass, alternating opposite halves so
 	// neighbouring paths do not all wait for the end of the 12-second cycle.
 	phase := (entry.trackedNext&1)<<2 | entry.trackedNext&2 | (entry.trackedNext&4)>>2
+	changed := false
 	for i := phase; i < len(entry.tracked); i += 8 {
 		path := entry.tracked[i]
 		entry.trackedChecks++
 		if !probe(path, entry.paths[path]) {
-			return entry, false
+			info, err := os.Stat(path)
+			entry.statChecks++
+			if err != nil && !os.IsNotExist(err) {
+				return entry, false
+			}
+			state := entry.paths[path]
+			state.info = info
+			entry.paths[path] = state
+			changed = true
 		}
 	}
 	entry.trackedNext = (entry.trackedNext + 1) % 8
+	entry.trackedDirty = changed
 	// A notification arriving during the probes must remain pending.
 	entry.revision = revision
-	return entry, true
+	return entry, !changed
 }
 
 type gitActivityState struct{ entries map[string]gitCwdActivity }
@@ -117,6 +133,12 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		entry.git = readWorkspaceGit(cwd)
 		entry.name = workspaceDirectoryName(cwd)
 		entry.revision, entry.ready, entry.loaded = revision, ready, true
+		return entry
+	}
+	if entry.trackedDirty {
+		entry.trackedDirty = false
+		entry.readChecks = 0
+		entry.git.Added, entry.git.Deleted = readWorkspaceGitDiff(cwd)
 		return entry
 	}
 	if entry.loaded && !entry.ready && entry.watch.Revision() == entry.revision {
@@ -203,9 +225,12 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	}
 	covered := entry.watch.Update(gitPathList(watches))
 	entry.paths = make(map[string]gitPathState, len(paths))
+	entry.quietDirs = make(map[string]bool)
 	entry.tracked = entry.tracked[:0]
 	entry.trackedNext = 0
+	entry.readChecks = 0
 	for path := range paths {
+		entry.readChecks++
 		info, statErr := os.Stat(path)
 		if statErr != nil && !os.IsNotExist(statErr) {
 			covered = false
@@ -214,6 +239,17 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		for _, dir := range metadataDirs {
 			if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
 				contents = true
+			}
+		}
+		if trackedDirs[path] && watches[path] && info != nil && info.IsDir() {
+			metadata := false
+			for _, dir := range metadataDirs {
+				if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
+					metadata = true
+				}
+			}
+			if !metadata {
+				entry.quietDirs[path] = true
 			}
 		}
 		entry.paths[path] = gitPathState{info: info, contents: contents}
