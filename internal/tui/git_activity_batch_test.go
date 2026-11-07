@@ -87,7 +87,11 @@ func TestWorkspaceGitContentOnlyRefreshWithinFifteenSeconds(t *testing.T) {
 		a.refreshWorkspaceGit(time.Now())
 		finishGitRefresh(t, a)
 		if a.workspaceGit[0].Added == 2 && a.workspaceGit[0].Deleted == 1 {
-			t.Logf("content-only write visible after %s", time.Since(started))
+			elapsed := time.Since(started)
+			if elapsed > 15*time.Second {
+				t.Fatalf("content-only write visible too late: %s", elapsed)
+			}
+			t.Logf("content-only write visible after %s", elapsed)
 			return
 		}
 		select {
@@ -129,7 +133,11 @@ func TestWorkspaceGitConcurrentCwdsAndWorkspaceChangesWithinFifteenSeconds(t *te
 			a.refreshWorkspaceGit(time.Now())
 			finishGitRefresh(t, a)
 			if check() {
-				t.Logf("%s visible after %s", stage, time.Since(started))
+				elapsed := time.Since(started)
+				if elapsed > 15*time.Second {
+					t.Fatalf("%s visible too late: %s", stage, elapsed)
+				}
+				t.Logf("%s visible after %s", stage, elapsed)
 				return
 			}
 			select {
