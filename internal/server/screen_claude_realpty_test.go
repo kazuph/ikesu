@@ -307,6 +307,8 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	}
 	p1, input := startPane(1)
 	p2, _ := startPane(2)
+	questionTime := time.Now().UTC()
+	waitPromptCondition(t, func() bool { return time.Now().UnixMilli() > questionTime.UnixMilli() })
 	s.app.SetReported(1, "claude", "blocked")
 	s.initDecisionHub()
 	s.app.SetQuitHook(s.stopDecisions)
@@ -342,7 +344,7 @@ func TestClaudeTranscriptRealPTYLateRecordAndSessionIsolation(t *testing.T) {
 	original := screenRecord(t, s)
 	question := "画面に収まらない前提を含む全文。Which output format should the temporary report use?\n\nUse only the safe destination."
 	writeQuestion := func(index int, text string) {
-		record := map[string]any{"sessionId": ids[index], "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-" + ids[index], "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Sections", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals. 全文の説明"}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links. もう一つの説明"}}}, map[string]any{"question": "全文。Which language should the report use?", "header": "Language", "options": []any{map[string]any{"label": "Japanese", "description": "For the local team. 日本語の説明"}, map[string]any{"label": "English", "description": "For wider sharing. 英語の説明"}}}}}}}}}
+		record := map[string]any{"timestamp": questionTime.Format(time.RFC3339Nano), "sessionId": ids[index], "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-" + ids[index], "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Sections", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals. 全文の説明"}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links. もう一つの説明"}}}, map[string]any{"question": "全文。Which language should the report use?", "header": "Language", "options": []any{map[string]any{"label": "Japanese", "description": "For the local team. 日本語の説明"}, map[string]any{"label": "English", "description": "For wider sharing. 英語の説明"}}}}}}}}}
 		data, err := json.Marshal(record)
 		if err != nil {
 			t.Fatal(err)
@@ -555,6 +557,8 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 			waitPromptCondition(t, func() bool {
 				return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
 			})
+			questionTime := time.Now().UTC()
+			waitPromptCondition(t, func() bool { return time.Now().UnixMilli() > questionTime.UnixMilli() })
 			if strings.Contains(pane.ScreenText(), "Beginning of the long question") {
 				t.Fatal("fixture did not scroll")
 			}
@@ -582,7 +586,7 @@ func TestClaudeLongQuestionWaitAndScrollback(t *testing.T) {
 				if mode == "mismatch" {
 					text = "An unrelated recorded question"
 				}
-				record := map[string]any{"sessionId": id, "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-long", "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals."}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links."}}}}}}}}}
+				record := map[string]any{"timestamp": questionTime.Format(time.RFC3339Nano), "sessionId": id, "cwd": cwd, "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "AskUserQuestion", "id": "tool-long", "input": map[string]any{"questions": []any{map[string]any{"question": text, "header": "Format", "options": []any{map[string]any{"label": "Plain", "description": "A compact plain text report, easy to paste into terminals."}, map[string]any{"label": "Markdown", "description": "A structured Markdown report with headings and links."}}}}}}}}}
 				data, e := json.Marshal(record)
 				if e != nil {
 					t.Fatal(e)
