@@ -77,7 +77,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	area := view.Workspace.Rect
 	rows := []machineRow{}
 	if m.Oyagoi != nil {
-		rows = append(rows, machineRow{row: SidebarRow{Kind: RowRule}}, machineRow{oyagoi: true}, machineRow{row: SidebarRow{Kind: RowRule}})
+		rows = append(rows, machineRow{oyagoi: true}, machineRow{row: SidebarRow{Kind: RowRule}})
 		if m.Oyagoi.Machine != "" && !m.Oyagoi.Collapsed {
 			if m.Oyagoi.Offline {
 				label := m.Oyagoi.Machine
