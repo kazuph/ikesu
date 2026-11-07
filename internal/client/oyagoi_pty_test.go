@@ -161,7 +161,7 @@ func TestOyagoiOfflineUnsetKeepsNewerSelectionActualPTYReview(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, hit := range m.sidebar.Hits {
-			if hit.OfflineOyagoi {
+			if hit.Oyagoi && hit.Machine == old.Machine && hit.Workspace == old.Workspace {
 				if err := m.input(mouseEvent(t, fmt.Sprintf("\x1b[<2;%d;%dM", hit.Rect.X+1, hit.Rect.Y+1))); err != nil {
 					t.Fatal(err)
 				}
