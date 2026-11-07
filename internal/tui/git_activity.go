@@ -188,6 +188,12 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 					return err
 				}
 				paths[path] = true
+				if d.IsDir() && path != dir && !gitStatusMetadataDir(dir, path) {
+					// Object stores, reflogs, hooks and other worktrees'
+					// metadata never change the status shown for this cwd
+					// without also changing HEAD, the index or a ref.
+					return fs.SkipDir
+				}
 				return nil
 			})
 			ready = ready && walkErr == nil
@@ -313,4 +319,18 @@ func gitConfigurationPaths(cwd string, paths map[string]bool) bool {
 		add(filepath.Join(root, "git", "attributes"))
 	}
 	return true
+}
+
+// gitStatusMetadataDir reports whether a directory under a Git metadata root
+// holds state the sidebar status reads: refs and in-progress operations.
+func gitStatusMetadataDir(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return true
+	}
+	switch strings.SplitN(filepath.ToSlash(rel), "/", 2)[0] {
+	case "refs", "rebase-merge", "rebase-apply", "sequencer":
+		return true
+	}
+	return false
 }
