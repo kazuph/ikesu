@@ -419,4 +419,22 @@ func TestAssetUnrelatedDirectoryEventsAvoidRepeatedIntegrityChecks(t *testing.T)
 	if a.intactChecks != before {
 		t.Fatalf("unchanged assets: %d integrity checks, want 0", a.intactChecks-before)
 	}
+	select {
+	case <-changes:
+	default:
+	}
+	if err := os.WriteFile(a.MarkerPath, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changes:
+	case <-time.After(2 * time.Second):
+		t.Fatal("marker change not observed")
+	}
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if a.intactChecks == before || !a.intact() {
+		t.Fatal("changed marker did not trigger full inspection and repair")
+	}
 }
