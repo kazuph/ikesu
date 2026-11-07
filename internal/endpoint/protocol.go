@@ -36,7 +36,7 @@ func HasGraphicsPatches(peer Peer) bool {
 
 func Current() Peer {
 	peer := Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"client_view", "input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", "input_receipt"}}
+		Methods: []string{"client_view", "input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "workspace_select_generation", "workspace_menu", "oyagoi_view", "oyagoi_check", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", "input_receipt"}}
 	if ExperimentalFlatDiff {
 		peer.SurfaceCodecs = []string{FlatDiffCodec}
 	}
@@ -56,7 +56,7 @@ func RequiredGeneration(method string) int {
 		return InputReceiptGeneration
 	case "decision_answer":
 		return DecisionGeneration
-	case "visibility", "workspace_select", "view_config", "machine_menu":
+	case "visibility", "workspace_select", "workspace_select_generation", "workspace_menu", "oyagoi_view", "oyagoi_check", "view_config", "machine_menu":
 		return MachineGeneration
 	default:
 		return 1

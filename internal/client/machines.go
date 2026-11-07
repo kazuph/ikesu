@@ -23,11 +23,13 @@ import (
 )
 
 type managedEndpoint struct {
-	guardApproval  approvalState
-	approvalInput  map[string]time.Time
-	approvalPrefix bool
-	processedInput uint64
-	selection      *paintedSelection
+	oyagoiProjection *oyagoiProjection
+	oyagoiCheck      *oyagoiSelection
+	guardApproval    approvalState
+	approvalInput    map[string]time.Time
+	approvalPrefix   bool
+	processedInput   uint64
+	selection        *paintedSelection
 
 	snapshotAttempt          uint64
 	boot                     string
@@ -61,6 +63,7 @@ type endpointEvent struct {
 	err            error
 	approval       string
 	catalogChanged bool
+	oyagoiChanged  bool
 	formUpdate     func()
 	configRevision uint64
 	upgrade        *upgradeCheckResult
@@ -72,6 +75,7 @@ type pendingMachine struct {
 	keys               []input.Event
 	id                 string
 	workspace          int
+	generation         string
 	deadline           time.Time
 	requested          bool
 	create             bool
@@ -79,6 +83,9 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	oyagoiStore oyagoiStore
+	oyagoi      *oyagoiSelection
+	oyagoiCache *oyagoiCache
 	koiNext     time.Time
 	koiClock    render.KoiAnimation
 	koiVisible  bool
@@ -161,7 +168,19 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		return pumpDone
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, failedUpgrades: map[upgradeIdentity]bool{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
+	m.oyagoiStore.path = filepath.Join(api.StateDir(), "client-shell", "oyagoi.json")
+	if err := os.MkdirAll(filepath.Dir(m.oyagoiStore.path), 0700); err != nil {
+		fmt.Fprintln(out, "ikesu: HQ settings:", err)
+		return pumpRejected
+	}
+	stopOyagoi, err := m.watchOyagoi(ctx)
+	if err != nil {
+		fmt.Fprintln(out, "ikesu: HQ settings watch:", err)
+		return pumpRejected
+	}
+	defer stopOyagoi()
 	if latency.Enabled {
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}

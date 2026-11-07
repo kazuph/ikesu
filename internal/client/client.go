@@ -61,27 +61,33 @@ type msg struct {
 	EndPrefix             bool                   `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification `json:"notification,omitempty"`
 	endpoint.Peer
-	Available     int                       `json:"available_generation,omitempty"`
-	Type          string                    `json:"type"`
-	Kind          string                    `json:"kind,omitempty"`
-	Data          string                    `json:"data,omitempty"`
-	SidebarJobs   *bool                     `json:"sidebar_jobs,omitempty"`
-	Cols          int                       `json:"cols,omitempty"`
-	Rows          int                       `json:"rows,omitempty"`
-	Xpixel        int                       `json:"xpixel,omitempty"`
-	Ypixel        int                       `json:"ypixel,omitempty"`
-	Reason        string                    `json:"reason,omitempty"`
-	Rendered      *render.Output            `json:"rendered,omitempty"`
-	RequestAck    bool                      `json:"request_ack,omitempty"`
-	FocusEpoch    uint64                    `json:"focus_epoch,omitempty"`
-	Config        *config.Config            `json:"config,omitempty"`
-	ConfigWarning string                    `json:"config_warning,omitempty"`
-	Preferences   *endpoint.ViewPreferences `json:"preferences,omitempty"`
-	ConfigEdit    *config.Edit              `json:"config_edit,omitempty"`
-	ConfigID      uint64                    `json:"config_id,omitempty"`
-	Visible       *bool                     `json:"visible,omitempty"`
-	Workspace     int                       `json:"workspace,omitempty"`
-	MachineAction string                    `json:"machine_action,omitempty"`
+	Available           int                       `json:"available_generation,omitempty"`
+	Type                string                    `json:"type"`
+	Kind                string                    `json:"kind,omitempty"`
+	Data                string                    `json:"data,omitempty"`
+	SidebarJobs         *bool                     `json:"sidebar_jobs,omitempty"`
+	Cols                int                       `json:"cols,omitempty"`
+	Rows                int                       `json:"rows,omitempty"`
+	Xpixel              int                       `json:"xpixel,omitempty"`
+	Ypixel              int                       `json:"ypixel,omitempty"`
+	Reason              string                    `json:"reason,omitempty"`
+	Rendered            *render.Output            `json:"rendered,omitempty"`
+	RequestAck          bool                      `json:"request_ack,omitempty"`
+	FocusEpoch          uint64                    `json:"focus_epoch,omitempty"`
+	Config              *config.Config            `json:"config,omitempty"`
+	ConfigWarning       string                    `json:"config_warning,omitempty"`
+	Preferences         *endpoint.ViewPreferences `json:"preferences,omitempty"`
+	ConfigEdit          *config.Edit              `json:"config_edit,omitempty"`
+	ConfigID            uint64                    `json:"config_id,omitempty"`
+	Visible             *bool                     `json:"visible,omitempty"`
+	Workspace           int                       `json:"workspace,omitempty"`
+	WorkspaceGeneration string                    `json:"workspace_generation,omitempty"`
+	OyagoiLabel         string                    `json:"oyagoi_label,omitempty"`
+	OyagoiOnline        bool                      `json:"oyagoi_online,omitempty"`
+	OyagoiExists        *bool                     `json:"oyagoi_exists,omitempty"`
+	MenuX               int                       `json:"menu_x,omitempty"`
+	MenuY               int                       `json:"menu_y,omitempty"`
+	MachineAction       string                    `json:"machine_action,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it

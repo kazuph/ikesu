@@ -86,9 +86,10 @@ func (s *AppState) allocTab() *Tab {
 func (s *AppState) newWorkspace(cwd string) *Workspace {
 	s.nextWorkspaceID++
 	ws := &Workspace{
-		ID:   s.nextWorkspaceID,
-		Name: fmt.Sprintf("workspace %d", s.nextWorkspaceID),
-		Cwd:  cwd,
+		Generation: rand.Text(),
+		ID:         s.nextWorkspaceID,
+		Name:       fmt.Sprintf("workspace %d", s.nextWorkspaceID),
+		Cwd:        cwd,
 	}
 	ws.Tabs = []*Tab{s.allocTab()}
 	s.Workspaces = append(s.Workspaces, ws)
@@ -363,9 +364,10 @@ func (s *AppState) movePane(c CmdMovePane) []Effect {
 		s.dropPaneFromTab(wi, ti, c.Pane, out)
 		s.nextWorkspaceID++
 		ws := &Workspace{
-			ID:   s.nextWorkspaceID,
-			Name: c.Dest.Label,
-			Cwd:  c.Dest.Cwd,
+			Generation: rand.Text(),
+			ID:         s.nextWorkspaceID,
+			Name:       c.Dest.Label,
+			Cwd:        c.Dest.Cwd,
 		}
 		if ws.Name == "" {
 			ws.Name = fmt.Sprintf("workspace %d", ws.ID)
@@ -467,9 +469,10 @@ func (s *AppState) applyLayout(c CmdApplyLayout) []Effect {
 			effs = kept
 			s.nextWorkspaceID++
 			s.Workspaces = append(s.Workspaces, &Workspace{
-				ID:   s.nextWorkspaceID,
-				Name: fmt.Sprintf("workspace %d", s.nextWorkspaceID),
-				Cwd:  wsCwd,
+				Generation: rand.Text(),
+				ID:         s.nextWorkspaceID,
+				Name:       fmt.Sprintf("workspace %d", s.nextWorkspaceID),
+				Cwd:        wsCwd,
 			})
 			wi = len(s.Workspaces) - 1
 		}

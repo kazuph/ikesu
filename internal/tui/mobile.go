@@ -30,16 +30,24 @@ func (a *App) mobileMouse(ev input.Event) bool {
 		} else if m.Button == uv.MouseWheelDown {
 			a.mobileScroll += 2
 		}
-		a.mobileScroll = render.MobileOffset(a.st, a.mainMenuItems(), a.mobileScroll)
+		a.mobileScroll = render.MobileOffsetWithForeignOyagoi(a.st, a.mainMenuItems(), a.mobileScroll, a.oyagoiWorkspace, a.oyagoiForeignName, a.oyagoiGeneration)
 	}
 	if ev.Kind == input.KindMouseClick && m.Button == uv.MouseLeft {
 		viewport := render.MobileViewport(a.st)
 		if pointIn(m.X, m.Y, viewport) {
-			rows := render.MobileRows(a.st, a.mainMenuItems())
-			index := m.Y - viewport.Y + render.MobileOffset(a.st, a.mainMenuItems(), a.mobileScroll)
+			rows := render.MobileRowsWithForeignOyagoi(a.st, a.mainMenuItems(), a.oyagoiWorkspace, a.oyagoiForeignName, a.oyagoiGeneration)
+			index := m.Y - viewport.Y + max(0, min(a.mobileScroll, max(0, len(rows)-viewport.H)))
 			if index < len(rows) {
 				row := rows[index]
 				switch row.Kind {
+				case render.RowMobileForeignOyagoi:
+					if a.oyagoiForeignOnline && a.machineRequest != nil {
+						if err := a.machineRequest("oyagoi:select"); err != nil {
+							a.worktreeError(err)
+						} else {
+							a.mobileSwitcher = false
+						}
+					}
 				case render.RowMobileNewWorkspace:
 					a.mobileSwitcher = false
 					a.newWorkspace()

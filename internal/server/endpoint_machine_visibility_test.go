@@ -12,6 +12,31 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
+func TestWorkspaceSelectRejectsOldGenerationActualPTYReview(t *testing.T) {
+	if runIsolatedParallelEarly(t) {
+		return
+	}
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	defer stopServer(t, dir, done)
+	first := firstPaneID(t, dir)
+	label := "different-workspace"
+	var created api.WorkspaceCreatedResult
+	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Label: &label}, &created)
+	id, err := strconv.Atoi(strings.TrimPrefix(created.Workspace.WorkspaceID, "s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := dialClient(t, dir)
+	defer c.conn.Close()
+	c.send(t, clientMsg{Type: "hello", Peer: endpoint.Current(), Cols: 120, Rows: 40})
+	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
+	c.send(t, clientMsg{Type: "workspace_select", Workspace: id, WorkspaceGeneration: "old-generation"})
+	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "error" && m.Reason == "endpoint_workspace_not_found" })
+	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'IDENTITY_REJECTED\\n'\n"))})
+	waitRead(t, dir, first, "IDENTITY_REJECTED")
+}
+
 func TestHiddenMachineEndpointDoesNotReadTabsAndSelectsOriginalWorkspaceID(t *testing.T) {
 	if runIsolatedParallelEarly(t) {
 		return

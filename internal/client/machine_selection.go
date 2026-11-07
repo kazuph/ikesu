@@ -14,7 +14,10 @@ func (m *machineClient) selectionSession(id string) string {
 	if id == "local" {
 		return m.session
 	}
-	return m.endpoints[id].profile.Session
+	if endpoint := m.endpoints[id]; endpoint != nil {
+		return endpoint.profile.Session
+	}
+	return ""
 }
 
 // Retained snapshots may still belong to the previous connection target.

@@ -79,7 +79,7 @@ func (a *App) configAction(name string, k uv.Key) bool {
 	case "next_workspace":
 		a.cycleWorkspace(1)
 	case "switch_workspace":
-		order := a.st.VisibleWorkspaceOrder()
+		order := a.visibleWorkspaceOrder()
 		i := int(k.Code - '1')
 		if i >= 0 && i < len(order) {
 			a.exec(model.CmdSelectWorkspace{Index: order[i]})
