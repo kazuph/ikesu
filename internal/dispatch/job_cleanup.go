@@ -17,6 +17,9 @@ const JobRetention = 24 * time.Hour
 func (s *Store) CleanupJobs(now time.Time, logDir string, alive func(int) bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.db == nil {
+		return errStoreClosed
+	}
 	if err := s.db.Exec("BEGIN IMMEDIATE"); err != nil {
 		return err
 	}

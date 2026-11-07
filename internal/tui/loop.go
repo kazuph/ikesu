@@ -261,8 +261,9 @@ func (a *App) onTick() {
 	a.refreshWorkspaceGit(now)
 	a.expireToast()
 	a.expireCopied(now)
-	for _, pid := range a.sup.PollPendingProcesses(now) {
-		a.invalidateDetection(pid)
+	select {
+	case a.processPollRequests <- struct{}{}:
+	default:
 	}
 	a.popupSelectionAutoScroll()
 	a.selectionAutoScroll(now)
