@@ -62,7 +62,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	if len(m.Groups) == 1 && m.Oyagoi == nil {
 		return
 	}
-	defer m.drawRight(f, active)
+	if len(m.Groups) > 1 {
+		defer m.drawRight(f, active)
+	}
 	s := active.State
 	if s.SidebarArea().W == 0 {
 		return

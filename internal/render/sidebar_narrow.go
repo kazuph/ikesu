@@ -113,6 +113,9 @@ func (m *MachineSidebar) draw(f *Frame, in Input) {
 	vm.Hits = nil
 	vm.drawExpanded(ref, reference)
 	for _, right := range []bool{false, true} {
+		if right && len(m.Groups) == 1 {
+			continue
+		}
 		rows := map[int]SidebarRow{}
 		for _, hit := range vm.Hits {
 			if hit.Right == right && !hit.Header && !hit.New {
