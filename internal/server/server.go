@@ -55,29 +55,35 @@ type clientMsg struct {
 	EndPrefix             bool                                 `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification               `json:"notification,omitempty"`
 	endpoint.Peer
-	Available      int                          `json:"available_generation,omitempty"`
-	Type           string                       `json:"type"`
-	Kind           string                       `json:"kind,omitempty"`
-	Data           string                       `json:"data,omitempty"`
-	SidebarJobs    *bool                        `json:"sidebar_jobs,omitempty"`
-	Cols           int                          `json:"cols,omitempty"`
-	Rows           int                          `json:"rows,omitempty"`
-	Xpixel         int                          `json:"xpixel,omitempty"`
-	Ypixel         int                          `json:"ypixel,omitempty"`
-	Reason         string                       `json:"reason,omitempty"`
-	Rendered       *render.Output               `json:"rendered,omitempty"`
-	RequestAck     bool                         `json:"request_ack,omitempty"`
-	FocusEpoch     uint64                       `json:"focus_epoch,omitempty"`
-	Config         *config.Config               `json:"config,omitempty"`
-	ConfigWarning  string                       `json:"config_warning,omitempty"`
-	Preferences    *endpoint.ViewPreferences    `json:"preferences,omitempty"`
-	ConfigEdit     *config.Edit                 `json:"config_edit,omitempty"`
-	ConfigID       uint64                       `json:"config_id,omitempty"`
-	Visible        *bool                        `json:"visible,omitempty"`
-	Workspace      int                          `json:"workspace,omitempty"`
-	Decisions      *endpoint.DecisionProjection `json:"decisions,omitempty"`
-	DecisionAnswer *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
-	MachineAction  string                       `json:"machine_action,omitempty"`
+	Available           int                          `json:"available_generation,omitempty"`
+	Type                string                       `json:"type"`
+	Kind                string                       `json:"kind,omitempty"`
+	Data                string                       `json:"data,omitempty"`
+	SidebarJobs         *bool                        `json:"sidebar_jobs,omitempty"`
+	Cols                int                          `json:"cols,omitempty"`
+	Rows                int                          `json:"rows,omitempty"`
+	Xpixel              int                          `json:"xpixel,omitempty"`
+	Ypixel              int                          `json:"ypixel,omitempty"`
+	Reason              string                       `json:"reason,omitempty"`
+	Rendered            *render.Output               `json:"rendered,omitempty"`
+	RequestAck          bool                         `json:"request_ack,omitempty"`
+	FocusEpoch          uint64                       `json:"focus_epoch,omitempty"`
+	Config              *config.Config               `json:"config,omitempty"`
+	ConfigWarning       string                       `json:"config_warning,omitempty"`
+	Preferences         *endpoint.ViewPreferences    `json:"preferences,omitempty"`
+	ConfigEdit          *config.Edit                 `json:"config_edit,omitempty"`
+	ConfigID            uint64                       `json:"config_id,omitempty"`
+	Visible             *bool                        `json:"visible,omitempty"`
+	Workspace           int                          `json:"workspace,omitempty"`
+	WorkspaceGeneration string                       `json:"workspace_generation,omitempty"`
+	OyagoiLabel         string                       `json:"oyagoi_label,omitempty"`
+	OyagoiOnline        bool                         `json:"oyagoi_online,omitempty"`
+	OyagoiExists        *bool                        `json:"oyagoi_exists,omitempty"`
+	MenuX               int                          `json:"menu_x,omitempty"`
+	MenuY               int                          `json:"menu_y,omitempty"`
+	Decisions           *endpoint.DecisionProjection `json:"decisions,omitempty"`
+	DecisionAnswer      *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
+	MachineAction       string                       `json:"machine_action,omitempty"`
 }
 
 // Server is one running session.
@@ -126,11 +132,19 @@ type Server struct {
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
 	// durable mailbox / jobs
-	dbOnce sync.Once
-	store  *dispatch.Store
-	dbErr  error
-	mailCh chan mailWrite
-	mailWG sync.WaitGroup
+	dbOnce             sync.Once
+	store              *dispatch.Store
+	dbErr              error
+	mailCh             chan mailWrite
+	mailWG             sync.WaitGroup
+	mailQueryMu        sync.Mutex
+	mailQueryWG        sync.WaitGroup
+	mailQueryPending   map[int]mailQueryTarget
+	mailQueryOrder     []mailQueryRequest
+	mailInvalidPending map[string]struct{}
+	mailSweepPending   bool
+	mailQueryRunning   bool
+	mailQueryClosed    bool
 
 	mailMu          sync.Mutex
 	mailDelivery    sync.RWMutex    // fence PTY write + acknowledgement before handoff
@@ -139,6 +153,8 @@ type Server struct {
 	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
 	mailDeferred    map[int]mailDeferredPane
 	mailDeferredSeq uint64
+	mailEpoch       map[int]uint64 // per-pane delivery and inbox changes invalidate snapshots
+	mailSendPending map[int64]*bool
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
@@ -154,6 +170,8 @@ type Server struct {
 	// session persistence & restart (SPEC G3/G5)
 	saveMu        sync.Mutex
 	saveTimer     *time.Timer // pending coalesced session.json write
+	saveRunning   bool        // guarded by saveMu
+	savePending   bool        // guarded by saveMu
 	saveWriteMu   sync.Mutex
 	saveSequence  uint64 // assigned only on the app loop
 	savedSequence uint64 // guarded by saveWriteMu
@@ -382,6 +400,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetViewerHooks(s.drawViewers, s.tickViewers, s.visiblePane)
 	s.app.SetQuitHook(func() {
+		s.stopMailQueries()
 		s.stopDecisions()
 		if s.restarting {
 			s.closing.Store(2)
@@ -521,6 +540,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	})
 	go s.jobCacheLoop(appDone, jobsDone)
 	<-appDone
+	s.stopMailQueries()
 	<-jobsDone
 	s.cleanup()
 	if s.restarting {
@@ -531,6 +551,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 
 func (s *Server) cleanup() {
 	defer s.trace.Close()
+	s.stopMailQueries()
 	s.saveMu.Lock()
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
@@ -550,6 +571,7 @@ func (s *Server) cleanup() {
 	case <-drained:
 	case <-time.After(500 * time.Millisecond):
 	}
+	s.mailQueryWG.Wait()
 	close(s.mailCh)
 	if !s.handedOff {
 		s.sup.KillAll()
@@ -817,12 +839,28 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() { c.viewer.SetVisible(s.app, *m.Visible) })
 		case "workspace_select":
 			s.app.Do(func() {
-				if !c.viewer.SelectWorkspace(s.app, m.Workspace) {
+				if (m.WorkspaceGeneration != "" && !c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)) || !c.viewer.SelectWorkspace(s.app, m.Workspace) {
 					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
 					c.viewer.RecordInput(s.app, m.InputSequence)
 				}
+			})
+		case "workspace_menu":
+			s.app.Do(func() {
+				if !c.viewer.OpenWorkspaceMenu(s.app, m.Workspace, m.WorkspaceGeneration, m.MenuX, m.MenuY) {
+					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+				}
+			})
+		case "oyagoi_view":
+			s.app.Do(func() {
+				c.viewer.SetOyagoi(s.app, m.Workspace, m.WorkspaceGeneration)
+				c.viewer.SetForeignOyagoi(s.app, m.OyagoiLabel, m.OyagoiOnline)
+			})
+		case "oyagoi_check":
+			s.app.Do(func() {
+				exists := c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)
+				_ = c.send(clientMsg{Type: "oyagoi_check_result", Workspace: m.Workspace, WorkspaceGeneration: m.WorkspaceGeneration, OyagoiExists: &exists})
 			})
 		case "config_result":
 			s.app.Do(func() {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/guard"
 	"github.com/kazuph/ikesu/internal/latency"
 )
@@ -125,6 +126,51 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	}
 	if response, blocked := s.rejectOverlayLayoutRequest(req); blocked {
 		return response
+	}
+	if req.Method == api.MethodMsgSend {
+		var p api.MsgSendParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		var result api.Response
+		var query mailSendQuery
+		s.app.Do(func() { result = s.prepareMsgSend(req.ID, p, &query) })
+		if !query.ready {
+			return result
+		}
+		defer func() {
+			s.mailMu.Lock()
+			delete(s.mailSendPending, query.message.ID)
+			s.mailMu.Unlock()
+		}()
+		var delivered bool
+		for {
+			if !s.beginMailQuery() {
+				return stopping
+			}
+			snapshot := func() paneMailSnapshot {
+				defer s.mailQueryWG.Done()
+				return s.readPaneMail(query.pid)
+			}()
+			if query.room == dispatch.JobsRoom {
+				snapshot.regular = nil
+			} else {
+				snapshot.jobs = nil
+			}
+			var stale bool
+			s.app.Do(func() { stale = s.applyPaneMailSnapshot(query.pid, query.target, snapshot, &delivered) })
+			if !stale {
+				break
+			}
+		}
+		var nudged []string
+		s.mailMu.Lock()
+		delivered = delivered || query.nudged
+		s.mailMu.Unlock()
+		if delivered {
+			nudged = []string{query.recipient}
+		}
+		return api.Success(req.ID, api.MsgSendResult{Type: "msg_send", Messages: []api.MsgMessage{query.message}, Nudged: nudged})
 	}
 	if req.Method == "agent.view.set" || req.Method == "agent.view.clear" {
 		var response api.Response

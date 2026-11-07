@@ -14,6 +14,15 @@ import (
 // Exercise the actual CLI and generated shell entries against an isolated
 // server. The many real Bash/Zsh invocations can exceed five seconds.
 func TestPinnedGuardEntryPoints(t *testing.T) {
+	hostHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workdir, err := os.MkdirTemp(hostHome, ".ikesu-guard-cwd-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(workdir) })
 	binary := filepath.Join(t.TempDir(), "ikesu")
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
 	if b, e := build.CombinedOutput(); e != nil {
@@ -45,6 +54,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 				}
 				c := exec.Command(shell, "-c", tc.code, "test", target)
 				c.Env = env
+				c.Dir = workdir
 				b, e := c.CombinedOutput()
 				if e == nil || !strings.Contains(string(b), "なぜ実行したいかを書いた申請文が必要") {
 					t.Fatal(e, string(b))
@@ -93,6 +103,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 				}
 				c := exec.Command(shell, "-c", `IKESU_GUARD_MARKER= rm "$1"`, "test", target)
 				c.Env = env
+				c.Dir = workdir
 				b, e := c.CombinedOutput()
 				_, fileErr := os.Stat(target)
 				if state == "ordinary" {
@@ -179,6 +190,7 @@ func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
 				code = strings.ReplaceAll(code, "TARGET", target)
 				command := exec.Command(shell, "-lc", code)
 				command.Env = env
+				command.Dir = a.Root
 				b, e := command.CombinedOutput()
 				if e == nil || !strings.Contains(string(b), "なぜ実行したいかを書いた申請文が必要") {
 					t.Fatal("pre-execution guard did not reject", e, string(b))

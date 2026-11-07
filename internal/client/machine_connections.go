@@ -142,6 +142,15 @@ func needsAttention(reason string) bool {
 }
 
 func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
+	if event.oyagoiChanged {
+		if event.err != nil {
+			m.notify("HQ settings watch: " + event.err.Error())
+		} else if err := m.refreshOyagoi(); err != nil {
+			m.notify(err.Error())
+		}
+		_ = m.paint()
+		return 0, false
+	}
 	if event.formUpdate != nil {
 		event.formUpdate()
 		_ = m.paint()
@@ -222,6 +231,13 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		e.connection = nil
 		e.status = "reconnecting"
+		if m.oyagoi != nil && m.oyagoi.Machine == event.id {
+			for id := range m.endpoints {
+				if err := m.syncOyagoi(id); err != nil {
+					m.notify(err.Error())
+				}
+			}
+		}
 		e.reason = event.err.Error()
 		if strings.HasPrefix(e.reason, "SSH approval expired:") {
 			e.status = machine.ApprovalStopped
@@ -245,6 +261,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			}
 		}
 		e.connection = event.connection
+		e.oyagoiProjection = nil
+		e.oyagoiCheck = nil
+		if err := m.syncOyagoi(event.id); err != nil {
+			m.notify(err.Error())
+		}
 		if event.id != "local" && event.id == m.active {
 			visible := !m.blurred
 			if err := e.connection.enqueue(msg{Type: "visibility", Visible: &visible}); err != nil {
@@ -283,6 +304,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	message := event.message
 	switch message.Type {
+	case "oyagoi_check_result":
+		if err := m.confirmOyagoiSnapshot(event.id, message); err != nil {
+			m.notify(err.Error())
+		}
+		_ = m.paint()
 	case "decisions":
 		focused := ""
 		lastInput := time.Now()
@@ -311,6 +337,17 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		e.snapshotAttempt = e.attempt
+		if err := m.validateOyagoiSnapshot(event.id); err != nil {
+			m.notify(err.Error())
+		}
+		if m.oyagoi != nil && m.oyagoi.Machine == event.id {
+			for id := range m.endpoints {
+				if err := m.syncOyagoi(id); err != nil {
+					m.notify(err.Error())
+				}
+			}
+		}
 		if message.snapshot.Dialog != nil || message.snapshot.Menu != nil || message.snapshot.Help != nil || message.snapshot.Settings != nil || message.snapshot.Navigator != nil {
 			e.guardApproval.dismiss()
 		}
@@ -318,7 +355,6 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			e.guardApproval.focus(fmt.Sprintf("p%d", message.snapshot.State.FocusedPane()))
 		}
 		e.processedInput = message.ProcessedInput
-		e.snapshotAttempt = e.attempt
 		e.boot = message.traceBoot
 		e.textOnly = message.traceTextOnly
 		e.epoch = message.FocusEpoch
@@ -395,7 +431,15 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if event.id != m.active {
 			break
 		}
-		if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
+		if message.MachineAction == "oyagoi:select" {
+			if err := m.selectOyagoi(); err != nil {
+				m.notify(err.Error())
+			}
+		} else if strings.HasPrefix(message.MachineAction, "oyagoi:") {
+			if err := m.oyagoiAction(event.id, message.MachineAction); err != nil {
+				m.notify(err.Error())
+			}
+		} else if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
 			m.notify(err.Error())
 		}
 		_ = m.paint()
@@ -420,6 +464,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		m.fail(event.id, errors.New("server restarting"))
 	case "error":
+		if message.Reason == "endpoint_workspace_not_found" && m.pending != nil && m.pending.id == event.id && m.pending.generation != "" {
+			m.pending = nil
+		}
 		m.notify(message.Reason)
 	}
 	return 0, false
@@ -445,6 +492,13 @@ func (m *machineClient) fail(id string, err error) {
 		e.cancel()
 	}
 	e.connection = nil
+	if m.oyagoi != nil && m.oyagoi.Machine == id {
+		for target := range m.endpoints {
+			if syncErr := m.syncOyagoi(target); syncErr != nil {
+				m.notify(syncErr.Error())
+			}
+		}
+	}
 	e.status = "reconnecting"
 	e.reason = err.Error()
 	e.retry.failed(time.Now(), id == "local", needsAttention(e.reason))

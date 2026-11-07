@@ -20,6 +20,7 @@ func Append(target, imported *File, reserved map[int]bool, dbUnavailable bool) (
 	for _, w := range imported.Workspaces {
 		out.NextWorkspaceID++
 		w.ID = out.NextWorkspaceID
+		w.Generation = rand.Text()
 		w.Tabs = append([]Tab(nil), w.Tabs...)
 		for ti := range w.Tabs {
 			t := &w.Tabs[ti]

@@ -294,3 +294,31 @@ func TestWorkspaceGitSubdirectoryTracksFileAndAttributes(t *testing.T) {
 	}
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 0 && a.workspaceGit[0].Deleted == 0 })
 }
+
+// Three real Git changes each wait for the 1.5-second sidebar refresh.
+func TestWorkspaceGitCommitAndCheckoutRefreshPromptly(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	file := filepath.Join(repo, "tracked")
+	if err := os.WriteFile(file, []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "initial")
+	sidebarGit(t, repo, "branch", "next")
+	a.st.Workspaces[0].Cwd = repo
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "main" })
+	if err := os.WriteFile(file, []byte("base\nnew\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 1 })
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "next")
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 0 })
+	sidebarGit(t, repo, "checkout", "-q", "next")
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "next" })
+}

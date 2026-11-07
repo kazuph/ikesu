@@ -18,6 +18,16 @@ func (m *machineClient) requestPending() {
 	if m.pending.requested {
 		return
 	}
+	if m.pending.generation != "" && (e.snapshot == nil || e.snapshotAttempt != e.attempt || m.oyagoi == nil || m.oyagoi.Machine != m.pending.id || m.oyagoi.Workspace != m.pending.workspace || m.oyagoi.Generation != m.pending.generation || m.selectionSession(m.pending.id) != m.oyagoi.Session) {
+		m.notify("HQ workspace is offline or changed")
+		m.pending = nil
+		return
+	}
+	if m.pending.generation != "" && !endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "workspace_select_generation") {
+		m.notify("endpoint_action_unsupported: workspace_select_generation")
+		m.pending = nil
+		return
+	}
 	if err := e.connection.enqueue(resizeMessage(m.size)); err != nil {
 		m.fail(m.pending.id, err)
 		return
@@ -41,7 +51,7 @@ func (m *machineClient) requestPending() {
 		m.fail(m.pending.id, fmt.Errorf("endpoint_action_unsupported: workspace outside Local viewport"))
 		return
 	}
-	if err := e.connection.enqueue(msg{Type: "workspace_select", Workspace: m.pending.workspace}); err != nil {
+	if err := e.connection.enqueue(msg{Type: "workspace_select", Workspace: m.pending.workspace, WorkspaceGeneration: m.pending.generation}); err != nil {
 		m.fail(m.pending.id, err)
 	} else {
 		m.pending.requested = true
@@ -60,7 +70,7 @@ func (m *machineClient) finishSwitch() {
 	}
 	s := e.snapshot.State
 	ws := s.ActiveWorkspace()
-	if ws == nil || (!p.create && ws.ID != p.workspace) || (p.create && p.previousWorkspaces[ws.ID]) || s.Cols != m.size.Cols || s.Rows != m.size.Rows {
+	if ws == nil || (!p.create && ws.ID != p.workspace) || (p.generation != "" && (e.snapshotAttempt != e.attempt || ws.Generation != p.generation)) || (p.create && p.previousWorkspaces[ws.ID]) || s.Cols != m.size.Cols || s.Rows != m.size.Rows {
 		return
 	}
 	old := m.endpoints[m.active]

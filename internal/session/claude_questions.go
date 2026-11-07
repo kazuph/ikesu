@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"os"
@@ -38,6 +39,38 @@ type ClaudeQuestionCache struct {
 	modified  time.Time
 	questions []ClaudeQuestion
 	valid     bool
+	bytesRead int64
+	fileInfo  os.FileInfo
+	offset    int64
+	anchor    [sha256.Size]byte
+	fullAt    time.Time
+	pending   map[string][]ClaudeQuestion
+	answered  map[string]bool
+	matched   bool
+}
+
+const transcriptAnchorBytes int64 = 4096
+const transcriptFullReadInterval = 60 * time.Second
+
+func transcriptAnchor(f *os.File, offset int64) ([sha256.Size]byte, int64, error) {
+	start := max(int64(0), offset-transcriptAnchorBytes)
+	b := make([]byte, offset-start)
+	n, err := f.ReadAt(b, start)
+	if err != nil && !(err == io.EOF && n == len(b)) {
+		return [sha256.Size]byte{}, int64(n), err
+	}
+	return sha256.Sum256(b), int64(n), nil
+}
+
+type countingTranscriptReader struct {
+	r io.Reader
+	n int64
+}
+
+func (r *countingTranscriptReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	r.n += int64(n)
+	return n, err
 }
 
 func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion, bool) {
@@ -75,7 +108,10 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 	if err != nil {
 		return nil, false
 	}
-	if cache.valid && cache.path == paths[0] && cache.sessionID == sessionID && cache.size == info.Size() && cache.modified.Equal(info.ModTime()) {
+	sameFile := cache.valid && cache.path == paths[0] && cache.sessionID == sessionID && os.SameFile(cache.fileInfo, info)
+	fullDue := time.Since(cache.fullAt) >= transcriptFullReadInterval
+	if sameFile && !fullDue && cache.size == info.Size() && cache.modified.Equal(info.ModTime()) {
+		cache.bytesRead = 0
 		return cache.questions, true
 	}
 	f, err := os.Open(paths[0])
@@ -83,6 +119,24 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 		return nil, false
 	}
 	defer f.Close()
+	openedInfo, err := f.Stat()
+	if err != nil || !os.SameFile(info, openedInfo) {
+		return nil, false
+	}
+	var anchorBytes int64
+	incremental := sameFile && !fullDue && info.Size() > cache.size
+	if incremental {
+		anchor, n, err := transcriptAnchor(f, cache.offset)
+		anchorBytes += n
+		incremental = err == nil && anchor == cache.anchor
+	}
+	offset := int64(0)
+	if incremental {
+		offset = cache.offset
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, false
+	}
 	type option struct {
 		Label       string `json:"label"`
 		Description string `json:"description"`
@@ -111,7 +165,17 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 	answered := map[string]time.Time{}
 	answeredSeen := map[string]bool{}
 	matched := false
-	reader := bufio.NewReader(f)
+	if incremental {
+		for id, questions := range cache.pending {
+			pending[id] = questions
+		}
+		for id, value := range cache.answered {
+			answered[id] = value
+		}
+		matched = cache.matched
+	}
+	counted := &countingTranscriptReader{r: f}
+	reader := bufio.NewReader(counted)
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err == io.EOF {
@@ -120,6 +184,7 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 		if err != nil {
 			return nil, false
 		}
+		offset += int64(len(line))
 		var record row
 		if json.Unmarshal(line, &record) != nil {
 			return nil, false
@@ -172,7 +237,18 @@ func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuest
 		}
 	}
 	if matched {
+		anchor, n, err := transcriptAnchor(f, offset)
+		anchorBytes += n
+		if err != nil {
+			return nil, false
+		}
 		cache.path, cache.sessionID, cache.size, cache.modified, cache.questions, cache.valid = paths[0], sessionID, info.Size(), info.ModTime(), out, true
+		cache.fileInfo, cache.offset, cache.anchor = info, offset, anchor
+		cache.pending, cache.answered, cache.matched = pending, answered, matched
+		if !incremental {
+			cache.fullAt = time.Now()
+		}
+		cache.bytesRead = counted.n + anchorBytes
 	}
 	return out, matched
 }

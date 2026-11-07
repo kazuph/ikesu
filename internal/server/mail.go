@@ -220,40 +220,80 @@ func (s *Server) mailDone(w mailWrite) {
 	if w.msgID != 0 {
 		delete(s.mailInFlight, w.msgID)
 	}
+	for _, id := range w.msgIDs {
+		delete(s.mailInFlight, id)
+	}
 	if w.room != "" {
 		delete(s.jobInFlight, jobKey(w.room, w.toAgent))
 	}
+	s.advanceMailEpochLocked(w.pane)
+}
+
+func (s *Server) advanceMailEpochLocked(pid int) {
+	if s.mailEpoch == nil {
+		s.mailEpoch = make(map[int]uint64)
+	}
+	s.mailEpoch[pid]++
 }
 
 // enqueueMail stages one message or job batch for delivery. It returns
 // false when the delivery queue is full — the message stays queued and a
 // later flush retries it.
 func (s *Server) enqueueMail(w mailWrite) bool {
+	ok, _ := s.enqueueMailAtEpoch(w, nil)
+	return ok
+}
+
+// enqueueMailAtEpoch reserves the message IDs atomically with the snapshot check.
+func (s *Server) enqueueMailAtEpoch(w mailWrite, epoch *uint64) (bool, bool) {
 	s.mailMu.Lock()
+	if epoch != nil && s.mailEpoch[w.pane] != *epoch {
+		s.mailMu.Unlock()
+		return false, true
+	}
 	if w.msgID != 0 {
 		if s.mailInFlight[w.msgID] {
+			s.markMailSendLocked(w)
 			s.mailMu.Unlock()
-			return true // already staged
+			return true, false // already staged
 		}
 		s.mailInFlight[w.msgID] = true
 	}
 	if w.room != "" {
 		k := jobKey(w.room, w.toAgent)
 		if s.jobInFlight[k] {
+			s.markMailSendLocked(w)
 			s.mailMu.Unlock()
 			s.deferMailForPane(w.pane, w.owner)
-			return true // batch for this recipient already staged
+			return true, false // batch for this recipient already staged
 		}
 		s.jobInFlight[k] = true
+		for _, id := range w.msgIDs {
+			s.mailInFlight[id] = true
+		}
 	}
 	s.mailMu.Unlock()
 	select {
 	case s.mailCh <- w:
-		return true
+		s.mailMu.Lock()
+		s.markMailSendLocked(w)
+		s.mailMu.Unlock()
+		return true, false
 	default:
 		s.mailDone(w)
 		s.deferMailForPane(w.pane, w.owner)
-		return false
+		return false, false
+	}
+}
+
+func (s *Server) markMailSendLocked(w mailWrite) {
+	if pending := s.mailSendPending[w.msgID]; pending != nil {
+		*pending = true
+	}
+	for _, id := range w.msgIDs {
+		if pending := s.mailSendPending[id]; pending != nil {
+			*pending = true
+		}
 	}
 }
 
@@ -376,7 +416,17 @@ func (s *Server) resolveTarget(target string, agentOnly bool) (paneTarget, *api.
 
 // --- msg handlers ---
 
-func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
+type mailSendQuery struct {
+	pid       int
+	target    mailQueryTarget
+	recipient string
+	room      string
+	message   api.MsgMessage
+	ready     bool
+	nudged    bool
+}
+
+func (s *Server) prepareMsgSend(id string, p api.MsgSendParams, query *mailSendQuery) api.Response {
 	room := strings.TrimSpace(p.Room)
 	if room == "" {
 		return api.Failure(id, api.ErrInvalidMsgRoom, "room must not be empty")
@@ -412,21 +462,14 @@ func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
 		return api.Failure(id, api.ErrMsgStore, derr.Error())
 	}
 	s.invalidateJobCache()
-	var nudged []string
-	delivered := false
-	if room == dispatch.JobsRoom {
-		delivered = s.flushJobNudgeFor(room, recipient)
-	} else {
-		delivered = s.flushRegularForRecipient(recipient)
+	*query = mailSendQuery{pid: pid, target: mailQueryTarget{owner: s.sup.Get(pid), generation: s.app.State().PaneGeneration(pid)}, recipient: recipient, room: room, message: toWireMessage(m), ready: true}
+	s.mailMu.Lock()
+	if s.mailSendPending == nil {
+		s.mailSendPending = make(map[int64]*bool)
 	}
-	if delivered {
-		nudged = []string{recipient}
-	}
-	return api.Success(id, api.MsgSendResult{
-		Type:     "msg_send",
-		Messages: []api.MsgMessage{toWireMessage(m)},
-		Nudged:   nudged,
-	})
+	s.mailSendPending[m.ID] = &query.nudged
+	s.mailMu.Unlock()
+	return api.Success(id, api.MsgSendResult{Type: "msg_send", Messages: []api.MsgMessage{query.message}})
 }
 
 // resolveMsgRecipient resolves the recipient for a message: the pane id
@@ -466,7 +509,9 @@ func (s *Server) msgInbox(id string, p api.MsgInboxParams) api.Response {
 		return api.Failure(id, api.ErrMsgStore, err.Error())
 	}
 	var generation *string
+	var resolvedPID int
 	if target, resolveErr := s.resolveTarget(toAgent, false); resolveErr == nil {
+		resolvedPID = target.pid
 		value := s.app.State().PaneGeneration(target.pid)
 		generation = &value
 	} else if dispatch.IsGlobalPaneID(toAgent) {
@@ -477,6 +522,11 @@ func (s *Server) msgInbox(id string, p api.MsgInboxParams) api.Response {
 		s.recipientAliases(room, toAgent), s.mailInFlightSet(), generation)
 	if err != nil {
 		return api.Failure(id, api.ErrMsgStore, err.Error())
+	}
+	if resolvedPID != 0 && len(msgs) != 0 {
+		s.mailMu.Lock()
+		s.advanceMailEpochLocked(resolvedPID)
+		s.mailMu.Unlock()
 	}
 	out := make([]api.MsgMessage, len(msgs))
 	for i, m := range msgs {
@@ -531,126 +581,244 @@ func toWireMessage(m dispatch.Message) api.MsgMessage {
 
 // --- delivery flushes (run on the app loop) ---
 
-func regularMailCanSubmit(status string) bool {
-	return status == "idle" || status == "working" || status == "done"
+type paneMailSnapshot struct {
+	regular []dispatch.Message
+	jobs    []dispatch.Message
+	epoch   uint64
 }
 
-// flushRegularForRecipient flushes a pane-id-addressed recipient after a
-// send; it only submits when the pane exists and is receptive.
-func (s *Server) flushRegularForRecipient(recipient string) bool {
-	t, err := s.resolveTarget(recipient, false)
-	if err != nil {
-		return false
-	}
-	if !regularMailCanSubmit(s.app.PaneStatusKey(t.pid)) {
-		return false
-	}
-	return s.flushRegularForPane(t.pid)
+type mailQueryTarget struct {
+	owner      *runtime.Pane
+	generation string
 }
 
-// flushRegularForPane stages every queued non-jobs-room message addressed
-// to the pane id, oldest first. No DB file means nothing is queued; skip
-// opening the store so status-transition flushes do not load the engine.
-func (s *Server) flushRegularForPane(pid int) bool {
-	if !dispatch.DBExists(s.session) {
+type mailQueryRequest struct {
+	pid       int
+	recipient string
+	invalid   bool
+}
+
+func (s *Server) requestJobMail(recipient string) {
+	if pid, ok := parsePaneID(recipient); ok && dispatch.IsGlobalPaneID(recipient) {
+		s.requestPaneMail(pid)
+		return
+	}
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
+		return
+	}
+	if s.mailInvalidPending == nil {
+		s.mailInvalidPending = make(map[string]struct{})
+	}
+	if _, exists := s.mailInvalidPending[recipient]; !exists {
+		s.mailQueryOrder = append(s.mailQueryOrder, mailQueryRequest{recipient: recipient, invalid: true})
+		s.mailInvalidPending[recipient] = struct{}{}
+	}
+	s.startMailQueryLocked()
+}
+
+func (s *Server) requestMailSweep() {
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
+		return
+	}
+	s.mailSweepPending = true
+	s.startMailQueryLocked()
+}
+
+// requestPaneMail coalesces repeated availability changes while a read runs.
+// It is called on the app loop and never waits for SQLite.
+func (s *Server) requestPaneMail(pid int) {
+	target := mailQueryTarget{owner: s.sup.Get(pid), generation: s.app.State().PaneGeneration(pid)}
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
+		return
+	}
+	if s.mailQueryPending == nil {
+		s.mailQueryPending = make(map[int]mailQueryTarget)
+	}
+	if _, exists := s.mailQueryPending[pid]; !exists {
+		s.mailQueryOrder = append(s.mailQueryOrder, mailQueryRequest{pid: pid})
+	}
+	s.mailQueryPending[pid] = target
+	s.startMailQueryLocked()
+}
+
+func (s *Server) startMailQueryLocked() {
+	if !s.mailQueryRunning {
+		s.mailQueryRunning = true
+		s.mailQueryWG.Add(1)
+		go s.readPendingPaneMail()
+	}
+}
+
+// beginMailQuery registers an API read before shutdown can wait for readers.
+func (s *Server) beginMailQuery() bool {
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
 		return false
 	}
-	store, err := s.db()
-	if err != nil {
+	select {
+	case <-s.app.Done():
+		return false
+	default:
+	}
+	s.mailQueryWG.Add(1)
+	return true
+}
+
+func (s *Server) stopMailQueries() {
+	s.mailQueryMu.Lock()
+	s.mailQueryClosed = true
+	s.mailQueryMu.Unlock()
+}
+
+func (s *Server) mailQueriesStopped() bool {
+	s.mailQueryMu.Lock()
+	stopped := s.mailQueryClosed
+	s.mailQueryMu.Unlock()
+	if stopped {
+		return true
+	}
+	select {
+	case <-s.app.Done():
+		return true
+	default:
 		return false
 	}
-	msgs, err := store.PendingForAgentCreationOrder(fmtPaneID(pid))
-	if err != nil || len(msgs) == 0 {
-		return false
-	}
-	delivered := false
-	for _, m := range msgs {
-		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(pid) {
+}
+
+func (s *Server) readPendingPaneMail() {
+	defer s.mailQueryWG.Done()
+	lastWasSweep := false
+	for {
+		s.mailQueryMu.Lock()
+		select {
+		case <-s.app.Done():
+			s.mailQueryRunning = false
+			s.mailQueryMu.Unlock()
+			return
+		default:
+		}
+		if len(s.mailQueryPending) == 0 && len(s.mailInvalidPending) == 0 && !s.mailSweepPending || s.mailQueryClosed {
+			s.mailQueryRunning = false
+			s.mailQueryMu.Unlock()
+			return
+		}
+		if s.mailSweepPending && (!lastWasSweep || len(s.mailQueryOrder) == 0) {
+			s.mailSweepPending = false
+			s.mailQueryMu.Unlock()
+			s.readMailSweep()
+			lastWasSweep = true
 			continue
 		}
-		pane := s.sup.Get(pid)
-		if pane != nil && pane.MailInputActive() {
-			s.deferMailForPane(pid, pane)
-			return delivered
-		}
-		payload := s.encodeMailFor(pid, m.Body)
-		if !s.enqueueMail(mailWrite{pane: pid, owner: pane, payload: payload, msgID: m.ID}) {
-			return delivered
-		}
-		delivered = true
-	}
-	return delivered
-}
-
-// flushJobNudgesFor delivers all queued jobs-room nudges for a mailbox
-// recipient; job mail reaches working agents too, only blocked panes wait.
-// No DB file means no queued nudges; skip opening the store.
-func (s *Server) flushJobNudgesFor(toAgent string) bool {
-	if !dispatch.DBExists(s.session) {
-		return false
-	}
-	store, err := s.db()
-	if err != nil {
-		return false
-	}
-	nudges, err := store.PendingNudgesForAgent(toAgent)
-	if err != nil {
-		return false
-	}
-	delivered := false
-	for _, n := range nudges {
-		if n.Room != dispatch.JobsRoom {
+		request := s.mailQueryOrder[0]
+		s.mailQueryOrder = s.mailQueryOrder[1:]
+		if request.invalid {
+			delete(s.mailInvalidPending, request.recipient)
+			s.mailQueryMu.Unlock()
+			s.failJobQueue(dispatch.PendingNudge{Room: dispatch.JobsRoom, ToAgent: request.recipient}, "job notification requires immutable global caller pane ID")
+			lastWasSweep = false
 			continue
 		}
-		if s.flushJobNudge(n) {
-			delivered = true
+		pid := request.pid
+		target := s.mailQueryPending[pid]
+		delete(s.mailQueryPending, pid)
+		s.mailQueryMu.Unlock()
+		lastWasSweep = false
+		snapshot := s.readPaneMail(pid)
+		var failed []int64
+		var failureReason string
+		s.app.Do(func() {
+			if _, err := s.resolveTarget(fmtPaneID(pid), false); err != nil {
+				failureReason = err.Message
+				for _, m := range snapshot.jobs {
+					failed = append(failed, m.ID)
+				}
+				return
+			}
+			if s.applyPaneMailSnapshot(pid, target, snapshot, nil) {
+				s.requestPaneMail(pid)
+			}
+		})
+		if len(failed) != 0 {
+			if store, err := s.db(); err == nil {
+				for _, id := range failed {
+					_ = store.FailMessage(id, failureReason)
+				}
+			}
 		}
 	}
-	return delivered
 }
 
-// flushJobNudgeFor flushes one room/recipient pair after a send.
-func (s *Server) flushJobNudgeFor(room, toAgent string) bool {
-	store, err := s.db()
-	if err != nil {
-		return false
+func (s *Server) readMailSweep() {
+	if s.mailQueriesStopped() {
+		return
 	}
-	nudge, err := store.PendingNudgeFor(room, toAgent)
-	if err != nil || nudge == nil {
-		return false
+	var messages []dispatch.Message
+	if dispatch.DBExists(s.session) {
+		if store, err := s.db(); err == nil && !s.mailQueriesStopped() {
+			messages, _ = store.PendingJobMessages()
+		}
 	}
-	return s.flushJobNudge(*nudge)
+	failed := make(map[int64]string)
+	s.app.Do(func() {
+		for _, m := range messages {
+			if _, err := s.resolveTarget(m.ToAgent, false); err != nil {
+				failed[m.ID] = err.Message
+			}
+		}
+		s.eachPane(func(pid, _, _ int) {
+			if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
+				s.requestPaneMail(pid)
+			}
+		})
+	})
+	if len(failed) != 0 {
+		if store, err := s.db(); err == nil {
+			for id, reason := range failed {
+				_ = store.FailMessage(id, reason)
+			}
+		}
+	}
 }
 
-func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
-	if !dispatch.IsGlobalPaneID(n.ToAgent) {
-		s.failJobQueue(n, "job notification requires immutable global caller pane ID")
+// applyPaneMailSnapshot returns true when a delivery or inbox read made the
+// snapshot stale and the pane needs a fresh read.
+func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot paneMailSnapshot, delivered *bool) bool {
+	if ws, _ := s.app.State().FindPane(pid); ws < 0 || s.sup.Get(pid) != target.owner || s.app.State().PaneGeneration(pid) != target.generation {
 		return false
 	}
-	t, err := s.resolveTarget(n.ToAgent, false)
-	if err != nil {
-		s.failJobQueue(n, err.Message)
-		return false
+	status := s.app.PaneStatusKey(pid)
+	if regularMailCanSubmit(status) {
+		for _, m := range snapshot.regular {
+			if m.PaneGeneration == "" || m.PaneGeneration != target.generation {
+				continue
+			}
+			if target.owner != nil && target.owner.MailInputActive() {
+				s.deferMailForPane(pid, target.owner)
+				return false
+			}
+			ok, stale := s.enqueueMailAtEpoch(mailWrite{pane: pid, owner: target.owner, payload: s.encodeMailFor(pid, m.Body), msgID: m.ID}, &snapshot.epoch)
+			if !ok {
+				return stale
+			}
+			if delivered != nil {
+				*delivered = true
+			}
+		}
 	}
-	pane := s.sup.Get(t.pid)
-	if pane == nil {
-		return false
-	}
-	if s.app.PaneStatusKey(t.pid) == "blocked" {
-		return false
-	}
-	store, derr := s.db()
-	if derr != nil {
-		return false
-	}
-	msgs, derr := store.PendingMessagesForAgent(n.Room, n.ToAgent)
-	if derr != nil || len(msgs) == 0 {
+	if status == "blocked" || target.owner == nil {
 		return false
 	}
 	var bodies []string
 	var ids []int64
-	for _, m := range msgs {
-		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(t.pid) {
+	for _, m := range snapshot.jobs {
+		if m.PaneGeneration == "" || m.PaneGeneration != target.generation {
 			continue
 		}
 		bodies = append(bodies, m.Body)
@@ -659,44 +827,59 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 	if len(ids) == 0 {
 		return false
 	}
-	if pane.MailInputActive() {
-		s.deferMailForPane(t.pid, pane)
+	if target.owner.MailInputActive() {
+		s.deferMailForPane(pid, target.owner)
 		return false
 	}
-	return s.enqueueMail(mailWrite{
-		pane: t.pid, owner: pane, payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
-		msgIDs: ids, room: n.Room, toAgent: n.ToAgent,
-	})
+	ok, stale := s.enqueueMailAtEpoch(mailWrite{pane: pid, owner: target.owner, payload: s.encodeMailFor(pid, strings.Join(bodies, "\n")), msgIDs: ids, room: dispatch.JobsRoom, toAgent: fmtPaneID(pid)}, &snapshot.epoch)
+	if ok && delivered != nil {
+		*delivered = true
+	}
+	return stale
+}
+
+// readPaneMail performs database reads without requiring app state.
+func (s *Server) readPaneMail(pid int) paneMailSnapshot {
+	var snapshot paneMailSnapshot
+	if s.mailQueriesStopped() {
+		return snapshot
+	}
+	s.mailMu.Lock()
+	snapshot.epoch = s.mailEpoch[pid]
+	s.mailMu.Unlock()
+	if !dispatch.DBExists(s.session) {
+		return snapshot
+	}
+	store, err := s.db()
+	if err != nil || s.mailQueriesStopped() {
+		return snapshot
+	}
+	recipient := fmtPaneID(pid)
+	if messages, err := store.PendingForAgentCreationOrder(recipient); err == nil {
+		snapshot.regular = messages
+	}
+	if s.mailQueriesStopped() {
+		return snapshot
+	}
+	if messages, err := store.PendingMessagesForAgent(dispatch.JobsRoom, recipient); err == nil {
+		snapshot.jobs = messages
+	}
+	return snapshot
+}
+
+func regularMailCanSubmit(status string) bool {
+	return status == "idle" || status == "working" || status == "done"
 }
 
 // flushMailForPane flushes regular and job mail for one pane; invoked by
 // the app's availability hook on status transitions.
 func (s *Server) flushMailForPane(pid int) {
-	if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
-		s.flushRegularForPane(pid)
-	}
-	s.flushJobNudgesFor(fmtPaneID(pid))
+	s.requestPaneMail(pid)
 }
 
 // flushAllMail runs once at server start.
 func (s *Server) flushAllMail() {
-	if dispatch.DBExists(s.session) {
-		if store, err := s.db(); err == nil {
-			if msgs, err := store.PendingJobMessages(); err == nil {
-				for _, m := range msgs {
-					if _, e := s.resolveTarget(m.ToAgent, false); e != nil {
-						_ = store.FailMessage(m.ID, e.Message)
-					}
-				}
-			}
-		}
-	}
-
-	s.eachPane(func(pid, _, _ int) {
-		if regularMailCanSubmit(s.app.PaneStatusKey(pid)) {
-			s.flushMailForPane(pid)
-		}
-	})
+	s.requestMailSweep()
 }
 
 // encodeMailBody renders a message body plus a submit Enter as PTY bytes,
@@ -723,7 +906,10 @@ func (s *Server) encodeMailFor(pid int, body string) []byte {
 }
 
 func (s *Server) failJobQueue(n dispatch.PendingNudge, reason string) {
-	if store, err := s.db(); err == nil {
+	if s.mailQueriesStopped() {
+		return
+	}
+	if store, err := s.db(); err == nil && !s.mailQueriesStopped() {
 		if msgs, err := store.PendingMessagesForAgent(n.Room, n.ToAgent); err == nil {
 			for _, m := range msgs {
 				_ = store.FailMessage(m.ID, reason)

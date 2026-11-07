@@ -19,6 +19,15 @@ func TestAppendRekeysWithoutMutatingExistingSession(t *testing.T) {
 	}
 }
 
+func TestAppendCreatesNewWorkspaceIdentity(t *testing.T) {
+	base := &File{NextWorkspaceID: 1, Workspaces: []Workspace{{ID: 1, Generation: "original"}}}
+	imported := &File{Workspaces: []Workspace{{ID: 1, Generation: "original"}}}
+	merged, added := Append(base, imported, nil, false)
+	if merged.Workspaces[0].Generation != "original" || added.Workspaces[0].Generation == "" || added.Workspaces[0].Generation == "original" || imported.Workspaces[0].Generation != "original" {
+		t.Fatalf("identities not rekeyed: %+v", merged.Workspaces)
+	}
+}
+
 func TestAppendRemapsZoom(t *testing.T) {
 	target := &File{NextPaneID: 50, NextWorkspaceID: 20, NextTabID: 30}
 	src := &File{Workspaces: []Workspace{{Tabs: []Tab{{Zoomed: 7, Focused: 7, Order: []int{7, 8}, Layout: &Node{Leaf: -1, Direction: "v", Ratio: .5, First: &Node{Leaf: 7}, Second: &Node{Leaf: 8}}, Panes: []Pane{{ID: 7}, {ID: 8}}}}}}}

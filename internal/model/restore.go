@@ -1,6 +1,7 @@
 package model
 
 import (
+	"crypto/rand"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/session"
 )
@@ -24,10 +25,11 @@ func (s *AppState) Snapshot() *session.File {
 	for _, ws := range s.Workspaces {
 		sw := session.Workspace{
 			Worktree: ws.Worktree, GroupCollapsed: ws.GroupCollapsed, Section: string(ws.Section), CustomName: ws.CustomName, DefaultName: ws.DefaultName,
-			ID:        ws.ID,
-			Name:      ws.Name,
-			Cwd:       ws.Cwd,
-			ActiveTab: ws.ActiveTab,
+			ID:         ws.ID,
+			Generation: ws.Generation,
+			Name:       ws.Name,
+			Cwd:        ws.Cwd,
+			ActiveTab:  ws.ActiveTab,
 		}
 		for _, t := range ws.Tabs {
 			st := session.Tab{
@@ -73,7 +75,10 @@ func Restore(f *session.File) *AppState {
 		s.CollapsedSections[Section(k)] = v
 	}
 	for _, sw := range f.Workspaces {
-		ws := &Workspace{ID: sw.ID, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed, Section: Section(sw.Section), CustomName: sw.CustomName, DefaultName: sw.DefaultName}
+		ws := &Workspace{ID: sw.ID, Generation: sw.Generation, Name: sw.Name, Cwd: sw.Cwd, Worktree: sw.Worktree, GroupCollapsed: sw.GroupCollapsed, Section: Section(sw.Section), CustomName: sw.CustomName, DefaultName: sw.DefaultName}
+		if ws.Generation == "" {
+			ws.Generation = rand.Text()
+		}
 		for _, st := range sw.Tabs {
 			l := layout.Restore(session.ToLayoutNode(st.Layout), st.Focused, st.Order)
 			ws.Tabs = append(ws.Tabs, &Tab{ID: st.ID, Name: st.Name, Layout: l, Zoomed: st.Zoomed})

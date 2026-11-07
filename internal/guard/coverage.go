@@ -38,6 +38,7 @@ func (a *Assets) coverageReason() string {
 	return ""
 }
 func (a *Assets) intact() bool {
+	a.intactChecks++
 	if !a.runtimeIntact() {
 		return false
 	}

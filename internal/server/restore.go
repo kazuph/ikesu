@@ -15,6 +15,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/tui"
 )
@@ -29,23 +30,36 @@ const resumeSubmitDelay = 150 * time.Millisecond
 // the DB file does not exist no ledger rows can exist either; avoid
 // opening the store so reads stay free of the engine's memory cost.
 func (s *Server) ledgerEntry(pid int) (dispatch.PaneSession, bool) {
-	if !dispatch.DBExists(s.session) {
-		return dispatch.PaneSession{}, false
-	}
-	st, err := s.db()
-	if err != nil {
-		return dispatch.PaneSession{}, false
-	}
-	rows, err := st.PaneSessions(s.session)
-	if err != nil {
-		return dispatch.PaneSession{}, false
-	}
-	for _, r := range rows {
-		if r.PaneID == pid {
-			return r, true
+	for _, row := range s.ledgerRows() {
+		if row.PaneID == pid {
+			return row, true
 		}
 	}
 	return dispatch.PaneSession{}, false
+}
+
+func (s *Server) ledgerEntries() map[int]dispatch.PaneSession {
+	rows := s.ledgerRows()
+	result := make(map[int]dispatch.PaneSession, len(rows))
+	for _, row := range rows {
+		result[row.PaneID] = row
+	}
+	return result
+}
+
+func (s *Server) ledgerRows() []dispatch.PaneSession {
+	if !dispatch.DBExists(s.session) {
+		return nil
+	}
+	st, err := s.db()
+	if err != nil {
+		return nil
+	}
+	rows, err := st.PaneSessions(s.session)
+	if err != nil {
+		return nil
+	}
+	return rows
 }
 
 // ledgerPut writes the pane's session record into the ledger. Call on the
@@ -192,56 +206,105 @@ func (s *Server) observeAgentSessions() {
 // session-file match (cwd + start-time window); otherwise the process's
 // own resume-shape cmdline. Anything ambiguous stays unrecorded.
 func (s *Server) observePaneSession(pid int) {
+	observation, ok := s.prepareSessionObservation(pid)
+	if !ok {
+		return
+	}
+	observation.observe()
+	s.applySessionObservation(observation)
+}
+
+type sessionObservation struct {
+	pid           int
+	pane          *runtime.Pane
+	snapshot      runtime.Snapshot
+	record        tui.AgentRecord
+	hasRecord     bool
+	previousStart time.Time
+	start         time.Time
+	startKnown    bool
+	result        tui.AgentRecord
+	found         bool
+}
+
+func (s *Server) prepareSessionObservations() []sessionObservation {
+	var observations []sessionObservation
+	stt := s.app.State()
+	for _, ws := range stt.Workspaces {
+		for _, tab := range ws.Tabs {
+			for _, pid := range tab.Layout.Order() {
+				if observation, ok := s.prepareSessionObservation(pid); ok {
+					observations = append(observations, observation)
+				}
+			}
+		}
+	}
+	return observations
+}
+
+func (s *Server) prepareSessionObservation(pid int) (sessionObservation, bool) {
 	rp := s.sup.Get(pid)
 	if rp == nil {
-		return
+		return sessionObservation{}, false
 	}
 	snap := rp.Snapshot()
 	agent := snap.AgentID
 	if agent == "" {
-		return
+		return sessionObservation{}, false
 	}
 	rec, hasRec := s.app.SessionRecord(pid)
 	if hasRec && rec.Value != "" && strings.HasPrefix(rec.Source, "report:") {
-		return // trusted explicit report already decides the session
+		return sessionObservation{}, false
 	}
-	job := rp.ForegroundJob()
-	cwd := snap.Cwd
+	return sessionObservation{pid: pid, pane: rp, snapshot: snap, record: rec,
+		hasRecord: hasRec, previousStart: s.observedStart[pid]}, true
+}
 
-	if s.observedStart == nil {
-		s.observedStart = map[int]time.Time{}
+func (o *sessionObservation) observe() {
+	job := o.pane.ForegroundJob()
+	o.start, o.startKnown = session.ProcessStart(job)
+	if o.startKnown && o.hasRecord && o.record.Value != "" && o.previousStart.Equal(o.start) {
+		return
 	}
-	start, ok := session.ProcessStart(job)
-	if ok && hasRec && rec.Value != "" && s.observedStart[pid].Equal(start) {
-		return // already recorded for this exact process; don't re-walk
-	}
-	if ok {
-		if id, found := session.ObserveProcessSession(agent, cwd, start, job, rp.SessionEnvironment()); found {
-			if !hasRec || !strings.HasPrefix(rec.Source, "report:") || rec.Value == "" {
-				title := rec.Title
-				observed := observedSessionRecord(agent, id, title, job)
-				s.app.RecordSession(pid, observed)
-				s.ledgerPut(pid, observed)
-			}
-			s.observedStart[pid] = start
+	if o.startKnown {
+		if id, found := session.ObserveProcessSession(o.snapshot.AgentID, o.snapshot.Cwd, o.start, job, o.pane.SessionEnvironment()); found {
+			o.result = observedSessionRecord(o.snapshot.AgentID, id, o.record.Title, job)
+			o.found = true
 			return
 		}
 	}
 	// cmdline is only a launch-shape fallback: it never overwrites a
 	// file-observed or reported current session id.
-	if hasRec && rec.Value != "" {
+	if o.hasRecord && o.record.Value != "" {
 		return
 	}
 	if id, ok2 := session.ObserveCmdline(job); ok2 {
 		source := "observed:cmdline"
-		if spec, native := nativeResumeAgents[agent]; native {
+		if spec, native := nativeResumeAgents[o.snapshot.AgentID]; native {
 			source = spec.Source
 		}
-		s.app.RecordSession(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: source})
-		s.ledgerPut(pid, tui.AgentRecord{Agent: agent, Kind: "id", Value: id, Title: rec.Title, Source: source})
-		if ok {
-			s.observedStart[pid] = start
+		o.result = tui.AgentRecord{Agent: o.snapshot.AgentID, Kind: "id", Value: id, Title: o.record.Title, Source: source}
+		o.found = true
+	}
+}
+
+func (s *Server) applySessionObservation(o sessionObservation) {
+	if !o.found || s.sup.Get(o.pid) != o.pane {
+		return
+	}
+	current := o.pane.Snapshot()
+	rec, hasRec := s.app.SessionRecord(o.pid)
+	if current.AgentID != o.snapshot.AgentID || current.Cwd != o.snapshot.Cwd || current.FgPID != o.snapshot.FgPID || current.Dead || hasRec != o.hasRecord || rec != o.record || !s.observedStart[o.pid].Equal(o.previousStart) {
+		s.markSessionDirty()
+		return
+	}
+	s.app.RecordSession(o.pid, o.result)
+	s.ledgerPut(o.pid, o.result)
+	if o.startKnown {
+		if s.observedStart == nil {
+			s.observedStart = map[int]time.Time{}
 		}
+		s.observedStart[o.pid] = o.start
 	}
 }
 

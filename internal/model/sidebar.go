@@ -1,5 +1,7 @@
 package model
 
+import "crypto/rand"
+
 import "github.com/kazuph/ikesu/internal/layout"
 
 type Section string
@@ -147,7 +149,7 @@ func (s *AppState) duplicateWorkspace(c CmdDuplicateWorkspace) []Effect {
 	}
 	src := s.Workspaces[c.Index]
 	s.nextWorkspaceID++
-	ws := &Workspace{ID: s.nextWorkspaceID, Name: src.Name, Cwd: src.Cwd, CustomName: src.CustomName, DefaultName: src.DefaultName, Section: src.Section, ActiveTab: src.ActiveTab}
+	ws := &Workspace{ID: s.nextWorkspaceID, Generation: rand.Text(), Name: src.Name, Cwd: src.Cwd, CustomName: src.CustomName, DefaultName: src.DefaultName, Section: src.Section, ActiveTab: src.ActiveTab}
 	var eff []Effect
 	for _, t := range src.Tabs {
 		ids := map[int]int{}

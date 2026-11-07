@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/retained"
 	"github.com/kazuph/ikesu/internal/session"
@@ -27,6 +28,10 @@ const sessionSaveDelay = 250 * time.Millisecond
 func (s *Server) markSessionDirty() {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
+	if s.saveRunning {
+		s.savePending = true
+		return
+	}
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
 	}
@@ -41,8 +46,37 @@ type sessionSnapshot struct {
 
 // Capture on the model owner, then let the timer goroutine perform disk I/O.
 func (s *Server) saveScheduledSession() {
+	s.saveMu.Lock()
+	if s.saveRunning {
+		s.savePending = true
+		s.saveMu.Unlock()
+		return
+	}
+	s.saveRunning = true
+	s.saveMu.Unlock()
+	defer func() {
+		s.saveMu.Lock()
+		s.saveRunning = false
+		if s.savePending {
+			s.savePending = false
+			if s.closing.Load() == 0 {
+				s.saveTimer = time.AfterFunc(sessionSaveDelay, s.saveScheduledSession)
+			}
+		}
+		s.saveMu.Unlock()
+	}()
+	var observations []sessionObservation
+	s.app.Do(func() { observations = s.prepareSessionObservations() })
+	for i := range observations {
+		observations[i].observe()
+	}
 	var snapshot *sessionSnapshot
-	s.app.Do(func() { snapshot = s.captureSession() })
+	s.app.Do(func() {
+		for _, observation := range observations {
+			s.applySessionObservation(observation)
+		}
+		snapshot = s.captureSessionWithoutObservation()
+	})
 	s.writeSession(snapshot)
 }
 
@@ -57,11 +91,20 @@ func (s *Server) captureSession() *sessionSnapshot {
 		return nil
 	}
 	s.observeAgentSessions()
+	return s.captureSessionWithoutObservation()
+}
+
+func (s *Server) captureSessionWithoutObservation() *sessionSnapshot {
+	if s.app == nil {
+		return nil
+	}
 	f := s.app.State().Snapshot()
 	f.NextPaneID = max(f.NextPaneID, s.app.State().HandoffCounters().RuntimePane)
 	if len(f.Workspaces) == 0 {
 		return nil
 	}
+	var ledger map[int]dispatch.PaneSession
+	ledgerLoaded := false
 	f.EachPane(func(w *session.Workspace, _ *session.Tab, p *session.Pane) {
 		if rp := s.sup.Get(p.ID); rp != nil {
 			if cwd := rp.Snapshot().Cwd; cwd != "" {
@@ -81,7 +124,11 @@ func (s *Server) captureSession() *sessionSnapshot {
 		// A safe same-agent ledger id keeps the exact session on the
 		// snapshot even when the terminal-side record was lost.
 		if !session.SafeSessionValue(p.SessionKind, p.SessionID) {
-			if led, ok := s.ledgerEntry(p.ID); ok && led.SessionID != "" &&
+			if !ledgerLoaded {
+				ledger = s.ledgerEntries()
+				ledgerLoaded = true
+			}
+			if led, ok := ledger[p.ID]; ok && led.SessionID != "" &&
 				(p.Agent == "" || led.Agent == p.Agent) {
 				if p.Agent == "" {
 					p.Agent = led.Agent

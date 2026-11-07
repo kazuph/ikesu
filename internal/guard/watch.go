@@ -1,6 +1,80 @@
 package guard
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+)
+
+func (a *Assets) unchangedCheckedAssets(generation uint64) bool {
+	shell, err := a.privateShell(false)
+	if err != nil {
+		return false
+	}
+	defer shell.close()
+	unlock, err := shell.lock(false)
+	if err != nil {
+		return false
+	}
+	defer unlock()
+	snapshot, ok := a.assetSnapshot()
+	return ok && sameAssetSnapshot(a.checkedAssets, snapshot) && a.watchGeneration.Load() == generation
+}
+
+// assetSnapshot covers the concrete paths checked by intact. Ancestor trust
+// and executable trust are checked separately before reusing this snapshot.
+func (a *Assets) assetSnapshot() (map[string]os.FileInfo, bool) {
+	shell := filepath.Dir(a.RuntimePath())
+	generation, err := os.Readlink(filepath.Join(shell, "current"))
+	if err != nil || !generationName(generation) {
+		return nil, false
+	}
+	executable, _, err := a.trustedSource()
+	if err != nil {
+		return nil, false
+	}
+	paths := []string{shell, filepath.Join(shell, "current"), a.RuntimePath(), filepath.Join(shell, "current", "manifest.json"), filepath.Join(shell, "current", "ikesu"), a.MarkerPath, a.Bin, a.issuePath()}
+	paths = append(paths, filepath.Join(shell, generation), filepath.Join(shell, "generation.lock"), filepath.Dir(a.issuePath()), a.Executable, executable)
+	followedPaths := map[string]bool{a.MarkerPath: true}
+	for _, name := range []string{"bash-env", ".zshenv", ".zprofile", ".zshrc", ".zlogin"} {
+		paths = append(paths, filepath.Join(shell, name), filepath.Join(shell, name+".current"), filepath.Join(shell, "current", name+".current"))
+	}
+	for _, cmd := range a.Config.Commands() {
+		path := filepath.Join(a.Bin, cmd)
+		paths = append(paths, path)
+		followedPaths[path] = true
+	}
+	result := make(map[string]os.FileInfo, len(paths))
+	for _, path := range paths {
+		info, err := os.Lstat(path)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, false
+		}
+		// The full check follows these links; Lstat alone cannot establish
+		// that their targets still contain the same data or permissions.
+		if info != nil && info.Mode()&os.ModeSymlink != 0 && followedPaths[path] {
+			return nil, false
+		}
+		result[path] = info
+	}
+	return result, true
+}
+
+func sameAssetSnapshot(a, b map[string]os.FileInfo) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for path, previous := range a {
+		current, ok := b[path]
+		if !ok || (previous == nil) != (current == nil) {
+			return false
+		}
+		if previous != nil && (!os.SameFile(previous, current) || !reflect.DeepEqual(snapshotStat(previous), snapshotStat(current))) {
+			return false
+		}
+	}
+	return true
+}
 
 // ObserveChanges replaces only the periodic integrity check when the native
 // watch covers every asset. Failed registration retains the existing checks.

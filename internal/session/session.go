@@ -37,6 +37,7 @@ type File struct {
 
 // Workspace is one saved workspace.
 type Workspace struct {
+	Generation     string                     `json:"generation,omitempty"`
 	Worktree       *api.WorkspaceWorktreeInfo `json:"worktree,omitempty"`
 	Section        string                     `json:"section,omitempty"`
 	CustomName     bool                       `json:"custom_name,omitempty"`

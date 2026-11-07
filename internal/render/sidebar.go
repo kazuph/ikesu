@@ -34,6 +34,8 @@ const (
 	RowMobileTab
 	RowMobileMenu
 	RowMobileMenuItem
+	RowMobileOyagoi
+	RowMobileForeignOyagoi
 )
 
 type SidebarRow struct {

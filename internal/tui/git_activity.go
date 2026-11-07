@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/childenv"
@@ -18,6 +19,13 @@ type gitCwdActivity struct {
 	git           render.GitStatus
 	name          string
 	paths         map[string]gitPathState
+	tracked       []string
+	trackedNext   int
+	statChecks    int
+	trackedChecks int
+	readChecks    int
+	quietDirs     map[string]bool
+	trackedDirty  bool
 }
 
 type gitPathState struct {
@@ -29,25 +37,62 @@ type gitPathState struct {
 // watches, but only Git metadata directories need content-change invalidation.
 func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
 	revision := entry.watch.Revision()
-	for path, previous := range entry.paths {
+	entry.statChecks = 0
+	entry.trackedChecks = 0
+	probe := func(path string, previous gitPathState) bool {
+		entry.statChecks++
 		info, err := os.Stat(path)
 		if err != nil && !os.IsNotExist(err) {
-			return entry, false
+			return false
 		}
 		if previous.info == nil || info == nil {
 			if previous.info != nil || info != nil {
-				return entry, false
+				return false
 			}
-			continue
+			return true
 		}
 		if !os.SameFile(previous.info, info) || previous.info.Mode() != info.Mode() ||
 			(previous.contents && !sameGitFileState(previous.info, info)) {
+			return false
+		}
+		return true
+	}
+	tracked := make(map[string]bool, len(entry.tracked))
+	for _, path := range entry.tracked {
+		tracked[path] = true
+	}
+	for path, previous := range entry.paths {
+		// Recheck watched worktree directories at least once per tracked-file
+		// cycle even if the native watcher stops delivering notifications.
+		skipDir := entry.quietDirs[path] && revision == entry.revision && entry.trackedNext != 7
+		if !tracked[path] && !skipDir && !probe(path, previous) {
 			return entry, false
 		}
 	}
+	// Visit evenly spaced files in each pass, alternating opposite halves so
+	// neighbouring paths do not all wait for the end of the 12-second cycle.
+	phase := (entry.trackedNext&1)<<2 | entry.trackedNext&2 | (entry.trackedNext&4)>>2
+	changed := false
+	for i := phase; i < len(entry.tracked); i += 8 {
+		path := entry.tracked[i]
+		entry.trackedChecks++
+		if !probe(path, entry.paths[path]) {
+			info, err := os.Stat(path)
+			entry.statChecks++
+			if err != nil && !os.IsNotExist(err) {
+				return entry, false
+			}
+			state := entry.paths[path]
+			state.info = info
+			entry.paths[path] = state
+			changed = true
+		}
+	}
+	entry.trackedNext = (entry.trackedNext + 1) % 8
+	entry.trackedDirty = changed
 	// A notification arriving during the probes must remain pending.
 	entry.revision = revision
-	return entry, true
+	return entry, !changed
 }
 
 type gitActivityState struct{ entries map[string]gitCwdActivity }
@@ -90,6 +135,12 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		entry.revision, entry.ready, entry.loaded = revision, ready, true
 		return entry
 	}
+	if entry.trackedDirty {
+		entry.trackedDirty = false
+		entry.readChecks = 0
+		entry.git.Added, entry.git.Deleted = readWorkspaceGitDiff(cwd)
+		return entry
+	}
 	if entry.loaded && !entry.ready && entry.watch.Revision() == entry.revision {
 		return values(false, entry.revision)
 	}
@@ -102,6 +153,8 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		}
 	}
 	var metadataDirs []string
+	trackedPaths := map[string]bool{}
+	trackedDirs := map[string]bool{}
 	watches := make(map[string]bool, len(paths))
 	for path := range paths {
 		watches[path] = true
@@ -135,6 +188,12 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 					return err
 				}
 				paths[path] = true
+				if d.IsDir() && path != dir && !gitStatusMetadataDir(dir, path) {
+					// Object stores, reflogs, hooks and other worktrees'
+					// metadata never change the status shown for this cwd
+					// without also changing HEAD, the index or a ref.
+					return fs.SkipDir
+				}
 				return nil
 			})
 			ready = ready && walkErr == nil
@@ -146,8 +205,13 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 			for _, name := range strings.Split(string(tracked), "\x00") {
 				if name != "" {
 					path := filepath.Join(strings.TrimSpace(string(root)), name)
+					if filepath.Base(path) != ".gitattributes" {
+						trackedPaths[path] = true
+					}
 					gitAncestors(path, paths)
 					for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+						trackedDirs[dir] = true
+						watches[dir] = true
 						paths[filepath.Join(dir, ".gitattributes")] = true
 						if dir == strings.TrimSpace(string(root)) || filepath.Dir(dir) == dir {
 							break
@@ -158,23 +222,48 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 		}
 	}
 	if err == nil {
-		ready = gitConfigurationPaths(cwd, paths) && ready
+		configPaths := map[string]bool{}
+		ready = gitConfigurationPaths(cwd, configPaths) && ready
+		for path := range configPaths {
+			paths[path] = true
+			delete(trackedPaths, path)
+		}
 	}
 	covered := entry.watch.Update(gitPathList(watches))
 	entry.paths = make(map[string]gitPathState, len(paths))
+	entry.quietDirs = make(map[string]bool)
+	entry.tracked = entry.tracked[:0]
+	entry.trackedNext = 0
+	entry.readChecks = 0
 	for path := range paths {
+		entry.readChecks++
 		info, statErr := os.Stat(path)
 		if statErr != nil && !os.IsNotExist(statErr) {
 			covered = false
 		}
-		contents := info != nil && !info.IsDir()
+		contents := info != nil && (!info.IsDir() || trackedDirs[path])
 		for _, dir := range metadataDirs {
 			if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
 				contents = true
 			}
 		}
+		if trackedDirs[path] && watches[path] && info != nil && info.IsDir() {
+			metadata := false
+			for _, dir := range metadataDirs {
+				if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
+					metadata = true
+				}
+			}
+			if !metadata {
+				entry.quietDirs[path] = true
+			}
+		}
 		entry.paths[path] = gitPathState{info: info, contents: contents}
+		if trackedPaths[path] && !trackedDirs[path] {
+			entry.tracked = append(entry.tracked, path)
+		}
 	}
+	sort.Strings(entry.tracked)
 	return values(ready && covered, revision)
 }
 
@@ -230,4 +319,18 @@ func gitConfigurationPaths(cwd string, paths map[string]bool) bool {
 		add(filepath.Join(root, "git", "attributes"))
 	}
 	return true
+}
+
+// gitStatusMetadataDir reports whether a directory under a Git metadata root
+// holds state the sidebar status reads: refs and in-progress operations.
+func gitStatusMetadataDir(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return true
+	}
+	switch strings.SplitN(filepath.ToSlash(rel), "/", 2)[0] {
+	case "refs", "rebase-merge", "rebase-apply", "sequencer":
+		return true
+	}
+	return false
 }

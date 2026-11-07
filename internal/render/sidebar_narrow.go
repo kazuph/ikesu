@@ -94,7 +94,7 @@ func drawNarrowSidebar(f *Frame, s *model.AppState, in Input, right bool) {
 
 func (m *MachineSidebar) draw(f *Frame, in Input) {
 	m.drawExpanded(f, in)
-	if len(m.Groups) == 1 {
+	if len(m.Groups) == 1 && m.Oyagoi == nil {
 		return
 	}
 	if in.State.SidebarArea().W >= model.SidebarMinDefault && in.State.RightSidebarArea().W >= model.SidebarMinDefault {
@@ -113,6 +113,9 @@ func (m *MachineSidebar) draw(f *Frame, in Input) {
 	vm.Hits = nil
 	vm.drawExpanded(ref, reference)
 	for _, right := range []bool{false, true} {
+		if right && len(m.Groups) == 1 {
+			continue
+		}
 		rows := map[int]SidebarRow{}
 		for _, hit := range vm.Hits {
 			if hit.Right == right && !hit.Header && !hit.New {

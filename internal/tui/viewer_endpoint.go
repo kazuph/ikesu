@@ -27,3 +27,41 @@ func (v *Viewer) SelectWorkspace(a *App, id int) bool {
 	}
 	return false
 }
+
+func (v *Viewer) HasWorkspace(a *App, id int, generation string) bool {
+	for _, ws := range a.st.Workspaces {
+		if ws.ID == id && generation != "" && ws.Generation == generation {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) isOyagoiWorkspace(ws *model.Workspace) bool {
+	return a.oyagoiWorkspace != 0 && ws.ID == a.oyagoiWorkspace && a.oyagoiGeneration != "" && ws.Generation == a.oyagoiGeneration
+}
+
+func (v *Viewer) OpenWorkspaceMenu(a *App, id int, generation string, x, y int) bool {
+	for index, ws := range a.st.Workspaces {
+		if ws.ID == id && generation != "" && ws.Generation == generation {
+			v.with(a, func(ui *App) { ui.openWorkspaceMenu(x, y, index); ui.dirty = true })
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Viewer) SetOyagoi(a *App, id int, generation string) {
+	chosen := 0
+	for _, ws := range a.st.Workspaces {
+		if id != 0 && ws.ID == id && generation != "" && ws.Generation == generation {
+			chosen = id
+			break
+		}
+	}
+	v.with(a, func(ui *App) { ui.oyagoiWorkspace = chosen; ui.oyagoiGeneration = generation; ui.dirty = true })
+}
+
+func (v *Viewer) SetForeignOyagoi(a *App, label string, online bool) {
+	v.with(a, func(ui *App) { ui.oyagoiForeignName, ui.oyagoiForeignOnline = label, online; ui.dirty = true })
+}
