@@ -226,7 +226,14 @@ func (s *Server) mailDone(w mailWrite) {
 	if w.room != "" {
 		delete(s.jobInFlight, jobKey(w.room, w.toAgent))
 	}
-	s.mailEpoch++
+	s.advanceMailEpochLocked(w.pane)
+}
+
+func (s *Server) advanceMailEpochLocked(pid int) {
+	if s.mailEpoch == nil {
+		s.mailEpoch = make(map[int]uint64)
+	}
+	s.mailEpoch[pid]++
 }
 
 // enqueueMail stages one message or job batch for delivery. It returns
@@ -240,7 +247,7 @@ func (s *Server) enqueueMail(w mailWrite) bool {
 // enqueueMailAtEpoch reserves the message IDs atomically with the snapshot check.
 func (s *Server) enqueueMailAtEpoch(w mailWrite, epoch *uint64) (bool, bool) {
 	s.mailMu.Lock()
-	if epoch != nil && s.mailEpoch != *epoch {
+	if epoch != nil && s.mailEpoch[w.pane] != *epoch {
 		s.mailMu.Unlock()
 		return false, true
 	}
@@ -502,7 +509,9 @@ func (s *Server) msgInbox(id string, p api.MsgInboxParams) api.Response {
 		return api.Failure(id, api.ErrMsgStore, err.Error())
 	}
 	var generation *string
+	var resolvedPID int
 	if target, resolveErr := s.resolveTarget(toAgent, false); resolveErr == nil {
+		resolvedPID = target.pid
 		value := s.app.State().PaneGeneration(target.pid)
 		generation = &value
 	} else if dispatch.IsGlobalPaneID(toAgent) {
@@ -511,11 +520,13 @@ func (s *Server) msgInbox(id string, p api.MsgInboxParams) api.Response {
 	}
 	msgs, err := store.MessagesForInboxRecipients(room,
 		s.recipientAliases(room, toAgent), s.mailInFlightSet(), generation)
-	s.mailMu.Lock()
-	s.mailEpoch++
-	s.mailMu.Unlock()
 	if err != nil {
 		return api.Failure(id, api.ErrMsgStore, err.Error())
+	}
+	if resolvedPID != 0 && len(msgs) != 0 {
+		s.mailMu.Lock()
+		s.advanceMailEpochLocked(resolvedPID)
+		s.mailMu.Unlock()
 	}
 	out := make([]api.MsgMessage, len(msgs))
 	for i, m := range msgs {
@@ -784,7 +795,7 @@ func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot
 func (s *Server) readPaneMail(pid int) paneMailSnapshot {
 	var snapshot paneMailSnapshot
 	s.mailMu.Lock()
-	snapshot.epoch = s.mailEpoch
+	snapshot.epoch = s.mailEpoch[pid]
 	s.mailMu.Unlock()
 	if !dispatch.DBExists(s.session) {
 		return snapshot

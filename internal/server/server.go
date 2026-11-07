@@ -147,7 +147,7 @@ type Server struct {
 	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
 	mailDeferred    map[int]mailDeferredPane
 	mailDeferredSeq uint64
-	mailEpoch       uint64 // invalidates snapshots when delivery or inbox state changes
+	mailEpoch       map[int]uint64 // per-pane delivery and inbox changes invalidate snapshots
 	mailSendPending map[int64]*bool
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors

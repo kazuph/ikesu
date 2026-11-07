@@ -227,3 +227,45 @@ func TestReadPaneMailPreservesPendingOrder(t *testing.T) {
 		t.Fatalf("job messages: %+v", snapshot.jobs)
 	}
 }
+
+func TestOtherPaneDeliveryDoesNotInvalidateSnapshot(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
+	s := newTestServer(t, "mail-other-pane")
+	s.mailCh = make(chan mailWrite, 2)
+	s.mailInFlight = map[int64]bool{}
+	s.jobInFlight = map[string]bool{}
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	other := s.app.State().FocusedPane()
+	pane, err := s.sup.SpawnWith(other, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	message, err := store.InsertPaneMessage("room", "", "sender", "p1", "first", nil, false, s.app.State().PaneGeneration(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherMessage, err := store.InsertPaneMessage("room", "", "sender", fmtPaneID(other), "second", nil, false, s.app.State().PaneGeneration(other))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := s.readPaneMail(1)
+	write := mailWrite{pane: other, owner: pane, msgID: otherMessage.ID, payload: []byte("second\r")}
+	if !s.enqueueMail(write) {
+		t.Fatal("other pane's message was not queued")
+	}
+	<-s.mailCh
+	if written, err := s.deliverMailWrite(write); !written || err != nil {
+		t.Fatalf("other pane delivery: written=%v err=%v", written, err)
+	}
+	s.mailDone(write)
+	if ok, stale := s.enqueueMailAtEpoch(mailWrite{pane: 1, msgID: message.ID}, &snapshot.epoch); !ok || stale {
+		t.Fatalf("another pane invalidated the snapshot: ok=%v stale=%v", ok, stale)
+	}
+}
