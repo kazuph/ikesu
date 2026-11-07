@@ -51,6 +51,11 @@ func (s *Server) captureClaudeQuestionContext(pid int, decisionID string) {
 			if err := s.store.BindClaudeScreenContext(decisionID, fmtPaneID(pid), id, start); err != nil {
 				return
 			}
+			// The restore set may have been cleared (screen prompts turned
+			// off and on, or handed off) while the capture ran.
+			if s.screenPrompts.claudeRestore == nil {
+				s.screenPrompts.claudeRestore = map[string]int{}
+			}
 			s.screenPrompts.claudeRestore[decisionID] = pid
 			s.scheduleScreenPrompts()
 		})

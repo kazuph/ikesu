@@ -57,8 +57,8 @@ func TestWindowTitleUsesWorkspacePriorityAcrossTabs(t *testing.T) {
 		in.State.Apply(model.CmdNewTab{})
 		in.Panes[in.State.FocusedPane()] = &PaneSnap{Status: StatusGlyph{Key: key}}
 	}
-	if got := WindowTitle(in, "", nil); got != "🔴 ikesu" {
-		t.Fatal("lower priority panes must not add workspace states", got)
+	if got := WindowTitle(in, "", nil); got != "🟡 ikesu" {
+		t.Fatal("later tabs must not change the workspace state", got)
 	}
 }
 

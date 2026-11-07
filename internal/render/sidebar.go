@@ -601,15 +601,12 @@ func wsGlyph(s *model.AppState, wi int, in Input) StatusGlyph {
 	return aggregateGlyph(s.Workspaces[wi], in)
 }
 
-// aggregateGlyph picks the most attention-worthy pane glyph of a workspace.
+// aggregateGlyph uses the leftmost tab's pane aggregation for the workspace.
 func aggregateGlyph(ws *model.Workspace, in Input) StatusGlyph {
-	best := StatusGlyph{Rune: " ", Color: Dim}
-	for _, t := range ws.Tabs {
-		if g := tabGlyph(t, in); glyphRank(g) > glyphRank(best) {
-			best = g
-		}
+	if len(ws.Tabs) == 0 {
+		return StatusGlyph{Rune: " ", Color: Dim}
 	}
-	return best
+	return tabGlyph(ws.Tabs[0], in)
 }
 
 // workingRune returns the spinner frame for the working aggregate glyph
