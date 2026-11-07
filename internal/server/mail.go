@@ -655,11 +655,40 @@ func (s *Server) startMailQueryLocked() {
 	}
 }
 
+// beginMailQuery registers an API read before shutdown can wait for readers.
+func (s *Server) beginMailQuery() bool {
+	s.mailQueryMu.Lock()
+	defer s.mailQueryMu.Unlock()
+	if s.mailQueryClosed {
+		return false
+	}
+	select {
+	case <-s.app.Done():
+		return false
+	default:
+	}
+	s.mailQueryWG.Add(1)
+	return true
+}
+
+func (s *Server) stopMailQueries() {
+	s.mailQueryMu.Lock()
+	s.mailQueryClosed = true
+	s.mailQueryMu.Unlock()
+}
+
 func (s *Server) readPendingPaneMail() {
 	defer s.mailQueryWG.Done()
 	lastWasSweep := false
 	for {
 		s.mailQueryMu.Lock()
+		select {
+		case <-s.app.Done():
+			s.mailQueryRunning = false
+			s.mailQueryMu.Unlock()
+			return
+		default:
+		}
 		if len(s.mailQueryPending) == 0 && len(s.mailInvalidPending) == 0 && !s.mailSweepPending || s.mailQueryClosed {
 			s.mailQueryRunning = false
 			s.mailQueryMu.Unlock()

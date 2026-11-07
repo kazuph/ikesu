@@ -7,6 +7,9 @@ import "time"
 func (s *Store) CompleteJob(id, expected, status string, exit *int64, finishedMs int64, caller, body string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.db == nil {
+		return false, errStoreClosed
+	}
 	if err := s.db.Exec("BEGIN IMMEDIATE"); err != nil {
 		return false, err
 	}

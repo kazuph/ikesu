@@ -23,6 +23,8 @@ const JobsRoom = "ikesu-jobs"
 const RunShellActor = "ikesu-run"
 const DBPathEnvVar = "IKESU_DB_PATH"
 
+var errStoreClosed = errors.New("dispatch store is closed")
+
 // tsLayout is the millisecond UTC timestamp format stored in *_at columns.
 const tsLayout = "2006-01-02T15:04:05.000Z"
 
@@ -338,11 +340,15 @@ func OpenReadOnly(path string) (*Store, error) {
 
 // Close releases the database handle.
 func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.db == nil {
 		return nil
 	}
 	err := s.db.Close()
-	s.db = nil
+	if err == nil {
+		s.db = nil
+	}
 	return err
 }
 
@@ -410,6 +416,9 @@ func bindArgs(st *sqlite3.Stmt, args []any) error {
 }
 
 func (s *Store) execLocked(sql string, args ...any) error {
+	if s.db == nil {
+		return errStoreClosed
+	}
 	st, _, err := s.db.Prepare(sql)
 	if err != nil {
 		return err
@@ -422,6 +431,9 @@ func (s *Store) execLocked(sql string, args ...any) error {
 }
 
 func (s *Store) queryLocked(sql string, args ...any) (*sqlite3.Stmt, error) {
+	if s.db == nil {
+		return nil, errStoreClosed
+	}
 	st, _, err := s.db.Prepare(sql)
 	if err != nil {
 		return nil, err

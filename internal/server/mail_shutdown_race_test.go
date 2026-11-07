@@ -127,6 +127,10 @@ func TestMsgSendReadFinishesBeforeStoreClose(t *testing.T) {
 			t.Errorf("cleanup panic: %v", p)
 		}
 	}
+	if s.beginMailQuery() {
+		s.mailQueryWG.Done()
+		t.Error("read accepted after shutdown")
+	}
 	_ = client.Close()
 	if p := <-apiDone; p != nil {
 		t.Errorf("API panic: %v", p)

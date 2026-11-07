@@ -138,9 +138,20 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		if !query.ready {
 			return result
 		}
+		defer func() {
+			s.mailMu.Lock()
+			delete(s.mailSendPending, query.message.ID)
+			s.mailMu.Unlock()
+		}()
 		var delivered bool
 		for {
-			snapshot := s.readPaneMail(query.pid)
+			if !s.beginMailQuery() {
+				return stopping
+			}
+			snapshot := func() paneMailSnapshot {
+				defer s.mailQueryWG.Done()
+				return s.readPaneMail(query.pid)
+			}()
 			if query.room == dispatch.JobsRoom {
 				snapshot.regular = nil
 			} else {
@@ -155,7 +166,6 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		var nudged []string
 		s.mailMu.Lock()
 		delivered = delivered || query.nudged
-		delete(s.mailSendPending, query.message.ID)
 		s.mailMu.Unlock()
 		if delivered {
 			nudged = []string{query.recipient}

@@ -394,6 +394,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetViewerHooks(s.drawViewers, s.tickViewers, s.visiblePane)
 	s.app.SetQuitHook(func() {
+		s.stopMailQueries()
 		s.stopDecisions()
 		if s.restarting {
 			s.closing.Store(2)
@@ -533,6 +534,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	})
 	go s.jobCacheLoop(appDone, jobsDone)
 	<-appDone
+	s.stopMailQueries()
 	<-jobsDone
 	s.cleanup()
 	if s.restarting {
@@ -543,6 +545,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 
 func (s *Server) cleanup() {
 	defer s.trace.Close()
+	s.stopMailQueries()
 	s.saveMu.Lock()
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
@@ -562,9 +565,6 @@ func (s *Server) cleanup() {
 	case <-drained:
 	case <-time.After(500 * time.Millisecond):
 	}
-	s.mailQueryMu.Lock()
-	s.mailQueryClosed = true
-	s.mailQueryMu.Unlock()
 	s.mailQueryWG.Wait()
 	close(s.mailCh)
 	if !s.handedOff {
