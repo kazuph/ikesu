@@ -351,9 +351,9 @@ func (s *Server) recordCancellation(store *dispatch.Store, j dispatch.Job, onLoo
 	}
 	if changed && body != "" {
 		if onLoop {
-			s.flushJobNudgeFor(dispatch.JobsRoom, j.CallerPane)
+			s.requestJobMail(j.CallerPane)
 		} else {
-			s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, j.CallerPane) })
+			s.app.Do(func() { s.requestJobMail(j.CallerPane) })
 		}
 	}
 	return nil
@@ -438,8 +438,8 @@ func (s *Server) queueJobNotice(store *dispatch.Store, caller, body string, onLo
 		return
 	}
 	if onLoop {
-		s.flushJobNudgeFor(dispatch.JobsRoom, caller)
+		s.requestJobMail(caller)
 	} else {
-		s.app.Do(func() { s.flushJobNudgeFor(dispatch.JobsRoom, caller) })
+		s.app.Do(func() { s.requestJobMail(caller) })
 	}
 }
