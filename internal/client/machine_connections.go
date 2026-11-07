@@ -142,6 +142,15 @@ func needsAttention(reason string) bool {
 }
 
 func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
+	if event.oyagoiChanged {
+		if event.err != nil {
+			m.notify("HQ settings watch: " + event.err.Error())
+		} else if err := m.refreshOyagoi(); err != nil {
+			m.notify(err.Error())
+		}
+		_ = m.paint()
+		return 0, false
+	}
 	if event.formUpdate != nil {
 		event.formUpdate()
 		_ = m.paint()
@@ -395,7 +404,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if event.id != m.active {
 			break
 		}
-		if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
+		if strings.HasPrefix(message.MachineAction, "oyagoi:") {
+			if err := m.oyagoiAction(event.id, message.MachineAction); err != nil {
+				m.notify(err.Error())
+			}
+		} else if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
 			m.notify(err.Error())
 		}
 		_ = m.paint()

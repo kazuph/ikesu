@@ -61,6 +61,7 @@ type endpointEvent struct {
 	err            error
 	approval       string
 	catalogChanged bool
+	oyagoiChanged  bool
 	formUpdate     func()
 	configRevision uint64
 	upgrade        *upgradeCheckResult
@@ -79,6 +80,8 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
+	oyagoiStore oyagoiStore
+	oyagoi      *oyagoiSelection
 	koiNext     time.Time
 	koiClock    render.KoiAnimation
 	koiVisible  bool
@@ -161,7 +164,23 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		return pumpDone
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	m := &machineClient{clientVersion: settings.clientVersion, session: session, settings: settings, endpoints: map[string]*managedEndpoint{}, failedUpgrades: map[upgradeIdentity]bool{}, order: []string{"local"}, active: "local", size: size, in: in, out: out, events: make(chan endpointEvent), ctx: ctx}
+	m.oyagoiStore.path = filepath.Join(api.StateDir(), "client-shell", "oyagoi.json")
+	if err := os.MkdirAll(filepath.Dir(m.oyagoiStore.path), 0700); err != nil {
+		fmt.Fprintln(out, "ikesu: HQ settings:", err)
+		return pumpRejected
+	}
+	if err := m.refreshOyagoi(); err != nil {
+		fmt.Fprintln(out, "ikesu:", err)
+		return pumpRejected
+	}
+	stopOyagoi, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
+	if err != nil {
+		fmt.Fprintln(out, "ikesu: HQ settings watch:", err)
+		return pumpRejected
+	}
+	defer stopOyagoi()
 	if latency.Enabled {
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}
