@@ -190,10 +190,13 @@ type App struct {
 	machineWorkers    *sync.WaitGroup
 	clientMachines    bool
 
-	input    chan []byte
-	resizeCh chan winsize
-	jobs     chan appJob
-	doneCh   chan struct{}
+	input               chan []byte
+	resizeCh            chan winsize
+	jobs                chan appJob
+	doneCh              chan struct{}
+	processPollRequests chan struct{}
+	processPollResults  chan []int
+	processPollPermit   chan struct{}
 
 	navigator           *navigatorView
 	resizeMode          bool
@@ -380,32 +383,36 @@ func (a *App) SetCellPixels(xp, yp int) {
 // display sink: the local terminal, or the server's attached client.
 func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd string) *App {
 	a := &App{
-		loopTiming:    &loopTiming{},
-		st:            st,
-		sup:           sup,
-		out:           out,
-		fr:            &input.Framer{},
-		enc:           &render.Encoder{},
-		cwd:           cwd,
-		input:         make(chan []byte, 256),
-		resizeCh:      make(chan winsize, 8),
-		jobs:          make(chan appJob),
-		doneCh:        make(chan struct{}),
-		scroll:        map[int]int{},
-		trackers:      map[int]*status.Tracker{},
-		reported:      map[int]reportedPane{},
-		sessions:      map[int]*AgentRecord{},
-		fossils:       map[int]*fossilWatch{},
-		visibleIdle:   map[int]time.Time{},
-		editorFiles:   map[int]string{},
-		agentStates:   map[int]string{},
-		agentStateSeq: map[int]uint64{},
-		fwd:           -1,
+		loopTiming:          &loopTiming{},
+		st:                  st,
+		sup:                 sup,
+		out:                 out,
+		fr:                  &input.Framer{},
+		enc:                 &render.Encoder{},
+		cwd:                 cwd,
+		input:               make(chan []byte, 256),
+		resizeCh:            make(chan winsize, 8),
+		jobs:                make(chan appJob),
+		doneCh:              make(chan struct{}),
+		processPollRequests: make(chan struct{}, 1),
+		processPollResults:  make(chan []int, 1),
+		processPollPermit:   make(chan struct{}, 1),
+		scroll:              map[int]int{},
+		trackers:            map[int]*status.Tracker{},
+		reported:            map[int]reportedPane{},
+		sessions:            map[int]*AgentRecord{},
+		fossils:             map[int]*fossilWatch{},
+		visibleIdle:         map[int]time.Time{},
+		editorFiles:         map[int]string{},
+		agentStates:         map[int]string{},
+		agentStateSeq:       map[int]uint64{},
+		fwd:                 -1,
 		// Default bindings; SetKeybinds overlays the user's [keys] config.
 		copyKeys:   config.Config{}.CopyKeys(),
 		splitVKeys: config.Config{}.SplitVerticalKeys(),
 		splitHKeys: config.Config{}.SplitHorizontalKeys(),
 	}
+	a.processPollPermit <- struct{}{}
 	a.SetPaneKeybinds(config.Config{})
 	return a
 }
@@ -506,6 +513,17 @@ func (a *App) Do(fn func()) {
 	}
 }
 
+// DoWithProcessPollingPaused waits outside the app loop for the current
+// process observation to finish before capturing live-handoff state.
+func (a *App) DoWithProcessPollingPaused(fn func()) {
+	select {
+	case <-a.processPollPermit:
+		defer func() { a.processPollPermit <- struct{}{} }()
+		a.Do(fn)
+	case <-a.doneCh:
+	}
+}
+
 // PushInput feeds raw terminal input bytes to the framer.
 func (a *App) PushInput(b []byte) {
 	select {
@@ -601,6 +619,31 @@ func (a *App) Run() {
 	defer close(a.doneCh)
 	defer a.closeGitActivity()
 	defer a.pruneBranchCache(nil)
+	processCtx, cancelProcessPoll := context.WithCancel(context.Background())
+	processDone := make(chan struct{})
+	go func() {
+		defer close(processDone)
+		for {
+			select {
+			case <-processCtx.Done():
+				return
+			case <-a.processPollRequests:
+				select {
+				case <-a.processPollPermit:
+				case <-processCtx.Done():
+					return
+				}
+				changed := a.sup.PollPendingProcesses(time.Now())
+				a.processPollPermit <- struct{}{}
+				select {
+				case a.processPollResults <- changed:
+				case <-processCtx.Done():
+					return
+				}
+			}
+		}
+	}()
+	defer func() { cancelProcessPoll(); <-processDone }()
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 	spin := time.NewTicker(spinInterval)
@@ -682,6 +725,10 @@ func (a *App) Run() {
 			close(j.done)
 		case ev := <-a.sup.Events():
 			a.onRuntimeEvent(ev)
+		case changed := <-a.processPollResults:
+			for _, pid := range changed {
+				a.invalidateDetection(pid)
+			}
 		case sz := <-a.resizeCh:
 			if sz.Cols != a.st.Cols || sz.Rows != a.st.Rows {
 				// Judge the new size first so the single resize lays out once.
@@ -735,6 +782,8 @@ func (a *App) Run() {
 			}
 		}
 	}
+	cancelProcessPoll()
+	<-processDone
 	if a.quitHook != nil {
 		a.quitHook()
 	}
