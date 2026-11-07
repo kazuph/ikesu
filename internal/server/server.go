@@ -126,11 +126,19 @@ type Server struct {
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
 	// durable mailbox / jobs
-	dbOnce sync.Once
-	store  *dispatch.Store
-	dbErr  error
-	mailCh chan mailWrite
-	mailWG sync.WaitGroup
+	dbOnce             sync.Once
+	store              *dispatch.Store
+	dbErr              error
+	mailCh             chan mailWrite
+	mailWG             sync.WaitGroup
+	mailQueryMu        sync.Mutex
+	mailQueryWG        sync.WaitGroup
+	mailQueryPending   map[int]mailQueryTarget
+	mailQueryOrder     []mailQueryRequest
+	mailInvalidPending map[string]struct{}
+	mailSweepPending   bool
+	mailQueryRunning   bool
+	mailQueryClosed    bool
 
 	mailMu          sync.Mutex
 	mailDelivery    sync.RWMutex    // fence PTY write + acknowledgement before handoff
@@ -139,6 +147,8 @@ type Server struct {
 	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
 	mailDeferred    map[int]mailDeferredPane
 	mailDeferredSeq uint64
+	mailEpoch       map[int]uint64 // per-pane delivery and inbox changes invalidate snapshots
+	mailSendPending map[int64]*bool
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
@@ -384,6 +394,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetSinkGate(func() bool { return s.hasClient() })
 	s.app.SetViewerHooks(s.drawViewers, s.tickViewers, s.visiblePane)
 	s.app.SetQuitHook(func() {
+		s.stopMailQueries()
 		s.stopDecisions()
 		if s.restarting {
 			s.closing.Store(2)
@@ -523,6 +534,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	})
 	go s.jobCacheLoop(appDone, jobsDone)
 	<-appDone
+	s.stopMailQueries()
 	<-jobsDone
 	s.cleanup()
 	if s.restarting {
@@ -533,6 +545,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 
 func (s *Server) cleanup() {
 	defer s.trace.Close()
+	s.stopMailQueries()
 	s.saveMu.Lock()
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
@@ -552,6 +565,7 @@ func (s *Server) cleanup() {
 	case <-drained:
 	case <-time.After(500 * time.Millisecond):
 	}
+	s.mailQueryWG.Wait()
 	close(s.mailCh)
 	if !s.handedOff {
 		s.sup.KillAll()
