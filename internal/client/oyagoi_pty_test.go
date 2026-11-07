@@ -96,6 +96,34 @@ func TestOyagoiDisconnectAndReconnectActualPTY(t *testing.T) {
 	}
 }
 
+func TestOyagoiMachineRenameAndSessionIdentityActualPTY(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	e := m.endpoints["remote"]
+	ws := e.snapshot.State.Workspaces[0]
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", ws.ID, ws.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	h.until("HQ projected", func() bool { return e.snapshot.MobileOyagoi == ws.ID })
+	e.profile.Label = "renamed machine"
+	if got := m.oyagoiForSidebar(); got == nil || got.Workspace != ws.ID || got.Offline {
+		t.Fatalf("HQ after machine rename = %+v", got)
+	}
+	selection, err := m.oyagoiStore.load()
+	if err != nil || selection == nil || selection.Machine != "remote" || selection.Session != "right-remote" {
+		t.Fatalf("selection after machine rename = %+v, %v", selection, err)
+	}
+	e.profile.Session = "another-session"
+	if got := m.oyagoiForSidebar(); got == nil || !got.Offline {
+		t.Fatalf("HQ shown on another session = %+v", got)
+	}
+	e.profile.Session = "right-remote"
+	if got := m.oyagoiForSidebar(); got == nil || got.Offline || got.Workspace != ws.ID {
+		t.Fatalf("HQ after returning to original session = %+v", got)
+	}
+}
+
 func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 	h := newRightMachineHarness(t)
 	first := h.m
