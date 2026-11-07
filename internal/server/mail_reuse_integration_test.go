@@ -37,9 +37,16 @@ func TestMailDeliveryAndAcknowledgementReservePaneID(t *testing.T) {
 			t.Cleanup(func() { _ = s.store.Close() })
 			s.app.State().SetPaneReservations(func() (map[int]bool, error) { return s.store.ReservedPaneIDs(s.session) })
 			s.app.SetReported(2, "codex", "working")
-			response := s.msgSend("send", api.MsgSendParams{Room: "room", FromAgent: "sender", To: "p2", Body: "# old mail"})
+			if _, err := s.sup.SpawnWith(2, t.TempDir(), 80, 24, nil, []string{"/bin/cat"}); err != nil {
+				t.Fatal(err)
+			}
+			var query mailSendQuery
+			response := s.prepareMsgSend("send", api.MsgSendParams{Room: "room", FromAgent: "sender", To: "p2", Body: "# old mail"}, &query)
 			if response.Err != nil {
 				t.Fatal(response.Err)
+			}
+			if s.applyPaneMailSnapshot(query.pid, query.target, s.readPaneMail(query.pid), nil) {
+				t.Fatal("unexpected stale mail snapshot")
 			}
 			if len(s.mailCh) != 1 {
 				t.Fatal("delivery was not queued")
