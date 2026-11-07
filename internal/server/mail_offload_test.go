@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -46,6 +48,21 @@ func TestMailQueryDoesNotBlockAppLoop(t *testing.T) {
 		close(flushDone)
 	}()
 	<-flushStarted
+	// Confirm the real SQLite store read is waiting on its held mutex before
+	// probing the app loop; merely starting a goroutine would not prove this.
+	deadline := time.Now().Add(time.Second)
+	stack := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(stack, true)
+		if bytes.Contains(stack[:n], []byte("internal/dispatch.(*Store).Pending")) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Error("mail database read did not reach the held store lock")
+			break
+		}
+		runtime.Gosched()
+	}
 	responsive := make(chan struct{})
 	go s.app.Do(func() { close(responsive) })
 	select {
@@ -143,6 +160,42 @@ func TestPaneMailSnapshotRejectsReplacement(t *testing.T) {
 	}
 	if s.applyPaneMailSnapshot(pid, mailQueryTarget{owner: pane, generation: generation}, snapshot, nil) || len(s.mailCh) != 0 {
 		t.Fatal("replacement pane received stale snapshot")
+	}
+}
+
+func TestSendKeepsNudgedWhenAnotherFlushQueuesFirst(t *testing.T) {
+	for _, room := range []string{"room", dispatch.JobsRoom} {
+		t.Run(room, func(t *testing.T) {
+			teststate.Lock(t)
+			teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
+			s := newTestServer(t, "mail-send-overlap")
+			s.mailCh = make(chan mailWrite, 4)
+			s.mailInFlight = map[int64]bool{}
+			s.jobInFlight = map[string]bool{}
+			if _, err := s.sup.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/cat"}); err != nil {
+				t.Fatal(err)
+			}
+			defer s.sup.KillAll()
+			s.app.SetReported(1, "codex", "working")
+			var query mailSendQuery
+			response := s.prepareMsgSend("send", api.MsgSendParams{Room: room, FromAgent: "sender", To: "p1", Body: "body"}, &query)
+			if response.Err != nil || !query.ready {
+				t.Fatalf("response=%+v", response)
+			}
+			defer s.store.Close()
+			snapshot := s.readPaneMail(1)
+			if s.applyPaneMailSnapshot(1, query.target, snapshot, nil) {
+				t.Fatal("unexpected stale snapshot")
+			}
+			write := <-s.mailCh
+			if _, err := s.store.MarkDeliveredByIDs([]int64{query.message.ID}); err != nil {
+				t.Fatal(err)
+			}
+			s.mailDone(write)
+			if !query.nudged || len(s.readPaneMail(1).regular) != 0 || len(s.readPaneMail(1).jobs) != 0 {
+				t.Fatal("concurrent flush lost send's nudged result")
+			}
+		})
 	}
 }
 

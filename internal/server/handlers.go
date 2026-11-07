@@ -280,12 +280,6 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		}
 		return s.layoutSetSplitRatio(req.ID, p)
 
-	case api.MethodMsgSend:
-		var p api.MsgSendParams
-		if err := req.DecodeParams(&p); err != nil {
-			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
-		}
-		return s.msgSend(req.ID, p)
 	case api.MethodMsgInbox:
 		var p api.MsgInboxParams
 		if err := req.DecodeParams(&p); err != nil {

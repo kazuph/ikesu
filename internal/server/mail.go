@@ -246,6 +246,7 @@ func (s *Server) enqueueMailAtEpoch(w mailWrite, epoch *uint64) (bool, bool) {
 	}
 	if w.msgID != 0 {
 		if s.mailInFlight[w.msgID] {
+			s.markMailSendLocked(w)
 			s.mailMu.Unlock()
 			return true, false // already staged
 		}
@@ -254,6 +255,7 @@ func (s *Server) enqueueMailAtEpoch(w mailWrite, epoch *uint64) (bool, bool) {
 	if w.room != "" {
 		k := jobKey(w.room, w.toAgent)
 		if s.jobInFlight[k] {
+			s.markMailSendLocked(w)
 			s.mailMu.Unlock()
 			s.deferMailForPane(w.pane, w.owner)
 			return true, false // batch for this recipient already staged
@@ -266,11 +268,25 @@ func (s *Server) enqueueMailAtEpoch(w mailWrite, epoch *uint64) (bool, bool) {
 	s.mailMu.Unlock()
 	select {
 	case s.mailCh <- w:
+		s.mailMu.Lock()
+		s.markMailSendLocked(w)
+		s.mailMu.Unlock()
 		return true, false
 	default:
 		s.mailDone(w)
 		s.deferMailForPane(w.pane, w.owner)
 		return false, false
+	}
+}
+
+func (s *Server) markMailSendLocked(w mailWrite) {
+	if pending := s.mailSendPending[w.msgID]; pending != nil {
+		*pending = true
+	}
+	for _, id := range w.msgIDs {
+		if pending := s.mailSendPending[id]; pending != nil {
+			*pending = true
+		}
 	}
 }
 
@@ -394,6 +410,20 @@ func (s *Server) resolveTarget(target string, agentOnly bool) (paneTarget, *api.
 // --- msg handlers ---
 
 func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
+	return s.prepareMsgSend(id, p, nil)
+}
+
+type mailSendQuery struct {
+	pid       int
+	target    mailQueryTarget
+	recipient string
+	room      string
+	message   api.MsgMessage
+	ready     bool
+	nudged    bool
+}
+
+func (s *Server) prepareMsgSend(id string, p api.MsgSendParams, query *mailSendQuery) api.Response {
 	room := strings.TrimSpace(p.Room)
 	if room == "" {
 		return api.Failure(id, api.ErrInvalidMsgRoom, "room must not be empty")
@@ -429,6 +459,16 @@ func (s *Server) msgSend(id string, p api.MsgSendParams) api.Response {
 		return api.Failure(id, api.ErrMsgStore, derr.Error())
 	}
 	s.invalidateJobCache()
+	if query != nil {
+		*query = mailSendQuery{pid: pid, target: mailQueryTarget{owner: s.sup.Get(pid), generation: s.app.State().PaneGeneration(pid)}, recipient: recipient, room: room, message: toWireMessage(m), ready: true}
+		s.mailMu.Lock()
+		if s.mailSendPending == nil {
+			s.mailSendPending = make(map[int64]*bool)
+		}
+		s.mailSendPending[m.ID] = &query.nudged
+		s.mailMu.Unlock()
+		return api.Success(id, api.MsgSendResult{Type: "msg_send", Messages: []api.MsgMessage{query.message}})
+	}
 	var nudged []string
 	delivered := false
 	if room == dispatch.JobsRoom {

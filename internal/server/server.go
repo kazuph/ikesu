@@ -147,6 +147,7 @@ type Server struct {
 	mailDeferred    map[int]mailDeferredPane
 	mailDeferredSeq uint64
 	mailEpoch       uint64 // invalidates snapshots when delivery or inbox state changes
+	mailSendPending map[int64]*bool
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
