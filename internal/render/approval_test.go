@@ -26,6 +26,25 @@ func TestApprovalOverlayAndPaneAnswerIndicator(t *testing.T) {
 	}
 }
 
+func TestApprovalIndicatorInLaterTab(t *testing.T) {
+	state := model.New(t.TempDir(), 120, 40)
+	first := state.FocusedPane()
+	state.Apply(model.CmdNewTab{Workspace: 0})
+	pane := state.FocusedPane()
+	in := Input{State: state, Panes: map[int]*PaneSnap{first: {Status: StatusGlyph{Key: "idle", Rune: "○", Color: Green}}, pane: {Status: StatusGlyph{Key: "blocked", Rune: "●", Color: Red}}}, ApprovalCounts: map[int]int{pane: 1}, Approval: &Approval{Pane: pane, Title: "pending decision"}}
+	out := Compose(in)
+	if wsGlyph(state, 0, in).Key != "idle" || out.AnswerRects[pane].W == 0 || out.ApprovalRect.W == 0 {
+		t.Fatal("later-tab decision or first-tab workspace status missing")
+	}
+	var screen strings.Builder
+	for _, cell := range out.Frame.Cells {
+		screen.WriteString(cell.Content)
+	}
+	if !strings.Contains(screen.String(), "▲") || !strings.Contains(screen.String(), "pending decision") {
+		t.Fatal("decision indicator missing")
+	}
+}
+
 func TestReviewBorderlessIndicatorAvoidsWorkspaceCardHit(t *testing.T) {
 	s := model.New(t.TempDir(), 120, 30)
 	s.PaneBorders = false
