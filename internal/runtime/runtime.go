@@ -55,10 +55,15 @@ type Pane struct {
 	processChanged         atomic.Bool
 	processIdentityChanged atomic.Bool
 	processRevision        atomic.Uint64
-	processSettlingUntil   time.Time
-	processOutputUntil     time.Time
-	processCwdAt           time.Time
-	owner                  *Supervisor
+	// processPollSeq orders observations taken outside the app loop; the
+	// apply step drops an observation older than one already applied.
+	processPollSeq       atomic.Uint64
+	processApplyMu       sync.Mutex
+	processApplied       uint64
+	processSettlingUntil time.Time
+	processOutputUntil   time.Time
+	processCwdAt         time.Time
+	owner                *Supervisor
 
 	cmd                 *exec.Cmd
 	ptyFile             *os.File
@@ -752,7 +757,42 @@ func (p *Pane) PollProcess() {
 		p.processCache.readAt = time.Time{}
 		p.processCache.mu.Unlock()
 	}
-	job := p.cachedForegroundJob()
+	seq := p.processPollSeq.Add(1)
+	obs := processObservation{seq: seq, job: p.cachedForegroundJob()}
+	if len(obs.job.Processes) > 0 {
+		dj := detect.Job{ProcessGroupID: obs.job.ProcessGroupID}
+		for _, pr := range obs.job.Processes {
+			dj.Processes = append(dj.Processes, detect.JobProcess{
+				PID:     pr.PID,
+				Name:    pr.Name,
+				Argv:    pr.Argv,
+				Cmdline: pr.Cmdline,
+			})
+		}
+		obs.agentID, obs.name = detect.IdentifyJob(dj)
+		obs.cwd = platform.ProcCwd(obs.job.ProcessGroupID)
+	}
+	p.applyProcessObservation(obs)
+}
+
+// processObservation is one foreground-process scan. Scans may run on the
+// process worker and on API paths at the same time, so apply them in scan
+// order and drop a scan that started before an already applied one.
+type processObservation struct {
+	seq           uint64
+	job           platform.ForegroundJob
+	agentID, name string
+	cwd           string
+}
+
+func (p *Pane) applyProcessObservation(obs processObservation) {
+	p.processApplyMu.Lock()
+	defer p.processApplyMu.Unlock()
+	if obs.seq < p.processApplied {
+		return
+	}
+	p.processApplied = obs.seq
+	job := obs.job
 	p.setForegroundSudo(job.Sudo)
 	pids := make([]int, 0, len(job.Processes))
 	for _, pr := range job.Processes {
@@ -762,17 +802,7 @@ func (p *Pane) PollProcess() {
 	if len(job.Processes) == 0 {
 		return
 	}
-	dj := detect.Job{ProcessGroupID: job.ProcessGroupID}
-	for _, pr := range job.Processes {
-		dj.Processes = append(dj.Processes, detect.JobProcess{
-			PID:     pr.PID,
-			Name:    pr.Name,
-			Argv:    pr.Argv,
-			Cmdline: pr.Cmdline,
-		})
-	}
-	agentID, name := detect.IdentifyJob(dj)
-	cwd := platform.ProcCwd(job.ProcessGroupID)
+	agentID, name, cwd := obs.agentID, obs.name, obs.cwd
 	p.mu.Lock()
 	agentChanged := p.fgPID != job.ProcessGroupID || p.procName != name || p.agentID != agentID
 	cwdChanged := cwd != "" && cwd != p.procCwd
