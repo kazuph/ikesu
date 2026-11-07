@@ -52,6 +52,7 @@ func TestOldGenerationMailAndJobAreNotQueuedForReplacement(t *testing.T) {
 	defer sup.Kill(id)
 	s := &Server{sup: sup, mailCh: make(chan mailWrite, 4), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{}}
 	s.app = tui.NewApp(state, sup, io.Discard, t.TempDir())
+	s.app.SetReported(id, "codex", "working")
 	store, err := s.db()
 	if err != nil {
 		t.Fatal(err)
@@ -64,13 +65,14 @@ func TestOldGenerationMailAndJobAreNotQueuedForReplacement(t *testing.T) {
 	if _, err := store.InsertPaneMessage(dispatch.JobsRoom, "", dispatch.RunShellActor, pane, "old job", nil, false, old); err != nil {
 		t.Fatal(err)
 	}
-	if s.flushRegularForPane(id) || s.flushJobNudgeFor(dispatch.JobsRoom, pane) || len(s.mailCh) != 0 {
+	target := mailQueryTarget{owner: sup.Get(id), generation: state.PaneGeneration(id)}
+	if s.applyPaneMailSnapshot(id, target, s.readPaneMail(id), nil) || len(s.mailCh) != 0 {
 		t.Fatal("old generation was queued for delivery")
 	}
 	if _, err := store.InsertPaneMessage("room", "", "sender", pane, "new mail", nil, false, state.PaneGeneration(id)); err != nil {
 		t.Fatal(err)
 	}
-	if !s.flushRegularForPane(id) || len(s.mailCh) != 1 {
+	if s.applyPaneMailSnapshot(id, target, s.readPaneMail(id), nil) || len(s.mailCh) != 1 {
 		t.Fatal("current generation was not queued")
 	}
 }
