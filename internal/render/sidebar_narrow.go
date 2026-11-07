@@ -94,7 +94,7 @@ func drawNarrowSidebar(f *Frame, s *model.AppState, in Input, right bool) {
 
 func (m *MachineSidebar) draw(f *Frame, in Input) {
 	m.drawExpanded(f, in)
-	if len(m.Groups) == 1 {
+	if len(m.Groups) == 1 && m.Oyagoi == nil {
 		return
 	}
 	if in.State.SidebarArea().W >= model.SidebarMinDefault && in.State.RightSidebarArea().W >= model.SidebarMinDefault {

@@ -58,3 +58,11 @@ func TestOyagoiDeletedWorkspaceDoesNotFollowReusedNumber(t *testing.T) {
 		t.Fatalf("reused ID retained selection: %+v, %v", got, err)
 	}
 }
+
+func TestOyagoiSidebarUsesSharedSelectionAndConnectionStatus(t *testing.T) {
+	m := &machineClient{session: "one", oyagoi: &oyagoiSelection{Machine: "local", Session: "one", Workspace: 5, Generation: "g"}, endpoints: map[string]*managedEndpoint{"local": {}}}
+	got := m.oyagoiForSidebar()
+	if got == nil || got.Machine != "local" || got.Workspace != 5 || !got.Offline {
+		t.Fatalf("offline: %+v", got)
+	}
+}

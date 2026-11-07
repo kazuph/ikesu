@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/layout"
@@ -24,6 +25,7 @@ type MachineHit struct {
 }
 
 type MachineSidebar struct {
+	Oyagoi      *Oyagoi
 	Groups      []MachineGroup
 	Active      string
 	Scroll      int
@@ -37,15 +39,25 @@ type MachineSidebar struct {
 	Collapsed map[string]bool
 }
 
+type Oyagoi struct {
+	Machine      string
+	Workspace    int
+	Offline      bool
+	HideOriginal bool
+}
+
 type machineRow struct {
-	group  int
-	row    SidebarRow
-	header bool
+	group        int
+	row          SidebarRow
+	header       bool
+	oyagoi       bool
+	offline      bool
+	offlineLabel string
 }
 
 func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	m.Hits = m.Hits[:0]
-	if len(m.Groups) == 1 {
+	if len(m.Groups) == 1 && m.Oyagoi == nil {
 		return
 	}
 	defer m.drawRight(f, active)
@@ -56,6 +68,33 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	view := SidebarViewForInput(active)
 	area := view.Workspace.Rect
 	rows := []machineRow{}
+	if m.Oyagoi != nil {
+		rows = append(rows, machineRow{oyagoi: true})
+		if m.Oyagoi.Machine != "" {
+			if m.Oyagoi.Offline {
+				label := m.Oyagoi.Machine
+				for _, group := range m.Groups {
+					if group.ID == m.Oyagoi.Machine {
+						label = group.Label
+						break
+					}
+				}
+				rows = append(rows, machineRow{offline: true, offlineLabel: fmt.Sprintf("s%d %s (offline)", m.Oyagoi.Workspace, label)})
+			} else {
+				for gi, group := range m.Groups {
+					if group.ID != m.Oyagoi.Machine || group.Input == nil {
+						continue
+					}
+					for wi, ws := range group.Input.State.Workspaces {
+						if ws.ID == m.Oyagoi.Workspace {
+							rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: wi}, offline: m.Oyagoi.Offline})
+							break
+						}
+					}
+				}
+			}
+		}
+	}
 	for gi, group := range m.Groups {
 		if gi > 0 {
 			rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowRule}}, machineRow{group: gi, header: true}, machineRow{group: gi, row: SidebarRow{Kind: RowRule}})
@@ -68,6 +107,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 		for _, row := range source[2:] {
 			if row.Kind == RowSep {
 				break
+			}
+			if m.Oyagoi != nil && m.Oyagoi.HideOriginal && group.ID == m.Oyagoi.Machine && (row.Kind == RowWorkspace || row.Kind == RowGit || row.Kind == RowCardBlank) && group.Input.State.Workspaces[row.Ws].ID == m.Oyagoi.Workspace {
+				continue
 			}
 			if gi > 0 && row.Kind == RowSection && row.Section == model.SectionNone {
 				skipRule = true
@@ -83,7 +125,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	view.Workspace.Total = len(rows)
 	cards, lastCard := 0, 0
 	for _, entry := range rows {
-		if entry.header || entry.row.Kind == RowSection || entry.row.Kind == RowRule {
+		if entry.oyagoi || entry.header || entry.row.Kind == RowSection || entry.row.Kind == RowRule {
 			continue
 		}
 		if entry.row.Kind == RowWorkspace {
@@ -101,7 +143,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 	skip, y := m.Scroll, area.Y
 	for i := 0; i < len(rows) && y < area.Y+area.H; i++ {
 		entry := rows[i]
-		heading := entry.header || entry.row.Kind == RowSection || entry.row.Kind == RowRule
+		heading := entry.oyagoi || entry.header || entry.row.Kind == RowSection || entry.row.Kind == RowRule
 		if !heading && skip > 0 {
 			skip--
 			continue
@@ -115,7 +157,13 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 		}
 		group := m.Groups[entry.group]
 		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header}
-		if entry.header {
+		if entry.oyagoi {
+			f.Text(area.X, y, "🎏 oyagoi", uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, area.X+width)
+			machineRowBackground(f, area.X, y, width)
+		} else if entry.offline {
+			f.Text(area.X, y, truncate(entry.offlineLabel, width), uv.Style{Fg: f.Palette.Dim}, area.X+width)
+			machineRowBackground(f, area.X, y, width)
+		} else if entry.header {
 			if width <= 1 {
 				m.Hits = append(m.Hits, hit)
 				y++

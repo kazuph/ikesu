@@ -4,7 +4,31 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/kazuph/ikesu/internal/render"
 )
+
+func (m *machineClient) oyagoiForSidebar() *render.Oyagoi {
+	result := &render.Oyagoi{}
+	if m.oyagoi == nil {
+		return result
+	}
+	result.Machine, result.Workspace = m.oyagoi.Machine, m.oyagoi.Workspace
+	e := m.endpoints[m.oyagoi.Machine]
+	result.Offline = e == nil || e.connection == nil || e.snapshot == nil || m.selectionSession(m.oyagoi.Machine) != m.oyagoi.Session
+	if e != nil && e.snapshot != nil && e.snapshot.State != nil && m.selectionSession(m.oyagoi.Machine) == m.oyagoi.Session {
+		for _, ws := range e.snapshot.State.Workspaces {
+			if ws.ID == m.oyagoi.Workspace && ws.Generation == m.oyagoi.Generation {
+				result.HideOriginal = true
+				break
+			}
+		}
+	}
+	if !result.HideOriginal {
+		result.Offline = true
+	}
+	return result
+}
 
 func (m *machineClient) oyagoiAction(id, action string) error {
 	parts := strings.Split(action, ":")
