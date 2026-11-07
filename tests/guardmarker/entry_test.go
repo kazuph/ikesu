@@ -14,6 +14,7 @@ import (
 // Exercise the actual CLI and generated shell entries against an isolated
 // server. The many real Bash/Zsh invocations can exceed five seconds.
 func TestPinnedGuardEntryPoints(t *testing.T) {
+	t.Parallel()
 	hostHome, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
@@ -23,11 +24,7 @@ func TestPinnedGuardEntryPoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(workdir) })
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
-	if b, e := build.CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	binary := fixtureBinary
 	cases := []struct{ name, code string }{
 		{"plain", `rm "$1"`},
 		{"marker-empty", `IKESU_GUARD_MARKER= rm "$1"`},
@@ -151,11 +148,8 @@ func newEntry(t *testing.T, binary string) (*guard.Assets, []string, string) {
 }
 
 func TestNoninteractiveGuardBeforeExecution(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	build := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu")
-	if b, e := build.CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	cases := []string{
 		`/bin/rm TARGET`,
 		`/usr/bin/env -i /bin/rm TARGET`,

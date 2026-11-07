@@ -13,10 +13,8 @@ import (
 // clearing or replacing the environment, PATH or BASH_ENV. The script reads its
 // target at runtime, so only the per-line check can stop it.
 func TestBashToolEnvironmentEscapeKeepsScriptGuard(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	cases := map[string]string{
 		"env -i":                 "env -i HOME=HOMEDIR PATH=/usr/bin:/bin bash SCRIPT",
 		"env -i stdin pipe":      "echo x | env -i HOME=HOMEDIR PATH=/usr/bin:/bin bash -x SCRIPT 2>&1 | cat",
@@ -87,10 +85,8 @@ func firstLines(s string) string {
 // A Claude started without the pane's claude function has only the command
 // shims. The env shim must not start a child whose environment drops them.
 func TestShimOnlyEnvEscapeAsks(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	type want int
 	const (
 		guarded want = iota // the target survives and an ask is recorded

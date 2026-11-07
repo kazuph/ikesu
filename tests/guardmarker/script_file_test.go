@@ -13,10 +13,8 @@ import (
 // These use the real executable and generated startup chain, never a replacement
 // policy, approval function, or command implementation.
 func TestScriptFileRealEntries(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	for _, agent := range []string{"claude", "claude-snapshot", "codex"} {
 		for _, scenario := range []string{"safe", "danger", "unresolved", "blocked"} {
 			t.Run(agent+"/"+scenario, func(t *testing.T) {

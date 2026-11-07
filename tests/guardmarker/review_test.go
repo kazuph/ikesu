@@ -11,10 +11,8 @@ import (
 )
 
 func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "ikesu")
-	if b, e := exec.Command("go", "build", "-o", binary, "../../cmd/ikesu").CombinedOutput(); e != nil {
-		t.Fatal(e, string(b))
-	}
+	t.Parallel()
+	binary := fixtureBinary
 	data, e := os.ReadFile("../../internal/guard/testdata/review_cases.json")
 	if e != nil {
 		t.Fatal(e)
