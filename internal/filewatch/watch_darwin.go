@@ -11,7 +11,23 @@ import (
 type pathWatch struct {
 	fd        int
 	info      os.FileInfo
+	attr      unix.Stat_t
+	attrOK    bool
 	listeners map[*Watcher]func()
+}
+
+// accessOnlyChange reports whether a watched file's status changed only in its
+// access time since the last recorded status. Running or reading a file only
+// moves the access time, and the kernel reports that as an attribute change.
+// The status change time must carry sub-second precision: on file systems
+// that keep whole seconds (HFS+), an ACL or extended-attribute change within
+// the same second leaves every stat field equal, so the event is delivered.
+func accessOnlyChange(previous, current unix.Stat_t) bool {
+	if current.Ctim.Nsec == 0 || previous.Atim == current.Atim {
+		return false
+	}
+	previous.Atim, current.Atim = unix.Timespec{}, unix.Timespec{}
+	return previous == current
 }
 
 // One kernel wait and one descriptor per distinct path serve all guarded panes.
@@ -56,6 +72,16 @@ func initChanges() {
 			} else {
 				for _, ev := range events[:n] {
 					if file := w.files[int(ev.Ident)]; file != nil {
+						var st unix.Stat_t
+						if unix.Fstat(file.fd, &st) == nil {
+							accessOnly := ev.Fflags&^unix.NOTE_ATTRIB == 0 && file.attrOK && accessOnlyChange(file.attr, st)
+							file.attr, file.attrOK = st, true
+							if accessOnly {
+								continue
+							}
+						} else {
+							file.attrOK = false
+						}
 						for a, changed := range file.listeners {
 							callbacks[a] = changed
 						}
@@ -128,13 +154,17 @@ func watchPaths(a *Watcher, paths []string, changed func()) bool {
 				complete = false
 				continue
 			}
+			// Record the status before registering, so any change after
+			// registration differs from it and is delivered.
+			var attr unix.Stat_t
+			attrOK := unix.Fstat(fd, &attr) == nil
 			ev := unix.Kevent_t{Ident: uint64(fd), Filter: unix.EVFILT_VNODE, Flags: unix.EV_ADD | unix.EV_CLEAR, Fflags: unix.NOTE_WRITE | unix.NOTE_DELETE | unix.NOTE_RENAME | unix.NOTE_ATTRIB | unix.NOTE_REVOKE}
 			if _, err = unix.Kevent(w.fd, []unix.Kevent_t{ev}, nil, nil); err != nil {
 				unix.Close(fd)
 				complete = false
 				continue
 			}
-			file = &pathWatch{fd: fd, info: info, listeners: listeners}
+			file = &pathWatch{fd: fd, info: info, attr: attr, attrOK: attrOK, listeners: listeners}
 			w.paths[path] = file
 			w.files[fd] = file
 		}
