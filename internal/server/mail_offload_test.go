@@ -287,3 +287,74 @@ func TestOtherPaneDeliveryDoesNotInvalidateSnapshot(t *testing.T) {
 		t.Fatalf("another pane invalidated the snapshot: ok=%v stale=%v", ok, stale)
 	}
 }
+
+func TestMailSweepKeepsQueuedPaneRequests(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
+	s := newTestServer(t, "mail-sweep-order")
+	s.mailCh = make(chan mailWrite, 4)
+	s.mailInFlight = map[int64]bool{}
+	s.jobInFlight = map[string]bool{}
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	second := s.app.State().FocusedPane()
+	for _, pid := range []int{1, second} {
+		if _, err := s.sup.SpawnWith(pid, t.TempDir(), 80, 24, nil, []string{"/bin/cat"}); err != nil {
+			t.Fatal(err)
+		}
+		s.app.SetReported(pid, "codex", "working")
+	}
+	defer s.sup.KillAll()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, pid := range []int{1, second} {
+		if _, err := store.InsertPaneMessage("room", "", "sender", fmtPaneID(pid), "body", nil, false, s.app.State().PaneGeneration(pid)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.InsertCommand("lock", "lock", "true", t.TempDir(), "p1", "p1", "none", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkCommandRunning("lock", int64(os.Getpid())); err != nil {
+		t.Fatal(err)
+	}
+	locked, release, cleanupDone := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	logDir := t.TempDir()
+	go func() {
+		cleanupDone <- store.CleanupJobs(time.Now(), logDir, func(pid int) bool {
+			close(locked)
+			<-release
+			return processGroupAlive(pid)
+		})
+	}()
+	<-locked
+	appDone := make(chan struct{})
+	go func() { s.app.Run(); close(appDone) }()
+	s.app.Do(func() {
+		s.requestPaneMail(1)
+		s.requestPaneMail(second)
+		s.requestMailSweep()
+		s.requestMailSweep()
+	})
+	close(release)
+	if err := <-cleanupDone; err != nil {
+		t.Error(err)
+	}
+	want := map[int]bool{1: true, second: true}
+	for range 2 {
+		select {
+		case write := <-s.mailCh:
+			if !want[write.pane] {
+				t.Errorf("unexpected or duplicate pane %d", write.pane)
+			}
+			delete(want, write.pane)
+		case <-time.After(5 * time.Second):
+			t.Errorf("notifications were not queued for panes %v", want)
+		}
+	}
+	s.app.Stop()
+	<-appDone
+	s.mailQueryWG.Wait()
+}
