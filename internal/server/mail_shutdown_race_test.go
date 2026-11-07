@@ -109,6 +109,9 @@ func TestMsgSendReadFinishesBeforeStoreClose(t *testing.T) {
 	}
 	s.app.Stop()
 	<-appDone
+	// Close admission first, as cleanup does: the admission lock orders every
+	// earlier WaitGroup.Add before this Wait.
+	s.stopMailQueries()
 	readersDone := make(chan struct{})
 	go func() { s.mailQueryWG.Wait(); close(readersDone) }()
 	select {

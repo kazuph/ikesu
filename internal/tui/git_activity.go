@@ -63,20 +63,17 @@ func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
 			return entry, false
 		}
 	}
-	// Three refreshes retain the existing five-second large-repository test
-	// deadline while avoiding a full tracked-file scan on each refresh.
-	batch := (len(entry.tracked) + 2) / 3
-	end := min(entry.trackedNext+batch, len(entry.tracked))
-	for _, path := range entry.tracked[entry.trackedNext:end] {
+	// Visit evenly spaced files in each pass, alternating opposite halves so
+	// neighbouring paths do not all wait for the end of the 12-second cycle.
+	phase := (entry.trackedNext&1)<<2 | entry.trackedNext&2 | (entry.trackedNext&4)>>2
+	for i := phase; i < len(entry.tracked); i += 8 {
+		path := entry.tracked[i]
 		entry.trackedChecks++
 		if !probe(path, entry.paths[path]) {
 			return entry, false
 		}
 	}
-	entry.trackedNext = end
-	if entry.trackedNext == len(entry.tracked) {
-		entry.trackedNext = 0
-	}
+	entry.trackedNext = (entry.trackedNext + 1) % 8
 	// A notification arriving during the probes must remain pending.
 	entry.revision = revision
 	return entry, true
