@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPendingClaudeQuestions(t *testing.T) {
@@ -111,4 +112,89 @@ func TestClaudeQuestionArrivingAfterInitialRead(t *testing.T) {
 	if !ok || len(got) != 1 || got[0].ToolID != "late" || got[0].Options[0].Description != "長い説明" {
 		t.Fatal(got, ok)
 	}
+}
+
+func TestClaudeQuestionCacheReadsOnlyAppendedBytes(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "project")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const id = "44444444-4444-4444-4444-444444444444"
+	path := filepath.Join(dir, id+".jsonl")
+	line := `{"sessionId":"` + id + `","message":{"content":"` + strings.Repeat("x", 200) + `"}}` + "\n"
+	if err := os.WriteFile(path, []byte(strings.Repeat(line, 100)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var cache ClaudeQuestionCache
+	if _, ok := cache.ReadAll(root, id); !ok {
+		t.Fatal("initial scan failed")
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	added := `{"sessionId":"` + id + `","message":{"content":"new"}}` + "\n"
+	if _, err = f.WriteString(added); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cache.ReadAll(root, id); !ok {
+		t.Fatal("appended scan failed")
+	}
+	if cache.bytesRead > 8192+int64(len(added)) {
+		t.Fatalf("read %d bytes for %d appended bytes", cache.bytesRead, len(added))
+	}
+}
+
+func TestClaudeQuestionCacheRechecksRewrittenAndReplacedFiles(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "project")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const id = "55555555-5555-5555-5555-555555555555"
+	path := filepath.Join(dir, id+".jsonl")
+	row := func(question string) string {
+		return `{"sessionId":"` + id + `","message":{"content":[{"type":"tool_use","name":"AskUserQuestion","id":"q","input":{"questions":[{"question":"` + question + `"}]}}]}}` + "\n"
+	}
+	write := func(s string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(s), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(cache *ClaudeQuestionCache, want string) {
+		t.Helper()
+		qs, ok := cache.Read(root, id)
+		if !ok || len(qs) != 1 || qs[0].Question != want {
+			t.Fatalf("want %q: questions=%+v ok=%v", want, qs, ok)
+		}
+	}
+	write(row("original"))
+	var cache ClaudeQuestionCache
+	check(&cache, "original")
+	write(row("rewritten") + `{"sessionId":"` + id + `"}` + "\n")
+	check(&cache, "rewritten") // Rewrite inside the remembered tail, then grow.
+	write(row("short"))
+	check(&cache, "short") // Truncation forces a full scan.
+	replacement := path + ".new"
+	if err := os.WriteFile(replacement, []byte(row("replacement")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatal(err)
+	}
+	check(&cache, "replacement") // A new inode forces a full scan.
+	write(row("first") + strings.Repeat(`{"message":{"content":"padding"}}`+"\n", 300))
+	check(&cache, "first")
+	write(row("other") + strings.Repeat(`{"message":{"content":"padding"}}`+"\n", 300))
+	if err := os.Chtimes(path, cache.modified, cache.modified); err != nil {
+		t.Fatal(err)
+	}
+	check(&cache, "first")
+	cache.fullAt = time.Now().Add(-transcriptFullReadInterval)
+	check(&cache, "other") // The periodic full scan catches changes outside the tail.
 }
