@@ -11,7 +11,20 @@ import (
 type pathWatch struct {
 	fd        int
 	info      os.FileInfo
+	attr      unix.Stat_t
 	listeners map[*Watcher]func()
+}
+
+// statWithoutAccess reads the watched file's status without its access time.
+// Running or reading a file only moves the access time, and the kernel reports
+// that as an attribute change; it is not a change any listener reacts to.
+func statWithoutAccess(fd int) (unix.Stat_t, bool) {
+	var st unix.Stat_t
+	if unix.Fstat(fd, &st) != nil {
+		return st, false
+	}
+	st.Atim = unix.Timespec{}
+	return st, true
 }
 
 // One kernel wait and one descriptor per distinct path serve all guarded panes.
@@ -56,6 +69,14 @@ func initChanges() {
 			} else {
 				for _, ev := range events[:n] {
 					if file := w.files[int(ev.Ident)]; file != nil {
+						if ev.Fflags&^unix.NOTE_ATTRIB == 0 {
+							if st, ok := statWithoutAccess(file.fd); ok {
+								if st == file.attr {
+									continue
+								}
+								file.attr = st
+							}
+						}
 						for a, changed := range file.listeners {
 							callbacks[a] = changed
 						}
@@ -135,6 +156,7 @@ func watchPaths(a *Watcher, paths []string, changed func()) bool {
 				continue
 			}
 			file = &pathWatch{fd: fd, info: info, listeners: listeners}
+			file.attr, _ = statWithoutAccess(fd)
 			w.paths[path] = file
 			w.files[fd] = file
 		}
