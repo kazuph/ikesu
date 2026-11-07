@@ -78,6 +78,7 @@ type clientMsg struct {
 	WorkspaceGeneration string                       `json:"workspace_generation,omitempty"`
 	OyagoiLabel         string                       `json:"oyagoi_label,omitempty"`
 	OyagoiOnline        bool                         `json:"oyagoi_online,omitempty"`
+	OyagoiCollapsed     bool                         `json:"oyagoi_collapsed,omitempty"`
 	OyagoiExists        *bool                        `json:"oyagoi_exists,omitempty"`
 	MenuX               int                          `json:"menu_x,omitempty"`
 	MenuY               int                          `json:"menu_y,omitempty"`
@@ -856,6 +857,7 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() {
 				c.viewer.SetOyagoi(s.app, m.Workspace, m.WorkspaceGeneration)
 				c.viewer.SetForeignOyagoi(s.app, m.OyagoiLabel, m.OyagoiOnline)
+				c.viewer.SetOyagoiCollapsed(s.app, m.OyagoiCollapsed)
 			})
 		case "oyagoi_check":
 			s.app.Do(func() {

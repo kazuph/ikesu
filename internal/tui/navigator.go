@@ -37,7 +37,7 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 	var rows []render.NavigatorRow
 	count := 0
 	if a.oyagoiForeignName != "" && n.filter == "" && (n.query == "" || strings.Contains(strings.ToLower(a.oyagoiForeignName), strings.ToLower(n.query))) {
-		rows = append(rows, render.NavigatorRow{Workspace: -1, Pane: -3, Name: "🎏 oyagoi · " + a.oyagoiForeignName, Status: "○"})
+		rows = append(rows, render.NavigatorRow{Workspace: -1, Pane: -3, Name: "🎏 HQ · " + a.oyagoiForeignName, Status: "○"})
 	}
 	order := make([]int, 0, len(a.st.Workspaces))
 	for i, ws := range a.st.Workspaces {
@@ -59,7 +59,7 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 			name = display
 		}
 		if a.isOyagoiWorkspace(ws) {
-			name = "🎏 oyagoi · " + name
+			name = "🎏 HQ · " + name
 		}
 		var children []render.NavigatorRow
 		for ti, tab := range ws.Tabs {

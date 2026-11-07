@@ -179,6 +179,7 @@ type Input struct {
 	TabScrollManual        bool
 	MobileScroll           int
 	MobileOyagoi           int
+	MobileOyagoiCollapsed  bool
 	MobileOyagoiGeneration string
 	MobileForeignOyagoi    string
 	// CopyLabel is the action bar's left button text: " COPY ",

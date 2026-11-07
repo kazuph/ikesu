@@ -156,6 +156,25 @@ func (a *App) agentPane(agent string) {
 }
 
 // openWorkspaceMenu shows the workspace menu (clicking the active row).
+func (a *App) setWorkspaceMenuSection(index int, section model.Section) {
+	if index < 0 || index >= len(a.st.Workspaces) {
+		a.worktreeError(fmt.Errorf("workspace no longer exists"))
+		return
+	}
+	ws := a.st.Workspaces[index]
+	selected := a.isOyagoiWorkspace(ws)
+	a.setSection(index, section)
+	if ws.Section != section {
+		a.worktreeError(fmt.Errorf("workspace section change failed"))
+		return
+	}
+	if selected && a.machineRequest != nil {
+		if err := a.machineRequest(fmt.Sprintf("oyagoi:unset:%d:%s", ws.ID, ws.Generation)); err != nil {
+			a.worktreeError(err)
+		}
+	}
+}
+
 func (a *App) openWorkspaceMenu(x, y, ws int) {
 	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Label: "New grok agent"}, {Label: "New letta agent"}, {Label: "New qwen agent"}, {Separator: true}}
 	wt := a.workspaceWorktreeItems(ws)
@@ -168,11 +187,12 @@ func (a *App) openWorkspaceMenu(x, y, ws int) {
 		}
 	}
 	items = append(items, render.MenuItem{Label: "Duplicate"}, render.MenuItem{Separator: true}, render.MenuItem{Label: "Rename"}, render.MenuItem{Label: "Close"})
-	if a.machineRequest != nil {
-		items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "set as HQ"}, render.MenuItem{Label: "unset HQ"})
-	}
 	items = append(items, group...)
-	items = append(items, render.MenuItem{Separator: true}, render.MenuItem{Label: "⭐ favorite"}, render.MenuItem{Label: "💼 work"}, render.MenuItem{Label: "🏠 personal"}, render.MenuItem{Label: "No section"})
+	items = append(items, render.MenuItem{Separator: true})
+	if a.machineRequest != nil {
+		items = append(items, render.MenuItem{Label: "🎏 HQ"})
+	}
+	items = append(items, render.MenuItem{Label: "⭐ favorite"}, render.MenuItem{Label: "💼 work"}, render.MenuItem{Label: "🏠 personal"}, render.MenuItem{Label: "No section"})
 	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: items}}
 }
 
@@ -296,14 +316,10 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuWorkspace:
 		switch m.m.Items[i].Label {
-		case "set as HQ", "unset HQ":
+		case "🎏 HQ":
 			if a.machineRequest != nil && m.ws >= 0 && m.ws < len(a.st.Workspaces) {
 				ws := a.st.Workspaces[m.ws]
-				action := "set"
-				if m.m.Items[i].Label == "unset HQ" {
-					action = "unset"
-				}
-				if err := a.machineRequest(fmt.Sprintf("oyagoi:%s:%d:%s", action, ws.ID, ws.Generation)); err != nil {
+				if err := a.machineRequest(fmt.Sprintf("oyagoi:set:%d:%s", ws.ID, ws.Generation)); err != nil {
 					a.worktreeError(err)
 				}
 			}
@@ -331,13 +347,13 @@ func (a *App) activateMenu(i int) {
 		case "Rename":
 			a.renameWorkspaceDialog(m.ws)
 		case "⭐ favorite":
-			a.setSection(m.ws, model.SectionFavorite)
+			a.setWorkspaceMenuSection(m.ws, model.SectionFavorite)
 		case "💼 work":
-			a.setSection(m.ws, model.SectionWork)
+			a.setWorkspaceMenuSection(m.ws, model.SectionWork)
 		case "🏠 personal":
-			a.setSection(m.ws, model.SectionPersonal)
+			a.setWorkspaceMenuSection(m.ws, model.SectionPersonal)
 		case "No section":
-			a.setSection(m.ws, model.SectionNone)
+			a.setWorkspaceMenuSection(m.ws, model.SectionNone)
 		case "New workspace":
 			a.newWorkspace()
 		case "Close workspace…", "Close":

@@ -221,6 +221,7 @@ type App struct {
 	mobileSwitcher      bool
 	mobileScroll        int
 	oyagoiWorkspace     int
+	oyagoiCollapsed     bool
 	oyagoiGeneration    string
 	oyagoiForeignName   string
 	oyagoiForeignOnline bool

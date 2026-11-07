@@ -46,7 +46,7 @@ func workspaceCycleDirection(c config.Config, key uv.Key) int {
 func (m *machineClient) workspaceCycleTargets() []workspaceCycleTarget {
 	var targets []workspaceCycleTarget
 	hq := m.oyagoiForSidebar()
-	if hq.Machine != "" && !hq.Offline && hq.HideOriginal {
+	if hq.Machine != "" && !hq.Offline && hq.HideOriginal && !hq.Collapsed {
 		targets = append(targets, workspaceCycleTarget{machine: hq.Machine, workspace: hq.Workspace, generation: m.oyagoi.Generation})
 	}
 	for _, id := range m.order {
