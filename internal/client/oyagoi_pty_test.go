@@ -124,6 +124,39 @@ func TestOyagoiMachineRenameAndSessionIdentityActualPTY(t *testing.T) {
 	}
 }
 
+func TestOyagoiDoesNotFollowSameMachineOtherSessionActualPTY(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	e := m.endpoints["remote"]
+	ws := e.snapshot.State.Workspaces[0]
+	if ws.ID != m.endpoints["local"].snapshot.State.Workspaces[0].ID {
+		t.Fatal("test requires matching workspace numbers")
+	}
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", ws.ID, ws.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	h.until("original HQ projected", func() bool { return e.snapshot.MobileOyagoi == ws.ID })
+	if err := e.connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["local"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.profile.Session = "right-local"
+	m.start("remote", stream)
+	attempt := e.attempt
+	h.until("other session connected", func() bool { return e.connection != nil && e.snapshotAttempt == attempt })
+	if got := m.oyagoiForSidebar(); got == nil || !got.Offline {
+		t.Fatalf("HQ followed another session: %+v", got)
+	}
+	selected, err := m.oyagoiStore.load()
+	if err != nil || selected == nil || selected.Session != "right-remote" || selected.Generation != ws.Generation {
+		t.Fatalf("original HQ changed: %+v, %v", selected, err)
+	}
+}
+
 func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 	h := newRightMachineHarness(t)
 	first := h.m
