@@ -433,13 +433,12 @@ func optString(s string) *string {
 	return &s
 }
 
-// wsAgentStatus aggregates pane statuses: blocked > working > done > idle.
+// wsAgentStatus uses the leftmost tab's pane status aggregation.
 func (s *Server) wsAgentStatus(ws *model.Workspace) api.AgentStatus {
-	best := api.AgentUnknown
-	for _, t := range ws.Tabs {
-		best = maxAgent(best, s.tabAgentStatus(t))
+	if len(ws.Tabs) == 0 {
+		return api.AgentUnknown
 	}
-	return best
+	return s.tabAgentStatus(ws.Tabs[0])
 }
 
 func (s *Server) tabAgentStatus(t *model.Tab) api.AgentStatus {
