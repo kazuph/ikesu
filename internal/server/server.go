@@ -78,6 +78,7 @@ type clientMsg struct {
 	WorkspaceGeneration string                       `json:"workspace_generation,omitempty"`
 	OyagoiLabel         string                       `json:"oyagoi_label,omitempty"`
 	OyagoiOnline        bool                         `json:"oyagoi_online,omitempty"`
+	OyagoiExists        *bool                        `json:"oyagoi_exists,omitempty"`
 	MenuX               int                          `json:"menu_x,omitempty"`
 	MenuY               int                          `json:"menu_y,omitempty"`
 	Decisions           *endpoint.DecisionProjection `json:"decisions,omitempty"`
@@ -839,6 +840,11 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() {
 				c.viewer.SetOyagoi(s.app, m.Workspace, m.WorkspaceGeneration)
 				c.viewer.SetForeignOyagoi(s.app, m.OyagoiLabel, m.OyagoiOnline)
+			})
+		case "oyagoi_check":
+			s.app.Do(func() {
+				exists := c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)
+				_ = c.send(clientMsg{Type: "oyagoi_check_result", Workspace: m.Workspace, WorkspaceGeneration: m.WorkspaceGeneration, OyagoiExists: &exists})
 			})
 		case "config_result":
 			s.app.Do(func() {

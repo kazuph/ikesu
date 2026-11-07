@@ -262,6 +262,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		e.connection = event.connection
 		e.oyagoiProjection = nil
+		e.oyagoiCheck = nil
 		if err := m.syncOyagoi(event.id); err != nil {
 			m.notify(err.Error())
 		}
@@ -303,6 +304,11 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	message := event.message
 	switch message.Type {
+	case "oyagoi_check_result":
+		if err := m.confirmOyagoiSnapshot(event.id, message); err != nil {
+			m.notify(err.Error())
+		}
+		_ = m.paint()
 	case "decisions":
 		focused := ""
 		lastInput := time.Now()

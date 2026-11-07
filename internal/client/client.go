@@ -84,6 +84,7 @@ type msg struct {
 	WorkspaceGeneration string                    `json:"workspace_generation,omitempty"`
 	OyagoiLabel         string                    `json:"oyagoi_label,omitempty"`
 	OyagoiOnline        bool                      `json:"oyagoi_online,omitempty"`
+	OyagoiExists        *bool                     `json:"oyagoi_exists,omitempty"`
 	MenuX               int                       `json:"menu_x,omitempty"`
 	MenuY               int                       `json:"menu_y,omitempty"`
 	MachineAction       string                    `json:"machine_action,omitempty"`

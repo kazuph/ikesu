@@ -188,7 +188,34 @@ func (m *machineClient) validateOyagoiSnapshot(id string) error {
 			return nil
 		}
 	}
-	if _, err := m.oyagoiStore.clearIf(*selected); err != nil {
+	if e.connection == nil {
+		return nil
+	}
+	if e.oyagoiCheck != nil && *e.oyagoiCheck == *selected {
+		return nil
+	}
+	if err := e.connection.enqueue(msg{Type: "oyagoi_check", Workspace: selected.Workspace, WorkspaceGeneration: selected.Generation}); err != nil {
+		return err
+	}
+	copy := *selected
+	e.oyagoiCheck = &copy
+	return nil
+}
+
+func (m *machineClient) confirmOyagoiSnapshot(id string, message msg) error {
+	e := m.endpoints[id]
+	if e == nil || e.oyagoiCheck == nil || message.OyagoiExists == nil {
+		return nil
+	}
+	checked := *e.oyagoiCheck
+	if checked.Workspace != message.Workspace || checked.Generation != message.WorkspaceGeneration {
+		return nil
+	}
+	e.oyagoiCheck = nil
+	if *message.OyagoiExists {
+		return nil
+	}
+	if _, err := m.oyagoiStore.clearIf(checked); err != nil {
 		return err
 	}
 	return m.refreshOyagoi()

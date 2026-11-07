@@ -24,6 +24,7 @@ import (
 
 type managedEndpoint struct {
 	oyagoiProjection *oyagoiProjection
+	oyagoiCheck      *oyagoiSelection
 	guardApproval    approvalState
 	approvalInput    map[string]time.Time
 	approvalPrefix   bool

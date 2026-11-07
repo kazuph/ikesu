@@ -28,6 +28,15 @@ func (v *Viewer) SelectWorkspace(a *App, id int) bool {
 	return false
 }
 
+func (v *Viewer) HasWorkspace(a *App, id int, generation string) bool {
+	for _, ws := range a.st.Workspaces {
+		if ws.ID == id && generation != "" && ws.Generation == generation {
+			return true
+		}
+	}
+	return false
+}
+
 func (v *Viewer) OpenWorkspaceMenu(a *App, id int, generation string, x, y int) bool {
 	for index, ws := range a.st.Workspaces {
 		if ws.ID == id && generation != "" && ws.Generation == generation {

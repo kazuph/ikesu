@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"testing"
 
@@ -92,13 +93,47 @@ func TestOyagoiDeletedWorkspaceDoesNotFollowReusedNumber(t *testing.T) {
 	if err := store.set(&selected); err != nil {
 		t.Fatal(err)
 	}
-	m := &machineClient{session: "one", oyagoiStore: store, oyagoi: &selected, endpoints: map[string]*managedEndpoint{"local": {profile: machine.Profile{ID: "local", Session: "one"}, snapshot: &render.Input{State: s}}}}
+	left, right := net.Pipe()
+	defer left.Close()
+	defer right.Close()
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{conn: left, available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{session: "one", oyagoiStore: store, oyagoi: &selected, endpoints: map[string]*managedEndpoint{"local": {connection: conn, profile: machine.Profile{ID: "local", Session: "one"}, snapshot: &render.Input{State: s}}}}
 	s.Workspaces[0].Generation = "new-generation"
 	if err := m.validateOyagoiSnapshot("local"); err != nil {
 		t.Fatal(err)
 	}
+	exists := false
+	if err := m.confirmOyagoiSnapshot("local", msg{Workspace: selected.Workspace, WorkspaceGeneration: selected.Generation, OyagoiExists: &exists}); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := store.load(); err != nil || got != nil {
 		t.Fatalf("reused ID retained selection: %+v, %v", got, err)
+	}
+}
+
+func TestOyagoiStaleSnapshotDoesNotClearNewSelection(t *testing.T) {
+	state := model.New(t.TempDir(), 80, 24)
+	state.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	ws := state.Workspaces[1]
+	selection := oyagoiSelection{Machine: "local", Session: "one", Workspace: ws.ID, Generation: ws.Generation}
+	store := oyagoiStore{filepath.Join(t.TempDir(), "oyagoi.json")}
+	if err := store.set(&selection); err != nil {
+		t.Fatal(err)
+	}
+	stale := model.New(t.TempDir(), 80, 24)
+	left, right := net.Pipe()
+	defer left.Close()
+	defer right.Close()
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{conn: left, available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{session: "one", oyagoiStore: store, oyagoi: &selection, endpoints: map[string]*managedEndpoint{"local": {connection: conn, snapshot: &render.Input{State: stale}}}}
+	if err := m.validateOyagoiSnapshot("local"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.load()
+	if err != nil || got == nil || *got != selection {
+		t.Fatalf("stale snapshot erased selection: %+v, %v", got, err)
 	}
 }
 
