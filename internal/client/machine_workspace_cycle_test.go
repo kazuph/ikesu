@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
@@ -10,10 +11,168 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 )
+
+func TestOyagoiCycleUsesNormalWorkspaceInOtherSessionReview(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		key    rune
+		active int
+	}{{"next", 'j', 1}, {"previous", 'k', 0}} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := cycleFixture(t)
+			m.session = "local"
+			remote := m.endpoints["mini"]
+			remote.profile.Session = "session-B"
+			remote.snapshot.State.Workspaces = remote.snapshot.State.Workspaces[:1]
+			ws := remote.snapshot.State.Workspaces[0]
+			selection := oyagoiSelection{Machine: "mini", Session: "session-A", Workspace: ws.ID, Generation: "old-generation"}
+			m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+			if err := m.oyagoiStore.set(&selection); err != nil {
+				t.Fatal(err)
+			}
+			m.oyagoi = &selection
+			m.endpoints["local"].snapshot.State.Active = tc.active
+			if !m.oyagoiForSidebar().Offline {
+				t.Fatal("old HQ must remain offline")
+			}
+			if !m.workspaceCycleInput(cycleKey(tc.key)) {
+				t.Fatal("cycle key not handled")
+			}
+			if m.pending == nil || m.pending.id != "mini" || m.pending.workspace != ws.ID || m.pending.generation != "" {
+				t.Fatalf("normal workspace was not selected: %+v, notice %q", m.pending, m.notice)
+			}
+			found := false
+			for _, message := range remote.connection.queue {
+				if message.Type == "workspace_select" && message.Workspace == ws.ID && message.WorkspaceGeneration == "" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("normal workspace selection was not sent")
+			}
+			got, err := m.oyagoiStore.load()
+			if err != nil || got == nil || *got != selection {
+				t.Fatalf("old HQ changed: %+v %v", got, err)
+			}
+		})
+	}
+}
+
+func TestOyagoiCycleHQCarriesGenerationAndRejectsReplacementReview(t *testing.T) {
+	m := cycleFixture(t)
+	m.session = "local"
+	remote := m.endpoints["mini"]
+	remote.profile.Session = "session-A"
+	ws := remote.snapshot.State.Workspaces[0]
+	selected := oyagoiSelection{Machine: "mini", Session: "session-A", Workspace: ws.ID, Generation: ws.Generation}
+	m.oyagoi = &selected
+	m.endpoints["local"].snapshot.State.Active = 0
+	m.size.Cols, m.size.Rows = 120, 40
+	if !m.workspaceCycleInput(cycleKey('k')) {
+		t.Fatal("cycle key not handled")
+	}
+	if m.pending == nil || m.pending.id != "mini" || m.pending.generation != selected.Generation {
+		t.Fatalf("HQ identity missing: %+v", m.pending)
+	}
+	found := false
+	for _, item := range remote.connection.queue {
+		if item.Type == "workspace_select" && item.Workspace == ws.ID && item.WorkspaceGeneration == selected.Generation {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("HQ request lacks generation")
+	}
+	remote.processedInput = m.pending.inputSequence
+	ws.Generation = "replacement"
+	m.finishSwitch()
+	if m.active != "local" || m.pending == nil {
+		t.Fatal("replacement workspace was accepted")
+	}
+}
+
+// Uses two live servers and their shell PTYs for the HQ selection.
+func TestOyagoiCycleSameHQActualPTYReview(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	local, remote := m.endpoints["local"], m.endpoints["remote"]
+	ws := remote.snapshot.State.Workspaces[0]
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", ws.ID, ws.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	h.until("HQ projected", func() bool { return remote.snapshot.MobileOyagoi == ws.ID })
+	bindings, err := config.Decode([]byte("[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	local.snapshot.SidebarConfig, remote.snapshot.SidebarConfig = bindings, bindings
+	local.snapshot.State.Active = 0
+	if !m.workspaceCycleInput(cycleKey('k')) {
+		t.Fatal("cycle key not handled")
+	}
+	if m.pending == nil || m.pending.generation != ws.Generation {
+		t.Fatalf("HQ identity missing: %+v", m.pending)
+	}
+	h.until("same HQ selected", func() bool { return m.active == "remote" && m.pending == nil })
+	if got := remote.snapshot.State.ActiveWorkspace(); got == nil || got.ID != ws.ID || got.Generation != ws.Generation {
+		t.Fatalf("wrong HQ: %+v", got)
+	}
+}
+
+// Two real servers and their shell PTYs can take more than five seconds to start.
+func TestOyagoiCycleOtherSessionActualPTYReview(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		key    rune
+		active int
+	}{{"next", 'j', 1}, {"previous", 'k', 0}} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRightMachineHarness(t)
+			m := h.m
+			local, remote := m.endpoints["local"], m.endpoints["remote"]
+			old, current := local.snapshot.State.Workspaces[0], remote.snapshot.State.Workspaces[0]
+			if old.ID != current.ID || old.Generation == current.Generation {
+				t.Fatal("fixture requires same number with different generation")
+			}
+			m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+			selected := oyagoiSelection{Machine: "remote", Session: "right-local", Workspace: old.ID, Generation: old.Generation}
+			if err := m.oyagoiStore.set(&selected); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.refreshOyagoi(); err != nil {
+				t.Fatal(err)
+			}
+			h.api("remote", api.MethodWorkspaceClose, map[string]any{"workspace_id": "s2"})
+			h.until("one remote workspace", func() bool { return len(remote.snapshot.State.Workspaces) == 1 })
+			bindings, err := config.Decode([]byte("[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			local.snapshot.SidebarConfig, remote.snapshot.SidebarConfig = bindings, bindings
+			local.snapshot.State.Active = tc.active
+			if !m.oyagoiForSidebar().Offline {
+				t.Fatal("old HQ must remain offline")
+			}
+			if !m.workspaceCycleInput(cycleKey(tc.key)) {
+				t.Fatal("cycle key not handled")
+			}
+			h.until("normal workspace selected", func() bool { return m.active == "remote" && m.pending == nil })
+			if got := remote.snapshot.State.ActiveWorkspace(); got == nil || got.ID != current.ID || got.Generation != current.Generation {
+				t.Fatalf("wrong destination: %+v", got)
+			}
+			got, err := m.oyagoiStore.load()
+			if err != nil || got == nil || *got != selected || !m.oyagoiForSidebar().Offline {
+				t.Fatalf("old HQ changed: %+v %v", got, err)
+			}
+		})
+	}
+}
 
 func cycleFixture(t *testing.T) *machineClient {
 	t.Helper()
@@ -70,7 +229,7 @@ func TestOyagoiWorkspaceCycleStartsWithRemoteHQEvenWhenSectionCollapsed(t *testi
 	s.CollapsedSections = map[model.Section]bool{model.SectionFavorite: true}
 	m.oyagoi = &oyagoiSelection{Machine: "mini", Session: "remote-session", Workspace: s.Workspaces[1].ID, Generation: s.Workspaces[1].Generation}
 	got := m.workspaceCycleTargets()
-	if len(got) != 4 || got[0] != (workspaceCycleTarget{"mini", s.Workspaces[1].ID}) {
+	if len(got) != 4 || got[0] != (workspaceCycleTarget{machine: "mini", workspace: s.Workspaces[1].ID, generation: s.Workspaces[1].Generation}) {
 		t.Fatalf("HQ order = %+v", got)
 	}
 }
@@ -86,7 +245,7 @@ func TestWorkspaceCycleOrderSkipsUnavailableAndHidden(t *testing.T) {
 	m.endpoints["offline"] = &managedEndpoint{profile: machine.Profile{Enabled: true}, snapshot: m.endpoints["mini"].snapshot}
 	m.endpoints["missing"] = &managedEndpoint{profile: machine.Profile{Enabled: true}, connection: m.endpoints["mini"].connection}
 	m.endpoints["empty"] = &managedEndpoint{profile: machine.Profile{Enabled: true}, snapshot: &render.Input{State: &model.AppState{}}, connection: m.endpoints["mini"].connection}
-	want := []workspaceCycleTarget{{"mini", m.endpoints["mini"].snapshot.State.Workspaces[0].ID}, {"mini", m.endpoints["mini"].snapshot.State.Workspaces[1].ID}, {"local", s.Workspaces[0].ID}, {"local", s.Workspaces[2].ID}}
+	want := []workspaceCycleTarget{{machine: "mini", workspace: m.endpoints["mini"].snapshot.State.Workspaces[0].ID}, {machine: "mini", workspace: m.endpoints["mini"].snapshot.State.Workspaces[1].ID}, {machine: "local", workspace: s.Workspaces[0].ID}, {machine: "local", workspace: s.Workspaces[2].ID}}
 	if got := m.workspaceCycleTargets(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("%+v want %+v", got, want)
 	}
