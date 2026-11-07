@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
@@ -38,6 +39,18 @@ func TestOyagoiActionsUseMachineSessionAndWorkspaceIdentity(t *testing.T) {
 	}
 	if got, err := store.load(); err != nil || got != nil {
 		t.Fatalf("unset = %+v, %v", got, err)
+	}
+}
+
+func TestOyagoiMenuRequestCarriesWorkspaceIdentity(t *testing.T) {
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{oyagoi: &oyagoiSelection{Machine: "local", Session: "one", Workspace: 4, Generation: "gen"}, endpoints: map[string]*managedEndpoint{"local": {connection: conn}}}
+	if err := m.openOyagoiMenu("local", 3, 5); err != nil {
+		t.Fatal(err)
+	}
+	if len(conn.queue) != 1 || conn.queue[0].Type != "workspace_menu" || conn.queue[0].Workspace != 4 || conn.queue[0].WorkspaceGeneration != "gen" {
+		t.Fatalf("request = %+v", conn.queue)
 	}
 }
 

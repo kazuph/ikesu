@@ -30,6 +30,17 @@ func (m *machineClient) oyagoiForSidebar() *render.Oyagoi {
 	return result
 }
 
+func (m *machineClient) openOyagoiMenu(id string, x, y int) error {
+	if m.oyagoi == nil || m.oyagoi.Machine != id {
+		return fmt.Errorf("HQ selection changed")
+	}
+	e := m.endpoints[id]
+	if e == nil || e.connection == nil {
+		return fmt.Errorf("HQ workspace is offline")
+	}
+	return e.connection.enqueue(msg{Type: "workspace_menu", Workspace: m.oyagoi.Workspace, WorkspaceGeneration: m.oyagoi.Generation, MenuX: x, MenuY: y})
+}
+
 func (m *machineClient) oyagoiAction(id, action string) error {
 	parts := strings.Split(action, ":")
 	if len(parts) != 4 || parts[0] != "oyagoi" || (parts[1] != "set" && parts[1] != "unset") {

@@ -55,29 +55,32 @@ type clientMsg struct {
 	EndPrefix             bool                                 `json:"end_prefix,omitempty"`
 	Notification          *endpoint.Notification               `json:"notification,omitempty"`
 	endpoint.Peer
-	Available      int                          `json:"available_generation,omitempty"`
-	Type           string                       `json:"type"`
-	Kind           string                       `json:"kind,omitempty"`
-	Data           string                       `json:"data,omitempty"`
-	SidebarJobs    *bool                        `json:"sidebar_jobs,omitempty"`
-	Cols           int                          `json:"cols,omitempty"`
-	Rows           int                          `json:"rows,omitempty"`
-	Xpixel         int                          `json:"xpixel,omitempty"`
-	Ypixel         int                          `json:"ypixel,omitempty"`
-	Reason         string                       `json:"reason,omitempty"`
-	Rendered       *render.Output               `json:"rendered,omitempty"`
-	RequestAck     bool                         `json:"request_ack,omitempty"`
-	FocusEpoch     uint64                       `json:"focus_epoch,omitempty"`
-	Config         *config.Config               `json:"config,omitempty"`
-	ConfigWarning  string                       `json:"config_warning,omitempty"`
-	Preferences    *endpoint.ViewPreferences    `json:"preferences,omitempty"`
-	ConfigEdit     *config.Edit                 `json:"config_edit,omitempty"`
-	ConfigID       uint64                       `json:"config_id,omitempty"`
-	Visible        *bool                        `json:"visible,omitempty"`
-	Workspace      int                          `json:"workspace,omitempty"`
-	Decisions      *endpoint.DecisionProjection `json:"decisions,omitempty"`
-	DecisionAnswer *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
-	MachineAction  string                       `json:"machine_action,omitempty"`
+	Available           int                          `json:"available_generation,omitempty"`
+	Type                string                       `json:"type"`
+	Kind                string                       `json:"kind,omitempty"`
+	Data                string                       `json:"data,omitempty"`
+	SidebarJobs         *bool                        `json:"sidebar_jobs,omitempty"`
+	Cols                int                          `json:"cols,omitempty"`
+	Rows                int                          `json:"rows,omitempty"`
+	Xpixel              int                          `json:"xpixel,omitempty"`
+	Ypixel              int                          `json:"ypixel,omitempty"`
+	Reason              string                       `json:"reason,omitempty"`
+	Rendered            *render.Output               `json:"rendered,omitempty"`
+	RequestAck          bool                         `json:"request_ack,omitempty"`
+	FocusEpoch          uint64                       `json:"focus_epoch,omitempty"`
+	Config              *config.Config               `json:"config,omitempty"`
+	ConfigWarning       string                       `json:"config_warning,omitempty"`
+	Preferences         *endpoint.ViewPreferences    `json:"preferences,omitempty"`
+	ConfigEdit          *config.Edit                 `json:"config_edit,omitempty"`
+	ConfigID            uint64                       `json:"config_id,omitempty"`
+	Visible             *bool                        `json:"visible,omitempty"`
+	Workspace           int                          `json:"workspace,omitempty"`
+	WorkspaceGeneration string                       `json:"workspace_generation,omitempty"`
+	MenuX               int                          `json:"menu_x,omitempty"`
+	MenuY               int                          `json:"menu_y,omitempty"`
+	Decisions           *endpoint.DecisionProjection `json:"decisions,omitempty"`
+	DecisionAnswer      *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
+	MachineAction       string                       `json:"machine_action,omitempty"`
 }
 
 // Server is one running session.
@@ -822,6 +825,12 @@ func (s *Server) attach(conn net.Conn) {
 				}
 				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
 					c.viewer.RecordInput(s.app, m.InputSequence)
+				}
+			})
+		case "workspace_menu":
+			s.app.Do(func() {
+				if !c.viewer.OpenWorkspaceMenu(s.app, m.Workspace, m.WorkspaceGeneration, m.MenuX, m.MenuY) {
+					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 			})
 		case "config_result":

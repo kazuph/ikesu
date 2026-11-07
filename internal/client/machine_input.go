@@ -330,6 +330,14 @@ func (m *machineClient) input(event input.Event) error {
 					m.suppressRelease = true
 					e := m.endpoints[hit.Machine]
 					selected := hit.Machine == m.active && e.snapshot.State.ActiveWorkspace().ID == hit.Workspace
+					if hit.Oyagoi {
+						if selected {
+							return m.openOyagoiMenu(hit.Machine, event.Mouse.X, event.Mouse.Y)
+						}
+						m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
+						m.requestPending()
+						return nil
+					}
 					m.drag = &machineDrag{id: hit.Machine, workspace: hit.Workspace, source: hit.Row.Ws, pressHit: hit, pressEvent: event, selected: selected, x: event.Mouse.X, y: event.Mouse.Y, drop: -1, section: e.snapshot.State.Workspaces[hit.Row.Ws].SidebarSection()}
 					if !selected {
 						m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
@@ -386,6 +394,9 @@ func (m *machineClient) sendInput(id string, data []byte) error {
 }
 
 func (m *machineClient) sidebarInput(hit render.MachineHit, event input.Event) error {
+	if hit.Oyagoi && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
+		return m.openOyagoiMenu(hit.Machine, event.Mouse.X, event.Mouse.Y)
+	}
 	data, err := m.sidebarBytes(hit, event)
 	if err != nil {
 		return err

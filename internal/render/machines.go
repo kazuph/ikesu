@@ -22,6 +22,7 @@ type MachineHit struct {
 	Rect        layout.Rect
 	Header, New bool
 	Right       bool
+	Oyagoi      bool
 }
 
 type MachineSidebar struct {
@@ -53,6 +54,7 @@ type machineRow struct {
 	oyagoi       bool
 	offline      bool
 	offlineLabel string
+	hqWorkspace  bool
 }
 
 func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
@@ -87,7 +89,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 					}
 					for wi, ws := range group.Input.State.Workspaces {
 						if ws.ID == m.Oyagoi.Workspace {
-							rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: wi}, offline: m.Oyagoi.Offline})
+							rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: wi}, hqWorkspace: true})
 							break
 						}
 					}
@@ -156,7 +158,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 			continue
 		}
 		group := m.Groups[entry.group]
-		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header}
+		hit := MachineHit{Machine: group.ID, Row: entry.row, Rect: layout.Rect{X: area.X, Y: y, W: width, H: 1}, Header: entry.header, Oyagoi: entry.hqWorkspace}
 		if entry.oyagoi {
 			f.Text(area.X, y, "🎏 oyagoi", uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, area.X+width)
 			machineRowBackground(f, area.X, y, width)

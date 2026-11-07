@@ -27,3 +27,13 @@ func (v *Viewer) SelectWorkspace(a *App, id int) bool {
 	}
 	return false
 }
+
+func (v *Viewer) OpenWorkspaceMenu(a *App, id int, generation string, x, y int) bool {
+	for index, ws := range a.st.Workspaces {
+		if ws.ID == id && generation != "" && ws.Generation == generation {
+			v.with(a, func(ui *App) { ui.openWorkspaceMenu(x, y, index); ui.dirty = true })
+			return true
+		}
+	}
+	return false
+}
