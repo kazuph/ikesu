@@ -47,6 +47,12 @@ func TestCloseWaitsForStoreOperationAndRejectsFurtherOperations(t *testing.T) {
 	if _, err := s.PendingForAgentCreationOrder("p1"); !errors.Is(err, errStoreClosed) {
 		t.Errorf("pending after Close: %v", err)
 	}
+	if _, err := s.MessagesForInboxRecipients("room", nil, nil, nil); !errors.Is(err, errStoreClosed) {
+		t.Errorf("empty inbox after Close: %v", err)
+	}
+	if _, err := s.MarkDeliveredByIDs(nil); !errors.Is(err, errStoreClosed) {
+		t.Errorf("empty acknowledgement after Close: %v", err)
+	}
 	if _, err := s.InsertMessage("room", "", "sender", "p1", "body", nil, false); !errors.Is(err, errStoreClosed) {
 		t.Errorf("insert after Close: %v", err)
 	}

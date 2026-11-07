@@ -535,6 +535,9 @@ func (s *Store) agentActorLocked(name string) (int64, error) {
 func (s *Store) MessagesForInboxRecipients(room string, recipients []string, inFlight map[int64]bool, generation *string) ([]Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.db == nil {
+		return nil, errStoreClosed
+	}
 	if len(recipients) == 0 {
 		return nil, nil
 	}
@@ -795,6 +798,11 @@ func (s *Store) MarkDelivered(room, to string) (int, error) {
 // arrival keeps waiting for its own write.
 func (s *Store) MarkDeliveredByIDs(ids []int64) (int, error) {
 	if len(ids) == 0 {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.db == nil {
+			return 0, errStoreClosed
+		}
 		return 0, nil
 	}
 	var q strings.Builder
