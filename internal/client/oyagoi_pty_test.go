@@ -49,6 +49,53 @@ func TestOyagoiTwoServersActualPTYProjectionAndReplacement(t *testing.T) {
 	})
 }
 
+func TestOyagoiDisconnectAndReconnectActualPTY(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	e := m.endpoints["remote"]
+	ws := e.snapshot.State.Workspaces[0]
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", ws.ID, ws.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	h.until("HQ projected", func() bool { return e.snapshot.MobileOyagoi == ws.ID })
+	e.connection.Close()
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["remote"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.start("remote", stream)
+	attempt := e.attempt
+	h.until("managed connection", func() bool { return e.connection != nil && e.snapshotAttempt == attempt })
+	e.connection.Close()
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for e.connection != nil {
+		select {
+		case event := <-m.events:
+			m.event(event)
+		case <-timer.C:
+			t.Fatal("disconnection not observed")
+		}
+	}
+	if got := m.oyagoiForSidebar(); got == nil || !got.Offline {
+		t.Fatalf("disconnected HQ = %+v", got)
+	}
+	stream, err = net.Dial("unix", api.ClientSocketPath(h.dirs["remote"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.start("remote", stream)
+	attempt = e.attempt
+	h.until("HQ restored after reconnect", func() bool {
+		return e.connection != nil && e.snapshotAttempt == attempt && e.snapshot.MobileOyagoi == ws.ID && !m.oyagoiForSidebar().Offline
+	})
+	got, err := m.oyagoiStore.load()
+	if err != nil || got == nil || got.Generation != ws.Generation {
+		t.Fatalf("selection after reconnect = %+v, %v", got, err)
+	}
+}
+
 func TestOyagoiTwoViewersShareExplicitSelectionsActualPTY(t *testing.T) {
 	h := newRightMachineHarness(t)
 	first := h.m
