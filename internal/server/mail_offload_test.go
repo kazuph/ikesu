@@ -288,6 +288,43 @@ func TestOtherPaneDeliveryDoesNotInvalidateSnapshot(t *testing.T) {
 	}
 }
 
+func TestMailWithoutRuntimeKeepsExistingDeliveryBehavior(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
+	s := newTestServer(t, "mail-no-runtime")
+	s.mailCh = make(chan mailWrite, 4)
+	s.mailInFlight = map[int64]bool{}
+	s.jobInFlight = map[string]bool{}
+	s.app.SetReported(1, "codex", "working")
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, room := range []string{"room", dispatch.JobsRoom} {
+		if _, err := store.InsertPaneMessage(room, "", "sender", "p1", "body", nil, false, s.app.State().PaneGeneration(1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var delivered bool
+	if stale := s.applyPaneMailSnapshot(1, mailQueryTarget{generation: s.app.State().PaneGeneration(1)}, s.readPaneMail(1), &delivered); stale || !delivered || len(s.mailCh) != 1 {
+		t.Fatalf("regular mail not staged or job mail staged: stale=%v delivered=%v queued=%d", stale, delivered, len(s.mailCh))
+	}
+	write := <-s.mailCh
+	if written, err := s.deliverMailWrite(write); written || err == nil {
+		t.Fatalf("mail reached unavailable runtime: written=%v err=%v", written, err)
+	}
+	s.mailDone(write)
+	regular, err := store.PendingForAgentCreationOrder("p1")
+	if err != nil || len(regular) != 1 {
+		t.Fatalf("regular mail not retained: %v, %v", regular, err)
+	}
+	jobs, err := store.PendingMessagesForAgent(dispatch.JobsRoom, "p1")
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("job mail not retained: %v, %v", jobs, err)
+	}
+}
+
 func TestMailSweepKeepsQueuedPaneRequests(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))

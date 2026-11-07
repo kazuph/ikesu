@@ -743,7 +743,7 @@ func (s *Server) readMailSweep() {
 // applyPaneMailSnapshot returns true when a delivery or inbox read made the
 // snapshot stale and the pane needs a fresh read.
 func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot paneMailSnapshot, delivered *bool) bool {
-	if ws, _ := s.app.State().FindPane(pid); ws < 0 || target.owner == nil || s.sup.Get(pid) != target.owner || s.app.State().PaneGeneration(pid) != target.generation {
+	if ws, _ := s.app.State().FindPane(pid); ws < 0 || s.sup.Get(pid) != target.owner || s.app.State().PaneGeneration(pid) != target.generation {
 		return false
 	}
 	status := s.app.PaneStatusKey(pid)
@@ -752,7 +752,7 @@ func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot
 			if m.PaneGeneration == "" || m.PaneGeneration != target.generation {
 				continue
 			}
-			if target.owner.MailInputActive() {
+			if target.owner != nil && target.owner.MailInputActive() {
 				s.deferMailForPane(pid, target.owner)
 				return false
 			}
@@ -765,7 +765,7 @@ func (s *Server) applyPaneMailSnapshot(pid int, target mailQueryTarget, snapshot
 			}
 		}
 	}
-	if status == "blocked" {
+	if status == "blocked" || target.owner == nil {
 		return false
 	}
 	var bodies []string
