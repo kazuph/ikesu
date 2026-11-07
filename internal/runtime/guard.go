@@ -21,11 +21,7 @@ func (s *Supervisor) SetGuard(c guard.Config, root string) {
 		if p.guard != nil {
 			_ = p.guard.Reconfigure(c)
 		}
-		p.mu.Lock()
-		effective, dead := p.effectiveAgent(), p.dead
-		p.mu.Unlock()
-		if p.guard != nil && !dead {
-			_ = p.guard.Sync(effective)
+		if p.syncGuardLatest(false) {
 			p.queueProcessChange()
 		}
 	}
@@ -57,13 +53,34 @@ func (p *Pane) SetAgent(id string) {
 	if id == "" {
 		p.guardStarted = ""
 	}
-	effective := p.effectiveAgent()
-	dead := p.dead
 	p.mu.Unlock()
-	if p.guard != nil && !dead {
-		_ = p.guard.Sync(effective)
+	if p.syncGuardLatest(false) {
 		p.queueProcessChange()
 	}
+}
+
+// syncGuardLatest applies the pane's current agent to the guard. Callers on
+// the process worker and the app loop may race; reading the agent under
+// guardSyncMu makes the last Sync carry the latest state instead of a value
+// read before another caller's update. withStarted falls back to the agent
+// the guard started, as the process observation path does.
+func (p *Pane) syncGuardLatest(withStarted bool) bool {
+	if p.guard == nil {
+		return false
+	}
+	p.guardSyncMu.Lock()
+	defer p.guardSyncMu.Unlock()
+	p.mu.Lock()
+	effective, dead := p.effectiveAgent(), p.dead
+	if withStarted && effective == "" {
+		effective = p.guardStarted
+	}
+	p.mu.Unlock()
+	if dead {
+		return false
+	}
+	_ = p.guard.Sync(effective)
+	return true
 }
 
 // effectiveAgent reports the override when set, else the detected id.

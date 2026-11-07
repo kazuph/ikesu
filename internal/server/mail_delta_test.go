@@ -143,6 +143,9 @@ func TestMissingRunnerCancellationDoesNotReenterAppLoop(t *testing.T) {
 func TestQueuedJobMissingPaneFailsAndUnavailablePaneWaits(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "unavailable-job")
+	s.mailCh = make(chan mailWrite, 4)
+	s.mailInFlight = map[int64]bool{}
+	s.jobInFlight = map[string]bool{}
 	s.app.SetReported(1, "codex", "working")
 	store, err := s.db()
 	if err != nil {
@@ -159,7 +162,9 @@ func TestQueuedJobMissingPaneFailsAndUnavailablePaneWaits(t *testing.T) {
 	}
 	s.failMissingJobWriteOnLoop(mailWrite{pane: 1, room: dispatch.JobsRoom, msgIDs: []int64{exact.ID}})
 	s.failMissingJobWriteOnLoop(mailWrite{pane: 999999, room: dispatch.JobsRoom, msgIDs: []int64{gone.ID}})
-	if s.flushJobNudgeFor(dispatch.JobsRoom, "p1") || s.flushJobNudgeFor(dispatch.JobsRoom, "p999999") {
+	var delivered bool
+	if s.applyPaneMailSnapshot(1, mailQueryTarget{generation: s.app.State().PaneGeneration(1)}, s.readPaneMail(1), &delivered) ||
+		s.applyPaneMailSnapshot(999999, mailQueryTarget{}, s.readPaneMail(999999), &delivered) || delivered || len(s.mailCh) != 0 {
 		t.Fatal("unavailable notification delivered")
 	}
 	pending, err := store.PendingJobMessages()

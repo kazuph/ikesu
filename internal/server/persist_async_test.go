@@ -1,13 +1,96 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"github.com/kazuph/ikesu/internal/tui"
 )
+
+func TestSessionSnapshotKeepsEachPaneLedgerID(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "ledger-snapshot")
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	if len(ids) != 2 {
+		t.Fatal(ids)
+	}
+	for i, pid := range ids {
+		s.ledgerPut(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: []string{"first-id", "second-id"}[i], Source: "report:test"})
+	}
+	if s.store != nil {
+		defer s.store.Close()
+	}
+	snapshot := s.captureSessionWithoutObservation()
+	if snapshot == nil {
+		t.Fatal("missing snapshot")
+	}
+	got := map[int]string{}
+	snapshot.file.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) { got[p.ID] = p.SessionID })
+	if got[ids[0]] != "first-id" || got[ids[1]] != "second-id" {
+		t.Fatalf("pane ledger IDs changed: %v", got)
+	}
+}
+
+func TestDelayedSessionObservationPreservesExplicitReport(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	teststate.Setenv(t, "CODEX_HOME", root)
+	s := newTestServer(t, "delayed-observation")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	defer func() {
+		s.saveMu.Lock()
+		if s.saveTimer != nil {
+			s.saveTimer.Stop()
+		}
+		s.saveMu.Unlock()
+	}()
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	p := s.sup.Get(pid)
+	p.SetAgent("codex")
+	job := p.ForegroundJob()
+	start, ok := session.ProcessStart(job)
+	if !ok {
+		t.Fatal("could not read real foreground process start")
+	}
+	path := filepath.Join(root, "sessions", "rollout-test.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(map[string]any{"type": "session_meta", "payload": map[string]string{
+		"id": "observed-id", "cwd": p.Snapshot().Cwd, "timestamp": start.Format(time.RFC3339Nano),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	observation, ok := s.prepareSessionObservation(pid)
+	if !ok {
+		t.Fatal("could not prepare observation")
+	}
+	observation.observe()
+	if !observation.found || observation.result.Value != "observed-id" {
+		t.Fatalf("real session file was not observed: %+v", observation.result)
+	}
+	reported := tui.AgentRecord{Agent: "codex", Kind: "id", Value: "reported-id", Source: "report:test"}
+	s.app.RecordSession(pid, reported)
+	s.applySessionObservation(observation)
+	if got, _ := s.app.SessionRecord(pid); got != reported {
+		t.Fatalf("delayed observation replaced the explicit report: %+v", got)
+	}
+}
 
 func TestScheduledSessionWriteDoesNotHoldAppLoop(t *testing.T) {
 	teststate.Lock(t)
@@ -56,6 +139,65 @@ func TestScheduledSessionWriteDoesNotHoldAppLoop(t *testing.T) {
 	}
 	if f, err := session.Load(session.Path(s.dir)); err != nil || f == nil {
 		t.Fatal("scheduled write was lost", f, err)
+	}
+}
+
+func TestScheduledSessionCoalescesOverlappingChanges(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "coalesced-save")
+	if err := os.MkdirAll(s.dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { s.app.Run(); close(done) }()
+	defer func() { s.app.Stop(); <-done }()
+	s.saveWriteMu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			s.saveWriteMu.Unlock()
+		}
+	}()
+	first := make(chan struct{})
+	go func() { s.saveScheduledSession(); close(first) }()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		var sequence uint64
+		s.app.Do(func() { sequence = s.saveSequence })
+		if sequence != 0 {
+			break
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("first snapshot was not captured")
+		default:
+		}
+	}
+	s.app.Do(func() {
+		s.app.State().Workspaces[0].Name = "LATEST"
+		s.markSessionDirty()
+	})
+	s.saveScheduledSession()
+	s.saveWriteMu.Unlock()
+	locked = false
+	select {
+	case <-first:
+	case <-deadline.C:
+		t.Fatal("first write did not finish")
+	}
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		f, err := session.Load(session.Path(s.dir))
+		if err == nil && f != nil && f.Workspaces[0].Name == "LATEST" {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("coalesced write did not save the latest state", err)
+		case <-tick.C:
+		}
 	}
 }
 
