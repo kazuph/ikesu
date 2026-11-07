@@ -1623,7 +1623,8 @@ def handle(client):
             with lock:
                 responses.append(decoded.get('result', {}).get('match') is True)
                 if len(responses) == 7:
-                    with open(matched, 'w') as f: json.dump(responses, f)
+                    with open(matched+'.tmp', 'w') as f: json.dump(responses, f)
+                    os.replace(matched+'.tmp', matched)
             release_event.wait(20)
         client.sendall(response)
     finally:
