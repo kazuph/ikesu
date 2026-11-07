@@ -106,6 +106,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 				}
 			}
 		}
+		if rows[len(rows)-1].row.Kind != RowRule {
+			rows = append(rows, machineRow{row: SidebarRow{Kind: RowRule}})
+		}
 	}
 	for gi, group := range m.Groups {
 		if gi > 0 {

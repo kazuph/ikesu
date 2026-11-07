@@ -392,7 +392,7 @@ func TestOyagoiSectionMenuTwoServersActualPTY(t *testing.T) {
 		choose(ws, "🎏 HQ")
 		h.until("first selected", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Workspace == ws.ID })
 		other := e.snapshot.State.Workspaces[1]
-		before := ws.Section
+		before := e.snapshot.State.Workspaces[0].Section
 		choose(other, "🎏 HQ")
 		h.until("replacement selected", func() bool { return m.oyagoi != nil && m.oyagoi.Machine == id && m.oyagoi.Workspace == other.ID })
 		if e.snapshot.State.Workspaces[0].Section != before {
