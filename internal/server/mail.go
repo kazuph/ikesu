@@ -563,6 +563,11 @@ func (s *Server) flushRegularForPane(pid int) bool {
 	if err != nil || len(msgs) == 0 {
 		return false
 	}
+	return s.applyRegularMail(pid, msgs)
+}
+
+// applyRegularMail runs on the app loop, where pane state is authoritative.
+func (s *Server) applyRegularMail(pid int, msgs []dispatch.Message) bool {
 	delivered := false
 	for _, m := range msgs {
 		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(pid) {
@@ -647,10 +652,15 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 	if derr != nil || len(msgs) == 0 {
 		return false
 	}
+	return s.applyJobMail(n, t.pid, pane, msgs)
+}
+
+// applyJobMail runs on the app loop after the pending bodies have been read.
+func (s *Server) applyJobMail(n dispatch.PendingNudge, pid int, pane *runtime.Pane, msgs []dispatch.Message) bool {
 	var bodies []string
 	var ids []int64
 	for _, m := range msgs {
-		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(t.pid) {
+		if m.PaneGeneration == "" || m.PaneGeneration != s.app.State().PaneGeneration(pid) {
 			continue
 		}
 		bodies = append(bodies, m.Body)
@@ -660,11 +670,11 @@ func (s *Server) flushJobNudge(n dispatch.PendingNudge) bool {
 		return false
 	}
 	if pane.MailInputActive() {
-		s.deferMailForPane(t.pid, pane)
+		s.deferMailForPane(pid, pane)
 		return false
 	}
 	return s.enqueueMail(mailWrite{
-		pane: t.pid, owner: pane, payload: s.encodeMailFor(t.pid, strings.Join(bodies, "\n")),
+		pane: pid, owner: pane, payload: s.encodeMailFor(pid, strings.Join(bodies, "\n")),
 		msgIDs: ids, room: n.Room, toAgent: n.ToAgent,
 	})
 }
