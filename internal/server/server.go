@@ -126,11 +126,16 @@ type Server struct {
 	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
 
 	// durable mailbox / jobs
-	dbOnce sync.Once
-	store  *dispatch.Store
-	dbErr  error
-	mailCh chan mailWrite
-	mailWG sync.WaitGroup
+	dbOnce           sync.Once
+	store            *dispatch.Store
+	dbErr            error
+	mailCh           chan mailWrite
+	mailWG           sync.WaitGroup
+	mailQueryMu      sync.Mutex
+	mailQueryWG      sync.WaitGroup
+	mailQueryPending map[int]mailQueryTarget
+	mailQueryRunning bool
+	mailQueryClosed  bool
 
 	mailMu          sync.Mutex
 	mailDelivery    sync.RWMutex    // fence PTY write + acknowledgement before handoff
@@ -139,6 +144,7 @@ type Server struct {
 	jobInFlight     map[string]bool // job-mail batch keys staged for PTY write
 	mailDeferred    map[int]mailDeferredPane
 	mailDeferredSeq uint64
+	mailEpoch       uint64 // invalidates snapshots when delivery or inbox state changes
 
 	jobProcs jobProcsT // local job numbering and cancellation monitors
 	jobCache jobCache
@@ -552,6 +558,10 @@ func (s *Server) cleanup() {
 	case <-drained:
 	case <-time.After(500 * time.Millisecond):
 	}
+	s.mailQueryMu.Lock()
+	s.mailQueryClosed = true
+	s.mailQueryMu.Unlock()
+	s.mailQueryWG.Wait()
 	close(s.mailCh)
 	if !s.handedOff {
 		s.sup.KillAll()
