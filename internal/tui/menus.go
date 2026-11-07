@@ -193,7 +193,8 @@ func (a *App) openWorkspaceMenu(x, y, ws int) {
 		items = append(items, render.MenuItem{Label: "🎏 HQ"})
 	}
 	items = append(items, render.MenuItem{Label: "⭐ favorite"}, render.MenuItem{Label: "💼 work"}, render.MenuItem{Label: "🏠 personal"}, render.MenuItem{Label: "No section"})
-	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: items}}
+	target := a.st.Workspaces[ws]
+	a.menu = &uiMenu{justOpened: true, kind: menuWorkspace, ws: ws, wsID: target.ID, wsGeneration: target.Generation, m: render.Menu{X: x, Y: y, Hover: -1, Sel: 0, Items: items}}
 }
 
 // openTabMenu shows the right-click menu for a tab cell.
@@ -315,6 +316,21 @@ func (a *App) activateMenu(i int) {
 			}
 		}
 	case menuWorkspace:
+		switch m.m.Items[i].Label {
+		case "🎏 HQ", "⭐ favorite", "💼 work", "🏠 personal", "No section":
+			index := -1
+			for j, ws := range a.st.Workspaces {
+				if ws.ID == m.wsID && ws.Generation == m.wsGeneration {
+					index = j
+					break
+				}
+			}
+			if index < 0 {
+				a.worktreeError(fmt.Errorf("workspace no longer exists"))
+				return
+			}
+			m.ws = index
+		}
 		switch m.m.Items[i].Label {
 		case "🎏 HQ":
 			if a.machineRequest != nil && m.ws >= 0 && m.ws < len(a.st.Workspaces) {
