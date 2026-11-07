@@ -13,6 +13,7 @@ type oyagoiSelection struct {
 	Session    string `json:"session"`
 	Workspace  int    `json:"workspace"`
 	Generation string `json:"generation"`
+	Collapsed  bool   `json:"collapsed,omitempty"`
 }
 
 type oyagoiStore struct{ path string }
@@ -81,7 +82,29 @@ func (s oyagoiStore) set(selection *oyagoiSelection) error {
 	if selection != nil && (selection.Machine == "" || selection.Session == "" || selection.Workspace <= 0 || selection.Generation == "") {
 		return fmt.Errorf("invalid oyagoi selection")
 	}
-	return s.locked(func() error { return s.write(selection) })
+	return s.locked(func() error {
+		if selection != nil {
+			current, _ := s.load()
+			if current != nil {
+				selection.Collapsed = current.Collapsed
+			}
+		}
+		return s.write(selection)
+	})
+}
+
+func (s oyagoiStore) toggleCollapsed() error {
+	return s.locked(func() error {
+		current, err := s.load()
+		if err != nil {
+			return err
+		}
+		if current == nil {
+			return fmt.Errorf("HQ selection changed")
+		}
+		current.Collapsed = !current.Collapsed
+		return s.write(current)
+	})
 }
 
 func (s oyagoiStore) clearIf(expected oyagoiSelection) (bool, error) {
@@ -91,7 +114,7 @@ func (s oyagoiStore) clearIf(expected oyagoiSelection) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if current == nil || *current != expected {
+		if current == nil || current.Machine != expected.Machine || current.Session != expected.Session || current.Workspace != expected.Workspace || current.Generation != expected.Generation {
 			return nil
 		}
 		if err := s.write(nil); err != nil {
