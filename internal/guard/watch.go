@@ -69,7 +69,7 @@ func sameAssetSnapshot(a, b map[string]os.FileInfo) bool {
 		if !ok || (previous == nil) != (current == nil) {
 			return false
 		}
-		if previous != nil && (!os.SameFile(previous, current) || !reflect.DeepEqual(previous.Sys(), current.Sys())) {
+		if previous != nil && (!os.SameFile(previous, current) || !reflect.DeepEqual(snapshotStat(previous), snapshotStat(current))) {
 			return false
 		}
 	}

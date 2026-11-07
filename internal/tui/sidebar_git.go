@@ -139,8 +139,10 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 		for cwd, entry := range pending {
 			go func(cwd string, entry gitCwdActivity) {
 				if entry.loaded && entry.ready {
-					if unchanged, ok := unchangedGitActivity(entry); ok {
-						results <- result{cwd, unchanged}
+					var ok bool
+					entry, ok = unchangedGitActivity(entry)
+					if ok {
+						results <- result{cwd, entry}
 						return
 					}
 				}
@@ -206,7 +208,16 @@ func readWorkspaceGit(cwd string) render.GitStatus {
 		g.Ahead, _ = strconv.Atoi(counts[0])
 		g.Behind, _ = strconv.Atoi(counts[1])
 	}
-	for _, line := range strings.Split(run("diff", "--numstat", "HEAD", "--"), "\n") {
+	g.Added, g.Deleted = readWorkspaceGitDiff(cwd)
+	return g
+}
+
+func readWorkspaceGitDiff(cwd string) (added, deleted int) {
+	output, err := gitActivityOutput(cwd, "diff", "--numstat", "HEAD", "--")
+	if err != nil {
+		return 0, 0
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) < 3 {
 			continue
@@ -214,9 +225,9 @@ func readWorkspaceGit(cwd string) render.GitStatus {
 		add, e1 := strconv.Atoi(fields[0])
 		del, e2 := strconv.Atoi(fields[1])
 		if e1 == nil && e2 == nil {
-			g.Added += add
-			g.Deleted += del
+			added += add
+			deleted += del
 		}
 	}
-	return g
+	return added, deleted
 }
