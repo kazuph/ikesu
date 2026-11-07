@@ -320,6 +320,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		if err := m.validateOyagoiSnapshot(event.id); err != nil {
+			m.notify(err.Error())
+		}
 		if message.snapshot.Dialog != nil || message.snapshot.Menu != nil || message.snapshot.Help != nil || message.snapshot.Settings != nil || message.snapshot.Navigator != nil {
 			e.guardApproval.dismiss()
 		}

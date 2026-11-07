@@ -40,3 +40,21 @@ func TestOyagoiActionsUseMachineSessionAndWorkspaceIdentity(t *testing.T) {
 		t.Fatalf("unset = %+v, %v", got, err)
 	}
 }
+
+func TestOyagoiDeletedWorkspaceDoesNotFollowReusedNumber(t *testing.T) {
+	s := model.New(t.TempDir(), 80, 24)
+	ws := s.Workspaces[0]
+	store := oyagoiStore{filepath.Join(t.TempDir(), "oyagoi.json")}
+	selected := oyagoiSelection{Machine: "local", Session: "one", Workspace: ws.ID, Generation: ws.Generation}
+	if err := store.set(&selected); err != nil {
+		t.Fatal(err)
+	}
+	m := &machineClient{session: "one", oyagoiStore: store, oyagoi: &selected, endpoints: map[string]*managedEndpoint{"local": {profile: machine.Profile{ID: "local", Session: "one"}, snapshot: &render.Input{State: s}}}}
+	s.Workspaces[0].Generation = "new-generation"
+	if err := m.validateOyagoiSnapshot("local"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.load(); err != nil || got != nil {
+		t.Fatalf("reused ID retained selection: %+v, %v", got, err)
+	}
+}

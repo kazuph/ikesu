@@ -49,3 +49,23 @@ func (m *machineClient) refreshOyagoi() error {
 	m.oyagoi = selection
 	return nil
 }
+
+func (m *machineClient) validateOyagoiSnapshot(id string) error {
+	selected := m.oyagoi
+	e := m.endpoints[id]
+	if selected == nil || selected.Machine != id || e == nil || selected.Session != m.selectionSession(id) || e.snapshot == nil || e.snapshot.State == nil {
+		return nil
+	}
+	for _, ws := range e.snapshot.State.Workspaces {
+		if ws.Generation == "" {
+			return nil
+		}
+		if ws.ID == selected.Workspace && ws.Generation == selected.Generation {
+			return nil
+		}
+	}
+	if _, err := m.oyagoiStore.clearIf(*selected); err != nil {
+		return err
+	}
+	return m.refreshOyagoi()
+}
