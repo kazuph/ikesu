@@ -5,6 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/teststate"
 
 	"github.com/kazuph/ikesu/internal/filewatch"
 )
@@ -51,4 +55,121 @@ func TestGitActivityDoesNotProbeEveryTrackedFileEachRefresh(t *testing.T) {
 	if !found {
 		t.Fatal("tracked write was not detected within 10 refreshes")
 	}
+}
+
+// The last batch exercises the real 1.5-second refresh cadence for up to 12 seconds.
+func TestWorkspaceGitContentOnlyRefreshWithinFifteenSeconds(t *testing.T) {
+	teststate.Lock(t)
+	repo := t.TempDir()
+	sidebarGit(t, repo, "init", "-qb", "main")
+	sidebarGit(t, repo, "config", "user.name", "Test")
+	sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+	for i := 0; i < 80; i++ {
+		if err := os.WriteFile(filepath.Join(repo, fmt.Sprintf("file-%03d", i)), []byte("before\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sidebarGit(t, repo, "add", ".")
+	sidebarGit(t, repo, "commit", "-qm", "initial")
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = repo
+	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "main" })
+	if err := os.WriteFile(filepath.Join(repo, "file-007"), []byte("after\nextra\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	deadline := time.NewTimer(15 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		a.refreshWorkspaceGit(time.Now())
+		finishGitRefresh(t, a)
+		if a.workspaceGit[0].Added == 2 && a.workspaceGit[0].Deleted == 1 {
+			elapsed := time.Since(started)
+			if elapsed > 15*time.Second {
+				t.Fatalf("content-only write visible too late: %s", elapsed)
+			}
+			t.Logf("content-only write visible after %s", elapsed)
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("content-only write not visible within 15 seconds: %+v", a.workspaceGit[0])
+		case <-tick.C:
+		}
+	}
+}
+
+// Each stage waits for the real sidebar cadence, including the last file batch.
+func TestWorkspaceGitConcurrentCwdsAndWorkspaceChangesWithinFifteenSeconds(t *testing.T) {
+	teststate.Lock(t)
+	repos := []string{t.TempDir(), t.TempDir(), t.TempDir()}
+	for _, repo := range repos {
+		sidebarGit(t, repo, "init", "-qb", "main")
+		sidebarGit(t, repo, "config", "user.name", "Test")
+		sidebarGit(t, repo, "config", "user.email", "test@example.invalid")
+		for i := 0; i < 80; i++ {
+			if err := os.WriteFile(filepath.Join(repo, fmt.Sprintf("file-%03d", i)), []byte("before\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sidebarGit(t, repo, "add", ".")
+		sidebarGit(t, repo, "commit", "-qm", "initial")
+	}
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = repos[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: repos[1], Name: "second", NoFocus: true})
+	wait := func(stage string, check func() bool) {
+		t.Helper()
+		started := time.Now()
+		deadline := time.NewTimer(15 * time.Second)
+		defer deadline.Stop()
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			a.refreshWorkspaceGit(time.Now())
+			finishGitRefresh(t, a)
+			if check() {
+				elapsed := time.Since(started)
+				if elapsed > 15*time.Second {
+					t.Fatalf("%s visible too late: %s", stage, elapsed)
+				}
+				t.Logf("%s visible after %s", stage, elapsed)
+				return
+			}
+			select {
+			case <-deadline.C:
+				t.Fatalf("%s not visible within 15 seconds: %+v", stage, a.workspaceGit)
+			case <-tick.C:
+			}
+		}
+	}
+	wait("two workspaces", func() bool { return a.workspaceGit[0].Branch == "main" && a.workspaceGit[1].Branch == "main" })
+	for _, repo := range repos[:2] {
+		if err := os.WriteFile(filepath.Join(repo, "file-007"), []byte("after\nextra\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.st.Apply(model.CmdNewWorkspace{Cwd: repos[2], Name: "third", NoFocus: true})
+	wait("two content changes and added workspace", func() bool {
+		return a.workspaceGit[0].Added == 2 && a.workspaceGit[0].Deleted == 1 && a.workspaceGit[1].Added == 2 && a.workspaceGit[1].Deleted == 1 && a.workspaceGit[2].Branch == "main"
+	})
+	if err := os.WriteFile(filepath.Join(repos[0], "new-file"), []byte("new\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repos[0], "add", "new-file")
+	if err := os.Remove(filepath.Join(repos[1], "file-000")); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repos[1], "add", "-u")
+	wait("added and removed tracked files", func() bool {
+		return a.workspaceGit[0].Added == 3 && a.workspaceGit[0].Deleted == 1 && a.workspaceGit[1].Added == 2 && a.workspaceGit[1].Deleted == 2
+	})
+	a.st.Apply(model.CmdCloseWorkspace{Index: 0})
+	wait("removed workspace", func() bool {
+		return len(a.st.Workspaces) == 2 && a.st.Workspaces[0].Cwd == repos[1] && a.workspaceGit[0].Added == 2 && a.workspaceGit[0].Deleted == 2 && a.workspaceGit[1].Branch == "main"
+	})
 }
