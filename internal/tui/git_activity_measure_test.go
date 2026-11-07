@@ -52,7 +52,11 @@ func TestGitActivityBaselineMeasurement(t *testing.T) {
 }
 
 func TestGitActivityQuietPassAvoidsRepeatingAllOtherStats(t *testing.T) {
-	repo := t.TempDir()
+	parent := t.TempDir()
+	repo := filepath.Join(parent, "repo")
+	if err := os.Mkdir(repo, 0700); err != nil {
+		t.Fatal(err)
+	}
 	sidebarGit(t, repo, "init", "-qb", "main")
 	for i := 0; i < 80; i++ {
 		p := filepath.Join(repo, fmt.Sprintf("dir-%02d/file-%03d", i/10, i))
@@ -69,16 +73,50 @@ func TestGitActivityQuietPassAvoidsRepeatingAllOtherStats(t *testing.T) {
 	if !e.ready {
 		t.Fatal("watch unavailable")
 	}
-	e, ok := unchangedGitActivity(e)
-	if !ok {
-		t.Fatal("quiet repository changed")
-	}
 	other := len(e.paths) - len(e.tracked)
-	checked := e.statChecks - e.trackedChecks
-	t.Logf("quiet: other path stats=%d of %d", checked, other)
-	if checked >= other {
-		t.Fatalf("repeated all %d other path stats", other)
+	// A sibling write wakes an ancestor watch but does not change the repo.
+	// It makes the first pass legitimately check every directory.
+	revision := e.watch.Revision()
+	if err := os.Mkdir(filepath.Join(parent, "sibling"), 0700); err != nil {
+		t.Fatal(err)
 	}
+	deadline := time.Now().Add(4 * time.Second)
+	for e.watch.Revision() == revision {
+		if time.Now().After(deadline) {
+			t.Fatal("sibling change did not reach the native watcher")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var ok bool
+	e, ok = unchangedGitActivity(e)
+	if !ok {
+		t.Fatal("unrelated sibling changed the repository")
+	}
+	if checked := e.statChecks - e.trackedChecks; checked != other {
+		t.Fatalf("notification pass checked %d of %d other paths", checked, other)
+	} else {
+		t.Logf("notification: other path stats=%d of %d", checked, other)
+	}
+	// Other tests can write to shared ancestors. Assert the original strict
+	// reduction on a pass that actually saw no new notification and is not
+	// the mandatory eighth directory check.
+	for time.Now().Before(deadline) {
+		previous, phase := e.revision, e.trackedNext
+		e, ok = unchangedGitActivity(e)
+		if !ok {
+			t.Fatal("quiet repository changed")
+		}
+		if e.revision != previous || phase == 7 {
+			continue
+		}
+		checked := e.statChecks - e.trackedChecks
+		t.Logf("quiet: other path stats=%d of %d", checked, other)
+		if checked >= other {
+			t.Fatalf("repeated all %d other path stats", other)
+		}
+		return
+	}
+	t.Fatal("no notification-free pass before deadline")
 }
 
 func TestGitActivityOneContentChangeAvoidsFullSnapshot(t *testing.T) {
