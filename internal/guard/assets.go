@@ -191,13 +191,11 @@ func (a *Assets) Sync(agent string) error {
 		// Keep the security checks and the periodic full inspection even when
 		// all paths used by the last integrity check are unchanged.
 		if a.validateManaged(true) == nil && a.coverageReason() == "" {
-			if _, _, err := a.trustedSource(); err == nil {
-				if snapshot, ok := a.assetSnapshot(); ok && sameAssetSnapshot(a.checkedAssets, snapshot) && a.watchGeneration.Load() == generation {
-					a.refreshChanges()
-					if a.watchInstalled {
-						a.checkedGeneration = generation
-						return nil
-					}
+			if snapshot, ok := a.assetSnapshot(); ok && sameAssetSnapshot(a.checkedAssets, snapshot) && a.watchGeneration.Load() == generation {
+				a.refreshChanges()
+				if a.watchInstalled {
+					a.checkedGeneration = generation
+					return nil
 				}
 			}
 		}

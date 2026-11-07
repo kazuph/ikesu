@@ -14,8 +14,12 @@ func (a *Assets) assetSnapshot() (map[string]os.FileInfo, bool) {
 	if err != nil || !generationName(generation) {
 		return nil, false
 	}
+	executable, _, err := a.trustedSource()
+	if err != nil {
+		return nil, false
+	}
 	paths := []string{shell, filepath.Join(shell, "current"), a.RuntimePath(), filepath.Join(shell, "current", "manifest.json"), filepath.Join(shell, "current", "ikesu"), a.MarkerPath, a.Bin, a.issuePath()}
-	paths = append(paths, filepath.Join(shell, generation))
+	paths = append(paths, filepath.Join(shell, generation), a.Executable, executable)
 	for _, name := range []string{"bash-env", ".zshenv", ".zprofile", ".zshrc", ".zlogin"} {
 		paths = append(paths, filepath.Join(shell, name), filepath.Join(shell, name+".current"), filepath.Join(shell, "current", name+".current"))
 	}
