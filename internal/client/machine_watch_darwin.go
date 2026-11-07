@@ -9,10 +9,37 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type oyagoiFingerprint struct {
+	exists       bool
+	inode        uint64
+	size         int64
+	mtime, ctime unix.Timespec
+}
+
+func readOyagoiFingerprint(path string) (oyagoiFingerprint, error) {
+	var st unix.Stat_t
+	err := unix.Stat(path, &st)
+	if os.IsNotExist(err) {
+		return oyagoiFingerprint{}, nil
+	}
+	if err != nil {
+		return oyagoiFingerprint{}, err
+	}
+	return oyagoiFingerprint{true, st.Ino, st.Size, st.Mtim, st.Ctim}, nil
+}
+
 // Watch the catalog inode, not session directory writes during pane output.
 // Atomic catalog replacement rearms the watch on the replacement inode.
 func watchMachineCatalog(parent context.Context, path string, changed func(context.Context, error), watchParent ...bool) (func(), error) {
 	parentOnly := len(watchParent) > 0 && watchParent[0]
+	var fingerprint oyagoiFingerprint
+	if parentOnly {
+		var err error
+		fingerprint, err = readOyagoiFingerprint(path)
+		if err != nil {
+			return nil, err
+		}
+	}
 	kq, err := unix.Kqueue()
 	if err != nil {
 		return nil, err
@@ -66,6 +93,21 @@ func watchMachineCatalog(parent context.Context, path string, changed func(conte
 		defer unix.Close(kq)
 		defer func() { unix.Close(fd) }()
 		events := make([]unix.Kevent_t, 1)
+		checkFingerprint := func() bool {
+			current, err := readOyagoiFingerprint(path)
+			if err != nil {
+				changed(ctx, err)
+				return false
+			}
+			if current != fingerprint {
+				fingerprint = current
+				changed(ctx, nil)
+			}
+			return true
+		}
+		if parentOnly && !checkFingerprint() {
+			return
+		}
 		for {
 			_, err := unix.Kevent(kq, nil, events, nil)
 			if err == unix.EINTR {
@@ -80,6 +122,12 @@ func watchMachineCatalog(parent context.Context, path string, changed func(conte
 			}
 			event := events[0]
 			if event.Filter != unix.EVFILT_VNODE {
+				continue
+			}
+			if parentOnly {
+				if !checkFingerprint() {
+					return
+				}
 				continue
 			}
 			if directory {
