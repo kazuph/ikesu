@@ -42,6 +42,27 @@ func quietAssetsWithExecutable(t *testing.T) (*Assets, string) {
 	if a.checkedAssets == nil {
 		t.Fatal("stable integrity snapshot was not established")
 	}
+	// Notifications from the setup writes can arrive late under load. Wait
+	// until the watch has been quiet for a moment, then re-establish the
+	// snapshot, so the measured passes see only the changes the test makes.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		g := a.watchGeneration.Load()
+		time.Sleep(200 * time.Millisecond)
+		if a.watchGeneration.Load() == g {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("guard watch did not settle")
+		}
+	}
+	a.checkedAt = time.Now().Add(-guardAncestorCheckInterval)
+	if err := a.Sync("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if a.checkedAssets == nil {
+		t.Fatal("stable integrity snapshot was not re-established")
+	}
 	return a, exe
 }
 
