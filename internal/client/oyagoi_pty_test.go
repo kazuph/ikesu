@@ -171,6 +171,16 @@ func TestOyagoiCatalogUpdatesProjectionActualPTYReview(t *testing.T) {
 	profile.Enabled = false
 	writeCatalog(profile)
 	h.until("offline projection", func() bool { return strings.Contains(m.endpoints["local"].snapshot.MobileForeignOyagoi, "(offline)") })
+	if err := os.WriteFile(m.catalogPath(), []byte("[]"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.refreshMachineCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	h.until("removed projection", func() bool {
+		label := m.endpoints["local"].snapshot.MobileForeignOyagoi
+		return m.endpoints["remote"] == nil && strings.Contains(label, "remote") && strings.Contains(label, "(offline)")
+	})
 }
 
 func TestOyagoiTwoServersActualPTYProjectionAndReplacement(t *testing.T) {
