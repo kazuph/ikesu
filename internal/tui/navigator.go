@@ -45,9 +45,11 @@ func (a *App) navigatorRows() ([]render.NavigatorRow, int) {
 			order = append(order, i)
 		}
 	}
-	for i, ws := range a.st.Workspaces {
-		if ws.ID != a.oyagoiWorkspace {
-			order = append(order, i)
+	for _, section := range model.SectionOrder {
+		for i, ws := range a.st.Workspaces {
+			if ws.ID != a.oyagoiWorkspace && ws.SidebarSection() == section {
+				order = append(order, i)
+			}
 		}
 	}
 	for _, wi := range order {

@@ -16,13 +16,14 @@ type MachineGroup struct {
 }
 
 type MachineHit struct {
-	Machine     string
-	Workspace   int
-	Row         SidebarRow
-	Rect        layout.Rect
-	Header, New bool
-	Right       bool
-	Oyagoi      bool
+	Machine       string
+	Workspace     int
+	Row           SidebarRow
+	Rect          layout.Rect
+	Header, New   bool
+	Right         bool
+	Oyagoi        bool
+	OfflineOyagoi bool
 }
 
 type MachineSidebar struct {
@@ -41,10 +42,11 @@ type MachineSidebar struct {
 }
 
 type Oyagoi struct {
-	Machine      string
-	Workspace    int
-	Offline      bool
-	HideOriginal bool
+	Machine        string
+	Workspace      int
+	WorkspaceIndex *int
+	Offline        bool
+	HideOriginal   bool
 }
 
 type machineRow struct {
@@ -89,10 +91,14 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 					if group.ID != m.Oyagoi.Machine || group.Input == nil {
 						continue
 					}
-					for wi, ws := range group.Input.State.Workspaces {
-						if ws.ID == m.Oyagoi.Workspace {
-							rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: wi}, hqWorkspace: true})
-							break
+					if wi := m.Oyagoi.WorkspaceIndex; wi != nil && *wi >= 0 && *wi < len(group.Input.State.Workspaces) && group.Input.State.Workspaces[*wi].ID == m.Oyagoi.Workspace {
+						rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: *wi}, hqWorkspace: true})
+					} else if wi == nil {
+						for wi, ws := range group.Input.State.Workspaces {
+							if ws.ID == m.Oyagoi.Workspace {
+								rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: wi}, hqWorkspace: true})
+								break
+							}
 						}
 					}
 				}
@@ -165,6 +171,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 			f.Text(area.X, y, "🎏 oyagoi", uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, area.X+width)
 			machineRowBackground(f, area.X, y, width)
 		} else if entry.offline {
+			hit.Machine, hit.Workspace, hit.Oyagoi, hit.OfflineOyagoi = m.Oyagoi.Machine, m.Oyagoi.Workspace, true, true
 			suffix := " (offline)"
 			label := truncate(entry.offlineLabel, max(0, width-ansi.StringWidth(suffix))) + suffix
 			f.Text(area.X, y, label, uv.Style{Fg: f.Palette.Dim}, area.X+width)
@@ -218,7 +225,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 				hit.Workspace = state.Workspaces[entry.row.Ws].ID
 			}
 		}
-		if !entry.oyagoi && !entry.offline {
+		if !entry.oyagoi {
 			m.Hits = append(m.Hits, hit)
 		}
 		var dropIndex *int

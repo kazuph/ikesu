@@ -228,6 +228,8 @@ func (a *App) activateMenu(i int) {
 		return
 	}
 	switch m.kind {
+	case menuOyagoiUnset:
+		m.unsetOyagoi()
 	case menuMachineManage:
 		if m.m.Items[i].Label == "add machine..." {
 			a.addMachineDialog()

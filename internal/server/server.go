@@ -839,7 +839,7 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() { c.viewer.SetVisible(s.app, *m.Visible) })
 		case "workspace_select":
 			s.app.Do(func() {
-				if !c.viewer.SelectWorkspace(s.app, m.Workspace) {
+				if (m.WorkspaceGeneration != "" && !c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)) || !c.viewer.SelectWorkspace(s.app, m.Workspace) {
 					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {

@@ -140,6 +140,9 @@ func (m *machineClient) workspaceCycleInput(event input.Event) bool {
 	target := targets[(at+dir+len(targets))%len(targets)]
 	m.consumeWorkspaceKey(key)
 	pending := &pendingMachine{id: target.machine, workspace: target.workspace, deadline: time.Now().Add(machineSwitchWait)}
+	if m.oyagoi != nil && m.oyagoi.Machine == target.machine && m.oyagoi.Workspace == target.workspace {
+		pending.generation = m.oyagoi.Generation
+	}
 	if m.pending != nil {
 		pending.deadline = m.pending.deadline
 		pending.keys = m.pending.keys

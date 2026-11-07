@@ -337,6 +337,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			break
 		}
 		e.snapshot = message.snapshot
+		e.snapshotAttempt = e.attempt
 		if err := m.validateOyagoiSnapshot(event.id); err != nil {
 			m.notify(err.Error())
 		}
@@ -354,7 +355,6 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			e.guardApproval.focus(fmt.Sprintf("p%d", message.snapshot.State.FocusedPane()))
 		}
 		e.processedInput = message.ProcessedInput
-		e.snapshotAttempt = e.attempt
 		e.boot = message.traceBoot
 		e.textOnly = message.traceTextOnly
 		e.epoch = message.FocusEpoch
@@ -464,6 +464,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		m.fail(event.id, errors.New("server restarting"))
 	case "error":
+		if message.Reason == "endpoint_workspace_not_found" && m.pending != nil && m.pending.id == event.id && m.pending.generation != "" {
+			m.pending = nil
+		}
 		m.notify(message.Reason)
 	}
 	return 0, false

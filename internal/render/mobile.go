@@ -21,8 +21,13 @@ func MobileRows(s *model.AppState, menu []MenuItem, oyagoi ...int) []SidebarRow 
 			break
 		}
 	}
-	rows = append(rows, SidebarRow{Kind: RowMobileSpaces}, SidebarRow{Kind: RowMobileNewWorkspace})
+	if hq == 0 {
+		rows = append(rows, SidebarRow{Kind: RowMobileSpaces}, SidebarRow{Kind: RowMobileNewWorkspace})
+	}
 	for _, sec := range model.SectionOrder {
+		if hq != 0 && sec == model.SectionWork {
+			rows = append(rows, SidebarRow{Kind: RowMobileSpaces}, SidebarRow{Kind: RowMobileNewWorkspace})
+		}
 		found := false
 		for i, w := range s.Workspaces {
 			if w.ID != hq && w.SidebarSection() == sec && !s.WorktreeHidden(i) {
@@ -57,11 +62,11 @@ func MobileRows(s *model.AppState, menu []MenuItem, oyagoi ...int) []SidebarRow 
 }
 
 func MobileRowsWithForeignOyagoi(s *model.AppState, menu []MenuItem, oyagoi int, foreign string) []SidebarRow {
-	rows := MobileRows(s, menu, oyagoi)
 	if foreign != "" && oyagoi == 0 {
-		rows = append([]SidebarRow{{Kind: RowMobileOyagoi}, {Kind: RowMobileForeignOyagoi}}, rows...)
+		rows := MobileRows(s, menu, -1)
+		return append([]SidebarRow{{Kind: RowMobileOyagoi}, {Kind: RowMobileForeignOyagoi}}, rows...)
 	}
-	return rows
+	return MobileRows(s, menu, oyagoi)
 }
 
 func MobileOffsetWithForeignOyagoi(s *model.AppState, menu []MenuItem, offset, oyagoi int, foreign string) int {

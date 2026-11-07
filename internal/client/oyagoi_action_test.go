@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/endpoint"
@@ -82,6 +83,57 @@ func TestOyagoiSelectOtherMachineRequestsWorkspace(t *testing.T) {
 	}
 	if m.pending == nil || m.pending.id != "remote" || m.pending.workspace != ws.ID {
 		t.Fatalf("pending = %+v", m.pending)
+	}
+}
+
+func TestOyagoiRejectsSnapshotFromPreviousConnectionReview(t *testing.T) {
+	state := model.New(t.TempDir(), 80, 24)
+	ws := state.Workspaces[0]
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{session: "one", oyagoi: &oyagoiSelection{Machine: "remote", Session: "two", Workspace: ws.ID, Generation: ws.Generation}, endpoints: map[string]*managedEndpoint{"remote": {connection: conn, profile: machine.Profile{Session: "two"}, snapshot: &render.Input{State: state}, attempt: 2, snapshotAttempt: 1}}}
+	if err := m.selectOyagoi(); err == nil || m.pending != nil {
+		t.Fatal("stale snapshot accepted")
+	}
+}
+
+func TestOyagoiSelectionRequestIncludesGenerationReview(t *testing.T) {
+	state := model.New(t.TempDir(), 80, 24)
+	ws := state.Workspaces[0]
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	m := &machineClient{session: "one", oyagoi: &oyagoiSelection{Machine: "remote", Session: "two", Workspace: ws.ID, Generation: ws.Generation}, endpoints: map[string]*managedEndpoint{"remote": {connection: conn, profile: machine.Profile{Session: "two"}, snapshot: &render.Input{State: state}}}}
+	if err := m.selectOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range conn.queue {
+		if item.Type == "workspace_select" && item.Workspace == ws.ID && item.WorkspaceGeneration == ws.Generation {
+			return
+		}
+	}
+	t.Fatalf("workspace identity was not sent: %+v", conn.queue)
+}
+
+func TestOyagoiProjectionCacheTracksSnapshotAndCatalogReview(t *testing.T) {
+	state := model.New(t.TempDir(), 80, 24)
+	ws := state.Workspaces[0]
+	peer := endpoint.Current()
+	conn := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+	e := &managedEndpoint{profile: machine.Profile{Session: "two", Label: "first"}, connection: conn, snapshot: &render.Input{State: state}}
+	m := &machineClient{oyagoi: &oyagoiSelection{Machine: "remote", Session: "two", Workspace: ws.ID, Generation: ws.Generation}, endpoints: map[string]*managedEndpoint{"remote": e}}
+	first := m.resolveOyagoi()
+	if m.resolveOyagoi() != first {
+		t.Fatal("unchanged snapshot recomputed")
+	}
+	e.profile.Label = "renamed"
+	second := m.resolveOyagoi()
+	if second == first || !strings.Contains(second.label, "renamed") {
+		t.Fatal("catalog change not reflected")
+	}
+	e.connection = nil
+	third := m.resolveOyagoi()
+	if third == second || !third.sidebar.Offline {
+		t.Fatal("disconnect not reflected")
 	}
 }
 

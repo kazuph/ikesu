@@ -2,17 +2,176 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/machine"
+	"github.com/kazuph/ikesu/internal/tui"
 )
+
+// Starts two real servers and waits for a reconnected endpoint, which can exceed five seconds.
+func TestOyagoiRejectsReusedNumberBeforeNewSnapshotActualPTYReview(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	e := m.endpoints["remote"]
+	old := e.snapshot.State.Workspaces[0]
+	other := m.endpoints["local"].snapshot.State.Workspaces[0]
+	if old.ID != other.ID || old.Generation == other.Generation {
+		t.Fatal("fixture must reuse number with different generation")
+	}
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", old.ID, old.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["local"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.start("remote", stream)
+	attempt := e.attempt
+	h.until("new connection before snapshot", func() bool { return e.connection != nil })
+	if e.snapshotAttempt == attempt {
+		t.Fatal("fixture consumed new snapshot too early")
+	}
+	if err := m.selectOyagoi(); err == nil || m.pending != nil || m.active != "local" {
+		t.Fatalf("stale HQ selected: %v pending=%+v", err, m.pending)
+	}
+	got, err := m.oyagoiStore.load()
+	if err != nil || got == nil || got.Generation != old.Generation {
+		t.Fatalf("saved identity changed: %+v %v", got, err)
+	}
+}
+
+// Real server disconnection, a local menu and two durable-store updates may exceed five seconds.
+func TestOyagoiOfflineUnsetKeepsNewerSelectionActualPTYReview(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	m.forms = tui.NewMachineForms(m.ctx, m.catalogPath(), func(fn func()) { fn() })
+	defer m.forms.Close()
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	remote := m.endpoints["remote"]
+	ws := remote.snapshot.State.Workspaces[0]
+	old := oyagoiSelection{Machine: "remote", Session: m.selectionSession("remote"), Workspace: ws.ID, Generation: ws.Generation}
+	if err := m.oyagoiStore.set(&old); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := net.Dial("unix", api.ClientSocketPath(h.dirs["remote"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.start("remote", stream)
+	attempt := remote.attempt
+	h.until("connected managed endpoint", func() bool { return remote.connection != nil && remote.snapshotAttempt == attempt })
+	if err := remote.connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for remote.connection != nil {
+		select {
+		case ev := <-m.events:
+			m.event(ev)
+		case <-timer.C:
+			t.Fatal("disconnect timeout")
+		}
+	}
+	open := func() {
+		t.Helper()
+		if err := m.paint(); err != nil {
+			t.Fatal(err)
+		}
+		for _, hit := range m.sidebar.Hits {
+			if hit.OfflineOyagoi {
+				if err := m.input(mouseEvent(t, fmt.Sprintf("\x1b[<2;%d;%dM", hit.Rect.X+1, hit.Rect.Y+1))); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+		}
+		t.Fatal("offline HQ has no action")
+	}
+	open()
+	newer := old
+	newer.Generation = "newer"
+	if err := m.oyagoiStore.set(&newer); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEnter}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := m.oyagoiStore.load(); err != nil || got == nil || *got != newer {
+		t.Fatalf("stale unset erased newer: %+v %v", got, err)
+	}
+	if err := m.oyagoiStore.set(&old); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.refreshOyagoi(); err != nil {
+		t.Fatal(err)
+	}
+	open()
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEnter}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := m.oyagoiStore.load(); err != nil || got != nil {
+		t.Fatalf("offline unset failed: %+v %v", got, err)
+	}
+}
+
+func TestOyagoiCatalogUpdatesProjectionActualPTYReview(t *testing.T) {
+	h := newRightMachineHarness(t)
+	m := h.m
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
+	m.oyagoiStore.path = filepath.Join(t.TempDir(), "oyagoi.json")
+	e := m.endpoints["remote"]
+	ws := e.snapshot.State.Workspaces[0]
+	if err := m.oyagoiAction("remote", fmt.Sprintf("oyagoi:set:%d:%s", ws.ID, ws.Generation)); err != nil {
+		t.Fatal(err)
+	}
+	h.until("initial HQ projection", func() bool { return m.endpoints["local"].snapshot.MobileForeignOyagoi != "" })
+	writeCatalog := func(profile machine.Profile) {
+		t.Helper()
+		data, err := json.Marshal([]machine.Profile{profile})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(m.catalogPath()), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(m.catalogPath(), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.refreshMachineCatalog(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	profile := e.profile
+	profile.Label = "renamed-review-machine"
+	writeCatalog(profile)
+	h.until("renamed projection", func() bool {
+		return strings.Contains(m.endpoints["local"].snapshot.MobileForeignOyagoi, "renamed-review-machine")
+	})
+	profile.Enabled = false
+	writeCatalog(profile)
+	h.until("offline projection", func() bool { return strings.Contains(m.endpoints["local"].snapshot.MobileForeignOyagoi, "(offline)") })
+}
 
 func TestOyagoiTwoServersActualPTYProjectionAndReplacement(t *testing.T) {
 	h := newRightMachineHarness(t)

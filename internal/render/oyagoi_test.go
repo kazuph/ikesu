@@ -49,11 +49,12 @@ func TestOyagoiOfflineDoesNotHideSameNumberFromAnotherSession(t *testing.T) {
 	}
 }
 
-func TestOyagoiHeadingAndOfflineLabelAreNotWorkspaceTargets(t *testing.T) {
+func TestOyagoiHeadingIsNotAWorkspaceTargetAndOfflineHasUnsetTarget(t *testing.T) {
 	local := Input{ServerUI: true, State: testState(160, 45)}
 	m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Label: "Local", Input: &local}}, Oyagoi: &Oyagoi{Machine: "remote", Workspace: 9, Offline: true}}
 	out := ComposeMachines(local, &m)
 	area := SidebarViewForInput(local).Workspace.Rect
+	offline := false
 	for _, hit := range m.Hits {
 		if hit.Right {
 			continue
@@ -62,9 +63,15 @@ func TestOyagoiHeadingAndOfflineLabelAreNotWorkspaceTargets(t *testing.T) {
 		for x := area.X; x < area.X+area.W; x++ {
 			line += out.Frame.Cell(x, hit.Rect.Y).Content
 		}
-		if strings.Contains(line, "oyagoi") || strings.Contains(line, "(offline)") {
-			t.Fatalf("heading or offline label was clickable: %+v", hit)
+		if strings.Contains(line, "oyagoi") {
+			t.Fatalf("heading was clickable: %+v", hit)
 		}
+		if strings.Contains(line, "(offline)") {
+			offline = hit.OfflineOyagoi && hit.Machine == "remote" && hit.Workspace == 9
+		}
+	}
+	if !offline {
+		t.Fatal("offline HQ missing unset target")
 	}
 }
 

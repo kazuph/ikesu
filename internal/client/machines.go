@@ -75,6 +75,7 @@ type pendingMachine struct {
 	keys               []input.Event
 	id                 string
 	workspace          int
+	generation         string
 	deadline           time.Time
 	requested          bool
 	create             bool
@@ -84,6 +85,7 @@ type pendingMachine struct {
 type machineClient struct {
 	oyagoiStore oyagoiStore
 	oyagoi      *oyagoiSelection
+	oyagoiCache *oyagoiCache
 	koiNext     time.Time
 	koiClock    render.KoiAnimation
 	koiVisible  bool
@@ -173,16 +175,15 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 		fmt.Fprintln(out, "ikesu: HQ settings:", err)
 		return pumpRejected
 	}
-	if err := m.refreshOyagoi(); err != nil {
-		fmt.Fprintln(out, "ikesu:", err)
-		return pumpRejected
-	}
 	stopOyagoi, err := watchMachineCatalog(ctx, m.oyagoiStore.path, func(ctx context.Context, err error) { m.post(ctx, endpointEvent{oyagoiChanged: true, err: err}) })
 	if err != nil {
 		fmt.Fprintln(out, "ikesu: HQ settings watch:", err)
 		return pumpRejected
 	}
 	defer stopOyagoi()
+	if err := m.refreshOyagoi(); err != nil {
+		m.notify(err.Error())
+	}
 	if latency.Enabled {
 		m.trace = latency.Open(filepath.Join(api.SessionDir(session), "client.log"))
 	}

@@ -10,27 +10,61 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 )
 
-func (m *machineClient) oyagoiForSidebar() *render.Oyagoi {
-	result := &render.Oyagoi{}
+type oyagoiCacheKey struct {
+	selection                oyagoiSelection
+	snapshot                 *render.Input
+	connection               *endpointConnection
+	attempt, snapshotAttempt uint64
+	session, label           string
+}
+
+type oyagoiCache struct {
+	key     oyagoiCacheKey
+	sidebar render.Oyagoi
+	label   string
+}
+
+func (m *machineClient) resolveOyagoi() *oyagoiCache {
 	if m.oyagoi == nil {
-		return result
+		m.oyagoiCache = nil
+		return &oyagoiCache{}
 	}
-	result.Machine, result.Workspace = m.oyagoi.Machine, m.oyagoi.Workspace
 	e := m.endpoints[m.oyagoi.Machine]
-	result.Offline = e == nil || e.connection == nil || e.snapshot == nil || m.selectionSession(m.oyagoi.Machine) != m.oyagoi.Session
-	if e != nil && e.snapshot != nil && e.snapshot.State != nil && m.selectionSession(m.oyagoi.Machine) == m.oyagoi.Session {
-		for _, ws := range e.snapshot.State.Workspaces {
+	key := oyagoiCacheKey{selection: *m.oyagoi, session: m.selectionSession(m.oyagoi.Machine)}
+	if e != nil {
+		key.snapshot, key.connection, key.attempt, key.snapshotAttempt, key.label = e.snapshot, e.connection, e.attempt, e.snapshotAttempt, e.profile.Label
+	}
+	if m.oyagoiCache != nil && m.oyagoiCache.key == key {
+		return m.oyagoiCache
+	}
+	result := &oyagoiCache{key: key}
+	result.sidebar.Machine, result.sidebar.Workspace, result.sidebar.Offline = m.oyagoi.Machine, m.oyagoi.Workspace, true
+	name, label := fmt.Sprintf("s%d", m.oyagoi.Workspace), m.oyagoi.Machine
+	if key.label != "" {
+		label = key.label
+	}
+	if e != nil && e.connection != nil && e.snapshotAttempt == e.attempt && e.snapshot != nil && e.snapshot.State != nil && key.session == m.oyagoi.Session {
+		for i, ws := range e.snapshot.State.Workspaces {
 			if ws.ID == m.oyagoi.Workspace && ws.Generation == m.oyagoi.Generation {
-				result.HideOriginal = true
+				result.sidebar.HideOriginal, result.sidebar.Offline = true, false
+				result.sidebar.WorkspaceIndex = &i
+				name = e.snapshot.WorkspaceNames[i]
+				if name == "" || ws.CustomName {
+					name = render.WorkspaceDisplayName(ws, e.snapshot.Panes)
+				}
 				break
 			}
 		}
 	}
-	if !result.HideOriginal {
-		result.Offline = true
+	result.label = name + " · " + label
+	if result.sidebar.Offline {
+		result.label += " (offline)"
 	}
+	m.oyagoiCache = result
 	return result
 }
+
+func (m *machineClient) oyagoiForSidebar() *render.Oyagoi { return &m.resolveOyagoi().sidebar }
 
 func (m *machineClient) openOyagoiMenu(id string, x, y int) error {
 	if m.oyagoi == nil || m.oyagoi.Machine != id {
@@ -54,7 +88,7 @@ func (m *machineClient) selectOyagoi() error {
 		return fmt.Errorf("HQ selection changed")
 	}
 	e := m.endpoints[m.oyagoi.Machine]
-	if e == nil || e.connection == nil || e.snapshot == nil || e.snapshot.State == nil || m.selectionSession(m.oyagoi.Machine) != m.oyagoi.Session {
+	if e == nil || e.connection == nil || e.snapshot == nil || e.snapshot.State == nil || e.snapshotAttempt != e.attempt || m.selectionSession(m.oyagoi.Machine) != m.oyagoi.Session {
 		return fmt.Errorf("HQ workspace is offline")
 	}
 	valid := false
@@ -67,7 +101,7 @@ func (m *machineClient) selectOyagoi() error {
 	if !valid {
 		return fmt.Errorf("HQ workspace changed")
 	}
-	m.pending = &pendingMachine{id: m.oyagoi.Machine, workspace: m.oyagoi.Workspace, deadline: time.Now().Add(machineSwitchWait)}
+	m.pending = &pendingMachine{id: m.oyagoi.Machine, workspace: m.oyagoi.Workspace, generation: m.oyagoi.Generation, deadline: time.Now().Add(machineSwitchWait)}
 	m.requestPending()
 	return nil
 }
@@ -91,28 +125,9 @@ func (m *machineClient) syncOyagoi(id string) error {
 	if selected {
 		message.Workspace, message.WorkspaceGeneration = m.oyagoi.Workspace, m.oyagoi.Generation
 	} else if m.oyagoi != nil {
-		owner := m.endpoints[m.oyagoi.Machine]
-		label := m.oyagoi.Machine
-		if owner != nil && owner.profile.Label != "" {
-			label = owner.profile.Label
-		}
-		name := fmt.Sprintf("s%d", m.oyagoi.Workspace)
-		if owner != nil && owner.snapshot != nil && owner.snapshot.State != nil && m.selectionSession(m.oyagoi.Machine) == m.oyagoi.Session {
-			for i, ws := range owner.snapshot.State.Workspaces {
-				if ws.ID == m.oyagoi.Workspace && ws.Generation == m.oyagoi.Generation {
-					name = owner.snapshot.WorkspaceNames[i]
-					if name == "" || ws.CustomName {
-						name = render.WorkspaceDisplayName(ws, owner.snapshot.Panes)
-					}
-					message.OyagoiOnline = owner.connection != nil
-					break
-				}
-			}
-		}
-		message.OyagoiLabel = name + " · " + label
-		if !message.OyagoiOnline {
-			message.OyagoiLabel += " (offline)"
-		}
+		projection := m.resolveOyagoi()
+		message.OyagoiLabel = projection.label
+		message.OyagoiOnline = !projection.sidebar.Offline
 	}
 	projection := oyagoiProjection{message.Workspace, message.WorkspaceGeneration, message.OyagoiLabel, message.OyagoiOnline}
 	if e.oyagoiProjection != nil && *e.oyagoiProjection == projection {
@@ -163,6 +178,12 @@ func (m *machineClient) oyagoiAction(id, action string) error {
 func (m *machineClient) refreshOyagoi() error {
 	selection, err := m.oyagoiStore.load()
 	if err != nil {
+		m.oyagoi = nil
+		for id := range m.endpoints {
+			if syncErr := m.syncOyagoi(id); syncErr != nil {
+				m.notify(syncErr.Error())
+			}
+		}
 		return fmt.Errorf("HQ settings: %w", err)
 	}
 	m.oyagoi = selection

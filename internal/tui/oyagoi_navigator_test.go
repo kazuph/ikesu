@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -8,6 +9,27 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 )
+
+func TestOyagoiNavigatorSectionOrderReview(t *testing.T) {
+	a, _ := worktreeApp(t)
+	for i := 0; i < 3; i++ {
+		a.st.Apply(model.CmdNewWorkspace{Cwd: t.TempDir(), NoFocus: true})
+	}
+	a.st.Workspaces[2].Section = model.SectionWork
+	a.st.Workspaces[3].Section = model.SectionFavorite
+	a.oyagoiWorkspace = a.st.Workspaces[1].ID
+	a.navigator = &navigatorView{}
+	rows, _ := a.navigatorRows()
+	var order []int
+	for _, r := range rows {
+		if r.Pane == -1 {
+			order = append(order, r.Workspace)
+		}
+	}
+	if fmt.Sprint(order) != "[1 3 2 0]" {
+		t.Fatalf("navigator order: %v", order)
+	}
+}
 
 func TestOyagoiNavigatorMovesWorkspaceAndKeepsSelectionTarget(t *testing.T) {
 	a, _ := worktreeApp(t)
