@@ -81,7 +81,7 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 						break
 					}
 				}
-				rows = append(rows, machineRow{offline: true, offlineLabel: fmt.Sprintf("s%d %s (offline)", m.Oyagoi.Workspace, label)})
+				rows = append(rows, machineRow{offline: true, offlineLabel: fmt.Sprintf("s%d %s", m.Oyagoi.Workspace, label)})
 			} else {
 				for gi, group := range m.Groups {
 					if group.ID != m.Oyagoi.Machine || group.Input == nil {
@@ -163,7 +163,9 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 			f.Text(area.X, y, "🎏 oyagoi", uv.Style{Fg: f.Palette.Accent, Attrs: uv.AttrBold}, area.X+width)
 			machineRowBackground(f, area.X, y, width)
 		} else if entry.offline {
-			f.Text(area.X, y, truncate(entry.offlineLabel, width), uv.Style{Fg: f.Palette.Dim}, area.X+width)
+			suffix := " (offline)"
+			label := truncate(entry.offlineLabel, max(0, width-ansi.StringWidth(suffix))) + suffix
+			f.Text(area.X, y, label, uv.Style{Fg: f.Palette.Dim}, area.X+width)
 			machineRowBackground(f, area.X, y, width)
 		} else if entry.header {
 			if width <= 1 {

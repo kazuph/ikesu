@@ -67,3 +67,12 @@ func TestOyagoiHeadingAndOfflineLabelAreNotWorkspaceTargets(t *testing.T) {
 		}
 	}
 }
+
+func TestOyagoiOfflineSuffixSurvivesLongMachineName(t *testing.T) {
+	local := Input{ServerUI: true, State: testState(160, 45)}
+	m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Label: "Local", Input: &local}, {ID: "remote", Label: "a very long remote machine display name"}}, Oyagoi: &Oyagoi{Machine: "remote", Workspace: 4, Offline: true}}
+	text := screenText(t, ComposeMachines(local, &m), 160, 45)
+	if !strings.Contains(text, "(offline)") {
+		t.Fatal("offline suffix was truncated")
+	}
+}
