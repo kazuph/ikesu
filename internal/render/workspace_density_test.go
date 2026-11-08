@@ -42,7 +42,7 @@ func TestWorkspaceCardLinesFollowDensity(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCardShowsTabChipsBeforeGitAndPreview(t *testing.T) {
+func TestWorkspaceCardShowsTabNamesBeforeGitAndPreview(t *testing.T) {
 	t.Parallel()
 	s := testState(160, 45)
 	s.Apply(model.CmdNewTab{Workspace: 0, NoFocus: true})
@@ -60,12 +60,11 @@ func TestWorkspaceCardShowsTabChipsBeforeGitAndPreview(t *testing.T) {
 	if b, i, m := strings.Index(line, "boss"), strings.Index(line, "impl"), strings.Index(line, "main"); b < 0 || i < b || m < i {
 		t.Fatalf("tab chips must come before git on the card's second line: %q\n%s", line, text)
 	}
-	if len(out.Frame.TabChips) != 2 {
-		t.Fatalf("chips=%v", out.Frame.TabChips)
-	}
-	for _, r := range out.Frame.TabChips {
-		if out.Frame.Cell(r.X, r.Y).Style.Bg != out.Frame.Palette.Accent {
-			t.Fatal("tab chips keep the active tab's accent fill")
+	for x := 0; x < s.SidebarArea().W; x++ {
+		for y := 0; y < 45; y++ {
+			if c := out.Frame.Cell(x, y); (c.Content == "b" || c.Content == "i") && c.Style.Bg == out.Frame.Palette.Accent {
+				t.Fatal("tab names have no fill")
+			}
 		}
 	}
 	if !strings.Contains(text, "Worked for 45s") {
@@ -77,7 +76,14 @@ func TestWorkspaceCardShowsTabChipsBeforeGitAndPreview(t *testing.T) {
 	}
 	s.WorkspaceDensity = "oneline"
 	out = Compose(in)
-	if text := screenText(t, out, 160, 45); len(out.Frame.TabChips) != 0 || strings.Contains(text, "main") || strings.Contains(text, "Worked for 45s") {
+	sidebar := ""
+	for y := 0; y < 45; y++ {
+		for x := 0; x < s.SidebarArea().W; x++ {
+			sidebar += out.Frame.Cell(x, y).Content
+		}
+		sidebar += "\n"
+	}
+	if text := screenText(t, out, 160, 45); strings.Contains(sidebar, "boss") || strings.Contains(text, "main") || strings.Contains(text, "Worked for 45s") {
 		t.Fatalf("oneline density shows only the name:\n%s", text)
 	}
 }

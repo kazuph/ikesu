@@ -14,10 +14,6 @@ type transparentSurfaceBackground struct{}
 
 func (transparentSurfaceBackground) RGBA() (r, g, b, a uint32) { return }
 
-// tabChipBackground marks a sidebar tab chip's fill. Like the tab bar's chips
-// it keeps its fill through the common-background pass, which unwraps it.
-type tabChipBackground struct{ color.Color }
-
 func persistentBackground(c config.Config) color.Color {
 	for _, key := range []string{"panel_bg", "surface_dim"} {
 		if value, ok := c.Theme.Custom[key]; ok {
@@ -75,10 +71,6 @@ func applyPersistentBackground(f *Frame, in Input, tabs []layout.Rect) {
 			cell := f.Cell(x, y)
 			if _, explicit := cell.Style.Bg.(transparentSurfaceBackground); explicit {
 				cell.Style.Bg = nil
-				continue
-			}
-			if chip, ok := cell.Style.Bg.(tabChipBackground); ok {
-				cell.Style.Bg = chip.Color
 				continue
 			}
 			// Tab chips keep their semantic fill, including the selected accent.

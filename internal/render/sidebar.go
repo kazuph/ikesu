@@ -7,7 +7,6 @@ import (
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
-	"image/color"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -458,7 +457,7 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 					gitX = f.Text(gitX, y, " ", sty, ix+iw)
 				}
 			}
-			gitX = drawTabChips(f, ws, in, gitX, y, ix+iw, sty.Bg)
+			gitX = drawTabNames(f, ws, in, gitX, y, ix+iw, gitStyle)
 			g := in.Git[r.Ws]
 			if in.ServerUI {
 				g.Ahead, g.Behind, g.Added, g.Deleted = 0, 0, 0, 0
@@ -715,36 +714,26 @@ func sidebarAgentTargets(s *model.AppState, panes map[int]*PaneSnap, cfg config.
 	return agents
 }
 
-// drawTabChips draws each tab of the space as a chip styled like the tab
-// bar's active tab, before the git status. It returns the next free column.
-func drawTabChips(f *Frame, ws *model.Workspace, in Input, x, y, limit int, bg color.Color) int {
+// drawTabNames lists the space's tab names before the git status, as plain
+// text on the row's own background. It returns the next free column.
+func drawTabNames(f *Frame, ws *model.Workspace, in Input, x, y, limit int, row uv.Style) int {
 	for i, t := range ws.Tabs {
 		if x >= limit {
 			break
 		}
 		name := t.Name
+		style := uv.Style{Fg: f.Palette.Text, Bg: row.Bg, Attrs: row.Attrs}
 		if name == "" {
 			name = fmt.Sprint(i + 1)
-		}
-		chip := uv.Style{Fg: f.Palette.SurfDim}
-		if f.Palette.Accent != nil {
-			chip.Bg = tabChipBackground{f.Palette.Accent}
-		}
-		if t.Name != "" {
-			chip.Attrs = uv.AttrBold
+			style.Fg = f.Palette.Dim
 		}
 		g := tabGlyph(t, in)
 		if g.Rune == " " {
 			g.Rune = "·"
 		}
-		start := x
-		x = f.Text(x, y, " ", chip, limit)
-		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: chip.Bg, Attrs: boldIf(g.Bold)}, limit)
-		x = f.Text(x, y, " "+name+" ", chip, limit)
-		if x > start {
-			f.TabChips = append(f.TabChips, layout.Rect{X: start, Y: y, W: x - start, H: 1})
-		}
-		x = f.Text(x, y, " ", uv.Style{Bg: bg}, limit)
+		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: row.Bg, Attrs: boldIf(g.Bold)}, limit)
+		x = f.Text(x, y, " "+name, style, limit)
+		x = f.Text(x, y, "  ", uv.Style{Bg: row.Bg}, limit)
 	}
 	return x
 }
