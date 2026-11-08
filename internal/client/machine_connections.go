@@ -498,7 +498,7 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 }
 
 func (m *machineClient) fail(id string, err error) {
-	m.idleDisconnect(id)
+	m.idleDisconnect(id, err)
 	if id == "local" {
 		m.retirePendingGraphicsFile()
 	}

@@ -17,9 +17,11 @@ type idleEntry struct {
 	pane                   endpoint.IdlePane
 	selected               bool
 }
+type idleFailure struct{ label, reason string }
 type idleDialog struct {
 	request                       uint64
 	entries                       []idleEntry
+	failures                      []idleFailure
 	pending                       map[string]int
 	threshold, cursor             int
 	loading, confirming, deleting bool
@@ -40,10 +42,13 @@ func (m *machineClient) openIdlePanes() {
 			continue
 		}
 		if !endpoint.Allows(e.connection.writer.available, endpoint.RequiredGeneration("idle_panes"), e.connection.writer.methods, "idle_panes") {
+			d.failures = append(d.failures, idleFailure{e.profile.Label, "unsupported"})
 			continue
 		}
-		if e.connection.enqueue(msg{Type: "idle_panes", IdleRequest: d.request}) == nil {
+		if err := e.connection.enqueue(msg{Type: "idle_panes", IdleRequest: d.request}); err == nil {
 			d.pending[id] = 1
+		} else {
+			d.failures = append(d.failures, idleFailure{e.profile.Label, err.Error()})
 		}
 	}
 	if len(d.pending) == 0 {
@@ -65,6 +70,8 @@ func (m *machineClient) idleListResult(id string, request uint64, list *endpoint
 			checked := idleInitiallySelected(p, hq, id == m.active)
 			d.entries = append(d.entries, idleEntry{machine: id, label: e.profile.Label, server: list.ServerGeneration, pane: p, selected: checked})
 		}
+	} else if e := m.endpoints[id]; e != nil {
+		d.failures = append(d.failures, idleFailure{e.profile.Label, "invalid response"})
 	}
 	if len(d.pending) == 0 {
 		d.loading = false
@@ -139,6 +146,9 @@ func (d *idleDialog) dialog() *render.Dialog {
 	if d.kept {
 		lines = append(lines, "last pane, kept")
 	}
+	for _, failure := range d.failures {
+		lines = append(lines, failure.label+": "+failure.reason)
+	}
 	lines = append(lines, "space toggle · a all · enter delete selected")
 	return &render.Dialog{Title: "delete idle panes", Detail: detail, Lines: lines, Confirm: "delete selected", Cancel: "close", CenterTerminal: true, PreserveTitleCase: true}
 }
@@ -165,7 +175,7 @@ func (m *machineClient) idleInput(ev input.Event) bool {
 		} else if contains(confirm.X, confirm.Y, confirm.W, confirm.H, mouse.X, mouse.Y) {
 			if d.confirming {
 				m.deleteIdlePanes()
-			} else if d.selected() > 0 {
+			} else if d.selected() > 0 || len(d.failures) > 0 {
 				d.confirming = true
 			}
 		}
@@ -214,7 +224,7 @@ func (m *machineClient) idleInput(ev input.Event) bool {
 			d.entries[i].selected = true
 		}
 	case uv.KeyEnter:
-		if d.selected() > 0 {
+		if d.selected() > 0 || len(d.failures) > 0 {
 			d.confirming = true
 		}
 	}
@@ -235,6 +245,7 @@ func (m *machineClient) deleteIdlePanes() {
 	}
 	d.confirming = false
 	d.deleting = true
+	d.failed += len(d.failures)
 	d.pending = map[string]int{}
 	for id, request := range grouped {
 		e := m.endpoints[id]
@@ -262,9 +273,9 @@ func (m *machineClient) idleDeleteResult(id string, request uint64, result *endp
 	}
 	m.finishIdleDelete()
 }
-func (m *machineClient) idleDisconnect(id string) {
+func (m *machineClient) idleDisconnect(id string, err error) {
 	d := m.idle
-	if d == nil || d.pending[id] == 0 {
+	if d == nil {
 		return
 	}
 	n := d.pending[id]
@@ -272,7 +283,25 @@ func (m *machineClient) idleDisconnect(id string) {
 	if d.deleting {
 		d.failed += n
 		m.finishIdleDelete()
-	} else if len(d.pending) == 0 {
+		return
+	}
+	if n > 0 {
+		if e := m.endpoints[id]; e != nil {
+			d.failures = append(d.failures, idleFailure{e.profile.Label, err.Error()})
+		}
+	}
+	entries := d.entries[:0]
+	for _, entry := range d.entries {
+		if entry.machine != id {
+			entries = append(entries, entry)
+		}
+	}
+	d.entries = entries
+	d.cursor = min(d.cursor, max(0, len(d.visible())-1))
+	if d.confirming && d.selected() == 0 && len(d.failures) == 0 {
+		d.confirming = false
+	}
+	if len(d.pending) == 0 {
 		d.loading = false
 		sort.SliceStable(d.entries, func(i, j int) bool { return d.entries[i].pane.AgeNanos > d.entries[j].pane.AgeNanos })
 	}
@@ -283,6 +312,9 @@ func (m *machineClient) finishIdleDelete() {
 		return
 	}
 	m.idleToast = fmt.Sprintf("deleted %d · failed %d", d.deleted, d.failed)
+	for _, failure := range d.failures {
+		m.idleToast += " · " + failure.label + ": " + failure.reason
+	}
 	m.noticeUntil = time.Now().Add(connectionNotice)
 	m.idle = nil
 }

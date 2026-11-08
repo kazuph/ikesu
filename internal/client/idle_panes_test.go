@@ -1,12 +1,16 @@
 package client
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/runtime"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +31,62 @@ func TestIdleInitiallySelected(t *testing.T) {
 				t.Fatalf("got %v want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// The two real servers include a build of the pre-feature revision, so this test may take over five seconds.
+func TestIdlePanesOldAndNewServers(t *testing.T) {
+	archive, err := exec.Command("git", "archive", "c8da28a1").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	untar := exec.Command("tar", "-xf", "-", "-C", dir)
+	untar.Stdin = bytes.NewReader(archive)
+	if out, err := untar.CombinedOutput(); err != nil {
+		t.Fatalf("unpack old server: %v %s", err, out)
+	}
+	binary := filepath.Join(dir, "ikesu-old")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/ikesu")
+	build.Dir = dir
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build old server: %v %s", err, out)
+	}
+	t.Setenv("IKESU_IDLE_OLD_SERVER_BIN", binary)
+	h := newRightMachineHarness(t, true)
+	m := h.m
+	m.openIdlePanes()
+	h.until("new server list", func() bool { return m.idle != nil && !m.idle.loading })
+	if len(m.idle.entries) != 2 || !strings.Contains(strings.Join(m.idle.dialog().Lines, "\n"), "remote: unsupported") {
+		t.Fatalf("mixed server list: %+v %+v", m.idle.entries, m.idle.dialog().Lines)
+	}
+	m.idle.entries[0].selected = true
+	m.deleteIdlePanes()
+	h.until("mixed server delete", func() bool { return m.idle == nil })
+	if m.idleToast != "deleted 1 · failed 1 · remote: unsupported" {
+		t.Fatal(m.idleToast)
+	}
+}
+
+func TestIdlePanesDisconnectAfterList(t *testing.T) {
+	h := newRightMachineHarness(t, true)
+	m := h.m
+	m.openIdlePanes()
+	h.until("both lists", func() bool { return m.idle != nil && !m.idle.loading })
+	for i := range m.idle.entries {
+		m.idle.entries[i].selected = true
+	}
+	m.idle.cursor = 3
+	m.idle.confirming = true
+	m.endpoints["remote"].connection.stream.Close()
+	m.fail("remote", errors.New("connection closed"))
+	if len(m.idle.entries) != 2 || m.idle.selected() != 2 || m.idle.cursor != 1 || !strings.Contains(m.idle.dialog().Detail, "delete 2 panes?") {
+		t.Fatalf("disconnect: %+v dialog=%+v", m.idle, m.idle.dialog())
+	}
+	m.deleteIdlePanes()
+	h.until("remaining server delete", func() bool { return m.idle == nil })
+	if m.idleToast != "deleted 1 · failed 1" {
+		t.Fatal(m.idleToast)
 	}
 }
 
