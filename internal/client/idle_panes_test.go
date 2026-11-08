@@ -30,6 +30,22 @@ func TestIdleInitiallySelected(t *testing.T) {
 	}
 }
 
+func TestIdleAgeDisplay(t *testing.T) {
+	for _, tc := range []struct {
+		age  time.Duration
+		want string
+	}{
+		{59 * time.Second, "0m"}, {59 * time.Minute, "59m"},
+		{time.Hour, "1h 0m"}, {2*time.Hour + 4*time.Minute, "2h 4m"},
+		{24*time.Hour - time.Minute, "23h 59m"}, {24 * time.Hour, "1d 0h"},
+		{52 * time.Hour, "2d 4h"},
+	} {
+		if got := idleAge(tc.age); got != tc.want {
+			t.Errorf("%s: got %q want %q", tc.age, got, tc.want)
+		}
+	}
+}
+
 func TestIdleUnknownInputIsNotInitiallySelected(t *testing.T) {
 	if idleInitiallySelected(endpoint.IdlePane{State: "idle"}, false, true) {
 		t.Fatal("unrecognized prompt must not be assumed empty")

@@ -129,7 +129,7 @@ func (d *idleDialog) dialog() *render.Dialog {
 		if len(visible) > 0 && visible[d.cursor] == i {
 			pointer = ">"
 		}
-		age := time.Duration(e.pane.AgeNanos).Truncate(time.Hour)
+		age := idleAge(time.Duration(e.pane.AgeNanos))
 		state := e.pane.State
 		if !e.pane.InputKnown {
 			state += " · input unknown"
@@ -141,6 +141,15 @@ func (d *idleDialog) dialog() *render.Dialog {
 	}
 	lines = append(lines, "space toggle · a all · enter delete selected")
 	return &render.Dialog{Title: "delete idle panes", Detail: detail, Lines: lines, Confirm: "delete selected", Cancel: "close", CenterTerminal: true, PreserveTitleCase: true}
+}
+func idleAge(age time.Duration) string {
+	if age >= 24*time.Hour {
+		return fmt.Sprintf("%dd %dh", age/(24*time.Hour), age%(24*time.Hour)/time.Hour)
+	}
+	if age >= time.Hour {
+		return fmt.Sprintf("%dh %dm", age/time.Hour, age%time.Hour/time.Minute)
+	}
+	return fmt.Sprintf("%dm", age/time.Minute)
 }
 func (m *machineClient) idleInput(ev input.Event) bool {
 	d := m.idle

@@ -61,6 +61,32 @@ func TestIdlePanesKeepsLastPane(t *testing.T) {
 	}
 }
 
+func TestIdlePanesUsesSidebarAndTabBarNames(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
+	id := a.st.FocusedPane()
+	a.SetReported(id, "codex", "idle")
+	ws := a.st.Workspaces[0]
+	for _, tc := range []struct {
+		sidebar, name, tab, wantWorkspace, wantTab string
+		custom                                     bool
+	}{
+		{"sidebar name", "stored", "", "sidebar name", "1", false},
+		{"sidebar name", "custom name", "named tab", "custom name", "named tab", true},
+	} {
+		a.workspaceNames = map[int]string{0: tc.sidebar}
+		ws.Name, ws.CustomName, ws.Tabs[0].Name = tc.name, tc.custom, tc.tab
+		got := a.IdlePanes().Panes
+		if len(got) != 1 || got[0].WorkspaceName != tc.wantWorkspace || got[0].TabName != tc.wantTab {
+			t.Fatalf("names: %+v, want %q / %q", got, tc.wantWorkspace, tc.wantTab)
+		}
+	}
+}
+
 func TestIdleWorkingReportUpdatesActivity(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
