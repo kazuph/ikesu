@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/model"
@@ -13,6 +14,67 @@ import (
 	"strings"
 	"time"
 )
+
+type workspaceGitTarget struct {
+	id           int
+	cwd, nameCwd string
+}
+
+// refreshStaleWorktrees re-anchors a space whose first pane's shell has left
+// the checkout its worktree metadata names (for example a reused space), so
+// it is no longer drawn as another repo's linked worktree.
+func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[string]gitCwdActivity) {
+	for _, t := range targets {
+		if t.nameCwd == t.cwd {
+			continue // no live shell directory beyond the creation directory
+		}
+		i := -1
+		for wi, w := range a.st.Workspaces {
+			if w.ID == t.id {
+				i = wi
+				break
+			}
+		}
+		if i < 0 {
+			continue
+		}
+		info := a.st.Workspaces[i].Worktree
+		entry, ok := entries[t.nameCwd]
+		if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {
+			continue
+		}
+		var next *api.WorkspaceWorktreeInfo
+		if entry.sourceErr == nil {
+			next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
+		}
+		a.exec(model.CmdSetWorktree{Index: i, Info: next})
+		a.dirty = true
+	}
+}
+
+// workspacePreviewLines reads one line per space from its first tab's first
+// pane, only while the full density shows the preview line.
+func (a *App) workspacePreviewLines() map[int]string {
+	if a.st.WorkspaceDensity == "slim" || a.st.WorkspaceDensity == "oneline" || a.sidebarConfig.UI.Sidebar.Spaces.Rows != nil {
+		return nil
+	}
+	out := map[int]string{}
+	for _, w := range a.st.Workspaces {
+		if len(w.Tabs) == 0 {
+			continue
+		}
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) == 0 {
+			continue
+		}
+		if p := a.sup.Get(ids[0]); p != nil {
+			if line := p.PreviewLine(); line != "" {
+				out[w.ID] = line
+			}
+		}
+	}
+	return out
+}
 
 type workspaceDirectoryLabel struct {
 	cwd, name string
@@ -43,15 +105,11 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	if a.gitActivity == nil {
 		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}}
 	}
-	type target struct {
-		id           int
-		cwd, nameCwd string
-	}
-	var targets []target
+	var targets []workspaceGitTarget
 	wanted := map[string]bool{}
 	for _, w := range a.st.Workspaces {
 		nameCwd := a.workspaceNameCwd(w)
-		targets = append(targets, target{w.ID, w.Cwd, nameCwd})
+		targets = append(targets, workspaceGitTarget{w.ID, w.Cwd, nameCwd})
 		wanted[w.Cwd], wanted[nameCwd] = true, true
 	}
 	state := a.gitActivity
@@ -118,6 +176,12 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			a.workspaceNames[i] = name
 		}
 		a.gitPending = false
+		a.refreshStaleWorktrees(targets, state.entries)
+		previews := a.workspacePreviewLines()
+		if !reflect.DeepEqual(previews, a.workspacePreviews) {
+			a.workspacePreviews = previews
+			a.dirty = true
+		}
 		if !reflect.DeepEqual(previousLabels, a.workspaceLabels) || !reflect.DeepEqual(previousGit, a.workspaceGit) || !reflect.DeepEqual(previousNames, a.workspaceNames) {
 			a.dirty = true
 		}

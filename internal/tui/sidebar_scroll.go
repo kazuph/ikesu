@@ -65,8 +65,8 @@ func (a *App) sidebarWheel(m uv.Mouse, up bool) {
 	view := a.sidebarView()
 	v, off := view.Workspace, &a.sidebarScroll
 	step := 3
-	if a.st.WorkspaceDensity == "slim" && a.sidebarConfig.UI.Sidebar.Spaces.Rows == nil {
-		step = 2 // The observed slim workspace card has a name row and a git row.
+	if a.sidebarConfig.UI.Sidebar.Spaces.Rows == nil {
+		step = render.WorkspaceCardHeight(a.st.WorkspaceDensity) // one card per wheel step
 	}
 	if pointIn(m.X, m.Y, view.Agents.Rect) {
 		v, off = view.Agents, &a.agentScroll

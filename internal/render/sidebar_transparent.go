@@ -13,7 +13,9 @@ func clearSidebarCardBackground(f *Frame, s *model.AppState, row SidebarRow, x, 
 	}
 	for col := x; col < x+width; col++ {
 		if cell := f.Cell(col, y); cell != nil {
-			cell.Style.Bg = nil
+			if _, chip := cell.Style.Bg.(tabChipBackground); !chip {
+				cell.Style.Bg = nil
+			}
 		}
 	}
 	if row.Ws == s.Active && row.Kind != RowAgent {

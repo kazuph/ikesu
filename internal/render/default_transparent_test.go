@@ -101,5 +101,10 @@ func tabBackgroundExpectation(out *Output, s *model.AppState, x, y int) (color.C
 			return out.Frame.Palette.Surface, true
 		}
 	}
+	for _, r := range out.Frame.TabChips {
+		if y == r.Y && x >= r.X && x < r.X+r.W {
+			return out.Frame.Palette.Accent, true
+		}
+	}
 	return nil, false
 }

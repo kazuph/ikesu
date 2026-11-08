@@ -210,7 +210,7 @@ func (a *App) draw() {
 		AgentScroll:       a.agentScroll,
 		JobDots:           a.jobDots,
 		Jobs:              a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll,
-		Git: a.workspaceGit, WorkspaceNames: a.workspaceNames,
+		Git: a.workspaceGit, WorkspaceNames: a.workspaceNames, WorkspacePreviews: a.workspacePreviews,
 		CopyLabel: a.copyLabel(),
 		Copy:      a.copyMark(),
 		CopyHint:  a.copyHint(),

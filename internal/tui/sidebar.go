@@ -185,10 +185,7 @@ func (a *App) toggleSidebarSetting(density bool) {
 	}
 	if density {
 		key = "workspace_panel_density"
-		value = "slim"
-		if a.st.WorkspaceDensity == "slim" {
-			value = "full"
-		}
+		value = render.NextWorkspaceDensity(a.st.WorkspaceDensity)
 	}
 	var edit config.Edit
 	if density {

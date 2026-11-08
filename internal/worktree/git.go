@@ -192,13 +192,20 @@ func Remove(cwd, path string, force bool) error {
 	return err
 }
 
-func SamePath(a, b string) bool {
-	canonical := func(p string) string {
-		p, _ = filepath.Abs(p)
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			return real
-		}
-		return filepath.Clean(p)
+func canonicalPath(p string) string {
+	p, _ = filepath.Abs(p)
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
 	}
-	return canonical(a) == canonical(b)
+	return filepath.Clean(p)
+}
+
+func SamePath(a, b string) bool {
+	return canonicalPath(a) == canonicalPath(b)
+}
+
+// Within reports whether path is dir or below it.
+func Within(path, dir string) bool {
+	rel, err := filepath.Rel(canonicalPath(dir), canonicalPath(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

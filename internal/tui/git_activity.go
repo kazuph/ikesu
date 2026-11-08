@@ -7,9 +7,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/worktree"
 )
 
 type gitCwdActivity struct {
@@ -18,6 +20,9 @@ type gitCwdActivity struct {
 	revision      uint64
 	git           render.GitStatus
 	name          string
+	// source is the checkout this directory is in, read off the app loop.
+	source        api.WorktreeSourceInfo
+	sourceErr     error
 	paths         map[string]gitPathState
 	tracked       []string
 	trackedNext   int
@@ -131,7 +136,11 @@ func gitActivityOutput(cwd string, args ...string) ([]byte, error) {
 func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	values := func(ready bool, revision uint64) gitCwdActivity {
 		entry.git = readWorkspaceGit(cwd)
-		entry.name = workspaceDirectoryName(cwd)
+		entry.source, entry.sourceErr = worktree.Source(cwd)
+		entry.name = filepath.Base(cwd)
+		if entry.sourceErr == nil {
+			entry.name = filepath.Base(entry.source.SourceCheckoutPath)
+		}
 		entry.revision, entry.ready, entry.loaded = revision, ready, true
 		return entry
 	}

@@ -1017,3 +1017,41 @@ func (s *Supervisor) LockedPanes() ([]int, bool) {
 	sort.Ints(ids)
 	return ids, true
 }
+
+// PreviewLine is one line that tells what the pane is doing: the nearest
+// text above an agent's input line (a row starting with "❯" or "›"),
+// skipping blank rows and rules, or else the lowest non-blank row.
+func (p *Pane) PreviewLine() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	w, h := p.emu.Width(), p.emu.Height()
+	row := func(y int) string {
+		var sb strings.Builder
+		for x := 0; x < w; x++ {
+			if c := p.emu.CellAt(x, y); c != nil && c.Width > 0 {
+				sb.WriteString(c.Content)
+			}
+		}
+		return strings.TrimSpace(sb.String())
+	}
+	empty := func(line string) bool {
+		return strings.Trim(line, "─━═-") == ""
+	}
+	lowest := ""
+	for y := h - 1; y >= 0; y-- {
+		line := row(y)
+		if lowest == "" && !empty(line) {
+			lowest = line
+		}
+		if !strings.HasPrefix(line, "❯") && !strings.HasPrefix(line, "›") {
+			continue
+		}
+		for above := y - 1; above >= 0; above-- {
+			if text := row(above); !empty(text) {
+				return text
+			}
+		}
+		break
+	}
+	return lowest
+}
