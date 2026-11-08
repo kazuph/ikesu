@@ -57,7 +57,7 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 	switch r.Kind {
 	case render.RowTitle:
 		_, _, w, _ := render.SidebarContent(s.SidebarArea())
-		if m.X >= s.SidebarArea().X+w-6 {
+		if m.X >= s.SidebarArea().X+w-len(render.WorkspaceDensityLabel(s.WorkspaceDensity)) {
 			a.toggleSidebarSetting(true)
 		}
 		return true

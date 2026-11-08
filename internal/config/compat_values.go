@@ -18,7 +18,7 @@ func (c *Config) validateValues() {
 		{"ui.host_cursor", &c.UI.HostCursor, []string{"auto", "native", "drawn"}},
 		{"ui.agent_panel_sort", &c.UI.AgentPanelSort, []string{"spaces", "workspaces", "priority"}},
 		{"ui.agent_panel_scope", &c.UI.AgentPanelScope, []string{"all", "sort", "current"}},
-		{"ui.workspace_panel_density", &c.UI.WorkspacePanelDensity, []string{"full", "slim"}},
+		{"ui.workspace_panel_density", &c.UI.WorkspacePanelDensity, []string{"full", "slim", "oneline"}},
 		{"ui.toast.delivery", &c.UI.Toast.Delivery, []string{"off", "herdr", "ikesu", "terminal", "system"}},
 		{"ui.toast.herdr.position", &c.UI.Toast.Herdr.Position, []string{"top-left", "top-right", "bottom-left", "bottom-right"}},
 		{"ui.toast.clipboard.position", &c.UI.Toast.Clipboard.Position, []string{"top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"}},

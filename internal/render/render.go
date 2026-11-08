@@ -138,12 +138,15 @@ type Input struct {
 	SidebarHover       bool
 	RightSidebarHover  bool
 	// JobDots maps workspace index → job dots drawn on its sidebar row.
-	JobDots           map[int][]JobDot
-	Jobs              []JobRow
-	JobsPanel         bool
-	JobScroll         int
-	Git               map[int]GitStatus
-	WorkspaceNames    map[int]string
+	JobDots        map[int][]JobDot
+	Jobs           []JobRow
+	JobsPanel      bool
+	JobScroll      int
+	Git            map[int]GitStatus
+	WorkspaceNames map[int]string
+	// WorkspacePreviews maps workspace ID → one line from its first tab's
+	// first pane, shown as the full density card's third line.
+	WorkspacePreviews map[int]string
 	SelectedWorkspace *int
 	DropIndex         *int
 	DragSection       model.Section

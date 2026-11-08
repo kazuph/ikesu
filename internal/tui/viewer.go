@@ -112,7 +112,7 @@ func (v *Viewer) with(a *App, fn func(*App)) {
 	v.app.fossils, v.app.visibleIdle = a.fossils, a.visibleIdle
 	v.app.jobRows, v.app.jobDots = a.jobRows, a.jobDots
 	v.app.workspaceGit, v.app.workspaceNames = a.workspaceGit, a.workspaceNames
-	v.app.workspaceLabels = a.workspaceLabels
+	v.app.workspaceLabels, v.app.workspacePreviews = a.workspaceLabels, a.workspacePreviews
 	v.app.metadataViews = a.metadataViews
 	v.app.sessionCwds = a.sessionCwds
 	v.app.editorFiles = a.editorFiles

@@ -5,6 +5,9 @@ import "github.com/kazuph/ikesu/internal/api"
 type CmdSetWorktree struct {
 	Index int
 	Info  *api.WorkspaceWorktreeInfo
+	// Cwd, when set, also moves the space's directory (git line, new panes
+	// and worktree actions) to where its first pane's shell now is.
+	Cwd string
 }
 
 func (CmdSetWorktree) isCommand() {}

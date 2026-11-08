@@ -285,8 +285,8 @@ func (m *machineClient) input(event input.Event) error {
 				}
 				if event.Kind == input.KindMouseWheel {
 					step := 3
-					if active.snapshot.State.WorkspaceDensity == "slim" && active.snapshot.SidebarConfig.UI.Sidebar.Spaces.Rows == nil {
-						step = 2
+					if active.snapshot.SidebarConfig.UI.Sidebar.Spaces.Rows == nil {
+						step = render.WorkspaceCardHeight(active.snapshot.State.WorkspaceDensity)
 					}
 					if event.Mouse.Button == uv.MouseWheelUp {
 						m.sidebar.Scroll -= step

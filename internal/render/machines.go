@@ -93,12 +93,18 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 					if group.ID != m.Oyagoi.Machine || group.Input == nil {
 						continue
 					}
+					// The HQ card has the same lines as the space's card in its section.
+					card := func(wi int) {
+						for _, row := range WorkspaceCardRows(group.Input.State, group.Input.SidebarConfig, wi) {
+							rows = append(rows, machineRow{group: gi, row: row, hqWorkspace: row.Kind != RowBlank})
+						}
+					}
 					if wi := m.Oyagoi.WorkspaceIndex; wi != nil && *wi >= 0 && *wi < len(group.Input.State.Workspaces) && group.Input.State.Workspaces[*wi].ID == m.Oyagoi.Workspace {
-						rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: *wi}, hqWorkspace: true})
+						card(*wi)
 					} else if wi == nil {
 						for wi, ws := range group.Input.State.Workspaces {
 							if ws.ID == m.Oyagoi.Workspace {
-								rows = append(rows, machineRow{group: gi, row: SidebarRow{Kind: RowWorkspace, Ws: wi}, hqWorkspace: true})
+								card(wi)
 								break
 							}
 						}

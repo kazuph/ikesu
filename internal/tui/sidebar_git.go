@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/model"
@@ -13,6 +14,90 @@ import (
 	"strings"
 	"time"
 )
+
+type workspaceGitTarget struct {
+	id           int
+	cwd, nameCwd string
+}
+
+// refreshStaleWorktrees re-anchors a space whose first pane's shell has left
+// the checkout its worktree metadata names (for example a reused space). The
+// space's directory moves with it, so the git line and worktree actions use
+// the same checkout as the grouping.
+func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[string]gitCwdActivity) {
+	index := make(map[int]int, len(a.st.Workspaces))
+	for i, w := range a.st.Workspaces {
+		index[w.ID] = i
+	}
+	for _, t := range targets {
+		if t.nameCwd == t.cwd {
+			continue // no live shell directory beyond the space's directory
+		}
+		i, ok := index[t.id]
+		if !ok {
+			continue
+		}
+		info := a.st.Workspaces[i].Worktree
+		entry, ok := entries[t.nameCwd]
+		if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {
+			continue
+		}
+		var next *api.WorkspaceWorktreeInfo
+		if entry.sourceErr == nil {
+			next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
+		}
+		a.exec(model.CmdSetWorktree{Index: i, Info: next, Cwd: t.nameCwd})
+		a.dirty = true
+	}
+}
+
+type workspacePreview struct {
+	revision uint64
+	line     string
+}
+
+// workspacePreviewLines reads one line per space from its first tab's first
+// pane. Each screen chooses its own density, so the line is kept for all of
+// them; a pane is read again only after it printed something.
+func (a *App) workspacePreviewLines() map[int]string {
+	if a.sidebarConfig.UI.Sidebar.Spaces.Rows != nil {
+		return nil
+	}
+	out := map[int]string{}
+	seen := map[int]bool{}
+	for _, w := range a.st.Workspaces {
+		if len(w.Tabs) == 0 {
+			continue
+		}
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) == 0 {
+			continue
+		}
+		p := a.sup.Get(ids[0])
+		if p == nil {
+			continue
+		}
+		seen[ids[0]] = true
+		revision := p.OutputRevision()
+		cached, ok := a.previewCache[ids[0]]
+		if !ok || cached.revision != revision {
+			cached = workspacePreview{revision, p.PreviewLine()}
+			if a.previewCache == nil {
+				a.previewCache = map[int]workspacePreview{}
+			}
+			a.previewCache[ids[0]] = cached
+		}
+		if cached.line != "" {
+			out[w.ID] = cached.line
+		}
+	}
+	for pid := range a.previewCache {
+		if !seen[pid] {
+			delete(a.previewCache, pid)
+		}
+	}
+	return out
+}
 
 type workspaceDirectoryLabel struct {
 	cwd, name string
@@ -43,15 +128,11 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	if a.gitActivity == nil {
 		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}}
 	}
-	type target struct {
-		id           int
-		cwd, nameCwd string
-	}
-	var targets []target
+	var targets []workspaceGitTarget
 	wanted := map[string]bool{}
 	for _, w := range a.st.Workspaces {
 		nameCwd := a.workspaceNameCwd(w)
-		targets = append(targets, target{w.ID, w.Cwd, nameCwd})
+		targets = append(targets, workspaceGitTarget{w.ID, w.Cwd, nameCwd})
 		wanted[w.Cwd], wanted[nameCwd] = true, true
 	}
 	state := a.gitActivity
@@ -118,6 +199,12 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			a.workspaceNames[i] = name
 		}
 		a.gitPending = false
+		a.refreshStaleWorktrees(targets, state.entries)
+		previews := a.workspacePreviewLines()
+		if !reflect.DeepEqual(previews, a.workspacePreviews) {
+			a.workspacePreviews = previews
+			a.dirty = true
+		}
 		if !reflect.DeepEqual(previousLabels, a.workspaceLabels) || !reflect.DeepEqual(previousGit, a.workspaceGit) || !reflect.DeepEqual(previousNames, a.workspaceNames) {
 			a.dirty = true
 		}

@@ -27,8 +27,9 @@ func (c Config) SidebarBounds() (lo, hi, normal int, err error) {
 	return
 }
 func (c Config) WorkspaceDensity() string {
-	if c.UI.WorkspacePanelDensity == "slim" {
-		return "slim"
+	switch c.UI.WorkspacePanelDensity {
+	case "slim", "oneline":
+		return c.UI.WorkspacePanelDensity
 	}
 	return "full"
 }

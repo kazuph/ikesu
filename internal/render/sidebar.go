@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
+	"image/color"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -73,6 +74,64 @@ func drawSectionHeading(f *Frame, x, y, width int, label string, collapsed, drag
 	}
 }
 
+// WorkspaceCardRows is one space's card: the name, then (slim and full) the
+// tabs and git line, then (full) a preview of the first tab's first pane.
+// "oneline" keeps only the name; a linked worktree stays one indented line.
+func WorkspaceCardRows(s *model.AppState, cfg config.Config, wi int) []SidebarRow {
+	rows := []SidebarRow{{Kind: RowWorkspace, Ws: wi}}
+	w := s.Workspaces[wi]
+	if w.Worktree != nil && w.Worktree.IsLinkedWorktree {
+		return rows
+	}
+	count := 2
+	if cfg.UI.Sidebar.Spaces.Rows != nil {
+		count = len(cfg.UI.Sidebar.Spaces.Rows)
+	}
+	if s.WorkspaceDensity == "oneline" {
+		count = 1
+	}
+	for line := 1; line < count; line++ {
+		rows = append(rows, SidebarRow{Kind: RowGit, Ws: wi, Line: line})
+	}
+	if s.WorkspaceDensity != "slim" && s.WorkspaceDensity != "oneline" && cfg.UI.Sidebar.Spaces.Rows == nil {
+		rows = append(rows, SidebarRow{Kind: RowCardBlank, Ws: wi})
+	}
+	for gap := 0; gap < cfg.UI.Sidebar.Spaces.RowGap; gap++ {
+		rows = append(rows, SidebarRow{Kind: RowBlank})
+	}
+	return rows
+}
+
+// NextWorkspaceDensity is the [full]/[slim]/[oneline] button's cycle.
+func NextWorkspaceDensity(v string) string {
+	switch v {
+	case "slim":
+		return "oneline"
+	case "oneline":
+		return "full"
+	}
+	return "slim"
+}
+
+// WorkspaceDensityLabel is the clickable title button text.
+func WorkspaceDensityLabel(density string) string {
+	if density != "slim" && density != "oneline" {
+		density = "full"
+	}
+	return "[" + density + "]"
+}
+
+// WorkspaceCardHeight is the default card's line count, used as the wheel step.
+func WorkspaceCardHeight(density string) int {
+	switch density {
+	case "slim":
+		return 2
+	case "oneline":
+		return 1
+	}
+	return 3
+}
+
 func SidebarRows(s *model.AppState, panes map[int]*PaneSnap, configs ...config.Config) []SidebarRow {
 	var cfg config.Config
 	if len(configs) > 0 {
@@ -92,22 +151,7 @@ func sidebarRows(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, 
 			}
 			count++
 			if !s.CollapsedSections[sec] {
-				cards = append(cards, SidebarRow{Kind: RowWorkspace, Ws: wi})
-				if w.Worktree == nil || !w.Worktree.IsLinkedWorktree {
-					count := 2
-					if cfg.UI.Sidebar.Spaces.Rows != nil {
-						count = len(cfg.UI.Sidebar.Spaces.Rows)
-					}
-					for line := 1; line < count; line++ {
-						cards = append(cards, SidebarRow{Kind: RowGit, Ws: wi, Line: line})
-					}
-					if s.WorkspaceDensity != "slim" && cfg.UI.Sidebar.Spaces.Rows == nil {
-						cards = append(cards, SidebarRow{Kind: RowCardBlank, Ws: wi})
-					}
-					for gap := 0; gap < cfg.UI.Sidebar.Spaces.RowGap; gap++ {
-						cards = append(cards, SidebarRow{Kind: RowBlank})
-					}
-				}
+				cards = append(cards, WorkspaceCardRows(s, cfg, wi)...)
 			}
 		}
 		if count == 0 {
@@ -236,7 +280,7 @@ func drawSidebar(f *Frame, s *model.AppState, in Input) {
 		drawSidebarRow(f, s, in, pos.Row, ix, pos.Y, width, bar)
 	}
 	if !in.ServerUI {
-		drawSidebarScrollbar(f, view.Workspace, s.WorkspaceDensity == "slim" && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
+		drawSidebarScrollbar(f, view.Workspace, (s.WorkspaceDensity == "slim" || s.WorkspaceDensity == "oneline") && in.SidebarConfig.UI.Sidebar.Spaces.Rows == nil)
 	}
 
 	drop := in.DropIndex
@@ -337,11 +381,7 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 		} else {
 			f.Text(ix, y, " spaces", border, ix+iw)
 		}
-		v := s.WorkspaceDensity
-		if v != "slim" {
-			v = "full"
-		}
-		label := "[" + v + "]"
+		label := WorkspaceDensityLabel(s.WorkspaceDensity)
 		f.Text(ix+iw-len(label), y, label, border, ix+iw)
 	case RowRule:
 		for x := ix; x < ix+iw; x++ {
@@ -399,6 +439,9 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 			}
 		}
 		if r.Kind == RowCardBlank {
+			if text := in.WorkspacePreviews[ws.ID]; text != "" {
+				f.Text(ix+3, y, truncate(text, max(0, iw-3)), uv.Style{Fg: f.Palette.Dim, Bg: sty.Bg}, ix+iw)
+			}
 			return
 		}
 		if r.Kind == RowGit {
@@ -415,6 +458,7 @@ func drawSidebarRowContent(f *Frame, s *model.AppState, in Input, r SidebarRow, 
 					gitX = f.Text(gitX, y, " ", sty, ix+iw)
 				}
 			}
+			gitX = drawTabChips(f, ws, in, gitX, y, ix+iw, sty.Bg)
 			g := in.Git[r.Ws]
 			if in.ServerUI {
 				g.Ahead, g.Behind, g.Added, g.Deleted = 0, 0, 0, 0
@@ -669,4 +713,38 @@ func sidebarAgentTargets(s *model.AppState, panes map[int]*PaneSnap, cfg config.
 	agents = projectAgentRows(s, panes, agents)
 
 	return agents
+}
+
+// drawTabChips draws each tab of the space as a chip styled like the tab
+// bar's active tab, before the git status. It returns the next free column.
+func drawTabChips(f *Frame, ws *model.Workspace, in Input, x, y, limit int, bg color.Color) int {
+	for i, t := range ws.Tabs {
+		if x >= limit {
+			break
+		}
+		name := t.Name
+		if name == "" {
+			name = fmt.Sprint(i + 1)
+		}
+		chip := uv.Style{Fg: f.Palette.SurfDim}
+		if f.Palette.Accent != nil {
+			chip.Bg = tabChipBackground{f.Palette.Accent}
+		}
+		if t.Name != "" {
+			chip.Attrs = uv.AttrBold
+		}
+		g := tabGlyph(t, in)
+		if g.Rune == " " {
+			g.Rune = "·"
+		}
+		start := x
+		x = f.Text(x, y, " ", chip, limit)
+		x = f.Text(x, y, g.Rune, uv.Style{Fg: f.ThemeColor(g.Color), Bg: chip.Bg, Attrs: boldIf(g.Bold)}, limit)
+		x = f.Text(x, y, " "+name+" ", chip, limit)
+		if x > start {
+			f.TabChips = append(f.TabChips, layout.Rect{X: start, Y: y, W: x - start, H: 1})
+		}
+		x = f.Text(x, y, " ", uv.Style{Bg: bg}, limit)
+	}
+	return x
 }

@@ -76,7 +76,7 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 		return
 	}
 	ws := a.st.Workspaces[index]
-	id := ws.ID
+	id, shown := ws.ID, ws.Cwd
 	title := "Delete worktree checkout?"
 	detail := ws.Cwd
 	if force {
@@ -91,6 +91,12 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 		for i, w := range a.st.Workspaces {
 			if w.ID != id {
 				continue
+			}
+			// The space follows its first pane's shell, so it may point at
+			// another checkout than the one this dialog showed.
+			if !worktree.SamePath(w.Cwd, shown) {
+				a.worktreeError(fmt.Errorf("not deleted: this space moved to %s after the dialog opened; open delete again", w.Cwd))
+				return
 			}
 			_, err := a.RemoveWorktree(i, force)
 			if err != nil {

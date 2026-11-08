@@ -69,6 +69,9 @@ func (s *AppState) Apply(cmd Command) (effects []Effect) {
 	case CmdSetWorktree:
 		if c.Index >= 0 && c.Index < len(s.Workspaces) {
 			s.Workspaces[c.Index].Worktree = c.Info
+			if c.Cwd != "" {
+				s.Workspaces[c.Index].Cwd = c.Cwd
+			}
 		}
 		return nil
 	case CmdMoveTab:

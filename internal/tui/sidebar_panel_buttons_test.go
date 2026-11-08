@@ -17,9 +17,9 @@ func TestSidebarPanelDensityHeaderPersists(t *testing.T) {
 	a := specRuntimeApp(t)
 	a.serverUI = true
 	a.setSidebarConfig(config.Config{}, true)
-	for _, want := range []string{"slim", "full"} {
+	for _, want := range []string{"slim", "oneline", "full"} {
 		frame := render.Compose(a.rightSidebarInput()).Frame
-		x := a.st.SidebarArea().W - 7
+		x := a.st.SidebarArea().W - 1 - len(render.WorkspaceDensityLabel(a.st.WorkspaceDensity))
 		for i, ch := range "[" + a.st.WorkspaceDensity + "]" {
 			if frame.Cell(x+i, 0).Content != string(ch) {
 				t.Fatalf("density button missing: cell %d = %q", x+i, frame.Cell(x+i, 0).Content)
