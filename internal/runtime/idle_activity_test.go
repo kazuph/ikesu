@@ -96,3 +96,31 @@ func TestIdleActivityHandoffIncludesInputAfterSnapshot(t *testing.T) {
 		t.Fatalf("late activity = %v %d, want %v %d", got, n, at, seq)
 	}
 }
+
+func TestIdleUnsentInputRecognition(t *testing.T) {
+	for _, tc := range []struct {
+		agent, screen  string
+		pending, known bool
+	}{
+		{"codex", "› \x1b[2mAsk Codex to do anything\x1b[0m", false, true},
+		{"codex", "› unfinished", true, true},
+		{"claude", "❯ unfinished", true, true},
+		{"codex", "no prompt", false, false},
+		{"muse", "⟩ unfinished", false, false},
+	} {
+		t.Run(tc.agent+tc.screen, func(t *testing.T) {
+			s := NewSupervisor()
+			p, err := s.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.KillAll()
+			p.SetAgent(tc.agent)
+			p.WithEmu(func(e *vt.Emulator) { _, _ = e.Write([]byte("\x1b[H\x1b[2J" + tc.screen)) })
+			pending, known := p.UnsentAgentInput()
+			if pending != tc.pending || known != tc.known {
+				t.Fatalf("got %v %v want %v %v", pending, known, tc.pending, tc.known)
+			}
+		})
+	}
+}

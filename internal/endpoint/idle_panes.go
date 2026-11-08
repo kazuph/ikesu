@@ -14,6 +14,7 @@ type IdlePane struct {
 	TabName             string `json:"tab_name"`
 	AgeNanos            int64  `json:"age_nanos"`
 	PendingInput        bool   `json:"pending_input"`
+	InputKnown          bool   `json:"input_known"`
 	Focused             bool   `json:"focused"`
 }
 

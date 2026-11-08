@@ -26,7 +26,7 @@ func TestG2SettingsSectionsSaveApplyReloadAndClose(t *testing.T) {
 	applied := config.Config{}
 	a.SetConfigChanged(func(c config.Config) { applied = c })
 	a.openMainMenu(0, 0)
-	a.activateMenu(3)
+	a.activateMenu(menuIndex(a, "settings"))
 	if a.settings == nil || a.settings.Section != 0 {
 		t.Fatal("settings menu")
 	}

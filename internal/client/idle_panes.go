@@ -73,7 +73,7 @@ func (m *machineClient) idleListResult(id string, request uint64, list *endpoint
 }
 
 func idleInitiallySelected(p endpoint.IdlePane, hq, activeMachine bool) bool {
-	return (p.State == "idle" || p.State == "done") && !p.PendingInput && !(p.Focused && activeMachine) && !hq
+	return (p.State == "idle" || p.State == "done") && p.InputKnown && !p.PendingInput && !(p.Focused && activeMachine) && !hq
 }
 func (d *idleDialog) visible() []int {
 	var out []int
@@ -130,7 +130,11 @@ func (d *idleDialog) dialog() *render.Dialog {
 			pointer = ">"
 		}
 		age := time.Duration(e.pane.AgeNanos).Truncate(time.Hour)
-		lines = append(lines, fmt.Sprintf("%s [%s] p%d · %s · %s / %s · %s · idle %s · %s", pointer, mark, e.pane.ID, e.label, e.pane.WorkspaceName, e.pane.TabName, e.pane.Agent, age, e.pane.State))
+		state := e.pane.State
+		if !e.pane.InputKnown {
+			state += " · input unknown"
+		}
+		lines = append(lines, fmt.Sprintf("%s [%s] p%d · %s · %s / %s · %s · idle %s · %s", pointer, mark, e.pane.ID, e.label, e.pane.WorkspaceName, e.pane.TabName, e.pane.Agent, age, state))
 	}
 	if d.kept {
 		lines = append(lines, "last pane, kept")

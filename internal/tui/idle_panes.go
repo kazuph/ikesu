@@ -42,7 +42,8 @@ func (a *App) IdlePanes() endpoint.IdlePanes {
 					continue
 				}
 				at, seq := p.IdleActivity()
-				result.Panes = append(result.Panes, endpoint.IdlePane{ID: id, Generation: a.st.PaneGeneration(id), ActivitySeq: seq, StateSeq: a.AgentStateChangeSeq(id), State: a.glyph(id).Key, Agent: agent, Workspace: ws.ID, WorkspaceGeneration: ws.Generation, WorkspaceName: ws.Name, TabName: tab.Name, AgeNanos: int64(now.Sub(at)), PendingInput: p.HasUnsentAgentInput(), Focused: id == a.focusedPane()})
+				pending, known := p.UnsentAgentInput()
+				result.Panes = append(result.Panes, endpoint.IdlePane{ID: id, Generation: a.st.PaneGeneration(id), ActivitySeq: seq, StateSeq: a.AgentStateChangeSeq(id), State: a.glyph(id).Key, Agent: agent, Workspace: ws.ID, WorkspaceGeneration: ws.Generation, WorkspaceName: ws.Name, TabName: tab.Name, AgeNanos: int64(now.Sub(at)), PendingInput: pending, InputKnown: known, Focused: id == a.focusedPane()})
 			}
 		}
 	}

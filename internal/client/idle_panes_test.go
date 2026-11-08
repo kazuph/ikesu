@@ -17,11 +17,17 @@ func TestIdleInitiallySelected(t *testing.T) {
 		{"pending", "idle", true, false, false, true, false}, {"focused", "idle", false, true, false, true, false}, {"remote focus", "idle", false, true, false, false, true}, {"HQ", "idle", false, false, true, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := endpoint.IdlePane{State: tc.state, PendingInput: tc.pending, Focused: tc.focused}
+			p := endpoint.IdlePane{State: tc.state, PendingInput: tc.pending, InputKnown: true, Focused: tc.focused}
 			if got := idleInitiallySelected(p, tc.hq, tc.active); got != tc.want {
 				t.Fatalf("got %v want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestIdleUnknownInputIsNotInitiallySelected(t *testing.T) {
+	if idleInitiallySelected(endpoint.IdlePane{State: "idle"}, false, true) {
+		t.Fatal("unrecognized prompt must not be assumed empty")
 	}
 }
 func TestIdleThresholdAndSelection(t *testing.T) {
