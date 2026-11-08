@@ -244,12 +244,12 @@ func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarn
 		go func(id string, c *endpointConnection) {
 			for {
 				message, err := c.read()
-				if err != nil {
+				select {
+				case m.events <- endpointEvent{id: id, message: message, err: err}:
+				case <-ctx.Done():
 					return
 				}
-				select {
-				case m.events <- endpointEvent{id: id, message: message}:
-				case <-ctx.Done():
+				if err != nil {
 					return
 				}
 			}

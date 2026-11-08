@@ -229,6 +229,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			fmt.Fprintln(m.out, "ikesu:", event.err)
 			return pumpRejected, true
 		}
+		if e.connection != nil {
+			m.idleDisconnect(event.id, event.err)
+		}
 		e.connection = nil
 		e.status = "reconnecting"
 		if m.oyagoi != nil && m.oyagoi.Machine == event.id {

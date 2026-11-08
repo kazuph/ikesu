@@ -57,8 +57,7 @@ func TestIdlePanesDisconnectAfterList(t *testing.T) {
 	}
 	m.idle.cursor = 3
 	m.idle.confirming = true
-	m.endpoints["remote"].connection.stream.Close()
-	m.fail("remote", errors.New("connection closed"))
+	h.disconnectIdle("remote")
 	if len(m.idle.entries) != 2 || m.idle.selected() != 2 || m.idle.cursor != 1 || !strings.Contains(m.idle.dialog().Detail, "delete 2 panes?") {
 		t.Fatalf("disconnect: %+v dialog=%+v", m.idle, m.idle.dialog())
 	}
@@ -66,6 +65,95 @@ func TestIdlePanesDisconnectAfterList(t *testing.T) {
 	h.until("remaining server delete", func() bool { return m.idle == nil })
 	if m.idleToast != "deleted 1 · failed 1" {
 		t.Fatal(m.idleToast)
+	}
+}
+
+func (h *rightMachineHarness) disconnectIdle(id string) {
+	h.t.Helper()
+	if err := h.m.endpoints[id].connection.stream.Close(); err != nil {
+		h.t.Fatal(err)
+	}
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-h.m.events:
+			if event.id == id && event.err == nil {
+				continue
+			}
+			if _, done := h.m.event(event); done {
+				h.t.Fatal("client exited after disconnect")
+			}
+			if event.id == id && event.err != nil {
+				return
+			}
+		case <-timer.C:
+			h.t.Fatal("disconnect event not received")
+		}
+	}
+}
+
+func TestIdlePanesDisconnectWhileLoading(t *testing.T) {
+	h := newRightMachineHarness(t, true)
+	m := h.m
+	m.openIdlePanes()
+	if m.idle.pending["remote"] != 1 {
+		t.Fatal("remote list not pending")
+	}
+	h.disconnectIdle("remote")
+	h.until("remaining list", func() bool { return m.idle != nil && !m.idle.loading })
+	if m.idle.pending["remote"] != 0 || !strings.Contains(strings.Join(m.idle.dialog().Lines, "\n"), "remote:") {
+		t.Fatalf("disconnect while loading: %+v", m.idle)
+	}
+}
+
+func TestIdlePanesDisconnectWhileDeleting(t *testing.T) {
+	h := newRightMachineHarness(t, true)
+	m := h.m
+	m.openIdlePanes()
+	h.until("both lists", func() bool { return m.idle != nil && !m.idle.loading })
+	for i := range m.idle.entries {
+		m.idle.entries[i].selected = m.idle.entries[i].machine == "remote" && m.idle.entries[i].pane.ID == 1
+	}
+	m.deleteIdlePanes()
+	if m.idle == nil || m.idle.pending["remote"] != 1 {
+		t.Fatal("delete not pending")
+	}
+	h.disconnectIdle("remote")
+	if m.idle != nil || m.idleToast != "deleted 0 · failed 1" {
+		t.Fatalf("disconnect while deleting: %+v toast=%q", m.idle, m.idleToast)
+	}
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEscape}, Raw: []byte{27}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: 'Z'}, Raw: []byte("ZZ_IDLE_INPUT_OK")}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("local input after disconnect", func() bool {
+		for _, row := range m.endpoints["local"].snapshot.Panes[2].Grid {
+			var line strings.Builder
+			for _, cell := range row {
+				line.WriteString(cell.Content)
+			}
+			if strings.Contains(line.String(), "ZZ_IDLE_INPUT_OK") {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func TestIdlePanesStaleDisconnectPreservesConnection(t *testing.T) {
+	h := newRightMachineHarness(t, true)
+	m := h.m
+	m.openIdlePanes()
+	h.until("both lists", func() bool { return m.idle != nil && !m.idle.loading })
+	e := m.endpoints["remote"]
+	e.attempt++
+	conn, count := e.connection, len(m.idle.entries)
+	m.event(endpointEvent{id: "remote", attempt: e.attempt - 1, err: errors.New("old connection")})
+	if e.connection != conn || len(m.idle.entries) != count {
+		t.Fatal("stale error changed current connection or list")
 	}
 }
 
