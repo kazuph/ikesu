@@ -169,7 +169,9 @@ func TestDecisionCLIRealServer(t *testing.T) {
 		exit := make(chan int, 1)
 		args := []string{"decision", "ask", "--title", status, "--option", "yes:Yes:approve"}
 		if status == "expired" {
-			args = append(args, "--timeout", "100")
+			// The test must observe the decision while pending before it expires;
+			// 100 ms was shorter than scheduling delays under the full suite.
+			args = append(args, "--timeout", "2000")
 		}
 		go func() {
 			exit <- cli.Run(args, cli.Options{Session: "test", Explicit: true, Stdout: &out, Stderr: &errs, Getenv: func(key string) string {
