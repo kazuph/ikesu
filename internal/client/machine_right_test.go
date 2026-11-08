@@ -2,7 +2,9 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -43,6 +45,46 @@ type rightMachineHarness struct {
 	m    *machineClient
 	t    *testing.T
 	dirs map[string]string
+}
+
+// legacyIdleStream changes only the welcome sent by a real server in this test.
+type legacyIdleStream struct {
+	net.Conn
+	reader  *bufio.Reader
+	welcome *bytes.Reader
+}
+
+func (c *legacyIdleStream) Read(p []byte) (int, error) {
+	if c.reader == nil {
+		c.reader = bufio.NewReader(c.Conn)
+		line, err := c.reader.ReadBytes('\n')
+		if err != nil {
+			return 0, err
+		}
+		var welcome msg
+		if err := json.Unmarshal(line, &welcome); err != nil {
+			return 0, err
+		}
+		if welcome.Type != "welcome" {
+			return 0, fmt.Errorf("expected welcome, got %q", welcome.Type)
+		}
+		methods := welcome.Methods[:0]
+		for _, method := range welcome.Methods {
+			if method != "idle_panes" && method != "idle_delete" {
+				methods = append(methods, method)
+			}
+		}
+		welcome.Methods = methods
+		line, err = json.Marshal(welcome)
+		if err != nil {
+			return 0, err
+		}
+		c.welcome = bytes.NewReader(append(line, '\n'))
+	}
+	if c.welcome.Len() > 0 {
+		return c.welcome.Read(p)
+	}
+	return c.reader.Read(p)
 }
 
 func (h *rightMachineHarness) api(id, method string, params any) {
@@ -168,9 +210,6 @@ func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarn
 		if binary := os.Getenv("IKESU_RIGHT_TEST_SERVER_BIN"); binary != "" {
 			cmd = exec.Command(binary, "--session", session, "server")
 		}
-		if binary := os.Getenv("IKESU_IDLE_OLD_SERVER_BIN"); id == "remote" && binary != "" {
-			cmd = exec.Command(binary, "--session", session, "server")
-		}
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "IKESU_RIGHT_SERVER_TEST="+session, "IKESU_STATE_DIR="+root, "IKESU_CONFIG="+cfgPath, "IKESU_DISABLE_SOUND=1", "SHELL=/bin/sh")
 		cmd.Stdout = log
@@ -190,6 +229,9 @@ func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarn
 		}
 		if err != nil {
 			t.Fatal(err)
+		}
+		if id == "remote" && len(idleFixture) > 1 && idleFixture[1] {
+			stream = &legacyIdleStream{Conn: stream}
 		}
 		stream.SetDeadline(time.Now().Add(10 * time.Second))
 		connection, err := connectEndpoint(stream, id != "local", m.size, m.settings, "", nil)

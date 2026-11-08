@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -9,8 +8,6 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/runtime"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,30 +31,8 @@ func TestIdleInitiallySelected(t *testing.T) {
 	}
 }
 
-// The two real servers include a build of the pre-feature revision, so this test may take over five seconds.
 func TestIdlePanesOldAndNewServers(t *testing.T) {
-	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	archive, err := exec.Command("git", "-C", strings.TrimSpace(string(root)), "archive", "c8da28a1").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	untar := exec.Command("tar", "-xf", "-", "-C", dir)
-	untar.Stdin = bytes.NewReader(archive)
-	if out, err := untar.CombinedOutput(); err != nil {
-		t.Fatalf("unpack old server: %v %s", err, out)
-	}
-	binary := filepath.Join(dir, "ikesu-old")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/ikesu")
-	build.Dir = dir
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build old server: %v %s", err, out)
-	}
-	t.Setenv("IKESU_IDLE_OLD_SERVER_BIN", binary)
-	h := newRightMachineHarness(t, true)
+	h := newRightMachineHarness(t, true, true)
 	m := h.m
 	m.openIdlePanes()
 	h.until("new server list", func() bool { return m.idle != nil && !m.idle.loading })
