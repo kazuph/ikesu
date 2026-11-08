@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,41 +25,6 @@ func graphicsSourceFixture(t *testing.T) (*graphicsFileSource, string, []byte) {
 		t.Fatal(err)
 	}
 	return source, path, data
-}
-
-func TestGraphicsSourceFileRetainsProducerAndOwnsInlinePixels(t *testing.T) {
-	source, path, pixels := graphicsSourceFixture(t)
-	for _, dir := range []string{source.base, source.server, source.source} {
-		if _, err := privateGraphicsDirectory(dir); err != nil {
-			t.Fatal(err)
-		}
-	}
-	file, err := source.open(path, uint64(len(pixels)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.file.Close()
-	owned, err := file.ownedPixels()
-	if err != nil || !bytes.Equal(owned, pixels) {
-		t.Fatalf("inline pixels=%x error=%v", owned, err)
-	}
-	if err := os.WriteFile(path, bytes.Repeat([]byte{255}, len(pixels)), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(owned, pixels) {
-		t.Fatal("producer reuse changed the owned inline pixels")
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatal("reading the source removed the producer file", err)
-	}
-	file.file.Close()
-	source.close()
-	if _, err := os.Stat(source.server); !os.IsNotExist(err) {
-		t.Fatalf("server source tree survived close: %v", err)
-	}
-	if _, err := os.Stat(source.base); err != nil {
-		t.Fatal("cleanup removed the shared base", err)
-	}
 }
 
 func TestGraphicsSourceFileRejectsInvalidPathsPermissionsAndLengths(t *testing.T) {

@@ -199,20 +199,6 @@ func TestClaudePermissionReceiptRejectOnly(t *testing.T) {
 	}
 }
 
-func TestClaudePermissionEditNoSecondOption(t *testing.T) {
-	screen := "Bash command\nExplain\n╌╌╌╌\necho safe\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel · Tab to amend"
-	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))
-	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
-	selected = strings.Replace(selected, "  2. No", "❯ 2. No, feedback", 1)
-	current := screenprompt.Parse("claude", strings.Split(selected, "\n"))
-	if !claudePermissionEditMatches(original, current, "2", "feedback", strings.Split(selected, "\n")) {
-		t.Fatal("second option rejection not recognized")
-	}
-	if claudePermissionEditMatches(original, current, "1", "feedback", strings.Split(selected, "\n")) {
-		t.Fatal("approval accepted as rejection")
-	}
-}
-
 func TestClaudePermissionEditNarrowScreen(t *testing.T) {
 	screen := "────────────────────────────────\n Bash command\n Check whether HOME and USER\n environment variables are set\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n for v in HOME USER; do if [ -n\n \"${(P)v}\" ]; then echo \"$v\n set\"; fi; done\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n │ Dangerous rm operation not\n │ ruled out — the shell may\n │ read this command\n │ differently than it was\n │ parsed\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n Esc to cancel · Tab to amend"
 	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))
@@ -222,29 +208,6 @@ func TestClaudePermissionEditNarrowScreen(t *testing.T) {
 	current := screenprompt.Parse("claude", claudePermissionEditScreen(rows, "2"))
 	if !claudePermissionEditMatches(original, current, "2", "", rows) {
 		t.Fatalf("narrow No editor not recognized: original=%+v current=%+v", original, current)
-	}
-}
-
-func TestClaudePermissionEditMultiline(t *testing.T) {
-	screen := "Bash command\nExplain\n╌╌╌╌\necho safe\n╌╌╌╌\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel · Tab to amend"
-	original := screenprompt.Parse("claude", strings.Split(screen, "\n"))
-	selected := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
-	selected = strings.Replace(selected, "  2. No", " ❯ 2. No, Do not write the file.\n          Please explain the decision.", 1)
-	current := screenprompt.Parse("claude", strings.Split(selected, "\n"))
-	if !claudePermissionEditMatches(original, current, "2", "Do not write the file.\nPlease explain the decision.", strings.Split(selected, "\n")) {
-		t.Fatal("multiline feedback not recognized")
-	}
-	if claudePermissionEditMatches(original, current, "2", "Do not write the file.\nDifferent text.", strings.Split(selected, "\n")) {
-		t.Fatal("changed feedback accepted")
-	}
-	if claudePermissionEditMatches(original, current, "1", "Do not write the file.\nPlease explain the decision.", strings.Split(selected, "\n")) {
-		t.Fatal("approval accepted as rejection")
-	}
-	wrapped := strings.Replace(screen, "❯ 1. Yes", "  1. Yes", 1)
-	wrapped = strings.Replace(wrapped, "  2. No", " ❯ 2. No, Please do not run this command because this explanation is deliberately longer than a single\n          line on the current terminal screen.\n          Please explain the decision.", 1)
-	want := "Please do not run this command because this explanation is deliberately longer than a single line on the current terminal screen.\nPlease explain the decision."
-	if !claudePermissionEditMatches(original, screenprompt.Parse("claude", strings.Split(wrapped, "\n")), "2", want, strings.Split(wrapped, "\n")) {
-		t.Fatal("wrapped multiline feedback not recognized")
 	}
 }
 

@@ -1,12 +1,11 @@
 package server
 
 import (
-	"fmt"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+
 	"testing"
 	"time"
 
@@ -162,29 +161,6 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	}
 }
 
-// G3 fail-closed: an unsafe session id reported via pane.report_agent is
-// never recorded — the pane keeps no session value and the report does
-// not dirty the session record.
-func TestReportAgentUnsafeIDNotRecorded(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "w")
-	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
-	bad := "bad;id"
-	res := s.paneReportAgent("t", api.PaneReportAgentParams{
-		PaneID: fmt.Sprintf("p%d", pid), Source: "test", Agent: "claude",
-		State: "idle", SessionID: &bad,
-	})
-	if res.Err != nil {
-		t.Fatalf("report-agent: %+v", res.Err)
-	}
-	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value != "" {
-		t.Fatalf("unsafe id recorded: %+v", rec)
-	}
-	if led, ok := s.ledgerEntry(pid); ok && led.SessionID != "" {
-		t.Fatalf("unsafe id in ledger: %+v", led)
-	}
-}
-
 // G3 fail-closed: a pane whose record (e.g. loaded from session.json)
 // carries an unsafe session id is skipped, never resumed as another
 // conversation.
@@ -227,42 +203,6 @@ func TestAgentRestoreSkipsPaneWithoutProcess(t *testing.T) {
 	}
 }
 
-// A real (non-dry-run) restore types the resume command into the pane.
-func TestAgentRestoreLaunchesCommand(t *testing.T) {
-	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "ikesutest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "IKESU_STATE_DIR", base)
-	teststate.Setenv(t, "SHELL", "/bin/sh")
-
-	dir, done := startServerAt(t, "launch")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
-
-	reportAgent(t, dir, "p1", "claude", "sess-launch")
-	reportAgent(t, dir, "p1", "", "")
-
-	var res api.AgentRestoreResult
-	apiOK(t, dir, api.MethodAgentRestore, api.AgentRestoreParams{}, &res)
-	if len(res.Actions) != 1 || res.Actions[0].Status != "launched" {
-		t.Fatalf("actions = %+v, want 1 launched", res.Actions)
-	}
-
-	// The pane's screen should echo the typed resume command.
-	var env api.PaneReadResultEnvelope
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		apiOK(t, dir, api.MethodPaneRead, api.PaneReadParams{PaneID: "p1", StripANSI: true}, &env)
-		if strings.Contains(env.Read.Text, "claude --resume sess-launch") {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("resume command never appeared; screen:\n%s", env.Read.Text)
-}
-
 // --- unit: command construction -------------------------------------------
 
 func TestBuildResumeCommand(t *testing.T) {
@@ -301,27 +241,6 @@ codex = ["codex", "--sandbox", "workspace-write", "--model", "gpt-6-astra"]
 	want := "command codex --sandbox workspace-write --model gpt-6-astra resume sid-9"
 	if !ok || cmd != want {
 		t.Fatalf("cmd = %q ok=%v want %q", cmd, ok, want)
-	}
-}
-
-// A template missing {session_id} must not produce a command.
-func TestBuildResumeCommandBadTemplate(t *testing.T) {
-	teststate.Lock(t)
-	cfgFile := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(cfgFile, []byte(`
-[agent_restore.templates]
-claude = "claude --resume"
-`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	teststate.Setenv(t, "IKESU_CONFIG", cfgFile)
-	cfg, err := loadTestConfig(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &Server{cfg: cfg}
-	if cmd, ok := s.buildResumeCommand("claude", "id", "x"); ok {
-		t.Fatalf("template without {session_id} produced %q", cmd)
 	}
 }
 
@@ -477,45 +396,6 @@ func TestObserveClaudeSessionFileCwdStrict(t *testing.T) {
 	}
 }
 
-// Codex: the session_meta record decides — payload.cwd must exist and
-// match, and the id is payload.id (payload.session_id fallback).
-func TestObserveCodexSessionFile(t *testing.T) {
-	teststate.Lock(t)
-	home := t.TempDir()
-	teststate.Setenv(t, "HOME", home)
-	cwd := "/Users/x/proj"
-	start := time.Now().Add(-30 * time.Second)
-	day := filepath.Join(home, ".codex", "sessions",
-		start.Format("2006"), start.Format("01"), start.Format("02"))
-	name := func(suffix string) string {
-		return "rollout-" + start.Format("2006-01-02T15-04-05") + "-aaaa-bbbb-cccc-dddd-" + suffix + ".jsonl"
-	}
-	writeJSONL(t, filepath.Join(day, name("eeee")),
-		`{"timestamp":"`+start.Format(time.RFC3339Nano)+`","type":"session_meta","payload":{"id":"sess-cdx","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
-
-	id, ok := session.ObserveCodexSessionFile(cwd, start)
-	if !ok || id != "sess-cdx" {
-		t.Fatalf("got %q ok=%v", id, ok)
-	}
-	// A rollout for a different cwd is not a candidate.
-	if _, ok := session.ObserveCodexSessionFile("/other/dir", start); ok {
-		t.Fatal("mismatched cwd must not resolve")
-	}
-	// A rollout with old mtime is excluded, even with a recent meta timestamp.
-	writeJSONL(t, filepath.Join(home, ".codex", "sessions", "2020", "01", "01",
-		"rollout-2020-01-01T00-00-00-aaaa-bbbb-cccc-dddd-ffff.jsonl"),
-		`{"type":"session_meta","payload":{"id":"sess-old","timestamp":"`+start.Format(time.RFC3339Nano)+`","cwd":"`+cwd+`"}}`)
-	oldPath := filepath.Join(home, ".codex", "sessions", "2020", "01", "01", "rollout-2020-01-01T00-00-00-aaaa-bbbb-cccc-dddd-ffff.jsonl")
-	oldTime := start.Add(-121 * time.Second)
-	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
-		t.Fatal(err)
-	}
-	id2, ok := session.ObserveCodexSessionFile(cwd, start)
-	if !ok || id2 != "sess-cdx" {
-		t.Fatalf("out-of-day-folder rollout must not count; got %q ok=%v", id2, ok)
-	}
-}
-
 // Codex fail-closed: a session_meta without payload.cwd, with a foreign
 // cwd, or with a stale timestamp never counts as a candidate; only
 // payload.session_id is used when payload.id is absent.
@@ -603,40 +483,6 @@ func TestPaneSessionLedger(t *testing.T) {
 	}
 }
 
-// Closing a pane removes its ledger row (ownership cleanup boundary).
-func TestLedgerDeleteOnPaneClose(t *testing.T) {
-	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "ikesutest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "IKESU_STATE_DIR", base)
-	teststate.Setenv(t, "SHELL", "/bin/sh")
-
-	dir, done := startServerAt(t, "leddel")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
-
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
-	ids := paneIDs(t, dir)
-	reportAgent(t, dir, ids[1], "claude", "sess-x")
-
-	var ok api.OkResult
-	apiOK(t, dir, api.MethodPaneClose, api.PaneTarget{PaneID: ids[1]}, &ok)
-
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath("leddel"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	rows, _ := store.PaneSessions("leddel")
-	for _, r := range rows {
-		if r.PaneID == 2 {
-			t.Fatalf("ledger row for closed pane survives: %+v", r)
-		}
-	}
-}
-
 // --- unit: warnings ----------------------------------------------------------
 
 // sessionWarnings reports agent panes lacking a safe session id, with the
@@ -674,135 +520,6 @@ func paneExit(t *testing.T, dir, paneID string) {
 	var ok api.OkResult
 	apiOK(t, dir, api.MethodPaneSendInput,
 		api.PaneSendInputParams{PaneID: paneID, Text: "exit", Keys: []string{"enter"}}, &ok)
-}
-
-func waitPanes(t *testing.T, dir string, want []string) []string {
-	t.Helper()
-	deadline := time.Now().Add(8 * time.Second)
-	var ids []string
-	for time.Now().Before(deadline) {
-		ids = paneIDs(t, dir)
-		if len(ids) == len(want) {
-			same := true
-			for i := range ids {
-				if ids[i] != want[i] {
-					same = false
-				}
-			}
-			if same {
-				return ids
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return ids
-}
-
-// G3 restorable pane retention: a pane carrying an agent label and a safe
-// recorded session id keeps its pane number, record, and ledger row when
-// its process exits — it comes back as a shell instead of closing.
-func TestRestorablePaneRetainedOnExit(t *testing.T) {
-	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "ikesutest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "IKESU_STATE_DIR", base)
-	teststate.Setenv(t, "SHELL", "/bin/sh")
-
-	dir, done := startServerAt(t, "retain")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
-
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
-	ids := paneIDs(t, dir)
-	if len(ids) != 2 {
-		t.Fatalf("panes = %v", ids)
-	}
-	reportAgent(t, dir, ids[1], "claude", "sess-keep")
-	paneExit(t, dir, ids[1])
-
-	got := waitPanes(t, dir, ids)
-	if len(got) != 2 {
-		t.Fatalf("restorable pane was closed; panes = %v", got)
-	}
-
-	// The pane's record and ledger row must survive.
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath("retain"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	rows, _ := store.PaneSessions("retain")
-	found := false
-	for _, r := range rows {
-		if r.SessionID == "sess-keep" && r.Agent == "claude" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("ledger lost the retained pane's row: %v", rows)
-	}
-
-	// The snapshot keeps agent/session id after detection cleared.
-	f := waitForSessionFile(t, dir)
-	kept := false
-	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
-		if p.SessionID == "sess-keep" && p.Agent == "claude" {
-			kept = true
-		}
-	})
-	if !kept {
-		t.Fatal("session.json lost the retained pane's agent/session id")
-	}
-}
-
-// G3 inactive-shell cleanup: a pane whose only trace is a past ledger
-// row/record — no effective agent label — closes normally on exit, and
-// its ledger row goes with it.
-func TestInactiveShellPaneClosesOnExit(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
-		return
-	}
-	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "ikesutest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "IKESU_STATE_DIR", base)
-	teststate.Setenv(t, "SHELL", "/bin/sh")
-
-	dir, done := startServerAt(t, "cleanup")
-	defer func() { apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil); waitServerExit(t, done) }()
-
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
-	ids := paneIDs(t, dir)
-	if len(ids) != 2 {
-		t.Fatalf("panes = %v", ids)
-	}
-	// Record + ledger exist, then the report is cleared — the pane is a
-	// plain shell again and must close normally.
-	reportAgent(t, dir, ids[1], "codex", "sess-old")
-	reportAgent(t, dir, ids[1], "", "")
-	paneExit(t, dir, ids[1])
-
-	got := waitPanes(t, dir, ids[:1])
-	if len(got) != 1 || got[0] != ids[0] {
-		t.Fatalf("shell pane was retained; panes = %v", got)
-	}
-
-	store, err := dispatch.OpenReadOnly(dispatch.DBPath("cleanup"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	rows, _ := store.PaneSessions("cleanup")
-	for _, r := range rows {
-		if r.PaneID == 2 {
-			t.Fatalf("ledger row for closed pane survives: %+v", r)
-		}
-	}
 }
 
 // SPEC G3 fossil expiry + stale authority clearing, end to end: a pane

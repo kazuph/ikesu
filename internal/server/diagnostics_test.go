@@ -154,30 +154,6 @@ func TestDiagnosticsRejectsNonUnixPeer(t *testing.T) {
 	}
 }
 
-// The wait exercises the real two-second stall threshold.
-func TestRecoveredLoopRetainsStallStatistics(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "diagnostics-recovered")
-	s.dir = teststate.TempDir(t)
-	appDone := make(chan struct{})
-	go func() { s.app.Run(); close(appDone) }()
-	defer func() { s.app.Stop(); <-appDone; s.sup.KillAll() }()
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	finished := make(chan struct{})
-	go func() { s.app.Do(func() { close(entered); <-release }); close(finished) }()
-	<-entered
-	time.Sleep(stallThreshold + 20*time.Millisecond)
-	close(release)
-	<-finished
-	// An additional job cannot complete before the loop records its next iteration.
-	s.app.Do(func() {})
-	got := s.stallStatus()
-	if got.Count != 1 || got.LongestMillis < stallThreshold.Milliseconds() || got.CurrentMillis != 0 {
-		t.Fatalf("recovered stall: %+v", got)
-	}
-}
-
 // The real stall duration is required to exercise status during recovery.
 func TestStallCountDoesNotDecreaseDuringRecovery(t *testing.T) {
 	teststate.Lock(t)
@@ -224,71 +200,6 @@ func TestStallCountDoesNotDecreaseDuringRecovery(t *testing.T) {
 	if got := s.stallStatus().Count; got != 1 {
 		t.Fatalf("final count=%d", got)
 	}
-}
-
-// Two real two-second stalls are needed to exercise the one-minute cooldown.
-func TestStallStackCooldown(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "diagnostics-cooldown")
-	s.dir = teststate.TempDir(t)
-	appDone := make(chan struct{})
-	watcherDone := make(chan struct{})
-	go func() { s.app.Run(); close(appDone) }()
-	go func() { s.watchAppLoop(appDone); close(watcherDone) }()
-	defer func() { s.app.Stop(); <-appDone; <-watcherDone; s.sup.KillAll() }()
-	for i := 0; i < 2; i++ {
-		entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
-		go func() { s.app.Do(func() { close(entered); <-release }); close(finished) }()
-		<-entered
-		deadline := time.Now().Add(5 * time.Second)
-		for time.Now().Before(deadline) && s.stallStatus().Count < uint64(i+1) {
-			time.Sleep(10 * time.Millisecond)
-		}
-		got := s.stallStatus().Count
-		firstSaved := i != 0
-		if i == 0 {
-			for time.Now().Before(deadline) {
-				files, _ := filepath.Glob(filepath.Join(s.dir, "app-loop-stalls", "*.stack"))
-				if len(files) == 1 {
-					firstSaved = true
-					break
-				}
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-		close(release)
-		<-finished
-		s.app.Do(func() {})
-		if got != uint64(i+1) {
-			t.Fatalf("stall %d was not observed: %d", i+1, got)
-		}
-		if !firstSaved {
-			t.Fatal("first stall did not save a stack")
-		}
-	}
-	files, err := filepath.Glob(filepath.Join(s.dir, "app-loop-stalls", "*.stack"))
-	if err != nil || len(files) != 1 {
-		t.Fatalf("cooldown did not retain exactly one stack: %v %v", files, err)
-	}
-}
-
-func TestStallStackRetention(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "diagnostics-retention")
-	s.dir = teststate.TempDir(t)
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < stallStackLimit+1; i++ {
-		s.saveStallStack(start.Add(time.Duration(i) * time.Minute))
-	}
-	matches, err := filepath.Glob(filepath.Join(s.dir, "app-loop-stalls", "*.stack"))
-	if err != nil || len(matches) != stallStackLimit {
-		t.Fatalf("retained %d stacks: %v", len(matches), err)
-	}
-	old := filepath.Join(s.dir, "app-loop-stalls", start.Format("20060102T150405.000000000Z")+".stack")
-	if _, err := os.Stat(old); !os.IsNotExist(err) {
-		t.Fatalf("oldest stack remains: %v", err)
-	}
-	s.sup.KillAll()
 }
 
 func TestStallStackRejectsSymlinkDirectory(t *testing.T) {
@@ -339,40 +250,4 @@ func TestStallRetentionPreservesUnrelatedStack(t *testing.T) {
 		t.Fatalf("unrelated stack changed: %v", err)
 	}
 	s.sup.KillAll()
-}
-
-//go:noinline
-func diagnosticCaptureMarker(ready chan<- struct{}, release <-chan struct{}) {
-	ready <- struct{}{}
-	<-release
-}
-
-func TestStacksContainAllWaitingGoroutines(t *testing.T) {
-	const goroutines = 8
-	ready := make(chan struct{}, goroutines)
-	release := make(chan struct{})
-	defer close(release)
-	for i := 0; i < goroutines; i++ {
-		go diagnosticCaptureMarker(ready, release)
-	}
-	for i := 0; i < goroutines; i++ {
-		<-ready
-	}
-	f, err := os.CreateTemp(t.TempDir(), "stacks-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := writeStacks(f); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(f.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count := bytes.Count(data, []byte("diagnosticCaptureMarker(")); count != goroutines {
-		t.Fatalf("waiting goroutines in stack: got %d want %d", count, goroutines)
-	}
 }

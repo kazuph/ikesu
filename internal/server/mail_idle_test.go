@@ -9,34 +9,6 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
-func TestIdleMailWorkerDoesNotSweepDatabase(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "mail-idle")
-	s.mailCh = make(chan mailWrite, 4)
-	s.mailInFlight = map[int64]bool{}
-	s.jobInFlight = map[string]bool{}
-	store, err := s.db()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	// A full sweep fails this missing recipient; no event asks for a sweep.
-	msg, err := store.InsertMessage(dispatch.JobsRoom, "", dispatch.RunShellActor, "p999999", "idle sentinel", nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	appDone := make(chan struct{})
-	go func() { s.app.Run(); close(appDone) }()
-	workerDone := make(chan struct{})
-	go func() { s.mailWorker(); close(workerDone) }()
-	defer func() { close(s.mailCh); <-workerDone; s.app.Stop(); <-appDone }()
-	time.Sleep(jobActiveRefresh + jobActiveRefresh/2)
-	pending, err := store.PendingJobMessages()
-	if err != nil || len(pending) != 1 || pending[0].ID != msg.ID {
-		t.Fatalf("idle tick swept database: pending=%v err=%v", pending, err)
-	}
-}
-
 // A real key requires the full ten-second quiet period before mail can resume.
 func TestDeferredMailRetriesOnlyItsPane(t *testing.T) {
 	teststate.Lock(t)

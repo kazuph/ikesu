@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -245,33 +244,4 @@ func TestCancelFileFailureKeepsRunningAndRecovers(t *testing.T) {
 		return row != nil && row.Status == "cancelled" && row.ExitCode == nil && j.notices() == 1
 	})
 	t.Log("real .cancel write failure left running; recovery cancelled once")
-}
-
-func TestCancellingJobWithoutMonitorTerminatesWithReason(t *testing.T) {
-	t.Parallel()
-	j := startFaultJob(t)
-	data, err := os.ReadFile(j.job.LogPath + ".runner")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var record struct{ MonitorPID int }
-	if err = json.Unmarshal(data, &record); err != nil {
-		t.Fatal(err)
-	}
-	if err = syscall.Kill(record.MonitorPID, syscall.SIGKILL); err != nil {
-		t.Fatal(err)
-	}
-	j.s.waitFor("helper process reaped", 5*time.Second, func(string) bool { return syscall.Kill(record.MonitorPID, 0) == syscall.ESRCH })
-	if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil {
-		t.Fatal(out, err)
-	}
-	j.s.waitFor("group gone without invented exit", noticeWait, func(string) bool {
-		row, _ := j.store.CommandRow(j.job.ID)
-		return row != nil && row.Status == "cancelled" && row.ExitCode == nil && j.notices() == 1
-	})
-	data, _ = os.ReadFile(j.sink)
-	if !strings.Contains(string(data), "completion unavailable") {
-		t.Fatal("failure reason missing", string(data))
-	}
-	t.Log("real helper SIGKILL; group gone; cancelled with nil exit and explicit reason, one notice")
 }

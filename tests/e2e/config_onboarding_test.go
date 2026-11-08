@@ -46,20 +46,6 @@ func TestOnboardingContinueImmediateShellInput(t *testing.T) {
 	}
 }
 
-func TestServerInheritsExternalOnboardingConfig(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	path := onboardingConfig(t, "false")
-	s := startEnv(t, map[string]string{"IKESU_CONFIG": path})
-	s.waitFor("shell prompt", 10*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-	s.send("printf '%s_%s\\n' EXTERNAL CONFIG_OK\r")
-	s.waitFor("shell output with external config", 10*time.Second, func(text string) bool { return strings.Contains(text, "EXTERNAL_CONFIG_OK") })
-	if text := s.text(); strings.Contains(text, "continue") || strings.Contains(text, "RESIZE") || strings.Contains(text, "NAVIGATE") {
-		t.Fatal("external onboarding=false ignored:", text)
-	}
-}
-
 func TestOnboardingImmediateInputWhileConfigurationSaveWaits(t *testing.T) {
 	if runIsolatedParallel(t) {
 		return

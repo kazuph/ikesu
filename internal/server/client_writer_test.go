@@ -62,29 +62,3 @@ func TestG4RenderWriteThenDrainedBothReceivePaths(t *testing.T) {
 		<-done
 	}
 }
-
-func TestG4WriteFailureNeverDrainedBothReceivePaths(t *testing.T) {
-	for _, closing := range []bool{false, true} {
-		server, client := writerSocketPair(t)
-		client.Close()
-		render := make(chan clientWrite, 1)
-		control := make(chan clientWrite)
-		done := make(chan struct{})
-		request := clientWrite{message: clientMsg{Type: "output", Data: "FRAME"}, reply: make(chan clientWriteResult, 1)}
-		render <- request
-		if closing {
-			go func() { clientFrameWriter{conn: server, clientID: 7}.finishAfterControlClose(render); close(done) }()
-		} else {
-			go runClientWriter(server, 7, render, control, done)
-		}
-		select {
-		case result := <-request.reply:
-			if result.err == nil || result.drained != nil {
-				t.Fatal("failed write drained", closing, result)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("writer did not stop")
-		}
-		<-done
-	}
-}

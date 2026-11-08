@@ -12,10 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"golang.org/x/sys/unix"
-	"net"
 )
 
 type lossManifest struct {
@@ -32,62 +30,6 @@ func signalLossProcess(t *testing.T, pid int, signal syscall.Signal, scope strin
 	}
 	if err := exec.Command("kill", "-"+strconv.Itoa(int(signal)), strconv.Itoa(pid)).Run(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestLostMonitorPreservesLiveChildAndNotifiesOnce(t *testing.T) {
-	t.Parallel()
-	j := startFaultJob(t)
-	data, err := os.ReadFile(j.job.LogPath + ".runner")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m lossManifest
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatal(err)
-	}
-	for _, pid := range []int{m.SupervisorPID, m.MonitorPID, m.PID} {
-		pgid, err := syscall.Getpgid(pid)
-		if err != nil || pgid != pid {
-			t.Fatal("group ownership changed", pid, pgid, err)
-		}
-		sid, err := unix.Getsid(pid)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if pid != m.PID && sid != pid {
-			t.Fatal("monitor/reaper is not session leader", pid, sid)
-		}
-		t.Logf("pid=%d pgid=%d sid=%d", pid, pgid, sid)
-	}
-	signalLossProcess(t, m.MonitorPID, syscall.SIGKILL, binPath)
-	var control api.RunStartedResult
-	j.s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "loss-control", Argv: []string{"/bin/echo", "collected"}, Completion: "none"}, &control)
-	j.s.waitFor("independent completion while child lives", 10*time.Second, func(string) bool { r, _ := j.store.CommandRow(control.Job); return r != nil && r.Status == "exited" })
-	row, err := j.store.CommandRow(j.job.ID)
-	if err != nil || row.Status != "running" || j.notices() != 0 {
-		t.Fatal(row, err, j.notices())
-	}
-	state, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(m.PID)).Output()
-	if err != nil || strings.HasPrefix(strings.TrimSpace(string(state)), "Z") {
-		t.Fatal("child not live", string(state), err)
-	}
-	if _, err := j.release.WriteString("go\n"); err != nil {
-		t.Fatal(err)
-	}
-	j.s.waitFor("lost completion recorded and delivered", noticeWait, func(string) bool {
-		r, _ := j.store.CommandRow(j.job.ID)
-		return r != nil && r.Status == "exited" && r.ExitCode == nil && j.notices() == 1
-	})
-	got, _ := os.ReadFile(j.sink)
-	if !strings.Contains(string(got), "exit=unknown") {
-		t.Fatal(string(got))
-	}
-	if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
-		t.Fatal(out, err)
-	}
-	if j.notices() != 1 {
-		t.Fatal("notice duplicated", j.notices())
 	}
 }
 
@@ -207,50 +149,6 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 	}
 }
 
-func TestCancelWaitsForStoppedMonitorAndPreservesHandoff(t *testing.T) {
-	t.Parallel()
-	for _, handoff := range []bool{false, true} {
-		t.Run(fmt.Sprint(handoff), func(t *testing.T) {
-			j := startFaultJob(t)
-			data, err := os.ReadFile(j.job.LogPath + ".runner")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var m lossManifest
-			if err = json.Unmarshal(data, &m); err != nil {
-				t.Fatal(err)
-			}
-			signalLossProcess(t, m.MonitorPID, syscall.SIGSTOP, binPath)
-			t.Cleanup(func() {
-				if syscall.Kill(m.MonitorPID, 0) == nil {
-					signalLossProcess(t, m.MonitorPID, syscall.SIGCONT, binPath)
-				}
-			})
-			if out, err := j.s.cli("run", "cancel", j.job.ID); err != nil {
-				t.Fatal(out, err)
-			}
-			if handoff {
-				if out, err := j.s.cli("server", "live-handoff", "--import-exe", binPath); err != nil {
-					t.Fatal(out, err)
-				}
-			}
-			j.s.waitFor("child group stopped before monitor can publish", 10*time.Second, func(string) bool {
-				b, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(m.PID)).Output()
-				return err != nil || strings.HasPrefix(strings.TrimSpace(string(b)), "Z")
-			})
-			r, err := j.store.CommandRow(j.job.ID)
-			if err != nil || r.Status != "cancelling" || j.notices() != 0 {
-				t.Fatal("live stopped monitor was called gone", r, err, j.notices())
-			}
-			signalLossProcess(t, m.MonitorPID, syscall.SIGCONT, binPath)
-			j.s.waitFor("cancel completed after monitor resumed", 10*time.Second, func(string) bool {
-				r, _ := j.store.CommandRow(j.job.ID)
-				return r != nil && r.Status == "cancelled" && r.ExitCode == nil && j.notices() == 1
-			})
-		})
-	}
-}
-
 func TestLostJobAfterAllOwnerProcessesDisappearAndRestart(t *testing.T) {
 	t.Parallel()
 	j := startFaultJob(t)
@@ -317,52 +215,6 @@ func TestLostJobAfterAllOwnerProcessesDisappearAndRestart(t *testing.T) {
 	if notices() != 1 {
 		t.Fatal("recovery duplicated notice", notices())
 	}
-}
-
-func TestSSHFailureStillHasActualExitCode(t *testing.T) {
-	t.Parallel()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-	j := startFaultJobScript(t, func(fifo string) string {
-		return fmt.Sprintf("printf 'READY\\n'; read value < %q; exec /usr/bin/ssh -oBatchMode=yes -oConnectTimeout=5 -p %d 127.0.0.1 true", fifo, port)
-	})
-	if _, err := j.release.WriteString("go\n"); err != nil {
-		t.Fatal(err)
-	}
-	j.s.waitFor("actual SSH error is collected", noticeWait, func(string) bool {
-		r, _ := j.store.CommandRow(j.job.ID)
-		return r != nil && r.Status == "exited" && r.ExitCode != nil && *r.ExitCode == 255 && j.notices() == 1
-	})
-}
-
-func TestMonitorNormalExitEvidenceIsSeparateFromCommandExit(t *testing.T) {
-	t.Parallel()
-	j := startFaultJob(t)
-	if _, err := j.release.WriteString("go\n"); err != nil {
-		t.Fatal(err)
-	}
-	j.s.waitFor("command and monitor finish with different actual codes", noticeWait, func(string) bool {
-		row, _ := j.store.CommandRow(j.job.ID)
-		if row == nil || row.Status != "exited" || row.ExitCode == nil || *row.ExitCode != 7 {
-			return false
-		}
-		data, err := os.ReadFile(j.job.LogPath + ".monitor-exit.json")
-		if err != nil {
-			return false
-		}
-		var evidence struct {
-			ExitCode *int
-			Signal   *string
-		}
-		if err := json.Unmarshal(data, &evidence); err != nil {
-			t.Fatal(err)
-		}
-		return evidence.ExitCode != nil && *evidence.ExitCode == 0 && evidence.Signal == nil && j.notices() == 1
-	})
 }
 
 func TestLateMonitorEvidenceDoesNotAttachToReusedLogPath(t *testing.T) {

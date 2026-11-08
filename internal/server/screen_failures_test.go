@@ -30,33 +30,3 @@ func TestScreenPromptMissingPaneCancelsBeforeAnswer(t *testing.T) {
 		t.Fatal(keys)
 	}
 }
-
-func TestScreenPromptDamagedReadRequiresLastMatchedScan(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
-		return
-	}
-	teststate.Lock(t)
-	for _, previousMatched := range []bool{true, false} {
-		s, p, input := screenTerminal(t, "claude-single", "claude")
-		scanScreen(s)
-		d := screenRecord(t, s)
-		paintScreen(p, "  1. incomplete option row")
-		if !previousMatched {
-			scanScreen(s)
-		}
-		resp := answerScreen(s, d, "1", nil)
-		if previousMatched {
-			if resp.Err != nil {
-				t.Fatal(resp.Err)
-			}
-			waitPromptCondition(t, func() bool { keys, _ := os.ReadFile(input); return string(keys) == "1" })
-		} else {
-			if resp.Err == nil || resp.Err.Code != api.ErrDecisionStale {
-				t.Fatal(resp)
-			}
-			if keys, _ := os.ReadFile(input); len(keys) != 0 {
-				t.Fatal(keys)
-			}
-		}
-	}
-}

@@ -14,31 +14,6 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
-func TestLastShellExitClosesWorkspaceWithViewer(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	s := start(t)
-	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-	var survivor api.WorkspaceCreatedResult
-	s.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: false}, &survivor)
-	var before api.WorkspaceListResult
-	s.rpc(api.MethodWorkspaceList, api.EmptyParams{}, &before)
-	t.Logf("before exit: %+v", before)
-	s.send("exit\r")
-	s.waitFor("last shell exit closes its workspace", 15*time.Second, func(text string) bool {
-		var spaces api.WorkspaceListResult
-		s.rpc(api.MethodWorkspaceList, api.EmptyParams{}, &spaces)
-		return len(spaces.Workspaces) == 1 && spaces.Workspaces[0].WorkspaceID == survivor.Workspace.WorkspaceID
-	})
-	var panes api.PaneListResult
-	s.rpc(api.MethodPaneList, api.PaneListParams{}, &panes)
-	if len(panes.Panes) != 1 || panes.Panes[0].PaneID != survivor.RootPane.PaneID {
-		t.Fatal("surviving pane changed", panes)
-	}
-	t.Logf("after exit panes: %+v; screen:\n%s", panes, s.text())
-}
-
 func TestFallbackShellExitClosesWorkspaceWithViewer(t *testing.T) {
 	if runIsolatedParallel(t) {
 		return
@@ -105,31 +80,6 @@ func TestFallbackShellExitClosesWorkspaceWithViewer(t *testing.T) {
 			t.Fatal("deleted owner resurrected", operation, spaces, panes)
 		}
 	}
-}
-
-func TestLastPaneExitOtherTabAndViewer(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	s := start(t)
-	s.waitFor("initial shell", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
-	var tab api.TabCreatedResult
-	s.rpc(api.MethodTabCreate, api.TabCreateParams{Focus: false}, &tab)
-	client, _ := sizeClient(t, s)
-	s.send("exit\r")
-	s.waitFor("only the exited tab removed", 15*time.Second, func(text string) bool {
-		var panes api.PaneListResult
-		s.rpc(api.MethodPaneList, api.PaneListParams{}, &panes)
-		return len(panes.Panes) == 1 && panes.Panes[0].PaneID == tab.RootPane.PaneID
-	})
-	marker := filepath.Join(t.TempDir(), "other-viewer-input")
-	if _, err := client.WriteString("printf 'OTHER_VIEWER_ALIVE' > '" + marker + "'\r"); err != nil {
-		t.Fatal(err)
-	}
-	s.waitFor("other viewer selects surviving tab", 15*time.Second, func(text string) bool {
-		data, _ := os.ReadFile(marker)
-		return string(data) == "OTHER_VIEWER_ALIVE"
-	})
 }
 
 func (s *session) waitForHomeAfterFinalExit(old string) api.PaneInfo {

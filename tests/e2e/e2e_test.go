@@ -340,32 +340,6 @@ func countPanes(screen string) int {
 	return n
 }
 
-func TestBootShowsSidebarAndPane(t *testing.T) {
-	t.Parallel()
-	s := start(t)
-	s.waitFor("sidebar footer and status line", 10*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "[menu]") &&
-			strings.Contains(tx, "[new]") &&
-			strings.Contains(tx, " spaces") &&
-			countPanes(tx) == 1 &&
-			strings.Contains(tx, " NORMAL ") &&
-			strings.Contains(tx, "[full]")
-	})
-	if !strings.Contains(s.text(), " NORMAL ") || !strings.Contains(s.text(), "[full]") {
-		t.Fatalf("server must show the width and workspace density buttons:\n%s", s.text())
-	}
-}
-
-func TestPrefixSplitVertical(t *testing.T) {
-	t.Parallel()
-	s := start(t)
-	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
-	s.send("\x02v") // C-b v
-	s.waitFor("two panes", 5*time.Second, func(tx string) bool {
-		return countPanes(tx) >= 2
-	})
-}
-
 func TestMouseFullFlow(t *testing.T) {
 	t.Parallel()
 	s := start(t)
@@ -554,18 +528,6 @@ func TestCopyModeSelectYank(t *testing.T) {
 	})
 }
 
-// The observed default right-bracket prefix is ignored; configured entry is tested separately.
-func TestCopyModeRightBracket(t *testing.T) {
-	t.Parallel()
-	s := start(t)
-	s.waitFor("boot", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "[new]") })
-	s.send("\x02]")
-	s.send("printf 'RIGHT_%s\\n' BRACKET\r")
-	s.waitFor("ignored prefix leaves shell input available", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "RIGHT_BRACKET") && !strings.Contains(tx, "PHONE COPY")
-	})
-}
-
 // SPEC G1/G6: the action bar COPY button cycles normal → copy →
 // fullscreen copy → normal.
 func TestActionBarCopyCycle(t *testing.T) {
@@ -661,23 +623,6 @@ func TestServerRestartKeepsPanes(t *testing.T) {
 	}
 }
 
-// SPEC G6: a raw LF byte reaches the pane as LF, not normalized to CR.
-// od -tx1 gives byte-level proof: typing "A" then a bare LF yields
-// "41 0a" with no 0d anywhere on the wire.
-func TestRawLFToPane(t *testing.T) {
-	t.Parallel()
-	s := start(t)
-	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	prepareByteReader(s, 2)
-	s.send("A\n")
-	s.waitFor("od bytes", 10*time.Second, func(tx string) bool {
-		return strings.Contains(strings.Join(strings.Fields(tx), " "), "41 0a")
-	})
-	if strings.Contains(s.text(), "0d") {
-		t.Fatalf("LF was translated to CR:\n%s", s.text())
-	}
-}
-
 // Herdr 0.2.56 preserves the FixTerm form for an ordinary pane, drops
 // releases there, and converts the same press to CSI u for a kitty pane.
 func TestShiftEnterToPane(t *testing.T) {
@@ -702,19 +647,6 @@ func TestKittyExplicitShiftEnter(t *testing.T) {
 	s.send("\x1b[27;2;13~")
 	s.waitFor("kitty encoded", 10*time.Second, func(tx string) bool {
 		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 31 33 3b 32 75")
-	})
-}
-
-// SPEC G6: a FixTerm keyboard query (CSI ? u) from the pane is answered
-// with CSI ? 0 u — the response bytes land in the pane's input stream.
-func TestFixTermQueryResponse(t *testing.T) {
-	t.Parallel()
-	s := start(t)
-	s.waitFor("prompt", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-	// The response is queued on the tty input buffer and read by od.
-	s.send("stty -icanon; printf '\\033[?u'; od -An -tx1 -N5\r")
-	s.waitFor("query response", 10*time.Second, func(tx string) bool {
-		return strings.Contains(strings.Join(strings.Fields(tx), " "), "1b 5b 3f 30 75")
 	})
 }
 

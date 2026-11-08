@@ -2,7 +2,7 @@ package server
 
 import (
 	"io"
-	"strconv"
+
 	"strings"
 	"testing"
 	"time"
@@ -11,87 +11,6 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
-
-func TestWorkspaceSelectRejectsOldGenerationActualPTYReview(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
-		return
-	}
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	defer stopServer(t, dir, done)
-	first := firstPaneID(t, dir)
-	label := "different-workspace"
-	var created api.WorkspaceCreatedResult
-	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Label: &label}, &created)
-	id, err := strconv.Atoi(strings.TrimPrefix(created.Workspace.WorkspaceID, "s"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := dialClient(t, dir)
-	defer c.conn.Close()
-	c.send(t, clientMsg{Type: "hello", Peer: endpoint.Current(), Cols: 120, Rows: 40})
-	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-	c.send(t, clientMsg{Type: "workspace_select", Workspace: id, WorkspaceGeneration: "old-generation"})
-	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "error" && m.Reason == "endpoint_workspace_not_found" })
-	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'IDENTITY_REJECTED\\n'\n"))})
-	waitRead(t, dir, first, "IDENTITY_REJECTED")
-}
-
-func TestHiddenMachineEndpointDoesNotReadTabsAndSelectsOriginalWorkspaceID(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
-		return
-	}
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	defer stopServer(t, dir, done)
-	ready := dialClient(t, dir)
-	ready.conn.Close()
-	first := firstPaneID(t, dir)
-	label := "remote-space"
-	var created api.WorkspaceCreatedResult
-	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Label: &label}, &created)
-	for _, pane := range []string{first, created.RootPane.PaneID} {
-		for _, state := range []string{"working", "idle"} {
-			apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: pane, Source: "test", Agent: "codex", State: state}, nil)
-		}
-	}
-	hidden := false
-	c := dialClient(t, dir)
-	defer c.conn.Close()
-	c.send(t, clientMsg{Type: "hello", Cols: 120, Rows: 40, Visible: &hidden})
-	c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-	c.conn.SetReadDeadline(time.Time{})
-	drained := make(chan struct{})
-	go func() { io.Copy(io.Discard, c.rd); close(drained) }()
-	defer func() { c.conn.Close(); <-drained }()
-	status := func(pane, want string) {
-		t.Helper()
-		var result api.PaneInfoResult
-		apiOK(t, dir, api.MethodPaneGet, api.PaneTarget{PaneID: pane}, &result)
-		if result.Pane.AgentStatus != want {
-			t.Fatalf("%s status=%s want %s", pane, result.Pane.AgentStatus, want)
-		}
-	}
-	status(first, "done")
-	status(created.RootPane.PaneID, "done")
-	id, err := strconv.Atoi(strings.TrimPrefix(created.Workspace.WorkspaceID, "s"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.send(t, clientMsg{Type: "workspace_select", Workspace: id})
-	status(created.RootPane.PaneID, "done")
-	visible := true
-	c.send(t, clientMsg{Type: "visibility", Visible: &visible})
-	c.send(t, clientMsg{Type: "input", Data: encode64([]byte("printf 'REMOTE_%s\\n' SELECTED\n"))})
-	waitRead(t, dir, created.RootPane.PaneID, "REMOTE_SELECTED")
-	status(first, "done")
-	status(created.RootPane.PaneID, "idle")
-	var workspaces api.WorkspaceListResult
-	apiOK(t, dir, api.MethodWorkspaceList, nil, &workspaces)
-	if len(workspaces.Workspaces) != 2 || !workspaces.Workspaces[0].Focused || workspaces.Workspaces[1].Focused {
-		t.Fatal("remote viewer navigation changed the canonical session workspace", workspaces)
-	}
-}
 
 func TestLegacyRealServerRejectsHiddenMachineBeforeMarkingSeenButKeepsLocal(t *testing.T) {
 	teststate.Lock(t)

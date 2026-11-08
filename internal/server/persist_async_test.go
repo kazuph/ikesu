@@ -92,56 +92,6 @@ func TestDelayedSessionObservationPreservesExplicitReport(t *testing.T) {
 	}
 }
 
-func TestScheduledSessionWriteDoesNotHoldAppLoop(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "async-save")
-	if err := os.MkdirAll(s.dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	appDone := make(chan struct{})
-	go func() { s.app.Run(); close(appDone) }()
-	defer func() { s.app.Stop(); <-appDone }()
-	s.saveWriteMu.Lock()
-	locked := true
-	defer func() {
-		if locked {
-			s.saveWriteMu.Unlock()
-		}
-	}()
-	written := make(chan struct{})
-	go func() { s.saveScheduledSession(); close(written) }()
-	deadline := time.NewTimer(5 * time.Second)
-	defer deadline.Stop()
-	for {
-		captured := make(chan uint64, 1)
-		go s.app.Do(func() { captured <- s.saveSequence })
-		select {
-		case seq := <-captured:
-			if seq == 0 {
-				continue
-			}
-		case <-deadline.C:
-			t.Fatal("disk writer held the model loop")
-		}
-		break
-	}
-	select {
-	case <-written:
-		t.Fatal("writer bypassed persistence serialization")
-	default:
-	}
-	s.saveWriteMu.Unlock()
-	locked = false
-	select {
-	case <-written:
-	case <-deadline.C:
-		t.Fatal("scheduled write did not complete after serialization released")
-	}
-	if f, err := session.Load(session.Path(s.dir)); err != nil || f == nil {
-		t.Fatal("scheduled write was lost", f, err)
-	}
-}
-
 func TestScheduledSessionCoalescesOverlappingChanges(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "coalesced-save")

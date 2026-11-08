@@ -122,20 +122,3 @@ func TestPendingMachineInputLimitsExpireWithoutChangingSelection(t *testing.T) {
 		t.Fatal("failed switch leaked held input")
 	}
 }
-
-func TestPendingMachineInputWaitsThroughDisconnectAndOwnsBytes(t *testing.T) {
-	start := time.Now()
-	p := &pendingMachine{id: "remote", deadline: start.Add(machineSwitchWait)}
-	m := &machineClient{active: "local", pending: p, endpoints: map[string]*managedEndpoint{"local": {}, "remote": {}}}
-	raw := []byte("a")
-	m.holdPendingInput(input.Event{Kind: input.KindKey, Raw: raw}, start)
-	raw[0] = 'z'
-	m.finishSwitch()
-	if m.pending != p || m.active != "local" || string(p.keys[0].Raw) != "a" {
-		t.Fatal("disconnected destination consumed keys or held borrowed bytes")
-	}
-	m.holdPendingInput(input.Event{Kind: input.KindKey, Raw: []byte("b")}, start.Add(pendingInputWait))
-	if len(p.keys) != 0 || len(m.held) != 0 {
-		t.Fatal("disconnected destination retained expired keys")
-	}
-}

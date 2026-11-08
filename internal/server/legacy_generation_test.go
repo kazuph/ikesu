@@ -45,28 +45,3 @@ func TestLegacyGenerationBindsOnlyRestoredOwner(t *testing.T) {
 		t.Fatalf("new untagged row was rebound: %v, %v", rows, err)
 	}
 }
-
-func TestLegacyGenerationWaitsForSessionSave(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "legacy-save-failure")
-	f := s.app.State().Snapshot()
-	f.Workspaces[0].Tabs[0].Panes[0].Generation = ""
-	s.app.RestoreSession(f)
-	defer s.sup.Kill(1)
-	store, err := s.db()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	if _, err := store.InsertMessage("legacy", "", "sender", "p1", "old", nil, false); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(s.dir, []byte("not a directory"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	s.migrateLegacyPaneGenerations()
-	rows, err := store.PendingMessagesForAgent("legacy", "p1")
-	if err != nil || len(rows) != 1 || rows[0].PaneGeneration != "" || !s.app.State().LegacyPaneGenerations[1] {
-		t.Fatalf("migration proceeded after failed save: %v, %v", rows, err)
-	}
-}

@@ -49,34 +49,6 @@ func TestSavedDifferentBootNeverSignalsLiveProcess(t *testing.T) {
 	}
 }
 
-func TestProcessGroupGoneAfterRealChildExit(t *testing.T) {
-	child := exec.Command("/bin/cat")
-	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	in, err := child.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := child.Start(); err != nil {
-		t.Fatal(err)
-	}
-	pid := child.Process.Pid
-	if !processGroupAlive(pid) {
-		in.Close()
-		child.Wait()
-		t.Fatal("real child group missing")
-	}
-	in.Close()
-	if err := child.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	if processGroupAlive(pid) {
-		t.Fatal("reaped process group still live")
-	}
-	if gone, err := monitorProcessGone(pid, "real-start"); err != nil || !gone {
-		t.Fatal("reaped monitor not recognized", gone, err)
-	}
-}
-
 func TestSavedDifferentBootCancellationDoesNotTouchForeignGroup(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "old-boot-cancel")

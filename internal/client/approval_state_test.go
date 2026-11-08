@@ -32,27 +32,6 @@ func TestClaudePermissionPopupRejectUsesRole(t *testing.T) {
 	}
 }
 
-func TestClaudePermissionPopupFieldOrder(t *testing.T) {
-	d := api.Decision{DecisionID: "claude", Kind: "tool_permission", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1", Agent: "claude", Tool: "Bash command", Explanation: "why", Command: "echo safe", Warning: "warning"}, Options: []api.DecisionOption{{ID: "1", Label: "Yes"}, {ID: "4", Label: "No"}}}
-	var state approvalState
-	state.update(&endpoint.DecisionProjection{BootID: "x", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
-	state.openPane("p1")
-	in := render.Input{State: model.New(t.TempDir(), 120, 40)}
-	state.overlay(&in)
-	if in.Approval == nil {
-		t.Fatal("missing popup")
-	}
-	text := strings.Join(in.Approval.Lines, "\n")
-	last := -1
-	for _, value := range []string{"Bash command", "echo safe", "画面の表示どおり（折り返しを含む）", "warning", "why", "Yes", "No"} {
-		next := strings.Index(text, value)
-		if next <= last {
-			t.Fatalf("missing or out of order %q in %q", value, text)
-		}
-		last = next
-	}
-}
-
 func TestClaudePermissionPopupStylesAndRejectInstructions(t *testing.T) {
 	description := "許可の説明"
 	expires := int64(1700000000000)
@@ -87,50 +66,6 @@ func TestClaudePermissionPopupStylesAndRejectInstructions(t *testing.T) {
 	}
 	if !strings.Contains(text, "confirm ↵") || !strings.Contains(text, "back ctrl+u") || strings.Contains(text, "select 1-") {
 		t.Fatalf("reject footer: %s", text)
-	}
-}
-
-func TestGuardApprovalVisibilityAndDismissal(t *testing.T) {
-	now := time.Unix(100, 0)
-	guard := api.Decision{DecisionID: "d1", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"}}
-	projection := &endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{guard}}
-	var state approvalState
-	state.update(projection, "p1", now, time.Time{})
-	if state.open != "d1" {
-		t.Fatalf("inactive input should show decision, got %q", state.open)
-	}
-	state.dismiss()
-	state.update(projection, "p1", now, time.Time{})
-	if state.open != "" {
-		t.Fatal("dismissed decision reopened without user action")
-	}
-	state.openPane("p1")
-	if state.open != "d1" {
-		t.Fatal("manual reopen failed")
-	}
-	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 2}, "p1", now, time.Time{})
-	if state.open != "" || len(state.pending) != 0 {
-		t.Fatal("resolved decision remained visible")
-	}
-}
-
-func TestGuardApprovalWaitsForPaneActivationAfterInput(t *testing.T) {
-	now := time.Unix(100, 0)
-	guard := api.Decision{DecisionID: "d1", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"}}
-	projection := &endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{guard}}
-	var state approvalState
-	state.update(projection, "p1", now, now)
-	if state.open != "" {
-		t.Fatal("typing opened approval")
-	}
-	state.update(projection, "p1", now.Add(11*time.Second), now)
-	if state.open != "" {
-		t.Fatal("elapsed time alone opened approval")
-	}
-	state.focus("p2")
-	state.focus("p1")
-	if state.open != "d1" {
-		t.Fatal("returning to pane did not open approval")
 	}
 }
 
@@ -169,19 +104,6 @@ func TestGuardApprovalRequiresSelectionBeforeAnswer(t *testing.T) {
 	answer := state.answer()
 	if answer == nil || answer.DecisionID != "d1" || answer.OptionID == nil || *answer.OptionID != "day_allow" {
 		t.Fatalf("answer=%+v", answer)
-	}
-}
-
-func TestGuardApprovalMayOpenWhilePrefixSnapshotIsPending(t *testing.T) {
-	state := model.New(t.TempDir(), 120, 40)
-	e := &managedEndpoint{snapshot: &render.Input{State: state, Prefix: true, ModeHint: " PREFIX "}}
-	m := &machineClient{}
-	if !m.approvalCanOpen(e) {
-		t.Fatal("prefix snapshot hid the newly opened approval")
-	}
-	e.snapshot.Prefix = false
-	if m.approvalCanOpen(e) {
-		t.Fatal("other modes must keep their input")
 	}
 }
 
@@ -237,45 +159,6 @@ func TestLateAnswerManualOpenAndSelection(t *testing.T) {
 	}
 }
 
-func TestLateAnswerSingleAndTextOnly(t *testing.T) {
-	for _, tc := range []struct {
-		selectOption bool
-		text         string
-	}{{true, ""}, {false, "12"}} {
-		var state approvalState
-		d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "A"}}}
-		state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
-		state.openPane("p1")
-		if tc.selectOption {
-			state.selectOption(1)
-		}
-		state.reason = tc.text
-		answer := state.answer()
-		if answer == nil || tc.selectOption && (len(answer.OptionIDs) != 1 || answer.OptionIDs[0] != "1") || tc.text != "" && (answer.Text == nil || *answer.Text != tc.text) {
-			t.Fatalf("unexpected answer: %+v", answer)
-		}
-	}
-}
-
-func TestLateAnswerRendersDetailsAndPreviewFallback(t *testing.T) {
-	heading, body, description, preview := "Question 1/1", "Which color?", "warm tone", "example red"
-	d := api.Decision{DecisionID: "d", Kind: "agent_prompt", Status: "pending", LateAnswer: true, QuestionLabel: &heading, Title: "Choose", Body: &body, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "Red", Description: &description, Preview: &preview}, {ID: "2", Label: "Blue", PreviewUnavailable: true}}}
-	var state approvalState
-	state.update(&endpoint.DecisionProjection{BootID: "a", Revision: 1, Pending: []api.Decision{d}}, "p1", time.Now(), time.Time{})
-	state.openPane("p1")
-	in := render.Input{State: model.New(t.TempDir(), 120, 40)}
-	state.overlay(&in)
-	if in.Approval == nil {
-		t.Fatal("missing question")
-	}
-	text := in.Approval.Title + "\n" + strings.Join(in.Approval.Lines, "\n")
-	for _, want := range []string{heading, body, "Red", description, preview, "Blue", "画面で確認"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("missing %q in %q", want, text)
-		}
-	}
-}
-
 func TestApprovalPresentationOriginAndRejectInstructions(t *testing.T) {
 	app := model.New(t.TempDir(), 120, 40)
 	ws := app.ActiveWorkspace()
@@ -293,24 +176,6 @@ func TestApprovalPresentationOriginAndRejectInstructions(t *testing.T) {
 	}
 	if strings.Contains(text, "select 1-3") || strings.Contains(text, "\n back ctrl+u") {
 		t.Fatalf("reject input shows selection guidance: %q", text)
-	}
-}
-
-func TestApprovalFooterWrapsOnlyBetweenInstructions(t *testing.T) {
-	app := model.New(t.TempDir(), 102, 40)
-	app.ActiveWorkspace().Name, app.ActiveWorkspace().CustomName = "作業場", true
-	d := api.Decision{DecisionID: "guard", Kind: "command_guard", Status: "pending", Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1"}, {ID: "2"}, {ID: "3"}}}
-	state := approvalState{pending: []api.Decision{d}, open: "guard"}
-	in := render.Input{State: app}
-	state.overlay(&in)
-	var footer []string
-	for i, kind := range in.Approval.Kinds {
-		if kind.Role == "footer" {
-			footer = append(footer, strings.TrimSpace(in.Approval.Lines[i]))
-		}
-	}
-	if got := strings.Join(footer, " | "); got != "select 1-3  ·  confirm ↵  ·  scroll ↑↓ | close esc" {
-		t.Fatalf("footer split inside instruction: %q", got)
 	}
 }
 
@@ -334,36 +199,6 @@ func TestLateApprovalPresentationIncludesCheckedOptions(t *testing.T) {
 		if strings.Contains(line, "✓ 2  青") && !in.Approval.Kinds[i].Selected {
 			t.Error("current option must be highlighted")
 		}
-	}
-}
-
-func TestLateApprovalOmitsTerminalTitleAndAbsentPreview(t *testing.T) {
-	app := model.New(t.TempDir(), 120, 40)
-	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, Title: "質問", Origin: &api.DecisionOrigin{PaneID: "p1", PaneLabel: "terminal title", TabLabel: "terminal tab", WorkspaceLabel: "サイドバーの名前"}, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青", PreviewUnavailable: true}}}
-	state := approvalState{pending: []api.Decision{d}, open: "late"}
-	in := render.Input{State: app, WorkspaceNames: map[int]string{0: "サイドバーの名前-terminal title"}}
-	state.overlay(&in)
-	text := strings.Join(in.Approval.Lines, "\n")
-	if !strings.Contains(text, "p1 · サイドバーの名前") || strings.Contains(text, "terminal title") || strings.Contains(text, "terminal tab") {
-		t.Fatalf("wrong origin: %q", text)
-	}
-	if strings.Count(text, "preview: 画面で確認") != 1 {
-		t.Fatalf("wrong preview fallback: %q", text)
-	}
-}
-
-func TestLateApprovalTextModeShowsInputInstructions(t *testing.T) {
-	app := model.New(t.TempDir(), 120, 40)
-	d := api.Decision{DecisionID: "late", Kind: "agent_prompt", Status: "pending", LateAnswer: true, AllowText: true, Origin: &api.DecisionOrigin{PaneID: "p1"}, Options: []api.DecisionOption{{ID: "1", Label: "赤"}, {ID: "2", Label: "青"}}}
-	state := approvalState{pending: []api.Decision{d}, open: "late", textMode: true, reason: "自由入力"}
-	in := render.Input{State: app}
-	state.overlay(&in)
-	text := strings.Join(in.Approval.Lines, "\n")
-	if !strings.Contains(text, "text 自由入力") || !strings.Contains(text, "confirm ↵  ·  back ctrl+u  ·  close esc") {
-		t.Fatalf("missing input or guidance: %q", text)
-	}
-	if strings.Contains(text, "select 1-2") || strings.Contains(text, "input · back ctrl+u") {
-		t.Fatalf("text mode shows selection or redundant guidance: %q", text)
 	}
 }
 

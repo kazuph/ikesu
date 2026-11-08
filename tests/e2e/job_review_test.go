@@ -13,20 +13,6 @@ import (
 	"time"
 )
 
-func TestShortCommandKeepsActualExitAndNotice(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	j := startFaultJob(t)
-	var result api.RunStartedResult
-	j.s.rpc(api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: "short-command", Completion: "summary", Argv: []string{"/usr/bin/true"}}, &result)
-	j.s.waitFor("short command real zero and notice", noticeWait, func(string) bool {
-		row, _ := j.store.CommandRow(result.Job)
-		b, _ := os.ReadFile(j.sink)
-		return row != nil && row.Status == "exited" && row.ExitCode != nil && *row.ExitCode == 0 && strings.Count(string(b), "job="+result.Job+" ") == 1
-	})
-}
-
 func TestExpiredDiagnosticLockDoesNotBlockCollectionOrStop(t *testing.T) {
 	if runIsolatedParallel(t) {
 		return

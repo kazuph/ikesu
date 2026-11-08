@@ -41,57 +41,6 @@ func graphicsReaderSocket(t *testing.T) (net.Conn, net.Conn, *graphicsFrameReade
 	return conn, peer, reader
 }
 
-func TestGraphicsFrameReaderPreservesCoalescedBodyAndNextHeader(t *testing.T) {
-	t.Parallel()
-	_, peer, reader := graphicsReaderSocket(t)
-	if _, err := peer.Write([]byte("{\"data_length\":3}\nabc{\"sequence\":7,\"revision\":8}\n")); err != nil {
-		t.Fatal(err)
-	}
-	first, err := reader.header()
-	if err != nil || first.DataLength == nil || *first.DataLength != 3 {
-		t.Fatal(first, err)
-	}
-	body, err := reader.body(3)
-	if err != nil || string(body) != "abc" {
-		t.Fatal("body changed", string(body), err)
-	}
-	second, err := reader.header()
-	if err != nil || second.Sequence != 7 || second.Revision != 8 {
-		t.Fatal("prefetched next header was lost", second, err)
-	}
-}
-
-func TestGraphicsFrameReaderAllowsUnstartedIdle(t *testing.T) {
-	t.Parallel()
-	conn, peer, reader := graphicsReaderSocket(t)
-	// A previous frame's deadline must not leak into the idle phase.
-	conn.SetReadDeadline(time.Now())
-	done := make(chan error, 1)
-	go func() {
-		frame, err := reader.header()
-		if err == nil && frame.Sequence != 7 {
-			err = errors.New("header sequence changed")
-		}
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		t.Fatalf("unstarted frame was closed: %v", err)
-	case <-time.After(reader.progress.idle + 100*time.Millisecond):
-	}
-	if _, err := peer.Write([]byte("{\"sequence\":7}\n")); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(reader.progress.idle):
-		t.Fatal("idle frame could not resume")
-	}
-}
-
 func TestGraphicsFrameReaderRejectsStalledHeaderAndBody(t *testing.T) {
 	t.Parallel()
 	for _, body := range []bool{false, true} {

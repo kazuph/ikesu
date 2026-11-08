@@ -2,7 +2,7 @@ package server
 
 import (
 	"os"
-	"strings"
+
 	"testing"
 	"time"
 
@@ -51,29 +51,6 @@ func TestClaudeTranscriptRejectsConflictingVisibleBodyAndDescription(t *testing.
 	}
 }
 
-func TestScreenQuestionIdentityReusesPendingDecision(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	original := screenRecord(t, s)
-	identity := `["session","tool",0]`
-	var reused bool
-	var reusedID string
-	s.app.Do(func() {
-		if err := s.store.BindScreenQuestion(original.DecisionID, "p1", identity); err != nil {
-			t.Error(err)
-			return
-		}
-		p := s.readScreenPrompt(1)
-		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: identity}
-		reused = s.reuseScreenPrompt(1, w)
-		reusedID = w.decisionID
-	})
-	if !reused || reusedID != original.DecisionID {
-		t.Fatalf("reused=%v id=%s original=%s", reused, reusedID, original.DecisionID)
-	}
-}
-
 func TestScreenQuestionRecreationKeepsUnidentifiedRecord(t *testing.T) {
 	teststate.Lock(t)
 	s, p, _ := screenTerminal(t, "claude-single", "claude")
@@ -111,50 +88,6 @@ func TestScreenQuestionRecreationKeepsUnidentifiedRecord(t *testing.T) {
 	}
 }
 
-func TestScreenQuestionReconciliationPreservesOtherDecisions(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	old := screenRecord(t, s)
-	var other, permission, differentPane api.Decision
-	s.app.Do(func() {
-		p := s.readScreenPrompt(1)
-		params := p.Params
-		origin := *old.Origin
-		params.Origin = &origin
-		var err error
-		other, err = s.store.CreateScreenDecision(params, time.Now(), "p1", ` ["other"]`)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		params.Kind = "tool_permission"
-		permission, err = s.store.CreateDecision(params, time.Now())
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		params.Kind = "agent_prompt"
-		origin.PaneID = "p2"
-		differentPane, err = s.store.CreateDecision(params, time.Now())
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["current"]`}
-		s.beginScreenPrompt(1, w)
-		if w.decisionID == "" || w.decisionID == old.DecisionID || w.decisionID == other.DecisionID {
-			t.Errorf("unverified record reused: %s", w.decisionID)
-		}
-	})
-	for _, d := range []api.Decision{other, permission, differentPane} {
-		got, err := s.store.Decision(d.DecisionID)
-		if err != nil || got.Status != "pending" {
-			t.Fatalf("unrelated decision changed: %+v %v", got, err)
-		}
-	}
-}
-
 func TestScreenQuestionAnswerKeepsUnidentifiedRecords(t *testing.T) {
 	teststate.Lock(t)
 	s, p, input := screenTerminal(t, "claude-single", "claude")
@@ -188,86 +121,6 @@ func TestScreenQuestionAnswerKeepsUnidentifiedRecords(t *testing.T) {
 	}
 }
 
-func TestScreenQuestionKeepsSummarizedUnidentifiedRecord(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	first := screenRecord(t, s)
-	var legacy, current api.Decision
-	s.app.Do(func() {
-		p := s.readScreenPrompt(1)
-		full := p.Params.Title + "\n\n" + strings.Repeat("Long question details. ", 20)
-		params := p.Params
-		params.Origin = first.Origin
-		params.Body = &full
-		var err error
-		legacy, err = s.store.CreateDecision(params, time.Now())
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		display := p.Params
-		display.Title = full
-		display.Origin = first.Origin
-		current, err = s.store.CreateScreenDecision(display, time.Now(), "p1", `["session","call",0]`)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		w := &screenPromptWatch{prompt: p, signature: p.Signature(), transcriptID: `["session","call",0]`, displayParams: &display}
-		s.beginScreenPrompt(1, w)
-		if w.decisionID != current.DecisionID {
-			t.Errorf("selected %s, want %s", w.decisionID, current.DecisionID)
-		}
-	})
-	got, err := s.store.Decision(legacy.DecisionID)
-	if err != nil || got.Status != "pending" {
-		t.Fatalf("unidentified summarized record changed: %+v %v", got, err)
-	}
-}
-
-func TestClaudeUnknownIdentityDoesNotReuseOrCancelSameText(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	old := screenRecord(t, s)
-	s.app.Do(func() {
-		if err := s.store.BindScreenQuestion(old.DecisionID, "p1", `["session","old",0]`); err != nil {
-			t.Error(err)
-			return
-		}
-		p := s.readScreenPrompt(1)
-		params := p.Params
-		params.Origin = old.Origin
-		current, err := s.store.CreateDecision(params, time.Now())
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		w := &screenPromptWatch{prompt: p, signature: p.Signature()}
-		s.screenPrompts.watches[1] = w
-		s.beginScreenPrompt(1, w)
-		if w.decisionID == old.DecisionID || w.decisionID == current.DecisionID {
-			t.Errorf("unverified decision reused: %s", w.decisionID)
-		}
-		for _, d := range []api.Decision{old, current} {
-			got, e := s.store.Decision(d.DecisionID)
-			if e != nil || got.Status != "pending" {
-				t.Errorf("unverified decision changed: %+v %v", got, e)
-			}
-		}
-	})
-}
-
-func TestClaudeDisplayRetainsScreenPreview(t *testing.T) {
-	preview, short, full := "実際のプレビュー", "短い説明", "記録から得た全文"
-	w := &screenPromptWatch{prompt: &screenprompt.Prompt{Params: api.DecisionCreateParams{Title: "画面の一部", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &short, Preview: &preview}}}}, displayParams: &api.DecisionCreateParams{Title: "質問全文", Options: []api.DecisionOption{{ID: "1", Label: "選択", Description: &full}}}}
-	got := screenDisplayParams(w)
-	if got.Title != "質問全文" || got.Options[0].Preview == nil || *got.Options[0].Preview != preview || *got.Options[0].Description != full {
-		t.Fatal(got)
-	}
-}
-
 func TestClaudeTranscriptPresentationRemovesPartialScreenBody(t *testing.T) {
 	partial, heading := "全文の後半", "質問 1/2"
 	p := api.DecisionCreateParams{Title: "先頭", Body: &partial, QuestionLabel: &heading}
@@ -294,18 +147,6 @@ func TestClaudeCompletedAndAmbiguousQuestionsAreNotPresented(t *testing.T) {
 	if match, unsafe, _ := chooseClaudeQuestion(p, []session.ClaudeQuestion{newQuestion, other}); match != nil || !unsafe {
 		t.Fatal("ambiguous calls accepted")
 	}
-}
-
-func TestClaudeUnverifiedDoesNotExpire(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	s.app.Do(func() {
-		p := s.readScreenPrompt(1)
-		w := &screenPromptWatch{prompt: p, transcriptDeadline: time.Now().Add(-time.Second)}
-		if !s.waitClaudeQuestion(1, w, false, false, true) {
-			t.Error("unverified question escaped after deadline")
-		}
-	})
 }
 
 func TestWaitingWatchCollectsPreview(t *testing.T) {

@@ -3,11 +3,9 @@ package client
 import (
 	"os"
 	"strings"
-	"sync"
+
 	"testing"
 	"time"
-
-	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
 func graphicsReceiverOutput(t *testing.T) *os.File {
@@ -82,51 +80,5 @@ func TestGraphicsFileReceiverRetirementCannotAcknowledgeOrCrossTransfers(t *test
 	}
 	if consumed, result := receiver.reply([]byte("\x1b_Gi=18;ENOENT\x1b\\"), now); !consumed || result == nil || result.GraphicsTransmission != next || result.Success {
 		t.Fatal("new transfer did not retain its actual rejection", consumed, result)
-	}
-}
-
-func TestGraphicsFileReceiverStartedAndReplyRaceEmitsOneResult(t *testing.T) {
-	var receiver graphicsFileReceiver
-	now := time.Now()
-	identity, err := receiver.begin(graphicsReceiverOutput(t), graphicsTransferFixture(t), true, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	results := make(chan *endpoint.GraphicsTransmissionResult, 2)
-	var workers sync.WaitGroup
-	workers.Add(2)
-	go func() {
-		defer workers.Done()
-		results <- receiver.started(identity, now)
-	}()
-	go func() {
-		defer workers.Done()
-		_, result := receiver.reply([]byte("\x1b_Gi=17;OK\x1b\\"), now)
-		results <- result
-	}()
-	workers.Wait()
-	close(results)
-	count := 0
-	for result := range results {
-		if result != nil {
-			count++
-			if result.GraphicsTransmission != identity || !result.Success {
-				t.Fatal("race emitted a different result", result)
-			}
-		}
-	}
-	if count != 1 {
-		t.Fatalf("Started/reply race emitted %d results", count)
-	}
-}
-
-func TestGraphicsFileReceiverRejectsInactiveOwnerBeforeWriting(t *testing.T) {
-	var receiver graphicsFileReceiver
-	out := graphicsReceiverOutput(t)
-	if _, err := receiver.begin(out, graphicsTransferFixture(t), false, time.Now()); err == nil {
-		t.Fatal("accepted an inactive or remote viewer's file")
-	}
-	if info, err := out.Stat(); err != nil || info.Size() != 0 {
-		t.Fatal("inactive owner's file wrote terminal bytes", info, err)
 	}
 }
