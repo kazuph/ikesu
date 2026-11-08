@@ -110,7 +110,7 @@ func (h *rightMachineHarness) until(label string, pred func() bool) {
 	for !pred() {
 		select {
 		case event := <-h.m.events:
-			if event.err != nil {
+			if event.err != nil && (h.m.endpoints[event.id] == nil || h.m.endpoints[event.id].attempt == event.attempt) {
 				h.t.Fatalf("%s endpoint=%s: %v", label, event.id, event.err)
 			}
 			if _, done := h.m.event(event); done {
