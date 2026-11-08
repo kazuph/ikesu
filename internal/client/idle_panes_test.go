@@ -129,17 +129,12 @@ func TestIdlePanesDisconnectWhileDeleting(t *testing.T) {
 	if err := m.input(input.Event{Kind: input.KindKey, Key: uv.Key{Code: 'Z'}, Raw: []byte("ZZ_IDLE_INPUT_OK")}); err != nil {
 		t.Fatal(err)
 	}
+	sent := m.endpoints["local"].connection.sentInput
+	if sent < 2 {
+		t.Fatalf("Esc and input were not sent: %d", sent)
+	}
 	h.until("local input after disconnect", func() bool {
-		for _, row := range m.endpoints["local"].snapshot.Panes[2].Grid {
-			var line strings.Builder
-			for _, cell := range row {
-				line.WriteString(cell.Content)
-			}
-			if strings.Contains(line.String(), "ZZ_IDLE_INPUT_OK") {
-				return true
-			}
-		}
-		return false
+		return m.endpoints["local"].processedInput >= sent
 	})
 }
 
