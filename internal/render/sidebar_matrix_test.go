@@ -49,7 +49,7 @@ func TestG2DraggedWorkspaceBothRowsHighlight(t *testing.T) {
 			}
 			for x := 1; x < w; x++ {
 				c := out.Frame.Cell(x, y+i)
-				if c.Width > 0 && c.Style.Bg != nil && !inTabChip(out.Frame, x, y+i) {
+				if c.Width > 0 && c.Style.Bg != nil {
 					t.Fatal("dragged background", x)
 				}
 			}
@@ -72,21 +72,10 @@ func TestG2SelectedWorkspaceBothRowsHighlight(t *testing.T) {
 			}
 			for x := 1; x < w; x++ {
 				c := out.Frame.Cell(x, y+i)
-				if c.Width > 0 && c.Style.Bg != nil && !inTabChip(out.Frame, x, y+i) {
+				if c.Width > 0 && c.Style.Bg != nil {
 					t.Fatal("selected background", x)
 				}
 			}
 		}
 	}
-}
-
-// inTabChip reports whether a cell belongs to a sidebar tab chip, whose
-// accent fill is the one intended background on a card's tab line.
-func inTabChip(f *Frame, x, y int) bool {
-	for _, r := range f.TabChips {
-		if y == r.Y && x >= r.X && x < r.X+r.W {
-			return true
-		}
-	}
-	return false
 }

@@ -6,7 +6,6 @@ package render
 import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kazuph/ikesu/internal/layout"
 )
 
 // Frame is a grid of styled cells covering the whole screen.
@@ -19,10 +18,8 @@ type Frame struct {
 	GraphicsNamespace string
 	RetainGraphics    bool `json:"-"` // Wait for the producer's new dimensions without changing terminal images.
 	Palette           Palette
-	// TabChips are the sidebar's tab chips; like tab bar chips they keep their fill.
-	TabChips []layout.Rect `json:"-"`
-	W, H     int
-	Cells    []uv.Cell
+	W, H              int
+	Cells             []uv.Cell
 }
 
 // NewFrame allocates an empty frame.

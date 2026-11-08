@@ -2,6 +2,7 @@ package render
 
 import (
 	uv "github.com/charmbracelet/ultraviolet"
+	"strings"
 	"testing"
 )
 
@@ -69,13 +70,16 @@ func TestServerJobDotAndRestoreStyleRecordedCells(t *testing.T) {
 	s.RightSidebarMode = "hidden" // Keep the original pane geometry for this content regression.
 	pid := s.ActiveWorkspace().TabRef().Layout.Focused()
 	out := Compose(Input{ServerUI: true, State: s, Panes: map[int]*PaneSnap{pid: {Agent: "codex", Restore: "saved session"}}, JobDots: map[int][]JobDot{0: {{Color: Yellow}}}})
-	// The tab chips follow the dot's trailing space; git follows the chips.
-	if out.Frame.Cell(3, 5).Content != "●" || out.Frame.Cell(4, 5).Style.Fg != out.Frame.Palette.Text || !inTabChip(out.Frame, 5, 5) || inTabChip(out.Frame, 4, 5) || out.Frame.Cell(24, 4).Content != " " {
-		t.Fatal("server job dot must precede the tab chips and git with a plain trailing space, not trail the name")
+	// The tab names follow the dot's trailing space; git follows the names.
+	if out.Frame.Cell(3, 5).Content != "●" || out.Frame.Cell(4, 5).Style.Fg != out.Frame.Palette.Text || out.Frame.Cell(4, 5).Content != " " || out.Frame.Cell(24, 4).Content != " " {
+		t.Fatal("server job dot must precede the tab names and git with a plain trailing space, not trail the name")
 	}
-	chip := out.Frame.TabChips[0]
-	if out.Frame.Cell(chip.X+chip.W+1, 5).Content != "n" {
-		t.Fatal("git must follow the tab chips after one space")
+	row := ""
+	for x := 5; x < 25; x++ {
+		row += out.Frame.Cell(x, 5).Content
+	}
+	if !strings.HasPrefix(row, "· 1  nogit") {
+		t.Fatalf("tab names then git after the dot: %q", row)
 	}
 	for x := 144; x < 159; x++ {
 		if out.Frame.Cell(x, 1).Style.Attrs&uv.AttrBold == 0 {

@@ -67,15 +67,11 @@ func TestTransparentSidebarCardsKeepDefaultBackgroundOnlyOnCards(t *testing.T) {
 		case RowWorkspace, RowGit, RowCardBlank:
 			cards++
 			for x := 0; x < s.SidebarArea().W-1; x++ {
-				if clear.Cell(x, pos.Y).Style.Bg != nil && !inTabChip(clear, x, pos.Y) {
+				if clear.Cell(x, pos.Y).Style.Bg != nil {
 					t.Fatalf("card bg at %d,%d", x, pos.Y)
 				}
 			}
-			sample := 3 // first cell after the card's indent, or after its tab chips
-			for inTabChip(painted, sample, pos.Y) {
-				sample++
-			}
-			if pos.Row.Ws != s.Active && painted.Cell(sample, pos.Y).Style.Bg == nil {
+			if pos.Row.Ws != s.Active && painted.Cell(3, pos.Y).Style.Bg == nil {
 				t.Fatal("explicit component background was lost")
 			}
 			if pos.Row.Ws == s.Active && pos.Row.Kind == RowWorkspace && clear.Cell(0, pos.Y).Content != "▌" {
