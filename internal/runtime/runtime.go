@@ -1018,9 +1018,14 @@ func (s *Supervisor) LockedPanes() ([]int, bool) {
 	return ids, true
 }
 
+// OutputRevision counts PTY output batches, so callers can reuse work done
+// for an unchanged screen.
+func (p *Pane) OutputRevision() uint64 { return p.revision.Load() }
+
 // PreviewLine is one line that tells what the pane is doing: the nearest
 // text above an agent's input line (a row starting with "❯" or "›"),
 // skipping blank rows and rules, or else the lowest non-blank row.
+// Image placeholder cells (kitty Unicode placeholders) are left out.
 func (p *Pane) PreviewLine() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1028,26 +1033,26 @@ func (p *Pane) PreviewLine() string {
 	row := func(y int) string {
 		var sb strings.Builder
 		for x := 0; x < w; x++ {
-			if c := p.emu.CellAt(x, y); c != nil && c.Width > 0 {
+			if c := p.emu.CellAt(x, y); c != nil && c.Width > 0 && !strings.HasPrefix(c.Content, "\U0010EEEE") {
 				sb.WriteString(c.Content)
 			}
 		}
 		return strings.TrimSpace(sb.String())
 	}
-	empty := func(line string) bool {
+	rule := func(line string) bool {
 		return strings.Trim(line, "─━═-") == ""
 	}
 	lowest := ""
 	for y := h - 1; y >= 0; y-- {
 		line := row(y)
-		if lowest == "" && !empty(line) {
+		if lowest == "" && line != "" {
 			lowest = line
 		}
 		if !strings.HasPrefix(line, "❯") && !strings.HasPrefix(line, "›") {
 			continue
 		}
 		for above := y - 1; above >= 0; above-- {
-			if text := row(above); !empty(text) {
+			if text := row(above); !rule(text) {
 				return text
 			}
 		}

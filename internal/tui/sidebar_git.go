@@ -21,21 +21,20 @@ type workspaceGitTarget struct {
 }
 
 // refreshStaleWorktrees re-anchors a space whose first pane's shell has left
-// the checkout its worktree metadata names (for example a reused space), so
-// it is no longer drawn as another repo's linked worktree.
+// the checkout its worktree metadata names (for example a reused space). The
+// space's directory moves with it, so the git line and worktree actions use
+// the same checkout as the grouping.
 func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[string]gitCwdActivity) {
+	index := make(map[int]int, len(a.st.Workspaces))
+	for i, w := range a.st.Workspaces {
+		index[w.ID] = i
+	}
 	for _, t := range targets {
 		if t.nameCwd == t.cwd {
-			continue // no live shell directory beyond the creation directory
+			continue // no live shell directory beyond the space's directory
 		}
-		i := -1
-		for wi, w := range a.st.Workspaces {
-			if w.ID == t.id {
-				i = wi
-				break
-			}
-		}
-		if i < 0 {
+		i, ok := index[t.id]
+		if !ok {
 			continue
 		}
 		info := a.st.Workspaces[i].Worktree
@@ -47,18 +46,25 @@ func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[st
 		if entry.sourceErr == nil {
 			next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
 		}
-		a.exec(model.CmdSetWorktree{Index: i, Info: next})
+		a.exec(model.CmdSetWorktree{Index: i, Info: next, Cwd: t.nameCwd})
 		a.dirty = true
 	}
 }
 
+type workspacePreview struct {
+	revision uint64
+	line     string
+}
+
 // workspacePreviewLines reads one line per space from its first tab's first
-// pane, only while the full density shows the preview line.
+// pane. Each screen chooses its own density, so the line is kept for all of
+// them; a pane is read again only after it printed something.
 func (a *App) workspacePreviewLines() map[int]string {
-	if a.st.WorkspaceDensity == "slim" || a.st.WorkspaceDensity == "oneline" || a.sidebarConfig.UI.Sidebar.Spaces.Rows != nil {
+	if a.sidebarConfig.UI.Sidebar.Spaces.Rows != nil {
 		return nil
 	}
 	out := map[int]string{}
+	seen := map[int]bool{}
 	for _, w := range a.st.Workspaces {
 		if len(w.Tabs) == 0 {
 			continue
@@ -67,10 +73,27 @@ func (a *App) workspacePreviewLines() map[int]string {
 		if len(ids) == 0 {
 			continue
 		}
-		if p := a.sup.Get(ids[0]); p != nil {
-			if line := p.PreviewLine(); line != "" {
-				out[w.ID] = line
+		p := a.sup.Get(ids[0])
+		if p == nil {
+			continue
+		}
+		seen[ids[0]] = true
+		revision := p.OutputRevision()
+		cached, ok := a.previewCache[ids[0]]
+		if !ok || cached.revision != revision {
+			cached = workspacePreview{revision, p.PreviewLine()}
+			if a.previewCache == nil {
+				a.previewCache = map[int]workspacePreview{}
 			}
+			a.previewCache[ids[0]] = cached
+		}
+		if cached.line != "" {
+			out[w.ID] = cached.line
+		}
+	}
+	for pid := range a.previewCache {
+		if !seen[pid] {
+			delete(a.previewCache, pid)
 		}
 	}
 	return out

@@ -14,6 +14,8 @@ func TestPreviewLineReadsTextAboveAgentInput(t *testing.T) {
 		{"codex", "  書き出しはキャンセル済みです。\n\n  Worked for 45s\n\n\n› Ask Codex to do anything\n\n  GPT-6.1 Terra medium\n  ? for shortcuts", "Worked for 45s"},
 		{"shell", "$ go test ./...\nok  ikesu 0.3s\n\n", "ok  ikesu 0.3s"},
 		{"blank", "\n\n", ""},
+		{"shell ending with a rule", "report body\n-----", "-----"},
+		{"image placeholder", "\U0010EEEE\u0305\u0305\U0010EEEE\u0305\u030D caption", "caption"},
 	} {
 		p := NewSupervisor().newPane(1, "/tmp", 60, 12)
 		p.flushPTYBatch([]byte(strings.ReplaceAll(c.screen, "\n", "\r\n")))

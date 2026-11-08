@@ -306,6 +306,7 @@ type App struct {
 	metadataViews                            map[int]api.PaneMetadataView
 	workspaceGit                             map[int]render.GitStatus
 	workspacePreviews                        map[int]string
+	previewCache                             map[int]workspacePreview
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
 	gitActivity                              *gitActivityState
