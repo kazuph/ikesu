@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"time"
 )
 
 // Spawn starts a login shell in cwd inside a new pane of the given size.
@@ -172,7 +173,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 	}
 	s.mu.Unlock()
 
-	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{}), owner: s}
+	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{}), owner: s, idleActivityAt: time.Now()}
 	p.cursor.Visible = true
 	s.setupGraphics(p)
 	emu.RegisterOscHandler(52, func(data []byte) bool {

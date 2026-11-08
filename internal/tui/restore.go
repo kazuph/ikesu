@@ -111,9 +111,11 @@ func (a *App) RestoreSession(f *session.File) []int {
 		a.sessions = map[int]*AgentRecord{}
 	}
 	cwds := map[int]string{}
+	activity := map[int]session.Pane{}
 	var agents []int
 	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
 		cwds[p.ID] = p.Cwd
+		activity[p.ID] = *p
 		if p.Agent != "" || p.SessionID != "" || p.Title != "" {
 			a.sessions[p.ID] = &AgentRecord{
 				Agent:              p.Agent,
@@ -143,12 +145,15 @@ func (a *App) RestoreSession(f *session.File) []int {
 					cwd = a.cwd
 				}
 				r := a.rectForPane(pid)
-				_, err := a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1))
+				pane, err := a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1))
 				if err != nil && cwd != a.cwd {
-					_, err = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
+					pane, err = a.sup.Spawn(pid, a.cwd, max(r.W, 1), max(r.H, 1))
 				}
 				if err != nil {
 					a.restoreWarnings[pid] = err.Error()
+				} else {
+					p := activity[pid]
+					pane.RestoreIdleActivity(p.IdleActivityAt, p.IdleActivitySeq)
 				}
 			}
 		}

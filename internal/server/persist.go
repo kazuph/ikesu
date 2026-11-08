@@ -107,6 +107,7 @@ func (s *Server) captureSessionWithoutObservation() *sessionSnapshot {
 	ledgerLoaded := false
 	f.EachPane(func(w *session.Workspace, _ *session.Tab, p *session.Pane) {
 		if rp := s.sup.Get(p.ID); rp != nil {
+			p.IdleActivityAt, p.IdleActivitySeq = rp.IdleActivity()
 			if cwd := rp.Snapshot().Cwd; cwd != "" {
 				p.Cwd = cwd
 			}

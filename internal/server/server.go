@@ -382,6 +382,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		return env
 	}
 	s.sup = sup
+	sup.IdleActivityChanged = s.markSessionDirty
 
 	reservations := func() (map[int]bool, error) {
 		store, err := s.db()

@@ -84,6 +84,8 @@ type Pane struct {
 	lastMailExternalInput atomic.Int64
 
 	inputMu           sync.Mutex
+	idleActivityAt    time.Time
+	idleActivitySeq   uint64
 	lastExternalInput atomic.Int64
 	externalInputSeq  atomic.Uint64
 	mu                sync.Mutex
@@ -159,6 +161,7 @@ type Supervisor struct {
 	// Env, when set, contributes extra KEY=VALUE pairs to a spawned pane's
 	// environment (the server uses it for IKESU_PANE_ID/IKESU_SOCKET_PATH).
 	Env                     func(paneID int) []string
+	IdleActivityChanged     func()
 	defaultShell, shellMode string
 	scrollbackBytes         *int
 }
