@@ -81,3 +81,23 @@ func TestIdleWorkingReportUpdatesActivity(t *testing.T) {
 		t.Fatalf("idle report changed activity: %v %d", last, n)
 	}
 }
+
+func TestIdleDeleteKeepsLastPaneAfterBatch(t *testing.T) {
+	teststate.Lock(t)
+	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	a.exec(model.CmdSplitFocused{Dir: layout.Vertical})
+	for _, id := range a.st.Workspaces[0].Tabs[0].Layout.PaneIDs() {
+		a.SetReported(id, "codex", "idle")
+	}
+	list := a.IdlePanes()
+	if len(list.Panes) != 2 {
+		t.Fatalf("candidates: %+v", list)
+	}
+	result := a.DeleteIdlePanes(list.Panes)
+	if result.Deleted != 1 || result.Failed != 1 || a.sup.Get(list.Panes[1].ID) == nil || a.quit {
+		t.Fatalf("last pane batch: %+v", result)
+	}
+}
