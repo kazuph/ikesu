@@ -36,7 +36,11 @@ func TestIdleInitiallySelected(t *testing.T) {
 
 // The two real servers include a build of the pre-feature revision, so this test may take over five seconds.
 func TestIdlePanesOldAndNewServers(t *testing.T) {
-	archive, err := exec.Command("git", "archive", "c8da28a1").Output()
+	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := exec.Command("git", "-C", strings.TrimSpace(string(root)), "archive", "c8da28a1").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
