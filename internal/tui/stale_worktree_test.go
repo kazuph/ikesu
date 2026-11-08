@@ -2,10 +2,13 @@ package tui
 
 import (
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/worktree"
 )
@@ -63,5 +66,57 @@ func TestStaleWorktreeRoundTripMovesTheSpaceDirectory(t *testing.T) {
 		if ws.Cwd != step.SourceCheckoutPath || ws.Worktree == nil || ws.Worktree.RepoKey != step.RepoKey || ws.Worktree.CheckoutPath != step.SourceCheckoutPath {
 			t.Fatalf("after moving to %s: cwd=%q worktree=%+v", step.RepoName, ws.Cwd, ws.Worktree)
 		}
+	}
+}
+
+// A delete confirmation removes the checkout it showed. If the space was
+// re-anchored to another checkout meanwhile, nothing is deleted.
+func TestWorktreeDeleteRefusesAfterTheSpaceMoved(t *testing.T) {
+	teststate.Lock(t)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(root, "repo")
+	git := func(dir string, args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(repo, "init", "-q")
+	git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+	a1, b1 := filepath.Join(root, "wt-a"), filepath.Join(root, "wt-b")
+	git(repo, "worktree", "add", "-q", "-b", "a", a1)
+	git(repo, "worktree", "add", "-q", "-b", "b", b1)
+	app := specRuntimeApp(t)
+	srcA, err := worktree.Source(a1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcB, err := worktree.Source(b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.exec(model.CmdSetWorktree{Index: 0, Info: worktree.Metadata(srcA, a1), Cwd: a1})
+	app.deleteWorktreeDialog(0, false)
+	app.exec(model.CmdSetWorktree{Index: 0, Info: worktree.Metadata(srcB, b1), Cwd: b1})
+	app.dialog.run(app)
+	for _, dir := range []string{a1, b1} {
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("%s must remain after a stale confirmation: %v", dir, err)
+		}
+	}
+	app.dialog = nil
+	app.deleteWorktreeDialog(0, false)
+	app.dialog.run(app)
+	if _, err := os.Stat(b1); !os.IsNotExist(err) {
+		t.Fatalf("the checkout the dialog showed must be removed: %v", err)
+	}
+	if _, err := os.Stat(a1); err != nil {
+		t.Fatalf("the other checkout must remain: %v", err)
 	}
 }
