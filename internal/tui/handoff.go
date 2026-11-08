@@ -83,6 +83,7 @@ func (a *App) RestoreHandoff(t HandoffState) {
 	}
 	a.workspaceNames = t.WorkspaceNames
 	a.st.RestoreHandoffCounters(t.Counters)
+	a.st.EnsureWorkspaceGenerations()
 	a.sizeViewer, a.sizeViewers = nil, nil
 	a.sizeOwners = map[*model.Tab]ptySizeBasis{}
 	for _, ws := range a.st.Workspaces {
