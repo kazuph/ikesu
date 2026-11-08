@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -112,5 +113,12 @@ func TestIdleDraftSelectionFromRealPane(t *testing.T) {
 				t.Fatalf("pending=%v known=%v", pending, known)
 			}
 		})
+	}
+}
+
+func TestIdleDialogShowsLastPaneKept(t *testing.T) {
+	d := idleDialog{kept: true}
+	if !strings.Contains(strings.Join(d.dialog().Lines, "\n"), "last pane, kept") {
+		t.Fatal("last pane notice missing")
 	}
 }

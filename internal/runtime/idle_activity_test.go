@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"github.com/charmbracelet/x/vt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -122,5 +123,34 @@ func TestIdleUnsentInputRecognition(t *testing.T) {
 				t.Fatalf("got %v %v want %v %v", pending, known, tc.pending, tc.known)
 			}
 		})
+	}
+}
+
+func TestIdlePTYOutputDoesNotUpdateActivity(t *testing.T) {
+	s := NewSupervisor()
+	defer s.KillAll()
+	p, err := s.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/sh", "-c", "printf 'IDLE_OUTPUT_PROOF'; read line"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at, seq := p.IdleActivity()
+	deadline := time.After(5 * time.Second)
+	for {
+		lines, _ := p.ReadLines("visible", true)
+		if strings.Contains(strings.Join(lines, "\n"), "IDLE_OUTPUT_PROOF") {
+			break
+		}
+		select {
+		case event := <-s.Events():
+			if event.Kind == EventChanged {
+				p.MarkChangedRead()
+			}
+		case <-deadline:
+			t.Fatal("PTY output not observed")
+		}
+	}
+	got, n := p.IdleActivity()
+	if !got.Equal(at) || n != seq {
+		t.Fatalf("PTY output changed activity: %v %d", got, n)
 	}
 }
