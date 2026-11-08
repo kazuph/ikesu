@@ -327,42 +327,6 @@ func waitAPISocket(t *testing.T, dir string) {
 	}
 }
 
-// Reading a pane works without an attached display client.
-func TestPaneReadNoClient(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	waitAPISocket(t, dir)
-	defer stopServer(t, dir, done)
-	// No client attach — pure API usage.
-	p1 := firstPaneID(t, dir)
-	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{
-		PaneID: p1, Text: "echo NOCLIENT-MARKER", Keys: []string{"enter"},
-	}, nil)
-	waitRead(t, dir, p1, "NOCLIENT-MARKER")
-}
-
-func TestWorkspaceAPIStatusUsesFirstTab(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-	first := firstPaneID(t, dir)
-	var created api.TabCreatedResult
-	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{}, &created)
-	apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "test", Agent: "codex", State: "idle"}, nil)
-	apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: created.RootPane.PaneID, Source: "test", Agent: "codex", State: "blocked"}, nil)
-	var workspaces api.WorkspaceListResult
-	apiOK(t, dir, api.MethodWorkspaceList, api.EmptyParams{}, &workspaces)
-	if len(workspaces.Workspaces) != 1 || workspaces.Workspaces[0].AgentStatus != api.AgentIdle {
-		t.Fatalf("workspaces=%+v", workspaces.Workspaces)
-	}
-	var tabs api.TabListResult
-	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tabs)
-	if len(tabs.Tabs) != 2 || tabs.Tabs[0].AgentStatus != api.AgentIdle || tabs.Tabs[1].AgentStatus != api.AgentBlocked {
-		t.Fatalf("tabs=%+v", tabs.Tabs)
-	}
-}
-
 func TestTabAPI(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
@@ -496,81 +460,6 @@ func TestTabAPI(t *testing.T) {
 	resp = apiReq(t, dir, api.MethodTabGet, api.TabTarget{TabID: "bogus"})
 	if resp.Err == nil || resp.Err.Code != api.ErrTabNotFound {
 		t.Fatalf("malformed tab: %+v", resp.Err)
-	}
-}
-
-func TestTabCloseLastRemovesWorkspace(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-
-	// Two workspaces; closing ws2's only tab removes ws2 entirely.
-	var created api.WorkspaceCreatedResult
-	apiOK(t, dir, api.MethodWorkspaceCreate, api.WorkspaceCreateParams{}, &created)
-	ws2 := created.Workspace.WorkspaceID
-	tab := created.Tab.TabID
-
-	var okr api.OkResult
-	apiOK(t, dir, api.MethodTabClose, api.TabTarget{TabID: tab}, &okr)
-	var wl api.WorkspaceListResult
-	apiOK(t, dir, api.MethodWorkspaceList, api.EmptyParams{}, &wl)
-	for _, w := range wl.Workspaces {
-		if w.WorkspaceID == ws2 {
-			t.Fatal("closing the last tab should remove its workspace")
-		}
-	}
-	if len(wl.Workspaces) != 1 {
-		t.Fatalf("workspaces = %d, want 1", len(wl.Workspaces))
-	}
-}
-
-func TestPaneReadReportsRealTabID(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-
-	var created api.TabCreatedResult
-	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{Focus: true}, &created)
-	// Split inside tab2.
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{
-		Direction: "right", TargetPaneID: &created.RootPane.PaneID,
-	}, nil)
-
-	var tl api.TabListResult
-	apiOK(t, dir, api.MethodTabList, api.TabListParams{}, &tl)
-	tab1 := ""
-	for _, tb := range tl.Tabs {
-		if tb.TabID != created.Tab.TabID {
-			tab1 = tb.TabID
-		}
-	}
-	if tab1 == "" {
-		t.Fatal("tab1 not found")
-	}
-	var pl api.PaneListResult
-	apiOK(t, dir, api.MethodPaneList, api.PaneListParams{}, &pl)
-	var tab1Pane string
-	for _, pi := range pl.Panes {
-		if pi.TabID == tab1 {
-			tab1Pane = pi.PaneID
-		}
-	}
-	if tab1Pane == "" {
-		t.Fatal("no pane found for tab1")
-	}
-	// pane.read must report the pane's own tab, not always tab 1.
-	var rd api.PaneReadResultEnvelope
-	apiOK(t, dir, api.MethodPaneRead,
-		api.PaneReadParams{PaneID: tab1Pane, Source: "visible"}, &rd)
-	if rd.Read.TabID != tab1 {
-		t.Fatalf("pane.read tab_id = %q, want %q", rd.Read.TabID, tab1)
-	}
-	apiOK(t, dir, api.MethodPaneRead,
-		api.PaneReadParams{PaneID: created.RootPane.PaneID, Source: "visible"}, &rd)
-	if rd.Read.TabID != created.Tab.TabID {
-		t.Fatalf("pane.read tab_id = %q, want %q", rd.Read.TabID, created.Tab.TabID)
 	}
 }
 

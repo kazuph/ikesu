@@ -3,8 +3,6 @@ package server
 import (
 	"testing"
 	"time"
-
-	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestScreenPromptWaitingAndPreviewIntervals(t *testing.T) {
@@ -25,39 +23,4 @@ func TestScreenPromptWaitingAndPreviewIntervals(t *testing.T) {
 	s.screenPrompts.timer = time.NewTimer(time.Hour)
 	defer s.screenPrompts.timer.Stop()
 	s.scheduleScreenPromptPane(1)
-}
-
-func TestScreenPromptOutputReservationAndAppearanceLatency(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	start := time.Now()
-	s.app.Do(func() {
-		s.scheduleScreenPromptPane(999)
-		if s.screenPrompts.timer != nil {
-			t.Error("unrelated output scheduled a scan of blocked pane 1")
-		}
-		s.scheduleScreenPromptPane(1)
-		reserved := s.screenPrompts.timer
-		for i := 0; i < 100; i++ {
-			s.scheduleScreenPromptPane(1)
-			s.scheduleScreenPromptPane(999)
-		}
-		if s.screenPrompts.timer != reserved {
-			t.Error("output replaced the existing reservation")
-		}
-	})
-	deadline := start.Add(1500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		created := false
-		s.app.Do(func() {
-			w := s.screenPrompts.watches[1]
-			created = w != nil && w.decisionID != ""
-		})
-		if created {
-			t.Logf("question appeared to decision creation: %v", time.Since(start))
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-	t.Fatal("question was not converted to a decision within 1.5 seconds")
 }

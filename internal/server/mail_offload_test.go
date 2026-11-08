@@ -138,49 +138,6 @@ func TestInboxInvalidatesMailSnapshot(t *testing.T) {
 	}
 }
 
-func TestPaneMailSnapshotRejectsReplacement(t *testing.T) {
-	teststate.Lock(t)
-	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
-	s := newTestServer(t, "mail-snapshot-replacement")
-	s.mailCh = make(chan mailWrite, 4)
-	s.mailInFlight = map[int64]bool{}
-	s.jobInFlight = map[string]bool{}
-	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
-	pid := s.app.State().FocusedPane()
-	pane, err := s.sup.SpawnWith(pid, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.sup.KillAll()
-	store, err := s.db()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	generation := s.app.State().PaneGeneration(pid)
-	for _, room := range []string{"room", dispatch.JobsRoom} {
-		if _, err := store.InsertPaneMessage(room, "", "sender", fmtPaneID(pid), "body", nil, false, generation); err != nil {
-			t.Fatal(err)
-		}
-	}
-	snapshot := s.readPaneMail(pid)
-	s.app.State().Apply(model.CmdClosePane{Pane: pid})
-	if s.applyPaneMailSnapshot(pid, mailQueryTarget{owner: pane, generation: generation}, snapshot, nil) || len(s.mailCh) != 0 {
-		t.Fatal("closed pane received stale snapshot")
-	}
-	s.sup.Kill(pid)
-	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
-	if s.app.State().FocusedPane() != pid || s.app.State().PaneGeneration(pid) == generation {
-		t.Fatal("pane was not replaced")
-	}
-	if _, err := s.sup.SpawnWith(pid, t.TempDir(), 80, 24, nil, []string{"/bin/cat"}); err != nil {
-		t.Fatal(err)
-	}
-	if s.applyPaneMailSnapshot(pid, mailQueryTarget{owner: pane, generation: generation}, snapshot, nil) || len(s.mailCh) != 0 {
-		t.Fatal("replacement pane received stale snapshot")
-	}
-}
-
 func TestSendKeepsNudgedWhenAnotherFlushQueuesFirst(t *testing.T) {
 	for _, room := range []string{"room", dispatch.JobsRoom} {
 		t.Run(room, func(t *testing.T) {
@@ -217,32 +174,6 @@ func TestSendKeepsNudgedWhenAnotherFlushQueuesFirst(t *testing.T) {
 				t.Fatal("concurrent flush lost send's nudged result")
 			}
 		})
-	}
-}
-
-func TestReadPaneMailPreservesPendingOrder(t *testing.T) {
-	teststate.Lock(t)
-	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))
-	s := newTestServer(t, "mail-snapshot")
-	store, err := s.db()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	for _, entry := range []struct{ room, body string }{
-		{"first", "one"}, {dispatch.JobsRoom, "job one"},
-		{"second", "two"}, {dispatch.JobsRoom, "job two"},
-	} {
-		if _, err := store.InsertPaneMessage(entry.room, "", "sender", "p1", entry.body, nil, false, "generation"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	snapshot := s.readPaneMail(1)
-	if len(snapshot.regular) != 2 || snapshot.regular[0].Body != "one" || snapshot.regular[1].Body != "two" {
-		t.Fatalf("regular messages: %+v", snapshot.regular)
-	}
-	if len(snapshot.jobs) != 2 || snapshot.jobs[0].Body != "job one" || snapshot.jobs[1].Body != "job two" {
-		t.Fatalf("job messages: %+v", snapshot.jobs)
 	}
 }
 

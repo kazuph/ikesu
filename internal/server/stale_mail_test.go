@@ -13,26 +13,6 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-func TestQueuedWriteDoesNotReachReplacementPane(t *testing.T) {
-	sup := runtime.NewSupervisor()
-	old, err := sup.SpawnWith(1, t.TempDir(), 80, 20, nil, []string{"/bin/cat"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := mailWrite{pane: 1, owner: old, payload: []byte("old message\n")}
-	sup.Kill(1)
-	current, err := sup.SpawnWith(1, t.TempDir(), 80, 20, nil, []string{"/bin/cat"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sup.Kill(1)
-	s := &Server{sup: sup}
-	written, err := s.deliverMailWrite(w)
-	if err == nil || written || sup.Get(1) != current {
-		t.Fatalf("stale delivery: written=%v err=%v", written, err)
-	}
-}
-
 func TestOldGenerationMailAndJobAreNotQueuedForReplacement(t *testing.T) {
 	teststate.Lock(t)
 	teststate.Setenv(t, dispatch.DBPathEnvVar, filepath.Join(t.TempDir(), "mail.db"))

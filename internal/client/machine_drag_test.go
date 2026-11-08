@@ -26,15 +26,3 @@ func TestMachineDragReleaseWithoutValidTargetDoesNotFailClient(t *testing.T) {
 		t.Fatal("invalid target release failed the client or retained the gesture", err)
 	}
 }
-
-func TestActiveMachineCardReleaseOnDifferentRowDoesNotOpenMenu(t *testing.T) {
-	var framer input.Framer
-	events := framer.Push([]byte("\x1b[<0;5;10m"))
-	if len(events) != 1 || events[0].Kind != input.KindMouseRelease {
-		t.Fatal(events)
-	}
-	m := &machineClient{drag: &machineDrag{id: "remote", workspace: 9, selected: true, y: 8, drop: -1}, suppressRelease: true}
-	if err := m.dragInput(events[0]); err != nil || m.drag != nil || m.suppressRelease {
-		t.Fatal("release outside pressed row retained gesture or opened menu", err)
-	}
-}

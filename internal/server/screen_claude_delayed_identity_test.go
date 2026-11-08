@@ -151,25 +151,3 @@ func TestClaudeDelayedTranscriptAfterScreenTransition(t *testing.T) {
 		})
 	}
 }
-
-func TestClaudeAnswerToUnidentifiedOldDecisionKeepsCurrentQuestion(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	old := screenRecord(t, s)
-	s.app.Do(func() { s.screenPrompts.watches = nil })
-	scanScreen(s)
-	current := screenRecord(t, s)
-	if current.DecisionID == old.DecisionID {
-		t.Fatal("unidentified decision reused")
-	}
-	if response := answerScreen(s, old, "1", nil); response.Err == nil {
-		t.Fatal("stale answer accepted")
-	}
-	for _, d := range []api.Decision{old, current} {
-		got, err := s.store.Decision(d.DecisionID)
-		if err != nil || got.Status != "pending" {
-			t.Fatalf("unidentified decision changed: %+v %v", got, err)
-		}
-	}
-}

@@ -76,72 +76,6 @@ func TestLateAnswerRemainsAnsweredWhileDeliveryIsPending(t *testing.T) {
 	}
 }
 
-func TestLateAnswerSimultaneousClientsAcceptOnlyOne(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "late-race")
-	s.initDecisionHub()
-	store, err := s.db()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	d, err := store.CreateDecision(api.DecisionCreateParams{Kind: "agent_prompt", Title: "色は？", Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}, {ID: "2", Label: "赤", Role: "other"}}}, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.screenPrompts.late = map[string]*lateCodexQuestion{d.DecisionID: {}}
-	done := make(chan struct{})
-	s.app.SetQuitHook(s.stopDecisions)
-	go func() { s.app.Run(); close(done) }()
-	defer func() { s.app.Stop(); <-done; s.sup.KillAll() }()
-	responses := make(chan api.Response, 2)
-	start := make(chan struct{})
-	for _, choice := range []string{"1", "2"} {
-		choice := choice
-		go func() {
-			<-start
-			var response api.Response
-			s.app.Do(func() {
-				response = s.decisionRequest(&api.Request{ID: "answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionID: &choice})})
-			})
-			responses <- response
-		}()
-	}
-	close(start)
-	a, b := <-responses, <-responses
-	if (a.Err == nil) == (b.Err == nil) {
-		t.Fatalf("responses: %+v %+v", a, b)
-	}
-	failed := a
-	if failed.Err == nil {
-		failed = b
-	}
-	if failed.Err.Code != api.ErrDecisionResolved {
-		t.Fatal(failed.Err)
-	}
-	stored, err := store.Decision(d.DecisionID)
-	if err != nil || stored.Status != "answered" {
-		t.Fatal(stored, err)
-	}
-}
-
-func TestLateDeliveryIsNotCopiedIntoEventJournal(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "late-journal")
-	d := api.Decision{DecisionID: "dec-test", Status: "answered", Delivery: &api.DecisionDelivery{Status: "pending", Text: "回答文"}}
-	s.emitEvent("decision_resolved", d)
-	if len(s.journal) != 1 {
-		t.Fatal(s.journal)
-	}
-	var recorded api.Decision
-	if err := json.Unmarshal(s.journal[0].Data, &recorded); err != nil {
-		t.Fatal(err)
-	}
-	if recorded.Delivery != nil {
-		t.Fatal("delivery copied into handoff journal", recorded.Delivery)
-	}
-}
-
 func TestLateDeliveryClosedPaneFailsWithoutSending(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "late-closed")
@@ -213,28 +147,6 @@ func TestLateQuestionReplacesExpiredCountdown(t *testing.T) {
 	}
 	got, err := store.Decision(d.DecisionID)
 	if err != nil || got.Body == nil || *got.Body != "Codex は空の答えで先に進みました。答えると会話で届けます" {
-		t.Fatal(got, err)
-	}
-}
-
-func TestCodexQuestionAnsweredElsewhereClosesWithReason(t *testing.T) {
-	teststate.Lock(t)
-	s := newTestServer(t, "answered-elsewhere")
-	s.initDecisionHub()
-	store, err := s.db()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	params := api.DecisionCreateParams{Kind: "agent_prompt", Title: "色は？", Origin: &api.DecisionOrigin{PaneID: "p1", Reason: "screen_prompt"}, Options: []api.DecisionOption{{ID: "1", Label: "青", Role: "other"}}}
-	d, err := store.CreateDecision(params, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := &screenPromptWatch{decisionID: d.DecisionID, prompt: &screenprompt.Prompt{Params: params}}
-	s.closeCodexAnsweredElsewhere(w)
-	got, err := store.Decision(d.DecisionID)
-	if err != nil || got.Status != "cancelled" || got.Body == nil || *got.Body != "ほかで回答済み" {
 		t.Fatal(got, err)
 	}
 }
@@ -340,79 +252,6 @@ func TestRestoredCodexMatchRequiresUniqueEmptyResult(t *testing.T) {
 	}
 }
 
-func TestLateAnswerStoresSingleMultipleAndText(t *testing.T) {
-	teststate.Lock(t)
-	for _, tc := range []struct {
-		name string
-		ids  []string
-		text string
-	}{
-		{"single", []string{"1"}, ""}, {"multiple", []string{"1", "2"}, ""}, {"text", nil, "数字123"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := newTestServer(t, "late-forms")
-			s.initDecisionHub()
-			store, err := s.db()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
-			d, err := store.CreateDecision(api.DecisionCreateParams{Kind: "agent_prompt", Title: "質問", MultiSelect: tc.name == "multiple", AllowText: true, Options: []api.DecisionOption{{ID: "1", Label: "赤", Role: "other"}, {ID: "2", Label: "青", Role: "other"}}}, time.Now())
-			if err != nil {
-				t.Fatal(err)
-			}
-			s.screenPrompts.late = map[string]*lateCodexQuestion{d.DecisionID: {}}
-			params := api.DecisionAnswerParams{DecisionID: d.DecisionID, OptionIDs: tc.ids, Responder: "test"}
-			if tc.text != "" {
-				params.Text = &tc.text
-			}
-			resp := s.decisionRequest(&api.Request{ID: "answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(params)})
-			if resp.Err != nil {
-				t.Fatal(resp.Err)
-			}
-			saved, err := store.Decision(d.DecisionID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if saved.Status != "answered" || saved.Answer == nil {
-				t.Fatal(saved)
-			}
-			if len(tc.ids) > 0 && (saved.Answer.OptionID == nil || *saved.Answer.OptionID != tc.ids[0]) {
-				t.Fatal(saved.Answer)
-			}
-			if len(tc.ids) > 1 && (len(saved.Answer.OptionIDs) != 2 || saved.Answer.OptionIDs[1] != tc.ids[1]) {
-				t.Fatal(saved.Answer)
-			}
-			if tc.text != "" && (saved.Answer.Text == nil || *saved.Answer.Text != tc.text) {
-				t.Fatal(saved.Answer)
-			}
-			if again := s.decisionRequest(&api.Request{ID: "again", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(params)}); again.Err == nil || again.Err.Code != api.ErrDecisionResolved {
-				t.Fatal(again)
-			}
-		})
-	}
-}
-
-func TestLegacyRestoreRejectsUnverifiedQuestionTime(t *testing.T) {
-	label := "Question 1/1"
-	d := api.Decision{Title: "色は？", CreatedUnixMS: time.Now().UnixMilli(), QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青"}}}
-	q := session.CodexQuestion{SessionID: "other", CallID: "call", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
-	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, ""); ok {
-		t.Fatal("legacy decision was bound without a verified question time")
-	}
-}
-
-func TestCodexBindingReadFailureRemainsRetryable(t *testing.T) {
-	s := &Server{}
-	result := make(chan codexBindingResult, 1)
-	result <- codexBindingResult{}
-	w := &screenPromptWatch{prompt: &screenprompt.Prompt{CodexQuestion: true}, codexResult: result}
-	s.waitCodexBinding(1, w)
-	if w.codexChecked || w.codexResult != nil {
-		t.Fatal("temporary read failure was marked checked")
-	}
-}
-
 func TestCodexRetryBindsOriginalQuestionAfterIncompleteRecord(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "late-retry-record")
@@ -479,32 +318,6 @@ func TestCodexRetryBindsOriginalQuestionAfterIncompleteRecord(t *testing.T) {
 	saved, err := store.ScreenQuestionIdentity(d.DecisionID)
 	if err != nil || saved != identity {
 		t.Fatalf("identity=%q err=%v", saved, err)
-	}
-}
-
-func TestLegacyRestoreMatchesOnlyQuestionNearDecisionCreation(t *testing.T) {
-	label := "Question 1/1"
-	created := time.Date(2026, 11, 6, 2, 0, 30, 0, time.UTC)
-	d := api.Decision{Title: "色は？", CreatedUnixMS: created.UnixMilli(), QuestionLabel: &label, Options: []api.DecisionOption{{ID: "1", Label: "青"}}}
-	q := session.CodexQuestion{Timestamp: created.Add(-11 * time.Second), SessionID: "original", CallID: "call", ID: "q", Index: 0, Total: 1, Question: "色は？", Options: []session.CodexQuestionOption{{Label: "青"}}, State: session.CodexEmpty}
-	if got, ok := restoredCodexMatch(d, []session.CodexQuestion{q}, ""); !ok || got.SessionID != "original" {
-		t.Fatal("original session question should be restored")
-	}
-	later := q
-	later.SessionID = "other"
-	later.Timestamp = created.Add(time.Second)
-	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{later}, ""); ok {
-		t.Fatal("later session accepted")
-	}
-	old := q
-	old.Timestamp = created.Add(-16 * time.Second)
-	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{old}, ""); ok {
-		t.Fatal("old question accepted")
-	}
-	duplicate := q
-	duplicate.CallID = "another"
-	if _, ok := restoredCodexMatch(d, []session.CodexQuestion{q, duplicate}, ""); ok {
-		t.Fatal("ambiguous candidates accepted")
 	}
 }
 

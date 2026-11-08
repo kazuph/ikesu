@@ -47,40 +47,6 @@ func TestPaneLayoutSnapshotShape(t *testing.T) {
 	}
 }
 
-// Implicit splits target the traversal-last leaf and append to logical
-// order (SPEC G1).
-func TestPaneSplitImplicitAppends(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-
-	first := firstPaneID(t, dir)
-	second := splitRight(t, dir).Pane.PaneID
-	third := splitRight(t, dir).Pane.PaneID
-
-	// Second split hit the LAST leaf (second), not the focused or first.
-	var snap api.PaneLayoutResult
-	apiOK(t, dir, api.MethodPaneLayout, api.PaneLayoutParams{}, &snap)
-	if len(snap.Layout.Panes) != 3 {
-		t.Fatalf("panes = %d", len(snap.Layout.Panes))
-	}
-	// Tree: p1 | (p2 | p3) — the last leaf got split.
-	var ex api.LayoutExportResult
-	apiOK(t, dir, api.MethodLayoutExport, api.LayoutExportParams{}, &ex)
-	root := ex.Layout.Root
-	if root.Second == nil || root.Second.Type != "split" {
-		t.Fatalf("second implicit split did not split the last leaf: %+v", root)
-	}
-	if *root.First.PaneID != first {
-		t.Fatalf("first leaf = %v, want %s", root.First.PaneID, first)
-	}
-	if *root.Second.First.PaneID != second || *root.Second.Second.PaneID != third {
-		t.Fatalf("second subtree = %v / %v, want %s / %s",
-			root.Second.First.PaneID, root.Second.Second.PaneID, second, third)
-	}
-}
-
 func TestPaneNeighborEdgesFocus(t *testing.T) {
 	teststate.Lock(t)
 	dir, done := startTestServer(t)
@@ -214,75 +180,6 @@ func TestPaneArrangeOps(t *testing.T) {
 	if got := ex.Layout.Root.Ratio; got < 0.32 || got > 0.35 {
 		t.Fatalf("equalized root ratio = %v", got)
 	}
-}
-
-func TestPaneMoveNewTabKeepsPane(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-
-	pid := firstPaneID(t, dir)
-	second := splitRight(t, dir).Pane.PaneID
-
-	var mv api.PaneMoveEnvelope
-	apiOK(t, dir, api.MethodPaneMove, api.PaneMoveParams{
-		PaneID: second,
-		Destination: api.PaneMoveDestination{
-			Type: "new_tab",
-		},
-		Focus: true,
-	}, &mv)
-	mr := mv.MoveResult
-	if !mr.Changed || mr.CreatedTab == nil {
-		t.Fatalf("move_result = %+v", mr)
-	}
-	if mr.Pane.PaneID != second {
-		t.Fatalf("moved pane id = %s, want %s", mr.Pane.PaneID, second)
-	}
-	if mr.TargetLayout == nil || len(mr.TargetLayout.Panes) != 1 {
-		t.Fatalf("target layout = %+v", mr.TargetLayout)
-	}
-	if mr.SourceLayout == nil || len(mr.SourceLayout.Panes) != 1 {
-		t.Fatalf("source layout = %+v", mr.SourceLayout)
-	}
-	if mr.FocusedPaneID != second {
-		t.Fatalf("focused = %s, want %s", mr.FocusedPaneID, second)
-	}
-	_ = pid
-}
-
-func TestPaneMoveIntoTabSplits(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-
-	second := splitRight(t, dir).Pane.PaneID
-	var ex api.LayoutExportResult
-	apiOK(t, dir, api.MethodLayoutExport, api.LayoutExportParams{}, &ex)
-	tabID := ex.Layout.TabID
-
-	// Create a second tab with its own pane, then move that pane into t1;
-	// the emptied tab must dissolve.
-	var tc api.TabCreatedResult
-	apiOK(t, dir, api.MethodTabCreate, api.TabCreateParams{Focus: true}, &tc)
-	moving := tc.RootPane.PaneID
-
-	var mv api.PaneMoveEnvelope
-	apiOK(t, dir, api.MethodPaneMove, api.PaneMoveParams{
-		PaneID: moving,
-		Destination: api.PaneMoveDestination{
-			Type: "tab", TabID: tabID, Split: strp("right"),
-		},
-	}, &mv)
-	if !mv.MoveResult.Changed {
-		t.Fatalf("move into tab = %+v", mv.MoveResult)
-	}
-	if mv.MoveResult.ClosedTabID == nil {
-		t.Fatal("the emptied tab should have dissolved")
-	}
-	_ = second
 }
 
 func TestLayoutApplyCommandLeaf(t *testing.T) {

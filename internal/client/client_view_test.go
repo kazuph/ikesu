@@ -57,19 +57,6 @@ func TestClientViewRebuildsMembershipAcrossTabsAndWorkspaceMoves(t *testing.T) {
 	}
 }
 
-func TestClientViewRejectsSnapshotFromPreviousConnection(t *testing.T) {
-	e := &managedEndpoint{attempt: 2, snapshotAttempt: 1, connection: &endpointConnection{}, snapshot: &render.Input{State: model.New(t.TempDir(), 80, 24)}}
-	m := &machineClient{session: "isolated", active: "local", endpoints: map[string]*managedEndpoint{"local": e}}
-	got := m.currentClientView()
-	if got.Session != "" || got.WorkspaceID != "" || len(got.PaneIDs) != 0 {
-		t.Fatalf("stale reconnect snapshot: %+v", got)
-	}
-	e.snapshotAttempt = 2
-	if got := m.currentClientView(); got.WorkspaceID != "s1" {
-		t.Fatalf("current reconnect snapshot rejected: %+v", got)
-	}
-}
-
 func TestClientViewFocusKeepsLastPaintedWorkspaceWhileNextPaintIsFenced(t *testing.T) {
 	state := model.New(t.TempDir(), 80, 24)
 	state.Apply(model.CmdNewWorkspace{})

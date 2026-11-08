@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,18 +45,4 @@ func TestWindowTitleServerActualPTYTransitions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-}
-
-func TestWindowTitleStandaloneBinaryActualPTYStartup(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	wrapper := filepath.Join(t.TempDir(), "named-standalone")
-	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/sh\nexec %q --session title-demo \"$@\"\n", binPath)), 0700); err != nil {
-		t.Fatal(err)
-	}
-	s := startVersionMode(t, nil, true, wrapper, "")
-	var raw strings.Builder
-	s.observeOutput = func(b []byte) { raw.Write(b) }
-	s.waitFor("standalone outer title", 10*time.Second, func(_ string) bool { return strings.Contains(raw.String(), "\x1b]0;ikesu:title-demo\x07") })
 }

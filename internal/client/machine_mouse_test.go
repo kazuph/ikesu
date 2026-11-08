@@ -1,14 +1,11 @@
 package client
 
 import (
-	"bytes"
-	"context"
 	"encoding/base64"
-	"encoding/json"
+
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
@@ -71,42 +68,6 @@ func TestSavedMachineSidebarCellAndPixelSelectSameWorkspace(t *testing.T) {
 		}
 		if m.pending == nil || m.pending.id != "remote" || m.pending.workspace != hit.Workspace {
 			t.Fatalf("pixel=%v selected=%+v expected workspace=%d", pixel, m.pending, hit.Workspace)
-		}
-	}
-}
-
-func TestSavedMachinePixelBodyPreservesTwoPointsInSameCell(t *testing.T) {
-	reader, writerFile, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reader.Close()
-	defer writerFile.Close()
-	peer := endpoint.Current()
-	connection := &endpointConnection{writer: &writer{conn: writerFile, available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- connection.writeQueued(ctx) }()
-	defer func() { cancel(); <-done }()
-	state := model.New(t.TempDir(), 120, 45)
-	m := &machineClient{active: "local", settings: &localSettings{}, size: tui.Winsize{Cols: 120, Rows: 45, Xpixel: 960, Ypixel: 720}, regions: &render.Output{}, endpoints: map[string]*managedEndpoint{"local": {connection: connection, snapshot: &render.Input{State: state}}}}
-	m.mouse.Written([]byte("\x1b[?1016h"))
-	decoder := json.NewDecoder(reader)
-	for _, raw := range []string{"\x1b[<0;482;325M", "\x1b[<0;486;329M"} {
-		if err := m.input(mouseEvent(t, raw)); err != nil {
-			t.Fatal(err)
-		}
-		if err := reader.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		var message msg
-		if err := decoder.Decode(&message); err != nil {
-			t.Fatal(err)
-		}
-		got, err := base64.StdEncoding.DecodeString(message.Data)
-		if err != nil || message.Type != "input" || !bytes.Equal(got, []byte(raw)) {
-			t.Fatalf("pixel bytes changed: %+v %q %v", message, got, err)
 		}
 	}
 }

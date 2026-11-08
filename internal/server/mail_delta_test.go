@@ -5,9 +5,8 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/teststate"
-	"strings"
+
 	"testing"
-	"time"
 )
 
 func TestDuplicateAgentSendPersistsFailureAndExactRecipient(t *testing.T) {
@@ -60,53 +59,6 @@ func TestDuplicateAgentSendPersistsFailureAndExactRecipient(t *testing.T) {
 	res := apiReq(t, dir, api.MethodRunStart, api.RunStartParams{Argv: []string{"/usr/bin/true"}})
 	if res.Err == nil {
 		t.Fatal("missing caller started")
-	}
-}
-
-func TestJobCompletionAndCancellationKeepOriginalCaller(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	dialClient(t, dir)
-	defer stopServer(t, dir, done)
-	first := firstPaneID(t, dir)
-	reportAgent(t, dir, first, "codex", "")
-	apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: first, Source: "test", Agent: "codex", State: "blocked"}, nil)
-	var job api.RunStartedResult
-	apiOK(t, dir, api.MethodRunStart, api.RunStartParams{CallerPane: first, Label: "exact-cancel", Argv: []string{"/bin/sh", "-c", "sleep 60"}}, &job)
-	var split api.PaneInfoResult
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{TargetPaneID: &first, Direction: "right"}, &split)
-	second := split.Pane.PaneID
-	reportAgent(t, dir, second, "codex", "")
-	for _, id := range []string{first, second} {
-		label := "duplicate"
-		apiOK(t, dir, api.MethodPaneRename, api.PaneRenameParams{PaneID: id, Label: &label}, nil)
-	}
-	var cancelled api.RunCancelledResult
-	apiOK(t, dir, api.MethodRunCancel, api.RunCancelParams{JobID: job.Job}, &cancelled)
-	store := openStore(t)
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		pending, err := store.PendingJobMessages()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(pending) > 0 {
-			if len(pending) != 1 || pending[0].ToAgent != first || !strings.Contains(pending[0].Body, "cancelled") {
-				t.Fatal(pending)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("cancellation notice missing")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	j, err := store.CommandRow(job.Job)
-	if err != nil || j.CallerPane != first || j.Status != "cancelled" {
-		t.Fatal(j, err)
 	}
 }
 

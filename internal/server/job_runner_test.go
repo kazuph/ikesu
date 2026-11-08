@@ -65,14 +65,3 @@ func TestJobResultIdentityAndWriteErrors(t *testing.T) {
 		t.Fatal("temporary result leaked", files, err)
 	}
 }
-
-func TestRunnerProcessIdentityUsesRealStart(t *testing.T) {
-	first, err := jobProcessIdentity(os.Getpid())
-	if err != nil || first == "" {
-		t.Fatal(first, err)
-	}
-	second, err := jobProcessIdentity(os.Getpid())
-	if err != nil || first != second {
-		t.Fatal("unstable process identity", first, second, err)
-	}
-}

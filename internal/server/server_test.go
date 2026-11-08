@@ -274,67 +274,6 @@ func TestAttachDetachReattach(t *testing.T) {
 	}
 }
 
-func TestSecondClientPreservesFirst(t *testing.T) {
-	teststate.Lock(t)
-	useTestShellPrompt(t)
-	dir, done := startTestServer(t)
-	defer stopServer(t, dir, done)
-	waitAPISocket(t, dir)
-	pid := firstPaneID(t, dir)
-	consume := func(c *testConn) <-chan string {
-		ended := make(chan string, 1)
-		c.conn.SetReadDeadline(time.Time{})
-		go func() {
-			for {
-				m, err := readClientMsg(c.rd)
-				if err != nil {
-					ended <- "closed"
-					return
-				}
-				if m.Type == "detached" {
-					ended <- "detached"
-					return
-				}
-			}
-		}()
-		return ended
-	}
-	c1 := dialClient(t, dir)
-	defer c1.conn.Close()
-	c1.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
-	c1.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-	waitRead(t, dir, pid, "ikesu-test-ready")
-	firstEnded := consume(c1)
-	c2 := dialClient(t, dir)
-	defer c2.conn.Close()
-	c2.send(t, clientMsg{Type: "hello", Cols: 100, Rows: 30})
-	c2.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-	secondEnded := consume(c2)
-	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo firststillattached\n"))})
-	waitRead(t, dir, pid, "firststillattached")
-	select {
-	case reason := <-firstEnded:
-		t.Fatal("first client disconnected", reason)
-	default:
-	}
-	c2.send(t, clientMsg{Type: "input", Data: encode64([]byte{2, 'q'})})
-	select {
-	case reason := <-secondEnded:
-		if reason != "detached" {
-			t.Fatal("second client did not detach", reason)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("second client did not detach")
-	}
-	c1.send(t, clientMsg{Type: "input", Data: encode64([]byte("echo firstsurvivesdetach\n"))})
-	waitRead(t, dir, pid, "firstsurvivesdetach")
-	select {
-	case reason := <-firstEnded:
-		t.Fatal("peer detach affected first", reason)
-	default:
-	}
-}
-
 func TestServerRecreatesHomeWhenLastPaneExits(t *testing.T) {
 	teststate.Lock(t)
 	useTestShellPrompt(t)

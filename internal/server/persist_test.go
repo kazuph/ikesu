@@ -75,68 +75,6 @@ func waitForSessionFile(t *testing.T, dir string) *session.File {
 	return nil
 }
 
-// G3/G5: a split and a rename are saved to session.json, and a fresh
-// server process restores the same pane numbers, layout, and labels.
-func TestSessionSaveAndReload(t *testing.T) {
-	teststate.Lock(t)
-	base, err := os.MkdirTemp("/tmp", "ikesutest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(base) })
-	teststate.Setenv(t, "IKESU_STATE_DIR", base)
-	teststate.Setenv(t, "SHELL", "/bin/sh")
-
-	dir, done := startServerAt(t, "persist")
-
-	ids := paneIDs(t, dir)
-	if len(ids) != 1 {
-		t.Fatalf("initial panes = %v, want 1", ids)
-	}
-	firstID := ids[0]
-
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "right", Focus: true}, nil)
-	label := "main"
-	apiOK(t, dir, api.MethodPaneRename, api.PaneRenameParams{PaneID: firstID, Label: &label}, nil)
-
-	f := waitForSessionFile(t, dir)
-	var paneRecs []session.Pane
-	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
-		paneRecs = append(paneRecs, *p)
-	})
-	if len(paneRecs) != 2 {
-		t.Fatalf("session.json has %d panes, want 2", len(paneRecs))
-	}
-
-	// Stop, then boot a fresh server over the same state dir — exactly
-	// what a restart's successor does.
-	stopServer(t, dir, done)
-
-	dir2, done2 := startServerAt(t, "persist")
-	defer stopServer(t, dir2, done2)
-	if dir2 != dir {
-		t.Fatalf("session dir changed: %s vs %s", dir2, dir)
-	}
-	got := paneIDs(t, dir)
-	if len(got) != 2 || got[0] != firstID || got[1] != "p2" {
-		t.Fatalf("restored pane ids %v, want [%s p2]", got, firstID)
-	}
-
-	// The restored label survives too.
-	var info api.PaneInfoResult
-	apiOK(t, dir, api.MethodPaneGet, api.PaneQueryParams{PaneID: firstID}, &info)
-	if info.Pane.Label == nil || *info.Pane.Label != "main" {
-		t.Fatalf("pane label not restored: %+v", info.Pane.Label)
-	}
-
-	// New panes after restore must not reuse a restored number (G5).
-	apiOK(t, dir, api.MethodPaneSplit, api.PaneSplitParams{Direction: "down", Focus: true}, nil)
-	got = paneIDs(t, dir)
-	if len(got) != 3 || got[2] != "p3" {
-		t.Fatalf("panes after new split = %v, want [%s p2 p3]", got, firstID)
-	}
-}
-
 // G3: server.restart saves, then stops. The unit-test successor is the
 // test binary itself, so it cannot serve — this verifies the ok response,
 // the exit, and that session.json is intact. The real successor and

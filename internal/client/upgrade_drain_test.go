@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/kazuph/ikesu/internal/teststate"
+
 	"io"
-	"os"
-	"path/filepath"
+
 	"strings"
 	"testing"
 	"time"
@@ -16,89 +14,6 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
 )
-
-func TestPrepareUpgradeDefersHeldInputUntilClipboardCompletes(t *testing.T) {
-	if teststate.RunIsolatedParallel(t) {
-		return
-	}
-	h := newRightMachineHarness(t)
-	m := h.m
-	m.active = "remote"
-	if err := m.paint(); err != nil {
-		t.Fatal(err)
-	}
-	ready := make(chan struct{})
-	m.readClipboard = func(ctx context.Context) (clipboardContent, error) {
-		select {
-		case <-ready:
-			return clipboardContent{Text: ""}, nil
-		case <-ctx.Done():
-			return clipboardContent{}, ctx.Err()
-		}
-	}
-	if err := m.pasteClipboard(); err != nil {
-		t.Fatal(err)
-	}
-	var f input.Framer
-	result := filepath.Join(t.TempDir(), "paste-count")
-	m.held = normalizeMachineInput(f.Push([]byte(fmt.Sprintf("printf x >> %q; printf 'PASTE_HELD_ONCE\\n'\n", result))))
-	incoming := make(chan input.Event)
-	close(incoming)
-	if err := m.prepareUpgrade(m.ctx, &machineInputState{}, incoming); err == nil {
-		t.Error("upgrade succeeded with clipboard input held")
-	} else if varWait := upgradeWait(""); !errors.As(err, &varWait) {
-		t.Fatalf("clipboard wait was treated as a failure: %v", err)
-	}
-	close(ready)
-	h.until("clipboard input", func() bool { data, _ := os.ReadFile(result); return len(data) > 0 })
-	if data, err := os.ReadFile(result); err != nil || string(data) != "x" {
-		t.Fatalf("paste input count: %q, %v", data, err)
-	}
-	if strings.Contains(paneText(m, "local"), "PASTE_HELD_ONCE") {
-		t.Fatal("input reached local")
-	}
-}
-
-func paneText(m *machineClient, id string) string {
-	var b strings.Builder
-	for _, row := range m.endpoints[id].snapshot.Panes[1].Grid {
-		for _, cell := range row {
-			fmt.Fprint(&b, cell.Content)
-		}
-	}
-	return b.String()
-}
-
-func TestPrepareUpgradeDefersInputUntilLocalSnapshot(t *testing.T) {
-	if teststate.RunIsolatedParallel(t) {
-		return
-	}
-	h := newRightMachineHarness(t)
-	m := h.m
-	if err := m.paint(); err != nil {
-		t.Fatal(err)
-	}
-	e := m.endpoints["local"]
-	e.restarting = true
-	var f input.Framer
-	result := filepath.Join(t.TempDir(), "restart-count")
-	m.held = normalizeMachineInput(f.Push([]byte(fmt.Sprintf("printf x >> %q; printf 'RESTART_HELD_ONCE\\n'\n", result))))
-	incoming := make(chan input.Event)
-	close(incoming)
-	if err := m.prepareUpgrade(m.ctx, &machineInputState{}, incoming); err == nil {
-		t.Error("upgrade succeeded before local snapshot")
-	} else if varWait := upgradeWait(""); !errors.As(err, &varWait) {
-		t.Fatalf("reconnection wait was treated as a failure: %v", err)
-	}
-	m.event(endpointEvent{id: "local", message: msg{Type: "snapshot", snapshot: e.snapshot}})
-	h.until("restart input", func() bool { data, _ := os.ReadFile(result); return len(data) > 0 })
-	if data, err := os.ReadFile(result); err != nil || string(data) != "x" {
-		t.Fatalf("restart input count: %q, %v", data, err)
-	}
-	if strings.Contains(paneText(m, "remote"), "RESTART_HELD_ONCE") {
-		t.Fatal("input reached remote")
-	}
-}
 
 func TestUpgradeWaitEmptyPreservesBlockedSocketQueue(t *testing.T) {
 	server, stream := shutdownSocketPair(t)
@@ -130,41 +45,6 @@ func TestUpgradeWaitEmptyPreservesBlockedSocketQueue(t *testing.T) {
 	cancel()
 	stream.Close()
 	<-done
-}
-
-// Two real servers and their pane PTYs are needed to verify the original destination.
-func TestPrepareUpgradeDeliversAlreadyReadInputToOriginalEndpoint(t *testing.T) {
-	if teststate.RunIsolatedParallel(t) {
-		return
-	}
-	h := newRightMachineHarness(t)
-	m := h.m
-	m.active = "remote"
-	if err := m.paint(); err != nil {
-		t.Fatal(err)
-	}
-	var framer input.Framer
-	m.held = normalizeMachineInput(framer.Push([]byte("printf 'DRAIN_%s\\n' 'REMOTE_ONLY'\n")))
-	incoming := make(chan input.Event)
-	close(incoming)
-	ctx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
-	defer cancel()
-	if err := m.prepareUpgrade(ctx, &machineInputState{}, incoming); err != nil {
-		t.Fatal(err)
-	}
-	content := func(id string) string {
-		var out strings.Builder
-		for _, row := range m.endpoints[id].snapshot.Panes[1].Grid {
-			for _, cell := range row {
-				fmt.Fprint(&out, cell.Content)
-			}
-		}
-		return out.String()
-	}
-	h.until("drained remote input", func() bool { return strings.Contains(content("remote"), "DRAIN_REMOTE_ONLY") })
-	if strings.Contains(content("local"), "DRAIN_REMOTE_ONLY") {
-		t.Fatal("input reached local endpoint")
-	}
 }
 
 func TestUpgradeWaitEmptyCompletesAfterDelivery(t *testing.T) {

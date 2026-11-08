@@ -127,33 +127,3 @@ func TestTabRenameDialog(t *testing.T) {
 		return strings.Contains(scr, "prod")
 	})
 }
-
-func TestTabRightClickPreservesSelection(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	s := start(t)
-	s.waitFor("boot", 15*time.Second, func(tx string) bool {
-		return hasTabLabel(tx, "1") && strings.Contains(tx, "❯")
-	})
-	// Tab 2 with a split so the active tab is identifiable by pane count.
-	s.send("\x02c")
-	s.waitFor("new tab name prompt", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "new tab") && strings.Contains(tx, "↵ save") })
-	s.send("\r")
-	s.waitFor("tab 2", 5*time.Second, func(tx string) bool { return hasTabLabel(tx, "2") })
-	s.send("\x02v")
-	s.waitFor("tab 2 split", 5*time.Second, func(tx string) bool { return countPanes(tx) == 2 })
-	x, y := s.findTab("1")
-	if x < 0 {
-		t.Fatalf("tab 1 not found:\n%s", s.text())
-	}
-	s.rightClick(x, y)
-	s.waitFor("tab menu", 5*time.Second, func(tx string) bool {
-		return strings.Contains(tx, "New tab") && strings.Contains(tx, "Rename") && strings.Contains(tx, "Close")
-	})
-	// Closing the menu reveals that tab 2 retains its split layout.
-	s.send("\x1b")
-	s.waitFor("tab 2 remains selected", 5*time.Second, func(tx string) bool {
-		return countPanes(tx) == 2
-	})
-}

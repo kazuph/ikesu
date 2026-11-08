@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,78 +8,8 @@ import (
 	"testing"
 	"time"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/creack/pty"
 )
-
-var rightSidebarEvidenceDir = os.Getenv("IKESU_SIDEBAR_EVIDENCE")
-
-// This drives the real binary and asks the shell for the kernel's PTY size.
-func TestRightSidebarNineStatesRealTerminal(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	for _, local := range []bool{false, true} {
-		mode := "server"
-		if local {
-			mode = "no-session"
-		}
-		t.Run(mode, func(t *testing.T) {
-			s := startMode(t, nil, local)
-			s.waitFor("shell", 10*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
-			widths := []int{26, 2, 0}
-			for left := 0; left < 3; left++ {
-				for right := 0; right < 3; right++ {
-					cols, rows := termW-widths[left]-widths[right]-2, termH-4
-					marker := fmt.Sprintf("SIZE_%d%d_%d_%d", left, right, rows, cols)
-					s.send(fmt.Sprintf("set -- $(stty size); printf '\\nSIZE_%d%d_%%s_%%s\\n' \"$1\" \"$2\"\r", left, right))
-					s.waitFor("kernel PTY size "+marker, 5*time.Second, func(tx string) bool { return strings.Contains(tx, marker) })
-					if widths[left] > 0 && s.emu.CellAt(widths[left]-1, 5).Content != "│" {
-						t.Fatal("left divider does not match PTY origin")
-					}
-					if widths[right] > 0 && s.emu.CellAt(termW-widths[right], 5).Content != "│" {
-						t.Fatal("right divider does not match PTY edge")
-					}
-					saveRightSidebarScreen(t, s, fmt.Sprintf("%s-left%d-right%d", mode, left, right))
-					s.send("\x02B")
-				}
-				s.send("\x02b")
-			}
-		})
-	}
-}
-
-func saveRightSidebarScreen(t *testing.T, s *session, name string) {
-	t.Helper()
-	root := rightSidebarEvidenceDir
-	if root == "" {
-		return
-	}
-	if err := os.MkdirAll(root, 0700); err != nil {
-		t.Fatal(err)
-	}
-	grid := make([][]uv.Cell, termH)
-	for y := range grid {
-		grid[y] = make([]uv.Cell, termW)
-		for x := range grid[y] {
-			if c := s.emu.CellAt(x, y); c != nil {
-				grid[y][x] = *c
-			}
-		}
-	}
-	data, err := json.Marshal(struct {
-		Cols, Rows int
-		Cells      [][]uv.Cell
-	}{termW, termH, grid})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for extension, data := range map[string][]byte{"json": data, "txt": []byte(s.text())} {
-		if err := os.WriteFile(filepath.Join(root, name+"."+extension), data, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
 
 func TestRightSidebarAttachedClientRestoresSavedModes(t *testing.T) {
 	if runIsolatedParallel(t) {

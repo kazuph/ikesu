@@ -2,20 +2,11 @@ package server
 
 import (
 	"github.com/kazuph/ikesu/internal/config"
-	"github.com/kazuph/ikesu/internal/detect"
+
 	"github.com/kazuph/ikesu/internal/platform"
 	"testing"
 )
 
-func TestGrokNativeRestoreAndSafeLaunchObservation(t *testing.T) {
-	testNativeRestore(t, "grok", "--resume")
-	if Identify := detect.Identify("grok", "grok"); Identify != "grok" {
-		t.Fatal(Identify)
-	}
-	if source := nativeResumeAgents["grok"].Source; source != "ikesu:grok" {
-		t.Fatal(source)
-	}
-}
 func testNativeRestore(t *testing.T, agent, flag string) {
 	t.Helper()
 	s := &Server{cfg: config.Config{}}

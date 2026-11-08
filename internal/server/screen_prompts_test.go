@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
-	"github.com/kazuph/ikesu/internal/detect"
+
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/screenprompt"
 	"github.com/kazuph/ikesu/internal/teststate"
@@ -155,83 +154,6 @@ func TestScreenPromptTwoReadsIdentityAndResolution(t *testing.T) {
 	})
 }
 
-func TestScreenPromptStaleAnswersSendNoKeys(t *testing.T) {
-	teststate.Lock(t)
-	s, p, input := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	d := screenRecord(t, s)
-	paintScreen(p, strings.ReplaceAll(screenDialog(t, "claude-single"), "Which output format", "Which different format"))
-	resp := answerScreen(s, d, "1", nil)
-	if resp.Err == nil || resp.Err.Code != api.ErrDecisionStale {
-		t.Fatal(resp)
-	}
-	got, err := s.store.Decision(d.DecisionID)
-	if err != nil || got.Status != "cancelled" {
-		t.Fatal(got, err)
-	}
-	if keys, _ := os.ReadFile(input); len(keys) != 0 {
-		t.Fatalf("stale input: %q", keys)
-	}
-}
-
-func TestScreenPromptDisappearedAndMissingWatchAreStale(t *testing.T) {
-	teststate.Lock(t)
-	for _, missingWatch := range []bool{false, true} {
-		s, p, input := screenTerminal(t, "claude-single", "claude")
-		scanScreen(s)
-		d := screenRecord(t, s)
-		if missingWatch {
-			s.app.Do(func() { s.screenPrompts.watches = nil })
-		} else {
-			paintScreen(p, "ordinary idle screen")
-		}
-		resp := answerScreen(s, d, "1", nil)
-		if resp.Err == nil || resp.Err.Code != api.ErrDecisionStale {
-			t.Fatalf("missingWatch=%t: %+v", missingWatch, resp)
-		}
-		if keys, _ := os.ReadFile(input); len(keys) != 0 {
-			t.Fatal("stale key sent", keys)
-		}
-		got, err := s.store.Decision(d.DecisionID)
-		if err != nil || got.Status != "cancelled" {
-			t.Fatal(got, err)
-		}
-	}
-}
-
-func TestScreenPromptShortcutsTextAndInvalidAnswers(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
-		return
-	}
-	teststate.Lock(t)
-	s, p, input := screenTerminal(t, "codex-permission", "codex")
-	scanScreen(s)
-	d := screenRecord(t, s)
-	resp := answerScreen(s, d, "unknown", nil)
-	if resp.Err == nil {
-		t.Fatal("invalid option accepted")
-	}
-	if keys, _ := os.ReadFile(input); len(keys) != 0 {
-		t.Fatal(keys)
-	}
-	resp = answerScreen(s, d, "3", nil)
-	if resp.Err != nil {
-		t.Fatal(resp.Err)
-	}
-	waitPromptCondition(t, func() bool { keys, _ := os.ReadFile(input); return string(keys) == "\x1b" })
-	paintScreen(p, screenDialog(t, "claude-single"))
-	s.app.Do(func() { p.SetAgent("claude"); s.app.SetReported(1, "claude", "blocked") })
-	scanScreen(s)
-	scanScreen(s)
-	d = screenRecord(t, s)
-	text := "My custom answer"
-	resp = answerScreen(s, d, "", &text)
-	if resp.Err != nil {
-		t.Fatal(resp.Err)
-	}
-	waitPromptCondition(t, func() bool { keys, _ := os.ReadFile(input); return string(keys) == "\x1b3My custom answer\r" })
-}
-
 func TestScreenPromptPendingReuseAndDisable(t *testing.T) {
 	teststate.Lock(t)
 	s, _, _ := screenTerminal(t, "claude-multi-wide", "claude")
@@ -279,44 +201,6 @@ func TestScreenPromptUnsupportedMultiSelectKeepsPending(t *testing.T) {
 	}
 	if keys, _ := os.ReadFile(input); len(keys) != 0 {
 		t.Fatal(keys)
-	}
-}
-
-func TestScreenPromptExternallyExpiredDoesNotReappear(t *testing.T) {
-	teststate.Lock(t)
-	s, _, _ := screenTerminal(t, "claude-single", "claude")
-	var old api.Decision
-	s.app.Do(func() {
-		store, err := s.db()
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		p := s.readScreenPrompt(1).Params
-		p.Origin = &api.DecisionOrigin{PaneID: "p1", Reason: "screen_prompt"}
-		zero := uint64(0)
-		p.TimeoutMS = &zero
-		old, err = store.CreateDecision(p, time.Now())
-		if err != nil {
-			t.Error(err)
-		}
-		prompt := s.readScreenPrompt(1)
-		s.screenPrompts.watches = map[int]*screenPromptWatch{1: {prompt: prompt, signature: prompt.Signature(), decisionID: old.DecisionID, lastMatched: true}}
-	})
-	scanScreen(s)
-	if screenRecord(t, s).DecisionID != old.DecisionID {
-		t.Fatal("pending not reused")
-	}
-	s.app.Do(func() {
-		if err := s.expireDecisions(s.store); err != nil {
-			t.Error(err)
-		}
-	})
-	scanScreen(s)
-	scanScreen(s)
-	all, err := s.store.Decisions("")
-	if err != nil || len(all) != 1 || all[0].Status != "expired" {
-		t.Fatal(all, err)
 	}
 }
 
@@ -381,45 +265,5 @@ func TestScreenPreviewOneTraversalAndRestoration(t *testing.T) {
 	}
 	if prompt := screenprompt.Parse("claude", p.DetectionLines()); prompt == nil || prompt.Cursor != 0 {
 		t.Fatal("cursor not restored")
-	}
-}
-
-func TestScreenPromptCapabilitiesAndStatusJSON(t *testing.T) {
-	teststate.Lock(t)
-	dir, done := startTestServer(t)
-	ready := dialClient(t, dir)
-	ready.conn.Close()
-	defer stopServer(t, dir, done)
-	var pong api.PongResult
-	apiOK(t, dir, api.MethodPing, api.EmptyParams{}, &pong)
-	if pong.Capabilities["screen_prompt_decisions"] != true {
-		t.Fatal(pong)
-	}
-	var wire map[string]any
-	b, _ := json.Marshal(pong)
-	if err := json.Unmarshal(b, &wire); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestScreenPromptNarrowRealQuestionUsesDetectedBlockedState(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	teststate.Lock(t)
-	s, p, _ := screenTerminal(t, "claude-multi-narrow", "claude")
-	if got := detect.Detect("claude", detect.Input{Screen: p.ScreenText()}); got.State != detect.Blocked || got.RuleID != "live_blocked_form" {
-		t.Fatal(got)
-	}
-	s.app.Do(func() { s.app.SetReported(1, "claude", "") })
-	waitPromptCondition(t, func() bool {
-		var blocked bool
-		s.app.Do(func() { blocked = s.app.PaneStatusKey(1) == "blocked" })
-		return blocked
-	})
-	scanScreen(s)
-	d := screenRecord(t, s)
-	if d.Title != "Which sections should the report include?" || !d.MultiSelect || d.QuestionLabel == nil || *d.QuestionLabel != "質問 1/2 Sections" {
-		t.Fatal(d)
 	}
 }

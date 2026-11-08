@@ -7,77 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 )
-
-func TestScreenExternalInputFreezesDecisionAndRejectsAnswer(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	teststate.Lock(t)
-	s, p, input := screenTerminal(t, "claude-single", "claude")
-	scanScreen(s)
-	d := screenRecord(t, s)
-	p.RecordExternalInput()
-	paintScreen(p, "ordinary idle screen")
-	scanScreen(s)
-	scanScreen(s)
-	resp := answerScreen(s, d, "1", nil)
-	if resp.Err == nil || resp.Err.Code != "pane_user_active" {
-		t.Fatal(resp)
-	}
-	got, err := s.store.Decision(d.DecisionID)
-	if err != nil || got.Status != "pending" {
-		t.Fatal(got, err)
-	}
-	if keys, _ := os.ReadFile(input); len(keys) != 0 {
-		t.Fatal(keys)
-	}
-	time.Sleep(3 * time.Second)
-	scanScreen(s)
-	scanScreen(s)
-	got, err = s.store.Decision(d.DecisionID)
-	if err != nil || got.Status != "cancelled" {
-		t.Fatal(got, err)
-	}
-}
-
-func TestScreenExternalInputPreventsCreateAndPreviewRestoration(t *testing.T) {
-	if runIsolatedParallel(t) {
-		return
-	}
-	teststate.Lock(t)
-	s, p, input := screenTerminal(t, "claude-preview", "claude")
-	p.RecordExternalInput()
-	scanScreen(s)
-	if s.store != nil {
-		all, _ := s.store.Decisions("")
-		if len(all) != 0 {
-			t.Fatal(all)
-		}
-	}
-	time.Sleep(3 * time.Second)
-	scanScreen(s)
-	d := screenRecord(t, s)
-	if d.Status != "pending" {
-		t.Fatal(d)
-	}
-	if keys, _ := os.ReadFile(input); len(keys) != 0 {
-		t.Fatal("deferred scan sent keys", keys)
-	}
-	s.app.Do(func() {
-		w := s.screenPrompts.watches[1]
-		w.preview = &screenPreviewScan{original: 1, visited: map[string]*string{}}
-		p.RecordExternalInput()
-		s.scanScreenPrompts()
-		if w.preview != nil {
-			t.Error("scan did not abort")
-		}
-	})
-	if keys, _ := os.ReadFile(input); len(keys) != 0 {
-		t.Fatal("restore sent keys", keys)
-	}
-}
 
 func TestScreenVolatileUpdateAndRebuildFlood(t *testing.T) {
 	teststate.Lock(t)

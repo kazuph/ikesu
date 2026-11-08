@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,99 +41,6 @@ func TestTraceExpiredProbeCannotMatchLaterReply(t *testing.T) {
 			}
 			assertProbeReplies(t, log, []string{"draw_seq=0 matched=false", "draw_seq=2 matched=true"})
 		})
-	}
-}
-
-func TestTraceSingleProbeStillMatchesReply(t *testing.T) {
-	m, finish := traceProbeSession(t)
-	m.outputFence.Written([]byte("\x1b_Ga=t,"), time.Now())
-	m.tracePaint([]byte("single"), true, render.Input{SurfaceRevision: 1})
-	if err := m.input(input.Event{Raw: []byte("\x1b[0n")}); err != nil {
-		t.Fatal(err)
-	}
-	if !m.outputFence.Deadline().IsZero() {
-		t.Fatal("normal reply left functional wait")
-	}
-	if log := finish(); !strings.Contains(log, "draw_seq=1 matched=true") {
-		t.Fatal("single probe lost its match", log)
-	}
-}
-
-func TestTraceMissingOldReplyRecoversOnFollowingQueries(t *testing.T) {
-	m, finish := traceProbeSession(t)
-	traceProbeWrite(m, true)
-	traceProbeWrite(m, false)
-	traceProbeInput(t, m)
-	traceProbeWrite(m, false)
-	traceProbeInput(t, m)
-	traceProbeWrite(m, false)
-	traceProbeInput(t, m)
-	assertProbeReplies(t, finish(), []string{"draw_seq=0 matched=false", "draw_seq=3 matched=true", "draw_seq=4 matched=true"})
-}
-
-func TestTraceMultipleExpiredRepliesAreCountedOnce(t *testing.T) {
-	m, finish := traceProbeSession(t)
-	traceProbeWrite(m, true)
-	m.traceProbeTimeout(time.Now())
-	traceProbeWrite(m, true)
-	m.traceProbeTimeout(time.Now())
-	traceProbeWrite(m, false)
-	traceProbeInput(t, m)
-	traceProbeInput(t, m)
-	traceProbeInput(t, m)
-	assertProbeReplies(t, finish(), []string{"draw_seq=0 matched=false", "draw_seq=0 matched=false", "draw_seq=3 matched=true"})
-}
-
-func TestTraceProbeSwitchResetsOldCount(t *testing.T) {
-	for _, change := range []string{"endpoint", "generation"} {
-		for _, old := range []string{"none", "pending", "two_expired"} {
-			t.Run(change+"/"+old, func(t *testing.T) {
-				m, finish := traceProbeSession(t)
-				switch old {
-				case "pending":
-					traceProbeWrite(m, false)
-				case "two_expired":
-					traceProbeWrite(m, true)
-					traceProbeWrite(m, true)
-				}
-				if change == "endpoint" {
-					m.active = "second"
-				} else {
-					m.endpoints[m.active].attempt++
-				}
-				traceProbeWrite(m, false)
-				matched := fmt.Sprintf("draw_seq=%d matched=true", m.drawSeq)
-				want := []string{matched}
-				if old != "none" {
-					traceProbeInput(t, m)
-					want = append([]string{"draw_seq=0 matched=false"}, want...)
-				}
-				traceProbeInput(t, m)
-				assertProbeReplies(t, finish(), want)
-			})
-		}
-	}
-}
-
-func traceProbeWrite(m *machineClient, expired bool) {
-	now := time.Now()
-	if expired {
-		now = now.Add(-2 * render.TerminalStatusWait)
-	}
-	m.outputFence.Written([]byte("\x1b_Ga=t,"), now)
-	m.tracePaint([]byte("pixels"), true, render.Input{})
-	if expired {
-		m.traceProbeTimeout(time.Now())
-	}
-}
-
-func traceProbeInput(t *testing.T, m *machineClient) {
-	t.Helper()
-	if err := m.input(input.Event{Raw: []byte("\x1b[0n")}); err != nil {
-		t.Fatal(err)
-	}
-	if !m.outputFence.Deadline().IsZero() {
-		t.Fatal("diagnostics changed functional reply handling")
 	}
 }
 

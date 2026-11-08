@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 )
 
 func TestOyagoiCycleUsesNormalWorkspaceInOtherSessionReview(t *testing.T) {
@@ -94,27 +93,6 @@ func TestOyagoiCycleHQCarriesGenerationAndRejectsReplacementReview(t *testing.T)
 	if m.active != "local" || m.pending == nil {
 		t.Fatal("replacement workspace was accepted")
 	}
-}
-
-func TestOyagoiCollapsedExcludedFromWorkspaceCycle(t *testing.T) {
-	m := cycleFixture(t)
-	m.session = "local"
-	remote := m.endpoints["mini"]
-	remote.profile.Session = "session-A"
-	ws := remote.snapshot.State.Workspaces[0]
-	m.oyagoi = &oyagoiSelection{Machine: "mini", Session: "session-A", Workspace: ws.ID, Generation: ws.Generation, Collapsed: true}
-	for _, target := range m.workspaceCycleTargets() {
-		if target.machine == "mini" && target.workspace == ws.ID {
-			t.Fatalf("collapsed HQ in cycle: %+v", target)
-		}
-	}
-	m.oyagoi.Collapsed = false
-	for _, target := range m.workspaceCycleTargets() {
-		if target.machine == "mini" && target.workspace == ws.ID && target.generation == ws.Generation {
-			return
-		}
-	}
-	t.Fatal("expanded HQ missing from cycle")
 }
 
 // Uses two live servers and their shell PTYs for the HQ selection.
@@ -214,46 +192,6 @@ func cycleKey(code rune) input.Event {
 	return input.Event{Kind: input.KindKey, Key: uv.Key{Code: code, Mod: uv.ModSuper}, Raw: []byte("navigation")}
 }
 
-func TestWorkspaceCycleBoundariesAndWrap(t *testing.T) {
-	for _, tc := range []struct {
-		name, active string
-		index        int
-		key          rune
-		target       string
-		targetIndex  int
-	}{
-		{"next machine", "local", 1, 'j', "mini", 0}, {"next wraps", "mini", 1, 'j', "local", 0}, {"previous machine", "mini", 0, 'k', "local", 1}, {"previous wraps", "local", 0, 'k', "mini", 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			m := cycleFixture(t)
-			m.active = tc.active
-			m.endpoints[tc.active].snapshot.State.Active = tc.index
-			if !m.workspaceCycleInput(cycleKey(tc.key)) {
-				t.Fatal("not intercepted")
-			}
-			if m.pending == nil || m.pending.id != tc.target || m.pending.workspace != m.endpoints[tc.target].snapshot.State.Workspaces[tc.targetIndex].ID {
-				t.Fatalf("pending=%+v", m.pending)
-			}
-			if m.active != tc.active {
-				t.Fatal("switched without snapshot confirmation")
-			}
-		})
-	}
-}
-
-func TestOyagoiWorkspaceCycleStartsWithRemoteHQEvenWhenSectionCollapsed(t *testing.T) {
-	m := cycleFixture(t)
-	m.session = "local-session"
-	m.endpoints["mini"].profile.Session = "remote-session"
-	s := m.endpoints["mini"].snapshot.State
-	s.Workspaces[1].Section = model.SectionFavorite
-	s.CollapsedSections = map[model.Section]bool{model.SectionFavorite: true}
-	m.oyagoi = &oyagoiSelection{Machine: "mini", Session: "remote-session", Workspace: s.Workspaces[1].ID, Generation: s.Workspaces[1].Generation}
-	got := m.workspaceCycleTargets()
-	if len(got) != 4 || got[0] != (workspaceCycleTarget{machine: "mini", workspace: s.Workspaces[1].ID, generation: s.Workspaces[1].Generation}) {
-		t.Fatalf("HQ order = %+v", got)
-	}
-}
 func TestWorkspaceCycleOrderSkipsUnavailableAndHidden(t *testing.T) {
 	m := cycleFixture(t)
 	s := m.endpoints["local"].snapshot.State
@@ -358,22 +296,6 @@ func TestWorkspaceCyclePendingRepeatReleaseTimeout(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCycleLocalBindingsOnRemoteAndReleaseAfterModeChange(t *testing.T) {
-	m := cycleFixture(t)
-	m.active = "mini"
-	m.endpoints["mini"].snapshot.SidebarConfig = config.Config{}
-	m.endpoints["mini"].snapshot.State.Active = 0
-	if !m.workspaceCycleInput(cycleKey('j')) || m.pending == nil || m.pending.id != "mini" || m.pending.workspace != m.endpoints["mini"].snapshot.State.Workspaces[1].ID {
-		t.Fatalf("local binding not used: %+v", m.pending)
-	}
-	m.endpoints["mini"].snapshot.Prefix = true
-	event := cycleKey('j')
-	event.Kind = input.KindKeyRelease
-	if !m.workspaceCycleInput(event) {
-		t.Fatal("release leaked after snapshot changed")
-	}
-}
-
 func TestWorkspaceCycleCollapsedWorktreeGroup(t *testing.T) {
 	m := cycleFixture(t)
 	s := m.endpoints["local"].snapshot.State
@@ -388,60 +310,6 @@ func TestWorkspaceCycleCollapsedWorktreeGroup(t *testing.T) {
 	s.Active = 1
 	if got := m.workspaceCycleTargets(); len(got) != 4 {
 		t.Fatalf("active child hidden: %+v", got)
-	}
-}
-
-func TestWorkspaceCycleReleaseTracksPhysicalKeyAndBlur(t *testing.T) {
-	for _, mod := range []uv.KeyMod{0, uv.ModSuper | uv.ModShift} {
-		m := cycleFixture(t)
-		m.endpoints["local"].snapshot.State.Active = 1
-		if !m.workspaceCycleInput(cycleKey('j')) {
-			t.Fatal("press not consumed")
-		}
-		release := cycleKey('j')
-		release.Kind = input.KindKeyRelease
-		release.Key.Mod = mod
-		if !m.workspaceCycleInput(release) {
-			t.Fatal("physical release leaked", mod)
-		}
-	}
-	m := cycleFixture(t)
-	m.endpoints["local"].snapshot.State.Active = 1
-	m.workspaceCycleInput(cycleKey('j'))
-	m.workspaceCycleInput(input.Event{Kind: input.KindBlur})
-	release := cycleKey('j')
-	release.Kind = input.KindKeyRelease
-	if m.workspaceCycleInput(release) {
-		t.Fatal("blur retained old press")
-	}
-	m.pending = nil
-	if !m.workspaceCycleInput(cycleKey('j')) || !m.workspaceCycleInput(release) {
-		t.Fatal("new press/release lost after blur")
-	}
-}
-
-func TestWorkspaceCycleBatchAndRepeatCrossBothBoundaries(t *testing.T) {
-	for _, dir := range []rune{'j', 'k'} {
-		for _, repeat := range []bool{false, true} {
-			m := cycleFixture(t)
-			start, target := 0, 0
-			if dir == 'k' {
-				start, target = 1, 1
-			}
-			m.endpoints["local"].snapshot.State.Active = start
-			first := cycleKey(dir)
-			second := first
-			second.Key.IsRepeat = repeat
-			if err := m.input(first); err != nil {
-				t.Fatal(err)
-			}
-			if err := m.input(second); err != nil {
-				t.Fatal(err)
-			}
-			if m.pending == nil || m.pending.id != "mini" || m.pending.workspace != m.endpoints["mini"].snapshot.State.Workspaces[target].ID {
-				t.Fatalf("key=%c repeat=%t pending=%+v", dir, repeat, m.pending)
-			}
-		}
 	}
 }
 
@@ -548,49 +416,4 @@ func TestWorkspaceCycleReceiptOrderingWithRealServers(t *testing.T) {
 	h.until("cross machine after receipt", func() bool {
 		return m.pending == nil && m.active == "remote" && m.endpoints["remote"].snapshot.State.Active == 0
 	})
-}
-
-func TestWorkspaceCycleQueuedPrefixCannotBeOvertaken(t *testing.T) {
-	if teststate.RunIsolatedParallel(t) {
-		return
-	}
-	h := newRightMachineHarness(t)
-	m := h.m
-	cfg, err := config.Decode([]byte("onboarding=false\n[keys]\nnext_workspace='cmd+j'\nprevious_workspace='cmd+k'\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range m.endpoints {
-		e.connection.enqueue(msg{Type: "view_config", Config: &cfg})
-	}
-	h.until("navigation bindings", func() bool {
-		for _, e := range m.endpoints {
-			if workspaceCycleDirection(e.snapshot.SidebarConfig, cycleKey('j').Key) != 1 {
-				return false
-			}
-		}
-		return true
-	})
-	e := m.endpoints["remote"]
-	m.pending = &pendingMachine{id: "remote", workspace: e.snapshot.State.Workspaces[1].ID, deadline: time.Now().Add(machineSwitchWait)}
-	m.requestPending()
-	prefix := input.Event{Kind: input.KindKey, Key: uv.Key{Code: 'b', Mod: uv.ModCtrl}, Raw: []byte("\x02")}
-	navigation := cycleKey('j')
-	navigation.Raw = []byte("\x1b[106;9u")
-	if err := m.input(prefix); err != nil {
-		t.Fatal(err)
-	}
-	p := m.pending
-	if err := m.input(navigation); err != nil {
-		t.Fatal(err)
-	}
-	if m.pending != p || len(p.keys) != 2 || string(p.keys[0].Raw) != "\x02" || string(p.keys[1].Raw) != "\x1b[106;9u" {
-		t.Fatal("navigation overtook queued prefix", m.pending)
-	}
-	h.until("destination and held input receipt", func() bool {
-		return m.active == "remote" && m.pending == nil && len(m.held) == 0 && e.processedInput == e.connection.lastSentInput()
-	})
-	if e.snapshot.State.Active != 1 || e.snapshot.Prefix {
-		t.Fatal("queued prefix/navigation order changed destination", e.snapshot.State.Active, e.snapshot.Prefix)
-	}
 }

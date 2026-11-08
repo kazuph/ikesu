@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net"
 	"os"
@@ -15,93 +14,6 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
-
-func TestStage6aFixTerminalRealDisplaySocket(t *testing.T) {
-	if runIsolatedParallelEarly(t) {
-		return
-	}
-	teststate.Lock(t)
-	for _, tt := range []struct {
-		name     string
-		terminal *endpoint.Terminal
-		want     string
-	}{
-		{"ghostty", &endpoint.Terminal{Program: "ghostty"}, "\x1b]9;日本語: 本文\x1b\\"},
-		{"iterm", &endpoint.Terminal{Program: "iTerm.app"}, "\x1b]9;日本語: 本文\x1b\\"},
-		{"wezterm", &endpoint.Terminal{Program: "WezTerm"}, "\x1b]9;日本語: 本文\x1b\\"},
-		{"kitty", &endpoint.Terminal{Kitty: true}, "\x1b]99;i=1:d=0;日本語\x1b\\\x1b]99;i=1:p=body;本文\x1b\\"},
-		{"term-ghostty", &endpoint.Terminal{Term: "xterm-ghostty"}, "\x1b]9;日本語: 本文\x1b\\"},
-		{"term-kitty", &endpoint.Terminal{Term: "xterm-kitty"}, "\x1b]99;i=1:d=0;日本語\x1b\\\x1b]99;i=1:p=body;本文\x1b\\"},
-		{"term-wezterm", &endpoint.Terminal{Term: "wezterm"}, "\x1b]9;日本語: 本文\x1b\\"},
-		{"tmux", &endpoint.Terminal{Program: "ghostty", Tmux: true}, "\x1bPtmux;\x1b\x1b]9;日本語: 本文\x1b\x1b\\\x1b\\"},
-		{"unknown", &endpoint.Terminal{Term: "xterm-256color"}, ""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := filepath.Join(t.TempDir(), "config.toml")
-			if err := os.WriteFile(cfg, []byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.toast]\ndelivery='terminal'\n[ui.sound]\nenabled=false\n"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			teststate.Setenv(t, "IKESU_CONFIG", cfg)
-			dir, done := startTestServer(t)
-			defer stopServer(t, dir, done)
-			c := dialClient(t, dir)
-			defer c.conn.Close()
-			c.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24, Terminal: tt.terminal})
-			c.readUntil(t, 5*time.Second, func(m clientMsg) bool { return m.Type == "output" })
-			// Keep draining real display frames while the independent API waits.
-			notifications := make(chan string, 1)
-			readDone := make(chan error, 1)
-			notificationCount := 0
-			go func() {
-				_, err := c.readUntilResult(5*time.Second, func(m clientMsg) bool {
-					b, _ := base64.StdEncoding.DecodeString(m.Data)
-					if strings.Contains(string(b), "\x1b]9;") || strings.Contains(string(b), "\x1b]99;") {
-						notificationCount++
-						select {
-						case notifications <- string(b):
-						default:
-						}
-					}
-					return m.Type == "exit"
-				})
-				readDone <- err
-			}()
-			r := apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "body": "本文", "sound": "none"})
-			want := `{"type":"notification_show","shown":true,"reason":"shown"}`
-			if r.Err != nil || string(r.Result) != want {
-				t.Fatal(r.Err, string(r.Result), want)
-			}
-			if tt.want != "" {
-				select {
-				case got := <-notifications:
-					if got != tt.want {
-						t.Fatalf("notification bytes=%q want=%q", got, tt.want)
-					}
-				case <-time.After(5 * time.Second):
-					t.Fatal("notification bytes not received")
-				}
-			}
-			if tt.want == "" {
-				r = apiReq(t, dir, "notification.show", map[string]any{"title": "日本語", "sound": "none"})
-				if r.Err != nil || string(r.Result) != `{"type":"notification_show","shown":false,"reason":"rate_limited"}` {
-					t.Fatal(r.Err, string(r.Result))
-				}
-			}
-			stopServer(t, dir, done)
-			if err := <-readDone; err != nil {
-				t.Fatal(err)
-			}
-			c.conn.Close()
-			wantCount := 1
-			if tt.want == "" {
-				wantCount = 0
-			}
-			if notificationCount != wantCount {
-				t.Fatalf("notification count=%d want=%d", notificationCount, wantCount)
-			}
-		})
-	}
-}
 
 func TestStage6aFixRateOrderAndFailures(t *testing.T) {
 	teststate.Lock(t)

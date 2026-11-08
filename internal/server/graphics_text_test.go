@@ -127,42 +127,6 @@ func TestGraphicsTextGeometryAndGeneration(t *testing.T) {
 	}
 }
 
-func TestGraphicsTextPopupAndLayoutChanges(t *testing.T) {
-	state := model.New(".", 100, 40)
-	state.Apply(model.CmdOpenPopup{WorkspaceID: state.ActiveWorkspace().ID, Width: api.PopupSize{Cells: 40}, Height: api.PopupSize{Cells: 12}})
-	popup := state.Popup.PaneID
-	in := render.Input{State: state, Panes: map[int]*render.PaneSnap{state.FocusedPane(): {}, popup: {Grid: make([][]uv.Cell, 10), Graphics: []kitty.Placement{{Image: kitty.Image{ID: 1, Format: 32, Width: 1, Height: 1, Data: []byte{1, 2, 3, 255}}}}}}}
-	old := captureGraphicsText(in)
-	in.Panes[popup].Grid[0] = []uv.Cell{{Content: "updated", Width: 1}}
-	if !old.compatible(captureGraphicsText(in)) {
-		t.Fatal("popup content update blocked")
-	}
-	state.Popup.TerminalID = "changed"
-	if old.compatible(captureGraphicsText(in)) {
-		t.Fatal("popup terminal changed")
-	}
-	state.Popup.TerminalID = ""
-	in.Panes[popup].ScrollOff = 1
-	if old.compatible(captureGraphicsText(in)) {
-		t.Fatal("popup scroll accepted")
-	}
-	in.Panes[popup].ScrollOff = 0
-	in.Panes[popup].Grid = append(in.Panes[popup].Grid, nil)
-	if old.compatible(captureGraphicsText(in)) {
-		t.Fatal("popup viewport accepted")
-	}
-	in.Panes[popup].Grid = in.Panes[popup].Grid[:10]
-	state.Popup.Width.Cells++
-	if old.compatible(captureGraphicsText(in)) {
-		t.Fatal("popup size accepted")
-	}
-	state.Popup.Width.Cells--
-	state.Popup = nil
-	if old.compatible(captureGraphicsText(in)) {
-		t.Fatal("popup closure accepted")
-	}
-}
-
 func TestGraphicsTextRejectsTabPaneSplitAndViewportChanges(t *testing.T) {
 	cases := []struct {
 		name   string

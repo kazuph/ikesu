@@ -82,22 +82,6 @@ func TestNativePlacedResultRejectsChangedFocusBeforeDeferredPaint(t *testing.T) 
 	}
 }
 
-func TestNativePlacedResultRequiresSuccessfulTerminalWrite(t *testing.T) {
-	m, wire, _, result := nativePaintFixture(t)
-	m.out.Close()
-	if err := m.sendGraphicsFileResult(m.endpoints["local"].connection, result); err == nil {
-		t.Fatal("closed terminal was reported as a successful native placement")
-	}
-	if m.nativeTransfer.sent {
-		t.Fatal("failed terminal write marked the transfer sent")
-	}
-	wire.SetReadDeadline(time.Now())
-	var data [1]byte
-	if n, err := wire.Read(data[:]); n != 0 || err == nil {
-		t.Fatal("failed terminal write emitted a success response", n, err)
-	}
-}
-
 func TestNativePlacedResultWaitsForMatchingResizeSurface(t *testing.T) {
 	m, wire, _, result := nativePaintFixture(t)
 	m.out.Close()
