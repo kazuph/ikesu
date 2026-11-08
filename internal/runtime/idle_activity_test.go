@@ -70,3 +70,29 @@ func TestIdleActivityRestoreDefaultsToNow(t *testing.T) {
 		t.Fatalf("restored activity = %v, %d", at, seq)
 	}
 }
+
+func TestIdleActivityHandoffIncludesInputAfterSnapshot(t *testing.T) {
+	old, next := NewSupervisor(), NewSupervisor()
+	defer old.KillAll()
+	defer next.KillAll()
+	pane, err := old.SpawnWith(1, t.TempDir(), 20, 10, nil, []string{"/bin/cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pane.RecordKeyInput()
+	at, seq := pane.IdleActivity()
+	if err := next.ImportHandoff(states, files); err != nil {
+		t.Fatal(err)
+	}
+	next.RestoreIdleActivities(old.IdleActivities())
+	old.ReleaseHandoff()
+	next.StartImported()
+	got, n := next.Get(1).IdleActivity()
+	if !got.Equal(at) || n != seq {
+		t.Fatalf("late activity = %v %d, want %v %d", got, n, at, seq)
+	}
+}

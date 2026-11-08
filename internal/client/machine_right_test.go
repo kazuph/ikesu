@@ -17,10 +17,12 @@ import (
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/server"
+	isession "github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/tui"
 )
@@ -80,7 +82,7 @@ func (h *rightMachineHarness) until(label string, pred func() bool) {
 		}
 	}
 }
-func newRightMachineHarness(t *testing.T) *rightMachineHarness {
+func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarness {
 	teststate.Lock(t)
 	root, err := os.MkdirTemp("/tmp", "ikesu-right-")
 	if err != nil {
@@ -141,6 +143,22 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		session := "right-" + id
 		dir := filepath.Join(root, session)
 		h.dirs[id] = dir
+		if len(idleFixture) > 0 && idleFixture[0] {
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			st := model.New(root, 160, 35)
+			st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+			f := st.Snapshot()
+			f.EachPane(func(_ *isession.Workspace, _ *isession.Tab, p *isession.Pane) {
+				p.Agent = "codex"
+				p.IdleActivityAt = time.Now().Add(-48 * time.Hour)
+				p.IdleActivitySeq = 1
+			})
+			if err := isession.Save(isession.Path(dir), f); err != nil {
+				t.Fatal(err)
+			}
+		}
 		log, err := os.Create(filepath.Join(root, id+".log"))
 		if err != nil {
 			t.Fatal(err)
@@ -193,6 +211,9 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		}(id, connection)
 	}
 	h.until("both snapshots", func() bool { return m.endpoints["local"].snapshot != nil && m.endpoints["remote"].snapshot != nil })
+	if len(idleFixture) > 0 && idleFixture[0] {
+		return h
+	}
 	for _, id := range m.order {
 		h.api(id, api.MethodWorkspaceCreate, map[string]any{"focus": false})
 		h.api(id, api.MethodPaneSplit, map[string]any{"target_pane_id": "p1", "direction": "right", "focus": false})

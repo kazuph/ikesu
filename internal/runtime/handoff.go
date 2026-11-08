@@ -238,3 +238,29 @@ func (s *Supervisor) RestoreMailInputTimes(times map[int]int64) {
 		pane.lastMailExternalInput.Store(at)
 	}
 }
+
+// IdleActivityTransfer is the last admitted activity at the handoff barrier.
+type IdleActivityTransfer struct {
+	At       time.Time
+	Sequence uint64
+}
+
+func (s *Supervisor) IdleActivities() map[int]IdleActivityTransfer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[int]IdleActivityTransfer, len(s.panes))
+	for id, p := range s.panes {
+		at, seq := p.IdleActivity()
+		result[id] = IdleActivityTransfer{At: at, Sequence: seq}
+	}
+	return result
+}
+
+func (s *Supervisor) RestoreIdleActivities(values map[int]IdleActivityTransfer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, p := range s.panes {
+		value := values[id]
+		p.RestoreIdleActivity(value.At, value.Sequence)
+	}
+}

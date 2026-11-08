@@ -43,6 +43,10 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	IdleRequest           uint64                               `json:"idle_request,omitempty"`
+	IdlePanes             *endpoint.IdlePanes                  `json:"idle_panes,omitempty"`
+	IdleDelete            *endpoint.IdleDelete                 `json:"idle_delete,omitempty"`
+	IdleDeleteResult      *endpoint.IdleDeleteResult           `json:"idle_delete_result,omitempty"`
 	Selection             *endpoint.ViewSelection              `json:"selection,omitempty"`
 	ClientView            *api.ClientView                      `json:"client_view,omitempty"`
 	Terminal              *endpoint.Terminal                   `json:"terminal,omitempty"`
@@ -508,8 +512,11 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 			final.MailInputTimes = nil
 		}
 		s.sup.RestoreMailInputTimes(final.MailInputTimes)
+		s.sup.RestoreIdleActivities(final.IdleActivities)
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
+	// Persist the start time assigned to panes from older session data.
+	s.markSessionDirty()
 	s.mailWG.Add(1)
 	go func() { defer s.mailWG.Done(); s.mailWorker() }()
 	// These startup sweeps all open the SQLite store; when the DB file has
@@ -821,6 +828,23 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case "idle_panes":
+			s.app.Do(func() {
+				list := c.viewer.IdlePanes(s.app)
+				list.ServerGeneration = s.generation
+				_ = c.send(clientMsg{Type: "idle_panes_result", IdleRequest: m.IdleRequest, IdlePanes: &list})
+			})
+		case "idle_delete":
+			s.app.Do(func() {
+				if m.IdleDelete == nil {
+					return
+				}
+				result := endpoint.IdleDeleteResult{Failed: len(m.IdleDelete.Panes)}
+				if m.IdleDelete.ServerGeneration != "" && m.IdleDelete.ServerGeneration == s.generation {
+					result = s.app.DeleteIdlePanes(m.IdleDelete.Panes)
+				}
+				_ = c.send(clientMsg{Type: "idle_delete_result", IdleRequest: m.IdleRequest, IdleDeleteResult: &result})
+			})
 		case endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage:
 			s.app.Do(func() { s.graphicsTransmission(c, m) })
 		case "control":

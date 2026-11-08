@@ -43,6 +43,10 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
+	IdleRequest           uint64                               `json:"idle_request,omitempty"`
+	IdlePanes             *endpoint.IdlePanes                  `json:"idle_panes,omitempty"`
+	IdleDelete            *endpoint.IdleDelete                 `json:"idle_delete,omitempty"`
+	IdleDeleteResult      *endpoint.IdleDeleteResult           `json:"idle_delete_result,omitempty"`
 	Decisions             *endpoint.DecisionProjection         `json:"decisions,omitempty"`
 	DecisionAnswer        *api.DecisionAnswerParams            `json:"decision_answer,omitempty"`
 	Selection             *endpoint.ViewSelection              `json:"selection,omitempty"`

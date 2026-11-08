@@ -220,7 +220,7 @@ func (a *App) mainMenuItems() []render.MenuItem {
 		koiLabel = "koi: on"
 	}
 	items := []render.MenuItem{
-		{Label: "new workspace"}, {Label: "new tab"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: koiLabel}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
+		{Label: "new workspace"}, {Label: "new tab"}, {Label: "delete idle panes…"}, {Separator: true}, {Label: "settings"}, {Label: "keybinds"}, {Label: "reload config"}, {Label: koiLabel}, {Label: "sidebar narrow"}, {Label: "sidebar normal"}, {Label: "sidebar wide"}, {Separator: true}, {Label: "restore agents...", Disabled: a.restoreHook == nil}, {Separator: true}, {Label: "detach", Disabled: a.detacher == nil}, {Separator: true}, {Label: "add machine..."}, {Label: "remove machine..."}, {Separator: true}, {Label: "stop server"}, {Label: "restart", Disabled: a.restartHook == nil},
 	}
 	if a.clientMachines || a.machineRequest != nil {
 		var base, machines []render.MenuItem
@@ -396,11 +396,17 @@ func (a *App) activateMenu(i int) {
 			a.closeTabAt(m.ws, m.tab)
 		}
 	case menuMain:
-		if a.clientMachines && m.m.Items[i].Label != "koi: on" && m.m.Items[i].Label != "koi: off" && m.m.Items[i].Label != "add machine..." && m.m.Items[i].Label != "remove machine..." {
+		if a.clientMachines && m.m.Items[i].Label != "koi: on" && m.m.Items[i].Label != "koi: off" && m.m.Items[i].Label != "add machine..." && m.m.Items[i].Label != "remove machine..." && m.m.Items[i].Label != "delete idle panes…" {
 			a.machineError(fmt.Errorf("machine is disconnected; select a connected space to use %s", m.m.Items[i].Label))
 			return
 		}
 		switch m.m.Items[i].Label {
+		case "delete idle panes…":
+			if a.machineRequest != nil {
+				if err := a.machineRequest("idle_panes"); err != nil {
+					a.machineError(err)
+				}
+			}
 		case "add machine...":
 			a.addMachineDialog()
 		case "remove machine...":

@@ -32,6 +32,13 @@ func (p *Pane) mailInputActiveLocked() bool {
 	return p.visibleAgentInputLocked()
 }
 
+// HasUnsentAgentInput reports the visible text at an agent prompt.
+func (p *Pane) HasUnsentAgentInput() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.visibleAgentInputLocked()
+}
+
 // WriteMail checks and writes under the same input admission lock.
 func (p *Pane) WriteMail(data []byte) (int, error) {
 	p.inputMu.Lock()

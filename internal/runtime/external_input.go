@@ -79,3 +79,10 @@ func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64) (int, error) {
 	}
 	return p.WriteToPTY(data)
 }
+
+// WithIdleActivitySequence excludes new key input while fn validates and closes.
+func (p *Pane) WithIdleActivitySequence(seq uint64, fn func() bool) bool {
+	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	return p.idleActivitySeq == seq && fn()
+}
