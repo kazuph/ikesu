@@ -2,7 +2,11 @@ package client
 
 import (
 	"fmt"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"testing"
 	"time"
 )
@@ -28,6 +32,14 @@ func TestIdleInitiallySelected(t *testing.T) {
 func TestIdleUnknownInputIsNotInitiallySelected(t *testing.T) {
 	if idleInitiallySelected(endpoint.IdlePane{State: "idle"}, false, true) {
 		t.Fatal("unrecognized prompt must not be assumed empty")
+	}
+}
+
+func TestIdleUnknownInputCanBeSelectedManually(t *testing.T) {
+	m := &machineClient{idle: &idleDialog{entries: []idleEntry{{pane: endpoint.IdlePane{State: "idle", AgeNanos: int64(48 * time.Hour)}}}}}
+	m.idleInput(input.Event{Kind: input.KindKey, Key: uv.Key{Code: ' '}})
+	if m.idle.selected() != 1 {
+		t.Fatal("manual selection of an unknown input failed")
 	}
 }
 func TestIdleThresholdAndSelection(t *testing.T) {
@@ -73,5 +85,32 @@ func TestIdlePanesTwoServersActualPTY(t *testing.T) {
 	}
 	for _, id := range m.order {
 		h.until("remaining PTY", func() bool { return len(m.endpoints[id].snapshot.State.Workspaces[0].Tabs[0].Layout.PaneIDs()) == 1 })
+	}
+}
+
+func TestIdleDraftSelectionFromRealPane(t *testing.T) {
+	for _, tc := range []struct {
+		name, agent, screen string
+		want, known         bool
+	}{
+		{"empty Codex", "codex", "› \x1b[2mAsk Codex to do anything\x1b[0m", true, true},
+		{"Codex draft", "codex", "› unfinished", false, true},
+		{"Claude draft", "claude", "❯ unfinished", false, true},
+		{"unknown agent", "muse", "⟩ unfinished", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sup := runtime.NewSupervisor()
+			defer sup.KillAll()
+			p, err := sup.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/cat"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.SetAgent(tc.agent)
+			p.WithEmu(func(e *vt.Emulator) { _, _ = e.Write([]byte("\x1b[H\x1b[2J" + tc.screen)) })
+			pending, known := p.UnsentAgentInput()
+			if known != tc.known || idleInitiallySelected(endpoint.IdlePane{State: "idle", PendingInput: pending, InputKnown: known}, false, true) != tc.want {
+				t.Fatalf("pending=%v known=%v", pending, known)
+			}
+		})
 	}
 }
