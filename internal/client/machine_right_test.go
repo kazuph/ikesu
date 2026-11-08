@@ -2,7 +2,9 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -17,10 +19,12 @@ import (
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
+	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/machine"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/server"
+	isession "github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/tui"
 )
@@ -41,6 +45,46 @@ type rightMachineHarness struct {
 	m    *machineClient
 	t    *testing.T
 	dirs map[string]string
+}
+
+// legacyIdleStream changes only the welcome sent by a real server in this test.
+type legacyIdleStream struct {
+	net.Conn
+	reader  *bufio.Reader
+	welcome *bytes.Reader
+}
+
+func (c *legacyIdleStream) Read(p []byte) (int, error) {
+	if c.reader == nil {
+		c.reader = bufio.NewReader(c.Conn)
+		line, err := c.reader.ReadBytes('\n')
+		if err != nil {
+			return 0, err
+		}
+		var welcome msg
+		if err := json.Unmarshal(line, &welcome); err != nil {
+			return 0, err
+		}
+		if welcome.Type != "welcome" {
+			return 0, fmt.Errorf("expected welcome, got %q", welcome.Type)
+		}
+		methods := welcome.Methods[:0]
+		for _, method := range welcome.Methods {
+			if method != "idle_panes" && method != "idle_delete" {
+				methods = append(methods, method)
+			}
+		}
+		welcome.Methods = methods
+		line, err = json.Marshal(welcome)
+		if err != nil {
+			return 0, err
+		}
+		c.welcome = bytes.NewReader(append(line, '\n'))
+	}
+	if c.welcome.Len() > 0 {
+		return c.welcome.Read(p)
+	}
+	return c.reader.Read(p)
 }
 
 func (h *rightMachineHarness) api(id, method string, params any) {
@@ -66,7 +110,7 @@ func (h *rightMachineHarness) until(label string, pred func() bool) {
 	for !pred() {
 		select {
 		case event := <-h.m.events:
-			if event.err != nil {
+			if event.err != nil && (h.m.endpoints[event.id] == nil || h.m.endpoints[event.id].attempt == event.attempt) {
 				h.t.Fatalf("%s endpoint=%s: %v", label, event.id, event.err)
 			}
 			if _, done := h.m.event(event); done {
@@ -80,7 +124,7 @@ func (h *rightMachineHarness) until(label string, pred func() bool) {
 		}
 	}
 }
-func newRightMachineHarness(t *testing.T) *rightMachineHarness {
+func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarness {
 	teststate.Lock(t)
 	root, err := os.MkdirTemp("/tmp", "ikesu-right-")
 	if err != nil {
@@ -141,6 +185,22 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		session := "right-" + id
 		dir := filepath.Join(root, session)
 		h.dirs[id] = dir
+		if len(idleFixture) > 0 && idleFixture[0] {
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			st := model.New(root, 160, 35)
+			st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+			f := st.Snapshot()
+			f.EachPane(func(_ *isession.Workspace, _ *isession.Tab, p *isession.Pane) {
+				p.Agent = "codex"
+				p.IdleActivityAt = time.Now().Add(-48 * time.Hour)
+				p.IdleActivitySeq = 1
+			})
+			if err := isession.Save(isession.Path(dir), f); err != nil {
+				t.Fatal(err)
+			}
+		}
 		log, err := os.Create(filepath.Join(root, id+".log"))
 		if err != nil {
 			t.Fatal(err)
@@ -170,6 +230,9 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if id == "remote" && len(idleFixture) > 1 && idleFixture[1] {
+			stream = &legacyIdleStream{Conn: stream}
+		}
 		stream.SetDeadline(time.Now().Add(10 * time.Second))
 		connection, err := connectEndpoint(stream, id != "local", m.size, m.settings, "", nil)
 		if err != nil {
@@ -181,18 +244,21 @@ func newRightMachineHarness(t *testing.T) *rightMachineHarness {
 		go func(id string, c *endpointConnection) {
 			for {
 				message, err := c.read()
-				if err != nil {
+				select {
+				case m.events <- endpointEvent{id: id, message: message, err: err}:
+				case <-ctx.Done():
 					return
 				}
-				select {
-				case m.events <- endpointEvent{id: id, message: message}:
-				case <-ctx.Done():
+				if err != nil {
 					return
 				}
 			}
 		}(id, connection)
 	}
 	h.until("both snapshots", func() bool { return m.endpoints["local"].snapshot != nil && m.endpoints["remote"].snapshot != nil })
+	if len(idleFixture) > 0 && idleFixture[0] {
+		return h
+	}
 	for _, id := range m.order {
 		h.api(id, api.MethodWorkspaceCreate, map[string]any{"focus": false})
 		h.api(id, api.MethodPaneSplit, map[string]any{"target_pane_id": "p1", "direction": "right", "focus": false})

@@ -141,6 +141,9 @@ type machineClient struct {
 	notice            string
 	noticeUntil       time.Time
 	forms             *tui.MachineForms
+	idle              *idleDialog
+	idleRequest       uint64
+	idleToast         string
 	readClipboard     func(context.Context) (clipboardContent, error)
 
 	focusKnown           bool
@@ -196,6 +199,13 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	m.held = settings.retryHeld
 	settings.retryHeld = nil
 	m.forms = tui.NewMachineForms(ctx, m.catalogPath(), func(fn func()) { m.post(ctx, endpointEvent{formUpdate: fn}) })
+	m.forms.SetMachineRequester(func(action string) error {
+		if action == "idle_panes" {
+			m.openIdlePanes()
+			return nil
+		}
+		return fmt.Errorf("unsupported action: %s", action)
+	})
 	defer m.forms.Close()
 	defer func() { _, _ = out.Write(m.frames.RestoreCursor()) }()
 	defer m.inputSource.Prefix(false, false)
@@ -446,6 +456,7 @@ func (m *machineClient) advance(now time.Time) {
 	m.traceProbeTimeout(now)
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
+		m.idleToast = ""
 		m.noticeUntil = time.Time{}
 	}
 	if m.pending != nil && !now.Before(m.pending.inputDeadline()) {

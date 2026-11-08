@@ -32,6 +32,13 @@ func (p *Pane) mailInputActiveLocked() bool {
 	return p.visibleAgentInputLocked()
 }
 
+// HasUnsentAgentInput reports the visible text at an agent prompt.
+func (p *Pane) UnsentAgentInput() (bool, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.agentInputLocked()
+}
+
 // WriteMail checks and writes under the same input admission lock.
 func (p *Pane) WriteMail(data []byte) (int, error) {
 	p.inputMu.Lock()
@@ -45,6 +52,11 @@ func (p *Pane) WriteMail(data []byte) (int, error) {
 }
 
 func (p *Pane) visibleAgentInputLocked() bool {
+	pending, _ := p.agentInputLocked()
+	return pending
+}
+
+func (p *Pane) agentInputLocked() (bool, bool) {
 	agent := p.agentID
 	if p.agentOverride != "" {
 		agent = p.agentOverride
@@ -56,7 +68,7 @@ func (p *Pane) visibleAgentInputLocked() bool {
 	case "claude":
 		marker = "❯"
 	default:
-		return false
+		return false, false
 	}
 	height, width := p.emu.Height(), p.emu.Width()
 	row, col := -1, -1
@@ -73,7 +85,7 @@ func (p *Pane) visibleAgentInputLocked() bool {
 		}
 	}
 	if row < 0 {
-		return false
+		return false, false
 	}
 	background := p.emu.CellAt(col, row).Style.Bg
 	var nonFaint, faint, reverse int
@@ -124,7 +136,7 @@ func (p *Pane) visibleAgentInputLocked() bool {
 		}
 	}
 	// Claude renders the cursor over the first character of its faint placeholder.
-	return nonFaint > 0 || faint == 0 && (reverse > 0 || p.cursor.Visible && (p.cursor.Y > row || p.cursor.Y == row && p.cursor.X > col+2))
+	return nonFaint > 0 || faint == 0 && (reverse > 0 || p.cursor.Visible && (p.cursor.Y > row || p.cursor.Y == row && p.cursor.X > col+2)), true
 }
 
 func sameMailBackground(a, b color.Color) bool {

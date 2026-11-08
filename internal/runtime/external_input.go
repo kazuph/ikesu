@@ -18,11 +18,43 @@ func (p *Pane) RecordExternalInput() {
 // RecordKeyInput tracks externally supplied keys separately from screen automation.
 func (p *Pane) RecordKeyInput() {
 	p.inputMu.Lock()
-	defer p.inputMu.Unlock()
 	now := time.Now().UnixNano()
 	p.lastExternalInput.Store(now)
 	p.lastMailExternalInput.Store(now)
 	p.externalInputSeq.Add(1)
+	p.idleActivityAt = time.Unix(0, now)
+	p.idleActivitySeq++
+	p.inputMu.Unlock()
+	p.idleActivityChanged()
+}
+
+func (p *Pane) idleActivityChanged() {
+	if p.owner != nil && p.owner.IdleActivityChanged != nil {
+		p.owner.IdleActivityChanged()
+	}
+}
+
+func (p *Pane) RecordWorkingActivity() {
+	p.inputMu.Lock()
+	p.idleActivityAt = time.Now()
+	p.idleActivitySeq++
+	p.inputMu.Unlock()
+	p.idleActivityChanged()
+}
+
+func (p *Pane) IdleActivity() (time.Time, uint64) {
+	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	return p.idleActivityAt, p.idleActivitySeq
+}
+
+func (p *Pane) RestoreIdleActivity(at time.Time, seq uint64) {
+	if at.IsZero() {
+		at = time.Now()
+	}
+	p.inputMu.Lock()
+	p.idleActivityAt, p.idleActivitySeq = at, seq
+	p.inputMu.Unlock()
 }
 func (p *Pane) ExternalInputSequence() uint64 { return p.externalInputSeq.Load() }
 func (p *Pane) UserActive() bool {
@@ -46,4 +78,11 @@ func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64) (int, error) {
 		return 0, fmt.Errorf("pane exited: screen prompt key not delivered")
 	}
 	return p.WriteToPTY(data)
+}
+
+// WithIdleActivitySequence excludes new key input while fn validates and closes.
+func (p *Pane) WithIdleActivitySequence(seq uint64, fn func() bool) bool {
+	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	return p.idleActivitySeq == seq && fn()
 }

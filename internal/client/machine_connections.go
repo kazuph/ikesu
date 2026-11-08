@@ -229,6 +229,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 			fmt.Fprintln(m.out, "ikesu:", event.err)
 			return pumpRejected, true
 		}
+		if e.connection != nil {
+			m.idleDisconnect(event.id, event.err)
+		}
 		e.connection = nil
 		e.status = "reconnecting"
 		if m.oyagoi != nil && m.oyagoi.Machine == event.id {
@@ -431,7 +434,9 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if event.id != m.active {
 			break
 		}
-		if message.MachineAction == "oyagoi:toggle" {
+		if message.MachineAction == "idle_panes" {
+			m.openIdlePanes()
+		} else if message.MachineAction == "oyagoi:toggle" {
 			if err := m.oyagoiStore.toggleCollapsed(); err != nil {
 				m.notify(err.Error())
 			} else if err := m.refreshOyagoi(); err != nil {
@@ -448,6 +453,12 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		} else if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
 			m.notify(err.Error())
 		}
+		_ = m.paint()
+	case "idle_panes_result":
+		m.idleListResult(event.id, message.IdleRequest, message.IdlePanes)
+		_ = m.paint()
+	case "idle_delete_result":
+		m.idleDeleteResult(event.id, message.IdleRequest, message.IdleDeleteResult)
 		_ = m.paint()
 	case "config_edit":
 		if message.ConfigEdit == nil {
@@ -490,6 +501,7 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 }
 
 func (m *machineClient) fail(id string, err error) {
+	m.idleDisconnect(id, err)
 	if id == "local" {
 		m.retirePendingGraphicsFile()
 	}

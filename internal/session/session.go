@@ -73,16 +73,18 @@ type Node struct {
 
 // Pane is the persisted record of one pane.
 type Pane struct {
-	Generation         string `json:"generation,omitempty"`
-	LegacyGeneration   bool   `json:"legacy_generation,omitempty"`
-	SessionStartSource string `json:"session_start_source,omitempty"`
-	ID                 int    `json:"id"`
-	Cwd                string `json:"cwd"`
-	Label              string `json:"label,omitempty"`
-	Agent              string `json:"agent,omitempty"`        // canonical agent id (claude, codex, ...)
-	SessionID          string `json:"session_id,omitempty"`   // exact session ref
-	SessionKind        string `json:"session_kind,omitempty"` // "id" | "path"
-	Title              string `json:"title,omitempty"`
+	IdleActivityAt     time.Time `json:"idle_activity_at,omitempty"`
+	IdleActivitySeq    uint64    `json:"idle_activity_seq,omitempty"`
+	Generation         string    `json:"generation,omitempty"`
+	LegacyGeneration   bool      `json:"legacy_generation,omitempty"`
+	SessionStartSource string    `json:"session_start_source,omitempty"`
+	ID                 int       `json:"id"`
+	Cwd                string    `json:"cwd"`
+	Label              string    `json:"label,omitempty"`
+	Agent              string    `json:"agent,omitempty"`        // canonical agent id (claude, codex, ...)
+	SessionID          string    `json:"session_id,omitempty"`   // exact session ref
+	SessionKind        string    `json:"session_kind,omitempty"` // "id" | "path"
+	Title              string    `json:"title,omitempty"`
 }
 
 // Load reads path. A missing file returns (nil, nil). A corrupt file

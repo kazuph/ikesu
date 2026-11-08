@@ -50,6 +50,12 @@ func (m *machineClient) paint() error {
 	if m.forms != nil {
 		m.forms.Overlay(&in)
 	}
+	if m.idle != nil {
+		in.Dialog, in.Menu = m.idle.dialog(), nil
+	}
+	if m.idleToast != "" {
+		in.Toast = &render.Toast{Title: m.idleToast}
+	}
 	if m.approvalCanOpen(e) {
 		e.guardApproval.focus(fmt.Sprintf("p%d", e.snapshot.State.FocusedPane()))
 	} else {

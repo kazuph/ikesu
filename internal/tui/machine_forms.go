@@ -90,6 +90,10 @@ func (f *MachineForms) CloseDialog() {
 	}
 }
 
+func (f *MachineForms) SetMachineRequester(request func(string) error) {
+	f.app.machineRequest = request
+}
+
 func (f *MachineForms) Overlay(in *render.Input) {
 	if f.app.dialog != nil {
 		d := f.app.dialog.d

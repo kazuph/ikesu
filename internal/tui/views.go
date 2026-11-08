@@ -346,6 +346,11 @@ func (a *App) SetReportedSource(pid int, agent, state, source string) {
 		a.reported = map[int]reportedPane{}
 	}
 	prev := a.reported[pid]
+	if state == "working" && prev.state != "working" && a.sup != nil {
+		if p := a.sup.Get(pid); p != nil {
+			p.RecordWorkingActivity()
+		}
+	}
 	if agent == "" && state == "" {
 		delete(a.reported, pid)
 	} else {

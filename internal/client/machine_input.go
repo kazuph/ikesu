@@ -124,6 +124,9 @@ func eventBytes(event input.Event) []byte {
 
 func (m *machineClient) input(event input.Event) error {
 	defer benchstage.Span("client.input")()
+	if m.idle != nil && m.idleInput(event) {
+		return m.paint()
+	}
 	if consumed, err := m.graphicsFileReply(event.Raw); consumed || err != nil {
 		return err
 	}
