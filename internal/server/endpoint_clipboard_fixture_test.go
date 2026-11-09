@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/client"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/teststate"
@@ -31,6 +34,8 @@ func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer,
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	s.dir = dir
+	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(dir))
+	s.session = filepath.Base(dir)
 	s.endpointPeer = endpoint.Current()
 	s.cfg, err = loadTestConfig(t)
 	if err != nil {
@@ -168,12 +173,31 @@ func TestTransferredClipboardWaitsForRealDisplay(t *testing.T) {
 	for range states[0].Clipboard {
 		<-processed
 	}
-	client := dialClient(t, s.dir)
-	defer client.conn.Close()
-	client.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
-	var seen string
-	msgs := client.readUntil(t, 5*time.Second, func(m clientMsg) bool { seen += outputs([]clientMsg{m}); return strings.Contains(seen, want) })
-	if got := outputs(msgs); !strings.Contains(got, want) {
-		t.Fatalf("display clipboard = %q, want transferred %q", got, want)
+	master, terminal, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	clientDone := make(chan error, 1)
+	go func() { _, err := client.Attach(s.session, terminal, terminal, "test"); clientDone <- err }()
+	defer func() { master.Close(); <-clientDone }()
+	var got strings.Builder
+	buf := make([]byte, 4096)
+	for !strings.Contains(got.String(), "\x1b[?2026l") {
+		n, err := master.Read(buf)
+		if n > 0 {
+			got.Write(buf[:n])
+		}
+		if err != nil {
+			t.Fatalf("display clipboard = %q, want transferred %q: %v", got.String(), want, err)
+		}
+	}
+	if !strings.Contains(got.String(), want) {
+		t.Fatalf("display clipboard = %q, want transferred %q", got.String(), want)
+	}
+	for _, value := range states[0].Clipboard {
+		if strings.Count(got.String(), value) != 1 {
+			t.Fatalf("clipboard duplicated or missing: %q", got.String())
+		}
 	}
 }
