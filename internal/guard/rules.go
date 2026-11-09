@@ -201,8 +201,17 @@ func classify(c Config, i Input) Verdict {
 	case "rm", "rmdir", "rimraf", "trash":
 		probes := map[string]string{}
 		for _, t := range a {
-			if !strings.HasPrefix(t, "-") && !safeRemovalWithProbes(i, t, probes) {
+			if strings.HasPrefix(t, "-") {
+				continue
+			}
+			targets, ok := expandRemovalArg(i, t)
+			if !ok {
 				return result("ask", "rm-paths", "削除操作は確認が必要です")
+			}
+			for _, target := range targets {
+				if !safeRemovalWithProbes(i, target, probes) {
+					return result("ask", "rm-paths", "削除操作は確認が必要です")
+				}
 			}
 		}
 		return allow
@@ -240,6 +249,77 @@ func physical(p string) string {
 	}
 	return filepath.Clean(p)
 }
+
+const maxRemovalGlobMatches = 2000
+
+// expandRemovalArg expands glob characters the way the shell would, but more
+// widely (a leading * also matches dotfiles), so every match gets judged. Brace
+// and tilde expansion are not reproduced, so such arguments are refused.
+func expandRemovalArg(i Input, t string) ([]string, bool) {
+	if strings.HasPrefix(t, "~") || strings.Contains(t, "{") {
+		return nil, false
+	}
+	if !strings.ContainsAny(t, "*?[") {
+		return []string{t}, true
+	}
+	if strings.Contains(t, "..") {
+		return nil, false
+	}
+	pattern := t
+	if !filepath.IsAbs(pattern) {
+		base := strings.NewReplacer("\\", "\\\\", "*", "\\*", "?", "\\?", "[", "\\[").Replace(filepath.Clean(i.Cwd))
+		pattern = base + "/" + pattern
+	}
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, false
+	}
+	if len(matches) == 0 {
+		return []string{t}, true
+	}
+	if len(matches) > maxRemovalGlobMatches {
+		return nil, false
+	}
+	return matches, true
+}
+
+// registeredWorktrees lists the worktrees git knows about from the launch
+// directory, asking git only once per judgment.
+func registeredWorktrees(i Input, probes map[string]string) []string {
+	if i.LaunchCwd == "" {
+		return nil
+	}
+	key := "worktree-list\x00" + i.LaunchCwd
+	list, ok := probes[key]
+	if !ok {
+		public := removalProbeInput(i)
+		public.probePrivate = false
+		list = probe(public, "git", "-C", i.LaunchCwd, "worktree", "list", "--porcelain", "-z")
+		probes[key] = list
+	}
+	var paths []string
+	for _, record := range strings.Split(list, "\x00") {
+		if strings.HasPrefix(record, "worktree ") {
+			paths = append(paths, physical(strings.TrimPrefix(record, "worktree ")))
+		}
+	}
+	return paths
+}
+
+func containsRegisteredWorktree(i Input, p string, probes map[string]string) bool {
+	st, err := os.Stat(p)
+	if err != nil || !st.IsDir() {
+		return false
+	}
+	pp := guardPhysical(p)
+	for _, w := range registeredWorktrees(i, probes) {
+		if w == pp || strings.HasPrefix(w, pp+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func safeRemoval(i Input, t string) bool {
 	return safeRemovalWithProbes(i, t, map[string]string{})
 }
@@ -257,14 +337,17 @@ func safeRemovalWithProbes(i Input, t string, probes map[string]string) bool {
 	if physical(p) == physical(i.Env["HOME"]) {
 		return false
 	}
+	if containsRegisteredWorktree(i, p, probes) {
+		return false
+	}
 	for _, r := range []string{"/tmp", "/private/tmp", "/var/folders", "/private/var/folders", i.Env["TMPDIR"]} {
 		r = strings.TrimRight(r, "/")
 		if r != "" && (p == r || strings.HasPrefix(p, r+"/")) {
-			return safeTemporaryRemoval(i, p)
+			return safeTemporaryRemoval(i, p, probes)
 		}
 	}
 	if strings.Contains(p, "/.artifacts/") || strings.HasSuffix(p, "/.artifacts") {
-		return safeTemporaryRemoval(i, p)
+		return safeTemporaryRemoval(i, p, probes)
 	}
 	d := guardPhysical(p)
 	for {
@@ -283,7 +366,7 @@ func safeRemovalWithProbes(i Input, t string, probes map[string]string) bool {
 		probeInput.probePrivate = false
 		if d != guardPhysical(i.Cwd) {
 			var ok bool
-			d, ok = privateRemovalWorktree(probeInput, d)
+			d, ok = privateRemovalWorktree(probeInput, d, probes)
 			if !ok {
 				return false
 			}
@@ -293,6 +376,13 @@ func safeRemovalWithProbes(i Input, t string, probes map[string]string) bool {
 		key := dir + "\x00" + option
 		if value, ok := probes[key]; ok {
 			return value
+		}
+		// One git call answers both questions for a directory.
+		both := probe(probeInput, "git", "-C", dir, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir")
+		if lines := strings.Split(both, "\n"); len(lines) == 2 {
+			probes[dir+"\x00--show-toplevel"] = strings.TrimSpace(lines[0])
+			probes[dir+"\x00--git-common-dir"] = strings.TrimSpace(lines[1])
+			return probes[key]
 		}
 		args := []string{"-C", dir, "rev-parse"}
 		if option == "--git-common-dir" {
@@ -331,7 +421,7 @@ func removalGitRoot(path string) bool {
 	return err == nil || !os.IsNotExist(err)
 }
 
-func safeTemporaryRemoval(i Input, path string) bool {
+func safeTemporaryRemoval(i Input, path string, probes map[string]string) bool {
 	if removalGitRoot(path) {
 		return false
 	}
@@ -368,11 +458,8 @@ func safeTemporaryRemoval(i Input, path string) bool {
 	if i.LaunchCwd == "" {
 		return false
 	}
-	public := removalProbeInput(i)
-	public.probePrivate = false
-	list := probe(public, "git", "-C", i.LaunchCwd, "worktree", "list", "--porcelain", "-z")
-	for _, record := range strings.Split(list, "\x00") {
-		if strings.HasPrefix(record, "worktree ") && physical(strings.TrimPrefix(record, "worktree ")) == repoRoot {
+	for _, w := range registeredWorktrees(i, probes) {
+		if w == repoRoot {
 			return true
 		}
 	}
@@ -389,8 +476,13 @@ func removalProbeInput(i Input) Input {
 	return i
 }
 
-func privateRemovalWorktree(i Input, targetDir string) (string, bool) {
-	list := probe(i, "git", "-C", i.Cwd, "worktree", "list", "--porcelain", "-z")
+func privateRemovalWorktree(i Input, targetDir string, probes map[string]string) (string, bool) {
+	key := "private-worktree-list\x00" + i.Cwd
+	list, cached := probes[key]
+	if !cached {
+		list = probe(i, "git", "-C", i.Cwd, "worktree", "list", "--porcelain", "-z")
+		probes[key] = list
+	}
 	root := ""
 	for _, record := range strings.Split(list, "\x00") {
 		if !strings.HasPrefix(record, "worktree ") {

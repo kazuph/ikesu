@@ -158,10 +158,14 @@ func TestRemovedShellExceptionsRemainAsk(t *testing.T) {
 	if err := os.WriteFile(script, []byte("D=/tmp\nprintf x > \"$D/out\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range []string{"bash " + quote(script), "cd child && bash ok.sh", `eval "$(direnv export zsh)"`} {
-		_, v, err := lineVerdict(Config{}, i, line)
-		if err != nil || v.Decision != "ask" {
-			t.Errorf("%s: %+v %v", line, v, err)
+	for _, tc := range []struct{ line, want string }{
+		{"bash " + quote(script), "ask"},
+		{"cd child && bash ok.sh", "allow"}, // 0.4.121: cd 先の安全なスクリプトを判定する
+		{`eval "$(direnv export zsh)"`, "ask"},
+	} {
+		_, v, err := lineVerdict(Config{}, i, tc.line)
+		if err != nil || v.Decision != tc.want {
+			t.Errorf("%s: %+v %v", tc.line, v, err)
 		}
 	}
 }
