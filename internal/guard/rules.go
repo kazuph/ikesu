@@ -72,6 +72,7 @@ type Input struct {
 	ClaudePrefixChanged  bool              `json:"-"`
 	ShellEnvChanged      bool              `json:"-"`
 	Unresolved           bool              `json:"-"`
+	UnresolvedArg        bool              `json:"-"`
 	RawLine              string            `json:"-"`
 	Command              string            `json:"command"`
 	Args                 []string          `json:"args"`

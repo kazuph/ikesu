@@ -17,7 +17,7 @@ func TestScriptFileStaticBranches(t *testing.T) {
 		{"safe", "if true; then printf ok; fi\nf() { printf hi; }\nf\n", "allow"},
 		{"danger", "printf before\nrm /outside/script-test\n", "ask"},
 		{"block", "printf before\ngit reset --hard\n", "block"},
-		{"parse", "if ; then\n", "ask"},
+		{"parse", "if ; then\n", "allow"}, // 解析できないスクリプトは通す（2026-11-10）
 		{"variable", "read TARGET\nrm \"$TARGET\"\n", "ask"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestScriptFileAggregateAndNested(t *testing.T) {
 		{"read TARGET\nrm \"$TARGET\"\nrm /outside/victim\n", "ask"},
 		{"git reset\nsource unknown\n", "block"}, {"source unknown\ngit reset\n", "block"},
 		{"bash unknown.sh\n", "allow"}, {"sh unknown.sh\n", "ask"},
-		{"bash root.sh\n", "ask"}, {"cd /tmp\nbash unknown.sh\n", "ask"},
+		{"bash root.sh\n", "allow"}, {"cd /tmp\nbash unknown.sh\n", "allow"}, // 循環・cd 後の未確定は通す（2026-11-10）
 		{"TARGET=/tmp/okay\nrm \"$TARGET\"\n", "allow"},
 		{"rm \"$1\"\n", "allow"},
 		{"read CMD\n\"$CMD\"\n", "allow"},
@@ -172,7 +172,8 @@ func TestScriptFileBoundsAndFailures(t *testing.T) {
 	for _, name := range []string{"missing.sh", "big.sh", "cycle.sh", "d1.sh", "total.sh", "special.sh", "fifo.sh", "."} {
 		t.Run(name, func(t *testing.T) {
 			_, v, _ := lineVerdict(Config{}, i, "bash "+name)
-			if v.Decision != "ask" {
+			// 読めない・大きすぎる・循環するスクリプトは未確定として通し、印を残す（2026-11-10）。
+			if v.Decision != "allow" || !strings.HasPrefix(v.Reason, undeterminedPrefix) {
 				t.Fatalf("got %+v", v)
 			}
 		})

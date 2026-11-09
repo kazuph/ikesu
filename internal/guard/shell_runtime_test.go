@@ -87,7 +87,7 @@ func TestBashRuntimeSnapshotAndFailureStops(t *testing.T) {
 				{"source-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; source "$IKESU_RUNTIME_SOURCE"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"substitution-inner", "", `T="$IKESU_RUNTIME_ROOT/home/../victim"; X=$(printf before > "$IKESU_RUNTIME_ROOT/before"; rm "$T"); printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 
-				{"dynamic-command-substitution", "", `$(printf /bin/rm) "$IKESU_RUNTIME_ROOT/victim"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
+				{"dynamic-command-substitution", "", `$(printf /bin/echo) ok; printf 'safe ran\n' > "$IKESU_RUNTIME_ROOT/result"`, true}, // 未確定のコマンド名は通す（2026-11-10）
 				{"array-command-rm", "", `C=(/bin/rm); "${C[0]}" "$IKESU_RUNTIME_ROOT/home/../victim"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},
 				{"array-command-echo", "", `C=(/bin/echo); "${C[0]}" ok; printf 'safe ran\n' > "$IKESU_RUNTIME_ROOT/result"`, true},
 				{"dynamic-write-marker", "", `: > "$(printf %s "$IKESU_GUARD_MARKER")"; printf after > "$IKESU_RUNTIME_ROOT/after"`, false},

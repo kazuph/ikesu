@@ -2,6 +2,7 @@ package guard
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -35,7 +36,11 @@ func lineCommands(i Input, line string) ([]Input, error) {
 	}
 	var commands []Input
 	setError := func(e error) {
-		if !i.scriptBody || err == nil || scriptError(e).kind > scriptError(err).kind {
+		if i.scriptBody {
+			if err == nil || scriptError(e).kind > scriptError(err).kind {
+				err = e
+			}
+		} else if err == nil || !unresolvedFailure(e) || unresolvedFailure(err) {
 			err = e
 		}
 	}
@@ -48,7 +53,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		}
 		return true
 	})
-	if e := treeBoundary(i, tree); e != nil {
+	boundaryInput := i
+	boundaryInput.RawLine = line
+	if e := treeBoundary(boundaryInput, tree); e != nil {
 		setError(e)
 	}
 	syntax.Walk(tree, func(node syntax.Node) bool {
@@ -117,6 +124,8 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				unknownWords[value] = true
 				if n == 0 {
 					unknownCommand = true
+				} else {
+					next.UnresolvedArg = true
 				}
 			}
 			if e == nil && i.privateExpansion(word, value) {
@@ -129,11 +138,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		}
 		next.Command, next.Args = argv[0], argv[1:]
 		if unknownCommand {
-			if i.scriptBody {
-				setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
-			} else {
-				setError(fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command))
-			}
+			setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
 			next.scriptUnknownCommand = true
 		}
 		next.AuthorizationEnv = EnvMap(environment(i.AuthorizationEnv))
@@ -142,7 +147,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		}
 		unwrapped, e := unwrapCommand(next)
 		if i.runtimeLine && unknownWords[unwrapped.Command] {
-			setError(fmt.Errorf("実行するコマンド名を安全に確定できません"))
+			setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません"})
 		}
 		if next.probePrivate {
 			unwrapped.Env = EnvMap(environment(next.Env))
@@ -358,6 +363,7 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	if !i.runtimeLine && danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
 		best = result("ask", "danger-word-line", "deploy/publish を含む入力行は確認対象です")
 	}
+	var undetermined []string
 	for _, command := range commands {
 		v := result("allow", "default", "")
 		if !(i.runtimeLine && has([]string{"eval", "source", "."}, filepath.Base(command.Command))) {
@@ -368,11 +374,16 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 			if r.kind == scriptSafe {
 				continue
 			}
+			if r.kind == scriptUnresolved {
+				undetermined = append(undetermined, r.verdict.Reason)
+				continue
+			}
 			v = r.verdict
 			command.TriggerCommand = r.trigger
 		}
-		if !i.runtimeLine && command.Unresolved && v.Decision == "allow" && (has(c.Commands(), filepath.Base(command.Command)) || strings.ContainsAny(command.Command, "$`")) {
-			v = result("ask", "shell-line", "展開後のコマンドまたは引数を安全に確定できません")
+		if v.Decision == "allow" && command.UnresolvedArg && has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(command.Command)) {
+			// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
+			v = result("ask", "rm-paths", "削除操作は確認が必要です")
 		}
 		if v.Decision == "block" || v.Decision == "ask" && best.Decision == "allow" {
 			i, best = command, v
@@ -380,6 +391,10 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 		if best.Decision == "block" {
 			return i, best, nil
 		}
+	}
+	if err != nil && unresolvedFailure(err) {
+		undetermined = append(undetermined, err.Error())
+		err = nil
 	}
 	if err != nil {
 		if i.AuthorizationEnv == nil && len(commands) > 0 {
@@ -398,5 +413,16 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 			}
 		}
 	}
+	if best.Decision == "allow" && best.Rule == "default" && len(undetermined) > 0 {
+		best.Reason = undeterminedPrefix + strings.Join(undetermined, " / ")
+	}
 	return i, best, nil
+}
+
+// 未確定を理由には聞かない。通したことは guard log の reason の印で区別する。
+const undeterminedPrefix = "未確定を通した: "
+
+func unresolvedFailure(e error) bool {
+	var unresolved unresolvedScriptError
+	return errors.As(e, &unresolved)
 }

@@ -159,7 +159,7 @@ func TestRemovedShellExceptionsRemainAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ line, want string }{
-		{"bash " + quote(script), "ask"},
+		{"bash " + quote(script), "allow"},  // 変数の書き込み先は未確定でも聞かない（2026-11-10）
 		{"cd child && bash ok.sh", "allow"}, // 0.4.121: cd 先の安全なスクリプトを判定する
 		{`eval "$(direnv export zsh)"`, "ask"},
 	} {

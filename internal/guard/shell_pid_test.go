@@ -11,14 +11,14 @@ func TestRuntimeShellPIDRedirect(t *testing.T) {
 	root := t.TempDir()
 	for _, tc := range []struct{ name, pid, target, decision, reason string }{
 		{"statusline", "123", `${RL_CACHE}.tmp.$$`, "allow", ""},
-		{"missing", "", `${RL_CACHE}.tmp.$$`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"invalid", "12x", `${RL_CACHE}.tmp.$$`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"negative", "-123", `${RL_CACHE}.tmp.$$`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"background", "123", `${RL_CACHE}.$!`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"status", "123", `${RL_CACHE}.$?`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"count", "123", `${RL_CACHE}.$#`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"arguments", "123", `${RL_CACHE}.$@`, "ask", "書き込み先のパスを安全に確定できません"},
-		{"argument", "123", `${RL_CACHE}.$1`, "ask", "書き込み先のパスを安全に確定できません"},
+		{"missing", "", `${RL_CACHE}.tmp.$$`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"invalid", "12x", `${RL_CACHE}.tmp.$$`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"negative", "-123", `${RL_CACHE}.tmp.$$`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"background", "123", `${RL_CACHE}.$!`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"status", "123", `${RL_CACHE}.$?`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"count", "123", `${RL_CACHE}.$#`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"arguments", "123", `${RL_CACHE}.$@`, "allow", "書き込み先のパスを安全に確定できません"},
+		{"argument", "123", `${RL_CACHE}.$1`, "allow", "書き込み先のパスを安全に確定できません"},
 		{"guard", "123", `${GUARD}/marker.$$`, "ask", "ガードの置き場所へのリダイレクトには承認が必要です"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

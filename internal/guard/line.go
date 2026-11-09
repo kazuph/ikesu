@@ -3,6 +3,7 @@ package guard
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // LineInput exposes the first parsed command for existing callers.
@@ -76,6 +77,12 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 		fmt.Fprintln(errOut, i.shellDiagnostic(parseErr.Error(), line))
 	}
 	if verdict.Decision == "allow" {
+		if strings.HasPrefix(verdict.Reason, undeterminedPrefix) {
+			// 未確定を理由に通したことを、後から区別できるよう記録する。
+			if e := Log(root, i, m, verdict, "line"); e != nil {
+				fmt.Fprintln(errOut, "guard log:", e)
+			}
+		}
 		return true
 	}
 	return authorize(c, root, i, "line", errOut, await, &verdict)
