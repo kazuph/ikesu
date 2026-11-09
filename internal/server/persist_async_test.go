@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/platform"
@@ -112,7 +113,14 @@ func TestSessionObservationRejectsDuplicatePaneID(t *testing.T) {
 	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
 	p := s.sup.Get(pid)
 	p.SetAgent("codex")
-	s.app.RecordSession(pid+1000, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "report:test"})
+	if resp := s.paneSplit("test", api.PaneSplitParams{Direction: "right"}); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	if len(ids) != 2 || s.sup.Get(ids[1]) == nil {
+		t.Fatal("second PTY was not started", ids)
+	}
+	s.app.RecordSession(ids[1], tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "report:test"})
 	o, ok := s.prepareSessionObservation(pid)
 	if !ok {
 		t.Fatal("missing observation")
@@ -122,6 +130,33 @@ func TestSessionObservationRejectsDuplicatePaneID(t *testing.T) {
 	s.applySessionObservation(o)
 	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value == "shared-id" {
 		t.Fatalf("duplicate accepted: %+v", rec)
+	}
+}
+
+func TestReportedDuplicateCodexSessionIsNotRecorded(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-report")
+	defer s.ledgerWG.Wait()
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	if resp := s.paneSplit("test", api.PaneSplitParams{Direction: "right"}); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	if len(ids) != 2 || s.sup.Get(ids[1]) == nil {
+		t.Fatal("second PTY was not started", ids)
+	}
+	s.app.RecordSession(ids[1], tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "report:test"})
+	id := "shared-id"
+	response := s.paneReportAgent("test", api.PaneReportAgentParams{PaneID: fmtPaneID(pid), Agent: "codex", Source: "test", SessionID: &id})
+	if response.Err == nil {
+		t.Fatal("duplicate report accepted")
+	}
+	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value == id {
+		t.Fatalf("duplicate recorded: %+v", rec)
 	}
 }
 

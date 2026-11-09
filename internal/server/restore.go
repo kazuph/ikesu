@@ -171,6 +171,8 @@ func (s *Server) runLedgerWrites() {
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ikesu: save session ledger pane %d: %v\n", w.row.PaneID, err)
+			message := fmt.Sprintf("pane %d: %v", w.row.PaneID, err)
+			s.enqueueAppCleanup(func() { s.app.ShowToast("session ledger", message, "error", -1) })
 			continue
 		}
 		s.ledgerMu.Lock()
@@ -379,12 +381,13 @@ func (s *Server) applySessionObservation(o sessionObservation) {
 		s.markSessionDirty()
 		return
 	}
-	if o.result.Agent == "codex" {
-		for pid, other := range s.app.SessionRecords() {
-			if pid != o.pid && other.Agent == o.result.Agent && other.Kind == "id" && other.Value == o.result.Value {
-				return
-			}
+	if o.result.Agent == "codex" && s.codexSessionIDTaken(o.pid, o.result.Value) {
+		if hasRec && !strings.HasPrefix(rec.Source, "report:") {
+			rec.Kind, rec.Value = "", ""
+			s.app.RecordSession(o.pid, rec)
+			s.ledgerDel(o.pid)
 		}
+		return
 	}
 	s.app.RecordSession(o.pid, o.result)
 	s.ledgerPut(o.pid, o.result)
@@ -394,6 +397,20 @@ func (s *Server) applySessionObservation(o sessionObservation) {
 		}
 		s.observedStart[o.pid] = o.start
 	}
+}
+
+func (s *Server) codexSessionIDTaken(pid int, id string) bool {
+	for otherPID, other := range s.app.SessionRecords() {
+		if otherPID != pid && other.Agent == "codex" && other.Kind == "id" && other.Value == id {
+			return true
+		}
+	}
+	for otherPID, other := range s.ledgerEntries() {
+		if otherPID != pid && other.Agent == "codex" && other.SessionKind == "id" && other.SessionID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // --- restore plan ----------------------------------------------------------

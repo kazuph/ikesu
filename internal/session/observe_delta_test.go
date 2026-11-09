@@ -115,6 +115,15 @@ func TestCodexAuditResumedFileAndFutureRollout(t *testing.T) {
 	}
 }
 
+func TestCodexRolloutTimestampHasUpperBound(t *testing.T) {
+	root := t.TempDir()
+	start := time.Now()
+	rolloutFile(t, root, "rollout-future.jsonl", "future", "/work", start.Add(sessionFileWindow+time.Second))
+	if id, ok := observeCodexFiles(root, "/work", start, nil); ok {
+		t.Fatalf("future rollout accepted: %s", id)
+	}
+}
+
 func TestCodexResumeLastIsNotID(t *testing.T) {
 	job := platform.ForegroundJob{Processes: []platform.ForegroundProcess{{Argv: []string{"codex", "resume", "--last"}}}}
 	if id, ok := ObserveCmdline(job); ok {
@@ -128,15 +137,26 @@ func TestPaneLaunchSessionRootsOverrideServerHome(t *testing.T) {
 	child := t.TempDir()
 	start := time.Now()
 	root := filepath.Join(child, ".codex", "sessions")
-	rolloutFile(t, root, "rollout-child.jsonl", "child-id", "/work", start)
-	id, ok := ObserveProcessSession("codex", "/work", start, platform.ForegroundJob{}, []string{"HOME=" + child})
-	if ok {
+	childPath := rolloutFile(t, root, "rollout-child.jsonl", "child-id", "/work", start)
+	childFile, err := os.Open(childPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := platform.ForegroundJob{Processes: []platform.ForegroundProcess{{PID: os.Getpid()}}}
+	id, ok := ObserveProcessSession("codex", "/work", start, job, []string{"HOME=" + child})
+	if !ok || id != "child-id" {
 		t.Fatal(id, ok)
 	}
+	childFile.Close()
 	custom := t.TempDir()
-	rolloutFile(t, filepath.Join(custom, "sessions"), "rollout-custom.jsonl", "configured-id", "/work", start)
-	id, ok = ObserveProcessSession("codex", "/work", start, platform.ForegroundJob{}, []string{"HOME=" + child, "CODEX_HOME=" + custom})
-	if ok {
+	customPath := rolloutFile(t, filepath.Join(custom, "sessions"), "rollout-custom.jsonl", "configured-id", "/work", start)
+	customFile, err := os.Open(customPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer customFile.Close()
+	id, ok = ObserveProcessSession("codex", "/work", start, job, []string{"HOME=" + child, "CODEX_HOME=" + custom})
+	if !ok || id != "configured-id" {
 		t.Fatal(id, ok)
 	}
 	claude := t.TempDir()
