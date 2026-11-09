@@ -101,7 +101,40 @@ func TestPaneSendInputRejectsExcessReservedText(t *testing.T) {
 	}
 }
 
-func TestPaneSendInputCapacityPreservesAcceptedOrderAfterPTYDrain(t *testing.T) {
+func TestPaneSendInputAPIRejectsExcessReservedText(t *testing.T) {
+	teststate.Lock(t)
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready")
+	script := filepath.Join(dir, "shell")
+	body := fmt.Sprintf("#!/bin/sh\nstty raw -echo; touch %q; exec sleep 600\n", ready)
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "SHELL", script)
+	stateDir, err := os.MkdirTemp("/tmp", "ikesu-capacity-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(stateDir) })
+	teststate.Setenv(t, "IKESU_STATE_DIR", stateDir)
+	apiDir, done := startServerAt(t, "capacity")
+	defer stopServer(t, apiDir, done)
+	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
+	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "first", Keys: []string{"Enter"}}, nil)
+	payload := strings.Repeat("x", 3<<20)
+	for i := 0; i < 2; i++ {
+		response := apiReq(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: payload})
+		if response.Err != nil {
+			t.Fatalf("input %d rejected: %+v", i, response.Err)
+		}
+	}
+	response := apiReq(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: payload})
+	if response.Err == nil || response.Err.Code != "pane_input_failed" {
+		t.Fatalf("over-limit API input accepted: %+v", response.Err)
+	}
+}
+
+func TestPaneSendInputPreservesAcceptedOrderAfterPTYDrain(t *testing.T) {
 	teststate.Lock(t)
 	dir := t.TempDir()
 	gate, ready, received := filepath.Join(dir, "gate"), filepath.Join(dir, "ready"), filepath.Join(dir, "received")
@@ -124,13 +157,9 @@ func TestPaneSendInputCapacityPreservesAcceptedOrderAfterPTYDrain(t *testing.T) 
 	defer stopServer(t, apiDir, done)
 	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
 	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "first", Keys: []string{"Enter"}}, nil)
-	a, b := strings.Repeat("a", 3<<20), strings.Repeat("b", 3<<20)
+	a, b := strings.Repeat("a", 128<<10), strings.Repeat("b", 128<<10)
 	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: a}, nil)
 	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: b}, nil)
-	rejected := apiReq(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: a})
-	if rejected.Err == nil || rejected.Err.Code != "pane_input_failed" {
-		t.Fatalf("over-limit API input accepted: %+v", rejected.Err)
-	}
 	f, err := os.OpenFile(gate, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
