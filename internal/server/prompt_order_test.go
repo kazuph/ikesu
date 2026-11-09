@@ -142,7 +142,8 @@ func TestDelayedInputDoesNotSubmitHumanInterruption(t *testing.T) {
 	if _, err := p.WriteToPTY([]byte("\r")); err != nil {
 		t.Fatal(err)
 	}
-	waitPromptCondition(t, func() bool { _, err := os.Stat(path); return err == nil })
+	var data []byte
+	waitPromptCondition(t, func() bool { data, _ = os.ReadFile(path); return len(data) != 0 })
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != "firsthuman\n" {
 		t.Fatalf("input: %q %v", data, err)
