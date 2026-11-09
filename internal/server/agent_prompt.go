@@ -86,7 +86,11 @@ func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response
 		}
 		if failure == nil {
 			manualSequence = pane.ManualInputSequence()
-			op = pane.ReserveInputOperation()
+			if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
+				failure = &api.Error{Code: "agent_prompt_failed", Message: "pane input interrupted submission"}
+			} else {
+				op = pane.ReserveInputOperation()
+			}
 		}
 	}) {
 		return api.Failure(req.ID, "agent_prompt_failed", "request canceled before execution")
