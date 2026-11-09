@@ -101,6 +101,8 @@ func TestPaneSendInputRejectsExcessReservedText(t *testing.T) {
 	}
 }
 
+// The real API must decode three multi-megabyte requests to reach the existing
+// PTY limit; under the full concurrent race suite this can exceed five seconds.
 func TestPaneSendInputAPIRejectsExcessReservedText(t *testing.T) {
 	teststate.Lock(t)
 	dir := t.TempDir()
