@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 	"time"
 
@@ -13,6 +15,91 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 	sqlite3 "github.com/ncruces/go-sqlite3"
 )
+
+func TestLedgerSQLiteLockDoesNotBlockDecisionOrPaneInput(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "ledger-decision")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	writer, err := sqlite3.Open(dispatch.DBPath(s.session))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if err := writer.Exec("BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	locked := true
+	appDone := make(chan struct{})
+	go func() { s.app.Run(); close(appDone) }()
+	defer func() {
+		if locked {
+			_ = writer.Exec("ROLLBACK")
+		}
+		s.ledgerWG.Wait()
+		s.app.Stop()
+		<-appDone
+	}()
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	s.app.Do(func() {
+		s.ledgerPut(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "session", Source: "report:test"})
+	})
+	deadline := time.Now().Add(time.Second)
+	for {
+		buf := make([]byte, 1<<20)
+		n := goruntime.Stack(buf, true)
+		if bytes.Contains(buf[:n], []byte("(*Store).PutPaneSession")) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("ledger writer did not enter SQLite")
+		}
+		goruntime.Gosched()
+	}
+	decisionDone := make(chan api.Response, 1)
+	go func() {
+		var response api.Response
+		s.app.Do(func() {
+			response = s.decisionRequest(&api.Request{ID: "test", Method: api.MethodDecisionGet, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: "missing"})})
+		})
+		decisionDone <- response
+	}()
+	path := filepath.Join(t.TempDir(), "input-seen")
+	go s.app.Do(func() { s.sup.Input(pid, []byte(fmt.Sprintf("printf ready > %q\n", path))) })
+	decisionReady, inputReady := false, false
+	until := time.After(time.Second)
+	for !decisionReady || !inputReady {
+		select {
+		case <-decisionDone:
+			decisionReady = true
+		default:
+		}
+		if _, err := os.Stat(path); err == nil {
+			inputReady = true
+		}
+		select {
+		case <-until:
+			goto release
+		default:
+		}
+		goruntime.Gosched()
+	}
+release:
+	if err := writer.Exec("COMMIT"); err != nil {
+		t.Fatal(err)
+	}
+	locked = false
+	if !decisionReady || !inputReady {
+		t.Fatalf("SQLite lock blocked decision=%v or pane input=%v", !decisionReady, !inputReady)
+	}
+}
 
 func TestLedgerWriteDoesNotBlockAppOnSQLiteLock(t *testing.T) {
 	teststate.Lock(t)

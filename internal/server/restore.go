@@ -152,6 +152,12 @@ func (s *Server) enqueueLedger(w ledgerWrite) {
 
 func (s *Server) runLedgerWrites() {
 	defer s.ledgerWG.Done()
+	var ledgerStore *dispatch.Store
+	defer func() {
+		if ledgerStore != nil {
+			ledgerStore.Close()
+		}
+	}()
 	for {
 		s.ledgerMu.Lock()
 		if len(s.ledgerQueue) == 0 {
@@ -163,12 +169,15 @@ func (s *Server) runLedgerWrites() {
 		w := s.ledgerQueue[0]
 		s.ledgerQueue = s.ledgerQueue[1:]
 		s.ledgerMu.Unlock()
-		st, err := s.db()
+		_, err := s.db()
+		if err == nil && ledgerStore == nil {
+			ledgerStore, err = dispatch.OpenLedger(dispatch.DBPath(s.session))
+		}
 		if err == nil {
 			if w.delete {
-				err = st.DeletePaneSession(s.session, w.row.PaneID)
+				err = ledgerStore.DeletePaneSession(s.session, w.row.PaneID)
 			} else {
-				err = st.PutPaneSession(w.row)
+				err = ledgerStore.PutPaneSession(w.row)
 			}
 		}
 		if err != nil {
