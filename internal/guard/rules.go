@@ -199,8 +199,9 @@ func classify(c Config, i Input) Verdict {
 	}
 	switch cmd {
 	case "rm", "rmdir", "rimraf", "trash":
+		probes := map[string]string{}
 		for _, t := range a {
-			if !strings.HasPrefix(t, "-") && !safeRemoval(i, t) {
+			if !strings.HasPrefix(t, "-") && !safeRemovalWithProbes(i, t, probes) {
 				return result("ask", "rm-paths", "削除操作は確認が必要です")
 			}
 		}
@@ -240,6 +241,9 @@ func physical(p string) string {
 	return filepath.Clean(p)
 }
 func safeRemoval(i Input, t string) bool {
+	return safeRemovalWithProbes(i, t, map[string]string{})
+}
+func safeRemovalWithProbes(i Input, t string, probes map[string]string) bool {
 	if strings.Contains(t, "..") {
 		return false
 	}
@@ -250,25 +254,170 @@ func safeRemoval(i Input, t string) bool {
 	if i.LaunchCwd != "" && physical(p) == physical(i.LaunchCwd) {
 		return false
 	}
+	if physical(p) == physical(i.Env["HOME"]) {
+		return false
+	}
 	for _, r := range []string{"/tmp", "/private/tmp", "/var/folders", "/private/var/folders", i.Env["TMPDIR"]} {
 		r = strings.TrimRight(r, "/")
 		if r != "" && (p == r || strings.HasPrefix(p, r+"/")) {
-			return true
+			return safeTemporaryRemoval(i, p)
 		}
 	}
 	if strings.Contains(p, "/.artifacts/") || strings.HasSuffix(p, "/.artifacts") {
-		return true
+		return safeTemporaryRemoval(i, p)
+	}
+	d := guardPhysical(p)
+	for {
+		if st, e := os.Stat(d); e == nil && st.IsDir() {
+			break
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	probeInput := removalProbeInput(i)
+	if i.probePrivate {
+		// Git sees only the caller's cwd and worktree paths from its own list.
+		probeInput.probePrivate = false
+		if d != guardPhysical(i.Cwd) {
+			var ok bool
+			d, ok = privateRemovalWorktree(probeInput, d)
+			if !ok {
+				return false
+			}
+		}
+	}
+	gitPath := func(dir, option string) string {
+		key := dir + "\x00" + option
+		if value, ok := probes[key]; ok {
+			return value
+		}
+		args := []string{"-C", dir, "rev-parse"}
+		if option == "--git-common-dir" {
+			args = append(args, "--path-format=absolute")
+		}
+		value := probe(probeInput, "git", append(args, option)...)
+		probes[key] = value
+		return value
+	}
+	top := gitPath(d, "--show-toplevel")
+	if top != "" && (guardPhysical(p) == physical(top) || filepath.Clean(p) == filepath.Join(filepath.Clean(top), ".git") || guardPhysical(p) == filepath.Join(physical(top), ".git")) {
+		return false
 	}
 	l := physical(i.LaunchCwd)
 	p = physical(p)
-	if i.LaunchCwd == "" || l == physical(i.Env["HOME"]) || !strings.HasPrefix(p, l+"/") || probe(i, "git", "-C", l, "rev-parse", "--show-toplevel") == "" {
+	if i.LaunchCwd == "" || l == physical(i.Env["HOME"]) || top == "" {
 		return false
 	}
-	d := p
-	if st, e := os.Stat(d); e != nil || !st.IsDir() {
-		d = filepath.Dir(d)
+	launchCommon := gitPath(l, "--git-common-dir")
+	targetCommon := gitPath(d, "--git-common-dir")
+	return launchCommon != "" && targetCommon != "" && physical(launchCommon) == physical(targetCommon) && strings.HasPrefix(guardPhysical(p), physical(top)+"/")
+}
+
+func removalGitRoot(path string) bool {
+	if filepath.Base(filepath.Clean(path)) == ".git" {
+		return true
 	}
-	return probe(i, "git", "-C", d, "rev-parse", "--show-toplevel") != ""
+	st, err := os.Stat(path)
+	if err != nil {
+		return !os.IsNotExist(err)
+	}
+	if !st.IsDir() {
+		return false
+	}
+	_, err = os.Lstat(filepath.Join(path, ".git"))
+	return err == nil || !os.IsNotExist(err)
+}
+
+func safeTemporaryRemoval(i Input, path string) bool {
+	if removalGitRoot(path) {
+		return false
+	}
+	dir := guardPhysical(path)
+	for {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+	repoRoot := ""
+	for {
+		_, err := os.Lstat(filepath.Join(dir, ".git"))
+		if err == nil {
+			repoRoot = dir
+			break
+		}
+		if !os.IsNotExist(err) {
+			return false
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	if repoRoot == "" {
+		return true
+	}
+	if i.LaunchCwd == "" {
+		return false
+	}
+	public := removalProbeInput(i)
+	public.probePrivate = false
+	list := probe(public, "git", "-C", i.LaunchCwd, "worktree", "list", "--porcelain", "-z")
+	for _, record := range strings.Split(list, "\x00") {
+		if strings.HasPrefix(record, "worktree ") && physical(strings.TrimPrefix(record, "worktree ")) == repoRoot {
+			return true
+		}
+	}
+	return false
+}
+
+func removalProbeInput(i Input) Input {
+	i.Env = EnvMap(environment(i.Env))
+	for key := range i.Env {
+		if has([]string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG"}, key) || strings.HasPrefix(key, "GIT_CONFIG_") {
+			delete(i.Env, key)
+		}
+	}
+	return i
+}
+
+func privateRemovalWorktree(i Input, targetDir string) (string, bool) {
+	list := probe(i, "git", "-C", i.Cwd, "worktree", "list", "--porcelain", "-z")
+	root := ""
+	for _, record := range strings.Split(list, "\x00") {
+		if !strings.HasPrefix(record, "worktree ") {
+			continue
+		}
+		candidate := physical(strings.TrimPrefix(record, "worktree "))
+		if (targetDir == candidate || strings.HasPrefix(targetDir, candidate+"/")) && len(candidate) > len(root) {
+			root = candidate
+		}
+	}
+	if root == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, targetDir)
+	if err != nil {
+		return "", false
+	}
+	current := root
+	if rel != "." {
+		for _, part := range strings.Split(rel, string(filepath.Separator)) {
+			current = filepath.Join(current, part)
+			if _, err := os.Lstat(filepath.Join(current, ".git")); err == nil || !os.IsNotExist(err) {
+				return "", false
+			}
+		}
+	}
+	return root, true
 }
 func wildcard(a []string) bool {
 	send, skip := false, false
