@@ -17,7 +17,12 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	var cases []struct{ Line, Want string }
+	// Bash is set when the line only exists in bash (errtrace, functrace):
+	// zsh rejects the option name itself, so only bash runs it.
+	var cases []struct {
+		Line, Want string
+		Bash       bool
+	}
 	if e = json.Unmarshal(data, &cases); e != nil {
 		t.Fatal(e)
 	}
@@ -27,6 +32,9 @@ func TestReviewedCommandsStopBeforeExecution(t *testing.T) {
 	}
 	for _, shell := range []string{"/bin/bash", "/bin/zsh"} {
 		for _, tc := range cases {
+			if tc.Bash && shell != "/bin/bash" {
+				continue
+			}
 			t.Run(filepath.Base(shell)+"/"+tc.Line, func(t *testing.T) {
 				t.Parallel()
 				a, env, target := newEntry(t, binary)

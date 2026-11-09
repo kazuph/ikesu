@@ -90,9 +90,22 @@ func commandBoundary(i Input) string {
 			return "実行前の判定に関わる設定の変更には承認が必要です"
 		}
 	case "setopt", "unsetopt", "shopt":
+		// unsetopt and shopt -u clear options; setopt and shopt -s set them.
+		off := cmd == "unsetopt"
 		for _, a := range args {
-			option := strings.TrimPrefix(strings.ToLower(strings.ReplaceAll(a, "_", "")), "no")
-			if has([]string{"debugbeforecmd", "extdebug", "functrace", "errtrace", "localtraps", "localoptions"}, option) || has([]string{"+T", "-T", "+E", "-E"}, a) {
+			switch a {
+			case "-u":
+				off = true
+				continue
+			case "-s":
+				off = false
+				continue
+			case "+T":
+				return "実行前の判定に関わる設定の変更には承認が必要です"
+			case "-T", "-E", "+E":
+				continue
+			}
+			if optionWeakensGuard(a, off) {
 				return "実行前の判定に関わる設定の変更には承認が必要です"
 			}
 		}
