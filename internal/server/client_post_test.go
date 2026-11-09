@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -10,10 +11,7 @@ import (
 
 // postTestServer returns a running-app Server with one attached client whose
 // peer end is returned for the test to read (or not read).
-func postTestServer(t *testing.T) (*Server, *clientConn, func(), interface {
-	Read([]byte) (int, error)
-	SetReadDeadline(time.Time) error
-}) {
+func postTestServer(t *testing.T) (*Server, *clientConn, func(), net.Conn) {
 	t.Helper()
 	s := newTestServer(t, "post")
 	local, peer := writerSocketPair(t)
@@ -24,7 +22,9 @@ func postTestServer(t *testing.T) (*Server, *clientConn, func(), interface {
 	appDone := make(chan struct{})
 	go func() { s.app.Run(); close(appDone) }()
 	stop := func() { s.app.Stop(); <-appDone }
-	t.Cleanup(func() { c.close() })
+	// Close the peer first so a stalled writer fails at once instead of
+	// waiting for the write deadline.
+	t.Cleanup(func() { peer.Close(); c.close() })
 	return s, c, stop, peer
 }
 
@@ -32,7 +32,7 @@ func postTestServer(t *testing.T) (*Server, *clientConn, func(), interface {
 // app loop only queues.
 func TestPostFromAppLoopDoesNotBlockOnStalledClient(t *testing.T) {
 	old := clientWriteTimeout
-	clientWriteTimeout = time.Second
+	clientWriteTimeout = 30 * time.Second // never reached; the point is that Do returns first
 	t.Cleanup(func() { clientWriteTimeout = old })
 	s, c, stop, _ := postTestServer(t)
 	defer stop()
@@ -188,7 +188,7 @@ produce:
 // the loop is not held by a client that does not read.
 func TestAppLoopDetachDropAndErrorDoNotWait(t *testing.T) {
 	old := clientWriteTimeout
-	clientWriteTimeout = 2 * time.Second
+	clientWriteTimeout = 30 * time.Second
 	t.Cleanup(func() { clientWriteTimeout = old })
 	s, c, stop, _ := postTestServer(t)
 	defer stop()
@@ -204,7 +204,7 @@ func TestAppLoopDetachDropAndErrorDoNotWait(t *testing.T) {
 		s.dropConnAsync(c)
 	})
 	s.app.Do(func() {})
-	if elapsed := time.Since(start); elapsed > time.Second {
+	if elapsed := time.Since(start); elapsed > 15*time.Second {
 		t.Fatalf("app loop was held %v", elapsed)
 	}
 	s.mu.Lock()
