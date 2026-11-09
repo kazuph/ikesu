@@ -21,12 +21,16 @@ func TestAutomaticWorkspaceNameFollowsFirstShellAndPreservesCustomName(t *testin
 		t.Helper()
 		a.gitAt = time.Time{}
 		a.refreshWorkspaceGit(time.Now())
-		select {
-		case job := <-a.jobs:
-			job.fn()
-			close(job.done)
-		case <-time.After(5 * time.Second):
-			t.Fatal("workspace metadata did not finish")
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		for a.gitPending {
+			select {
+			case job := <-a.jobs:
+				job.fn()
+				close(job.done)
+			case <-timer.C:
+				t.Fatal("workspace metadata did not finish")
+			}
 		}
 	}
 	for i, custom := range []bool{false, true} {
