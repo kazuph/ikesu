@@ -198,8 +198,9 @@ func (s *Server) screenInputChecked(pid int, signature, data string, verify bool
 				}
 			}
 		}
-		sequence := s.screenPrompts.watches[pid].answerInputSequence
-		_, err = pane.WriteScreenPrompt([]byte(data), &sequence)
+		watch := s.screenPrompts.watches[pid]
+		sequence := watch.answerInputSequence
+		_, err = pane.WriteScreenPrompt([]byte(data), &sequence, watch.permissionDeadline)
 	})
 	return err
 }

@@ -519,7 +519,7 @@ func (p *Pane) QueuePTY(b []byte) error {
 	if p.currentPTY() == nil {
 		return os.ErrClosed
 	}
-	return p.writer.enqueue(b)
+	return p.writer.enqueue(b, nil, nil)
 }
 
 // WriteToPTY accepts all of b into the pane's ordered input, or none of it.

@@ -31,9 +31,6 @@ type PaneTransfer struct {
 	LastMailExternalInput       int64
 	IdleActivityAt              time.Time
 	IdleActivitySeq             uint64
-	// PendingInput is input the exporting server accepted but had not
-	// written; the importing server writes it before anything else.
-	PendingInput []byte
 }
 
 func (p *Pane) startPump() {
@@ -84,8 +81,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			return fail(fmt.Errorf("pause PTY: %w", err))
 		}
 		<-p.pumpDone
-		pending, err := p.pauseWriterForHandoff()
-		if err != nil {
+		if err := p.pauseWriterForHandoff(); err != nil {
 			return fail(err)
 		}
 		p.mu.Lock()
@@ -105,7 +101,6 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 		p.mu.Unlock()
 		v.LastMailExternalInput = p.lastMailExternalInput.Load()
 		v.IdleActivityAt, v.IdleActivitySeq = p.IdleActivity()
-		v.PendingInput = pending
 		v.Snapshot = p.Snapshot()
 		fd, err := unix.FcntlInt(uintptr(p.ptyFD), unix.F_DUPFD_CLOEXEC, 0)
 		if err != nil {
@@ -145,7 +140,6 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 			return err
 		}
 		p.lastMailExternalInput.Store(v.LastMailExternalInput)
-		_ = p.writer.enqueue(v.PendingInput)
 		p.RestoreIdleActivity(v.IdleActivityAt, v.IdleActivitySeq)
 		p.importedPID = v.PID
 		p.shellStart = v.ShellStart
@@ -221,6 +215,33 @@ func (p *Pane) killProcess() {
 	} else if p.importedPID != 0 && !p.importedExited.Load() {
 		_ = unix.Kill(-p.importedPID, unix.SIGHUP)
 		_ = unix.Kill(p.importedPID, unix.SIGKILL)
+	}
+}
+
+// TakePendingInputs ends this server's input for every pane and returns the
+// accepted bytes not yet written, for the next server to write first. It runs
+// after the next server is running; input accepted after this is refused.
+func (s *Supervisor) TakePendingInputs() map[int][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[int][]byte{}
+	for id, p := range s.panes {
+		if b := p.takePendingInput(); len(b) > 0 {
+			out[id] = b
+		}
+	}
+	return out
+}
+
+// RestorePendingInputs writes input carried from the previous server ahead
+// of anything this server has accepted since.
+func (s *Supervisor) RestorePendingInputs(inputs map[int][]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, b := range inputs {
+		if p := s.panes[id]; p != nil {
+			p.writer.prepend(b)
+		}
 	}
 }
 

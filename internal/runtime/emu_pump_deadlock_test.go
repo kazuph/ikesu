@@ -137,13 +137,16 @@ func waitQueued(t *testing.T, p *Pane, n int) {
 func queuedBytes(p *Pane) int {
 	p.writer.mu.Lock()
 	defer p.writer.mu.Unlock()
-	return len(p.writer.queue)
+	return p.writer.queued
 }
 
 func queuedTail(p *Pane, n int) string {
 	p.writer.mu.Lock()
 	defer p.writer.mu.Unlock()
-	q := p.writer.queue
+	var q []byte
+	for _, s := range p.writer.segments {
+		q = append(q, s.data...)
+	}
 	return string(q[max(0, len(q)-n):])
 }
 
@@ -200,35 +203,143 @@ func TestEmulatorInputKeepsOrderWithLaterKeys(t *testing.T) {
 	}
 }
 
-// A live handoff carries accepted but unwritten input to the next server in
-// order, and a refused handoff keeps writing it.
-func TestHandoffCarriesAcceptedInput(t *testing.T) {
-	teststate.Lock(t)
-	s, p := spawnNonReader(t, "exec sleep 600")
-	fillQueue(t, p, 256<<10)
-	for _, part := range []string{"A", "B", "C"} {
-		s.Input(p.ID, []byte(part))
-	}
-	var states []PaneTransfer
-	within(t, "handoff pause", 10*time.Second, func() {
-		var files []*os.File
-		var err error
-		states, files, err = s.PauseHandoff()
-		if err != nil {
-			t.Error(err)
-			return
+// spawnLateReader starts an application that ignores its input for a while
+// and then copies everything it reads into a file.
+func spawnLateReader(t *testing.T, delay string) (*Supervisor, *Pane, string) {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "received")
+	s, p := spawnNonReader(t, "sleep "+delay+"; exec cat > "+out)
+	return s, p, out
+}
+
+func waitFileSuffix(t *testing.T, path, suffix string) string {
+	t.Helper()
+	var got []byte
+	for end := time.Now().Add(20 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		got, _ = os.ReadFile(path)
+		if strings.HasSuffix(string(got), suffix) {
+			return string(got)
 		}
+	}
+	t.Fatalf("application never received %q; got %d bytes ending %q", suffix, len(got), string(got[max(0, len(got)-40):]))
+	return ""
+}
+
+// A live handoff carries every accepted but unwritten byte to the next
+// server, including input accepted after the pause, and the next server
+// writes it first without waiting for more input (Astra F3, F4).
+func TestHandoffCarriesAcceptedInputToTheNextServer(t *testing.T) {
+	teststate.Lock(t)
+	old, p, received := spawnLateReader(t, "2")
+	filler := strings.Repeat("f", 128<<10)
+	if err := p.QueuePTY([]byte(filler)); err != nil {
+		t.Fatal(err)
+	}
+	old.Input(p.ID, []byte("A"))
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Input(p.ID, []byte("B")) // accepted after the pause, before the next server runs
+	next := NewSupervisor()
+	defer next.KillAll()
+	if err := next.ImportHandoff(states, files); err != nil {
+		t.Fatal(err)
+	}
+	next.StartImported()
+	pending := old.TakePendingInputs()
+	old.Input(p.ID, []byte("X")) // refused: this server no longer owns the pane's input
+	next.RestorePendingInputs(pending)
+	next.Input(p.ID, []byte("C"))
+	old.ReleaseHandoff()
+	got := waitFileSuffix(t, received, "ABC")
+	if strings.Count(got, "A") != 1 || strings.Contains(got, "X") || !strings.HasSuffix(got, filler+"ABC") {
+		t.Fatalf("input lost, duplicated or reordered across the handoff: %d bytes ending %q", len(got), got[max(0, len(got)-20):])
+	}
+}
+
+// A refused handoff resumes writing the queued input.
+func TestRefusedHandoffKeepsWriting(t *testing.T) {
+	teststate.Lock(t)
+	s, p, received := spawnLateReader(t, "1")
+	s.Input(p.ID, []byte("A"))
+	if _, files, err := s.PauseHandoff(); err != nil {
+		t.Fatal(err)
+	} else {
 		for _, f := range files {
 			f.Close()
 		}
-	})
-	if len(states) != 1 || !strings.HasSuffix(string(states[0].PendingInput), "ABC") || len(states[0].PendingInput) < 64<<10 {
-		t.Fatalf("pending input not carried: %d states", len(states))
 	}
+	s.Input(p.ID, []byte("B"))
 	s.ResumeHandoff()
-	s.Input(p.ID, []byte("D"))
-	if got := queuedTail(p, 4); got != "ABCD" {
-		t.Fatalf("after a refused handoff the queue continues in order: %q", got)
+	s.Input(p.ID, []byte("C"))
+	waitFileSuffix(t, received, "ABC")
+}
+
+// Screen-prompt keys accepted while the PTY is full are dropped, not sent
+// late, when external input arrives or their deadline passes (Astra F1).
+func TestStaleScreenPromptKeysAreNotSentLate(t *testing.T) {
+	teststate.Lock(t)
+	s, p, received := spawnLateReader(t, "1")
+	seq := p.ExternalInputSequence()
+	if _, err := p.WriteScreenPrompt([]byte("STALE1"), &seq, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.WriteScreenPrompt([]byte("STALE2"), nil, time.Now().Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	s.Input(p.ID, []byte("HUMAN")) // external input after the first answer was accepted
+	got := waitFileSuffix(t, received, "HUMAN")
+	if strings.Contains(got, "STALE") {
+		t.Fatalf("stale screen keys were written: %q", got)
+	}
+}
+
+// Mail is reported written only after its bytes reached the PTY (Astra F2).
+func TestMailCompletionWaitsForThePTY(t *testing.T) {
+	teststate.Lock(t)
+	_, p, received := spawnLateReader(t, "1")
+	if err := p.QueuePTY([]byte(strings.Repeat("f", 128<<10))); err != nil {
+		t.Fatal(err)
+	}
+	done, err := p.WriteMail([]byte("MAIL\r"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("mail reported written while the application was not reading: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("mail never completed")
+	}
+	waitFileSuffix(t, received, "MAIL\r")
+}
+
+// Mail queued for a pane whose process exits is reported not written.
+func TestMailToAnExitedPaneIsNotReportedWritten(t *testing.T) {
+	teststate.Lock(t)
+	_, p := spawnNonReader(t, "sleep 1; exit 0")
+	if err := p.QueuePTY([]byte(strings.Repeat("f", 128<<10))); err != nil {
+		t.Fatal(err)
+	}
+	done, err := p.WriteMail([]byte("MAIL\r"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("mail to an exited pane was reported written")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("mail to an exited pane never finished")
 	}
 }
 
@@ -258,8 +369,8 @@ func TestMailToAFullPTYReturnsAtOnce(t *testing.T) {
 	_, p := spawnNonReader(t, "exec sleep 600")
 	fillQueue(t, p, 256<<10)
 	within(t, "mail to a full PTY", 5*time.Second, func() {
-		if n, err := p.WriteMail([]byte("mail body\r")); err != nil || n != 10 {
-			t.Errorf("mail not accepted: %d %v", n, err)
+		if _, err := p.WriteMail([]byte("mail body\r")); err != nil {
+			t.Errorf("mail not accepted: %v", err)
 		}
 	})
 	if got := queuedTail(p, 10); got != "mail body\r" {

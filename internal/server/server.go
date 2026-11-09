@@ -511,6 +511,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		if err := imported.Decoder.Decode(&final); err != nil || final.State != "mail_input_times" {
 			final.MailInputTimes = nil
 		}
+		s.sup.RestorePendingInputs(final.PendingInputs)
 		s.sup.RestoreMailInputTimes(final.MailInputTimes)
 		s.sup.RestoreIdleActivities(final.IdleActivities)
 		_ = imported.Control.SetDeadline(time.Time{})

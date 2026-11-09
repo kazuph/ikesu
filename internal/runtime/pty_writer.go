@@ -25,7 +25,25 @@ const handoffWriterWait = 2 * time.Second
 // ErrPTYInputFull reports that the application has not read its queued input.
 var ErrPTYInputFull = errors.New("pane input not accepted: the application is not reading its input")
 
+// ErrPTYInputStale reports queued input dropped before any of it was written
+// because the condition it was accepted under no longer held.
+var ErrPTYInputStale = errors.New("pane input dropped: it was no longer valid when the PTY could take it")
+
+// ErrPTYInputTransferred reports input handed to the next server by a live
+// handoff; that server writes it first.
+var ErrPTYInputTransferred = errors.New("pane input transferred to the next server")
+
 var errPaneClosed = errors.New("pane closed: input not accepted")
+var errHandedOff = errors.New("pane handed off: input not accepted by this server")
+
+// ptySegment is one accepted write. done, when set, receives nil once every
+// byte is written, or the reason it was not.
+type ptySegment struct {
+	data    []byte
+	done    chan error
+	valid   func() bool
+	started bool
+}
 
 // ptyWriter is the only writer of a pane's PTY. Every input path (keys,
 // pastes, mouse and terminal responses from the emulator, mail, screen
@@ -34,13 +52,14 @@ var errPaneClosed = errors.New("pane closed: input not accepted")
 // holder (2026-11-09: a full PTY froze the server for eight hours). Accepted
 // bytes are carried across a live handoff.
 type ptyWriter struct {
-	mu      sync.Mutex
-	queue   []byte
-	stopped error
-	paused  bool
-	ready   chan struct{}
-	idle    chan struct{} // closed when the running writer returns
-	dropped int
+	mu       sync.Mutex
+	segments []ptySegment
+	queued   int
+	stopped  error
+	paused   bool
+	ready    chan struct{}
+	idle     chan struct{} // closed when the running writer returns
+	dropped  int
 }
 
 func (w *ptyWriter) signal() {
@@ -50,9 +69,13 @@ func (w *ptyWriter) signal() {
 	}
 }
 
-// enqueue accepts all of data or none of it, without waiting.
-func (w *ptyWriter) enqueue(data []byte) error {
+// enqueue accepts all of data or none of it, without waiting. valid, when
+// set, is checked before the first byte is written; a stale write is dropped.
+func (w *ptyWriter) enqueue(data []byte, done chan error, valid func() bool) error {
 	if len(data) == 0 {
+		if done != nil {
+			done <- nil
+		}
 		return nil
 	}
 	w.mu.Lock()
@@ -61,15 +84,44 @@ func (w *ptyWriter) enqueue(data []byte) error {
 		err := w.stopped
 		w.mu.Unlock()
 		return err
-	case len(w.queue)+len(data) > ptyInputLimit:
+	case w.queued+len(data) > ptyInputLimit:
 		w.dropped += len(data)
 		w.mu.Unlock()
 		return ErrPTYInputFull
 	}
-	w.queue = append(w.queue, data...)
+	w.segments = append(w.segments, ptySegment{data: append([]byte(nil), data...), done: done, valid: valid})
+	w.queued += len(data)
 	w.mu.Unlock()
 	w.signal()
 	return nil
+}
+
+// prepend puts input carried from a previous server ahead of everything.
+func (w *ptyWriter) prepend(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	w.mu.Lock()
+	w.segments = append([]ptySegment{{data: append([]byte(nil), data...), started: true}}, w.segments...)
+	w.queued += len(data)
+	w.mu.Unlock()
+	w.signal()
+}
+
+// finish removes every segment and reports err to their waiters.
+func (w *ptyWriter) finish(err error) []byte {
+	w.mu.Lock()
+	segments := w.segments
+	w.segments, w.queued = nil, 0
+	w.mu.Unlock()
+	var bytes []byte
+	for _, s := range segments {
+		bytes = append(bytes, s.data...)
+		if s.done != nil {
+			s.done <- err
+		}
+	}
+	return bytes
 }
 
 func (w *ptyWriter) stop(err error) {
@@ -77,8 +129,8 @@ func (w *ptyWriter) stop(err error) {
 	if w.stopped == nil {
 		w.stopped = err
 	}
-	w.queue = nil
 	w.mu.Unlock()
+	w.finish(err)
 }
 
 // responseWriter hands emulator output (responses and encoded input) to the
@@ -86,22 +138,20 @@ func (w *ptyWriter) stop(err error) {
 type responseWriter struct{ p *Pane }
 
 func (r responseWriter) Write(b []byte) (int, error) {
-	_ = r.p.writer.enqueue(b)
+	_ = r.p.writer.enqueue(b, nil, nil)
 	return len(b), nil
 }
 
 // startPTYWriter runs the writer until the PTY fails, the pane ends, or a
-// handoff pauses it.
+// handoff pauses it. Input accepted before it starts is written at once.
 func (p *Pane) startPTYWriter() {
 	w := &p.writer
 	w.mu.Lock()
-	if w.ready == nil {
-		w.ready = make(chan struct{}, 1)
-	}
 	w.paused = false
 	idle := make(chan struct{})
 	w.idle = idle
 	w.mu.Unlock()
+	w.signal()
 	go func() {
 		defer close(idle)
 		for {
@@ -119,12 +169,26 @@ func (p *Pane) startPTYWriter() {
 					return
 				}
 				w.mu.Lock()
-				n := min(len(w.queue), ptyWriteChunk)
-				chunk := append([]byte(nil), w.queue[:n]...)
-				w.mu.Unlock()
-				if n == 0 {
+				if len(w.segments) == 0 {
+					w.mu.Unlock()
 					break
 				}
+				head := &w.segments[0]
+				if !head.started {
+					if head.valid != nil && !head.valid() {
+						dropped := *head
+						w.segments = w.segments[1:]
+						w.queued -= len(dropped.data)
+						w.mu.Unlock()
+						if dropped.done != nil {
+							dropped.done <- ErrPTYInputStale
+						}
+						continue
+					}
+					head.started = true
+				}
+				chunk := append([]byte(nil), head.data[:min(len(head.data), ptyWriteChunk)]...)
+				w.mu.Unlock()
 				if !p.waitWritable() {
 					if p.pausing.Load() {
 						continue
@@ -133,11 +197,22 @@ func (p *Pane) startPTYWriter() {
 					return
 				}
 				written, err := writeSomePTY(p.currentPTY(), chunk)
+				var finished *ptySegment
 				w.mu.Lock()
-				if written <= len(w.queue) {
-					w.queue = w.queue[written:]
+				if len(w.segments) > 0 {
+					head = &w.segments[0]
+					head.data = head.data[written:]
+					w.queued -= written
+					if len(head.data) == 0 {
+						done := *head
+						finished = &done
+						w.segments = w.segments[1:]
+					}
 				}
 				w.mu.Unlock()
+				if finished != nil && finished.done != nil {
+					finished.done <- nil
+				}
 				if err != nil {
 					w.stop(err)
 					p.reportDroppedInput()
@@ -177,10 +252,10 @@ func (p *Pane) waitWritable() bool {
 	}
 }
 
-// pauseWriterForHandoff stops the writer between chunks and returns the
-// accepted bytes it has not written, for the importing server to send first.
-// The caller has set p.pausing and woken the PTY wait.
-func (p *Pane) pauseWriterForHandoff() ([]byte, error) {
+// pauseWriterForHandoff stops the writer between chunks. Input stays queued
+// (and is still accepted) until takePendingInput hands it over. The caller
+// has set p.pausing and woken the PTY wait.
+func (p *Pane) pauseWriterForHandoff() error {
 	w := &p.writer
 	w.signal()
 	w.mu.Lock()
@@ -190,12 +265,23 @@ func (p *Pane) pauseWriterForHandoff() ([]byte, error) {
 		select {
 		case <-idle:
 		case <-time.After(handoffWriterWait):
-			return nil, fmt.Errorf("pane %d: the application has not read its input; handoff refused so no input is lost", p.ID)
+			return fmt.Errorf("pane %d: the PTY writer did not stop; handoff refused so no input is lost", p.ID)
 		}
 	}
+	return nil
+}
+
+// takePendingInput ends this server's input for a handed-off pane and
+// returns every accepted byte not yet written, in order. Later input is
+// refused, so nothing is accepted that the next server would not receive.
+func (p *Pane) takePendingInput() []byte {
+	w := &p.writer
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	return append([]byte(nil), w.queue...), nil
+	if w.stopped == nil {
+		w.stopped = errHandedOff
+	}
+	w.mu.Unlock()
+	return w.finish(ErrPTYInputTransferred)
 }
 
 // resumeWriterAfterHandoff restarts a writer that a refused handoff paused.
@@ -206,7 +292,6 @@ func (p *Pane) resumeWriterAfterHandoff() {
 	w.mu.Unlock()
 	if paused {
 		p.startPTYWriter()
-		w.signal()
 	}
 }
 

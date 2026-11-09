@@ -3,6 +3,7 @@ package server
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
@@ -85,9 +86,20 @@ func TestMailDeliveryAndAcknowledgementReservePaneID(t *testing.T) {
 					t.Fatal(err)
 				}
 				s.store = readOnly
+				// Delivery is recorded when the pane writer reports the bytes
+				// written; the read-only ledger then keeps it awaiting ack.
 				written, err := s.deliverMailWrite(w)
-				if !written || err == nil || len(s.mailAwaitingAck) != 1 {
-					t.Fatalf("write=%v err=%v awaiting=%d", written, err, len(s.mailAwaitingAck))
+				awaiting := 0
+				for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+					s.mailDelivery.Lock()
+					awaiting = len(s.mailAwaitingAck)
+					s.mailDelivery.Unlock()
+					if awaiting == 1 {
+						break
+					}
+				}
+				if !written || err != nil || awaiting != 1 {
+					t.Fatalf("write=%v err=%v awaiting=%d", written, err, awaiting)
 				}
 			}
 			pending, err := s.store.PendingForAgentCreationOrder("p2")
