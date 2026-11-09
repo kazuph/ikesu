@@ -25,6 +25,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -528,6 +529,43 @@ func (a *App) Do(fn func()) {
 	}
 }
 
+// DoContext cancels work that has not started. Once started, it waits for
+// completion so callers never mistake an applied mutation for cancellation.
+func (a *App) DoContext(ctx context.Context, fn func()) bool {
+	if a.viewerOwner != nil {
+		return a.viewerOwner.DoContext(ctx, func() { a.viewerContext.with(a.viewerOwner, func(*App) { fn() }) })
+	}
+	var state atomic.Uint32
+	done := make(chan struct{})
+	job := appJob{done: done, fn: func() {
+		if ctx.Err() != nil {
+			state.CompareAndSwap(0, 2)
+		}
+		if state.CompareAndSwap(0, 1) {
+			fn()
+		}
+	}}
+	select {
+	case a.jobs <- job:
+	case <-ctx.Done():
+		return false
+	case <-a.doneCh:
+		return false
+	}
+	select {
+	case <-done:
+		return state.Load() == 1
+	case <-ctx.Done():
+		if state.CompareAndSwap(0, 2) {
+			return false
+		}
+		<-done
+		return true
+	case <-a.doneCh:
+		return state.Load() == 1
+	}
+}
+
 // DoWithProcessPollingPaused waits outside the app loop for the current
 // process observation to finish before capturing live-handoff state.
 func (a *App) DoWithProcessPollingPaused(fn func()) {
@@ -536,6 +574,18 @@ func (a *App) DoWithProcessPollingPaused(fn func()) {
 		defer func() { a.processPollPermit <- struct{}{} }()
 		a.Do(fn)
 	case <-a.doneCh:
+	}
+}
+
+func (a *App) DoWithProcessPollingPausedContext(ctx context.Context, fn func()) bool {
+	select {
+	case <-a.processPollPermit:
+		defer func() { a.processPollPermit <- struct{}{} }()
+		return a.DoContext(ctx, fn)
+	case <-ctx.Done():
+		return false
+	case <-a.doneCh:
+		return false
 	}
 }
 

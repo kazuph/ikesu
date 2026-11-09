@@ -263,7 +263,7 @@ func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarn
 		h.api(id, api.MethodWorkspaceCreate, map[string]any{"focus": false})
 		h.api(id, api.MethodPaneSplit, map[string]any{"target_pane_id": "p1", "direction": "right", "focus": false})
 		for pane := 1; pane <= 3; pane++ {
-			h.api(id, api.MethodPaneReportAgent, map[string]any{"pane_id": fmt.Sprintf("p%d", pane), "agent": "codex", "source": "codex", "session_id": t.Name() + id, "state": "idle"})
+			h.api(id, api.MethodPaneReportAgent, map[string]any{"pane_id": fmt.Sprintf("p%d", pane), "agent": "codex", "source": "codex", "session_id": fmt.Sprintf("%s%s-%d", t.Name(), id, pane), "state": "idle"})
 		}
 		h.api(id, api.MethodRunStart, api.RunStartParams{CallerPane: "p1", Label: id + " job", Argv: []string{"/bin/sh", "-c", "printf right-job"}})
 	}

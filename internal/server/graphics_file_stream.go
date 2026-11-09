@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -29,14 +30,16 @@ func graphicsProducerConnected(conn net.Conn) bool {
 	return err == nil && live
 }
 
-func (s *Server) serveGraphicsFile(conn net.Conn, pid int, frame api.PaneGraphicsStreamFrame, owner uint64) *api.Error {
+func (s *Server) serveGraphicsFile(ctx context.Context, conn net.Conn, pid int, frame api.PaneGraphicsStreamFrame, owner uint64) *api.Error {
 	var source *graphicsFileSource
 	var expected uint64
 	var failure *api.Error
-	s.app.Do(func() {
+	if !s.app.DoContext(ctx, func() {
 		expected, failure = graphicsFileFrameBytes(frame, s.directGraphicsViewer(pid, false) != nil)
 		source = s.graphicsFiles.source
-	})
+	}) {
+		return graphicsUnavailable("producer disconnected")
+	}
 	if failure != nil {
 		return failure
 	}
@@ -49,7 +52,7 @@ func (s *Server) serveGraphicsFile(conn net.Conn, pid int, frame api.PaneGraphic
 	}
 	defer file.file.Close()
 	var pending *nativeGraphicsPending
-	s.app.Do(func() {
+	if !s.app.DoContext(ctx, func() {
 		viewer := s.directGraphicsViewer(pid, false)
 		if viewer == nil || frame.Format != "rgba" || frame.LayerID != nil && *frame.LayerID != "primary" {
 			_, failure = graphicsFileFrameBytes(frame, false)
@@ -81,21 +84,23 @@ func (s *Server) serveGraphicsFile(conn net.Conn, pid int, frame api.PaneGraphic
 			return
 		}
 		hub.pending = pending
-	})
+	}) {
+		return graphicsUnavailable("producer disconnected")
+	}
 	if failure != nil {
 		return failure
 	}
 	if pending == nil {
-		return s.installGraphicsFilePixels(pid, frame, file, owner, false)
+		return s.installGraphicsFilePixels(ctx, pid, frame, file, owner, false)
 	}
 	deadline := time.Now().Add(nativeGraphicsAPIWait)
-	success, failure := waitNativeGraphics(pending, deadline)
+	success, failure := waitNativeGraphics(ctx, pending, deadline)
 	if failure == nil && success {
 		if err := file.check(); err != nil || !graphicsProducerConnected(conn) {
 			failure = graphicsUnavailable("graphics source or producer changed before receipt")
 		} else {
 			drained := pending.drained
-			s.app.Do(func() {
+			if !s.app.DoContext(ctx, func() {
 				if s.graphicsFiles.pending != pending || s.directGraphicsViewer(pid, true) != pending.viewer {
 					failure = graphicsUnavailable("native graphics viewer no longer owns the surface")
 					return
@@ -109,19 +114,23 @@ func (s *Server) serveGraphicsFile(conn net.Conn, pid int, frame api.PaneGraphic
 					s.graphicsFiles.streams[owner] = nativeGraphicsStream{conn: conn, viewer: pending.viewer, image: pending.identity.ImageID}
 					pending.viewer.viewer.Redraw(s.app)
 				}
-			})
+			}) {
+				failure = graphicsUnavailable("producer disconnected")
+			}
 			if failure == nil {
 				select {
 				case <-drained:
 				case <-pending.viewer.done:
 					failure = graphicsUnavailable("graphics viewer disconnected before projection drain")
+				case <-ctx.Done():
+					failure = graphicsUnavailable("producer disconnected")
 				case <-time.After(time.Until(deadline)):
 					failure = graphicsUnavailable("native graphics projection was not delivered")
 				}
 			}
 		}
 	}
-	s.app.Do(func() {
+	cleanup := func() {
 		if s.graphicsFiles.pending == pending {
 			s.graphicsFiles.pending = nil
 		}
@@ -131,12 +140,17 @@ func (s *Server) serveGraphicsFile(conn net.Conn, pid int, frame api.PaneGraphic
 				go pending.viewer.close()
 			}
 		}
-	})
+	}
+	if ctx.Err() != nil {
+		s.enqueueAppCleanup(cleanup)
+	} else if !s.app.DoContext(ctx, cleanup) {
+		s.enqueueAppCleanup(cleanup)
+	}
 	if failure != nil {
 		return failure
 	}
 	if !success {
-		return s.installGraphicsFilePixels(pid, frame, file, owner, true)
+		return s.installGraphicsFilePixels(ctx, pid, frame, file, owner, true)
 	}
 	if err := file.check(); err != nil || !graphicsProducerConnected(conn) {
 		return graphicsUnavailable("graphics source or producer changed before acknowledgement")
@@ -144,7 +158,7 @@ func (s *Server) serveGraphicsFile(conn net.Conn, pid int, frame api.PaneGraphic
 	return nil
 }
 
-func waitNativeGraphics(p *nativeGraphicsPending, deadline time.Time) (bool, *api.Error) {
+func waitNativeGraphics(ctx context.Context, p *nativeGraphicsPending, deadline time.Time) (bool, *api.Error) {
 	timer := time.NewTimer(nativeGraphicsDeliveryWait)
 	defer timer.Stop()
 	overall := time.NewTimer(time.Until(deadline))
@@ -174,11 +188,13 @@ func waitNativeGraphics(p *nativeGraphicsPending, deadline time.Time) (bool, *ap
 			return false, graphicsUnavailable("native graphics API wait expired")
 		case <-p.viewer.done:
 			return false, graphicsUnavailable("native graphics viewer disconnected")
+		case <-ctx.Done():
+			return false, graphicsUnavailable("producer disconnected")
 		}
 	}
 }
 
-func (s *Server) installGraphicsFilePixels(pid int, frame api.PaneGraphicsStreamFrame, file *graphicsSourceFile, owner uint64, afterRejection bool) *api.Error {
+func (s *Server) installGraphicsFilePixels(ctx context.Context, pid int, frame api.PaneGraphicsStreamFrame, file *graphicsSourceFile, owner uint64, afterRejection bool) *api.Error {
 	pixels, err := file.ownedPixels()
 	if err != nil {
 		if afterRejection {
@@ -187,12 +203,14 @@ func (s *Server) installGraphicsFilePixels(pid int, frame api.PaneGraphicsStream
 		return &api.Error{Code: "invalid_frame_file", Message: err.Error()}
 	}
 	failure := graphicsUnavailable("session stopped before file installation")
-	s.app.Do(func() {
+	if !s.app.DoContext(ctx, func() {
 		failure = s.sup.SetGraphicsLayer(pid, frame.PaneGraphicsSetParams, pixels, owner)
 		if failure == nil && (frame.LayerID == nil || *frame.LayerID == "primary") {
 			delete(s.graphicsFiles.streams, owner)
 		}
-	})
+	}) {
+		return graphicsUnavailable("producer disconnected")
+	}
 	if failure != nil && afterRejection {
 		return graphicsUnavailable(failure.Message)
 	}

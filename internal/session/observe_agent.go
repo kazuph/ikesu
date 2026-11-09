@@ -209,21 +209,37 @@ func ObserveProcessSession(agent, cwd string, start time.Time, job platform.Fore
 		}
 		return observeClaudeRoot(root, cwd, start)
 	case "codex":
-		root := values["CODEX_HOME"]
-		if root == "" {
-			root = filepath.Join(home, ".codex")
-		}
 		var paths []string
 		for _, process := range job.Processes {
 			paths = append(paths, platform.OpenJSONLFiles(process.PID)...)
 		}
-		return observeCodexFiles(filepath.Join(root, "sessions"), cwd, start, paths)
+		return observeOpenedCodexFiles(paths, cwd)
 	}
 	return "", false
 }
+
+func observeOpenedCodexFiles(paths []string, cwd string) (string, bool) {
+	ids := map[string]bool{}
+	for _, path := range paths {
+		id, fileCwd, _, ok := codexSessionMeta(path)
+		if ok && fileCwd == cwd {
+			ids[id] = true
+		}
+	}
+	if len(ids) == 1 {
+		for id := range ids {
+			return id, true
+		}
+	}
+	return "", false
+}
+
 func observeCodexFiles(root, cwd string, start time.Time, opened []string) (string, bool) {
 	if cwd == "" {
 		return "", false
+	}
+	if len(opened) != 0 {
+		return observeOpenedCodexFiles(opened, cwd)
 	}
 	paths := map[string]bool{}
 	for _, path := range opened {
@@ -263,7 +279,7 @@ func observeCodexFiles(root, cwd string, start time.Time, opened []string) (stri
 			uncertain = true
 			continue
 		}
-		if ts.Before(cutoff) || fcwd != cwd {
+		if ts.Before(cutoff) || ts.After(start.Add(sessionFileWindow)) || fcwd != cwd {
 			continue
 		}
 		ids[id] = true

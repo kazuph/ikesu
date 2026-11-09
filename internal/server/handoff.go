@@ -127,7 +127,7 @@ func validateHandoffStorage(fd int) error {
 
 // The app loop remains frozen during the transaction. The retiring server
 // owns its descriptors until the importer has accepted state and started.
-func (s *Server) liveHandoff(req *api.Request) api.Response {
+func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response {
 	var p api.ServerLiveHandoffParams
 	if err := req.DecodeParams(&p); err != nil {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
@@ -136,6 +136,37 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 		return api.Failure(req.ID, "handoff_failed", "handoff already in progress")
 	}
 	defer s.handoffMu.Unlock()
+	var pendingInputs []<-chan struct{}
+	if !s.app.DoContext(ctx, func() {
+		s.inputHandoffFrozen = true
+		for _, ws := range s.app.State().Workspaces {
+			for _, tab := range ws.Tabs {
+				for _, pid := range tab.Layout.Order() {
+					if pane := s.sup.Get(pid); pane != nil {
+						if idle := pane.InputOperationsIdle(); idle != nil {
+							pendingInputs = append(pendingInputs, idle)
+						}
+					}
+				}
+			}
+		}
+	}) {
+		return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+	}
+	defer func() {
+		if !s.handedOff {
+			s.app.Do(func() { s.inputHandoffFrozen = false })
+		}
+	}()
+	drainCtx, cancelDrain := context.WithTimeout(ctx, handoffWait)
+	defer cancelDrain()
+	for _, idle := range pendingInputs {
+		select {
+		case <-idle:
+		case <-drainCtx.Done():
+			return api.Failure(req.ID, "handoff_failed", "accepted pane input did not finish before handoff")
+		}
+	}
 	// Stop DB-using monitors while the app loop can still finish their callbacks.
 	// Rollback restarts admission; the persisted cancelling rows resume on refresh.
 	s.stopJobMonitors()
@@ -152,21 +183,41 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 	if err != nil {
 		return api.Failure(req.ID, "handoff_failed", err.Error())
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), handoffWait)
-	defer cancel()
-	var handoffErr error
-	s.app.DoWithProcessPollingPaused(func() {
-		handoffErr = s.app.BeginHandoff()
-		if handoffErr != nil {
-			return
+	transferCtx, cancelTransfer := context.WithTimeout(context.Background(), handoffWait)
+	defer cancelTransfer()
+	for {
+		var handoffErr error
+		var ledgerIdle <-chan struct{}
+		if !s.app.DoWithProcessPollingPausedContext(ctx, func() {
+			s.ledgerMu.Lock()
+			if s.ledgerRunning {
+				ledgerIdle = s.ledgerIdle
+			}
+			s.ledgerMu.Unlock()
+			if ledgerIdle != nil {
+				return
+			}
+			handoffErr = s.app.BeginHandoff()
+			if handoffErr != nil {
+				return
+			}
+			defer s.app.EndHandoff()
+			handoffErr = s.transferHandoff(transferCtx, exe, p)
+		}) {
+			return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
 		}
-		defer s.app.EndHandoff()
-		handoffErr = s.transferHandoff(ctx, exe, p)
-	})
-	if handoffErr != nil {
-		return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
+		if ledgerIdle == nil {
+			if handoffErr != nil {
+				return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
+			}
+			return api.Success(req.ID, api.OkResult{Type: "ok"})
+		}
+		select {
+		case <-ledgerIdle:
+		case <-ctx.Done():
+			return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+		}
 	}
-	return api.Success(req.ID, api.OkResult{Type: "ok"})
 }
 
 func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLiveHandoffParams) (err error) {

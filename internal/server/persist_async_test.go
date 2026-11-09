@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/tui"
@@ -25,6 +27,7 @@ func TestSessionSnapshotKeepsEachPaneLedgerID(t *testing.T) {
 	for i, pid := range ids {
 		s.ledgerPut(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: []string{"first-id", "second-id"}[i], Source: "report:test"})
 	}
+	s.ledgerWG.Wait()
 	if s.store != nil {
 		defer s.store.Close()
 	}
@@ -80,15 +83,107 @@ func TestDelayedSessionObservationPreservesExplicitReport(t *testing.T) {
 	if !ok {
 		t.Fatal("could not prepare observation")
 	}
-	observation.observe()
-	if !observation.found || observation.result.Value != "observed-id" {
-		t.Fatalf("real session file was not observed: %+v", observation.result)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer f.Close()
+	job = platform.ForegroundJob{Processes: []platform.ForegroundProcess{{PID: os.Getpid()}}}
+	id, found := session.ObserveProcessSession("codex", p.Snapshot().Cwd, start, job, []string{"CODEX_HOME=" + root})
+	if !found || id != "observed-id" {
+		t.Fatalf("real open session file was not observed: %q %v", id, found)
+	}
+	observation.found = true
+	observation.result = tui.AgentRecord{Agent: "codex", Kind: "id", Value: id, Source: "observed:file"}
 	reported := tui.AgentRecord{Agent: "codex", Kind: "id", Value: "reported-id", Source: "report:test"}
 	s.app.RecordSession(pid, reported)
 	s.applySessionObservation(observation)
 	if got, _ := s.app.SessionRecord(pid); got != reported {
 		t.Fatalf("delayed observation replaced the explicit report: %+v", got)
+	}
+}
+
+func TestSessionObservationRejectsDuplicatePaneID(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-observation")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	p := s.sup.Get(pid)
+	p.SetAgent("codex")
+	if resp := s.paneSplit("test", api.PaneSplitParams{Direction: "right"}); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	if len(ids) != 2 || s.sup.Get(ids[1]) == nil {
+		t.Fatal("second PTY was not started", ids)
+	}
+	s.app.RecordSession(ids[1], tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "report:test"})
+	o, ok := s.prepareSessionObservation(pid)
+	if !ok {
+		t.Fatal("missing observation")
+	}
+	o.found = true
+	o.result = tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "observed:file"}
+	s.applySessionObservation(o)
+	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value == "shared-id" {
+		t.Fatalf("duplicate accepted: %+v", rec)
+	}
+}
+
+func TestReportedDuplicateCodexSessionIsNotRecorded(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-report")
+	defer s.ledgerWG.Wait()
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	if resp := s.paneSplit("test", api.PaneSplitParams{Direction: "right"}); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	if len(ids) != 2 || s.sup.Get(ids[1]) == nil {
+		t.Fatal("second PTY was not started", ids)
+	}
+	s.app.RecordSession(ids[1], tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "report:test"})
+	id := "shared-id"
+	response := s.paneReportAgent("test", api.PaneReportAgentParams{PaneID: fmtPaneID(pid), Agent: "codex", Source: "test", SessionID: &id})
+	if response.Err == nil {
+		t.Fatal("duplicate report accepted")
+	}
+	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value == id {
+		t.Fatalf("duplicate recorded: %+v", rec)
+	}
+}
+
+func TestDuplicateReportDoesNotMakeOtherConflictingSessionSafe(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-report-existing")
+	defer s.ledgerWG.Wait()
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	if resp := s.paneSplit("test", api.PaneSplitParams{Direction: "right"}); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	for _, pid := range ids {
+		s.app.RecordSession(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "observed:file"})
+	}
+	id := "shared-id"
+	response := s.paneReportAgent("test", api.PaneReportAgentParams{PaneID: fmtPaneID(ids[0]), Agent: "codex", Source: "test", SessionID: &id})
+	if response.Err == nil {
+		t.Fatal("duplicate report accepted")
+	}
+	for _, pid := range ids {
+		if view := s.resolvePaneSession(pid); view.safe || view.reason != "duplicate session id" {
+			t.Fatalf("pane %d became safe: %+v", pid, view)
+		}
 	}
 }
 

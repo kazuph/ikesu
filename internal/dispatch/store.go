@@ -301,6 +301,20 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// OpenLedger opens a separate connection after Open has initialized the schema.
+// A busy ledger write must not hold the mutex used by decision queries.
+func OpenLedger(path string) (*Store, error) {
+	conn, err := sqlite3.OpenFlags(path, sqlite3.OPEN_READWRITE|sqlite3.OPEN_URI)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return &Store{db: conn}, nil
+}
+
 // walBusyWait is how long enableWAL keeps retrying; it matches the
 // busy_timeout set in Open.
 const walBusyWait = 5 * time.Second

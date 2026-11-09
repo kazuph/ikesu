@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/model"
 	"os"
@@ -101,7 +102,7 @@ func (s *Server) popupRequest(req *api.Request) api.Response {
 	return api.Failure(req.ID, api.ErrUnknownMethod, "unknown popup operation")
 }
 
-func (s *Server) rejectOverlayLayoutRequest(req *api.Request) (api.Response, bool) {
+func (s *Server) rejectOverlayLayoutRequestContext(ctx context.Context, req *api.Request) (api.Response, bool) {
 	switch req.Method {
 	case "pane.rename", "pane.zoom", "pane.resize", "pane.move", "pane.swap", "pane.split", "pane.adjust_layout":
 	default:
@@ -112,7 +113,7 @@ func (s *Server) rejectOverlayLayoutRequest(req *api.Request) (api.Response, boo
 		return api.Response{}, false
 	}
 	blocked := false
-	s.app.Do(func() {
+	if !s.app.DoContext(ctx, func() {
 		if overlay := s.app.State().Overlay; overlay != nil {
 			for _, key := range []string{"pane_id", "source_pane_id", "target_pane_id"} {
 				if params[key] == fmtPaneID(overlay.PaneID) {
@@ -120,7 +121,9 @@ func (s *Server) rejectOverlayLayoutRequest(req *api.Request) (api.Response, boo
 				}
 			}
 		}
-	})
+	}) {
+		return api.Failure(req.ID, "server_stopping", "request canceled before execution"), true
+	}
 	if blocked {
 		return api.Failure(req.ID, "unsupported", "overlay panes do not participate in tiled layout operations"), true
 	}

@@ -12,12 +12,75 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/tui"
 )
+
+func TestAgentRestoreRejectsDuplicateSavedCodexIDs(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
+	s := newTestServer(t, "duplicate-saved")
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	saved := s.app.State().Snapshot()
+	saved.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
+		p.Agent, p.SessionKind, p.SessionID = "codex", "id", "duplicate-session"
+	})
+	path := filepath.Join(t.TempDir(), "session.json")
+	if err := session.Save(path, saved); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := session.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.app.RestoreSession(loaded)
+	defer s.sup.KillAll()
+	for _, dryRun := range []bool{true, false} {
+		result := s.runAgentRestore(dryRun)
+		if len(result.Actions) != 2 {
+			t.Fatalf("dry=%v actions=%+v", dryRun, result.Actions)
+		}
+		for _, action := range result.Actions {
+			if action.Status != "skipped" || action.Command != nil || action.Reason == nil || *action.Reason != "duplicate session id" {
+				t.Fatalf("dry=%v duplicate was not refused: %+v", dryRun, action)
+			}
+		}
+	}
+}
+
+func TestAgentRestoreRejectsDuplicateLedgerCodexIDs(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-ledger")
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.Order()
+	if len(ids) != 2 {
+		t.Fatalf("panes: %v", ids)
+	}
+	for _, pid := range ids {
+		if err := store.PutPaneSession(dispatch.PaneSession{Session: s.session, PaneID: pid, Agent: "codex", SessionKind: "id", SessionID: "duplicate-session"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.loadLedger()
+	result := s.runAgentRestore(true)
+	if len(result.Actions) != 2 {
+		t.Fatalf("actions: %+v", result.Actions)
+	}
+	for _, action := range result.Actions {
+		if action.Status != "skipped" || action.Command != nil || action.Reason == nil || *action.Reason != "duplicate session id" {
+			t.Fatalf("duplicate ledger restore: %+v", action)
+		}
+	}
+}
 
 // waitAPISocketGone polls until the api socket disappears.
 func waitAPISocketGone(t *testing.T, dir string) {
@@ -102,10 +165,11 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := store.PaneSessions("rest")
-	if err != nil {
-		t.Fatal(err)
-	}
+	var rows []dispatch.PaneSession
+	waitPromptCondition(t, func() bool {
+		rows, err = store.PaneSessions("rest")
+		return err == nil && len(rows) == 2
+	})
 	store.Close()
 	if len(rows) != 2 {
 		t.Fatalf("ledger rows = %v, want 2", rows)
@@ -120,10 +184,16 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 
 	// session.json must carry the per-pane ids too — the snapshot and the
 	// ledger both keep the exact association.
-	f := waitForSessionFile(t, dir)
 	gotIDs := map[int]string{}
-	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
-		gotIDs[p.ID] = p.SessionID
+	waitPromptCondition(t, func() bool {
+		f, err := session.Load(session.Path(dir))
+		if err != nil || f == nil {
+			return false
+		}
+		f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
+			gotIDs[p.ID] = p.SessionID
+		})
+		return gotIDs[1] == "sess-alpha" && gotIDs[2] == "sess-beta"
 	})
 	if gotIDs[1] != "sess-alpha" || gotIDs[2] != "sess-beta" {
 		t.Fatalf("session.json pane ids = %v", gotIDs)
@@ -194,6 +264,7 @@ func TestAgentRestoreSkipsPaneWithoutProcess(t *testing.T) {
 	rec := tui.AgentRecord{Agent: "claude", Kind: "id", Value: "sess-missing", Source: "restore"}
 	s.app.RecordSession(pid, rec)
 	s.ledgerPut(pid, rec)
+	s.ledgerWG.Wait()
 	result := s.runAgentRestore(false)
 	if len(result.Actions) != 1 || result.Actions[0].Status != "skipped" || result.Actions[0].Reason == nil || *result.Actions[0].Reason != "pane process not running" || result.Actions[0].Command != nil {
 		t.Fatalf("missing process action = %+v", result.Actions)

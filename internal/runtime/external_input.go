@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -14,19 +15,59 @@ func (p *Pane) RecordExternalInput() {
 	defer p.inputMu.Unlock()
 	p.lastExternalInput.Store(time.Now().UnixNano())
 	p.externalInputSeq.Add(1)
+	p.manualInputSeq.Add(1)
 }
 
 // RecordKeyInput tracks externally supplied keys separately from screen automation.
 func (p *Pane) RecordKeyInput() {
+	p.recordKeyInput(true, nil, nil)
+}
+
+// RecordKeyInputAndDo admits input together with its activity sequence.
+// fn must only enqueue input and must not wait for the PTY.
+func (p *Pane) RecordKeyInputAndDo(expected uint64, fn func()) (uint64, bool) {
+	return p.recordKeyInput(false, &expected, fn)
+}
+
+func (p *Pane) recordKeyInput(manual bool, expected *uint64, fn func()) (uint64, bool) {
 	p.inputMu.Lock()
+	if expected != nil && p.manualInputSeq.Load() != *expected {
+		p.inputMu.Unlock()
+		return 0, false
+	}
+	if manual {
+		p.manualInputSeq.Add(1)
+	}
 	now := time.Now().UnixNano()
 	p.lastExternalInput.Store(now)
 	p.lastMailExternalInput.Store(now)
 	p.externalInputSeq.Add(1)
 	p.idleActivityAt = time.Unix(0, now)
 	p.idleActivitySeq++
+	seq := p.externalInputSeq.Load()
+	if fn != nil {
+		fn()
+	}
 	p.inputMu.Unlock()
 	p.idleActivityChanged()
+	return seq, true
+}
+
+func (p *Pane) QueueExternalInput(ctx context.Context, expected uint64, data []byte, op *InputOperation) (<-chan error, error) {
+	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if p.manualInputSeq.Load() != expected {
+		return nil, fmt.Errorf("pane input interrupted submission")
+	}
+	now := time.Now().UnixNano()
+	p.lastExternalInput.Store(now)
+	p.lastMailExternalInput.Store(now)
+	p.externalInputSeq.Add(1)
+	done, err := p.queuePromptInputLocked(expected, data, op)
+	return done, err
 }
 
 func (p *Pane) idleActivityChanged() {
@@ -58,6 +99,49 @@ func (p *Pane) RestoreIdleActivity(at time.Time, seq uint64) {
 	p.inputMu.Unlock()
 }
 func (p *Pane) ExternalInputSequence() uint64 { return p.externalInputSeq.Load() }
+func (p *Pane) ManualInputSequence() uint64   { return p.manualInputSeq.Load() }
+
+// WithInputSequence admits a nonblocking input enqueue only if nobody typed
+// since the caller captured seq.
+func (p *Pane) WithInputSequence(seq uint64, fn func()) bool {
+	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	if p.manualInputSeq.Load() != seq {
+		return false
+	}
+	fn()
+	return true
+}
+
+func (p *Pane) WritePTYIfInputUnchanged(seq uint64, data []byte, op *InputOperation) (int, error) {
+	p.inputMu.Lock()
+	if p.manualInputSeq.Load() != seq {
+		p.inputMu.Unlock()
+		return 0, fmt.Errorf("pane input interrupted submission")
+	}
+	done, err := p.queuePromptInputLocked(seq, data, op)
+	p.inputMu.Unlock()
+	if err != nil {
+		return 0, err
+	}
+	if err := <-done; err != nil {
+		return 0, err
+	}
+	return len(data), nil
+}
+
+// queuePromptInputLocked admits a complete write without waiting for the PTY.
+func (p *Pane) queuePromptInputLocked(seq uint64, data []byte, op *InputOperation) (<-chan error, error) {
+	if p.currentPTY() == nil {
+		return nil, os.ErrClosed
+	}
+	done := make(chan error, 1)
+	if err := p.writer.enqueueReserved(data, done, func() bool { return p.manualInputSeq.Load() == seq }, op); err != nil {
+		return nil, err
+	}
+	p.markProcessChanged()
+	return done, nil
+}
 func (p *Pane) UserActive() bool {
 	last := p.lastExternalInput.Load()
 	return last != 0 && time.Since(time.Unix(0, last)) < ScreenPromptInputQuiet
