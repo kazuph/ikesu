@@ -40,22 +40,17 @@ func (p *Pane) UnsentAgentInput() (bool, bool) {
 }
 
 // WriteMail checks and writes under the same input admission lock.
-// The bytes are queued in order under the lock; waiting for the PTY happens
-// after it is released, so key input is never held behind a full PTY.
+// The bytes are accepted in order under the lock; nothing waits for the
+// application to read them.
 func (p *Pane) WriteMail(data []byte) (int, error) {
 	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
 	if p.mailInputActiveLocked() {
-		p.inputMu.Unlock()
 		return 0, ErrMailInputActive
 	}
 	p.lastExternalInput.Store(time.Now().UnixNano())
 	p.externalInputSeq.Add(1)
-	done, err := p.beginPTYWrite(data)
-	p.inputMu.Unlock()
-	if err != nil {
-		return 0, err
-	}
-	return p.finishPTYWrite(done)
+	return p.WriteToPTY(data)
 }
 
 func (p *Pane) visibleAgentInputLocked() bool {

@@ -31,6 +31,9 @@ type PaneTransfer struct {
 	LastMailExternalInput       int64
 	IdleActivityAt              time.Time
 	IdleActivitySeq             uint64
+	// PendingInput is input the exporting server accepted but had not
+	// written; the importing server writes it before anything else.
+	PendingInput []byte
 }
 
 func (p *Pane) startPump() {
@@ -81,6 +84,10 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 			return fail(fmt.Errorf("pause PTY: %w", err))
 		}
 		<-p.pumpDone
+		pending, err := p.pauseWriterForHandoff()
+		if err != nil {
+			return fail(err)
+		}
 		p.mu.Lock()
 		terminal, err := p.emu.MarshalHandoff()
 		if err != nil {
@@ -98,6 +105,7 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 		p.mu.Unlock()
 		v.LastMailExternalInput = p.lastMailExternalInput.Load()
 		v.IdleActivityAt, v.IdleActivitySeq = p.IdleActivity()
+		v.PendingInput = pending
 		v.Snapshot = p.Snapshot()
 		fd, err := unix.FcntlInt(uintptr(p.ptyFD), unix.F_DUPFD_CLOEXEC, 0)
 		if err != nil {
@@ -119,6 +127,7 @@ func (s *Supervisor) ResumeHandoff() {
 			}
 			p.pausing.Store(false)
 			p.startPump()
+			p.resumeWriterAfterHandoff()
 		default:
 		}
 	}
@@ -136,6 +145,7 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 			return err
 		}
 		p.lastMailExternalInput.Store(v.LastMailExternalInput)
+		_ = p.writer.enqueue(v.PendingInput)
 		p.RestoreIdleActivity(v.IdleActivityAt, v.IdleActivitySeq)
 		p.importedPID = v.PID
 		p.shellStart = v.ShellStart
@@ -174,7 +184,7 @@ func (s *Supervisor) StartImported() {
 	for _, p := range s.panes {
 		p.beginProcessWatch()
 		p.startPump()
-		go p.pumpEmuToPTY()
+		p.startPTYWriter()
 	}
 }
 

@@ -154,7 +154,7 @@ func (s *Supervisor) spawnWith(id int, cwd string, cols, rows int, extra, argv, 
 
 	p.beginProcessWatch()
 	p.startPump()
-	go p.pumpEmuToPTY()
+	p.startPTYWriter()
 	go p.waitExit()
 
 	s.mu.Lock()
@@ -175,6 +175,7 @@ func (s *Supervisor) newPane(id int, cwd string, cols, rows int) *Pane {
 
 	p := &Pane{ID: id, cwd: cwd, emu: emu, ev: s.events, done: make(chan struct{}), owner: s, idleActivityAt: time.Now()}
 	p.cursor.Visible = true
+	emu.SetResponseWriter(responseWriter{p})
 	s.setupGraphics(p)
 	emu.RegisterOscHandler(52, func(data []byte) bool {
 		// The emulator owns the complete OSC parser; the title observer
