@@ -108,6 +108,67 @@ func TestHandoffPausesWithFullClipboardEventQueue(t *testing.T) {
 	_ = p
 }
 
+func TestHandoffRollbackRedeliversClipboardEvents(t *testing.T) {
+	teststate.Lock(t)
+	s := NewSupervisor()
+	defer s.KillAll()
+	const count = 300
+	script := fmt.Sprintf("import os\nos.write(1, b'\\x1b]52;c;eA==\\x07' * %d)\nos.read(0,1)\n", count)
+	if _, err := s.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/usr/bin/python3", "-c", script}); err != nil {
+		t.Fatal(err)
+	}
+	until := time.After(2 * time.Second)
+	for len(s.events) < cap(s.events) {
+		select {
+		case <-until:
+			t.Fatal("event queue did not fill")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	type paused struct {
+		states []PaneTransfer
+		files  []*os.File
+		err    error
+	}
+	result := make(chan paused, 1)
+	go func() { states, files, err := s.PauseHandoff(); result <- paused{states, files, err} }()
+	var got paused
+	select {
+	case got = <-result:
+	case <-time.After(time.Second):
+		for len(s.events) > 0 {
+			<-s.events
+		}
+		got = <-result
+		for _, file := range got.files {
+			file.Close()
+		}
+		s.ResumeHandoff()
+		t.Fatal("handoff did not pause with a full event queue")
+	}
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	for _, file := range got.files {
+		file.Close()
+	}
+	if len(got.states) != 1 || len(got.states[0].Clipboard) != count {
+		t.Fatal("clipboard events were not captured")
+	}
+	s.ResumeHandoff()
+	for delivered := 0; delivered < count; {
+		select {
+		case event := <-s.Events():
+			if event.Kind == EventClipboard {
+				delivered++
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("rollback delivered %d clipboard events, want %d", delivered, count)
+		}
+	}
+}
+
 func TestHandoffImportedPaneExitClosesExited(t *testing.T) {
 	teststate.Lock(t)
 	old, next := NewSupervisor(), NewSupervisor()
