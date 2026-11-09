@@ -40,6 +40,7 @@ type handoffState struct {
 	LastAttention         time.Time
 	Journal               []api.EventEnvelope
 	AgentLaunches         map[int]launchTransfer
+	PluginEvents          []pluginEventWork
 	PendingClipboard      []clipboardTransfer
 }
 type launchTransfer struct{ Started, ReadySince time.Time }
@@ -136,6 +137,14 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 		return api.Failure(req.ID, "handoff_failed", "handoff already in progress")
 	}
 	defer s.handoffMu.Unlock()
+	if err := s.pausePluginWorker(); err != nil {
+		return api.Failure(req.ID, "handoff_failed", err.Error())
+	}
+	defer func() {
+		if !s.handedOff {
+			s.resumePluginWorker()
+		}
+	}()
 	var pendingInputs []<-chan struct{}
 	if !s.app.DoContext(ctx, func() {
 		s.inputHandoffFrozen = true
@@ -315,6 +324,9 @@ func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLi
 		return fmt.Errorf("handoff stream closed while reading line")
 	}
 	state := handoffState{App: s.app.HandoffState(), Panes: panes, PaneMetadata: s.paneMetadata, WorkspaceMetadata: s.workspaceMetadata, ReportSources: s.reportSources, PluginPanes: s.pluginPanes, ObservedStart: s.observedStart, LastStatus: s.lastStatus, LastAgent: s.lastAgent, NotifyLast: s.notifyLast, LastAttention: s.lastAttention, Journal: s.journal}
+	s.pluginQueueMu.Lock()
+	state.PluginEvents = append([]pluginEventWork(nil), s.pluginQueue...)
+	s.pluginQueueMu.Unlock()
 	state.PendingClipboard = s.pendingClipboard
 	state.AgentLaunches = map[int]launchTransfer{}
 	for id, l := range s.agentLaunches {
@@ -399,6 +411,9 @@ func (s *Server) restoreLive(in *handoffImport, socket string) error {
 			s.app.InvalidatePaneMetadata(pid)
 		}
 	}
+	s.pluginQueueMu.Lock()
+	s.pluginQueue = append(s.pluginQueue, in.State.PluginEvents...)
+	s.pluginQueueMu.Unlock()
 	s.pluginPanes, s.observedStart = in.State.PluginPanes, in.State.ObservedStart
 	s.lastStatus, s.lastAgent, s.notifyLast, s.lastAttention = in.State.LastStatus, in.State.LastAgent, in.State.NotifyLast, in.State.LastAttention
 	s.journal = in.State.Journal

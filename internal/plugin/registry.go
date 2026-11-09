@@ -145,6 +145,23 @@ func (s *Store) List(id string) ([]Installed, error) {
 	})
 	return out, err
 }
+
+// Snapshot reads the registry atomically published by transaction's rename.
+// It never waits for the writer's advisory lock.
+func (s *Store) Snapshot() ([]Installed, error) {
+	data, err := os.ReadFile(filepath.Join(s.ConfigRoot, "plugins.json"))
+	if os.IsNotExist(err) {
+		return []Installed{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var entries []Installed
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, fmt.Errorf("plugin registry: %w", err)
+	}
+	return entries, nil
+}
 func (s *Store) SetEnabled(id string, enabled bool) (Installed, error) {
 	var out Installed
 	err := s.transaction(true, func(entries *[]Installed) error {

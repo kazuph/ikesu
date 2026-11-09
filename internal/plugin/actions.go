@@ -38,6 +38,7 @@ type CommandLog struct {
 	Stdout         *string  `json:"stdout,omitempty"`
 	Stderr         *string  `json:"stderr,omitempty"`
 	Error          *string  `json:"error,omitempty"`
+	ServerStop     *string  `json:"server_stop,omitempty"`
 }
 
 // Engine owns running out-of-process commands; the Store owns shared data.
@@ -47,6 +48,13 @@ type Engine struct {
 	SocketPath, BinPath string
 	ConfigPath          string
 	wg                  sync.WaitGroup
+	activeMu            sync.Mutex
+	active              map[string]*activeCommand
+}
+type activeCommand struct {
+	mu    sync.Mutex
+	log   CommandLog
+	write func(CommandLog) error
 }
 
 func effectivePlatforms(item, parent []string) []string {
@@ -195,12 +203,16 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 	if err != nil {
 		return CommandLog{}, err
 	}
-	file, err := os.CreateTemp(dir, "command-*.json")
+	file, err := os.CreateTemp(dir, ".command-*")
 	if err != nil {
 		return CommandLog{}, err
 	}
-	path := file.Name()
-	file.Close()
+	reservation := file.Name()
+	defer os.Remove(reservation)
+	if err := file.Close(); err != nil {
+		return CommandLog{}, err
+	}
+	path := filepath.Join(dir, "command-"+strings.TrimPrefix(filepath.Base(reservation), ".command-")+".json")
 	now := time.Now().UnixMilli()
 	log := CommandLog{LogID: strings.TrimSuffix(filepath.Base(path), ".json"), PluginID: p.ID, ActionID: action, Event: event, Command: argv, Status: "running", StartedUnixMS: now}
 	write := func(record CommandLog) error {
@@ -246,6 +258,13 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 		}
 		return log, err
 	}
+	active := &activeCommand{log: log, write: write}
+	e.activeMu.Lock()
+	if e.active == nil {
+		e.active = map[string]*activeCommand{}
+	}
+	e.active[path] = active
+	e.activeMu.Unlock()
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
@@ -253,7 +272,8 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 		finished := time.Now().UnixMilli()
 		code := cmd.ProcessState.ExitCode()
 		out, errout := stdout.String(), stderr.String()
-		record := log
+		active.mu.Lock()
+		record := active.log
 		record.Status = "succeeded"
 		if err != nil {
 			record.Status = "failed"
@@ -267,8 +287,33 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 		if err := write(record); err != nil {
 			fmt.Fprintf(os.Stderr, "ikesu plugin log %s: %v\n", record.LogID, err)
 		}
+		active.log = record
+		active.mu.Unlock()
+		e.activeMu.Lock()
+		delete(e.active, path)
+		e.activeMu.Unlock()
 	}()
 	return log, nil
+}
+
+// MarkRunning records why an unfinished hook may have no final record.
+func (e *Engine) MarkRunning(reason string) error {
+	e.activeMu.Lock()
+	defer e.activeMu.Unlock()
+	for _, active := range e.active {
+		active.mu.Lock()
+		if active.log.Status != "running" || active.log.Event == "" {
+			active.mu.Unlock()
+			continue
+		}
+		active.log.ServerStop = &reason
+		err := active.write(active.log)
+		active.mu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (e *Engine) Wait() { e.wg.Wait() }
 func (s *Store) Logs(pluginID string, limit *uint) ([]CommandLog, error) {
@@ -324,6 +369,68 @@ func (e *Engine) Event(name string, data json.RawMessage, context Context) error
 				continue
 			}
 			if _, err = e.start(p, hook.Command, "", name, context, map[string]string{"IKESU_PLUGIN_EVENT": name, "IKESU_PLUGIN_EVENT_JSON": string(data)}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// EventInstalled dispatches the registration snapshot supplied by the server.
+func (e *Engine) EventInstalled(plugins []Installed, name string, data json.RawMessage, context Context) error {
+	for _, p := range plugins {
+		if !p.Enabled {
+			continue
+		}
+		for _, hook := range p.Events {
+			if hook.On != name || !supported(effectivePlatforms(hook.Platforms, p.Platforms)) {
+				continue
+			}
+			if _, err := e.start(p, hook.Command, "", name, context, map[string]string{"IKESU_PLUGIN_EVENT": name, "IKESU_PLUGIN_EVENT_JSON": string(data)}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// RecordDiscarded records queued events that cannot start during shutdown.
+func (e *Engine) RecordDiscarded(items []Installed, name string) error {
+	for _, p := range items {
+		if !p.Enabled {
+			continue
+		}
+		for _, hook := range p.Events {
+			if hook.On != name || !supported(effectivePlatforms(hook.Platforms, p.Platforms)) {
+				continue
+			}
+			dir, err := e.Store.StateDir(p.ID)
+			if err != nil {
+				return err
+			}
+			f, err := os.CreateTemp(dir, ".discard-*")
+			if err != nil {
+				return err
+			}
+			tmp := f.Name()
+			id := "command-" + strings.TrimPrefix(filepath.Base(tmp), ".discard-")
+			reason := "server stopped before event dispatch"
+			log := CommandLog{LogID: id, PluginID: p.ID, Event: name, Command: hook.Command, Status: "discarded", StartedUnixMS: time.Now().UnixMilli(), Error: &reason}
+			data, err := json.Marshal(log)
+			if err == nil {
+				_, err = f.Write(data)
+			}
+			if err == nil {
+				err = f.Sync()
+			}
+			if closeErr := f.Close(); err == nil {
+				err = closeErr
+			}
+			if err == nil {
+				err = os.Rename(tmp, filepath.Join(dir, id+".json"))
+			}
+			if err != nil {
+				_ = os.Remove(tmp)
 				return err
 			}
 		}

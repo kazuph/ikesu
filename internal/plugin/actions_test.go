@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -166,5 +167,68 @@ command=["/bin/echo","cached"]
 	}
 	if _, _, err := e.Invoke(p.ID, "run", Context{}); err == nil {
 		t.Fatal("executed cached command")
+	}
+}
+
+func TestEventLogReadsDuringStart(t *testing.T) {
+	e, p := actionEngine(t, minimal+`[[events]]
+on="worktree.created"
+command=["/usr/bin/true"]
+`)
+	done := make(chan error, 1)
+	go func() {
+		for n := 0; n < 20; n++ {
+			if err := e.Event("worktree.created", json.RawMessage(`{}`), Context{}); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	for {
+		if _, err := e.Store.Logs(p.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Wait()
+			return
+		default:
+		}
+	}
+}
+
+func TestRunningEventRecordsServerStop(t *testing.T) {
+	e, p := actionEngine(t, minimal+`[[events]]
+on="worktree.created"
+command=["/bin/sh","-c","read value < \"$IKESU_PLUGIN_STATE_DIR/gate\""]
+`)
+	gate := filepath.Join(e.Store.StateRoot, "plugins", p.ID, "gate")
+	if err := syscall.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Event("worktree.created", json.RawMessage(`{}`), Context{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.MarkRunning("server_stopped"); err != nil {
+		t.Fatal(err)
+	}
+	logs, err := e.Store.Logs(p.ID, nil)
+	if err != nil || len(logs) != 1 || logs[0].ServerStop == nil || *logs[0].ServerStop != "server_stopped" {
+		t.Fatalf("running logs=%+v err=%v", logs, err)
+	}
+	gateFile, err := os.OpenFile(gate, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = gateFile.WriteString("go\n")
+	_ = gateFile.Close()
+	e.Wait()
+	logs, err = e.Store.Logs(p.ID, nil)
+	if err != nil || len(logs) != 1 || logs[0].Status != "succeeded" || logs[0].ServerStop == nil {
+		t.Fatalf("finished logs=%+v err=%v", logs, err)
 	}
 }
