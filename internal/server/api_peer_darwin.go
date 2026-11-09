@@ -2,29 +2,36 @@ package server
 
 import "golang.org/x/sys/unix"
 
-func waitPeerHangup(fd, stop int) {
-	kq, err := unix.Kqueue()
+func newPeerEventQueue() (int, error) { return unix.Kqueue() }
+
+func addPeerEvent(queue, fd int, read bool) error {
+	var event unix.Kevent_t
+	filter := unix.EVFILT_WRITE
+	if read {
+		filter = unix.EVFILT_READ
+	}
+	unix.SetKevent(&event, fd, filter, unix.EV_ADD|unix.EV_CLEAR)
+	_, err := unix.Kevent(queue, []unix.Kevent_t{event}, nil, nil)
+	return err
+}
+
+func deletePeerEvent(queue, fd int) {
+	var event unix.Kevent_t
+	unix.SetKevent(&event, fd, unix.EVFILT_WRITE, unix.EV_DELETE)
+	_, _ = unix.Kevent(queue, []unix.Kevent_t{event}, nil, nil)
+}
+
+func waitPeerEvents(queue int) ([]int, error) {
+	var events [128]unix.Kevent_t
+	n, err := unix.Kevent(queue, nil, events[:], nil)
 	if err != nil {
-		return
+		return nil, err
 	}
-	defer unix.Close(kq)
-	changes := make([]unix.Kevent_t, 2)
-	unix.SetKevent(&changes[0], fd, unix.EVFILT_WRITE, unix.EV_ADD|unix.EV_CLEAR)
-	unix.SetKevent(&changes[1], stop, unix.EVFILT_READ, unix.EV_ADD|unix.EV_CLEAR)
-	events := make([]unix.Kevent_t, 2)
-	for {
-		n, err := unix.Kevent(kq, changes, events, nil)
-		if err == unix.EINTR {
-			continue
-		}
-		if err != nil {
-			return
-		}
-		changes = nil
-		for _, event := range events[:n] {
-			if int(event.Ident) == stop || event.Flags&(unix.EV_EOF|unix.EV_ERROR) != 0 {
-				return
-			}
+	ready := make([]int, 0, n)
+	for _, e := range events[:n] {
+		if e.Filter == unix.EVFILT_READ || e.Flags&(unix.EV_EOF|unix.EV_ERROR) != 0 {
+			ready = append(ready, int(e.Ident))
 		}
 	}
+	return ready, nil
 }
