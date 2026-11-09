@@ -42,7 +42,8 @@ for theme in [NSAppearance.Name.aqua, .darkAqua] {
   precondition(visible(controller.submitButton,in:content),"submit visible")
   let card=controller.mediaCards[source]!
   precondition(card.convert(card.bounds,to:content).minX > content.bounds.width/2,"media in right column")
-  let body=labels(content).first {$0.string.hasPrefix("主要な説明")}!
+  // A command approval shows its long request reason with the 申請文 label.
+  let body=labels(content).first {$0.string.hasPrefix(kind=="command_guard" ? "申請文：主要な説明" : "主要な説明")}!
   precondition(body.enclosingScrollView !== controller.richScroll,"body scroll independent")
   let location = content.subviews.flatMap {labels($0)}.first {$0.string == input["location"] as? String}
   // Location uses a wrapping NSTextField, so check all fields independently.
@@ -166,12 +167,14 @@ for index in 1...3 {
  print("ORDER numbers=\(numbers) own=\(ordered.map{$0.windowNumber})")
  precondition(ordered.count==index)
  precondition(ordered.last===host.windows["stack-\(index).json"]!.panel,"new panel must be behind existing panels")
- precondition(app.keyWindow===previous,"new panel cannot steal key window")
+ // The first panel comes out in front and takes the keyboard; later ones sit
+ // behind it and leave the keyboard where it was (2026-11-09).
+ precondition(app.keyWindow===(index==1 ? host.windows["stack-1.json"]!.panel : previous),"only a frontmost new panel takes the key window")
  precondition(NSWorkspace.shared.frontmostApplication?.processIdentifier==before,"new panel cannot activate app")
 }
 host.closeAll()
 try JSONSerialization.data(withJSONObject:rows,options:[.prettyPrinted,.sortedKeys]).write(to:URL(fileURLWithPath:root+"/native-metrics.json"))
-print("DISPLAY_NATIVE_PASS cases=4 choicesAlwaysVisible=1 mediaRight=1 videoMutedPaused=1 commentTransitions=1 newWindowsBehind=3 focusPreserved=1")
+print("DISPLAY_NATIVE_PASS cases=4 choicesAlwaysVisible=1 mediaRight=1 videoMutedPaused=1 commentTransitions=1 newWindowsBehind=3 focusPreserved=1 frontTakesKey=1")
 
 }
 Task { @MainActor in do { try await run(); exit(0) } catch { fputs("\(error)\n",stderr); exit(1) } }
