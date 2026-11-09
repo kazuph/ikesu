@@ -101,6 +101,87 @@ func TestPaneSendInputRejectsExcessReservedText(t *testing.T) {
 	}
 }
 
+func TestPaneSendInputCapacityPreservesAcceptedOrderAfterPTYDrain(t *testing.T) {
+	teststate.Lock(t)
+	dir := t.TempDir()
+	gate, ready, received := filepath.Join(dir, "gate"), filepath.Join(dir, "ready"), filepath.Join(dir, "received")
+	if err := unix.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "shell")
+	body := fmt.Sprintf("#!/bin/sh\nstty raw -echo; touch %q; read line < %q; exec cat > %q\n", ready, gate, received)
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "SHELL", script)
+	stateDir, err := os.MkdirTemp("/tmp", "ikesu-capacity-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(stateDir) })
+	teststate.Setenv(t, "IKESU_STATE_DIR", stateDir)
+	apiDir, done := startServerAt(t, "capacity")
+	defer stopServer(t, apiDir, done)
+	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
+	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "first", Keys: []string{"Enter"}}, nil)
+	a, b := strings.Repeat("a", 3<<20), strings.Repeat("b", 3<<20)
+	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: a}, nil)
+	apiOK(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: b}, nil)
+	rejected := apiReq(t, apiDir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: a})
+	if rejected.Err == nil || rejected.Err.Code != "pane_input_failed" {
+		t.Fatalf("over-limit API input accepted: %+v", rejected.Err)
+	}
+	f, err := os.OpenFile(gate, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("go\n")
+	_ = f.Close()
+	want := "first\r" + a + b
+	waitPromptCondition(t, func() bool { info, err := os.Stat(received); return err == nil && info.Size() >= int64(len(want)) })
+	data, err := os.ReadFile(received)
+	if err != nil || string(data) != want {
+		t.Fatalf("received %d bytes, want %d ordered bytes: %v", len(data), len(want), err)
+	}
+}
+
+func TestHandoffCancellationReopensInputAdmission(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "handoff-input-cancel")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	appDone := make(chan struct{})
+	go func() { s.app.Run(); close(appDone) }()
+	defer func() { s.app.Stop(); <-appDone }()
+	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
+	hold := reserveTestInput(t, p, 0)
+	defer hold.Release()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan api.Response, 1)
+	go func() {
+		done <- s.liveHandoff(ctx, &api.Request{ID: "test", Params: api.MarshalParams(api.ServerLiveHandoffParams{})})
+	}()
+	waitPromptCondition(t, func() bool { var frozen bool; s.app.Do(func() { frozen = s.inputHandoffFrozen }); return frozen })
+	var during api.Response
+	s.app.Do(func() { during = s.paneSendInput("test", api.PaneSendInputParams{PaneID: "p1", Text: "blocked"}) })
+	if during.Err == nil || during.Err.Code != "handoff_in_progress" {
+		t.Fatalf("input accepted during handoff: %+v", during)
+	}
+	cancel()
+	response := <-done
+	if response.Err == nil {
+		t.Fatal("canceled handoff succeeded")
+	}
+	var after api.Response
+	s.app.Do(func() { after = s.paneSendInput("test", api.PaneSendInputParams{PaneID: "p1", Text: "accepted"}) })
+	if after.Err != nil {
+		t.Fatalf("input still frozen after cancellation: %+v", after.Err)
+	}
+}
+
 func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "lines")
@@ -135,6 +216,47 @@ func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
 	waitPromptCondition(t, func() bool { data, _ = os.ReadFile(path); return strings.HasSuffix(string(data), "second\n") })
 	if string(data) != "first\nsecond\n" {
 		t.Fatalf("combined input lines: %q", data)
+	}
+}
+
+func TestAgentPromptManualInputCancelsPendingEnter(t *testing.T) {
+	teststate.Lock(t)
+	path, ready := filepath.Join(t.TempDir(), "line"), filepath.Join(t.TempDir(), "ready")
+	script := filepath.Join(t.TempDir(), "shell")
+	body := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; IFS= read -r line; printf '%%s\\n' \"$line\" > %q\n", ready, path)
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "SHELL", script)
+	s := newTestServer(t, "prompt-manual-interrupt")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
+	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
+	seq := p.ManualInputSequence()
+	op := reserveTestInput(t, p, len("first"), uv.KeyPressEvent{Code: uv.KeyEnter})
+	done := make(chan error, 1)
+	go func() { done <- s.submitAgentPrompt(context.Background(), p, op, seq, "first", false) }()
+	waitPromptCondition(t, func() bool { return strings.Contains(p.ScreenText(), "first") })
+	p.RecordKeyInput()
+	if _, err := p.WriteToPTY([]byte("human")); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil {
+		t.Fatal("manual interruption was not reported")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("interrupted input submitted: %v", err)
+	}
+	if _, err := p.WriteToPTY([]byte("\r")); err != nil {
+		t.Fatal(err)
+	}
+	var data []byte
+	waitPromptCondition(t, func() bool { data, _ = os.ReadFile(path); return len(data) != 0 })
+	if string(data) != "firsthuman\n" {
+		t.Fatalf("manual input = %q", data)
 	}
 }
 
