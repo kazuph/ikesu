@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/status"
 	"time"
@@ -118,3 +119,14 @@ func (a *App) RestoreHandoff(t HandoffState) {
 
 // RetireHandoff exits the loop without invoking the normal quit effects.
 func (a *App) RetireHandoff() { a.quit = true; a.quitHook = nil }
+
+// BeginHandoff and EndHandoff run on the app loop.
+func (a *App) BeginHandoff() error {
+	if a.worktreeMutations != 0 {
+		return fmt.Errorf("worktree operation in progress")
+	}
+	a.handoffStarting = true
+	return nil
+}
+
+func (a *App) EndHandoff() { a.handoffStarting = false }

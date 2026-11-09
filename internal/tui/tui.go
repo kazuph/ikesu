@@ -310,6 +310,8 @@ type App struct {
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
 	worktreePending                          map[workspaceIdentity]int
+	worktreeMutations                        int
+	handoffStarting                          bool
 	gitActivity                              *gitActivityState
 	branchCache                              map[string]*branchCacheEntry
 	gitAt                                    time.Time

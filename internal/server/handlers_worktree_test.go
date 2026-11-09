@@ -154,3 +154,113 @@ func subscribe(t *testing.T, dir string, kinds []string) (net.Conn, *bufio.Reade
 	}
 	return conn, rd
 }
+
+func TestLiveHandoffRejectsWorktreeCreateInProgress(t *testing.T) {
+	teststate.Lock(t)
+	repo := gitRepo(t)
+	root := t.TempDir()
+	gatePath, readyPath := filepath.Join(root, "gate"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(gatePath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(readyPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(gatePath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	hook := filepath.Join(repo, ".git", "hooks", "post-checkout")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nprintf ready > '"+readyPath+"'\nread x < '"+gatePath+"'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	dir, done := startTestServer(t)
+	defer func() { _, _ = gate.WriteString("go\n"); stopServer(t, dir, done) }()
+	branch, path := "handoff-create", filepath.Join(root, "checkout")
+	conn, response := decisionStream(t, dir, api.MethodWorktreeCreate, api.WorktreeCreateParams{Cwd: &repo, Branch: &branch, Path: &path})
+	defer conn.Close()
+	ready, err := os.Open(readyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = bufio.NewReader(ready).ReadString('y')
+	ready.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handoff, result := decisionStream(t, dir, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{})
+	defer handoff.Close()
+	line, err := result.ReadBytes('\n')
+	_, _ = gate.WriteString("go\n")
+	if err != nil || !strings.Contains(string(line), "worktree operation in progress") {
+		t.Fatalf("handoff must reject pending worktree operation: %s %v", line, err)
+	}
+	line, err = response.ReadBytes('\n')
+	if err != nil || !strings.Contains(string(line), "worktree_created") {
+		t.Fatalf("creation did not complete: %s %v", line, err)
+	}
+}
+
+func TestLiveHandoffRejectsWorktreeRemovalInProgress(t *testing.T) {
+	teststate.Lock(t)
+	repo := gitRepo(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "tracked"), []byte("tracked"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "tracked"}, {"-c", "user.name=Test", "-c", "user.email=t@t", "commit", "-qm", "tracked"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git: %s %v", out, err)
+		}
+	}
+	dir, done := startTestServer(t)
+	branch, path := "handoff-remove", filepath.Join(root, "checkout")
+	var created api.WorktreeCreatedResult
+	apiOK(t, dir, api.MethodWorktreeCreate, api.WorktreeCreateParams{Cwd: &repo, Branch: &branch, Path: &path}, &created)
+	gatePath, readyPath := filepath.Join(root, "gate"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(gatePath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(readyPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(gatePath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n"); stopServer(t, dir, done) }()
+	released, hook := filepath.Join(root, "released"), filepath.Join(root, "fsmonitor")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nif [ ! -f '"+released+"' ]; then\nprintf ready > '"+readyPath+"'\nread x < '"+gatePath+"'\n: > '"+released+"'\nfi\nprintf '\\0'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", repo, "config", "core.fsmonitor", hook).CombinedOutput(); err != nil {
+		t.Fatalf("git config: %s %v", out, err)
+	}
+	conn, response := decisionStream(t, dir, api.MethodWorktreeRemove, api.WorktreeRemoveParams{WorkspaceID: created.Workspace.WorkspaceID})
+	defer conn.Close()
+	ready, err := os.Open(readyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = bufio.NewReader(ready).ReadString('y')
+	ready.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handoff, result := decisionStream(t, dir, api.MethodServerLiveHandoff, api.ServerLiveHandoffParams{})
+	defer handoff.Close()
+	line, err := result.ReadBytes('\n')
+	_, _ = gate.WriteString("go\n")
+	if err != nil || !strings.Contains(string(line), "worktree operation in progress") {
+		t.Fatalf("handoff must reject pending removal: %s %v", line, err)
+	}
+	line, err = response.ReadBytes('\n')
+	if err != nil || !strings.Contains(string(line), "worktree_removed") {
+		t.Fatalf("removal did not complete: %s %v", line, err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("checkout remains after removal: %v", err)
+	}
+}

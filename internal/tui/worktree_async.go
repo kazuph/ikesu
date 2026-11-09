@@ -59,6 +59,7 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	var target *workspaceGitTarget
 	var directory, appCwd string
 	var reserved *workspaceIdentity
+	mutating := req.Operation == "create" || req.Operation == "remove"
 	owner := a
 	if a.viewerOwner != nil {
 		owner = a.viewerOwner
@@ -68,6 +69,10 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 		prepared = true
 		if req.WorkspaceID != nil && req.Cwd != "" {
 			err = fmt.Errorf("workspace_id and cwd are mutually exclusive")
+			return
+		}
+		if mutating && owner.handoffStarting {
+			err = fmt.Errorf("handoff in progress")
 			return
 		}
 		var w *model.Workspace
@@ -120,6 +125,9 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 		if req.Cwd == "" {
 			req.Cwd = a.cwd
 		}
+		if mutating {
+			owner.worktreeMutations++
+		}
 		directory, appCwd = a.sidebarConfig.Worktrees.Directory, a.cwd
 	})
 	if !prepared {
@@ -128,11 +136,14 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	if err != nil {
 		return result, err
 	}
-	if reserved != nil {
+	if mutating {
 		defer a.Do(func() {
-			owner.worktreePending[*reserved]--
-			if owner.worktreePending[*reserved] == 0 {
-				delete(owner.worktreePending, *reserved)
+			owner.worktreeMutations--
+			if reserved != nil {
+				owner.worktreePending[*reserved]--
+				if owner.worktreePending[*reserved] == 0 {
+					delete(owner.worktreePending, *reserved)
+				}
 			}
 		})
 	}

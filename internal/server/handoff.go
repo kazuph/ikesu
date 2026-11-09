@@ -151,7 +151,14 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), handoffWait)
 	defer cancel()
 	var handoffErr error
-	s.app.DoWithProcessPollingPaused(func() { handoffErr = s.transferHandoff(ctx, exe, p) })
+	s.app.DoWithProcessPollingPaused(func() {
+		handoffErr = s.app.BeginHandoff()
+		if handoffErr != nil {
+			return
+		}
+		defer s.app.EndHandoff()
+		handoffErr = s.transferHandoff(ctx, exe, p)
+	})
 	if handoffErr != nil {
 		return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
 	}
