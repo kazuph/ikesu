@@ -110,6 +110,9 @@ func readonlySQL(s string) bool {
 }
 func writeMethod(s string) bool { return has([]string{"POST", "PUT", "PATCH", "DELETE"}, s) }
 func httpMethod(a []string, cmd string) string {
+	if cmd == "curl" {
+		return curlHTTPMethod(a)
+	}
 	if has([]string{"http", "https"}, cmd) {
 		for _, value := range a {
 			if writeMethod(value) {
