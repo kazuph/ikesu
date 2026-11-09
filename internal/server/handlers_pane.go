@@ -443,7 +443,7 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 	}
 	safe := kind != "" && session.SafeSessionValue(kind, value)
 	if safe && p.Agent == "codex" && kind == "id" && s.codexSessionIDTaken(pid, value) {
-		if rec, ok := s.app.SessionRecord(pid); ok && !strings.HasPrefix(rec.Source, "report:") {
+		if rec, ok := s.app.SessionRecord(pid); ok && rec.Value != value && !strings.HasPrefix(rec.Source, "report:") {
 			rec.Kind, rec.Value = "", ""
 			s.app.RecordSession(pid, rec)
 			s.ledgerDel(pid)

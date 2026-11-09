@@ -160,6 +160,33 @@ func TestReportedDuplicateCodexSessionIsNotRecorded(t *testing.T) {
 	}
 }
 
+func TestDuplicateReportDoesNotMakeOtherConflictingSessionSafe(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-report-existing")
+	defer s.ledgerWG.Wait()
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	if resp := s.paneSplit("test", api.PaneSplitParams{Direction: "right"}); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.PaneIDs()
+	for _, pid := range ids {
+		s.app.RecordSession(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "observed:file"})
+	}
+	id := "shared-id"
+	response := s.paneReportAgent("test", api.PaneReportAgentParams{PaneID: fmtPaneID(ids[0]), Agent: "codex", Source: "test", SessionID: &id})
+	if response.Err == nil {
+		t.Fatal("duplicate report accepted")
+	}
+	for _, pid := range ids {
+		if view := s.resolvePaneSession(pid); view.safe || view.reason != "duplicate session id" {
+			t.Fatalf("pane %d became safe: %+v", pid, view)
+		}
+	}
+}
+
 func TestScheduledSessionCoalescesOverlappingChanges(t *testing.T) {
 	teststate.Lock(t)
 	s := newTestServer(t, "coalesced-save")
