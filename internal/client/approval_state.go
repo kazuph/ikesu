@@ -24,6 +24,7 @@ type approvalState struct {
 	textMode  bool
 	reason    string
 	scroll    int
+	follow    bool
 	waiting   bool
 	painted   string
 }
@@ -56,6 +57,7 @@ func (s *approvalState) update(p *endpoint.DecisionProjection, focused string, n
 		}
 	}
 	if oldOpen != "" && !exists {
+		s.follow = false
 		s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
 		s.checked, s.textMode = nil, false
 		s.painted = ""
@@ -75,6 +77,7 @@ func (s *approvalState) dismiss() {
 	if s.open != "" {
 		s.dismissed[s.open] = true
 	}
+	s.follow = false
 	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
 	s.checked, s.textMode = nil, false
 	s.painted = ""
@@ -84,6 +87,7 @@ func (s *approvalState) openPane(pane string) {
 		if d.Origin.PaneID == pane {
 			s.painted = ""
 			s.checked, s.textMode = nil, false
+			s.follow = false
 			s.open, s.selected, s.reason, s.scroll, s.waiting = d.DecisionID, "", "", 0, false
 			return
 		}
@@ -93,6 +97,7 @@ func (s *approvalState) focus(pane string) {
 	if s.pane == pane {
 		return
 	}
+	s.follow = false
 	s.open, s.selected, s.reason, s.scroll, s.waiting = "", "", "", 0, false
 	s.checked, s.textMode = nil, false
 	s.painted = ""
@@ -119,6 +124,30 @@ func (s *approvalState) selectOption(number int) {
 	if d != nil && number > 0 && number <= len(d.Options) {
 		s.selected = d.Options[number-1].ID
 	}
+}
+
+// moveSelection selects the option above (-1) or below (+1) the current one;
+// with nothing selected, down picks the first option and up the last.
+func (s *approvalState) moveSelection(step int) {
+	d := s.current()
+	if d == nil || len(d.Options) == 0 {
+		return
+	}
+	at := -1
+	for i, option := range d.Options {
+		if option.ID == s.selected {
+			at = i
+		}
+	}
+	switch {
+	case at < 0 && step > 0:
+		at = 0
+	case at < 0:
+		at = len(d.Options) - 1
+	default:
+		at = min(len(d.Options)-1, max(0, at+step))
+	}
+	s.selected, s.follow = d.Options[at].ID, true
 }
 
 func (s *approvalState) selectedReject() bool {

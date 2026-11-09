@@ -15,6 +15,8 @@ type Approval struct {
 	Title  string
 	Lines  []string
 	Scroll int
+	// Follow keeps the selected option line in view instead of Scroll.
+	Follow bool
 	Late   bool
 	Kinds  []ApprovalLineKind
 }
@@ -149,6 +151,19 @@ func drawApproval(f *Frame, in Input, out *Output) {
 		f.Text(x+width-11, y, " esc close ", uv.Style{Fg: f.Palette.SurfDim, Bg: f.Palette.Accent, Attrs: uv.AttrBold}, x+width)
 	}
 	start := max(0, min(in.Approval.Scroll, max(0, len(in.Approval.Lines)-(height-1))))
+	if in.Approval.Follow && height > 1 {
+		for i, kind := range in.Approval.Kinds {
+			if !kind.Selected {
+				continue
+			}
+			if i < start {
+				start = i
+			} else if i >= start+height-1 {
+				start = i - (height - 2)
+			}
+			break
+		}
+	}
 	for i, line := range in.Approval.Lines[start:] {
 		if i >= height-1 {
 			break
