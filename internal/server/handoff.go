@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -122,7 +123,7 @@ func validateHandoffStorage(fd int) error {
 
 // The app loop remains frozen during the transaction. The retiring server
 // owns its descriptors until the importer has accepted state and started.
-func (s *Server) liveHandoff(req *api.Request) api.Response {
+func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response {
 	var p api.ServerLiveHandoffParams
 	if err := req.DecodeParams(&p); err != nil {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
@@ -148,7 +149,9 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 		return api.Failure(req.ID, "handoff_failed", err.Error())
 	}
 	var handoffErr error
-	s.app.DoWithProcessPollingPaused(func() { handoffErr = s.transferHandoff(exe, p) })
+	if !s.app.DoWithProcessPollingPausedContext(ctx, func() { handoffErr = s.transferHandoff(exe, p) }) {
+		return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+	}
 	if handoffErr != nil {
 		return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
 	}

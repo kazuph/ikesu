@@ -6,6 +6,7 @@ package server
 // events.wait resolves on a matching future event.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -584,7 +585,7 @@ var matchFilters = map[string]bool{
 }
 
 // eventsWait handles events.wait outside the app loop.
-func (s *Server) eventsWait(req *api.Request) api.Response {
+func (s *Server) eventsWait(ctx context.Context, req *api.Request) api.Response {
 	var p api.EventsWaitParams
 	if err := req.DecodeParams(&p); err != nil {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
@@ -607,10 +608,12 @@ func (s *Server) eventsWait(req *api.Request) api.Response {
 	}
 	if paneID, ok := filters["pane_id"]; ok {
 		var found bool
-		s.app.Do(func() {
+		if !s.app.DoContext(ctx, func() {
 			_, wi, _, ok := s.findPane(paneID)
 			found = ok && wi >= 0
-		})
+		}) {
+			return api.Failure(req.ID, api.ErrTimeout, "request canceled")
+		}
 		if !found {
 			return s.paneNotFound(req.ID, paneID)
 		}
@@ -660,6 +663,8 @@ func (s *Server) eventsWait(req *api.Request) api.Response {
 	case <-timer.C:
 		return api.Failure(req.ID, api.ErrTimeout,
 			fmt.Sprintf("timed out after %s waiting for event", timeout))
+	case <-ctx.Done():
+		return api.Failure(req.ID, api.ErrTimeout, "request canceled")
 	}
 }
 
@@ -681,7 +686,7 @@ func sortedKeys(m []string) []string {
 
 // waitForOutput handles pane.wait_for_output off the app loop: it polls the
 // pane's text until the match hits or the deadline passes.
-func (s *Server) waitForOutput(req *api.Request) api.Response {
+func (s *Server) waitForOutput(ctx context.Context, req *api.Request) api.Response {
 	var p api.PaneWaitForOutputParams
 	if err := req.DecodeParams(&p); err != nil {
 		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
@@ -729,7 +734,7 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 	for {
 		var resp api.Response
 		var again bool
-		s.app.Do(func() {
+		if !s.app.DoContext(ctx, func() {
 			pid, wi, ti, ok := s.findPane(p.PaneID)
 			if !ok {
 				resp = s.paneNotFound(req.ID, p.PaneID)
@@ -785,7 +790,9 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 				MatchedLine: matchedLine,
 				Read:        raw,
 			})
-		})
+		}) {
+			return api.Failure(req.ID, api.ErrTimeout, "request canceled")
+		}
 		if resp.Result != nil || resp.Err != nil {
 			return resp
 		}
@@ -793,6 +800,12 @@ func (s *Server) waitForOutput(req *api.Request) api.Response {
 			return api.Failure(req.ID, api.ErrTimeout,
 				fmt.Sprintf("timed out after %s waiting for output", timeout))
 		}
-		time.Sleep(eventWaitPoll)
+		timer := time.NewTimer(eventWaitPoll)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return api.Failure(req.ID, api.ErrTimeout, "request canceled")
+		}
 	}
 }

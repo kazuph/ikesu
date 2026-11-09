@@ -50,6 +50,7 @@ func (p *Pane) WriteMail(data []byte) (int, error) {
 	}
 	p.lastExternalInput.Store(time.Now().UnixNano())
 	p.externalInputSeq.Add(1)
+	p.manualInputSeq.Add(1)
 	done, err := p.beginPTYWrite(data)
 	p.inputMu.Unlock()
 	if err != nil {

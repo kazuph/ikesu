@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -242,7 +243,7 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 	}
 	return api.Failure(req.ID, api.ErrUnknownMethod, "unknown decision method")
 }
-func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
+func (s *Server) serveDecisionWait(ctx context.Context, conn net.Conn, req *api.Request) {
 	var p api.DecisionWaitParams
 	if err := req.DecodeParams(&p); err != nil {
 		_ = api.WriteResponse(conn, api.Failure(req.ID, api.ErrInvalidRequest, err.Error()))
@@ -263,11 +264,13 @@ func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
 	for {
 		var resp api.Response
 		var changed, stopped <-chan struct{}
-		s.app.Do(func() {
+		if !s.app.DoContext(ctx, func() {
 			resp = s.decisionRequest(&api.Request{ID: req.ID, Method: api.MethodDecisionGet, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: p.DecisionID})})
 			changed = s.decisions.changed
 			stopped = s.decisions.stopped
-		})
+		}) {
+			return
+		}
 		// Do may skip the callback once the app stops. Close the transport
 		// so the caller retries the same decision on the successor server.
 		if s.closing.Load() != 0 {
@@ -296,9 +299,11 @@ func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
 		case <-changed:
 			continue
 		case <-timeout:
-			s.app.Do(func() {
+			if !s.app.DoContext(ctx, func() {
 				resp = s.decisionRequest(&api.Request{ID: req.ID, Method: api.MethodDecisionGet, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: p.DecisionID})})
-			})
+			}) {
+				return
+			}
 			_ = api.WriteResponse(conn, resp)
 			return
 		}

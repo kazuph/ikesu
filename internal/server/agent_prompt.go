@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -37,7 +38,7 @@ func (s *Server) promptTarget(id, target string) (*runtime.Pane, api.AgentInfo, 
 	return pane, s.agentInfoAt(t.pid, t.wsIdx, t.tabIdx), nil
 }
 
-func (s *Server) agentPrompt(req *api.Request) api.Response {
+func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response {
 	requestStarted := time.Now()
 	var p api.AgentPromptParams
 	if err := req.DecodeParams(&p); err != nil {
@@ -58,10 +59,15 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 			}
 		}
 	}
+	if p.Wait != nil && p.Wait.TimeoutMS != nil && *p.Wait.TimeoutMS == 0 {
+		return api.Failure(req.ID, api.ErrTimeout, "timed out waiting for agent status")
+	}
 	var pane *runtime.Pane
+	var op *runtime.InputOperation
+	var manualSequence uint64
 	var info api.AgentInfo
 	var failure *api.Error
-	s.app.Do(func() {
+	if !s.app.DoContext(ctx, func() {
 		pane, info, failure = s.promptTarget(req.ID, p.Target)
 		if failure != nil {
 			return
@@ -78,18 +84,32 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 		case !info.InteractiveRdy:
 			failure = &api.Error{Code: "agent_not_ready", Message: "agent is not ready"}
 		}
-	})
+		if failure == nil {
+			manualSequence = pane.ManualInputSequence()
+			op = pane.ReserveInputOperation()
+		}
+	}) {
+		return api.Failure(req.ID, "agent_prompt_failed", "request canceled before execution")
+	}
 	if failure != nil {
 		return api.Failure(req.ID, failure.Code, failure.Message)
-	}
-	if p.Wait != nil && p.Wait.TimeoutMS != nil && *p.Wait.TimeoutMS == 0 {
-		return api.Failure(req.ID, api.ErrTimeout, "timed out waiting for agent status")
 	}
 	if pane == nil {
 		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
 	}
+	if !op.Wait(ctx) {
+		return api.Failure(req.ID, "agent_prompt_failed", "request canceled before input")
+	}
+	locked := true
+	defer func() {
+		if locked {
+			op.Release()
+		}
+	}()
+	if ctx.Err() != nil || pane.ManualInputSequence() != manualSequence {
+		return api.Failure(req.ID, "agent_prompt_failed", "request canceled before input")
+	}
 	if info.Agent != nil && *info.Agent == "copilot" {
-		pane.RecordExternalInput()
 		if _, err := pane.WriteToPTY([]byte("\x1b[I")); err != nil {
 			return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 		}
@@ -98,8 +118,8 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 	if pane.BracketedPasteMode() {
 		text = "\x1b[200~" + text + "\x1b[201~"
 	}
-	pane.RecordExternalInput()
-	if _, err := pane.WriteToPTY([]byte(text)); err != nil {
+	_, err := pane.WriteExternalInput(manualSequence, []byte(text))
+	if err != nil {
 		return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 	}
 	timer := time.NewTimer(agentPromptSubmitDelay)
@@ -111,25 +131,31 @@ func (s *Server) agentPrompt(req *api.Request) api.Response {
 	case <-s.sup.Done():
 		timer.Stop()
 		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
+	case <-ctx.Done():
+		timer.Stop()
+		return api.Failure(req.ID, "agent_prompt_failed", "request canceled during input submission")
 	}
 	if pane.Snapshot().Dead || s.sup.Get(pane.ID) != pane {
 		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
 	}
-	pane.RecordExternalInput()
-	if _, err := pane.WriteToPTY([]byte{'\r'}); err != nil {
+	if _, err := pane.WritePTYIfInputUnchanged(manualSequence, []byte{'\r'}); err != nil {
 		return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 	}
+	op.Release()
+	locked = false
 	if p.Wait == nil {
-		s.app.Do(func() { _, info, failure = s.promptTarget(req.ID, p.Target) })
+		if !s.app.DoContext(ctx, func() { _, info, failure = s.promptTarget(req.ID, p.Target) }) {
+			return api.Failure(req.ID, "agent_prompt_failed", "request canceled after input")
+		}
 		if failure != nil {
 			return api.Failure(req.ID, failure.Code, failure.Message)
 		}
 		return api.Success(req.ID, api.AgentPromptedResult{Type: "agent_prompted", Agent: info})
 	}
-	return s.waitPrompt(req.ID, p, requestStarted)
+	return s.waitPrompt(ctx, req.ID, p, requestStarted)
 }
 
-func (s *Server) waitPrompt(id string, p api.AgentPromptParams, requestStarted time.Time) api.Response {
+func (s *Server) waitPrompt(ctx context.Context, id string, p api.AgentPromptParams, requestStarted time.Time) api.Response {
 	started := time.Now()
 	var deadline time.Time
 	if p.Wait.TimeoutMS != nil {
@@ -148,7 +174,9 @@ func (s *Server) waitPrompt(id string, p api.AgentPromptParams, requestStarted t
 		}
 		var info api.AgentInfo
 		var failure *api.Error
-		s.app.Do(func() { _, info, failure = s.promptTarget(id, p.Target) })
+		if !s.app.DoContext(ctx, func() { _, info, failure = s.promptTarget(id, p.Target) }) {
+			return api.Failure(id, "agent_prompt_failed", "request canceled while waiting")
+		}
 		if failure != nil {
 			return api.Failure(id, failure.Code, failure.Message)
 		}
@@ -172,6 +200,8 @@ func (s *Server) waitPrompt(id string, p api.AgentPromptParams, requestStarted t
 		case <-tick.C:
 		case <-s.sup.Done():
 			return api.Failure(id, "agent_prompt_failed", "PTY actor closed during input submission")
+		case <-ctx.Done():
+			return api.Failure(id, "agent_prompt_failed", "request canceled while waiting")
 		}
 	}
 }

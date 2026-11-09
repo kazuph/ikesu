@@ -84,32 +84,36 @@ type Pane struct {
 
 	lastMailExternalInput atomic.Int64
 
-	writer            ptyWriter
-	inputMu           sync.Mutex
-	idleActivityAt    time.Time
-	idleActivitySeq   uint64
-	lastExternalInput atomic.Int64
-	externalInputSeq  atomic.Uint64
-	mu                sync.Mutex
-	emu               *vt.Emulator
-	read              *readBuffer
-	dead              bool
-	fgPID             int
-	procName          string
-	foregroundSudo    bool
-	agentID           string
-	agentOverride     string // set by pane.report_agent; wins over agentID
-	procCwd           string
-	oscTitle          string
-	oscProgress       string
-	clipboard         []string
-	altScreen         bool
-	mouseTracking     bool
-	mouseMotion       bool
-	appCursorKeys     bool
-	modes             map[ansi.Mode]bool
-	cursor            CursorState
-	scrollbarVisible  bool // measured on PTY output; resize alone preserves visibility
+	writer             ptyWriter
+	inputOperationMu   sync.Mutex
+	inputOperationBusy bool
+	inputOperations    []*InputOperation
+	inputMu            sync.Mutex
+	idleActivityAt     time.Time
+	idleActivitySeq    uint64
+	lastExternalInput  atomic.Int64
+	externalInputSeq   atomic.Uint64
+	manualInputSeq     atomic.Uint64
+	mu                 sync.Mutex
+	emu                *vt.Emulator
+	read               *readBuffer
+	dead               bool
+	fgPID              int
+	procName           string
+	foregroundSudo     bool
+	agentID            string
+	agentOverride      string // set by pane.report_agent; wins over agentID
+	procCwd            string
+	oscTitle           string
+	oscProgress        string
+	clipboard          []string
+	altScreen          bool
+	mouseTracking      bool
+	mouseMotion        bool
+	appCursorKeys      bool
+	modes              map[ansi.Mode]bool
+	cursor             CursorState
+	scrollbarVisible   bool // measured on PTY output; resize alone preserves visibility
 
 	tap oscTap
 	ev  chan<- Event

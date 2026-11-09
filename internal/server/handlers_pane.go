@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -338,7 +339,6 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 	if bad != "" {
 		return api.Failure(id, api.ErrInvalidKey, fmt.Sprintf("unsupported key %s", bad))
 	}
-	pane.RecordKeyInput()
 	s.sendInputToPane(pane, p.Text, keys)
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
@@ -348,17 +348,31 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 // have consumed the prompt before Enter arrives. Runs asynchronously so
 // the app loop never blocks.
 func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyEvent) {
-	pane.RecordKeyInput()
+	manualSequence := pane.ManualInputSequence()
+	if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
+		return
+	}
+	op := pane.ReserveInputOperation()
 	go func() {
+		if !op.Wait(context.Background()) {
+			return
+		}
+		defer op.Release()
+		if pane.ManualInputSequence() != manualSequence {
+			return
+		}
 		if text != "" {
 			s.mu.Lock()
 			if s.closing.Load() != 0 {
 				s.mu.Unlock()
 				return
 			}
-			pane.RecordKeyInput()
-			pane.WithEmu(func(e *vt.Emulator) { e.Paste(text) })
+			var admitted bool
+			_, admitted = pane.RecordKeyInputAndDo(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.Paste(text) }) })
 			s.mu.Unlock()
+			if !admitted {
+				return
+			}
 		}
 		if len(keys) == 0 {
 			return
@@ -371,8 +385,11 @@ func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyE
 		if s.closing.Load() != 0 {
 			return
 		}
-		pane.RecordKeyInput()
-		pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) })
+		if text == "" {
+			pane.RecordKeyInputAndDo(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) }) })
+		} else {
+			pane.WithInputSequence(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) }) })
+		}
 	}()
 }
 
@@ -420,6 +437,14 @@ func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Res
 		title = strings.TrimSpace(*p.Title)
 	}
 	safe := kind != "" && session.SafeSessionValue(kind, value)
+	if safe && p.Agent == "codex" && kind == "id" && s.codexSessionIDTaken(pid, value) {
+		if rec, ok := s.app.SessionRecord(pid); ok && !strings.HasPrefix(rec.Source, "report:") {
+			rec.Kind, rec.Value = "", ""
+			s.app.RecordSession(pid, rec)
+			s.ledgerDel(pid)
+		}
+		return api.Failure(id, "duplicate_session_id", "session ID is already recorded for another pane")
+	}
 	switch {
 	case safe:
 		rec, _ := s.app.SessionRecord(pid)
