@@ -32,6 +32,9 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 	snapshot := i.shellVariables
 	arrays := i.shellArrays
 	runtimeLine := i.runtimeLine
+	if trustedDirenvLine(i, line) {
+		return true
+	}
 	i.AuthorizationEnv = EnvMap(environment(i.Env))
 	i, verdict, parseErr := lineVerdict(c, i, line)
 	i.shellVariables = snapshot
