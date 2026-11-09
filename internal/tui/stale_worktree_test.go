@@ -116,6 +116,11 @@ func TestWorktreeCreateDefersReanchorUntilGitFinishes(t *testing.T) {
 	}
 	w := a.st.Workspaces[0]
 	original := w.Cwd
+	originalSource, err := worktree.Source(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Worktree = worktree.Metadata(originalSource, originalSource.SourceCheckoutPath)
 	root := t.TempDir()
 	destination := filepath.Join(root, "destination")
 	if err := os.Mkdir(destination, 0700); err != nil {
