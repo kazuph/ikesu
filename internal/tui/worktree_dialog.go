@@ -20,8 +20,11 @@ func (a *App) worktreeError(err error) {
 func (a *App) worktreeScreenUnchanged() func() bool {
 	a.worktreeScreenRequest++
 	request := a.worktreeScreenRequest
-	dialog, menu := a.dialog, a.menu
-	return func() bool { return request == a.worktreeScreenRequest && a.dialog == dialog && a.menu == menu }
+	dialog, menu, settings, help := a.dialog, a.menu, a.settings, a.help
+	navigator, copyMode, selection := a.navigator, a.cm, a.sel
+	return func() bool {
+		return request == a.worktreeScreenRequest && a.dialog == dialog && a.menu == menu && a.settings == settings && a.help == help && a.navigator == navigator && a.cm == copyMode && a.sel == selection
+	}
 }
 
 func (a *App) newWorktreeDialog(index int) {

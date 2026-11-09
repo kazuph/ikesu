@@ -3,6 +3,9 @@ package tui
 import (
 	"testing"
 
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/ikesu/internal/input"
+
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/worktree"
@@ -48,5 +51,29 @@ func TestWorktreeResultsPreserveNewDialog(t *testing.T) {
 				t.Fatalf("%s replaced the newer dialog or opened a menu", op)
 			}
 		})
+	}
+}
+
+func TestWorktreeSourceResultDoesNotReopenAfterNewDialogCloses(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	a.newWorktreeDialog(0)
+	job := <-a.jobs
+	job.fn()
+	close(job.done)
+	value := "typed"
+	a.dialog = &uiDialog{input: &value, d: render.Dialog{Title: "Other dialog"}}
+	a.onInput(input.Event{Kind: input.KindKey, Key: uv.Key{Code: uv.KeyEscape}})
+	if a.dialog != nil {
+		t.Fatal("new dialog did not close")
+	}
+	job = <-a.jobs
+	job.fn()
+	close(job.done)
+	job = <-a.jobs
+	job.fn()
+	close(job.done)
+	if a.dialog != nil {
+		t.Fatal("old request reopened a dialog after the newer dialog closed")
 	}
 }

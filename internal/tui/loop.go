@@ -17,6 +17,14 @@ import (
 )
 
 func (a *App) onInput(ev input.Event) {
+	request := a.worktreeScreenRequest
+	dialog, menu, settings, help := a.dialog, a.menu, a.settings, a.help
+	navigator, copyMode, selection := a.navigator, a.cm, a.sel
+	defer func() {
+		if a.worktreeScreenRequest == request && (a.dialog != dialog || a.menu != menu || a.settings != settings || a.help != help || a.navigator != navigator || a.cm != copyMode || a.sel != selection) {
+			a.worktreeScreenRequest++
+		}
+	}()
 	defer benchstage.Span("ui.input")()
 	switch ev.Kind {
 	case input.KindTerminalReport:
