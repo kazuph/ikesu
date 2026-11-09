@@ -12,12 +12,45 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/dispatch"
+	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/tui"
 )
+
+func TestAgentRestoreRejectsDuplicateSavedCodexIDs(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
+	s := newTestServer(t, "duplicate-saved")
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	saved := s.app.State().Snapshot()
+	saved.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
+		p.Agent, p.SessionKind, p.SessionID = "codex", "id", "duplicate-session"
+	})
+	path := filepath.Join(t.TempDir(), "session.json")
+	if err := session.Save(path, saved); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := session.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.app.RestoreSession(loaded)
+	defer s.sup.KillAll()
+	for _, dryRun := range []bool{true, false} {
+		result := s.runAgentRestore(dryRun)
+		if len(result.Actions) != 2 {
+			t.Fatalf("dry=%v actions=%+v", dryRun, result.Actions)
+		}
+		for _, action := range result.Actions {
+			if action.Status != "skipped" || action.Command != nil || action.Reason == nil || *action.Reason != "duplicate session id" {
+				t.Fatalf("dry=%v duplicate was not refused: %+v", dryRun, action)
+			}
+		}
+	}
+}
 
 // waitAPISocketGone polls until the api socket disappears.
 func waitAPISocketGone(t *testing.T, dir string) {

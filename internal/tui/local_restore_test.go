@@ -2,11 +2,44 @@ package tui
 
 import (
 	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestLocalRestoreRejectsDuplicateSavedCodexIDs(t *testing.T) {
+	teststate.Lock(t)
+	teststate.Setenv(t, "SHELL", "/bin/sh")
+	a := specRuntimeApp(t)
+	a.st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	saved := a.st.Snapshot()
+	saved.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
+		p.Agent, p.SessionKind, p.SessionID = "codex", "id", "duplicate-session"
+	})
+	path := filepath.Join(t.TempDir(), "session.json")
+	if err := session.Save(path, saved); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := session.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.RestoreSession(loaded)
+	for _, dry := range []bool{true, false} {
+		a.restoreLocalAgents(dry)
+		want := "launched 0, skipped 2"
+		if dry {
+			want = "would launch 0, skipped 2"
+		}
+		if a.toast == nil || a.toast.body != want {
+			t.Fatalf("dry=%v: %+v", dry, a.toast)
+		}
+	}
+}
 
 func TestLocalRestoreTypesOnlyExactRecordedSessionIntoRealPTY(t *testing.T) {
 	teststate.Lock(t)

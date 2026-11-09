@@ -24,6 +24,10 @@ func (a *App) restoreLocalAgents(dryRun bool) {
 				if !ok || rec.Agent == "" {
 					continue
 				}
+				if rec.Agent == "codex" && rec.Kind == "id" && a.codexSessionInOtherPane(pid, rec.Value) {
+					skipped++
+					continue
+				}
 				command, ok := session.ResumeCommand(a.sidebarConfig, rec.Agent, rec.Kind, rec.Value)
 				if !ok {
 					skipped++

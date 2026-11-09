@@ -25,6 +25,9 @@ func (a *App) observeLocalSessions() {
 				if hasRec && rec.Value != "" && strings.HasPrefix(rec.Source, "report:") {
 					continue
 				}
+				if hasRec && rec.Agent == "codex" && rec.Kind == "id" && a.codexSessionInOtherPane(pid, rec.Value) {
+					delete(a.localObservedStart, pid)
+				}
 				job := rp.ForegroundJob()
 				start, hasStart := session.ProcessStart(job)
 				if hasStart && hasRec && rec.Value != "" && a.localObservedStart[pid].Equal(start) {

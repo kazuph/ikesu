@@ -246,6 +246,9 @@ func (s *Server) resolvePaneSession(pid int) paneSessionView {
 		v.kind, v.value, v.title = rec.Kind, rec.Value, rec.Title
 		if session.SafeSessionValue(rec.Kind, rec.Value) {
 			v.safe = true
+			if v.agent == "codex" && v.kind == "id" && s.codexSessionIDTaken(pid, v.value) {
+				v.safe, v.reason = false, "duplicate session id"
+			}
 			return v
 		}
 	}
@@ -259,6 +262,9 @@ func (s *Server) resolvePaneSession(pid int) paneSessionView {
 		if session.SafeSessionValue(led.SessionKind, led.SessionID) {
 			v.kind, v.value = led.SessionKind, led.SessionID
 			v.safe = true
+			if v.agent == "codex" && v.kind == "id" && s.codexSessionIDTaken(pid, v.value) {
+				v.safe, v.reason = false, "duplicate session id"
+			}
 			return v
 		}
 	}
@@ -308,6 +314,7 @@ type sessionObservation struct {
 	record        tui.AgentRecord
 	hasRecord     bool
 	previousStart time.Time
+	forceRecheck  bool
 	start         time.Time
 	startKnown    bool
 	result        tui.AgentRecord
@@ -343,14 +350,15 @@ func (s *Server) prepareSessionObservation(pid int) (sessionObservation, bool) {
 	if hasRec && rec.Value != "" && strings.HasPrefix(rec.Source, "report:") {
 		return sessionObservation{}, false
 	}
+	conflict := hasRec && rec.Agent == "codex" && rec.Kind == "id" && s.codexSessionIDTaken(pid, rec.Value)
 	return sessionObservation{pid: pid, pane: rp, snapshot: snap, record: rec,
-		hasRecord: hasRec, previousStart: s.observedStart[pid]}, true
+		hasRecord: hasRec, previousStart: s.observedStart[pid], forceRecheck: conflict}, true
 }
 
 func (o *sessionObservation) observe() {
 	job := o.pane.ForegroundJob()
 	o.start, o.startKnown = session.ProcessStart(job)
-	if o.startKnown && o.hasRecord && o.record.Value != "" && o.previousStart.Equal(o.start) {
+	if !o.forceRecheck && o.startKnown && o.hasRecord && o.record.Value != "" && o.previousStart.Equal(o.start) {
 		return
 	}
 	if o.snapshot.AgentID == "codex" {
@@ -393,7 +401,7 @@ func (s *Server) applySessionObservation(o sessionObservation) {
 		return
 	}
 	if o.result.Agent == "codex" && s.codexSessionIDTaken(o.pid, o.result.Value) {
-		if hasRec && !strings.HasPrefix(rec.Source, "report:") {
+		if hasRec && rec.Value != o.result.Value && !strings.HasPrefix(rec.Source, "report:") {
 			rec.Kind, rec.Value = "", ""
 			s.app.RecordSession(o.pid, rec)
 			s.ledgerDel(o.pid)
@@ -464,6 +472,9 @@ func (s *Server) runAgentRestore(dryRun bool) api.AgentRestoreResult {
 				}
 				if !v.safe {
 					reason := "no resumable session found"
+					if v.reason == "duplicate session id" {
+						reason = v.reason
+					}
 					actions = append(actions, api.AgentRestoreActionInfo{
 						PaneID: fmtPaneID(pid), Agent: v.agent,
 						Status: "skipped", Reason: &reason,
