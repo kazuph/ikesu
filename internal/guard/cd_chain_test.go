@@ -20,6 +20,15 @@ func TestCdChainResolvesScriptInCdTarget(t *testing.T) {
 	write("s.sh", "echo hi\n")
 	write("bad.sh", "rm -rf /outside/cd-chain-victim\n")
 	write("file", "x")
+	if e := os.MkdirAll(filepath.Join(root, "work", "other"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(root, "work", "other", "s.sh"), []byte("rm -rf /outside/cd-chain-victim\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.MkdirAll(filepath.Join(sub, "sibling"), 0700); e != nil {
+		t.Fatal(e)
+	}
 	i := Input{Cwd: root, LaunchCwd: root, Env: map[string]string{"PATH": "/usr/bin:/bin", "HOME": root}}
 	rel := "work/dir"
 	cases := []struct{ name, line, want string }{
@@ -41,6 +50,15 @@ func TestCdChainResolvesScriptInCdTarget(t *testing.T) {
 		{"cd not first", "true && cd " + rel + " && bash s.sh", "ask"},
 		{"eval cd", "cd " + rel + " && eval \"cd .\" && bash s.sh", "ask"},
 		{"dotdot", "cd " + rel + "/../dir && bash s.sh", "ask"},
+		{"zsh chdir", "cd " + rel + " && chdir ../other && bash s.sh", "ask"},
+		{"chdir alone", "chdir " + rel + " && bash s.sh", "ask"},
+		{"auto_cd parent", "cd " + rel + " && ../other && bash s.sh", "ask"},
+		{"auto_cd dotdot", "cd " + rel + " && .. && bash s.sh", "ask"},
+		{"auto_cd name", "cd " + rel + " && sibling && bash s.sh", "ask"},
+		{"auto_cd minus", "cd " + rel + " && - && bash s.sh", "ask"},
+		{"auto_cd tilde", "cd " + rel + " && ~- && bash s.sh", "ask"},
+		{"dir stack plus", "cd +1 && bash s.sh", "ask"},
+		{"non literal command", "cd " + rel + " && \"$X\" && bash s.sh", "ask"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

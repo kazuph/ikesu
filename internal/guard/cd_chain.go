@@ -43,7 +43,7 @@ func literalCdChain(i Input, tree *syntax.File) (string, *syntax.CallExpr, bool)
 		return "", nil, false
 	}
 	path, ok := claudeLiteral(call.Args[1])
-	if !ok || path == "" || strings.HasPrefix(path, "-") {
+	if !ok || path == "" || strings.HasPrefix(path, "-") || strings.HasPrefix(path, "+") {
 		return "", nil, false
 	}
 	for _, part := range strings.Split(path, "/") {
@@ -76,5 +76,40 @@ func literalCdChain(i Input, tree *syntax.File) (string, *syntax.CallExpr, bool)
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return "", nil, false
 	}
-	return filepath.Clean(dir), call, true
+	dir = filepath.Clean(dir)
+	if autoCdWord(tree, call, i.Cwd, dir) {
+		return "", nil, false
+	}
+	return dir, call, true
+}
+
+// autoCdWord reports a command word that zsh's auto_cd could treat as a
+// directory change (a directory name, "-", or a ~ form). Such a word would move
+// the shell somewhere the rest of the list is not judged in, so the line keeps
+// the uncertain directory. Words that are not literal are refused too.
+func autoCdWord(tree *syntax.File, cd *syntax.CallExpr, cwd, dir string) bool {
+	found := false
+	syntax.Walk(tree, func(node syntax.Node) bool {
+		call, ok := node.(*syntax.CallExpr)
+		if found || !ok || call == cd || len(call.Args) == 0 {
+			return !found
+		}
+		word, literal := claudeLiteral(call.Args[0])
+		if !literal || word == "" || word == "-" || strings.HasPrefix(word, "~") || strings.HasPrefix(word, "+") {
+			found = true
+			return false
+		}
+		for _, base := range []string{dir, cwd} {
+			candidate := word
+			if !filepath.IsAbs(candidate) {
+				candidate = filepath.Join(base, candidate)
+			}
+			if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
 }

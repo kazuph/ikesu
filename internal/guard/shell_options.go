@@ -78,7 +78,7 @@ func countDirectoryChanges(tree *syntax.File) int {
 				if has([]string{"command", "builtin", "-p", "--"}, name) {
 					continue
 				}
-				if has([]string{"cd", "pushd", "popd"}, name) {
+				if has([]string{"cd", "chdir", "pushd", "popd"}, name) {
 					changed++
 				}
 				break
