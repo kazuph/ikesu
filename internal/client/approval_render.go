@@ -195,16 +195,16 @@ func (s *approvalState) overlay(in *render.Input) {
 	} else if d.AllowText && (d.LateAnswer && s.textMode || !d.LateAnswer && s.selectedReject()) {
 		footer("confirm ↵", "back ctrl+u", "close esc")
 	} else {
-		parts := []string{fmt.Sprintf("select 1-%d", len(d.Options))}
+		parts := []string{fmt.Sprintf("select ↑↓ 1-%d", len(d.Options))}
 		if d.LateAnswer && d.MultiSelect {
 			parts = append(parts, "check space")
 		}
 		if d.LateAnswer && d.AllowText {
 			parts = append(parts, "text t")
 		}
-		footer(append(parts, "confirm ↵", "scroll ↑↓", "close esc")...)
+		footer(append(parts, "confirm ↵", "scroll pgup/pgdn", "close esc")...)
 	}
-	in.Approval = &render.Approval{Pane: pane, Title: title, Lines: lines, Kinds: kinds, Scroll: s.scroll, Late: d.LateAnswer}
+	in.Approval = &render.Approval{Pane: pane, Title: title, Lines: lines, Kinds: kinds, Scroll: s.scroll, Follow: s.follow, Late: d.LateAnswer}
 }
 
 func approvalPaneID(value string) (int, bool) {

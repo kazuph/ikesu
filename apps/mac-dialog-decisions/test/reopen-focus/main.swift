@@ -65,7 +65,9 @@ do {
     host.open(first)
     let panel = host.windows["first.json"]!.panel! as! KeyPanel
     require(Date().timeIntervalSince(closed) < 1, "reopen occurs within one second")
-    require(front() == before && !panel.isKeyWindow, "reopen preserves frontmost PID and does not take key")
+    // The reopened panel is in front, so it takes the keyboard without changing
+    // the frontmost app (2026-11-09).
+    require(wait { front() == before && panel.isKeyWindow }, "reopen preserves frontmost PID and takes key")
     print("REOPEN_FOCUS scenario=\(scenario) before=\(before) after=\(front()) key=\(panel.isKeyWindow)")
     host.open(second)
     let newer = host.windows["second.json"]!.panel!

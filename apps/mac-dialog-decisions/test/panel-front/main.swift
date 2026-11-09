@@ -69,12 +69,13 @@ func writeSpec(_ name: String) -> String {
   try! JSONSerialization.data(withJSONObject: spec).write(to: URL(fileURLWithPath: path))
   return path
 }
-func checkKeyboard(_ label: String) {
-  let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-  let keyPanels = host.windows.values.filter { $0.panel.isKeyWindow }.count
-  print("KEYBOARD \(label) frontBefore=\(frontBefore ?? 0) front=\(front ?? 0) app_active=\(NSApp.isActive) key_panels=\(keyPanels)")
-  // Concurrent tests may change the frontmost app; only this process counts.
-  if front.map(Int.init) == selfPID || NSApp.isActive || keyPanels != 0 { fail("\(label): a new panel took the keyboard") }
+// The frontmost panel takes the keyboard; a panel placed behind never does
+// (2026-11-09: a frontmost panel must accept ⌘1… and ⌘↩ at once).
+func checkKeyboard(_ label: String, _ expected: NSPanel) {
+  let ok = waitFor({ expected.isKeyWindow && host.windows.values.filter { $0.panel.isKeyWindow }.count == 1 })
+  let keyPanels = host.windows.values.filter { $0.panel.isKeyWindow }.map { $0.key }
+  print("KEYBOARD \(label) app_active=\(NSApp.isActive) key_panels=\(keyPanels)")
+  if !ok { fail("\(label): the frontmost panel did not take the keyboard (key=\(keyPanels))") }
 }
 
 var cover: Process?
@@ -100,7 +101,7 @@ func runTest() {
   let orderBurst = screenOrder()
   print("PANEL_FRONT_BURST first=\(index(burst1.windowNumber, orderBurst)) second=\(index(burst2.windowNumber, orderBurst))")
   if !burstOK { host.closeAll(); fail("(a0) burst: second panel was not directly behind the first") }
-  checkKeyboard("a0")
+  checkKeyboard("a0", burst1)
   host.closeAll()
   if !waitFor({ index(burst1.windowNumber, screenOrder()) < 0 && index(burst2.windowNumber, screenOrder()) < 0 }) { fail("burst panels did not close") }
   // (a) First panel alone comes to the front; the second sits behind it.
@@ -114,7 +115,7 @@ func runTest() {
   let firstIndex = index(first.windowNumber, orderA), secondIndex = index(second.windowNumber, orderA)
   print("PANEL_FRONT_A first=\(firstIndex) second=\(secondIndex)")
   if secondIndex != firstIndex + 1 { fail("(a) new panel must sit directly behind the uncovered panel") }
-  checkKeyboard("a")
+  checkKeyboard("a", first)
 
   // (b) Another app's window covers both panels; the next panel comes forward.
   let union = first.frame.union(second.frame).insetBy(dx: -20, dy: -20)
@@ -148,10 +149,14 @@ func runTest() {
   let orderB = screenOrder()
   print("PANEL_FRONT_B cover=\(index(coverNumber, orderB)) first=\(index(first.windowNumber, orderB)) second=\(index(second.windowNumber, orderB)) third=\(index(third.windowNumber, orderB))")
   if !ok { stopCover(); host.closeAll(); fail("(b) covered panels: new panel was not brought in front of the other app") }
-  checkKeyboard("b")
+  checkKeyboard("b", third)
+  // (c) Closing the panel that had the keyboard hands it to the panel now in
+  // front of the other panels.
+  host.windows["third.json"]!.close()
+  checkKeyboard("c", first)
   stopCover()
   host.closeAll()
-  print("PANEL_FRONT_PASS behindWhenFront=1 frontWhenCovered=1 keyboardKept=1")
+  print("PANEL_FRONT_PASS behindWhenFront=1 frontWhenCovered=1 keyboardFront=1 keyboardAfterClose=1")
   exit(0)
 }
 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { runTest() }

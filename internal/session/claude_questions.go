@@ -47,6 +47,8 @@ type ClaudeQuestionCache struct {
 	pending   map[string][]ClaudeQuestion
 	answered  map[string]time.Time
 	matched   bool
+	// noPending: the last ReadAll read the session and found no unanswered question.
+	noPending bool
 }
 
 const transcriptAnchorBytes int64 = 4096
@@ -87,7 +89,26 @@ func (cache *ClaudeQuestionCache) Read(root, sessionID string) ([]ClaudeQuestion
 	return pending, true
 }
 
+// LastReadHadNoPending reports whether the last ReadAll read this session's
+// transcript and found no unanswered question.
+func (cache *ClaudeQuestionCache) LastReadHadNoPending() bool { return cache.noPending }
+
 func (cache *ClaudeQuestionCache) ReadAll(root, sessionID string) ([]ClaudeQuestion, bool) {
+	cache.noPending = false
+	questions, ok := cache.readAll(root, sessionID)
+	if ok {
+		cache.noPending = true
+		for _, q := range questions {
+			if !q.Answered {
+				cache.noPending = false
+				break
+			}
+		}
+	}
+	return questions, ok
+}
+
+func (cache *ClaudeQuestionCache) readAll(root, sessionID string) ([]ClaudeQuestion, bool) {
 	if !SafeSessionID(sessionID) {
 		return nil, false
 	}
