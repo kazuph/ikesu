@@ -17,6 +17,53 @@ import (
 	"time"
 )
 
+func TestLiveHandoffDrainsAcceptedInputOperations(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "input")
+	ready := filepath.Join(dir, "ready")
+	shell := filepath.Join(dir, "reader")
+	script := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	if err := os.WriteFile(shell, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := startEnv(t, map[string]string{"SHELL": shell})
+	wait := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			data, _ := os.ReadFile(path)
+			if strings.Contains(string(data), want) {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		data, _ := os.ReadFile(path)
+		t.Fatalf("input %q missing %q", data, want)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("reader not ready")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "first", Keys: []string{"Enter"}}, nil)
+	s.waitFor("first input before Enter", 15*time.Second, func(screen string) bool { return strings.Contains(screen, "first") })
+	s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "second", Keys: []string{"Enter"}}, nil)
+	if out, err := s.cli("server", "live-handoff"); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	wait("first\nsecond\n")
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "first\nsecond\n" {
+		t.Fatalf("input = %q: %v", data, err)
+	}
+}
+
 func (s *session) rpc(method string, params, result any) {
 	s.t.Helper()
 	conn, err := net.Dial("unix", api.APISocketPath(filepath.Join(s.stateDir, s.name)))

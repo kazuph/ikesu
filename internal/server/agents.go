@@ -154,6 +154,9 @@ func (s *Server) agentRead(id string, p api.AgentReadParams) api.Response {
 
 // agentSend submits text to an agent pane: text, 500 ms settle, Enter.
 func (s *Server) agentSend(id string, p api.AgentSendParams) api.Response {
+	if s.inputHandoffFrozen {
+		return api.Failure(id, "handoff_in_progress", "pane input is unavailable during handoff")
+	}
 	t, err := s.resolveTarget(p.Target, true)
 	if err != nil {
 		return api.Failure(id, err.Code, err.Message)

@@ -107,6 +107,7 @@ type Server struct {
 	pluginPanes         map[int]pluginPaneOwner
 	agentLaunches       map[int]*agentLaunch
 	closing             atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
+	inputHandoffFrozen  bool          // app-loop-owned admission barrier
 	workspaceMetadata   map[int]map[string]*workspaceMetadata
 	paneMetadata        map[int]*paneMetadata
 	reportSources       map[int]string

@@ -19,12 +19,24 @@ func (p *Pane) ReserveInputOperation() *InputOperation {
 	op := &InputOperation{pane: p, ready: make(chan struct{})}
 	if !p.inputOperationBusy {
 		p.inputOperationBusy = true
+		p.inputOperationIdle = make(chan struct{})
 		op.active = true
 		close(op.ready)
 	} else {
 		p.inputOperations = append(p.inputOperations, op)
 	}
 	return op
+}
+
+// InputOperationsIdle returns a channel closed when accepted operations finish.
+// A nil channel means there are no accepted operations.
+func (p *Pane) InputOperationsIdle() <-chan struct{} {
+	p.inputOperationMu.Lock()
+	defer p.inputOperationMu.Unlock()
+	if !p.inputOperationBusy {
+		return nil
+	}
+	return p.inputOperationIdle
 }
 
 // Wait is called outside the app loop. Canceled reservations are removed.
@@ -64,6 +76,7 @@ func (op *InputOperation) Release() {
 	}
 	if len(p.inputOperations) == 0 {
 		p.inputOperationBusy = false
+		close(p.inputOperationIdle)
 		return
 	}
 	next := p.inputOperations[0]

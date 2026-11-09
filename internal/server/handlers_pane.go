@@ -327,6 +327,9 @@ func (s *Server) paneSendKeys(id string, p api.PaneSendKeysParams) api.Response 
 }
 
 func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Response {
+	if s.inputHandoffFrozen {
+		return api.Failure(id, "handoff_in_progress", "pane input is unavailable during handoff")
+	}
 	pid, _, _, ok := s.findPane(p.PaneID)
 	if !ok {
 		return s.paneNotFound(id, p.PaneID)

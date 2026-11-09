@@ -68,6 +68,10 @@ func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response
 	var info api.AgentInfo
 	var failure *api.Error
 	if !s.app.DoContext(ctx, func() {
+		if s.inputHandoffFrozen {
+			failure = &api.Error{Code: "handoff_in_progress", Message: "pane input is unavailable during handoff"}
+			return
+		}
 		pane, info, failure = s.promptTarget(req.ID, p.Target)
 		if failure != nil {
 			return

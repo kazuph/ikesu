@@ -135,6 +135,37 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 		return api.Failure(req.ID, "handoff_failed", "handoff already in progress")
 	}
 	defer s.handoffMu.Unlock()
+	var pendingInputs []<-chan struct{}
+	if !s.app.DoContext(ctx, func() {
+		s.inputHandoffFrozen = true
+		for _, ws := range s.app.State().Workspaces {
+			for _, tab := range ws.Tabs {
+				for _, pid := range tab.Layout.Order() {
+					if pane := s.sup.Get(pid); pane != nil {
+						if idle := pane.InputOperationsIdle(); idle != nil {
+							pendingInputs = append(pendingInputs, idle)
+						}
+					}
+				}
+			}
+		}
+	}) {
+		return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+	}
+	defer func() {
+		if !s.handedOff {
+			s.app.Do(func() { s.inputHandoffFrozen = false })
+		}
+	}()
+	drainCtx, cancelDrain := context.WithTimeout(ctx, handoffWait)
+	defer cancelDrain()
+	for _, idle := range pendingInputs {
+		select {
+		case <-idle:
+		case <-drainCtx.Done():
+			return api.Failure(req.ID, "handoff_failed", "accepted pane input did not finish before handoff")
+		}
+	}
 	// Stop DB-using monitors while the app loop can still finish their callbacks.
 	// Rollback restarts admission; the persisted cancelling rows resume on refresh.
 	s.stopJobMonitors()

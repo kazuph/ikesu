@@ -88,6 +88,7 @@ type Pane struct {
 	writer             ptyWriter
 	inputOperationMu   sync.Mutex
 	inputOperationBusy bool
+	inputOperationIdle chan struct{}
 	inputOperations    []*InputOperation
 	inputMu            sync.Mutex
 	idleActivityAt     time.Time
