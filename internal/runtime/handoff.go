@@ -49,7 +49,7 @@ func (p *Pane) startPumpWithTiming(batchWait, streamGap time.Duration) {
 		pending := p.clipboard
 		p.clipboard = nil
 		p.mu.Unlock()
-		p.deliverClipboard(pending)
+		p.deliverClipboard(pending, true)
 		p.pumpPTYToEmu(batchWait, streamGap)
 		if p.importedPID != 0 && !p.pausing.Load() && !p.retired.Load() {
 			p.importedExited.Store(true)

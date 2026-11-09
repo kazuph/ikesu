@@ -169,6 +169,46 @@ func TestHandoffRollbackRedeliversClipboardEvents(t *testing.T) {
 	}
 }
 
+func TestHandoffDeliversQueuedClipboardFromExitedPane(t *testing.T) {
+	teststate.Lock(t)
+	old, next := NewSupervisor(), NewSupervisor()
+	defer old.KillAll()
+	defer next.KillAll()
+	script := "import os\nos.write(1, b'\\x1b]52;c;eA==\\x07' * 300)\n"
+	p, err := old.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/usr/bin/python3", "-c", script})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.Exited():
+	case <-time.After(2 * time.Second):
+		t.Fatal("pane did not exit")
+	}
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := len(states[0].Clipboard)
+	if count == 0 || !states[0].Snapshot.Dead {
+		t.Fatalf("queued events=%d dead=%v", count, states[0].Snapshot.Dead)
+	}
+	if err := next.ImportHandoff(states, files); err != nil {
+		t.Fatal(err)
+	}
+	old.ReleaseHandoff()
+	next.StartImported()
+	for delivered := 0; delivered < count; {
+		select {
+		case event := <-next.Events():
+			if event.Kind == EventClipboard {
+				delivered++
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("import delivered %d of %d queued events", delivered, count)
+		}
+	}
+}
+
 func TestHandoffImportedPaneExitClosesExited(t *testing.T) {
 	teststate.Lock(t)
 	old, next := NewSupervisor(), NewSupervisor()

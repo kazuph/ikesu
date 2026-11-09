@@ -418,10 +418,14 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	p.revision.Add(1)
 	p.markProcessOutput()
 	p.notifyChanged()
-	p.deliverClipboard(clipboard)
+	p.deliverClipboard(clipboard, false)
 }
 
-func (p *Pane) deliverClipboard(clipboard []string) {
+func (p *Pane) deliverClipboard(clipboard []string, transferred bool) {
+	done := p.done
+	if transferred && p.owner != nil {
+		done = p.owner.done
+	}
 	for i, data := range clipboard {
 		if p.pausing.Load() {
 			p.mu.Lock()
@@ -436,7 +440,12 @@ func (p *Pane) deliverClipboard(clipboard []string) {
 			p.clipboard = append(clipboard[i:], p.clipboard...)
 			p.mu.Unlock()
 			return
-		case <-p.done:
+		case <-done:
+			if p.pausing.Load() {
+				p.mu.Lock()
+				p.clipboard = append(clipboard[i:], p.clipboard...)
+				p.mu.Unlock()
+			}
 			return
 		}
 	}
