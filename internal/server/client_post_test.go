@@ -32,7 +32,7 @@ func postTestServer(t *testing.T) (*Server, *clientConn, func(), interface {
 // app loop only queues.
 func TestPostFromAppLoopDoesNotBlockOnStalledClient(t *testing.T) {
 	old := clientWriteTimeout
-	clientWriteTimeout = time.Second
+	clientWriteTimeout = 600 * time.Millisecond
 	defer func() { clientWriteTimeout = old }()
 	s, _, stop, _ := postTestServer(t)
 	defer stop()
@@ -45,7 +45,7 @@ func TestPostFromAppLoopDoesNotBlockOnStalledClient(t *testing.T) {
 		}
 	})
 	s.app.Do(func() {})
-	if elapsed := time.Since(start); elapsed > 400*time.Millisecond {
+	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
 		t.Fatalf("app loop was held %v by a client that does not read", elapsed)
 	}
 }
