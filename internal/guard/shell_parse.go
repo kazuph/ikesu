@@ -22,7 +22,17 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		return nil, fmt.Errorf("シェルの構文を分解できません: %w", err)
 	}
 	i.GuardRoot = guardDirectory(i)
-	i.CwdUncertain = i.CwdUncertain || evalTreeChangesDirectory(i, tree)
+	originalCwd := i.Cwd
+	cdCall := (*syntax.CallExpr)(nil)
+	if newCwd, call, ok := literalCdChain(i, tree); ok && !i.CwdUncertain {
+		i.Cwd, cdCall = newCwd, call
+	} else {
+		i.CwdUncertain = i.CwdUncertain || evalTreeChangesDirectory(i, tree)
+	}
+	cwdBeforeCd := i.Cwd
+	if cdCall != nil {
+		cwdBeforeCd = originalCwd
+	}
 	var commands []Input
 	setError := func(e error) {
 		if !i.scriptBody || err == nil || scriptError(e).kind > scriptError(err).kind {
@@ -53,6 +63,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			return true
 		}
 		next := i
+		if call == cdCall {
+			next.Cwd = cwdBeforeCd
+		}
 		next.scriptResult = nil
 		next.scriptLine = call.Pos().Line()
 		next.scriptKnownArgs = nil
@@ -178,6 +191,11 @@ func evalTreeChangesDirectory(i Input, tree *syntax.File) bool {
 	if treeChangesDirectory(tree) {
 		return true
 	}
+	return evalNestedChangesDirectory(i, tree)
+}
+
+// evalNestedChangesDirectory looks only for directory changes hidden in eval.
+func evalNestedChangesDirectory(i Input, tree *syntax.File) bool {
 	if i.runtimeLine || i.evalDepth >= scriptDepthLimit {
 		return false
 	}

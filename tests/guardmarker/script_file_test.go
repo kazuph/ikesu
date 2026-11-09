@@ -120,3 +120,79 @@ func TestScriptFileRealEntries(t *testing.T) {
 		}
 	}
 }
+
+// cd <literal dir> && ... && bash <relative script> must be judged from the
+// script in the cd target, through the real startup chain.
+func TestScriptFileAfterLiteralCd(t *testing.T) {
+	t.Parallel()
+	binary := fixtureBinary
+	for _, agent := range []string{"claude", "codex"} {
+		for _, scenario := range []string{"safe", "danger"} {
+			t.Run(agent+"/"+scenario, func(t *testing.T) {
+				root := t.TempDir()
+				home := filepath.Join(root, "home")
+				if e := os.Mkdir(home, 0700); e != nil {
+					t.Fatal(e)
+				}
+				target := filepath.Join(root, "victim")
+				if e := os.WriteFile(target, []byte("test-only"), 0600); e != nil {
+					t.Fatal(e)
+				}
+				a := guard.NewAssets(root, "p_1", binary, guard.Config{})
+				env, e := a.Prepare([]string{"HOME=" + home, "PATH=/usr/bin:/bin", "IKESU_PANE_ID=p1", "IKESU_SOCKET_PATH=" + realGuardSocket, "IKESU_SOCKET_PATH_EXPLICIT=1", "IKESU_CONFIG=" + root + "/missing.toml", "IKESU_STATE_DIR=" + root}, home)
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer a.Close()
+				if e := a.Sync(agent); e != nil {
+					t.Fatal(e)
+				}
+				dir := filepath.Join(a.Root, "work", "shorts")
+				if e := os.MkdirAll(dir, 0700); e != nil {
+					t.Fatal(e)
+				}
+				after := filepath.Join(a.Root, "after")
+				body := "printf ran\n"
+				if scenario == "danger" {
+					body = "/bin/rm " + shellQuote(target) + "\n"
+				}
+				if e := os.WriteFile(filepath.Join(dir, "render.sh"), []byte(body), 0600); e != nil {
+					t.Fatal(e)
+				}
+				line := "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" ; printf done > " + shellQuote(after)
+				if scenario == "safe" {
+					line = "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" && printf done > " + shellQuote(after)
+				}
+				var c *exec.Cmd
+				if agent == "claude" {
+					if scenario == "safe" {
+						line = strings.Replace(line, "&& /bin/bash render.sh", "&& AI_GUARD_REQUEST_REASON='描画する' /bin/bash render.sh", 1)
+					}
+					env = append(env, "SHELL=/bin/zsh")
+					c = exec.Command(binary, "guard", "claude-prefix", "--", line)
+					env = a.PrepareClaude(env)
+				} else {
+					c = exec.Command("/bin/bash", "-c", line)
+				}
+				c.Env = env
+				c.Dir = a.Root
+				out, e := c.CombinedOutput()
+				if scenario == "safe" {
+					if e != nil {
+						t.Fatalf("safe: %v %s", e, out)
+					}
+					if _, e = os.Stat(after); e != nil {
+						t.Fatalf("after missing: %v %s", e, out)
+					}
+					return
+				}
+				if _, e = os.Stat(target); e != nil {
+					t.Fatalf("target changed: %v %s", e, out)
+				}
+				if _, e = os.Stat(after); !os.IsNotExist(e) {
+					t.Fatalf("after line ran: %s", out)
+				}
+			})
+		}
+	}
+}
