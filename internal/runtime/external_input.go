@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -52,22 +53,21 @@ func (p *Pane) recordKeyInput(manual bool, expected *uint64, fn func()) (uint64,
 	return seq, true
 }
 
-func (p *Pane) WriteExternalInput(expected uint64, data []byte) (uint64, error) {
+func (p *Pane) QueueExternalInput(ctx context.Context, expected uint64, data []byte) (<-chan error, error) {
 	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if p.manualInputSeq.Load() != expected {
-		p.inputMu.Unlock()
-		return 0, fmt.Errorf("pane input interrupted submission")
+		return nil, fmt.Errorf("pane input interrupted submission")
 	}
 	now := time.Now().UnixNano()
 	p.lastExternalInput.Store(now)
 	p.lastMailExternalInput.Store(now)
-	seq := p.externalInputSeq.Add(1)
+	p.externalInputSeq.Add(1)
 	done, err := p.queuePromptInputLocked(expected, data)
-	p.inputMu.Unlock()
-	if err == nil {
-		err = <-done
-	}
-	return seq, err
+	return done, err
 }
 
 func (p *Pane) idleActivityChanged() {

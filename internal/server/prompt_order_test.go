@@ -11,7 +11,95 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"golang.org/x/sys/unix"
 )
+
+func TestAgentPromptDisconnectReturnsWhilePTYIsFull(t *testing.T) {
+	teststate.Lock(t)
+	dir := t.TempDir()
+	gate, ready, received := filepath.Join(dir, "gate"), filepath.Join(dir, "ready"), filepath.Join(dir, "received")
+	if err := unix.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "shell")
+	body := fmt.Sprintf("#!/bin/sh\nstty raw -echo; touch %q; read line < %q; exec cat > %q\n", ready, gate, received)
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "SHELL", script)
+	s := newTestServer(t, "prompt-full-disconnect")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
+	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
+	if err := p.QueuePTY([]byte(strings.Repeat("f", 128<<10))); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	op := p.ReserveInputOperation()
+	seq := p.ManualInputSequence()
+	externalSeq := p.ExternalInputSequence()
+	done := make(chan error, 1)
+	go func() { done <- s.submitAgentPrompt(ctx, p, op, seq, "first", false) }()
+	waitPromptCondition(t, func() bool { return p.ExternalInputSequence() > externalSeq })
+	cancel()
+	returned := false
+	select {
+	case <-done:
+		returned = true
+	case <-time.After(time.Second):
+	}
+	f, err := os.OpenFile(gate, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("go\n")
+	_ = f.Close()
+	if !returned {
+		<-done
+		t.Fatal("canceled prompt retained its PTY write wait")
+	}
+	waitPromptCondition(t, func() bool { data, _ := os.ReadFile(received); return strings.HasSuffix(string(data), "first\r") })
+}
+
+func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
+	teststate.Lock(t)
+	path := filepath.Join(t.TempDir(), "lines")
+	ready := filepath.Join(t.TempDir(), "ready")
+	script := filepath.Join(t.TempDir(), "shell")
+	body := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "SHELL", script)
+	s := newTestServer(t, "prompt-disconnect-after-body")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
+	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
+	seq := p.ManualInputSequence()
+	first, second := p.ReserveInputOperation(), p.ReserveInputOperation()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	doneA, doneB := make(chan error, 1), make(chan error, 1)
+	go func() { doneA <- s.submitAgentPrompt(ctx, p, first, seq, "first", false) }()
+	waitPromptCondition(t, func() bool { return strings.Contains(p.ScreenText(), "first") })
+	cancel()
+	go func() { doneB <- s.submitAgentPrompt(context.Background(), p, second, seq, "second", false) }()
+	<-doneA
+	if err := <-doneB; err != nil {
+		t.Fatal(err)
+	}
+	var data []byte
+	waitPromptCondition(t, func() bool { data, _ = os.ReadFile(path); return strings.HasSuffix(string(data), "second\n") })
+	if string(data) != "first\nsecond\n" {
+		t.Fatalf("combined input lines: %q", data)
+	}
+}
 
 func TestConcurrentPaneSendInputRequestsRemainSeparate(t *testing.T) {
 	teststate.Lock(t)

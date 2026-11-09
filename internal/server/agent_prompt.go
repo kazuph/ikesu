@@ -105,52 +105,9 @@ func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response
 	if pane == nil {
 		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
 	}
-	if !op.Wait(ctx) {
-		return api.Failure(req.ID, "agent_prompt_failed", "request canceled before input")
-	}
-	locked := true
-	defer func() {
-		if locked {
-			op.Release()
-		}
-	}()
-	if ctx.Err() != nil || pane.ManualInputSequence() != manualSequence {
-		return api.Failure(req.ID, "agent_prompt_failed", "request canceled before input")
-	}
-	if info.Agent != nil && *info.Agent == "copilot" {
-		if _, err := pane.WriteToPTY([]byte("\x1b[I")); err != nil {
-			return api.Failure(req.ID, "agent_prompt_failed", err.Error())
-		}
-	}
-	text := p.Text
-	if pane.BracketedPasteMode() {
-		text = "\x1b[200~" + text + "\x1b[201~"
-	}
-	_, err := pane.WriteExternalInput(manualSequence, []byte(text))
-	if err != nil {
+	if err := s.submitAgentPrompt(ctx, pane, op, manualSequence, p.Text, info.Agent != nil && *info.Agent == "copilot"); err != nil {
 		return api.Failure(req.ID, "agent_prompt_failed", err.Error())
 	}
-	timer := time.NewTimer(agentPromptSubmitDelay)
-	select {
-	case <-timer.C:
-	case <-pane.Exited():
-		timer.Stop()
-		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
-	case <-s.sup.Done():
-		timer.Stop()
-		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
-	case <-ctx.Done():
-		timer.Stop()
-		return api.Failure(req.ID, "agent_prompt_failed", "request canceled during input submission")
-	}
-	if pane.Snapshot().Dead || s.sup.Get(pane.ID) != pane {
-		return api.Failure(req.ID, "agent_prompt_failed", "PTY actor closed during input submission")
-	}
-	if _, err := pane.WritePTYIfInputUnchanged(manualSequence, []byte{'\r'}); err != nil {
-		return api.Failure(req.ID, "agent_prompt_failed", err.Error())
-	}
-	op.Release()
-	locked = false
 	if p.Wait == nil {
 		if !s.app.DoContext(ctx, func() { _, info, failure = s.promptTarget(req.ID, p.Target) }) {
 			return api.Failure(req.ID, "agent_prompt_failed", "request canceled after input")
@@ -161,6 +118,62 @@ func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response
 		return api.Success(req.ID, api.AgentPromptedResult{Type: "agent_prompted", Agent: info})
 	}
 	return s.waitPrompt(ctx, req.ID, p, requestStarted)
+}
+
+func (s *Server) submitAgentPrompt(ctx context.Context, pane *runtime.Pane, op *runtime.InputOperation, manualSequence uint64, text string, copilot bool) error {
+	if !op.Wait(ctx) {
+		return fmt.Errorf("request canceled before input")
+	}
+	if ctx.Err() != nil || pane.ManualInputSequence() != manualSequence {
+		op.Release()
+		return fmt.Errorf("request canceled before input")
+	}
+	if copilot {
+		if _, err := pane.WriteToPTY([]byte("\x1b[I")); err != nil {
+			op.Release()
+			return err
+		}
+	}
+	if pane.BracketedPasteMode() {
+		text = "\x1b[200~" + text + "\x1b[201~"
+	}
+	written, err := pane.QueueExternalInput(ctx, manualSequence, []byte(text))
+	if err != nil {
+		op.Release()
+		return err
+	}
+	completed := make(chan error, 1)
+	go func() {
+		defer op.Release()
+		completed <- s.finishAgentPrompt(pane, manualSequence, written)
+	}()
+	select {
+	case err := <-completed:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *Server) finishAgentPrompt(pane *runtime.Pane, manualSequence uint64, written <-chan error) error {
+	if err := <-written; err != nil {
+		return err
+	}
+	timer := time.NewTimer(agentPromptSubmitDelay)
+	select {
+	case <-timer.C:
+	case <-pane.Exited():
+		timer.Stop()
+		return fmt.Errorf("PTY actor closed during input submission")
+	case <-s.sup.Done():
+		timer.Stop()
+		return fmt.Errorf("PTY actor closed during input submission")
+	}
+	if pane.Snapshot().Dead || s.sup.Get(pane.ID) != pane {
+		return fmt.Errorf("PTY actor closed during input submission")
+	}
+	_, err := pane.WritePTYIfInputUnchanged(manualSequence, []byte{'\r'})
+	return err
 }
 
 func (s *Server) waitPrompt(ctx context.Context, id string, p api.AgentPromptParams, requestStarted time.Time) api.Response {
