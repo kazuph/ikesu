@@ -18,6 +18,7 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
+// Every sidebar width requires a rendered frame and a real PTY size query.
 func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 	teststate.Lock(t)
 	a := specRuntimeApp(t)
