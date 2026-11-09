@@ -9,8 +9,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
+
+func TestConcurrentPaneSendInputRequestsRemainSeparate(t *testing.T) {
+	teststate.Lock(t)
+	root, err := os.MkdirTemp("/tmp", "ikesu-input-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	path := filepath.Join(root, "lines")
+	ready := filepath.Join(root, "ready")
+	script := filepath.Join(root, "shell")
+	body := fmt.Sprintf("#!/bin/sh\nstty -echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	teststate.Setenv(t, "IKESU_STATE_DIR", root)
+	teststate.Setenv(t, "SHELL", script)
+	dir, done := startServerAt(t, "input")
+	defer stopServer(t, dir, done)
+	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
+	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "first", Keys: []string{"Enter"}}, nil)
+	apiOK(t, dir, api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "second", Keys: []string{"Enter"}}, nil)
+	var data []byte
+	waitPromptCondition(t, func() bool { data, _ = os.ReadFile(path); return strings.Count(string(data), "\n") >= 2 })
+	if string(data) != "first\nsecond\n" {
+		t.Fatalf("mixed API input lines: %q", data)
+	}
+}
 
 func TestConcurrentDelayedInputsRemainSeparate(t *testing.T) {
 	teststate.Lock(t)
