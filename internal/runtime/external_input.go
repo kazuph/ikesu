@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -61,10 +62,10 @@ func (p *Pane) WriteExternalInput(expected uint64, data []byte) (uint64, error) 
 	p.lastExternalInput.Store(now)
 	p.lastMailExternalInput.Store(now)
 	seq := p.externalInputSeq.Add(1)
-	done, err := p.beginPTYWrite(data)
+	done, err := p.queuePromptInputLocked(expected, data)
 	p.inputMu.Unlock()
 	if err == nil {
-		_, err = p.finishPTYWrite(done)
+		err = <-done
 	}
 	return seq, err
 }
@@ -118,12 +119,28 @@ func (p *Pane) WritePTYIfInputUnchanged(seq uint64, data []byte) (int, error) {
 		p.inputMu.Unlock()
 		return 0, fmt.Errorf("pane input interrupted submission")
 	}
-	done, err := p.beginPTYWrite(data)
+	done, err := p.queuePromptInputLocked(seq, data)
 	p.inputMu.Unlock()
 	if err != nil {
 		return 0, err
 	}
-	return p.finishPTYWrite(done)
+	if err := <-done; err != nil {
+		return 0, err
+	}
+	return len(data), nil
+}
+
+// queuePromptInputLocked admits a complete write without waiting for the PTY.
+func (p *Pane) queuePromptInputLocked(seq uint64, data []byte) (<-chan error, error) {
+	if p.currentPTY() == nil {
+		return nil, os.ErrClosed
+	}
+	done := make(chan error, 1)
+	if err := p.writer.enqueue(data, done, func() bool { return p.manualInputSeq.Load() == seq }); err != nil {
+		return nil, err
+	}
+	p.markProcessChanged()
+	return done, nil
 }
 func (p *Pane) UserActive() bool {
 	last := p.lastExternalInput.Load()
@@ -131,20 +148,15 @@ func (p *Pane) UserActive() bool {
 }
 
 // WriteScreenPrompt serializes the last activity check with external-input admission.
-// Like WriteMail, it queues under the lock and waits for the PTY after it.
-func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64) (int, error) {
-	done, err := p.queueScreenPrompt(data, sequence)
-	if err != nil {
-		return 0, err
-	}
-	return p.finishPTYWrite(done)
-}
-
-func (p *Pane) queueScreenPrompt(data []byte, sequence *uint64) (chan ptyWriteResult, error) {
+// WriteScreenPrompt accepts automated screen-prompt keys under the input
+// lock without waiting for the application. They are written only if, when
+// the PTY can take them, no external input arrived since and the deadline
+// (when set) has not passed; otherwise they are dropped, never sent late.
+func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64, deadline time.Time) (int, error) {
 	p.inputMu.Lock()
 	defer p.inputMu.Unlock()
 	if p.UserActive() || sequence != nil && p.ExternalInputSequence() != *sequence {
-		return nil, fmt.Errorf("pane_user_active: external input interrupted screen prompt")
+		return 0, fmt.Errorf("pane_user_active: external input interrupted screen prompt")
 	}
 	// Linux accepts writes to a PTY master after its child exits, so an exited
 	// pane must count as a failed send instead of a delivered key.
@@ -152,9 +164,20 @@ func (p *Pane) queueScreenPrompt(data []byte, sequence *uint64) (chan ptyWriteRe
 	dead := p.dead
 	p.mu.Unlock()
 	if dead {
-		return nil, fmt.Errorf("pane exited: screen prompt key not delivered")
+		return 0, fmt.Errorf("pane exited: screen prompt key not delivered")
 	}
-	return p.beginPTYWrite(data)
+	if p.currentPTY() == nil {
+		return 0, os.ErrClosed
+	}
+	accepted := p.ExternalInputSequence()
+	valid := func() bool {
+		return p.ExternalInputSequence() == accepted && (deadline.IsZero() || time.Now().Before(deadline))
+	}
+	if err := p.writer.enqueue(data, nil, valid); err != nil {
+		return 0, err
+	}
+	p.markProcessChanged()
+	return len(data), nil
 }
 
 // WithIdleActivitySequence excludes new key input while fn validates and closes.

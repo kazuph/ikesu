@@ -17,7 +17,7 @@ import (
 // apiLoop accepts API connections until the listener closes.
 func (s *Server) apiLoop() {
 	for {
-		conn, err := s.apiLn.Accept()
+		conn, err := acceptWithRetry(s.apiLn, func() bool { return s.closing.Load() != 0 })
 		if err != nil {
 			return
 		}

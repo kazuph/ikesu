@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/ikesu/internal/screenprompt"
 	"os"
 	"strings"
+	"time"
 )
 
 type screenAnswerFlow struct {
@@ -73,7 +74,7 @@ func (s *Server) submitScreenFlow(pid int, p *screenprompt.Prompt) {
 		if p.Cursor >= 0 && p.Cursor < len(p.Items) && p.Items[p.Cursor] == o.ID {
 			key = "\r"
 		}
-		n, err := pane.WriteScreenPrompt([]byte(key), &f.inputSequence)
+		n, err := pane.WriteScreenPrompt([]byte(key), &f.inputSequence, time.Time{})
 		if err != nil || n != len(key) {
 			message := fmt.Sprintf("screen prompt Submit failed: written=%d: %v", n, err)
 			fmt.Fprintln(os.Stderr, "ikesu: "+message)

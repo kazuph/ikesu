@@ -64,8 +64,11 @@ type Emulator struct {
 	cellWidth, cellHeight int
 
 	// I/O pipes.
-	pr *io.PipeReader
-	pw *io.PipeWriter
+	pr   *io.PipeReader
+	pipe *io.PipeWriter
+	// pw receives terminal responses and encoded input. It is the pipe
+	// unless SetResponseWriter installed a direct writer.
+	pw io.Writer
 
 	// The GL and GR character set identifiers.
 	gl, gr  int
@@ -101,7 +104,8 @@ func NewEmulator(w, h int) *Emulator {
 	t.parser.SetParamsSize(parser.MaxParamsSize)
 	t.parser.SetDataSize(1024 * 1024 * 4) // 4MB data buffer
 	t.setParserHandler()
-	t.pr, t.pw = io.Pipe()
+	t.pr, t.pipe = io.Pipe()
+	t.pw = t.pipe
 	t.resetModes()
 	t.tabstops = uv.DefaultTabStops(w)
 	t.registerDefaultHandlers()
@@ -288,7 +292,16 @@ func (e *Emulator) Close() error {
 	if e.closed.Swap(true) {
 		return nil
 	}
-	return e.pw.CloseWithError(io.EOF) //nolint:wrapcheck
+	return e.pipe.CloseWithError(io.EOF) //nolint:wrapcheck
+}
+
+// SetResponseWriter sends terminal responses and encoded input straight to w
+// in call order instead of through the pipe read by [Emulator.Read]. w must
+// not block: callers write while holding their own locks. Read then reports
+// io.EOF.
+func (e *Emulator) SetResponseWriter(w io.Writer) {
+	e.pw = w
+	_ = e.pipe.CloseWithError(io.EOF)
 }
 
 // Write writes data to the terminal output buffer.
@@ -376,11 +389,11 @@ func (e *Emulator) InputPipe() io.Writer {
 // If bracketed paste mode is enabled, the text is bracketed with the
 // appropriate escape sequences.
 func (e *Emulator) Paste(text string) {
+	// One write keeps the paste markers and the text together, so a writer
+	// that accepts or refuses whole writes never splits a paste.
 	if e.isModeSet(ansi.ModeBracketedPaste) {
-		_, _ = io.WriteString(e.pw, ansi.BracketedPasteStart)
-		defer io.WriteString(e.pw, ansi.BracketedPasteEnd) //nolint:errcheck
+		text = ansi.BracketedPasteStart + text + ansi.BracketedPasteEnd
 	}
-
 	_, _ = io.WriteString(e.pw, text)
 }
 
