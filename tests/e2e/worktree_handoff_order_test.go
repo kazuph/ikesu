@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 )
@@ -46,6 +47,7 @@ func TestLiveHandoffRetriesAfterWorktreeCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := start(t)
+	s.waitFor("shell ready", 15*time.Second, func(text string) bool { return strings.Contains(text, "❯") })
 	conn, err := net.Dial("unix", api.APISocketPath(filepath.Join(s.stateDir, s.name)))
 	if err != nil {
 		t.Fatal(err)
