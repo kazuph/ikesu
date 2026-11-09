@@ -2,7 +2,10 @@ package server
 
 import (
 	"bufio"
+	"context"
+	"fmt"
 	"net"
+	"os"
 	"strings"
 
 	"github.com/kazuph/ikesu/internal/api"
@@ -42,6 +45,12 @@ func (s *Server) serveAPI(conn net.Conn) {
 func (s *Server) serveAPIWithPeer(conn net.Conn, accepted latency.PeerIdentity, acceptedStart string) {
 	defer s.apiWG.Done()
 	defer conn.Close()
+	ctx, stopPeer, err := peerContext(conn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ikesu: monitor API connection: %v\n", err)
+		return
+	}
+	defer stopPeer()
 	rd := bufio.NewReader(conn)
 	for {
 		req, err := api.ReadRequest(rd)
@@ -74,31 +83,31 @@ func (s *Server) serveAPIWithPeer(conn net.Conn, accepted latency.PeerIdentity, 
 			}
 			continue
 		case api.MethodPaneGraphicsStream:
-			s.serveGraphicsStream(conn, rd, req)
+			s.serveGraphicsStream(ctx, conn, rd, req)
 			return
 		case api.MethodDecisionWait:
-			s.serveDecisionWait(conn, req)
+			s.serveDecisionWait(ctx, conn, req)
 			return
 		case api.MethodEventsSubscribe:
 			s.serveEvents(conn, req)
 			return
 		case api.MethodEventsWait:
-			if err := api.WriteResponse(conn, s.eventsWait(req)); err != nil {
+			if err := api.WriteResponse(conn, s.eventsWait(ctx, req)); err != nil {
 				return
 			}
 			continue
 		case api.MethodAgentPrompt:
-			if err := api.WriteResponse(conn, s.agentPrompt(req)); err != nil {
+			if err := api.WriteResponse(conn, s.agentPrompt(ctx, req)); err != nil {
 				return
 			}
 			continue
 		case api.MethodPaneWaitForOutput:
-			if err := api.WriteResponse(conn, s.waitForOutput(req)); err != nil {
+			if err := api.WriteResponse(conn, s.waitForOutput(ctx, req)); err != nil {
 				return
 			}
 			continue
 		}
-		resp := s.dispatch(req)
+		resp := s.dispatchContext(ctx, req)
 		if err := api.WriteResponse(conn, resp); err != nil {
 			return
 		}
@@ -108,6 +117,10 @@ func (s *Server) serveAPIWithPeer(conn net.Conn, accepted latency.PeerIdentity, 
 // dispatch routes a request. Stateless methods answer directly; everything
 // touching application state is serialized through the app loop via Do.
 func (s *Server) dispatch(req *api.Request) (response api.Response) {
+	return s.dispatchContext(context.Background(), req)
+}
+
+func (s *Server) dispatchContext(ctx context.Context, req *api.Request) (response api.Response) {
 	stopping := api.Failure(req.ID, "server_stopping", "server is stopping")
 	response = stopping
 	// Do may return without running a callback once the app exits.
@@ -121,10 +134,10 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	}
 	if req.Method == api.MethodGuardIdentity {
 		var resp api.Response
-		s.app.Do(func() { resp = s.guardIdentity(req) })
+		s.app.DoContext(ctx, func() { resp = s.guardIdentity(req) })
 		return resp
 	}
-	if response, blocked := s.rejectOverlayLayoutRequest(req); blocked {
+	if response, blocked := s.rejectOverlayLayoutRequestContext(ctx, req); blocked {
 		return response
 	}
 	if req.Method == api.MethodMsgSend {
@@ -134,7 +147,7 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		}
 		var result api.Response
 		var query mailSendQuery
-		s.app.Do(func() { result = s.prepareMsgSend(req.ID, p, &query) })
+		s.app.DoContext(ctx, func() { result = s.prepareMsgSend(req.ID, p, &query) })
 		if !query.ready {
 			return result
 		}
@@ -158,7 +171,7 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 				snapshot.jobs = nil
 			}
 			var stale bool
-			s.app.Do(func() { stale = s.applyPaneMailSnapshot(query.pid, query.target, snapshot, &delivered) })
+			s.app.DoContext(ctx, func() { stale = s.applyPaneMailSnapshot(query.pid, query.target, snapshot, &delivered) })
 			if !stale {
 				break
 			}
@@ -174,7 +187,7 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	}
 	if req.Method == "agent.view.set" || req.Method == "agent.view.clear" {
 		var response api.Response
-		s.app.Do(func() { response = s.agentViewRequest(req) })
+		s.app.DoContext(ctx, func() { response = s.agentViewRequest(req) })
 		return response
 	}
 	if req.Method == api.MethodDecisionList || req.Method == api.MethodDecisionGet {
@@ -183,7 +196,7 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 	if strings.HasPrefix(req.Method, "decision.") {
 		var resp api.Response
 		var delivery <-chan error
-		s.app.Do(func() {
+		s.app.DoContext(ctx, func() {
 			resp = s.decisionRequest(req)
 			if req.Method == api.MethodDecisionAnswer && resp.Err == nil {
 				var p api.DecisionAnswerParams
@@ -204,13 +217,15 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 				}
 			case <-s.decisions.stopped:
 				return api.Failure(req.ID, "screen_prompt_input_failed", "server stopped during input delivery")
+			case <-ctx.Done():
+				return api.Failure(req.ID, "screen_prompt_input_failed", "request canceled while waiting for delivery")
 			}
 		}
 		return resp
 	}
 	if strings.HasPrefix(req.Method, "plugin.") {
 		var resp api.Response
-		s.app.Do(func() { resp = s.pluginRequest(req) })
+		s.app.DoContext(ctx, func() { resp = s.pluginRequest(req) })
 		return resp
 	}
 	switch req.Method {
@@ -227,10 +242,10 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 			}
 		}
 		var resp api.Response
-		s.app.Do(func() { resp = s.agentStart(req.ID, p) })
+		s.app.DoContext(ctx, func() { resp = s.agentStart(req.ID, p) })
 		return resp
 	case api.MethodServerLiveHandoff:
-		return s.liveHandoff(req)
+		return s.liveHandoff(ctx, req)
 	case api.MethodPing:
 		var stall *api.LoopStallStatus
 		if s.app != nil {
@@ -267,7 +282,7 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		return api.Success(req.ID, api.OkResult{Type: "ok"})
 	default:
 		var resp api.Response
-		s.app.Do(func() {
+		s.app.DoContext(ctx, func() {
 			resp = s.dispatchOnLoop(req)
 		})
 		return resp

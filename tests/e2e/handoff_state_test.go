@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	sessionfile "github.com/kazuph/ikesu/internal/session"
 	"golang.org/x/sys/unix"
 	"net"
 	"os"
@@ -16,6 +19,101 @@ import (
 	"testing"
 	"time"
 )
+
+func TestLiveHandoffRejectsDuplicateSavedCodexSessions(t *testing.T) {
+	t.Parallel()
+	cwd := t.TempDir()
+	prepare := func(cmd *exec.Cmd) {
+		var root string
+		for _, entry := range cmd.Env {
+			if strings.HasPrefix(entry, "IKESU_STATE_DIR=") {
+				root = strings.TrimPrefix(entry, "IKESU_STATE_DIR=")
+			}
+		}
+		if root == "" {
+			t.Fatal("missing isolated state directory")
+		}
+		st := model.New(cwd, 80, 24)
+		st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+		saved := st.Snapshot()
+		saved.EachPane(func(_ *sessionfile.Workspace, _ *sessionfile.Tab, p *sessionfile.Pane) {
+			p.Agent, p.SessionKind, p.SessionID = "codex", "id", "duplicate-session"
+		})
+		path := sessionfile.Path(filepath.Join(root, "e2e"))
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := sessionfile.Save(path, saved); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := startVersionModePrepared(t, nil, false, binPath, "", prepare)
+	s.waitFor("restored shell", 15*time.Second, func(screen string) bool { return strings.Contains(screen, "❯") })
+	check := func() {
+		t.Helper()
+		var result api.AgentRestoreResult
+		s.rpc(api.MethodAgentRestore, api.AgentRestoreParams{DryRun: true}, &result)
+		if len(result.Actions) != 2 {
+			t.Fatalf("restore actions: %+v", result.Actions)
+		}
+		for _, a := range result.Actions {
+			if a.Status != "skipped" || a.Command != nil || a.Reason == nil || *a.Reason != "duplicate session id" {
+				t.Fatalf("duplicate restore: %+v", a)
+			}
+		}
+	}
+	if out, err := s.cli("server", "live-handoff"); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	check()
+}
+
+func TestLiveHandoffDrainsAcceptedInputOperations(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "input")
+	ready := filepath.Join(dir, "ready")
+	shell := filepath.Join(dir, "reader")
+	script := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	if err := os.WriteFile(shell, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := startEnv(t, map[string]string{"SHELL": shell})
+	wait := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			data, _ := os.ReadFile(path)
+			if strings.Contains(string(data), want) {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		data, _ := os.ReadFile(path)
+		t.Fatalf("input %q missing %q", data, want)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("reader not ready")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "first", Keys: []string{"Enter"}}, nil)
+	s.waitFor("first input before Enter", 15*time.Second, func(screen string) bool { return strings.Contains(screen, "first") })
+	s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: "p1", Text: "second", Keys: []string{"Enter"}}, nil)
+	if out, err := s.cli("server", "live-handoff"); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	wait("first\nsecond\n")
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "first\nsecond\n" {
+		t.Fatalf("input = %q: %v", data, err)
+	}
+}
 
 func (s *session) rpc(method string, params, result any) {
 	s.t.Helper()

@@ -21,6 +21,7 @@ func TestObservedResumeSourcePersistsCurrentIDInSnapshotLedgerAndAPI(t *testing.
 	}
 	s.app.RecordSession(1, rec)
 	s.ledgerPut(1, rec)
+	s.ledgerWG.Wait()
 	s.saveSession()
 	if s.store != nil {
 		defer s.store.Close()

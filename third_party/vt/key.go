@@ -23,10 +23,28 @@ type KeyPressEvent = uv.KeyPressEvent
 
 // SendKey returns the default key map.
 func (e *Emulator) SendKey(k uv.KeyEvent) {
-	var seq string
+	io.WriteString(e.pw, e.KeySequence(k)) //nolint:errcheck,gosec
+}
 
-	ack := e.isModeSet(ansi.ModeCursorKeys)    // Application cursor keys mode
-	akk := e.isModeSet(ansi.ModeNumericKeypad) // Application keypad keys mode
+// KeySequence encodes a key using the terminal's current keyboard modes.
+func (e *Emulator) KeySequence(k uv.KeyEvent) string {
+	return keySequence(k, e.isModeSet(ansi.ModeCursorKeys), e.isModeSet(ansi.ModeNumericKeypad))
+}
+
+// MaxKeySequenceLen bounds a key across the keyboard modes that can change
+// between input admission and delivery.
+func MaxKeySequenceLen(k uv.KeyEvent) int {
+	longest := 0
+	for _, cursor := range []bool{false, true} {
+		for _, keypad := range []bool{false, true} {
+			longest = max(longest, len(keySequence(k, cursor, keypad)))
+		}
+	}
+	return longest
+}
+
+func keySequence(k uv.KeyEvent, ack, akk bool) string {
+	var seq string
 
 	//nolint:godox
 	// TODO: Support Kitty, CSI u, and XTerm modifyOtherKeys.
@@ -297,8 +315,8 @@ func (e *Emulator) SendKey(k uv.KeyEvent) {
 			}
 		}
 
-		io.WriteString(e.pw, seq) //nolint:errcheck,gosec
 	}
+	return seq
 }
 
 // Key codes.
