@@ -59,6 +59,10 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	var target *workspaceGitTarget
 	var directory, appCwd string
 	var reserved *workspaceIdentity
+	owner := a
+	if a.viewerOwner != nil {
+		owner = a.viewerOwner
+	}
 	prepared := false
 	a.Do(func() {
 		prepared = true
@@ -106,10 +110,10 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 			}
 			if req.Operation == "create" || req.Operation == "remove" {
 				key := workspaceIdentity{id: w.ID, generation: w.Generation}
-				if a.worktreePending == nil {
-					a.worktreePending = map[workspaceIdentity]int{}
+				if owner.worktreePending == nil {
+					owner.worktreePending = map[workspaceIdentity]int{}
 				}
-				a.worktreePending[key]++
+				owner.worktreePending[key]++
 				reserved = &key
 			}
 		}
@@ -126,9 +130,9 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	}
 	if reserved != nil {
 		defer a.Do(func() {
-			a.worktreePending[*reserved]--
-			if a.worktreePending[*reserved] == 0 {
-				delete(a.worktreePending, *reserved)
+			owner.worktreePending[*reserved]--
+			if owner.worktreePending[*reserved] == 0 {
+				delete(owner.worktreePending, *reserved)
 			}
 		})
 	}

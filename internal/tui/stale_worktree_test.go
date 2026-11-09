@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,21 @@ import (
 
 func TestWorktreeDeleteDefersReanchorUntilGitFinishes(t *testing.T) {
 	teststate.Lock(t)
+	testWorktreeDeleteDefersReanchor(t, false)
+}
+
+func TestViewerWorktreeDeleteDefersReanchorUntilGitFinishes(t *testing.T) {
+	teststate.Lock(t)
+	testWorktreeDeleteDefersReanchor(t, true)
+}
+
+func testWorktreeDeleteDefersReanchor(t *testing.T, viewer bool) {
+	t.Helper()
 	a, repo := worktreeApp(t)
+	var existingViewer *Viewer
+	if viewer {
+		existingViewer = a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+	}
 	if err := os.WriteFile(filepath.Join(repo, "tracked"), []byte("data\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +75,11 @@ func TestWorktreeDeleteDefersReanchorUntilGitFinishes(t *testing.T) {
 		t.Fatal("workspace missing")
 	}
 	result := make(chan error, 1)
-	go func() { _, err := a.ExecuteWorktree(req); result <- err }()
+	executor := a
+	if viewer {
+		existingViewer.with(a, func(ui *App) { executor = ui })
+	}
+	go func() { _, err := executor.ExecuteWorktree(req); result <- err }()
 	deadline := time.After(3 * time.Second)
 	for {
 		if _, err := os.Stat(ready); err == nil {
@@ -115,11 +134,16 @@ func TestWorktreeCreateDefersReanchorUntilGitFinishes(t *testing.T) {
 		if explicit {
 			name = "explicit_cwd"
 		}
-		t.Run(name, func(t *testing.T) { testWorktreeCreateDefersReanchor(t, explicit) })
+		t.Run(name, func(t *testing.T) { testWorktreeCreateDefersReanchor(t, explicit, false) })
 	}
 }
 
-func testWorktreeCreateDefersReanchor(t *testing.T, explicit bool) {
+func TestViewerWorktreeCreateDefersReanchorUntilGitFinishes(t *testing.T) {
+	teststate.Lock(t)
+	testWorktreeCreateDefersReanchor(t, false, true)
+}
+
+func testWorktreeCreateDefersReanchor(t *testing.T, explicit, viewer bool) {
 	t.Helper()
 	a, repo := worktreeApp(t)
 	if err := a.StartInitialPane(); err != nil {
@@ -168,7 +192,12 @@ func testWorktreeCreateDefersReanchor(t *testing.T, explicit bool) {
 	branch := "create-during-move"
 	req.Branch = &branch
 	result := make(chan error, 1)
-	go func() { _, err := a.ExecuteWorktree(req); result <- err }()
+	executor := a
+	if viewer {
+		v := a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+		v.with(a, func(ui *App) { executor = ui })
+	}
+	go func() { _, err := executor.ExecuteWorktree(req); result <- err }()
 	deadline := time.After(3 * time.Second)
 	for {
 		if _, err := os.Stat(ready); err == nil {
