@@ -32,7 +32,8 @@ func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer,
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	root := dir
+	t.Cleanup(func() { os.RemoveAll(root) })
 	if states != nil {
 		teststate.Setenv(t, "IKESU_STATE_DIR", dir)
 		s.session = "client"
