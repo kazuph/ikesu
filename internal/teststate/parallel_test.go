@@ -84,6 +84,17 @@ func TestRunIsolatedParallelPassesParallelLimit(t *testing.T) {
 	}
 }
 
+func TestRunIsolatedParallelSubtest(t *testing.T) {
+	t.Run("child", func(t *testing.T) {
+		if RunIsolatedParallel(t) {
+			return
+		}
+		if os.Getenv(isolatedMarker) != t.Name() {
+			t.Fatal("subtest did not run in its own process")
+		}
+	})
+}
+
 func flagValue(name string) string {
 	if f := flag.Lookup(name); f != nil {
 		return f.Value.String()

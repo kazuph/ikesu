@@ -50,7 +50,7 @@ func runIsolatedParallelNamed(t *testing.T, name string) bool {
 	}
 	quoted := regexp.QuoteMeta(t.Name())
 	if !regexp.MustCompile(`(?m)^=== RUN   `+quoted+`\r?$`).Match(output) ||
-		!regexp.MustCompile(`(?m)^--- PASS: `+quoted+` \([^\r\n]*\)\r?$`).Match(output) {
+		!regexp.MustCompile(`(?m)^[ \t]*--- PASS: `+quoted+` \([^\r\n]*\)\r?$`).Match(output) {
 		t.Fatalf("isolated test did not report PASS: %s", t.Name())
 	}
 	return true

@@ -161,12 +161,14 @@ func TestGuardGenerationRollbackAfterRealHandoffFailure(t *testing.T) {
 	s.waitFor("guard armed", 5*time.Second, func(string) bool { _, err := os.Stat(marker); return err == nil })
 	secondDir := filepath.Join(s.stateDir, "guard", "shell", strings.Replace(split.Pane.PaneID, "p", "p_", 1))
 	bad := filepath.Join(secondDir, "bash-env.current")
-	if err := os.Remove(bad); err != nil && !os.IsNotExist(err) {
+	replacement, err := os.MkdirTemp(secondDir, "rollback-directory-")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(bad, 0700); err != nil {
+	if err := exchangePaths(replacement, bad); err != nil {
 		t.Fatal(err)
 	}
+	s.rpc(api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: split.Pane.PaneID, Source: "rollback-test", Agent: "codex", State: "idle"}, nil)
 	paths := []string{marker, filepath.Join(s.stateDir, "guard", "shell", "p_1", "claude-prefix"), filepath.Join(s.stateDir, "guard", "shell", "p_1", "bash-env")}
 	before := map[string][]byte{}
 	for _, path := range paths {
