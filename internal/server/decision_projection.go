@@ -50,9 +50,7 @@ func (s *Server) sendDecisionProjection(c *clientConn) {
 		_ = c.send(clientMsg{Type: "error", Reason: "decision projection: " + err.Error()})
 		return
 	}
-	if err := c.send(clientMsg{Type: "decisions", Decisions: projection}); err != nil {
-		s.dropConn(c)
-	}
+	c.post(clientMsg{Type: "decisions", Decisions: projection})
 }
 func (s *Server) pushDecisionProjection() {
 	s.decisions.revision++

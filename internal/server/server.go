@@ -251,9 +251,24 @@ type clientConn struct {
 	control        chan clientWrite
 	done           chan struct{}
 	closed         bool
+	qmu            sync.Mutex
+	queue          []queuedSend
+	qclosed        bool
+	qwake          chan struct{}
+	pumpDone       chan struct{}
+	onWriteFail    func(*clientConn)
 }
 
 var clientSequence atomic.Int64
+
+// queuedSend is one message waiting in a connection's ordered send queue.
+// reply is nil for post (fire and forget); done, when set, runs on the pump
+// goroutine after the write finished.
+type queuedSend struct {
+	m     clientMsg
+	reply chan error
+	done  func(error)
+}
 
 func (c *clientConn) startWriter() {
 	c.once.Do(func() {
@@ -263,18 +278,70 @@ func (c *clientConn) startWriter() {
 		c.render = make(chan clientWrite, 1)
 		c.control = make(chan clientWrite, 1)
 		c.done = make(chan struct{})
+		c.qwake = make(chan struct{}, 1)
+		c.pumpDone = make(chan struct{})
 		go runClientWriter(c.conn, c.id, c.render, c.control, c.done)
+		go c.runSendPump()
 	})
 }
 
-func (c *clientConn) send(m clientMsg) error {
-	defer benchstage.Span("server.send")()
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
-	if c.closed {
+func (c *clientConn) enqueue(item queuedSend) error {
+	c.startWriter()
+	c.qmu.Lock()
+	if c.qclosed {
+		c.qmu.Unlock()
 		return net.ErrClosed
 	}
-	c.startWriter()
+	c.queue = append(c.queue, item)
+	c.qmu.Unlock()
+	select {
+	case c.qwake <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// runSendPump hands queued messages to the writer one at a time, in order.
+// It is the only goroutine that waits for a write, so callers on the app loop
+// never do. After the queue is closed it flushes what is left and stops the
+// writer.
+func (c *clientConn) runSendPump() {
+	defer close(c.pumpDone)
+	for {
+		c.qmu.Lock()
+		if len(c.queue) == 0 {
+			if c.qclosed {
+				c.qmu.Unlock()
+				close(c.control)
+				<-c.done
+				return
+			}
+			c.qmu.Unlock()
+			<-c.qwake
+			continue
+		}
+		item := c.queue[0]
+		c.queue[0] = queuedSend{}
+		c.queue = c.queue[1:]
+		closing := c.qclosed
+		c.qmu.Unlock()
+		err := c.writeNow(item.m)
+		if err != nil && !closing && c.onWriteFail != nil {
+			// A failed write closed the writer; detach the client from outside
+			// the app loop and this goroutine (close waits for the pump).
+			go c.onWriteFail(c)
+		}
+		if item.done != nil {
+			item.done(err)
+		}
+		if item.reply != nil {
+			item.reply <- err
+		}
+	}
+}
+
+func (c *clientConn) writeNow(m clientMsg) error {
+	defer benchstage.Span("server.send")()
 	request := clientWrite{message: m, reply: make(chan clientWriteResult, 1)}
 	queue := c.control
 	if m.Type == "output" {
@@ -298,6 +365,29 @@ func (c *clientConn) send(m clientMsg) error {
 	}
 }
 
+// send queues m behind earlier post/send messages and waits for its write.
+// Use it only outside the app loop: one client that stops reading blocks it
+// for up to clientWriteTimeout.
+func (c *clientConn) send(m clientMsg) error {
+	reply := make(chan error, 1)
+	if err := c.enqueue(queuedSend{m: m, reply: reply}); err != nil {
+		return err
+	}
+	return <-reply
+}
+
+// post queues m and returns at once; the order matches send. A failed write
+// closes the connection and detaches the client (onWriteFail).
+func (c *clientConn) post(m clientMsg) { _ = c.enqueue(queuedSend{m: m}) }
+
+// postThen is post with a completion callback run on the pump goroutine
+// (not the app loop) with the write result.
+func (c *clientConn) postThen(m clientMsg, done func(error)) {
+	if err := c.enqueue(queuedSend{m: m, done: done}); err != nil && done != nil {
+		go done(err)
+	}
+}
+
 func (c *clientConn) close() {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
@@ -306,8 +396,14 @@ func (c *clientConn) close() {
 	}
 	c.closed = true
 	c.startWriter()
-	close(c.control)
-	<-c.done
+	c.qmu.Lock()
+	c.qclosed = true
+	c.qmu.Unlock()
+	select {
+	case c.qwake <- struct{}{}:
+	default:
+	}
+	<-c.pumpDone
 }
 
 // Run starts the server for session and blocks until the app quits.
@@ -681,10 +777,7 @@ func (w *clientSink) Write(p []byte) (int, error) {
 	if c == nil {
 		return len(p), nil
 	}
-	if err := c.send(clientMsg{Type: "output", Data: encode64(p)}); err != nil {
-		w.s.dropConn(c)
-		return 0, err
-	}
+	c.post(clientMsg{Type: "output", Data: encode64(p)})
 	return len(p), nil
 }
 
@@ -697,9 +790,7 @@ func (s *Server) writeClientOutput(data string) {
 	if c == nil {
 		return
 	}
-	if err := c.send(clientMsg{Type: "output", Data: encode64([]byte(data))}); err != nil {
-		s.dropConn(c)
-	}
+	c.post(clientMsg{Type: "output", Data: encode64([]byte(data))})
 }
 
 // dropConn removes c if it is still the attached client (broken pipe).
@@ -735,6 +826,7 @@ func (s *Server) clientLoop() {
 // attach negotiates display capabilities before adding an independent viewer.
 func (s *Server) attach(conn net.Conn) {
 	c := &clientConn{conn: conn}
+	c.onWriteFail = s.dropConn
 	if s.trace != nil {
 		c.id = int(clientSequence.Add(1))
 		if peer := latency.PeerPID(conn); peer > 0 {
@@ -805,7 +897,8 @@ func (s *Server) attach(conn net.Conn) {
 			c.viewer.SetVisible(s.app, false)
 		}
 		c.viewer.Configure(s.app, hello.Config, hello.Preferences, func(preferences endpoint.ViewPreferences) error {
-			return c.send(clientMsg{Type: "preferences", Preferences: &preferences})
+			c.post(clientMsg{Type: "preferences", Preferences: &preferences})
+			return nil
 		})
 		if hello.ConfigWarning != "" {
 			c.viewer.ConfigError(s.app, hello.ConfigWarning)
@@ -817,10 +910,18 @@ func (s *Server) attach(conn net.Conn) {
 			}
 			configID++
 			pendingConfig[configID] = done
-			if err := c.send(clientMsg{Type: "config_edit", ConfigID: configID, ConfigEdit: &edit}); err != nil {
-				delete(pendingConfig, configID)
-				done(config.Config{}, err)
-			}
+			id := configID
+			c.postThen(clientMsg{Type: "config_edit", ConfigID: id, ConfigEdit: &edit}, func(err error) {
+				if err == nil {
+					return
+				}
+				go s.app.Do(func() {
+					if _, ok := pendingConfig[id]; ok {
+						delete(pendingConfig, id)
+						done(config.Config{}, err)
+					}
+				})
+			})
 		}
 		c.viewer.SetConfigEditor(func(edit config.Edit, done func(config.Config, error)) {
 			if edit.Kind == "reload" {
@@ -834,7 +935,8 @@ func (s *Server) attach(conn net.Conn) {
 			if !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, "machine_menu") {
 				return fmt.Errorf("endpoint_action_unsupported: machine_menu")
 			}
-			return c.send(clientMsg{Type: "machine_menu", MachineAction: action})
+			c.post(clientMsg{Type: "machine_menu", MachineAction: action})
+			return nil
 		})
 		s.installGraphicsSnapshotSink(c, hello.Peer)
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
@@ -869,7 +971,7 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() {
 				list := c.viewer.IdlePanes(s.app)
 				list.ServerGeneration = s.generation
-				_ = c.send(clientMsg{Type: "idle_panes_result", IdleRequest: m.IdleRequest, IdlePanes: &list})
+				c.post(clientMsg{Type: "idle_panes_result", IdleRequest: m.IdleRequest, IdlePanes: &list})
 			})
 		case "idle_delete":
 			s.app.Do(func() {
@@ -880,7 +982,7 @@ func (s *Server) attach(conn net.Conn) {
 				if m.IdleDelete.ServerGeneration != "" && m.IdleDelete.ServerGeneration == s.generation {
 					result = s.app.DeleteIdlePanes(m.IdleDelete.Panes)
 				}
-				_ = c.send(clientMsg{Type: "idle_delete_result", IdleRequest: m.IdleRequest, IdleDeleteResult: &result})
+				c.post(clientMsg{Type: "idle_delete_result", IdleRequest: m.IdleRequest, IdleDeleteResult: &result})
 			})
 		case endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage:
 			s.app.Do(func() { s.graphicsTransmission(c, m) })
@@ -903,7 +1005,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "workspace_select":
 			s.app.Do(func() {
 				if (m.WorkspaceGeneration != "" && !c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)) || !c.viewer.SelectWorkspace(s.app, m.Workspace) {
-					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+					c.post(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
 					c.viewer.RecordInput(s.app, m.InputSequence)
@@ -912,7 +1014,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "workspace_menu":
 			s.app.Do(func() {
 				if !c.viewer.OpenWorkspaceMenu(s.app, m.Workspace, m.WorkspaceGeneration, m.MenuX, m.MenuY) {
-					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+					c.post(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 			})
 		case "oyagoi_view":
@@ -924,7 +1026,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "oyagoi_check":
 			s.app.Do(func() {
 				exists := c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)
-				_ = c.send(clientMsg{Type: "oyagoi_check_result", Workspace: m.Workspace, WorkspaceGeneration: m.WorkspaceGeneration, OyagoiExists: &exists})
+				c.post(clientMsg{Type: "oyagoi_check_result", Workspace: m.Workspace, WorkspaceGeneration: m.WorkspaceGeneration, OyagoiExists: &exists})
 			})
 		case "config_result":
 			s.app.Do(func() {
@@ -949,16 +1051,16 @@ func (s *Server) attach(conn net.Conn) {
 		case "decision_answer":
 			s.app.Do(func() {
 				if m.DecisionAnswer == nil {
-					_ = c.send(clientMsg{Type: "error", Reason: "decision_answer missing"})
+					c.post(clientMsg{Type: "error", Reason: "decision_answer missing"})
 					return
 				}
 				p := *m.DecisionAnswer
 				p.Responder = "client"
 				resp := s.decisionRequest(&api.Request{ID: "client:decision:answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(p)})
 				if resp.Err != nil {
-					_ = c.send(clientMsg{Type: "decision_answer_result", Reason: resp.Err.Code + ": " + resp.Err.Message})
+					c.post(clientMsg{Type: "decision_answer_result", Reason: resp.Err.Code + ": " + resp.Err.Message})
 				} else {
-					_ = c.send(clientMsg{Type: "decision_answer_result"})
+					c.post(clientMsg{Type: "decision_answer_result"})
 				}
 			})
 		case "preferences_error":

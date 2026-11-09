@@ -157,9 +157,7 @@ func (s *Server) deliverNotification(pid int, kind string) {
 				fmt.Fprintln(os.Stderr, "ikesu: endpoint_action_unsupported: desktop notification requires endpoint generation 4")
 				return
 			}
-			if err := c.send(clientMsg{Type: "notify", Notification: &n}); err != nil {
-				s.dropConn(c)
-			}
+			c.post(clientMsg{Type: "notify", Notification: &n})
 		}
 	}
 }
