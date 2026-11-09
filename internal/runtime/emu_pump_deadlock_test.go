@@ -290,8 +290,32 @@ func TestStaleScreenPromptKeysAreNotSentLate(t *testing.T) {
 	}
 	s.Input(p.ID, []byte("HUMAN")) // external input after the first answer was accepted
 	got := waitFileSuffix(t, received, "HUMAN")
-	if strings.Contains(got, "STALE") {
-		t.Fatalf("stale screen keys were written: %q", got)
+	// The PTY could take STALE1 at once, so it may already be written before
+	// the human typed; it must never come after the human input, and the
+	// expired STALE2 is never written.
+	if got != "HUMAN" && got != "STALE1HUMAN" {
+		t.Fatalf("stale screen keys were written late: %q", got)
+	}
+}
+
+// When the application is not reading, an accepted screen answer waits in the
+// writer queue; human input during that wait makes it stale, so it is dropped
+// instead of being written once the PTY can take it (2026-11-09).
+func TestStaleScreenPromptKeysAreDroppedAfterBackpressure(t *testing.T) {
+	teststate.Lock(t)
+	s, p, received := spawnLateReader(t, "1")
+	filler := strings.Repeat("f", 128<<10)
+	if err := p.QueuePTY([]byte(filler)); err != nil {
+		t.Fatal(err)
+	}
+	seq := p.ExternalInputSequence()
+	if _, err := p.WriteScreenPrompt([]byte("STALE1"), &seq, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	s.Input(p.ID, []byte("HUMAN"))
+	got := waitFileSuffix(t, received, "HUMAN")
+	if got != filler+"HUMAN" {
+		t.Fatalf("stale screen keys were written after the PTY drained: got %d bytes ending %q", len(got), got[max(0, len(got)-20):])
 	}
 }
 
