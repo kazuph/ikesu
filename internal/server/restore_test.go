@@ -185,7 +185,6 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	// session.json must carry the per-pane ids too — the snapshot and the
 	// ledger both keep the exact association.
 	gotIDs := map[int]string{}
-<<<<<<< HEAD
 	waitPromptCondition(t, func() bool {
 		f, err := session.Load(session.Path(dir))
 		if err != nil || f == nil {
@@ -196,25 +195,6 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 		})
 		return gotIDs[1] == "sess-alpha" && gotIDs[2] == "sess-beta"
 	})
-||||||| 23166384
-	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
-		gotIDs[p.ID] = p.SessionID
-	})
-=======
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if f, err := session.Load(session.Path(dir)); err == nil && f != nil {
-			gotIDs = map[int]string{}
-			f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
-				gotIDs[p.ID] = p.SessionID
-			})
-			if gotIDs[1] == "sess-alpha" && gotIDs[2] == "sess-beta" {
-				break
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
->>>>>>> flaky-1109
 	if gotIDs[1] != "sess-alpha" || gotIDs[2] != "sess-beta" {
 		t.Fatalf("session.json pane ids = %v", gotIDs)
 	}
