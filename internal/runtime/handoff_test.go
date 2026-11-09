@@ -153,6 +153,32 @@ func TestHandoffImportedPaneExitClosesExited(t *testing.T) {
 	}
 }
 
+func TestHandoffImportedPaneKillClosesExited(t *testing.T) {
+	teststate.Lock(t)
+	old, next := NewSupervisor(), NewSupervisor()
+	defer old.KillAll()
+	defer next.KillAll()
+	if _, err := old.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/sh", "-c", "read line"}); err != nil {
+		t.Fatal(err)
+	}
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := next.ImportHandoff(states, files); err != nil {
+		t.Fatal(err)
+	}
+	old.ReleaseHandoff()
+	next.StartImported()
+	p := next.Get(1)
+	next.Kill(1)
+	select {
+	case <-p.Exited():
+	case <-time.After(2 * time.Second):
+		t.Fatal("killed imported pane did not close Exited")
+	}
+}
+
 func TestHandoffActualPTYMouseAndExit(t *testing.T) {
 	for _, tc := range []struct {
 		name, modes string
