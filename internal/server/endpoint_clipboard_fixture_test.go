@@ -10,12 +10,17 @@ import (
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 // Use real PTYs, app-loop delivery, and Unix API/display sockets. The observer
 // runs after production clipboard delivery, including when no viewer sees it.
 func startClipboardEndpoint(t *testing.T) (*Server, <-chan string) {
+	return startClipboardEndpointImported(t, nil, nil)
+}
+
+func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer, files []*os.File) (*Server, <-chan string) {
 	t.Helper()
 	pinTestConfig(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
@@ -44,13 +49,20 @@ func startClipboardEndpoint(t *testing.T) (*Server, <-chan string) {
 	s.app.SetServerUI()
 	s.app.SetViewerHooks(s.drawViewers, s.tickViewers, s.visiblePane)
 	s.app.SetSidebarConfig(s.cfg, true)
-	processed := make(chan string, 1)
-	s.app.SetClipboardHook(func(pid int, data string) {
-		s.deliverPaneClipboard(pid, data)
+	processed := make(chan string, 1024)
+	s.app.SetClipboardHook(func(pid int, data string, transferred bool) {
+		s.deliverPaneClipboard(pid, data, transferred)
 		processed <- data
 	})
-	if err := s.app.StartInitialPane(); err != nil {
-		t.Fatal(err)
+	if states == nil {
+		if err := s.app.StartInitialPane(); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if err := s.sup.ImportHandoff(states, files); err != nil {
+			t.Fatal(err)
+		}
+		s.sup.StartImported()
 	}
 	appDone, apiDone, clientDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() { s.app.Run(); close(appDone) }()
@@ -122,4 +134,46 @@ func TestClipboardMarkerPrecedesAppDelivery(t *testing.T) {
 		t.Fatal("delivery did not complete after releasing app loop")
 	}
 	t.Log("real emulator marker was readable before OSC52 delivery; explicit delivery observation completed after app release")
+}
+
+func TestTransferredClipboardWaitsForRealDisplay(t *testing.T) {
+	teststate.Lock(t)
+	old := runtime.NewSupervisor()
+	defer old.KillAll()
+	pane, err := old.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/sh", "-c", "read line; printf '\\033]52;c;UkVBRFk=\\007\\033]52;c;T05F\\007\\033]52;c;VFdP\\007'; read line"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pane.WriteToPTY([]byte("go\n")); err != nil {
+		t.Fatal(err)
+	}
+	// Seeing the first runtime event establishes that the real PTY has produced output.
+	first := <-old.Events()
+	if first.Kind != runtime.EventClipboard {
+		for first.Kind != runtime.EventClipboard {
+			first = <-old.Events()
+		}
+	}
+	// Pause captures any events already queued and those held by the pump.
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) != 1 || len(states[0].Clipboard) < 2 {
+		t.Fatal("no transferred clipboard values")
+	}
+	want := strings.Join(states[0].Clipboard, "")
+	s, processed := startClipboardEndpointImported(t, states, files)
+	old.ReleaseHandoff()
+	for range states[0].Clipboard {
+		<-processed
+	}
+	client := dialClient(t, s.dir)
+	defer client.conn.Close()
+	client.send(t, clientMsg{Type: "hello", Cols: 80, Rows: 24})
+	var seen string
+	msgs := client.readUntil(t, 5*time.Second, func(m clientMsg) bool { seen += outputs([]clientMsg{m}); return strings.Contains(seen, want) })
+	if got := outputs(msgs); !strings.Contains(got, want) {
+		t.Fatalf("display clipboard = %q, want transferred %q", got, want)
+	}
 }

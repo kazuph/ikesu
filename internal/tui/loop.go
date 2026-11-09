@@ -111,7 +111,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 	switch ev.Kind {
 	case runtime.EventClipboard:
 		if a.clipboardHook != nil {
-			a.clipboardHook(ev.Pane, ev.Data)
+			a.clipboardHook(ev.Pane, ev.Data, ev.Transferred)
 		}
 	case runtime.EventChanged:
 		a.invalidateDetection(ev.Pane)

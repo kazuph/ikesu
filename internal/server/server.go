@@ -99,6 +99,7 @@ type Server struct {
 	graphicsFiles       graphicsFileHub
 	graphicsStreamOwner atomic.Uint64
 	handoffMu           sync.Mutex
+	pendingClipboard    []clipboardTransfer
 	handedOff           bool
 	decisions           decisionHub
 	screenPrompts       screenPromptHub
@@ -802,6 +803,7 @@ func (s *Server) attach(conn net.Conn) {
 		})
 		s.installGraphicsSnapshotSink(c, hello.Peer)
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
+		s.flushPaneClipboard()
 	})
 	if c.viewer == nil {
 		return

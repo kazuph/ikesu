@@ -434,7 +434,7 @@ func (p *Pane) deliverClipboard(clipboard []string, transferred bool) {
 			return
 		}
 		select {
-		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data, Source: p}:
+		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data, Source: p, Transferred: transferred}:
 		case <-p.pauseSignal:
 			p.mu.Lock()
 			p.clipboard = append(clipboard[i:], p.clipboard...)

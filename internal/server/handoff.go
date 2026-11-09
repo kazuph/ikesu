@@ -40,6 +40,7 @@ type handoffState struct {
 	LastAttention         time.Time
 	Journal               []api.EventEnvelope
 	AgentLaunches         map[int]launchTransfer
+	PendingClipboard      []clipboardTransfer
 }
 type launchTransfer struct{ Started, ReadySince time.Time }
 type handoffImport struct {
@@ -260,6 +261,7 @@ func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLi
 		return fmt.Errorf("handoff stream closed while reading line")
 	}
 	state := handoffState{App: s.app.HandoffState(), Panes: panes, PaneMetadata: s.paneMetadata, WorkspaceMetadata: s.workspaceMetadata, ReportSources: s.reportSources, PluginPanes: s.pluginPanes, ObservedStart: s.observedStart, LastStatus: s.lastStatus, LastAgent: s.lastAgent, NotifyLast: s.notifyLast, LastAttention: s.lastAttention, Journal: s.journal}
+	state.PendingClipboard = s.pendingClipboard
 	state.AgentLaunches = map[int]launchTransfer{}
 	for id, l := range s.agentLaunches {
 		state.AgentLaunches[id] = launchTransfer{l.started, l.readySince}
@@ -345,6 +347,7 @@ func (s *Server) restoreLive(in *handoffImport, socket string) error {
 	s.pluginPanes, s.observedStart = in.State.PluginPanes, in.State.ObservedStart
 	s.lastStatus, s.lastAgent, s.notifyLast, s.lastAttention = in.State.LastStatus, in.State.LastAgent, in.State.NotifyLast, in.State.LastAttention
 	s.journal = in.State.Journal
+	s.pendingClipboard = in.State.PendingClipboard
 	s.agentLaunches = map[int]*agentLaunch{}
 	for id, l := range in.State.AgentLaunches {
 		s.agentLaunches[id] = &agentLaunch{l.Started, l.ReadySince}
