@@ -491,6 +491,22 @@ final class DialogController: NSObject, NSWindowDelegate {
     if let loc = spec.location, !loc.isEmpty {
       full(label(loc, size: Look.base, weight: .semibold, color: Look.accent))
     }
+    // A command approval's request reason goes on the second line, labelled
+    // and in blue, so it reads as the AI's reason (2026-11-09).
+    let requestReason: String? = {
+      guard spec.kind == "command_guard", spec.approval_fields == nil, let body = spec.body?.trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty,
+        !body.hasPrefix("ブロック理由："), !body.hasPrefix("承認が必要な理由:") else { return nil }
+      return body
+    }()
+    // A one-sentence reason sits on the second line; a long one keeps the
+    // scrolling body area, with the same label and colour.
+    let shortReason = requestReason.map { !$0.contains("\n") && $0.count <= 300 } ?? false
+    if let reason = requestReason, shortReason {
+      let text = "申請文：" + reason
+      let field = richLabel(text, size: Look.title, weight: .semibold, color: .systemBlue)
+      field.setAccessibilityLabel(text)
+      full(field)
+    }
     var titleText = spec.title
     if let q = spec.question_label, !q.isEmpty { titleText = "［\(q)］ " + titleText }
     if !titleText.isEmpty {
@@ -521,7 +537,9 @@ final class DialogController: NSObject, NSWindowDelegate {
         row.addArrangedSubview(richLabel(field.value, size: Look.base))
         full(row)
       }
-    } else if let body = spec.body, !body.isEmpty {
+    } else if let reason = requestReason, !shortReason {
+      full(richLabel("申請文：" + reason, size: Look.base, weight: .semibold, color: .systemBlue))
+    } else if let body = spec.body, !body.isEmpty, requestReason == nil {
       let commands = (spec.details ?? []).filter { ["コマンド", "対象コマンド"].contains($0.label) }.map { $0.value }
       let ranges = spec.kind == "command_guard" ? commandBodyRanges(body, commands: commands) : []
       func bodyLabel(_ text: String, offset: Int, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> RichTextLabel {
@@ -727,7 +745,7 @@ final class DialogController: NSObject, NSWindowDelegate {
     let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     panel = KeyPanel(
       contentRect: NSRect(x: 0, y: 0, width: Look.width, height: 400),
-      styleMask: [.titled, .closable, .resizable],
+      styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
       backing: .buffered, defer: false)
     panel.title = spec.window_title
     panel.contentView = root
@@ -762,19 +780,30 @@ final class DialogController: NSObject, NSWindowDelegate {
     refreshSubmit()
   }
 
+  // A panel that is frontmost takes keyboard input at once, so ⌘1… and ⌘↩
+  // work without a click (2026-11-09). A panel placed behind others does not.
+  // The panel is non-activating, so it becomes the keyboard target without
+  // activating the process; macOS no longer lets a background app activate
+  // itself, and this keeps the user's app from being pushed back.
+  func takeInput() {
+    panel.orderFrontRegardless()
+    panel.makeKey()
+  }
+
   func show(placement: PanelPlacement? = nil) {
-    // Ordering never activates the process or changes the keyboard target.
-    // An explicitly selected Dock/Mission Control window can still become key.
+    // A panel placed behind the open ones, or presented in the background,
+    // neither activates the process nor changes the keyboard target. A panel
+    // that comes out frontmost takes input (takeInput).
     var event: [String: Any] = ["event": "shown", "pid": Int(ProcessInfo.processInfo.processIdentifier)]
     if let placement {
       if let behind = placement.behind { panel.order(.below, relativeTo: behind) }
-      else { panel.orderFrontRegardless() }
+      else { takeInput() }
       event["placement"] = placement.behind == nil ? "front" : "behind"
       event["placement_reason"] = placement.reason
       event["open_panels"] = placement.openPanels
       event["covered_panels"] = placement.coveredPanels
     } else if spec.present_in_background == true { panel.orderBack(nil) }
-    else { panel.orderFrontRegardless() }
+    else { takeInput() }
     event.merge(["x": panel.frame.minX, "y": panel.frame.minY, "key_window": panel.isKeyWindow, "app_active": NSApp.isActive, "appearance": panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "unknown", "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0]) { current, _ in current }
     emit(event)
   }
@@ -783,7 +812,7 @@ final class DialogController: NSObject, NSWindowDelegate {
   // elsewhere or when the daemon stops; a dead daemon also ends the panel.
   func respond(_ message: [String: Any]) {
     if message["status"] as? String == "front" {
-      panel.orderFrontRegardless()
+      takeInput()
       return
     }
     if let status = message["status"] as? String, status.hasPrefix("rich_") { receiveRich(message); return }

@@ -64,7 +64,7 @@ func TestClaudePermissionPopupStylesAndRejectInstructions(t *testing.T) {
 	if !strings.Contains(text, "\n\n $ echo safe\n 画面の表示どおり（折り返しを含む）\n warning 注意\n\n reason 理由\n\n") {
 		t.Fatalf("incorrect field order or spacing: %q", text)
 	}
-	if !strings.Contains(text, "confirm ↵") || !strings.Contains(text, "back ctrl+u") || strings.Contains(text, "select 1-") {
+	if !strings.Contains(text, "confirm ↵") || !strings.Contains(text, "back ctrl+u") || strings.Contains(text, "select ↑↓") {
 		t.Fatalf("reject footer: %s", text)
 	}
 }
@@ -174,7 +174,7 @@ func TestApprovalPresentationOriginAndRejectInstructions(t *testing.T) {
 			t.Errorf("missing %q in %q", want, text)
 		}
 	}
-	if strings.Contains(text, "select 1-3") || strings.Contains(text, "\n back ctrl+u") {
+	if strings.Contains(text, "select ↑↓ 1-3") || strings.Contains(text, "\n back ctrl+u") {
 		t.Fatalf("reject input shows selection guidance: %q", text)
 	}
 }
