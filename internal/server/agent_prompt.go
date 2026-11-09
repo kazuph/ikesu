@@ -90,10 +90,13 @@ func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response
 		}
 		if failure == nil {
 			manualSequence = pane.ManualInputSequence()
-			if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
+			var err error
+			op, err = pane.ReserveInputOperation(len(p.Text))
+			if err != nil {
+				failure = &api.Error{Code: "agent_prompt_failed", Message: err.Error()}
+			} else if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
+				op.Release()
 				failure = &api.Error{Code: "agent_prompt_failed", Message: "pane input interrupted submission"}
-			} else {
-				op = pane.ReserveInputOperation()
 			}
 		}
 	}) {
@@ -137,7 +140,7 @@ func (s *Server) submitAgentPrompt(ctx context.Context, pane *runtime.Pane, op *
 	if pane.BracketedPasteMode() {
 		text = "\x1b[200~" + text + "\x1b[201~"
 	}
-	written, err := pane.QueueExternalInput(ctx, manualSequence, []byte(text))
+	written, err := pane.QueueExternalInput(ctx, manualSequence, []byte(text), op)
 	if err != nil {
 		op.Release()
 		return err

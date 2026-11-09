@@ -53,7 +53,7 @@ func (p *Pane) recordKeyInput(manual bool, expected *uint64, fn func()) (uint64,
 	return seq, true
 }
 
-func (p *Pane) QueueExternalInput(ctx context.Context, expected uint64, data []byte) (<-chan error, error) {
+func (p *Pane) QueueExternalInput(ctx context.Context, expected uint64, data []byte, op *InputOperation) (<-chan error, error) {
 	p.inputMu.Lock()
 	defer p.inputMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -66,7 +66,7 @@ func (p *Pane) QueueExternalInput(ctx context.Context, expected uint64, data []b
 	p.lastExternalInput.Store(now)
 	p.lastMailExternalInput.Store(now)
 	p.externalInputSeq.Add(1)
-	done, err := p.queuePromptInputLocked(expected, data)
+	done, err := p.queuePromptInputLocked(expected, data, op)
 	return done, err
 }
 
@@ -119,7 +119,7 @@ func (p *Pane) WritePTYIfInputUnchanged(seq uint64, data []byte) (int, error) {
 		p.inputMu.Unlock()
 		return 0, fmt.Errorf("pane input interrupted submission")
 	}
-	done, err := p.queuePromptInputLocked(seq, data)
+	done, err := p.queuePromptInputLocked(seq, data, nil)
 	p.inputMu.Unlock()
 	if err != nil {
 		return 0, err
@@ -131,12 +131,12 @@ func (p *Pane) WritePTYIfInputUnchanged(seq uint64, data []byte) (int, error) {
 }
 
 // queuePromptInputLocked admits a complete write without waiting for the PTY.
-func (p *Pane) queuePromptInputLocked(seq uint64, data []byte) (<-chan error, error) {
+func (p *Pane) queuePromptInputLocked(seq uint64, data []byte, op *InputOperation) (<-chan error, error) {
 	if p.currentPTY() == nil {
 		return nil, os.ErrClosed
 	}
 	done := make(chan error, 1)
-	if err := p.writer.enqueue(data, done, func() bool { return p.manualInputSeq.Load() == seq }); err != nil {
+	if err := p.writer.enqueueReserved(data, done, func() bool { return p.manualInputSeq.Load() == seq }, op); err != nil {
 		return nil, err
 	}
 	p.markProcessChanged()

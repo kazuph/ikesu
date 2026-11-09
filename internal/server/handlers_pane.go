@@ -342,7 +342,9 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 	if bad != "" {
 		return api.Failure(id, api.ErrInvalidKey, fmt.Sprintf("unsupported key %s", bad))
 	}
-	s.sendInputToPane(pane, p.Text, keys)
+	if err := s.sendInputToPane(pane, p.Text, keys); err != nil {
+		return api.Failure(id, "pane_input_failed", err.Error())
+	}
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
 
@@ -350,12 +352,16 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 // window, sends the keys — the agent CLIs rely on the gap so TUI apps
 // have consumed the prompt before Enter arrives. Runs asynchronously so
 // the app loop never blocks.
-func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyEvent) {
+func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyEvent) error {
 	manualSequence := pane.ManualInputSequence()
-	if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
-		return
+	op, err := pane.ReserveInputOperation(len(text))
+	if err != nil {
+		return err
 	}
-	op := pane.ReserveInputOperation()
+	if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
+		op.Release()
+		return fmt.Errorf("pane input interrupted submission")
+	}
 	go func() {
 		if !op.Wait(context.Background()) {
 			return
@@ -370,10 +376,9 @@ func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyE
 				s.mu.Unlock()
 				return
 			}
-			var admitted bool
-			_, admitted = pane.RecordKeyInputAndDo(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.Paste(text) }) })
+			err := pane.PasteInputOperation(op, manualSequence, text)
 			s.mu.Unlock()
-			if !admitted {
+			if err != nil {
 				return
 			}
 		}
@@ -394,6 +399,7 @@ func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyE
 			pane.WithInputSequence(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) }) })
 		}
 	}()
+	return nil
 }
 
 func (s *Server) paneReportAgent(id string, p api.PaneReportAgentParams) api.Response {

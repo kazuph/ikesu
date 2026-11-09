@@ -1,6 +1,12 @@
 package runtime
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
+)
 
 // Exited closes after the pane process has exited.
 func (p *Pane) Exited() <-chan struct{} { return p.done }
@@ -11,12 +17,29 @@ type InputOperation struct {
 	ready    chan struct{}
 	active   bool
 	finished bool
+	reserved int
 }
 
-func (p *Pane) ReserveInputOperation() *InputOperation {
+func (p *Pane) ReserveInputOperation(textBytes int) (*InputOperation, error) {
 	p.inputOperationMu.Lock()
 	defer p.inputOperationMu.Unlock()
-	op := &InputOperation{pane: p, ready: make(chan struct{})}
+	reserved := textBytes
+	if textBytes > 0 {
+		reserved += len(ansi.BracketedPasteStart) + len(ansi.BracketedPasteEnd)
+	}
+	p.writer.mu.Lock()
+	if p.writer.stopped != nil {
+		err := p.writer.stopped
+		p.writer.mu.Unlock()
+		return nil, err
+	}
+	if reserved > ptyInputLimit-p.writer.queued-p.writer.reserved {
+		p.writer.mu.Unlock()
+		return nil, ErrPTYInputFull
+	}
+	p.writer.reserved += reserved
+	p.writer.mu.Unlock()
+	op := &InputOperation{pane: p, ready: make(chan struct{}), reserved: reserved}
 	if !p.inputOperationBusy {
 		p.inputOperationBusy = true
 		p.inputOperationIdle = make(chan struct{})
@@ -25,7 +48,24 @@ func (p *Pane) ReserveInputOperation() *InputOperation {
 	} else {
 		p.inputOperations = append(p.inputOperations, op)
 	}
-	return op
+	return op, nil
+}
+
+// PasteInputOperation transfers an admitted reservation to the PTY queue.
+func (p *Pane) PasteInputOperation(op *InputOperation, expected uint64, text string) error {
+	var writeErr error
+	_, admitted := p.RecordKeyInputAndDo(expected, func() {
+		p.WithEmu(func(e *vt.Emulator) {
+			if e.ModeSet(ansi.ModeBracketedPaste) {
+				text = ansi.BracketedPasteStart + text + ansi.BracketedPasteEnd
+			}
+			writeErr = p.writer.enqueueReserved([]byte(text), nil, nil, op)
+		})
+	})
+	if !admitted {
+		return fmt.Errorf("pane input interrupted submission")
+	}
+	return writeErr
 }
 
 // InputOperationsIdle returns a channel closed when accepted operations finish.
@@ -65,6 +105,10 @@ func (op *InputOperation) Release() {
 		return
 	}
 	op.finished = true
+	p.writer.mu.Lock()
+	p.writer.reserved -= op.reserved
+	op.reserved = 0
+	p.writer.mu.Unlock()
 	if !op.active {
 		for i, queued := range p.inputOperations {
 			if queued == op {

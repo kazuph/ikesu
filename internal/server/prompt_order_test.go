@@ -10,9 +10,19 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"golang.org/x/sys/unix"
 )
+
+func reserveTestInput(t *testing.T, p *runtime.Pane, size int) *runtime.InputOperation {
+	t.Helper()
+	op, err := p.ReserveInputOperation(size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return op
+}
 
 func TestAgentPromptDisconnectReturnsWhilePTYIsFull(t *testing.T) {
 	teststate.Lock(t)
@@ -38,7 +48,7 @@ func TestAgentPromptDisconnectReturnsWhilePTYIsFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	op := p.ReserveInputOperation()
+	op := reserveTestInput(t, p, len("first"))
 	seq := p.ManualInputSequence()
 	externalSeq := p.ExternalInputSequence()
 	done := make(chan error, 1)
@@ -64,6 +74,32 @@ func TestAgentPromptDisconnectReturnsWhilePTYIsFull(t *testing.T) {
 	waitPromptCondition(t, func() bool { data, _ := os.ReadFile(received); return strings.HasSuffix(string(data), "first\r") })
 }
 
+func TestPaneSendInputRejectsExcessReservedText(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "prompt-capacity")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
+	hold := reserveTestInput(t, p, 0)
+	defer hold.Release()
+	if !hold.Wait(context.Background()) {
+		t.Fatal("initial input reservation failed")
+	}
+	body := strings.Repeat("x", 3<<20)
+	for i := 0; i < 2; i++ {
+		response := s.paneSendInput("test", api.PaneSendInputParams{PaneID: "p1", Text: body})
+		if response.Err != nil {
+			t.Fatalf("input %d rejected: %+v", i, response.Err)
+		}
+	}
+	response := s.paneSendInput("test", api.PaneSendInputParams{PaneID: "p1", Text: body})
+	if response.Err == nil {
+		t.Fatal("accepted more than the PTY input limit in queued reservations")
+	}
+}
+
 func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
 	teststate.Lock(t)
 	path := filepath.Join(t.TempDir(), "lines")
@@ -82,7 +118,7 @@ func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
 	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
 	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
 	seq := p.ManualInputSequence()
-	first, second := p.ReserveInputOperation(), p.ReserveInputOperation()
+	first, second := reserveTestInput(t, p, len("first")), reserveTestInput(t, p, len("second"))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	doneA, doneB := make(chan error, 1), make(chan error, 1)
@@ -170,12 +206,12 @@ func TestCanceledInputReservationDoesNotPassPriorSubmission(t *testing.T) {
 	}
 	defer s.sup.KillAll()
 	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
-	first := p.ReserveInputOperation()
+	first := reserveTestInput(t, p, 0)
 	if !first.Wait(context.Background()) {
 		t.Fatal("first turn unavailable")
 	}
-	second := p.ReserveInputOperation()
-	third := p.ReserveInputOperation()
+	second := reserveTestInput(t, p, 0)
+	third := reserveTestInput(t, p, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if second.Wait(ctx) {

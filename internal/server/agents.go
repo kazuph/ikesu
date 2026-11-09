@@ -165,7 +165,9 @@ func (s *Server) agentSend(id string, p api.AgentSendParams) api.Response {
 	if pane == nil {
 		return s.paneNotFound(id, p.Target)
 	}
-	s.sendInputToPane(pane, p.Text, []uv.KeyEvent{uv.KeyPressEvent{Code: uv.KeyEnter}})
+	if err := s.sendInputToPane(pane, p.Text, []uv.KeyEvent{uv.KeyPressEvent{Code: uv.KeyEnter}}); err != nil {
+		return api.Failure(id, "pane_input_failed", err.Error())
+	}
 	return api.Success(id, api.OkResult{Type: "ok"})
 }
 
