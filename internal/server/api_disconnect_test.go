@@ -2,14 +2,19 @@ package server
 
 import (
 	"bufio"
+	"context"
+	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"golang.org/x/sys/unix"
 )
 
 func TestDisconnectedAPIRequestDoesNotRunAfterAppResumes(t *testing.T) {
@@ -84,6 +89,103 @@ unblocked:
 	for completed < len(requests) {
 		<-served
 		completed++
+	}
+	var got string
+	s.app.Do(func() { got = s.app.State().PaneLabels[1] })
+	if retained || got == label {
+		t.Fatalf("disconnected request retained=%v label=%q", retained, got)
+	}
+}
+
+func TestDisconnectedAPIWhileGitHookBlocked(t *testing.T) {
+	teststate.Lock(t)
+	dir, err := os.MkdirTemp("/tmp", "ikesu-git-api-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	repo := filepath.Join(dir, "repo")
+	if err := os.Mkdir(repo, 0700); err != nil {
+		t.Fatal(err)
+	}
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+	runGit("init")
+	runGit("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "initial")
+	fifo, started := filepath.Join(dir, "release"), filepath.Join(dir, "started")
+	if err := unix.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	hook := fmt.Sprintf("#!/bin/sh\ntouch %q\nread x < %q\n", started, fifo)
+	if err := os.WriteFile(filepath.Join(repo, ".git", "hooks", "post-checkout"), []byte(hook), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("unix", filepath.Join(dir, "api.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	s := newTestServer(t, "git-blocked")
+	appDone := make(chan struct{})
+	go func() { s.app.Run(); close(appDone) }()
+	defer func() { s.app.Stop(); <-appDone }()
+	gitCtx, cancelGit := context.WithCancel(context.Background())
+	defer cancelGit()
+	gitDone := make(chan error, 1)
+	target := filepath.Join(repo, ".worktree", "test")
+	go s.app.Do(func() {
+		cmd := exec.CommandContext(gitCtx, "git", "-C", repo, "worktree", "add", "-b", "test-branch", target, "HEAD")
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		gitDone <- cmd.Run()
+	})
+	waitPromptCondition(t, func() bool { _, err := os.Stat(started); return err == nil })
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			if err := os.WriteFile(fifo, []byte("release\n"), 0600); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	defer release()
+	served := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err == nil {
+			s.apiWG.Add(1)
+			s.serveAPI(conn)
+		}
+		close(served)
+	}()
+	conn, err := net.Dial("unix", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	label := "must-not-run"
+	if err := api.WriteRequest(conn, api.Request{ID: "test", Method: api.MethodPaneRename, Params: api.MarshalParams(api.PaneRenameParams{PaneID: "p1", Label: &label})}); err != nil {
+		t.Fatal(err)
+	}
+	<-time.After(100 * time.Millisecond)
+	conn.Close()
+	retained := false
+	select {
+	case <-served:
+	case <-time.After(300 * time.Millisecond):
+		retained = true
+	}
+	release()
+	if err := <-gitDone; err != nil {
+		t.Fatalf("started git operation did not complete: %v", err)
+	}
+	<-served
+	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
+		t.Fatalf("started operation is not visible: %v", err)
 	}
 	var got string
 	s.app.Do(func() { got = s.app.State().PaneLabels[1] })
