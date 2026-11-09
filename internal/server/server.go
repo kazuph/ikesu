@@ -134,7 +134,10 @@ type Server struct {
 	clients          map[*clientConn]bool
 	lastUse          uint64
 
-	apiWG sync.WaitGroup // in-flight API connections (drained on shutdown)
+	apiWG          sync.WaitGroup // in-flight API connections (drained on shutdown)
+	cleanupMu      sync.Mutex
+	cleanupQueue   []func()
+	cleanupRunning bool
 
 	// durable mailbox / jobs
 	dbOnce             sync.Once
