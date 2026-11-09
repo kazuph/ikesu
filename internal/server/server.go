@@ -688,7 +688,7 @@ func (s *Server) dropConn(c *clientConn) {
 // clientLoop accepts display clients until the listener closes.
 func (s *Server) clientLoop() {
 	for {
-		conn, err := s.clientLn.Accept()
+		conn, err := acceptWithRetry(s.clientLn, func() bool { return s.closing.Load() != 0 })
 		if err != nil {
 			return
 		}
