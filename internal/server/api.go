@@ -190,6 +190,9 @@ func (s *Server) dispatchContext(ctx context.Context, req *api.Request) (respons
 		s.app.DoContext(ctx, func() { response = s.agentViewRequest(req) })
 		return response
 	}
+	if req.Method == api.MethodDecisionList || req.Method == api.MethodDecisionGet {
+		return s.decisionReadOffLoop(req)
+	}
 	if strings.HasPrefix(req.Method, "decision.") {
 		var resp api.Response
 		var delivery <-chan error
