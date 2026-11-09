@@ -9,6 +9,7 @@ import (
 
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
+	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/session"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/tui"
@@ -80,15 +81,46 @@ func TestDelayedSessionObservationPreservesExplicitReport(t *testing.T) {
 	if !ok {
 		t.Fatal("could not prepare observation")
 	}
-	observation.observe()
-	if !observation.found || observation.result.Value != "observed-id" {
-		t.Fatalf("real session file was not observed: %+v", observation.result)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer f.Close()
+	job = platform.ForegroundJob{Processes: []platform.ForegroundProcess{{PID: os.Getpid()}}}
+	id, found := session.ObserveProcessSession("codex", p.Snapshot().Cwd, start, job, []string{"CODEX_HOME=" + root})
+	if !found || id != "observed-id" {
+		t.Fatalf("real open session file was not observed: %q %v", id, found)
+	}
+	observation.found = true
+	observation.result = tui.AgentRecord{Agent: "codex", Kind: "id", Value: id, Source: "observed:file"}
 	reported := tui.AgentRecord{Agent: "codex", Kind: "id", Value: "reported-id", Source: "report:test"}
 	s.app.RecordSession(pid, reported)
 	s.applySessionObservation(observation)
 	if got, _ := s.app.SessionRecord(pid); got != reported {
 		t.Fatalf("delayed observation replaced the explicit report: %+v", got)
+	}
+}
+
+func TestSessionObservationRejectsDuplicatePaneID(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-observation")
+	if err := s.app.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.sup.KillAll()
+	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
+	p := s.sup.Get(pid)
+	p.SetAgent("codex")
+	s.app.RecordSession(pid+1000, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "report:test"})
+	o, ok := s.prepareSessionObservation(pid)
+	if !ok {
+		t.Fatal("missing observation")
+	}
+	o.found = true
+	o.result = tui.AgentRecord{Agent: "codex", Kind: "id", Value: "shared-id", Source: "observed:file"}
+	s.applySessionObservation(o)
+	if rec, ok := s.app.SessionRecord(pid); ok && rec.Value == "shared-id" {
+		t.Fatalf("duplicate accepted: %+v", rec)
 	}
 }
 

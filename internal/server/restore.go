@@ -266,6 +266,13 @@ func (o *sessionObservation) observe() {
 	if o.startKnown && o.hasRecord && o.record.Value != "" && o.previousStart.Equal(o.start) {
 		return
 	}
+	if o.snapshot.AgentID == "codex" {
+		if id, ok := session.ObserveCmdline(job); ok {
+			o.result = tui.AgentRecord{Agent: o.snapshot.AgentID, Kind: "id", Value: id, Title: o.record.Title, Source: "observed:cmdline"}
+			o.found = true
+			return
+		}
+	}
 	if o.startKnown {
 		if id, found := session.ObserveProcessSession(o.snapshot.AgentID, o.snapshot.Cwd, o.start, job, o.pane.SessionEnvironment()); found {
 			o.result = observedSessionRecord(o.snapshot.AgentID, id, o.record.Title, job)
@@ -297,6 +304,13 @@ func (s *Server) applySessionObservation(o sessionObservation) {
 	if current.AgentID != o.snapshot.AgentID || current.Cwd != o.snapshot.Cwd || current.FgPID != o.snapshot.FgPID || current.Dead || hasRec != o.hasRecord || rec != o.record || !s.observedStart[o.pid].Equal(o.previousStart) {
 		s.markSessionDirty()
 		return
+	}
+	if o.result.Agent == "codex" {
+		for pid, other := range s.app.SessionRecords() {
+			if pid != o.pid && other.Agent == o.result.Agent && other.Kind == "id" && other.Value == o.result.Value {
+				return
+			}
+		}
 	}
 	s.app.RecordSession(o.pid, o.result)
 	s.ledgerPut(o.pid, o.result)

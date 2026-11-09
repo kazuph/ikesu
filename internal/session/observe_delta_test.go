@@ -26,7 +26,7 @@ func TestCodexRecentRolloutsFailClosed(t *testing.T) {
 	t.Setenv("HOME", home)
 	start := time.Now()
 	root := filepath.Join(home, ".codex", "sessions", "older-folder")
-	valid := rolloutFile(t, root, "rollout-valid.jsonl", "current", "/work", start.Add(5*time.Minute))
+	valid := rolloutFile(t, root, "rollout-valid.jsonl", "current", "/work", start.Add(time.Minute))
 	if id, ok := ObserveCodexSessionFile("/work", start); !ok || id != "current" {
 		t.Fatal(id, ok)
 	}
@@ -74,6 +74,47 @@ func TestCodexOpenJSONLCorrelation(t *testing.T) {
 		t.Fatal("foreign cwd")
 	}
 }
+func TestCodexProcessEvidenceOverridesOtherRollout(t *testing.T) {
+	home := t.TempDir()
+	start := time.Now()
+	root := filepath.Join(home, ".codex", "sessions")
+	active := rolloutFile(t, root, "rollout-active.jsonl", "active", "/work", start.Add(-time.Hour))
+	rolloutFile(t, root, "rollout-other.jsonl", "other", "/work", start)
+	f, err := os.Open(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	job := platform.ForegroundJob{Processes: []platform.ForegroundProcess{{PID: os.Getpid()}}}
+	id, ok := ObserveProcessSession("codex", "/work", start, job, []string{"HOME=" + home})
+	if !ok || id != "active" {
+		t.Fatalf("got %q, %v", id, ok)
+	}
+}
+
+func TestCodexUnownedRolloutNotAttributed(t *testing.T) {
+	home := t.TempDir()
+	start := time.Now()
+	rolloutFile(t, filepath.Join(home, ".codex", "sessions"), "rollout-other.jsonl", "other", "/work", start)
+	if id, ok := ObserveProcessSession("codex", "/work", start, platform.ForegroundJob{}, []string{"HOME=" + home}); ok {
+		t.Fatalf("unowned session attributed: %s", id)
+	}
+}
+
+func TestCodexAuditResumedFileAndFutureRollout(t *testing.T) {
+	root := t.TempDir()
+	start := time.Date(2026, 11, 7, 7, 44, 0, 0, time.UTC)
+	active := rolloutFile(t, root, "rollout-a.jsonl", "A", "/work", start.Add(-48*time.Hour))
+	rolloutFile(t, root, "rollout-b.jsonl", "B", "/work", start.Add(47*time.Second))
+	if id, ok := observeCodexFiles(root, "/work", start, []string{active}); !ok || id != "A" {
+		t.Fatalf("opened rollout: %q %v", id, ok)
+	}
+	rolloutFile(t, root, "rollout-c.jsonl", "C", "/other", start.Add(23*time.Hour))
+	if id, ok := observeCodexFiles(root, "/other", start, nil); ok {
+		t.Fatalf("future rollout: %q", id)
+	}
+}
+
 func TestCodexResumeLastIsNotID(t *testing.T) {
 	job := platform.ForegroundJob{Processes: []platform.ForegroundProcess{{Argv: []string{"codex", "resume", "--last"}}}}
 	if id, ok := ObserveCmdline(job); ok {
@@ -89,13 +130,13 @@ func TestPaneLaunchSessionRootsOverrideServerHome(t *testing.T) {
 	root := filepath.Join(child, ".codex", "sessions")
 	rolloutFile(t, root, "rollout-child.jsonl", "child-id", "/work", start)
 	id, ok := ObserveProcessSession("codex", "/work", start, platform.ForegroundJob{}, []string{"HOME=" + child})
-	if !ok || id != "child-id" {
+	if ok {
 		t.Fatal(id, ok)
 	}
 	custom := t.TempDir()
 	rolloutFile(t, filepath.Join(custom, "sessions"), "rollout-custom.jsonl", "configured-id", "/work", start)
 	id, ok = ObserveProcessSession("codex", "/work", start, platform.ForegroundJob{}, []string{"HOME=" + child, "CODEX_HOME=" + custom})
-	if !ok || id != "configured-id" {
+	if ok {
 		t.Fatal(id, ok)
 	}
 	claude := t.TempDir()

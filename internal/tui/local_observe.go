@@ -30,8 +30,22 @@ func (a *App) observeLocalSessions() {
 				if hasStart && hasRec && rec.Value != "" && a.localObservedStart[pid].Equal(start) {
 					continue
 				}
+				if snap.AgentID == "codex" {
+					if id, found := session.ObserveCmdline(job); found {
+						if !a.codexSessionInOtherPane(pid, id) {
+							a.RecordSession(pid, AgentRecord{Agent: snap.AgentID, Kind: "id", Value: id, Title: rec.Title, Source: "observed:cmdline"})
+							if hasStart {
+								a.localObservedStart[pid] = start
+							}
+						}
+						continue
+					}
+				}
 				if hasStart {
 					if id, found := session.ObserveProcessSession(snap.AgentID, snap.Cwd, start, job, rp.SessionEnvironment()); found {
+						if snap.AgentID == "codex" && a.codexSessionInOtherPane(pid, id) {
+							continue
+						}
 						a.RecordSession(pid, AgentRecord{Agent: snap.AgentID, Kind: "id", Value: id, Title: rec.Title, Source: "observed:file"})
 						a.localObservedStart[pid] = start
 						continue
@@ -49,4 +63,13 @@ func (a *App) observeLocalSessions() {
 			}
 		}
 	}
+}
+
+func (a *App) codexSessionInOtherPane(pid int, id string) bool {
+	for otherPID, rec := range a.SessionRecords() {
+		if otherPID != pid && rec.Agent == "codex" && rec.Kind == "id" && rec.Value == id {
+			return true
+		}
+	}
+	return false
 }
