@@ -259,6 +259,8 @@ type clientConn struct {
 	pumpDone       chan struct{}
 	onWriteFail    func(*clientConn)
 	failOnce       sync.Once
+	lastProgress   time.Time // guarded by qmu; last time a write finished or the queue became non-empty
+	qbytes         int       // guarded by qmu
 	qfailed        bool
 }
 
@@ -266,12 +268,12 @@ var clientSequence atomic.Int64
 
 // queuedSend is one message waiting in a connection's ordered send queue.
 // reply is nil for post (fire and forget); done, when set, runs on the pump
-// goroutine after the write finished. at is when it was queued.
+// goroutine after the write finished. size counts toward clientQueueLimit.
 type queuedSend struct {
 	m     clientMsg
 	reply chan error
 	done  func(error)
-	at    time.Time
+	size  int
 }
 
 func (c *clientConn) startWriter() {
@@ -313,13 +315,19 @@ func (c *clientConn) fail() {
 	})
 }
 
-// headStale reports whether the oldest unfinished message has waited longer
-// than the write deadline. clientWriteTimeout is the age limit of the queue,
-// so a client that reads too slowly is detached like one that does not read.
-// Caller holds qmu.
-func (c *clientConn) headStale() bool {
-	return len(c.queue) > 0 && time.Since(c.queue[0].at) > clientWriteTimeout
+// stalled reports whether messages are waiting but no write finished or
+// started for longer than the write deadline. A client that reads, however
+// slowly, keeps making progress and is not detached by time alone. Caller
+// holds qmu.
+func (c *clientConn) stalled() bool {
+	return len(c.queue) > 0 && time.Since(c.lastProgress) > clientWriteTimeout
 }
+
+// clientQueueLimit caps the bytes queued for one client. It is the same value
+// as ptyInputLimit in internal/runtime (decided by the owner on 2026-11-09).
+const clientQueueLimit = 8 << 20
+
+func queuedSize(m clientMsg) int { return len(m.Data) + len(m.Reason) + len(m.Type) + 64 }
 
 func (c *clientConn) enqueue(item queuedSend) error {
 	c.startWriter()
@@ -328,12 +336,16 @@ func (c *clientConn) enqueue(item queuedSend) error {
 		c.qmu.Unlock()
 		return net.ErrClosed
 	}
-	if c.headStale() {
+	item.size = queuedSize(item.m)
+	if c.stalled() || c.qbytes+item.size > clientQueueLimit {
 		c.qmu.Unlock()
 		c.fail()
 		return net.ErrClosed
 	}
-	item.at = time.Now()
+	if len(c.queue) == 0 {
+		c.lastProgress = time.Now()
+	}
+	c.qbytes += item.size
 	c.queue = append(c.queue, item)
 	c.qmu.Unlock()
 	c.wakePump()
@@ -343,7 +355,7 @@ func (c *clientConn) enqueue(item queuedSend) error {
 // runSendPump hands queued messages to the writer one at a time, in order.
 // It is the only goroutine that waits for a write, so callers on the app loop
 // never do. The message being written stays at the head of the queue until it
-// is done, which is what the age check looks at. After the queue is closed it
+// is done. After the queue is closed it
 // flushes what is left and stops the writer.
 func (c *clientConn) runSendPump() {
 	defer close(c.pumpDone)
@@ -372,9 +384,10 @@ func (c *clientConn) runSendPump() {
 		c.qmu.Lock()
 		c.queue[0] = queuedSend{}
 		c.queue = c.queue[1:]
-		stale := c.headStale()
+		c.qbytes -= item.size
+		c.lastProgress = time.Now()
 		c.qmu.Unlock()
-		if err != nil || stale {
+		if err != nil {
 			c.fail()
 		}
 		if item.done != nil {

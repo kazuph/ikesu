@@ -133,9 +133,8 @@ func TestPostStalledClientIsDroppedAndPumpEnds(t *testing.T) {
 	}
 }
 
-// A client that reads, but too slowly to ever catch up, is detached once the
-// oldest queued message is older than the write deadline, and nothing stays
-// queued.
+// A client that reads too slowly to ever catch up is detached once the queued
+// bytes pass clientQueueLimit, and nothing stays queued.
 func TestPostSlowReaderIsDroppedByQueueAge(t *testing.T) {
 	old := clientWriteTimeout
 	clientWriteTimeout = 500 * time.Millisecond
@@ -213,4 +212,100 @@ func TestAppLoopDetachDropAndErrorDoNotWait(t *testing.T) {
 	if attached {
 		t.Fatal("client stayed attached after detach")
 	}
+}
+
+// A client that keeps reading is not cut by time alone: the total time to
+// drain is several write deadlines, but every write makes progress.
+func TestPostSlowButReadingClientIsKept(t *testing.T) {
+	old := clientWriteTimeout
+	clientWriteTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { clientWriteTimeout = old })
+	s, c, stop, peer := postTestServer(t)
+	defer stop()
+	const messages = 400
+	go func() {
+		rd := bufio.NewReader(peer)
+		for i := 0; i < messages+1; i++ {
+			if _, err := readClientMsg(rd); err != nil {
+				return
+			}
+			time.Sleep(5 * time.Millisecond) // about 2s in total, four write deadlines
+		}
+	}()
+	data := encode64([]byte(strings.Repeat("z", 700)))
+	for i := 0; i < messages; i++ {
+		c.post(clientMsg{Type: "output", Data: data})
+	}
+	if err := c.send(clientMsg{Type: "error", Reason: "end"}); err != nil {
+		t.Fatalf("reading client was cut: %v", err)
+	}
+	s.mu.Lock()
+	attached := s.clients[c]
+	s.mu.Unlock()
+	if !attached {
+		t.Fatal("reading client was detached")
+	}
+}
+
+// More than clientQueueLimit queued bytes detaches the client even though the
+// write deadline is far away.
+func TestPostQueueBytesOverLimitDropsClient(t *testing.T) {
+	old := clientWriteTimeout
+	clientWriteTimeout = 30 * time.Second
+	t.Cleanup(func() { clientWriteTimeout = old })
+	s, c, stop, _ := postTestServer(t)
+	defer stop()
+	chunk := encode64([]byte(strings.Repeat("q", 1<<20)))
+	for i := 0; i < 5; i++ { // encode64 grows 1 MiB to about 1.33 MiB: 6.7 MiB, under the limit
+		c.post(clientMsg{Type: "output", Data: chunk})
+	}
+	c.qmu.Lock()
+	failed := c.qfailed
+	c.qmu.Unlock()
+	if failed {
+		t.Fatal("dropped before the limit")
+	}
+	for i := 0; i < 5; i++ {
+		c.post(clientMsg{Type: "output", Data: chunk})
+	}
+	select {
+	case <-c.pumpDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("client over the queue limit was not dropped")
+	}
+	s.mu.Lock()
+	attached := s.clients[c]
+	s.mu.Unlock()
+	if attached {
+		t.Fatal("client stayed attached")
+	}
+}
+
+// The restart notice the live handoff sends runs on the app loop; it must
+// only queue, and flushClosedClients waits afterwards.
+func TestClosedClientsAsyncDoesNotHoldAppLoop(t *testing.T) {
+	old := clientWriteTimeout
+	clientWriteTimeout = 30 * time.Second
+	t.Cleanup(func() { clientWriteTimeout = old })
+	s, c, stop, peer := postTestServer(t)
+	defer stop()
+	payload := encode64([]byte(strings.Repeat("x", 256<<10)))
+	start := time.Now()
+	s.app.Do(func() {
+		for i := 0; i < 5; i++ {
+			c.post(clientMsg{Type: "output", Data: payload})
+		}
+		s.closeClientsAsync("restart")
+	})
+	if elapsed := time.Since(start); elapsed > 15*time.Second {
+		t.Fatalf("app loop was held %v", elapsed)
+	}
+	s.mu.Lock()
+	attached := s.clients[c]
+	s.mu.Unlock()
+	if attached {
+		t.Fatal("client stayed attached")
+	}
+	peer.Close() // let the stalled writes fail so the flush can finish
+	s.flushClosedClients()
 }
