@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -30,6 +33,49 @@ func TestPluginExternalWriterHelper(t *testing.T) {
 		}
 	case "unlink":
 		if _, err := store.Unlink("event.external"); err != nil {
+			t.Fatal(err)
+		}
+	case "remove-dir":
+		if err := os.RemoveAll(filepath.Dir(manifest)); err != nil {
+			t.Fatal(err)
+		}
+	case "recreate-dir":
+		if err := os.MkdirAll(filepath.Dir(manifest), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(manifest, []byte(os.Getenv("PLUGIN_TEST_MANIFEST")), 0600); err != nil {
+			t.Fatal(err)
+		}
+	case "hold-lock":
+		f, err := os.OpenFile(filepath.Join(store.ConfigRoot, ".plugins.lock"), os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println("locked")
+		_, _ = bufio.NewReader(os.Stdin).ReadByte()
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	case "replace-manifest":
+		tmp := manifest + ".next"
+		if err := os.WriteFile(tmp, []byte(os.Getenv("PLUGIN_TEST_MANIFEST")), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(tmp, manifest); err != nil {
+			t.Fatal(err)
+		}
+	case "empty-registry":
+		tmp := filepath.Join(store.ConfigRoot, "plugins.next")
+		if err := os.WriteFile(tmp, []byte("[]"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(tmp, filepath.Join(store.ConfigRoot, "plugins.json")); err != nil {
+			t.Fatal(err)
+		}
+	case "repair-registry":
+		if err := os.WriteFile(filepath.Join(store.ConfigRoot, "plugins.json"), []byte("[]"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	default:
@@ -115,7 +161,102 @@ func TestPluginExternalChangesUpdateEventSnapshot(t *testing.T) {
 	change("edit", manifest("second"))
 	wait("second")
 	run("second", 2)
+	change("remove-dir", "")
+	wait("")
+	change("recreate-dir", manifest("third"))
+	wait("third")
+	run("third", 3)
 	change("unlink", "")
 	wait("")
 	run("", 0)
+}
+
+func TestPluginWatcherRecoversBrokenRegistry(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	pluginDir := filepath.Join(root, "plugin")
+	for _, p := range []string{configDir, pluginDir} {
+		if err := os.MkdirAll(p, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "plugins.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id=\"event.external\"\nname=\"External\"\nversion=\"0.1.0\"\nmin_ikesu_version=\"0.1.0\"\n[[events]]\non=\"workspace.created\"\ncommand=[\"/bin/echo\",\"fixed\"]\n"
+	if err := os.WriteFile(filepath.Join(pluginDir, "ikesu-plugin.toml"), []byte(manifest), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store := &plugin.Store{ConfigRoot: configDir, StateRoot: filepath.Join(root, "state"), Version: "0.1.0"}
+	s := &Server{plugins: &plugin.Engine{Store: store}}
+	s.initPlugins()
+	defer s.stopPluginWatcher()
+	for _, op := range []string{"repair-registry", "link"} {
+		c := exec.Command(os.Args[0], "-test.run=^TestPluginExternalWriterHelper$")
+		c.Env = append(os.Environ(), "PLUGIN_TEST_ROOT="+root, "PLUGIN_TEST_OP="+op)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("external %s: %v %s", op, err, out)
+		}
+	}
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		s.pluginEventsMu.RLock()
+		ready := len(s.pluginEvents) == 1 && s.pluginEvents[0].Events[0].Command[1] == "fixed"
+		s.pluginEventsMu.RUnlock()
+		if ready {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-timer.C:
+			t.Fatal("registry correction did not refresh hooks")
+		}
+	}
+}
+
+func TestPluginWatcherStopsWhileExternalRegistryLocked(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	store := &plugin.Store{ConfigRoot: configDir, StateRoot: filepath.Join(root, "state"), Version: "0.1.0"}
+	s := &Server{plugins: &plugin.Engine{Store: store}}
+	s.initPlugins()
+	c := exec.Command(os.Args[0], "-test.run=^TestPluginExternalWriterHelper$")
+	c.Env = append(os.Environ(), "PLUGIN_TEST_ROOT="+root, "PLUGIN_TEST_OP=hold-lock")
+	in, err := c.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := c.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = in.Close(); _ = c.Wait() }()
+	line, err := bufio.NewReader(out).ReadString('\n')
+	if err != nil || line != "locked\n" {
+		t.Fatalf("lock readiness %q: %v", line, err)
+	}
+	s.requestPluginRefresh()
+	done := make(chan struct{})
+	go func() { s.stopPluginWatcher(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watcher did not stop while lock held")
+	}
+	_, _ = in.Write([]byte("x"))
+	_ = in.Close()
+	select {
+	case <-s.pluginRefreshDone:
+	default:
+		t.Fatal("refresh worker remains after stop")
+	}
 }

@@ -106,10 +106,22 @@ type Server struct {
 	plugins             *plugin.Engine
 	pluginEvents        []plugin.Installed
 	pluginEventsMu      sync.RWMutex
+	pluginRegistryMu    sync.Mutex
+	pluginOperationsMu  sync.Mutex
 	pluginWatcher       *filewatch.Watcher
+	pluginWatchPaths    []string
 	pluginRefresh       chan struct{}
+	pluginRefreshDone   chan struct{}
 	pluginStop          chan struct{}
-	pluginEventTail     <-chan struct{}
+	pluginIndex         map[string][]plugin.Installed
+	pluginQueueMu       sync.Mutex
+	pluginQueue         []pluginEventWork
+	pluginWake          chan struct{}
+	pluginWorkerDone    chan struct{}
+	pluginWorkerPaused  bool
+	pluginWorkerBusy    bool
+	pluginWorkerClosing bool
+	pluginWorkerState   chan struct{}
 	pluginPanes         map[int]pluginPaneOwner
 	agentLaunches       map[int]*agentLaunch
 	closing             atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
@@ -461,6 +473,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	// Domain events (SPEC G1): command diffs, exits, and output changes.
 	s.outEmit = map[int]*outputEmit{}
 	s.lastAgent = map[int]string{}
+	s.pluginWorkerPaused = imported != nil
 	s.initPlugins()
 	s.app.SetPostExecHook(s.afterExec)
 	s.app.SetWorktreeHook(s.worktreeEvent)
@@ -520,6 +533,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		s.sup.RestorePendingInputs(final.PendingInputs)
 		s.sup.RestoreMailInputTimes(final.MailInputTimes)
 		s.sup.RestoreIdleActivities(final.IdleActivities)
+		s.resumePluginWorker()
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
 	// Persist the start time assigned to panes from older session data.

@@ -205,6 +205,14 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		}
 		return resp
 	}
+	if req.Method == "plugin.link" || req.Method == "plugin.list" || req.Method == "plugin.unlink" || req.Method == "plugin.enable" || req.Method == "plugin.disable" {
+		select {
+		case <-s.app.Done():
+			return stopping
+		default:
+		}
+		return s.pluginRegistryRequest(req)
+	}
 	if strings.HasPrefix(req.Method, "plugin.") {
 		var resp api.Response
 		s.app.Do(func() { resp = s.pluginRequest(req) })

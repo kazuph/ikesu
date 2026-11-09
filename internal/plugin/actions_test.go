@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -197,5 +198,37 @@ command=["/usr/bin/true"]
 			return
 		default:
 		}
+	}
+}
+
+func TestRunningEventRecordsServerStop(t *testing.T) {
+	e, p := actionEngine(t, minimal+`[[events]]
+on="worktree.created"
+command=["/bin/sh","-c","read value < \"$IKESU_PLUGIN_STATE_DIR/gate\""]
+`)
+	gate := filepath.Join(e.Store.StateRoot, "plugins", p.ID, "gate")
+	if err := syscall.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Event("worktree.created", json.RawMessage(`{}`), Context{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.MarkRunning("server_stopped"); err != nil {
+		t.Fatal(err)
+	}
+	logs, err := e.Store.Logs(p.ID, nil)
+	if err != nil || len(logs) != 1 || logs[0].ServerStop == nil || *logs[0].ServerStop != "server_stopped" {
+		t.Fatalf("running logs=%+v err=%v", logs, err)
+	}
+	gateFile, err := os.OpenFile(gate, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = gateFile.WriteString("go\n")
+	_ = gateFile.Close()
+	e.Wait()
+	logs, err = e.Store.Logs(p.ID, nil)
+	if err != nil || len(logs) != 1 || logs[0].Status != "succeeded" || logs[0].ServerStop == nil {
+		t.Fatalf("finished logs=%+v err=%v", logs, err)
 	}
 }
