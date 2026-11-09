@@ -98,8 +98,13 @@ class MainActivity : Activity() {
         setContentView(root.apply {
             setOnApplyWindowInsetsListener { view, insets ->
                 val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
-                view.setPadding(bars.left + dp(20), bars.top, bars.right + dp(20), bars.bottom)
+                // Edge-to-edge does not resize for the keyboard, so keep the content above it.
+                val ime = insets.getInsets(android.view.WindowInsets.Type.ime())
+                view.setPadding(bars.left + dp(20), bars.top, bars.right + dp(20), maxOf(bars.bottom, ime.bottom))
                 val nowVisible = insets.isVisible(android.view.WindowInsets.Type.ime())
+                if (nowVisible && !imeVisible) (currentFocus as? EditText)?.let { field ->
+                    field.post { field.requestRectangleOnScreen(android.graphics.Rect(0, 0, field.width, field.height), false) }
+                }
                 if (imeVisible && !nowVisible) (currentFocus as? EditText)?.clearFocus()
                 imeVisible = nowVisible
                 insets
