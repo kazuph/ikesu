@@ -8,6 +8,7 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +38,9 @@ func TestLocalRestoreRejectsDuplicateSavedCodexIDs(t *testing.T) {
 		}
 		if a.toast == nil || a.toast.body != want {
 			t.Fatalf("dry=%v: %+v", dry, a.toast)
+		}
+		if !strings.Contains(a.toast.title, "duplicate session id") {
+			t.Fatalf("duplicate warning missing: %+v", a.toast)
 		}
 	}
 }
