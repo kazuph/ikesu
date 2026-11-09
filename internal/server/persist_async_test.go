@@ -26,6 +26,7 @@ func TestSessionSnapshotKeepsEachPaneLedgerID(t *testing.T) {
 	for i, pid := range ids {
 		s.ledgerPut(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: []string{"first-id", "second-id"}[i], Source: "report:test"})
 	}
+	s.ledgerWG.Wait()
 	if s.store != nil {
 		defer s.store.Close()
 	}

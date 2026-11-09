@@ -173,6 +173,12 @@ type Server struct {
 	lastAPINotification time.Time                    // last successfully shown explicit notification
 
 	// session persistence & restart (SPEC G3/G5)
+	ledgerMu      sync.Mutex
+	ledgerRowsMap map[int]dispatch.PaneSession
+	ledgerVersion map[int]uint64
+	ledgerQueue   []ledgerWrite
+	ledgerRunning bool
+	ledgerWG      sync.WaitGroup
 	saveMu        sync.Mutex
 	saveTimer     *time.Timer // pending coalesced session.json write
 	saveRunning   bool        // guarded by saveMu
@@ -345,6 +351,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		mailCh:       make(chan mailWrite, 256), mailInFlight: map[int64]bool{}, jobInFlight: map[string]bool{},
 		lastStatus: map[int]string{}, notifyLast: map[int]map[string]time.Time{}, observedStart: map[int]time.Time{}}
 	s.configPath = configPath
+	s.loadLedger()
 	if latency.Enabled {
 		s.trace = latency.Open(api.LogPath(dir))
 	}
@@ -587,6 +594,7 @@ func (s *Server) cleanup() {
 	}
 	s.mailWG.Wait()
 	s.stopJobMonitors()
+	s.ledgerWG.Wait()
 	if s.store != nil {
 		s.store.Close()
 	}

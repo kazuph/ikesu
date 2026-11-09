@@ -9,6 +9,7 @@ package server
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -48,27 +49,43 @@ func (s *Server) ledgerEntries() map[int]dispatch.PaneSession {
 }
 
 func (s *Server) ledgerRows() []dispatch.PaneSession {
+	s.ledgerMu.Lock()
+	defer s.ledgerMu.Unlock()
+	rows := make([]dispatch.PaneSession, 0, len(s.ledgerRowsMap))
+	for _, row := range s.ledgerRowsMap {
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// loadLedger runs before the app loop starts.
+func (s *Server) loadLedger() {
 	if !dispatch.DBExists(s.session) {
-		return nil
+		return
 	}
 	st, err := s.db()
 	if err != nil {
-		return nil
+		fmt.Fprintf(os.Stderr, "ikesu: load session ledger: %v\n", err)
+		return
 	}
 	rows, err := st.PaneSessions(s.session)
 	if err != nil {
-		return nil
+		fmt.Fprintf(os.Stderr, "ikesu: load session ledger: %v\n", err)
+		return
 	}
-	return rows
+	s.ledgerMu.Lock()
+	defer s.ledgerMu.Unlock()
+	if s.ledgerRowsMap == nil {
+		s.ledgerRowsMap = map[int]dispatch.PaneSession{}
+	}
+	for _, row := range rows {
+		s.ledgerRowsMap[row.PaneID] = row
+	}
 }
 
 // ledgerPut writes the pane's session record into the ledger. Call on the
 // app loop (reads model state).
 func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
-	st, err := s.db()
-	if err != nil {
-		return
-	}
 	stt := s.app.State()
 	wsIdx, tabIdx := stt.FindPane(pid)
 	wsID, tabID := 0, 0
@@ -86,7 +103,7 @@ func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
 			cwd = c
 		}
 	}
-	_ = st.PutPaneSession(dispatch.PaneSession{
+	s.enqueueLedger(ledgerWrite{row: dispatch.PaneSession{
 		Session:            s.session,
 		PaneID:             pid,
 		TerminalID:         fmtPaneID(pid),
@@ -100,17 +117,74 @@ func (s *Server) ledgerPut(pid int, rec tui.AgentRecord) {
 		Source:             rec.Source,
 		SessionStartSource: rec.SessionStartSource,
 		ObservedAt:         time.Now().UTC().Format(time.RFC3339Nano),
-	})
+	}})
 }
 
 // ledgerDel drops the ledger row for a permanently closed pane.
 func (s *Server) ledgerDel(pid int) {
 	delete(s.observedStart, pid)
-	if !dispatch.DBExists(s.session) {
-		return
+	s.enqueueLedger(ledgerWrite{row: dispatch.PaneSession{PaneID: pid}, delete: true})
+}
+
+type ledgerWrite struct {
+	row        dispatch.PaneSession
+	delete     bool
+	generation uint64
+}
+
+func (s *Server) enqueueLedger(w ledgerWrite) {
+	s.ledgerMu.Lock()
+	if s.ledgerVersion == nil {
+		s.ledgerVersion = map[int]uint64{}
 	}
-	if st, err := s.db(); err == nil {
-		_ = st.DeletePaneSession(s.session, pid)
+	s.ledgerVersion[w.row.PaneID]++
+	w.generation = s.ledgerVersion[w.row.PaneID]
+	delete(s.ledgerRowsMap, w.row.PaneID)
+	s.ledgerQueue = append(s.ledgerQueue, w)
+	if !s.ledgerRunning {
+		s.ledgerRunning = true
+		s.ledgerWG.Add(1)
+		go s.runLedgerWrites()
+	}
+	s.ledgerMu.Unlock()
+}
+
+func (s *Server) runLedgerWrites() {
+	defer s.ledgerWG.Done()
+	for {
+		s.ledgerMu.Lock()
+		if len(s.ledgerQueue) == 0 {
+			s.ledgerRunning = false
+			s.ledgerMu.Unlock()
+			return
+		}
+		w := s.ledgerQueue[0]
+		s.ledgerQueue = s.ledgerQueue[1:]
+		s.ledgerMu.Unlock()
+		st, err := s.db()
+		if err == nil {
+			if w.delete {
+				err = st.DeletePaneSession(s.session, w.row.PaneID)
+			} else {
+				err = st.PutPaneSession(w.row)
+			}
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ikesu: save session ledger pane %d: %v\n", w.row.PaneID, err)
+			continue
+		}
+		s.ledgerMu.Lock()
+		if s.ledgerRowsMap == nil {
+			s.ledgerRowsMap = map[int]dispatch.PaneSession{}
+		}
+		if s.ledgerVersion[w.row.PaneID] == w.generation {
+			if w.delete {
+				delete(s.ledgerRowsMap, w.row.PaneID)
+			} else {
+				s.ledgerRowsMap[w.row.PaneID] = w.row
+			}
+		}
+		s.ledgerMu.Unlock()
 	}
 }
 

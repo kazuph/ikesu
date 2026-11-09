@@ -194,6 +194,7 @@ func TestAgentRestoreSkipsPaneWithoutProcess(t *testing.T) {
 	rec := tui.AgentRecord{Agent: "claude", Kind: "id", Value: "sess-missing", Source: "restore"}
 	s.app.RecordSession(pid, rec)
 	s.ledgerPut(pid, rec)
+	s.ledgerWG.Wait()
 	result := s.runAgentRestore(false)
 	if len(result.Actions) != 1 || result.Actions[0].Status != "skipped" || result.Actions[0].Reason == nil || *result.Actions[0].Reason != "pane process not running" || result.Actions[0].Command != nil {
 		t.Fatalf("missing process action = %+v", result.Actions)
