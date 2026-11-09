@@ -20,6 +20,7 @@ import (
 // Use real PTYs, app-loop delivery, and Unix API/display sockets. The observer
 // runs after production clipboard delivery, including when no viewer sees it.
 func startClipboardEndpoint(t *testing.T) (*Server, <-chan string) {
+	t.Helper()
 	return startClipboardEndpointImported(t, nil, nil)
 }
 
@@ -68,7 +69,7 @@ func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer,
 	})
 	if states == nil {
 		if err := s.app.StartInitialPane(); err != nil {
-			t.Fatal(err)
+			t.Fatalf("initial pane: %v", err)
 		}
 	} else {
 		if err := s.sup.ImportHandoff(states, files); err != nil {
