@@ -17,6 +17,11 @@ func (a *App) worktreeError(err error) {
 	a.dirty = true
 }
 
+func (a *App) worktreeScreenUnchanged() func() bool {
+	dialog, menu := a.dialog, a.menu
+	return func() bool { return a.dialog == dialog && a.menu == menu }
+}
+
 func (a *App) newWorktreeDialog(index int) {
 	if index < 0 || index >= len(a.st.Workspaces) {
 		return
@@ -25,7 +30,11 @@ func (a *App) newWorktreeDialog(index int) {
 	if !ok {
 		return
 	}
+	current := a.worktreeScreenUnchanged()
 	a.startWorktree(req, func(result WorktreeResult, err error) {
+		if !current() {
+			return
+		}
 		if err != nil {
 			a.SetConfigWarning("ikesu worktree actions require a workspace inside a Git work tree.")
 			a.configWarningBanner = true
@@ -51,7 +60,11 @@ func (a *App) showNewWorktreeDialog(req WorktreeRequest, src api.WorktreeSourceI
 		create := req
 		chosen := branch
 		create.Operation, create.Branch, create.Focus = "create", &chosen, true
+		current := a.worktreeScreenUnchanged()
 		a.startWorktree(create, func(_ WorktreeResult, err error) {
+			if !current() {
+				return
+			}
 			if err != nil {
 				var gitErr *worktree.GitError
 				d.d.Detail = err.Error()
@@ -71,7 +84,11 @@ func (a *App) openWorktreeMenu(index int) {
 	if !ok {
 		return
 	}
+	current := a.worktreeScreenUnchanged()
 	a.startWorktree(req, func(result WorktreeResult, err error) {
+		if !current() {
+			return
+		}
 		if err != nil {
 			a.worktreeError(err)
 			return
