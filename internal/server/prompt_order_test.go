@@ -9,15 +9,16 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"golang.org/x/sys/unix"
 )
 
-func reserveTestInput(t *testing.T, p *runtime.Pane, size int) *runtime.InputOperation {
+func reserveTestInput(t *testing.T, p *runtime.Pane, size int, keys ...uv.KeyEvent) *runtime.InputOperation {
 	t.Helper()
-	op, err := p.ReserveInputOperation(size)
+	op, err := p.ReserveInputOperation(size, keys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func TestAgentPromptDisconnectReturnsWhilePTYIsFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	op := reserveTestInput(t, p, len("first"))
+	op := reserveTestInput(t, p, len("first"), uv.KeyPressEvent{Code: uv.KeyEnter})
 	seq := p.ManualInputSequence()
 	externalSeq := p.ExternalInputSequence()
 	done := make(chan error, 1)
@@ -118,7 +119,7 @@ func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
 	p := s.sup.Get(s.app.State().Workspaces[0].Tabs[0].Layout.Focused())
 	waitPromptCondition(t, func() bool { _, err := os.Stat(ready); return err == nil })
 	seq := p.ManualInputSequence()
-	first, second := reserveTestInput(t, p, len("first")), reserveTestInput(t, p, len("second"))
+	first, second := reserveTestInput(t, p, len("first"), uv.KeyPressEvent{Code: uv.KeyEnter}), reserveTestInput(t, p, len("second"), uv.KeyPressEvent{Code: uv.KeyEnter})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	doneA, doneB := make(chan error, 1), make(chan error, 1)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 )
@@ -20,12 +21,15 @@ type InputOperation struct {
 	reserved int
 }
 
-func (p *Pane) ReserveInputOperation(textBytes int) (*InputOperation, error) {
+func (p *Pane) ReserveInputOperation(textBytes int, keys []uv.KeyEvent) (*InputOperation, error) {
 	p.inputOperationMu.Lock()
 	defer p.inputOperationMu.Unlock()
 	reserved := textBytes
 	if textBytes > 0 {
 		reserved += len(ansi.BracketedPasteStart) + len(ansi.BracketedPasteEnd)
+	}
+	for _, key := range keys {
+		reserved += vt.MaxKeySequenceLen(key)
 	}
 	p.writer.mu.Lock()
 	if p.writer.stopped != nil {
@@ -49,6 +53,30 @@ func (p *Pane) ReserveInputOperation(textBytes int) (*InputOperation, error) {
 		p.inputOperations = append(p.inputOperations, op)
 	}
 	return op, nil
+}
+
+// SendInputOperationKeys transfers reserved key bytes to the PTY queue.
+func (p *Pane) SendInputOperationKeys(op *InputOperation, expected uint64, keys []uv.KeyEvent, record bool) error {
+	var writeErr error
+	write := func() {
+		p.WithEmu(func(e *vt.Emulator) {
+			var data []byte
+			for _, key := range keys {
+				data = append(data, e.KeySequence(key)...)
+			}
+			writeErr = p.writer.enqueueReserved(data, nil, nil, op)
+		})
+	}
+	var admitted bool
+	if record {
+		_, admitted = p.RecordKeyInputAndDo(expected, write)
+	} else {
+		admitted = p.WithInputSequence(expected, write)
+	}
+	if !admitted {
+		return fmt.Errorf("pane input interrupted submission")
+	}
+	return writeErr
 }
 
 // PasteInputOperation transfers an admitted reservation to the PTY queue.

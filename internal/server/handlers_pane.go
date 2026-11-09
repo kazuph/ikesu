@@ -354,7 +354,7 @@ func (s *Server) paneSendInput(id string, p api.PaneSendInputParams) api.Respons
 // the app loop never blocks.
 func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyEvent) error {
 	manualSequence := pane.ManualInputSequence()
-	op, err := pane.ReserveInputOperation(len(text))
+	op, err := pane.ReserveInputOperation(len(text), keys)
 	if err != nil {
 		return err
 	}
@@ -393,11 +393,7 @@ func (s *Server) sendInputToPane(pane *runtime.Pane, text string, keys []uv.KeyE
 		if s.closing.Load() != 0 {
 			return
 		}
-		if text == "" {
-			pane.RecordKeyInputAndDo(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) }) })
-		} else {
-			pane.WithInputSequence(manualSequence, func() { pane.WithEmu(func(e *vt.Emulator) { e.SendKeys(keys...) }) })
-		}
+		_ = pane.SendInputOperationKeys(op, manualSequence, keys, text == "")
 	}()
 	return nil
 }

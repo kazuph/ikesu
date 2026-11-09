@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/detect"
 	"github.com/kazuph/ikesu/internal/runtime"
@@ -91,7 +92,7 @@ func (s *Server) agentPrompt(ctx context.Context, req *api.Request) api.Response
 		if failure == nil {
 			manualSequence = pane.ManualInputSequence()
 			var err error
-			op, err = pane.ReserveInputOperation(len(p.Text))
+			op, err = pane.ReserveInputOperation(len(p.Text), []uv.KeyEvent{uv.KeyPressEvent{Code: uv.KeyEnter}})
 			if err != nil {
 				failure = &api.Error{Code: "agent_prompt_failed", Message: err.Error()}
 			} else if _, ok := pane.RecordKeyInputAndDo(manualSequence, nil); !ok {
@@ -148,7 +149,7 @@ func (s *Server) submitAgentPrompt(ctx context.Context, pane *runtime.Pane, op *
 	completed := make(chan error, 1)
 	go func() {
 		defer op.Release()
-		completed <- s.finishAgentPrompt(pane, manualSequence, written)
+		completed <- s.finishAgentPrompt(pane, op, manualSequence, written)
 	}()
 	select {
 	case err := <-completed:
@@ -158,7 +159,7 @@ func (s *Server) submitAgentPrompt(ctx context.Context, pane *runtime.Pane, op *
 	}
 }
 
-func (s *Server) finishAgentPrompt(pane *runtime.Pane, manualSequence uint64, written <-chan error) error {
+func (s *Server) finishAgentPrompt(pane *runtime.Pane, op *runtime.InputOperation, manualSequence uint64, written <-chan error) error {
 	if err := <-written; err != nil {
 		return err
 	}
@@ -175,7 +176,7 @@ func (s *Server) finishAgentPrompt(pane *runtime.Pane, manualSequence uint64, wr
 	if pane.Snapshot().Dead || s.sup.Get(pane.ID) != pane {
 		return fmt.Errorf("PTY actor closed during input submission")
 	}
-	_, err := pane.WritePTYIfInputUnchanged(manualSequence, []byte{'\r'})
+	_, err := pane.WritePTYIfInputUnchanged(manualSequence, []byte{'\r'}, op)
 	return err
 }
 

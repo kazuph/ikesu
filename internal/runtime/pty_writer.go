@@ -86,7 +86,7 @@ func (w *ptyWriter) enqueueReserved(data []byte, done chan error, valid func() b
 	w.mu.Lock()
 	credit := 0
 	if op != nil {
-		credit = op.reserved
+		credit = min(op.reserved, len(data))
 	}
 	switch {
 	case w.stopped != nil:
@@ -100,7 +100,7 @@ func (w *ptyWriter) enqueueReserved(data []byte, done chan error, valid func() b
 	}
 	if op != nil {
 		w.reserved -= credit
-		op.reserved = 0
+		op.reserved -= credit
 	}
 	w.segments = append(w.segments, ptySegment{data: append([]byte(nil), data...), done: done, valid: valid})
 	w.queued += len(data)

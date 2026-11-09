@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,49 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/teststate"
 )
+
+func TestReservedPasteKeepsRoomForItsEnterKey(t *testing.T) {
+	teststate.Lock(t)
+	_, p := spawnNonReader(t, "printf '\\033[?2004h'; exec sleep 600")
+	for end := time.Now().Add(5 * time.Second); !p.BracketedPasteMode() && time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	}
+	if !p.BracketedPasteMode() {
+		t.Fatal("bracketed paste never enabled")
+	}
+	fillQueue(t, p, 256<<10)
+	keys := []uv.KeyEvent{uv.KeyPressEvent{Code: uv.KeyEnter}}
+	first, err := p.ReserveInputOperation(1, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Release()
+	if !first.Wait(context.Background()) {
+		t.Fatal("first input not admitted")
+	}
+	p.writer.mu.Lock()
+	remaining := ptyInputLimit - p.writer.queued - p.writer.reserved - len(ansi.BracketedPasteStart) - len(ansi.BracketedPasteEnd)
+	p.writer.mu.Unlock()
+	second, err := p.ReserveInputOperation(remaining, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Release()
+	if err := p.PasteInputOperation(first, p.ManualInputSequence(), "a"); err != nil {
+		t.Fatal(err)
+	}
+	p.writer.mu.Lock()
+	before := p.writer.dropped
+	p.writer.mu.Unlock()
+	if err := p.SendInputOperationKeys(first, p.ManualInputSequence(), keys, false); err != nil {
+		t.Fatal(err)
+	}
+	p.writer.mu.Lock()
+	after := p.writer.dropped
+	p.writer.mu.Unlock()
+	if after != before {
+		t.Fatalf("accepted Enter was dropped at the input limit: %d -> %d", before, after)
+	}
+}
 
 // 2026-11-09: an application that enabled mouse reporting but stopped reading
 // its input froze the whole server. Wheel events were written into the

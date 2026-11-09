@@ -113,13 +113,13 @@ func (p *Pane) WithInputSequence(seq uint64, fn func()) bool {
 	return true
 }
 
-func (p *Pane) WritePTYIfInputUnchanged(seq uint64, data []byte) (int, error) {
+func (p *Pane) WritePTYIfInputUnchanged(seq uint64, data []byte, op *InputOperation) (int, error) {
 	p.inputMu.Lock()
 	if p.manualInputSeq.Load() != seq {
 		p.inputMu.Unlock()
 		return 0, fmt.Errorf("pane input interrupted submission")
 	}
-	done, err := p.queuePromptInputLocked(seq, data, nil)
+	done, err := p.queuePromptInputLocked(seq, data, op)
 	p.inputMu.Unlock()
 	if err != nil {
 		return 0, err
