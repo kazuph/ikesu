@@ -24,6 +24,7 @@ import (
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/latency"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/plugin"
@@ -103,7 +104,12 @@ type Server struct {
 	decisions           decisionHub
 	screenPrompts       screenPromptHub
 	plugins             *plugin.Engine
-	pluginEvents        bool
+	pluginEvents        []plugin.Installed
+	pluginEventsMu      sync.RWMutex
+	pluginWatcher       *filewatch.Watcher
+	pluginRefresh       chan struct{}
+	pluginStop          chan struct{}
+	pluginEventTail     <-chan struct{}
 	pluginPanes         map[int]pluginPaneOwner
 	agentLaunches       map[int]*agentLaunch
 	closing             atomic.Uint32 // 1: exit, 2: restart; prevents a reconnect entering the retiring server
@@ -560,6 +566,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 }
 
 func (s *Server) cleanup() {
+	s.stopPluginWatcher()
 	defer s.trace.Close()
 	s.stopMailQueries()
 	s.saveMu.Lock()

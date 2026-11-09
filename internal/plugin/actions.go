@@ -195,12 +195,16 @@ func (e *Engine) start(p Installed, argv []string, action, event string, context
 	if err != nil {
 		return CommandLog{}, err
 	}
-	file, err := os.CreateTemp(dir, "command-*.json")
+	file, err := os.CreateTemp(dir, ".command-*")
 	if err != nil {
 		return CommandLog{}, err
 	}
-	path := file.Name()
-	file.Close()
+	reservation := file.Name()
+	defer os.Remove(reservation)
+	if err := file.Close(); err != nil {
+		return CommandLog{}, err
+	}
+	path := filepath.Join(dir, "command-"+strings.TrimPrefix(filepath.Base(reservation), ".command-")+".json")
 	now := time.Now().UnixMilli()
 	log := CommandLog{LogID: strings.TrimSuffix(filepath.Base(path), ".json"), PluginID: p.ID, ActionID: action, Event: event, Command: argv, Status: "running", StartedUnixMS: now}
 	write := func(record CommandLog) error {
@@ -324,6 +328,24 @@ func (e *Engine) Event(name string, data json.RawMessage, context Context) error
 				continue
 			}
 			if _, err = e.start(p, hook.Command, "", name, context, map[string]string{"IKESU_PLUGIN_EVENT": name, "IKESU_PLUGIN_EVENT_JSON": string(data)}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// EventInstalled dispatches the registration snapshot supplied by the server.
+func (e *Engine) EventInstalled(plugins []Installed, name string, data json.RawMessage, context Context) error {
+	for _, p := range plugins {
+		if !p.Enabled {
+			continue
+		}
+		for _, hook := range p.Events {
+			if hook.On != name || !supported(effectivePlatforms(hook.Platforms, p.Platforms)) {
+				continue
+			}
+			if _, err := e.start(p, hook.Command, "", name, context, map[string]string{"IKESU_PLUGIN_EVENT": name, "IKESU_PLUGIN_EVENT_JSON": string(data)}); err != nil {
 				return err
 			}
 		}

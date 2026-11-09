@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/plugin"
 	"os"
 	"path/filepath"
@@ -17,25 +18,68 @@ func (s *Server) ensurePlugins() *plugin.Engine {
 	}
 	return s.plugins
 }
-func (s *Server) refreshPluginHooks() {
-	engine := s.ensurePlugins()
+
+// reloadPluginHooks runs outside the app loop, including the registry lock.
+func (s *Server) reloadPluginHooks(engine *plugin.Engine) {
 	items, err := engine.Store.List("")
-	s.pluginEvents = false
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ikesu plugin registry:", err)
 		return
 	}
+	paths := []string{engine.Store.ConfigRoot, filepath.Join(engine.Store.ConfigRoot, "plugins.json")}
+	var hooks []plugin.Installed
 	for _, item := range items {
-		if item.Enabled && len(item.Events) > 0 {
-			s.pluginEvents = true
-			break
+		paths = append(paths, filepath.Dir(item.ManifestPath), item.ManifestPath)
+		if !item.Enabled {
+			continue
 		}
+		manifest, _, err := plugin.ReadManifest(item.ManifestPath, engine.Store.Version)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu plugin event:", err)
+			continue
+		}
+		item.Manifest = manifest
+		if len(item.Events) > 0 {
+			hooks = append(hooks, item)
+		}
+	}
+	if !s.pluginWatcher.Update(paths) {
+		fmt.Fprintln(os.Stderr, "ikesu plugin registry: filewatch unavailable")
+	}
+	s.pluginEventsMu.Lock()
+	s.pluginEvents = hooks
+	s.pluginEventsMu.Unlock()
+}
+func (s *Server) requestPluginRefresh() {
+	if s.pluginRefresh == nil {
+		return
+	}
+	select {
+	case s.pluginRefresh <- struct{}{}:
+	default:
 	}
 }
 func (s *Server) initPlugins() {
-	store := plugin.DefaultStore(s.version)
-	if _, err := os.Stat(filepath.Join(store.ConfigRoot, "plugins.json")); err == nil {
-		s.refreshPluginHooks()
+	engine := s.ensurePlugins()
+	s.pluginRefresh = make(chan struct{}, 1)
+	s.pluginStop = make(chan struct{})
+	s.pluginWatcher = filewatch.New(s.requestPluginRefresh)
+	s.reloadPluginHooks(engine)
+	go func() {
+		for {
+			select {
+			case <-s.pluginRefresh:
+				s.reloadPluginHooks(engine)
+			case <-s.pluginStop:
+				return
+			}
+		}
+	}()
+}
+func (s *Server) stopPluginWatcher() {
+	if s.pluginWatcher != nil {
+		s.pluginWatcher.Close()
+		close(s.pluginStop)
 	}
 }
 func (s *Server) pluginContext(requestID string, supplied plugin.Context) plugin.Context {
@@ -80,7 +124,7 @@ func (s *Server) pluginRequest(req *api.Request) api.Response {
 	engine := s.ensurePlugins()
 	if resp, ok := engine.Store.RegistryRequest(req); ok {
 		if resp.Err == nil && req.Method != "plugin.list" {
-			s.refreshPluginHooks()
+			s.requestPluginRefresh()
 		}
 		return resp
 	}
@@ -128,7 +172,10 @@ func (s *Server) pluginRequest(req *api.Request) api.Response {
 	}
 }
 func (s *Server) pluginEvent(kind string, raw json.RawMessage) {
-	if !s.pluginEvents {
+	s.pluginEventsMu.RLock()
+	items := s.pluginEvents
+	s.pluginEventsMu.RUnlock()
+	if len(items) == 0 {
 		return
 	}
 	// Manifest hooks use dotted event names; socket envelopes use underscores.
@@ -140,7 +187,16 @@ func (s *Server) pluginEvent(kind string, raw json.RawMessage) {
 		}
 	}
 	context := s.pluginContext("", plugin.Context{"invocation_source": "event"})
-	if err := s.plugins.Event(name, raw, context); err != nil {
-		fmt.Fprintln(os.Stderr, "ikesu plugin event:", err)
-	}
+	engine, previous := s.plugins, s.pluginEventTail
+	done := make(chan struct{})
+	s.pluginEventTail = done
+	go func() {
+		defer close(done)
+		if previous != nil {
+			<-previous
+		}
+		if err := engine.EventInstalled(items, name, raw, context); err != nil {
+			fmt.Fprintln(os.Stderr, "ikesu plugin event:", err)
+		}
+	}()
 }

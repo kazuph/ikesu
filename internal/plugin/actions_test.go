@@ -168,3 +168,34 @@ command=["/bin/echo","cached"]
 		t.Fatal("executed cached command")
 	}
 }
+
+func TestEventLogReadsDuringStart(t *testing.T) {
+	e, p := actionEngine(t, minimal+`[[events]]
+on="worktree.created"
+command=["/usr/bin/true"]
+`)
+	done := make(chan error, 1)
+	go func() {
+		for n := 0; n < 20; n++ {
+			if err := e.Event("worktree.created", json.RawMessage(`{}`), Context{}); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	for {
+		if _, err := e.Store.Logs(p.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Wait()
+			return
+		default:
+		}
+	}
+}
