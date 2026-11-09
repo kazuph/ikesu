@@ -137,12 +137,18 @@ func (s *Server) decisionReadOffLoop(req *api.Request) api.Response {
 		}
 	}
 	var expireErr error
+	ran := false
 	s.app.Do(func() {
+		ran = true
 		s.initDecisionHub()
 		if due {
 			expireErr = s.expireDecisions(store)
 		}
 	})
+	if !ran {
+		// The app loop has stopped: answer like every other stopped call.
+		return api.Response{ID: req.ID}
+	}
 	if expireErr != nil {
 		return decisionFailure(req.ID, expireErr)
 	}
