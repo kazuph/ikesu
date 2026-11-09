@@ -3,6 +3,7 @@ package tui
 import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -551,6 +552,36 @@ func TestWorkspaceGitStatusFollowsIdentityAfterClose(t *testing.T) {
 		t.Fatalf("initial status: %+v", a.workspaceGit)
 	}
 	a.exec(model.CmdCloseWorkspace{Index: 0})
+	if got := a.workspaceGit[0].Branch; got != "secondbranch" {
+		t.Fatalf("remaining workspace inherited removed workspace status: %q", got)
+	}
+}
+
+func TestViewerWorkspaceGitStatusFollowsIdentityAfterClose(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	dirs := []string{filepath.Join(root, "first"), filepath.Join(root, "second")}
+	for i, dir := range dirs {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", []string{"firstbranch", "secondbranch"}[i])
+	}
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = dirs[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: dirs[1], NoFocus: true})
+	a.refreshWorkspaceGit(time.Now())
+	for len(a.gitActivity.running) != 0 {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	if a.workspaceGit[0].Branch != "firstbranch" || a.workspaceGit[1].Branch != "secondbranch" {
+		t.Fatalf("initial status: %+v", a.workspaceGit)
+	}
+	viewer := a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+	viewer.with(a, func(ui *App) { ui.exec(model.CmdCloseWorkspace{Index: 0}) })
 	if got := a.workspaceGit[0].Branch; got != "secondbranch" {
 		t.Fatalf("remaining workspace inherited removed workspace status: %q", got)
 	}

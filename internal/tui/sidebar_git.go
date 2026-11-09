@@ -166,6 +166,11 @@ func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 		}
 	}
 	a.workspaceLabels = labels
+	if a.viewerOwner != nil {
+		a.viewerOwner.workspaceNames = a.workspaceNames
+		a.viewerOwner.workspaceGit = a.workspaceGit
+		a.viewerOwner.workspaceLabels = a.workspaceLabels
+	}
 }
 
 // Git metadata follows the observed 1.5-second sidebar refresh cadence;
