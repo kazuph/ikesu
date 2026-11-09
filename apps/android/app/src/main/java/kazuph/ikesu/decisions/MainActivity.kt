@@ -16,8 +16,12 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
-import android.text.util.Linkify
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.URLSpan
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -38,7 +42,7 @@ class MainActivity : Activity() {
     private val dim = 0xFF1E9948.toInt()
     private val warn = 0xFFFFCC33.toInt()
     private data class Draft(var text: String = "", val selected: MutableSet<String> = mutableSetOf(),
-                             val images: MutableList<ByteArray> = mutableListOf(), var cursor: Int = 0,
+                             val images: MutableList<ByteArray> = mutableListOf(), var cursor: CursorRef = CursorRef(),
                              var sequence: String? = null, var waitingReconnect: Boolean = false,
                              var uncertain: Boolean = false, var submittedItem: JSONObject? = null,
                              var cursorNavigated: Boolean = false)
@@ -49,12 +53,37 @@ class MainActivity : Activity() {
     private var settingsVisible = false
     private var showList = true
     private var listCursor = 0
+    private var textScale = 1f
+    private var appliedScale = 1f
+    private var scaling = false
+    private val scaleDetector by lazy {
+        ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                scaling = true
+                val cancel = MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+                super@MainActivity.dispatchTouchEvent(cancel); cancel.recycle()
+                return true
+            }
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                textScale = TextScale.clamp(textScale * detector.scaleFactor)
+                if (TextScale.needsRedraw(appliedScale, textScale)) applyScale(false)
+                return true
+            }
+            override fun onScaleEnd(detector: ScaleGestureDetector) { applyScale(true) }
+        }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
+    }
+    private fun applyScale(save: Boolean) {
+        if (save) getSharedPreferences("ui", MODE_PRIVATE).edit().putFloat("textScale", textScale).apply()
+        if (appliedScale != textScale && (save || TextScale.needsRedraw(appliedScale, textScale))) { appliedScale = textScale; render() }
+    }
+    private var imeVisible = false
+    private fun editorFocused(): Boolean = imeVisible && currentFocus is EditText
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + .5f).toInt()
     private val root by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) } }
     private val header by lazy { LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL } }
     private val layout by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL } }
     private val footer by lazy { LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL } }
-    private val nav = VolumeNav({ move(-1) }, { move(1) }, { confirm() }, { !settingsVisible })
+    private val nav = VolumeNav({ move(-1) }, { move(1) }, { confirm() }, { !settingsVisible }, { goBack() })
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { handleUpdate() }
     }
@@ -62,13 +91,22 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.isNavigationBarContrastEnforced = false
         window.isStatusBarContrastEnforced = false
+        textScale = TextScale.clamp(getSharedPreferences("ui", MODE_PRIVATE).getFloat("textScale", 1f)); appliedScale = textScale
         root.addView(header)
         root.addView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(layout) }, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(footer)
         setContentView(root.apply {
             setOnApplyWindowInsetsListener { view, insets ->
                 val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
-                view.setPadding(bars.left + dp(20), bars.top, bars.right + dp(20), bars.bottom)
+                // Edge-to-edge does not resize for the keyboard, so keep the content above it.
+                val ime = insets.getInsets(android.view.WindowInsets.Type.ime())
+                view.setPadding(bars.left + dp(20), bars.top, bars.right + dp(20), maxOf(bars.bottom, ime.bottom))
+                val nowVisible = insets.isVisible(android.view.WindowInsets.Type.ime())
+                if (nowVisible && !imeVisible) (currentFocus as? EditText)?.let { field ->
+                    field.post { field.requestRectangleOnScreen(android.graphics.Rect(0, 0, field.width, field.height), false) }
+                }
+                if (imeVisible && !nowVisible) (currentFocus as? EditText)?.clearFocus()
+                imeVisible = nowVisible
                 insets
             }
         })
@@ -80,8 +118,9 @@ class MainActivity : Activity() {
         render()
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveIntent(intent); render() }
-    override fun onDestroy() { unregisterReceiver(receiver); super.onDestroy() }
+    override fun onDestroy() { viewer?.dismiss(); unregisterReceiver(receiver); super.onDestroy() }
     private fun receiveIntent(intent: Intent) {
+        TextScale.fromIntent((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0, intent.hasExtra("text_scale"), intent.getFloatExtra("text_scale", 1f))?.let { textScale = it; appliedScale = textScale; getSharedPreferences("ui", MODE_PRIVATE).edit().putFloat("textScale", textScale).apply() }
         val url = intent.getStringExtra("url")
         val token = intent.getStringExtra("token")
         if (url != null && token != null) {
@@ -137,16 +176,27 @@ class MainActivity : Activity() {
         setColor(fill); setStroke(dp(2), green); cornerRadius = dp(8).toFloat()
     }
     private fun text(value: String, size: Float = 22f): TextView = TextView(this).apply {
-        text = value; textSize = size; setTextColor(green); setLinkTextColor(green)
+        text = linkified(value); textSize = size * textScale; setTextColor(green); setLinkTextColor(green)
         gravity = Gravity.START; if (size == 28f) setTypeface(typeface, Typeface.BOLD)
-        autoLinkMask = Linkify.WEB_URLS; linksClickable = true; setTextIsSelectable(true)
+        linksClickable = true; setTextIsSelectable(true)
         movementMethod = android.text.method.LinkMovementMethod.getInstance()
     }
-    private fun button(label: String, filled: Boolean = false, action: () -> Unit): Button = Button(this).apply {
-        text = label; textSize = 22f; isAllCaps = false; gravity = Gravity.START or Gravity.CENTER_VERTICAL
-        setTextColor(if (filled) Color.BLACK else green); background = frame(if (filled) green else Color.BLACK)
+    private fun linkified(value: String): CharSequence {
+        val ranges = UrlFinder.find(value)
+        if (ranges.isEmpty()) return value
+        return SpannableString(value).apply { for (r in ranges) setSpan(URLSpan(value.substring(r)), r.first, r.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+    }
+    private fun button(label: String, filled: Boolean = false, focused: Boolean = false, action: () -> Unit): Button = Button(this).apply {
+        text = label; textSize = 22f * textScale; isAllCaps = false; gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        setTextColor(if (filled || focused) Color.BLACK else green)
+        background = if (filled && focused) ring() else frame(if (filled || focused) green else Color.BLACK)
         if (filled) setTypeface(typeface, Typeface.BOLD)
         minHeight = dp(64); setPadding(dp(16), 0, dp(16), 0); setOnClickListener { action() }
+    }
+    /** Cursor mark for a button that is already filled: green fill inside a black gap and a green outline. */
+    private fun ring(): android.graphics.drawable.Drawable {
+        val outer = frame(); val inner = GradientDrawable().apply { setColor(green); cornerRadius = dp(4).toFloat() }
+        return android.graphics.drawable.LayerDrawable(arrayOf(outer, inner)).apply { setLayerInset(1, dp(8), dp(8), dp(8), dp(8)) }
     }
     private fun block(view: View, margin: Int = 12) {
         layout.addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(margin) })
@@ -156,9 +206,26 @@ class MainActivity : Activity() {
         target.addView(right, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(6) })
     }
     private fun input(hintText: String, lines: Int = 1): EditText = EditText(this).apply {
-        textSize = 22f; setTextColor(green); setHintTextColor(dim); hint = hintText
+        textSize = 22f * textScale; setTextColor(green); setHintTextColor(dim); hint = hintText
         background = frame(); gravity = Gravity.TOP or Gravity.START; minLines = lines
         setPadding(dp(16), dp(16), dp(16), dp(16))
+    }
+    private var commentView: EditText? = null
+    private fun optionIds(item: JSONObject): List<String> {
+        val options = item.optJSONArray("options") ?: return emptyList()
+        return (0 until options.length()).map { options.optJSONObject(it)?.optString("id") ?: "" }
+    }
+    private fun cursorOf(item: JSONObject, draft: Draft): Int {
+        val resolved = DetailCursor.resolve(draft.cursor, optionIds(item), item.optBoolean("allow_text"), draft.cursorNavigated)
+        draft.cursor = resolved.ref; draft.cursorNavigated = resolved.navigated
+        return resolved.index
+    }
+    private fun goBack() {
+        when (BackNav.target(settingsVisible, showList)) {
+            BackTarget.CLOSE_SETTINGS -> { settingsVisible = false; render() }
+            BackTarget.TO_LIST -> { showList = true; render() }
+            BackTarget.NOTHING -> {}
+        }
     }
     private fun render(scrollToCursor: Boolean = false) {
         header.removeAllViews(); layout.removeAllViews(); footer.removeAllViews()
@@ -221,29 +288,38 @@ class MainActivity : Activity() {
             }
         }
         val options = item.optJSONArray("options") ?: JSONArray()
+        val allowText = item.optBoolean("allow_text")
+        val slots = DetailCursor.slots(options.length(), allowText)
+        val cursor = cursorOf(item, draft)
         for (i in 0 until options.length()) {
             val option = options.optJSONObject(i) ?: continue
             val optionId = option.optString("id")
             val description = optionSupplement(option.optString("description"), option.optString("preview"), option.optBoolean("preview_unavailable"))
-            val row = optionRow(i, option.optString("label"), description, draft.cursor == i, optionId in draft.selected) {
+            val row = optionRow(i, option.optString("label"), description, cursor == i, optionId in draft.selected) {
                 if (draft.sequence == null) {
-                    draft.cursor = i
+                    draft.cursor = CursorRef(Slot.OPTION, optionId)
                     if (item.optBoolean("multi_select")) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
                     render()
                 }
             }
             block(row)
-            if (scrollToCursor && i == draft.cursor) row.post { row.requestRectangleOnScreen(android.graphics.Rect(0, 0, row.width, row.height), true) }
+            if (scrollToCursor && i == cursor) row.post { row.requestRectangleOnScreen(android.graphics.Rect(0, 0, row.width, row.height), true) }
         }
         if (item.optBoolean("allow_text")) {
             block(text("コメント（任意）", 18f), 4)
-            val comment = input("コメントを入力", 3).apply { setText(draft.text); isEnabled = draft.sequence == null }
+            val onComment = slots.getOrNull(cursor) == Slot.COMMENT
+            val comment = input("コメントを入力", 3).apply {
+                setText(draft.text); isEnabled = draft.sequence == null
+                if (onComment) { background = frame(green).apply { setStroke(dp(5), green) }; setTextColor(Color.BLACK); setHintTextColor(Color.BLACK) }
+            }
+            commentView = comment
             comment.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { draft.text = s.toString() }
                 override fun afterTextChanged(s: Editable?) {}
             })
             block(comment)
+            if (scrollToCursor && onComment) comment.post { comment.requestRectangleOnScreen(android.graphics.Rect(0, 0, comment.width, comment.height), true) }
             draft.images.forEachIndexed { index, _ -> block(button("添付画像 ${index + 1} ×") { draft.images.removeAt(index); render() }.apply { isEnabled = draft.sequence == null }) }
             val attachments = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             pair(button("写真を選ぶ") { if (draft.images.size < 4) { pendingAttachmentId = id; startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), 2) } }.apply { isEnabled = draft.sequence == null },
@@ -252,8 +328,10 @@ class MainActivity : Activity() {
         }
         block(text(deadlineAndCount(item.optString("deadline"), item.optInt("queue_remaining")), 18f))
         footer.setPadding(0, dp(8), 0, dp(8))
-        pair(button("あとで") { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
-             button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) "回答する" else "送信中", true) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
+        val laterFocused = slots.getOrNull(cursor) == Slot.LATER
+        val answerFocused = slots.getOrNull(cursor) == Slot.ANSWER
+        pair(button("あとで", false, laterFocused) { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
+             button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) "回答する" else "送信中", true, answerFocused) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
     }
     private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, supplement: String = "", action: () -> Unit): View {
         val color = if (focused) Color.BLACK else green
@@ -267,6 +345,11 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
     }
+    private var viewer: ImageViewerDialog? = null
+    private fun showViewer(bitmap: android.graphics.Bitmap) {
+        viewer?.dismiss()
+        viewer = ImageViewerDialog(this, bitmap) { nav.ignoreNextUpRelease() }.also { it.setOnDismissListener { viewer = null }; it.show() }
+    }
     private fun addImage(encoded: String) {
         if (encoded.isEmpty()) return
         try {
@@ -276,7 +359,7 @@ class MainActivity : Activity() {
             var sample = 1
             while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) sample *= 2
             val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
-            layout.addView(ImageView(this).apply { setImageBitmap(bitmap); adjustViewBounds = true })
+            layout.addView(ImageView(this).apply { setImageBitmap(bitmap); adjustViewBounds = true; setOnClickListener { showViewer(bitmap) } })
         } catch (_: Exception) { /* Display failures do not prevent answering. */ }
     }
     private fun renderSettings() {
@@ -301,9 +384,11 @@ class MainActivity : Activity() {
             return
         }
         val item = current() ?: return
-        val count = (item.optJSONArray("options")?.length() ?: 0) + 1
+        val count = DetailCursor.slots(item.optJSONArray("options")?.length() ?: 0, item.optBoolean("allow_text")).size
         val draft = drafts.getOrPut(item.optString("id")) { Draft() }
-        if (draft.cursorNavigated || delta < 0) draft.cursor = (draft.cursor + delta + count) % count
+        var index = cursorOf(item, draft)
+        if (draft.cursorNavigated || delta < 0) index = (index + delta + count) % count
+        draft.cursor = DetailCursor.refAt(index, optionIds(item), item.optBoolean("allow_text"))
         draft.cursorNavigated = true
         render(scrollToCursor = true)
     }
@@ -316,8 +401,14 @@ class MainActivity : Activity() {
         val draft = drafts.getOrPut(item.optString("id")) { Draft() }
         if (draft.sequence != null) return
         val options = item.optJSONArray("options") ?: JSONArray()
-        if (draft.cursor >= options.length()) { send(item, draft); return }
-        val id = options.optJSONObject(draft.cursor)?.optString("id") ?: return
+        val slot = DetailCursor.slots(options.length(), item.optBoolean("allow_text")).getOrNull(cursorOf(item, draft)) ?: return
+        when (slot) {
+            Slot.ANSWER -> { send(item, draft); return }
+            Slot.LATER -> { if (DecisionState.send(JSONObject().put("type", "later").put("id", item.optString("id")))) { showList = true; render() }; return }
+            Slot.COMMENT -> { commentView?.let { it.requestFocus(); (getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(it, 0) }; return }
+            Slot.OPTION -> {}
+        }
+        val id = options.optJSONObject(cursorOf(item, draft))?.optString("id") ?: return
         if (item.optBoolean("multi_select")) { toggle(draft, id); render() }
         else { draft.selected.clear(); draft.selected.add(id); send(item, draft) }
     }
@@ -330,12 +421,21 @@ class MainActivity : Activity() {
         draft.submittedItem = item
         render()
     }
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        scaleDetector.onTouchEvent(ev)
+        if (scaling) {
+            if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) scaling = false
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (editorFocused() && (keyCode == VolumeNav.UP || keyCode == VolumeNav.DOWN)) return super.onKeyDown(keyCode, event)
         if (nav.keyDown(keyCode, event.repeatCount == 0)) { event.startTracking(); return true }
         return super.onKeyDown(keyCode, event)
     }
-    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean = nav.keyLongPress(keyCode) || super.onKeyLongPress(keyCode, event)
-    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = nav.keyUp(keyCode) || super.onKeyUp(keyCode, event)
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean = !editorFocused() && nav.keyLongPress(keyCode) || super.onKeyLongPress(keyCode, event)
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = !editorFocused() && nav.keyUp(keyCode) || super.onKeyUp(keyCode, event)
     private fun openCamera(draft: Draft) {
         if (draft.images.size >= 4) return
         pendingCamera = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, android.content.ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "ikesu-${UUID.randomUUID()}.jpg"); put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg") })
