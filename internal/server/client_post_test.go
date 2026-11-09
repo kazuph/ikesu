@@ -33,7 +33,7 @@ func postTestServer(t *testing.T) (*Server, *clientConn, func(), interface {
 func TestPostFromAppLoopDoesNotBlockOnStalledClient(t *testing.T) {
 	old := clientWriteTimeout
 	clientWriteTimeout = 600 * time.Millisecond
-	defer func() { clientWriteTimeout = old }()
+	t.Cleanup(func() { clientWriteTimeout = old })
 	s, _, stop, _ := postTestServer(t)
 	defer stop()
 	payload := []byte(strings.Repeat("x", 256<<10))
@@ -106,7 +106,7 @@ func (r *readerFunc) Read(p []byte) (int, error) { return r.r.Read(p) }
 func TestPostStalledClientIsDroppedAndPumpEnds(t *testing.T) {
 	old := clientWriteTimeout
 	clientWriteTimeout = 300 * time.Millisecond
-	defer func() { clientWriteTimeout = old }()
+	t.Cleanup(func() { clientWriteTimeout = old })
 	s, c, stop, _ := postTestServer(t)
 	defer stop()
 	payload := []byte(strings.Repeat("x", 256<<10))
