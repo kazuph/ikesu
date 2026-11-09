@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +10,11 @@ import (
 )
 
 func Source(cwd string) (api.WorktreeSourceInfo, error) {
-	common, err := git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	return SourceContext(context.Background(), cwd)
+}
+
+func SourceContext(ctx context.Context, cwd string) (api.WorktreeSourceInfo, error) {
+	common, err := gitWithEnvContext(ctx, cwd, nil, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return api.WorktreeSourceInfo{}, err
 	}
@@ -17,14 +22,14 @@ func Source(cwd string) (api.WorktreeSourceInfo, error) {
 	if p, e := filepath.EvalSymlinks(common); e == nil {
 		common = p
 	}
-	items, err := List(cwd)
+	items, err := ListContext(ctx, cwd)
 	if err != nil {
 		return api.WorktreeSourceInfo{}, err
 	}
 	root := items[0].Path
 	checkout := root
-	if bare, _ := git(cwd, "rev-parse", "--is-bare-repository"); bare != "true" {
-		checkout, err = git(cwd, "rev-parse", "--show-toplevel")
+	if bare, _ := gitWithEnvContext(ctx, cwd, nil, "rev-parse", "--is-bare-repository"); bare != "true" {
+		checkout, err = gitWithEnvContext(ctx, cwd, nil, "rev-parse", "--show-toplevel")
 		if err != nil {
 			return api.WorktreeSourceInfo{}, err
 		}

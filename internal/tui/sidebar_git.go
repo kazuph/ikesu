@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"github.com/kazuph/ikesu/internal/filewatch"
@@ -159,12 +160,12 @@ func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 // Git metadata follows the observed 1.5-second sidebar refresh cadence;
 // never launch git from frame composition or block pane input on it.
 func (a *App) refreshWorkspaceGit(now time.Time) {
-	if a.gitPending || now.Sub(a.gitAt) < 1500*time.Millisecond {
+	if now.Sub(a.gitAt) < 1500*time.Millisecond {
 		return
 	}
 	a.gitAt = now
 	if a.gitActivity == nil {
-		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}}
+		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}, running: map[string]context.CancelFunc{}}
 	}
 	var targets []workspaceGitTarget
 	wanted := map[string]bool{}
@@ -183,11 +184,17 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			entry.watch = filewatch.New(nil)
 			state.entries[cwd] = entry
 		}
-		pending[cwd] = entry
+		if state.running[cwd] == nil {
+			pending[cwd] = entry
+		}
 	}
 	for cwd, entry := range state.entries {
 		if !wanted[cwd] {
-			removed[cwd] = entry
+			if cancel := state.running[cwd]; cancel != nil {
+				cancel()
+			} else {
+				removed[cwd] = entry
+			}
 			delete(state.entries, cwd)
 		}
 	}
@@ -253,7 +260,7 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			}
 			a.workspaceNames[i] = name
 		}
-		a.gitPending = false
+		a.gitPending = len(state.running) > 0
 		a.refreshStaleWorktrees(valid, state.entries)
 		previews := a.workspacePreviewLines()
 		if !reflect.DeepEqual(previews, a.workspacePreviews) {
@@ -268,36 +275,42 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 		apply(nil)
 		return
 	}
-	a.gitPending = true
-	go func() {
-		for _, entry := range removed {
-			entry.watch.Close()
-		}
-		type result struct {
-			cwd   string
-			entry gitCwdActivity
-		}
-		results := make(chan result, len(pending))
-		for cwd, entry := range pending {
-			go func(cwd string, entry gitCwdActivity) {
-				if entry.loaded && entry.ready {
-					var ok bool
-					entry, ok = unchangedGitActivity(entry)
-					if ok {
-						results <- result{cwd, entry}
-						return
-					}
+	a.gitPending = len(state.running) > 0 || len(pending) > 0
+	for _, entry := range removed {
+		entry.watch.Close()
+	}
+	for cwd, entry := range pending {
+		ctx, cancel := context.WithCancel(context.Background())
+		state.running[cwd] = cancel
+		go func(ctx context.Context, cancel context.CancelFunc, cwd string, entry gitCwdActivity) {
+			defer cancel()
+			if entry.loaded && entry.ready {
+				var ok bool
+				entry, ok = unchangedGitActivity(entry)
+				if !ok {
+					entry = readGitActivity(ctx, cwd, entry)
 				}
-				results <- result{cwd, readGitActivity(cwd, entry)}
-			}(cwd, entry)
-		}
-		updated := map[string]gitCwdActivity{}
-		for range pending {
-			r := <-results
-			updated[r.cwd] = r.entry
-		}
-		a.Do(func() { apply(updated) })
-	}()
+			} else {
+				entry = readGitActivity(ctx, cwd, entry)
+			}
+			if ctx.Err() != nil {
+				entry.watch.Close()
+			}
+			a.Do(func() {
+				delete(state.running, cwd)
+				if a.gitActivity != state {
+					entry.watch.Close()
+					return
+				}
+				if current, ok := state.entries[cwd]; !ok || current.watch != entry.watch || ctx.Err() != nil {
+					entry.watch.Close()
+					apply(nil)
+					return
+				}
+				apply(map[string]gitCwdActivity{cwd: entry})
+			})
+		}(ctx, cancel, cwd, entry)
+	}
 }
 
 func (a *App) workspaceNameCwd(w *model.Workspace) string {
@@ -334,10 +347,10 @@ func (a *App) WorkspaceLabel(index int) string {
 	}
 	return filepath.Base(cwd)
 }
-func readWorkspaceGit(cwd string) render.GitStatus {
+func readWorkspaceGit(ctx context.Context, cwd string) render.GitStatus {
 	var g render.GitStatus
 	run := func(args ...string) string {
-		cmd := childenv.Command("git", append([]string{"-C", cwd}, args...)...)
+		cmd := childenv.CommandContextGroup(ctx, "git", append([]string{"-C", cwd}, args...)...)
 		b, err := cmd.Output()
 		if err != nil {
 			return ""
@@ -350,12 +363,12 @@ func readWorkspaceGit(cwd string) render.GitStatus {
 		g.Ahead, _ = strconv.Atoi(counts[0])
 		g.Behind, _ = strconv.Atoi(counts[1])
 	}
-	g.Added, g.Deleted = readWorkspaceGitDiff(cwd)
+	g.Added, g.Deleted = readWorkspaceGitDiff(ctx, cwd)
 	return g
 }
 
-func readWorkspaceGitDiff(cwd string) (added, deleted int) {
-	output, err := gitActivityOutput(cwd, "diff", "--numstat", "HEAD", "--")
+func readWorkspaceGitDiff(ctx context.Context, cwd string) (added, deleted int) {
+	output, err := gitActivityOutput(ctx, cwd, "diff", "--numstat", "HEAD", "--")
 	if err != nil {
 		return 0, 0
 	}

@@ -6,9 +6,97 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
+
+func TestWorkspaceGitSlowRepositoryDoesNotBlockOtherUpdates(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	slow, fast := filepath.Join(root, "slow"), filepath.Join(root, "fast")
+	for _, dir := range []string{slow, fast} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", "initial")
+		if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("one\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "add", "tracked")
+		sidebarGit(t, dir, "-c", "user.name=Test", "-c", "user.email=t@t", "commit", "-qm", "initial")
+	}
+	fifo, ready := filepath.Join(root, "fifo"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(fifo, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n") }()
+	hook := filepath.Join(root, "fsmonitor")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nprintf '%s' $$ > '"+ready+"'\nread x < '"+fifo+"'\nprintf '\\0'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, slow, "config", "core.fsmonitor", hook)
+	a := specRuntimeApp(t)
+	a.st.Workspaces[0].Cwd = slow
+	a.st.Apply(model.CmdNewWorkspace{Cwd: fast, Name: "fast"})
+	a.refreshWorkspaceGit(time.Now())
+	deadline := time.After(3 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil && a.workspaceGit[1].Branch == "initial" {
+			break
+		}
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("slow Git blocked the other workspace's initial result")
+		}
+	}
+	sidebarGit(t, fast, "symbolic-ref", "HEAD", "refs/heads/updated")
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	deadline = time.After(3 * time.Second)
+	for a.workspaceGit[1].Branch != "updated" {
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-deadline:
+			t.Fatal("slow Git blocked the other workspace's subsequent update")
+		}
+	}
+	pidText, err := os.ReadFile(ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidText)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.st.Apply(model.CmdCloseWorkspace{Index: 0})
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	deadline = time.After(3 * time.Second)
+	for a.gitActivity.running[slow] != nil {
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-deadline:
+			t.Fatal("closing the workspace did not cancel its Git process")
+		}
+	}
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatal("cancelled Git helper is still running")
+	}
+}
 
 func trackGitCalls(t *testing.T) string {
 	t.Helper()

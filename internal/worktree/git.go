@@ -2,6 +2,7 @@
 package worktree
 
 import (
+	"context"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
@@ -27,7 +28,11 @@ func git(cwd string, args ...string) (string, error) {
 }
 
 func gitWithEnv(cwd string, environment []string, args ...string) (string, error) {
-	cmd := childenv.Command("git", append([]string{"-C", cwd}, args...)...)
+	return gitWithEnvContext(context.Background(), cwd, environment, args...)
+}
+
+func gitWithEnvContext(ctx context.Context, cwd string, environment []string, args ...string) (string, error) {
+	cmd := childenv.CommandContextGroup(ctx, "git", append([]string{"-C", cwd}, args...)...)
 	if len(environment) > 0 {
 		cmd.Env = append(childenv.Scrub(os.Environ()), environment...)
 	}
@@ -41,22 +46,26 @@ func gitWithEnv(cwd string, environment []string, args ...string) (string, error
 // List retains NUL-delimited porcelain on supported Git versions. Only an
 // explicit unsupported -z usage error selects the older porcelain format.
 func List(cwd string) ([]api.WorktreeInfo, error) {
+	return ListContext(context.Background(), cwd)
+}
+
+func ListContext(ctx context.Context, cwd string) ([]api.WorktreeInfo, error) {
 	// This error is parsed for feature detection; keep only this probe in
 	// the C locale, including gettext's LANGUAGE override.
-	raw, err := gitWithEnv(cwd, []string{"LC_ALL=C", "LANGUAGE=C"}, "worktree", "list", "--porcelain", "-z")
+	raw, err := gitWithEnvContext(ctx, cwd, []string{"LC_ALL=C", "LANGUAGE=C"}, "worktree", "list", "--porcelain", "-z")
 	if err == nil {
 		return parseWorktreeList(raw, "\x00", nil)
 	}
 	if !strings.Contains(err.Error(), "unknown switch `z'") || !strings.Contains(err.Error(), "usage: git worktree") {
 		return nil, err
 	}
-	raw, err = git(cwd, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
+	raw, err = gitWithEnvContext(ctx, cwd, nil, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
 	// Git before 2.36 emits literal newlines in paths even with quotePath.
 	// Match registered full paths before interpreting porcelain field lines.
-	common, err := git(cwd, "rev-parse", "--git-common-dir")
+	common, err := gitWithEnvContext(ctx, cwd, nil, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}

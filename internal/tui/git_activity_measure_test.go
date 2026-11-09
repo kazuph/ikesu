@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/filewatch"
 	"os"
@@ -22,7 +23,7 @@ func TestGitActivityBaselineMeasurement(t *testing.T) {
 		}
 	}
 	sidebarGit(t, repo, "add", ".")
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer e.watch.Close()
 	if !e.ready {
 		t.Fatal("watch unavailable")
@@ -47,7 +48,7 @@ func TestGitActivityBaselineMeasurement(t *testing.T) {
 	if ok {
 		t.Fatal("change was not detected")
 	}
-	e = readGitActivity(repo, e)
+	e = readGitActivity(context.Background(), repo, e)
 	t.Logf("after one change cached paths=%d tracked=%d other=%d", len(e.paths), len(e.tracked), len(e.paths)-len(e.tracked))
 }
 
@@ -68,7 +69,7 @@ func TestGitActivityQuietPassAvoidsRepeatingAllOtherStats(t *testing.T) {
 		}
 	}
 	sidebarGit(t, repo, "add", ".")
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer e.watch.Close()
 	if !e.ready {
 		t.Fatal("watch unavailable")
@@ -132,7 +133,7 @@ func TestGitActivityOneContentChangeAvoidsFullSnapshot(t *testing.T) {
 	}
 	sidebarGit(t, repo, "add", ".")
 	sidebarGit(t, repo, "commit", "-qm", "initial")
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer e.watch.Close()
 	if !e.ready {
 		t.Fatal("watch unavailable")
@@ -145,7 +146,7 @@ func TestGitActivityOneContentChangeAvoidsFullSnapshot(t *testing.T) {
 	if ok {
 		t.Fatal("change was not detected")
 	}
-	e = readGitActivity(repo, e)
+	e = readGitActivity(context.Background(), repo, e)
 	t.Logf("one change: snapshot stat=%d of %d paths, git +%d -%d", e.readChecks, len(e.paths), e.git.Added, e.git.Deleted)
 	if e.git.Added != 2 || e.git.Deleted != 1 {
 		t.Fatalf("wrong Git display: %+v", e.git)
@@ -169,7 +170,7 @@ func TestGitActivityBaselineReloadFrequency(t *testing.T) {
 		}
 	}
 	sidebarGit(t, repo, "add", ".")
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer e.watch.Close()
 	if !e.ready {
 		t.Fatal("watch unavailable")
@@ -187,7 +188,7 @@ func TestGitActivityBaselineReloadFrequency(t *testing.T) {
 		e, ok = unchangedGitActivity(e)
 		stats += e.statChecks
 		if !ok {
-			e = readGitActivity(repo, e)
+			e = readGitActivity(context.Background(), repo, e)
 			snapshotStats += e.readChecks
 			if e.readChecks >= len(e.paths) {
 				full++
@@ -210,7 +211,7 @@ func TestGitActivityContinuousWritesDoNotStarveLaterBatches(t *testing.T) {
 	}
 	sidebarGit(t, repo, "add", ".")
 	sidebarGit(t, repo, "commit", "-qm", "initial")
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer e.watch.Close()
 	if !e.ready {
 		t.Fatal("watch unavailable")
@@ -231,7 +232,7 @@ func TestGitActivityContinuousWritesDoNotStarveLaterBatches(t *testing.T) {
 		if ok {
 			t.Fatalf("pass %d missed its changed batch", pass)
 		}
-		e = readGitActivity(repo, e)
+		e = readGitActivity(context.Background(), repo, e)
 	}
 	if e.git.Added != 16 || e.git.Deleted != 8 {
 		t.Fatalf("continuous edits missed last batch: %+v", e.git)
@@ -255,7 +256,7 @@ func TestGitActivityDirectoryFallbackWithinFifteenSeconds(t *testing.T) {
 	}
 	sidebarGit(t, repo, "add", ".")
 	sidebarGit(t, repo, "commit", "-qm", "initial")
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	if !e.ready {
 		e.watch.Close()
 		t.Fatal("watch unavailable")
@@ -296,7 +297,7 @@ func TestGitActivityDirectoryFallbackWithinFifteenSeconds(t *testing.T) {
 			if ok {
 				t.Fatal("eighth directory check missed change")
 			}
-			e = readGitActivity(repo, e)
+			e = readGitActivity(context.Background(), repo, e)
 			if e.git.Added != 2 || e.git.Deleted != 1 {
 				t.Fatalf("directory fallback did not update Git display: %+v", e.git)
 			}
