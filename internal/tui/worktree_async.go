@@ -240,12 +240,14 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	applied := false
 	a.Do(func() {
 		applied = true
-		matches := valid()
-		if req.Operation == "remove" {
+		var matches bool
+		switch req.Operation {
+		case "remove":
 			matches = sameWorkspace(false)
-		}
-		if req.Operation == "create" {
+		case "create":
 			matches = sameWorkspace(true)
+		default:
+			matches = valid()
 		}
 		if !matches {
 			if req.Operation == "create" || req.Operation == "remove" {
