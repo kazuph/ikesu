@@ -173,6 +173,21 @@ func (p *Pane) startPTYWriter() {
 					w.mu.Unlock()
 					break
 				}
+				head := &w.segments[0]
+				if !head.started {
+					if head.valid != nil && !head.valid() {
+						dropped := *head
+						w.segments = w.segments[1:]
+						w.queued -= len(dropped.data)
+						w.mu.Unlock()
+						if dropped.done != nil {
+							dropped.done <- ErrPTYInputStale
+						}
+						continue
+					}
+					head.started = true
+				}
+				chunk := append([]byte(nil), head.data[:min(len(head.data), ptyWriteChunk)]...)
 				w.mu.Unlock()
 				if !p.waitWritable() {
 					if p.pausing.Load() {
@@ -181,37 +196,11 @@ func (p *Pane) startPTYWriter() {
 					w.stop(errPaneClosed)
 					return
 				}
-				p.inputMu.Lock()
-				w.mu.Lock()
-				if len(w.segments) == 0 {
-					w.mu.Unlock()
-					p.inputMu.Unlock()
-					continue
-				}
-				head := &w.segments[0]
-				if !head.started {
-					if head.valid != nil && !head.valid() {
-						dropped := *head
-						w.segments = w.segments[1:]
-						w.queued -= len(dropped.data)
-						w.mu.Unlock()
-						p.inputMu.Unlock()
-						if dropped.done != nil {
-							dropped.done <- ErrPTYInputStale
-						}
-						continue
-					}
-				}
-				chunk := append([]byte(nil), head.data[:min(len(head.data), ptyWriteChunk)]...)
-				w.mu.Unlock()
 				written, err := writeSomePTY(p.currentPTY(), chunk)
 				var finished *ptySegment
 				w.mu.Lock()
 				if len(w.segments) > 0 {
 					head = &w.segments[0]
-					if written > 0 {
-						head.started = true
-					}
 					head.data = head.data[written:]
 					w.queued -= written
 					if len(head.data) == 0 {
@@ -221,7 +210,6 @@ func (p *Pane) startPTYWriter() {
 					}
 				}
 				w.mu.Unlock()
-				p.inputMu.Unlock()
 				if finished != nil && finished.done != nil {
 					finished.done <- nil
 				}
