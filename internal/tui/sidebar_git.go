@@ -157,10 +157,15 @@ func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 	}
 	a.workspaceNames = map[int]string{}
 	a.workspaceGit = map[int]render.GitStatus{}
+	labels := make(map[int]workspaceDirectoryLabel, len(a.st.Workspaces))
 	for i, ws := range a.st.Workspaces {
 		a.workspaceNames[i] = names[ws.ID]
 		a.workspaceGit[i] = git[ws.ID]
+		if label, ok := a.workspaceLabels[ws.ID]; ok {
+			labels[ws.ID] = label
+		}
 	}
+	a.workspaceLabels = labels
 }
 
 // Git metadata follows the observed 1.5-second sidebar refresh cadence;

@@ -526,3 +526,32 @@ func TestWorkspaceGitApplyWorkPerRepository(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkspaceGitStatusFollowsIdentityAfterClose(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	dirs := []string{filepath.Join(root, "first"), filepath.Join(root, "second")}
+	for i, dir := range dirs {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", []string{"firstbranch", "secondbranch"}[i])
+	}
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = dirs[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: dirs[1], NoFocus: true})
+	a.refreshWorkspaceGit(time.Now())
+	for len(a.gitActivity.running) != 0 {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	if a.workspaceGit[0].Branch != "firstbranch" || a.workspaceGit[1].Branch != "secondbranch" {
+		t.Fatalf("initial status: %+v", a.workspaceGit)
+	}
+	a.exec(model.CmdCloseWorkspace{Index: 0})
+	if got := a.workspaceGit[0].Branch; got != "secondbranch" {
+		t.Fatalf("remaining workspace inherited removed workspace status: %q", got)
+	}
+}
