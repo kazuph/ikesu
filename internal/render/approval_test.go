@@ -190,3 +190,32 @@ func TestApprovalWarningUsesYellow(t *testing.T) {
 		t.Errorf("warning color=%v want %v", got, f.Palette.Yellow)
 	}
 }
+
+// When the selection moves with the arrows, the popup scrolls so the selected
+// option stays visible even below a long command (2026-11-09).
+func TestApprovalFollowKeepsSelectedOptionVisible(t *testing.T) {
+	state := model.New(t.TempDir(), 120, 40)
+	pane := state.FocusedPane()
+	var lines []string
+	var kinds []ApprovalLineKind
+	for i := 0; i < 200; i++ {
+		lines = append(lines, "long command line "+strings.Repeat("x", i%7))
+		kinds = append(kinds, ApprovalLineKind{})
+	}
+	lines = append(lines, "1  approve", "2  chosen-option-row")
+	kinds = append(kinds, ApprovalLineKind{}, ApprovalLineKind{Selected: true})
+	text := func(follow bool) string {
+		out := Compose(Input{State: state, Panes: map[int]*PaneSnap{}, Approval: &Approval{Pane: pane, Title: "guard approval", Lines: lines, Kinds: kinds, Follow: follow}})
+		var b strings.Builder
+		for _, cell := range out.Frame.Cells {
+			b.WriteString(cell.Content)
+		}
+		return b.String()
+	}
+	if strings.Contains(text(false), "chosen-option-row") {
+		t.Fatal("without follow the option row should be scrolled out (test precondition)")
+	}
+	if !strings.Contains(text(true), "chosen-option-row") {
+		t.Fatal("selected option is not visible with follow")
+	}
+}

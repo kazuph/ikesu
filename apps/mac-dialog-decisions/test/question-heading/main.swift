@@ -21,8 +21,11 @@ for row in rows {
   precondition(menu.items.count==1 && menu.items[0].title.hasSuffix(heading.isEmpty ? body:heading),"Dock menu keeps question identity")
   host.windows.removeAll()
   let rendered=labels(content)
-  let count=rendered.filter {$0.string==body}.count
-  let titles=rendered.filter {($0.attributedString().attribute(.font,at:0,effectiveRange:nil) as? NSFont)?.pointSize==Look.title}
+  // A command approval's request reason is shown once, labelled 申請文 on the
+  // second line (2026-11-09); it is not the question heading.
+  let shown=spec.kind=="command_guard" ? "申請文："+body : body
+  let count=rendered.filter {$0.string==shown}.count
+  let titles=rendered.filter {$0.string != shown && ($0.attributedString().attribute(.font,at:0,effectiveRange:nil) as? NSFont)?.pointSize==Look.title}
   var partCounts:[String:Int]=[:]
   let text=rendered.map {$0.string}.joined(separator:"\n")
   for part in (row["parts"] as? [String] ?? [body]) {

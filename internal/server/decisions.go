@@ -3,9 +3,12 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/kazuph/ikesu/internal/guard"
 	"io"
 	"math"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -207,6 +210,11 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		d, err := store.AnswerDecision(p, time.Now())
 		if err != nil {
 			return decisionFailure(req.ID, err)
+		}
+		if d.Kind == "command_guard" && d.Answer != nil && d.Answer.OptionID != nil && *d.Answer.OptionID == "day_allow" && d.Origin != nil {
+			if err := guard.RecordDayApproval(d.Origin.Cwd); err != nil {
+				fmt.Fprintln(os.Stderr, "ikesu guard day approval:", err)
+			}
 		}
 		if lateText != "" {
 			late.delivery = &api.DecisionDelivery{Status: "pending", Text: lateText}

@@ -115,19 +115,32 @@ func (s *Server) claudeTranscriptPrompt(pid int, p *screenprompt.Prompt) (string
 }
 
 func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent string, cache *session.ClaudeQuestionCache) (string, api.DecisionCreateParams, bool, bool, bool) {
+	id, params, ok, unverified, resolved, _ := readClaudeTranscriptState(pane, p, agent, cache)
+	return id, params, ok, unverified, resolved
+}
+
+// readClaudeTranscriptState also reports absent: the transcript was read and
+// holds no unanswered question at all. Claude Code 2.1.319 writes the
+// question to the transcript only after it is answered (measured 2026-11-09),
+// so waiting for it there only delays the decision.
+func readClaudeTranscriptState(pane *runtime.Pane, p *screenprompt.Prompt, agent string, cache *session.ClaudeQuestionCache) (string, api.DecisionCreateParams, bool, bool, bool, bool) {
+	return readClaudeTranscriptQuestions(pane, p, agent, cache)
+}
+
+func readClaudeTranscriptQuestions(pane *runtime.Pane, p *screenprompt.Prompt, agent string, cache *session.ClaudeQuestionCache) (string, api.DecisionCreateParams, bool, bool, bool, bool) {
 	snapshot := pane.Snapshot()
 	if agent != "claude" || foregroundAgent(pane) != "claude" {
-		return "", api.DecisionCreateParams{}, false, false, false
+		return "", api.DecisionCreateParams{}, false, false, false, false
 	}
 	job := pane.ForegroundJob()
 	start, ok := session.ProcessStart(job)
 	if !ok {
-		return "", api.DecisionCreateParams{}, false, false, false
+		return "", api.DecisionCreateParams{}, false, false, false, false
 	}
 	env := pane.SessionEnvironment()
 	id, ok := session.ObserveProcessSession("claude", snapshot.Cwd, start, job, env)
 	if !ok {
-		return "", api.DecisionCreateParams{}, false, false, false
+		return "", api.DecisionCreateParams{}, false, false, false, false
 	}
 	home, root := "", ""
 	for _, item := range env {
@@ -150,16 +163,16 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 	}
 	questions, ok := cache.ReadAll(root, id)
 	if !ok {
-		return "", api.DecisionCreateParams{}, false, false, false
+		return "", api.DecisionCreateParams{}, false, false, false, false
 	}
 	currentJob := pane.ForegroundJob()
 	currentStart, live := session.ProcessStart(currentJob)
 	if !live || !currentStart.Equal(start) || currentJob.ProcessGroupID != job.ProcessGroupID || pane.Snapshot().Cwd != snapshot.Cwd {
-		return "", api.DecisionCreateParams{}, false, false, false
+		return "", api.DecisionCreateParams{}, false, false, false, false
 	}
 	currentID, live := session.ObserveProcessSession("claude", snapshot.Cwd, currentStart, currentJob, pane.SessionEnvironment())
 	if !live || currentID != id {
-		return "", api.DecisionCreateParams{}, false, false, false
+		return "", api.DecisionCreateParams{}, false, false, false, false
 	}
 	match, unverified, resolvedMatch := chooseClaudeQuestion(p, questions)
 	if match == nil {
@@ -170,16 +183,17 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 					continue
 				}
 				if resolved != nil {
-					return "", api.DecisionCreateParams{}, false, true, false
+					return "", api.DecisionCreateParams{}, false, true, false, false
 				}
 				resolved = &questions[i]
 			}
 			if resolved != nil {
 				identity, _ := json.Marshal([]any{id, resolved.ToolID, resolved.Index})
-				return string(identity), api.DecisionCreateParams{}, false, false, true
+				return string(identity), api.DecisionCreateParams{}, false, false, true, false
 			}
 		}
-		return "", api.DecisionCreateParams{}, false, unverified, resolvedMatch
+		// No question matched: absent when the transcript has none unanswered.
+		return "", api.DecisionCreateParams{}, false, unverified, resolvedMatch, !unverified && !resolvedMatch && cache.LastReadHadNoPending()
 	}
 	params := claudeQuestionPresentation(p.Params, *match)
 	params.Options = append([]api.DecisionOption(nil), p.Params.Options...)
@@ -189,7 +203,7 @@ func readClaudeTranscript(pane *runtime.Pane, p *screenprompt.Prompt, agent stri
 		params.Options[i].Description = &description
 	}
 	identity, _ := json.Marshal([]any{id, match.ToolID, match.Index})
-	return string(identity), params, true, false, false
+	return string(identity), params, true, false, false, false
 }
 
 type claudeTranscriptResult struct {
@@ -200,6 +214,7 @@ type claudeTranscriptResult struct {
 	ok         bool
 	unverified bool
 	resolved   bool
+	absent     bool
 }
 type claudeTranscriptScan struct {
 	result chan claudeTranscriptResult
@@ -247,8 +262,8 @@ func (s *Server) pollClaudeTranscript(pid int, p *screenprompt.Prompt) (string, 
 		copy.Params.Options = append([]api.DecisionOption(nil), p.Params.Options...)
 		started := time.Now()
 		go func() {
-			id, params, ok, unverified, resolved := readClaudeTranscript(pane, &copy, agent, &scan.cache)
-			result <- claudeTranscriptResult{started: started, signature: signature, id: id, params: params, ok: ok, unverified: unverified, resolved: resolved}
+			id, params, ok, unverified, resolved, absent := readClaudeTranscriptState(pane, &copy, agent, &scan.cache)
+			result <- claudeTranscriptResult{started: started, signature: signature, id: id, params: params, ok: ok, unverified: unverified, resolved: resolved, absent: absent}
 		}()
 	}
 	if scan.latest.signature == signature {
@@ -279,6 +294,11 @@ func (s *Server) waitClaudeQuestion(pid int, w *screenPromptWatch, matched, pend
 	}
 	if matched {
 		return false
+	}
+	// The transcript was read for this screen and has no unanswered question,
+	// so the screen is the only source: show it now instead of waiting.
+	if scan := s.screenPrompts.transcripts[pid]; scan != nil && w.prompt != nil && scan.latest.absent && scan.latest.signature == w.prompt.Signature() {
+		w.transcriptDeadline = scan.latest.started
 	}
 	if time.Now().Before(w.transcriptDeadline) {
 		return true

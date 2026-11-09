@@ -167,3 +167,24 @@ func EnvMap(env []string) map[string]string {
 	}
 	return m
 }
+
+// RecordDayApproval stores a "1日許可" for cwd until the next local
+// midnight. The server calls it when the answer arrives, so the approval
+// holds even when the command that asked was gone by then (2026-11-09: test
+// processes that asked were killed before they could store it, and the same
+// question kept coming back).
+func RecordDayApproval(cwd string) error {
+	if cwd == "" {
+		return nil
+	}
+	file := os.Getenv("AI_GUARD_TEMP_APPROVAL_FILE")
+	if file == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		file = filepath.Join(home, ".ai_guard_temp_approval")
+	}
+	now := time.Now()
+	return WriteApproval(file, "day:"+physical(cwd), time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()))
+}
