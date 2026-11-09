@@ -31,31 +31,32 @@ func homebrewDirenvPath(real string) bool {
 	return false
 }
 
-// ShellParentDirenv returns the real path of the Homebrew direnv that started
-// the bash running this guard, or "" when that cannot be proven. The bash is
+// ShellParentDirenv returns the real paths of the Homebrew direnv that started
+// the bash running this guard and of that bash, or "" when that cannot be
+// proven. The bash is
 // shellPID (Bash's $$) or, when empty, this process's direct parent. Identity
 // comes from the OS process table (pid plus start time), never from the
 // command text, PATH or hash tables.
-func ShellParentDirenv(shellPID string) string {
+func ShellParentDirenv(shellPID string) (string, string) {
 	self := os.Getpid()
 	shell := 0
 	if shellPID == "" {
 		parent, _, err := approvalProcess(self)
 		if err != nil {
-			return ""
+			return "", ""
 		}
 		shell = parent
 	} else {
 		n, err := strconv.Atoi(shellPID)
 		if err != nil || n <= 1 {
-			return ""
+			return "", ""
 		}
 		shell = n
 		found := false
 		for pid, hop := self, 0; hop < 4; hop++ {
 			parent, _, err := approvalProcess(pid)
 			if err != nil || parent <= 1 {
-				return ""
+				return "", ""
 			}
 			if parent == shell {
 				found = true
@@ -64,40 +65,44 @@ func ShellParentDirenv(shellPID string) string {
 			pid = parent
 		}
 		if !found {
-			return ""
+			return "", ""
 		}
 	}
 	if shell <= 1 {
-		return ""
+		return "", ""
 	}
 	direnv, shellStart, err := approvalProcess(shell)
 	if err != nil || direnv <= 1 || shellStart == "" {
-		return ""
+		return "", ""
 	}
 	shellExe, err := approvalExecutable(shell)
 	if err != nil || filepath.Base(shellExe) != "bash" {
-		return ""
+		return "", ""
+	}
+	shellReal, err := filepath.EvalSymlinks(shellExe)
+	if err != nil {
+		return "", ""
 	}
 	_, direnvStart, err := approvalProcess(direnv)
 	if err != nil || direnvStart == "" {
-		return ""
+		return "", ""
 	}
 	exe, err := approvalExecutable(direnv)
 	if err != nil || !filepath.IsAbs(exe) {
-		return ""
+		return "", ""
 	}
 	real, err := filepath.EvalSymlinks(exe)
 	if err != nil || !homebrewDirenvPath(real) {
-		return ""
+		return "", ""
 	}
 	// Guard against pid reuse between the reads above.
 	if again, start, err := approvalProcess(shell); err != nil || again != direnv || start != shellStart {
-		return ""
+		return "", ""
 	}
 	if _, start, err := approvalProcess(direnv); err != nil || start != direnvStart {
-		return ""
+		return "", ""
 	}
-	return real
+	return real, shellReal
 }
 
 func literalPathWord(word *syntax.Word) (string, bool) {
@@ -211,8 +216,15 @@ func direnvBootstrapLine(line, direnv string) bool {
 // "$@" line at the end of direnv's stdlib __main__. Bash reports the same
 // line once more on entry to source_env, so that stack is accepted too. A
 // "$@" written inside an .envrc always sits above an extra source frame.
-func direnvMainFrames(arrays map[string]map[int]string) bool {
+//
+// The names alone can be imitated: an .envrc may define its own __main__ and
+// call it from an EXIT trap, which yields the same stack. BASH_SOURCE tells
+// them apart: functions from direnv's stdlib are defined by the eval in the
+// bash -c string, so their source is empty (bash 3.2) or the bash executable
+// itself ($0, bash 5), while a function defined in an .envrc names that file.
+func direnvMainFrames(arrays map[string]map[int]string, shell string) bool {
 	frames := arrays["FUNCNAME"]
+	sources := arrays["BASH_SOURCE"]
 	for _, want := range [][]string{
 		{"_ikesu_guard_debug", "_ikesu_guard_dispatch", "__main__"},
 		{"_ikesu_guard_debug", "_ikesu_guard_dispatch", "source_env", "__main__"},
@@ -225,12 +237,29 @@ func direnvMainFrames(arrays map[string]map[int]string) bool {
 			if frames[index] != name {
 				match = false
 			}
+			if index >= 2 && !stdlibSource(sources[index], shell) {
+				match = false
+			}
 		}
 		if match {
 			return true
 		}
 	}
 	return false
+}
+
+// stdlibSource reports whether a BASH_SOURCE entry belongs to code defined by
+// the bash -c string: empty, or a path to the running bash executable (a
+// binary cannot be sourced, so an .envrc cannot produce it).
+func stdlibSource(source, shell string) bool {
+	if source == "" {
+		return true
+	}
+	if shell == "" || !filepath.IsAbs(source) {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(source)
+	return err == nil && real == shell
 }
 
 // trustedDirenvLine decides whether this exact line is direnv's own bootstrap
@@ -241,13 +270,16 @@ func trustedDirenvLine(i Input, line string) bool {
 	}
 	trimmed := strings.TrimSpace(line)
 	bootstrap := strings.HasPrefix(trimmed, "eval ")
-	main := trimmed == `"$@"` && i.shellArrays != nil && direnvMainFrames(i.shellArrays)
+	main := trimmed == `"$@"` && i.shellArrays != nil
 	if !bootstrap && !main {
 		return false
 	}
-	direnv := i.ShellParentDirenv()
+	direnv, shell := i.ShellParentDirenv()
 	if direnv == "" {
 		return false
 	}
-	return main || direnvBootstrapLine(trimmed, direnv)
+	if main {
+		return direnvMainFrames(i.shellArrays, shell)
+	}
+	return direnvBootstrapLine(trimmed, direnv)
 }

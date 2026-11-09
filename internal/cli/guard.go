@@ -314,7 +314,7 @@ func (r *runner) guardCLI(a []string) int {
 			i = guard.WithShellVariables(i, os.Stdin)
 			i = guard.WithShellPID(i, shellPID)
 		}
-		i.ShellParentDirenv = func() string { return guard.ShellParentDirenv(shellPID) }
+		i.ShellParentDirenv = func() (string, string) { return guard.ShellParentDirenv(shellPID) }
 		if len(argv) != 1 {
 			return usageErr(r, "guard line requires one command line")
 		}
