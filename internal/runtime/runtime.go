@@ -77,6 +77,7 @@ type Pane struct {
 	done                chan struct{}
 	exitOnce            sync.Once
 	pumpDone            chan struct{}
+	pauseSignal         chan struct{}
 	importedPID         int
 	shellStart          string
 	pausing             atomic.Bool
@@ -417,9 +418,24 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	p.revision.Add(1)
 	p.markProcessOutput()
 	p.notifyChanged()
-	for _, data := range clipboard {
+	p.deliverClipboard(clipboard)
+}
+
+func (p *Pane) deliverClipboard(clipboard []string) {
+	for i, data := range clipboard {
+		if p.pausing.Load() {
+			p.mu.Lock()
+			p.clipboard = append(clipboard[i:], p.clipboard...)
+			p.mu.Unlock()
+			return
+		}
 		select {
 		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data, Source: p}:
+		case <-p.pauseSignal:
+			p.mu.Lock()
+			p.clipboard = append(clipboard[i:], p.clipboard...)
+			p.mu.Unlock()
+			return
 		case <-p.done:
 			return
 		}

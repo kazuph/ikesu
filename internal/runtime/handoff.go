@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/guard"
@@ -41,8 +42,14 @@ func (p *Pane) startPump() {
 // be draining while another pane starts with different test timings.
 func (p *Pane) startPumpWithTiming(batchWait, streamGap time.Duration) {
 	p.pumpDone = make(chan struct{})
+	p.pauseSignal = make(chan struct{})
 	go func() {
 		defer close(p.pumpDone)
+		p.mu.Lock()
+		pending := p.clipboard
+		p.clipboard = nil
+		p.mu.Unlock()
+		p.deliverClipboard(pending)
 		p.pumpPTYToEmu(batchWait, streamGap)
 		if p.importedPID != 0 && !p.pausing.Load() && !p.retired.Load() {
 			p.importedExited.Store(true)
@@ -59,6 +66,10 @@ func (p *Pane) startPumpWithTiming(batchWait, streamGap time.Duration) {
 	}()
 }
 func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
+	return s.PauseHandoffContext(context.Background())
+}
+
+func (s *Supervisor) PauseHandoffContext(ctx context.Context) ([]PaneTransfer, []*os.File, error) {
 	s.mu.Lock()
 	ids := make([]int, 0, len(s.panes))
 	for id := range s.panes {
@@ -76,12 +87,54 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 		return nil, nil, err
 	}
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
 		p := s.Get(id)
-		p.pausing.Store(true)
+		if !p.pausing.CompareAndSwap(false, true) {
+			return fail(fmt.Errorf("pane %d is already pausing", id))
+		}
+		close(p.pauseSignal)
 		if _, err := p.wakeWrite.Write([]byte{1}); err != nil {
 			return fail(fmt.Errorf("pause PTY: %w", err))
 		}
-		<-p.pumpDone
+		select {
+		case <-p.pumpDone:
+		case <-ctx.Done():
+			return fail(ctx.Err())
+		}
+	}
+	// The app loop cannot consume queued clipboard events while it is handing
+	// off. Move them ahead of each pane's unsent events before snapshotting.
+	queued := make(map[*Pane][]string)
+	var other []Event
+	for n := len(s.events); n > 0; n-- {
+		e := <-s.events
+		if e.Kind == EventClipboard && s.Get(e.Pane) == e.Source {
+			queued[e.Source] = append(queued[e.Source], e.Data)
+		} else {
+			other = append(other, e)
+		}
+	}
+	for p, values := range queued {
+		p.mu.Lock()
+		p.clipboard = append(values, p.clipboard...)
+		p.mu.Unlock()
+	}
+	for _, e := range other {
+		select {
+		case s.events <- e:
+		default:
+			if e.Source != nil && (e.Kind == EventChanged || e.Kind == EventExited) {
+				e.Source.keepMissedChange(e.Kind)
+			}
+		}
+	}
+	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
+		p := s.Get(id)
 		p.mu.Lock()
 		terminal, err := p.emu.MarshalHandoff()
 		if err != nil {
@@ -111,18 +164,34 @@ func (s *Supervisor) PauseHandoff() ([]PaneTransfer, []*os.File, error) {
 }
 func (s *Supervisor) ResumeHandoff() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, p := range s.panes {
+		if !p.pausing.Load() {
+			continue
+		}
+		done := p.pumpDone
 		select {
-		case <-p.pumpDone:
-			if ptyReadyNow(p.wakeFD) {
-				_, _ = p.wakeRead.Read(make([]byte, 1))
-			}
-			p.pausing.Store(false)
-			p.startPump()
+		case <-done:
+			s.resumePaneLocked(p)
 		default:
+			go func(p *Pane, done <-chan struct{}) {
+				<-done
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				if s.panes[p.ID] == p && p.pumpDone == done && p.pausing.Load() {
+					s.resumePaneLocked(p)
+				}
+			}(p, done)
 		}
 	}
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) resumePaneLocked(p *Pane) {
+	if ptyReadyNow(p.wakeFD) {
+		_, _ = p.wakeRead.Read(make([]byte, 1))
+	}
+	p.pausing.Store(false)
+	p.startPump()
 }
 func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) error {
 	if len(states) != len(files) {

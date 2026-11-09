@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -147,15 +148,17 @@ func (s *Server) liveHandoff(req *api.Request) api.Response {
 	if err != nil {
 		return api.Failure(req.ID, "handoff_failed", err.Error())
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), handoffWait)
+	defer cancel()
 	var handoffErr error
-	s.app.DoWithProcessPollingPaused(func() { handoffErr = s.transferHandoff(exe, p) })
+	s.app.DoWithProcessPollingPaused(func() { handoffErr = s.transferHandoff(ctx, exe, p) })
 	if handoffErr != nil {
 		return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
 	}
 	return api.Success(req.ID, api.OkResult{Type: "ok"})
 }
 
-func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err error) {
+func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLiveHandoffParams) (err error) {
 	// Drain old disk writes before the importer can publish state. Rollback
 	// reopens normal writing; success retires every captured old generation.
 	s.saveWriteMu.Lock()
@@ -167,7 +170,7 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 	if err := s.retryMailAcknowledgementsLocked(); err != nil {
 		return fmt.Errorf("mail acknowledgement pending: %w", err)
 	}
-	panes, files, err := s.sup.PauseHandoff()
+	panes, files, err := s.sup.PauseHandoffContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -206,7 +209,8 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return err
 	}
 	defer control.Close()
-	_ = control.SetDeadline(time.Now().Add(handoffWait))
+	deadline, _ := ctx.Deadline()
+	_ = control.SetDeadline(deadline)
 	enc, dec := gob.NewEncoder(control), gob.NewDecoder(control)
 	apiFile, err := exportListener(s.apiLn)
 	if err != nil {
