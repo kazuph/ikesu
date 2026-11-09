@@ -20,6 +20,7 @@ func descriptorTarget(path string) bool {
 	}
 	return true
 }
+
 // setChangesGuard reports whether a set command weakens the guard's DEBUG
 // trap. errtrace (-E) only affects ERR traps and turning functrace on (-T)
 // keeps the guard in functions, so both are allowed (2026-11-09: set -E asked

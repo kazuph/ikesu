@@ -377,7 +377,8 @@
   },
   {
     "line": "set -o errtrace",
-    "want": "allow"
+    "want": "allow",
+    "bash": true
   },
   {
     "line": "set +o debugbeforecmd",
@@ -533,11 +534,13 @@
   },
   {
     "line": "set -o functrace",
-    "want": "allow"
+    "want": "allow",
+    "bash": true
   },
   {
     "line": "set +o errtrace",
-    "want": "allow"
+    "want": "allow",
+    "bash": true
   },
   {
     "line": "set -o",
