@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -63,7 +64,11 @@ func (p *Pane) UserActive() bool {
 }
 
 // WriteScreenPrompt serializes the last activity check with external-input admission.
-func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64) (int, error) {
+// WriteScreenPrompt accepts automated screen-prompt keys under the input
+// lock without waiting for the application. They are written only if, when
+// the PTY can take them, no external input arrived since and the deadline
+// (when set) has not passed; otherwise they are dropped, never sent late.
+func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64, deadline time.Time) (int, error) {
 	p.inputMu.Lock()
 	defer p.inputMu.Unlock()
 	if p.UserActive() || sequence != nil && p.ExternalInputSequence() != *sequence {
@@ -77,7 +82,18 @@ func (p *Pane) WriteScreenPrompt(data []byte, sequence *uint64) (int, error) {
 	if dead {
 		return 0, fmt.Errorf("pane exited: screen prompt key not delivered")
 	}
-	return p.WriteToPTY(data)
+	if p.currentPTY() == nil {
+		return 0, os.ErrClosed
+	}
+	accepted := p.ExternalInputSequence()
+	valid := func() bool {
+		return p.ExternalInputSequence() == accepted && (deadline.IsZero() || time.Now().Before(deadline))
+	}
+	if err := p.writer.enqueue(data, nil, valid); err != nil {
+		return 0, err
+	}
+	p.markProcessChanged()
+	return len(data), nil
 }
 
 // WithIdleActivitySequence excludes new key input while fn validates and closes.

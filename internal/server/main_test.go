@@ -174,5 +174,8 @@ func TestMain(m *testing.M) {
 		code, _ := RunJobSupervisor()
 		os.Exit(code)
 	}
+	if os.Getenv("IKESU_EMFILE_CHILD") != "" {
+		emfileChild()
+	}
 	os.Exit(teststate.Run(m.Run))
 }

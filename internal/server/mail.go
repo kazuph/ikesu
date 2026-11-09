@@ -90,6 +90,9 @@ func (s *Server) mailWorker() {
 			s.deferMailForPane(w.pane, w.owner)
 			return false
 		}
+		if written && err == nil {
+			return true // completeMailWrite finishes it
+		}
 		if written && err != nil {
 			fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", err)
 			return true
@@ -171,14 +174,40 @@ func (s *Server) deliverMailWrite(w mailWrite) (bool, error) {
 	if p == nil || p != w.owner {
 		return false, fmt.Errorf("mail destination missing")
 	}
-	if _, err := p.WriteMail(w.payload); err != nil {
+	done, err := p.WriteMail(w.payload)
+	if err != nil {
 		return false, err
 	}
-	if err := s.acknowledgeMailWrite(w); err != nil {
-		s.mailAwaitingAck = append(s.mailAwaitingAck, w)
-		return true, err
-	}
+	// The pane writer reports when every byte reached the PTY. The message is
+	// marked delivered only then, outside this fence, and stays in flight
+	// meanwhile so no flush writes it twice.
+	// written=true with no error means accepted: completeMailWrite records
+	// delivery and releases the in-flight markers when the bytes are written.
+	go s.completeMailWrite(w, done)
 	return true, nil
+}
+
+func (s *Server) completeMailWrite(w mailWrite, done <-chan error) {
+	err := <-done
+	if err == nil || errors.Is(err, runtime.ErrPTYInputTransferred) {
+		// Transferred bytes are written first by the next server of a live
+		// handoff, so they count as delivered here.
+		s.mailDelivery.Lock()
+		ackErr := s.acknowledgeMailWrite(w)
+		if ackErr != nil {
+			s.mailAwaitingAck = append(s.mailAwaitingAck, w)
+		}
+		s.mailDelivery.Unlock()
+		if ackErr != nil {
+			fmt.Fprintf(os.Stderr, "ikesu mail acknowledgement: %v\n", ackErr)
+			return
+		}
+		s.mailDone(w)
+		return
+	}
+	// Not written: the message stays queued in the ledger for redelivery.
+	s.failMissingJobWrite(w)
+	s.mailDone(w)
 }
 
 func (s *Server) acknowledgeMailWrite(w mailWrite) error {

@@ -38,12 +38,13 @@ func processEventQueue() bool {
 				if err != nil {
 					return
 				}
+				// Collect under the watcher lock, notify after releasing it: a pane
+				// whose own lock is slow must not hold up closing other panes.
+				var changed []*Pane
 				w.mu.Lock()
 				for _, ev := range events[:n] {
 					for p := range w.panes[int(ev.Ident)] {
-						p.processIdentityChanged.Store(true)
-						p.markProcessChanged()
-						p.notifyChanged()
+						changed = append(changed, p)
 						if ev.Fflags&unix.NOTE_EXIT != 0 {
 							delete(w.owned[p], int(ev.Ident))
 							if len(w.owned[p]) == 0 {
@@ -56,6 +57,11 @@ func processEventQueue() bool {
 					}
 				}
 				w.mu.Unlock()
+				for _, p := range changed {
+					p.processIdentityChanged.Store(true)
+					p.markProcessChanged()
+					p.notifyChanged()
+				}
 			}
 		}()
 	})

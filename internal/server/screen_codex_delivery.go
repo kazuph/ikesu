@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/kazuph/ikesu/internal/api"
@@ -158,7 +159,7 @@ func (s *Server) scanLateCodexDeliveries() {
 				}
 				current.sent, current.offset, current.fileInfo = true, fresh.Size(), fresh
 				sequence := pane.ExternalInputSequence()
-				_, err = pane.WriteScreenPrompt([]byte(payload+"\r"), &sequence)
+				_, err = pane.WriteScreenPrompt([]byte(payload+"\r"), &sequence, time.Time{})
 				if err != nil {
 					s.setLateDelivery(id, "failed", "端末への書き込みに失敗しました: "+err.Error())
 				}

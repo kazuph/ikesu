@@ -276,7 +276,7 @@ func (s *Server) claudePermissionEditInput(pid int, original *screenprompt.Promp
 			return
 		}
 		sequence := w.answerInputSequence
-		_, err = pane.WriteScreenPrompt([]byte(data), &sequence)
+		_, err = pane.WriteScreenPrompt([]byte(data), &sequence, w.permissionDeadline)
 	})
 	return err
 }

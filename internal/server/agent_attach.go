@@ -141,7 +141,8 @@ func (s *Server) attachAgent(c *clientConn, rd *bufio.Reader, hello clientMsg) {
 				offset = 0
 				dirty = true
 				pane.RecordKeyInput()
-				if _, err = pane.WriteToPTY(data); err != nil {
+				// s.mu is held here: queue without waiting for the application to read.
+				if err = pane.QueuePTY(data); err != nil {
 					s.mu.Unlock()
 					return
 				}

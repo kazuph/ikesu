@@ -40,7 +40,7 @@ func (s *Server) previewArrow(pid int, w *screenPromptWatch, current, target int
 	if pane == nil {
 		return false
 	}
-	if _, err := pane.WriteScreenPrompt([]byte(arrow), nil); err != nil {
+	if _, err := pane.WriteScreenPrompt([]byte(arrow), nil, time.Time{}); err != nil {
 		return false
 	}
 	w.preview.expected = next

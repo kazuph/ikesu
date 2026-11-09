@@ -7,6 +7,7 @@ import "github.com/kazuph/ikesu/internal/benchstage"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -83,6 +85,7 @@ type Pane struct {
 
 	lastMailExternalInput atomic.Int64
 
+	writer            ptyWriter
 	inputMu           sync.Mutex
 	idleActivityAt    time.Time
 	idleActivitySeq   uint64
@@ -286,6 +289,9 @@ func (p *Pane) readPTY(out chan<- []byte, pool chan []byte, sem *semaphore.Weigh
 			m, rerr := p.ptyFile.Read(buf[n:])
 			reads++
 			n += m
+			if errors.Is(rerr, syscall.EAGAIN) {
+				break
+			}
 			if rerr != nil {
 				err = rerr
 				break
@@ -423,22 +429,6 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	}
 }
 
-// pumpEmuToPTY drains emulator responses (DA reports, mouse/key encodings,
-// in-band resize answers) into the PTY so applications receive them.
-func (p *Pane) pumpEmuToPTY() {
-	buf := make([]byte, 8192)
-	for {
-		n, err := p.emu.Read(buf)
-		if n > 0 {
-			if _, werr := p.ptyFile.Write(buf[:n]); werr != nil {
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
-	}
-}
 func (p *Pane) waitExit() {
 	defer p.endProcessWatch()
 	defer close(p.done)
@@ -513,34 +503,81 @@ func (s *Supervisor) Kill(id int) {
 	_ = p.emu.Close()
 }
 
-// Input writes raw key/paste bytes to the pane's PTY.
+// Input queues raw key/paste bytes for the pane's PTY without waiting.
 func (s *Supervisor) Input(id int, b []byte) {
 	if p := s.Get(id); p != nil {
 		p.RecordKeyInput()
-		_, _ = p.WriteToPTY(b)
+		_ = p.QueuePTY(b)
 	}
 }
 
-// WriteToPTY writes all of b to the pane's PTY, looping over short
-// writes. It returns the number of bytes written; a short count means
-// delivery did not complete (callers keep the message queued).
-func (p *Pane) WriteToPTY(b []byte) (int, error) {
+// QueuePTY appends b to the pane's ordered input and returns at once. It
+// fails when the pane is closed or the application has not read
+// ptyInputLimit bytes; then none of b is accepted.
+func (p *Pane) QueuePTY(b []byte) error {
 	defer p.markProcessChanged()
+	if p.currentPTY() == nil {
+		return os.ErrClosed
+	}
+	return p.writer.enqueue(b, nil, nil)
+}
+
+// WriteToPTY accepts all of b into the pane's ordered input, or none of it.
+// It never waits for the application to read: the count is len(b) once the
+// bytes are accepted (they are delivered in order, and carried across a live
+// handoff), and 0 with an error otherwise.
+func (p *Pane) WriteToPTY(b []byte) (int, error) {
+	if err := p.QueuePTY(b); err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
+func (p *Pane) currentPTY() *os.File {
 	p.mu.Lock()
-	f := p.ptyFile
-	p.mu.Unlock()
+	defer p.mu.Unlock()
+	return p.ptyFile
+}
+
+// writeSomePTY writes as much of b as the PTY accepts now. The descriptor
+// is non-blocking, so a full PTY returns the count written so far instead of
+// waiting. RawConn keeps the descriptor from being closed and reused while
+// the write is in progress.
+func writeSomePTY(f *os.File, b []byte) (int, error) {
 	if f == nil {
 		return 0, os.ErrClosed
 	}
-	total := 0
-	for total < len(b) {
-		n, err := f.Write(b[total:])
-		total += n
-		if err != nil {
-			return total, err
-		}
+	raw, err := f.SyscallConn()
+	if err != nil {
+		return 0, err
 	}
-	return total, nil
+	total := 0
+	var werr error
+	if err := raw.Write(func(fd uintptr) bool {
+		for total < len(b) {
+			n, err := unix.Write(int(fd), b[total:])
+			if n > 0 {
+				total += n
+			}
+			if err == unix.EINTR {
+				continue
+			}
+			if err == unix.EAGAIN {
+				return true
+			}
+			if err != nil {
+				werr = err
+				return true
+			}
+			if n == 0 {
+				return true
+			}
+		}
+		return true
+	}); err != nil {
+		return total, err
+	}
+	return total, werr
 }
 
 // BracketedPasteMode reports whether the pane's app negotiated bracketed

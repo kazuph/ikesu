@@ -31,7 +31,7 @@ func (a *App) restoreLocalAgents(dryRun bool) {
 				}
 				if !dryRun {
 					input := []byte(command + "\r")
-					if written, err := rp.WriteToPTY(input); err != nil || written != len(input) {
+					if err := rp.QueuePTY(input); err != nil {
 						skipped++
 						continue
 					}
