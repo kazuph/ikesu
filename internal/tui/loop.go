@@ -17,6 +17,14 @@ import (
 )
 
 func (a *App) onInput(ev input.Event) {
+	request := a.worktreeScreenRequest
+	dialog, menu, settings, help := a.dialog, a.menu, a.settings, a.help
+	navigator, copyMode, selection := a.navigator, a.cm, a.sel
+	defer func() {
+		if a.worktreeScreenRequest == request && (a.dialog != dialog || a.menu != menu || a.settings != settings || a.help != help || a.navigator != navigator || a.cm != copyMode || a.sel != selection) {
+			a.worktreeScreenRequest++
+		}
+	}()
 	defer benchstage.Span("ui.input")()
 	switch ev.Kind {
 	case input.KindTerminalReport:
@@ -111,7 +119,7 @@ func (a *App) onRuntimeEvent(ev runtime.Event) {
 	switch ev.Kind {
 	case runtime.EventClipboard:
 		if a.clipboardHook != nil {
-			a.clipboardHook(ev.Pane, ev.Data)
+			a.clipboardHook(ev.Pane, ev.Data, ev.Transferred)
 		}
 	case runtime.EventChanged:
 		a.invalidateDetection(ev.Pane)
@@ -338,7 +346,8 @@ func (a *App) exec(cmd model.Command) {
 		}
 	}
 	var metadataOrder []int
-	if _, moving := cmd.(model.CmdMoveWorkspace); moving {
+	switch cmd.(type) {
+	case model.CmdMoveWorkspace, model.CmdCloseWorkspace, model.CmdPaneExited:
 		for _, ws := range a.st.Workspaces {
 			metadataOrder = append(metadataOrder, ws.ID)
 		}

@@ -27,8 +27,6 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		return s.paneMetadataRequest(req)
 	case "pane.command.execute", "popup.close", "popup.get", "popup.scroll", "popup.selection.read":
 		return s.popupRequest(req)
-	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
-		return s.worktreeRequest(req)
 	case "workspace.report_metadata":
 		return s.workspaceMetadataRequest(req)
 	case "workspace.duplicate", "workspace.set_section":

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -9,7 +10,7 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
-func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *api.Request) {
+func (s *Server) serveGraphicsStream(ctx context.Context, conn net.Conn, reader *bufio.Reader, req *api.Request) {
 	var target api.PaneGraphicsClearParams
 	if err := req.DecodeParams(&target); err != nil {
 		_ = api.WriteResponse(conn, api.Failure(req.ID, api.ErrInvalidRequest, err.Error()))
@@ -17,23 +18,27 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 	}
 	var opened api.Response
 	pid := -1
-	s.app.Do(func() {
+	if !s.app.DoContext(ctx, func() {
 		opened = s.graphicsRequest(req)
 		pid, _, _, _ = s.findPane(target.PaneID)
-	})
+	}) {
+		return
+	}
 	if err := api.WriteResponse(conn, opened); err != nil || opened.Err != nil {
 		return
 	}
 	owner := s.graphicsStreamOwner.Add(1)
 	layers := map[string]*string{}
-	defer s.app.Do(func() {
-		delete(s.graphicsFiles.streams, owner)
-		if pane := s.sup.Get(pid); pane != nil {
-			for _, id := range layers {
-				pane.ClearGraphicsLayer(id, owner)
+	defer func() {
+		s.enqueueAppCleanup(func() {
+			delete(s.graphicsFiles.streams, owner)
+			if pane := s.sup.Get(pid); pane != nil {
+				for _, id := range layers {
+					pane.ClearGraphicsLayer(id, owner)
+				}
 			}
-		}
-	})
+		})
+	}()
 	fail := func(message string) {
 		_ = api.WriteResponse(conn, api.Failure(req.ID, "invalid_frame", message))
 	}
@@ -56,7 +61,7 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 				key = *frame.LayerID
 			}
 			layers[key] = frame.LayerID
-			if failure := s.serveGraphicsFile(conn, pid, frame, owner); failure != nil {
+			if failure := s.serveGraphicsFile(ctx, conn, pid, frame, owner); failure != nil {
 				_ = api.WriteResponse(conn, api.Failure(id, failure.Code, failure.Message))
 				return
 			}
@@ -89,14 +94,16 @@ func (s *Server) serveGraphicsStream(conn net.Conn, reader *bufio.Reader, req *a
 			frame.LayerID = target.LayerID
 		}
 		var failure *api.Error
-		s.app.Do(func() {
+		if !s.app.DoContext(ctx, func() {
 			pane := s.sup.Get(pid)
 			if pane == nil {
 				failure = &api.Error{Code: api.ErrPaneNotFound, Message: "stream pane no longer exists"}
 				return
 			}
 			failure = s.sup.SetGraphicsLayer(pid, frame.PaneGraphicsSetParams, data, owner)
-		})
+		}) {
+			return
+		}
 		if failure != nil {
 			_ = api.WriteResponse(conn, api.Failure(req.ID, failure.Code, failure.Message))
 			return

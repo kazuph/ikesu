@@ -56,11 +56,11 @@ func TestSidebarPanelJobsDisplayCompatibility(t *testing.T) {
 }
 
 func TestSidebarPanelDisplayCompatibility(t *testing.T) {
-	if teststate.RunIsolatedParallel(t) {
-		return
-	}
 	for _, width := range []int{2, 3, 5, 10, 17, 26} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			if teststate.RunIsolatedParallel(t) {
+				return
+			}
 			h := newRightMachineHarness(t)
 			m := h.m
 			h.modes(0, 0, 240, 60)

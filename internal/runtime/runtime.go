@@ -76,7 +76,9 @@ type Pane struct {
 	wakeFD              int
 	ptyFD               int // captured before publishing the pane; Close may race with readers
 	done                chan struct{}
+	exitOnce            sync.Once
 	pumpDone            chan struct{}
+	pauseSignal         chan struct{}
 	importedPID         int
 	shellStart          string
 	pausing             atomic.Bool
@@ -85,32 +87,37 @@ type Pane struct {
 
 	lastMailExternalInput atomic.Int64
 
-	writer            ptyWriter
-	inputMu           sync.Mutex
-	idleActivityAt    time.Time
-	idleActivitySeq   uint64
-	lastExternalInput atomic.Int64
-	externalInputSeq  atomic.Uint64
-	mu                sync.Mutex
-	emu               *vt.Emulator
-	read              *readBuffer
-	dead              bool
-	fgPID             int
-	procName          string
-	foregroundSudo    bool
-	agentID           string
-	agentOverride     string // set by pane.report_agent; wins over agentID
-	procCwd           string
-	oscTitle          string
-	oscProgress       string
-	clipboard         []string
-	altScreen         bool
-	mouseTracking     bool
-	mouseMotion       bool
-	appCursorKeys     bool
-	modes             map[ansi.Mode]bool
-	cursor            CursorState
-	scrollbarVisible  bool // measured on PTY output; resize alone preserves visibility
+	writer             ptyWriter
+	inputOperationMu   sync.Mutex
+	inputOperationBusy bool
+	inputOperationIdle chan struct{}
+	inputOperations    []*InputOperation
+	inputMu            sync.Mutex
+	idleActivityAt     time.Time
+	idleActivitySeq    uint64
+	lastExternalInput  atomic.Int64
+	externalInputSeq   atomic.Uint64
+	manualInputSeq     atomic.Uint64
+	mu                 sync.Mutex
+	emu                *vt.Emulator
+	read               *readBuffer
+	dead               bool
+	fgPID              int
+	procName           string
+	foregroundSudo     bool
+	agentID            string
+	agentOverride      string // set by pane.report_agent; wins over agentID
+	procCwd            string
+	oscTitle           string
+	oscProgress        string
+	clipboard          []string
+	altScreen          bool
+	mouseTracking      bool
+	mouseMotion        bool
+	appCursorKeys      bool
+	modes              map[ansi.Mode]bool
+	cursor             CursorState
+	scrollbarVisible   bool // measured on PTY output; resize alone preserves visibility
 
 	tap oscTap
 	ev  chan<- Event
@@ -420,10 +427,34 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 	p.revision.Add(1)
 	p.markProcessOutput()
 	p.notifyChanged()
-	for _, data := range clipboard {
+	p.deliverClipboard(clipboard, false)
+}
+
+func (p *Pane) deliverClipboard(clipboard []string, transferred bool) {
+	done := p.done
+	if transferred && p.owner != nil {
+		done = p.owner.done
+	}
+	for i, data := range clipboard {
+		if p.pausing.Load() {
+			p.mu.Lock()
+			p.clipboard = append(clipboard[i:], p.clipboard...)
+			p.mu.Unlock()
+			return
+		}
 		select {
-		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data, Source: p}:
-		case <-p.done:
+		case p.ev <- Event{Pane: p.ID, Kind: EventClipboard, Data: data, Source: p, Transferred: transferred}:
+		case <-p.pauseSignal:
+			p.mu.Lock()
+			p.clipboard = append(clipboard[i:], p.clipboard...)
+			p.mu.Unlock()
+			return
+		case <-done:
+			if p.pausing.Load() {
+				p.mu.Lock()
+				p.clipboard = append(clipboard[i:], p.clipboard...)
+				p.mu.Unlock()
+			}
 			return
 		}
 	}
@@ -431,7 +462,7 @@ func (p *Pane) flushPTYBatch(chunk []byte) {
 
 func (p *Pane) waitExit() {
 	defer p.endProcessWatch()
-	defer close(p.done)
+	defer p.closeExited()
 	_ = p.cmd.Wait()
 	if p.retired.Load() {
 		return
@@ -444,6 +475,8 @@ func (p *Pane) waitExit() {
 	}
 	p.notify(EventExited)
 }
+
+func (p *Pane) closeExited() { p.exitOnce.Do(func() { close(p.done) }) }
 
 func (p *Pane) notify(k EventKind) {
 	select {

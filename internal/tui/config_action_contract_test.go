@@ -62,6 +62,9 @@ func TestConfigEveryActionRemapThroughRealInput(t *testing.T) {
 				}
 			}
 			feedConfigChord(t, a, binding)
+			if name == "new_worktree" || name == "open_worktree" {
+				waitWorktreeUI(t, a, check)
+			}
 			if !check() {
 				t.Fatal("new binding did not perform action", binding)
 			}

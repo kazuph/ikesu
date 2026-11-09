@@ -9,6 +9,7 @@ import (
 func (a *App) restoreLocalAgents(dryRun bool) {
 	a.observeLocalSessions()
 	launched, skipped, running := 0, 0, 0
+	duplicate := false
 	for _, ws := range a.st.Workspaces {
 		for _, tab := range ws.Tabs {
 			for _, pid := range tab.Layout.Order() {
@@ -22,6 +23,11 @@ func (a *App) restoreLocalAgents(dryRun bool) {
 				}
 				rec, ok := a.SessionRecord(pid)
 				if !ok || rec.Agent == "" {
+					continue
+				}
+				if rec.Agent == "codex" && rec.Kind == "id" && a.codexSessionInOtherPane(pid, rec.Value) {
+					skipped++
+					duplicate = true
 					continue
 				}
 				command, ok := session.ResumeCommand(a.sidebarConfig, rec.Agent, rec.Kind, rec.Value)
@@ -50,5 +56,9 @@ func (a *App) restoreLocalAgents(dryRun bool) {
 	} else if running > 0 {
 		body = fmt.Sprintf("no pending restore, %d already running", running)
 	}
-	a.ShowToast("agent restore", body, "info", -1)
+	title, kind := "agent restore", "info"
+	if duplicate {
+		title, kind = "agent restore: duplicate session id", "error"
+	}
+	a.ShowToast(title, body, kind, -1)
 }

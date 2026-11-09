@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func TestGitActivitySkipsObjectStoreButSeesCommits(t *testing.T) {
 		sidebarGit(t, repo, "add", ".")
 		sidebarGit(t, repo, "commit", "-qm", fmt.Sprintf("c%d", i))
 	}
-	e := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	e := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer e.watch.Close()
 	if !e.ready {
 		t.Fatal("watch unavailable")
@@ -55,7 +56,7 @@ func TestGitActivitySkipsObjectStoreButSeesCommits(t *testing.T) {
 	if ok {
 		t.Fatal("commit and branch switch were not detected")
 	}
-	e2 = readGitActivity(repo, e2)
+	e2 = readGitActivity(context.Background(), repo, e2)
 	if e2.git.Branch != "topic" {
 		t.Fatalf("branch after checkout = %q, want topic", e2.git.Branch)
 	}

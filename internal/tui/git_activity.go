@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -100,11 +101,17 @@ func unchangedGitActivity(entry gitCwdActivity) (gitCwdActivity, bool) {
 	return entry, !changed
 }
 
-type gitActivityState struct{ entries map[string]gitCwdActivity }
+type gitActivityState struct {
+	entries map[string]gitCwdActivity
+	running map[string]context.CancelFunc
+}
 
 func (a *App) closeGitActivity() {
 	if a.gitActivity == nil {
 		return
+	}
+	for _, cancel := range a.gitActivity.running {
+		cancel()
 	}
 	for _, entry := range a.gitActivity.entries {
 		entry.watch.Close()
@@ -129,14 +136,14 @@ func gitPathList(paths map[string]bool) []string {
 	return result
 }
 
-func gitActivityOutput(cwd string, args ...string) ([]byte, error) {
-	return childenv.Command("git", append([]string{"-C", cwd}, args...)...).Output()
+func gitActivityOutput(ctx context.Context, cwd string, args ...string) ([]byte, error) {
+	return childenv.CommandContextGroup(ctx, "git", append([]string{"-C", cwd}, args...)...).Output()
 }
 
-func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
+func readGitActivity(ctx context.Context, cwd string, entry gitCwdActivity) gitCwdActivity {
 	values := func(ready bool, revision uint64) gitCwdActivity {
-		entry.git = readWorkspaceGit(cwd)
-		entry.source, entry.sourceErr = worktree.Source(cwd)
+		entry.git = readWorkspaceGit(ctx, cwd)
+		entry.source, entry.sourceErr = worktree.SourceContext(ctx, cwd)
 		entry.name = filepath.Base(cwd)
 		if entry.sourceErr == nil {
 			entry.name = filepath.Base(entry.source.SourceCheckoutPath)
@@ -147,7 +154,7 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	if entry.trackedDirty {
 		entry.trackedDirty = false
 		entry.readChecks = 0
-		entry.git.Added, entry.git.Deleted = readWorkspaceGitDiff(cwd)
+		entry.git.Added, entry.git.Deleted = readWorkspaceGitDiff(ctx, cwd)
 		return entry
 	}
 	if entry.loaded && !entry.ready && entry.watch.Revision() == entry.revision {
@@ -175,9 +182,9 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	if !ready {
 		return values(false, revision)
 	}
-	directory, err := gitActivityOutput(cwd, "rev-parse", "--absolute-git-dir")
+	directory, err := gitActivityOutput(ctx, cwd, "rev-parse", "--absolute-git-dir")
 	if err == nil {
-		common, commonErr := gitActivityOutput(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+		common, commonErr := gitActivityOutput(ctx, cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
 		ready = ready && commonErr == nil
 		for _, dir := range []string{strings.TrimSpace(string(directory)), strings.TrimSpace(string(common))} {
 			if dir == "" {
@@ -207,9 +214,9 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 			})
 			ready = ready && walkErr == nil
 		}
-		root, rootErr := gitActivityOutput(cwd, "rev-parse", "--show-toplevel")
+		root, rootErr := gitActivityOutput(ctx, cwd, "rev-parse", "--show-toplevel")
 		if rootErr == nil {
-			tracked, trackedErr := gitActivityOutput(cwd, "ls-files", "--cached", "--full-name", "-z")
+			tracked, trackedErr := gitActivityOutput(ctx, cwd, "ls-files", "--cached", "--full-name", "-z")
 			ready = ready && trackedErr == nil
 			for _, name := range strings.Split(string(tracked), "\x00") {
 				if name != "" {
@@ -232,7 +239,7 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	}
 	if err == nil {
 		configPaths := map[string]bool{}
-		ready = gitConfigurationPaths(cwd, configPaths) && ready
+		ready = gitConfigurationPaths(ctx, cwd, configPaths) && ready
 		for path := range configPaths {
 			paths[path] = true
 			delete(trackedPaths, path)
@@ -276,7 +283,7 @@ func readGitActivity(cwd string, entry gitCwdActivity) gitCwdActivity {
 	return values(ready && covered, revision)
 }
 
-func gitConfigurationPaths(cwd string, paths map[string]bool) bool {
+func gitConfigurationPaths(ctx context.Context, cwd string, paths map[string]bool) bool {
 	add := func(path string) {
 		if path == "" {
 			return
@@ -291,7 +298,7 @@ func gitConfigurationPaths(cwd string, paths map[string]bool) bool {
 	}
 	// Ask Git which config files it actually read, including include/includeIf.
 	// --name-only deliberately excludes credential/config values from the output.
-	data, err := gitActivityOutput(cwd, "config", "--null", "--show-origin", "--name-only", "--list")
+	data, err := gitActivityOutput(ctx, cwd, "config", "--null", "--show-origin", "--name-only", "--list")
 	if err != nil {
 		return false
 	}
@@ -302,7 +309,7 @@ func gitConfigurationPaths(cwd string, paths map[string]bool) bool {
 		}
 	}
 	for _, variable := range []string{"GIT_CONFIG_SYSTEM", "GIT_CONFIG_GLOBAL"} {
-		data, err = gitActivityOutput(cwd, "var", variable)
+		data, err = gitActivityOutput(ctx, cwd, "var", variable)
 		if err != nil {
 			return false
 		}
@@ -313,7 +320,7 @@ func gitConfigurationPaths(cwd string, paths map[string]bool) bool {
 			}
 		}
 	}
-	attributes, err := gitActivityOutput(cwd, "config", "--path", "--get", "core.attributesfile")
+	attributes, err := gitActivityOutput(ctx, cwd, "config", "--path", "--get", "core.attributesfile")
 	if err == nil {
 		add(strings.TrimSpace(string(attributes)))
 	} else {

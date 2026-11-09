@@ -55,6 +55,7 @@ type ptyWriter struct {
 	mu       sync.Mutex
 	segments []ptySegment
 	queued   int
+	reserved int
 	stopped  error
 	paused   bool
 	ready    chan struct{}
@@ -72,6 +73,10 @@ func (w *ptyWriter) signal() {
 // enqueue accepts all of data or none of it, without waiting. valid, when
 // set, is checked before the first byte is written; a stale write is dropped.
 func (w *ptyWriter) enqueue(data []byte, done chan error, valid func() bool) error {
+	return w.enqueueReserved(data, done, valid, nil)
+}
+
+func (w *ptyWriter) enqueueReserved(data []byte, done chan error, valid func() bool, op *InputOperation) error {
 	if len(data) == 0 {
 		if done != nil {
 			done <- nil
@@ -79,15 +84,23 @@ func (w *ptyWriter) enqueue(data []byte, done chan error, valid func() bool) err
 		return nil
 	}
 	w.mu.Lock()
+	credit := 0
+	if op != nil {
+		credit = min(op.reserved, len(data))
+	}
 	switch {
 	case w.stopped != nil:
 		err := w.stopped
 		w.mu.Unlock()
 		return err
-	case w.queued+len(data) > ptyInputLimit:
+	case w.queued+w.reserved-credit+len(data) > ptyInputLimit:
 		w.dropped += len(data)
 		w.mu.Unlock()
 		return ErrPTYInputFull
+	}
+	if op != nil {
+		w.reserved -= credit
+		op.reserved -= credit
 	}
 	w.segments = append(w.segments, ptySegment{data: append([]byte(nil), data...), done: done, valid: valid})
 	w.queued += len(data)

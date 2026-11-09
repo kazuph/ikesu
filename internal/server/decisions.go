@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -112,6 +113,74 @@ func (s *Server) expireDecisions(store *dispatch.Store) error {
 	}
 	return nil
 }
+
+// decisionReadOffLoop answers decision.list and decision.get. Only the expiry
+// of due decisions and the late-delivery overlay run on the app loop; the
+// SQLite read, which reads every record for an unfiltered list, runs on the
+// caller's goroutine so a slow or locked database never stops the app loop
+// (2026-11-09: 13:22-14:05 stalls were inside this read on the app loop).
+func (s *Server) decisionReadOffLoop(req *api.Request) api.Response {
+	store, err := s.db()
+	if err != nil {
+		return decisionFailure(req.ID, err)
+	}
+	// Expiry writes and notifies on the app loop, but it is needed only when a
+	// pending decision is already due; finding that out is a read done here.
+	pending, err := store.Decisions("pending")
+	if err != nil {
+		return decisionFailure(req.ID, err)
+	}
+	due := false
+	for _, d := range pending {
+		if d.ExpiresUnixMS != nil && *d.ExpiresUnixMS <= time.Now().UnixMilli() {
+			due = true
+			break
+		}
+	}
+	var expireErr error
+	ran := false
+	s.app.Do(func() {
+		ran = true
+		s.initDecisionHub()
+		if due {
+			expireErr = s.expireDecisions(store)
+		}
+	})
+	if !ran {
+		// The app loop has stopped: answer like every other stopped call.
+		return api.Response{ID: req.ID}
+	}
+	if expireErr != nil {
+		return decisionFailure(req.ID, expireErr)
+	}
+	if req.Method == api.MethodDecisionList {
+		var p api.DecisionListParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		ds, err := store.Decisions(p.Status)
+		if err != nil {
+			return decisionFailure(req.ID, err)
+		}
+		s.app.Do(func() {
+			for i := range ds {
+				ds[i] = s.withLateDelivery(ds[i])
+			}
+		})
+		return api.Success(req.ID, api.DecisionListResult{Type: "decision_list", Decisions: ds})
+	}
+	var p api.DecisionTargetParams
+	if err := req.DecodeParams(&p); err != nil {
+		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+	}
+	d, err := store.Decision(p.DecisionID)
+	if err != nil {
+		return decisionFailure(req.ID, err)
+	}
+	s.app.Do(func() { d = s.withLateDelivery(d) })
+	return decisionResult(req.ID, d)
+}
+
 func (s *Server) decisionRequest(req *api.Request) api.Response {
 	s.initDecisionHub()
 	store, err := s.db()
@@ -250,7 +319,7 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 	}
 	return api.Failure(req.ID, api.ErrUnknownMethod, "unknown decision method")
 }
-func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
+func (s *Server) serveDecisionWait(ctx context.Context, conn net.Conn, req *api.Request) {
 	var p api.DecisionWaitParams
 	if err := req.DecodeParams(&p); err != nil {
 		_ = api.WriteResponse(conn, api.Failure(req.ID, api.ErrInvalidRequest, err.Error()))
@@ -271,11 +340,13 @@ func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
 	for {
 		var resp api.Response
 		var changed, stopped <-chan struct{}
-		s.app.Do(func() {
+		if !s.app.DoContext(ctx, func() {
 			resp = s.decisionRequest(&api.Request{ID: req.ID, Method: api.MethodDecisionGet, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: p.DecisionID})})
 			changed = s.decisions.changed
 			stopped = s.decisions.stopped
-		})
+		}) {
+			return
+		}
 		// Do may skip the callback once the app stops. Close the transport
 		// so the caller retries the same decision on the successor server.
 		if s.closing.Load() != 0 {
@@ -304,9 +375,11 @@ func (s *Server) serveDecisionWait(conn net.Conn, req *api.Request) {
 		case <-changed:
 			continue
 		case <-timeout:
-			s.app.Do(func() {
+			if !s.app.DoContext(ctx, func() {
 				resp = s.decisionRequest(&api.Request{ID: req.ID, Method: api.MethodDecisionGet, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: p.DecisionID})})
-			})
+			}) {
+				return
+			}
 			_ = api.WriteResponse(conn, resp)
 			return
 		}

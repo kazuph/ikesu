@@ -25,6 +25,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -239,7 +240,7 @@ type App struct {
 	postExecHook        func(cmd model.Command, prev *model.StateSnap) // after every state-changing command
 	exitedHook          func(pid int)                                  // pane process exited; server emits pane.exited
 	outHook             func(pid int)                                  // pane output changed; server emits pane.output_changed
-	clipboardHook       func(pid int, data string)
+	clipboardHook       func(pid int, data string, transferred bool)
 	worktreeHook        func(string, WorktreeOutcome, bool)
 	configWarning       string
 	configWarningBanner bool
@@ -309,6 +310,10 @@ type App struct {
 	previewCache                             map[int]workspacePreview
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
+	worktreePending                          map[workspaceIdentity]int
+	worktreeMutations                        int
+	handoffStarting                          bool
+	worktreeScreenRequest                    uint64
 	gitActivity                              *gitActivityState
 	branchCache                              map[string]*branchCacheEntry
 	gitAt                                    time.Time
@@ -484,7 +489,7 @@ func (a *App) SetExitedHook(f func(pid int)) { a.exitedHook = f }
 // SetOutputHook registers a callback fired when a pane's output changes.
 func (a *App) SetOutputHook(f func(pid int)) { a.outHook = f }
 
-func (a *App) SetClipboardHook(f func(pid int, data string)) { a.clipboardHook = f }
+func (a *App) SetClipboardHook(f func(pid int, data string, transferred bool)) { a.clipboardHook = f }
 
 // SetScrollOffset pins a pane's display to offset_from_bottom lines into
 // its scrollback (pane.scroll; 0 follows the live bottom). App loop only.
@@ -524,6 +529,43 @@ func (a *App) Do(fn func()) {
 	}
 }
 
+// DoContext cancels work that has not started. Once started, it waits for
+// completion so callers never mistake an applied mutation for cancellation.
+func (a *App) DoContext(ctx context.Context, fn func()) bool {
+	if a.viewerOwner != nil {
+		return a.viewerOwner.DoContext(ctx, func() { a.viewerContext.with(a.viewerOwner, func(*App) { fn() }) })
+	}
+	var state atomic.Uint32
+	done := make(chan struct{})
+	job := appJob{done: done, fn: func() {
+		if ctx.Err() != nil {
+			state.CompareAndSwap(0, 2)
+		}
+		if state.CompareAndSwap(0, 1) {
+			fn()
+		}
+	}}
+	select {
+	case a.jobs <- job:
+	case <-ctx.Done():
+		return false
+	case <-a.doneCh:
+		return false
+	}
+	select {
+	case <-done:
+		return state.Load() == 1
+	case <-ctx.Done():
+		if state.CompareAndSwap(0, 2) {
+			return false
+		}
+		<-done
+		return true
+	case <-a.doneCh:
+		return state.Load() == 1
+	}
+}
+
 // DoWithProcessPollingPaused waits outside the app loop for the current
 // process observation to finish before capturing live-handoff state.
 func (a *App) DoWithProcessPollingPaused(fn func()) {
@@ -532,6 +574,18 @@ func (a *App) DoWithProcessPollingPaused(fn func()) {
 		defer func() { a.processPollPermit <- struct{}{} }()
 		a.Do(fn)
 	case <-a.doneCh:
+	}
+}
+
+func (a *App) DoWithProcessPollingPausedContext(ctx context.Context, fn func()) bool {
+	select {
+	case <-a.processPollPermit:
+		defer func() { a.processPollPermit <- struct{}{} }()
+		return a.DoContext(ctx, fn)
+	case <-ctx.Done():
+		return false
+	case <-a.doneCh:
+		return false
 	}
 }
 

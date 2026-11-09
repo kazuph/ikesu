@@ -56,6 +56,7 @@ func (p *Pane) WriteMail(data []byte) (<-chan error, error) {
 	}
 	p.lastExternalInput.Store(time.Now().UnixNano())
 	p.externalInputSeq.Add(1)
+	p.manualInputSeq.Add(1)
 	done := make(chan error, 1)
 	if err := p.writer.enqueue(data, done, nil); err != nil {
 		return nil, err
