@@ -123,6 +123,7 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 					t.Fatalf("%s jobs=%t width=%d changes row identities/order/Y", side, jobs, width)
 				}
 				in := render.Input{State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, Jobs: a.jobRows, JobsPanel: jobs}
+				expectedFrame := render.Compose(in).Frame
 				// Compare the ANSI-decoded actual App frame with each target's status.
 				for _, pos := range rows {
 					if pos.Right != right {
@@ -152,7 +153,7 @@ func TestSidebarContinuousStandaloneEveryCellRealPTY(t *testing.T) {
 						t.Fatalf("%s jobs=%t width=%d row=%+v Y=%d got=%q want=%q", side, jobs, width, r, pos.Y, got, glyph)
 					}
 					if glyph == "" {
-						expected := render.Compose(in).Frame.Cell(x, pos.Y).Content
+						expected := expectedFrame.Cell(x, pos.Y).Content
 						if got != expected {
 							t.Fatalf("decoded non-state row differs: %s width=%d row=%+v got=%q want=%q", side, width, r, got, expected)
 						}
