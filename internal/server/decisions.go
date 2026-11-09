@@ -112,6 +112,68 @@ func (s *Server) expireDecisions(store *dispatch.Store) error {
 	}
 	return nil
 }
+
+// decisionReadOffLoop answers decision.list and decision.get. Only the expiry
+// of due decisions and the late-delivery overlay run on the app loop; the
+// SQLite read, which reads every record for an unfiltered list, runs on the
+// caller's goroutine so a slow or locked database never stops the app loop
+// (2026-11-09: 13:22-14:05 stalls were inside this read on the app loop).
+func (s *Server) decisionReadOffLoop(req *api.Request) api.Response {
+	store, err := s.db()
+	if err != nil {
+		return decisionFailure(req.ID, err)
+	}
+	// Expiry writes and notifies on the app loop, but it is needed only when a
+	// pending decision is already due; finding that out is a read done here.
+	pending, err := store.Decisions("pending")
+	if err != nil {
+		return decisionFailure(req.ID, err)
+	}
+	due := false
+	for _, d := range pending {
+		if d.ExpiresUnixMS != nil && *d.ExpiresUnixMS <= time.Now().UnixMilli() {
+			due = true
+			break
+		}
+	}
+	var expireErr error
+	s.app.Do(func() {
+		s.initDecisionHub()
+		if due {
+			expireErr = s.expireDecisions(store)
+		}
+	})
+	if expireErr != nil {
+		return decisionFailure(req.ID, expireErr)
+	}
+	if req.Method == api.MethodDecisionList {
+		var p api.DecisionListParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		ds, err := store.Decisions(p.Status)
+		if err != nil {
+			return decisionFailure(req.ID, err)
+		}
+		s.app.Do(func() {
+			for i := range ds {
+				ds[i] = s.withLateDelivery(ds[i])
+			}
+		})
+		return api.Success(req.ID, api.DecisionListResult{Type: "decision_list", Decisions: ds})
+	}
+	var p api.DecisionTargetParams
+	if err := req.DecodeParams(&p); err != nil {
+		return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+	}
+	d, err := store.Decision(p.DecisionID)
+	if err != nil {
+		return decisionFailure(req.ID, err)
+	}
+	s.app.Do(func() { d = s.withLateDelivery(d) })
+	return decisionResult(req.ID, d)
+}
+
 func (s *Server) decisionRequest(req *api.Request) api.Response {
 	s.initDecisionHub()
 	store, err := s.db()
