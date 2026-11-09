@@ -312,6 +312,7 @@ type App struct {
 	worktreePending                          map[workspaceIdentity]int
 	worktreeMutations                        int
 	handoffStarting                          bool
+	worktreeScreenRequest                    uint64
 	gitActivity                              *gitActivityState
 	branchCache                              map[string]*branchCacheEntry
 	gitAt                                    time.Time
