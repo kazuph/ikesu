@@ -105,6 +105,14 @@ func TestLostJobRecoveryAcrossHandoffAndDiagnosticFailures(t *testing.T) {
 				r, _ := j.store.CommandRow(j.job.ID)
 				return r != nil && r.Status == "exited" && r.ExitCode == nil && j.notices() == wantNotices
 			})
+			if tc == "full" {
+				// The notice is multi-line and the pane's cat appends it line by
+				// line, so the count above can be satisfied by the first line alone.
+				j.s.waitFor("full log tail delivered", noticeWait, func(string) bool {
+					d, _ := os.ReadFile(j.sink)
+					return strings.Contains(string(d), "READY")
+				})
+			}
 			got, _ := os.ReadFile(j.sink)
 			if completion != "none" && !strings.Contains(string(got), "exit=unknown") {
 				t.Fatal(string(got))
