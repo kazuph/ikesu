@@ -26,47 +26,45 @@ type peerPoller struct {
 }
 
 var sharedPeerPoller struct {
-	once   sync.Once
+	mu     sync.Mutex
 	poller *peerPoller
-	err    error
 }
 
 func getPeerPoller() (*peerPoller, error) {
-	sharedPeerPoller.once.Do(func() {
-		fds := []int{0, 0}
-		if err := unix.Pipe(fds); err != nil {
-			sharedPeerPoller.err = err
-			return
-		}
-		for _, fd := range fds {
-			unix.CloseOnExec(fd)
-			if err := unix.SetNonblock(fd, true); err != nil {
-				unix.Close(fds[0])
-				unix.Close(fds[1])
-				sharedPeerPoller.err = err
-				return
-			}
-		}
-		queue, err := newPeerEventQueue()
-		if err != nil {
+	sharedPeerPoller.mu.Lock()
+	defer sharedPeerPoller.mu.Unlock()
+	if sharedPeerPoller.poller != nil {
+		return sharedPeerPoller.poller, nil
+	}
+	fds := []int{0, 0}
+	if err := unix.Pipe(fds); err != nil {
+		return nil, err
+	}
+	for _, fd := range fds {
+		unix.CloseOnExec(fd)
+		if err := unix.SetNonblock(fd, true); err != nil {
 			unix.Close(fds[0])
 			unix.Close(fds[1])
-			sharedPeerPoller.err = err
-			return
+			return nil, err
 		}
-		unix.CloseOnExec(queue)
-		if err := addPeerEvent(queue, fds[0], true); err != nil {
-			unix.Close(queue)
-			unix.Close(fds[0])
-			unix.Close(fds[1])
-			sharedPeerPoller.err = err
-			return
-		}
-		p := &peerPoller{queue: queue, wakeRead: fds[0], wakeWrite: fds[1], watches: make(map[int]*peerWatch)}
-		sharedPeerPoller.poller = p
-		go p.run()
-	})
-	return sharedPeerPoller.poller, sharedPeerPoller.err
+	}
+	queue, err := newPeerEventQueue()
+	if err != nil {
+		unix.Close(fds[0])
+		unix.Close(fds[1])
+		return nil, err
+	}
+	unix.CloseOnExec(queue)
+	if err := addPeerEvent(queue, fds[0], true); err != nil {
+		unix.Close(queue)
+		unix.Close(fds[0])
+		unix.Close(fds[1])
+		return nil, err
+	}
+	p := &peerPoller{queue: queue, wakeRead: fds[0], wakeWrite: fds[1], watches: make(map[int]*peerWatch)}
+	sharedPeerPoller.poller = p
+	go p.run()
+	return p, nil
 }
 
 func (p *peerPoller) wake() {
