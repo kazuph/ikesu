@@ -69,28 +69,31 @@ func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[st
 		index[w.ID] = i
 	}
 	for _, t := range targets {
-		if t.nameCwd == t.cwd {
-			continue // no live shell directory beyond the space's directory
-		}
 		i, ok := index[t.id]
-		if !ok || !a.currentWorkspaceGitTarget(a.st.Workspaces[i], t) {
-			continue
+		if ok && a.currentWorkspaceGitTarget(a.st.Workspaces[i], t) {
+			a.refreshStaleWorktreeAt(i, t, entries)
 		}
-		if a.worktreePending[workspaceIdentity{id: t.id, generation: t.generation}] > 0 {
-			continue
-		}
-		info := a.st.Workspaces[i].Worktree
-		entry, ok := entries[t.nameCwd]
-		if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {
-			continue
-		}
-		var next *api.WorkspaceWorktreeInfo
-		if entry.sourceErr == nil {
-			next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
-		}
-		a.exec(model.CmdSetWorktree{Index: i, Info: next, Cwd: t.nameCwd})
-		a.dirty = true
 	}
+}
+
+func (a *App) refreshStaleWorktreeAt(i int, t workspaceGitTarget, entries map[string]gitCwdActivity) {
+	if t.nameCwd == t.cwd {
+		return // no live shell directory beyond the space's directory
+	}
+	if a.worktreePending[workspaceIdentity{id: t.id, generation: t.generation}] > 0 {
+		return
+	}
+	info := a.st.Workspaces[i].Worktree
+	entry, ok := entries[t.nameCwd]
+	if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {
+		return
+	}
+	var next *api.WorkspaceWorktreeInfo
+	if entry.sourceErr == nil {
+		next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
+	}
+	a.exec(model.CmdSetWorktree{Index: i, Info: next, Cwd: t.nameCwd})
+	a.dirty = true
 }
 
 type workspacePreview struct {
@@ -201,37 +204,49 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			delete(state.entries, cwd)
 		}
 	}
+	positions := make(map[int]int, len(a.st.Workspaces))
+	byCwd := make(map[string][]workspaceGitTarget)
+	for i, target := range targets {
+		positions[target.id] = i
+		byCwd[target.cwd] = append(byCwd[target.cwd], target)
+		if target.nameCwd != target.cwd {
+			byCwd[target.nameCwd] = append(byCwd[target.nameCwd], target)
+		}
+	}
+	if a.workspaceGit == nil {
+		a.workspaceGit = map[int]render.GitStatus{}
+	}
+	if a.workspaceNames == nil {
+		a.workspaceNames = map[int]string{}
+	}
+	if a.workspaceLabels == nil {
+		a.workspaceLabels = map[int]workspaceDirectoryLabel{}
+	}
 	apply := func(updated map[string]gitCwdActivity) {
 		for cwd, entry := range updated {
 			state.entries[cwd] = entry
 		}
-		gs := map[int]render.GitStatus{}
-		names := map[int]workspaceDirectoryLabel{}
-		valid := make([]workspaceGitTarget, 0, len(targets))
-		for _, t := range targets {
-			for _, w := range a.st.Workspaces {
-				if a.currentWorkspaceGitTarget(w, t) {
-					gs[t.id] = state.entries[t.cwd].git
-					names[t.id] = workspaceDirectoryLabel{t.nameCwd, state.entries[t.nameCwd].name}
-					valid = append(valid, t)
-					break
-				}
+		var selected []workspaceGitTarget
+		if updated == nil {
+			selected = targets
+		} else {
+			for cwd := range updated {
+				selected = append(selected, byCwd[cwd]...)
 			}
 		}
-		previousLabels, previousGit, previousNames := a.workspaceLabels, a.workspaceGit, a.workspaceNames
-		a.workspaceLabels = names
-		a.workspaceGit = map[int]render.GitStatus{}
-		a.workspaceNames = map[int]string{}
-		for i, w := range a.st.Workspaces {
-			git, ok := gs[w.ID]
-			if !ok {
-				if label, exists := previousLabels[w.ID]; exists {
-					names[w.ID] = label
-				}
+		for _, t := range selected {
+			i, ok := positions[t.id]
+			if !ok || i >= len(a.st.Workspaces) {
+				continue
 			}
-			a.workspaceGit[i] = git
-			name := names[w.ID].name
-			if !ok && name == "" {
+			w := a.st.Workspaces[i]
+			if !a.currentWorkspaceGitTarget(w, t) {
+				continue
+			}
+			git := state.entries[t.cwd].git
+			label := workspaceDirectoryLabel{t.nameCwd, state.entries[t.nameCwd].name}
+			name := label.name
+			if name == "" {
 				name = filepath.Base(w.Cwd)
 			}
 			if w.CustomName {
@@ -261,19 +276,20 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 					}
 				}
 			}
-			a.workspaceNames[i] = name
+			if a.workspaceGit[i] != git || a.workspaceLabels[w.ID] != label || a.workspaceNames[i] != name {
+				a.dirty = true
+			}
+			a.workspaceGit[i], a.workspaceLabels[w.ID], a.workspaceNames[i] = git, label, name
+			a.refreshStaleWorktreeAt(i, t, state.entries)
 		}
 		a.gitPending = len(state.running) > 0
-		a.refreshStaleWorktrees(valid, state.entries)
-		previews := a.workspacePreviewLines()
-		if !reflect.DeepEqual(previews, a.workspacePreviews) {
-			a.workspacePreviews = previews
-			a.dirty = true
-		}
-		if !reflect.DeepEqual(previousLabels, a.workspaceLabels) || !reflect.DeepEqual(previousGit, a.workspaceGit) || !reflect.DeepEqual(previousNames, a.workspaceNames) {
-			a.dirty = true
-		}
 	}
+	previews := a.workspacePreviewLines()
+	if !reflect.DeepEqual(previews, a.workspacePreviews) {
+		a.workspacePreviews = previews
+		a.dirty = true
+	}
+
 	if len(pending) == 0 && len(removed) == 0 {
 		apply(nil)
 		return

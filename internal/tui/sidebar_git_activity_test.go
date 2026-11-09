@@ -410,3 +410,83 @@ func TestWorkspaceGitCommitAndCheckoutRefreshPromptly(t *testing.T) {
 	sidebarGit(t, repo, "checkout", "-q", "next")
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "next" })
 }
+
+func TestSlowGitResultPreservesMovedWorkspaceStatus(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	dirs := []string{filepath.Join(root, "slow"), filepath.Join(root, "old"), filepath.Join(root, "new")}
+	for i, dir := range dirs {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", []string{"slowbranch", "oldbranch", "newbranch"}[i])
+		if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("one\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "add", "tracked")
+		sidebarGit(t, dir, "-c", "user.name=Test", "-c", "user.email=t@t", "commit", "-qm", "initial")
+	}
+	gatePath, readyPath := filepath.Join(root, "gate"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(gatePath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(readyPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(gatePath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n") }()
+	hook, released := filepath.Join(root, "hook"), filepath.Join(root, "released")
+	script := "#!/bin/sh\nif [ ! -f '" + released + "' ]; then\nprintf x > '" + readyPath + "'\nread x < '" + gatePath + "'\n: > '" + released + "'\nfi\nprintf '\\0'\n"
+	if err := os.WriteFile(hook, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, dirs[0], "config", "core.fsmonitor", hook)
+	ready := make(chan error, 1)
+	go func() {
+		f, err := os.Open(readyPath)
+		if err == nil {
+			var b [1]byte
+			_, err = f.Read(b[:])
+			f.Close()
+		}
+		ready <- err
+	}()
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = dirs[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: dirs[1], Name: "moving", NoFocus: true})
+	a.refreshWorkspaceGit(time.Now())
+	signaled := false
+	for !signaled || a.workspaceGit[1].Branch != "oldbranch" {
+		select {
+		case err := <-ready:
+			if err != nil {
+				t.Fatal(err)
+			}
+			signaled = true
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		}
+	}
+	a.st.Workspaces[1].Cwd = dirs[2]
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	for a.workspaceGit[1].Branch != "newbranch" {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	_, _ = gate.WriteString("go\n")
+	for a.gitActivity.running[dirs[0]] != nil {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	if got := a.workspaceGit[1].Branch; got != "newbranch" {
+		t.Fatalf("slow result erased moved workspace status: %q", got)
+	}
+}
