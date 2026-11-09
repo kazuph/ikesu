@@ -80,10 +80,14 @@ func TestLedgerSQLiteLockDoesNotStopOtherPaneInput(t *testing.T) {
 	pid := s.app.State().Workspaces[0].Tabs[0].Layout.Focused()
 	path := filepath.Join(t.TempDir(), "input-seen")
 	entered := make(chan struct{})
-	go s.app.Do(func() {
-		close(entered)
-		s.ledgerPut(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "session", Source: "report:test"})
-	})
+	ledgerDone := make(chan struct{})
+	go func() {
+		defer close(ledgerDone)
+		s.app.Do(func() {
+			close(entered)
+			s.ledgerPut(pid, tui.AgentRecord{Agent: "codex", Kind: "id", Value: "session", Source: "report:test"})
+		})
+	}()
 	<-entered
 	go s.app.Do(func() { s.sup.Input(pid, []byte(fmt.Sprintf("printf ready > %q\n", path))) })
 	deadline := time.After(time.Second)
@@ -103,6 +107,7 @@ unlocked:
 	if err := writer.Exec("COMMIT"); err != nil {
 		t.Fatal(err)
 	}
+	<-ledgerDone
 	s.ledgerWG.Wait()
 	if !seen {
 		t.Fatal("pane input did not run while SQLite was locked")
