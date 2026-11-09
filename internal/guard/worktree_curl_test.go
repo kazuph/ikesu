@@ -62,6 +62,19 @@ func TestRemovalSameRepositoryWorktree(t *testing.T) {
 	if v.Decision != "allow" {
 		t.Errorf("guard check removal: %+v", v)
 	}
+	// Launched in one worktree, removing inside a sibling worktree of the same repository.
+	wt2 := filepath.Join(root, "worktree2")
+	run("-C", repo, "worktree", "add", "-b", "test2", wt2)
+	sibling := i
+	sibling.LaunchCwd = wt2
+	if !safeRemoval(sibling, filepath.Join(wt, "out", "file")) {
+		t.Error("sibling worktree of the launch worktree should be removable")
+	}
+	for _, path := range []string{wt, filepath.Join(wt, ".git"), repo, filepath.Join(other, "file")} {
+		if safeRemoval(sibling, path) {
+			t.Errorf("sibling launch: %s should still ask", path)
+		}
+	}
 	spoofed := i
 	spoofed.Cwd = other
 	spoofed.Env = map[string]string{"PATH": "/usr/bin:/bin", "HOME": home, "GIT_DIR": filepath.Join(repo, ".git"), "GIT_WORK_TREE": other}
