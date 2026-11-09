@@ -369,7 +369,7 @@
   },
   {
     "line": "set -ET",
-    "want": "ask"
+    "want": "allow"
   },
   {
     "line": "set +o functrace",
@@ -377,7 +377,7 @@
   },
   {
     "line": "set -o errtrace",
-    "want": "ask"
+    "want": "allow"
   },
   {
     "line": "set +o debugbeforecmd",
@@ -533,11 +533,11 @@
   },
   {
     "line": "set -o functrace",
-    "want": "ask"
+    "want": "allow"
   },
   {
     "line": "set +o errtrace",
-    "want": "ask"
+    "want": "allow"
   },
   {
     "line": "set -o",

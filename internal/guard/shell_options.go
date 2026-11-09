@@ -20,6 +20,11 @@ func descriptorTarget(path string) bool {
 	}
 	return true
 }
+// setChangesGuard reports whether a set command weakens the guard's DEBUG
+// trap. errtrace (-E) only affects ERR traps and turning functrace on (-T)
+// keeps the guard in functions, so both are allowed (2026-11-09: set -E asked
+// for approval on every test run). Turning functrace off and the options that
+// change how the DEBUG trap itself works still ask.
 func setChangesGuard(args []string) bool {
 	for n := 0; n < len(args); n++ {
 		a := args[n]
@@ -29,17 +34,33 @@ func setChangesGuard(args []string) bool {
 		if a == "-o" || a == "+o" {
 			if n+1 < len(args) {
 				n++
-				name := strings.TrimPrefix(strings.ToLower(strings.ReplaceAll(args[n], "_", "")), "no")
-				if has([]string{"functrace", "errtrace", "debugbeforecmd", "extdebug", "localtraps", "localoptions"}, name) {
+				if optionWeakensGuard(args[n], a[0] == '+') {
 					return true
 				}
 			}
-		} else if !strings.HasPrefix(a, "--") && strings.ContainsAny(a[1:], "ET") {
+		} else if !strings.HasPrefix(a, "--") && a[0] == '+' && strings.ContainsRune(a[1:], 'T') {
 			return true
 		}
 	}
 	return false
 }
+
+// optionWeakensGuard reports whether setting (or, with off, clearing) a
+// shell option can stop or change the guard's DEBUG trap.
+func optionWeakensGuard(option string, off bool) bool {
+	name := strings.ToLower(strings.ReplaceAll(option, "_", ""))
+	if strings.HasPrefix(name, "no") {
+		name, off = strings.TrimPrefix(name, "no"), !off
+	}
+	switch name {
+	case "functrace":
+		return off
+	case "debugbeforecmd", "extdebug", "localtraps", "localoptions":
+		return true
+	}
+	return false
+}
+
 func treeChangesDirectory(tree *syntax.File) bool {
 	changed := false
 	syntax.Walk(tree, func(node syntax.Node) bool {
