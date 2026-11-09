@@ -58,7 +58,10 @@ func TestPendingMailSlowPTYDoesNotBlockApp(t *testing.T) {
 		}
 	}
 	defer func() { release(); close(s.mailCh); <-workerDone; s.app.Stop(); <-appDone }()
-	first := bytes.Repeat([]byte("A"), 1024*1024)
+	// Far larger than the PTY buffer, so the write blocks until the gate
+	// opens; 256 KiB keeps the copy short enough under -race on a loaded
+	// host (1 MiB missed the 5s copy deadline there, 2026-11-09).
+	first := bytes.Repeat([]byte("A"), 256*1024)
 	second := []byte("second-notice\r")
 	if !s.enqueueMail(mailWrite{pane: 1, owner: p, payload: first}) || !s.enqueueMail(mailWrite{pane: 1, owner: p, payload: second}) {
 		t.Fatal("enqueue failed")

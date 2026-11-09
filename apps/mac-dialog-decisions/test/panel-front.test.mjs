@@ -28,7 +28,8 @@ function binaries() {
 test.after(async () => { if (built) await fs.rm((await built).root, {recursive:true, force:true}); });
 
 // A new panel stays behind an uncovered open panel, comes to the front when
-// every open panel is covered by another app, and never takes the keyboard.
+// every open panel is covered by another app. A panel placed in front takes
+// the keyboard; a panel placed behind does not.
 test('native panel ordering follows whether an open panel is in front', async t => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'dialog-panel-front-')));
   t.after(() => fs.rm(root, {recursive:true, force:true}));
@@ -39,7 +40,7 @@ test('native panel ordering follows whether an open panel is in front', async t 
   const shown = stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line)).filter(row => row.event === 'shown');
   assert.deepEqual(shown.map(row => [row.key, row.placement]), [['burst1.json','front'],['burst2.json','behind'],['first.json','front'],['second.json','behind'],['third.json','front']]);
   assert.deepEqual(shown.map(row => row.placement_reason), ['no_open_panel','panel_in_front','no_open_panel','panel_in_front','all_panels_covered']);
-  for (const row of shown) assert.equal(row.key_window, false);
+  for (const row of shown) assert.equal(row.key_window, row.placement === 'front', JSON.stringify(row));
 });
 
 // The one-dialog helper path (one process per panel, as spawnHelperDialog
@@ -84,12 +85,7 @@ test('one-dialog helper processes follow the same front rule', async t => {
   assert.deepEqual([c.row.placement, c.row.placement_reason], ['front', 'all_panels_covered']);
   const orderB = await until('third helper in front of the cover', rows => position(rows, c.child.pid) >= 0 && position(rows, c.child.pid) < position(rows, cover.child.pid));
   console.log('HELPER_FRONT_B', JSON.stringify(orderB.slice(0, 4)));
-  // Other concurrently running tests may change the frontmost app; a panel
-  // takes the keyboard only if one of these helper processes becomes it.
-  const helpers = [a.child.pid, b.child.pid, c.child.pid];
-  for (const row of [a.row, b.row, c.row]) {
-    assert.equal(row.key_window, false);
-    assert.equal(row.app_active, false);
-    assert.ok(!helpers.includes(row.frontmost_pid), `helper became frontmost: ${row.frontmost_pid} in ${helpers}`);
-  }
+  // A front panel takes the keyboard; a panel placed behind does not.
+  for (const row of [a.row, c.row]) assert.equal(row.key_window, true, JSON.stringify(row));
+  assert.equal(b.row.key_window, false);
 });

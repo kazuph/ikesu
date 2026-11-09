@@ -3,6 +3,7 @@ package runtime
 import (
 	"errors"
 	"image/color"
+	"os"
 	"strings"
 	"time"
 	"unicode"
@@ -40,22 +41,27 @@ func (p *Pane) UnsentAgentInput() (bool, bool) {
 }
 
 // WriteMail checks and writes under the same input admission lock.
-// The bytes are queued in order under the lock; waiting for the PTY happens
-// after it is released, so key input is never held behind a full PTY.
-func (p *Pane) WriteMail(data []byte) (int, error) {
+// The bytes are accepted in order under the lock; nothing waits for the
+// application here. The returned channel reports when every byte is written
+// (nil), or why not; ErrPTYInputTransferred means the next server of a live
+// handoff writes them.
+func (p *Pane) WriteMail(data []byte) (<-chan error, error) {
 	p.inputMu.Lock()
+	defer p.inputMu.Unlock()
 	if p.mailInputActiveLocked() {
-		p.inputMu.Unlock()
-		return 0, ErrMailInputActive
+		return nil, ErrMailInputActive
+	}
+	if p.currentPTY() == nil {
+		return nil, os.ErrClosed
 	}
 	p.lastExternalInput.Store(time.Now().UnixNano())
 	p.externalInputSeq.Add(1)
-	done, err := p.beginPTYWrite(data)
-	p.inputMu.Unlock()
-	if err != nil {
-		return 0, err
+	done := make(chan error, 1)
+	if err := p.writer.enqueue(data, done, nil); err != nil {
+		return nil, err
 	}
-	return p.finishPTYWrite(done)
+	p.markProcessChanged()
+	return done, nil
 }
 
 func (p *Pane) visibleAgentInputLocked() bool {

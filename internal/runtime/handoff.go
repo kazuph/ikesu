@@ -135,6 +135,9 @@ func (s *Supervisor) PauseHandoffContext(ctx context.Context) ([]PaneTransfer, [
 			return fail(err)
 		}
 		p := s.Get(id)
+		if err := p.pauseWriterForHandoff(); err != nil {
+			return fail(err)
+		}
 		p.mu.Lock()
 		terminal, err := p.emu.MarshalHandoff()
 		if err != nil {
@@ -192,7 +195,9 @@ func (s *Supervisor) resumePaneLocked(p *Pane) {
 	}
 	p.pausing.Store(false)
 	p.startPump()
+	p.resumeWriterAfterHandoff()
 }
+
 func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) error {
 	if len(states) != len(files) {
 		return fmt.Errorf("handoff PTY count mismatch")
@@ -247,7 +252,7 @@ func (s *Supervisor) StartImported() {
 	for _, p := range s.panes {
 		p.beginProcessWatch()
 		p.startPump()
-		go p.pumpEmuToPTY()
+		p.startPTYWriter()
 	}
 }
 
@@ -284,6 +289,33 @@ func (p *Pane) killProcess() {
 	} else if p.importedPID != 0 && !p.importedExited.Load() {
 		_ = unix.Kill(-p.importedPID, unix.SIGHUP)
 		_ = unix.Kill(p.importedPID, unix.SIGKILL)
+	}
+}
+
+// TakePendingInputs ends this server's input for every pane and returns the
+// accepted bytes not yet written, for the next server to write first. It runs
+// after the next server is running; input accepted after this is refused.
+func (s *Supervisor) TakePendingInputs() map[int][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[int][]byte{}
+	for id, p := range s.panes {
+		if b := p.takePendingInput(); len(b) > 0 {
+			out[id] = b
+		}
+	}
+	return out
+}
+
+// RestorePendingInputs writes input carried from the previous server ahead
+// of anything this server has accepted since.
+func (s *Supervisor) RestorePendingInputs(inputs map[int][]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, b := range inputs {
+		if p := s.panes[id]; p != nil {
+			p.writer.prepend(b)
+		}
 	}
 }
 

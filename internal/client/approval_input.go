@@ -66,10 +66,14 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 					}
 					state.waiting = true
 				}
-			case key.Code == uv.KeyUp:
-				state.scroll = max(0, state.scroll-1)
-			case key.Code == uv.KeyDown:
-				state.scroll++
+			case key.Code == uv.KeyUp && key.Mod == 0:
+				state.moveSelection(-1)
+			case key.Code == uv.KeyDown && key.Mod == 0:
+				state.moveSelection(1)
+			case key.Code == uv.KeyPgUp:
+				state.scroll, state.follow = max(0, state.scroll-5), false
+			case key.Code == uv.KeyPgDown:
+				state.scroll, state.follow = state.scroll+5, false
 			case !decision.LateAnswer && state.selectedReject() && decision.AllowText && key.Code == uv.KeyBackspace:
 				_, n := utf8.DecodeLastRuneInString(state.reason)
 				if n > 0 {
@@ -79,6 +83,7 @@ func (m *machineClient) approvalInputEvent(event input.Event) (bool, error) {
 				state.reason += key.Text
 			case key.Code >= '1' && key.Code <= '9' && key.Mod == 0:
 				state.selectOption(int(key.Code - '0'))
+				state.follow = true
 			}
 			return true, m.paint()
 		}

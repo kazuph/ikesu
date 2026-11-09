@@ -264,3 +264,70 @@ func TestClaudeTranscriptLateIdentityReconcilesDuplicate(t *testing.T) {
 		t.Fatalf("previous identified question changed: %+v %v", got, err)
 	}
 }
+
+// Claude Code 2.1.319 writes an AskUserQuestion to the transcript only after
+// it is answered (measured 2026-11-09). When the transcript is readable and
+// holds no unanswered question, the decision is made from the screen at once
+// instead of after claudeTranscriptWait (60s).
+func TestClaudeQuestionAbsentFromTranscriptShowsWithoutWaiting(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "claude-absent-transcript")
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	projects := filepath.Join(root, "projects", "same-cwd")
+	if err := os.MkdirAll(projects, 0700); err != nil {
+		t.Fatal(err)
+	}
+	prompt, _ := json.Marshal(map[string]any{"type": "user", "sessionId": id, "cwd": cwd, "timestamp": time.Now().UTC().Format(time.RFC3339Nano), "message": map[string]any{"role": "user", "content": "ask me two questions"}})
+	if err := os.WriteFile(filepath.Join(projects, id+".jsonl"), append(prompt, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "claude")
+	if err := os.Symlink(executable, link); err != nil {
+		t.Fatal(err)
+	}
+	screen := filepath.Join(root, "screen.txt")
+	if err := os.WriteFile(screen, []byte(screenDialog(t, "claude-single")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"CLAUDE_PTY_EMULATOR=1", "CLAUDE_CONFIG_DIR=" + root, "EMULATOR_SESSION=" + id, "EMULATOR_SCREEN=" + screen, "EMULATOR_INPUT=" + filepath.Join(root, "input")}
+	pane, err := s.sup.SpawnWith(1, cwd, 160, 60, env, []string{link, "-test.run=^TestClaudeTranscriptPTYEmulator$"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pane.SetAgent("claude")
+	s.app.SetReported(1, "claude", "blocked")
+	s.initDecisionHub()
+	s.app.SetQuitHook(s.stopDecisions)
+	done := make(chan struct{})
+	go func() { s.app.Run(); close(done) }()
+	t.Cleanup(func() {
+		s.app.Stop()
+		<-done
+		s.sup.KillAll()
+		if s.store != nil {
+			s.store.Close()
+		}
+	})
+	waitPromptCondition(t, func() bool {
+		return strings.Contains(pane.ScreenText(), "Enter to select") && foregroundAgent(pane) == "claude"
+	})
+	waitPromptCondition(t, func() bool {
+		scanScreen(s)
+		var ready bool
+		s.app.Do(func() { w := s.screenPrompts.watches[1]; ready = w != nil && w.decisionID != "" })
+		return ready
+	})
+	var deadline time.Time
+	s.app.Do(func() { deadline = s.screenPrompts.watches[1].transcriptDeadline })
+	if time.Until(deadline) > claudeTranscriptWait/2 {
+		t.Fatalf("decision waited for the transcript deadline: %v left", time.Until(deadline))
+	}
+	if d := screenRecord(t, s); d.Status != "pending" || d.Title == "" {
+		t.Fatalf("decision=%+v", d)
+	}
+}

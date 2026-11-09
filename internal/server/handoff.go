@@ -55,6 +55,9 @@ type handoffResult struct {
 	Error          string
 	MailInputTimes map[int]int64
 	IdleActivities map[int]runtime.IdleActivityTransfer
+	// PendingInputs are bytes this server accepted for each pane but had not
+	// written; the importer writes them before anything it accepted itself.
+	PendingInputs map[int][]byte
 }
 
 func exportListener(ln net.Listener) (*os.File, error) {
@@ -311,8 +314,9 @@ func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLi
 	s.closing.Store(2)
 	inputTimes := s.sup.MailInputTimes()
 	idleActivities := s.sup.IdleActivities()
+	pendingInputs := s.sup.TakePendingInputs()
 	s.mu.Unlock()
-	_ = enc.Encode(handoffResult{State: "mail_input_times", MailInputTimes: inputTimes, IdleActivities: idleActivities})
+	_ = enc.Encode(handoffResult{State: "mail_input_times", MailInputTimes: inputTimes, IdleActivities: idleActivities, PendingInputs: pendingInputs})
 	s.stopDecisions()
 	s.notifyRestart()
 	s.sup.ReleaseHandoff()

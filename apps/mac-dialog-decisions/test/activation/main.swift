@@ -14,12 +14,14 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
   let panel = host.windows.values.first!.panel!
   let frontAfter = NSWorkspace.shared.frontmostApplication?.processIdentifier
   print("show frontBefore=\(frontBefore ?? 0) frontAfter=\(frontAfter ?? 0) key=\(panel.isKeyWindow) level=\(panel.level.rawValue)")
-  guard frontBefore == frontAfter && !panel.isKeyWindow && panel.level == .normal else {
-    fputs("FAIL: showing a new panel stole focus or changed window level\n", stderr)
+  // The only panel comes out in front, so it takes the keyboard (2026-11-09)
+  // without activating the process: the user's app stays frontmost.
+  guard frontBefore == frontAfter && panel.isKeyWindow && panel.level == .normal else {
+    fputs("FAIL: a frontmost new panel must take the keyboard without activating or changing window level\n", stderr)
     exit(1)
   }
-  guard panel.canBecomeMain && !panel.styleMask.contains(.nonactivatingPanel) else {
-    fputs("FAIL: system-selected panel must participate as an activating main window\n", stderr)
+  guard panel.canBecomeMain else {
+    fputs("FAIL: system-selected panel must participate as a main window\n", stderr)
     exit(1)
   }
   if testCase == "activate" || testCase == "selection" {

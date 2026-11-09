@@ -512,6 +512,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		if err := imported.Decoder.Decode(&final); err != nil || final.State != "mail_input_times" {
 			final.MailInputTimes = nil
 		}
+		s.sup.RestorePendingInputs(final.PendingInputs)
 		s.sup.RestoreMailInputTimes(final.MailInputTimes)
 		s.sup.RestoreIdleActivities(final.IdleActivities)
 		_ = imported.Control.SetDeadline(time.Time{})
@@ -689,7 +690,7 @@ func (s *Server) dropConn(c *clientConn) {
 // clientLoop accepts display clients until the listener closes.
 func (s *Server) clientLoop() {
 	for {
-		conn, err := s.clientLn.Accept()
+		conn, err := acceptWithRetry(s.clientLn, func() bool { return s.closing.Load() != 0 })
 		if err != nil {
 			return
 		}

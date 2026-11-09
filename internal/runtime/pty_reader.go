@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"errors"
 	"io"
 	"os"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -21,6 +23,14 @@ func (p *Pane) installPTY(original *os.File) error {
 	}
 	original.Close()
 	file := os.NewFile(uintptr(fd), "ikesu-pty")
+	// The descriptor is made non-blocking only after os.NewFile saw it
+	// blocking, so the file stays out of Go's poller while neither the reader
+	// nor the PTY writer can ever block inside a read or write: both wait in
+	// poll and handle EAGAIN themselves.
+	if err := unix.SetNonblock(fd, true); err != nil {
+		file.Close()
+		return err
+	}
 	read, write, err := os.Pipe()
 	if err != nil {
 		file.Close()
@@ -48,7 +58,11 @@ func (p *Pane) readPTYReady(buf []byte) (int, error) {
 			return 0, io.EOF
 		}
 		if fds[0].Revents != 0 {
-			return p.ptyFile.Read(buf)
+			n, err := p.ptyFile.Read(buf)
+			if n == 0 && errors.Is(err, syscall.EAGAIN) {
+				continue
+			}
+			return n, err
 		}
 	}
 }

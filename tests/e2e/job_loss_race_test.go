@@ -18,6 +18,7 @@ func TestResultLossAndCancelArbitrateInRealSQLite(t *testing.T) {
 	}
 	for _, first := range []string{"recovery", "cancel"} {
 		t.Run(first, func(t *testing.T) {
+			t.Parallel()
 			j := startFaultJob(t)
 			data, err := os.ReadFile(j.job.LogPath + ".runner")
 			if err != nil {

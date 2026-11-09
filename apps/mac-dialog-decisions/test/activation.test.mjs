@@ -24,7 +24,7 @@ test('native activation, reopen and selection preserve window behavior', async t
   await exec('swiftc', [...['dialog.swift','host.swift','preview.swift','unicode-width.swift','test/reopen-focus/main.swift'].map(f=>path.join(dir,f)), '-o',reopen], {timeout:60000});
   const result = await exec(reopen,[root],{timeout:30000});
   for (const scenario of ['external','selected']) {
-    assert.match(result.stdout, new RegExp(`REOPEN_FOCUS scenario=${scenario} .*key=false`));
+    assert.match(result.stdout, new RegExp(`REOPEN_FOCUS scenario=${scenario} .*key=true`));
     assert.match(result.stdout, new RegExp(`REOPEN_CLICK_ORDER_PASS scenario=${scenario}`));
   }
   assert.match(result.stdout, /REOPEN_FOCUS_PASS/);
