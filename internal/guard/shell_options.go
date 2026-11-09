@@ -63,7 +63,11 @@ func optionWeakensGuard(option string, off bool) bool {
 }
 
 func treeChangesDirectory(tree *syntax.File) bool {
-	changed := false
+	return countDirectoryChanges(tree) > 0
+}
+
+func countDirectoryChanges(tree *syntax.File) int {
+	changed := 0
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		if call, ok := node.(*syntax.CallExpr); ok {
 			for _, word := range call.Args {
@@ -75,7 +79,7 @@ func treeChangesDirectory(tree *syntax.File) bool {
 					continue
 				}
 				if has([]string{"cd", "pushd", "popd"}, name) {
-					changed = true
+					changed++
 				}
 				break
 			}
