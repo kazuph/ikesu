@@ -143,6 +143,7 @@ func (s *Server) enqueueLedger(w ledgerWrite) {
 	s.ledgerQueue = append(s.ledgerQueue, w)
 	if !s.ledgerRunning {
 		s.ledgerRunning = true
+		s.ledgerIdle = make(chan struct{})
 		s.ledgerWG.Add(1)
 		go s.runLedgerWrites()
 	}
@@ -155,6 +156,7 @@ func (s *Server) runLedgerWrites() {
 		s.ledgerMu.Lock()
 		if len(s.ledgerQueue) == 0 {
 			s.ledgerRunning = false
+			close(s.ledgerIdle)
 			s.ledgerMu.Unlock()
 			return
 		}

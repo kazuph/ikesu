@@ -181,6 +181,7 @@ type Server struct {
 	ledgerVersion map[int]uint64
 	ledgerQueue   []ledgerWrite
 	ledgerRunning bool
+	ledgerIdle    chan struct{}
 	ledgerWG      sync.WaitGroup
 	saveMu        sync.Mutex
 	saveTimer     *time.Timer // pending coalesced session.json write

@@ -148,14 +148,33 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 	if err != nil {
 		return api.Failure(req.ID, "handoff_failed", err.Error())
 	}
-	var handoffErr error
-	if !s.app.DoWithProcessPollingPausedContext(ctx, func() { handoffErr = s.transferHandoff(exe, p) }) {
-		return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+	for {
+		var handoffErr error
+		var ledgerIdle <-chan struct{}
+		if !s.app.DoWithProcessPollingPausedContext(ctx, func() {
+			s.ledgerMu.Lock()
+			if s.ledgerRunning {
+				ledgerIdle = s.ledgerIdle
+			}
+			s.ledgerMu.Unlock()
+			if ledgerIdle == nil {
+				handoffErr = s.transferHandoff(exe, p)
+			}
+		}) {
+			return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+		}
+		if ledgerIdle == nil {
+			if handoffErr != nil {
+				return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
+			}
+			return api.Success(req.ID, api.OkResult{Type: "ok"})
+		}
+		select {
+		case <-ledgerIdle:
+		case <-ctx.Done():
+			return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
+		}
 	}
-	if handoffErr != nil {
-		return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
-	}
-	return api.Success(req.ID, api.OkResult{Type: "ok"})
 }
 
 func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err error) {
