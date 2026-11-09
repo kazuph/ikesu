@@ -108,7 +108,6 @@ func TestTerminalQueriesFromAnAppThatStopsReadingDoNotDeadlock(t *testing.T) {
 	within(t, "screen access", 10*time.Second, func() {
 		for i := 0; i < 200; i++ {
 			_ = p.ScreenText()
-			time.Sleep(10 * time.Millisecond)
 		}
 	})
 }
