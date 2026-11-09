@@ -490,3 +490,39 @@ func TestSlowGitResultPreservesMovedWorkspaceStatus(t *testing.T) {
 		t.Fatalf("slow result erased moved workspace status: %q", got)
 	}
 }
+
+func TestWorkspaceGitApplyWorkPerRepository(t *testing.T) {
+	teststate.Lock(t)
+	for _, count := range []int{4, 8} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			root := t.TempDir()
+			a := specRuntimeApp(t)
+			defer a.closeGitActivity()
+			for i := 0; i < count; i++ {
+				dir := filepath.Join(root, strconv.Itoa(i))
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				sidebarGit(t, dir, "init", "-qb", "measured")
+				if i == 0 {
+					a.st.Workspaces[0].Cwd = dir
+				} else {
+					a.st.Apply(model.CmdNewWorkspace{Cwd: dir, NoFocus: true})
+				}
+			}
+			started := time.Now()
+			a.refreshWorkspaceGit(started)
+			for len(a.gitActivity.running) != 0 {
+				job := <-a.jobs
+				job.fn()
+				close(job.done)
+			}
+			for i := 0; i < count; i++ {
+				if a.workspaceGit[i].Branch != "measured" {
+					t.Fatalf("workspace %d branch = %q", i, a.workspaceGit[i].Branch)
+				}
+			}
+			t.Logf("repositories=%d elapsed=%s", count, time.Since(started))
+		})
+	}
+}
