@@ -32,12 +32,11 @@ func postTestServer(t *testing.T) (*Server, *clientConn, func(), interface {
 // app loop only queues.
 func TestPostFromAppLoopDoesNotBlockOnStalledClient(t *testing.T) {
 	old := clientWriteTimeout
-	clientWriteTimeout = 600 * time.Millisecond
+	clientWriteTimeout = time.Second
 	t.Cleanup(func() { clientWriteTimeout = old })
-	s, _, stop, _ := postTestServer(t)
+	s, c, stop, _ := postTestServer(t)
 	defer stop()
 	payload := []byte(strings.Repeat("x", 256<<10))
-	start := time.Now()
 	s.app.Do(func() {
 		sink := &clientSink{s: s}
 		for i := 0; i < 20; i++ {
@@ -45,8 +44,13 @@ func TestPostFromAppLoopDoesNotBlockOnStalledClient(t *testing.T) {
 		}
 	})
 	s.app.Do(func() {})
-	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
-		t.Fatalf("app loop was held %v by a client that does not read", elapsed)
+	// Both calls returned while the client still holds unread data. The
+	// blocking version only returned after the write deadline had dropped it.
+	s.mu.Lock()
+	attached := s.clients[c]
+	s.mu.Unlock()
+	if !attached {
+		t.Fatal("app loop only returned after the stalled client was dropped")
 	}
 }
 
