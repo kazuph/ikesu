@@ -59,6 +59,41 @@ func TestReservedPasteKeepsRoomForItsEnterKey(t *testing.T) {
 	}
 }
 
+func TestInputReservationsCountAgainstQueuedPTYBytes(t *testing.T) {
+	teststate.Lock(t)
+	_, p := spawnNonReader(t, "exec sleep 600")
+	fillQueue(t, p, 256<<10)
+	const payload = 3 << 20
+	first, err := p.ReserveInputOperation(payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Release()
+	second, err := p.ReserveInputOperation(payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Release()
+	if _, err := p.ReserveInputOperation(payload, nil); err != ErrPTYInputFull {
+		t.Fatalf("third reservation: %v", err)
+	}
+	p.writer.mu.Lock()
+	queued, reserved := p.writer.queued, p.writer.reserved
+	p.writer.mu.Unlock()
+	want := 2 * (payload + len(ansi.BracketedPasteStart) + len(ansi.BracketedPasteEnd))
+	if queued == 0 || reserved != want || queued+reserved > ptyInputLimit {
+		t.Fatalf("queued=%d reserved=%d, want reserved=%d within limit=%d", queued, reserved, want, ptyInputLimit)
+	}
+	first.Release()
+	second.Release()
+	p.writer.mu.Lock()
+	reserved = p.writer.reserved
+	p.writer.mu.Unlock()
+	if reserved != 0 {
+		t.Fatalf("reservations retained %d bytes", reserved)
+	}
+}
+
 // 2026-11-09: an application that enabled mouse reporting but stopped reading
 // its input froze the whole server. Wheel events were written into the
 // emulator's response pipe under p.mu; the pipe's reader was stuck writing a
