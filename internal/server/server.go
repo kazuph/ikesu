@@ -154,7 +154,8 @@ type Server struct {
 	clients          map[*clientConn]bool
 	lastUse          uint64
 
-	apiWG          sync.WaitGroup // in-flight API connections (drained on shutdown)
+	closedPumps    []<-chan struct{} // guarded by mu; pumps of clients closed on the app loop
+	apiWG          sync.WaitGroup    // in-flight API connections (drained on shutdown)
 	cleanupMu      sync.Mutex
 	cleanupQueue   []func()
 	cleanupRunning bool
@@ -251,9 +252,29 @@ type clientConn struct {
 	control        chan clientWrite
 	done           chan struct{}
 	closed         bool
+	qmu            sync.Mutex
+	queue          []queuedSend
+	qclosed        bool
+	qwake          chan struct{}
+	pumpDone       chan struct{}
+	onWriteFail    func(*clientConn)
+	failOnce       sync.Once
+	lastProgress   time.Time // guarded by qmu; last time a write finished or the queue became non-empty
+	qbytes         int       // guarded by qmu
+	qfailed        bool
 }
 
 var clientSequence atomic.Int64
+
+// queuedSend is one message waiting in a connection's ordered send queue.
+// reply is nil for post (fire and forget); done, when set, runs on the pump
+// goroutine after the write finished. size counts toward clientQueueLimit.
+type queuedSend struct {
+	m     clientMsg
+	reply chan error
+	done  func(error)
+	size  int
+}
 
 func (c *clientConn) startWriter() {
 	c.once.Do(func() {
@@ -263,18 +284,123 @@ func (c *clientConn) startWriter() {
 		c.render = make(chan clientWrite, 1)
 		c.control = make(chan clientWrite, 1)
 		c.done = make(chan struct{})
+		c.qwake = make(chan struct{}, 1)
+		c.pumpDone = make(chan struct{})
 		go runClientWriter(c.conn, c.id, c.render, c.control, c.done)
+		go c.runSendPump()
 	})
 }
 
-func (c *clientConn) send(m clientMsg) error {
-	defer benchstage.Span("server.send")()
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
-	if c.closed {
+func (c *clientConn) wakePump() {
+	select {
+	case c.qwake <- struct{}{}:
+	default:
+	}
+}
+
+// fail marks the connection as broken: queued messages are discarded, the
+// socket is closed, and onWriteFail runs once, outside the caller's goroutine.
+func (c *clientConn) fail() {
+	c.failOnce.Do(func() {
+		c.qmu.Lock()
+		c.qfailed = true
+		c.qmu.Unlock()
+		c.wakePump()
+		if c.conn != nil {
+			_ = c.conn.Close()
+		}
+		if c.onWriteFail != nil {
+			go c.onWriteFail(c)
+		}
+	})
+}
+
+// stalled reports whether messages are waiting but no write finished or
+// started for longer than the write deadline. A client that reads, however
+// slowly, keeps making progress and is not detached by time alone. Caller
+// holds qmu.
+func (c *clientConn) stalled() bool {
+	return len(c.queue) > 0 && time.Since(c.lastProgress) > clientWriteTimeout
+}
+
+// clientQueueLimit caps the bytes queued for one client. It is the same value
+// as ptyInputLimit in internal/runtime (decided by the owner on 2026-11-09).
+const clientQueueLimit = 8 << 20
+
+func queuedSize(m clientMsg) int { return len(m.Data) + len(m.Reason) + len(m.Type) + 64 }
+
+func (c *clientConn) enqueue(item queuedSend) error {
+	c.startWriter()
+	c.qmu.Lock()
+	if c.qclosed || c.qfailed {
+		c.qmu.Unlock()
 		return net.ErrClosed
 	}
-	c.startWriter()
+	item.size = queuedSize(item.m)
+	if c.stalled() || c.qbytes+item.size > clientQueueLimit {
+		c.qmu.Unlock()
+		c.fail()
+		return net.ErrClosed
+	}
+	if len(c.queue) == 0 {
+		c.lastProgress = time.Now()
+	}
+	c.qbytes += item.size
+	c.queue = append(c.queue, item)
+	c.qmu.Unlock()
+	c.wakePump()
+	return nil
+}
+
+// runSendPump hands queued messages to the writer one at a time, in order.
+// It is the only goroutine that waits for a write, so callers on the app loop
+// never do. The message being written stays at the head of the queue until it
+// is done. After the queue is closed it
+// flushes what is left and stops the writer.
+func (c *clientConn) runSendPump() {
+	defer close(c.pumpDone)
+	for {
+		c.qmu.Lock()
+		if len(c.queue) == 0 {
+			if c.qclosed {
+				c.qmu.Unlock()
+				close(c.control)
+				<-c.done
+				return
+			}
+			c.qmu.Unlock()
+			<-c.qwake
+			continue
+		}
+		item := c.queue[0]
+		failed := c.qfailed
+		c.qmu.Unlock()
+		var err error
+		if failed {
+			err = net.ErrClosed
+		} else {
+			err = c.writeNow(item.m)
+		}
+		c.qmu.Lock()
+		c.queue[0] = queuedSend{}
+		c.queue = c.queue[1:]
+		c.qbytes -= item.size
+		c.lastProgress = time.Now()
+		c.qmu.Unlock()
+		if err != nil {
+			c.fail()
+		}
+		if item.done != nil {
+			item.done(err)
+		}
+		if item.reply != nil {
+			item.reply <- err
+		}
+	}
+}
+
+func (c *clientConn) writeNow(m clientMsg) error {
+	defer benchstage.Span("server.send")()
 	request := clientWrite{message: m, reply: make(chan clientWriteResult, 1)}
 	queue := c.control
 	if m.Type == "output" {
@@ -298,17 +424,48 @@ func (c *clientConn) send(m clientMsg) error {
 	}
 }
 
-func (c *clientConn) close() {
+// send queues m behind earlier post/send messages and waits for its write.
+// Use it only outside the app loop: one client that stops reading blocks it
+// for up to clientWriteTimeout.
+func (c *clientConn) send(m clientMsg) error {
+	reply := make(chan error, 1)
+	if err := c.enqueue(queuedSend{m: m, reply: reply}); err != nil {
+		return err
+	}
+	return <-reply
+}
+
+// post queues m and returns at once; the order matches send. A failed write
+// or a queue older than the write deadline closes the connection and detaches
+// the client (onWriteFail).
+func (c *clientConn) post(m clientMsg) { _ = c.enqueue(queuedSend{m: m}) }
+
+// postThen is post with a completion callback run on the pump goroutine
+// (not the app loop) with the write result.
+func (c *clientConn) postThen(m clientMsg, done func(error)) {
+	if err := c.enqueue(queuedSend{m: m, done: done}); err != nil && done != nil {
+		go done(err)
+	}
+}
+
+// closeAsync stops accepting messages and lets the pump flush what is queued
+// and end. It does not wait; the returned channel closes when the pump ended.
+func (c *clientConn) closeAsync() <-chan struct{} {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
+	c.startWriter()
 	if c.closed {
-		return
+		return c.pumpDone
 	}
 	c.closed = true
-	c.startWriter()
-	close(c.control)
-	<-c.done
+	c.qmu.Lock()
+	c.qclosed = true
+	c.qmu.Unlock()
+	c.wakePump()
+	return c.pumpDone
 }
+
+func (c *clientConn) close() { <-c.closeAsync() }
 
 // Run starts the server for session and blocks until the app quits.
 // version is the build version reported by ping.
@@ -446,9 +603,9 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		}
 		s.saveSession()
 		if s.restarting {
-			s.notifyRestart()
+			s.closeClientsAsync("restart")
 		} else {
-			s.notifyExit()
+			s.closeClientsAsync("exit")
 		}
 	})
 	s.app.SetChangeHook(s.markSessionDirty)
@@ -604,7 +761,10 @@ func (s *Server) cleanup() {
 	s.saveMu.Unlock()
 	s.closeSessionWrites()
 	// notifyExit already told the attached client; drop whatever remains.
-	s.detach("server exiting")
+	s.flushClosedClients()
+	if ch := s.detach("server exiting"); ch != nil {
+		<-ch
+	}
 	s.closeAgentAttachments()
 	_ = s.apiLn.Close()
 	_ = s.clientLn.Close()
@@ -645,24 +805,51 @@ func (s *Server) hasClient() bool {
 }
 
 // detach drops the currently interacting display, leaving other viewers attached.
-func (s *Server) detach(reason string) {
+// It never waits on the socket, so the app loop may call it; the returned
+// channel closes once the connection's queue is flushed and closed.
+func (s *Server) detach(reason string) <-chan struct{} {
 	s.mu.Lock()
 	c := s.client
 	s.mu.Unlock()
 	if c != nil {
-		s.detachClient(c, reason)
+		return s.detachClient(c, reason)
 	}
+	return nil
 }
 
-func (s *Server) detachClient(c *clientConn, reason string) {
-	_ = c.send(clientMsg{Type: "detached", Reason: reason})
-	s.dropConn(c)
+func (s *Server) detachClient(c *clientConn, reason string) <-chan struct{} {
+	c.post(clientMsg{Type: "detached", Reason: reason})
+	return s.dropConnAsync(c)
 }
 
+// closeClients tells every display client to exit or restart and waits until
+// the message is written. Do not call it on the app loop.
 func (s *Server) closeClients(kind string) {
 	for _, c := range s.displayClients() {
 		_ = c.send(clientMsg{Type: kind})
 		s.dropConn(c)
+	}
+}
+
+// closeClientsAsync is closeClients for the app loop: it queues the message
+// and detaches without waiting. flushClosedClients waits for the writes.
+func (s *Server) closeClientsAsync(kind string) {
+	for _, c := range s.displayClients() {
+		c.post(clientMsg{Type: kind})
+		ch := s.dropConnAsync(c)
+		s.mu.Lock()
+		s.closedPumps = append(s.closedPumps, ch)
+		s.mu.Unlock()
+	}
+}
+
+func (s *Server) flushClosedClients() {
+	s.mu.Lock()
+	pumps := s.closedPumps
+	s.closedPumps = nil
+	s.mu.Unlock()
+	for _, ch := range pumps {
+		<-ch
 	}
 }
 
@@ -681,10 +868,7 @@ func (w *clientSink) Write(p []byte) (int, error) {
 	if c == nil {
 		return len(p), nil
 	}
-	if err := c.send(clientMsg{Type: "output", Data: encode64(p)}); err != nil {
-		w.s.dropConn(c)
-		return 0, err
-	}
+	c.post(clientMsg{Type: "output", Data: encode64(p)})
 	return len(p), nil
 }
 
@@ -697,13 +881,24 @@ func (s *Server) writeClientOutput(data string) {
 	if c == nil {
 		return
 	}
-	if err := c.send(clientMsg{Type: "output", Data: encode64([]byte(data))}); err != nil {
-		s.dropConn(c)
-	}
+	c.post(clientMsg{Type: "output", Data: encode64([]byte(data))})
 }
 
-// dropConn removes c if it is still the attached client (broken pipe).
+// dropConn removes c if it is still the attached client (broken pipe) and
+// waits until its queue is flushed and the socket closed.
 func (s *Server) dropConn(c *clientConn) {
+	s.unlinkConn(c)
+	c.close()
+}
+
+// dropConnAsync is dropConn for the app loop: the client is detached at once
+// and the queue is flushed and closed in the background.
+func (s *Server) dropConnAsync(c *clientConn) <-chan struct{} {
+	s.unlinkConn(c)
+	return c.closeAsync()
+}
+
+func (s *Server) unlinkConn(c *clientConn) {
 	s.mu.Lock()
 	wasAttached := s.clients[c]
 	delete(s.clients, c)
@@ -715,7 +910,6 @@ func (s *Server) dropConn(c *clientConn) {
 		}
 	}
 	s.mu.Unlock()
-	c.close()
 	if wasAttached && s.app != nil {
 		go s.releaseSizeViewer(c)
 	}
@@ -735,6 +929,7 @@ func (s *Server) clientLoop() {
 // attach negotiates display capabilities before adding an independent viewer.
 func (s *Server) attach(conn net.Conn) {
 	c := &clientConn{conn: conn}
+	c.onWriteFail = s.dropConn
 	if s.trace != nil {
 		c.id = int(clientSequence.Add(1))
 		if peer := latency.PeerPID(conn); peer > 0 {
@@ -805,7 +1000,8 @@ func (s *Server) attach(conn net.Conn) {
 			c.viewer.SetVisible(s.app, false)
 		}
 		c.viewer.Configure(s.app, hello.Config, hello.Preferences, func(preferences endpoint.ViewPreferences) error {
-			return c.send(clientMsg{Type: "preferences", Preferences: &preferences})
+			c.post(clientMsg{Type: "preferences", Preferences: &preferences})
+			return nil
 		})
 		if hello.ConfigWarning != "" {
 			c.viewer.ConfigError(s.app, hello.ConfigWarning)
@@ -817,10 +1013,18 @@ func (s *Server) attach(conn net.Conn) {
 			}
 			configID++
 			pendingConfig[configID] = done
-			if err := c.send(clientMsg{Type: "config_edit", ConfigID: configID, ConfigEdit: &edit}); err != nil {
-				delete(pendingConfig, configID)
-				done(config.Config{}, err)
-			}
+			id := configID
+			c.postThen(clientMsg{Type: "config_edit", ConfigID: id, ConfigEdit: &edit}, func(err error) {
+				if err == nil {
+					return
+				}
+				go s.app.Do(func() {
+					if _, ok := pendingConfig[id]; ok {
+						delete(pendingConfig, id)
+						done(config.Config{}, err)
+					}
+				})
+			})
 		}
 		c.viewer.SetConfigEditor(func(edit config.Edit, done func(config.Config, error)) {
 			if edit.Kind == "reload" {
@@ -834,7 +1038,8 @@ func (s *Server) attach(conn net.Conn) {
 			if !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, "machine_menu") {
 				return fmt.Errorf("endpoint_action_unsupported: machine_menu")
 			}
-			return c.send(clientMsg{Type: "machine_menu", MachineAction: action})
+			c.post(clientMsg{Type: "machine_menu", MachineAction: action})
+			return nil
 		})
 		s.installGraphicsSnapshotSink(c, hello.Peer)
 		c.viewer.Begin(s.app, hello.Xpixel, hello.Ypixel)
@@ -869,7 +1074,7 @@ func (s *Server) attach(conn net.Conn) {
 			s.app.Do(func() {
 				list := c.viewer.IdlePanes(s.app)
 				list.ServerGeneration = s.generation
-				_ = c.send(clientMsg{Type: "idle_panes_result", IdleRequest: m.IdleRequest, IdlePanes: &list})
+				c.post(clientMsg{Type: "idle_panes_result", IdleRequest: m.IdleRequest, IdlePanes: &list})
 			})
 		case "idle_delete":
 			s.app.Do(func() {
@@ -880,7 +1085,7 @@ func (s *Server) attach(conn net.Conn) {
 				if m.IdleDelete.ServerGeneration != "" && m.IdleDelete.ServerGeneration == s.generation {
 					result = s.app.DeleteIdlePanes(m.IdleDelete.Panes)
 				}
-				_ = c.send(clientMsg{Type: "idle_delete_result", IdleRequest: m.IdleRequest, IdleDeleteResult: &result})
+				c.post(clientMsg{Type: "idle_delete_result", IdleRequest: m.IdleRequest, IdleDeleteResult: &result})
 			})
 		case endpoint.GraphicsStartedMessage, endpoint.GraphicsResultMessage:
 			s.app.Do(func() { s.graphicsTransmission(c, m) })
@@ -903,7 +1108,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "workspace_select":
 			s.app.Do(func() {
 				if (m.WorkspaceGeneration != "" && !c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)) || !c.viewer.SelectWorkspace(s.app, m.Workspace) {
-					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+					c.post(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 				if endpoint.Allows(c.available, endpoint.InputReceiptGeneration, s.endpointPeer.Methods, "input_receipt") {
 					c.viewer.RecordInput(s.app, m.InputSequence)
@@ -912,7 +1117,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "workspace_menu":
 			s.app.Do(func() {
 				if !c.viewer.OpenWorkspaceMenu(s.app, m.Workspace, m.WorkspaceGeneration, m.MenuX, m.MenuY) {
-					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
+					c.post(clientMsg{Type: "error", Reason: "endpoint_workspace_not_found"})
 				}
 			})
 		case "oyagoi_view":
@@ -924,7 +1129,7 @@ func (s *Server) attach(conn net.Conn) {
 		case "oyagoi_check":
 			s.app.Do(func() {
 				exists := c.viewer.HasWorkspace(s.app, m.Workspace, m.WorkspaceGeneration)
-				_ = c.send(clientMsg{Type: "oyagoi_check_result", Workspace: m.Workspace, WorkspaceGeneration: m.WorkspaceGeneration, OyagoiExists: &exists})
+				c.post(clientMsg{Type: "oyagoi_check_result", Workspace: m.Workspace, WorkspaceGeneration: m.WorkspaceGeneration, OyagoiExists: &exists})
 			})
 		case "config_result":
 			s.app.Do(func() {
@@ -949,16 +1154,16 @@ func (s *Server) attach(conn net.Conn) {
 		case "decision_answer":
 			s.app.Do(func() {
 				if m.DecisionAnswer == nil {
-					_ = c.send(clientMsg{Type: "error", Reason: "decision_answer missing"})
+					c.post(clientMsg{Type: "error", Reason: "decision_answer missing"})
 					return
 				}
 				p := *m.DecisionAnswer
 				p.Responder = "client"
 				resp := s.decisionRequest(&api.Request{ID: "client:decision:answer", Method: api.MethodDecisionAnswer, Params: api.MarshalParams(p)})
 				if resp.Err != nil {
-					_ = c.send(clientMsg{Type: "decision_answer_result", Reason: resp.Err.Code + ": " + resp.Err.Message})
+					c.post(clientMsg{Type: "decision_answer_result", Reason: resp.Err.Code + ": " + resp.Err.Message})
 				} else {
-					_ = c.send(clientMsg{Type: "decision_answer_result"})
+					c.post(clientMsg{Type: "decision_answer_result"})
 				}
 			})
 		case "preferences_error":

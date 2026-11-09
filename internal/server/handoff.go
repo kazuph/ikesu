@@ -216,6 +216,7 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 			return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
 		}
 		if ledgerIdle == nil {
+			s.flushClosedClients()
 			if handoffErr != nil {
 				return api.Failure(req.ID, "handoff_failed", handoffErr.Error())
 			}
@@ -381,7 +382,9 @@ func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLi
 	s.mu.Unlock()
 	_ = enc.Encode(handoffResult{State: "mail_input_times", MailInputTimes: inputTimes, IdleActivities: idleActivities, PendingInputs: pendingInputs})
 	s.stopDecisions()
-	s.notifyRestart()
+	// Runs on the app loop: queue and detach only; liveHandoff waits for the
+	// writes after the loop is released.
+	s.closeClientsAsync("restart")
 	s.sup.ReleaseHandoff()
 	s.app.RetireHandoff()
 	return nil

@@ -511,12 +511,20 @@ func TestWedgedClientIsDropped(t *testing.T) {
 	srv, cli := net.Pipe()
 	defer cli.Close()
 	c := &clientConn{conn: srv}
+	c.onWriteFail = s.dropConn
 	s.client = c
 
+	// The sink only queues (it runs on the app loop); the write failure now
+	// shows up as the connection being dropped after the deadline.
 	w := &clientSink{s: s}
 	t0 := time.Now()
-	if n, err := w.Write([]byte("x")); err == nil || n != 0 {
-		t.Fatalf("failed frame must report its write failure: n=%d err=%v", n, err)
+	if n, err := w.Write([]byte("x")); err != nil || n != 1 {
+		t.Fatalf("sink must queue without waiting: n=%d err=%v", n, err)
+	}
+	select {
+	case <-c.pumpDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("wedged write: deadline never fired")
 	}
 	if took := time.Since(t0); took > 5*time.Second {
 		t.Fatalf("wedged write took %v; deadline never fired", took)

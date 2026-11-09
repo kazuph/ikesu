@@ -15,12 +15,15 @@ func (s *Server) deliverPaneClipboard(pid int, data string, transferred bool) {
 			return
 		}
 	}
-	if !s.sendPaneClipboard(pid, data) && transferred {
+	if !s.sendPaneClipboard(pid, data, transferred) && transferred {
 		s.pendingClipboard = append(s.pendingClipboard, clipboardTransfer{pid, data})
 	}
 }
 
-func (s *Server) sendPaneClipboard(pid int, data string) bool {
+// sendPaneClipboard queues the clipboard output for the best display client
+// without waiting on the socket. When the later write fails and retry is set,
+// the entry goes back to pendingClipboard.
+func (s *Server) sendPaneClipboard(pid int, data string, retry bool) bool {
 	var target *clientConn
 	for _, c := range s.displayClients() {
 		if c.viewer != nil && c.viewer.DisplaysPane(s.app, pid) && (target == nil || c.lastUse > target.lastUse) {
@@ -30,10 +33,11 @@ func (s *Server) sendPaneClipboard(pid int, data string) bool {
 	if target == nil {
 		return false
 	}
-	if err := target.send(clientMsg{Type: "output", Data: encode64([]byte(data))}); err != nil {
-		s.dropConn(target)
-		return false
-	}
+	target.postThen(clientMsg{Type: "output", Data: encode64([]byte(data))}, func(err error) {
+		if err != nil && retry {
+			go s.app.Do(func() { s.pendingClipboard = append(s.pendingClipboard, clipboardTransfer{pid, data}) })
+		}
+	})
 	return true
 }
 
@@ -42,7 +46,7 @@ func (s *Server) flushPaneClipboard() {
 	s.pendingClipboard = nil
 	blocked := make(map[int]bool)
 	for _, entry := range pending {
-		if blocked[entry.Pane] || !s.sendPaneClipboard(entry.Pane, entry.Data) {
+		if blocked[entry.Pane] || !s.sendPaneClipboard(entry.Pane, entry.Data, true) {
 			blocked[entry.Pane] = true
 			s.pendingClipboard = append(s.pendingClipboard, entry)
 		}
@@ -110,9 +114,6 @@ type viewerSink struct {
 }
 
 func (w *viewerSink) Write(bytes []byte) (int, error) {
-	if err := w.c.send(clientMsg{Type: "output", Data: encode64(bytes)}); err != nil {
-		w.s.dropConn(w.c)
-		return 0, err
-	}
+	w.c.post(clientMsg{Type: "output", Data: encode64(bytes)})
 	return len(bytes), nil
 }
