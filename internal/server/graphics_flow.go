@@ -94,8 +94,8 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 		data, err = flow.encoder.Encode(in)
 	}
 	if err != nil {
-		_ = c.send(clientMsg{Type: "error", Reason: "endpoint_snapshot_invalid: " + err.Error()})
-		s.dropConn(c)
+		c.post(clientMsg{Type: "error", Reason: "endpoint_snapshot_invalid: " + err.Error()})
+		s.dropConnAsync(c)
 		return err
 	}
 	message := clientMsg{Type: "snapshot", Data: encode64(data), RequestAck: c.viewer.AwaitingFocusRender(), FocusEpoch: c.viewer.FocusEpoch()}
@@ -123,7 +123,7 @@ func (s *Server) sendGraphicsSnapshot(c *clientConn, in render.Input) error {
 		s.app.Do(func() {
 			flow.writing = false
 			if result.err != nil {
-				s.dropConn(c)
+				s.dropConnAsync(c)
 				return
 			}
 			flow.revision = revision
@@ -193,14 +193,14 @@ func (s *Server) releaseGraphicsReceipt(c *clientConn, reason string) {
 func (s *Server) graphicsControl(c *clientConn, message clientMsg) {
 	flow := c.graphics
 	if flow == nil || !flow.encoder.GraphicsPatches {
-		_ = c.send(clientMsg{Type: "error", Reason: "endpoint_action_unsupported: graphics patches"})
+		c.post(clientMsg{Type: "error", Reason: "endpoint_action_unsupported: graphics patches"})
 		return
 	}
 	switch message.Kind {
 	case endpoint.GraphicsPatchAck:
 		revision, err := strconv.ParseUint(message.Data, 10, 64)
 		if err != nil {
-			_ = c.send(clientMsg{Type: "error", Reason: "invalid graphics receipt revision"})
+			c.post(clientMsg{Type: "error", Reason: "invalid graphics receipt revision"})
 			return
 		}
 		if flow.awaiting != 0 && revision == flow.awaiting {
@@ -217,6 +217,6 @@ func (s *Server) graphicsControl(c *clientConn, message clientMsg) {
 		s.traceReceiptEnd(c, "miss")
 		c.viewer.Redraw(s.app)
 	default:
-		_ = c.send(clientMsg{Type: "error", Reason: fmt.Sprintf("endpoint_action_unsupported: %s", message.Kind)})
+		c.post(clientMsg{Type: "error", Reason: fmt.Sprintf("endpoint_action_unsupported: %s", message.Kind)})
 	}
 }

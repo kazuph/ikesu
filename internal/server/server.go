@@ -154,7 +154,8 @@ type Server struct {
 	clients          map[*clientConn]bool
 	lastUse          uint64
 
-	apiWG          sync.WaitGroup // in-flight API connections (drained on shutdown)
+	closedPumps    []<-chan struct{} // guarded by mu; pumps of clients closed on the app loop
+	apiWG          sync.WaitGroup    // in-flight API connections (drained on shutdown)
 	cleanupMu      sync.Mutex
 	cleanupQueue   []func()
 	cleanupRunning bool
@@ -257,17 +258,20 @@ type clientConn struct {
 	qwake          chan struct{}
 	pumpDone       chan struct{}
 	onWriteFail    func(*clientConn)
+	failOnce       sync.Once
+	qfailed        bool
 }
 
 var clientSequence atomic.Int64
 
 // queuedSend is one message waiting in a connection's ordered send queue.
 // reply is nil for post (fire and forget); done, when set, runs on the pump
-// goroutine after the write finished.
+// goroutine after the write finished. at is when it was queued.
 type queuedSend struct {
 	m     clientMsg
 	reply chan error
 	done  func(error)
+	at    time.Time
 }
 
 func (c *clientConn) startWriter() {
@@ -285,26 +289,62 @@ func (c *clientConn) startWriter() {
 	})
 }
 
-func (c *clientConn) enqueue(item queuedSend) error {
-	c.startWriter()
-	c.qmu.Lock()
-	if c.qclosed {
-		c.qmu.Unlock()
-		return net.ErrClosed
-	}
-	c.queue = append(c.queue, item)
-	c.qmu.Unlock()
+func (c *clientConn) wakePump() {
 	select {
 	case c.qwake <- struct{}{}:
 	default:
 	}
+}
+
+// fail marks the connection as broken: queued messages are discarded, the
+// socket is closed, and onWriteFail runs once, outside the caller's goroutine.
+func (c *clientConn) fail() {
+	c.failOnce.Do(func() {
+		c.qmu.Lock()
+		c.qfailed = true
+		c.qmu.Unlock()
+		c.wakePump()
+		if c.conn != nil {
+			_ = c.conn.Close()
+		}
+		if c.onWriteFail != nil {
+			go c.onWriteFail(c)
+		}
+	})
+}
+
+// headStale reports whether the oldest unfinished message has waited longer
+// than the write deadline. clientWriteTimeout is the age limit of the queue,
+// so a client that reads too slowly is detached like one that does not read.
+// Caller holds qmu.
+func (c *clientConn) headStale() bool {
+	return len(c.queue) > 0 && time.Since(c.queue[0].at) > clientWriteTimeout
+}
+
+func (c *clientConn) enqueue(item queuedSend) error {
+	c.startWriter()
+	c.qmu.Lock()
+	if c.qclosed || c.qfailed {
+		c.qmu.Unlock()
+		return net.ErrClosed
+	}
+	if c.headStale() {
+		c.qmu.Unlock()
+		c.fail()
+		return net.ErrClosed
+	}
+	item.at = time.Now()
+	c.queue = append(c.queue, item)
+	c.qmu.Unlock()
+	c.wakePump()
 	return nil
 }
 
 // runSendPump hands queued messages to the writer one at a time, in order.
 // It is the only goroutine that waits for a write, so callers on the app loop
-// never do. After the queue is closed it flushes what is left and stops the
-// writer.
+// never do. The message being written stays at the head of the queue until it
+// is done, which is what the age check looks at. After the queue is closed it
+// flushes what is left and stops the writer.
 func (c *clientConn) runSendPump() {
 	defer close(c.pumpDone)
 	for {
@@ -321,15 +361,21 @@ func (c *clientConn) runSendPump() {
 			continue
 		}
 		item := c.queue[0]
+		failed := c.qfailed
+		c.qmu.Unlock()
+		var err error
+		if failed {
+			err = net.ErrClosed
+		} else {
+			err = c.writeNow(item.m)
+		}
+		c.qmu.Lock()
 		c.queue[0] = queuedSend{}
 		c.queue = c.queue[1:]
-		closing := c.qclosed
+		stale := c.headStale()
 		c.qmu.Unlock()
-		err := c.writeNow(item.m)
-		if err != nil && !closing && c.onWriteFail != nil {
-			// A failed write closed the writer; detach the client from outside
-			// the app loop and this goroutine (close waits for the pump).
-			go c.onWriteFail(c)
+		if err != nil || stale {
+			c.fail()
 		}
 		if item.done != nil {
 			item.done(err)
@@ -377,7 +423,8 @@ func (c *clientConn) send(m clientMsg) error {
 }
 
 // post queues m and returns at once; the order matches send. A failed write
-// closes the connection and detaches the client (onWriteFail).
+// or a queue older than the write deadline closes the connection and detaches
+// the client (onWriteFail).
 func (c *clientConn) post(m clientMsg) { _ = c.enqueue(queuedSend{m: m}) }
 
 // postThen is post with a completion callback run on the pump goroutine
@@ -388,23 +435,24 @@ func (c *clientConn) postThen(m clientMsg, done func(error)) {
 	}
 }
 
-func (c *clientConn) close() {
+// closeAsync stops accepting messages and lets the pump flush what is queued
+// and end. It does not wait; the returned channel closes when the pump ended.
+func (c *clientConn) closeAsync() <-chan struct{} {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
+	c.startWriter()
 	if c.closed {
-		return
+		return c.pumpDone
 	}
 	c.closed = true
-	c.startWriter()
 	c.qmu.Lock()
 	c.qclosed = true
 	c.qmu.Unlock()
-	select {
-	case c.qwake <- struct{}{}:
-	default:
-	}
-	<-c.pumpDone
+	c.wakePump()
+	return c.pumpDone
 }
+
+func (c *clientConn) close() { <-c.closeAsync() }
 
 // Run starts the server for session and blocks until the app quits.
 // version is the build version reported by ping.
@@ -542,9 +590,9 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		}
 		s.saveSession()
 		if s.restarting {
-			s.notifyRestart()
+			s.closeClientsAsync("restart")
 		} else {
-			s.notifyExit()
+			s.closeClientsAsync("exit")
 		}
 	})
 	s.app.SetChangeHook(s.markSessionDirty)
@@ -700,7 +748,10 @@ func (s *Server) cleanup() {
 	s.saveMu.Unlock()
 	s.closeSessionWrites()
 	// notifyExit already told the attached client; drop whatever remains.
-	s.detach("server exiting")
+	s.flushClosedClients()
+	if ch := s.detach("server exiting"); ch != nil {
+		<-ch
+	}
 	s.closeAgentAttachments()
 	_ = s.apiLn.Close()
 	_ = s.clientLn.Close()
@@ -741,24 +792,51 @@ func (s *Server) hasClient() bool {
 }
 
 // detach drops the currently interacting display, leaving other viewers attached.
-func (s *Server) detach(reason string) {
+// It never waits on the socket, so the app loop may call it; the returned
+// channel closes once the connection's queue is flushed and closed.
+func (s *Server) detach(reason string) <-chan struct{} {
 	s.mu.Lock()
 	c := s.client
 	s.mu.Unlock()
 	if c != nil {
-		s.detachClient(c, reason)
+		return s.detachClient(c, reason)
 	}
+	return nil
 }
 
-func (s *Server) detachClient(c *clientConn, reason string) {
-	_ = c.send(clientMsg{Type: "detached", Reason: reason})
-	s.dropConn(c)
+func (s *Server) detachClient(c *clientConn, reason string) <-chan struct{} {
+	c.post(clientMsg{Type: "detached", Reason: reason})
+	return s.dropConnAsync(c)
 }
 
+// closeClients tells every display client to exit or restart and waits until
+// the message is written. Do not call it on the app loop.
 func (s *Server) closeClients(kind string) {
 	for _, c := range s.displayClients() {
 		_ = c.send(clientMsg{Type: kind})
 		s.dropConn(c)
+	}
+}
+
+// closeClientsAsync is closeClients for the app loop: it queues the message
+// and detaches without waiting. flushClosedClients waits for the writes.
+func (s *Server) closeClientsAsync(kind string) {
+	for _, c := range s.displayClients() {
+		c.post(clientMsg{Type: kind})
+		ch := s.dropConnAsync(c)
+		s.mu.Lock()
+		s.closedPumps = append(s.closedPumps, ch)
+		s.mu.Unlock()
+	}
+}
+
+func (s *Server) flushClosedClients() {
+	s.mu.Lock()
+	pumps := s.closedPumps
+	s.closedPumps = nil
+	s.mu.Unlock()
+	for _, ch := range pumps {
+		<-ch
 	}
 }
 
@@ -793,8 +871,21 @@ func (s *Server) writeClientOutput(data string) {
 	c.post(clientMsg{Type: "output", Data: encode64([]byte(data))})
 }
 
-// dropConn removes c if it is still the attached client (broken pipe).
+// dropConn removes c if it is still the attached client (broken pipe) and
+// waits until its queue is flushed and the socket closed.
 func (s *Server) dropConn(c *clientConn) {
+	s.unlinkConn(c)
+	c.close()
+}
+
+// dropConnAsync is dropConn for the app loop: the client is detached at once
+// and the queue is flushed and closed in the background.
+func (s *Server) dropConnAsync(c *clientConn) <-chan struct{} {
+	s.unlinkConn(c)
+	return c.closeAsync()
+}
+
+func (s *Server) unlinkConn(c *clientConn) {
 	s.mu.Lock()
 	wasAttached := s.clients[c]
 	delete(s.clients, c)
@@ -806,7 +897,6 @@ func (s *Server) dropConn(c *clientConn) {
 		}
 	}
 	s.mu.Unlock()
-	c.close()
 	if wasAttached && s.app != nil {
 		go s.releaseSizeViewer(c)
 	}

@@ -132,3 +132,85 @@ func TestPostStalledClientIsDroppedAndPumpEnds(t *testing.T) {
 		t.Fatal("send after drop should fail")
 	}
 }
+
+// A client that reads, but too slowly to ever catch up, is detached once the
+// oldest queued message is older than the write deadline, and nothing stays
+// queued.
+func TestPostSlowReaderIsDroppedByQueueAge(t *testing.T) {
+	old := clientWriteTimeout
+	clientWriteTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { clientWriteTimeout = old })
+	s, c, stop, peer := postTestServer(t)
+	defer stop()
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		buf := make([]byte, 256)
+		for {
+			if _, err := peer.Read(buf); err != nil {
+				return
+			}
+			time.Sleep(5 * time.Millisecond) // about 50KB/s, slower than the producer
+		}
+	}()
+	msg := clientMsg{Type: "output", Data: encode64([]byte(strings.Repeat("y", 200)))}
+	deadline := time.After(20 * time.Second)
+produce:
+	for {
+		select {
+		case <-c.pumpDone:
+			break produce
+		case <-deadline:
+			t.Fatal("slow reader was never detached")
+		default:
+		}
+		for i := 0; i < 100; i++ {
+			c.post(msg)
+		}
+		time.Sleep(time.Millisecond) // pace the producer; the queue age is what is under test
+	}
+	s.mu.Lock()
+	attached := s.clients[c] || s.client == c
+	s.mu.Unlock()
+	if attached {
+		t.Fatal("slow client stayed attached")
+	}
+	c.qmu.Lock()
+	left := len(c.queue)
+	c.qmu.Unlock()
+	if left != 0 {
+		t.Fatalf("%d messages stayed queued", left)
+	}
+	_ = readerDone
+}
+
+// Detaching, dropping and answering with an error on the app loop only queue:
+// the loop is not held by a client that does not read.
+func TestAppLoopDetachDropAndErrorDoNotWait(t *testing.T) {
+	old := clientWriteTimeout
+	clientWriteTimeout = 2 * time.Second
+	t.Cleanup(func() { clientWriteTimeout = old })
+	s, c, stop, _ := postTestServer(t)
+	defer stop()
+	payload := []byte(strings.Repeat("x", 256<<10))
+	start := time.Now()
+	s.app.Do(func() {
+		sink := &clientSink{s: s}
+		for i := 0; i < 10; i++ {
+			_, _ = sink.Write(payload)
+		}
+		s.graphicsControl(c, clientMsg{Type: "control"}) // error reply
+		s.detachClient(c, "test")                        // detached + drop
+		s.dropConnAsync(c)
+	})
+	s.app.Do(func() {})
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("app loop was held %v", elapsed)
+	}
+	s.mu.Lock()
+	attached := s.clients[c]
+	s.mu.Unlock()
+	if attached {
+		t.Fatal("client stayed attached after detach")
+	}
+}

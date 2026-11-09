@@ -191,8 +191,9 @@ func TestTransferredClipboardWaitsForRealDisplay(t *testing.T) {
 	defer func() { master.Close(); <-clientDone }()
 	var got strings.Builder
 	buf := make([]byte, 4096)
-	// Clipboard output is queued per connection now, so it may follow the first
-	// frame on the wire; keep reading until the transferred values arrived too.
+	// Clipboard output goes through the connection's send queue and can arrive
+	// after a graphics frame; the order between them is not guaranteed. Keep
+	// reading until the transferred values arrived too.
 	for !strings.Contains(got.String(), "\x1b[?2026l") || !strings.Contains(got.String(), want) {
 		n, err := master.Read(buf)
 		if n > 0 {
