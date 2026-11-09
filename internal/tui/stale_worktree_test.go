@@ -15,7 +15,7 @@ import (
 	"github.com/kazuph/ikesu/internal/worktree"
 )
 
-func TestWorktreeDeleteDoesNotRemoveAfterCwdChangesDuringGit(t *testing.T) {
+func TestWorktreeDeleteDefersReanchorUntilGitFinishes(t *testing.T) {
 	teststate.Lock(t)
 	a, repo := worktreeApp(t)
 	if err := os.WriteFile(filepath.Join(repo, "tracked"), []byte("data\n"), 0600); err != nil {
