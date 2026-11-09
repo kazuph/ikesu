@@ -1,9 +1,9 @@
 package runtime
 
 import (
-	"os"
 	"errors"
 	"image/color"
+	"os"
 	"strings"
 	"time"
 	"unicode"
