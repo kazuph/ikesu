@@ -33,9 +33,15 @@ func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer,
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
+	if states != nil {
+		teststate.Setenv(t, "IKESU_STATE_DIR", dir)
+		s.session = "client"
+		dir = filepath.Join(dir, s.session)
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	s.dir = dir
-	teststate.Setenv(t, "IKESU_STATE_DIR", filepath.Dir(dir))
-	s.session = filepath.Base(dir)
 	s.endpointPeer = endpoint.Current()
 	s.cfg, err = loadTestConfig(t)
 	if err != nil {
