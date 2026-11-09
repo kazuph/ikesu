@@ -102,10 +102,11 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := store.PaneSessions("rest")
-	if err != nil {
-		t.Fatal(err)
-	}
+	var rows []dispatch.PaneSession
+	waitPromptCondition(t, func() bool {
+		rows, err = store.PaneSessions("rest")
+		return err == nil && len(rows) == 2
+	})
 	store.Close()
 	if len(rows) != 2 {
 		t.Fatalf("ledger rows = %v, want 2", rows)
@@ -120,10 +121,16 @@ func TestAgentRestoreDryRunDistinctIDs(t *testing.T) {
 
 	// session.json must carry the per-pane ids too — the snapshot and the
 	// ledger both keep the exact association.
-	f := waitForSessionFile(t, dir)
 	gotIDs := map[int]string{}
-	f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
-		gotIDs[p.ID] = p.SessionID
+	waitPromptCondition(t, func() bool {
+		f, err := session.Load(session.Path(dir))
+		if err != nil || f == nil {
+			return false
+		}
+		f.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
+			gotIDs[p.ID] = p.SessionID
+		})
+		return gotIDs[1] == "sess-alpha" && gotIDs[2] == "sess-beta"
 	})
 	if gotIDs[1] != "sess-alpha" || gotIDs[2] != "sess-beta" {
 		t.Fatalf("session.json pane ids = %v", gotIDs)
