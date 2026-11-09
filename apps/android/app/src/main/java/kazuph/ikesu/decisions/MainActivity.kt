@@ -42,7 +42,7 @@ class MainActivity : Activity() {
     private val dim = 0xFF1E9948.toInt()
     private val warn = 0xFFFFCC33.toInt()
     private data class Draft(var text: String = "", val selected: MutableSet<String> = mutableSetOf(),
-                             val images: MutableList<ByteArray> = mutableListOf(), var cursor: Int = 0,
+                             val images: MutableList<ByteArray> = mutableListOf(), var cursor: CursorRef = CursorRef(),
                              var sequence: String? = null, var waitingReconnect: Boolean = false,
                              var uncertain: Boolean = false, var submittedItem: JSONObject? = null,
                              var cursorNavigated: Boolean = false)
@@ -70,7 +70,7 @@ class MainActivity : Activity() {
                 return true
             }
             override fun onScaleEnd(detector: ScaleGestureDetector) { applyScale(true) }
-        })
+        }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
     }
     private fun applyScale(save: Boolean) {
         if (save) getSharedPreferences("ui", MODE_PRIVATE).edit().putFloat("textScale", textScale).apply()
@@ -99,8 +99,9 @@ class MainActivity : Activity() {
             setOnApplyWindowInsetsListener { view, insets ->
                 val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
                 view.setPadding(bars.left + dp(20), bars.top, bars.right + dp(20), bars.bottom)
-                imeVisible = insets.isVisible(android.view.WindowInsets.Type.ime())
-                if (!imeVisible) (currentFocus as? EditText)?.clearFocus()
+                val nowVisible = insets.isVisible(android.view.WindowInsets.Type.ime())
+                if (imeVisible && !nowVisible) (currentFocus as? EditText)?.clearFocus()
+                imeVisible = nowVisible
                 insets
             }
         })
@@ -114,7 +115,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveIntent(intent); render() }
     override fun onDestroy() { viewer?.dismiss(); unregisterReceiver(receiver); super.onDestroy() }
     private fun receiveIntent(intent: Intent) {
-        if (intent.hasExtra("text_scale")) { textScale = TextScale.clamp(intent.getFloatExtra("text_scale", 1f)); appliedScale = textScale; getSharedPreferences("ui", MODE_PRIVATE).edit().putFloat("textScale", textScale).apply() }
+        TextScale.fromIntent((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0, intent.hasExtra("text_scale"), intent.getFloatExtra("text_scale", 1f))?.let { textScale = it; appliedScale = textScale; getSharedPreferences("ui", MODE_PRIVATE).edit().putFloat("textScale", textScale).apply() }
         val url = intent.getStringExtra("url")
         val token = intent.getStringExtra("token")
         if (url != null && token != null) {
@@ -205,11 +206,14 @@ class MainActivity : Activity() {
         setPadding(dp(16), dp(16), dp(16), dp(16))
     }
     private var commentView: EditText? = null
+    private fun optionIds(item: JSONObject): List<String> {
+        val options = item.optJSONArray("options") ?: return emptyList()
+        return (0 until options.length()).map { options.optJSONObject(it)?.optString("id") ?: "" }
+    }
     private fun cursorOf(item: JSONObject, draft: Draft): Int {
-        val n = item.optJSONArray("options")?.length() ?: 0
-        val allow = item.optBoolean("allow_text")
-        if (!draft.cursorNavigated && n == 0) return DetailCursor.answerIndex(n, allow)
-        return draft.cursor.coerceIn(0, DetailCursor.answerIndex(n, allow))
+        val resolved = DetailCursor.resolve(draft.cursor, optionIds(item), item.optBoolean("allow_text"), draft.cursorNavigated)
+        draft.cursor = resolved.ref; draft.cursorNavigated = resolved.navigated
+        return resolved.index
     }
     private fun goBack() {
         when (BackNav.target(settingsVisible, showList)) {
@@ -288,7 +292,7 @@ class MainActivity : Activity() {
             val description = optionSupplement(option.optString("description"), option.optString("preview"), option.optBoolean("preview_unavailable"))
             val row = optionRow(i, option.optString("label"), description, cursor == i, optionId in draft.selected) {
                 if (draft.sequence == null) {
-                    draft.cursor = i
+                    draft.cursor = CursorRef(Slot.OPTION, optionId)
                     if (item.optBoolean("multi_select")) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
                     render()
                 }
@@ -321,7 +325,6 @@ class MainActivity : Activity() {
         footer.setPadding(0, dp(8), 0, dp(8))
         val laterFocused = slots.getOrNull(cursor) == Slot.LATER
         val answerFocused = slots.getOrNull(cursor) == Slot.ANSWER
-        if (scrollToCursor && (laterFocused || answerFocused)) layout.post { (layout.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
         pair(button("あとで", false, laterFocused) { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
              button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) "回答する" else "送信中", true, answerFocused) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
     }
@@ -340,7 +343,7 @@ class MainActivity : Activity() {
     private var viewer: ImageViewerDialog? = null
     private fun showViewer(bitmap: android.graphics.Bitmap) {
         viewer?.dismiss()
-        viewer = ImageViewerDialog(this, bitmap).also { it.setOnDismissListener { viewer = null }; it.show() }
+        viewer = ImageViewerDialog(this, bitmap) { nav.ignoreNextUpRelease() }.also { it.setOnDismissListener { viewer = null }; it.show() }
     }
     private fun addImage(encoded: String) {
         if (encoded.isEmpty()) return
@@ -378,8 +381,9 @@ class MainActivity : Activity() {
         val item = current() ?: return
         val count = DetailCursor.slots(item.optJSONArray("options")?.length() ?: 0, item.optBoolean("allow_text")).size
         val draft = drafts.getOrPut(item.optString("id")) { Draft() }
-        draft.cursor = cursorOf(item, draft)
-        if (draft.cursorNavigated || delta < 0) draft.cursor = (draft.cursor + delta + count) % count
+        var index = cursorOf(item, draft)
+        if (draft.cursorNavigated || delta < 0) index = (index + delta + count) % count
+        draft.cursor = DetailCursor.refAt(index, optionIds(item), item.optBoolean("allow_text"))
         draft.cursorNavigated = true
         render(scrollToCursor = true)
     }

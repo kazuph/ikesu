@@ -64,6 +64,7 @@ class ZoomView(context: Context, private val bitmap: Bitmap, private val onClose
             scale = next; clampPan(); invalidate(); return true
         }
     })
+    init { scaler.isQuickScaleEnabled = false }
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean = true
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
@@ -92,7 +93,7 @@ class ZoomView(context: Context, private val bitmap: Bitmap, private val onClose
 }
 
 /** Full-screen window above the activity; render() and service updates cannot touch it. */
-class ImageViewerDialog(context: Context, bitmap: Bitmap) : Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
+class ImageViewerDialog(context: Context, bitmap: Bitmap, private val onVolumeUpClose: () -> Unit = {}) : Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
     init {
         setContentView(ZoomView(context, bitmap) { dismiss() }, ViewGroup.LayoutParams(-1, -1))
         window?.setBackgroundDrawableResource(android.R.color.black)
@@ -102,7 +103,7 @@ class ImageViewerDialog(context: Context, bitmap: Bitmap) : Dialog(context, andr
         return super.onKeyDown(keyCode, event)
     }
     override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == VolumeNav.UP) { dismiss(); return true }
+        if (keyCode == VolumeNav.UP) { onVolumeUpClose(); dismiss(); return true }
         return super.onKeyLongPress(keyCode, event)
     }
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =

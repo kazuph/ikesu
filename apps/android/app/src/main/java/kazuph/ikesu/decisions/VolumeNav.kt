@@ -5,15 +5,19 @@ class VolumeNav(private val up: () -> Unit, private val down: () -> Unit, privat
                 private val enabled: () -> Boolean = { true }, private val back: () -> Unit = {}) {
     private var downLongFired = false
     private var upLongFired = false
+    private var ignoreNextUp = false
+
+    /** Drop the next UP release once (the press that closed the full-screen image). A fresh press clears this. */
+    fun ignoreNextUpRelease() { ignoreNextUp = true }
 
     fun keyDown(key: Int, first: Boolean): Boolean {
         if (key == DOWN && first) downLongFired = false
-        if (key == UP && first) upLongFired = false
+        if (key == UP && first) { upLongFired = false; ignoreNextUp = false }
         return key == UP || key == DOWN
     }
 
     fun keyUp(key: Int): Boolean = when (key) {
-        UP -> { if (!upLongFired && enabled()) up(); true }
+        UP -> { if (ignoreNextUp) ignoreNextUp = false else if (!upLongFired && enabled()) up(); true }
         DOWN -> { if (!downLongFired && enabled()) down(); true }
         else -> false
     }
@@ -43,7 +47,33 @@ class VolumeNav(private val up: () -> Unit, private val down: () -> Unit, privat
 /** One stop of the cursor on the detail screen. */
 enum class Slot { OPTION, COMMENT, LATER, ANSWER }
 
+/** Cursor position kept as a kind plus the option id, so it survives a changed list of options. */
+data class CursorRef(val slot: Slot = Slot.OPTION, val optionId: String? = null)
+data class CursorResolved(val index: Int, val ref: CursorRef, val navigated: Boolean)
+
 object DetailCursor {
+    fun resolve(ref: CursorRef, optionIds: List<String>, allowText: Boolean, navigated: Boolean): CursorResolved {
+        val n = optionIds.size
+        val slots = slots(n, allowText)
+        val index = when (ref.slot) {
+            Slot.OPTION -> optionIds.indexOf(ref.optionId).takeIf { it >= 0 }
+            Slot.COMMENT -> if (allowText) n else null
+            Slot.LATER -> slots.indexOf(Slot.LATER)
+            Slot.ANSWER -> slots.lastIndex
+        }
+        if (index != null) return CursorResolved(index, ref, navigated)
+        // The pointed option or the comment box is gone: back to the first option, not to a button.
+        return if (n > 0) CursorResolved(0, CursorRef(Slot.OPTION, optionIds[0]), false)
+        else CursorResolved(slots.lastIndex, CursorRef(Slot.ANSWER), false)
+    }
+    fun refAt(index: Int, optionIds: List<String>, allowText: Boolean): CursorRef {
+        val slots = slots(optionIds.size, allowText)
+        return when (val slot = slots.getOrElse(index) { Slot.ANSWER }) {
+            Slot.OPTION -> CursorRef(slot, optionIds[index])
+            else -> CursorRef(slot)
+        }
+    }
+
     fun slots(optionCount: Int, allowText: Boolean): List<Slot> =
         List(optionCount) { Slot.OPTION } + (if (allowText) listOf(Slot.COMMENT) else emptyList()) + listOf(Slot.LATER, Slot.ANSWER)
     fun answerIndex(optionCount: Int, allowText: Boolean): Int = slots(optionCount, allowText).lastIndex
@@ -58,6 +88,8 @@ object BackNav {
 }
 
 object TextScale {
+    /** The debug-only intent extra: null means ignore it. */
+    fun fromIntent(debuggable: Boolean, present: Boolean, value: Float): Float? = if (debuggable && present) clamp(value) else null
     const val MIN = 0.6f
     const val MAX = 2.5f
     fun clamp(value: Float): Float = if (value.isNaN()) 1f else value.coerceIn(MIN, MAX)
@@ -73,7 +105,7 @@ object UrlFinder {
             val c = text[end - 1]
             val url = text.substring(m.range.first, end)
             val strip = when (c) {
-                '.', ',', '\'', '"', '!', '?', ':', ';' -> true
+                '.', ',', '\'', '"', '!', '?', ':', ';', '*' -> true
                 ')' -> url.count { it == ')' } > url.count { it == '(' }
                 ']' -> url.count { it == ']' } > url.count { it == '[' }
                 else -> false
